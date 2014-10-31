@@ -497,27 +497,32 @@ class DeviceManagerADB(DeviceManager):
         return int(timestr)*1000
 
     def getInfo(self, directive=None):
+        directive = directive or "all"
         ret = {}
-        if (directive == "id" or directive == "all"):
+        if directive == "id" or directive == "all":
             ret["id"] = self._runCmd(["get-serialno"]).output[0]
-        if (directive == "os" or directive == "all"):
-            ret["os"] = self._runCmd(["shell", "getprop", "ro.build.display.id"]).output[0]
-        if (directive == "uptime" or directive == "all"):
-            utime = self._runCmd(["shell", "uptime"]).output[0]
-            if (not utime):
+        if directive == "os" or directive == "all":
+            ret["os"] = self.shellCheckOutput(["getprop", "ro.build.display.id"])
+        if directive == "uptime" or directive == "all":
+            uptime = self.shellCheckOutput(["uptime"])
+            if not uptime:
                 raise DMError("error getting uptime")
-            utime = utime[9:]
-            hours = utime[0:utime.find(":")]
-            utime = utime[utime[1:].find(":") + 2:]
-            minutes = utime[0:utime.find(":")]
-            utime = utime[utime[1:].find(":") +  2:]
-            seconds = utime[0:utime.find(",")]
-            ret["uptime"] = ["0 days " + hours + " hours " + minutes + " minutes " + seconds + " seconds"]
-        if (directive == "process" or directive == "all"):
-            ret["process"] = self._runCmd(["shell", "ps"]).output
-        if (directive == "systime" or directive == "all"):
-            ret["systime"] = self._runCmd(["shell", "date"]).output[0]
-        self._logger.info(ret)
+            m = re.match("up time: ((\d+) days, )*(\d{2}):(\d{2}):(\d{2})", uptime)
+            if m:
+                uptime = "%d days %d hours %d minutes %d seconds" % tuple(
+                    [int(g or 0) for g in m.groups()[1:]])
+            ret["uptime"] = uptime
+        if directive == "process" or directive == "all":
+            ret["process"] = self.shellCheckOutput(["ps"])
+        if directive == "systime" or directive == "all":
+            ret["systime"] = self.shellCheckOutput(["date"])
+        if directive == "memtotal" or directive == "all":
+            meminfo = {}
+            for line in self.pullFile("/proc/meminfo").splitlines():
+                key, value = line.split(":")
+                meminfo[key] = value.strip()
+            ret["memtotal"] = meminfo["MemTotal"]
+        self._logger.debug("getInfo: %s" % ret)
         return ret
 
     def uninstallApp(self, appName, installPath=None):
@@ -638,8 +643,8 @@ class DeviceManagerADB(DeviceManager):
         # Check whether we _are_ root by default (some development boards work
         # this way, this is also the result of some relatively rare rooting
         # techniques)
-        data = self._runCmd(["shell", "id"]).output[0]
-        if data.find('uid=0(root)') >= 0:
+        proc = self._runCmd(["shell", "id"])
+        if proc.output and 'uid=0(root)' in proc.output[0]:
             self._haveRootShell = True
             # if this returns true, we don't care about su
             return
@@ -657,8 +662,7 @@ class DeviceManagerADB(DeviceManager):
         if retcode is None: # still not terminated, kill
             proc.kill()
 
-        data = proc.output[0]
-        if data.find('uid=0(root)') >= 0:
+        if proc.output and 'uid=0(root)' in proc.output[0]:
             self._haveSu = True
 
         if self._runAdbAsRoot:

@@ -11,7 +11,6 @@
 #include "mozilla/dom/MozMobileConnectionBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/TelephonyBinding.h"
-#include "mozilla/dom/UnionTypes.h"
 
 #include "nsCharSeparatedTokenizer.h"
 #include "nsContentUtils.h"
@@ -26,7 +25,7 @@
 #include "TelephonyCall.h"
 #include "TelephonyCallGroup.h"
 #include "TelephonyCallId.h"
-#include "TelephonyCallback.h"
+#include "TelephonyDialCallback.h"
 
 // Service instantiation
 #include "ipc/TelephonyIPCService.h"
@@ -235,8 +234,8 @@ Telephony::DialInternal(uint32_t aServiceId, const nsAString& aNumber,
     return promise.forget();
   }
 
-  nsCOMPtr<nsITelephonyCallback> callback =
-    new TelephonyCallback(GetOwner(), this, promise, aServiceId);
+  nsCOMPtr<nsITelephonyDialCallback> callback =
+    new TelephonyDialCallback(GetOwner(), this, promise, aServiceId);
 
   nsresult rv = mService->Dial(aServiceId, aNumber, aEmergency, callback);
   if (NS_FAILED(rv)) {
@@ -496,6 +495,11 @@ Telephony::CallStateChanged(uint32_t aServiceId, uint32_t aCallIndex,
     modifiedCall->UpdateMergeable(aIsMergeable);
 
     if (modifiedCall->CallState() != aCallState) {
+      if (aCallState == nsITelephonyService::CALL_STATE_DISCONNECTED) {
+        modifiedCall->ChangeStateInternal(aCallState, true);
+        return NS_OK;
+      }
+
       // We don't fire the statechange event on a call in conference here.
       // Instead, the event will be fired later in
       // TelephonyCallGroup::ChangeState(). Thus the sequence of firing the

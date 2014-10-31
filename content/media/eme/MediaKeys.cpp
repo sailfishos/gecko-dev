@@ -11,20 +11,29 @@
 #include "mozilla/dom/MediaKeyError.h"
 #include "mozilla/dom/MediaKeySession.h"
 #include "mozilla/dom/DOMException.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/CDMProxy.h"
 #include "mozilla/EMELog.h"
 #include "nsContentUtils.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "mozilla/Preferences.h"
+#include "nsContentTypeParser.h"
+#ifdef MOZ_FMP4
+#include "MP4Decoder.h"
+#endif
 #ifdef XP_WIN
 #include "mozilla/WindowsVersion.h"
 #endif
+#include "nsContentCID.h"
+#include "nsServiceManagerUtils.h"
+#include "mozIGeckoMediaPluginService.h"
 
 namespace mozilla {
 
 namespace dom {
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(MediaKeys,
+                                      mElement,
                                       mParent,
                                       mKeySessions,
                                       mPromises,
@@ -106,15 +115,86 @@ MediaKeys::SetServerCertificate(const ArrayBufferViewOrArrayBuffer& aCert, Error
 }
 
 static bool
-IsSupportedKeySystem(const nsAString& aKeySystem)
+HaveGMPFor(const nsCString& aKeySystem,
+           const nsCString& aAPI,
+           const nsCString& aTag = EmptyCString())
 {
-  return aKeySystem.EqualsASCII("org.w3.clearkey") ||
-#ifdef XP_WIN
-         (aKeySystem.EqualsASCII("com.adobe.access") &&
-          IsVistaOrLater() &&
-          Preferences::GetBool("media.eme.adobe-access.enabled", false)) ||
+  nsCOMPtr<mozIGeckoMediaPluginService> mps =
+    do_GetService("@mozilla.org/gecko-media-plugin-service;1");
+  if (NS_WARN_IF(!mps)) {
+    return false;
+  }
+
+  nsTArray<nsCString> tags;
+  tags.AppendElement(aKeySystem);
+  if (!aTag.IsEmpty()) {
+    tags.AppendElement(aTag);
+  }
+  // Note: EME plugins need a non-null nodeId here, as they must
+  // not be shared across origins.
+  bool hasPlugin = false;
+  if (NS_FAILED(mps->HasPluginForAPI(aAPI,
+                                     &tags,
+                                     &hasPlugin))) {
+    return false;
+  }
+  return hasPlugin;
+}
+
+static bool
+IsPlayableMP4Type(const nsAString& aContentType)
+{
+#ifdef MOZ_FMP4
+  nsContentTypeParser parser(aContentType);
+  nsAutoString mimeType;
+  nsresult rv = parser.GetType(mimeType);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+  nsAutoString codecs;
+  parser.GetParameter("codecs", codecs);
+
+  NS_ConvertUTF16toUTF8 mimeTypeUTF8(mimeType);
+  return MP4Decoder::CanHandleMediaType(mimeTypeUTF8, codecs);
+#else
+  return false;
 #endif
-         false;
+}
+
+bool
+MediaKeys::IsTypeSupported(const nsAString& aKeySystem,
+                           const Optional<nsAString>& aInitDataType,
+                           const Optional<nsAString>& aContentType)
+{
+  if (aKeySystem.EqualsLiteral("org.w3.clearkey") &&
+      (!aInitDataType.WasPassed() || aInitDataType.Value().EqualsLiteral("cenc")) &&
+      (!aContentType.WasPassed() || IsPlayableMP4Type(aContentType.Value())) &&
+      HaveGMPFor(NS_LITERAL_CSTRING("org.w3.clearkey"),
+                 NS_LITERAL_CSTRING("eme-decrypt"))) {
+    return true;
+  }
+
+#ifdef XP_WIN
+  // Note: Adobe Access's GMP uses WMF to decode, so anything our MP4Reader
+  // thinks it can play on Windows, the Access GMP should be able to play.
+  if (aKeySystem.EqualsLiteral("com.adobe.access") &&
+      Preferences::GetBool("media.eme.adobe-access.enabled", false) &&
+      IsVistaOrLater() && // Win Vista and later only.
+      (!aInitDataType.WasPassed() || aInitDataType.Value().EqualsLiteral("cenc")) &&
+      (!aContentType.WasPassed() || IsPlayableMP4Type(aContentType.Value())) &&
+      HaveGMPFor(NS_LITERAL_CSTRING("com.adobe.access"),
+                 NS_LITERAL_CSTRING("eme-decrypt")) &&
+      HaveGMPFor(NS_LITERAL_CSTRING("com.adobe.access"),
+                 NS_LITERAL_CSTRING("decode-video"),
+                 NS_LITERAL_CSTRING("h264")) &&
+      HaveGMPFor(NS_LITERAL_CSTRING("com.adobe.access"),
+                 NS_LITERAL_CSTRING("decode-audio"),
+                 NS_LITERAL_CSTRING("aac"))) {
+      return true;
+  }
+#endif
+
+  return false;
 }
 
 /* static */
@@ -127,8 +207,16 @@ MediaKeys::IsTypeSupported(const GlobalObject& aGlobal,
 {
   // TODO: Should really get spec changed to this is async, so we can wait
   //       for user to consent to running plugin.
-  return IsSupportedKeySystem(aKeySystem) ? IsTypeSupportedResult::Maybe
-                                          : IsTypeSupportedResult::_empty;
+  bool supported = IsTypeSupported(aKeySystem, aInitDataType, aContentType);
+
+  EME_LOG("MediaKeys::IsTypeSupported keySystem='%s' initDataType='%s' contentType='%s' supported=%d",
+          NS_ConvertUTF16toUTF8(aKeySystem).get(),
+          (aInitDataType.WasPassed() ? NS_ConvertUTF16toUTF8(aInitDataType.Value()).get() : ""),
+          (aContentType.WasPassed() ? NS_ConvertUTF16toUTF8(aContentType.Value()).get() : ""),
+          supported);
+
+  return supported ? IsTypeSupportedResult::Probably
+                   : IsTypeSupportedResult::_empty;
 }
 
 already_AddRefed<Promise>
@@ -224,23 +312,85 @@ MediaKeys::Create(const GlobalObject& aGlobal,
   // CDMProxy keeps MediaKeys alive until it resolves the promise and thus
   // returns the MediaKeys object to JS.
   nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aGlobal.GetAsSupports());
-  if (!window) {
+  if (!window || !window->GetExtantDoc()) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
 
   nsRefPtr<MediaKeys> keys = new MediaKeys(window, aKeySystem);
-  nsRefPtr<Promise> promise(keys->MakePromise(aRv));
+  return keys->Init(aRv);
+}
+
+already_AddRefed<Promise>
+MediaKeys::Init(ErrorResult& aRv)
+{
+  nsRefPtr<Promise> promise(MakePromise(aRv));
   if (aRv.Failed()) {
     return nullptr;
   }
 
-  if (!IsSupportedKeySystem(aKeySystem)) {
-    aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return nullptr;
+  if (!IsTypeSupported(mKeySystem)) {
+    promise->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+    return promise.forget();
   }
 
-  keys->mProxy = new CDMProxy(keys, aKeySystem);
+  mProxy = new CDMProxy(this, mKeySystem);
+
+  // Determine principal (at creation time) of the MediaKeys object.
+  nsCOMPtr<nsIScriptObjectPrincipal> sop = do_QueryInterface(GetParentObject());
+  if (!sop) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+  mPrincipal = sop->GetPrincipal();
+
+  // Determine principal of the "top-level" window; the principal of the
+  // page that will display in the URL bar.
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(GetParentObject());
+  if (!window) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+  nsCOMPtr<nsIDOMWindow> topWindow;
+  window->GetTop(getter_AddRefs(topWindow));
+  nsCOMPtr<nsPIDOMWindow> top = do_QueryInterface(topWindow);
+  if (!top || !top->GetExtantDoc()) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+
+  mTopLevelPrincipal = top->GetExtantDoc()->NodePrincipal();
+
+  if (!mPrincipal || !mTopLevelPrincipal) {
+    NS_WARNING("Failed to get principals when creating MediaKeys");
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+
+  nsAutoString origin;
+  nsresult rv = nsContentUtils::GetUTFOrigin(mPrincipal, origin);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+  nsAutoString topLevelOrigin;
+  rv = nsContentUtils::GetUTFOrigin(mTopLevelPrincipal, topLevelOrigin);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+
+  if (!window) {
+    promise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return promise.forget();
+  }
+  nsIDocument* doc = window->GetExtantDoc();
+  const bool inPrivateBrowsing = nsContentUtils::IsInPrivateBrowsing(doc);
+
+  EME_LOG("MediaKeys::Create() (%s, %s), %s",
+          NS_ConvertUTF16toUTF8(origin).get(),
+          NS_ConvertUTF16toUTF8(topLevelOrigin).get(),
+          (inPrivateBrowsing ? "PrivateBrowsing" : "NonPrivateBrowsing"));
 
   // The CDMProxy's initialization is asynchronous. The MediaKeys is
   // refcounted, and its instance is returned to JS by promise once
@@ -250,22 +400,26 @@ MediaKeys::Create(const GlobalObject& aGlobal,
   // or its creation has failed. Store the id of the promise returned
   // here, and hold a self-reference until that promise is resolved or
   // rejected.
-  MOZ_ASSERT(!keys->mCreatePromiseId, "Should only be created once!");
-  keys->mCreatePromiseId = keys->StorePromise(promise);
-  keys->AddRef();
-  keys->mProxy->Init(keys->mCreatePromiseId);
+  MOZ_ASSERT(!mCreatePromiseId, "Should only be created once!");
+  mCreatePromiseId = StorePromise(promise);
+  AddRef();
+  mProxy->Init(mCreatePromiseId,
+               origin,
+               topLevelOrigin,
+               inPrivateBrowsing);
 
   return promise.forget();
 }
 
 void
-MediaKeys::OnCDMCreated(PromiseId aId)
+MediaKeys::OnCDMCreated(PromiseId aId, const nsACString& aNodeId)
 {
   nsRefPtr<Promise> promise(RetrievePromise(aId));
   if (!promise) {
     NS_WARNING("MediaKeys tried to resolve a non-existent promise");
     return;
   }
+  mNodeId = aNodeId;
   nsRefPtr<MediaKeys> keys(this);
   promise->MaybeResolve(keys);
   if (mCreatePromiseId == aId) {
@@ -366,26 +520,58 @@ MediaKeys::GetSession(const nsAString& aSessionId)
   return session.forget();
 }
 
-nsresult
-MediaKeys::GetOrigin(nsString& aOutOrigin)
+const nsCString&
+MediaKeys::GetNodeId() const
 {
   MOZ_ASSERT(NS_IsMainThread());
-  // TODO: Bug 1035637, return a combination of origin and URL bar origin.
+  return mNodeId;
+}
 
-  nsIPrincipal* principal = nullptr;
-  nsCOMPtr<nsPIDOMWindow> pWindow = do_QueryInterface(GetParentObject());
-  nsCOMPtr<nsIScriptObjectPrincipal> scriptPrincipal =
-    do_QueryInterface(pWindow);
-  if (scriptPrincipal) {
-    principal = scriptPrincipal->GetPrincipal();
+bool
+MediaKeys::IsBoundToMediaElement() const
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  return mElement != nullptr;
+}
+
+nsresult
+MediaKeys::Bind(HTMLMediaElement* aElement)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (IsBoundToMediaElement()) {
+    return NS_ERROR_FAILURE;
   }
-  NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
 
-  nsresult res = nsContentUtils::GetUTFOrigin(principal, aOutOrigin);
+  mElement = aElement;
+  nsresult rv = CheckPrincipals();
+  if (NS_FAILED(rv)) {
+    mElement = nullptr;
+    return rv;
+  }
 
-  EME_LOG("EME Origin = '%s'", NS_ConvertUTF16toUTF8(aOutOrigin).get());
+  return NS_OK;
+}
 
-  return res;
+nsresult
+MediaKeys::CheckPrincipals()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!IsBoundToMediaElement()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsRefPtr<nsIPrincipal> elementPrincipal(mElement->GetCurrentPrincipal());
+  nsRefPtr<nsIPrincipal> elementTopLevelPrincipal(mElement->GetTopLevelPrincipal());
+  if (!elementPrincipal ||
+      !mPrincipal ||
+      !elementPrincipal->Equals(mPrincipal) ||
+      !elementTopLevelPrincipal ||
+      !mTopLevelPrincipal ||
+      !elementTopLevelPrincipal->Equals(mTopLevelPrincipal)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
 }
 
 bool
@@ -404,6 +590,12 @@ CopyArrayBufferViewOrArrayBufferData(const ArrayBufferViewOrArrayBuffer& aBuffer
     return false;
   }
   return true;
+}
+
+nsIDocument*
+MediaKeys::GetOwnerDoc() const
+{
+  return mElement ? mElement->OwnerDoc() : nullptr;
 }
 
 } // namespace dom

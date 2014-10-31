@@ -5,6 +5,7 @@
 
 #include "ContainerLayerComposite.h"
 #include <algorithm>                    // for min
+#include "apz/src/AsyncPanZoomController.h"  // for AsyncPanZoomController
 #include "FrameMetrics.h"               // for FrameMetrics
 #include "Units.h"                      // for LayerRect, LayerPixel, etc
 #include "gfx2DGlue.h"                  // for ToMatrix4x4
@@ -21,7 +22,6 @@
 #include "mozilla/layers/CompositorTypes.h"  // for DiagnosticFlags::CONTAINER
 #include "mozilla/layers/Effects.h"     // for Effect, EffectChain, etc
 #include "mozilla/layers/TextureHost.h"  // for CompositingRenderTarget
-#include "mozilla/layers/AsyncPanZoomController.h"  // for AsyncPanZoomController
 #include "mozilla/layers/AsyncCompositionManager.h" // for ViewTransform
 #include "mozilla/layers/LayerMetricsWrapper.h" // for LayerMetricsWrapper
 #include "mozilla/mozalloc.h"           // for operator delete, etc
@@ -64,50 +64,6 @@ LayerHasCheckerboardingAPZC(Layer* aLayer, gfxRGBA* aOutColor)
     break;
   }
   return false;
-}
-
-/**
- * Returns a rectangle of content painted opaquely by aLayer. Very consertative;
- * bails by returning an empty rect in any tricky situations.
- */
-static nsIntRect
-GetOpaqueRect(Layer* aLayer)
-{
-  nsIntRect result;
-  gfx::Matrix matrix;
-  bool is2D = aLayer->AsLayerComposite()->GetShadowTransform().Is2D(&matrix);
-
-  // Just bail if there's anything difficult to handle.
-  if (!is2D || aLayer->GetMaskLayer() ||
-    aLayer->GetIsFixedPosition() ||
-    aLayer->GetIsStickyPosition() ||
-    aLayer->GetEffectiveOpacity() != 1.0f ||
-    matrix.HasNonIntegerTranslation()) {
-    return result;
-  }
-
-  if (aLayer->GetContentFlags() & Layer::CONTENT_OPAQUE) {
-    result = aLayer->GetEffectiveVisibleRegion().GetLargestRectangle();
-  } else {
-    // Drill down into RefLayers because that's what we particularly care about;
-    // layer construction for aLayer will not have known about the opaqueness
-    // of any RefLayer subtrees.
-    RefLayer* refLayer = aLayer->AsRefLayer();
-    if (refLayer && refLayer->GetFirstChild()) {
-      result = GetOpaqueRect(refLayer->GetFirstChild());
-    }
-  }
-
-  // Translate our opaque region to cover the child
-  gfx::Point point = matrix.GetTranslation();
-  result.MoveBy(static_cast<int>(point.x), static_cast<int>(point.y));
-
-  const nsIntRect* clipRect = aLayer->GetEffectiveClipRect();
-  if (clipRect) {
-    result.IntersectRect(result, *clipRect);
-  }
-
-  return result;
 }
 
 static void DrawLayerInfo(const RenderTargetIntRect& aClipRect,
@@ -162,12 +118,10 @@ static void PrintUniformityInfo(Layer* aLayer)
 /* all of the per-layer prepared data we need to maintain */
 struct PreparedLayer
 {
-  PreparedLayer(LayerComposite *aLayer, RenderTargetIntRect aClipRect, bool aRestoreVisibleRegion, nsIntRegion &aVisibleRegion) :
-    mLayer(aLayer), mClipRect(aClipRect), mRestoreVisibleRegion(aRestoreVisibleRegion), mSavedVisibleRegion(aVisibleRegion) {}
+  PreparedLayer(LayerComposite *aLayer, RenderTargetIntRect aClipRect) :
+    mLayer(aLayer), mClipRect(aClipRect) {}
   LayerComposite* mLayer;
   RenderTargetIntRect mClipRect;
-  bool mRestoreVisibleRegion;
-  nsIntRegion mSavedVisibleRegion;
 };
 
 /* all of the prepared data that we need in RenderLayer() */
@@ -211,38 +165,8 @@ ContainerPrepare(ContainerT* aContainer,
 
     CULLING_LOG("Preparing sublayer %p\n", layerToRender->GetLayer());
 
-    nsIntRegion savedVisibleRegion;
-    bool restoreVisibleRegion = false;
-    gfx::Matrix matrix;
-    bool is2D = layerToRender->GetLayer()->GetBaseTransform().Is2D(&matrix);
-    if (i + 1 < children.Length() &&
-        is2D && !matrix.HasNonIntegerTranslation()) {
-      LayerComposite* nextLayer = static_cast<LayerComposite*>(children.ElementAt(i + 1)->ImplData());
-      CULLING_LOG("Culling against %p\n", nextLayer->GetLayer());
-      nsIntRect nextLayerOpaqueRect;
-      if (nextLayer && nextLayer->GetLayer()) {
-        nextLayerOpaqueRect = GetOpaqueRect(nextLayer->GetLayer());
-        gfx::Point point = matrix.GetTranslation();
-        nextLayerOpaqueRect.MoveBy(static_cast<int>(-point.x), static_cast<int>(-point.y));
-        CULLING_LOG("  point %i, %i\n", static_cast<int>(-point.x), static_cast<int>(-point.y));
-        CULLING_LOG("  opaque rect %i, %i, %i, %i\n", nextLayerOpaqueRect.x, nextLayerOpaqueRect.y, nextLayerOpaqueRect.width, nextLayerOpaqueRect.height);
-      }
-      if (!nextLayerOpaqueRect.IsEmpty()) {
-        CULLING_LOG("  draw\n");
-        savedVisibleRegion = layerToRender->GetShadowVisibleRegion();
-        nsIntRegion visibleRegion;
-        visibleRegion.Sub(savedVisibleRegion, nextLayerOpaqueRect);
-        if (visibleRegion.IsEmpty()) {
-          continue;
-        }
-        layerToRender->SetShadowVisibleRegion(visibleRegion);
-        restoreVisibleRegion = true;
-      } else {
-        CULLING_LOG("  skip\n");
-      }
-    }
     layerToRender->Prepare(clipRect);
-    aContainer->mPrepared->mLayers.AppendElement(PreparedLayer(layerToRender, clipRect, restoreVisibleRegion, savedVisibleRegion));
+    aContainer->mPrepared->mLayers.AppendElement(PreparedLayer(layerToRender, clipRect));
   }
 
   CULLING_LOG("Preparing container layer %p\n", aContainer->GetLayer());
@@ -311,11 +235,6 @@ RenderLayers(ContainerT* aContainer,
       }
     } else {
       layerToRender->RenderLayer(RenderTargetPixel::ToUntyped(clipRect));
-    }
-
-    if (preparedData.mRestoreVisibleRegion) {
-      // Restore the region in case it's not covered by opaque content next time
-      layerToRender->SetShadowVisibleRegion(preparedData.mSavedVisibleRegion);
     }
 
     if (gfxPrefs::UniformityInfo()) {

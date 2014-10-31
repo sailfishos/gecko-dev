@@ -38,7 +38,6 @@ class nsHTMLDocument;
 class nsHTMLStyleSheet;
 class nsIAtom;
 class nsIBFCacheEntry;
-class nsIBoxObject;
 class nsIChannel;
 class nsIContent;
 class nsIContentSink;
@@ -95,6 +94,7 @@ class ImageLoader;
 namespace dom {
 class AnimationTimeline;
 class Attr;
+class BoxObject;
 class CDATASection;
 class Comment;
 struct CustomElementDefinition;
@@ -1500,7 +1500,7 @@ public:
    * Get the box object for an element. This is not exposed through a
    * scriptable interface except for XUL documents.
    */
-  virtual already_AddRefed<nsIBoxObject>
+  virtual already_AddRefed<mozilla::dom::BoxObject>
     GetBoxObjectFor(mozilla::dom::Element* aElement,
                     mozilla::ErrorResult& aRv) = 0;
 
@@ -2361,8 +2361,8 @@ public:
   virtual nsHTMLDocument* AsHTMLDocument() { return nullptr; }
   virtual mozilla::dom::SVGDocument* AsSVGDocument() { return nullptr; }
 
-  // Each import tree has exactly one master document which is
-  // the root of the tree, and owns the browser context.
+  // The root document of the import tree. If this document is not an import
+  // this will return the document itself.
   virtual nsIDocument* MasterDocument() = 0;
   virtual void SetMasterDocument(nsIDocument* master) = 0;
   virtual bool IsMasterDocument() = 0;

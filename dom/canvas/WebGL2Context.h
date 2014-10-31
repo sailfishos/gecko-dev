@@ -66,7 +66,11 @@ public:
     void TexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
     void TexStorage3D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height,
                       GLsizei depth);
-
+    void TexImage3D(GLenum target, GLint level, GLenum internalformat,
+                    GLsizei width, GLsizei height, GLsizei depth,
+                    GLint border, GLenum format, GLenum type,
+                    const Nullable<dom::ArrayBufferView> &pixels,
+                    ErrorResult& rv);
     void TexSubImage3D(GLenum target, GLint level,
                        GLint xoffset, GLint yoffset, GLint zoffset,
                        GLsizei width, GLsizei height, GLsizei depth,
@@ -248,7 +252,7 @@ private:
     bool ValidateTexStorage(GLenum target, GLsizei levels, GLenum internalformat,
                                 GLsizei width, GLsizei height, GLsizei depth,
                                 const char* info);
-
+    JS::Value GetTexParameterInternal(const TexTarget& target, GLenum pname) MOZ_OVERRIDE;
 };
 
 } // namespace mozilla

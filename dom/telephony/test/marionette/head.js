@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 // Emulate Promise.jsm semantics.
-Promise.defer = function() { return new Deferred(); }
+Promise.defer = function() { return new Deferred(); };
 function Deferred()  {
   this.promise = new Promise(function(resolve, reject) {
     this.resolve = resolve;
@@ -228,14 +228,25 @@ let emulator = (function() {
   }
 
   /**
+   * Convenient helper to compare two call lists. Size should be the same and
+   * order is not important.
+   */
+  function checkCalls(actualCalls, expectedCalls) {
+    if (actualCalls.length == expectedCalls.length) {
+      let expectedSet = new Set(expectedCalls);
+      for (let i = 0; i < actualCalls.length; ++i) {
+        ok(expectedSet.has(actualCalls[i]), "should contain the call");
+      }
+    }
+  }
+
+  /**
    * Convenient helper to check mozTelephony.active and mozTelephony.calls.
    */
   function checkTelephonyActiveAndCalls(active, calls) {
     is(telephony.active, active, "telephony.active");
     is(telephony.calls.length, calls.length, "telephony.calls");
-    for (let i = 0; i < calls.length; ++i) {
-      is(telephony.calls[i], calls[i]);
-    }
+    checkCalls(telephony.calls, calls);
   }
 
   /**
@@ -245,9 +256,7 @@ let emulator = (function() {
   function checkConferenceStateAndCalls(state, calls) {
     is(conference.state, state, "conference.state");
     is(conference.calls.length, calls.length, "conference.calls");
-    for (let i = 0; i < calls.length; i++) {
-      is(conference.calls[i], calls[i]);
-    }
+    checkCalls(conference.calls, calls);
   }
 
   /**
@@ -615,6 +624,38 @@ let emulator = (function() {
       deferred.resolve(call);
     };
     call.hold();
+
+    return deferred.promise;
+  }
+
+  /**
+   * Resume a call.
+   *
+   * @param call
+   *        A TelephonyCall object.
+   * @return A deferred promise.
+   */
+  function resume(call) {
+    log("Resuming the held call.");
+
+    let deferred = Promise.defer();
+
+    let gotResuming = false;
+    call.onresuming = function onresuming(event) {
+      log("Received 'resuming' call event");
+      call.onresuming = null;
+      checkEventCallState(event, call, "resuming");
+      gotResuming = true;
+    };
+
+    call.onconnected = function onconnected(event) {
+      log("Received 'connected' call event");
+      call.onconnected = null;
+      checkEventCallState(event, call, "connected");
+      ok(gotResuming);
+      deferred.resolve(call);
+    };
+    call.resume();
 
     return deferred.promise;
   }
@@ -1203,6 +1244,7 @@ let emulator = (function() {
   this.gAnswer = answer;
   this.gHangUp = hangUp;
   this.gHold = hold;
+  this.gResume = resume;
   this.gRemoteDial = remoteDial;
   this.gRemoteAnswer = remoteAnswer;
   this.gRemoteHangUp = remoteHangUp;
@@ -1316,17 +1358,8 @@ function sendMMI(aMmi) {
   let deferred = Promise.defer();
 
   telephony.dial(aMmi)
-    .then(request => {
-      ok(request instanceof DOMRequest,
-         "request is instanceof " + request.constructor);
-
-      request.addEventListener("success", function(event) {
-        deferred.resolve(request.result);
-      });
-
-      request.addEventListener("error", function(event) {
-        deferred.reject(request.error);
-      });
+    .then(result => {
+      deferred.resolve(result);
     }, cause => {
       deferred.reject(cause);
     });

@@ -1908,6 +1908,10 @@ toolbarbutton.chevron {
   list-style-image: url("chrome://global/skin/toolbar/chevron.gif") !important;
 }
 
+toolbar[brighttext] toolbarbutton.chevron:not(:hover):not([open="true"]) {
+  list-style-image: url("chrome://global/skin/toolbar/chevron-inverted.png") !important;
+}
+
 toolbarbutton.chevron:-moz-locale-dir(rtl) > .toolbarbutton-icon {
   transform: scaleX(-1);
 }
@@ -2067,15 +2071,6 @@ toolbarbutton.chevron > .toolbarbutton-icon {
 }
 
 /* Social toolbar item */
-
-#social-provider-button {
-  -moz-image-region: rect(0, 16px, 16px, 0);
-  list-style-image: url(chrome://browser/skin/social/services-16.png);
-}
-
-#social-provider-button > .toolbarbutton-menu-dropmarker {
-  display: none;
-}
 
 .popup-notification-icon[popupid="servicesInstall"] {
   list-style-image: url(chrome://browser/skin/social/services-64.png);

@@ -371,6 +371,7 @@ BufferTextureHost::SetCompositor(Compositor* aCompositor)
     it->SetCompositor(aCompositor);
     it = it->GetNextSibling();
   }
+  mFirstSource = nullptr;
   mCompositor = aCompositor;
 }
 
@@ -918,10 +919,32 @@ SharedSurfaceTextureHost::EnsureTexSource()
   if (mTexSource)
     return;
 
-  mSurf->WaitSync();
   mTexSource = SharedSurfaceToTexSource(mSurf, mCompositor);
   MOZ_ASSERT(mTexSource);
 }
+
+bool
+SharedSurfaceTextureHost::Lock()
+{
+  MOZ_ASSERT(!mIsLocked);
+
+  mSurf->ConsumerAcquire();
+
+  mIsLocked = true;
+
+  EnsureTexSource();
+
+  return true;
+}
+
+void
+SharedSurfaceTextureHost::Unlock()
+{
+  MOZ_ASSERT(mIsLocked);
+  mSurf->ConsumerRelease();
+  mIsLocked = false;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 

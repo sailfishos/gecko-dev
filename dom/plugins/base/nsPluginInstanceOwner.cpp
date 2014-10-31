@@ -185,7 +185,7 @@ AttachToContainerAsSurfaceTexture(ImageContainer* container,
   MOZ_ASSERT(out_image);
   MOZ_ASSERT(!*out_image);
 
-  nsSurfaceTexture* surfTex = instance->AsSurfaceTexture();
+  mozilla::gl::AndroidSurfaceTexture* surfTex = instance->AsSurfaceTexture();
   if (!surfTex) {
     return;
   }
@@ -757,21 +757,6 @@ NPBool nsPluginInstanceOwner::ConvertPoint(double sourceX, double sourceY, NPCoo
   // we should implement this for all platforms
   return false;
 #endif
-}
-
-NPError nsPluginInstanceOwner::InitAsyncSurface(NPSize *size, NPImageFormat format,
-                                                void *initData, NPAsyncSurface *surface)
-{
-  return NPERR_INCOMPATIBLE_VERSION_ERROR;
-}
-
-NPError nsPluginInstanceOwner::FinalizeAsyncSurface(NPAsyncSurface *)
-{
-  return NPERR_INCOMPATIBLE_VERSION_ERROR;
-}
-
-void nsPluginInstanceOwner::SetCurrentAsyncSurface(NPAsyncSurface *, NPRect*)
-{
 }
 
 NS_IMETHODIMP nsPluginInstanceOwner::GetTagType(nsPluginTagType *result)

@@ -112,11 +112,12 @@ FilteringWrapper<Base, Policy>::enumerate(JSContext *cx, HandleObject wrapper,
 
 template <typename Base, typename Policy>
 bool
-FilteringWrapper<Base, Policy>::keys(JSContext *cx, HandleObject wrapper,
-                                     AutoIdVector &props) const
+FilteringWrapper<Base, Policy>::getOwnEnumerablePropertyKeys(JSContext *cx,
+                                                             HandleObject wrapper,
+                                                             AutoIdVector &props) const
 {
     assertEnteredPolicy(cx, wrapper, JSID_VOID, BaseProxyHandler::ENUMERATE);
-    return Base::keys(cx, wrapper, props) &&
+    return Base::getOwnEnumerablePropertyKeys(cx, wrapper, props) &&
            Filter<Policy>(cx, wrapper, props);
 }
 
@@ -135,6 +136,26 @@ FilteringWrapper<Base, Policy>::iterate(JSContext *cx, HandleObject wrapper,
 
 template <typename Base, typename Policy>
 bool
+FilteringWrapper<Base, Policy>::call(JSContext *cx, JS::Handle<JSObject*> wrapper,
+                                    const JS::CallArgs &args) const
+{
+    if (!Policy::checkCall(cx, wrapper, args))
+        return false;
+    return Base::call(cx, wrapper, args);
+}
+
+template <typename Base, typename Policy>
+bool
+FilteringWrapper<Base, Policy>::construct(JSContext *cx, JS::Handle<JSObject*> wrapper,
+                                          const JS::CallArgs &args) const
+{
+    if (!Policy::checkCall(cx, wrapper, args))
+        return false;
+    return Base::construct(cx, wrapper, args);
+}
+
+template <typename Base, typename Policy>
+bool
 FilteringWrapper<Base, Policy>::nativeCall(JSContext *cx, JS::IsAcceptableThis test,
                                            JS::NativeImpl impl, JS::CallArgs args) const
 {
@@ -149,6 +170,16 @@ FilteringWrapper<Base, Policy>::defaultValue(JSContext *cx, HandleObject obj,
                                              JSType hint, MutableHandleValue vp) const
 {
     return Base::defaultValue(cx, obj, hint, vp);
+}
+
+template <typename Base, typename Policy>
+bool
+FilteringWrapper<Base, Policy>::getPrototypeOf(JSContext *cx, JS::HandleObject wrapper,
+                                               JS::MutableHandleObject protop) const
+{
+    // Filtering wrappers do not allow access to the prototype.
+    protop.set(nullptr);
+    return true;
 }
 
 template <typename Base, typename Policy>
@@ -198,15 +229,6 @@ CrossOriginXrayWrapper::getOwnPropertyDescriptor(JSContext *cx,
 {
     // All properties on cross-origin DOM objects are |own|.
     return getPropertyDescriptor(cx, wrapper, id, desc);
-}
-
-bool
-CrossOriginXrayWrapper::getPrototypeOf(JSContext *cx, JS::HandleObject wrapper,
-                                       JS::MutableHandleObject protop) const
-{
-    // Cross-origin objects have null prototypes.
-    protop.set(nullptr);
-    return true;
 }
 
 bool

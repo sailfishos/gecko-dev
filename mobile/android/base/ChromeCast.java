@@ -37,7 +37,7 @@ import android.util.Log;
 class ChromeCast implements GeckoMediaPlayer {
     private static final boolean SHOW_DEBUG = false;
 
-    static final String MIRROR_RECIEVER_APP_ID = "5F72F863";
+    static final String MIRROR_RECEIVER_APP_ID = "5F72F863";
 
     private final Context context;
     private final RouteInfo route;
@@ -147,7 +147,7 @@ class ChromeCast implements GeckoMediaPlayer {
 
         this.context = context;
         this.route = route;
-        this.canMirror = route.supportsControlCategory(CastMediaControlIntent.categoryForCast(MIRROR_RECIEVER_APP_ID));
+        this.canMirror = route.supportsControlCategory(CastMediaControlIntent.categoryForCast(MIRROR_RECEIVER_APP_ID));
     }
 
     // This dumps everything we can find about the device into JSON. This will hopefully make it
@@ -376,8 +376,9 @@ class ChromeCast implements GeckoMediaPlayer {
         }
     }
     private class MirrorCallback implements ResultCallback<ApplicationConnectionResult> {
-
-        final EventCallback callback;
+        // See Bug 1055562, callback is set to null after it has been
+        // invoked so that it will not be called a second time.
+        EventCallback callback;
         MirrorCallback(final EventCallback callback) {
             this.callback = callback;
         }
@@ -385,6 +386,10 @@ class ChromeCast implements GeckoMediaPlayer {
 
         @Override
         public void onResult(ApplicationConnectionResult result) {
+            if (callback == null) {
+                Log.e(LOGTAG, "Attempting to invoke MirrorChannel callback more than once.");
+                return;
+            }
             Status status = result.getStatus();
             if (status.isSuccess()) {
                 ApplicationMetadata applicationMetadata = result.getApplicationMetadata();
@@ -402,6 +407,7 @@ class ChromeCast implements GeckoMediaPlayer {
                                                              .getNamespace(),
                                                              mMirrorChannel);
                     callback.sendSuccess(null);
+                    callback = null;
                 } catch (IOException e) {
                     Log.e(LOGTAG, "Exception while creating channel", e);
                 }
@@ -409,6 +415,7 @@ class ChromeCast implements GeckoMediaPlayer {
                 GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Casting:Mirror", route.getId()));
             } else {
                 callback.sendError(status.toString());
+                callback = null;
             }
         }
     }
@@ -446,7 +453,7 @@ class ChromeCast implements GeckoMediaPlayer {
 
                         // Launch the media player app and launch this url once its loaded
                         try {
-                            Cast.CastApi.launchApplication(apiClient, MIRROR_RECIEVER_APP_ID, true)
+                            Cast.CastApi.launchApplication(apiClient, MIRROR_RECEIVER_APP_ID, true)
                                 .setResultCallback(new MirrorCallback(callback));
                         } catch (Exception e) {
                             debug("Failed to launch application", e);

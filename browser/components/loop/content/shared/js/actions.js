@@ -31,6 +31,13 @@ loop.shared.actions = (function() {
 
   return {
     /**
+     * Fetch a new call url from the server, intended to be sent over email when
+     * a contact can't be reached.
+     */
+    FetchEmailLink: Action.define("fetchEmailLink", {
+    }),
+
+    /**
      * Used to trigger gathering of initial call data.
      */
     GatherCallData: Action.define("gatherCallData", {
@@ -125,6 +132,16 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     GetAllRooms: Action.define("getAllRooms", {
-    })
+    }),
+
+    /**
+     * Primes localRoomStore with roomLocalId, which triggers the EmptyRoomView
+     * to do any necessary setup.
+     *
+     * XXX should move to localRoomActions module
+     */
+    SetupEmptyRoom: Action.define("setupEmptyRoom", {
+      localRoomId: String
+    }),
   };
 })();

@@ -473,6 +473,7 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
 
   bool isTrivialClip = clipPathFrame ? clipPathFrame->IsTrivial() : true;
 
+  DrawTarget* drawTarget = aCtx->GetDrawTarget();
   gfxContext* gfx = aCtx->ThebesContext();
   gfxContextMatrixAutoSaveRestore matrixAutoSaveRestore(gfx);
 
@@ -519,8 +520,11 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
       || aFrame->StyleDisplay()->mMixBlendMode != NS_STYLE_BLEND_NORMAL) {
     complexEffects = true;
     gfx->Save();
-    aCtx->IntersectClip(aFrame->GetVisualOverflowRectRelativeToSelf() +
-                        toUserSpace);
+    nsRect clipRect =
+      aFrame->GetVisualOverflowRectRelativeToSelf() + toUserSpace;
+    gfx->Clip(NSRectToRect(clipRect,
+                           aFrame->PresContext()->AppUnitsPerDevPixel(),
+                           *drawTarget));
     gfx->PushGroup(gfxContentType::COLOR_ALPHA);
   }
 
@@ -585,7 +589,8 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
 
   if (maskSurface) {
     gfx->Mask(maskSurface, maskTransform);
-  } else if (opacity != 1.0f) {
+  } else if (opacity != 1.0f ||
+             aFrame->StyleDisplay()->mMixBlendMode != NS_STYLE_BLEND_NORMAL) {
     gfx->Paint(opacity);
   }
 
@@ -638,7 +643,7 @@ PaintFrameCallback::operator()(gfxContext* aContext,
   mFrame->AddStateBits(NS_FRAME_DRAWING_AS_PAINTSERVER);
 
   nsRefPtr<nsRenderingContext> context(new nsRenderingContext());
-  context->Init(mFrame->PresContext()->DeviceContext(), aContext);
+  context->Init(aContext);
   aContext->Save();
 
   // Clip to aFillRect so that we don't paint outside.

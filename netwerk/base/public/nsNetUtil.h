@@ -32,7 +32,6 @@
 #include "nsIIOService.h"
 #include "nsIServiceManager.h"
 #include "nsIChannel.h"
-#include "nsChannelProperties.h"
 #include "nsIInputStreamChannel.h"
 #include "nsITransport.h"
 #include "nsIStreamTransportService.h"
@@ -69,7 +68,6 @@
 #include "nsIWritablePropertyBag2.h"
 #include "nsIIDNService.h"
 #include "nsIChannelEventSink.h"
-#include "nsIChannelPolicy.h"
 #include "nsISocketProviderService.h"
 #include "nsISocketProvider.h"
 #include "nsIRedirectChannelRegistrar.h"
@@ -203,7 +201,6 @@ inline nsresult
 NS_NewChannelInternal(nsIChannel**           outChannel,
                       nsIURI*                aUri,
                       nsILoadInfo*           aLoadInfo,
-                      nsIChannelPolicy*      aChannelPolicy = nullptr,
                       nsILoadGroup*          aLoadGroup = nullptr,
                       nsIInterfaceRequestor* aCallbacks = nullptr,
                       nsLoadFlags            aLoadFlags = nsIRequest::LOAD_NORMAL,
@@ -237,14 +234,6 @@ NS_NewChannelInternal(nsIChannel**           outChannel,
     rv = channel->SetLoadFlags(aLoadFlags | (normalLoadFlags & nsIChannel::LOAD_REPLACE));
     NS_ENSURE_SUCCESS(rv, rv);
   }
-
-  if (aChannelPolicy) {
-    nsCOMPtr<nsIWritablePropertyBag2> props = do_QueryInterface(channel);
-    if (props) {
-      props->SetPropertyAsInterface(NS_CHANNEL_PROP_CHANNEL_POLICY, aChannelPolicy);
-    }
-  }
-
   channel->SetLoadInfo(aLoadInfo);
 
   // If we're sandboxed, make sure to clear any owner the channel
@@ -264,7 +253,6 @@ NS_NewChannelInternal(nsIChannel**           outChannel,
                       nsIPrincipal*          aRequestingPrincipal,
                       nsSecurityFlags        aSecurityFlags,
                       nsContentPolicyType    aContentPolicyType,
-                      nsIChannelPolicy*      aChannelPolicy = nullptr,
                       nsILoadGroup*          aLoadGroup = nullptr,
                       nsIInterfaceRequestor* aCallbacks = nullptr,
                       nsLoadFlags            aLoadFlags = nsIRequest::LOAD_NORMAL,
@@ -283,7 +271,6 @@ NS_NewChannelInternal(nsIChannel**           outChannel,
   return NS_NewChannelInternal(outChannel,
                                aUri,
                                loadInfo,
-                               aChannelPolicy,
                                aLoadGroup,
                                aCallbacks,
                                aLoadFlags,
@@ -296,7 +283,6 @@ NS_NewChannel(nsIChannel**           outChannel,
               nsINode*               aRequestingNode,
               nsSecurityFlags        aSecurityFlags,
               nsContentPolicyType    aContentPolicyType,
-              nsIChannelPolicy*      aChannelPolicy = nullptr,
               nsILoadGroup*          aLoadGroup = nullptr,
               nsIInterfaceRequestor* aCallbacks = nullptr,
               nsLoadFlags            aLoadFlags = nsIRequest::LOAD_NORMAL,
@@ -309,7 +295,6 @@ NS_NewChannel(nsIChannel**           outChannel,
                                aRequestingNode->NodePrincipal(),
                                aSecurityFlags,
                                aContentPolicyType,
-                               aChannelPolicy,
                                aLoadGroup,
                                aCallbacks,
                                aLoadFlags,
@@ -322,7 +307,6 @@ NS_NewChannel(nsIChannel**           outChannel,
               nsIPrincipal*          aRequestingPrincipal,
               nsSecurityFlags        aSecurityFlags,
               nsContentPolicyType    aContentPolicyType,
-              nsIChannelPolicy*      aChannelPolicy = nullptr,
               nsILoadGroup*          aLoadGroup = nullptr,
               nsIInterfaceRequestor* aCallbacks = nullptr,
               nsLoadFlags            aLoadFlags = nsIRequest::LOAD_NORMAL,
@@ -334,7 +318,6 @@ NS_NewChannel(nsIChannel**           outChannel,
                                aRequestingPrincipal,
                                aSecurityFlags,
                                aContentPolicyType,
-                               aChannelPolicy,
                                aLoadGroup,
                                aCallbacks,
                                aLoadFlags,
@@ -367,7 +350,6 @@ NS_OpenURIInternal(nsIInputStream**       outStream,
                                       aRequestingPrincipal,
                                       aSecurityFlags,
                                       aContentPolicyType,
-                                      nullptr,   // aChannelPolicy,
                                       aLoadGroup,
                                       aCallbacks,
                                       aLoadFlags,
@@ -424,7 +406,6 @@ NS_OpenURIInternal(nsIStreamListener*     aListener,
   nsresult rv = NS_NewChannelInternal(getter_AddRefs(channel),
                                       aUri,
                                       aLoadInfo,
-                                      nullptr,    // aChannelPolicy
                                       aLoadGroup,
                                       aCallbacks,
                                       aLoadFlags,
@@ -616,101 +597,145 @@ NS_GetRealPort(nsIURI* aURI)
 }
 
 inline nsresult
-NS_NewInputStreamChannel(nsIChannel      **result,
-                         nsIURI           *uri,
-                         nsIInputStream   *stream,
-                         const nsACString &contentType,
-                         const nsACString *contentCharset)
+NS_NewInputStreamChannelInternal(nsIChannel**        outChannel,
+                                 nsIURI*             aUri,
+                                 nsIInputStream*     aStream,
+                                 const nsACString&   aContentType,
+                                 const nsACString&   aContentCharset,
+                                 nsINode*            aRequestingNode,
+                                 nsIPrincipal*       aRequestingPrincipal,
+                                 nsSecurityFlags     aSecurityFlags,
+                                 nsContentPolicyType aContentPolicyType)
 {
-    nsresult rv;
-    nsCOMPtr<nsIInputStreamChannel> isc =
-        do_CreateInstance(NS_INPUTSTREAMCHANNEL_CONTRACTID, &rv);
-    if (NS_FAILED(rv))
-        return rv;
-    rv = isc->SetURI(uri);
-    nsresult tmp = isc->SetContentStream(stream);
-    if (NS_FAILED(tmp)) {
-        rv = tmp;
-    }
-    if (NS_FAILED(rv))
-        return rv;
-    nsCOMPtr<nsIChannel> chan = do_QueryInterface(isc, &rv);
-    if (NS_FAILED(rv))
-        return rv;
-    if (!contentType.IsEmpty())
-        rv = chan->SetContentType(contentType);
-    if (contentCharset && !contentCharset->IsEmpty()) {
-        tmp = chan->SetContentCharset(*contentCharset);
-        if (NS_FAILED(tmp)) {
-            rv = tmp;
-        }
-    }
-    if (NS_SUCCEEDED(rv)) {
-        *result = nullptr;
-        chan.swap(*result);
-    }
-    return rv;
-}
+  nsresult rv;
+  nsCOMPtr<nsIInputStreamChannel> isc =
+    do_CreateInstance(NS_INPUTSTREAMCHANNEL_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = isc->SetURI(aUri);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = isc->SetContentStream(aStream);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-inline nsresult
-NS_NewInputStreamChannel(nsIChannel      **result,
-                         nsIURI           *uri,
-                         nsIInputStream   *stream,
-                         const nsACString &contentType    = EmptyCString())
-{
-    return NS_NewInputStreamChannel(result, uri, stream, contentType, nullptr);
-}
+  nsCOMPtr<nsIChannel> channel = do_QueryInterface(isc, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-inline nsresult
-NS_NewInputStreamChannel(nsIChannel      **result,
-                         nsIURI           *uri,
-                         nsIInputStream   *stream,
-                         const nsACString &contentType,
-                         const nsACString &contentCharset)
-{
-    return NS_NewInputStreamChannel(result, uri, stream, contentType,
-                                    &contentCharset);
-}
-
-inline nsresult
-NS_NewInputStreamChannel(nsIChannel      **result,
-                         nsIURI           *uri,
-                         const nsAString  &data,
-                         const nsACString &contentType,
-                         bool              isSrcdocChannel = false)
-{
-
-    nsresult rv;
-
-    nsCOMPtr<nsIStringInputStream> stream;
-    stream = do_CreateInstance(NS_STRINGINPUTSTREAM_CONTRACTID, &rv);
+  if (!aContentType.IsEmpty()) {
+    rv = channel->SetContentType(aContentType);
     NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  if (!aContentCharset.IsEmpty()) {
+    rv = channel->SetContentCharset(aContentCharset);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  nsCOMPtr<nsILoadInfo> loadInfo =
+    new mozilla::LoadInfo(aRequestingPrincipal,
+                          aRequestingNode,
+                          aSecurityFlags,
+                          aContentPolicyType);
+  if (!loadInfo) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  channel->SetLoadInfo(loadInfo);
+
+  // If we're sandboxed, make sure to clear any owner the channel
+  // might already have.
+  if (loadInfo->GetLoadingSandboxed()) {
+    channel->SetOwner(nullptr);
+  }
+
+  channel.forget(outChannel);
+  return NS_OK;
+}
+
+inline nsresult /* NS_NewInputStreamChannelPrincipal */
+NS_NewInputStreamChannel(nsIChannel**        outChannel,
+                         nsIURI*             aUri,
+                         nsIInputStream*     aStream,
+                         nsIPrincipal*       aRequestingPrincipal,
+                         nsSecurityFlags     aSecurityFlags,
+                         nsContentPolicyType aContentPolicyType,
+                         const nsACString&   aContentType    = EmptyCString(),
+                         const nsACString&   aContentCharset = EmptyCString())
+{
+  return NS_NewInputStreamChannelInternal(outChannel,
+                                          aUri,
+                                          aStream,
+                                          aContentType,
+                                          aContentCharset,
+                                          nullptr, // aRequestingNode
+                                          aRequestingPrincipal,
+                                          aSecurityFlags,
+                                          aContentPolicyType);
+}
+
+inline nsresult
+NS_NewInputStreamChannelInternal(nsIChannel**        outChannel,
+                                 nsIURI*             aUri,
+                                 const nsAString&    aData,
+                                 const nsACString&   aContentType,
+                                 nsINode*            aRequestingNode,
+                                 nsIPrincipal*       aRequestingPrincipal,
+                                 nsSecurityFlags     aSecurityFlags,
+                                 nsContentPolicyType aContentPolicyType,
+                                 bool                aIsSrcdocChannel = false)
+{
+  nsresult rv;
+  nsCOMPtr<nsIStringInputStream> stream;
+  stream = do_CreateInstance(NS_STRINGINPUTSTREAM_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
 
 #ifdef MOZILLA_INTERNAL_API
     uint32_t len;
-    char* utf8Bytes = ToNewUTF8String(data, &len);
+    char* utf8Bytes = ToNewUTF8String(aData, &len);
     rv = stream->AdoptData(utf8Bytes, len);
 #else
-    char* utf8Bytes = ToNewUTF8String(data);
+    char* utf8Bytes = ToNewUTF8String(aData);
     rv = stream->AdoptData(utf8Bytes, strlen(utf8Bytes));
 #endif
 
-    nsCOMPtr<nsIChannel> chan;
+  nsCOMPtr<nsIChannel> channel;
+  rv = NS_NewInputStreamChannelInternal(getter_AddRefs(channel),
+                                        aUri,
+                                        stream,
+                                        aContentType,
+                                        NS_LITERAL_CSTRING("UTF-8"),
+                                        aRequestingNode,
+                                        aRequestingPrincipal,
+                                        aSecurityFlags,
+                                        aContentPolicyType);
 
-    rv = NS_NewInputStreamChannel(getter_AddRefs(chan), uri, stream,
-                                  contentType, NS_LITERAL_CSTRING("UTF-8"));
-    NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-    if (isSrcdocChannel) {
-        nsCOMPtr<nsIInputStreamChannel> inStrmChan = do_QueryInterface(chan);
-        NS_ENSURE_TRUE(inStrmChan, NS_ERROR_FAILURE);
-        inStrmChan->SetSrcdocData(data);
-    }
+  if (aIsSrcdocChannel) {
+    nsCOMPtr<nsIInputStreamChannel> inStrmChan = do_QueryInterface(channel);
+    NS_ENSURE_TRUE(inStrmChan, NS_ERROR_FAILURE);
+    inStrmChan->SetSrcdocData(aData);
+  }
+  channel.forget(outChannel);
+  return NS_OK;
+}
 
-    *result = nullptr;
-    chan.swap(*result);
-
-    return NS_OK;
+inline nsresult
+NS_NewInputStreamChannel(nsIChannel**        outChannel,
+                         nsIURI*             aUri,
+                         const nsAString&    aData,
+                         const nsACString&   aContentType,
+                         nsIPrincipal*       aRequestingPrincipal,
+                         nsSecurityFlags     aSecurityFlags,
+                         nsContentPolicyType aContentPolicyType,
+                         bool                aIsSrcdocChannel = false)
+{
+  return NS_NewInputStreamChannelInternal(outChannel,
+                                          aUri,
+                                          aData,
+                                          aContentType,
+                                          nullptr, // aRequestingNode
+                                          aRequestingPrincipal,
+                                          aSecurityFlags,
+                                          aContentPolicyType,
+                                          aIsSrcdocChannel);
 }
 
 inline nsresult
@@ -835,7 +860,6 @@ NS_NewStreamLoaderInternal(nsIStreamLoader**        outStream,
                                        aRequestingPrincipal,
                                        aSecurityFlags,
                                        aContentPolicyType,
-                                       nullptr,  // aChannelPolicy
                                        aLoadGroup,
                                        aCallbacks,
                                        aLoadFlags);

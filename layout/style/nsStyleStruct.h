@@ -2023,6 +2023,7 @@ struct nsStyleDisplay {
   uint8_t mClipFlags;           // [reset] see nsStyleConsts.h
   uint8_t mOrient;              // [reset] see nsStyleConsts.h
   uint8_t mMixBlendMode;        // [reset] see nsStyleConsts.h
+  uint8_t mIsolation;           // [reset] see nsStyleConsts.h
   uint8_t mWillChangeBitField;  // [reset] see nsStyleConsts.h. Stores a
                                 // bitfield representation of the properties
                                 // that are frequently queried. This should
@@ -2032,6 +2033,7 @@ struct nsStyleDisplay {
   nsAutoTArray<nsString, 1> mWillChange;
 
   uint8_t mTouchAction;         // [reset] see nsStyleConsts.h
+  uint8_t mScrollBehavior;      // [reset] see nsStyleConsts.h NS_STYLE_SCROLL_BEHAVIOR_*
 
   // mSpecifiedTransform is the list of transform functions as
   // specified, or null to indicate there is no transform.  (inherit or
@@ -2831,14 +2833,15 @@ class nsStyleBasicShape MOZ_FINAL {
 public:
   enum Type {
     // eInset,
-    // eCircle,
-    // eEllipse,
+    eCircle,
+    eEllipse,
     ePolygon
   };
 
   explicit nsStyleBasicShape(Type type)
     : mType(type)
   {
+    mPosition.SetInitialPercentValues(0.5f);
   }
 
   Type GetShapeType() const { return mType; }
@@ -2850,15 +2853,31 @@ public:
     mFillRule = aFillRule;
   }
 
+  typedef nsStyleBackground::Position Position;
+  Position& GetPosition() {
+    NS_ASSERTION(mType == eCircle || mType == eEllipse,
+                 "expected circle or ellipse");
+    return mPosition;
+  }
+  const Position& GetPosition() const {
+    NS_ASSERTION(mType == eCircle || mType == eEllipse,
+                 "expected circle or ellipse");
+    return mPosition;
+  }
+
+  // mCoordinates has coordinates for polygon or radii for
+  // ellipse and circle.
   nsTArray<nsStyleCoord>& Coordinates()
   {
-    NS_ASSERTION(mType == ePolygon, "expected polygon");
+    NS_ASSERTION(mType == ePolygon || mType == eCircle || mType == eEllipse,
+                 "expected polygon, circle or ellipse");
     return mCoordinates;
   }
 
   const nsTArray<nsStyleCoord>& Coordinates() const
   {
-    NS_ASSERTION(mType == ePolygon, "expected polygon");
+    NS_ASSERTION(mType == ePolygon || mType == eCircle || mType == eEllipse,
+                 "expected polygon, circle or ellipse");
     return mCoordinates;
   }
 
@@ -2866,7 +2885,8 @@ public:
   {
     return mType == aOther.mType &&
            mFillRule == aOther.mFillRule &&
-           mCoordinates == aOther.mCoordinates;
+           mCoordinates == aOther.mCoordinates &&
+           mPosition == aOther.mPosition;
   }
   bool operator!=(const nsStyleBasicShape& aOther) const {
     return !(*this == aOther);
@@ -2879,7 +2899,10 @@ private:
 
   Type mType;
   int32_t mFillRule;
+  // mCoordinates has coordinates for polygon or radii for
+  // ellipse and circle.
   nsTArray<nsStyleCoord> mCoordinates;
+  Position mPosition;
 };
 
 struct nsStyleClipPath

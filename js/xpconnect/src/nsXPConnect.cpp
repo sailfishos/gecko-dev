@@ -13,7 +13,6 @@
 #include "xpcprivate.h"
 #include "XPCWrapper.h"
 #include "jsfriendapi.h"
-#include "js/OldDebugAPI.h"
 #include "nsJSEnvironment.h"
 #include "nsThreadUtils.h"
 #include "nsDOMJSUtils.h"
@@ -969,11 +968,7 @@ nsXPConnect::DebugDumpJSStack(bool showArgs,
                               bool showLocals,
                               bool showThisProps)
 {
-    JSContext* cx = GetCurrentJSContext();
-    if (!cx)
-        printf("there is no JSContext on the nsIThreadJSContextStack!\n");
-    else
-        xpc_DumpJSStack(cx, showArgs, showLocals, showThisProps);
+    xpc_DumpJSStack(showArgs, showLocals, showThisProps);
 
     return NS_OK;
 }
@@ -1390,12 +1385,7 @@ nsXPConnect::ReadFunction(nsIObjectInputStream *stream, JSContext *cx, JSObject 
 extern "C" {
 JS_EXPORT_API(void) DumpJSStack()
 {
-    nsresult rv;
-    nsCOMPtr<nsIXPConnect> xpc(do_GetService(nsIXPConnect::GetCID(), &rv));
-    if (NS_SUCCEEDED(rv) && xpc)
-        xpc->DebugDumpJSStack(true, true, false);
-    else
-        printf("failed to get XPConnect service!\n");
+    xpc_DumpJSStack(true, true, false);
 }
 
 JS_EXPORT_API(char*) PrintJSStack()

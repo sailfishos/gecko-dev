@@ -437,9 +437,10 @@ struct BaselineBailoutInfo
 };
 
 uint32_t
-BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIterator &iter,
+BailoutIonToBaseline(JSContext *cx, JitActivation *activation, JitFrameIterator &iter,
                      bool invalidate, BaselineBailoutInfo **bailoutInfo,
-                     const ExceptionBailoutInfo *exceptionInfo = nullptr);
+                     const ExceptionBailoutInfo *exceptionInfo,
+                     bool *poppedLastSPSFrame);
 
 // Mark baseline scripts on the stack as active, so that they are not discarded
 // during GC.

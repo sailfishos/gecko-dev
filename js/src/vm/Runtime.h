@@ -78,6 +78,7 @@ namespace js {
 class Activation;
 class ActivationIterator;
 class AsmJSActivation;
+class AsmJSModule;
 class MathCache;
 
 namespace jit {
@@ -299,13 +300,14 @@ class NewObjectCache
     inline JSObject *newObjectFromHit(JSContext *cx, EntryIndex entry, js::gc::InitialHeap heap);
 
     /* Fill an entry after a cache miss. */
-    void fillProto(EntryIndex entry, const Class *clasp, js::TaggedProto proto, gc::AllocKind kind, JSObject *obj);
+    void fillProto(EntryIndex entry, const Class *clasp, js::TaggedProto proto,
+                   gc::AllocKind kind, NativeObject *obj);
 
     inline void fillGlobal(EntryIndex entry, const Class *clasp, js::GlobalObject *global,
-                           gc::AllocKind kind, JSObject *obj);
+                           gc::AllocKind kind, NativeObject *obj);
 
     void fillType(EntryIndex entry, js::types::TypeObject *type, gc::AllocKind kind,
-                  JSObject *obj)
+                  NativeObject *obj)
     {
         MOZ_ASSERT(obj->type() == type);
         return fill(entry, type->clasp(), type, kind, obj);
@@ -329,12 +331,10 @@ class NewObjectCache
     }
 
     void fill(EntryIndex entry_, const Class *clasp, gc::Cell *key, gc::AllocKind kind,
-              JSObject *obj) {
+              NativeObject *obj) {
         MOZ_ASSERT(unsigned(entry_) < mozilla::ArrayLength(entries));
         MOZ_ASSERT(entry_ == makeIndex(clasp, key, kind));
         Entry *entry = &entries[entry_];
-
-        MOZ_ASSERT(!obj->fakeNativeHasDynamicSlots() && !obj->fakeNativeHasDynamicElements());
 
         entry->clasp = clasp;
         entry->key = key;
@@ -413,7 +413,7 @@ namespace js {
  * Storage for well-known symbols. It's a separate struct from the Runtime so
  * that it can be shared across multiple runtimes. As in JSAtomState, each
  * field is a smart pointer that's immutable once initialized.
- * `rt->wellKnownSymbols.iterator` is convertible to Handle<Symbol*>.
+ * `rt->wellKnownSymbols->iterator` is convertible to Handle<Symbol*>.
  *
  * Well-known symbols are never GC'd. The description() of each well-known
  * symbol is a permanent atom.
@@ -422,10 +422,14 @@ struct WellKnownSymbols
 {
     js::ImmutableSymbolPtr iterator;
 
-    ImmutableSymbolPtr &get(size_t i) {
-        MOZ_ASSERT(i < JS::WellKnownSymbolLimit);
+    ImmutableSymbolPtr &get(size_t u) {
+        MOZ_ASSERT(u < JS::WellKnownSymbolLimit);
         ImmutableSymbolPtr *symbols = reinterpret_cast<ImmutableSymbolPtr *>(this);
-        return symbols[i];
+        return symbols[u];
+    }
+
+    ImmutableSymbolPtr &get(JS::SymbolCode code) {
+        return get(size_t(code));
     }
 };
 
@@ -865,6 +869,7 @@ struct JSRuntime : public JS::shadow::Runtime,
         return global == selfHostingGlobal_;
     }
     bool isSelfHostingCompartment(JSCompartment *comp);
+    bool isSelfHostingZone(JS::Zone *zone);
     bool cloneSelfHostedFunctionScript(JSContext *cx, js::Handle<js::PropertyName*> name,
                                        js::Handle<JSFunction*> targetFun);
     bool cloneSelfHostedValue(JSContext *cx, js::Handle<js::PropertyName*> name,
@@ -1080,7 +1085,10 @@ struct JSRuntime : public JS::shadow::Runtime,
     JSErrorReporter     errorReporter;
 
     /* AsmJSCache callbacks are runtime-wide. */
-    JS::AsmJSCacheOps asmJSCacheOps;
+    JS::AsmJSCacheOps   asmJSCacheOps;
+
+    /* Head of the linked list of linked asm.js modules. */
+    js::AsmJSModule    *linkedAsmJSModules;
 
     /*
      * The propertyRemovals counter is incremented for every JSObject::clear,
@@ -1492,31 +1500,17 @@ FreeOp::freeLater(void *p)
 class AutoLockGC
 {
   public:
-    explicit AutoLockGC(JSRuntime *rt = nullptr
+    explicit AutoLockGC(JSRuntime *rt
                         MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : runtime(rt)
     {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        // Avoid MSVC warning C4390 for non-threadsafe builds.
-        if (rt)
-            rt->lockGC();
+        rt->lockGC();
     }
 
     ~AutoLockGC()
     {
-        if (runtime)
-            runtime->unlockGC();
-    }
-
-    bool locked() const {
-        return !!runtime;
-    }
-
-    void lock(JSRuntime *rt) {
-        MOZ_ASSERT(rt);
-        MOZ_ASSERT(!runtime);
-        runtime = rt;
-        rt->lockGC();
+        runtime->unlockGC();
     }
 
   private:

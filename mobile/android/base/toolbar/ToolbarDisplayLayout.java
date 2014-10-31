@@ -535,6 +535,8 @@ public class ToolbarDisplayLayout extends ThemedLinearLayout
         mForwardAnim = anim;
 
         if (animation == ForwardButtonAnimation.HIDE) {
+            // We animate these items individually, rather than this entire view,
+            // so that we don't animate certain views, e.g. the stop button.
             anim.attach(mTitle,
                         PropertyAnimator.Property.TRANSLATION_X,
                         0);
@@ -580,7 +582,7 @@ public class ToolbarDisplayLayout extends ThemedLinearLayout
 
     void prepareStopEditingAnimation(PropertyAnimator anim) {
         // Fade toolbar buttons (page actions, stop) after the entry
-        // is schrunk back to its original size.
+        // is shrunk back to its original size.
         anim.attach(mPageActionLayout,
                     PropertyAnimator.Property.ALPHA,
                     1);

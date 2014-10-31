@@ -74,7 +74,7 @@ class BufferPointer
  */
 struct BaselineStackBuilder
 {
-    IonBailoutIterator &iter_;
+    JitFrameIterator &iter_;
     IonJSFrameLayout *frame_;
 
     static size_t HeaderSize() {
@@ -88,7 +88,7 @@ struct BaselineStackBuilder
 
     size_t framePushed_;
 
-    BaselineStackBuilder(IonBailoutIterator &iter, size_t initialSize)
+    BaselineStackBuilder(JitFrameIterator &iter, size_t initialSize)
       : iter_(iter),
         frame_(static_cast<IonJSFrameLayout*>(iter.current())),
         bufferTotal_(initialSize),
@@ -99,6 +99,7 @@ struct BaselineStackBuilder
         framePushed_(0)
     {
         MOZ_ASSERT(bufferTotal_ >= HeaderSize());
+        MOZ_ASSERT(iter.isBailoutJS());
     }
 
     ~BaselineStackBuilder() {
@@ -387,10 +388,11 @@ class SnapshotIteratorForBailout : public SnapshotIterator
     RInstructionResults results_;
   public:
 
-    SnapshotIteratorForBailout(const IonBailoutIterator &iter)
+    SnapshotIteratorForBailout(const JitFrameIterator &iter)
       : SnapshotIterator(iter),
         results_(iter.jsFrame())
     {
+        MOZ_ASSERT(iter.isBailoutJS());
     }
 
     // Take previously computed result out of the activation, or compute the
@@ -513,9 +515,12 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
                 HandleFunction fun, HandleScript script, IonScript *ionScript,
                 SnapshotIterator &iter, bool invalidate, BaselineStackBuilder &builder,
                 AutoValueVector &startFrameFormals, MutableHandleFunction nextCallee,
-                jsbytecode **callPC, const ExceptionBailoutInfo *excInfo)
+                jsbytecode **callPC, const ExceptionBailoutInfo *excInfo,
+                bool *poppedLastSPSFrameOut)
 {
     MOZ_ASSERT(script->hasBaselineScript());
+    MOZ_ASSERT(poppedLastSPSFrameOut);
+    MOZ_ASSERT(!*poppedLastSPSFrameOut);
 
     // Are we catching an exception?
     bool catchingException = excInfo && excInfo->catchingException();
@@ -1033,6 +1038,11 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
                         JitSpew(JitSpew_BaselineBailouts,
                                 "      Popping SPS entry for outermost frame");
                         cx->runtime()->spsProfiler.exit(script, fun);
+
+                        // Notify caller that the last SPS frame was popped, so not
+                        // to do it again.
+                        if (poppedLastSPSFrameOut)
+                            *poppedLastSPSFrameOut = true;
                     }
                 }
             } else {
@@ -1287,9 +1297,9 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
 }
 
 uint32_t
-jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIterator &iter,
+jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, JitFrameIterator &iter,
                           bool invalidate, BaselineBailoutInfo **bailoutInfo,
-                          const ExceptionBailoutInfo *excInfo)
+                          const ExceptionBailoutInfo *excInfo, bool *poppedLastSPSFrameOut)
 {
     // The Baseline frames we will reconstruct on the heap are not rooted, so GC
     // must be suppressed here.
@@ -1297,6 +1307,9 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
 
     MOZ_ASSERT(bailoutInfo != nullptr);
     MOZ_ASSERT(*bailoutInfo == nullptr);
+
+    MOZ_ASSERT(poppedLastSPSFrameOut);
+    MOZ_ASSERT(!*poppedLastSPSFrameOut);
 
     TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
     TraceLogStopEvent(logger, TraceLogger::IonMonkey);
@@ -1307,7 +1320,7 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
     //      BaselineStub - Baseline calling into Ion.
     //      Entry - Interpreter or other calling into Ion.
     //      Rectifier - Arguments rectifier calling into Ion.
-    MOZ_ASSERT(iter.isIonJS());
+    MOZ_ASSERT(iter.isBailoutJS());
     FrameType prevFrameType = iter.prevType();
     MOZ_ASSERT(prevFrameType == JitFrame_IonJS ||
                prevFrameType == JitFrame_BaselineStub ||
@@ -1427,7 +1440,8 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
         RootedFunction nextCallee(cx, nullptr);
         if (!InitFromBailout(cx, caller, callerPC, fun, scr, iter.ionScript(),
                              snapIter, invalidate, builder, startFrameFormals,
-                             &nextCallee, &callPC, passExcInfo ? excInfo : nullptr))
+                             &nextCallee, &callPC, passExcInfo ? excInfo : nullptr,
+                             poppedLastSPSFrameOut))
         {
             return BAILOUT_RETURN_FATAL_ERROR;
         }

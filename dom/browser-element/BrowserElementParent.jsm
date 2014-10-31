@@ -88,15 +88,15 @@ function BrowserElementParent(frameLoader, hasRemoteFrame, isPendingFrame) {
   Services.obs.addObserver(this, 'copypaste-docommand', /* ownsWeak = */ true);
 
   let defineMethod = function(name, fn) {
-    XPCNativeWrapper.unwrap(self._frameElement)[name] = function() {
+    XPCNativeWrapper.unwrap(self._frameElement)[name] = Cu.exportFunction(function() {
       if (self._isAlive()) {
         return fn.apply(self, arguments);
       }
-    };
+    }, self._frameElement);
   }
 
   let defineNoReturnMethod = function(name, fn) {
-    XPCNativeWrapper.unwrap(self._frameElement)[name] = function method() {
+    XPCNativeWrapper.unwrap(self._frameElement)[name] = Cu.exportFunction(function method() {
       if (!self._domRequestReady) {
         // Remote browser haven't been created, we just queue the API call.
         let args = Array.slice(arguments);
@@ -107,13 +107,13 @@ function BrowserElementParent(frameLoader, hasRemoteFrame, isPendingFrame) {
       if (self._isAlive()) {
         fn.apply(self, arguments);
       }
-    };
+    }, self._frameElement);
   };
 
   let defineDOMRequestMethod = function(domName, msgName) {
-    XPCNativeWrapper.unwrap(self._frameElement)[domName] = function() {
+    XPCNativeWrapper.unwrap(self._frameElement)[domName] = Cu.exportFunction(function() {
       return self._sendDOMRequest(msgName);
-    };
+    }, self._frameElement);
   }
 
   // Define methods on the frame element.
@@ -258,7 +258,8 @@ BrowserElementParent.prototype = {
       "visibilitychange": this._childVisibilityChange,
       "got-set-input-method-active": this._gotDOMRequestResult,
       "selectionchange": this._handleSelectionChange,
-      "scrollviewchange": this._handleScrollViewChange
+      "scrollviewchange": this._handleScrollViewChange,
+      "touchcarettap": this._handleTouchCaretTap
     };
 
     let mmSecuritySensitiveCalls = {
@@ -502,6 +503,12 @@ BrowserElementParent.prototype = {
 
   _handleScrollViewChange: function(data) {
     let evt = this._createEvent("scrollviewchange", data.json,
+                                /* cancelable = */ false);
+    this._frameElement.dispatchEvent(evt);
+  },
+
+  _handleTouchCaretTap: function(data) {
+    let evt = this._createEvent("touchcarettap", data.json,
                                 /* cancelable = */ false);
     this._frameElement.dispatchEvent(evt);
   },

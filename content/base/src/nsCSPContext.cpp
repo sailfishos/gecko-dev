@@ -11,7 +11,6 @@
 #include "nsCSPService.h"
 #include "nsError.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
-#include "nsIChannelPolicy.h"
 #include "nsIClassInfoImpl.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
@@ -25,12 +24,10 @@
 #include "nsIObjectOutputStream.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
-#include "nsIPropertyBag2.h"
 #include "nsIStringStream.h"
 #include "nsIUploadChannel.h"
 #include "nsIScriptError.h"
 #include "nsIWebNavigation.h"
-#include "nsIWritablePropertyBag2.h"
 #include "nsNetUtil.h"
 #include "nsNullPrincipal.h"
 #include "nsIContentPolicy.h"
@@ -888,7 +885,7 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
     nsString                mScriptSample;
     uint32_t                mLineNum;
     uint64_t                mInnerWindowID;
-    nsCSPContext*           mCSPContext;
+    nsRefPtr<nsCSPContext>  mCSPContext;
 };
 
 /**

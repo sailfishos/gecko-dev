@@ -679,10 +679,18 @@ class MDefinition : public MNode
         MOZ_ASSERT(now->producer() == this);
         uses_.replace(old, now);
     }
+
+    // Replace the current instruction by a dominating instruction |dom| in all
+    // uses of the current instruction.
     void replaceAllUsesWith(MDefinition *dom);
 
     // Like replaceAllUsesWith, but doesn't set UseRemoved on |this|'s operands.
     void justReplaceAllUsesWith(MDefinition *dom);
+
+    // Replace the current instruction by an optimized-out constant in all uses
+    // of the current instruction. Note, that optimized-out constant should not
+    // be observed, and thus they should not flow in any computation.
+    void optimizeOutAllUses(TempAllocator &alloc);
 
     // Mark this instruction as having replaced all uses of ins, as during GVN,
     // returning false if the replacement should not be performed. For use when
@@ -1565,6 +1573,143 @@ class MSimdSignMask : public MUnaryInstruction
     }
 
     ALLOW_CLONE(MSimdSignMask)
+};
+
+// Base for the MSimdSwizzle and MSimdShuffle classes.
+class MSimdShuffleBase
+{
+  protected:
+    // As of now, there are at most 4 lanes. For each lane, we need to know
+    // which input we choose and which of the 4 lanes we choose; that can be
+    // packed in 3 bits for each lane, so 12 bits in total.
+    uint32_t laneMask_;
+    uint32_t arity_;
+
+    MSimdShuffleBase(uint32_t laneX, uint32_t laneY, uint32_t laneZ, uint32_t laneW, MIRType type)
+    {
+        MOZ_ASSERT(SimdTypeToLength(type) == 4);
+        MOZ_ASSERT(IsSimdType(type));
+        laneMask_ = (laneX << 0) | (laneY << 3) | (laneZ << 6) | (laneW << 9);
+        arity_ = 4;
+    }
+
+    bool sameLanes(const MSimdShuffleBase *other) const {
+        return laneMask_ == other->laneMask_;
+    }
+
+  public:
+    // For now, these formulas are fine for x4 types. They'll need to be
+    // generalized for other SIMD type lengths.
+    uint32_t laneX() const { MOZ_ASSERT(arity_ == 4); return laneMask_ & 7; }
+    uint32_t laneY() const { MOZ_ASSERT(arity_ == 4); return (laneMask_ >> 3) & 7; }
+    uint32_t laneZ() const { MOZ_ASSERT(arity_ == 4); return (laneMask_ >> 6) & 7; }
+    uint32_t laneW() const { MOZ_ASSERT(arity_ == 4); return (laneMask_ >> 9) & 7; }
+
+    bool lanesMatch(uint32_t x, uint32_t y, uint32_t z, uint32_t w) const {
+        return ((x << 0) | (y << 3) | (z << 6) | (w << 9)) == laneMask_;
+    }
+};
+
+// Applies a shuffle operation to the input, putting the input lanes as
+// indicated in the output register's lanes. This implements the SIMD.js
+// "shuffle" function, that takes one vector and one mask.
+class MSimdSwizzle : public MUnaryInstruction, public MSimdShuffleBase
+{
+  protected:
+    MSimdSwizzle(MDefinition *obj, MIRType type,
+                 uint32_t laneX, uint32_t laneY, uint32_t laneZ, uint32_t laneW)
+      : MUnaryInstruction(obj), MSimdShuffleBase(laneX, laneY, laneZ, laneW, type)
+    {
+        MOZ_ASSERT(laneX < 4 && laneY < 4 && laneZ < 4 && laneW < 4);
+        MOZ_ASSERT(IsSimdType(obj->type()));
+        MOZ_ASSERT(IsSimdType(type));
+        MOZ_ASSERT(obj->type() == type);
+        setResultType(type);
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(SimdSwizzle);
+
+    static MSimdSwizzle *NewAsmJS(TempAllocator &alloc, MDefinition *obj, MIRType type,
+                                  uint32_t laneX, uint32_t laneY, uint32_t laneZ, uint32_t laneW)
+    {
+        return new(alloc) MSimdSwizzle(obj, type, laneX, laneY, laneZ, laneW);
+    }
+
+    bool congruentTo(const MDefinition *ins) const {
+        if (!ins->isSimdSwizzle())
+            return false;
+        const MSimdSwizzle *other = ins->toSimdSwizzle();
+        return sameLanes(other) && congruentIfOperandsEqual(other);
+    }
+
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+
+    MDefinition *foldsTo(TempAllocator &alloc);
+
+    ALLOW_CLONE(MSimdSwizzle)
+};
+
+// Applies a shuffle operation to the inputs, selecting the 2 first lanes of the
+// output from lanes of the first input, and the 2 last lanes of the output from
+// lanes of the second input.
+class MSimdShuffle : public MBinaryInstruction, public MSimdShuffleBase
+{
+    MSimdShuffle(MDefinition *lhs, MDefinition *rhs, MIRType type,
+                 uint32_t laneX, uint32_t laneY, uint32_t laneZ, uint32_t laneW)
+      : MBinaryInstruction(lhs, rhs), MSimdShuffleBase(laneX, laneY, laneZ, laneW, lhs->type())
+    {
+        MOZ_ASSERT(laneX < 8 && laneY < 8 && laneZ < 8 && laneW < 8);
+        MOZ_ASSERT(IsSimdType(lhs->type()));
+        MOZ_ASSERT(IsSimdType(rhs->type()));
+        MOZ_ASSERT(lhs->type() == rhs->type());
+        MOZ_ASSERT(IsSimdType(type));
+        MOZ_ASSERT(lhs->type() == type);
+        setResultType(type);
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(SimdShuffle);
+
+    static MInstruction *NewAsmJS(TempAllocator &alloc, MDefinition *lhs, MDefinition *rhs,
+                                  MIRType type, uint32_t laneX, uint32_t laneY, uint32_t laneZ,
+                                  uint32_t laneW)
+    {
+        // Swap operands so that new lanes come from LHS in majority.
+        // In the balanced case, swap operands if needs be, in order to be able
+        // to do only one shufps on x86.
+        unsigned lanesFromLHS = (laneX < 4) + (laneY < 4) + (laneZ < 4) + (laneW < 4);
+        if (lanesFromLHS < 2 || (lanesFromLHS == 2 && laneX >= 4 && laneY >=4)) {
+            laneX = (laneX + 4) % 8;
+            laneY = (laneY + 4) % 8;
+            laneZ = (laneZ + 4) % 8;
+            laneW = (laneW + 4) % 8;
+            mozilla::Swap(lhs, rhs);
+        }
+
+        // If all lanes come from the same vector, just use swizzle instead.
+        if (laneX < 4 && laneY < 4 && laneZ < 4 && laneW < 4)
+            return MSimdSwizzle::NewAsmJS(alloc, lhs, type, laneX, laneY, laneZ, laneW);
+
+        return new(alloc) MSimdShuffle(lhs, rhs, type, laneX, laneY, laneZ, laneW);
+    }
+
+    bool congruentTo(const MDefinition *ins) const {
+        if (!ins->isSimdShuffle())
+            return false;
+        const MSimdShuffle *other = ins->toSimdShuffle();
+        return sameLanes(other) && binaryCongruentTo(other);
+    }
+
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+
+    ALLOW_CLONE(MSimdShuffle)
 };
 
 class MSimdUnaryArith : public MUnaryInstruction
@@ -2591,6 +2736,36 @@ class MTypedObjectProto
     }
 };
 
+class MTypedObjectUnsizedLength
+  : public MUnaryInstruction,
+    public SingleObjectPolicy::Data
+{
+  private:
+    explicit MTypedObjectUnsizedLength(MDefinition *object)
+      : MUnaryInstruction(object)
+    {
+        setResultType(MIRType_Int32);
+        setMovable();
+    }
+
+  public:
+    INSTRUCTION_HEADER(TypedObjectUnsizedLength)
+
+    static MTypedObjectUnsizedLength *New(TempAllocator &alloc, MDefinition *object) {
+        return new(alloc) MTypedObjectUnsizedLength(object);
+    }
+
+    MDefinition *object() const {
+        return getOperand(0);
+    }
+    bool congruentTo(const MDefinition *ins) const {
+        return congruentIfOperandsEqual(ins);
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::Load(AliasSet::ObjectFields);
+    }
+};
+
 // Creates a new derived type object. At runtime, this is just a call
 // to `BinaryBlock::createDerived()`. That is, the MIR itself does not
 // compile to particularly optimized code. However, using a distinct
@@ -2660,7 +2835,9 @@ class MNewDerivedTypedObject
 
 // Represent the content of all slots of an object.  This instruction is not
 // lowered and is not used to generate code.
-class MObjectState : public MVariadicInstruction
+class MObjectState
+  : public MVariadicInstruction,
+    public NoFloatPolicyAfter<1>::Data
 {
   private:
     uint32_t numSlots_;
@@ -2722,7 +2899,9 @@ class MObjectState : public MVariadicInstruction
 
 // Represent the contents of all elements of an array.  This instruction is not
 // lowered and is not used to generate code.
-class MArrayState : public MVariadicInstruction
+class MArrayState
+  : public MVariadicInstruction,
+    public NoFloatPolicyAfter<2>::Data
 {
   private:
     uint32_t numElements_;
@@ -4172,6 +4351,11 @@ class MToFloat32
 
     bool canConsumeFloat32(MUse *use) const { return true; }
     bool canProduceFloat32() const { return true; }
+
+    bool writeRecoverData(CompactBufferWriter &writer) const;
+    bool canRecoverOnBailout() const {
+        return true;
+    }
 
     ALLOW_CLONE(MToFloat32)
 };
@@ -11205,21 +11389,45 @@ class MHasClass
 // outermost script (i.e. not the inlined script).
 class MRecompileCheck : public MNullaryInstruction
 {
+  public:
+    enum RecompileCheckType {
+        RecompileCheck_OptimizationLevel,
+        RecompileCheck_Inlining
+    };
+
+  private:
     JSScript *script_;
     uint32_t recompileThreshold_;
+    bool forceRecompilation_;
+    bool increaseWarmUpCounter_;
 
-    MRecompileCheck(JSScript *script, uint32_t recompileThreshold)
+    MRecompileCheck(JSScript *script, uint32_t recompileThreshold, RecompileCheckType type)
       : script_(script),
         recompileThreshold_(recompileThreshold)
     {
+        switch (type) {
+          case RecompileCheck_OptimizationLevel:
+            forceRecompilation_ = false;
+            increaseWarmUpCounter_ = true;
+            break;
+          case RecompileCheck_Inlining:
+            forceRecompilation_ = true;
+            increaseWarmUpCounter_ = false;
+            break;
+          default:
+            MOZ_CRASH("Unexpected recompile check type");
+        }
+
         setGuard();
     }
 
   public:
     INSTRUCTION_HEADER(RecompileCheck);
 
-    static MRecompileCheck *New(TempAllocator &alloc, JSScript *script_, uint32_t recompileThreshold) {
-        return new(alloc) MRecompileCheck(script_, recompileThreshold);
+    static MRecompileCheck *New(TempAllocator &alloc, JSScript *script_, uint32_t recompileThreshold,
+                                RecompileCheckType type)
+    {
+        return new(alloc) MRecompileCheck(script_, recompileThreshold, type);
     }
 
     JSScript *script() const {
@@ -11228,6 +11436,14 @@ class MRecompileCheck : public MNullaryInstruction
 
     uint32_t recompileThreshold() const {
         return recompileThreshold_;
+    }
+
+    bool forceRecompilation() const {
+        return forceRecompilation_;
+    }
+
+    bool increaseWarmUpCounter() const {
+        return increaseWarmUpCounter_;
     }
 
     AliasSet getAliasSet() const {

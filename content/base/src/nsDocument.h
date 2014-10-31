@@ -30,8 +30,6 @@
 #include "nsBindingManager.h"
 #include "nsInterfaceHashtable.h"
 #include "nsJSThingHashtable.h"
-#include "nsIBoxObject.h"
-#include "nsPIBoxObject.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIURI.h"
 #include "nsScriptLoader.h"
@@ -95,10 +93,12 @@ class nsHtml5TreeOpExecutor;
 class nsDocumentOnStack;
 class nsPointerLockPermissionRequest;
 class nsISecurityConsoleMessage;
+class nsPIBoxObject;
 
 namespace mozilla {
 class EventChainPreVisitor;
 namespace dom {
+class BoxObject;
 class UndoManager;
 struct LifecycleCallbacks;
 class CallbackFunction;
@@ -325,6 +325,8 @@ private:
 // being created flag.
 struct CustomElementData
 {
+  NS_INLINE_DECL_REFCOUNTING(CustomElementData)
+
   explicit CustomElementData(nsIAtom* aType);
   // Objects in this array are transient and empty after each microtask
   // checkpoint.
@@ -346,6 +348,9 @@ struct CustomElementData
 
   // Empties the callback queue.
   void RunCallbackQueue();
+
+private:
+  virtual ~CustomElementData() {}
 };
 
 // The required information for a custom element as defined in:
@@ -1002,8 +1007,10 @@ public:
   virtual void ForgetLink(mozilla::dom::Link* aLink);
 
   void ClearBoxObjectFor(nsIContent* aContent);
-  already_AddRefed<nsIBoxObject> GetBoxObjectFor(mozilla::dom::Element* aElement,
-                                                 mozilla::ErrorResult& aRv) MOZ_OVERRIDE;
+
+  virtual already_AddRefed<mozilla::dom::BoxObject>
+  GetBoxObjectFor(mozilla::dom::Element* aElement,
+                  mozilla::ErrorResult& aRv) MOZ_OVERRIDE;
 
   virtual Element*
     GetAnonymousElementByAttribute(nsIContent* aElement,
@@ -1518,7 +1525,7 @@ private:
   // CustomElementData in this array, separated by nullptr that
   // represent the boundaries of the items in the stack. The first
   // queue in the stack is the base element queue.
-  static mozilla::Maybe<nsTArray<mozilla::dom::CustomElementData*>> sProcessingStack;
+  static mozilla::Maybe<nsTArray<nsRefPtr<mozilla::dom::CustomElementData>>> sProcessingStack;
 
   // Flag to prevent re-entrance into base element queue as described in the
   // custom elements speicification.

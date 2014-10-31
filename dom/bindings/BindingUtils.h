@@ -166,8 +166,8 @@ IsDOMIfaceAndProtoClass(const js::Class* clasp)
   return IsDOMIfaceAndProtoClass(Jsvalify(clasp));
 }
 
-static_assert(DOM_OBJECT_SLOT == js::PROXY_PRIVATE_SLOT,
-              "js::PROXY_PRIVATE_SLOT doesn't match DOM_OBJECT_SLOT.  "
+static_assert(DOM_OBJECT_SLOT == 0,
+              "DOM_OBJECT_SLOT doesn't match the proxy private slot.  "
               "Expect bad things");
 template <class T>
 inline T*
@@ -176,7 +176,7 @@ UnwrapDOMObject(JSObject* obj)
   MOZ_ASSERT(IsDOMClass(js::GetObjectClass(obj)),
              "Don't pass non-DOM objects to this function");
 
-  JS::Value val = js::GetReservedSlot(obj, DOM_OBJECT_SLOT);
+  JS::Value val = js::GetReservedOrProxyPrivateSlot(obj, DOM_OBJECT_SLOT);
   return static_cast<T*>(val.toPrivate());
 }
 
@@ -1685,7 +1685,7 @@ InitIds(JSContext* cx, const Prefable<Spec>* prefableSpecs, jsid* ids)
     // because this is only done once per application runtime.
     Spec* spec = prefableSpecs->specs;
     do {
-      if (!InternJSString(cx, *ids, spec->name)) {
+      if (!JS::PropertySpecNameToPermanentId(cx, spec->name, ids)) {
         return false;
       }
     } while (++ids, (++spec)->name);

@@ -21,7 +21,6 @@
 #include "imgRequestProxy.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
-#include "js/OldDebugAPI.h"
 #include "js/Value.h"
 #include "Layers.h"
 #include "MediaDecoder.h"
@@ -60,7 +59,6 @@
 #include "nsAttrValueInlines.h"
 #include "nsBindingManager.h"
 #include "nsCCUncollectableMarker.h"
-#include "nsChannelPolicy.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsCOMPtr.h"
 #include "nsContentCreatorFunctions.h"
@@ -89,7 +87,6 @@
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsICategoryManager.h"
 #include "nsIChannelEventSink.h"
-#include "nsIChannelPolicy.h"
 #include "nsICharsetDetectionObserver.h"
 #include "nsIChromeRegistry.h"
 #include "nsIConsoleService.h"
@@ -3008,20 +3005,6 @@ nsContentUtils::LoadImage(nsIURI* aURI, nsIDocument* aLoadingDocument,
   NS_ASSERTION(loadGroup || IsFontTableURI(documentURI),
                "Could not get loadgroup; onload may fire too early");
 
-  // check for a Content Security Policy to pass down to the channel that
-  // will get created to load the image
-  nsCOMPtr<nsIChannelPolicy> channelPolicy;
-  nsCOMPtr<nsIContentSecurityPolicy> csp;
-  if (aLoadingPrincipal) {
-    nsresult rv = aLoadingPrincipal->GetCsp(getter_AddRefs(csp));
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (csp) {
-      channelPolicy = do_CreateInstance("@mozilla.org/nschannelpolicy;1");
-      channelPolicy->SetContentSecurityPolicy(csp);
-      channelPolicy->SetLoadType(nsIContentPolicy::TYPE_IMAGE);
-    }
-  }
-    
   // Make the URI immutable so people won't change it under us
   NS_TryToSetImmutable(aURI);
 
@@ -3036,7 +3019,6 @@ nsContentUtils::LoadImage(nsIURI* aURI, nsIDocument* aLoadingDocument,
                               aLoadingDocument,     /* uniquification key */
                               aLoadFlags,           /* load flags */
                               nullptr,               /* cache key */
-                              channelPolicy,        /* CSP info */
                               initiatorType,        /* the load initiator */
                               aRequest);
 }
@@ -6834,14 +6816,14 @@ nsContentUtils::HasDistributedChildren(nsIContent* aContent)
   if (shadow) {
     // Children of a shadow root are distributed to
     // the shadow insertion point of the younger shadow root.
-    return shadow->GetYoungerShadow();
+    return shadow->GetYoungerShadowRoot();
   }
 
   HTMLShadowElement* shadowEl = HTMLShadowElement::FromContent(aContent);
   if (shadowEl && shadowEl->IsInsertionPoint()) {
     // Children of a shadow insertion points are distributed
     // to the insertion points in the older shadow root.
-    return shadow->GetOlderShadow();
+    return shadowEl->GetOlderShadowRoot();
   }
 
   HTMLContentElement* contentEl = HTMLContentElement::FromContent(aContent);
@@ -7015,4 +6997,24 @@ nsContentUtils::GetInnerWindowID(nsIRequest* aRequest)
   nsPIDOMWindow* inner = pwindow->IsInnerWindow() ? pwindow.get() : pwindow->GetCurrentInnerWindow();
 
   return inner ? inner->WindowID() : 0;
+}
+
+void
+nsContentUtils::GetHostOrIPv6WithBrackets(nsIURI* aURI, nsAString& aHost)
+{
+  aHost.Truncate();
+  nsAutoCString hostname;
+  nsresult rv = aURI->GetHost(hostname);
+  if (NS_FAILED(rv)) { // Some URIs do not have a host
+    return;
+  }
+
+  if (hostname.FindChar(':') != -1) { // Escape IPv6 address
+    MOZ_ASSERT(!hostname.Length() ||
+      (hostname[0] !='[' && hostname[hostname.Length() - 1] != ']'));
+    hostname.Insert('[', 0);
+    hostname.Append(']');
+  }
+
+  CopyUTF8toUTF16(hostname, aHost);
 }

@@ -506,6 +506,11 @@ case "$target" in
         if test -z "$CLANG_CL"; then
             AC_DEFINE(HAVE_SEH_EXCEPTIONS)
         else
+            # Build on clang-cl with MSVC 2013 with fallback emulation.
+            CFLAGS="$CFLAGS -fmsc-version=1800 -fallback"
+            CXXFLAGS="$CXXFLAGS -fmsc-version=1800 -fallback"
+            # Send our CFLAGS to NSS too
+            MOZ_CFLAGS_NSS=1
             AC_DEFINE_UNQUOTED(GTEST_HAS_SEH, 0)
         fi
 
@@ -1260,6 +1265,16 @@ MOZ_ARG_ENABLE_BOOL(address-sanitizer,
     MOZ_ASAN= )
 if test -n "$MOZ_ASAN"; then
     MOZ_LLVM_HACKS=1
+    if test -n "$CLANG_CL"; then
+        # Look for clang_rt.asan_dynamic-i386.dll
+        MOZ_CLANG_RT_ASAN_LIB=clang_rt.asan_dynamic-i386.dll
+        # We use MOZ_PATH_PROG in order to get a Windows style path.
+        MOZ_PATH_PROG(MOZ_CLANG_RT_ASAN_LIB_PATH, $MOZ_CLANG_RT_ASAN_LIB)
+        if test -z "$MOZ_CLANG_RT_ASAN_LIB_PATH"; then
+            AC_MSG_ERROR([Couldn't find $MOZ_CLANG_RT_ASAN_LIB.  It should be available in the same location as clang-cl.])
+        fi
+        AC_SUBST(MOZ_CLANG_RT_ASAN_LIB_PATH)
+    fi
     AC_DEFINE(MOZ_ASAN)
     MOZ_PATH_PROG(LLVM_SYMBOLIZER, llvm-symbolizer)
 fi
@@ -2206,6 +2221,10 @@ ia64*-hpux*)
         # on non-Western system locales even if it is in a comment.
         CFLAGS="$CFLAGS -wd4244 -wd4267 -wd4819"
         CXXFLAGS="$CXXFLAGS -wd4251 -wd4244 -wd4267 -wd4345 -wd4351 -wd4482 -wd4800 -wd4819"
+        if test -n "$CLANG_CL"; then
+            # Suppress the clang-cl warning for the inline 'new' and 'delete' in mozalloc
+            CXXFLAGS="$CXXFLAGS -Wno-inline-new-delete"
+        fi
         # make 'foo == bar;' error out
         CFLAGS="$CFLAGS -we4553"
         CXXFLAGS="$CXXFLAGS -we4553"
@@ -3792,11 +3811,6 @@ dnl system libffi Support
 dnl ========================================================
 MOZ_CONFIG_FFI()
 
-# split JS out by default to avoid VS2005 PGO crash (bug 591836).
-if test "$OS_ARCH" = "WINNT"; then
-  JS_SHARED_LIBRARY=1
-fi
-
 MOZ_ARG_ENABLE_BOOL(shared-js,
 [  --enable-shared-js
                           Create a shared JavaScript library.],
@@ -5287,8 +5301,15 @@ fi;
 dnl ========================================================
 dnl = Built-in fragmented MP4 support.
 dnl ========================================================
+
+if test "$OS_TARGET" = Android; then
+    MOZ_FMP4=1
+fi
+
 if test -n "$MOZ_WMF" -o -n "$MOZ_FFMPEG" -o -n "$MOZ_APPLEMEDIA"; then
-    dnl Enable fragmented MP4 parser on platforms with decoder support.
+    dnl Enable fragmented MP4 parser on Windows by default.
+    dnl We will also need to enable it on other platforms as we implement
+    dnl platform decoder support there too.
     MOZ_FMP4=1
 fi
 
@@ -7192,9 +7213,7 @@ else
   *-android*|*-linuxandroid*)
     AC_DEFINE(MOZ_MEMORY_LINUX)
     AC_DEFINE(MOZ_MEMORY_ANDROID)
-    if test -z "$gonkdir"; then
-      _WRAP_MALLOC=1
-    else
+    if test -n "$gonkdir"; then
       AC_DEFINE(MOZ_MEMORY_GONK)
     fi
     MOZ_GLUE_LDFLAGS=
@@ -7243,50 +7262,10 @@ dnl our own linker.
 if test "$OS_TARGET" = Android; then
     WRAP_LDFLAGS="${WRAP_LDFLAGS} -L$_objdir/dist/lib -lmozglue"
     WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=PR_GetEnv,--wrap=PR_SetEnv"
-    if test "$MOZ_WIDGET_TOOLKIT" = android; then
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=getaddrinfo,--wrap=freeaddrinfo,--wrap=gai_strerror"
-    fi
-    if test -z "$gonkdir"; then
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=fork,--wrap=pthread_atfork,--wrap=raise"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=memccpy,--wrap=memchr,--wrap=memrchr,--wrap=memcmp,--wrap=memcpy,--wrap=memmove,--wrap=memset,--wrap=memmem,--wrap=index,--wrap=strchr,--wrap=strrchr,--wrap=strlen,--wrap=strcmp,--wrap=strcpy,--wrap=strcat,--wrap=strcasecmp,--wrap=strncasecmp,--wrap=strstr,--wrap=strcasestr,--wrap=strtok,--wrap=strtok_r,--wrap=strerror,--wrap=strerror_r,--wrap=strnlen,--wrap=strncat,--wrap=strncmp,--wrap=strncpy,--wrap=strlcat,--wrap=strlcpy,--wrap=strcspn,--wrap=strpbrk,--wrap=strsep,--wrap=strspn,--wrap=strcoll,--wrap=strxfrm"
-    fi
     if test "$MOZ_WIDGET_TOOLKIT" = gonk -a -n "$MOZ_NUWA_PROCESS"; then
         WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=pthread_create,--wrap=epoll_wait,--wrap=poll,--wrap=pthread_cond_timedwait,--wrap=__pthread_cond_timedwait,--wrap=pthread_cond_wait,--wrap=epoll_create,--wrap=epoll_ctl,--wrap=close,--wrap=pthread_key_create,--wrap=pthread_key_delete,--wrap=socketpair,--wrap=pthread_self,--wrap=pthread_mutex_lock,--wrap=pthread_join,--wrap=pipe,--wrap=pipe2,--wrap=tgkill"
     fi
 fi
-
-dnl ========================================================
-dnl = Use malloc wrapper lib
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(wrap-malloc,
-[  --enable-wrap-malloc    Wrap malloc calls (gnu linker only)],
-    _WRAP_MALLOC=1,
-    _WRAP_MALLOC= )
-
-if test -n "$_WRAP_MALLOC"; then
-    if test -n "$GNU_CC"; then
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=malloc,--wrap=calloc,--wrap=valloc,--wrap=free,--wrap=realloc,--wrap=memalign"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=__builtin_new,--wrap=__builtin_vec_new,--wrap=__builtin_delete,--wrap=__builtin_vec_delete"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=strdup,--wrap=strndup"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=vasprintf,--wrap=asprintf"
-        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=posix_memalign,--wrap=malloc_usable_size"
-        dnl Wrap operator new and operator delete on Android.
-        if test "$OS_TARGET" = "Android"; then
-            WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=_Znwj,--wrap=_Znaj,--wrap=_ZdlPv,--wrap=_ZdaPv"
-            dnl Wrap the nothrow variants too.
-            WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=_ZnwjRKSt9nothrow_t,--wrap=_ZnajRKSt9nothrow_t,--wrap=_ZdlPvRKSt9nothrow_t,--wrap=_ZdaPvRKSt9nothrow_t"
-        fi
-    else
-        AC_MSG_ERROR([--enable-wrap-malloc is not supported for non-GNU toolchains])
-    fi
-fi
-
-dnl ========================================================
-dnl = Location of malloc wrapper lib
-dnl ========================================================
-MOZ_ARG_WITH_STRING(wrap-malloc,
-[  --with-wrap-malloc=DIR  Location of malloc wrapper library],
-    WRAP_LDFLAGS="${WRAP_LDFLAGS} $withval")
 
 dnl ========================================================
 dnl = Use JS Call tracing
@@ -7365,8 +7344,6 @@ MOZ_ARG_ENABLE_BOOL(gczeal,
 if test -n "$JS_GC_ZEAL" -o -n "$MOZ_DEBUG"; then
     AC_DEFINE(JS_GC_ZEAL)
 fi
-
-MOZ_CHECK_CCACHE
 
 dnl ========================================================
 dnl = Enable static checking using gcc-dehydra
@@ -7751,6 +7728,19 @@ if test "$MOZ_CHROME_FILE_FORMAT" != "jar" &&
 fi
 
 dnl =========================================================
+dnl Enable support for revamped devtools Performance Tools
+dnl =========================================================
+
+MOZ_ARG_ENABLE_BOOL(devtools-perf,
+[  --enable-devtools-perf Set compile flags necessary for compiling devtools perftools],
+MOZ_DEVTOOLS_PERFTOOLS=1,
+MOZ_DEVTOOLS_PERFTOOLS= )
+if test -n "$MOZ_DEVTOOLS_PERFTOOLS"; then
+  AC_DEFINE(MOZ_DEVTOOLS_PERFTOOLS)
+fi
+AC_SUBST(MOZ_DEVTOOLS_PERFTOOLS)
+
+dnl =========================================================
 dnl Omnijar packaging (bug 552121)
 dnl =========================================================
 dnl Omnijar packaging is compatible with flat packaging.
@@ -7980,8 +7970,7 @@ dnl =
 dnl ========================================================
 MOZ_ARG_HEADER(Static build options)
 
-if test "$OS_ARCH" = "WINNT"; then
-  GKMEDIAS_SHARED_LIBRARY=1
+if test -n "$GKMEDIAS_SHARED_LIBRARY"; then
   AC_DEFINE(GKMEDIAS_SHARED_LIBRARY)
 fi
 AC_SUBST(GKMEDIAS_SHARED_LIBRARY)
@@ -8055,6 +8044,11 @@ MOZ_ARG_ENABLE_BOOL(skia,
 [  --enable-skia   Enable use of Skia],
 MOZ_ENABLE_SKIA=1,
 MOZ_ENABLE_SKIA=)
+
+MOZ_ARG_DISABLE_BOOL(skia-gpu,
+[  --disable-skia-gpu  Disable use of Skia-GPU],
+MOZ_DISABLE_SKIA_GPU=1,
+MOZ_DISABLE_SKIA_GPU=)
 
 if test "$USE_FC_FREETYPE"; then
     if test "$COMPILE_ENVIRONMENT"; then
@@ -8290,7 +8284,7 @@ if test "$MOZ_ENABLE_SKIA"; then
     AC_DEFINE(SK_BUILD_FOR_ANDROID_NDK)
   fi
 
-  if test "${CPU_ARCH}" != "ppc" -a "${CPU_ARCH}" != "ppc64" -a "${CPU_ARCH}" != "sparc" ; then
+  if test "${CPU_ARCH}" != "ppc" -a "${CPU_ARCH}" != "ppc64" -a "${CPU_ARCH}" != "sparc" -a -z "$MOZ_DISABLE_SKIA_GPU" ; then
     MOZ_ENABLE_SKIA_GPU=1
     AC_DEFINE(USE_SKIA_GPU)
     AC_SUBST(MOZ_ENABLE_SKIA_GPU)
@@ -8938,6 +8932,8 @@ if test "$MOZ_DEBUG"; then
 fi
 AC_SUBST(MOZ_EM_DEBUG)
 
+AC_SUBST(NSS_EXTRA_SYMBOLS_FILE)
+
 if test -n "$COMPILE_ENVIRONMENT"; then
 AC_CHECK_FUNCS(posix_fadvise posix_fallocate)
 
@@ -9056,17 +9052,19 @@ dnl ========================================================
 #   Android:  bug 864843
 #   B2G:      bug 866301
 
-if test "$MOZ_WIDGET_TOOLKIT" = "android"; then
+if test "$MOZ_WIDGET_TOOLKIT" = "android" ||
+   test "$MOZ_BUILD_APP" = "b2g"; then
     _INTL_API=no
-elif test "$MOZ_BUILD_APP" = "b2g"; then
-    if test "$MOZ_WIDGET_TOOLKIT" = "cocoa"; then
-        # nsCollationMacUC needs ICU
-        _INTL_API=yes
-    else
-        _INTL_API=no
-    fi
 else
     _INTL_API=yes
+fi
+
+if test "$MOZ_WIDGET_TOOLKIT" = "cocoa"; then
+    USE_ICU=1
+fi
+
+if test "$OS_TARGET" = WINNT; then
+    MOZ_SHARED_ICU=1
 fi
 
 MOZ_CONFIG_ICU()
@@ -9136,9 +9134,6 @@ if test -z "$MOZ_NATIVE_JEMALLOC" -a "$MOZ_MEMORY" && test -n "$MOZ_JEMALLOC3" -
   fi
   if test -n "$MANGLE"; then
     MANGLED=
-    if test -n "$_WRAP_MALLOC" -a -z "$JEMALLOC_WRAPPER"; then
-      JEMALLOC_WRAPPER=__wrap_
-    fi
     for mangle in ${MANGLE}; do
       if test -n "$MANGLED"; then
         MANGLED="$mangle:$JEMALLOC_WRAPPER$mangle,$MANGLED"
@@ -9231,16 +9226,6 @@ fi
 if test "$COMPILE_ENVIRONMENT" -a -z "$LIBXUL_SDK_DIR"; then
 
 export WRAP_LDFLAGS
-
-if test -n "$_WRAP_MALLOC"; then
-    # Avoid doubling wrap malloc arguments
-    _SUBDIR_CONFIG_ARGS="`echo $_SUBDIR_CONFIG_ARGS | sed -e 's/--enable-wrap-malloc *//'`"
-fi
-
-if test -n "$MOZ_USING_CCACHE"; then
-    # Avoid double prepending ccache by omitting --with-ccache in building NSPR.
-    _SUBDIR_CONFIG_ARGS="`echo $_SUBDIR_CONFIG_ARGS | sed -e 's/--with-ccache[[^ ]]*//'`"
-fi
 
 MOZ_SUBCONFIGURE_NSPR()
 

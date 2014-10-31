@@ -1833,13 +1833,6 @@ HTMLInputElement::SetValue(const nsAString& aValue, ErrorResult& aRv)
 
       SetValueInternal(aValue, false, true);
 
-      if (mType == NS_FORM_INPUT_RANGE) {
-        nsRangeFrame* frame = do_QueryFrame(GetPrimaryFrame());
-        if (frame) {
-          frame->UpdateForValueChange();
-        }
-      }
-
       if (mFocusedValue.Equals(currentValue)) {
         GetValue(mFocusedValue);
       }
@@ -2415,10 +2408,18 @@ HTMLInputElement::SetUserInput(const nsAString& aValue)
     SetValueInternal(aValue, true, true);
   }
 
-  return nsContentUtils::DispatchTrustedEvent(OwnerDoc(),
-                                              static_cast<nsIDOMHTMLInputElement*>(this),
-                                              NS_LITERAL_STRING("input"), true,
-                                              true);
+  nsContentUtils::DispatchTrustedEvent(OwnerDoc(),
+                                       static_cast<nsIDOMHTMLInputElement*>(this),
+                                       NS_LITERAL_STRING("input"), true,
+                                       true);
+
+  // If this element is not currently focused, it won't receive a change event for this
+  // update through the normal channels. So fire a change event immediately, instead.
+  if (!ShouldBlur(this)) {
+    FireChangeEventIfNeeded();
+  }
+
+  return NS_OK;
 }
 
 nsIEditor*
@@ -2847,6 +2848,11 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
             do_QueryFrame(GetPrimaryFrame());
           if (numberControlFrame) {
             numberControlFrame->SetValueOfAnonTextControl(value);
+          }
+        } else if (mType == NS_FORM_INPUT_RANGE) {
+          nsRangeFrame* frame = do_QueryFrame(GetPrimaryFrame());
+          if (frame) {
+            frame->UpdateForValueChange();
           }
         }
         if (!mParserCreating) {

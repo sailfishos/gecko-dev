@@ -41,7 +41,7 @@ public:
 
   virtual void Shutdown() MOZ_OVERRIDE;
 
-  static already_AddRefed<MediaResource> CreateResource();
+  static already_AddRefed<MediaResource> CreateResource(nsIPrincipal* aPrincipal = nullptr);
 
   void AttachMediaSource(dom::MediaSource* aMediaSource);
   void DetachMediaSource();
@@ -62,6 +62,10 @@ public:
   // Indicates the point in time at which the reader should consider
   // registered TrackBuffers essential for initialization.
   void PrepareReaderInitialization();
+
+#ifdef MOZ_EME
+  virtual nsresult SetCDMProxy(CDMProxy* aProxy) MOZ_OVERRIDE;
+#endif
 
 private:
   // The owning MediaSource holds a strong reference to this decoder, and

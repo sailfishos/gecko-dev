@@ -79,9 +79,12 @@
 #include "mozilla/Hal.h"
 #ifdef USE_SKIA
 #include "skia/SkGraphics.h"
+# ifdef USE_SKIA_GPU
+#  include "SkiaGLGlue.h"
+# endif
+#endif
 
-#include "SkiaGLGlue.h"
-#else
+#if !defined(USE_SKIA) || !defined(USE_SKIA_GPU)
 class mozilla::gl::SkiaGLGlue : public GenericAtomicRefCounted {
 };
 #endif
@@ -379,7 +382,7 @@ gfxPlatform::Init()
     #error "No gfxPlatform implementation available"
 #endif
 
-#ifdef DEBUG
+#ifdef MOZ_GL_DEBUG
     mozilla::gl::GLContext::StaticInit();
 #endif
 
@@ -1598,53 +1601,31 @@ gfxPlatform::GetRenderingIntent()
 }
 
 void
-gfxPlatform::TransformPixel(const gfxRGBA& in, gfxRGBA& out, qcms_transform *transform)
+gfxPlatform::TransformPixel(const Color& in, Color& out, qcms_transform *transform)
 {
 
     if (transform) {
         /* we want the bytes in RGB order */
 #ifdef IS_LITTLE_ENDIAN
         /* ABGR puts the bytes in |RGBA| order on little endian */
-        uint32_t packed = in.Packed(gfxRGBA::PACKED_ABGR);
+        uint32_t packed = in.ToABGR();
         qcms_transform_data(transform,
                        (uint8_t *)&packed, (uint8_t *)&packed,
                        1);
-        out.~gfxRGBA();
-        new (&out) gfxRGBA(packed, gfxRGBA::PACKED_ABGR);
+        out = Color::FromABGR(packed);
 #else
         /* ARGB puts the bytes in |ARGB| order on big endian */
-        uint32_t packed = in.Packed(gfxRGBA::PACKED_ARGB);
+        uint32_t packed = in.ToARGB();
         /* add one to move past the alpha byte */
         qcms_transform_data(transform,
                        (uint8_t *)&packed + 1, (uint8_t *)&packed + 1,
                        1);
-        out.~gfxRGBA();
-        new (&out) gfxRGBA(packed, gfxRGBA::PACKED_ARGB);
+        out = Color::FromARGB(packed);
 #endif
     }
 
     else if (&out != &in)
         out = in;
-}
-
-Color
-gfxPlatform::MaybeTransformColor(const gfxRGBA& aColor)
-{
-    // We only return this object to get some return value optimization goodness:
-    Color color;
-    if (GetCMSMode() == eCMSMode_All) {
-        gfxRGBA cms;
-        qcms_transform *transform = GetCMSRGBTransform();
-        if (transform) {
-            TransformPixel(aColor, cms, transform);
-            // Use the original alpha to avoid unnecessary float->byte->float
-            // conversion errors
-            color = ToColor(cms);
-            return color;
-        }
-    }
-    color = ToColor(aColor);
-    return color;
 }
 
 void

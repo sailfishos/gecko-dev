@@ -7,6 +7,7 @@
 #define nsLayoutUtils_h__
 
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/ArrayUtils.h"
 #include "nsChangeHint.h"
 #include "nsAutoPtr.h"
 #include "nsFrameList.h"
@@ -47,8 +48,6 @@ class nsIImageLoadingContent;
 class nsStyleContext;
 class nsBlockFrame;
 class nsContainerFrame;
-class gfxASurface;
-class gfxDrawable;
 class nsView;
 class nsIFrame;
 class nsStyleCoord;
@@ -120,9 +119,13 @@ class nsLayoutUtils
   typedef mozilla::layers::Layer Layer;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::gfx::SourceSurface SourceSurface;
+  typedef mozilla::gfx::Color Color;
   typedef mozilla::gfx::DrawTarget DrawTarget;
+  typedef mozilla::gfx::Float Float;
+  typedef mozilla::gfx::Point Point;
   typedef mozilla::gfx::Rect Rect;
   typedef mozilla::gfx::Matrix4x4 Matrix4x4;
+  typedef mozilla::gfx::StrokeOptions StrokeOptions;
 
 public:
   typedef mozilla::layers::FrameMetrics FrameMetrics;
@@ -1482,6 +1485,22 @@ public:
                             const nsRect&       aDirty,
                             uint32_t            aImageFlags);
 
+  static inline void InitDashPattern(StrokeOptions& aStrokeOptions,
+                                     uint8_t aBorderStyle) {
+    if (aBorderStyle == NS_STYLE_BORDER_STYLE_DOTTED) {
+      static Float dot[] = { 1.f, 1.f };
+      aStrokeOptions.mDashLength = MOZ_ARRAY_LENGTH(dot);
+      aStrokeOptions.mDashPattern = dot;
+    } else if (aBorderStyle == NS_STYLE_BORDER_STYLE_DASHED) {
+      static Float dash[] = { 5.f, 5.f };
+      aStrokeOptions.mDashLength = MOZ_ARRAY_LENGTH(dash);
+      aStrokeOptions.mDashPattern = dash;
+    } else {
+      aStrokeOptions.mDashLength = 0;
+      aStrokeOptions.mDashPattern = nullptr;
+    }
+  }
+
   /**
    * Convert an nsRect to a gfxRect.
    */
@@ -1713,7 +1732,7 @@ public:
   static bool IsReallyFixedPos(nsIFrame* aFrame);
 
   /**
-   * Obtain a gfxASurface from the given DOM element, if possible.
+   * Obtain a SourceSurface from the given DOM element, if possible.
    * This obtains the most natural surface from the element; that
    * is, the one that can be obtained with the fewest conversions.
    *
@@ -1759,8 +1778,7 @@ public:
   struct SurfaceFromElementResult {
     SurfaceFromElementResult();
 
-    /* mSurface will contain the resulting surface, or will be nullptr on error */
-    nsRefPtr<gfxASurface> mSurface;
+    /* mSourceSurface will contain the resulting surface, or will be nullptr on error */
     mozilla::RefPtr<SourceSurface> mSourceSurface;
     /* Contains info for drawing when there is no mSourceSurface. */
     DirectDrawInfo mDrawInfo;
@@ -2375,6 +2393,45 @@ nsLayoutUtils::PointIsCloserToRect(PointType aPoint, const RectType& aRect,
 }
 
 namespace mozilla {
+
+/**
+ * Converts an nsPoint in app units to a Moz2D Point in pixels (whether those
+ * are device pixels or CSS px depends on what the caller chooses to pass as
+ * aAppUnitsPerPixel).
+ */
+inline gfx::Point NSPointToPoint(const nsPoint& aPoint,
+                                 int32_t aAppUnitsPerPixel) {
+  return gfx::Point(gfx::Float(aPoint.x) / aAppUnitsPerPixel,
+                    gfx::Float(aPoint.y) / aAppUnitsPerPixel);
+}
+
+/**
+ * Converts an nsRect in app units to a Moz2D Rect in pixels (whether those
+ * are device pixels or CSS px depends on what the caller chooses to pass as
+ * aAppUnitsPerPixel).
+ */
+gfx::Rect NSRectToRect(const nsRect& aRect, double aAppUnitsPerPixel);
+
+/**
+ * Converts an nsRect in app units to a Moz2D Rect in pixels (whether those
+ * are device pixels or CSS px depends on what the caller chooses to pass as
+ * aAppUnitsPerPixel).
+ *
+ * The passed DrawTarget is used to additionally snap the returned Rect to
+ * device pixels, if appropriate (as decided and carried out by Moz2D's
+ * MaybeSnapToDevicePixels helper, which this function calls to do any
+ * snapping).
+ */
+gfx::Rect NSRectToRect(const nsRect& aRect, double aAppUnitsPerPixel,
+                       const gfx::DrawTarget& aSnapDT);
+
+void StrokeLineWithSnapping(const nsPoint& aP1, const nsPoint& aP2,
+                            int32_t aAppUnitsPerDevPixel,
+                            gfx::DrawTarget& aDrawTarget,
+                            const gfx::Pattern& aPattern,
+                            const gfx::StrokeOptions& aStrokeOptions = gfx::StrokeOptions(),
+                            const gfx::DrawOptions& aDrawOptions = gfx::DrawOptions());
+
   namespace layout {
 
     /**

@@ -16,7 +16,6 @@
 #include "mozilla/dom/indexedDB/FileInfo.h"
 #include "mozilla/dom/indexedDB/FileManager.h"
 #include "mozilla/dom/indexedDB/IndexedDatabaseManager.h"
-#include "mozilla/dom/UnionTypes.h"
 #include "nsAutoPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsCOMPtr.h"
@@ -58,6 +57,7 @@ struct BlobPropertyBag;
 struct ChromeFilePropertyBag;
 struct FilePropertyBag;
 class FileImpl;
+class OwningArrayBufferOrArrayBufferViewOrBlobOrString;
 
 class File MOZ_FINAL : public nsIDOMFile
                      , public nsIXHRSendable
@@ -91,11 +91,17 @@ public:
   Create(nsISupports* aParent, const nsAString& aContentType, uint64_t aStart,
          uint64_t aLength);
 
+  // The returned File takes ownership of aMemoryBuffer. aMemoryBuffer will be
+  // freed by moz_free so it must be allocated by moz_malloc or something
+  // compatible with it.
   static already_AddRefed<File>
   CreateMemoryFile(nsISupports* aParent, void* aMemoryBuffer, uint64_t aLength,
                    const nsAString& aName, const nsAString& aContentType,
                    uint64_t aLastModifiedDate);
 
+  // The returned File takes ownership of aMemoryBuffer. aMemoryBuffer will be
+  // freed by moz_free so it must be allocated by moz_malloc or something
+  // compatible with it.
   static already_AddRefed<File>
   CreateMemoryFile(nsISupports* aParent, void* aMemoryBuffer, uint64_t aLength,
                    const nsAString& aContentType);
@@ -106,7 +112,7 @@ public:
                           const nsAString& aContentType);
 
   static already_AddRefed<File>
-  CreateFromFile(nsISupports* aParent, nsIFile* aFile);
+  CreateFromFile(nsISupports* aParent, nsIFile* aFile, bool aTemporary = false);
 
   static already_AddRefed<File>
   CreateFromFile(nsISupports* aParent, const nsAString& aContentType,
@@ -631,11 +637,12 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // Create as a file
-  explicit FileImplFile(nsIFile* aFile)
+  explicit FileImplFile(nsIFile* aFile, bool aTemporary = false)
     : FileImplBase(EmptyString(), EmptyString(), UINT64_MAX, UINT64_MAX)
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(false)
+    , mIsTemporary(aTemporary)
   {
     NS_ASSERTION(mFile, "must have file");
     // Lazily get the content type and size
@@ -648,6 +655,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(true)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
     NS_ASSERTION(aFileInfo, "must have file info");
@@ -665,6 +673,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(false)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
   }
@@ -676,6 +685,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(false)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
   }
@@ -687,6 +697,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(false)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
     if (aContentType.IsEmpty()) {
@@ -703,6 +714,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(true)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
     mFileInfos.AppendElement(aFileInfo);
@@ -715,6 +727,7 @@ public:
     , mFile(aFile)
     , mWholeFile(true)
     , mStoredFile(true)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
     mFileInfos.AppendElement(aFileInfo);
@@ -725,6 +738,7 @@ public:
     : FileImplBase(EmptyString(), EmptyString(), UINT64_MAX, UINT64_MAX)
     , mWholeFile(true)
     , mStoredFile(false)
+    , mIsTemporary(false)
   {
     // Lazily get the content type and size
     mContentType.SetIsVoid(true);
@@ -742,7 +756,18 @@ public:
   void SetPath(const nsAString& aFullPath);
 
 protected:
-  virtual ~FileImplFile() {}
+  virtual ~FileImplFile() {
+    if (mFile && mIsTemporary) {
+      NS_WARNING("In temporary ~FileImplFile");
+      // Ignore errors if any, not much we can do. Clean-up will be done by
+      // https://mxr.mozilla.org/mozilla-central/source/xpcom/io/nsAnonymousTemporaryFile.cpp?rev=6c1c7e45c902#127
+#ifdef DEBUG
+      nsresult rv =
+#endif
+      mFile->Remove(false);
+      NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Failed to remove temporary DOMFile.");
+    }
+  }
 
 private:
   // Create slice
@@ -752,6 +777,7 @@ private:
     , mFile(aOther->mFile)
     , mWholeFile(false)
     , mStoredFile(aOther->mStoredFile)
+    , mIsTemporary(false)
   {
     NS_ASSERTION(mFile, "must have file");
     mImmutable = aOther->mImmutable;
@@ -790,6 +816,7 @@ private:
   nsCOMPtr<nsIFile> mFile;
   bool mWholeFile;
   bool mStoredFile;
+  bool mIsTemporary;
 };
 
 class FileList MOZ_FINAL : public nsIDOMFileList,

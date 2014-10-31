@@ -60,6 +60,7 @@ GMPParent::GMPParent()
   , mAbnormalShutdownInProgress(false)
   , mAsyncShutdownRequired(false)
   , mAsyncShutdownInProgress(false)
+  , mHasAccessedStorage(false)
 {
 }
 
@@ -150,6 +151,22 @@ GMPParent::LoadProcess()
       return NS_ERROR_FAILURE;
     }
     LOGD(("%s::%s: Created new process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
+
+    bool ok = SendSetNodeId(mNodeId);
+    if (!ok) {
+      mProcess->Delete();
+      mProcess = nullptr;
+      return NS_ERROR_FAILURE;
+    }
+    LOGD(("%s::%s: Failed to send node id %p", __CLASS__, __FUNCTION__, (void *)mProcess));
+
+    ok = SendStartPlugin();
+    if (!ok) {
+      mProcess->Delete();
+      mProcess = nullptr;
+      return NS_ERROR_FAILURE;
+    }
+    LOGD(("%s::%s: Failed to send start %p", __CLASS__, __FUNCTION__, (void *)mProcess));
   }
 
   mState = GMPStateLoaded;
@@ -201,6 +218,10 @@ GMPParent::AbortAsyncShutdown()
 {
   MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
   LOGD(("%s::%s: %p", __CLASS__, __FUNCTION__, this));
+
+  if (!mAsyncShutdownRequired || !mAsyncShutdownInProgress) {
+    return;
+  }
 
   nsRefPtr<GMPParent> kungFuDeathGrip(this);
   mService->AsyncShutdownComplete(this);
@@ -595,6 +616,12 @@ GMPParent::ActorDestroy(ActorDestroyReason aWhy)
   }
 }
 
+bool
+GMPParent::HasAccessedStorage() const
+{
+  return mHasAccessedStorage;
+}
+
 mozilla::dom::PCrashReporterParent*
 GMPParent::AllocPCrashReporterParent(const NativeThreadId& aThread)
 {
@@ -680,7 +707,7 @@ GMPParent::DeallocPGMPAudioDecoderParent(PGMPAudioDecoderParent* aActor)
 PGMPStorageParent*
 GMPParent::AllocPGMPStorageParent()
 {
-  GMPStorageParent* p = new GMPStorageParent(mOrigin, this);
+  GMPStorageParent* p = new GMPStorageParent(mNodeId, this);
   mStorage.AppendElement(p); // Addrefs, released in DeallocPGMPStorageParent.
   return p;
 }
@@ -695,8 +722,13 @@ GMPParent::DeallocPGMPStorageParent(PGMPStorageParent* aActor)
 }
 
 bool
-GMPParent::RecvPGMPStorageConstructor(PGMPStorageParent* actor)
+GMPParent::RecvPGMPStorageConstructor(PGMPStorageParent* aActor)
 {
+  GMPStorageParent* p  = (GMPStorageParent*)aActor;
+  if (NS_WARN_IF(NS_FAILED(p->Init()))) {
+    return false;
+  }
+  mHasAccessedStorage = true;
   return true;
 }
 
@@ -877,24 +909,24 @@ GMPParent::ReadGMPMetaData()
 }
 
 bool
-GMPParent::CanBeSharedCrossOrigin() const
+GMPParent::CanBeSharedCrossNodeIds() const
 {
-  return mOrigin.IsEmpty();
+  return mNodeId.IsEmpty();
 }
 
 bool
-GMPParent::CanBeUsedFrom(const nsAString& aOrigin) const
+GMPParent::CanBeUsedFrom(const nsACString& aNodeId) const
 {
-  return (mOrigin.IsEmpty() && State() == GMPStateNotLoaded) ||
-         mOrigin.Equals(aOrigin);
+  return (mNodeId.IsEmpty() && State() == GMPStateNotLoaded) ||
+         mNodeId == aNodeId;
 }
 
 void
-GMPParent::SetOrigin(const nsAString& aOrigin)
+GMPParent::SetNodeId(const nsACString& aNodeId)
 {
-  MOZ_ASSERT(!aOrigin.IsEmpty());
-  MOZ_ASSERT(CanBeUsedFrom(aOrigin));
-  mOrigin = aOrigin;
+  MOZ_ASSERT(!aNodeId.IsEmpty());
+  MOZ_ASSERT(CanBeUsedFrom(aNodeId));
+  mNodeId = aNodeId;
 }
 
 bool

@@ -7,6 +7,7 @@
 #include "jsfriendapi.h"
 #include "mozilla/dom/BlobSet.h"
 #include "mozilla/dom/FileBinding.h"
+#include "mozilla/dom/UnionTypes.h"
 #include "nsAutoPtr.h"
 #include "nsDOMClassInfoID.h"
 #include "nsIMultiplexInputStream.h"
@@ -310,7 +311,7 @@ MultipartFileImpl::InitializeChromeFile(nsPIDOMWindow* aWindow,
     aFile->GetLeafName(mName);
   }
 
-  nsRefPtr<File> blob = File::CreateFromFile(aWindow, aFile);
+  nsRefPtr<File> blob = File::CreateFromFile(aWindow, aFile, aBag.mTemporary);
 
   // Pre-cache size.
   uint64_t unused;

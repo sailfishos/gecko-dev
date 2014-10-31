@@ -31,7 +31,6 @@ using mozilla::unused;
 #include "nsIWidgetListener.h"
 #include "nsViewManager.h"
 
-#include "nsRenderingContext.h"
 #include "nsIDOMSimpleGestureEvent.h"
 
 #include "nsGkAtoms.h"
@@ -73,7 +72,6 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 static gfxIntSize gAndroidBounds = gfxIntSize(0, 0);
 static gfxIntSize gAndroidScreenBounds;
 
-#include "mozilla/layers/AsyncPanZoomController.h"
 #include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/CompositorParent.h"
 #include "mozilla/layers/LayerTransactionParent.h"
@@ -1913,13 +1911,6 @@ nsWindow::OnIMEEvent(AndroidGeckoEvent *ae)
             selEvent.mExpandToClusterBoundary = false;
 
             DispatchEvent(&selEvent);
-
-            // Notify SelectionHandler of final caret position
-            // Required after IME hide via 'Back' button
-            AndroidGeckoEvent* broadcastEvent = AndroidGeckoEvent::MakeBroadcastEvent(
-                NS_LITERAL_CSTRING("TextSelection:UpdateCaretPos"),
-                NS_LITERAL_CSTRING(""));
-            nsAppShell::gAppShell->PostEvent(broadcastEvent);
         }
         break;
     case AndroidGeckoEvent::IME_ADD_COMPOSITION_RANGE:
@@ -2013,14 +2004,6 @@ nsWindow::OnIMEEvent(AndroidGeckoEvent *ae)
 #endif // DEBUG_ANDROID_IME
 
             DispatchEvent(&event);
-
-            // Notify SelectionHandler of final caret position
-            // Required in cases of keyboards providing autoCorrections
-            AndroidGeckoEvent* broadcastEvent =
-                AndroidGeckoEvent::MakeBroadcastEvent(
-                    NS_LITERAL_CSTRING("TextSelection:UpdateCaretPos"),
-                    NS_LITERAL_CSTRING(""));
-            nsAppShell::gAppShell->PostEvent(broadcastEvent);
         }
         break;
 

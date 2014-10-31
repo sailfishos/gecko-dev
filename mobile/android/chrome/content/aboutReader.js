@@ -191,6 +191,7 @@ AboutReader.prototype = {
       }
 
       case "Reader:Add": {
+        // Page can be added by long-press pageAction, or by tap on banner icon.
         let args = JSON.parse(aData);
         if (args.url == this._article.url) {
           if (this._isReadingListItem != 1) {
@@ -295,7 +296,7 @@ AboutReader.prototype = {
     this._setToolbarVisibility(false);
     this._setBrowserToolbarVisiblity(false);
     this._scrolled  = true;
-    ZoomHelper.zoomToRect(newRect, -1, false, false);
+    ZoomHelper.zoomToRect(newRect, -1);
   },
 
   _updateToggleButton: function Reader_updateToggleButton() {

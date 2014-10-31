@@ -313,8 +313,8 @@ nsLineLayout::UpdateBand(const nsRect& aNewAvailSpace,
 #ifdef NOISY_REFLOW
   nsFrame::ListTag(stdout, mBlockReflowState->frame);
   printf(": UpdateBand: %d,%d,%d,%d deltaISize=%d deltaICoord=%d\n",
-         aNewAvailSpace.x, aNewAvailSpace.y,
-         aNewAvailSpace.width, aNewAvailSpace.height, deltaISize, deltaICoord);
+         aNewAvailSpace.IStart(lineWM), aNewAvailSpace.BStart(lineWM),
+         aNewAvailSpace.ISize(lineWM), aNewAvailSpace.BSize(lineWM), deltaISize, deltaICoord);
 #endif
 
   // Update the root span position
@@ -360,9 +360,10 @@ nsLineLayout::NewPerSpanData()
   PerSpanData* psd = mSpanFreeList;
   if (!psd) {
     void *mem;
-    PL_ARENA_ALLOCATE(mem, &mArena, sizeof(PerSpanData));
+    size_t sz = sizeof(PerSpanData);
+    PL_ARENA_ALLOCATE(mem, &mArena, sz);
     if (!mem) {
-      NS_RUNTIMEABORT("OOM");
+      NS_ABORT_OOM(sz);
     }
     psd = reinterpret_cast<PerSpanData*>(mem);
   }
@@ -583,9 +584,10 @@ nsLineLayout::NewPerFrameData(nsIFrame* aFrame)
   PerFrameData* pfd = mFrameFreeList;
   if (!pfd) {
     void *mem;
-    PL_ARENA_ALLOCATE(mem, &mArena, sizeof(PerFrameData));
+    size_t sz = sizeof(PerFrameData);
+    PL_ARENA_ALLOCATE(mem, &mArena, sz);
     if (!mem) {
-      NS_RUNTIMEABORT("OOM");
+      NS_ABORT_OOM(sz);
     }
     pfd = reinterpret_cast<PerFrameData*>(mem);
   }
@@ -795,8 +797,9 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
     nsHTMLReflowState& reflowState = *reflowStateHolder;
     reflowState.mLineLayout = this;
     reflowState.mFlags.mIsTopOfPage = mIsTopOfPage;
-    if (reflowState.ComputedWidth() == NS_UNCONSTRAINEDSIZE)
-      reflowState.AvailableWidth() = availableSpaceOnLine;
+    if (reflowState.ComputedISize() == NS_UNCONSTRAINEDSIZE) {
+      reflowState.AvailableISize() = availableSpaceOnLine;
+    }
     WritingMode stateWM = reflowState.GetWritingMode();
     pfd->mMargin =
       reflowState.ComputedLogicalMargin().ConvertTo(frameWM, stateWM);

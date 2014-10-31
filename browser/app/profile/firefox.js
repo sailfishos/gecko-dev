@@ -1292,6 +1292,7 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 
 // Developer edition preferences
 pref("browser.devedition.theme.enabled", false);
+pref("browser.devedition.theme.showCustomizeButton", false);
 
 // Disable the error console
 pref("devtools.errorconsole.enabled", false);
@@ -1378,6 +1379,13 @@ pref("devtools.debugger.ui.variables-searchbox-visible", false);
 // Enable the Profiler and the Timeline
 pref("devtools.profiler.enabled", true);
 pref("devtools.timeline.enabled", false);
+
+// Enable perftools via build command
+#ifdef MOZ_DEVTOOLS_PERFTOOLS
+  pref("devtools.performance_dev.enabled", true);
+#else
+  pref("devtools.performance_dev.enabled", false);
+#endif
 
 // The default Profiler UI settings
 pref("devtools.profiler.ui.show-platform-data", false);
@@ -1552,7 +1560,7 @@ pref("browser.newtabpage.rows", 3);
 pref("browser.newtabpage.columns", 5);
 
 // directory tiles download URL
-pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch");
+pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch/%LOCALE%");
 
 // endpoint to send newtab click and view pings
 pref("browser.newtabpage.directory.ping", "https://tiles.services.mozilla.com/v2/links/");

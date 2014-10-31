@@ -136,6 +136,10 @@
         ""
       </field>
 
+      <field name="_contentWaitingCount">
+        0
+      </field>
+
       <property name="_numPinnedTabs" readonly="true">
         <getter><![CDATA[
           for (var i = 0; i < this.tabs.length; i++) {
@@ -1180,8 +1184,15 @@
                   findBar._findField.getAttribute("focused") == "true");
               }
 
+              // If focus is in the tab bar, retain it there.
+              if (document.activeElement == oldTab) {
+                // We need to explicitly focus the new tab, because
+                // tabbox.xml does this only in some cases.
+                this.mCurrentTab.focus();
+              }
+
               if (!gMultiProcessBrowser)
-                this._adjustFocusAfterTabSwitch(this.mCurrentTab, oldTab);
+                this._adjustFocusAfterTabSwitch(this.mCurrentTab);
             }
 
             this.tabContainer._setPositionalAttributes();
@@ -1194,17 +1205,12 @@
 
       <method name="_adjustFocusAfterTabSwitch">
         <parameter name="newTab"/>
-        <parameter name="oldTab"/>
         <body><![CDATA[
         let newBrowser = this.getBrowserForTab(newTab);
 
-        // When focus is in the tab bar, retain it there.
-        if (document.activeElement == oldTab) {
-          // We need to explicitly focus the new tab, because
-          // tabbox.xml does this only in some cases.
-          this.mCurrentTab.focus();
+        // Don't steal focus from the tab bar.
+        if (document.activeElement == newTab)
           return;
-        }
 
         // If there's a tabmodal prompt showing, focus it.
         if (newBrowser.hasAttribute("tabmodalPromptShowing")) {
@@ -3226,6 +3232,31 @@
         </body>
       </method>
 
+      <method name="_showBusySpinnerRemoteBrowser">
+        <parameter name="aBrowser"/>
+        <body><![CDATA[
+          aBrowser.setAttribute("pendingpaint", "true");
+          if (this._contentWaitingCount <= 0) {
+            // We are not currently spinning
+            this.setAttribute("pendingpaint", "true");
+            this._contentWaitingCount = 1;
+          } else {
+            this._contentWaitingCount++;
+          }
+        ]]></body>
+      </method>
+
+      <method name="_hideBusySpinnerRemoteBrowser">
+        <parameter name="aBrowser"/>
+        <body><![CDATA[
+          aBrowser.removeAttribute("pendingpaint");
+          this._contentWaitingCount--;
+          if (this._contentWaitingCount <= 0) {
+            this.removeAttribute("pendingpaint");
+          }
+        ]]></body>
+      </method>
+
       <method name="_prepareForTabSwitch">
         <parameter name="toTab"/>
         <parameter name="fromTab"/>
@@ -3264,16 +3295,19 @@
 
             let timeoutPromise = new Promise((aResolve, aReject) => {
               timeoutId = setTimeout(() => {
+                this._showBusySpinnerRemoteBrowser(toBrowser);
                 attemptTabSwitch(aResolve, aReject);
               }, kTabSwitchTimeout);
             });
 
             let paintPromise = new Promise((aResolve, aReject) => {
-              toBrowser.addEventListener("MozAfterRemotePaint", function onRemotePaint() {
+              let onRemotePaint = () => {
                 toBrowser.removeEventListener("MozAfterRemotePaint", onRemotePaint);
+                this._hideBusySpinnerRemoteBrowser(toBrowser);
                 clearTimeout(timeoutId);
                 attemptTabSwitch(aResolve, aReject);
-              });
+              };
+              toBrowser.addEventListener("MozAfterRemotePaint", onRemotePaint);
               toBrowser.QueryInterface(Ci.nsIFrameLoaderOwner)
                        .frameLoader
                        .requestNotifyAfterRemotePaint();
@@ -3319,7 +3353,7 @@
         <parameter name="toTab"/>
         <parameter name="fromTab"/>
         <body><![CDATA[
-          this._adjustFocusAfterTabSwitch(toTab, fromTab);
+          this._adjustFocusAfterTabSwitch(toTab);
           this._deactivateContent(fromTab);
 
           let toBrowser = this.getBrowserForTab(toTab);
@@ -4496,7 +4530,7 @@
         canvas.height = 90 * scale;
         if (!gMultiProcessBrowser) {
           // Bug 863512 - Make page thumbnails work in e10s
-          PageThumbs.captureToCanvas(browser.contentWindow, canvas);
+          PageThumbs.captureToCanvas(browser, canvas);
         }
         dt.setDragImage(canvas, -16 * scale, -16 * scale);
 

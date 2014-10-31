@@ -12,6 +12,9 @@ var is_remote;
     error_reporting_test();
     dom_test();
     xray_test();
+    if (typeof Symbol === "function") {
+      symbol_test();
+    }
     compartment_test();
     regexp_test();
     sync_test();
@@ -119,15 +122,13 @@ function symbol_test()
 {
   let iterator = Symbol.iterator;
   let named = Symbol.for("cpow-test");
-  // let unique = Symbol();
 
   let object = {
     [iterator]: iterator,
     [named]: named,
-    // [unique]: unique,
-    // "unique": unique
   };
-  sendSyncMessage("cpows:symbol_test", {}, object);
+  let test = ['a'];
+  sendSyncMessage("cpows:symbol_test", {}, {object: object, test: test});
 }
 
 // Parent->Child references should go X->parent.privilegedJunkScope->child.privilegedJunkScope->Y
@@ -151,7 +152,12 @@ function compartment_test()
     ok(/Privileged Junk/.test(cpowLocation),
        "child->parent CPOWs should live in the privileged junk scope: " + cpowLocation);
     is(obj(), 42, "child->parent CPOW is invokable");
-    is(obj.expando, undefined, "child->parent CPOW cannot access properties");
+    try {
+      obj.expando;
+      ok(false, "child->parent CPOW cannot access properties");
+    } catch (e) {
+      ok(true, "child->parent CPOW cannot access properties");
+    }
 
     return results;
   }

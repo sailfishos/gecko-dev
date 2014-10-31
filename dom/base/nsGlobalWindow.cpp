@@ -45,7 +45,6 @@
 // Helper Classes
 #include "nsJSUtils.h"
 #include "jsapi.h"              // for JSAutoRequest
-#include "js/OldDebugAPI.h"     // for JS_ClearWatchPointsForObject
 #include "jswrapper.h"
 #include "nsReadableUtils.h"
 #include "nsDOMClassInfo.h"
@@ -204,8 +203,10 @@
 #include "nsSandboxFlags.h"
 #include "TimeChangeObserver.h"
 #include "mozilla/dom/AudioContext.h"
+#include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/BrowserElementDictionariesBinding.h"
 #include "mozilla/dom/Console.h"
+#include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/FunctionBinding.h"
 #include "mozilla/dom/HashChangeEvent.h"
 #include "mozilla/dom/MozSelfSupportBinding.h"
@@ -600,20 +601,7 @@ public:
     return false;
   }
 
-  virtual const char *className(JSContext *cx,
-                                JS::Handle<JSObject*> wrapper) const MOZ_OVERRIDE;
-  virtual void finalize(JSFreeOp *fop, JSObject *proxy) const MOZ_OVERRIDE;
-
-  // Fundamental traps
-  virtual bool isExtensible(JSContext *cx, JS::Handle<JSObject*> proxy, bool *extensible)
-                            const MOZ_OVERRIDE;
-  virtual bool preventExtensions(JSContext *cx,
-                                 JS::Handle<JSObject*> proxy) const MOZ_OVERRIDE;
-  virtual bool getPropertyDescriptor(JSContext* cx,
-                                     JS::Handle<JSObject*> proxy,
-                                     JS::Handle<jsid> id,
-                                     JS::MutableHandle<JSPropertyDescriptor> desc)
-                                     const MOZ_OVERRIDE;
+  // Standard internal methods
   virtual bool getOwnPropertyDescriptor(JSContext* cx,
                                         JS::Handle<JSObject*> proxy,
                                         JS::Handle<jsid> id,
@@ -632,23 +620,12 @@ public:
                        bool *bp) const MOZ_OVERRIDE;
   virtual bool enumerate(JSContext *cx, JS::Handle<JSObject*> proxy,
                          JS::AutoIdVector &props) const MOZ_OVERRIDE;
-
-  virtual bool watch(JSContext *cx, JS::Handle<JSObject*> proxy,
-                     JS::Handle<jsid> id, JS::Handle<JSObject*> callable) const MOZ_OVERRIDE;
-  virtual bool unwatch(JSContext *cx, JS::Handle<JSObject*> proxy,
-                       JS::Handle<jsid> id) const MOZ_OVERRIDE;
-  virtual bool isCallable(JSObject *obj) const MOZ_OVERRIDE {
-    return false;
-  }
-  virtual bool isConstructor(JSObject *obj) const MOZ_OVERRIDE {
-    return false;
-  }
-
-  // Derived traps
+  virtual bool isExtensible(JSContext *cx, JS::Handle<JSObject*> proxy, bool *extensible)
+                            const MOZ_OVERRIDE;
+  virtual bool preventExtensions(JSContext *cx,
+                                 JS::Handle<JSObject*> proxy) const MOZ_OVERRIDE;
   virtual bool has(JSContext *cx, JS::Handle<JSObject*> proxy,
                    JS::Handle<jsid> id, bool *bp) const MOZ_OVERRIDE;
-  virtual bool hasOwn(JSContext *cx, JS::Handle<JSObject*> proxy,
-                      JS::Handle<jsid> id, bool *bp) const MOZ_OVERRIDE;
   virtual bool get(JSContext *cx, JS::Handle<JSObject*> proxy,
                    JS::Handle<JSObject*> receiver,
                    JS::Handle<jsid> id,
@@ -658,11 +635,36 @@ public:
                    JS::Handle<jsid> id,
                    bool strict,
                    JS::MutableHandle<JS::Value> vp) const MOZ_OVERRIDE;
-  virtual bool keys(JSContext *cx, JS::Handle<JSObject*> proxy,
-                    JS::AutoIdVector &props) const MOZ_OVERRIDE;
+
+  // SpiderMonkey extensions
+  virtual bool getPropertyDescriptor(JSContext* cx,
+                                     JS::Handle<JSObject*> proxy,
+                                     JS::Handle<jsid> id,
+                                     JS::MutableHandle<JSPropertyDescriptor> desc)
+                                     const MOZ_OVERRIDE;
+  virtual bool hasOwn(JSContext *cx, JS::Handle<JSObject*> proxy,
+                      JS::Handle<jsid> id, bool *bp) const MOZ_OVERRIDE;
+  virtual bool getOwnEnumerablePropertyKeys(JSContext *cx, JS::Handle<JSObject*> proxy,
+                                            JS::AutoIdVector &props) const MOZ_OVERRIDE;
   virtual bool iterate(JSContext *cx, JS::Handle<JSObject*> proxy,
                        unsigned flags,
                        JS::MutableHandle<JS::Value> vp) const MOZ_OVERRIDE;
+  virtual const char *className(JSContext *cx,
+                                JS::Handle<JSObject*> wrapper) const MOZ_OVERRIDE;
+
+  virtual void finalize(JSFreeOp *fop, JSObject *proxy) const MOZ_OVERRIDE;
+
+  virtual bool isCallable(JSObject *obj) const MOZ_OVERRIDE {
+    return false;
+  }
+  virtual bool isConstructor(JSObject *obj) const MOZ_OVERRIDE {
+    return false;
+  }
+
+  virtual bool watch(JSContext *cx, JS::Handle<JSObject*> proxy,
+                     JS::Handle<jsid> id, JS::Handle<JSObject*> callable) const MOZ_OVERRIDE;
+  virtual bool unwatch(JSContext *cx, JS::Handle<JSObject*> proxy,
+                       JS::Handle<jsid> id) const MOZ_OVERRIDE;
 
   static void ObjectMoved(JSObject *obj, const JSObject *old);
 
@@ -695,7 +697,6 @@ protected:
 const js::Class OuterWindowProxyClass =
     PROXY_CLASS_WITH_EXT(
         "Proxy",
-        0, /* additional slots */
         0, /* additional class flags */
         PROXY_MAKE_EXT(
             nullptr, /* outerObject */
@@ -931,12 +932,12 @@ nsOuterWindowProxy::set(JSContext *cx, JS::Handle<JSObject*> proxy,
 }
 
 bool
-nsOuterWindowProxy::keys(JSContext *cx, JS::Handle<JSObject*> proxy,
-                         JS::AutoIdVector &props) const
+nsOuterWindowProxy::getOwnEnumerablePropertyKeys(JSContext *cx, JS::Handle<JSObject*> proxy,
+                                                 JS::AutoIdVector &props) const
 {
   // BaseProxyHandler::keys seems to do what we want here: call
   // ownPropertyKeys and then filter out the non-enumerable properties.
-  return js::BaseProxyHandler::keys(cx, proxy, props);
+  return js::BaseProxyHandler::getOwnEnumerablePropertyKeys(cx, proxy, props);
 }
 
 bool
@@ -6368,8 +6369,7 @@ already_AddRefed<Promise>
 nsGlobalWindow::Fetch(const RequestOrScalarValueString& aInput,
                       const RequestInit& aInit, ErrorResult& aRv)
 {
-  aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
-  return nullptr;
+  return FetchRequest(this, aInput, aInit, aRv);
 }
 
 void
@@ -7131,23 +7131,46 @@ nsGlobalWindow::GetTopWindowRoot()
 }
 
 void
-nsGlobalWindow::Scroll(double aXScroll, double aYScroll,
-                       const ScrollOptions& aOptions)
+nsGlobalWindow::Scroll(double aXScroll, double aYScroll)
 {
   // Convert -Inf, Inf, and NaN to 0; otherwise, convert by C-style cast.
   CSSIntPoint scrollPos(mozilla::ToZeroIfNonfinite(aXScroll),
                         mozilla::ToZeroIfNonfinite(aYScroll));
-  ScrollTo(scrollPos, aOptions);
+  ScrollTo(scrollPos, ScrollOptions());
 }
 
 void
-nsGlobalWindow::ScrollTo(double aXScroll, double aYScroll,
-                         const ScrollOptions& aOptions)
+nsGlobalWindow::ScrollTo(double aXScroll, double aYScroll)
 {
   // Convert -Inf, Inf, and NaN to 0; otherwise, convert by C-style cast.
   CSSIntPoint scrollPos(mozilla::ToZeroIfNonfinite(aXScroll),
                         mozilla::ToZeroIfNonfinite(aYScroll));
-  ScrollTo(scrollPos, aOptions);
+  ScrollTo(scrollPos, ScrollOptions());
+}
+
+void
+nsGlobalWindow::ScrollTo(const ScrollToOptions& aOptions)
+{
+  FlushPendingNotifications(Flush_Layout);
+  nsIScrollableFrame *sf = GetScrollFrame();
+
+  if (sf) {
+    CSSIntPoint scrollPos = sf->GetScrollPositionCSSPixels();
+    if (aOptions.mLeft.WasPassed()) {
+      scrollPos.x = mozilla::ToZeroIfNonfinite(aOptions.mLeft.Value());
+    }
+    if (aOptions.mTop.WasPassed()) {
+      scrollPos.y = mozilla::ToZeroIfNonfinite(aOptions.mTop.Value());
+    }
+
+    ScrollTo(scrollPos, aOptions);
+  }
+}
+
+void
+nsGlobalWindow::Scroll(const ScrollToOptions& aOptions)
+{
+  ScrollTo(aOptions);
 }
 
 NS_IMETHODIMP
@@ -7188,8 +7211,9 @@ nsGlobalWindow::ScrollTo(const CSSIntPoint& aScroll,
       scroll.y = maxpx;
     }
 
-    sf->ScrollToCSSPixels(scroll,
-                          aOptions.mBehavior == ScrollBehavior::Smooth
+    bool smoothScroll = sf->GetScrollbarStyles().IsSmoothScroll(aOptions.mBehavior);
+
+    sf->ScrollToCSSPixels(scroll, smoothScroll
                             ? nsIScrollableFrame::SMOOTH_MSD
                             : nsIScrollableFrame::INSTANT);
   }
@@ -7198,14 +7222,13 @@ nsGlobalWindow::ScrollTo(const CSSIntPoint& aScroll,
 NS_IMETHODIMP
 nsGlobalWindow::ScrollBy(int32_t aXScrollDif, int32_t aYScrollDif)
 {
-  ScrollBy(aXScrollDif, aYScrollDif, ScrollOptions());
+  ScrollBy(aXScrollDif, aYScrollDif);
 
   return NS_OK;
 }
 
 void
-nsGlobalWindow::ScrollBy(double aXScrollDif, double aYScrollDif,
-                         const ScrollOptions& aOptions)
+nsGlobalWindow::ScrollBy(double aXScrollDif, double aYScrollDif)
 {
   FlushPendingNotifications(Flush_Layout);
   nsIScrollableFrame *sf = GetScrollFrame();
@@ -7217,7 +7240,26 @@ nsGlobalWindow::ScrollBy(double aXScrollDif, double aYScrollDif,
     // It seems like it would make more sense for ScrollBy to use
     // SMOOTH mode, but tests seem to depend on the synchronous behaviour.
     // Perhaps Web content does too.
-    ScrollTo(sf->GetScrollPositionCSSPixels() + scrollDif, aOptions);
+    ScrollTo(sf->GetScrollPositionCSSPixels() + scrollDif, ScrollOptions());
+  }
+}
+
+void
+nsGlobalWindow::ScrollBy(const ScrollToOptions& aOptions)
+{
+  FlushPendingNotifications(Flush_Layout);
+  nsIScrollableFrame *sf = GetScrollFrame();
+
+  if (sf) {
+    CSSIntPoint scrollPos = sf->GetScrollPositionCSSPixels();
+    if (aOptions.mLeft.WasPassed()) {
+      scrollPos.x += mozilla::ToZeroIfNonfinite(aOptions.mLeft.Value());
+    }
+    if (aOptions.mTop.WasPassed()) {
+      scrollPos.y += mozilla::ToZeroIfNonfinite(aOptions.mTop.Value());
+    }
+
+    ScrollTo(scrollPos, aOptions);
   }
 }
 
@@ -7239,8 +7281,10 @@ nsGlobalWindow::ScrollByLines(int32_t numLines,
     // It seems like it would make more sense for ScrollByLines to use
     // SMOOTH mode, but tests seem to depend on the synchronous behaviour.
     // Perhaps Web content does too.
+    bool smoothScroll = sf->GetScrollbarStyles().IsSmoothScroll(aOptions.mBehavior);
+
     sf->ScrollBy(nsIntPoint(0, numLines), nsIScrollableFrame::LINES,
-                 aOptions.mBehavior == ScrollBehavior::Smooth
+                 smoothScroll
                    ? nsIScrollableFrame::SMOOTH_MSD
                    : nsIScrollableFrame::INSTANT);
   }
@@ -7264,8 +7308,10 @@ nsGlobalWindow::ScrollByPages(int32_t numPages,
     // It seems like it would make more sense for ScrollByPages to use
     // SMOOTH mode, but tests seem to depend on the synchronous behaviour.
     // Perhaps Web content does too.
+    bool smoothScroll = sf->GetScrollbarStyles().IsSmoothScroll(aOptions.mBehavior);
+
     sf->ScrollBy(nsIntPoint(0, numPages), nsIScrollableFrame::PAGES,
-                 aOptions.mBehavior == ScrollBehavior::Smooth
+                 smoothScroll
                    ? nsIScrollableFrame::SMOOTH_MSD
                    : nsIScrollableFrame::INSTANT);
   }

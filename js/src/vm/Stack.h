@@ -17,10 +17,8 @@
 #ifdef CHECK_OSIPOINT_REGISTERS
 #include "jit/Registers.h" // for RegisterDump
 #endif
-#include "js/OldDebugAPI.h"
 
 struct JSCompartment;
-struct JSGenerator;
 
 namespace js {
 
@@ -189,7 +187,6 @@ class AbstractFramePtr
 
     inline bool hasCallObj() const;
     inline bool isGeneratorFrame() const;
-    inline bool isYielding() const;
     inline bool isFunctionFrame() const;
     inline bool isGlobalFrame() const;
     inline bool isEvalFrame() const;
@@ -294,17 +291,7 @@ class InterpreterFrame
         GENERATOR          =       0x10,  /* frame is associated with a generator */
         CONSTRUCTING       =       0x20,  /* frame is for a constructor invocation */
 
-        /*
-         * Generator frame state
-         *
-         * YIELDING and SUSPENDED are similar, but there are differences. After
-         * a generator yields, SendToGenerator immediately clears the YIELDING
-         * flag, but the frame will still have the SUSPENDED flag. Also, when the
-         * generator returns but before it's GC'ed, YIELDING is not set but
-         * SUSPENDED is.
-         */
-        YIELDING           =       0x40,  /* Interpret dispatched JSOP_YIELD */
-        SUSPENDED          =       0x80,  /* Generator is not running. */
+        /* (0x40 and 0x80 are unused) */
 
         /* Function prologue state */
         HAS_CALL_OBJ       =      0x100,  /* CallObject created for heavyweight fun */
@@ -802,28 +789,12 @@ class InterpreterFrame
         flags_ |= GENERATOR;
     }
 
-    Value *generatorArgsSnapshotBegin() const {
-        MOZ_ASSERT(isGeneratorFrame());
-        return argv() - 2;
+    void resumeGeneratorFrame(HandleObject scopeChain) {
+        MOZ_ASSERT(!isGeneratorFrame());
+        MOZ_ASSERT(isNonEvalFunctionFrame());
+        flags_ |= GENERATOR | HAS_CALL_OBJ | HAS_SCOPECHAIN;
+        scopeChain_ = scopeChain;
     }
-
-    Value *generatorArgsSnapshotEnd() const {
-        MOZ_ASSERT(isGeneratorFrame());
-        return argv() + js::Max(numActualArgs(), numFormalArgs());
-    }
-
-    Value *generatorSlotsSnapshotBegin() const {
-        MOZ_ASSERT(isGeneratorFrame());
-        return (Value *)(this + 1);
-    }
-
-    enum TriggerPostBarriers {
-        DoPostBarrier = true,
-        NoPostBarrier = false
-    };
-    template <TriggerPostBarriers doPostBarrier>
-    void copyFrameAndValues(JSContext *cx, Value *vp, InterpreterFrame *otherfp,
-                            const Value *othervp, Value *othersp);
 
     /*
      * Other flags
@@ -883,33 +854,6 @@ class InterpreterFrame
 
     void setPrevUpToDate() {
         flags_ |= PREV_UP_TO_DATE;
-    }
-
-    bool isYielding() {
-        return !!(flags_ & YIELDING);
-    }
-
-    void setYielding() {
-        flags_ |= YIELDING;
-    }
-
-    void clearYielding() {
-        flags_ &= ~YIELDING;
-    }
-
-    bool isSuspended() const {
-        MOZ_ASSERT(isGeneratorFrame());
-        return flags_ & SUSPENDED;
-    }
-
-    void setSuspended() {
-        MOZ_ASSERT(isGeneratorFrame());
-        flags_ |= SUSPENDED;
-    }
-
-    void clearSuspended() {
-        MOZ_ASSERT(isGeneratorFrame());
-        flags_ &= ~SUSPENDED;
     }
 
   public:
@@ -1052,6 +996,10 @@ class InterpreterStack
                          HandleScript script, InitialFrameFlags initial);
 
     void popInlineFrame(InterpreterRegs &regs);
+
+    bool resumeGeneratorCallFrame(JSContext *cx, InterpreterRegs &regs,
+                                  HandleFunction callee, HandleValue thisv,
+                                  HandleObject scopeChain);
 
     inline void purge(JSRuntime *rt);
 
@@ -1237,6 +1185,9 @@ class InterpreterActivation : public Activation
                                 InitialFrameFlags initial);
     inline void popInlineFrame(InterpreterFrame *frame);
 
+    inline bool resumeGeneratorFrame(HandleFunction callee, HandleValue thisv,
+                                     HandleObject scopeChain);
+
     InterpreterFrame *current() const {
         return regs_.fp();
     }
@@ -1302,6 +1253,8 @@ class ActivationIterator
 
 namespace jit {
 
+class BailoutFrameInfo;
+
 // A JitActivation is used for frames running in Baseline or Ion.
 class JitActivation : public Activation
 {
@@ -1327,6 +1280,13 @@ class JitActivation : public Activation
     // as soon as we get back to it.
     typedef Vector<RInstructionResults, 1> IonRecoveryMap;
     IonRecoveryMap ionRecovery_;
+
+    // If we are bailing out from Ion, then this field should be a non-null
+    // pointer which references the BailoutFrameInfo used to walk the inner
+    // frames. This field is used for all newly constructed JitFrameIterators to
+    // read the innermost frame information from this bailout data instead of
+    // reading it from the stack.
+    BailoutFrameInfo *bailoutData_;
 
     void clearRematerializedFrames();
 
@@ -1383,11 +1343,8 @@ class JitActivation : public Activation
     // if an IonFrameIterator pointing to the nearest uninlined frame can be
     // provided, as values need to be read out of snapshots.
     //
-    // T is either JitFrameIterator or IonBailoutIterator.
-    //
     // The inlineDepth must be within bounds of the frame pointed to by iter.
-    template <class T>
-    RematerializedFrame *getRematerializedFrame(ThreadSafeContext *cx, const T &iter,
+    RematerializedFrame *getRematerializedFrame(ThreadSafeContext *cx, const JitFrameIterator &iter,
                                                 size_t inlineDepth = 0);
 
     // Look up a rematerialized frame by the fp. If inlineDepth is out of
@@ -1416,6 +1373,15 @@ class JitActivation : public Activation
     void maybeTakeIonFrameRecovery(IonJSFrameLayout *fp, RInstructionResults *results);
 
     void markIonRecovery(JSTracer *trc);
+
+    // Return the bailout information if it is registered.
+    const BailoutFrameInfo *bailoutData() const { return bailoutData_; }
+
+    // Register the bailout data when it is constructed.
+    void setBailoutData(BailoutFrameInfo *bailoutData);
+
+    // Unregister the bailout data when the frame is reconstructed.
+    void cleanBailoutData();
 };
 
 // A filtering of the ActivationIterator to only stop at JitActivations.
@@ -1630,12 +1596,9 @@ class FrameIter
     bool isGeneratorFrame() const;
     bool hasArgs() const { return isNonEvalFunctionFrame(); }
 
-    /*
-     * Get an abstract frame pointer dispatching to either an interpreter,
-     * baseline, or rematerialized optimized frame.
-     */
     ScriptSource *scriptSource() const;
     const char *scriptFilename() const;
+    const char16_t *scriptDisplayURL() const;
     unsigned computeLine(uint32_t *column = nullptr) const;
     JSAtom *functionDisplayAtom() const;
     bool mutedErrors() const;

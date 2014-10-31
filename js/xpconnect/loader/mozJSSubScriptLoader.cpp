@@ -21,7 +21,6 @@
 
 #include "jsapi.h"
 #include "jsfriendapi.h"
-#include "js/OldDebugAPI.h"
 #include "nsJSPrincipals.h"
 #include "xpcprivate.h" // For xpc::OptionsBase
 #include "jswrapper.h"
@@ -113,7 +112,6 @@ mozJSSubScriptLoader::ReadScript(nsIURI *uri, JSContext *cx, JSObject *targetObj
                        nsContentUtils::GetSystemPrincipal(),
                        nsILoadInfo::SEC_NORMAL,
                        nsIContentPolicy::TYPE_OTHER,
-                       nullptr,  // aChannelPolicy
                        nullptr,  // aLoadGroup
                        nullptr,  // aCallbacks
                        nsIRequest::LOAD_NORMAL,

@@ -41,7 +41,6 @@
 #include "gc/Marking.h"
 #include "jit/Ion.h"
 #include "js/CharacterEncoding.h"
-#include "js/OldDebugAPI.h"
 #include "vm/Debugger.h"
 #include "vm/HelperThreads.h"
 #include "vm/Shape.h"
@@ -56,7 +55,6 @@ using namespace js::gc;
 
 using mozilla::DebugOnly;
 using mozilla::PodArrayZero;
-using mozilla::PodZero;
 using mozilla::PointerRangeSize;
 
 bool
@@ -382,7 +380,6 @@ js_ReportOutOfMemory(ThreadSafeContext *cxArg)
 
     /* Fill out the report, but don't do anything that requires allocation. */
     JSErrorReport report;
-    PodZero(&report);
     report.flags = JSREPORT_ERROR;
     report.errorNumber = JSMSG_OUT_OF_MEMORY;
     PopulateReportBlame(cx, &report);
@@ -504,7 +501,6 @@ js_ReportErrorVA(JSContext *cx, unsigned flags, const char *format, va_list ap)
         return false;
     messagelen = strlen(message);
 
-    PodZero(&report);
     report.flags = flags;
     report.errorNumber = JSMSG_USER_DEFINED_ERROR;
     report.ucmessage = ucmessage = InflateString(cx, message, &messagelen);
@@ -809,7 +805,6 @@ js_ReportErrorNumberVA(JSContext *cx, unsigned flags, JSErrorCallback callback,
         return true;
     warning = JSREPORT_IS_WARNING(flags);
 
-    PodZero(&report);
     report.flags = flags;
     report.errorNumber = errorNumber;
     PopulateReportBlame(cx, &report);
@@ -849,7 +844,6 @@ js_ReportErrorNumberUCArray(JSContext *cx, unsigned flags, JSErrorCallback callb
     bool warning = JSREPORT_IS_WARNING(flags);
 
     JSErrorReport report;
-    PodZero(&report);
     report.flags = flags;
     report.errorNumber = errorNumber;
     PopulateReportBlame(cx, &report);
@@ -1110,11 +1104,10 @@ JSContext::JSContext(JSRuntime *rt)
     data(nullptr),
     data2(nullptr),
     outstandingRequests(0),
-    jitIsBroken(false),
+    jitIsBroken(false)
 #ifdef MOZ_TRACE_JSCALLS
-    functionCallback(nullptr),
+  , functionCallback(nullptr)
 #endif
-    innermostGenerator_(nullptr)
 {
     MOZ_ASSERT(static_cast<ContextFriendFields*>(this) ==
                ContextFriendFields::get(this));
@@ -1146,23 +1139,6 @@ JSContext::isThrowingOutOfMemory()
 {
     return throwing && unwrappedException_ == StringValue(names().outOfMemory);
 }
-
-void
-JSContext::enterGenerator(JSGenerator *gen)
-{
-    MOZ_ASSERT(!gen->prevGenerator);
-    gen->prevGenerator = innermostGenerator_;
-    innermostGenerator_ = gen;
-}
-
-void
-JSContext::leaveGenerator(JSGenerator *gen)
-{
-    MOZ_ASSERT(innermostGenerator_ == gen);
-    innermostGenerator_ = innermostGenerator_->prevGenerator;
-    gen->prevGenerator = nullptr;
-}
-
 
 bool
 JSContext::saveFrameChain()

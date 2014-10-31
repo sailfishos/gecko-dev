@@ -107,9 +107,9 @@ MediaSourceDecoder::Shutdown()
 
 /*static*/
 already_AddRefed<MediaResource>
-MediaSourceDecoder::CreateResource()
+MediaSourceDecoder::CreateResource(nsIPrincipal* aPrincipal)
 {
-  return nsRefPtr<MediaResource>(new MediaSourceResource()).forget();
+  return nsRefPtr<MediaResource>(new MediaSourceResource(aPrincipal)).forget();
 }
 
 void
@@ -186,5 +186,18 @@ MediaSourceDecoder::PrepareReaderInitialization()
   MOZ_ASSERT(mReader);
   mReader->PrepareInitialization();
 }
+
+#ifdef MOZ_EME
+nsresult
+MediaSourceDecoder::SetCDMProxy(CDMProxy* aProxy)
+{
+  nsresult rv = MediaDecoder::SetCDMProxy(aProxy);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = mReader->SetCDMProxy(aProxy);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return NS_OK;
+}
+#endif
 
 } // namespace mozilla

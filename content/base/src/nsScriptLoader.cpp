@@ -41,8 +41,6 @@
 #include "nsDocShellCID.h"
 #include "nsIContentSecurityPolicy.h"
 #include "prlog.h"
-#include "nsIChannelPolicy.h"
-#include "nsChannelPolicy.h"
 #include "nsCRT.h"
 #include "nsContentCreatorFunctions.h"
 #include "nsCrossSiteListenerProxy.h"
@@ -292,7 +290,8 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType,
 
   nsCOMPtr<nsILoadGroup> loadGroup = mDocument->GetDocumentLoadGroup();
 
-  nsCOMPtr<nsPIDOMWindow> window(do_QueryInterface(mDocument->GetWindow()));
+  nsCOMPtr<nsPIDOMWindow> window(do_QueryInterface(mDocument->MasterDocument()->GetWindow()));
+
   if (!window) {
     return NS_ERROR_NULL_POINTER;
   }
@@ -306,25 +305,12 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType,
     return NS_OK;
   }
 
-  // check for a Content Security Policy to pass down to the channel
-  // that will be created to load the script
-  nsCOMPtr<nsIChannelPolicy> channelPolicy;
-  nsCOMPtr<nsIContentSecurityPolicy> csp;
-  rv = mDocument->NodePrincipal()->GetCsp(getter_AddRefs(csp));
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (csp) {
-    channelPolicy = do_CreateInstance("@mozilla.org/nschannelpolicy;1");
-    channelPolicy->SetContentSecurityPolicy(csp);
-    channelPolicy->SetLoadType(nsIContentPolicy::TYPE_SCRIPT);
-  }
-
   nsCOMPtr<nsIChannel> channel;
   rv = NS_NewChannel(getter_AddRefs(channel),
                      aRequest->mURI,
                      mDocument,
                      nsILoadInfo::SEC_NORMAL,
                      nsIContentPolicy::TYPE_SCRIPT,
-                     channelPolicy,
                      loadGroup,
                      prompter,
                      nsIRequest::LOAD_NORMAL |
@@ -1247,7 +1233,7 @@ nsScriptLoader::ReadyToExecuteScripts()
     }
   }
 
-  if (!mDocument->IsMasterDocument()) {
+  if (mDocument && !mDocument->IsMasterDocument()) {
     nsRefPtr<ImportManager> im = mDocument->ImportManager();
     nsRefPtr<ImportLoader> loader = im->Find(mDocument);
     MOZ_ASSERT(loader, "How can we have an import document without a loader?");

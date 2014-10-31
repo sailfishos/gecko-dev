@@ -15,6 +15,7 @@
 
 #include "jit/BaselineFrame.h"
 #include "jit/RematerializedFrame.h"
+#include "vm/GeneratorObject.h"
 #include "vm/ScopeObject.h"
 
 #include "jsobjinlines.h"
@@ -326,6 +327,45 @@ InterpreterStack::pushInlineFrame(JSContext *cx, InterpreterRegs &regs, const Ca
     return true;
 }
 
+MOZ_ALWAYS_INLINE bool
+InterpreterStack::resumeGeneratorCallFrame(JSContext *cx, InterpreterRegs &regs,
+                                           HandleFunction callee, HandleValue thisv,
+                                           HandleObject scopeChain)
+{
+    MOZ_ASSERT(callee->isGenerator());
+    RootedScript script(cx, callee->getOrCreateScript(cx));
+    InterpreterFrame *prev = regs.fp();
+    jsbytecode *prevpc = regs.pc;
+    Value *prevsp = regs.sp;
+    MOZ_ASSERT(prev);
+
+    script->ensureNonLazyCanonicalFunction(cx);
+
+    LifoAlloc::Mark mark = allocator_.mark();
+
+    // Include callee, |this|.
+    unsigned nformal = callee->nargs();
+    unsigned nvals = 2 + nformal + script->nslots();
+
+    uint8_t *buffer = allocateFrame(cx, sizeof(InterpreterFrame) + nvals * sizeof(Value));
+    if (!buffer)
+        return false;
+
+    Value *argv = reinterpret_cast<Value *>(buffer) + 2;
+    argv[-2] = ObjectValue(*callee);
+    argv[-1] = thisv;
+    SetValueRangeToUndefined(argv, nformal);
+
+    InterpreterFrame *fp = reinterpret_cast<InterpreterFrame *>(argv + nformal);
+    InterpreterFrame::Flags flags = ToFrameFlags(INITIAL_NONE);
+    fp->mark_ = mark;
+    fp->initCallFrame(cx, prev, prevpc, prevsp, *callee, script, argv, 0, flags);
+    fp->resumeGeneratorFrame(scopeChain);
+
+    regs.prepareToRun(*fp, script);
+    return true;
+}
+
 MOZ_ALWAYS_INLINE void
 InterpreterStack::popInlineFrame(InterpreterRegs &regs)
 {
@@ -351,6 +391,15 @@ FrameIter::unaliasedForEachActual(JSContext *cx, Op op)
         if (data_.jitFrames_.isIonJS()) {
             jit::MaybeReadFallback recover(cx, activation()->asJit(), &data_.jitFrames_);
             ionInlineFrames_.unaliasedForEachActual(cx, op, jit::ReadFrame_Actuals, recover);
+        } else if (data_.jitFrames_.isBailoutJS()) {
+            // :TODO: (Bug 1070962) If we are introspecting the frame which is
+            // being bailed, then we might be in the middle of recovering
+            // instructions. Stacking computeInstructionResults implies that we
+            // might be recovering result twice. In the mean time, to avoid
+            // that, we just return Undefined values for instruction results
+            // which are not yet recovered.
+            jit::MaybeReadFallback fallback;
+            ionInlineFrames_.unaliasedForEachActual(cx, op, jit::ReadFrame_Actuals, fallback);
         } else {
             MOZ_ASSERT(data_.jitFrames_.isBaselineJS());
             data_.jitFrames_.unaliasedForEachActual(op, jit::ReadFrame_Actuals);
@@ -505,14 +554,6 @@ AbstractFramePtr::isGeneratorFrame() const
 {
     if (isInterpreterFrame())
         return asInterpreterFrame()->isGeneratorFrame();
-    return false;
-}
-
-inline bool
-AbstractFramePtr::isYielding() const
-{
-    if (isInterpreterFrame())
-        return asInterpreterFrame()->isYielding();
     return false;
 }
 
@@ -800,13 +841,8 @@ InterpreterActivation::InterpreterActivation(RunState &state, JSContext *cx,
   , oldFrameCount_(cx->runtime()->interpreterStack().frameCount_)
 #endif
 {
-    if (!state.isGenerator()) {
-        regs_.prepareToRun(*entryFrame, state.script());
-        MOZ_ASSERT(regs_.pc == state.script()->code());
-    } else {
-        regs_ = state.asGenerator()->gen()->regs;
-    }
-
+    regs_.prepareToRun(*entryFrame, state.script());
+    MOZ_ASSERT(regs_.pc == state.script()->code());
     MOZ_ASSERT_IF(entryFrame_->isEvalFrame(), state_.script()->isActiveEval());
 }
 
@@ -819,13 +855,6 @@ InterpreterActivation::~InterpreterActivation()
     JSContext *cx = cx_->asJSContext();
     MOZ_ASSERT(oldFrameCount_ == cx->runtime()->interpreterStack().frameCount_);
     MOZ_ASSERT_IF(oldFrameCount_ == 0, cx->runtime()->interpreterStack().allocator_.used() == 0);
-
-    if (state_.isGenerator()) {
-        JSGenerator *gen = state_.asGenerator()->gen();
-        gen->fp->unsetPushedSPSFrame();
-        gen->regs = regs_;
-        return;
-    }
 
     if (entryFrame_)
         cx->runtime()->interpreterStack().releaseFrame(entryFrame_);
@@ -850,6 +879,18 @@ InterpreterActivation::popInlineFrame(InterpreterFrame *frame)
     MOZ_ASSERT(regs_.fp() != entryFrame_);
 
     cx_->asJSContext()->runtime()->interpreterStack().popInlineFrame(regs_);
+}
+
+inline bool
+InterpreterActivation::resumeGeneratorFrame(HandleFunction callee, HandleValue thisv,
+                                            HandleObject scopeChain)
+{
+    InterpreterStack &stack = cx_->asJSContext()->runtime()->interpreterStack();
+    if (!stack.resumeGeneratorCallFrame(cx_->asJSContext(), regs_, callee, thisv, scopeChain))
+        return false;
+
+    MOZ_ASSERT(regs_.fp()->script()->compartment() == compartment_);
+    return true;
 }
 
 inline JSContext *

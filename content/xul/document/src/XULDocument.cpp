@@ -44,6 +44,7 @@
 #include "nsNetUtil.h"
 #include "nsParserCIID.h"
 #include "nsPIBoxObject.h"
+#include "mozilla/dom/BoxObject.h"
 #include "nsXPIDLString.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowRoot.h"
@@ -2701,7 +2702,6 @@ XULDocument::LoadOverlayInternal(nsIURI* aURI, bool aIsDynamic,
                            NodePrincipal(),
                            nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL,
                            nsIContentPolicy::TYPE_OTHER,
-                           nullptr,    // aChannelPolicy
                            group);
 
         if (NS_SUCCEEDED(rv)) {

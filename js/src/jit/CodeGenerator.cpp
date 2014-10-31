@@ -1215,16 +1215,18 @@ CreateDependentString(MacroAssembler &masm, const JSAtomState &names,
 
     Label notInline;
 
-    int32_t maxInlineLength =
-        latin1 ? JSFatInlineString::MAX_LENGTH_LATIN1 : JSFatInlineString::MAX_LENGTH_TWO_BYTE;
+    int32_t maxInlineLength = latin1
+                              ? (int32_t) JSFatInlineString::MAX_LENGTH_LATIN1
+                              : (int32_t) JSFatInlineString::MAX_LENGTH_TWO_BYTE;
     masm.branch32(Assembler::Above, temp1, Imm32(maxInlineLength), &notInline);
 
     {
         // Make a normal or fat inline string.
         Label stringAllocated, fatInline;
 
-        int32_t maxNormalInlineLength =
-            latin1 ? JSInlineString::MAX_LENGTH_LATIN1 : JSInlineString::MAX_LENGTH_TWO_BYTE;
+        int32_t maxNormalInlineLength = latin1
+                                        ? (int32_t) JSInlineString::MAX_LENGTH_LATIN1
+                                        : (int32_t) JSInlineString::MAX_LENGTH_TWO_BYTE;
         masm.branch32(Assembler::Above, temp1, Imm32(maxNormalInlineLength), &fatInline);
 
         int32_t normalFlags = (latin1 ? JSString::LATIN1_CHARS_BIT : 0) | JSString::INIT_INLINE_FLAGS;
@@ -1298,7 +1300,7 @@ CreateDependentString(MacroAssembler &masm, const JSAtomState &names,
         Label noBase;
         masm.branchTest32(Assembler::Zero, Address(base, JSString::offsetOfFlags()),
                           Imm32(JSString::HAS_BASE_BIT), &noBase);
-        masm.branchTest32(Assembler::Zero, Address(base, JSString::offsetOfFlags()),
+        masm.branchTest32(Assembler::NonZero, Address(base, JSString::offsetOfFlags()),
                           Imm32(JSString::FLAT_BIT), &noBase);
         masm.loadPtr(Address(base, JSDependentString::offsetOfBase()), temp1);
         masm.storePtr(temp1, Address(string, JSDependentString::offsetOfBase()));
@@ -2837,6 +2839,33 @@ CodeGenerator::visitCallNative(LCallNative *call)
     return true;
 }
 
+static void
+LoadDOMPrivate(MacroAssembler &masm, Register obj, Register priv)
+{
+    // Load the value in DOM_OBJECT_SLOT for a native or proxy DOM object. This
+    // will be in the first slot but may be fixed or non-fixed.
+    MOZ_ASSERT(obj != priv);
+
+    // Check shape->numFixedSlots != 0.
+    masm.loadPtr(Address(obj, JSObject::offsetOfShape()), priv);
+
+    Label hasFixedSlots, done;
+    masm.branchTest32(Assembler::NonZero,
+                      Address(priv, Shape::offsetOfSlotInfo()),
+                      Imm32(Shape::fixedSlotsMask()),
+                      &hasFixedSlots);
+
+    masm.loadPtr(Address(obj, NativeObject::offsetOfSlots()), priv);
+    masm.loadPrivate(Address(priv, 0), priv);
+
+    masm.jump(&done);
+    masm.bind(&hasFixedSlots);
+
+    masm.loadPrivate(Address(obj, NativeObject::getFixedSlotOffset(0)), priv);
+
+    masm.bind(&done);
+}
+
 bool
 CodeGenerator::visitCallDOMNative(LCallDOMNative *call)
 {
@@ -2885,8 +2914,7 @@ CodeGenerator::visitCallDOMNative(LCallDOMNative *call)
                      IonDOMMethodExitFrameLayoutTraits::offsetOfArgcFromArgv);
     masm.computeEffectiveAddress(Address(StackPointer, 2 * sizeof(Value)), argArgs);
 
-    // GetReservedSlot(obj, DOM_OBJECT_SLOT).toPrivate()
-    masm.loadPrivate(Address(obj, NativeObject::getFixedSlotOffset(0)), argPrivate);
+    LoadDOMPrivate(masm, obj, argPrivate);
 
     // Push argc from the call instruction into what will become the IonExitFrame
     masm.Push(Imm32(call->numStackArgs()));
@@ -4008,6 +4036,7 @@ CodeGenerator::emitDebugResultChecks(LInstruction *ins)
       default:
         return true;
     }
+    return true;
 }
 #endif
 
@@ -4988,7 +5017,7 @@ CodeGenerator::visitNeuterCheck(LNeuterCheck *lir)
     masm.loadObjClass(obj, temp);
     masm.branchPtr(Assembler::Equal, temp, ImmPtr(&InlineOpaqueTypedObject::class_), &inlineObject);
 
-    masm.extractObject(Address(obj, OutlineTypedObject::offsetOfOwnerSlot()), temp);
+    masm.loadPtr(Address(obj, OutlineTypedObject::offsetOfOwner()), temp);
     masm.unboxInt32(Address(temp, ArrayBufferObject::offsetOfFlagsSlot()), temp);
 
     Imm32 flag(ArrayBufferObject::neuteredFlag());
@@ -5018,6 +5047,16 @@ CodeGenerator::visitTypedObjectProto(LTypedObjectProto *lir)
 }
 
 bool
+CodeGenerator::visitTypedObjectUnsizedLength(LTypedObjectUnsizedLength *lir)
+{
+    Register obj = ToRegister(lir->object());
+    Register out = ToRegister(lir->output());
+
+    masm.load32(Address(obj, OutlineTypedObject::offsetOfUnsizedLength()), out);
+    return true;
+}
+
+bool
 CodeGenerator::visitTypedObjectElements(LTypedObjectElements *lir)
 {
     Register obj = ToRegister(lir->object());
@@ -5027,7 +5066,7 @@ CodeGenerator::visitTypedObjectElements(LTypedObjectElements *lir)
     masm.loadObjClass(obj, out);
     masm.branchPtr(Assembler::Equal, out, ImmPtr(&InlineOpaqueTypedObject::class_), &inlineObject);
 
-    masm.loadPtr(Address(obj, OutlineTypedObject::offsetOfDataSlot()), out);
+    masm.loadPtr(Address(obj, OutlineTypedObject::offsetOfData()), out);
     masm.jump(&done);
 
     masm.bind(&inlineObject);
@@ -5046,7 +5085,7 @@ CodeGenerator::visitSetTypedObjectOffset(LSetTypedObjectOffset *lir)
     Register temp1 = ToRegister(lir->temp1());
 
     // Compute the base pointer for the typed object's owner.
-    masm.extractObject(Address(object, OutlineTypedObject::offsetOfOwnerSlot()), temp0);
+    masm.loadPtr(Address(object, OutlineTypedObject::offsetOfOwner()), temp0);
 
     Label inlineObject, done;
     masm.loadObjClass(temp0, temp1);
@@ -5062,7 +5101,7 @@ CodeGenerator::visitSetTypedObjectOffset(LSetTypedObjectOffset *lir)
 
     // Compute the new data pointer and set it in the object.
     masm.addPtr(offset, temp0);
-    masm.storePtr(temp0, Address(object, OutlineTypedObject::offsetOfDataSlot()));
+    masm.storePtr(temp0, Address(object, OutlineTypedObject::offsetOfData()));
 
     return true;
 }
@@ -7459,9 +7498,17 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
 
     // Check to make sure we didn't have a mid-build invalidation. If so, we
     // will trickle to jit::Compile() and return Method_Skipped.
+    uint32_t warmUpCount = script->getWarmUpCount();
     types::RecompileInfo recompileInfo;
     if (!types::FinishCompilation(cx, script, executionMode, constraints, &recompileInfo))
         return true;
+
+    // IonMonkey could have inferred better type information during
+    // compilation. Since adding the new information to the actual type
+    // information can reset the usecount, increase it back to what it was
+    // before.
+    if (warmUpCount > script->getWarmUpCount())
+        script->incWarmUpCounter(warmUpCount - script->getWarmUpCount());
 
     uint32_t scriptFrameSize = frameClass_ == FrameSizeClass::None()
                            ? frameDepth_
@@ -9213,8 +9260,7 @@ CodeGenerator::visitGetDOMProperty(LGetDOMProperty *ins)
 
     masm.Push(ObjectReg);
 
-    // GetReservedSlot(obj, DOM_OBJECT_SLOT).toPrivate()
-    masm.loadPrivate(Address(ObjectReg, NativeObject::getFixedSlotOffset(0)), PrivateReg);
+    LoadDOMPrivate(masm, ObjectReg, PrivateReg);
 
     // Rooting will happen at GC time.
     masm.movePtr(StackPointer, ObjectReg);
@@ -9292,8 +9338,7 @@ CodeGenerator::visitSetDOMProperty(LSetDOMProperty *ins)
 
     masm.Push(ObjectReg);
 
-    // GetReservedSlot(obj, DOM_OBJECT_SLOT).toPrivate()
-    masm.loadPrivate(Address(ObjectReg, NativeObject::getFixedSlotOffset(0)), PrivateReg);
+    LoadDOMPrivate(masm, ObjectReg, PrivateReg);
 
     // Rooting will happen at GC time.
     masm.movePtr(StackPointer, ObjectReg);
@@ -9720,18 +9765,31 @@ CodeGenerator::visitAsmJSInterruptCheck(LAsmJSInterruptCheck *lir)
 typedef bool (*RecompileFn)(JSContext *);
 static const VMFunction RecompileFnInfo = FunctionInfo<RecompileFn>(Recompile);
 
+typedef bool (*ForcedRecompileFn)(JSContext *);
+static const VMFunction ForcedRecompileFnInfo = FunctionInfo<ForcedRecompileFn>(ForcedRecompile);
+
 bool
 CodeGenerator::visitRecompileCheck(LRecompileCheck *ins)
 {
     Label done;
     Register tmp = ToRegister(ins->scratch());
-    OutOfLineCode *ool = oolCallVM(RecompileFnInfo, ins, (ArgList()), StoreRegisterTo(tmp));
+    OutOfLineCode *ool;
+    if (ins->mir()->forceRecompilation())
+        ool = oolCallVM(ForcedRecompileFnInfo, ins, (ArgList()), StoreRegisterTo(tmp));
+    else
+        ool = oolCallVM(RecompileFnInfo, ins, (ArgList()), StoreRegisterTo(tmp));
 
     // Check if warm-up counter is high enough.
-    masm.movePtr(ImmPtr(ins->mir()->script()->addressOfWarmUpCounter()), tmp);
-    Address ptr(tmp, 0);
-    masm.add32(Imm32(1), tmp);
-    masm.branch32(Assembler::BelowOrEqual, ptr, Imm32(ins->mir()->recompileThreshold()), &done);
+    AbsoluteAddress warmUpCount = AbsoluteAddress(ins->mir()->script()->addressOfWarmUpCounter());
+    if (ins->mir()->increaseWarmUpCounter()) {
+        masm.load32(warmUpCount, tmp);
+        masm.add32(Imm32(1), tmp);
+        masm.store32(tmp, warmUpCount);
+        masm.branch32(Assembler::BelowOrEqual, tmp, Imm32(ins->mir()->recompileThreshold()), &done);
+    } else {
+        masm.branch32(Assembler::BelowOrEqual, warmUpCount, Imm32(ins->mir()->recompileThreshold()),
+                      &done);
+    }
 
     // Check if not yet recompiling.
     CodeOffsetLabel label = masm.movWithPatch(ImmWord(uintptr_t(-1)), tmp);

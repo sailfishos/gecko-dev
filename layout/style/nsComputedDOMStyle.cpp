@@ -2708,6 +2708,16 @@ nsComputedDOMStyle::DoGetOrient()
 }
 
 CSSValue*
+nsComputedDOMStyle::DoGetScrollBehavior()
+{
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
+  val->SetIdent(
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mScrollBehavior,
+                                   nsCSSProps::kScrollBehaviorKTable));
+  return val;
+}
+
+CSSValue*
 nsComputedDOMStyle::DoGetOutlineWidth()
 {
   nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
@@ -4229,6 +4239,15 @@ nsComputedDOMStyle::DoGetMixBlendMode()
 }
 
 CSSValue*
+nsComputedDOMStyle::DoGetIsolation()
+{
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
+  val->SetIdent(nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mIsolation,
+                                               nsCSSProps::kIsolationKTable));
+  return val;
+}
+
+CSSValue*
 nsComputedDOMStyle::DoGetObjectFit()
 {
   nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
@@ -5175,45 +5194,94 @@ nsComputedDOMStyle::DoGetStopColor()
   return val;
 }
 
+inline void AppendBasicShapeTypeToString(nsStyleBasicShape::Type aType,
+                                         nsAutoString& aString)
+{
+  nsCSSKeyword functionName;
+  switch (aType) {
+    case nsStyleBasicShape::Type::ePolygon:
+      functionName = eCSSKeyword_polygon;
+      break;
+    case nsStyleBasicShape::Type::eCircle:
+      functionName = eCSSKeyword_circle;
+      break;
+    case nsStyleBasicShape::Type::eEllipse:
+      functionName = eCSSKeyword_ellipse;
+      break;
+    default:
+      NS_NOTREACHED("unexpected type");
+  }
+  AppendASCIItoUTF16(nsCSSKeywords::GetStringValue(functionName),
+                     aString);
+}
+
 CSSValue*
 nsComputedDOMStyle::CreatePrimitiveValueForClipPath(
   const nsStyleBasicShape* aStyleBasicShape, uint8_t aSizingBox)
 {
   nsDOMCSSValueList* valueList = GetROCSSValueList(false);
-
-  if (aStyleBasicShape &&
-      aStyleBasicShape->GetShapeType() == nsStyleBasicShape::Type::ePolygon) {
-    nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
-
+  if (aStyleBasicShape) {
+    nsStyleBasicShape::Type type = aStyleBasicShape->GetShapeType();
     // Shape function name and opening parenthesis.
     nsAutoString shapeFunctionString;
-    AppendASCIItoUTF16(nsCSSKeywords::GetStringValue(eCSSKeyword_polygon),
-                       shapeFunctionString);
+    AppendBasicShapeTypeToString(type, shapeFunctionString);
     shapeFunctionString.Append('(');
-    bool hasEvenOdd = aStyleBasicShape->GetFillRule() ==
-                          NS_STYLE_FILL_RULE_EVENODD;
-    if (hasEvenOdd) {
-      shapeFunctionString.AppendLiteral("evenodd");
-    }
-    for (size_t i = 0; i < aStyleBasicShape->Coordinates().Length(); i += 2) {
-      nsAutoString coordString;
-      if (i > 0 || hasEvenOdd) {
-        shapeFunctionString.AppendLiteral(", ");
+    switch (type) {
+      case nsStyleBasicShape::Type::ePolygon: {
+        bool hasEvenOdd = aStyleBasicShape->GetFillRule() ==
+                              NS_STYLE_FILL_RULE_EVENODD;
+        if (hasEvenOdd) {
+          shapeFunctionString.AppendLiteral("evenodd");
+        }
+        for (size_t i = 0;
+             i < aStyleBasicShape->Coordinates().Length(); i += 2) {
+          nsAutoString coordString;
+          if (i > 0 || hasEvenOdd) {
+            shapeFunctionString.AppendLiteral(", ");
+          }
+          SetCssTextToCoord(coordString,
+                            aStyleBasicShape->Coordinates()[i]);
+          shapeFunctionString.Append(coordString);
+          shapeFunctionString.Append(' ');
+          SetCssTextToCoord(coordString,
+                            aStyleBasicShape->Coordinates()[i + 1]);
+          shapeFunctionString.Append(coordString);
+        }
+        break;
       }
-      SetCssTextToCoord(coordString,
-                        aStyleBasicShape->Coordinates()[i]);
-      shapeFunctionString.Append(coordString);
-      shapeFunctionString.Append(' ');
-      SetCssTextToCoord(coordString,
-                        aStyleBasicShape->Coordinates()[i + 1]);
-      shapeFunctionString.Append(coordString);
+      case nsStyleBasicShape::Type::eCircle:
+      case nsStyleBasicShape::Type::eEllipse: {
+        const nsTArray<nsStyleCoord>& radii = aStyleBasicShape->Coordinates();
+        NS_ABORT_IF_FALSE(radii.Length() ==
+                          (nsStyleBasicShape::Type::eCircle ? 1 : 2),
+                          "wrong number of radii");
+        for (size_t i = 0; i < radii.Length(); ++i) {
+          nsAutoString radius;
+          nsRefPtr<nsROCSSPrimitiveValue> value = new nsROCSSPrimitiveValue;
+          bool clampNegativeCalc = true;
+          SetValueToCoord(value, radii[i], clampNegativeCalc, nullptr,
+                          nsCSSProps::kShapeRadiusKTable);
+          value->GetCssText(radius);
+          shapeFunctionString.Append(radius);
+          shapeFunctionString.Append(' ');
+        }
+        shapeFunctionString.AppendLiteral("at ");
+
+        nsRefPtr<nsDOMCSSValueList> position = GetROCSSValueList(false);
+        nsAutoString positionString;
+        SetValueToPosition(aStyleBasicShape->GetPosition(), position);
+        position->GetCssText(positionString);
+        shapeFunctionString.Append(positionString);
+        break;
+      }
+      default:
+        NS_NOTREACHED("unexpected type");
     }
     shapeFunctionString.Append(')');
-    val->SetString(shapeFunctionString);
-    valueList->AppendCSSValue(val);
+    nsROCSSPrimitiveValue* functionValue = new nsROCSSPrimitiveValue;
+    functionValue->SetString(shapeFunctionString);
+    valueList->AppendCSSValue(functionValue);
   }
-
-  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
 
   if (aSizingBox == NS_STYLE_CLIP_SHAPE_SIZING_NOBOX) {
     return valueList;
@@ -5224,6 +5292,7 @@ nsComputedDOMStyle::CreatePrimitiveValueForClipPath(
     nsCSSProps::ValueToKeyword(aSizingBox,
                                nsCSSProps::kClipShapeSizingKTable),
                                boxString);
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
   val->SetString(boxString);
   valueList->AppendCSSValue(val);
 

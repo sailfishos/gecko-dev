@@ -752,6 +752,20 @@ MBasicBlock::discardLastIns()
     discard(lastIns());
 }
 
+MConstant *
+MBasicBlock::optimizedOutConstant(TempAllocator &alloc)
+{
+    // If the first instruction is a MConstant(MagicValue(JS_OPTIMIZED_OUT))
+    // then reuse it.
+    MInstruction *ins = *begin();
+    if (ins->type() == MIRType_MagicOptimizedOut)
+        return ins->toConstant();
+
+    MConstant *constant = MConstant::New(alloc, MagicValue(JS_OPTIMIZED_OUT));
+    insertBefore(ins, constant);
+    return constant;
+}
+
 void
 MBasicBlock::addFromElsewhere(MInstruction *ins)
 {
@@ -887,10 +901,8 @@ MBasicBlock::discardAllPhis()
 void
 MBasicBlock::discardAllResumePoints(bool discardEntry)
 {
-    if (outerResumePoint_) {
-        discardResumePoint(outerResumePoint_);
-        outerResumePoint_ = nullptr;
-    }
+    if (outerResumePoint_)
+        clearOuterResumePoint();
 
     if (discardEntry && entryResumePoint_)
         clearEntryResumePoint();

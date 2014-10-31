@@ -40,6 +40,7 @@ class gfxContext MOZ_FINAL {
     typedef mozilla::gfx::FillRule FillRule;
     typedef mozilla::gfx::Path Path;
     typedef mozilla::gfx::Pattern Pattern;
+    typedef mozilla::gfx::Rect Rect;
 
     NS_INLINE_DECL_REFCOUNTING(gfxContext)
 
@@ -59,11 +60,6 @@ public:
      * gfxContext, aTarget will no longer have its transform.
      */
     static already_AddRefed<gfxContext> ContextForDrawTarget(mozilla::gfx::DrawTarget* aTarget);
-
-    /**
-     * Return the surface that this gfxContext was created with
-     */
-    gfxASurface *OriginalSurface();
 
     /**
      * Return the current transparency group target, if any, along
@@ -209,14 +205,6 @@ public:
      */
     void Rectangle(const gfxRect& rect, bool snapToPixels = false);
     void SnappedRectangle(const gfxRect& rect) { return Rectangle(rect, true); }
-
-    /**
-     * Draw an ellipse at the center corner with the given dimensions.
-     * It extends dimensions.width / 2.0 in the horizontal direction
-     * from the center, and dimensions.height / 2.0 in the vertical
-     * direction.
-     */
-    void Ellipse(const gfxPoint& center, const gfxSize& dimensions);
 
     /**
      * Draw a polygon from the given points
@@ -517,10 +505,6 @@ public:
      * how drawing something will modify the destination. For example, the
      * OVER operator will do alpha blending of source and destination, while
      * SOURCE will replace the destination with the source.
-     *
-     * Note that if the flag FLAG_SIMPLIFY_OPERATORS is set on this
-     * gfxContext, the actual operator set might change for optimization
-     * purposes.  Check the comments below around that flag.
      */
     void SetOperator(GraphicsOperator op);
     GraphicsOperator CurrentOperator() const;
@@ -548,6 +532,7 @@ public:
      * Helper functions that will create a rect path and call Clip().
      * Any current path will be destroyed by these functions!
      */
+    void Clip(const Rect& rect);
     void Clip(const gfxRect& rect); // will clip to a rect
 
     /**
@@ -593,38 +578,6 @@ public:
 
     mozilla::gfx::Point GetDeviceOffset() const;
 
-    /**
-     ** Flags
-     **/
-
-    enum {
-        /* If this flag is set, operators other than CLEAR, SOURCE, or
-         * OVER will be converted to OVER before being sent to cairo.
-         *
-         * This is most useful with a printing surface, where
-         * operators such as ADD are used to avoid seams for on-screen
-         * display, but where such errors aren't noticeable in print.
-         * This approach is currently used in border rendering.
-         *
-         * However, when printing complex renderings such as SVG,
-         * care should be taken to clear this flag.
-         */
-        FLAG_SIMPLIFY_OPERATORS = (1 << 0),
-        /**
-         * When this flag is set, snapping to device pixels is disabled.
-         * It simply never does anything.
-         */
-        FLAG_DISABLE_SNAPPING = (1 << 1),
-        /**
-         * Disable copying of backgrounds in PushGroupAndCopyBackground.
-         */
-        FLAG_DISABLE_COPY_BACKGROUND = (1 << 2)
-    };
-
-    void SetFlag(int32_t aFlag) { mFlags |= aFlag; }
-    void ClearFlag(int32_t aFlag) { mFlags &= ~aFlag; }
-    int32_t GetFlags() const { return mFlags; }
-
     // Work out whether cairo will snap inter-glyph spacing to pixels.
     void GetRoundOffsetsToPixels(bool *aRoundX, bool *aRoundY);
 
@@ -662,7 +615,6 @@ private:
   typedef mozilla::gfx::Color Color;
   typedef mozilla::gfx::StrokeOptions StrokeOptions;
   typedef mozilla::gfx::Float Float;
-  typedef mozilla::gfx::Rect Rect;
   typedef mozilla::gfx::CompositionOp CompositionOp;
   typedef mozilla::gfx::PathBuilder PathBuilder;
   typedef mozilla::gfx::SourceSurface SourceSurface;
@@ -732,8 +684,6 @@ private:
   const AzureState &CurrentState() const { return mStateStack[mStateStack.Length() - 1]; }
 
   cairo_t *mRefCairo;
-  nsRefPtr<gfxASurface> mSurface;
-  int32_t mFlags;
 
   mozilla::RefPtr<DrawTarget> mDT;
   mozilla::RefPtr<DrawTarget> mOriginalDT;
@@ -906,15 +856,12 @@ public:
     }
     ~gfxContextAutoDisableSubpixelAntialiasing()
     {
-        if (mSurface) {
-            mSurface->SetSubpixelAntialiasingEnabled(mSubpixelAntialiasingEnabled);
-        } else if (mDT) {
+        if (mDT) {
             mDT->SetPermitSubpixelAA(mSubpixelAntialiasingEnabled);
         }
     }
 
 private:
-    nsRefPtr<gfxASurface> mSurface;
     mozilla::RefPtr<mozilla::gfx::DrawTarget> mDT;
     bool mSubpixelAntialiasingEnabled;
 };

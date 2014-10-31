@@ -118,7 +118,7 @@ TypedArrayObject::ensureHasBuffer(JSContext *cx, Handle<TypedArrayObject *> tarr
         return false;
 
     memcpy(buffer->dataPointer(), tarray->viewData(), tarray->byteLength());
-    InitArrayBufferViewDataPointer(tarray, buffer, 0);
+    tarray->setPrivate(buffer->dataPointer());
 
     tarray->setSlot(TypedArrayLayout::BUFFER_SLOT, ObjectValue(*buffer));
     return true;
@@ -353,7 +353,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         obj->setSlot(TypedArrayLayout::BUFFER_SLOT, ObjectOrNullValue(buffer));
 
         if (buffer) {
-            InitArrayBufferViewDataPointer(obj, buffer, byteOffset);
+            obj->initPrivate(buffer->dataPointer() + byteOffset);
         } else {
             void *data = obj->fixedData(FIXED_DATA_START);
             obj->initPrivate(data);
@@ -955,7 +955,7 @@ DataViewObject::create(JSContext *cx, uint32_t byteOffset, uint32_t byteLength,
     dvobj.setFixedSlot(TypedArrayLayout::BYTEOFFSET_SLOT, Int32Value(byteOffset));
     dvobj.setFixedSlot(TypedArrayLayout::LENGTH_SLOT, Int32Value(byteLength));
     dvobj.setFixedSlot(TypedArrayLayout::BUFFER_SLOT, ObjectValue(*arrayBuffer));
-    InitArrayBufferViewDataPointer(&dvobj, arrayBuffer, byteOffset);
+    dvobj.initPrivate(arrayBuffer->dataPointer() + byteOffset);
     MOZ_ASSERT(byteOffset + byteLength <= arrayBuffer->byteLength());
 
     // Verify that the private slot is at the expected place
@@ -1814,51 +1814,6 @@ const Class TypedArrayObject::protoClasses[Scalar::TypeMax] = {
     IMPL_TYPED_ARRAY_PROTO_CLASS(Float64Array),
     IMPL_TYPED_ARRAY_PROTO_CLASS(Uint8ClampedArray)
 };
-
-JSObject *
-js_InitArrayBufferClass(JSContext *cx, HandleObject obj)
-{
-    Rooted<GlobalObject*> global(cx, cx->compartment()->maybeGlobal());
-    if (global->isStandardClassResolved(JSProto_ArrayBuffer))
-        return &global->getPrototype(JSProto_ArrayBuffer).toObject();
-
-    RootedNativeObject arrayBufferProto(cx, global->createBlankPrototype(cx, &ArrayBufferObject::protoClass));
-    if (!arrayBufferProto)
-        return nullptr;
-
-    RootedFunction ctor(cx, global->createConstructor(cx, ArrayBufferObject::class_constructor,
-                                                      cx->names().ArrayBuffer, 1));
-    if (!ctor)
-        return nullptr;
-
-    if (!GlobalObject::initBuiltinConstructor(cx, global, JSProto_ArrayBuffer,
-                                              ctor, arrayBufferProto))
-    {
-        return nullptr;
-    }
-
-    if (!LinkConstructorAndPrototype(cx, ctor, arrayBufferProto))
-        return nullptr;
-
-    RootedId byteLengthId(cx, NameToId(cx->names().byteLength));
-    unsigned attrs = JSPROP_SHARED | JSPROP_GETTER;
-    JSObject *getter = NewFunction(cx, NullPtr(), ArrayBufferObject::byteLengthGetter, 0,
-                                   JSFunction::NATIVE_FUN, global, NullPtr());
-    if (!getter)
-        return nullptr;
-
-    if (!DefineNativeProperty(cx, arrayBufferProto, byteLengthId, UndefinedHandleValue,
-                              JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, attrs))
-        return nullptr;
-
-    if (!JS_DefineFunctions(cx, ctor, ArrayBufferObject::jsstaticfuncs))
-        return nullptr;
-
-    if (!JS_DefineFunctions(cx, arrayBufferProto, ArrayBufferObject::jsfuncs))
-        return nullptr;
-
-    return arrayBufferProto;
-}
 
 /* static */ bool
 TypedArrayObject::isOriginalLengthGetter(Native native)

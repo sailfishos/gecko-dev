@@ -18,7 +18,6 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/MediaKeySessionBinding.h"
 #include "mozilla/dom/MediaKeysBinding.h"
-#include "mozilla/dom/UnionTypes.h"
 
 struct JSContext;
 
@@ -28,6 +27,7 @@ class CDMProxy;
 
 namespace dom {
 
+class ArrayBufferViewOrArrayBuffer;
 class MediaKeyError;
 
 class MediaKeySession MOZ_FINAL : public DOMEventTargetHelper
@@ -83,6 +83,8 @@ public:
                           const nsAString& aURL);
 
   void DispatchKeyError(uint32_t system_code);
+
+  void DispatchKeysChange();
 
   void OnClosed();
 

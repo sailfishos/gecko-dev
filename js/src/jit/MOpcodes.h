@@ -20,6 +20,8 @@ namespace jit {
     _(SimdExtractElement)                                                   \
     _(SimdInsertElement)                                                    \
     _(SimdSignMask)                                                         \
+    _(SimdSwizzle)                                                          \
+    _(SimdShuffle)                                                          \
     _(SimdUnaryArith)                                                       \
     _(SimdBinaryComp)                                                       \
     _(SimdBinaryArith)                                                      \
@@ -158,6 +160,7 @@ namespace jit {
     _(TypedArrayLength)                                                     \
     _(TypedArrayElements)                                                   \
     _(TypedObjectProto)                                                     \
+    _(TypedObjectUnsizedLength)                                             \
     _(TypedObjectElements)                                                  \
     _(SetTypedObjectOffset)                                                 \
     _(InitializedLength)                                                    \

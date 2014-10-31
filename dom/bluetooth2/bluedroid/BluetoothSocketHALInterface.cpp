@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "BluetoothHALHelpers.h"
+#include "mozilla/FileUtils.h"
 #include "nsClassHashtable.h"
 #include "nsXULAppAPI.h"
 
@@ -286,7 +287,7 @@ private:
     msg.msg_iovlen = 1;
 
     ssize_t res = TEMP_FAILURE_RETRY(recvmsg(mFd, &msg, MSG_NOSIGNAL));
-    if (res < 0) {
+    if (res <= 0) {
       return STATUS_FAIL;
     }
 
@@ -311,7 +312,7 @@ private:
     msg.msg_controllen = sizeof(cmsgbuf);
 
     ssize_t res = TEMP_FAILURE_RETRY(recvmsg(mFd, &msg, MSG_NOSIGNAL));
-    if (res < 0) {
+    if (res <= 0) {
       return STATUS_FAIL;
     }
 
@@ -485,6 +486,10 @@ public:
 
   void Proceed(BluetoothStatus aStatus) MOZ_OVERRIDE
   {
+    if ((aStatus != STATUS_SUCCESS) && (GetClientFd() != -1)) {
+      mozilla::ScopedClose(GetClientFd()); // Close received socket fd on error
+    }
+
     DispatchBluetoothSocketHALResult(
       GetResultHandler(), &BluetoothSocketResultHandler::Accept,
       GetClientFd(), GetBdAddress(), GetConnectionStatus(), aStatus);

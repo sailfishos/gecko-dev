@@ -25,6 +25,7 @@ import org.mozilla.gecko.GeckoEvent;
 import org.mozilla.gecko.GeckoProfile;
 import org.mozilla.gecko.GeckoThread;
 import org.mozilla.gecko.GeckoThread.LaunchState;
+import org.mozilla.gecko.NewTabletUI;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.RobocopUtils;
 import org.mozilla.gecko.Tab;
@@ -53,6 +54,7 @@ import android.widget.TextView;
 
 import com.jayway.android.robotium.solo.Condition;
 import com.jayway.android.robotium.solo.Solo;
+import com.jayway.android.robotium.solo.Timeout;
 
 /**
  *  A convenient base class suitable for most Robocop tests.
@@ -68,6 +70,8 @@ abstract class BaseTest extends BaseRobocopTest {
     private static final int GECKO_READY_WAIT_MS = 180000;
     public static final int MAX_WAIT_BLOCK_FOR_EVENT_DATA_MS = 90000;
 
+    private static final String URL_HTTP_PREFIX = "http://";
+
     private Activity mActivity;
     private int mPreferenceRequestID = 0;
     protected Solo mSolo;
@@ -81,6 +85,16 @@ abstract class BaseTest extends BaseRobocopTest {
     protected int mScreenMidWidth;
     protected int mScreenMidHeight;
     private final HashSet<Integer> mKnownTabIDs = new HashSet<Integer>();
+
+    protected void blockForDelayedStartup() {
+        try {
+            Actions.EventExpecter delayedStartupExpector = mActions.expectGeckoEvent("Gecko:DelayedStartup");
+            delayedStartupExpector.blockForEvent(GECKO_READY_WAIT_MS, true);
+            delayedStartupExpector.unregisterListener();
+        } catch (Exception e) {
+            mAsserter.dumpLog("Exception in blockForDelayedStartup", e);
+        }
+    }
 
     protected void blockForGeckoReady() {
         try {
@@ -127,13 +141,16 @@ abstract class BaseTest extends BaseRobocopTest {
         throwIfScreenNotOn();
     }
 
-    protected void initializeProfile() {
-        final GeckoProfile profile;
+    protected GeckoProfile getTestProfile() {
         if (mProfile.startsWith("/")) {
-            profile = GeckoProfile.get(getActivity(), "default", mProfile);
-        } else {
-            profile = GeckoProfile.get(getActivity(), mProfile);
+            return GeckoProfile.get(getActivity(), "default", mProfile);
         }
+
+        return GeckoProfile.get(getActivity(), mProfile);
+    }
+
+    protected void initializeProfile() {
+        final GeckoProfile profile = getTestProfile();
 
         // In Robocop tests, we typically don't get initialized correctly, because
         // GeckoProfile doesn't create the profile directory.
@@ -383,8 +400,17 @@ abstract class BaseTest extends BaseRobocopTest {
         return assets.open(filename);
     }
 
-    public boolean waitForText(String text) {
-        boolean rc = mSolo.waitForText(text);
+    public boolean waitForText(final String text) {
+        // false is the default value for finding only
+        // visible views in `Solo.waitForText(String)`.
+        return waitForText(text, false);
+    }
+
+    public boolean waitForText(final String text, final boolean onlyVisibleViews) {
+        // We use the default robotium values from
+        // `Waiter.waitForText(String)` for unspecified arguments.
+        final boolean rc =
+                mSolo.waitForText(text, 0, Timeout.getLargeTimeout(), true, onlyVisibleViews);
         if (!rc) {
             // log out failed wait for diagnostic purposes only;
             // waitForText failures are sometimes expected/normal
@@ -446,7 +472,7 @@ abstract class BaseTest extends BaseRobocopTest {
     }
 
 
-    /** 
+    /**
      * Select <item> from Menu > "Settings" > <section>.
      */
     public void selectSettingsItem(String section, String item) {
@@ -476,7 +502,7 @@ abstract class BaseTest extends BaseRobocopTest {
         // build the item name ready to be used
         String itemName = "^" + menuItemName + "$";
         mActions.sendSpecialKey(Actions.SpecialKey.MENU);
-        if (waitForText(itemName)) {
+        if (waitForText(itemName, true)) {
             mSolo.clickOnText(itemName);
         } else {
             // Older versions of Android have additional settings under "More",
@@ -504,7 +530,25 @@ abstract class BaseTest extends BaseRobocopTest {
         }
     }
 
-    public final void verifyPageTitle(String title) {
+    public final void verifyPageTitle(final String title, String url) {
+        // We are asserting visible state - we shouldn't know if the title is null.
+        mAsserter.isnot(title, null, "The title argument is not null");
+        mAsserter.isnot(url, null, "The url argument is not null");
+
+        // TODO: We should also check the title bar preference.
+        final String expected;
+        if (!NewTabletUI.isEnabled(mActivity)) {
+            expected = title;
+        } else {
+            if (StringHelper.ABOUT_HOME_URL.equals(url)) {
+                expected = StringHelper.ABOUT_HOME_TITLE;
+            } else if (url.startsWith(URL_HTTP_PREFIX)) {
+                expected = url.substring(URL_HTTP_PREFIX.length());
+            } else {
+                expected = url;
+            }
+        }
+
         final TextView urlBarTitle = (TextView) mSolo.getView(R.id.url_bar_title);
         String pageTitle = null;
         if (urlBarTitle != null) {
@@ -513,7 +557,7 @@ abstract class BaseTest extends BaseRobocopTest {
             waitForCondition(new VerifyTextViewText(urlBarTitle, title), MAX_WAIT_VERIFY_PAGE_TITLE_MS);
             pageTitle = urlBarTitle.getText().toString();
         }
-        mAsserter.is(pageTitle, title, "Page title is correct");
+        mAsserter.is(pageTitle, expected, "Page title is correct");
     }
 
     public final void verifyTabCount(int expectedTabCount) {
@@ -596,23 +640,23 @@ abstract class BaseTest extends BaseRobocopTest {
     /**
      * Gets the AdapterView of the tabs list.
      *
-     * @return List view in the tabs tray
+     * @return List view in the tabs panel
      */
-    private final AdapterView<ListAdapter> getTabsList() {
+    private final AdapterView<ListAdapter> getTabsLayout() {
         Element tabs = mDriver.findElement(getActivity(), R.id.tabs);
         tabs.click();
         return (AdapterView<ListAdapter>) getActivity().findViewById(R.id.normal_tabs);
     }
 
     /**
-     * Gets the view in the tabs tray at the specified index.
+     * Gets the view in the tabs panel at the specified index.
      *
      * @return View at index
      */
     private View getTabViewAt(final int index) {
         final View[] childView = { null };
 
-        final AdapterView<ListAdapter> view = getTabsList();
+        final AdapterView<ListAdapter> view = getTabsLayout();
 
         runOnUiThreadSync(new Runnable() {
             @Override
@@ -935,7 +979,7 @@ abstract class BaseTest extends BaseRobocopTest {
     public void setPreferenceAndWaitForChange(final JSONObject jsonPref) {
         mActions.sendGeckoEvent("Preferences:Set", jsonPref.toString());
 
-        // Get the preference name from the json and store it in an array. This array 
+        // Get the preference name from the json and store it in an array. This array
         // will be used later while fetching the preference data.
         String[] prefNames = new String[1];
         try {

@@ -25,7 +25,7 @@
  *   - writes to object properties
  *   - writes to array slots
  *   - writes to fields like JSObject::shape_ that we trace through
- *   - writes to fields in private data, like JSGenerator::obj
+ *   - writes to fields in private data
  *   - writes to non-markable fields like JSObject::private that point to
  *     markable data
  * The last category is the trickiest. Even though the private pointers does not
@@ -864,14 +864,14 @@ class HeapSlot : public BarrieredBase<Value>
 
     explicit HeapSlot() MOZ_DELETE;
 
-    explicit HeapSlot(JSObject *obj, Kind kind, uint32_t slot, const Value &v)
+    explicit HeapSlot(NativeObject *obj, Kind kind, uint32_t slot, const Value &v)
       : BarrieredBase<Value>(v)
     {
         MOZ_ASSERT(!IsPoisonedValue(v));
         post(obj, kind, slot, v);
     }
 
-    explicit HeapSlot(JSObject *obj, Kind kind, uint32_t slot, const HeapSlot &s)
+    explicit HeapSlot(NativeObject *obj, Kind kind, uint32_t slot, const HeapSlot &s)
       : BarrieredBase<Value>(s.value)
     {
         MOZ_ASSERT(!IsPoisonedValue(s.value));
@@ -882,18 +882,18 @@ class HeapSlot : public BarrieredBase<Value>
         pre();
     }
 
-    void init(JSObject *owner, Kind kind, uint32_t slot, const Value &v) {
+    void init(NativeObject *owner, Kind kind, uint32_t slot, const Value &v) {
         value = v;
         post(owner, kind, slot, v);
     }
 
 #ifdef DEBUG
-    bool preconditionForSet(JSObject *owner, Kind kind, uint32_t slot);
-    bool preconditionForSet(Zone *zone, JSObject *owner, Kind kind, uint32_t slot);
-    bool preconditionForWriteBarrierPost(JSObject *obj, Kind kind, uint32_t slot, Value target) const;
+    bool preconditionForSet(NativeObject *owner, Kind kind, uint32_t slot);
+    bool preconditionForSet(Zone *zone, NativeObject *owner, Kind kind, uint32_t slot);
+    bool preconditionForWriteBarrierPost(NativeObject *obj, Kind kind, uint32_t slot, Value target) const;
 #endif
 
-    void set(JSObject *owner, Kind kind, uint32_t slot, const Value &v) {
+    void set(NativeObject *owner, Kind kind, uint32_t slot, const Value &v) {
         MOZ_ASSERT(preconditionForSet(owner, kind, slot));
         MOZ_ASSERT(!IsPoisonedValue(v));
         pre();
@@ -901,7 +901,7 @@ class HeapSlot : public BarrieredBase<Value>
         post(owner, kind, slot, v);
     }
 
-    void set(Zone *zone, JSObject *owner, Kind kind, uint32_t slot, const Value &v) {
+    void set(Zone *zone, NativeObject *owner, Kind kind, uint32_t slot, const Value &v) {
         MOZ_ASSERT(preconditionForSet(zone, owner, kind, slot));
         MOZ_ASSERT(!IsPoisonedValue(v));
         pre(zone);
@@ -910,12 +910,12 @@ class HeapSlot : public BarrieredBase<Value>
     }
 
     /* For users who need to manually barrier the raw types. */
-    static void writeBarrierPost(JSObject *owner, Kind kind, uint32_t slot, const Value &target) {
+    static void writeBarrierPost(NativeObject *owner, Kind kind, uint32_t slot, const Value &target) {
         reinterpret_cast<HeapSlot *>(const_cast<Value *>(&target))->post(owner, kind, slot, target);
     }
 
   private:
-    void post(JSObject *owner, Kind kind, uint32_t slot, const Value &target) {
+    void post(NativeObject *owner, Kind kind, uint32_t slot, const Value &target) {
         MOZ_ASSERT(preconditionForWriteBarrierPost(owner, kind, slot, target));
 #ifdef JSGC_GENERATIONAL
         if (this->value.isObject()) {

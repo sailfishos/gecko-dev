@@ -558,7 +558,7 @@ public:
    * this method would be preferred since it only involves 12 floating-point
    * multiplications.)
    */
-  Matrix4x4 &Translate(Float aX, Float aY, Float aZ)
+  Matrix4x4 &PreTranslate(Float aX, Float aY, Float aZ)
   {
     _41 += aX * _11 + aY * _21 + aZ * _31;
     _42 += aX * _12 + aY * _22 + aZ * _32;
@@ -609,7 +609,7 @@ public:
   /**
    * Similar to PreTranslate, but applies a scale instead of a translation.
    */
-  Matrix4x4 &Scale(Float aX, Float aY, Float aZ)
+  Matrix4x4 &PreScale(Float aX, Float aY, Float aZ)
   {
     _11 *= aX;
     _12 *= aX;
@@ -663,7 +663,7 @@ public:
   Matrix4x4 &ChangeBasis(Float aX, Float aY, Float aZ)
   {
     // Translate to the origin before applying this matrix
-    Translate(-aX, -aY, -aZ);
+    PreTranslate(-aX, -aY, -aZ);
 
     // Translate back into position after applying this matrix
     PostTranslate(aX, aY, aZ);
@@ -777,42 +777,6 @@ public:
       }
   }
 
-  void ScalePost(Float aX, Float aY, Float aZ)
-  {
-    _11 *= aX;
-    _21 *= aX;
-    _31 *= aX;
-    _41 *= aX;
-
-    _12 *= aY;
-    _22 *= aY;
-    _32 *= aY;
-    _42 *= aY;
-
-    _13 *= aZ;
-    _23 *= aZ;
-    _33 *= aZ;
-    _43 *= aZ;
-  }
-
-  void TranslatePost(Float aX, Float aY, Float aZ)
-  {
-      _11 += _14 * aX;
-      _21 += _24 * aX;
-      _31 += _34 * aX;
-      _41 += _44 * aX;
-
-      _12 += _14 * aY;
-      _22 += _24 * aY;
-      _32 += _34 * aY;
-      _42 += _44 * aY;
-
-      _13 += _14 * aZ;
-      _23 += _24 * aZ;
-      _33 += _34 * aZ;
-      _43 += _44 * aZ;
-  }
-
   bool FuzzyEqual(const Matrix4x4& o) const
   {
     return gfx::FuzzyEqual(_11, o._11) && gfx::FuzzyEqual(_12, o._12) &&
@@ -837,19 +801,19 @@ public:
 
   Matrix4x4 &NudgeToIntegersFixedEpsilon()
   {
+    NudgeToInteger(&_11);
+    NudgeToInteger(&_12);
+    NudgeToInteger(&_13);
+    NudgeToInteger(&_14);
+    NudgeToInteger(&_21);
+    NudgeToInteger(&_22);
+    NudgeToInteger(&_23);
+    NudgeToInteger(&_24);
+    NudgeToInteger(&_31);
+    NudgeToInteger(&_32);
+    NudgeToInteger(&_33);
+    NudgeToInteger(&_34);
     static const float error = 1e-5f;
-    NudgeToInteger(&_11, error);
-    NudgeToInteger(&_12, error);
-    NudgeToInteger(&_13, error);
-    NudgeToInteger(&_14, error);
-    NudgeToInteger(&_21, error);
-    NudgeToInteger(&_22, error);
-    NudgeToInteger(&_23, error);
-    NudgeToInteger(&_24, error);
-    NudgeToInteger(&_31, error);
-    NudgeToInteger(&_32, error);
-    NudgeToInteger(&_33, error);
-    NudgeToInteger(&_34, error);
     NudgeToInteger(&_41, error);
     NudgeToInteger(&_42, error);
     NudgeToInteger(&_43, error);

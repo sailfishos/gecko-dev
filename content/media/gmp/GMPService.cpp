@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GMPService.h"
+#include "prio.h"
 #include "prlog.h"
 #include "GMPParent.h"
 #include "GMPVideoDecoderParent.h"
@@ -22,9 +23,15 @@
 #include "nsComponentManagerUtils.h"
 #include "mozilla/Preferences.h"
 #include "runnable_utils.h"
+#include "VideoUtils.h"
 #if defined(XP_LINUX) && defined(MOZ_GMP_SANDBOX)
 #include "mozilla/Sandbox.h"
 #endif
+#include "nsAppDirectoryServiceDefs.h"
+#include "nsDirectoryServiceUtils.h"
+#include "nsDirectoryServiceDefs.h"
+#include "nsHashKeys.h"
+#include "nsIFile.h"
 
 namespace mozilla {
 
@@ -136,6 +143,7 @@ GeckoMediaPluginService::GeckoMediaPluginService()
   : mMutex("GeckoMediaPluginService::mMutex")
   , mShuttingDown(false)
   , mShuttingDownOnGMPThread(false)
+  , mScannedPluginOnDisk(false)
   , mWaitingForPluginsAsyncShutdown(false)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -154,7 +162,7 @@ GeckoMediaPluginService::~GeckoMediaPluginService()
   MOZ_ASSERT(mAsyncShutdownPlugins.IsEmpty());
 }
 
-void
+nsresult
 GeckoMediaPluginService::Init()
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -163,15 +171,38 @@ GeckoMediaPluginService::Init()
   MOZ_ASSERT(obsService);
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "profile-change-teardown", false)));
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID, false)));
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "last-pb-context-exited", false)));
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "gmp-clear-storage", false)));
 
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefs) {
     prefs->AddObserver("media.gmp.plugin.crash", this, false);
   }
 
+#ifndef MOZ_WIDGET_GONK
+  // Directory service is main thread only, so cache the profile dir here
+  // so that we can use it off main thread.
+  // We only do this on non-B2G, as this fails in multi-process Gecko.
+  // TODO: Make this work in multi-process Gecko.
+  nsresult rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR, getter_AddRefs(mStorageBaseDir));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = mStorageBaseDir->AppendNative(NS_LITERAL_CSTRING("gmp"));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = mStorageBaseDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+  if (NS_WARN_IF(NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS)) {
+    return rv;
+  }
+#endif
+
   // Kick off scanning for plugins
   nsCOMPtr<nsIThread> thread;
-  unused << GetThread(getter_AddRefs(thread));
+  return GetThread(getter_AddRefs(thread));
 }
 
 void
@@ -288,6 +319,22 @@ GeckoMediaPluginService::Observe(nsISupports* aSubject,
     if (gmpThread) {
       gmpThread->Shutdown();
     }
+  } else if (!strcmp("last-pb-context-exited", aTopic)) {
+    // When Private Browsing mode exits, all we need to do is clear
+    // mTempNodeIds. This drops all the node ids we've cached in memory
+    // for PB origin-pairs. If we try to open an origin-pair for non-PB
+    // mode, we'll get the NodeId salt stored on-disk, and if we try to
+    // open a PB mode origin-pair, we'll re-generate new salt.
+    mTempNodeIds.Clear();
+  } else if (!strcmp("gmp-clear-storage", aTopic)) {
+    nsCOMPtr<nsIThread> thread;
+    nsresult rv = GetThread(getter_AddRefs(thread));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    thread->Dispatch(
+      NS_NewRunnableMethod(this, &GeckoMediaPluginService::ClearStorage),
+      NS_DISPATCH_NORMAL);
   }
   return NS_OK;
 }
@@ -324,7 +371,7 @@ GeckoMediaPluginService::GetThread(nsIThread** aThread)
 
 NS_IMETHODIMP
 GeckoMediaPluginService::GetGMPAudioDecoder(nsTArray<nsCString>* aTags,
-                                            const nsAString& aOrigin,
+                                            const nsACString& aNodeId,
                                             GMPAudioDecoderProxy** aGMPAD)
 {
   MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
@@ -335,7 +382,7 @@ GeckoMediaPluginService::GetGMPAudioDecoder(nsTArray<nsCString>* aTags,
     return NS_ERROR_FAILURE;
   }
 
-  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aOrigin,
+  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aNodeId,
                                                NS_LITERAL_CSTRING("decode-audio"),
                                                *aTags);
   if (!gmp) {
@@ -355,7 +402,7 @@ GeckoMediaPluginService::GetGMPAudioDecoder(nsTArray<nsCString>* aTags,
 
 NS_IMETHODIMP
 GeckoMediaPluginService::GetGMPVideoDecoder(nsTArray<nsCString>* aTags,
-                                            const nsAString& aOrigin,
+                                            const nsACString& aNodeId,
                                             GMPVideoHost** aOutVideoHost,
                                             GMPVideoDecoderProxy** aGMPVD)
 {
@@ -368,7 +415,7 @@ GeckoMediaPluginService::GetGMPVideoDecoder(nsTArray<nsCString>* aTags,
     return NS_ERROR_FAILURE;
   }
 
-  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aOrigin,
+  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aNodeId,
                                                NS_LITERAL_CSTRING("decode-video"),
                                                *aTags);
 #ifdef PR_LOGGING
@@ -394,7 +441,7 @@ GeckoMediaPluginService::GetGMPVideoDecoder(nsTArray<nsCString>* aTags,
 
 NS_IMETHODIMP
 GeckoMediaPluginService::GetGMPVideoEncoder(nsTArray<nsCString>* aTags,
-                                            const nsAString& aOrigin,
+                                            const nsACString& aNodeId,
                                             GMPVideoHost** aOutVideoHost,
                                             GMPVideoEncoderProxy** aGMPVE)
 {
@@ -407,7 +454,7 @@ GeckoMediaPluginService::GetGMPVideoEncoder(nsTArray<nsCString>* aTags,
     return NS_ERROR_FAILURE;
   }
 
-  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aOrigin,
+  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aNodeId,
                                                NS_LITERAL_CSTRING("encode-video"),
                                                *aTags);
 #ifdef PR_LOGGING
@@ -432,7 +479,7 @@ GeckoMediaPluginService::GetGMPVideoEncoder(nsTArray<nsCString>* aTags,
 
 NS_IMETHODIMP
 GeckoMediaPluginService::GetGMPDecryptor(nsTArray<nsCString>* aTags,
-                                         const nsAString& aOrigin,
+                                         const nsACString& aNodeId,
                                          GMPDecryptorProxy** aDecryptor)
 {
 #if defined(XP_LINUX) && defined(MOZ_GMP_SANDBOX)
@@ -451,7 +498,7 @@ GeckoMediaPluginService::GetGMPDecryptor(nsTArray<nsCString>* aTags,
     return NS_ERROR_FAILURE;
   }
 
-  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aOrigin,
+  nsRefPtr<GMPParent> gmp = SelectPluginForAPI(aNodeId,
                                                NS_LITERAL_CSTRING("eme-decrypt"),
                                                *aTags);
   if (!gmp) {
@@ -554,7 +601,7 @@ GeckoMediaPluginService::UnloadPlugins()
     MutexAutoLock lock(mMutex);
     // Note: CloseActive is async; it will actually finish
     // shutting down when all the plugins have unloaded.
-    for (uint32_t i = 0; i < mPlugins.Length(); i++) {
+    for (size_t i = 0; i < mPlugins.Length(); i++) {
       mPlugins[i]->CloseActive(true);
     }
     mPlugins.Clear();
@@ -583,7 +630,7 @@ GeckoMediaPluginService::CrashPlugins()
   MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
 
   MutexAutoLock lock(mMutex);
-  for (uint32_t i = 0; i < mPlugins.Length(); i++) {
+  for (size_t i = 0; i < mPlugins.Length(); i++) {
     mPlugins[i]->Crash();
   }
 }
@@ -616,6 +663,8 @@ GeckoMediaPluginService::LoadFromEnvironment()
       pos = next + 1;
     }
   }
+
+  mScannedPluginOnDisk = true;
 }
 
 NS_IMETHODIMP
@@ -657,70 +706,112 @@ GeckoMediaPluginService::RemovePluginDirectory(const nsAString& aDirectory)
   return NS_OK;
 }
 
+class DummyRunnable : public nsRunnable {
+public:
+  NS_IMETHOD Run() { return NS_OK; }
+};
+
 NS_IMETHODIMP
-GeckoMediaPluginService::HasPluginForAPI(const nsAString& aOrigin,
-                                         const nsACString& aAPI,
+GeckoMediaPluginService::HasPluginForAPI(const nsACString& aAPI,
                                          nsTArray<nsCString>* aTags,
                                          bool* aResult)
 {
   NS_ENSURE_ARG(aTags && aTags->Length() > 0);
   NS_ENSURE_ARG(aResult);
 
-  nsCString temp(aAPI);
-  GMPParent *parent = SelectPluginForAPI(aOrigin, temp, *aTags, false);
-  *aResult = !!parent;
+  const char* env = nullptr;
+  if (!mScannedPluginOnDisk && (env = PR_GetEnv("MOZ_GMP_PATH")) && *env) {
+    // We have a MOZ_GMP_PATH environment variable which may specify the
+    // location of plugins to load, and we haven't yet scanned the disk to
+    // see if there are plugins there. Get the GMP thread, which will
+    // cause an event to be dispatched to which scans for plugins. We
+    // dispatch a sync event to the GMP thread here in order to wait until
+    // after the GMP thread has scanned any paths in MOZ_GMP_PATH.
+    nsCOMPtr<nsIThread> thread;
+    nsresult rv = GetThread(getter_AddRefs(thread));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+    thread->Dispatch(new DummyRunnable(), NS_DISPATCH_SYNC);
+    MOZ_ASSERT(mScannedPluginOnDisk, "Should have scanned MOZ_GMP_PATH by now");
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+    nsCString api(aAPI);
+    GMPParent* gmp = FindPluginForAPIFrom(0, api, *aTags, nullptr);
+    *aResult = (gmp != nullptr);
+  }
 
   return NS_OK;
 }
 
 GMPParent*
-GeckoMediaPluginService::SelectPluginForAPI(const nsAString& aOrigin,
-                                            const nsCString& aAPI,
-                                            const nsTArray<nsCString>& aTags,
-                                            bool aCloneCrossOrigin)
+GeckoMediaPluginService::FindPluginForAPIFrom(size_t aSearchStartIndex,
+                                              const nsCString& aAPI,
+                                              const nsTArray<nsCString>& aTags,
+                                              size_t* aOutPluginIndex)
 {
-  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread || !aCloneCrossOrigin,
+  mMutex.AssertCurrentThreadOwns();
+  for (size_t i = aSearchStartIndex; i < mPlugins.Length(); i++) {
+    GMPParent* gmp = mPlugins[i];
+    bool supportsAllTags = true;
+    for (size_t t = 0; t < aTags.Length(); t++) {
+      const nsCString& tag = aTags.ElementAt(t);
+      if (!gmp->SupportsAPI(aAPI, tag)) {
+        supportsAllTags = false;
+        break;
+      }
+    }
+    if (!supportsAllTags) {
+      continue;
+    }
+    if (aOutPluginIndex) {
+      *aOutPluginIndex = i;
+    }
+    return gmp;
+  }
+  return nullptr;
+}
+
+GMPParent*
+GeckoMediaPluginService::SelectPluginForAPI(const nsACString& aNodeId,
+                                            const nsCString& aAPI,
+                                            const nsTArray<nsCString>& aTags)
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread,
              "Can't clone GMP plugins on non-GMP threads.");
 
   GMPParent* gmpToClone = nullptr;
   {
     MutexAutoLock lock(mMutex);
-    for (uint32_t i = 0; i < mPlugins.Length(); i++) {
-      GMPParent* gmp = mPlugins[i];
-      bool supportsAllTags = true;
-      for (uint32_t t = 0; t < aTags.Length(); t++) {
-        const nsCString& tag = aTags[t];
-        if (!gmp->SupportsAPI(aAPI, tag)) {
-          supportsAllTags = false;
-          break;
-        }
-      }
-      if (!supportsAllTags) {
-        continue;
-      }
-      if (aOrigin.IsEmpty()) {
-        if (gmp->CanBeSharedCrossOrigin()) {
+    size_t index = 0;
+    GMPParent* gmp = nullptr;
+    while ((gmp = FindPluginForAPIFrom(index, aAPI, aTags, &index))) {
+      if (aNodeId.IsEmpty()) {
+        if (gmp->CanBeSharedCrossNodeIds()) {
           return gmp;
         }
-      } else if (gmp->CanBeUsedFrom(aOrigin)) {
-        if (!aOrigin.IsEmpty()) {
-          gmp->SetOrigin(aOrigin);
-        }
+      } else if (gmp->CanBeUsedFrom(aNodeId)) {
+        MOZ_ASSERT(!aNodeId.IsEmpty());
+        gmp->SetNodeId(aNodeId);
         return gmp;
       }
 
-      // This GMP has the correct type but has the wrong origin; hold on to it
+      // This GMP has the correct type but has the wrong nodeId; hold on to it
       // in case we need to clone it.
       gmpToClone = gmp;
+      // Loop around and try the next plugin; it may be usable from aNodeId.
+      index++;
     }
   }
 
   // Plugin exists, but we can't use it due to cross-origin separation. Create a
   // new one.
-  if (aCloneCrossOrigin && gmpToClone) {
+  if (gmpToClone) {
     GMPParent* clone = ClonePlugin(gmpToClone);
-    if (!aOrigin.IsEmpty()) {
-      clone->SetOrigin(aOrigin);
+    if (!aNodeId.IsEmpty()) {
+      clone->SetNodeId(aNodeId);
     }
     return clone;
   }
@@ -812,7 +903,7 @@ GeckoMediaPluginService::RemoveOnGMPThread(const nsAString& aDirectory)
   }
 
   MutexAutoLock lock(mMutex);
-  for (uint32_t i = 0; i < mPlugins.Length(); ++i) {
+  for (size_t i = 0; i < mPlugins.Length(); ++i) {
     nsCOMPtr<nsIFile> pluginpath = mPlugins[i]->GetDirectory();
     bool equals;
     if (NS_SUCCEEDED(directory->Equals(pluginpath, &equals)) && equals) {
@@ -853,6 +944,318 @@ GeckoMediaPluginService::ReAddOnGMPThread(nsRefPtr<GMPParent>& aOld)
   // Schedule aOld to be destroyed.  We can't destroy it from here since we
   // may be inside ActorDestroyed() for it.
   NS_DispatchToCurrentThread(WrapRunnableNM(&Dummy, aOld));
+}
+
+NS_IMETHODIMP
+GeckoMediaPluginService::GetStorageDir(nsIFile** aOutFile)
+{
+#ifndef MOZ_WIDGET_GONK
+  if (NS_WARN_IF(!mStorageBaseDir)) {
+    return NS_ERROR_FAILURE;
+  }
+  return mStorageBaseDir->Clone(aOutFile);
+#else
+  return NS_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+static nsresult
+WriteToFile(nsIFile* aPath,
+            const nsCString& aFileName,
+            const nsCString& aData)
+{
+  nsCOMPtr<nsIFile> path;
+  nsresult rv = aPath->Clone(getter_AddRefs(path));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = path->AppendNative(aFileName);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  PRFileDesc* f = nullptr;
+  rv = path->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE, PR_IRWXU, &f);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  int32_t len = PR_Write(f, aData.get(), aData.Length());
+  PR_Close(f);
+  if (NS_WARN_IF(len < 0 || (size_t)len != aData.Length())) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
+}
+
+static nsresult
+ReadFromFile(nsIFile* aPath,
+             const nsCString& aFileName,
+             nsCString& aOutData,
+             int32_t aMaxLength)
+{
+  nsCOMPtr<nsIFile> path;
+  nsresult rv = aPath->Clone(getter_AddRefs(path));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = path->AppendNative(aFileName);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  PRFileDesc* f = nullptr;
+  rv = path->OpenNSPRFileDesc(PR_RDONLY | PR_CREATE_FILE, PR_IRWXU, &f);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  auto size = PR_Seek(f, 0, PR_SEEK_END);
+  PR_Seek(f, 0, PR_SEEK_SET);
+
+  if (size > aMaxLength) {
+    return NS_ERROR_FAILURE;
+  }
+  aOutData.SetLength(size);
+
+  auto len = PR_Read(f, aOutData.BeginWriting(), size);
+  PR_Close(f);
+  if (NS_WARN_IF(len != size)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GeckoMediaPluginService::IsPersistentStorageAllowed(const nsACString& aNodeId,
+                                                    bool* aOutAllowed)
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  NS_ENSURE_ARG(aOutAllowed);
+  *aOutAllowed = mPersistentStorageAllowed.Get(aNodeId);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GeckoMediaPluginService::GetNodeId(const nsAString& aOrigin,
+                                   const nsAString& aTopLevelOrigin,
+                                   bool aInPrivateBrowsing,
+                                   nsACString& aOutId)
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  LOGD(("%s::%s: (%s, %s), %s", __CLASS__, __FUNCTION__,
+       NS_ConvertUTF16toUTF8(aOrigin).get(),
+       NS_ConvertUTF16toUTF8(aTopLevelOrigin).get(),
+       (aInPrivateBrowsing ? "PrivateBrowsing" : "NonPrivateBrowsing")));
+
+#ifdef MOZ_WIDGET_GONK
+  NS_WARNING("GeckoMediaPluginService::GetNodeId Not implemented on B2G");
+  return NS_ERROR_NOT_IMPLEMENTED;
+#endif
+
+  nsresult rv;
+  const uint32_t NodeIdSaltLength = 32;
+
+  if (aOrigin.EqualsLiteral("null") ||
+      aOrigin.IsEmpty() ||
+      aTopLevelOrigin.EqualsLiteral("null") ||
+      aTopLevelOrigin.IsEmpty()) {
+    // At least one of the (origin, topLevelOrigin) is null or empty;
+    // probably a local file. Generate a random node id, and don't store
+    // it so that the GMP's storage is temporary and not shared.
+    nsAutoCString salt;
+    rv = GenerateRandomPathName(salt, NodeIdSaltLength);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+    aOutId = salt;
+    mPersistentStorageAllowed.Put(salt, false);
+    return NS_OK;
+  }
+
+  const uint32_t hash = AddToHash(HashString(aOrigin),
+                                  HashString(aTopLevelOrigin));
+
+  if (aInPrivateBrowsing) {
+    // For PB mode, we store the node id, indexed by the origin pair,
+    // so that if the same origin pair is opened in this session, it gets
+    // the same node id.
+    nsCString* salt = nullptr;
+    if (!(salt = mTempNodeIds.Get(hash))) {
+      // No salt stored, generate and temporarily store some for this id.
+      nsAutoCString newSalt;
+      rv = GenerateRandomPathName(newSalt, NodeIdSaltLength);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      salt = new nsCString(newSalt);
+      mTempNodeIds.Put(hash, salt);
+      mPersistentStorageAllowed.Put(*salt, false);
+    }
+    aOutId = *salt;
+    return NS_OK;
+  }
+
+  // Otherwise, try to see if we've previously generated and stored salt
+  // for this origin pair.
+  nsCOMPtr<nsIFile> path; // $profileDir/gmp/
+  rv = GetStorageDir(getter_AddRefs(path));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = path->AppendNative(NS_LITERAL_CSTRING("id"));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  // $profileDir/gmp/id/
+  rv = path->Create(nsIFile::DIRECTORY_TYPE, 0700);
+  if (rv != NS_ERROR_FILE_ALREADY_EXISTS && NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsAutoCString hashStr;
+  hashStr.AppendInt((int64_t)hash);
+
+  // $profileDir/gmp/id/$hash
+  rv = path->AppendNative(hashStr);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = path->Create(nsIFile::DIRECTORY_TYPE, 0700);
+  if (rv != NS_ERROR_FILE_ALREADY_EXISTS && NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsCOMPtr<nsIFile> saltFile;
+  rv = path->Clone(getter_AddRefs(saltFile));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  rv = saltFile->AppendNative(NS_LITERAL_CSTRING("salt"));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsAutoCString salt;
+  bool exists = false;
+  rv = saltFile->Exists(&exists);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+  if (!exists) {
+    // No stored salt for this origin. Generate salt, and store it and
+    // the origin on disk.
+    nsresult rv = GenerateRandomPathName(salt, NodeIdSaltLength);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+    MOZ_ASSERT(salt.Length() == NodeIdSaltLength);
+
+    // $profileDir/gmp/id/$hash/salt
+    rv = WriteToFile(path, NS_LITERAL_CSTRING("salt"), salt);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    // $profileDir/gmp/id/$hash/origin
+    rv = WriteToFile(path,
+                     NS_LITERAL_CSTRING("origin"),
+                     NS_ConvertUTF16toUTF8(aOrigin));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    // $profileDir/gmp/id/$hash/topLevelOrigin
+    rv = WriteToFile(path,
+                     NS_LITERAL_CSTRING("topLevelOrigin"),
+                     NS_ConvertUTF16toUTF8(aTopLevelOrigin));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+  } else {
+    rv = ReadFromFile(path,
+                      NS_LITERAL_CSTRING("salt"),
+                      salt,
+                      NodeIdSaltLength);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+  }
+
+  aOutId = salt;
+  mPersistentStorageAllowed.Put(salt, true);
+
+  return NS_OK;
+}
+
+class StorageClearedTask : public nsRunnable {
+public:
+  NS_IMETHOD Run() {
+    MOZ_ASSERT(NS_IsMainThread());
+    nsCOMPtr<nsIObserverService> obsService = mozilla::services::GetObserverService();
+    MOZ_ASSERT(obsService);
+    if (obsService) {
+      obsService->NotifyObservers(nullptr, "gmp-clear-storage-complete", nullptr);
+    }
+    return NS_OK;
+  }
+};
+
+void
+GeckoMediaPluginService::ClearStorage()
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  LOGD(("%s::%s", __CLASS__, __FUNCTION__));
+
+#ifdef MOZ_WIDGET_GONK
+  NS_WARNING("GeckoMediaPluginService::ClearStorage not implemented on B2G");
+  return;
+#endif
+
+  // Shutdown plugins that have touched storage, as they could have
+  // state that depends on storage. We don't want them to write data
+  // after we've cleared storage, as they could end up in an inconsistent
+  // state, so we must ensure they're shutdown before we actually clear
+  // storage. Note: we can't shut them down while holding the lock,
+  // as the lock is not re-entrant and shutdown requires taking the lock.
+  // The plugin list is only edited on the GMP thread, so this should be OK.
+  nsTArray<nsRefPtr<GMPParent>> pluginsToKill;
+  {
+    MutexAutoLock lock(mMutex);
+    for (size_t i = 0; i < mPlugins.Length(); i++) {
+      nsRefPtr<GMPParent> parent(mPlugins[i]);
+      if (parent->HasAccessedStorage()) {
+        pluginsToKill.AppendElement(parent);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < pluginsToKill.Length(); i++) {
+    pluginsToKill[i]->CloseActive(false);
+    // Abort async shutdown because we're going to wipe the plugin's storage,
+    // so we don't want it writing more data in its async shutdown path.
+    pluginsToKill[i]->AbortAsyncShutdown();
+  }
+
+  nsCOMPtr<nsIFile> path; // $profileDir/gmp/
+  nsresult rv = GetStorageDir(getter_AddRefs(path));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  if (NS_FAILED(path->Remove(true))) {
+    NS_WARNING("Failed to delete GMP storage directory");
+  }
+  NS_DispatchToMainThread(new StorageClearedTask(), NS_DISPATCH_NORMAL);
 }
 
 } // namespace gmp

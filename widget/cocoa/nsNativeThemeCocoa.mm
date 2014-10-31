@@ -4,6 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsNativeThemeCocoa.h"
+
+#include "nsDeviceContext.h"
 #include "nsObjCExceptions.h"
 #include "nsNumberControlFrame.h"
 #include "nsRangeFrame.h"
@@ -874,7 +876,7 @@ GetAquaAppearance()
 static void
 RenderWithCoreUI(CGRect aRect, CGContextRef cgContext, NSDictionary* aOptions)
 {
-  static id appearance = GetAquaAppearance();
+  id appearance = GetAquaAppearance();
 
   if (aRect.size.width * aRect.size.height > BITMAP_MAX_AREA) {
     return;

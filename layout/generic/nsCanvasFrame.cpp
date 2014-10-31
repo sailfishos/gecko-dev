@@ -6,6 +6,8 @@
 /* rendering object that goes directly inside the document's scrollbars */
 
 #include "nsCanvasFrame.h"
+
+#include "gfxUtils.h"
 #include "nsContainerFrame.h"
 #include "nsCSSRendering.h"
 #include "nsPresContext.h"
@@ -242,8 +244,10 @@ nsDisplayCanvasBackgroundColor::Paint(nsDisplayListBuilder* aBuilder,
   nsPoint offset = ToReferenceFrame();
   nsRect bgClipRect = frame->CanvasArea() + offset;
   if (NS_GET_A(mColor) > 0) {
-    aCtx->SetColor(mColor);
-    aCtx->FillRect(bgClipRect);
+    DrawTarget* drawTarget = aCtx->GetDrawTarget();
+    int32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
+    Rect devPxRect = NSRectToRect(bgClipRect, appUnitsPerDevPixel, *drawTarget);
+    drawTarget->FillRect(devPxRect, ColorPattern(ToDeviceColor(mColor)));
   }
 }
 
@@ -296,7 +300,7 @@ nsDisplayCanvasBackgroundImage::Paint(nsDisplayListBuilder* aBuilder,
       ctx->SetMatrix(
         ctx->CurrentMatrix().Translate(-destRect.x, -destRect.y));
       context = new nsRenderingContext();
-      context->Init(aCtx->DeviceContext(), ctx);
+      context->Init(ctx);
     }
   }
 #endif

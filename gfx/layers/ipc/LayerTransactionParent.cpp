@@ -7,6 +7,7 @@
 
 #include "LayerTransactionParent.h"
 #include <vector>                       // for vector
+#include "apz/src/AsyncPanZoomController.h"
 #include "CompositableHost.h"           // for CompositableParent, Get, etc
 #include "ImageLayers.h"                // for ImageLayer
 #include "Layers.h"                     // for Layer, ContainerLayer, etc
@@ -41,7 +42,6 @@
 #include "GeckoProfiler.h"
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/layers/AsyncCompositionManager.h"
-#include "mozilla/layers/AsyncPanZoomController.h"
 
 typedef std::vector<mozilla::layers::EditReply> EditReplyVector;
 
@@ -159,6 +159,13 @@ LayerTransactionParent::LayerTransactionParent(LayerManagerComposite* aManager,
 LayerTransactionParent::~LayerTransactionParent()
 {
   MOZ_COUNT_DTOR(LayerTransactionParent);
+}
+
+bool
+LayerTransactionParent::RecvShutdown()
+{
+  Destroy();
+  return Send__delete__(this);
 }
 
 void
@@ -663,7 +670,7 @@ LayerTransactionParent::RecvGetAnimationTransform(PLayerParent* aParent,
   Matrix4x4 transform = layer->AsLayerComposite()->GetShadowTransform();
   if (ContainerLayer* c = layer->AsContainerLayer()) {
     // Undo the scale transform applied by AsyncCompositionManager::SampleValue
-    transform.ScalePost(1.0f/c->GetInheritedXScale(),
+    transform.PostScale(1.0f/c->GetInheritedXScale(),
                         1.0f/c->GetInheritedYScale(),
                         1.0f);
   }
@@ -687,7 +694,7 @@ LayerTransactionParent::RecvGetAnimationTransform(PLayerParent* aParent,
 
   // Undo the translation to the origin of the reference frame applied by
   // AsyncCompositionManager::SampleValue
-  transform.Translate(-scaledOrigin.x, -scaledOrigin.y, -scaledOrigin.z);
+  transform.PreTranslate(-scaledOrigin.x, -scaledOrigin.y, -scaledOrigin.z);
 
   // Undo the rebasing applied by
   // nsDisplayTransform::GetResultingTransformMatrixInternal

@@ -55,14 +55,16 @@ public class RestrictedProfiles {
      */
     public static enum Restriction {
         DISALLOW_DOWNLOADS(1, "no_download_files"),
-        DISALLOW_INSTALL_EXTENSIONS(2, "no_install_extensions"),
+        DISALLOW_INSTALL_EXTENSION(2, "no_install_extensions"),
         DISALLOW_INSTALL_APPS(3, "no_install_apps"), // UserManager.DISALLOW_INSTALL_APPS
         DISALLOW_BROWSE_FILES(4, "no_browse_files"),
         DISALLOW_SHARE(5, "no_share"),
         DISALLOW_BOOKMARK(6, "no_bookmark"),
         DISALLOW_ADD_CONTACTS(7, "no_add_contacts"),
         DISALLOW_SET_IMAGE(8, "no_set_image"),
-        DISALLOW_MODIFY_ACCOUNTS(9, "no_modify_accounts"); // UserManager.DISALLOW_MODIFY_ACCOUNTS
+        DISALLOW_MODIFY_ACCOUNTS(9, "no_modify_accounts"), // UserManager.DISALLOW_MODIFY_ACCOUNTS
+        DISALLOW_REMOTE_DEBUGGING(10, "no_remote_debugging"),
+        DISALLOW_IMPORT_SETTINGS(11, "no_import_settings");
 
         public final int id;
         public final String name;
@@ -161,11 +163,6 @@ public class RestrictedProfiles {
 
     @WrapElementForJNI
     public static boolean isAllowed(int action, String url) {
-        // Guest users can't do anything.
-        if (getInGuest()) {
-            return false;
-        }
-
         final Restriction restriction;
         try {
             restriction = geckoActionToRestriction(action);
@@ -176,8 +173,13 @@ public class RestrictedProfiles {
             return false;
         }
 
-        if (Restriction.DISALLOW_BROWSE_FILES == restriction) {
-            return canLoadUrl(url);
+        if (getInGuest()) {
+            if (Restriction.DISALLOW_BROWSE_FILES == restriction) {
+                return canLoadUrl(url);
+            }
+
+            // Guest users can't do anything.
+            return false;
         }
 
         // NOTE: Restrictions hold the opposite intention, so we need to flip it.

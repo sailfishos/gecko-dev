@@ -17,13 +17,13 @@
 #include "DecoderTraits.h"
 #include "nsIAudioChannelAgent.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/dom/AudioChannelBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/TextTrackManager.h"
 #include "MediaDecoder.h"
 #ifdef MOZ_EME
 #include "mozilla/dom/MediaKeys.h"
 #endif
+#include "nsGkAtoms.h"
 
 // Something on Linux #defines None, which is an entry in the
 // MediaWaitingFor enum, so undef it here before including the binfing,
@@ -545,6 +545,11 @@ public:
 
 
   bool IsEventAttributeName(nsIAtom* aName) MOZ_OVERRIDE;
+
+  // Returns the principal of the "top level" document; the origin displayed
+  // in the URL bar of the browser window.
+  already_AddRefed<nsIPrincipal> GetTopLevelPrincipal();
+
 #endif // MOZ_EME
 
   bool MozAutoplayEnabled() const

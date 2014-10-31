@@ -297,60 +297,10 @@ pref("chrome.override_package.passwordmgr", "browser");
 // enable xul error pages
 pref("browser.xul.error_pages.enabled", true);
 
-// Specify emptyRestriction = 0 so that bookmarks appear in the list by default
-pref("browser.urlbar.default.behavior", 0);
-pref("browser.urlbar.default.behavior.emptyRestriction", 0);
-
-// Let the faviconservice know that we display favicons as 32x32px so that it
-// uses the right size when optimizing favicons
-pref("places.favicons.optimizeToDimension", 32);
-
-// various and sundry awesomebar prefs (should remove/re-evaluate
-// these once bug 447900 is fixed)
-pref("browser.urlbar.clickSelectsAll", true);
-pref("browser.urlbar.doubleClickSelectsAll", true);
-pref("browser.urlbar.autoFill", false);
-pref("browser.urlbar.matchOnlyTyped", false);
-pref("browser.urlbar.matchBehavior", 1);
-pref("browser.urlbar.filter.javascript", true);
-pref("browser.urlbar.maxRichResults", 24); // increased so we see more results when portrait
-pref("browser.urlbar.search.chunkSize", 1000);
-pref("browser.urlbar.search.timeout", 100);
-pref("browser.urlbar.restrict.history", "^");
-pref("browser.urlbar.restrict.bookmark", "*");
-pref("browser.urlbar.restrict.tag", "+");
-pref("browser.urlbar.match.title", "#");
-pref("browser.urlbar.match.url", "@");
-pref("browser.urlbar.autocomplete.search_threshold", 5);
 pref("browser.history.grouping", "day");
 pref("browser.history.showSessions", false);
 pref("browser.sessionhistory.max_entries", 50);
 pref("browser.history_expire_sites", 40000);
-pref("browser.places.migratePostDataAnnotations", true);
-pref("browser.places.updateRecentTagsUri", true);
-pref("places.frecency.numVisits", 10);
-pref("places.frecency.numCalcOnIdle", 50);
-pref("places.frecency.numCalcOnMigrate", 50);
-pref("places.frecency.updateIdleTime", 60000);
-pref("places.frecency.firstBucketCutoff", 4);
-pref("places.frecency.secondBucketCutoff", 14);
-pref("places.frecency.thirdBucketCutoff", 31);
-pref("places.frecency.fourthBucketCutoff", 90);
-pref("places.frecency.firstBucketWeight", 100);
-pref("places.frecency.secondBucketWeight", 70);
-pref("places.frecency.thirdBucketWeight", 50);
-pref("places.frecency.fourthBucketWeight", 30);
-pref("places.frecency.defaultBucketWeight", 10);
-pref("places.frecency.embedVisitBonus", 0);
-pref("places.frecency.linkVisitBonus", 100);
-pref("places.frecency.typedVisitBonus", 2000);
-pref("places.frecency.bookmarkVisitBonus", 150);
-pref("places.frecency.downloadVisitBonus", 0);
-pref("places.frecency.permRedirectVisitBonus", 0);
-pref("places.frecency.tempRedirectVisitBonus", 0);
-pref("places.frecency.defaultVisitBonus", 0);
-pref("places.frecency.unvisitedBookmarkBonus", 140);
-pref("places.frecency.unvisitedTypedBonus", 200);
 
 // disable color management
 pref("gfx.color_management.mode", 0);
@@ -610,6 +560,12 @@ pref("media.preload.auto", 2);    // preload metadata if preload=auto
 // of at least 4.
 pref("media.video-queue.default-size", 3);
 
+// Enable the MediaCodec PlatformDecoderModule by default.
+pref("media.fragmented-mp4.exposed", true);
+pref("media.fragmented-mp4.enabled", true);
+pref("media.fragmented-mp4.android-media-codec.enabled", true);
+pref("media.fragmented-mp4.android-media-codec.preferred", true);
+
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
 pref("image.mem.min_discard_timeout_ms", 10000);
@@ -711,6 +667,8 @@ pref("ui.scrolling.gamepad_dead_zone", 115);
 // Enable accessibility mode if platform accessibility is enabled.
 pref("accessibility.accessfu.activate", 2);
 pref("accessibility.accessfu.quicknav_modes", "Link,Heading,FormElement,Landmark,ListItem");
+// Active quicknav mode, index value of list from quicknav_modes
+pref("accessibility.accessfu.quicknav_index", 0);
 // Setting for an utterance order (0 - description first, 1 - description last).
 pref("accessibility.accessfu.utterance", 1);
 // Whether to skip images with empty alt text

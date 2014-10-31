@@ -98,7 +98,6 @@
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "mozilla/dom/SVGMatrix.h"
 #include "mozilla/dom/TextMetrics.h"
-#include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/SVGMatrix.h"
 #include "mozilla/FloatingPoint.h"
 #include "nsGlobalWindow.h"
@@ -114,8 +113,8 @@
 
 #undef free // apparently defined by some windows header, clashing with a free()
             // method in SkTypes.h
-#ifdef USE_SKIA
 #include "SkiaGLGlue.h"
+#ifdef USE_SKIA
 #include "SurfaceTypes.h"
 #endif
 
@@ -236,7 +235,7 @@ public:
     const ContextState &state = aCtx->CurrentState();
 
     if (state.StyleIsColor(aStyle)) {
-      mPattern.InitColorPattern(Color::FromABGR(state.colorStyles[aStyle]));
+      mPattern.InitColorPattern(ToDeviceColor(state.colorStyles[aStyle]));
     } else if (state.gradientStyles[aStyle] &&
                state.gradientStyles[aStyle]->GetType() == CanvasGradient::Type::LINEAR) {
       CanvasLinearGradient *gradient =
@@ -1022,8 +1021,10 @@ CanvasRenderingContext2D::Redraw(const mgfx::Rect &r)
 void
 CanvasRenderingContext2D::DidRefresh()
 {
-  SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
-  if (glue) {
+  if (IsTargetValid() && SkiaGLTex()) {
+    SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
+    MOZ_ASSERT(glue);
+
     auto gl = glue->GetGLContext();
     gl->FlushIfHeavyGLCallsSinceLastFlush();
   }
@@ -1217,7 +1218,7 @@ CanvasRenderingContext2D::EnsureTarget(RenderingMode aRenderingMode)
 
         SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
 
-#if USE_SKIA
+#if USE_SKIA_GPU
         if (glue && glue->GetGrContext() && glue->GetGLContext()) {
           mTarget = Factory::CreateDrawTargetSkiaWithGrContext(glue->GetGrContext(), size, format);
           if (mTarget) {
@@ -3204,7 +3205,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor : public nsBidiPresUtils::BidiProcess
           PreTranslate(baselineOrigin).      // translate origin for rotation
           PreRotate(gfx::Float(M_PI / 2.0)). // turn 90deg clockwise
           PreTranslate(-baselineOrigin).     // undo the translation
-          PreTranslate(Point(0, metrics.emAscent - metrics.emDescent) / 2));
+          PreTranslate(Point(0, (metrics.emAscent - metrics.emDescent) / 2)));
                               // and offset the (alphabetic) baseline of the
                               // horizontally-shaped text from the (centered)
                               // default baseline used for vertical
@@ -4823,6 +4824,14 @@ CanvasRenderingContext2D::CreateImageData(JSContext* cx,
 
 static uint8_t g2DContextLayerUserData;
 
+
+uint32_t
+CanvasRenderingContext2D::SkiaGLTex() const
+{
+    MOZ_ASSERT(IsTargetValid());
+    return (uint32_t)(uintptr_t)mTarget->GetNativeSurface(NativeSurfaceType::OPENGL_TEXTURE);
+}
+
 already_AddRefed<CanvasLayer>
 CanvasRenderingContext2D::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
                                          CanvasLayer *aOldLayer,
@@ -4854,9 +4863,11 @@ CanvasRenderingContext2D::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
 
     CanvasLayer::Data data;
 
-    SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
-    GLuint skiaGLTex = (GLuint)(uintptr_t)mTarget->GetNativeSurface(NativeSurfaceType::OPENGL_TEXTURE);
-    if (glue && skiaGLTex) {
+    GLuint skiaGLTex = SkiaGLTex();
+    if (skiaGLTex) {
+      SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
+      MOZ_ASSERT(glue);
+
       data.mGLContext = glue->GetGLContext();
       data.mFrontbufferGLTex = skiaGLTex;
     } else {
@@ -4898,11 +4909,14 @@ CanvasRenderingContext2D::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
   data.mSize = nsIntSize(mWidth, mHeight);
   data.mHasAlpha = !mOpaque;
 
-  SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
-  GLuint skiaGLTex = (GLuint)(uintptr_t)mTarget->GetNativeSurface(NativeSurfaceType::OPENGL_TEXTURE);
-  if (glue && skiaGLTex) {
+  GLuint skiaGLTex = SkiaGLTex();
+  if (skiaGLTex) {
     canvasLayer->SetPreTransactionCallback(
             CanvasRenderingContext2DUserData::PreTransactionCallback, userData);
+
+    SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
+    MOZ_ASSERT(glue);
+
     data.mGLContext = glue->GetGLContext();
     data.mFrontbufferGLTex = skiaGLTex;
   } else {

@@ -15,7 +15,6 @@
 #include "nsBoundingMetrics.h"          // for nsBoundingMetrics
 #include "nsColor.h"                    // for nscolor
 #include "nsCoord.h"                    // for nscoord, NSToIntRound
-#include "nsDeviceContext.h"            // for nsDeviceContext
 #include "nsFontMetrics.h"              // for nsFontMetrics
 #include "nsISupports.h"                // for NS_INLINE_DECL_REFCOUNTING, etc
 #include "nsString.h"               // for nsString
@@ -25,51 +24,21 @@ class nsIntRegion;
 struct nsPoint;
 struct nsRect;
 
-typedef enum {
-    nsLineStyle_kNone   = 0,
-    nsLineStyle_kSolid  = 1,
-    nsLineStyle_kDashed = 2,
-    nsLineStyle_kDotted = 3
-} nsLineStyle;
-
 class nsRenderingContext MOZ_FINAL
 {
     typedef mozilla::gfx::DrawTarget DrawTarget;
 
 public:
-    nsRenderingContext() : mP2A(0.) {}
+    nsRenderingContext() {}
 
     NS_INLINE_DECL_REFCOUNTING(nsRenderingContext)
 
-    void Init(nsDeviceContext* aContext, gfxContext* aThebesContext);
-    void Init(nsDeviceContext* aContext, DrawTarget* aDrawTarget);
+    void Init(gfxContext* aThebesContext);
+    void Init(DrawTarget* aDrawTarget);
 
     // These accessors will never return null.
     gfxContext *ThebesContext() { return mThebes; }
     DrawTarget *GetDrawTarget() { return mThebes->GetDrawTarget(); }
-    nsDeviceContext *DeviceContext() { return mDeviceContext; }
-
-    // Graphics state
-
-    void IntersectClip(const nsRect& aRect);
-    void SetClip(const nsIntRegion& aRegion);
-    void SetLineStyle(nsLineStyle aLineStyle);
-    void SetColor(nscolor aColor);
-
-    // Shapes
-
-    void DrawLine(const nsPoint& aStartPt, const nsPoint& aEndPt);
-    void DrawLine(nscoord aX0, nscoord aY0, nscoord aX1, nscoord aY1);
-    void DrawRect(const nsRect& aRect);
-    void DrawRect(nscoord aX, nscoord aY, nscoord aWidth, nscoord aHeight);
-    void DrawEllipse(nscoord aX, nscoord aY, nscoord aWidth, nscoord aHeight);
-
-    void FillRect(const nsRect& aRect);
-    void FillRect(nscoord aX, nscoord aY, nscoord aWidth, nscoord aHeight);
-    void FillPolygon(const nsPoint aPoints[], int32_t aNumPoints);
-
-    void FillEllipse(const nsRect& aRect);
-    void FillEllipse(nscoord aX, nscoord aY, nscoord aWidth, nscoord aHeight);
 
     // Text
 
@@ -103,10 +72,7 @@ private:
     int32_t GetMaxChunkLength();
 
     nsRefPtr<gfxContext> mThebes;
-    nsRefPtr<nsDeviceContext> mDeviceContext;
     nsRefPtr<nsFontMetrics> mFontMetrics;
-
-    double mP2A; // cached app units per device pixel value
 };
 
 #endif  // NSRENDERINGCONTEXT__H__

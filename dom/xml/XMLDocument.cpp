@@ -305,7 +305,7 @@ XMLDocument::Load(const nsAString& aUrl, ErrorResult& aRv)
   nsCOMPtr<nsIPrincipal> principal = NodePrincipal();
 
   // The callingDoc's Principal and doc's Principal should be the same
-  if (callingDoc->NodePrincipal() != principal) {
+  if (callingDoc && (callingDoc->NodePrincipal() != principal)) {
     nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
                                     NS_LITERAL_CSTRING("DOM"),
                                     callingDoc,
@@ -449,7 +449,6 @@ XMLDocument::Load(const nsAString& aUrl, ErrorResult& aRv)
                                   static_cast<nsIDocument*>(this),
                      nsILoadInfo::SEC_NORMAL,
                      nsIContentPolicy::TYPE_XMLHTTPREQUEST,
-                     nullptr,   // aChannelPolicy
                      loadGroup,
                      req,
                      nsIRequest::LOAD_BACKGROUND);

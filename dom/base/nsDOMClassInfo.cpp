@@ -86,13 +86,11 @@
 #include "nsIDOMCSSStyleRule.h"
 #include "nsIDOMXULCommandDispatcher.h"
 #include "nsIControllers.h"
-#include "nsIBoxObject.h"
 #ifdef MOZ_XUL
 #include "nsITreeSelection.h"
 #include "nsITreeContentView.h"
 #include "nsITreeView.h"
 #include "nsIXULTemplateBuilder.h"
-#include "nsITreeColumns.h"
 #endif
 #include "nsIDOMXPathNSResolver.h"
 
@@ -251,8 +249,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
 #endif
   NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(XULControllers, nsNonDOMObjectSH,
                                       DEFAULT_SCRIPTABLE_FLAGS)
-  NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(BoxObject, nsDOMGenericSH,
-                                      DEFAULT_SCRIPTABLE_FLAGS)
 #ifdef MOZ_XUL
   NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(TreeSelection, nsDOMGenericSH,
                                       DEFAULT_SCRIPTABLE_FLAGS)
@@ -265,11 +261,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                                       DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(XULTreeBuilder, nsDOMGenericSH,
-                                      DEFAULT_SCRIPTABLE_FLAGS)
-#endif
-
-#ifdef MOZ_XUL
-  NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(TreeColumn, nsDOMGenericSH,
                                       DEFAULT_SCRIPTABLE_FLAGS)
 #endif
 
@@ -696,10 +687,6 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIControllers)
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(BoxObject, nsIBoxObject)
-    DOM_CLASSINFO_MAP_ENTRY(nsIBoxObject)
-  DOM_CLASSINFO_MAP_END
-
 #ifdef MOZ_XUL
   DOM_CLASSINFO_MAP_BEGIN(TreeSelection, nsITreeSelection)
     DOM_CLASSINFO_MAP_ENTRY(nsITreeSelection)
@@ -720,12 +707,6 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIXULTreeBuilder)
     DOM_CLASSINFO_MAP_ENTRY(nsIXULTemplateBuilder)
     DOM_CLASSINFO_MAP_ENTRY(nsITreeView)
-  DOM_CLASSINFO_MAP_END
-#endif
-
-#ifdef MOZ_XUL
-  DOM_CLASSINFO_MAP_BEGIN(TreeColumn, nsITreeColumn)
-    DOM_CLASSINFO_MAP_ENTRY(nsITreeColumn)
   DOM_CLASSINFO_MAP_END
 #endif
 
@@ -1392,12 +1373,6 @@ nsDOMClassInfo::ShutDown()
   sIsInitialized = false;
 }
 
-static nsDOMConstructorFunc
-FindConstructorFunc(const nsDOMClassInfoData *aDOMClassInfoData)
-{
-  return nullptr;
-}
-
 static nsresult
 BaseStubConstructor(nsIWeakReference* aWeakOwner,
                     const nsGlobalNameStruct *name_struct, JSContext *cx,
@@ -1409,14 +1384,7 @@ BaseStubConstructor(nsIWeakReference* aWeakOwner,
   nsresult rv;
   nsCOMPtr<nsISupports> native;
   if (name_struct->mType == nsGlobalNameStruct::eTypeClassConstructor) {
-    const nsDOMClassInfoData* ci_data =
-      &sClassInfoData[name_struct->mDOMClassInfoID];
-    nsDOMConstructorFunc func = FindConstructorFunc(ci_data);
-    if (func) {
-      rv = func(getter_AddRefs(native));
-    } else {
-      rv = NS_ERROR_NOT_AVAILABLE;
-    }
+    rv = NS_ERROR_NOT_AVAILABLE;
   } else if (name_struct->mType == nsGlobalNameStruct::eTypeExternalConstructor) {
     native = do_CreateInstance(name_struct->mCID, &rv);
   } else if (name_struct->mType == nsGlobalNameStruct::eTypeExternalConstructorAlias) {
@@ -1626,7 +1594,7 @@ private:
       return data->mConstructorCID != nullptr;
     }
 
-    return FindConstructorFunc(aData);
+    return nullptr;
   }
   static bool IsConstructable(const nsGlobalNameStruct *aNameStruct)
   {

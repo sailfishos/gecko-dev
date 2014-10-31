@@ -61,7 +61,6 @@
 #include "mozilla/dom/DOMParser.h"
 #include "nsDOMSerializer.h"
 #include "nsXMLHttpRequest.h"
-#include "nsChannelPolicy.h"
 
 // view stuff
 #include "nsContentCreatorFunctions.h"
@@ -282,7 +281,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(DOMParser)
 NS_GENERIC_FACTORY_CONSTRUCTOR(Exception)
 NS_GENERIC_FACTORY_CONSTRUCTOR(DOMSessionStorageManager)
 NS_GENERIC_FACTORY_CONSTRUCTOR(DOMLocalStorageManager)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsChannelPolicy)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(DOMRequestService,
                                          DOMRequestService::FactoryCreate)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(QuotaManager,
@@ -748,7 +746,6 @@ NS_DEFINE_NAMED_CID(NS_EVENTLISTENERSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_GLOBALMESSAGEMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_PARENTPROCESSMESSAGEMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_CHILDPROCESSMESSAGEMANAGER_CID);
-NS_DEFINE_NAMED_CID(NSCHANNELPOLICY_CID);
 NS_DEFINE_NAMED_CID(NS_SCRIPTSECURITYMANAGER_CID);
 NS_DEFINE_NAMED_CID(NS_PRINCIPAL_CID);
 NS_DEFINE_NAMED_CID(NS_SYSTEMPRINCIPAL_CID);
@@ -1041,7 +1038,6 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kNS_GLOBALMESSAGEMANAGER_CID, false, nullptr, CreateGlobalMessageManager },
   { &kNS_PARENTPROCESSMESSAGEMANAGER_CID, false, nullptr, CreateParentMessageManager },
   { &kNS_CHILDPROCESSMESSAGEMANAGER_CID, false, nullptr, CreateChildMessageManager },
-  { &kNSCHANNELPOLICY_CID, false, nullptr, nsChannelPolicyConstructor },
   { &kNS_SCRIPTSECURITYMANAGER_CID, false, nullptr, Construct_nsIScriptSecurityManager },
   { &kNS_PRINCIPAL_CID, false, nullptr, nsPrincipalConstructor },
   { &kNS_SYSTEMPRINCIPAL_CID, false, nullptr, nsSystemPrincipalConstructor },
@@ -1197,7 +1193,6 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { NS_GLOBALMESSAGEMANAGER_CONTRACTID, &kNS_GLOBALMESSAGEMANAGER_CID },
   { NS_PARENTPROCESSMESSAGEMANAGER_CONTRACTID, &kNS_PARENTPROCESSMESSAGEMANAGER_CID },
   { NS_CHILDPROCESSMESSAGEMANAGER_CONTRACTID, &kNS_CHILDPROCESSMESSAGEMANAGER_CID },
-  { NSCHANNELPOLICY_CONTRACTID, &kNSCHANNELPOLICY_CID },
   { NS_SCRIPTSECURITYMANAGER_CONTRACTID, &kNS_SCRIPTSECURITYMANAGER_CID },
   { NS_GLOBAL_CHANNELEVENTSINK_CONTRACTID, &kNS_SCRIPTSECURITYMANAGER_CID },
   { NS_PRINCIPAL_CONTRACTID, &kNS_PRINCIPAL_CID },
@@ -1250,6 +1245,7 @@ static const mozilla::Module::CategoryEntry kLayoutCategories[] = {
   { "content-policy", "CSPService", CSPSERVICE_CONTRACTID },
   { "content-policy", NS_MIXEDCONTENTBLOCKER_CONTRACTID, NS_MIXEDCONTENTBLOCKER_CONTRACTID },
   { "net-channel-event-sinks", "CSPService", CSPSERVICE_CONTRACTID },
+  { "net-channel-event-sinks", NS_MIXEDCONTENTBLOCKER_CONTRACTID, NS_MIXEDCONTENTBLOCKER_CONTRACTID },
   { "app-startup", "Script Security Manager", "service," NS_SCRIPTSECURITYMANAGER_CONTRACTID },
   { TOPIC_WEB_APP_CLEAR_DATA, "QuotaManager", "service," QUOTA_MANAGER_CONTRACTID },
 #ifdef MOZ_WIDGET_GONK
@@ -1262,7 +1258,6 @@ static const mozilla::Module::CategoryEntry kLayoutCategories[] = {
 #ifdef MOZ_B2G_BT
   { "profile-after-change", "Bluetooth Service", BLUETOOTHSERVICE_CONTRACTID },
 #endif
-  { "profile-after-change", "MobileConnection Service", NS_MOBILE_CONNECTION_SERVICE_CONTRACTID },
   { nullptr }
 };
 

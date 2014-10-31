@@ -39,7 +39,7 @@ describe("loop.conversation", function() {
         return "en-US";
       },
       setLoopCharPref: sinon.stub(),
-      getLoopCharPref: sinon.stub().returns(null),
+      getLoopCharPref: sinon.stub().returns("http://fakeurl"),
       getLoopBoolPref: sinon.stub(),
       getCallData: sinon.stub(),
       releaseCallData: sinon.stub(),
@@ -90,7 +90,7 @@ describe("loop.conversation", function() {
       delete window.OT;
     });
 
-    it("should initalize L10n", function() {
+    it("should initialize L10n", function() {
       loop.conversation.init();
 
       sinon.assert.calledOnce(document.mozL10n.initialize);
@@ -98,15 +98,52 @@ describe("loop.conversation", function() {
         navigator.mozLoop);
     });
 
-    it("should create the ConversationControllerView", function() {
+    it("should create the AppControllerView", function() {
       loop.conversation.init();
 
       sinon.assert.calledOnce(React.renderComponent);
       sinon.assert.calledWith(React.renderComponent,
         sinon.match(function(value) {
           return TestUtils.isDescriptorOfType(value,
-            loop.conversation.ConversationControllerView);
+            loop.conversation.AppControllerView);
       }));
+    });
+
+    describe("when locationHash begins with #room", function () {
+      // XXX must stay in sync with "test.alwaysUseRooms" pref check
+      // in conversation.jsx:init until we remove that code, which should
+      // happen in the second patch in bug 1074686, at which time this comment
+      // can go away as well.
+      var fakeRoomID = "32";
+
+      beforeEach(function() {
+        loop.shared.utils.Helper.prototype.locationHash
+          .returns("#room/" + fakeRoomID);
+
+        sandbox.stub(loop.store, "LocalRoomStore");
+      });
+
+      it("should create a localRoomStore", function() {
+        loop.conversation.init();
+
+        sinon.assert.calledOnce(loop.store.LocalRoomStore);
+        sinon.assert.calledWithNew(loop.store.LocalRoomStore);
+        sinon.assert.calledWithExactly(loop.store.LocalRoomStore,
+          sinon.match({
+            dispatcher: sinon.match.instanceOf(loop.Dispatcher),
+            mozLoop: sinon.match.same(navigator.mozLoop)
+          }));
+      });
+
+      it("should dispatch SetupEmptyRoom with localRoomId from locationHash",
+        function() {
+
+          loop.conversation.init();
+
+          sinon.assert.calledOnce(loop.Dispatcher.prototype.dispatch);
+          sinon.assert.calledWithExactly(loop.Dispatcher.prototype.dispatch,
+            new loop.shared.actions.SetupEmptyRoom({localRoomId: fakeRoomID}));
+        });
     });
 
     it("should trigger a gatherCallData action", function() {
@@ -138,11 +175,12 @@ describe("loop.conversation", function() {
   describe("ConversationControllerView", function() {
     var store, conversation, client, ccView, oldTitle, dispatcher;
 
-    function mountTestComponent() {
+    function mountTestComponent(localRoomStore) {
       return TestUtils.renderIntoDocument(
-        loop.conversation.ConversationControllerView({
+        loop.conversation.AppControllerView({
           client: client,
           conversation: conversation,
+          localRoomStore: localRoomStore,
           sdk: {},
           store: store
         }));
@@ -192,6 +230,22 @@ describe("loop.conversation", function() {
 
       TestUtils.findRenderedComponentWithType(ccView,
         loop.conversation.IncomingConversationView);
+    });
+
+    it("should display the EmptyRoomView for rooms", function() {
+      navigator.mozLoop.rooms = {
+        addCallback: function() {},
+        removeCallback: function() {}
+      };
+      var localRoomStore = new loop.store.LocalRoomStore({
+        mozLoop: navigator.mozLoop,
+        dispatcher: dispatcher
+      });
+
+      ccView = mountTestComponent(localRoomStore);
+
+      TestUtils.findRenderedComponentWithType(ccView,
+        loop.roomViews.EmptyRoomView);
     });
   });
 
@@ -356,6 +410,8 @@ describe("loop.conversation", function() {
         describe("WebSocket Events", function() {
           describe("Call cancelled or timed out before acceptance", function() {
             beforeEach(function() {
+              // Mounting the test component automatically calls the required
+              // setup functions
               icView = mountTestComponent();
               promise = new Promise(function(resolve, reject) {
                 resolve();
@@ -406,6 +462,46 @@ describe("loop.conversation", function() {
               });
             });
 
+            describe("progress - terminated - closed", function() {
+              it("should stop alerting", function(done) {
+                promise.then(function() {
+                  icView._websocket.trigger("progress", {
+                    state: "terminated",
+                    reason: "closed"
+                  });
+
+                  sinon.assert.calledOnce(navigator.mozLoop.stopAlerting);
+                  done();
+                });
+              });
+
+              it("should close the websocket", function(done) {
+                promise.then(function() {
+                  icView._websocket.trigger("progress", {
+                    state: "terminated",
+                    reason: "closed"
+                  });
+
+                  sinon.assert.calledOnce(icView._websocket.close);
+                  done();
+                });
+              });
+
+              it("should close the window", function(done) {
+                promise.then(function() {
+                  icView._websocket.trigger("progress", {
+                    state: "terminated",
+                    reason: "closed"
+                  });
+
+                  sandbox.clock.tick(1);
+
+                  sinon.assert.calledOnce(window.close);
+                  done();
+                });
+              });
+            });
+
             describe("progress - terminated - timeout (previousState = alerting)", function() {
               it("should stop alerting", function(done) {
                 promise.then(function() {
@@ -445,6 +541,22 @@ describe("loop.conversation", function() {
                 });
               });
             });
+
+            describe("progress - terminated - timeout (previousState not init" +
+                     " nor alerting)",
+              function() {
+                it("should set the state to end", function(done) {
+                  promise.then(function() {
+                    icView._websocket.trigger("progress", {
+                      state: "terminated",
+                      reason: "timeout"
+                    }, "connecting");
+
+                    expect(icView.state.callStatus).eql("end");
+                    done();
+                  });
+                });
+              });
           });
         });
       });

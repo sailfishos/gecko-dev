@@ -537,6 +537,7 @@ public:
   static const KTableValue kBoxPackKTable[];
   static const KTableValue kClipShapeSizingKTable[];
   static const KTableValue kDominantBaselineKTable[];
+  static const KTableValue kShapeRadiusKTable[];
   static const KTableValue kFillRuleKTable[];
   static const KTableValue kFilterFunctionKTable[];
   static const KTableValue kImageRenderingKTable[];
@@ -593,6 +594,7 @@ public:
   static const KTableValue kGridTrackBreadthKTable[];
   static const KTableValue kImageOrientationKTable[];
   static const KTableValue kImageOrientationFlipKTable[];
+  static const KTableValue kIsolationKTable[];
   static const KTableValue kIMEModeKTable[];
   static const KTableValue kLineHeightKTable[];
   static const KTableValue kListStylePositionKTable[];
@@ -622,6 +624,7 @@ public:
   static const KTableValue kRadialGradientSizeKTable[];
   static const KTableValue kRadialGradientLegacySizeKTable[];
   static const KTableValue kResizeKTable[];
+  static const KTableValue kScrollBehaviorKTable[];
   static const KTableValue kSpeakKTable[];
   static const KTableValue kSpeakHeaderKTable[];
   static const KTableValue kSpeakNumeralKTable[];

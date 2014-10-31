@@ -43,6 +43,8 @@ namespace jit {
 
 namespace gc {
 
+struct FinalizePhase;
+
 enum State {
     NO_INCREMENTAL,
     MARK_ROOTS,
@@ -834,6 +836,9 @@ class ArenaLists
     void wipeDuringParallelExecution(JSRuntime *rt);
 
   private:
+    inline void finalizeNow(FreeOp *fop, const FinalizePhase& phase);
+    inline void queueForForegroundSweep(FreeOp *fop, const FinalizePhase& phase);
+    inline void queueForBackgroundSweep(FreeOp *fop, const FinalizePhase& phase);
     inline void finalizeNow(FreeOp *fop, AllocKind thingKind);
     inline void forceFinalizeNow(FreeOp *fop, AllocKind thingKind);
     inline void queueForForegroundSweep(FreeOp *fop, AllocKind thingKind);
@@ -1363,6 +1368,8 @@ const int ZealFrameVerifierPostValue = 12;
 const int ZealCheckHashTablesOnMinorGC = 13;
 const int ZealCompactValue = 14;
 const int ZealLimit = 14;
+
+extern const char *ZealModeHelpText;
 
 enum VerifierType {
     PreBarrierVerifier,
