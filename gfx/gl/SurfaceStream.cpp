@@ -434,10 +434,13 @@ SurfaceStream_TripleBuffer::SwapProducer(SurfaceFactory* factory,
 
         // If WaitForCompositor succeeds, mStaging has moved to mConsumer.
         // If it failed, we might have to scrap it.
-        if (mStaging && !WaitForCompositor())
+        if (mStaging) {
+            WaitForCompositor();
+        }
+        if (mStaging) {
             Scrap(mStaging);
+        }
 
-        MOZ_ASSERT(!mStaging);
         Move(mProducer, mStaging);
         mStaging->Fence();
     }
@@ -470,19 +473,12 @@ SurfaceStream_TripleBuffer_Async::~SurfaceStream_TripleBuffer_Async()
 {
 }
 
-bool
+void
 SurfaceStream_TripleBuffer_Async::WaitForCompositor()
 {
     PROFILER_LABEL("SurfaceStream_TripleBuffer_Async", "WaitForCompositor");
 
-    // We are assumed to be locked
-    while (mStaging) {
-        if (!NS_SUCCEEDED(mMonitor.Wait(PR_MillisecondsToInterval(100)))) {
-            return false;
-        }
-    }
-
-    return true;
+    mMonitor.Wait(PR_MillisecondsToInterval(100));
 }
 
 } /* namespace gfx */
