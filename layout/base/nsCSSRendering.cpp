@@ -350,9 +350,11 @@ protected:
 // A resolved color stop --- with a specific position along the gradient line,
 // and a Thebes color
 struct ColorStop {
-  ColorStop(double aPosition, gfxRGBA aColor) :
-    mPosition(aPosition), mColor(aColor) {}
+  ColorStop(): mPosition(0), mIsMidpoint(false) {}
+  ColorStop(double aPosition, bool aIsMidPoint, gfxRGBA aColor) :
+    mPosition(aPosition), mIsMidpoint(aIsMidPoint), mColor(aColor) {}
   double mPosition; // along the gradient line; 0=start, 1=end
+  bool mIsMidpoint;
   gfxRGBA mColor;
 };
 
@@ -947,40 +949,47 @@ nsCSSRendering::PaintFocus(nsPresContext* aPresContext,
 //----------------------------------------------------------------------
 
 /**
- * Computes the placement of a background image.
- *
- * @param aOriginBounds is the box to which the tiling position should be
- * relative
- * This should correspond to 'background-origin' for the frame,
- * except when painting on the canvas, in which case the origin bounds
- * should be the bounds of the root element's frame.
- * @param aTopLeft the top-left corner where an image tile should be drawn
- * @param aAnchorPoint a point which should be pixel-aligned by
- * nsLayoutUtils::DrawImage. This is the same as aTopLeft, unless CSS
- * specifies a percentage (including 'right' or 'bottom'), in which case
- * it's that percentage within of aOriginBounds. So 'right' would set
- * aAnchorPoint.x to aOriginBounds.XMost().
- *
- * Points are returned relative to aOriginBounds.
+ * Helper for ComputeObjectAnchorPoint; parameters are the same as for
+ * that function, except they're for a single coordinate / a single size
+ * dimension. (so, x/width vs. y/height)
  */
+typedef nsStyleBackground::Position::PositionCoord PositionCoord;
 static void
-ComputeBackgroundAnchorPoint(const nsStyleBackground::Layer& aLayer,
-                             const nsSize& aOriginBounds,
-                             const nsSize& aImageSize,
-                             nsPoint* aTopLeft,
-                             nsPoint* aAnchorPoint)
+ComputeObjectAnchorCoord(const PositionCoord& aCoord,
+                         const nscoord aOriginBounds,
+                         const nscoord aImageSize,
+                         nscoord* aTopLeftCoord,
+                         nscoord* aAnchorPointCoord)
 {
-  double percentX = aLayer.mPosition.mXPosition.mPercent;
-  nscoord lengthX = aLayer.mPosition.mXPosition.mLength;
-  aAnchorPoint->x = lengthX + NSToCoordRound(percentX*aOriginBounds.width);
-  aTopLeft->x = lengthX +
-    NSToCoordRound(percentX*(aOriginBounds.width - aImageSize.width));
+  *aAnchorPointCoord = aCoord.mLength;
+  *aTopLeftCoord = aCoord.mLength;
 
-  double percentY = aLayer.mPosition.mYPosition.mPercent;
-  nscoord lengthY = aLayer.mPosition.mYPosition.mLength;
-  aAnchorPoint->y = lengthY + NSToCoordRound(percentY*aOriginBounds.height);
-  aTopLeft->y = lengthY +
-    NSToCoordRound(percentY*(aOriginBounds.height - aImageSize.height));
+  if (aCoord.mHasPercent) {
+    // Adjust aTopLeftCoord by the specified % of the extra space.
+    nscoord extraSpace = aOriginBounds - aImageSize;
+    *aTopLeftCoord += NSToCoordRound(aCoord.mPercent * extraSpace);
+
+    // The anchor-point doesn't care about our image's size; just the size
+    // of the region we're rendering into.
+    *aAnchorPointCoord += NSToCoordRound(aCoord.mPercent * aOriginBounds);
+  }
+}
+
+void
+nsImageRenderer::ComputeObjectAnchorPoint(
+  const nsStyleBackground::Position& aPos,
+  const nsSize& aOriginBounds,
+  const nsSize& aImageSize,
+  nsPoint* aTopLeft,
+  nsPoint* aAnchorPoint)
+{
+  ComputeObjectAnchorCoord(aPos.mXPosition,
+                           aOriginBounds.width, aImageSize.width,
+                           &aTopLeft->x, &aAnchorPoint->x);
+
+  ComputeObjectAnchorCoord(aPos.mYPosition,
+                           aOriginBounds.height, aImageSize.height,
+                           &aTopLeft->y, &aAnchorPoint->y);
 }
 
 nsIFrame*
@@ -2226,6 +2235,84 @@ RectIsBeyondLinearGradientEdge(const gfxRect& aRect,
   return false;
 }
 
+static void ResolveMidpoints(nsTArray<ColorStop>& stops)
+{
+  for (size_t x = 1; x < stops.Length() - 1;) {
+    if (!stops[x].mIsMidpoint) {
+      x++;
+      continue;
+    }
+
+    gfxRGBA color1 = stops[x-1].mColor;
+    gfxRGBA color2 = stops[x+1].mColor;
+    float offset1 = stops[x-1].mPosition;
+    float offset2 = stops[x+1].mPosition;
+    float offset = stops[x].mPosition;
+    // check if everything coincides. If so, ignore the midpoint.
+    if (offset - offset1 == offset2 - offset) {
+      stops.RemoveElementAt(x);
+      continue;
+    }
+
+    // Check if we coincide with the left colorstop.
+    if (offset1 == offset) {
+      // Morph the midpoint to a regular stop with the color of the next
+      // color stop.
+      stops[x].mColor = color2;
+      stops[x].mIsMidpoint = false;
+      continue;
+    }
+
+    // Check if we coincide with the right colorstop.
+    if (offset2 == offset) {
+      // Morph the midpoint to a regular stop with the color of the previous
+      // color stop.
+      stops[x].mColor = color1;
+      stops[x].mIsMidpoint = false;
+      continue;
+    }
+
+    float midpoint = (offset - offset1) / (offset2 - offset1);
+    ColorStop newStops[9];
+    if (midpoint > .5f) {
+      for (size_t y = 0; y < 7; y++) {
+        newStops[y].mPosition = offset1 + (offset - offset1) * (7 + y) / 13;
+      }
+
+      newStops[7].mPosition = offset + (offset2 - offset) / 3;
+      newStops[8].mPosition = offset + (offset2 - offset) * 2 / 3;
+    } else {
+      newStops[0].mPosition = offset1 + (offset - offset1) / 3;
+      newStops[1].mPosition = offset1 + (offset - offset1) * 2 / 3;
+
+      for (size_t y = 0; y < 7; y++) {
+        newStops[y+2].mPosition = offset + (offset2 - offset) * y / 13;
+      }
+    }
+    // calculate colors
+
+    for (size_t y = 0; y < 9; y++) {
+      // Calculate the intermediate color stops per the formula of the CSS images
+      // spec. http://dev.w3.org/csswg/css-images/#color-stop-syntax
+      // 9 points were chosen since it is the minimum number of stops that always
+      // give the smoothest appearace regardless of midpoint position and difference
+      // in luminance of the end points.
+      float relativeOffset = (newStops[y].mPosition - offset1) / (offset2 - offset1);
+      float multiplier = powf(relativeOffset, logf(.5f) / logf(midpoint));
+      
+      gfxFloat red = color1.r + multiplier * (color2.r - color1.r);
+      gfxFloat green = color1.g + multiplier * (color2.g - color1.g);
+      gfxFloat blue = color1.b + multiplier * (color2.b - color1.b);
+      gfxFloat alpha = color1.a + multiplier * (color2.a - color1.a);
+
+      newStops[y].mColor = gfxRGBA(red, green, blue, alpha);
+    }
+
+    stops.ReplaceElementsAt(x, 1, newStops, 9);
+    x += 9;
+  }
+}
+
 static gfxRGBA
 Premultiply(const gfxRGBA& aColor)
 {
@@ -2288,7 +2375,7 @@ ResolvePremultipliedAlpha(nsTArray<ColorStop>& aStops)
       size_t stepCount = NSToIntFloor(fabs(leftStop.mColor.a - rightStop.mColor.a) / kAlphaIncrementPerGradientStep);
       for (size_t y = 1; y < stepCount; y++) {
         float frac = static_cast<float>(y) / stepCount;
-        ColorStop newStop(Interpolate(leftStop.mPosition, rightStop.mPosition, frac),
+        ColorStop newStop(Interpolate(leftStop.mPosition, rightStop.mPosition, frac), false,
                           Unpremultiply(InterpolateColor(premulLeftColor, premulRightColor, frac)));
         aStops.InsertElementAt(x, newStop);
         x++;
@@ -2364,7 +2451,7 @@ nsCSSRendering::PaintGradient(nsPresContext* aPresContext,
         if (firstUnsetPosition < 0) {
           firstUnsetPosition = i;
         }
-        stops.AppendElement(ColorStop(0, stop.mColor));
+        stops.AppendElement(ColorStop(0, stop.mIsInterpolationHint, stop.mColor));
         continue;
       }
       break;
@@ -2391,7 +2478,7 @@ nsCSSRendering::PaintGradient(nsPresContext* aPresContext,
       // to the previous stop position, if necessary
       position = std::max(position, stops[i - 1].mPosition);
     }
-    stops.AppendElement(ColorStop(position, stop.mColor));
+    stops.AppendElement(ColorStop(position, stop.mIsInterpolationHint, stop.mColor));
     if (firstUnsetPosition > 0) {
       // Interpolate positions for all stops that didn't have a specified position
       double p = stops[firstUnsetPosition - 1].mPosition;
@@ -2586,11 +2673,12 @@ nsCSSRendering::PaintGradient(nsPresContext* aPresContext,
     stops.Clear();
 
     if (!aGradient->mRepeating && !zeroRadius) {
-      stops.AppendElement(ColorStop(firstStop, firstColor));
+      stops.AppendElement(ColorStop(firstStop, false, firstColor));
     }
-    stops.AppendElement(ColorStop(firstStop, lastColor));
+    stops.AppendElement(ColorStop(firstStop, false, lastColor));
   }
 
+  ResolveMidpoints(stops);
   ResolvePremultipliedAlpha(stops);
 
   bool isRepeat = aGradient->mRepeating || forceRepeatToCoverTiles;
@@ -3167,8 +3255,9 @@ nsCSSRendering::PrepareBackgroundLayer(nsPresContext* aPresContext,
 
   // Compute the position of the background now that the background's size is
   // determined.
-  ComputeBackgroundAnchorPoint(aLayer, bgPositionSize, imageSize,
-                               &imageTopLeft, &state.mAnchor);
+  nsImageRenderer::ComputeObjectAnchorPoint(aLayer.mPosition,
+                                            bgPositionSize, imageSize,
+                                            &imageTopLeft, &state.mAnchor);
   imageTopLeft += bgPositioningArea.TopLeft();
   state.mAnchor += bgPositioningArea.TopLeft();
 

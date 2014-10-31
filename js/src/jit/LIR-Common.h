@@ -233,7 +233,7 @@ class LSimdSignMaskX4 : public LInstructionHelper<1, 1, 0>
 class LSimdSwizzleBase : public LInstructionHelper<1, 1, 0>
 {
   public:
-    LSimdSwizzleBase(const LAllocation &base)
+    explicit LSimdSwizzleBase(const LAllocation &base)
     {
         setOperand(0, base);
     }
@@ -257,7 +257,7 @@ class LSimdSwizzleI : public LSimdSwizzleBase
 {
   public:
     LIR_HEADER(SimdSwizzleI);
-    LSimdSwizzleI(const LAllocation &base) : LSimdSwizzleBase(base)
+    explicit LSimdSwizzleI(const LAllocation &base) : LSimdSwizzleBase(base)
     {}
 };
 // Shuffles a float32x4 into another float32x4 vector.
@@ -265,7 +265,7 @@ class LSimdSwizzleF : public LSimdSwizzleBase
 {
   public:
     LIR_HEADER(SimdSwizzleF);
-    LSimdSwizzleF(const LAllocation &base) : LSimdSwizzleBase(base)
+    explicit LSimdSwizzleF(const LAllocation &base) : LSimdSwizzleBase(base)
     {}
 };
 
@@ -4203,7 +4203,7 @@ class LTypedObjectUnsizedLength : public LInstructionHelper<1, 1, 0>
   public:
     LIR_HEADER(TypedObjectUnsizedLength)
 
-    LTypedObjectUnsizedLength(const LAllocation &object) {
+    explicit LTypedObjectUnsizedLength(const LAllocation &object) {
         setOperand(0, object);
     }
     const LAllocation *object() {
@@ -4868,6 +4868,80 @@ class LStoreTypedArrayElementStatic : public LInstructionHelper<0, 2, 0>
     }
     const LAllocation *value() {
         return getOperand(1);
+    }
+};
+
+class LCompareExchangeTypedArrayElement : public LInstructionHelper<1, 4, 1>
+{
+  public:
+    LIR_HEADER(CompareExchangeTypedArrayElement)
+
+    LCompareExchangeTypedArrayElement(const LAllocation &elements, const LAllocation &index,
+                                      const LAllocation &oldval, const LAllocation &newval,
+                                      const LDefinition &temp)
+    {
+        setOperand(0, elements);
+        setOperand(1, index);
+        setOperand(2, oldval);
+        setOperand(3, newval);
+        setTemp(0, temp);
+    }
+
+    const LAllocation *elements() {
+        return getOperand(0);
+    }
+    const LAllocation *index() {
+        return getOperand(1);
+    }
+    const LAllocation *oldval() {
+        return getOperand(2);
+    }
+    const LAllocation *newval() {
+        return getOperand(3);
+    }
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+
+    const MCompareExchangeTypedArrayElement *mir() const {
+        return mir_->toCompareExchangeTypedArrayElement();
+    }
+};
+
+class LAtomicTypedArrayElementBinop : public LInstructionHelper<1, 3, 2>
+{
+  public:
+    LIR_HEADER(AtomicTypedArrayElementBinop)
+
+    LAtomicTypedArrayElementBinop(const LAllocation &elements, const LAllocation &index,
+                                  const LAllocation &value, const LDefinition &temp1,
+                                  const LDefinition &temp2)
+    {
+        setOperand(0, elements);
+        setOperand(1, index);
+        setOperand(2, value);
+        setTemp(0, temp1);
+        setTemp(1, temp2);
+    }
+
+    const LAllocation *elements() {
+        return getOperand(0);
+    }
+    const LAllocation *index() {
+        return getOperand(1);
+    }
+    const LAllocation *value() {
+        return getOperand(2);
+    }
+    const LDefinition *temp1() {
+        return getTemp(0);
+    }
+    const LDefinition *temp2() {
+        return getTemp(1);
+    }
+
+    const MAtomicTypedArrayElementBinop *mir() const {
+        return mir_->toAtomicTypedArrayElementBinop();
     }
 };
 
@@ -6625,6 +6699,30 @@ class LThrowUninitializedLexical : public LCallInstructionHelper<0, 0, 0>
 
     MLexicalCheck *mir() {
         return mir_->toLexicalCheck();
+    }
+};
+
+class LMemoryBarrier : public LInstructionHelper<0, 0, 0>
+{
+  private:
+    const int type_;
+
+  public:
+    LIR_HEADER(MemoryBarrier)
+
+    // The parameter 'type' is a bitwise 'or' of the barrier types needed,
+    // see AtomicOp.h.
+    explicit LMemoryBarrier(int type) : type_(type)
+    {
+        MOZ_ASSERT((type_ & ~MembarAllbits) == 0);
+    }
+
+    int type() const {
+        return type_;
+    }
+
+    const MMemoryBarrier *mir() const {
+        return mir_->toMemoryBarrier();
     }
 };
 

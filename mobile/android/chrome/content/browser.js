@@ -137,7 +137,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "SharedPreferences",
   ["SelectionHandler", ["TextSelection:Get"], "chrome://browser/content/SelectionHandler.js"],
   ["Notifications", ["Notification:Event"], "chrome://browser/content/Notifications.jsm"],
   ["EmbedRT", ["GeckoView:ImportScript"], "chrome://browser/content/EmbedRT.js"],
-  ["Reader", ["Reader:Add", "Reader:Remove"], "chrome://browser/content/Reader.js"],
+  ["Reader", ["Reader:Removed"], "chrome://browser/content/Reader.js"],
 ].forEach(function (aScript) {
   let [name, notifications, script] = aScript;
   XPCOMUtils.defineLazyGetter(window, name, function() {
@@ -197,12 +197,6 @@ const kDefaultCSSViewportWidth = 980;
 const kDefaultCSSViewportHeight = 480;
 
 const kViewportRemeasureThrottle = 500;
-
-const kDoNotTrackPrefState = Object.freeze({
-  NO_PREF: "0",
-  DISALLOW_TRACKING: "1",
-  ALLOW_TRACKING: "2",
-});
 
 let Log = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog;
 
@@ -838,6 +832,20 @@ var BrowserApp = {
       Services.prefs.clearUserPref("plugins.click_to_play");
     }
 
+    // Migrate the "privacy.donottrackheader.value" pref. See bug 1042135.
+    if (Services.prefs.prefHasUserValue("privacy.donottrackheader.value")) {
+      // Make sure the doNotTrack value conforms to the conversion from
+      // three-state to two-state. (This reverts a setting of "please track me"
+      // to the default "don't say anything").
+      if (Services.prefs.getBoolPref("privacy.donottrackheader.enabled") &&
+          (Services.prefs.getIntPref("privacy.donottrackheader.value") != 1)) {
+        Services.prefs.clearUserPref("privacy.donottrackheader.enabled");
+      }
+
+      // This pref has been removed, so always clear it.
+      Services.prefs.clearUserPref("privacy.donottrackheader.value");
+    }
+
     // Set the search activity default pref on app upgrade if it has not been set already.
     if (this._startupStatus === "upgrade" &&
         !Services.prefs.prefHasUserValue("searchActivity.default.migrated")) {
@@ -1283,21 +1291,6 @@ var BrowserApp = {
           pref.value = MasterPassword.enabled;
           prefs.push(pref);
           continue;
-        // Handle do-not-track preference
-        case "privacy.donottrackheader":
-          pref.type = "string";
-
-          let enableDNT = Services.prefs.getBoolPref("privacy.donottrackheader.enabled");
-          if (!enableDNT) {
-            pref.value = kDoNotTrackPrefState.NO_PREF;
-          } else {
-            let dntState = Services.prefs.getIntPref("privacy.donottrackheader.value");
-            pref.value = (dntState === 0) ? kDoNotTrackPrefState.ALLOW_TRACKING :
-                                            kDoNotTrackPrefState.DISALLOW_TRACKING;
-          }
-
-          prefs.push(pref);
-          continue;
 #ifdef MOZ_CRASHREPORTER
         // Crash reporter submit pref must be fetched from nsICrashReporter service.
         case "datareporting.crashreporter.submitEnabled":
@@ -1377,27 +1370,6 @@ var BrowserApp = {
           MasterPassword.removePassword(json.value);
         else
           MasterPassword.setPassword(json.value);
-        return;
-
-      // "privacy.donottrackheader" is not "real" pref name, it's used in the setting menu.
-      case "privacy.donottrackheader":
-        switch (json.value) {
-          // Don't tell anything about tracking me
-          case kDoNotTrackPrefState.NO_PREF:
-            Services.prefs.setBoolPref("privacy.donottrackheader.enabled", false);
-            Services.prefs.clearUserPref("privacy.donottrackheader.value");
-            break;
-          // Accept tracking me
-          case kDoNotTrackPrefState.ALLOW_TRACKING:
-            Services.prefs.setBoolPref("privacy.donottrackheader.enabled", true);
-            Services.prefs.setIntPref("privacy.donottrackheader.value", 0);
-            break;
-          // Not accept tracking me
-          case kDoNotTrackPrefState.DISALLOW_TRACKING:
-            Services.prefs.setBoolPref("privacy.donottrackheader.enabled", true);
-            Services.prefs.setIntPref("privacy.donottrackheader.value", 1);
-            break;
-        }
         return;
 
       // Enabling or disabling suggestions will prevent future prompts
@@ -3248,9 +3220,6 @@ Tab.prototype = {
 
     this.browser.stop();
 
-    let frameLoader = this.browser.QueryInterface(Ci.nsIFrameLoaderOwner).frameLoader;
-    frameLoader.renderMode = Ci.nsIFrameLoader.RENDER_MODE_ASYNC_SCROLL;
-
     // only set tab uri if uri is valid
     let uri = null;
     let title = aParams.title || aURL;
@@ -3991,7 +3960,8 @@ Tab.prototype = {
             type: "Link:Favicon",
             tabID: this.id,
             href: resolveGeckoURI(target.href),
-            size: maxSize
+            size: maxSize,
+            mime: target.getAttribute("type") || ""
           };
           Messaging.sendRequest(json);
         } else if (list.indexOf("[alternate]") != -1 && aEvent.type == "DOMLinkAdded") {

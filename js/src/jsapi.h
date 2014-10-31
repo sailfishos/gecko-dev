@@ -613,6 +613,61 @@ class HandleValueArray
     }
 };
 
+// Container for futex methods, used to implement the Atomics primitives.
+//
+// Client code calls JS_SetContextFutexAPI to install an instance of a
+// subclass of PerRuntimeFutexAPI on the runtime.  Implementations
+// of the Atomics primitives will use that object, if it is present
+// (and fail, if not).
+//
+// The API may differ among clients; for example, the APIs installed by
+// a worker and by the main window event thread are possibly different.
+
+class PerRuntimeFutexAPI
+{
+  public:
+    virtual ~PerRuntimeFutexAPI() {}
+
+    // Acquire the GLOBAL lock for all futex resources in all domains.
+    virtual void lock() = 0;
+
+    // Release the GLOBAL lock.
+    virtual void unlock() = 0;
+
+    // Return true iff the calling thread is a worker thread.  This must be
+    // used to guard calls to wait().  The lock need not be held.
+    virtual bool isOnWorkerThread() = 0;
+
+    enum WakeResult {
+        Woken,                  // Woken by futexWait
+        Timedout,               // Woken by timeout
+        InterruptForTerminate,  // Woken by a request to terminate the worker
+        ErrorTooLong            // Implementation constraint on the timer (for now)
+    };
+
+    // Block the thread.
+    //
+    // The lock must be held around this call, see lock() and unlock().
+    virtual WakeResult wait(double timeout_ns) = 0;
+
+    // Wake the thread represented by this PerRuntimeFutexAPI.
+    //
+    // The lock must be held around this call, see lock() and unlock().
+    // Since the sleeping thread also needs that lock to wake up, the
+    // thread will not actually wake up until the caller of wake()
+    // releases the lock.
+    virtual void wake() = 0;
+};
+
+JS_PUBLIC_API(JS::PerRuntimeFutexAPI *)
+GetRuntimeFutexAPI(JSRuntime *rt);
+
+// Transfers ownership of fx to rt; if rt's futexAPI field is not null when rt is
+// deleted then rt's destructor will delete that value.  If fx is null in this
+// call then ownership of a held nonnull value is transfered away from rt.
+JS_PUBLIC_API(void)
+SetRuntimeFutexAPI(JSRuntime *rt, JS::PerRuntimeFutexAPI *fx);
+
 }  /* namespace JS */
 
 /************************************************************************/
@@ -2794,8 +2849,15 @@ JS_DeepFreezeObject(JSContext *cx, JS::Handle<JSObject*> obj);
 extern JS_PUBLIC_API(bool)
 JS_FreezeObject(JSContext *cx, JS::Handle<JSObject*> obj);
 
+/*
+ * Attempt to make |obj| non-extensible.  If an error occurs while making the
+ * attempt, return false (with a pending exception set, depending upon the
+ * nature of the error).  If no error occurs, return true with |*succeeded| set
+ * to indicate whether the attempt successfully set the [[Extensible]] property
+ * to false.
+ */
 extern JS_PUBLIC_API(bool)
-JS_PreventExtensions(JSContext *cx, JS::HandleObject obj);
+JS_PreventExtensions(JSContext *cx, JS::HandleObject obj, bool *succeeded);
 
 extern JS_PUBLIC_API(JSObject *)
 JS_New(JSContext *cx, JS::HandleObject ctor, const JS::HandleValueArray& args);
@@ -3869,10 +3931,16 @@ CompileOffThread(JSContext *cx, const ReadOnlyCompileOptions &options,
 extern JS_PUBLIC_API(JSScript *)
 FinishOffThreadScript(JSContext *maybecx, JSRuntime *rt, void *token);
 
+/*
+ * enclosingStaticScope is a static enclosing scope, if any (e.g. a
+ * StaticWithObject).  If the enclosing scope is the global scope, this must be
+ * null.
+ */
 extern JS_PUBLIC_API(bool)
 CompileFunction(JSContext *cx, JS::HandleObject obj, const ReadOnlyCompileOptions &options,
                 const char *name, unsigned nargs, const char *const *argnames,
-                SourceBufferHolder &srcBuf, JS::MutableHandleFunction fun);
+                SourceBufferHolder &srcBuf, JS::MutableHandleFunction fun,
+                HandleObject enclosingStaticScope = NullPtr());
 
 extern JS_PUBLIC_API(bool)
 CompileFunction(JSContext *cx, JS::HandleObject obj, const ReadOnlyCompileOptions &options,
@@ -3881,6 +3949,20 @@ CompileFunction(JSContext *cx, JS::HandleObject obj, const ReadOnlyCompileOption
 
 extern JS_PUBLIC_API(bool)
 CompileFunction(JSContext *cx, JS::HandleObject obj, const ReadOnlyCompileOptions &options,
+                const char *name, unsigned nargs, const char *const *argnames,
+                const char16_t *chars, size_t length, JS::MutableHandleFunction fun,
+                HandleObject enclosingStaticScope = NullPtr());
+
+/**
+ * Compile a function with scopeChain plus the global as its scope chain.
+ * scopeChain must contain objects in the current compartment of cx.  The actual
+ * scope chain used for the function will consist of With wrappers for those
+ * objects, followed by the current global of the compartment cx is in.  This
+ * global must not be explicitly included in the scope chain.
+ */
+extern JS_PUBLIC_API(bool)
+CompileFunction(JSContext *cx, AutoObjectVector &scopeChain,
+                const ReadOnlyCompileOptions &options,
                 const char *name, unsigned nargs, const char *const *argnames,
                 const char16_t *chars, size_t length, JS::MutableHandleFunction fun);
 

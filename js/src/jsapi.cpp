@@ -46,6 +46,7 @@
 #include "prmjtime.h"
 
 #include "asmjs/AsmJSLink.h"
+#include "builtin/AtomicsObject.h"
 #include "builtin/Eval.h"
 #include "builtin/Intl.h"
 #include "builtin/MapObject.h"
@@ -76,6 +77,7 @@
 #include "vm/RegExpStatics.h"
 #include "vm/Runtime.h"
 #include "vm/SavedStacks.h"
+#include "vm/ScopeObject.h"
 #include "vm/Shape.h"
 #include "vm/StopIterationObject.h"
 #include "vm/StringBuffer.h"
@@ -672,6 +674,18 @@ JS_SetRuntimePrivate(JSRuntime *rt, void *data)
     rt->data = data;
 }
 
+JS_PUBLIC_API(JS::PerRuntimeFutexAPI *)
+JS::GetRuntimeFutexAPI(JSRuntime *rt)
+{
+    return rt->futexAPI_;
+}
+
+JS_PUBLIC_API(void)
+JS::SetRuntimeFutexAPI(JSRuntime *rt, JS::PerRuntimeFutexAPI *fx)
+{
+    rt->futexAPI_ = fx;
+}
+
 static void
 StartRequest(JSContext *cx)
 {
@@ -1209,6 +1223,7 @@ static const JSStdName builtin_property_names[] = {
     { EAGER_ATOM(SIMD), JSProto_SIMD },
     { EAGER_ATOM(TypedObject), JSProto_TypedObject },
 #endif
+    { EAGER_ATOM(Atomics), JSProto_Atomics },
 
     { 0, JSProto_LIMIT }
 };
@@ -3819,6 +3834,43 @@ JS::GetSelfHostedFunction(JSContext *cx, const char *selfHostedName, HandleId id
     return &funVal.toObject().as<JSFunction>();
 }
 
+static bool
+CreateScopeObjectsForScopeChain(JSContext *cx, AutoObjectVector &scopeChain,
+                                MutableHandleObject dynamicScopeObj,
+                                MutableHandleObject staticScopeObj)
+{
+#ifdef DEBUG
+    for (size_t i = 0; i < scopeChain.length(); ++i) {
+        assertSameCompartment(cx, scopeChain[i]);
+        MOZ_ASSERT(!scopeChain[i]->is<GlobalObject>());
+    }
+#endif
+
+    // Construct With object wrappers for the things on this scope
+    // chain and use the result as the thing to scope the function to.
+    Rooted<StaticWithObject*> staticWith(cx);
+    RootedObject staticEnclosingScope(cx);
+    Rooted<DynamicWithObject*> dynamicWith(cx);
+    RootedObject dynamicEnclosingScope(cx, cx->global());
+    for (size_t i = scopeChain.length(); i > 0; ) {
+        staticWith = StaticWithObject::create(cx);
+        if (!staticWith)
+            return false;
+        staticWith->initEnclosingNestedScope(staticEnclosingScope);
+        staticEnclosingScope = staticWith;
+
+        dynamicWith = DynamicWithObject::create(cx, scopeChain[--i],
+                                                dynamicEnclosingScope, staticWith);
+        if (!dynamicWith)
+            return false;
+        dynamicEnclosingScope = dynamicWith;
+    }
+
+    dynamicScopeObj.set(dynamicEnclosingScope);
+    staticScopeObj.set(staticEnclosingScope);
+    return true;
+}
+
 JS_PUBLIC_API(JSObject *)
 JS_CloneFunctionObject(JSContext *cx, HandleObject funobj, HandleObject parentArg)
 {
@@ -4523,7 +4575,8 @@ JS_GetFunctionScript(JSContext *cx, HandleFunction fun)
 JS_PUBLIC_API(bool)
 JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
                     const char *name, unsigned nargs, const char *const *argnames,
-                    SourceBufferHolder &srcBuf, MutableHandleFunction fun)
+                    SourceBufferHolder &srcBuf, MutableHandleFunction fun,
+                    HandleObject enclosingStaticScope)
 {
     MOZ_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
     AssertHeapIsIdle(cx);
@@ -4550,7 +4603,8 @@ JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOption
     if (!fun)
         return false;
 
-    if (!frontend::CompileFunctionBody(cx, fun, options, formals, srcBuf))
+    if (!frontend::CompileFunctionBody(cx, fun, options, formals, srcBuf,
+                                       enclosingStaticScope))
         return false;
 
     if (obj && funAtom && options.defineOnScope) {
@@ -4566,10 +4620,12 @@ JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOption
 JS_PUBLIC_API(bool)
 JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
                     const char *name, unsigned nargs, const char *const *argnames,
-                    const char16_t *chars, size_t length, MutableHandleFunction fun)
+                    const char16_t *chars, size_t length, MutableHandleFunction fun,
+                    HandleObject enclosingStaticScope)
 {
     SourceBufferHolder srcBuf(chars, length, SourceBufferHolder::NoOwnership);
-    return JS::CompileFunction(cx, obj, options, name, nargs, argnames, srcBuf, fun);
+    return JS::CompileFunction(cx, obj, options, name, nargs, argnames, srcBuf,
+                               fun, enclosingStaticScope);
 }
 
 JS_PUBLIC_API(bool)
@@ -4586,6 +4642,21 @@ JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOption
         return false;
 
     return CompileFunction(cx, obj, options, name, nargs, argnames, chars.get(), length, fun);
+}
+
+JS_PUBLIC_API(bool)
+JS::CompileFunction(JSContext *cx, AutoObjectVector &scopeChain,
+                    const ReadOnlyCompileOptions &options,
+                    const char *name, unsigned nargs, const char *const *argnames,
+                    const char16_t *chars, size_t length, MutableHandleFunction fun)
+{
+    RootedObject dynamicScopeObj(cx);
+    RootedObject staticScopeObj(cx);
+    if (!CreateScopeObjectsForScopeChain(cx, scopeChain, &dynamicScopeObj, &staticScopeObj))
+        return false;
+
+    return JS::CompileFunction(cx, dynamicScopeObj, options, name, nargs,
+                               argnames, chars, length, fun, staticScopeObj);
 }
 
 JS_PUBLIC_API(bool)
@@ -6458,9 +6529,9 @@ JS_DecodeInterpretedFunction(JSContext *cx, const void *data, uint32_t length)
 }
 
 JS_PUBLIC_API(bool)
-JS_PreventExtensions(JSContext *cx, JS::HandleObject obj)
+JS_PreventExtensions(JSContext *cx, JS::HandleObject obj, bool *succeeded)
 {
-    return JSObject::preventExtensions(cx, obj);
+    return JSObject::preventExtensions(cx, obj, succeeded);
 }
 
 JS_PUBLIC_API(void)

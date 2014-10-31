@@ -172,10 +172,8 @@
 <!ENTITY pref_cookies_not_accept_foreign "Enabled, excluding 3rd party">
 <!ENTITY pref_cookies_disabled "Disabled">
 
-<!ENTITY pref_donottrack_menu "Tracking">
-<!ENTITY pref_donottrack_disallow_tracking "Tell sites that I do not want to be tracked">
-<!ENTITY pref_donottrack_allow_tracking "Tell sites that I want to be tracked">
-<!ENTITY pref_donottrack_no_pref "Do not tell sites anything about my tracking preferences">
+<!ENTITY pref_donottrack_title "Do not track">
+<!ENTITY pref_donottrack_summary "&brandShortName; will tell sites that you do not want to be tracked">
 
 <!ENTITY pref_char_encoding "Character encoding">
 <!ENTITY pref_char_encoding_on "Show menu">
@@ -401,6 +399,9 @@ size. -->
 <!ENTITY home_last_tabs_empty "Your recent tabs show up here.">
 <!ENTITY home_open_all "Open all">
 <!ENTITY home_most_recent_empty "Websites you visited most recently show up here.">
+<!-- Localization note (home_most_recent_emptyhint): "Psst" is a sound that might be used to attract someone's attention unobtrusively, and intended to hint at "Private browsing" to the user.
+     The placeholders &formatS1; and &formatS2; are used to mark the location of text underlining. -->
+<!ENTITY home_most_recent_emptyhint "Psst: &formatS1;Private browsing&formatS2; mode won\'t save your history.">
 <!ENTITY home_reading_list_empty "Articles you save for later show up here.">
 <!-- Localization note (home_reading_list_hint): The "TIP" string is synonymous to "hint", "clue", etc. This string is displayed
      as an advisory message on how to add content to the reading list when the reading list empty.

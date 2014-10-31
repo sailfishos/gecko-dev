@@ -1277,7 +1277,6 @@ pref("services.sync.prefs.sync.privacy.clearOnShutdown.passwords", true);
 pref("services.sync.prefs.sync.privacy.clearOnShutdown.sessions", true);
 pref("services.sync.prefs.sync.privacy.clearOnShutdown.siteSettings", true);
 pref("services.sync.prefs.sync.privacy.donottrackheader.enabled", true);
-pref("services.sync.prefs.sync.privacy.donottrackheader.value", true);
 pref("services.sync.prefs.sync.privacy.sanitize.sanitizeOnShutdown", true);
 pref("services.sync.prefs.sync.privacy.trackingprotection.enabled", true);
 pref("services.sync.prefs.sync.security.OCSP.enabled", true);
@@ -1614,7 +1613,7 @@ pref("loop.soft_start_hostname", "soft-start.loop.services.mozilla.com");
 pref("loop.server", "https://loop.services.mozilla.com");
 pref("loop.seenToS", "unseen");
 pref("loop.learnMoreUrl", "https://www.firefox.com/hello/");
-pref("loop.legal.ToS_url", "https://call.mozilla.com/legal/terms/");
+pref("loop.legal.ToS_url", "https://hello.firefox.com/legal/terms/");
 pref("loop.legal.privacy_url", "https://www.mozilla.org/privacy/");
 pref("loop.do_not_disturb", false);
 pref("loop.ringtone", "chrome://browser/content/loop/shared/sounds/Firefox-Long.ogg");
@@ -1762,3 +1761,6 @@ pref("experiments.supported", true);
 pref("media.gmp-gmpopenh264.provider.enabled", true);
 
 pref("browser.apps.URL", "https://marketplace.firefox.com/discovery/");
+
+pref("browser.polaris.enabled", false);
+pref("privacy.trackingprotection.ui.enabled", false);

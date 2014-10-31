@@ -309,15 +309,6 @@ public:
     bool UserToDevicePixelSnapped(gfxPoint& pt, bool ignoreScale = false) const;
 
     /**
-     * Attempts to pixel snap the rectangle, add it to the current
-     * path, and to set pattern as the current painting source.  This
-     * should be used for drawing filled pixel-snapped rectangles (like
-     * images), because the CTM at the time of the SetPattern call needs
-     * to have a snapped translation, or you get smeared images.
-     */
-    void PixelSnappedRectangleAndSetPattern(const gfxRect& rect, gfxPattern *pattern);
-
-    /**
      ** Painting sources
      **/
 
@@ -354,6 +345,13 @@ public:
      * Uses a pattern for drawing.
      */
     void SetPattern(gfxPattern *pattern);
+
+    /**
+     * Set the color that text drawn on top of transparent pixels should be
+     * anti-aliased into.
+     */
+    void SetFontSmoothingBackgroundColor(const mozilla::gfx::Color& aColor);
+    mozilla::gfx::Color GetFontSmoothingBackgroundColor();
 
     /**
      * Get the source pattern (solid color, normal pattern, surface, etc)
@@ -654,6 +652,7 @@ private:
     mozilla::gfx::AntialiasMode aaMode;
     bool patternTransformChanged;
     Matrix patternTransform;
+    Color fontSmoothingBackgroundColor;
     // This is used solely for using minimal intermediate surface size.
     mozilla::gfx::Point deviceOffset;
   };

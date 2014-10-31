@@ -329,6 +329,21 @@ IsUseOfName(ParseNode *pn, PropertyName *name)
 }
 
 static inline bool
+IsIgnoredDirectiveName(ExclusiveContext *cx, JSAtom *atom)
+{
+    return atom != cx->names().useStrict;
+}
+
+static inline bool
+IsIgnoredDirective(ExclusiveContext *cx, ParseNode *pn)
+{
+    return pn->isKind(PNK_SEMI) &&
+           UnaryKid(pn) &&
+           UnaryKid(pn)->isKind(PNK_STRING) &&
+           IsIgnoredDirectiveName(cx, UnaryKid(pn)->pn_atom);
+}
+
+static inline bool
 IsEmptyStatement(ParseNode *pn)
 {
     return pn->isKind(PNK_SEMI) && !UnaryKid(pn);
@@ -673,35 +688,6 @@ class RetType
     }
     bool operator==(RetType rhs) const { return which_ == rhs.which_; }
     bool operator!=(RetType rhs) const { return which_ != rhs.which_; }
-};
-
-// Represents the subset of Type that can be used as a return type of a builtin
-// Math function.
-class MathRetType
-{
-  public:
-    enum Which {
-        Double   = Type::Double,
-        Float    = Type::Float,
-        Floatish = Type::Floatish,
-        Signed   = Type::Signed,
-        Unsigned = Type::Unsigned
-    };
-
-  private:
-    Which which_;
-
-  public:
-    MathRetType() : which_(Which(-1)) {}
-    MOZ_IMPLICIT MathRetType(Which w) : which_(w) {}
-
-    Type toType() const {
-        return Type(Type::Which(which_));
-    }
-
-    Which which() const {
-        return which_;
-    }
 };
 
 namespace {
@@ -3541,8 +3527,11 @@ CheckPrecedingStatements(ModuleCompiler &m, ParseNode *stmtList)
 {
     MOZ_ASSERT(stmtList->isKind(PNK_STATEMENTLIST));
 
-    if (ListLength(stmtList) != 0)
-        return m.fail(ListHead(stmtList), "invalid asm.js statement");
+    ParseNode *stmt = ListHead(stmtList);
+    for (unsigned i = 0, n = ListLength(stmtList); i < n; i++) {
+        if (!IsIgnoredDirective(m.cx(), stmt))
+            return m.fail(stmt, "invalid asm.js statement");
+    }
 
     return true;
 }
@@ -3870,6 +3859,22 @@ CheckModuleGlobal(ModuleCompiler &m, ParseNode *var, bool isConst)
 }
 
 static bool
+CheckModuleProcessingDirectives(ModuleCompiler &m)
+{
+    TokenStream &ts = m.parser().tokenStream;
+    while (true) {
+        if (!ts.matchToken(TOK_STRING))
+            return true;
+
+        if (!IsIgnoredDirectiveName(m.cx(), ts.currentToken().atom()))
+            return m.fail(nullptr, "unsupported processing directive");
+
+        if (!ts.matchToken(TOK_SEMI))
+            return m.fail(nullptr, "expected semicolon after string literal");
+    }
+}
+
+static bool
 CheckModuleGlobals(ModuleCompiler &m)
 {
     while (true) {
@@ -3919,6 +3924,18 @@ CheckArgumentType(FunctionCompiler &f, ParseNode *stmt, PropertyName *name, VarT
         return ArgFail(f, name, stmt);
 
     *type = VarType(coercion);
+    return true;
+}
+
+static bool
+CheckProcessingDirectives(ModuleCompiler &m, ParseNode **stmtIter)
+{
+    ParseNode *stmt = *stmtIter;
+
+    while (stmt && IsIgnoredDirective(m.cx(), stmt))
+        stmt = NextNode(stmt);
+
+    *stmtIter = stmt;
     return true;
 }
 
@@ -4408,7 +4425,7 @@ CheckAssign(FunctionCompiler &f, ParseNode *assign, MDefinition **def, Type *typ
 }
 
 static bool
-CheckMathIMul(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetType *type)
+CheckMathIMul(FunctionCompiler &f, ParseNode *call, MDefinition **def, Type *type)
 {
     if (CallArgListLength(call) != 2)
         return f.fail(call, "Math.imul must be passed 2 arguments");
@@ -4432,12 +4449,12 @@ CheckMathIMul(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetTy
         return f.failf(rhs, "%s is not a subtype of intish", rhsType.toChars());
 
     *def = f.mul(lhsDef, rhsDef, MIRType_Int32, MMul::Integer);
-    *type = MathRetType::Signed;
+    *type = Type::Signed;
     return true;
 }
 
 static bool
-CheckMathClz32(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetType *type)
+CheckMathClz32(FunctionCompiler &f, ParseNode *call, MDefinition **def, Type *type)
 {
     if (CallArgListLength(call) != 1)
         return f.fail(call, "Math.clz32 must be passed 1 argument");
@@ -4453,12 +4470,12 @@ CheckMathClz32(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetT
         return f.failf(arg, "%s is not a subtype of intish", argType.toChars());
 
     *def = f.unary<MClz>(argDef);
-    *type = MathRetType::Signed;
+    *type = Type::Fixnum;
     return true;
 }
 
 static bool
-CheckMathAbs(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetType *type)
+CheckMathAbs(FunctionCompiler &f, ParseNode *call, MDefinition **def, Type *type)
 {
     if (CallArgListLength(call) != 1)
         return f.fail(call, "Math.abs must be passed 1 argument");
@@ -4472,19 +4489,19 @@ CheckMathAbs(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetTyp
 
     if (argType.isSigned()) {
         *def = f.unary<MAbs>(argDef, MIRType_Int32);
-        *type = MathRetType::Unsigned;
+        *type = Type::Unsigned;
         return true;
     }
 
     if (argType.isMaybeDouble()) {
         *def = f.unary<MAbs>(argDef, MIRType_Double);
-        *type = MathRetType::Double;
+        *type = Type::Double;
         return true;
     }
 
     if (argType.isMaybeFloat()) {
         *def = f.unary<MAbs>(argDef, MIRType_Float32);
-        *type = MathRetType::Floatish;
+        *type = Type::Floatish;
         return true;
     }
 
@@ -4492,7 +4509,7 @@ CheckMathAbs(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetTyp
 }
 
 static bool
-CheckMathSqrt(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetType *type)
+CheckMathSqrt(FunctionCompiler &f, ParseNode *call, MDefinition **def, Type *type)
 {
     if (CallArgListLength(call) != 1)
         return f.fail(call, "Math.sqrt must be passed 1 argument");
@@ -4506,13 +4523,13 @@ CheckMathSqrt(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetTy
 
     if (argType.isMaybeDouble()) {
         *def = f.unary<MSqrt>(argDef, MIRType_Double);
-        *type = MathRetType::Double;
+        *type = Type::Double;
         return true;
     }
 
     if (argType.isMaybeFloat()) {
         *def = f.unary<MSqrt>(argDef, MIRType_Float32);
-        *type = MathRetType::Floatish;
+        *type = Type::Floatish;
         return true;
     }
 
@@ -4520,8 +4537,7 @@ CheckMathSqrt(FunctionCompiler &f, ParseNode *call, MDefinition **def, MathRetTy
 }
 
 static bool
-CheckMathMinMax(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, bool isMax,
-                MathRetType *type)
+CheckMathMinMax(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, bool isMax, Type *type)
 {
     if (CallArgListLength(callNode) < 2)
         return f.fail(callNode, "Math.min/max must be passed at least 2 arguments");
@@ -4533,20 +4549,19 @@ CheckMathMinMax(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, boo
         return false;
 
     if (firstType.isMaybeDouble()) {
-        *type = MathRetType::Double;
+        *type = Type::Double;
         firstType = Type::MaybeDouble;
     } else if (firstType.isMaybeFloat()) {
-        *type = MathRetType::Float;
+        *type = Type::Float;
         firstType = Type::MaybeFloat;
-    } else if (firstType.isInt()) {
-        *type = MathRetType::Signed;
-        firstType = Type::Int;
+    } else if (firstType.isSigned()) {
+        *type = Type::Signed;
+        firstType = Type::Signed;
     } else {
         return f.failf(firstArg, "%s is not a subtype of double?, float? or int",
                        firstType.toChars());
     }
 
-    MIRType opType = firstType.toMIRType();
     MDefinition *lastDef = firstDef;
     ParseNode *nextArg = NextNode(firstArg);
     for (unsigned i = 1; i < CallArgListLength(callNode); i++, nextArg = NextNode(nextArg)) {
@@ -4558,7 +4573,7 @@ CheckMathMinMax(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, boo
         if (!(nextType <= firstType))
             return f.failf(nextArg, "%s is not a subtype of %s", nextType.toChars(), firstType.toChars());
 
-        lastDef = f.minMax(lastDef, nextDef, opType, isMax);
+        lastDef = f.minMax(lastDef, nextDef, firstType.toMIRType(), isMax);
     }
 
     *def = lastDef;
@@ -4834,7 +4849,7 @@ CheckCoercionArg(FunctionCompiler &f, ParseNode *arg, AsmJSCoercion expected, MD
 }
 
 static bool
-CheckMathFRound(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, MathRetType *type)
+CheckMathFRound(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, Type *type)
 {
     if (CallArgListLength(callNode) != 1)
         return f.fail(callNode, "Math.fround must be passed 1 argument");
@@ -4847,13 +4862,13 @@ CheckMathFRound(FunctionCompiler &f, ParseNode *callNode, MDefinition **def, Mat
 
     MOZ_ASSERT(argType == Type::Float);
     *def = argDef;
-    *type = MathRetType::Float;
+    *type = Type::Float;
     return true;
 }
 
 static bool
 CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltinFunction func,
-                     MDefinition **def, MathRetType *type)
+                     MDefinition **def, Type *type)
 {
     unsigned arity = 0;
     AsmJSImmKind doubleCallee, floatCallee;
@@ -4926,13 +4941,13 @@ CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltinF
     if (!f.builtinCall(callee, call, varType.toMIRType(), def))
         return false;
 
-    *type = MathRetType(opIsDouble ? MathRetType::Double : MathRetType::Floatish);
+    *type = opIsDouble ? Type::Double : Type::Floatish;
     return true;
 }
 
 typedef Vector<MDefinition*, 4, SystemAllocPolicy> DefinitionVector;
 
-namespace {  
+namespace {
 // Include CheckSimdCallArgs in unnamed namespace to avoid MSVC name lookup bug.
 
 template<class CheckArgOp>
@@ -5348,14 +5363,8 @@ CheckUncoercedCall(FunctionCompiler &f, ParseNode *expr, MDefinition **def, Type
 
     const ModuleCompiler::Global *global;
     if (IsCallToGlobal(f.m(), expr, &global)) {
-        if (global->isMathFunction()) {
-            MathRetType mathRetType;
-            if (!CheckMathBuiltinCall(f, expr, global->mathBuiltinFunction(), def, &mathRetType))
-                return false;
-            *type = mathRetType.toType();
-            return true;
-        }
-
+        if (global->isMathFunction())
+            return CheckMathBuiltinCall(f, expr, global->mathBuiltinFunction(), def, type);
         if (global->isSimdCtor())
             return CheckSimdCtorCall(f, expr, global, def, type);
         if (global->isSimdOperation())
@@ -5435,11 +5444,11 @@ static bool
 CheckCoercedMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltinFunction func,
                             RetType retType, MDefinition **def, Type *type)
 {
-    MDefinition *result;
-    MathRetType resultType;
-    if (!CheckMathBuiltinCall(f, callNode, func, &result, &resultType))
+    MDefinition *resultDef;
+    Type resultType;
+    if (!CheckMathBuiltinCall(f, callNode, func, &resultDef, &resultType))
         return false;
-    return CoerceResult(f, callNode, retType, result, resultType.toType(), def, type);
+    return CoerceResult(f, callNode, retType, resultDef, resultType, def, type);
 }
 
 static bool
@@ -6890,11 +6899,15 @@ ParseFunction(ModuleCompiler &m, ParseNode **fnOut)
     if (!funpc.init(tokenStream))
         return false;
 
-    if (!m.parser().functionArgsAndBodyGeneric(fn, fun, Normal, Statement))
-        return false;
+    if (!m.parser().functionArgsAndBodyGeneric(fn, fun, Normal, Statement)) {
+        if (tokenStream.hadError() || directives == newDirectives)
+            return false;
 
-    if (tokenStream.hadError() || directives != newDirectives)
-        return false;
+        return m.fail(nullptr, "encountered new directive");
+    }
+
+    MOZ_ASSERT(!tokenStream.hadError());
+    MOZ_ASSERT(directives == newDirectives);
 
     outerpc->blockidGen = funpc.blockidGen;
     fn->pn_blockid = outerpc->blockid();
@@ -6934,6 +6947,9 @@ CheckFunction(ModuleCompiler &m, LifoAlloc &lifo, MIRGenerator **mir, ModuleComp
         return false;
 
     ParseNode *stmtIter = ListHead(FunctionStatementList(fn));
+
+    if (!CheckProcessingDirectives(m, &stmtIter))
+        return false;
 
     VarTypeVector argTypes(m.lifo());
     if (!CheckArguments(f, &stmtIter, &argTypes))
@@ -8536,6 +8552,9 @@ CheckModule(ExclusiveContext *cx, AsmJSParser &parser, ParseNode *stmtList,
         return false;
 
     if (!CheckPrecedingStatements(m, stmtList))
+        return false;
+
+    if (!CheckModuleProcessingDirectives(m))
         return false;
 
     if (!CheckModuleGlobals(m))

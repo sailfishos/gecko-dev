@@ -3,8 +3,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import base64
 import cgi
-import datetime
+from datetime import datetime
 import os
 
 from .. import base
@@ -34,6 +35,7 @@ class HTMLFormatter(base.BaseFormatter):
         self.suite_times = {"start": None,
                             "end": None}
         self.head = None
+        self.env = {}
 
     def suite_start(self, data):
         self.suite_times["start"] = data["time"]
@@ -43,6 +45,43 @@ class HTMLFormatter(base.BaseFormatter):
                 html.meta(charset="utf-8"),
                 html.title(data["source"]),
                 html.style(raw(f.read())))
+
+        date_format = "%d %b %Y %H:%M:%S"
+        version_info = data.get("version_info")
+        if version_info:
+            self.env["Device identifier"] = version_info.get("device_id")
+            self.env["Device firmware (base)"] = version_info.get("device_firmware_version_base")
+            self.env["Device firmware (date)"] = (
+                datetime.utcfromtimestamp(int(version_info.get("device_firmware_date"))).strftime(date_format) if
+                "device_firmware_date" in version_info else None)
+            self.env["Device firmware (incremental)"] = version_info.get("device_firmware_version_incremental")
+            self.env["Device firmware (release)"] = version_info.get("device_firmware_version_release")
+            self.env["Gaia date"] = (
+                datetime.utcfromtimestamp(int(version_info.get("gaia_date"))).strftime(date_format) if
+                "gaia_date" in version_info else None)
+            self.env["Gecko version"] = version_info.get("application_version")
+            self.env["Gecko build"] = version_info.get("application_buildid")
+
+            if version_info.get("application_changeset"):
+                self.env["Gecko revision"] = version_info.get("application_changeset")
+                if version_info.get("application_repository"):
+                    self.env["Gecko revision"] = html.a(
+                        version_info.get("application_changeset"),
+                        href="/".join([version_info.get("application_repository"),
+                                       version_info.get("application_changeset")]),
+                        target="_blank")
+
+            if version_info.get("gaia_changeset"):
+                self.env["Gaia revision"] = html.a(
+                    version_info.get("gaia_changeset")[:12],
+                    href="https://github.com/mozilla-b2g/gaia/commit/%s" % version_info.get("gaia_changeset"),
+                    target="_blank")
+
+        device_info = data.get("device_info")
+        if device_info:
+            self.env["Device uptime"] = device_info.get("uptime")
+            self.env["Device memory"] = device_info.get("memtotal")
+            self.env["Device serial"] = device_info.get("id")
 
     def suite_end(self, data):
         self.suite_times["end"] = data["time"]
@@ -79,22 +118,19 @@ class HTMLFormatter(base.BaseFormatter):
                     html.a(html.img(src=screenshot), href="#"),
                     class_='screenshot'))
             for name, content in debug.items():
-                try:
-                    if 'screenshot' in name:
-                        href = '#'
-                    else:
-                        # use base64 to avoid that some browser (such as Firefox, Opera)
-                        # treats '#' as the start of another link if the data URL contains.
-                        # use 'charset=utf-8' to show special characters like Chinese.
-                        href = 'data:text/plain;charset=utf-8;base64,%s' % base64.b64encode(content)
-                    links_html.append(html.a(
-                        name.title(),
-                        class_=name,
-                        href=href,
-                        target='_blank'))
-                    links_html.append(' ')
-                except:
-                    pass
+                if 'screenshot' in name:
+                    href = '#'
+                else:
+                    # use base64 to avoid that some browser (such as Firefox, Opera)
+                    # treats '#' as the start of another link if the data URL contains.
+                    # use 'charset=utf-8' to show special characters like Chinese.
+                    href = 'data:text/plain;charset=utf-8;base64,%s' % base64.b64encode(content)
+                links_html.append(html.a(
+                    name.title(),
+                    class_=name,
+                    href=href,
+                    target='_blank'))
+                links_html.append(' ')
 
             log = html.div(class_='log')
             output = data.get('stack', '').splitlines()
@@ -121,17 +157,20 @@ class HTMLFormatter(base.BaseFormatter):
                     class_=status_name.lower() + ' results-table-row'))
 
     def generate_html(self):
-        generated = datetime.datetime.now()
+        generated = datetime.utcnow()
         with open(os.path.join(base_path, "main.js")) as main_f:
             doc = html.html(
                 self.head,
                 html.body(
-                    html.script(
-                        raw(main_f.read()),
-                        ),
+                    html.script(raw(main_f.read())),
                     html.p('Report generated on %s at %s' % (
                         generated.strftime('%d-%b-%Y'),
-                        generated.strftime('%H:%M:%S')),
+                        generated.strftime('%H:%M:%S'))),
+                    html.h2('Environment'),
+                    html.table(
+                        [html.tr(html.td(k), html.td(v)) for k, v in sorted(self.env.items()) if v],
+                        id='environment'),
+
                     html.h2('Summary'),
                     html.p('%i tests ran in %.1f seconds.' % (sum(self.test_count.itervalues()),
                                                               (self.suite_times["end"] -
@@ -154,6 +193,6 @@ class HTMLFormatter(base.BaseFormatter):
                             html.th('Test Name', class_='sortable', col='name'),
                             html.th('Duration', class_='sortable numeric', col='duration'),
                             html.th('Links')]), id='results-table-head'),
-                        html.tbody(self.result_rows, id='results-table-body')], id='results-table'))))
+                        html.tbody(self.result_rows, id='results-table-body')], id='results-table')))
 
         return u"<!DOCTYPE html>\n" + doc.unicode(indent=2)

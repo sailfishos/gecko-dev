@@ -1059,7 +1059,7 @@ void mozilla_sampler_add_marker(const char *aMarker, ProfilerMarkerPayload *aPay
     return;
   }
 
-  TimeStamp origin = (aPayload && !aPayload->GetStartTime().IsNull()) ?
+  mozilla::TimeStamp origin = (aPayload && !aPayload->GetStartTime().IsNull()) ?
                      aPayload->GetStartTime() : mozilla::TimeStamp::Now();
   mozilla::TimeDuration delta = origin - sStartTime;
   stack->addMarker(aMarker, payload.forget(), static_cast<float>(delta.ToMilliseconds()));

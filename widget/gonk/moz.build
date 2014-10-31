@@ -15,6 +15,7 @@
 # limitations under the License.
 
 EXPORTS += [
+    'GeckoTouchDispatcher.h',
     'GonkPermission.h',
     'OrientationObserver.h',
 ]
@@ -71,8 +72,7 @@ LOCAL_INCLUDES += [
     '/dom/system/android',
     '/gfx/skia/trunk/include/config',
     '/gfx/skia/trunk/include/core',
-    '/widget/shared',
-    '/widget/xpwidgets',
+    '/widget',
 ]
 
 DEFINES['HAVE_OFF64_T'] = True

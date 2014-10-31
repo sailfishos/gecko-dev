@@ -54,6 +54,7 @@
 #include "nsICacheEntryDescriptor.h"
 #include "nsICancelable.h"
 #include "nsIHttpChannelAuthProvider.h"
+#include "nsIHttpChannelInternal.h"
 #include "nsIHttpEventSink.h"
 #include "nsIPrompt.h"
 #include "nsInputStreamPump.h"
@@ -67,6 +68,7 @@
 #include "mozilla/Telemetry.h"
 #include "AlternateServices.h"
 #include "InterceptedChannel.h"
+#include "nsIHttpPushListener.h"
 
 namespace mozilla { namespace net {
 
@@ -232,6 +234,7 @@ nsHttpChannel::nsHttpChannel()
     , mConcurentCacheAccess(0)
     , mIsPartialRequest(0)
     , mHasAutoRedirectVetoNotifier(0)
+    , mPushedStream(nullptr)
     , mDidReval(false)
 {
     LOG(("Creating nsHttpChannel [this=%p]\n", this));
@@ -316,6 +319,7 @@ nsHttpChannel::Connect()
     // Finalize ConnectionInfo flags before SpeculativeConnect
     mConnectionInfo->SetAnonymous((mLoadFlags & LOAD_ANONYMOUS) != 0);
     mConnectionInfo->SetPrivate(mPrivateBrowsing);
+    mConnectionInfo->SetNoSpdy(mCaps & NS_HTTP_DISALLOW_SPDY);
 
     // Consider opening a TCP connection right away
     RetrieveSSLOptions();
@@ -812,6 +816,20 @@ nsHttpChannel::SetupTransaction()
         mCaps |=  NS_HTTP_DISALLOW_SPDY;
     }
 
+    if (mPushedStream) {
+        mTransaction->SetPushedStream(mPushedStream);
+        mPushedStream = nullptr;
+    }
+
+    nsCOMPtr<nsIHttpPushListener> pushListener;
+    NS_QueryNotificationCallbacks(mCallbacks,
+                                  mLoadGroup,
+                                  NS_GET_IID(nsIHttpPushListener),
+                                  getter_AddRefs(pushListener));
+    if (pushListener) {
+        mCaps |= NS_HTTP_ONPUSH_LISTENER;
+    }
+
     nsCOMPtr<nsIAsyncInputStream> responseStream;
     rv = mTransaction->Init(mCaps, mConnectionInfo, &mRequestHead,
                             mUploadStream, mUploadStreamHasHeaders,
@@ -1246,7 +1264,7 @@ nsHttpChannel::ProcessAltService()
     // protocol-id   = token ; percent-encoded ALPN protocol identifier
     // alt-authority = quoted-string ;  containing [ uri-host ] ":" port
 
-    if (!gHttpHandler->AllowAltSvc()) {
+    if (!gHttpHandler->AllowAltSvc() || (mCaps & NS_HTTP_DISALLOW_SPDY)) {
         return;
     }
 
@@ -3613,6 +3631,7 @@ nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry, bool startBufferi
             LOG(("failed to parse security-info [channel=%p, entry=%p]",
                  this, cacheEntry));
             NS_WARNING("failed to parse security-info");
+            cacheEntry->AsyncDoom(nullptr);
             return rv;
         }
 
@@ -3624,6 +3643,7 @@ nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry, bool startBufferi
             LOG(("mCacheEntry->GetSecurityInfo returned success but did not "
                  "return the security info [channel=%p, entry=%p]",
                  this, cacheEntry));
+            cacheEntry->AsyncDoom(nullptr);
             return NS_ERROR_UNEXPECTED; // XXX error code
         }
     }
@@ -4590,6 +4610,12 @@ NS_INTERFACE_MAP_BEGIN(nsHttpChannel)
     NS_INTERFACE_MAP_ENTRY(nsIThreadRetargetableStreamListener)
     NS_INTERFACE_MAP_ENTRY(nsIDNSListener)
     NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+    // we have no macro that covers this case.
+    if (aIID.Equals(NS_GET_IID(nsHttpChannel)) ) {
+        AddRef();
+        *aInstancePtr = this;
+        return NS_OK;
+    } else
 NS_INTERFACE_MAP_END_INHERITING(HttpBaseChannel)
 
 //-----------------------------------------------------------------------------
@@ -4897,8 +4923,7 @@ nsHttpChannel::BeginConnect()
         if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
             gHttpHandler->ConnMgr()->DoShiftReloadConnectionCleanup(mConnectionInfo);
         }
-        // each sub resource gets a fresh connection
-        mCaps &= ~(NS_HTTP_ALLOW_KEEPALIVE | NS_HTTP_ALLOW_PIPELINING);
+        mCaps &= ~NS_HTTP_ALLOW_PIPELINING;
     }
 
     // We may have been cancelled already, either by on-modify-request
@@ -6480,6 +6505,78 @@ bool
 nsHttpChannel::AwaitingCacheCallbacks()
 {
     return mCacheEntriesToWaitFor != 0;
+}
+
+void
+nsHttpChannel::SetPushedStream(Http2PushedStream *stream)
+{
+    MOZ_ASSERT(stream);
+    MOZ_ASSERT(!mPushedStream);
+    mPushedStream = stream;
+}
+
+nsresult
+nsHttpChannel::OnPush(const nsACString &url, Http2PushedStream *pushedStream)
+{
+    MOZ_ASSERT(NS_IsMainThread());
+    LOG(("nsHttpChannel::OnPush [this=%p]\n", this));
+
+    MOZ_ASSERT(mCaps & NS_HTTP_ONPUSH_LISTENER);
+    nsCOMPtr<nsIHttpPushListener> pushListener;
+    NS_QueryNotificationCallbacks(mCallbacks,
+                                  mLoadGroup,
+                                  NS_GET_IID(nsIHttpPushListener),
+                                  getter_AddRefs(pushListener));
+
+    MOZ_ASSERT(pushListener);
+    if (!pushListener) {
+        LOG(("nsHttpChannel::OnPush [this=%p] notification callbacks do not "
+             "implement nsIHttpPushListener\n", this));
+        return NS_ERROR_UNEXPECTED;
+    }
+
+    nsCOMPtr<nsIURI> pushResource;
+    nsresult rv;
+
+    // Create a Channel for the Push Resource
+    rv = NS_NewURI(getter_AddRefs(pushResource), url);
+    if (NS_FAILED(rv)) {
+        return NS_ERROR_FAILURE;
+    }
+
+    nsCOMPtr<nsIIOService> ioService;
+    rv = gHttpHandler->GetIOService(getter_AddRefs(ioService));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsCOMPtr<nsIChannel> pushChannel;
+    rv = ioService->NewChannelFromURI(pushResource, getter_AddRefs(pushChannel));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsCOMPtr<nsIHttpChannel> pushHttpChannel = do_QueryInterface(pushChannel);
+    MOZ_ASSERT(pushHttpChannel);
+    if (!pushHttpChannel) {
+        return NS_ERROR_UNEXPECTED;
+    }
+
+    nsRefPtr<nsHttpChannel> channel;
+    CallQueryInterface(pushHttpChannel, channel.StartAssignment());
+    MOZ_ASSERT(channel);
+    if (!channel) {
+        return NS_ERROR_UNEXPECTED;
+    }
+
+    // new channel needs mrqeuesthead and headers from pushedStream
+    channel->mRequestHead.ParseHeaderSet(
+        pushedStream->GetRequestString().BeginWriting());
+
+    channel->mLoadGroup = mLoadGroup;
+    channel->mLoadInfo = mLoadInfo;
+    channel->mCallbacks = mCallbacks;
+
+    // Link the pushed stream with the new channel and call listener
+    channel->SetPushedStream(pushedStream);
+    rv = pushListener->OnPush(this, pushHttpChannel);
+    return rv;
 }
 
 } } // namespace mozilla::net

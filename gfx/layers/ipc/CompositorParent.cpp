@@ -837,13 +837,14 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const nsIntRect* aRect)
   }
 
   AutoResolveRefLayers resolve(mCompositionManager);
-  SetShadowProperties(mLayerManager->GetRoot());
 
   if (aTarget) {
     mLayerManager->BeginTransactionWithDrawTarget(aTarget, *aRect);
   } else {
     mLayerManager->BeginTransaction();
   }
+
+  SetShadowProperties(mLayerManager->GetRoot());
 
   if (mForceCompositionTask && !mOverrideComposeReadiness) {
     if (mCompositionManager->ReadyForCompose()) {
@@ -972,6 +973,9 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   MOZ_ASSERT(aTransactionId > mPendingTransaction);
   mPendingTransaction = aTransactionId;
 
+  if (root) {
+    SetShadowProperties(root);
+  }
   if (aScheduleComposite) {
     ScheduleComposition();
     if (mPaused) {
@@ -989,7 +993,6 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                               mCompositorVsyncObserver->NeedsComposite()));
     if (needTestComposite) {
       AutoResolveRefLayers resolve(mCompositionManager);
-      SetShadowProperties(mLayerManager->GetRoot());
       bool requestNextFrame =
         mCompositionManager->TransformShadowTree(mTestTime);
       if (!requestNextFrame) {
@@ -1026,7 +1029,6 @@ CompositorParent::SetTestSampleTime(LayerTransactionParent* aLayerTree,
   // Update but only if we were already scheduled to animate
   if (testComposite) {
     AutoResolveRefLayers resolve(mCompositionManager);
-    SetShadowProperties(mLayerManager->GetRoot());
     bool requestNextFrame = mCompositionManager->TransformShadowTree(aTime);
     if (!requestNextFrame) {
       CancelCurrentCompositeTask();
@@ -1589,6 +1591,9 @@ CrossProcessCompositorParent::ShadowLayersUpdated(
   state->mParent->ScheduleRotationOnCompositorThread(aTargetConfig, aIsFirstPaint);
 
   Layer* shadowRoot = aLayerTree->GetRoot();
+  if (shadowRoot) {
+    SetShadowProperties(shadowRoot);
+  }
   UpdateIndirectTree(id, shadowRoot, aTargetConfig);
 
   state->mParent->NotifyShadowTreeTransaction(id, aIsFirstPaint, aScheduleComposite,

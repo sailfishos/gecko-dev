@@ -27,7 +27,6 @@
 #include "nsUTF8Utils.h"
 #include "WrapperFactory.h"
 #include "xpcprivate.h"
-#include "XPCQuickStubs.h"
 #include "XrayWrapper.h"
 #include "nsPrintfCString.h"
 #include "prprf.h"
@@ -463,6 +462,18 @@ CreateInterfaceObject(JSContext* cx, JS::Handle<JSObject*> global,
                            JSPROP_READONLY | JSPROP_PERMANENT)) {
       return nullptr;
     }
+
+    // Might as well intern, since we're going to need an atomized
+    // version of name anyway when we stick our constructor on the
+    // global.
+    JS::Rooted<JSString*> nameStr(cx, JS_InternString(cx, name));
+    if (!nameStr) {
+      return nullptr;
+    }
+
+    if (!JS_DefineProperty(cx, constructor, "name", nameStr, JSPROP_READONLY)) {
+      return nullptr;
+    }
   }
 
   if (properties) {
@@ -828,7 +839,7 @@ QueryInterface(JSContext* cx, unsigned argc, JS::Value* vp)
   // Switch this to UnwrapDOMObjectToISupports once our global objects are
   // using new bindings.
   nsCOMPtr<nsISupports> native;
-  UnwrapArg<nsISupports>(cx, obj, getter_AddRefs(native));
+  UnwrapArg<nsISupports>(obj, getter_AddRefs(native));
   if (!native) {
     return Throw(cx, NS_ERROR_FAILURE);
   }
@@ -843,7 +854,7 @@ QueryInterface(JSContext* cx, unsigned argc, JS::Value* vp)
 
   nsCOMPtr<nsIJSID> iid;
   obj = &args[0].toObject();
-  if (NS_FAILED(UnwrapArg<nsIJSID>(cx, obj, getter_AddRefs(iid)))) {
+  if (NS_FAILED(UnwrapArg<nsIJSID>(obj, getter_AddRefs(iid)))) {
     return Throw(cx, NS_ERROR_XPC_BAD_CONVERT_JS);
   }
   MOZ_ASSERT(iid);
@@ -2622,6 +2633,33 @@ CallerSubsumes(JSObject *aObject)
 {
   nsIPrincipal* objPrin = nsContentUtils::ObjectPrincipal(js::UncheckedUnwrap(aObject));
   return nsContentUtils::SubjectPrincipal()->Subsumes(objPrin);
+}
+
+nsresult
+UnwrapArgImpl(JS::Handle<JSObject*> src,
+              const nsIID &iid,
+              void **ppArg)
+{
+    nsISupports *iface = xpc::UnwrapReflectorToISupports(src);
+    if (iface) {
+        if (NS_FAILED(iface->QueryInterface(iid, ppArg))) {
+            return NS_ERROR_XPC_BAD_CONVERT_JS;
+        }
+
+        return NS_OK;
+    }
+
+    nsRefPtr<nsXPCWrappedJS> wrappedJS;
+    nsresult rv = nsXPCWrappedJS::GetNewOrUsed(src, iid, getter_AddRefs(wrappedJS));
+    if (NS_FAILED(rv) || !wrappedJS) {
+        return rv;
+    }
+
+    // We need to go through the QueryInterface logic to make this return
+    // the right thing for the various 'special' interfaces; e.g.
+    // nsIPropertyBag. We must use AggregatedQueryInterface in cases where
+    // there is an outer to avoid nasty recursion.
+    return wrappedJS->QueryInterface(iid, ppArg);
 }
 
 } // namespace dom

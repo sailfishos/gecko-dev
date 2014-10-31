@@ -5,7 +5,9 @@
 
 #include "nsNativeThemeCocoa.h"
 
+#include "mozilla/gfx/2D.h"
 #include "nsDeviceContext.h"
+#include "nsLayoutUtils.h"
 #include "nsObjCExceptions.h"
 #include "nsNumberControlFrame.h"
 #include "nsRangeFrame.h"
@@ -398,6 +400,19 @@ static void InflateControlRect(NSRect* rect, NSControlSize cocoaControlSize, con
   rect->origin.y -= buttonMargins[bottomMargin];
   rect->size.width += buttonMargins[leftMargin] + buttonMargins[rightMargin];
   rect->size.height += buttonMargins[bottomMargin] + buttonMargins[topMargin];
+}
+
+static ChildView* ChildViewForFrame(nsIFrame* aFrame)
+{
+  if (!aFrame)
+    return nil;
+
+  nsIWidget* widget = aFrame->GetNearestWidget();
+  if (!widget)
+    return nil;
+
+  NSView* view = (NSView*)widget->GetNativeData(NS_NATIVE_WIDGET);
+  return [view isKindOfClass:[ChildView class]] ? (ChildView*)view : nil;
 }
 
 static NSWindow* NativeWindowForFrame(nsIFrame* aFrame,
@@ -2226,6 +2241,22 @@ nsNativeThemeCocoa::DrawResizer(CGContextRef cgContext, const HIRect& aRect,
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
+static void
+DrawVibrancyBackground(CGContextRef cgContext, CGRect inBoxRect,
+                       nsIFrame* aFrame, uint8_t aWidgetType)
+{
+  ChildView* childView = ChildViewForFrame(aFrame);
+  if (childView) {
+    NSGraphicsContext* savedContext = [NSGraphicsContext currentContext];
+    [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:cgContext flipped:YES]];
+
+    [[childView vibrancyFillColorForWidgetType:aWidgetType] set];
+    NSRectFill(NSRectFromCGRect(inBoxRect));
+
+    [NSGraphicsContext setCurrentContext:savedContext];
+  }
+}
+
 static bool
 ScrollbarTrackAndThumbDrawSeparately()
 {
@@ -2257,14 +2288,14 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
+  DrawTarget& aDrawTarget = *aContext->GetDrawTarget();
+
   // setup to draw into the correct port
   int32_t p2a = aFrame->PresContext()->AppUnitsPerDevPixel();
 
-  gfxRect nativeDirtyRect(aDirtyRect.x, aDirtyRect.y,
-                          aDirtyRect.width, aDirtyRect.height);
+  gfx::Rect nativeDirtyRect = NSRectToRect(aDirtyRect, p2a);
   gfxRect nativeWidgetRect(aRect.x, aRect.y, aRect.width, aRect.height);
   nativeWidgetRect.ScaleInverse(gfxFloat(p2a));
-  nativeDirtyRect.ScaleInverse(gfxFloat(p2a));
   nativeWidgetRect.Round();
   if (nativeWidgetRect.IsEmpty())
     return NS_OK; // Don't attempt to draw invisible widgets.
@@ -2278,13 +2309,13 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
   bool hidpi = IsHiDPIContext(aFrame->PresContext());
   if (hidpi) {
     // Use high-resolution drawing.
-    nativeWidgetRect.ScaleInverse(2.0f);
-    nativeDirtyRect.ScaleInverse(2.0f);
+    nativeWidgetRect.Scale(0.5f);
+    nativeDirtyRect.Scale(0.5f);
     thebesCtx->SetMatrix(
       thebesCtx->CurrentMatrix().Scale(2.0f, 2.0f));
   }
 
-  gfxQuartzNativeDrawing nativeDrawing(thebesCtx, nativeDirtyRect);
+  gfxQuartzNativeDrawing nativeDrawing(aDrawTarget, nativeDirtyRect);
 
   CGContextRef cgContext = nativeDrawing.BeginNativeDrawing();
   if (cgContext == nullptr) {
@@ -2418,12 +2449,12 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
       break;
 
     case NS_THEME_TOOLTIP:
-      if (nsCocoaFeatures::OnYosemiteOrLater()) {
-        CGContextSetRGBFillColor(cgContext, 0.945, 0.942, 0.945, 0.950);
+      if (VibrancyManager::SystemSupportsVibrancy()) {
+        DrawVibrancyBackground(cgContext, macRect, aFrame, aWidgetType);
       } else {
         CGContextSetRGBFillColor(cgContext, 0.996, 1.000, 0.792, 0.950);
+        CGContextFillRect(cgContext, macRect);
       }
-      CGContextFillRect(cgContext, macRect);
       break;
 
     case NS_THEME_CHECKBOX:
@@ -2855,20 +2886,8 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
 
     case NS_THEME_MAC_VIBRANCY_LIGHT:
     case NS_THEME_MAC_VIBRANCY_DARK:
-    {
-      NSWindow* win = NativeWindowForFrame(aFrame);
-      if ([win isKindOfClass:[ToolbarWindow class]]) {
-        NSGraphicsContext* savedContext = [NSGraphicsContext currentContext];
-        [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:cgContext flipped:YES]];
-
-        ChildView* childView = [(ToolbarWindow*)win mainChildView];
-        [[childView vibrancyFillColorForWidgetType:aWidgetType] set];
-        NSRectFill(NSRectFromCGRect(macRect));
-
-        [NSGraphicsContext setCurrentContext:savedContext];
-      }
+      DrawVibrancyBackground(cgContext, macRect, aFrame, aWidgetType);
       break;
-    }
   }
 
   if (hidpi) {
@@ -3700,7 +3719,40 @@ nsNativeThemeCocoa::NeedToClearBackgroundBehindWidget(uint8_t aWidgetType)
   switch (aWidgetType) {
     case NS_THEME_MAC_VIBRANCY_LIGHT:
     case NS_THEME_MAC_VIBRANCY_DARK:
+    case NS_THEME_TOOLTIP:
       return true;
+    default:
+      return false;
+  }
+}
+
+static nscolor ConvertNSColor(NSColor* aColor)
+{
+  NSColor* deviceColor = [aColor colorUsingColorSpaceName:NSDeviceRGBColorSpace];
+  return NS_RGBA((unsigned int)([deviceColor redComponent] * 255.0),
+                 (unsigned int)([deviceColor greenComponent] * 255.0),
+                 (unsigned int)([deviceColor blueComponent] * 255.0),
+                 (unsigned int)([deviceColor alphaComponent] * 255.0));
+}
+
+bool
+nsNativeThemeCocoa::WidgetProvidesFontSmoothingBackgroundColor(nsIFrame* aFrame,
+                                                               uint8_t aWidgetType,
+                                                               nscolor* aColor)
+{
+  switch (aWidgetType) {
+    case NS_THEME_MAC_VIBRANCY_LIGHT:
+    case NS_THEME_MAC_VIBRANCY_DARK:
+    case NS_THEME_TOOLTIP:
+    {
+      ChildView* childView = ChildViewForFrame(aFrame);
+      if (childView) {
+        NSColor* color = [childView vibrancyFontSmoothingBackgroundColorForWidgetType:aWidgetType];
+        *aColor = ConvertNSColor(color);
+        return true;
+      }
+      return false;
+    }
     default:
       return false;
   }

@@ -4,10 +4,12 @@
 
 #include "nsISupports.idl"
 
+interface nsICellInfoListCallback;
 interface nsIMobileCallForwardingOptions;
 interface nsIMobileConnection;
 interface nsIMobileConnectionInfo;
 interface nsIMobileNetworkInfo;
+interface nsINeighboringCellIdsCallback;
 interface nsIVariant;
 
 [scriptable, uuid(823d935e-8262-47ed-8429-8203096b2ff4)]
@@ -234,7 +236,7 @@ already_AddRefed<nsIMobileConnectionService>
 NS_CreateMobileConnectionService();
 %}
 
-[scriptable, uuid(bde83c1d-1335-43b6-8268-ec7e320167f0)]
+[scriptable, uuid(99818dc7-e770-4249-87e2-2de0a928ed08)]
 interface nsIMobileConnection : nsISupports
 {
   /*
@@ -302,6 +304,15 @@ interface nsIMobileConnection : nsISupports
   const long NETWORK_SELECTION_MODE_AUTOMATIC = 0;
   const long NETWORK_SELECTION_MODE_MANUAL    = 1;
 
+  /**
+   * Mobile Radio State.
+   */
+  const long MOBILE_RADIO_STATE_UNKNOWN   = -1;
+  const long MOBILE_RADIO_STATE_ENABLING  = 0;
+  const long MOBILE_RADIO_STATE_ENABLED   = 1;
+  const long MOBILE_RADIO_STATE_DISABLING = 2;
+  const long MOBILE_RADIO_STATE_DISABLED  = 3;
+
   readonly attribute unsigned long serviceId;
 
   /**
@@ -345,10 +356,10 @@ interface nsIMobileConnection : nsISupports
   readonly attribute long networkSelectionMode;
 
   /**
-   * Current radio state. Possible values are 'enabling', 'enabled',
-   * 'disabling', 'disabled', null (unknown).
+   * Current radio state. One of the nsIMobileConnection.MOBILE_RADIO_STATE_*
+   * values.
    */
-  readonly attribute DOMString radioState;
+  readonly attribute long radioState;
 
   /**
    * The network types supported by this radio.
@@ -764,4 +775,23 @@ interface nsIMobileConnection : nsISupports
    */
   void setRadioEnabled(in bool enabled,
                        in nsIMobileConnectionCallback requestCallback);
+
+  /**
+   * Request neighboring cell ids in GSM/UMTS network.
+   *
+   * @param callback
+   *        Called when request is finished. See nsINeighboringCellIdsCallback
+   *        for details.
+   */
+  void getNeighboringCellIds(in nsINeighboringCellIdsCallback callback);
+
+  /**
+   * Request all of the current cell information known to the radio, including
+   * neighboring cells.
+   *
+   * @param callback
+   *        Called when request is finished. See nsICellInfoListCallback
+   *        for details.
+   */
+  void getCellInfoList(in nsICellInfoListCallback callback);
 };

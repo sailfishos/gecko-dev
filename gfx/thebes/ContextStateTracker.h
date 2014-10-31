@@ -53,6 +53,7 @@ protected:
   nsTArray<ContextState> mSectionStack;
 };
 
+/*
 class ID3D11DeviceContext;
 
 class ContextStateTrackerD3D11 MOZ_FINAL : public ContextStateTracker {
@@ -65,6 +66,7 @@ public:
 private:
   void Flush();
 };
+*/
 
 class ContextStateTrackerOGL MOZ_FINAL : public ContextStateTracker {
   typedef mozilla::gl::GLContext GLContext;

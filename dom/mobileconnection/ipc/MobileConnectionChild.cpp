@@ -106,9 +106,9 @@ MobileConnectionChild::GetIccId(nsAString& aIccId)
 }
 
 NS_IMETHODIMP
-MobileConnectionChild::GetRadioState(nsAString& aRadioState)
+MobileConnectionChild::GetRadioState(int32_t* aRadioState)
 {
-  aRadioState = mRadioState;
+  *aRadioState = mRadioState;
   return NS_OK;
 }
 
@@ -340,6 +340,20 @@ MobileConnectionChild::SetRadioEnabled(bool aEnabled,
     ? NS_OK : NS_ERROR_FAILURE;
 }
 
+NS_IMETHODIMP
+MobileConnectionChild::GetNeighboringCellIds(nsINeighboringCellIdsCallback* aCallback)
+{
+  // This function is supported in chrome context only.
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+MobileConnectionChild::GetCellInfoList(nsICellInfoListCallback* aCallback)
+{
+  // This function is supported in chrome context only.
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 bool
 MobileConnectionChild::SendRequest(const MobileConnectionRequest& aRequest,
                                    nsIMobileConnectionCallback* aCallback)
@@ -474,9 +488,9 @@ MobileConnectionChild::RecvNotifyIccChanged(const nsString& aIccId)
 }
 
 bool
-MobileConnectionChild::RecvNotifyRadioStateChanged(const nsString& aRadioState)
+MobileConnectionChild::RecvNotifyRadioStateChanged(const int32_t& aRadioState)
 {
-  mRadioState.Assign(aRadioState);
+  mRadioState = aRadioState;
 
   for (int32_t i = 0; i < mListeners.Count(); i++) {
     mListeners[i]->NotifyRadioStateChanged();

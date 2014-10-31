@@ -8,6 +8,7 @@
 
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ArrayUtils.h"
+#include "nsBoundingMetrics.h"
 #include "nsChangeHint.h"
 #include "nsAutoPtr.h"
 #include "nsFrameList.h"
@@ -958,6 +959,7 @@ public:
    */
   static bool
   BinarySearchForPosition(nsRenderingContext* acx,
+                          nsFontMetrics& aFontMetrics,
                           const char16_t* aText,
                           int32_t    aBaseWidth,
                           int32_t    aBaseInx,
@@ -1317,15 +1319,43 @@ public:
   static gfxFloat GetSnappedBaselineY(nsIFrame* aFrame, gfxContext* aContext,
                                       nscoord aY, nscoord aAscent);
 
+  static nscoord AppUnitWidthOfString(char16_t aC,
+                                      nsFontMetrics& aFontMetrics,
+                                      nsRenderingContext& aContext) {
+    return AppUnitWidthOfString(&aC, 1, aFontMetrics, aContext);
+  }
+  static nscoord AppUnitWidthOfString(const nsString& aString,
+                                      nsFontMetrics& aFontMetrics,
+                                      nsRenderingContext& aContext);
+  static nscoord AppUnitWidthOfString(const char16_t *aString,
+                                      uint32_t aLength,
+                                      nsFontMetrics& aFontMetrics,
+                                      nsRenderingContext& aContext);
+  static nsBoundingMetrics AppUnitBoundsOfString(const char16_t* aString,
+                                                 uint32_t aLength,
+                                                 nsFontMetrics& aFontMetrics,
+                                                 nsRenderingContext& aContext);
+
   static void DrawString(const nsIFrame*       aFrame,
+                         nsFontMetrics&        aFontMetrics,
                          nsRenderingContext*   aContext,
                          const char16_t*      aString,
                          int32_t               aLength,
                          nsPoint               aPoint,
                          nsStyleContext*       aStyleContext = nullptr);
 
+  /**
+   * Supports only LTR or RTL. Bidi (mixed direction) is not supported.
+   */
+  static void DrawUniDirString(const char16_t* aString,
+                               uint32_t aLength,
+                               nsPoint aPoint,
+                               nsFontMetrics& aFontMetrics,
+                               nsRenderingContext& aContext);
+
   static nscoord GetStringWidth(const nsIFrame*      aFrame,
                                 nsRenderingContext* aContext,
+                                nsFontMetrics&      aFontMetrics,
                                 const char16_t*     aString,
                                 int32_t              aLength);
 
@@ -1610,6 +1640,10 @@ public:
    * of an overall image.
    */
   static nsRect GetWholeImageDestination(const nsIntSize& aWholeImageSize,
+                                         const nsRect& aImageSourceArea,
+                                         const nsRect& aDestArea);
+
+  static nsRect GetWholeImageDestination(const nsSize& aWholeImageSize,
                                          const nsRect& aImageSourceArea,
                                          const nsRect& aDestArea);
 
@@ -2217,6 +2251,11 @@ public:
  /**
   * Calculate the compostion size for a frame. See FrameMetrics.h for
   * defintion of composition size (or bounds).
+  * Note that for the root content document's root scroll frame (RCD-RSF),
+  * the returned size does not change as the document's resolution changes,
+  * but for all other frames it does. This means that callers that pass in
+  * a frame that may or may not be the RCD-RSF (which is most callers),
+  * are likely to need special-case handling of the RCD-RSF.
   */
   static nsSize
   CalculateCompositionSizeForFrame(nsIFrame* aFrame);

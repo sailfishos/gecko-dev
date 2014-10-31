@@ -80,7 +80,7 @@ browser[pendingpaint] {
 }
 
 tabbrowser[pendingpaint] {
-  background-image: url(chrome://global/skin/spinner.png);
+  background-image: url(chrome://browser/skin/tabbrowser/pendingpaint.png);
   background-repeat: no-repeat;
   background-position: center center;
 }

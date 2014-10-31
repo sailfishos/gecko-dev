@@ -17,6 +17,7 @@
 #include "mozilla/MouseEvents.h"
 
 #include "nsCOMPtr.h"
+#include "nsFontMetrics.h"
 #include "nsIImageLoadingContent.h"
 #include "nsString.h"
 #include "nsPrintfCString.h"
@@ -1012,11 +1013,12 @@ nsImageFrame::MeasureString(const char16_t*     aString,
                             int32_t              aLength,
                             nscoord              aMaxWidth,
                             uint32_t&            aMaxFit,
-                            nsRenderingContext& aContext)
+                            nsRenderingContext& aContext,
+                            nsFontMetrics& aFontMetrics)
 {
   nscoord totalWidth = 0;
-  aContext.SetTextRunRTL(false);
-  nscoord spaceWidth = aContext.GetWidth(' ');
+  aFontMetrics.SetTextRunRTL(false);
+  nscoord spaceWidth = aFontMetrics.SpaceWidth();
 
   aMaxFit = 0;
   while (aLength > 0) {
@@ -1033,7 +1035,7 @@ nsImageFrame::MeasureString(const char16_t*     aString,
   
     // Measure this chunk of text, and see if it fits
     nscoord width =
-      nsLayoutUtils::GetStringWidth(this, &aContext, aString, len);
+      nsLayoutUtils::GetStringWidth(this, &aContext, aFontMetrics, aString, len);
     bool    fits = (totalWidth + width) <= aMaxWidth;
 
     // If it fits on the line, or it's the first word we've processed then
@@ -1080,7 +1082,6 @@ nsImageFrame::DisplayAltText(nsPresContext*      aPresContext,
   nsRefPtr<nsFontMetrics> fm;
   nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm),
     nsLayoutUtils::FontSizeInflationFor(this));
-  aRenderingContext.SetFont(fm);
 
   // Format the text to display within the formatting rect
 
@@ -1105,7 +1106,7 @@ nsImageFrame::DisplayAltText(nsPresContext*      aPresContext,
     // Determine how much of the text to display on this line
     uint32_t  maxFit;  // number of characters that fit
     nscoord strWidth = MeasureString(str, strLen, aRect.width, maxFit,
-                                     aRenderingContext);
+                                     aRenderingContext, *fm);
     
     // Display the text
     nsresult rv = NS_ERROR_FAILURE;
@@ -1115,16 +1116,19 @@ nsImageFrame::DisplayAltText(nsPresContext*      aPresContext,
       if (vis->mDirection == NS_STYLE_DIRECTION_RTL)
         rv = nsBidiPresUtils::RenderText(str, maxFit, NSBIDI_RTL,
                                          aPresContext, aRenderingContext,
-                                         aRenderingContext,
+                                         aRenderingContext, *fm,
                                          aRect.XMost() - strWidth, y + maxAscent);
       else
         rv = nsBidiPresUtils::RenderText(str, maxFit, NSBIDI_LTR,
                                          aPresContext, aRenderingContext,
-                                         aRenderingContext,
+                                         aRenderingContext, *fm,
                                          aRect.x, y + maxAscent);
     }
-    if (NS_FAILED(rv))
-      aRenderingContext.DrawString(str, maxFit, aRect.x, y + maxAscent);
+    if (NS_FAILED(rv)) {
+      nsLayoutUtils::DrawUniDirString(str, maxFit,
+                                      nsPoint(aRect.x, y + maxAscent), *fm,
+                                      aRenderingContext);
+    }
 
     // Move to the next line
     str += maxFit;
@@ -1934,7 +1938,7 @@ nsImageFrame::LoadIcon(const nsAString& aSpec,
 
   nsCOMPtr<nsIURI> realURI;
   SpecToURI(aSpec, sIOService, getter_AddRefs(realURI));
- 
+
   nsRefPtr<imgLoader> il =
     nsContentUtils::GetImgLoaderForDocument(aPresContext->Document());
 
@@ -1943,6 +1947,7 @@ nsImageFrame::LoadIcon(const nsAString& aSpec,
 
   // For icon loads, we don't need to merge with the loadgroup flags
   nsLoadFlags loadFlags = nsIRequest::LOAD_NORMAL;
+  nsContentPolicyType contentPolicyType = nsIContentPolicy::TYPE_IMAGE;
 
   return il->LoadImage(realURI,     /* icon URI */
                        nullptr,      /* initial document URI; this is only
@@ -1955,6 +1960,7 @@ nsImageFrame::LoadIcon(const nsAString& aSpec,
                        nullptr,      /* Not associated with any particular document */
                        loadFlags,
                        nullptr,
+                       contentPolicyType,
                        EmptyString(),
                        aRequest);
 }

@@ -1874,9 +1874,6 @@ AttachFinishedCompilations(JSContext *cx)
         if (!builder)
             break;
 
-// TODO bug 1047346: Enable lazy linking for other architectures again by
-//                   fixing the lazy link stub.
-#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
         // Try to defer linking if the script is on the stack, to postpone
         // invalidating them.
         if (builder->info().executionMode() == SequentialExecution &&
@@ -1906,7 +1903,6 @@ AttachFinishedCompilations(JSContext *cx)
                 continue;
             }
         }
-#endif
 
         if (CodeGenerator *codegen = builder->backgroundCodegen()) {
             RootedScript script(cx, builder->script());
@@ -2683,7 +2679,7 @@ InvalidateActivation(FreeOp *fop, const JitActivationIterator &activations, bool
     size_t frameno = 1;
 
     for (JitFrameIterator it(activations); !it.done(); ++it, ++frameno) {
-        MOZ_ASSERT_IF(frameno == 1, it.type() == JitFrame_Exit);
+        MOZ_ASSERT_IF(frameno == 1, it.type() == JitFrame_Exit || it.type() == JitFrame_Bailout);
 
 #ifdef DEBUG
         switch (it.type()) {
@@ -2725,7 +2721,7 @@ InvalidateActivation(FreeOp *fop, const JitActivationIterator &activations, bool
         }
 #endif
 
-        if (!it.isIonJS())
+        if (!it.isIonScripted())
             continue;
 
         bool calledFromLinkStub = false;
@@ -2793,8 +2789,9 @@ InvalidateActivation(FreeOp *fop, const JitActivationIterator &activations, bool
         }
         ionCode->setInvalidated();
 
-        // Don't adjust OSI points in the linkStub (which don't exist).
-        if (calledFromLinkStub)
+        // Don't adjust OSI points in the linkStub (which don't exist), or in a
+        // bailout path.
+        if (calledFromLinkStub || it.isBailoutJS())
             continue;
 
         // Write the delta (from the return address offset to the

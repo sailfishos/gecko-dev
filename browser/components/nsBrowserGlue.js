@@ -9,6 +9,7 @@ const Cr = Components.results;
 const Cu = Components.utils;
 
 const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+const POLARIS_ENABLED = "browser.polaris.enabled";
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -397,6 +398,13 @@ BrowserGlue.prototype = {
         Services.obs.removeObserver(this, "browser-search-service");
         this._syncSearchEngines();
         break;
+      case "nsPref:changed":
+        if (data == POLARIS_ENABLED) {
+          let enabled = Services.prefs.getBoolPref(POLARIS_ENABLED);
+          Services.prefs.setBoolPref("privacy.donottrackheader.enabled", enabled);
+          Services.prefs.setBoolPref("privacy.trackingprotection.enabled", enabled);
+          Services.prefs.setBoolPref("privacy.trackingprotection.ui.enabled", enabled);
+        }
     }
   },
 
@@ -443,6 +451,9 @@ BrowserGlue.prototype = {
 #endif
     os.addObserver(this, "browser-search-engine-modified", false);
     os.addObserver(this, "browser-search-service", false);
+#ifdef NIGHTLY_BUILD
+    Services.prefs.addObserver(POLARIS_ENABLED, this, false);
+#endif
   },
 
   // cleanup (called on application shutdown)
@@ -483,6 +494,9 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "browser-search-service");
       // may have already been removed by the observer
     } catch (ex) {}
+#ifdef NIGHTLY_BUILD
+    Services.prefs.removeObserver(POLARIS_ENABLED, this);
+#endif
   },
 
   _onAppDefaults: function BG__onAppDefaults() {
@@ -1369,7 +1383,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 24;
+    const UI_VERSION = 25;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
     let currentUIVersion = 0;
     try {
@@ -1609,12 +1623,40 @@ BrowserGlue.prototype = {
       // Reset homepage pref for users who have it set to start.mozilla.org
       // or google.com/firefox.
       const HOMEPAGE_PREF = "browser.startup.homepage";
-      let uri = Services.prefs.getComplexValue(HOMEPAGE_PREF,
-                                               Ci.nsIPrefLocalizedString).data;
-      if (uri && (uri.startsWith("http://start.mozilla.org") ||
-                  /^https?:\/\/(www\.)?google\.[a-z.]+\/firefox/i.test(uri))) {
-        Services.prefs.clearUserPref(HOMEPAGE_PREF);
+      if (Services.prefs.prefHasUserValue(HOMEPAGE_PREF)) {
+        const DEFAULT =
+          Services.prefs.getDefaultBranch(HOMEPAGE_PREF)
+                        .getComplexValue("", Ci.nsIPrefLocalizedString).data;
+        let value =
+          Services.prefs.getComplexValue(HOMEPAGE_PREF, Ci.nsISupportsString);
+        let updated =
+          value.data.replace(/https?:\/\/start\.mozilla\.org[^|]*/i, DEFAULT)
+                    .replace(/https?:\/\/(www\.)?google\.[a-z.]+\/firefox[^|]*/i,
+                             DEFAULT);
+        if (updated != value.data) {
+          if (updated == DEFAULT) {
+            Services.prefs.clearUserPref(HOMEPAGE_PREF);
+          } else {
+            value.data = updated;
+            Services.prefs.setComplexValue(HOMEPAGE_PREF,
+                                           Ci.nsISupportsString, value);
+          }
+        }
       }
+    }
+
+    if (currentUIVersion < 25) {
+      // Make sure the doNotTrack value conforms to the conversion from
+      // three-state to two-state. (This reverts a setting of "please track me"
+      // to the default "don't say anything").
+      try {
+        if (Services.prefs.getBoolPref("privacy.donottrackheader.enabled") &&
+            Services.prefs.getIntPref("privacy.donottrackheader.value") != 1) {
+          Services.prefs.clearUserPref("privacy.donottrackheader.enabled");
+          Services.prefs.clearUserPref("privacy.donottrackheader.value");
+        }
+      }
+      catch (ex) {}
     }
 
     // Update the migration version.

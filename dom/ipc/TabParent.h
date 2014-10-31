@@ -11,6 +11,7 @@
 #include "mozilla/dom/PBrowserParent.h"
 #include "mozilla/dom/PFilePickerParent.h"
 #include "mozilla/dom/TabContext.h"
+#include "mozilla/dom/ipc/IdType.h"
 #include "nsCOMPtr.h"
 #include "nsIAuthPromptProvider.h"
 #include "nsIBrowserDOMWindow.h"
@@ -28,6 +29,7 @@ class nsIURI;
 class nsIWidget;
 class nsILoadContext;
 class CpowHolder;
+class nsIDocShell;
 
 namespace mozilla {
 
@@ -67,7 +69,10 @@ public:
     // nsITabParent
     NS_DECL_NSITABPARENT
 
-    TabParent(nsIContentParent* aManager, const TabContext& aContext, uint32_t aChromeFlags);
+    TabParent(nsIContentParent* aManager,
+              const TabId& aTabId,
+              const TabContext& aContext,
+              uint32_t aChromeFlags);
     Element* GetOwnerElement() const { return mFrameElement; }
     void SetOwnerElement(Element* aElement);
 
@@ -205,6 +210,7 @@ public:
                                            const bool& aIsRoot,
                                            const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
     virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid,
+                                          const uint64_t& aInputBlockId,
                                           const bool& aPreventDefault) MOZ_OVERRIDE;
 
     virtual PColorPickerParent*
@@ -228,7 +234,8 @@ public:
                          const ScrollableLayerGuid& aGuid);
     void HandleLongTap(const CSSPoint& aPoint,
                        int32_t aModifiers,
-                       const ScrollableLayerGuid& aGuid);
+                       const ScrollableLayerGuid& aGuid,
+                       uint64_t aInputBlockId);
     void HandleLongTapUp(const CSSPoint& aPoint,
                          int32_t aModifiers,
                          const ScrollableLayerGuid& aGuid);
@@ -256,7 +263,7 @@ public:
     bool SendRealKeyEvent(mozilla::WidgetKeyboardEvent& event);
     bool SendRealTouchEvent(WidgetTouchEvent& event);
     bool SendHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
-    bool SendHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
+    bool SendHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId);
     bool SendHandleLongTapUp(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
     bool SendHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid);
 
@@ -322,6 +329,7 @@ public:
 
     static TabParent* GetFrom(nsFrameLoader* aFrameLoader);
     static TabParent* GetFrom(nsIContent* aContent);
+    static TabId GetTabIdFrom(nsIDocShell* docshell);
 
     nsIContentParent* Manager() { return mManager; }
 
@@ -332,6 +340,11 @@ public:
     bool IsDestroyed() const { return mIsDestroyed; }
 
     already_AddRefed<nsIWidget> GetWidget() const;
+
+    const TabId GetTabId() const
+    {
+      return mTabId;
+    }
 
 protected:
     bool ReceiveMessage(const nsString& aMessage,
@@ -412,8 +425,12 @@ private:
     // |aOutTargetGuid| will contain the identifier
     // of the APZC instance that handled the event. aOutTargetGuid may be
     // null.
+    // |aOutInputBlockId| will contain the identifier of the input block
+    // that this event was added to, if there was one. aOutInputBlockId may
+    // be null.
     nsEventStatus MaybeForwardEventToRenderFrame(WidgetInputEvent& aEvent,
-                                                 ScrollableLayerGuid* aOutTargetGuid);
+                                                 ScrollableLayerGuid* aOutTargetGuid,
+                                                 uint64_t* aOutInputBlockId);
     // The offset for the child process which is sampled at touch start. This
     // means that the touch events are relative to where the frame was at the
     // start of the touch. We need to look for a better solution to this
@@ -435,6 +452,8 @@ private:
     uint32_t mChromeFlags;
 
     nsCOMPtr<nsILoadContext> mLoadContext;
+
+    TabId mTabId;
 };
 
 } // namespace dom

@@ -733,11 +733,11 @@ private:
 StaticRefPtr<TabChild> sPreallocatedTab;
 
 /*static*/
-std::map<uint64_t, nsRefPtr<TabChild> >&
+std::map<TabId, nsRefPtr<TabChild>>&
 TabChild::NestedTabChildMap()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  static std::map<uint64_t, nsRefPtr<TabChild> > sNestedTabChildMap;
+  static std::map<TabId, nsRefPtr<TabChild>> sNestedTabChildMap;
   return sNestedTabChildMap;
 }
 
@@ -750,6 +750,7 @@ TabChild::PreloadSlowThings()
     // not connected to any manager. Any attempt to use the TabChild
     // in IPC will crash.
     nsRefPtr<TabChild> tab(new TabChild(nullptr,
+                                        TabId(0),
                                         TabContext(), /* chromeFlags */ 0));
     if (!NS_SUCCEEDED(tab->Init()) ||
         !tab->InitTabChildGlobal(DONT_LOAD_SCRIPTS)) {
@@ -780,6 +781,7 @@ TabChild::PreloadSlowThings()
 
 /*static*/ already_AddRefed<TabChild>
 TabChild::Create(nsIContentChild* aManager,
+                 const TabId& aTabId,
                  const TabContext &aContext,
                  uint32_t aChromeFlags)
 {
@@ -793,18 +795,20 @@ TabChild::Create(nsIContentChild* aManager,
         MOZ_ASSERT(!child->mTriedBrowserInit);
 
         child->mManager = aManager;
+        child->SetTabId(aTabId);
         child->SetTabContext(aContext);
         child->NotifyTabContextUpdated();
         return child.forget();
     }
 
-    nsRefPtr<TabChild> iframe = new TabChild(aManager,
+    nsRefPtr<TabChild> iframe = new TabChild(aManager, aTabId,
                                              aContext, aChromeFlags);
     return NS_SUCCEEDED(iframe->Init()) ? iframe.forget() : nullptr;
 }
 
 
 TabChild::TabChild(nsIContentChild* aManager,
+                   const TabId& aTabId,
                    const TabContext& aContext,
                    uint32_t aChromeFlags)
   : TabContext(aContext)
@@ -822,19 +826,26 @@ TabChild::TabChild(nsIContentChild* aManager,
   , mOrientation(eScreenOrientation_PortraitPrimary)
   , mUpdateHitRegion(false)
   , mPendingTouchPreventedResponse(false)
+  , mPendingTouchPreventedBlockId(0)
   , mTouchEndCancelled(false)
   , mEndTouchIsClick(false)
   , mIgnoreKeyPressEvent(false)
   , mActiveElementManager(new ActiveElementManager())
   , mHasValidInnerSize(false)
-  , mUniqueId(0)
   , mDestroyed(false)
+  , mUniqueId(aTabId)
 {
   if (!sActiveDurationMsSet) {
     Preferences::AddIntVarCache(&sActiveDurationMs,
                                 "ui.touch_activation.duration_ms",
                                 sActiveDurationMs);
     sActiveDurationMsSet = true;
+  }
+
+  // preloaded TabChild should not be added to child map
+  if (mUniqueId) {
+    MOZ_ASSERT(NestedTabChildMap().find(mUniqueId) == NestedTabChildMap().end());
+    NestedTabChildMap()[mUniqueId] = this;
   }
 }
 
@@ -1433,26 +1444,36 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
 {
   *aReturn = nullptr;
 
-  nsRefPtr<TabChild> newChild =
-      new TabChild(ContentChild::GetSingleton(),
-                   /* TabContext */ *this, /* chromeFlags */ 0);
-  if (!NS_SUCCEEDED(newChild->Init())) {
-      return NS_ERROR_ABORT;
-  }
+  ContentChild* cc = ContentChild::GetSingleton();
+  const TabId openerTabId = GetTabId();
 
   // We must use PopupIPCTabContext here; ContentParent will not accept the
   // result of this->AsIPCTabContext() (which will be a
   // BrowserFrameIPCTabContext or an AppFrameIPCTabContext), for security
   // reasons.
   PopupIPCTabContext context;
-  context.openerChild() = this;
+  context.opener() = openerTabId;
   context.isBrowserElement() = IsBrowserElement();
 
-  ContentChild* cc = static_cast<ContentChild*>(Manager());
+  IPCTabContext ipcContext(context, mScrolling);
+
+  TabId tabId;
+  cc->SendAllocateTabId(openerTabId,
+                        ipcContext,
+                        cc->GetID(),
+                        &tabId);
+
+  nsRefPtr<TabChild> newChild = new TabChild(ContentChild::GetSingleton(), tabId,
+                                             /* TabContext */ *this, /* chromeFlags */ 0);
+  if (NS_FAILED(newChild->Init())) {
+    return NS_ERROR_ABORT;
+  }
+
+  context.opener() = this;
   unused << Manager()->SendPBrowserConstructor(
       // We release this ref in DeallocPBrowserChild
       nsRefPtr<TabChild>(newChild).forget().take(),
-      IPCTabContext(context, mScrolling), /* chromeFlags */ 0,
+      tabId, IPCTabContext(context, mScrolling), /* chromeFlags */ 0,
       cc->GetID(), cc->IsForApp(), cc->IsForBrowser());
 
   nsAutoCString spec;
@@ -1491,7 +1512,7 @@ TabChild::SendPendingTouchPreventedResponse(bool aPreventDefault,
 {
   if (mPendingTouchPreventedResponse) {
     MOZ_ASSERT(aGuid == mPendingTouchPreventedGuid);
-    SendContentReceivedTouch(mPendingTouchPreventedGuid, aPreventDefault);
+    SendContentReceivedTouch(mPendingTouchPreventedGuid, mPendingTouchPreventedBlockId, aPreventDefault);
     mPendingTouchPreventedResponse = false;
   }
 }
@@ -1562,8 +1583,8 @@ TabChild::ActorDestroy(ActorDestroyReason why)
   CompositorChild* compositorChild = static_cast<CompositorChild*>(CompositorChild::Get());
   compositorChild->CancelNotifyAfterRemotePaint(this);
 
-  if (Id() != 0) {
-    NestedTabChildMap().erase(Id());
+  if (GetTabId() != 0) {
+    NestedTabChildMap().erase(GetTabId());
   }
 }
 
@@ -1941,7 +1962,7 @@ TabChild::FireSingleTapEvent(LayoutDevicePoint aPoint)
 }
 
 bool
-TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
+TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId)
 {
   TABC_LOG("Handling long tap at %s with %p %p\n",
     Stringify(aPoint).c_str(), mGlobal.get(), mTabChildGlobal.get());
@@ -1971,7 +1992,7 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& a
     TABC_LOG("MOZLONGTAP event handled: %d\n", eventHandled);
   }
 
-  SendContentReceivedTouch(aGuid, eventHandled);
+  SendContentReceivedTouch(aGuid, aInputBlockId, eventHandled);
 
   return true;
 }
@@ -2240,7 +2261,8 @@ TabChild::CancelTapTracking()
 
 bool
 TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
-                             const ScrollableLayerGuid& aGuid)
+                             const ScrollableLayerGuid& aGuid,
+                             const uint64_t& aInputBlockId)
 {
   TABC_LOG("Receiving touch event of type %d\n", aEvent.message);
 
@@ -2269,14 +2291,15 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
     if (mPendingTouchPreventedResponse) {
       // We can enter here if we get two TOUCH_STARTs in a row and didn't
       // respond to the first one. Respond to it now.
-      SendContentReceivedTouch(mPendingTouchPreventedGuid, false);
+      SendContentReceivedTouch(mPendingTouchPreventedGuid, mPendingTouchPreventedBlockId, false);
       mPendingTouchPreventedResponse = false;
     }
     if (isTouchPrevented) {
-      SendContentReceivedTouch(aGuid, isTouchPrevented);
+      SendContentReceivedTouch(aGuid, aInputBlockId, isTouchPrevented);
     } else {
       mPendingTouchPreventedResponse = true;
       mPendingTouchPreventedGuid = aGuid;
+      mPendingTouchPreventedBlockId = aInputBlockId;
     }
     break;
   }
@@ -2304,9 +2327,10 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
 
 bool
 TabChild::RecvRealTouchMoveEvent(const WidgetTouchEvent& aEvent,
-                                 const ScrollableLayerGuid& aGuid)
+                                 const ScrollableLayerGuid& aGuid,
+                                 const uint64_t& aInputBlockId)
 {
-  return RecvRealTouchEvent(aEvent, aGuid);
+  return RecvRealTouchEvent(aEvent, aGuid, aInputBlockId);
 }
 
 void
