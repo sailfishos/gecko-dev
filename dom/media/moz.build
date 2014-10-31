@@ -267,6 +267,9 @@ UNIFIED_SOURCES += [
     'XiphExtradata.cpp',
 ]
 
+SOURCES += [
+    'NemoResourceHandler.cpp',
+]
 if CONFIG['OS_TARGET'] == 'WINNT':
   SOURCES += [ 'ThreadPoolCOMListener.cpp' ]
 
