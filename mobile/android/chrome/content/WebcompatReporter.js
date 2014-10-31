@@ -4,6 +4,7 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
+Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -38,7 +39,8 @@ var WebcompatReporter = {
     } else if (topic === "DesktopMode:Change") {
       let args = JSON.parse(data);
       let tab = BrowserApp.getTabForId(args.tabId);
-      if (args.desktopMode && tab !== null) {
+      let currentURI = tab.browser.currentURI.spec;
+      if (args.desktopMode && this.isReportableUrl(currentURI)) {
         this.reportDesktopModePrompt();
       }
     }
@@ -56,10 +58,10 @@ var WebcompatReporter = {
   },
 
   isReportableUrl: function(url) {
-    return url !== null && !(url.startsWith("about") ||
-                             url.startsWith("chrome") ||
-                             url.startsWith("file") ||
-                             url.startsWith("resource"));
+    return url && !(url.startsWith("about") ||
+                    url.startsWith("chrome") ||
+                    url.startsWith("file") ||
+                    url.startsWith("resource"));
   },
 
   reportDesktopModePrompt: function() {
@@ -75,10 +77,14 @@ var WebcompatReporter = {
   },
 
   reportIssue: function(url) {
-    let webcompatURL = new URL("http://webcompat.com/");
+    let webcompatURL = new URL("https://webcompat.com/");
     webcompatURL.searchParams.append("open", "1");
     webcompatURL.searchParams.append("url", url);
-    BrowserApp.addTab(webcompatURL.href);
+    if (PrivateBrowsingUtils.isBrowserPrivate(BrowserApp.selectedTab.browser)) {
+      BrowserApp.addTab(webcompatURL.href, {parentId: BrowserApp.selectedTab.id, isPrivate: true});
+    } else {
+      BrowserApp.addTab(webcompatURL.href);
+    }
   }
 };
 

@@ -57,7 +57,7 @@ skip-if(B2G) random-if(Android) needs-focus != spellcheck-textarea-attr-dynamic-
 skip-if(B2G) random-if(Android) needs-focus != spellcheck-textarea-attr-dynamic-override-inherit.html spellcheck-textarea-ref.html
 skip-if(B2G) random-if(Android) needs-focus != spellcheck-textarea-property-dynamic-override.html spellcheck-textarea-ref.html
 skip-if(B2G) random-if(Android) needs-focus != spellcheck-textarea-property-dynamic-override-inherit.html spellcheck-textarea-ref.html
-needs-focus == caret_on_focus.html caret_on_focus-ref.html
+needs-focus pref(touchcaret.enabled,false) == caret_on_focus.html caret_on_focus-ref.html
 needs-focus != caret_on_textarea_lastline.html caret_on_textarea_lastline-ref.html
 needs-focus == input-text-onfocus-reframe.html input-text-onfocus-reframe-ref.html
 needs-focus == input-text-notheme-onfocus-reframe.html input-text-notheme-onfocus-reframe-ref.html
@@ -127,3 +127,4 @@ needs-focus == spellcheck-contenteditable-focused-reframe.html spellcheck-conten
 == spellcheck-contenteditable-property-dynamic-override-inherit.html spellcheck-contenteditable-disabled-ref.html
 needs-focus == 969773.html 969773-ref.html
 == 997805.html 997805-ref.html
+== 1088158.html 1088158-ref.html

@@ -21,7 +21,6 @@ import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.DynamicToolbar.PinReason;
 import org.mozilla.gecko.DynamicToolbar.VisibilityTransition;
 import org.mozilla.gecko.GeckoProfileDirectories.NoMozillaDirectoryException;
-import org.mozilla.gecko.ReadingListHelper;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.ViewHelper;
 import org.mozilla.gecko.db.BrowserContract.Combined;
@@ -52,6 +51,7 @@ import org.mozilla.gecko.home.HomePanelsManager;
 import org.mozilla.gecko.home.SearchEngine;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.GeckoMenuItem;
+import org.mozilla.gecko.mozglue.ContextUtils;
 import org.mozilla.gecko.preferences.ClearOnShutdownPref;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.prompts.Prompt;
@@ -103,6 +103,7 @@ import android.nfc.NfcEvent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StrictMode;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
@@ -152,6 +153,7 @@ public class BrowserApp extends GeckoApp
     private static final String STATE_ABOUT_HOME_TOP_PADDING = "abouthome_top_padding";
 
     private static final String BROWSER_SEARCH_TAG = "browser_search";
+    private static final String ONBOARD_STARTPANE_TAG = "startpane_dialog";
 
     // Request ID for startActivityForResult.
     private static final int ACTIVITY_REQUEST_PREFERENCES = 1001;
@@ -267,6 +269,9 @@ public class BrowserApp extends GeckoApp
         Log.d(LOGTAG, "BrowserApp.onTabChanged: " + tab.getId() + ": " + msg);
         switch(msg) {
             case LOCATION_CHANGE:
+                if (Tabs.getInstance().isSelectedTab(tab)) {
+                    maybeCancelFaviconLoad(tab);
+                }
                 // fall through
             case SELECTED:
                 if (Tabs.getInstance().isSelectedTab(tab)) {
@@ -290,7 +295,16 @@ public class BrowserApp extends GeckoApp
                 }
                 break;
             case PAGE_SHOW:
-                tab.loadFavicon();
+                loadFavicon(tab);
+                break;
+            case LINK_FAVICON:
+                // If tab is not loading and the favicon is updated, we
+                // want to load the image straight away. If tab is still
+                // loading, we only load the favicon once the page's content
+                // is fully loaded.
+                if (tab.getState() != Tab.STATE_LOADING) {
+                    loadFavicon(tab);
+                }
                 break;
             case BOOKMARK_ADDED:
                 showBookmarkAddedToast();
@@ -616,8 +630,8 @@ public class BrowserApp extends GeckoApp
 
             if (prefs.getBoolean(PREF_STARTPANE_ENABLED, false)) {
                 if (!Intent.ACTION_VIEW.equals(intentAction)) {
-                    final Intent startIntent = new Intent(this, StartPane.class);
-                    context.startActivity(startIntent);
+                    final DialogFragment dialog = new StartPane();
+                    dialog.show(getSupportFragmentManager(), ONBOARD_STARTPANE_TAG);
                 }
                 // Don't bother trying again to show the v1 minimal first run.
                 prefs.edit().putBoolean(PREF_STARTPANE_ENABLED, false).apply();
@@ -625,7 +639,7 @@ public class BrowserApp extends GeckoApp
         } finally {
             StrictMode.setThreadPolicy(savedPolicy);
         }
-      }
+    }
 
     private Class<?> getMediaPlayerManager() {
         if (AppConstants.MOZ_MEDIA_PLAYER) {
@@ -670,7 +684,7 @@ public class BrowserApp extends GeckoApp
     public void onResume() {
         super.onResume();
 
-        final String args = StringUtils.getStringExtra(getIntent(), "args");
+        final String args = ContextUtils.getStringExtra(getIntent(), "args");
         // If an external intent tries to start Fennec in guest mode, and it's not already
         // in guest mode, this will change modes before opening the url.
         // NOTE: OnResume is called twice sometimes when showing on the lock screen.
@@ -1811,6 +1825,41 @@ public class BrowserApp extends GeckoApp
             && mHomePagerContainer != null && mHomePagerContainer.getVisibility() == View.VISIBLE);
     }
 
+    /* Favicon stuff. */
+    private static OnFaviconLoadedListener sFaviconLoadedListener = new OnFaviconLoadedListener() {
+        @Override
+        public void onFaviconLoaded(String pageUrl, String faviconURL, Bitmap favicon) {
+            // If we failed to load a favicon, we use the default favicon instead.
+            Tabs.getInstance()
+                .updateFaviconForURL(pageUrl,
+                                     (favicon == null) ? Favicons.defaultFavicon : favicon);
+        }
+    };
+
+    private void loadFavicon(final Tab tab) {
+        maybeCancelFaviconLoad(tab);
+
+        final int tabFaviconSize = getResources().getDimensionPixelSize(R.dimen.browser_toolbar_favicon_size);
+
+        int flags = (tab.isPrivate() || tab.getErrorType() != Tab.ErrorType.NONE) ? 0 : LoadFaviconTask.FLAG_PERSIST;
+        int id = Favicons.getSizedFavicon(getContext(), tab.getURL(), tab.getFaviconURL(), tabFaviconSize, flags, sFaviconLoadedListener);
+
+        tab.setFaviconLoadId(id);
+    }
+
+    private void maybeCancelFaviconLoad(Tab tab) {
+        int faviconLoadId = tab.getFaviconLoadId();
+
+        if (Favicons.NOT_LOADING == faviconLoadId) {
+            return;
+        }
+
+        // Cancel load task and reset favicon load state if it wasn't already
+        // in NOT_LOADING state.
+        Favicons.cancelFaviconLoad(faviconLoadId);
+        tab.setFaviconLoadId(Favicons.NOT_LOADING);
+    }
+
     /**
      * Enters editing mode with the current tab's URL. There might be no
      * tabs loaded by the time the user enters editing mode e.g. just after
@@ -2490,7 +2539,8 @@ public class BrowserApp extends GeckoApp
     @Override
     public void openOptionsMenu() {
         // Disable menu access (for hardware buttons) when the software menu button is inaccessible.
-        if (mBrowserToolbar.isEditing()) {
+        // Note that the software button is always accessible on new tablet.
+        if (mBrowserToolbar.isEditing() && !NewTabletUI.isEnabled(this)) {
             return;
         }
 
@@ -2617,12 +2667,12 @@ public class BrowserApp extends GeckoApp
         }
 
         // Disable share menuitem for about:, chrome:, file:, and resource: URIs
-        final boolean shareEnabled = RestrictedProfiles.isAllowed(RestrictedProfiles.Restriction.DISALLOW_SHARE);
+        final boolean shareEnabled = RestrictedProfiles.isAllowed(this, RestrictedProfiles.Restriction.DISALLOW_SHARE);
         share.setVisible(shareEnabled);
         share.setEnabled(StringUtils.isShareableUrl(url) && shareEnabled);
-        MenuUtils.safeSetEnabled(aMenu, R.id.apps, RestrictedProfiles.isAllowed(RestrictedProfiles.Restriction.DISALLOW_INSTALL_APPS));
-        MenuUtils.safeSetEnabled(aMenu, R.id.addons, RestrictedProfiles.isAllowed(RestrictedProfiles.Restriction.DISALLOW_INSTALL_EXTENSION));
-        MenuUtils.safeSetEnabled(aMenu, R.id.downloads, RestrictedProfiles.isAllowed(RestrictedProfiles.Restriction.DISALLOW_DOWNLOADS));
+        MenuUtils.safeSetEnabled(aMenu, R.id.apps, RestrictedProfiles.isAllowed(this, RestrictedProfiles.Restriction.DISALLOW_INSTALL_APPS));
+        MenuUtils.safeSetEnabled(aMenu, R.id.addons, RestrictedProfiles.isAllowed(this, RestrictedProfiles.Restriction.DISALLOW_INSTALL_EXTENSION));
+        MenuUtils.safeSetEnabled(aMenu, R.id.downloads, RestrictedProfiles.isAllowed(this, RestrictedProfiles.Restriction.DISALLOW_DOWNLOADS));
 
         // NOTE: Use MenuUtils.safeSetEnabled because some actions might
         // be on the BrowserToolbar context menu.

@@ -179,8 +179,13 @@ CallProgressSocket.prototype = {
  * and register with the Loop server.
  */
 let LoopCallsInternal = {
-  callsData: {inUse: false},
-  _mocks: {webSocket: undefined},
+  callsData: {
+    inUse: false,
+  },
+
+  mocks: {
+    webSocket: undefined,
+  },
 
   /**
    * Callback from MozLoopPushHandler - A push notification has been received from
@@ -245,6 +250,8 @@ let LoopCallsInternal = {
         respData.calls.forEach((callData) => {
           if (!this.callsData.inUse) {
             callData.sessionType = sessionType;
+            // XXX Bug 1090209 will transiton into a better window id.
+            callData.windowId = callData.callId;
             this._startCall(callData, "incoming");
           } else {
             this._returnBusy(callData);
@@ -272,7 +279,7 @@ let LoopCallsInternal = {
       null,
       // No title, let the page set that, to avoid flickering.
       "",
-      "about:loopconversation#" + conversationType + "/" + callData.callId);
+      "about:loopconversation#" + conversationType + "/" + callData.windowId);
   },
 
   /**
@@ -289,7 +296,8 @@ let LoopCallsInternal = {
     var callData = {
       contact: contact,
       callType: callType,
-      callId: Math.floor((Math.random() * 10))
+      // XXX Really we shouldn't be using random numbers, bug 1090209 will fix this.
+      windowId: Math.floor((Math.random() * 100000000))
     };
 
     this._startCall(callData, "outgoing");
@@ -308,7 +316,9 @@ let LoopCallsInternal = {
       callData.progressURL,
       callData.callId,
       callData.websocketToken);
-    callProgress._websocket = this._mocks.webSocket;
+    if (this.mocks.webSocket) {
+      callProgress._websocket = this.mocks.webSocket;
+    }
     // This instance of CallProgressSocket should stay alive until the underlying
     // websocket is closed since it is passed to the websocket as the nsIWebSocketListener.
     callProgress.connect(() => {callProgress.sendBusy();});
@@ -331,17 +341,17 @@ this.LoopCalls = {
   },
 
   /**
-   * Returns the callData for a specific loopCallId
+   * Returns the callData for a specific conversation window id.
    *
    * The data was retrieved from the LoopServer via a GET/calls/<version> request
    * triggered by an incoming message from the LoopPushServer.
    *
-   * @param {int} loopCallId
+   * @param {Number} conversationWindowId
    * @return {callData} The callData or undefined if error.
    */
-  getCallData: function(loopCallId) {
+  getCallData: function(conversationWindowId) {
     if (LoopCallsInternal.callsData.data &&
-        LoopCallsInternal.callsData.data.callId == loopCallId) {
+        LoopCallsInternal.callsData.data.windowId == conversationWindowId) {
       return LoopCallsInternal.callsData.data;
     } else {
       return undefined;
@@ -349,15 +359,15 @@ this.LoopCalls = {
   },
 
   /**
-   * Releases the callData for a specific loopCallId
+   * Releases the callData for a specific conversation window id.
    *
    * The result of this call will be a free call session slot.
    *
-   * @param {int} loopCallId
+   * @param {Number} conversationWindowId
    */
-  releaseCallData: function(loopCallId) {
+  releaseCallData: function(conversationWindowId) {
     if (LoopCallsInternal.callsData.data &&
-        LoopCallsInternal.callsData.data.callId == loopCallId) {
+        LoopCallsInternal.callsData.data.windowId == conversationWindowId) {
       LoopCallsInternal.callsData.data = undefined;
       LoopCallsInternal.callsData.inUse = false;
     }

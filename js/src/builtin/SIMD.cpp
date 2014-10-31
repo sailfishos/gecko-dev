@@ -87,7 +87,7 @@ template<typename Elem>
 static Elem
 TypedObjectMemory(HandleValue v)
 {
-    OutlineTypedObject &obj = v.toObject().as<OutlineTypedObject>();
+    TypedObject &obj = v.toObject().as<TypedObject>();
     return reinterpret_cast<Elem>(obj.typedMem());
 }
 
@@ -138,7 +138,7 @@ static bool SignMask(JSContext *cx, unsigned argc, Value *vp)
         return false;
     }
 
-    OutlineTypedObject &typedObj = args.thisv().toObject().as<OutlineTypedObject>();
+    TypedObject &typedObj = args.thisv().toObject().as<TypedObject>();
     TypeDescr &descr = typedObj.typeDescr();
     if (descr.kind() != type::Simd || descr.as<SimdTypeDescr>().type() != SimdType::type) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
@@ -322,7 +322,7 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
         return false;
     }
 
-    Rooted<TypedObject*> result(cx, OutlineTypedObject::createZeroed(cx, descr, 0));
+    Rooted<TypedObject*> result(cx, TypedObject::createZeroed(cx, descr, 0));
     if (!result)
         return false;
 
@@ -450,7 +450,7 @@ js::CreateSimd(JSContext *cx, typename V::Elem *data)
     Rooted<TypeDescr*> typeDescr(cx, &V::GetTypeDescr(*cx->global()));
     MOZ_ASSERT(typeDescr);
 
-    Rooted<TypedObject *> result(cx, OutlineTypedObject::createZeroed(cx, typeDescr, 0));
+    Rooted<TypedObject *> result(cx, TypedObject::createZeroed(cx, typeDescr, 0));
     if (!result)
         return nullptr;
 
@@ -466,7 +466,7 @@ namespace js {
 // Unary SIMD operators
 template<typename T>
 struct Abs {
-    static inline T apply(T x) { return x < 0 ? -1 * x : x; }
+    static inline T apply(T x) { return mozilla::Abs(x); }
 };
 template<typename T>
 struct Neg {
@@ -712,14 +712,14 @@ Swizzle(JSContext *cx, unsigned argc, Value *vp)
     if (args.length() != (V::lanes + 1) || !IsVectorObject<V>(args[0]))
         return ErrorBadArgs(cx);
 
-    int32_t lanes[V::lanes];
+    uint32_t lanes[V::lanes];
     for (unsigned i = 0; i < V::lanes; i++) {
         int32_t lane = -1;
         if (!ToInt32(cx, args[i + 1], &lane))
             return false;
-        if (lane < 0 || lane >= V::lanes)
+        if (lane < 0 || uint32_t(lane) >= V::lanes)
             return ErrorBadArgs(cx);
-        lanes[i] = lane;
+        lanes[i] = uint32_t(lane);
     }
 
     Elem *val = TypedObjectMemory<Elem *>(args[0]);
@@ -741,14 +741,14 @@ Shuffle(JSContext *cx, unsigned argc, Value *vp)
     if (args.length() != (V::lanes + 2) || !IsVectorObject<V>(args[0]) || !IsVectorObject<V>(args[1]))
         return ErrorBadArgs(cx);
 
-    int32_t lanes[V::lanes];
+    uint32_t lanes[V::lanes];
     for (unsigned i = 0; i < V::lanes; i++) {
         int32_t lane = -1;
         if (!ToInt32(cx, args[i + 2], &lane))
             return false;
-        if (lane < 0 || lane >= (2 * V::lanes))
+        if (lane < 0 || uint32_t(lane) >= (2 * V::lanes))
             return ErrorBadArgs(cx);
-        lanes[i] = lane;
+        lanes[i] = uint32_t(lane);
     }
 
     Elem *lhs = TypedObjectMemory<Elem *>(args[0]);

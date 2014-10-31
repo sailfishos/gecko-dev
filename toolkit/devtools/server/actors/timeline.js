@@ -116,7 +116,15 @@ let TimelineActor = exports.TimelineActor = protocol.ActorClass({
    * @return {Array}
    */
   get docShells() {
-    let docShellsEnum = this.tabActor.originalDocShell.getDocShellEnumerator(
+    let originalDocShell;
+
+    if (this.tabActor.isRootActor) {
+      originalDocShell = this.tabActor.docShell;
+    } else {
+      originalDocShell = this.tabActor.originalDocShell;
+    }
+
+    let docShellsEnum = originalDocShell.getDocShellEnumerator(
       Ci.nsIDocShellTreeItem.typeAll,
       Ci.nsIDocShell.ENUMERATE_FORWARDS
     );
@@ -212,7 +220,7 @@ let TimelineActor = exports.TimelineActor = protocol.ActorClass({
 
     if (withMemory) {
       this._memoryActor = new MemoryActor(this.conn, this.tabActor);
-      events.emit(this, "memory", Date.now(), this._memoryActor.measure());
+      events.emit(this, "memory", this._startTime, this._memoryActor.measure());
     }
     if (withTicks) {
       this._framerateActor = new FramerateActor(this.conn, this.tabActor);

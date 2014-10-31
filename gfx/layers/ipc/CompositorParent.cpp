@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "CompositorParent.h"
+#include "mozilla/layers/CompositorParent.h"
 #include <stdio.h>                      // for fprintf, stdout
 #include <stdint.h>                     // for uint64_t
 #include <map>                          // for _Rb_tree_iterator, etc
@@ -23,7 +23,6 @@
 #include "gfxPlatformGtk.h"             // for gfxPlatform
 #endif
 #include "gfxPrefs.h"                   // for gfxPrefs
-#include "ipc/ShadowLayersManager.h"    // for ShadowLayersManager
 #include "mozilla/AutoRestore.h"        // for AutoRestore
 #include "mozilla/DebugOnly.h"          // for DebugOnly
 #include "mozilla/gfx/2D.h"          // for DrawTarget
@@ -38,6 +37,7 @@
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/PLayerTransactionParent.h"
+#include "mozilla/layers/ShadowLayersManager.h" // for ShadowLayersManager
 #include "mozilla/mozalloc.h"           // for operator new, etc
 #ifdef MOZ_WIDGET_GTK
 #include "basic/X11BasicCompositor.h" // for X11BasicCompositor
@@ -64,6 +64,10 @@
 #include "ProfilerMarkers.h"
 #endif
 #include "mozilla/VsyncDispatcher.h"
+
+#ifdef MOZ_WIDGET_GONK
+#include "GeckoTouchDispatcher.h"
+#endif
 
 namespace mozilla {
 namespace layers {
@@ -273,6 +277,8 @@ CompositorVsyncObserver::Composite(TimeStamp aVsyncTimestamp)
     // unregister the vsync.
     UnobserveVsync();
   }
+
+  DispatchTouchEvents(aVsyncTimestamp);
 }
 
 bool
@@ -300,6 +306,16 @@ CompositorVsyncObserver::UnobserveVsync()
   MOZ_ASSERT(CompositorParent::IsInCompositorThread() || NS_IsMainThread());
   VsyncDispatcher::GetInstance()->RemoveCompositorVsyncObserver(this);
   mIsObservingVsync = false;
+}
+
+void
+CompositorVsyncObserver::DispatchTouchEvents(TimeStamp aVsyncTimestamp)
+{
+#ifdef MOZ_WIDGET_GONK
+  if (gfxPrefs::TouchResampling()) {
+    GeckoTouchDispatcher::NotifyVsync(aVsyncTimestamp);
+  }
+#endif
 }
 
 void CompositorParent::StartUp()
@@ -602,6 +618,7 @@ CompositorParent::ResumeComposition()
 
   mPaused = false;
 
+  mLastCompose = TimeStamp::Now();
   CompositeToTarget(nullptr);
 
   // if anyone's waiting to make sure that composition really got resumed, tell them
@@ -915,6 +932,7 @@ CompositorParent::ForceComposeToTarget(DrawTarget* aTarget, const nsIntRect* aRe
   AutoRestore<bool> override(mOverrideComposeReadiness);
   mOverrideComposeReadiness = true;
 
+  mLastCompose = TimeStamp::Now();
   CompositeToTarget(aTarget, aRect);
 }
 

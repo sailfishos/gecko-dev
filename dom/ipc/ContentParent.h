@@ -150,6 +150,11 @@ public:
                                         TabId* aTabId) MOZ_OVERRIDE;
     virtual bool AnswerBridgeToChildProcess(const ContentParentId& aCpId) MOZ_OVERRIDE;
 
+    virtual bool AnswerLoadPlugin(const uint32_t& aPluginId) MOZ_OVERRIDE;
+    virtual bool RecvFindPlugins(const uint32_t& aPluginEpoch,
+                                 nsTArray<PluginTag>* aPlugins,
+                                 uint32_t* aNewPluginEpoch) MOZ_OVERRIDE;
+
     NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(ContentParent, nsIObserver)
 
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -253,6 +258,10 @@ public:
     virtual bool RecvPNeckoConstructor(PNeckoParent* aActor) MOZ_OVERRIDE {
         return PContentParent::RecvPNeckoConstructor(aActor);
     }
+
+    virtual PPrintingParent* AllocPPrintingParent() MOZ_OVERRIDE;
+    virtual bool RecvPPrintingConstructor(PPrintingParent* aActor) MOZ_OVERRIDE;
+    virtual bool DeallocPPrintingParent(PPrintingParent* aActor) MOZ_OVERRIDE;
 
     virtual PScreenManagerParent*
     AllocPScreenManagerParent(uint32_t* aNumberOfScreens,

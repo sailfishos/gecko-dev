@@ -139,7 +139,7 @@ ScopeObject::setEnclosingScope(HandleObject obj)
 }
 
 CallObject *
-CallObject::create(JSContext *cx, HandleShape shape, HandleTypeObject type)
+CallObject::create(JSContext *cx, HandleShape shape, HandleTypeObject type, uint32_t lexicalBegin)
 {
     MOZ_ASSERT(!type->singleton(),
                "passed a singleton type to create() (use createSingleton() "
@@ -152,11 +152,12 @@ CallObject::create(JSContext *cx, HandleShape shape, HandleTypeObject type)
     if (!obj)
         return nullptr;
 
+    obj->as<CallObject>().initRemainingSlotsToUninitializedLexicals(lexicalBegin);
     return &obj->as<CallObject>();
 }
 
 CallObject *
-CallObject::createSingleton(JSContext *cx, HandleShape shape)
+CallObject::createSingleton(JSContext *cx, HandleShape shape, uint32_t lexicalBegin)
 {
     gc::AllocKind kind = gc::GetGCObjectKind(shape->numFixedSlots());
     MOZ_ASSERT(CanBeFinalizedInBackground(kind, &CallObject::class_));
@@ -172,6 +173,7 @@ CallObject::createSingleton(JSContext *cx, HandleShape shape)
     MOZ_ASSERT(obj->hasSingletonType(),
                "type created inline above must be a singleton");
 
+    obj->as<CallObject>().initRemainingSlotsToUninitializedLexicals(lexicalBegin);
     return &obj->as<CallObject>();
 }
 
@@ -198,6 +200,10 @@ CallObject::createTemplateObject(JSContext *cx, HandleScript script, gc::Initial
     if (!obj)
         return nullptr;
 
+    // Set uninitialized lexicals even on template objects, as Ion will use
+    // copy over the template object's slot values in the fast path.
+    obj->as<CallObject>().initAliasedLexicalsToThrowOnTouch(script);
+
     return &obj->as<CallObject>();
 }
 
@@ -217,7 +223,6 @@ CallObject::create(JSContext *cx, HandleScript script, HandleObject enclosing, H
 
     callobj->as<ScopeObject>().setEnclosingScope(enclosing);
     callobj->initFixedSlot(CALLEE_SLOT, ObjectOrNullValue(callee));
-    callobj->setAliasedLexicalsToThrowOnTouch(script);
 
     if (script->treatAsRunOnce()) {
         Rooted<CallObject*> ncallobj(cx, callobj);
@@ -1349,10 +1354,10 @@ class DebugScopeProxy : public BaseProxyHandler
                 return true;
 
             if (bi->kind() == Binding::VARIABLE || bi->kind() == Binding::CONSTANT) {
-                uint32_t i = bi.frameIndex();
-                if (script->bodyLevelLocalIsAliased(i))
+                if (script->bodyLevelLocalIsAliased(bi.localIndex()))
                     return true;
 
+                uint32_t i = bi.frameIndex();
                 if (maybeLiveScope) {
                     AbstractFramePtr frame = maybeLiveScope->frame();
                     if (action == GET)
@@ -1373,7 +1378,7 @@ class DebugScopeProxy : public BaseProxyHandler
                 }
             } else {
                 MOZ_ASSERT(bi->kind() == Binding::ARGUMENT);
-                unsigned i = bi.frameIndex();
+                unsigned i = bi.argIndex();
                 if (script->formalIsAliased(i))
                     return true;
 
@@ -1677,7 +1682,13 @@ class DebugScopeProxy : public BaseProxyHandler
         if (found)
             return Throw(cx, id, JSMSG_CANT_REDEFINE_PROP);
 
-        return JS_DefinePropertyById(cx, scope, id, desc.value(), desc.attributes(), desc.getter(), desc.setter());
+        return JS_DefinePropertyById(cx, scope, id, desc.value(),
+                                     // Descriptors never store JSNatives for
+                                     // accessors: they have either JSFunctions
+                                     // or JSPropertyOps.
+                                     desc.attributes() | JSPROP_PROPOP_ACCESSORS,
+                                     JS_PROPERTYOP_GETTER(desc.getter()),
+                                     JS_PROPERTYOP_SETTER(desc.setter()));
     }
 
     bool getScopePropertyNames(JSContext *cx, HandleObject proxy, AutoIdVector &props,
@@ -1846,23 +1857,8 @@ DebugScopes::proxiedScopesPostWriteBarrier(JSRuntime *rt, ObjectWeakMap *map,
                                            const PreBarrieredObject &key)
 {
 #ifdef JSGC_GENERATIONAL
-    /*
-     * Strip the barriers from the type before inserting into the store buffer.
-     * This will automatically ensure that barriers do not fire during GC.
-     *
-     * Some compilers complain about instantiating the WeakMap class for
-     * unbarriered type arguments, so we cast to a HashMap instead.  Because of
-     * WeakMap's multiple inheritace, We need to do this in two stages, first to
-     * the HashMap base class and then to the unbarriered version.
-     */
-    ObjectWeakMap::Base *baseHashMap = static_cast<ObjectWeakMap::Base *>(map);
-
-    typedef HashMap<JSObject *, JSObject *> UnbarrieredMap;
-    UnbarrieredMap *unbarrieredMap = reinterpret_cast<UnbarrieredMap *>(baseHashMap);
-
-    typedef gc::HashKeyRef<UnbarrieredMap, JSObject *> Ref;
     if (key && IsInsideNursery(key))
-        rt->gc.storeBuffer.putGeneric(Ref(unbarrieredMap, key.get()));
+        rt->gc.storeBuffer.putGeneric(UnbarrieredRef(map, key.get()));
 #endif
 }
 

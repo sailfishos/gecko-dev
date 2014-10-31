@@ -135,7 +135,7 @@ public:
     mozilla::TemporaryRef<Path> GetPath();
 
     /**
-     * Appends the given path to the current path.
+     * Sets the given path as the current path.
      */
     void SetPath(Path* path);
 
@@ -143,12 +143,6 @@ public:
      * Moves the pen to a new point without drawing a line.
      */
     void MoveTo(const gfxPoint& pt);
-
-    /**
-     * Creates a new subpath starting at the current point.
-     * Equivalent to MoveTo(CurrentPoint()).
-     */
-    void NewSubPath();
 
     /**
      * Returns the current point in the current path.
@@ -171,27 +165,6 @@ public:
      * Draws a quadratic Bézier curve with control points pt1, pt2 and pt3.
      */
     void QuadraticCurveTo(const gfxPoint& pt1, const gfxPoint& pt2);
-
-    /**
-     * Draws a clockwise arc (i.e. a circle segment).
-     * @param center The center of the circle
-     * @param radius The radius of the circle
-     * @param angle1 Starting angle for the segment
-     * @param angle2 Ending angle
-     */
-    void Arc(const gfxPoint& center, gfxFloat radius,
-             gfxFloat angle1, gfxFloat angle2);
-
-    /**
-     * Draws a counter-clockwise arc (i.e. a circle segment).
-     * @param center The center of the circle
-     * @param radius The radius of the circle
-     * @param angle1 Starting angle for the segment
-     * @param angle2 Ending angle
-     */
-
-    void NegativeArc(const gfxPoint& center, gfxFloat radius,
-                     gfxFloat angle1, gfxFloat angle2);
 
     // path helpers
     /**
@@ -733,67 +706,6 @@ private:
 
 /**
  * Sentry helper class for functions with multiple return points that need to
- * back up the current path of a context and have it automatically restored
- * before they return. This class assumes that the transformation matrix will
- * be the same when Save and Restore are called. The calling function must
- * ensure that this is the case or the path will be copied incorrectly.
- */
-class gfxContextPathAutoSaveRestore
-{
-    typedef mozilla::gfx::Path Path;
-
-public:
-    gfxContextPathAutoSaveRestore() : mContext(nullptr) {}
-
-    explicit gfxContextPathAutoSaveRestore(gfxContext *aContext, bool aSave = true) : mContext(aContext)
-    {
-        if (aSave)
-            Save();       
-    }
-
-    ~gfxContextPathAutoSaveRestore()
-    {
-        Restore();
-    }
-
-    void SetContext(gfxContext *aContext, bool aSave = true)
-    {
-        mContext = aContext;
-        if (aSave)
-            Save();
-    }
-
-    /**
-     * If a path is already saved, does nothing. Else copies the current path
-     * so that it may be restored.
-     */
-    void Save()
-    {
-        if (!mPath && mContext) {
-            mPath = mContext->GetPath();
-        }
-    }
-
-    /**
-     * If no path is saved, does nothing. Else replaces the context's path with
-     * a copy of the saved one, and clears the saved path.
-     */
-    void Restore()
-    {
-        if (mPath) {
-            mContext->SetPath(mPath);
-            mPath = nullptr;
-        }
-    }
-
-private:
-    gfxContext *mContext;
-
-    mozilla::RefPtr<Path> mPath;
-};
-
-/**
- * Sentry helper class for functions with multiple return points that need to
  * back up the current matrix of a context and have it automatically restored
  * before they return.
  */
@@ -863,6 +775,27 @@ public:
 private:
     mozilla::RefPtr<mozilla::gfx::DrawTarget> mDT;
     bool mSubpixelAntialiasingEnabled;
+};
+
+/* This class lives on the stack and allows gfxContext users to easily, and
+ * performantly get a gfx::Pattern to use for drawing in their current context.
+ */
+class PatternFromState
+{
+public:
+  explicit PatternFromState(gfxContext *aContext) : mContext(aContext), mPattern(nullptr) {}
+  ~PatternFromState() { if (mPattern) { mPattern->~Pattern(); } }
+
+  operator mozilla::gfx::Pattern&();
+
+private:
+  union {
+    mozilla::AlignedStorage2<mozilla::gfx::ColorPattern> mColorPattern;
+    mozilla::AlignedStorage2<mozilla::gfx::SurfacePattern> mSurfacePattern;
+  };
+
+  gfxContext *mContext;
+  mozilla::gfx::Pattern *mPattern;
 };
 
 #endif /* GFX_CONTEXT_H */

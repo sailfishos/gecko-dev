@@ -54,8 +54,9 @@ if (!window.todo) {
 }
 if (!window.SimpleTest) {
   window.SimpleTest = {
-    waitForExplicitFinish: function(){},
     finish: function(){},
+    requestLongerTimeout: function(){},
+    waitForExplicitFinish: function(){},
   };
 }
 
@@ -129,9 +130,7 @@ function GetExpectedTestFailSet() {
       } else {
         // Android 2.3 slaves.
         failSet['conformance/glsl/functions/glsl-function-sin.html'] = true;
-        failSet['conformance/misc/error-reporting.html'] = true;
         failSet['conformance/misc/object-deletion-behaviour.html'] = true;
-        failSet['conformance/programs/get-active-test.html'] = true;
         failSet['conformance/textures/tex-image-and-sub-image-2d-with-video.html'] = true;
         failSet['conformance/textures/texture-mips.html'] = true;
         failSet['conformance/textures/texture-npot.html'] = true;
@@ -242,6 +241,13 @@ function OnTestComplete() {
 // Begin execution
 
 SimpleTest.waitForExplicitFinish();
+
+var isAndroid2_3 = (DriverInfo.getOS() == DriverInfo.OS.ANDROID &&
+                    DriverInfo.getOSVersion() < OS_VERSION_ANDROID_ICS);
+if (isAndroid2_3) {
+  var timeoutLengthMultiplier = 2.0;
+  SimpleTest.requestLongerTimeout(timeoutLengthMultiplier);
+}
 
 do {
   var arg = location.search.substr(1);

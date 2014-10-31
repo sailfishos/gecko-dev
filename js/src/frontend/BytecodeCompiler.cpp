@@ -329,13 +329,11 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
 
     bool canHaveDirectives = true;
     for (;;) {
-        TokenKind tt = parser.tokenStream.peekToken(TokenStream::Operand);
-        if (tt <= TOK_EOF) {
-            if (tt == TOK_EOF)
-                break;
-            MOZ_ASSERT(tt == TOK_ERROR);
+        TokenKind tt;
+        if (!parser.tokenStream.peekToken(&tt, TokenStream::Operand))
             return nullptr;
-        }
+        if (tt == TOK_EOF)
+            break;
 
         TokenStream::Position pos(parser.keepAtoms);
         parser.tokenStream.tell(&pos);
@@ -388,6 +386,9 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
         if (!NameFunctions(cx, pn))
             return nullptr;
 
+        if (!bce.updateLocalsToFrameSlots())
+            return nullptr;
+
         if (!EmitTree(cx, &bce, pn))
             return nullptr;
 
@@ -425,7 +426,7 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
     // frame.
     InternalHandle<Bindings*> bindings(script, &script->bindings);
     if (!Bindings::initWithTemporaryStorage(cx, bindings, 0, 0, 0,
-                                            pc->blockScopeDepth, nullptr))
+                                            pc->blockScopeDepth, 0, 0, nullptr))
     {
         return nullptr;
     }

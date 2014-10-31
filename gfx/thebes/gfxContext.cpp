@@ -36,53 +36,38 @@ using namespace mozilla::gfx;
 
 UserDataKey gfxContext::sDontUseAsSourceKey;
 
-/* This class lives on the stack and allows gfxContext users to easily, and
- * performantly get a gfx::Pattern to use for drawing in their current context.
- */
-class PatternFromState
+
+PatternFromState::operator mozilla::gfx::Pattern&()
 {
-public:    
-  explicit PatternFromState(gfxContext *aContext) : mContext(aContext), mPattern(nullptr) {}
-  ~PatternFromState() { if (mPattern) { mPattern->~Pattern(); } }
+  gfxContext::AzureState &state = mContext->CurrentState();
 
-  operator mozilla::gfx::Pattern&()
-  {
-    gfxContext::AzureState &state = mContext->CurrentState();
-
-    if (state.pattern) {
-      return *state.pattern->GetPattern(mContext->mDT, state.patternTransformChanged ? &state.patternTransform : nullptr);
-    } else if (state.sourceSurface) {
-      Matrix transform = state.surfTransform;
-
-      if (state.patternTransformChanged) {
-        Matrix mat = mContext->GetDTTransform();
-        if (!mat.Invert()) {
-          mPattern = new (mColorPattern.addr())
-          ColorPattern(Color()); // transparent black to paint nothing
-          return *mPattern;
-        }
-        transform = transform * state.patternTransform * mat;
-      }
-
-      mPattern = new (mSurfacePattern.addr())
-        SurfacePattern(state.sourceSurface, ExtendMode::CLAMP, transform);
-      return *mPattern;
-    } else {
-      mPattern = new (mColorPattern.addr())
-        ColorPattern(state.color);
-      return *mPattern;
-    }
+  if (state.pattern) {
+    return *state.pattern->GetPattern(mContext->mDT, state.patternTransformChanged ? &state.patternTransform : nullptr);
   }
 
-private:
-  union {
-    mozilla::AlignedStorage2<mozilla::gfx::ColorPattern> mColorPattern;
-    mozilla::AlignedStorage2<mozilla::gfx::SurfacePattern> mSurfacePattern;
-  };
+  if (state.sourceSurface) {
+    Matrix transform = state.surfTransform;
 
-  gfxContext *mContext;
-  Pattern *mPattern;
-};
+    if (state.patternTransformChanged) {
+      Matrix mat = mContext->GetDTTransform();
+      if (!mat.Invert()) {
+        mPattern = new (mColorPattern.addr())
+        ColorPattern(Color()); // transparent black to paint nothing
+        return *mPattern;
+      }
+      transform = transform * state.patternTransform * mat;
+    }
+
+    mPattern = new (mSurfacePattern.addr())
+    SurfacePattern(state.sourceSurface, ExtendMode::CLAMP, transform);
+    return *mPattern;
+  }
+
+  mPattern = new (mColorPattern.addr())
+  ColorPattern(state.color);
+  return *mPattern;
+}
+
 
 gfxContext::gfxContext(DrawTarget *aTarget, const Point& aDeviceOffset)
   : mPathIsRect(false)
@@ -297,13 +282,6 @@ gfxContext::MoveTo(const gfxPoint& pt)
 }
 
 void
-gfxContext::NewSubPath()
-{
-    // XXX - This has no users, we should kill it, it should be equivelant to a
-    // MoveTo to the path's current point.
-}
-
-void
 gfxContext::LineTo(const gfxPoint& pt)
 {
   EnsurePathBuilder();
@@ -322,22 +300,6 @@ gfxContext::QuadraticCurveTo(const gfxPoint& pt1, const gfxPoint& pt2)
 {
   EnsurePathBuilder();
   mPathBuilder->QuadraticBezierTo(ToPoint(pt1), ToPoint(pt2));
-}
-
-void
-gfxContext::Arc(const gfxPoint& center, gfxFloat radius,
-                gfxFloat angle1, gfxFloat angle2)
-{
-  EnsurePathBuilder();
-  mPathBuilder->Arc(ToPoint(center), Float(radius), Float(angle1), Float(angle2));
-}
-
-void
-gfxContext::NegativeArc(const gfxPoint& center, gfxFloat radius,
-                        gfxFloat angle1, gfxFloat angle2)
-{
-  EnsurePathBuilder();
-  mPathBuilder->Arc(ToPoint(center), Float(radius), Float(angle2), Float(angle1));
 }
 
 void
@@ -1184,10 +1146,10 @@ gfxContext::RoundedRectangle(const gfxRect& rect,
     // appropriate multiplier from the list before using.
 
   EnsurePathBuilder();
-  Size radii[] = { ToSize(corners[NS_CORNER_TOP_LEFT]),
-                   ToSize(corners[NS_CORNER_TOP_RIGHT]),
-                   ToSize(corners[NS_CORNER_BOTTOM_RIGHT]),
-                   ToSize(corners[NS_CORNER_BOTTOM_LEFT]) };
+  RectCornerRadii radii(ToSize(corners[NS_CORNER_TOP_LEFT]),
+                        ToSize(corners[NS_CORNER_TOP_RIGHT]),
+                        ToSize(corners[NS_CORNER_BOTTOM_RIGHT]),
+                        ToSize(corners[NS_CORNER_BOTTOM_LEFT]));
   AppendRoundedRectToPath(mPathBuilder, ToRect(rect), radii, draw_clockwise);
 }
 

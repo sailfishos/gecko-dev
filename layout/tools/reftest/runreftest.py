@@ -563,7 +563,9 @@ class RefTest(object):
     return status
 
   def runSerialTests(self, testPath, options, cmdlineArgs = None):
-    debuggerInfo = mozdebug.get_debugger_info(options.debugger, options.debuggerArgs,
+    debuggerInfo = None
+    if options.debugger:
+      debuggerInfo = mozdebug.get_debugger_info(options.debugger, options.debuggerArgs,
         options.debuggerInteractive);
 
     profileDir = None
@@ -625,7 +627,7 @@ class ReftestOptions(OptionParser):
     # Certain paths do not make sense when we're cross compiling Fennec.  This
     # logic is cribbed from the example in
     # python/mozbuild/mozbuild/mach_commands.py.
-    defaults['appname'] = build_obj.get_binary_path() if \
+    defaults['app'] = build_obj.get_binary_path() if \
         build_obj and build_obj.substs['MOZ_BUILD_APP'] != 'mobile/android' else None
 
     self.add_option("--extra-profile-file",

@@ -25,6 +25,8 @@ include protocol PImageBridge;
 include protocol PMemoryReportRequest;
 include protocol PMobileConnection;
 include protocol PNecko;
+include protocol PPluginModule;
+include protocol PPrinting;
 include protocol PScreenManager;
 include protocol PSharedBufferManager;
 include protocol PSms;
@@ -40,6 +42,7 @@ include JavaScriptTypes;
 include InputStreamParams;
 include PTabContext;
 include URIParams;
+include PluginTypes;
 include ProtocolTypes;
 
 // Workaround to prevent error if PContentChild.cpp & PContentBridgeParent.cpp
@@ -329,6 +332,8 @@ union MaybeFileDesc {
 
 prio(normal upto high) intr protocol PContent
 {
+    parent spawns PPluginModule;
+
     parent opens PCompositor;
     parent opens PSharedBufferManager;
     parent opens PImageBridge;
@@ -351,6 +356,7 @@ prio(normal upto high) intr protocol PContent
     manages PMemoryReportRequest;
     manages PMobileConnection;
     manages PNecko;
+    manages PPrinting;
     manages PScreenManager;
     manages PSms;
     manages PSpeechSynthesis;
@@ -533,6 +539,29 @@ parent:
         returns (ContentParentId cpId, bool isForApp, bool isForBrowser, TabId tabId);
     intr BridgeToChildProcess(ContentParentId cpId);
 
+    /**
+     * This call connects the content process to a plugin process. While this
+     * call runs, a new PluginModuleParent will be created in the ContentChild
+     * via bridging. The corresponding PluginModuleChild will live in the plugin
+     * process. We use intr semantics here to ensure that the PluginModuleParent
+     * allocation message is dispatched before LoadPlugin returns.
+     */
+    intr LoadPlugin(uint32_t pluginId);
+
+    /**
+     * This call returns the set of plugins loaded in the chrome
+     * process. However, in many cases this set will not have changed since the
+     * last FindPlugins message. Consequently, the chrome process increments an
+     * epoch number every time the set of plugins changes. The content process
+     * sends up the last epoch it observed. If the epochs are the same, the
+     * chrome process returns no plugins. Otherwise it returns a complete list.
+     *
+     * |pluginEpoch| is the epoch last observed by the content
+     * process. |newPluginEpoch| is the current epoch in the chrome process. If
+     * |pluginEpoch == newPluginEpoch|, then |plugins| will be left empty.
+     */
+    sync FindPlugins(uint32_t pluginEpoch) returns (PluginTag[] plugins, uint32_t newPluginEpoch);
+
     async PJavaScript();
 
     sync PRemoteSpellcheckEngine();
@@ -555,6 +584,8 @@ parent:
     PMobileConnection(uint32_t clientId);
 
     PNecko();
+
+    PPrinting();
 
     prio(high) sync PScreenManager()
         returns (uint32_t numberOfScreens,

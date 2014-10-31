@@ -31,6 +31,11 @@ var loopServer;
 Services.prefs.setBoolPref("loop.enabled", true);
 Services.prefs.setBoolPref("loop.throttled", false);
 
+// Cleanup function for all tests
+do_register_cleanup(() => {
+  MozLoopService.errors.clear();
+});
+
 function setupFakeLoopServer() {
   loopServer = new HttpServer();
   loopServer.start(-1);
@@ -40,8 +45,11 @@ function setupFakeLoopServer() {
   Services.prefs.setCharPref("loop.server",
     "http://localhost:" + loopServer.identity.primaryPort);
 
+  MozLoopServiceInternal.mocks.pushHandler = mockPushHandler;
+
   do_register_cleanup(function() {
     loopServer.stop(function() {});
+    MozLoopServiceInternal.mocks.pushHandler = undefined;
   });
 }
 

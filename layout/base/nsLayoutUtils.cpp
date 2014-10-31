@@ -3142,11 +3142,12 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
       !(aFlags & PAINT_DOCUMENT_RELATIVE)) {
     nsIWidget *widget = aFrame->GetNearestWidget();
     if (widget) {
-      nsRegion opaqueRegion = builder.GetWindowOpaqueRegion();
+      nsRegion opaqueRegion;
+      opaqueRegion.And(builder.GetWindowExcludeGlassRegion(), builder.GetWindowOpaqueRegion());
       widget->UpdateOpaqueRegion(
         opaqueRegion.ToNearestPixels(presContext->AppUnitsPerDevPixel()));
 
-      nsRegion draggingRegion = builder.GetWindowDraggingRegion();
+      const nsRegion& draggingRegion = builder.GetWindowDraggingRegion();
       widget->UpdateWindowDraggingRegion(
         draggingRegion.ToNearestPixels(presContext->AppUnitsPerDevPixel()));
     }
@@ -4681,15 +4682,6 @@ static int32_t GetMaxChunkLength(nsFontMetrics& aFontMetrics)
 }
 
 nscoord
-nsLayoutUtils::AppUnitWidthOfString(const nsString& aString,
-                                    nsFontMetrics& aFontMetrics,
-                                    nsRenderingContext& aContext)
-{
-  return AppUnitWidthOfString(aString.get(), aString.Length(),
-                              aFontMetrics, aContext);
-}
-
-nscoord
 nsLayoutUtils::AppUnitWidthOfString(const char16_t *aString,
                                     uint32_t aLength,
                                     nsFontMetrics& aFontMetrics,
@@ -4704,6 +4696,26 @@ nsLayoutUtils::AppUnitWidthOfString(const char16_t *aString,
     aString += len;
   }
   return width;
+}
+
+nscoord
+nsLayoutUtils::AppUnitWidthOfStringBidi(const char16_t* aString,
+                                        uint32_t aLength,
+                                        const nsIFrame* aFrame,
+                                        nsFontMetrics& aFontMetrics,
+                                        nsRenderingContext& aContext)
+{
+  nsPresContext* presContext = aFrame->PresContext();
+  if (presContext->BidiEnabled()) {
+    nsBidiLevel level =
+      nsBidiPresUtils::BidiLevelFromStyle(aFrame->StyleContext());
+    return nsBidiPresUtils::MeasureTextWidth(aString, aLength, level,
+                                             presContext, aContext,
+                                             aFontMetrics);
+  }
+  aFontMetrics.SetTextRunRTL(false);
+  return nsLayoutUtils::AppUnitWidthOfString(aString, aLength, aFontMetrics,
+                                             aContext);
 }
 
 nsBoundingMetrics
@@ -4797,26 +4809,6 @@ nsLayoutUtils::DrawUniDirString(const char16_t* aString,
     aLength -= len;
     aString += len;
   }
-}
-
-nscoord
-nsLayoutUtils::GetStringWidth(const nsIFrame*      aFrame,
-                              nsRenderingContext* aContext,
-                              nsFontMetrics&      aFontMetrics,
-                              const char16_t*     aString,
-                              int32_t              aLength)
-{
-  nsPresContext* presContext = aFrame->PresContext();
-  if (presContext->BidiEnabled()) {
-    nsBidiLevel level =
-      nsBidiPresUtils::BidiLevelFromStyle(aFrame->StyleContext());
-    return nsBidiPresUtils::MeasureTextWidth(aString, aLength,
-                                             level, presContext, *aContext,
-                                             aFontMetrics);
-  }
-  aFontMetrics.SetTextRunRTL(false);
-  return nsLayoutUtils::AppUnitWidthOfString(aString, aLength, aFontMetrics,
-                                             *aContext);
 }
 
 /* static */ void
@@ -5218,6 +5210,20 @@ TileNearRect(const nsRect& aAnyTile, const nsRect& aTargetRect)
                             distance.y / aAnyTile.height * aAnyTile.height);
 }
 
+static gfxFloat
+StableRound(gfxFloat aValue)
+{
+  // Values slightly less than 0.5 should round up like 0.5 would; we're
+  // assuming they were meant to be 0.5.
+  return floor(aValue + 0.5001);
+}
+
+static gfxPoint
+StableRound(const gfxPoint& aPoint)
+{
+  return gfxPoint(StableRound(aPoint.x), StableRound(aPoint.y));
+}
+
 /**
  * Given a set of input parameters, compute certain output parameters
  * for drawing an image with the image snapping algorithm.
@@ -5324,11 +5330,11 @@ ComputeSnappedImageDrawingParameters(gfxContext*     aCtx,
       MapToFloatImagePixels(imageSize, devPixelDest, anchorPoint);
 
     if (didSnap) {
-      imageSpaceAnchorPoint.Round();
+      imageSpaceAnchorPoint = StableRound(imageSpaceAnchorPoint);
       anchorPoint = imageSpaceAnchorPoint;
       anchorPoint = MapToFloatUserPixels(imageSize, devPixelDest, anchorPoint);
       anchorPoint = currentMatrix.Transform(anchorPoint);
-      anchorPoint.Round();
+      anchorPoint = StableRound(anchorPoint);
     }
 
     gfxRect anchoredDestRect(anchorPoint, scaledDest);
@@ -6100,6 +6106,12 @@ nsLayoutUtils::SurfaceFromElement(HTMLVideoElement* aElement,
   SurfaceFromElementResult result;
 
   NS_WARN_IF_FALSE((aSurfaceFlags & SFE_PREFER_NO_PREMULTIPLY_ALPHA) == 0, "We can't support non-premultiplied alpha for video!");
+
+#ifdef MOZ_EME
+  if (aElement->ContainsRestrictedContent()) {
+    return result;
+  }
+#endif
 
   uint16_t readyState;
   if (NS_SUCCEEDED(aElement->GetReadyState(&readyState)) &&

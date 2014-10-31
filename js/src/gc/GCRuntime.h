@@ -26,6 +26,8 @@
 
 namespace js {
 
+class AutoLockGC;
+
 namespace gc {
 
 typedef Vector<JS::Zone *, 4, SystemAllocPolicy> ZoneVector;
@@ -62,6 +64,24 @@ class ChunkPool
         ChunkPool &pool;
         Chunk **chunkp;
     };
+};
+
+// Performs extra allocation off the main thread so that when memory is
+// required on the main thread it will already be available and waiting.
+class BackgroundAllocTask : public GCParallelTask
+{
+    // Guarded by the GC lock.
+    JSRuntime *runtime;
+    ChunkPool &chunkPool_;
+
+    const bool enabled_;
+
+  public:
+    BackgroundAllocTask(JSRuntime *rt, ChunkPool &pool);
+    bool enabled() const { return enabled_; }
+
+  protected:
+    virtual void run() MOZ_OVERRIDE;
 };
 
 /*
@@ -229,7 +249,7 @@ class GCRuntime
     void setMarkStackLimit(size_t limit);
 
     void setParameter(JSGCParamKey key, uint32_t value);
-    uint32_t getParameter(JSGCParamKey key);
+    uint32_t getParameter(JSGCParamKey key, const AutoLockGC &lock);
 
     bool isHeapBusy() { return heapState != js::Idle; }
     bool isHeapMajorCollecting() { return heapState == js::MajorCollecting; }
@@ -257,7 +277,7 @@ class GCRuntime
     void minorGC(JS::gcreason::Reason reason);
     void minorGC(JSContext *cx, JS::gcreason::Reason reason);
     void evictNursery(JS::gcreason::Reason reason = JS::gcreason::EVICT_NURSERY) { minorGC(reason); }
-    void gcIfNeeded(JSContext *cx);
+    bool gcIfNeeded(JSContext *cx = nullptr);
     void gc(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
     void gcSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
     void gcFinalSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
@@ -301,8 +321,14 @@ class GCRuntime
     js::gc::State state() { return incrementalState; }
     bool isBackgroundSweeping() { return helperState.isBackgroundSweeping(); }
     void waitBackgroundSweepEnd() { helperState.waitBackgroundSweepEnd(); }
-    void waitBackgroundSweepOrAllocEnd() { helperState.waitBackgroundSweepOrAllocEnd(); }
-    void startBackgroundAllocationIfIdle() { helperState.startBackgroundAllocationIfIdle(); }
+    void waitBackgroundSweepOrAllocEnd() {
+        helperState.waitBackgroundSweepEnd();
+        allocTask.cancel(GCParallelTask::CancelAndWait);
+    }
+
+#ifdef JSGC_GENERATIONAL
+    void requestMinorGC(JS::gcreason::Reason reason);
+#endif
 
 #ifdef DEBUG
 
@@ -414,7 +440,7 @@ class GCRuntime
     bool areGrayBitsValid() { return grayBitsValid; }
     void setGrayBitsInvalid() { grayBitsValid = false; }
 
-    bool isGcNeeded() { return isNeeded; }
+    bool isGcNeeded() { return minorGCRequested || majorGCRequested; }
 
     double computeHeapGrowthFactor(size_t lastBytes);
     size_t computeTriggerBytes(double growthFactor, size_t lastBytes);
@@ -430,8 +456,10 @@ class GCRuntime
 
     GCChunkSet::Range allChunks() { return chunkSet.all(); }
     inline Chunk **getAvailableChunkList(Zone *zone);
-    void moveChunkToFreePool(Chunk *chunk);
+    void moveChunkToFreePool(Chunk *chunk, const AutoLockGC &lock);
     bool hasChunk(Chunk *chunk) { return chunkSet.has(chunk); }
+    ChunkPool &emptyChunks(const AutoLockGC &lock) { return emptyChunks_; }
+    const ChunkPool &emptyChunks(const AutoLockGC &lock) const { return emptyChunks_; }
 
 #ifdef JS_GC_ZEAL
     void startVerifyPreBarriers();
@@ -451,7 +479,8 @@ class GCRuntime
   private:
     // For ArenaLists::allocateFromArena()
     friend class ArenaLists;
-    Chunk *pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartBGAlloc);
+    Chunk *pickChunk(const AutoLockGC &lock, Zone *zone,
+                     AutoMaybeStartBackgroundAllocation &maybeStartBGAlloc);
     inline void arenaAllocatedDuringGC(JS::Zone *zone, ArenaHeader *arena);
 
     template <AllowGC allowGC>
@@ -463,16 +492,19 @@ class GCRuntime
      * Return the list of chunks that can be released outside the GC lock.
      * Must be called either during the GC or with the GC lock taken.
      */
-    Chunk *expireChunkPool(bool shrinkBuffers, bool releaseAll);
-    void expireAndFreeChunkPool(bool releaseAll);
+    Chunk *expireEmptyChunkPool(bool shrinkBuffers, const AutoLockGC &lock);
+    void freeEmptyChunks(JSRuntime *rt);
     void freeChunkList(Chunk *chunkListHead);
     void prepareToFreeChunk(ChunkInfo &info);
     void releaseChunk(Chunk *chunk);
 
-    inline bool wantBackgroundAllocation() const;
+    friend class BackgroundAllocTask;
+    friend class AutoMaybeStartBackgroundAllocation;
+    inline bool wantBackgroundAllocation(const AutoLockGC &lock) const;
+    void startBackgroundAllocTaskIfIdle();
 
     bool initZeal();
-    void requestInterrupt(JS::gcreason::Reason reason);
+    void requestMajorGC(JS::gcreason::Reason reason);
     void collect(bool incremental, int64_t budget, JSGCInvocationKind gckind,
                  JS::gcreason::Reason reason);
     bool gcCycle(bool incremental, int64_t budget, JSGCInvocationKind gckind,
@@ -507,7 +539,7 @@ class GCRuntime
     void sweepZones(FreeOp *fop, bool lastGC);
     void decommitArenasFromAvailableList(Chunk **availableListHeadp);
     void decommitArenas();
-    void expireChunksAndArenas(bool shouldShrink);
+    void expireChunksAndArenas(bool shouldShrink, const AutoLockGC &lock);
     void sweepBackgroundThings();
     void assertBackgroundSweepingFinished();
     bool shouldCompact();
@@ -576,7 +608,7 @@ class GCRuntime
      */
     js::gc::Chunk         *systemAvailableChunkListHead;
     js::gc::Chunk         *userAvailableChunkListHead;
-    js::gc::ChunkPool     emptyChunks;
+    js::gc::ChunkPool     emptyChunks_;
 
     js::RootedValueMap    rootsHash;
 
@@ -605,12 +637,13 @@ class GCRuntime
      */
     bool                  grayBitsValid;
 
-    /*
-     * These flags must be kept separate so that a thread requesting a
-     * compartment GC doesn't cancel another thread's concurrent request for a
-     * full GC.
-     */
-    volatile uintptr_t    isNeeded;
+    volatile uintptr_t    majorGCRequested;
+    JS::gcreason::Reason  majorGCTriggerReason;
+
+#ifdef JSGC_GENERATIONAL
+    bool                  minorGCRequested;
+    JS::gcreason::Reason  minorGCTriggerReason;
+#endif
 
     /* Incremented at the start of every major GC. */
     uint64_t              majorGCNumber;
@@ -632,9 +665,6 @@ class GCRuntime
 
     /* The invocation kind of the current GC, taken from the first slice. */
     JSGCInvocationKind    invocationKind;
-
-    /* The reason that an interrupt-triggered GC should be called. */
-    JS::gcreason::Reason  triggerReason;
 
     /*
      * If this is 0, all cross-compartment proxies must be registered in the
@@ -840,6 +870,7 @@ class GCRuntime
     PRLock                *lock;
     mozilla::DebugOnly<PRThread *>   lockOwner;
 
+    BackgroundAllocTask allocTask;
     GCHelperState helperState;
 
     /*

@@ -178,11 +178,10 @@ MobileConnectionChild::SelectNetworkAutomatically(nsIMobileConnectionCallback* a
 
 
 NS_IMETHODIMP
-MobileConnectionChild::SetPreferredNetworkType(const nsAString& aType,
+MobileConnectionChild::SetPreferredNetworkType(int32_t aType,
                                                nsIMobileConnectionCallback* aCallback)
 {
-  return SendRequest(SetPreferredNetworkTypeRequest(nsAutoString(aType)),
-                     aCallback)
+  return SendRequest(SetPreferredNetworkTypeRequest(aType), aCallback)
     ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -439,16 +438,15 @@ MobileConnectionChild::RecvNotifyDataError(const nsString& aMessage)
 }
 
 bool
-MobileConnectionChild::RecvNotifyCFStateChanged(const bool& aSuccess,
-                                                const uint16_t& aAction,
+MobileConnectionChild::RecvNotifyCFStateChanged(const uint16_t& aAction,
                                                 const uint16_t& aReason,
                                                 const nsString& aNumber,
                                                 const uint16_t& aTimeSeconds,
                                                 const uint16_t& aServiceClass)
 {
   for (int32_t i = 0; i < mListeners.Count(); i++) {
-    mListeners[i]->NotifyCFStateChanged(aSuccess, aAction, aReason, aNumber,
-                                        aTimeSeconds, aServiceClass);
+    mListeners[i]->NotifyCFStateChanged(aAction, aReason, aNumber, aTimeSeconds,
+                                        aServiceClass);
   }
 
   return true;
@@ -663,6 +661,12 @@ MobileConnectionRequestChild::DoReply(const MobileConnectionReplySuccessClirStat
 }
 
 bool
+MobileConnectionRequestChild::DoReply(const MobileConnectionReplySuccessPreferredNetworkType& aReply)
+{
+  return NS_SUCCEEDED(mRequestCallback->NotifyGetPreferredNetworkTypeSuccess(aReply.type()));
+}
+
+bool
 MobileConnectionRequestChild::DoReply(const MobileConnectionReplyError& aReply)
 {
   return NS_SUCCEEDED(mRequestCallback->NotifyError(aReply.message()));
@@ -716,6 +720,8 @@ MobileConnectionRequestChild::Recv__delete__(const MobileConnectionReply& aReply
       return DoReply(aReply.get_MobileConnectionReplySuccessCallBarring());
     case MobileConnectionReply::TMobileConnectionReplySuccessClirStatus:
       return DoReply(aReply.get_MobileConnectionReplySuccessClirStatus());
+    case MobileConnectionReply::TMobileConnectionReplySuccessPreferredNetworkType:
+      return DoReply(aReply.get_MobileConnectionReplySuccessPreferredNetworkType());
     case MobileConnectionReply::TMobileConnectionReplyError:
       return DoReply(aReply.get_MobileConnectionReplyError());
     case MobileConnectionReply::TMobileConnectionReplyErrorMmi:

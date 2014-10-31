@@ -108,6 +108,7 @@ function _setAppProperties(aObj, aApp) {
   aObj.widgetPages = aApp.widgetPages || [];
   aObj.kind = aApp.kind;
   aObj.enabled = aApp.enabled !== undefined ? aApp.enabled : true;
+  aObj.sideloaded = aApp.sideloaded;
 }
 
 this.AppsUtils = {
@@ -471,7 +472,8 @@ this.AppsUtils = {
     let netutil = Cc["@mozilla.org/network/util;1"].getService(Ci.nsINetUtil);
     let contentType = netutil.parseContentType(aContentType, charset, hadCharset);
     if (aInstallOrigin != aWebappOrigin &&
-        contentType != "application/x-web-app-manifest+json") {
+        !(contentType == "application/x-web-app-manifest+json" ||
+          contentType == "application/manifest+json")) {
       return false;
     }
     return true;

@@ -57,6 +57,7 @@
 #include "mozilla/dom/telephony/TelephonyParent.h"
 #include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/dom/voicemail/VoicemailParent.h"
+#include "mozilla/embedding/printingui/PrintingParent.h"
 #include "mozilla/hal_sandbox/PHalParent.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundParent.h"
@@ -69,6 +70,7 @@
 #include "mozilla/layers/ImageBridgeParent.h"
 #include "mozilla/layers/SharedBufferManagerParent.h"
 #include "mozilla/net/NeckoParent.h"
+#include "mozilla/plugins/PluginBridge.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
@@ -209,6 +211,7 @@ using namespace mozilla::dom::mobileconnection;
 using namespace mozilla::dom::mobilemessage;
 using namespace mozilla::dom::telephony;
 using namespace mozilla::dom::voicemail;
+using namespace mozilla::embedding;
 using namespace mozilla::hal;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -945,6 +948,20 @@ static nsIDocShell* GetOpenerDocShellHelper(Element* aFrameElement)
     return docShell;
 }
 
+bool
+ContentParent::AnswerLoadPlugin(const uint32_t& aPluginId)
+{
+    return mozilla::plugins::SetupBridge(aPluginId, this);
+}
+
+bool
+ContentParent::RecvFindPlugins(const uint32_t& aPluginEpoch,
+                               nsTArray<PluginTag>* aPlugins,
+                               uint32_t* aNewPluginEpoch)
+{
+    return mozilla::plugins::FindPluginsForContent(aPluginEpoch, aPlugins, aNewPluginEpoch);
+}
+
 /*static*/ TabParent*
 ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                                   Element* aFrameElement,
@@ -1079,9 +1096,6 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                     parentAppStatus == nsIPrincipal::APP_STATUS_CERTIFIED) {
                     // Check if we can re-use the process of the parent app.
                     p = sAppContentParents->Get(parentAppManifestURL);
-                    tabId = AllocateTabId(openerTabId,
-                                          aContext.AsIPCTabContext(),
-                                          p->ChildID());
                 }
             }
         }
@@ -1103,10 +1117,10 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                                                &tookPreallocated);
             MOZ_ASSERT(p);
             sAppContentParents->Put(manifestURL, p);
-            tabId = AllocateTabId(openerTabId,
-                                  aContext.AsIPCTabContext(),
-                                  p->ChildID());
         }
+        tabId = AllocateTabId(openerTabId,
+                              aContext.AsIPCTabContext(),
+                              p->ChildID());
         parent = static_cast<nsIContentParent*>(p);
     }
 
@@ -1454,6 +1468,13 @@ ContentParent::ShutDownProcess(bool aCloseWithError)
         // sequence.
         mCalledClose = true;
         Close();
+#ifdef MOZ_NUWA_PROCESS
+        // Kill Nuwa process forcibly to break its IPC channels and finalize
+        // corresponding parents.
+        if (IsNuwaProcess()) {
+            KillHard();
+        }
+#endif
     }
 
     if (aCloseWithError && !mCalledCloseWithError) {
@@ -2973,17 +2994,13 @@ ContentParent::KillHard()
     if (!KillProcess(OtherProcess(), 1, false)) {
         NS_WARNING("failed to kill subprocess!");
     }
-    mSubprocess->SetAlreadyDead();
+    if (mSubprocess) {
+        mSubprocess->SetAlreadyDead();
+    }
     XRE_GetIOMessageLoop()->PostTask(
         FROM_HERE,
         NewRunnableFunction(&ProcessWatcher::EnsureProcessTerminated,
                             OtherProcess(), /*force=*/true));
-    //We do clean-up here
-    MessageLoop::current()->PostDelayedTask(
-        FROM_HERE,
-        NewRunnableMethod(this, &ContentParent::ShutDownProcess,
-                          /* closeWithError */ true),
-        3000);
     // We've now closed the OtherProcess() handle, so must set it to null to
     // prevent our dtor closing it twice.
     SetOtherProcess(0);
@@ -3152,6 +3169,25 @@ bool
 ContentParent::DeallocPNeckoParent(PNeckoParent* necko)
 {
     delete necko;
+    return true;
+}
+
+PPrintingParent*
+ContentParent::AllocPPrintingParent()
+{
+    return new PrintingParent();
+}
+
+bool
+ContentParent::RecvPPrintingConstructor(PPrintingParent* aActor)
+{
+    return true;
+}
+
+bool
+ContentParent::DeallocPPrintingParent(PPrintingParent* printing)
+{
+    delete printing;
     return true;
 }
 

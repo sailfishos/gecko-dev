@@ -101,6 +101,10 @@ public:
     }
     nsRefPtr<ContentBridgeParent> mLastBridge;
 
+    PPluginModuleParent *
+    AllocPPluginModuleParent(mozilla::ipc::Transport* transport,
+                             base::ProcessId otherProcess) MOZ_OVERRIDE;
+
     PContentBridgeParent*
     AllocPContentBridgeParent(mozilla::ipc::Transport* transport,
                               base::ProcessId otherProcess) MOZ_OVERRIDE;
@@ -207,6 +211,9 @@ public:
 
     virtual PNeckoChild* AllocPNeckoChild() MOZ_OVERRIDE;
     virtual bool DeallocPNeckoChild(PNeckoChild*) MOZ_OVERRIDE;
+
+    virtual PPrintingChild* AllocPPrintingChild() MOZ_OVERRIDE;
+    virtual bool DeallocPPrintingChild(PPrintingChild*) MOZ_OVERRIDE;
 
     virtual PScreenManagerChild*
     AllocPScreenManagerChild(uint32_t* aNumberOfScreens,

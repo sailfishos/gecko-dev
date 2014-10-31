@@ -5,6 +5,7 @@
 
 #include "nsTextBoxFrame.h"
 
+#include "gfx2DGlue.h"
 #include "gfxUtils.h"
 #include "mozilla/gfx/2D.h"
 #include "nsFontMetrics.h"
@@ -467,7 +468,7 @@ nsTextBoxFrame::DrawText(nsRenderingContext& aRenderingContext,
                 presContext->AppUnitsToGfxUnits(aTextRect.y));
     gfxFloat width = presContext->AppUnitsToGfxUnits(aTextRect.width);
     gfxFloat ascentPixel = presContext->AppUnitsToGfxUnits(ascent);
-    gfxFloat xInFrame = PresContext()->AppUnitsToGfxUnits(mTextDrawRect.x);
+    Float xInFrame = Float(PresContext()->AppUnitsToGfxUnits(mTextDrawRect.x));
     gfxRect dirtyRect(presContext->AppUnitsToGfxUnits(aDirtyRect));
 
     // Underlines are drawn before overlines, and both before the text
@@ -482,7 +483,8 @@ nsTextBoxFrame::DrawText(nsRenderingContext& aRenderingContext,
       gfxFloat sizePixel = presContext->AppUnitsToGfxUnits(size);
       if ((decorations & NS_FONT_DECORATION_UNDERLINE) &&
           underStyle != NS_STYLE_TEXT_DECORATION_STYLE_NONE) {
-        nsCSSRendering::PaintDecorationLine(this, ctx, dirtyRect, underColor,
+        nsCSSRendering::PaintDecorationLine(this, *drawTarget,
+                                            ToRect(dirtyRect), underColor,
                           pt, xInFrame, gfxSize(width, sizePixel),
                           ascentPixel, offsetPixel,
                           NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE, underStyle,
@@ -490,7 +492,8 @@ nsTextBoxFrame::DrawText(nsRenderingContext& aRenderingContext,
       }
       if ((decorations & NS_FONT_DECORATION_OVERLINE) &&
           overStyle != NS_STYLE_TEXT_DECORATION_STYLE_NONE) {
-        nsCSSRendering::PaintDecorationLine(this, ctx, dirtyRect, overColor,
+        nsCSSRendering::PaintDecorationLine(this, *drawTarget,
+                                            ToRect(dirtyRect), overColor,
                           pt, xInFrame, gfxSize(width, sizePixel),
                           ascentPixel, ascentPixel,
                           NS_STYLE_TEXT_DECORATION_LINE_OVERLINE, overStyle,
@@ -572,7 +575,8 @@ nsTextBoxFrame::DrawText(nsRenderingContext& aRenderingContext,
       fontMet->GetStrikeout(offset, size);
       gfxFloat offsetPixel = presContext->AppUnitsToGfxUnits(offset);
       gfxFloat sizePixel = presContext->AppUnitsToGfxUnits(size);
-      nsCSSRendering::PaintDecorationLine(this, ctx, dirtyRect, strikeColor,
+      nsCSSRendering::PaintDecorationLine(this, *drawTarget, ToRect(dirtyRect),
+                                          strikeColor,
                         pt, xInFrame, gfxSize(width, sizePixel), ascentPixel,
                         offsetPixel, NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH,
                         strikeStyle, vertical);
@@ -613,10 +617,9 @@ nsTextBoxFrame::CalculateTitleForWidth(nsPresContext*      aPresContext,
     nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm));
 
     // see if the text will completely fit in the width given
-    nscoord titleWidth = nsLayoutUtils::GetStringWidth(this, &aRenderingContext,
-                                                       *fm,
-                                                       mTitle.get(), mTitle.Length());
-
+    nscoord titleWidth =
+      nsLayoutUtils::AppUnitWidthOfStringBidi(mTitle, this, *fm,
+                                              aRenderingContext);
     if (titleWidth <= aWidth) {
         mCroppedTitle = mTitle;
         if (HasRTLChars(mTitle)) {
@@ -713,8 +716,8 @@ nsTextBoxFrame::CalculateTitleForWidth(nsPresContext*      aPresContext,
         case CropCenter:
         {
             nscoord stringWidth =
-                nsLayoutUtils::GetStringWidth(this, &aRenderingContext, *fm,
-                                              mTitle.get(), mTitle.Length());
+                nsLayoutUtils::AppUnitWidthOfStringBidi(mTitle, this, *fm,
+                                                        aRenderingContext);
             if (stringWidth <= aWidth) {
                 // the entire string will fit in the maximum width
                 mCroppedTitle.Insert(mTitle, 0);
@@ -771,8 +774,8 @@ nsTextBoxFrame::CalculateTitleForWidth(nsPresContext*      aPresContext,
         break;
     }
 
-    return nsLayoutUtils::GetStringWidth(this, &aRenderingContext, *fm,
-                                         mCroppedTitle.get(), mCroppedTitle.Length());
+    return nsLayoutUtils::AppUnitWidthOfStringBidi(mCroppedTitle, this, *fm,
+                                                   aRenderingContext);
 }
 
 #define OLD_ELLIPSIS NS_LITERAL_STRING("...")
@@ -1000,8 +1003,8 @@ nsTextBoxFrame::GetTextSize(nsPresContext* aPresContext,
     nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fontMet));
     aSize.height = fontMet->MaxHeight();
     aSize.width =
-      nsLayoutUtils::GetStringWidth(this, &aRenderingContext, *fontMet,
-                                    aString.get(), aString.Length());
+      nsLayoutUtils::AppUnitWidthOfStringBidi(aString, this, *fontMet,
+                                              aRenderingContext);
     aAscent = fontMet->MaxAscent();
 }
 

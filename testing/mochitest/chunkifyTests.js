@@ -15,7 +15,7 @@ function chunkifyTests(tests, totalChunks, thisChunk, chunkByDir, logger) {
     var tests_by_dir = {};
     var test_dirs = []
     for (var i = 0; i < tests.length; ++i) {
-      if ('test' in tests[i]) {
+      if ((tests[i] instanceof Object) && ('test' in tests[i])) {
         var test_path = tests[i]['test']['url'];
       } else {
         var test_path = tests[i]['url'];
@@ -71,7 +71,12 @@ function chunkifyTests(tests, totalChunks, thisChunk, chunkByDir, logger) {
 function skipTests(tests, startTestPattern, endTestPattern) {
   var startIndex = 0, endIndex = tests.length - 1;
   for (var i = 0; i < tests.length; ++i) {
-    var test_path = tests[i];
+    var test_path;
+    if ((tests[i] instanceof Object) && ('test' in tests[i])) {
+      test_path = tests[i]['test']['url'];
+    } else {
+      test_path = tests[i];
+    }
     if (startTestPattern && test_path.endsWith(startTestPattern)) {
       startIndex = i;
     }

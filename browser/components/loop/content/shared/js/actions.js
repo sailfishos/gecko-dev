@@ -42,7 +42,7 @@ loop.shared.actions = (function() {
      */
     GatherCallData: Action.define("gatherCallData", {
       // Specify the callId for an incoming call.
-      callId: [String, null],
+      windowId: [String, null],
       outgoing: Boolean
     }),
 
@@ -132,6 +132,22 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     GetAllRooms: Action.define("getAllRooms", {
+    }),
+
+    /**
+     * An error occured while trying to fetch the room list.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    GetAllRoomsError: Action.define("getAllRoomsError", {
+      error: String
+    }),
+
+    /**
+     * Updates room list.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    UpdateRoomList: Action.define("updateRoomList", {
+      roomList: Array
     }),
 
     /**

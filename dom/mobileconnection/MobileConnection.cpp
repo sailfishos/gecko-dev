@@ -477,8 +477,7 @@ MobileConnection::SetPreferredNetworkType(MobilePreferredNetworkType& aType,
     return nullptr;
   }
 
-  nsAutoString type;
-  CONVERT_ENUM_TO_STRING(MobilePreferredNetworkType, aType, type);
+  int32_t type = static_cast<int32_t>(aType);
 
   nsRefPtr<DOMRequest> request = new DOMRequest(GetOwner());
   nsRefPtr<MobileConnectionCallback> requestCallback =
@@ -1041,8 +1040,7 @@ MobileConnection::NotifyDataError(const nsAString& aMessage)
 }
 
 NS_IMETHODIMP
-MobileConnection::NotifyCFStateChanged(bool aSuccess,
-                                       unsigned short aAction,
+MobileConnection::NotifyCFStateChanged(unsigned short aAction,
                                        unsigned short aReason,
                                        const nsAString& aNumber,
                                        unsigned short aSeconds,
@@ -1055,7 +1053,6 @@ MobileConnection::NotifyCFStateChanged(bool aSuccess,
   CFStateChangeEventInit init;
   init.mBubbles = false;
   init.mCancelable = false;
-  init.mSuccess = aSuccess;
   init.mAction = aAction;
   init.mReason = aReason;
   init.mNumber = aNumber;

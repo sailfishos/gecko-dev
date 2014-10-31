@@ -67,7 +67,7 @@ class Telephony::EnumerationAck : public nsRunnable
   nsRefPtr<Telephony> mTelephony;
 
 public:
-  EnumerationAck(Telephony* aTelephony)
+  explicit EnumerationAck(Telephony* aTelephony)
   : mTelephony(aTelephony)
   {
     MOZ_ASSERT(mTelephony);
@@ -634,12 +634,8 @@ Telephony::NotifyError(uint32_t aServiceId,
                        int32_t aCallIndex,
                        const nsAString& aError)
 {
-  if (mCalls.IsEmpty()) {
-    NS_ERROR("No existing call!");
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  nsRefPtr<TelephonyCall> callToNotify = GetCall(aServiceId, aCallIndex);
+  nsRefPtr<TelephonyCall> callToNotify =
+    GetCallFromEverywhere(aServiceId, aCallIndex);
   if (!callToNotify) {
     NS_ERROR("Don't call me with a bad call index!");
     return NS_ERROR_UNEXPECTED;

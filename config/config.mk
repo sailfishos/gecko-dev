@@ -234,20 +234,10 @@ endif # NS_TRACE_MALLOC || MOZ_DMD
 
 endif # MOZ_DEBUG
 
-# We don't build a static CRT when building a custom CRT,
-# it appears to be broken. So don't link to jemalloc if
-# the Makefile wants static CRT linking.
-ifeq ($(MOZ_MEMORY)_$(USE_STATIC_LIBS),1_1)
-# Disable default CRT libs and add the right lib path for the linker
-MOZ_GLUE_LDFLAGS=
-endif
-
 endif # WINNT && !GNU_CC
 
-ifdef MOZ_GLUE_PROGRAM_LDFLAGS
+ifdef MOZ_GLUE_IN_PROGRAM
 DEFINES += -DMOZ_GLUE_IN_PROGRAM
-else
-MOZ_GLUE_PROGRAM_LDFLAGS=$(MOZ_GLUE_LDFLAGS)
 endif
 
 #
@@ -419,8 +409,12 @@ endif # FAIL_ON_WARNINGS_DEBUG
 
 # Check for normal version of flag, and add WARNINGS_AS_ERRORS if it's set to 1.
 ifdef FAIL_ON_WARNINGS
+# Never treat warnings as errors in clang-cl, because it warns about many more
+# things than MSVC does.
+ifndef CLANG_CL
 CXXFLAGS += $(WARNINGS_AS_ERRORS)
 CFLAGS   += $(WARNINGS_AS_ERRORS)
+endif # CLANG_CL
 endif # FAIL_ON_WARNINGS
 
 ifeq ($(OS_ARCH)_$(GNU_CC),WINNT_)

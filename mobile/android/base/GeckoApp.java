@@ -40,6 +40,8 @@ import org.mozilla.gecko.health.StubbedHealthRecorder;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.GeckoMenuInflater;
 import org.mozilla.gecko.menu.MenuPanel;
+import org.mozilla.gecko.mozglue.ContextUtils;
+import org.mozilla.gecko.mozglue.ContextUtils.SafeIntent;
 import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.preferences.ClearOnShutdownPref;
 import org.mozilla.gecko.preferences.GeckoPreferences;
@@ -55,7 +57,6 @@ import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.PrefUtils;
-import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.webapp.EventListener;
 import org.mozilla.gecko.webapp.UninstallListener;
@@ -1102,8 +1103,8 @@ public abstract class GeckoApp
     /**
      * Check and start the Java profiler if MOZ_PROFILER_STARTUP env var is specified.
      **/
-    protected static void earlyStartJavaSampler(Intent intent) {
-        String env = StringUtils.getStringExtra(intent, "env0");
+    protected static void earlyStartJavaSampler(SafeIntent intent) {
+        String env = intent.getStringExtra("env0");
         for (int i = 1; env != null; i++) {
             if (env.startsWith("MOZ_PROFILER_STARTUP=")) {
                 if (!env.endsWith("=")) {
@@ -1123,8 +1124,7 @@ public abstract class GeckoApp
      * and other one-shot constructions.
      **/
     @Override
-    public void onCreate(Bundle savedInstanceState)
-    {
+    public void onCreate(Bundle savedInstanceState) {
         GeckoAppShell.ensureCrashHandling();
 
         // Enable Android Strict Mode for developers' local builds (the "default" channel).
@@ -1136,9 +1136,9 @@ public abstract class GeckoApp
         mJavaUiStartupTimer = new Telemetry.UptimeTimer("FENNEC_STARTUP_TIME_JAVAUI");
         mGeckoReadyStartupTimer = new Telemetry.UptimeTimer("FENNEC_STARTUP_TIME_GECKOREADY");
 
-        final Intent intent = getIntent();
+        final SafeIntent intent = new SafeIntent(getIntent());
         final String action = intent.getAction();
-        final String args = StringUtils.getStringExtra(intent, "args");
+        final String args = intent.getStringExtra("args");
 
         earlyStartJavaSampler(intent);
 
@@ -1190,6 +1190,8 @@ public abstract class GeckoApp
             Class.forName("android.os.AsyncTask");
         } catch (ClassNotFoundException e) {}
 
+        MemoryMonitor.getInstance().init(getApplicationContext());
+
         // GeckoAppShell is tightly coupled to us, rather than
         // the app context, because various parts of Fennec (e.g.,
         // GeckoScreenOrientation) use GAS to access the Activity in
@@ -1198,6 +1200,13 @@ public abstract class GeckoApp
         // `(GeckoApplication) getApplication()` here.
         GeckoAppShell.setContextGetter(this);
         GeckoAppShell.setGeckoInterface(this);
+
+        Tabs.getInstance().attachToContext(this);
+        try {
+            Favicons.initializeWithContext(this);
+        } catch (Exception e) {
+            Log.e(LOGTAG, "Exception starting favicon cache. Corrupt resources?", e);
+        }
 
         // Did the OS locale change while we were backgrounded? If so,
         // we need to die so that Gecko will re-init add-ons that touch
@@ -1245,21 +1254,7 @@ public abstract class GeckoApp
             }, 1000 * 5 /* 5 seconds */);
         }
 
-        // Heavy load on the Gecko thread can slow down the time it takes for UI to appear on
-        // single-core devices. By minimizing the Gecko thread priority, we ensure that the UI
-        // appears quickly. The priority is reset to normal once thumbnails are loaded.
-        ThreadUtils.reduceGeckoPriority();
-
-        MemoryMonitor.getInstance().init(getApplicationContext());
-
-        Tabs.getInstance().attachToContext(this);
-        try {
-            Favicons.initializeWithContext(this);
-        } catch (Exception e) {
-            Log.e(LOGTAG, "Exception starting favicon cache. Corrupt resources?", e);
-        }
-
-        Bundle stateBundle = getIntent().getBundleExtra(EXTRA_STATE_BUNDLE);
+        Bundle stateBundle = ContextUtils.getBundleExtra(getIntent(), EXTRA_STATE_BUNDLE);
         if (stateBundle != null) {
             // Use the state bundle if it was given as an intent extra. This is
             // only intended to be used internally via Robocop, so a boolean
@@ -1463,18 +1458,21 @@ public abstract class GeckoApp
     private void initialize() {
         mInitialized = true;
 
-        Intent intent = getIntent();
-        String action = intent.getAction();
+        final SafeIntent intent = new SafeIntent(getIntent());
+        final String action = intent.getAction();
 
-        String passedUri = null;
         final String uri = getURIFromIntent(intent);
+
+        final String passedUri;
         if (!TextUtils.isEmpty(uri)) {
             passedUri = uri;
+        } else {
+            passedUri = null;
         }
 
         final boolean isExternalURL = passedUri != null &&
                                       !AboutPages.isAboutHome(passedUri);
-        StartupAction startupAction;
+        final StartupAction startupAction;
         if (isExternalURL) {
             startupAction = StartupAction.URL;
         } else {
@@ -1537,7 +1535,7 @@ public abstract class GeckoApp
         if (ACTION_LAUNCH_SETTINGS.equals(action)) {
             Intent settingsIntent = new Intent(GeckoApp.this, GeckoPreferences.class);
             // Copy extras.
-            settingsIntent.putExtras(intent);
+            settingsIntent.putExtras(intent.getUnsafe());
             startActivity(settingsIntent);
         }
 
@@ -1635,10 +1633,6 @@ public abstract class GeckoApp
         } else if (NotificationHelper.HELPER_BROADCAST_ACTION.equals(action)) {
             NotificationHelper.getInstance(getApplicationContext()).handleNotificationIntent(intent);
         }
-
-        // Reset Gecko to normal priority. We may reduce the
-        // priority again later, e.g. for loading thumbnails.
-        ThreadUtils.resetGeckoPriority();
     }
 
     private String restoreSessionTabs(final boolean isExternalURL) throws SessionRestoreException {
@@ -1741,7 +1735,7 @@ public abstract class GeckoApp
     }
 
     private boolean getRestartFromIntent() {
-        return getIntent().getBooleanExtra("didRestart", false);
+        return ContextUtils.getBooleanExtra(getIntent(), "didRestart", false);
     }
 
     /**
@@ -1807,7 +1801,7 @@ public abstract class GeckoApp
                                           AppConstants.USER_AGENT_FENNEC_MOBILE;
     }
 
-    private void processAlertCallback(Intent intent) {
+    private void processAlertCallback(SafeIntent intent) {
         String alertName = "";
         String alertCookie = "";
         Uri data = intent.getData();
@@ -1823,7 +1817,9 @@ public abstract class GeckoApp
     }
 
     @Override
-    protected void onNewIntent(Intent intent) {
+    protected void onNewIntent(Intent externalIntent) {
+        final SafeIntent intent = new SafeIntent(externalIntent);
+
         if (GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoExiting)) {
             // We're exiting and shouldn't try to do anything else. In the case
             // where we are hung while exiting, we should force the process to exit.
@@ -1834,7 +1830,7 @@ public abstract class GeckoApp
         // if we were previously OOM killed, we can end up here when launching
         // from external shortcuts, so set this as the intent for initialization
         if (!mInitialized) {
-            setIntent(intent);
+            setIntent(externalIntent);
             return;
         }
 
@@ -1868,7 +1864,7 @@ public abstract class GeckoApp
             // Check if launched from data reporting notification.
             Intent settingsIntent = new Intent(GeckoApp.this, GeckoPreferences.class);
             // Copy extras.
-            settingsIntent.putExtras(intent);
+            settingsIntent.putExtras(intent.getUnsafe());
             startActivity(settingsIntent);
         }
     }
@@ -1877,7 +1873,7 @@ public abstract class GeckoApp
      * Handles getting a URI from an intent in a way that is backwards-
      * compatible with our previous implementations.
      */
-    protected String getURIFromIntent(Intent intent) {
+    protected String getURIFromIntent(SafeIntent intent) {
         final String action = intent.getAction();
         if (ACTION_ALERT_CALLBACK.equals(action) || NotificationHelper.HELPER_BROADCAST_ACTION.equals(action)) {
             return null;
