@@ -175,9 +175,6 @@ UNIFIED_SOURCES += [
     'WebVTTListener.cpp',
 ]
 
-SOURCES += [
-    'NemoResourceHandler.cpp',
-]
 if CONFIG['OS_TARGET'] == 'WINNT':
   SOURCES += [ 'ThreadPoolCOMListener.cpp' ]
 

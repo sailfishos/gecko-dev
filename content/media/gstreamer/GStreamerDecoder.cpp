@@ -13,8 +13,7 @@ namespace mozilla {
 
 MediaDecoderStateMachine* GStreamerDecoder::CreateStateMachine()
 {
-  mLastReader = new GStreamerReader(this);
-  return new MediaDecoderStateMachine(this, mLastReader);
+  return new MediaDecoderStateMachine(this, new GStreamerReader(this));
 }
 
 bool
@@ -23,22 +22,6 @@ GStreamerDecoder::CanHandleMediaType(const nsACString& aMIMEType,
 {
   return MediaDecoder::IsGStreamerEnabled() &&
     GStreamerFormatHelper::Instance()->CanHandleMediaType(aMIMEType, aCodecs);
-}
-
-void
-GStreamerDecoder::Suspend()
-{
-  if (mLastReader) {
-    mLastReader->Suspend();
-  }
-}
-
-void GStreamerDecoder::NotifyPlaybackStopped()
-{
-  if (mLastReader) {
-    mLastReader->Suspend();
-  }
-  MediaDecoder::NotifyPlaybackStopped();
 }
 
 } // namespace mozilla

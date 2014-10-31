@@ -65,30 +65,6 @@ typedef enum {
   GST_PLAY_FLAG_SOFT_COLORBALANCE = (1 << 10)
 } PlayFlags;
 
-static const char defaultFilter[] = "capsfilter name=filter ! ";
-static const char nemoFilter[] = "colorconv ! capsfilter name=filter ! ";
-static bool useNemoFilter = getenv("USE_NEMO_GSTREAMER") != 0;
-
-void* sCurrentDecoderUser = nullptr;
-static bool sNoLimitOneGSTDecoder = getenv("NO_LIMIT_ONE_GST_DECODER") != 0;
-
-void ResetIfCurrentDecoderActive(void* aCaller)
-{
-  if (!sNoLimitOneGSTDecoder && sCurrentDecoderUser == aCaller) {
-    sCurrentDecoderUser = nullptr;
-  }
-}
-
-bool UpdateCurrentAsActiveIfNotBusy(void* aCaller)
-{
-  if (!sNoLimitOneGSTDecoder && sCurrentDecoderUser != nullptr && sCurrentDecoderUser != aCaller)
-  {
-    return false;
-  }
-  sCurrentDecoderUser = aCaller;
-  return true;
-}
-
 GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
   : MediaDecoderReader(aDecoder),
   mMP3FrameParser(aDecoder->GetResource()->GetLength()),
@@ -141,7 +117,6 @@ GStreamerReader::~GStreamerReader()
   MOZ_COUNT_DTOR(GStreamerReader);
   ResetDecode();
 
-  ResetIfCurrentDecoderActive(this);
   if (mPlayBin) {
     gst_app_src_end_of_stream(mSource);
     if (mSource)
@@ -160,11 +135,6 @@ GStreamerReader::~GStreamerReader()
     g_object_unref(mBufferPool);
 #endif
   }
-}
-
-void GStreamerReader::Suspend()
-{
-  ResetIfCurrentDecoderActive(this);
 }
 
 nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
@@ -190,16 +160,14 @@ nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
   g_object_set(mPlayBin, "buffer-size", 0, nullptr);
   mBus = gst_pipeline_get_bus(GST_PIPELINE(mPlayBin));
 
-  nsAutoCString description;
-  description.AppendPrintf("%s %s %s", useNemoFilter ? nemoFilter : defaultFilter,
-    "appsink name=videosink sync=false max-buffers=1 ",
+  mVideoSink = gst_parse_bin_from_description("capsfilter name=filter ! "
+      "appsink name=videosink sync=false max-buffers=1 "
 #if GST_VERSION_MAJOR >= 1
       "caps=video/x-raw,format=I420"
 #else
       "caps=video/x-raw-yuv,format=(fourcc)I420"
 #endif
-  );
-  mVideoSink = gst_parse_bin_from_description(description.get(), TRUE, nullptr);
+      , TRUE, nullptr);
   mVideoAppSink = GST_APP_SINK(gst_bin_get_by_name(GST_BIN(mVideoSink),
         "videosink"));
   mAudioSink = gst_parse_bin_from_description("capsfilter name=filter ! "
@@ -401,12 +369,10 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
     }
 
     LOG(PR_LOG_DEBUG, "starting metadata pipeline");
-    if (UpdateCurrentAsActiveIfNotBusy(this)) {
-      if (gst_element_set_state(mPlayBin, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE) {
-        LOG(PR_LOG_DEBUG, "metadata pipeline state change failed");
-        ret = NS_ERROR_FAILURE;
-        continue;
-      }
+    if (gst_element_set_state(mPlayBin, GST_STATE_PAUSED) == GST_STATE_CHANGE_FAILURE) {
+      LOG(PR_LOG_DEBUG, "metadata pipeline state change failed");
+      ret = NS_ERROR_FAILURE;
+      continue;
     }
 
     /* Wait for ASYNC_DONE, which is emitted when the pipeline is built,
@@ -434,7 +400,6 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
       /* Unexpected stream close/EOS or other error. We'll give up if all
        * streams are in error/eos. */
       gst_element_set_state(mPlayBin, GST_STATE_NULL);
-      ResetIfCurrentDecoderActive(this);
       gst_message_unref(message);
       ret = NS_ERROR_FAILURE;
     }
@@ -493,9 +458,7 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
 
   /* set the pipeline to PLAYING so that it starts decoding and queueing data in
    * the appsinks */
-  if (UpdateCurrentAsActiveIfNotBusy(this)) {
-    gst_element_set_state(mPlayBin, GST_STATE_PLAYING);
-  }
+  gst_element_set_state(mPlayBin, GST_STATE_PLAYING);
 
   return NS_OK;
 }
