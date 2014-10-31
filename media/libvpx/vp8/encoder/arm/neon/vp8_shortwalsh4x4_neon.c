@@ -10,6 +10,11 @@
 
 #include <arm_neon.h>
 
+#warning "vpx codec may not work properly due to gcc bug 46893"
+//internal compiler error: in trunc_int_for_mode, at explow.c:56
+//https://gcc.gnu.org/bugzilla/show_bug.cgi?id=46893
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
 void vp8_short_walsh4x4_neon(
         int16_t *input,
         int16_t *output,
@@ -65,6 +70,7 @@ void vp8_short_walsh4x4_neon(
     d0s16 = vsub_s16(d0s16, vreinterpret_s16_u16(d16u16));
 
     // Second for-loop
+
     v2tmp2 = vtrn_s32(vreinterpret_s32_s16(d1s16),
                       vreinterpret_s32_s16(d3s16));
     v2tmp3 = vtrn_s32(vreinterpret_s32_s16(d0s16),
@@ -114,5 +120,7 @@ void vp8_short_walsh4x4_neon(
 
     vst1q_s16(output, q0s16);
     vst1q_s16(output + 8, q1s16);
+
     return;
 }
+#pragma GCC pop_options
