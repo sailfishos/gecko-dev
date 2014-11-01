@@ -51,6 +51,13 @@ const kSubviewEvents = [
 ];
 
 /**
+ * The method name to use for ES6 iteration. If Symbols are enabled in
+ * this build, use Symbol.iterator; otherwise "@@iterator".
+ */
+const JS_HAS_SYMBOLS = typeof Symbol === "function";
+const kIteratorSymbol = JS_HAS_SYMBOLS ? Symbol.iterator : "@@iterator";
+
+/**
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
@@ -168,7 +175,9 @@ let CustomizableUIInternal = {
       "find-button",
       "preferences-button",
       "add-ons-button",
+#ifndef MOZ_DEV_EDITION
       "developer-button",
+#endif
     ];
 
     if (gPalette.has("switch-to-metro-button")) {
@@ -202,6 +211,9 @@ let CustomizableUIInternal = {
     let navbarPlacements = [
       "urlbar-container",
       "search-container",
+#ifdef MOZ_DEV_EDITION
+      "developer-button",
+#endif
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",
@@ -2679,7 +2691,7 @@ this.CustomizableUI = {
    *     for (let window of CustomizableUI.windows) { ... }
    */
   windows: {
-    "@@iterator": function*() {
+    *[kIteratorSymbol]() {
       for (let [window,] of gBuildWindows)
         yield window;
     }

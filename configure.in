@@ -51,7 +51,7 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10613
+MOZPNG=10614
 NSPR_VERSION=4
 NSPR_MINVER=4.10.3
 NSS_VERSION=3
@@ -6559,6 +6559,9 @@ case "$OS_TARGET:$NIGHTLY_BUILD" in
 WINNT:1)
     MOZ_CONTENT_SANDBOX=$MOZ_SANDBOX
     ;;
+Darwin:1)
+    MOZ_CONTENT_SANDBOX=$MOZ_SANDBOX
+    ;;
 *)
     MOZ_ARG_ENABLE_BOOL(content-sandbox,
     [  --enable-content-sandbox        Enable sandboxing support for content-processes],
@@ -8922,6 +8925,9 @@ AC_SUBST(MOZ_FOLD_LIBS)
 AC_SUBST(MOZ_ENABLE_SZIP)
 AC_SUBST(MOZ_SZIP_FLAGS)
 
+dnl Host JavaScript runtime, if any, to use during cross compiles.
+AC_SUBST(JS_BINARY)
+
 if test "$MOZ_DEBUG"; then
     MOZ_EM_DEBUG=1
 fi
@@ -9183,9 +9189,9 @@ if test "$MOZ_TREE_FREETYPE"; then
    if ! test -e modules; then
      mkdir modules
    fi
-   # Only export CC and CXX for the subconfigure, and avoid spilling that
-   # further down the road.
-   (export CC CXX;
+   # Only export CC, CXX and RANLIB for the subconfigure, and avoid spilling
+   # that further down the road.
+   (export CC CXX RANLIB;
     AC_OUTPUT_SUBDIRS(modules/freetype2)
    ) || exit 1
 fi

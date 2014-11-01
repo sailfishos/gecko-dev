@@ -4283,6 +4283,18 @@
     "kind": "count",
     "description": "a testing histogram; not meant to be touched"
   },
+  "TELEMETRY_TEST_KEYED_FLAG": {
+    "expires_in_version": "default",
+    "kind": "flag",
+    "keyed": true,
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_KEYED_COUNT": {
+    "expires_in_version": "default",
+    "kind": "count",
+    "keyed": true,
+    "description": "a testing histogram; not meant to be touched"
+  },
   "STARTUP_CRASH_DETECTED": {
     "expires_in_version": "never",
     "kind": "flag",
@@ -6382,6 +6394,11 @@
     "n_values": 64,
     "description": "TLS/SSL version intolerance was falsely detected, server rejected handshake"
   },
+  "SSL_WEAK_CIPHERS_FALLBACK": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Fallback attempted when server did not support any strong cipher suites"
+  },
   "SSL_CIPHER_SUITE_FULL": {
     "expires_in_version": "never",
     "kind": "enumerated",
@@ -6477,6 +6494,14 @@
     "kind": "enumerated",
     "n_values": 24,
     "description": "Was a certificate error overridden on this handshake? What was it? (0=unknown error (indicating bug), 1=no, >1=a specific error)"
+  },
+  "SSL_PERMANENT_CERT_ERROR_OVERRIDES": {
+    "alert_emails": ["seceng@mozilla.org"],
+    "expires_in_version": "42",
+    "kind": "exponential",
+    "high": 1024,
+    "n_buckets": 10,
+    "description": "How many permanent certificate overrides a user has stored."
   },
   "TELEMETRY_TEST_EXPIRED": {
     "expires_in_version": "4.0a1",
