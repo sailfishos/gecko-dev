@@ -52,6 +52,7 @@ import org.mozilla.gecko.home.HomePanelsManager;
 import org.mozilla.gecko.home.SearchEngine;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.GeckoMenuItem;
+import org.mozilla.gecko.mozglue.ContextUtils;
 import org.mozilla.gecko.preferences.ClearOnShutdownPref;
 import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.prompts.Prompt;
@@ -102,6 +103,7 @@ import android.nfc.NfcEvent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StrictMode;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
@@ -149,6 +151,7 @@ public class BrowserApp extends GeckoApp
     private static final String STATE_ABOUT_HOME_TOP_PADDING = "abouthome_top_padding";
 
     private static final String BROWSER_SEARCH_TAG = "browser_search";
+    private static final String ONBOARD_STARTPANE_TAG = "startpane_dialog";
 
     // Request ID for startActivityForResult.
     private static final int ACTIVITY_REQUEST_PREFERENCES = 1001;
@@ -470,7 +473,7 @@ public class BrowserApp extends GeckoApp
 
         final Intent intent = getIntent();
 
-        String args = StringUtils.getStringExtra(intent, "args");
+        String args = ContextUtils.getStringExtra(intent, "args");
         if (args != null && args.contains(GUEST_BROWSING_ARG)) {
             mProfile = GeckoProfile.createGuestProfile(this);
         } else {
@@ -626,8 +629,8 @@ public class BrowserApp extends GeckoApp
 
             if (prefs.getBoolean(PREF_STARTPANE_ENABLED, false)) {
                 if (!Intent.ACTION_VIEW.equals(intentAction)) {
-                    final Intent startIntent = new Intent(this, StartPane.class);
-                    context.startActivity(startIntent);
+                    final DialogFragment dialog = new StartPane();
+                    dialog.show(getSupportFragmentManager(), ONBOARD_STARTPANE_TAG);
                 }
                 // Don't bother trying again to show the v1 minimal first run.
                 prefs.edit().putBoolean(PREF_STARTPANE_ENABLED, false).apply();
@@ -1125,12 +1128,13 @@ public class BrowserApp extends GeckoApp
 
         // Make sure the toolbar is fully hidden or fully shown when the user
         // lifts their finger. If the page is shorter than the viewport or if
-        // the user has reached the end of the page, the toolbar is always
-        // shown.
+        // the user has reached the end of a long (longer than twice the viewport height) page,
+        // the toolbar is always shown.
         ImmutableViewportMetrics metrics = mLayerView.getViewportMetrics();
+        final float height = metrics.viewportRectBottom - metrics.viewportRectTop;
         if (metrics.getPageHeight() < metrics.getHeight()
               || metrics.marginTop >= mToolbarHeight / 2
-              || metrics.pageRectBottom == metrics.viewportRectBottom) {
+              || (metrics.pageRectBottom == metrics.viewportRectBottom && metrics.pageRectBottom > 2*height)) {
             mDynamicToolbar.setVisible(true, VisibilityTransition.ANIMATE);
         } else {
             mDynamicToolbar.setVisible(false, VisibilityTransition.ANIMATE);
