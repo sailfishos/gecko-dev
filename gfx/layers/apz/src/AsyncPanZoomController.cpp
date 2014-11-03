@@ -1460,7 +1460,7 @@ nsEventStatus AsyncPanZoomController::OnLongPress(const TapGestureInput& aEvent)
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
       StartNewTouchBlock(true);
       ScheduleContentResponseTimeout();
-      controller->HandleLongTap(geckoScreenPoint, modifiers, GetGuid());
+      controller->HandleLongTap(geckoScreenPoint, modifiers, GetGuid(), 0);
       return nsEventStatus_eConsumeNoDefault;
     }
   }
