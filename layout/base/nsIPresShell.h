@@ -78,6 +78,7 @@ class nsDisplayList;
 class nsDisplayListBuilder;
 class nsPIDOMWindow;
 struct nsPoint;
+class nsINode;
 struct nsIntPoint;
 struct nsIntRect;
 struct nsRect;
@@ -140,8 +141,8 @@ typedef struct CapturingContentInfo {
 
 // 79c0f49f-77f1-4cc5-80d1-6552e85ccb0c
 #define NS_IPRESSHELL_IID \
-  { 0x79c0f49f, 0x77f1, 0x4cc5, \
-    { 0x80, 0xd1, 0x65, 0x52, 0xe8, 0x5c, 0xcb, 0x0c } }
+  { 0xa0a4b515, 0x0b91, 0x4f13, \
+    { 0xa0, 0x60, 0x4b, 0xfb, 0x35, 0x00, 0xdc, 0x00 } }
 
 // debug VerifyReflow flags
 #define VERIFY_REFLOW_ON                    0x01
@@ -600,7 +601,7 @@ public:
    * be rendered to, but is suitable for measuring text and performing
    * other non-rendering operations. Guaranteed to return non-null.
    */
-  virtual already_AddRefed<nsRenderingContext> CreateReferenceRenderingContext() = 0;
+  virtual already_AddRefed<gfxContext> CreateReferenceRenderingContext() = 0;
 
   /**
    * Informs the pres shell that the document is now at the anchor with
@@ -882,6 +883,13 @@ public:
                                                         nsEventStatus* aStatus) = 0;
 
   /**
+   * Dispatch AfterKeyboardEvent with specific target.
+   */
+  virtual void DispatchAfterKeyboardEvent(nsINode* aTarget,
+                                          const mozilla::WidgetKeyboardEvent& aEvent,
+                                          bool aEmbeddedCancelled) = 0;
+
+  /**
     * Gets the current target event frame from the PresShell
     */
   virtual nsIFrame* GetEventTargetFrame() = 0;
@@ -1094,8 +1102,8 @@ public:
     RENDER_DRAWWINDOW_NOT_FLUSHING = 0x40
   };
   virtual nsresult RenderDocument(const nsRect& aRect, uint32_t aFlags,
-                                              nscolor aBackgroundColor,
-                                              gfxContext* aRenderedContext) = 0;
+                                  nscolor aBackgroundColor,
+                                  gfxContext* aRenderedContext) = 0;
 
   /**
    * Renders a node aNode to a surface and returns it. The aRegion may be used

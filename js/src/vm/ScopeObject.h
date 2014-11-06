@@ -12,6 +12,7 @@
 #include "jsweakmap.h"
 
 #include "gc/Barrier.h"
+#include "vm/ArgumentsObject.h"
 #include "vm/ProxyObject.h"
 
 namespace js {
@@ -301,7 +302,7 @@ class CallObject : public ScopeObject
      * CallObject to access.
      */
     const Value &aliasedVarFromArguments(const Value &argsValue) {
-        return getSlot(argsValue.magicUint32());
+        return getSlot(ArgumentsObject::SlotFromMagicScopeSlotValue(argsValue));
     }
     inline void setAliasedVarFromArguments(JSContext *cx, const Value &argsValue, jsid id,
                                            const Value &v);
@@ -569,7 +570,7 @@ class StaticBlockObject : public BlockObject
     static const unsigned LOCAL_INDEX_LIMIT = JS_BIT(16);
 
     static Shape *addVar(ExclusiveContext *cx, Handle<StaticBlockObject*> block, HandleId id,
-                         unsigned index, bool *redeclared);
+                         bool constant, unsigned index, bool *redeclared);
 };
 
 class ClonedBlockObject : public BlockObject

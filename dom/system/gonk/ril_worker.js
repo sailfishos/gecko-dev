@@ -1763,20 +1763,20 @@ RilObject.prototype = {
     if (call.state === CALL_STATE_HOLDING) {
       this.sendHangUpBackgroundRequest();
     } else {
-      this.sendHangUpRequest(call.callIndex);
+      this.sendHangUpRequest(options);
     }
   },
 
-  sendHangUpRequest: function(callIndex) {
+  sendHangUpRequest: function(options) {
     this.telephonyRequestQueue.push(REQUEST_HANGUP, this.sendRilRequestHangUp,
-                                    callIndex);
+                                    options);
   },
 
-  sendRilRequestHangUp: function(callIndex) {
+  sendRilRequestHangUp: function(options) {
     let Buf = this.context.Buf;
-    Buf.newParcel(REQUEST_HANGUP);
+    Buf.newParcel(REQUEST_HANGUP, options);
     Buf.writeInt32(1);
-    Buf.writeInt32(callIndex);
+    Buf.writeInt32(options.callIndex);
     Buf.sendParcel();
   },
 
@@ -3946,9 +3946,11 @@ RilObject.prototype = {
   _processClassifiedCalls: function(removedCalls, remainedCalls, addedCalls,
                                     failCause) {
     // Handle removed calls.
+    // Only remove it from the map here. Notify callDisconnected later.
     for (let call of removedCalls) {
-      this._removeVoiceCall(call, call.hangUpLocal ?
-                            GECKO_CALL_ERROR_NORMAL_CALL_CLEARING : failCause);
+      delete this.currentCalls[call.callIndex];
+      call.failCause = call.hangUpLocal ? GECKO_CALL_ERROR_NORMAL_CALL_CLEARING
+                                        : failCause;
     }
 
     let changedCalls = new Set();
@@ -3973,6 +3975,8 @@ RilObject.prototype = {
       }
 
       oldCall.state = newCall.state;
+      oldCall.number =
+        this._formatInternationalNumber(newCall.number, newCall.toa);
       changedCalls.add(oldCall);
     }
 
@@ -3997,12 +4001,17 @@ RilObject.prototype = {
       }
     }
 
-    // Update audio state. We have to send the message before callstatechange
-    // to make sure that the audio state is ready first.
+    // Update audio state. We have to send this message before callStateChange
+    // and callDisconnected to make sure that the audio state is ready first.
     this.sendChromeMessage({
       rilMessageType: "audioStateChanged",
       state: this._detectAudioState()
     });
+
+    // Notify call disconnected.
+    for (let call of removedCalls) {
+      this._handleDisconnectedCall(call);
+    }
 
     // Notify call state change.
     for (let call of changedCalls) {
@@ -4049,23 +4058,21 @@ RilObject.prototype = {
     return AUDIO_STATE_IN_CALL;
   },
 
-  _addVoiceCall: function(newCall) {
-    // Format international numbers appropriately.
-    if (newCall.number && newCall.toa == TOA_INTERNATIONAL &&
-        newCall.number[0] != "+") {
-      newCall.number = "+" + newCall.number;
+  // Format international numbers appropriately.
+  _formatInternationalNumber: function(number, toa) {
+    if (number && toa == TOA_INTERNATIONAL && number[0] != "+") {
+      number = "+" + number;
     }
 
+    return number;
+  },
+
+  _addVoiceCall: function(newCall) {
+    newCall.number = this._formatInternationalNumber(newCall.number, newCall.toa);
     newCall.isOutgoing = !(newCall.state == CALL_STATE_INCOMING);
     newCall.isConference = false;
 
     this.currentCalls[newCall.callIndex] = newCall;
-  },
-
-  _removeVoiceCall: function(call, failCause) {
-    delete this.currentCalls[call.callIndex];
-    call.failCause = failCause;
-    this._handleDisconnectedCall(call);
   },
 
   _handleChangedCallState: function(changedCall) {

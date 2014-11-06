@@ -2164,24 +2164,26 @@ nsLayoutUtils::RoundedRectIntersectRect(const nsRect& aRoundedRect,
 
 nsIntRegion
 nsLayoutUtils::RoundedRectIntersectIntRect(const nsIntRect& aRoundedRect,
-                                           const gfxCornerSizes& aCorners,
+                                           const RectCornerRadii& aCornerRadii,
                                            const nsIntRect& aContainedRect)
 {
   // rectFullHeight and rectFullWidth together will approximately contain
   // the total area of the frame minus the rounded corners.
   nsIntRect rectFullHeight = aRoundedRect;
-  uint32_t xDiff = std::max(aCorners.TopLeft().width, aCorners.BottomLeft().width);
+  uint32_t xDiff = std::max(aCornerRadii.TopLeft().width,
+                            aCornerRadii.BottomLeft().width);
   rectFullHeight.x += xDiff;
-  rectFullHeight.width -= std::max(aCorners.TopRight().width,
-                                   aCorners.BottomRight().width) + xDiff;
+  rectFullHeight.width -= std::max(aCornerRadii.TopRight().width,
+                                   aCornerRadii.BottomRight().width) + xDiff;
   nsIntRect r1;
   r1.IntersectRect(rectFullHeight, aContainedRect);
 
   nsIntRect rectFullWidth = aRoundedRect;
-  uint32_t yDiff = std::max(aCorners.TopLeft().height, aCorners.TopRight().height);
+  uint32_t yDiff = std::max(aCornerRadii.TopLeft().height,
+                            aCornerRadii.TopRight().height);
   rectFullWidth.y += yDiff;
-  rectFullWidth.height -= std::max(aCorners.BottomLeft().height,
-                                   aCorners.BottomRight().height) + yDiff;
+  rectFullWidth.height -= std::max(aCornerRadii.BottomLeft().height,
+                                   aCornerRadii.BottomRight().height) + yDiff;
   nsIntRect r2;
   r2.IntersectRect(rectFullWidth, aContainedRect);
 
@@ -2609,6 +2611,18 @@ static nsIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
   return offset;
 }
 
+static nsIntPoint WidgetToWidgetOffset(nsIWidget* aFrom, nsIWidget* aTo) {
+  nsIWidget* fromRoot;
+  nsIntPoint fromOffset = GetWidgetOffset(aFrom, fromRoot);
+  nsIWidget* toRoot;
+  nsIntPoint toOffset = GetWidgetOffset(aTo, toRoot);
+
+  if (fromRoot == toRoot) {
+    return fromOffset - toOffset;
+  }
+  return aFrom->WidgetToScreenOffset() - aTo->WidgetToScreenOffset();
+}
+
 nsPoint
 nsLayoutUtils::TranslateWidgetToView(nsPresContext* aPresContext,
                                      nsIWidget* aWidget, nsIntPoint aPt,
@@ -2620,22 +2634,26 @@ nsLayoutUtils::TranslateWidgetToView(nsPresContext* aPresContext,
     return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
   }
 
-  nsIWidget* fromRoot;
-  nsIntPoint fromOffset = GetWidgetOffset(aWidget, fromRoot);
-  nsIWidget* toRoot;
-  nsIntPoint toOffset = GetWidgetOffset(viewWidget, toRoot);
-
-  nsIntPoint widgetPoint;
-  if (fromRoot == toRoot) {
-    widgetPoint = aPt + fromOffset - toOffset;
-  } else {
-    nsIntPoint screenPoint = aWidget->WidgetToScreenOffset();
-    widgetPoint = aPt + screenPoint - viewWidget->WidgetToScreenOffset();
-  }
-
+  nsIntPoint widgetPoint = aPt + WidgetToWidgetOffset(aWidget, viewWidget);
   nsPoint widgetAppUnits(aPresContext->DevPixelsToAppUnits(widgetPoint.x),
                          aPresContext->DevPixelsToAppUnits(widgetPoint.y));
   return widgetAppUnits - viewOffset;
+}
+
+nsIntPoint
+nsLayoutUtils::TranslateViewToWidget(nsPresContext* aPresContext,
+                                     nsView* aView, nsPoint aPt,
+                                     nsIWidget* aWidget)
+{
+  nsPoint viewOffset;
+  nsIWidget* viewWidget = aView->GetNearestWidget(&viewOffset);
+  if (!viewWidget) {
+    return nsIntPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+  }
+
+  nsIntPoint relativeToViewWidget(aPresContext->AppUnitsToDevPixels(aPt.x + viewOffset.x),
+                                  aPresContext->AppUnitsToDevPixels(aPt.y + viewOffset.y));
+  return relativeToViewWidget + WidgetToWidgetOffset(viewWidget, aWidget);
 }
 
 // Combine aNewBreakType with aOrigBreakType, but limit the break types
@@ -3048,7 +3066,7 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
 #ifdef MOZ_DUMP_PAINTING
   FILE* savedDumpFile = gfxUtils::sDumpPaintFile;
 
-  std::stringstream ss;
+  UniquePtr<std::stringstream> ss = MakeUnique<std::stringstream>();
   if (gfxUtils::DumpPaintList() || gfxUtils::sDumpPainting) {
     if (gfxUtils::sDumpPaintingToFile) {
       nsCString string("dump-");
@@ -3059,13 +3077,18 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
       gfxUtils::sDumpPaintFile = stderr;
     }
     if (gfxUtils::sDumpPaintingToFile) {
-      ss << "<html><head><script>var array = {}; function ViewImage(index) { window.location = array[index]; }</script></head><body>";
+      *ss << "<html><head><script>var array = {}; function ViewImage(index) { window.location = array[index]; }</script></head><body>";
     }
-    ss << nsPrintfCString("Painting --- before optimization (dirty %d,%d,%d,%d):\n",
+    *ss << nsPrintfCString("Painting --- before optimization (dirty %d,%d,%d,%d):\n",
             dirtyRect.x, dirtyRect.y, dirtyRect.width, dirtyRect.height).get();
-    nsFrame::PrintDisplayList(&builder, list, ss, gfxUtils::sDumpPaintingToFile);
+    nsFrame::PrintDisplayList(&builder, list, *ss, gfxUtils::sDumpPaintingToFile);
     if (gfxUtils::sDumpPaintingToFile) {
-      ss << "<script>";
+      *ss << "<script>";
+    } else {
+      // Flush stream now to avoid reordering dump output relative to
+      // messages dumped by PaintRoot below.
+      fprint_stderr(gfxUtils::sDumpPaintFile, *ss);
+      ss = MakeUnique<std::stringstream>();
     }
   }
 #endif
@@ -3101,30 +3124,27 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
     flags |= nsDisplayList::PAINT_COMPRESSED;
   }
 
-  list.PaintRoot(&builder, aRenderingContext, flags);
+  nsRefPtr<LayerManager> layerManager =
+    list.PaintRoot(&builder, aRenderingContext, flags);
 
 #ifdef MOZ_DUMP_PAINTING
   if (gfxUtils::DumpPaintList() || gfxUtils::sDumpPainting) {
     if (gfxUtils::sDumpPaintingToFile) {
-      ss << "</script>";
+      *ss << "</script>";
     }
-    ss << "Painting --- after optimization:\n";
-    nsFrame::PrintDisplayList(&builder, list, ss, gfxUtils::sDumpPaintingToFile);
+    *ss << "Painting --- after optimization:\n";
+    nsFrame::PrintDisplayList(&builder, list, *ss, gfxUtils::sDumpPaintingToFile);
 
-    ss << "Painting --- retained layer tree:\n";
-    nsIWidget* widget = aFrame->GetNearestWidget();
-    if (widget) {
-      nsRefPtr<LayerManager> layerManager = widget->GetLayerManager();
-      if (layerManager) {
-        FrameLayerBuilder::DumpRetainedLayerTree(layerManager, ss,
-                                                 gfxUtils::sDumpPaintingToFile);
-      }
+    *ss << "Painting --- layer tree:\n";
+    if (layerManager) {
+      FrameLayerBuilder::DumpRetainedLayerTree(layerManager, *ss,
+                                               gfxUtils::sDumpPaintingToFile);
     }
     if (gfxUtils::sDumpPaintingToFile) {
-      ss << "</body></html>";
+      *ss << "</body></html>";
     }
 
-    fprint_stderr(gfxUtils::sDumpPaintFile, ss);
+    fprint_stderr(gfxUtils::sDumpPaintFile, *ss);
 
     if (gfxUtils::sDumpPaintingToFile) {
       fclose(gfxUtils::sDumpPaintFile);
@@ -3154,12 +3174,6 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
   }
 
   if (builder.WillComputePluginGeometry()) {
-    nsRefPtr<LayerManager> layerManager;
-    nsIWidget* widget = aFrame->GetNearestWidget();
-    if (widget) {
-      layerManager = widget->GetLayerManager();
-    }
-
     rootPresContext->ComputePluginGeometryUpdates(aFrame, &builder, &list);
 
     // We're not going to get a WillPaintWindow event here if we didn't do
@@ -4852,15 +4866,14 @@ nsLayoutUtils::PaintTextShadow(const nsIFrame* aFrame,
 
     // Conjure an nsRenderingContext from a gfxContext for drawing the text
     // to blur.
-    nsRefPtr<nsRenderingContext> renderingContext = new nsRenderingContext();
-    renderingContext->Init(shadowContext);
+    nsRenderingContext renderingContext(shadowContext);
 
     aDestCtx->Save();
     aDestCtx->NewPath();
     aDestCtx->SetColor(gfxRGBA(shadowColor));
 
     // The callback will draw whatever we want to blur as a shadow.
-    aCallback(renderingContext, shadowOffset, shadowColor, aCallbackData);
+    aCallback(&renderingContext, shadowOffset, shadowColor, aCallbackData);
 
     contextBoxBlur.DoPaint();
     aDestCtx->Restore();
@@ -5376,7 +5389,7 @@ ComputeSnappedImageDrawingParameters(gfxContext*     aCtx,
 
 
 static nsresult
-DrawImageInternal(nsRenderingContext*    aRenderingContext,
+DrawImageInternal(gfxContext&            aContext,
                   nsPresContext*         aPresContext,
                   imgIContainer*         aImage,
                   GraphicsFilter         aGraphicsFilter,
@@ -5397,27 +5410,26 @@ DrawImageInternal(nsRenderingContext*    aRenderingContext,
   }
   int32_t appUnitsPerDevPixel =
    aPresContext->AppUnitsPerDevPixel();
-  gfxContext* ctx = aRenderingContext->ThebesContext();
 
   SnappedImageDrawingParameters params =
-    ComputeSnappedImageDrawingParameters(ctx, appUnitsPerDevPixel, aDest,
+    ComputeSnappedImageDrawingParameters(&aContext, appUnitsPerDevPixel, aDest,
                                          aFill, aAnchor, aDirty, aImage,
                                          aGraphicsFilter, aImageFlags);
 
   if (!params.shouldDraw)
     return NS_OK;
 
-  gfxContextMatrixAutoSaveRestore contextMatrixRestorer(ctx);
-  ctx->SetMatrix(params.imageSpaceToDeviceSpace);
+  gfxContextMatrixAutoSaveRestore contextMatrixRestorer(&aContext);
+  aContext.SetMatrix(params.imageSpaceToDeviceSpace);
 
-  aImage->Draw(ctx, params.size, params.region, imgIContainer::FRAME_CURRENT,
+  aImage->Draw(&aContext, params.size, params.region, imgIContainer::FRAME_CURRENT,
                aGraphicsFilter, ToMaybe(aSVGContext), aImageFlags);
 
   return NS_OK;
 }
 
 /* static */ nsresult
-nsLayoutUtils::DrawSingleUnscaledImage(nsRenderingContext* aRenderingContext,
+nsLayoutUtils::DrawSingleUnscaledImage(gfxContext&          aContext,
                                        nsPresContext*       aPresContext,
                                        imgIContainer*       aImage,
                                        GraphicsFilter       aGraphicsFilter,
@@ -5448,14 +5460,14 @@ nsLayoutUtils::DrawSingleUnscaledImage(nsRenderingContext* aRenderingContext,
   // outside the image bounds, we want to honor the aSourceArea-to-aDest
   // translation but we don't want to actually tile the image.
   fill.IntersectRect(fill, dest);
-  return DrawImageInternal(aRenderingContext, aPresContext,
+  return DrawImageInternal(aContext, aPresContext,
                            aImage, aGraphicsFilter,
                            dest, fill, aDest, aDirty ? *aDirty : dest,
                            nullptr, aImageFlags);
 }
 
 /* static */ nsresult
-nsLayoutUtils::DrawSingleImage(nsRenderingContext*    aRenderingContext,
+nsLayoutUtils::DrawSingleImage(gfxContext&            aContext,
                                nsPresContext*         aPresContext,
                                imgIContainer*         aImage,
                                GraphicsFilter         aGraphicsFilter,
@@ -5497,7 +5509,7 @@ nsLayoutUtils::DrawSingleImage(nsRenderingContext*    aRenderingContext,
   // transform but we don't want to actually tile the image.
   nsRect fill;
   fill.IntersectRect(aDest, dest);
-  return DrawImageInternal(aRenderingContext, aPresContext, image,
+  return DrawImageInternal(aContext, aPresContext, image,
                            aGraphicsFilter, dest, fill, fill.TopLeft(),
                            aDirty, aSVGContext, aImageFlags);
 }
@@ -5566,7 +5578,7 @@ nsLayoutUtils::ComputeSizeForDrawingWithFallback(imgIContainer* aImage,
 }
 
 /* static */ nsresult
-nsLayoutUtils::DrawBackgroundImage(nsRenderingContext* aRenderingContext,
+nsLayoutUtils::DrawBackgroundImage(gfxContext&         aContext,
                                    nsPresContext*      aPresContext,
                                    imgIContainer*      aImage,
                                    const nsIntSize&    aImageSize,
@@ -5586,13 +5598,13 @@ nsLayoutUtils::DrawBackgroundImage(nsRenderingContext* aRenderingContext,
 
   SVGImageContext svgContext(aImageSize, Nothing());
 
-  return DrawImageInternal(aRenderingContext, aPresContext, aImage,
+  return DrawImageInternal(aContext, aPresContext, aImage,
                            aGraphicsFilter, aDest, aFill, aAnchor,
                            aDirty, &svgContext, aImageFlags);
 }
 
 /* static */ nsresult
-nsLayoutUtils::DrawImage(nsRenderingContext* aRenderingContext,
+nsLayoutUtils::DrawImage(gfxContext&         aContext,
                          nsPresContext*      aPresContext,
                          imgIContainer*      aImage,
                          GraphicsFilter      aGraphicsFilter,
@@ -5602,7 +5614,7 @@ nsLayoutUtils::DrawImage(nsRenderingContext* aRenderingContext,
                          const nsRect&       aDirty,
                          uint32_t            aImageFlags)
 {
-  return DrawImageInternal(aRenderingContext, aPresContext, aImage,
+  return DrawImageInternal(aContext, aPresContext, aImage,
                            aGraphicsFilter, aDest, aFill, aAnchor,
                            aDirty, nullptr, aImageFlags);
 }

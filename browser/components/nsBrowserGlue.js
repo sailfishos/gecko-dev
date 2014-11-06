@@ -356,6 +356,15 @@ BrowserGlue.prototype = {
         // nsBrowserGlue to prevent double counting.
         let win = this.getMostRecentBrowserWindow();
         BrowserUITelemetry.countSearchEvent("urlbar", win.gURLBar.value);
+
+        let engine = null;
+        try {
+          engine = subject.QueryInterface(Ci.nsISearchEngine);
+        } catch (ex) {
+          Cu.reportError(ex);
+        }
+
+        win.BrowserSearch.recordSearchInTelemetry(engine, "urlbar");
 #ifdef MOZ_SERVICES_HEALTHREPORT
         let reporter = Cc["@mozilla.org/datareporting/service;1"]
                          .getService()
@@ -368,7 +377,6 @@ BrowserGlue.prototype = {
 
         reporter.onInit().then(function record() {
           try {
-            let engine = subject.QueryInterface(Ci.nsISearchEngine);
             reporter.getProvider("org.mozilla.searches").recordSearch(engine, "urlbar");
           } catch (ex) {
             Cu.reportError(ex);
@@ -405,12 +413,50 @@ BrowserGlue.prototype = {
       case "nsPref:changed":
         if (data == POLARIS_ENABLED) {
           let enabled = Services.prefs.getBoolPref(POLARIS_ENABLED);
-          Services.prefs.setBoolPref("privacy.donottrackheader.enabled", enabled);
-          Services.prefs.setBoolPref("privacy.trackingprotection.enabled", enabled);
-          Services.prefs.setBoolPref("privacy.trackingprotection.ui.enabled", enabled);
+          if (enabled) {
+            let e10sEnabled = Services.appinfo.browserTabsRemoteAutostart;
+            let shouldRestart = e10sEnabled && this._promptForE10sRestart();
+            // Only set the related prefs if e10s is not enabled or the user
+            // saw a notification that e10s would be disabled on restart.
+            if (!e10sEnabled || shouldRestart) {
+              Services.prefs.setBoolPref("privacy.donottrackheader.enabled", enabled);
+              Services.prefs.setBoolPref("privacy.trackingprotection.enabled", enabled);
+              Services.prefs.setBoolPref("privacy.trackingprotection.ui.enabled", enabled);
+              if (shouldRestart) {
+                Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit |
+                                      Ci.nsIAppStartup.eRestart);
+              }
+            } else {
+              // The user chose not to disable E10s which is temporarily
+              // incompatible with Polaris.
+              Services.prefs.clearUserPref(POLARIS_ENABLED);
+            }
+          } else {
+            // Don't reset DNT because its visible pref is independent of
+            // Polaris and may have been previously set.
+            Services.prefs.clearUserPref("privacy.trackingprotection.enabled");
+            Services.prefs.clearUserPref("privacy.trackingprotection.ui.enabled");
+          }
         }
 #endif
     }
+  },
+
+  _promptForE10sRestart: function () {
+    let win = this.getMostRecentBrowserWindow();
+    let brandBundle = win.document.getElementById("bundle_brand");
+    let brandName = brandBundle.getString("brandShortName");
+    let prefBundle = win.document.getElementById("bundle_preferences");
+    let msg = "Multiprocess Nightly (e10s) does not yet support tracking protection. Multiprocessing will be disabled if you restart Firefox. Would you like to continue?";
+    let title = prefBundle.getFormattedString("shouldRestartTitle", [brandName]);
+    let shouldRestart = Services.prompt.confirm(win, title, msg);
+    if (shouldRestart) {
+      let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                       .createInstance(Ci.nsISupportsPRBool);
+      Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+      shouldRestart = !cancelQuit.data;
+    }
+    return shouldRestart;
   },
 
   _syncSearchEngines: function () {
@@ -456,9 +502,6 @@ BrowserGlue.prototype = {
 #endif
     os.addObserver(this, "browser-search-engine-modified", false);
     os.addObserver(this, "browser-search-service", false);
-#ifdef NIGHTLY_BUILD
-    Services.prefs.addObserver(POLARIS_ENABLED, this, false);
-#endif
   },
 
   // cleanup (called on application shutdown)
@@ -554,6 +597,10 @@ BrowserGlue.prototype = {
     ContentPrefServiceParent.init();
 
     LoginManagerParent.init();
+
+#ifdef NIGHTLY_BUILD
+    Services.prefs.addObserver(POLARIS_ENABLED, this, false);
+#endif
 
     Services.obs.notifyObservers(null, "browser-ui-startup-complete", "");
   },
@@ -2239,28 +2286,23 @@ let DefaultBrowserCheck = {
     } catch (ex) {
       Cu.reportError(ex);
     }
-    this.closePrompt();
   },
 
-  _createPopup: function(win, bundle) {
+  _createPopup: function(win, notNowStrings, neverStrings) {
     let doc = win.document;
     let popup = doc.createElement("menupopup");
     popup.id = this.OPTIONPOPUP;
 
     let notNowItem = doc.createElement("menuitem");
     notNowItem.id = "defaultBrowserNotNow";
-    let label = bundle.getString("setDefaultBrowserNotNow.label");
-    notNowItem.setAttribute("label", label);
-    let accesskey = bundle.getString("setDefaultBrowserNotNow.accesskey");
-    notNowItem.setAttribute("accesskey", accesskey);
+    notNowItem.setAttribute("label", notNowStrings.label);
+    notNowItem.setAttribute("accesskey", notNowStrings.accesskey);
     popup.appendChild(notNowItem);
 
     let neverItem = doc.createElement("menuitem");
     neverItem.id = "defaultBrowserNever";
-    label = bundle.getString("setDefaultBrowserNever.label");
-    neverItem.setAttribute("label", label);
-    accesskey = bundle.getString("setDefaultBrowserNever.accesskey");
-    neverItem.setAttribute("accesskey", accesskey);
+    neverItem.setAttribute("label", neverStrings.label);
+    neverItem.setAttribute("accesskey", neverStrings.accesskey);
     popup.appendChild(neverItem);
 
     popup.addEventListener("command", this);
@@ -2286,40 +2328,72 @@ let DefaultBrowserCheck = {
     let promptMessage = shellBundle.getFormattedString("setDefaultBrowserMessage2",
                                                        [brandShortName]);
 
-    let confirmMessage = shellBundle.getFormattedString("setDefaultBrowserConfirm.label",
-                                                        [brandShortName]);
-    let confirmKey = shellBundle.getString("setDefaultBrowserConfirm.accesskey");
+    let yesButton = shellBundle.getFormattedString("setDefaultBrowserConfirm.label",
+                                                   [brandShortName]);
 
-    let optionsMessage = shellBundle.getString("setDefaultBrowserOptions.label");
-    let optionsKey = shellBundle.getString("setDefaultBrowserOptions.accesskey");
+    let notNowButton = shellBundle.getString("setDefaultBrowserNotNow.label");
+    let notNowButtonKey = shellBundle.getString("setDefaultBrowserNotNow.accesskey");
 
-    let selectedBrowser = win.gBrowser.selectedBrowser;
-    let notificationBox = win.document.getElementById("high-priority-global-notificationbox");
+    let neverLabel = shellBundle.getString("setDefaultBrowserNever.label");
+    let neverKey = shellBundle.getString("setDefaultBrowserNever.accesskey");
 
-    this._createPopup(win, shellBundle);
+    let useNotificationBar = Services.prefs.getBoolPref("browser.defaultbrowser.notificationbar");
+    if (useNotificationBar) {
+      let optionsMessage = shellBundle.getString("setDefaultBrowserOptions.label");
+      let optionsKey = shellBundle.getString("setDefaultBrowserOptions.accesskey");
 
-    let buttons = [
-      {
-        label: confirmMessage,
-        accessKey: confirmKey,
-        callback: this.setAsDefault.bind(this)
-      },
-      {
-        label: optionsMessage,
-        accessKey: optionsKey,
-        popup: this.OPTIONPOPUP
+      let yesButtonKey = shellBundle.getString("setDefaultBrowserConfirm.accesskey");
+
+      let notificationBox = win.document.getElementById("high-priority-global-notificationbox");
+
+      this._createPopup(win, {
+        label: notNowButton,
+        accesskey: notNowButtonKey
+      }, {
+        label: neverLabel,
+        accesskey: neverKey
+      });
+
+      let buttons = [
+        {
+          label: yesButton,
+          accessKey: yesButtonKey,
+          callback: () => {
+            this.setAsDefault();
+            this.closePrompt();
+          }
+        },
+        {
+          label: optionsMessage,
+          accessKey: optionsKey,
+          popup: this.OPTIONPOPUP
+        }
+      ];
+
+      let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
+      let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
+      const priority = notificationBox.PRIORITY_WARNING_HIGH;
+      let callback = this._onNotificationEvent.bind(this);
+      this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
+                                                              iconURL, priority, buttons,
+                                                              callback);
+    } else {
+      // Modal prompt
+      let promptTitle = shellBundle.getString("setDefaultBrowserTitle");
+
+      let ps = Services.prompt;
+      let dontAsk = { value: false };
+      let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
+                        (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
+                        ps.BUTTON_POS_0_DEFAULT;
+      let rv = ps.confirmEx(win, promptTitle, promptMessage, buttonFlags,
+                            yesButton, notNowButton, null, neverLabel, dontAsk);
+      if (rv == 0) {
+        this.setAsDefault();
+      } else if (dontAsk.value) {
+        ShellService.shouldCheckDefaultBrowser = false;
       }
-    ];
-
-
-    let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
-    let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
-    const priority = notificationBox.PRIORITY_WARNING_HIGH;
-    let callback = this._onNotificationEvent.bind(this);
-    this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
-                                                            iconURL, priority, buttons,
-                                                            callback);
-    this._notification.persistence = -1;
+    }
   },
 
   _onNotificationEvent: function(eventType) {
@@ -2344,7 +2418,12 @@ let E10SUINotification = {
   checkStatus: function() {
     let skipE10sChecks = false;
     try {
+      // This order matters, because
+      // browser.tabs.remote.autostart.disabled-because-using-a11y is not
+      // always defined and will throw when not present.
+      // privacy.trackingprotection.enabled is always defined.
       skipE10sChecks = (UpdateChannel.get() != "nightly") ||
+                       Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
                        Services.prefs.getBoolPref("browser.tabs.remote.autostart.disabled-because-using-a11y");
     } catch(e) {}
 

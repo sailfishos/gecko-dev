@@ -1769,11 +1769,7 @@ GetFontGroupForFrame(nsIFrame* aFrame, float aFontSizeInflation,
 static already_AddRefed<gfxContext>
 CreateReferenceThebesContext(nsTextFrame* aTextFrame)
 {
-  nsRefPtr<nsRenderingContext> tmp =
-    aTextFrame->PresContext()->PresShell()->CreateReferenceRenderingContext();
-
-  nsRefPtr<gfxContext> ctx = tmp->ThebesContext();
-  return ctx.forget();
+  return aTextFrame->PresContext()->PresShell()->CreateReferenceRenderingContext();
 }
 
 /**
@@ -4246,9 +4242,10 @@ nsTextFrame::GetCursor(const nsPoint& aPoint,
         }
       }
     }
+    return NS_OK;
+  } else {
+    return nsFrame::GetCursor(aPoint, aCursor);
   }
-
-  return NS_OK;
 }
 
 nsIFrame*

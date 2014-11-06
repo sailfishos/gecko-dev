@@ -57,7 +57,7 @@
   );
 
   var dispatcher = new loop.Dispatcher();
-  var roomListStore = new loop.store.RoomListStore({
+  var roomStore = new loop.store.RoomStore({
     dispatcher: dispatcher,
     mozLoop: navigator.mozLoop
   });
@@ -99,6 +99,41 @@
     message: "Could Not Authenticate",
     details: "Did you change your password?",
     detailsButtonLabel: "Retry",
+  });
+
+  var SVGIcon = React.createClass({
+    render: function() {
+      return (
+        <span className="svg-icon" style={{
+          "background-image": "url(/content/shared/img/icons-16x16.svg#" + this.props.shapeId + ")"
+        }} />
+      );
+    }
+  });
+
+  var SVGIcons = React.createClass({
+    shapes: [
+      "audio", "audio-hover", "audio-active", "block",
+      "block-red", "block-hover", "block-active", "contacts", "contacts-hover",
+      "contacts-active", "copy", "checkmark", "google", "google-hover",
+      "google-active", "history", "history-hover", "history-active",
+      "precall", "precall-hover", "precall-active", "settings", "settings-hover",
+      "settings-active", "tag", "tag-hover", "tag-active", "trash", "unblock",
+      "unblock-hover", "unblock-active", "video", "video-hover", "video-active"
+    ],
+
+    render: function() {
+      return (
+        <div className="svg-icon-list">{
+          this.shapes.map(function(shapeId, i) {
+            return <div key={i} className="svg-icon-entry">
+              <p><SVGIcon shapeId={shapeId} /></p>
+              <p>{shapeId}</p>
+            </div>;
+          }, this)
+        }</div>
+      );
+    }
   });
 
   var Example = React.createClass({
@@ -168,42 +203,42 @@
               <PanelView client={mockClient} notifications={notifications}
                          callUrl="http://invalid.example.url/"
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Call URL retrieved - authenticated" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={notifications}
                          callUrl="http://invalid.example.url/"
                          userProfile={{email: "test@example.com"}}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Pending call url retrieval" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={notifications}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Pending call url retrieval - authenticated" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={notifications}
                          userProfile={{email: "test@example.com"}}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Error Notification" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={errNotifications}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Error Notification - authenticated" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={errNotifications}
                          userProfile={{email: "test@example.com"}}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore} />
+                         roomStore={roomStore} />
             </Example>
             <Example summary="Room list tab" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={notifications}
                          userProfile={{email: "test@example.com"}}
                          dispatcher={dispatcher}
-                         roomListStore={roomListStore}
+                         roomStore={roomStore}
                          selectedTab="rooms" />
             </Example>
           </Section>
@@ -489,6 +524,12 @@
               <div className="standalone">
                 <UnsupportedDeviceView />
               </div>
+            </Example>
+          </Section>
+
+          <Section name="SVG icons preview">
+            <Example summary="16x16">
+              <SVGIcons />
             </Example>
           </Section>
 

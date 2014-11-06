@@ -455,6 +455,21 @@ BaselineInspector::getTemplateObjectForNative(jsbytecode *pc, Native native)
     return nullptr;
 }
 
+JSObject *
+BaselineInspector::getTemplateObjectForClassHook(jsbytecode *pc, const Class *clasp)
+{
+    if (!hasBaselineScript())
+        return nullptr;
+
+    const ICEntry &entry = icEntryFromPC(pc);
+    for (ICStub *stub = entry.firstStub(); stub; stub = stub->next()) {
+        if (stub->isCall_ClassHook() && stub->toCall_ClassHook()->clasp() == clasp)
+            return stub->toCall_ClassHook()->templateObject();
+    }
+
+    return nullptr;
+}
+
 DeclEnvObject *
 BaselineInspector::templateDeclEnvObject()
 {
@@ -479,8 +494,20 @@ BaselineInspector::templateCallObject()
     return &res->as<CallObject>();
 }
 
+static Shape *GlobalShapeForGetPropFunction(ICStub *stub)
+{
+    if (stub->isGetProp_CallNativePrototype()) {
+        ICGetProp_CallNativePrototype *nstub =
+            stub->toGetProp_CallNativePrototype();
+        if (nstub->receiverShape()->getObjectClass()->flags & JSCLASS_IS_GLOBAL)
+            return nstub->receiverShape();
+    }
+    return nullptr;
+}
+
 JSObject *
-BaselineInspector::commonGetPropFunction(jsbytecode *pc, Shape **lastProperty, JSFunction **commonGetter)
+BaselineInspector::commonGetPropFunction(jsbytecode *pc, Shape **lastProperty, JSFunction **commonGetter,
+                                         Shape **globalShape)
 {
     if (!hasBaselineScript())
         return nullptr;
@@ -489,6 +516,7 @@ BaselineInspector::commonGetPropFunction(jsbytecode *pc, Shape **lastProperty, J
     JSObject* holder = nullptr;
     Shape *holderShape = nullptr;
     JSFunction *getter = nullptr;
+    Shape *global = nullptr;
     for (ICStub *stub = entry.firstStub(); stub; stub = stub->next()) {
         if (stub->isGetProp_CallScripted()  ||
             stub->isGetProp_CallNative()    ||
@@ -499,7 +527,10 @@ BaselineInspector::commonGetPropFunction(jsbytecode *pc, Shape **lastProperty, J
                 holder = nstub->holder();
                 holderShape = nstub->holderShape();
                 getter = nstub->getter();
-            } else if (nstub->holderShape() != holderShape) {
+                global = GlobalShapeForGetPropFunction(nstub);
+            } else if (nstub->holderShape() != holderShape ||
+                       GlobalShapeForGetPropFunction(nstub) != global)
+            {
                 return nullptr;
             } else {
                 MOZ_ASSERT(getter == nstub->getter());
@@ -513,6 +544,7 @@ BaselineInspector::commonGetPropFunction(jsbytecode *pc, Shape **lastProperty, J
     }
     *lastProperty = holderShape;
     *commonGetter = getter;
+    *globalShape = global;
     return holder;
 }
 

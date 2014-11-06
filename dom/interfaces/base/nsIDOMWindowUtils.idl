@@ -51,7 +51,7 @@ interface nsITranslationNodeList;
 interface nsIJSRAIIHelper;
 interface nsIContentPermissionRequest;
 
-[scriptable, uuid(ed12c067-506b-4b10-9853-d4bba5c1bb6c)]
+[scriptable, uuid(e293355b-ae7f-4ef7-9237-452bcf3e9e6b)]
 interface nsIDOMWindowUtils : nsISupports {
 
   /**
@@ -102,6 +102,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * or is 0, it is taken to be 1.
    */
   unsigned long redraw([optional] in unsigned long aCount);
+
+  /**
+   * Force a synchronous layer transaction for this window if necessary.
+   */
+  void updateLayerTree();
 
   /**
    * Set the CSS viewport to be |widthPx| x |heightPx| in units of CSS
@@ -261,7 +266,7 @@ interface nsIDOMWindowUtils : nsISupports {
 
   /** Synthesize a mouse event. The event types supported are:
    *    mousedown, mouseup, mousemove, mouseover, mouseout, contextmenu,
-   *    MozMouseHitTest
+   *    MozMouseHittest
    *
    * Events are sent in coordinates offset by aX and aY from the window.
    *
@@ -1599,6 +1604,11 @@ interface nsIDOMWindowUtils : nsISupports {
   void loadSheet(in nsIURI sheetURI, in unsigned long type);
 
   /**
+   * Same as the above method but allows passing the URI as a string.
+   */
+  void loadSheetUsingURIString(in ACString sheetURI, in unsigned long type);
+
+  /**
    * Adds a style sheet to the list of additional style sheets of the document.
    *
    * Style sheets can be preloaded with nsIStyleSheetService.preloadSheet.
@@ -1612,6 +1622,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * style sheets of the document.  The removal takes effect immediately.
    */
   void removeSheet(in nsIURI sheetURI, in unsigned long type);
+
+  /**
+   * Same as the above method but allows passing the URI as a string.
+   */
+  void removeSheetUsingURIString(in ACString sheetURI, in unsigned long type);
 
   /**
    * Returns true if a user input is being handled.

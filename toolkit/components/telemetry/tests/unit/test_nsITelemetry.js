@@ -268,10 +268,10 @@ function test_addons() {
   var name1 = "testing-histogram1";
   var register = Telemetry.registerAddonHistogram;
   expect_success(function ()
-                 register(addon_id, name1, 1, 5, 6, Telemetry.HISTOGRAM_LINEAR));
+                 register(addon_id, name1, Telemetry.HISTOGRAM_LINEAR, 1, 5, 6));
   // Can't register the same histogram multiple times.
   expect_fail(function ()
-	      register(addon_id, name1, 1, 5, 6, Telemetry.HISTOGRAM_LINEAR));
+	      register(addon_id, name1, Telemetry.HISTOGRAM_LINEAR, 1, 5, 6));
   // Make sure we can't get at it with another name.
   expect_fail(function () Telemetry.getAddonHistogram(fake_addon_id, name1));
 
@@ -291,7 +291,7 @@ function test_addons() {
 
   var name2 = "testing-histogram2";
   expect_success(function ()
-                 register(addon_id, name2, 2, 4, 4, Telemetry.HISTOGRAM_LINEAR));
+                 register(addon_id, name2, Telemetry.HISTOGRAM_LINEAR, 2, 4, 4));
 
   var h2 = Telemetry.getAddonHistogram(addon_id, name2);
   h2.add(2);
@@ -307,15 +307,15 @@ function test_addons() {
   // identical names.
   var extra_addon = "testing-extra-addon";
   expect_success(function ()
-		 register(extra_addon, name1, 0, 1, 2, Telemetry.HISTOGRAM_BOOLEAN));
+		 register(extra_addon, name1, Telemetry.HISTOGRAM_BOOLEAN));
 
   // Check that we can register flag histograms.
   var flag_addon = "testing-flag-addon";
   var flag_histogram = "flag-histogram";
-  expect_success(function() 
-                 register(flag_addon, flag_histogram, 0, 1, 2, Telemetry.HISTOGRAM_FLAG))
   expect_success(function()
-		 register(flag_addon, name2, 2, 4, 4, Telemetry.HISTOGRAM_LINEAR));
+                 register(flag_addon, flag_histogram, Telemetry.HISTOGRAM_FLAG))
+  expect_success(function()
+		 register(flag_addon, name2, Telemetry.HISTOGRAM_LINEAR, 2, 4, 4));
 
   // Check that we reflect registered addons and histograms.
   snapshots = Telemetry.addonHistogramSnapshots;
@@ -395,11 +395,11 @@ function test_keyed_boolean_histogram()
     "min": 1,
     "max": 2,
     "histogram_type": 2,
-    "sum": 0,
-    "sum_squares_lo": 0,
+    "sum": 1,
+    "sum_squares_lo": 1,
     "sum_squares_hi": 0,
     "ranges": [0, 1, 2],
-    "counts": [1, 0, 0]
+    "counts": [0, 1, 0]
   };
   let testHistograms = [JSON.parse(JSON.stringify(histogramBase)) for (i of numberRange(0, 3))];
   let testKeys = [];
@@ -424,6 +424,9 @@ function test_keyed_boolean_histogram()
   h.add(key, false);
   testKeys.push(key);
   testSnapShot[key] = testHistograms[2];
+  testSnapShot[key].sum = 0;
+  testSnapShot[key].sum_squares_lo = 0;
+  testSnapShot[key].counts = [1, 0, 0];
   Assert.deepEqual(h.keys().sort(), testKeys);
   Assert.deepEqual(h.snapshot(), testSnapShot);
 
@@ -495,6 +498,36 @@ function test_keyed_count_histogram()
   Assert.deepEqual(h.snapshot(), {});
 }
 
+function test_keyed_flag_histogram()
+{
+  const KEYED_ID = "test::keyed::flag";
+  let h = Telemetry.newKeyedHistogram(KEYED_ID, "never", Telemetry.HISTOGRAM_FLAG);
+
+  const KEY = "default";
+  h.add(KEY, true);
+
+  let testSnapshot = {};
+  testSnapshot[KEY] = {
+    "min": 1,
+    "max": 2,
+    "histogram_type": 3,
+    "sum": 1,
+    "sum_squares_lo": 1,
+    "sum_squares_hi": 0,
+    "ranges": [0, 1, 2],
+    "counts": [0, 1, 0]
+  };
+
+  Assert.deepEqual(h.keys().sort(), [KEY]);
+  Assert.deepEqual(h.snapshot(), testSnapshot);
+
+  let allSnapshots = Telemetry.keyedHistogramSnapshots;
+  Assert.deepEqual(allSnapshots[KEYED_ID], testSnapshot);
+
+  h.clear();
+  Assert.deepEqual(h.keys(), []);
+  Assert.deepEqual(h.snapshot(), {});
+}
 
 function test_keyed_histogram() {
   // Check that invalid names get rejected.
@@ -521,6 +554,7 @@ function test_keyed_histogram() {
 
   test_keyed_boolean_histogram();
   test_keyed_count_histogram();
+  test_keyed_flag_histogram();
 }
 
 function generateUUID() {

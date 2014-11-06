@@ -33,10 +33,6 @@ loop.shared.mixins = (function() {
    * @type {Object}
    */
   var UrlHashChangeMixin = {
-    propTypes: {
-      onUrlHashChange: React.PropTypes.func.isRequired
-    },
-
     componentDidMount: function() {
       rootObject.addEventListener("hashchange", this.onUrlHashChange, false);
     },
@@ -54,6 +50,17 @@ loop.shared.mixins = (function() {
   var DocumentLocationMixin = {
     locationReload: function() {
       rootObject.location.reload();
+    }
+  };
+
+  /**
+   * Document title mixin.
+   *
+   * @type {Object}
+   */
+  var DocumentTitleMixin = {
+    setTitle: function(newTitle) {
+      rootObject.document.title = newTitle;
     }
   };
 
@@ -184,6 +191,7 @@ loop.shared.mixins = (function() {
     DropdownMenuMixin: DropdownMenuMixin,
     DocumentVisibilityMixin: DocumentVisibilityMixin,
     DocumentLocationMixin: DocumentLocationMixin,
+    DocumentTitleMixin: DocumentTitleMixin,
     UrlHashChangeMixin: UrlHashChangeMixin
   };
 })();

@@ -176,6 +176,13 @@ LIRGenerator::visitNewObject(MNewObject *ins)
 }
 
 bool
+LIRGenerator::visitNewTypedObject(MNewTypedObject *ins)
+{
+    LNewTypedObject *lir = new(alloc()) LNewTypedObject(temp());
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitNewDeclEnvObject(MNewDeclEnvObject *ins)
 {
     LNewDeclEnvObject *lir = new(alloc()) LNewDeclEnvObject(temp());
@@ -853,6 +860,16 @@ LIRGenerator::visitTest(MTest *test)
             ReorderCommutative(&lhs, &rhs, test);
             return lowerForBitAndAndBranch(new(alloc()) LBitAndAndBranch(ifTrue, ifFalse), test, lhs, rhs);
         }
+    }
+
+    if (opd->isIsObject() && opd->isEmittedAtUses()) {
+        MDefinition *input = opd->toIsObject()->input();
+        MOZ_ASSERT(input->type() == MIRType_Value);
+
+        LIsObjectAndBranch *lir = new(alloc()) LIsObjectAndBranch(ifTrue, ifFalse);
+        if (!useBoxAtStart(lir, LIsObjectAndBranch::Input, input))
+            return false;
+        return add(lir, test);
     }
 
     if (opd->isIsNoIter()) {
@@ -2021,6 +2038,17 @@ LIRGenerator::visitToString(MToString *ins)
     }
 }
 
+bool
+LIRGenerator::visitToObjectOrNull(MToObjectOrNull *ins)
+{
+    MOZ_ASSERT(ins->input()->type() == MIRType_Value);
+
+    LValueToObjectOrNull *lir = new(alloc()) LValueToObjectOrNull();
+    if (!useBox(lir, LValueToString::Input, ins->input()))
+        return false;
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
 static bool
 MustCloneRegExpForCall(MCall *call, uint32_t useIndex)
 {
@@ -2745,6 +2773,38 @@ LIRGenerator::visitStoreElementHole(MStoreElementHole *ins)
     }
 
     return add(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
+LIRGenerator::visitStoreUnboxedObjectOrNull(MStoreUnboxedObjectOrNull *ins)
+{
+    MOZ_ASSERT(ins->elements()->type() == MIRType_Elements);
+    MOZ_ASSERT(ins->index()->type() == MIRType_Int32);
+    MOZ_ASSERT(ins->value()->type() == MIRType_Object ||
+               ins->value()->type() == MIRType_Null ||
+               ins->value()->type() == MIRType_ObjectOrNull);
+
+    const LUse elements = useRegister(ins->elements());
+    const LAllocation index = useRegisterOrNonDoubleConstant(ins->index());
+    const LAllocation value = useRegisterOrNonDoubleConstant(ins->value());
+
+    LInstruction *lir = new(alloc()) LStoreUnboxedPointer(elements, index, value);
+    return add(lir, ins);
+}
+
+bool
+LIRGenerator::visitStoreUnboxedString(MStoreUnboxedString *ins)
+{
+    MOZ_ASSERT(ins->elements()->type() == MIRType_Elements);
+    MOZ_ASSERT(ins->index()->type() == MIRType_Int32);
+    MOZ_ASSERT(ins->value()->type() == MIRType_String);
+
+    const LUse elements = useRegister(ins->elements());
+    const LAllocation index = useRegisterOrConstant(ins->index());
+    const LAllocation value = useRegisterOrNonDoubleConstant(ins->value());
+
+    LInstruction *lir = new(alloc()) LStoreUnboxedPointer(elements, index, value);
+    return add(lir, ins);
 }
 
 bool
@@ -3555,9 +3615,33 @@ LIRGenerator::visitIsCallable(MIsCallable *ins)
     return define(new(alloc()) LIsCallable(useRegister(ins->object())), ins);
 }
 
+static bool
+CanEmitIsObjectAtUses(MInstruction *ins)
+{
+    if (!ins->canEmitAtUses())
+        return false;
+
+    MUseIterator iter(ins->usesBegin());
+    if (iter == ins->usesEnd())
+        return false;
+
+    MNode *node = iter->consumer();
+    if (!node->isDefinition())
+        return false;
+
+    if (!node->toDefinition()->isTest())
+        return false;
+
+    iter++;
+    return iter == ins->usesEnd();
+}
+
 bool
 LIRGenerator::visitIsObject(MIsObject *ins)
 {
+    if (CanEmitIsObjectAtUses(ins))
+        return emitAtUses(ins);
+
     MDefinition *opd = ins->input();
     MOZ_ASSERT(opd->type() == MIRType_Value);
     LIsObject *lir = new(alloc()) LIsObject();

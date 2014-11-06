@@ -342,6 +342,7 @@ void MediaDecoderStateMachine::SendStreamAudio(AudioData* aAudio,
   VERBOSE_LOG("writing %d frames of data to MediaStream for AudioData at %lld",
               aAudio->mFrames - int32_t(offset), aAudio->mTime);
   aStream->mAudioFramesWritten += aAudio->mFrames - int32_t(offset);
+  aOutput->ApplyVolume(mVolume);
 }
 
 static void WriteVideoToMediaStream(layers::Image* aImage,
@@ -690,45 +691,6 @@ MediaDecoderStateMachine::IsVideoSeekComplete()
 }
 
 void
-MediaDecoderStateMachine::OnAudioEOS()
-{
-  ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-  SAMPLE_LOG("OnAudioEOS");
-  mAudioRequestPending = false;
-  AudioQueue().Finish();
-  switch (mState) {
-    case DECODER_STATE_DECODING_METADATA: {
-      MaybeFinishDecodeMetadata();
-      return;
-    }
-    case DECODER_STATE_BUFFERING:
-    case DECODER_STATE_DECODING: {
-      CheckIfDecodeComplete();
-      SendStreamData();
-      // The ready state can change when we've decoded data, so update the
-      // ready state, so that DOM events can fire.
-      UpdateReadyState();
-      mDecoder->GetReentrantMonitor().NotifyAll();
-      return;
-    }
-
-    case DECODER_STATE_SEEKING: {
-      if (!mCurrentSeekTarget.IsValid()) {
-        // We've received an EOS from a previous decode. Discard it.
-        return;
-      }
-      mDropAudioUntilNextDiscontinuity = false;
-      CheckIfSeekComplete();
-      return;
-    }
-    default: {
-      // Ignore other cases.
-      return;
-    }
-  }
-}
-
-void
 MediaDecoderStateMachine::OnAudioDecoded(AudioData* aAudioSample)
 {
   ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
@@ -836,7 +798,84 @@ MediaDecoderStateMachine::Push(VideoData* aSample)
 }
 
 void
-MediaDecoderStateMachine::OnDecodeError()
+MediaDecoderStateMachine::OnNotDecoded(MediaData::Type aType,
+                                       RequestSampleCallback::NotDecodedReason aReason)
+{
+  ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
+  SAMPLE_LOG("OnNotDecoded (aType=%u, aReason=%u)", aType, aReason);
+  bool isAudio = aType == MediaData::AUDIO_DATA;
+  MOZ_ASSERT_IF(!isAudio, aType == MediaData::VIDEO_DATA);
+
+  // This callback means that the pending request is dead.
+  if (isAudio) {
+    mAudioRequestPending = false;
+  } else {
+    mVideoRequestPending = false;
+  }
+
+  // If this is a decode error, delegate to the generic error path.
+  if (aReason == RequestSampleCallback::DECODE_ERROR) {
+    DecodeError();
+    return;
+  }
+
+  // If the decoder is waiting for data, there's nothing more to do after
+  // clearing the pending request.
+  if (aReason == RequestSampleCallback::WAITING_FOR_DATA) {
+    return;
+  }
+
+  // This is an EOS. Finish off the queue, and then handle things based on our
+  // state.
+  MOZ_ASSERT(aReason == RequestSampleCallback::END_OF_STREAM);
+  if (!isAudio && mState == DECODER_STATE_SEEKING &&
+      mCurrentSeekTarget.IsValid() && mFirstVideoFrameAfterSeek) {
+    // Null sample. Hit end of stream. If we have decoded a frame,
+    // insert it into the queue so that we have something to display.
+    // We make sure to do this before invoking VideoQueue().Finish()
+    // below.
+    VideoQueue().Push(mFirstVideoFrameAfterSeek.forget());
+  }
+  isAudio ? AudioQueue().Finish() : VideoQueue().Finish();
+  switch (mState) {
+    case DECODER_STATE_DECODING_METADATA: {
+      MaybeFinishDecodeMetadata();
+      return;
+    }
+
+    case DECODER_STATE_BUFFERING:
+    case DECODER_STATE_DECODING: {
+      CheckIfDecodeComplete();
+      SendStreamData();
+      // The ready state can change when we've decoded data, so update the
+      // ready state, so that DOM events can fire.
+      UpdateReadyState();
+      mDecoder->GetReentrantMonitor().NotifyAll();
+      return;
+    }
+    case DECODER_STATE_SEEKING: {
+      if (!mCurrentSeekTarget.IsValid()) {
+        // We've received a sample from a previous decode. Discard it.
+        return;
+      }
+
+      if (isAudio) {
+        mDropAudioUntilNextDiscontinuity = false;
+      } else {
+        mDropVideoUntilNextDiscontinuity = false;
+      }
+
+      CheckIfSeekComplete();
+      return;
+    }
+    default: {
+      return;
+    }
+  }
+}
+
+void
+MediaDecoderStateMachine::AcquireMonitorAndInvokeDecodeError()
 {
   ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
   DecodeError();
@@ -852,52 +891,6 @@ MediaDecoderStateMachine::MaybeFinishDecodeMetadata()
   }
   if (NS_FAILED(FinishDecodeMetadata())) {
     DecodeError();
-  }
-}
-
-void
-MediaDecoderStateMachine::OnVideoEOS()
-{
-  ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-  SAMPLE_LOG("OnVideoEOS");
-  mVideoRequestPending = false;
-  switch (mState) {
-    case DECODER_STATE_DECODING_METADATA: {
-      VideoQueue().Finish();
-      MaybeFinishDecodeMetadata();
-      return;
-    }
-
-    case DECODER_STATE_BUFFERING:
-    case DECODER_STATE_DECODING: {
-      VideoQueue().Finish();
-      CheckIfDecodeComplete();
-      SendStreamData();
-      // The ready state can change when we've decoded data, so update the
-      // ready state, so that DOM events can fire.
-      UpdateReadyState();
-      mDecoder->GetReentrantMonitor().NotifyAll();
-      return;
-    }
-    case DECODER_STATE_SEEKING: {
-      if (!mCurrentSeekTarget.IsValid()) {
-        // We've received a sample from a previous decode. Discard it.
-        return;
-      }
-      // Null sample. Hit end of stream. If we have decoded a frame,
-      // insert it into the queue so that we have something to display.
-      if (mFirstVideoFrameAfterSeek) {
-        VideoQueue().Push(mFirstVideoFrameAfterSeek.forget());
-      }
-      VideoQueue().Finish();
-      mDropVideoUntilNextDiscontinuity = false;
-      CheckIfSeekComplete();
-      return;
-    }
-    default: {
-      // Ignore other cases.
-      return;
-    }
   }
 }
 
@@ -1059,10 +1052,9 @@ MediaDecoderStateMachine::CheckIfDecodeComplete()
               ((mState == DECODER_STATE_COMPLETED) ? "" : "NOT "));
 }
 
-bool MediaDecoderStateMachine::IsPlaying()
+bool MediaDecoderStateMachine::IsPlaying() const
 {
   AssertCurrentThreadInMonitor();
-
   return !mPlayStartTime.IsNull();
 }
 
@@ -1131,7 +1123,7 @@ void MediaDecoderStateMachine::SetSyncPointForMediaStream()
   mSyncPointInDecodedStream = mStartTime + mPlayDuration;
 }
 
-int64_t MediaDecoderStateMachine::GetCurrentTimeViaMediaStreamSync()
+int64_t MediaDecoderStateMachine::GetCurrentTimeViaMediaStreamSync() const
 {
   AssertCurrentThreadInMonitor();
   NS_ASSERTION(mSyncPointInDecodedStream >= 0, "Should have set up sync point");
@@ -1814,6 +1806,9 @@ MediaDecoderStateMachine::StartAudioThread()
 
   mStopAudioThread = false;
   if (HasAudio() && !mAudioSink) {
+    // The audio end time should always be at least the audio start time.
+    mAudioEndTime = mAudioStartTime;
+    MOZ_ASSERT(mAudioStartTime == GetMediaTime());
     mAudioCompleted = false;
     mAudioSink = new AudioSink(this, mAudioStartTime,
                                mInfo.mAudio, mDecoder->GetAudioChannel());
@@ -2564,24 +2559,28 @@ void MediaDecoderStateMachine::RenderVideoFrame(VideoData* aData,
   }
 }
 
+void MediaDecoderStateMachine::ResyncAudioClock()
+{
+  AssertCurrentThreadInMonitor();
+  if (IsPlaying()) {
+    SetPlayStartTime(TimeStamp::Now());
+    mPlayDuration = GetAudioClock() - mStartTime;
+  }
+}
+
 int64_t
-MediaDecoderStateMachine::GetAudioClock()
+MediaDecoderStateMachine::GetAudioClock() const
 {
   // We must hold the decoder monitor while using the audio stream off the
   // audio sink to ensure that it doesn't get destroyed on the audio sink
   // while we're using it.
   AssertCurrentThreadInMonitor();
-  if (!HasAudio() || mAudioCaptured)
-    return -1;
-  if (!mAudioSink) {
-    // Audio sink hasn't played any data yet.
-    return mAudioStartTime;
-  }
-  int64_t t = mAudioSink->GetPosition();
-  return (t == -1) ? -1 : t + mAudioStartTime;
+  MOZ_ASSERT(HasAudio() && !mAudioCaptured);
+  return mAudioStartTime +
+         (mAudioSink ? mAudioSink->GetPosition() : 0);
 }
 
-int64_t MediaDecoderStateMachine::GetVideoStreamPosition()
+int64_t MediaDecoderStateMachine::GetVideoStreamPosition() const
 {
   AssertCurrentThreadInMonitor();
 
@@ -2596,7 +2595,7 @@ int64_t MediaDecoderStateMachine::GetVideoStreamPosition()
   return mStartTime + mPlayDuration + delta;
 }
 
-int64_t MediaDecoderStateMachine::GetClock()
+int64_t MediaDecoderStateMachine::GetClock() const
 {
   AssertCurrentThreadInMonitor();
 
@@ -2605,27 +2604,23 @@ int64_t MediaDecoderStateMachine::GetClock()
   // audio, or don't have audio, use the system clock. If our output is being
   // fed to a MediaStream, use that stream as the source of the clock.
   int64_t clock_time = -1;
-  DecodedStreamData* stream = mDecoder->GetDecodedStream();
   if (!IsPlaying()) {
     clock_time = mPlayDuration + mStartTime;
-  } else if (stream) {
+  } else if (mDecoder->GetDecodedStream()) {
     clock_time = GetCurrentTimeViaMediaStreamSync();
   } else {
-    int64_t audio_time = GetAudioClock();
-    if (HasAudio() && !mAudioCompleted && audio_time != -1) {
-      clock_time = audio_time;
-      // Resync against the audio clock, while we're trusting the
-      // audio clock. This ensures no "drift", particularly on Linux.
-      mPlayDuration = clock_time - mStartTime;
-      SetPlayStartTime(TimeStamp::Now());
+    if (HasAudio() && !mAudioCompleted && !mAudioCaptured) {
+      clock_time = GetAudioClock();
     } else {
       // Audio is disabled on this system. Sync to the system clock.
       clock_time = GetVideoStreamPosition();
-      // Ensure the clock can never go backwards.
-      NS_ASSERTION(mCurrentFrameTime <= clock_time || mPlaybackRate <= 0,
-          "Clock should go forwards if the playback rate is > 0.");
     }
+    // FIXME: This assertion should also apply the case of decoding to a stream.
+    // Ensure the clock can never go backwards.
+    NS_ASSERTION(GetMediaTime() <= clock_time || mPlaybackRate <= 0,
+      "Clock should go forwards if the playback rate is > 0.");
   }
+
   return clock_time;
 }
 
@@ -2646,7 +2641,7 @@ void MediaDecoderStateMachine::AdvanceFrame()
     return;
   }
 
-  int64_t clock_time = GetClock();
+  const int64_t clock_time = GetClock();
   TimeStamp nowTime = TimeStamp::Now();
   // Skip frames up to the frame at the playback position, and figure out
   // the time remaining until it's time to display the next frame.
@@ -2745,13 +2740,11 @@ void MediaDecoderStateMachine::AdvanceFrame()
   // advance the clock to after the media end time.
   if (mVideoFrameEndTime != -1 || mAudioEndTime != -1) {
     // These will be non -1 if we've displayed a video frame, or played an audio frame.
-    clock_time = std::min(clock_time, std::max(mVideoFrameEndTime, mAudioEndTime));
-    if (clock_time > GetMediaTime()) {
-      // Only update the playback position if the clock time is greater
-      // than the previous playback position. The audio clock can
-      // sometimes report a time less than its previously reported in
-      // some situations, and we need to gracefully handle that.
-      UpdatePlaybackPosition(clock_time);
+    int64_t t = std::min(clock_time, std::max(mVideoFrameEndTime, mAudioEndTime));
+    // FIXME: Bug 1091422 - chained ogg files hit this assertion.
+    //MOZ_ASSERT(t >= GetMediaTime());
+    if (t > GetMediaTime()) {
+      UpdatePlaybackPosition(t);
     }
   }
 
@@ -3141,6 +3134,7 @@ void MediaDecoderStateMachine::OnAudioSinkComplete()
   if (mAudioCaptured) {
     return;
   }
+  ResyncAudioClock();
   mAudioCompleted = true;
   UpdateReadyState();
   // Kick the decode thread; it may be sleeping waiting for this to finish.
@@ -3155,6 +3149,7 @@ void MediaDecoderStateMachine::OnAudioSinkError()
     return;
   }
 
+  ResyncAudioClock();
   mAudioCompleted = true;
 
   // Make the best effort to continue playback when there is video.
@@ -3165,10 +3160,10 @@ void MediaDecoderStateMachine::OnAudioSinkError()
   // Otherwise notify media decoder/element about this error for it makes
   // no sense to play an audio-only file without sound output.
   RefPtr<nsIRunnable> task(
-    NS_NewRunnableMethod(this, &MediaDecoderStateMachine::OnDecodeError));
+    NS_NewRunnableMethod(this, &MediaDecoderStateMachine::AcquireMonitorAndInvokeDecodeError));
   nsresult rv = mDecodeTaskQueue->Dispatch(task);
   if (NS_FAILED(rv)) {
-    DECODER_WARN("Failed to dispatch OnDecodeError");
+    DECODER_WARN("Failed to dispatch AcquireMonitorAndInvokeDecodeError");
   }
 }
 

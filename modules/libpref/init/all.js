@@ -391,10 +391,10 @@ pref("media.getusermedia.screensharing.enabled", true);
 #endif
 
 #ifdef RELEASE_BUILD
-pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,example.com");
+pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,room.co,beta.talky.io,talky.io,example.com");
 #else
  // temporary value, not intended for release - bug 1049087
-pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,example.com");
+pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,room.co,beta.talky.io,talky.io,example.com");
 #endif
 // OS/X 10.6 and XP have screen/window sharing off by default due to various issues - Caveat emptor
 pref("media.getusermedia.screensharing.allow_on_old_platforms", false);
@@ -736,12 +736,20 @@ pref("toolkit.asyncshutdown.timeout.crash", 60000);
 pref("devtools.errorconsole.deprecation_warnings", true);
 
 // Disable debugging chrome
+#ifdef MOZ_DEV_EDITION
+pref("devtools.chrome.enabled", true);
+#else
 pref("devtools.chrome.enabled", false);
+#endif
 
 // Disable remote debugging protocol logging
 pref("devtools.debugger.log", false);
 // Disable remote debugging connections
+#ifdef MOZ_DEV_EDITION
+pref("devtools.debugger.remote-enabled", true);
+#else
 pref("devtools.debugger.remote-enabled", false);
+#endif
 pref("devtools.debugger.remote-port", 6000);
 // Force debugger server binding on the loopback interface
 pref("devtools.debugger.force-local", true);
@@ -749,6 +757,8 @@ pref("devtools.debugger.force-local", true);
 pref("devtools.debugger.prompt-connection", true);
 // Block tools from seeing / interacting with certified apps
 pref("devtools.debugger.forbid-certified-apps", true);
+// List of permissions that a sideloaded app can't ask for
+pref("devtools.apps.forbidden-permissions", "embed-apps,engineering-mode,embed-widgets");
 
 // DevTools default color unit
 pref("devtools.defaultColorUnit", "hex");
@@ -2029,7 +2039,7 @@ pref("layout.css.masking.enabled", true);
 pref("layout.css.mix-blend-mode.enabled", true);
 
 // Is support for isolation enabled?
-pref("layout.css.isolation.enabled", false);
+pref("layout.css.isolation.enabled", true);
 
 // Is support for CSS Filters enabled?
 pref("layout.css.filters.enabled", true);
@@ -2041,7 +2051,7 @@ pref("layout.css.clip-path-shapes.enabled", false);
 pref("layout.css.sticky.enabled", true);
 
 // Is support for CSS "will-change" enabled?
-pref("layout.css.will-change.enabled", false);
+pref("layout.css.will-change.enabled", true);
 
 // Is support for DOMPoint enabled?
 pref("layout.css.DOMPoint.enabled", true);
@@ -4372,6 +4382,9 @@ pref("camera.control.low_memory_thresholdMB", 404);
 
 // UDPSocket API
 pref("dom.udpsocket.enabled", false);
+
+// Disable before keyboard events and after keyboard events by default.
+pref("dom.beforeAfterKeyboardEvent.enabled", false);
 
 // Use raw ICU instead of CoreServices API in Unicode collation
 #ifdef XP_MACOSX

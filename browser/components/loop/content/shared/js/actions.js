@@ -31,19 +31,47 @@ loop.shared.actions = (function() {
 
   return {
     /**
+     * Get the window data for the provided window id
+     */
+    GetWindowData: Action.define("getWindowData", {
+      windowId: String
+    }),
+
+    /**
+     * Extract the token information and type for the standalone window
+     */
+    ExtractTokenInfo: Action.define("extractTokenInfo", {
+      windowPath: String
+    }),
+
+    /**
+     * Used to pass round the window data so that stores can
+     * record the appropriate data.
+     */
+    SetupWindowData: Action.define("setupWindowData", {
+      windowId: String,
+      type: String
+
+      // Optional Items. There are other optional items typically sent
+      // around with this action. They are for the setup of calls and rooms and
+      // depend on the type. See LoopCalls and LoopRooms for the details of this
+      // data.
+    }),
+
+    /**
+     * Used to fetch the data from the server for a room or call for the
+     * token.
+     */
+    FetchServerData: Action.define("fetchServerData", {
+      token: String,
+      windowType: String
+    }),
+
+    /**
      * Fetch a new call url from the server, intended to be sent over email when
      * a contact can't be reached.
      */
     FetchEmailLink: Action.define("fetchEmailLink", {
-    }),
-
-    /**
-     * Used to trigger gathering of initial call data.
-     */
-    GatherCallData: Action.define("gatherCallData", {
-      // Specify the callId for an incoming call.
-      windowId: [String, null],
-      outgoing: Boolean
     }),
 
     /**
@@ -147,6 +175,22 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Deletes a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    DeleteRoom: Action.define("deleteRoom", {
+      roomToken: String
+    }),
+
+    /**
+     * Room deletion error.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    DeleteRoomError: Action.define("deleteRoomError", {
+      error: Error
+    }),
+
+    /**
      * Retrieves room list.
      * XXX: should move to some roomActions module - refs bug 1079284
      */
@@ -170,13 +214,19 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Primes localRoomStore with roomLocalId, which triggers the EmptyRoomView
-     * to do any necessary setup.
-     *
-     * XXX should move to localRoomActions module
+     * Opens a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
      */
-    SetupEmptyRoom: Action.define("setupEmptyRoom", {
-      localRoomId: String
+    OpenRoom: Action.define("openRoom", {
+      roomToken: String
+    }),
+
+    /**
+     * Copy a room url in the user's clipboard.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    CopyRoomUrl: Action.define("copyRoomUrl", {
+      roomUrl: String
     })
   };
 })();

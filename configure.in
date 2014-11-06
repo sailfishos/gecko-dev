@@ -1,4 +1,3 @@
-
 dnl -*- Mode: Autoconf; tab-width: 4; indent-tabs-mode: nil; -*-
 dnl vi: set tabstop=4 shiftwidth=4 expandtab syntax=m4:
 dnl This Source Code Form is subject to the terms of the Mozilla Public
@@ -72,7 +71,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.20
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.8.6
+SQLITE_VERSION=3.8.7.1
 
 MSMANIFEST_TOOL=
 
@@ -259,6 +258,9 @@ if test -n "$gonkdir" ; then
         elif test -d "$gonkdir/external/bluetooth/bluedroid"; then
             MOZ_B2G_BT=1
             MOZ_B2G_BT_BLUEDROID=1
+            if test -d "$gonkdir/system/bluetoothd"; then
+                MOZ_B2G_BT_DAEMON=1
+            fi
         fi
 
         MOZ_RTSP=1
@@ -276,6 +278,9 @@ if test -n "$gonkdir" ; then
         MOZ_B2G_CAMERA=1
         MOZ_B2G_BT=1
         MOZ_B2G_BT_BLUEDROID=1
+        if test -d "$gonkdir/system/bluetoothd"; then
+            MOZ_B2G_BT_DAEMON=1
+        fi
         MOZ_NFC=1
         MOZ_RTSP=1
         MOZ_OMX_DECODER=1
@@ -1317,6 +1322,15 @@ AC_SUBST(MOZ_NO_WLZDEFS)
 AC_SUBST(MOZ_CFLAGS_NSS)
 
 dnl ========================================================
+dnl = Enable treating compiler warnings as errors
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(warnings-as-errors,
+[  --enable-warnings-as-errors
+                          Enable treating warnings as errors],
+    MOZ_ENABLE_WARNINGS_AS_ERRORS=1,
+    MOZ_ENABLE_WARNINGS_AS_ERRORS=)
+
+dnl ========================================================
 dnl GNU specific defaults
 dnl ========================================================
 if test "$GNU_CC"; then
@@ -1463,21 +1477,23 @@ if test "$GNU_CC"; then
     _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Wsign-compare"
     _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Wtype-limits"
 
-    # Treat some warnings as errors:
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=char-subscripts"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=comment"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=endif-labels"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=enum-compare"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=ignored-qualifiers"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=int-to-pointer-cast"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=multichar"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=nonnull"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=pointer-arith"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=pointer-sign"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=return-type"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=sequence-point"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=trigraphs"
-    _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=unknown-pragmas"
+    # Treat some warnings as errors if --enable-warnings-as-errors:
+    if test "$MOZ_ENABLE_WARNINGS_AS_ERRORS"; then
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=char-subscripts"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=comment"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=endif-labels"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=enum-compare"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=ignored-qualifiers"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=int-to-pointer-cast"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=multichar"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=nonnull"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=pointer-arith"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=pointer-sign"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=return-type"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=sequence-point"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=trigraphs"
+        _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=unknown-pragmas"
+    fi
 
     # Turn off the following warnings that -Wall turns on:
     # -Wno-unused - lots of violations in third-party code
@@ -1537,10 +1553,12 @@ if test "$GNU_CXX"; then
     # -Wint-to-pointer-cast - catches cast to pointer from integer of different size
     # -Wmissing-braces - catches aggregate initializers missing nested braces
     # -Woverloaded-virtual - function declaration hides virtual function from base class
+    # -Wparentheses - catches `if (a=b)` and operator precedence bugs
     # -Wpointer-arith - catches pointer arithmetic using NULL or sizeof(void)
     # -Wreturn-type - catches missing returns, zero false positives
     # -Wsequence-point - catches undefined order behavior like `a = a++`
     # -Wsign-compare - catches comparison of signed and unsigned types
+    # -Wswitch - catches switches without all enum cases or default case
     # -Wtrigraphs - catches unlikely use of trigraphs
     # -Wtype-limits - catches overflow bugs, few false positives
     # -Wunused-label - catches unused goto labels
@@ -1552,16 +1570,20 @@ if test "$GNU_CXX"; then
     _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Wsign-compare"
     _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Wwrite-strings"
 
-    # Treat some warnings as errors:
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=endif-labels"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=int-to-pointer-cast"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=missing-braces"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=pointer-arith"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=return-type"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=sequence-point"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=unused-label"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=trigraphs"
-    _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=type-limits"
+    # Treat some warnings as errors if --enable-warnings-as-errors:
+    if test "$MOZ_ENABLE_WARNINGS_AS_ERRORS"; then
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=endif-labels"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=int-to-pointer-cast"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=missing-braces"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=parentheses"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=pointer-arith"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=return-type"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=sequence-point"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=switch"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=trigraphs"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=type-limits"
+        _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=unused-label"
+    fi
 
     # Turn off the following warnings that -Wall turns on:
     # -Wno-invalid-offsetof - we use offsetof on non-POD types frequently
@@ -3547,8 +3569,9 @@ dnl ========================================================
 dnl Multiprocess Firefox Nightly Testing UI
 dnl To be removed in Bug 1003313
 dnl ========================================================
-if test -z "$NIGHTLY_BUILD"; then
+if test -n "$NIGHTLY_BUILD"; then
     E10S_TESTING_ONLY=1
+    AC_DEFINE(E10S_TESTING_ONLY)
 fi
 
 AC_SUBST(E10S_TESTING_ONLY)
@@ -3935,7 +3958,6 @@ NSS_NO_LIBPKIX=
 MOZ_CONTENT_SANDBOX=
 MOZ_GMP_SANDBOX=
 MOZ_SANDBOX=1
-JSGC_GENERATIONAL=
 
 case "$target_os" in
     mingw*)
@@ -4071,6 +4093,30 @@ if test -z "$MOZ_BING_API_CLIENTID"; then
 fi
 AC_SUBST(MOZ_BING_API_CLIENTID)
 AC_SUBST(MOZ_BING_API_KEY)
+
+# Whether to include optional-but-large font files in the final APK.
+# We want this in mobile/android/confvars.sh, so it goes early.
+MOZ_ARG_DISABLE_BOOL(android-include-fonts,
+[  --disable-android-include-fonts
+                          Disable the inclusion of fonts into the final APK],
+    MOZ_ANDROID_EXCLUDE_FONTS=1)
+
+if test -n "$MOZ_ANDROID_EXCLUDE_FONTS"; then
+    AC_DEFINE(MOZ_ANDROID_EXCLUDE_FONTS)
+fi
+AC_SUBST(MOZ_ANDROID_EXCLUDE_FONTS)
+
+# Whether this APK is destined for resource constrained devices.
+# We want this in mobile/android/confvars.sh, so it goes early.
+MOZ_ARG_ENABLE_BOOL(android-resource-constrained,
+[  --enable-android-resource-constrained
+                          Exclude hi-res images and similar from the final APK],
+    MOZ_ANDROID_RESOURCE_CONSTRAINED=1)
+
+if test -n "$MOZ_ANDROID_RESOURCE_CONSTRAINED"; then
+    AC_DEFINE(MOZ_ANDROID_RESOURCE_CONSTRAINED)
+fi
+AC_SUBST(MOZ_ANDROID_RESOURCE_CONSTRAINED)
 
 # Allow the application to influence configure with a confvars.sh script.
 AC_MSG_CHECKING([if app-specific confvars.sh exists])
@@ -6950,13 +6996,8 @@ fi
 AC_SUBST(MOZ_STACKWALKING)
 
 dnl ========================================================
-dnl = Enable any treating of compile warnings as errors
+dnl = Disable treating compiler warnings as errors
 dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(warnings-as-errors,
-[  --enable-warnings-as-errors
-                          Enable treating of warnings as errors],
-    MOZ_ENABLE_WARNINGS_AS_ERRORS=1,
-    MOZ_ENABLE_WARNINGS_AS_ERRORS=)
 if test -z "$MOZ_ENABLE_WARNINGS_AS_ERRORS"; then
    WARNINGS_AS_ERRORS=''
 elif test "$GNU_CC"; then
@@ -7004,6 +7045,31 @@ if test "$_ENABLE_LOGREFCNT" = "1"; then
     AC_DEFINE(FORCE_BUILD_REFCNT_LOGGING)
 elif test -z "$_ENABLE_LOGREFCNT"; then
     AC_DEFINE(NO_BUILD_REFCNT_LOGGING)
+fi
+
+dnl ========================================================
+dnl moz_aproximate_location
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(approximate_location,
+[ --enable-approximate-location    Enable approximate location ],
+    MOZ_APPROX_LOCATION=1,
+    MOZ_APPROX_LOCATION= )
+if test -n "$MOZ_APPROX_LOCATION"; then
+    AC_DEFINE(MOZ_APPROX_LOCATION)
+fi
+
+dnl ========================================================
+dnl moz_gps_debug
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(gps_debug,
+[ --enable-gps-debug    Enable gps specific debug messages ],
+    MOZ_GPS_DEBUG=1,
+    MOZ_GPS_DEBUG= )
+if test -n "$MOZ_GPS_DEBUG"; then
+    AC_DEFINE(MOZ_GPS_DEBUG)
+fi
+if test -n "$MOZ_DEBUG"; then
+    AC_DEFINE(MOZ_GPS_DEBUG)
 fi
 
 dnl ========================================================
@@ -7279,61 +7345,6 @@ MOZ_ARG_ENABLE_BOOL(js-diagnostics,
     JS_CRASH_DIAGNOSTICS= )
 if test -n "$JS_CRASH_DIAGNOSTICS"; then
     AC_DEFINE(JS_CRASH_DIAGNOSTICS)
-fi
-
-dnl ========================================================
-dnl = Use incremental GC
-dnl ========================================================
-JSGC_INCREMENTAL=1
-MOZ_ARG_DISABLE_BOOL(gcincremental,
-[  --disable-gcincremental Disable incremental GC],
-    JSGC_INCREMENTAL= )
-if test -n "$JSGC_INCREMENTAL"; then
-    AC_DEFINE(JSGC_INCREMENTAL)
-fi
-
-dnl ========================================================
-dnl = Use generational GC
-dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(gcgenerational,
-[  --disable-gcgenerational Disable generational GC],
-    JSGC_GENERATIONAL= ,
-    JSGC_GENERATIONAL=1 )
-if test -n "$JSGC_GENERATIONAL"; then
-    AC_DEFINE(JSGC_GENERATIONAL)
-fi
-
-dnl ========================================================
-dnl = Use compacting GC
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(gccompacting,
-[  --enable-gccompacting   Compact the JS heap by moving GC things],
-    JS_GCCOMPACTING=1,
-    JS_GCCOMPACTING= )
-if test -n "$JS_GCCOMPACTING"; then
-    AC_DEFINE(JS_GCCOMPACTING)
-fi
-
-dnl ========================================================
-dnl = Use a smaller chunk size for GC chunks
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(small-chunk-size,
-[  --enable-small-chunk-size  Allocate memory for JS GC things in smaller chunks],
-    JS_GC_SMALL_CHUNK_SIZE=1,
-    JS_GC_SMALL_CHUNK_SIZE= )
-if test -n "$JS_GC_SMALL_CHUNK_SIZE"; then
-    AC_DEFINE(JS_GC_SMALL_CHUNK_SIZE)
-fi
-
-dnl ========================================================
-dnl Zealous JavaScript GC
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(gczeal,
-[  --enable-gczeal         Enable zealous JavaScript GCing],
-    JS_GC_ZEAL=1,
-    JS_GC_ZEAL= )
-if test -n "$JS_GC_ZEAL" -o -n "$MOZ_DEBUG"; then
-    AC_DEFINE(JS_GC_ZEAL)
 fi
 
 dnl ========================================================
@@ -9223,7 +9234,7 @@ if test -n "$_subconfigure_subdir"; then
   srcdir="$srcdir/.."
   _save_ac_configure_args="$ac_configure_args"
   ac_configure_args="$_subconfigure_config_args"
-  AC_OUTPUT_SUBDIRS("$_subconfigure_subdir",$cache_file)
+  AC_OUTPUT_SUBDIRS_NOW("$_subconfigure_subdir",$cache_file)
   ac_configure_args="$_save_ac_configure_args"
   srcdir="$_save_srcdir"
 fi
@@ -9274,15 +9285,6 @@ if test -z "$JS_SHARED_LIBRARY" ; then
     if test -n "$MOZ_DISABLE_EXPORT_JS"; then
         ac_configure_args="$ac_configure_args --disable-export-js"
     fi
-fi
-if test -z "$JSGC_GENERATIONAL" ; then
-    ac_configure_args="$ac_configure_args --disable-gcgenerational"
-fi
-if test -n "$JS_GCCOMPACTING" ; then
-    ac_configure_args="$ac_configure_args --enable-gccompacting"
-fi
-if test -n "$JS_GC_SMALL_CHUNK_SIZE" ; then
-    ac_configure_args="$ac_configure_args --enable-small-chunk-size"
 fi
 if test -n "$NSPR_CFLAGS" -o -n "$NSPR_LIBS"; then
     ac_configure_args="$ac_configure_args --with-nspr-cflags='$NSPR_CFLAGS'"

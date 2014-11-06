@@ -52,6 +52,7 @@
 #include "nsIWindowWatcher.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowWatcher.h"
+#include "nsPresShell.h"
 #include "nsPrintfCString.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
@@ -70,6 +71,7 @@
 #include "nsAuthInformationHolder.h"
 #include "nsICancelable.h"
 #include "gfxPrefs.h"
+#include "nsILoginManagerPrompter.h"
 #include <algorithm>
 
 using namespace mozilla::dom;
@@ -1475,6 +1477,29 @@ TabParent::RecvReplyKeyEvent(const WidgetKeyboardEvent& event)
   return true;
 }
 
+bool
+TabParent::RecvDispatchAfterKeyboardEvent(const WidgetKeyboardEvent& aEvent)
+{
+  NS_ENSURE_TRUE(mFrameElement, true);
+
+  WidgetKeyboardEvent localEvent(aEvent);
+  localEvent.widget = GetWidget();
+
+  nsIDocument* doc = mFrameElement->OwnerDoc();
+  nsCOMPtr<nsIPresShell> presShell = doc->GetShell();
+  NS_ENSURE_TRUE(presShell, true);
+
+  if (mFrameElement &&
+      PresShell::BeforeAfterKeyboardEventEnabled() &&
+      localEvent.message != NS_KEY_PRESS) {
+    nsCOMPtr<nsINode> node(do_QueryInterface(mFrameElement));
+    presShell->DispatchAfterKeyboardEvent(mFrameElement, localEvent,
+                                          aEvent.mFlags.mDefaultPrevented);
+  }
+
+  return true;
+}
+
 /**
  * Try to answer query event using cached text.
  *
@@ -1856,8 +1881,18 @@ TabParent::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
 
   // Get an auth prompter for our window so that the parenting
   // of the dialogs works as it should when using tabs.
-  return wwatch->GetPrompt(window, iid,
-                           reinterpret_cast<void**>(aResult));
+  nsCOMPtr<nsISupports> prompt;
+  rv = wwatch->GetPrompt(window, iid, getter_AddRefs(prompt));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsILoginManagerPrompter> prompter = do_QueryInterface(prompt);
+  if (prompter) {
+    nsCOMPtr<nsIDOMElement> browser = do_QueryInterface(mFrameElement);
+    prompter->SetE10sData(browser, nullptr);
+  }
+
+  *aResult = prompt.forget().take();
+  return NS_OK;
 }
 
 PColorPickerParent*

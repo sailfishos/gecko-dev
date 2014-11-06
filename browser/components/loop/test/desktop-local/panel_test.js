@@ -140,7 +140,7 @@ describe("loop.panel", function() {
   });
 
   describe("loop.panel.PanelView", function() {
-    var fakeClient, dispatcher, roomListStore, callUrlData;
+    var fakeClient, dispatcher, roomStore, callUrlData;
 
     beforeEach(function() {
       callUrlData = {
@@ -155,7 +155,7 @@ describe("loop.panel", function() {
       };
 
       dispatcher = new loop.Dispatcher();
-      roomListStore = new loop.store.RoomListStore({
+      roomStore = new loop.store.RoomStore({
         dispatcher: dispatcher,
         mozLoop: navigator.mozLoop
       });
@@ -167,7 +167,7 @@ describe("loop.panel", function() {
         client: fakeClient,
         showTabButtons: true,
         dispatcher: dispatcher,
-        roomListStore: roomListStore
+        roomStore: roomStore
       }));
     }
 
@@ -639,7 +639,7 @@ describe("loop.panel", function() {
   });
 
   describe("loop.panel.RoomEntry", function() {
-    var buttonNode, roomData, roomEntry, roomStore, dispatcher;
+    var dispatcher, roomData;
 
     beforeEach(function() {
       dispatcher = new loop.Dispatcher();
@@ -656,65 +656,119 @@ describe("loop.panel", function() {
         ],
         ctime: 1405517418
       };
-      roomStore = new loop.store.Room(roomData);
-      roomEntry = mountRoomEntry();
-      buttonNode = roomEntry.getDOMNode().querySelector("button.copy-link");
     });
 
-    function mountRoomEntry() {
-      return TestUtils.renderIntoDocument(loop.panel.RoomEntry({
-        openRoom: sandbox.stub(),
-        room: roomStore
-      }));
+    function mountRoomEntry(props) {
+      return TestUtils.renderIntoDocument(loop.panel.RoomEntry(props));
     }
 
-    it("should not display copy-link button by default", function() {
-      expect(buttonNode).to.not.equal(null);
-    });
+    describe("Copy button", function() {
+      var roomEntry, copyButton;
 
-    it("should copy the URL when the click event fires", function() {
-      TestUtils.Simulate.click(buttonNode);
-
-      sinon.assert.calledOnce(navigator.mozLoop.copyString);
-      sinon.assert.calledWithExactly(navigator.mozLoop.copyString,
-        roomData.roomUrl);
-    });
-
-    it("should set state.urlCopied when the click event fires", function() {
-      TestUtils.Simulate.click(buttonNode);
-
-      expect(roomEntry.state.urlCopied).to.equal(true);
-    });
-
-    it("should switch to displaying a check icon when the URL has been copied",
-      function() {
-        TestUtils.Simulate.click(buttonNode);
-
-        expect(buttonNode.classList.contains("checked")).eql(true);
+      beforeEach(function() {
+        roomEntry = mountRoomEntry({
+          dispatcher: dispatcher,
+          deleteRoom: sandbox.stub(),
+          room: new loop.store.Room(roomData)
+        });
+        copyButton = roomEntry.getDOMNode().querySelector("button.copy-link");
       });
 
-    it("should not display a check icon after mouse leaves the entry",
-      function() {
-        var roomNode = roomEntry.getDOMNode();
-        TestUtils.Simulate.click(buttonNode);
-
-        TestUtils.SimulateNative.mouseOut(roomNode);
-
-        expect(buttonNode.classList.contains("checked")).eql(false);
+      it("should not display a copy button by default", function() {
+        expect(copyButton).to.not.equal(null);
       });
+
+      it("should copy the URL when the click event fires", function() {
+        sandbox.stub(dispatcher, "dispatch");
+
+        TestUtils.Simulate.click(copyButton);
+
+        sinon.assert.called(dispatcher.dispatch);
+        sinon.assert.calledWithExactly(dispatcher.dispatch,
+          new sharedActions.CopyRoomUrl({roomUrl: roomData.roomUrl}));
+      });
+
+      it("should set state.urlCopied when the click event fires", function() {
+        TestUtils.Simulate.click(copyButton);
+
+        expect(roomEntry.state.urlCopied).to.equal(true);
+      });
+
+      it("should switch to displaying a check icon when the URL has been copied",
+        function() {
+          TestUtils.Simulate.click(copyButton);
+
+          expect(copyButton.classList.contains("checked")).eql(true);
+        });
+
+      it("should not display a check icon after mouse leaves the entry",
+        function() {
+          var roomNode = roomEntry.getDOMNode();
+          TestUtils.Simulate.click(copyButton);
+
+          TestUtils.SimulateNative.mouseOut(roomNode);
+
+          expect(copyButton.classList.contains("checked")).eql(false);
+        });
+    });
+
+    describe("Delete button click", function() {
+      var roomEntry, deleteButton;
+
+      beforeEach(function() {
+        roomEntry = mountRoomEntry({
+          dispatcher: dispatcher,
+          room: new loop.store.Room(roomData)
+        });
+        deleteButton = roomEntry.getDOMNode().querySelector("button.delete-link");
+      });
+
+      it("should not display a delete button by default", function() {
+        expect(deleteButton).to.not.equal(null);
+      });
+
+      it("should call the delete function when clicked", function() {
+        sandbox.stub(dispatcher, "dispatch");
+
+        TestUtils.Simulate.click(deleteButton);
+
+        sinon.assert.calledOnce(dispatcher.dispatch);
+        sinon.assert.calledWithExactly(dispatcher.dispatch,
+          new sharedActions.DeleteRoom({roomToken: roomData.roomToken}));
+      });
+    });
+
+    describe("Room URL click", function() {
+      var roomEntry;
+
+      it("should dispatch an OpenRoom action", function() {
+        sandbox.stub(dispatcher, "dispatch");
+        roomEntry = mountRoomEntry({
+          dispatcher: dispatcher,
+          room: new loop.store.Room(roomData)
+        });
+        var urlLink = roomEntry.getDOMNode().querySelector("p > a");
+
+        TestUtils.Simulate.click(urlLink);
+
+        sinon.assert.calledOnce(dispatcher.dispatch);
+        sinon.assert.calledWithExactly(dispatcher.dispatch,
+          new sharedActions.OpenRoom({roomToken: roomData.roomToken}));
+      });
+    });
   });
 
   describe("loop.panel.RoomList", function() {
-    var roomListStore, dispatcher, fakeEmail;
+    var roomStore, dispatcher, fakeEmail;
 
     beforeEach(function() {
       fakeEmail = "fakeEmail@example.com";
       dispatcher = new loop.Dispatcher();
-      roomListStore = new loop.store.RoomListStore({
+      roomStore = new loop.store.RoomStore({
         dispatcher: dispatcher,
         mozLoop: navigator.mozLoop
       });
-      roomListStore.setStoreState({
+      roomStore.setStoreState({
         pendingCreation: false,
         pendingInitialRetrieval: false,
         rooms: [],
@@ -724,7 +778,7 @@ describe("loop.panel", function() {
 
     function createTestComponent() {
       return TestUtils.renderIntoDocument(loop.panel.RoomList({
-        store: roomListStore,
+        store: roomStore,
         dispatcher: dispatcher,
         userDisplayName: fakeEmail
       }));
@@ -757,24 +811,24 @@ describe("loop.panel", function() {
     it("should disable the create button when a creation operation is ongoing",
       function() {
         var dispatch = sandbox.stub(dispatcher, "dispatch");
-        roomListStore.setStoreState({pendingCreation: true});
+        roomStore.setStoreState({pendingCreation: true});
 
         var view = createTestComponent();
 
         var buttonNode = view.getDOMNode().querySelector("button[disabled]");
         expect(buttonNode).to.not.equal(null);
-    });
+      });
 
     it("should disable the create button when a list retrieval operation is pending",
       function() {
         var dispatch = sandbox.stub(dispatcher, "dispatch");
-        roomListStore.setStoreState({pendingInitialRetrieval: true});
+        roomStore.setStoreState({pendingInitialRetrieval: true});
 
         var view = createTestComponent();
 
         var buttonNode = view.getDOMNode().querySelector("button[disabled]");
         expect(buttonNode).to.not.equal(null);
-    });
+      });
   });
 
   describe('loop.panel.ToSView', function() {

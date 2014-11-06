@@ -182,6 +182,9 @@ pref("app.update.metro.enabled", true);
 // If set to true, the Update Service will present no UI for any event.
 pref("app.update.silent", false);
 
+// If set to true, the hamburger button will show badges for update events.
+pref("app.update.badge", false);
+
 // If set to true, the Update Service will apply updates in the background
 // when it finishes downloading them.
 pref("app.update.staging.enabled", true);
@@ -861,7 +864,7 @@ pref("browser.preferences.animateFadeIn", false);
 #endif
 
 // Toggles between the two Preferences implementations, pop-up window and in-content
-#ifdef NIGHTLY_BUILD
+#ifndef RELEASE_BUILD
 pref("browser.preferences.inContent", true);
 pref("browser.preferences.instantApply", true);
 #else
@@ -1148,7 +1151,12 @@ pref("toolkit.crashreporter.infoURL",
 pref("app.support.baseURL", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/");
 
 // base url for web-based feedback pages
+#ifdef MOZ_DEV_EDITION
+pref("app.feedback.baseURL", "https://input.mozilla.org/%LOCALE%/feedback/firefoxdev/%VERSION%/");
+#else
 pref("app.feedback.baseURL", "https://input.mozilla.org/%LOCALE%/feedback/%APP%/%VERSION%/");
+#endif
+
 
 // Name of alternate about: page for certificate errors (when undefined, defaults to about:neterror)
 pref("security.alternate_certificate_error_page", "certerror");
@@ -1290,8 +1298,24 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 #endif
 
 // Developer edition preferences
+#ifdef MOZ_DEV_EDITION
+pref("browser.devedition.theme.enabled", true);
+pref("browser.devedition.theme.showCustomizeButton", true);
+#else
 pref("browser.devedition.theme.enabled", false);
 pref("browser.devedition.theme.showCustomizeButton", false);
+#endif
+
+// Developer edition promo preferences
+pref("devtools.devedition.promo.shown", false);
+pref("devtools.devedition.promo.url", "https://mozilla.org/firefox/developer");
+
+// Only potentially show in beta release
+#ifdef MOZ_UPDATE_CHANNEL == beta
+  pref("devtools.devedition.promo.enabled", true);
+#else
+  pref("devtools.devedition.promo.enabled", false);
+#endif
 
 // Disable the error console
 pref("devtools.errorconsole.enabled", false);
@@ -1377,7 +1401,11 @@ pref("devtools.debugger.ui.variables-searchbox-visible", false);
 
 // Enable the Profiler and the Timeline
 pref("devtools.profiler.enabled", true);
+#ifdef MOZ_DEV_EDITION
+pref("devtools.timeline.enabled", true);
+#else
 pref("devtools.timeline.enabled", false);
+#endif
 
 // Enable perftools via build command
 #ifdef MOZ_DEVTOOLS_PERFTOOLS
@@ -1442,7 +1470,11 @@ pref("devtools.canvasdebugger.enabled", false);
 pref("devtools.webaudioeditor.enabled", false);
 
 // Default theme ("dark" or "light")
+#ifdef MOZ_DEV_EDITION
+pref("devtools.theme", "dark");
+#else
 pref("devtools.theme", "light");
+#endif
 
 // Display the introductory text
 pref("devtools.gcli.hideIntro", false);
@@ -1697,7 +1729,11 @@ pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings"
 
 // Migrate any existing Firefox Account data from the default profile to the
 // Developer Edition profile.
+#ifdef MOZ_DEV_EDITION
+pref("identity.fxaccounts.migrateToDevEdition", true);
+#else
 pref("identity.fxaccounts.migrateToDevEdition", false);
+#endif
 
 // On GTK, we now default to showing the menubar only when alt is pressed:
 #ifdef MOZ_WIDGET_GTK
@@ -1779,3 +1815,5 @@ pref("print.enable_e10s_testing", false);
 #else
 pref("print.enable_e10s_testing", true);
 #endif
+
+pref("browser.defaultbrowser.notificationbar", false);

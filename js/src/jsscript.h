@@ -246,6 +246,10 @@ class Bindings
         numBlockScoped_ = numBlockScoped;
     }
 
+    void setAllLocalsAliased() {
+        numBlockScoped_ = 0;
+    }
+
     uint8_t *switchToScriptStorage(Binding *newStorage);
 
     /*
@@ -1739,6 +1743,11 @@ class BindingIter
         MOZ_ASSERT(!done());
         MOZ_ASSERT(i_ >= bindings_->numArgs());
         return i_ - bindings_->numArgs();
+    }
+    bool isBodyLevelLexical() const {
+        MOZ_ASSERT(!done());
+        const Binding &binding = **this;
+        return binding.kind() != Binding::ARGUMENT;
     }
 
     const Binding &operator*() const { MOZ_ASSERT(!done()); return bindings_->bindingArray()[i_]; }

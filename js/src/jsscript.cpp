@@ -92,9 +92,9 @@ Bindings::initWithTemporaryStorage(ExclusiveContext *cx, InternalBindingsHandle 
     MOZ_ASSERT(numVars <= LOCALNO_LIMIT);
     MOZ_ASSERT(numBlockScoped <= LOCALNO_LIMIT);
     MOZ_ASSERT(numBodyLevelLexicals <= LOCALNO_LIMIT);
-    uint64_t totalSlots = uint64_t(numVars) +
-                          uint64_t(numBodyLevelLexicals) +
-                          uint64_t(numBlockScoped);
+    mozilla::DebugOnly<uint64_t> totalSlots = uint64_t(numVars) +
+                                              uint64_t(numBodyLevelLexicals) +
+                                              uint64_t(numBlockScoped);
     MOZ_ASSERT(totalSlots <= LOCALNO_LIMIT);
     MOZ_ASSERT(UINT32_MAX - numArgs >= totalSlots);
 
@@ -129,11 +129,11 @@ Bindings::initWithTemporaryStorage(ExclusiveContext *cx, InternalBindingsHandle 
         if (bi->aliased()) {
             // Per ES6, lexical bindings cannot be accessed until
             // initialized. Remember the first aliased slot that is a
-            // body-level let, so that they may be initialized to sentinel
+            // body-level lexical, so that they may be initialized to sentinel
             // magic values.
             if (numBodyLevelLexicals > 0 &&
                 nslots < aliasedBodyLevelLexicalBegin &&
-                bi->kind() == Binding::VARIABLE &&
+                bi.isBodyLevelLexical() &&
                 bi.localIndex() >= numVars)
             {
                 aliasedBodyLevelLexicalBegin = nslots;

@@ -53,7 +53,7 @@ const NFCCONTENTHELPER_CID =
 const NFC_IPC_MSG_NAMES = [
   "NFC:ReadNDEFResponse",
   "NFC:WriteNDEFResponse",
-  "NFC:MakeReadOnlyNDEFResponse",
+  "NFC:MakeReadOnlyResponse",
   "NFC:ConnectResponse",
   "NFC:CloseResponse",
   "NFC:CheckP2PRegistrationResponse",
@@ -123,7 +123,7 @@ NfcContentHelper.prototype = {
   },
 
   // NFC interface:
-  checkSessionToken: function checkSessionToken(sessionToken) {
+  checkSessionToken: function checkSessionToken(sessionToken, isP2P) {
     if (sessionToken == null) {
       throw Components.Exception("No session token!",
                                   Cr.NS_ERROR_UNEXPECTED);
@@ -131,9 +131,10 @@ NfcContentHelper.prototype = {
     }
     // Report session to Nfc.js only.
     let val = cpmm.sendSyncMessage("NFC:CheckSessionToken", {
-      sessionToken: sessionToken
+      sessionToken: sessionToken,
+      isP2P: isP2P
     });
-    return (val[0] === NFC.NFC_SUCCESS);
+    return (val[0] === NFC.NFC_GECKO_SUCCESS);
   },
 
   // NFCTag interface
@@ -168,7 +169,7 @@ NfcContentHelper.prototype = {
     let requestId = btoa(this.getRequestId(request));
     this._requestMap[requestId] = this._window;
 
-    cpmm.sendAsyncMessage("NFC:MakeReadOnlyNDEF", {
+    cpmm.sendAsyncMessage("NFC:MakeReadOnly", {
       requestId: requestId,
       sessionToken: sessionToken
     });
@@ -338,7 +339,7 @@ NfcContentHelper.prototype = {
       case "NFC:ConnectResponse": // Fall through.
       case "NFC:CloseResponse":
       case "NFC:WriteNDEFResponse":
-      case "NFC:MakeReadOnlyNDEFResponse":
+      case "NFC:MakeReadOnlyResponse":
       case "NFC:NotifySendFileStatusResponse":
       case "NFC:ConfigResponse":
         if (result.errorMsg) {
@@ -359,7 +360,12 @@ NfcContentHelper.prototype = {
             this.eventTarget.notifyPeerLost(result.sessionToken);
             break;
           case NFC.TAG_EVENT_FOUND:
-            let event = new NfcTagEvent(result.techList);
+            let event = new NfcTagEvent(result.techList,
+                                        result.tagType,
+                                        result.maxNDEFSize,
+                                        result.isReadOnly,
+                                        result.isFormatable);
+
             this.eventTarget.notifyTagFound(result.sessionToken, event, result.records);
             break;
           case NFC.TAG_EVENT_LOST:
@@ -413,13 +419,21 @@ NfcContentHelper.prototype = {
   },
 };
 
-function NfcTagEvent(techList) {
+function NfcTagEvent(techList, tagType, maxNDEFSize, isReadOnly, isFormatable) {
   this.techList = techList;
+  this.tagType = tagType;
+  this.maxNDEFSize = maxNDEFSize;
+  this.isReadOnly = isReadOnly;
+  this.isFormatable = isFormatable;
 }
 NfcTagEvent.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsINfcTagEvent]),
 
-  techList: null
+  techList: null,
+  tagType: null,
+  maxNDEFSize: 0,
+  isReadOnly: false,
+  isFormatable: false
 };
 
 if (NFC_ENABLED) {

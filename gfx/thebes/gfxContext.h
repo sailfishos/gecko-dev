@@ -22,6 +22,12 @@ typedef struct _cairo cairo_t;
 class GlyphBufferAzure;
 template <typename T> class FallibleTArray;
 
+namespace mozilla {
+namespace gfx {
+struct RectCornerRadii;
+}
+}
+
 /**
  * This is the main class for doing actual drawing. It is initialized using
  * a surface and can be drawn on. It manages various state information like
@@ -37,10 +43,13 @@ template <typename T> class FallibleTArray;
  * as opposed to app units.
  */
 class gfxContext MOZ_FINAL {
+    typedef mozilla::gfx::CapStyle CapStyle;
+    typedef mozilla::gfx::JoinStyle JoinStyle;
     typedef mozilla::gfx::FillRule FillRule;
     typedef mozilla::gfx::Path Path;
     typedef mozilla::gfx::Pattern Pattern;
     typedef mozilla::gfx::Rect Rect;
+    typedef mozilla::gfx::RectCornerRadii RectCornerRadii;
 
     NS_INLINE_DECL_REFCOUNTING(gfxContext)
 
@@ -91,15 +100,6 @@ public:
      ** Paths & Drawing
      **/
 
-    /**
-     * Stroke the current path using the current settings (such as line
-     * width and color).
-     * A path is set up using functions such as Line, Rectangle and Arc.
-     *
-     * Does not consume the current path.
-     */
-    void Stroke();
-    void Stroke(const Pattern& aPattern);
     /**
      * Fill the current path according to the current settings.
      *
@@ -183,18 +183,6 @@ public:
      * Draw a polygon from the given points
      */
     void Polygon(const gfxPoint *points, uint32_t numPoints);
-
-    /*
-     * Draw a rounded rectangle, with the given outer rect and
-     * corners.  The corners specify the radii of the two axes of an
-     * ellipse (the horizontal and vertical directions given by the
-     * width and height, respectively).  By default the ellipse is
-     * drawn in a clockwise direction; if draw_clockwise is false,
-     * then it's drawn counterclockwise.
-     */
-    void RoundedRectangle(const gfxRect& rect,
-                          const gfxCornerSizes& corners,
-                          bool draw_clockwise = true);
 
     /**
      ** Transformation Matrix manipulation
@@ -371,13 +359,6 @@ public:
      ** Line Properties
      **/
 
-    typedef enum {
-        gfxLineSolid,
-        gfxLineDashed,
-        gfxLineDotted
-    } gfxLineType;
-
-    void SetDash(gfxLineType ltype);
     void SetDash(gfxFloat *dashes, int ndash, gfxFloat offset);
     // Return true if dashing is set, false if it's not enabled or the
     // context is in an error state.  |offset| can be nullptr to mean
@@ -398,28 +379,18 @@ public:
      */
     gfxFloat CurrentLineWidth() const;
 
-    enum GraphicsLineCap {
-        LINE_CAP_BUTT,
-        LINE_CAP_ROUND,
-        LINE_CAP_SQUARE
-    };
     /**
      * Sets the line caps, i.e. how line endings are drawn.
      */
-    void SetLineCap(GraphicsLineCap cap);
-    GraphicsLineCap CurrentLineCap() const;
+    void SetLineCap(CapStyle cap);
+    CapStyle CurrentLineCap() const;
 
-    enum GraphicsLineJoin {
-        LINE_JOIN_MITER,
-        LINE_JOIN_ROUND,
-        LINE_JOIN_BEVEL
-    };
     /**
      * Sets the line join, i.e. how the connection between two lines is
      * drawn.
      */
-    void SetLineJoin(GraphicsLineJoin join);
-    GraphicsLineJoin CurrentLineJoin() const;
+    void SetLineJoin(JoinStyle join);
+    JoinStyle CurrentLineJoin() const;
 
     void SetMiterLimit(gfxFloat limit);
     gfxFloat CurrentMiterLimit() const;
