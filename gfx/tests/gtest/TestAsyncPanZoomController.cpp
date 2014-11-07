@@ -56,7 +56,7 @@ public:
   MOCK_METHOD2(AcknowledgeScrollUpdate, void(const FrameMetrics::ViewID&, const uint32_t& aScrollGeneration));
   MOCK_METHOD3(HandleDoubleTap, void(const CSSPoint&, int32_t, const ScrollableLayerGuid&));
   MOCK_METHOD3(HandleSingleTap, void(const CSSPoint&, int32_t, const ScrollableLayerGuid&));
-  MOCK_METHOD3(HandleLongTap, void(const CSSPoint&, int32_t, const ScrollableLayerGuid&));
+  MOCK_METHOD4(HandleLongTap, void(const CSSPoint&, int32_t, const ScrollableLayerGuid&, uint64_t aInputBlockId));
   MOCK_METHOD3(HandleLongTapUp, void(const CSSPoint&, int32_t, const ScrollableLayerGuid&));
   MOCK_METHOD3(SendAsyncScrollDOMEvent, void(bool aIsRoot, const CSSRect &aContentRect, const CSSSize &aScrollableSize));
   MOCK_METHOD2(PostDelayedTask, void(Task* aTask, int aDelayMs));
@@ -773,7 +773,7 @@ DoLongPressTest(bool aShouldUseTouchAction, uint32_t aBehavior) {
     InSequence s;
 
     EXPECT_CALL(check, Call("preHandleLongTap"));
-    EXPECT_CALL(*mcc, HandleLongTap(CSSPoint(10, 10), 0, apzc->GetGuid())).Times(1);
+    EXPECT_CALL(*mcc, HandleLongTap(CSSPoint(10, 10), 0, apzc->GetGuid(), 0)).Times(1);
     EXPECT_CALL(check, Call("postHandleLongTap"));
 
     EXPECT_CALL(check, Call("preHandleLongTapUp"));
@@ -854,7 +854,7 @@ DoLongPressPreventDefaultTest(bool aShouldUseTouchAction, uint32_t aBehavior) {
     InSequence s;
 
     EXPECT_CALL(check, Call("preHandleLongTap"));
-    EXPECT_CALL(*mcc, HandleLongTap(CSSPoint(touchX, touchStartY), 0, apzc->GetGuid())).Times(1);
+    EXPECT_CALL(*mcc, HandleLongTap(CSSPoint(touchX, touchStartY), 0, apzc->GetGuid(), 0)).Times(1);
     EXPECT_CALL(check, Call("postHandleLongTap"));
   }
 
