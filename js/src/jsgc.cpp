@@ -3439,7 +3439,7 @@ BackgroundAllocTask::run()
 }
 
 void
-GCHelperState::startBackgroundSweep(bool shouldShrink)
+GCHelperState::startBackgroundSweep()
 {
     MOZ_ASSERT(CanUseExtraThreads());
 
@@ -3448,7 +3448,7 @@ GCHelperState::startBackgroundSweep(bool shouldShrink)
     MOZ_ASSERT(state() == IDLE);
     MOZ_ASSERT(!sweepFlag);
     sweepFlag = true;
-    shrinkFlag = shouldShrink;
+    shrinkFlag = false;
     startBackgroundThread(SWEEPING);
 }
 
@@ -5293,17 +5293,6 @@ GCRuntime::endSweepPhase(bool lastGC)
          */
         if (!lastGC)
             sweepZones(&fop, lastGC);
-
-        if (!sweepOnBackgroundThread) {
-            /*
-             * Destroy arenas after we finished the sweeping so finalizers can
-             * safely use IsAboutToBeFinalized(). This is done on the
-             * GCHelperState if possible. We acquire the lock only because
-             * Expire needs to unlock it for other callers.
-             */
-            AutoLockGC lock(rt);
-            expireChunksAndArenas(invocationKind == GC_SHRINK, lock);
-        }
     }
 
     {
@@ -5327,6 +5316,17 @@ GCRuntime::endSweepPhase(bool lastGC)
         gcstats::AutoPhase ap(stats, gcstats::PHASE_DESTROY);
 
         sweepBackgroundThings();
+
+        /*
+         * Destroy arenas after we finished the sweeping so finalizers can
+         * safely use IsAboutToBeFinalized(). This is done on the
+         * GCHelperState if possible. We acquire the lock only because
+         * Expire needs to unlock it for other callers.
+         */
+        {
+            AutoLockGC lock(rt);
+            expireChunksAndArenas(invocationKind == GC_SHRINK, lock);
+        }
 
         freeLifoAlloc.freeAll();
 
@@ -5355,6 +5355,9 @@ GCRuntime::endSweepPhase(bool lastGC)
         }
     }
 #endif
+
+    if (sweepOnBackgroundThread)
+        helperState.startBackgroundSweep();
 }
 
 #ifdef JSGC_COMPACTING
@@ -5752,9 +5755,6 @@ GCRuntime::incrementalCollectSlice(int64_t budget,
             break;
 
         endSweepPhase(lastGC);
-
-        if (sweepOnBackgroundThread)
-            helperState.startBackgroundSweep(invocationKind == GC_SHRINK);
 
 #ifdef JSGC_COMPACTING
         if (shouldCompact()) {
@@ -6213,6 +6213,17 @@ GCRuntime::shrinkBuffers()
         helperState.startBackgroundShrink();
     else
         expireChunksAndArenas(true, lock);
+}
+
+void
+GCRuntime::onOutOfMallocMemory()
+{
+    // Stop allocating new chunks.
+    allocTask.cancel(GCParallelTask::CancelAndWait);
+
+    // Throw away any excess chunks we have lying around.
+    AutoLockGC lock(rt);
+    expireChunksAndArenas(true, lock);
 }
 
 void

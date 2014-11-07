@@ -18,7 +18,8 @@ describe("loop.webapp", function() {
       sandbox,
       notifications,
       feedbackApiClient,
-      stubGetPermsAndCacheMedia;
+      stubGetPermsAndCacheMedia,
+      fakeAudioXHR;
 
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
@@ -29,6 +30,19 @@ describe("loop.webapp", function() {
 
     stubGetPermsAndCacheMedia = sandbox.stub(
       loop.standaloneMedia._MultiplexGum.prototype, "getPermsAndCacheMedia");
+
+    fakeAudioXHR = {
+      open: sinon.spy(),
+      send: function() {},
+      abort: function() {},
+      getResponseHeader: function(header) {
+        if (header === "Content-Type")
+          return "audio/ogg";
+      },
+      responseType: null,
+      response: new ArrayBuffer(10),
+      onload: null
+    };
   });
 
   afterEach(function() {
@@ -219,6 +233,7 @@ describe("loop.webapp", function() {
           describe("state: terminate, reason: reject", function() {
             beforeEach(function() {
               sandbox.stub(notifications, "errorL10n");
+              sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
             });
 
             it("should display the FailedConversationView", function() {
@@ -230,6 +245,20 @@ describe("loop.webapp", function() {
               TestUtils.findRenderedComponentWithType(ocView,
                 loop.webapp.FailedConversationView);
             });
+
+            it("should reset multiplexGum when a call is rejected",
+              function() {
+                var multiplexGum = new standaloneMedia._MultiplexGum();
+                standaloneMedia.setSingleton(multiplexGum);
+                sandbox.stub(standaloneMedia._MultiplexGum.prototype, "reset");
+
+                ocView._websocket.trigger("progress", {
+                  state: "terminated",
+                  reason: "reject"
+                });
+
+                sinon.assert.calledOnce(multiplexGum.reset);
+              });
 
             it("should display an error message if the reason is not 'cancel'",
               function() {
@@ -293,6 +322,7 @@ describe("loop.webapp", function() {
         promiseConnectStub =
           sandbox.stub(loop.CallConnectionWebSocket.prototype, "promiseConnect");
         promiseConnectStub.returns(new Promise(function(resolve, reject) {}));
+        sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
       });
 
       describe("call:outgoing", function() {
@@ -512,6 +542,8 @@ describe("loop.webapp", function() {
       var view, conversation, client, fakeAudio;
 
       beforeEach(function() {
+        sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
+
         fakeAudio = {
           play: sinon.spy(),
           pause: sinon.spy(),
@@ -527,6 +559,7 @@ describe("loop.webapp", function() {
         });
         conversation.set("loopToken", "fakeToken");
 
+        sandbox.stub(client, "requestCallUrlInfo");
         view = React.addons.TestUtils.renderIntoDocument(
           loop.webapp.FailedConversationView({
             conversation: conversation,
@@ -536,9 +569,12 @@ describe("loop.webapp", function() {
       });
 
       it("should play a failure sound, once", function() {
-        sinon.assert.calledOnce(window.Audio);
-        sinon.assert.calledWithExactly(window.Audio,
-                                       "shared/sounds/failure.ogg");
+        fakeAudioXHR.onload();
+
+        sinon.assert.called(fakeAudioXHR.open);
+        sinon.assert.calledWithExactly(
+          fakeAudioXHR.open, "GET", "shared/sounds/failure.ogg", true);
+        sinon.assert.calledOnce(fakeAudio.play);
         expect(fakeAudio.loop).to.equal(false);
       });
     });
@@ -546,7 +582,7 @@ describe("loop.webapp", function() {
 
   describe("WebappRootView", function() {
     var helper, sdk, conversationModel, client, props, standaloneAppStore;
-    var dispatcher;
+    var dispatcher, activeRoomStore;
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
@@ -557,7 +593,8 @@ describe("loop.webapp", function() {
         sdk: sdk,
         conversation: conversationModel,
         feedbackApiClient: feedbackApiClient,
-        standaloneAppStore: standaloneAppStore
+        standaloneAppStore: standaloneAppStore,
+        activeRoomStore: activeRoomStore
       }));
     }
 
@@ -573,6 +610,10 @@ describe("loop.webapp", function() {
         baseServerUrl: "fakeUrl"
       });
       dispatcher = new loop.Dispatcher();
+      activeRoomStore = new loop.store.ActiveRoomStore({
+        dispatcher: dispatcher,
+        mozLoop: {}
+      });
       standaloneAppStore = new loop.store.StandaloneAppStore({
         dispatcher: dispatcher,
         sdk: sdk,
@@ -664,6 +705,7 @@ describe("loop.webapp", function() {
         removeAttribute: sinon.spy()
       };
       sandbox.stub(window, "Audio").returns(fakeAudio);
+      sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
 
       view = React.addons.TestUtils.renderIntoDocument(
         loop.webapp.PendingConversationView({
@@ -675,8 +717,12 @@ describe("loop.webapp", function() {
     describe("#componentDidMount", function() {
 
       it("should play a looped connecting sound", function() {
-        sinon.assert.calledOnce(window.Audio);
-        sinon.assert.calledWithExactly(window.Audio, "shared/sounds/connecting.ogg");
+        fakeAudioXHR.onload();
+
+        sinon.assert.called(fakeAudioXHR.open);
+        sinon.assert.calledWithExactly(
+          fakeAudioXHR.open, "GET", "shared/sounds/connecting.ogg", true);
+        sinon.assert.calledOnce(fakeAudio.play);
         expect(fakeAudio.loop).to.equal(true);
       });
 
@@ -713,8 +759,13 @@ describe("loop.webapp", function() {
 
         it("should play a looped ringing sound", function() {
           websocket.trigger("progress:alerting");
+          fakeAudioXHR.onload();
 
-          sinon.assert.calledWithExactly(window.Audio, "shared/sounds/ringing.ogg");
+          sinon.assert.called(fakeAudioXHR.open);
+          sinon.assert.calledWithExactly(
+            fakeAudioXHR.open, "GET", "shared/sounds/ringtone.ogg", true);
+
+          sinon.assert.called(fakeAudio.play);
           expect(fakeAudio.loop).to.equal(true);
         });
       });
@@ -983,6 +1034,7 @@ describe("loop.webapp", function() {
       conversation = new sharedModels.ConversationModel({}, {
         sdk: {}
       });
+      sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
       view = React.addons.TestUtils.renderIntoDocument(
         loop.webapp.EndedConversationView({
           conversation: conversation,
@@ -1004,8 +1056,13 @@ describe("loop.webapp", function() {
     describe("#componentDidMount", function() {
 
       it("should play a terminating sound, once", function() {
-        sinon.assert.calledOnce(window.Audio);
-        sinon.assert.calledWithExactly(window.Audio, "shared/sounds/terminated.ogg");
+        fakeAudioXHR.onload();
+
+        sinon.assert.called(fakeAudioXHR.open);
+        sinon.assert.calledWithExactly(
+          fakeAudioXHR.open, "GET", "shared/sounds/terminated.ogg", true);
+
+        sinon.assert.calledOnce(fakeAudio.play);
         expect(fakeAudio.loop).to.not.equal(true);
       });
 
