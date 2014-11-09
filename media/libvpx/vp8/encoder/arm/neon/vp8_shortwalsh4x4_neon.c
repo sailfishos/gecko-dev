@@ -9,12 +9,15 @@
  */
 
 #include <arm_neon.h>
+#include "vpx_ports/arm.h"
 
+#ifdef VPX_INCOMPATIBLE_GCC
 #warning "vpx codec may not work properly due to gcc bug 46893"
 //internal compiler error: in trunc_int_for_mode, at explow.c:56
 //https://gcc.gnu.org/bugzilla/show_bug.cgi?id=46893
 #pragma GCC push_options
 #pragma GCC optimize ("O0")
+#endif
 void vp8_short_walsh4x4_neon(
         int16_t *input,
         int16_t *output,
@@ -123,4 +126,6 @@ void vp8_short_walsh4x4_neon(
 
     return;
 }
+#ifdef VPX_INCOMPATIBLE_GCC
 #pragma GCC pop_options
+#endif
