@@ -5,6 +5,7 @@
 "use strict";
 
 const FRAME_SCRIPT = "chrome://marionette/content/marionette-listener.js";
+const BROWSER_STARTUP_FINISHED = "browser-delayed-startup-finished";
 
 // import logger
 Cu.import("resource://gre/modules/Log.jsm");
@@ -78,6 +79,13 @@ let systemMessageListenerReady = false;
 Services.obs.addObserver(function() {
   systemMessageListenerReady = true;
 }, "system-message-listener-ready", false);
+
+// This is used on desktop to prevent newSession from returning before a page
+// load initiated by the Firefox command line has completed.
+let delayedBrowserStarted = false;
+Services.obs.addObserver(function () {
+  delayedBrowserStarted = true;
+}, BROWSER_STARTUP_FINISHED, false);
 
 /*
  * Custom exceptions
@@ -574,21 +582,33 @@ MarionetteServerConnection.prototype = {
       }
     }
 
-    if (!Services.prefs.getBoolPref("marionette.contentListener")) {
-      waitForWindow.call(this);
+    function runSessionStart() {
+      if (!Services.prefs.getBoolPref("marionette.contentListener")) {
+        waitForWindow.call(this);
+      }
+      else if ((appName != "Firefox") && (this.curBrowser === null)) {
+        // If there is a content listener, then we just wake it up
+        this.addBrowser(this.getCurrentWindow());
+        this.curBrowser.startSession(false, this.getCurrentWindow(),
+                                     this.whenBrowserStarted);
+        this.messageManager.broadcastAsyncMessage("Marionette:restart", {});
+      }
+      else {
+        this.sendError("Session already running", 500, null,
+                       this.command_id);
+      }
+      this.switchToGlobalMessageManager();
     }
-    else if ((appName != "Firefox") && (this.curBrowser == null)) {
-      // If there is a content listener, then we just wake it up
-      this.addBrowser(this.getCurrentWindow());
-      this.curBrowser.startSession(false, this.getCurrentWindow(),
-                                   this.whenBrowserStarted);
-      this.messageManager.broadcastAsyncMessage("Marionette:restart", {});
+
+    if (!delayedBrowserStarted && (appName != "B2G")) {
+      let self = this;
+      Services.obs.addObserver(function onStart () {
+        Services.obs.removeObserver(onStart, BROWSER_STARTUP_FINISHED);
+        runSessionStart.call(self);
+      }, BROWSER_STARTUP_FINISHED, false);
+    } else {
+      runSessionStart.call(this);
     }
-    else {
-      this.sendError("Session already running", 500, null,
-                     this.command_id);
-    }
-    this.switchToGlobalMessageManager();
   },
 
   /**
@@ -676,6 +696,14 @@ MarionetteServerConnection.prototype = {
       this.context = context;
       this.sendOk(this.command_id);
     }
+  },
+
+  /**
+   * Gets the context of the server, either 'chrome' or 'content'.
+   */
+  getContext: function MDA_getContext() {
+    this.command_id = this.getCommandId();
+    this.sendResponse(this.context, this.command_id);
   },
 
   /**
@@ -2715,6 +2743,7 @@ MarionetteServerConnection.prototype.requestTypes = {
   "log": MarionetteServerConnection.prototype.log,
   "getLogs": MarionetteServerConnection.prototype.getLogs,
   "setContext": MarionetteServerConnection.prototype.setContext,
+  "getContext": MarionetteServerConnection.prototype.getContext,
   "executeScript": MarionetteServerConnection.prototype.execute,
   "setScriptTimeout": MarionetteServerConnection.prototype.setScriptTimeout,
   "timeouts": MarionetteServerConnection.prototype.timeouts,

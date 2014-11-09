@@ -13,6 +13,7 @@ import time
 import traceback
 import warnings
 
+from contextlib import contextmanager
 
 from application_cache import ApplicationCache
 from decorators import do_crash_check
@@ -586,18 +587,22 @@ class Marionette(object):
 
     def wait_for_port(self, timeout=60):
         starttime = datetime.datetime.now()
+        poll_interval = 0.1
         while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
+            sock = None
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.connect((self.host, self.port))
                 data = sock.recv(16)
                 sock.close()
                 if ':' in data:
-                    time.sleep(5)
                     return True
             except socket.error:
                 pass
-            time.sleep(1)
+            finally:
+                if sock:
+                    sock.close()
+            time.sleep(poll_interval)
         return False
 
     @do_crash_check
@@ -952,19 +957,40 @@ class Marionette(object):
 
     def set_context(self, context):
         '''
-        Sets the context that marionette commands are running in.
+        Sets the context that Marionette commands are running in.
 
         :param context: Context, may be one of the class properties
          `CONTEXT_CHROME` or `CONTEXT_CONTENT`.
 
-        Usage example:
-
-        ::
+        Usage example::
 
           marionette.set_context(marionette.CONTEXT_CHROME)
         '''
         assert(context == self.CONTEXT_CHROME or context == self.CONTEXT_CONTENT)
         return self._send_message('setContext', 'ok', value=context)
+
+    @contextmanager
+    def using_context(self, context):
+        '''
+        Sets the context that Marionette commands are running in using
+        a `with` statement. The state of the context on the server is
+        saved before entering the block, and restored upon exiting it.
+
+        :param context: Context, may be one of the class properties
+         `CONTEXT_CHROME` or `CONTEXT_CONTENT`.
+
+        Usage example::
+
+          with marionette.using_context(marionette.CONTEXT_CHROME):
+              # chrome scope
+              ... do stuff ...
+        '''
+        scope = self._send_message('getContext', 'value')
+        self.set_context(context)
+        try:
+            yield
+        finally:
+            self.set_context(scope)
 
     def switch_to_window(self, window_id):
         '''

@@ -1223,7 +1223,9 @@ static const JSStdName builtin_property_names[] = {
     { EAGER_ATOM(SIMD), JSProto_SIMD },
     { EAGER_ATOM(TypedObject), JSProto_TypedObject },
 #endif
+#ifdef ENABLE_SHARED_ARRAY_BUFFER
     { EAGER_ATOM(Atomics), JSProto_Atomics },
+#endif
 
     { 0, JSProto_LIMIT }
 };
@@ -4751,6 +4753,9 @@ JS::CloneAndExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptAr
         script = CloneScript(cx, NullPtr(), NullPtr(), script);
         if (!script)
             return false;
+
+        Rooted<GlobalObject *> global(cx, script->compileAndGo() ? &script->global() : nullptr);
+        js::Debugger::onNewScript(cx, script, global);
     }
     return ExecuteScript(cx, obj, script, nullptr);
 }
