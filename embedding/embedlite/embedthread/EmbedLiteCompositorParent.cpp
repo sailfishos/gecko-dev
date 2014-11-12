@@ -246,6 +246,7 @@ EmbedLiteCompositorParent::ResumeRendering()
   if (mLastViewSize.width > 0 && mLastViewSize.height > 0) {
     CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width,
                                                        mLastViewSize.height);
+    CompositorParent::ScheduleRenderOnCompositorThread();
   }
 }
 
