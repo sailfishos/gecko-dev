@@ -124,6 +124,7 @@ EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
   nsCOMPtr<nsIDOMWindow> rootWin(do_GetInterface(rootItem));
   NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
   rootWin->GetTop(getter_AddRefs(window));
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   uint64_t OuterWindowID = 0;
   utils->GetOuterWindowID(&OuterWindowID);
@@ -246,7 +247,7 @@ NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::AddContentListener(uint32_t aWinId, mozilla::layers::GeckoContentController* listener)
+EmbedLiteAppService::AddContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -255,7 +256,7 @@ EmbedLiteAppService::AddContentListener(uint32_t aWinId, mozilla::layers::GeckoC
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, mozilla::layers::GeckoContentController* listener)
+EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -283,7 +284,7 @@ EmbedLiteAppService::ContentReceivedTouch(uint32_t aWinId, bool aPreventDefault)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault);
+  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
   return NS_OK;
 }
 

@@ -3655,7 +3655,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.16.2.2, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.16.2.3, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -5639,17 +5639,6 @@ if test -n "$MOZ_GSTREAMER"; then
         AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer])
     fi
 
-    PKG_CHECK_MODULES(NEMO_RESOURCE, libresourceqt5,
-                      HAS_NEMO_RESOURCE=1,
-                      HAS_NEMO_RESOURCE=)
-
-    if test "$HAS_NEMO_RESOURCE"; then
-        HAS_NEMO_RESOURCE=1
-        AC_DEFINE(HAS_NEMO_RESOURCE)
-        AC_SUBST(NEMO_RESOURCE_LIBS)
-        AC_SUBST(NEMO_RESOURCE_CFLAGS)
-    fi
-
     _SAVE_LDFLAGS=$LDFLAGS
     LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
     AC_TRY_LINK(,[return 0;],_HAVE_LIBGSTVIDEO=1,_HAVE_LIBGSTVIDEO=)
@@ -5665,7 +5654,6 @@ if test -n "$MOZ_GSTREAMER"; then
 fi
 
 AC_SUBST(MOZ_GSTREAMER)
-AC_SUBST(HAS_NEMO_RESOURCE)
 AC_SUBST(GST_API_VERSION)
 
 if test -n "$MOZ_GSTREAMER"; then
@@ -9114,8 +9102,11 @@ if test "$MOZ_TREE_FREETYPE"; then
    if ! test -e modules; then
      mkdir modules
    fi
-
-   AC_OUTPUT_SUBDIRS(modules/freetype2)
+   # Only export CC, CXX and RANLIB for the subconfigure, and avoid spilling
+   # that further down the road.
+   (export CC CXX RANLIB;
+    AC_OUTPUT_SUBDIRS(modules/freetype2)
+   ) || exit 1
 fi
 
 if test -z "$direct_nspr_config"; then

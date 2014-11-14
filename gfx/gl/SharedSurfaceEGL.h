@@ -43,7 +43,7 @@ protected:
     const GLFormats mFormats;
     GLuint mProdTex;
 public:
-    const EGLImage mImage;
+    EGLImage mImage;
 protected:
     GLContext* mCurConsGL;
     GLuint mConsTex;

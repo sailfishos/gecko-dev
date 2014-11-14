@@ -47,7 +47,7 @@ static nsTArray<EmbedLitePuppetWidget*> gTopLevelWindows;
 static bool sFailedToCreateGLContext = false;
 
 NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, nsBaseWidget,
-                             nsISupportsWeakReference)
+                            nsISupportsWeakReference)
 
 static bool
 IsPopup(const nsWidgetInitData* aInitData)
@@ -516,10 +516,9 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
-  ClientLayerManager* lm = new ClientLayerManager(this);
+  nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
   MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
   mCompositorChild = new CompositorChild(lm);
-  static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->SetChildCompositor(mCompositorChild);
   mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);
 
   TextureFactoryIdentifier textureFactoryIdentifier;
@@ -538,7 +537,7 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   if (success) {
     ShadowLayerForwarder* lf = lm->AsShadowForwarder();
     if (!lf) {
-      delete lm;
+      lm = nullptr;
       mCompositorChild = nullptr;
       return;
     }
@@ -547,13 +546,13 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
     ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
     WindowUsesOMTC();
 
-    mLayerManager = lm;
+    mLayerManager = lm.forget();
   } else {
     // We don't currently want to support not having a LayersChild
     if (ViewIsValid()) {
       NS_RUNTIMEABORT("failed to construct LayersChild, and View still here");
     }
-    delete lm;
+    lm = nullptr;
     mCompositorChild = nullptr;
   }
 }
@@ -567,9 +566,7 @@ EmbedLitePuppetWidget::GetNaturalBounds()
 bool
 EmbedLitePuppetWidget::HasGLContext()
 {
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  return parent->RequestHasHWAcceleratedContext();
+  return true;
 }
 
 }  // namespace widget

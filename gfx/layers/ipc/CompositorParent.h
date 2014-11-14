@@ -265,6 +265,7 @@ protected:
   void ForceComposeToTarget(gfx::DrawTarget* aTarget);
 
   void SetEGLSurfaceSize(int width, int height);
+  void CancelCurrentCompositeTask();
 
 private:
   void InitializeLayerManager(const nsTArray<LayersBackend>& aBackendHints);
@@ -272,7 +273,6 @@ private:
   void ResumeComposition();
   void ResumeCompositionAndResize(int width, int height);
   void ForceComposition();
-  void CancelCurrentCompositeTask();
 
   /**
    * Add a compositor to the global compositor map.

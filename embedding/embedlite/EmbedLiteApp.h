@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,7 +25,7 @@ class EmbedLiteAppThreadChild;
 class EmbedLiteAppThreadParent;
 class EmbedLiteSubThread;
 class EmbedLiteView;
-class EmbedLiteRenderTarget;
+class PEmbedLiteAppParent;
 class EmbedLiteAppListener
 {
 public:
@@ -88,7 +88,7 @@ public:
   virtual void Stop();
 
   // if true then compositor will be started in separate own thread, and view->CompositorCreated notification will be called in non-main thread
-  virtual void SetCompositorInSeparateThread(bool aOwnThread) { mIsCompositeInMainThread = !aOwnThread; }
+  virtual void SetCompositorInSeparateThread(bool aOwnThread) { } // Deprecated
 
   // Create custom Event Message pump, alloc new object which must be destroyed in EmbedLiteAppListener::Destroyed, or later
   virtual EmbedLiteMessagePump* CreateEmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListener);
@@ -129,14 +129,38 @@ public:
   virtual void AddObservers(nsTArray<nsCString>& observersList);
   virtual void RemoveObservers(nsTArray<nsCString>& observersList);
 
-  // Create wrapper for current active GL context, for proper GL sharing.
-  virtual EmbedLiteRenderTarget* CreateEmbedLiteRenderTarget(void* aContext = nullptr, void* aSurface = nullptr);
-
   // Only one EmbedHelper object allowed
   static EmbedLiteApp* GetInstance();
 
+  // TODO: this must be hidden for API users
+  void Shutdown();
+
 private:
   EmbedLiteApp();
+
+  /*
+   * States of EmbedLiteApp's lifecycle
+   */
+  enum State {
+    // This is the initial and final state of EmbedLiteApp's lifecycle
+    // Allowed next states: STARTING
+    STOPPED,
+
+    // The app is in a start-up process. No messages can be sent to the
+    // EmbedLiteApp instance from a toolkit in this state except Stop().
+    // Allowed next states: INITIALIZED, DESTROYING
+    STARTING,
+
+    // The app is ready to operate with views.
+    // Allowed next states: DESTROYING
+    INITIALIZED,
+
+    // The app is in shutdown process.
+    // Allowed next states: STOPPED
+    DESTROYING
+  };
+
+  void SetState(State aState);
 
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();
@@ -152,23 +176,23 @@ private:
   uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
+  static void PreDestroy(EmbedLiteApp*);
 
   static EmbedLiteApp* sSingleton;
   EmbedLiteAppListener* mListener;
   EmbedLiteUILoop* mUILoop;
 
   RefPtr<EmbedLiteSubThread> mSubThread;
-  RefPtr<EmbedLiteAppThreadParent> mAppParent;
+  PEmbedLiteAppParent* mAppParent;
   RefPtr<EmbedLiteAppThreadChild> mAppChild;
 
   EmbedType mEmbedType;
   std::map<uint32_t, EmbedLiteView*> mViews;
   uint32_t mViewCreateID;
-  bool mDestroying;
+  State mState;
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;
-  bool mIsCompositeInMainThread;
 };
 
 } // namespace embedlite

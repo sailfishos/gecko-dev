@@ -210,6 +210,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     NS_ERROR("Got stuck with DOMWindow1!");
   }
 
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
@@ -517,7 +518,7 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
   baseWindow->SetVisibility(true);
 
-  mHelper->HandlePossibleViewportChange();
+  mHelper->ReportSizeUpdate(aSize);
 
   return true;
 }
@@ -540,13 +541,13 @@ EmbedLiteViewThreadChild::RecvSetGLViewSize(const gfxSize& aSize)
 }
 
 void
-EmbedLiteViewThreadChild::AddGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::AddGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.AppendElement(listener);
 }
 
 void
-EmbedLiteViewThreadChild::RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener)
+EmbedLiteViewThreadChild::RemoveGeckoContentListener(EmbedLiteContentController* listener)
 {
   mControllerListeners.RemoveElement(listener);
 }
@@ -695,10 +696,10 @@ EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
 }
 
 bool
-EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint)
+EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId)
 {
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0));
+    mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0), aInputBlockId);
   }
 
   if (sPostAZPCAsJson.longTap) {
@@ -795,6 +796,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -819,6 +821,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -840,6 +843,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   }
 
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
 
   NS_ENSURE_TRUE(utils, true);
@@ -851,7 +855,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
   WidgetTouchEvent localEvent;
   if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
@@ -860,7 +864,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(aGuid, nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedTouch(aGuid, aInputBlockId, nsIPresShell::gPreventMouseEvents);
     }
     static bool sDispatchMouseEvents;
     static bool sDispatchMouseEventsCached = false;
@@ -878,17 +882,16 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
   }
   if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
-      aData.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
+      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
     mDispatchSynthMouseEvents = true;
   }
   return true;
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
-  return RecvInputDataTouchEvent(aGuid, aData);
+  return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId);
 }
 
 NS_IMETHODIMP

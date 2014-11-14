@@ -16,11 +16,9 @@
 #include "TabChildHelper.h"
 
 namespace mozilla {
-namespace layers {
-class GeckoContentController;
-}
 namespace embedlite {
 
+class EmbedLiteContentController;
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
@@ -30,7 +28,6 @@ class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
   EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
-  virtual ~EmbedLiteViewThreadChild();
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -47,8 +44,8 @@ public:
                                 const char16_t* aMessage,
                                 InfallibleTArray<nsString>* aJSONRetVal);
   bool HasMessageListener(const nsAString& aMessageName);
-  void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
-  void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);
+  void AddGeckoContentListener(EmbedLiteContentController* listener);
+  void RemoveGeckoContentListener(EmbedLiteContentController* listener);
 
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
@@ -64,6 +61,8 @@ public:
                                 const nsString& aData);
 
 protected:
+  virtual ~EmbedLiteViewThreadChild();
+
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual bool RecvDestroy();
   virtual bool RecvLoadURL(const nsString&);
@@ -84,7 +83,7 @@ protected:
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
+  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId);
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
@@ -96,8 +95,8 @@ protected:
   virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
   virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
   virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode);
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&);
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId);
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId);
 
   virtual bool
   RecvAddMessageListener(const nsCString&);
@@ -106,8 +105,6 @@ protected:
   void RecvAsyncMessage(const nsAString& aMessage,
                         const nsAString& aData);
   virtual bool RecvSetGLViewSize(const gfxSize&);
-
-  void RequestHasHWAcceleratedContextLooped();
 
   virtual bool
   RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames);
@@ -145,7 +142,7 @@ private:
   CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
-  nsTArray<mozilla::layers::GeckoContentController*> mControllerListeners;
+  nsTArray<EmbedLiteContentController*> mControllerListeners;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadChild);
 };

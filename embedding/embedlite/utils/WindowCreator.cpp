@@ -93,5 +93,5 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome* aParent,
 {
   LOGNI();
   bool cancel;
-  return CreateChromeWindow2(aParent, aChromeFlags, 0, 0, &cancel, _retval);
+  return CreateChromeWindow2(aParent, aChromeFlags, 0, nullptr, &cancel, _retval);
 }

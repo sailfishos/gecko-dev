@@ -70,18 +70,21 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aMo
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
+                                           int32_t aModifiers,
+                                           const ScrollableLayerGuid& aGuid,
+                                           uint64_t aInputBlockId)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid));
+      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y));
+    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y), aInputBlockId);
   }
 }
 
@@ -179,8 +182,9 @@ void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameM
 }
 
 nsEventStatus
-EmbedContentController::ReceiveInputEvent(const InputData& aEvent,
-                                          ScrollableLayerGuid* aOutTargetGuid)
+EmbedContentController::ReceiveInputEvent(InputData& aEvent,
+                                          mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
+                                          uint64_t* aOutInputBlockId)
 {
   if (!mAPZC) {
     return nsEventStatus_eIgnore;
