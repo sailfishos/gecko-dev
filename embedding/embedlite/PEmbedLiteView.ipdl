@@ -47,7 +47,7 @@ child:
     UpdateFrame(FrameMetrics frame) compress;
     HandleDoubleTap(nsIntPoint point);
     HandleSingleTap(nsIntPoint point);
-    HandleLongTap(nsIntPoint point, uint64_t aInputBlockId);
+    HandleLongTap(nsIntPoint point, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);

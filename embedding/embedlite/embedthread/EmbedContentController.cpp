@@ -70,10 +70,7 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aMo
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
-                                           int32_t aModifiers,
-                                           const ScrollableLayerGuid& aGuid,
-                                           uint64_t aInputBlockId)
+void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -84,7 +81,7 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y), aInputBlockId);
+    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y), aGuid, aInputBlockId);
   }
 }
 
