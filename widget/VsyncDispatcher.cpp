@@ -57,7 +57,7 @@ void
 VsyncDispatcher::NotifyVsync(TimeStamp aVsyncTimestamp)
 {
   bool notifiedCompositors = false;
-  if (gfxPrefs::VsyncAlignedCompositor()) {
+  if (false) {
     MutexAutoLock lock(mCompositorObserverLock);
     notifiedCompositors = NotifyVsyncObservers(aVsyncTimestamp, mCompositorObservers);
   }
