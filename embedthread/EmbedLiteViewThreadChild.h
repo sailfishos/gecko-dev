@@ -83,7 +83,9 @@ protected:
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint, const uint64_t& aInputBlockId);
+  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint,
+                                 const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                 const uint64_t& aInputBlockId);
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
@@ -139,6 +141,7 @@ private:
   nsRefPtr<TabChildHelper> mHelper;
   bool mDispatchSynthMouseEvents;
   bool mIMEComposing;
+  uint64_t mPendingTouchPreventedBlockId;
   CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;

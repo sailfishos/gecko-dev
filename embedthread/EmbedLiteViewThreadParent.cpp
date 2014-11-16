@@ -430,7 +430,8 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
-    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, nullptr);
+    uint64_t outInputBlockId;
+    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, &outInputBlockId);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       LayoutDeviceIntPoint lpt;
@@ -443,9 +444,9 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
         translatedEvent.mTouches.AppendElement(newData);
       }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, 0);
+        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, outInputBlockId);
       } else {
-        unused << SendInputDataTouchEvent(guid, translatedEvent, 0);
+        unused << SendInputDataTouchEvent(guid, translatedEvent, outInputBlockId);
       }
     }
   }
