@@ -1452,8 +1452,12 @@ RestyleManager::DoRebuildAllStyleData(RestyleTracker& aRestyleTracker,
     // different styles).  If we use up the hint for one of the
     // ancestors that we hit first, then we'll fail to do the restyling
     // we need to do.
-    aRestyleTracker.AddPendingRestyle(mPresContext->Document()->GetRootElement(),
-                                      aRestyleHint, nsChangeHint(0));
+    Element* root = mPresContext->Document()->GetRootElement();
+    if (root) {
+      // If the root element is gone, dropping the hint on the floor
+      // should be fine.
+      aRestyleTracker.AddPendingRestyle(root, aRestyleHint, nsChangeHint(0));
+    }
     aRestyleHint = nsRestyleHint(0);
   }
 
@@ -1485,6 +1489,12 @@ RestyleManager::ProcessPendingRestyles()
   NS_PRECONDITION(mPresContext->Document(), "No document?  Pshaw!");
   NS_PRECONDITION(!nsContentUtils::IsSafeToRunScript(),
                   "Missing a script blocker!");
+
+  if (mRebuildAllStyleData) {
+    RebuildAllStyleData(nsChangeHint(0));
+    MOZ_ASSERT(mPendingRestyles.Count() == 0);
+    return;
+  }
 
   // First do any queued-up frame creation.  (We should really
   // merge this into the rest of the process, though; see bug 827239.)

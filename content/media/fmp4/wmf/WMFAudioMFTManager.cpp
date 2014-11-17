@@ -22,7 +22,8 @@ PRLogModuleInfo* GetDemuxerLog();
 namespace mozilla {
 
 static void
-AACAudioSpecificConfigToUserData(const uint8_t* aAudioSpecConfig,
+AACAudioSpecificConfigToUserData(uint8_t aAACProfileLevelIndication,
+                                 const uint8_t* aAudioSpecConfig,
                                  uint32_t aConfigLength,
                                  nsTArray<BYTE>& aOutUserData)
 {
@@ -59,8 +60,8 @@ AACAudioSpecificConfigToUserData(const uint8_t* aAudioSpecConfig,
   // the rest can be all 0x00.
   BYTE heeInfo[heeInfoLen] = {0};
   WORD* w = (WORD*)heeInfo;
-  w[0] = 0x1; // Payload type ADTS
-  w[1] = 0xFE; // Profile level indication, none specified.
+  w[0] = 0x0; // Payload type raw AAC packet
+  w[1] = aAACProfileLevelIndication;
 
   aOutUserData.AppendElements(heeInfo, heeInfoLen);
   aOutUserData.AppendElements(aAudioSpecConfig, aConfigLength);
@@ -81,7 +82,8 @@ WMFAudioMFTManager::WMFAudioMFTManager(
     mStreamType = MP3;
   } else if (!strcmp(aConfig.mime_type, "audio/mp4a-latm")) {
     mStreamType = AAC;
-    AACAudioSpecificConfigToUserData(&aConfig.audio_specific_config[0],
+    AACAudioSpecificConfigToUserData(aConfig.aac_profile,
+                                     &aConfig.audio_specific_config[0],
                                      aConfig.audio_specific_config.length(),
                                      mUserData);
   } else {
@@ -145,7 +147,7 @@ WMFAudioMFTManager::Init()
   NS_ENSURE_TRUE(SUCCEEDED(hr), nullptr);
 
   if (mStreamType == AAC) {
-    hr = type->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0x1); // ADTS
+    hr = type->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0x0); // Raw AAC packet
     NS_ENSURE_TRUE(SUCCEEDED(hr), nullptr);
 
     hr = type->SetBlob(MF_MT_USER_DATA,
@@ -219,9 +221,6 @@ WMFAudioMFTManager::Output(int64_t aStreamOffset,
   hr = buffer->Lock(&data, &maxLength, &currentLength);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-  int32_t numSamples = currentLength / mAudioBytesPerSample;
-  int32_t numFrames = numSamples / mAudioChannels;
-
   // Sometimes when starting decoding, the AAC decoder gives us samples
   // with a negative timestamp. AAC does usually have preroll (or encoder
   // delay) encoded into its bitstream, but the amount encoded to the stream
@@ -243,6 +242,13 @@ WMFAudioMFTManager::Output(int64_t aStreamOffset,
   int32_t numFramesToStrip = 0;
   sample->GetUINT32(MFSampleExtension_Discontinuity, &discontinuity);
   if (mMustRecaptureAudioPosition || discontinuity) {
+    // Update the output type, in case this segment has a different
+    // rate. This also triggers on the first sample, which can have a
+    // different rate than is advertised in the container, and sometimes we
+    // don't get a MF_E_TRANSFORM_STREAM_CHANGE when the rate changes.
+    hr = UpdateOutputType();
+    NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
+
     mAudioFrameSum = 0;
     LONGLONG timestampHns = 0;
     hr = sample->GetSampleTime(&timestampHns);
@@ -256,15 +262,10 @@ WMFAudioMFTManager::Output(int64_t aStreamOffset,
       mAudioFrameOffset = 0;
     }
     mMustRecaptureAudioPosition = false;
-
-    // Also update the output type, in case this segment has a different
-    // rate. This also triggers on the first sample, which can have a
-    // different rate than is advertised in the container, and sometimes
-    // we don't get a MF_E_TRANSFORM_STREAM_CHANGE when the rate changes.
-    hr = UpdateOutputType();
-    NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
   }
   MOZ_ASSERT(numFramesToStrip >= 0);
+  int32_t numSamples = currentLength / mAudioBytesPerSample;
+  int32_t numFrames = numSamples / mAudioChannels;
   int32_t offset = std::min<int32_t>(numFramesToStrip, numFrames);
   numFrames -= offset;
   numSamples -= offset * mAudioChannels;

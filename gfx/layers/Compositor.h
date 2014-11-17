@@ -99,7 +99,7 @@
  * under gfx/layers/. To add a new backend, implement at least the following
  * interfaces:
  * - Compositor (ex. CompositorOGL)
- * - TextureHost (ex. SharedTextureHostOGL)
+ * - TextureHost (ex. SurfaceTextureHost)
  * Depending on the type of data that needs to be serialized, you may need to
  * add specific TextureClient implementations.
  */
@@ -486,15 +486,6 @@ public:
   void SetScreenRotation(ScreenRotation aRotation) {
     mScreenRotation = aRotation;
   }
-
-  // On b2g the clip rect is in the coordinate space of the physical screen
-  // independently of its rotation, while the coordinate space of the layers,
-  // on the other hand, depends on the screen orientation.
-  // This only applies to b2g as with other platforms, orientation is handled
-  // at the OS level rather than in Gecko.
-  // In addition, the clip rect needs to be offset by the rendering origin.
-  // This becomes important if intermediate surfaces are used.
-  RenderTargetRect ClipRectInLayersCoordinates(Layer* aLayer, RenderTargetIntRect aClip) const;
 
 protected:
   void DrawDiagnosticsInternal(DiagnosticFlags aFlags,

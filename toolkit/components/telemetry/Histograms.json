@@ -3122,6 +3122,15 @@
     "extended_statistics_ok": true,
     "description": "Number of thumbnails stored in the browser DB"
   },
+  "FENNEC_READING_LIST_COUNT": {
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "1000",
+    "n_buckets": 10,
+    "cpp_guard": "ANDROID",
+    "extended_statistics_ok": true,
+    "description": "Number of reading list items stored in the browser DB"
+  },
   "PLACES_SORTED_BOOKMARKS_PERC": {
     "expires_in_version": "never",
     "kind": "linear",
@@ -4208,6 +4217,23 @@
     "kind": "flag",
     "description": "a testing histogram; not meant to be touched"
   },
+  "TELEMETRY_TEST_COUNT": {
+    "expires_in_version": "never",
+    "kind": "count",
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_KEYED_FLAG": {
+    "expires_in_version": "never",
+    "kind": "flag",
+    "keyed": true,
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_KEYED_COUNT": {
+    "expires_in_version": "never",
+    "kind": "count",
+    "keyed": true,
+    "description": "a testing histogram; not meant to be touched"
+  },
   "STARTUP_CRASH_DETECTED": {
     "expires_in_version": "never",
     "kind": "flag",
@@ -4405,6 +4431,18 @@
     "kind": "enumerated",
     "n_values": 100,
     "description": "Security UI Telemetry"
+  },
+  "SEARCH_COUNTS": {
+    "expires_in_version": "never",
+    "kind": "count",
+    "keyed": true,
+    "description": "Record the search counts for search engines that have partner agreements with Mozilla"
+  },
+  "SEARCH_DEFAULT_ENGINE": {
+    "expires_in_version": "never",
+    "kind": "flag",
+    "keyed": true,
+    "description": "Record the default search engine."
   },
   "SEARCH_SERVICE_INIT_MS": {
     "expires_in_version": "never",
@@ -6293,6 +6331,14 @@
     "kind": "enumerated",
     "n_values": 24,
     "description": "Was a certificate error overridden on this handshake? What was it? (0=unknown error (indicating bug), 1=no, >1=a specific error)"
+  },
+  "SSL_PERMANENT_CERT_ERROR_OVERRIDES": {
+    "alert_emails": ["seceng@mozilla.org"],
+    "expires_in_version": "42",
+    "kind": "exponential",
+    "high": 1024,
+    "n_buckets": 10,
+    "description": "How many permanent certificate overrides a user has stored."
   },
   "TELEMETRY_TEST_EXPIRED": {
     "expires_in_version": "4.0a1",

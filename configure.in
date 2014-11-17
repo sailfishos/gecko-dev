@@ -3818,7 +3818,7 @@ MOZ_XUL=1
 MOZ_ZIPWRITER=1
 NS_PRINTING=1
 MOZ_PDF_PRINTING=
-MOZ_NO_SMART_CARDS=
+MOZ_DISABLE_CRYPTOLEGACY=
 NSS_DISABLE_DBM=
 NECKO_COOKIES=1
 NECKO_PROTOCOLS_DEFAULT="about app data file ftp http res viewsource websocket wyciwyg device"
@@ -5180,8 +5180,15 @@ fi;
 dnl ========================================================
 dnl = Built-in fragmented MP4 support.
 dnl ========================================================
+
+if test "$OS_TARGET" = Android; then
+    MOZ_FMP4=1
+fi
+
 if test -n "$MOZ_WMF" -o -n "$MOZ_FFMPEG" -o -n "$MOZ_APPLEMEDIA"; then
-    dnl Enable fragmented MP4 parser on platforms with decoder support.
+    dnl Enable fragmented MP4 parser on Windows by default.
+    dnl We will also need to enable it on other platforms as we implement
+    dnl platform decoder support there too.
     MOZ_FMP4=1
 fi
 
@@ -6385,12 +6392,12 @@ fi
 AC_SUBST(MOZ_DISABLE_PARENTAL_CONTROLS)
 
 dnl ========================================================
-dnl = Disable smartcard support
+dnl = Disable DOMCrypto
 dnl ========================================================
-if test -n "$MOZ_NO_SMART_CARDS"; then
-    AC_DEFINE(MOZ_NO_SMART_CARDS)
+if test -n "$MOZ_DISABLE_CRYPTOLEGACY"; then
+    AC_DEFINE(MOZ_DISABLE_CRYPTOLEGACY)
 fi
-AC_SUBST(MOZ_NO_SMART_CARDS)
+AC_SUBST(MOZ_DISABLE_CRYPTOLEGACY)
 
 dnl ========================================================
 dnl = Disable EV certificate verification

@@ -1275,6 +1275,18 @@ pref("services.sync.prefs.sync.spellchecker.dictionary", true);
 pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 #endif
 
+// Developer edition promo preferences
+pref("devtools.devedition.promo.shown", false);
+pref("devtools.devedition.promo.url", "https://mozilla.org/firefox/developer");
+
+// Also disable for beta channel in this release to clean up
+// issues in dev edition before promoting it on this channel
+#ifdef MOZ_UPDATE_CHANNEL == beta
+  pref("devtools.devedition.promo.enabled", false);
+#else
+  pref("devtools.devedition.promo.enabled", false);
+#endif
+
 // Disable the error console
 pref("devtools.errorconsole.enabled", false);
 
