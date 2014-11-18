@@ -162,13 +162,6 @@ EmbedLiteAppThreadChild::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
 }
 
-bool
-EmbedLiteAppThreadChild::RecvCreateView(const uint32_t& id, const uint32_t& parentId)
-{
-  LOGT("id:%u, parentId:%u", id, parentId);
-  return SendPEmbedLiteViewConstructor(id, parentId);
-}
-
 PEmbedLiteViewChild*
 EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
 {

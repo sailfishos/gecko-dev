@@ -12,13 +12,12 @@ intr protocol PEmbedLiteApp {
 parent:
   Initialized();
   ReadyToShutdown();
-  sync PEmbedLiteView(uint32_t id, uint32_t parentId);
   sync CreateWindow(uint32_t parentId, nsCString uri, uint32_t chromeFlags, uint32_t contextFlags)
     returns (uint32_t createdID, bool cancel);
 
 child:
+  PEmbedLiteView(uint32_t id, uint32_t parentId);
   PreDestroy();
-  CreateView(uint32_t id, uint32_t parentId);
   SetBoolPref(nsCString name, bool value);
   SetCharPref(nsCString name, nsCString value);
   SetIntPref(nsCString name, int value);
