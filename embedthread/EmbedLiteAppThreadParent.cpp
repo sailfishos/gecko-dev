@@ -82,14 +82,17 @@ PEmbedLiteViewParent*
 EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId)
 {
   LOGT("id:%u, parent:%u", id, parentId);
-  return new EmbedLiteViewThreadParent(id, parentId);
+  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(id, parentId);
+  p->AddRef();
+  return p;
 }
 
 bool
 EmbedLiteAppThreadParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* actor)
 {
   LOGT();
-  delete actor;
+  EmbedLiteViewThreadParent* p = static_cast<EmbedLiteViewThreadParent *>(actor);
+  p->Release();
   return true;
 }
 
