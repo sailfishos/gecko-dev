@@ -18,6 +18,7 @@ Patch6:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.pat
 Patch7:     workaround-for-21266-blank-page-after-scroll.patch
 Patch8:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
 Patch9:     workaround-for-bug-10381-late-access-message-loop.patch
+Patch10:    0002-config-Define-HAS_NEMO_RESOURCE.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -27,9 +28,6 @@ BuildRequires:  pkgconfig(libproxy-1.0)
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-app-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
-%ifarch armv7hl armv7tnhl
-BuildRequires:  pkgconfig(libresourceqt5)
-%endif
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
@@ -78,6 +76,7 @@ Tests and misc files for xulrunner
 %patch7 -p1
 %patch8 -p1
 %patch9 -p1
+%patch10 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
