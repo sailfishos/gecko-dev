@@ -110,6 +110,8 @@ protected:
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorParent;
+  // The sole purpose of this friendliness is to set mView which is used only as a proxy to view's Listener
+  friend class EmbedLiteView;
   void SetCompositor(EmbedLiteCompositorParent* aCompositor);
   uint32_t mId;
   EmbedLiteView* mView;

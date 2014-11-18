@@ -30,8 +30,6 @@ public:
   ::EmbedLiteAppService* AppService();
   EmbedLiteViewThreadChild* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
 
-  virtual bool RecvCreateView(const uint32_t& id, const uint32_t& parentId);
-
 protected:
   virtual ~EmbedLiteAppThreadChild();
 
