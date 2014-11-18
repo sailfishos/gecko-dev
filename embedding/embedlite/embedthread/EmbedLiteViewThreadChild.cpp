@@ -85,7 +85,6 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   , mPendingTouchPreventedBlockId(0)
 {
   LOGT("id:%u, parentID:%u", aId, parentId);
-  AddRef();
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
