@@ -27,7 +27,6 @@ namespace embedlite {
 
 EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId)
   : mId(id)
-  , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
   , mUILoop(MessageLoop::current())
@@ -36,8 +35,6 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mController(new EmbedContentController(this, mUILoop))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
-  MOZ_ASSERT(mView, "View destroyed during OMTC view construction");
-  mView->SetImpl(this);
 }
 
 EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
@@ -47,9 +44,6 @@ EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
   bool mHadCompositor = mCompositor.get() != nullptr;
   mController = nullptr;
 
-  if (mView) {
-    mView->SetImpl(NULL);
-  }
   // If we haven't had compositor created, then noone will notify app that view destroyed
   // Let's do it here
   if (!mHadCompositor) {
