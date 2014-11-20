@@ -841,9 +841,9 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
     browser.userTypedClear++;
   }
 
+  let shouldBeRemote = gMultiProcessBrowser &&
+                       E10SUtils.shouldBrowserBeRemote(uri);
   try {
-    let shouldBeRemote = gMultiProcessBrowser &&
-                         E10SUtils.shouldBrowserBeRemote(uri);
     if (browser.isRemoteBrowser == shouldBeRemote) {
       browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
     } else {
@@ -853,6 +853,13 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
         referrer: referrer ? referrer.spec : null,
       });
     }
+  } catch (e) {
+    // If anything goes wrong just switch remoteness manually and load the URI.
+    // We might lose history that way but at least the browser loaded a page.
+    // This might be necessary if SessionStore wasn't initialized yet i.e.
+    // when the homepage is a non-remote page.
+    gBrowser.updateBrowserRemoteness(browser, shouldBeRemote);
+    browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
   } finally {
     if (browser.userTypedClear) {
       browser.userTypedClear--;
@@ -1736,7 +1743,7 @@ function HandleAppCommandEvent(evt) {
                      gBrowser.selectedBrowser);
     break;
   case "Save":
-    saveDocument(window.content.document);
+    saveDocument(gBrowser.selectedBrowser.contentDocumentAsCPOW);
     break;
   case "SendMail":
     MailIntegration.sendLinkForWindow(window.content);
@@ -6682,11 +6689,11 @@ var gIdentityHandler = {
     this._encryptionLabel[this.IDENTITY_MODE_UNKNOWN] =
       gNavigatorBundle.getString("identity.unencrypted");
     this._encryptionLabel[this.IDENTITY_MODE_MIXED_DISPLAY_LOADED] =
-      gNavigatorBundle.getString("identity.mixed_display_loaded");
+      gNavigatorBundle.getString("identity.broken_loaded");
     this._encryptionLabel[this.IDENTITY_MODE_MIXED_ACTIVE_LOADED] =
       gNavigatorBundle.getString("identity.mixed_active_loaded2");
     this._encryptionLabel[this.IDENTITY_MODE_MIXED_DISPLAY_LOADED_ACTIVE_BLOCKED] =
-      gNavigatorBundle.getString("identity.mixed_display_loaded");
+      gNavigatorBundle.getString("identity.broken_loaded");
     return this._encryptionLabel;
   },
   get _identityPopup () {

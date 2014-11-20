@@ -608,7 +608,7 @@ public:
    * The frame's writing-mode, used for logical layout computations.
    */
   mozilla::WritingMode GetWritingMode() const {
-    return mozilla::WritingMode(StyleVisibility());
+    return mozilla::WritingMode(StyleContext());
   }
 
   /**
@@ -743,6 +743,15 @@ public:
    * simply be adjusted directly (e.g., using SetPosition()).
    */
   void MovePositionBy(const nsPoint& aTranslation);
+
+  /**
+   * As above, using a logical-point delta in a given writing mode.
+   */
+  void MovePositionBy(mozilla::WritingMode aWritingMode,
+                      const mozilla::LogicalPoint& aTranslation)
+  {
+    MovePositionBy(aTranslation.GetPhysicalPoint(aWritingMode, 0));
+  }
 
   /**
    * Return frame's position without relative positioning
@@ -1634,7 +1643,8 @@ public:
   /**
    * Bit-flags to pass to ComputeSize in |aFlags| parameter.
    */
-  enum {
+  enum ComputeSizeFlags {
+    eDefault =           0,
     /* Set if the frame is in a context where non-replaced blocks should
      * shrink-wrap (e.g., it's floating, absolutely positioned, or
      * inline-block). */
@@ -1693,7 +1703,7 @@ public:
               const mozilla::LogicalSize& aMargin,
               const mozilla::LogicalSize& aBorder,
               const mozilla::LogicalSize& aPadding,
-              uint32_t aFlags) = 0;
+              ComputeSizeFlags aFlags) = 0;
 
   /**
    * Compute a tight bounding rectangle for the frame. This is a rectangle

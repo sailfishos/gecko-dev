@@ -68,16 +68,6 @@ DirectProxyHandler::delete_(JSContext *cx, HandleObject proxy, HandleId id, bool
 }
 
 bool
-DirectProxyHandler::enumerate(JSContext *cx, HandleObject proxy,
-                              AutoIdVector &props) const
-{
-    assertEnteredPolicy(cx, proxy, JSID_VOID, ENUMERATE);
-    MOZ_ASSERT(!hasPrototype()); // Should never be called if there's a prototype.
-    RootedObject target(cx, proxy->as<ProxyObject>().target());
-    return GetPropertyKeys(cx, target, 0, &props);
-}
-
-bool
 DirectProxyHandler::call(JSContext *cx, HandleObject proxy, const CallArgs &args) const
 {
     assertEnteredPolicy(cx, proxy, JSID_VOID, CALL);
@@ -216,9 +206,7 @@ DirectProxyHandler::has(JSContext *cx, HandleObject proxy, HandleId id, bool *bp
 bool
 DirectProxyHandler::hasOwn(JSContext *cx, HandleObject proxy, HandleId id, bool *bp) const
 {
-    // Note: Proxy::set needs to invoke hasOwn to determine where the setter
-    // lives, so we allow SET operations to invoke us.
-    assertEnteredPolicy(cx, proxy, id, GET | SET);
+    assertEnteredPolicy(cx, proxy, id, GET);
     RootedObject target(cx, proxy->as<ProxyObject>().target());
     Rooted<PropertyDescriptor> desc(cx);
     if (!JS_GetPropertyDescriptorById(cx, target, id, &desc))
@@ -255,13 +243,23 @@ DirectProxyHandler::getOwnEnumerablePropertyKeys(JSContext *cx, HandleObject pro
 }
 
 bool
-DirectProxyHandler::iterate(JSContext *cx, HandleObject proxy, unsigned flags,
-                            MutableHandleValue vp) const
+DirectProxyHandler::getEnumerablePropertyKeys(JSContext *cx, HandleObject proxy,
+                                              AutoIdVector &props) const
 {
     assertEnteredPolicy(cx, proxy, JSID_VOID, ENUMERATE);
     MOZ_ASSERT(!hasPrototype()); // Should never be called if there's a prototype.
     RootedObject target(cx, proxy->as<ProxyObject>().target());
-    return GetIterator(cx, target, flags, vp);
+    return GetPropertyKeys(cx, target, 0, &props);
+}
+
+bool
+DirectProxyHandler::iterate(JSContext *cx, HandleObject proxy, unsigned flags,
+                            MutableHandleObject objp) const
+{
+    assertEnteredPolicy(cx, proxy, JSID_VOID, ENUMERATE);
+    MOZ_ASSERT(!hasPrototype()); // Should never be called if there's a prototype.
+    RootedObject target(cx, proxy->as<ProxyObject>().target());
+    return GetIterator(cx, target, flags, objp);
 }
 
 bool

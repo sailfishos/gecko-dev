@@ -1067,8 +1067,7 @@ js_Disassemble1(JSContext *cx, HandleScript script, jsbytecode *pc,
         goto print_int;
 
       case JOF_UINT24:
-        MOZ_ASSERT(op == JSOP_UINT24 || op == JSOP_NEWARRAY || op == JSOP_INITELEM_ARRAY ||
-                   op == JSOP_DUPAT);
+        MOZ_ASSERT(len == 4);
         i = (int)GET_UINT24(pc);
         goto print_int;
 
@@ -2393,9 +2392,6 @@ js::GetPCCountScriptContents(JSContext *cx, size_t index)
     JSScript *script = sac.script;
 
     StringBuffer buf(cx);
-
-    if (!script->functionNonDelazifying() && !script->compileAndGo())
-        return buf.finishString();
 
     {
         AutoCompartment ac(cx, &script->global());

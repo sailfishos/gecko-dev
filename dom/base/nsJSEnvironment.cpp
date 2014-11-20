@@ -45,6 +45,7 @@
 
 #include "jsapi.h"
 #include "jswrapper.h"
+#include "js/SliceBudget.h"
 #include "nsIArray.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
@@ -116,13 +117,13 @@ const size_t gStackSize = 8192;
 // and doing the actual CC.
 #define NS_CC_DELAY                 6000 // ms
 
-#define NS_CC_SKIPPABLE_DELAY       400 // ms
+#define NS_CC_SKIPPABLE_DELAY       250 // ms
 
 // Maximum amount of time that should elapse between incremental CC slices
 static const int64_t kICCIntersliceDelay = 32; // ms
 
 // Time budget for an incremental CC slice
-static const int64_t kICCSliceBudget = 10; // ms
+static const int64_t kICCSliceBudget = 5; // ms
 
 // Maximum total duration for an ICC
 static const uint32_t kMaxICCDuration = 2000; // ms
@@ -142,8 +143,6 @@ static const uint32_t kMaxICCDuration = 2000; // ms
 
 // Large value used to specify that a script should run essentially forever
 #define NS_UNLIMITED_SCRIPT_RUNTIME (0x40000000LL << 32)
-
-#define NS_MAJOR_FORGET_SKIPPABLE_CALLS 2
 
 // if you add statics here, add them to the list in StartupJSEnvironment
 
@@ -1692,24 +1691,24 @@ nsJSContext::RunCycleCollectorSlice()
 
   // Decide how long we want to budget for this slice. By default,
   // use an unlimited budget.
-  int64_t sliceBudget = -1;
+  js::SliceBudget budget;
 
   if (sIncrementalCC) {
     if (gCCStats.mBeginTime.IsNull()) {
       // If no CC is in progress, use the standard slice time.
-      sliceBudget = kICCSliceBudget;
+      budget = js::SliceBudget(js::TimeBudget(kICCSliceBudget));
     } else {
       TimeStamp now = TimeStamp::Now();
 
       // Only run a limited slice if we're within the max running time.
       if (TimeBetween(gCCStats.mBeginTime, now) < kMaxICCDuration) {
         float sliceMultiplier = std::max(TimeBetween(gCCStats.mEndSliceTime, now) / (float)kICCIntersliceDelay, 1.0f);
-        sliceBudget = kICCSliceBudget * sliceMultiplier;
+        budget = js::SliceBudget(js::TimeBudget(kICCSliceBudget * sliceMultiplier));
       }
     }
   }
 
-  nsCycleCollector_collectSlice(sliceBudget);
+  nsCycleCollector_collectSlice(budget);
 
   gCCStats.FinishCycleCollectionSlice();
 }
@@ -1726,7 +1725,10 @@ nsJSContext::RunCycleCollectorWorkSlice(int64_t aWorkBudget)
     js::ProfileEntry::Category::CC);
 
   gCCStats.PrepareForCycleCollectionSlice();
-  nsCycleCollector_collectSliceWork(aWorkBudget);
+
+  js::SliceBudget budget = js::SliceBudget(js::WorkBudget(aWorkBudget));
+  nsCycleCollector_collectSlice(budget);
+
   gCCStats.FinishCycleCollectionSlice();
 }
 
@@ -1781,10 +1783,8 @@ nsJSContext::BeginCycleCollectionCallback()
 
   MOZ_ASSERT(!sICCTimer, "Tried to create a new ICC timer when one already existed.");
 
-  if (!sIncrementalCC) {
-    return;
-  }
-
+  // Create an ICC timer even if ICC is globally disabled, because we could be manually triggering
+  // an incremental collection, and we want to be sure to finish it.
   CallCreateInstance("@mozilla.org/timer;1", &sICCTimer);
   if (sICCTimer) {
     sICCTimer->InitWithFuncCallback(ICCTimerFired,
@@ -2034,8 +2034,10 @@ CCTimerFired(nsITimer *aTimer, void *aClosure)
       // any because that will allow us to include the GC time in the CC pause.
       nsJSContext::RunCycleCollectorSlice();
     }
-  } else if ((sPreviousSuspectedCount + 100) <= suspected) {
-      // Only do a forget skippable if there are more than a few new objects.
+  } else if (((sPreviousSuspectedCount + 100) <= suspected) ||
+             (sCleanupsSinceLastGC < NS_MAJOR_FORGET_SKIPPABLE_CALLS)) {
+      // Only do a forget skippable if there are more than a few new objects
+      // or we're doing the initial forget skippables.
       FireForgetSkippable(suspected, false);
   }
 
@@ -2410,14 +2412,6 @@ DOMGCSliceCallback(JSRuntime *aRt, JS::GCProgress aProgress, const JS::GCDescrip
 }
 
 void
-nsJSContext::ReportPendingException()
-{
-  if (mIsInitialized) {
-    nsJSUtils::ReportPendingException(mContext);
-  }
-}
-
-void
 nsJSContext::SetWindowProxy(JS::Handle<JSObject*> aWindowProxy)
 {
   mWindowProxy = aWindowProxy;
@@ -2699,7 +2693,7 @@ AsmJSCacheOpenEntryForRead(JS::Handle<JSObject*> aGlobal,
                                       aHandle);
 }
 
-static bool
+static JS::AsmJSCacheResult
 AsmJSCacheOpenEntryForWrite(JS::Handle<JSObject*> aGlobal,
                             bool aInstalled,
                             const char16_t* aBegin,

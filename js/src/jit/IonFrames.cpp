@@ -36,6 +36,7 @@
 #include "jsscriptinlines.h"
 #include "gc/Nursery-inl.h"
 #include "jit/JitFrameIterator-inl.h"
+#include "vm/Debugger-inl.h"
 #include "vm/Probes-inl.h"
 
 namespace js {
@@ -215,16 +216,6 @@ JitFrameIterator::script() const
     return script;
 }
 
-uint8_t *
-JitFrameIterator::resumeAddressToFp() const
-{
-    // If we are settled on a patched BaselineFrame due to debug mode OSR, get
-    // the real return address via the stashed DebugModeOSRInfo.
-    if (isBaselineJS() && baselineFrame()->getDebugModeOSRInfo())
-        return baselineFrame()->debugModeOSRInfo()->resumeAddr;
-    return returnAddressToFp();
-}
-
 void
 JitFrameIterator::baselineScriptAndPc(JSScript **scriptRes, jsbytecode **pcRes) const
 {
@@ -232,7 +223,6 @@ JitFrameIterator::baselineScriptAndPc(JSScript **scriptRes, jsbytecode **pcRes) 
     JSScript *script = this->script();
     if (scriptRes)
         *scriptRes = script;
-    uint8_t *retAddr = resumeAddressToFp();
 
     // If we have unwound the scope due to exception handling to a different
     // pc, the frame should behave as if it were settled on that pc.
@@ -241,6 +231,14 @@ JitFrameIterator::baselineScriptAndPc(JSScript **scriptRes, jsbytecode **pcRes) 
         return;
     }
 
+    // If we are settled on a patched BaselineFrame due to debug mode OSR, get
+    // the stashed pc.
+    if (baselineFrame()->getDebugModeOSRInfo()) {
+        *pcRes = baselineFrame()->debugModeOSRInfo()->pc;
+        return;
+    }
+
+    uint8_t *retAddr = returnAddressToFp();
     if (pcRes) {
         // If the return address is into the prologue entry address or just
         // after the debug prologue, then assume start of script.
@@ -280,6 +278,7 @@ SizeOfFramePrefix(FrameType type)
       case JitFrame_BaselineJS:
       case JitFrame_IonJS:
       case JitFrame_Bailout:
+      case JitFrame_Unwound_BaselineJS:
       case JitFrame_Unwound_IonJS:
         return IonJSFrameLayout::Size();
       case JitFrame_BaselineStub:
@@ -332,6 +331,8 @@ JitFrameIterator::operator++()
     type_ = current()->prevType();
     if (type_ == JitFrame_Unwound_IonJS)
         type_ = JitFrame_IonJS;
+    else if (type_ == JitFrame_Unwound_BaselineJS)
+        type_ = JitFrame_BaselineJS;
     else if (type_ == JitFrame_Unwound_BaselineStub)
         type_ = JitFrame_BaselineStub;
     returnAddressToFp_ = current()->returnAddress();
@@ -416,24 +417,39 @@ HandleExceptionIon(JSContext *cx, const InlineFrameIterator &frame, ResumeFromEx
     RootedScript script(cx, frame.script());
     jsbytecode *pc = frame.pc();
 
-    bool bailedOutForDebugMode = false;
-    if (cx->compartment()->debugMode()) {
-        // If we have an exception from within Ion and the debugger is active,
-        // we do the following:
-        //
-        //   1. Bailout to baseline to reconstruct a baseline frame.
-        //   2. Resume immediately into the exception tail afterwards, and
-        //   handle the exception again with the top frame now a baseline
-        //   frame.
-        //
-        // An empty exception info denotes that we're propagating an Ion
-        // exception due to debug mode, which BailoutIonToBaseline needs to
-        // know. This is because we might not be able to fully reconstruct up
-        // to the stack depth at the snapshot, as we could've thrown in the
-        // middle of a call.
-        ExceptionBailoutInfo propagateInfo;
-        uint32_t retval = ExceptionHandlerBailout(cx, frame, rfe, propagateInfo, overrecursed);
-        bailedOutForDebugMode = retval == BAILOUT_RETURN_OK;
+    if (cx->compartment()->isDebuggee()) {
+        // We need to bail when debug mode is active to observe the Debugger's
+        // exception unwinding handler if either a Debugger is observing all
+        // execution in the compartment, or it has a live onExceptionUnwind
+        // hook, or it has observed this frame (e.g., for onPop).
+        bool shouldBail = cx->compartment()->debugObservesAllExecution() ||
+                          Debugger::hasLiveOnExceptionUnwind(cx->global());
+        if (!shouldBail) {
+            JitActivation *act = cx->mainThread().activation()->asJit();
+            RematerializedFrame *rematFrame =
+                act->lookupRematerializedFrame(frame.frame().fp(), frame.frameNo());
+            shouldBail = rematFrame && rematFrame->isDebuggee();
+        }
+
+        if (shouldBail) {
+            // If we have an exception from within Ion and the debugger is active,
+            // we do the following:
+            //
+            //   1. Bailout to baseline to reconstruct a baseline frame.
+            //   2. Resume immediately into the exception tail afterwards, and
+            //      handle the exception again with the top frame now a baseline
+            //      frame.
+            //
+            // An empty exception info denotes that we're propagating an Ion
+            // exception due to debug mode, which BailoutIonToBaseline needs to
+            // know. This is because we might not be able to fully reconstruct up
+            // to the stack depth at the snapshot, as we could've thrown in the
+            // middle of a call.
+            ExceptionBailoutInfo propagateInfo;
+            uint32_t retval = ExceptionHandlerBailout(cx, frame, rfe, propagateInfo, overrecursed);
+            if (retval == BAILOUT_RETURN_OK)
+                return;
+        }
     }
 
     if (!script->hasTrynotes())
@@ -463,7 +479,7 @@ HandleExceptionIon(JSContext *cx, const InlineFrameIterator &frame, ResumeFromEx
             break;
 
           case JSTRY_CATCH:
-            if (cx->isExceptionPending() && !bailedOutForDebugMode) {
+            if (cx->isExceptionPending()) {
                 // Ion can compile try-catch, but bailing out to catch
                 // exceptions is slow. Reset the warm-up counter so that if we
                 // catch many exceptions we won't Ion-compile the script.
@@ -506,6 +522,35 @@ ForcedReturn(JSContext *cx, const JitFrameIterator &frame, jsbytecode *pc,
 }
 
 static void
+HandleClosingGeneratorReturn(JSContext *cx, const JitFrameIterator &frame, jsbytecode *pc,
+                             jsbytecode *unwoundScopeToPc, ResumeFromException *rfe,
+                             bool *calledDebugEpilogue)
+{
+    // If we're closing a legacy generator, we need to return to the caller
+    // after executing the |finally| blocks. This is very similar to a forced
+    // return from the debugger.
+
+    if (!cx->isExceptionPending())
+        return;
+    RootedValue exception(cx);
+    if (!cx->getPendingException(&exception))
+        return;
+    if (!exception.isMagic(JS_GENERATOR_CLOSING))
+        return;
+
+    cx->clearPendingException();
+    frame.baselineFrame()->setReturnValue(UndefinedValue());
+
+    if (unwoundScopeToPc) {
+        if (frame.baselineFrame()->isDebuggee())
+            frame.baselineFrame()->setUnwoundScopeOverridePc(unwoundScopeToPc);
+        pc = unwoundScopeToPc;
+    }
+
+    ForcedReturn(cx, frame, pc, rfe, calledDebugEpilogue);
+}
+
+static void
 HandleExceptionBaseline(JSContext *cx, const JitFrameIterator &frame, ResumeFromException *rfe,
                         jsbytecode **unwoundScopeToPc, bool *calledDebugEpilogue)
 {
@@ -524,9 +569,11 @@ HandleExceptionBaseline(JSContext *cx, const JitFrameIterator &frame, ResumeFrom
         return;
     }
 
-    if (cx->isExceptionPending() && cx->compartment()->debugMode()) {
-        BaselineFrame *baselineFrame = frame.baselineFrame();
-        switch (Debugger::onExceptionUnwind(cx, baselineFrame)) {
+    RootedValue exception(cx);
+    if (cx->isExceptionPending() && cx->compartment()->isDebuggee() &&
+        cx->getPendingException(&exception) && !exception.isMagic(JS_GENERATOR_CLOSING))
+    {
+        switch (Debugger::onExceptionUnwind(cx, frame.baselineFrame())) {
           case JSTRAP_ERROR:
             // Uncatchable exception.
             MOZ_ASSERT(!cx->isExceptionPending());
@@ -546,8 +593,10 @@ HandleExceptionBaseline(JSContext *cx, const JitFrameIterator &frame, ResumeFrom
         }
     }
 
-    if (!script->hasTrynotes())
+    if (!script->hasTrynotes()) {
+        HandleClosingGeneratorReturn(cx, frame, pc, *unwoundScopeToPc, rfe, calledDebugEpilogue);
         return;
+    }
 
     JSTryNote *tn = script->trynotes()->vector;
     JSTryNote *tnEnd = tn + script->trynotes()->length;
@@ -581,6 +630,13 @@ HandleExceptionBaseline(JSContext *cx, const JitFrameIterator &frame, ResumeFrom
         switch (tn->kind) {
           case JSTRY_CATCH:
             if (cx->isExceptionPending()) {
+                // If we're closing a legacy generator, we have to skip catch
+                // blocks.
+                if (!cx->getPendingException(&exception))
+                    continue;
+                if (exception.isMagic(JS_GENERATOR_CLOSING))
+                    continue;
+
                 // Ion can compile try-catch, but bailing out to catch
                 // exceptions is slow. Reset the warm-up counter so that if we
                 // catch many exceptions we won't Ion-compile the script.
@@ -625,6 +681,7 @@ HandleExceptionBaseline(JSContext *cx, const JitFrameIterator &frame, ResumeFrom
         }
     }
 
+    HandleClosingGeneratorReturn(cx, frame, pc, *unwoundScopeToPc, rfe, calledDebugEpilogue);
 }
 
 struct AutoDeleteDebugModeOSRInfo
@@ -651,7 +708,13 @@ HandleException(ResumeFromException *rfe)
     if (cx->runtime()->jitRuntime()->hasIonReturnOverride())
         cx->runtime()->jitRuntime()->takeIonReturnOverride();
 
-    JitFrameIterator iter(cx);
+    // The Debugger onExceptionUnwind hook (reachable via
+    // HandleExceptionBaseline below) may cause on-stack recompilation of
+    // baseline scripts, which may patch return addresses on the stack. Since
+    // JitFrameIterators cache the previous frame's return address when
+    // iterating, we need a variant here that is automatically updated should
+    // on-stack recompilation occur.
+    DebugModeOSRVolatileJitFrameIterator iter(cx);
     while (!iter.isEntry()) {
         bool overrecursed = false;
         if (iter.isIonJS()) {
@@ -668,7 +731,7 @@ HandleException(ResumeFromException *rfe)
 
                 if (rfe->kind == ResumeFromException::RESUME_BAILOUT) {
                     if (invalidated)
-                        ionScript->decref(cx->runtime()->defaultFreeOp());
+                        ionScript->decrementInvalidationCount(cx->runtime()->defaultFreeOp());
                     return;
                 }
 
@@ -701,7 +764,7 @@ HandleException(ResumeFromException *rfe)
             }
 
             if (invalidated)
-                ionScript->decref(cx->runtime()->defaultFreeOp());
+                ionScript->decrementInvalidationCount(cx->runtime()->defaultFreeOp());
 
         } else if (iter.isBaselineJS()) {
             // It's invalid to call DebugEpilogue twice for the same frame.
@@ -736,7 +799,7 @@ HandleException(ResumeFromException *rfe)
             // it doesn't try to pop the SPS frame again.
             iter.baselineFrame()->unsetPushedSPSFrame();
 
-            if (cx->compartment()->debugMode() && !calledDebugEpilogue) {
+            if (iter.baselineFrame()->isDebuggee() && !calledDebugEpilogue) {
                 // If we still need to call the DebugEpilogue, we must
                 // remember the pc we unwound the scope chain to, as it will
                 // be out of sync with the frame's actual pc.
@@ -808,6 +871,7 @@ void
 EnsureExitFrame(IonCommonFrameLayout *frame)
 {
     if (frame->prevType() == JitFrame_Unwound_IonJS ||
+        frame->prevType() == JitFrame_Unwound_BaselineJS ||
         frame->prevType() == JitFrame_Unwound_BaselineStub ||
         frame->prevType() == JitFrame_Unwound_Rectifier)
     {
@@ -832,6 +896,12 @@ EnsureExitFrame(IonCommonFrameLayout *frame)
 
     if (frame->prevType() == JitFrame_BaselineStub) {
         frame->changePrevType(JitFrame_Unwound_BaselineStub);
+        return;
+    }
+
+
+    if (frame->prevType() == JitFrame_BaselineJS) {
+        frame->changePrevType(JitFrame_Unwound_BaselineJS);
         return;
     }
 
@@ -1357,6 +1427,7 @@ MarkJitActivation(JSTracer *trc, const JitActivationIterator &activations)
             MarkBailoutFrame(trc, frames);
             break;
           case JitFrame_Unwound_IonJS:
+          case JitFrame_Unwound_BaselineJS:
             MOZ_CRASH("invalid");
           case JitFrame_Rectifier:
             MarkRectifierFrame(trc, frames);
@@ -2506,6 +2577,7 @@ JitFrameIterator::dump() const
         fprintf(stderr, "  Frame size: %u\n", unsigned(current()->prevFrameLocalSize()));
         break;
       case JitFrame_Unwound_IonJS:
+      case JitFrame_Unwound_BaselineJS:
         fprintf(stderr, "Warning! Unwound JS frames are not observable.\n");
         break;
       case JitFrame_Exit:

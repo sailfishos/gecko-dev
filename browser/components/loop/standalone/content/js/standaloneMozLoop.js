@@ -47,7 +47,7 @@ loop.StandaloneMozLoop = (function(mozL10n) {
     var message = "HTTP " + jqXHR.status + " " + errorThrown;
 
     // Create an error with server error `errno` code attached as a property
-    var err = new Error(message);
+    var err = new Error(message + (jsonErr.error ? "; " + jsonErr.error : ""));
     err.errno = jsonErr.errno;
 
     callback(err);
@@ -170,7 +170,13 @@ loop.StandaloneMozLoop = (function(mozL10n) {
         action: "leave",
         sessionToken: sessionToken
       }, null, callback);
-    }
+    },
+
+    // Dummy functions to reflect those in the desktop mozLoop.rooms that we
+    // don't currently use.
+    on: function() {},
+    once: function() {},
+    off: function() {}
   };
 
   var StandaloneMozLoop = function(options) {
@@ -182,6 +188,34 @@ loop.StandaloneMozLoop = (function(mozL10n) {
     this._baseServerUrl = options.baseServerUrl;
 
     this.rooms = new StandaloneMozLoopRooms(options);
+  };
+
+  StandaloneMozLoop.prototype = {
+    /**
+     * Stores a preference in the local storage for standalone.
+     * Note: Some prefs are filtered out as they are not applicable
+     * to the standalone UI.
+     *
+     * @param {String} prefName The name of the pref
+     * @param {String} value The value to set.
+     */
+    setLoopPref: function(prefName, value) {
+      if (prefName === "seenToS") {
+        return;
+      }
+
+      localStorage.setItem(prefName, value);
+    },
+
+    /**
+     * Gets a preference from the local storage for standalone.
+     *
+     * @param {String} prefName The name of the pref
+     * @param {String} value The value to set.
+     */
+    getLoopPref: function(prefName) {
+      return localStorage.getItem(prefName);
+    }
   };
 
   return StandaloneMozLoop;

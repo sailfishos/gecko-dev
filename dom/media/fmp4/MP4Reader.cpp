@@ -14,6 +14,7 @@
 #include "SharedThreadPool.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/TimeRanges.h"
+#include "SharedDecoderManager.h"
 
 #ifdef MOZ_EME
 #include "mozilla/CDMProxy.h"
@@ -88,6 +89,19 @@ public:
       sum += bytesRead;
     } while (sum < aCount && bytesRead > 0);
     *aBytesRead = sum;
+    return true;
+  }
+
+  virtual bool CachedReadAt(int64_t aOffset, void* aBuffer, size_t aCount,
+                            size_t* aBytesRead) MOZ_OVERRIDE
+  {
+    nsresult rv = mResource->ReadFromCache(reinterpret_cast<char*>(aBuffer),
+                                           aOffset, aCount);
+    if (NS_FAILED(rv)) {
+      *aBytesRead = 0;
+      return false;
+    }
+    *aBytesRead = aCount;
     return true;
   }
 
@@ -401,12 +415,21 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
     const VideoDecoderConfig& video = mDemuxer->VideoConfig();
     mInfo.mVideo.mDisplay =
       nsIntSize(video.display_width, video.display_height);
-    mVideo.mCallback = new  DecoderCallback(this, kVideo);
-    mVideo.mDecoder = mPlatform->CreateH264Decoder(video,
-                                                   mLayersBackendType,
-                                                   mDecoder->GetImageContainer(),
-                                                   mVideo.mTaskQueue,
-                                                   mVideo.mCallback);
+    mVideo.mCallback = new DecoderCallback(this, kVideo);
+    if (mSharedDecoderManager) {
+      mVideo.mDecoder =
+        mSharedDecoderManager->CreateH264Decoder(video,
+                                                 mLayersBackendType,
+                                                 mDecoder->GetImageContainer(),
+                                                 mVideo.mTaskQueue,
+                                                 mVideo.mCallback);
+    } else {
+      mVideo.mDecoder = mPlatform->CreateH264Decoder(video,
+                                                     mLayersBackendType,
+                                                     mDecoder->GetImageContainer(),
+                                                     mVideo.mTaskQueue,
+                                                     mVideo.mCallback);
+    }
     NS_ENSURE_TRUE(mVideo.mDecoder != nullptr, NS_ERROR_FAILURE);
     nsresult rv = mVideo.mDecoder->Init();
     NS_ENSURE_SUCCESS(rv, rv);
@@ -458,12 +481,6 @@ MP4Reader::GetDecoderData(TrackType aTrack)
 {
   MOZ_ASSERT(aTrack == kAudio || aTrack == kVideo);
   return (aTrack == kAudio) ? mAudio : mVideo;
-}
-
-MediaDataDecoder*
-MP4Reader::Decoder(TrackType aTrack)
-{
-  return GetDecoderData(aTrack).mDecoder;
 }
 
 MP4Sample*
@@ -607,7 +624,6 @@ MP4Reader::Output(TrackType aTrack, MediaData* aSample)
   // Don't accept output while we're flushing.
   MonitorAutoLock mon(data.mMonitor);
   if (data.mIsFlushing) {
-    delete aSample;
     LOG("MP4Reader produced output while flushing, discarding.");
     mon.NotifyAll();
     return;
@@ -785,14 +801,7 @@ void
 MP4Reader::NotifyDataArrived(const char* aBuffer, uint32_t aLength,
                              int64_t aOffset)
 {
-  if (NS_IsMainThread()) {
-    if (GetTaskQueue()) {
-      GetTaskQueue()->Dispatch(
-        NS_NewRunnableMethod(this, &MP4Reader::UpdateIndex));
-    }
-  } else {
-    UpdateIndex();
-  }
+  UpdateIndex();
 }
 
 void
@@ -803,13 +812,11 @@ MP4Reader::UpdateIndex()
     return;
   }
 
-  MediaResource* resource = mDecoder->GetResource();
-  resource->Pin();
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
   nsTArray<MediaByteRange> ranges;
   if (NS_SUCCEEDED(resource->GetCachedRanges(ranges))) {
     mDemuxer->UpdateIndex(ranges);
   }
-  resource->Unpin();
 }
 
 int64_t
@@ -824,25 +831,24 @@ MP4Reader::GetEvictionOffset(double aTime)
 }
 
 nsresult
-MP4Reader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
+MP4Reader::GetBuffered(dom::TimeRanges* aBuffered)
 {
   MonitorAutoLock mon(mIndexMonitor);
   if (!mIndexReady) {
     return NS_OK;
   }
+  MOZ_ASSERT(mStartTime != -1, "Need to finish metadata decode first");
 
-  MediaResource* resource = mDecoder->GetResource();
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
   nsTArray<MediaByteRange> ranges;
-  resource->Pin();
   nsresult rv = resource->GetCachedRanges(ranges);
-  resource->Unpin();
 
   if (NS_SUCCEEDED(rv)) {
     nsTArray<Interval<Microseconds>> timeRanges;
     mDemuxer->ConvertByteRangesToTime(ranges, &timeRanges);
     for (size_t i = 0; i < timeRanges.Length(); i++) {
-      aBuffered->Add((timeRanges[i].start - aStartTime) / 1000000.0,
-                     (timeRanges[i].end - aStartTime) / 1000000.0);
+      aBuffered->Add((timeRanges[i].start - mStartTime) / 1000000.0,
+                     (timeRanges[i].end - mStartTime) / 1000000.0);
     }
   }
 
@@ -878,6 +884,23 @@ void MP4Reader::NotifyResourcesStatusChanged()
   if (mDecoder) {
     mDecoder->NotifyWaitingForResourcesStatusChanged();
   }
+#endif
+}
+
+void
+MP4Reader::SetIdle()
+{
+  if (mSharedDecoderManager && mVideo.mDecoder) {
+    mSharedDecoderManager->SetIdle(mVideo.mDecoder);
+    NotifyResourcesStatusChanged();
+  }
+}
+
+void
+MP4Reader::SetSharedDecoderManager(SharedDecoderManager* aManager)
+{
+#ifdef MOZ_GONK_MEDIACODEC
+  mSharedDecoderManager = aManager;
 #endif
 }
 

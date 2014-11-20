@@ -17,6 +17,7 @@
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/net/HttpChannelChild.h"
 
+#include "nsChannelClassifier.h"
 #include "nsStringStream.h"
 #include "nsHttpHandler.h"
 #include "nsNetUtil.h"
@@ -644,6 +645,10 @@ HttpChannelChild::DoOnStopRequest(nsIRequest* aRequest, nsISupports* aContext)
 {
   MOZ_ASSERT(!mIsPending);
 
+  if (mStatus == NS_ERROR_TRACKING_URI) {
+    nsChannelClassifier::SetBlockedTrackingContent(this);
+  }
+
   mListener->OnStopRequest(aRequest, aContext, mStatus);
 
   mListener = 0;
@@ -982,6 +987,13 @@ HttpChannelChild::RecvFlushedForDiversion()
   return true;
 }
 
+bool
+HttpChannelChild::RecvNotifyTrackingProtectionDisabled()
+{
+  nsChannelClassifier::NotifyTrackingProtectionDisabled(this);
+  return true;
+}
+
 void
 HttpChannelChild::FlushedForDiversion()
 {
@@ -1232,12 +1244,18 @@ void
 propagateLoadInfo(nsILoadInfo *aLoadInfo,
                   HttpChannelOpenArgs& openArgs)
 {
-  mozilla::ipc::PrincipalInfo principalInfo;
+  mozilla::ipc::PrincipalInfo requestingPrincipalInfo;
+  mozilla::ipc::PrincipalInfo triggeringPrincipalInfo;
 
   if (aLoadInfo) {
     mozilla::ipc::PrincipalToPrincipalInfo(aLoadInfo->LoadingPrincipal(),
-                                           &principalInfo);
-    openArgs.requestingPrincipalInfo() = principalInfo;
+                                           &requestingPrincipalInfo);
+    openArgs.requestingPrincipalInfo() = requestingPrincipalInfo;
+
+    mozilla::ipc::PrincipalToPrincipalInfo(aLoadInfo->TriggeringPrincipal(),
+                                           &triggeringPrincipalInfo);
+    openArgs.triggeringPrincipalInfo() = triggeringPrincipalInfo;
+
     openArgs.securityFlags() = aLoadInfo->GetSecurityFlags();
     openArgs.contentPolicyType() = aLoadInfo->GetContentPolicyType();
     return;
@@ -1245,8 +1263,9 @@ propagateLoadInfo(nsILoadInfo *aLoadInfo,
 
   // use default values if no loadInfo is provided
   mozilla::ipc::PrincipalToPrincipalInfo(nsContentUtils::GetSystemPrincipal(),
-                                         &principalInfo);
-  openArgs.requestingPrincipalInfo() = principalInfo;
+                                         &requestingPrincipalInfo);
+  openArgs.requestingPrincipalInfo() = requestingPrincipalInfo;
+  openArgs.triggeringPrincipalInfo() = requestingPrincipalInfo;
   openArgs.securityFlags() = nsILoadInfo::SEC_NORMAL;
   openArgs.contentPolicyType() = nsIContentPolicy::TYPE_OTHER;
 }
@@ -1455,6 +1474,7 @@ HttpChannelChild::ContinueAsyncOpen()
   SerializeURI(mOriginalURI, openArgs.original());
   SerializeURI(mDocumentURI, openArgs.doc());
   SerializeURI(mReferrer, openArgs.referrer());
+  openArgs.referrerPolicy() = mReferrerPolicy;
   SerializeURI(mAPIRedirectToURI, openArgs.apiRedirectTo());
   openArgs.loadFlags() = mLoadFlags;
   openArgs.requestHeaders() = mClientSetRequestHeaders;

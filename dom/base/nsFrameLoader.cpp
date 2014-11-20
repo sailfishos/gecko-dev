@@ -432,6 +432,8 @@ nsFrameLoader::ReallyStartLoadingInternal()
     }
   }
 
+  loadInfo->SetReferrerPolicy(mOwnerContent->OwnerDoc()->GetReferrerPolicy());
+
   // Default flags:
   int32_t flags = nsIWebNavigation::LOAD_FLAGS_NONE;
 
@@ -2103,7 +2105,7 @@ nsFrameLoader::TryRemoteBrowser()
   nsCOMPtr<mozIApplication> containingApp = GetContainingApp();
   ScrollingBehavior scrollingBehavior = DEFAULT_SCROLLING;
 
-  if (Preferences::GetBool("dom.browser_frames.useAsyncPanZoom", false) ||
+  if (Preferences::GetBool("layers.async-pan-zoom.enabled", false) ||
       mOwnerContent->AttrValueIs(kNameSpaceID_None,
                                  nsGkAtoms::mozasyncpanzoom,
                                  nsGkAtoms::_true,

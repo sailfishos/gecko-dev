@@ -206,24 +206,6 @@ js::AppendUnique(JSContext *cx, AutoIdVector &base, AutoIdVector &others)
     return base.appendAll(uniqueOthers);
 }
 
-bool
-Proxy::enumerate(JSContext *cx, HandleObject proxy, AutoIdVector &props)
-{
-    JS_CHECK_RECURSION(cx, return false);
-    const BaseProxyHandler *handler = proxy->as<ProxyObject>().handler();
-    AutoEnterPolicy policy(cx, handler, proxy, JSID_VOIDHANDLE, BaseProxyHandler::ENUMERATE, true);
-    if (!policy.allowed())
-        return policy.returnValue();
-    if (!handler->hasPrototype())
-        return proxy->as<ProxyObject>().handler()->enumerate(cx, proxy, props);
-    if (!handler->getOwnEnumerablePropertyKeys(cx, proxy, props))
-        return false;
-    AutoIdVector protoProps(cx);
-    INVOKE_ON_PROTOTYPE(cx, handler, proxy,
-                        GetPropertyKeys(cx, proto, 0, &protoProps) &&
-                        AppendUnique(cx, props, protoProps));
-}
-
 /* static */ bool
 Proxy::getPrototypeOf(JSContext *cx, HandleObject proxy, MutableHandleObject proto)
 {
@@ -365,18 +347,12 @@ Proxy::set(JSContext *cx, HandleObject proxy, HandleObject receiver, HandleId id
     }
 
     // Ok. Either there was no pre-existing property, or it was a value prop
-    // that we're going to shadow. Make a property descriptor and define it.
-    //
-    // Note that for pre-existing own value properties, we inherit the existing
-    // attributes, since we're really just changing the value and not trying to
-    // reconfigure the property.
-    Rooted<PropertyDescriptor> newDesc(cx);
-    if (desc.object() == proxy)
-        newDesc.setAttributes(desc.attributes());
-    else
-        newDesc.setAttributes(JSPROP_ENUMERATE);
-    newDesc.value().set(vp);
-    return handler->defineProperty(cx, receiver, id, &newDesc);
+    // that we're going to shadow. Either way, define a new own property.
+    unsigned attrs =
+        (desc.object() == proxy)
+        ? JSPROP_IGNORE_ENUMERATE | JSPROP_IGNORE_READONLY | JSPROP_IGNORE_PERMANENT
+        : JSPROP_ENUMERATE;
+    return JSObject::defineGeneric(cx, receiver, id, vp, nullptr, nullptr, attrs);
 }
 
 bool
@@ -391,31 +367,48 @@ Proxy::getOwnEnumerablePropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVec
 }
 
 bool
-Proxy::iterate(JSContext *cx, HandleObject proxy, unsigned flags, MutableHandleValue vp)
+Proxy::getEnumerablePropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props)
 {
     JS_CHECK_RECURSION(cx, return false);
     const BaseProxyHandler *handler = proxy->as<ProxyObject>().handler();
-    vp.setUndefined(); // default result if we refuse to perform this action
+    AutoEnterPolicy policy(cx, handler, proxy, JSID_VOIDHANDLE, BaseProxyHandler::ENUMERATE, true);
+    if (!policy.allowed())
+        return policy.returnValue();
+    if (!handler->hasPrototype())
+        return proxy->as<ProxyObject>().handler()->getEnumerablePropertyKeys(cx, proxy, props);
+    if (!handler->getOwnEnumerablePropertyKeys(cx, proxy, props))
+        return false;
+    AutoIdVector protoProps(cx);
+    INVOKE_ON_PROTOTYPE(cx, handler, proxy,
+                        GetPropertyKeys(cx, proto, 0, &protoProps) &&
+                        AppendUnique(cx, props, protoProps));
+}
+
+bool
+Proxy::iterate(JSContext *cx, HandleObject proxy, unsigned flags, MutableHandleObject objp)
+{
+    JS_CHECK_RECURSION(cx, return false);
+    const BaseProxyHandler *handler = proxy->as<ProxyObject>().handler();
+    objp.set(nullptr); // default result if we refuse to perform this action
     if (!handler->hasPrototype()) {
         AutoEnterPolicy policy(cx, handler, proxy, JSID_VOIDHANDLE,
                                BaseProxyHandler::ENUMERATE, true);
         // If the policy denies access but wants us to return true, we need
         // to hand a valid (empty) iterator object to the caller.
         if (!policy.allowed()) {
-            AutoIdVector props(cx);
             return policy.returnValue() &&
-                   EnumeratedIdVectorToIterator(cx, proxy, flags, props, vp);
+                   NewEmptyPropertyIterator(cx, flags, objp);
         }
-        return handler->iterate(cx, proxy, flags, vp);
+        return handler->iterate(cx, proxy, flags, objp);
     }
     AutoIdVector props(cx);
     // The other Proxy::foo methods do the prototype-aware work for us here.
     if ((flags & JSITER_OWNONLY)
         ? !Proxy::getOwnEnumerablePropertyKeys(cx, proxy, props)
-        : !Proxy::enumerate(cx, proxy, props)) {
+        : !Proxy::getEnumerablePropertyKeys(cx, proxy, props)) {
         return false;
     }
-    return EnumeratedIdVectorToIterator(cx, proxy, flags, props, vp);
+    return EnumeratedIdVectorToIterator(cx, proxy, flags, props, objp);
 }
 
 bool
@@ -556,8 +549,8 @@ Proxy::unwatch(JSContext *cx, JS::HandleObject proxy, JS::HandleId id)
 }
 
 /* static */ bool
-Proxy::slice(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
-             HandleObject result)
+Proxy::getElements(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
+                   ElementAdder *adder)
 {
     JS_CHECK_RECURSION(cx, return false);
     const BaseProxyHandler *handler = proxy->as<ProxyObject>().handler();
@@ -566,11 +559,11 @@ Proxy::slice(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
     if (!policy.allowed()) {
         if (policy.returnValue()) {
             MOZ_ASSERT(!cx->isExceptionPending());
-            return js::SliceSlowly(cx, proxy, proxy, begin, end, result);
+            return js::GetElementsWithAdder(cx, proxy, proxy, begin, end, adder);
         }
         return false;
     }
-    return handler->slice(cx, proxy, begin, end, result);
+    return handler->getElements(cx, proxy, begin, end, adder);
 }
 
 JSObject *
@@ -841,10 +834,10 @@ js::proxy_Unwatch(JSContext *cx, HandleObject obj, HandleId id)
 }
 
 bool
-js::proxy_Slice(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
-                HandleObject result)
+js::proxy_GetElements(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
+                      ElementAdder *adder)
 {
-    return Proxy::slice(cx, proxy, begin, end, result);
+    return Proxy::getElements(cx, proxy, begin, end, adder);
 }
 
 const Class js::ProxyObject::class_ =

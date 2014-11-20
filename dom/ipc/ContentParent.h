@@ -262,6 +262,10 @@ public:
         return PContentParent::RecvPNeckoConstructor(aActor);
     }
 
+    virtual PPrintingParent* AllocPPrintingParent() MOZ_OVERRIDE;
+    virtual bool RecvPPrintingConstructor(PPrintingParent* aActor) MOZ_OVERRIDE;
+    virtual bool DeallocPPrintingParent(PPrintingParent* aActor) MOZ_OVERRIDE;
+
     virtual PScreenManagerParent*
     AllocPScreenManagerParent(uint32_t* aNumberOfScreens,
                               float* aSystemDefaultScale,
@@ -307,6 +311,23 @@ public:
     virtual bool RecvDeallocateTabId(const TabId& aTabId) MOZ_OVERRIDE;
 
     nsTArray<TabContext> GetManagedTabContext();
+
+    virtual POfflineCacheUpdateParent*
+    AllocPOfflineCacheUpdateParent(const URIParams& aManifestURI,
+                                   const URIParams& aDocumentURI,
+                                   const bool& aStickDocument,
+                                   const TabId& aTabId) MOZ_OVERRIDE;
+    virtual bool
+    RecvPOfflineCacheUpdateConstructor(POfflineCacheUpdateParent* aActor,
+                                       const URIParams& aManifestURI,
+                                       const URIParams& aDocumentURI,
+                                       const bool& stickDocument,
+                                       const TabId& aTabId) MOZ_OVERRIDE;
+    virtual bool
+    DeallocPOfflineCacheUpdateParent(POfflineCacheUpdateParent* aActor) MOZ_OVERRIDE;
+
+    virtual bool RecvSetOfflinePermission(const IPC::Principal& principal) MOZ_OVERRIDE;
+
 protected:
     void OnChannelConnected(int32_t pid) MOZ_OVERRIDE;
     virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
@@ -442,7 +463,8 @@ private:
                                           bool* aIsForBrowser) MOZ_OVERRIDE;
     virtual bool RecvGetXPCOMProcessAttributes(bool* aIsOffline,
                                                InfallibleTArray<nsString>* dictionaries,
-                                               ClipboardCapabilities* clipboardCaps) MOZ_OVERRIDE;
+                                               ClipboardCapabilities* clipboardCaps)
+        MOZ_OVERRIDE;
 
     virtual bool DeallocPJavaScriptParent(mozilla::jsipc::PJavaScriptParent*) MOZ_OVERRIDE;
 

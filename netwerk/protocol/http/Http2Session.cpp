@@ -216,10 +216,10 @@ Http2Session::LogIO(Http2Session *self, Http2Stream *stream,
                     const char *label,
                     const char *data, uint32_t datalen)
 {
-  if (!LOG4_ENABLED())
+  if (!LOG5_ENABLED())
     return;
 
-  LOG4(("Http2Session::LogIO %p stream=%p id=0x%X [%s]",
+  LOG5(("Http2Session::LogIO %p stream=%p id=0x%X [%s]",
         self, stream, stream ? stream->StreamID() : 0, label));
 
   // Max line is (16 * 3) + 10(prefix) + newline + null
@@ -233,7 +233,7 @@ Http2Session::LogIO(Http2Session *self, Http2Stream *stream,
     if (!(index % 16)) {
       if (index) {
         *line = 0;
-        LOG4(("%s", linebuf));
+        LOG5(("%s", linebuf));
       }
       line = linebuf;
       PR_snprintf(line, 128, "%08X: ", index);
@@ -245,7 +245,7 @@ Http2Session::LogIO(Http2Session *self, Http2Stream *stream,
   }
   if (index) {
     *line = 0;
-    LOG4(("%s", linebuf));
+    LOG5(("%s", linebuf));
   }
 }
 
@@ -1636,7 +1636,7 @@ Http2Session::RecvPushPromise(Http2Session *self)
   if (NS_SUCCEEDED(rv)) {
     rv = Http2Stream::MakeOriginURL(pushedStream->Origin(), pushedURL);
   }
-  LOG3(("Http2Session::RecvPushPromise %p checking %s == %s",
+  LOG3(("Http2Session::RecvPushPromise %p checking %s == %s", self,
         associatedStream->Origin().get(), pushedStream->Origin().get()));
   bool match = false;
   if (NS_SUCCEEDED(rv)) {

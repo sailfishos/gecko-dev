@@ -7,7 +7,7 @@
 #define WritingModes_h_
 
 #include "nsRect.h"
-#include "nsStyleStruct.h"
+#include "nsStyleContext.h"
 
 // If WRITING_MODE_VERTICAL_ENABLED is defined, we will attempt to support
 // the vertical writing-mode values; if it is not defined, then
@@ -16,7 +16,12 @@
 // of transitioning layout to use writing-mode and logical directions, but
 // not yet ready to ship vertical support.
 
-/* #define WRITING_MODE_VERTICAL_ENABLED 1 */
+// XXX To be removed, and the #ifdef blocks below made unconditional,
+//     once we're confident we can leave it permanently enabled.
+
+#ifndef RELEASE_BUILD
+#define WRITING_MODE_VERTICAL_ENABLED 1
+#endif
 
 // It is the caller's responsibility to operate on logical-coordinate objects
 // with matched writing modes. Failure to do so will be a runtime bug; the
@@ -168,12 +173,17 @@ public:
   /**
    * Return true if LTR. (Convenience method)
    */
-  bool IsBidiLTR() const { return eBidiLTR == (mWritingMode & eBidiMask); }
+  bool IsBidiLTR() const { return eBidiLTR == GetBidiDir(); }
 
   /**
    * True if vertical-mode block direction is LR (convenience method).
    */
-  bool IsVerticalLR() const { return eBlockLR == (mWritingMode & eBlockMask); }
+  bool IsVerticalLR() const { return eBlockLR == GetBlockDir(); }
+
+  /**
+   * True if vertical-mode block direction is RL (convenience method).
+   */
+  bool IsVerticalRL() const { return eBlockRL == GetBlockDir(); }
 
   /**
    * True if vertical writing mode, i.e. when
@@ -209,6 +219,20 @@ public:
   }
 
   /**
+   * True if the text-orientation will force all text to be rendered sideways
+   * in vertical lines, in which case we should prefer an alphabetic baseline;
+   * otherwise, the default is centered.
+   * Note that some glyph runs may be rendered sideways even if this is false,
+   * due to text-orientation:mixed resolution, but in that case the dominant
+   * baseline remains centered.
+   */
+#ifdef WRITING_MODE_VERTICAL_ENABLED
+  bool IsSideways() const { return !!(mWritingMode & eSidewaysMask); }
+#else
+  bool IsSideways() const { return false; }
+#endif
+
+  /**
    * Default constructor gives us a horizontal, LTR writing mode.
    * XXX We will probably eliminate this and require explicit initialization
    *     in all cases once transition is complete.
@@ -220,25 +244,49 @@ public:
   /**
    * Construct writing mode based on a style context
    */
-  explicit WritingMode(const nsStyleVisibility* aStyleVisibility)
+  explicit WritingMode(nsStyleContext* aStyleContext)
   {
-    NS_ASSERTION(aStyleVisibility, "we need an nsStyleVisibility here");
+    NS_ASSERTION(aStyleContext, "we need an nsStyleContext here");
+
+    const nsStyleVisibility* styleVisibility = aStyleContext->StyleVisibility();
 
 #ifdef WRITING_MODE_VERTICAL_ENABLED
-    switch (aStyleVisibility->mWritingMode) {
+    switch (styleVisibility->mWritingMode) {
       case NS_STYLE_WRITING_MODE_HORIZONTAL_TB:
         mWritingMode = 0;
         break;
 
       case NS_STYLE_WRITING_MODE_VERTICAL_LR:
+      {
         mWritingMode = eBlockFlowMask |
-                       eLineOrientMask | //XXX needs update when text-orientation added
+                       eLineOrientMask |
                        eOrientationMask;
+        uint8_t textOrientation = aStyleContext->StyleText()->mTextOrientation;
+#if 0 // not yet implemented
+        if (textOrientation == NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_LEFT) {
+          mWritingMode &= ~eLineOrientMask;
+        }
+#endif
+        if (textOrientation >= NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_RIGHT) {
+          mWritingMode |= eSidewaysMask;
+        }
         break;
+      }
 
       case NS_STYLE_WRITING_MODE_VERTICAL_RL:
+      {
         mWritingMode = eOrientationMask;
+        uint8_t textOrientation = aStyleContext->StyleText()->mTextOrientation;
+#if 0 // not yet implemented
+        if (textOrientation == NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_LEFT) {
+          mWritingMode |= eLineOrientMask;
+        }
+#endif
+        if (textOrientation >= NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_RIGHT) {
+          mWritingMode |= eSidewaysMask;
+        }
         break;
+      }
 
       default:
         NS_NOTREACHED("unknown writing mode!");
@@ -249,7 +297,7 @@ public:
     mWritingMode = 0;
 #endif
 
-    if (NS_STYLE_DIRECTION_RTL == aStyleVisibility->mDirection) {
+    if (NS_STYLE_DIRECTION_RTL == styleVisibility->mDirection) {
       mWritingMode |= eInlineFlowMask | //XXX needs update when text-orientation added
                       eBidiMask;
     }
@@ -324,6 +372,10 @@ private:
     eBidiMask        = 0x10, // true means line-relative RTL (bidi RTL)
     // Note: We have one excess bit of info; WritingMode can pack into 4 bits.
     // But since we have space, we're caching interesting things for fast access.
+
+    eSidewaysMask    = 0x20, // true means text-orientation is sideways-*,
+                             // which means we'll use alphabetic instead of
+                             // centered default baseline for vertical text
 
     // Masks for output enums
     eInlineMask = 0x03,

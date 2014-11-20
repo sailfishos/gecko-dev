@@ -529,6 +529,7 @@ public class BrowserApp extends GeckoApp
                     public void run() {
                         final TabHistoryFragment fragment = TabHistoryFragment.newInstance(historyPageList, toIndex);
                         final FragmentManager fragmentManager = getSupportFragmentManager();
+                        GeckoAppShell.vibrateOnHapticFeedbackEnabled(getResources().getInteger(R.integer.long_press_vibrate_msec));
                         fragment.show(R.id.tab_history_panel, fragmentManager.beginTransaction(), TAB_HISTORY_FRAGMENT_TAG);
                     }
                 });
@@ -1549,6 +1550,8 @@ public class BrowserApp extends GeckoApp
                     BrowserDB.getCount(getContentResolver(), "favicons"));
             Telemetry.HistogramAdd("FENNEC_THUMBNAILS_COUNT",
                     BrowserDB.getCount(getContentResolver(), "thumbnails"));
+            Telemetry.HistogramAdd("FENNEC_READING_LIST_COUNT",
+                    BrowserDB.getCount(getContentResolver(), "readinglist"));
             Telemetry.HistogramAdd("BROWSER_IS_USER_DEFAULT", (isDefaultBrowser(Intent.ACTION_VIEW) ? 1 : 0));
             if (Versions.feature16Plus) {
                 Telemetry.HistogramAdd("BROWSER_IS_ASSIST_DEFAULT", (isDefaultBrowser(Intent.ACTION_ASSIST) ? 1 : 0));
@@ -1766,6 +1769,15 @@ public class BrowserApp extends GeckoApp
 
         if (areTabsShown()) {
             mTabsPanel.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+            // Hide the web content from accessibility tools even though it's visible
+            // so that you can't examine it as long as the tabs are being shown.
+            if (Versions.feature16Plus) {
+                mLayerView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            }
+        } else {
+            if (Versions.feature16Plus) {
+                mLayerView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            }
         }
 
         mMainLayoutAnimator = new PropertyAnimator(animationLength, sTabsInterpolator);
@@ -3039,7 +3051,7 @@ public class BrowserApp extends GeckoApp
             }
 
             Tab tab = Tabs.getInstance().getSelectedTab();
-            if (tab != null) {
+            if (tab != null  && !tab.isEditing()) {
                 return tabHistoryController.showTabHistory(tab, TabHistoryController.HistoryAction.ALL);
             }
         }

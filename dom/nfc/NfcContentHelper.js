@@ -54,12 +54,13 @@ const NFC_IPC_MSG_NAMES = [
   "NFC:ReadNDEFResponse",
   "NFC:WriteNDEFResponse",
   "NFC:MakeReadOnlyResponse",
+  "NFC:FormatResponse",
   "NFC:ConnectResponse",
   "NFC:CloseResponse",
   "NFC:CheckP2PRegistrationResponse",
   "NFC:DOMEvent",
   "NFC:NotifySendFileStatusResponse",
-  "NFC:PowerResponse"
+  "NFC:ChangeRFStateResponse"
 ];
 
 XPCOMUtils.defineLazyServiceGetter(this, "cpmm",
@@ -88,7 +89,7 @@ NfcContentHelper.prototype = {
 
   _window: null,
   _requestMap: null,
-  eventTarget: null,
+  eventListener: null,
 
   init: function init(aWindow) {
     if (aWindow == null) {
@@ -176,6 +177,18 @@ NfcContentHelper.prototype = {
     return request;
   },
 
+  format: function format(sessionToken) {
+    let request = Services.DOMRequest.createRequest(this._window);
+    let requestId = btoa(this.getRequestId(request));
+    this._requestMap[requestId] = this._window;
+
+    cpmm.sendAsyncMessage("NFC:Format", {
+      requestId: requestId,
+      sessionToken: sessionToken
+    });
+    return request;
+  },
+
   connect: function connect(techType, sessionToken) {
     let request = Services.DOMRequest.createRequest(this._window);
     let requestId = btoa(this.getRequestId(request));
@@ -221,9 +234,9 @@ NfcContentHelper.prototype = {
     });
   },
 
-  registerEventTarget: function registerEventTarget(target) {
-    this.eventTarget = target;
-    cpmm.sendAsyncMessage("NFC:AddEventTarget");
+  addEventListener: function addEventListener(listener) {
+    this.eventListener = listener;
+    cpmm.sendAsyncMessage("NFC:AddEventListener");
   },
 
   registerTargetForPeerReady: function registerTargetForPeerReady(appId) {
@@ -252,34 +265,16 @@ NfcContentHelper.prototype = {
     });
   },
 
-  startPoll: function startPoll() {
+  changeRFState: function changeRFState(rfState) {
     let request = Services.DOMRequest.createRequest(this._window);
     let requestId = btoa(this.getRequestId(request));
     this._requestMap[requestId] = this._window;
 
-    cpmm.sendAsyncMessage("NFC:StartPoll",
-                          {requestId: requestId});
+    cpmm.sendAsyncMessage("NFC:ChangeRFState",
+                          {requestId: requestId,
+                           rfState: rfState});
     return request;
-  },
 
-  stopPoll: function stopPoll() {
-    let request = Services.DOMRequest.createRequest(this._window);
-    let requestId = btoa(this.getRequestId(request));
-    this._requestMap[requestId] = this._window;
-
-    cpmm.sendAsyncMessage("NFC:StopPoll",
-                          {requestId: requestId});
-    return request;
-  },
-
-  powerOff: function powerOff() {
-    let request = Services.DOMRequest.createRequest(this._window);
-    let requestId = btoa(this.getRequestId(request));
-    this._requestMap[requestId] = this._window;
-
-    cpmm.sendAsyncMessage("NFC:PowerOff",
-                          {requestId: requestId});
-    return request;
   },
 
   // nsIObserver
@@ -340,8 +335,9 @@ NfcContentHelper.prototype = {
       case "NFC:CloseResponse":
       case "NFC:WriteNDEFResponse":
       case "NFC:MakeReadOnlyResponse":
+      case "NFC:FormatResponse":
       case "NFC:NotifySendFileStatusResponse":
-      case "NFC:PowerResponse":
+      case "NFC:ChangeRFStateResponse":
         if (result.errorMsg) {
           this.fireRequestError(atob(result.requestId), result.errorMsg);
         } else {
@@ -351,13 +347,13 @@ NfcContentHelper.prototype = {
       case "NFC:DOMEvent":
         switch (result.event) {
           case NFC.PEER_EVENT_READY:
-            this.eventTarget.notifyPeerFound(result.sessionToken, /* isPeerReady */ true);
+            this.eventListener.notifyPeerFound(result.sessionToken, /* isPeerReady */ true);
             break;
           case NFC.PEER_EVENT_FOUND:
-            this.eventTarget.notifyPeerFound(result.sessionToken);
+            this.eventListener.notifyPeerFound(result.sessionToken);
             break;
           case NFC.PEER_EVENT_LOST:
-            this.eventTarget.notifyPeerLost(result.sessionToken);
+            this.eventListener.notifyPeerLost(result.sessionToken);
             break;
           case NFC.TAG_EVENT_FOUND:
             let event = new NfcTagEvent(result.techList,
@@ -366,10 +362,10 @@ NfcContentHelper.prototype = {
                                         result.isReadOnly,
                                         result.isFormatable);
 
-            this.eventTarget.notifyTagFound(result.sessionToken, event, result.records);
+            this.eventListener.notifyTagFound(result.sessionToken, event, result.records);
             break;
           case NFC.TAG_EVENT_LOST:
-            this.eventTarget.notifyTagLost(result.sessionToken);
+            this.eventListener.notifyTagLost(result.sessionToken);
             break;
         }
         break;

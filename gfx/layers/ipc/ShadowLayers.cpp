@@ -410,6 +410,13 @@ ShadowLayerForwarder::UseTexture(CompositableClient* aCompositable,
   MOZ_ASSERT(aTexture);
   MOZ_ASSERT(aCompositable->GetIPDLActor());
   MOZ_ASSERT(aTexture->GetIPDLActor());
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+  FenceHandle handle = aTexture->GetAcquireFenceHandle();
+  if (handle.IsValid()) {
+    RefPtr<FenceDeliveryTracker> tracker = new FenceDeliveryTracker(handle);
+    SendFenceHandle(tracker, aTexture->GetIPDLActor(), handle);
+  }
+#endif
   mTxn->AddEdit(OpUseTexture(nullptr, aCompositable->GetIPDLActor(),
                              nullptr, aTexture->GetIPDLActor()));
 }
@@ -603,6 +610,14 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
       common.stickyScrollContainerId() = mutant->GetStickyScrollContainerId();
       common.stickyScrollRangeOuter() = mutant->GetStickyScrollRangeOuter();
       common.stickyScrollRangeInner() = mutant->GetStickyScrollRangeInner();
+    } else {
+#ifdef MOZ_VALGRIND
+      // Initialize these so that Valgrind doesn't complain when we send them
+      // to another process.
+      common.stickyScrollContainerId() = 0;
+      common.stickyScrollRangeOuter() = LayerRect();
+      common.stickyScrollRangeInner() = LayerRect();
+#endif
     }
     common.scrollbarTargetContainerId() = mutant->GetScrollbarTargetContainerId();
     common.scrollbarDirection() = mutant->GetScrollbarDirection();

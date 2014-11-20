@@ -1189,6 +1189,7 @@ if test "$GNU_CC"; then
     # -Wint-to-pointer-cast - catches cast to pointer from integer of different size
     # -Wmissing-braces - catches aggregate initializers missing nested braces
     # -Wmultichar - catches multicharacter integer constants like 'THIS'
+    # -Wnon-literal-null-conversion - catches expressions used as a null pointer constant
     # -Wnonnull - catches NULL used with functions arguments marked as non-null
     # -Wparentheses - catches `if (a=b)` and operator precedence bugs
     # -Wpointer-arith - catches pointer arithmetic using NULL or sizeof(void)
@@ -1232,6 +1233,8 @@ if test "$GNU_CC"; then
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=trigraphs"
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=unknown-pragmas"
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=write-strings"
+
+        MOZ_C_SUPPORTS_WARNING(-Werror=, non-literal-null-conversion, ac_c_has_werror_non_literal_null_conversion)
     fi
 
     # Turn off the following warnings that -Wall turns on:
@@ -1291,6 +1294,7 @@ if test "$GNU_CXX"; then
     # -Wignored-qualifiers - catches returns types with qualifiers like const
     # -Wint-to-pointer-cast - catches cast to pointer from integer of different size
     # -Wmissing-braces - catches aggregate initializers missing nested braces
+    # -Wnon-literal-null-conversion - catches expressions used as a null pointer constant
     # -Woverloaded-virtual - function declaration hides virtual function from base class
     # -Wparentheses - catches `if (a=b)` and operator precedence bugs
     # -Wpointer-arith - catches pointer arithmetic using NULL or sizeof(void)
@@ -1333,6 +1337,7 @@ if test "$GNU_CXX"; then
         _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=write-strings"
 
         MOZ_CXX_SUPPORTS_WARNING(-Werror=, conversion-null, ac_cxx_has_werror_conversion_null)
+        MOZ_CXX_SUPPORTS_WARNING(-Werror=, non-literal-null-conversion, ac_cxx_has_werror_non_literal_null_conversion)
     fi
 
     # Turn off the following warnings that -Wall turns on:
@@ -2663,24 +2668,6 @@ if test "$ac_cv_cpp_unused_required" = yes ; then
    AC_DEFINE(NEED_CPP_UNUSED_IMPLEMENTATIONS)
 fi
 
-
-dnl Some compilers have trouble comparing a constant reference to a templatized
-dnl class to zero, and require an explicit operator==() to be defined that takes
-dnl an int. This test separates the strong from the weak.
-
-AC_CACHE_CHECK(for trouble comparing to zero near std::operator!=(),
-               ac_cv_trouble_comparing_to_zero,
-               [AC_TRY_COMPILE([#include <algorithm>
-                                template <class T> class Foo {};
-                                class T2;
-                                template <class T> int operator==(const T2*, const T&) { return 0; }
-                                template <class T> int operator!=(const T2*, const T&) { return 0; }],
-                               [Foo<int> f; return (0 != f);],
-                               ac_cv_trouble_comparing_to_zero=no,
-                               ac_cv_trouble_comparing_to_zero=yes)])
-if test "$ac_cv_trouble_comparing_to_zero" = yes ; then
-  AC_DEFINE(HAVE_CPP_TROUBLE_COMPARING_TO_ZERO)
-fi
 
 # try harder, when checking for __thread support, see bug 521750 comment #33 and below
 # We pass MOZ_OPTIMIZE_LDFLAGS to the linker because if dead_strip is

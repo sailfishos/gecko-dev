@@ -1840,7 +1840,7 @@ js::CreateThisForFunction(JSContext *cx, HandleObject callee, NewObjectKind newK
 }
 
 /* static */ bool
-JSObject::nonNativeSetProperty(JSContext *cx, HandleObject obj,
+JSObject::nonNativeSetProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
                                HandleId id, MutableHandleValue vp, bool strict)
 {
     if (MOZ_UNLIKELY(obj->watched())) {
@@ -1848,11 +1848,13 @@ JSObject::nonNativeSetProperty(JSContext *cx, HandleObject obj,
         if (wpmap && !wpmap->triggerWatchpoint(cx, obj, id, vp))
             return false;
     }
+    if (obj->is<ProxyObject>())
+        return Proxy::set(cx, obj, receiver, id, strict, vp);
     return obj->getOps()->setGeneric(cx, obj, id, vp, strict);
 }
 
 /* static */ bool
-JSObject::nonNativeSetElement(JSContext *cx, HandleObject obj,
+JSObject::nonNativeSetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
                               uint32_t index, MutableHandleValue vp, bool strict)
 {
     if (MOZ_UNLIKELY(obj->watched())) {
@@ -1863,6 +1865,11 @@ JSObject::nonNativeSetElement(JSContext *cx, HandleObject obj,
         WatchpointMap *wpmap = cx->compartment()->watchpointMap;
         if (wpmap && !wpmap->triggerWatchpoint(cx, obj, id, vp))
             return false;
+    }
+    if (obj->is<ProxyObject>()) {
+        RootedId id(cx);
+        return IndexToId(cx, index, &id) &&
+               Proxy::set(cx, obj, receiver, id, strict, vp);
     }
     return obj->getOps()->setElement(cx, obj, index, vp, strict);
 }
@@ -4126,8 +4133,8 @@ js_DumpInterpreterFrame(JSContext *cx, InterpreterFrame *start)
         fprintf(stderr, "  flags:");
         if (i.isConstructing())
             fprintf(stderr, " constructing");
-        if (!i.isJit() && i.interpFrame()->isDebuggerFrame())
-            fprintf(stderr, " debugger");
+        if (!i.isJit() && i.interpFrame()->isDebuggerEvalFrame())
+            fprintf(stderr, " debugger eval");
         if (i.isEvalFrame())
             fprintf(stderr, " eval");
         fputc('\n', stderr);
@@ -4146,7 +4153,7 @@ js_DumpBacktrace(JSContext *cx)
     Sprinter sprinter(cx);
     sprinter.init();
     size_t depth = 0;
-    for (ScriptFrameIter i(cx); !i.done(); ++i, ++depth) {
+    for (AllFramesIter i(cx); !i.done(); ++i, ++depth) {
         const char *filename = JS_GetScriptFilename(i.script());
         unsigned line = PCToLineNumber(i.script(), i.pc());
         JSScript *script = i.script();
@@ -4220,7 +4227,7 @@ JSObject::hasIdempotentProtoChain() const
             return false;
 
         JSResolveOp resolve = obj->getClass()->resolve;
-        if (resolve != JS_ResolveStub && resolve != (JSResolveOp) js::fun_resolve)
+        if (resolve != JS_ResolveStub && resolve != js::fun_resolve)
             return false;
 
         if (obj->getOps()->lookupProperty || obj->getOps()->lookupGeneric || obj->getOps()->lookupElement)

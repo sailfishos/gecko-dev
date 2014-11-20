@@ -303,10 +303,9 @@ sandbox_enumerate(JSContext *cx, HandleObject obj)
 }
 
 static bool
-sandbox_resolve(JSContext *cx, HandleObject obj, HandleId id)
+sandbox_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
-    bool resolved;
-    return JS_ResolveStandardClass(cx, obj, id, &resolved);
+    return JS_ResolveStandardClass(cx, obj, id, resolvedp);
 }
 
 static void
@@ -467,7 +466,6 @@ static const js::Class SandboxClass = {
     {
       nullptr,      /* outerObject */
       nullptr,      /* innerObject */
-      nullptr,      /* iteratorObject */
       false,        /* isWrappedNative */
       nullptr,      /* weakmapKeyDelegateOp */
       sandbox_moved /* objectMovedOp */
@@ -487,7 +485,6 @@ static const js::Class SandboxWriteToProtoClass = {
     {
       nullptr,      /* outerObject */
       nullptr,      /* innerObject */
-      nullptr,      /* iteratorObject */
       false,        /* isWrappedNative */
       nullptr,      /* weakmapKeyDelegateOp */
       sandbox_moved /* objectMovedOp */
@@ -741,9 +738,9 @@ xpc::SandboxProxyHandler::getOwnEnumerablePropertyKeys(JSContext *cx,
 
 bool
 xpc::SandboxProxyHandler::iterate(JSContext *cx, JS::Handle<JSObject*> proxy,
-                                  unsigned flags, JS::MutableHandle<Value> vp) const
+                                  unsigned flags, JS::MutableHandle<JSObject*> objp) const
 {
-    return BaseProxyHandler::iterate(cx, proxy, flags, vp);
+    return BaseProxyHandler::iterate(cx, proxy, flags, objp);
 }
 
 bool

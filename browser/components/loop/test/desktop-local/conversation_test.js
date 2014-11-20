@@ -38,9 +38,14 @@ describe("loop.conversation", function() {
       get locale() {
         return "en-US";
       },
-      setLoopCharPref: sinon.stub(),
-      getLoopCharPref: sinon.stub().returns("http://fakeurl"),
-      getLoopBoolPref: sinon.stub(),
+      setLoopPref: sinon.stub(),
+      getLoopPref: function(prefName) {
+        if (prefName == "debug.sdk") {
+          return false;
+        }
+
+        return "http://fake";
+      },
       calls: {
         clearCallInProgress: sinon.stub()
       },
@@ -143,7 +148,8 @@ describe("loop.conversation", function() {
           roomStore: roomStore,
           sdk: {},
           conversationStore: conversationStore,
-          conversationAppStore: conversationAppStore
+          conversationAppStore: conversationAppStore,
+          dispatcher: dispatcher
         }));
     }
 
@@ -168,9 +174,8 @@ describe("loop.conversation", function() {
         dispatcher: dispatcher,
         sdkDriver: {}
       });
-      roomStore = new loop.store.RoomStore({
+      roomStore = new loop.store.RoomStore(dispatcher, {
         mozLoop: navigator.mozLoop,
-        dispatcher: dispatcher
       });
       conversationAppStore = new loop.store.ConversationAppStore({
         dispatcher: dispatcher,
@@ -214,7 +219,7 @@ describe("loop.conversation", function() {
       ccView = mountTestComponent();
 
       TestUtils.findRenderedComponentWithType(ccView,
-        loop.roomViews.DesktopRoomView);
+        loop.roomViews.DesktopRoomConversationView);
     });
 
     it("should display the GenericFailureView for failures", function() {
@@ -646,7 +651,6 @@ describe("loop.conversation", function() {
         icView = mountTestComponent();
 
         conversation.set("loopToken", "fakeToken");
-        navigator.mozLoop.getLoopCharPref.returns("http://fake");
         stubComponent(sharedView, "ConversationView");
       });
 
@@ -916,6 +920,7 @@ describe("loop.conversation", function() {
         pause: sinon.spy(),
         removeAttribute: sinon.spy()
       };
+      navigator.mozLoop.doNotDisturb = false;
       sandbox.stub(window, "Audio").returns(fakeAudio);
 
       view = TestUtils.renderIntoDocument(

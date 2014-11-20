@@ -21,7 +21,7 @@ OBJECT_MOVED_HOOK_NAME = '_objectMoved'
 CONSTRUCT_HOOK_NAME = '_constructor'
 LEGACYCALLER_HOOK_NAME = '_legacycaller'
 HASINSTANCE_HOOK_NAME = '_hasInstance'
-NEWRESOLVE_HOOK_NAME = '_newResolve'
+RESOLVE_HOOK_NAME = '_resolve'
 ENUMERATE_HOOK_NAME = '_enumerate'
 ENUM_ENTRY_VARIABLE_NAME = 'strings'
 INSTANCE_RESERVED_SLOTS = 1
@@ -275,7 +275,7 @@ class CGNativePropertyHooks(CGThing):
             resolveOwnProperty = "ResolveOwnProperty"
             enumerateOwnProperties = "EnumerateOwnProperties"
         elif self.descriptor.needsXrayResolveHooks():
-            resolveOwnProperty = "ResolveOwnPropertyViaNewresolve"
+            resolveOwnProperty = "ResolveOwnPropertyViaResolve"
             enumerateOwnProperties = "EnumerateOwnPropertiesViaGetOwnPropertyNames"
         else:
             resolveOwnProperty = "nullptr"
@@ -370,7 +370,6 @@ class CGDOMJSClass(CGThing):
             {
               nullptr, /* outerObject */
               nullptr, /* innerObject */
-              nullptr, /* iteratorObject */
               false,   /* isWrappedNative */
               nullptr, /* weakmapKeyDelegateOp */
               ${objectMoved} /* objectMovedOp */
@@ -388,7 +387,6 @@ class CGDOMJSClass(CGThing):
                     {
                       nsGlobalWindow::OuterObject, /* outerObject */
                       nullptr, /* innerObject */
-                      nullptr, /* iteratorObject */
                       false,   /* isWrappedNative */
                       nullptr, /* weakmapKeyDelegateOp */
                       ${objectMoved} /* objectMovedOp */
@@ -411,7 +409,7 @@ class CGDOMJSClass(CGThing):
                       nullptr, /* deleteGeneric */
                       nullptr, /* watch */
                       nullptr, /* unwatch */
-                      nullptr, /* slice */
+                      nullptr, /* getElements */
                       nullptr, /* enumerate */
                       JS_ObjectToOuterObject /* thisObject */
                     }
@@ -420,16 +418,14 @@ class CGDOMJSClass(CGThing):
         else:
             classFlags += "JSCLASS_HAS_RESERVED_SLOTS(%d)" % slotCount
             reservedSlots = slotCount
-        if self.descriptor.interface.getExtendedAttribute("NeedNewResolve"):
-            newResolveHook = "(JSResolveOp)" + NEWRESOLVE_HOOK_NAME
-            classFlags += " | JSCLASS_NEW_RESOLVE"
+        if self.descriptor.interface.getExtendedAttribute("NeedResolve"):
+            resolveHook = RESOLVE_HOOK_NAME
             enumerateHook = ENUMERATE_HOOK_NAME
         elif self.descriptor.isGlobal():
-            newResolveHook = "(JSResolveOp) mozilla::dom::ResolveGlobal"
-            classFlags += " | JSCLASS_NEW_RESOLVE"
+            resolveHook = "mozilla::dom::ResolveGlobal"
             enumerateHook = "mozilla::dom::EnumerateGlobal"
         else:
-            newResolveHook = "JS_ResolveStub"
+            resolveHook = "JS_ResolveStub"
             enumerateHook = "JS_EnumerateStub"
 
         return fill(
@@ -463,7 +459,7 @@ class CGDOMJSClass(CGThing):
             flags=classFlags,
             addProperty=ADDPROPERTY_HOOK_NAME if wantsAddProperty(self.descriptor) else 'JS_PropertyStub',
             enumerate=enumerateHook,
-            resolve=newResolveHook,
+            resolve=resolveHook,
             finalize=FINALIZE_HOOK_NAME,
             call=callHook,
             trace=traceHook,
@@ -500,7 +496,6 @@ class CGDOMProxyJSClass(CGThing):
                                    ${flags},
                                    PROXY_MAKE_EXT(nullptr, /* outerObject */
                                                   nullptr, /* innerObject */
-                                                  nullptr, /* iteratorObject */
                                                   false,   /* isWrappedNative */
                                                   ${objectMoved})),
               $*{descriptor}
@@ -3017,26 +3012,26 @@ class CGConstructorEnabled(CGAbstractMethod):
         if not iface.isExposedInWindow():
             exposedInWindowCheck = dedent(
                 """
-                if (NS_IsMainThread()) {
-                  return false;
-                }
+                MOZ_ASSERT(!NS_IsMainThread(), "Why did we even get called?");
                 """)
             body.append(CGGeneric(exposedInWindowCheck))
 
-        if iface.isExposedInAnyWorker() and iface.isExposedOnlyInSomeWorkers():
+        if iface.isExposedInSomeButNotAllWorkers():
             workerGlobals = sorted(iface.getWorkerExposureSet())
             workerCondition = CGList((CGGeneric('strcmp(name, "%s")' % workerGlobal)
                                       for workerGlobal in workerGlobals), " && ")
             exposedInWorkerCheck = fill(
                 """
-                if (!NS_IsMainThread()) {
-                  const char* name = js::GetObjectClass(aObj)->name;
-                  if (${workerCondition}) {
-                    return false;
-                  }
+                const char* name = js::GetObjectClass(aObj)->name;
+                if (${workerCondition}) {
+                  return false;
                 }
                 """, workerCondition=workerCondition.define())
-            body.append(CGGeneric(exposedInWorkerCheck))
+            exposedInWorkerCheck = CGGeneric(exposedInWorkerCheck)
+            if iface.isExposedInWindow():
+                exposedInWorkerCheck = CGIfWrapper(exposedInWorkerCheck,
+                                                   "!NS_IsMainThread()")
+            body.append(exposedInWorkerCheck)
 
         pref = iface.getExtendedAttribute("Pref")
         if pref:
@@ -3479,7 +3474,6 @@ class CGClearCachedValueMethod(CGAbstractMethod):
                 JSAutoCompartment ac(aCx, obj);
                 if (!get_${name}(aCx, obj, aObject, args)) {
                   js::SetReservedSlot(obj, ${slotIndex}, oldValue);
-                  nsJSUtils::ReportPendingException(aCx);
                   return false;
                 }
                 return true;
@@ -7602,32 +7596,32 @@ class CGLegacyCallHook(CGAbstractBindingMethod):
                             self._legacycaller)
 
 
-class CGNewResolveHook(CGAbstractBindingMethod):
+class CGResolveHook(CGAbstractBindingMethod):
     """
-    NewResolve hook for objects with custom hooks.
+    Resolve hook for objects that have the NeedResolve extended attribute.
     """
     def __init__(self, descriptor):
-        assert descriptor.interface.getExtendedAttribute("NeedNewResolve")
+        assert descriptor.interface.getExtendedAttribute("NeedResolve")
 
         args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'obj'),
                 Argument('JS::Handle<jsid>', 'id'),
-                Argument('JS::MutableHandle<JSObject*>', 'objp')]
+                Argument('bool*', 'resolvedp')]
         # Our "self" is actually the "obj" argument in this case, not the thisval.
         CGAbstractBindingMethod.__init__(
-            self, descriptor, NEWRESOLVE_HOOK_NAME,
+            self, descriptor, RESOLVE_HOOK_NAME,
             args, getThisObj="", callArgs="")
 
     def generate_code(self):
         return CGGeneric(dedent("""
             JS::Rooted<JSPropertyDescriptor> desc(cx);
-            if (!self->DoNewResolve(cx, obj, id, &desc)) {
+            if (!self->DoResolve(cx, obj, id, &desc)) {
               return false;
             }
             if (!desc.object()) {
               return true;
             }
-            // If desc.value() is undefined, then the DoNewResolve call
+            // If desc.value() is undefined, then the DoResolve call
             // has already defined it on the object.  Don't try to also
             // define it.
             if (!desc.value().isUndefined() &&
@@ -7637,7 +7631,7 @@ class CGNewResolveHook(CGAbstractBindingMethod):
                                        JS_PROPERTYOP_SETTER(desc.setter()))) {
               return false;
             }
-            objp.set(obj);
+            *resolvedp = true;
             return true;
             """))
 
@@ -7645,10 +7639,10 @@ class CGNewResolveHook(CGAbstractBindingMethod):
         if self.descriptor.isGlobal():
             # Resolve standard classes
             prefix = dedent("""
-                if (!ResolveGlobal(cx, obj, id, objp)) {
+                if (!ResolveGlobal(cx, obj, id, resolvedp)) {
                   return false;
                 }
-                if (objp) {
+                if (*resolvedp) {
                   return true;
                 }
 
@@ -7663,7 +7657,7 @@ class CGEnumerateHook(CGAbstractBindingMethod):
     Enumerate hook for objects with custom hooks.
     """
     def __init__(self, descriptor):
-        assert descriptor.interface.getExtendedAttribute("NeedNewResolve")
+        assert descriptor.interface.getExtendedAttribute("NeedResolve")
 
         args = [Argument('JSContext*', 'cx'),
                 Argument('JS::Handle<JSObject*>', 'obj')]
@@ -9569,10 +9563,10 @@ class CGResolveOwnProperty(CGAbstractStaticMethod):
         return "return js::GetProxyHandler(obj)->getOwnPropertyDescriptor(cx, wrapper, id, desc);\n"
 
 
-class CGResolveOwnPropertyViaNewresolve(CGAbstractBindingMethod):
+class CGResolveOwnPropertyViaResolve(CGAbstractBindingMethod):
     """
     An implementation of Xray ResolveOwnProperty stuff for things that have a
-    newresolve hook.
+    resolve hook.
     """
     def __init__(self, descriptor):
         args = [Argument('JSContext*', 'cx'),
@@ -9581,7 +9575,7 @@ class CGResolveOwnPropertyViaNewresolve(CGAbstractBindingMethod):
                 Argument('JS::Handle<jsid>', 'id'),
                 Argument('JS::MutableHandle<JSPropertyDescriptor>', 'desc')]
         CGAbstractBindingMethod.__init__(self, descriptor,
-                                         "ResolveOwnPropertyViaNewresolve",
+                                         "ResolveOwnPropertyViaResolve",
                                          args, getThisObj="",
                                          callArgs="")
 
@@ -9596,10 +9590,10 @@ class CGResolveOwnPropertyViaNewresolve(CGAbstractBindingMethod):
               // them.
               JSAutoCompartment ac(cx, obj);
               JS::Rooted<JSPropertyDescriptor> objDesc(cx);
-              if (!self->DoNewResolve(cx, obj, id, &objDesc)) {
+              if (!self->DoResolve(cx, obj, id, &objDesc)) {
                 return false;
               }
-              // If desc.value() is undefined, then the DoNewResolve call
+              // If desc.value() is undefined, then the DoResolve call
               // has already defined the property on the object.  Don't
               // try to also define it.
               if (objDesc.object() &&
@@ -9611,7 +9605,7 @@ class CGResolveOwnPropertyViaNewresolve(CGAbstractBindingMethod):
                 return false;
               }
             }
-            return self->DoNewResolve(cx, wrapper, id, desc);
+            return self->DoResolve(cx, wrapper, id, desc);
             """))
 
 
@@ -9631,7 +9625,7 @@ class CGEnumerateOwnProperties(CGAbstractStaticMethod):
 class CGEnumerateOwnPropertiesViaGetOwnPropertyNames(CGAbstractBindingMethod):
     """
     An implementation of Xray EnumerateOwnProperties stuff for things
-    that have a newresolve hook.
+    that have a resolve hook.
     """
     def __init__(self, descriptor):
         args = [Argument('JSContext*', 'cx'),
@@ -9702,10 +9696,11 @@ class CGProxySpecialOperation(CGPerSignatureCall):
     resultVar: See the docstring for CGCallGenerator.
 
     foundVar: For getters and deleters, the generated code can also set a bool
-    variable, declared by the caller, to indicate whether the given indexed or
-    named property already existed or not. If the caller wants this, it should
-    pass the name of the bool variable as the foundVar keyword argument to the
-    constructor. The caller is responsible for declaring the variable.
+    variable, declared by the caller, if the given indexed or named property
+    already existed. If the caller wants this, it should pass the name of the
+    bool variable as the foundVar keyword argument to the constructor. The
+    caller is responsible for declaring the variable and initializing it to
+    false.
     """
     def __init__(self, descriptor, operation, checkFound=True,
                  argumentMutableValue=None, resultVar=None, foundVar=None):
@@ -9745,7 +9740,7 @@ class CGProxySpecialOperation(CGPerSignatureCall):
             self.cgRoot.prepend(instantiateJSToNativeConversion(info, templateValues))
         elif operation.isGetter() or operation.isDeleter():
             if foundVar is None:
-                self.cgRoot.prepend(CGGeneric("bool found;\n"))
+                self.cgRoot.prepend(CGGeneric("bool found = false;\n"))
 
     def getArguments(self):
         args = [(a, a.identifier.name) for a in self.arguments]
@@ -10222,7 +10217,7 @@ class CGDOMJSProxyHandler_defineProperty(ClassMethod):
             if self.descriptor.supportsNamedProperties():
                 set += fill(
                     """
-                    bool found;
+                    bool found = false;
                     $*{presenceChecker}
 
                     if (found) {
@@ -10263,7 +10258,7 @@ class CGDOMJSProxyHandler_delete(ClassMethod):
                     decls += "bool result;\n"
                     if foundVar is None:
                         foundVar = "found"
-                        decls += "bool found;\n"
+                        decls += "bool found = false;\n"
                     setBp = fill(
                         """
                         if (${foundVar}) {
@@ -10282,7 +10277,7 @@ class CGDOMJSProxyHandler_delete(ClassMethod):
                 foundDecl = ""
                 if foundVar is None:
                     foundVar = "found"
-                    foundDecl = "bool found;\n"
+                    foundDecl = "bool found = false;\n"
                 body = fill(
                     """
                     $*{foundDecl}
@@ -10336,7 +10331,7 @@ class CGDOMJSProxyHandler_delete(ClassMethod):
             # unconditionally here.
             delete += fill(
                 """
-                bool found;
+                bool found = false;
                 $*{namedBody}
                 if (found) {
                   return true;
@@ -10447,7 +10442,7 @@ class CGDOMJSProxyHandler_hasOwn(ClassMethod):
                 """
                 int32_t index = GetArrayIndexFromId(cx, id);
                 if (IsArrayIndex(index)) {
-                  bool found;
+                  bool found = false;
                   $*{presenceChecker}
 
                   *bp = found;
@@ -10477,7 +10472,7 @@ class CGDOMJSProxyHandler_hasOwn(ClassMethod):
             # property names, so no need to check for those here.
             named = fill(
                 """
-                bool found;
+                bool found = false;
                 $*{presenceChecker}
 
                 *bp = found;
@@ -10721,7 +10716,7 @@ class CGDOMJSProxyHandler_finalize(ClassMethod):
                 finalizeHook(self.descriptor, FINALIZE_HOOK_NAME, self.args[0].name).define())
 
 
-class CGDOMJSProxyHandler_slice(ClassMethod):
+class CGDOMJSProxyHandler_getElements(ClassMethod):
     def __init__(self, descriptor):
         assert descriptor.supportsIndexedProperties()
 
@@ -10729,8 +10724,8 @@ class CGDOMJSProxyHandler_slice(ClassMethod):
                 Argument('JS::Handle<JSObject*>', 'proxy'),
                 Argument('uint32_t', 'begin'),
                 Argument('uint32_t', 'end'),
-                Argument('JS::Handle<JSObject*>', 'array')]
-        ClassMethod.__init__(self, "slice", "bool", args, virtual=True, override=True, const=True)
+                Argument('js::ElementAdder*', 'adder')]
+        ClassMethod.__init__(self, "getElements", "bool", args, virtual=True, override=True, const=True)
         self.descriptor = descriptor
 
     def getBody(self):
@@ -10743,7 +10738,7 @@ class CGDOMJSProxyHandler_slice(ClassMethod):
             'jsvalRef': 'temp',
             'jsvalHandle': '&temp',
             'obj': 'proxy',
-            'successCode': ("js::UnsafeDefineElement(cx, array, index - begin, temp);\n"
+            'successCode': ("adder->append(cx, temp);\n"
                             "continue;\n")
         }
         get = CGProxyIndexedGetter(self.descriptor, templateValues, False, False).define()
@@ -10768,7 +10763,7 @@ class CGDOMJSProxyHandler_slice(ClassMethod):
               if (!js::GetObjectProto(cx, proxy, &proto)) {
                 return false;
               }
-              return js::SliceSlowly(cx, proto, proxy, ourEnd, end, array);
+              return js::GetElementsWithAdder(cx, proto, proxy, ourEnd, end, adder);
             }
 
             return true;
@@ -10841,7 +10836,7 @@ class CGDOMJSProxyHandler(CGClass):
 
 
         if descriptor.supportsIndexedProperties():
-            methods.append(CGDOMJSProxyHandler_slice(descriptor))
+            methods.append(CGDOMJSProxyHandler_getElements(descriptor))
         if (descriptor.operations['IndexedSetter'] is not None or
             (descriptor.operations['NamedSetter'] is not None and
              descriptor.interface.getExtendedAttribute('OverrideBuiltins'))):
@@ -11097,7 +11092,7 @@ class CGDescriptor(CGThing):
             cgThings.append(CGResolveOwnProperty(descriptor))
             cgThings.append(CGEnumerateOwnProperties(descriptor))
         elif descriptor.needsXrayResolveHooks():
-            cgThings.append(CGResolveOwnPropertyViaNewresolve(descriptor))
+            cgThings.append(CGResolveOwnPropertyViaResolve(descriptor))
             cgThings.append(CGEnumerateOwnPropertiesViaGetOwnPropertyNames(descriptor))
 
         # Now that we have our ResolveOwnProperty/EnumerateOwnProperties stuff
@@ -11114,8 +11109,8 @@ class CGDescriptor(CGThing):
             cgThings.append(CGNamedConstructors(descriptor))
 
         cgThings.append(CGLegacyCallHook(descriptor))
-        if descriptor.interface.getExtendedAttribute("NeedNewResolve"):
-            cgThings.append(CGNewResolveHook(descriptor))
+        if descriptor.interface.getExtendedAttribute("NeedResolve"):
+            cgThings.append(CGResolveHook(descriptor))
             cgThings.append(CGEnumerateHook(descriptor))
 
         if descriptor.hasNamedPropertiesObject:
@@ -11881,8 +11876,7 @@ class CGResolveSystemBinding(CGAbstractMethod):
                                   [Argument('JSContext*', 'aCx'),
                                    Argument('JS::Handle<JSObject*>', 'aObj'),
                                    Argument('JS::Handle<jsid>', 'aId'),
-                                   Argument('JS::MutableHandle<JSObject*>',
-                                            'aObjp')])
+                                   Argument('bool*', 'aResolvedp')])
         self.config = config
 
     def definition_body(self):
@@ -11915,7 +11909,7 @@ class CGResolveSystemBinding(CGAbstractMethod):
             defineCode = "!%s::GetConstructorObject(aCx, aObj)" % bindingNS
             defineCode = CGIfWrapper(CGGeneric("return false;\n"), defineCode)
             defineCode = CGList([defineCode,
-                                 CGGeneric("aObjp.set(aObj);\n")])
+                                 CGGeneric("*aResolvedp = true;\n")])
 
             condition = "JSID_IS_VOID(aId) || aId == %s" % descNameToId(desc.name)
             if desc.isExposedConditionally():
@@ -11963,6 +11957,7 @@ class CGRegisterProtos(CGAbstractMethod):
         for desc in self.config.getDescriptors(hasInterfaceObject=True,
                                                isExternal=False,
                                                workers=False,
+                                               isExposedInWindow=True,
                                                register=True):
             lines.append("REGISTER_PROTO(%s, %s);\n" % (desc.name, getCheck(desc)))
             lines.extend("REGISTER_CONSTRUCTOR(%s, %s, %s);\n" % (n.identifier.name, desc.name, getCheck(desc))
@@ -12230,10 +12225,6 @@ class CGBindingRoot(CGThing):
         hasWorkerStuff = len(config.getDescriptors(webIDLFile=webIDLFile,
                                                    workers=True)) != 0
         bindingHeaders["WorkerPrivate.h"] = hasWorkerStuff
-
-        def descriptorHasThreadChecks(desc):
-            return ((not desc.workers and not desc.interface.isExposedInWindow()) or
-                    (desc.interface.isExposedInAnyWorker() and desc.interface.isExposedOnlyInSomeWorkers()))
 
         hasThreadChecks = hasWorkerStuff or any(d.hasThreadChecks() for d in descriptors)
         bindingHeaders["nsThreadUtils.h"] = hasThreadChecks
@@ -14405,6 +14396,7 @@ class GlobalGenRoots():
         defineIncludes = [CGHeaders.getDeclarationFilename(desc.interface)
                           for desc in config.getDescriptors(hasInterfaceObject=True,
                                                             workers=False,
+                                                            isExposedInWindow=True,
                                                             register=True)]
         defineIncludes.append('nsScriptNameSpaceManager.h')
         defineIncludes.extend([CGHeaders.getDeclarationFilename(desc.interface)
@@ -14773,6 +14765,25 @@ class CGEventMethod(CGNativeMember):
                             target += ".SetValue()"
                             source += ".Value()"
                         members += sequenceCopy % (target, source)
+                    elif m.type.isSpiderMonkeyInterface():
+                        srcname = "%s.%s" % (self.args[1].name, name)
+                        if m.type.nullable():
+                            members += fill(
+                                """
+                                if (${srcname}.IsNull()) {
+                                  e->${varname} = nullptr;
+                                } else {
+                                  e->${varname} = ${srcname}.Value().Obj();
+                                }
+                                """,
+                            varname=name,
+                            srcname=srcname);
+                        else:
+                            members += fill(
+                                """
+                                e->${varname}.set(${srcname}.Obj());
+                                """,
+                            varname=name, srcname=srcname);
                     else:
                         members += "e->%s = %s.%s;\n" % (name, self.args[1].name, name)
                     if m.type.isAny() or m.type.isObject() or m.type.isSpiderMonkeyInterface():

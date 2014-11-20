@@ -610,9 +610,9 @@ describe("loop.webapp", function() {
         baseServerUrl: "fakeUrl"
       });
       dispatcher = new loop.Dispatcher();
-      activeRoomStore = new loop.store.ActiveRoomStore({
-        dispatcher: dispatcher,
-        mozLoop: {}
+      activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
+        mozLoop: {},
+        sdkDriver: {}
       });
       standaloneAppStore = new loop.store.StandaloneAppStore({
         dispatcher: dispatcher,

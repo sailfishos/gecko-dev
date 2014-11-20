@@ -230,7 +230,7 @@ BrowserGlue.prototype = {
   },
 #endif
 
-  // nsIObserver implementation 
+  // nsIObserver implementation
   observe: function BG_observe(subject, topic, data) {
     switch (topic) {
       case "prefservice:after-app-defaults":
@@ -417,23 +417,9 @@ BrowserGlue.prototype = {
         if (data == POLARIS_ENABLED) {
           let enabled = Services.prefs.getBoolPref(POLARIS_ENABLED);
           if (enabled) {
-            let e10sEnabled = Services.appinfo.browserTabsRemoteAutostart;
-            let shouldRestart = e10sEnabled && this._promptForE10sRestart();
-            // Only set the related prefs if e10s is not enabled or the user
-            // saw a notification that e10s would be disabled on restart.
-            if (!e10sEnabled || shouldRestart) {
-              Services.prefs.setBoolPref("privacy.donottrackheader.enabled", enabled);
-              Services.prefs.setBoolPref("privacy.trackingprotection.enabled", enabled);
-              Services.prefs.setBoolPref("privacy.trackingprotection.ui.enabled", enabled);
-              if (shouldRestart) {
-                Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit |
-                                      Ci.nsIAppStartup.eRestart);
-              }
-            } else {
-              // The user chose not to disable E10s which is temporarily
-              // incompatible with Polaris.
-              Services.prefs.clearUserPref(POLARIS_ENABLED);
-            }
+            Services.prefs.setBoolPref("privacy.donottrackheader.enabled", enabled);
+            Services.prefs.setBoolPref("privacy.trackingprotection.enabled", enabled);
+            Services.prefs.setBoolPref("privacy.trackingprotection.ui.enabled", enabled);
           } else {
             // Don't reset DNT because its visible pref is independent of
             // Polaris and may have been previously set.
@@ -443,23 +429,6 @@ BrowserGlue.prototype = {
         }
 #endif
     }
-  },
-
-  _promptForE10sRestart: function () {
-    let win = this.getMostRecentBrowserWindow();
-    let brandBundle = win.document.getElementById("bundle_brand");
-    let brandName = brandBundle.getString("brandShortName");
-    let prefBundle = win.document.getElementById("bundle_preferences");
-    let msg = "Multiprocess Nightly (e10s) does not yet support tracking protection. Multiprocessing will be disabled if you restart Firefox. Would you like to continue?";
-    let title = prefBundle.getFormattedString("shouldRestartTitle", [brandName]);
-    let shouldRestart = Services.prompt.confirm(win, title, msg);
-    if (shouldRestart) {
-      let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-                       .createInstance(Ci.nsISupportsPRBool);
-      Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
-      shouldRestart = !cancelQuit.data;
-    }
-    return shouldRestart;
   },
 
   _syncSearchEngines: function () {
@@ -1490,7 +1459,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 25;
+    const UI_VERSION = 26;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
     let currentUIVersion = 0;
     try {
@@ -1764,6 +1733,40 @@ BrowserGlue.prototype = {
         }
       }
       catch (ex) {}
+    }
+
+    if (currentUIVersion < 26) {
+      // Refactor urlbar suggestion preferences to make it extendable and
+      // allow new suggestion types (e.g: search suggestions).
+      let types = ["history", "bookmark", "openpage"];
+      let defaultBehavior = 0;
+      try {
+        defaultBehavior = Services.prefs.getIntPref("browser.urlbar.default.behavior");
+      } catch (ex) {}
+      try {
+        let autocompleteEnabled = Services.prefs.getBoolPref("browser.urlbar.autocomplete.enabled");
+        if (!autocompleteEnabled) {
+          defaultBehavior = -1;
+        }
+      } catch (ex) {}
+
+      // If the default behavior is:
+      //    -1  - all new "...suggest.*" preferences will be false
+      //     0  - all new "...suggest.*" preferences will use the default values
+      //   > 0  - all new "...suggest.*" preferences will be inherited
+      for (let type of types) {
+        let prefValue = defaultBehavior == 0;
+        if (defaultBehavior > 0) {
+          prefValue = !!(defaultBehavior & Ci.mozIPlacesAutoComplete["BEHAVIOR_" + type.toUpperCase()]);
+        }
+        Services.prefs.setBoolPref("browser.urlbar.suggest." + type, prefValue);
+      }
+
+      // Typed behavior will be used only for results from history.
+      if (defaultBehavior != -1 &&
+          !!(defaultBehavior & Ci.mozIPlacesAutoComplete["BEHAVIOR_TYPED"])) {
+        Services.prefs.setBoolPref("browser.urlbar.suggest.history.onlyTyped", true);
+      }
     }
 
     // Update the migration version.
@@ -2473,12 +2476,7 @@ let E10SUINotification = {
   checkStatus: function() {
     let skipE10sChecks = false;
     try {
-      // This order matters, because
-      // browser.tabs.remote.autostart.disabled-because-using-a11y is not
-      // always defined and will throw when not present.
-      // privacy.trackingprotection.enabled is always defined.
       skipE10sChecks = (UpdateChannel.get() != "nightly") ||
-                       Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
                        Services.prefs.getBoolPref("browser.tabs.remote.autostart.disabled-because-using-a11y");
     } catch(e) {}
 
@@ -2529,11 +2527,14 @@ let E10SUINotification = {
       } catch(e) {}
 
       let isHardwareAccelerated = true;
+      // Linux and Windows are currently ok, mac not so much.
+#ifdef XP_MACOSX
       try {
         let win = RecentWindow.getMostRecentBrowserWindow();
         let winutils = win.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
         isHardwareAccelerated = winutils.layerManagerType != "Basic";
       } catch (e) {}
+#endif
 
       if (!Services.appinfo.inSafeMode &&
           !Services.appinfo.accessibilityEnabled &&

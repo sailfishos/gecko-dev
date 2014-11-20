@@ -6,10 +6,20 @@
 
 var loop = loop || {};
 loop.store = loop.store || {};
+
 loop.store.ActiveRoomStore = (function() {
   "use strict";
 
   var sharedActions = loop.shared.actions;
+  var FAILURE_REASONS = loop.shared.utils.FAILURE_REASONS;
+
+  // Error numbers taken from
+  // https://github.com/mozilla-services/loop-server/blob/master/loop/errno.json
+  var SERVER_CODES = loop.store.SERVER_CODES = {
+    INVALID_TOKEN: 105,
+    EXPIRED: 111,
+    ROOM_FULL: 202
+  };
 
   var ROOM_STATES = loop.store.ROOM_STATES = {
     // The initial state of the room
@@ -20,95 +30,111 @@ loop.store.ActiveRoomStore = (function() {
     READY: "room-ready",
     // The room is known to be joined on the loop-server
     JOINED: "room-joined",
+    // The room is connected to the sdk server.
+    SESSION_CONNECTED: "room-session-connected",
+    // There are participants in the room.
+    HAS_PARTICIPANTS: "room-has-participants",
     // There was an issue with the room
-    FAILED: "room-failed"
+    FAILED: "room-failed",
+    // The room is full
+    FULL: "room-full"
   };
 
   /**
-   * Store for things that are local to this instance (in this profile, on
-   * this machine) of this roomRoom store, in addition to a mirror of some
-   * remote-state.
+   * Active room store.
    *
-   * @extends {Backbone.Events}
-   *
-   * @param {Object}          options - Options object
-   * @param {loop.Dispatcher} options.dispatch - The dispatcher for dispatching
-   *                            actions and registering to consume them.
-   * @param {MozLoop}         options.mozLoop - MozLoop API provider object
+   * @param {loop.Dispatcher} dispatcher  The dispatcher for dispatching actions
+   *                                      and registering to consume actions.
+   * @param {Object} options Options object:
+   * - {mozLoop}     mozLoop    The MozLoop API object.
+   * - {OTSdkDriver} sdkDriver  The SDK driver instance.
    */
-  function ActiveRoomStore(options) {
-    options = options || {};
-
-    if (!options.dispatcher) {
-      throw new Error("Missing option dispatcher");
-    }
-    this._dispatcher = options.dispatcher;
-
-    if (!options.mozLoop) {
-      throw new Error("Missing option mozLoop");
-    }
-    this._mozLoop = options.mozLoop;
-
-    this._dispatcher.register(this, [
-      "roomFailure",
-      "setupWindowData",
-      "fetchServerData",
-      "updateRoomInfo",
-      "joinRoom",
-      "joinedRoom",
-      "windowUnload",
-      "leaveRoom"
-    ]);
-
-    /**
-     * Stored data reflecting the local state of a given room, used to drive
-     * the room's views.
-     *
-     * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
-     *      for the main data. Additional properties below.
-     *
-     * @property {ROOM_STATES} roomState - the state of the room.
-     * @property {Error=} error - if the room is an error state, this will be
-     *                            set to an Error object reflecting the problem;
-     *                            otherwise it will be unset.
-     */
-    this._storeState = {
-      roomState: ROOM_STATES.INIT
-    };
-  }
-
-  ActiveRoomStore.prototype = _.extend({
+  var ActiveRoomStore = loop.store.createStore({
     /**
      * The time factor to adjust the expires time to ensure that we send a refresh
      * before the expiry. Currently set as 90%.
      */
     expiresTimeFactor: 0.9,
 
-    getStoreState: function() {
-      return this._storeState;
-    },
+    // XXX Further actions are registered in setupWindowData and
+    // fetchServerData when we know what window type this is. At some stage,
+    // we might want to consider store mixins or some alternative which
+    // means the stores would only be created when we want them.
+    actions: [
+      "setupWindowData",
+      "fetchServerData"
+    ],
 
-    setStoreState: function(newState) {
-      for (var key in newState) {
-        this._storeState[key] = newState[key];
+    initialize: function(options) {
+      if (!options.mozLoop) {
+        throw new Error("Missing option mozLoop");
       }
-      this.trigger("change");
+      this._mozLoop = options.mozLoop;
+
+      if (!options.sdkDriver) {
+        throw new Error("Missing option sdkDriver");
+      }
+      this._sdkDriver = options.sdkDriver;
     },
 
     /**
-     * Handles a room failure. Currently this prints the error to the console
-     * and sets the roomState to failed.
+     * Returns initial state data for this active room.
+     */
+    getInitialStoreState: function() {
+      return {
+        roomState: ROOM_STATES.INIT,
+        audioMuted: false,
+        videoMuted: false,
+        failureReason: undefined
+      };
+    },
+
+    /**
+     * Handles a room failure.
      *
      * @param {sharedActions.RoomFailure} actionData
      */
     roomFailure: function(actionData) {
+      function getReason(serverCode) {
+        switch (serverCode) {
+          case SERVER_CODES.INVALID_TOKEN:
+          case SERVER_CODES.EXPIRED:
+            return FAILURE_REASONS.EXPIRED_OR_INVALID;
+          default:
+            return FAILURE_REASONS.UNKNOWN;
+        }
+      }
+
       console.error("Error in state `" + this._storeState.roomState + "`:",
         actionData.error);
 
       this.setStoreState({
         error: actionData.error,
-        roomState: ROOM_STATES.FAILED
+        failureReason: getReason(actionData.error.errno),
+        roomState: actionData.error.errno === SERVER_CODES.ROOM_FULL ?
+          ROOM_STATES.FULL : ROOM_STATES.FAILED
       });
+    },
+
+    /**
+     * Registers the actions with the dispatcher that this store is interested
+     * in after the initial setup has been performed.
+     */
+    _registerPostSetupActions: function() {
+      this.dispatcher.register(this, [
+        "roomFailure",
+        "setupRoomInfo",
+        "updateRoomInfo",
+        "joinRoom",
+        "joinedRoom",
+        "connectedToSdkServers",
+        "connectionFailure",
+        "setMute",
+        "remotePeerDisconnected",
+        "remotePeerConnected",
+        "windowUnload",
+        "leaveRoom"
+      ]);
     },
 
     /**
@@ -125,6 +151,8 @@ loop.store.ActiveRoomStore = (function() {
         return;
       }
 
+      this._registerPostSetupActions();
+
       this.setStoreState({
         roomState: ROOM_STATES.GATHER
       });
@@ -133,14 +161,11 @@ loop.store.ActiveRoomStore = (function() {
       this._mozLoop.rooms.get(actionData.roomToken,
         function(error, roomData) {
           if (error) {
-            this._dispatcher.dispatch(new sharedActions.RoomFailure({
-              error: error
-            }));
+            this.dispatchAction(new sharedActions.RoomFailure({error: error}));
             return;
           }
 
-          this._dispatcher.dispatch(
-            new sharedActions.UpdateRoomInfo({
+          this.dispatchAction(new sharedActions.SetupRoomInfo({
             roomToken: actionData.roomToken,
             roomName: roomData.roomName,
             roomOwner: roomData.roomOwner,
@@ -149,7 +174,7 @@ loop.store.ActiveRoomStore = (function() {
 
           // For the conversation window, we need to automatically
           // join the room.
-          this._dispatcher.dispatch(new sharedActions.JoinRoom());
+          this.dispatchAction(new sharedActions.JoinRoom());
         }.bind(this));
     },
 
@@ -167,19 +192,24 @@ loop.store.ActiveRoomStore = (function() {
         return;
       }
 
+      this._registerPostSetupActions();
+
       this.setStoreState({
         roomToken: actionData.token,
         roomState: ROOM_STATES.READY
       });
+
+      this._mozLoop.rooms.on("update:" + actionData.roomToken,
+        this._handleRoomUpdate.bind(this));
     },
 
     /**
-     * Handles the updateRoomInfo action. Updates the room data and
+     * Handles the setupRoomInfo action. Sets up the initial room data and
      * sets the state to `READY`.
      *
-     * @param {sharedActions.UpdateRoomInfo} actionData
+     * @param {sharedActions.SetupRoomInfo} actionData
      */
-    updateRoomInfo: function(actionData) {
+    setupRoomInfo: function(actionData) {
       this.setStoreState({
         roomName: actionData.roomName,
         roomOwner: actionData.roomOwner,
@@ -187,21 +217,55 @@ loop.store.ActiveRoomStore = (function() {
         roomToken: actionData.roomToken,
         roomUrl: actionData.roomUrl
       });
+
+      this._mozLoop.rooms.on("update:" + actionData.roomToken,
+        this._handleRoomUpdate.bind(this));
+    },
+
+    /**
+     * Handles the updateRoomInfo action. Updates the room data.
+     *
+     * @param {sharedActions.UpdateRoomInfo} actionData
+     */
+    updateRoomInfo: function(actionData) {
+      this.setStoreState({
+        roomName: actionData.roomName,
+        roomOwner: actionData.roomOwner,
+        roomUrl: actionData.roomUrl
+      });
+    },
+
+    /**
+     * Handles room updates notified by the mozLoop rooms API.
+     *
+     * @param {String} eventName The name of the event
+     * @param {Object} roomData  The new roomData.
+     */
+    _handleRoomUpdate: function(eventName, roomData) {
+      this.dispatchAction(new sharedActions.UpdateRoomInfo({
+        roomName: roomData.roomName,
+        roomOwner: roomData.roomOwner,
+        roomUrl: roomData.roomUrl
+      }));
     },
 
     /**
      * Handles the action to join to a room.
      */
     joinRoom: function() {
+      // Reset the failure reason if necessary.
+      if (this.getStoreState().failureReason) {
+        this.setStoreState({failureReason: undefined});
+      }
+
       this._mozLoop.rooms.join(this._storeState.roomToken,
         function(error, responseData) {
           if (error) {
-            this._dispatcher.dispatch(
-              new sharedActions.RoomFailure({error: error}));
+            this.dispatchAction(new sharedActions.RoomFailure({error: error}));
             return;
           }
 
-          this._dispatcher.dispatch(new sharedActions.JoinedRoom({
+          this.dispatchAction(new sharedActions.JoinedRoom({
             apiKey: responseData.apiKey,
             sessionToken: responseData.sessionToken,
             sessionId: responseData.sessionId,
@@ -226,6 +290,66 @@ loop.store.ActiveRoomStore = (function() {
       });
 
       this._setRefreshTimeout(actionData.expires);
+      this._sdkDriver.connectSession(actionData);
+    },
+
+    /**
+     * Handles recording when the sdk has connected to the servers.
+     */
+    connectedToSdkServers: function() {
+      this.setStoreState({
+        roomState: ROOM_STATES.SESSION_CONNECTED
+      });
+    },
+
+    /**
+     * Handles disconnection of this local client from the sdk servers.
+     *
+     * @param {sharedActions.ConnectionFailure} actionData
+     */
+    connectionFailure: function(actionData) {
+      // Treat all reasons as something failed. In theory, clientDisconnected
+      // could be a success case, but there's no way we should be intentionally
+      // sending that and still have the window open.
+      this.setStoreState({
+        failureReason: actionData.reason
+      });
+
+      this._leaveRoom(ROOM_STATES.FAILED);
+    },
+
+    /**
+     * Records the mute state for the stream.
+     *
+     * @param {sharedActions.setMute} actionData The mute state for the stream type.
+     */
+    setMute: function(actionData) {
+      var muteState = {};
+      muteState[actionData.type + "Muted"] = !actionData.enabled;
+      this.setStoreState(muteState);
+    },
+
+    /**
+     * Handles recording when a remote peer has connected to the servers.
+     */
+    remotePeerConnected: function() {
+      this.setStoreState({
+        roomState: ROOM_STATES.HAS_PARTICIPANTS
+      });
+
+      // We've connected with a third-party, therefore stop displaying the ToS etc.
+      this._mozLoop.setLoopPref("seenToS", "seen");
+    },
+
+    /**
+     * Handles a remote peer disconnecting from the session.
+     */
+    remotePeerDisconnected: function() {
+      // As we only support two users at the moment, we just set this
+      // back to joined.
+      this.setStoreState({
+        roomState: ROOM_STATES.SESSION_CONNECTED
+      });
     },
 
     /**
@@ -233,6 +357,10 @@ loop.store.ActiveRoomStore = (function() {
      */
     windowUnload: function() {
       this._leaveRoom();
+
+      // If we're closing the window, we can stop listening to updates.
+      this._mozLoop.rooms.off("update:" + this.getStoreState().roomToken,
+        this._handleRoomUpdate.bind(this));
     },
 
     /**
@@ -261,8 +389,7 @@ loop.store.ActiveRoomStore = (function() {
         this._storeState.sessionToken,
         function(error, responseData) {
           if (error) {
-            this._dispatcher.dispatch(
-              new sharedActions.RoomFailure({error: error}));
+            this.dispatchAction(new sharedActions.RoomFailure({error: error}));
             return;
           }
 
@@ -273,27 +400,34 @@ loop.store.ActiveRoomStore = (function() {
     /**
      * Handles leaving a room. Clears any membership timeouts, then
      * signals to the server the leave of the room.
+     *
+     * @param {ROOM_STATES} nextState Optional; the next state to switch to.
+     *                                Switches to READY if undefined.
      */
-    _leaveRoom: function() {
-      if (this._storeState.roomState !== ROOM_STATES.JOINED) {
-        return;
+    _leaveRoom: function(nextState) {
+      if (loop.standaloneMedia) {
+        loop.standaloneMedia.multiplexGum.reset();
       }
+
+      this._sdkDriver.disconnectSession();
 
       if (this._timeout) {
         clearTimeout(this._timeout);
         delete this._timeout;
       }
 
-      this._mozLoop.rooms.leave(this._storeState.roomToken,
-        this._storeState.sessionToken);
+      if (this._storeState.roomState === ROOM_STATES.JOINED ||
+          this._storeState.roomState === ROOM_STATES.SESSION_CONNECTED ||
+          this._storeState.roomState === ROOM_STATES.HAS_PARTICIPANTS) {
+        this._mozLoop.rooms.leave(this._storeState.roomToken,
+          this._storeState.sessionToken);
+      }
 
       this.setStoreState({
-        roomState: ROOM_STATES.READY
+        roomState: nextState ? nextState : ROOM_STATES.READY
       });
     }
-
-  }, Backbone.Events);
+  });
 
   return ActiveRoomStore;
-
 })();

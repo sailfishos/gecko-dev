@@ -26,6 +26,8 @@ pref("browser.sessionstore.max_tabs_undo", 0);
 pref("browser.sessionstore.max_windows_undo", 0);
 pref("browser.sessionstore.restore_on_demand", false);
 pref("browser.sessionstore.resume_from_crash", false);
+// No e10s on mulet
+pref("browser.tabs.remote.autostart.1", false);
 #endif
 
 // Bug 945235: Prevent all bars to be considered visible:
@@ -318,7 +320,7 @@ pref("media.cache_readahead_limit", 30);
 
 #ifdef MOZ_FMP4
 // Enable/Disable Gonk Decoder Module
-pref("media.fragmented-mp4.gonk.enabled", false);
+pref("media.fragmented-mp4.gonk.enabled", true);
 #endif
 // The default number of decoded video frames that are enqueued in
 // MediaDecoderReader's mVideoQueue.
@@ -431,7 +433,6 @@ pref("dom.mozBrowserFramesEnabled", true);
 pref("dom.ipc.processCount", 100000);
 
 pref("dom.ipc.browser_frames.oop_by_default", false);
-pref("dom.browser_frames.useAsyncPanZoom", true);
 
 // SMS/MMS
 pref("dom.sms.enabled", true);
@@ -985,12 +986,12 @@ pref("apz.asyncscroll.throttle", 40);
 pref("apz.pan_repaint_interval", 16);
 
 // APZ physics settings, tuned by UX designers
-pref("apz.fling_curve_function_x1", "0.0");
+pref("apz.fling_curve_function_x1", "0.41");
 pref("apz.fling_curve_function_y1", "0.0");
-pref("apz.fling_curve_function_x2", "0.58");
+pref("apz.fling_curve_function_x2", "0.76");
 pref("apz.fling_curve_function_y2", "1.0");
-pref("apz.fling_curve_threshold_inches_per_ms", "0.03");
-pref("apz.fling_friction", "0.003");
+pref("apz.fling_curve_threshold_inches_per_ms", "0.01");
+pref("apz.fling_friction", "0.0024");
 pref("apz.max_velocity_inches_per_ms", "0.07");
 
 // Tweak default displayport values to reduce the risk of running out of
@@ -1006,9 +1007,9 @@ pref("apz.subframe.enabled", true);
 
 // Overscroll-related settings
 pref("apz.overscroll.enabled", true);
-pref("apz.overscroll.stretch_factor", "0.5");
-pref("apz.overscroll.spring_stiffness", "0.001");
-pref("apz.overscroll.spring_friction", "0.015");
+pref("apz.overscroll.stretch_factor", "0.15");
+pref("apz.overscroll.spring_stiffness", "0.002");
+pref("apz.overscroll.spring_friction", "0.02");
 pref("apz.overscroll.stop_distance_threshold", "5.0");
 pref("apz.overscroll.stop_velocity_threshold", "0.01");
 

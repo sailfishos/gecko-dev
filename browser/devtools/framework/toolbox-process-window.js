@@ -37,11 +37,7 @@ function connect() {
     if (addonID) {
       gClient.listAddons(({addons}) => {
         let addonActor = addons.filter(addon => addon.id === addonID).pop();
-        openToolbox({
-          addonActor: addonActor.actor,
-          consoleActor: addonActor.consoleActor,
-          title: addonActor.name
-        });
+        openToolbox(addonActor);
       });
     } else {
       gClient.listTabs(openToolbox);
@@ -53,6 +49,7 @@ function connect() {
 function setPrefDefaults() {
   Services.prefs.setBoolPref("devtools.inspector.showUserAgentStyles", true);
   Services.prefs.setBoolPref("devtools.profiler.ui.show-platform-data", true);
+  Services.prefs.setBoolPref("browser.devedition.theme.showCustomizeButton", false);
 }
 
 window.addEventListener("load", function() {

@@ -180,6 +180,7 @@ class MacroAssemblerNone : public Assembler
     template <typename T> void call(T) { MOZ_CRASH(); }
     template <typename T, typename S> void call(T, S) { MOZ_CRASH(); }
     template <typename T> void callWithABI(T, MoveOp::Type v = MoveOp::GENERAL) { MOZ_CRASH(); }
+    void callAndPushReturnAddress(Label *label) { MOZ_CRASH(); }
 
     void setupAlignedABICall(uint32_t) { MOZ_CRASH(); }
     void setupUnalignedABICall(uint32_t, Register) { MOZ_CRASH(); }
@@ -354,6 +355,7 @@ class MacroAssemblerNone : public Assembler
     template <typename T> void unboxObject(T, Register) { MOZ_CRASH(); }
     template <typename T> void unboxDouble(T, FloatRegister) { MOZ_CRASH(); }
     void unboxValue(const ValueOperand &, AnyRegister) { MOZ_CRASH(); }
+    void unboxNonDouble(const ValueOperand &, Register ) { MOZ_CRASH();}
     void notBoolean(ValueOperand) { MOZ_CRASH(); }
     Register extractObject(Address, Register) { MOZ_CRASH(); }
     Register extractObject(ValueOperand, Register) { MOZ_CRASH(); }

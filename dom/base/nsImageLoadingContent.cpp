@@ -182,7 +182,7 @@ nsImageLoadingContent::Notify(imgIRequest* aRequest,
     }
     nsresult status =
         reqStatus & imgIRequest::STATUS_ERROR ? NS_ERROR_FAILURE : NS_OK;
-    return OnStopRequest(aRequest, status);
+    return OnLoadComplete(aRequest, status);
   }
 
   if (aType == imgINotificationObserver::DECODE_COMPLETE) {
@@ -205,8 +205,7 @@ nsImageLoadingContent::Notify(imgIRequest* aRequest,
 }
 
 nsresult
-nsImageLoadingContent::OnStopRequest(imgIRequest* aRequest,
-                                     nsresult aStatus)
+nsImageLoadingContent::OnLoadComplete(imgIRequest* aRequest, nsresult aStatus)
 {
   uint32_t oldStatus;
   aRequest->GetImageStatus(&oldStatus);
@@ -888,6 +887,7 @@ nsImageLoadingContent::LoadImage(nsIURI* aNewURI,
   rv = nsContentUtils::LoadImage(aNewURI, aDocument,
                                  aDocument->NodePrincipal(),
                                  aDocument->GetDocumentURI(),
+                                 aDocument->GetReferrerPolicy(),
                                  this, loadFlags,
                                  content->LocalName(),
                                  getter_AddRefs(req),
@@ -1007,8 +1007,8 @@ void
 nsImageLoadingContent::UpdateImageState(bool aNotify)
 {
   if (mStateChangerDepth > 0) {
-    // Ignore this call; we'll update our state when the outermost state
-    // changer is destroyed. Need this to work around the fact that some libpr0n
+    // Ignore this call; we'll update our state when the outermost state changer
+    // is destroyed. Need this to work around the fact that some ImageLib
     // stuff is actually sync and hence we can get OnStopDecode called while
     // we're still under LoadImage, and OnStopDecode doesn't know anything about
     // aNotify.

@@ -1421,18 +1421,10 @@ RilObject.prototype = {
    * Set the roaming preference mode
    */
   setRoamingPreference: function(options) {
-    let roamingMode = CDMA_ROAMING_PREFERENCE_TO_GECKO.indexOf(options.mode);
-
-    if (roamingMode === -1) {
-      options.errorMsg = GECKO_ERROR_INVALID_PARAMETER;
-      this.sendChromeMessage(options);
-      return;
-    }
-
     let Buf = this.context.Buf;
     Buf.newParcel(REQUEST_CDMA_SET_ROAMING_PREFERENCE, options);
     Buf.writeInt32(1);
-    Buf.writeInt32(roamingMode);
+    Buf.writeInt32(options.mode);
     Buf.sendParcel();
   },
 
@@ -3943,8 +3935,25 @@ RilObject.prototype = {
   /**
    * Helpers for processing call state changes.
    */
-  _processClassifiedCalls: function(removedCalls, remainedCalls, addedCalls,
-                                    failCause) {
+  _processCalls: function(newCalls, failCause) {
+    // Let's get the failCause first if there are removed calls. Otherwise, we
+    // need to trigger another async request when removing call and it cause
+    // the order of callDisconnected and conferenceCallStateChanged
+    // unpredictable.
+    if (failCause === undefined) {
+      for each (let currentCall in this.currentCalls) {
+        if (!newCalls[currentCall.callIndex] && !currentCall.hangUpLocal) {
+          this.getFailCauseCode((function(newCalls, failCause) {
+            this._processCalls(newCalls, failCause);
+          }).bind(this, newCalls));
+          return;
+        }
+      }
+    }
+
+    let [removedCalls, remainedCalls, addedCalls] =
+      this._classifyCalls(newCalls);
+
     // Handle removed calls.
     // Only remove it from the map here. Notify callDisconnected later.
     for (let call of removedCalls) {
@@ -4024,22 +4033,6 @@ RilObject.prototype = {
       let message = {rilMessageType: "conferenceCallStateChanged",
                      state: newConferenceState};
       this.sendChromeMessage(message);
-    }
-  },
-
-  _processCalls: function(newCalls) {
-    let [removed, remained, added] = this._classifyCalls(newCalls);
-
-    // Let's get the failCause first if there are removed calls. Otherwise, we
-    // need to trigger another async request when removing call and it cause
-    // the order of callDisconnected and conferenceCallStateChanged
-    // unpredictable.
-    if (removed.length) {
-      this.getFailCauseCode((function(removed, remained, added, failCause) {
-        this._processClassifiedCalls(removed, remained, added, failCause);
-      }).bind(this, removed, remained, added));
-    } else {
-      this._processClassifiedCalls(removed, remained, added);
     }
   },
 
@@ -5397,10 +5390,6 @@ RilObject.prototype[REQUEST_GET_CURRENT_CALLS] = function REQUEST_GET_CURRENT_CA
   if (length) {
     calls_length = Buf.readInt32();
   }
-  if (!calls_length) {
-    this._processCalls(null);
-    return;
-  }
 
   let calls = {};
   for (let i = 0; i < calls_length; i++) {
@@ -5474,10 +5463,6 @@ RilObject.prototype[REQUEST_HANGUP] = function REQUEST_HANGUP(length, options) {
   options.success = options.rilRequestError === 0;
   options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
   this.sendChromeMessage(options);
-
-  if (options.success) {
-    this.getCurrentCalls();
-  }
 };
 RilObject.prototype[REQUEST_HANGUP_WAITING_OR_BACKGROUND] = function REQUEST_HANGUP_WAITING_OR_BACKGROUND(length, options) {
   RilObject.prototype[REQUEST_HANGUP].call(this, length, options);
@@ -5486,11 +5471,6 @@ RilObject.prototype[REQUEST_HANGUP_FOREGROUND_RESUME_BACKGROUND] = function REQU
   RilObject.prototype[REQUEST_HANGUP].call(this, length, options);
 };
 RilObject.prototype[REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE] = function REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE(length, options) {
-  if (options.rilRequestError) {
-    return;
-  }
-
-  this.getCurrentCalls();
 };
 RilObject.prototype[REQUEST_CONFERENCE] = function REQUEST_CONFERENCE(length, options) {
   options.success = (options.rilRequestError === 0);
@@ -6448,8 +6428,7 @@ RilObject.prototype[REQUEST_CDMA_QUERY_ROAMING_PREFERENCE] = function REQUEST_CD
   if (options.rilRequestError) {
     options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
   } else {
-    let mode = this.context.Buf.readInt32List();
-    options.mode = CDMA_ROAMING_PREFERENCE_TO_GECKO[mode[0]];
+    options.mode = this.context.Buf.readInt32List()[0];
   }
   this.sendChromeMessage(options);
 };
@@ -13976,13 +13955,10 @@ SimRecordHelperObject.prototype = {
       }
       Buf.readStringDelimiter(strLen);
 
-      if (pnnElement) {
-        pnn.push(pnnElement);
-      }
+      pnn.push(pnnElement);
 
       let RIL = this.context.RIL;
-      // Will ignore remaining records when got the contents of a record are all 0xff.
-      if (pnnElement && options.p1 < options.totalRecords) {
+      if (options.p1 < options.totalRecords) {
         ICCIOHelper.loadNextRecord(options);
       } else {
         if (DEBUG) {

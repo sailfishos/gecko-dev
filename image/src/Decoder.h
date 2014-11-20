@@ -7,9 +7,8 @@
 #define MOZILLA_IMAGELIB_DECODER_H_
 
 #include "RasterImage.h"
-#include "imgDecoderObserver.h"
 #include "mozilla/RefPtr.h"
-#include "DecodeStrategy.h"
+#include "DecodePool.h"
 #include "ImageMetadata.h"
 #include "Orientation.h"
 #include "mozilla/Telemetry.h"
@@ -44,6 +43,11 @@ public:
   /**
    * Writes data to the decoder.
    *
+   * If aBuffer is null and aCount is 0, Write() flushes any buffered data to
+   * the decoder. Data is buffered if the decoder wasn't able to completely
+   * decode it because it needed a new frame.  If it's necessary to flush data,
+   * NeedsToFlushData() will return true.
+   *
    * @param aBuffer buffer containing the data to be written
    * @param aCount the number of bytes to write
    *
@@ -58,7 +62,7 @@ public:
    *
    * Notifications Sent: TODO
    */
-  void Finish(RasterImage::eShutdownIntent aShutdownIntent);
+  void Finish(ShutdownReason aReason);
 
   /**
    * Informs the shared decoder that all the data has been written.
@@ -69,14 +73,29 @@ public:
   void FinishSharedDecoder();
 
   /**
-   * Tells the decoder to flush any pending invalidations. This informs the image
-   * frame of its decoded region, and sends the appropriate OnDataAvailable call
-   * to consumers.
-   *
-   * This can be called any time when we're midway through decoding a frame,
-   * and must be called after finishing a frame (before starting a new one).
+   * Gets the invalidation region accumulated by the decoder so far, and clears
+   * the decoder's invalidation region. This means that each call to
+   * TakeInvalidRect() returns only the invalidation region accumulated since
+   * the last call to TakeInvalidRect().
    */
-  void FlushInvalidations();
+  nsIntRect TakeInvalidRect()
+  {
+    nsIntRect invalidRect = mInvalidRect;
+    mInvalidRect.SetEmpty();
+    return invalidRect;
+  }
+
+  /**
+   * Gets the progress changes accumulated by the decoder so far, and clears
+   * them. This means that each call to TakeProgress() returns only the changes
+   * accumulated since the last call to TakeProgress().
+   */
+  Progress TakeProgress()
+  {
+    Progress progress = mProgress;
+    mProgress = NoProgress;
+    return progress;
+  }
 
   // We're not COM-y, so we don't get refcounts by default
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Decoder)
@@ -95,13 +114,13 @@ public:
     mSizeDecode = aSizeDecode;
   }
 
-  void SetObserver(imgDecoderObserver* aObserver)
-  {
-    MOZ_ASSERT(aObserver);
-    mObserver = aObserver;
-  }
-
   size_t BytesDecoded() const { return mBytesDecoded; }
+
+  // The amount of time we've spent inside Write() so far for this decoder.
+  TimeDuration DecodeTime() const { return mDecodeTime; }
+
+  // The number of times Write() has been called so far for this decoder.
+  uint32_t ChunkCount() const { return mChunkCount; }
 
   // The number of frames we have, including anything in-progress. Thus, this
   // is only 0 if we haven't begun any frames.
@@ -158,6 +177,11 @@ public:
 
   virtual bool NeedsNewFrame() const { return mNeedsNewFrame; }
 
+  // Returns true if we may have stored data that we need to flush now that we
+  // have a new frame to decode into. Callers can use Write() to actually
+  // flush the data; see the documentation for that method.
+  bool NeedsToFlushData() const { return mNeedsToFlushData; }
+
   // Try to allocate a frame as described in mNewFrameData and return the
   // status code from that attempt. Clears mNewFrameData.
   virtual nsresult AllocateFrame();
@@ -176,7 +200,8 @@ protected:
    * only these methods.
    */
   virtual void InitInternal();
-  virtual void WriteInternal(const char* aBuffer, uint32_t aCount, DecodeStrategy aStrategy);
+  virtual void WriteInternal(const char* aBuffer, uint32_t aCount,
+    DecodeStrategy aStrategy);
   virtual void FinishInternal();
 
   /*
@@ -188,6 +213,9 @@ protected:
   void PostSize(int32_t aWidth,
                 int32_t aHeight,
                 Orientation aOrientation = Orientation());
+
+  // Called by decoders if they determine that the image has transparency.
+  void PostHasTransparency();
 
   // Called by decoders when they begin a frame. Informs the image, sends
   // notifications, and does internal book-keeping.
@@ -227,13 +255,18 @@ protected:
    */
   RasterImage &mImage;
   nsRefPtr<imgFrame> mCurrentFrame;
-  RefPtr<imgDecoderObserver> mObserver;
   ImageMetadata mImageMetadata;
+  nsIntRect mInvalidRect; // Tracks an invalidation region in the current frame.
+  Progress mProgress;
 
   uint8_t* mImageData;       // Pointer to image data in either Cairo or 8bit format
   uint32_t mImageDataLength;
   uint32_t* mColormap;       // Current colormap to be used in Cairo format
   uint32_t mColormapSize;
+
+  // Telemetry data for this decoder.
+  TimeDuration mDecodeTime;
+  uint32_t mChunkCount;
 
   uint32_t mDecodeFlags;
   size_t mBytesDecoded;
@@ -242,8 +275,6 @@ protected:
 
 private:
   uint32_t mFrameCount; // Number of frames, including anything in-progress
-
-  nsIntRect mInvalidRect; // Tracks an invalidation region in the current frame.
 
   nsresult mFailCode;
 
@@ -273,6 +304,7 @@ private:
   };
   NewFrameData mNewFrameData;
   bool mNeedsNewFrame;
+  bool mNeedsToFlushData;
   bool mInitialized;
   bool mSizeDecode;
   bool mInFrame;

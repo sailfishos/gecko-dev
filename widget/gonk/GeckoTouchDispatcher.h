@@ -50,8 +50,6 @@ public:
   static bool NotifyVsync(TimeStamp aVsyncTimestamp);
 
 private:
-  int32_t InterpolateTouch(MultiTouchInput& aOutTouch, TimeStamp aSampleTime);
-  int32_t ExtrapolateTouch(MultiTouchInput& aOutTouch, TimeStamp aSampleTime);
   void ResampleTouchMoves(MultiTouchInput& aOutTouch, TimeStamp vsyncTime);
   void SendTouchEvent(MultiTouchInput& aData);
   void DispatchMouseEvent(MultiTouchInput& aMultiTouch,
@@ -75,14 +73,11 @@ private:
   // resample
   TimeDuration mMinResampleTime;
 
-  // The time difference between the last two touch move events
-  TimeDuration mTouchTimeDiff;
-
-  // The system time at which the last touch event occured
-  TimeStamp mLastTouchTime;
-
   // Threshold if a vsync event runs too far behind touch events
   TimeDuration mDelayedVsyncThreshold;
+
+  // How far ahead can vsync events get ahead of touch events.
+  TimeDuration mOldTouchThreshold;
 };
 
 } // namespace mozilla

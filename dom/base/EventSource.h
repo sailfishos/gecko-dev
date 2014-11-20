@@ -109,6 +109,8 @@ protected:
 
   nsresult GetBaseURI(nsIURI **aBaseURI);
 
+  net::ReferrerPolicy GetReferrerPolicy();
+
   nsresult SetupHttpChannel();
   nsresult InitChannelAndRequestEventSource();
   nsresult ResetConnection();
@@ -221,7 +223,6 @@ protected:
   bool mGoingToDispatchAllMessages;
   bool mWithCredentials;
   bool mWaitingForOnStopRequest;
-  bool mInterrupted;
 
   // used while reading the input streams
   nsCOMPtr<nsIUnicodeDecoder> mUnicodeDecoder;

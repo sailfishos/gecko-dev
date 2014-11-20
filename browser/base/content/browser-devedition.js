@@ -14,7 +14,6 @@ let DevEdition = {
 
   styleSheetLocation: "chrome://browser/skin/devedition.css",
   styleSheet: null,
-  defaultThemeID: "{972ce4c6-7e08-4474-a285-3208198ce6fd}",
 
   init: function () {
     this._updateDevtoolsThemeAttribute();
@@ -32,7 +31,7 @@ let DevEdition = {
   observe: function (subject, topic, data) {
     if (topic == "lightweight-theme-styling-update") {
       let newTheme = JSON.parse(data);
-      if (!newTheme || newTheme.id === this.defaultThemeID) {
+      if (!newTheme) {
         // A lightweight theme has been unapplied, so just re-read prefs.
         this._updateStyleSheetFromPrefs();
       } else {
@@ -51,11 +50,26 @@ let DevEdition = {
     }
   },
 
+  _inferBrightness: function() {
+    ToolbarIconColor.inferFromText();
+    // Get an inverted full screen button if the dark theme is applied.
+    if (this.styleSheet &&
+        document.documentElement.getAttribute("devtoolstheme") == "dark") {
+      document.documentElement.setAttribute("brighttitlebarforeground", "true");
+    } else {
+      document.documentElement.removeAttribute("brighttitlebarforeground");
+    }
+  },
+
   _updateDevtoolsThemeAttribute: function() {
     // Set an attribute on root element to make it possible
     // to change colors based on the selected devtools theme.
-    document.documentElement.setAttribute("devtoolstheme",
-      Services.prefs.getCharPref(this._devtoolsThemePrefName));
+    let devtoolsTheme = Services.prefs.getCharPref(this._devtoolsThemePrefName);
+    if (devtoolsTheme != "dark") {
+      devtoolsTheme = "light";
+    }
+    document.documentElement.setAttribute("devtoolstheme", devtoolsTheme);
+    this._inferBrightness();
     this._updateStyleSheetFromPrefs();
   },
 
@@ -70,13 +84,8 @@ let DevEdition = {
        defaultThemeSelected = Services.prefs.getCharPref(this._themePrefName) == "classic/1.0";
     } catch(e) {}
 
-    let devtoolsIsDark = false;
-    try {
-       devtoolsIsDark = Services.prefs.getCharPref(this._devtoolsThemePrefName) == "dark";
-    } catch(e) {}
-
     let deveditionThemeEnabled = Services.prefs.getBoolPref(this._prefName) &&
-      !lightweightThemeSelected && defaultThemeSelected && devtoolsIsDark;
+      !lightweightThemeSelected && defaultThemeSelected;
 
     this._toggleStyleSheet(deveditionThemeEnabled);
   },
@@ -85,7 +94,7 @@ let DevEdition = {
     if (e.type === "load") {
       this.styleSheet.removeEventListener("load", this);
       gBrowser.tabContainer._positionPinnedTabs();
-      ToolbarIconColor.inferFromText();
+      this._inferBrightness();
       Services.obs.notifyObservers(window, "devedition-theme-state-changed", true);
     }
   },
@@ -104,7 +113,7 @@ let DevEdition = {
       this.styleSheet.remove();
       this.styleSheet = null;
       gBrowser.tabContainer._positionPinnedTabs();
-      ToolbarIconColor.inferFromText();
+      this._inferBrightness();
       Services.obs.notifyObservers(window, "devedition-theme-state-changed", false);
     }
   },

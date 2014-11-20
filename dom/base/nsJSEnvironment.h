@@ -36,6 +36,8 @@ struct CycleCollectorResults;
 // a page) and doing the actual GC.
 #define NS_GC_DELAY                 4000 // ms
 
+#define NS_MAJOR_FORGET_SKIPPABLE_CALLS 5
+
 class nsJSContext : public nsIScriptContext
 {
 public:
@@ -143,11 +145,6 @@ protected:
                                    JS::AutoValueVector &aArgsOut);
 
   nsresult AddSupportsPrimitiveTojsvals(nsISupports *aArg, JS::Value *aArgv);
-
-  // Report the pending exception on our mContext, if any.  This
-  // function will set aside the frame chain on mContext before
-  // reporting.
-  void ReportPendingException();
 
 private:
   void DestroyJSContext();

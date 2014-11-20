@@ -16,6 +16,7 @@
 #include <android/log.h>
 #define ALOG(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define TIMEOUT_DEQUEUE_INPUTBUFFER_MS 1000000ll
+
 namespace android {
 
 // General Template: MediaCodec::getOutputGraphicBufferFromIndex(...)
@@ -224,6 +225,7 @@ MediaCodecProxy::start()
   if (mCodec == nullptr) {
     return NO_INIT;
   }
+
   return mCodec->start();
 }
 
@@ -502,6 +504,21 @@ bool MediaCodecProxy::Prepare()
   return true;
 }
 
+bool MediaCodecProxy::UpdateOutputBuffers()
+{
+  if (mCodec == nullptr) {
+    ALOG("MediaCodec has not been inited from input!");
+    return false;
+  }
+
+  status_t err = getOutputBuffers(&mOutputBuffers);
+  if (err != OK){
+    ALOG("Couldn't update output buffers from MediaCodec");
+    return false;
+  }
+  return true;
+}
+
 status_t MediaCodecProxy::Input(const uint8_t* aData, uint32_t aDataSize,
                                 int64_t aTimestampUsecs, uint64_t aflags)
 {
@@ -538,7 +555,6 @@ status_t MediaCodecProxy::Input(const uint8_t* aData, uint32_t aDataSize,
 
 status_t MediaCodecProxy::Output(MediaBuffer** aBuffer, int64_t aTimeoutUs)
 {
-
   if (mCodec == nullptr) {
     ALOG("MediaCodec has not been inited from output!");
     return NO_INIT;
@@ -560,8 +576,14 @@ status_t MediaCodecProxy::Output(MediaBuffer** aBuffer, int64_t aTimeoutUs)
   }
 
   MediaBuffer *buffer;
+  sp<GraphicBuffer> graphicBuffer;
 
-  buffer = new MediaBuffer(mOutputBuffers.itemAt(index));
+  if (getOutputGraphicBufferFromIndex(index, &graphicBuffer) == OK &&
+      graphicBuffer != nullptr) {
+    buffer = new MediaBuffer(graphicBuffer);
+  } else {
+    buffer = new MediaBuffer(mOutputBuffers.itemAt(index));
+  }
   sp<MetaData> metaData = buffer->meta_data();
   metaData->setInt32(kKeyBufferIndex, index);
   metaData->setInt64(kKeyTime, timeUs);
@@ -589,6 +611,16 @@ void MediaCodecProxy::ReleaseMediaResources()
     mCodec->stop();
     mCodec->release();
     mCodec.clear();
+  }
+}
+
+void MediaCodecProxy::ReleaseMediaBuffer(MediaBuffer* aBuffer) {
+  if (aBuffer) {
+    sp<MetaData> metaData = aBuffer->meta_data();
+    int32_t index;
+    metaData->findInt32(kKeyBufferIndex, &index);
+    aBuffer->release();
+    releaseOutputBuffer(index);
   }
 }
 

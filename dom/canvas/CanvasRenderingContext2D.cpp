@@ -89,6 +89,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/unused.h"
 #include "nsCCUncollectableMarker.h"
@@ -116,6 +117,7 @@
 #include "SkiaGLGlue.h"
 #ifdef USE_SKIA
 #include "SurfaceTypes.h"
+#include "GLBlitHelper.h"
 #endif
 
 using mozilla::gl::GLContext;
@@ -690,6 +692,106 @@ NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(CanvasPattern, Release)
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(CanvasPattern, mContext)
 
+class CanvasDrawObserver
+{
+public:
+  CanvasDrawObserver(CanvasRenderingContext2D* aCanvasContext);
+
+  // Only enumerate draw calls that could affect the heuristic
+  enum DrawCallType {
+    PutImageData,
+    GetImageData,
+    DrawImage
+  };
+
+  // This is the one that we call on relevant draw calls and count
+  // GPU vs. CPU preferrable calls...
+  void DidDrawCall(DrawCallType aType);
+
+  // When this returns true, the observer is done making the decisions.
+  // Right now, we expect to get rid of the observer after the FrameEnd
+  // returns true, though the decision could eventually change if the
+  // function calls shift.  If we change to monitor the functions called
+  // and make decisions to change more than once, we would probably want
+  // FrameEnd to reset the timer and counters as it returns true.
+  bool FrameEnd();
+
+private:
+  // These values will be picked up from preferences:
+  int32_t mMinFramesBeforeDecision;
+  float mMinSecondsBeforeDecision;
+  int32_t mMinCallsBeforeDecision;
+
+  CanvasRenderingContext2D* mCanvasContext;
+  int32_t mSoftwarePreferredCalls;
+  int32_t mGPUPreferredCalls;
+  int32_t mFramesRendered;
+  TimeStamp mCreationTime;
+};
+
+// We are not checking for the validity of the preference values.  For example,
+// negative values will have an effect of a quick exit, so no harm done.
+CanvasDrawObserver::CanvasDrawObserver(CanvasRenderingContext2D* aCanvasContext)
+ : mMinFramesBeforeDecision(gfxPrefs::CanvasAutoAccelerateMinFrames())
+ , mMinSecondsBeforeDecision(gfxPrefs::CanvasAutoAccelerateMinSeconds())
+ , mMinCallsBeforeDecision(gfxPrefs::CanvasAutoAccelerateMinCalls())
+ , mCanvasContext(aCanvasContext)
+ , mSoftwarePreferredCalls(0)
+ , mGPUPreferredCalls(0)
+ , mFramesRendered(0)
+ , mCreationTime(TimeStamp::NowLoRes())
+{}
+
+void
+CanvasDrawObserver::DidDrawCall(DrawCallType aType)
+{
+  switch (aType) {
+    case PutImageData:
+    case GetImageData:
+      if (mGPUPreferredCalls == 0 && mSoftwarePreferredCalls == 0) {
+        mCreationTime = TimeStamp::NowLoRes();
+      }
+      mSoftwarePreferredCalls++;
+      break;
+    case DrawImage:
+      if (mGPUPreferredCalls == 0 && mSoftwarePreferredCalls == 0) {
+        mCreationTime = TimeStamp::NowLoRes();
+      }
+      mGPUPreferredCalls++;
+      break;
+  }
+}
+
+// If we return true, the observer is done making the decisions...
+bool
+CanvasDrawObserver::FrameEnd()
+{
+  mFramesRendered++;
+
+  // We log the first mMinFramesBeforeDecision frames of any
+  // canvas object then make a call to determine whether it should
+  // be GPU or CPU backed
+  if ((mFramesRendered >= mMinFramesBeforeDecision) ||
+      ((TimeStamp::NowLoRes() - mCreationTime).ToSeconds()) > mMinSecondsBeforeDecision) {
+
+    // If we don't have enough data, don't bother changing...
+    if (mGPUPreferredCalls > mMinCallsBeforeDecision ||
+        mSoftwarePreferredCalls > mMinCallsBeforeDecision) {
+      if (mGPUPreferredCalls >= mSoftwarePreferredCalls) {
+        mCanvasContext->SwitchRenderingMode(CanvasRenderingContext2D::RenderingMode::OpenGLBackendMode);
+      } else {
+        mCanvasContext->SwitchRenderingMode(CanvasRenderingContext2D::RenderingMode::SoftwareBackendMode);
+      }
+    }
+
+    // If we ever redesign this class to constantly monitor the functions
+    // and keep making decisions, we would probably want to reset the counters
+    // and the timers here...
+    return true;
+  }
+  return false;
+}
+
 class CanvasRenderingContext2DUserData : public LayerUserData {
 public:
   explicit CanvasRenderingContext2DUserData(CanvasRenderingContext2D *aContext)
@@ -723,6 +825,12 @@ public:
       static_cast<CanvasRenderingContext2DUserData*>(aData);
     if (self->mContext) {
       self->mContext->MarkContextClean();
+      if (self->mContext->mDrawObserver) {
+        if (self->mContext->mDrawObserver->FrameEnd()) {
+          // Note that this call deletes and nulls out mDrawObserver:
+          self->mContext->RemoveDrawObserver();
+        }
+      }
     }
   }
   bool IsForContext(CanvasRenderingContext2D *aContext)
@@ -819,11 +927,15 @@ DrawTarget* CanvasRenderingContext2D::sErrorTarget = nullptr;
 
 CanvasRenderingContext2D::CanvasRenderingContext2D()
   : mRenderingMode(RenderingMode::OpenGLBackendMode)
+#ifdef USE_SKIA_GPU
+  , mVideoTexture(0)
+#endif
   // these are the default values from the Canvas spec
   , mWidth(0), mHeight(0)
   , mZero(false), mOpaque(false)
   , mResetLayer(true)
   , mIPC(false)
+  , mDrawObserver(nullptr)
   , mIsEntireFrameInvalid(false)
   , mPredictManyRedrawCalls(false), mPathTransformWillUpdate(false)
   , mInvalidateCount(0)
@@ -835,10 +947,14 @@ CanvasRenderingContext2D::CanvasRenderingContext2D()
     mRenderingMode = RenderingMode::SoftwareBackendMode;
   }
 
+  if (gfxPlatform::GetPlatform()->HaveChoiceOfHWAndSWCanvas()) {
+    mDrawObserver = new CanvasDrawObserver(this);
+  }
 }
 
 CanvasRenderingContext2D::~CanvasRenderingContext2D()
 {
+  RemoveDrawObserver();
   RemovePostRefreshObserver();
   Reset();
   // Drop references from all CanvasRenderingContext2DUserData to this context
@@ -849,6 +965,13 @@ CanvasRenderingContext2D::~CanvasRenderingContext2D()
   if (!sNumLivingContexts) {
     NS_IF_RELEASE(sErrorTarget);
   }
+#ifdef USE_SKIA_GPU
+  if (mVideoTexture) {
+    MOZ_ASSERT(gfxPlatform::GetPlatform()->GetSkiaGLGlue(), "null SkiaGLGlue");
+    gfxPlatform::GetPlatform()->GetSkiaGLGlue()->GetGLContext()->MakeCurrent();
+    gfxPlatform::GetPlatform()->GetSkiaGLGlue()->GetGLContext()->fDeleteTextures(1, &mVideoTexture);
+  }
+#endif
 
   RemoveDemotableContext(this);
 }
@@ -1048,6 +1171,17 @@ bool CanvasRenderingContext2D::SwitchRenderingMode(RenderingMode aRenderingMode)
   if (!IsTargetValid() || mRenderingMode == aRenderingMode) {
     return false;
   }
+
+#ifdef USE_SKIA_GPU
+  if (mRenderingMode == RenderingMode::OpenGLBackendMode) {
+    if (mVideoTexture) {
+      gfxPlatform::GetPlatform()->GetSkiaGLGlue()->GetGLContext()->MakeCurrent();
+      gfxPlatform::GetPlatform()->GetSkiaGLGlue()->GetGLContext()->fDeleteTextures(1, &mVideoTexture);
+    }
+	  mCurrentVideoSize.width = 0;
+	  mCurrentVideoSize.height = 0;
+  }
+#endif
 
   RefPtr<SourceSurface> snapshot = mTarget->Snapshot();
   RefPtr<DrawTarget> oldTarget = mTarget;
@@ -1335,6 +1469,25 @@ CanvasRenderingContext2D::ClearTarget()
   state->colorStyles[Style::FILL] = NS_RGB(0,0,0);
   state->colorStyles[Style::STROKE] = NS_RGB(0,0,0);
   state->shadowColor = NS_RGBA(0,0,0,0);
+
+  // For vertical writing-mode, unless text-orientation is sideways,
+  // we'll modify the initial value of textBaseline to 'middle'.
+  nsRefPtr<nsStyleContext> canvasStyle;
+  if (mCanvasElement && mCanvasElement->IsInDoc()) {
+    nsCOMPtr<nsIPresShell> presShell = GetPresShell();
+    if (presShell) {
+      canvasStyle =
+        nsComputedDOMStyle::GetStyleContextForElement(mCanvasElement,
+                                                      nullptr,
+                                                      presShell);
+      if (canvasStyle) {
+        WritingMode wm(canvasStyle);
+        if (wm.IsVertical() && !wm.IsSideways()) {
+          state->textBaseline = TextBaseline::MIDDLE;
+        }
+      }
+    }
+  }
 }
 
 NS_IMETHODIMP
@@ -1402,6 +1555,10 @@ CanvasRenderingContext2D::SetContextOptions(JSContext* aCx, JS::Handle<JS::Value
   if (Preferences::GetBool("gfx.canvas.willReadFrequently.enable", false)) {
     // Use software when there is going to be a lot of readback
     if (attributes.mWillReadFrequently) {
+
+      // We want to lock into software, so remove the observer that
+      // may potentially change that...
+      RemoveDrawObserver();
       mRenderingMode = RenderingMode::SoftwareBackendMode;
     }
   }
@@ -1576,6 +1733,12 @@ CanvasRenderingContext2D::SetTransform(double m11, double m12,
 
   Matrix matrix(m11, m12, m21, m22, dx, dy);
   mTarget->SetTransform(matrix);
+}
+
+void
+CanvasRenderingContext2D::ResetTransform(ErrorResult& error)
+{
+  SetTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0, error);
 }
 
 static void
@@ -3127,6 +3290,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor : public nsBidiPresUtils::BidiProcess
     gfxPoint point = mPt;
     bool rtl = mTextRun->IsRightToLeft();
     bool verticalRun = mTextRun->IsVertical();
+    bool centerBaseline = mTextRun->UseCenterBaseline();
 
     gfxFloat& inlineCoord = verticalRun ? point.y : point.x;
     inlineCoord += xOffset;
@@ -3195,20 +3359,27 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor : public nsBidiPresUtils::BidiProcess
       if (runs[c].mOrientation ==
           gfxTextRunFactory::TEXT_ORIENT_VERTICAL_SIDEWAYS_RIGHT) {
         sidewaysRestore.Init(mCtx->mTarget);
-        // TODO: The baseline adjustment here is kinda ad-hoc; eventually
-        // perhaps we should check for horizontal and vertical baseline data
-        // in the font, and adjust accordingly.
-        // (The same will be true for HTML text layout.)
         const gfxFont::Metrics& metrics = mTextRun->GetFontGroup()->
           GetFirstValidFont()->GetMetrics(gfxFont::eHorizontal);
-        mCtx->mTarget->SetTransform(mCtx->mTarget->GetTransform().Copy().
+
+        gfx::Matrix mat = mCtx->mTarget->GetTransform().Copy().
           PreTranslate(baselineOrigin).      // translate origin for rotation
           PreRotate(gfx::Float(M_PI / 2.0)). // turn 90deg clockwise
-          PreTranslate(-baselineOrigin).     // undo the translation
-          PreTranslate(Point(0, (metrics.emAscent - metrics.emDescent) / 2)));
-                              // and offset the (alphabetic) baseline of the
+          PreTranslate(-baselineOrigin);     // undo the translation
+
+        if (centerBaseline) {
+          // TODO: The baseline adjustment here is kinda ad hoc; eventually
+          // perhaps we should check for horizontal and vertical baseline data
+          // in the font, and adjust accordingly.
+          // (The same will be true for HTML text layout.)
+          float offset = (metrics.emAscent - metrics.emDescent) / 2;
+          mat = mat.PreTranslate(Point(0, offset));
+                              // offset the (alphabetic) baseline of the
                               // horizontally-shaped text from the (centered)
                               // default baseline used for vertical
+        }
+
+        mCtx->mTarget->SetTransform(mat);
       }
 
       RefPtr<GlyphRenderingOptions> renderingOptions = font->GetGlyphRenderingOptions();
@@ -3500,39 +3671,50 @@ CanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
 
   processor.mPt.x -= anchorX * totalWidth;
 
-  // offset pt.y based on text baseline
+  // offset pt.y (or pt.x, for vertical text) based on text baseline
   processor.mFontgrp->UpdateUserFonts(); // ensure user font generation is current
   const gfxFont::Metrics& fontMetrics =
-    processor.mFontgrp->GetFirstValidFont()->GetMetrics(
-      ((processor.mTextRunFlags & gfxTextRunFactory::TEXT_ORIENT_MASK) ==
-        gfxTextRunFactory::TEXT_ORIENT_HORIZONTAL)
-      ? gfxFont::eHorizontal : gfxFont::eVertical);
+    processor.mFontgrp->GetFirstValidFont()->GetMetrics(gfxFont::eHorizontal);
 
-  gfxFloat anchorY;
+  gfxFloat baselineAnchor;
 
   switch (state.textBaseline)
   {
   case TextBaseline::HANGING:
       // fall through; best we can do with the information available
   case TextBaseline::TOP:
-    anchorY = fontMetrics.emAscent;
+    baselineAnchor = fontMetrics.emAscent;
     break;
   case TextBaseline::MIDDLE:
-    anchorY = (fontMetrics.emAscent - fontMetrics.emDescent) * .5f;
+    baselineAnchor = (fontMetrics.emAscent - fontMetrics.emDescent) * .5f;
     break;
   case TextBaseline::IDEOGRAPHIC:
     // fall through; best we can do with the information available
   case TextBaseline::ALPHABETIC:
-    anchorY = 0;
+    baselineAnchor = 0;
     break;
   case TextBaseline::BOTTOM:
-    anchorY = -fontMetrics.emDescent;
+    baselineAnchor = -fontMetrics.emDescent;
     break;
   default:
     MOZ_CRASH("unexpected TextBaseline");
   }
 
-  processor.mPt.y += anchorY;
+  // We can't query the textRun directly, as it may not have been created yet;
+  // so instead we check the flags that will be used to initialize it.
+  uint16_t runOrientation =
+    (processor.mTextRunFlags & gfxTextRunFactory::TEXT_ORIENT_MASK);
+  if (runOrientation != gfxTextRunFactory::TEXT_ORIENT_HORIZONTAL) {
+    if (runOrientation == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_MIXED ||
+        runOrientation == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_UPRIGHT) {
+      // Adjust to account for mTextRun being shaped using center baseline
+      // rather than alphabetic.
+      baselineAnchor -= (fontMetrics.emAscent - fontMetrics.emDescent) * .5f;
+    }
+    processor.mPt.x -= baselineAnchor;
+  } else {
+    processor.mPt.y += baselineAnchor;
+  }
 
   // correct bounding box to get it to be the correct size/position
   processor.mBoundingBox.width = totalWidth;
@@ -3954,6 +4136,10 @@ CanvasRenderingContext2D::DrawImage(const HTMLImageOrCanvasOrVideoElement& image
                                     uint8_t optional_argc,
                                     ErrorResult& error)
 {
+  if (mDrawObserver) {
+    mDrawObserver->DidDrawCall(CanvasDrawObserver::DrawCallType::DrawImage);
+  }
+
   MOZ_ASSERT(optional_argc == 0 || optional_argc == 2 || optional_argc == 6);
 
   RefPtr<SourceSurface> srcSurf;
@@ -3985,6 +4171,93 @@ CanvasRenderingContext2D::DrawImage(const HTMLImageOrCanvasOrVideoElement& image
 
   nsLayoutUtils::DirectDrawInfo drawInfo;
 
+#ifdef USE_SKIA_GPU
+  if (mRenderingMode == RenderingMode::OpenGLBackendMode &&
+      !srcSurf &&
+      image.IsHTMLVideoElement() &&
+      gfxPlatform::GetPlatform()->GetSkiaGLGlue()) {
+    mozilla::gl::GLContext* gl = gfxPlatform::GetPlatform()->GetSkiaGLGlue()->GetGLContext();
+
+    HTMLVideoElement* video = &image.GetAsHTMLVideoElement();
+    if (!video) {
+      return;
+    }
+
+    uint16_t readyState;
+    if (NS_SUCCEEDED(video->GetReadyState(&readyState)) &&
+        readyState < nsIDOMHTMLMediaElement::HAVE_CURRENT_DATA) {
+      // still loading, just return
+      return;
+    }
+
+    // If it doesn't have a principal, just bail
+    nsCOMPtr<nsIPrincipal> principal = video->GetCurrentPrincipal();
+    if (!principal) {
+      error.Throw(NS_ERROR_NOT_AVAILABLE);
+      return;
+    }
+
+    mozilla::layers::ImageContainer* container = video->GetImageContainer();
+    if (!container) {
+      error.Throw(NS_ERROR_NOT_AVAILABLE);
+      return;
+    }
+
+    nsRefPtr<mozilla::layers::Image> srcImage = container->LockCurrentImage();
+    if (!srcImage) {
+      error.Throw(NS_ERROR_NOT_AVAILABLE);
+      return;
+    }
+
+    gl->MakeCurrent();
+    if (!mVideoTexture) {
+      gl->fGenTextures(1, &mVideoTexture);
+    }
+    // skiaGL expect upload on drawing, and uses texture 0 for texturing,
+    // so we must active texture 0 and bind the texture for it.
+    gl->fActiveTexture(LOCAL_GL_TEXTURE0);
+    gl->fBindTexture(LOCAL_GL_TEXTURE_2D, mVideoTexture);
+
+    bool dimensionsMatch = mCurrentVideoSize.width == srcImage->GetSize().width &&
+                           mCurrentVideoSize.height == srcImage->GetSize().height;
+    if (!dimensionsMatch) {
+      // we need to allocation
+      mCurrentVideoSize.width = srcImage->GetSize().width;
+      mCurrentVideoSize.height = srcImage->GetSize().height;
+      gl->fTexImage2D(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_RGB, srcImage->GetSize().width, srcImage->GetSize().height, 0, LOCAL_GL_RGB, LOCAL_GL_UNSIGNED_SHORT_5_6_5, nullptr);
+      gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_S, LOCAL_GL_CLAMP_TO_EDGE);
+      gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_T, LOCAL_GL_CLAMP_TO_EDGE);
+      gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_MAG_FILTER, LOCAL_GL_LINEAR);
+      gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
+    }
+    bool ok = gl->BlitHelper()->BlitImageToTexture(srcImage.get(), srcImage->GetSize(), mVideoTexture, LOCAL_GL_TEXTURE_2D, 1);
+    if (ok) {
+      NativeSurface texSurf;
+      texSurf.mType = NativeSurfaceType::OPENGL_TEXTURE;
+      texSurf.mFormat = SurfaceFormat::R5G6B5;
+      texSurf.mSize.width = mCurrentVideoSize.width;
+      texSurf.mSize.height = mCurrentVideoSize.height;
+      texSurf.mSurface = (void*)((uintptr_t)mVideoTexture);
+
+      srcSurf = mTarget->CreateSourceSurfaceFromNativeSurface(texSurf);
+      imgSize.width = mCurrentVideoSize.width;
+      imgSize.height = mCurrentVideoSize.height;
+
+      int32_t displayWidth = video->VideoWidth();
+      int32_t displayHeight = video->VideoHeight();
+      sw *= (double)imgSize.width / (double)displayWidth;
+      sh *= (double)imgSize.height / (double)displayHeight;
+    }
+    srcImage = nullptr;
+    container->UnlockCurrentImage();
+
+    if (mCanvasElement) {
+      CanvasUtils::DoDrawImageSecurityCheck(mCanvasElement,
+                                            principal, false,
+                                            video->GetCORSMode() != CORS_NONE);
+    }
+  }
+#endif
   if (!srcSurf) {
     // The canvas spec says that drawImage should draw the first frame
     // of animated images. We also don't want to rasterize vector images.
@@ -4486,6 +4759,10 @@ CanvasRenderingContext2D::GetImageData(JSContext* aCx, double aSx,
                                        double aSy, double aSw,
                                        double aSh, ErrorResult& error)
 {
+  if (mDrawObserver) {
+    mDrawObserver->DidDrawCall(CanvasDrawObserver::DrawCallType::GetImageData);
+  }
+
   EnsureTarget();
   if (!IsTargetValid()) {
     error.Throw(NS_ERROR_FAILURE);
@@ -4566,6 +4843,10 @@ CanvasRenderingContext2D::GetImageDataArray(JSContext* aCx,
                                             uint32_t aHeight,
                                             JSObject** aRetval)
 {
+  if (mDrawObserver) {
+    mDrawObserver->DidDrawCall(CanvasDrawObserver::DrawCallType::GetImageData);
+  }
+
   MOZ_ASSERT(aWidth && aHeight);
 
   CheckedInt<uint32_t> len = CheckedInt<uint32_t>(aWidth) * aHeight * 4;
@@ -4745,6 +5026,10 @@ CanvasRenderingContext2D::PutImageData_explicit(int32_t x, int32_t y, uint32_t w
                                                 bool hasDirtyRect, int32_t dirtyX, int32_t dirtyY,
                                                 int32_t dirtyWidth, int32_t dirtyHeight)
 {
+  if (mDrawObserver) {
+    mDrawObserver->DidDrawCall(CanvasDrawObserver::DrawCallType::PutImageData);
+  }
+
   if (w == 0 || h == 0) {
     return NS_ERROR_DOM_INVALID_STATE_ERR;
   }
@@ -4923,6 +5208,15 @@ CanvasRenderingContext2D::SkiaGLTex() const
     MOZ_ASSERT(IsTargetValid());
     return (uint32_t)(uintptr_t)mTarget->GetNativeSurface(NativeSurfaceType::OPENGL_TEXTURE);
 }
+
+void CanvasRenderingContext2D::RemoveDrawObserver()
+{
+  if (mDrawObserver) {
+    delete mDrawObserver;
+    mDrawObserver = nullptr;
+  }
+}
+
 
 already_AddRefed<CanvasLayer>
 CanvasRenderingContext2D::GetCanvasLayer(nsDisplayListBuilder* aBuilder,

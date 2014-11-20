@@ -210,6 +210,9 @@ class Configuration:
             elif key == 'isExposedInSystemGlobals':
                 getter = lambda x: (not x.interface.isExternal() and
                                     x.interface.isExposedInSystemGlobals())
+            elif key == 'isExposedInWindow':
+                getter = lambda x: (not x.interface.isExternal() and
+                                    x.interface.isExposedInWindow())
             else:
                 # Have to watch out: just closing over "key" is not enough,
                 # since we're about to mutate its value
@@ -654,23 +657,24 @@ class Descriptor(DescriptorProvider):
                 in self.interface.members))
 
     def hasThreadChecks(self):
-        return ((not self.workers and not self.interface.isExposedInWindow()) or
-                (self.interface.isExposedInAnyWorker() and
-                 self.interface.isExposedOnlyInSomeWorkers()))
+        return ((self.isExposedConditionally() and
+                 not self.interface.isExposedInWindow()) or
+                self.interface.isExposedInSomeButNotAllWorkers())
 
     def isExposedConditionally(self):
-        return self.interface.isExposedConditionally() or self.hasThreadChecks()
+        return (self.interface.isExposedConditionally() or
+                self.interface.isExposedInSomeButNotAllWorkers())
 
     def needsXrayResolveHooks(self):
         """
-        Generally, any interface with NeedNewResolve needs Xray
+        Generally, any interface with NeedResolve needs Xray
         resolveOwnProperty and enumerateOwnProperties hooks.  But for
         the special case of plugin-loading elements, we do NOT want
         those, because we don't want to instantiate plug-ins simply
         due to chrome touching them and that's all those hooks do on
         those elements.  So we special-case those here.
         """
-        return (self.interface.getExtendedAttribute("NeedNewResolve") and
+        return (self.interface.getExtendedAttribute("NeedResolve") and
                 self.interface.identifier.name not in ["HTMLObjectElement",
                                                        "HTMLEmbedElement",
                                                        "HTMLAppletElement"])

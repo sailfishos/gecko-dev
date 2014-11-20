@@ -2722,9 +2722,12 @@ nsXMLHttpRequest::Send(nsIVariant* aVariant, const Nullable<RequestBody>& aBody)
 
       nsCOMPtr<nsIURI> docCurURI;
       nsCOMPtr<nsIURI> docOrigURI;
+      net::ReferrerPolicy referrerPolicy = net::RP_Default;
+
       if (doc) {
         docCurURI = doc->GetDocumentURI();
         docOrigURI = doc->GetOriginalURI();
+        referrerPolicy = doc->GetReferrerPolicy();
       }
 
       nsCOMPtr<nsIURI> referrerURI;
@@ -2740,7 +2743,7 @@ nsXMLHttpRequest::Send(nsIVariant* aVariant, const Nullable<RequestBody>& aBody)
       if (!referrerURI)
         referrerURI = principalURI;
 
-      httpChannel->SetReferrer(referrerURI);
+      httpChannel->SetReferrerWithPolicy(referrerURI, referrerPolicy);
     }
 
     // Some extensions override the http protocol handler and provide their own
@@ -3973,7 +3976,10 @@ ArrayBufferBuilder::setCapacity(uint32_t aNewCap)
 {
   MOZ_ASSERT(!mMapPtr);
 
-  uint8_t *newdata = (uint8_t *) js_realloc(mDataPtr, aNewCap);
+  // To ensure that realloc won't free mDataPtr, use a size of 1
+  // instead of 0.
+  uint8_t* newdata = (uint8_t *) js_realloc(mDataPtr, aNewCap ? aNewCap : 1);
+
   if (!newdata) {
     return false;
   }

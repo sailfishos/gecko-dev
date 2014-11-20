@@ -29,24 +29,17 @@ class ISurfaceAllocator;
 
 ImageHost::ImageHost(const TextureInfo& aTextureInfo)
   : CompositableHost(aTextureInfo)
-  , mFrontBuffer(nullptr)
   , mHasPictureRect(false)
   , mLocked(false)
 {}
 
 ImageHost::~ImageHost()
 {
-  if (mFrontBuffer) {
-    mFrontBuffer->UnbindTextureSource();
-  }
 }
 
 void
 ImageHost::UseTextureHost(TextureHost* aTexture)
 {
-  if (mFrontBuffer && mFrontBuffer != aTexture) {
-    mFrontBuffer->UnbindTextureSource();
-  }
   CompositableHost::UseTextureHost(aTexture);
   mFrontBuffer = aTexture;
   if (mFrontBuffer) {
@@ -274,6 +267,20 @@ ImageHost::Unlock()
   MOZ_ASSERT(mLocked);
   mFrontBuffer->Unlock();
   mLocked = false;
+}
+
+IntSize
+ImageHost::GetImageSize() const
+{
+  if (mHasPictureRect) {
+    return IntSize(mPictureRect.width, mPictureRect.height);
+  }
+
+  if (mFrontBuffer) {
+    return mFrontBuffer->GetSize();
+  }
+
+  return IntSize();
 }
 
 TemporaryRef<TexturedEffect>

@@ -128,11 +128,6 @@ public:
     virtual bool RecvEvent(const RemoteDOMEvent& aEvent) MOZ_OVERRIDE;
     virtual bool RecvReplyKeyEvent(const WidgetKeyboardEvent& event);
     virtual bool RecvDispatchAfterKeyboardEvent(const WidgetKeyboardEvent& event);
-    virtual bool RecvPRenderFrameConstructor(PRenderFrameParent* aActor,
-                                             ScrollingBehavior* aScrolling,
-                                             TextureFactoryIdentifier* aFactoryIdentifier,
-                                             uint64_t* aLayersId,
-                                             bool* aSuccess) MOZ_OVERRIDE;
     virtual bool RecvBrowserFrameOpenWindow(PBrowserParent* aOpener,
                                             const nsString& aURL,
                                             const nsString& aName,
@@ -303,20 +298,6 @@ public:
                                       PIndexedDBPermissionRequestParent* aActor)
                                       MOZ_OVERRIDE;
 
-    virtual POfflineCacheUpdateParent*
-    AllocPOfflineCacheUpdateParent(const URIParams& aManifestURI,
-                                   const URIParams& aDocumentURI,
-                                   const bool& aStickDocument) MOZ_OVERRIDE;
-    virtual bool
-    RecvPOfflineCacheUpdateConstructor(POfflineCacheUpdateParent* aActor,
-                                       const URIParams& aManifestURI,
-                                       const URIParams& aDocumentURI,
-                                       const bool& stickDocument) MOZ_OVERRIDE;
-    virtual bool
-    DeallocPOfflineCacheUpdateParent(POfflineCacheUpdateParent* aActor) MOZ_OVERRIDE;
-
-    virtual bool RecvSetOfflinePermission(const IPC::Principal& principal) MOZ_OVERRIDE;
-
     bool GetGlobalJSObject(JSContext* cx, JSObject** globalp);
 
     NS_DECL_ISUPPORTS
@@ -347,6 +328,17 @@ public:
       return mTabId;
     }
 
+    nsIntPoint GetChildProcessOffset();
+
+    /**
+     * Native widget remoting protocol for use with windowed plugins with e10s.
+     */
+    virtual PPluginWidgetParent* AllocPPluginWidgetParent() MOZ_OVERRIDE;
+    virtual bool DeallocPPluginWidgetParent(PPluginWidgetParent* aActor) MOZ_OVERRIDE;
+
+    void SetInitedByParent() { mInitedByParent = true; }
+    bool IsInitedByParent() const { return mInitedByParent; }
+
 protected:
     bool ReceiveMessage(const nsString& aMessage,
                         bool aSync,
@@ -367,15 +359,16 @@ protected:
     nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow;
 
     bool AllowContentIME();
-    nsIntPoint GetChildProcessOffset();
 
-    virtual PRenderFrameParent* AllocPRenderFrameParent(ScrollingBehavior* aScrolling,
-                                                        TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                                        uint64_t* aLayersId,
-                                                        bool* aSuccess) MOZ_OVERRIDE;
+    virtual PRenderFrameParent* AllocPRenderFrameParent() MOZ_OVERRIDE;
     virtual bool DeallocPRenderFrameParent(PRenderFrameParent* aFrame) MOZ_OVERRIDE;
 
     virtual bool RecvRemotePaintIsReady() MOZ_OVERRIDE;
+
+    virtual bool RecvGetRenderFrameInfo(PRenderFrameParent* aRenderFrame,
+                                        ScrollingBehavior* aScrolling,
+                                        TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                                        uint64_t* aLayersId) MOZ_OVERRIDE;
 
     bool SendCompositionChangeEvent(mozilla::WidgetCompositionEvent& event);
 
@@ -451,6 +444,10 @@ private:
     bool mSendOfflineStatus;
 
     uint32_t mChromeFlags;
+
+    // When true, the TabParent is initialized without child side's request.
+    // When false, the TabParent is initialized by window.open() from child side.
+    bool mInitedByParent;
 
     nsCOMPtr<nsILoadContext> mLoadContext;
 

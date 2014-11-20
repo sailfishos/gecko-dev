@@ -9,6 +9,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/gfx/PathHelpers.h"
+#include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsCharTraits.h"
@@ -836,58 +837,67 @@ GetDisplayPortFromMarginsData(nsIContent* aContent,
 
   nsPresContext* presContext = frame->PresContext();
   int32_t auPerDevPixel = presContext->AppUnitsPerDevPixel();
-  gfxSize res = presContext->PresShell()->GetCumulativeResolution();
 
-  // First convert the base rect to layer pixels
-  gfxSize parentRes = res;
+  LayoutDeviceToScreenScale res(presContext->PresShell()->GetCumulativeResolution().width
+                              * nsLayoutUtils::GetTransformToAncestorScale(frame).width);
+
+  // First convert the base rect to screen pixels
+  LayoutDeviceToScreenScale parentRes = res;
   if (isRoot) {
     // the base rect for root scroll frames is specified in the parent document
     // coordinate space, so it doesn't include the local resolution.
     gfxSize localRes = presContext->PresShell()->GetResolution();
-    parentRes.width /= localRes.width;
-    parentRes.height /= localRes.height;
+    parentRes.scale /= localRes.width;
   }
-  LayerRect layerRect(NSAppUnitsToFloatPixels(base.x, auPerDevPixel) * parentRes.width,
-                      NSAppUnitsToFloatPixels(base.y, auPerDevPixel) * parentRes.height,
-                      NSAppUnitsToFloatPixels(base.width, auPerDevPixel) * parentRes.width,
-                      NSAppUnitsToFloatPixels(base.height, auPerDevPixel) * parentRes.height);
+  ScreenRect screenRect = LayoutDeviceRect::FromAppUnits(base, auPerDevPixel)
+                        * parentRes;
 
   // Expand the rect by the margins
-  layerRect.Inflate(aMarginsData->mMargins);
+  screenRect.Inflate(aMarginsData->mMargins);
 
-  // And then align it to the requested alignment
-  if (aMarginsData->mAlignmentX > 0 || aMarginsData->mAlignmentY > 0) {
+  int alignmentX = gfxPlatform::GetPlatform()->GetTileWidth();
+  int alignmentY = gfxPlatform::GetPlatform()->GetTileHeight();
+
+  // And then align it to the requested alignment.
+  // Note on the correctness of applying the alignment in Screen space:
+  //   The correct space to apply the alignment in would be Layer space, but
+  //   we don't necessarily know the scale to convert to Layer space at this
+  //   point because Layout may not yet have chosen the resolution at which to
+  //   render (it chooses that in FrameLayerBuilder, but this can be called
+  //   during display list building). Therefore, we perform the alignment in
+  //   Screen space, which basically assumes that Layout chose to render at
+  //   screen resolution; since this is what Layout does most of the time,
+  //   this is a good approximation. A proper solution would involve moving the
+  //   choosing of the resolution to display-list building time.
+  if (alignmentX > 0 && alignmentY > 0) {
     // Inflate the rectangle by 1 so that we always push to the next tile
     // boundary. This is desirable to stop from having a rectangle with a
     // moving origin occasionally being smaller when it coincidentally lines
     // up to tile boundaries.
-    layerRect.Inflate(1);
+    screenRect.Inflate(1);
 
     // Avoid division by zero.
-    if (aMarginsData->mAlignmentX == 0) {
-      aMarginsData->mAlignmentX = 1;
+    if (alignmentX == 0) {
+      alignmentX = 1;
     }
-    if (aMarginsData->mAlignmentY == 0) {
-      aMarginsData->mAlignmentY = 1;
+    if (alignmentY == 0) {
+      alignmentY = 1;
     }
 
-    LayerPoint scrollPosLayer(NSAppUnitsToFloatPixels(scrollPos.x, auPerDevPixel) * res.width,
-                              NSAppUnitsToFloatPixels(scrollPos.y, auPerDevPixel) * res.height);
+    ScreenPoint scrollPosScreen = LayoutDevicePoint::FromAppUnits(scrollPos, auPerDevPixel)
+                                * res;
 
-    layerRect += scrollPosLayer;
-    float x = aMarginsData->mAlignmentX * floor(layerRect.x / aMarginsData->mAlignmentX);
-    float y = aMarginsData->mAlignmentY * floor(layerRect.y / aMarginsData->mAlignmentY);
-    float w = aMarginsData->mAlignmentX * ceil(layerRect.XMost() / aMarginsData->mAlignmentX) - x;
-    float h = aMarginsData->mAlignmentY * ceil(layerRect.YMost() / aMarginsData->mAlignmentY) - y;
-    layerRect = LayerRect(x, y, w, h);
-    layerRect -= scrollPosLayer;
+    screenRect += scrollPosScreen;
+    float x = alignmentX * floor(screenRect.x / alignmentX);
+    float y = alignmentY * floor(screenRect.y / alignmentY);
+    float w = alignmentX * ceil(screenRect.XMost() / alignmentX) - x;
+    float h = alignmentY * ceil(screenRect.YMost() / alignmentY) - y;
+    screenRect = ScreenRect(x, y, w, h);
+    screenRect -= scrollPosScreen;
   }
 
   // Convert the aligned rect back into app units
-  nsRect result(NSFloatPixelsToAppUnits(layerRect.x / res.width, auPerDevPixel),
-                NSFloatPixelsToAppUnits(layerRect.y / res.height, auPerDevPixel),
-                NSFloatPixelsToAppUnits(layerRect.width / res.width, auPerDevPixel),
-                NSFloatPixelsToAppUnits(layerRect.height / res.height, auPerDevPixel));
+  nsRect result = LayoutDeviceRect::ToAppUnits(screenRect / res, auPerDevPixel);
 
   // Expand it for the low-res buffer if needed
   result = ApplyRectMultiplier(result, aMultiplier);
@@ -950,9 +960,7 @@ nsLayoutUtils::GetDisplayPort(nsIContent* aContent, nsRect *aResult)
 void
 nsLayoutUtils::SetDisplayPortMargins(nsIContent* aContent,
                                      nsIPresShell* aPresShell,
-                                     const LayerMargin& aMargins,
-                                     uint32_t aAlignmentX,
-                                     uint32_t aAlignmentY,
+                                     const ScreenMargin& aMargins,
                                      uint32_t aPriority,
                                      RepaintMode aRepaintMode)
 {
@@ -964,7 +972,7 @@ nsLayoutUtils::SetDisplayPortMargins(nsIContent* aContent,
 
   aContent->SetProperty(nsGkAtoms::DisplayPortMargins,
                         new DisplayPortMarginsPropertyData(
-                            aMargins, aAlignmentX, aAlignmentY, aPriority),
+                            aMargins, aPriority),
                         nsINode::DeleteProperty<DisplayPortMarginsPropertyData>);
 
   if (nsLayoutUtils::UsesAsyncScrolling()) {
@@ -2301,6 +2309,19 @@ nsLayoutUtils::GetTransformToAncestor(nsIFrame *aFrame, const nsIFrame *aAncesto
   return ctm;
 }
 
+gfxSize
+nsLayoutUtils::GetTransformToAncestorScale(nsIFrame* aFrame)
+{
+  Matrix4x4 transform = GetTransformToAncestor(aFrame,
+      nsLayoutUtils::GetDisplayRootFrame(aFrame));
+  Matrix transform2D;
+  if (transform.Is2D(&transform2D)) {
+    return ThebesMatrix(transform2D).ScaleFactors(true);
+  }
+  return gfxSize(1, 1);
+}
+
+
 static nsIFrame*
 FindNearestCommonAncestorFrame(nsIFrame* aFrame1, nsIFrame* aFrame2)
 {
@@ -2597,7 +2618,7 @@ nsLayoutUtils::TransformFrameRectToAncestor(nsIFrame* aFrame,
 static nsIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
   nsIntPoint offset(0, 0);
   while ((aWidget->WindowType() == eWindowType_child ||
-          aWidget->WindowType() == eWindowType_plugin)) {
+          aWidget->IsPlugin())) {
     nsIWidget* parent = aWidget->GetParent();
     if (!parent) {
       break;
@@ -2765,19 +2786,27 @@ CalculateFrameMetricsForDisplayPort(nsIFrame* aScrollFrame,
   nsIPresShell* presShell = presContext->PresShell();
   CSSToLayoutDeviceScale deviceScale(float(nsPresContext::AppUnitsPerCSSPixel())
                                      / presContext->AppUnitsPerDevPixel());
-  ParentLayerToLayerScale resolution;
+  float resolution = 1.0f;
   if (aScrollFrame == presShell->GetRootScrollFrame()) {
     // Only the root scrollable frame for a given presShell should pick up
     // the presShell's resolution. All the other frames are 1.0.
-    resolution = ParentLayerToLayerScale(presShell->GetXResolution(),
-                                         presShell->GetYResolution());
+    resolution = presShell->GetXResolution();
   }
-  LayoutDeviceToLayerScale cumulativeResolution(presShell->GetCumulativeResolution().width);
+  // Note: unlike in ComputeFrameMetrics(), we don't know the full cumulative
+  // resolution including FrameMetrics::mExtraResolution, because layout hasn't
+  // chosen a resolution to paint at yet. However, the display port calculation
+  // divides out mExtraResolution anyways, so we get the correct result by
+  // setting the mCumulativeResolution to everything except the extra resolution
+  // and leaving mExtraResolution at 1.
+  LayoutDeviceToLayerScale cumulativeResolution(
+      presShell->GetCumulativeResolution().width
+    * nsLayoutUtils::GetTransformToAncestorScale(aScrollFrame).width);
 
+  LayerToParentLayerScale layerToParentLayerScale(1.0f);
   metrics.mDevPixelsPerCSSPixel = deviceScale;
-  metrics.mResolution = resolution;
+  metrics.mPresShellResolution = resolution;
   metrics.mCumulativeResolution = cumulativeResolution;
-  metrics.SetZoom(deviceScale * cumulativeResolution * LayerToScreenScale(1));
+  metrics.SetZoom(deviceScale * cumulativeResolution * layerToParentLayerScale);
 
   // Only the size of the composition bounds is relevant to the
   // displayport calculation, not its origin.
@@ -2789,9 +2818,7 @@ CalculateFrameMetricsForDisplayPort(nsIFrame* aScrollFrame,
       compBoundsScale = LayoutDeviceToParentLayerScale(res.width, res.height);
     }
   } else {
-    compBoundsScale = cumulativeResolution
-                    * LayerToScreenScale(1.0f)
-                    * ScreenToParentLayerScale(1.0f);
+    compBoundsScale = cumulativeResolution * layerToParentLayerScale;
   }
   metrics.mCompositionBounds
       = LayoutDeviceRect::FromAppUnits(nsRect(nsPoint(0, 0), compositionSize),
@@ -2841,15 +2868,12 @@ nsLayoutUtils::GetOrMaybeCreateDisplayPort(nsDisplayListBuilder& aBuilder,
     // If we don't already have a displayport, calculate and set one.
     if (!haveDisplayPort) {
       FrameMetrics metrics = CalculateFrameMetricsForDisplayPort(aScrollFrame, scrollableFrame);
-      LayerMargin displayportMargins = APZCTreeManager::CalculatePendingDisplayPort(
-          metrics, ScreenPoint(0.0f, 0.0f), 0.0);
+      ScreenMargin displayportMargins = APZCTreeManager::CalculatePendingDisplayPort(
+          metrics, ParentLayerPoint(0.0f, 0.0f), 0.0);
       nsIPresShell* presShell = aScrollFrame->PresContext()->GetPresShell();
-      gfx::IntSize alignment = gfxPlatform::GetPlatform()->UseTiling()
-          ? gfx::IntSize(gfxPrefs::LayersTileWidth(), gfxPrefs::LayersTileHeight()) :
-            gfx::IntSize(0, 0);
       nsLayoutUtils::SetDisplayPortMargins(
-          content, presShell, displayportMargins, alignment.width,
-          alignment.height, 0, nsLayoutUtils::RepaintMode::DoNotRepaint);
+          content, presShell, displayportMargins,
+          0, nsLayoutUtils::RepaintMode::DoNotRepaint);
       haveDisplayPort = GetDisplayPort(content, aOutDisplayport);
       NS_ASSERTION(haveDisplayPort, "should have a displayport after having just set it");
     }
@@ -3400,20 +3424,6 @@ void nsLayoutUtils::RectListBuilder::AddRect(const nsRect& aRect) {
   mRectList->Append(rect);
 }
 
-nsLayoutUtils::FirstAndLastRectCollector::FirstAndLastRectCollector()
-  : mSeenFirstRect(false)
-{
-}
-
-void nsLayoutUtils::FirstAndLastRectCollector::AddRect(const nsRect& aRect) {
-  if (!mSeenFirstRect) {
-    mSeenFirstRect = true;
-    mFirstRect = aRect;
-  }
-
-  mLastRect = aRect;
-}
-
 nsIFrame* nsLayoutUtils::GetContainingBlockForClientRect(nsIFrame* aFrame)
 {
   return aFrame->PresContext()->PresShell()->GetRootFrame();
@@ -3455,6 +3465,218 @@ nsLayoutUtils::GetTextShadowRectsUnion(const nsRect& aTextAndDecorationsRect,
   return resultRect;
 }
 
+enum ObjectDimensionType { eWidth, eHeight };
+static nscoord
+ComputeMissingDimension(const nsSize& aDefaultObjectSize,
+                        const nsSize& aIntrinsicRatio,
+                        const Maybe<nscoord>& aSpecifiedWidth,
+                        const Maybe<nscoord>& aSpecifiedHeight,
+                        ObjectDimensionType aDimensionToCompute)
+{
+  // The "default sizing algorithm" computes the missing dimension as follows:
+  // (source: http://dev.w3.org/csswg/css-images-3/#default-sizing )
+
+  // 1. "If the object has an intrinsic aspect ratio, the missing dimension of
+  //     the concrete object size is calculated using the intrinsic aspect
+  //     ratio and the present dimension."
+  if (aIntrinsicRatio.width > 0 && aIntrinsicRatio.height > 0) {
+    // Fill in the missing dimension using the intrinsic aspect ratio.
+    nscoord knownDimensionSize;
+    float ratio;
+    if (aDimensionToCompute == eWidth) {
+      knownDimensionSize = *aSpecifiedHeight;
+      ratio = aIntrinsicRatio.width / aIntrinsicRatio.height;
+    } else {
+      knownDimensionSize = *aSpecifiedWidth;
+      ratio = aIntrinsicRatio.height / aIntrinsicRatio.width;
+    }
+    return NSCoordSaturatingNonnegativeMultiply(knownDimensionSize, ratio);
+  }
+
+  // 2. "Otherwise, if the missing dimension is present in the object’s
+  //     intrinsic dimensions, [...]"
+  // NOTE: *Skipping* this case, because we already know it's not true -- we're
+  // in this function because the missing dimension is *not* present in
+  // the object's intrinsic dimensions.
+
+  // 3. "Otherwise, the missing dimension of the concrete object size is taken
+  //     from the default object size. "
+  return (aDimensionToCompute == eWidth) ?
+    aDefaultObjectSize.width : aDefaultObjectSize.height;
+}
+
+/*
+ * This computes & returns the concrete object size of replaced content, if
+ * that content were to be rendered with "object-fit: none".  (Or, if the
+ * element has neither an intrinsic height nor width, this method returns an
+ * empty Maybe<> object.)
+ *
+ * As specced...
+ *   http://dev.w3.org/csswg/css-images-3/#valdef-object-fit-none
+ * ..we use "the default sizing algorithm with no specified size,
+ * and a default object size equal to the replaced element's used width and
+ * height."
+ *
+ * The default sizing algorithm is described here:
+ *   http://dev.w3.org/csswg/css-images-3/#default-sizing
+ * Quotes in the function-impl are taken from that ^ spec-text.
+ *
+ * Per its final bulleted section: since there's no specified size,
+ * we run the default sizing algorithm using the object's intrinsic size in
+ * place of the specified size. But if the object has neither an intrinsic
+ * height nor an intrinsic width, then we instead return without populating our
+ * outparam, and we let the caller figure out the size (using a contain
+ * constraint).
+ */
+static Maybe<nsSize>
+MaybeComputeObjectFitNoneSize(const nsSize& aDefaultObjectSize,
+                              const IntrinsicSize& aIntrinsicSize,
+                              const nsSize& aIntrinsicRatio)
+{
+  // "If the object has an intrinsic height or width, its size is resolved as
+  // if its intrinsic dimensions were given as the specified size."
+  //
+  // So, first we check if we have an intrinsic height and/or width:
+  Maybe<nscoord> specifiedWidth;
+  if (aIntrinsicSize.width.GetUnit() == eStyleUnit_Coord) {
+    specifiedWidth.emplace(aIntrinsicSize.width.GetCoordValue());
+  }
+
+  Maybe<nscoord> specifiedHeight;
+  if (aIntrinsicSize.height.GetUnit() == eStyleUnit_Coord) {
+    specifiedHeight.emplace(aIntrinsicSize.height.GetCoordValue());
+  }
+
+  Maybe<nsSize> noneSize; // (the value we'll return)
+  if (specifiedWidth || specifiedHeight) {
+    // We have at least one specified dimension; use whichever dimension is
+    // specified, and compute the other one using our intrinsic ratio, or (if
+    // no valid ratio) using the default object size.
+    noneSize.emplace();
+
+    noneSize->width = specifiedWidth ?
+      *specifiedWidth :
+      ComputeMissingDimension(aDefaultObjectSize, aIntrinsicRatio,
+                              specifiedWidth, specifiedHeight,
+                              eWidth);
+
+    noneSize->height = specifiedHeight ?
+      *specifiedHeight :
+      ComputeMissingDimension(aDefaultObjectSize, aIntrinsicRatio,
+                              specifiedWidth, specifiedHeight,
+                              eHeight);
+  }
+  // [else:] "Otherwise [if there's neither an intrinsic height nor width], its
+  // size is resolved as a contain constraint against the default object size."
+  // We'll let our caller do that, to share code & avoid redundant
+  // computations; so, we return w/out populating noneSize.
+  return noneSize;
+}
+
+// Computes the concrete object size to render into, as described at
+// http://dev.w3.org/csswg/css-images-3/#concrete-size-resolution
+static nsSize
+ComputeConcreteObjectSize(const nsSize& aConstraintSize,
+                          const IntrinsicSize& aIntrinsicSize,
+                          const nsSize& aIntrinsicRatio,
+                          uint8_t aObjectFit)
+{
+  // Handle default behavior (filling the container) w/ fast early return.
+  // (Also: if there's no valid intrinsic ratio, then we have the "fill"
+  // behavior & just use the constraint size.)
+  if (MOZ_LIKELY(aObjectFit == NS_STYLE_OBJECT_FIT_FILL) ||
+      aIntrinsicRatio.width == 0 ||
+      aIntrinsicRatio.height == 0) {
+    return aConstraintSize;
+  }
+
+  // The type of constraint to compute (cover/contain), if needed:
+  Maybe<nsImageRenderer::FitType> fitType;
+
+  Maybe<nsSize> noneSize;
+  if (aObjectFit == NS_STYLE_OBJECT_FIT_NONE ||
+      aObjectFit == NS_STYLE_OBJECT_FIT_SCALE_DOWN) {
+    noneSize = MaybeComputeObjectFitNoneSize(aConstraintSize, aIntrinsicSize,
+                                             aIntrinsicRatio);
+    if (!noneSize || aObjectFit == NS_STYLE_OBJECT_FIT_SCALE_DOWN) {
+      // Need to compute a 'CONTAIN' constraint (either for the 'none' size
+      // itself, or for comparison w/ the 'none' size to resolve 'scale-down'.)
+      fitType.emplace(nsImageRenderer::CONTAIN);
+    }
+  } else if (aObjectFit == NS_STYLE_OBJECT_FIT_COVER) {
+    fitType.emplace(nsImageRenderer::COVER);
+  } else if (aObjectFit == NS_STYLE_OBJECT_FIT_CONTAIN) {
+    fitType.emplace(nsImageRenderer::CONTAIN);
+  }
+
+  Maybe<nsSize> constrainedSize;
+  if (fitType) {
+    constrainedSize.emplace(
+      nsImageRenderer::ComputeConstrainedSize(aConstraintSize,
+                                              aIntrinsicRatio,
+                                              *fitType));
+  }
+
+  // Now, we should have all the sizing information that we need.
+  switch (aObjectFit) {
+    // skipping NS_STYLE_OBJECT_FIT_FILL; we handled it w/ early-return.
+    case NS_STYLE_OBJECT_FIT_CONTAIN:
+    case NS_STYLE_OBJECT_FIT_COVER:
+      MOZ_ASSERT(constrainedSize);
+      return *constrainedSize;
+
+    case NS_STYLE_OBJECT_FIT_NONE:
+      if (noneSize) {
+        return *noneSize;
+      }
+      MOZ_ASSERT(constrainedSize);
+      return *constrainedSize;
+
+    case NS_STYLE_OBJECT_FIT_SCALE_DOWN:
+      MOZ_ASSERT(constrainedSize);
+      if (noneSize) {
+        constrainedSize->width =
+          std::min(constrainedSize->width, noneSize->width);
+        constrainedSize->height =
+          std::min(constrainedSize->height, noneSize->height);
+      }
+      return *constrainedSize;
+
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unexpected enum value for 'object-fit'");
+      return aConstraintSize; // fall back to (default) 'fill' behavior
+  }
+}
+
+/* static */ nsRect
+nsLayoutUtils::ComputeObjectDestRect(const nsRect& aConstraintRect,
+                                     const IntrinsicSize& aIntrinsicSize,
+                                     const nsSize& aIntrinsicRatio,
+                                     const nsStylePosition* aStylePos)
+{
+  // Step 1: Figure out our "concrete object size"
+  // (the size of the region we'll actually draw our image's pixels into).
+  nsSize concreteObjectSize =
+    ComputeConcreteObjectSize(aConstraintRect.Size(), aIntrinsicSize,
+                              aIntrinsicRatio, aStylePos->mObjectFit);
+
+  // Step 2: Figure out how to align that region in the element's content-box.
+  nsPoint imageTopLeftPt, imageAnchorPt;
+  nsImageRenderer::ComputeObjectAnchorPoint(aStylePos->mObjectPosition,
+                                            aConstraintRect.Size(),
+                                            concreteObjectSize,
+                                            &imageTopLeftPt, &imageAnchorPt);
+  // Right now, we're with respect to aConstraintRect's top-left point.  We add
+  // that point here, to convert to the same broader coordinate space that
+  // aConstraintRect is in.
+  imageTopLeftPt += aConstraintRect.TopLeft();
+  imageAnchorPt += aConstraintRect.TopLeft();
+
+  // XXXdholbert Per bug 1098417, we should be returning imageAnchorPt here,
+  // and our caller should make sure it's pixel-aligned.
+  return nsRect(imageTopLeftPt, concreteObjectSize);
+}
+
 nsresult
 nsLayoutUtils::GetFontMetricsForFrame(const nsIFrame* aFrame,
                                       nsFontMetrics** aFontMetrics,
@@ -3482,10 +3704,11 @@ nsLayoutUtils::GetFontMetricsForStyleContext(nsStyleContext* aStyleContext,
   if (aInflation != 1.0f) {
     font.size = NSToCoordRound(font.size * aInflation);
   }
-  WritingMode wm(aStyleContext->StyleVisibility());
+  WritingMode wm(aStyleContext);
   return pc->DeviceContext()->GetMetricsFor(
                   font, aStyleContext->StyleFont()->mLanguage,
-                  wm.IsVertical() ? gfxFont::eVertical : gfxFont::eHorizontal,
+                  wm.IsVertical() && !wm.IsSideways()
+                    ? gfxFont::eVertical : gfxFont::eHorizontal,
                   fs, tp, *aFontMetrics);
 }
 
@@ -4882,9 +5105,11 @@ nsLayoutUtils::PaintTextShadow(const nsIFrame* aFrame,
 
 /* static */ nscoord
 nsLayoutUtils::GetCenteredFontBaseline(nsFontMetrics* aFontMetrics,
-                                       nscoord         aLineHeight)
+                                       nscoord        aLineHeight,
+                                       bool           aIsInverted)
 {
-  nscoord fontAscent = aFontMetrics->MaxAscent();
+  nscoord fontAscent = aIsInverted ? aFontMetrics->MaxDescent()
+                                   : aFontMetrics->MaxAscent();
   nscoord fontHeight = aFontMetrics->MaxHeight();
 
   nscoord leading = aLineHeight - fontHeight;
@@ -5860,7 +6085,7 @@ nsLayoutUtils::GetTextRunFlagsForStyle(nsStyleContext* aStyleContext,
   default:
     break;
   }
-  WritingMode wm(aStyleContext->StyleVisibility());
+  WritingMode wm(aStyleContext);
   if (wm.IsVertical()) {
     switch (aStyleText->mTextOrientation) {
     case NS_STYLE_TEXT_ORIENTATION_MIXED:
@@ -7020,10 +7245,11 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
   if (aIsRootContentDocRootScrollFrame) {
     return ViewAs<LayerPixel>(aMetrics.mCompositionBounds.Size(),
                               PixelCastJustification::ParentLayerToLayerForRootComposition)
-           / aMetrics.LayersPixelsPerCSSPixel();
+           * LayerToScreenScale(1.0f)
+           / aMetrics.DisplayportPixelsPerCSSPixel();
   }
   nsPresContext* presContext = aFrame->PresContext();
-  LayerSize rootCompositionSize;
+  ScreenSize rootCompositionSize;
   nsPresContext* rootPresContext =
     presContext->GetToplevelContentDocumentPresContext();
   if (!rootPresContext) {
@@ -7037,12 +7263,13 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
     nsIPresShell* rootPresShell = rootPresContext->PresShell();
     if (nsIFrame* rootFrame = rootPresShell->GetRootFrame()) {
       LayoutDeviceToLayerScale cumulativeResolution(
-        rootPresShell->GetCumulativeResolution().width);
+        rootPresShell->GetCumulativeResolution().width
+      * nsLayoutUtils::GetTransformToAncestorScale(rootFrame).width);
       int32_t rootAUPerDevPixel = rootPresContext->AppUnitsPerDevPixel();
       LayerSize frameSize =
         (LayoutDeviceRect::FromAppUnits(rootFrame->GetRect(), rootAUPerDevPixel)
          * cumulativeResolution).Size();
-      rootCompositionSize = frameSize;
+      rootCompositionSize = frameSize * LayerToScreenScale(1.0f);
 #ifdef MOZ_WIDGET_ANDROID
       nsIWidget* widget = rootFrame->GetNearestWidget();
 #else
@@ -7052,7 +7279,7 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
       if (widget) {
         nsIntRect widgetBounds;
         widget->GetBounds(widgetBounds);
-        rootCompositionSize = LayerSize(ViewAs<LayerPixel>(widgetBounds.Size()));
+        rootCompositionSize = ScreenSize(ViewAs<ScreenPixel>(widgetBounds.Size()));
 #ifdef MOZ_WIDGET_ANDROID
         if (frameSize.height < rootCompositionSize.height) {
           rootCompositionSize.height = frameSize.height;
@@ -7066,7 +7293,7 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
             gfxSize res = rootPresContext->GetParentPresContext()->PresShell()->GetCumulativeResolution();
             scale = LayoutDeviceToLayerScale(res.width, res.height);
           }
-          rootCompositionSize = contentSize * scale;
+          rootCompositionSize = contentSize * scale * LayerToScreenScale(1.0f);
         }
       }
     }
@@ -7074,7 +7301,7 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
     nsIWidget* widget = aFrame->GetNearestWidget();
     nsIntRect widgetBounds;
     widget->GetBounds(widgetBounds);
-    rootCompositionSize = LayerSize(ViewAs<LayerPixel>(widgetBounds.Size()));
+    rootCompositionSize = ScreenSize(ViewAs<ScreenPixel>(widgetBounds.Size()));
   }
 
   // Adjust composition size for the size of scroll bars.
@@ -7090,7 +7317,7 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
     rootCompositionSize.height -= margins.TopBottom();
   }
 
-  return rootCompositionSize / aMetrics.LayersPixelsPerCSSPixel();
+  return rootCompositionSize / aMetrics.DisplayportPixelsPerCSSPixel();
 }
 
 /* static */ nsRect
@@ -7337,7 +7564,8 @@ nsLayoutUtils::SetBSizeFromFontMetrics(const nsIFrame* aFrame,
     // The height of our box is the sum of our font size plus the top
     // and bottom border and padding. The height of children do not
     // affect our height.
-    aMetrics.SetBlockStartAscent(fm->MaxAscent());
+    aMetrics.SetBlockStartAscent(aLineWM.IsLineInverted() ? fm->MaxDescent()
+                                                          : fm->MaxAscent());
     aMetrics.BSize(aLineWM) = fm->MaxHeight();
   } else {
     NS_WARNING("Cannot get font metrics - defaulting sizes to 0");

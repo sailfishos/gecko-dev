@@ -24,7 +24,8 @@
 #include "base/lock.h"
 
 static const malloc_table_t* sFuncs = nullptr;
-static int sFd = -1;
+static intptr_t sFd = 0;
+static bool sStdoutOrStderr = false;
 
 static Lock sLock;
 
@@ -48,6 +49,15 @@ extern "C" MOZ_EXPORT
 int pthread_atfork(void (*)(void), void (*)(void), void (*)(void));
 #endif
 
+class LogAllocBridge : public ReplaceMallocBridge
+{
+  virtual void InitDebugFd(mozilla::DebugFdRegistry& aRegistry) MOZ_OVERRIDE {
+    if (!sStdoutOrStderr) {
+      aRegistry.RegisterHandle(sFd);
+    }
+  }
+};
+
 void
 replace_init(const malloc_table_t* aTable)
 {
@@ -70,26 +80,54 @@ replace_init(const malloc_table_t* aTable)
    * descriptor number. Other values are considered as a file name. */
   char* log = getenv("MALLOC_LOG");
   if (log && *log) {
-    sFd = 0;
+    int fd = 0;
     const char *fd_num = log;
     while (*fd_num) {
       /* Reject non digits. */
       if (*fd_num < '0' || *fd_num > '9') {
-        sFd = -1;
+        fd = -1;
         break;
       }
-      sFd = sFd * 10 + (*fd_num - '0');
+      fd = fd * 10 + (*fd_num - '0');
       /* Reject values >= 10000. */
-      if (sFd >= 10000) {
-        sFd = -1;
+      if (fd >= 10000) {
+        fd = -1;
         break;
       }
       fd_num++;
     }
-    if (sFd == -1) {
-      sFd = open(log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd == 1 || fd == 2) {
+      sStdoutOrStderr = true;
     }
+#ifdef _WIN32
+    // See comment in FdPrintf.h as to why CreateFile is used.
+    HANDLE handle;
+    if (fd > 0) {
+      handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+    } else {
+      handle = CreateFileA(log, FILE_APPEND_DATA, FILE_SHARE_READ |
+                           FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
+    if (handle != INVALID_HANDLE_VALUE) {
+      sFd = reinterpret_cast<intptr_t>(handle);
+    }
+#else
+    if (fd == -1) {
+      fd = open(log, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    }
+    if (fd > 0) {
+      sFd = fd;
+    }
+#endif
   }
+}
+
+ReplaceMallocBridge*
+replace_get_bridge()
+{
+  static LogAllocBridge bridge;
+  return &bridge;
 }
 
 /* Do a simple, text-form, log of all calls to replace-malloc functions.

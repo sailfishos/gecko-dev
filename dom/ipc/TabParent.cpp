@@ -11,10 +11,10 @@
 #include "AppProcessChecker.h"
 #include "mozIApplication.h"
 #include "mozilla/BrowserElementParent.h"
-#include "mozilla/docshell/OfflineCacheUpdateParent.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/PContentPermissionRequestParent.h"
 #include "mozilla/dom/indexedDB/ActorsParent.h"
+#include "mozilla/plugins/PluginWidgetParent.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/Hal.h"
 #include "mozilla/ipc/DocumentRendererParent.h"
@@ -248,6 +248,7 @@ TabParent::TabParent(nsIContentParent* aManager,
   , mAppPackageFileDescriptorSent(false)
   , mSendOfflineStatus(true)
   , mChromeFlags(aChromeFlags)
+  , mInitedByParent(false)
   , mTabId(aTabId)
 {
   MOZ_ASSERT(aManager);
@@ -300,14 +301,6 @@ TabParent::Destroy()
   // and auto-cleanup will kick in.  Otherwise, the child side will
   // destroy itself and send back __delete__().
   unused << SendDestroy();
-
-  const InfallibleTArray<POfflineCacheUpdateParent*>& ocuParents =
-    ManagedPOfflineCacheUpdateParent();
-  for (uint32_t i = 0; i < ocuParents.Length(); ++i) {
-    nsRefPtr<mozilla::docshell::OfflineCacheUpdateParent> ocuParent =
-      static_cast<mozilla::docshell::OfflineCacheUpdateParent*>(ocuParents[i]);
-    ocuParent->StopSendingMessagesToChild();
-  }
 
   if (RenderFrameParent* frame = GetRenderFrame()) {
     frame->Destroy();
@@ -581,9 +574,33 @@ TabParent::Show(const nsIntSize& size)
     // sigh
     mShown = true;
     mDimensions = size;
-    if (!mIsDestroyed) {
-      unused << SendShow(size);
+    if (mIsDestroyed) {
+        return;
     }
+
+    ScrollingBehavior scrolling = UseAsyncPanZoom() ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
+    TextureFactoryIdentifier textureFactoryIdentifier;
+    uint64_t layersId = 0;
+    bool success = false;
+    RenderFrameParent* renderFrame = nullptr;
+    // If TabParent is initialized by parent side then the RenderFrame must also
+    // be created here. If TabParent is initialized by child side,
+    // child side will create RenderFrame.
+    MOZ_ASSERT(!GetRenderFrame());
+    if (IsInitedByParent()) {
+        nsRefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
+        if (frameLoader) {
+          renderFrame =
+              new RenderFrameParent(frameLoader,
+                                    scrolling,
+                                    &textureFactoryIdentifier,
+                                    &layersId,
+                                    &success);
+          MOZ_ASSERT(success);
+          unused << SendPRenderFrameConstructor(renderFrame);
+        }
+    }
+    unused << SendShow(size, scrolling, textureFactoryIdentifier, layersId, renderFrame);
 }
 
 void
@@ -1919,18 +1936,26 @@ TabParent::DeallocPColorPickerParent(PColorPickerParent* actor)
 }
 
 PRenderFrameParent*
-TabParent::AllocPRenderFrameParent(ScrollingBehavior* aScrolling,
-                                   TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                   uint64_t* aLayersId, bool* aSuccess)
+TabParent::AllocPRenderFrameParent()
 {
   MOZ_ASSERT(ManagedPRenderFrameParent().IsEmpty());
-
   nsRefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
-  *aScrolling = UseAsyncPanZoom() ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
-  return new RenderFrameParent(frameLoader,
-                               *aScrolling,
-                               aTextureFactoryIdentifier, aLayersId,
-                               aSuccess);
+  ScrollingBehavior scrolling = UseAsyncPanZoom() ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
+  TextureFactoryIdentifier textureFactoryIdentifier;
+  uint64_t layersId = 0;
+  bool success = false;
+  if(frameLoader) {
+    PRenderFrameParent* renderFrame = 
+      new RenderFrameParent(frameLoader,
+                            scrolling,
+                            &textureFactoryIdentifier,
+                            &layersId,
+                            &success);
+    MOZ_ASSERT(success);
+    return renderFrame;
+  } else {
+    return nullptr;
+  }
 }
 
 bool
@@ -1940,53 +1965,16 @@ TabParent::DeallocPRenderFrameParent(PRenderFrameParent* aFrame)
   return true;
 }
 
-mozilla::docshell::POfflineCacheUpdateParent*
-TabParent::AllocPOfflineCacheUpdateParent(const URIParams& aManifestURI,
-                                          const URIParams& aDocumentURI,
-                                          const bool& aStickDocument)
-{
-  nsRefPtr<mozilla::docshell::OfflineCacheUpdateParent> update =
-    new mozilla::docshell::OfflineCacheUpdateParent(OwnOrContainingAppId(),
-                                                    IsBrowserElement());
-  // Use this reference as the IPDL reference.
-  return update.forget().take();
-}
-
 bool
-TabParent::RecvPOfflineCacheUpdateConstructor(POfflineCacheUpdateParent* aActor,
-                                              const URIParams& aManifestURI,
-                                              const URIParams& aDocumentURI,
-                                              const bool& aStickDocument)
+TabParent::RecvGetRenderFrameInfo(PRenderFrameParent* aRenderFrame,
+                                  ScrollingBehavior* aScrolling,
+                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                                  uint64_t* aLayersId)
 {
-  MOZ_ASSERT(aActor);
-
-  nsRefPtr<mozilla::docshell::OfflineCacheUpdateParent> update =
-    static_cast<mozilla::docshell::OfflineCacheUpdateParent*>(aActor);
-
-  nsresult rv = update->Schedule(aManifestURI, aDocumentURI, aStickDocument);
-  if (NS_FAILED(rv) && !IsDestroyed()) {
-    // Inform the child of failure.
-    unused << update->SendFinish(false, false);
-  }
-
-  return true;
-}
-
-bool
-TabParent::DeallocPOfflineCacheUpdateParent(POfflineCacheUpdateParent* aActor)
-{
-  // Reclaim the IPDL reference.
-  nsRefPtr<mozilla::docshell::OfflineCacheUpdateParent> update =
-    dont_AddRef(
-      static_cast<mozilla::docshell::OfflineCacheUpdateParent*>(aActor));
-  return true;
-}
-
-bool
-TabParent::RecvSetOfflinePermission(const IPC::Principal& aPrincipal)
-{
-  nsIPrincipal* principal = aPrincipal;
-  nsContentUtils::MaybeAllowOfflineAppByDefault(principal, nullptr);
+  RenderFrameParent* renderFrame = static_cast<RenderFrameParent*>(aRenderFrame);
+  *aScrolling = renderFrame->UseAsyncPanZoom() ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
+  renderFrame->GetTextureFactoryIdentifier(aTextureFactoryIdentifier);
+  *aLayersId = renderFrame->GetLayersId();
   return true;
 }
 
@@ -2076,16 +2064,6 @@ TabParent::RecvBrowserFrameOpenWindow(PBrowserParent* aOpener,
     BrowserElementParent::OpenWindowOOP(static_cast<TabParent*>(aOpener),
                                         this, aURL, aName, aFeatures);
   *aOutWindowOpened = (opened != BrowserElementParent::OPEN_WINDOW_CANCELLED);
-  return true;
-}
-
-bool
-TabParent::RecvPRenderFrameConstructor(PRenderFrameParent* aActor,
-                                       ScrollingBehavior* aScrolling,
-                                       TextureFactoryIdentifier* aFactoryIdentifier,
-                                       uint64_t* aLayersId,
-                                       bool* aSuccess)
-{
   return true;
 }
 
@@ -2244,6 +2222,19 @@ TabParent::RecvRemotePaintIsReady()
   event->GetInternalNSEvent()->mFlags.mOnlyChromeDispatch = true;
   bool dummy;
   mFrameElement->DispatchEvent(event, &dummy);
+  return true;
+}
+
+mozilla::plugins::PPluginWidgetParent*
+TabParent::AllocPPluginWidgetParent()
+{
+  return new mozilla::plugins::PluginWidgetParent();
+}
+
+bool
+TabParent::DeallocPPluginWidgetParent(mozilla::plugins::PPluginWidgetParent* aActor)
+{
+  delete aActor;
   return true;
 }
 

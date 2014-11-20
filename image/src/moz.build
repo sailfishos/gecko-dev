@@ -16,6 +16,7 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'ClippedImage.cpp',
+    'DecodePool.cpp',
     'Decoder.cpp',
     'DiscardTracker.cpp',
     'DynamicImage.cpp',
@@ -43,7 +44,7 @@ SOURCES += [
     'imgLoader.cpp',
     'imgRequest.cpp',
     'imgRequestProxy.cpp',
-    'imgStatusTracker.cpp',
+    'ProgressTracker.cpp',
     'RasterImage.cpp',
 ]
 

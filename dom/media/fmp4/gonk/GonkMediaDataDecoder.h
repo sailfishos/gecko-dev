@@ -32,7 +32,7 @@ public:
   // MP4Reader.
   virtual nsresult Input(mp4_demuxer::MP4Sample* aSample) = 0;
   virtual nsresult Output(int64_t aStreamOffset,
-                          nsAutoPtr<MediaData>& aOutput) = 0;
+                          nsRefPtr<MediaData>& aOutput) = 0;
 
 };
 
@@ -92,6 +92,8 @@ private:
   int64_t mLastStreamOffset;
   // Set it ture when there is no input data
   bool mSignaledEOS;
+  // Set if there is no more output data from decoder
+  bool mDrainComplete;
 };
 
 } // namespace mozilla

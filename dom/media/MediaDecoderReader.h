@@ -20,6 +20,7 @@ class TimeRanges;
 
 class RequestSampleCallback;
 class MediaDecoderReader;
+class SharedDecoderManager;
 
 // Encapsulates the decoding and reading of media data. Reading can either
 // synchronous and done on the calling "decode" thread, or asynchronous and
@@ -47,6 +48,7 @@ public:
   // Release media resources they should be released in dormant state
   // The reader can be made usable again by calling ReadMetadata().
   virtual void ReleaseMediaResources() {};
+  virtual void SetSharedDecoderManager(SharedDecoderManager* aManager) {}
   // Breaks reference-counted cycles. Called during shutdown.
   // WARNING: If you override this, you must call the base implementation
   // in your override.
@@ -135,9 +137,7 @@ public:
     mIgnoreAudioOutputFormat = true;
   }
 
-  // Populates aBuffered with the time ranges which are buffered. aStartTime
-  // must be the presentation time of the first frame in the media, e.g.
-  // the media time corresponding to playback time/position 0. This function
+  // Populates aBuffered with the time ranges which are buffered. This function
   // is called on the main, decode, and state machine threads.
   //
   // This base implementation in MediaDecoderReader estimates the time ranges
@@ -151,10 +151,14 @@ public:
   // The OggReader relies on this base implementation not performing I/O,
   // since in FirefoxOS we can't do I/O on the main thread, where this is
   // called.
-  virtual nsresult GetBuffered(dom::TimeRanges* aBuffered,
-                               int64_t aStartTime);
+  virtual nsresult GetBuffered(dom::TimeRanges* aBuffered);
 
   virtual int64_t ComputeStartTime(const VideoData* aVideo, const AudioData* aAudio);
+
+  // Wait this number of seconds when buffering, then leave and play
+  // as best as we can if the required amount of data hasn't been
+  // retrieved.
+  virtual uint32_t GetBufferingWait() { return 30; }
 
   // Returns the number of bytes of memory allocated by structures/frames in
   // the video queue.
@@ -185,6 +189,7 @@ public:
   // Indicates if the media is seekable.
   // ReadMetada should be called before calling this method.
   virtual bool IsMediaSeekable() = 0;
+  void SetStartTime(int64_t aStartTime);
 
   MediaTaskQueue* GetTaskQueue() {
     return mTaskQueue;
@@ -245,6 +250,11 @@ protected:
   // what we support.
   bool mIgnoreAudioOutputFormat;
 
+  // The start time of the media, in microseconds. This is the presentation
+  // time of the first frame decoded from the media. This is initialized to -1,
+  // and then set to a value >= by MediaDecoderStateMachine::SetStartTime(),
+  // after which point it never changes.
+  int64_t mStartTime;
 private:
 
   nsRefPtr<RequestSampleCallback> mSampleDecodedCallback;
@@ -312,7 +322,7 @@ public:
 
   // Returns failure on error, or NS_OK.
   // If *aSample is null, EOS has been reached.
-  nsresult Await(nsAutoPtr<AudioData>& aSample);
+  nsresult Await(nsRefPtr<AudioData>& aSample);
 
   // Interrupts a call to Wait().
   void Cancel();
@@ -320,7 +330,7 @@ public:
 private:
   Monitor mMonitor;
   nsresult mStatus;
-  nsAutoPtr<AudioData> mSample;
+  nsRefPtr<AudioData> mSample;
   bool mHaveResult;
 };
 

@@ -15,6 +15,8 @@
 #include <mozilla/Mutex.h>
 #include <mozilla/Monitor.h>
 
+#include <nsDataHashtable.h>
+
 #include "MediaData.h"
 
 #include "I420ColorConverterHelper.h"
@@ -29,6 +31,8 @@ class MOZ_EXPORT MediaExtractor;
 class MOZ_EXPORT MetaData;
 class MOZ_EXPORT MediaBuffer;
 struct MOZ_EXPORT MediaSource;
+
+class GonkNativeWindow;
 } // namespace android
 
 namespace mozilla {
@@ -36,8 +40,14 @@ namespace mozilla {
 class MediaTaskQueue;
 class MP3FrameParser;
 
+namespace layers {
+class TextureClient;
+} // namespace mozilla::layers
+
 class MediaCodecReader : public MediaOmxCommonReader
 {
+  typedef mozilla::layers::TextureClient TextureClient;
+
 public:
   MediaCodecReader(AbstractMediaDecoder* aDecoder);
   virtual ~MediaCodecReader();
@@ -101,13 +111,24 @@ public:
 protected:
   struct TrackInputCopier
   {
+    virtual ~TrackInputCopier();
+
     virtual bool Copy(android::MediaBuffer* aSourceBuffer,
                       android::sp<android::ABuffer> aCodecBuffer);
   };
 
   struct Track
   {
-    Track();
+    enum Type
+    {
+      kUnknown = 0,
+      kAudio,
+      kVideo,
+    };
+
+    Track(Type type=kUnknown);
+
+    const Type mType;
 
     // pipeline parameters
     android::sp<android::MediaSource> mSource;
@@ -115,6 +136,7 @@ protected:
     android::sp<android::MediaCodecProxy> mCodec;
     android::Vector<android::sp<android::ABuffer> > mInputBuffers;
     android::Vector<android::sp<android::ABuffer> > mOutputBuffers;
+    android::sp<android::GonkNativeWindow> mNativeWindow;
 
     // pipeline copier
     nsAutoPtr<TrackInputCopier> mInputCopier;
@@ -316,37 +338,6 @@ private:
   };
   friend class ProcessCachedDataTask;
 
-  // This class is used to keep one reference count of T in it. And this class
-  // can make sure the stored reference count will be released on the dispatched
-  // thread. By using this class properly (ex. passing the pointer into this
-  // runnable first, then releasing the original pointer held by ourselves, and
-  // then dispatching this runnable onto the desired thread), we can avoid
-  // running the destructor of the referenced object on any other threads
-  // unexpectedly before this runnable has been executed.
-  template<class T>
-  class ReferenceKeeperRunnable : public nsRunnable
-  {
-  public:
-    ReferenceKeeperRunnable(nsRefPtr<T> aPointer)
-      : mPointer(aPointer)
-    {
-    }
-
-    NS_IMETHOD Run() MOZ_OVERRIDE
-    {
-      mPointer = nullptr;
-      return NS_OK;
-    }
-
-  private:
-    // Forbidden
-    ReferenceKeeperRunnable() MOZ_DELETE;
-    ReferenceKeeperRunnable(const ReferenceKeeperRunnable &rhs) MOZ_DELETE;
-    const ReferenceKeeperRunnable &operator=(const ReferenceKeeperRunnable &rhs) MOZ_DELETE;
-
-    nsRefPtr<T> mPointer;
-  };
-
   // Forbidden
   MediaCodecReader() MOZ_DELETE;
   const MediaCodecReader& operator=(const MediaCodecReader& rhs) MOZ_DELETE;
@@ -370,7 +361,7 @@ private:
                                android::wp<android::MediaCodecProxy::CodecResourceListener> aListener);
   static bool ConfigureMediaCodec(Track& aTrack);
   void DestroyMediaCodecs();
-  static void DestroyMediaCodecs(Track& aTrack);
+  static void DestroyMediaCodec(Track& aTrack);
 
   bool CreateTaskQueues();
   void ShutdownTaskQueues();
@@ -396,13 +387,13 @@ private:
   bool UpdateAudioInfo();
   bool UpdateVideoInfo();
 
-  static android::status_t FlushCodecData(Track& aTrack);
-  static android::status_t FillCodecInputData(Track& aTrack);
-  static android::status_t GetCodecOutputData(Track& aTrack,
-                                              CodecBufferInfo& aBuffer,
-                                              int64_t aThreshold,
-                                              const TimeStamp& aTimeout);
-  static bool EnsureCodecFormatParsed(Track& aTrack);
+  android::status_t FlushCodecData(Track& aTrack);
+  android::status_t FillCodecInputData(Track& aTrack);
+  android::status_t GetCodecOutputData(Track& aTrack,
+                                       CodecBufferInfo& aBuffer,
+                                       int64_t aThreshold,
+                                       const TimeStamp& aTimeout);
+  bool EnsureCodecFormatParsed(Track& aTrack);
 
   uint8_t* GetColorConverterBuffer(int32_t aWidth, int32_t aHeight);
   void ClearColorConverterBuffer();
@@ -413,11 +404,27 @@ private:
                         uint32_t aLength,
                         int64_t aOffset);
 
+  static void TextureClientRecycleCallback(TextureClient* aClient,
+                                           void* aClosure);
+  void TextureClientRecycleCallback(TextureClient* aClient);
+
+  void ReleaseRecycledTextureClients();
+  static PLDHashOperator ReleaseTextureClient(TextureClient* aClient,
+                                              size_t& aIndex,
+                                              void* aUserArg);
+  PLDHashOperator ReleaseTextureClient(TextureClient* aClient,
+                                       size_t& aIndex);
+
+  void ReleaseAllTextureClients();
+
   android::sp<MessageHandler> mHandler;
   android::sp<VideoResourceListener> mVideoListener;
 
   android::sp<android::ALooper> mLooper;
   android::sp<android::MetaData> mMetaData;
+
+  Mutex mTextureClientIndexesLock;
+  nsDataHashtable<nsPtrHashKey<TextureClient>, size_t> mTextureClientIndexes;
 
   // media tracks
   AudioTrack mAudioTrack;

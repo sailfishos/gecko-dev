@@ -47,15 +47,12 @@ namespace mozilla {
 
 // Amount of time in MS before an input is considered expired.
 static const uint64_t kInputExpirationThresholdMs = 1000;
-static int32_t microsecToMillisec(int64_t microsec) { return microsec / 1000; }
 
 static StaticRefPtr<GeckoTouchDispatcher> sTouchDispatcher;
 
 GeckoTouchDispatcher::GeckoTouchDispatcher()
   : mTouchQueueLock("GeckoTouchDispatcher::mTouchQueueLock")
   , mTouchEventsFiltered(false)
-  , mTouchTimeDiff(0)
-  , mLastTouchTime(TimeStamp::Now())
 {
   // Since GeckoTouchDispatcher is initialized when input is initialized
   // and reads gfxPrefs, it is the first thing to touch gfxPrefs.
@@ -70,7 +67,7 @@ GeckoTouchDispatcher::GeckoTouchDispatcher()
                        gfxPrefs::HardwareVsyncEnabled();
   mVsyncAdjust = TimeDuration::FromMilliseconds(gfxPrefs::TouchVsyncSampleAdjust());
   mMaxPredict = TimeDuration::FromMilliseconds(gfxPrefs::TouchResampleMaxPredict());
-  mMinResampleTime = TimeDuration::FromMilliseconds(gfxPrefs::TouchResampleMinTime());
+  mOldTouchThreshold = TimeDuration::FromMilliseconds(gfxPrefs::TouchResampleOldTouchThreshold());
   mDelayedVsyncThreshold = TimeDuration::FromMilliseconds(gfxPrefs::TouchResampleVsyncDelayThreshold());
   sTouchDispatcher = this;
   ClearOnShutdown(&sTouchDispatcher);
@@ -148,8 +145,6 @@ GeckoTouchDispatcher::NotifyTouch(MultiTouchInput& aTouch, TimeStamp aEventTime)
     MutexAutoLock lock(mTouchQueueLock);
     if (mResamplingEnabled) {
       mTouchMoveEvents.push_back(aTouch);
-      mTouchTimeDiff = aEventTime - mLastTouchTime;
-      mLastTouchTime = aEventTime;
       return;
     }
 
@@ -179,19 +174,17 @@ GeckoTouchDispatcher::DispatchTouchMoveEvents(TimeStamp aVsyncTime)
 
     if (mResamplingEnabled) {
       int touchCount = mTouchMoveEvents.size();
-      // Both aVsynctime and mLastTouchTime are uint64_t
-      // Need to store as a signed int.
-      TimeDuration vsyncTouchDiff = aVsyncTime - mLastTouchTime;
-      bool resample = (touchCount > 1) &&
-        (vsyncTouchDiff > mMinResampleTime);
+      TimeDuration vsyncTouchDiff = aVsyncTime - mTouchMoveEvents.back().mTimeStamp;
       // The delay threshold is a positive pref, but we're testing to see if the
       // vsync time is delayed from the touch, so add a negative sign.
       bool isDelayedVsyncEvent = vsyncTouchDiff < -mDelayedVsyncThreshold;
+      bool isOldTouch = vsyncTouchDiff > mOldTouchThreshold;
+      bool resample = (touchCount > 1) && !isDelayedVsyncEvent && !isOldTouch;
 
       if (!resample) {
         touchMove = mTouchMoveEvents.back();
         mTouchMoveEvents.clear();
-        if (!isDelayedVsyncEvent) {
+        if (!isDelayedVsyncEvent && !isOldTouch) {
           mTouchMoveEvents.push_back(touchMove);
         }
       } else {
@@ -207,9 +200,9 @@ GeckoTouchDispatcher::DispatchTouchMoveEvents(TimeStamp aVsyncTime)
 }
 
 static int
-Interpolate(int start, int end, int64_t aFrameDiff, int64_t aTouchDiff)
+Interpolate(int start, int end, TimeDuration aFrameDiff, TimeDuration aTouchDiff)
 {
-  return start + (((end - start) * aFrameDiff) / aTouchDiff);
+  return start + (((end - start) * aFrameDiff.ToMicroseconds()) / aTouchDiff.ToMicroseconds());
 }
 
 static const SingleTouchData&
@@ -230,115 +223,97 @@ GetTouchByID(const SingleTouchData& aCurrentTouch, MultiTouchInput& aOtherTouch)
   return aCurrentTouch;
 }
 
+
+// aTouchDiff is the duration between the base and current touch times
+// aFrameDiff is the duration between the base and the time we're resampling to
 static void
-ResampleTouch(MultiTouchInput& aOutTouch, MultiTouchInput& aCurrent,
-              MultiTouchInput& aOther, int64_t aFrameDiff,
-              int64_t aTouchDiff, bool aInterpolate)
+ResampleTouch(MultiTouchInput& aOutTouch,
+              MultiTouchInput& aBase, MultiTouchInput& aCurrent,
+              TimeDuration aFrameDiff, TimeDuration aTouchDiff)
 {
   aOutTouch = aCurrent;
 
   // Make sure we only resample the correct finger.
   for (size_t i = 0; i < aOutTouch.mTouches.Length(); i++) {
-    const SingleTouchData& current = aCurrent.mTouches[i];
-    const SingleTouchData& other = GetTouchByID(current, aOther);
+    const SingleTouchData& base = aBase.mTouches[i];
+    const SingleTouchData& current = GetTouchByID(base, aCurrent);
 
+    const ScreenIntPoint& baseTouchPoint = base.mScreenPoint;
     const ScreenIntPoint& currentTouchPoint = current.mScreenPoint;
-    const ScreenIntPoint& otherTouchPoint = other.mScreenPoint;
 
     ScreenIntPoint newSamplePoint;
-    newSamplePoint.x = Interpolate(currentTouchPoint.x, otherTouchPoint.x, aFrameDiff, aTouchDiff);
-    newSamplePoint.y = Interpolate(currentTouchPoint.y, otherTouchPoint.y, aFrameDiff, aTouchDiff);
+    newSamplePoint.x = Interpolate(baseTouchPoint.x, currentTouchPoint.x, aFrameDiff, aTouchDiff);
+    newSamplePoint.y = Interpolate(baseTouchPoint.y, currentTouchPoint.y, aFrameDiff, aTouchDiff);
 
     aOutTouch.mTouches[i].mScreenPoint = newSamplePoint;
 
 #ifdef LOG_RESAMPLE_DATA
     const char* type = "extrapolate";
-    if (aInterpolate) {
+    if (aFrameDiff < aTouchDiff) {
       type = "interpolate";
     }
 
-    float alpha = (double) aFrameDiff / (double) aTouchDiff;
-    LOG("%s current (%d, %d), other (%d, %d) to (%d, %d) alpha %f, touch diff %llu, frame diff %lld\n",
+    float alpha = aFrameDiff / aTouchDiff;
+    LOG("%s base (%d, %d), current (%d, %d) to (%d, %d) alpha %f, touch diff %d, frame diff %d\n",
         type,
+        baseTouchPoint.x, baseTouchPoint.y,
         currentTouchPoint.x, currentTouchPoint.y,
-        otherTouchPoint.x, otherTouchPoint.y,
         newSamplePoint.x, newSamplePoint.y,
-        alpha, aTouchDiff, aFrameDiff);
+        alpha, (int)aTouchDiff.ToMilliseconds(), (int)aFrameDiff.ToMilliseconds());
 #endif
   }
 }
 
-// Interpolates with the touch event prior to SampleTime
-// and with the future touch event past sample time
-int32_t
-GeckoTouchDispatcher::InterpolateTouch(MultiTouchInput& aOutTouch, TimeStamp aSampleTime)
-{
-  MOZ_RELEASE_ASSERT(mTouchMoveEvents.size() >= 2);
-  mTouchQueueLock.AssertCurrentThreadOwns();
-
-  // currentTouch < SampleTime < futureTouch
-  MultiTouchInput futureTouch = mTouchMoveEvents.back();
-  mTouchMoveEvents.pop_back();
-  MultiTouchInput currentTouch = mTouchMoveEvents.back();
-
-  mTouchMoveEvents.clear();
-  mTouchMoveEvents.push_back(futureTouch);
-
-  TimeStamp currentTouchTime = mLastTouchTime - mTouchTimeDiff;
-  int64_t frameDiff = (aSampleTime - currentTouchTime).ToMicroseconds();
-  ResampleTouch(aOutTouch, currentTouch, futureTouch, frameDiff, mTouchTimeDiff.ToMicroseconds(), true);
-
-  return microsecToMillisec(frameDiff);
-}
-
-// Extrapolates from the previous two touch events before sample time
-// and extrapolates them to sample time.
-int32_t
-GeckoTouchDispatcher::ExtrapolateTouch(MultiTouchInput& aOutTouch, TimeStamp aSampleTime)
-{
-  MOZ_RELEASE_ASSERT(mTouchMoveEvents.size() >= 2);
-  mTouchQueueLock.AssertCurrentThreadOwns();
-
-  // prevTouch < currentTouch < SampleTime
-  MultiTouchInput currentTouch = mTouchMoveEvents.back();
-  mTouchMoveEvents.pop_back();
-  MultiTouchInput prevTouch = mTouchMoveEvents.back();
-  mTouchMoveEvents.clear();
-  mTouchMoveEvents.push_back(currentTouch);
-
-  TimeStamp currentTouchTime = mLastTouchTime;
-  TimeDuration maxResampleTime = TimeDuration::FromMicroseconds(
-                                 std::min(mTouchTimeDiff.ToMicroseconds() / 2,
-                                          mMaxPredict.ToMicroseconds()));
-  TimeStamp maxTimestamp = currentTouchTime + maxResampleTime;
-
-  if (aSampleTime > maxTimestamp) {
-    aSampleTime = maxTimestamp;
-    #ifdef LOG_RESAMPLE_DATA
-    LOG("Overshot extrapolation time, adjusting sample time\n");
-    #endif
-  }
-
-  // This has to be signed int since it is negative
-  int64_t frameDiff = (currentTouchTime - aSampleTime).ToMicroseconds();
-  ResampleTouch(aOutTouch, currentTouch, prevTouch, frameDiff, mTouchTimeDiff.ToMicroseconds(), false);
-  return -microsecToMillisec(frameDiff);
-}
+/*
+ * +> Base touch (The touch before current touch)
+ * |
+ * |     +> Current touch (Latest touch)
+ * |     |
+ * |     |      +> Maximum resample time
+ * |     |      |
+ * +-----+------+--------------------> Time
+ *    ^      ^
+ *    |      |
+ *    +------+--> Potential vsync events which the touches are resampled to
+ *    |      |
+ *    |      +> Extrapolation
+ *    |
+ *    +> Interpolation
+ */
 
 void
 GeckoTouchDispatcher::ResampleTouchMoves(MultiTouchInput& aOutTouch, TimeStamp aVsyncTime)
 {
-  TimeStamp sampleTime = aVsyncTime - mVsyncAdjust;
-  int32_t touchTimeAdjust = 0;
+  MOZ_RELEASE_ASSERT(mTouchMoveEvents.size() >= 2);
+  mTouchQueueLock.AssertCurrentThreadOwns();
 
-  if (mLastTouchTime > sampleTime) {
-    touchTimeAdjust = InterpolateTouch(aOutTouch, sampleTime);
-  } else {
-    touchTimeAdjust = ExtrapolateTouch(aOutTouch, sampleTime);
+  MultiTouchInput currentTouch = mTouchMoveEvents.back();
+  mTouchMoveEvents.pop_back();
+  MultiTouchInput baseTouch = mTouchMoveEvents.back();
+  mTouchMoveEvents.clear();
+  mTouchMoveEvents.push_back(currentTouch);
+
+  TimeStamp sampleTime = aVsyncTime - mVsyncAdjust;
+  TimeDuration touchDiff = currentTouch.mTimeStamp - baseTouch.mTimeStamp;
+
+  if (currentTouch.mTimeStamp < sampleTime) {
+    TimeDuration maxResampleTime = std::min(touchDiff / 2, mMaxPredict);
+    TimeStamp maxTimestamp = currentTouch.mTimeStamp + maxResampleTime;
+    if (sampleTime > maxTimestamp) {
+      sampleTime = maxTimestamp;
+      #ifdef LOG_RESAMPLE_DATA
+      LOG("Overshot extrapolation time, adjusting sample time\n");
+      #endif
+    }
   }
 
+  ResampleTouch(aOutTouch, baseTouch, currentTouch, sampleTime - baseTouch.mTimeStamp, touchDiff);
+
+  // Both mTimeStamp and mTime are being updated to sampleTime here.
+  // mTime needs to be updated using a delta since TimeStamp doesn't
+  // provide a way to obtain a raw value.
+  aOutTouch.mTime += (sampleTime - aOutTouch.mTimeStamp).ToMilliseconds();
   aOutTouch.mTimeStamp = sampleTime;
-  aOutTouch.mTime += touchTimeAdjust;
 }
 
 // Some touch events get sent as mouse events. If APZ doesn't capture the event

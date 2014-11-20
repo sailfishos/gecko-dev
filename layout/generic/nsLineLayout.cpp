@@ -55,12 +55,12 @@ nsLineLayout::nsLineLayout(nsPresContext* aPresContext,
   : mPresContext(aPresContext),
     mFloatManager(aFloatManager),
     mBlockReflowState(aOuterReflowState),
-    mLastOptionalBreakContent(nullptr),
-    mForceBreakContent(nullptr),
+    mLastOptionalBreakFrame(nullptr),
+    mForceBreakFrame(nullptr),
     mBlockRS(nullptr),/* XXX temporary */
     mLastOptionalBreakPriority(gfxBreakPriority::eNoBreak),
-    mLastOptionalBreakContentOffset(-1),
-    mForceBreakContentOffset(-1),
+    mLastOptionalBreakFrameOffset(-1),
+    mForceBreakFrameOffset(-1),
     mMinLineBSize(0),
     mTextIndent(0),
     mFirstLetterStyleOK(false),
@@ -608,9 +608,12 @@ nsLineLayout::NewPerFrameData(nsIFrame* aFrame)
   WritingMode frameWM = aFrame->GetWritingMode();
   WritingMode lineWM = mRootSpan->mWritingMode;
   pfd->mBounds = LogicalRect(lineWM);
-  pfd->mMargin = LogicalMargin(frameWM);
-  pfd->mBorderPadding = LogicalMargin(frameWM);
+  pfd->mMargin = LogicalMargin(lineWM);
+  pfd->mBorderPadding = LogicalMargin(lineWM);
   pfd->mOffsets = LogicalMargin(frameWM);
+
+  pfd->mJustificationInfo = JustificationInfo();
+  pfd->mJustificationAssignment = JustificationAssignment();
 
 #ifdef DEBUG
   pfd->mBlockDirAlign = 0xFF;
@@ -748,8 +751,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
 #endif
   }
 
-  mTextJustificationNumSpaces = 0;
-  mTextJustificationNumLetters = 0;
+  mJustificationInfo = JustificationInfo();
 
   // Stash copies of some of the computed state away for later
   // (block-direction alignment, for example)
@@ -807,9 +809,9 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
     }
     WritingMode stateWM = reflowState.GetWritingMode();
     pfd->mMargin =
-      reflowState.ComputedLogicalMargin().ConvertTo(frameWM, stateWM);
+      reflowState.ComputedLogicalMargin().ConvertTo(lineWM, stateWM);
     pfd->mBorderPadding =
-      reflowState.ComputedLogicalBorderPadding().ConvertTo(frameWM, stateWM);
+      reflowState.ComputedLogicalBorderPadding().ConvertTo(lineWM, stateWM);
     pfd->SetFlag(PFD_RELATIVEPOS,
                  reflowState.mStyleDisplay->IsRelativelyPositionedStyle());
     if (pfd->GetFlag(PFD_RELATIVEPOS)) {
@@ -853,7 +855,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
 
   int32_t savedOptionalBreakOffset;
   gfxBreakPriority savedOptionalBreakPriority;
-  nsIContent* savedOptionalBreakContent =
+  nsIFrame* savedOptionalBreakFrame =
     GetLastOptionalBreakPosition(&savedOptionalBreakOffset,
                                  &savedOptionalBreakPriority);
 
@@ -864,9 +866,8 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
       ReflowText(*this, availableSpaceOnLine, psd->mReflowState->rendContext,
                  metrics, aReflowStatus);
   }
-  
-  pfd->mJustificationNumSpaces = mTextJustificationNumSpaces;
-  pfd->mJustificationNumLetters = mTextJustificationNumLetters;
+
+  pfd->mJustificationInfo = mJustificationInfo;
 
   // See if the frame is a placeholderFrame and if it is process
   // the float. At the same time, check if the frame has any non-collapsed-away
@@ -933,6 +934,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
       }
     }
   }
+  pfd->SetFlag(PFD_ISEMPTY, isEmpty);
 
   mFloatManager->Untranslate(oldWM, tPt, mContainerWidth);
 
@@ -1019,7 +1021,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
                  "How'd we get a floated inline frame? "
                  "The frame ctor should've dealt with this.");
     if (CanPlaceFrame(pfd, notSafeToBreak, continuingTextRun,
-                      savedOptionalBreakContent != nullptr, metrics,
+                      savedOptionalBreakFrame != nullptr, metrics,
                       aReflowStatus, &optionalBreakAfterFits)) {
       if (!isEmpty) {
         psd->mHasNonemptyContent = true;
@@ -1047,7 +1049,9 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
           // record soft break opportunity after this content that can't be
           // part of a text run. This is not a text frame so we know
           // that offset INT32_MAX means "after the content".
-          if (NotifyOptionalBreakPosition(aFrame->GetContent(), INT32_MAX, optionalBreakAfterFits, gfxBreakPriority::eNormalBreak)) {
+          if (NotifyOptionalBreakPosition(aFrame, INT32_MAX,
+                                          optionalBreakAfterFits,
+                                          gfxBreakPriority::eNormalBreak)) {
             // If this returns true then we are being told to actually break here.
             aReflowStatus = NS_INLINE_LINE_BREAK_AFTER(aReflowStatus);
           }
@@ -1059,7 +1063,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
       aPushedFrame = true;
       // Undo any saved break positions that the frame might have told us about,
       // since we didn't end up placing it
-      RestoreSavedBreakPosition(savedOptionalBreakContent,
+      RestoreSavedBreakPosition(savedOptionalBreakFrame,
                                 savedOptionalBreakOffset,
                                 savedOptionalBreakPriority);
     }
@@ -1084,7 +1088,7 @@ nsLineLayout::AllowForStartMargin(PerFrameData* pfd,
                "How'd we get a floated inline frame? "
                "The frame ctor should've dealt with this.");
 
-  WritingMode frameWM = pfd->mFrame->GetWritingMode();
+  WritingMode lineWM = mRootSpan->mWritingMode;
 
   // Only apply start-margin on the first-in flow for inline frames,
   // and make sure to not apply it to any inline other than the first
@@ -1099,7 +1103,7 @@ nsLineLayout::AllowForStartMargin(PerFrameData* pfd,
         NS_STYLE_BOX_DECORATION_BREAK_SLICE) {
     // Zero this out so that when we compute the max-element-width of
     // the frame we will properly avoid adding in the starting margin.
-    pfd->mMargin.IStart(frameWM) = 0;
+    pfd->mMargin.IStart(lineWM) = 0;
   } else {
     NS_WARN_IF_FALSE(NS_UNCONSTRAINEDSIZE != aReflowState.AvailableISize(),
                      "have unconstrained inline-size; this should only result "
@@ -1110,7 +1114,9 @@ nsLineLayout::AllowForStartMargin(PerFrameData* pfd,
       // in the reflow state), adjust available inline-size to account for the
       // start margin. The end margin will be accounted for when we
       // finish flowing the frame.
-      aReflowState.AvailableISize() -= pfd->mMargin.IStart(frameWM);
+      WritingMode wm = aReflowState.GetWritingMode();
+      aReflowState.AvailableISize() -=
+          pfd->mMargin.ConvertTo(wm, lineWM).IStart(wm);
     }
   }
 }
@@ -1149,7 +1155,6 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
 
   *aOptionalBreakAfterFits = true;
 
-  WritingMode frameWM = pfd->mFrame->GetWritingMode();
   WritingMode lineWM = mRootSpan->mWritingMode;
   /*
    * We want to only apply the end margin if we're the last continuation and
@@ -1174,14 +1179,12 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
       !pfd->GetFlag(PFD_ISLETTERFRAME) &&
       pfd->mFrame->StyleBorder()->mBoxDecorationBreak ==
         NS_STYLE_BOX_DECORATION_BREAK_SLICE) {
-    pfd->mMargin.IEnd(frameWM) = 0;
+    pfd->mMargin.IEnd(lineWM) = 0;
   }
 
-  // Convert the frame's margins to the line's writing mode and apply
-  // the start margin to the frame bounds.
-  LogicalMargin usedMargins = pfd->mMargin.ConvertTo(lineWM, frameWM);
-  nscoord startMargin = usedMargins.IStart(lineWM);
-  nscoord endMargin = usedMargins.IEnd(lineWM);
+  // Apply the start margin to the frame bounds.
+  nscoord startMargin = pfd->mMargin.IStart(lineWM);
+  nscoord endMargin = pfd->mMargin.IEnd(lineWM);
 
   pfd->mBounds.IStart(lineWM) += startMargin;
 
@@ -1308,7 +1311,6 @@ nsLineLayout::CanPlaceFrame(PerFrameData* pfd,
 void
 nsLineLayout::PlaceFrame(PerFrameData* pfd, nsHTMLReflowMetrics& aMetrics)
 {
-  WritingMode frameWM = pfd->mFrame->GetWritingMode();
   WritingMode lineWM = mRootSpan->mWritingMode;
 
   // Record ascent and update max-ascent and max-descent values
@@ -1320,7 +1322,7 @@ nsLineLayout::PlaceFrame(PerFrameData* pfd, nsHTMLReflowMetrics& aMetrics)
 
   // Advance to next inline coordinate
   mCurrentSpan->mICoord = pfd->mBounds.IEnd(lineWM) +
-                          pfd->mMargin.ConvertTo(lineWM, frameWM).IEnd(lineWM);
+                          pfd->mMargin.IEnd(lineWM);
 
   // Count the number of non-placeholder frames on the line...
   if (pfd->mFrame->GetType() == nsGkAtoms::placeholderFrame) {
@@ -1507,7 +1509,6 @@ nsLineLayout::PlaceTopBottomFrames(PerSpanData* psd,
 #ifdef DEBUG
     NS_ASSERTION(0xFF != pfd->mBlockDirAlign, "umr");
 #endif
-    WritingMode frameWM = pfd->mFrame->GetWritingMode();
     WritingMode lineWM = mRootSpan->mWritingMode;
     nscoord containerWidth = ContainerWidthForSpan(psd);
     switch (pfd->mBlockDirAlign) {
@@ -1517,7 +1518,7 @@ nsLineLayout::PlaceTopBottomFrames(PerSpanData* psd,
         }
         else {
           pfd->mBounds.BStart(lineWM) =
-            -aDistanceFromStart + pfd->mMargin.BStart(frameWM);
+            -aDistanceFromStart + pfd->mMargin.BStart(lineWM);
         }
         pfd->mFrame->SetRect(lineWM, pfd->mBounds, containerWidth);
 #ifdef NOISY_BLOCKDIR_ALIGN
@@ -1525,7 +1526,7 @@ nsLineLayout::PlaceTopBottomFrames(PerSpanData* psd,
         nsFrame::ListTag(stdout, pfd->mFrame);
         printf(": y=%d dTop=%d [bp.top=%d topLeading=%d]\n",
                pfd->mBounds.BStart(lineWM), aDistanceFromStart,
-               span ? pfd->mBorderPadding.BStart(frameWM) : 0,
+               span ? pfd->mBorderPadding.BStart(lineWM) : 0,
                span ? span->mBStartLeading : 0);
 #endif
         break;
@@ -1537,7 +1538,7 @@ nsLineLayout::PlaceTopBottomFrames(PerSpanData* psd,
         }
         else {
           pfd->mBounds.BStart(lineWM) = -aDistanceFromStart + aLineBSize -
-            pfd->mMargin.BEnd(frameWM) - pfd->mBounds.BSize(lineWM);
+            pfd->mMargin.BEnd(lineWM) - pfd->mBounds.BSize(lineWM);
         }
         pfd->mFrame->SetRect(lineWM, pfd->mBounds, containerWidth);
 #ifdef NOISY_BLOCKDIR_ALIGN
@@ -1596,7 +1597,6 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
   // - it has a prev-in-flow
   // - it has no next in flow
   // - it's zero sized
-  WritingMode frameWM = spanFramePFD->mFrame->GetWritingMode();
   WritingMode lineWM = mRootSpan->mWritingMode;
   bool emptyContinuation = psd != mRootSpan &&
     spanFrame->GetPrevInFlow() && !spanFrame->GetNextInFlow() &&
@@ -1614,14 +1614,14 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
   if (psd != mRootSpan) {
     WritingMode frameWM = spanFramePFD->mFrame->GetWritingMode();
     printf(" bp=%d,%d,%d,%d margin=%d,%d,%d,%d",
-           spanFramePFD->mBorderPadding.Top(frameWM),
-           spanFramePFD->mBorderPadding.Right(frameWM),
-           spanFramePFD->mBorderPadding.Bottom(frameWM),
-           spanFramePFD->mBorderPadding.Left(frameWM),
-           spanFramePFD->mMargin.Top(frameWM),
-           spanFramePFD->mMargin.Right(frameWM),
-           spanFramePFD->mMargin.Bottom(frameWM),
-           spanFramePFD->mMargin.Left(frameWM));
+           spanFramePFD->mBorderPadding.Top(lineWM),
+           spanFramePFD->mBorderPadding.Right(lineWM),
+           spanFramePFD->mBorderPadding.Bottom(lineWM),
+           spanFramePFD->mBorderPadding.Left(lineWM),
+           spanFramePFD->mMargin.Top(lineWM),
+           spanFramePFD->mMargin.Right(lineWM),
+           spanFramePFD->mMargin.Bottom(lineWM),
+           spanFramePFD->mMargin.Left(lineWM));
   }
   printf("\n");
 #endif
@@ -1723,8 +1723,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
                      mBlockReflowState->ComputedHeight(),
                      inflation);
     nscoord contentBSize = spanFramePFD->mBounds.BSize(lineWM) -
-      spanFramePFD->mBorderPadding.BStart(frameWM) -
-      spanFramePFD->mBorderPadding.BEnd(frameWM);
+      spanFramePFD->mBorderPadding.BStartEnd(lineWM);
 
     // Special-case for a ::first-letter frame, set the line height to
     // the frame block size if the user has left line-height == normal
@@ -1757,7 +1756,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
       // If there are child frames in this span that stick out of this area
       // then the minBCoord and maxBCoord are updated by the amount of logical
       // blockSize that is outside this range.
-      minBCoord = spanFramePFD->mBorderPadding.BStart(frameWM) -
+      minBCoord = spanFramePFD->mBorderPadding.BStart(lineWM) -
                   psd->mBStartLeading;
       maxBCoord = minBCoord + psd->mLogicalBSize;
     }
@@ -1774,8 +1773,8 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
     printf(": baseLine=%d logicalBSize=%d topLeading=%d h=%d bp=%d,%d zeroEffectiveSpanBox=%s\n",
            baselineBCoord, psd->mLogicalBSize, psd->mBStartLeading,
            spanFramePFD->mBounds.BSize(lineWM),
-           spanFramePFD->mBorderPadding.Top(frameWM),
-           spanFramePFD->mBorderPadding.Bottom(frameWM),
+           spanFramePFD->mBorderPadding.Top(lineWM),
+           spanFramePFD->mBorderPadding.Bottom(lineWM),
            zeroEffectiveSpanBox ? "yes" : "no");
 #endif
   }
@@ -1785,7 +1784,6 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
   PerFrameData* pfd = psd->mFirstFrame;
   while (nullptr != pfd) {
     nsIFrame* frame = pfd->mFrame;
-    WritingMode frameWM = frame->GetWritingMode();
 
     // sanity check (see bug 105168, non-reproducible crashes from null frame)
     NS_ASSERTION(frame, "null frame in PerFrameData - something is very very bad");
@@ -1805,7 +1803,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
       // For other elements the logical block size is the same as the
       // frame's block size plus its margins.
       logicalBSize = pfd->mBounds.BSize(lineWM) +
-                     pfd->mMargin.BStartEnd(frameWM);
+                     pfd->mMargin.BStartEnd(lineWM);
       if (logicalBSize < 0 &&
           mPresContext->CompatibilityMode() == eCompatibility_NavQuirks) {
         pfd->mAscent -= logicalBSize;
@@ -1834,42 +1832,65 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
 #endif
 
     if (verticalAlignEnum != nsIFrame::eInvalidVerticalAlign) {
+      if (lineWM.IsVertical()) {
+        if (verticalAlignEnum == NS_STYLE_VERTICAL_ALIGN_MIDDLE) {
+          // For vertical writing mode where the dominant baseline is centered
+          // (i.e. text-orientation is not sideways-*), we remap 'middle' to
+          // 'middle-with-baseline' so that images align sensibly with the
+          // center-baseline-aligned text.
+          if (!lineWM.IsSideways()) {
+            verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_MIDDLE_WITH_BASELINE;
+          }
+        } else if (lineWM.IsLineInverted()) {
+          // Swap the meanings of top and bottom when line is inverted
+          // relative to block direction.
+          switch (verticalAlignEnum) {
+            case NS_STYLE_VERTICAL_ALIGN_TOP:
+              verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_BOTTOM;
+              break;
+            case NS_STYLE_VERTICAL_ALIGN_BOTTOM:
+              verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_TOP;
+              break;
+            case NS_STYLE_VERTICAL_ALIGN_TEXT_TOP:
+              verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM;
+              break;
+            case NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM:
+              verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_TEXT_TOP;
+              break;
+          }
+        }
+      }
+
+      // baseline coord that may be adjusted for script offset
+      nscoord revisedBaselineBCoord = baselineBCoord;
+
+      // For superscript and subscript, raise or lower the baseline of the box
+      // to the proper offset of the parent's box, then proceed as for BASELINE
+      if (verticalAlignEnum == NS_STYLE_VERTICAL_ALIGN_SUB ||
+          verticalAlignEnum == NS_STYLE_VERTICAL_ALIGN_SUPER) {
+        revisedBaselineBCoord += lineWM.FlowRelativeToLineRelativeFactor() *
+          (verticalAlignEnum == NS_STYLE_VERTICAL_ALIGN_SUB
+            ? fm->SubscriptOffset() : -fm->SuperscriptOffset());
+        verticalAlignEnum = NS_STYLE_VERTICAL_ALIGN_BASELINE;
+      }
+
       switch (verticalAlignEnum) {
         default:
         case NS_STYLE_VERTICAL_ALIGN_BASELINE:
-        {
-          // The element's baseline is aligned with the baseline of
-          // the parent.
-          pfd->mBounds.BStart(lineWM) = baselineBCoord - pfd->mAscent;
+          if (lineWM.IsVertical() && !lineWM.IsSideways()) {
+            if (frameSpan) {
+              pfd->mBounds.BStart(lineWM) = revisedBaselineBCoord -
+                                            pfd->mBounds.BSize(lineWM)/2;
+            } else {
+              pfd->mBounds.BStart(lineWM) = revisedBaselineBCoord -
+                                            logicalBSize/2 +
+                                            pfd->mMargin.BStart(lineWM);
+            }
+          } else {
+            pfd->mBounds.BStart(lineWM) = revisedBaselineBCoord - pfd->mAscent;
+          }
           pfd->mBlockDirAlign = VALIGN_OTHER;
           break;
-        }
-
-        case NS_STYLE_VERTICAL_ALIGN_SUB:
-        {
-          // Lower the baseline of the box to the subscript offset
-          // of the parent's box. This is identical to the baseline
-          // alignment except for the addition of the subscript
-          // offset to the baseline BCoord.
-          nscoord parentSubscript = fm->SubscriptOffset();
-          nscoord revisedBaselineBCoord = baselineBCoord + parentSubscript;
-          pfd->mBounds.BStart(lineWM) = revisedBaselineBCoord - pfd->mAscent;
-          pfd->mBlockDirAlign = VALIGN_OTHER;
-          break;
-        }
-
-        case NS_STYLE_VERTICAL_ALIGN_SUPER:
-        {
-          // Raise the baseline of the box to the superscript offset
-          // of the parent's box. This is identical to the baseline
-          // alignment except for the subtraction of the superscript
-          // offset to the baseline BCoord.
-          nscoord parentSuperscript = fm->SuperscriptOffset();
-          nscoord revisedBaselineBCoord = baselineBCoord - parentSuperscript;
-          pfd->mBounds.BStart(lineWM) = revisedBaselineBCoord - pfd->mAscent;
-          pfd->mBlockDirAlign = VALIGN_OTHER;
-          break;
-        }
 
         case NS_STYLE_VERTICAL_ALIGN_TOP:
         {
@@ -1905,7 +1926,8 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
         {
           // Align the midpoint of the frame with 1/2 the parents
           // x-height above the baseline.
-          nscoord parentXHeight = fm->XHeight();
+          nscoord parentXHeight =
+            lineWM.FlowRelativeToLineRelativeFactor() * fm->XHeight();
           if (frameSpan) {
             pfd->mBounds.BStart(lineWM) = baselineBCoord -
               (parentXHeight + pfd->mBounds.BSize(lineWM))/2;
@@ -1913,7 +1935,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
           else {
             pfd->mBounds.BStart(lineWM) = baselineBCoord -
               (parentXHeight + logicalBSize)/2 +
-              pfd->mMargin.BStart(frameWM);
+              pfd->mMargin.BStart(lineWM);
           }
           pfd->mBlockDirAlign = VALIGN_OTHER;
           break;
@@ -1925,14 +1947,15 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
           // the parent element's text.
           // XXX For vertical text we will need a new API to get the logical
           //     max-ascent here
-          nscoord parentAscent = fm->MaxAscent();
+          nscoord parentAscent =
+            lineWM.IsLineInverted() ? fm->MaxDescent() : fm->MaxAscent();
           if (frameSpan) {
             pfd->mBounds.BStart(lineWM) = baselineBCoord - parentAscent -
-              pfd->mBorderPadding.BStart(frameWM) + frameSpan->mBStartLeading;
+              pfd->mBorderPadding.BStart(lineWM) + frameSpan->mBStartLeading;
           }
           else {
             pfd->mBounds.BStart(lineWM) = baselineBCoord - parentAscent +
-                                          pfd->mMargin.BStart(frameWM);
+                                          pfd->mMargin.BStart(lineWM);
           }
           pfd->mBlockDirAlign = VALIGN_OTHER;
           break;
@@ -1942,17 +1965,18 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
         {
           // The bottom of the logical box is aligned with the
           // bottom of the parent elements text.
-          nscoord parentDescent = fm->MaxDescent();
+          nscoord parentDescent =
+            lineWM.IsLineInverted() ? fm->MaxAscent() : fm->MaxDescent();
           if (frameSpan) {
             pfd->mBounds.BStart(lineWM) = baselineBCoord + parentDescent -
                                           pfd->mBounds.BSize(lineWM) +
-                                          pfd->mBorderPadding.BEnd(frameWM) -
+                                          pfd->mBorderPadding.BEnd(lineWM) -
                                           frameSpan->mBEndLeading;
           }
           else {
             pfd->mBounds.BStart(lineWM) = baselineBCoord + parentDescent -
                                           pfd->mBounds.BSize(lineWM) -
-                                          pfd->mMargin.BEnd(frameWM);
+                                          pfd->mMargin.BEnd(lineWM);
           }
           pfd->mBlockDirAlign = VALIGN_OTHER;
           break;
@@ -1967,7 +1991,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
           }
           else {
             pfd->mBounds.BStart(lineWM) = baselineBCoord - logicalBSize/2 +
-                                          pfd->mMargin.BStart(frameWM);
+                                          pfd->mMargin.BStart(lineWM);
           }
           pfd->mBlockDirAlign = VALIGN_OTHER;
           break;
@@ -2033,7 +2057,7 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
         }
         else {
           blockStart = pfd->mBounds.BStart(lineWM) -
-                       pfd->mMargin.BStart(frameWM);
+                       pfd->mMargin.BStart(lineWM);
           blockEnd = blockStart + logicalBSize;
         }
         if (!preMode &&
@@ -2052,8 +2076,8 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
 #ifdef NOISY_BLOCKDIR_ALIGN
         printf("     [frame]raw: a=%d h=%d bp=%d,%d logical: h=%d leading=%d y=%d minBCoord=%d maxBCoord=%d\n",
                pfd->mAscent, pfd->mBounds.BSize(lineWM),
-               pfd->mBorderPadding.Top(frameWM),
-               pfd->mBorderPadding.Bottom(frameWM),
+               pfd->mBorderPadding.Top(lineWM),
+               pfd->mBorderPadding.Bottom(lineWM),
                logicalBSize,
                frameSpan ? frameSpan->mBStartLeading : 0,
                pfd->mBounds.BStart(lineWM), minBCoord, maxBCoord);
@@ -2102,7 +2126,8 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
 #endif
         nscoord minimumLineBSize = mMinLineBSize;
         nscoord blockStart =
-          -nsLayoutUtils::GetCenteredFontBaseline(fm, minimumLineBSize);
+          -nsLayoutUtils::GetCenteredFontBaseline(fm, minimumLineBSize,
+                                                  lineWM.IsLineInverted());
         nscoord blockEnd = blockStart + minimumLineBSize;
 
         if (blockStart < minBCoord) minBCoord = blockStart;
@@ -2144,8 +2169,8 @@ nsLineLayout::VerticalAlignFrames(PerSpanData* psd)
            spanFramePFD->mAscent,
            psd->mLogicalBSize, psd->mBStartLeading, psd->mBEndLeading);
 #endif
-    nscoord goodMinBCoord = spanFramePFD->mBorderPadding.BStart(frameWM) -
-                            psd->mBStartLeading;
+    nscoord goodMinBCoord =
+      spanFramePFD->mBorderPadding.BStart(lineWM) - psd->mBStartLeading;
     nscoord goodMaxBCoord = goodMinBCoord + psd->mLogicalBSize;
 
     // For cases like the one in bug 714519 (text-decoration placement
@@ -2354,16 +2379,19 @@ nsLineLayout::TrimTrailingWhiteSpaceIn(PerSpanData* psd,
       nsFrame::ListTag(stdout, pfd->mFrame);
       printf(" returned %d\n", trimOutput.mDeltaWidth);
 #endif
-      if (trimOutput.mLastCharIsJustifiable && pfd->mJustificationNumSpaces > 0) {
-        pfd->mJustificationNumSpaces--;
-      }
-      
+
       if (trimOutput.mChanged) {
         pfd->SetFlag(PFD_RECOMPUTEOVERFLOW, true);
       }
 
+      // Delta width not being zero means that
+      // there is trimmed space in the frame.
       if (trimOutput.mDeltaWidth) {
         pfd->mBounds.ISize(lineWM) -= trimOutput.mDeltaWidth;
+
+        // If any trailing space is trimmed, the justification opportunity
+        // generated by the space should be removed as well.
+        pfd->mJustificationInfo.CancelOpportunityForTrimmedSpace();
 
         // See if the text frame has already been placed in its parent
         if (psd != mRootSpan) {
@@ -2417,43 +2445,71 @@ nsLineLayout::TrimTrailingWhiteSpace()
   return 0 != deltaISize;
 }
 
-void
-nsLineLayout::ComputeJustificationWeights(PerSpanData* aPSD,
-                                          int32_t* aNumSpaces,
-                                          int32_t* aNumLetters)
+struct nsLineLayout::JustificationComputationState
+{
+  PerFrameData* mLastParticipant;
+};
+
+/**
+ * This function returns the total number of
+ * expansion opportunities in the given span.
+ */
+int32_t
+nsLineLayout::ComputeFrameJustification(PerSpanData* aPSD,
+                                        JustificationComputationState& aState)
 {
   NS_ASSERTION(aPSD, "null arg");
-  NS_ASSERTION(aNumSpaces, "null arg");
-  NS_ASSERTION(aNumLetters, "null arg");
-  int32_t numSpaces = 0;
-  int32_t numLetters = 0;
+  NS_ASSERTION(!aState.mLastParticipant || !aState.mLastParticipant->mSpan,
+               "Last participant shall always be a leaf frame");
+  int32_t result = 0;
 
-  for (PerFrameData* pfd = aPSD->mFirstFrame; pfd != nullptr; pfd = pfd->mNext) {
-
-    if (true == pfd->GetFlag(PFD_ISTEXTFRAME)) {
-      numSpaces += pfd->mJustificationNumSpaces;
-      numLetters += pfd->mJustificationNumLetters;
+  for (PerFrameData* pfd = aPSD->mFirstFrame; pfd; pfd = pfd->mNext) {
+    if (!pfd->ParticipatesInJustification()) {
+      continue;
     }
-    else if (pfd->mSpan != nullptr) {
-      int32_t spanSpaces;
-      int32_t spanLetters;
 
-      ComputeJustificationWeights(pfd->mSpan, &spanSpaces, &spanLetters);
+    if (pfd->mSpan) {
+      PerSpanData* span = pfd->mSpan;
+      result += ComputeFrameJustification(span, aState);
+    } else {
+      const auto& info = pfd->mJustificationInfo;
+      if (pfd->GetFlag(PFD_ISTEXTFRAME)) {
+        result += info.mInnerOpportunities;
+      }
 
-      numSpaces += spanSpaces;
-      numLetters += spanLetters;
+      PerFrameData* prev = aState.mLastParticipant;
+      if (prev) {
+        auto& assign = pfd->mJustificationAssignment;
+        auto& prevAssign = prev->mJustificationAssignment;
+        const auto& prevInfo = prev->mJustificationInfo;
+
+        if (info.mIsStartJustifiable || prevInfo.mIsEndJustifiable) {
+          result++;
+          if (!info.mIsStartJustifiable) {
+            prevAssign.mGapsAtEnd = 2;
+            assign.mGapsAtStart = 0;
+          } else if (!prevInfo.mIsEndJustifiable) {
+            prevAssign.mGapsAtEnd = 0;
+            assign.mGapsAtStart = 2;
+          } else {
+            prevAssign.mGapsAtEnd = 1;
+            assign.mGapsAtStart = 1;
+          }
+        }
+      }
+
+      aState.mLastParticipant = pfd;
     }
   }
 
-  *aNumSpaces = numSpaces;
-  *aNumLetters = numLetters;
+  return result;
 }
 
 nscoord 
-nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD, FrameJustificationState* aState)
+nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD,
+                                      JustificationApplicationState& aState)
 {
   NS_ASSERTION(aPSD, "null arg");
-  NS_ASSERTION(aState, "null arg");
 
   nscoord deltaICoord = 0;
   for (PerFrameData* pfd = aPSD->mFirstFrame; pfd != nullptr; pfd = pfd->mNext) {
@@ -2465,39 +2521,23 @@ nsLineLayout::ApplyFrameJustification(PerSpanData* aPSD, FrameJustificationState
       pfd->mBounds.IStart(lineWM) += deltaICoord;
 
       if (true == pfd->GetFlag(PFD_ISTEXTFRAME)) {
-        if (aState->mTotalWidthForSpaces > 0 &&
-            aState->mTotalNumSpaces > 0) {
-          aState->mNumSpacesProcessed += pfd->mJustificationNumSpaces;
-
-          nscoord newAllocatedWidthForSpaces =
-            (aState->mTotalWidthForSpaces*aState->mNumSpacesProcessed)
-              /aState->mTotalNumSpaces;
-          
-          dw += newAllocatedWidthForSpaces - aState->mWidthForSpacesProcessed;
-
-          aState->mWidthForSpacesProcessed = newAllocatedWidthForSpaces;
+        if (aState.IsJustifiable()) {
+          // Set corresponding justification gaps here, so that the
+          // text frame knows how it should add gaps at its sides.
+          const auto& info = pfd->mJustificationInfo;
+          const auto& assign = pfd->mJustificationAssignment;
+          auto textFrame = static_cast<nsTextFrame*>(pfd->mFrame);
+          textFrame->AssignJustificationGaps(assign);
+          dw = aState.Consume(JustificationUtils::CountGaps(info, assign));
         }
 
-        if (aState->mTotalWidthForLetters > 0 &&
-            aState->mTotalNumLetters > 0) {
-          aState->mNumLettersProcessed += pfd->mJustificationNumLetters;
-
-          nscoord newAllocatedWidthForLetters =
-            (aState->mTotalWidthForLetters*aState->mNumLettersProcessed)
-              /aState->mTotalNumLetters;
-          
-          dw += newAllocatedWidthForLetters - aState->mWidthForLettersProcessed;
-
-          aState->mWidthForLettersProcessed = newAllocatedWidthForLetters;
-        }
-        
         if (dw) {
           pfd->SetFlag(PFD_RECOMPUTEOVERFLOW, true);
         }
       }
       else {
         if (nullptr != pfd->mSpan) {
-          dw += ApplyFrameJustification(pfd->mSpan, aState);
+          dw = ApplyFrameJustification(pfd->mSpan, aState);
         }
       }
 
@@ -2558,24 +2598,29 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
       !(mBlockReflowState->frame->IsSVGText())) {
 
     switch (textAlign) {
-      case NS_STYLE_TEXT_ALIGN_JUSTIFY:
-        int32_t numSpaces;
-        int32_t numLetters;
-
-        ComputeJustificationWeights(psd, &numSpaces, &numLetters);
-
-        if (numSpaces > 0) {
-          FrameJustificationState state =
-            { numSpaces, numLetters, remainingISize, 0, 0, 0, 0, 0 };
+      case NS_STYLE_TEXT_ALIGN_JUSTIFY: {
+        JustificationComputationState computeState = {
+          nullptr // mLastParticipant
+        };
+        int32_t opportunities = ComputeFrameJustification(psd, computeState);
+        if (opportunities > 0) {
+          JustificationApplicationState applyState(
+              opportunities * 2, remainingISize);
 
           // Apply the justification, and make sure to update our linebox
           // width to account for it.
-          aLine->ExpandBy(ApplyFrameJustification(psd, &state),
+          aLine->ExpandBy(ApplyFrameJustification(psd, applyState),
                           ContainerWidthForSpan(psd));
+
+          MOZ_ASSERT(applyState.mGaps.mHandled == applyState.mGaps.mCount,
+                     "Unprocessed justification gaps");
+          MOZ_ASSERT(applyState.mWidth.mConsumed == applyState.mWidth.mAvailable,
+                     "Unprocessed justification width");
           break;
         }
         // Fall through to the default case if we could not justify to fill
         // the space.
+      }
 
       case NS_STYLE_TEXT_ALIGN_DEFAULT:
         // default alignment is to start edge so do nothing

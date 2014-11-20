@@ -17,6 +17,14 @@ loop.shared.utils = (function(mozL10n) {
     AUDIO_ONLY: "audio"
   };
 
+  var FAILURE_REASONS = {
+    MEDIA_DENIED: "reason-media-denied",
+    COULD_NOT_CONNECT: "reason-could-not-connect",
+    NETWORK_DISCONNECTED: "reason-network-disconnected",
+    EXPIRED_OR_INVALID: "reason-expired-or-invalid",
+    UNKNOWN: "reason-unknown"
+  };
+
   /**
    * Format a given date into an l10n-friendly string.
    *
@@ -40,7 +48,7 @@ loop.shared.utils = (function(mozL10n) {
    */
   function getBoolPreference(prefName) {
     if (navigator.mozLoop) {
-      return !!navigator.mozLoop.getLoopBoolPref(prefName);
+      return !!navigator.mozLoop.getLoopPref(prefName);
     }
 
     return !!localStorage.getItem(prefName);
@@ -102,7 +110,7 @@ loop.shared.utils = (function(mozL10n) {
       mozL10n.get("share_email_body4", {
         callUrl: callUrl,
         clientShortname: mozL10n.get("clientShortname2"),
-        learnMoreUrl: navigator.mozLoop.getLoopCharPref("learnMoreUrl")
+        learnMoreUrl: navigator.mozLoop.getLoopPref("learnMoreUrl")
       }),
       recipient
     );
@@ -110,6 +118,7 @@ loop.shared.utils = (function(mozL10n) {
 
   return {
     CALL_TYPES: CALL_TYPES,
+    FAILURE_REASONS: FAILURE_REASONS,
     Helper: Helper,
     composeCallUrlEmail: composeCallUrlEmail,
     formatDate: formatDate,

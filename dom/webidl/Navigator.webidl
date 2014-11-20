@@ -19,7 +19,7 @@
  */
 
 // http://www.whatwg.org/specs/web-apps/current-work/#the-navigator-object
-[HeaderFile="Navigator.h", NeedNewResolve]
+[HeaderFile="Navigator.h", NeedResolve]
 interface Navigator {
   // objects implementing this interface also implement the interfaces given below
 };
@@ -397,3 +397,12 @@ partial interface Navigator {
   [Pref="dom.tv.enabled", CheckPermissions="tv", Func="Navigator::HasTVSupport"]
   readonly attribute TVManager? tv;
 };
+
+#ifdef MOZ_EME
+partial interface Navigator {
+  [Pref="media.eme.enabled", Throws, NewObject]
+  Promise<MediaKeySystemAccess>
+  requestMediaKeySystemAccess(DOMString keySystem,
+                              optional sequence<MediaKeySystemOptions> supportedConfigurations);
+};
+#endif

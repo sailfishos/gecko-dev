@@ -255,6 +255,9 @@ class MNode : public TempObject
     virtual void dump() const = 0;
 
   protected:
+    // Need visibility on getUseFor to avoid O(n^2) complexity.
+    friend void AssertBasicGraphCoherency(MIRGraph &graph);
+
     // Gets the MUse corresponding to given operand.
     virtual MUse *getUseFor(size_t index) = 0;
     virtual const MUse *getUseFor(size_t index) const = 0;
@@ -2646,6 +2649,50 @@ class MNewArrayCopyOnWrite : public MNullaryInstruction
     }
 };
 
+class MNewArrayDynamicLength
+  : public MUnaryInstruction,
+    public IntPolicy<0>::Data
+{
+    AlwaysTenured<ArrayObject*> templateObject_;
+    gc::InitialHeap initialHeap_;
+
+    MNewArrayDynamicLength(types::CompilerConstraintList *constraints, ArrayObject *templateObject,
+                           gc::InitialHeap initialHeap, MDefinition *length)
+      : MUnaryInstruction(length),
+        templateObject_(templateObject),
+        initialHeap_(initialHeap)
+    {
+        setGuard(); // Need to throw if length is negative.
+        setResultType(MIRType_Object);
+        if (!templateObject->hasSingletonType())
+            setResultTypeSet(MakeSingletonTypeSet(constraints, templateObject));
+    }
+
+  public:
+    INSTRUCTION_HEADER(NewArrayDynamicLength)
+
+    static MNewArrayDynamicLength *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+                                       ArrayObject *templateObject, gc::InitialHeap initialHeap,
+                                       MDefinition *length)
+    {
+        return new(alloc) MNewArrayDynamicLength(constraints, templateObject, initialHeap, length);
+    }
+
+    MDefinition *length() const {
+        return getOperand(0);
+    }
+    ArrayObject *templateObject() const {
+        return templateObject_;
+    }
+    gc::InitialHeap initialHeap() const {
+        return initialHeap_;
+    }
+
+    virtual AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
 class MNewObject : public MUnaryInstruction
 {
     gc::InitialHeap initialHeap_;
@@ -3706,6 +3753,11 @@ class MCompare
     }
     bool isFloat32Comparison() const {
         return compareType() == Compare_Float32;
+    }
+    bool isNumericComparison() const {
+        return isInt32Comparison() ||
+               isDoubleComparison() ||
+               isFloat32Comparison();
     }
     void setCompareType(CompareType type) {
         compareType_ = type;
@@ -5319,6 +5371,11 @@ class MHypot
         return true;
     }
 
+    bool writeRecoverData(CompactBufferWriter &writer) const;
+    bool canRecoverOnBailout() const {
+        return true;
+    }
+
     ALLOW_CLONE(MHypot)
 };
 
@@ -6895,6 +6952,47 @@ class MStringReplace
     }
 };
 
+class MSubstr
+  : public MTernaryInstruction,
+    public Mix3Policy<StringPolicy<0>, IntPolicy<1>, IntPolicy<2>>
+{
+  private:
+
+    MSubstr(MDefinition *string, MDefinition *begin, MDefinition *length)
+      : MTernaryInstruction(string, begin, length)
+    {
+        setResultType(MIRType_String);
+    }
+
+  public:
+    INSTRUCTION_HEADER(Substr);
+
+    static MSubstr *New(TempAllocator &alloc, MDefinition *string, MDefinition *begin,
+                        MDefinition *length)
+    {
+        return new(alloc) MSubstr(string, begin, length);
+    }
+
+    MDefinition *string() {
+        return getOperand(0);
+    }
+
+    MDefinition *begin() {
+        return getOperand(1);
+    }
+
+    MDefinition *length() {
+        return getOperand(2);
+    }
+
+    bool congruentTo(const MDefinition *ins) const {
+        return congruentIfOperandsEqual(ins);
+    }
+    AliasSet getAliasSet() const {
+        return AliasSet::None();
+    }
+};
+
 struct LambdaFunctionInfo
 {
     // The functions used in lambdas are the canonical original function in
@@ -7438,9 +7536,12 @@ class MTypedObjectElements
   : public MUnaryInstruction,
     public SingleObjectPolicy::Data
 {
+    bool definitelyOutline_;
+
   private:
-    explicit MTypedObjectElements(MDefinition *object)
-      : MUnaryInstruction(object)
+    explicit MTypedObjectElements(MDefinition *object, bool definitelyOutline)
+      : MUnaryInstruction(object),
+        definitelyOutline_(definitelyOutline)
     {
         setResultType(MIRType_Elements);
         setMovable();
@@ -7449,15 +7550,24 @@ class MTypedObjectElements
   public:
     INSTRUCTION_HEADER(TypedObjectElements)
 
-    static MTypedObjectElements *New(TempAllocator &alloc, MDefinition *object) {
-        return new(alloc) MTypedObjectElements(object);
+    static MTypedObjectElements *New(TempAllocator &alloc, MDefinition *object,
+                                     bool definitelyOutline) {
+        return new(alloc) MTypedObjectElements(object, definitelyOutline);
     }
 
     MDefinition *object() const {
         return getOperand(0);
     }
+    bool definitelyOutline() const {
+        return definitelyOutline_;
+    }
     bool congruentTo(const MDefinition *ins) const {
-        return congruentIfOperandsEqual(ins);
+        if (!ins->isTypedObjectElements())
+            return false;
+        const MTypedObjectElements *other = ins->toTypedObjectElements();
+        if (other->definitelyOutline() != definitelyOutline())
+            return false;
+        return congruentIfOperandsEqual(other);
     }
     AliasSet getAliasSet() const {
         return AliasSet::Load(AliasSet::ObjectFields);
@@ -7668,6 +7778,17 @@ class MBoundsCheckLower
     void collectRangeInfoPreTrunc();
 };
 
+// Instructions which access an object's elements can either do so on a
+// definition accessing that elements pointer, or on the object itself, if its
+// elements are inline. In the latter case there must be an offset associated
+// with the access.
+static inline bool
+IsValidElementsType(MDefinition *elements, int32_t offsetAdjustment)
+{
+    return elements->type() == MIRType_Elements ||
+           (elements->type() == MIRType_Object && offsetAdjustment != 0);
+}
+
 // Load a value from a dense array's element vector and does a hole check if the
 // array is not known to be packed.
 class MLoadElement
@@ -7676,11 +7797,14 @@ class MLoadElement
 {
     bool needsHoleCheck_;
     bool loadDoubles_;
+    int32_t offsetAdjustment_;
 
-    MLoadElement(MDefinition *elements, MDefinition *index, bool needsHoleCheck, bool loadDoubles)
+    MLoadElement(MDefinition *elements, MDefinition *index,
+                 bool needsHoleCheck, bool loadDoubles, int32_t offsetAdjustment)
       : MBinaryInstruction(elements, index),
         needsHoleCheck_(needsHoleCheck),
-        loadDoubles_(loadDoubles)
+        loadDoubles_(loadDoubles),
+        offsetAdjustment_(offsetAdjustment)
     {
         if (needsHoleCheck) {
             // Uses may be optimized away based on this instruction's result
@@ -7690,7 +7814,7 @@ class MLoadElement
         }
         setResultType(MIRType_Value);
         setMovable();
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
     }
 
@@ -7698,8 +7822,8 @@ class MLoadElement
     INSTRUCTION_HEADER(LoadElement)
 
     static MLoadElement *New(TempAllocator &alloc, MDefinition *elements, MDefinition *index,
-                             bool needsHoleCheck, bool loadDoubles) {
-        return new(alloc) MLoadElement(elements, index, needsHoleCheck, loadDoubles);
+                             bool needsHoleCheck, bool loadDoubles, int32_t offsetAdjustment = 0) {
+        return new(alloc) MLoadElement(elements, index, needsHoleCheck, loadDoubles, offsetAdjustment);
     }
 
     MDefinition *elements() const {
@@ -7714,6 +7838,9 @@ class MLoadElement
     bool loadDoubles() const {
         return loadDoubles_;
     }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
+    }
     bool fallible() const {
         return needsHoleCheck();
     }
@@ -7724,6 +7851,8 @@ class MLoadElement
         if (needsHoleCheck() != other->needsHoleCheck())
             return false;
         if (loadDoubles() != other->loadDoubles())
+            return false;
+        if (offsetAdjustment() != other->offsetAdjustment())
             return false;
         return congruentIfOperandsEqual(other);
     }
@@ -7798,14 +7927,19 @@ class MLoadElementHole
     ALLOW_CLONE(MLoadElementHole)
 };
 
-class MLoadUnboxedObjectOrNull : public MBinaryInstruction
+class MLoadUnboxedObjectOrNull
+  : public MBinaryInstruction,
+    public SingleObjectPolicy::Data
 {
-    MLoadUnboxedObjectOrNull(MDefinition *elements, MDefinition *index)
-      : MBinaryInstruction(elements, index)
+    int32_t offsetAdjustment_;
+
+    MLoadUnboxedObjectOrNull(MDefinition *elements, MDefinition *index, int32_t offsetAdjustment)
+      : MBinaryInstruction(elements, index),
+        offsetAdjustment_(offsetAdjustment)
     {
         setResultType(MIRType_Value);
         setMovable();
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
     }
 
@@ -7813,8 +7947,9 @@ class MLoadUnboxedObjectOrNull : public MBinaryInstruction
     INSTRUCTION_HEADER(LoadUnboxedObjectOrNull)
 
     static MLoadUnboxedObjectOrNull *New(TempAllocator &alloc,
-                                         MDefinition *elements, MDefinition *index) {
-        return new(alloc) MLoadUnboxedObjectOrNull(elements, index);
+                                         MDefinition *elements, MDefinition *index,
+                                         int32_t offsetAdjustment) {
+        return new(alloc) MLoadUnboxedObjectOrNull(elements, index, offsetAdjustment);
     }
 
     MDefinition *elements() const {
@@ -7823,8 +7958,16 @@ class MLoadUnboxedObjectOrNull : public MBinaryInstruction
     MDefinition *index() const {
         return getOperand(1);
     }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
+    }
     bool congruentTo(const MDefinition *ins) const {
-        return congruentIfOperandsEqual(ins);
+        if (!ins->isLoadUnboxedObjectOrNull())
+            return false;
+        const MLoadUnboxedObjectOrNull *other = ins->toLoadUnboxedObjectOrNull();
+        if (offsetAdjustment() != other->offsetAdjustment())
+            return false;
+        return congruentIfOperandsEqual(other);
     }
     AliasSet getAliasSet() const {
         return AliasSet::Load(AliasSet::Element);
@@ -7833,14 +7976,19 @@ class MLoadUnboxedObjectOrNull : public MBinaryInstruction
     ALLOW_CLONE(MLoadUnboxedObjectOrNull)
 };
 
-class MLoadUnboxedString : public MBinaryInstruction
+class MLoadUnboxedString
+  : public MBinaryInstruction,
+    public SingleObjectPolicy::Data
 {
-    MLoadUnboxedString(MDefinition *elements, MDefinition *index)
-      : MBinaryInstruction(elements, index)
+    int32_t offsetAdjustment_;
+
+    MLoadUnboxedString(MDefinition *elements, MDefinition *index, int32_t offsetAdjustment)
+      : MBinaryInstruction(elements, index),
+        offsetAdjustment_(offsetAdjustment)
     {
         setResultType(MIRType_String);
         setMovable();
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
     }
 
@@ -7848,8 +7996,8 @@ class MLoadUnboxedString : public MBinaryInstruction
     INSTRUCTION_HEADER(LoadUnboxedString)
 
     static MLoadUnboxedString *New(TempAllocator &alloc,
-                                   MDefinition *elements, MDefinition *index) {
-        return new(alloc) MLoadUnboxedString(elements, index);
+                                   MDefinition *elements, MDefinition *index, int32_t offsetAdjustment) {
+        return new(alloc) MLoadUnboxedString(elements, index, offsetAdjustment);
     }
 
     MDefinition *elements() const {
@@ -7858,7 +8006,15 @@ class MLoadUnboxedString : public MBinaryInstruction
     MDefinition *index() const {
         return getOperand(1);
     }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
+    }
     bool congruentTo(const MDefinition *ins) const {
+        if (!ins->isLoadUnboxedString())
+            return false;
+        const MLoadUnboxedString *other = ins->toLoadUnboxedString();
+        if (offsetAdjustment() != other->offsetAdjustment())
+            return false;
         return congruentIfOperandsEqual(ins);
     }
     AliasSet getAliasSet() const {
@@ -7910,13 +8066,16 @@ class MStoreElement
     public MixPolicy<SingleObjectPolicy, NoFloatPolicy<2> >::Data
 {
     bool needsHoleCheck_;
+    int32_t offsetAdjustment_;
 
-    MStoreElement(MDefinition *elements, MDefinition *index, MDefinition *value, bool needsHoleCheck) {
+    MStoreElement(MDefinition *elements, MDefinition *index, MDefinition *value,
+                  bool needsHoleCheck, int32_t offsetAdjustment) {
         initOperand(0, elements);
         initOperand(1, index);
         initOperand(2, value);
         needsHoleCheck_ = needsHoleCheck;
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        offsetAdjustment_ = offsetAdjustment;
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
     }
 
@@ -7924,8 +8083,9 @@ class MStoreElement
     INSTRUCTION_HEADER(StoreElement)
 
     static MStoreElement *New(TempAllocator &alloc, MDefinition *elements, MDefinition *index,
-                              MDefinition *value, bool needsHoleCheck) {
-        return new(alloc) MStoreElement(elements, index, value, needsHoleCheck);
+                              MDefinition *value,
+                              bool needsHoleCheck, int32_t offsetAdjustment = 0) {
+        return new(alloc) MStoreElement(elements, index, value, needsHoleCheck, offsetAdjustment);
     }
     MDefinition *elements() const {
         return getOperand(0);
@@ -7941,6 +8101,9 @@ class MStoreElement
     }
     bool needsHoleCheck() const {
         return needsHoleCheck_;
+    }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
     }
     bool fallible() const {
         return needsHoleCheck();
@@ -7997,17 +8160,25 @@ class MStoreElementHole
     ALLOW_CLONE(MStoreElementHole)
 };
 
-// Store an unboxed object or null pointer to a vector.
+// Store an unboxed object or null pointer to a v\ector.
 class MStoreUnboxedObjectOrNull
-  : public MAryInstruction<3>,
-    public ConvertToObjectOrNullPolicy<2>::Data
+  : public MAryInstruction<4>,
+    public StoreUnboxedObjectOrNullPolicy::Data
 {
-    MStoreUnboxedObjectOrNull(MDefinition *elements, MDefinition *index, MDefinition *value) {
+    int32_t offsetAdjustment_;
+
+    MStoreUnboxedObjectOrNull(MDefinition *elements, MDefinition *index,
+                              MDefinition *value, MDefinition *typedObj,
+                              int32_t offsetAdjustment)
+      : offsetAdjustment_(offsetAdjustment)
+    {
         initOperand(0, elements);
         initOperand(1, index);
         initOperand(2, value);
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        initOperand(3, typedObj);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
+        MOZ_ASSERT(typedObj->type() == MIRType_Object);
     }
 
   public:
@@ -8015,8 +8186,10 @@ class MStoreUnboxedObjectOrNull
 
     static MStoreUnboxedObjectOrNull *New(TempAllocator &alloc,
                                           MDefinition *elements, MDefinition *index,
-                                          MDefinition *value) {
-        return new(alloc) MStoreUnboxedObjectOrNull(elements, index, value);
+                                          MDefinition *value, MDefinition *typedObj,
+                                          int32_t offsetAdjustment) {
+        return new(alloc) MStoreUnboxedObjectOrNull(elements, index, value, typedObj,
+                                                    offsetAdjustment);
     }
     MDefinition *elements() const {
         return getOperand(0);
@@ -8027,9 +8200,20 @@ class MStoreUnboxedObjectOrNull
     MDefinition *value() const {
         return getOperand(2);
     }
+    MDefinition *typedObj() const {
+        return getOperand(3);
+    }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
+    }
     AliasSet getAliasSet() const {
         // Use AliasSet::Element for reference typed object fields.
         return AliasSet::Store(AliasSet::Element);
+    }
+
+    // For StoreUnboxedObjectOrNullPolicy.
+    void setValue(MDefinition *def) {
+        replaceOperand(2, def);
     }
 
     ALLOW_CLONE(MStoreUnboxedObjectOrNull)
@@ -8038,13 +8222,18 @@ class MStoreUnboxedObjectOrNull
 // Store an unboxed object or null pointer to a vector.
 class MStoreUnboxedString
   : public MAryInstruction<3>,
-    public ConvertToStringPolicy<2>::Data
+    public MixPolicy<SingleObjectPolicy, ConvertToStringPolicy<2> >::Data
 {
-    MStoreUnboxedString(MDefinition *elements, MDefinition *index, MDefinition *value) {
+    int32_t offsetAdjustment_;
+
+    MStoreUnboxedString(MDefinition *elements, MDefinition *index, MDefinition *value,
+                        int32_t offsetAdjustment)
+      : offsetAdjustment_(offsetAdjustment)
+    {
         initOperand(0, elements);
         initOperand(1, index);
         initOperand(2, value);
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
     }
 
@@ -8053,8 +8242,8 @@ class MStoreUnboxedString
 
     static MStoreUnboxedString *New(TempAllocator &alloc,
                                     MDefinition *elements, MDefinition *index,
-                                    MDefinition *value) {
-        return new(alloc) MStoreUnboxedString(elements, index, value);
+                                    MDefinition *value, int32_t offsetAdjustment) {
+        return new(alloc) MStoreUnboxedString(elements, index, value, offsetAdjustment);
     }
     MDefinition *elements() const {
         return getOperand(0);
@@ -8064,6 +8253,9 @@ class MStoreUnboxedString
     }
     MDefinition *value() const {
         return getOperand(2);
+    }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
     }
     AliasSet getAliasSet() const {
         // Use AliasSet::Element for reference typed object fields.
@@ -8239,23 +8431,27 @@ enum MemoryBarrierRequirement
 // Also see comments above MMemoryBarrier, below.
 
 class MLoadTypedArrayElement
-  : public MBinaryInstruction
+  : public MBinaryInstruction,
+    public SingleObjectPolicy::Data
 {
     Scalar::Type arrayType_;
     bool requiresBarrier_;
+    int32_t offsetAdjustment_;
 
     MLoadTypedArrayElement(MDefinition *elements, MDefinition *index,
-                           Scalar::Type arrayType, MemoryBarrierRequirement requiresBarrier)
+                           Scalar::Type arrayType, MemoryBarrierRequirement requiresBarrier,
+                           int32_t offsetAdjustment)
       : MBinaryInstruction(elements, index),
         arrayType_(arrayType),
-        requiresBarrier_(requiresBarrier == DoesRequireMemoryBarrier)
+        requiresBarrier_(requiresBarrier == DoesRequireMemoryBarrier),
+        offsetAdjustment_(offsetAdjustment)
     {
         setResultType(MIRType_Value);
         if (requiresBarrier_)
             setGuard();         // Not removable or movable
         else
             setMovable();
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
         MOZ_ASSERT(arrayType >= 0 && arrayType < Scalar::TypeMax);
     }
@@ -8265,9 +8461,11 @@ class MLoadTypedArrayElement
 
     static MLoadTypedArrayElement *New(TempAllocator &alloc, MDefinition *elements, MDefinition *index,
                                        Scalar::Type arrayType,
-                                       MemoryBarrierRequirement requiresBarrier=DoesNotRequireMemoryBarrier)
+                                       MemoryBarrierRequirement requiresBarrier=DoesNotRequireMemoryBarrier,
+                                       int32_t offsetAdjustment = 0)
     {
-        return new(alloc) MLoadTypedArrayElement(elements, index, arrayType, requiresBarrier);
+        return new(alloc) MLoadTypedArrayElement(elements, index, arrayType,
+                                                 requiresBarrier, offsetAdjustment);
     }
 
     Scalar::Type arrayType() const {
@@ -8286,6 +8484,9 @@ class MLoadTypedArrayElement
     MDefinition *index() const {
         return getOperand(1);
     }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
+    }
     AliasSet getAliasSet() const {
         // When a barrier is needed make the instruction effectful by
         // giving it a "store" effect.
@@ -8301,6 +8502,8 @@ class MLoadTypedArrayElement
             return false;
         const MLoadTypedArrayElement *other = ins->toLoadTypedArrayElement();
         if (arrayType_ != other->arrayType_)
+            return false;
+        if (offsetAdjustment() != other->offsetAdjustment())
             return false;
         return congruentIfOperandsEqual(other);
     }
@@ -8432,22 +8635,25 @@ class MStoreTypedArrayElement
 {
     Scalar::Type arrayType_;
     bool requiresBarrier_;
+    int32_t offsetAdjustment_;
 
     // See note in MStoreElementCommon.
     bool racy_;
 
     MStoreTypedArrayElement(MDefinition *elements, MDefinition *index, MDefinition *value,
-                            Scalar::Type arrayType, MemoryBarrierRequirement requiresBarrier)
+                            Scalar::Type arrayType, MemoryBarrierRequirement requiresBarrier,
+                            int32_t offsetAdjustment)
       : MTernaryInstruction(elements, index, value),
         arrayType_(arrayType),
         requiresBarrier_(requiresBarrier == DoesRequireMemoryBarrier),
+        offsetAdjustment_(offsetAdjustment),
         racy_(false)
     {
         if (requiresBarrier_)
             setGuard();         // Not removable or movable
         else
             setMovable();
-        MOZ_ASSERT(elements->type() == MIRType_Elements);
+        MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
         MOZ_ASSERT(arrayType >= 0 && arrayType < Scalar::TypeMax);
     }
@@ -8457,10 +8663,11 @@ class MStoreTypedArrayElement
 
     static MStoreTypedArrayElement *New(TempAllocator &alloc, MDefinition *elements, MDefinition *index,
                                         MDefinition *value, Scalar::Type arrayType,
-                                        MemoryBarrierRequirement requiresBarrier = DoesNotRequireMemoryBarrier)
+                                        MemoryBarrierRequirement requiresBarrier = DoesNotRequireMemoryBarrier,
+                                        int32_t offsetAdjustment = 0)
     {
         return new(alloc) MStoreTypedArrayElement(elements, index, value, arrayType,
-                                                  requiresBarrier);
+                                                  requiresBarrier, offsetAdjustment);
     }
 
     Scalar::Type arrayType() const {
@@ -8489,6 +8696,9 @@ class MStoreTypedArrayElement
     }
     bool requiresMemoryBarrier() const {
         return requiresBarrier_;
+    }
+    int32_t offsetAdjustment() const {
+        return offsetAdjustment_;
     }
     bool racy() const {
         return racy_;
@@ -11835,6 +12045,16 @@ class MAtomicTypedArrayElementBinop
     }
     AliasSet getAliasSet() const {
         return AliasSet::Store(AliasSet::TypedArrayElement);
+    }
+};
+
+class MDebugger : public MNullaryInstruction
+{
+  public:
+    INSTRUCTION_HEADER(Debugger);
+
+    static MDebugger *New(TempAllocator &alloc) {
+        return new(alloc) MDebugger();
     }
 };
 

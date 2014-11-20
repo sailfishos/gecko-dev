@@ -483,9 +483,9 @@ public:
   static bool IsShowModalDialogEnabled(JSContext* /* unused */ = nullptr,
                                        JSObject* /* unused */ = nullptr);
 
-  bool DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObj,
-                    JS::Handle<jsid> aId,
-                    JS::MutableHandle<JSPropertyDescriptor> aDesc);
+  bool DoResolve(JSContext* aCx, JS::Handle<JSObject*> aObj,
+                 JS::Handle<jsid> aId,
+                 JS::MutableHandle<JSPropertyDescriptor> aDesc);
 
   void GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
                            mozilla::ErrorResult& aRv);
@@ -1092,7 +1092,6 @@ protected:
   }
 
   void FreeInnerObjects();
-  JSObject *CallerGlobal();
   nsGlobalWindow *CallerInnerWindow();
 
   // Only to be called on an inner window.
@@ -1627,6 +1626,9 @@ protected:
   // mSpeechSynthesis is only used on inner windows.
   nsRefPtr<mozilla::dom::SpeechSynthesis> mSpeechSynthesis;
 #endif
+
+  // This is the CC generation the last time we called CanSkip.
+  uint32_t mCanSkipCCGeneration;
 
   friend class nsDOMScriptableHelper;
   friend class nsDOMWindowUtils;

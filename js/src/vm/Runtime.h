@@ -452,7 +452,6 @@ AtomStateOffsetToName(const JSAtomState &atomState, size_t offset)
 enum RuntimeLock {
     ExclusiveAccessLock,
     HelperThreadStateLock,
-    InterruptLock,
     GCLock
 };
 
@@ -519,13 +518,20 @@ class PerThreadData : public PerThreadDataFriendFields
      */
     JSContext           *jitJSContext;
 
-    /*
-     * The stack limit checked by JIT code. This stack limit may be temporarily
-     * set to null to force JIT code to exit (e.g., for the operation callback).
-     */
-    uintptr_t            jitStackLimit;
+    /* See comment for JSRuntime::interrupt_. */
+  private:
+    mozilla::Atomic<uintptr_t, mozilla::Relaxed> jitStackLimit_;
+    void resetJitStackLimit();
+    friend struct ::JSRuntime;
+  public:
+    void initJitStackLimit();
+    void initJitStackLimitPar(uintptr_t limit);
 
-    inline void setJitStackLimit(uintptr_t limit);
+    uintptr_t jitStackLimit() const { return jitStackLimit_; }
+
+    // For read-only JIT use:
+    void *addressOfJitStackLimit() { return &jitStackLimit_; }
+    static size_t offsetOfJitStackLimit() { return offsetof(PerThreadData, jitStackLimit_); }
 
     // Information about the heap allocated backtrack stack used by RegExp JIT code.
     irregexp::RegExpStack regexpStack;
@@ -534,14 +540,6 @@ class PerThreadData : public PerThreadDataFriendFields
     TraceLogger         *traceLogger;
 #endif
 
-    /*
-     * asm.js maintains a stack of AsmJSModule activations (see AsmJS.h). This
-     * stack is used by JSRuntime::requestInterrupt to stop long-running asm.js
-     * without requiring dynamic polling operations in the generated
-     * code. Since requestInterrupt may run on a separate thread than the
-     * JSRuntime's owner thread all reads/writes must be synchronized (by
-     * rt->interruptLock).
-     */
   private:
     friend class js::Activation;
     friend class js::ActivationIterator;
@@ -559,11 +557,11 @@ class PerThreadData : public PerThreadDataFriendFields
 
     /*
      * Points to the most recent profiling activation running on the
-     * thread.  Protected by rt->interruptLock.
+     * thread.
      */
     js::Activation * volatile profilingActivation_;
 
-    /* See AsmJSActivation comment. Protected by rt->interruptLock. */
+    /* See AsmJSActivation comment. */
     js::AsmJSActivation * volatile asmJSActivationStack_;
 
     /* Pointer to the current AutoFlushICache. */
@@ -678,8 +676,6 @@ class PerThreadData : public PerThreadDataFriendFields
 
 class AutoLockForExclusiveAccess;
 
-void RecomputeStackLimit(JSRuntime *rt, StackKind kind);
-
 } // namespace js
 
 struct JSRuntime : public JS::shadow::Runtime,
@@ -703,18 +699,54 @@ struct JSRuntime : public JS::shadow::Runtime,
      */
     JSRuntime *parentRuntime;
 
-    /*
-     * If true, we've been asked to call the interrupt callback as soon as
-     * possible.
-     */
-    mozilla::Atomic<bool, mozilla::Relaxed> interrupt;
+  private:
+    mozilla::Atomic<uint32_t, mozilla::Relaxed> interrupt_;
+    mozilla::Atomic<uint32_t, mozilla::Relaxed> interruptPar_;
+  public:
 
-    /*
-     * If non-zero, ForkJoin should service an interrupt. This is a separate
-     * flag from |interrupt| because we cannot use the mprotect trick with PJS
-     * code and ignore the TriggerCallbackAnyThreadDontStopIon trigger.
-     */
-    mozilla::Atomic<bool, mozilla::Relaxed> interruptPar;
+    enum InterruptMode {
+        RequestInterruptUrgent,
+        RequestInterruptCanWait
+    };
+
+    // Any thread can call requestInterrupt() to request that the main JS thread
+    // stop running and call the interrupt callback (allowing the interrupt
+    // callback to halt execution). To stop the main JS thread, requestInterrupt
+    // sets two fields: interrupt_ (set to true) and jitStackLimit_ (set to
+    // UINTPTR_MAX). The JS engine must continually poll one of these fields
+    // and call handleInterrupt if either field has the interrupt value. (The
+    // point of setting jitStackLimit_ to UINTPTR_MAX is that JIT code already
+    // needs to guard on jitStackLimit_ in every function prologue to avoid
+    // stack overflow, so we avoid a second branch on interrupt_ by setting
+    // jitStackLimit_ to a value that is guaranteed to fail the guard.)
+    //
+    // Note that the writes to interrupt_ and jitStackLimit_ use a Relaxed
+    // Atomic so, while the writes are guaranteed to eventually be visible to
+    // the main thread, it can happen in any order. handleInterrupt calls the
+    // interrupt callback if either is set, so it really doesn't matter as long
+    // as the JS engine is continually polling at least one field. In corner
+    // cases, this relaxed ordering could lead to an interrupt handler being
+    // called twice in succession after a single requestInterrupt call, but
+    // that's fine.
+    void requestInterrupt(InterruptMode mode);
+    bool handleInterrupt(JSContext *cx);
+
+    MOZ_ALWAYS_INLINE bool hasPendingInterrupt() const {
+        return interrupt_;
+    }
+    MOZ_ALWAYS_INLINE bool hasPendingInterruptPar() const {
+        return interruptPar_;
+    }
+
+    // For read-only JIT use:
+    void *addressOfInterruptUint32() {
+        static_assert(sizeof(interrupt_) == sizeof(uint32_t), "Assumed by JIT callers");
+        return &interrupt_;
+    }
+    void *addressOfInterruptParUint32() {
+        static_assert(sizeof(interruptPar_) == sizeof(uint32_t), "Assumed by JIT callers");
+        return &interruptPar_;
+    }
 
     /* Set when handling a signal for a thread associated with this runtime. */
     bool handlingSignal;
@@ -726,37 +758,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 #else
     void assertCanLock(js::RuntimeLock which) {}
 #endif
-
-  private:
-    /*
-     * Lock taken when triggering an interrupt from another thread.
-     * Protects all data that is touched in this process.
-     */
-    PRLock *interruptLock;
-    PRThread *interruptLockOwner;
-
-  public:
-    class AutoLockForInterrupt {
-        JSRuntime *rt;
-      public:
-        explicit AutoLockForInterrupt(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM) : rt(rt) {
-            MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-            rt->assertCanLock(js::InterruptLock);
-            PR_Lock(rt->interruptLock);
-            rt->interruptLockOwner = PR_GetCurrentThread();
-        }
-        ~AutoLockForInterrupt() {
-            MOZ_ASSERT(rt->currentThreadOwnsInterruptLock());
-            rt->interruptLockOwner = nullptr;
-            PR_Unlock(rt->interruptLock);
-        }
-
-        MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-    };
-
-    bool currentThreadOwnsInterruptLock() {
-        return interruptLockOwner == PR_GetCurrentThread();
-    }
 
   private:
     /*
@@ -809,8 +810,13 @@ struct JSRuntime : public JS::shadow::Runtime,
   private:
     /* See comment for JS_AbortIfWrongThread in jsapi.h. */
     void *ownerThread_;
+    size_t ownerThreadNative_;
     friend bool js::CurrentThreadCanAccessRuntime(JSRuntime *rt);
   public:
+
+    size_t ownerThreadNative() const {
+        return ownerThreadNative_;
+    }
 
     /* Temporary arena pool used while compiling and decompiling. */
     static const size_t TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE = 4 * 1024;
@@ -900,7 +906,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     void setDefaultVersion(JSVersion v) { defaultVersion_ = v; }
 
     /* Base address of the native stack for the current thread. */
-    uintptr_t           nativeStackBase;
+    const uintptr_t     nativeStackBase;
 
     /* The native stack size limit that runtime should not exceed. */
     size_t              nativeStackQuota[js::StackKindCount];
@@ -1046,16 +1052,15 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif
 
   private:
-    // Whether asm.js signal handlers have been installed and can be used for
-    // performing interrupt checks in loops.
+    // Whether EnsureSignalHandlersInstalled succeeded in installing all the
+    // relevant handlers for this platform.
     bool signalHandlersInstalled_;
+
     // Whether we should use them or they have been disabled for making
     // debugging easier. If signal handlers aren't installed, it is set to false.
     bool canUseSignalHandlers_;
+
   public:
-    bool signalHandlersInstalled() const {
-        return signalHandlersInstalled_;
-    }
     bool canUseSignalHandlers() const {
         return canUseSignalHandlers_;
     }
@@ -1266,10 +1271,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     bool                jitSupportsFloatingPoint;
     bool                jitSupportsSimd;
 
-    // Used to reset stack limit after a signaled interrupt (i.e. jitStackLimit_ = -1)
-    // has been noticed by Ion/Baseline.
-    void resetJitStackLimit();
-
     // Cache for jit::GetPcScript().
     js::jit::PcScriptCache *ionPcScriptCache;
 
@@ -1329,17 +1330,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /*  onOutOfMemory but can call the largeAllocationFailureCallback. */
     JS_FRIEND_API(void *) onOutOfMemoryCanGC(void *p, size_t bytes);
-
-    // Ways in which the interrupt callback on the runtime can be triggered,
-    // varying based on which thread is triggering the callback.
-    enum InterruptMode {
-        RequestInterruptMainThread,
-        RequestInterruptAnyThread,
-        RequestInterruptAnyThreadDontStopIon,
-        RequestInterruptAnyThreadForkJoin
-    };
-
-    void requestInterrupt(InterruptMode mode);
 
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::RuntimeSizes *runtime);
 
@@ -1563,13 +1553,6 @@ class MOZ_STACK_CLASS AutoKeepAtoms
         }
     }
 };
-
-inline void
-PerThreadData::setJitStackLimit(uintptr_t limit)
-{
-    MOZ_ASSERT(runtime_->currentThreadOwnsInterruptLock());
-    jitStackLimit = limit;
-}
 
 inline JSRuntime *
 PerThreadData::runtimeFromMainThread()

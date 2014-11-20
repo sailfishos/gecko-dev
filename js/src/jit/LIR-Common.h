@@ -157,6 +157,15 @@ class LSimdExtractElementBase : public LInstructionHelper<1, 1, 0>
     SimdLane lane() const {
         return mir_->toSimdExtractElement()->lane();
     }
+    const char *extraName() const {
+        switch (lane()) {
+          case LaneX: return "lane x";
+          case LaneY: return "lane y";
+          case LaneZ: return "lane z";
+          case LaneW: return "lane w";
+        }
+        return "unknown lane";
+    }
 };
 
 // Extracts an element from a given SIMD int32x4 lane.
@@ -196,6 +205,15 @@ class LSimdInsertElementBase : public LInstructionHelper<1, 2, 0>
     }
     SimdLane lane() const {
         return mir_->toSimdInsertElement()->lane();
+    }
+    const char *extraName() const {
+        switch (lane()) {
+          case LaneX: return "lane x";
+          case LaneY: return "lane y";
+          case LaneZ: return "lane z";
+          case LaneW: return "lane w";
+        }
+        return "unknown lane";
     }
 };
 
@@ -705,6 +723,28 @@ class LNewArrayCopyOnWrite : public LInstructionHelper<1, 0, 1>
 
     MNewArrayCopyOnWrite *mir() const {
         return mir_->toNewArrayCopyOnWrite();
+    }
+};
+
+class LNewArrayDynamicLength : public LInstructionHelper<1, 1, 1>
+{
+  public:
+    LIR_HEADER(NewArrayDynamicLength)
+
+    explicit LNewArrayDynamicLength(const LAllocation &length, const LDefinition &temp) {
+        setOperand(0, length);
+        setTemp(0, temp);
+    }
+
+    const LAllocation *length() {
+        return getOperand(0);
+    }
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+
+    MNewArrayDynamicLength *mir() const {
+        return mir_->toNewArrayDynamicLength();
     }
 };
 
@@ -3410,6 +3450,36 @@ class LStringSplit : public LCallInstructionHelper<1, 2, 0>
     }
 };
 
+class LSubstr : public LInstructionHelper<1, 3, 1>
+{
+  public:
+    LIR_HEADER(Substr)
+
+    LSubstr(const LAllocation &string, const LAllocation &begin, const LAllocation &length,
+            const LDefinition &temp)
+    {
+        setOperand(0, string);
+        setOperand(1, begin);
+        setOperand(2, length);
+        setTemp(0, temp);
+    }
+    const LAllocation *string() {
+        return getOperand(0);
+    }
+    const LAllocation *begin() {
+        return getOperand(1);
+    }
+    const LAllocation *length() {
+        return getOperand(2);
+    }
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+    const MStringSplit *mir() const {
+        return mir_->toStringSplit();
+    }
+};
+
 // Convert a 32-bit integer to a double.
 class LInt32ToDouble : public LInstructionHelper<1, 1, 0>
 {
@@ -5046,14 +5116,13 @@ class LClampIToUint8 : public LInstructionHelper<1, 1, 0>
     }
 };
 
-class LClampDToUint8 : public LInstructionHelper<1, 1, 1>
+class LClampDToUint8 : public LInstructionHelper<1, 1, 0>
 {
   public:
     LIR_HEADER(ClampDToUint8)
 
-    LClampDToUint8(const LAllocation &in, const LDefinition &temp) {
+    explicit LClampDToUint8(const LAllocation &in) {
         setOperand(0, in);
-        setTemp(0, temp);
     }
 };
 
@@ -6814,6 +6883,17 @@ class LMemoryBarrier : public LInstructionHelper<0, 0, 0>
 
     const MMemoryBarrier *mir() const {
         return mir_->toMemoryBarrier();
+    }
+};
+
+class LDebugger : public LCallInstructionHelper<0, 0, 2>
+{
+  public:
+    LIR_HEADER(Debugger)
+
+    LDebugger(const LDefinition &temp1, const LDefinition &temp2) {
+        setTemp(0, temp1);
+        setTemp(1, temp2);
     }
 };
 

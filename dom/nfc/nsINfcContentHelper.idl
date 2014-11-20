@@ -22,8 +22,8 @@ interface nsINfcTagEvent : nsISupports
   readonly attribute boolean isFormatable;
 };
 
-[scriptable, uuid(2074503e-f590-4017-a45e-85d3ca766f41)]
-interface nsINfcDOMEventTarget : nsISupports
+[scriptable, uuid(42c7a85f-59ae-4bde-b961-e1f1436476c3)]
+interface nsINfcEventListener : nsISupports
 {
   /**
    * Callback function used to notify tagfound.
@@ -65,12 +65,9 @@ interface nsINfcDOMEventTarget : nsISupports
   void notifyPeerLost(in DOMString sessionToken);
 };
 
-[scriptable, uuid(d2a3fbf3-a0b2-4625-b0db-b6f37c937097)]
+[scriptable, uuid(9343ae1a-6e2f-11e4-b5c4-fbb166b38b62)]
 interface nsINfcContentHelper : nsISupports
 {
-  const long NFC_EVENT_PEER_READY = 0x01;
-  const long NFC_EVENT_PEER_LOST  = 0x02;
-
   void init(in nsIDOMWindow window);
 
   boolean checkSessionToken(in DOMString sessionToken, in boolean isP2P);
@@ -78,6 +75,7 @@ interface nsINfcContentHelper : nsISupports
   nsIDOMDOMRequest readNDEF(in DOMString sessionToken);
   nsIDOMDOMRequest writeNDEF(in nsIVariant records, in DOMString sessionToken);
   nsIDOMDOMRequest makeReadOnly(in DOMString sessionToken);
+  nsIDOMDOMRequest format(in DOMString sessionToken);
 
   nsIDOMDOMRequest connect(in unsigned long techType, in DOMString sessionToken);
   nsIDOMDOMRequest close(in DOMString sessionToken);
@@ -100,11 +98,12 @@ interface nsINfcContentHelper : nsISupports
                             in DOMString sessionToken);
 
   /**
-   * Register the event target.
+   * Add the event listener.
    *
-   * @param target  An instance of the nsINfcDOMEventTarget.
+   * @param listener
+   *        An instance of the nsINfcEventListener.
    */
-  void registerEventTarget(in nsINfcDOMEventTarget target);
+  void addEventListener(in nsINfcEventListener listener);
 
   /**
    * Register the given application id with parent process
@@ -153,17 +152,9 @@ interface nsINfcContentHelper : nsISupports
                             in DOMString requestId);
 
   /**
-   * Power on the NFC hardware and start polling for NFC tags or devices.
+   * Change RF state.
+   *
+   * @param rfState. Possible values are 'idle', 'listen' and 'discovery'.
    */
-  nsIDOMDOMRequest startPoll();
-
-  /**
-   * Stop polling for NFC tags or devices. i.e. enter low power mode.
-   */
-  nsIDOMDOMRequest stopPoll();
-
-  /**
-   * Power off the NFC hardware.
-   */
-  nsIDOMDOMRequest powerOff();
+  nsIDOMDOMRequest changeRFState(in DOMString rfState);
 };

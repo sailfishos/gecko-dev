@@ -117,7 +117,7 @@ private:
   nsString mLastNetwork;
   nsString mLastHomeNetwork;
   int32_t mNetworkSelectionMode;
-  nsTArray<nsString> mSupportedNetworkTypes;
+  nsTArray<int32_t> mSupportedNetworkTypes;
 };
 
 /******************************************************************************
@@ -143,9 +143,6 @@ public:
   DoReply(const MobileConnectionReplySuccess& aReply);
 
   bool
-  DoReply(const MobileConnectionReplySuccessString& aReply);
-
-  bool
   DoReply(const MobileConnectionReplySuccessBoolean& aReply);
 
   bool
@@ -165,6 +162,9 @@ public:
 
   bool
   DoReply(const MobileConnectionReplySuccessPreferredNetworkType& aReply);
+
+  bool
+  DoReply(const MobileConnectionReplySuccessRoamingPreference& aMode);
 
   bool
   DoReply(const MobileConnectionReplyError& aReply);

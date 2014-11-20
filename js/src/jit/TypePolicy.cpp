@@ -409,31 +409,6 @@ template bool ConvertToStringPolicy<2>::staticAdjustInputs(TempAllocator &alloc,
 
 template <unsigned Op>
 bool
-ConvertToObjectOrNullPolicy<Op>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins)
-{
-    MDefinition *in = ins->getOperand(Op);
-    if (in->type() == MIRType_Object ||
-        in->type() == MIRType_Null ||
-        in->type() == MIRType_ObjectOrNull)
-    {
-        return true;
-    }
-
-    MToObjectOrNull *replace = MToObjectOrNull::New(alloc, in);
-    ins->block()->insertBefore(ins, replace);
-    ins->replaceOperand(Op, replace);
-
-    if (!BoxPolicy<0>::staticAdjustInputs(alloc, replace))
-        return false;
-
-    return true;
-}
-
-template bool ConvertToObjectOrNullPolicy<2>::staticAdjustInputs(TempAllocator &alloc,
-                                                                 MInstruction *ins);
-
-template <unsigned Op>
-bool
 IntPolicy<Op>::staticAdjustInputs(TempAllocator &alloc, MInstruction *def)
 {
     MDefinition *in = def->getOperand(Op);
@@ -842,8 +817,10 @@ StoreTypedArrayPolicy::adjustValueInput(TempAllocator &alloc, MInstruction *ins,
 bool
 StoreTypedArrayPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
 {
+    SingleObjectPolicy::staticAdjustInputs(alloc, ins);
+
     MStoreTypedArrayElement *store = ins->toStoreTypedArrayElement();
-    MOZ_ASSERT(store->elements()->type() == MIRType_Elements);
+    MOZ_ASSERT(IsValidElementsType(store->elements(), store->offsetAdjustment()));
     MOZ_ASSERT(store->index()->type() == MIRType_Int32);
 
     return adjustValueInput(alloc, ins, store->arrayType(), store->value(), 2);
@@ -867,6 +844,41 @@ StoreTypedArrayElementStaticPolicy::adjustInputs(TempAllocator &alloc, MInstruct
 
     return ConvertToInt32Policy<0>::staticAdjustInputs(alloc, ins) &&
         adjustValueInput(alloc, ins, store->viewType(), store->value(), 1);
+}
+
+bool
+StoreUnboxedObjectOrNullPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
+{
+    SingleObjectPolicy::staticAdjustInputs(alloc, ins);
+
+    // Change the value input to a ToObjectOrNull instruction if it might be
+    // a non-null primitive. Insert a post barrier for the instruction's object
+    // and whatever its new value is, unless the value is definitely null.
+    MStoreUnboxedObjectOrNull *store = ins->toStoreUnboxedObjectOrNull();
+
+    MDefinition *value = store->value();
+    if (value->type() == MIRType_Object ||
+        value->type() == MIRType_Null ||
+        value->type() == MIRType_ObjectOrNull)
+    {
+        if (value->type() != MIRType_Null) {
+            MInstruction *barrier = MPostWriteBarrier::New(alloc, store->typedObj(), value);
+            store->block()->insertBefore(store, barrier);
+        }
+        return true;
+    }
+
+    MToObjectOrNull *replace = MToObjectOrNull::New(alloc, value);
+    store->block()->insertBefore(store, replace);
+    store->setValue(replace);
+
+    if (!BoxPolicy<0>::staticAdjustInputs(alloc, replace))
+        return false;
+
+    MInstruction *barrier = MPostWriteBarrier::New(alloc, store->typedObj(), replace);
+    store->block()->insertBefore(store, barrier);
+
+    return true;
 }
 
 bool
@@ -956,6 +968,7 @@ FilterTypeSetPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
     _(StoreTypedArrayElementStaticPolicy)       \
     _(StoreTypedArrayHolePolicy)                \
     _(StoreTypedArrayPolicy)                    \
+    _(StoreUnboxedObjectOrNullPolicy)           \
     _(TestPolicy)                               \
     _(ToDoublePolicy)                           \
     _(ToInt32Policy)                            \
@@ -968,7 +981,6 @@ FilterTypeSetPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
     _(ConvertToInt32Policy<0>)                                          \
     _(ConvertToStringPolicy<0>)                                         \
     _(ConvertToStringPolicy<2>)                                         \
-    _(ConvertToObjectOrNullPolicy<2>)                                   \
     _(DoublePolicy<0>)                                                  \
     _(FloatingPointPolicy<0>)                                           \
     _(IntPolicy<0>)                                                     \
@@ -993,6 +1005,7 @@ FilterTypeSetPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
     _(MixPolicy<ObjectPolicy<0>, NoFloatPolicy<3> >)                    \
     _(MixPolicy<ObjectPolicy<0>, ObjectPolicy<1> >)                     \
     _(MixPolicy<ObjectPolicy<0>, StringPolicy<1> >)                     \
+    _(MixPolicy<ObjectPolicy<0>, ConvertToStringPolicy<2> >)            \
     _(MixPolicy<ObjectPolicy<1>, ConvertToStringPolicy<0> >)            \
     _(MixPolicy<StringPolicy<0>, IntPolicy<1> >)                        \
     _(MixPolicy<StringPolicy<0>, StringPolicy<1> >)                     \

@@ -21,6 +21,7 @@
   var IncomingCallView = loop.conversation.IncomingCallView;
   var DesktopPendingConversationView = loop.conversationViews.PendingConversationView;
   var CallFailedView = loop.conversationViews.CallFailedView;
+  var DesktopRoomConversationView = loop.roomViews.DesktopRoomConversationView;
 
   // 2. Standalone webapp
   var HomeView = loop.webapp.HomeView;
@@ -31,11 +32,15 @@
   var StartConversationView   = loop.webapp.StartConversationView;
   var FailedConversationView  = loop.webapp.FailedConversationView;
   var EndedConversationView   = loop.webapp.EndedConversationView;
+  var StandaloneRoomView      = loop.standaloneRoomViews.StandaloneRoomView;
 
   // 3. Shared components
   var ConversationToolbar = loop.shared.views.ConversationToolbar;
   var ConversationView = loop.shared.views.ConversationView;
   var FeedbackView = loop.shared.views.FeedbackView;
+
+  // Room constants
+  var ROOM_STATES = loop.store.ROOM_STATES;
 
   // Local helpers
   function returnTrue() {
@@ -57,8 +62,11 @@
   );
 
   var dispatcher = new loop.Dispatcher();
-  var roomStore = new loop.store.RoomStore({
-    dispatcher: dispatcher,
+  var activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
+    mozLoop: navigator.mozLoop,
+    sdkDriver: {}
+  });
+  var roomStore = new loop.store.RoomStore(dispatcher, {
     mozLoop: navigator.mozLoop
   });
 
@@ -523,6 +531,90 @@
             <Example summary="Standalone Unsupported Device">
               <div className="standalone">
                 <UnsupportedDeviceView />
+              </div>
+            </Example>
+          </Section>
+
+          <Section name="DesktopRoomConversationView">
+            <Example summary="Desktop room conversation (invitation)" dashed="true"
+                     style={{width: "260px", height: "265px"}}>
+              <div className="fx-embedded">
+                <DesktopRoomConversationView
+                  roomStore={roomStore}
+                  dispatcher={dispatcher}
+                  roomState={ROOM_STATES.INIT} />
+              </div>
+            </Example>
+
+            <Example summary="Desktop room conversation" dashed="true"
+                     style={{width: "260px", height: "265px"}}>
+              <div className="fx-embedded">
+                <DesktopRoomConversationView
+                  roomStore={roomStore}
+                  dispatcher={dispatcher}
+                  roomState={ROOM_STATES.HAS_PARTICIPANTS} />
+              </div>
+            </Example>
+          </Section>
+
+          <Section name="StandaloneRoomView">
+            <Example summary="Standalone room conversation (ready)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.READY}
+                  helper={{isFirefox: returnTrue}} />
+              </div>
+            </Example>
+
+            <Example summary="Standalone room conversation (joined)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.JOINED}
+                  helper={{isFirefox: returnTrue}} />
+              </div>
+            </Example>
+
+            <Example summary="Standalone room conversation (has-participants)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.HAS_PARTICIPANTS}
+                  helper={{isFirefox: returnTrue}} />
+              </div>
+            </Example>
+
+            <Example summary="Standalone room conversation (full - FFx user)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.FULL}
+                  helper={{isFirefox: returnTrue}} />
+              </div>
+            </Example>
+
+            <Example summary="Standalone room conversation (full - non FFx user)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.FULL}
+                  helper={{isFirefox: returnFalse}} />
+              </div>
+            </Example>
+
+            <Example summary="Standalone room conversation (failed)">
+              <div className="standalone">
+                <StandaloneRoomView
+                  dispatcher={dispatcher}
+                  activeRoomStore={activeRoomStore}
+                  roomState={ROOM_STATES.FAILED}
+                  helper={{isFirefox: returnFalse}} />
               </div>
             </Example>
           </Section>

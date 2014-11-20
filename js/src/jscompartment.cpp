@@ -33,6 +33,7 @@
 
 using namespace js;
 using namespace js::gc;
+using namespace js::jit;
 
 using mozilla::DebugOnly;
 
@@ -125,17 +126,17 @@ JSRuntime::createJitRuntime(JSContext *cx)
     // accessed by other threads with an exclusive context.
     AutoLockForExclusiveAccess atomsLock(cx);
 
-    // The runtime will only be created on its owning thread, but reads of a
-    // runtime's jitRuntime() can occur when another thread is requesting an
-    // interrupt.
-    AutoLockForInterrupt lock(this);
-
     MOZ_ASSERT(!jitRuntime_);
 
-    jitRuntime_ = cx->new_<jit::JitRuntime>();
-
-    if (!jitRuntime_)
+    jit::JitRuntime *jrt = cx->new_<jit::JitRuntime>();
+    if (!jrt)
         return nullptr;
+
+    // Protect jitRuntime_ from being observed (by InterruptRunningJitCode)
+    // while it is being initialized. Unfortunately, initialization depends on
+    // jitRuntime_ being non-null, so we can't just wait to assign jitRuntime_.
+    JitRuntime::AutoMutateBackedges amb(jrt);
+    jitRuntime_ = jrt;
 
     if (!jitRuntime_->initialize(cx)) {
         js_delete(jitRuntime_);
@@ -401,7 +402,7 @@ JSCompartment::wrap(JSContext *cx, MutableHandleObject obj, HandleObject existin
 
     // Invoke the prewrap callback. We're a bit worried about infinite
     // recursion here, so we do a check - see bug 809295.
-    JS_CHECK_CHROME_RECURSION(cx, return false);
+    JS_CHECK_SYSTEM_RECURSION(cx, return false);
     if (cb->preWrap) {
         obj.set(cb->preWrap(cx, global, obj, objectPassedToWrap));
         if (!obj)
@@ -562,7 +563,12 @@ void
 JSCompartment::sweepGlobalObject(FreeOp *fop)
 {
     if (global_.unbarrieredGet() && IsObjectAboutToBeFinalizedFromAnyThread(global_.unsafeGet())) {
-        if (debugMode())
+        // For main thread compartments, the invariant is that debug mode
+        // implies having at least one Debugger still attached. However, for
+        // off-thread compartments, which are used in off-thread parsing, they
+        // may be isDebuggee() without there being any Debuggers to prohibit
+        // asm.js.
+        if (isDebuggee() && !global_->compartment()->options().invisibleToDebugger())
             Debugger::detachAllDebuggersFromGlobal(fop, global_);
         global_.set(nullptr);
     }
@@ -715,17 +721,6 @@ JSCompartment::setObjectMetadataCallback(js::ObjectMetadataCallback callback)
     objectMetadataCallback = callback;
 }
 
-bool
-JSCompartment::hasScriptsOnStack()
-{
-    for (ActivationIterator iter(runtimeFromMainThread()); !iter.done(); ++iter) {
-        if (iter->compartment() == this)
-            return true;
-    }
-
-    return false;
-}
-
 static bool
 AddInnerLazyFunctionsFromScript(JSScript *script, AutoObjectVector &lazyFunctions)
 {
@@ -798,58 +793,12 @@ JSCompartment::ensureDelazifyScriptsForDebugMode(JSContext *cx)
     return true;
 }
 
-bool
-JSCompartment::updateJITForDebugMode(JSContext *maybecx, AutoDebugModeInvalidation &invalidate)
-{
-    // The AutoDebugModeInvalidation argument makes sure we can't forget to
-    // invalidate, but it is also important not to run any scripts in this
-    // compartment until the invalidate is destroyed.  That is the caller's
-    // responsibility.
-    return jit::UpdateForDebugMode(maybecx, this, invalidate);
-}
-
-bool
-JSCompartment::enterDebugMode(JSContext *cx)
-{
-    AutoDebugModeInvalidation invalidate(this);
-    return enterDebugMode(cx, invalidate);
-}
-
-bool
-JSCompartment::enterDebugMode(JSContext *cx, AutoDebugModeInvalidation &invalidate)
-{
-    if (!debugMode()) {
-        debugModeBits |= DebugMode;
-        if (!updateJITForDebugMode(cx, invalidate))
-            return false;
-    }
-    return true;
-}
-
-bool
-JSCompartment::leaveDebugMode(JSContext *cx)
-{
-    AutoDebugModeInvalidation invalidate(this);
-    return leaveDebugMode(cx, invalidate);
-}
-
-bool
-JSCompartment::leaveDebugMode(JSContext *cx, AutoDebugModeInvalidation &invalidate)
-{
-    if (debugMode()) {
-        leaveDebugModeUnderGC();
-        if (!updateJITForDebugMode(cx, invalidate))
-            return false;
-    }
-    return true;
-}
-
 void
-JSCompartment::leaveDebugModeUnderGC()
+JSCompartment::unsetIsDebuggee()
 {
-    if (debugMode()) {
-        debugModeBits &= ~DebugMode;
-        DebugScopes::onCompartmentLeaveDebugMode(this);
+    if (isDebuggee()) {
+        debugModeBits &= ~DebugExecutionMask;
+        DebugScopes::onCompartmentUnsetIsDebuggee(this);
     }
 }
 

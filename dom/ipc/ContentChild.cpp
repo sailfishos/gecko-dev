@@ -16,6 +16,7 @@
 
 #include "BlobChild.h"
 #include "CrashReporterChild.h"
+#include "GeckoProfiler.h"
 #include "TabChild.h"
 
 #include "mozilla/Attributes.h"
@@ -23,6 +24,7 @@
 #include "mozilla/a11y/DocAccessibleChild.h"
 #endif
 #include "mozilla/Preferences.h"
+#include "mozilla/docshell/OfflineCacheUpdateChild.h"
 #include "mozilla/dom/ContentBridgeChild.h"
 #include "mozilla/dom/ContentBridgeParent.h"
 #include "mozilla/dom/DOMStorageIPC.h"
@@ -176,9 +178,7 @@ using namespace mozilla::dom::mobileconnection;
 using namespace mozilla::dom::mobilemessage;
 using namespace mozilla::dom::telephony;
 using namespace mozilla::dom::voicemail;
-#ifdef NS_PRINTING
 using namespace mozilla::embedding;
-#endif
 using namespace mozilla::hal_sandbox;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -553,76 +553,6 @@ NS_INTERFACE_MAP_BEGIN(ContentChild)
   NS_INTERFACE_MAP_ENTRY(nsIContentChild)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
-
-#if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
-static bool
-GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
-{
-  nsAutoCString appPath;
-  nsAutoCString appBinaryPath(
-    (CommandLine::ForCurrentProcess()->argv()[0]).c_str());
-
-  nsAutoCString::const_iterator start, end;
-  appBinaryPath.BeginReading(start);
-  appBinaryPath.EndReading(end);
-  if (RFindInReadable(NS_LITERAL_CSTRING(".app/Contents/MacOS/"), start, end)) {
-    end = start;
-    ++end; ++end; ++end; ++end;
-    appBinaryPath.BeginReading(start);
-    appPath.Assign(Substring(start, end));
-  } else {
-    return false;
-  }
-
-  nsCOMPtr<nsIFile> app, appBinary;
-  nsresult rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appPath),
-                                true, getter_AddRefs(app));
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-  rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appBinaryPath),
-                       true, getter_AddRefs(appBinary));
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  bool isLink;
-  app->IsSymlink(&isLink);
-  if (isLink) {
-    app->GetNativeTarget(aAppPath);
-  } else {
-    app->GetNativePath(aAppPath);
-  }
-  appBinary->IsSymlink(&isLink);
-  if (isLink) {
-    appBinary->GetNativeTarget(aAppBinaryPath);
-  } else {
-    appBinary->GetNativePath(aAppBinaryPath);
-  }
-
-  return true;
-}
-
-void
-ContentChild::OnChannelConnected(int32_t aPid)
-{
-  nsAutoCString appPath, appBinaryPath;
-  if (!GetAppPaths(appPath, appBinaryPath)) {
-    MOZ_CRASH("Error resolving child process path");
-  }
-
-  MacSandboxInfo info;
-  info.type = MacSandboxType_Content;
-  info.appPath.Assign(appPath);
-  info.appBinaryPath.Assign(appBinaryPath);
-
-  nsAutoCString err;
-  if (!mozilla::StartMacSandbox(info, err)) {
-    NS_WARNING(err.get());
-    MOZ_CRASH("sandbox_init() failed");
-  }
-}
-#endif
 
 bool
 ContentChild::Init(MessageLoop* aIOLoop,
@@ -1122,6 +1052,76 @@ ContentChild::CleanUpSandboxEnvironment()
 }
 #endif
 
+#if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
+static bool
+GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
+{
+  nsAutoCString appPath;
+  nsAutoCString appBinaryPath(
+    (CommandLine::ForCurrentProcess()->argv()[0]).c_str());
+
+  nsAutoCString::const_iterator start, end;
+  appBinaryPath.BeginReading(start);
+  appBinaryPath.EndReading(end);
+  if (RFindInReadable(NS_LITERAL_CSTRING(".app/Contents/MacOS/"), start, end)) {
+    end = start;
+    ++end; ++end; ++end; ++end;
+    appBinaryPath.BeginReading(start);
+    appPath.Assign(Substring(start, end));
+  } else {
+    return false;
+  }
+
+  nsCOMPtr<nsIFile> app, appBinary;
+  nsresult rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appPath),
+                                true, getter_AddRefs(app));
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+  rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appBinaryPath),
+                       true, getter_AddRefs(appBinary));
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  bool isLink;
+  app->IsSymlink(&isLink);
+  if (isLink) {
+    app->GetNativeTarget(aAppPath);
+  } else {
+    app->GetNativePath(aAppPath);
+  }
+  appBinary->IsSymlink(&isLink);
+  if (isLink) {
+    appBinary->GetNativeTarget(aAppBinaryPath);
+  } else {
+    appBinary->GetNativePath(aAppBinaryPath);
+  }
+
+  return true;
+}
+
+static void
+StartMacOSContentSandbox()
+{
+  nsAutoCString appPath, appBinaryPath;
+  if (!GetAppPaths(appPath, appBinaryPath)) {
+    MOZ_CRASH("Error resolving child process path");
+  }
+
+  MacSandboxInfo info;
+  info.type = MacSandboxType_Content;
+  info.appPath.Assign(appPath);
+  info.appBinaryPath.Assign(appBinaryPath);
+
+  nsAutoCString err;
+  if (!mozilla::StartMacSandbox(info, err)) {
+    NS_WARNING(err.get());
+    MOZ_CRASH("sandbox_init() failed");
+  }
+}
+#endif
+
 bool
 ContentChild::RecvSetProcessSandbox()
 {
@@ -1148,6 +1148,8 @@ ContentChild::RecvSetProcessSandbox()
         mozilla::SandboxTarget::Instance()->StartSandbox();
         SetUpSandboxEnvironment();
     }
+#elif defined(XP_MACOSX)
+    StartMacOSContentSandbox();
 #endif
 #endif
     return true;
@@ -1476,6 +1478,24 @@ bool
 ContentChild::DeallocPNeckoChild(PNeckoChild* necko)
 {
     delete necko;
+    return true;
+}
+
+PPrintingChild*
+ContentChild::AllocPPrintingChild()
+{
+    // The ContentParent should never attempt to allocate the
+    // nsPrintingPromptServiceProxy, which implements PPrintingChild. Instead,
+    // the nsPrintingPromptServiceProxy service is requested and instantiated
+    // via XPCOM, and the constructor of nsPrintingPromptServiceProxy sets up
+    // the IPC connection.
+    NS_NOTREACHED("Should never get here!");
+    return nullptr;
+}
+
+bool
+ContentChild::DeallocPPrintingChild(PPrintingChild* printing)
+{
     return true;
 }
 
@@ -2240,6 +2260,25 @@ ContentChild::RecvUnregisterSheet(const URIParams& aURI, const uint32_t& aType)
     return true;
 }
 
+POfflineCacheUpdateChild*
+ContentChild::AllocPOfflineCacheUpdateChild(const URIParams& manifestURI,
+                                            const URIParams& documentURI,
+                                            const bool& stickDocument,
+                                            const TabId& aTabId)
+{
+    NS_RUNTIMEABORT("unused");
+    return nullptr;
+}
+
+bool
+ContentChild::DeallocPOfflineCacheUpdateChild(POfflineCacheUpdateChild* actor)
+{
+    OfflineCacheUpdateChild* offlineCacheUpdate =
+        static_cast<OfflineCacheUpdateChild*>(actor);
+    NS_RELEASE(offlineCacheUpdate);
+    return true;
+}
+
 #ifdef MOZ_NUWA_PROCESS
 class CallNuwaSpawn : public nsRunnable
 {
@@ -2343,6 +2382,48 @@ ContentChild::RecvOnAppThemeChanged()
     nsCOMPtr<nsIObserverService> os = services::GetObserverService();
     if (os) {
         os->NotifyObservers(nullptr, "app-theme-changed", nullptr);
+    }
+    return true;
+}
+
+bool
+ContentChild::RecvStartProfiler(const uint32_t& aEntries,
+                                const double& aInterval,
+                                const nsTArray<nsCString>& aFeatures,
+                                const nsTArray<nsCString>& aThreadNameFilters)
+{
+    nsTArray<const char*> featureArray;
+    for (size_t i = 0; i < aFeatures.Length(); ++i) {
+        featureArray.AppendElement(aFeatures[i].get());
+    }
+
+    nsTArray<const char*> threadNameFilterArray;
+    for (size_t i = 0; i < aThreadNameFilters.Length(); ++i) {
+        threadNameFilterArray.AppendElement(aThreadNameFilters[i].get());
+    }
+
+    profiler_start(aEntries, aInterval, featureArray.Elements(), featureArray.Length(),
+                   threadNameFilterArray.Elements(), threadNameFilterArray.Length());
+
+    return true;
+}
+
+bool
+ContentChild::RecvStopProfiler()
+{
+    profiler_stop();
+    return true;
+}
+
+bool
+ContentChild::AnswerGetProfile(nsCString* aProfile)
+{
+    char* profile = profiler_get_profile();
+    if (profile) {
+        *aProfile = nsCString(profile, strlen(profile));
+        free(profile);
+    } else {
+        *aProfile = EmptyCString();
     }
     return true;
 }

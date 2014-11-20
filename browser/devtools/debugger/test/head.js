@@ -567,11 +567,7 @@ AddonDebugger.prototype = {
     let addonActor = yield getAddonActorForUrl(this.client, aUrl);
 
     let targetOptions = {
-      form: {
-        addonActor: addonActor.actor,
-        consoleActor: addonActor.consoleActor,
-        title: addonActor.name
-      },
+      form: addonActor,
       client: this.client,
       chrome: true
     };
@@ -968,6 +964,15 @@ function callInTab(tab, name) {
     args: Array.prototype.slice.call(arguments, 2)
   });
   waitForMessageFromTab(tab, "test:call");
+}
+
+function evalInTab(tab, string) {
+  info("Evalling string " + string + " in tab.");
+
+  sendMessageToTab(tab, "test:eval", {
+    string: string,
+  });
+  waitForMessageFromTab(tab, "test:eval");
 }
 
 function sendMouseClickToTab(tab, target) {

@@ -123,7 +123,7 @@ GLLibraryEGL::EnsureInitialized()
 
 #ifdef MOZ_B2G
     if (!sCurrentContext.init())
-	    MOZ_CRASH("Tls init failed");
+      MOZ_CRASH("Tls init failed");
 #endif
 
 #ifdef XP_WIN
@@ -239,7 +239,9 @@ GLLibraryEGL::EnsureInitialized()
         { nullptr, { nullptr } }
     };
 
-    GLLibraryLoader::LoadSymbols(mEGLLibrary, &optionalSymbols[0]);
+    // Do not warn about the failure to load this - see bug 1092191
+    GLLibraryLoader::LoadSymbols(mEGLLibrary, &optionalSymbols[0],
+				 nullptr, nullptr, false);
 
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 18
     MOZ_RELEASE_ASSERT(mSymbols.fQueryStringImplementationANDROID,
@@ -407,22 +409,8 @@ GLLibraryEGL::InitExtensions()
         return;
     }
 
-    bool debugMode = false;
-#ifdef DEBUG
-    if (PR_GetEnv("MOZ_GL_DEBUG"))
-        debugMode = true;
-
-    static bool firstRun = true;
-#else
-    // Non-DEBUG, so never spew.
-    const bool firstRun = false;
-#endif
-
-    GLContext::InitializeExtensionsBitSet(mAvailableExtensions, extensions, sEGLExtensionNames, firstRun && debugMode);
-
-#ifdef DEBUG
-    firstRun = false;
-#endif
+    GLContext::InitializeExtensionsBitSet(mAvailableExtensions, extensions,
+                                          sEGLExtensionNames);
 }
 
 void

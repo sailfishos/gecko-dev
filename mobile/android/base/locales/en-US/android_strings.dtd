@@ -209,6 +209,9 @@ size. -->
     demonstrate the font size setting.  It is meant to be whimsical and fun. -->
 <!ENTITY pref_font_size_preview_text "The quick orange fox jumps over your expectations with more speed, more flexibility and more security. As a non-profit, we\'re free to innovate on your behalf without any pressure to compromise. That means a better experience for you and a brighter future for the Web.">
 
+<!ENTITY pref_media_autoplay_enabled "Allow autoplay">
+<!ENTITY pref_media_autoplay_enabled_summary "Control if websites can autoplay videos and other media content">
+
 <!ENTITY pref_use_master_password "Use master password">
 <!ENTITY pref_sync "Sync">
 <!ENTITY pref_sync_summary "Sync your tabs, bookmarks, passwords, history">
@@ -471,11 +474,20 @@ substitution variables.  If it is difficult to translate the sense of the string
 with that structure, consider a translation which ignores the preceding domain and
 just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY identity_run_by "which is run by">
+<!ENTITY identity_no_info "This website does not supply identity information.">
+<!ENTITY identity_not_encrypted "Your connection to this website is not encrypted.">
 
 <!-- Mixed content notifications in site identity popup -->
 <!ENTITY loaded_mixed_content_message "This page is displaying content that isn\'t secure.">
 <!ENTITY blocked_mixed_content_message_top "&brandShortName; has blocked content that isn\'t secure.">
 <!ENTITY blocked_mixed_content_message_bottom "Most websites will still work properly even when this content is blocked.">
+
+<!-- Tracking content notifications in site identity popup -->
+<!ENTITY loaded_tracking_content_message "This page is tracking your online activity.">
+<!ENTITY blocked_tracking_content_message_top "&brandShortName; has blocked this page from tracking your online activity.">
+<!ENTITY blocked_tracking_content_message_bottom "Most websites will still work properly even when online tracking is blocked.">
+
+<!-- Common mixed and tracking content strings in site identity popup -->
 <!ENTITY learn_more "Learn More">
 <!ENTITY enable_protection "Enable protection">
 <!ENTITY disable_protection "Disable protection">
@@ -503,8 +515,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY webapp_generic_name "App">
 
 <!ENTITY searchable_description "Bookmarks and history">
-
-<!ENTITY devtools_remote_debugging_forward "Don\'t forget to set up port forwarding!">
 
  <!-- Updater notifications -->
 <!ENTITY updater_start_title2 "Update available for &brandShortName;">
@@ -557,3 +567,8 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      "Last synced" is one of the user's other Sync clients, typically Firefox on
      their desktop or laptop.-->
 <!ENTITY remote_tabs_last_synced "Last synced: &formatS;">
+
+<!-- Find-In-Page strings -->
+<!-- LOCALIZATION NOTE (find_matchcase): This is meant to appear as an icon that changes color
+     if match-case is activated. i.e. No more than two letters, one uppercase, one lowercase. -->
+<!ENTITY find_matchcase "Aa">

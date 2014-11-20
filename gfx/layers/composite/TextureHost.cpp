@@ -85,6 +85,8 @@ public:
 
   virtual bool RecvRemoveTexture() MOZ_OVERRIDE;
 
+  virtual bool RecvRecycleTexture(const TextureFlags& aTextureFlags) MOZ_OVERRIDE;
+
   TextureHost* GetTextureHost() { return mTextureHost; }
 
   void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
@@ -287,6 +289,7 @@ TextureHost::CompositorRecycle()
 TextureHost::TextureHost(TextureFlags aFlags)
     : mActor(nullptr)
     , mFlags(aFlags)
+    , mCompositableCount(0)
 {}
 
 TextureHost::~TextureHost()
@@ -299,6 +302,15 @@ void TextureHost::Finalize()
     DeallocateSharedData();
     DeallocateDeviceData();
   }
+}
+
+void
+TextureHost::RecycleTexture(TextureFlags aFlags)
+{
+  MOZ_ASSERT(GetFlags() & TextureFlags::RECYCLE);
+  MOZ_ASSERT(aFlags & TextureFlags::RECYCLE);
+  MOZ_ASSERT(!HasRecycleCallback());
+  mFlags = aFlags;
 }
 
 void
@@ -336,6 +348,22 @@ BufferTextureHost::BufferTextureHost(gfx::SurfaceFormat aFormat,
 , mLocked(false)
 , mNeedsFullUpdate(false)
 {}
+
+void
+BufferTextureHost::InitSize()
+{
+  if (mFormat == gfx::SurfaceFormat::YUV) {
+    YCbCrImageDataDeserializer yuvDeserializer(GetBuffer(), GetBufferSize());
+    if (yuvDeserializer.IsValid()) {
+      mSize = yuvDeserializer.GetYSize();
+    }
+  } else if (mFormat != gfx::SurfaceFormat::UNKNOWN) {
+    ImageDataDeserializer deserializer(GetBuffer(), GetBufferSize());
+    if (deserializer.IsValid()) {
+      mSize = deserializer.GetSize();
+    }
+  }
+}
 
 BufferTextureHost::~BufferTextureHost()
 {}
@@ -586,6 +614,7 @@ ShmemTextureHost::ShmemTextureHost(const ipc::Shmem& aShmem,
 , mDeallocator(aDeallocator)
 {
   MOZ_COUNT_CTOR(ShmemTextureHost);
+  InitSize();
 }
 
 ShmemTextureHost::~ShmemTextureHost()
@@ -638,6 +667,7 @@ MemoryTextureHost::MemoryTextureHost(uint8_t* aBuffer,
 , mBuffer(aBuffer)
 {
   MOZ_COUNT_CTOR(MemoryTextureHost);
+  InitSize();
 }
 
 MemoryTextureHost::~MemoryTextureHost()
@@ -791,6 +821,16 @@ TextureParent::ClearTextureHost()
 
   mTextureHost->mActor = nullptr;
   mTextureHost = nullptr;
+}
+
+bool
+TextureParent::RecvRecycleTexture(const TextureFlags& aTextureFlags)
+{
+  if (!mTextureHost) {
+    return true;
+  }
+  mTextureHost->RecycleTexture(aTextureFlags);
+  return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

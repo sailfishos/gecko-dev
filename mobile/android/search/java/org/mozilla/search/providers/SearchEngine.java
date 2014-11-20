@@ -52,7 +52,9 @@ public class SearchEngine {
                     "document.getElementsByTagName('head')[0].appendChild(tag);" +
                     "tag.innerText='%s'})();";
 
+    // The Gecko search identifier. This will be null for engines that don't ship with the locale.
     private final String identifier;
+
     private String shortName;
     private String iconURL;
 
@@ -74,7 +76,16 @@ public class SearchEngine {
     }
 
     private void readSearchPlugin(XmlPullParser parser) throws XmlPullParserException, IOException {
-        parser.require(XmlPullParser.START_TAG, null, "SearchPlugin");
+        if (XmlPullParser.START_TAG != parser.getEventType()) {
+            throw new XmlPullParserException("Expected start tag: " + parser.getPositionDescription());
+        }
+
+        final String name = parser.getName();
+        if (!"SearchPlugin".equals(name) && !"OpenSearchDescription".equals(name)) {
+            throw new XmlPullParserException("Expected <SearchPlugin> or <OpenSearchDescription> as root tag: "
+                + parser.getPositionDescription());
+        }
+
         while (parser.next() != XmlPullParser.END_TAG) {
             if (parser.getEventType() != XmlPullParser.START_TAG) {
                 continue;
@@ -180,7 +191,9 @@ public class SearchEngine {
     public String getInjectableJs() {
         final String css;
 
-        if (identifier.equals("bing")) {
+        if (identifier == null) {
+            css = "";
+        } else if (identifier.equals("bing")) {
             css = "#mHeader{display:none}#contentWrapper{margin-top:0}";
         } else if (identifier.equals("google")) {
             css = "#sfcnt,#top_nav{display:none}";
@@ -238,7 +251,7 @@ public class SearchEngine {
     public String resultsUriForQuery(String query) {
         final Uri resultsUri = getResultsUri();
         if (resultsUri == null) {
-            Log.e(LOG_TAG, "No results URL for search engine: " + identifier);
+            Log.e(LOG_TAG, "No results URL for search engine: " + shortName);
             return "";
         }
         final String template = Uri.decode(resultsUri.toString());
@@ -252,7 +265,7 @@ public class SearchEngine {
      */
     public String getSuggestionTemplate(String query) {
         if (suggestUri == null) {
-            Log.e(LOG_TAG, "No suggestions template for search engine: " + identifier);
+            Log.e(LOG_TAG, "No suggestions template for search engine: " + shortName);
             return "";
         }
         final String template = Uri.decode(suggestUri.toString());

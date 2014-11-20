@@ -19,6 +19,7 @@
 #include "nsIObserverService.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsDirectoryServiceDefs.h"
+#include "nsProfilerStartParams.h"
 #include "mozilla/Services.h"
 #include "nsThreadUtils.h"
 #include "ProfilerMarkers.h"
@@ -238,11 +239,6 @@ bool sps_version2()
 
     bool req2 = PR_GetEnv("MOZ_PROFILER_NEW") != nullptr; // Has v2 been requested?
 
-    bool elfhackd = false;
-#   if defined(USE_ELF_HACK)
-    bool elfhackd = true;
-#   endif
-
     if (req2 && allow2) {
       version = 2;
       LOG("------------------- MOZ_PROFILER_NEW set -------------------");
@@ -250,10 +246,6 @@ bool sps_version2()
       version = 1;
       LOG("--------------- MOZ_PROFILER_NEW requested, ----------------");
       LOG("---------- but is not available on this platform -----------");
-    } else if (req2 && elfhackd) {
-      version = 1;
-      LOG("--------------- MOZ_PROFILER_NEW requested, ----------------");
-      LOG("--- but this build was not done with --disable-elf-hack ----");
     } else {
       version = 1;
       LOG("----------------- MOZ_PROFILER_NEW not set -----------------");
@@ -789,8 +781,24 @@ void mozilla_sampler_start(int aProfileEntries, double aInterval,
 
   if (Sampler::CanNotifyObservers()) {
     nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-    if (os)
-      os->NotifyObservers(nullptr, "profiler-started", nullptr);
+    if (os) {
+      nsTArray<nsCString> featuresArray;
+      nsTArray<nsCString> threadNameFiltersArray;
+
+      for (size_t i = 0; i < aFeatureCount; ++i) {
+        featuresArray.AppendElement(aFeatures[i]);
+      }
+
+      for (size_t i = 0; i < aFilterCount; ++i) {
+        threadNameFiltersArray.AppendElement(aThreadNameFilters[i]);
+      }
+
+      nsCOMPtr<nsIProfilerStartParams> params =
+        new nsProfilerStartParams(aProfileEntries, aInterval, featuresArray,
+                                  threadNameFiltersArray);
+
+      os->NotifyObservers(params, "profiler-started", nullptr);
+    }
   }
 
   LOG("END   mozilla_sampler_start");

@@ -71,7 +71,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.20
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.8.7.1
+SQLITE_VERSION=3.8.7.2
 
 MSMANIFEST_TOOL=
 
@@ -1459,6 +1459,7 @@ if test "$GNU_CC"; then
     # -Wignored-qualifiers - catches returns types with qualifiers like const
     # -Wint-to-pointer-cast - catches cast to pointer from integer of different size
     # -Wmultichar - catches multicharacter integer constants like 'THIS'
+    # -Wnon-literal-null-conversion - catches expressions used as a null pointer constant
     # -Wnonnull - catches NULL used with functions arguments marked as non-null
     # -Wpointer-arith - catches pointer arithmetic using NULL or sizeof(void)
     # -Wpointer-sign - catches mixing pointers to signed and unsigned types
@@ -1493,6 +1494,8 @@ if test "$GNU_CC"; then
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=sequence-point"
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=trigraphs"
         _WARNINGS_CFLAGS="${_WARNINGS_CFLAGS} -Werror=unknown-pragmas"
+
+        MOZ_C_SUPPORTS_WARNING(-Werror=, non-literal-null-conversion, ac_c_has_werror_non_literal_null_conversion)
     fi
 
     # Turn off the following warnings that -Wall turns on:
@@ -1552,6 +1555,7 @@ if test "$GNU_CXX"; then
     # -Wendif-labels - catches `#else FOO` and `#endif FOO` not in comment
     # -Wint-to-pointer-cast - catches cast to pointer from integer of different size
     # -Wmissing-braces - catches aggregate initializers missing nested braces
+    # -Wnon-literal-null-conversion - catches expressions used as a null pointer constant
     # -Woverloaded-virtual - function declaration hides virtual function from base class
     # -Wparentheses - catches `if (a=b)` and operator precedence bugs
     # -Wpointer-arith - catches pointer arithmetic using NULL or sizeof(void)
@@ -1583,6 +1587,8 @@ if test "$GNU_CXX"; then
         _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=trigraphs"
         _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=type-limits"
         _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Werror=unused-label"
+
+        MOZ_CXX_SUPPORTS_WARNING(-Werror=, non-literal-null-conversion, ac_cxx_has_werror_non_literal_null_conversion)
     fi
 
     # Turn off the following warnings that -Wall turns on:
@@ -3296,24 +3302,6 @@ if test "$ac_cv_cpp_unused_required" = yes ; then
    AC_DEFINE(NEED_CPP_UNUSED_IMPLEMENTATIONS)
 fi
 
-
-dnl Some compilers have trouble comparing a constant reference to a templatized
-dnl class to zero, and require an explicit operator==() to be defined that takes
-dnl an int. This test separates the strong from the weak.
-
-AC_CACHE_CHECK(for trouble comparing to zero near std::operator!=(),
-               ac_cv_trouble_comparing_to_zero,
-               [AC_TRY_COMPILE([#include <algorithm>
-                                template <class T> class Foo {};
-                                class T2;
-                                template <class T> int operator==(const T2*, const T&) { return 0; }
-                                template <class T> int operator!=(const T2*, const T&) { return 0; }],
-                               [Foo<int> f; return (0 != f);],
-                               ac_cv_trouble_comparing_to_zero=no,
-                               ac_cv_trouble_comparing_to_zero=yes)])
-if test "$ac_cv_trouble_comparing_to_zero" = yes ; then
-  AC_DEFINE(HAVE_CPP_TROUBLE_COMPARING_TO_ZERO)
-fi
 
 # try harder, when checking for __thread support, see bug 521750 comment #33 and below
 # We pass MOZ_OPTIMIZE_LDFLAGS to the linker because if dead_strip is
@@ -7173,6 +7161,7 @@ if test -n "$MOZ_REPLACE_MALLOC" -a -z "$MOZ_MEMORY"; then
     dnl deliberate choice not to enable it (bug 702250, for instance)
     AC_MSG_ERROR([--enable-replace-malloc requires --enable-jemalloc])
 elif test -n "$MOZ_REPLACE_MALLOC"; then
+    AC_DEFINE(MOZ_REPLACE_MALLOC)
     MOZ_NATIVE_JEMALLOC=
 
     dnl Replace-malloc Mac linkage quirks
@@ -7317,7 +7306,7 @@ dnl our own linker.
 if test "$OS_TARGET" = Android; then
     MOZ_GLUE_WRAP_LDFLAGS="${MOZ_GLUE_WRAP_LDFLAGS} -Wl,--wrap=PR_GetEnv,--wrap=PR_SetEnv"
     if test "$MOZ_WIDGET_TOOLKIT" = gonk -a -n "$MOZ_NUWA_PROCESS"; then
-        MOZ_GLUE_WRAP_LDFLAGS="${MOZ_GLUE_WRAP_LDFLAGS} -Wl,--wrap=pthread_create,--wrap=epoll_wait,--wrap=poll,--wrap=pthread_cond_timedwait,--wrap=__pthread_cond_timedwait,--wrap=pthread_cond_wait,--wrap=epoll_create,--wrap=epoll_ctl,--wrap=close,--wrap=pthread_key_create,--wrap=pthread_key_delete,--wrap=socketpair,--wrap=pthread_self,--wrap=pthread_mutex_lock,--wrap=pthread_join,--wrap=pipe,--wrap=pipe2,--wrap=tgkill"
+        MOZ_GLUE_WRAP_LDFLAGS="${MOZ_GLUE_WRAP_LDFLAGS} -Wl,--wrap=pthread_create,--wrap=epoll_wait,--wrap=poll,--wrap=pthread_cond_timedwait,--wrap=__pthread_cond_timedwait,--wrap=pthread_cond_wait,--wrap=epoll_create,--wrap=epoll_ctl,--wrap=close,--wrap=pthread_key_create,--wrap=pthread_key_delete,--wrap=socketpair,--wrap=pthread_self,--wrap=pthread_mutex_lock,--wrap=pthread_join,--wrap=pipe,--wrap=pipe2"
     fi
 fi
 
@@ -7395,17 +7384,7 @@ USE_ELF_HACK=1
 MOZ_ARG_DISABLE_BOOL(elf-hack,
 [  --disable-elf-hack      Disable elf hacks],
     [USE_ELF_HACK=],
-    [USE_ELF_HACK=F # Force enable elf-hack])
-
-# Disable elf hack for profiling because the built in profiler
-# doesn't read the segments properly with elf hack. This is
-# temporary and should be fixed soon in the profiler.
-if test "$MOZ_PROFILING" = 1; then
-  if test "$USE_ELF_HACK" = F; then
-    AC_ERROR([--enable-elf-hack is not compatible with --enable-profiling])
-  fi
-  USE_ELF_HACK=
-fi
+    [USE_ELF_HACK=1])
 
 # Only enable elfhack where supported
 if test "$USE_ELF_HACK" = 1; then
@@ -7578,6 +7557,7 @@ fi
 AC_SUBST(MOZ_B2G_BT)
 AC_SUBST(MOZ_B2G_BT_BLUEZ)
 AC_SUBST(MOZ_B2G_BT_BLUEDROID)
+AC_SUBST(MOZ_B2G_BT_DAEMON)
 
 dnl ========================================================
 dnl = Enable NFC Interface for B2G (Gonk usually)
@@ -9007,7 +8987,7 @@ if test "$ACCESSIBILITY" -a "$MOZ_ENABLE_GTK" ; then
     AC_DEFINE_UNQUOTED(ATK_REV_VERSION, $ATK_REV_VERSION)
 fi
 
-if test "$MOZ_UPDATE_CHANNEL" = "aurora"; then
+if test -n "$MOZ_DEV_EDITION"; then
     AC_DEFINE(MOZ_DEV_EDITION)
 fi
 
@@ -9039,7 +9019,6 @@ CPP_THROW_NEW
 HAVE_CPP_AMBIGUITY_RESOLVING_USING
 HAVE_CPP_DYNAMIC_CAST_TO_VOID_PTR
 HAVE_CPP_PARTIAL_SPECIALIZATION
-HAVE_CPP_TROUBLE_COMPARING_TO_ZERO
 NEED_CPP_UNUSED_IMPLEMENTATIONS
 HAVE_GETPAGESIZE
 HAVE_ICONV

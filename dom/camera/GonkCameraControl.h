@@ -98,6 +98,8 @@ protected:
   using CameraControlImpl::OnConfigurationChange;
   using CameraControlImpl::OnUserError;
 
+  typedef nsTArray<Size>::index_type SizeIndex;
+
   virtual void BeginBatchParameterSet() MOZ_OVERRIDE;
   virtual void EndBatchParameterSet() MOZ_OVERRIDE;
 
@@ -106,6 +108,7 @@ protected:
   nsresult SetConfigurationInternal(const Configuration& aConfig);
   nsresult SetPictureConfiguration(const Configuration& aConfig);
   nsresult SetVideoConfiguration(const Configuration& aConfig);
+  nsresult StartInternal(const Configuration* aInitialConfig);
 
   template<class T> nsresult SetAndPush(uint32_t aKey, const T& aValue);
 
@@ -129,8 +132,9 @@ protected:
   nsresult SetupRecording(int aFd, int aRotation, uint64_t aMaxFileSizeBytes,
                           uint64_t aMaxVideoLengthMs);
   nsresult SetupRecordingFlash(bool aAutoEnableLowLightTorch);
-  nsresult SetPreviewSize(const Size& aSize);
-  nsresult SetVideoSize(const Size& aSize);
+  nsresult SelectVideoAndPreviewSize(const Configuration& aConfig, const Size& aVideoSize);
+  nsresult SetVideoAndPreviewSize(const Size& aPreviewSize, const Size& aVideoSize);
+  nsresult MaybeAdjustVideoSize();
   nsresult PausePreview();
   nsresult GetSupportedSize(const Size& aSize, const nsTArray<Size>& supportedSizes, Size& best);
 

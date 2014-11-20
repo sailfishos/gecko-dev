@@ -945,6 +945,12 @@ public:
                 gfxTextRunFactory::TEXT_ORIENT_HORIZONTAL;
     }
 
+    bool UseCenterBaseline() const {
+        uint32_t orient = GetFlags() & gfxTextRunFactory::TEXT_ORIENT_MASK;
+        return orient == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_MIXED ||
+               orient == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_UPRIGHT;
+    }
+
     bool IsRightToLeft() const {
         return (GetFlags() & gfxTextRunFactory::TEXT_IS_RTL) != 0;
     }
@@ -1266,6 +1272,9 @@ class gfxFont {
 
     friend class gfxHarfBuzzShaper;
     friend class gfxGraphiteShaper;
+
+protected:
+    typedef mozilla::gfx::DrawTarget DrawTarget;
 
 public:
     nsrefcnt AddRef(void) {
@@ -1709,7 +1718,7 @@ public:
 
     virtual FontType GetType() const = 0;
 
-    virtual mozilla::TemporaryRef<mozilla::gfx::ScaledFont> GetScaledFont(mozilla::gfx::DrawTarget *aTarget)
+    virtual mozilla::TemporaryRef<mozilla::gfx::ScaledFont> GetScaledFont(DrawTarget* aTarget)
     { return gfxPlatform::GetPlatform()->GetScaledFontForFont(aTarget, this); }
 
     bool KerningDisabled() {
@@ -1820,7 +1829,7 @@ protected:
 
     // The return value is interpreted as a horizontal advance in 16.16 fixed
     // point format.
-    virtual int32_t GetGlyphWidth(gfxContext *aCtx, uint16_t aGID) {
+    virtual int32_t GetGlyphWidth(DrawTarget& aDrawTarget, uint16_t aGID) {
         return -1;
     }
 

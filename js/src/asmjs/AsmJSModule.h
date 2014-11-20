@@ -387,7 +387,7 @@ class AsmJSModule
         uint64_t lo;
         uint64_t hi;
     };
-    JS_STATIC_ASSERT(sizeof(EntryArg) >= jit::Simd128DataSize);
+
     typedef int32_t (*CodePtr)(EntryArg *args, uint8_t *global);
 
     // An Exit holds bookkeeping information about an exit; the ExitDatum
@@ -825,10 +825,6 @@ class AsmJSModule
     bool                                  loadedFromCache_;
     bool                                  profilingEnabled_;
     bool                                  interrupted_;
-
-    // This field is accessed concurrently when requesting an interrupt.
-    // Access must be synchronized via the runtime's interrupt lock.
-    mutable bool                          codeIsProtected_;
 
     void restoreHeapToInitialState(ArrayBufferObjectMaybeShared *maybePrevBuffer);
     void restoreToInitialState(ArrayBufferObjectMaybeShared *maybePrevBuffer, uint8_t *prevCode,
@@ -1280,6 +1276,7 @@ class AsmJSModule
         MOZ_ASSERT(isFinished());
         return pc >= code_ && pc < (code_ + codeBytes());
     }
+  private:
     uint8_t *interpExitTrampoline(const Exit &exit) const {
         MOZ_ASSERT(isFinished());
         MOZ_ASSERT(exit.interpCodeOffset_);
@@ -1290,6 +1287,7 @@ class AsmJSModule
         MOZ_ASSERT(exit.ionCodeOffset_);
         return code_ + exit.ionCodeOffset_;
     }
+  public:
 
     // Lookup a callsite by the return pc (from the callee to the caller).
     // Return null if no callsite was found.
@@ -1417,6 +1415,17 @@ class AsmJSModule
         MOZ_ASSERT(isFinished());
         return *(ExitDatum *)(globalData() + exitIndexToGlobalDataOffset(exitIndex));
     }
+    bool exitIsOptimized(unsigned exitIndex) const {
+        MOZ_ASSERT(isFinished());
+        ExitDatum &exitDatum = exitIndexToGlobalDatum(exitIndex);
+        return exitDatum.exit != interpExitTrampoline(exit(exitIndex));
+    }
+    void optimizeExit(unsigned exitIndex, jit::IonScript *ionScript) const {
+        MOZ_ASSERT(!exitIsOptimized(exitIndex));
+        ExitDatum &exitDatum = exitIndexToGlobalDatum(exitIndex);
+        exitDatum.exit = ionExitTrampoline(exit(exitIndex));
+        exitDatum.ionScript = ionScript;
+    }
     void detachIonCompilation(size_t exitIndex) const {
         MOZ_ASSERT(isFinished());
         ExitDatum &exitDatum = exitIndexToGlobalDatum(exitIndex);
@@ -1516,16 +1525,10 @@ class AsmJSModule
         MOZ_ASSERT(isDynamicallyLinked());
         interrupted_ = interrupted;
     }
-
-    // Additionally, these functions may only be called while holding the
-    // runtime's interrupt lock.
-    void protectCode(JSRuntime *rt) const;
-    void unprotectCode(JSRuntime *rt) const;
-    bool codeIsProtected(JSRuntime *rt) const;
 };
 
 // Store the just-parsed module in the cache using AsmJSCacheOps.
-extern bool
+extern JS::AsmJSCacheResult
 StoreAsmJSModuleInCache(AsmJSParser &parser,
                         const AsmJSModule &module,
                         ExclusiveContext *cx);

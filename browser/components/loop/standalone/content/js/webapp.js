@@ -939,7 +939,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
           return (
             loop.standaloneRoomViews.StandaloneRoomView({
               activeRoomStore: this.props.activeRoomStore, 
-              dispatcher: this.props.dispatcher}
+              dispatcher: this.props.dispatcher, 
+              helper: this.props.helper}
             )
           );
         }
@@ -987,6 +988,10 @@ loop.webapp = (function($, _, OT, mozL10n) {
     var client = new loop.StandaloneClient({
       baseServerUrl: loop.config.serverUrl
     });
+    var sdkDriver = new loop.OTSdkDriver({
+      dispatcher: dispatcher,
+      sdk: OT
+    });
 
     var standaloneAppStore = new loop.store.StandaloneAppStore({
       conversation: conversation,
@@ -994,9 +999,9 @@ loop.webapp = (function($, _, OT, mozL10n) {
       helper: helper,
       sdk: OT
     });
-    var activeRoomStore = new loop.store.ActiveRoomStore({
-      dispatcher: dispatcher,
-      mozLoop: standaloneMozLoop
+    var activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
+      mozLoop: standaloneMozLoop,
+      sdkDriver: sdkDriver
     });
 
     window.addEventListener("unload", function() {

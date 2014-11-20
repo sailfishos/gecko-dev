@@ -120,6 +120,26 @@ intrinsic_IsConstructor(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+bool
+js::intrinsic_SubstringKernel(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    MOZ_ASSERT(args[0].isString());
+    MOZ_ASSERT(args[1].isInt32());
+    MOZ_ASSERT(args[2].isInt32());
+
+    RootedString str(cx, args[0].toString());
+    int32_t begin = args[1].toInt32();
+    int32_t length = args[2].toInt32();
+
+    JSString *substr = SubstringKernel(cx, str, begin, length);
+    if (!substr)
+        return false;
+
+    args.rval().setString(substr);
+    return true;
+}
+
 static bool
 intrinsic_OwnPropertyKeys(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -681,6 +701,22 @@ intrinsic_StarGeneratorObjectIsClosed(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+bool
+js::intrinsic_IsSuspendedStarGenerator(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    MOZ_ASSERT(args.length() == 1);
+
+    if (!args[0].isObject() || !args[0].toObject().is<StarGeneratorObject>()) {
+        args.rval().setBoolean(false);
+        return true;
+    }
+
+    StarGeneratorObject &genObj = args[0].toObject().as<StarGeneratorObject>();
+    args.rval().setBoolean(!genObj.isClosed() && genObj.isSuspended());
+    return true;
+}
+
 static bool
 intrinsic_IsLegacyGeneratorObject(JSContext *cx, unsigned argc, Value *vp)
 {
@@ -701,18 +737,6 @@ intrinsic_LegacyGeneratorObjectIsClosed(JSContext *cx, unsigned argc, Value *vp)
 
     LegacyGeneratorObject *genObj = &args[0].toObject().as<LegacyGeneratorObject>();
     args.rval().setBoolean(genObj->isClosed());
-    return true;
-}
-
-static bool
-intrinsic_CloseNewbornLegacyGeneratorObject(JSContext *cx, unsigned argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    MOZ_ASSERT(args.length() == 1);
-    MOZ_ASSERT(args[0].isObject());
-
-    LegacyGeneratorObject *genObj = &args[0].toObject().as<LegacyGeneratorObject>();
-    args.rval().setBoolean(LegacyGeneratorObject::maybeCloseNewborn(genObj));
     return true;
 }
 
@@ -1004,7 +1028,6 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("std_String_replace",                  str_replace,                  2,0),
     JS_FN("std_String_split",                    str_split,                    2,0),
     JS_FN("std_String_startsWith",               str_startsWith,               1,0),
-    JS_FN("std_String_substring",                str_substring,                2,0),
     JS_FN("std_String_toLowerCase",              str_toLowerCase,              0,0),
     JS_FN("std_String_toUpperCase",              str_toUpperCase,              0,0),
 
@@ -1029,6 +1052,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("_IsConstructing",         intrinsic_IsConstructing,          0,0),
     JS_FN("DecompileArg",            intrinsic_DecompileArg,            2,0),
     JS_FN("RuntimeDefaultLocale",    intrinsic_RuntimeDefaultLocale,    0,0),
+    JS_FN("SubstringKernel",         intrinsic_SubstringKernel,         3,0),
 
     JS_FN("UnsafePutElements",       intrinsic_UnsafePutElements,       3,0),
     JS_FN("_DefineDataProperty",     intrinsic_DefineDataProperty,      4,0),
@@ -1047,10 +1071,10 @@ static const JSFunctionSpec intrinsic_functions[] = {
 
     JS_FN("IsStarGeneratorObject",   intrinsic_IsStarGeneratorObject,   1,0),
     JS_FN("StarGeneratorObjectIsClosed", intrinsic_StarGeneratorObjectIsClosed, 1,0),
+    JS_FN("IsSuspendedStarGenerator",intrinsic_IsSuspendedStarGenerator,1,0),
 
     JS_FN("IsLegacyGeneratorObject", intrinsic_IsLegacyGeneratorObject, 1,0),
     JS_FN("LegacyGeneratorObjectIsClosed", intrinsic_LegacyGeneratorObjectIsClosed, 1,0),
-    JS_FN("CloseNewbornLegacyGeneratorObject", intrinsic_CloseNewbornLegacyGeneratorObject, 1,0),
     JS_FN("CloseClosingLegacyGeneratorObject", intrinsic_CloseClosingLegacyGeneratorObject, 1,0),
     JS_FN("ThrowStopIteration",      intrinsic_ThrowStopIteration,      0,0),
 

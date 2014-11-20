@@ -49,6 +49,10 @@ let bypassOffline = false;
 let qemu = "0";
 let device = null;
 
+XPCOMUtils.defineLazyServiceGetter(this, "cookieManager",
+                                   "@mozilla.org/cookiemanager;1",
+                                   "nsICookieManager");
+
 try {
   XPCOMUtils.defineLazyGetter(this, "libcutils", function () {
     Cu.import("resource://gre/modules/systemlibs.js");
@@ -127,6 +131,7 @@ function MarionetteServerConnection(aPrefix, aTransport, aServer)
   // passing back "actor ids" with responses. unlike the debugger server,
   // we don't have multiple actors, so just use a dummy value of "0" here
   this.actorID = "0";
+  this.sessionId = null;
 
   this.globalMessageManager = Cc["@mozilla.org/globalmessagemanager;1"]
                              .getService(Ci.nsIMessageBroadcaster);
@@ -330,7 +335,9 @@ MarionetteServerConnection.prototype = {
   sendResponse: function MDA_sendResponse(value, command_id) {
     if (typeof(value) == 'undefined')
         value = null;
-    this.sendToClient({from:this.actorID, value: value}, command_id);
+    this.sendToClient({from:this.actorID,
+                       sessionId: this.sessionId,
+                       value: value}, command_id);
   },
 
   sayHello: function MDA_sayHello() {
@@ -553,6 +560,8 @@ MarionetteServerConnection.prototype = {
 
     this.scriptTimeout = 10000;
     if (aRequest && aRequest.parameters) {
+      this.sessionId = aRequest.parameters.session_id ? aRequest.parameters.session_id : null;
+      logger.info("Session Id is set to: " + this.sessionId);
       this.setSessionCapabilities(aRequest.parameters.capabilities);
     }
 
@@ -624,6 +633,10 @@ MarionetteServerConnection.prototype = {
    */
   getSessionCapabilities: function MDA_getSessionCapabilities() {
     this.command_id = this.getCommandId();
+
+    if (!this.sessionId) {
+      this.sessionId = this.uuidGen.generateUUID().toString();
+    }
 
     // eideticker (bug 965297) and mochitest (bug 965304)
     // compatibility.  They only check for the presence of this
@@ -1151,6 +1164,16 @@ MarionetteServerConnection.prototype = {
       aRequest.command_id = command_id;
       aRequest.parameters.pageTimeout = this.pageTimeout;
       this.sendAsync("get", aRequest.parameters, command_id);
+      return;
+    }
+
+    // At least on desktop, navigating in chrome scope does not
+    // correspond to something a user can do, and leaves marionette
+    // and the browser in an unusable state. Return a generic error insted.
+    // TODO: Error codes need to be refined as a part of bug 1100545 and
+    // bug 945729.
+    if (appName == "Firefox") {
+      sendError("Cannot navigate in chrome context", 13, null, command_id);
       return;
     }
 
@@ -2277,6 +2300,7 @@ MarionetteServerConnection.prototype = {
     if (this.mainFrame) {
       this.mainFrame.focus();
     }
+    this.sessionId = null;
     this.deleteFile('marionetteChromeScripts');
     this.deleteFile('marionetteContentScripts');
   },
@@ -2668,6 +2692,45 @@ MarionetteServerConnection.prototype = {
           this.currentFrameElement = message.json.frameValue;
         }
         break;
+      case "Marionette:getVisibleCookies":
+        let [currentPath, host] = message.json.value;
+        let isForCurrentPath = function(aPath) {
+          return currentPath.indexOf(aPath) != -1;
+        }
+        let results = [];
+        let enumerator = cookieManager.enumerator;
+        while (enumerator.hasMoreElements()) {
+          let cookie = enumerator.getNext().QueryInterface(Ci['nsICookie']);
+          // Take the hostname and progressively shorten
+          let hostname = host;
+          do {
+            if ((cookie.host == '.' + hostname || cookie.host == hostname)
+                && isForCurrentPath(cookie.path)) {
+              results.push({
+                'name': cookie.name,
+                'value': cookie.value,
+                'path': cookie.path,
+                'host': cookie.host,
+                'secure': cookie.isSecure,
+                'expiry': cookie.expires
+              });
+              break;
+            }
+            hostname = hostname.replace(/^.*?\./, '');
+          } while (hostname.indexOf('.') != -1);
+        }
+        return results;
+      case "Marionette:addCookie":
+        let cookieToAdd = message.json.value;
+        Services.cookies.add(cookieToAdd.domain, cookieToAdd.path, cookieToAdd.name,
+                             cookieToAdd.value, cookieToAdd.secure, false, false,
+                             cookieToAdd.expiry);
+        return true;
+      case "Marionette:deleteCookie":
+        let cookieToDelete = message.json.value;
+        cookieManager.remove(cookieToDelete.host, cookieToDelete.name,
+                             cookieToDelete.path, false);
+        return true;
       case "Marionette:register":
         // This code processes the content listener's registration information
         // and either accepts the listener, or ignores it
@@ -2836,7 +2899,7 @@ function BrowserObj(win, server) {
   this.startPage = "about:blank";
   this.mainContentId = null; // used in B2G to identify the homescreen content page
   this.newSession = true; //used to set curFrameId upon new session
-  this.elementManager = new ElementManager([SELECTOR, NAME, LINK_TEXT, PARTIAL_LINK_TEXT]);
+  this.elementManager = new ElementManager([NAME, LINK_TEXT, PARTIAL_LINK_TEXT]);
   this.setBrowser(win);
   this.frameManager = new FrameManager(server); //We should have one FM per BO so that we can handle modals in each Browser
 

@@ -1295,13 +1295,7 @@ SetUserTimeAndStartupIDForActivatedWindow(GtkWidget* aWindow)
     }
 
     if (sn_launchee_context_get_id_has_timestamp(ctx)) {
-        PRLibrary* gtkLibrary;
-        SetUserTimeFunc setUserTimeFunc = (SetUserTimeFunc)
-            PR_FindFunctionSymbolAndLibrary("gdk_x11_window_set_user_time", &gtkLibrary);
-        if (setUserTimeFunc) {
-            setUserTimeFunc(gdkWindow, sn_launchee_context_get_timestamp(ctx));
-            PR_UnloadLibrary(gtkLibrary);
-        }
+        gdk_x11_window_set_user_time(gdkWindow, sn_launchee_context_get_timestamp(ctx));
     }
 
     sn_launchee_context_setup_window(ctx, gdk_x11_window_get_xid(gdkWindow));
@@ -3186,10 +3180,8 @@ nsWindow::OnVisibilityNotifyEvent(GdkEventVisibility *aEvent)
 
         mIsFullyObscured = false;
 
-        if (!nsGtkIMModule::IsVirtualKeyboardOpened()) {
-            // if we have to retry the grab, retry it.
-            EnsureGrabs();
-        }
+        // if we have to retry the grab, retry it.
+        EnsureGrabs();
         break;
     default: // includes GDK_VISIBILITY_FULLY_OBSCURED
         mIsFullyObscured = true;
@@ -3628,6 +3620,8 @@ nsWindow::Create(nsIWidget        *aParent,
     }
         break;
     case eWindowType_plugin:
+    case eWindowType_plugin_ipc_chrome:
+    case eWindowType_plugin_ipc_content:
     case eWindowType_child: {
         if (parentMozContainer) {
             mGdkWindow = CreateGdkWindow(parentGdkWindow, parentMozContainer);
@@ -4087,6 +4081,13 @@ nsWindow::GetTransparencyMode()
 nsresult
 nsWindow::ConfigureChildren(const nsTArray<Configuration>& aConfigurations)
 {
+    // If this is a remotely updated widget we receive clipping, position, and
+    // size information from a source other than our owner. Don't let our parent
+    // update this information.
+    if (mWindowType == eWindowType_plugin_ipc_chrome) {
+      return NS_OK;
+    }
+
     for (uint32_t i = 0; i < aConfigurations.Length(); ++i) {
         const Configuration& configuration = aConfigurations[i];
         nsWindow* w = static_cast<nsWindow*>(configuration.mChild);
@@ -4154,7 +4155,7 @@ GetIntRects(pixman_region32& aRegion, nsTArray<nsIntRect>* aRects)
     }
 }
 
-void
+nsresult
 nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
                               bool aIntersectWithExisting)
 {
@@ -4178,7 +4179,7 @@ nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
         // need to set the clip even if it is equal.
         if (mClipRects &&
             pixman_region32_equal(&intersectRegion, &existingRegion)) {
-            return;
+            return NS_OK;
         }
 
         if (!pixman_region32_equal(&intersectRegion, &newRegion)) {
@@ -4188,10 +4189,10 @@ nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
     }
 
     if (!StoreWindowClipRegion(*newRects))
-        return;
+        return NS_OK;
 
     if (!mGdkWindow)
-        return;
+        return NS_OK;
 
 #if (MOZ_WIDGET_GTK == 2)
     GdkRegion *region = gdk_region_new(); // aborts on OOM
@@ -4214,8 +4215,8 @@ nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
     gdk_window_shape_combine_region(mGdkWindow, region, 0, 0);
     cairo_region_destroy(region);
 #endif
-  
-    return;
+
+    return NS_OK;
 }
 
 void

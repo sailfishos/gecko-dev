@@ -77,6 +77,11 @@ function promiseGetMozLoopAPI() {
  * This assumes that the tests are running in a generatorTest.
  */
 function loadLoopPanel(aOverrideOptions = {}) {
+  Services.prefs.setBoolPref("loop.rooms.enabled", false);
+  registerCleanupFunction(function() {
+     Services.prefs.clearUserPref("loop.rooms.enabled");
+  });
+
   // Set prefs to ensure we don't access the network externally.
   Services.prefs.setCharPref("services.push.serverURL", aOverrideOptions.pushURL || "ws://localhost/");
   Services.prefs.setCharPref("loop.server", aOverrideOptions.loopURL || "http://localhost/");
@@ -161,7 +166,7 @@ function promiseObserverNotified(aTopic, aExpectedData = null) {
   return new Promise((resolve, reject) => {
     Services.obs.addObserver(function onNotification(aSubject, aTopic, aData) {
       Services.obs.removeObserver(onNotification, aTopic);
-      is(aData, aExpectedData, "observer data should match expected data")
+      is(aData, aExpectedData, "observer data should match expected data");
       resolve({subject: aSubject, data: aData});
     }, aTopic, false);
   });

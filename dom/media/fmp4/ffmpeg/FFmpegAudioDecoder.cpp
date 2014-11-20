@@ -22,9 +22,10 @@ FFmpegAudioDecoder<LIBAV_VER>::FFmpegAudioDecoder(
   const mp4_demuxer::AudioDecoderConfig& aConfig)
   : FFmpegDataDecoder(aTaskQueue, GetCodecId(aConfig.mime_type))
   , mCallback(aCallback)
-  , mConfig(aConfig)
 {
   MOZ_COUNT_CTOR(FFmpegAudioDecoder);
+  mExtraData.append(aConfig.audio_specific_config.begin(),
+                    aConfig.audio_specific_config.length());
 }
 
 nsresult
@@ -85,26 +86,12 @@ CopyAndPackAudio(AVFrame* aFrame, uint32_t aNumChannels, uint32_t aNumAFrames)
 void
 FFmpegAudioDecoder<LIBAV_VER>::DecodePacket(MP4Sample* aSample)
 {
-  // Prepend ADTS header to AAC audio.
-  if (!strcmp(mConfig.mime_type, "audio/mp4a-latm")) {
-    bool rv = mp4_demuxer::Adts::ConvertSample(mConfig.channel_count,
-                                               mConfig.frequency_index,
-                                               mConfig.aac_profile,
-                                               aSample);
-    if (!rv) {
-      NS_ERROR("Failed to apply ADTS header");
-      mCallback->Error();
-      return;
-    }
-  }
-
   AVPacket packet;
   av_init_packet(&packet);
 
   aSample->Pad(FF_INPUT_BUFFER_PADDING_SIZE);
   packet.data = aSample->data;
   packet.size = aSample->size;
-  packet.pos = aSample->byte_offset;
 
   if (!PrepareFrame()) {
     NS_WARNING("FFmpeg audio decoder failed to allocate frame.");
@@ -112,30 +99,49 @@ FFmpegAudioDecoder<LIBAV_VER>::DecodePacket(MP4Sample* aSample)
     return;
   }
 
-  int decoded;
-  int bytesConsumed =
-    avcodec_decode_audio4(mCodecContext, mFrame, &decoded, &packet);
+  int64_t samplePosition = aSample->byte_offset;
+  Microseconds pts = aSample->composition_timestamp;
 
-  if (bytesConsumed < 0 || !decoded) {
-    NS_WARNING("FFmpeg audio decoder error.");
-    mCallback->Error();
-    return;
+  while (packet.size > 0) {
+    int decoded;
+    int bytesConsumed =
+      avcodec_decode_audio4(mCodecContext, mFrame, &decoded, &packet);
+
+    if (bytesConsumed < 0) {
+      NS_WARNING("FFmpeg audio decoder error.");
+      mCallback->Error();
+      return;
+    }
+
+    if (decoded) {
+      uint32_t numChannels = mCodecContext->channels;
+      uint32_t samplingRate = mCodecContext->sample_rate;
+
+      nsAutoArrayPtr<AudioDataValue> audio(
+        CopyAndPackAudio(mFrame, numChannels, mFrame->nb_samples));
+
+      CheckedInt<Microseconds> duration =
+        FramesToUsecs(mFrame->nb_samples, samplingRate);
+      if (!duration.isValid()) {
+        NS_WARNING("Invalid count of accumulated audio samples");
+        mCallback->Error();
+        return;
+      }
+
+      AudioData* data = new AudioData(samplePosition,
+                                      pts,
+                                      duration.value(),
+                                      mFrame->nb_samples,
+                                      audio.forget(),
+                                      numChannels,
+                                      samplingRate);
+      mCallback->Output(data);
+      pts += duration.value();
+    }
+    packet.data += bytesConsumed;
+    packet.size -= bytesConsumed;
+    samplePosition += bytesConsumed;
   }
-
-  NS_ASSERTION(bytesConsumed == (int)aSample->size,
-               "Only one audio packet should be received at a time.");
-
-  uint32_t numChannels = mCodecContext->channels;
-  uint32_t samplingRate = mCodecContext->sample_rate;
-
-  nsAutoArrayPtr<AudioDataValue> audio(
-    CopyAndPackAudio(mFrame, numChannels, mFrame->nb_samples));
-
-  nsAutoPtr<AudioData> data(
-    new AudioData(packet.pos, aSample->composition_timestamp, aSample->duration,
-                  mFrame->nb_samples, audio.forget(), numChannels, samplingRate));
-
-  mCallback->Output(data.forget());
 
   if (mTaskQueue->IsEmpty()) {
     mCallback->InputExhausted();
@@ -154,8 +160,9 @@ FFmpegAudioDecoder<LIBAV_VER>::Input(MP4Sample* aSample)
 nsresult
 FFmpegAudioDecoder<LIBAV_VER>::Drain()
 {
+  mTaskQueue->AwaitIdle();
   mCallback->DrainComplete();
-  return NS_OK;
+  return Flush();
 }
 
 AVCodecID

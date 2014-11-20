@@ -44,8 +44,8 @@ AppleVDADecoder::AppleVDADecoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
   MOZ_COUNT_CTOR(AppleVDADecoder);
   // TODO: Verify aConfig.mime_type.
   LOG("Creating AppleVDADecoder for %dx%d h.264 video",
-      mConfig.display_width,
-      mConfig.display_height
+      mConfig.image_width,
+      mConfig.image_height
      );
 }
 
@@ -214,7 +214,7 @@ void
 AppleVDADecoder::ClearReorderedFrames()
 {
   while (!mReorderQueue.IsEmpty()) {
-    delete mReorderQueue.Pop();
+    mReorderQueue.Pop();
   }
 }
 
@@ -237,7 +237,7 @@ AppleVDADecoder::OutputFrame(CVPixelBufferRef aImage,
   nsRefPtr<MacIOSurface> macSurface = new MacIOSurface(surface);
   // Bounds.
   VideoInfo info;
-  info.mDisplay = nsIntSize(macSurface->GetWidth(), macSurface->GetHeight());
+  info.mDisplay = nsIntSize(mConfig.display_width, mConfig.display_height);
   info.mHasVideo = true;
   gfx::IntRect visible = gfx::IntRect(0,
                                       0,
@@ -250,7 +250,7 @@ AppleVDADecoder::OutputFrame(CVPixelBufferRef aImage,
     static_cast<layers::MacIOSurfaceImage*>(image.get());
   videoImage->SetSurface(macSurface);
 
-  nsAutoPtr<VideoData> data;
+  nsRefPtr<VideoData> data;
   data = VideoData::CreateFromImage(info,
                                     mImageContainer,
                                     aFrameRef->byte_offset,
@@ -268,10 +268,10 @@ AppleVDADecoder::OutputFrame(CVPixelBufferRef aImage,
 
   // Frames come out in DTS order but we need to output them
   // in composition order.
-  mReorderQueue.Push(data.forget());
+  mReorderQueue.Push(data);
   // Assume a frame with a PTS <= current DTS is ready.
   while (mReorderQueue.Length() > 0) {
-    VideoData* readyData = mReorderQueue.Pop();
+    nsRefPtr<VideoData> readyData = mReorderQueue.Pop();
     if (readyData->mTime <= aFrameRef->decode_timestamp) {
       LOG("returning queued frame with pts %lld", readyData->mTime);
       mCallback->Output(readyData);
@@ -411,11 +411,11 @@ AppleVDADecoder::CreateDecoderSpecification()
   AutoCFRelease<CFNumberRef> avc_width  =
     CFNumberCreate(kCFAllocatorDefault,
                    kCFNumberSInt32Type,
-                   &mConfig.display_width);
+                   &mConfig.image_width);
   AutoCFRelease<CFNumberRef> avc_height =
     CFNumberCreate(kCFAllocatorDefault,
                    kCFNumberSInt32Type,
-                   &mConfig.display_height);
+                   &mConfig.image_height);
   AutoCFRelease<CFNumberRef> avc_format =
     CFNumberCreate(kCFAllocatorDefault,
                    kCFNumberSInt32Type,

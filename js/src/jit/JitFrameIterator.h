@@ -45,6 +45,7 @@ enum FrameType
     // An unwound JS frame is a JS frame signalling that its callee frame has been
     // turned into an exit frame (see EnsureExitFrame). Used by Ion bailouts and
     // Baseline exception unwinding.
+    JitFrame_Unwound_BaselineJS,
     JitFrame_Unwound_IonJS,
 
     // Like Unwound_IonJS, but the caller is a baseline stub frame.
@@ -177,10 +178,6 @@ class JitFrameIterator
     uint8_t *returnAddressToFp() const {
         return returnAddressToFp_;
     }
-
-    // Returns the resume address. As above, except taking
-    // BaselineDebugModeOSRInfo into account, if present.
-    uint8_t *resumeAddressToFp() const;
 
     // Previous frame information extracted from the current frame.
     inline size_t prevFrameLocalSize() const;

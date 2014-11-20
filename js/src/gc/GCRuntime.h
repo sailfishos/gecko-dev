@@ -37,6 +37,11 @@ class MarkingValidator;
 struct AutoPrepareForTracing;
 class AutoTraceSession;
 
+#ifdef JSGC_COMPACTING
+struct ArenasToUpdate;
+struct MovingTracer;
+#endif
+
 class ChunkPool
 {
     Chunk *head_;
@@ -271,6 +276,7 @@ class GCRuntime
     void decFJMinorCollecting() { fjCollectionCounter--; }
 
     bool triggerGC(JS::gcreason::Reason reason);
+    void maybeAllocTriggerZoneGC(Zone *zone, const AutoLockGC &lock);
     bool triggerZoneGC(Zone *zone, JS::gcreason::Reason reason);
     bool maybeGC(Zone *zone);
     void maybePeriodicFullGC();
@@ -281,7 +287,7 @@ class GCRuntime
     void gc(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
     void gcSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
     void gcFinalSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
-    void gcDebugSlice(bool limit, int64_t objCount);
+    void gcDebugSlice(SliceBudget &budget);
 
     void runDebugGC();
     inline void poke();
@@ -301,6 +307,7 @@ class GCRuntime
     void notifyDidPaint();
     void shrinkBuffers();
     void onOutOfMallocMemory();
+    void onOutOfMallocMemory(const AutoLockGC &lock);
 
 #ifdef JS_GC_ZEAL
     const void *addressOfZealMode() { return &zealMode; }
@@ -483,11 +490,15 @@ class GCRuntime
     void freeUnusedLifoBlocksAfterSweeping(LifoAlloc *lifo);
     void freeAllLifoBlocksAfterSweeping(LifoAlloc *lifo);
 
+    // Public here for ReleaseArenaLists and FinalizeTypedArenas.
+    void releaseArena(ArenaHeader *aheader, const AutoLockGC &lock);
+
   private:
     // For ArenaLists::allocateFromArena()
     friend class ArenaLists;
     Chunk *pickChunk(const AutoLockGC &lock,
                      AutoMaybeStartBackgroundAllocation &maybeStartBGAlloc);
+    ArenaHeader *allocateArena(Chunk *chunk, Zone *zone, AllocKind kind, const AutoLockGC &lock);
     inline void arenaAllocatedDuringGC(JS::Zone *zone, ArenaHeader *arena);
 
     template <AllowGC allowGC>
@@ -500,7 +511,7 @@ class GCRuntime
      * Must be called either during the GC or with the GC lock taken.
      */
     Chunk *expireEmptyChunkPool(bool shrinkBuffers, const AutoLockGC &lock);
-    void freeEmptyChunks(JSRuntime *rt);
+    void freeEmptyChunks(JSRuntime *rt, const AutoLockGC &lock);
     void freeChunkList(Chunk *chunkListHead);
     void prepareToFreeChunk(ChunkInfo &info);
     void releaseChunk(Chunk *chunk);
@@ -512,14 +523,14 @@ class GCRuntime
 
     bool initZeal();
     void requestMajorGC(JS::gcreason::Reason reason);
-    void collect(bool incremental, int64_t budget, JSGCInvocationKind gckind,
+    void collect(bool incremental, SliceBudget &budget, JSGCInvocationKind gckind,
                  JS::gcreason::Reason reason);
-    bool gcCycle(bool incremental, int64_t budget, JSGCInvocationKind gckind,
+    bool gcCycle(bool incremental, SliceBudget &budget, JSGCInvocationKind gckind,
                  JS::gcreason::Reason reason);
     gcstats::ZoneGCStats scanZonesBeforeGC();
-    void budgetIncrementalGC(int64_t *budget);
+    void budgetIncrementalGC(SliceBudget &budget);
     void resetIncrementalGC(const char *reason);
-    void incrementalCollectSlice(int64_t budget, JS::gcreason::Reason reason);
+    void incrementalCollectSlice(SliceBudget &budget, JS::gcreason::Reason reason);
     void pushZealSelectedObjects();
     void purgeRuntime();
     bool beginMarkPhase(JS::gcreason::Reason reason);
@@ -545,8 +556,8 @@ class GCRuntime
     bool sweepPhase(SliceBudget &sliceBudget);
     void endSweepPhase(bool lastGC);
     void sweepZones(FreeOp *fop, bool lastGC);
-    void decommitArenasFromAvailableList(Chunk **availableListHeadp);
-    void decommitArenas();
+    void decommitAllWithoutUnlocking(const AutoLockGC &lock);
+    void decommitArenas(const AutoLockGC &lock);
     void expireChunksAndArenas(bool shouldShrink, const AutoLockGC &lock);
     void sweepBackgroundThings();
     void assertBackgroundSweepingFinished();
@@ -556,6 +567,8 @@ class GCRuntime
     void sweepZoneAfterCompacting(Zone *zone);
     void compactPhase(bool lastGC);
     ArenaHeader *relocateArenas();
+    void updateAllCellPointersParallel(ArenasToUpdate &source);
+    void updateAllCellPointersSerial(MovingTracer *trc, ArenasToUpdate &source);
     void updatePointersToRelocatedCells();
     void releaseRelocatedArenas(ArenaHeader *relocatedList);
 #ifdef DEBUG

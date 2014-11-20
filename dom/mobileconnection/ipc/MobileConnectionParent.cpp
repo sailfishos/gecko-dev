@@ -131,7 +131,7 @@ MobileConnectionParent::RecvInit(nsMobileConnectionInfo* aVoice,
                                  nsString* aIccId,
                                  int32_t* aNetworkSelectionMode,
                                  int32_t* aRadioState,
-                                 nsTArray<nsString>* aSupportedNetworkTypes)
+                                 nsTArray<int32_t>* aSupportedNetworkTypes)
 {
   NS_ENSURE_TRUE(mMobileConnection, false);
 
@@ -143,18 +143,17 @@ MobileConnectionParent::RecvInit(nsMobileConnectionInfo* aVoice,
   NS_ENSURE_SUCCESS(mMobileConnection->GetNetworkSelectionMode(aNetworkSelectionMode), false);
   NS_ENSURE_SUCCESS(mMobileConnection->GetRadioState(aRadioState), false);
 
-  char16_t** types = nullptr;
+  int32_t* types = nullptr;
   uint32_t length = 0;
 
   nsresult rv = mMobileConnection->GetSupportedNetworkTypes(&types, &length);
   NS_ENSURE_SUCCESS(rv, false);
 
   for (uint32_t i = 0; i < length; ++i) {
-    nsDependentString type(types[i]);
-    aSupportedNetworkTypes->AppendElement(type);
+    aSupportedNetworkTypes->AppendElement(types[i]);
   }
 
-  NS_FREE_XPCOM_ALLOCATED_POINTER_ARRAY(length, types);
+  nsMemory::Free(types);
 
   return true;
 }
@@ -538,12 +537,6 @@ MobileConnectionRequestParent::NotifySuccess()
 }
 
 NS_IMETHODIMP
-MobileConnectionRequestParent::NotifySuccessWithString(const nsAString& aResult)
-{
-  return SendReply(MobileConnectionReplySuccessString(nsAutoString(aResult)));
-}
-
-NS_IMETHODIMP
 MobileConnectionRequestParent::NotifySuccessWithBoolean(bool aResult)
 {
   return SendReply(MobileConnectionReplySuccessBoolean(aResult));
@@ -646,6 +639,12 @@ NS_IMETHODIMP
 MobileConnectionRequestParent::NotifyGetPreferredNetworkTypeSuccess(int32_t aType)
 {
   return SendReply(MobileConnectionReplySuccessPreferredNetworkType(aType));
+}
+
+NS_IMETHODIMP
+MobileConnectionRequestParent::NotifyGetRoamingPreferenceSuccess(int32_t aMode)
+{
+  return SendReply(MobileConnectionReplySuccessRoamingPreference(aMode));
 }
 
 NS_IMETHODIMP

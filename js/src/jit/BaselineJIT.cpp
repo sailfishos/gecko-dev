@@ -60,12 +60,7 @@ static const unsigned BASELINE_MAX_ARGS_LENGTH = 20000;
 static bool
 CheckFrame(InterpreterFrame *fp)
 {
-    if (fp->script()->isGenerator()) {
-        JitSpew(JitSpew_BaselineAbort, "generator frame");
-        return false;
-    }
-
-    if (fp->isDebuggerFrame()) {
+    if (fp->isDebuggerEvalFrame()) {
         // Debugger eval-in-frame. These are likely short-running scripts so
         // don't bother compiling them for now.
         JitSpew(JitSpew_BaselineAbort, "debugger frame");
@@ -163,8 +158,10 @@ jit::EnterBaselineAtBranch(JSContext *cx, InterpreterFrame *fp, jsbytecode *pc)
 
     // Skip debug breakpoint/trap handler, the interpreter already handled it
     // for the current op.
-    if (cx->compartment()->debugMode())
+    if (fp->isDebuggee()) {
+        MOZ_ASSERT(baseline->hasDebugInstrumentation());
         data.jitcode += MacroAssembler::ToggledCallSize(data.jitcode);
+    }
 
     data.osrFrame = fp;
     data.osrNumStackValues = fp->script()->nfixed() + cx->interpreterRegs().stackDepth();
@@ -206,7 +203,7 @@ jit::EnterBaselineAtBranch(JSContext *cx, InterpreterFrame *fp, jsbytecode *pc)
 }
 
 MethodStatus
-jit::BaselineCompile(JSContext *cx, JSScript *script)
+jit::BaselineCompile(JSContext *cx, JSScript *script, bool forceDebugInstrumentation)
 {
     MOZ_ASSERT(!script->hasBaselineScript());
     MOZ_ASSERT(script->canBaselineCompile());
@@ -224,6 +221,8 @@ jit::BaselineCompile(JSContext *cx, JSScript *script)
     BaselineCompiler compiler(cx, *temp, script);
     if (!compiler.init())
         return Method_Error;
+    if (forceDebugInstrumentation)
+        compiler.setCompileDebugInstrumentation();
 
     MethodStatus status = compiler.compile();
 
@@ -237,7 +236,7 @@ jit::BaselineCompile(JSContext *cx, JSScript *script)
 }
 
 static MethodStatus
-CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
+CanEnterBaselineJIT(JSContext *cx, HandleScript script, InterpreterFrame *osrFrame)
 {
     MOZ_ASSERT(jit::IsBaselineEnabled(cx));
 
@@ -265,7 +264,7 @@ CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
     // warm-up and only gathering type information for the loop, and not the
     // rest of the function.
     if (cx->runtime()->forkJoinWarmup > 0) {
-        if (osr)
+        if (osrFrame)
             return Method_Skipped;
     } else if (script->incWarmUpCounter() <= js_JitOptions.baselineWarmUpThreshold) {
         return Method_Skipped;
@@ -287,7 +286,10 @@ CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
         }
     }
 
-    return BaselineCompile(cx, script);
+    // Frames can be marked as debuggee frames independently of its underlying
+    // script being a debuggee script, e.g., when performing
+    // Debugger.Frame.prototype.eval.
+    return BaselineCompile(cx, script, osrFrame && osrFrame->isDebuggee());
 }
 
 MethodStatus
@@ -306,7 +308,7 @@ jit::CanEnterBaselineAtBranch(JSContext *cx, InterpreterFrame *fp, bool newType)
        return Method_CantCompile;
 
    RootedScript script(cx, fp->script());
-   return CanEnterBaselineJIT(cx, script, /* osr = */true);
+   return CanEnterBaselineJIT(cx, script, fp);
 }
 
 MethodStatus
@@ -332,30 +334,33 @@ jit::CanEnterBaselineMethod(JSContext *cx, RunState &state)
     }
 
     RootedScript script(cx, state.script());
-    return CanEnterBaselineJIT(cx, script, /* osr = */false);
+    return CanEnterBaselineJIT(cx, script, /* osrFrame = */ nullptr);
 };
 
 BaselineScript *
 BaselineScript::New(JSScript *jsscript, uint32_t prologueOffset, uint32_t epilogueOffset,
                     uint32_t spsPushToggleOffset, uint32_t postDebugPrologueOffset,
                     size_t icEntries, size_t pcMappingIndexEntries, size_t pcMappingSize,
-                    size_t bytecodeTypeMapEntries)
+                    size_t bytecodeTypeMapEntries, size_t yieldEntries)
 {
     static const unsigned DataAlignment = sizeof(uintptr_t);
 
     size_t icEntriesSize = icEntries * sizeof(ICEntry);
     size_t pcMappingIndexEntriesSize = pcMappingIndexEntries * sizeof(PCMappingIndexEntry);
     size_t bytecodeTypeMapSize = bytecodeTypeMapEntries * sizeof(uint32_t);
+    size_t yieldEntriesSize = yieldEntries * sizeof(uintptr_t);
 
     size_t paddedICEntriesSize = AlignBytes(icEntriesSize, DataAlignment);
     size_t paddedPCMappingIndexEntriesSize = AlignBytes(pcMappingIndexEntriesSize, DataAlignment);
     size_t paddedPCMappingSize = AlignBytes(pcMappingSize, DataAlignment);
     size_t paddedBytecodeTypesMapSize = AlignBytes(bytecodeTypeMapSize, DataAlignment);
+    size_t paddedYieldEntriesSize = AlignBytes(yieldEntriesSize, DataAlignment);
 
     size_t allocBytes = paddedICEntriesSize +
                         paddedPCMappingIndexEntriesSize +
                         paddedPCMappingSize +
-                        paddedBytecodeTypesMapSize;
+                        paddedBytecodeTypesMapSize +
+                        paddedYieldEntriesSize;
 
     BaselineScript *script = jsscript->zone()->pod_malloc_with_extra<BaselineScript, uint8_t>(allocBytes);
     if (!script)
@@ -379,7 +384,12 @@ BaselineScript::New(JSScript *jsscript, uint32_t prologueOffset, uint32_t epilog
     offsetCursor += paddedPCMappingSize;
 
     script->bytecodeTypeMapOffset_ = bytecodeTypeMapEntries ? offsetCursor : 0;
+    offsetCursor += paddedBytecodeTypesMapSize;
 
+    script->yieldEntriesOffset_ = yieldEntries ? offsetCursor : 0;
+    offsetCursor += paddedYieldEntriesSize;
+
+    MOZ_ASSERT(offsetCursor == sizeof(BaselineScript) + allocBytes);
     return script;
 }
 
@@ -571,6 +581,17 @@ BaselineScript::icEntryFromReturnAddress(uint8_t *returnAddr)
 }
 
 void
+BaselineScript::copyYieldEntries(JSScript *script, Vector<uint32_t> &yieldOffsets)
+{
+    uint8_t **entries = yieldEntryList();
+
+    for (size_t i = 0; i < yieldOffsets.length(); i++) {
+        uint32_t offset = yieldOffsets[i];
+        entries[i] = nativeCodeForPC(script, script->offsetToPC(offset));
+    }
+}
+
+void
 BaselineScript::copyICEntries(JSScript *script, const ICEntry *entries, MacroAssembler &masm)
 {
     // Fix up the return offset in the IC entries and copy them in.
@@ -759,7 +780,7 @@ BaselineScript::toggleDebugTraps(JSScript *script, jsbytecode *pc)
     MOZ_ASSERT(script->baselineScript() == this);
 
     // Only scripts compiled for debug mode have toggled calls.
-    if (!debugMode())
+    if (!hasDebugInstrumentation())
         return;
 
     SrcNoteLineScanner scanner(script->notes(), script->lineno());

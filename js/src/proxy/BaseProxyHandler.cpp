@@ -34,9 +34,7 @@ BaseProxyHandler::has(JSContext *cx, HandleObject proxy, HandleId id, bool *bp) 
 bool
 BaseProxyHandler::hasOwn(JSContext *cx, HandleObject proxy, HandleId id, bool *bp) const
 {
-    // Note: Proxy::set needs to invoke hasOwn to determine where the setter
-    // lives, so we allow SET operations to invoke us.
-    assertEnteredPolicy(cx, proxy, id, GET | SET);
+    assertEnteredPolicy(cx, proxy, id, GET);
     Rooted<PropertyDescriptor> desc(cx);
     if (!getOwnPropertyDescriptor(cx, proxy, id, &desc))
         return false;
@@ -153,15 +151,16 @@ js::SetPropertyIgnoringNamedGetter(JSContext *cx, const BaseProxyHandler *handle
                 desc.setGetter(JS_PropertyStub);
         }
         desc.value().set(vp.get());
-        return handler->defineProperty(cx, receiver, id, desc);
+        return JSObject::defineGeneric(cx, receiver, id, desc.value(),
+                                       desc.getter(), desc.setter(), desc.attributes());
     }
-
     desc.object().set(receiver);
     desc.value().set(vp.get());
     desc.setAttributes(JSPROP_ENUMERATE);
     desc.setGetter(nullptr);
     desc.setSetter(nullptr); // Pick up the class getter/setter.
-    return handler->defineProperty(cx, receiver, id, desc);
+    return JSObject::defineGeneric(cx, receiver, id, desc.value(), nullptr, nullptr,
+                                   JSPROP_ENUMERATE);
 }
 
 bool
@@ -199,18 +198,18 @@ BaseProxyHandler::getOwnEnumerablePropertyKeys(JSContext *cx, HandleObject proxy
 
 bool
 BaseProxyHandler::iterate(JSContext *cx, HandleObject proxy, unsigned flags,
-                          MutableHandleValue vp) const
+                          MutableHandleObject objp) const
 {
     assertEnteredPolicy(cx, proxy, JSID_VOID, ENUMERATE);
 
     AutoIdVector props(cx);
     if ((flags & JSITER_OWNONLY)
         ? !getOwnEnumerablePropertyKeys(cx, proxy, props)
-        : !enumerate(cx, proxy, props)) {
+        : !getEnumerablePropertyKeys(cx, proxy, props)) {
         return false;
     }
 
-    return EnumeratedIdVectorToIterator(cx, proxy, flags, props, vp);
+    return EnumeratedIdVectorToIterator(cx, proxy, flags, props, objp);
 }
 
 bool
@@ -342,12 +341,12 @@ BaseProxyHandler::unwatch(JSContext *cx, HandleObject proxy, HandleId id) const
 }
 
 bool
-BaseProxyHandler::slice(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
-                        HandleObject result) const
+BaseProxyHandler::getElements(JSContext *cx, HandleObject proxy, uint32_t begin, uint32_t end,
+                              ElementAdder *adder) const
 {
     assertEnteredPolicy(cx, proxy, JSID_VOID, GET);
 
-    return js::SliceSlowly(cx, proxy, proxy, begin, end, result);
+    return js::GetElementsWithAdder(cx, proxy, proxy, begin, end, adder);
 }
 
 bool

@@ -449,7 +449,7 @@ js::FunctionHasResolveHook(const JSAtomState &atomState, PropertyName *name)
 }
 
 bool
-js::fun_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp)
+js::fun_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
     if (!JSID_IS_ATOM(id))
         return true;
@@ -476,7 +476,8 @@ js::fun_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObjec
 
         if (!ResolveInterpretedFunctionPrototype(cx, fun))
             return false;
-        objp.set(fun);
+
+        *resolvedp = true;
         return true;
     }
 
@@ -498,7 +499,8 @@ js::fun_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObjec
                                   JSPROP_PERMANENT | JSPROP_READONLY)) {
             return false;
         }
-        objp.set(fun);
+
+        *resolvedp = true;
         return true;
     }
 
@@ -736,7 +738,7 @@ JSFunction::trace(JSTracer *trc)
             // self-hosted function which can be cloned over again. The latter
             // is stored in the first extended slot.
             if (IS_GC_MARKING_TRACER(trc) && !compartment()->hasBeenEntered() &&
-                !compartment()->debugMode() && !compartment()->isSelfHosting &&
+                !compartment()->isDebuggee() && !compartment()->isSelfHosting &&
                 u.i.s.script_->isRelazifiable() && (!isSelfHostedBuiltin() || isExtended()))
             {
                 relazify(trc);
@@ -886,14 +888,14 @@ CreateFunctionPrototype(JSContext *cx, JSProtoKey key)
 
 const Class JSFunction::class_ = {
     js_Function_str,
-    JSCLASS_NEW_RESOLVE | JSCLASS_IMPLEMENTS_BARRIERS |
+    JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_CACHED_PROTO(JSProto_Function),
     JS_PropertyStub,         /* addProperty */
     JS_DeletePropertyStub,   /* delProperty */
     JS_PropertyStub,         /* getProperty */
     JS_StrictPropertyStub,   /* setProperty */
     fun_enumerate,
-    (JSResolveOp)js::fun_resolve,
+    js::fun_resolve,
     JS_ConvertStub,
     nullptr,                 /* finalize    */
     nullptr,                 /* call        */
@@ -1498,7 +1500,7 @@ JSFunction::relazify(JSTracer *trc)
     JSScript *script = nonLazyScript();
     MOZ_ASSERT(script->isRelazifiable());
     MOZ_ASSERT(!compartment()->hasBeenEntered());
-    MOZ_ASSERT(!compartment()->debugMode());
+    MOZ_ASSERT(!compartment()->isDebuggee());
 
     // If the script's canonical function isn't lazy, we have to mark the
     // script. Otherwise, the following scenario would leave it unmarked

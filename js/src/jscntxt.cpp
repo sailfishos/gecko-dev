@@ -41,7 +41,6 @@
 #include "gc/Marking.h"
 #include "jit/Ion.h"
 #include "js/CharacterEncoding.h"
-#include "vm/Debugger.h"
 #include "vm/HelperThreads.h"
 #include "vm/Shape.h"
 
@@ -417,8 +416,10 @@ js_ReportOverRecursed(JSContext *maybecx)
      */
     fprintf(stderr, "js_ReportOverRecursed called\n");
 #endif
-    if (maybecx)
+    if (maybecx) {
         JS_ReportErrorNumber(maybecx, js_GetErrorMessage, nullptr, JSMSG_OVER_RECURSED);
+        maybecx->overRecursed_ = true;
+    }
 }
 
 void
@@ -971,90 +972,6 @@ js_GetErrorMessage(void *userRef, const unsigned errorNumber)
     return nullptr;
 }
 
-bool
-js::InvokeInterruptCallback(JSContext *cx)
-{
-    MOZ_ASSERT(cx->runtime()->requestDepth >= 1);
-
-    JSRuntime *rt = cx->runtime();
-    MOZ_ASSERT(rt->interrupt);
-
-    // Reset the callback counter first, then run GC and yield. If another
-    // thread is racing us here we will accumulate another callback request
-    // which will be serviced at the next opportunity.
-    rt->interrupt = false;
-
-    // IonMonkey sets its stack limit to UINTPTR_MAX to trigger interrupt
-    // callbacks.
-    rt->resetJitStackLimit();
-
-    cx->gcIfNeeded();
-
-    rt->interruptPar = false;
-
-    // A worker thread may have requested an interrupt after finishing an Ion
-    // compilation.
-    jit::AttachFinishedCompilations(cx);
-
-    // Important: Additional callbacks can occur inside the callback handler
-    // if it re-enters the JS engine. The embedding must ensure that the
-    // callback is disconnected before attempting such re-entry.
-    JSInterruptCallback cb = cx->runtime()->interruptCallback;
-    if (!cb)
-        return true;
-
-    if (cb(cx)) {
-        // Debugger treats invoking the interrupt callback as a "step", so
-        // invoke the onStep handler.
-        if (cx->compartment()->debugMode()) {
-            ScriptFrameIter iter(cx);
-            if (iter.script()->stepModeEnabled()) {
-                RootedValue rval(cx);
-                switch (Debugger::onSingleStep(cx, &rval)) {
-                  case JSTRAP_ERROR:
-                    return false;
-                  case JSTRAP_CONTINUE:
-                    return true;
-                  case JSTRAP_RETURN:
-                    // See note in Debugger::propagateForcedReturn.
-                    Debugger::propagateForcedReturn(cx, iter.abstractFramePtr(), rval);
-                    return false;
-                  case JSTRAP_THROW:
-                    cx->setPendingException(rval);
-                    return false;
-                  default:;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    // No need to set aside any pending exception here: ComputeStackString
-    // already does that.
-    JSString *stack = ComputeStackString(cx);
-    JSFlatString *flat = stack ? stack->ensureFlat(cx) : nullptr;
-
-    const char16_t *chars;
-    AutoStableStringChars stableChars(cx);
-    if (flat && stableChars.initTwoByte(cx, flat))
-        chars = stableChars.twoByteRange().start().get();
-    else
-        chars = MOZ_UTF16("(stack not available)");
-    JS_ReportErrorFlagsAndNumberUC(cx, JSREPORT_WARNING, js_GetErrorMessage, nullptr,
-                                   JSMSG_TERMINATED, chars);
-
-    return false;
-}
-
-bool
-js::HandleExecutionInterrupt(JSContext *cx)
-{
-    if (cx->runtime()->interrupt)
-        return InvokeInterruptCallback(cx);
-    return true;
-}
-
 ThreadSafeContext::ThreadSafeContext(JSRuntime *rt, PerThreadData *pt, ContextKind kind)
   : ContextFriendFields(rt),
     contextKind_(kind),
@@ -1095,7 +1012,9 @@ JSContext::JSContext(JSRuntime *rt)
     throwing(false),
     unwrappedException_(UndefinedValue()),
     options_(),
+    overRecursed_(false),
     propagatingForcedReturn_(false),
+    liveVolatileJitFrameIterators_(nullptr),
     reportGranularity(JS_DEFAULT_JITREPORT_GRANULARITY),
     resolvingList(nullptr),
     generatingError(false),
@@ -1126,11 +1045,13 @@ JSContext::getPendingException(MutableHandleValue rval)
     rval.set(unwrappedException_);
     if (IsAtomsCompartment(compartment()))
         return true;
+    bool wasOverRecursed = overRecursed_;
     clearPendingException();
     if (!compartment()->wrap(this, rval))
         return false;
     assertSameCompartment(this, rval);
     setPendingException(rval);
+    overRecursed_ = wasOverRecursed;
     return true;
 }
 

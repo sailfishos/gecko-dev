@@ -1698,9 +1698,10 @@ ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObjArg)
 {
   js::AssertSameCompartment(aCx, aObjArg);
 
-  // Check if we're near the stack limit before we get anywhere near the
-  // transplanting code. We use a conservative check since we'll use a little
-  // more space before we actually hit the critical "can't fail" path.
+  // Check if we're anywhere near the stack limit before we reach the
+  // transplanting code, since it has no good way to handle errors. This uses
+  // the untrusted script limit, which is not strictly necessary since no
+  // actual script should run.
   JS_CHECK_RECURSION_CONSERVATIVE(aCx, return NS_ERROR_FAILURE);
 
   JS::Rooted<JSObject*> aObj(aCx, aObjArg);
@@ -2292,15 +2293,9 @@ FinalizeGlobal(JSFreeOp* aFreeOp, JSObject* aObj)
 
 bool
 ResolveGlobal(JSContext* aCx, JS::Handle<JSObject*> aObj,
-              JS::Handle<jsid> aId, JS::MutableHandle<JSObject*> aObjp)
+              JS::Handle<jsid> aId, bool* aResolvedp)
 {
-  bool resolved;
-  if (!JS_ResolveStandardClass(aCx, aObj, aId, &resolved)) {
-    return false;
-  }
-
-  aObjp.set(resolved ? aObj.get() : nullptr);
-  return true;
+  return JS_ResolveStandardClass(aCx, aObj, aId, aResolvedp);
 }
 
 bool

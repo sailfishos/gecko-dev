@@ -1018,15 +1018,15 @@ bool WebMReader::DecodeVideoFrame(bool &aKeyframeSkip,
         picture.height = (img->d_h * mPicture.height) / mInitialFrame.height;
       }
 
-      VideoData *v = VideoData::Create(mInfo.mVideo,
-                                       mDecoder->GetImageContainer(),
-                                       holder->mOffset,
-                                       tstamp_usecs,
-                                       (next_tstamp / NS_PER_USEC)-tstamp_usecs,
-                                       b,
-                                       si.is_kf,
-                                       -1,
-                                       picture);
+      nsRefPtr<VideoData> v = VideoData::Create(mInfo.mVideo,
+                                                mDecoder->GetImageContainer(),
+                                                holder->mOffset,
+                                                tstamp_usecs,
+                                                (next_tstamp / NS_PER_USEC)-tstamp_usecs,
+                                                b,
+                                                si.is_kf,
+                                                -1,
+                                                picture);
       if (!v) {
         return false;
       }
@@ -1092,13 +1092,14 @@ nsresult WebMReader::SeekInternal(int64_t aTarget, int64_t aStartTime)
   return NS_OK;
 }
 
-nsresult WebMReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
+nsresult WebMReader::GetBuffered(dom::TimeRanges* aBuffered)
 {
+  MOZ_ASSERT(mStartTime != -1, "Need to finish metadata decode first");
   if (aBuffered->Length() != 0) {
     return NS_ERROR_FAILURE;
   }
 
-  MediaResource* resource = mDecoder->GetResource();
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
 
   // Special case completely cached files.  This also handles local files.
   if (mContext && resource->IsDataCachedToEndOfResource(0)) {
@@ -1121,7 +1122,7 @@ nsresult WebMReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
                                                         ranges[index].mEnd,
                                                         &start, &end);
     if (rv) {
-      int64_t startOffset = aStartTime * NS_PER_USEC;
+      int64_t startOffset = mStartTime * NS_PER_USEC;
       NS_ASSERTION(startOffset >= 0 && uint64_t(startOffset) <= start,
                    "startOffset negative or larger than start time");
       if (!(startOffset >= 0 && uint64_t(startOffset) <= start)) {

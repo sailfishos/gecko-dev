@@ -881,10 +881,10 @@ nsresult OggReader::DecodeTheora(ogg_packet* aPacket, int64_t aTimeThreshold)
   }
 
   if (ret == TH_DUPFRAME) {
-    VideoData* v = VideoData::CreateDuplicate(mDecoder->GetResource()->Tell(),
-                                              time,
-                                              endTime - time,
-                                              aPacket->granulepos);
+    nsRefPtr<VideoData> v = VideoData::CreateDuplicate(mDecoder->GetResource()->Tell(),
+                                                       time,
+                                                       endTime - time,
+                                                       aPacket->granulepos);
     mVideoQueue.Push(v);
   } else if (ret == 0) {
     th_ycbcr_buffer buffer;
@@ -900,15 +900,15 @@ nsresult OggReader::DecodeTheora(ogg_packet* aPacket, int64_t aTimeThreshold)
       b.mPlanes[i].mOffset = b.mPlanes[i].mSkip = 0;
     }
 
-    VideoData *v = VideoData::Create(mInfo.mVideo,
-                                     mDecoder->GetImageContainer(),
-                                     mDecoder->GetResource()->Tell(),
-                                     time,
-                                     endTime - time,
-                                     b,
-                                     isKeyframe,
-                                     aPacket->granulepos,
-                                     ToIntRect(mPicture));
+    nsRefPtr<VideoData> v = VideoData::Create(mInfo.mVideo,
+                                              mDecoder->GetImageContainer(),
+                                              mDecoder->GetResource()->Tell(),
+                                              time,
+                                              endTime - time,
+                                              b,
+                                              isKeyframe,
+                                              aPacket->granulepos,
+                                              ToIntRect(mPicture));
     if (!v) {
       // There may be other reasons for this error, but for
       // simplicity just assume the worst case: out of memory.
@@ -1540,7 +1540,7 @@ nsresult OggReader::SeekInternal(int64_t aTarget,
     // keyframe.
     VideoData* v;
     while ((v = mVideoQueue.PeekFront()) && !v->mKeyframe) {
-      delete mVideoQueue.PopFront();
+      nsRefPtr<VideoData> releaseMe = mVideoQueue.PopFront();
     }
     if (mVideoQueue.GetSize() == 0) {
       // We didn't find a keyframe in the frames already here, so decode
@@ -1890,15 +1890,16 @@ nsresult OggReader::SeekBisection(int64_t aTarget,
   return NS_OK;
 }
 
-nsresult OggReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
+nsresult OggReader::GetBuffered(dom::TimeRanges* aBuffered)
 {
+  MOZ_ASSERT(mStartTime != -1, "Need to finish metadata decode first");
   {
     mozilla::ReentrantMonitorAutoEnter mon(mMonitor);
     if (mIsChained)
       return NS_ERROR_FAILURE;
   }
 #ifdef OGG_ESTIMATE_BUFFERED
-  return MediaDecoderReader::GetBuffered(aBuffered, aStartTime);
+  return MediaDecoderReader::GetBuffered(aBuffered);
 #else
   // HasAudio and HasVideo are not used here as they take a lock and cause
   // a deadlock. Accessing mInfo doesn't require a lock - it doesn't change
@@ -1908,7 +1909,7 @@ nsresult OggReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
     return NS_OK;
   }
 
-  MediaResource* resource = mDecoder->GetResource();
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
   nsTArray<MediaByteRange> ranges;
   nsresult res = resource->GetCachedRanges(ranges);
   NS_ENSURE_SUCCESS(res, res);
@@ -1928,7 +1929,7 @@ nsresult OggReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
     // we special-case (startOffset == 0) so that the first
     // buffered range always appears to be buffered from the media start
     // time, rather than from the end-time of the first page.
-    int64_t startTime = (startOffset == 0) ? aStartTime : -1;
+    int64_t startTime = (startOffset == 0) ? mStartTime : -1;
 
     // Find the start time of the range. Read pages until we find one with a
     // granulepos which we can convert into a timestamp to use as the time of
@@ -1996,8 +1997,8 @@ nsresult OggReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
       // find an end time.
       int64_t endTime = RangeEndTime(startOffset, endOffset, true);
       if (endTime != -1) {
-        aBuffered->Add((startTime - aStartTime) / static_cast<double>(USECS_PER_S),
-                       (endTime - aStartTime) / static_cast<double>(USECS_PER_S));
+        aBuffered->Add((startTime - mStartTime) / static_cast<double>(USECS_PER_S),
+                       (endTime - mStartTime) / static_cast<double>(USECS_PER_S));
       }
     }
   }

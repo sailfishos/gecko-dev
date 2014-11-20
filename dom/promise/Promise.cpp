@@ -7,6 +7,7 @@
 #include "mozilla/dom/Promise.h"
 
 #include "jsfriendapi.h"
+#include "js/Debug.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMError.h"
 #include "mozilla/dom/OwningNonNull.h"
@@ -324,8 +325,8 @@ Promise::CreateWrapper(ErrorResult& aRv)
   }
   JSContext* cx = jsapi.cx();
 
-  JS::Rooted<JS::Value> ignored(cx);
-  if (!WrapNewBindingObject(cx, this, &ignored)) {
+  JS::Rooted<JS::Value> wrapper(cx);
+  if (!WrapNewBindingObject(cx, this, &wrapper)) {
     JS_ClearPendingException(cx);
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
@@ -339,6 +340,9 @@ Promise::CreateWrapper(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
   }
+
+  JS::RootedObject obj(cx, &wrapper.toObject());
+  JS::dbg::onNewPromise(cx, obj);
 }
 
 void
@@ -360,21 +364,27 @@ Promise::MaybeReject(const nsRefPtr<MediaStreamError>& aArg) {
   MaybeSomething(aArg, &Promise::MaybeReject);
 }
 
-void
+bool
 Promise::PerformMicroTaskCheckpoint()
 {
   CycleCollectedJSRuntime* runtime = CycleCollectedJSRuntime::Get();
   nsTArray<nsRefPtr<nsIRunnable>>& microtaskQueue =
     runtime->GetPromiseMicroTaskQueue();
 
-  while (!microtaskQueue.IsEmpty()) {
+  if (microtaskQueue.IsEmpty()) {
+    return false;
+  }
+
+  do {
     nsRefPtr<nsIRunnable> runnable = microtaskQueue.ElementAt(0);
     MOZ_ASSERT(runnable);
 
     // This function can re-enter, so we remove the element before calling.
     microtaskQueue.RemoveElementAt(0);
     runnable->Run();
-  }
+  } while (!microtaskQueue.IsEmpty());
+
+  return true;
 }
 
 /* static */ bool
@@ -1107,19 +1117,19 @@ Promise::RejectInternal(JSContext* aCx,
 }
 
 void
-Promise::MaybeSettle(JS::Handle<JS::Value> aValue,
-                     PromiseState aState)
+Promise::Settle(JS::Handle<JS::Value> aValue, PromiseState aState)
 {
-  // Promise.all() or Promise.race() implementations will repeatedly call
-  // Resolve/RejectInternal rather than using the Maybe... forms. Stop SetState
-  // from asserting.
-  if (mState != Pending) {
-    return;
-  }
-
+  mSettlementTimestamp = TimeStamp::Now();
   SetResult(aValue);
   SetState(aState);
-  mSettlementTimestamp = TimeStamp::Now();
+
+  AutoJSAPI jsapi;
+  jsapi.Init();
+  JSContext* cx = jsapi.cx();
+  JS::RootedObject wrapper(cx, GetWrapper());
+  MOZ_ASSERT(wrapper); // We preserved it
+  JSAutoCompartment ac(cx, wrapper);
+  JS::dbg::onPromiseSettled(cx, wrapper);
 
   // If the Promise was rejected, and there is no reject handler already setup,
   // watch for thread shutdown.
@@ -1141,6 +1151,20 @@ Promise::MaybeSettle(JS::Handle<JS::Value> aValue,
   }
 
   EnqueueCallbackTasks();
+}
+
+void
+Promise::MaybeSettle(JS::Handle<JS::Value> aValue,
+                     PromiseState aState)
+{
+  // Promise.all() or Promise.race() implementations will repeatedly call
+  // Resolve/RejectInternal rather than using the Maybe... forms. Stop SetState
+  // from asserting.
+  if (mState != Pending) {
+    return;
+  }
+
+  Settle(aValue, aState);
 }
 
 void

@@ -32,7 +32,8 @@ browser.jar:
   content/browser/loop/shared/img/sad.png                       (content/shared/img/sad.png)
   content/browser/loop/shared/img/icon_32.png                   (content/shared/img/icon_32.png)
   content/browser/loop/shared/img/icon_64.png                   (content/shared/img/icon_64.png)
-  content/browser/loop/shared/img/loading-icon.gif              (content/shared/img/loading-icon.gif)
+  content/browser/loop/shared/img/spinner.png                   (content/shared/img/spinner.png)
+  content/browser/loop/shared/img/spinner@2x.png                (content/shared/img/spinner@2x.png)
   content/browser/loop/shared/img/audio-inverse-14x14.png       (content/shared/img/audio-inverse-14x14.png)
   content/browser/loop/shared/img/audio-inverse-14x14@2x.png    (content/shared/img/audio-inverse-14x14@2x.png)
   content/browser/loop/shared/img/facemute-14x14.png            (content/shared/img/facemute-14x14.png)
@@ -54,10 +55,19 @@ browser.jar:
   content/browser/loop/shared/img/icons-10x10.svg               (content/shared/img/icons-10x10.svg)
   content/browser/loop/shared/img/icons-14x14.svg               (content/shared/img/icons-14x14.svg)
   content/browser/loop/shared/img/icons-16x16.svg               (content/shared/img/icons-16x16.svg)
+  content/browser/loop/shared/img/movistar.png                  (content/shared/img/movistar.png)
+  content/browser/loop/shared/img/movistar@2x.png               (content/shared/img/movistar@2x.png)
+  content/browser/loop/shared/img/vivo.png                      (content/shared/img/vivo.png)
+  content/browser/loop/shared/img/vivo@2x.png                   (content/shared/img/vivo@2x.png)
+  content/browser/loop/shared/img/02.png                        (content/shared/img/02.png)
+  content/browser/loop/shared/img/02@2x.png                     (content/shared/img/02@2x.png)
+  content/browser/loop/shared/img/telefonica.png                (content/shared/img/telefonica.png)
+  content/browser/loop/shared/img/telefonica@2x.png             (content/shared/img/telefonica@2x.png)
 
   # Shared scripts
   content/browser/loop/shared/js/actions.js           (content/shared/js/actions.js)
   content/browser/loop/shared/js/conversationStore.js (content/shared/js/conversationStore.js)
+  content/browser/loop/shared/js/store.js             (content/shared/js/store.js)
   content/browser/loop/shared/js/roomStore.js         (content/shared/js/roomStore.js)
   content/browser/loop/shared/js/activeRoomStore.js   (content/shared/js/activeRoomStore.js)
   content/browser/loop/shared/js/dispatcher.js        (content/shared/js/dispatcher.js)
@@ -85,6 +95,7 @@ browser.jar:
   content/browser/loop/shared/sounds/connecting.ogg   (content/shared/sounds/connecting.ogg)
   content/browser/loop/shared/sounds/connected.ogg    (content/shared/sounds/connected.ogg)
   content/browser/loop/shared/sounds/terminated.ogg   (content/shared/sounds/terminated.ogg)
+  content/browser/loop/shared/sounds/room-joined.ogg  (content/shared/sounds/room-joined.ogg)
   content/browser/loop/shared/sounds/failure.ogg      (content/shared/sounds/failure.ogg)
 
   # Partner SDK assets

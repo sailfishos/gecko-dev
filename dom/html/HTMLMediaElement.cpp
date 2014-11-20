@@ -1793,28 +1793,31 @@ HTMLMediaElement::CaptureStreamInternal(bool aFinishWhenEnded)
   }
 #endif
   OutputMediaStream* out = mOutputStreams.AppendElement();
-#ifdef DEBUG
-  // Estimate hints based on the type of the media element
-  // under the preference media.capturestream_hints for the
-  // debug builds only. This allows WebRTC Peer Connection
-  // to behave appropriately when media streams generated
-  // via mozCaptureStream*() are added to the Peer Connection.
-  // This functionality is planned to be used as part of Audio
-  // Quality Performance testing for WebRTC.
-  // Bug932845: Revisit this once hints mechanism is dealt with
-  // holistically.
   uint8_t hints = 0;
-  if (Preferences::GetBool("media.capturestream_hints.enabled")) {
-    if (IsVideo() && GetVideoFrameContainer()) {
-      hints = DOMMediaStream::HINT_CONTENTS_VIDEO | DOMMediaStream::HINT_CONTENTS_AUDIO;
-    } else {
-      hints = DOMMediaStream::HINT_CONTENTS_AUDIO;
+  if (mReadyState >= nsIDOMHTMLMediaElement::HAVE_METADATA) {
+    hints = (mHasAudio? DOMMediaStream::HINT_CONTENTS_AUDIO : 0) |
+            (mHasVideo? DOMMediaStream::HINT_CONTENTS_VIDEO : 0);
+  } else {
+#ifdef DEBUG
+    // Estimate hints based on the type of the media element
+    // under the preference media.capturestream_hints for the
+    // debug builds only. This allows WebRTC Peer Connection
+    // to behave appropriately when media streams generated
+    // via mozCaptureStream*() are added to the Peer Connection.
+    // This functionality is planned to be used as part of Audio
+    // Quality Performance testing for WebRTC.
+    // Bug932845: Revisit this once hints mechanism is dealt with
+    // holistically.
+    if (Preferences::GetBool("media.capturestream_hints.enabled")) {
+      if (IsVideo() && GetVideoFrameContainer()) {
+        hints = DOMMediaStream::HINT_CONTENTS_VIDEO | DOMMediaStream::HINT_CONTENTS_AUDIO;
+      } else {
+        hints = DOMMediaStream::HINT_CONTENTS_AUDIO;
+      }
     }
+#endif
   }
   out->mStream = DOMMediaStream::CreateTrackUnionStream(window, hints);
-#else
-  out->mStream = DOMMediaStream::CreateTrackUnionStream(window);
-#endif
   nsRefPtr<nsIPrincipal> principal = GetCurrentPrincipal();
   out->mStream->CombineWithPrincipal(principal);
   out->mFinishWhenEnded = aFinishWhenEnded;
@@ -3678,9 +3681,7 @@ HTMLMediaElement::Buffered() const
 {
   nsRefPtr<TimeRanges> ranges = new TimeRanges();
   if (mReadyState > nsIDOMHTMLMediaElement::HAVE_NOTHING) {
-    if (mMediaSource) {
-      mMediaSource->GetBuffered(ranges);
-    } else if (mDecoder) {
+    if (mDecoder) {
       // If GetBuffered fails we ignore the error result and just return the
       // time ranges we found up till the error.
       mDecoder->GetBuffered(ranges);
@@ -3718,7 +3719,8 @@ void HTMLMediaElement::SetRequestHeaders(nsIHttpChannel* aChannel)
                              EmptyCString(), false);
 
   // Set the Referer header
-  aChannel->SetReferrer(OwnerDoc()->GetDocumentURI());
+  aChannel->SetReferrerWithPolicy(OwnerDoc()->GetDocumentURI(),
+                                  OwnerDoc()->GetReferrerPolicy());
 }
 
 void HTMLMediaElement::FireTimeUpdate(bool aPeriodic)

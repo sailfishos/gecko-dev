@@ -3177,6 +3177,15 @@
     "extended_statistics_ok": true,
     "description": "Number of thumbnails stored in the browser DB"
   },
+  "FENNEC_READING_LIST_COUNT": {
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "1000",
+    "n_buckets": 10,
+    "cpp_guard": "ANDROID",
+    "extended_statistics_ok": true,
+    "description": "Number of reading list items stored in the browser DB"
+  },
   "PLACES_SORTED_BOOKMARKS_PERC": {
     "expires_in_version": "never",
     "kind": "linear",
@@ -5847,6 +5856,11 @@
     "kind": "boolean",
     "description": "How many times has the devtool's Network Monitor been opened?"
   },
+  "DEVTOOLS_STORAGE_OPENED_BOOLEAN": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "How many times has the Storage Inspector been opened?"
+  },
   "DEVTOOLS_PAINTFLASHING_OPENED_BOOLEAN": {
     "expires_in_version": "never",
     "kind": "boolean",
@@ -5966,6 +5980,11 @@
     "expires_in_version": "never",
     "kind": "flag",
     "description": "How many users have opened the devtool's Network Monitor?"
+  },
+  "DEVTOOLS_STORAGE_OPENED_PER_USER_FLAG": {
+    "expires_in_version": "never",
+    "kind": "flag",
+    "description": "How many users have opened the devtool's Storage Inspector?"
   },
   "DEVTOOLS_PAINTFLASHING_OPENED_PER_USER_FLAG": {
     "expires_in_version": "never",
@@ -6120,6 +6139,13 @@
     "high": "10000000",
     "n_buckets": 100,
     "description": "How long has the network monitor been active (seconds)"
+  },
+  "DEVTOOLS_STORAGE_TIME_ACTIVE_SECONDS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "10000000",
+    "n_buckets": 100,
+    "description": "How long has the storage inspector been active (seconds)"
   },
   "DEVTOOLS_PAINTFLASHING_TIME_ACTIVE_SECONDS": {
     "expires_in_version": "never",
@@ -6748,6 +6774,34 @@
     "high": "10000000",
     "n_buckets": 10,
     "description": "Sidebar showing: seconds that the sidebar has been opened"
+  },
+  "SHUTDOWN_PHASE_DURATION_TICKS_QUIT_APPLICATION": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 65,
+    "n_buckets": 10,
+    "description": "Duration of shutdown phase quit-application, as measured by the shutdown terminator, in seconds of activity"
+  },
+  "SHUTDOWN_PHASE_DURATION_TICKS_PROFILE_CHANGE_TEARDOWN": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 65,
+    "n_buckets": 10,
+    "description": "Duration of shutdown phase profile-change-teardown, as measured by the shutdown terminator, in seconds of activity"
+  },
+  "SHUTDOWN_PHASE_DURATION_TICKS_XPCOM_WILL_SHUTDOWN": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 65,
+    "n_buckets": 10,
+    "description": "Duration of shutdown phase xpcom-will-shutdown, as measured by the shutdown terminator, in seconds of activity"
+  },
+  "SHUTDOWN_PHASE_DURATION_TICKS_PROFILE_BEFORE_CHANGE": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 65,
+    "n_buckets": 10,
+    "description": "Duration of shutdown phase profile-before-change, as measured by the shutdown terminator, in seconds of activity"
   },
   "BR_9_2_1_SUBJECT_ALT_NAMES": {
     "expires_in_version": "never",

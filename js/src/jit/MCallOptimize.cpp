@@ -197,6 +197,8 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSFunction *target)
         return inlineToString(callInfo);
     if (native == intrinsic_IsConstructing)
         return inlineIsConstructing(callInfo);
+    if (native == intrinsic_SubstringKernel)
+        return inlineSubstringKernel(callInfo);
 
     // TypedObject intrinsics.
     if (native == intrinsic_ObjectIsTypedObject)
@@ -355,13 +357,30 @@ IonBuilder::inlineArray(CallInfo &callInfo)
         }
     }
 
+    types::TemporaryTypeSet::DoubleConversion conversion =
+        getInlineReturnTypeSet()->convertDoubleElements(constraints());
+    if (conversion == types::TemporaryTypeSet::AlwaysConvertToDoubles)
+        templateObject->setShouldConvertDoubleElements();
+    else
+        templateObject->clearShouldConvertDoubleElements();
+
     // A single integer argument denotes initial length.
     if (callInfo.argc() == 1) {
         if (callInfo.getArg(0)->type() != MIRType_Int32)
             return InliningStatus_NotInlined;
+
         MDefinition *arg = callInfo.getArg(0);
-        if (!arg->isConstant())
-            return InliningStatus_NotInlined;
+        if (!arg->isConstant()) {
+            callInfo.setImplicitlyUsedUnchecked();
+            ArrayObject *templateArray = &templateObject->as<ArrayObject>();
+            MNewArrayDynamicLength *ins =
+                MNewArrayDynamicLength::New(alloc(), constraints(), templateArray,
+                                            templateArray->type()->initialHeap(constraints()),
+                                            arg);
+            current->add(ins);
+            current->push(ins);
+            return InliningStatus_Inlined;
+        }
 
         // Negative lengths generate a RangeError, unhandled by the inline path.
         initLength = arg->toConstant()->value().toInt32();
@@ -382,13 +401,6 @@ IonBuilder::inlineArray(CallInfo &callInfo)
     }
 
     callInfo.setImplicitlyUsedUnchecked();
-
-    types::TemporaryTypeSet::DoubleConversion conversion =
-        getInlineReturnTypeSet()->convertDoubleElements(constraints());
-    if (conversion == types::TemporaryTypeSet::AlwaysConvertToDoubles)
-        templateObject->setShouldConvertDoubleElements();
-    else
-        templateObject->clearShouldConvertDoubleElements();
 
     MConstant *templateConst = MConstant::NewConstraintlessObject(alloc(), templateObject);
     current->add(templateConst);
@@ -1542,6 +1554,38 @@ IonBuilder::inlineStrReplace(CallInfo &callInfo)
     current->push(cte);
     if (cte->isEffectful() && !resumeAfter(cte))
         return InliningStatus_Error;
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineSubstringKernel(CallInfo &callInfo)
+{
+    MOZ_ASSERT(callInfo.argc() == 3);
+    MOZ_ASSERT(!callInfo.constructing());
+
+    // Return: String.
+    if (getInlineReturnType() != MIRType_String)
+        return InliningStatus_NotInlined;
+
+    // Arg 0: String.
+    if (callInfo.getArg(0)->type() != MIRType_String)
+        return InliningStatus_NotInlined;
+
+    // Arg 1: Int.
+    if (callInfo.getArg(1)->type() != MIRType_Int32)
+        return InliningStatus_NotInlined;
+
+    // Arg 2: Int.
+    if (callInfo.getArg(2)->type() != MIRType_Int32)
+        return InliningStatus_NotInlined;
+
+    callInfo.setImplicitlyUsedUnchecked();
+
+    MSubstr *substr = MSubstr::New(alloc(), callInfo.getArg(0), callInfo.getArg(1),
+                                            callInfo.getArg(2));
+    current->add(substr);
+    current->push(substr);
+
     return InliningStatus_Inlined;
 }
 

@@ -309,9 +309,14 @@ nsCaret::GetGeometryForFrame(nsIFrame* aFrame,
     descent = fm->MaxDescent();
   }
   nscoord height = ascent + descent;
-  bool vertical = aFrame->GetWritingMode().IsVertical();
+  WritingMode wm = aFrame->GetWritingMode();
+  bool vertical = wm.IsVertical();
   if (vertical) {
-    framePos.x = baseline - ascent;
+    if (wm.IsLineInverted()) {
+      framePos.x = baseline - descent;
+    } else {
+      framePos.x = baseline - ascent;
+    }
   } else {
     framePos.y = baseline - ascent;
   }
@@ -641,7 +646,6 @@ nsCaret::GetCaretFrameForNodeOffset(nsFrameSelection*    aFrameSelection,
   // ------------------
   // NS_STYLE_DIRECTION_LTR : LTR or Default
   // NS_STYLE_DIRECTION_RTL
-  // NS_STYLE_DIRECTION_INHERIT
   if (IsBidiUI())
   {
     // If there has been a reflow, take the caret Bidi level to be the level of the current frame

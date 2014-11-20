@@ -66,6 +66,8 @@ public:
     mHasPictureRect = true;
   }
 
+  gfx::IntSize GetImageSize() const;
+
   virtual LayerRenderState GetRenderState() MOZ_OVERRIDE;
 
   virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
@@ -86,7 +88,7 @@ public:
 
 protected:
 
-  RefPtr<TextureHost> mFrontBuffer;
+  CompositableTextureHostRef mFrontBuffer;
   CompositableTextureSourceRef mTextureSource;
   nsIntRect mPictureRect;
   bool mHasPictureRect;

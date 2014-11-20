@@ -115,10 +115,6 @@ using js::frontend::Parser;
 #define JS_ADDRESSOF_VA_LIST(ap) (&(ap))
 #endif
 
-/* Make sure that char16_t is two bytes unsigned integer */
-JS_STATIC_ASSERT((char16_t)-1 > 0);
-JS_STATIC_ASSERT(sizeof(char16_t) == 2);
-
 bool
 JS::CallArgs::requireAtLeast(JSContext *cx, const char *fnname, unsigned required) {
     if (length() < required) {
@@ -2031,68 +2027,48 @@ JS_GetExternalStringFinalizer(JSString *str)
 }
 
 static void
-SetNativeStackQuota(JSRuntime *rt, StackKind kind, size_t stackSize)
+SetNativeStackQuotaAndLimit(JSRuntime *rt, StackKind kind, size_t stackSize)
 {
     rt->nativeStackQuota[kind] = stackSize;
-    if (rt->nativeStackBase)
-        RecomputeStackLimit(rt, kind);
-}
 
-void
-js::RecomputeStackLimit(JSRuntime *rt, StackKind kind)
-{
-    size_t stackSize = rt->nativeStackQuota[kind];
 #if JS_STACK_GROWTH_DIRECTION > 0
     if (stackSize == 0) {
         rt->mainThread.nativeStackLimit[kind] = UINTPTR_MAX;
     } else {
         MOZ_ASSERT(rt->nativeStackBase <= size_t(-1) - stackSize);
-        rt->mainThread.nativeStackLimit[kind] =
-          rt->nativeStackBase + stackSize - 1;
+        rt->mainThread.nativeStackLimit[kind] = rt->nativeStackBase + stackSize - 1;
     }
 #else
     if (stackSize == 0) {
         rt->mainThread.nativeStackLimit[kind] = 0;
     } else {
         MOZ_ASSERT(rt->nativeStackBase >= stackSize);
-        rt->mainThread.nativeStackLimit[kind] =
-          rt->nativeStackBase - (stackSize - 1);
+        rt->mainThread.nativeStackLimit[kind] = rt->nativeStackBase - (stackSize - 1);
     }
 #endif
-
-    // If there's no pending interrupt request set on the runtime's main thread's
-    // jitStackLimit, then update it so that it reflects the new nativeStacklimit.
-    //
-    // Note that, for now, we use the untrusted limit for ion. This is fine,
-    // because it's the most conservative limit, and if we hit it, we'll bail
-    // out of ion into the interpeter, which will do a proper recursion check.
-    if (kind == StackForUntrustedScript) {
-        JSRuntime::AutoLockForInterrupt lock(rt);
-        if (rt->mainThread.jitStackLimit != uintptr_t(-1)) {
-            rt->mainThread.jitStackLimit = rt->mainThread.nativeStackLimit[kind];
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-            rt->mainThread.jitStackLimit = jit::Simulator::StackLimit();
-#endif
-        }
-    }
 }
 
 JS_PUBLIC_API(void)
-JS_SetNativeStackQuota(JSRuntime *rt, size_t systemCodeStackSize,
-                       size_t trustedScriptStackSize,
+JS_SetNativeStackQuota(JSRuntime *rt, size_t systemCodeStackSize, size_t trustedScriptStackSize,
                        size_t untrustedScriptStackSize)
 {
-    MOZ_ASSERT_IF(trustedScriptStackSize,
-                  trustedScriptStackSize < systemCodeStackSize);
+    MOZ_ASSERT(rt->requestDepth == 0);
+
     if (!trustedScriptStackSize)
         trustedScriptStackSize = systemCodeStackSize;
-    MOZ_ASSERT_IF(untrustedScriptStackSize,
-                  untrustedScriptStackSize < trustedScriptStackSize);
+    else
+        MOZ_ASSERT(trustedScriptStackSize < systemCodeStackSize);
+
     if (!untrustedScriptStackSize)
         untrustedScriptStackSize = trustedScriptStackSize;
-    SetNativeStackQuota(rt, StackForSystemCode, systemCodeStackSize);
-    SetNativeStackQuota(rt, StackForTrustedScript, trustedScriptStackSize);
-    SetNativeStackQuota(rt, StackForUntrustedScript, untrustedScriptStackSize);
+    else
+        MOZ_ASSERT(untrustedScriptStackSize < trustedScriptStackSize);
+
+    SetNativeStackQuotaAndLimit(rt, StackForSystemCode, systemCodeStackSize);
+    SetNativeStackQuotaAndLimit(rt, StackForTrustedScript, trustedScriptStackSize);
+    SetNativeStackQuotaAndLimit(rt, StackForUntrustedScript, untrustedScriptStackSize);
+
+    rt->mainThread.initJitStackLimit();
 }
 
 /************************************************************************/
@@ -2181,8 +2157,9 @@ JS_EnumerateStub(JSContext *cx, HandleObject obj)
 }
 
 JS_PUBLIC_API(bool)
-JS_ResolveStub(JSContext *cx, HandleObject obj, HandleId id)
+JS_ResolveStub(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
+    MOZ_ASSERT(*resolvedp == false);
     return true;
 }
 
@@ -3859,8 +3836,8 @@ CreateScopeObjectsForScopeChain(JSContext *cx, AutoObjectVector &scopeChain,
         staticWith->initEnclosingNestedScope(staticEnclosingScope);
         staticEnclosingScope = staticWith;
 
-        dynamicWith = DynamicWithObject::create(cx, scopeChain[--i],
-                                                dynamicEnclosingScope, staticWith);
+        dynamicWith = DynamicWithObject::create(cx, scopeChain[--i], dynamicEnclosingScope,
+                                                staticWith, DynamicWithObject::NonSyntacticWith);
         if (!dynamicWith)
             return false;
         dynamicEnclosingScope = dynamicWith;
@@ -4537,7 +4514,7 @@ JS_BufferIsCompilableUnit(JSContext *cx, HandleObject obj, const char *utf8, siz
                                               options, chars, length,
                                               /* foldConstants = */ true, nullptr, nullptr);
     JSErrorReporter older = JS_SetErrorReporter(cx->runtime(), nullptr);
-    if (!parser.parse(obj)) {
+    if (!parser.checkOptions() || !parser.parse(obj)) {
         // We ran into an error. If it was because we ran out of source, we
         // return false so our caller knows to try to collect more buffered
         // source.
@@ -4731,6 +4708,16 @@ ExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptArg, jsval *rv
     return Execute(cx, script, *obj, rval);
 }
 
+static bool
+ExecuteScript(JSContext *cx, AutoObjectVector &scopeChain, HandleScript scriptArg, jsval *rval)
+{
+    RootedObject dynamicScope(cx);
+    RootedObject unusedStaticScope(cx);
+    if (!CreateScopeObjectsForScopeChain(cx, scopeChain, &dynamicScope, &unusedStaticScope))
+        return false;
+    return ExecuteScript(cx, dynamicScope, scriptArg, rval);
+}
+
 MOZ_NEVER_INLINE JS_PUBLIC_API(bool)
 JS_ExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptArg, MutableHandleValue rval)
 {
@@ -4741,6 +4728,19 @@ MOZ_NEVER_INLINE JS_PUBLIC_API(bool)
 JS_ExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptArg)
 {
     return ExecuteScript(cx, obj, scriptArg, nullptr);
+}
+
+MOZ_NEVER_INLINE JS_PUBLIC_API(bool)
+JS_ExecuteScript(JSContext *cx, AutoObjectVector &scopeChain,
+                 HandleScript scriptArg, MutableHandleValue rval)
+{
+    return ExecuteScript(cx, scopeChain, scriptArg, rval.address());
+}
+
+MOZ_NEVER_INLINE JS_PUBLIC_API(bool)
+JS_ExecuteScript(JSContext *cx, AutoObjectVector &scopeChain, HandleScript scriptArg)
+{
+    return ExecuteScript(cx, scopeChain, scriptArg, nullptr);
 }
 
 JS_PUBLIC_API(bool)
@@ -4760,24 +4760,11 @@ JS::CloneAndExecuteScript(JSContext *cx, HandleObject obj, HandleScript scriptAr
     return ExecuteScript(cx, obj, script, nullptr);
 }
 
-JS_PUBLIC_API(bool)
-JS_ExecuteScriptVersion(JSContext *cx, HandleObject obj, HandleScript script,
-                        MutableHandleValue rval, JSVersion version)
-{
-    return ExecuteScript(cx, obj, script, rval.address());
-}
-
-JS_PUBLIC_API(bool)
-JS_ExecuteScriptVersion(JSContext *cx, HandleObject obj, HandleScript script, JSVersion version)
-{
-    return ExecuteScript(cx, obj, script, nullptr);
-}
-
 static const unsigned LARGE_SCRIPT_LENGTH = 500*1024;
 
 static bool
 Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-         SourceBufferHolder &srcBuf, JS::Value *rval)
+         SourceBufferHolder &srcBuf, MutableHandleValue rval)
 {
     CompileOptions options(cx, optionsArg);
     MOZ_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
@@ -4788,7 +4775,6 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsA
     AutoLastFrameCheck lfc(cx);
 
     options.setCompileAndGo(obj->is<GlobalObject>());
-    options.setNoScriptRval(!rval);
     SourceCompressionTask sct(cx);
     RootedScript script(cx, frontend::CompileScript(cx, &cx->tempLifoAlloc(),
                                                     obj, NullPtr(), options,
@@ -4798,7 +4784,8 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsA
 
     MOZ_ASSERT(script->getVersion() == options.version);
 
-    bool result = Execute(cx, script, *obj, rval);
+    bool result = Execute(cx, script, *obj,
+                          options.noScriptRval ? nullptr : rval.address());
     if (!sct.complete())
         result = false;
 
@@ -4817,16 +4804,27 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsA
 }
 
 static bool
+Evaluate(JSContext *cx, AutoObjectVector &scopeChain, const ReadOnlyCompileOptions &optionsArg,
+         SourceBufferHolder &srcBuf, MutableHandleValue rval)
+{
+    RootedObject dynamicScope(cx);
+    RootedObject unusedStaticScope(cx);
+    if (!CreateScopeObjectsForScopeChain(cx, scopeChain, &dynamicScope, &unusedStaticScope))
+        return false;
+    return ::Evaluate(cx, dynamicScope, optionsArg, srcBuf, rval);
+}
+
+static bool
 Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-         const char16_t *chars, size_t length, JS::Value *rval)
+         const char16_t *chars, size_t length, MutableHandleValue rval)
 {
   SourceBufferHolder srcBuf(chars, length, SourceBufferHolder::NoOwnership);
   return ::Evaluate(cx, obj, optionsArg, srcBuf, rval);
 }
 
-static bool
-Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
-         const char *bytes, size_t length, JS::Value *rval)
+extern JS_PUBLIC_API(bool)
+JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
+         const char *bytes, size_t length, MutableHandleValue rval)
 {
     char16_t *chars;
     if (options.utf8)
@@ -4843,7 +4841,7 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
 
 static bool
 Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-         const char *filename, JS::Value *rval)
+         const char *filename, MutableHandleValue rval)
 {
     FileContents buffer(cx);
     {
@@ -4857,100 +4855,32 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsA
     return Evaluate(cx, obj, options, buffer.begin(), buffer.length(), rval);
 }
 
-extern JS_PUBLIC_API(bool)
+JS_PUBLIC_API(bool)
 JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
              SourceBufferHolder &srcBuf, MutableHandleValue rval)
 {
-    return ::Evaluate(cx, obj, optionsArg, srcBuf, rval.address());
+    return ::Evaluate(cx, obj, optionsArg, srcBuf, rval);
 }
 
-extern JS_PUBLIC_API(bool)
+JS_PUBLIC_API(bool)
+JS::Evaluate(JSContext *cx, AutoObjectVector &scopeChain, const ReadOnlyCompileOptions &optionsArg,
+             SourceBufferHolder &srcBuf, MutableHandleValue rval)
+{
+    return ::Evaluate(cx, scopeChain, optionsArg, srcBuf, rval);
+}
+
+JS_PUBLIC_API(bool)
 JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
              const char16_t *chars, size_t length, MutableHandleValue rval)
 {
-    return ::Evaluate(cx, obj, optionsArg, chars, length, rval.address());
+    return ::Evaluate(cx, obj, optionsArg, chars, length, rval);
 }
 
-extern JS_PUBLIC_API(bool)
-JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
-             const char *bytes, size_t length, MutableHandleValue rval)
-{
-    return ::Evaluate(cx, obj, options, bytes, length, rval.address());
-}
-
-extern JS_PUBLIC_API(bool)
+JS_PUBLIC_API(bool)
 JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
              const char *filename, MutableHandleValue rval)
 {
-    return ::Evaluate(cx, obj, optionsArg, filename, rval.address());
-}
-
-extern JS_PUBLIC_API(bool)
-JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-             SourceBufferHolder &srcBuf)
-{
-    return ::Evaluate(cx, obj, optionsArg, srcBuf, nullptr);
-}
-
-extern JS_PUBLIC_API(bool)
-JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-             const char16_t *chars, size_t length)
-{
-    return ::Evaluate(cx, obj, optionsArg, chars, length, nullptr);
-}
-
-extern JS_PUBLIC_API(bool)
-JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &options,
-             const char *bytes, size_t length)
-{
-    return ::Evaluate(cx, obj, options, bytes, length, nullptr);
-}
-
-extern JS_PUBLIC_API(bool)
-JS::Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsArg,
-             const char *filename)
-{
-    return ::Evaluate(cx, obj, optionsArg, filename, nullptr);
-}
-
-JS_PUBLIC_API(bool)
-JS_EvaluateUCScript(JSContext *cx, HandleObject obj, const char16_t *chars, unsigned length,
-                    const char *filename, unsigned lineno, MutableHandleValue rval)
-{
-    CompileOptions options(cx);
-    options.setFileAndLine(filename, lineno);
-
-    return ::Evaluate(cx, obj, options, chars, length, rval.address());
-}
-
-JS_PUBLIC_API(bool)
-JS_EvaluateUCScript(JSContext *cx, HandleObject obj, SourceBufferHolder &srcBuf,
-                    const char *filename, unsigned lineno, MutableHandleValue rval)
-{
-    CompileOptions options(cx);
-    options.setFileAndLine(filename, lineno);
-
-    return ::Evaluate(cx, obj, options, srcBuf, rval.address());
-}
-
-JS_PUBLIC_API(bool)
-JS_EvaluateScript(JSContext *cx, HandleObject obj, const char *bytes, unsigned nbytes,
-                  const char *filename, unsigned lineno, MutableHandleValue rval)
-{
-    CompileOptions options(cx);
-    options.setFileAndLine(filename, lineno);
-
-    return ::Evaluate(cx, obj, options, bytes, nbytes, rval.address());
-}
-
-JS_PUBLIC_API(bool)
-JS_EvaluateScript(JSContext *cx, HandleObject obj, const char *bytes, unsigned nbytes,
-                  const char *filename, unsigned lineno)
-{
-    CompileOptions options(cx);
-    options.setFileAndLine(filename, lineno);
-
-    return ::Evaluate(cx, obj, options, bytes, nbytes, nullptr);
+    return ::Evaluate(cx, obj, optionsArg, filename, rval);
 }
 
 JS_PUBLIC_API(bool)
@@ -5091,7 +5021,7 @@ JS_GetInterruptCallback(JSRuntime *rt)
 JS_PUBLIC_API(void)
 JS_RequestInterruptCallback(JSRuntime *rt)
 {
-    rt->requestInterrupt(JSRuntime::RequestInterruptAnyThread);
+    rt->requestInterrupt(JSRuntime::RequestInterruptUrgent);
 }
 
 JS_PUBLIC_API(bool)
@@ -6087,6 +6017,7 @@ JS_ReportPendingException(JSContext *cx)
 JS::AutoSaveExceptionState::AutoSaveExceptionState(JSContext *cx)
   : context(cx),
     wasPropagatingForcedReturn(cx->propagatingForcedReturn_),
+    wasOverRecursed(cx->overRecursed_),
     wasThrowing(cx->throwing),
     exceptionValue(cx)
 {
@@ -6094,6 +6025,8 @@ JS::AutoSaveExceptionState::AutoSaveExceptionState(JSContext *cx)
     CHECK_REQUEST(cx);
     if (wasPropagatingForcedReturn)
         cx->clearPropagatingForcedReturn();
+    if (wasOverRecursed)
+        cx->overRecursed_ = false;
     if (wasThrowing) {
         exceptionValue = cx->unwrappedException_;
         cx->clearPendingException();
@@ -6104,6 +6037,7 @@ void
 JS::AutoSaveExceptionState::restore()
 {
     context->propagatingForcedReturn_ = wasPropagatingForcedReturn;
+    context->overRecursed_ = wasOverRecursed;
     context->throwing = wasThrowing;
     context->unwrappedException_ = exceptionValue;
     drop();
@@ -6115,6 +6049,7 @@ JS::AutoSaveExceptionState::~AutoSaveExceptionState()
         if (wasPropagatingForcedReturn)
             context->setPropagatingForcedReturn();
         if (wasThrowing) {
+            context->overRecursed_ = wasOverRecursed;
             context->throwing = true;
             context->unwrappedException_ = exceptionValue;
         }

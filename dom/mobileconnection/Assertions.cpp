@@ -47,5 +47,27 @@ ASSERT_PREFERRED_NETWORK_TYPE_EQUALITY(Lte, PREFERRED_NETWORK_TYPE_LTE_ONLY);
 
 #undef ASSERT_PREFERRED_NETWORK_TYPE_EQUALITY
 
+#define ASSERT_MOBILE_ROAMING_MODE_EQUALITY(webidlState, xpidlState) \
+  static_assert(static_cast<int32_t>(MobileRoamingMode::webidlState) == nsIMobileConnection::xpidlState, \
+                "MobileRoamingMode::" #webidlState " should equal to nsIMobileConnection::" #xpidlState)
+
+ASSERT_MOBILE_ROAMING_MODE_EQUALITY(Home, CDMA_ROAMING_PREFERENCE_HOME);
+ASSERT_MOBILE_ROAMING_MODE_EQUALITY(Affiliated, CDMA_ROAMING_PREFERENCE_AFFILIATED);
+ASSERT_MOBILE_ROAMING_MODE_EQUALITY(Any, CDMA_ROAMING_PREFERENCE_ANY);
+
+#undef ASSERT_MOBILE_ROAMING_MODE_EQUALITY
+
+#define ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(webidlState, xpidlState) \
+  static_assert(static_cast<int32_t>(MobileNetworkType::webidlState) == nsIMobileConnection::xpidlState, \
+                "MobileNetworkType::" #webidlState " should equal to nsIMobileConnection::" #xpidlState)
+
+ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(Gsm, MOBILE_NETWORK_TYPE_GSM);
+ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(Wcdma, MOBILE_NETWORK_TYPE_WCDMA);
+ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(Cdma, MOBILE_NETWORK_TYPE_CDMA);
+ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(Evdo, MOBILE_NETWORK_TYPE_EVDO);
+ASSERT_MOBILE_NETWORK_TYPE_EQUALITY(Lte, MOBILE_NETWORK_TYPE_LTE);
+
+#undef ASSERT_MOBILE_NETWORK_TYPE_EQUALITY
+
 } // namespace dom
 } // namespace mozilla

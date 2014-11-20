@@ -761,7 +761,7 @@ ScriptedDirectProxyHandler::delete_(JSContext *cx, HandleObject proxy, HandleId 
 
 // ES6 (22 May, 2014) 9.5.11 Proxy.[[Enumerate]]
 bool
-ScriptedDirectProxyHandler::enumerate(JSContext *cx, HandleObject proxy, AutoIdVector &props) const
+ScriptedDirectProxyHandler::getEnumerablePropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props) const
 {
     // step 1
     RootedObject handler(cx, GetDirectProxyHandlerObject(proxy));
@@ -782,7 +782,7 @@ ScriptedDirectProxyHandler::enumerate(JSContext *cx, HandleObject proxy, AutoIdV
 
     // step 6
     if (trap.isUndefined())
-        return DirectProxyHandler::enumerate(cx, proxy, props);
+        return DirectProxyHandler::getEnumerablePropertyKeys(cx, proxy, props);
 
     // step 7-8
     Value argv[] = {
@@ -1020,10 +1020,10 @@ ScriptedDirectProxyHandler::set(JSContext *cx, HandleObject proxy, HandleObject 
 
 bool
 ScriptedDirectProxyHandler::iterate(JSContext *cx, HandleObject proxy, unsigned flags,
-                                    MutableHandleValue vp) const
+                                    MutableHandleObject objp) const
 {
     // FIXME: Provide a proper implementation for this trap, see bug 787004
-    return DirectProxyHandler::iterate(cx, proxy, flags, vp);
+    return DirectProxyHandler::iterate(cx, proxy, flags, objp);
 }
 
 // ES6 (22 May, 2014) 9.5.13 Proxy.[[Call]]

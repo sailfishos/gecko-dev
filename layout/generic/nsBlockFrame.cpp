@@ -296,7 +296,7 @@ NS_DECLARE_FRAME_PROPERTY_FRAMELIST(OverflowOutOfFlowsProperty)
 NS_DECLARE_FRAME_PROPERTY_FRAMELIST(PushedFloatProperty)
 NS_DECLARE_FRAME_PROPERTY_FRAMELIST(OutsideBulletProperty)
 NS_DECLARE_FRAME_PROPERTY(InsideBulletProperty, nullptr)
-NS_DECLARE_FRAME_PROPERTY(BottomEdgeOfChildrenProperty, nullptr)
+NS_DECLARE_FRAME_PROPERTY(BlockEndEdgeOfChildrenProperty, nullptr)
 
 //----------------------------------------------------------------------
 
@@ -515,7 +515,9 @@ nsBlockFrame::GetCaretBaseline() const
   nscoord lineHeight =
     nsHTMLReflowState::CalcLineHeight(GetContent(), StyleContext(),
                                       contentRect.height, inflation);
-  return nsLayoutUtils::GetCenteredFontBaseline(fm, lineHeight) + bp.top;
+  const WritingMode wm = GetWritingMode();
+  return nsLayoutUtils::GetCenteredFontBaseline(fm, lineHeight,
+                                                wm.IsLineInverted()) + bp.top;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1046,7 +1048,7 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
     if (GetLogicalSkipSides().BStart()) {
       blockDirExtras.BStart(wm) = 0;
     } else {
-      // Bottom margin never causes us to create continuations, so we
+      // Block-end margin never causes us to create continuations, so we
       // don't need to worry about whether it fits in its entirety.
       blockDirExtras.BStart(wm) +=
         aReflowState.ComputedLogicalMargin().BStart(wm);
@@ -1204,11 +1206,11 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
     WritingMode wm = aReflowState.GetWritingMode();
     bool havePosition = nsLayoutUtils::GetFirstLinePosition(wm, this,
                                                             &position);
-    nscoord lineTop = havePosition ?
+    nscoord lineBStart = havePosition ?
       position.mBStart :
       reflowState->ComputedLogicalBorderPadding().BStart(wm);
     nsIFrame* bullet = GetOutsideBullet();
-    ReflowBullet(bullet, state, metrics, lineTop);
+    ReflowBullet(bullet, state, metrics, lineBStart);
     NS_ASSERTION(!BulletIsEmpty() || metrics.BSize(wm) == 0,
                  "empty bullet took up space");
 
@@ -1223,7 +1225,8 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
       bbox.BStart(wm) = position.mBaseline - metrics.BlockStartAscent();
       bullet->SetRect(wm, bbox, metrics.Width());
     }
-    // Otherwise just leave the bullet where it is, up against our top padding.
+    // Otherwise just leave the bullet where it is, up against our
+    // block-start padding.
   }
 
   CheckFloats(state);
@@ -1231,6 +1234,42 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
   // Compute our final size
   nscoord blockEndEdgeOfChildren;
   ComputeFinalSize(*reflowState, state, aMetrics, &blockEndEdgeOfChildren);
+
+  // If the block direction is right-to-left, we need to update the bounds of
+  // lines that were placed relative to mContainerWidth during reflow, as
+  // we typically do not know the true container width (block-dir size of the
+  // finished paragraph/block) until we've reflowed all its children. So we
+  // use a "fake" mContainerWidth during reflow (see nsBlockReflowState's
+  // constructor) and then fix up the positions of the lines here, once the
+  // final block size is known.
+  //
+  // Note that writing-mode:vertical-rl is the only case where the block
+  // logical direction progresses in a negative physical direction, and
+  // therefore block-dir coordinate conversion depends on knowing the width
+  // of the coordinate space in order to translate between the logical and
+  // physical origins.
+  if (wm.GetBlockDir() == WritingMode::BlockDir::eBlockRL) {
+    nscoord deltaX = aMetrics.Width() - state.mContainerWidth;
+    if (deltaX) {
+      for (line_iterator line = begin_lines(), end = end_lines();
+           line != end; line++) {
+        SlideLine(state, line, -deltaX);
+      }
+      for (nsIFrame* f = mFloats.FirstChild(); f; f = f->GetNextSibling()) {
+        nsPoint physicalDelta(deltaX, 0);
+        f->MovePositionBy(physicalDelta);
+      }
+      nsFrameList* bulletList = GetOutsideBulletList();
+      if (bulletList) {
+        nsPoint physicalDelta(deltaX, 0);
+        for (nsIFrame* f = bulletList->FirstChild(); f;
+             f = f->GetNextSibling()) {
+          f->MovePositionBy(physicalDelta);
+        }
+      }
+    }
+  }
+
   nsRect areaBounds = nsRect(0, 0, aMetrics.Width(), aMetrics.Height());
   ComputeOverflowAreas(areaBounds, reflowState->mStyleDisplay,
                        blockEndEdgeOfChildren, aMetrics.mOverflowAreas);
@@ -1331,7 +1370,7 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
     printf(": status=%x (%scomplete) metrics=%d,%d carriedMargin=%d",
            aStatus, NS_FRAME_IS_COMPLETE(aStatus) ? "" : "not ",
            aMetrics.ISize(parentWM), aMetrics.BSize(parentWM),
-           aMetrics.mCarriedOutBottomMargin.get());
+           aMetrics.mCarriedOutBEndMargin.get());
     if (HasOverflowAreas()) {
       printf(" overflow-vis={%d,%d,%d,%d}",
              aMetrics.VisualOverflow().x,
@@ -1414,42 +1453,42 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
                                               aReflowState.ComputedISize()),
                          borderPadding.IEnd(wm));
 
-  // Return bottom margin information
+  // Return block-end margin information
   // rbs says he hit this assertion occasionally (see bug 86947), so
   // just set the margin to zero and we'll figure out why later
-  //NS_ASSERTION(aMetrics.mCarriedOutBottomMargin.IsZero(),
+  //NS_ASSERTION(aMetrics.mCarriedOutBEndMargin.IsZero(),
   //             "someone else set the margin");
   nscoord nonCarriedOutBDirMargin = 0;
   if (!aState.GetFlag(BRS_ISBENDMARGINROOT)) {
     // Apply rule from CSS 2.1 section 8.3.1. If we have some empty
-    // line with clearance and a non-zero top margin and all
+    // line with clearance and a non-zero block-start margin and all
     // subsequent lines are empty, then we do not allow our children's
-    // carried out bottom margin to be carried out of us and collapse
-    // with our own bottom margin.
+    // carried out block-end margin to be carried out of us and collapse
+    // with our own block-end margin.
     if (CheckForCollapsedBEndMarginFromClearanceLine()) {
       // Convert the children's carried out margin to something that
       // we will include in our height
       nonCarriedOutBDirMargin = aState.mPrevBEndMargin.get();
       aState.mPrevBEndMargin.Zero();
     }
-    aMetrics.mCarriedOutBottomMargin = aState.mPrevBEndMargin;
+    aMetrics.mCarriedOutBEndMargin = aState.mPrevBEndMargin;
   } else {
-    aMetrics.mCarriedOutBottomMargin.Zero();
+    aMetrics.mCarriedOutBEndMargin.Zero();
   }
 
   nscoord blockEndEdgeOfChildren = aState.mBCoord + nonCarriedOutBDirMargin;
   // Shrink wrap our height around our contents.
   if (aState.GetFlag(BRS_ISBENDMARGINROOT) ||
       NS_UNCONSTRAINEDSIZE != aReflowState.ComputedBSize()) {
-    // When we are a bottom-margin root make sure that our last
-    // childs bottom margin is fully applied. We also do this when
+    // When we are a block-end-margin root make sure that our last
+    // childs block-end margin is fully applied. We also do this when
     // we have a computed height, since in that case the carried out
     // margin is not going to be applied anywhere, so we should note it
     // here to be included in the overflow area.
     // Apply the margin only if there's space for it.
     if (blockEndEdgeOfChildren < aState.mReflowState.AvailableBSize())
     {
-      // Truncate bottom margin if it doesn't fit to our available height.
+      // Truncate block-end margin if it doesn't fit to our available BSize.
       blockEndEdgeOfChildren =
         std::min(blockEndEdgeOfChildren + aState.mPrevBEndMargin.get(),
                aState.mReflowState.AvailableBSize());
@@ -1457,7 +1496,7 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
   }
   if (aState.GetFlag(BRS_FLOAT_MGR)) {
     // Include the float manager's state to properly account for the
-    // bottom margin of any floated elements; e.g., inside a table cell.
+    // block-end margin of any floated elements; e.g., inside a table cell.
     nscoord floatHeight =
       aState.ClearFloats(blockEndEdgeOfChildren, NS_STYLE_CLEAR_BOTH,
                          nullptr, nsFloatManager::DONT_CLEAR_PUSHED_FLOATS);
@@ -1489,16 +1528,16 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
       // height in the current frame, not whether it's last-in-flow.
     }
 
-    // Don't carry out a bottom margin when our height is fixed.
-    aMetrics.mCarriedOutBottomMargin.Zero();
+    // Don't carry out a block-end margin when our BSize is fixed.
+    aMetrics.mCarriedOutBEndMargin.Zero();
   }
   else if (NS_FRAME_IS_COMPLETE(aState.mReflowStatus)) {
     nscoord contentBSize = blockEndEdgeOfChildren - borderPadding.BStart(wm);
     nscoord autoBSize = aReflowState.ApplyMinMaxHeight(contentBSize);
     if (autoBSize != contentBSize) {
       // Our min-height or max-height made our height change.  Don't carry out
-      // our kids' bottom margins.
-      aMetrics.mCarriedOutBottomMargin.Zero();
+      // our kids' block-end margins.
+      aMetrics.mCarriedOutBEndMargin.Zero();
     }
     autoBSize += borderPadding.BStart(wm) + borderPadding.BEnd(wm);
     finalSize.BSize(wm) = autoBSize;
@@ -1528,10 +1567,10 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
 
   FrameProperties properties = Properties();
   if (blockEndEdgeOfChildren != finalSize.BSize(wm) - borderPadding.BEnd(wm)) {
-    properties.Set(BottomEdgeOfChildrenProperty(),
+    properties.Set(BlockEndEdgeOfChildrenProperty(),
                    NS_INT32_TO_PTR(blockEndEdgeOfChildren));
   } else {
-    properties.Delete(BottomEdgeOfChildrenProperty());
+    properties.Delete(BlockEndEdgeOfChildrenProperty());
   }
 
   aMetrics.SetSize(wm, finalSize);
@@ -1545,25 +1584,45 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
 }
 
 static void
-ConsiderBottomEdgeOfChildren(nscoord aBottomEdgeOfChildren,
-                             nsOverflowAreas& aOverflowAreas)
+ConsiderBlockEndEdgeOfChildren(const WritingMode aWritingMode,
+                               nscoord aBEndEdgeOfChildren,
+                               nsOverflowAreas& aOverflowAreas)
 {
-  // Factor in the bottom edge of the children.  Child frames will be added
+  // Factor in the block-end edge of the children.  Child frames will be added
   // to the overflow area as we iterate through the lines, but their margins
-  // won't, so we need to account for bottom margins here.
+  // won't, so we need to account for block-end margins here.
   // REVIEW: For now, we do this for both visual and scrollable area,
   // although when we make scrollable overflow area not be a subset of
   // visual, we can change this.
-  NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
-    nsRect& o = aOverflowAreas.Overflow(otype);
-    o.height = std::max(o.YMost(), aBottomEdgeOfChildren) - o.y;
+  // XXX Currently, overflow areas are stored as physical rects, so we have
+  // to handle writing modes explicitly here. If we change overflow rects
+  // to be stored logically, this can be simplified again.
+  if (aWritingMode.IsVertical()) {
+    if (aWritingMode.IsVerticalLR()) {
+      NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
+        nsRect& o = aOverflowAreas.Overflow(otype);
+        o.width = std::max(o.XMost(), aBEndEdgeOfChildren) - o.x;
+      }
+    } else {
+      NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
+        nsRect& o = aOverflowAreas.Overflow(otype);
+        nscoord xmost = o.XMost();
+        o.x = std::min(o.x, xmost - aBEndEdgeOfChildren);
+        o.width = xmost - o.x;
+      }
+    }
+  } else {
+    NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
+      nsRect& o = aOverflowAreas.Overflow(otype);
+      o.height = std::max(o.YMost(), aBEndEdgeOfChildren) - o.y;
+    }
   }
 }
 
 void
 nsBlockFrame::ComputeOverflowAreas(const nsRect&         aBounds,
                                    const nsStyleDisplay* aDisplay,
-                                   nscoord               aBottomEdgeOfChildren,
+                                   nscoord               aBEndEdgeOfChildren,
                                    nsOverflowAreas&      aOverflowAreas)
 {
   // Compute the overflow areas of our children
@@ -1587,7 +1646,8 @@ nsBlockFrame::ComputeOverflowAreas(const nsRect&         aBounds,
       areas.UnionAllWith(outsideBullet->GetRect());
     }
 
-    ConsiderBottomEdgeOfChildren(aBottomEdgeOfChildren, areas);
+    ConsiderBlockEndEdgeOfChildren(GetWritingMode(),
+                                   aBEndEdgeOfChildren, areas);
   }
 
 #ifdef NOISY_COMBINED_AREA
@@ -1641,10 +1701,11 @@ nsBlockFrame::UpdateOverflow()
                                     kPrincipalList | kFloatList);
 
   bool found;
-  nscoord bottomEdgeOfChildren = NS_PTR_TO_INT32(
-    Properties().Get(BottomEdgeOfChildrenProperty(), &found));
+  nscoord blockEndEdgeOfChildren = NS_PTR_TO_INT32(
+    Properties().Get(BlockEndEdgeOfChildrenProperty(), &found));
   if (found) {
-    ConsiderBottomEdgeOfChildren(bottomEdgeOfChildren, overflowAreas);
+    ConsiderBlockEndEdgeOfChildren(GetWritingMode(),
+                                   blockEndEdgeOfChildren, overflowAreas);
   }
 
   return FinishAndStoreOverflow(overflowAreas, GetSize());
@@ -2039,7 +2100,7 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
         // Reflow the line if it might not have clearance anymore.
         if (newBCoord == curBCoord
             // aState.mBCoord is the clearance point which should be the
-            // top border-edge of the block frame. If sliding the
+            // block-start border-edge of the block frame. If sliding the
             // block by deltaBCoord isn't going to put it in the predicted
             // position, then we'd better reflow the line.
             || newBCoord != line->BStart() + deltaBCoord) {
@@ -2118,9 +2179,9 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
     }
 
     if (needToRecoverState && line->IsDirty()) {
-      // We need to reconstruct the bottom margin only if we didn't
+      // We need to reconstruct the block-end margin only if we didn't
       // reflow the previous line and we do need to reflow (or repair
-      // the top position of) the next line.
+      // the block-start position of) the next line.
       aState.ReconstructMarginBefore(line);
     }
 
@@ -2189,22 +2250,22 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
       // Test to see whether the margin that should be carried out
       // to the next line (NL) might have changed. In ReflowBlockFrame
       // we call nextLine->MarkPreviousMarginDirty if the block's
-      // actual carried-out bottom margin changed. So here we only
+      // actual carried-out block-end margin changed. So here we only
       // need to worry about the following effects:
       // 1) the line was just created, and it might now be blocking
-      // a carried-out bottom margin from previous lines that
+      // a carried-out block-end margin from previous lines that
       // used to reach NL from reaching NL
       // 2) the line used to be empty, and is now not empty,
-      // thus blocking a carried-out bottom margin from previous lines
+      // thus blocking a carried-out block-end margin from previous lines
       // that used to reach NL from reaching NL
       // 3) the line wasn't empty, but now is, so a carried-out
-      // bottom margin from previous lines that didn't used to reach NL
+      // block-end margin from previous lines that didn't used to reach NL
       // now does
       // 4) the line might have changed in a way that affects NL's
       // ShouldApplyBStartMargin decision. The three things that matter
-      // are the line's emptiness, its adjacency to the top of the block,
-      // and whether it has clearance (the latter only matters if the block
-      // was and is adjacent to the top and empty).
+      // are the line's emptiness, its adjacency to the block-start edge of the
+      // block, and whether it has clearance (the latter only matters if the
+      // block was and is adjacent to the block-start and empty).
       //
       // If the line is empty now, we can't reliably tell if the line was empty
       // before, so we just assume it was and do nextLine->MarkPreviousMarginDirty.
@@ -2516,7 +2577,8 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
         nsLayoutUtils::FontSizeInflationFor(this));
 
       nscoord minAscent =
-        nsLayoutUtils::GetCenteredFontBaseline(fm, aState.mMinLineHeight);
+        nsLayoutUtils::GetCenteredFontBaseline(fm, aState.mMinLineHeight,
+                                               wm.IsLineInverted());
       nscoord minDescent = aState.mMinLineHeight - minAscent;
 
       aState.mBCoord += std::max(minAscent, metrics.BlockStartAscent()) +
@@ -2731,12 +2793,12 @@ nsBlockFrame::PullFrameFrom(nsLineBox*           aLine,
 
 void
 nsBlockFrame::SlideLine(nsBlockReflowState& aState,
-                        nsLineBox* aLine, nscoord aDY)
+                        nsLineBox* aLine, nscoord aDeltaBCoord)
 {
-  NS_PRECONDITION(aDY != 0, "why slide a line nowhere?");
+  NS_PRECONDITION(aDeltaBCoord != 0, "why slide a line nowhere?");
 
   // Adjust line state
-  aLine->SlideBy(aDY, aState.mContainerWidth);
+  aLine->SlideBy(aDeltaBCoord, aState.mContainerWidth);
 
   // Adjust the frames in the line
   nsIFrame* kid = aLine->mFirstChild;
@@ -2744,23 +2806,26 @@ nsBlockFrame::SlideLine(nsBlockReflowState& aState,
     return;
   }
 
+  WritingMode wm = GetWritingMode();
+  LogicalPoint translation(wm, 0, aDeltaBCoord);
+
   if (aLine->IsBlock()) {
-    if (aDY) {
-      kid->MovePositionBy(nsPoint(0, aDY));
+    if (aDeltaBCoord) {
+      kid->MovePositionBy(wm, translation);
     }
 
     // Make sure the frame's view and any child views are updated
     nsContainerFrame::PlaceFrameView(kid);
   }
   else {
-    // Adjust the Y coordinate of the frames in the line.
-    // Note: we need to re-position views even if aDY is 0, because
+    // Adjust the block-dir coordinate of the frames in the line.
+    // Note: we need to re-position views even if aDeltaBCoord is 0, because
     // one of our parent frames may have moved and so the view's position
-    // relative to its parent may have changed
+    // relative to its parent may have changed.
     int32_t n = aLine->GetChildCount();
     while (--n >= 0) {
-      if (aDY) {
-        kid->MovePositionBy(nsPoint(0, aDY));
+      if (aDeltaBCoord) {
+        kid->MovePositionBy(wm, translation);
       }
       // Make sure the frame's view and any child views are updated
       nsContainerFrame::PlaceFrameView(kid);
@@ -2914,8 +2979,8 @@ nsBlockFrame::ShouldApplyBStartMargin(nsBlockReflowState& aState,
   if (!aState.IsAdjacentWithTop() ||
       aChildFrame->StyleBorder()->mBoxDecorationBreak ==
         NS_STYLE_BOX_DECORATION_BREAK_CLONE) {
-    // If we aren't at the top Y coordinate then something of non-zero
-    // height must have been placed. Therefore the childs top-margin
+    // If we aren't at the start block-coordinate then something of non-zero
+    // height must have been placed. Therefore the childs block-start margin
     // applies.
     aState.SetFlag(BRS_APPLYBSTARTMARGIN, true);
     return true;
@@ -2929,11 +2994,11 @@ nsBlockFrame::ShouldApplyBStartMargin(nsBlockReflowState& aState,
   while (line != aLine) {
     if (!line->CachedIsEmpty() || line->HasClearance()) {
       // A line which precedes aLine is non-empty, or has clearance,
-      // so therefore the top margin applies.
+      // so therefore the block-start margin applies.
       aState.SetFlag(BRS_APPLYBSTARTMARGIN, true);
       return true;
     }
-    // No need to apply the top margin if the line has floats.  We
+    // No need to apply the block-start margin if the line has floats.  We
     // should collapse anyway (bug 44419)
     ++line;
     aState.SetFlag(BRS_HAVELINEADJACENTTOTOP, true);
@@ -2941,7 +3006,7 @@ nsBlockFrame::ShouldApplyBStartMargin(nsBlockReflowState& aState,
   }
 
   // The line being reflowed is "essentially" the first line in the
-  // block. Therefore its top-margin will be collapsed by the
+  // block. Therefore its block-start margin will be collapsed by the
   // generational collapsing logic with its parent (us).
   return false;
 }
@@ -2973,9 +3038,9 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
   // Clear past floats before the block if the clear style is not none
   aLine->SetBreakTypeBefore(breakType);
 
-  // See if we should apply the top margin. If the block frame being
+  // See if we should apply the block-start margin. If the block frame being
   // reflowed is a continuation (non-null prev-in-flow) then we don't
-  // apply its top margin because it's not significant unless it has
+  // apply its block-start margin because it's not significant unless it has
   // 'box-decoration-break:clone'.  Otherwise, dig deeper.
   bool applyBStartMargin = (frame->StyleBorder()->mBoxDecorationBreak ==
                               NS_STYLE_BOX_DECORATION_BREAK_CLONE ||
@@ -2983,7 +3048,7 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
                            ShouldApplyBStartMargin(aState, aLine, frame);
   if (applyBStartMargin) {
     // The HasClearance setting is only valid if ShouldApplyBStartMargin
-    // returned false (in which case the top-margin-root set our
+    // returned false (in which case the block-start margin-root set our
     // clearance flag). Otherwise clear it now. We'll set it later on
     // ourselves if necessary.
     aLine->ClearHasClearance();
@@ -2997,8 +3062,8 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
     replacedBlock = frame;
   }
 
-  // If our top margin was counted as part of some parents top-margin
-  // collapse and we are being speculatively reflowed assuming this
+  // If our block-start margin was counted as part of some parent's block-start
+  // margin collapse, and we are being speculatively reflowed assuming this
   // frame DID NOT need clearance, then we need to check that
   // assumption.
   if (!treatWithClearance && !applyBStartMargin && mightClearFloats &&
@@ -3038,19 +3103,19 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
     bool mayNeedRetry = false;
     bool clearedFloats = false;
     if (applyBStartMargin) {
-      // Precompute the blocks top margin value so that we can get the
+      // Precompute the blocks block-start margin value so that we can get the
       // correct available space (there might be a float that's
       // already been placed below the aState.mPrevBEndMargin
 
-      // Setup a reflowState to get the style computed margin-top
+      // Setup a reflowState to get the style computed block-start margin
       // value. We'll use a reason of `resize' so that we don't fudge
       // any incremental reflow state.
 
       // The availSpace here is irrelevant to our needs - all we want
-      // out if this setup is the margin-top value which doesn't depend
+      // out if this setup is the block-start margin value which doesn't depend
       // on the childs available space.
-      // XXX building a complete nsHTMLReflowState just to get the margin-top
-      // seems like a waste. And we do this for almost every block!
+      // XXX building a complete nsHTMLReflowState just to get the block-start
+      // margin seems like a waste. And we do this for almost every block!
       WritingMode wm = frame->GetWritingMode();
       LogicalSize availSpace = aState.ContentSize(wm);
       availSpace.BSize(wm) = NS_UNCONSTRAINEDSIZE;
@@ -3075,7 +3140,7 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
 
       if (clearanceFrame) {
         // Don't allow retries on the second pass. The clearance decisions for the
-        // blocks whose top-margins collapse with ours are now fixed.
+        // blocks whose block-start margins collapse with ours are now fixed.
         mayNeedRetry = false;
       }
 
@@ -3131,7 +3196,7 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
         // Note that negative clearance is possible
         clearance = aState.mBCoord - (currentBCoord + bStartMargin);
 
-        // Add clearance to our top margin while we compute available
+        // Add clearance to our block-start margin while we compute available
         // space for the frame
         bStartMargin += clearance;
 
@@ -3158,14 +3223,14 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
 
     // The check for
     //   (!aState.mReflowState.mFlags.mIsTopOfPage || clearedFloats)
-    // is to some degree out of paranoia:  if we reliably eat up top
+    // is to some degree out of paranoia:  if we reliably eat up block-start
     // margins at the top of the page as we ought to, it wouldn't be
     // needed.
     if ((!aState.mReflowState.mFlags.mIsTopOfPage || clearedFloats) &&
         availSpace.BSize(wm) < 0) {
       // We know already that this child block won't fit on this
-      // page/column due to the top margin or the clearance.  So we need
-      // to get out of here now.  (If we don't, most blocks will handle
+      // page/column due to the block-start margin or the clearance.  So we
+      // need to get out of here now.  (If we don't, most blocks will handle
       // things fine, and report break-before, but zero-height blocks
       // won't, and will thus make their parent overly-large and force
       // *it* to be pushed in its entirety.)
@@ -3351,7 +3416,7 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
             }
             *aKeepReflowGoing = false;
             
-            // The bottom margin for a block is only applied on the last
+            // The block-end margin for a block is only applied on the last
             // flow block. Since we just continued the child block frame,
             // we know that line->mFirstChild is not the last flow block
             // therefore zero out the running margin value.
@@ -3452,7 +3517,7 @@ nsBlockFrame::ReflowInlineFrames(nsBlockReflowState& aState,
   aLine->SetLineIsImpactedByFloat(false);
 
   // Setup initial coordinate system for reflowing the inline frames
-  // into. Apply a previous block frame's bottom margin first.
+  // into. Apply a previous block frame's block-end margin first.
   if (ShouldApplyBStartMargin(aState, aLine, aLine->mFirstChild)) {
     aState.mBCoord += aState.mPrevBEndMargin.get();
   }
@@ -3463,7 +3528,7 @@ nsBlockFrame::ReflowInlineFrames(nsBlockReflowState& aState,
     nscoord availableSpaceHeight = 0;
     do {
       bool allowPullUp = true;
-      nsIContent* forceBreakInContent = nullptr;
+      nsIFrame* forceBreakInFrame = nullptr;
       int32_t forceBreakOffset = -1;
       gfxBreakPriority forceBreakPriority = gfxBreakPriority::eNoBreak;
       do {
@@ -3482,8 +3547,8 @@ nsBlockFrame::ReflowInlineFrames(nsBlockReflowState& aState,
                                 aState.mReflowState.mFloatManager,
                                 &aState.mReflowState, &aLine);
         lineLayout.Init(&aState, aState.mMinLineHeight, aState.mLineNumber);
-        if (forceBreakInContent) {
-          lineLayout.ForceBreakAtPosition(forceBreakInContent, forceBreakOffset);
+        if (forceBreakInFrame) {
+          lineLayout.ForceBreakAtPosition(forceBreakInFrame, forceBreakOffset);
         }
         DoReflowInlineFrames(aState, lineLayout, aLine,
                              floatAvailableSpace, availableSpaceHeight,
@@ -3495,13 +3560,14 @@ nsBlockFrame::ReflowInlineFrames(nsBlockReflowState& aState,
             LINE_REFLOW_REDO_MORE_FLOATS == lineReflowStatus ||
             LINE_REFLOW_REDO_NEXT_BAND == lineReflowStatus) {
           if (lineLayout.NeedsBackup()) {
-            NS_ASSERTION(!forceBreakInContent, "Backing up twice; this should never be necessary");
+            NS_ASSERTION(!forceBreakInFrame, "Backing up twice; this should never be necessary");
             // If there is no saved break position, then this will set
-            // set forceBreakInContent to null and we won't back up, which is
+            // set forceBreakInFrame to null and we won't back up, which is
             // correct.
-            forceBreakInContent = lineLayout.GetLastOptionalBreakPosition(&forceBreakOffset, &forceBreakPriority);
+            forceBreakInFrame =
+              lineLayout.GetLastOptionalBreakPosition(&forceBreakOffset, &forceBreakPriority);
           } else {
-            forceBreakInContent = nullptr;
+            forceBreakInFrame = nullptr;
           }
           // restore the float manager state
           aState.mReflowState.mFloatManager->PopState(&floatManagerState);
@@ -3608,7 +3674,8 @@ nsBlockFrame::DoReflowInlineFrames(nsBlockReflowState& aState,
   if (aFloatAvailableSpace.mHasFloats) {
     // There is a soft break opportunity at the start of the line, because
     // we can always move this line down below float(s).
-    if (aLineLayout.NotifyOptionalBreakPosition(frame->GetContent(), 0, true, gfxBreakPriority::eNormalBreak)) {
+    if (aLineLayout.NotifyOptionalBreakPosition(
+            frame, 0, true, gfxBreakPriority::eNormalBreak)) {
       lineReflowStatus = LINE_REFLOW_REDO_NEXT_BAND;
     }
   }
@@ -3680,11 +3747,12 @@ nsBlockFrame::DoReflowInlineFrames(nsBlockReflowState& aState,
     // We need to try backing up to before a text run
     int32_t offset;
     gfxBreakPriority breakPriority;
-    nsIContent* breakContent = aLineLayout.GetLastOptionalBreakPosition(&offset, &breakPriority);
+    nsIFrame* breakFrame =
+      aLineLayout.GetLastOptionalBreakPosition(&offset, &breakPriority);
     // XXX It's possible, in fact not unusual, for the break opportunity to already
     // be the end of the line. We should detect that and optimize to not
     // re-do the line.
-    if (breakContent) {
+    if (breakFrame) {
       // We can back up!
       lineReflowStatus = LINE_REFLOW_REDO_NO_PULL;
     }
@@ -4241,9 +4309,9 @@ nsBlockFrame::PlaceLine(nsBlockReflowState& aState,
 
   // Inline lines do not have margins themselves; however they are
   // impacted by prior block margins. If this line ends up having some
-  // height then we zero out the previous bottom margin value that was
+  // height then we zero out the previous block-end margin value that was
   // already applied to the line's starting Y coordinate. Otherwise we
-  // leave it be so that the previous blocks bottom margin can be
+  // leave it be so that the previous blocks block-end margin can be
   // collapsed with a block that follows.
   nscoord newBCoord;
 
@@ -5853,7 +5921,7 @@ nsBlockFrame::ReflowFloat(nsBlockReflowState& aState,
     nsCollapsingMargin margin;
     bool mayNeedRetry = false;
     floatRS.mDiscoveredClearance = nullptr;
-    // Only first in flow gets a top margin.
+    // Only first in flow gets a block-start margin.
     if (!aFloat->GetPrevInFlow()) {
       brc.ComputeCollapsedBStartMargin(floatRS, &margin,
                                        clearanceFrame,

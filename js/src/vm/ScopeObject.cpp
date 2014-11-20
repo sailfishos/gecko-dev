@@ -424,7 +424,7 @@ CloneStaticWithObject(JSContext *cx, HandleObject enclosingScope, Handle<StaticW
 
 DynamicWithObject *
 DynamicWithObject::create(JSContext *cx, HandleObject object, HandleObject enclosing,
-                          HandleObject staticWith)
+                          HandleObject staticWith, WithKind kind)
 {
     MOZ_ASSERT(staticWith->is<StaticWithObject>());
     RootedTypeObject type(cx, cx->getNewType(&class_, TaggedProto(staticWith.get())));
@@ -449,6 +449,7 @@ DynamicWithObject::create(JSContext *cx, HandleObject object, HandleObject enclo
     obj->as<ScopeObject>().setEnclosingScope(enclosing);
     obj->setFixedSlot(OBJECT_SLOT, ObjectValue(*object));
     obj->setFixedSlot(THIS_SLOT, ObjectValue(*thisp));
+    obj->setFixedSlot(KIND_SLOT, Int32Value(kind));
 
     return &obj->as<DynamicWithObject>();
 }
@@ -477,6 +478,32 @@ with_LookupElement(JSContext *cx, HandleObject obj, uint32_t index,
     if (!IndexToId(cx, index, &id))
         return false;
     return with_LookupGeneric(cx, obj, id, objp, propp);
+}
+
+static bool
+with_DefineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue value,
+                   JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs)
+{
+    RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
+    return JSObject::defineGeneric(cx, actual, id, value, getter, setter, attrs);
+}
+
+static bool
+with_DefineProperty(JSContext *cx, HandleObject obj, HandlePropertyName name, HandleValue value,
+                   JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs)
+{
+    Rooted<jsid> id(cx, NameToId(name));
+    return with_DefineGeneric(cx, obj, id, value, getter, setter, attrs);
+}
+
+static bool
+with_DefineElement(JSContext *cx, HandleObject obj, uint32_t index, HandleValue value,
+                   JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs)
+{
+    RootedId id(cx);
+    if (!IndexToId(cx, index, &id))
+        return false;
+    return with_DefineGeneric(cx, obj, id, value, getter, setter, attrs);
 }
 
 static bool
@@ -592,9 +619,9 @@ const Class DynamicWithObject::class_ = {
         with_LookupGeneric,
         with_LookupProperty,
         with_LookupElement,
-        nullptr,             /* defineGeneric */
-        nullptr,             /* defineProperty */
-        nullptr,             /* defineElement */
+        with_DefineGeneric,
+        with_DefineProperty,
+        with_DefineElement,
         with_GetGeneric,
         with_GetProperty,
         with_GetElement,
@@ -605,7 +632,7 @@ const Class DynamicWithObject::class_ = {
         with_SetGenericAttributes,
         with_DeleteGeneric,
         nullptr, nullptr,    /* watch/unwatch */
-        nullptr,             /* slice */
+        nullptr,             /* getElements */
         nullptr,             /* enumerate (native enumeration of target doesn't work) */
         with_ThisObject,
     }
@@ -1045,7 +1072,7 @@ const Class UninitializedLexicalObject::class_ = {
         uninitialized_SetGenericAttributes,
         uninitialized_DeleteGeneric,
         nullptr, nullptr,    /* watch/unwatch */
-        nullptr,             /* slice */
+        nullptr,             /* getElements */
         nullptr,             /* enumerate (native enumeration of target doesn't work) */
         nullptr,             /* this */
     }
@@ -1222,8 +1249,10 @@ ScopeIter::settle()
         hasScopeObject_ = true;
         MOZ_ASSERT_IF(type_ == Call, callobj.callee().nonLazyScript() == frame_.script());
     } else {
-        MOZ_ASSERT(!cur_->is<ScopeObject>());
-        MOZ_ASSERT(frame_.isGlobalFrame() || frame_.isDebuggerFrame());
+        MOZ_ASSERT(!cur_->is<ScopeObject>() ||
+                   (cur_->is<DynamicWithObject>() &&
+                    !cur_->as<DynamicWithObject>().isSyntactic()));
+        MOZ_ASSERT(frame_.isGlobalFrame() || frame_.isDebuggerEvalFrame());
         frame_ = NullFramePtr();
     }
 }
@@ -1726,7 +1755,7 @@ class DebugScopeProxy : public BaseProxyHandler
         return getScopePropertyNames(cx, proxy, props, JSITER_OWNONLY);
     }
 
-    bool enumerate(JSContext *cx, HandleObject proxy, AutoIdVector &props) const MOZ_OVERRIDE
+    bool getEnumerablePropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props) const MOZ_OVERRIDE
     {
         return getScopePropertyNames(cx, proxy, props, 0);
     }
@@ -2023,14 +2052,14 @@ DebugScopes::checkHashTablesAfterMovingGC(JSRuntime *runtime)
 /*
  * Unfortunately, GetDebugScopeForFrame needs to work even outside debug mode
  * (in particular, JS_GetFrameScopeChain does not require debug mode). Since
- * DebugScopes::onPop* are only called in debug mode, this means we cannot
- * use any of the maps in DebugScopes. This will produce debug scope chains
- * that do not obey the debugger invariants but that is just fine.
+ * DebugScopes::onPop* are only called in debuggee frames, this means we
+ * cannot use any of the maps in DebugScopes. This will produce debug scope
+ * chains that do not obey the debugger invariants but that is just fine.
  */
 static bool
 CanUseDebugScopeMaps(JSContext *cx)
 {
-    return cx->compartment()->debugMode();
+    return cx->compartment()->isDebuggee();
 }
 
 DebugScopes *
@@ -2277,7 +2306,7 @@ DebugScopes::onPopStrictEvalScope(AbstractFramePtr frame)
 }
 
 void
-DebugScopes::onCompartmentLeaveDebugMode(JSCompartment *c)
+DebugScopes::onCompartmentUnsetIsDebuggee(JSCompartment *c)
 {
     DebugScopes *scopes = c->debugScopes;
     if (scopes) {
@@ -2314,6 +2343,9 @@ DebugScopes::updateLiveScopes(JSContext *cx)
         if (frame.isFunctionFrame() && frame.callee()->isGenerator())
             continue;
 
+        if (!frame.isDebuggee())
+            continue;
+
         for (ScopeIter si(frame, i.pc(), cx); !si.done(); ++si) {
             if (si.hasScopeObject()) {
                 MOZ_ASSERT(si.scope().compartment() == cx->compartment());
@@ -2328,7 +2360,7 @@ DebugScopes::updateLiveScopes(JSContext *cx)
 
         if (frame.prevUpToDate())
             return true;
-        MOZ_ASSERT(frame.scopeChain()->compartment()->debugMode());
+        MOZ_ASSERT(frame.scopeChain()->compartment()->isDebuggee());
         frame.setPrevUpToDate();
     }
 
@@ -2346,6 +2378,22 @@ DebugScopes::hasLiveScope(ScopeObject &scope)
         return &p->value();
 
     return nullptr;
+}
+
+/* static */ void
+DebugScopes::rekeyMissingScopes(JSContext *cx, AbstractFramePtr from, AbstractFramePtr to)
+{
+    DebugScopes *scopes = cx->compartment()->debugScopes;
+    if (!scopes)
+        return;
+
+    for (MissingScopeMap::Enum e(scopes->missingScopes); !e.empty(); e.popFront()) {
+        ScopeIterKey key = e.front().key();
+        if (key.frame() == from) {
+            key.updateFrame(to);
+            e.rekeyFront(key);
+        }
+    }
 }
 
 /*****************************************************************************/
@@ -2495,7 +2543,7 @@ JSObject *
 js::GetDebugScopeForFunction(JSContext *cx, HandleFunction fun)
 {
     assertSameCompartment(cx, fun);
-    MOZ_ASSERT(cx->compartment()->debugMode());
+    MOZ_ASSERT(CanUseDebugScopeMaps(cx));
     if (!DebugScopes::updateLiveScopes(cx))
         return nullptr;
     return GetDebugScope(cx, *fun->environment());

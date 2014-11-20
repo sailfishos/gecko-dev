@@ -37,6 +37,7 @@ struct Runtime;
 
 namespace js {
 
+class AutoLockGC;
 class FreeOp;
 
 #ifdef DEBUG
@@ -630,6 +631,9 @@ struct ArenaHeader : public JS::shadow::ArenaHeader
     inline void setNextAllocDuringSweep(ArenaHeader *aheader);
     inline void unsetAllocDuringSweep();
 
+    inline void setNextArenaToUpdate(ArenaHeader *aheader);
+    inline ArenaHeader *getNextArenaToUpdateAndUnlink();
+
     void unmarkAll();
 
 #ifdef JSGC_COMPACTING
@@ -945,9 +949,12 @@ struct Chunk
     inline void insertToAvailableList(Chunk **insertPoint);
     inline void removeFromAvailableList();
 
-    ArenaHeader *allocateArena(JS::Zone *zone, AllocKind kind);
+    ArenaHeader *allocateArena(JSRuntime *rt, JS::Zone *zone, AllocKind kind,
+                               const AutoLockGC &lock);
 
-    void releaseArena(ArenaHeader *aheader);
+    enum ArenaDecommitState { IsCommitted = false, IsDecommitted = true };
+    void releaseArena(JSRuntime *rt, ArenaHeader *aheader, const AutoLockGC &lock,
+                      ArenaDecommitState state = IsCommitted);
     void recycleArena(ArenaHeader *aheader, SortedArenaList &dest, AllocKind thingKind,
                       size_t thingsPerArena);
 
@@ -978,11 +985,12 @@ struct Chunk
     unsigned findDecommittedArenaOffset();
     ArenaHeader* fetchNextDecommittedArena();
 
+    void addArenaToFreeList(JSRuntime *rt, ArenaHeader *aheader);
+    void addArenaToDecommittedList(JSRuntime *rt, const ArenaHeader *aheader);
+
   public:
     /* Unlink and return the freeArenasHead. */
     inline ArenaHeader* fetchNextFreeArena(JSRuntime *rt);
-
-    inline void addArenaToFreeList(JSRuntime *rt, ArenaHeader *aheader);
 };
 
 static_assert(sizeof(Chunk) == ChunkSize,
@@ -1147,15 +1155,21 @@ ArenaHeader::unsetAllocDuringSweep()
     auxNextLink = 0;
 }
 
-inline void
-ReleaseArenaList(ArenaHeader *aheader)
+inline ArenaHeader *
+ArenaHeader::getNextArenaToUpdateAndUnlink()
 {
-    ArenaHeader *next;
-    for (; aheader; aheader = next) {
-        // Copy aheader->next before releasing.
-        next = aheader->next;
-        aheader->chunk()->releaseArena(aheader);
-    }
+    MOZ_ASSERT(!hasDelayedMarking && !allocatedDuringIncremental && !markOverflow);
+    ArenaHeader *next = &reinterpret_cast<Arena *>(auxNextLink << ArenaShift)->aheader;
+    auxNextLink = 0;
+    return next;
+}
+
+inline void
+ArenaHeader::setNextArenaToUpdate(ArenaHeader *aheader)
+{
+    MOZ_ASSERT(!hasDelayedMarking && !allocatedDuringIncremental && !markOverflow);
+    MOZ_ASSERT(!auxNextLink);
+    auxNextLink = aheader->arenaAddress() >> ArenaShift;
 }
 
 static void

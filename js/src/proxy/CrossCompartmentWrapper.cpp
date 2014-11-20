@@ -78,15 +78,6 @@ CrossCompartmentWrapper::delete_(JSContext *cx, HandleObject wrapper, HandleId i
 }
 
 bool
-CrossCompartmentWrapper::enumerate(JSContext *cx, HandleObject wrapper, AutoIdVector &props) const
-{
-    PIERCE(cx, wrapper,
-           NOTHING,
-           Wrapper::enumerate(cx, wrapper, props),
-           NOTHING);
-}
-
-bool
 CrossCompartmentWrapper::getPrototypeOf(JSContext *cx, HandleObject wrapper,
                                         MutableHandleObject protop) const
 {
@@ -197,16 +188,24 @@ CrossCompartmentWrapper::getOwnEnumerablePropertyKeys(JSContext *cx, HandleObjec
            NOTHING);
 }
 
+bool
+CrossCompartmentWrapper::getEnumerablePropertyKeys(JSContext *cx, HandleObject wrapper,
+                                                   AutoIdVector &props) const
+{
+    PIERCE(cx, wrapper,
+           NOTHING,
+           Wrapper::getEnumerablePropertyKeys(cx, wrapper, props),
+           NOTHING);
+}
+
 /*
  * We can reify non-escaping iterator objects instead of having to wrap them. This
  * allows fast iteration over objects across a compartment boundary.
  */
 static bool
-CanReify(HandleValue vp)
+CanReify(HandleObject obj)
 {
-    JSObject *obj;
-    return vp.isObject() &&
-           (obj = &vp.toObject())->is<PropertyIteratorObject>() &&
+    return obj->is<PropertyIteratorObject>() &&
            (obj->as<PropertyIteratorObject>().getNativeIterator()->flags & JSITER_ENUMERATE);
 }
 
@@ -224,9 +223,9 @@ struct AutoCloseIterator
 };
 
 static bool
-Reify(JSContext *cx, JSCompartment *origin, MutableHandleValue vp)
+Reify(JSContext *cx, JSCompartment *origin, MutableHandleObject objp)
 {
-    Rooted<PropertyIteratorObject*> iterObj(cx, &vp.toObject().as<PropertyIteratorObject>());
+    Rooted<PropertyIteratorObject*> iterObj(cx, &objp->as<PropertyIteratorObject>());
     NativeIterator *ni = iterObj->getNativeIterator();
 
     AutoCloseIterator close(cx, iterObj);
@@ -242,7 +241,6 @@ Reify(JSContext *cx, JSCompartment *origin, MutableHandleValue vp)
      * implicit cx->enumerators state.
      */
     size_t length = ni->numKeys();
-    bool isKeyIter = ni->isKeyIter();
     AutoIdVector keys(cx);
     if (length > 0) {
         if (!keys.reserve(length))
@@ -260,29 +258,22 @@ Reify(JSContext *cx, JSCompartment *origin, MutableHandleValue vp)
     if (!CloseIterator(cx, iterObj))
         return false;
 
-    if (isKeyIter) {
-        if (!VectorToKeyIterator(cx, obj, ni->flags, keys, vp))
-            return false;
-    } else {
-        if (!VectorToValueIterator(cx, obj, ni->flags, keys, vp))
-            return false;
-    }
-    return true;
+    return EnumeratedIdVectorToIterator(cx, obj, ni->flags, keys, objp);
 }
 
 bool
 CrossCompartmentWrapper::iterate(JSContext *cx, HandleObject wrapper, unsigned flags,
-                                 MutableHandleValue vp) const
+                                 MutableHandleObject objp) const
 {
     {
         AutoCompartment call(cx, wrappedObject(wrapper));
-        if (!Wrapper::iterate(cx, wrapper, flags, vp))
+        if (!Wrapper::iterate(cx, wrapper, flags, objp))
             return false;
     }
 
-    if (CanReify(vp))
-        return Reify(cx, cx->compartment(), vp);
-    return cx->compartment()->wrap(cx, vp);
+    if (CanReify(objp))
+        return Reify(cx, cx->compartment(), objp);
+    return cx->compartment()->wrap(cx, objp);
 }
 
 bool

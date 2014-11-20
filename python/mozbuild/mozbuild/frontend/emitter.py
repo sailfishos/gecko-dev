@@ -30,6 +30,7 @@ from .data import (
     Defines,
     DirectoryTraversal,
     Exports,
+    FinalTargetFiles,
     GeneratedEventWebIDLFile,
     GeneratedInclude,
     GeneratedWebIDLFile,
@@ -600,6 +601,10 @@ class TreeMetadataEmitter(LoggingMixin):
                 context.get('DIST_SUBDIR'):
             yield InstallationTarget(context)
 
+        final_target_files = context.get('FINAL_TARGET_FILES')
+        if final_target_files:
+            yield FinalTargetFiles(context, final_target_files, context['FINAL_TARGET'])
+
         host_libname = context.get('HOST_LIBRARY_NAME')
         libname = context.get('LIBRARY_NAME')
 
@@ -769,6 +774,7 @@ class TreeMetadataEmitter(LoggingMixin):
             METRO_CHROME=('metro-chrome', 'testing/mochitest', 'metro', True),
             MOCHITEST=('mochitest', 'testing/mochitest', 'tests', True),
             MOCHITEST_CHROME=('chrome', 'testing/mochitest', 'chrome', True),
+            MOCHITEST_WEBAPPRT_CONTENT=('webapprt-content', 'testing/mochitest', 'webapprtContent', True),
             MOCHITEST_WEBAPPRT_CHROME=('webapprt-chrome', 'testing/mochitest', 'webapprtChrome', True),
             WEBRTC_SIGNALLING_TEST=('steeplechase', 'steeplechase', '.', True),
             XPCSHELL_TESTS=('xpcshell', 'xpcshell', '.', True),

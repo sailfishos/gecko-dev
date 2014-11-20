@@ -288,7 +288,7 @@ TextureClientD3D11::Unlock()
     HRESULT hr = device->CreateTexture2D(&desc, nullptr, byRef(tex));
 
     if (FAILED(hr)) {
-      gfx::gfxCriticalError() << "[D3D11] CreateTexture2D failure " << mSize << " Code: " << gfx::hexa(hr);
+      gfxCriticalError() << "[D3D11] CreateTexture2D failure " << mSize << " Code: " << gfx::hexa(hr);
       return;
     }
 
@@ -375,7 +375,7 @@ TextureClientD3D11::AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlag
   }
 
   if (FAILED(hr)) {
-    gfx::gfxCriticalError() << "[D3D11] CreateTexture2D failure " << aSize << " Code: " << gfx::hexa(hr);
+    gfxCriticalError() << "[D3D11] CreateTexture2D failure " << aSize << " Code: " << gfx::hexa(hr);
     return false;
   }
 
@@ -653,6 +653,18 @@ CompositingRenderTargetD3D11::CompositingRenderTargetD3D11(ID3D11Texture2D* aTex
   if (FAILED(hr)) {
     LOGD3D11("Failed to create RenderTargetView.");
   }
+}
+
+void
+CompositingRenderTargetD3D11::BindRenderTarget(ID3D11DeviceContext* aContext)
+{
+  if (mClearOnBind) {
+    FLOAT clear[] = { 0, 0, 0, 0 };
+    aContext->ClearRenderTargetView(mRTView, clear);
+    mClearOnBind = false;
+  }
+  ID3D11RenderTargetView* view = mRTView;
+  aContext->OMSetRenderTargets(1, &view, nullptr);
 }
 
 IntSize

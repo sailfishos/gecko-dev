@@ -39,6 +39,8 @@ public:
   virtual const uint16_t* ClearBytes() const = 0;
 
   virtual const uint32_t* CipherBytes() const = 0;
+
+  virtual ~GMPEncryptedBufferMetadata() {}
 };
 
 class GMPBuffer {
@@ -177,27 +179,20 @@ public:
 
   // Returns decrypted buffer to Gecko, or reports failure.
   virtual void Decrypted(GMPBuffer* aBuffer, GMPErr aResult) = 0;
+
+  virtual ~GMPDecryptorCallback() {}
 };
 
 // Host interface, passed to GetAPIFunc(), with "decrypt".
 class GMPDecryptorHost {
 public:
-
-  // Returns an origin specific string uniquely identifying the device.
-  // The node id contains a random component, and is consistent between
-  // plugin instantiations, unless the user clears it.
-  // Different origins have different node ids.
-  // The node id pointer returned here remains valid for the until shutdown
-  // begins.
-  // *aOutNodeId is null terminated.
-  virtual void GetNodeId(const char** aOutNodeId,
-                         uint32_t* aOutNodeIdLength) = 0;
-
   virtual void GetSandboxVoucher(const uint8_t** aVoucher,
-                                 uint8_t* aVoucherLength) = 0;
+                                 uint32_t* aVoucherLength) = 0;
 
   virtual void GetPluginVoucher(const uint8_t** aVoucher,
-                                uint8_t* aVoucherLength) = 0;
+                                uint32_t* aVoucherLength) = 0;
+
+  virtual ~GMPDecryptorHost() {}
 };
 
 enum GMPSessionType {
@@ -276,6 +271,7 @@ public:
   // Do not call the GMPDecryptorCallback's functions after this is called.
   virtual void DecryptingComplete() = 0;
 
+  virtual ~GMPDecryptor() {}
 };
 
 #endif // GMP_DECRYPTION_h_

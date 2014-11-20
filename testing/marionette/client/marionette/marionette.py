@@ -4,12 +4,10 @@
 
 import base64
 import ConfigParser
-import datetime
 import json
 import os
 import socket
 import StringIO
-import time
 import traceback
 import warnings
 
@@ -479,6 +477,7 @@ class Marionette(object):
         self.bin = bin
         self.instance = None
         self.session = None
+        self.session_id = None
         self.window = None
         self.runner = None
         self.emulator = None
@@ -586,33 +585,18 @@ class Marionette(object):
             s.close()
 
     def wait_for_port(self, timeout=60):
-        starttime = datetime.datetime.now()
-        poll_interval = 0.1
-        while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
-            sock = None
-            try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect((self.host, self.port))
-                data = sock.recv(16)
-                sock.close()
-                if ':' in data:
-                    return True
-            except socket.error:
-                pass
-            finally:
-                if sock:
-                    sock.close()
-            time.sleep(poll_interval)
-        return False
+        return MarionetteTransport.wait_for_port(self.host,
+                                                 self.port,
+                                                 timeout=timeout)
 
     @do_crash_check
     def _send_message(self, command, response_key="ok", **kwargs):
-        if not self.session and command != "newSession":
+        if not self.session_id and command != "newSession":
             raise errors.MarionetteException("Please start a session")
 
         message = {"name": command}
-        if self.session:
-            message["sessionId"] = self.session
+        if self.session_id:
+            message["sessionId"] = self.session_id
         if kwargs:
             message["parameters"] = kwargs
 
@@ -637,6 +621,8 @@ class Marionette(object):
                 continue;
 
             break;
+        if not self.session_id:
+            self.session_id = response.get("sessionId", None)
 
         if response_key in response:
             return response[response_key]
@@ -811,16 +797,18 @@ class Marionette(object):
         '''
         return "%s%s" % (self.baseurl, relative_url)
 
-    def start_session(self, desired_capabilities=None):
+    def start_session(self, desired_capabilities=None, session_id=None, timeout=60):
         """Create a new Marionette session.
 
         This method must be called before performing any other action.
 
-        :params desired_capabilities: An optional dict of desired
+        :param desired_capabilities: An optional dict of desired
             capabilities.  This is currently ignored.
+        :param timeout: Timeout in seconds for the server to be ready.
 
         :returns: A dict of the capabilities offered."""
-        self.session = self._send_message('newSession', 'value', capabilities=desired_capabilities)
+        self.wait_for_port(timeout=timeout)
+        self.session = self._send_message('newSession', 'value', capabilities=desired_capabilities, session_id=session_id)
         self.b2g = 'b2g' in self.session
         return self.session
 
@@ -836,6 +824,7 @@ class Marionette(object):
     def delete_session(self):
         """Close the current session and disconnect from the server."""
         response = self._send_message('deleteSession', 'ok')
+        self.session_id = None
         self.session = None
         self.window = None
         self.client.close()
@@ -1309,7 +1298,7 @@ class Marionette(object):
         :param method: The method to use to locate the element; one of: "id",
                        "name", "class name", "tag name", "css selector", "link text",
                        "partial link text", "xpath", "anon" and "anon attribute".
-                       Note that the "name", "css selector", "link text" and
+                       Note that the "name", "link text" and
                        "partial link test" methods are not supported in the chrome dom.
         :param target: The target of the search.  For example, if method =
                        "tag", target might equal "div".  If method = "id", target would be
@@ -1336,7 +1325,7 @@ class Marionette(object):
         :param method: The method to use to locate the elements; one of:
                        "id", "name", "class name", "tag name", "css selector", "link text",
                        "partial link text", "xpath", "anon" and "anon attribute".
-                       Note that the "name", "css selector", "link text" and
+                       Note that the "name", "link text" and
                        "partial link test" methods are not supported in the chrome dom.
         :param target: The target of the search.  For example, if method =
                        "tag", target might equal "div".  If method = "id", target would be

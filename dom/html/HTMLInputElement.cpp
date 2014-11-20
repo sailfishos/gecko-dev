@@ -236,13 +236,15 @@ class HTMLInputElementState MOZ_FINAL : public nsISupports
       mValue = aValue;
     }
 
-    const nsTArray<nsRefPtr<File>>& GetFiles() {
-      return mFiles;
+    const nsTArray<nsRefPtr<FileImpl>>& GetFileImpls() {
+      return mFileImpls;
     }
 
-    void SetFiles(const nsTArray<nsRefPtr<File>>& aFiles) {
-      mFiles.Clear();
-      mFiles.AppendElements(aFiles);
+    void SetFileImpls(const nsTArray<nsRefPtr<File>>& aFile) {
+      mFileImpls.Clear();
+      for (uint32_t i = 0, len = aFile.Length(); i < len; ++i) {
+        mFileImpls.AppendElement(aFile[i]->Impl());
+      }
     }
 
     HTMLInputElementState()
@@ -255,7 +257,7 @@ class HTMLInputElementState MOZ_FINAL : public nsISupports
     ~HTMLInputElementState() {}
 
     nsString mValue;
-    nsTArray<nsRefPtr<File>> mFiles;
+    nsTArray<nsRefPtr<FileImpl>> mFileImpls;
     bool mChecked;
     bool mCheckedSet;
 };
@@ -1030,11 +1032,12 @@ UploadLastDir::FetchDirectoryAndDisplayPicker(nsIDocument* aDoc,
   nsCOMPtr<nsIContentPrefCallback2> prefCallback = 
     new UploadLastDir::ContentPrefCallback(aFilePicker, aFpCallback);
 
+#ifdef MOZ_B2G
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    // FIXME (bug 949666): Run this code in the parent process.
     prefCallback->HandleCompletion(nsIContentPrefCallback2::COMPLETE_ERROR);
     return NS_OK;
   }
+#endif
 
   // Attempt to get the CPS, if it's not present we'll fallback to use the Desktop folder
   nsCOMPtr<nsIContentPrefService2> contentPrefService =
@@ -1060,10 +1063,11 @@ UploadLastDir::StoreLastUsedDirectory(nsIDocument* aDoc, nsIFile* aDir)
     return NS_OK;
   }
 
+#ifdef MOZ_B2G
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    // FIXME (bug 949666): Run this code in the parent process.
     return NS_OK;
   }
+#endif
 
   nsCOMPtr<nsIURI> docURI = aDoc->GetDocumentURI();
   NS_PRECONDITION(docURI, "docURI is null");
@@ -5697,7 +5701,7 @@ HTMLInputElement::SaveState()
     case VALUE_MODE_FILENAME:
       if (!mFiles.IsEmpty()) {
         inputState = new HTMLInputElementState();
-        inputState->SetFiles(mFiles);
+        inputState->SetFileImpls(mFiles);
       }
       break;
     case VALUE_MODE_VALUE:
@@ -5900,7 +5904,17 @@ HTMLInputElement::RestoreState(nsPresState* aState)
         break;
       case VALUE_MODE_FILENAME:
         {
-          const nsTArray<nsRefPtr<File>>& files = inputState->GetFiles();
+          const nsTArray<nsRefPtr<FileImpl>>& fileImpls = inputState->GetFileImpls();
+
+          nsCOMPtr<nsIGlobalObject> global = OwnerDoc()->GetScopeObject();
+          MOZ_ASSERT(global);
+
+          nsTArray<nsRefPtr<File>> files;
+          for (uint32_t i = 0, len = fileImpls.Length(); i < len; ++i) {
+            nsRefPtr<File> file = new File(global, fileImpls[i]);
+            files.AppendElement(file);
+          }
+
           SetFiles(files, true);
         }
         break;

@@ -4,9 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
-
 #include "gfxWindowsPlatform.h"
+
+#include "cairo.h"
+#include "mozilla/ArrayUtils.h"
 
 #include "gfxImageSurface.h"
 #include "gfxWindowsSurface.h"
@@ -79,6 +80,31 @@ using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 using namespace mozilla::image;
+
+DCFromDrawTarget::DCFromDrawTarget(DrawTarget& aDrawTarget)
+{
+  mDC = nullptr;
+  if (aDrawTarget.GetBackendType() == BackendType::CAIRO) {
+    cairo_surface_t *surf = (cairo_surface_t*)
+        aDrawTarget.GetNativeSurface(NativeSurfaceType::CAIRO_SURFACE);
+    cairo_surface_type_t surfaceType = cairo_surface_get_type(surf);
+    if (surfaceType == CAIRO_SURFACE_TYPE_WIN32 ||
+        surfaceType == CAIRO_SURFACE_TYPE_WIN32_PRINTING) {
+      mDC = cairo_win32_surface_get_dc(surf);
+      mNeedsRelease = false;
+      SaveDC(mDC);
+      cairo_t* ctx = (cairo_t*)
+          aDrawTarget.GetNativeSurface(NativeSurfaceType::CAIRO_CONTEXT);
+      cairo_scaled_font_t* scaled = cairo_get_scaled_font(ctx);
+      cairo_win32_scaled_font_select_font(scaled, mDC);
+    }
+    if (!mDC) {
+      mDC = GetDC(nullptr);
+      SetGraphicsMode(mDC, GM_ADVANCED);
+      mNeedsRelease = true;
+    }
+  }
+}
 
 #ifdef CAIRO_HAS_D2D_SURFACE
 
@@ -456,6 +482,7 @@ gfxWindowsPlatform::UpdateRenderMode()
 #ifdef USE_D2D1_1
       if (gfxPrefs::Direct2DUse1_1() && Factory::SupportsD2D1()) {
         contentMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
+        canvasMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
         defaultBackend = BackendType::DIRECT2D1_1;
       } else {
 #endif
@@ -583,6 +610,12 @@ gfxWindowsPlatform::VerifyD2DDevice(bool aAttemptForce)
     if (mD2DDevice) {
         reporter.SetSuccessful();
         mozilla::gfx::Factory::SetDirect3D10Device(cairo_d2d_device_get_device(mD2DDevice));
+    }
+
+    ScopedGfxFeatureReporter reporter1_1("D2D1.1");
+
+    if (Factory::SupportsD2D1()) {
+      reporter1_1.SetSuccessful();
     }
 #endif
 }
@@ -1521,6 +1554,13 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
       return result;
   checked = true;
 
+  if (gfxPrefs::Direct2DForceEnabled() ||
+      gfxPrefs::LayersAccelerationForceEnabled())
+  {
+    result = true;
+    return true;
+  }
+
   if (GetModuleHandleW(L"dlumd32.dll") && GetModuleHandleW(L"igd10umd32.dll")) {
     nsString displayLinkModuleVersionString;
     gfxWindowsPlatform::GetDLLVersion(L"dlumd32.dll", displayLinkModuleVersionString);
@@ -1531,7 +1571,7 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
 #endif
       return false;
     }
-    if (displayLinkModuleVersion <= GFX_DRIVER_VERSION(8,6,1,36484)) {
+    if (displayLinkModuleVersion <= V(8,6,1,36484)) {
 #if defined(MOZ_CRASHREPORTER)
       CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("DisplayLink: too old version\n"));
 #endif
@@ -1649,7 +1689,10 @@ gfxWindowsPlatform::InitD3D11Devices()
   HRESULT hr;
 
   hr = d3d11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
-                         D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                         // Use
+                         // D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS
+                         // to prevent bug 1092260. IE 11 also uses this flag.
+                         D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS,
                          featureLevels.Elements(), featureLevels.Length(),
                          D3D11_SDK_VERSION, byRef(mD3D11Device), nullptr, nullptr);
 

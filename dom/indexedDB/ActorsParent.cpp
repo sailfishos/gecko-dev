@@ -2198,7 +2198,13 @@ SetDefaultPragmas(mozIStorageConnection* aConnection)
     // refcount function. This behavior changes with enabled recursive triggers,
     // so the statement fires the delete trigger first and then the insert
     // trigger.
-    "PRAGMA recursive_triggers = ON;";
+    "PRAGMA recursive_triggers = ON;"
+    // We don't need SQLite's table locks because we manage transaction ordering
+    // ourselves and we know we will never allow a write transaction to modify
+    // an object store that a read transaction is in the process of using.
+    "PRAGMA read_uncommitted = TRUE;"
+    // No more PRAGMAs.
+    ;
 
   nsresult rv = aConnection->ExecuteSimpleSQL(NS_LITERAL_CSTRING(query));
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -8734,16 +8740,15 @@ FileManager::Invalidate()
   {
   public:
     static PLDHashOperator
-    CopyToTArray(const uint64_t& aKey, FileInfo* aValue, void* aUserArg)
+    ClearDBRefs(const uint64_t& aKey, FileInfo*& aValue, void* aUserArg)
     {
       MOZ_ASSERT(aValue);
 
-      auto* array = static_cast<FallibleTArray<FileInfo*>*>(aUserArg);
-      MOZ_ASSERT(array);
+      if (aValue->LockedClearDBRefs()) {
+        return PL_DHASH_NEXT;
+      }
 
-      MOZ_ALWAYS_TRUE(array->AppendElement(aValue));
-
-      return PL_DHASH_NEXT;
+      return PL_DHASH_REMOVE;
     }
   };
 
@@ -8752,26 +8757,12 @@ FileManager::Invalidate()
     return NS_ERROR_UNEXPECTED;
   }
 
-  FallibleTArray<FileInfo*> fileInfos;
-  {
-    MutexAutoLock lock(IndexedDatabaseManager::FileMutex());
+  MutexAutoLock lock(IndexedDatabaseManager::FileMutex());
 
-    MOZ_ASSERT(!mInvalidated);
-    mInvalidated = true;
+  MOZ_ASSERT(!mInvalidated);
+  mInvalidated = true;
 
-    if (NS_WARN_IF(!fileInfos.SetCapacity(mFileInfos.Count()))) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    mFileInfos.EnumerateRead(Helper::CopyToTArray, &fileInfos);
-  }
-
-  for (uint32_t count = fileInfos.Length(), index = 0; index < count; index++) {
-    FileInfo* fileInfo = fileInfos[index];
-    MOZ_ASSERT(fileInfo);
-
-    fileInfo->ClearDBRefs();
-  }
+  mFileInfos.Enumerate(Helper::ClearDBRefs, nullptr);
 
   return NS_OK;
 }

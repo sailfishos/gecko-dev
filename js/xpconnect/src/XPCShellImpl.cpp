@@ -743,8 +743,7 @@ env_enumerate(JSContext *cx, HandleObject obj)
 }
 
 static bool
-env_resolve(JSContext *cx, HandleObject obj, HandleId id,
-            JS::MutableHandleObject objp)
+env_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
 {
     JSString *idstr;
 
@@ -766,16 +765,16 @@ env_resolve(JSContext *cx, HandleObject obj, HandleId id,
         if (!JS_DefinePropertyById(cx, obj, id, valstr, JSPROP_ENUMERATE)) {
             return false;
         }
-        objp.set(obj);
+        *resolvedp = true;
     }
     return true;
 }
 
 static const JSClass env_class = {
-    "environment", JSCLASS_HAS_PRIVATE | JSCLASS_NEW_RESOLVE,
+    "environment", JSCLASS_HAS_PRIVATE,
     JS_PropertyStub,  JS_DeletePropertyStub,
     JS_PropertyStub,  env_setProperty,
-    env_enumerate, (JSResolveOp) env_resolve,
+    env_enumerate, env_resolve,
     JS_ConvertStub,   nullptr
 };
 
@@ -1067,7 +1066,9 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
                 return usage();
             }
 
-            JS_EvaluateScript(cx, obj, argv[i], strlen(argv[i]), "-e", 1, &rval);
+            JS::CompileOptions opts(cx);
+            opts.setFileAndLine("-e", 1);
+            JS::Evaluate(cx, obj, opts, argv[i], strlen(argv[i]), &rval);
 
             isInteractive = false;
             break;

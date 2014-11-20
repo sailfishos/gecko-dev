@@ -18,6 +18,9 @@
 #include "nsInterfaceHashtable.h"
 #include "nsString.h"
 #include "nsTArray.h"
+#ifdef MOZ_EME
+#include "mozilla/dom/MediaKeySystemAccess.h"
+#endif
 
 class nsPluginArray;
 class nsMimeTypeArray;
@@ -274,9 +277,9 @@ public:
 
   already_AddRefed<ServiceWorkerContainer> ServiceWorker();
 
-  bool DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
-                    JS::Handle<jsid> aId,
-                    JS::MutableHandle<JSPropertyDescriptor> aDesc);
+  bool DoResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
+                 JS::Handle<jsid> aId,
+                 JS::MutableHandle<JSPropertyDescriptor> aDesc);
   void GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
                            ErrorResult& aRv);
   void GetLanguages(nsTArray<nsString>& aLanguages);
@@ -315,6 +318,13 @@ public:
   }
 
   virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE;
+
+#ifdef MOZ_EME
+  already_AddRefed<Promise>
+  RequestMediaKeySystemAccess(const nsAString& aKeySystem,
+                              const Optional<Sequence<MediaKeySystemOptions>>& aOptions,
+                              ErrorResult& aRv);
+#endif
 
 private:
   virtual ~Navigator();
@@ -358,7 +368,7 @@ private:
   nsRefPtr<ServiceWorkerContainer> mServiceWorkerContainer;
   nsCOMPtr<nsPIDOMWindow> mWindow;
 
-  // Hashtable for saving cached objects newresolve created, so we don't create
+  // Hashtable for saving cached objects DoResolve created, so we don't create
   // the object twice if asked for it twice, whether due to use of "delete" or
   // due to Xrays.  We could probably use a nsJSThingHashtable here, but then
   // we'd need to figure out exactly how to trace that, and that seems to be

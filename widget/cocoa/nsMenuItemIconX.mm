@@ -306,7 +306,9 @@ nsMenuItemIconX::LoadIcon(nsIURI* aIconURI)
       [mNativeMenuItem setImage:sPlaceholderIconImage];
   }
 
-  nsresult rv = loader->LoadImage(aIconURI, nullptr, nullptr, nullptr, loadGroup, this,
+  nsresult rv = loader->LoadImage(aIconURI, nullptr, nullptr,
+                                  mozilla::net::RP_Default,
+                                  nullptr, loadGroup, this,
                                   nullptr, nsIRequest::LOAD_NORMAL, nullptr,
                                   nsIContentPolicy::TYPE_IMAGE, EmptyString(),
                                   getter_AddRefs(mIconRequest));
@@ -325,10 +327,12 @@ nsMenuItemIconX::LoadIcon(nsIURI* aIconURI)
 //
 
 NS_IMETHODIMP
-nsMenuItemIconX::Notify(imgIRequest *aRequest, int32_t aType, const nsIntRect* aData)
+nsMenuItemIconX::Notify(imgIRequest* aRequest,
+                        int32_t aType,
+                        const nsIntRect* aData)
 {
   if (aType == imgINotificationObserver::FRAME_COMPLETE) {
-    return OnStopFrame(aRequest);
+    return OnFrameComplete(aRequest);
   }
 
   if (aType == imgINotificationObserver::DECODE_COMPLETE) {
@@ -342,7 +346,7 @@ nsMenuItemIconX::Notify(imgIRequest *aRequest, int32_t aType, const nsIntRect* a
 }
 
 nsresult
-nsMenuItemIconX::OnStopFrame(imgIRequest*    aRequest)
+nsMenuItemIconX::OnFrameComplete(imgIRequest* aRequest)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 

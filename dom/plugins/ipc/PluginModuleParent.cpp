@@ -40,6 +40,7 @@
 #endif
 
 #ifdef MOZ_ENABLE_PROFILER_SPS
+#include "nsIProfiler.h"
 #include "nsIProfileSaveEvent.h"
 #endif
 
@@ -252,6 +253,8 @@ PluginModuleChromeParent::PluginModuleChromeParent(const char* aFilePath, uint32
     Preferences::RegisterCallback(TimeoutChanged, kHangUIMinDisplayPref, this);
 #endif
 
+    RegisterSettingsCallbacks();
+
 #ifdef MOZ_ENABLE_PROFILER_SPS
     InitPluginProfiling();
 #endif
@@ -294,6 +297,8 @@ PluginModuleChromeParent::~PluginModuleChromeParent()
 #ifdef XP_WIN
     Preferences::UnregisterCallback(TimeoutChanged, kHangUITimeoutPref, this);
     Preferences::UnregisterCallback(TimeoutChanged, kHangUIMinDisplayPref, this);
+
+    UnregisterSettingsCallbacks();
 
     if (mHangUIParent) {
         delete mHangUIParent;
@@ -903,6 +908,9 @@ PluginModuleChromeParent::ActorDestroy(ActorDestroyReason why)
 #endif
     }
 
+    // We can't broadcast settings changes anymore.
+    UnregisterSettingsCallbacks();
+
     PluginModuleParent::ActorDestroy(why);
 }
 
@@ -1156,13 +1164,6 @@ PluginModuleParent::NPP_URLRedirectNotify(NPP instance, const char* url,
   i->NPP_URLRedirectNotify(url, status, notifyData);
 }
 
-bool
-PluginModuleParent::AnswerNPN_UserAgent(nsCString* userAgent)
-{
-    *userAgent = NullableString(mNPNIface->uagent(nullptr));
-    return true;
-}
-
 PluginInstanceParent*
 PluginModuleParent::InstCast(NPP instance)
 {
@@ -1262,6 +1263,107 @@ PluginModuleParent::EndUpdateBackground(NPP instance,
     return i->EndUpdateBackground(aCtx, aRect);
 }
 
+class OfflineObserver MOZ_FINAL : public nsIObserver
+{
+public:
+    NS_DECL_ISUPPORTS
+    NS_DECL_NSIOBSERVER
+
+    explicit OfflineObserver(PluginModuleChromeParent* pmp)
+      : mPmp(pmp)
+    {}
+
+private:
+    ~OfflineObserver() {}
+    PluginModuleChromeParent* mPmp;
+};
+
+NS_IMPL_ISUPPORTS(OfflineObserver, nsIObserver)
+
+NS_IMETHODIMP
+OfflineObserver::Observe(nsISupports *aSubject,
+                         const char *aTopic,
+                         const char16_t *aData)
+{
+    MOZ_ASSERT(!strcmp(aTopic, "ipc:network:set-offline"));
+    mPmp->CachedSettingChanged();
+    return NS_OK;
+}
+
+static const char* kSettingsPrefs[] =
+    {"javascript.enabled",
+     "dom.ipc.plugins.nativeCursorSupport"};
+
+void
+PluginModuleChromeParent::RegisterSettingsCallbacks()
+{
+    for (size_t i = 0; i < ArrayLength(kSettingsPrefs); i++) {
+        Preferences::RegisterCallback(CachedSettingChanged, kSettingsPrefs[i], this);
+    }
+
+    nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
+    if (observerService) {
+        mOfflineObserver = new OfflineObserver(this);
+        observerService->AddObserver(mOfflineObserver, "ipc:network:set-offline", false);
+    }
+}
+
+void
+PluginModuleChromeParent::UnregisterSettingsCallbacks()
+{
+    for (size_t i = 0; i < ArrayLength(kSettingsPrefs); i++) {
+        Preferences::UnregisterCallback(CachedSettingChanged, kSettingsPrefs[i], this);
+    }
+
+    nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
+    if (observerService) {
+        observerService->RemoveObserver(mOfflineObserver, "ipc:network:set-offline");
+        mOfflineObserver = nullptr;
+    }
+}
+
+bool
+PluginModuleParent::GetSetting(NPNVariable aVariable)
+{
+    NPBool boolVal = false;
+    mozilla::plugins::parent::_getvalue(nullptr, aVariable, &boolVal);
+    return boolVal;
+}
+
+void
+PluginModuleParent::GetSettings(PluginSettings* aSettings)
+{
+    aSettings->javascriptEnabled() = GetSetting(NPNVjavascriptEnabledBool);
+    aSettings->asdEnabled() = GetSetting(NPNVasdEnabledBool);
+    aSettings->isOffline() = GetSetting(NPNVisOfflineBool);
+    aSettings->supportsXembed() = GetSetting(NPNVSupportsXEmbedBool);
+    aSettings->supportsWindowless() = GetSetting(NPNVSupportsWindowless);
+    aSettings->userAgent() = NullableString(mNPNIface->uagent(nullptr));
+
+#if defined(XP_MACOSX)
+    aSettings->nativeCursorsSupported() =
+      Preferences::GetBool("dom.ipc.plugins.nativeCursorSupport", false);
+#else
+    // Need to initialize this to satisfy IPDL.
+    aSettings->nativeCursorsSupported() = false;
+#endif
+}
+
+void
+PluginModuleChromeParent::CachedSettingChanged()
+{
+    PluginSettings settings;
+    GetSettings(&settings);
+    unused << SendSettingChanged(settings);
+}
+
+/* static */ void
+PluginModuleChromeParent::CachedSettingChanged(const char* aPref, void* aModule)
+{
+    PluginModuleChromeParent *module = static_cast<PluginModuleChromeParent*>(aModule);
+    module->CachedSettingChanged();
+}
+
 #if defined(XP_UNIX) && !defined(XP_MACOSX) && !defined(MOZ_WIDGET_GONK)
 nsresult
 PluginModuleParent::NP_Initialize(NPNetscapeFuncs* bFuncs, NPPluginFuncs* pFuncs, NPError* error)
@@ -1277,7 +1379,9 @@ PluginModuleParent::NP_Initialize(NPNetscapeFuncs* bFuncs, NPPluginFuncs* pFuncs
 
     *error = NPERR_NO_ERROR;
     if (IsChrome()) {
-        if (!CallNP_Initialize(error)) {
+        PluginSettings settings;
+        GetSettings(&settings);
+        if (!CallNP_Initialize(settings, error)) {
             Close();
             return NS_ERROR_FAILURE;
         }
@@ -1315,7 +1419,9 @@ PluginModuleChromeParent::NP_Initialize(NPNetscapeFuncs* bFuncs, NPError* error)
     if (NS_FAILED(rv))
         return rv;
 
-    if (!CallNP_Initialize(error)) {
+    PluginSettings settings;
+    GetSettings(&settings);
+    if (!CallNP_Initialize(settings, error)) {
         Close();
         return NS_ERROR_FAILURE;
     }
@@ -1539,17 +1645,6 @@ PluginModuleParent::ContentsScaleFactorChanged(NPP instance, double aContentsSca
 }
 #endif // #if defined(XP_MACOSX)
 
-bool
-PluginModuleParent::AnswerNPN_GetValue_WithBoolReturn(const NPNVariable& aVariable,
-                                                      NPError* aError,
-                                                      bool* aBoolVal)
-{
-    NPBool boolVal = false;
-    *aError = mozilla::plugins::parent::_getvalue(nullptr, aVariable, &boolVal);
-    *aBoolVal = boolVal ? true : false;
-    return true;
-}
-
 #if defined(MOZ_WIDGET_QT)
 static const int kMaxtimeToProcessEvents = 30;
 bool
@@ -1750,21 +1845,6 @@ PluginModuleParent::RecvPopCursor()
 }
 
 bool
-PluginModuleParent::RecvGetNativeCursorsSupported(bool* supported)
-{
-    PLUGIN_LOG_DEBUG(("%s", FULLFUNCTION));
-#if defined(XP_MACOSX)
-    *supported =
-      Preferences::GetBool("dom.ipc.plugins.nativeCursorSupport", false);
-    return true;
-#else
-    NS_NOTREACHED(
-        "PluginInstanceParent::RecvGetNativeCursorSupportLevel not implemented!");
-    return false;
-#endif
-}
-
-bool
 PluginModuleParent::RecvNPN_SetException(const nsCString& aMessage)
 {
     PLUGIN_LOG_DEBUG(("%s", FULLFUNCTION));
@@ -1889,13 +1969,26 @@ PluginProfilerObserver::Observe(nsISupports *aSubject,
                                 const char *aTopic,
                                 const char16_t *aData)
 {
-    nsCOMPtr<nsIProfileSaveEvent> pse = do_QueryInterface(aSubject);
-    if (pse) {
-      nsCString result;
-      bool success = mPmp->CallGeckoGetProfile(&result);
-      if (success && !result.IsEmpty()) {
-          pse->AddSubProfile(result.get());
-      }
+    if (!strcmp(aTopic, "profiler-started")) {
+        nsCOMPtr<nsIProfilerStartParams> params(do_QueryInterface(aSubject));
+        uint32_t entries;
+        double interval;
+        params->GetEntries(&entries);
+        params->GetInterval(&interval);
+        const nsTArray<nsCString>& features = params->GetFeatures();
+        const nsTArray<nsCString>& threadFilterNames = params->GetThreadFilterNames();
+        unused << mPmp->SendStartProfiler(entries, interval, features, threadFilterNames);
+    } else if (!strcmp(aTopic, "profiler-stopped")) {
+        unused << mPmp->SendStopProfiler();
+    } else if (!strcmp(aTopic, "profiler-subprocess")) {
+        nsCOMPtr<nsIProfileSaveEvent> pse = do_QueryInterface(aSubject);
+        if (pse) {
+            nsCString result;
+            bool success = mPmp->CallGetProfile(&result);
+            if (success && !result.IsEmpty()) {
+                pse->AddSubProfile(result.get());
+            }
+        }
     }
     return NS_OK;
 }
@@ -1906,6 +1999,8 @@ PluginModuleChromeParent::InitPluginProfiling()
     nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
     if (observerService) {
         mProfilerObserver = new PluginProfilerObserver(this);
+        observerService->AddObserver(mProfilerObserver, "profiler-started", false);
+        observerService->AddObserver(mProfilerObserver, "profiler-stopped", false);
         observerService->AddObserver(mProfilerObserver, "profiler-subprocess", false);
     }
 }
@@ -1915,6 +2010,8 @@ PluginModuleChromeParent::ShutdownPluginProfiling()
 {
     nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
     if (observerService) {
+        observerService->RemoveObserver(mProfilerObserver, "profiler-started");
+        observerService->RemoveObserver(mProfilerObserver, "profiler-stopped");
         observerService->RemoveObserver(mProfilerObserver, "profiler-subprocess");
     }
 }

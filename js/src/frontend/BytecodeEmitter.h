@@ -69,6 +69,15 @@ struct CGBlockScopeList {
     void finish(BlockScopeArray *array);
 };
 
+struct CGYieldOffsetList {
+    Vector<uint32_t> list;
+    explicit CGYieldOffsetList(ExclusiveContext *cx) : list(cx) {}
+
+    bool append(uint32_t offset) { return list.append(offset); }
+    size_t length() const { return list.length(); }
+    void finish(YieldOffsetArray &array, uint32_t prologLength);
+};
+
 struct StmtInfoBCE;
 
 // Use zero inline elements because these go on the stack and affect how many
@@ -137,6 +146,12 @@ struct BytecodeEmitter
                                        cloned during execution */
     CGTryNoteList   tryNoteList;    /* list of emitted try notes */
     CGBlockScopeList blockScopeList;/* list of emitted block scope notes */
+
+    /*
+     * For each yield op, map the yield index (stored as bytecode operand) to
+     * the offset of the next op.
+     */
+    CGYieldOffsetList yieldOffsetList;
 
     uint16_t        typesetCount;   /* Number of JOF_TYPESET opcodes generated */
 

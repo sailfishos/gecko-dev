@@ -1534,7 +1534,7 @@ function PeerConnectionWrapper(label, configuration, h264) {
   this.onAddStreamFired = false;
   this.addStreamCallbacks = {};
 
-  this.remoteDescriptionSet = false;
+  this.holdIceCandidates = true;
   this.endOfTrickleIce = false;
   this.localRequiresTrickleIce = false;
   this.remoteRequiresTrickleIce  = false;
@@ -1851,10 +1851,15 @@ PeerConnectionWrapper.prototype = {
    */
   setLocalDescription : function PCW_setLocalDescription(desc, onSuccess) {
     var self = this;
-    this._pc.setLocalDescription(desc, function () {
-      info(self + ": Successfully set the local description");
-      onSuccess();
-    }, generateErrorCallback());
+
+    if (onSuccess) {
+      this._pc.setLocalDescription(desc, function () {
+        info(self + ": Successfully set the local description");
+        onSuccess();
+      }, generateErrorCallback());
+    } else {
+      this._pc.setLocalDescription(desc);
+    }
   },
 
   /**
@@ -1886,17 +1891,15 @@ PeerConnectionWrapper.prototype = {
    */
   setRemoteDescription : function PCW_setRemoteDescription(desc, onSuccess) {
     var self = this;
+
+    if (!onSuccess) {
+      this._pc.setRemoteDescription(desc);
+      this.addStoredIceCandidates();
+      return;
+    }
     this._pc.setRemoteDescription(desc, function () {
       info(self + ": Successfully set remote description");
-      self.remoteDescriptionSet = true;
-      if ((self._ice_candidates_to_add) &&
-          (self._ice_candidates_to_add.length > 0)) {
-        info("adding stored ice candidates");
-        for (var i = 0; i < self._ice_candidates_to_add.length; i++) {
-          self.addIceCandidate(self._ice_candidates_to_add[i]);
-        }
-        self._ice_candidates_to_add = [];
-      }
+      self.addStoredIceCandidates();
       onSuccess();
     }, generateErrorCallback());
   },
@@ -1957,10 +1960,24 @@ PeerConnectionWrapper.prototype = {
       info("Received ICE candidate for closed PeerConnection - discarding");
       return;
     }
-    if (self.remoteDescriptionSet) {
+    if (!self.holdIceCandidates) {
       self.addIceCandidate(candidate);
     } else {
       self._ice_candidates_to_add.push(candidate);
+    }
+  },
+
+  addStoredIceCandidates : function PCW_addStoredIceCandidates() {
+    var self = this;
+
+    self.holdIceCandidates = false;
+    if ((self._ice_candidates_to_add) &&
+        (self._ice_candidates_to_add.length > 0)) {
+      info("adding stored ice candidates");
+      for (var i = 0; i < self._ice_candidates_to_add.length; i++) {
+        self.addIceCandidate(self._ice_candidates_to_add[i]);
+      }
+      self._ice_candidates_to_add = [];
     }
   },
 
@@ -2337,10 +2354,11 @@ PeerConnectionWrapper.prototype = {
     }
   },
 
-  verifySdp : function PCW_verifySdp(desc, expectedType, constraints,
-      offerOptions, trickleIceCallback) {
+  verifySdp : function PCW_verifySdp(desc, expectedType, offerConstraintsList,
+      answerConstraintsList, offerOptions, trickleIceCallback) {
     info("Examining this SessionDescription: " + JSON.stringify(desc));
-    info("constraints: " + JSON.stringify(constraints));
+    info("offerConstraintsList: " + JSON.stringify(offerConstraintsList));
+    info("answerConstraintsList: " + JSON.stringify(answerConstraintsList));
     info("offerOptions: " + JSON.stringify(offerOptions));
     ok(desc, "SessionDescription is not null");
     is(desc.type, expectedType, "SessionDescription type is " + expectedType);
@@ -2359,11 +2377,11 @@ PeerConnectionWrapper.prototype = {
     }
     //TODO: how can we check for absence/presence of m=application?
 
-    //TODO: how to handle media contraints + offer options
-    var audioTracks = this.countAudioTracksInMediaConstraint(constraints);
-    if (constraints.length === 0) {
-      audioTracks = this.audioInOfferOptions(offerOptions);
-    }
+    var audioTracks =
+      Math.max(this.countAudioTracksInMediaConstraint(offerConstraintsList),
+               this.countAudioTracksInMediaConstraint(answerConstraintsList)) ||
+      this.audioInOfferOptions(offerOptions);
+
     info("expected audio tracks: " + audioTracks);
     if (audioTracks == 0) {
       ok(!desc.sdp.contains("m=audio"), "audio m-line is absent from SDP");
@@ -2376,11 +2394,11 @@ PeerConnectionWrapper.prototype = {
 
     }
 
-    //TODO: how to handle media contraints + offer options
-    var videoTracks = this.countVideoTracksInMediaConstraint(constraints);
-    if (constraints.length === 0) {
-      videoTracks = this.videoInOfferOptions(offerOptions);
-    }
+    var videoTracks =
+      Math.max(this.countVideoTracksInMediaConstraint(offerConstraintsList),
+               this.countVideoTracksInMediaConstraint(answerConstraintsList)) ||
+      this.videoInOfferOptions(offerOptions);
+
     info("expected video tracks: " + videoTracks);
     if (videoTracks == 0) {
       ok(!desc.sdp.contains("m=video"), "video m-line is absent from SDP");
@@ -2561,6 +2579,48 @@ PeerConnectionWrapper.prototype = {
     } else {
       is(numLocalCandidates, 0, "Have no localcandidate stats");
       is(numRemoteCandidates, 0, "Have no remotecandidate stats");
+    }
+  },
+
+  /**
+   * Compares the Ice server configured for this PeerConnectionWrapper
+   * with the ICE candidates received in the RTCP stats.
+   *
+   * @param {object} stats
+   *        The stats to be verified for relayed vs. direct connection.
+   */
+  checkStatsIceConnectionType : function PCW_checkStatsIceConnectionType(stats)
+  {
+    var lId;
+    var rId;
+    Object.keys(stats).forEach(function(name) {
+      if ((stats[name].type === "candidatepair") &&
+          (stats[name].selected)) {
+        lId = stats[name].localCandidateId;
+        rId = stats[name].remoteCandidateId;
+      }
+    });
+    info("checkStatsIceConnectionType verifying: local=" +
+         JSON.stringify(stats[lId]) + " remote=" + JSON.stringify(stats[rId]));
+    if ((typeof stats[lId] === 'undefined') ||
+        (typeof stats[rId] === 'undefined')) {
+      info("checkStatsIceConnectionType failed to find candidatepair IDs");
+      return;
+    }
+    var lType = stats[lId].candidateType;
+    var rType = stats[rId].candidateType;
+    var lIp = stats[lId].ipAddress;
+    var rIp = stats[rId].ipAddress;
+    if ((this.configuration) && (typeof this.configuration.iceServers !== 'undefined')) {
+      info("Ice Server configured");
+      // Note: the IP comparising is a workaround for bug 1097333
+      //       And this will fail if a TURN server address is a DNS name!
+      var serverIp = this.configuration.iceServers[0].url.split(':')[1];
+      ok((lType === "relayed" || rType === "relayed") ||
+         (lIp === serverIp || rIp === serverIp), "One peer uses a relay");
+    } else {
+      info("P2P configured");
+      ok(((lType !== "relayed") && (rType !== "relayed")), "Pure peer to peer call without a relay");
     }
   },
 

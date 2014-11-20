@@ -10,7 +10,6 @@
 #include "gfxDrawable.h"
 #include "gfxPlatform.h"
 #include "gfxUtils.h"
-#include "imgDecoderObserver.h"
 #include "imgFrame.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/MemoryReporting.h"
@@ -323,7 +322,7 @@ NS_IMPL_ISUPPORTS(VectorImage,
 //------------------------------------------------------------------------------
 // Constructor / Destructor
 
-VectorImage::VectorImage(imgStatusTracker* aStatusTracker,
+VectorImage::VectorImage(ProgressTracker* aProgressTracker,
                          ImageURL* aURI /* = nullptr */) :
   ImageResource(aURI), // invoke superclass's constructor
   mIsInitialized(false),
@@ -332,7 +331,7 @@ VectorImage::VectorImage(imgStatusTracker* aStatusTracker,
   mHaveAnimations(false),
   mHasPendingInvalidation(false)
 {
-  mStatusTrackerInit = new imgStatusTrackerInit(this, aStatusTracker);
+  mProgressTrackerInit = new ProgressTrackerInit(this, aProgressTracker);
 }
 
 VectorImage::~VectorImage()
@@ -434,7 +433,7 @@ VectorImage::OnImageDataComplete(nsIRequest* aRequest,
                                  bool aLastPart)
 {
   // Call our internal OnStopRequest method, which only talks to our embedded
-  // SVG document. This won't have any effect on our imgStatusTracker.
+  // SVG document. This won't have any effect on our ProgressTracker.
   nsresult finalStatus = OnStopRequest(aRequest, aContext, aStatus);
 
   // Give precedence to Necko failure codes.
@@ -442,14 +441,10 @@ VectorImage::OnImageDataComplete(nsIRequest* aRequest,
     finalStatus = aStatus;
 
   // Actually fire OnStopRequest.
-  if (mStatusTracker) {
-    // XXX(seth): Is this seriously the least insane way to do this?
-    nsRefPtr<imgStatusTracker> clone = mStatusTracker->CloneForRecording();
-    imgDecoderObserver* observer = clone->GetDecoderObserver();
-    observer->OnStopRequest(aLastPart, finalStatus);
-    ImageStatusDiff diff = mStatusTracker->Difference(clone);
-    mStatusTracker->ApplyDifference(diff);
-    mStatusTracker->SyncNotifyDifference(diff);
+  if (mProgressTracker) {
+    mProgressTracker->SyncNotifyProgress(LoadCompleteProgress(aLastPart,
+                                                              mError,
+                                                              finalStatus));
   }
   return finalStatus;
 }
@@ -569,10 +564,10 @@ VectorImage::SendInvalidationNotifications()
   // we would miss the subsequent invalidations if we didn't send out the
   // notifications directly in |InvalidateObservers...|.
 
-  if (mStatusTracker) {
+  if (mProgressTracker) {
     SurfaceCache::Discard(this);
-    mStatusTracker->FrameChanged(&nsIntRect::GetMaxSizedIntRect());
-    mStatusTracker->OnStopFrame();
+    mProgressTracker->SyncNotifyProgress(FLAG_FRAME_COMPLETE,
+                                         nsIntRect::GetMaxSizedIntRect());
   }
 }
 
@@ -826,8 +821,8 @@ VectorImage::Draw(gfxContext* aContext,
     return NS_ERROR_FAILURE;
   }
 
-  if (mAnimationConsumers == 0 && mStatusTracker) {
-    mStatusTracker->OnUnlockedDraw();
+  if (mAnimationConsumers == 0 && mProgressTracker) {
+    mProgressTracker->OnUnlockedDraw();
   }
 
   AutoRestore<bool> autoRestoreIsDrawing(mIsDrawing);
@@ -1034,13 +1029,9 @@ VectorImage::OnStartRequest(nsIRequest* aRequest, nsISupports* aCtxt)
   // Sending StartDecode will block page load until the document's ready.  (We
   // unblock it by sending StopDecode in OnSVGDocumentLoaded or
   // OnSVGDocumentError.)
-  if (mStatusTracker) {
-    nsRefPtr<imgStatusTracker> clone = mStatusTracker->CloneForRecording();
-    imgDecoderObserver* observer = clone->GetDecoderObserver();
-    observer->OnStartDecode();
-    ImageStatusDiff diff = mStatusTracker->Difference(clone);
-    mStatusTracker->ApplyDifference(diff);
-    mStatusTracker->SyncNotifyDifference(diff);
+  if (mProgressTracker) {
+    mProgressTracker->SyncNotifyProgress(FLAG_DECODE_STARTED |
+                                         FLAG_ONLOAD_BLOCKED);
   }
 
   // Create a listener to wait until the SVG document is fully loaded, which
@@ -1118,18 +1109,13 @@ VectorImage::OnSVGDocumentLoaded()
   mRenderingObserver = new SVGRootRenderingObserver(mSVGDocumentWrapper, this);
 
   // Tell *our* observers that we're done loading.
-  if (mStatusTracker) {
-    nsRefPtr<imgStatusTracker> clone = mStatusTracker->CloneForRecording();
-    imgDecoderObserver* observer = clone->GetDecoderObserver();
-
-    observer->OnStartContainer(); // Signal that width/height are available.
-    observer->FrameChanged(&nsIntRect::GetMaxSizedIntRect());
-    observer->OnStopFrame();
-    observer->OnStopDecode(NS_OK); // Unblock page load.
-
-    ImageStatusDiff diff = mStatusTracker->Difference(clone);
-    mStatusTracker->ApplyDifference(diff);
-    mStatusTracker->SyncNotifyDifference(diff);
+  if (mProgressTracker) {
+    mProgressTracker->SyncNotifyProgress(FLAG_SIZE_AVAILABLE |
+                                         FLAG_HAS_TRANSPARENCY |
+                                         FLAG_FRAME_COMPLETE |
+                                         FLAG_DECODE_COMPLETE |
+                                         FLAG_ONLOAD_UNBLOCKED,
+                                         nsIntRect::GetMaxSizedIntRect());
   }
 
   EvaluateAnimation();
@@ -1145,15 +1131,11 @@ VectorImage::OnSVGDocumentError()
   // "broken image" icon.  See bug 594505.
   mError = true;
 
-  if (mStatusTracker) {
-    nsRefPtr<imgStatusTracker> clone = mStatusTracker->CloneForRecording();
-    imgDecoderObserver* observer = clone->GetDecoderObserver();
-
+  if (mProgressTracker) {
     // Unblock page load.
-    observer->OnStopDecode(NS_ERROR_FAILURE);
-    ImageStatusDiff diff = mStatusTracker->Difference(clone);
-    mStatusTracker->ApplyDifference(diff);
-    mStatusTracker->SyncNotifyDifference(diff);
+    mProgressTracker->SyncNotifyProgress(FLAG_DECODE_COMPLETE |
+                                         FLAG_ONLOAD_UNBLOCKED |
+                                         FLAG_HAS_ERROR);
   }
 }
 

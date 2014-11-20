@@ -95,17 +95,12 @@ struct DisplayPortPropertyData {
 };
 
 struct DisplayPortMarginsPropertyData {
-  DisplayPortMarginsPropertyData(const LayerMargin& aMargins,
-                                 uint32_t aAlignmentX, uint32_t aAlignmentY,
+  DisplayPortMarginsPropertyData(const ScreenMargin& aMargins,
                                  uint32_t aPriority)
     : mMargins(aMargins)
-    , mAlignmentX(aAlignmentX)
-    , mAlignmentY(aAlignmentY)
     , mPriority(aPriority)
   {}
-  LayerMargin mMargins;
-  uint32_t mAlignmentX;
-  uint32_t mAlignmentY;
+  ScreenMargin mMargins;
   uint32_t mPriority;
 };
 
@@ -122,6 +117,7 @@ class nsLayoutUtils
   typedef mozilla::dom::DOMRectList DOMRectList;
   typedef mozilla::layers::Layer Layer;
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
+  typedef mozilla::IntrinsicSize IntrinsicSize;
   typedef mozilla::gfx::SourceSurface SourceSurface;
   typedef mozilla::gfx::Color Color;
   typedef mozilla::gfx::DrawTarget DrawTarget;
@@ -137,7 +133,7 @@ public:
   typedef FrameMetrics::ViewID ViewID;
   typedef mozilla::CSSPoint CSSPoint;
   typedef mozilla::CSSSize CSSSize;
-  typedef mozilla::LayerMargin LayerMargin;
+  typedef mozilla::ScreenMargin ScreenMargin;
   typedef mozilla::LayoutDeviceIntSize LayoutDeviceIntSize;
 
   /**
@@ -188,9 +184,7 @@ public:
    */
   static void SetDisplayPortMargins(nsIContent* aContent,
                                     nsIPresShell* aPresShell,
-                                    const LayerMargin& aMargins,
-                                    uint32_t aAlignmentX,
-                                    uint32_t aAlignmentY,
+                                    const ScreenMargin& aMargins,
                                     uint32_t aPriority = 0,
                                     RepaintMode aRepaintMode = RepaintMode::Repaint);
 
@@ -743,6 +737,12 @@ public:
   static Matrix4x4 GetTransformToAncestor(nsIFrame *aFrame, const nsIFrame *aAncestor);
 
   /**
+   * Gets the scale factors of the transform for aFrame relative to the root
+   * frame if this transform is 2D, or the identity scale factors otherwise.
+   */
+  static gfxSize GetTransformToAncestorScale(nsIFrame* aFrame);
+
+  /**
    * Transforms a list of CSSPoints from aFromFrame to aToFrame, taking into
    * account all relevant transformations on the frames up to (but excluding)
    * their nearest common ancestor.
@@ -1026,21 +1026,6 @@ public:
     virtual void AddRect(const nsRect& aRect);
   };
 
-  /**
-   * SelectionCaret draws carets base on range. The carets are at begin
-   * and end position of range's client rects. This class help us to
-   * collect first and last rect for drawing carets.
-   */
-  struct FirstAndLastRectCollector : public RectCallback {
-    nsRect mFirstRect;
-    nsRect mLastRect;
-    bool mSeenFirstRect;
-
-    FirstAndLastRectCollector();
-
-    virtual void AddRect(const nsRect& aRect);
-  };
-
   static nsIFrame* GetContainingBlockForClientRect(nsIFrame* aFrame);
 
   enum {
@@ -1094,6 +1079,32 @@ public:
   static nsRect GetTextShadowRectsUnion(const nsRect& aTextAndDecorationsRect,
                                         nsIFrame* aFrame,
                                         uint32_t aFlags = 0);
+
+  /**
+   * Computes the destination rect that a given replaced element should render
+   * into, based on its CSS 'object-fit' and 'object-position' properties.
+   *
+   * @param aConstraintRect The constraint rect that we have at our disposal,
+   *                        which would e.g. be exactly filled by the image
+   *                        if we had "object-fit: fill".
+   * @param aIntrinsicSize The replaced content's intrinsic size, as reported
+   *                       by nsIFrame::GetIntrinsicSize().
+   * @param aIntrinsicRatio The replaced content's intrinsic ratio, as reported
+   *                        by nsIFrame::GetIntrinsicRatio().
+   * @param aStylePos The nsStylePosition struct that contains the 'object-fit'
+   *                  and 'object-position' values that we should rely on.
+   *                  (This should usually be the nsStylePosition for the
+   *                  replaced element in question, but not always. For
+   *                  example, a <video>'s poster-image has a dedicated
+   *                  anonymous element & child-frame, but we should still use
+   *                  the <video>'s 'object-fit' and 'object-position' values.)
+   * @return The nsRect into which we should render the replaced content (using
+   *         the same coordinate space as the passed-in aConstraintRect).
+   */
+  static nsRect ComputeObjectDestRect(const nsRect& aConstraintRect,
+                                      const IntrinsicSize& aIntrinsicSize,
+                                      const nsSize& aIntrinsicRatio,
+                                      const nsStylePosition* aStylePos);
 
   /**
    * Get the font metrics corresponding to the frame's style data.
@@ -1406,11 +1417,15 @@ public:
   /**
    * Gets the baseline to vertically center text from a font within a
    * line of specified height.
+   * aIsInverted: true if the text is inverted relative to the block
+   * direction, so that the block-dir "ascent" corresponds to font
+   * descent. (Applies to sideways text in vertical-lr mode.)
    *
    * Returns the baseline position relative to the top of the line.
    */
   static nscoord GetCenteredFontBaseline(nsFontMetrics* aFontMetrics,
-                                         nscoord         aLineHeight);
+                                         nscoord        aLineHeight,
+                                         bool           aIsInverted);
 
   /**
    * Derive a baseline of |aFrame| (measured from its top border edge)

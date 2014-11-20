@@ -38,9 +38,13 @@ FocusSyncHandler.init();
 
 let WebProgressListener = {
   init: function() {
+    this._filter = Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
+                     .createInstance(Ci.nsIWebProgress);
+    this._filter.addProgressListener(this, Ci.nsIWebProgress.NOTIFY_ALL);
+
     let webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
                               .getInterface(Ci.nsIWebProgress);
-    webProgress.addProgressListener(this, Ci.nsIWebProgress.NOTIFY_ALL);
+    webProgress.addProgressListener(this._filter, Ci.nsIWebProgress.NOTIFY_ALL);
   },
 
   _requestSpec: function (aRequest, aPropertyName) {
@@ -50,21 +54,37 @@ let WebProgressListener = {
   },
 
   _setupJSON: function setupJSON(aWebProgress, aRequest) {
+    if (aWebProgress) {
+      aWebProgress = {
+        isTopLevel: aWebProgress.isTopLevel,
+        isLoadingDocument: aWebProgress.isLoadingDocument,
+        loadType: aWebProgress.loadType
+      };
+    }
+
     return {
-      isTopLevel: aWebProgress.isTopLevel,
-      isLoadingDocument: aWebProgress.isLoadingDocument,
+      webProgress: aWebProgress || null,
       requestURI: this._requestSpec(aRequest, "URI"),
       originalRequestURI: this._requestSpec(aRequest, "originalURI"),
-      loadType: aWebProgress.loadType,
       documentContentType: content.document && content.document.contentType
     };
   },
 
   _setupObjects: function setupObjects(aWebProgress) {
+    let domWindow;
+    try {
+      domWindow = aWebProgress && aWebProgress.DOMWindow;
+    } catch (e) {
+      // If nsDocShell::Destroy has already been called, then we'll
+      // get NS_NOINTERFACE when trying to get the DOM window. Ignore
+      // that here.
+      domWindow = null;
+    }
+
     return {
       contentWindow: content,
       // DOMWindow is not necessarily the content-window with subframes.
-      DOMWindow: aWebProgress.DOMWindow
+      DOMWindow: domWindow
     };
   },
 
@@ -92,7 +112,7 @@ let WebProgressListener = {
     json.canGoBack = docShell.canGoBack;
     json.canGoForward = docShell.canGoForward;
 
-    if (json.isTopLevel) {
+    if (aWebProgress && aWebProgress.isTopLevel) {
       json.documentURI = content.document.documentURIObject.spec;
       json.charset = content.document.characterSet;
       json.mayEnableCharacterEncodingMenu = docShell.mayEnableCharacterEncodingMenu;
@@ -406,16 +426,10 @@ addMessageListener("Browser:Thumbnail:Request", function (aMessage) {
 
 // The AddonsChild needs to be rooted so that it stays alive as long as
 // the tab.
-let AddonsChild;
-if (Services.appinfo.browserTabsRemoteAutostart) {
-  // Currently, the addon shims are only supported when autostarting
-  // with remote tabs.
-  AddonsChild = RemoteAddonsChild.init(this);
-
-  addEventListener("unload", () => {
-    RemoteAddonsChild.uninit(AddonsChild);
-  });
-}
+let AddonsChild = RemoteAddonsChild.init(this);
+addEventListener("unload", () => {
+  RemoteAddonsChild.uninit(AddonsChild);
+});
 
 addMessageListener("NetworkPrioritizer:AdjustPriority", (msg) => {
   let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);

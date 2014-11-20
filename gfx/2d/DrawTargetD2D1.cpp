@@ -128,14 +128,27 @@ DrawTargetD2D1::DrawSurface(SourceSurface *aSurface,
     return;
   }
 
-  mDC->CreateImageBrush(image,
-                        D2D1::ImageBrushProperties(samplingBounds,
-                                                   D2D1_EXTEND_MODE_CLAMP,
-                                                   D2D1_EXTEND_MODE_CLAMP,
-                                                   D2DInterpolationMode(aSurfOptions.mFilter)),
-                        D2D1::BrushProperties(aOptions.mAlpha, D2DMatrix(transform)),
-                        byRef(brush));
-  mDC->FillRectangle(D2DRect(aDest), brush);
+  RefPtr<ID2D1Bitmap> bitmap;
+  if (aSurface->GetType() == SurfaceType::D2D1_1_IMAGE) {
+    // If this is called with a DataSourceSurface it might do a partial upload
+    // that our DrawBitmap call doesn't support.
+    image->QueryInterface((ID2D1Bitmap**)byRef(bitmap));
+  }
+
+  if (bitmap && aSurfOptions.mSamplingBounds == SamplingBounds::UNBOUNDED) {
+    mDC->DrawBitmap(bitmap, D2DRect(aDest), aOptions.mAlpha, D2DFilter(aSurfOptions.mFilter), D2DRect(aSource));
+  } else {
+    // This has issues ignoring the alpha channel on windows 7 with images marked opaque.
+    MOZ_ASSERT(aSurface->GetFormat() != SurfaceFormat::B8G8R8X8);
+    mDC->CreateImageBrush(image,
+                          D2D1::ImageBrushProperties(samplingBounds,
+                                                     D2D1_EXTEND_MODE_CLAMP,
+                                                     D2D1_EXTEND_MODE_CLAMP,
+                                                     D2DInterpolationMode(aSurfOptions.mFilter)),
+                          D2D1::BrushProperties(aOptions.mAlpha, D2DMatrix(transform)),
+                          byRef(brush));
+    mDC->FillRectangle(D2DRect(aDest), brush);
+  }
 
   FinalizeDrawing(aOptions.mCompositionOp, ColorPattern(Color()));
 }
@@ -934,10 +947,15 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
     return;
   }
 
+  const RadialGradientPattern *pat = static_cast<const RadialGradientPattern*>(&aPattern);
+  if (pat->mCenter1 == pat->mCenter2 && pat->mRadius1 == pat->mRadius2) {
+    // Draw nothing!
+    return;
+  }
+
   RefPtr<ID2D1Effect> radialGradientEffect;
 
   mDC->CreateEffect(CLSID_RadialGradientEffect, byRef(radialGradientEffect));
-  const RadialGradientPattern *pat = static_cast<const RadialGradientPattern*>(&aPattern);
 
   radialGradientEffect->SetValue(RADIAL_PROP_STOP_COLLECTION,
                                  static_cast<const GradientStopsD2D*>(pat->mStops.get())->mStopCollection);

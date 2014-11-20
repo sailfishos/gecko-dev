@@ -550,6 +550,14 @@ class NativeObject : public JSObject
     bool shadowingShapeChange(ExclusiveContext *cx, const Shape &shape);
     bool clearFlag(ExclusiveContext *cx, BaseShape::Flag flag);
 
+    static void slotsSizeMustNotOverflow() {
+        static_assert((NativeObject::NELEMENTS_LIMIT - 1) <= INT32_MAX / sizeof(JS::Value),
+                      "every caller of this method requires that a slot "
+                      "number (or slot count) count multiplied by "
+                      "sizeof(Value) can't overflow uint32_t (and sometimes "
+                      "int32_t, too)");
+    }
+
     uint32_t numFixedSlots() const {
         return reinterpret_cast<const shadow::Object *>(this)->numFixedSlots();
     }
@@ -891,6 +899,13 @@ class NativeObject : public JSObject
 
     /* Upper bound on the number of elements in an object. */
     static const uint32_t NELEMENTS_LIMIT = JS_BIT(28);
+
+    static void elementsSizeMustNotOverflow() {
+        static_assert((NativeObject::NELEMENTS_LIMIT - 1) <= INT32_MAX / sizeof(JS::Value),
+                      "every caller of this method require that an element "
+                      "count multiplied by sizeof(Value) can't overflow "
+                      "uint32_t (and sometimes int32_t ,too)");
+    }
 
     ObjectElements * getElementsHeader() const {
         return ObjectElements::fromElements(elements_);
@@ -1348,12 +1363,6 @@ bool
 NativeGet(JSContext *cx, HandleObject obj, HandleNativeObject pobj,
           HandleShape shape, MutableHandle<Value> vp);
 
-template <ExecutionMode mode>
-bool
-NativeSet(typename ExecutionModeTraits<mode>::ContextType cx,
-          HandleNativeObject obj, HandleObject receiver,
-          HandleShape shape, bool strict, MutableHandleValue vp);
-
 /*
  * If obj has an already-resolved data property for id, return true and
  * store the property value in *vp.
@@ -1414,7 +1423,7 @@ JSObject::setGeneric(JSContext *cx, js::HandleObject obj, js::HandleObject recei
                      js::HandleId id, js::MutableHandleValue vp, bool strict)
 {
     if (obj->getOps()->setGeneric)
-        return nonNativeSetProperty(cx, obj, id, vp, strict);
+        return nonNativeSetProperty(cx, obj, receiver, id, vp, strict);
     return js::baseops::SetPropertyHelper<js::SequentialExecution>(
         cx, obj.as<js::NativeObject>(), receiver, id, js::baseops::Qualified, vp, strict);
 }
@@ -1424,7 +1433,7 @@ JSObject::setElement(JSContext *cx, js::HandleObject obj, js::HandleObject recei
                      uint32_t index, js::MutableHandleValue vp, bool strict)
 {
     if (obj->getOps()->setElement)
-        return nonNativeSetElement(cx, obj, index, vp, strict);
+        return nonNativeSetElement(cx, obj, receiver, index, vp, strict);
     return js::baseops::SetElementHelper(cx, obj.as<js::NativeObject>(),
                                          receiver, index, vp, strict);
 }

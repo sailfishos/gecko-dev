@@ -30,6 +30,8 @@ loop.shared.actions = (function() {
   };
 
   return {
+    Action: Action,
+
     /**
      * Get the window data for the provided window id
      */
@@ -109,9 +111,12 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Used to indicate the peer hung up the call.
+     * Used to indicate the remote peer was disconnected for some reason.
+     *
+     * peerHungup is true if the peer intentionally disconnected, false otherwise.
      */
-    PeerHungupCall: Action.define("peerHungupCall", {
+    RemotePeerDisconnected: Action.define("remotePeerDisconnected", {
+      peerHungup: Boolean
     }),
 
     /**
@@ -130,6 +135,18 @@ loop.shared.actions = (function() {
     ConnectionFailure: Action.define("connectionFailure", {
       // A string relating to the reason the connection failed.
       reason: String
+    }),
+
+    /**
+     * Used to notify that the sdk session is now connected to the servers.
+     */
+    ConnectedToSdkServers: Action.define("connectedToSdkServers", {
+    }),
+
+    /**
+     * Used to notify that a remote peer has connected to the room.
+     */
+    RemotePeerConnected: Action.define("remotePeerConnected", {
     }),
 
     /**
@@ -228,10 +245,27 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Copy a room url in the user's clipboard.
+     * Renames a room.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    RenameRoom: Action.define("renameRoom", {
+      roomToken: String,
+      newRoomName: String
+    }),
+
+    /**
+     * Copy a room url into the user's clipboard.
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     CopyRoomUrl: Action.define("copyRoomUrl", {
+      roomUrl: String
+    }),
+
+    /**
+     * Email a room url.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    EmailRoomUrl: Action.define("emailRoomUrl", {
       roomUrl: String
     }),
 
@@ -243,6 +277,19 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Sets up the room information when it is received.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     *
+     * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
+     */
+    SetupRoomInfo: Action.define("setupRoomInfo", {
+      roomName: String,
+      roomOwner: String,
+      roomToken: String,
+      roomUrl: String
+    }),
+
+    /**
      * Updates the room information when it is received.
      * XXX: should move to some roomActions module - refs bug 1079284
      *
@@ -251,7 +298,6 @@ loop.shared.actions = (function() {
     UpdateRoomInfo: Action.define("updateRoomInfo", {
       roomName: String,
       roomOwner: String,
-      roomToken: String,
       roomUrl: String
     }),
 

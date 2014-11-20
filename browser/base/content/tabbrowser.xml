@@ -2837,18 +2837,16 @@
 
       <method name="attachFormFill">
         <body><![CDATA[
-          for (var i = 0; i < this.mPanelContainer.childNodes.length; ++i) {
-            var cb = this.getBrowserAtIndex(i);
-            cb.attachFormFill();
+          for (let browser of this.browsers) {
+            browser.attachFormFill();
           }
         ]]></body>
       </method>
 
       <method name="detachFormFill">
         <body><![CDATA[
-          for (var i = 0; i < this.mPanelContainer.childNodes.length; ++i) {
-            var cb = this.getBrowserAtIndex(i);
-            cb.detachFormFill();
+          for (let browser of this.browsers) {
+            browser.detachFormFill();
           }
         ]]></body>
       </method>
@@ -3084,10 +3082,13 @@
               let spellInfo = aMessage.data.spellInfo;
               if (spellInfo)
                 spellInfo.target = aMessage.target.messageManager;
-              gContextMenuContentData = { event: aMessage.objects.event,
+              gContextMenuContentData = { isRemote: true,
+                                          event: aMessage.objects.event,
+                                          popupNode: aMessage.objects.popupNode,
                                           browser: browser,
                                           editFlags: aMessage.data.editFlags,
-                                          spellInfo: spellInfo };
+                                          spellInfo: spellInfo,
+                                          addonInfo: aMessage.data.addonInfo };
               let popup = browser.ownerDocument.getElementById("contentAreaContextMenu");
               let event = gContextMenuContentData.event;
               let pos = browser.mapScreenCoordinatesFromContent(event.screenX, event.screenY);
@@ -5368,7 +5369,10 @@
           }, () => {
             // If the promise rejected, that means we don't want to actually
             // flip the deck, so we cancel the tab switch.
-            gBrowser._cancelTabSwitch(toTab);
+            // We need to nullcheck the method we're about to call because
+            // the binding might be dead at this point.
+            if (gBrowser._cancelTabSwitch)
+              gBrowser._cancelTabSwitch(toTab);
           });
 
           return val;

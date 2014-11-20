@@ -72,7 +72,6 @@ class RestyleManager;
 class CounterStyleManager;
 namespace dom {
 class FontFaceSet;
-class MediaQueryList;
 }
 namespace layers {
 class ContainerLayer;
@@ -288,12 +287,6 @@ public:
     if (mPendingMediaFeatureValuesChanged)
       MediaFeatureValuesChanged(nsRestyleHint(0));
   }
-
-  /**
-   * Support for window.matchMedia()
-   */
-  already_AddRefed<mozilla::dom::MediaQueryList>
-    MatchMedia(const nsAString& aMediaQueryList);
 
   /**
    * Access compatibility mode for this context.  This is the same as
@@ -705,10 +698,11 @@ public:
   }
 
   /**
-   * Getter and setter for OMTA time counters
+   * Getter and setters for OMTA time counters
    */
-  bool StyleUpdateForAllAnimationsIsUpToDate();
+  bool StyleUpdateForAllAnimationsIsUpToDate() const;
   void TickLastStyleUpdateForAllAnimations();
+  void ClearLastStyleUpdateForAllAnimations();
 
   /**
    *  Check if bidi enabled (set depending on the presence of RTL
@@ -1237,8 +1231,6 @@ public:
 protected:
 
   mozilla::WeakPtr<nsDocShell>             mContainer;
-
-  PRCList               mDOMMediaQueryLists;
 
   // Base minimum font size, independent of the language-specific global preference. Defaults to 0
   int32_t               mBaseMinFontSize;
