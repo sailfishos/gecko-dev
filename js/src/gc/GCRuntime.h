@@ -52,23 +52,35 @@ class ChunkPool
 
     size_t count() const { return count_; }
 
-    /* Must be called with the GC lock taken. */
-    inline Chunk *get(JSRuntime *rt);
+    Chunk *head() { MOZ_ASSERT(head_); return head_; }
+    Chunk *pop();
+    void push(Chunk *chunk);
+    Chunk *remove(Chunk *chunk);
 
-    /* Must be called either during the GC or with the GC lock taken. */
-    inline void put(Chunk *chunk);
+#ifdef DEBUG
+    bool contains(Chunk *chunk) const;
+    bool verify() const;
+#endif
 
-    class Enum {
+    // Pool mutation does not invalidate an Iter unless the mutation
+    // is of the Chunk currently being visited by the Iter.
+    class Iter {
       public:
-        explicit Enum(ChunkPool &pool) : pool(pool), chunkp(&pool.head_) {}
-        bool empty() { return !*chunkp; }
-        Chunk *front();
-        inline void popFront();
-        inline void removeAndPopFront();
+        explicit Iter(ChunkPool &pool) : current_(pool.head_) {}
+        bool done() const { return !current_; }
+        void next();
+        Chunk *get() const { return current_; }
+        operator Chunk *() const { return get(); }
+        Chunk *operator->() const { return get(); }
       private:
-        ChunkPool &pool;
-        Chunk **chunkp;
+        Chunk *current_;
     };
+
+  private:
+    // ChunkPool controls external resources with interdependencies on the
+    // JSRuntime and related structs, so must not be copied.
+    ChunkPool(const ChunkPool &) MOZ_DELETE;
+    ChunkPool operator=(const ChunkPool &) MOZ_DELETE;
 };
 
 // Performs extra allocation off the main thread so that when memory is
@@ -312,6 +324,7 @@ class GCRuntime
 #ifdef JS_GC_ZEAL
     const void *addressOfZealMode() { return &zealMode; }
     void setZeal(uint8_t zeal, uint32_t frequency);
+    bool parseAndSetZeal(const char *str);
     void setNextScheduled(uint32_t count);
     void verifyPreBarriers();
     void verifyPostBarriers();
@@ -465,10 +478,11 @@ class GCRuntime
     inline void updateOnArenaFree(const ChunkInfo &info);
 
     GCChunkSet::Range allChunks() { return chunkSet.all(); }
-    Chunk **getAvailableChunkList();
     void moveChunkToFreePool(Chunk *chunk, const AutoLockGC &lock);
     bool hasChunk(Chunk *chunk) { return chunkSet.has(chunk); }
+    ChunkPool &availableChunks(const AutoLockGC &lock) { return availableChunks_; }
     ChunkPool &emptyChunks(const AutoLockGC &lock) { return emptyChunks_; }
+    const ChunkPool &availableChunks(const AutoLockGC &lock) const { return availableChunks_; }
     const ChunkPool &emptyChunks(const AutoLockGC &lock) const { return emptyChunks_; }
 
 #ifdef JS_GC_ZEAL
@@ -521,7 +535,6 @@ class GCRuntime
     inline bool wantBackgroundAllocation(const AutoLockGC &lock) const;
     void startBackgroundAllocTaskIfIdle();
 
-    bool initZeal();
     void requestMajorGC(JS::gcreason::Reason reason);
     void collect(bool incremental, SliceBudget &budget, JSGCInvocationKind gckind,
                  JS::gcreason::Reason reason);
@@ -557,8 +570,8 @@ class GCRuntime
     void endSweepPhase(bool lastGC);
     void sweepZones(FreeOp *fop, bool lastGC);
     void decommitAllWithoutUnlocking(const AutoLockGC &lock);
-    void decommitArenas(const AutoLockGC &lock);
-    void expireChunksAndArenas(bool shouldShrink, const AutoLockGC &lock);
+    void decommitArenas(AutoLockGC &lock);
+    void expireChunksAndArenas(bool shouldShrink, AutoLockGC &lock);
     void sweepBackgroundThings();
     void assertBackgroundSweepingFinished();
     bool shouldCompact();
@@ -631,8 +644,8 @@ class GCRuntime
      * During the GC when all arenas in a chunk become free, that chunk is
      * removed from the list and scheduled for release.
      */
-    js::gc::Chunk *availableChunkListHead;
-    js::gc::ChunkPool emptyChunks_;
+    ChunkPool availableChunks_;
+    ChunkPool emptyChunks_;
 
     js::RootedValueMap rootsHash;
 
