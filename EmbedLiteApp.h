@@ -24,6 +24,7 @@ class EmbedLiteUILoop;
 class EmbedLiteAppThreadChild;
 class EmbedLiteAppThreadParent;
 class EmbedLiteSubThread;
+class EmbedLiteSubProcess;
 class EmbedLiteView;
 class PEmbedLiteAppParent;
 class EmbedLiteAppListener
@@ -185,6 +186,7 @@ private:
   RefPtr<EmbedLiteSubThread> mSubThread;
   PEmbedLiteAppParent* mAppParent;
   RefPtr<EmbedLiteAppThreadChild> mAppChild;
+  RefPtr<EmbedLiteSubProcess> mSubProcess;
 
   EmbedType mEmbedType;
   std::map<uint32_t, EmbedLiteView*> mViews;
