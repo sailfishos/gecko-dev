@@ -18,6 +18,7 @@
 #include "EmbedLiteSubThread.h"
 #include "GeckoLoader.h"
 
+#include "EmbedLiteSubProcess.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteView.h"
@@ -135,6 +136,9 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
         LOGE("Failed to start child thread");
       }
     }
+  } else if (aApp->mEmbedType == EMBED_PROCESS) {
+    aApp->mSubProcess = new EmbedLiteSubProcess();
+    aApp->mSubProcess->StartEmbedProcess();
   }
 }
 
