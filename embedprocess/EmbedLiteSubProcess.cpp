@@ -46,6 +46,7 @@ EmbedLiteSubProcess::~EmbedLiteSubProcess()
 void EmbedLiteSubProcess::StartEmbedProcess()
 {
   LOGT();
+  PR_SetEnv("NECKO_SEPARATE_STACKS=1");
   if (!BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
       UniquePtr<BrowserProcessSubThread> ioThread(new BrowserProcessSubThread(BrowserProcessSubThread::IO));
     if (!ioThread.get()) {
@@ -75,7 +76,9 @@ void EmbedLiteSubProcess::StartEmbedProcess()
     CommandLine::Init(0, nullptr);
   }
 
-  LaunchAndWaitForProcessHandle();
+  std::vector<std::string> extraArgs;
+  extraArgs.push_back("-embedlite");
+  LaunchAndWaitForProcessHandle(extraArgs);
   mAppParent->Open(GetChannel(), GetOwnedChildProcessHandle());
 }
 
