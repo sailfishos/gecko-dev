@@ -28,6 +28,7 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteContentController.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
+    'embedprocess/EmbedLiteAppProcessChild.h',
     'utils/EmbedLog.h',
 ]
 
@@ -36,11 +37,13 @@ EXPORTS.ipc = ['embedhelpers/InputDataIPC.h']
 UNIFIED_SOURCES += [
     'embedhelpers/EmbedLiteSubThread.cpp',
     'embedhelpers/EmbedLiteUILoop.cpp',
-    'embedprocess/EmbedLiteSubProcess.cpp',
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
     'EmbedLiteView.cpp',
+    'embedprocess/EmbedLiteAppProcessChild.cpp',
     'embedprocess/EmbedLiteAppProcessParent.cpp',
+    'embedprocess/EmbedLiteContentProcess.cpp',
+    'embedprocess/EmbedLiteSubProcess.cpp',
     'embedthread/EmbedContentController.cpp',
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',
@@ -68,19 +71,20 @@ IPDL_SOURCES += [
 ]
 
 LOCAL_INCLUDES += [
-     '/dom/base',
-     '/dom/ipc',
-     '/gfx/layers',
-     '/gfx/layers/apz/util',
-     '/js/xpconnect/src',
-     '/widget',
-     '/xpcom/build',
-     '/xpcom/threads',
-     'embedhelpers',
-     'embedprocess',
-     'embedthread',
-     'modules',
-     'utils',
+    '/dom/base',
+    '/dom/ipc',
+    '/gfx/layers',
+    '/gfx/layers/apz/util',
+    '/js/xpconnect/src',
+    '/widget',
+    '/xpcom/base',
+    '/xpcom/build',
+    '/xpcom/threads',
+    'embedhelpers',
+    'embedprocess',
+    'embedthread',
+    'modules',
+    'utils',
 ]
 
 DEFINES['EMBED_LITE_INTERNAL'] = True

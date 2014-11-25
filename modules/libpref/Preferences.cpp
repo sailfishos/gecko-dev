@@ -532,7 +532,9 @@ Preferences::Init()
   using mozilla::dom::ContentChild;
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     InfallibleTArray<PrefSetting> prefs;
-    ContentChild::GetSingleton()->SendReadPrefsArray(&prefs);
+    if (ContentChild::GetSingleton()) {
+      ContentChild::GetSingleton()->SendReadPrefsArray(&prefs);
+    }
 
     // Store the array
     for (uint32_t i = 0; i < prefs.Length(); ++i) {

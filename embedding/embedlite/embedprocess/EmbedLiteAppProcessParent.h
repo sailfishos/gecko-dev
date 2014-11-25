@@ -18,6 +18,8 @@ public:
   EmbedLiteAppProcessParent();
 
 protected:
+  void OnChannelConnected(int32_t pid) MOZ_OVERRIDE;
+
   virtual bool
   RecvInitialized();
 

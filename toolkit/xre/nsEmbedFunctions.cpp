@@ -66,6 +66,7 @@
 #include "mozilla/dom/ContentProcess.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
+#include "EmbedLiteContentProcess.h"
 
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
@@ -523,15 +524,28 @@ XRE_InitChildProcess(int aArgc,
         break;
 
       case GeckoProcessType_Content: {
-          process = new ContentProcess(parentHandle);
+          bool isEmbedlite = false;
+          for (int idx = aArgc; idx > 0; idx--) {
+            if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
+              isEmbedlite = true;
+              break;
+            }
+          }
           // If passed in grab the application path for xpcom init
           nsCString appDir;
           for (int idx = aArgc; idx > 0; idx--) {
             if (aArgv[idx] && !strcmp(aArgv[idx], "-appdir")) {
               appDir.Assign(nsDependentCString(aArgv[idx+1]));
-              static_cast<ContentProcess*>(process.get())->SetAppDir(appDir);
               break;
             }
+          }
+
+          if (isEmbedlite) {
+            process = new mozilla::embedlite::EmbedLiteContentProcess(parentHandle);
+            static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(process.get())->SetAppDir(appDir);
+          } else {
+            process = new ContentProcess(parentHandle);
+            static_cast<ContentProcess*>(process.get())->SetAppDir(appDir);
           }
         }
         break;

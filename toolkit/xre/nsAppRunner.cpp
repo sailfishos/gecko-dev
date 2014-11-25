@@ -11,6 +11,7 @@
 
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/embedlite/EmbedLiteAppProcessChild.h"
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
@@ -252,6 +253,7 @@ using mozilla::unused;
 using mozilla::scache::StartupCache;
 using mozilla::dom::ContentParent;
 using mozilla::dom::ContentChild;
+using mozilla::embedlite::EmbedLiteAppProcessChild;
 
 // Save literal putenv string to environment variable.
 static void
@@ -679,7 +681,12 @@ nsXULAppInfo::GetVendor(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().vendor;
+    if (cc) {
+      aResult = cc->GetAppInfo().vendor;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().vendor;
+    }
     return NS_OK;
   }
   aResult.Assign(gAppData->vendor);
@@ -692,7 +699,12 @@ nsXULAppInfo::GetName(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().name;
+    if (cc) {
+      aResult = cc->GetAppInfo().name;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().name;
+    }
     return NS_OK;
   }
   aResult.Assign(gAppData->name);
@@ -705,7 +717,12 @@ nsXULAppInfo::GetID(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().ID;
+    if (cc) {
+      aResult = cc->GetAppInfo().ID;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().ID;
+    }
     return NS_OK;
   }
   aResult.Assign(gAppData->ID);
@@ -718,7 +735,12 @@ nsXULAppInfo::GetVersion(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().version;
+    if (cc) {
+      aResult = cc->GetAppInfo().version;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().version;
+    }
     return NS_OK;
   }
   aResult.Assign(gAppData->version);
@@ -739,7 +761,13 @@ nsXULAppInfo::GetAppBuildID(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().buildID;
+    if (cc) {
+      aResult = cc->GetAppInfo().buildID;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().buildID;
+    }
+
     return NS_OK;
   }
   aResult.Assign(gAppData->buildID);
@@ -760,7 +788,12 @@ nsXULAppInfo::GetUAName(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     ContentChild* cc = ContentChild::GetSingleton();
-    aResult = cc->GetAppInfo().UAName;
+    if (cc) {
+      aResult = cc->GetAppInfo().UAName;
+    } else {
+      EmbedLiteAppProcessChild* ec = EmbedLiteAppProcessChild::GetSingleton();
+      aResult = ec->GetAppInfo().UAName;
+    }
     return NS_OK;
   }
   aResult.Assign(gAppData->UAName);
