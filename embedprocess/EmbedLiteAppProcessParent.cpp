@@ -28,6 +28,7 @@ namespace mozilla {
 namespace embedlite {
 
 EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
+  : mApp(EmbedLiteApp::GetInstance())
 {
   LOGT();
   MOZ_COUNT_CTOR(EmbedLiteAppProcessParent);
@@ -87,6 +88,7 @@ bool
 EmbedLiteAppProcessParent::RecvInitialized()
 {
   LOGT();
+  mApp->Initialized();
   return true;
 }
 
@@ -94,7 +96,8 @@ bool
 EmbedLiteAppProcessParent::RecvReadyToShutdown()
 {
   LOGT();
-  return false;
+  mApp->ChildReadyToDestroy();
+  return true;
 }
 
 bool

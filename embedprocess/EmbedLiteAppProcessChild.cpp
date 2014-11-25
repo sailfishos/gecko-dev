@@ -112,6 +112,7 @@ bool
 EmbedLiteAppProcessChild::RecvPreDestroy()
 {
   LOGT();
+  SendReadyToShutdown();
   return true;
 }
 

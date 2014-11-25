@@ -139,6 +139,7 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
   } else if (aApp->mEmbedType == EMBED_PROCESS) {
     aApp->mSubProcess = new EmbedLiteSubProcess();
     aApp->mSubProcess->StartEmbedProcess();
+    aApp->mAppParent = aApp->mSubProcess->AppParent();
   }
 }
 
@@ -307,12 +308,17 @@ EmbedLiteApp::Shutdown()
   NS_ASSERTION(mState == DESTROYING, "Wrong timing");
 
   if (mIsAsyncLoop) {
-    if (mSubThread) {
-      mSubThread->Stop();
-      mSubThread = NULL;
-    } else if (mListener) {
-      NS_ABORT_IF_FALSE(mListener->StopChildThread(),
-          "StopChildThread must be implemented when ExecuteChildThread defined");
+    if (mEmbedType == EMBED_THREAD) {
+      if (mSubThread) {
+        mSubThread->Stop();
+        mSubThread = NULL;
+      } else if (mListener) {
+        NS_ABORT_IF_FALSE(mListener->StopChildThread(),
+            "StopChildThread must be implemented when ExecuteChildThread defined");
+      }
+    } else if (mEmbedType == EMBED_PROCESS) {
+      mSubProcess->StopEmbedProcess();
+      mSubProcess = nullptr;
     }
   }
 
