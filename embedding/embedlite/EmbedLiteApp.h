@@ -168,6 +168,7 @@ private:
 
   friend class EmbedLiteAppThreadParent;
   friend class EmbedLiteViewThreadParent;
+  friend class EmbedLiteAppProcessParent;
   friend class EmbedLiteCompositorParent;
   friend class EmbedLitePuppetWidget;
 

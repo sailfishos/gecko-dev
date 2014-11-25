@@ -54,7 +54,8 @@ protected:
 private:
   virtual ~EmbedLiteAppProcessParent();
 
-private:
+  EmbedLiteApp* mApp;
+
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessParent);
 };
 

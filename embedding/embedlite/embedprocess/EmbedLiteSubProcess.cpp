@@ -82,5 +82,10 @@ void EmbedLiteSubProcess::StartEmbedProcess()
   mAppParent->Open(GetChannel(), GetOwnedChildProcessHandle());
 }
 
+void EmbedLiteSubProcess::StopEmbedProcess()
+{
+  LOGT();
+}
+
 } // namespace embedlite
 } // namespace mozilla

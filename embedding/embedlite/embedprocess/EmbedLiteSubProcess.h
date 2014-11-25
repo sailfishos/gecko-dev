@@ -9,13 +9,13 @@
 #define mozilla_ipc_EmbedLiteSubProcess_h
 
 #include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "EmbedLiteAppProcessParent.h"
 #include "nsISupportsImpl.h"
 #include "nsAutoPtr.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteAppProcessParent;
 // Copied from browser_process_impl.cc, modified slightly.
 class EmbedLiteSubProcess : public mozilla::ipc::GeckoChildProcessHost
 {
@@ -24,6 +24,9 @@ public:
   explicit EmbedLiteSubProcess();
 
   void StartEmbedProcess();
+  void StopEmbedProcess();
+
+  EmbedLiteAppProcessParent* AppParent() { return mAppParent.get(); }
 
 private:
   virtual ~EmbedLiteSubProcess();
