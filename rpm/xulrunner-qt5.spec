@@ -19,6 +19,7 @@ Patch7:     workaround-for-21266-blank-page-after-scroll.patch
 Patch8:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
 Patch9:     workaround-for-bug-10381-late-access-message-loop.patch
 Patch10:    0002-config-Define-HAS_NEMO_RESOURCE.patch
+Patch11:    disabledestructible.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -77,6 +78,7 @@ Tests and misc files for xulrunner
 %patch8 -p1
 %patch9 -p1
 %patch10 -p1
+%patch11 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
