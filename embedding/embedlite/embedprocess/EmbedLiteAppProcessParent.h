@@ -9,13 +9,18 @@
 #include "mozilla/embedlite/PEmbedLiteAppParent.h"
 
 namespace mozilla {
+namespace ipc {
+class GeckoChildProcessHost;
+}
 namespace embedlite {
 
 class EmbedLiteAppProcessParent : public PEmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppProcessParent)
-public:
   EmbedLiteAppProcessParent();
+
+public:
+  static EmbedLiteAppProcessParent* CreateEmbedLiteAppProcessParent();
 
 protected:
   void OnChannelConnected(int32_t pid) MOZ_OVERRIDE;
@@ -53,8 +58,10 @@ protected:
 
 private:
   virtual ~EmbedLiteAppProcessParent();
+  void ShutDownProcess(bool aCloseWithError);
 
   EmbedLiteApp* mApp;
+  mozilla::ipc::GeckoChildProcessHost* mSubprocess;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessParent);
 };

@@ -16,6 +16,24 @@
 #include <sys/resource.h>
 #endif
 
+#include "EmbedLog.h"
+
+#include "nsXPCOMPrivate.h"
+#include "GeckoLoader.h"
+#include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "EmbedLiteApp.h"
+#include "GeckoProfiler.h"
+#include "EmbedLiteAppProcessParent.h"
+#include "mozilla/ipc/BrowserProcessSubThread.h"
+#include "nsThreadManager.h"
+#include "nsAutoPtr.h"
+#include "base/command_line.h"
+#include "nsDirectoryService.h"
+#include "nsDirectoryServiceDefs.h"
+
+static BrowserProcessSubThread* sIOThread;
+
+using namespace mozilla::dom;
 using namespace base;
 using base::ChildPrivileges;
 using base::KillProcess;
@@ -27,17 +45,67 @@ using namespace mozilla::net;
 namespace mozilla {
 namespace embedlite {
 
+EmbedLiteAppProcessParent*
+EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent()
+{
+  LOGT();
+  // Establish the main thread here.
+  if (NS_FAILED(nsThreadManager::get()->Init())) {
+    NS_ERROR("Could not initialize thread manager");
+    return nullptr;
+  }
+
+  NS_SetMainThread();
+
+  return new EmbedLiteAppProcessParent();
+}
+
 EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   : mApp(EmbedLiteApp::GetInstance())
 {
   LOGT();
   MOZ_COUNT_CTOR(EmbedLiteAppProcessParent);
+
+  mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, base::PRIVILEGES_DEFAULT);
+
+  PR_SetEnv("NECKO_SEPARATE_STACKS=1");
+  if (!BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
+      UniquePtr<BrowserProcessSubThread> ioThread(new BrowserProcessSubThread(BrowserProcessSubThread::IO));
+    if (!ioThread.get()) {
+      return;
+    }
+
+    base::Thread::Options options;
+    options.message_loop_type = MessageLoop::TYPE_IO;
+    if (!ioThread->StartWithOptions(options)) {
+      return;
+    }
+    sIOThread = ioThread.release();
+  }
+
+  IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
+
+  // set gGREBinPath
+  gGREBinPath = ToNewUnicode(nsDependentCString(getenv("GRE_HOME")));
+
+  if (!CommandLine::IsInitialized()) {
+    CommandLine::Init(0, nullptr);
+  }
+
+  std::vector<std::string> extraArgs;
+  extraArgs.push_back("-embedlite");
+  mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
+  Open(mSubprocess->GetChannel(), mSubprocess->GetOwnedChildProcessHandle());
 }
 
 EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
 {
   LOGT();
   MOZ_COUNT_DTOR(EmbedLiteAppProcessParent);
+  if (OtherProcess())
+    base::CloseProcessHandle(OtherProcess());
+
+  mApp->ChildReadyToDestroy();
 }
 
 void
@@ -96,7 +164,9 @@ bool
 EmbedLiteAppProcessParent::RecvReadyToShutdown()
 {
   LOGT();
-  mApp->ChildReadyToDestroy();
+  MessageLoop::current()->PostTask(
+    FROM_HERE, NewRunnableMethod(this, &EmbedLiteAppProcessParent::ShutDownProcess, /* force */ false));
+
   return true;
 }
 
@@ -133,10 +203,64 @@ EmbedLiteAppProcessParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aAc
   return false;
 }
 
+namespace {
+
+void
+DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
+{
+  LOGT();
+  XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
+    new DeleteTask<GeckoChildProcessHost>(aSubprocess));
+}
+
+// This runnable only exists to delegate ownership of the
+// EmbedLiteAppProcessParent to this runnable, until it's deleted by the event
+// system.
+struct DelayedDeleteContentParentTask : public nsRunnable
+{
+  explicit DelayedDeleteContentParentTask(EmbedLiteAppProcessParent* aObj) : mObj(aObj) { }
+
+  // No-op
+  NS_IMETHODIMP Run() { return NS_OK; }
+
+  nsRefPtr<EmbedLiteAppProcessParent> mObj;
+};
+
+}
+
 void
 EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT();
+
+  ShutDownProcess(true);
+
+  MessageLoop::current()->
+    PostTask(FROM_HERE,
+             NewRunnableFunction(DelayedDeleteSubprocess, mSubprocess));
+  mSubprocess = nullptr;
+}
+
+void
+EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
+{
+  LOGT();
+  // If Close() fails with an error, we'll end up back in this function, but
+  // with aCloseWithError = true.  It's important that we call
+  // CloseWithError() in this case; see bug 895204.
+
+  if (!aCloseWithError) {
+    // Close() can only be called once: It kicks off the destruction
+    // sequence.
+    Close();
+  }
+
+  if (aCloseWithError) {
+    MessageChannel* channel = GetIPCChannel();
+    if (channel) {
+      channel->CloseWithError();
+    }
+  }
 }
 
 } // namespace embedlite

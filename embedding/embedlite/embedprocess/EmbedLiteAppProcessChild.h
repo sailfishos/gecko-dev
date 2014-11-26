@@ -65,6 +65,8 @@ protected:
   virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
 
 private:
+  void QuickExit();
+
   AppInfo mAppInfo;
   static EmbedLiteAppProcessChild* sSingleton;
 

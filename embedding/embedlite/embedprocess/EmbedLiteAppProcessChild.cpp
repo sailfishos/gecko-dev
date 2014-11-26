@@ -18,6 +18,7 @@
 #include "nsThreadManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIConsoleService.h"
+#include "nsDebugImpl.h"
 
 using namespace base;
 using namespace mozilla::ipc;
@@ -31,6 +32,7 @@ EmbedLiteAppProcessChild* EmbedLiteAppProcessChild::sSingleton;
 EmbedLiteAppProcessChild::EmbedLiteAppProcessChild()
 {
   LOGT();
+  nsDebugImpl::SetMultiprocessMode("Child");
 }
 
 EmbedLiteAppProcessChild::~EmbedLiteAppProcessChild()
@@ -92,6 +94,19 @@ void
 EmbedLiteAppProcessChild::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
+  if (AbnormalShutdown == aWhy) {
+    NS_WARNING("shutting down early because of crash!");
+    QuickExit();
+  }
+
+  XRE_ShutdownChildProcess();
+}
+
+void
+EmbedLiteAppProcessChild::QuickExit()
+{
+    NS_WARNING("content process _exit()ing");
+    _exit(0);
 }
 
 PEmbedLiteViewChild*
