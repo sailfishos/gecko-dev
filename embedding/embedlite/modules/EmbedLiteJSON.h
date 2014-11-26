@@ -16,6 +16,8 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIEMBEDLITEJSON
 
+  static bool JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData);
+
 protected:
   virtual ~EmbedLiteJSON();
 };

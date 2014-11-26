@@ -316,15 +316,6 @@ TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
   return true;
 }
 
-static bool
-JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
-{
-  nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const char16_t*>(aBuf),
-                 static_cast<uint32_t>(aLen));
-  return true;
-}
-
 bool
 TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                       const nsAString& aMessage,
@@ -352,7 +343,7 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, JSONCreator, &json), false);
+  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
   if (aIsSync) {
@@ -387,7 +378,7 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, JSONCreator, &json), false);
+  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
   return mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get());

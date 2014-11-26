@@ -47,8 +47,8 @@ EmbedLiteJSON::CreateObject(nsIWritablePropertyBag2 * *aObject)
   return CreateObjectStatic(aObject);
 }
 
-static bool
-JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
+bool
+EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
   result->Append(static_cast<const char16_t*>(aBuf),
@@ -194,7 +194,7 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
   aProp->GetValue(getter_AddRefs(aVariant));
   aProp->GetName(name);
 
-  if (!VariantToJsval(aCx, aVariant, &rval)) {
+  if (!mozilla::dom::VariantToJsval(aCx, aVariant, &rval)) {
     NS_ERROR("Failed to convert nsIVariant to jsval");
     return false;
   }

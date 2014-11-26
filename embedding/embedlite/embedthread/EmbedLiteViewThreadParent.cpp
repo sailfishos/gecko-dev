@@ -598,5 +598,13 @@ EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* heig
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SetEmbedAPIView(EmbedLiteView *aView)
+{
+  LOGT();
+  mView = aView;
+  return NS_OK;
+}
+
 } // namespace embedlite
 } // namespace mozilla

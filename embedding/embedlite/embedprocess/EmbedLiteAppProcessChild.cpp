@@ -19,6 +19,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIConsoleService.h"
 #include "nsDebugImpl.h"
+#include "EmbedLiteViewProcessChild.h"
 
 using namespace base;
 using namespace mozilla::ipc;
@@ -113,13 +114,17 @@ PEmbedLiteViewChild*
 EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  return nullptr;
+  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId);
+  view->AddRef();
+  return view;
 }
 
 bool
 EmbedLiteAppProcessChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
 {
   LOGT();
+  EmbedLiteViewProcessChild* p = static_cast<EmbedLiteViewProcessChild*>(actor);
+  p->Release();
   return true;
 }
 

@@ -69,7 +69,7 @@ class EmbedLiteApp;
 class EmbedLiteView
 {
 public:
-  EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewThreadParent* aViewImpl, uint32_t aViewId);
+  EmbedLiteView(EmbedLiteApp* aApp, PEmbedLiteViewParent* aViewImpl, uint32_t aViewId);
   virtual ~EmbedLiteView();
 
   // Listener setup, call this with null pointer if listener destroyed before EmbedLiteView

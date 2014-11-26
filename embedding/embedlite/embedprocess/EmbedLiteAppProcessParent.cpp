@@ -31,6 +31,8 @@
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
 
+#include "EmbedLiteViewProcessParent.h"
+
 static BrowserProcessSubThread* sIOThread;
 
 using namespace mozilla::dom;
@@ -193,14 +195,18 @@ PEmbedLiteViewParent*
 EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId)
 {
   LOGT();
-  return 0;
+  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(id, parentId);
+  p->AddRef();
+  return p;
 }
 
 bool
 EmbedLiteAppProcessParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aActor)
 {
   LOGT();
-  return false;
+  EmbedLiteViewProcessParent* p = static_cast<EmbedLiteViewProcessParent*>(aActor);
+  p->Release();
+  return true;
 }
 
 namespace {
