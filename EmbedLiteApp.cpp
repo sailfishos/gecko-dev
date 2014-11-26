@@ -18,7 +18,6 @@
 #include "EmbedLiteSubThread.h"
 #include "GeckoLoader.h"
 
-#include "EmbedLiteSubProcess.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteView.h"
@@ -26,6 +25,7 @@
 #include "EmbedLiteMessagePump.h"
 
 #include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteAppProcessParent.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -137,9 +137,7 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
       }
     }
   } else if (aApp->mEmbedType == EMBED_PROCESS) {
-    aApp->mSubProcess = new EmbedLiteSubProcess();
-    aApp->mSubProcess->StartEmbedProcess();
-    aApp->mAppParent = aApp->mSubProcess->AppParent();
+    aApp->mAppParent = EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent();
   }
 }
 
@@ -317,8 +315,7 @@ EmbedLiteApp::Shutdown()
             "StopChildThread must be implemented when ExecuteChildThread defined");
       }
     } else if (mEmbedType == EMBED_PROCESS) {
-      mSubProcess->StopEmbedProcess();
-      mSubProcess = nullptr;
+      delete mAppParent;
     }
   }
 
@@ -432,6 +429,9 @@ EmbedLiteApp::ChildReadyToDestroy()
   if (mState == DESTROYING) {
     mUILoop->PostTask(FROM_HERE,
                       NewRunnableFunction(&_FinalStop, this));
+  }
+  if (mEmbedType == EMBED_PROCESS) {
+      mAppParent = nullptr;
   }
 }
 
