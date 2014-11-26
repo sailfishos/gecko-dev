@@ -9,6 +9,7 @@
 #include "mozilla/gfx/Matrix.h"
 #include "gfxRect.h"
 #include "InputData.h"
+#include "EmbedLiteView.h"
 %}
 
 %{C++
@@ -23,6 +24,7 @@ class nsString;
 [ref] native InputData(mozilla::InputData);
 [ptr] native PlatformImage(void);
 [ptr] native buffer(unsigned char);
+[ptr] native EmbedLiteView(mozilla::embedlite::EmbedLiteView);
 
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
 interface EmbedLiteViewIface
@@ -43,4 +45,5 @@ interface EmbedLiteViewIface
     void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
     void SuspendRendering();
     void ResumeRendering();
+    void SetEmbedAPIView(in EmbedLiteView aView);
 };
