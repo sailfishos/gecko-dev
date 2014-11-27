@@ -1,0 +1,143 @@
+From 5817f8957432db7374239a2438593dae9a50c2e5 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Thu, 27 Nov 2014 14:26:25 +0200
+Subject: [PATCH] Don't zoom video when in full screen
+
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 18 ++++++++++++++++
+ gfx/layers/apz/src/AsyncPanZoomController.h   |  7 +++++-
+ toolkit/content/widgets/videocontrols.xml     | 31 ++++++++++++++++++++++++---
+ 3 files changed, 52 insertions(+), 4 deletions(-)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 5468f9c..f35de78 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -533,6 +533,7 @@ nsEventStatus AsyncPanZoomController::ReceiveInputEvent(const InputData& aEvent)
+ nsEventStatus AsyncPanZoomController::HandleInputEvent(const InputData& aEvent) {
+   nsEventStatus rv = nsEventStatus_eIgnore;
+
++  mTouchBlockState.mHandledTouchesCount++;
+   switch (aEvent.mInputType) {
+   case MULTITOUCH_INPUT: {
+     const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
+@@ -1944,6 +1945,7 @@ void AsyncPanZoomController::ZoomToRect(CSSRect aRect) {
+ void AsyncPanZoomController::ContentReceivedTouch(bool aPreventDefault) {
+   mTouchBlockState.mPreventDefaultSet = true;
+   mTouchBlockState.mPreventDefault = aPreventDefault;
++  mTouchBlockState.mContentTouchesCount++;
+   CheckContentResponse();
+ }
+
+@@ -1967,16 +1969,32 @@ void AsyncPanZoomController::CheckContentResponse() {
+     mContentResponseTimeoutTask = nullptr;
+   }
+
++  if (mTouchBlockState.mContentTouchesCount <= mTouchBlockState.mHandledTouchesCount) {
++    return;
++  }
++
+   if (mState == WAITING_CONTENT_RESPONSE) {
+     if (!mTouchBlockState.mPreventDefault) {
+       SetState(NOTHING);
+     }
+
++    bool startHandled = false;
++
+     mHandlingTouchQueue = true;
+
+     while (!mTouchQueue.IsEmpty()) {
++
++      if (!startHandled && mTouchQueue[0].mType == MultiTouchInput::MULTITOUCH_START) {
++        startHandled = true;
++      } else if (mTouchQueue[0].mType == MultiTouchInput::MULTITOUCH_START) {
++        SetState(WAITING_CONTENT_RESPONSE);
++        break;
++      }
++
+       if (!mTouchBlockState.mPreventDefault) {
+         HandleInputEvent(mTouchQueue[0]);
++      } else {
++        mTouchBlockState.mHandledTouchesCount++;
+       }
+
+       if (mTouchQueue[0].mType == MultiTouchInput::MULTITOUCH_END ||
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.h b/gfx/layers/apz/src/AsyncPanZoomController.h
+index 3bae19f..2f845ff 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.h
++++ b/gfx/layers/apz/src/AsyncPanZoomController.h
+@@ -571,7 +571,9 @@ private:
+       :  mAllowedTouchBehaviorSet(false),
+          mPreventDefault(false),
+          mPreventDefaultSet(false),
+-         mSingleTapOccurred(false)
++         mSingleTapOccurred(false),
++         mContentTouchesCount(0),
++         mHandledTouchesCount(0)
+     {}
+
+     // Values of allowed touch behavior for touch points of this touch block.
+@@ -592,6 +594,9 @@ private:
+
+     // Specifies whether a single tap event was generated during this touch block.
+     bool mSingleTapOccurred;
++
++    int mContentTouchesCount;
++    int mHandledTouchesCount;
+   };
+
+   /*
+diff --git a/toolkit/content/widgets/videocontrols.xml b/toolkit/content/widgets/videocontrols.xml
+index 40cf3b7..5d306a1 100644
+--- a/toolkit/content/widgets/videocontrols.xml
++++ b/toolkit/content/widgets/videocontrols.xml
+@@ -1573,6 +1573,8 @@
+         <constructor>
+           <![CDATA[
+           this.isTouchControl = true;
++          this.nonTapDetected = false;
++          this.touchCount = 0;
+           this.TouchUtils = {
+             videocontrols: null,
+             video: null,
+@@ -1752,12 +1754,35 @@
+     </implementation>
+
+     <handlers>
+-        <handler event="mouseup">
+-          if(event.originalTarget.nodeName == "vbox") {
+-            if (this.TouchUtils.firstShow)
++        <handler event="touchend">
++          <![CDATA[
++          this.touchCount = this.touchCount - 1;
++          if (!this.nonTapDetected && (this.touchCount == 0) && event.originalTarget.nodeName == "vbox") {
++            if (this.TouchUtils.firstShow) {
+               this.Utils.video.play();
++            }
+             this.TouchUtils.toggleControls();
+           }
++          if (this.touchCount == 0) {
++            this.nonTapDetected = false;
++          }
++          ]]>
++        </handler>
++        <handler event="touchstart" phase="capturing">
++          <![CDATA[
++          if (event.touches.length > 1) {
++            if (this.Utils.isVideoInFullScreen()) {
++              event.preventDefault();
++            }
++            this.nonTapDetected = true;
++          }
++          this.touchCount = this.touchCount + 1;
++          ]]>
++        </handler>
++        <handler event="touchmove" phase="capturing">
++          <![CDATA[
++          this.nonTapDetected = true;
++          ]]>
+         </handler>
+     </handlers>
+
+--
+2.1.3

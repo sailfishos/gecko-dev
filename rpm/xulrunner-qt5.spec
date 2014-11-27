@@ -20,6 +20,7 @@ Patch8:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
 Patch9:     workaround-for-bug-10381-late-access-message-loop.patch
 Patch10:    0002-config-Define-HAS_NEMO_RESOURCE.patch
 Patch11:    disabledestructible.patch
+Patch12:    0001-Don-t-zoom-video-when-in-full-screen.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
