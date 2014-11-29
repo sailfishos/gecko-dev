@@ -841,9 +841,13 @@ class IonBuilder
                                     bool isGetter, JSObject *foundProto, bool *guardGlobal);
     void freezePropertiesForCommonPrototype(types::TemporaryTypeSet *types, PropertyName *name,
                                             JSObject *foundProto, bool allowEmptyTypesForGlobal = false);
-    MDefinition *testCommonGetterSetter(types::TemporaryTypeSet *types, PropertyName *name,
-                                        bool isGetter, JSObject *foundProto, Shape *lastProperty,
-                                        Shape *globalShape = nullptr);
+    /*
+     * Callers must pass a non-null globalGuard if they pass a non-null globalShape.
+     */
+    bool testCommonGetterSetter(types::TemporaryTypeSet *types, PropertyName *name,
+                                bool isGetter, JSObject *foundProto, Shape *lastProperty,
+                                MDefinition **guard, Shape *globalShape = nullptr,
+                                MDefinition **globalGuard = nullptr);
     bool testShouldDOMCall(types::TypeSet *inTypes,
                            JSFunction *func, JSJitInfo::OpType opType);
 
@@ -970,12 +974,12 @@ class IonBuilder
         {}
     };
 
-    Vector<CFGState, 8, IonAllocPolicy> cfgStack_;
-    Vector<ControlFlowInfo, 4, IonAllocPolicy> loops_;
-    Vector<ControlFlowInfo, 0, IonAllocPolicy> switches_;
-    Vector<ControlFlowInfo, 2, IonAllocPolicy> labels_;
-    Vector<MInstruction *, 2, IonAllocPolicy> iterators_;
-    Vector<LoopHeader, 0, IonAllocPolicy> loopHeaders_;
+    Vector<CFGState, 8, JitAllocPolicy> cfgStack_;
+    Vector<ControlFlowInfo, 4, JitAllocPolicy> loops_;
+    Vector<ControlFlowInfo, 0, JitAllocPolicy> switches_;
+    Vector<ControlFlowInfo, 2, JitAllocPolicy> labels_;
+    Vector<MInstruction *, 2, JitAllocPolicy> iterators_;
+    Vector<LoopHeader, 0, JitAllocPolicy> loopHeaders_;
     BaselineInspector *inspector;
 
     size_t inliningDepth_;

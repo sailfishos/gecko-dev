@@ -5130,7 +5130,7 @@ public:
 
   virtual void
   OnOriginClearCompleted(PersistenceType aPersistenceType,
-                         const OriginOrPatternString& aOriginOrPattern)
+                         const nsACString& aOrigin)
                          MOZ_OVERRIDE;
 
   virtual void
@@ -5346,6 +5346,13 @@ public:
 
   void
   CloseOnOwningThread();
+
+  void
+  AssertInvalidatedOnMainThread() const
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(mInvalidatedOnMainThread);
+  }
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -5934,7 +5941,8 @@ Factory::AllocPBackgroundIDBFactoryRequestParent(
 
   const DatabaseMetadata& metadata = commonParams->metadata();
   if (NS_WARN_IF(metadata.persistenceType() != PERSISTENCE_TYPE_PERSISTENT &&
-                 metadata.persistenceType() != PERSISTENCE_TYPE_TEMPORARY)) {
+                 metadata.persistenceType() != PERSISTENCE_TYPE_TEMPORARY &&
+                 metadata.persistenceType() != PERSISTENCE_TYPE_DEFAULT)) {
     ASSERT_UNLESS_FUZZING();
     return nullptr;
   }
@@ -9422,14 +9430,13 @@ QuotaClient::GetUsageForOrigin(PersistenceType aPersistenceType,
 }
 
 void
-QuotaClient::OnOriginClearCompleted(
-                                  PersistenceType aPersistenceType,
-                                  const OriginOrPatternString& aOriginOrPattern)
+QuotaClient::OnOriginClearCompleted(PersistenceType aPersistenceType,
+                                    const nsACString& aOrigin)
 {
   AssertIsOnIOThread();
 
   if (IndexedDatabaseManager* mgr = IndexedDatabaseManager::Get()) {
-    mgr->InvalidateFileManagers(aPersistenceType, aOriginOrPattern);
+    mgr->InvalidateFileManagers(aPersistenceType, aOrigin);
   }
 }
 
@@ -9514,7 +9521,9 @@ QuotaClient::AbortTransactionsForStorage(nsIOfflineStorage* aStorage)
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aStorage);
   MOZ_ASSERT(aStorage->GetClient() == this);
-  MOZ_ASSERT(aStorage->IsClosed());
+
+  static_cast<DatabaseOfflineStorage*>(aStorage)->
+    AssertInvalidatedOnMainThread();
 
   // Nothing to do here, calling DatabaseOfflineStorage::Close() should have
   // aborted any transactions already.
@@ -9908,8 +9917,6 @@ DatabaseOfflineStorage::InvalidateOnMainThread()
 
   nsCOMPtr<nsIEventTarget> owningThread = mOwningThread;
   MOZ_ASSERT(owningThread);
-
-  CloseOnMainThread();
 
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(owningThread->Dispatch(runnable,
                                                       NS_DISPATCH_NORMAL)));
@@ -10746,6 +10753,9 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
       QuotaManager::GetInfoForChrome(&mGroup, &mOrigin, &mIsApp,
                                      &mHasUnlimStoragePerm);
 
+      MOZ_ASSERT(!QuotaManager::IsFirstPromptRequired(persistenceType, mOrigin,
+                                                      mIsApp));
+
       mEnforcingQuota =
         QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp,
                                       mHasUnlimStoragePerm);
@@ -10764,14 +10774,19 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
     return rv;
   }
 
+  nsCString group;
+  nsCString origin;
+  bool isApp;
+  bool hasUnlimStoragePerm;
+  rv = QuotaManager::GetInfoFromPrincipal(principal, &group, &origin,
+                                          &isApp, &hasUnlimStoragePerm);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
   PermissionRequestBase::PermissionValue permission;
 
-  if (persistenceType == PERSISTENCE_TYPE_TEMPORARY) {
-    // Temporary storage doesn't need to check the permission.
-    permission = PermissionRequestBase::kPermissionAllowed;
-  } else {
-    MOZ_ASSERT(persistenceType == PERSISTENCE_TYPE_PERSISTENT);
-
+  if (QuotaManager::IsFirstPromptRequired(persistenceType, origin, isApp)) {
 #ifdef MOZ_CHILD_PERMISSIONS
     if (aContentParent) {
       if (NS_WARN_IF(!AssertAppPrincipal(aContentParent, principal))) {
@@ -10792,16 +10807,16 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
         return rv;
       }
     }
+  } else {
+    permission = PermissionRequestBase::kPermissionAllowed;
   }
 
   if (permission != PermissionRequestBase::kPermissionDenied &&
       State_Initial == mState) {
-    rv = QuotaManager::GetInfoFromPrincipal(principal, persistenceType, &mGroup,
-                                            &mOrigin, &mIsApp,
-                                            &mHasUnlimStoragePerm);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
+    mGroup = group;
+    mOrigin = origin;
+    mIsApp = isApp;
+    mHasUnlimStoragePerm = hasUnlimStoragePerm;
 
     mEnforcingQuota =
       QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp,
@@ -10964,21 +10979,13 @@ FactoryOp::FinishOpen()
   MOZ_ASSERT(!mContentParent);
   MOZ_ASSERT(!QuotaClient::IsShuttingDownOnMainThread());
 
-  PersistenceType persistenceType = mCommonParams.metadata().persistenceType();
-
-  // XXX This is temporary, but we don't currently support the explicit
-  //     'persistent' storage type.
-  if (persistenceType == PERSISTENCE_TYPE_PERSISTENT &&
-      mCommonParams.metadata().persistenceTypeIsExplicit()) {
-    IDB_REPORT_INTERNAL_ERR();
-    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
-  }
-
   QuotaManager* quotaManager = QuotaManager::GetOrCreate();
   if (NS_WARN_IF(!quotaManager)) {
     IDB_REPORT_INTERNAL_ERR();
     return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
+
+  PersistenceType persistenceType = mCommonParams.metadata().persistenceType();
 
   nsresult rv =
     quotaManager->

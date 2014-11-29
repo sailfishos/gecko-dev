@@ -984,6 +984,7 @@ RTCPeerConnection.prototype = {
 
   get peerIdentity() { return this._peerIdentity; },
   get id() { return this._impl.id; },
+  set id(s) { this._impl.id = s; },
   get iceGatheringState()  { return this._iceGatheringState; },
   get iceConnectionState() { return this._iceConnectionState; },
 
@@ -1302,8 +1303,7 @@ PeerConnectionObserver.prototype = {
   onStateChange: function(state) {
     switch (state) {
       case "SignalingState":
-        this._dompc.callCB(this._dompc.onsignalingstatechange,
-                           this._dompc.signalingState);
+        this.dispatchEvent(new this._win.Event("signalingstatechange"));
         break;
 
       case "IceConnectionState":

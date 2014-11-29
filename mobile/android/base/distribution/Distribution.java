@@ -63,8 +63,8 @@ public class Distribution {
     private static final int STATE_SET = 2;
 
     private static final String FETCH_PROTOCOL = "https";
-    private static final String FETCH_HOSTNAME = "distro-download.cdn.mozilla.net";
-    private static final String FETCH_PATH = "/android/1/";
+    private static final String FETCH_HOSTNAME = "mobile.cdn.mozilla.net";
+    private static final String FETCH_PATH = "/distributions/1/";
     private static final String FETCH_EXTENSION = ".jar";
 
     private static final String EXPECTED_CONTENT_TYPE = "application/java-archive";
@@ -104,6 +104,8 @@ public class Distribution {
     // Corresponds to the high value in Histograms.json.
     private static final long MAX_DOWNLOAD_TIME_MSEC = 40000;    // 40 seconds.
 
+    // Wait just a little while for the system to send a referrer intent after install.
+    private static final long DELAY_WAIT_FOR_REFERRER_MSEC = 400;
 
 
     /**
@@ -385,7 +387,16 @@ public class Distribution {
      */
     private boolean checkIntentDistribution() {
         if (referrer == null) {
-            return false;
+            // Wait a predetermined time and try again.
+            // Just block the thread, because it's the simplest solution.
+            try {
+                Thread.sleep(DELAY_WAIT_FOR_REFERRER_MSEC);
+            } catch (InterruptedException e) {
+                // Good enough.
+            }
+            if (referrer == null) {
+                return false;
+            }
         }
 
         URI uri = getReferredDistribution(referrer);

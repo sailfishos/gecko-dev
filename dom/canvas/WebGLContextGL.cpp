@@ -55,7 +55,8 @@ using namespace mozilla::dom;
 using namespace mozilla::gl;
 using namespace mozilla::gfx;
 
-static bool BaseTypeAndSizeFromUniformType(GLenum uType, GLenum *baseType, GLint *unitSize);
+static bool BaseTypeAndSizeFromUniformType(GLenum uType, GLenum* baseType,
+                                           GLint* unitSize);
 
 const WebGLRectangleObject*
 WebGLContext::CurValidFBRectObject() const
@@ -101,7 +102,7 @@ WebGLContext::ActiveTexture(GLenum texture)
 }
 
 void
-WebGLContext::AttachShader(WebGLProgram *program, WebGLShader *shader)
+WebGLContext::AttachShader(WebGLProgram* program, WebGLShader* shader)
 {
     if (IsContextLost())
         return;
@@ -158,7 +159,7 @@ WebGLContext::BindAttribLocation(WebGLProgram* prog, GLuint location,
 }
 
 void
-WebGLContext::BindFramebuffer(GLenum target, WebGLFramebuffer *wfb)
+WebGLContext::BindFramebuffer(GLenum target, WebGLFramebuffer* wfb)
 {
     if (IsContextLost())
         return;
@@ -187,7 +188,7 @@ WebGLContext::BindFramebuffer(GLenum target, WebGLFramebuffer *wfb)
 }
 
 void
-WebGLContext::BindRenderbuffer(GLenum target, WebGLRenderbuffer *wrb)
+WebGLContext::BindRenderbuffer(GLenum target, WebGLRenderbuffer* wrb)
 {
     if (IsContextLost())
         return;
@@ -219,7 +220,7 @@ WebGLContext::BindRenderbuffer(GLenum target, WebGLRenderbuffer *wrb)
 }
 
 void
-WebGLContext::BindTexture(GLenum rawTarget, WebGLTexture *newTex)
+WebGLContext::BindTexture(GLenum rawTarget, WebGLTexture* newTex)
 {
     if (IsContextLost())
         return;
@@ -403,7 +404,7 @@ WebGLContext::CopyTexSubImage2D_base(TexImageTarget texImageTarget,
 
     MakeContextCurrent();
 
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
 
     if (!tex)
         return ErrorInvalidOperation("%s: no texture is bound to this target");
@@ -587,7 +588,7 @@ WebGLContext::CopyTexSubImage2D(GLenum rawTexImgTarget,
     if (xoffset < 0 || yoffset < 0)
         return ErrorInvalidValue("copyTexSubImage2D: xoffset and yoffset may not be negative");
 
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
     if (!tex)
         return ErrorInvalidOperation("copyTexSubImage2D: no texture bound to this target");
 
@@ -686,7 +687,7 @@ WebGLContext::DeleteFramebuffer(WebGLFramebuffer* fbuf)
 }
 
 void
-WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer *rbuf)
+WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer* rbuf)
 {
     if (IsContextLost())
         return;
@@ -711,7 +712,7 @@ WebGLContext::DeleteRenderbuffer(WebGLRenderbuffer *rbuf)
 }
 
 void
-WebGLContext::DeleteTexture(WebGLTexture *tex)
+WebGLContext::DeleteTexture(WebGLTexture* tex)
 {
     if (IsContextLost())
         return;
@@ -744,7 +745,7 @@ WebGLContext::DeleteTexture(WebGLTexture *tex)
 }
 
 void
-WebGLContext::DeleteProgram(WebGLProgram *prog)
+WebGLContext::DeleteProgram(WebGLProgram* prog)
 {
     if (IsContextLost())
         return;
@@ -759,7 +760,7 @@ WebGLContext::DeleteProgram(WebGLProgram *prog)
 }
 
 void
-WebGLContext::DeleteShader(WebGLShader *shader)
+WebGLContext::DeleteShader(WebGLShader* shader)
 {
     if (IsContextLost())
         return;
@@ -774,7 +775,7 @@ WebGLContext::DeleteShader(WebGLShader *shader)
 }
 
 void
-WebGLContext::DetachShader(WebGLProgram *program, WebGLShader *shader)
+WebGLContext::DetachShader(WebGLProgram* program, WebGLShader* shader)
 {
     if (IsContextLost())
         return;
@@ -816,7 +817,8 @@ WebGLContext::DepthRange(GLfloat zNear, GLfloat zFar)
 }
 
 void
-WebGLContext::FramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum rbtarget, WebGLRenderbuffer *wrb)
+WebGLContext::FramebufferRenderbuffer(GLenum target, GLenum attachment,
+                                      GLenum rbtarget, WebGLRenderbuffer* wrb)
 {
     if (IsContextLost())
         return;
@@ -840,7 +842,7 @@ void
 WebGLContext::FramebufferTexture2D(GLenum target,
                                    GLenum attachment,
                                    GLenum textarget,
-                                   WebGLTexture *tobj,
+                                   WebGLTexture* tobj,
                                    GLint level)
 {
     if (IsContextLost())
@@ -884,7 +886,7 @@ WebGLContext::FrontFace(GLenum mode)
 }
 
 already_AddRefed<WebGLActiveInfo>
-WebGLContext::GetActiveAttrib(WebGLProgram *prog, uint32_t index)
+WebGLContext::GetActiveAttrib(WebGLProgram* prog, uint32_t index)
 {
     if (IsContextLost())
         return nullptr;
@@ -938,7 +940,7 @@ WebGLContext::GenerateMipmap(GLenum rawTarget)
 
     const TexTarget target(rawTarget);
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture* tex = ActiveBoundTextureForTarget(target);
 
     if (!tex)
         return ErrorInvalidOperation("generateMipmap: No texture is bound to this target.");
@@ -992,7 +994,7 @@ WebGLContext::GenerateMipmap(GLenum rawTarget)
 }
 
 already_AddRefed<WebGLActiveInfo>
-WebGLContext::GetActiveUniform(WebGLProgram *prog, uint32_t index)
+WebGLContext::GetActiveUniform(WebGLProgram* prog, uint32_t index)
 {
     if (IsContextLost())
         return nullptr;
@@ -1053,7 +1055,7 @@ WebGLContext::GetActiveUniform(WebGLProgram *prog, uint32_t index)
 }
 
 void
-WebGLContext::GetAttachedShaders(WebGLProgram *prog,
+WebGLContext::GetAttachedShaders(WebGLProgram* prog,
                                  Nullable<nsTArray<nsRefPtr<WebGLShader>>>& retval)
 {
     retval.SetNull();
@@ -1076,7 +1078,7 @@ WebGLContext::GetAttachedShaders(WebGLProgram *prog,
 }
 
 GLint
-WebGLContext::GetAttribLocation(WebGLProgram *prog, const nsAString& name)
+WebGLContext::GetAttribLocation(WebGLProgram* prog, const nsAString& name)
 {
     if (IsContextLost())
         return -1;
@@ -1432,7 +1434,7 @@ WebGLContext::GetError()
 }
 
 JS::Value
-WebGLContext::GetProgramParameter(WebGLProgram *prog, GLenum pname)
+WebGLContext::GetProgramParameter(WebGLProgram* prog, GLenum pname)
 {
     if (IsContextLost())
         return JS::NullValue();
@@ -1444,24 +1446,31 @@ WebGLContext::GetProgramParameter(WebGLProgram *prog, GLenum pname)
 
     MakeContextCurrent();
 
+    GLint i = 0;
+
+    if (IsWebGL2()) {
+        switch (pname) {
+        case LOCAL_GL_ACTIVE_UNIFORM_BLOCKS:
+        case LOCAL_GL_ACTIVE_UNIFORM_BLOCK_MAX_NAME_LENGTH:
+            gl->fGetProgramiv(progname, pname, &i);
+            return JS::Int32Value(i);
+        }
+    }
+
     switch (pname) {
         case LOCAL_GL_ATTACHED_SHADERS:
         case LOCAL_GL_ACTIVE_UNIFORMS:
         case LOCAL_GL_ACTIVE_ATTRIBUTES:
-        {
-            GLint i = 0;
             gl->fGetProgramiv(progname, pname, &i);
             return JS::Int32Value(i);
-        }
+
         case LOCAL_GL_DELETE_STATUS:
             return JS::BooleanValue(prog->IsDeleteRequested());
+
         case LOCAL_GL_LINK_STATUS:
-        {
             return JS::BooleanValue(prog->LinkStatus());
-        }
+
         case LOCAL_GL_VALIDATE_STATUS:
-        {
-            GLint i = 0;
 #ifdef XP_MACOSX
             // See comment in ValidateProgram below.
             if (gl->WorkAroundDriverBugs())
@@ -1472,8 +1481,6 @@ WebGLContext::GetProgramParameter(WebGLProgram *prog, GLenum pname)
             gl->fGetProgramiv(progname, pname, &i);
 #endif
             return JS::BooleanValue(bool(i));
-        }
-            break;
 
         default:
             ErrorInvalidEnumInfo("getProgramParameter: parameter", pname);
@@ -1483,7 +1490,7 @@ WebGLContext::GetProgramParameter(WebGLProgram *prog, GLenum pname)
 }
 
 void
-WebGLContext::GetProgramInfoLog(WebGLProgram *prog, nsAString& retval)
+WebGLContext::GetProgramInfoLog(WebGLProgram* prog, nsAString& retval)
 {
     nsAutoCString s;
     GetProgramInfoLog(prog, s);
@@ -1494,7 +1501,7 @@ WebGLContext::GetProgramInfoLog(WebGLProgram *prog, nsAString& retval)
 }
 
 void
-WebGLContext::GetProgramInfoLog(WebGLProgram *prog, nsACString& retval)
+WebGLContext::GetProgramInfoLog(WebGLProgram* prog, nsACString& retval)
 {
     if (IsContextLost())
     {
@@ -1535,8 +1542,8 @@ WebGLContext::GetProgramInfoLog(WebGLProgram *prog, nsACString& retval)
 // See this discussion:
 //  https://www.khronos.org/webgl/public-mailing-list/archives/1008/msg00014.html
 void WebGLContext::TexParameter_base(GLenum rawTarget, GLenum pname,
-                                     GLint *intParamPtr,
-                                     GLfloat *floatParamPtr)
+                                     GLint* intParamPtr,
+                                     GLfloat* floatParamPtr)
 {
     MOZ_ASSERT(intParamPtr || floatParamPtr);
 
@@ -1551,7 +1558,7 @@ void WebGLContext::TexParameter_base(GLenum rawTarget, GLenum pname,
 
     const TexTarget texTarget = TexTarget(rawTarget);
 
-    WebGLTexture *tex = activeBoundTextureForTarget(texTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTarget(texTarget);
     if (!tex)
         return ErrorInvalidOperation("texParameter: no texture is bound to this target");
 
@@ -1572,6 +1579,35 @@ void WebGLContext::TexParameter_base(GLenum rawTarget, GLenum pname,
             else
                 tex->SetMaxMipmapLevel(intParam);
             break;
+
+        case LOCAL_GL_TEXTURE_COMPARE_MODE:
+            if (!IsWebGL2())
+                return ErrorInvalidEnumInfo("texParameter: pname", pname);
+
+            paramValueInvalid = (intParam != LOCAL_GL_NONE &&
+                                 intParam != LOCAL_GL_COMPARE_REF_TO_TEXTURE);
+            break;
+
+        case LOCAL_GL_TEXTURE_COMPARE_FUNC:
+            if (!IsWebGL2())
+                return ErrorInvalidEnumInfo("texParameter: pname", pname);
+
+            switch (intParam) {
+            case LOCAL_GL_LEQUAL:
+            case LOCAL_GL_GEQUAL:
+            case LOCAL_GL_LESS:
+            case LOCAL_GL_GREATER:
+            case LOCAL_GL_EQUAL:
+            case LOCAL_GL_NOTEQUAL:
+            case LOCAL_GL_ALWAYS:
+            case LOCAL_GL_NEVER:
+                paramValueInvalid = false;
+
+            default:
+                paramValueInvalid = true;
+            }
+            break;
+
         case LOCAL_GL_TEXTURE_MIN_FILTER:
             switch (intParam) {
                 case LOCAL_GL_NEAREST:
@@ -1668,7 +1704,7 @@ WebGLContext::GetTexParameter(GLenum rawTarget, GLenum pname)
 
     const TexTarget target(rawTarget);
 
-    if (!activeBoundTextureForTarget(target)) {
+    if (!ActiveBoundTextureForTarget(target)) {
         ErrorInvalidOperation("getTexParameter: no texture bound");
         return JS::NullValue();
     }
@@ -1707,8 +1743,8 @@ WebGLContext::GetTexParameterInternal(const TexTarget& target, GLenum pname)
 }
 
 JS::Value
-WebGLContext::GetUniform(JSContext* cx, WebGLProgram *prog,
-                         WebGLUniformLocation *location)
+WebGLContext::GetUniform(JSContext* cx, WebGLProgram* prog,
+                         WebGLUniformLocation* location)
 {
     if (IsContextLost())
         return JS::NullValue();
@@ -1844,7 +1880,7 @@ WebGLContext::GetUniform(JSContext* cx, WebGLProgram *prog,
 }
 
 already_AddRefed<WebGLUniformLocation>
-WebGLContext::GetUniformLocation(WebGLProgram *prog, const nsAString& name)
+WebGLContext::GetUniformLocation(WebGLProgram* prog, const nsAString& name)
 {
     if (IsContextLost())
         return nullptr;
@@ -1900,7 +1936,7 @@ WebGLContext::Hint(GLenum target, GLenum mode)
 }
 
 bool
-WebGLContext::IsFramebuffer(WebGLFramebuffer *fb)
+WebGLContext::IsFramebuffer(WebGLFramebuffer* fb)
 {
     if (IsContextLost())
         return false;
@@ -1911,7 +1947,7 @@ WebGLContext::IsFramebuffer(WebGLFramebuffer *fb)
 }
 
 bool
-WebGLContext::IsProgram(WebGLProgram *prog)
+WebGLContext::IsProgram(WebGLProgram* prog)
 {
     if (IsContextLost())
         return false;
@@ -1920,7 +1956,7 @@ WebGLContext::IsProgram(WebGLProgram *prog)
 }
 
 bool
-WebGLContext::IsRenderbuffer(WebGLRenderbuffer *rb)
+WebGLContext::IsRenderbuffer(WebGLRenderbuffer* rb)
 {
     if (IsContextLost())
         return false;
@@ -1931,7 +1967,7 @@ WebGLContext::IsRenderbuffer(WebGLRenderbuffer *rb)
 }
 
 bool
-WebGLContext::IsShader(WebGLShader *shader)
+WebGLContext::IsShader(WebGLShader* shader)
 {
     if (IsContextLost())
         return false;
@@ -1941,7 +1977,7 @@ WebGLContext::IsShader(WebGLShader *shader)
 }
 
 bool
-WebGLContext::IsTexture(WebGLTexture *tex)
+WebGLContext::IsTexture(WebGLTexture* tex)
 {
     if (IsContextLost())
         return false;
@@ -1952,7 +1988,8 @@ WebGLContext::IsTexture(WebGLTexture *tex)
 }
 
 // Try to bind an attribute that is an array to location 0:
-bool WebGLContext::BindArrayAttribToLocation0(WebGLProgram *program)
+bool
+WebGLContext::BindArrayAttribToLocation0(WebGLProgram* program)
 {
     if (mBoundVertexArray->IsAttribArrayEnabled(0)) {
         return false;
@@ -2001,7 +2038,7 @@ LinkAndUpdateProgram(GLContext* gl, WebGLProgram* prog)
 }
 
 void
-WebGLContext::LinkProgram(WebGLProgram *program)
+WebGLContext::LinkProgram(WebGLProgram* program)
 {
     if (IsContextLost())
         return;
@@ -2072,7 +2109,7 @@ WebGLContext::LinkProgram(WebGLProgram *program)
                 if (shader->CompileStatus())
                     continue;
 
-                const char *shaderTypeName = nullptr;
+                const char* shaderTypeName = nullptr;
                 if (shader->ShaderType() == LOCAL_GL_VERTEX_SHADER) {
                     shaderTypeName = "vertex";
                 } else if (shader->ShaderType() == LOCAL_GL_FRAGMENT_SHADER) {
@@ -2651,7 +2688,8 @@ WebGLContext::StencilOpSeparate(GLenum face, GLenum sfail, GLenum dpfail, GLenum
 
 nsresult
 WebGLContext::SurfaceFromElementResultToImageSurface(nsLayoutUtils::SurfaceFromElementResult& res,
-                                                     RefPtr<DataSourceSurface>& imageOut, WebGLTexelFormat *format)
+                                                     RefPtr<DataSourceSurface>& imageOut,
+                                                     WebGLTexelFormat* format)
 {
    *format = WebGLTexelFormat::None;
 
@@ -3053,7 +3091,7 @@ WebGLContext::UniformMatrix4fv_base(WebGLUniformLocation* loc, bool transpose,
 ////////////////////////////////////////////////////////////////////////////////
 
 void
-WebGLContext::UseProgram(WebGLProgram *prog)
+WebGLContext::UseProgram(WebGLProgram* prog)
 {
     if (IsContextLost())
         return;
@@ -3076,7 +3114,7 @@ WebGLContext::UseProgram(WebGLProgram *prog)
 }
 
 void
-WebGLContext::ValidateProgram(WebGLProgram *prog)
+WebGLContext::ValidateProgram(WebGLProgram* prog)
 {
     if (IsContextLost())
         return;
@@ -3140,7 +3178,7 @@ WebGLContext::Viewport(GLint x, GLint y, GLsizei width, GLsizei height)
 }
 
 void
-WebGLContext::CompileShader(WebGLShader *shader)
+WebGLContext::CompileShader(WebGLShader* shader)
 {
     if (IsContextLost())
         return;
@@ -3226,7 +3264,7 @@ WebGLContext::CompileShader(WebGLShader *shader)
                                      maxSourceLength);
     }
 
-    const char *s = sourceCString.get();
+    const char* s = sourceCString.get();
 
 #define WEBGL2_BYPASS_ANGLE
 #ifdef WEBGL2_BYPASS_ANGLE
@@ -3246,8 +3284,8 @@ WebGLContext::CompileShader(WebGLShader *shader)
      *    - one for the angle compilor, to get informations about vertex attributes
      *      and uniforms
      */
-    static const char *bypassPrefixSearch = "#version proto-200";
-    static const char *bypassANGLEPrefix[2] = {"precision mediump float;\n"
+    static const char* bypassPrefixSearch = "#version proto-200";
+    static const char* bypassANGLEPrefix[2] = {"precision mediump float;\n"
                                                "#define gl_VertexID 0\n"
                                                "#define gl_InstanceID 0\n",
 
@@ -3257,13 +3295,13 @@ WebGLContext::CompileShader(WebGLShader *shader)
 
     const bool bypassANGLE = IsWebGL2() && (strstr(s, bypassPrefixSearch) != 0);
 
-    const char *angleShaderCode = s;
+    const char* angleShaderCode = s;
     nsTArray<char> bypassANGLEShaderCode;
     nsTArray<char> bypassDriverShaderCode;
 
     if (bypassANGLE) {
         const int bypassStage = (shader->ShaderType() == LOCAL_GL_FRAGMENT_SHADER) ? 1 : 0;
-        const char *originalShader = strstr(s, bypassPrefixSearch) + strlen(bypassPrefixSearch);
+        const char* originalShader = strstr(s, bypassPrefixSearch) + strlen(bypassPrefixSearch);
         int originalShaderSize = strlen(s) - (originalShader - s);
         int bypassShaderCodeSize = originalShaderSize + 4096 + 1;
 
@@ -3423,7 +3461,7 @@ WebGLContext::CompileShader(WebGLShader *shader)
 
     CopyASCIItoUTF16(translatedSrc, shader->mTranslatedSource);
 
-    const char *ts = translatedSrc.get();
+    const char* ts = translatedSrc.get();
 
 #ifdef WEBGL2_BYPASS_ANGLE
     if (bypassANGLE) {
@@ -3485,7 +3523,7 @@ WebGLContext::CompressedTexImage2D(GLenum rawTexImgTarget,
 
     const TexImageTarget texImageTarget(rawTexImgTarget);
 
-    WebGLTexture* tex = activeBoundTextureForTexImageTarget(texImageTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
     MOZ_ASSERT(tex);
     if (tex->IsImmutable()) {
         return ErrorInvalidOperation(
@@ -3527,7 +3565,7 @@ WebGLContext::CompressedTexSubImage2D(GLenum rawTexImgTarget, GLint level, GLint
 
     const TexImageTarget texImageTarget(rawTexImgTarget);
 
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
     MOZ_ASSERT(tex);
     WebGLTexture::ImageInfo& levelInfo = tex->ImageInfoAt(texImageTarget, level);
 
@@ -3567,7 +3605,7 @@ WebGLContext::CompressedTexSubImage2D(GLenum rawTexImgTarget, GLint level, GLint
 }
 
 JS::Value
-WebGLContext::GetShaderParameter(WebGLShader *shader, GLenum pname)
+WebGLContext::GetShaderParameter(WebGLShader* shader, GLenum pname)
 {
     if (IsContextLost())
         return JS::NullValue();
@@ -3605,7 +3643,7 @@ WebGLContext::GetShaderParameter(WebGLShader *shader, GLenum pname)
 }
 
 void
-WebGLContext::GetShaderInfoLog(WebGLShader *shader, nsAString& retval)
+WebGLContext::GetShaderInfoLog(WebGLShader* shader, nsAString& retval)
 {
     nsAutoCString s;
     GetShaderInfoLog(shader, s);
@@ -3616,7 +3654,7 @@ WebGLContext::GetShaderInfoLog(WebGLShader *shader, nsAString& retval)
 }
 
 void
-WebGLContext::GetShaderInfoLog(WebGLShader *shader, nsACString& retval)
+WebGLContext::GetShaderInfoLog(WebGLShader* shader, nsACString& retval)
 {
     if (IsContextLost())
     {
@@ -3701,7 +3739,7 @@ WebGLContext::GetShaderPrecisionFormat(GLenum shadertype, GLenum precisiontype)
 }
 
 void
-WebGLContext::GetShaderSource(WebGLShader *shader, nsAString& retval)
+WebGLContext::GetShaderSource(WebGLShader* shader, nsAString& retval)
 {
     if (IsContextLost()) {
         retval.SetIsVoid(true);
@@ -3715,7 +3753,7 @@ WebGLContext::GetShaderSource(WebGLShader *shader, nsAString& retval)
 }
 
 void
-WebGLContext::ShaderSource(WebGLShader *shader, const nsAString& source)
+WebGLContext::ShaderSource(WebGLShader* shader, const nsAString& source)
 {
     if (IsContextLost())
         return;
@@ -3737,7 +3775,7 @@ WebGLContext::ShaderSource(WebGLShader *shader, const nsAString& source)
 }
 
 void
-WebGLContext::GetShaderTranslatedSource(WebGLShader *shader, nsAString& retval)
+WebGLContext::GetShaderTranslatedSource(WebGLShader* shader, nsAString& retval)
 {
     if (IsContextLost()) {
         retval.SetIsVoid(true);
@@ -3758,10 +3796,10 @@ GLenum WebGLContext::CheckedTexImage2D(TexImageTarget texImageTarget,
                                        GLint border,
                                        TexFormat format,
                                        TexType type,
-                                       const GLvoid *data)
+                                       const GLvoid* data)
 {
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
-    MOZ_ASSERT(tex != nullptr, "no texture bound");
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
+    MOZ_ASSERT(tex, "no texture bound");
 
     TexInternalFormat effectiveInternalFormat =
         EffectiveInternalFormatFromInternalFormatAndType(internalformat, type);
@@ -3876,7 +3914,7 @@ WebGLContext::TexImage2D_base(TexImageTarget texImageTarget, GLint level,
         return ErrorInvalidOperation("texImage2D: not enough data for operation (need %d, have %d)",
                                  bytesNeeded, byteLength);
 
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
 
     if (!tex)
         return ErrorInvalidOperation("texImage2D: no texture is bound to this target");
@@ -4026,18 +4064,15 @@ WebGLContext::TexSubImage2D_base(TexImageTarget texImageTarget, GLint level,
     const WebGLTexImageFunc func = WebGLTexImageFunc::TexSubImage;
     const WebGLTexDimensions dims = WebGLTexDimensions::Tex2D;
 
-    if (type == LOCAL_GL_HALF_FLOAT_OES) {
+    if (type == LOCAL_GL_HALF_FLOAT_OES)
         type = LOCAL_GL_HALF_FLOAT;
-    }
 
-    WebGLTexture *tex = activeBoundTextureForTexImageTarget(texImageTarget);
-    if (!tex) {
+    WebGLTexture* tex = ActiveBoundTextureForTexImageTarget(texImageTarget);
+    if (!tex)
         return ErrorInvalidOperation("texSubImage2D: no texture bound on active texture unit");
-    }
 
-    if (!tex->HasImageInfoAt(texImageTarget, level)) {
+    if (!tex->HasImageInfoAt(texImageTarget, level))
         return ErrorInvalidOperation("texSubImage2D: no previously defined texture image");
-    }
 
     const WebGLTexture::ImageInfo& imageInfo = tex->ImageInfoAt(texImageTarget, level);
     const TexInternalFormat existingEffectiveInternalFormat = imageInfo.EffectiveInternalFormat();
@@ -4229,7 +4264,7 @@ WebGLContext::RestoreContext()
 }
 
 bool
-BaseTypeAndSizeFromUniformType(GLenum uType, GLenum *baseType, GLint *unitSize)
+BaseTypeAndSizeFromUniformType(GLenum uType, GLenum* baseType, GLint* unitSize)
 {
     switch (uType) {
         case LOCAL_GL_INT:

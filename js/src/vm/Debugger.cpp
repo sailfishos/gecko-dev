@@ -26,7 +26,6 @@
 #include "vm/ArgumentsObject.h"
 #include "vm/DebuggerMemory.h"
 #include "vm/SPSProfiler.h"
-#include "vm/TraceLogging.h"
 #include "vm/WrapperObject.h"
 
 #include "jsgcinlines.h"
@@ -43,8 +42,10 @@ using namespace js;
 using JS::dbg::Builder;
 using js::frontend::IsIdentifier;
 using mozilla::ArrayLength;
+using mozilla::DebugOnly;
 using mozilla::Maybe;
 
+
 /*** Forward declarations ************************************************************************/
 
 extern const Class DebuggerFrame_class;
@@ -359,13 +360,7 @@ Debugger::Debugger(JSContext *cx, NativeObject *dbg)
     scripts(cx),
     sources(cx),
     objects(cx),
-    environments(cx),
-#ifdef NIGHTLY_BUILD
-    traceLoggerLastDrainedId(0),
-    traceLoggerLastDrainedIteration(0),
-#endif
-    traceLoggerScriptedCallsLastDrainedId(0),
-    traceLoggerScriptedCallsLastDrainedIteration(0)
+    environments(cx)
 {
     assertSameCompartment(cx, dbg);
 
@@ -474,12 +469,12 @@ Debugger::getScriptFrameWithIter(JSContext *cx, AbstractFramePtr frame,
 }
 
 /* static */ bool
-Debugger::hasLiveOnExceptionUnwind(GlobalObject *global)
+Debugger::hasLiveHook(GlobalObject *global, Hook which)
 {
     if (GlobalObject::DebuggerVector *debuggers = global->getDebuggers()) {
         for (Debugger **p = debuggers->begin(); p != debuggers->end(); p++) {
             Debugger *dbg = *p;
-            if (dbg->enabled && dbg->getHook(OnExceptionUnwind))
+            if (dbg->enabled && dbg->getHook(which))
                 return true;
         }
     }
@@ -1288,6 +1283,7 @@ Debugger::dispatchHook(JSContext *cx, MutableHandleValue vp, Hook which, HandleO
                 break;
               default:
                 MOZ_ASSERT_UNREACHABLE("Unexpected debugger hook");
+                st = JSTRAP_CONTINUE;
             }
             if (st != JSTRAP_CONTINUE)
                 return st;
@@ -1682,7 +1678,7 @@ Debugger::slowPathPromiseHook(JSContext *cx, Hook hook, HandleObject promise)
 {
     MOZ_ASSERT(hook == OnNewPromise || hook == OnPromiseSettled);
     RootedValue rval(cx);
-    JSTrapStatus status = dispatchHook(cx, &rval, hook, promise);
+    DebugOnly<JSTrapStatus> status = dispatchHook(cx, &rval, hook, promise);
     MOZ_ASSERT(status == JSTRAP_CONTINUE);
     MOZ_ASSERT(!cx->isExceptionPending());
 }
@@ -1825,7 +1821,7 @@ Debugger::updateExecutionObservabilityOfFrames(JSContext *cx, const ExecutionObs
     AutoSuppressProfilerSampling suppressProfilerSampling(cx);
 
     {
-        jit::IonContext ictx(cx, nullptr);
+        jit::JitContext jctx(cx, nullptr);
         if (!jit::RecompileOnStackBaselineScriptsForDebugMode(cx, obs, observing)) {
             js_ReportOutOfMemory(cx);
             return false;
@@ -3776,253 +3772,6 @@ Debugger::makeGlobalObjectReference(JSContext *cx, unsigned argc, Value *vp)
     return dbg->wrapDebuggeeValue(cx, args.rval());
 }
 
-static bool
-DefineProperty(JSContext *cx, HandleObject obj, HandleId id, const char *value, size_t n)
-{
-    JSString *text = JS_NewStringCopyN(cx, value, n);
-    if (!text)
-        return false;
-
-    RootedValue str(cx, StringValue(text));
-    return JS_DefinePropertyById(cx, obj, id, str, JSPROP_ENUMERATE);
-}
-
-#ifdef JS_TRACE_LOGGING
-# ifdef NIGHTLY_BUILD
-bool
-Debugger::setupTraceLogger(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "setupTraceLogger", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.setupTraceLogger", 1))
-        return false;
-
-    RootedObject obj(cx, ToObject(cx, args[0]));
-    if (!obj)
-        return false;
-
-    AutoIdVector ids(cx);
-    if (!GetPropertyKeys(cx, obj, JSITER_OWNONLY, &ids))
-        return false;
-
-    if (ids.length() == 0) {
-        args.rval().setBoolean(true);
-        return true;
-    }
-
-    Vector<uint32_t> textIds(cx);
-    if (!textIds.reserve(ids.length()))
-        return false;
-
-    Vector<bool> values(cx);
-    if (!values.reserve(ids.length()))
-        return false;
-
-    for (size_t i = 0; i < ids.length(); i++) {
-        if (!JSID_IS_STRING(ids[i])) {
-            args.rval().setBoolean(false);
-            return true;
-        }
-
-        JSString *id = JSID_TO_STRING(ids[i]);
-        JSLinearString *linear = id->ensureLinear(cx);
-        if (!linear)
-            return false;
-
-        uint32_t textId = TLStringToTextId(linear);
-
-        if (!TLTextIdIsToggable(textId)) {
-            args.rval().setBoolean(false);
-            return true;
-        }
-
-        RootedValue v(cx);
-        if (!JSObject::getGeneric(cx, obj, obj, ids[i], &v))
-            return false;
-
-        textIds.append(textId);
-        values.append(ToBoolean(v));
-    }
-
-    MOZ_ASSERT(ids.length() == textIds.length());
-    MOZ_ASSERT(textIds.length() == values.length());
-
-    for (size_t i = 0; i < textIds.length(); i++) {
-        if (values[i])
-            TraceLogEnableTextId(cx, textIds[i]);
-        else
-            TraceLogDisableTextId(cx, textIds[i]);
-    }
-
-    args.rval().setBoolean(true);
-    return true;
-}
-
-bool
-Debugger::drainTraceLogger(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "drainTraceLogger", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.drainTraceLogger", 0))
-        return false;
-
-    size_t num;
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    bool lostEvents = logger->lostEvents(dbg->traceLoggerLastDrainedIteration,
-                                         dbg->traceLoggerLastDrainedId);
-    EventEntry *events = logger->getEventsStartingAt(&dbg->traceLoggerLastDrainedIteration,
-                                                     &dbg->traceLoggerLastDrainedId,
-                                                     &num);
-
-    RootedObject array(cx, NewDenseEmptyArray(cx));
-    JSAtom *dataAtom = Atomize(cx, "data", strlen("data"));
-    if (!dataAtom)
-        return false;
-    RootedId dataId(cx, AtomToId(dataAtom));
-
-    /* Add all events to the array. */
-    uint32_t index = 0;
-    for (EventEntry *eventItem = events; eventItem < events + num; eventItem++, index++) {
-        RootedObject item(cx, NewObjectWithGivenProto(cx, &JSObject::class_, nullptr, cx->global()));
-        if (!item)
-            return false;
-
-        const char *eventText = logger->eventText(eventItem->textId);
-        if (!DefineProperty(cx, item, dataId, eventText, strlen(eventText)))
-            return false;
-
-        RootedValue obj(cx, ObjectValue(*item));
-        if (!JS_DefineElement(cx, array, index, obj, JSPROP_ENUMERATE))
-            return false;
-    }
-
-    /* Add "lostEvents" indicating if there are events that were lost. */
-    RootedValue lost(cx, BooleanValue(lostEvents));
-    if (!JS_DefineProperty(cx, array, "lostEvents", lost, JSPROP_ENUMERATE))
-        return false;
-
-    args.rval().setObject(*array);
-
-    return true;
-}
-# endif // NIGHTLY_BUILD
-
-bool
-Debugger::setupTraceLoggerScriptCalls(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "setupTraceLoggerScriptCalls", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.setupTraceLoggerScriptCalls", 0))
-        return false;
-
-    TraceLogEnableTextId(cx, TraceLogger_Scripts);
-    TraceLogEnableTextId(cx, TraceLogger_InlinedScripts);
-    TraceLogDisableTextId(cx, TraceLogger_AnnotateScripts);
-
-    args.rval().setBoolean(true);
-
-    return true;
-}
-
-bool
-Debugger::startTraceLogger(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "startTraceLogger", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.startTraceLogger", 0))
-        return false;
-
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    TraceLoggerEnable(logger, cx);
-
-    args.rval().setUndefined();
-
-    return true;
-}
-
-bool
-Debugger::endTraceLogger(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "endTraceLogger", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.endTraceLogger", 0))
-        return false;
-
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    TraceLoggerDisable(logger);
-
-    args.rval().setUndefined();
-
-    return true;
-}
-
-bool
-Debugger::drainTraceLoggerScriptCalls(JSContext *cx, unsigned argc, Value *vp)
-{
-    THIS_DEBUGGER(cx, argc, vp, "drainTraceLoggerScriptCalls", args, dbg);
-    if (!args.requireAtLeast(cx, "Debugger.drainTraceLoggerScriptCalls", 0))
-        return false;
-
-    size_t num;
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    bool lostEvents = logger->lostEvents(dbg->traceLoggerScriptedCallsLastDrainedIteration,
-                                         dbg->traceLoggerScriptedCallsLastDrainedId);
-    EventEntry *events = logger->getEventsStartingAt(
-                                         &dbg->traceLoggerScriptedCallsLastDrainedIteration,
-                                         &dbg->traceLoggerScriptedCallsLastDrainedId,
-                                         &num);
-
-    RootedObject array(cx, NewDenseEmptyArray(cx));
-    RootedId fileNameId(cx, AtomToId(cx->names().fileName));
-    RootedId lineNumberId(cx, AtomToId(cx->names().lineNumber));
-    RootedId columnNumberId(cx, AtomToId(cx->names().columnNumber));
-    JSAtom *logTypeAtom = Atomize(cx, "logType", strlen("logType"));
-    if (!logTypeAtom)
-        return false;
-    RootedId logTypeId(cx, AtomToId(logTypeAtom));
-
-    /* Add all events to the array. */
-    uint32_t index = 0;
-    for (EventEntry *eventItem = events; eventItem < events + num; eventItem++) {
-        RootedObject item(cx, NewObjectWithGivenProto(cx, &JSObject::class_, nullptr, cx->global()));
-        if (!item)
-            return false;
-
-        uint32_t textId = eventItem->textId;
-        if (textId != TraceLogger_Stop && !logger->textIdIsScriptEvent(textId))
-            continue;
-
-        const char *type = (textId == TraceLogger_Stop) ? "Stop" : "Script";
-        if (!DefineProperty(cx, item, logTypeId, type, strlen(type)))
-            return false;
-
-        if (textId != TraceLogger_Stop) {
-            const char *filename, *lineno, *colno;
-            size_t filename_len, lineno_len, colno_len;
-            logger->extractScriptDetails(textId, &filename, &filename_len, &lineno, &lineno_len,
-                                         &colno, &colno_len);
-
-            if (!DefineProperty(cx, item, fileNameId, filename, filename_len))
-                return false;
-            if (!DefineProperty(cx, item, lineNumberId, lineno, lineno_len))
-                return false;
-            if (!DefineProperty(cx, item, columnNumberId, colno, colno_len))
-                return false;
-        }
-
-        RootedValue obj(cx, ObjectValue(*item));
-        if (!JS_DefineElement(cx, array, index, obj, JSPROP_ENUMERATE))
-            return false;
-
-        index++;
-    }
-
-    /* Add "lostEvents" indicating if there are events that were lost. */
-    RootedValue lost(cx, BooleanValue(lostEvents));
-    if (!JS_DefineProperty(cx, array, "lostEvents", lost, JSPROP_ENUMERATE))
-        return false;
-
-    args.rval().setObject(*array);
-
-    return true;
-}
-#endif
-
 const JSPropertySpec Debugger::properties[] = {
     JS_PSGS("enabled", Debugger::getEnabled, Debugger::setEnabled, 0),
     JS_PSGS("onDebuggerStatement", Debugger::getOnDebuggerStatement,
@@ -4052,16 +3801,6 @@ const JSFunctionSpec Debugger::methods[] = {
     JS_FN("findObjects", Debugger::findObjects, 1, 0),
     JS_FN("findAllGlobals", Debugger::findAllGlobals, 0, 0),
     JS_FN("makeGlobalObjectReference", Debugger::makeGlobalObjectReference, 1, 0),
-#ifdef JS_TRACE_LOGGING
-    JS_FN("setupTraceLoggerScriptCalls", Debugger::setupTraceLoggerScriptCalls, 0, 0),
-    JS_FN("drainTraceLoggerScriptCalls", Debugger::drainTraceLoggerScriptCalls, 0, 0),
-    JS_FN("startTraceLogger", Debugger::startTraceLogger, 0, 0),
-    JS_FN("endTraceLogger", Debugger::endTraceLogger, 0, 0),
-# ifdef NIGHTLY_BUILD
-    JS_FN("setupTraceLogger", Debugger::setupTraceLogger, 1, 0),
-    JS_FN("drainTraceLogger", Debugger::drainTraceLogger, 0, 0),
-# endif
-#endif
     JS_FS_END
 };
 
@@ -5340,7 +5079,7 @@ UpdateFrameIterPc(FrameIter &iter)
         //
         // We walk the stack to assert that it doesn't need updating.
         jit::RematerializedFrame *frame = iter.abstractFramePtr().asRematerializedFrame();
-        jit::IonJSFrameLayout *jsFrame = (jit::IonJSFrameLayout *)frame->top();
+        jit::JitFrameLayout *jsFrame = (jit::JitFrameLayout *)frame->top();
         jit::JitActivation *activation = iter.activation()->asJit();
 
         ActivationIterator activationIter(activation->cx()->perThreadData);
@@ -5890,7 +5629,8 @@ js::EvaluateInEnv(JSContext *cx, Handle<Env*> env, HandleValue thisv, AbstractFr
            .setNoScriptRval(false)
            .setFileAndLine(filename, lineno)
            .setCanLazilyParse(false)
-           .setIntroductionType("debugger eval");
+           .setIntroductionType("debugger eval")
+           .maybeMakeStrictMode(frame ? frame.script()->strict() : false);
     RootedScript callerScript(cx, frame ? frame.script() : nullptr);
     SourceBufferHolder srcBuf(chars.start().get(), chars.length(), SourceBufferHolder::NoOwnership);
     RootedScript script(cx, frontend::CompileScript(cx, &cx->tempLifoAlloc(), env, callerScript,

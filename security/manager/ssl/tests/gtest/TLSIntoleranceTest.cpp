@@ -33,7 +33,11 @@ TEST_F(TLSIntoleranceTest, Test_Full_Fallback_Process)
     ASSERT_EQ(SSL_LIBRARY_VERSION_TLS_1_2, range.max);
     ASSERT_EQ(StrongCipherStatusUnknown, strongCipherStatus);
 
-    ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_TRUE(
+      helpers.rememberStrongCiphersFailed(
+        HOST, PORT, SSL_ERROR_NO_CYPHER_OVERLAP));
+    ASSERT_EQ(SSL_ERROR_NO_CYPHER_OVERLAP,
+              helpers.getIntoleranceReason(HOST, PORT));
   }
 
   {
@@ -45,7 +49,7 @@ TEST_F(TLSIntoleranceTest, Test_Full_Fallback_Process)
     ASSERT_EQ(SSL_LIBRARY_VERSION_TLS_1_2, range.max);
     ASSERT_EQ(StrongCiphersFailed, strongCipherStatus);
 
-    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
     ASSERT_TRUE(helpers.rememberIntolerantAtVersion(HOST, PORT,
                                                     range.min, range.max, 0));
   }
@@ -59,7 +63,7 @@ TEST_F(TLSIntoleranceTest, Test_Full_Fallback_Process)
     ASSERT_EQ(SSL_LIBRARY_VERSION_TLS_1_1, range.max);
     ASSERT_EQ(StrongCiphersFailed, strongCipherStatus);
 
-    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
     ASSERT_TRUE(helpers.rememberIntolerantAtVersion(HOST, PORT,
                                                     range.min, range.max, 0));
   }
@@ -73,7 +77,7 @@ TEST_F(TLSIntoleranceTest, Test_Full_Fallback_Process)
     ASSERT_EQ(SSL_LIBRARY_VERSION_TLS_1_0, range.max);
     ASSERT_EQ(StrongCiphersFailed, strongCipherStatus);
 
-    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
     ASSERT_TRUE(helpers.rememberIntolerantAtVersion(HOST, PORT,
                                                     range.min, range.max, 0));
   }
@@ -88,7 +92,7 @@ TEST_F(TLSIntoleranceTest, Test_Full_Fallback_Process)
     ASSERT_EQ(SSL_LIBRARY_VERSION_3_0, range.max);
     ASSERT_EQ(StrongCiphersFailed, strongCipherStatus);
 
-    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
     // false because we reached the floor set by range.min
     ASSERT_FALSE(helpers.rememberIntolerantAtVersion(HOST, PORT,
                                                      range.min, range.max, 0));
@@ -282,7 +286,7 @@ TEST_F(TLSIntoleranceTest, Test_Strong_Ciphers_Failed)
 {
   helpers.mVersionFallbackLimit = SSL_LIBRARY_VERSION_TLS_1_1;
 
-  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
 
   {
     SSLVersionRange range = { SSL_LIBRARY_VERSION_3_0,
@@ -342,7 +346,7 @@ TEST_F(TLSIntoleranceTest, Test_Strong_Ciphers_Failed_At_1_1)
                               SSL_LIBRARY_VERSION_TLS_1_2 };
     StrongCipherStatus strongCipherStatus = StrongCipherStatusUnknown;
     helpers.adjustForTLSIntolerance(HOST, PORT, range, strongCipherStatus);
-    ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
   }
 
   {
@@ -375,7 +379,7 @@ TEST_F(TLSIntoleranceTest, Test_Strong_Ciphers_Failed_With_High_Limit)
   // to mark an origin as version intolerant fail
   helpers.mVersionFallbackLimit = SSL_LIBRARY_VERSION_TLS_1_2;
   // ...but weak ciphers fallback will not be disabled
-  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
   ASSERT_FALSE(helpers.rememberIntolerantAtVersion(HOST, PORT,
                                                    SSL_LIBRARY_VERSION_3_0,
                                                    SSL_LIBRARY_VERSION_TLS_1_2,
@@ -392,7 +396,7 @@ TEST_F(TLSIntoleranceTest, Test_Strong_Ciphers_Failed_With_High_Limit)
 
 TEST_F(TLSIntoleranceTest, Test_Tolerant_Does_Not_Override_Weak_Ciphers_Fallback)
 {
-  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+  ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
   // No adjustment made when intolerant is zero.
   helpers.rememberTolerantAtVersion(HOST, PORT, SSL_LIBRARY_VERSION_TLS_1_1);
   SSLVersionRange range = { SSL_LIBRARY_VERSION_3_0,
@@ -409,7 +413,7 @@ TEST_F(TLSIntoleranceTest, Test_Weak_Ciphers_Fallback_Does_Not_Override_Tolerant
   // No adjustment made when there is no entry for the site.
   helpers.rememberTolerantAtVersion(HOST, PORT, SSL_LIBRARY_VERSION_TLS_1_1);
   // false because strongCipherWorked is set by rememberTolerantAtVersion.
-  ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+  ASSERT_FALSE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
   SSLVersionRange range = { SSL_LIBRARY_VERSION_3_0,
                             SSL_LIBRARY_VERSION_TLS_1_2 };
   StrongCipherStatus strongCipherStatus = StrongCipherStatusUnknown;
@@ -452,7 +456,7 @@ TEST_F(TLSIntoleranceTest, TLS_Forget_Intolerance)
 TEST_F(TLSIntoleranceTest, TLS_Forget_Strong_Cipher_Failed)
 {
   {
-    ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT));
+    ASSERT_TRUE(helpers.rememberStrongCiphersFailed(HOST, PORT, 0));
 
     SSLVersionRange range = { SSL_LIBRARY_VERSION_3_0,
                               SSL_LIBRARY_VERSION_TLS_1_2 };

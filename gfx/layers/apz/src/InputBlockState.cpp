@@ -37,6 +37,17 @@ InputBlockState::SetConfirmedTargetApzc(const nsRefPtr<AsyncPanZoomController>& 
   }
   mTargetConfirmed = true;
 
+  TBS_LOG("%p got confirmed target APZC %p\n", this, mTargetApzc.get());
+  if (mTargetApzc == aTargetApzc) {
+    // The confirmed target is the same as the tentative one, so we're done.
+    return true;
+  }
+
+  // Log enabled by default for now, we will put it in a TBS_LOG eventually
+  // once this code is more baked
+  printf_stderr("%p replacing unconfirmed target %p with real target %p\n",
+      this, mTargetApzc.get(), aTargetApzc.get());
+
   // note that aTargetApzc MAY be null here.
   mTargetApzc = aTargetApzc;
   mOverscrollHandoffChain = (mTargetApzc ? mTargetApzc->BuildOverscrollHandoffChain() : nullptr);
@@ -74,7 +85,7 @@ TouchBlockState::TouchBlockState(const nsRefPtr<AsyncPanZoomController>& aTarget
   , mPreventDefault(false)
   , mContentResponded(false)
   , mContentResponseTimerExpired(false)
-  , mSingleTapDisallowed(false)
+  , mDuringFastMotion(false)
   , mSingleTapOccurred(false)
 {
   TBS_LOG("Creating %p\n", this);
@@ -154,17 +165,24 @@ TouchBlockState::IsDefaultPrevented() const
 }
 
 void
-TouchBlockState::DisallowSingleTap()
+TouchBlockState::SetDuringFastMotion()
 {
-  TBS_LOG("%p disallowing single-tap\n", this);
-  mSingleTapDisallowed = true;
+  TBS_LOG("%p setting fast-motion flag\n", this);
+  mDuringFastMotion = true;
+}
+
+bool
+TouchBlockState::IsDuringFastMotion() const
+{
+  return mDuringFastMotion;
 }
 
 bool
 TouchBlockState::SetSingleTapOccurred()
 {
-  TBS_LOG("%p attempting to set single-tap occurred; disallowed=%d\n", this, mSingleTapDisallowed);
-  if (!mSingleTapDisallowed) {
+  TBS_LOG("%p attempting to set single-tap occurred; disallowed=%d\n",
+    this, mDuringFastMotion);
+  if (!mDuringFastMotion) {
     mSingleTapOccurred = true;
     return true;
   }

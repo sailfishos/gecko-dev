@@ -459,7 +459,7 @@ CreateInterfaceObject(JSContext* cx, JS::Handle<JSObject*> global,
     }
 
     if (!JS_DefineProperty(cx, constructor, "length", ctorNargs,
-                           JSPROP_READONLY | JSPROP_PERMANENT)) {
+                           JSPROP_READONLY)) {
       return nullptr;
     }
 
@@ -2089,7 +2089,9 @@ ConstructJSImplementation(JSContext* aCx, const char* aContractId,
     nsresult rv;
     nsCOMPtr<nsISupports> implISupports = do_CreateInstance(aContractId, &rv);
     if (!implISupports) {
-      NS_WARNING("Failed to get JS implementation for contract");
+      nsPrintfCString msg("Failed to get JS implementation for contract \"%s\"",
+                          aContractId);
+      NS_WARNING(msg.get());
       aRv.Throw(rv);
       return;
     }
@@ -2142,7 +2144,7 @@ NonVoidByteStringToJsval(JSContext *cx, const nsACString &str,
 
 
 template<typename T> static void
-NormalizeScalarValueStringInternal(JSContext* aCx, T& aString)
+NormalizeUSVStringInternal(JSContext* aCx, T& aString)
 {
   char16_t* start = aString.BeginWriting();
   // Must use const here because we can't pass char** to UTF16CharEnumerator as
@@ -2159,15 +2161,15 @@ NormalizeScalarValueStringInternal(JSContext* aCx, T& aString)
 }
 
 void
-NormalizeScalarValueString(JSContext* aCx, nsAString& aString)
+NormalizeUSVString(JSContext* aCx, nsAString& aString)
 {
-  NormalizeScalarValueStringInternal(aCx, aString);
+  NormalizeUSVStringInternal(aCx, aString);
 }
 
 void
-NormalizeScalarValueString(JSContext* aCx, binding_detail::FakeString& aString)
+NormalizeUSVString(JSContext* aCx, binding_detail::FakeString& aString)
 {
-  NormalizeScalarValueStringInternal(aCx, aString);
+  NormalizeUSVStringInternal(aCx, aString);
 }
 
 bool
@@ -2531,7 +2533,7 @@ ConvertExceptionToPromise(JSContext* cx,
     return false;
   }
 
-  return WrapNewBindingObject(cx, promise, rval);
+  return GetOrCreateDOMReflector(cx, promise, rval);
 }
 
 /* static */

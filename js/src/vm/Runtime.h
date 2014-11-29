@@ -54,7 +54,7 @@ class PerThreadData;
 struct ThreadSafeContext;
 class AutoKeepAtoms;
 #ifdef JS_TRACE_LOGGING
-class TraceLoggerThread;
+class TraceLogger;
 #endif
 
 /* Thread Local Storage slot for storing the runtime for a thread. */
@@ -364,19 +364,24 @@ class NewObjectCache
 class FreeOp : public JSFreeOp
 {
     Vector<void *, 0, SystemAllocPolicy> freeLaterList;
+    ThreadType threadType;
 
   public:
     static FreeOp *get(JSFreeOp *fop) {
         return static_cast<FreeOp *>(fop);
     }
 
-    explicit FreeOp(JSRuntime *rt)
-      : JSFreeOp(rt)
+    explicit FreeOp(JSRuntime *rt, ThreadType thread = MainThread)
+      : JSFreeOp(rt), threadType(thread)
     {}
 
     ~FreeOp() {
         for (size_t i = 0; i < freeLaterList.length(); i++)
             free_(freeLaterList[i]);
+    }
+
+    bool onBackgroundThread() {
+        return threadType == BackgroundThread;
     }
 
     inline void free_(void *p);
@@ -537,7 +542,7 @@ class PerThreadData : public PerThreadDataFriendFields
     irregexp::RegExpStack regexpStack;
 
 #ifdef JS_TRACE_LOGGING
-    TraceLoggerThread   *traceLogger;
+    TraceLogger         *traceLogger;
 #endif
 
   private:

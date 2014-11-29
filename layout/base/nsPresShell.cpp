@@ -2304,6 +2304,12 @@ NS_IMETHODIMP PresShell::GetSelectionFlags(int16_t *aOutEnable)
 //implementation of nsISelectionController
 
 NS_IMETHODIMP
+PresShell::PhysicalMove(int16_t aDirection, int16_t aAmount, bool aExtend)
+{
+  return mSelection->PhysicalMove(aDirection, aAmount, aExtend);
+}
+
+NS_IMETHODIMP
 PresShell::CharacterMove(bool aForward, bool aExtend)
 {
   return mSelection->CharacterMove(aForward, aExtend);
@@ -7191,11 +7197,11 @@ PresShell::HandleKeyboardEvent(nsINode* aTarget,
   DispatchBeforeKeyboardEventInternal(chain, aEvent, chainIndex,
                                       defaultPrevented);
 
-  // Dispatch after events to partial items.
+  // Before event is default-prevented. Dispatch after events with
+  // embeddedCancelled = false to partial items.
   if (defaultPrevented) {
-    DispatchAfterKeyboardEventInternal(chain, aEvent,
-                                       aEvent.mFlags.mDefaultPrevented, chainIndex);
-
+    *aStatus = nsEventStatus_eConsumeNoDefault;
+    DispatchAfterKeyboardEventInternal(chain, aEvent, false, chainIndex);
     // No need to forward the event to child process.
     aEvent.mFlags.mNoCrossProcessBoundaryForwarding = true;
     return;
@@ -7209,6 +7215,15 @@ PresShell::HandleKeyboardEvent(nsINode* aTarget,
   // Dispatch actual key event to event target.
   EventDispatcher::Dispatch(aTarget, mPresContext,
                             &aEvent, nullptr, aStatus, aEventCB);
+
+  if (aEvent.mFlags.mDefaultPrevented) {
+    // When embedder prevents the default action of actual key event, attribute
+    // 'embeddedCancelled' of after event is false, i.e. |!targetIsIframe|.
+    // On the contrary, if the defult action is prevented by embedded iframe,
+    // 'embeddedCancelled' is true which equals to |!targetIsIframe|.
+    DispatchAfterKeyboardEventInternal(chain, aEvent, !targetIsIframe, chainIndex);
+    return;
+  }
 
   // Event listeners may kill nsPresContext and nsPresShell.
   if (targetIsIframe || !CanDispatchEvent()) {
@@ -7229,13 +7244,13 @@ PresShell::HandleEvent(nsIFrame* aFrame,
 #ifdef MOZ_TASK_TRACER
   // Make touch events, mouse events and hardware key events to be the source
   // events of TaskTracer, and originate the rest correlation tasks from here.
-  SourceEventType type = SourceEventType::UNKNOWN;
+  SourceEventType type = SourceEventType::Unknown;
   if (WidgetTouchEvent* inputEvent = aEvent->AsTouchEvent()) {
-    type = SourceEventType::TOUCH;
+    type = SourceEventType::Touch;
   } else if (WidgetMouseEvent* inputEvent = aEvent->AsMouseEvent()) {
-    type = SourceEventType::MOUSE;
+    type = SourceEventType::Mouse;
   } else if (WidgetKeyboardEvent* inputEvent = aEvent->AsKeyboardEvent()) {
-    type = SourceEventType::KEY;
+    type = SourceEventType::Key;
   }
   AutoSourceEvent taskTracerEvent(type);
 #endif
@@ -9252,7 +9267,7 @@ PresShell::DoReflow(nsIFrame* target, bool aInterruptible)
     bool hasUnconstrainedBSize = size.BSize(wm) == NS_UNCONSTRAINEDSIZE;
 
     if (hasUnconstrainedBSize || mLastRootReflowHadUnconstrainedBSize) {
-      reflowState.mFlags.mVResize = true;
+      reflowState.SetVResize(true);
     }
 
     mLastRootReflowHadUnconstrainedBSize = hasUnconstrainedBSize;

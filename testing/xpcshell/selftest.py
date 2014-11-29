@@ -76,7 +76,8 @@ function run_test () { run_next_test(); }
 
 add_test(function test_child_assert () {
   do_load_child_test_harness();
-  sendCommand("Assert.ok(true);");
+  do_test_pending("test child assertion");
+  sendCommand("Assert.ok(true);", do_test_finished);
   run_next_test();
 });
 '''
@@ -470,7 +471,8 @@ tail =
     def testChild(self):
         """
         Checks that calling do_load_child_test_harness without run_test_in_child
-        results in a usable test state.
+        results in a usable test state. This test has a spurious failure when
+        run using |mach python-test|. See bug 1103226.
         """
         self.writeFile("test_child_assertions.js", CHILD_HARNESS_SIMPLE)
         self.writeManifest(["test_child_assertions.js"])
@@ -508,6 +510,8 @@ tail =
 
         self.assertTestResult(True, verbose=True)
 
+    @unittest.skipIf('MOZ_AUTOMATION' in os.environ,
+                     'Timeout code path occasionally times out (bug 1098121)')
     def testHangingTimeout(self):
         """
         Check that a test that never finishes results in the correct error log.
@@ -889,4 +893,4 @@ tail =
         self.assertInLog("Throwing an error to force displaying the log")
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=3)

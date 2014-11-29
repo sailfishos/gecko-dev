@@ -23,6 +23,7 @@ user_pref("shell.checkDefaultClient", false);
 user_pref("browser.warnOnQuit", false);
 user_pref("accessibility.typeaheadfind.autostart", false);
 user_pref("javascript.options.showInConsole", true);
+user_pref("devtools.browsertoolbox.panel", "jsdebugger");
 user_pref("devtools.errorconsole.enabled", true);
 user_pref("devtools.debugger.remote-port", 6023);
 user_pref("layout.debug.enable_data_xbl", true);
@@ -156,7 +157,7 @@ user_pref("layout.spammy_warnings.enabled", false);
 
 // Enable Media Source Extensions for testing
 user_pref("media.mediasource.enabled", true);
-user_pref("media.mediasource.mp4.enabled", false);
+user_pref("media.mediasource.mp4.enabled", true);
 user_pref("media.mediasource.webm.enabled", true);
 
 // Enable mozContacts
@@ -266,6 +267,9 @@ user_pref("loop.CSP","default-src 'self' about: file: chrome: data: wss://* http
 // Ensure UITour won't hit the network
 user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
+
+// Don't show the search first run UI by default
+user_pref("browser.search.highlightCount", 0);
 
 user_pref("media.eme.enabled", true);
 

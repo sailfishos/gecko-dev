@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import which
+import subprocess
 
 from distutils.version import LooseVersion
 
@@ -17,14 +18,10 @@ from configobj import ConfigObjError
 from StringIO import StringIO
 
 from mozversioncontrol import get_hg_version
-from mozversioncontrol.repoupdate import (
-    update_mercurial_repo,
-    update_git_repo,
-)
 
+from .update import MercurialUpdater
 from .config import (
     HgIncludeException,
-    HOST_FINGERPRINTS,
     MercurialConfig,
 )
 
@@ -172,6 +169,7 @@ class MercurialSetupWizard(object):
         self.ext_dir = os.path.join(self.state_dir, 'mercurial', 'extensions')
         self.vcs_tools_dir = os.path.join(self.state_dir, 'version-control-tools')
         self.update_vcs_tools = False
+        self.updater = MercurialUpdater(state_dir)
 
     def run(self, config_paths):
         try:
@@ -282,7 +280,7 @@ class MercurialSetupWizard(object):
                                            os.path.join(self.ext_dir, 'mqext'))
 
             if 'mqext' in c.extensions:
-                self.update_mercurial_repo(
+                self.updater.update_mercurial_repo(
                     hg,
                     'https://bitbucket.org/sfink/mqext',
                     os.path.join(self.ext_dir, 'mqext'),
@@ -323,7 +321,7 @@ class MercurialSetupWizard(object):
                 c.set_bugzilla_credentials(bzuser, bzpass)
 
         if self.update_vcs_tools:
-            self.update_mercurial_repo(
+            self.updater.update_mercurial_repo(
                 hg,
                 'https://hg.mozilla.org/hgcustom/version-control-tools',
                 self.vcs_tools_dir,
@@ -384,12 +382,24 @@ class MercurialSetupWizard(object):
             c.activate_extension(name)
             print('Activated %s extension.\n' % name)
 
+    def can_use_extension(self, c, name, path=None):
+        # Load extension to hg and search stdout for printed exceptions
+        if not path:
+            path = os.path.join(self.vcs_tools_dir, 'hgext', name)
+        result = subprocess.check_output(['hg',
+             '--config', 'extensions.testmodule=%s' % path,
+             '--config', 'ui.traceback=true'],
+            stderr=subprocess.STDOUT)
+        return "Traceback" not in result
+
     def prompt_external_extension(self, c, name, prompt_text, path=None):
         # Ask the user if the specified extension should be enabled. Defaults
         # to treating the extension as one in version-control-tools/hgext/
         # in a directory with the same name as the extension and thus also
         # flagging the version-control-tools repo as needing an update.
         if name not in c.extensions:
+            if not self.can_use_extension(c, name, path):
+                return
             print(name)
             print('=' * len(name))
             print('')
@@ -401,25 +411,6 @@ class MercurialSetupWizard(object):
             path = os.path.join(self.vcs_tools_dir, 'hgext', name)
             self.update_vcs_tools = True
         c.activate_extension(name, path)
-
-    def update_mercurial_repo(self, hg, url, dest, branch, msg):
-        # We always pass the host fingerprints that we "know" to be canonical
-        # because the existing config may have outdated fingerprints and this
-        # may cause Mercurial to abort.
-        return self._update_repo(hg, url, dest, branch, msg,
-            update_mercurial_repo, hostfingerprints=HOST_FINGERPRINTS)
-
-    def update_git_repo(self, git, url, dest, ref, msg):
-        return self._update_repo(git, url, dest, ref, msg, update_git_repo)
-
-    def _update_repo(self, binary, url, dest, branch, msg, fn, *args, **kwargs):
-        print('=' * 80)
-        print(msg)
-        try:
-            fn(binary, url, dest, branch, *args, **kwargs)
-        finally:
-            print('=' * 80)
-            print('')
 
     def _prompt(self, msg, allow_empty=False):
         print(msg)

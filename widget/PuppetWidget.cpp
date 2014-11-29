@@ -14,6 +14,7 @@
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/PLayerTransactionChild.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEvents.h"
 #include "PuppetWidget.h"
@@ -331,7 +332,8 @@ PuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
     aStatus = mAttachedWidgetListener->HandleEvent(event, mUseAttachedEvents);
   }
 
-  if (event->message == NS_COMPOSITION_END) {
+  if (event->mClass == eCompositionEventClass &&
+      event->AsCompositionEvent()->CausesDOMCompositionEndEvent()) {
     mIMEComposing = false;
   }
 
@@ -761,6 +763,14 @@ PuppetWidget::PaintTask::Run()
 bool
 PuppetWidget::NeedsPaint()
 {
+  // e10s popups are handled by the parent process, so never should be painted here
+  if (XRE_GetProcessType() == GeckoProcessType_Content &&
+      Preferences::GetBool("browser.tabs.remote.desktopbehavior", false) &&
+      mWindowType == eWindowType_popup) {
+    NS_WARNING("Trying to paint an e10s popup in the child process!");
+    return false;
+  }
+
   return mVisible;
 }
 

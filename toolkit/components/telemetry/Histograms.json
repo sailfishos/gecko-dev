@@ -322,7 +322,7 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 10,
-    "description": "Use of SpiderMonkey's deprecated language extensions in web content: ForEach, DestructuringForIn, LegacyGenerator, ExpressionClosure"
+    "description": "Use of SpiderMonkey's deprecated language extensions in web content: ForEach=0, DestructuringForIn=1, LegacyGenerator=2, ExpressionClosure=3, LetBlock=4, LetExpression=5"
   },
   "TELEMETRY_PING": {
     "expires_in_version": "default",
@@ -6455,7 +6455,8 @@
   },
   "SSL_WEAK_CIPHERS_FALLBACK": {
     "expires_in_version": "never",
-    "kind": "boolean",
+    "kind": "enumerated",
+    "n_values": 64,
     "description": "Fallback attempted when server did not support any strong cipher suites"
   },
   "SSL_CIPHER_SUITE_FULL": {
@@ -6562,6 +6563,12 @@
     "n_buckets": 10,
     "description": "How many permanent certificate overrides a user has stored."
   },
+  "SSL_SERVER_AUTH_EKU": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 10,
+    "description": "Presence of of the Server Authenticaton EKU in accepted SSL server certificates (0=No EKU, 1=EKU present and has id_kp_serverAuth, 2=EKU present and has id_kp_serverAuth as well as some other EKU, 3=EKU present but does not contain id_kp_serverAuth)"
+  },
   "TELEMETRY_TEST_EXPIRED": {
     "expires_in_version": "4.0a1",
     "kind": "flag",
@@ -6600,6 +6607,12 @@
     "high": "5000",
     "n_buckets": 10,
     "extended_statistics_ok": true
+  },
+  "CERT_VALIDATION_SUCCESS_BY_CA": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 256,
+    "description": "Successful SSL server cert validations by CA (see RootHashes.inc for names of CAs)"
   },
   "CERT_PINNING_FAILURES_BY_CA": {
     "alert_emails": ["pinning@mozilla.org"],
@@ -6868,5 +6881,16 @@
     "expires_in_version": "40",
     "kind": "boolean",
     "description": "Whether the e10s pref was set but it was blocked from running due to blacklisted conditions"
+  },
+  "ONBEFOREUNLOAD_PROMPT_ACTION" : {
+    "expires_in_version": "45",
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "What button a user clicked in an onbeforeunload prompt.  (Stay on Page = 0, Leave Page = 1, prompt aborted = 2)"
+  },
+  "ONBEFOREUNLOAD_PROMPT_COUNT" : {
+    "expires_in_version": "45",
+    "kind": "count",
+    "description": "How many onbeforeunload prompts has the user encountered in their session?"
   }
 }

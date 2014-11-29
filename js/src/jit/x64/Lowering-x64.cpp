@@ -50,6 +50,12 @@ LIRGeneratorX64::useByteOpRegisterOrNonDoubleConstant(MDefinition *mir)
 }
 
 LDefinition
+LIRGeneratorX64::tempByteOpRegister()
+{
+    return temp();
+}
+
+LDefinition
 LIRGeneratorX64::tempToUnbox()
 {
     return temp();
@@ -78,10 +84,15 @@ LIRGeneratorX64::visitUnbox(MUnbox *unbox)
     MOZ_ASSERT(box->type() == MIRType_Value);
 
     LUnboxBase *lir;
-    if (IsFloatingPointType(unbox->type()))
+    if (IsFloatingPointType(unbox->type())) {
         lir = new(alloc()) LUnboxFloatingPoint(useRegisterAtStart(box), unbox->type());
-    else
+    } else if (unbox->fallible()) {
+        // If the unbox is fallible, load the Value in a register first to
+        // avoid multiple loads.
         lir = new(alloc()) LUnbox(useRegisterAtStart(box));
+    } else {
+        lir = new(alloc()) LUnbox(useAtStart(box));
+    }
 
     if (unbox->fallible() && !assignSnapshot(lir, unbox->bailoutKind()))
         return false;
@@ -163,19 +174,21 @@ LIRGeneratorX64::visitAsmJSStoreHeap(MAsmJSStoreHeap *ins)
 
     LAsmJSStoreHeap *lir;
     switch (ins->viewType()) {
-      case Scalar::Int8:
-      case Scalar::Uint8:
-      case Scalar::Int16:
-      case Scalar::Uint16:
-      case Scalar::Int32:
-      case Scalar::Uint32:
+      case AsmJSHeapAccess::Int8:
+      case AsmJSHeapAccess::Uint8:
+      case AsmJSHeapAccess::Int16:
+      case AsmJSHeapAccess::Uint16:
+      case AsmJSHeapAccess::Int32:
+      case AsmJSHeapAccess::Uint32:
         lir = new(alloc()) LAsmJSStoreHeap(ptrAlloc, useRegisterOrConstantAtStart(ins->value()));
         break;
-      case Scalar::Float32:
-      case Scalar::Float64:
+      case AsmJSHeapAccess::Float32:
+      case AsmJSHeapAccess::Float64:
+      case AsmJSHeapAccess::Float32x4:
+      case AsmJSHeapAccess::Int32x4:
         lir = new(alloc()) LAsmJSStoreHeap(ptrAlloc, useRegisterAtStart(ins->value()));
         break;
-      default:
+      case AsmJSHeapAccess::Uint8Clamped:
         MOZ_CRASH("unexpected array type");
     }
 
@@ -186,6 +199,18 @@ bool
 LIRGeneratorX64::visitAsmJSLoadFuncPtr(MAsmJSLoadFuncPtr *ins)
 {
     return define(new(alloc()) LAsmJSLoadFuncPtr(useRegister(ins->index()), temp()), ins);
+}
+
+bool
+LIRGeneratorX64::visitSubstr(MSubstr *ins)
+{
+    LSubstr *lir = new (alloc()) LSubstr(useRegister(ins->string()),
+                                         useRegister(ins->begin()),
+                                         useRegister(ins->length()),
+                                         temp(),
+                                         temp(),
+                                         tempByteOpRegister());
+    return define(lir, ins) && assignSafepoint(lir, ins);
 }
 
 bool

@@ -183,7 +183,7 @@ pref("app.update.metro.enabled", true);
 pref("app.update.silent", false);
 
 // If set to true, the hamburger button will show badges for update events.
-#ifdef MOZ_DEV_EDITION
+#ifndef RELEASE_BUILD
 pref("app.update.badge", true);
 #else
 pref("app.update.badge", false);
@@ -323,7 +323,7 @@ pref("browser.urlbar.autoFill", true);
 pref("browser.urlbar.autoFill.typed", true);
 
 // Use the new unifiedComplete component
-pref("browser.urlbar.unifiedcomplete", true);
+pref("browser.urlbar.unifiedcomplete", false);
 
 // 0: Match anywhere (e.g., middle of words)
 // 1: Match on word boundaries and then try matching anywhere
@@ -404,6 +404,11 @@ pref("browser.search.order.1",                "chrome://browser-region/locale/re
 pref("browser.search.order.2",                "chrome://browser-region/locale/region.properties");
 pref("browser.search.order.3",                "chrome://browser-region/locale/region.properties");
 
+pref("browser.search.defaultenginename.US",      "data:text/plain,browser.search.defaultenginename.US=Yahoo");
+pref("browser.search.order.US.1",                "data:text/plain,browser.search.order.US.1=Yahoo");
+pref("browser.search.order.US.2",                "data:text/plain,browser.search.order.US.2=Google");
+pref("browser.search.order.US.3",                "data:text/plain,browser.search.order.US.3=Bing");
+
 // search bar results always open in a new tab
 pref("browser.search.openintab", false);
 
@@ -422,10 +427,15 @@ pref("browser.search.update.interval", 21600);
 // enable search suggestions by default
 pref("browser.search.suggest.enabled", true);
 
+pref("browser.search.showOneOffButtons", true);
+
 #ifdef MOZ_OFFICIAL_BRANDING
 // {moz:official} expands to "official"
 pref("browser.search.official", true);
 #endif
+
+// How many times to show the new search highlight
+pref("browser.search.highlightCount", 5);
 
 pref("browser.sessionhistory.max_entries", 50);
 
@@ -1642,13 +1652,13 @@ pref("shumway.disabled", true);
 pref("image.mem.max_decoded_image_kb", 256000);
 
 pref("loop.enabled", true);
-pref("loop.server", "https://loop.services.mozilla.com");
+pref("loop.server", "https://loop.services.mozilla.com/v0");
 pref("loop.seenToS", "unseen");
 pref("loop.gettingStarted.seen", false);
-pref("loop.gettingStarted.url", "https://bugzilla.mozilla.org/show_bug.cgi?id=1099462");
+pref("loop.gettingStarted.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/hello/start");
 pref("loop.learnMoreUrl", "https://www.firefox.com/hello/");
-pref("loop.legal.ToS_url", "https://hello.firefox.com/legal/terms/");
-pref("loop.legal.privacy_url", "https://www.mozilla.org/privacy/");
+pref("loop.legal.ToS_url", "https://www.mozilla.org/about/legal/terms/firefox-hello/");
+pref("loop.legal.privacy_url", "https://www.mozilla.org/privacy/firefox-hello/");
 pref("loop.do_not_disturb", false);
 pref("loop.ringtone", "chrome://browser/content/loop/shared/sounds/ringtone.ogg");
 pref("loop.retry_delay.start", 60000);
@@ -1669,6 +1679,7 @@ pref("loop.oauth.google.scope", "https://www.google.com/m8/feeds");
 pref("loop.rooms.enabled", true);
 pref("loop.fxa_oauth.tokendata", "");
 pref("loop.fxa_oauth.profile", "");
+pref("loop.support_url", "https://support.mozilla.org/kb/group-conversations-firefox-hello-webrtc");
 
 // serverURL to be assigned by services team
 pref("services.push.serverURL", "wss://push.services.mozilla.com/");
@@ -1741,7 +1752,11 @@ pref("ui.key.menuAccessKeyFocuses", true);
 #endif
 
 // Encrypted media extensions.
+#ifdef RELEASE_BUILD
 pref("media.eme.enabled", false);
+#else
+pref("media.eme.enabled", true);
+#endif
 
 // GMPInstallManager prefs
 
@@ -1818,6 +1833,11 @@ pref("browser.tabs.remote.autostart.1", true);
 pref("print.enable_e10s_testing", false);
 #else
 pref("print.enable_e10s_testing", true);
+#endif
+
+#ifdef NIGHTLY_BUILD
+// Enable e10s add-on interposition by default.
+pref("extensions.interposition.enabled", true);
 #endif
 
 pref("browser.defaultbrowser.notificationbar", false);

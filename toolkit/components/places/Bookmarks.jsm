@@ -94,7 +94,7 @@ let Bookmarks = Object.freeze({
   TYPE_SEPARATOR: 3,
 
   /**
-   * Default index used to append a bookmark-item at the end of a folder. 
+   * Default index used to append a bookmark-item at the end of a folder.
    * This should stay consistent with nsINavBookmarksService.idl
    */
   DEFAULT_INDEX: -1,
@@ -238,7 +238,7 @@ let Bookmarks = Object.freeze({
     let updateInfo = validateBookmarkObject(info,
       { guid: { required: true }
       , index: { requiredIf: b => b.hasOwnProperty("parentGuid")
-               , validIf: b => b.index >= 0 }
+               , validIf: b => b.index >= 0 || b.index == this.DEFAULT_INDEX }
       , parentGuid: { requiredIf: b => b.hasOwnProperty("index") }
       });
 
@@ -307,9 +307,15 @@ let Bookmarks = Object.freeze({
         // the same container.  Thus we know it exists.
         if (!parent)
           parent = yield fetchBookmark({ guid: item.parentGuid });
-        // Set index in the appending case.
-        if (updateInfo.index > parent._childCount)
-          updateInfo.index = parent._childCount;
+
+        if (updateInfo.index >= parent._childCount ||
+            updateInfo.index == this.DEFAULT_INDEX) {
+           updateInfo.index = parent._childCount;
+
+          // Fix the index when moving within the same container.
+          if (parent.guid == item.parentGuid)
+             updateInfo.index--;
+        }
       }
 
       let updatedItem = yield updateBookmark(updateInfo, item, parent);
@@ -356,22 +362,25 @@ let Bookmarks = Object.freeze({
                                              updatedItem.parentGuid ]);
       }
       if (updateInfo.hasOwnProperty("keyword")) {
+        // If the keyword is unset, updatedItem won't have it set.
+        let keyword = updatedItem.hasOwnProperty("keyword") ?
+                        updatedItem.keyword : "";
         notify(observers, "onItemChanged", [ updatedItem._id, "keyword",
-                                             false, updatedItem.keyword,
+                                             false, keyword,
                                              toPRTime(updatedItem.lastModified),
                                              updatedItem.type,
                                              updatedItem._parentId,
                                              updatedItem.guid,
                                              updatedItem.parentGuid ]);
       }
-      // If the item was move, notify onItemMoved.
+      // If the item was moved, notify onItemMoved.
       if (item.parentGuid != updatedItem.parentGuid ||
           item.index != updatedItem.index) {
         notify(observers, "onItemMoved", [ updatedItem._id, item._parentId,
                                            item.index, updatedItem._parentId,
                                            updatedItem.index, updatedItem.type,
                                            updatedItem.guid, item.parentGuid,
-                                           updatedItem.newParentGuid ]);
+                                           updatedItem.parentGuid ]);
       }
 
       // Remove non-enumerable properties.
@@ -773,10 +782,14 @@ function* updateBookmark(info, item, newParent) {
 
   yield db.executeTransaction(function* () {
     if (info.hasOwnProperty("keyword")) {
-      if (info.keyword.length > 0)
+      if (info.keyword.length > 0) {
         yield maybeCreateKeyword(db, info.keyword);
-      tuples.set("keyword", { value: info.keyword
-                            , fragment: "keyword_id = (SELECT id FROM moz_keywords WHERE keyword = :keyword)" });
+        tuples.set("keyword",
+                   { value: info.keyword
+                   , fragment: "keyword_id = (SELECT id FROM moz_keywords WHERE keyword = :keyword)" });
+      } else {
+        tuples.set("keyword_id", { value: null });
+      }
     }
 
     if (info.hasOwnProperty("url")) {
@@ -975,8 +988,10 @@ function* fetchBookmarksByURL(info) {
      LEFT JOIN moz_keywords k ON k.id = b.keyword_id
      LEFT JOIN moz_places h ON h.id = b.fk
      WHERE h.url = :url
+     AND _grandParentId <> :tags_folder
      ORDER BY b.lastModified DESC
-    `, { url: info.url.href });
+    `, { url: info.url.href,
+         tags_folder: PlacesUtils.tagsFolderId });
 
   return rows.length ? rowsToItemsArray(rows) : null;
 }
@@ -1158,7 +1173,7 @@ function rowsToItemsArray(rows) {
     }
 
     return item;
-  });  
+  });
 }
 
 /**
@@ -1267,7 +1282,7 @@ function validateBookmarkObject(input, behavior={}) {
     }
   }
   if (required.size > 0)
-    throw new Error(`The following properties were expected: ${[...required].join(", ")}`); 
+    throw new Error(`The following properties were expected: ${[...required].join(", ")}`);
   return normalizedInput;
 }
 

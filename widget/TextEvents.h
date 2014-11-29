@@ -18,6 +18,7 @@
 #include "nsRect.h"
 #include "nsStringGlue.h"
 #include "nsTArray.h"
+#include "WritingModes.h"
 
 /******************************************************************************
  * virtual keycode values
@@ -341,6 +342,20 @@ public:
   {
     return mRanges ? mRanges->Length() : 0;
   }
+
+  bool CausesDOMTextEvent() const
+  {
+    return message == NS_COMPOSITION_CHANGE ||
+           message == NS_COMPOSITION_COMMIT ||
+           message == NS_COMPOSITION_COMMIT_AS_IS;
+  }
+
+  bool CausesDOMCompositionEndEvent() const
+  {
+    return message == NS_COMPOSITION_END ||
+           message == NS_COMPOSITION_COMMIT ||
+           message == NS_COMPOSITION_COMMIT_AS_IS;
+  }
 };
 
 /******************************************************************************
@@ -455,6 +470,8 @@ public:
     bool mHasSelection;
     // true if DOM element under mouse belongs to widget
     bool mWidgetIsHit;
+    // mozilla::WritingMode value at the end (focus) of the selection
+    mozilla::WritingMode mWritingMode;
     // used by NS_QUERY_SELECTION_AS_TRANSFERABLE
     nsCOMPtr<nsITransferable> mTransferable;
   } mReply;

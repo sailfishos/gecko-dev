@@ -36,6 +36,7 @@
 #include "mozilla/Preferences.h"
 #include "gfx2DGlue.h"
 #include "nsPrintfCString.h"
+#include "DOMMediaStream.h"
 
 #include <algorithm>
 
@@ -186,6 +187,7 @@ MediaDecoderStateMachine::MediaDecoderStateMachine(MediaDecoder* aDecoder,
   mCurrentFrameTime(0),
   mAudioStartTime(-1),
   mAudioEndTime(-1),
+  mDecodedAudioEndTime(-1),
   mVideoFrameEndTime(-1),
   mVolume(1.0),
   mPlaybackRate(1.0),
@@ -355,9 +357,6 @@ static void WriteVideoToMediaStream(MediaStream* aStream,
   aOutput->AppendFrame(image.forget(), duration, aIntrinsicSize);
 }
 
-static const TrackID TRACK_AUDIO = 1;
-static const TrackID TRACK_VIDEO = 2;
-
 void MediaDecoderStateMachine::SendStreamData()
 {
   NS_ASSERTION(OnDecodeThread() || OnStateMachineThread(),
@@ -393,14 +392,14 @@ void MediaDecoderStateMachine::SendStreamData()
     if (!stream->mStreamInitialized) {
       if (mInfo.HasAudio()) {
         AudioSegment* audio = new AudioSegment();
-        mediaStream->AddAudioTrack(TRACK_AUDIO, mInfo.mAudio.mRate, 0, audio);
-        stream->mStream->DispatchWhenNotEnoughBuffered(TRACK_AUDIO,
+        mediaStream->AddAudioTrack(kAudioTrack, mInfo.mAudio.mRate, 0, audio);
+        stream->mStream->DispatchWhenNotEnoughBuffered(kAudioTrack,
             GetStateMachineThread(), GetWakeDecoderRunnable());
       }
       if (mInfo.HasVideo()) {
         VideoSegment* video = new VideoSegment();
-        mediaStream->AddTrack(TRACK_VIDEO, 0, video);
-        stream->mStream->DispatchWhenNotEnoughBuffered(TRACK_VIDEO,
+        mediaStream->AddTrack(kVideoTrack, 0, video);
+        stream->mStream->DispatchWhenNotEnoughBuffered(kVideoTrack,
             GetStateMachineThread(), GetWakeDecoderRunnable());
       }
       stream->mStreamInitialized = true;
@@ -416,10 +415,10 @@ void MediaDecoderStateMachine::SendStreamData()
         SendStreamAudio(audio[i], stream, &output);
       }
       if (output.GetDuration() > 0) {
-        mediaStream->AppendToTrack(TRACK_AUDIO, &output);
+        mediaStream->AppendToTrack(kAudioTrack, &output);
       }
       if (AudioQueue().IsFinished() && !stream->mHaveSentFinishAudio) {
-        mediaStream->EndTrack(TRACK_AUDIO);
+        mediaStream->EndTrack(kAudioTrack);
         stream->mHaveSentFinishAudio = true;
       }
       minLastAudioPacketTime = std::min(minLastAudioPacketTime, stream->mLastAudioPacketTime);
@@ -461,10 +460,10 @@ void MediaDecoderStateMachine::SendStreamData()
         }
       }
       if (output.GetDuration() > 0) {
-        mediaStream->AppendToTrack(TRACK_VIDEO, &output);
+        mediaStream->AppendToTrack(kVideoTrack, &output);
       }
       if (VideoQueue().IsFinished() && !stream->mHaveSentFinishVideo) {
-        mediaStream->EndTrack(TRACK_VIDEO);
+        mediaStream->EndTrack(kVideoTrack);
         stream->mHaveSentFinishVideo = true;
       }
       endPosition = std::max(endPosition,
@@ -530,10 +529,10 @@ bool MediaDecoderStateMachine::HaveEnoughDecodedAudio(int64_t aAmpleAudioUSecs)
 
   DecodedStreamData* stream = mDecoder->GetDecodedStream();
   if (stream && stream->mStreamInitialized && !stream->mHaveSentFinishAudio) {
-    if (!stream->mStream->HaveEnoughBuffered(TRACK_AUDIO)) {
+    if (!stream->mStream->HaveEnoughBuffered(kAudioTrack)) {
       return false;
     }
-    stream->mStream->DispatchWhenNotEnoughBuffered(TRACK_AUDIO,
+    stream->mStream->DispatchWhenNotEnoughBuffered(kAudioTrack,
         GetStateMachineThread(), GetWakeDecoderRunnable());
   }
 
@@ -550,10 +549,10 @@ bool MediaDecoderStateMachine::HaveEnoughDecodedVideo()
 
   DecodedStreamData* stream = mDecoder->GetDecodedStream();
   if (stream && stream->mStreamInitialized && !stream->mHaveSentFinishVideo) {
-    if (!stream->mStream->HaveEnoughBuffered(TRACK_VIDEO)) {
+    if (!stream->mStream->HaveEnoughBuffered(kVideoTrack)) {
       return false;
     }
-    stream->mStream->DispatchWhenNotEnoughBuffered(TRACK_VIDEO,
+    stream->mStream->DispatchWhenNotEnoughBuffered(kVideoTrack,
         GetStateMachineThread(), GetWakeDecoderRunnable());
   }
 
@@ -632,6 +631,11 @@ bool
 MediaDecoderStateMachine::NeedToDecodeAudio()
 {
   AssertCurrentThreadInMonitor();
+  SAMPLE_LOG("NeedToDecodeAudio() isDec=%d decToTar=%d minPrl=%d seek=%d enufAud=%d",
+             IsAudioDecoding(), mDecodeToSeekTarget, mMinimizePreroll,
+             mState == DECODER_STATE_SEEKING,
+             HaveEnoughDecodedAudio(mAmpleAudioThresholdUsecs * mPlaybackRate));
+
   return IsAudioDecoding() &&
          ((mState == DECODER_STATE_SEEKING && mDecodeToSeekTarget) ||
           (!mMinimizePreroll &&
@@ -699,6 +703,7 @@ MediaDecoderStateMachine::OnAudioDecoded(AudioData* aAudioSample)
   nsRefPtr<AudioData> audio(aAudioSample);
   MOZ_ASSERT(audio);
   mAudioRequestPending = false;
+  mDecodedAudioEndTime = audio->GetEndTime();
 
   SAMPLE_LOG("OnAudioDecoded [%lld,%lld] disc=%d",
              (audio ? audio->mTime : -1),
@@ -830,6 +835,11 @@ MediaDecoderStateMachine::OnNotDecoded(MediaData::Type aType,
       StartBuffering();
     }
 
+    return;
+  }
+
+  if (aReason == RequestSampleCallback::CANCELED) {
+    DispatchDecodeTasksIfNeeded();
     return;
   }
 
@@ -1483,6 +1493,7 @@ void MediaDecoderStateMachine::ResetPlayback()
   mVideoFrameEndTime = -1;
   mAudioStartTime = -1;
   mAudioEndTime = -1;
+  mDecodedAudioEndTime = -1;
   mAudioCompleted = false;
   AudioQueue().Reset();
   VideoQueue().Reset();
@@ -1722,6 +1733,11 @@ MediaDecoderStateMachine::DispatchDecodeTasksIfNeeded()
                   !needToDecodeVideo &&
                   !IsPlaying();
 
+  SAMPLE_LOG("DispatchDecodeTasksIfNeeded needAudio=%d dispAudio=%d needVideo=%d dispVid=%d needIdle=%d",
+             needToDecodeAudio, mAudioRequestPending,
+             needToDecodeVideo, mVideoRequestPending,
+             needIdle);
+
   if (needToDecodeAudio) {
     EnsureAudioDecodeTaskQueued();
   }
@@ -1729,10 +1745,6 @@ MediaDecoderStateMachine::DispatchDecodeTasksIfNeeded()
     EnsureVideoDecodeTaskQueued();
   }
 
-  SAMPLE_LOG("DispatchDecodeTasksIfNeeded needAudio=%d dispAudio=%d needVideo=%d dispVid=%d needIdle=%d",
-             needToDecodeAudio, mAudioRequestPending,
-             needToDecodeVideo, mVideoRequestPending,
-             needIdle);
 
   if (needIdle) {
     RefPtr<nsIRunnable> event = NS_NewRunnableMethod(
@@ -1936,7 +1948,10 @@ bool MediaDecoderStateMachine::HasLowUndecodedData(int64_t aUsecs)
   }
   int64_t endOfDecodedAudioData = INT64_MAX;
   if (HasAudio() && !AudioQueue().AtEndOfStream()) {
-    endOfDecodedAudioData = AudioQueue().Peek() ? AudioQueue().Peek()->GetEndTime() : GetAudioClock();
+    // mDecodedAudioEndTime could be -1 when no audio samples are decoded.
+    // But that is fine since we consider ourself as low in decoded data when
+    // we don't have any decoded audio samples at all.
+    endOfDecodedAudioData = mDecodedAudioEndTime;
   }
   int64_t endOfDecodedData = std::min(endOfDecodedVideoData, endOfDecodedAudioData);
 
@@ -2109,6 +2124,7 @@ MediaDecoderStateMachine::DecodeFirstFrame()
       mReader->RequestAudioData();
     }
     if (HasVideo()) {
+      mVideoDecodeStartTime = TimeStamp::Now();
       ReentrantMonitorAutoExit unlock(mDecoder->GetReentrantMonitor());
       mReader->RequestVideoData(false, 0);
     }
@@ -2251,9 +2267,10 @@ void MediaDecoderStateMachine::DecodeSeek()
     return;
   }
 
+  mDecodeToSeekTarget = false;
+
   if (!currentTimeChanged) {
     DECODER_LOG("Seek !currentTimeChanged...");
-    mDecodeToSeekTarget = false;
     nsresult rv = mDecodeTaskQueue->Dispatch(
       NS_NewRunnableMethod(this, &MediaDecoderStateMachine::SeekCompleted));
     if (NS_FAILED(rv)) {
@@ -2387,6 +2404,13 @@ MediaDecoderStateMachine::SeekCompleted()
   // Try to decode another frame to detect if we're at the end...
   DECODER_LOG("Seek completed, mCurrentFrameTime=%lld", mCurrentFrameTime);
 
+  mCurrentSeekTarget = SeekTarget();
+
+  // Reset quick buffering status. This ensures that if we began the
+  // seek while quick-buffering, we won't bypass quick buffering mode
+  // if we need to buffer after the seek.
+  mQuickBuffering = false;
+
   // Prevent changes in playback position before 'seeked' is fired for we
   // expect currentTime equals seek target in 'seeked' callback.
   mScheduler->FreezeScheduling();
@@ -2394,11 +2418,6 @@ MediaDecoderStateMachine::SeekCompleted()
     ReentrantMonitorAutoExit exitMon(mDecoder->GetReentrantMonitor());
     NS_DispatchToMainThread(stopEvent, NS_DISPATCH_SYNC);
   }
-
-  // Reset quick buffering status. This ensures that if we began the
-  // seek while quick-buffering, we won't bypass quick buffering mode
-  // if we need to buffer after the seek.
-  mQuickBuffering = false;
 
   ScheduleStateMachine();
   mScheduler->ThawScheduling();

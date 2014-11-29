@@ -44,13 +44,13 @@ void ShutdownTaskTracer();
 class FakeTracedTask;
 
 enum SourceEventType {
-  UNKNOWN = 0,
-  TOUCH,
-  MOUSE,
-  KEY,
-  BLUETOOTH,
-  UNIXSOCKET,
-  WIFI
+  Unknown = 0,
+  Touch,
+  Mouse,
+  Key,
+  Bluetooth,
+  Unixsocket,
+  Wifi
 };
 
 class AutoSourceEvent
@@ -82,6 +82,8 @@ already_AddRefed<FakeTracedTask> CreateFakeTracedTask(int* aVptr);
 // tasks running on nsThreads and base::thread, so FreeTraceInfo is called at
 // where nsThread and base::thread release themselves.
 void FreeTraceInfo();
+
+const char* GetJSLabelPrefix();
 
 } // namespace tasktracer
 } // namespace mozilla.

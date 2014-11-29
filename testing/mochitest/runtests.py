@@ -765,6 +765,12 @@ class MochitestUtilsMixin(object):
     with open(os.path.join(options.profilePath, "extensions", "staged", "mochikit@mozilla.org", "chrome.manifest"), "a") as mfile:
       mfile.write(chrome)
 
+  def getChromeTestDir(self, options):
+    dir = os.path.join(os.path.abspath("."), SCRIPT_DIR) + "/"
+    if mozinfo.isWin:
+      dir = "file:///" + dir.replace("\\", "/")
+    return dir
+
   def addChromeToProfile(self, options):
     "Adds MochiKit chrome tests to the profile."
 
@@ -789,9 +795,7 @@ toolbar#nav-bar {
     manifest = os.path.join(options.profilePath, "tests.manifest")
     with open(manifest, "w") as manifestFile:
       # Register chrome directory.
-      chrometestDir = os.path.join(os.path.abspath("."), SCRIPT_DIR) + "/"
-      if mozinfo.isWin:
-        chrometestDir = "file:///" + chrometestDir.replace("\\", "/")
+      chrometestDir = self.getChromeTestDir(options)
       manifestFile.write("content mochitests %s contentaccessible=yes\n" % chrometestDir)
 
       if options.testingModulesDir is not None:
@@ -887,6 +891,9 @@ class SSLTunnel:
         redirhost = match.group("redirhost")
         config.write("redirhost:%s:%s:%s:%s\n" %
                      (loc.host, loc.port, self.sslPort, redirhost))
+
+      if option in ('ssl3', 'rc4'):
+        config.write("%s:%s:%s:%s\n" % (option, loc.host, loc.port, self.sslPort))
 
   def buildConfig(self, locations):
     """Create the ssltunnel configuration file"""
@@ -1711,10 +1718,8 @@ class Mochitest(MochitestUtilsMixin):
 
     self.setTestRoot(options)
 
-    # This runs on bc* and dt* jobs only
-    # We need to fix tests on plain|chrome|webapprt|a11y before making this default
-    # We need to ignore dt* jobs on e10s runs
-    if options.browserChrome and not (options.subsuite and options.e10s):
+    # Until we have all green, this only runs on bc* jobs (not dt* jobs)
+    if options.browserChrome and not options.subsuite:
       options.runByDir = True
 
     if not options.runByDir:
@@ -2101,7 +2106,9 @@ class Mochitest(MochitestUtilsMixin):
     if "MOZ_HIDE_RESULTS_TABLE" in os.environ and os.environ["MOZ_HIDE_RESULTS_TABLE"] == "1":
       options.hideResultsTable = True
 
-    d = dict((k, v) for k, v in options.__dict__.iteritems() if not k.startswith('log'))
+    d = dict((k, v) for k, v in options.__dict__.items() if
+        (not k.startswith('log_') or
+         not any([k.endswith(fmt) for fmt in commandline.log_formatters.keys()])))
     d['testRoot'] = self.testRoot
     content = json.dumps(d)
 

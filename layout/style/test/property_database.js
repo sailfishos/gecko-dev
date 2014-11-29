@@ -3957,18 +3957,13 @@ var gCSSProperties = {
       "flex-shrink",
       "flex-basis"
     ],
-    initial_values: [ "0 1 main-size", "main-size 0 1", "0 main-size", "main-size 0" ],
+    initial_values: [ "0 1 auto", "auto 0 1", "0 auto", "auto 0" ],
     other_values: [
       "none",
-      "auto",
       "1",
       "0",
       "0 1",
       "0.5",
-      "5px",
-      "15%",
-      "calc(5px)",
-      "main-size",
       "1.2 3.4",
       "0 0 0",
       "0 0 0px",
@@ -3997,15 +3992,13 @@ var gCSSProperties = {
     domProp: "flexBasis",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    initial_values: [ "main-size" ],
+    initial_values: [ " auto" ],
         // NOTE: This is cribbed directly from the "width" chunk, since this
         // property takes the exact same values as width (albeit with
         // different semantics on 'auto').
         // XXXdholbert (Maybe these should get separated out into
         // a reusable array defined at the top of this file?)
-    other_values: [
-      "auto",
-      "15px", "3em", "15%", "-moz-max-content", "-moz-min-content", "-moz-fit-content", "-moz-available",
+    other_values: [ "15px", "3em", "15%", "-moz-max-content", "-moz-min-content", "-moz-fit-content", "-moz-available",
       // valid calc() values
       "calc(-2px)",
       "calc(2px)",
@@ -4633,7 +4626,7 @@ if (SpecialPowers.getBoolPref("svg.paint-order.enabled")) {
 
 if (SpecialPowers.getBoolPref("layout.css.clip-path-shapes.enabled")) {
   gCSSProperties["clip-path"] = {
-    domProp: "clip-path",
+    domProp: "clipPath",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "none" ],
@@ -4702,6 +4695,15 @@ if (SpecialPowers.getBoolPref("layout.css.clip-path-shapes.enabled")) {
       "ellipse(20px 50% at top right)",
       "ellipse(closest-side 40% at 50% 100%)",
       "ellipse(calc(20% + 20%) calc(20px + 20cm) at right bottom)",
+
+      "inset(1px)",
+      "inset(20% -20px)",
+      "inset(20em 4rem calc(20% + 20px))",
+      "inset(20vh 20vw 20pt 3%)",
+      "inset(5px round 3px)",
+      "inset(1px 2px round 3px / 3px)",
+      "inset(1px 2px 3px round 3px 2em / 20%)",
+      "inset(1px 2px 3px 4px round 3px 2vw 20% / 20px 3em 2vh 20%)",
     ],
     invalid_values: [
       "url(#test) url(#tes2)",
@@ -4767,6 +4769,18 @@ if (SpecialPowers.getBoolPref("layout.css.clip-path-shapes.enabled")) {
       "polygon(at center top closest-side closest-side)",
       "polygon(40% at 50% 100%)",
       "polygon(40% farthest-side 20px at 50% 100%)",
+
+      "inset()",
+      "inset(round)",
+      "inset(round 3px)",
+      "inset(1px round 1px 2px 3px 4px 5px)",
+      "inset(1px 2px 3px 4px 5px)",
+      "inset(1px, round 3px)",
+      "inset(1px, 2px)",
+      "inset(1px 2px, 3px)",
+      "inset(1px at 3px)",
+      "inset(1px round 1px // 2px)",
+      "inset(1px round)",
     ],
     unbalanced_values: [
       "polygon(30% 30%",
@@ -4777,6 +4791,13 @@ if (SpecialPowers.getBoolPref("layout.css.clip-path-shapes.enabled")) {
       "circle(40% at 50% 100%",
       "ellipse(",
       "ellipse(40% at 50% 100%",
+
+      "inset(1px",
+      "inset(1px 2px",
+      "inset(1px 2px 3px",
+      "inset(1px 2px 3px 4px",
+      "inset(1px 2px 3px 4px round 5px",
+      "inset(1px 2px 3px 4px round 5px / 6px",
     ]
   };
 }

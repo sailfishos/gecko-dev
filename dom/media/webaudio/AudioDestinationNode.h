@@ -19,10 +19,10 @@ namespace dom {
 class AudioContext;
 class EventProxyHandler;
 
-class AudioDestinationNode : public AudioNode
-                           , public nsIDOMEventListener
-                           , public nsIAudioChannelAgentCallback
-                           , public MainThreadMediaStreamListener
+class AudioDestinationNode MOZ_FINAL : public AudioNode
+                                     , public nsIDOMEventListener
+                                     , public nsIAudioChannelAgentCallback
+                                     , public MainThreadMediaStreamListener
 {
 public:
   // This node type knows what MediaStreamGraph to use based on
@@ -54,7 +54,7 @@ public:
   void Mute();
   void Unmute();
 
-  void StartRendering();
+  void StartRendering(Promise* aPromise);
 
   void OfflineShutdown();
 
@@ -85,6 +85,7 @@ public:
   virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
 
   void InputMuted(bool aInputMuted);
+  void ResolvePromise(AudioBuffer* aRenderedBuffer);
 
 protected:
   virtual ~AudioDestinationNode();
@@ -103,6 +104,7 @@ private:
   nsCOMPtr<nsIAudioChannelAgent> mAudioChannelAgent;
 
   nsRefPtr<EventProxyHandler> mEventProxyHelper;
+  nsRefPtr<Promise> mOfflineRenderingPromise;
 
   // Audio Channel Type.
   AudioChannel mAudioChannel;

@@ -1142,6 +1142,28 @@ var gBrowserInit = {
 #endif
     }, false, true);
 
+    gBrowser.addEventListener("AboutTabCrashedTryAgain", function(event) {
+      let ownerDoc = event.originalTarget;
+
+      if (!ownerDoc.documentURI.startsWith("about:tabcrashed")) {
+        return;
+      }
+
+      let isTopFrame = (ownerDoc.defaultView.parent === ownerDoc.defaultView);
+      if (!isTopFrame) {
+        return;
+      }
+
+      let browser = gBrowser.getBrowserForDocument(ownerDoc);
+#ifdef MOZ_CRASHREPORTER
+      if (event.detail.sendCrashReport) {
+        TabCrashReporter.submitCrashReport(browser);
+      }
+#endif
+      let tab = gBrowser.getTabForBrowser(browser);
+      SessionStore.reviveCrashedTab(tab);
+    }, false, true);
+
     if (uriToLoad && uriToLoad != "about:blank") {
       if (uriToLoad instanceof Ci.nsISupportsArray) {
         let count = uriToLoad.Count();
@@ -1375,6 +1397,7 @@ var gBrowserInit = {
 
       SocialUI.init();
       TabView.init();
+      SearchHighlight.init();
 
       // Telemetry for master-password - we do this after 5 seconds as it
       // can cause IO if NSS/PSM has not already initialized.
@@ -2606,9 +2629,6 @@ let BrowserOnClick = {
         ownerDoc.documentURI.toLowerCase() == "about:newtab") {
       this.onE10sAboutNewTab(event, ownerDoc);
     }
-    else if (ownerDoc.documentURI.startsWith("about:tabcrashed")) {
-      this.onAboutTabCrashed(event, ownerDoc);
-    }
   },
 
   receiveMessage: function (msg) {
@@ -2866,29 +2886,6 @@ let BrowserOnClick = {
       event.preventDefault();
       let where = whereToOpenLink(event, false, false);
       openLinkIn(anchorTarget.href, where, { charset: ownerDoc.characterSet });
-    }
-  },
-
-  /**
-   * The about:tabcrashed can't do window.reload() because that
-   * would reload the page but not use a remote browser.
-   */
-  onAboutTabCrashed: function(event, ownerDoc) {
-    let isTopFrame = (ownerDoc.defaultView.parent === ownerDoc.defaultView);
-    if (!isTopFrame) {
-      return;
-    }
-
-    let button = event.originalTarget;
-    if (button.id == "tryAgain") {
-      let browser = gBrowser.getBrowserForDocument(ownerDoc);
-#ifdef MOZ_CRASHREPORTER
-      if (ownerDoc.getElementById("checkSendReport").checked) {
-        TabCrashReporter.submitCrashReport(browser);
-      }
-#endif
-      let tab = gBrowser.getTabForBrowser(browser);
-      SessionStore.reviveCrashedTab(tab);
     }
   },
 
@@ -3308,13 +3305,6 @@ const BrowserSearch = {
         return;
     }
 
-    // Append the URI and an appropriate title to the browser data.
-    // Use documentURIObject in the check for shouldLoadFavIcon so that we
-    // do the right thing with about:-style error pages.  Bug 453442
-    var iconURL = null;
-    if (gBrowser.shouldLoadFavIcon(uri))
-      iconURL = uri.prePath + "/favicon.ico";
-
     var hidden = false;
     // If this engine (identified by title) is already in the list, add it
     // to the list of hidden engines rather than to the main list.
@@ -3327,7 +3317,8 @@ const BrowserSearch = {
 
     engines.push({ uri: engine.href,
                    title: engine.title,
-                   icon: iconURL });
+                   get icon() { return browser.mIconURL; }
+                 });
 
     if (hidden)
       browser.hiddenEngines = engines;
@@ -3565,6 +3556,138 @@ const BrowserSearch = {
 
     let count = Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS");
     count.add(countId);
+  },
+};
+
+const SearchHighlight = {
+  eventsReady: false,
+  // The pref that controls how many times to show the highlight.
+  countPref: "browser.search.highlightCount",
+  // The current highlight to show.
+  currentPos: 0,
+  // Tracks if the popup closed very recently.
+  hideTimer: null,
+
+  // The list of highlights and the items in the panel to anchor them to.
+  highlights: [{
+    id: "SearchHighlight1",
+    anchor: "search-panel-one-offs"
+  }, {
+    id: "SearchHighlight2",
+    anchor: "searchbar-engine",
+  }],
+
+  init: function() {
+    this.panel = document.getElementById("PopupSearchAutoComplete");
+    this.panel.addEventListener("popupshowing", this.searchPanelShown.bind(this), false);
+  },
+
+  initEvents: function() {
+    if (this.eventsReady) {
+      return;
+    }
+
+    this.panel.addEventListener("popuphidden", this.searchPanelHidden.bind(this), false);
+
+    for (let highlight of this.highlights) {
+      highlight.panel = document.getElementById(highlight.id);
+      highlight.panel.addEventListener("popupshowing", this.disablePanelHiding.bind(this), false);
+      highlight.panel.addEventListener("popuphiding", this.enablePanelHiding.bind(this), false);
+
+      highlight.panel.querySelector("button").addEventListener("command", this.highlightButtonClicked.bind(this), false);
+    }
+
+    this.eventsReady = true;
+  },
+
+  get highlightPanel() {
+    return this.highlights[this.currentPos].panel;
+  },
+
+  showHighlight: function() {
+    // Check that all the events are setup.
+    this.initEvents();
+
+    // If a highlight is already showing then do nothing.
+    if (this.highlightPanel.state != "closed") {
+      return;
+    }
+
+    // Show the first highlight.
+    this.currentPos = 0;
+    this.showCurrentHighlight();
+  },
+
+  showCurrentHighlight: function() {
+    let highlight = this.highlights[this.currentPos];
+    let anchor = document.getAnonymousElementByAttribute(this.panel, "anonid", highlight.anchor);
+    highlight.panel.hidden = false;
+    highlight.panel.openPopup(anchor, "leftcenter topright");
+  },
+
+  searchPanelShown: function() {
+    let placement = CustomizableUI.getPlacementOfWidget("search-container");
+    if (placement.area == CustomizableUI.AREA_PANEL) {
+      // Opening a panel anchored to a panel anchored to a panel anchored to the
+      // window doesn't work very well
+      return;
+    }
+
+    if (!BrowserSearch.searchBar.value) {
+      // Don't show the panels when there is no text in the search box
+      return;
+    }
+
+    // If the panel was only very recently closed re-show the last highlight.
+    if (this.hideTimer) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+      this.showCurrentHighlight();
+      return;
+    }
+
+    // If the highlight has already been show the appropriate number of times
+    // do nothing.
+    let count = Services.prefs.getIntPref(this.countPref);
+    if (count <= 0)
+      return;
+
+    this.showHighlight();
+    Services.prefs.setIntPref(this.countPref, count - 1);
+  },
+
+  searchPanelHidden: function() {
+    if (this.highlightPanel.state == "closed") {
+      return;
+    }
+
+    this.highlightPanel.hidePopup();
+
+    // Set a flag when the panel was closed in the last short time.
+    this.hideTimer = setTimeout(() => {
+      this.hideTimer = null;
+    }, 500);
+  },
+
+  highlightButtonClicked: function() {
+    // When the button is clicked close the current highlight and open the next
+    // one.
+    this.highlightPanel.hidePopup();
+    this.currentPos++;
+    if (this.currentPos < this.highlights.length) {
+      this.showCurrentHighlight();
+    } else {
+      Services.prefs.setIntPref(this.countPref, 0);
+      this.currentPos = 0;
+    }
+  },
+
+  disablePanelHiding: function() {
+    this.panel.setAttribute("noautohide", "true");
+  },
+
+  enablePanelHiding: function() {
+    this.panel.setAttribute("noautohide", "false");
   },
 };
 
@@ -7309,9 +7432,13 @@ let gPrivateBrowsingUI = {
 
     if (gURLBar &&
         !PrivateBrowsingUtils.permanentPrivateBrowsing) {
-      // Disable switch to tab autocompletion for private windows 
-      // (not for "Always use private browsing" mode)
-      gURLBar.setAttribute("autocompletesearchparam", "");
+      // Disable switch to tab autocompletion for private windows.
+      // We leave it enabled for permanent private browsing mode though.
+      let value = gURLBar.getAttribute("autocompletesearchparam") || "";
+      if (!value.contains("disable-private-actions")) {
+        gURLBar.setAttribute("autocompletesearchparam",
+                             value + " disable-private-actions");
+      }
     }
   }
 };
@@ -7821,4 +7948,3 @@ let PanicButtonNotifier = {
     popup.hidePopup();
   },
 };
-

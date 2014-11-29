@@ -370,6 +370,7 @@ else
     AC_CHECK_PROGS(LD, ld, :)
     AC_CHECK_PROGS(STRIP, strip, :)
     AC_CHECK_PROGS(WINDRES, windres, :)
+    AC_CHECK_PROGS(OTOOL, otool, :)
     if test -z "$HOST_CC"; then
         HOST_CC="$CC"
     fi
@@ -2212,7 +2213,7 @@ ia64*-hpux*)
         if test "$CPU_ARCH" = "x86"; then
             WIN32_SUBSYSTEM_VERSION=5.01
         else
-            WIN32_SUBSYSTEM_VERSION=5.02
+            WIN32_SUBSYSTEM_VERSION=6.01
         fi
         WIN32_CONSOLE_EXE_LDFLAGS=-SUBSYSTEM:CONSOLE,$WIN32_SUBSYSTEM_VERSION
         WIN32_GUI_EXE_LDFLAGS=-SUBSYSTEM:WINDOWS,$WIN32_SUBSYSTEM_VERSION
@@ -2278,17 +2279,8 @@ ia64*-hpux*)
         dnl For profile-guided optimization
         PROFILE_GEN_CFLAGS="-GL"
         PROFILE_GEN_LDFLAGS="-LTCG:PGINSTRUMENT"
-        dnl XXX: PGO builds can fail with warnings treated as errors,
-        dnl specifically "no profile data available" appears to be
-        dnl treated as an error sometimes. This might be a consequence
-        dnl of using WARNINGS_AS_ERRORS in some modules, combined
-        dnl with the linker doing most of the work in the whole-program
-        dnl optimization/PGO case. I think it's probably a compiler bug,
-        dnl but we work around it here.
-        PROFILE_USE_CFLAGS="-GL -wd4624 -wd4952"
-        dnl XXX: should be -LTCG:PGOPTIMIZE, but that fails on libxul.
-        dnl Probably also a compiler bug, but what can you do?
-        PROFILE_USE_LDFLAGS="-LTCG:PGUPDATE"
+        PROFILE_USE_CFLAGS="-GL"
+        PROFILE_USE_LDFLAGS="-LTCG:PGOPTIMIZE"
         LDFLAGS="$LDFLAGS -DYNAMICBASE"
         dnl Minimum reqiurement of Gecko is VS2010 or later which supports
         dnl both SSSE3 and SSE4.1.
@@ -3542,10 +3534,6 @@ dnl ========================================================
 dnl Disable compiling sources in unified mode.
 dnl ========================================================
 
-if test -z "$NIGHTLY_BUILD"; then
-    MOZ_DISABLE_UNIFIED_COMPILATION=1
-fi
-
 MOZ_ARG_DISABLE_BOOL(unified-compilation,
 [  --disable-unified-compilation
                           Disable unified compilation of some C/C++ sources],
@@ -3988,13 +3976,7 @@ MOZ_ARG_WITH_STRING(xulrunner-stub-name,
   XULRUNNER_STUB_NAME=$withval)
 
 if test -z "$XULRUNNER_STUB_NAME"; then
-  case "$target_os" in
-  darwin*)
-    XULRUNNER_STUB_NAME=xulrunner
-    ;;
-  *)
-    XULRUNNER_STUB_NAME=xulrunner-stub
-  esac
+  XULRUNNER_STUB_NAME=xulrunner-stub
 fi
 AC_SUBST(XULRUNNER_STUB_NAME)
 
@@ -5941,53 +5923,57 @@ if test -n "$MOZ_ANGLE_RENDERER"; then
   ######################################
   # Find _43 for use by XP.
 
-  # Get the SDK path from the registry.
-  # First try to get the June 2010 SDK
-  MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK (June 2010)' | head -n 1`
-  if test -z "$MOZ_DIRECTX_SDK_REG_KEY" ; then
-    # Otherwise just take whatever comes first
-    MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK' | head -n 1`
-  fi
-  MOZ_DIRECTX_SDK_PATH=`reg query "$MOZ_DIRECTX_SDK_REG_KEY" //v InstallPath | grep REG_SZ | sed 's/.*\([[a-zA-Z]]\)\\:\\\\/\\1\\:\\\\/' | sed 's,\\\\,/,g'`
-
-  if test -n "$MOZ_DIRECTX_SDK_PATH" &&
-     test -f "$MOZ_DIRECTX_SDK_PATH"/lib/$MOZ_D3D_CPU_SUFFIX/dxguid.lib ; then
-    AC_MSG_RESULT([Found DirectX SDK via registry, using $MOZ_DIRECTX_SDK_PATH])
+  if test "$HAVE_64BIT_BUILD"; then
+    AC_MSG_RESULT([We are building a 64-bit binary, skip checking d3dcompiler_43.])
   else
-    AC_MSG_RESULT([DirectX SDK not found.])
-    MOZ_DIRECTX_SDK_PATH=
-  fi
+    # Get the SDK path from the registry.
+    # First try to get the June 2010 SDK
+    MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK (June 2010)' | head -n 1`
+    if test -z "$MOZ_DIRECTX_SDK_REG_KEY" ; then
+      # Otherwise just take whatever comes first
+      MOZ_DIRECTX_SDK_REG_KEY=`reg query 'HKLM\Software\Microsoft\DirectX' //s | grep 'Microsoft DirectX SDK' | head -n 1`
+    fi
+    MOZ_DIRECTX_SDK_PATH=`reg query "$MOZ_DIRECTX_SDK_REG_KEY" //v InstallPath | grep REG_SZ | sed 's/.*\([[a-zA-Z]]\)\\:\\\\/\\1\\:\\\\/' | sed 's,\\\\,/,g'`
 
-  # Check that our DirectX SDK is acceptable.
-  if test -n "$MOZ_DIRECTX_SDK_PATH"; then
-    if test -n "`echo $MOZ_DIRECTX_SDK_REG_KEY | grep 'February 2010'`" ; then
-      AC_MSG_RESULT([Found the February 2010 DirectX SDK, which is unacceptable to ANGLE.])
+    if test -n "$MOZ_DIRECTX_SDK_PATH" &&
+       test -f "$MOZ_DIRECTX_SDK_PATH"/lib/$MOZ_D3D_CPU_SUFFIX/dxguid.lib ; then
+      AC_MSG_RESULT([Found DirectX SDK via registry, using $MOZ_DIRECTX_SDK_PATH])
+    else
+      AC_MSG_RESULT([DirectX SDK not found.])
       MOZ_DIRECTX_SDK_PATH=
     fi
-  fi
 
-  if test -n "$MOZ_DIRECTX_SDK_PATH"; then
-    # Find a D3D compiler DLL in the DirectX SDK, if we didn't find one already.
-    # Get the SDK numeric version (e.g. 43) by looking at the dependencies of d3dx9.lib
-    MOZ_D3DX9_VERSION=`dumpbin //headers "$MOZ_DIRECTX_SDK_PATH"/lib/$MOZ_D3D_CPU_SUFFIX/d3dx9.lib | egrep d3dx9_[[0-9]][[0-9]]\.dll | head -n1 | sed 's/.*\([[0-9]][[0-9]]\).*/\\1/g'`
+    # Check that our DirectX SDK is acceptable.
+    if test -n "$MOZ_DIRECTX_SDK_PATH"; then
+      if test -n "`echo $MOZ_DIRECTX_SDK_REG_KEY | grep 'February 2010'`" ; then
+        AC_MSG_RESULT([Found the February 2010 DirectX SDK, which is unacceptable to ANGLE.])
+        MOZ_DIRECTX_SDK_PATH=
+      fi
+    fi
 
-    if test -n "$MOZ_D3DX9_VERSION" ; then
-      MOZ_D3DCOMPILER_XP_CAB=`find "$MOZ_DIRECTX_SDK_PATH"/Redist -name *D3DCompiler_${MOZ_D3DX9_VERSION}_${MOZ_D3D_CPU_SUFFIX}.cab | head -n1`
+    if test -n "$MOZ_DIRECTX_SDK_PATH"; then
+      # Find a D3D compiler DLL in the DirectX SDK, if we didn't find one already.
+      # Get the SDK numeric version (e.g. 43) by looking at the dependencies of d3dx9.lib
+      MOZ_D3DX9_VERSION=`dumpbin //headers "$MOZ_DIRECTX_SDK_PATH"/lib/$MOZ_D3D_CPU_SUFFIX/d3dx9.lib | egrep d3dx9_[[0-9]][[0-9]]\.dll | head -n1 | sed 's/.*\([[0-9]][[0-9]]\).*/\\1/g'`
 
-      if test -n "$MOZ_D3DCOMPILER_XP_CAB"; then
-        MOZ_D3DCOMPILER_XP_DLL=D3DCompiler_$MOZ_D3DX9_VERSION.dll
+      if test -n "$MOZ_D3DX9_VERSION" ; then
+        MOZ_D3DCOMPILER_XP_CAB=`find "$MOZ_DIRECTX_SDK_PATH"/Redist -name *D3DCompiler_${MOZ_D3DX9_VERSION}_${MOZ_D3D_CPU_SUFFIX}.cab | head -n1`
+
+        if test -n "$MOZ_D3DCOMPILER_XP_CAB"; then
+          MOZ_D3DCOMPILER_XP_DLL=D3DCompiler_$MOZ_D3DX9_VERSION.dll
+        else
+          AC_MSG_RESULT([Couldn't find a CAB containing the D3D compiler DLL.])
+          AC_MSG_ERROR([DirectX SDK at "$MOZ_DIRECTX_SDK_PATH" appears broken.])
+          MOZ_DIRECTX_SDK_PATH=
+        fi
       else
-        AC_MSG_RESULT([Couldn't find a CAB containing the D3D compiler DLL.])
-        AC_MSG_ERROR([DirectX SDK at "$MOZ_DIRECTX_SDK_PATH" appears broken.])
+        AC_MSG_RESULT([Couldn't determine the D3DX9 version for the DirectX SDK.])
         MOZ_DIRECTX_SDK_PATH=
       fi
     else
-      AC_MSG_RESULT([Couldn't determine the D3DX9 version for the DirectX SDK.])
-      MOZ_DIRECTX_SDK_PATH=
+      AC_MSG_RESULT([Couldn't find an acceptable DirectX SDK for ANGLE, needed for d3dcompiler_43.])
+      AC_MSG_RESULT([  Either ignore, install DirectX SDK (June 2010 version or newer), or reconfigure with --disable-webgl.])
     fi
-  else
-    AC_MSG_RESULT([Couldn't find an acceptable DirectX SDK for ANGLE, needed for d3dcompiler_43.])
-    AC_MSG_RESULT([  Either ignore, install DirectX SDK (June 2010 version or newer), or reconfigure with --disable-webgl.])
   fi
 
   ######################################
@@ -7175,12 +7161,12 @@ elif test -n "$MOZ_REPLACE_MALLOC"; then
                  dnl - classic info only (for OSX < 10.6)
                  dnl - dyld info only
                  dnl - both
-                 if otool -l conftest${DLL_SUFFIX} 2> /dev/null | grep "LC_DYLD_INFO_ONLY" > /dev/null; then
+                 if "$OTOOL" -l conftest${DLL_SUFFIX} 2> /dev/null | grep "LC_DYLD_INFO_ONLY" > /dev/null; then
                      _CLASSIC_INFO=
                  else
                      _CLASSIC_INFO=1
                  fi
-                 if otool -l conftest${DLL_SUFFIX} 2> /dev/null | grep "LC_DYLD_INFO" > /dev/null; then
+                 if "$OTOOL" -l conftest${DLL_SUFFIX} 2> /dev/null | grep "LC_DYLD_INFO" > /dev/null; then
                      _DYLD_INFO=1
                  else
                      _DYLD_INFO=

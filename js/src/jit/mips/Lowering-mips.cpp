@@ -57,6 +57,12 @@ LIRGeneratorMIPS::useByteOpRegisterOrNonDoubleConstant(MDefinition *mir)
     return useRegisterOrNonDoubleConstant(mir);
 }
 
+LDefinition
+LIRGeneratorMIPS::tempByteOpRegister()
+{
+    return temp();
+}
+
 bool
 LIRGeneratorMIPS::lowerConstantDouble(double d, MInstruction *mir)
 {
@@ -201,8 +207,9 @@ LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 1, 0> *ins, MDefinition *mir
                   LDefinition(LDefinition::TypeFrom(mir->type()), LDefinition::REGISTER));
 }
 
+template<size_t Temps>
 bool
-LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 2, 0> *ins, MDefinition *mir,
+LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 2, Temps> *ins, MDefinition *mir,
                               MDefinition *lhs, MDefinition *rhs)
 {
     ins->setOperand(0, useRegister(lhs));
@@ -210,6 +217,11 @@ LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 2, 0> *ins, MDefinition *mir
     return define(ins, mir,
                   LDefinition(LDefinition::TypeFrom(mir->type()), LDefinition::REGISTER));
 }
+
+template bool LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 2, 0> *ins, MDefinition *mir,
+                                            MDefinition *lhs, MDefinition *rhs);
+template bool LIRGeneratorMIPS::lowerForFPU(LInstructionHelper<1, 2, 1> *ins, MDefinition *mir,
+                                            MDefinition *lhs, MDefinition *rhs);
 
 bool
 LIRGeneratorMIPS::lowerForBitAndAndBranch(LBitAndAndBranch *baab, MInstruction *mir,
@@ -520,6 +532,18 @@ LIRGeneratorMIPS::lowerTruncateFToInt32(MTruncateToInt32 *ins)
 }
 
 bool
+LIRGeneratorMIPS::visitSubstr(MSubstr *ins)
+{
+    LSubstr *lir = new (alloc()) LSubstr(useRegister(ins->string()),
+                                         useRegister(ins->begin()),
+                                         useRegister(ins->length()),
+                                         temp(),
+                                         temp(),
+                                         tempByteOpRegister());
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGeneratorMIPS::visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic *ins)
 {
     MOZ_CRASH("NYI");
@@ -551,6 +575,18 @@ LIRGeneratorMIPS::visitSimdValueX4(MSimdValueX4 *ins)
 
 bool
 LIRGeneratorMIPS::visitCompareExchangeTypedArrayElement(MCompareExchangeTypedArrayElement *ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+bool
+LIRGeneratorMIPS::visitAsmJSCompareExchangeHeap(MAsmJSCompareExchangeHeap *ins)
+{
+    MOZ_CRASH("NYI");
+}
+
+bool
+LIRGeneratorMIPS::visitAsmJSAtomicBinopHeap(MAsmJSAtomicBinopHeap *ins)
 {
     MOZ_CRASH("NYI");
 }

@@ -55,7 +55,7 @@
 @RESPATH@/browser/@PREF_DIR@/firefox-l10n.js
 @RESPATH@/browser/searchplugins/*
 #ifdef XP_WIN32
-@RESPATH@/uninstall/helper.exe
+@BINPATH@/uninstall/helper.exe
 #endif
 #ifdef MOZ_UPDATER
 @RESPATH@/update.locale
@@ -167,8 +167,10 @@
 @RESPATH@/components/appstartup.xpt
 @RESPATH@/components/autocomplete.xpt
 @RESPATH@/components/autoconfig.xpt
+@RESPATH@/components/browser-element.xpt
 @RESPATH@/browser/components/browsercompsbase.xpt
 @RESPATH@/browser/components/browser-feeds.xpt
+@RESPATH@/browser/components/browsermodules.manifest
 @RESPATH@/components/caps.xpt
 @RESPATH@/components/chrome.xpt
 @RESPATH@/components/commandhandler.xpt
@@ -779,8 +781,6 @@
 #if defined(MOZ_SANDBOX)
 #if defined(XP_WIN)
 @BINPATH@/@DLL_PREFIX@sandboxbroker@DLL_SUFFIX@
-#elif defined(XP_LINUX)
-@BINPATH@/@DLL_PREFIX@mozsandbox@DLL_SUFFIX@
 #endif
 #endif
 

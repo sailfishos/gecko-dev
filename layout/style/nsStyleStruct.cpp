@@ -1397,7 +1397,7 @@ nsStylePosition::nsStylePosition(void)
   mHeight.SetAutoValue();
   mMinHeight.SetAutoValue();
   mMaxHeight.SetNoneValue();
-  mFlexBasis.SetIntValue(NS_STYLE_FLEX_BASIS_MAIN_SIZE, eStyleUnit_Enumerated);
+  mFlexBasis.SetAutoValue();
 
   // The initial value of grid-auto-columns and grid-auto-rows is 'auto',
   // which computes to 'minmax(min-content, max-content)'.
@@ -2054,8 +2054,8 @@ nsStyleImage::IsOpaque() const
   mImage->GetImage(getter_AddRefs(imageContainer));
   NS_ABORT_IF_FALSE(imageContainer, "IsComplete() said image container is ready");
 
-  // Check if the crop region of the current image frame is opaque.
-  if (imageContainer->FrameIsOpaque(imgIContainer::FRAME_CURRENT)) {
+  // Check if the crop region of the image is opaque.
+  if (imageContainer->IsOpaque()) {
     if (!mCropRect)
       return true;
 

@@ -9,12 +9,16 @@ import sys
 import traceback
 import uuid
 
+from mozlog.structured import commandline
+
 import vcs
 from vcs import git, hg
 manifest = None
 import metadata
 import testloader
 import wptcommandline
+
+logger = None
 
 base_path = os.path.abspath(os.path.split(__file__)[0])
 
@@ -49,11 +53,22 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 """
 
+
 def do_delayed_imports(serve_root):
     global manifest
     sys.path.insert(0, os.path.join(serve_root, "tools", "scripts"))
     import manifest
 
+
+def setup_logging(args, defaults):
+    global logger
+    logger = commandline.setup_logging("web-platform-tests-update", args, defaults)
+
+    for name in args.keys():
+        if name.startswith("log_"):
+            args.pop(name)
+
+    return logger
 
 class RepositoryError(Exception):
     pass
@@ -318,7 +333,12 @@ def sync_tests(paths, local_tree, wpt, bug):
                             "metadata_path": paths["sync_dest"]["metadata_path"]}}
 
         manifest_loader = testloader.ManifestLoader(sync_paths)
-        initial_manifests = manifest_loader.load()
+        test_manifest = manifest_loader.load_manifest(**sync_paths["/"])
+
+        initial_rev = test_manifest.rev
+        manifest.update(sync_paths["/"]["tests_path"], "/", test_manifest)
+        manifest.write(test_manifest, os.path.join(sync_paths["/"]["metadata_path"], "MANIFEST.json"))
+
         wpt.copy_work_tree(paths["sync_dest"]["tests_path"])
 
         local_tree.create_patch("web-platform-tests_update_%s" % wpt.rev,
@@ -334,7 +354,7 @@ def sync_tests(paths, local_tree, wpt, bug):
     finally:
         pass  # wpt.clean()
 
-    return initial_manifests
+    return initial_rev
 
 
 def update_metadata(paths, local_tree, initial_rev, bug, log_files, ignore_existing,
@@ -425,12 +445,7 @@ expected data."""
         wpt_repo = WebPlatformTests(config["web-platform-tests"]["remote_url"],
                                     paths["sync"],
                                     rev=rev)
-        initial_manifests = sync_tests(paths, local_tree, wpt_repo, bug)
-        initial_rev = None
-        for manifest, path_data in initial_manifests.iteritems():
-            if path_data["url_base"] == "/":
-                initial_rev = manifest.rev
-                break
+        initial_rev = sync_tests(paths, local_tree, wpt_repo, bug)
 
     if kwargs["run_log"]:
         update_metadata(paths,

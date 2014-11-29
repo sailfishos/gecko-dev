@@ -8,12 +8,11 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jit/IonLinker.h"
-
 #include "jit/JitcodeMap.h"
+#include "jit/Linker.h"
 #include "jit/PerfSpewer.h"
 
-#include "jit/IonFrames-inl.h"
+#include "jit/JitFrames-inl.h"
 #include "vm/Stack-inl.h"
 
 using namespace js;
@@ -38,7 +37,17 @@ struct DebugModeOSREntry
         newStub(nullptr),
         recompInfo(nullptr),
         pcOffset(uint32_t(-1)),
-        frameKind(ICEntry::Kind_NonOp)
+        frameKind(ICEntry::Kind_Invalid)
+    { }
+
+    DebugModeOSREntry(JSScript *script, uint32_t pcOffset)
+      : script(script),
+        oldBaselineScript(script->baselineScript()),
+        oldStub(nullptr),
+        newStub(nullptr),
+        recompInfo(nullptr),
+        pcOffset(pcOffset),
+        frameKind(ICEntry::Kind_Invalid)
     { }
 
     DebugModeOSREntry(JSScript *script, const ICEntry &icEntry)
@@ -195,11 +204,23 @@ CollectJitStackScripts(JSContext *cx, const Debugger::ExecutionObservableSet &ob
                 if (!entries.append(DebugModeOSREntry(script, info)))
                     return false;
             } else {
-                // Otherwise, use the return address to look up the ICEntry.
                 uint8_t *retAddr = iter.returnAddressToFp();
-                ICEntry &entry = script->baselineScript()->icEntryFromReturnAddress(retAddr);
-                if (!entries.append(DebugModeOSREntry(script, entry)))
-                    return false;
+                ICEntry *icEntry = script->baselineScript()->maybeICEntryFromReturnAddress(retAddr);
+                if (icEntry) {
+                    // Normally, the frame is settled on a pc with an ICEntry.
+                    if (!entries.append(DebugModeOSREntry(script, *icEntry)))
+                        return false;
+                } else {
+                    // Otherwise, we are in the middle of handling an
+                    // exception. This happens since we could have bailed out
+                    // in place from Ion after a throw, settling on the pc
+                    // *after* the bytecode that threw the exception, which
+                    // may have no ICEntry.
+                    MOZ_ASSERT(iter.baselineFrame()->isDebuggerHandlingException());
+                    jsbytecode *pc = script->baselineScript()->pcForReturnAddress(script, retAddr);
+                    if (!entries.append(DebugModeOSREntry(script, script->pcToOffset(pc))))
+                        return false;
+                }
             }
 
             if (entries.back().needsRecompileInfo()) {
@@ -215,7 +236,7 @@ CollectJitStackScripts(JSContext *cx, const Debugger::ExecutionObservableSet &ob
 
           case JitFrame_BaselineStub:
             prevFrameStubPtr =
-                reinterpret_cast<IonBaselineStubFrameLayout *>(iter.fp())->maybeStubPtr();
+                reinterpret_cast<BaselineStubFrameLayout *>(iter.fp())->maybeStubPtr();
             break;
 
           case JitFrame_IonJS: {
@@ -298,6 +319,16 @@ SpewPatchBaselineFrame(uint8_t *oldReturnAddress, uint8_t *newReturnAddress,
 }
 
 static void
+SpewPatchBaselineFrameFromExceptionHandler(uint8_t *oldReturnAddress, uint8_t *newReturnAddress,
+                                           JSScript *script, jsbytecode *pc)
+{
+    JitSpew(JitSpew_BaselineDebugModeOSR,
+            "Patch return %p -> %p on BaselineJS frame (%s:%d) from exception handler at %s",
+            oldReturnAddress, newReturnAddress, script->filename(), script->lineno(),
+            js_CodeName[(JSOp)*pc]);
+}
+
+static void
 SpewPatchStubFrame(ICStub *oldStub, ICStub *newStub)
 {
     JitSpew(JitSpew_BaselineDebugModeOSR,
@@ -321,6 +352,7 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
     //  A. From a "can call" stub.
     //  B. From a VM call (interrupt handler, debugger statement handler,
     //                     throw).
+    //  H. From inside HandleExceptionBaseline.
     //
     // On to Off:
     //  - All the ways above.
@@ -340,7 +372,7 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
     // state). Specifics on what need to be done are documented below.
     //
 
-    IonCommonFrameLayout *prev = nullptr;
+    CommonFrameLayout *prev = nullptr;
     size_t entryIndex = *start;
 
     for (JitFrameIterator iter(activation); !iter.done(); ++iter) {
@@ -387,12 +419,36 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
                 break;
             }
 
+            if (kind == ICEntry::Kind_Invalid) {
+                // Case H above.
+                //
+                // We are recompiling on-stack scripts from inside the
+                // exception handler, by way of an onExceptionUnwind
+                // invocation, on a pc without an ICEntry. Since execution
+                // cannot continue after the exception anyways, it doesn't
+                // matter what we patch the resume address with, nor do we
+                // need to fix up the stack and register state.
+                //
+                // So that frame iterators may continue working, we patch the
+                // resume address.
+                MOZ_ASSERT(iter.baselineFrame()->isDebuggerHandlingException());
+                uint8_t *retAddr = bl->nativeCodeForPC(script, pc);
+                SpewPatchBaselineFrameFromExceptionHandler(prev->returnAddress(), retAddr,
+                                                           script, pc);
+                DebugModeOSRVolatileJitFrameIterator::forwardLiveIterators(
+                    cx, prev->returnAddress(), retAddr);
+                prev->setReturnAddress(retAddr);
+                entryIndex++;
+                break;
+            }
+
             // Cases F and G above.
             //
             // We undo a previous recompile by handling cases B, C, D, and E
             // like normal, except that we retrieved the pc information via
             // the previous OSR debug info stashed on the frame.
-            if (BaselineDebugModeOSRInfo *info = iter.baselineFrame()->getDebugModeOSRInfo()) {
+            BaselineDebugModeOSRInfo *info = iter.baselineFrame()->getDebugModeOSRInfo();
+            if (info) {
                 MOZ_ASSERT(info->pc == pc);
                 MOZ_ASSERT(info->frameKind == kind);
 
@@ -426,15 +482,12 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
                 //
                 // Throws are treated differently, as patching a throw means
                 // we are recompiling on-stack scripts from inside an
-                // onExceptionUnwind invocation. The Baseline compiler
-                // considers all bytecode after the throw to be unreachable
-                // and does not compile them, so we cannot patch the resume
-                // address to be the next pc. Since execution cannot continue
-                // after the throw anyways, it doesn't matter what we patch
-                // the resume address with. So that frame iterators may
-                // continue working, we patch the resume address to be right
-                // at the throw.
-                if (JSOp(*pc) != JSOP_THROW)
+                // onExceptionUnwind invocation. The resume address must be
+                // settled on the throwing pc and not its successor, so that
+                // Debugger.Frame may report the correct offset. Note we never
+                // actually resume execution there, and it is set for the sake
+                // of frame iterators.
+                if (!iter.baselineFrame()->isDebuggerHandlingException())
                     pc += GetBytecodeLength(pc);
                 recompInfo->resumeAddr = bl->nativeCodeForPC(script, pc, &recompInfo->slotInfo);
                 popFrameReg = true;
@@ -501,8 +554,8 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
             if (!entry.recompiled())
                 break;
 
-            IonBaselineStubFrameLayout *layout =
-                reinterpret_cast<IonBaselineStubFrameLayout *>(iter.fp());
+            BaselineStubFrameLayout *layout =
+                reinterpret_cast<BaselineStubFrameLayout *>(iter.fp());
             MOZ_ASSERT(layout->maybeStubPtr() == entry.oldStub);
 
             // Patch baseline stub frames for case A above.

@@ -100,6 +100,7 @@
 #include "mozilla/dom/WakeLock.h"
 #include "nsIDOMWindow.h"
 #include "nsIExternalProtocolService.h"
+#include "nsIFormProcessor.h"
 #include "nsIGfxInfo.h"
 #include "nsIIdleService.h"
 #include "nsIJSRuntimeService.h"
@@ -194,7 +195,7 @@ using namespace mozilla::system;
 
 
 #if defined(MOZ_CONTENT_SANDBOX) && defined(XP_LINUX)
-#include "mozilla/Sandbox.h"
+#include "mozilla/SandboxInfo.h"
 #endif
 
 #ifdef MOZ_TOOLKIT_SEARCH
@@ -699,7 +700,7 @@ ContentParent::StartUp()
 #if defined(MOZ_CONTENT_SANDBOX) && defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 19
     // Require sandboxing on B2G >= KitKat.  This condition must stay
     // in sync with ContentChild::RecvSetProcessSandbox.
-    if (ContentProcessSandboxStatus() == kSandboxingWouldFail) {
+    if (!SandboxInfo::Get().CanSandboxContent()) {
         // MOZ_CRASH strings are only for debug builds; make sure the
         // message is clear on non-debug builds as well:
         printf_stderr("Sandboxing support is required on this platform.  "
@@ -3660,7 +3661,8 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
                                          const nsString& aCookie, const nsString& aName,
                                          const nsString& aBidi, const nsString& aLang,
                                          const nsString& aData,
-                                         const IPC::Principal& aPrincipal)
+                                         const IPC::Principal& aPrincipal,
+                                         const bool& aInPrivateBrowsing)
 {
 #ifdef MOZ_CHILD_PERMISSIONS
     uint32_t permission = mozilla::CheckPermission(this, aPrincipal,
@@ -3674,7 +3676,7 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
     if (sysAlerts) {
         sysAlerts->ShowAlertNotification(aImageUrl, aTitle, aText, aTextClickable,
                                          aCookie, this, aName, aBidi, aLang,
-                                         aData, aPrincipal);
+                                         aData, aPrincipal, aInPrivateBrowsing);
     }
     return true;
 }
@@ -4216,6 +4218,42 @@ ContentParent::RecvOpenAnonymousTemporaryFile(FileDescriptor *aFD)
     return true;
 }
 
+static NS_DEFINE_CID(kFormProcessorCID, NS_FORMPROCESSOR_CID);
+
+bool
+ContentParent::RecvFormProcessValue(const nsString& oldValue,
+                                    const nsString& challenge,
+                                    const nsString& keytype,
+                                    const nsString& keyparams,
+                                    nsString* newValue)
+{
+    nsCOMPtr<nsIFormProcessor> formProcessor =
+      do_GetService(kFormProcessorCID);
+    if (!formProcessor) {
+        newValue->Truncate();
+        return true;
+    }
+
+    formProcessor->ProcessValueIPC(oldValue, challenge, keytype, keyparams,
+                                   *newValue);
+    return true;
+}
+
+bool
+ContentParent::RecvFormProvideContent(nsString* aAttribute,
+                                      nsTArray<nsString>* aContent)
+{
+    nsCOMPtr<nsIFormProcessor> formProcessor =
+      do_GetService(kFormProcessorCID);
+    if (!formProcessor) {
+        return true;
+    }
+
+    formProcessor->ProvideContent(NS_LITERAL_STRING("SELECT"), *aContent,
+                                  *aAttribute);
+    return true;
+}
+
 PFileDescriptorSetParent*
 ContentParent::AllocPFileDescriptorSetParent(const FileDescriptor& aFD)
 {
@@ -4245,7 +4283,8 @@ ContentParent::RecvGetFileReferences(const PersistenceType& aPersistenceType,
     MOZ_ASSERT(aResult);
 
     if (NS_WARN_IF(aPersistenceType != quota::PERSISTENCE_TYPE_PERSISTENT &&
-                   aPersistenceType != quota::PERSISTENCE_TYPE_TEMPORARY)) {
+                   aPersistenceType != quota::PERSISTENCE_TYPE_TEMPORARY &&
+                   aPersistenceType != quota::PERSISTENCE_TYPE_DEFAULT)) {
         return false;
     }
 

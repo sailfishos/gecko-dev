@@ -602,7 +602,8 @@ private:
                                            const nsString& aCookie, const nsString& aName,
                                            const nsString& aBidi, const nsString& aLang,
                                            const nsString& aData,
-                                           const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
+                                           const IPC::Principal& aPrincipal,
+                                           const bool& aInPrivateBrowsing) MOZ_OVERRIDE;
 
     virtual bool RecvCloseAlert(const nsString& aName,
                                 const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
@@ -713,6 +714,15 @@ private:
 
     virtual bool
     RecvOpenAnonymousTemporaryFile(FileDescriptor* aFD) MOZ_OVERRIDE;
+
+    virtual bool
+    RecvFormProcessValue(const nsString& oldValue, const nsString& challenge,
+                         const nsString& keytype, const nsString& keyparams,
+                         nsString* newValue) MOZ_OVERRIDE;
+
+    virtual bool
+    RecvFormProvideContent(nsString* aAttribute,
+                           nsTArray<nsString>* aContent) MOZ_OVERRIDE;
 
     virtual PFileDescriptorSetParent*
     AllocPFileDescriptorSetParent(const mozilla::ipc::FileDescriptor&) MOZ_OVERRIDE;

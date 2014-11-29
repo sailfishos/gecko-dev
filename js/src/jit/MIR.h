@@ -18,8 +18,8 @@
 #include "jit/AtomicOp.h"
 #include "jit/FixedList.h"
 #include "jit/InlineList.h"
-#include "jit/IonAllocPolicy.h"
-#include "jit/IonMacroAssembler.h"
+#include "jit/JitAllocPolicy.h"
+#include "jit/MacroAssembler.h"
 #include "jit/MOpcodes.h"
 #include "jit/TypedObjectPrediction.h"
 #include "jit/TypePolicy.h"
@@ -839,8 +839,8 @@ class MUseDefIterator
     }
 };
 
-typedef Vector<MDefinition *, 8, IonAllocPolicy> MDefinitionVector;
-typedef Vector<MInstruction *, 6, IonAllocPolicy> MInstructionVector;
+typedef Vector<MDefinition *, 8, JitAllocPolicy> MDefinitionVector;
+typedef Vector<MInstruction *, 6, JitAllocPolicy> MInstructionVector;
 
 // An instruction is an SSA name that is inserted into a basic block's IR
 // stream.
@@ -873,6 +873,7 @@ class MInstruction
     // Used to transfer the resume point to the rewritten instruction.
     void stealResumePoint(MInstruction *ins);
     void moveResumePointAsEntry();
+    void clearResumePoint();
     MResumePoint *resumePoint() const {
         return resumePoint_;
     }
@@ -1857,17 +1858,21 @@ class MSimdBinaryArith : public MBinaryInstruction
         Mul,
         Div,
         Min,
-        Max
+        Max,
+        MinNum,
+        MaxNum
     };
 
     static const char* OperationName(Operation op) {
         switch (op) {
-          case Add: return "Add";
-          case Sub: return "Sub";
-          case Mul: return "Mul";
-          case Div: return "Div";
-          case Min: return "Min";
-          case Max: return "Max";
+          case Add:    return "Add";
+          case Sub:    return "Sub";
+          case Mul:    return "Mul";
+          case Div:    return "Div";
+          case Min:    return "Min";
+          case Max:    return "Max";
+          case MinNum: return "MinNum";
+          case MaxNum: return "MaxNum";
         }
         MOZ_CRASH("unexpected operation");
     }
@@ -2152,11 +2157,11 @@ class MTableSwitch MOZ_FINAL
     // The successors of the tableswitch
     // - First successor = the default case
     // - Successor 2 and higher = the cases sorted on case index.
-    Vector<MBasicBlock*, 0, IonAllocPolicy> successors_;
-    Vector<size_t, 0, IonAllocPolicy> cases_;
+    Vector<MBasicBlock*, 0, JitAllocPolicy> successors_;
+    Vector<size_t, 0, JitAllocPolicy> cases_;
 
     // Contains the blocks/cases that still need to get build
-    Vector<MBasicBlock*, 0, IonAllocPolicy> blocks_;
+    Vector<MBasicBlock*, 0, JitAllocPolicy> blocks_;
 
     MUse operand_;
     int32_t low_;
@@ -3866,7 +3871,7 @@ JSOpToCondition(MCompare::CompareType compareType, JSOp op)
 // Takes a typed value and checks if it is a certain type. If so, the payload
 // is unpacked and returned as that type. Otherwise, it is considered a
 // deoptimization.
-class MUnbox : public MUnaryInstruction, public BoxInputsPolicy::Data
+class MUnbox MOZ_FINAL : public MUnaryInstruction, public BoxInputsPolicy::Data
 {
   public:
     enum Mode {
@@ -5585,7 +5590,13 @@ class MMathFunction
     void computeRange(TempAllocator &alloc);
     bool writeRecoverData(CompactBufferWriter &writer) const;
     bool canRecoverOnBailout() const {
-        return function_ == Round;
+        switch(function_) {
+          case Sin:
+          case Round:
+            return true;
+          default:
+            return false;
+        }
     }
 
     ALLOW_CLONE(MMathFunction)
@@ -6218,7 +6229,7 @@ class MLoadArrowThis
 
 class MPhi MOZ_FINAL : public MDefinition, public InlineListNode<MPhi>
 {
-    js::Vector<MUse, 2, IonAllocPolicy> inputs_;
+    js::Vector<MUse, 2, JitAllocPolicy> inputs_;
 
     TruncateKind truncateKind_;
     bool hasBackedgeType_;
@@ -6949,6 +6960,13 @@ class MStringReplace
 
     AliasSet getAliasSet() const {
         return AliasSet::None();
+    }
+
+    bool writeRecoverData(CompactBufferWriter &writer) const;
+    bool canRecoverOnBailout() const {
+        if (pattern()->isRegExp())
+            return !pattern()->toRegExp()->source()->global();
+        return false;
     }
 };
 
@@ -9009,8 +9027,8 @@ class MStoreFixedSlot
     ALLOW_CLONE(MStoreFixedSlot)
 };
 
-typedef Vector<JSObject *, 4, IonAllocPolicy> ObjectVector;
-typedef Vector<bool, 4, IonAllocPolicy> BoolVector;
+typedef Vector<JSObject *, 4, JitAllocPolicy> ObjectVector;
+typedef Vector<bool, 4, JitAllocPolicy> BoolVector;
 
 class InlinePropertyTable : public TempObject
 {
@@ -9025,7 +9043,7 @@ class InlinePropertyTable : public TempObject
 
     jsbytecode *pc_;
     MResumePoint *priorResumePoint_;
-    Vector<Entry *, 4, IonAllocPolicy> entries_;
+    Vector<Entry *, 4, JitAllocPolicy> entries_;
 
   public:
     InlinePropertyTable(TempAllocator &alloc, jsbytecode *pc)
@@ -9193,7 +9211,7 @@ class MGetPropertyPolymorphic
         Shape *shape;
     };
 
-    Vector<Entry, 4, IonAllocPolicy> shapes_;
+    Vector<Entry, 4, JitAllocPolicy> shapes_;
     AlwaysTenuredPropertyName name_;
 
     MGetPropertyPolymorphic(TempAllocator &alloc, MDefinition *obj, PropertyName *name)
@@ -9264,7 +9282,7 @@ class MSetPropertyPolymorphic
         Shape *shape;
     };
 
-    Vector<Entry, 4, IonAllocPolicy> shapes_;
+    Vector<Entry, 4, JitAllocPolicy> shapes_;
     bool needsBarrier_;
 
     MSetPropertyPolymorphic(TempAllocator &alloc, MDefinition *obj, MDefinition *value)
@@ -9326,7 +9344,7 @@ class MDispatchInstruction
           : func(func), block(block)
         { }
     };
-    Vector<Entry, 4, IonAllocPolicy> map_;
+    Vector<Entry, 4, JitAllocPolicy> map_;
 
     // An optional fallback path that uses MCall.
     MBasicBlock *fallback_;
@@ -9592,7 +9610,7 @@ class MGuardShapePolymorphic
   : public MUnaryInstruction,
     public SingleObjectPolicy::Data
 {
-    Vector<Shape *, 4, IonAllocPolicy> shapes_;
+    Vector<Shape *, 4, JitAllocPolicy> shapes_;
 
     MGuardShapePolymorphic(TempAllocator &alloc, MDefinition *obj)
       : MUnaryInstruction(obj),
@@ -10128,11 +10146,13 @@ class MDeleteProperty
     public BoxInputsPolicy::Data
 {
     AlwaysTenuredPropertyName name_;
+    bool strict_;
 
   protected:
-    MDeleteProperty(MDefinition *val, PropertyName *name)
+    MDeleteProperty(MDefinition *val, PropertyName *name, bool strict)
       : MUnaryInstruction(val),
-        name_(name)
+        name_(name),
+        strict_(strict)
     {
         setResultType(MIRType_Boolean);
     }
@@ -10140,8 +10160,10 @@ class MDeleteProperty
   public:
     INSTRUCTION_HEADER(DeleteProperty)
 
-    static MDeleteProperty *New(TempAllocator &alloc, MDefinition *obj, PropertyName *name) {
-        return new(alloc) MDeleteProperty(obj, name);
+    static MDeleteProperty *New(TempAllocator &alloc, MDefinition *obj, PropertyName *name,
+                                bool strict)
+    {
+        return new(alloc) MDeleteProperty(obj, name, strict);
     }
     MDefinition *value() const {
         return getOperand(0);
@@ -10149,14 +10171,20 @@ class MDeleteProperty
     PropertyName *name() const {
         return name_;
     }
+    bool strict() const {
+        return strict_;
+    }
 };
 
 class MDeleteElement
   : public MBinaryInstruction,
     public BoxInputsPolicy::Data
 {
-    MDeleteElement(MDefinition *value, MDefinition *index)
-      : MBinaryInstruction(value, index)
+    bool strict_;
+
+    MDeleteElement(MDefinition *value, MDefinition *index, bool strict)
+      : MBinaryInstruction(value, index),
+        strict_(strict)
     {
         setResultType(MIRType_Boolean);
     }
@@ -10164,14 +10192,19 @@ class MDeleteElement
   public:
     INSTRUCTION_HEADER(DeleteElement)
 
-    static MDeleteElement *New(TempAllocator &alloc, MDefinition *value, MDefinition *index) {
-        return new(alloc) MDeleteElement(value, index);
+    static MDeleteElement *New(TempAllocator &alloc, MDefinition *value, MDefinition *index,
+                               bool strict)
+    {
+        return new(alloc) MDeleteElement(value, index, strict);
     }
     MDefinition *value() const {
         return getOperand(0);
     }
     MDefinition *index() const {
         return getOperand(1);
+    }
+    bool strict() const {
+        return strict_;
     }
 };
 
@@ -10437,22 +10470,17 @@ class MSetDOMProperty
 };
 
 class MGetDOMProperty
-  : public MAryInstruction<2>,
+  : public MVariadicInstruction,
     public ObjectPolicy<0>::Data
 {
     const JSJitInfo *info_;
 
   protected:
-    MGetDOMProperty(const JSJitInfo *jitinfo, MDefinition *obj, MDefinition *guard)
+    MGetDOMProperty(const JSJitInfo *jitinfo)
       : info_(jitinfo)
     {
         MOZ_ASSERT(jitinfo);
         MOZ_ASSERT(jitinfo->type() == JSJitInfo::Getter);
-
-        initOperand(0, obj);
-
-        // Pin the guard as an operand if we want to hoist later
-        initOperand(1, guard);
 
         // We are movable iff the jitinfo says we can be.
         if (isDomMovable()) {
@@ -10472,13 +10500,41 @@ class MGetDOMProperty
         return info_;
     }
 
+    bool init(TempAllocator &alloc, MDefinition *obj, MDefinition *guard,
+              MDefinition *globalGuard) {
+        MOZ_ASSERT(obj);
+        MOZ_ASSERT(guard);
+        // globalGuard can be null.
+        size_t operandCount;
+        if (globalGuard)
+            operandCount = 3;
+        else
+            operandCount = 2;
+
+        if (!MVariadicInstruction::init(alloc, operandCount))
+            return false;
+        initOperand(0, obj);
+
+        // Pin the guard as an operand if we want to hoist later.
+        initOperand(1, guard);
+
+        // And the same for the global guard, if we have one.
+        if (globalGuard)
+            initOperand(2, globalGuard);
+
+        return true;
+    }
+
   public:
     INSTRUCTION_HEADER(GetDOMProperty)
 
     static MGetDOMProperty *New(TempAllocator &alloc, const JSJitInfo *info, MDefinition *obj,
-                                MDefinition *guard)
+                                MDefinition *guard, MDefinition *globalGuard)
     {
-        return new(alloc) MGetDOMProperty(info, obj, guard);
+        MGetDOMProperty *res = new(alloc) MGetDOMProperty(info);
+        if (!res || !res->init(alloc, obj, guard, globalGuard))
+            return nullptr;
+        return res;
     }
 
     JSJitGetterOp fun() const {
@@ -10536,8 +10592,8 @@ class MGetDOMProperty
 class MGetDOMMember : public MGetDOMProperty
 {
     // We inherit everything from MGetDOMProperty except our possiblyCalls value
-    MGetDOMMember(const JSJitInfo *jitinfo, MDefinition *obj, MDefinition *guard)
-        : MGetDOMProperty(jitinfo, obj, guard)
+    MGetDOMMember(const JSJitInfo *jitinfo)
+        : MGetDOMProperty(jitinfo)
     {
     }
 
@@ -10545,9 +10601,12 @@ class MGetDOMMember : public MGetDOMProperty
     INSTRUCTION_HEADER(GetDOMMember)
 
     static MGetDOMMember *New(TempAllocator &alloc, const JSJitInfo *info, MDefinition *obj,
-                              MDefinition *guard)
+                              MDefinition *guard, MDefinition *globalGuard)
     {
-        return new(alloc) MGetDOMMember(info, obj, guard);
+        MGetDOMMember *res = new(alloc) MGetDOMMember(info);
+        if (!res || !res->init(alloc, obj, guard, globalGuard))
+            return nullptr;
+        return res;
     }
 
     bool possiblyCalls() const {
@@ -12092,15 +12151,19 @@ class MAsmJSNeg : public MUnaryInstruction
 
 class MAsmJSHeapAccess
 {
-    Scalar::Type viewType_;
+  protected:
+    typedef AsmJSHeapAccess::ViewType ViewType;
+
+  private:
+    ViewType viewType_;
     bool needsBoundsCheck_;
 
   public:
-    MAsmJSHeapAccess(Scalar::Type vt, bool needsBoundsCheck)
+    MAsmJSHeapAccess(ViewType vt, bool needsBoundsCheck)
       : viewType_(vt), needsBoundsCheck_(needsBoundsCheck)
     {}
 
-    Scalar::Type viewType() const { return viewType_; }
+    ViewType viewType() const { return viewType_; }
     bool needsBoundsCheck() const { return needsBoundsCheck_; }
     void removeBoundsCheck() { needsBoundsCheck_ = false; }
 };
@@ -12110,7 +12173,7 @@ class MAsmJSLoadHeap : public MUnaryInstruction, public MAsmJSHeapAccess
     MemoryBarrierBits barrierBefore_;
     MemoryBarrierBits barrierAfter_;
 
-    MAsmJSLoadHeap(Scalar::Type vt, MDefinition *ptr, bool needsBoundsCheck,
+    MAsmJSLoadHeap(ViewType vt, MDefinition *ptr, bool needsBoundsCheck,
                    MemoryBarrierBits before, MemoryBarrierBits after)
       : MUnaryInstruction(ptr),
         MAsmJSHeapAccess(vt, needsBoundsCheck),
@@ -12121,18 +12184,37 @@ class MAsmJSLoadHeap : public MUnaryInstruction, public MAsmJSHeapAccess
             setGuard();         // Not removable
         else
             setMovable();
-        if (vt == Scalar::Float32)
-            setResultType(MIRType_Float32);
-        else if (vt == Scalar::Float64)
-            setResultType(MIRType_Double);
-        else
+
+        switch (vt) {
+          case AsmJSHeapAccess::Int8:
+          case AsmJSHeapAccess::Uint8:
+          case AsmJSHeapAccess::Int16:
+          case AsmJSHeapAccess::Uint16:
+          case AsmJSHeapAccess::Int32:
+          case AsmJSHeapAccess::Uint32:
             setResultType(MIRType_Int32);
+            break;
+          case AsmJSHeapAccess::Float32:
+            setResultType(MIRType_Float32);
+            break;
+          case AsmJSHeapAccess::Float64:
+            setResultType(MIRType_Double);
+            break;
+          case AsmJSHeapAccess::Float32x4:
+            setResultType(MIRType_Float32x4);
+            break;
+          case AsmJSHeapAccess::Int32x4:
+            setResultType(MIRType_Int32x4);
+            break;
+          case AsmJSHeapAccess::Uint8Clamped:
+            MOZ_CRASH("unexpected uint8clamped load heap in asm.js");
+        }
     }
 
   public:
     INSTRUCTION_HEADER(AsmJSLoadHeap);
 
-    static MAsmJSLoadHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSLoadHeap *New(TempAllocator &alloc, ViewType vt,
                                MDefinition *ptr, bool needsBoundsCheck,
                                MemoryBarrierBits barrierBefore = MembarNobits,
                                MemoryBarrierBits barrierAfter = MembarNobits)
@@ -12156,7 +12238,7 @@ class MAsmJSStoreHeap : public MBinaryInstruction, public MAsmJSHeapAccess
     MemoryBarrierBits barrierBefore_;
     MemoryBarrierBits barrierAfter_;
 
-    MAsmJSStoreHeap(Scalar::Type vt, MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
+    MAsmJSStoreHeap(ViewType vt, MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
                     MemoryBarrierBits before, MemoryBarrierBits after)
       : MBinaryInstruction(ptr, v),
         MAsmJSHeapAccess(vt, needsBoundsCheck),
@@ -12170,7 +12252,7 @@ class MAsmJSStoreHeap : public MBinaryInstruction, public MAsmJSHeapAccess
   public:
     INSTRUCTION_HEADER(AsmJSStoreHeap);
 
-    static MAsmJSStoreHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSStoreHeap *New(TempAllocator &alloc, ViewType vt,
                                 MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
                                 MemoryBarrierBits barrierBefore = MembarNobits,
                                 MemoryBarrierBits barrierAfter = MembarNobits)
@@ -12191,7 +12273,7 @@ class MAsmJSStoreHeap : public MBinaryInstruction, public MAsmJSHeapAccess
 
 class MAsmJSCompareExchangeHeap : public MTernaryInstruction, public MAsmJSHeapAccess
 {
-    MAsmJSCompareExchangeHeap(Scalar::Type vt, MDefinition *ptr, MDefinition *oldv, MDefinition *newv,
+    MAsmJSCompareExchangeHeap(ViewType vt, MDefinition *ptr, MDefinition *oldv, MDefinition *newv,
                               bool needsBoundsCheck)
         : MTernaryInstruction(ptr, oldv, newv),
           MAsmJSHeapAccess(vt, needsBoundsCheck)
@@ -12203,7 +12285,7 @@ class MAsmJSCompareExchangeHeap : public MTernaryInstruction, public MAsmJSHeapA
   public:
     INSTRUCTION_HEADER(AsmJSCompareExchangeHeap);
 
-    static MAsmJSCompareExchangeHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSCompareExchangeHeap *New(TempAllocator &alloc, ViewType vt,
                                           MDefinition *ptr, MDefinition *oldv,
                                           MDefinition *newv, bool needsBoundsCheck)
     {
@@ -12223,7 +12305,7 @@ class MAsmJSAtomicBinopHeap : public MBinaryInstruction, public MAsmJSHeapAccess
 {
     AtomicOp op_;
 
-    MAsmJSAtomicBinopHeap(AtomicOp op, Scalar::Type vt, MDefinition *ptr, MDefinition *v,
+    MAsmJSAtomicBinopHeap(AtomicOp op, ViewType vt, MDefinition *ptr, MDefinition *v,
                           bool needsBoundsCheck)
         : MBinaryInstruction(ptr, v),
           MAsmJSHeapAccess(vt, needsBoundsCheck),
@@ -12236,7 +12318,7 @@ class MAsmJSAtomicBinopHeap : public MBinaryInstruction, public MAsmJSHeapAccess
   public:
     INSTRUCTION_HEADER(AsmJSAtomicBinopHeap);
 
-    static MAsmJSAtomicBinopHeap *New(TempAllocator &alloc, AtomicOp op, Scalar::Type vt,
+    static MAsmJSAtomicBinopHeap *New(TempAllocator &alloc, AtomicOp op, ViewType vt,
                                       MDefinition *ptr, MDefinition *v, bool needsBoundsCheck)
     {
         return new(alloc) MAsmJSAtomicBinopHeap(op, vt, ptr, v, needsBoundsCheck);

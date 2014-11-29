@@ -7,7 +7,7 @@
 #ifndef jit_BaselineFrame_h
 #define jit_BaselineFrame_h
 
-#include "jit/IonFrames.h"
+#include "jit/JitFrames.h"
 #include "vm/Stack.h"
 
 namespace js {
@@ -18,7 +18,7 @@ struct BaselineDebugModeOSRInfo;
 // The stack looks like this, fp is the frame pointer:
 //
 // fp+y   arguments
-// fp+x   IonJSFrameLayout (frame header)
+// fp+x   JitFrameLayout (frame header)
 // fp  => saved frame pointer
 // fp-x   BaselineFrame
 //        locals
@@ -63,7 +63,7 @@ class BaselineFrame
         OVER_RECURSED    = 1 << 9,
 
         // Frame has a BaselineRecompileInfo stashed in the scratch value
-        // slot. See PatchBaselineFramesForDebugMOde.
+        // slot. See PatchBaselineFramesForDebugMode.
         HAS_DEBUG_MODE_OSR_INFO = 1 << 10,
 
         // Frame has had its scope chain unwound to a pc during exception
@@ -73,7 +73,13 @@ class BaselineFrame
         // the only way to clear it is to pop the frame. Do *not* set this if
         // we will resume execution on the frame, such as in a catch or
         // finally block.
-        HAS_UNWOUND_SCOPE_OVERRIDE_PC = 1 << 11
+        HAS_UNWOUND_SCOPE_OVERRIDE_PC = 1 << 11,
+
+        // Frame has called out to Debugger code from
+        // HandleExceptionBaseline. This is set for debug mode OSR sanity
+        // checking when it handles corner cases which only arise during
+        // exception handling.
+        DEBUGGER_HANDLING_EXCEPTION = 1 << 12
     };
 
   protected: // Silence Clang warning about unused private fields.
@@ -280,9 +286,16 @@ class BaselineFrame
     void setIsDebuggee() {
         flags_ |= DEBUGGEE;
     }
-    void unsetIsDebuggee() {
-        MOZ_ASSERT(!script()->isDebuggee());
-        flags_ &= ~DEBUGGEE;
+    inline void unsetIsDebuggee();
+
+    bool isDebuggerHandlingException() const {
+        return flags_ & DEBUGGER_HANDLING_EXCEPTION;
+    }
+    void setIsDebuggerHandlingException() {
+        flags_ |= DEBUGGER_HANDLING_EXCEPTION;
+    }
+    void unsetIsDebuggerHandlingException() {
+        flags_ &= ~DEBUGGER_HANDLING_EXCEPTION;
     }
 
     JSScript *evalScript() const {
@@ -374,23 +387,23 @@ class BaselineFrame
         return false;
     }
 
-    IonJSFrameLayout *framePrefix() const {
+    JitFrameLayout *framePrefix() const {
         uint8_t *fp = (uint8_t *)this + Size() + FramePointerOffset;
-        return (IonJSFrameLayout *)fp;
+        return (JitFrameLayout *)fp;
     }
 
     // Methods below are used by the compiler.
     static size_t offsetOfCalleeToken() {
-        return FramePointerOffset + js::jit::IonJSFrameLayout::offsetOfCalleeToken();
+        return FramePointerOffset + js::jit::JitFrameLayout::offsetOfCalleeToken();
     }
     static size_t offsetOfThis() {
-        return FramePointerOffset + js::jit::IonJSFrameLayout::offsetOfThis();
+        return FramePointerOffset + js::jit::JitFrameLayout::offsetOfThis();
     }
     static size_t offsetOfArg(size_t index) {
-        return FramePointerOffset + js::jit::IonJSFrameLayout::offsetOfActualArg(index);
+        return FramePointerOffset + js::jit::JitFrameLayout::offsetOfActualArg(index);
     }
     static size_t offsetOfNumActualArgs() {
-        return FramePointerOffset + js::jit::IonJSFrameLayout::offsetOfNumActualArgs();
+        return FramePointerOffset + js::jit::JitFrameLayout::offsetOfNumActualArgs();
     }
     static size_t Size() {
         return sizeof(BaselineFrame);

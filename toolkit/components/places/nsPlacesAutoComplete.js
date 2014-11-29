@@ -201,7 +201,6 @@ function safePrefGetter(aPrefBranch, aName, aDefault) {
   }
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //// AutoCompleteStatementCallbackWrapper class
 
@@ -497,8 +496,9 @@ nsPlacesAutoComplete.prototype = {
     this._currentSearchString =
       fixupSearchText(this._originalSearchString.toLowerCase());
 
-    let searchParamParts = aSearchParam.split(" ");
-    this._enableActions = searchParamParts.indexOf("enable-actions") != -1;
+    let params = new Set(aSearchParam.split(" "));
+    this._enableActions = params.has("enable-actions");
+    this._disablePrivateActions = params.has("disable-private-actions");
 
     this._listener = aListener;
     let result = Cc["@mozilla.org/autocomplete/simple-result;1"].
@@ -1044,20 +1044,19 @@ nsPlacesAutoComplete.prototype = {
     let query = this._getSuggestionPrefQuery();
 
     // Bind the needed parameters to the query so consumers can use it.
-    let (params = query.params) {
-      params.parent = PlacesUtils.tagsFolderId;
-      params.query_type = kQueryTypeFiltered;
-      params.matchBehavior = aMatchBehavior;
-      params.searchBehavior = this._behavior;
+    let params = query.params;
+    params.parent = PlacesUtils.tagsFolderId;
+    params.query_type = kQueryTypeFiltered;
+    params.matchBehavior = aMatchBehavior;
+    params.searchBehavior = this._behavior;
 
-      // We only want to search the tokens that we are left with - not the
-      // original search string.
-      params.searchString = aTokens.join(" ");
+    // We only want to search the tokens that we are left with - not the
+    // original search string.
+    params.searchString = aTokens.join(" ");
 
-      // Limit the query to the the maximum number of desired results.
-      // This way we can avoid doing more work than needed.
-      params.maxResults = this._maxRichResults;
-    }
+    // Limit the query to the the maximum number of desired results.
+    // This way we can avoid doing more work than needed.
+    params.maxResults = this._maxRichResults;
 
     return query;
   },
@@ -1067,15 +1066,15 @@ nsPlacesAutoComplete.prototype = {
     let query = this._openPagesQuery;
 
     // Bind the needed parameters to the query so consumers can use it.
-    let (params = query.params) {
-      params.query_type = kQueryTypeFiltered;
-      params.matchBehavior = this._matchBehavior;
-      params.searchBehavior = this._behavior;
-      // We only want to search the tokens that we are left with - not the
-      // original search string.
-      params.searchString = aTokens.join(" ");
-      params.maxResults = this._maxRichResults;
-    }
+    let params = query.params;
+    params.query_type = kQueryTypeFiltered;
+    params.matchBehavior = this._matchBehavior;
+    params.searchBehavior = this._behavior;
+
+    // We only want to search the tokens that we are left with - not the
+    // original search string.
+    params.searchString = aTokens.join(" ");
+    params.maxResults = this._maxRichResults;
 
     return query;
   },
@@ -1104,11 +1103,10 @@ nsPlacesAutoComplete.prototype = {
     let keyword = aTokens[0];
 
     let query = this._keywordQuery;
-    let (params = query.params) {
-      params.keyword = keyword;
-      params.query_string = queryString;
-      params.query_type = kQueryTypeKeyword;
-    }
+    let params = query.params;
+    params.keyword = keyword;
+    params.query_string = queryString;
+    params.query_type = kQueryTypeKeyword;
 
     return query;
   },
@@ -1126,13 +1124,12 @@ nsPlacesAutoComplete.prototype = {
     }
 
     let query = this._adaptiveQuery;
-    let (params = query.params) {
-      params.parent = PlacesUtils.tagsFolderId;
-      params.search_string = this._currentSearchString;
-      params.query_type = kQueryTypeFiltered;
-      params.matchBehavior = aMatchBehavior;
-      params.searchBehavior = this._behavior;
-    }
+    let params = query.params;
+    params.parent = PlacesUtils.tagsFolderId;
+    params.search_string = this._currentSearchString;
+    params.query_type = kQueryTypeFiltered;
+    params.matchBehavior = aMatchBehavior;
+    params.searchBehavior = this._behavior;
 
     return query;
   },
@@ -1295,8 +1292,14 @@ nsPlacesAutoComplete.prototype = {
    */
   _hasBehavior: function PAC_hasBehavior(aType)
   {
-    return (this._behavior &
-            Ci.mozIPlacesAutoComplete["BEHAVIOR_" + aType.toUpperCase()]);
+    let behavior = Ci.mozIPlacesAutoComplete["BEHAVIOR_" + aType.toUpperCase()];
+
+    if (this._disablePrivateActions &&
+        behavior == Ci.mozIPlacesAutoComplete.BEHAVIOR_OPENPAGE) {
+      return false;
+    }
+
+    return this._behavior & behavior;
   },
 
   /**
@@ -1539,13 +1542,12 @@ urlInlineComplete.prototype = {
     // Within the standard autocomplete query, we only search the beginning
     // of URLs for 1 result.
     let query = this._urlQuery;
-    let (params = query.params) {
-      params.matchBehavior = MATCH_BEGINNING_CASE_SENSITIVE;
-      params.searchBehavior |= Ci.mozIPlacesAutoComplete.BEHAVIOR_HISTORY |
-                               Ci.mozIPlacesAutoComplete.BEHAVIOR_TYPED |
-                               Ci.mozIPlacesAutoComplete.BEHAVIOR_URL;
-      params.searchString = this._currentSearchString;
-    }
+    let params = query.params;
+    params.matchBehavior = MATCH_BEGINNING_CASE_SENSITIVE;
+    params.searchBehavior |= Ci.mozIPlacesAutoComplete.BEHAVIOR_HISTORY |
+                             Ci.mozIPlacesAutoComplete.BEHAVIOR_TYPED |
+                             Ci.mozIPlacesAutoComplete.BEHAVIOR_URL;
+    params.searchString = this._currentSearchString;
 
     // Execute the query.
     let ac = this;

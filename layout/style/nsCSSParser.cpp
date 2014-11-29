@@ -889,7 +889,9 @@ protected:
   bool ParseDirectionalBoxProperty(nsCSSProperty aProperty,
                                      int32_t aSourceType);
   bool ParseBoxCornerRadius(const nsCSSProperty aPropID);
+  bool ParseBoxCornerRadiiInternals(nsCSSValue array[]);
   bool ParseBoxCornerRadii(const nsCSSProperty aPropIDs[]);
+
   int32_t ParseChoice(nsCSSValue aValues[],
                       const nsCSSProperty aPropIDs[], int32_t aNumIDs);
   bool ParseColor(nsCSSValue& aValue);
@@ -966,6 +968,7 @@ protected:
   bool ParseBasicShape(nsCSSValue& aValue, bool* aConsumedTokens);
   bool ParsePolygonFunction(nsCSSValue& aValue);
   bool ParseCircleOrEllipseFunction(nsCSSKeyword, nsCSSValue& aValue);
+  bool ParseInsetFunction(nsCSSValue& aValue);
 
   /* Functions for transform Parsing */
   bool ParseSingleTransform(bool aIsPrefixed, nsCSSValue& aValue);
@@ -5704,15 +5707,12 @@ CSSParserImpl::ParsePseudoClassWithIdentArg(nsCSSSelector& aSelector,
     return eSelectorParsingStatus_Error; // our caller calls SkipUntil(')')
   }
 
-  // -moz-locale-dir and -moz-dir can only have values of 'ltr' or 'rtl'.
+  // -moz-locale-dir and -moz-dir take an identifier argument.  While
+  // only 'ltr' and 'rtl' (case-insensitively) will match anything, any
+  // other identifier is still valid.
   if (aType == nsCSSPseudoClasses::ePseudoClass_mozLocaleDir ||
       aType == nsCSSPseudoClasses::ePseudoClass_dir) {
     nsContentUtils::ASCIIToLower(mToken.mIdent); // case insensitive
-    if (!mToken.mIdent.EqualsLiteral("ltr") &&
-        !mToken.mIdent.EqualsLiteral("rtl")) {
-      REPORT_UNEXPECTED_TOKEN(PEBadDirValue);
-      return eSelectorParsingStatus_Error; // our caller calls SkipUntil(')')
-    }
   }
 
   // Add the pseudo with the language parameter
@@ -7498,12 +7498,11 @@ CSSParserImpl::ParseFlex()
     return true;
   }
 
-  // Next, check for 'none' == '0 0 main-size'
+  // Next, check for 'none' == '0 0 auto'
   if (ParseVariant(tmpVal, VARIANT_NONE, nullptr)) {
     AppendValue(eCSSProperty_flex_grow, nsCSSValue(0.0f, eCSSUnit_Number));
     AppendValue(eCSSProperty_flex_shrink, nsCSSValue(0.0f, eCSSUnit_Number));
-    AppendValue(eCSSProperty_flex_basis,
-                nsCSSValue(NS_STYLE_FLEX_BASIS_MAIN_SIZE, eCSSUnit_Enumerated));
+    AppendValue(eCSSProperty_flex_basis, nsCSSValue(eCSSUnit_Auto));
     return true;
   }
 
@@ -7543,7 +7542,7 @@ CSSParserImpl::ParseFlex()
   // "a unitless zero that is not already preceded by two flex factors must be
   //  interpreted as a flex factor.
   if (!ParseNonNegativeVariant(tmpVal, flexBasisVariantMask | VARIANT_NUMBER,
-                               nsCSSProps::kFlexBasisKTable)) {
+                               nsCSSProps::kWidthKTable)) {
     // First component was not a valid flex-basis or flex-grow value. Fail.
     return false;
   }
@@ -7561,15 +7560,6 @@ CSSParserImpl::ParseFlex()
       // Failed to parse anything after our flex-basis -- that's fine. We can
       // skip the remaining parsing.
       doneParsing = true;
-      if (flexBasis.GetUnit() == eCSSUnit_Auto) {
-        // We've just parsed "flex:auto", without a number after "auto".  In
-        // this case, "auto" is *not* actually the flex-basis -- it's a special
-        // keyword for the "flex" shorthand, which expands to "1 1 main-size".
-        // Fortunately, the variables flexGrow & flexShrink are already set to
-        // 1, so we don't need to adjust them; we just need to set flexBasis.
-        flexBasis.SetIntValue(NS_STYLE_FLEX_BASIS_MAIN_SIZE,
-                              eCSSUnit_Enumerated);
-      }
     }
   }
 
@@ -7600,7 +7590,7 @@ CSSParserImpl::ParseFlex()
     // unitless 0 encountered here *must* have been preceded by 2 flex factors.
     if (!wasFirstComponentFlexBasis &&
         ParseNonNegativeVariant(tmpVal, flexBasisVariantMask,
-                                nsCSSProps::kFlexBasisKTable)) {
+                                nsCSSProps::kWidthKTable)) {
       flexBasis = tmpVal;
     }
   }
@@ -9383,7 +9373,7 @@ CSSParserImpl::ParseBoxCornerRadius(nsCSSProperty aPropID)
 }
 
 bool
-CSSParserImpl::ParseBoxCornerRadii(const nsCSSProperty aPropIDs[])
+CSSParserImpl::ParseBoxCornerRadiiInternals(nsCSSValue array[])
 {
   // Rectangles are used as scratch storage.
   // top => top-left, right => top-right,
@@ -9446,12 +9436,26 @@ CSSParserImpl::ParseBoxCornerRadii(const nsCSSProperty aPropIDs[])
     nsCSSValue& y = dimenY.*nsCSSRect::sides[side];
 
     if (x == y) {
-      AppendValue(aPropIDs[side], x);
+      array[side] = x;
     } else {
       nsCSSValue pair;
       pair.SetPairValue(x, y);
-      AppendValue(aPropIDs[side], pair);
+      array[side] = pair;
     }
+  }
+  return true;
+}
+
+bool
+CSSParserImpl::ParseBoxCornerRadii(const nsCSSProperty aPropIDs[])
+{
+  nsCSSValue value[4];
+  if (!ParseBoxCornerRadiiInternals(value)) {
+    return false;
+  }
+
+  NS_FOR_CSS_SIDES(side) {
+    AppendValue(aPropIDs[side], value[side]);
   }
   return true;
 }
@@ -13888,6 +13892,49 @@ CSSParserImpl::ParseCircleOrEllipseFunction(nsCSSKeyword aKeyword,
 }
 
 bool
+CSSParserImpl::ParseInsetFunction(nsCSSValue& aValue)
+{
+  nsRefPtr<nsCSSValue::Array> functionArray =
+    aValue.InitFunction(eCSSKeyword_inset, 5);
+
+  if (ParseVariant(functionArray->Item(1), VARIANT_LPCALC, nullptr)) {
+    // Consume up to 4, but only require one.
+    ParseVariant(functionArray->Item(2), VARIANT_LPCALC, nullptr) &&
+    ParseVariant(functionArray->Item(3), VARIANT_LPCALC, nullptr) &&
+    ParseVariant(functionArray->Item(4), VARIANT_LPCALC, nullptr);
+  } else {
+    REPORT_UNEXPECTED_TOKEN(PEExpectedShapeArg);
+    SkipUntil(')');
+    return false;
+  }
+
+  if (!ExpectSymbol(')', true)) {
+    if (!GetToken(true)) {
+      NS_NOTREACHED("ExpectSymbol should have returned true");
+      return false;
+    }
+
+    nsRefPtr<nsCSSValue::Array> radiusArray = nsCSSValue::Array::Create(4);
+    functionArray->Item(5).SetArrayValue(radiusArray, eCSSUnit_Array);
+    if (mToken.mType != eCSSToken_Ident ||
+        !mToken.mIdent.LowerCaseEqualsLiteral("round") ||
+        !ParseBoxCornerRadiiInternals(radiusArray->ItemStorage())) {
+      REPORT_UNEXPECTED_TOKEN(PEExpectedRadius);
+      SkipUntil(')');
+      return false;
+    }
+
+    if (!ExpectSymbol(')', true)) {
+      REPORT_UNEXPECTED_TOKEN(PEExpectedCloseParen);
+      SkipUntil(')');
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool
 CSSParserImpl::ParseBasicShape(nsCSSValue& aValue, bool* aConsumedTokens)
 {
   if (!GetToken(true)) {
@@ -13908,6 +13955,8 @@ CSSParserImpl::ParseBasicShape(nsCSSValue& aValue, bool* aConsumedTokens)
   case eCSSKeyword_circle:
   case eCSSKeyword_ellipse:
     return ParseCircleOrEllipseFunction(keyword, aValue);
+  case eCSSKeyword_inset:
+    return ParseInsetFunction(aValue);
   default:
     return false;
   }

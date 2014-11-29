@@ -79,7 +79,7 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_BASIC_SHAPE_POLYGON       0
 #define NS_STYLE_BASIC_SHAPE_CIRCLE        1
 #define NS_STYLE_BASIC_SHAPE_ELLIPSE       2
-//#define NS_STYLE_BASIC_SHAPE_INSET       3
+#define NS_STYLE_BASIC_SHAPE_INSET         3
 
 // box-shadow
 #define NS_STYLE_BOX_SHADOW_INSET         0
@@ -621,12 +621,6 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_WIDTH_MIN_CONTENT              1
 #define NS_STYLE_WIDTH_FIT_CONTENT              2
 #define NS_STYLE_WIDTH_AVAILABLE                3
-// NOTE: The "main-size" keyword here is really for the "flex-basis" property,
-// not for width / min-width / max-width.  I'm listing it here with the "width"
-// keywords' enumerated values, because we need to make sure it doesn't collide
-// with any "width" enumerated values (because "flex-basis" accepts all valid
-// "width" keywords, in addition to accepting "main-size").
-#define NS_STYLE_FLEX_BASIS_MAIN_SIZE           4
 
 // See nsStyleDisplay.mPosition
 #define NS_STYLE_POSITION_STATIC                0
