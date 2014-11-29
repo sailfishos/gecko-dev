@@ -87,7 +87,7 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
 void
 EmbedLiteAppProcessChild::InitXPCOM()
 {
-  LOGT();
+  LOGT("Initialize some global XPCOM stuff here");
   unused << SendInitialized();
 }
 

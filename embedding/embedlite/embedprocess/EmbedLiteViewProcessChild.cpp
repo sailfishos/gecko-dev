@@ -1,6 +1,8 @@
 #include "EmbedLiteViewProcessChild.h"
 
 #include "EmbedLog.h"
+#include "nsEmbedCID.h"
+#include "nsIBaseWindow.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -30,6 +32,17 @@ EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
   mInitWindowTask = nullptr;
 
   // TODO initialize Gecko browser
+  nsresult rv;
+  mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  gfxPrefs::GetSingleton();
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
 
   unused << SendInitialized();
 }
