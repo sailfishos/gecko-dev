@@ -136,6 +136,8 @@ protected:
 
 private:
   EmbedLiteView* mView;
+
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewProcessParent);
 };
 } // namespace embedlite
 } // namespace mozilla
