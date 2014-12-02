@@ -140,6 +140,17 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetLastRunCrashID(nsAString& aLastRunCrashID)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetIsOfficial(bool* aResult)
+{
+#ifdef MOZILLA_OFFICIAL
+  *aResult = true;
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsReleaseBuild(bool* aResult)
 {
 #ifdef RELEASE_BUILD
@@ -191,8 +202,19 @@ EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetBrowserTabsRemote(bool* aResult)
+EmbedLiteXulAppInfo::GetKeyboardMayHaveIME(bool* aResult)
 {
+  *aResult = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetAccessibilityEnabled(bool* aResult)
+{
+#ifdef ACCESSIBILITY
+  *aResult = GetAccService() != nullptr;
+#else
   *aResult = false;
+#endif
   return NS_OK;
 }

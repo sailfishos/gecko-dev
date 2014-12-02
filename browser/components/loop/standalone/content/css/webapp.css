@@ -18,6 +18,13 @@ body,
   font-family: Open Sans,sans-serif;
 }
 
+/**
+ * Note: the is-standalone-room class is dynamically set by the StandaloneRoomView.
+ */
+.standalone.is-standalone-room {
+  background-color: #000;
+}
+
 .standalone-header {
   border-radius: 4px;
   background: #fff;
@@ -77,15 +84,19 @@ body,
     color: #777;
   }
 
-.footer-external-links a {
+.footer-external-links {
   padding: .2rem .7rem;
-  margin: 0 .5rem;
-  text-decoration: none;
 }
 
-  .footer-external-links a:hover {
-    color: #111;
-  }
+.footer-external-links a {
+  margin: 0 .5rem;
+  text-decoration: none;
+  color: #adadad;
+}
+
+.footer-external-links a:hover {
+  color: #777;
+}
 
 .footer-logo {
   width: 100px;
@@ -185,6 +196,7 @@ p.standalone-btn-label {
 
 .btn-pending-cancel-group > .btn-cancel {
   flex: 2 1 auto;
+  border-radius: 2px;
 }
 
 .btn-large {

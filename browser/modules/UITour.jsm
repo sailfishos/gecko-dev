@@ -15,8 +15,8 @@ Cu.import("resource://gre/modules/Task.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
   "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PermissionsUtils",
-  "resource://gre/modules/PermissionsUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ResetProfile",
+  "resource://gre/modules/ResetProfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
@@ -26,7 +26,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
 
 
 const UITOUR_PERMISSION   = "uitour";
-const PREF_PERM_BRANCH    = "browser.uitour.";
+const PREF_TEST_WHITELIST = "browser.uitour.testingOrigins";
 const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
 const MAX_BUTTONS         = 4;
 
@@ -103,6 +103,8 @@ this.UITour = {
     ["help",        {query: "#PanelUI-help"}],
     ["home",        {query: "#home-button"}],
     ["loop",        {query: "#loop-button-throttled"}],
+    ["devtools",    {query: "#developer-button"}],
+    ["webide",      {query: "#webide-button"}],
     ["forget", {
       query: "#panic-button",
       widgetName: "panic-button",
@@ -116,11 +118,48 @@ this.UITour = {
     ["searchProvider", {
       query: (aDocument) => {
         let searchbar = aDocument.getElementById("searchbar");
+        if (searchbar.hasAttribute("oneoffui")) {
+          return null;
+        }
         return aDocument.getAnonymousElementByAttribute(searchbar,
                                                         "anonid",
                                                         "searchbar-engine-button");
       },
       widgetName: "search-container",
+    }],
+    ["searchIcon", {
+      query: (aDocument) => {
+        let searchbar = aDocument.getElementById("searchbar");
+        if (!searchbar.hasAttribute("oneoffui")) {
+          return null;
+        }
+        return aDocument.getAnonymousElementByAttribute(searchbar,
+                                                        "anonid",
+                                                        "searchbar-search-button");
+      },
+      widgetName: "search-container",
+    }],
+    ["searchPrefsLink", {
+      query: (aDocument) => {
+        let element = null;
+        let searchbar = aDocument.getElementById("searchbar");
+        if (searchbar.hasAttribute("oneoffui")) {
+          let popup = aDocument.getElementById("PopupSearchAutoComplete");
+          if (popup.state != "open")
+            return null;
+          element = aDocument.getAnonymousElementByAttribute(popup,
+                                                             "anonid",
+                                                             "search-settings");
+        } else {
+          element = aDocument.getAnonymousElementByAttribute(searchbar,
+                                                             "anonid",
+                                                             "open-engine-manager");
+        }
+        if (!element || !UITour.isElementVisible(element)) {
+          return null;
+        }
+        return element;
+      },
     }],
     ["selectedTabIcon", {
       query: (aDocument) => {
@@ -436,7 +475,13 @@ this.UITour = {
         // 'signup' is the only action that makes sense currently, so we don't
         // accept arbitrary actions just to be safe...
         // We want to replace the current tab.
-        contentDocument.location.href = "about:accounts?action=signup";
+        contentDocument.location.href = "about:accounts?action=signup&entrypoint=uitour";
+        break;
+      }
+
+      case "resetFirefox": {
+        // Open a reset profile dialog window.
+        ResetProfile.openConfirmationDialog(window);
         break;
       }
 
@@ -615,12 +660,23 @@ this.UITour = {
                            .wrappedJSObject;
   },
 
-  importPermissions: function() {
-    try {
-      PermissionsUtils.importFromPrefs(PREF_PERM_BRANCH, UITOUR_PERMISSION);
-    } catch (e) {
-      Cu.reportError(e);
+  isTestingOrigin: function(aURI) {
+    if (Services.prefs.getPrefType(PREF_TEST_WHITELIST) != Services.prefs.PREF_STRING) {
+      return false;
     }
+
+    // Add any testing origins (comma-seperated) to the whitelist for the session.
+    for (let origin of Services.prefs.getCharPref(PREF_TEST_WHITELIST).split(",")) {
+      try {
+        let testingURI = Services.io.newURI(origin, null, null);
+        if (aURI.prePath == testingURI.prePath) {
+          return true;
+        }
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
+    }
+    return false;
   },
 
   ensureTrustedOrigin: function(aDocument) {
@@ -635,9 +691,11 @@ this.UITour = {
     if (!this.isSafeScheme(uri))
       return false;
 
-    this.importPermissions();
     let permission = Services.perms.testPermission(uri, UITOUR_PERMISSION);
-    return permission == Services.perms.ALLOW_ACTION;
+    if (permission == Services.perms.ALLOW_ACTION)
+      return true;
+
+    return this.isTestingOrigin(uri);
   },
 
   isSafeScheme: function(aURI) {
@@ -1045,6 +1103,12 @@ this.UITour = {
       let alignment = "bottomcenter topright";
       this._addAnnotationPanelMutationObserver(tooltip);
       tooltip.openPopup(aAnchorEl, alignment);
+      if (tooltip.state == "closed") {
+        document.defaultView.addEventListener("endmodalstate", function endModalStateHandler() {
+          document.defaultView.removeEventListener("endmodalstate", endModalStateHandler);
+          tooltip.openPopup(aAnchorEl, alignment);
+        }, false);
+      }
     }
 
     // Prevent showing a panel at an undefined position.
@@ -1214,6 +1278,12 @@ this.UITour = {
         this.sendPageCallback(aContentDocument, aCallbackID, {
           setup: Services.prefs.prefHasUserValue("services.sync.username"),
         });
+        break;
+      case "appinfo":
+        let props = ["defaultUpdateChannel", "version"];
+        let appinfo = {};
+        props.forEach(property => appinfo[property] = Services.appinfo[property]);
+        this.sendPageCallback(aContentDocument, aCallbackID, appinfo);
         break;
       default:
         Cu.reportError("getConfiguration: Unknown configuration requested: " + aConfiguration);

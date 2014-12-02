@@ -14,15 +14,6 @@ xul|page {
   color: #424e5a;
 }
 
-*|* {
-  -moz-user-select: text;
-}
-
-xul|treecol {
-  /* override the * rule to let the treecol be sortable */
-  -moz-user-select: none;
-}
-
 html|body {
   font-size: 15px;
   font-weight: normal;
@@ -183,6 +174,10 @@ xul|button > xul|*.button-box,
 xul|menulist > xul|*.menulist-label-box {
   padding-right: 10px !important;
   padding-left: 10px !important;
+}
+
+xul|menulist > xul|*.menulist-label-box > xul|*.menulist-icon {
+  -moz-margin-end: 5px;
 }
 
 xul|button[type="menu"] > xul|*.button-box > xul|*.button-menu-dropmarker {
@@ -454,6 +449,10 @@ xul|*.checkbox-label-box {
     background-image: url("chrome://global/skin/in-content/check@2x.png"),
                       linear-gradient(#fff, rgba(255,255,255,0.8)) !important;
   }
+}
+
+xul|richlistitem > xul|*.checkbox-check {
+  margin: 3px 6px;
 }
 
 xul|*.radio-check {

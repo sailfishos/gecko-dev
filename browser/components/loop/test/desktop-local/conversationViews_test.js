@@ -4,8 +4,10 @@
 var expect = chai.expect;
 
 describe("loop.conversationViews", function () {
+  "use strict";
+
   var sharedUtils = loop.shared.utils;
-  var sandbox, oldTitle, view, dispatcher, contact;
+  var sandbox, oldTitle, view, dispatcher, contact, fakeAudioXHR;
 
   var CALL_STATES = loop.store.CALL_STATES;
 
@@ -28,11 +30,39 @@ describe("loop.conversationViews", function () {
         pref: true
       }]
     };
+    fakeAudioXHR = {
+      open: sinon.spy(),
+      send: function() {},
+      abort: function() {},
+      getResponseHeader: function(header) {
+        if (header === "Content-Type")
+          return "audio/ogg";
+      },
+      responseType: null,
+      response: new ArrayBuffer(10),
+      onload: null
+    };
+
+    navigator.mozLoop = {
+      getLoopPref: sinon.stub().returns("http://fakeurl"),
+      composeEmail: sinon.spy(),
+      get appVersionInfo() {
+        return {
+          version: "42",
+          channel: "test",
+          platform: "test"
+        };
+      },
+      getAudioBlob: sinon.spy(function(name, callback) {
+        callback(null, new Blob([new ArrayBuffer(10)], {type: "audio/ogg"}));
+      })
+    };
   });
 
   afterEach(function() {
     document.title = oldTitle;
     view = undefined;
+    delete navigator.mozLoop;
     sandbox.restore();
   });
 
@@ -200,7 +230,7 @@ describe("loop.conversationViews", function () {
   });
 
   describe("CallFailedView", function() {
-    var store;
+    var store, fakeAudio;
 
     function mountTestComponent(props) {
       return TestUtils.renderIntoDocument(
@@ -217,6 +247,12 @@ describe("loop.conversationViews", function () {
         client: {},
         sdkDriver: {}
       });
+      fakeAudio = {
+        play: sinon.spy(),
+        pause: sinon.spy(),
+        removeAttribute: sinon.spy()
+      };
+      sandbox.stub(window, "Audio").returns(fakeAudio);
     });
 
     it("should dispatch a retryCall action when the retry button is pressed",
@@ -304,6 +340,16 @@ describe("loop.conversationViews", function () {
 
         expect(view.getDOMNode().querySelector(".btn-email").disabled).eql(false);
       });
+
+    it("should play a failure sound, once", function() {
+      view = mountTestComponent();
+
+      sinon.assert.calledOnce(navigator.mozLoop.getAudioBlob);
+      sinon.assert.calledWithExactly(navigator.mozLoop.getAudioBlob,
+                                     "failure", sinon.match.func);
+      sinon.assert.calledOnce(fakeAudio.play);
+      expect(fakeAudio.loop).to.equal(false);
+    });
   });
 
   describe("OngoingConversationView", function() {
@@ -399,31 +445,26 @@ describe("loop.conversationViews", function () {
   });
 
   describe("OutgoingConversationView", function() {
-    var store;
+    var store, feedbackStore;
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
         loop.conversationViews.OutgoingConversationView({
           dispatcher: dispatcher,
-          store: store
+          store: store,
+          feedbackStore: feedbackStore
         }));
     }
 
     beforeEach(function() {
-      navigator.mozLoop = {
-        getLoopCharPref: function() { return "fake"; },
-        appVersionInfo: sinon.spy()
-      };
-
       store = new loop.store.ConversationStore({}, {
         dispatcher: dispatcher,
         client: {},
         sdkDriver: {}
       });
-    });
-
-    afterEach(function() {
-      delete navigator.mozLoop;
+      feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+        feedbackClient: {}
+      });
     });
 
     it("should render the CallFailedView when the call state is 'terminated'",
@@ -436,10 +477,10 @@ describe("loop.conversationViews", function () {
           loop.conversationViews.CallFailedView);
     });
 
-    it("should render the PendingConversationView when the call state is 'init'",
+    it("should render the PendingConversationView when the call state is 'gather'",
       function() {
         store.set({
-          callState: CALL_STATES.INIT,
+          callState: CALL_STATES.GATHER,
           contact: contact
         });
 
@@ -469,10 +510,26 @@ describe("loop.conversationViews", function () {
           loop.shared.views.FeedbackView);
     });
 
+    it("should play the terminated sound when the call state is 'finished'",
+      function() {
+        var fakeAudio = {
+          play: sinon.spy(),
+          pause: sinon.spy(),
+          removeAttribute: sinon.spy()
+        };
+        sandbox.stub(window, "Audio").returns(fakeAudio);
+
+        store.set({callState: CALL_STATES.FINISHED});
+
+        view = mountTestComponent();
+
+        sinon.assert.calledOnce(fakeAudio.play);
+    });
+
     it("should update the rendered views when the state is changed.",
       function() {
         store.set({
-          callState: CALL_STATES.INIT,
+          callState: CALL_STATES.GATHER,
           contact: contact
         });
 

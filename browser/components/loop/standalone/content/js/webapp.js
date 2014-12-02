@@ -14,18 +14,22 @@ loop.webapp = (function($, _, OT, mozL10n) {
   loop.config = loop.config || {};
   loop.config.serverUrl = loop.config.serverUrl || "http://localhost:5000";
 
+  var sharedActions = loop.shared.actions;
   var sharedMixins = loop.shared.mixins;
   var sharedModels = loop.shared.models;
   var sharedViews = loop.shared.views;
   var sharedUtils = loop.shared.utils;
+
+  var multiplexGum = loop.standaloneMedia.multiplexGum;
 
   /**
    * Homepage view.
    */
   var HomeView = React.createClass({displayName: 'HomeView',
     render: function() {
+      multiplexGum.reset();
       return (
-        React.DOM.p(null, mozL10n.get("welcome"))
+        React.DOM.p(null, mozL10n.get("welcome", {clientShortname: mozL10n.get("clientShortname2")}))
       );
     }
   });
@@ -37,13 +41,15 @@ loop.webapp = (function($, _, OT, mozL10n) {
     render: function() {
       var useLatestFF = mozL10n.get("use_latest_firefox", {
         "firefoxBrandNameLink": React.renderComponentToStaticMarkup(
-          React.DOM.a({target: "_blank", href: "https://www.mozilla.org/firefox/"}, "Firefox")
+          React.DOM.a({target: "_blank", href: loop.config.brandWebsiteUrl}, 
+            mozL10n.get("brandShortname")
+          )
         )
       });
       return (
         React.DOM.div(null, 
           React.DOM.h2(null, mozL10n.get("incompatible_browser")), 
-          React.DOM.p(null, mozL10n.get("powered_by_webrtc")), 
+          React.DOM.p(null, mozL10n.get("powered_by_webrtc", {clientShortname: mozL10n.get("clientShortname2")})), 
           React.DOM.p({dangerouslySetInnerHTML: {__html: useLatestFF}})
         )
       );
@@ -58,8 +64,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
       return (
         React.DOM.div(null, 
           React.DOM.h2(null, mozL10n.get("incompatible_device")), 
-          React.DOM.p(null, mozL10n.get("sorry_device_unsupported")), 
-          React.DOM.p(null, mozL10n.get("use_firefox_windows_mac_linux"))
+          React.DOM.p(null, mozL10n.get("sorry_device_unsupported", {clientShortname: mozL10n.get("clientShortname2")})), 
+          React.DOM.p(null, mozL10n.get("use_firefox_windows_mac_linux", {brandShortname: mozL10n.get("brandShortname")}))
         )
       );
     }
@@ -79,11 +85,13 @@ loop.webapp = (function($, _, OT, mozL10n) {
       }
       return (
         React.DOM.div({className: "promote-firefox"}, 
-          React.DOM.h3(null, mozL10n.get("promote_firefox_hello_heading")), 
+          React.DOM.h3(null, mozL10n.get("promote_firefox_hello_heading", {brandShortname: mozL10n.get("brandShortname")})), 
           React.DOM.p(null, 
             React.DOM.a({className: "btn btn-large btn-accept", 
-               href: "https://www.mozilla.org/firefox/"}, 
-              mozL10n.get("get_firefox_button")
+               href: loop.config.brandWebsiteUrl}, 
+              mozL10n.get("get_firefox_button", {
+                brandShortname: mozL10n.get("brandShortname")
+              })
             )
           )
         )
@@ -117,8 +125,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
     render: function() {
       return (
         React.DOM.h1({className: "standalone-header-title"}, 
-          React.DOM.strong(null, mozL10n.get("brandShortname")), 
-          mozL10n.get("clientShortname")
+          React.DOM.strong(null, mozL10n.get("clientShortname2"))
         )
       );
     }
@@ -232,7 +239,9 @@ loop.webapp = (function($, _, OT, mozL10n) {
       return (
         React.DOM.header({className: "standalone-header header-box container-box"}, 
           ConversationBranding(null), 
-          React.DOM.div({className: "loop-logo", title: "Firefox WebRTC! logo"}), 
+          React.DOM.div({className: "loop-logo", 
+               title: mozL10n.get("client_alttext",
+                                  {clientShortname: mozL10n.get("clientShortname2")})}), 
           React.DOM.h3({className: "call-url"}, 
             conversationUrl
           ), 
@@ -248,39 +257,38 @@ loop.webapp = (function($, _, OT, mozL10n) {
     render: function() {
       return (
         React.DOM.div({className: "standalone-footer container-box"}, 
-          React.DOM.div({title: "Mozilla Logo", className: "footer-logo"})
+          React.DOM.div({title: mozL10n.get("vendor_alttext",
+                                  {vendorShortname: mozL10n.get("vendorShortname")}), 
+               className: "footer-logo"}), 
+          React.DOM.div({className: "footer-external-links"}, 
+            React.DOM.a({target: "_blank", href: loop.config.guestSupportUrl}, 
+              mozL10n.get("support_link")
+            )
+          )
         )
       );
     }
   });
 
+  /**
+   * A view for when conversations are pending, displays any messages
+   * and an option cancel button.
+   */
   var PendingConversationView = React.createClass({displayName: 'PendingConversationView',
-    getInitialState: function() {
-      return {
-        callState: this.props.callState || "connecting"
-      };
-    },
-
     propTypes: {
-      websocket: React.PropTypes.instanceOf(loop.CallConnectionWebSocket)
-                      .isRequired
-    },
-
-    componentDidMount: function() {
-      this.props.websocket.listenTo(this.props.websocket, "progress:alerting",
-                                    this._handleRingingProgress);
-    },
-
-    _handleRingingProgress: function() {
-      this.setState({callState: "ringing"});
-    },
-
-    _cancelOutgoingCall: function() {
-      this.props.websocket.cancel();
+      callState: React.PropTypes.string.isRequired,
+      // If not supplied, the cancel button is not displayed.
+      cancelCallback: React.PropTypes.func
     },
 
     render: function() {
-      var callState = mozL10n.get("call_progress_" + this.state.callState + "_description");
+      var cancelButtonClasses = React.addons.classSet({
+        btn: true,
+        "btn-large": true,
+        "btn-cancel": true,
+        hide: !this.props.cancelCallback
+      });
+
       return (
         React.DOM.div({className: "container"}, 
           React.DOM.div({className: "container-box"}, 
@@ -293,13 +301,13 @@ loop.webapp = (function($, _, OT, mozL10n) {
             React.DOM.div({id: "messages"}), 
 
             React.DOM.p({className: "standalone-btn-label"}, 
-              callState
+              this.props.callState
             ), 
 
             React.DOM.div({className: "btn-pending-cancel-group btn-group"}, 
               React.DOM.div({className: "flex-padding-1"}), 
-              React.DOM.button({className: "btn btn-large btn-cancel", 
-                      onClick: this._cancelOutgoingCall}, 
+              React.DOM.button({className: cancelButtonClasses, 
+                      onClick: this.props.cancelCallback}, 
                 React.DOM.span({className: "standalone-call-btn-text"}, 
                   mozL10n.get("initiate_call_cancel_button")
                 )
@@ -308,6 +316,70 @@ loop.webapp = (function($, _, OT, mozL10n) {
             )
           ), 
           ConversationFooter(null)
+        )
+      );
+    }
+  });
+
+  /**
+   * View displayed whilst the get user media prompt is being displayed. Indicates
+   * to the user to accept the prompt.
+   */
+  var GumPromptConversationView = React.createClass({displayName: 'GumPromptConversationView',
+    render: function() {
+      var callState = mozL10n.get("call_progress_getting_media_description", {
+        clientShortname: mozL10n.get("clientShortname2")
+      });
+      document.title = mozL10n.get("standalone_title_with_status", {
+        clientShortname: mozL10n.get("clientShortname2"),
+        currentStatus: mozL10n.get("call_progress_getting_media_title")
+      });
+
+      return PendingConversationView({callState: callState});
+    }
+  });
+
+  /**
+   * View displayed waiting for a call to be connected. Updates the display
+   * once the websocket shows that the callee is being alerted.
+   */
+  var WaitingConversationView = React.createClass({displayName: 'WaitingConversationView',
+    mixins: [sharedMixins.AudioMixin],
+
+    getInitialState: function() {
+      return {
+        callState: "connecting"
+      };
+    },
+
+    propTypes: {
+      websocket: React.PropTypes.instanceOf(loop.CallConnectionWebSocket)
+                      .isRequired
+    },
+
+    componentDidMount: function() {
+      this.play("connecting", {loop: true});
+      this.props.websocket.listenTo(this.props.websocket, "progress:alerting",
+                                    this._handleRingingProgress);
+    },
+
+    _handleRingingProgress: function() {
+      this.play("ringtone", {loop: true});
+      this.setState({callState: "ringing"});
+    },
+
+    _cancelOutgoingCall: function() {
+      multiplexGum.reset();
+      this.props.websocket.cancel();
+    },
+
+    render: function() {
+      var callState = mozL10n.get("call_progress_" + this.state.callState + "_description");
+
+      return (
+        PendingConversationView({
+          callState: callState, 
+          cancelCallback: this._cancelOutgoingCall}
         )
       );
     }
@@ -453,10 +525,12 @@ loop.webapp = (function($, _, OT, mozL10n) {
       var privacyNoticeName = mozL10n.get("privacy_notice_link_text");
 
       var tosHTML = mozL10n.get("legal_text_and_links", {
-        "terms_of_use_url": "<a target=_blank href='/legal/terms/'>" +
+        "clientShortname": mozL10n.get("clientShortname2"),
+        "terms_of_use_url": "<a target=_blank href='" +
+          loop.config.legalWebsiteUrl + "'>" +
           tosLinkName + "</a>",
         "privacy_notice_url": "<a target=_blank href='" +
-          "https://www.mozilla.org/privacy/'>" + privacyNoticeName + "</a>"
+          loop.config.privacyWebsiteUrl + "'>" + privacyNoticeName + "</a>"
       });
 
       var tosClasses = React.addons.classSet({
@@ -509,7 +583,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
       conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
                          .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired,
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore),
       onAfterFeedbackReceived: React.PropTypes.func.isRequired
     },
 
@@ -517,7 +591,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
       return (
         React.DOM.div({className: "ended-conversation"}, 
           sharedViews.FeedbackView({
-            feedbackApiClient: this.props.feedbackApiClient, 
+            feedbackStore: this.props.feedbackStore, 
             onAfterFeedbackReceived: this.props.onAfterFeedbackReceived}
           ), 
           sharedViews.ConversationView({
@@ -543,6 +617,12 @@ loop.webapp = (function($, _, OT, mozL10n) {
   });
 
   var FailedConversationView = React.createClass({displayName: 'FailedConversationView',
+    mixins: [sharedMixins.AudioMixin],
+
+    componentDidMount: function() {
+      this.play("failure");
+    },
+
     render: function() {
       return this.transferPropsTo(
         InitiateConversationView({
@@ -569,7 +649,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
       notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
                           .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore)
     },
 
     getInitialState: function() {
@@ -580,6 +660,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
 
     componentDidMount: function() {
       this.props.conversation.on("call:outgoing", this.startCall, this);
+      this.props.conversation.on("call:outgoing:get-media-privs", this.getMediaPrivs, this);
       this.props.conversation.on("call:outgoing:setup", this.setupOutgoingCall, this);
       this.props.conversation.on("change:publishedStream", this._checkConnected, this);
       this.props.conversation.on("change:subscribedStream", this._checkConnected, this);
@@ -627,8 +708,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
             )
           );
         }
+        case "gumPrompt": {
+          return GumPromptConversationView(null);
+        }
         case "pending": {
-          return PendingConversationView({websocket: this._websocket});
+          return WaitingConversationView({websocket: this._websocket});
         }
         case "connected": {
           return (
@@ -645,7 +729,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
             EndedConversationView({
               sdk: this.props.sdk, 
               conversation: this.props.conversation, 
-              feedbackApiClient: this.props.feedbackApiClient, 
+              feedbackStore: this.props.feedbackStore, 
               onAfterFeedbackReceived: this.callStatusSwitcher("start")}
             )
           );
@@ -725,6 +809,22 @@ loop.webapp = (function($, _, OT, mozL10n) {
     },
 
     /**
+     * Asks the user for the media privileges, handling the result appropriately.
+     */
+    getMediaPrivs: function() {
+      this.setState({callStatus: "gumPrompt"});
+      multiplexGum.getPermsAndCacheMedia({audio:true, video:true},
+        function(localStream) {
+          this.props.conversation.gotMediaPrivs();
+        }.bind(this),
+        function(errorCode) {
+          multiplexGum.reset();
+          this.setState({callStatus: "failure"});
+        }.bind(this)
+      );
+    },
+
+    /**
      * Actually starts the call.
      */
     startCall: function() {
@@ -801,6 +901,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
      *                        timeout, cancel, media-fail, user-unknown, closed)
      */
     _handleCallTerminated: function(reason) {
+      multiplexGum.reset();
+
       if (reason === "cancel") {
         this.setState({callStatus: "start"});
         return;
@@ -814,6 +916,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
      * Handles ending a call by resetting the view to the start state.
      */
     _endCall: function() {
+      multiplexGum.reset();
+
       if (this.state.callStatus !== "failure") {
         this.setState({callStatus: "end"});
       }
@@ -825,6 +929,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
    * of the webapp page.
    */
   var WebappRootView = React.createClass({displayName: 'WebappRootView',
+
+    mixins: [sharedMixins.UrlHashChangeMixin,
+             sharedMixins.DocumentLocationMixin,
+             Backbone.Events],
+
     propTypes: {
       client: React.PropTypes.instanceOf(loop.StandaloneClient).isRequired,
       conversation: React.PropTypes.oneOfType([
@@ -835,34 +944,71 @@ loop.webapp = (function($, _, OT, mozL10n) {
       notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
                           .isRequired,
       sdk: React.PropTypes.object.isRequired,
-      feedbackApiClient: React.PropTypes.object.isRequired
+
+      // XXX New types for flux style
+      standaloneAppStore: React.PropTypes.instanceOf(
+        loop.store.StandaloneAppStore).isRequired,
+      activeRoomStore: React.PropTypes.instanceOf(
+        loop.store.ActiveRoomStore).isRequired,
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
+      feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore)
     },
 
     getInitialState: function() {
-      return {
-        unsupportedDevice: this.props.helper.isIOS(navigator.platform),
-        unsupportedBrowser: !this.props.sdk.checkSystemRequirements(),
-      };
+      return this.props.standaloneAppStore.getStoreState();
+    },
+
+    componentWillMount: function() {
+      this.listenTo(this.props.standaloneAppStore, "change", function() {
+        this.setState(this.props.standaloneAppStore.getStoreState());
+      }, this);
+    },
+
+    componentWillUnmount: function() {
+      this.stopListening(this.props.standaloneAppStore);
+    },
+
+    onUrlHashChange: function() {
+      this.locationReload();
     },
 
     render: function() {
-      if (this.state.unsupportedDevice) {
-        return UnsupportedDeviceView(null);
-      } else if (this.state.unsupportedBrowser) {
-        return UnsupportedBrowserView(null);
-      } else if (this.props.conversation.get("loopToken")) {
-        return (
-          OutgoingConversationView({
-             client: this.props.client, 
-             conversation: this.props.conversation, 
-             helper: this.props.helper, 
-             notifications: this.props.notifications, 
-             sdk: this.props.sdk, 
-             feedbackApiClient: this.props.feedbackApiClient}
-          )
-        );
-      } else {
-        return HomeView(null);
+      switch (this.state.windowType) {
+        case "unsupportedDevice": {
+          return UnsupportedDeviceView(null);
+        }
+        case "unsupportedBrowser": {
+          return UnsupportedBrowserView(null);
+        }
+        case "outgoing": {
+          return (
+            OutgoingConversationView({
+               client: this.props.client, 
+               conversation: this.props.conversation, 
+               helper: this.props.helper, 
+               notifications: this.props.notifications, 
+               sdk: this.props.sdk, 
+               feedbackStore: this.props.feedbackStore}
+            )
+          );
+        }
+        case "room": {
+          return (
+            loop.standaloneRoomViews.StandaloneRoomView({
+              activeRoomStore: this.props.activeRoomStore, 
+              dispatcher: this.props.dispatcher, 
+              helper: this.props.helper}
+            )
+          );
+        }
+        case "home": {
+          return HomeView(null);
+        }
+        default: {
+          // The state hasn't been initialised yet, so don't display
+          // anything to avoid flicker.
+          return null;
+        }
       }
     }
   });
@@ -872,9 +1018,11 @@ loop.webapp = (function($, _, OT, mozL10n) {
    */
   function init() {
     var helper = new sharedUtils.Helper();
-    var client = new loop.StandaloneClient({
+    var standaloneMozLoop = new loop.StandaloneMozLoop({
       baseServerUrl: loop.config.serverUrl
     });
+
+    // Older non-flux based items.
     var notifications = new sharedModels.NotificationCollection();
     var conversation
     if (helper.isFirefoxOS(navigator.userAgent)) {
@@ -892,11 +1040,40 @@ loop.webapp = (function($, _, OT, mozL10n) {
         url: document.location.origin
       });
 
-    // Obtain the loopToken and pass it to the conversation
-    var locationHash = helper.locationHash();
-    if (locationHash) {
-      conversation.set("loopToken", locationHash.match(/\#call\/(.*)/)[1]);
-    }
+    // New flux items.
+    var dispatcher = new loop.Dispatcher();
+    var client = new loop.StandaloneClient({
+      baseServerUrl: loop.config.serverUrl
+    });
+    var sdkDriver = new loop.OTSdkDriver({
+      dispatcher: dispatcher,
+      sdk: OT
+    });
+    var feedbackClient = new loop.FeedbackAPIClient(
+      loop.config.feedbackApiUrl, {
+      product: loop.config.feedbackProductName,
+      user_agent: navigator.userAgent,
+      url: document.location.origin
+    });
+
+    // Stores
+    var standaloneAppStore = new loop.store.StandaloneAppStore({
+      conversation: conversation,
+      dispatcher: dispatcher,
+      helper: helper,
+      sdk: OT
+    });
+    var activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
+      mozLoop: standaloneMozLoop,
+      sdkDriver: sdkDriver
+    });
+    var feedbackStore = new loop.store.FeedbackStore(dispatcher, {
+      feedbackClient: feedbackClient
+    });
+
+    window.addEventListener("unload", function() {
+      dispatcher.dispatch(new sharedActions.WindowUnload());
+    });
 
     React.renderComponent(WebappRootView({
       client: client, 
@@ -904,17 +1081,29 @@ loop.webapp = (function($, _, OT, mozL10n) {
       helper: helper, 
       notifications: notifications, 
       sdk: OT, 
-      feedbackApiClient: feedbackApiClient}
+      feedbackStore: feedbackStore, 
+      standaloneAppStore: standaloneAppStore, 
+      activeRoomStore: activeRoomStore, 
+      dispatcher: dispatcher}
     ), document.querySelector("#main"));
 
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
     document.documentElement.lang = mozL10n.language.code;
     document.documentElement.dir = mozL10n.language.direction;
+    document.title = mozL10n.get("clientShortname2");
+
+    dispatcher.dispatch(new sharedActions.ExtractTokenInfo({
+      // We pass the hash or the pathname - the hash was used for the original
+      // urls, the pathname for later ones.
+      windowPath: helper.locationData().hash || helper.locationData().pathname
+    }));
   }
 
   return {
     CallUrlExpiredView: CallUrlExpiredView,
     PendingConversationView: PendingConversationView,
+    GumPromptConversationView: GumPromptConversationView,
+    WaitingConversationView: WaitingConversationView,
     StartConversationView: StartConversationView,
     FailedConversationView: FailedConversationView,
     OutgoingConversationView: OutgoingConversationView,

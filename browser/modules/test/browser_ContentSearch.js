@@ -45,7 +45,7 @@ add_task(function* SetCurrentEngine() {
     info("Test observed " + data);
     if (data == "engine-current") {
       ok(true, "Test observed engine-current");
-      Services.obs.removeObserver(obs, "browser-search-engine-modified", false);
+      Services.obs.removeObserver(obs, "browser-search-engine-modified");
       deferred.resolve();
     }
   }, "browser-search-engine-modified", false);
@@ -59,7 +59,7 @@ add_task(function* SetCurrentEngine() {
   });
 
   Services.search.currentEngine = oldCurrentEngine;
-  let msg = yield waitForTestMsg("CurrentEngine");
+  msg = yield waitForTestMsg("CurrentEngine");
   checkMsg(msg, {
     type: "CurrentEngine",
     data: yield currentEngineObj(oldCurrentEngine),
@@ -188,6 +188,7 @@ add_task(function* GetSuggestions_AddFormHistoryEntry_RemoveFormHistoryEntry() {
   let deferred = Promise.defer();
   Services.obs.addObserver(function onAdd(subj, topic, data) {
     if (data == "formhistory-add") {
+      Services.obs.removeObserver(onAdd, "satchel-storage-changed");
       executeSoon(() => deferred.resolve());
     }
   }, "satchel-storage-changed", false);
@@ -224,6 +225,7 @@ add_task(function* GetSuggestions_AddFormHistoryEntry_RemoveFormHistoryEntry() {
   deferred = Promise.defer();
   Services.obs.addObserver(function onRemove(subj, topic, data) {
     if (data == "formhistory-remove") {
+      Services.obs.removeObserver(onRemove, "satchel-storage-changed");
       executeSoon(() => deferred.resolve());
     }
   }, "satchel-storage-changed", false);
@@ -256,9 +258,43 @@ add_task(function* GetSuggestions_AddFormHistoryEntry_RemoveFormHistoryEntry() {
   yield waitForTestMsg("CurrentState");
 });
 
+function buffersEqual(actualArrayBuffer, expectedArrayBuffer) {
+  let expectedView = new Int8Array(expectedArrayBuffer);
+  let actualView = new Int8Array(actualArrayBuffer);
+  for (let i = 0; i < expectedView.length; i++) {
+    if (actualView[i] != expectedView[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function arrayBufferEqual(actualArrayBuffer, expectedArrayBuffer) {
+  ok(actualArrayBuffer instanceof ArrayBuffer, "Actual value is ArrayBuffer.");
+  ok(expectedArrayBuffer instanceof ArrayBuffer, "Expected value is ArrayBuffer.");
+  Assert.equal(actualArrayBuffer.byteLength, expectedArrayBuffer.byteLength,
+      "Array buffers have the same length.");
+  ok(buffersEqual(actualArrayBuffer, expectedArrayBuffer), "Buffers are equal.");
+}
+
+function checkArrayBuffers(actual, expected) {
+  if (actual instanceof ArrayBuffer) {
+    arrayBufferEqual(actual, expected);
+  }
+  if (typeof actual == "object") {
+    for (let i in actual) {
+      checkArrayBuffers(actual[i], expected[i]);
+    }
+  }
+}
 
 function checkMsg(actualMsg, expectedMsgData) {
+  let actualMsgData = actualMsg.data;
   SimpleTest.isDeeply(actualMsg.data, expectedMsgData, "Checking message");
+
+  // Engines contain ArrayBuffers which we have to compare byte by byte and
+  // not as Objects (like SimpleTest.isDeeply does).
+  checkArrayBuffers(actualMsgData, expectedMsgData);
 }
 
 function waitForMsg(name, type) {
@@ -328,35 +364,33 @@ function addTab() {
   return deferred.promise;
 }
 
-function currentStateObj() {
-  return Task.spawn(function* () {
-    let state = {
-      engines: [],
-      currentEngine: yield currentEngineObj(),
-    };
-    for (let engine of Services.search.getVisibleEngines()) {
-      let uri = engine.getIconURLBySize(16, 16);
-      state.engines.push({
-        name: engine.name,
-        iconBuffer: yield arrayBufferFromDataURI(uri),
-      });
-    }
-    return state;
-  }.bind(this));
-}
-
-function currentEngineObj() {
-  return Task.spawn(function* () {
-    let engine = Services.search.currentEngine;
-    let uri1x = engine.getIconURLBySize(65, 26);
-    let uri2x = engine.getIconURLBySize(130, 52);
-    return {
+let currentStateObj = Task.async(function* () {
+  let state = {
+    engines: [],
+    currentEngine: yield currentEngineObj(),
+  };
+  for (let engine of Services.search.getVisibleEngines()) {
+    let uri = engine.getIconURLBySize(16, 16);
+    state.engines.push({
       name: engine.name,
-      logoBuffer: yield arrayBufferFromDataURI(uri1x),
-      logo2xBuffer: yield arrayBufferFromDataURI(uri2x),
-    };
-  }.bind(this));
-}
+      iconBuffer: yield arrayBufferFromDataURI(uri),
+    });
+  }
+  return state;
+});
+
+let currentEngineObj = Task.async(function* () {
+  let engine = Services.search.currentEngine;
+  let uri1x = engine.getIconURLBySize(65, 26);
+  let uri2x = engine.getIconURLBySize(130, 52);
+  let uriFavicon = engine.getIconURLBySize(16, 16);
+  return {
+    name: engine.name,
+    logoBuffer: yield arrayBufferFromDataURI(uri1x),
+    logo2xBuffer: yield arrayBufferFromDataURI(uri2x),
+    iconBuffer: yield arrayBufferFromDataURI(uriFavicon),
+  };
+});
 
 function arrayBufferFromDataURI(uri) {
   if (!uri) {

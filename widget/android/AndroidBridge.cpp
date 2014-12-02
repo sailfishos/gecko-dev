@@ -41,7 +41,9 @@
 #include "nsContentUtils.h"
 #include "nsIScriptError.h"
 #include "nsIHttpChannel.h"
-#include "GeneratedSDKWrappers.h"
+
+#include "MediaCodec.h"
+#include "SurfaceTexture.h"
 
 using namespace mozilla;
 using namespace mozilla::widget::android;
@@ -222,8 +224,11 @@ AndroidBridge::Init(JNIEnv *jEnv)
     InitAndroidJavaWrappers(jEnv);
 
     if (mAPIVersion >= 16 /* Jelly Bean */) {
-        // We only use this for MediaCodec right now
-        InitSDKStubs(jEnv);
+        sdk::InitMediaCodecStubs(jEnv);
+    }
+
+    if (mAPIVersion >= 14 /* ICS */) {
+        sdk::InitSurfaceTextureStubs(jEnv);
     }
 
     // jEnv should NOT be cached here by anything -- the jEnv here
@@ -1863,9 +1868,9 @@ nsresult AndroidBridge::CaptureThumbnail(nsIDOMWindow *window, int32_t bufW, int
         return NS_ERROR_FAILURE;
     }
     nsRefPtr<gfxContext> context = new gfxContext(dt);
-    gfxPoint pt(0, 0);
-    context->Translate(pt);
-    context->Scale(scale * bufW / srcW, scale * bufH / srcH);
+    context->SetMatrix(
+      context->CurrentMatrix().Scale(scale * bufW / srcW,
+                                     scale * bufH / srcH));
     rv = presShell->RenderDocument(r, renderDocFlags, bgColor, context);
     if (is24bit) {
         gfxUtils::ConvertBGRAtoRGBA(data, stride * bufH);

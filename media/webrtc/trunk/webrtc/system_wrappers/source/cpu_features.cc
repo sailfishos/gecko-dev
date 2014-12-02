@@ -67,6 +67,7 @@ static int GetCPUInfo(CPUFeature feature) {
   return 0;
 }
 
+#if !defined(WEBRTC_GONK) && !defined(ANDROID)
 #ifdef WEBRTC_ARCH_ARM_V7
 uint64_t WebRtc_GetCPUFeaturesARM(void) {
   return kCPUFeatureARMv7
@@ -75,7 +76,8 @@ uint64_t WebRtc_GetCPUFeaturesARM(void) {
 #endif
          | kCPUFeatureVFPv3;
 }
-#endif
+#endif // WEBRTC_ARCH_ARM_V7
+#endif // !WEBRTC_GONK && !ANDROID
 
 #endif
 

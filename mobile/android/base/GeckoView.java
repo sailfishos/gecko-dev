@@ -27,6 +27,7 @@ import android.content.res.TypedArray;
 import android.os.Handler;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.View;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,7 +64,11 @@ public class GeckoView extends LayerView
                         } else if (event.equals("Prompt:Show") || event.equals("Prompt:ShowTop")) {
                             handlePrompt(message);
                         } else if (event.equals("Accessibility:Event")) {
-                            GeckoAccessibility.sendAccessibilityEvent(message);
+                            int mode = getImportantForAccessibility();
+                            if (mode == View.IMPORTANT_FOR_ACCESSIBILITY_YES ||
+                                mode == View.IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
+                                GeckoAccessibility.sendAccessibilityEvent(message);
+                            }
                         }
                     } catch (Exception e) {
                         Log.e(LOGTAG, "handleMessage threw for " + event, e);
@@ -161,7 +166,6 @@ public class GeckoView extends LayerView
         EventDispatcher.getInstance().registerGeckoThreadListener(mNativeEventListener,
             "Accessibility:Ready");
 
-        ThreadUtils.setUiThread(Thread.currentThread(), new Handler());
         initializeView(EventDispatcher.getInstance());
 
         if (GeckoThread.checkAndSetLaunchState(GeckoThread.LaunchState.Launching, GeckoThread.LaunchState.Launched)) {
@@ -170,6 +174,8 @@ public class GeckoView extends LayerView
             BrowserDB.initialize(profile.getName());
 
             GeckoAppShell.setLayerView(this);
+            GeckoAppShell.sendEventToGecko(GeckoEvent.createObjectEvent(
+                GeckoEvent.ACTION_OBJECT_LAYER_CLIENT, getLayerClientObject()));
             GeckoThread.createAndStart();
         } else if(GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoRunning)) {
             // If Gecko is already running, that means the Activity was
@@ -243,7 +249,6 @@ public class GeckoView extends LayerView
         if (selectedTab != null)
             Tabs.getInstance().notifyListeners(selectedTab, Tabs.TabEvents.SELECTED);
         geckoConnected();
-        GeckoAppShell.setLayerClient(getLayerClientObject());
         GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Viewport:Flush", null));
     }
 
@@ -349,6 +354,7 @@ public class GeckoView extends LayerView
         return DEFAULT_SHARED_PREFERENCES_FILE;
     }
 
+    @Override
     public SharedPreferences getSharedPreferences() {
         return getContext().getSharedPreferences(getSharedPreferencesFile(), 0);
     }

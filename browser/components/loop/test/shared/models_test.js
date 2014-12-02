@@ -91,12 +91,22 @@ describe("loop.shared.models", function() {
             expect(conversation.get("selectedCallType")).eql("audio-video");
           });
 
+        it("should trigger a `call:outgoing:get-media-privs` event", function(done) {
+          conversation.once("call:outgoing:get-media-privs", function() {
+            done();
+          });
+
+          conversation.setupOutgoingCall();
+        });
+      });
+
+      describe("#gotMediaPrivs", function() {
         it("should trigger a `call:outgoing:setup` event", function(done) {
           conversation.once("call:outgoing:setup", function() {
             done();
           });
 
-          conversation.setupOutgoingCall();
+          conversation.gotMediaPrivs();
         });
       });
 
@@ -151,11 +161,20 @@ describe("loop.shared.models", function() {
           model = new sharedModels.ConversationModel(fakeSessionData, {
             sdk: fakeSDK
           });
+          model.set({
+            publishedStream: true,
+            subscribedStream: true
+          });
           model.startSession();
         });
 
         it("should start a session", function() {
           sinon.assert.calledOnce(fakeSDK.initSession);
+        });
+
+        it("should reset the stream flags", function() {
+          expect(model.get("publishedStream")).eql(false);
+          expect(model.get("subscribedStream")).eql(false);
         });
 
         it("should call connect", function() {
@@ -221,7 +240,7 @@ describe("loop.shared.models", function() {
 
               model.startSession();
 
-              sinon.assert.calledOnce(model.trigger);
+              sinon.assert.called(model.trigger);
               sinon.assert.calledWithExactly(model.trigger,
                           "session:connection-error", sinon.match.object);
             });
@@ -244,6 +263,20 @@ describe("loop.shared.models", function() {
               fakeSession.trigger("sessionDisconnected", {reason: "ko"});
             });
 
+          it("should trigger network-disconnected on networkDisconnect reason",
+             function(done) {
+               model.once("session:network-disconnected", function() {
+                 done();
+               });
+
+               var fakeEvent = {
+                 connectionId: 42,
+                 reason: "networkDisconnected"
+               };
+
+               fakeSession.trigger("sessionDisconnected", fakeEvent);
+            });
+
           it("should set the connected attribute to false on sessionDisconnected",
             function() {
               fakeSession.trigger("sessionDisconnected", {reason: "ko"});
@@ -264,7 +297,7 @@ describe("loop.shared.models", function() {
             it("should trigger a session:peer-hungup model event",
               function(done) {
                 model.once("session:peer-hungup", function(event) {
-                  expect(event.connectionId).eql(42);
+                  expect(event.connection.connectionId).eql(42);
                   done();
                 });
 
@@ -279,25 +312,6 @@ describe("loop.shared.models", function() {
               sinon.assert.calledOnce(model.endSession);
             });
           });
-
-          describe("networkDisconnected event received", function() {
-            it("should trigger a session:network-disconnected event",
-              function(done) {
-                model.once("session:network-disconnected", function() {
-                  done();
-                });
-
-                fakeSession.trigger("networkDisconnected");
-              });
-
-            it("should terminate the session", function() {
-              sandbox.stub(model, "endSession");
-
-              fakeSession.trigger("networkDisconnected", {reason: "ko"});
-
-              sinon.assert.calledOnce(model.endSession);
-            });
-          });
         });
       });
 
@@ -308,6 +322,7 @@ describe("loop.shared.models", function() {
           model = new sharedModels.ConversationModel(fakeSessionData, {
             sdk: fakeSDK
           });
+          model.set("ongoing", true);
           model.startSession();
         });
 
@@ -327,6 +342,18 @@ describe("loop.shared.models", function() {
           model.endSession();
 
           expect(model.get("ongoing")).eql(false);
+        });
+
+        it("should set the streams to unpublished", function() {
+          model.set({
+            publishedStream: true,
+            subscribedStream: true
+          });
+
+          model.endSession();
+
+          expect(model.get("publishedStream")).eql(false);
+          expect(model.get("subscribedStream")).eql(false);
         });
 
         it("should stop listening to session events once the session is " +

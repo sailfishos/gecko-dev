@@ -28,6 +28,7 @@ struct Zone;
 
 namespace js {
 
+class TypedArrayObject;
 class ObjectElements;
 class HeapSlot;
 void SetGCZeal(JSRuntime *, uint8_t, uint32_t);
@@ -49,39 +50,6 @@ class MacroAssembler;
 class ICStubCompiler;
 class BaselineCompiler;
 }
-
-namespace gc {
-
-/*
- * This structure overlays a Cell in the Nursery and re-purposes its memory
- * for managing the Nursery collection process.
- */
-class RelocationOverlay
-{
-    friend class MinorCollectionTracer;
-    friend class ForkJoinNursery;
-
-    /* The low bit is set so this should never equal a normal pointer. */
-    static const uintptr_t Relocated = uintptr_t(0xbad0bad1);
-
-    /* Set to Relocated when moved. */
-    uintptr_t magic_;
-
-    /* The location |this| was moved to. */
-    Cell *newLocation_;
-
-    /* A list entry to track all relocated things. */
-    RelocationOverlay *next_;
-
-  public:
-    static inline RelocationOverlay *fromCell(Cell *cell);
-    inline bool isForwarded() const;
-    inline Cell *forwardingAddress() const;
-    inline void forwardTo(Cell *cell);
-    inline RelocationOverlay *next() const;
-};
-
-} /* namespace gc */
 
 class Nursery
 {
@@ -190,6 +158,10 @@ class Nursery
         return heapEnd_;
     }
 
+    static bool IsMinorCollectionTracer(JSTracer *trc) {
+        return trc->callback == MinorGCCallback;
+    }
+
 #ifdef JS_GC_ZEAL
     void enterZealMode();
     void leaveZealMode();
@@ -233,6 +205,16 @@ class Nursery
     typedef HashSet<HeapSlot *, PointerHasher<HeapSlot *, 3>, SystemAllocPolicy> HugeSlotsSet;
     HugeSlotsSet hugeSlots;
 
+    /*
+     * During a collection most hoisted slot and element buffers indicate their
+     * new location with a forwarding pointer at the base. This does not work
+     * for buffers whose length is less than pointer width, or when different
+     * buffers might overlap each other. For these, an entry in the following
+     * table is used.
+     */
+    typedef HashMap<void *, void *, PointerHasher<void *, 1>, SystemAllocPolicy> ForwardedBufferMap;
+    ForwardedBufferMap forwardedBuffers;
+
     /* The maximum number of slots allowed to reside inline in the nursery. */
     static const size_t MaxNurserySlots = 128;
 
@@ -248,8 +230,8 @@ class Nursery
     static_assert(sizeof(NurseryChunkLayout) == gc::ChunkSize,
                   "Nursery chunk size must match gc::Chunk size.");
     NurseryChunkLayout &chunk(int index) const {
-        JS_ASSERT(index < numNurseryChunks_);
-        JS_ASSERT(start());
+        MOZ_ASSERT(index < numNurseryChunks_);
+        MOZ_ASSERT(start());
         return reinterpret_cast<NurseryChunkLayout *>(start())[index];
     }
 
@@ -261,8 +243,8 @@ class Nursery
     }
 
     MOZ_ALWAYS_INLINE void setCurrentChunk(int chunkno) {
-        JS_ASSERT(chunkno < numNurseryChunks_);
-        JS_ASSERT(chunkno < numActiveChunks_);
+        MOZ_ASSERT(chunkno < numNurseryChunks_);
+        MOZ_ASSERT(chunkno < numActiveChunks_);
         currentChunk_ = chunkno;
         position_ = chunk(chunkno).start();
         currentEnd_ = chunk(chunkno).end();
@@ -272,17 +254,17 @@ class Nursery
     void updateDecommittedRegion();
 
     MOZ_ALWAYS_INLINE uintptr_t allocationEnd() const {
-        JS_ASSERT(numActiveChunks_ > 0);
+        MOZ_ASSERT(numActiveChunks_ > 0);
         return chunk(numActiveChunks_ - 1).end();
     }
 
     MOZ_ALWAYS_INLINE uintptr_t currentEnd() const {
-        JS_ASSERT(runtime_);
-        JS_ASSERT(currentEnd_ == chunk(currentChunk_).end());
+        MOZ_ASSERT(runtime_);
+        MOZ_ASSERT(currentEnd_ == chunk(currentChunk_).end());
         return currentEnd_;
     }
     void *addressOfCurrentEnd() const {
-        JS_ASSERT(runtime_);
+        MOZ_ASSERT(runtime_);
         return (void *)&currentEnd_;
     }
 
@@ -295,7 +277,7 @@ class Nursery
     HeapSlot *allocateHugeSlots(JS::Zone *zone, size_t nslots);
 
     /* Allocates a new GC thing from the tenured generation during minor GC. */
-    void *allocateFromTenured(JS::Zone *zone, gc::AllocKind thingKind);
+    gc::TenuredCell *allocateFromTenured(JS::Zone *zone, gc::AllocKind thingKind);
 
     struct TenureCountCache;
 
@@ -315,7 +297,7 @@ class Nursery
     size_t moveObjectToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
     size_t moveElementsToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
     size_t moveSlotsToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
-    void forwardTypedArrayPointers(JSObject *dst, JSObject *src);
+    void forwardTypedArrayPointers(TypedArrayObject *dst, TypedArrayObject *src);
 
     /* Handle relocation of slots/elements pointers stored in Ion frames. */
     void setSlotsForwardingPointer(HeapSlot *oldSlots, HeapSlot *newSlots, uint32_t nslots);

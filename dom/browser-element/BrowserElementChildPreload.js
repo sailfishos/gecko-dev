@@ -83,6 +83,7 @@ let SSL_ERROR_BAD_CERT_DOMAIN = (SSL_ERROR_BASE + 12);
 
 let MOZILLA_PKIX_ERROR_BASE = Ci.nsINSSErrorsService.MOZILLA_PKIX_ERROR_BASE;
 let MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY = (MOZILLA_PKIX_ERROR_BASE + 1);
+let MOZILLA_PKIX_ERROR_INADEQUATE_KEY_SIZE = (MOZILLA_PKIX_ERROR_BASE + 2);
 
 function getErrorClass(errorCode) {
   let NSPRCode = -1 * NS_ERROR_GET_CODE(errorCode);
@@ -97,6 +98,7 @@ function getErrorClass(errorCode) {
     case SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED:
     case SEC_ERROR_CA_CERT_INVALID:
     case MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY:
+    case MOZILLA_PKIX_ERROR_INADEQUATE_KEY_SIZE:
       return Ci.nsINSSErrorsService.ERROR_CLASS_BAD_CERT;
     default:
       return Ci.nsINSSErrorsService.ERROR_CLASS_SSL_PROTOCOL;
@@ -219,6 +221,11 @@ BrowserElementChild.prototype = {
 
     addEventListener('mozselectionchange',
                      this._selectionChangeHandler.bind(this),
+                     /* useCapture = */ false,
+                     /* wantsUntrusted = */ false);
+
+    addEventListener('scrollviewchange',
+                     this._ScrollViewChangeHandler.bind(this),
                      /* useCapture = */ false,
                      /* wantsUntrusted = */ false);
 
@@ -513,6 +520,7 @@ BrowserElementChild.prototype = {
     debug('Got iconchanged: (' + e.target.href + ')');
     let icon = { href: e.target.href };
     this._maybeCopyAttribute(e.target, icon, 'sizes');
+    this._maybeCopyAttribute(e.target, icon, 'rel');
     sendAsyncMsg('iconchange', icon);
   },
 
@@ -626,6 +634,16 @@ BrowserElementChild.prototype = {
     sendAsyncMsg('metachange', meta);
   },
 
+  _ScrollViewChangeHandler: function(e) {
+    e.stopPropagation();
+    let detail = {
+      state: e.state,
+      scrollX: e.scrollX,
+      scrollY: e.scrollY,
+    };
+    sendAsyncMsg('scrollviewchange', detail);
+  },
+
   _selectionChangeHandler: function(e) {
     e.stopPropagation();
     let boundingClientRect = e.boundingClientRect;
@@ -666,7 +684,7 @@ BrowserElementChild.prototype = {
       currentWindow = currentWindow.parent;
     }
 
-    sendAsyncMsg("selectionchange", detail);
+    sendAsyncMsg('selectionchange', detail);
   },
 
   _themeColorChangedHandler: function(eventType, target) {

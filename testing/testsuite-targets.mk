@@ -206,10 +206,10 @@ RUN_REFTEST_B2G = rm -f ./$@.log && $(PYTHON) _tests/reftest/runreftestb2g.py \
 
 ifeq ($(OS_ARCH),WINNT) #{
 # GPU-rendered shadow layers are unsupported here
-OOP_CONTENT = --setpref=layers.async-pan-zoom.enabled=true --setpref=browser.tabs.remote=true --setpref=browser.tabs.remote.autostart=true --setpref=layers.acceleration.disabled=true
+OOP_CONTENT = --setpref=layers.async-pan-zoom.enabled=true --setpref=browser.tabs.remote.autostart=true --setpref=layers.acceleration.disabled=true
 GPU_RENDERING =
 else
-OOP_CONTENT = --setpref=layers.async-pan-zoom.enabled=true --setpref=browser.tabs.remote=true --setpref=browser.tabs.remote.autostart=true
+OOP_CONTENT = --setpref=layers.async-pan-zoom.enabled=true --setpref=browser.tabs.remote.autostart=true
 GPU_RENDERING = --setpref=layers.acceleration.force-enabled=true
 endif #}
 
@@ -409,6 +409,7 @@ package-tests: \
   stage-cppunittests \
   stage-jittest \
   stage-steeplechase \
+  stage-web-platform-tests \
   $(NULL)
 else
 # This staging area has been built for us by universal/flight.mk
@@ -428,6 +429,7 @@ endif
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),android)
 package-tests: stage-android
+package-tests: stage-instrumentation-tests
 endif
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),gonk)
@@ -523,8 +525,6 @@ else
 	cp -RL $(DIST)/bin/jsapi-tests$(BIN_SUFFIX) $(PKG_STAGE)/cppunittests
 endif
 
-
-
 stage-jittest: make-stage-dir
 	$(NSINSTALL) -D $(PKG_STAGE)/jit-test/tests
 	cp -RL $(topsrcdir)/js/src/jsapi.h $(PKG_STAGE)/jit-test
@@ -558,6 +558,13 @@ stage-marionette: make-stage-dir
 
 stage-mozbase: make-stage-dir
 	$(MAKE) -C $(DEPTH)/testing/mozbase stage-package
+
+stage-web-platform-tests: make-stage-dir
+	$(MAKE) -C $(DEPTH)/testing/web-platform stage-package
+
+stage-instrumentation-tests: make-stage-dir
+	$(MAKE) -C $(DEPTH)/testing/instrumentation stage-package
+
 .PHONY: \
   mochitest \
   mochitest-plain \
@@ -584,5 +591,7 @@ stage-mozbase: make-stage-dir
   stage-modules \
   stage-marionette \
   stage-steeplechase \
+  stage-web-platform-tests \
+  stage-instrumentation-tests \
   $(NULL)
 

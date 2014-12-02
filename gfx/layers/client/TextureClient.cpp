@@ -291,7 +291,8 @@ TextureClient::CreateForDrawing(ISurfaceAllocator* aAllocator,
   }
 
   if (!texture && aFormat == SurfaceFormat::B8G8R8X8 &&
-      aAllocator->IsSameProcess()) {
+      aAllocator->IsSameProcess() &&
+      aMoz2DBackend == gfx::BackendType::CAIRO) {
     texture = new DIBTextureClient(aFormat, aTextureFlags);
   }
 
@@ -692,6 +693,7 @@ BufferTextureClient::BorrowDrawTarget()
   }
 
   if (mDrawTarget) {
+    mDrawTarget->SetTransform(Matrix());
     return mDrawTarget;
   }
 
@@ -741,7 +743,6 @@ BufferTextureClient::Unlock()
   }
 
   mDrawTarget->Flush();
-  mDrawTarget = nullptr;
 }
 
 bool

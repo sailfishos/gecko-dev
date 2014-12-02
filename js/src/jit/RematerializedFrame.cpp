@@ -38,9 +38,10 @@ RematerializedFrame::RematerializedFrame(ThreadSafeContext *cx, uint8_t *top,
     script_(iter.script())
 {
     CopyValueToRematerializedFrame op(slots_);
+    MaybeReadFallback fallback(MagicValue(JS_OPTIMIZED_OUT));
     iter.readFrameArgsAndLocals(cx, op, op, &scopeChain_, &returnValue_,
                                 &argsObj_, &thisValue_, ReadFrame_Actuals,
-                                MagicValue(JS_OPTIMIZED_OUT), /* silentFailure = */ true);
+                                fallback);
 }
 
 /* static */ RematerializedFrame *
@@ -102,7 +103,7 @@ RematerializedFrame::MarkInVector(JSTracer *trc, Vector<RematerializedFrame *> &
 CallObject &
 RematerializedFrame::callObj() const
 {
-    JS_ASSERT(hasCallObj());
+    MOZ_ASSERT(hasCallObj());
 
     JSObject *scope = scopeChain();
     while (!scope->is<CallObject>())

@@ -150,7 +150,18 @@
           var action = this._parseActionUrl(aValue);
 
           if (action) {
-            returnValue = action.param;
+            switch (action.type) {
+              case "switchtab": // Fall through.
+              case "visiturl": {
+                returnValue = action.params.url;
+                break;
+              }
+              case "keyword": // Fall through.
+              case "searchengine": {
+                returnValue = action.params.input;
+                break;
+              }
+            }
           }
 
           // Set the actiontype only if the user is not overriding actions.
@@ -279,16 +290,26 @@
 
           let matchLastLocationChange = true;
           if (action) {
-            url = action.param;
             if (this.hasAttribute("actiontype")) {
               if (action.type == "switchtab") {
+                url = action.params.url;
                 this.handleRevert();
                 let prevTab = gBrowser.selectedTab;
                 if (switchToTabHavingURI(url) &&
                     isTabEmpty(prevTab))
                   gBrowser.removeTab(prevTab);
+                return;
+              } else if (action.type == "keyword") {
+                url = action.params.url;
+              } else if (action.type == "searchengine") {
+                let engine = Services.search.getEngineByName(action.params.engineName);
+                let submission = engine.getSubmission(action.params.searchQuery);
+
+                url = submission.uri.spec;
+                postData = submission.postData;
+              } else if (action.type == "visiturl") {
+                url = action.params.url;
               }
-              return;
             }
             continueOperation.call(this);
           }
@@ -717,9 +738,28 @@
           if (!aUrl.startsWith("moz-action:"))
             return null;
 
-          // url is in the format moz-action:ACTION,PARAM
-          let [, action, param] = aUrl.match(/^moz-action:([^,]+),(.*)$/);
-          return {type: action, param: param};
+          // URL is in the format moz-action:ACTION,PARAMS
+          // Where PARAMS is a JSON encoded object.
+          aUrl = decodeURI(aUrl);
+          let [, type, params] = aUrl.match(/^moz-action:([^,]+),(.*)$/);
+
+          let action = {
+            type: type,
+          };
+
+          try {
+            action.params = JSON.parse(params);
+          } catch (e) {
+            // If this failed, we assume that params is not a JSON object, and
+            // is instead just a flat string. This will happen when
+            // UnifiedComplete is disabled - in which case, the param is always
+            // a URL.
+            action.params = {
+              url: params,
+            }
+          }
+
+          return action;
         ]]></body>
       </method>
 
@@ -888,13 +928,271 @@
             var where = whereToOpenLink(aEvent, false, true);
             searchBar.doSearch(search, where);
           }
-          ]]></body>
-        </method>
-      </implementation>
-    </binding>
+        ]]></body>
+      </method>
+    </implementation>
+  </binding>
 
-    <binding id="urlbar-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
-      <implementation>
+  <!-- Note: this binding is applied to the autocomplete popup used in the Search bar -->
+  <binding id="browser-search-autocomplete-result-popup" extends="chrome://browser/content/urlbarBindings.xml#browser-autocomplete-result-popup">
+    <resources>
+      <stylesheet src="chrome://browser/skin/searchbar.css"/>
+    </resources>
+    <content ignorekeys="true" level="top" consumeoutsideclicks="false">
+      <xul:hbox xbl:inherits="collapsed=showonlysettings"
+                class="search-panel-header search-panel-current-engine">
+        <xul:image class="searchbar-engine-image" xbl:inherits="src"/>
+        <xul:label anonid="searchbar-engine-name" flex="1" crop="end"/>
+      </xul:hbox>
+      <xul:tree anonid="tree" flex="1"
+                class="autocomplete-tree plain search-panel-tree"
+                hidecolumnpicker="true" seltype="single">
+        <xul:treecols anonid="treecols">
+          <xul:treecol id="treecolAutoCompleteValue" class="autocomplete-treecol" flex="1" overflow="true"/>
+        </xul:treecols>
+        <xul:treechildren class="autocomplete-treebody"/>
+      </xul:tree>
+      <xul:hbox anonid="search-panel-one-offs-header"
+                class="search-panel-header search-panel-current-input"
+                xbl:inherits="hidden=showonlysettings">
+        <xul:label anonid="searchbar-oneoffheader-before" value="Search for "/>
+        <xul:label anonid="searchbar-oneoffheader-searchtext" flex="1" crop="end" class="search-panel-input-value"/>
+        <xul:label anonid="searchbar-oneoffheader-after" flex="10000" value=" with:"/>
+      </xul:hbox>
+      <xul:description anonid="search-panel-one-offs"
+                       class="search-panel-one-offs"
+                       xbl:inherits="hidden=showonlysettings"/>
+      <xul:vbox anonid="add-engines"/>
+      <xul:button anonid="search-settings"
+                  xbl:inherits="showonlysettings"
+                  oncommand="openPreferences('paneSearch')"
+                  class="search-setting-button search-panel-header"
+                  label="Change Search Settings"/>
+    </content>
+    <handlers>
+      <handler event="popupshowing"><![CDATA[
+        // First handle deciding if we are showing the reduced version of the
+        // popup containing only the preferences button. We do this if the
+        // glass icon has been clicked if the text field is empty.
+        let searchbar = document.getElementById("searchbar");
+        let tree = document.getAnonymousElementByAttribute(this, "anonid",
+                                                           "tree")
+        if (searchbar.hasAttribute("showonlysettings")) {
+          searchbar.removeAttribute("showonlysettings");
+          this.setAttribute("showonlysettings", "true");
+
+          // Setting this with an xbl-inherited attribute gets overridden the
+          // second time the user clicks the glass icon for some reason...
+          tree.collapsed = true;
+        }
+        else {
+          this.removeAttribute("showonlysettings");
+          tree.collapsed = false;
+        }
+
+        // Show the current default engine in the top header of the panel.
+        let currentEngine = Services.search.currentEngine;
+        let uri = currentEngine.iconURI;
+        if (uri) {
+          uri = uri.spec;
+          this.setAttribute("src", PlacesUtils.getImageURLForResolution(window, uri));
+        }
+        else {
+          // If the default has just been changed to a provider without icon,
+          // avoid showing the icon of the previous default provider.
+          this.removeAttribute("src");
+        }
+        document.getAnonymousElementByAttribute(this, "anonid", "searchbar-engine-name")
+                .setAttribute("value", currentEngine.name + " Search");
+
+        // Update the 'Search for <keywords> with:" header.
+        let headerSearchText =
+          document.getAnonymousElementByAttribute(this, "anonid",
+                                                  "searchbar-oneoffheader-searchtext");
+        let textbox = searchbar.textbox;
+        let self = this;
+        let keyPressHandler = function() {
+          headerSearchText.setAttribute("value", textbox.value);
+          if (textbox.value)
+            self.removeAttribute("showonlysettings");
+        };
+        textbox.addEventListener("keyup", keyPressHandler);
+        this.addEventListener("popuphiding", function hiding() {
+          textbox.removeEventListener("keyup", keyPressHandler);
+          this.removeEventListener("popuphiding", hiding);
+        });
+        keyPressHandler();
+
+        // Handle opensearch items. This needs to be done before building the
+        // list of one off providers, as that code will return early if all the
+        // alternative engines are hidden.
+        let addEngineList =
+          document.getAnonymousElementByAttribute(this, "anonid", "add-engines");
+        while (addEngineList.firstChild)
+          addEngineList.firstChild.remove();
+
+        const kXULNS =
+          "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+        let addEngines = getBrowser().mCurrentBrowser.engines;
+        if (addEngines && addEngines.length > 0) {
+          const kBundleURI = "chrome://browser/locale/search.properties";
+          let bundle = Services.strings.createBundle(kBundleURI);
+          for (let engine of addEngines) {
+            let button = document.createElementNS(kXULNS, "button");
+            let label = bundle.formatStringFromName("cmd_addFoundEngine",
+                                                    [engine.title], 1);
+            button.setAttribute("class", "addengine-item");
+            button.setAttribute("label", label);
+            button.setAttribute("pack", "start");
+
+            button.setAttribute("crop", "end");
+            button.setAttribute("tooltiptext", engine.uri);
+            button.setAttribute("uri", engine.uri);
+            if (engine.icon) {
+              let uri = PlacesUtils.getImageURLForResolution(window, engine.icon);
+              button.setAttribute("image", uri);
+            }
+            button.setAttribute("title", engine.title);
+            addEngineList.appendChild(button);
+          }
+        }
+
+        // Finally, build the list of one-off buttons.
+        let list = document.getAnonymousElementByAttribute(this, "anonid",
+                                                           "search-panel-one-offs")
+        while (list.firstChild)
+          list.firstChild.remove();
+
+        let hiddenList;
+        try {
+          let pref =
+            Services.prefs.getCharPref("browser.search.hiddenOneOffs");
+          hiddenList = pref ? pref.split(",") : [];
+        } catch(e) {
+          hiddenList = [];
+        }
+
+        let engines = Services.search.getVisibleEngines()
+                              .filter(e => e.name != currentEngine.name &&
+                                           hiddenList.indexOf(e.name) == -1);
+
+        let header = document.getAnonymousElementByAttribute(this, "anonid",
+                                                             "search-panel-one-offs-header")
+        header.collapsed = list.collapsed = !engines.length;
+
+        if (!engines.length)
+          return;
+
+        let panel = document.getElementById("PopupSearchAutoComplete");
+        let minWidth = parseInt(panel.width) + 23;
+        panel.setAttribute("style", "min-width: " + minWidth + "px");
+
+        // 49px is the min-width of each search engine button,
+        // adapt this const when changing the css.
+        // It's actually 48px + 1px of right border.
+        // The + 1 is because the last button doesn't have a right border.
+        let panelWidth = parseInt(panel.clientWidth);
+        let enginesPerRow = Math.floor((panelWidth + 1) / 49);
+        let buttonWidth = Math.floor(panelWidth / enginesPerRow);
+        // There will be an emtpy area of:
+        //   panelWidth - enginesPerRow * buttonWidth  px
+        // at the end of each row.
+
+        // If the <description> tag with the list of search engines doesn't have
+        // a fixed height, the panel will be sized incorrectly, causing the bottom
+        // of the suggestion <tree> to be hidden.
+        let rowCount = Math.ceil(engines.length / enginesPerRow);
+        let height = rowCount * 33; // 32px per row, 1px border.
+        list.setAttribute("height", height + "px");
+
+        let dummyItems = enginesPerRow - (engines.length % enginesPerRow || enginesPerRow);
+        for (let i = 0; i < engines.length; ++i) {
+          let engine = engines[i];
+          let button = document.createElementNS(kXULNS, "button");
+          button.setAttribute("label", engine.name);
+          let uri = "chrome://browser/skin/search-engine-placeholder.png";
+          if (engine.iconURI) {
+            uri = PlacesUtils.getImageURLForResolution(window, engine.iconURI.spec);
+          }
+          button.setAttribute("image", uri);
+          button.setAttribute("class", "searchbar-engine-one-off-item");
+          button.setAttribute("tooltiptext", engine.name);
+          button.setAttribute("width", buttonWidth);
+          button.engine = engine;
+
+          if ((i + 1) % enginesPerRow == 0)
+            button.classList.add("last-of-row");
+
+          if (i >= engines.length + dummyItems - enginesPerRow)
+            button.classList.add("last-row");
+
+          list.appendChild(button);
+        }
+
+        while (dummyItems) {
+          let button = document.createElementNS(kXULNS, "button");
+          button.setAttribute("class", "searchbar-engine-one-off-item dummy last-row");
+          button.setAttribute("width", buttonWidth);
+
+          if (!--dummyItems)
+            button.classList.add("last-of-row");
+
+          list.appendChild(button);
+        }
+      ]]></handler>
+
+      <handler event="mousedown"><![CDATA[
+        // Required to receive click events from the buttons on Linux.
+        event.preventDefault();
+      ]]></handler>
+
+      <handler event="mouseover"><![CDATA[
+        let target = event.originalTarget;
+        if (target.localName == "button" &&
+            target.classList.contains("searchbar-engine-one-off-item") &&
+            !target.classList.contains("dummy")) {
+          let list = document.getAnonymousElementByAttribute(this, "anonid",
+                                                             "search-panel-one-offs")
+          for (let button = list.firstChild; button; button = button.nextSibling)
+            button.removeAttribute("selected");
+        }
+      ]]></handler>
+
+      <handler event="click"><![CDATA[
+        if (event.button == 2)
+          return; // ignore right clicks.
+
+        let button = event.originalTarget;
+        if (button.localName != "button" || !button.engine)
+          return;
+
+        let searchbar = document.getElementById("searchbar");
+        searchbar.handleSearchCommand(event, button.engine);
+      ]]></handler>
+
+      <handler event="command"><![CDATA[
+        let target = event.originalTarget;
+        if (target.classList.contains("addengine-item")) {
+          // On success, hide and reshow the panel to show the new engine.
+          let installCallback = {
+            onSuccess: function(engine) {
+              event.target.hidePopup();
+              BrowserSearch.searchBar.openSuggestionsPanel();
+            }
+          }
+          Services.search.addEngine(target.getAttribute("uri"),
+                                    Ci.nsISearchEngine.DATA_XML,
+                                    target.getAttribute("src"), false,
+                                    installCallback);
+        }
+      ]]></handler>
+    </handlers>
+  </binding>
+
+
+  <binding id="urlbar-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
+    <implementation>
       <field name="_maxResults">0</field>
 
       <field name="_bundle" readonly="true">
@@ -951,6 +1249,7 @@
           // Check for middle-click or modified clicks on the URL bar
           if (gURLBar && this.mInput == gURLBar) {
             var url = controller.getValueAt(this.selectedIndex);
+            var options = {};
 
             // close the autocomplete popup and revert the entered address
             this.closePopup();
@@ -959,14 +1258,30 @@
             // Check if this is meant to be an action
             let action = this.mInput._parseActionUrl(url);
             if (action) {
-              if (action.type == "switchtab")
-                url = action.param;
-              else
-                return;
+              // TODO (bug 1054816): Centralise the implementation of actions
+              // into a JS module.
+              switch (action.type) {
+                case "switchtab": // Fall through.
+                case "keyword": // Fall through.
+                case "visiturl": {
+                  url = action.params.url;
+                  break;
+                }
+                case "searchengine": {
+                  let engine = Services.search.getEngineByName(action.params.engineName);
+                  let submission = engine.getSubmission(action.params.searchQuery);
+                  url = submission.uri.spec;
+                  options.postData = submission.postData;
+                  break;
+                }
+                default: {
+                  return;
+                }
+              }
             }
 
             // respect the usual clicking subtleties
-            openUILink(url, aEvent);
+            openUILink(url, aEvent, options);
           }
         ]]>
         </body>
@@ -978,13 +1293,16 @@
         <parameter name="aType"/>
         <body>
           <![CDATA[
-            var label = aTitle + " " + aUrl;
+            let label = aTitle + " " + aUrl;
             // convert aType (ex: "ac-result-type-<aType>") to text to be spoke aloud
             // by screen readers.  convert "tag" and "bookmark" to the localized versions,
             // but don't do anything for "favicon" (the default)
-            if (aType != "favicon") {
+            try {
               label += " " + this._bundle.GetStringFromName(aType + "ResultLabel");
+            } catch (e) {
+              // Undefined result label, do nothing.
             }
+
             return label;
           ]]>
         </body>
@@ -1579,7 +1897,7 @@
   <binding id="bad-content-notification" extends="chrome://global/content/bindings/notification.xml#popup-notification">
     <content>
       <xul:hbox align="start">
-        <xul:image class="popup-notification-icon" xbl:inherits="popupid"/>
+        <xul:image class="popup-notification-icon" xbl:inherits="popupid,mixedblockdisabled,trackingblockdisabled"/>
         <xul:vbox>
           <!-- header -->
           <xul:vbox>
@@ -1601,7 +1919,7 @@
                   &mixedContentBlocked2.message;
                 </xul:description>
                 <xul:description class="popup-notification-item-message"
-                  xbl:inherits="popupid">
+                  xbl:inherits="popupid,mixedblockdisabled">
                   &mixedContentBlocked2.moreinfo;
                 </xul:description>
                 <xul:label anonid="mixedContent.helplink"
@@ -1623,8 +1941,7 @@
                 </xul:menupopup>
               </xul:button>
             </xul:hbox>
-            <xul:hbox anonid="mixedContentProtectionDisabled" hidden="true"
-                      class="popup-notification-footer" xbl:inherits="popupid">
+            <xul:hbox class="popup-notification-footer" xbl:inherits="popupid,mixedblockdisabled">
               <xul:description class="popup-notification-item-message popup-notification-item-message-critical" xbl:inherits="popupid">
                   &mixedContentBlocked2.disabled.message;
               </xul:description>
@@ -1640,7 +1957,7 @@
                   &trackingContentBlocked.message;
                 </xul:description>
                 <xul:description class="popup-notification-item-message"
-                  xbl:inherits="popupid">
+                  xbl:inherits="popupid,trackingblockdisabled">
                   &trackingContentBlocked.moreinfo;
                 </xul:description>
                 <xul:label anonid="trackingContent.helplink"
@@ -1652,16 +1969,17 @@
                 sizetopopup="none">
                 <xul:menupopup>
                   <xul:menuitem anonid="trackingContentAction.unblock"
-                    hidden="true" label="&trackingContentBlocked.unblock.label2;"
+                    hidden="true" label="&trackingContentBlocked.unblock2.label;"
+                    accesskey="&trackingContentBlocked.unblock2.accesskey;"
                     oncommand="document.getBindingParent(this).disableTrackingContentProtection();"/>
                   <xul:menuitem anonid="trackingContentAction.block"
                     hidden="true" label="&trackingContentBlocked.block.label;"
+                    accesskey="&trackingContentBlocked.block.accesskey;"
                     oncommand="document.getBindingParent(this).enableTrackingContentProtection();"/>
                 </xul:menupopup>
               </xul:button>
             </xul:hbox>
-            <xul:hbox anonid="trackingContentProtectionDisabled" hidden="true"
-                      class="popup-notification-footer" xbl:inherits="popupid">
+            <xul:hbox class="popup-notification-footer" xbl:inherits="popupid,trackingblockdisabled">
               <xul:description class="popup-notification-item-message popup-notification-item-message-critical" xbl:inherits="popupid">
                 &trackingContentBlocked.disabled.message;
                 </xul:description>
@@ -1699,10 +2017,6 @@
         document.getAnonymousElementByAttribute(this, "anonid",
           "mixedContentAction.block");
       </field>
-      <field name="_mixedContentProtectionDisabledWarning">
-        document.getAnonymousElementByAttribute(this, "anonid",
-          "mixedContentProtectionDisabled")
-      </field>
       <field name="_mixedContentHelpLink">
         document.getAnonymousElementByAttribute(this, "anonid",
           "mixedContent.helplink")
@@ -1724,10 +2038,6 @@
       <field name="_trackingContentBlock">
         document.getAnonymousElementByAttribute(this, "anonid",
           "trackingContentAction.block");
-      </field>
-      <field name="_trackingContentProtectionDisabledWarning">
-        document.getAnonymousElementByAttribute(this, "anonid",
-          "trackingContentProtectionDisabled")
       </field>
       <field name="_trackingContentHelpLink">
         document.getAnonymousElementByAttribute(this, "anonid",
@@ -1758,9 +2068,9 @@
         }
         if (this.notification.options.state &
             Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT) {
+          this.setAttribute("mixedblockdisabled", true);
           _mixedContent.hidden = false;
           _mixedContentBlock.hidden = false;
-          _mixedContentProtectionDisabledWarning.hidden = false;
           _mixedContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
               + "mixed-content";
@@ -1770,7 +2080,7 @@
           _doorhangerTitle.value =
             gNavigatorBundle.getFormattedString(
               "badContentBlocked.blocked.message", [this._brandShortName]);
-          _trackingContent.hidden = false
+          _trackingContent.hidden = false;
           _trackingContentUnblock.hidden = false;
           _trackingContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
@@ -1778,9 +2088,9 @@
         }
         if (this.notification.options.state &
             Ci.nsIWebProgressListener.STATE_LOADED_TRACKING_CONTENT) {
-          _trackingContent.hidden = false
+          this.setAttribute("trackingblockdisabled", true);
+          _trackingContent.hidden = false;
           _trackingContentBlock.hidden = false;
-          _trackingContentProtectionDisabledWarning.hidden = false;
           _trackingContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
               + "tracking-protection";
@@ -1951,7 +2261,7 @@
             return;
           }
 
-          let host = gPluginHandler._getHostFromPrincipal(this.notification.browser.contentWindow.document.nodePrincipal);
+          let host = this.notification.options.host;
           this._setupDescription("pluginActivateMultiple.message", null, host);
 
           var showBox = document.getAnonymousElementByAttribute(this, "anonid", "plugin-notification-showbox");
@@ -2529,20 +2839,4 @@
       </method>
     </implementation>
   </binding>
-
-  <binding id="toolbarbutton-badged" display="xul:button"
-           extends="chrome://global/content/bindings/toolbarbutton.xml#toolbarbutton">
-    <content>
-      <children includes="observes|template|menupopup|panel|tooltip"/>
-      <xul:hbox class="toolbarbutton-badge-container" align="start" pack="end">
-        <xul:hbox class="toolbarbutton-badge" xbl:inherits="badge"/>
-        <xul:image class="toolbarbutton-icon" xbl:inherits="validate,src=image,label"/>
-      </xul:hbox>
-      <xul:label class="toolbarbutton-text" crop="right" flex="1"
-                 xbl:inherits="value=label,accesskey,crop,wrap"/>
-      <xul:label class="toolbarbutton-multiline-text" flex="1"
-                 xbl:inherits="xbl:text=label,accesskey,wrap"/>
-    </content>
-  </binding>
-
 </bindings>

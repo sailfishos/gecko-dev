@@ -11,10 +11,11 @@
 #include "nsServiceManagerUtils.h"
 #include "jsapi.h"
 #include "xpcprivate.h"
-#include "XPCQuickStubs.h"
 #include "nsJSUtils.h"
 #include "nsDOMJSUtils.h"
 #include "nsContentUtils.h"
+#include "mozilla/dom/BindingUtils.h"
+#include "XPCQuickStubs.h"
 
 using namespace mozilla;
 

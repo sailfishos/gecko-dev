@@ -310,9 +310,9 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
       mIMEComposing = false;
       mIMEComposingText.Truncate();
       break;
-    case NS_TEXT_TEXT:
+    case NS_COMPOSITION_CHANGE:
       MOZ_ASSERT(mIMEComposing);
-      mIMEComposingText = static_cast<WidgetTextEvent*>(event)->theText;
+      mIMEComposingText = static_cast<WidgetCompositionEvent*>(event)->mData;
       break;
   }
 
@@ -402,9 +402,9 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
 
   nsRefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
 
-  WidgetTextEvent textEvent(true, NS_TEXT_TEXT, this);
+  WidgetCompositionEvent textEvent(true, NS_COMPOSITION_CHANGE, this);
   textEvent.time = PR_Now() / 1000;
-  textEvent.theText = mIMEComposingText;
+  textEvent.mData = mIMEComposingText;
   nsEventStatus status;
   DispatchEvent(&textEvent, status);
 

@@ -624,7 +624,7 @@ this.AddonRepository = {
       AddonManager.getAllAddons(resolve));
 
     // Filter the hotfix out of our list of add-ons
-    let allAddons = [a for (a of allAddons) if (a.id != AddonManager.hotfixID)];
+    allAddons = [a for (a of allAddons) if (a.id != AddonManager.hotfixID)];
 
     // Completely remove cache if caching is not enabled
     if (!this.cacheEnabled) {
@@ -1072,6 +1072,8 @@ this.AddonRepository = {
       switch (localName) {
         case "type":
           // Map AMO's type id to corresponding string
+          // https://github.com/mozilla/olympia/blob/master/apps/constants/base.py#L127
+          // These definitions need to be updated whenever AMO adds a new type.
           let id = parseInt(node.getAttribute("id"));
           switch (id) {
             case 1:
@@ -1083,8 +1085,29 @@ this.AddonRepository = {
             case 3:
               addon.type = "dictionary";
               break;
+            case 4:
+              addon.type = "search";
+              break;
+            case 5:
+              addon.type = "langpack";
+              break;
+            case 6:
+              addon.type = "langpack-addon";
+              break;
+            case 7:
+              addon.type = "plugin";
+              break;
+            case 8:
+              addon.type = "api";
+              break;
+            case 9:
+              addon.type = "lightweight-theme";
+              break;
+            case 11:
+              addon.type = "webapp";
+              break;
             default:
-              logger.warn("Unknown type id when parsing addon: " + id);
+              logger.info("Unknown type id " + id + " found when parsing response for GUID " + guid);
           }
           break;
         case "authors":
@@ -1304,7 +1327,6 @@ this.AddonRepository = {
     }
 
     // Create an AddonInstall for each result
-    let self = this;
     results.forEach(function(aResult) {
       let addon = aResult.addon;
       let callback = function addonInstallCallback(aInstall) {

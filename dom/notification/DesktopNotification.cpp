@@ -33,8 +33,8 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSICONTENTPERMISSIONREQUEST
 
-  DesktopNotificationRequest(DesktopNotification* notification)
-    : mDesktopNotification(notification) {}
+  explicit DesktopNotificationRequest(DesktopNotification* aNotification)
+    : mDesktopNotification(aNotification) {}
 
   NS_IMETHOD Run() MOZ_OVERRIDE
   {
@@ -112,7 +112,7 @@ DesktopNotification::PostDesktopNotification()
                                        NS_LITERAL_STRING("auto"),
                                        EmptyString(),
                                        EmptyString(),
-                                       principal);
+                                       principal, false);
 }
 
 DesktopNotification::DesktopNotification(const nsAString & title,
