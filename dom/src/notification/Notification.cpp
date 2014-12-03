@@ -604,7 +604,7 @@ Notification::ShowInternal()
                                       uniqueCookie, observer, alertName,
                                       DirectionToString(mDir), mLang,
                                       EmptyString(),
-                                             GetPrincipal());
+                                      GetPrincipal(), false);
 }
 
 void
