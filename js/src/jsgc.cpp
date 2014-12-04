@@ -2082,20 +2082,6 @@ size_t ArenaHeader::countUsedCells()
     return Arena::thingsPerArena(getThingSize()) - countFreeCells();
 }
 
-/*
- * Iterate throught the list and count the number of cells used.
- *
- * We may be able to precalculate this while sweeping and store the result
- * somewhere.
- */
-size_t ArenaList::countUsedCells()
-{
-    size_t count = 0;
-    for (ArenaHeader *arena = head_; arena; arena = arena->next)
-        count += arena->countUsedCells();
-    return count;
-}
-
 ArenaHeader *
 ArenaList::removeRemainingArenas(ArenaHeader **arenap, const AutoLockGC &lock)
 {
@@ -2153,7 +2139,12 @@ ArenaList::pickArenasToRelocate(JSRuntime *runtime)
 
     ArenaHeader **arenap = cursorp_;               // Next arena to consider
     size_t previousFreeCells = 0;                  // Count of free cells before
-    size_t followingUsedCells = countUsedCells();  // Count of used cells after
+
+    // Count of used cells after arenap.
+    size_t followingUsedCells = 0;
+    for (ArenaHeader *arena = *arenap; arena; arena = arena->next)
+        followingUsedCells += arena->countUsedCells();
+
     mozilla::DebugOnly<size_t> lastFreeCells(0);
     size_t cellsPerArena = Arena::thingsPerArena((*arenap)->getThingSize());
 
@@ -2662,7 +2653,7 @@ GCRuntime::updatePointersToRelocatedCells()
     // Mark roots to update them.
     markRuntime(&trc, MarkRuntime);
     Debugger::markAll(&trc);
-    Debugger::markCrossCompartmentDebuggerObjectReferents(&trc);
+    Debugger::markAllCrossCompartmentEdges(&trc);
 
     for (GCCompartmentsIter c(rt); !c.done(); c.next()) {
         WeakMapBase::markAll(c, &trc);
@@ -6478,7 +6469,6 @@ void
 GCRuntime::minorGC(JS::gcreason::Reason reason)
 {
 #ifdef JSGC_GENERATIONAL
-    gcstats::AutoPhase ap(stats, gcstats::PHASE_MINOR_GC);
     minorGCRequested = false;
     TraceLogger *logger = TraceLoggerForMainThread(rt);
     AutoTraceLog logMinorGC(logger, TraceLogger::MinorGC);
@@ -6493,7 +6483,6 @@ GCRuntime::minorGC(JSContext *cx, JS::gcreason::Reason reason)
     // Alternate to the runtime-taking form above which allows marking type
     // objects as needing pretenuring.
 #ifdef JSGC_GENERATIONAL
-    gcstats::AutoPhase ap(stats, gcstats::PHASE_MINOR_GC);
     minorGCRequested = false;
     TraceLogger *logger = TraceLoggerForMainThread(rt);
     AutoTraceLog logMinorGC(logger, TraceLogger::MinorGC);

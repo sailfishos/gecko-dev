@@ -1693,11 +1693,7 @@ MediaDecoder::IsRawEnabled()
 bool
 MediaDecoder::IsOpusEnabled()
 {
-#ifdef MOZ_OPUS
   return Preferences::GetBool("media.opus.enabled");
-#else
-  return false;
-#endif
 }
 
 bool

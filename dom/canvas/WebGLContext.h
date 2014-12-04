@@ -52,7 +52,7 @@ class nsIDocShell;
  *
  * Exceptions: some of the following values are set to higher values than in the spec because
  * the values in the spec are ridiculously low. They are explicitly marked below
-*/
+ */
 #define MINVALUE_GL_MAX_TEXTURE_SIZE                  1024  // Different from the spec, which sets it to 64 on page 162
 #define MINVALUE_GL_MAX_CUBE_MAP_TEXTURE_SIZE         512   // Different from the spec, which sets it to 16 on page 162
 #define MINVALUE_GL_MAX_VERTEX_ATTRIBS                8     // Page 164
@@ -80,6 +80,7 @@ class WebGLSampler;
 class WebGLShader;
 class WebGLShaderPrecisionFormat;
 class WebGLTexture;
+class WebGLTransformFeedback;
 class WebGLUniformLocation;
 class WebGLVertexArray;
 struct WebGLVertexAttribData;
@@ -94,8 +95,6 @@ template<typename> struct Nullable;
 namespace gfx {
 class SourceSurface;
 }
-
-typedef WebGLRefPtr<WebGLQuery> WebGLQueryRefPtr;
 
 WebGLTexelFormat GetWebGLTexelFormat(TexInternalFormat format);
 
@@ -134,11 +133,13 @@ TexTarget TexImageTargetToTexTarget(TexImageTarget texImageTarget);
 class WebGLIntOrFloat {
     enum {
         Int,
-        Float
+        Float,
+        Uint
     } mType;
     union {
         GLint i;
         GLfloat f;
+        GLuint u;
     } mValue;
 
 public:
@@ -158,6 +159,7 @@ class WebGLContext
     , public nsWrapperCache
     , public SupportsWeakPtr<WebGLContext>
 {
+    friend class WebGL2Context;
     friend class WebGLContextUserData;
     friend class WebGLExtensionCompressedTextureATC;
     friend class WebGLExtensionCompressedTextureETC1;
@@ -880,28 +882,25 @@ public:
     void DeleteBuffer(WebGLBuffer* buf);
     bool IsBuffer(WebGLBuffer* buf);
 
-private:
-    // ARRAY_BUFFER slot
+protected:
+    // bound buffer state
     WebGLRefPtr<WebGLBuffer> mBoundArrayBuffer;
-
-    // TRANSFORM_FEEDBACK_BUFFER slot
     WebGLRefPtr<WebGLBuffer> mBoundTransformFeedbackBuffer;
 
-    // these two functions emit INVALID_ENUM for invalid `target`.
-    WebGLRefPtr<WebGLBuffer>* GetBufferSlotByTarget(GLenum target,
-                                                    const char* info);
+    UniquePtr<WebGLRefPtr<WebGLBuffer>[]> mBoundTransformFeedbackBuffers;
+
+    WebGLRefPtr<WebGLBuffer>* GetBufferSlotByTarget(GLenum target);
     WebGLRefPtr<WebGLBuffer>* GetBufferSlotByTargetIndexed(GLenum target,
-                                                           GLuint index,
-                                                           const char* info);
+                                                           GLuint index);
     bool ValidateBufferUsageEnum(GLenum target, const char* info);
 
 // -----------------------------------------------------------------------------
 // Queries (WebGL2ContextQueries.cpp)
 protected:
-    WebGLQueryRefPtr* GetQueryTargetSlot(GLenum target);
+    WebGLRefPtr<WebGLQuery>* GetQueryTargetSlot(GLenum target);
 
-    WebGLQueryRefPtr mActiveOcclusionQuery;
-    WebGLQueryRefPtr mActiveTransformFeedbackQuery;
+    WebGLRefPtr<WebGLQuery> mActiveOcclusionQuery;
+    WebGLRefPtr<WebGLQuery> mActiveTransformFeedbackQuery;
 
 // -----------------------------------------------------------------------------
 // State and State Requests (WebGLContextState.cpp)
@@ -1006,6 +1005,7 @@ private:
     uint32_t mMaxFetchedVertices;
     uint32_t mMaxFetchedInstances;
 
+protected:
     inline void InvalidateBufferFetching() {
         mBufferFetchingIsVerified = false;
         mBufferFetchingHasPerVertex = false;
@@ -1112,7 +1112,7 @@ protected:
     int32_t mGLMaxVertexUniformVectors;
     int32_t mGLMaxColorAttachments;
     int32_t mGLMaxDrawBuffers;
-    uint32_t mGLMaxTransformFeedbackSeparateAttribs;
+    GLuint  mGLMaxTransformFeedbackSeparateAttribs;
 
 public:
     GLuint MaxVertexAttribs() const {
@@ -1192,6 +1192,10 @@ protected:
     bool ValidateTexInputData(GLenum type, js::Scalar::Type jsArrayType,
                               WebGLTexImageFunc func, WebGLTexDimensions dims);
     bool ValidateDrawModeEnum(GLenum mode, const char* info);
+    bool ValidateAttribIndex(GLuint index, const char* info);
+    bool ValidateAttribPointer(bool integerMode, GLuint index, GLint size, GLenum type,
+                               WebGLboolean normalized, GLsizei stride,
+                               WebGLintptr byteOffset, const char* info);
     bool ValidateStencilParamsForDrawCall();
 
     bool ValidateGLSLVariableName(const nsAString& name, const char* info);
@@ -1329,6 +1333,13 @@ private:
     template<class ObjectType>
     bool ValidateObjectAssumeNonNull(const char* info, ObjectType* object);
 
+private:
+    // -------------------------------------------------------------------------
+    // Context customization points
+    virtual bool ValidateAttribPointerType(bool integerMode, GLenum type, GLsizei* alignment, const char* info) = 0;
+    virtual bool ValidateBufferTarget(GLenum target, const char* info) = 0;
+    virtual bool ValidateBufferIndexedTarget(GLenum target, const char* info) = 0;
+
 protected:
     int32_t MaxTextureSizeForTarget(TexTarget target) const {
         return (target == LOCAL_GL_TEXTURE_2D) ? mGLMaxTextureSize
@@ -1369,6 +1380,7 @@ protected:
 
     WebGLRefPtr<WebGLFramebuffer> mBoundFramebuffer;
     WebGLRefPtr<WebGLRenderbuffer> mBoundRenderbuffer;
+    WebGLRefPtr<WebGLTransformFeedback> mBoundTransformFeedback;
     WebGLRefPtr<WebGLVertexArray> mBoundVertexArray;
 
     LinkedList<WebGLTexture> mTextures;
@@ -1382,8 +1394,10 @@ protected:
 
     // TODO(djg): Does this need a rethink? Should it be WebGL2Context?
     LinkedList<WebGLSampler> mSamplers;
+    LinkedList<WebGLTransformFeedback> mTransformFeedbacks;
 
     WebGLRefPtr<WebGLVertexArray> mDefaultVertexArray;
+    WebGLRefPtr<WebGLTransformFeedback> mDefaultTransformFeedback;
 
     // PixelStore parameters
     uint32_t mPixelStorePackAlignment;
@@ -1507,6 +1521,7 @@ public:
     friend class WebGLBuffer;
     friend class WebGLSampler;
     friend class WebGLShader;
+    friend class WebGLTransformFeedback;
     friend class WebGLUniformLocation;
     friend class WebGLVertexArray;
     friend class WebGLVertexArrayFake;

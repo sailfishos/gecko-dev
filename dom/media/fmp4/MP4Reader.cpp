@@ -150,7 +150,8 @@ MP4Reader::Shutdown()
     mAudio.mDecoder = nullptr;
   }
   if (mAudio.mTaskQueue) {
-    mAudio.mTaskQueue->Shutdown();
+    mAudio.mTaskQueue->BeginShutdown();
+    mAudio.mTaskQueue->AwaitShutdownAndIdle();
     mAudio.mTaskQueue = nullptr;
   }
   if (mVideo.mDecoder) {
@@ -159,7 +160,8 @@ MP4Reader::Shutdown()
     mVideo.mDecoder = nullptr;
   }
   if (mVideo.mTaskQueue) {
-    mVideo.mTaskQueue->Shutdown();
+    mVideo.mTaskQueue->BeginShutdown();
+    mVideo.mTaskQueue->AwaitShutdownAndIdle();
     mVideo.mTaskQueue = nullptr;
   }
   // Dispose of the queued sample before shutting down the demuxer
@@ -169,6 +171,8 @@ MP4Reader::Shutdown()
     mPlatform->Shutdown();
     mPlatform = nullptr;
   }
+
+  MediaDecoderReader::Shutdown();
 }
 
 void
@@ -579,7 +583,6 @@ MP4Reader::Update(TrackType aTrack)
 
   bool needInput = false;
   bool needOutput = false;
-  bool eos = false;
   auto& decoder = GetDecoderData(aTrack);
   nsRefPtr<MediaData> output;
   {
@@ -595,7 +598,6 @@ MP4Reader::Update(TrackType aTrack)
       output = decoder.mOutput[0];
       decoder.mOutput.RemoveElementAt(0);
     }
-    eos = decoder.mEOS;
   }
   VLOG("Update(%s) ni=%d no=%d iex=%d or=%d fl=%d",
        TrackTypeToStr(aTrack),
@@ -613,16 +615,15 @@ MP4Reader::Update(TrackType aTrack)
       {
         MonitorAutoLock lock(decoder.mMonitor);
         MOZ_ASSERT(!decoder.mEOS);
-        eos = decoder.mEOS = true;
+        decoder.mEOS = true;
       }
+      // DrainComplete takes care of reporting EOS upwards
       decoder.mDecoder->Drain();
     }
   }
   if (needOutput) {
     if (output) {
       ReturnOutput(output, aTrack);
-    } else if (eos) {
-      ReturnEOS(aTrack);
     }
   }
 }
@@ -726,9 +727,14 @@ void
 MP4Reader::DrainComplete(TrackType aTrack)
 {
   DecoderData& data = GetDecoderData(aTrack);
-  MonitorAutoLock mon(data.mMonitor);
-  data.mDrainComplete = true;
-  mon.NotifyAll();
+  bool eos;
+  {
+    MonitorAutoLock mon(data.mMonitor);
+    eos = data.mEOS;
+  }
+  if (eos) {
+    ReturnEOS(aTrack);
+  }
 }
 
 void
@@ -767,7 +773,6 @@ MP4Reader::Flush(TrackType aTrack)
   {
     MonitorAutoLock mon(data.mMonitor);
     data.mIsFlushing = true;
-    data.mDrainComplete = false;
     data.mEOS = false;
   }
   data.mDecoder->Flush();

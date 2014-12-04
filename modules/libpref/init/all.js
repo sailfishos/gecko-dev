@@ -276,9 +276,7 @@ pref("media.fragmented-mp4.use-blank-decoder", false);
 pref("media.raw.enabled", true);
 #endif
 pref("media.ogg.enabled", true);
-#ifdef MOZ_OPUS
 pref("media.opus.enabled", true);
-#endif
 #ifdef MOZ_WAVE
 pref("media.wave.enabled", true);
 #endif
@@ -2161,7 +2159,11 @@ pref("layout.css.grid.enabled", false);
 pref("layout.css.ruby.enabled", false);
 
 // Is support for CSS display:contents enabled?
+#ifdef RELEASE_BUILD
 pref("layout.css.display-contents.enabled", false);
+#else
+pref("layout.css.display-contents.enabled", true);
+#endif
 
 // Is support for CSS box-decoration-break enabled?
 pref("layout.css.box-decoration-break.enabled", true);

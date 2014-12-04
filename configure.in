@@ -3600,7 +3600,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.17.2, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.17.3, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -3852,7 +3852,6 @@ MOZ_TREMOR=
 MOZ_WAVE=1
 MOZ_SAMPLE_TYPE_FLOAT32=
 MOZ_SAMPLE_TYPE_S16=
-MOZ_OPUS=1
 MOZ_WEBM=1
 MOZ_GSTREAMER=
 MOZ_DIRECTSHOW=
@@ -5225,14 +5224,6 @@ if test "${ac_cv_c_attribute_aligned}" != "0"; then
 fi
 
 dnl ========================================================
-dnl = Disable Opus audio codec support
-dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(opus,
-[  --disable-opus          Disable support for Opus audio],
-    MOZ_OPUS=,
-    MOZ_OPUS=1)
-
-dnl ========================================================
 dnl = Disable VP8 decoder support
 dnl ========================================================
 MOZ_ARG_DISABLE_BOOL(webm,
@@ -5567,10 +5558,6 @@ if test -n "$MOZ_VORBIS" -a -n "$MOZ_TREMOR"; then
     AC_MSG_ERROR([MOZ_VORBIS and MOZ_TREMOR are mutually exclusive!  The build system should not allow them both to be set, but they are.  Please file a bug at https://bugzilla.mozilla.org/])
 fi
 
-if test -n "$MOZ_WEBRTC" -a -z "$MOZ_OPUS"; then
-    AC_MSG_ERROR([MOZ_WEBRTC requires MOZ_OPUS which is disabled.])
-fi
-
 if test -n "$MOZ_VORBIS"; then
     AC_DEFINE(MOZ_VORBIS)
 fi
@@ -5579,10 +5566,6 @@ if test -n "$MOZ_TREMOR"; then
     AC_DEFINE(MOZ_TREMOR)
     # Tremor doesn't have an encoder.
     MOZ_WEBM_ENCODER=
-fi
-
-if test -n "$MOZ_OPUS"; then
-    AC_DEFINE(MOZ_OPUS)
 fi
 
 if test -n "$MOZ_WEBM_ENCODER"; then
@@ -6576,19 +6559,23 @@ if test -n "$gonkdir"; then
 fi
 
 case "$OS_TARGET:$NIGHTLY_BUILD" in
-WINNT:1)
+WINNT:*)
     MOZ_CONTENT_SANDBOX=$MOZ_SANDBOX
     ;;
 Darwin:1)
     MOZ_CONTENT_SANDBOX=$MOZ_SANDBOX
     ;;
-*)
-    MOZ_ARG_ENABLE_BOOL(content-sandbox,
-    [  --enable-content-sandbox        Enable sandboxing support for content-processes],
-        MOZ_CONTENT_SANDBOX=1,
-        MOZ_CONTENT_SANDBOX=)
-    ;;
 esac
+
+MOZ_ARG_ENABLE_BOOL(content-sandbox,
+[  --enable-content-sandbox Enable sandboxing support for content-processes
+  --disable-content-sandbox Disable sandboxing support for content-processes],
+    MOZ_CONTENT_SANDBOX=1,
+    MOZ_CONTENT_SANDBOX=)
+
+if test -n "$MOZ_CONTENT_SANDBOX" -a -z "$MOZ_SANDBOX"; then
+    AC_MSG_ERROR([--enable-content-sandbox and --disable-sandbox are conflicting options])
+fi
 
 if test -n "$MOZ_CONTENT_SANDBOX"; then
     AC_DEFINE(MOZ_CONTENT_SANDBOX)
@@ -6891,7 +6878,12 @@ MOZ_ARG_ENABLE_BOOL(mobile-optimize,
 AC_SUBST(MOZ_GFX_OPTIMIZE_MOBILE)
 
 if test "$MOZ_GFX_OPTIMIZE_MOBILE"; then
+    # We ignore paint will resample on mobile for performance.
+    # We may want to revisit this later.
+    MOZ_IGNORE_PAINT_WILL_RESAMPLE=1
+
     AC_DEFINE(MOZ_GFX_OPTIMIZE_MOBILE)
+    AC_DEFINE(MOZ_IGNORE_PAINT_WILL_RESAMPLE)
 fi
 
 dnl ========================================================
@@ -8868,7 +8860,6 @@ AC_SUBST(WIN32_GUI_EXE_LDFLAGS)
 AC_SUBST(MOZ_WAVE)
 AC_SUBST(MOZ_VORBIS)
 AC_SUBST(MOZ_TREMOR)
-AC_SUBST(MOZ_OPUS)
 AC_SUBST(MOZ_WEBM)
 AC_SUBST(MOZ_WMF)
 AC_SUBST(MOZ_FFMPEG)
