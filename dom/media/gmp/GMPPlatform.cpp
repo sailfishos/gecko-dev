@@ -158,10 +158,6 @@ CreateRecord(const char* aRecordName,
              GMPRecord** aOutRecord,
              GMPRecordClient* aClient)
 {
-  if (sMainLoop != MessageLoop::current()) {
-    NS_WARNING("GMP called CreateRecord() on non-main thread!");
-    return GMPGenericErr;
-  }
   if (aRecordNameSize > GMP_MAX_RECORD_NAME_SIZE) {
     NS_WARNING("GMP tried to CreateRecord with too long record name");
     return GMPGenericErr;
@@ -194,6 +190,21 @@ GetClock(GMPTimestamp* aOutTime)
   return GMPNoErr;
 }
 
+GMPErr
+CreateRecordIterator(RecvGMPRecordIteratorPtr aRecvIteratorFunc,
+                     void* aUserArg)
+{
+  if (!aRecvIteratorFunc) {
+    return GMPInvalidArgErr;
+  }
+  GMPStorageChild* storage = sChild->GetGMPStorage();
+  if (!storage) {
+    return GMPGenericErr;
+  }
+  MOZ_ASSERT(storage);
+  return storage->EnumerateRecords(aRecvIteratorFunc, aUserArg);
+}
+
 void
 InitPlatformAPI(GMPPlatformAPI& aPlatformAPI, GMPChild* aChild)
 {
@@ -212,6 +223,7 @@ InitPlatformAPI(GMPPlatformAPI& aPlatformAPI, GMPChild* aChild)
   aPlatformAPI.createrecord = &CreateRecord;
   aPlatformAPI.settimer = &SetTimerOnMainThread;
   aPlatformAPI.getcurrenttime = &GetClock;
+  aPlatformAPI.getrecordenumerator = &CreateRecordIterator;
 }
 
 GMPThreadImpl::GMPThreadImpl()

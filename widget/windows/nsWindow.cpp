@@ -356,6 +356,7 @@ nsWindow::nsWindow() : nsWindowBase()
   mUnicodeWidget        = true;
   mDisplayPanFeedback   = false;
   mTouchWindow          = false;
+  mFutureMarginsToUse   = false;
   mCustomNonClient      = false;
   mHideChrome           = false;
   mFullscreenMode       = false;
@@ -2851,7 +2852,7 @@ NS_METHOD nsWindow::Invalidate(const nsIntRect & aRect)
 }
 
 NS_IMETHODIMP
-nsWindow::MakeFullScreen(bool aFullScreen)
+nsWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
 {
   // taskbarInfo will be nullptr pre Windows 7 until Bug 680227 is resolved.
   nsCOMPtr<nsIWinTaskbar> taskbarInfo =
@@ -2881,7 +2882,7 @@ nsWindow::MakeFullScreen(bool aFullScreen)
   // Will call hide chrome, reposition window. Note this will
   // also cache dimensions for restoration, so it should only
   // be called once per fullscreen request.
-  nsresult rv = nsBaseWidget::MakeFullScreen(aFullScreen);
+  nsresult rv = nsBaseWidget::MakeFullScreen(aFullScreen, aTargetScreen);
 
   if (visible) {
     Show(true);

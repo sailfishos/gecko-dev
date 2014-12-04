@@ -13,6 +13,17 @@
 #include "AppleVTLinker.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/DebugOnly.h"
+#include "prlog.h"
+
+#ifdef PR_LOGGING
+PRLogModuleInfo* GetAppleMediaLog() {
+  static PRLogModuleInfo* log = nullptr;
+  if (!log) {
+    log = PR_NewLogModule("AppleMedia");
+  }
+  return log;
+}
+#endif
 
 namespace mozilla {
 
@@ -144,11 +155,11 @@ AppleDecoderModule::Shutdown()
 }
 
 already_AddRefed<MediaDataDecoder>
-AppleDecoderModule::CreateH264Decoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
-                                      layers::LayersBackend aLayersBackend,
-                                      layers::ImageContainer* aImageContainer,
-                                      MediaTaskQueue* aVideoTaskQueue,
-                                      MediaDataDecoderCallback* aCallback)
+AppleDecoderModule::CreateVideoDecoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
+                                       layers::LayersBackend aLayersBackend,
+                                       layers::ImageContainer* aImageContainer,
+                                       MediaTaskQueue* aVideoTaskQueue,
+                                       MediaDataDecoderCallback* aCallback)
 {
   nsRefPtr<MediaDataDecoder> decoder;
 

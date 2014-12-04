@@ -475,6 +475,9 @@ class AssemblerX86Shared : public AssemblerShared
           case Operand::MEM_SCALE:
             masm.movaps_mr(src.disp(), src.base(), src.index(), src.scale(), dest.code());
             break;
+          case Operand::FPREG:
+            masm.movaps_rr(src.fpu(), dest.code());
+            break;
           default:
             MOZ_CRASH("unexpected operand kind");
         }
@@ -1672,21 +1675,36 @@ class AssemblerX86Shared : public AssemblerShared
             MOZ_CRASH("unexpected operand kind");
         }
     }
-    void cmpps(const Operand &src, FloatRegister dest, uint8_t order) {
+    void cmpps(uint8_t order, const Operand &src, FloatRegister dest) {
         MOZ_ASSERT(HasSSE2());
         switch (src.kind()) {
           case Operand::FPREG:
-            masm.cmpps_rr(src.fpu(), dest.code(), order);
+            masm.cmpps_rr(order, src.fpu(), dest.code());
             break;
           case Operand::MEM_REG_DISP:
-            masm.cmpps_mr(src.disp(), src.base(), dest.code(), order);
+            masm.cmpps_mr(order, src.disp(), src.base(), dest.code());
             break;
           case Operand::MEM_ADDRESS32:
-            masm.cmpps_mr(src.address(), dest.code(), order);
+            masm.cmpps_mr(order, src.address(), dest.code());
             break;
           default:
             MOZ_CRASH("unexpected operand kind");
         }
+    }
+    void cmpeqps(const Operand &src, FloatRegister dest) {
+        cmpps(X86Assembler::ConditionCmp_EQ, src, dest);
+    }
+    void cmpltps(const Operand &src, FloatRegister dest) {
+        cmpps(X86Assembler::ConditionCmp_LT, src, dest);
+    }
+    void cmpleps(const Operand &src, FloatRegister dest) {
+        cmpps(X86Assembler::ConditionCmp_LE, src, dest);
+    }
+    void cmpunordps(const Operand &src, FloatRegister dest) {
+        cmpps(X86Assembler::ConditionCmp_UNORD, src, dest);
+    }
+    void cmpneqps(const Operand &src, FloatRegister dest) {
+        cmpps(X86Assembler::ConditionCmp_NEQ, src, dest);
     }
     void rcpps(const Operand &src, FloatRegister dest) {
         MOZ_ASSERT(HasSSE2());
@@ -1889,6 +1907,7 @@ class AssemblerX86Shared : public AssemblerShared
         }
     }
     void andnps(const Operand &src, FloatRegister dest) {
+        // Negates bits of dest and then applies AND
         MOZ_ASSERT(HasSSE2());
         switch (src.kind()) {
           case Operand::FPREG:
@@ -2154,13 +2173,13 @@ class AssemblerX86Shared : public AssemblerShared
         MOZ_ASSERT(HasSSE2());
         masm.sqrtss_rr(src.code(), dest.code());
     }
-    void roundsd(FloatRegister src, FloatRegister dest, X86Assembler::RoundingMode mode) {
+    void roundsd(X86Assembler::RoundingMode mode, FloatRegister src, FloatRegister dest) {
         MOZ_ASSERT(HasSSE41());
-        masm.roundsd_rr(src.code(), dest.code(), mode);
+        masm.roundsd_rr(mode, src.code(), dest.code());
     }
-    void roundss(FloatRegister src, FloatRegister dest, X86Assembler::RoundingMode mode) {
+    void roundss(X86Assembler::RoundingMode mode, FloatRegister src, FloatRegister dest) {
         MOZ_ASSERT(HasSSE41());
-        masm.roundss_rr(src.code(), dest.code(), mode);
+        masm.roundss_rr(mode, src.code(), dest.code());
     }
     unsigned insertpsMask(SimdLane sourceLane, SimdLane destLane, unsigned zeroMask = 0)
     {

@@ -12,9 +12,7 @@
 #include "sandbox/win/src/sandbox_nt_util.h"
 #include "sandbox/win/src/sharedmem_ipc_client.h"
 #include "sandbox/win/src/target_services.h"
-#ifdef MOZ_CONTENT_SANDBOX // For upstream merging, use patch in bug 1018966 to reapply warn only sandbox code
-#include "mozilla/warnonlysandbox/warnOnlySandbox.h"
-#endif
+#include "mozilla/sandboxing/sandboxLogging.h"
 
 namespace sandbox {
 
@@ -30,14 +28,13 @@ HANDLE WINAPI TargetCreateNamedPipeW(
   if (INVALID_HANDLE_VALUE != pipe)
     return pipe;
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("CreateNamedPipeW", pipe_name);
-#endif
-  DWORD original_error = ::GetLastError();
+  mozilla::sandboxing::LogBlocked("CreateNamedPipeW", pipe_name);
 
   // We don't trust that the IPC can work this early.
   if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
     return INVALID_HANDLE_VALUE;
+
+  DWORD original_error = ::GetLastError();
 
   // We don't support specific Security Attributes.
   if (security_attributes)
@@ -68,9 +65,7 @@ HANDLE WINAPI TargetCreateNamedPipeW(
     if (ERROR_SUCCESS != answer.win32_result)
       return INVALID_HANDLE_VALUE;
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("CreateNamedPipeW", pipe_name);
-#endif
+    mozilla::sandboxing::LogAllowed("CreateNamedPipeW", pipe_name);
     return answer.handle;
   } while (false);
 

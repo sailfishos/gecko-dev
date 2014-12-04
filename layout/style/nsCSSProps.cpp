@@ -1129,7 +1129,6 @@ KTableValue nsCSSProps::kDisplayKTable[] = {
 const KTableValue nsCSSProps::kEmptyCellsKTable[] = {
   eCSSKeyword_show,                 NS_STYLE_TABLE_EMPTY_CELLS_SHOW,
   eCSSKeyword_hide,                 NS_STYLE_TABLE_EMPTY_CELLS_HIDE,
-  eCSSKeyword__moz_show_background, NS_STYLE_TABLE_EMPTY_CELLS_SHOW_BACKGROUND,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1160,15 +1159,6 @@ const KTableValue nsCSSProps::kAlignSelfKTable[] = {
   eCSSKeyword_baseline,   NS_STYLE_ALIGN_ITEMS_BASELINE,
   eCSSKeyword_stretch,    NS_STYLE_ALIGN_ITEMS_STRETCH,
   eCSSKeyword_auto,       NS_STYLE_ALIGN_SELF_AUTO,
-  eCSSKeyword_UNKNOWN,-1
-};
-
-const KTableValue nsCSSProps::kFlexBasisKTable[] = {
-  eCSSKeyword__moz_max_content, NS_STYLE_WIDTH_MAX_CONTENT,
-  eCSSKeyword__moz_min_content, NS_STYLE_WIDTH_MIN_CONTENT,
-  eCSSKeyword__moz_fit_content, NS_STYLE_WIDTH_FIT_CONTENT,
-  eCSSKeyword__moz_available,   NS_STYLE_WIDTH_AVAILABLE,
-  eCSSKeyword_main_size,        NS_STYLE_FLEX_BASIS_MAIN_SIZE,
   eCSSKeyword_UNKNOWN,-1
 };
 

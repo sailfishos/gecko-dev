@@ -34,7 +34,7 @@ body {
 .tab-view {
   display: flex;
   flex-direction: row;
-  padding: 10px;
+  padding: 10px 0;
   border-bottom: 1px solid #ccc;
   color: #000;
   border-top-right-radius: 2px;
@@ -97,7 +97,7 @@ body {
 /* Content area and input fields */
 
 .content-area {
-  padding: 14px;
+  padding: .5rem 1rem;
 }
 
 .content-area header {
@@ -105,15 +105,13 @@ body {
 }
 
 #fte-getstarted {
-  padding-top: 1em;
-  padding-bottom: 1em;
-  border-bottom: 1px solid #ccc;
-  margin-bottom: 1em;
+  padding-top: .5rem;
+  padding-bottom: .5rem;
 }
 
 #fte-title {
   text-align: center;
-  margin-bottom: .5em;
+  margin-bottom: .5rem;
 }
 
 #fte-button {
@@ -124,6 +122,11 @@ body {
   font-size: 1rem;
   padding: .5rem 1rem;
   height: auto; /* Needed to override .button's height:26px; */
+}
+
+#fte-getstarted + #powered-by-wrapper {
+  position: absolute;
+  bottom: 0;
 }
 
 /* Need to remove when these rules when the Beta tag is removed */
@@ -173,12 +176,10 @@ body {
   font-weight: bold;
   color: #999;
   padding: .5rem 1rem;
-  border-bottom: 1px solid #ddd;
 }
 
 .rooms > p {
-  border-top: 1px solid #ddd;
-  padding: 1rem 0;
+  padding: .5rem 0;
   margin: 0;
 }
 
@@ -193,13 +194,21 @@ body {
 .room-list {
   max-height: 335px; /* XXX better computation needed */
   overflow: auto;
+  border-top: 1px solid #ccc;
+  border-bottom: 1px solid #ccc;
+}
+
+.room-list:empty {
+  border-bottom-width: 0;
 }
 
 .room-list > .room-entry {
-  padding: 1rem 1rem 0 .5rem;
+  padding: .5rem 1rem;
+  cursor: pointer;
 }
 
 .room-list > .room-entry > h2 {
+  display: inline-block;
   font-size: .85rem;
   color: #777;
 }
@@ -210,8 +219,8 @@ body {
 }
 
 .room-list > .room-entry > h2 > .room-notification {
-  display: inline-block;
-  background: transparent;
+  display: none;
+  background: #00a0ec;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -219,7 +228,7 @@ body {
 }
 
 .room-list > .room-entry.room-active > h2 > .room-notification {
-  background-color: #00a0ec;
+  display: inline-block;
 }
 
 .room-list > .room-entry:hover {
@@ -227,12 +236,12 @@ body {
 }
 
 .room-list > .room-entry:not(:last-child) {
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #ccc;
 }
 
 .room-list > .room-entry > p {
   margin: 0;
-  padding: .2em 0 1rem .8rem;
+  padding: .2rem 0;
 }
 
 .room-list > .room-entry > p > a {
@@ -291,14 +300,31 @@ body {
   top: 0px;
 }
 
-.room-list > .room-entry > h2 {
-  display: inline-block;
-}
-
 /* keep the various room-entry row pieces aligned with each other */
 .room-list > .room-entry > h2 > button,
 .room-list > .room-entry > h2 > span {
   vertical-align: middle;
+}
+
+/* Edit in place */
+
+.room-list > .room-entry > h2 > .edit-in-place {
+  cursor: text;
+}
+
+.room-list > .room-entry > h2 > .edit-in-place:hover {
+  background: #fefbc4;
+}
+
+.room-list > .room-entry > h2 > form {
+  display: inline-block;
+}
+
+.room-list > .room-entry > h2 > form > input {
+  border: none;
+  background: #fefbc4;
+  font-size: 13.6px;
+  padding: 0;
 }
 
 /* Buttons */
@@ -476,15 +502,14 @@ body[dir=rtl] .generate-url-spinner {
 #powered-by,
 .terms-service {
   color: #888;
-  text-align: center;
   font-size: .9em;
 }
 
 #powered-by {
   border-top: 1px solid #ccc;
-  padding-top: 1em;
-  margin-left: -14px;
-  margin-right: -14px;
+  padding-top: .5rem;
+  text-align: center;
+  margin-top: 0;
 }
 
 #powered-by-logo {
@@ -499,7 +524,7 @@ body[dir=rtl] .generate-url-spinner {
 }
 
 #powered-by-logo.en-GB,
-#powered-by-logo.de-DE {
+#powered-by-logo.de {
   background-image: url("../img/02.png");
   background-size: 21px 20px;
   width: 21px;
@@ -526,7 +551,7 @@ body[dir=rtl] .generate-url-spinner {
   }
 
   #powered-by-logo.en-GB,
-  #powered-by-logo.de-DE {
+  #powered-by-logo.de {
     background-image: url("../img/02@2x.png");
   }
 
@@ -537,6 +562,12 @@ body[dir=rtl] .generate-url-spinner {
   #powered-by-logo[class^="es-"] {
     background-image: url("../img/movistar@2x.png");
   }
+}
+
+.terms-service {
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-bottom: .5rem;
 }
 
 .terms-service > a {
@@ -558,7 +589,7 @@ body[dir=rtl] .generate-url-spinner {
 }
 
 .dnd-status:hover {
-  border: 1px solid #DDD;
+  border-color: #ddd;
   background-color: #f1f1f1;
 }
 
@@ -660,6 +691,10 @@ body[dir=rtl] .generate-url-spinner {
   background: transparent url(../img/svg/glyph-signout-16x16.svg) no-repeat center center;
 }
 
+.settings-menu .icon-help {
+  background: transparent url(../img/svg/glyph-help-16x16.svg) no-repeat center center;
+}
+
 /* Footer */
 
 .footer {
@@ -673,13 +708,12 @@ body[dir=rtl] .generate-url-spinner {
   border-top: 1px solid #D1D1D1;
   background-color: #eaeaea;
   color: #7f7f7f;
-  padding: 14px;
+  padding: .5rem 1rem;
 }
 
 .footer .signin-details {
   align-items: center;
   display: flex;
-  -moz-margin-start: 5px;
 }
 
 .footer .user-identity {

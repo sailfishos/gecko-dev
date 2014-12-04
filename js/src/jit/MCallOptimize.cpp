@@ -550,14 +550,14 @@ IonBuilder::InliningStatus
 IonBuilder::inlineArrayJoin(CallInfo &callInfo)
 {
     if (callInfo.argc() != 1 || callInfo.constructing())
-        return InliningStatus_Error;
+        return InliningStatus_NotInlined;
 
     if (getInlineReturnType() != MIRType_String)
-        return InliningStatus_Error;
+        return InliningStatus_NotInlined;
     if (callInfo.thisArg()->type() != MIRType_Object)
-        return InliningStatus_Error;
+        return InliningStatus_NotInlined;
     if (callInfo.getArg(0)->type() != MIRType_String)
-        return InliningStatus_Error;
+        return InliningStatus_NotInlined;
 
     callInfo.setImplicitlyUsedUnchecked();
 
@@ -1245,7 +1245,7 @@ IonBuilder::inlineMathMinMax(CallInfo &callInfo, bool max)
     current->add(last);
 
     for (unsigned i = 2; i < cases.length(); i++) {
-        MMinMax *ins = MMinMax::New(alloc(), last, cases[2], returnType, max);
+        MMinMax *ins = MMinMax::New(alloc(), last, cases[i], returnType, max);
         current->add(ins);
         last = ins;
     }
@@ -1463,7 +1463,7 @@ IonBuilder::inlineRegExpExec(CallInfo &callInfo)
     if (callInfo.getArg(0)->mightBeType(MIRType_Object))
         return InliningStatus_NotInlined;
 
-    JSContext *cx = GetIonContext()->cx;
+    JSContext *cx = GetJitContext()->cx;
     if (!cx->compartment()->jitCompartment()->ensureRegExpExecStubExists(cx))
         return InliningStatus_Error;
 
@@ -1501,7 +1501,7 @@ IonBuilder::inlineRegExpTest(CallInfo &callInfo)
     if (callInfo.getArg(0)->mightBeType(MIRType_Object))
         return InliningStatus_NotInlined;
 
-    JSContext *cx = GetIonContext()->cx;
+    JSContext *cx = GetJitContext()->cx;
     if (!cx->compartment()->jitCompartment()->ensureRegExpTestStubExists(cx))
         return InliningStatus_Error;
 

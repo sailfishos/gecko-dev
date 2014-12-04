@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = ["UITour"];
+this.EXPORTED_SYMBOLS = ["UITour", "UITourMetricsProvider"];
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
@@ -23,7 +23,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
   "resource://gre/modules/UITelemetry.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
   "resource:///modules/BrowserUITelemetry.jsm");
-
+XPCOMUtils.defineLazyModuleGetter(this, "Metrics",
+  "resource://gre/modules/Metrics.jsm");
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL      = "browser.uitour.loglevel";
@@ -110,15 +111,15 @@ this.UITour = {
       },
       widgetName: "PanelUI-customize",
     }],
+    ["devtools",    {query: "#developer-button"}],
     ["help",        {query: "#PanelUI-help"}],
     ["home",        {query: "#home-button"}],
-    ["loop",        {query: "#loop-button"}],
-    ["devtools",    {query: "#developer-button"}],
-    ["webide",      {query: "#webide-button"}],
     ["forget", {
       query: "#panic-button",
       widgetName: "panic-button",
-      allowAdd: true }],
+      allowAdd: true,
+    }],
+    ["loop",        {query: "#loop-button"}],
     ["privateWindow",  {query: "#privatebrowsing-button"}],
     ["quit",        {query: "#PanelUI-quit"}],
     ["search",      {
@@ -128,11 +129,48 @@ this.UITour = {
     ["searchProvider", {
       query: (aDocument) => {
         let searchbar = aDocument.getElementById("searchbar");
+        if (searchbar.hasAttribute("oneoffui")) {
+          return null;
+        }
         return aDocument.getAnonymousElementByAttribute(searchbar,
                                                         "anonid",
                                                         "searchbar-engine-button");
       },
       widgetName: "search-container",
+    }],
+    ["searchIcon", {
+      query: (aDocument) => {
+        let searchbar = aDocument.getElementById("searchbar");
+        if (!searchbar.hasAttribute("oneoffui")) {
+          return null;
+        }
+        return aDocument.getAnonymousElementByAttribute(searchbar,
+                                                        "anonid",
+                                                        "searchbar-search-button");
+      },
+      widgetName: "search-container",
+    }],
+    ["searchPrefsLink", {
+      query: (aDocument) => {
+        let element = null;
+        let searchbar = aDocument.getElementById("searchbar");
+        if (searchbar.hasAttribute("oneoffui")) {
+          let popup = aDocument.getElementById("PopupSearchAutoComplete");
+          if (popup.state != "open")
+            return null;
+          element = aDocument.getAnonymousElementByAttribute(popup,
+                                                             "anonid",
+                                                             "search-settings");
+        } else {
+          element = aDocument.getAnonymousElementByAttribute(searchbar,
+                                                             "anonid",
+                                                             "open-engine-manager");
+        }
+        if (!element || !UITour.isElementVisible(element)) {
+          return null;
+        }
+        return element;
+      },
     }],
     ["selectedTabIcon", {
       query: (aDocument) => {
@@ -150,6 +188,7 @@ this.UITour = {
       query: "#urlbar",
       widgetName: "urlbar-container",
     }],
+    ["webide",      {query: "#webide-button"}],
   ]),
 
   init: function() {
@@ -484,6 +523,64 @@ this.UITour = {
         }).catch(log.error);
         break;
       }
+
+      case "setDefaultSearchEngine": {
+        let enginePromise = this.selectSearchEngine(data.identifier);
+        enginePromise.catch(Cu.reportError);
+        break;
+      }
+
+      case "setTreatmentTag": {
+        let name = data.name;
+        let value = data.value;
+        let string = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+        string.data = value;
+        Services.prefs.setComplexValue("browser.uitour.treatment." + name,
+                                       Ci.nsISupportsString, string);
+        UITourHealthReport.recordTreatmentTag(name, value);
+        break;
+      }
+
+      case "getTreatmentTag": {
+        let name = data.name;
+        let value;
+        try {
+          value = Services.prefs.getComplexValue("browser.uitour.treatment." + name,
+                                                 Ci.nsISupportsString).data;
+        } catch (ex) {}
+        this.sendPageCallback(messageManager, data.callbackID, { value: value });
+        break;
+      }
+
+      case "setSearchTerm": {
+        let targetPromise = this.getTarget(window, "search");
+        targetPromise.then(target => {
+          let searchbar = target.node;
+          searchbar.value = data.term;
+          searchbar.inputChanged();
+        }).then(null, Cu.reportError);
+        break;
+      }
+
+      case "openSearchPanel": {
+        let targetPromise = this.getTarget(window, "search");
+        targetPromise.then(target => {
+          let searchbar = target.node;
+
+          if (searchbar.textbox.open) {
+            this.sendPageCallback(messageManager, data.callbackID);
+          } else {
+            let onPopupShown = () => {
+              searchbar.textbox.popup.removeEventListener("popupshown", onPopupShown);
+              this.sendPageCallback(messageManager, data.callbackID);
+            };
+
+            searchbar.textbox.popup.addEventListener("popupshown", onPopupShown);
+            searchbar.openSuggestionsPanel();
+          }
+        }).then(null, Cu.reportError);
+        break;
+      }
     }
 
     if (!window.gMultiProcessBrowser) { // Non-e10s. See bug 1089000.
@@ -618,8 +715,6 @@ this.UITour = {
   teardownTour: function(aWindow, aWindowClosing = false) {
     log.debug("teardownTour: aWindowClosing = " + aWindowClosing);
     aWindow.gBrowser.tabContainer.removeEventListener("TabSelect", this);
-    aWindow.PanelUI.panel.removeEventListener("popuphiding", this.hidePanelAnnotations);
-    aWindow.PanelUI.panel.removeEventListener("ViewShowing", this.hidePanelAnnotations);
     aWindow.removeEventListener("SSWindowClosing", this);
 
     let originTabs = this.originTabs.get(aWindow);
@@ -636,7 +731,14 @@ this.UITour = {
       this.hideInfo(aWindow);
       // Ensure the menu panel is hidden before calling recreatePopup so popup events occur.
       this.hideMenu(aWindow, "appMenu");
+      this.hideMenu(aWindow, "loop");
     }
+
+    // Clean up panel listeners after we may have called hideMenu above.
+    aWindow.PanelUI.panel.removeEventListener("popuphiding", this.hidePanelAnnotations);
+    aWindow.PanelUI.panel.removeEventListener("ViewShowing", this.hidePanelAnnotations);
+    let loopPanel = aWindow.document.getElementById("loop-notification-panel");
+    loopPanel.removeEventListener("popuphidden", this.onLoopPanelHidden);
 
     this.endUrlbarCapture(aWindow);
     this.removePinnedTab(aWindow);
@@ -771,7 +873,7 @@ this.UITour = {
    */
   _setAppMenuStateForAnnotation: function(aWindow, aAnnotationType, aShouldOpenForHighlight, aCallback = null) {
     log.debug("_setAppMenuStateForAnnotation:", aAnnotationType);
-    log.debug("_setAppMenuStateForAnnotation: Menu is exptected to be:", aShouldOpenForHighlight ? "open" : "closed");
+    log.debug("_setAppMenuStateForAnnotation: Menu is expected to be:", aShouldOpenForHighlight ? "open" : "closed");
 
     // If the panel is in the desired state, we're done.
     let panelIsOpen = aWindow.PanelUI.panel.state != "closed";
@@ -1068,9 +1170,14 @@ this.UITour = {
 
       tooltip.setAttribute("targetName", aAnchor.targetName);
       tooltip.hidden = false;
+      let xOffset = 0, yOffset = 0;
       let alignment = "bottomcenter topright";
+      if (aAnchor.targetName == "search") {
+        alignment = "after_start";
+        xOffset = 18;
+      }
       this._addAnnotationPanelMutationObserver(tooltip);
-      tooltip.openPopup(aAnchorEl, alignment);
+      tooltip.openPopup(aAnchorEl, alignment, xOffset, yOffset);
       if (tooltip.state == "closed") {
         document.defaultView.addEventListener("endmodalstate", function endModalStateHandler() {
           document.defaultView.removeEventListener("endmodalstate", endModalStateHandler);
@@ -1137,6 +1244,26 @@ this.UITour = {
     } else if (aMenuName == "bookmarks") {
       let menuBtn = aWindow.document.getElementById("bookmarks-menu-button");
       openMenuButton(menuBtn);
+    } else if (aMenuName == "loop") {
+      let toolbarButton = aWindow.LoopUI.toolbarButton;
+      if (!toolbarButton || !toolbarButton.node) {
+        return;
+      }
+
+      let panel = aWindow.document.getElementById("loop-notification-panel");
+      panel.setAttribute("noautohide", true);
+      if (panel.state != "open") {
+        this.recreatePopup(panel);
+      }
+
+      // An event object is expected but we don't want to toggle the panel with a click if the panel
+      // is already open.
+      aWindow.LoopUI.openCallPanel({ target: toolbarButton.node, }).then(() => {
+        if (aOpenCallback) {
+          aOpenCallback();
+        }
+      });
+      panel.addEventListener("popuphidden", this.onLoopPanelHidden);
     } else if (aMenuName == "searchEngines") {
       this.getTarget(aWindow, "searchProvider").then(target => {
         openMenuButton(target.node);
@@ -1157,6 +1284,9 @@ this.UITour = {
     } else if (aMenuName == "bookmarks") {
       let menuBtn = aWindow.document.getElementById("bookmarks-menu-button");
       closeMenuButton(menuBtn);
+    } else if (aMenuName == "loop") {
+      let panel = aWindow.document.getElementById("loop-notification-panel");
+      panel.hidePopup();
     } else if (aMenuName == "searchEngines") {
       let menuBtn = this.targets.get("searchProvider").query(aWindow.document);
       closeMenuButton(menuBtn);
@@ -1186,6 +1316,11 @@ this.UITour = {
       }
     });
     UITour.appMenuOpenForAnnotation.clear();
+  },
+
+  onLoopPanelHidden: function(aEvent) {
+    aEvent.target.removeAttribute("noautohide");
+    UITour.recreatePopup(aEvent.target);
   },
 
   recreatePopup: function(aPanel) {
@@ -1252,6 +1387,19 @@ this.UITour = {
         let appinfo = {};
         props.forEach(property => appinfo[property] = Services.appinfo[property]);
         this.sendPageCallback(aMessageManager, aCallbackID, appinfo);
+        break;
+      case "selectedSearchEngine":
+        Services.search.init(rv => {
+          let engine;
+          if (Components.isSuccessCode(rv)) {
+            engine = Services.search.defaultEngine;
+          } else {
+            engine = { identifier: "" };
+          }
+          this.sendPageCallback(aMessageManager, aCallbackID, {
+            searchEngineIdentifier: engine.identifier
+          });
+        });
         break;
       default:
         log.error("getConfiguration: Unknown configuration requested: " + aConfiguration);
@@ -1360,6 +1508,26 @@ this.UITour = {
     }
   },
 
+  selectSearchEngine(aID) {
+    return new Promise((resolve, reject) => {
+      Services.search.init((rv) => {
+        if (!Components.isSuccessCode(rv)) {
+          reject("selectSearchEngine: search service init failed: " + rv);
+          return;
+        }
+
+        let engines = Services.search.getVisibleEngines();
+        for (let engine of engines) {
+          if (engine.identifier == aID) {
+            Services.search.defaultEngine = engine;
+            return resolve();
+          }
+        }
+        reject("selectSearchEngine could not find engine with given ID");
+      });
+    });
+  },
+
   getAvailableSearchEngineTargets(aWindow) {
     return new Promise(resolve => {
       this.getTarget(aWindow, "search").then(searchTarget => {
@@ -1411,3 +1579,105 @@ this.UITour = {
 };
 
 this.UITour.init();
+
+/**
+ * UITour Health Report
+ */
+const DAILY_DISCRETE_TEXT_FIELD = Metrics.Storage.FIELD_DAILY_DISCRETE_TEXT;
+
+/**
+ * Public API to be called by the UITour code
+ */
+const UITourHealthReport = {
+  recordTreatmentTag: function(tag, value) {
+#ifdef MOZ_SERVICES_HEALTHREPORT
+    Task.spawn(function*() {
+      let reporter = Cc["@mozilla.org/datareporting/service;1"]
+                       .getService()
+                       .wrappedJSObject
+                       .healthReporter;
+
+      // This can happen if the FHR component of the data reporting service is
+      // disabled. This is controlled by a pref that most will never use.
+      if (!reporter) {
+        return;
+      }
+
+      yield reporter.onInit();
+
+      // Get the UITourMetricsProvider instance from the Health Reporter
+      reporter.getProvider("org.mozilla.uitour").recordTreatmentTag(tag, value);
+    });
+#endif
+  }
+};
+
+this.UITourMetricsProvider = function() {
+  Metrics.Provider.call(this);
+}
+
+UITourMetricsProvider.prototype = Object.freeze({
+  __proto__: Metrics.Provider.prototype,
+
+  name: "org.mozilla.uitour",
+
+  measurementTypes: [
+    UITourTreatmentMeasurement1,
+  ],
+
+  recordTreatmentTag: function(tag, value) {
+    let m = this.getMeasurement(UITourTreatmentMeasurement1.prototype.name,
+                                UITourTreatmentMeasurement1.prototype.version);
+    let field = tag;
+
+    if (this.storage.hasFieldFromMeasurement(m.id, field,
+                                             DAILY_DISCRETE_TEXT_FIELD)) {
+      let fieldID = this.storage.fieldIDFromMeasurement(m.id, field);
+      return this.enqueueStorageOperation(function recordKnownField() {
+        return this.storage.addDailyDiscreteTextFromFieldID(fieldID, value);
+      }.bind(this));
+    }
+
+    // Otherwise, we first need to create the field.
+    return this.enqueueStorageOperation(function recordField() {
+      // This function has to return a promise.
+      return Task.spawn(function () {
+        let fieldID = yield this.storage.registerField(m.id, field,
+                                                       DAILY_DISCRETE_TEXT_FIELD);
+        yield this.storage.addDailyDiscreteTextFromFieldID(fieldID, value);
+      }.bind(this));
+    }.bind(this));
+  },
+});
+
+function UITourTreatmentMeasurement1() {
+  Metrics.Measurement.call(this);
+
+  this._serializers = {};
+  this._serializers[this.SERIALIZE_JSON] = {
+    //singular: We don't need a singular serializer because we have none of this data
+    daily: this._serializeJSONDaily.bind(this)
+  };
+
+}
+
+UITourTreatmentMeasurement1.prototype = Object.freeze({
+  __proto__: Metrics.Measurement.prototype,
+
+  name: "treatment",
+  version: 1,
+
+  // our fields are dynamic
+  fields: { },
+
+  // We need a custom serializer because the default one doesn't accept unknown fields
+  _serializeJSONDaily: function(data) {
+    let result = {_v: this.version };
+
+    for (let [field, data] of data) {
+      result[field] = data;
+    }
+
+    return result;
+  }
+});

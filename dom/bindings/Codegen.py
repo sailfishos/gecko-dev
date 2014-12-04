@@ -1735,7 +1735,7 @@ class CGConstructNavigatorObject(CGAbstractMethod):
                 ThrowMethodFailedWithDetails(aCx, rv, "${descriptorName}", "navigatorConstructor");
                 return nullptr;
               }
-              if (!WrapNewBindingObject(aCx, result, &v)) {
+              if (!GetOrCreateDOMReflector(aCx, result, &v)) {
                 //XXX Assertion disabled for now, see bug 991271.
                 MOZ_ASSERT(true || JS_IsExceptionPending(aCx));
                 return nullptr;
@@ -4837,7 +4837,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
                                         declArgs=declArgs,
                                         holderArgs=holderArgs)
 
-    if type.isDOMString() or type.isScalarValueString():
+    if type.isDOMString() or type.isUSVString():
         assert not isEnforceRange and not isClamp
 
         treatAs = {
@@ -4856,8 +4856,8 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
 
         def getConversionCode(varName):
             normalizeCode = ""
-            if type.isScalarValueString():
-                normalizeCode = "NormalizeScalarValueString(cx, %s);\n" % varName
+            if type.isUSVString():
+                normalizeCode = "NormalizeUSVString(cx, %s);\n" % varName
 
             conversionCode = (
                 "if (!ConvertJSValueToString(cx, ${val}, %s, %s, %s)) {\n"
@@ -5764,7 +5764,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
         if not descriptor.interface.isExternal() and not descriptor.skipGen:
             if descriptor.wrapperCache:
                 assert descriptor.nativeOwnership != 'owned'
-                wrapMethod = "WrapNewBindingObject"
+                wrapMethod = "GetOrCreateDOMReflector"
             else:
                 if not returnsNewObject:
                     raise MethodNotNewObjectError(descriptor.interface.identifier.name)
@@ -5797,7 +5797,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
         wrappingCode += wrapAndSetPtr(wrap, failed)
         return (wrappingCode, False)
 
-    if type.isDOMString() or type.isScalarValueString():
+    if type.isDOMString() or type.isUSVString():
         if type.nullable():
             return (wrapAndSetPtr("xpc::StringToJsval(cx, %s, ${jsvalHandle})" % result), False)
         else:
@@ -5854,7 +5854,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
         return wrapCode, False
 
     if type.isAny():
-        # See comments in WrapNewBindingObject explaining why we need
+        # See comments in GetOrCreateDOMReflector explaining why we need
         # to wrap here.
         # NB: _setValue(..., type-that-is-any) calls JS_WrapValue(), so is fallible
         head = "JS::ExposeValueToActiveJS(%s);\n" % result
@@ -5862,7 +5862,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
 
     if (type.isObject() or (type.isSpiderMonkeyInterface() and
                             not typedArraysAreStructs)):
-        # See comments in WrapNewBindingObject explaining why we need
+        # See comments in GetOrCreateDOMReflector explaining why we need
         # to wrap here.
         if type.nullable():
             toValue = "%s"
@@ -5895,7 +5895,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
 
     if type.isSpiderMonkeyInterface():
         assert typedArraysAreStructs
-        # See comments in WrapNewBindingObject explaining why we need
+        # See comments in GetOrCreateDOMReflector explaining why we need
         # to wrap here.
         # NB: setObject(..., some-object-type) calls JS_WrapValue(), so is fallible
         return (setObject("*%s.Obj()" % result,
@@ -6077,7 +6077,7 @@ def getRetvalDeclarationForType(returnType, descriptorProvider,
         if returnType.nullable():
             result = CGTemplatedType("Nullable", result)
         return result, None, None, None, None
-    if returnType.isDOMString() or returnType.isScalarValueString():
+    if returnType.isDOMString() or returnType.isUSVString():
         if isMember:
             return CGGeneric("nsString"), "ref", None, None, None
         return CGGeneric("DOMString"), "ref", None, None, None
@@ -8488,7 +8488,7 @@ def getUnionAccessorSignatureType(type, descriptorProvider):
         typeName = CGGeneric(type.name)
         return CGWrapper(typeName, post=" const &")
 
-    if type.isDOMString() or type.isScalarValueString():
+    if type.isDOMString() or type.isUSVString():
         return CGGeneric("const nsAString&")
 
     if type.isByteString():
@@ -11882,6 +11882,7 @@ class CGResolveSystemBinding(CGAbstractMethod):
     def definition_body(self):
         descriptors = self.config.getDescriptors(hasInterfaceObject=True,
                                                  isExposedInSystemGlobals=True,
+                                                 workers=False,
                                                  register=True,
                                                  skipGen=False)
 
@@ -12467,7 +12468,7 @@ class CGNativeMember(ClassMethod):
             return (result.define(),
                     "%s(%s)" % (result.define(), defaultReturnArg),
                     "return ${declName};\n")
-        if type.isDOMString() or type.isScalarValueString():
+        if type.isDOMString() or type.isUSVString():
             if isMember:
                 # No need for a third element in the isMember case
                 return "nsString", None, None
@@ -12587,7 +12588,7 @@ class CGNativeMember(ClassMethod):
     def getArgs(self, returnType, argList):
         args = [self.getArg(arg) for arg in argList]
         # Now the outparams
-        if returnType.isDOMString() or returnType.isScalarValueString():
+        if returnType.isDOMString() or returnType.isUSVString():
             args.append(Argument("nsString&", "aRetVal"))
         elif returnType.isByteString():
             args.append(Argument("nsCString&", "aRetVal"))
@@ -12714,7 +12715,7 @@ class CGNativeMember(ClassMethod):
             # Unroll for the name, in case we're nullable.
             return type.unroll().name, True, True
 
-        if type.isDOMString() or type.isScalarValueString():
+        if type.isDOMString() or type.isUSVString():
             if isMember:
                 declType = "nsString"
             else:
@@ -13254,7 +13255,7 @@ class CGJSImplMethod(CGJSImplMember):
                 JS::Rooted<JSObject*> scopeObj(cx, globalHolder->GetGlobalJSObject());
                 MOZ_ASSERT(js::IsObjectInContextCompartment(scopeObj, cx));
                 JS::Rooted<JS::Value> wrappedVal(cx);
-                if (!WrapNewBindingObject(cx, impl, &wrappedVal)) {
+                if (!GetOrCreateDOMReflector(cx, impl, &wrappedVal)) {
                   //XXX Assertion disabled for now, see bug 991271.
                   MOZ_ASSERT(true || JS_IsExceptionPending(cx));
                   aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -13544,7 +13545,7 @@ class CGJSImplClass(CGBindingImplClass):
             JS::Rooted<JSObject*> arg(cx, &args[1].toObject());
             nsRefPtr<${implName}> impl = new ${implName}(arg, window);
             MOZ_ASSERT(js::IsObjectInContextCompartment(arg, cx));
-            return WrapNewBindingObject(cx, impl, args.rval());
+            return GetOrCreateDOMReflector(cx, impl, args.rval());
             """,
             ifaceName=self.descriptor.interface.identifier.name,
             implName=self.descriptor.name)
@@ -14587,7 +14588,7 @@ class CGEventGetter(CGNativeMember):
         memberName = CGDictionary.makeMemberName(self.member.identifier.name)
         if (type.isPrimitive() and type.tag() in builtinNames) or type.isEnum() or type.isGeckoInterface():
             return "return " + memberName + ";\n"
-        if type.isDOMString() or type.isByteString() or type.isScalarValueString():
+        if type.isDOMString() or type.isByteString() or type.isUSVString():
             return "aRetVal = " + memberName + ";\n"
         if type.isSpiderMonkeyInterface() or type.isObject():
             return fill(
@@ -14980,7 +14981,7 @@ class CGEventClass(CGBindingImplClass):
             nativeType = CGGeneric(type.unroll().inner.identifier.name)
             if type.nullable():
                 nativeType = CGTemplatedType("Nullable", nativeType)
-        elif type.isDOMString() or type.isScalarValueString():
+        elif type.isDOMString() or type.isUSVString():
             nativeType = CGGeneric("nsString")
         elif type.isByteString():
             nativeType = CGGeneric("nsCString")

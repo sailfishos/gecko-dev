@@ -17,7 +17,7 @@ const PREF_BRANCH = "browser.urlbar.";
 const PREF_ENABLED =                [ "autocomplete.enabled",   true ];
 const PREF_AUTOFILL =               [ "autoFill",               true ];
 const PREF_AUTOFILL_TYPED =         [ "autoFill.typed",         true ];
-const PREF_AUTOFILL_SEARCHENGINES = [ "autoFill.searchEngines", true ];
+const PREF_AUTOFILL_SEARCHENGINES = [ "autoFill.searchEngines", false ];
 const PREF_RESTYLESEARCHES        = [ "restyleSearches",        false ];
 const PREF_DELAY =                  [ "delay",                  50 ];
 const PREF_BEHAVIOR =               [ "matchBehavior", MATCH_BOUNDARY_ANYWHERE ];
@@ -568,7 +568,10 @@ function Search(searchString, searchParam, autocompleteListener,
   // Set the default behavior for this search.
   this._behavior = this._searchString ? Prefs.defaultBehavior
                                       : Prefs.emptySearchDefaultBehavior;
-  this._enableActions = searchParam.split(" ").indexOf("enable-actions") != -1;
+
+  let params = new Set(searchParam.split(" "));
+  this._enableActions = params.has("enable-actions");
+  this._disablePrivateActions = params.has("disable-private-actions");
 
   this._searchTokens =
     this.filterTokens(getUnfilteredSearchTokens(this._searchString));
@@ -630,8 +633,14 @@ Search.prototype = {
    * @return true if the behavior is set, false otherwise.
    */
   hasBehavior: function (type) {
-    return this._behavior &
-           Ci.mozIPlacesAutoComplete["BEHAVIOR_" + type.toUpperCase()];
+    let behavior = Ci.mozIPlacesAutoComplete["BEHAVIOR_" + type.toUpperCase()];
+
+    if (this._disablePrivateActions &&
+        behavior == Ci.mozIPlacesAutoComplete.BEHAVIOR_OPENPAGE) {
+      return false;
+    }
+
+    return this._behavior & behavior;
   },
 
   /**
@@ -964,7 +973,6 @@ Search.prototype = {
       comment: match.engineName,
       icon: match.iconUrl,
       style: "action searchengine",
-      finalCompleteValue: this._trimmedOriginalSearchString,
       frecency: FRECENCY_SEARCHENGINES_DEFAULT,
     });
   },
@@ -1017,7 +1025,6 @@ Search.prototype = {
       value: value,
       comment: uri.spec,
       style: "action visiturl",
-      finalCompleteValue: this._originalSearchString,
       frecency: 0,
     };
 

@@ -1305,20 +1305,17 @@ nsContainerFrame::StealFramesAfter(nsIFrame* aChild)
 
 /*
  * Create a next-in-flow for aFrame. Will return the newly created
- * frame in aNextInFlowResult <b>if and only if</b> a new frame is
- * created; otherwise nullptr is returned in aNextInFlowResult.
+ * frame <b>if and only if</b> a new frame is created; otherwise
+ * nullptr is returned.
  */
-nsresult
-nsContainerFrame::CreateNextInFlow(nsIFrame*  aFrame,
-                                   nsIFrame*& aNextInFlowResult)
+nsIFrame*
+nsContainerFrame::CreateNextInFlow(nsIFrame* aFrame)
 {
   NS_PRECONDITION(GetType() != nsGkAtoms::blockFrame,
                   "you should have called nsBlockFrame::CreateContinuationFor instead");
   NS_PRECONDITION(mFrames.ContainsFrame(aFrame), "expected an in-flow child frame");
 
   nsPresContext* pc = PresContext();
-  aNextInFlowResult = nullptr;
-
   nsIFrame* nextInFlow = aFrame->GetNextInFlow();
   if (nullptr == nextInFlow) {
     // Create a continuation frame for the child frame and insert it
@@ -1331,9 +1328,9 @@ nsContainerFrame::CreateNextInFlow(nsIFrame*  aFrame,
        ("nsContainerFrame::CreateNextInFlow: frame=%p nextInFlow=%p",
         aFrame, nextInFlow));
 
-    aNextInFlowResult = nextInFlow;
+    return nextInFlow;
   }
-  return NS_OK;
+  return nullptr;
 }
 
 /**
@@ -1515,6 +1512,59 @@ nsContainerFrame::DrainSelfOverflowList()
     return true;
   }
   return false;
+}
+
+nsIFrame*
+nsContainerFrame::GetNextInFlowChild(ContinuationTraversingState& aState,
+                                     bool* aIsInOverflow)
+{
+  nsContainerFrame*& nextInFlow = aState.mNextInFlow;
+  while (nextInFlow) {
+    // See if there is any frame in the container
+    nsIFrame* frame = nextInFlow->mFrames.FirstChild();
+    if (frame) {
+      if (aIsInOverflow) {
+        *aIsInOverflow = false;
+      }
+      return frame;
+    }
+    // No frames in the principal list, try its overflow list
+    nsFrameList* overflowFrames = nextInFlow->GetOverflowFrames();
+    if (overflowFrames) {
+      if (aIsInOverflow) {
+        *aIsInOverflow = true;
+      }
+      return overflowFrames->FirstChild();
+    }
+    nextInFlow = static_cast<nsContainerFrame*>(nextInFlow->GetNextInFlow());
+  }
+  return nullptr;
+}
+
+nsIFrame*
+nsContainerFrame::PullNextInFlowChild(ContinuationTraversingState& aState)
+{
+  bool isInOverflow;
+  nsIFrame* frame = GetNextInFlowChild(aState, &isInOverflow);
+  if (frame) {
+    nsContainerFrame* nextInFlow = aState.mNextInFlow;
+    if (isInOverflow) {
+      nsFrameList* overflowFrames = nextInFlow->GetOverflowFrames();
+      overflowFrames->RemoveFirstChild();
+      if (overflowFrames->IsEmpty()) {
+        nextInFlow->DestroyOverflowList();
+      }
+    } else {
+      nextInFlow->mFrames.RemoveFirstChild();
+    }
+
+    // Move the frame to the principal frame list of this container
+    mFrames.AppendFrame(this, frame);
+    // AppendFrame has reparented the frame, we need
+    // to reparent the frame view then.
+    nsContainerFrame::ReparentFrameView(frame, nextInFlow, this);
+  }
+  return frame;
 }
 
 nsOverflowContinuationTracker::nsOverflowContinuationTracker(nsContainerFrame* aFrame,

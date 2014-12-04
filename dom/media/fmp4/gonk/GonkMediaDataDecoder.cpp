@@ -135,8 +135,7 @@ GonkMediaDataDecoder::Flush()
   // flushing.
   mTaskQueue->Flush();
 
-  status_t err = mDecoder->flush();
-  return err == OK ? NS_OK : NS_ERROR_FAILURE;
+  return mManager->Flush();
 }
 
 void
@@ -162,12 +161,13 @@ GonkMediaDataDecoder::IsWaitingMediaResources() {
 
 bool
 GonkMediaDataDecoder::IsDormantNeeded() {
-  return mDecoder->IsDormantNeeded();
+
+  return mDecoder.get() ? true : false;
 }
 
 void
 GonkMediaDataDecoder::ReleaseMediaResources() {
-  mDecoder->ReleaseMediaResources();
+  mManager->ReleaseMediaResources();
 }
 
 } // namespace mozilla

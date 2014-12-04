@@ -10,7 +10,7 @@
 #include "jit/BaselineFrameInfo.h"
 #include "jit/BaselineIC.h"
 #include "jit/BytecodeAnalysis.h"
-#include "jit/IonMacroAssembler.h"
+#include "jit/MacroAssembler.h"
 
 namespace js {
 namespace jit {
@@ -68,9 +68,6 @@ class BaselineCompilerShared
     mozilla::DebugOnly<bool> inCall_;
 
     CodeOffsetLabel spsPushToggleOffset_;
-    CodeOffsetLabel traceLoggerEnterToggleOffset_;
-    CodeOffsetLabel traceLoggerExitToggleOffset_;
-    CodeOffsetLabel traceLoggerScriptTextIdOffset_;
 
     BaselineCompilerShared(JSContext *cx, TempAllocator &alloc, JSScript *script);
 

@@ -551,7 +551,9 @@ nsXREDirProvider::GetFiles(const char* aProperty, nsISimpleEnumerator** aResult)
 static void
 RegisterExtensionInterpositions(nsINIParser &parser)
 {
-#if defined(NIGHTLY_BUILD) && defined(HAVE_SHIMS)
+  if (!mozilla::Preferences::GetBool("extensions.interposition.enabled", false))
+    return;
+
   nsCOMPtr<nsIAddonInterposition> interposition =
     do_GetService("@mozilla.org/addons/multiprocess-shims;1");
 
@@ -570,7 +572,6 @@ RegisterExtensionInterpositions(nsINIParser &parser)
       continue;
   }
   while (true);
-#endif
 }
 
 static void
@@ -648,11 +649,10 @@ nsXREDirProvider::LoadAppBundleDirs()
 {
   nsCOMPtr<nsIFile> dir;
   bool persistent = false;
-  nsresult rv = GetFile(XRE_EXECUTABLE_FILE, &persistent, getter_AddRefs(dir));
+  nsresult rv = GetFile(XRE_APP_DISTRIBUTION_DIR, &persistent, getter_AddRefs(dir));
   if (NS_FAILED(rv))
     return;
 
-  dir->SetNativeLeafName(NS_LITERAL_CSTRING("distribution"));
   dir->AppendNative(NS_LITERAL_CSTRING("bundles"));
 
   nsCOMPtr<nsISimpleEnumerator> e;

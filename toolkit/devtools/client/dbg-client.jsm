@@ -21,7 +21,6 @@ this.CC = CC;
 this.EXPORTED_SYMBOLS = ["DebuggerTransport",
                          "DebuggerClient",
                          "RootClient",
-                         "debuggerSocketConnect",
                          "LongStringClient",
                          "EnvironmentClient",
                          "ObjectClient"];
@@ -32,10 +31,6 @@ Cu.import("resource://gre/modules/Services.jsm");
 
 let promise = Cu.import("resource://gre/modules/devtools/deprecated-sync-thenables.js").Promise;
 const { defer, resolve, reject } = promise;
-
-XPCOMUtils.defineLazyServiceGetter(this, "socketTransportService",
-                                   "@mozilla.org/network/socket-transport-service;1",
-                                   "nsISocketTransportService");
 
 XPCOMUtils.defineLazyModuleGetter(this, "console",
                                   "resource://gre/modules/devtools/Console.jsm");
@@ -57,6 +52,7 @@ Object.defineProperty(this, "WebConsoleClient", {
 
 Components.utils.import("resource://gre/modules/devtools/DevToolsUtils.jsm");
 this.makeInfallible = DevToolsUtils.makeInfallible;
+this.values = DevToolsUtils.values;
 
 let LOG_PREF = "devtools.debugger.log";
 let VERBOSE_PREF = "devtools.debugger.log.verbose";
@@ -82,6 +78,11 @@ function dumpv(msg) {
 let loader = Cc["@mozilla.org/moz/jssubscript-loader;1"]
   .getService(Ci.mozIJSSubScriptLoader);
 loader.loadSubScript("resource://gre/modules/devtools/transport/transport.js", this);
+
+DevToolsUtils.defineLazyGetter(this, "DebuggerSocket", () => {
+  let { DebuggerSocket } = devtools.require("devtools/toolkit/security/socket");
+  return DebuggerSocket;
+});
 
 /**
  * TODO: Get rid of this API in favor of EventTarget (bug 1042642)
@@ -368,6 +369,12 @@ DebuggerClient.Argument.prototype.getArgument = function (aParams) {
     throw new Error("Bad index into params: " + this.position);
   }
   return aParams[this.position];
+};
+
+// Expose this to save callers the trouble of importing DebuggerSocket
+DebuggerClient.socketConnect = function(host, port) {
+  // Defined here instead of just copying the function to allow lazy-load
+  return DebuggerSocket.connect(host, port);
 };
 
 DebuggerClient.prototype = {
@@ -1610,72 +1617,6 @@ ThreadClient.prototype = {
   }),
 
   /**
-   * Request to set a breakpoint in the specified location.
-   *
-   * @param object aLocation
-   *        The source location object where the breakpoint will be set.
-   * @param function aOnResponse
-   *        Called with the thread's response.
-   */
-  setBreakpoint: function ({ url, line, column, condition },
-                           aOnResponse = noop) {
-    // A helper function that sets the breakpoint.
-    let doSetBreakpoint = (aCallback) => {
-      const location = {
-        url: url,
-        line: line,
-        column: column
-      };
-
-      let packet = {
-        to: this._actor,
-        type: "setBreakpoint",
-        location: location,
-        condition: condition
-      };
-      this.client.request(packet, (aResponse) => {
-        // Ignoring errors, since the user may be setting a breakpoint in a
-        // dead script that will reappear on a page reload.
-        let bpClient;
-        if (aResponse.actor) {
-          let root = this.client.mainRoot;
-          bpClient = new BreakpointClient(
-            this.client,
-            aResponse.actor,
-            location,
-            root.traits.conditionalBreakpoints ? condition : undefined
-          );
-        }
-        aOnResponse(aResponse, bpClient);
-        if (aCallback) {
-          aCallback();
-        }
-      });
-    };
-
-    // If the debuggee is paused, just set the breakpoint.
-    if (this.paused) {
-      doSetBreakpoint();
-      return;
-    }
-    // Otherwise, force a pause in order to set the breakpoint.
-    this.interrupt((aResponse) => {
-      if (aResponse.error) {
-        // Can't set the breakpoint if pausing failed.
-        aOnResponse(aResponse);
-        return;
-      }
-
-      const { type, why } = aResponse;
-      const cleanUp = type == "paused" && why.type == "interrupted"
-        ? () => this.resume()
-        : noop;
-
-      doSetBreakpoint(cleanUp);
-    });
-  },
-
-  /**
    * Release multiple thread-lifetime object actors. If any pause-lifetime
    * actors are included in the request, a |notReleasable| error will return,
    * but all the thread-lifetime ones will have been released.
@@ -1798,7 +1739,20 @@ ThreadClient.prototype = {
         return;
       }
 
-      for each (let frame in aResponse.frames) {
+      let threadGrips = values(this._threadGrips);
+
+      for (let i in aResponse.frames) {
+        let frame = aResponse.frames[i];
+        if (!frame.where.source) {
+          // Older servers use urls instead, so we need to resolve
+          // them to source actors
+          for (let grip of threadGrips) {
+            if (grip instanceof SourceClient && grip.url === frame.url) {
+              frame.where.source = grip._form;
+            }
+          }
+        }
+
         this._frameCache[frame.depth] = frame;
       }
 
@@ -2389,6 +2343,80 @@ SourceClient.prototype = {
         contentType: contentType
       });
     });
+  },
+
+  /**
+   * Request to set a breakpoint in the specified location.
+   *
+   * @param object aLocation
+   *        The location and condition of the breakpoint in
+   *        the form of { line[, column, condition] }.
+   * @param function aOnResponse
+   *        Called with the thread's response.
+   */
+  setBreakpoint: function ({ line, column, condition }, aOnResponse = noop) {
+    // A helper function that sets the breakpoint.
+    let doSetBreakpoint = aCallback => {
+      let root = this._client.mainRoot;
+      let location = {
+        line: line,
+        column: column
+      };
+
+      let packet = {
+        to: this.actor,
+        type: "setBreakpoint",
+        location: location,
+        condition: condition
+      };
+
+      // Backwards compatibility: send the breakpoint request to the
+      // thread if the server doesn't support Debugger.Source actors.
+      if (!root.traits.debuggerSourceActors) {
+        packet.to = this._activeThread.actor;
+        packet.location.url = this.url;
+      }
+
+      this._client.request(packet, aResponse => {
+        // Ignoring errors, since the user may be setting a breakpoint in a
+        // dead script that will reappear on a page reload.
+        let bpClient;
+        if (aResponse.actor) {
+          bpClient = new BreakpointClient(
+            this._client,
+            this,
+            aResponse.actor,
+            location,
+            root.traits.conditionalBreakpoints ? condition : undefined
+          );
+        }
+        aOnResponse(aResponse, bpClient);
+        if (aCallback) {
+          aCallback();
+        }
+      });
+    };
+
+    // If the debuggee is paused, just set the breakpoint.
+    if (this._activeThread.paused) {
+      doSetBreakpoint();
+      return;
+    }
+    // Otherwise, force a pause in order to set the breakpoint.
+    this._activeThread.interrupt(aResponse => {
+      if (aResponse.error) {
+        // Can't set the breakpoint if pausing failed.
+        aOnResponse(aResponse);
+        return;
+      }
+
+      const { type, why } = aResponse;
+      const cleanUp = type == "paused" && why.type == "interrupted"
+            ? () => this._activeThread.resume()
+            : noop;
+
+      doSetBreakpoint(cleanUp);
+    })
   }
 };
 
@@ -2397,6 +2425,8 @@ SourceClient.prototype = {
  *
  * @param aClient DebuggerClient
  *        The debugger client parent.
+ * @param aSourceClient SourceClient
+ *        The source where this breakpoint exists
  * @param aActor string
  *        The actor ID for this breakpoint.
  * @param aLocation object
@@ -2405,10 +2435,13 @@ SourceClient.prototype = {
  * @param aCondition string
  *        The conditional expression of the breakpoint
  */
-function BreakpointClient(aClient, aActor, aLocation, aCondition) {
+function BreakpointClient(aClient, aSourceClient, aActor, aLocation, aCondition) {
   this._client = aClient;
   this._actor = aActor;
   this.location = aLocation;
+  this.location.actor = aSourceClient.actor;
+  this.location.url = aSourceClient.url;
+  this.source = aSourceClient;
   this.request = this._client.request;
 
   // The condition property should only exist if it's a truthy value
@@ -2471,7 +2504,6 @@ BreakpointClient.prototype = {
 
     if (root.traits.conditionalBreakpoints) {
       let info = {
-        url: this.location.url,
         line: this.location.line,
         column: this.location.column,
         condition: aCondition
@@ -2485,7 +2517,7 @@ BreakpointClient.prototype = {
           return;
         }
 
-        gThreadClient.setBreakpoint(info, (aResponse, aNewBreakpoint) => {
+        this.source.setBreakpoint(info, (aResponse, aNewBreakpoint) => {
           if (aResponse && aResponse.error) {
             deferred.reject(aResponse);
           } else {
@@ -2495,7 +2527,7 @@ BreakpointClient.prototype = {
       });
     } else {
       // The property shouldn't even exist if the condition is blank
-      if(aCondition === "") {
+      if (aCondition === "") {
         delete this.conditionalExpression;
       }
       else {
@@ -2552,33 +2584,3 @@ EnvironmentClient.prototype = {
 };
 
 eventSource(EnvironmentClient.prototype);
-
-/**
- * Connects to a debugger server socket and returns a DebuggerTransport.
- *
- * @param aHost string
- *        The host name or IP address of the debugger server.
- * @param aPort number
- *        The port number of the debugger server.
- */
-this.debuggerSocketConnect = function (aHost, aPort)
-{
-  let s = socketTransportService.createTransport(null, 0, aHost, aPort, null);
-  // By default the CONNECT socket timeout is very long, 65535 seconds,
-  // so that if we race to be in CONNECT state while the server socket is still
-  // initializing, the connection is stuck in connecting state for 18.20 hours!
-  s.setTimeout(Ci.nsISocketTransport.TIMEOUT_CONNECT, 2);
-
-  // openOutputStream may throw NS_ERROR_NOT_INITIALIZED if we hit some race
-  // where the nsISocketTransport gets shutdown in between its instantiation and
-  // the call to this method.
-  let transport;
-  try {
-    transport = new DebuggerTransport(s.openInputStream(0, 0, 0),
-                                      s.openOutputStream(0, 0, 0));
-  } catch(e) {
-    DevToolsUtils.reportException("debuggerSocketConnect", e);
-    throw e;
-  }
-  return transport;
-}

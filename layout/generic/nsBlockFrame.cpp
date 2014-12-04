@@ -1128,9 +1128,9 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
   ReflowPushedFloats(state, fcBounds, fcStatus);
 
   // If we're not dirty (which means we'll mark everything dirty later)
-  // and our width has changed, mark the lines dirty that we need to
+  // and our inline-size has changed, mark the lines dirty that we need to
   // mark dirty for a resize reflow.
-  if (!(GetStateBits() & NS_FRAME_IS_DIRTY) && reflowState->mFlags.mHResize) {
+  if (!(GetStateBits() & NS_FRAME_IS_DIRTY) && reflowState->IsIResize()) {
     PrepareResizeReflow(state);
   }
 
@@ -1248,12 +1248,14 @@ nsBlockFrame::Reflow(nsPresContext*           aPresContext,
   // therefore block-dir coordinate conversion depends on knowing the width
   // of the coordinate space in order to translate between the logical and
   // physical origins.
-  if (wm.GetBlockDir() == WritingMode::BlockDir::eBlockRL) {
-    nscoord deltaX = aMetrics.Width() - state.mContainerWidth;
+  if (wm.IsVerticalRL()) {
+    nscoord containerWidth = aMetrics.Width();
+    nscoord deltaX = containerWidth - state.mContainerWidth;
     if (deltaX) {
       for (line_iterator line = begin_lines(), end = end_lines();
            line != end; line++) {
         SlideLine(state, line, -deltaX);
+        line->mContainerWidth = containerWidth;
       }
       for (nsIFrame* f = mFloats.FirstChild(); f; f = f->GetNextSibling()) {
         nsPoint physicalDelta(deltaX, 0);
@@ -2026,7 +2028,7 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
 #endif
 
   bool selfDirty = (GetStateBits() & NS_FRAME_IS_DIRTY) ||
-                     (aState.mReflowState.mFlags.mVResize &&
+                     (aState.mReflowState.IsBResize() &&
                       (GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_HEIGHT));
 
   // Reflow our last line if our availableBSize has increased
@@ -2145,7 +2147,7 @@ nsBlockFrame::ReflowDirtyLines(nsBlockReflowState& aState)
     // push lines?  Why does that work?
     if (!line->IsDirty() &&
         aState.mReflowState.AvailableBSize() != NS_UNCONSTRAINEDSIZE &&
-        (deltaBCoord != 0 || aState.mReflowState.mFlags.mVResize ||
+        (deltaBCoord != 0 || aState.mReflowState.IsBResize() ||
          aState.mReflowState.mFlags.mMustReflowPlaceholders) &&
         (line->IsBlock() || line->HasFloats() || line->HadFloatPushed())) {
       line->MarkDirty();
@@ -3118,7 +3120,6 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
       // margin seems like a waste. And we do this for almost every block!
       WritingMode wm = frame->GetWritingMode();
       LogicalSize availSpace = aState.ContentSize(wm);
-      availSpace.BSize(wm) = NS_UNCONSTRAINEDSIZE;
       nsHTMLReflowState reflowState(aState.mPresContext, aState.mReflowState,
                                     frame, availSpace);
 

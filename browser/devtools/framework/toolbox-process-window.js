@@ -8,7 +8,7 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 let { gDevTools } = Cu.import("resource:///modules/devtools/gDevTools.jsm", {});
 let { devtools } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 let { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-let { debuggerSocketConnect, DebuggerClient } =
+let { DebuggerClient } =
   Cu.import("resource://gre/modules/devtools/dbg-client.jsm", {});
 let { ViewHelpers } =
   Cu.import("resource:///modules/devtools/ViewHelpers.jsm", {});
@@ -26,7 +26,7 @@ let gToolbox, gClient;
 function connect() {
   window.removeEventListener("load", connect);
   // Initiate the connection
-  let transport = debuggerSocketConnect(
+  let transport = DebuggerClient.socketConnect(
     Prefs.chromeDebuggingHost,
     Prefs.chromeDebuggingPort
   );
@@ -71,9 +71,21 @@ function openToolbox(form) {
   };
   devtools.TargetFactory.forRemoteTab(options).then(target => {
     let frame = document.getElementById("toolbox-iframe");
+    let selectedTool = "jsdebugger";
+
+    try {
+      // Remember the last panel that was used inside of this profile.
+      selectedTool = Services.prefs.getCharPref("devtools.toolbox.selectedTool");
+    } catch(e) {}
+
+    try {
+      // But if we are testing, then it should always open the debugger panel.
+      selectedTool = Services.prefs.getCharPref("devtools.browsertoolbox.panel");
+    } catch(e) {}
+
     let options = { customIframe: frame };
     gDevTools.showToolbox(target,
-                          "jsdebugger",
+                          selectedTool,
                           devtools.Toolbox.HostType.CUSTOM,
                           options)
              .then(onNewToolbox);

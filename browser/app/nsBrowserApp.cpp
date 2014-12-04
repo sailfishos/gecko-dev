@@ -37,6 +37,11 @@
 
 #ifdef XP_WIN
 // we want a wmain entry point
+#ifdef MOZ_ASAN
+// ASAN requires firefox.exe to be built with -MD, and it's OK if we don't
+// support Windows XP SP2 in ASAN builds.
+#define XRE_DONT_SUPPORT_XPSP2
+#endif
 #include "nsWindowsWMain.cpp"
 #define snprintf _snprintf
 #define strcasecmp _stricmp
@@ -121,7 +126,7 @@ static bool IsArg(const char* arg, const char* s)
   return false;
 }
 
-#ifdef XP_WIN
+#if defined(XP_WIN) && defined(MOZ_METRO)
 /*
  * AttachToTestHarness - Windows helper for when we are running
  * in the immersive environment. Firefox is launched by Windows in

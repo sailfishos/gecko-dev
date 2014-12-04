@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsHTMLEditRules.h"
+
 #include <stdlib.h>
 
 #include "mozilla/Assertions.h"
@@ -25,7 +27,6 @@
 #include "nsError.h"
 #include "nsGkAtoms.h"
 #include "nsHTMLCSSUtils.h"
-#include "nsHTMLEditRules.h"
 #include "nsHTMLEditUtils.h"
 #include "nsHTMLEditor.h"
 #include "nsIAtom.h"
@@ -4943,7 +4944,7 @@ nsHTMLEditRules::AlignBlockContents(nsIDOMNode *aNode, const nsAString *alignTyp
 {
   nsCOMPtr<nsINode> node = do_QueryInterface(aNode);
   NS_ENSURE_TRUE(node && alignType, NS_ERROR_NULL_POINTER);
-  nsresult res;
+  nsresult res = NS_OK;
   nsCOMPtr<nsIContent> firstChild, lastChild;
   nsCOMPtr<Element> divNode;
   

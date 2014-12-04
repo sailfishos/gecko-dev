@@ -19,21 +19,19 @@
 this.DEBUG_ALL = false;
 
 // Set individually to debug specific layers
-this.DEBUG_CONTENT_HELPER = false || DEBUG_ALL;
-this.DEBUG_NFC = false || DEBUG_ALL;
+this.DEBUG_CONTENT_HELPER = DEBUG_ALL || false;
+this.DEBUG_NFC = DEBUG_ALL || false;
 
 // Gecko specific error codes
 this.NFC_GECKO_SUCCESS = 0;
 this.NFC_GECKO_ERROR_GENERIC_FAILURE = 1;
 this.NFC_GECKO_ERROR_P2P_REG_INVALID = 2;
-this.NFC_GECKO_ERROR_NOT_ENABLED = 3;
-this.NFC_GECKO_ERROR_SEND_FILE_FAILED = 4;
-this.NFC_GECKO_ERROR_BAD_SESSION_TOKEN = 5;
+this.NFC_GECKO_ERROR_SEND_FILE_FAILED = 3;
+this.NFC_GECKO_ERROR_BAD_SESSION_TOKEN = 4;
 
 this.NFC_ERROR_MSG = {};
 this.NFC_ERROR_MSG[this.NFC_GECKO_ERROR_GENERIC_FAILURE] = "NfcGenericFailureError";
 this.NFC_ERROR_MSG[this.NFC_GECKO_ERROR_P2P_REG_INVALID] = "NfcP2PRegistrationInvalid";
-this.NFC_ERROR_MSG[this.NFC_GECKO_ERROR_NOT_ENABLED] = "NfcNotEnabledError";
 this.NFC_ERROR_MSG[this.NFC_GECKO_ERROR_SEND_FILE_FAILED] = "NfcSendFileFailed";
 this.NFC_ERROR_MSG[this.NFC_GECKO_ERROR_BAD_SESSION_TOKEN] = "NfcBadSessionToken";
 
@@ -51,6 +49,7 @@ this.PEER_EVENT_LOST  = 0x02;
 this.TAG_EVENT_FOUND = 0x03;
 this.TAG_EVENT_LOST  = 0x04;
 this.PEER_EVENT_FOUND = 0x05;
+this.RF_EVENT_STATE_CHANGE = 0x06;
 
 // Allow this file to be imported via Components.utils.import().
 this.EXPORTED_SYMBOLS = Object.keys(this);

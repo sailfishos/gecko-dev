@@ -533,6 +533,7 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mCurrentTableItem(nullptr),
       mCurrentFrame(aReferenceFrame),
       mCurrentReferenceFrame(aReferenceFrame),
+      mCurrentAnimatedGeometryRoot(aReferenceFrame),
       mWillChangeBudgetCalculated(false),
       mDirtyRect(-1,-1,-1,-1),
       mGlassDisplayItem(nullptr),
@@ -746,15 +747,8 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
   // all the pres shells from here up to the root, as well as any css-driven
   // resolution. We don't need to compute it as it's already stored in the
   // container parameters.
-  // TODO: On Fennec, the container parameters do not appear to contain the
-  // cumulative resolution the way they do on B2G, and using them breaks
-  // rendering for normal pages (no CSS transform involves). As a temporary
-  // workaround, use the same value as the resolution-to-screen; this will make
-  // the "extra resolution" 1, and pages with CSS transforms may not be
-  // rendered correctly, but normal pages will.
-  metrics.mCumulativeResolution = LayoutDeviceToLayerScale(
-      presShell->GetCumulativeResolution().width
-    * nsLayoutUtils::GetTransformToAncestorScale(aScrollFrame ? aScrollFrame : aForFrame).width);
+  metrics.mCumulativeResolution = LayoutDeviceToLayerScale(aContainerParameters.mXScale,
+                                                           aContainerParameters.mYScale);
 
   LayoutDeviceToScreenScale resolutionToScreen(
       presShell->GetCumulativeResolution().width
@@ -1086,6 +1080,104 @@ nsDisplayListBuilder::FindReferenceFrameFor(const nsIFrame *aFrame,
     *aOffset = aFrame->GetOffsetToCrossDoc(mReferenceFrame);
   }
   return mReferenceFrame;
+}
+
+// Sticky frames are active if their nearest scrollable frame is also active.
+static bool
+IsStickyFrameActive(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame, nsIFrame* aParent)
+{
+  MOZ_ASSERT(aFrame->StyleDisplay()->mPosition == NS_STYLE_POSITION_STICKY);
+
+  // Find the nearest scrollframe.
+  nsIFrame* cursor = aFrame;
+  nsIFrame* parent = aParent;
+  while (parent->GetType() != nsGkAtoms::scrollFrame) {
+    cursor = parent;
+    if ((parent = nsLayoutUtils::GetCrossDocParentFrame(cursor)) == nullptr) {
+      return false;
+    }
+  }
+
+  nsIScrollableFrame* sf = do_QueryFrame(parent);
+  return sf->IsScrollingActive(aBuilder) && sf->GetScrolledFrame() == cursor;
+}
+
+bool
+nsDisplayListBuilder::IsAnimatedGeometryRoot(nsIFrame* aFrame, nsIFrame** aParent)
+{
+  if (nsLayoutUtils::IsPopup(aFrame))
+    return true;
+  if (ActiveLayerTracker::IsOffsetOrMarginStyleAnimated(aFrame))
+    return true;
+  if (!aFrame->GetParent() &&
+      nsLayoutUtils::ViewportHasDisplayPort(aFrame->PresContext())) {
+    // Viewport frames in a display port need to be animated geometry roots
+    // for background-attachment:fixed elements.
+    return true;
+  }
+
+  nsIFrame* parent = nsLayoutUtils::GetCrossDocParentFrame(aFrame);
+  if (!parent)
+    return true;
+
+  nsIAtom* parentType = parent->GetType();
+  // Treat the slider thumb as being as an active scrolled root when it wants
+  // its own layer so that it can move without repainting.
+  if (parentType == nsGkAtoms::sliderFrame && nsLayoutUtils::IsScrollbarThumbLayerized(aFrame)) {
+    return true;
+  }
+
+  if (aFrame->StyleDisplay()->mPosition == NS_STYLE_POSITION_STICKY &&
+      IsStickyFrameActive(this, aFrame, parent))
+  {
+    return true;
+  }
+
+  if (parentType == nsGkAtoms::scrollFrame) {
+    nsIScrollableFrame* sf = do_QueryFrame(parent);
+    if (sf->IsScrollingActive(this) && sf->GetScrolledFrame() == aFrame) {
+      return true;
+    }
+  }
+
+  // Fixed-pos frames are parented by the viewport frame, which has no parent.
+  if (nsLayoutUtils::IsFixedPosFrameInDisplayPort(aFrame)) {
+    return true;
+  }
+
+  if (aParent) {
+    *aParent = parent;
+  }
+  return false;
+}
+
+static nsIFrame*
+ComputeAnimatedGeometryRootFor(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
+                               const nsIFrame* aStopAtAncestor = nullptr)
+{
+  nsIFrame* cursor = aFrame;
+  while (cursor != aStopAtAncestor) {
+    nsIFrame* next;
+    if (aBuilder->IsAnimatedGeometryRoot(cursor, &next))
+      return cursor;
+    cursor = next;
+  }
+  return cursor;
+}
+
+nsIFrame*
+nsDisplayListBuilder::FindAnimatedGeometryRootFor(nsIFrame* aFrame, const nsIFrame* aStopAtAncestor)
+{
+  if (aFrame == mCurrentFrame) {
+    return mCurrentAnimatedGeometryRoot;
+  }
+  return ComputeAnimatedGeometryRootFor(this, aFrame, aStopAtAncestor);
+}
+
+void
+nsDisplayListBuilder::RecomputeCurrentAnimatedGeometryRoot()
+{
+  mCurrentAnimatedGeometryRoot = ComputeAnimatedGeometryRootFor(this, const_cast<nsIFrame *>(mCurrentFrame));
 }
 
 void
@@ -1857,11 +1949,13 @@ nsDisplaySolidColor::Paint(nsDisplayListBuilder* aBuilder,
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplaySolidColor::WriteDebugInfo(nsACString& aTo)
+nsDisplaySolidColor::WriteDebugInfo(std::stringstream& aStream)
 {
-  aTo += nsPrintfCString(" (rgba %d,%d,%d,%d)",
-                 NS_GET_R(mColor), NS_GET_G(mColor),
-                 NS_GET_B(mColor), NS_GET_A(mColor));
+  aStream << " (rgba "
+          << (int)NS_GET_R(mColor) << ","
+          << (int)NS_GET_G(mColor) << ","
+          << (int)NS_GET_B(mColor) << ","
+          << (int)NS_GET_A(mColor) << ")";
 }
 #endif
 
@@ -2571,9 +2665,9 @@ nsDisplayThemedBackground::~nsDisplayThemedBackground()
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplayThemedBackground::WriteDebugInfo(nsACString& aTo)
+nsDisplayThemedBackground::WriteDebugInfo(std::stringstream& aStream)
 {
-  aTo += nsPrintfCString(" (themed, appearance:%d)", mAppearance);
+  aStream << " (themed, appearance:" << (int)mAppearance << ")";
 }
 #endif
 
@@ -2719,20 +2813,19 @@ void
 nsDisplayBackgroundColor::Paint(nsDisplayListBuilder* aBuilder,
                                 nsRenderingContext* aCtx)
 {
+  DrawTarget& aDrawTarget = *aCtx->GetDrawTarget();
+
   if (mColor == NS_RGBA(0, 0, 0, 0)) {
     return;
   }
 
-  gfxContext* ctx = aCtx->ThebesContext();
   nsRect borderBox = nsRect(ToReferenceFrame(), mFrame->GetSize());
 
-  gfxRect bounds =
-    nsLayoutUtils::RectToGfxRect(borderBox, mFrame->PresContext()->AppUnitsPerDevPixel());
-
-  ctx->SetColor(mColor);
-  ctx->NewPath();
-  ctx->Rectangle(bounds, true);
-  ctx->Fill();
+  Rect rect = NSRectToSnappedRect(borderBox,
+                                  mFrame->PresContext()->AppUnitsPerDevPixel(),
+                                  aDrawTarget);
+  ColorPattern color(ToDeviceColor(mColor));
+  aDrawTarget.FillRect(rect, color);
 }
 
 nsRegion
@@ -2777,11 +2870,10 @@ nsDisplayBackgroundColor::HitTest(nsDisplayListBuilder* aBuilder,
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplayBackgroundColor::WriteDebugInfo(nsACString& aTo)
+nsDisplayBackgroundColor::WriteDebugInfo(std::stringstream& aStream)
 {
-  aTo += nsPrintfCString(" (rgba %f,%f,%f,%f)",
-          mColor.r, mColor.g,
-          mColor.b, mColor.a);
+  aStream << " (rgba " << mColor.r << "," << mColor.g << ","
+          << mColor.b << "," << mColor.a << ")";
 }
 #endif
 
@@ -2866,6 +2958,9 @@ nsDisplayLayerEventRegions::AddFrame(nsDisplayListBuilder* aBuilder,
   if (pointerEvents == NS_STYLE_POINTER_EVENTS_NONE) {
     return;
   }
+  if (!aFrame->StyleVisibility()->IsVisible()) {
+    return;
+  }
   // XXX handle other pointerEvents values for SVG
   // XXX Do something clever here for the common case where the border box
   // is obviously entirely inside mHitRegion.
@@ -2895,6 +2990,22 @@ nsDisplayLayerEventRegions::AddInactiveScrollPort(const nsRect& aRect)
 {
   mDispatchToContentHitRegion.Or(mDispatchToContentHitRegion, aRect);
 }
+
+#ifdef MOZ_DUMP_PAINTING
+void
+nsDisplayLayerEventRegions::WriteDebugInfo(std::stringstream& aStream)
+{
+  if (!mHitRegion.IsEmpty()) {
+    AppendToString(aStream, mHitRegion, " (hitRegion ", ")");
+  }
+  if (!mMaybeHitRegion.IsEmpty()) {
+    AppendToString(aStream, mMaybeHitRegion, " (maybeHitRegion ", ")");
+  }
+  if (!mDispatchToContentHitRegion.IsEmpty()) {
+    AppendToString(aStream, mDispatchToContentHitRegion, " (dispatchToContentRegion ", ")");
+  }
+}
+#endif
 
 nsDisplayCaret::nsDisplayCaret(nsDisplayListBuilder* aBuilder,
                                nsIFrame* aCaretFrame)
@@ -3371,6 +3482,13 @@ nsDisplayWrapList::SetVisibleRect(const nsRect& aRect)
   mVisibleRect = aRect;
 }
 
+void
+nsDisplayWrapList::SetReferenceFrame(const nsIFrame* aFrame)
+{
+  mReferenceFrame = aFrame;
+  mToReferenceFrame = mFrame->GetOffsetToCrossDoc(mReferenceFrame);
+}
+
 static nsresult
 WrapDisplayList(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
                 nsDisplayList* aList, nsDisplayWrapper* aWrapper) {
@@ -3587,9 +3705,9 @@ bool nsDisplayOpacity::TryMerge(nsDisplayListBuilder* aBuilder, nsDisplayItem* a
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplayOpacity::WriteDebugInfo(nsACString& aTo)
+nsDisplayOpacity::WriteDebugInfo(std::stringstream& aStream)
 {
-  aTo += nsPrintfCString(" (opacity %f)", mOpacity);
+  aStream << " (opacity " << mOpacity << ")";
 }
 #endif
 
@@ -3809,7 +3927,9 @@ nsDisplaySubDocument::ComputeFrameMetrics(Layer* aLayer,
   nsPresContext* presContext = mFrame->PresContext();
   nsIFrame* rootScrollFrame = presContext->PresShell()->GetRootScrollFrame();
   bool isRootContentDocument = presContext->IsRootContentDocument();
-  ContainerLayerParameters params = aContainerParameters;
+  nsIPresShell* presShell = presContext->PresShell();
+  ContainerLayerParameters params(presShell->GetXResolution(),
+      presShell->GetYResolution(), nsIntPoint(), aContainerParameters);
   if ((mFlags & GENERATE_SCROLLABLE_LAYER) &&
       rootScrollFrame->GetContent() &&
       nsLayoutUtils::GetCriticalDisplayPort(rootScrollFrame->GetContent(), nullptr)) {
@@ -4350,10 +4470,10 @@ nsDisplayScrollLayer::GetScrollLayerCount()
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplayScrollLayer::WriteDebugInfo(nsACString& aTo)
+nsDisplayScrollLayer::WriteDebugInfo(std::stringstream& aStream)
 {
-  aTo += nsPrintfCString(" (scrollframe %p scrolledframe %p)",
-                         mScrollFrame, mScrolledFrame);
+  aStream << " (scrollframe " << mScrollFrame
+          << " scrolledFrame " << mScrolledFrame << ")";
 }
 #endif
 
@@ -5538,11 +5658,9 @@ bool nsDisplayTransform::UntransformVisibleRect(nsDisplayListBuilder* aBuilder,
 
 #ifdef MOZ_DUMP_PAINTING
 void
-nsDisplayTransform::WriteDebugInfo(nsACString& aTo)
+nsDisplayTransform::WriteDebugInfo(std::stringstream& aStream)
 {
-  std::stringstream ss;
-  AppendToString(ss, GetTransform());
-  aTo += ss.str().c_str();
+  AppendToString(aStream, GetTransform());
 }
 #endif
 
@@ -5561,6 +5679,30 @@ nsDisplaySVGEffects::~nsDisplaySVGEffects()
 }
 #endif
 
+nsDisplayVR::nsDisplayVR(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
+                         nsDisplayList* aList, mozilla::gfx::VRHMDInfo* aHMD)
+  : nsDisplayOwnLayer(aBuilder, aFrame, aList)
+  , mHMD(aHMD)
+{
+}
+
+already_AddRefed<Layer>
+nsDisplayVR::BuildLayer(nsDisplayListBuilder* aBuilder,
+                        LayerManager* aManager,
+                        const ContainerLayerParameters& aContainerParameters)
+{
+  ContainerLayerParameters newContainerParameters = aContainerParameters;
+  uint32_t flags = FrameLayerBuilder::CONTAINER_NOT_CLIPPED_BY_ANCESTORS;
+  nsRefPtr<ContainerLayer> container = aManager->GetLayerBuilder()->
+    BuildContainerLayerFor(aBuilder, aManager, mFrame, this, &mList,
+                           newContainerParameters, nullptr, flags);
+
+  container->SetVRHMDInfo(mHMD);
+  container->SetUserData(nsIFrame::LayerIsPrerenderedDataKey(),
+                         /*the value is irrelevant*/nullptr);
+
+  return container.forget();
+}
 nsRegion nsDisplaySVGEffects::GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
                                               bool* aSnap)
 {

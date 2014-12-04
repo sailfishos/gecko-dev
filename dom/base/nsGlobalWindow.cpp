@@ -40,8 +40,6 @@
 #include "nsWindowMemoryReporter.h"
 #include "WindowNamedPropertiesHandler.h"
 #include "nsFrameSelection.h"
-#include "nsISelectionListener.h"
-#include "nsCaret.h"
 
 // Helper Classes
 #include "nsJSUtils.h"
@@ -72,6 +70,7 @@
 #include "AudioChannelService.h"
 #include "MessageEvent.h"
 #include "nsAboutProtocolUtils.h"
+#include "nsCharTraits.h" // NS_IS_HIGH/LOW_SURROGATE
 
 // Interfaces Needed
 #include "nsIFrame.h"
@@ -190,9 +189,9 @@
 #include "mozilla/dom/GamepadService.h"
 #endif
 
-#include "nsRefreshDriver.h"
+#include "mozilla/dom/VRDevice.h"
 
-#include "mozilla/dom/SelectionChangeEvent.h"
+#include "nsRefreshDriver.h"
 
 #include "mozilla/AddonPathService.h"
 #include "mozilla/Services.h"
@@ -273,7 +272,6 @@ static PopupControlState    gPopupControlState         = openAbused;
 static int32_t              gRunningTimeoutDepth       = 0;
 static bool                 gMouseDown                 = false;
 static bool                 gDragServiceDisabled       = false;
-static bool                 gSelectionCaretPrefEnabled = false;
 static FILE                *gDumpFile                  = nullptr;
 static uint64_t             gNextWindowID              = 0;
 static uint32_t             gSerialCounter             = 0;
@@ -1134,7 +1132,8 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     mCleanedUp(false),
     mDialogAbuseCount(0),
     mAreDialogsEnabled(true),
-    mCanSkipCCGeneration(0)
+    mCanSkipCCGeneration(0),
+    mVRDevicesInitialized(false)
 {
   nsLayoutStatics::AddRef();
 
@@ -1188,9 +1187,6 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     Preferences::AddBoolVarCache(&sIdleObserversAPIFuzzTimeDisabled, 
                                  "dom.idle-observers-api.fuzz_time.disabled",
                                  false);
-    Preferences::AddBoolVarCache(&gSelectionCaretPrefEnabled,
-                                 "selectioncaret.enabled",
-                                 false);
   }
 
   if (gDumpFile == nullptr) {
@@ -1230,6 +1226,12 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
   // We seem to see crashes in release builds because of null |sWindowsById|.
   if (sWindowsById) {
     sWindowsById->Put(mWindowID, this);
+  }
+
+  // Ensure that the current active state is initialized for child process windows.
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
+  if (fm) {
+    mIsActive = fm->IsParentActivated();
   }
 }
 
@@ -1771,6 +1773,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGlobalWindow)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mGamepads)
 #endif
 
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVRDevices)
+
   // Traverse stuff from nsPIDOMWindow
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChromeEventHandler)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mParentTarget)
@@ -1831,6 +1835,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGlobalWindow)
 #ifdef MOZ_GAMEPAD
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mGamepads)
 #endif
+
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mVRDevices)
 
   // Unlink stuff from nsPIDOMWindow
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mChromeEventHandler)
@@ -5923,7 +5929,7 @@ nsGlobalWindow::SetFullScreen(bool aFullScreen)
 }
 
 nsresult
-nsGlobalWindow::SetFullScreenInternal(bool aFullScreen, bool aRequireTrust)
+nsGlobalWindow::SetFullScreenInternal(bool aFullScreen, bool aRequireTrust, gfx::VRHMDInfo* aHMD)
 {
   MOZ_ASSERT(IsOuterWindow());
 
@@ -5945,7 +5951,7 @@ nsGlobalWindow::SetFullScreenInternal(bool aFullScreen, bool aRequireTrust)
   if (!window)
     return NS_ERROR_FAILURE;
   if (rootItem != mDocShell)
-    return window->SetFullScreenInternal(aFullScreen, aRequireTrust);
+    return window->SetFullScreenInternal(aFullScreen, aRequireTrust, aHMD);
 
   // make sure we don't try to set full screen on a non-chrome window,
   // which might happen in embedding world
@@ -5980,8 +5986,13 @@ nsGlobalWindow::SetFullScreenInternal(bool aFullScreen, bool aRequireTrust)
   // want the content to fill the entire client area of the emulator window.
   if (!Preferences::GetBool("full-screen-api.ignore-widgets", false)) {
     nsCOMPtr<nsIWidget> widget = GetMainWidget();
-    if (widget)
-      widget->MakeFullScreen(aFullScreen);
+    if (widget) {
+      nsCOMPtr<nsIScreen> screen;
+      if (aHMD) {
+        screen = aHMD->GetScreen();
+      }
+      widget->MakeFullScreen(aFullScreen, screen);
+    }
   }
 
   if (!mFullScreen) {
@@ -6370,7 +6381,7 @@ nsGlobalWindow::Confirm(const nsAString& aString, bool* aReturn)
 }
 
 already_AddRefed<Promise>
-nsGlobalWindow::Fetch(const RequestOrScalarValueString& aInput,
+nsGlobalWindow::Fetch(const RequestOrUSVString& aInput,
                       const RequestInit& aInit, ErrorResult& aRv)
 {
   return FetchRequest(this, aInput, aInit, aRv);
@@ -7900,7 +7911,7 @@ PostMessageReadStructuredClone(JSContext* cx,
       JS::Rooted<JS::Value> val(cx);
       {
         nsRefPtr<File> blob = new File(scInfo->window, blobImpl);
-        if (!WrapNewBindingObject(cx, blob, &val)) {
+        if (!GetOrCreateDOMReflector(cx, blob, &val)) {
           return nullptr;
         }
       }
@@ -9275,61 +9286,6 @@ public:
   nsString                             mAction;
 };
 
-static bool
-CheckReason(int16_t aReason, SelectionChangeReason aReasonType)
-{
-  switch (aReasonType) {
-    case SelectionChangeReason::Drag:
-      return aReason & nsISelectionListener::DRAG_REASON;
-    case SelectionChangeReason::Mousedown:
-      return aReason & nsISelectionListener::MOUSEDOWN_REASON;
-    case SelectionChangeReason::Mouseup:
-      return aReason & nsISelectionListener::MOUSEUP_REASON;
-    case SelectionChangeReason::Keypress:
-      return aReason & nsISelectionListener::KEYPRESS_REASON;
-    case SelectionChangeReason::Selectall:
-      return aReason & nsISelectionListener::SELECTALL_REASON;
-    case SelectionChangeReason::Collapsetostart:
-      return aReason & nsISelectionListener::COLLAPSETOSTART_REASON;
-    case SelectionChangeReason::Collapsetoend:
-      return aReason & nsISelectionListener::COLLAPSETOEND_REASON;
-    default:
-      return false;
-  }
-}
-
-static nsRect
-GetSelectionBoundingRect(Selection* aSel, nsIPresShell* aShell)
-{
-  nsRect res;
-  // Bounding client rect may be empty after calling GetBoundingClientRect
-  // when range is collapsed. So we get caret's rect when range is
-  // collapsed.
-  if (aSel->IsCollapsed()) {
-    aShell->FlushPendingNotifications(Flush_Layout);
-    nsIFrame* frame = nsCaret::GetGeometry(aSel, &res);
-    if (frame) {
-      nsIFrame* relativeTo =
-        nsLayoutUtils::GetContainingBlockForClientRect(frame);
-      res = nsLayoutUtils::TransformFrameRectToAncestor(frame, res, relativeTo);
-    }
-  } else {
-    int32_t rangeCount = aSel->GetRangeCount();
-    nsLayoutUtils::RectAccumulator accumulator;
-    for (int32_t idx = 0; idx < rangeCount; ++idx) {
-      nsRange* range = aSel->GetRangeAt(idx);
-      nsRange::CollectClientRects(&accumulator, range,
-                                  range->GetStartParent(), range->StartOffset(),
-                                  range->GetEndParent(), range->EndOffset(),
-                                  true, false);
-    }
-    res = accumulator.mResultRect.IsEmpty() ? accumulator.mFirstRect :
-      accumulator.mResultRect;
-  }
-
-  return res;
-}
-
 NS_IMETHODIMP
 nsGlobalWindow::UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason)
 {
@@ -9349,55 +9305,6 @@ nsGlobalWindow::UpdateCommands(const nsAString& anAction, nsISelection* aSel, in
     if (xulCommandDispatcher) {
       nsContentUtils::AddScriptRunner(new CommandDispatcher(xulCommandDispatcher,
                                                             anAction));
-    }
-  }
-
-  if (gSelectionCaretPrefEnabled && mDoc && anAction.EqualsLiteral("selectionchange")) {
-    SelectionChangeEventInit init;
-    init.mBubbles = true;
-    if (aSel) {
-      bool isTouchCaretVisible = false;
-      bool isCollapsed = aSel->Collapsed();
-
-      nsIPresShell *shell = mDoc->GetShell();
-      if (shell) {
-        nsRefPtr<TouchCaret> touchCaret = shell->GetTouchCaret();
-        if (touchCaret) {
-          isTouchCaretVisible = touchCaret->GetVisibility();
-        }
-      }
-
-      // Dispatch selection change events when touch caret is visible even if selection
-      // is collapsed because it could be the shortcut mode, otherwise ignore this
-      // UpdateCommands
-      if (isCollapsed && !isTouchCaretVisible) {
-        return NS_OK;
-      }
-
-      Selection* selection = static_cast<Selection*>(aSel);
-      nsRect rect = GetSelectionBoundingRect(selection, mDoc->GetShell());
-      nsRefPtr<DOMRect> domRect = new DOMRect(ToSupports(this));
-      domRect->SetLayoutRect(rect);
-      init.mBoundingClientRect = domRect;
-
-      selection->Stringify(init.mSelectedText);
-      for (uint32_t reasonType = 0;
-           reasonType < static_cast<uint32_t>(SelectionChangeReason::EndGuard_);
-           ++reasonType) {
-        SelectionChangeReason strongReasonType =
-          static_cast<SelectionChangeReason>(reasonType);
-        if (CheckReason(aReason, strongReasonType)) {
-          init.mReasons.AppendElement(strongReasonType);
-        }
-      }
-
-      nsRefPtr<SelectionChangeEvent> event =
-        SelectionChangeEvent::Constructor(mDoc, NS_LITERAL_STRING("mozselectionchange"), init);
-
-      event->SetTrusted(true);
-      event->GetInternalNSEvent()->mFlags.mOnlyChromeDispatch = true;
-      bool ret;
-      mDoc->DispatchEvent(event, &ret);
     }
   }
 
@@ -9809,17 +9716,21 @@ nsGlobalWindow::ActivateOrDeactivate(bool aActivate)
 {
   MOZ_ASSERT(IsOuterWindow());
 
+  if (!mDoc) {
+    return;
+  }
+
   // Set / unset mIsActive on the top level window, which is used for the
   // :-moz-window-inactive pseudoclass, and its sheet (if any).
   nsCOMPtr<nsIWidget> mainWidget = GetMainWidget();
-  if (!mainWidget)
-    return;
-
-  // Get the top level widget (if the main widget is a sheet, this will
-  // be the sheet's top (non-sheet) parent).
-  nsCOMPtr<nsIWidget> topLevelWidget = mainWidget->GetSheetWindowParent();
-  if (!topLevelWidget) {
-    topLevelWidget = mainWidget;
+  nsCOMPtr<nsIWidget> topLevelWidget;
+  if (mainWidget) {
+    // Get the top level widget (if the main widget is a sheet, this will
+    // be the sheet's top (non-sheet) parent).
+    topLevelWidget = mainWidget->GetSheetWindowParent();
+    if (!topLevelWidget) {
+      topLevelWidget = mainWidget;
+    }
   }
 
   nsCOMPtr<nsPIDOMWindow> piMainWindow(
@@ -11059,6 +10970,10 @@ nsGlobalWindow::ShowSlowScriptDialog()
   nsresult rv;
   AutoJSContext cx;
 
+  if (Preferences::GetBool("dom.always_stop_slow_scripts")) {
+    return KillSlowScript;
+  }
+
   // If it isn't safe to run script, then it isn't safe to bring up the prompt
   // (since that spins the event loop). In that (rare) case, we just kill the
   // script and report a warning.
@@ -11159,7 +11074,32 @@ nsGlobalWindow::ShowSlowScriptDialog()
   // Append file and line number information, if available
   if (filename.get()) {
     nsXPIDLString scriptLocation;
+    // We want to drop the middle part of too-long locations.  We'll
+    // define "too-long" as longer than 60 UTF-16 code units.  Just
+    // have to be a bit careful about unpaired surrogates.
     NS_ConvertUTF8toUTF16 filenameUTF16(filename.get());
+    if (filenameUTF16.Length() > 60) {
+      // XXXbz Do we need to insert any bidi overrides here?
+      size_t cutStart = 30;
+      size_t cutLength = filenameUTF16.Length() - 60;
+      MOZ_ASSERT(cutLength > 0);
+      if (NS_IS_LOW_SURROGATE(filenameUTF16[cutStart])) {
+        // Don't truncate before the low surrogate, in case it's preceded by a
+        // high surrogate and forms a single Unicode character.  Instead, just
+        // include the low surrogate.
+        ++cutStart;
+        --cutLength;
+      }
+      if (NS_IS_LOW_SURROGATE(filenameUTF16[cutStart + cutLength])) {
+        // Likewise, don't drop a trailing low surrogate here.  We want to
+        // increase cutLength, since it might be 0 already so we can't very well
+        // decrease it.
+        ++cutLength;
+      }
+
+      // Insert U+2026 HORIZONTAL ELLIPSIS
+      filenameUTF16.Replace(cutStart, cutLength, NS_LITERAL_STRING("\x2026"));
+    }
     const char16_t *formatParams[] = { filenameUTF16.get() };
     rv = nsContentUtils::FormatLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                "KillScriptLocation",
@@ -13416,7 +13356,26 @@ nsGlobalWindow::SyncGamepadState()
     mGamepads.EnumerateRead(EnumGamepadsForSync, nullptr);
   }
 }
-#endif
+#endif // MOZ_GAMEPAD
+
+bool
+nsGlobalWindow::GetVRDevices(nsTArray<nsRefPtr<mozilla::dom::VRDevice>>& aDevices)
+{
+  FORWARD_TO_INNER(GetVRDevices, (aDevices), false);
+
+  if (!mVRDevicesInitialized) {
+    bool ok = mozilla::dom::VRDevice::CreateAllKnownVRDevices(ToSupports(this), mVRDevices);
+    if (!ok) {
+      mVRDevices.Clear();
+      return false;
+    }
+  }
+
+  mVRDevicesInitialized = true;
+  aDevices = mVRDevices;
+  return true;
+}
+
 // nsGlobalChromeWindow implementation
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsGlobalChromeWindow)
@@ -13999,7 +13958,7 @@ nsGlobalWindow::GetConsole(JSContext* aCx,
     return rv.ErrorCode();
   }
 
-  if (!WrapNewBindingObject(aCx, console, aConsole)) {
+  if (!GetOrCreateDOMReflector(aCx, console, aConsole)) {
     return NS_ERROR_FAILURE;
   }
 

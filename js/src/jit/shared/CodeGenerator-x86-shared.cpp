@@ -11,9 +11,9 @@
 
 #include "jsmath.h"
 
-#include "jit/IonFrames.h"
-#include "jit/IonLinker.h"
 #include "jit/JitCompartment.h"
+#include "jit/JitFrames.h"
+#include "jit/Linker.h"
 #include "jit/RangeAnalysis.h"
 #include "vm/TraceLogging.h"
 
@@ -58,7 +58,7 @@ CodeGeneratorX86Shared::generateEpilogue()
 
 #ifdef JS_TRACE_LOGGING
     if (gen->info().executionMode() == SequentialExecution) {
-        if (!emitTracelogStopEvent(TraceLogger_IonMonkey))
+        if (!emitTracelogStopEvent(TraceLogger::IonMonkey))
             return false;
         if (!emitTracelogScriptStop())
             return false;
@@ -346,14 +346,29 @@ CodeGeneratorX86Shared::visitAsmJSPassStackArg(LAsmJSPassStackArg *ins)
 bool
 CodeGeneratorX86Shared::visitOutOfLineLoadTypedArrayOutOfBounds(OutOfLineLoadTypedArrayOutOfBounds *ool)
 {
-    if (ool->dest().isFloat()) {
-        if (ool->isFloat32Load())
-            masm.loadConstantFloat32(float(GenericNaN()), ool->dest().fpu());
-        else
-            masm.loadConstantDouble(GenericNaN(), ool->dest().fpu());
-    } else {
+    switch (ool->viewType()) {
+      case AsmJSHeapAccess::Float32:
+        masm.loadConstantFloat32(float(GenericNaN()), ool->dest().fpu());
+        break;
+      case AsmJSHeapAccess::Float64:
+        masm.loadConstantDouble(GenericNaN(), ool->dest().fpu());
+        break;
+      case AsmJSHeapAccess::Float32x4:
+        masm.loadConstantFloat32x4(SimdConstant::SplatX4(float(GenericNaN())), ool->dest().fpu());
+        break;
+      case AsmJSHeapAccess::Int32x4:
+        masm.loadConstantInt32x4(SimdConstant::SplatX4(0), ool->dest().fpu());
+        break;
+      case AsmJSHeapAccess::Int8:
+      case AsmJSHeapAccess::Uint8:
+      case AsmJSHeapAccess::Int16:
+      case AsmJSHeapAccess::Uint16:
+      case AsmJSHeapAccess::Int32:
+      case AsmJSHeapAccess::Uint32:
+      case AsmJSHeapAccess::Uint8Clamped:
         Register destReg = ool->dest().gpr();
         masm.mov(ImmWord(0), destReg);
+        break;
     }
     masm.jmp(ool->rejoin());
     return true;
@@ -1673,7 +1688,7 @@ CodeGeneratorX86Shared::visitFloor(LFloor *lir)
             return false;
 
         // Round toward -Infinity.
-        masm.roundsd(input, scratch, X86Assembler::RoundDown);
+        masm.roundsd(X86Assembler::RoundDown, input, scratch);
 
         if (!bailoutCvttsd2si(scratch, output, lir->snapshot()))
             return false;
@@ -1736,7 +1751,7 @@ CodeGeneratorX86Shared::visitFloorF(LFloorF *lir)
             return false;
 
         // Round toward -Infinity.
-        masm.roundss(input, scratch, X86Assembler::RoundDown);
+        masm.roundss(X86Assembler::RoundDown, input, scratch);
 
         if (!bailoutCvttss2si(scratch, output, lir->snapshot()))
             return false;
@@ -1807,7 +1822,7 @@ CodeGeneratorX86Shared::visitCeil(LCeil *lir)
         // x <= -1 or x > -0
         masm.bind(&lessThanMinusOne);
         // Round toward +Infinity.
-        masm.roundsd(input, scratch, X86Assembler::RoundUp);
+        masm.roundsd(X86Assembler::RoundUp, input, scratch);
         return bailoutCvttsd2si(scratch, output, lir->snapshot());
     }
 
@@ -1863,7 +1878,7 @@ CodeGeneratorX86Shared::visitCeilF(LCeilF *lir)
         // x <= -1 or x > -0
         masm.bind(&lessThanMinusOne);
         // Round toward +Infinity.
-        masm.roundss(input, scratch, X86Assembler::RoundUp);
+        masm.roundss(X86Assembler::RoundUp, input, scratch);
         return bailoutCvttss2si(scratch, output, lir->snapshot());
     }
 
@@ -1943,7 +1958,7 @@ CodeGeneratorX86Shared::visitRound(LRound *lir)
         // Add 0.5 and round toward -Infinity. The result is stored in the temp
         // register (currently contains 0.5).
         masm.addsd(input, temp);
-        masm.roundsd(temp, scratch, X86Assembler::RoundDown);
+        masm.roundsd(X86Assembler::RoundDown, temp, scratch);
 
         // Truncate.
         if (!bailoutCvttsd2si(scratch, output, lir->snapshot()))
@@ -2034,7 +2049,7 @@ CodeGeneratorX86Shared::visitRoundF(LRoundF *lir)
         // Add 0.5 and round toward -Infinity. The result is stored in the temp
         // register (currently contains 0.5).
         masm.addss(input, temp);
-        masm.roundss(temp, scratch, X86Assembler::RoundDown);
+        masm.roundss(X86Assembler::RoundDown, temp, scratch);
 
         // Truncate.
         if (!bailoutCvttss2si(scratch, output, lir->snapshot()))
@@ -2662,6 +2677,8 @@ CodeGeneratorX86Shared::visitSimdShuffle(LSimdShuffle *ins)
 bool
 CodeGeneratorX86Shared::visitSimdBinaryCompIx4(LSimdBinaryCompIx4 *ins)
 {
+    static const SimdConstant allOnes = SimdConstant::SplatX4(-1);
+
     FloatRegister lhs = ToFloatRegister(ins->lhs());
     Operand rhs = ToOperand(ins->rhs());
     MOZ_ASSERT(ToFloatRegister(ins->output()) == lhs);
@@ -2675,22 +2692,41 @@ CodeGeneratorX86Shared::visitSimdBinaryCompIx4(LSimdBinaryCompIx4 *ins)
         masm.packedEqualInt32x4(rhs, lhs);
         return true;
       case MSimdBinaryComp::lessThan:
-        // scr := rhs
+        // src := rhs
         if (rhs.kind() == Operand::FPREG)
             masm.moveAlignedInt32x4(ToFloatRegister(ins->rhs()), ScratchSimdReg);
         else
             masm.loadAlignedInt32x4(rhs, ScratchSimdReg);
 
-        // scr := scr > lhs (i.e. lhs < rhs)
+        // src := src > lhs (i.e. lhs < rhs)
         // Improve by doing custom lowering (rhs is tied to the output register)
         masm.packedGreaterThanInt32x4(ToOperand(ins->lhs()), ScratchSimdReg);
         masm.moveAlignedInt32x4(ScratchSimdReg, lhs);
         return true;
       case MSimdBinaryComp::notEqual:
+        // Ideally for notEqual, greaterThanOrEqual, and lessThanOrEqual, we
+        // should invert the comparison by, e.g. swapping the arms of a select
+        // if that's what it's used in.
+        masm.loadConstantInt32x4(allOnes, ScratchSimdReg);
+        masm.packedEqualInt32x4(rhs, lhs);
+        masm.bitwiseXorX4(Operand(ScratchSimdReg), lhs);
+        return true;
       case MSimdBinaryComp::greaterThanOrEqual:
+        // src := rhs
+        if (rhs.kind() == Operand::FPREG)
+            masm.moveAlignedInt32x4(ToFloatRegister(ins->rhs()), ScratchSimdReg);
+        else
+            masm.loadAlignedInt32x4(rhs, ScratchSimdReg);
+        masm.packedGreaterThanInt32x4(ToOperand(ins->lhs()), ScratchSimdReg);
+        masm.loadConstantInt32x4(allOnes, lhs);
+        masm.bitwiseXorX4(Operand(ScratchSimdReg), lhs);
+        return true;
       case MSimdBinaryComp::lessThanOrEqual:
-        // These operations are not part of the spec. so are not implemented.
-        break;
+        // lhs <= rhs is equivalent to !(rhs < lhs), which we compute here.
+        masm.loadConstantInt32x4(allOnes, ScratchSimdReg);
+        masm.packedGreaterThanInt32x4(rhs, lhs);
+        masm.bitwiseXorX4(Operand(ScratchSimdReg), lhs);
+        return true;
     }
     MOZ_CRASH("unexpected SIMD op");
 }
@@ -2705,16 +2741,16 @@ CodeGeneratorX86Shared::visitSimdBinaryCompFx4(LSimdBinaryCompFx4 *ins)
     MSimdBinaryComp::Operation op = ins->operation();
     switch (op) {
       case MSimdBinaryComp::equal:
-        masm.cmpps(rhs, lhs, 0x0);
+        masm.cmpeqps(rhs, lhs);
         return true;
       case MSimdBinaryComp::lessThan:
-        masm.cmpps(rhs, lhs, 0x1);
+        masm.cmpltps(rhs, lhs);
         return true;
       case MSimdBinaryComp::lessThanOrEqual:
-        masm.cmpps(rhs, lhs, 0x2);
+        masm.cmpleps(rhs, lhs);
         return true;
       case MSimdBinaryComp::notEqual:
-        masm.cmpps(rhs, lhs, 0x4);
+        masm.cmpneqps(rhs, lhs);
         return true;
       case MSimdBinaryComp::greaterThanOrEqual:
       case MSimdBinaryComp::greaterThan:
@@ -2754,6 +2790,9 @@ CodeGeneratorX86Shared::visitSimdBinaryArithIx4(LSimdBinaryArithIx4 *ins)
         // we can do max with a single instruction only if we have SSE4.1
         // using the PMINSD instruction.
         break;
+      case MSimdBinaryArith::MinNum:
+      case MSimdBinaryArith::MaxNum:
+        break;
     }
     MOZ_CRASH("unexpected SIMD op");
 }
@@ -2779,19 +2818,75 @@ CodeGeneratorX86Shared::visitSimdBinaryArithFx4(LSimdBinaryArithFx4 *ins)
       case MSimdBinaryArith::Div:
         masm.packedDivFloat32(rhs, lhs);
         return true;
-      case MSimdBinaryArith::Max:
-        // TODO: standardization of float32x4.min/max needs to define the
-        // semantics for particular values: if both input operands are -0 or 0,
-        // or one operand is NaN, the return value will be the "second operand"
-        // in the instruction.
-        // See also bug 1068028, which is about fixing semantics once the
-        // specification is stable.
+      case MSimdBinaryArith::Max: {
+        masm.movaps(lhs, ScratchSimdReg);
+        masm.cmpunordps(rhs, ScratchSimdReg);
+
+        FloatRegister tmp = ToFloatRegister(ins->temp());
+        masm.movaps(rhs, tmp);
+        masm.maxps(Operand(lhs), tmp);
         masm.maxps(rhs, lhs);
+
+        masm.andps(tmp, lhs);
+        masm.orps(ScratchSimdReg, lhs); // or in the all-ones NaNs
         return true;
-      case MSimdBinaryArith::Min:
-        // See comment above.
+      }
+      case MSimdBinaryArith::Min: {
+        FloatRegister rhsCopy = ScratchSimdReg;
+        masm.movaps(rhs, rhsCopy);
+        masm.minps(Operand(lhs), rhsCopy);
         masm.minps(rhs, lhs);
+        masm.orps(rhsCopy, lhs); // NaN or'd with arbitrary bits is NaN
         return true;
+      }
+      case MSimdBinaryArith::MinNum: {
+        FloatRegister tmp = ToFloatRegister(ins->temp());
+        masm.loadConstantInt32x4(SimdConstant::SplatX4(int32_t(0x80000000)), ScratchSimdReg);
+        masm.movdqa(ScratchSimdReg, tmp);
+
+        FloatRegister mask = ScratchSimdReg;
+        masm.pcmpeqd(Operand(lhs), mask);
+        masm.andps(tmp, mask);
+
+        masm.movaps(lhs, tmp);
+        masm.minps(rhs, tmp);
+        masm.orps(mask, tmp);
+
+        masm.movaps(rhs, mask);
+        masm.cmpneqps(Operand(mask), mask);
+
+        // Emulates blendv
+        masm.andps(Operand(mask), lhs);
+        masm.andnps(Operand(tmp), mask);
+        masm.orps(Operand(mask), lhs);
+        return true;
+      }
+      case MSimdBinaryArith::MaxNum: {
+        FloatRegister mask = ScratchSimdReg;
+        masm.loadConstantInt32x4(SimdConstant::SplatX4(0), mask);
+        masm.pcmpeqd(Operand(lhs), mask);
+
+        FloatRegister tmp = ToFloatRegister(ins->temp());
+        masm.loadConstantInt32x4(SimdConstant::SplatX4(int32_t(0x80000000)), tmp);
+        masm.andps(tmp, mask);
+
+        masm.movaps(lhs, tmp);
+        masm.maxps(rhs, tmp);
+        masm.andnps(Operand(tmp), mask);
+
+        // Ensure tmp always contains the temporary result
+        mask = tmp;
+        tmp = ScratchSimdReg;
+
+        masm.movaps(rhs, mask);
+        masm.cmpneqps(Operand(mask), mask);
+
+        // Emulates blendv
+        masm.andps(Operand(mask), lhs);
+        masm.andnps(Operand(tmp), mask);
+        masm.orps(Operand(mask), lhs);
+        return true;
+      }
     }
     MOZ_CRASH("unexpected SIMD op");
 }
@@ -2942,8 +3037,6 @@ CodeGeneratorX86Shared::visitSimdSelect(LSimdSelect *ins)
     FloatRegister onFalse = ToFloatRegister(ins->rhs());
 
     MOZ_ASSERT(onTrue == ToFloatRegister(ins->output()));
-    // The onFalse argument is not destroyed but due to limitations of the
-    // register allocator its life ends at the start of the operation.
     masm.bitwiseAndX4(Operand(mask), onTrue);
     masm.bitwiseAndNotX4(Operand(onFalse), mask);
     masm.bitwiseOrX4(Operand(mask), onTrue);

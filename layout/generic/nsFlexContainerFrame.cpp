@@ -17,7 +17,6 @@
 #include "nsPresContext.h"
 #include "nsRenderingContext.h"
 #include "nsStyleContext.h"
-#include "nsStyleUtil.h"
 #include "prlog.h"
 #include <algorithm>
 #include "mozilla/LinkedList.h"
@@ -573,8 +572,7 @@ protected:
 
   // These are non-const so that we can lazily update them with the item's
   // intrinsic size (obtained via a "measuring" reflow), when necessary.
-  // (e.g. if we have a vertical flex item with "flex-basis:auto",
-  // "flex-basis:main-size;height:auto", or "min-height:auto")
+  // (e.g. for "flex-basis:auto;height:auto" & "min-height:auto")
   nscoord mFlexBaseSize;
   nscoord mMainMinSize;
   nscoord mMainMaxSize;
@@ -1165,10 +1163,10 @@ PartiallyResolveAutoMinSize(const FlexItem& aFlexItem,
                                      // from here, w/ std::min().
 
   // We need the smallest of:
-  // * the used flex-basis, if the computed flex-basis was 'main-size':
-  const nsStyleCoord& flexBasis = aItemReflowState.mStylePosition->mFlexBasis;
-  const bool isHorizontal = IsAxisHorizontal(aAxisTracker.GetMainAxis());
-  if (nsStyleUtil::IsFlexBasisMainSize(flexBasis, isHorizontal) &&
+  // * the used flex-basis, if the computed flex-basis was 'auto':
+  // XXXdholbert ('auto' might be renamed to 'main-size'; see bug 1032922)
+  if (eStyleUnit_Auto ==
+      aItemReflowState.mStylePosition->mFlexBasis.GetUnit() &&
       aFlexItem.GetFlexBaseSize() != NS_AUTOHEIGHT) {
     // NOTE: We skip this if the flex base size depends on content & isn't yet
     // resolved. This is OK, because the caller is responsible for computing
@@ -1222,7 +1220,7 @@ ResolveAutoFlexBasisFromRatio(FlexItem& aFlexItem,
              "Should only be called to resolve an 'auto' flex-basis");
   // If the flex item has ...
   //  - an intrinsic aspect ratio,
-  //  - a [used] flex-basis of 'main-size' [We have this, if we're here.]
+  //  - a [used] flex-basis of 'main-size' [auto?] [We have this, if we're here.]
   //  - a definite cross size
   // then the flex base size is calculated from its inner cross size and the
   // flex item’s intrinsic aspect ratio.
@@ -1391,11 +1389,11 @@ nsFlexContainerFrame::
 
   if (aFlexItem.IsStretched()) {
     childRSForMeasuringHeight.SetComputedWidth(aFlexItem.GetCrossSize());
-    childRSForMeasuringHeight.mFlags.mHResize = true;
+    childRSForMeasuringHeight.SetHResize(true);
   }
 
   if (aForceVerticalResizeForMeasuringReflow) {
-    childRSForMeasuringHeight.mFlags.mVResize = true;
+    childRSForMeasuringHeight.SetVResize(true);
   }
 
   nsHTMLReflowMetrics childDesiredSize(childRSForMeasuringHeight);
@@ -3275,7 +3273,7 @@ nsFlexContainerFrame::SizeItemInCrossAxis(
     // not imposing that height for *this* measuring reflow, so we need to
     // tell it to treat this reflow as a vertical resize (regardless of
     // whether any of its ancestors are being resized).
-    aChildReflowState.mFlags.mVResize = true;
+    aChildReflowState.SetVResize(true);
   }
   nsHTMLReflowMetrics childDesiredSize(aChildReflowState);
   nsReflowStatus childReflowStatus;
@@ -3673,10 +3671,10 @@ nsFlexContainerFrame::DoFlexLayout(nsPresContext*           aPresContext,
           // sets mHResize whenever our computed width has changed since the
           // previous reflow. Still, it's nice for symmetry, and it may become
           // necessary once we support orthogonal flows.)
-          childReflowState.mFlags.mHResize = true;
+          childReflowState.SetHResize(true);
         }
         if (didOverrideComputedHeight) {
-          childReflowState.mFlags.mVResize = true;
+          childReflowState.SetVResize(true);
         }
       }
       // NOTE: Be very careful about doing anything else with childReflowState

@@ -870,6 +870,10 @@ var BrowserApp = {
       Services.prefs.setBoolPref("searchActivity.default.migrated", true);
       SearchEngines.migrateSearchActivityDefaultPref();
     }
+
+    if (this._startupStatus === "upgrade") {
+      Reader.migrateCache().catch(e => Cu.reportError("Error migrating Reader cache: " + e));
+    }
   },
 
   // This function returns false during periods where the browser displayed document is
@@ -1548,14 +1552,34 @@ var BrowserApp = {
 
         // Check to see if this is a message to enable/disable mixed content blocking.
         if (aData) {
-          let allowMixedContent = JSON.parse(aData).allowMixedContent;
-          if (allowMixedContent) {
-            // Set a flag to disable mixed content blocking.
-            flags = Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
-          } else {
-            // Set mixedContentChannel to null to re-enable mixed content blocking.
-            let docShell = browser.webNavigation.QueryInterface(Ci.nsIDocShell);
-            docShell.mixedContentChannel = null;
+          let data = JSON.parse(aData);
+          if (data.contentType === "mixed") {
+            if (data.allowContent) {
+              // Set a flag to disable mixed content blocking.
+              flags = Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
+            } else {
+              // Set mixedContentChannel to null to re-enable mixed content blocking.
+              let docShell = browser.webNavigation.QueryInterface(Ci.nsIDocShell);
+              docShell.mixedContentChannel = null;
+            }
+          } else if (data.contentType === "tracking") {
+            if (data.allowContent) {
+              // Convert document URI into the format used by
+              // nsChannelClassifier::ShouldEnableTrackingProtection
+              // (any scheme turned into https is correct)
+              let normalizedUrl = Services.io.newURI("https://" + browser.currentURI.hostPort, null, null);
+              // Add the current host in the 'trackingprotection' consumer of
+              // the permission manager using a normalized URI. This effectively
+              // places this host on the tracking protection white list.
+              Services.perms.add(normalizedUrl, "trackingprotection", Services.perms.ALLOW_ACTION);
+              Telemetry.addData("TRACKING_PROTECTION_EVENTS", 1);
+            } else {
+              // Remove the current host from the 'trackingprotection' consumer
+              // of the permission manager. This effectively removes this host
+              // from the tracking protection white list (any list actually).
+              Services.perms.remove(browser.currentURI.host, "trackingprotection");
+              Telemetry.addData("TRACKING_PROTECTION_EVENTS", 2);
+            }
           }
         }
 
@@ -5162,7 +5186,7 @@ var BrowserEventHandler = {
     let win = BrowserApp.selectedBrowser.contentWindow;
     try {
       let cwu = win.top.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
-      cwu.sendMouseEventToWindow(aName, aX, aY, 0, 1, 0, true, 0, Ci.nsIDOMMouseEvent.MOZ_SOURCE_TOUCH);
+      cwu.sendMouseEventToWindow(aName, aX, aY, 0, 1, 0, true, 0, Ci.nsIDOMMouseEvent.MOZ_SOURCE_TOUCH, false);
     } catch(e) {
       Cu.reportError(e);
     }
@@ -6790,9 +6814,6 @@ var IdentityHandler = {
 
       return result;
     }
-    
-    // Otherwise, we don't know the cert owner
-    result.owner = Strings.browser.GetStringFromName("identity.ownerUnknown3");
 
     // Cache the override service the first time we need to check it
     if (!this._overrideService)
@@ -7274,7 +7295,7 @@ var RemoteDebugger = {
   _start: function rd_start() {
     try {
       if (!DebuggerServer.initialized) {
-        DebuggerServer.init(this._showConnectionPrompt.bind(this));
+        DebuggerServer.init();
         DebuggerServer.addBrowserActors();
         DebuggerServer.registerModule("resource://gre/modules/dbg-browser-actors.js");
       }
@@ -7282,7 +7303,8 @@ var RemoteDebugger = {
       let pathOrPort = this._getPath();
       if (!pathOrPort)
         pathOrPort = this._getPort();
-      DebuggerServer.openListener(pathOrPort);
+      let listener = DebuggerServer.openListener(pathOrPort);
+      listener.allowConnection = this._showConnectionPrompt.bind(this);
       dump("Remote debugger listening at path " + pathOrPort);
     } catch(e) {
       dump("Remote debugger didn't start: " + e);

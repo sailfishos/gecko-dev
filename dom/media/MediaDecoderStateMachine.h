@@ -354,7 +354,7 @@ public:
   // be held.
   bool IsPlaying() const;
 
-  // Dispatch DoNotifyWaitingForResourcesStatusChanged task to mDecodeTaskQueue.
+  // Dispatch DoNotifyWaitingForResourcesStatusChanged task to the task queue.
   // Called when the reader may have acquired the hardware resources required
   // to begin decoding. The decoder monitor must be held while calling this.
   void NotifyWaitingForResourcesStatusChanged();
@@ -731,7 +731,7 @@ protected:
   // The task queue in which we run decode tasks. This is referred to as
   // the "decode thread", though in practise tasks can run on a different
   // thread every time they're called.
-  RefPtr<MediaTaskQueue> mDecodeTaskQueue;
+  MediaTaskQueue* DecodeTaskQueue() const { return mReader->GetTaskQueue(); }
 
   // The time that playback started from the system clock. This is used for
   // timing the presentation of video frames when there's no audio.
@@ -817,6 +817,10 @@ protected:
   // hardware in microseconds. This will approximately be the end time of the
   // audio stream, unless another frame is pushed to the hardware.
   int64_t mAudioEndTime;
+
+  // The end time of the last decoded audio frame. This signifies the end of
+  // decoded audio data. Used to check if we are low in decoded data.
+  int64_t mDecodedAudioEndTime;
 
   // The presentation end time of the last video frame which has been displayed
   // in microseconds. Accessed from the state machine thread.

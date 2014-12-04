@@ -25,6 +25,9 @@ EXPORTS.mozilla.dom += [
     'TextMetrics.h',
 ]
 
+# http://support.microsoft.com/kb/143208
+DEFINES['NOMINMAX'] = True
+
 # Canvas 2D and common sources
 UNIFIED_SOURCES += [
     'CanvasImageCache.cpp',
@@ -39,6 +42,8 @@ UNIFIED_SOURCES += [
 UNIFIED_SOURCES += [
     'MurmurHash3.cpp',
     'WebGL1Context.cpp',
+    'WebGL1ContextBuffers.cpp',
+    'WebGL1ContextUniforms.cpp',
     'WebGL2Context.cpp',
     'WebGL2ContextBuffers.cpp',
     'WebGL2ContextDraw.cpp',
@@ -55,7 +60,6 @@ UNIFIED_SOURCES += [
     'WebGLActiveInfo.cpp',
     'WebGLBuffer.cpp',
     'WebGLContext.cpp',
-    'WebGLContextAsyncQueries.cpp',
     'WebGLContextBuffers.cpp',
     'WebGLContextDraw.cpp',
     'WebGLContextExtensions.cpp',

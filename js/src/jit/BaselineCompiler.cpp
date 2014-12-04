@@ -13,9 +13,9 @@
 #include "jit/BaselineJIT.h"
 #include "jit/FixedList.h"
 #include "jit/IonAnalysis.h"
-#include "jit/IonLinker.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitSpewer.h"
+#include "jit/Linker.h"
 #ifdef JS_ION_PERF
 # include "jit/PerfSpewer.h"
 #endif
@@ -81,10 +81,9 @@ BaselineCompiler::compile()
     JitSpew(JitSpew_Codegen, "# Emitting baseline code for script %s:%d",
             script->filename(), script->lineno());
 
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    TraceLoggerEvent scriptEvent(logger, TraceLogger_AnnotateScripts, script);
-    AutoTraceLog logScript(logger, scriptEvent);
-    AutoTraceLog logCompile(logger, TraceLogger_BaselineCompilation);
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    AutoTraceLog logScript(logger, TraceLogCreateTextId(logger, script));
+    AutoTraceLog logCompile(logger, TraceLogger::BaselineCompilation);
 
     if (!script->ensureHasTypes(cx) || !script->ensureHasAnalyzedArgsUsage(cx))
         return Method_Error;
@@ -178,10 +177,6 @@ BaselineCompiler::compile()
     prologueOffset_.fixup(&masm);
     epilogueOffset_.fixup(&masm);
     spsPushToggleOffset_.fixup(&masm);
-#ifdef JS_TRACE_LOGGING
-    traceLoggerEnterToggleOffset_.fixup(&masm);
-    traceLoggerExitToggleOffset_.fixup(&masm);
-#endif
     postDebugPrologueOffset_.fixup(&masm);
 
     // Note: There is an extra entry in the bytecode type map for the search hint, see below.
@@ -191,8 +186,6 @@ BaselineCompiler::compile()
         BaselineScript::New(script, prologueOffset_.offset(),
                             epilogueOffset_.offset(),
                             spsPushToggleOffset_.offset(),
-                            traceLoggerEnterToggleOffset_.offset(),
-                            traceLoggerExitToggleOffset_.offset(),
                             postDebugPrologueOffset_.offset(),
                             icEntries_.length(),
                             pcMappingIndexEntries.length(),
@@ -247,11 +240,6 @@ BaselineCompiler::compile()
     // All SPS instrumentation is emitted toggled off.  Toggle them on if needed.
     if (cx->runtime()->spsProfiler.enabled())
         baselineScript->toggleSPS(true);
-
-#ifdef JS_TRACE_LOGGING
-    // Initialize the tracelogger instrumentation.
-    baselineScript->initTraceLogger(cx->runtime(), script);
-#endif
 
     uint32_t *bytecodeMap = baselineScript->bytecodeTypeMap();
     types::FillBytecodeTypeMap(script, bytecodeMap);
@@ -321,11 +309,15 @@ BaselineCompiler::emitInitializeLocals(size_t n, const Value &v)
 bool
 BaselineCompiler::emitPrologue()
 {
+#ifdef JS_USE_LINK_REGISTER
+    // Push link register from generateEnterJIT()'s BLR.
+    masm.pushReturnAddress();
+    masm.checkStackAlignment();
+#endif
     masm.push(BaselineFrameReg);
     masm.mov(BaselineStackReg, BaselineFrameReg);
 
     masm.subPtr(Imm32(BaselineFrame::Size()), BaselineStackReg);
-    masm.checkStackAlignment();
 
     // Initialize BaselineFrame. For eval scripts, the scope chain
     // is passed in R1, so we have to be careful not to clobber
@@ -385,8 +377,13 @@ BaselineCompiler::emitPrologue()
         masm.bind(&earlyStackCheckFailed);
 
 #ifdef JS_TRACE_LOGGING
-    if (!emitTraceLoggerEnter())
-        return false;
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    Register loggerReg = RegisterSet::Volatile().takeGeneral();
+    masm.Push(loggerReg);
+    masm.movePtr(ImmPtr(logger), loggerReg);
+    masm.tracelogStart(loggerReg, TraceLogCreateTextId(logger, script));
+    masm.tracelogStart(loggerReg, TraceLogger::Baseline);
+    masm.Pop(loggerReg);
 #endif
 
     // Record the offset of the prologue, because Ion can bailout before
@@ -413,6 +410,10 @@ BaselineCompiler::emitPrologue()
     if (!emitSPSPush())
         return false;
 
+    // Pad a nop so that the last non-op ICEntry we pushed does not get
+    // confused with the start address of the first op for PC mapping.
+    masm.nop();
+
     return true;
 }
 
@@ -426,8 +427,15 @@ BaselineCompiler::emitEpilogue()
     masm.bind(&return_);
 
 #ifdef JS_TRACE_LOGGING
-    if (!emitTraceLoggerExit())
-        return false;
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    Register loggerReg = RegisterSet::Volatile().takeGeneral();
+    masm.Push(loggerReg);
+    masm.movePtr(ImmPtr(logger), loggerReg);
+    masm.tracelogStop(loggerReg, TraceLogger::Baseline);
+    // Stop the script. Using a stop without checking the textId, since we
+    // we didn't save the textId for the script.
+    masm.tracelogStop(loggerReg);
+    masm.Pop(loggerReg);
 #endif
 
     // Pop SPS frame if necessary
@@ -766,64 +774,6 @@ BaselineCompiler::emitDebugTrap()
 
     return true;
 }
-
-#ifdef JS_TRACE_LOGGING
-bool
-BaselineCompiler::emitTraceLoggerEnter()
-{
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    RegisterSet regs = RegisterSet::Volatile();
-    Register loggerReg = regs.takeGeneral();
-    Register scriptReg = regs.takeGeneral();
-
-    Label noTraceLogger;
-    traceLoggerEnterToggleOffset_ = masm.toggledJump(&noTraceLogger);
-
-    masm.Push(loggerReg);
-    masm.Push(scriptReg);
-
-    masm.movePtr(ImmPtr(logger), loggerReg);
-
-    // Script start.
-    masm.movePtr(ImmGCPtr(script), scriptReg);
-    masm.loadPtr(Address(scriptReg, JSScript::offsetOfBaselineScript()), scriptReg);
-    Address scriptEvent(scriptReg, BaselineScript::offsetOfTraceLoggerScriptEvent());
-    masm.computeEffectiveAddress(scriptEvent, scriptReg);
-    masm.tracelogStartEvent(loggerReg, scriptReg);
-
-    // Engine start.
-    masm.tracelogStartId(loggerReg, TraceLogger_Baseline, /* force = */ true);
-
-    masm.Pop(scriptReg);
-    masm.Pop(loggerReg);
-
-    masm.bind(&noTraceLogger);
-
-    return true;
-}
-
-bool
-BaselineCompiler::emitTraceLoggerExit()
-{
-    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
-    Register loggerReg = RegisterSet::Volatile().takeGeneral();
-
-    Label noTraceLogger;
-    traceLoggerExitToggleOffset_ = masm.toggledJump(&noTraceLogger);
-
-    masm.Push(loggerReg);
-    masm.movePtr(ImmPtr(logger), loggerReg);
-
-    masm.tracelogStopId(loggerReg, TraceLogger_Baseline, /* force = */ true);
-    masm.tracelogStopId(loggerReg, TraceLogger_Scripts, /* force = */ true);
-
-    masm.Pop(loggerReg);
-
-    masm.bind(&noTraceLogger);
-
-    return true;
-}
-#endif
 
 bool
 BaselineCompiler::emitSPSPush()
@@ -2007,6 +1957,12 @@ BaselineCompiler::emit_JSOP_SETELEM()
     return true;
 }
 
+bool
+BaselineCompiler::emit_JSOP_STRICTSETELEM()
+{
+    return emit_JSOP_SETELEM();
+}
+
 typedef bool (*DeleteElementFn)(JSContext *, HandleValue, HandleValue, bool *);
 static const VMFunction DeleteElementStrictInfo = FunctionInfo<DeleteElementFn>(DeleteElement<true>);
 static const VMFunction DeleteElementNonStrictInfo = FunctionInfo<DeleteElementFn>(DeleteElement<false>);
@@ -2024,13 +1980,20 @@ BaselineCompiler::emit_JSOP_DELELEM()
     pushArg(R1);
     pushArg(R0);
 
-    if (!callVM(script->strict() ? DeleteElementStrictInfo : DeleteElementNonStrictInfo))
+    bool strict = JSOp(*pc) == JSOP_STRICTDELELEM;
+    if (!callVM(strict ? DeleteElementStrictInfo : DeleteElementNonStrictInfo))
         return false;
 
     masm.boxNonDouble(JSVAL_TYPE_BOOLEAN, ReturnReg, R1);
     frame.popn(2);
     frame.push(R1);
     return true;
+}
+
+bool
+BaselineCompiler::emit_JSOP_STRICTDELELEM()
+{
+    return emit_JSOP_DELELEM();
 }
 
 bool
@@ -2102,13 +2065,31 @@ BaselineCompiler::emit_JSOP_SETPROP()
 }
 
 bool
+BaselineCompiler::emit_JSOP_STRICTSETPROP()
+{
+    return emit_JSOP_SETPROP();
+}
+
+bool
 BaselineCompiler::emit_JSOP_SETNAME()
 {
     return emit_JSOP_SETPROP();
 }
 
 bool
+BaselineCompiler::emit_JSOP_STRICTSETNAME()
+{
+    return emit_JSOP_SETPROP();
+}
+
+bool
 BaselineCompiler::emit_JSOP_SETGNAME()
+{
+    return emit_JSOP_SETPROP();
+}
+
+bool
+BaselineCompiler::emit_JSOP_STRICTSETGNAME()
 {
     return emit_JSOP_SETPROP();
 }
@@ -2163,13 +2144,20 @@ BaselineCompiler::emit_JSOP_DELPROP()
     pushArg(ImmGCPtr(script->getName(pc)));
     pushArg(R0);
 
-    if (!callVM(script->strict() ? DeletePropertyStrictInfo : DeletePropertyNonStrictInfo))
+    bool strict = JSOp(*pc) == JSOP_STRICTDELPROP;
+    if (!callVM(strict ? DeletePropertyStrictInfo : DeletePropertyNonStrictInfo))
         return false;
 
     masm.boxNonDouble(JSVAL_TYPE_BOOLEAN, ReturnReg, R1);
     frame.pop();
     frame.push(R1);
     return true;
+}
+
+bool
+BaselineCompiler::emit_JSOP_STRICTDELPROP()
+{
+    return emit_JSOP_DELPROP();
 }
 
 void
@@ -2770,6 +2758,12 @@ BaselineCompiler::emit_JSOP_EVAL()
 }
 
 bool
+BaselineCompiler::emit_JSOP_STRICTEVAL()
+{
+    return emitCall();
+}
+
+bool
 BaselineCompiler::emit_JSOP_SPREADCALL()
 {
     return emitSpreadCall();
@@ -2783,6 +2777,12 @@ BaselineCompiler::emit_JSOP_SPREADNEW()
 
 bool
 BaselineCompiler::emit_JSOP_SPREADEVAL()
+{
+    return emitSpreadCall();
+}
+
+bool
+BaselineCompiler::emit_JSOP_STRICTSPREADEVAL()
 {
     return emitSpreadCall();
 }
@@ -3508,7 +3508,7 @@ typedef bool (*InterpretResumeFn)(JSContext *, HandleObject, HandleValue, Handle
 static const VMFunction InterpretResumeInfo = FunctionInfo<InterpretResumeFn>(jit::InterpretResume);
 
 typedef bool (*GeneratorThrowFn)(JSContext *, BaselineFrame *, HandleObject, HandleValue, uint32_t);
-static const VMFunction GeneratorThrowInfo = FunctionInfo<GeneratorThrowFn>(jit::GeneratorThrowOrClose);
+static const VMFunction GeneratorThrowInfo = FunctionInfo<GeneratorThrowFn>(jit::GeneratorThrowOrClose, TailCall);
 
 bool
 BaselineCompiler::emit_JSOP_RESUME()

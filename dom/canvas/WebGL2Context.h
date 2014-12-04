@@ -33,8 +33,7 @@ public:
     // -------------------------------------------------------------------------
     // IMPLEMENT nsWrapperCache
 
-    virtual JSObject* WrapObject(JSContext *cx) MOZ_OVERRIDE;
-
+    virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE;
 
     // -------------------------------------------------------------------------
     // Buffer objects - WebGL2ContextBuffers.cpp
@@ -126,6 +125,12 @@ public:
     void UniformMatrix4x3fv(WebGLUniformLocation* location, bool transpose, const dom::Float32Array& value);
     void UniformMatrix4x3fv(WebGLUniformLocation* location, bool transpose, const dom::Sequence<GLfloat>& value);
 
+private:
+    void VertexAttribI4iv(GLuint index, size_t length, const GLint* v);
+    void VertexAttribI4uiv(GLuint index, size_t length, const GLuint* v);
+
+public:
+    // GL 3.0 & ES 3.0
     void VertexAttribI4i(GLuint index, GLint x, GLint y, GLint z, GLint w);
     void VertexAttribI4iv(GLuint index, const dom::Sequence<GLint>& v);
     void VertexAttribI4ui(GLuint index, GLuint x, GLuint y, GLuint z, GLuint w);
@@ -164,16 +169,18 @@ public:
 
     bool ValidateClearBuffer(const char* info, GLenum buffer, GLint drawbuffer, size_t elemCount);
 
+
     // -------------------------------------------------------------------------
     // Query Objects - WebGL2ContextQueries.cpp
-    // TODO(djg): Implemented in WebGLContext
-    /* already_AddRefed<WebGLQuery> CreateQuery();
+
+    already_AddRefed<WebGLQuery> CreateQuery();
     void DeleteQuery(WebGLQuery* query);
     bool IsQuery(WebGLQuery* query);
     void BeginQuery(GLenum target, WebGLQuery* query);
     void EndQuery(GLenum target);
-    JS::Value GetQuery(JSContext*, GLenum target, GLenum pname); */
+    already_AddRefed<WebGLQuery> GetQuery(GLenum target, GLenum pname);
     void GetQueryParameter(JSContext*, WebGLQuery* query, GLenum pname, JS::MutableHandleValue retval);
+
 
     // -------------------------------------------------------------------------
     // Sampler Objects - WebGL2ContextSamplers.cpp
@@ -204,17 +211,17 @@ public:
 
     // -------------------------------------------------------------------------
     // Transform Feedback - WebGL2ContextTransformFeedback.cpp
+
     already_AddRefed<WebGLTransformFeedback> CreateTransformFeedback();
     void DeleteTransformFeedback(WebGLTransformFeedback* tf);
     bool IsTransformFeedback(WebGLTransformFeedback* tf);
-    void BindTransformFeedback(GLenum target, GLuint id);
+    void BindTransformFeedback(GLenum target, WebGLTransformFeedback* tf);
     void BeginTransformFeedback(GLenum primitiveMode);
     void EndTransformFeedback();
-    void TransformFeedbackVaryings(WebGLProgram* program, GLsizei count,
-                                   const dom::Sequence<nsString>& varyings, GLenum bufferMode);
-    already_AddRefed<WebGLActiveInfo> GetTransformFeedbackVarying(WebGLProgram* program, GLuint index);
     void PauseTransformFeedback();
     void ResumeTransformFeedback();
+    void TransformFeedbackVaryings(WebGLProgram* program, const dom::Sequence<nsString>& varyings, GLenum bufferMode);
+    already_AddRefed<WebGLActiveInfo> GetTransformFeedbackVarying(WebGLProgram* program, GLuint index);
 
 
     // -------------------------------------------------------------------------
@@ -245,14 +252,18 @@ public:
 */
 
 private:
-
     WebGL2Context();
+
+    JS::Value GetTexParameterInternal(const TexTarget& target, GLenum pname) MOZ_OVERRIDE;
 
     bool ValidateSizedInternalFormat(GLenum internalFormat, const char* info);
     bool ValidateTexStorage(GLenum target, GLsizei levels, GLenum internalformat,
                                 GLsizei width, GLsizei height, GLsizei depth,
                                 const char* info);
-    JS::Value GetTexParameterInternal(const TexTarget& target, GLenum pname) MOZ_OVERRIDE;
+
+    virtual bool ValidateAttribPointerType(bool integerMode, GLenum type, GLsizei* alignment, const char* info) MOZ_OVERRIDE;
+    virtual bool ValidateBufferTarget(GLenum target, const char* info) MOZ_OVERRIDE;
+    virtual bool ValidateBufferIndexedTarget(GLenum target, const char* info) MOZ_OVERRIDE;
 };
 
 } // namespace mozilla

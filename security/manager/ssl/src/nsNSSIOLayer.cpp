@@ -939,7 +939,8 @@ nsSSLIOLayerHelpers::rememberIntolerantAtVersion(const nsACString& hostName,
 // returns true if we should retry the handshake
 bool
 nsSSLIOLayerHelpers::rememberStrongCiphersFailed(const nsACString& hostName,
-                                                 int16_t port)
+                                                 int16_t port,
+                                                 PRErrorCode intoleranceReason)
 {
   nsCString key;
   getSiteKey(hostName, port, key);
@@ -956,7 +957,7 @@ nsSSLIOLayerHelpers::rememberStrongCiphersFailed(const nsACString& hostName,
   } else {
     entry.tolerant = 0;
     entry.intolerant = 0;
-    entry.intoleranceReason = SSL_ERROR_NO_CYPHER_OVERLAP;
+    entry.intoleranceReason = intoleranceReason;
   }
 
   entry.strongCipherStatus = StrongCiphersFailed;
@@ -1171,7 +1172,6 @@ uint32_t tlsIntoleranceTelemetryBucket(PRErrorCode err)
     case SSL_ERROR_NO_CYPHER_OVERLAP: return 7;
     case SSL_ERROR_BAD_SERVER: return 8;
     case SSL_ERROR_BAD_BLOCK_PADDING: return 9;
-    case SSL_ERROR_UNSUPPORTED_VERSION: return 10;
     case SSL_ERROR_PROTOCOL_VERSION_ALERT: return 11;
     case SSL_ERROR_RX_MALFORMED_FINISHED: return 12;
     case SSL_ERROR_BAD_HANDSHAKE_HASH_VALUE: return 13;
@@ -1209,15 +1209,17 @@ retryDueToTLSIntolerance(PRErrorCode err, nsNSSSocketInfo* socketInfo)
       .forgetIntolerance(socketInfo->GetHostName(), socketInfo->GetPort());
 
     return false;
-  } else if (err == SSL_ERROR_NO_CYPHER_OVERLAP &&
-             nsNSSComponent::AreAnyWeakCiphersEnabled()) {
+  }
+  if ((err == SSL_ERROR_NO_CYPHER_OVERLAP || err == PR_END_OF_FILE_ERROR) &&
+      nsNSSComponent::AreAnyWeakCiphersEnabled()) {
     if (socketInfo->SharedState().IOLayerHelpers()
                   .rememberStrongCiphersFailed(socketInfo->GetHostName(),
-                                               socketInfo->GetPort())) {
-      Telemetry::Accumulate(Telemetry::SSL_WEAK_CIPHERS_FALLBACK, true);
+                                               socketInfo->GetPort(), err)) {
+      Telemetry::Accumulate(Telemetry::SSL_WEAK_CIPHERS_FALLBACK,
+                            tlsIntoleranceTelemetryBucket(err));
       return true;
     }
-    Telemetry::Accumulate(Telemetry::SSL_WEAK_CIPHERS_FALLBACK, false);
+    Telemetry::Accumulate(Telemetry::SSL_WEAK_CIPHERS_FALLBACK, 0);
   }
 
   // When not using a proxy we'll see a connection reset error.

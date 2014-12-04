@@ -14,6 +14,12 @@
   </div>
   <div id="messages"></div>
   <div id="fixtures"></div>
+  <script>
+    var uncaughtError;
+    window.addEventListener("error", function(error) {
+      uncaughtError = error;
+    });
+  </script>
 
   <!-- libs -->
   <script src="../../content/shared/libs/react-0.11.2.js"></script>
@@ -47,6 +53,8 @@
   <script src="../../content/shared/js/activeRoomStore.js"></script>
   <script src="../../content/shared/js/roomStore.js"></script>
   <script src="../../content/shared/js/conversationStore.js"></script>
+  <script src="../../content/shared/js/feedbackStore.js"></script>
+  <script src="../../content/shared/js/feedbackViews.js"></script>
 
   <!-- Test scripts -->
   <script src="models_test.js"></script>
@@ -55,14 +63,22 @@
   <script src="views_test.js"></script>
   <script src="websocket_test.js"></script>
   <script src="feedbackApiClient_test.js"></script>
+  <script src="feedbackViews_test.js"></script>
   <script src="validate_test.js"></script>
   <script src="dispatcher_test.js"></script>
   <script src="activeRoomStore_test.js"></script>
   <script src="conversationStore_test.js"></script>
+  <script src="feedbackStore_test.js"></script>
   <script src="otSdkDriver_test.js"></script>
   <script src="store_test.js"></script>
   <script src="roomStore_test.js"></script>
   <script>
+    describe("Uncaught Error Check", function() {
+      it("should load the tests without errors", function() {
+        expect(uncaughtError && uncaughtError.message).to.be.undefined;
+      });
+    });
+
     mocha.run(function () {
       $("#mocha").append("<p id='complete'>Complete.</p>");
     });

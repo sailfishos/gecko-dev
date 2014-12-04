@@ -3382,13 +3382,16 @@ PropertyProvider::SetupJustificationSpacing(bool aPostReflow)
     return;
   }
 
+  // Remember that textrun measurements are in the run's orientation,
+  // so its advance "width" is actually a height in vertical writing modes,
+  // corresponding to the inline-direction of the frame.
   gfxFloat naturalWidth =
     mTextRun->GetAdvanceWidth(mStart.GetSkippedOffset(),
                               GetSkippedDistance(mStart, realEnd), this);
   if (mFrame->GetStateBits() & TEXT_HYPHEN_BREAK) {
     naturalWidth += GetHyphenWidth();
   }
-  mJustificationSpacing = mFrame->GetSize().width - naturalWidth;
+  mJustificationSpacing = mFrame->ISize() - naturalWidth;
   if (mJustificationSpacing <= 0) {
     // No space available
     return;
@@ -4871,8 +4874,12 @@ nsTextFrame::GetTextDecorations(
 
     // In all modes, if we're on an inline-block or inline-table (or
     // inline-stack, inline-box, inline-grid), we're done.
+    // If we're on a ruby frame other than ruby text container, we
+    // should continue.
     uint8_t display = f->GetDisplay();
     if (display != NS_STYLE_DISPLAY_INLINE &&
+        (!nsStyleDisplay::IsRubyDisplayType(display) ||
+         display == NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER) &&
         nsStyleDisplay::IsDisplayTypeInlineOutside(display)) {
       break;
     }

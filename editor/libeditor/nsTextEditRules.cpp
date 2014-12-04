@@ -3,6 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "nsTextEditRules.h"
+
 #include "mozilla/Assertions.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Preferences.h"
@@ -36,7 +38,6 @@
 #include "nsISupportsBase.h"
 #include "nsLiteralString.h"
 #include "mozilla/dom/NodeIterator.h"
-#include "nsTextEditRules.h"
 #include "nsTextEditUtils.h"
 #include "nsUnicharUtils.h"
 
@@ -1154,7 +1155,7 @@ nsTextEditRules::CreateBogusNodeIfNeeded(Selection* aSelection)
        bodyChild = bodyChild->GetNextSibling()) {
     if (mEditor->IsMozEditorBogusNode(bodyChild) ||
         !mEditor->IsEditable(body) || // XXX hoist out of the loop?
-        mEditor->IsEditable(bodyChild)) {
+        mEditor->IsEditable(bodyChild) || mEditor->IsBlockNode(bodyChild)) {
       return NS_OK;
     }
   }

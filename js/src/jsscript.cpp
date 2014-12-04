@@ -2712,7 +2712,7 @@ JSScript::finalize(FreeOp *fop)
     if (types_)
         types_->destroy();
 
-    jit::DestroyIonScripts(fop, this);
+    jit::DestroyJitScripts(fop, this);
 
     destroyScriptCounts(fop);
     destroyDebugScript(fop);
@@ -2911,9 +2911,15 @@ js::DescribeScriptedCallerForCompilation(JSContext *cx, MutableHandleScript mayb
     if (opt == CALLED_FROM_JSOP_EVAL) {
         jsbytecode *pc = nullptr;
         maybeScript.set(cx->currentScript(&pc));
-        MOZ_ASSERT(JSOp(*pc) == JSOP_EVAL || JSOp(*pc) == JSOP_SPREADEVAL);
-        MOZ_ASSERT(*(pc + (JSOp(*pc) == JSOP_EVAL ? JSOP_EVAL_LENGTH
-                                                  : JSOP_SPREADEVAL_LENGTH)) == JSOP_LINENO);
+        static_assert(JSOP_SPREADEVAL_LENGTH == JSOP_STRICTSPREADEVAL_LENGTH,
+                    "next op after a spread must be at consistent offset");
+        static_assert(JSOP_EVAL_LENGTH == JSOP_STRICTEVAL_LENGTH,
+                    "next op after a direct eval must be at consistent offset");
+        MOZ_ASSERT(JSOp(*pc) == JSOP_EVAL || JSOp(*pc) == JSOP_STRICTEVAL ||
+                   JSOp(*pc) == JSOP_SPREADEVAL || JSOp(*pc) == JSOP_STRICTSPREADEVAL);
+        mozilla::DebugOnly<bool> isSpread = JSOp(*pc) == JSOP_SPREADEVAL ||
+                                            JSOp(*pc) == JSOP_STRICTSPREADEVAL;
+        MOZ_ASSERT(*(pc + (isSpread ? JSOP_SPREADEVAL_LENGTH : JSOP_EVAL_LENGTH)) == JSOP_LINENO);
         *file = maybeScript->filename();
         *linenop = GET_UINT16(pc + (JSOp(*pc) == JSOP_EVAL ? JSOP_EVAL_LENGTH
                                                            : JSOP_SPREADEVAL_LENGTH));
@@ -3432,7 +3438,7 @@ JSScript::markChildren(JSTracer *trc)
 
     bindings.trace(trc);
 
-    jit::TraceIonScripts(trc, this);
+    jit::TraceJitScripts(trc, this);
 }
 
 void

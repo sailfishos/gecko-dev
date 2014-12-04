@@ -51,7 +51,7 @@ const cloneErrorObject = function(error, targetWindow) {
     if (typeof value != "string" && typeof value != "number") {
       value = String(value);
     }
-    
+
     Object.defineProperty(Cu.waiveXrays(obj), prop, {
       configurable: false,
       enumerable: true,
@@ -89,7 +89,15 @@ const cloneValueInto = function(value, targetWindow) {
     return cloneErrorObject(value, targetWindow);
   }
 
-  return Cu.cloneInto(value, targetWindow);
+  let clone;
+  try {
+    clone = Cu.cloneInto(value, targetWindow);
+  } catch (ex) {
+    MozLoopService.log.debug("Failed to clone value:", value);
+    throw ex;
+  }
+
+  return clone;
 };
 
 /**
@@ -106,15 +114,29 @@ const injectObjectAPI = function(api, targetWindow) {
   Object.keys(api).forEach(func => {
     injectedAPI[func] = function(...params) {
       let lastParam = params.pop();
+      let callbackIsFunction = (typeof lastParam == "function");
+      // Clone params coming from content to the current scope.
+      params = [cloneValueInto(p, api) for (p of params)];
 
       // If the last parameter is a function, assume its a callback
       // and wrap it differently.
-      if (lastParam && typeof lastParam === "function") {
+      if (callbackIsFunction) {
         api[func](...params, function(...results) {
+          // When the function was garbage collected due to async events, like
+          // closing a window, we want to circumvent a JS error.
+          if (callbackIsFunction && typeof lastParam != "function") {
+            MozLoopService.log.debug(func + ": callback function was lost.");
+            // Assume the presence of a first result argument to be an error.
+            if (results[0]) {
+              MozLoopService.log.error(func + " error:", results[0]);
+            }
+            return;
+          }
           lastParam(...[cloneValueInto(r, targetWindow) for (r of results)]);
         });
       } else {
         try {
+          lastParam = cloneValueInto(lastParam, api);
           return cloneValueInto(api[func](...params, lastParam), targetWindow);
         } catch (ex) {
           return cloneValueInto(ex, targetWindow);
@@ -231,7 +253,7 @@ function injectLoopAPI(targetWindow) {
       enumerable: true,
       writable: true,
       value: function(conversationWindowId) {
-        return Cu.cloneInto(MozLoopService.getConversationWindowData(conversationWindowId),
+        return cloneValueInto(MozLoopService.getConversationWindowData(conversationWindowId),
           targetWindow);
       }
     },
@@ -343,21 +365,31 @@ function injectLoopAPI(targetWindow) {
     /**
      * Displays a confirmation dialog using the specified strings.
      *
-     * Callback parameters:
-     * - err null on success, non-null on unexpected failure to show the prompt.
-     * - {Boolean} True if the user chose the OK button.
+     * @param {Object}   options  Confirm dialog options
+     * @param {Function} callback Function that will be invoked once the operation
+     *                            finished. The first argument passed will be an
+     *                            `Error` object or `null`. The second argument
+     *                            will be the result of the operation, TRUE if
+     *                            the user chose the OK button.
      */
     confirm: {
       enumerable: true,
       writable: true,
-      value: function(bodyMessage, okButtonMessage, cancelButtonMessage, callback) {
-        try {
-          let buttonFlags =
+      value: function(options, callback) {
+        let buttonFlags;
+        if (options.okButton && options.cancelButton) {
+          buttonFlags =
             (Ci.nsIPrompt.BUTTON_POS_0 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING) +
             (Ci.nsIPrompt.BUTTON_POS_1 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING);
+        } else if (!options.okButton && !options.cancelButton) {
+          buttonFlags = Services.prompt.STD_YES_NO_BUTTONS;
+        } else {
+          callback(cloneValueInto(new Error("confirm: missing button options"), targetWindow));
+        }
 
+        try {
           let chosenButton = Services.prompt.confirmEx(null, "",
-            bodyMessage, buttonFlags, okButtonMessage, cancelButtonMessage,
+            options.message, buttonFlags, options.okButton, options.cancelButton,
             null, null, {});
 
           callback(null, chosenButton == 0);
@@ -495,9 +527,16 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function(sessionType, path, method, payloadObj, callback) {
         // XXX Should really return a DOM promise here.
+        let callbackIsFunction = (typeof callback == "function");
         MozLoopService.hawkRequest(sessionType, path, method, payloadObj).then((response) => {
           callback(null, response.body);
         }, hawkError => {
+          // When the function was garbage collected due to async events, like
+          // closing a window, we want to circumvent a JS error.
+          if (callbackIsFunction && typeof callback != "function") {
+            MozLoopService.log.error("hawkRequest: callback function was lost.", hawkError);
+            return;
+          }
           // The hawkError.error property, while usually a string representing
           // an HTTP response status message, may also incorrectly be a native
           // error object that will cause the cloning function to fail.
@@ -677,6 +716,24 @@ function injectLoopAPI(targetWindow) {
         };
 
         request.send();
+      }
+    },
+
+    /**
+     * Associates a session-id and a call-id with a window for debugging.
+     *
+     * @param  {string}  windowId  The window id.
+     * @param  {string}  sessionId OT session id.
+     * @param  {string}  callId    The callId on the server.
+     */
+    addConversationContext: {
+      enumerable: true,
+      writable: true,
+      value: function(windowId, sessionId, callid) {
+        MozLoopService.addConversationContext(windowId, {
+          sessionId: sessionId,
+          callId: callid
+        });
       }
     }
   };

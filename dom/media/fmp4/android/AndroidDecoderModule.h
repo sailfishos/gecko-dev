@@ -34,11 +34,11 @@ public:
   virtual nsresult Shutdown() MOZ_OVERRIDE;
 
   virtual already_AddRefed<MediaDataDecoder>
-  CreateH264Decoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
-                    layers::LayersBackend aLayersBackend,
-                    layers::ImageContainer* aImageContainer,
-                    MediaTaskQueue* aVideoTaskQueue,
-                    MediaDataDecoderCallback* aCallback) MOZ_OVERRIDE;
+  CreateVideoDecoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
+                     layers::LayersBackend aLayersBackend,
+                     layers::ImageContainer* aImageContainer,
+                     MediaTaskQueue* aVideoTaskQueue,
+                     MediaDataDecoderCallback* aCallback) MOZ_OVERRIDE;
 
   virtual already_AddRefed<MediaDataDecoder>
   CreateAudioDecoder(const mp4_demuxer::AudioDecoderConfig& aConfig,
@@ -98,6 +98,7 @@ protected:
 
   virtual nsresult Output(mozilla::widget::android::sdk::BufferInfo* aInfo, void* aBuffer, mozilla::widget::android::sdk::MediaFormat* aFormat, Microseconds aDuration) { return NS_OK; }
   virtual nsresult PostOutput(mozilla::widget::android::sdk::BufferInfo* aInfo, mozilla::widget::android::sdk::MediaFormat* aFormat, Microseconds aDuration) { return NS_OK; }
+  virtual void Cleanup() {};
 
   nsresult ResetInputBuffers();
   nsresult ResetOutputBuffers();

@@ -888,7 +888,7 @@ NetworkManager.prototype = {
     let data = connection && connection.data;
     if (data && data.state === "registered") {
       this.dunRetryTimes = 0;
-      ril.setupDataCallByType("dun");
+      ril.setupDataCallByType(Ci.nsINetworkInterface.NETWORK_TYPE_DUN);
       this.dunConnectTimer.cancel();
       this.dunConnectTimer.
         initWithCallback(this.onDunConnectTimerTimeout.bind(this),
@@ -931,7 +931,7 @@ NetworkManager.prototype = {
 
       if (dun && (dun.state == Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED)) {
         this.mRil.getRadioInterface(this._dataDefaultServiceId)
-          .deactivateDataCallByType("dun");
+          .deactivateDataCallByType(Ci.nsINetworkInterface.NETWORK_TYPE_DUN);
       }
       return;
     }
@@ -997,7 +997,7 @@ NetworkManager.prototype = {
     } else {
       let mobile = this.getNetworkInterface(
         Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE, this._dataDefaultServiceId);
-      if (mobile) {
+      if (mobile && mobile.name) {
         this._tetheringInterface[TETHERING_TYPE_USB].externalInterface = mobile.name;
       }
     }
@@ -1142,7 +1142,7 @@ NetworkManager.prototype = {
     let mobile = this.getNetworkInterface(
       Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE, this._dataDefaultServiceId);
     // Update the real interface name
-    if (mobile) {
+    if (mobile && mobile.name) {
       this._tetheringInterface[TETHERING_TYPE_WIFI].externalInterface = mobile.name;
     }
 

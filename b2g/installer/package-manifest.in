@@ -132,6 +132,7 @@
 @BINPATH@/components/autocomplete.xpt
 @BINPATH@/components/autoconfig.xpt
 @BINPATH@/components/browsercompsbase.xpt
+@BINPATH@/components/browser-element.xpt
 @BINPATH@/components/browser-feeds.xpt
 @BINPATH@/components/caps.xpt
 @BINPATH@/components/chardet.xpt
@@ -448,6 +449,8 @@
 @BINPATH@/components/RadioInterfaceLayer.js
 @BINPATH@/components/RadioInterfaceLayer.manifest
 @BINPATH@/components/RILContentHelper.js
+@BINPATH@/components/RILSystemMessengerHelper.js
+@BINPATH@/components/RILSystemMessengerHelper.manifest
 @BINPATH@/components/TelephonyAudioService.js
 @BINPATH@/components/TelephonyAudioService.manifest
 @BINPATH@/components/TelephonyService.js

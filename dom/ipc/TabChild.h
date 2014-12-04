@@ -503,6 +503,8 @@ protected:
 
     virtual bool RecvRequestNotifyAfterRemotePaint();
 
+    virtual bool RecvParentActivated(const bool& aActivated) MOZ_OVERRIDE;
+
 #ifdef MOZ_WIDGET_GONK
     void MaybeRequestPreinitCamera();
 #endif
@@ -573,6 +575,10 @@ private:
     void SendPendingTouchPreventedResponse(bool aPreventDefault,
                                            const ScrollableLayerGuid& aGuid);
 
+    void SendSetTargetAPZCNotification(const WidgetTouchEvent& aEvent,
+                                       const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                       const uint64_t& aInputBlockId);
+
     void SetTabId(const TabId& aTabId)
     {
       MOZ_ASSERT(mUniqueId == 0);
@@ -583,6 +589,7 @@ private:
 
     class CachedFileDescriptorInfo;
     class CachedFileDescriptorCallbackRunnable;
+    class DelayedDeleteRunnable;
 
     TextureFactoryIdentifier mTextureFactoryIdentifier;
     nsCOMPtr<nsIWebNavigation> mWebNav;

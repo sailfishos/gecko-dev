@@ -19,7 +19,6 @@
 #include "jit/IonOptimizationLevels.h"
 #include "jit/IonTypes.h"
 #include "js/UbiNode.h"
-#include "vm/TraceLogging.h"
 
 namespace js {
 
@@ -161,19 +160,6 @@ class IonCache;
 struct PatchableBackedgeInfo;
 struct CacheLocation;
 
-// Describes a single AsmJSModule which jumps (via an FFI exit with the given
-// index) directly into an IonScript.
-struct DependentAsmJSModuleExit
-{
-    const AsmJSModule *module;
-    size_t exitIndex;
-
-    DependentAsmJSModuleExit(const AsmJSModule *module, size_t exitIndex)
-      : module(module),
-        exitIndex(exitIndex)
-    { }
-};
-
 // An IonScript attaches Ion-generated information to a JSScript.
 struct IonScript
 {
@@ -245,7 +231,7 @@ struct IonScript
     uint32_t frameSlots_;
 
     // Frame size is the value that can be added to the StackPointer along
-    // with the frame prefix to get a valid IonJSFrameLayout.
+    // with the frame prefix to get a valid JitFrameLayout.
     uint32_t frameSize_;
 
     // Table mapping bailout IDs to snapshot offsets.
@@ -299,13 +285,6 @@ struct IonScript
     // a LOOPENTRY pc other than osrPc_.
     uint32_t osrPcMismatchCounter_;
 
-    // If non-null, the list of AsmJSModules
-    // that contain an optimized call directly into this IonScript.
-    Vector<DependentAsmJSModuleExit> *dependentAsmJSModules;
-
-    // The tracelogger event used to log the start/stop of this IonScript.
-    TraceLoggerEvent traceLoggerScriptEvent_;
-
     IonBuilder *pendingBuilder_;
 
   private:
@@ -355,19 +334,6 @@ struct IonScript
     }
     PatchableBackedge *backedgeList() {
         return (PatchableBackedge *) &bottomBuffer()[backedgeList_];
-    }
-    bool addDependentAsmJSModule(JSContext *cx, DependentAsmJSModuleExit exit);
-    void removeDependentAsmJSModule(DependentAsmJSModuleExit exit) {
-        if (!dependentAsmJSModules)
-            return;
-        for (size_t i = 0; i < dependentAsmJSModules->length(); i++) {
-            if (dependentAsmJSModules->begin()[i].module == exit.module &&
-                dependentAsmJSModules->begin()[i].exitIndex == exit.exitIndex)
-            {
-                dependentAsmJSModules->erase(dependentAsmJSModules->begin() + i);
-                break;
-            }
-        }
     }
 
   private:
@@ -495,9 +461,6 @@ struct IonScript
     }
     bool hasSPSInstrumentation() const {
         return hasSPSInstrumentation_;
-    }
-    void setTraceLoggerEvent(TraceLoggerEvent &event) {
-        traceLoggerScriptEvent_ = event;
     }
     const uint8_t *snapshots() const {
         return reinterpret_cast<const uint8_t *>(this) + snapshots_;

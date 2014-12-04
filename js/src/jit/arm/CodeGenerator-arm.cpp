@@ -13,8 +13,8 @@
 #include "jsnum.h"
 
 #include "jit/CodeGenerator.h"
-#include "jit/IonFrames.h"
 #include "jit/JitCompartment.h"
+#include "jit/JitFrames.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
 #include "vm/Shape.h"
@@ -42,7 +42,9 @@ CodeGeneratorARM::generatePrologue()
 {
     MOZ_ASSERT(masm.framePushed() == 0);
     MOZ_ASSERT(!gen->compilingAsmJS());
-
+#ifdef JS_USE_LINK_REGISTER
+    masm.pushReturnAddress();
+#endif
     // Note that this automatically sets MacroAssembler::framePushed().
     masm.reserveStack(frameSize());
     masm.checkStackAlignment();
@@ -57,7 +59,7 @@ CodeGeneratorARM::generateEpilogue()
 
 #ifdef JS_TRACE_LOGGING
     if (gen->info().executionMode() == SequentialExecution) {
-        if (!emitTracelogStopEvent(TraceLogger_IonMonkey))
+        if (!emitTracelogStopEvent(TraceLogger::IonMonkey))
             return false;
         if (!emitTracelogScriptStop())
             return false;
@@ -1072,7 +1074,7 @@ CodeGeneratorARM::toMoveOperand(const LAllocation *a) const
 class js::jit::OutOfLineTableSwitch : public OutOfLineCodeBase<CodeGeneratorARM>
 {
     MTableSwitch *mir_;
-    Vector<CodeLabel, 8, IonAllocPolicy> codeLabels_;
+    Vector<CodeLabel, 8, JitAllocPolicy> codeLabels_;
 
     bool accept(CodeGeneratorARM *codegen) {
         return codegen->visitOutOfLineTableSwitch(this);
@@ -2028,7 +2030,10 @@ bool
 CodeGeneratorARM::visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap *ins)
 {
     MAsmJSCompareExchangeHeap *mir = ins->mir();
-    Scalar::Type vt = mir->viewType();
+
+    MOZ_ASSERT(mir->viewType() <= AsmJSHeapAccess::Uint32);
+    Scalar::Type vt = Scalar::Type(mir->viewType());
+
     const LAllocation *ptr = ins->ptr();
     Register ptrReg = ToRegister(ptr);
     BaseIndex srcAddr(HeapReg, ptrReg, TimesOne);
@@ -2063,7 +2068,10 @@ bool
 CodeGeneratorARM::visitAsmJSAtomicBinopHeap(LAsmJSAtomicBinopHeap *ins)
 {
     MAsmJSAtomicBinopHeap *mir = ins->mir();
-    Scalar::Type vt = mir->viewType();
+
+    MOZ_ASSERT(mir->viewType() <= AsmJSHeapAccess::Uint32);
+    Scalar::Type vt = Scalar::Type(mir->viewType());
+
     const LAllocation *ptr = ins->ptr();
     Register ptrReg = ToRegister(ptr);
     Register temp = ins->temp()->isBogusTemp() ? InvalidReg : ToRegister(ins->temp());

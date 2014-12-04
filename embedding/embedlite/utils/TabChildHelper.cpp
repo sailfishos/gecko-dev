@@ -492,5 +492,8 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  HandlePossibleViewportChange(mInnerSize);
+  ScreenIntSize oldScreenSize(mInnerSize);
+  mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
+
+  HandlePossibleViewportChange(oldScreenSize);
 }

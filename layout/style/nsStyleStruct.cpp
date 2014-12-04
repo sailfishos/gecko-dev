@@ -1397,7 +1397,7 @@ nsStylePosition::nsStylePosition(void)
   mHeight.SetAutoValue();
   mMinHeight.SetAutoValue();
   mMaxHeight.SetNoneValue();
-  mFlexBasis.SetIntValue(NS_STYLE_FLEX_BASIS_MAIN_SIZE, eStyleUnit_Enumerated);
+  mFlexBasis.SetAutoValue();
 
   // The initial value of grid-auto-columns and grid-auto-rows is 'auto',
   // which computes to 'minmax(min-content, max-content)'.
@@ -1663,17 +1663,12 @@ nsChangeHint nsStyleTable::CalcDifference(const nsStyleTable& aOther) const
 // -----------------------
 // nsStyleTableBorder
 
-nsStyleTableBorder::nsStyleTableBorder(nsPresContext* aPresContext) 
+nsStyleTableBorder::nsStyleTableBorder()
 { 
   MOZ_COUNT_CTOR(nsStyleTableBorder);
   mBorderCollapse = NS_STYLE_BORDER_SEPARATE;
 
-  nsCompatibility compatMode = eCompatibility_FullStandards;
-  if (aPresContext)
-    compatMode = aPresContext->CompatibilityMode();
-  mEmptyCells = (compatMode == eCompatibility_NavQuirks)
-                  ? NS_STYLE_TABLE_EMPTY_CELLS_SHOW_BACKGROUND     
-                  : NS_STYLE_TABLE_EMPTY_CELLS_SHOW;
+  mEmptyCells = NS_STYLE_TABLE_EMPTY_CELLS_SHOW;
   mCaptionSide = NS_STYLE_CAPTION_SIDE_TOP;
   mBorderSpacingX = 0;
   mBorderSpacingY = 0;
@@ -2054,8 +2049,8 @@ nsStyleImage::IsOpaque() const
   mImage->GetImage(getter_AddRefs(imageContainer));
   NS_ABORT_IF_FALSE(imageContainer, "IsComplete() said image container is ready");
 
-  // Check if the crop region of the current image frame is opaque.
-  if (imageContainer->FrameIsOpaque(imgIContainer::FRAME_CURRENT)) {
+  // Check if the crop region of the image is opaque.
+  if (imageContainer->IsOpaque()) {
     if (!mCropRect)
       return true;
 

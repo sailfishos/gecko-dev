@@ -323,7 +323,7 @@ SymbolicBound::print(Sprinter &sp) const
 void
 SymbolicBound::dump() const
 {
-    Sprinter sp(GetIonContext()->cx);
+    Sprinter sp(GetJitContext()->cx);
     sp.init();
     print(sp);
     fprintf(stderr, "%s\n", sp.string());
@@ -434,7 +434,7 @@ Range::print(Sprinter &sp) const
 void
 Range::dump(FILE *fp) const
 {
-    Sprinter sp(GetIonContext()->cx);
+    Sprinter sp(GetJitContext()->cx);
     sp.init();
     print(sp);
     fprintf(fp, "%s\n", sp.string());
@@ -1822,7 +1822,7 @@ RangeAnalysis::analyzeLoop(MBasicBlock *header)
 
 #ifdef DEBUG
     if (JitSpewEnabled(JitSpew_Range)) {
-        Sprinter sp(GetIonContext()->cx);
+        Sprinter sp(GetJitContext()->cx);
         sp.init();
         iterationBound->boundSum.print(sp);
         JitSpew(JitSpew_Range, "computed symbolic bound on backedges: %s",
@@ -1839,7 +1839,7 @@ RangeAnalysis::analyzeLoop(MBasicBlock *header)
     if (!mir->compilingAsmJS()) {
         // Try to hoist any bounds checks from the loop using symbolic bounds.
 
-        Vector<MBoundsCheck *, 0, IonAllocPolicy> hoistedChecks(alloc());
+        Vector<MBoundsCheck *, 0, JitAllocPolicy> hoistedChecks(alloc());
 
         for (ReversePostorderIterator iter(graph_.rpoBegin(header)); iter != graph_.rpoEnd(); iter++) {
             MBasicBlock *block = *iter;
@@ -2263,22 +2263,12 @@ RangeAnalysis::addRangeAssertions()
             // Beta nodes and interrupt checks are required to be located at the
             // beginnings of basic blocks, so we must insert range assertions
             // after any such instructions.
-            MInstructionIterator insertIter = ins->isPhi()
-                                            ? block->begin()
-                                            : block->begin(ins->toInstruction());
-            while (insertIter->isBeta() ||
-                   insertIter->isInterruptCheck() ||
-                   insertIter->isInterruptCheckPar() ||
-                   insertIter->isConstant() ||
-                   insertIter->isRecoveredOnBailout())
-            {
-                insertIter++;
-            }
+            MInstruction *insertAt = block->safeInsertTop(ins);
 
-            if (*insertIter == *iter)
-                block->insertAfter(*insertIter,  guard);
+            if (insertAt == *iter)
+                block->insertAfter(insertAt,  guard);
             else
-                block->insertBefore(*insertIter, guard);
+                block->insertBefore(insertAt, guard);
         }
     }
 

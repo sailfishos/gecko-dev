@@ -18,8 +18,6 @@ const LOOP_SESSION_TYPE = {
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "loop.debug.loglevel";
 
-const EMAIL_OR_PHONE_RE = /^(:?\S+@\S+|\+\d+)$/;
-
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
@@ -122,6 +120,8 @@ let gConversationWindowData = new Map();
  * and register with the Loop server.
  */
 let MozLoopServiceInternal = {
+  conversationContexts: new Map(),
+
   mocks: {
     pushHandler: undefined,
     webSocket: undefined,
@@ -330,8 +330,8 @@ let MozLoopServiceInternal = {
    */
   promiseRegisteredWithPushServer: function(sessionType) {
     if (!this.deferredRegistrations.has(sessionType)) {
-      return Promise.reject("promiseRegisteredWithPushServer must be called while there is a " +
-                            "deferred in deferredRegistrations in order to prevent reentrancy");
+      return Promise.reject(new Error("promiseRegisteredWithPushServer must be called while there is a " +
+                            "deferred in deferredRegistrations in order to prevent reentrancy"));
     }
     // Wrap push notification registration call-back in a Promise.
     function registerForNotification(channelID, onNotification) {
@@ -377,7 +377,7 @@ let MozLoopServiceInternal = {
       return Promise.all([callsRegFxA, roomsRegFxA]);
     }
 
-    return Promise.reject("promiseRegisteredWithPushServer: Invalid sessionType");
+    return Promise.reject(new Error("promiseRegisteredWithPushServer: Invalid sessionType"));
   },
 
   /**
@@ -595,7 +595,7 @@ let MozLoopServiceInternal = {
     }
 
     if (!callsPushURL || !roomsPushURL) {
-      return Promise.reject("Invalid sessionType or missing push URLs for registerWithLoopServer: " + sessionType);
+      return Promise.reject(new Error("Invalid sessionType or missing push URLs for registerWithLoopServer: " + sessionType));
     }
 
     // create a registration payload with a backwards compatible attribute (simplePushURL)
@@ -611,7 +611,7 @@ let MozLoopServiceInternal = {
       .then((response) => {
         // If this failed we got an invalid token.
         if (!this.storeSessionToken(sessionType, response.headers)) {
-          return Promise.reject("session-token-wrong-size");
+          return Promise.reject(new Error("session-token-wrong-size"));
         }
 
         log.debug("Successfully registered with server for sessionType", sessionType);
@@ -776,7 +776,14 @@ let MozLoopServiceInternal = {
   openChatWindow: function(conversationWindowData) {
     // So I guess the origin is the loop server!?
     let origin = this.loopServerUri;
-    let windowId = gLastWindowId++;
+    // Try getting a window ID that can (re-)identify this conversation, or resort
+    // to a globally unique one as a last resort.
+    // XXX We can clean this up once rooms and direct contact calling are the only
+    //     two modes left.
+    let windowId = ("contact" in conversationWindowData) ?
+                   conversationWindowData.contact._guid || gLastWindowId++ :
+                   conversationWindowData.roomToken || conversationWindowData.callId ||
+                   gLastWindowId++;
     // Store the id as a string, as that's what we use elsewhere.
     windowId = windowId.toString();
 
@@ -812,6 +819,22 @@ let MozLoopServiceInternal = {
           if (winID != ourID) {
             return;
           }
+
+          // Chat Window Id, this is different that the internal winId
+          let windowId = window.location.hash.slice(1);
+          var context = this.conversationContexts.get(windowId);
+          var exists = pc.id.match(/session=(\S+)/);
+          if (context && !exists) {
+            // Not ideal but insert our data amidst existing data like this:
+            // - 000 (id=00 url=http)
+            // + 000 (session=000 call=000 id=00 url=http)
+            var pair = pc.id.split("(");  //)
+            if (pair.length == 2) {
+              pc.id = pair[0] + "(session=" + context.sessionId +
+                  (context.callId? " call=" + context.callId : "") + " " + pair[1]; //)
+            }
+          }
+
           if (type == "iceconnectionstatechange") {
             switch(pc.iceConnectionState) {
               case "failed":
@@ -1008,7 +1031,7 @@ this.MozLoopService = {
 
     // Don't do anything if loop is not enabled.
     if (!Services.prefs.getBoolPref("loop.enabled")) {
-      return Promise.reject("loop is not enabled");
+      return Promise.reject(new Error("loop is not enabled"));
     }
 
     if (Services.prefs.getPrefType("loop.fxa.enabled") == Services.prefs.PREF_BOOL) {
@@ -1025,7 +1048,7 @@ this.MozLoopService = {
     };
     LoopRooms.on("add", onRoomsChange);
     LoopRooms.on("update", onRoomsChange);
-    LoopRooms.on("joined", (e, roomToken, participant) => {
+    LoopRooms.on("joined", (e, room, participant) => {
       // Don't alert if we're in the doNotDisturb mode, or the participant
       // is the owner - the content code deals with the rest of the sounds.
       if (MozLoopServiceInternal.doNotDisturb || participant.owner) {
@@ -1034,7 +1057,12 @@ this.MozLoopService = {
 
       let window = gWM.getMostRecentWindow("navigator:browser");
       if (window) {
-        window.LoopUI.playSound("room-joined");
+        window.LoopUI.showNotification({
+          sound: "room-joined",
+          title: room.roomName,
+          message: MozLoopServiceInternal.localizedStrings.get("rooms_room_joined_label"),
+          selectTab: "rooms"
+        });
       }
     });
 
@@ -1423,9 +1451,12 @@ this.MozLoopService = {
    */
   openGettingStartedTour: Task.async(function(aSrc = null) {
     try {
-      let url = new URL(Services.prefs.getCharPref("loop.gettingStarted.url"));
+      let urlStr = Services.prefs.getCharPref("loop.gettingStarted.url");
+      let url = new URL(Services.urlFormatter.formatURL(urlStr));
       if (aSrc) {
-        url.searchParams.set("source", aSrc);
+        url.searchParams.set("utm_source", "firefox-browser");
+        url.searchParams.set("utm_medium", "firefox-browser");
+        url.searchParams.set("utm_campaign", aSrc);
       }
       let win = Services.wm.getMostRecentWindow("navigator:browser");
       win.switchToTabHavingURI(url, true, {replaceQueryString: true});
@@ -1472,5 +1503,13 @@ this.MozLoopService = {
 
     log.error("Window data was already fetched before. Possible race condition!");
     return null;
+  },
+
+  getConversationContext: function(winId) {
+    return MozLoopServiceInternal.conversationContexts.get(winId);
+  },
+
+  addConversationContext: function(windowId, context) {
+    MozLoopServiceInternal.conversationContexts.set(windowId, context);
   }
 };

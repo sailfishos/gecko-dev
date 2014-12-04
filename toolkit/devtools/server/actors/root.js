@@ -119,7 +119,11 @@ RootActor.prototype = {
 
   traits: {
     sources: true,
+    // Whether the inspector actor allows modifying outer HTML.
     editOuterHTML: true,
+    // Whether the inspector actor allows modifying innerHTML and inserting
+    // adjacent HTML.
+    pasteHTML: true,
     // Whether the server-side highlighter actor exists and can be used to
     // remotely highlight nodes (see server/actors/highlighter.js)
     highlightable: true,
@@ -142,6 +146,9 @@ RootActor.prototype = {
     storageInspectorReadOnly: true,
     // Whether conditional breakpoints are supported
     conditionalBreakpoints: true,
+    // Whether the server supports full source actors (breakpoints on
+    // eval scripts, etc)
+    debuggerSourceActors: true,
     bulk: true,
     // Whether the style rule actor implements the modifySelector method
     // that modifies the rule's selector
@@ -154,7 +161,10 @@ RootActor.prototype = {
     // Whether the debugger server supports
     // blackboxing/pretty-printing (not supported in Fever Dream yet)
     noBlackBoxing: false,
-    noPrettyPrinting: false
+    noPrettyPrinting: false,
+    // Whether the page style actor implements the getUsedFontFaces method
+    // that returns the font faces used on a node
+    getUsedFontFaces: true
   },
 
   /**

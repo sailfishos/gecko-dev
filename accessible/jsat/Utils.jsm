@@ -160,14 +160,14 @@ this.Utils = { // jshint ignore:line
   },
 
   get AllMessageManagers() {
-    let messageManagers = [];
+    let messageManagers = new Set();
 
     function collectLeafMessageManagers(mm) {
       for (let i = 0; i < mm.childCount; i++) {
         let childMM = mm.getChildAt(i);
 
         if ('sendAsyncMessage' in childMM) {
-          messageManagers.push(childMM);
+          messageManagers.add(childMM);
         } else {
           collectLeafMessageManagers(childMM);
         }
@@ -179,12 +179,19 @@ this.Utils = { // jshint ignore:line
     let document = this.CurrentContentDoc;
 
     if (document) {
+      if (document.location.host === 'b2g') {
+        // The document is a b2g app chrome (ie. Mulet).
+        let contentBrowser = this.win.content.shell.contentBrowser;
+        messageManagers.add(this.getMessageManager(contentBrowser));
+        document = contentBrowser.contentDocument;
+      }
+
       let remoteframes = document.querySelectorAll('iframe');
 
       for (let i = 0; i < remoteframes.length; ++i) {
         let mm = this.getMessageManager(remoteframes[i]);
         if (mm) {
-          messageManagers.push(mm);
+          messageManagers.add(mm);
         }
       }
 
@@ -457,9 +464,10 @@ this.Utils = { // jshint ignore:line
         typeof aDetails === 'string' ? { eventType : aDetails } : aDetails)
     };
     let window = this.win;
-    if (window.shell) {
+    let shell = window.shell || window.content.shell;
+    if (shell) {
       // On B2G device.
-      window.shell.sendChromeEvent(details);
+      shell.sendChromeEvent(details);
     } else {
       // Dispatch custom event to have support for desktop and screen reader
       // emulator add-on.

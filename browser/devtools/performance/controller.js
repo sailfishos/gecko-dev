@@ -8,6 +8,7 @@ const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/devtools/Loader.jsm");
 Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
+Cu.import("resource://gre/modules/devtools/Console.jsm");
 
 let require = devtools.require;
 devtools.lazyRequireGetter(this, "Services");
@@ -22,6 +23,10 @@ devtools.lazyRequireGetter(this, "L10N",
   "devtools/profiler/global", true);
 devtools.lazyImporter(this, "LineGraphWidget",
   "resource:///modules/devtools/Graphs.jsm");
+devtools.lazyRequireGetter(this, "CallView",
+  "devtools/profiler/tree-view", true);
+devtools.lazyRequireGetter(this, "ThreadNode",
+  "devtools/profiler/tree-model", true);
 
 // Events emitted by the `PerformanceController`
 const EVENTS = {
@@ -36,7 +41,14 @@ const EVENTS = {
   UI_STOP_RECORDING: "Performance:UI:StopRecording",
 
   // Emitted by the OverviewView when more data has been rendered
-  OVERVIEW_RENDERED: "Performance:UI:OverviewRendered"
+  OVERVIEW_RENDERED: "Performance:UI:OverviewRendered",
+  // Emitted by the OverviewView when a range has been selected in the graphs
+  OVERVIEW_RANGE_SELECTED: "Performance:UI:OverviewRangeSelected",
+  // Emitted by the OverviewView when a selection range has been removed
+  OVERVIEW_RANGE_CLEARED: "Performance:UI:OverviewRangeCleared",
+
+  // Emitted by the CallTreeView when a call tree has been rendered
+  CALL_TREE_RENDERED: "Performance:UI:CallTreeRendered"
 };
 
 /**
@@ -51,8 +63,7 @@ let startupPerformance = Task.async(function*() {
   yield promise.all([
     PrefObserver.register(),
     PerformanceController.initialize(),
-    PerformanceView.initialize(),
-    OverviewView.initialize()
+    PerformanceView.initialize()
   ]);
 });
 
@@ -63,8 +74,7 @@ let shutdownPerformance = Task.async(function*() {
   yield promise.all([
     PrefObserver.unregister(),
     PerformanceController.destroy(),
-    PerformanceView.destroy(),
-    OverviewView.destroy()
+    PerformanceView.destroy()
   ]);
 });
 
@@ -147,6 +157,7 @@ EventEmitter.decorate(PerformanceController);
  * Shortcuts for accessing various profiler preferences.
  */
 const Prefs = new ViewHelpers.Prefs("devtools.profiler", {
+  showPlatformData: ["Bool", "ui.show-platform-data"]
 });
 
 /**

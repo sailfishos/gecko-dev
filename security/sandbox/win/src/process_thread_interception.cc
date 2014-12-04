@@ -1,4 +1,4 @@
-// Copyright (c) 2006-2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,7 @@
 #include "sandbox/win/src/sandbox_nt_util.h"
 #include "sandbox/win/src/sharedmem_ipc_client.h"
 #include "sandbox/win/src/target_services.h"
-#ifdef MOZ_CONTENT_SANDBOX // For upstream merging, use patch in bug 1018966 to reapply warn only sandbox code
-#include "mozilla/warnonlysandbox/warnOnlySandbox.h"
-#endif
+#include "mozilla/sandboxing/sandboxLogging.h"
 
 namespace sandbox {
 
@@ -31,9 +29,7 @@ NTSTATUS WINAPI TargetNtOpenThread(NtOpenThreadFunction orig_OpenThread,
   if (NT_SUCCESS(status))
     return status;
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("NtOpenThread");
-#endif
+  mozilla::sandboxing::LogBlocked("NtOpenThread");
   do {
     if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
       break;
@@ -99,9 +95,7 @@ NTSTATUS WINAPI TargetNtOpenThread(NtOpenThreadFunction orig_OpenThread,
       break;
     }
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("NtOpenThread");
-#endif
+    mozilla::sandboxing::LogAllowed("NtOpenThread");
     return answer.nt_status;
   } while (false);
 
@@ -119,9 +113,6 @@ NTSTATUS WINAPI TargetNtOpenProcess(NtOpenProcessFunction orig_OpenProcess,
   if (NT_SUCCESS(status))
     return status;
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("NtOpenProcess");
-#endif
   do {
     if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
       break;
@@ -175,9 +166,6 @@ NTSTATUS WINAPI TargetNtOpenProcess(NtOpenProcessFunction orig_OpenProcess,
       break;
     }
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("NtOpenProcess");
-#endif
     return answer.nt_status;
   } while (false);
 
@@ -192,9 +180,7 @@ NTSTATUS WINAPI TargetNtOpenProcessToken(
   if (NT_SUCCESS(status))
     return status;
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("NtOpenProcessToken");
-#endif
+  mozilla::sandboxing::LogBlocked("NtOpenProcessToken");
   do {
     if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
       break;
@@ -226,9 +212,7 @@ NTSTATUS WINAPI TargetNtOpenProcessToken(
       break;
     }
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("NtOpenProcessToken");
-#endif
+    mozilla::sandboxing::LogAllowed("NtOpenProcessToken");
     return answer.nt_status;
   } while (false);
 
@@ -243,9 +227,7 @@ NTSTATUS WINAPI TargetNtOpenProcessTokenEx(
   if (NT_SUCCESS(status))
     return status;
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("NtOpenProcessTokenEx");
-#endif
+  mozilla::sandboxing::LogBlocked("NtOpenProcessTokenEx");
   do {
     if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
       break;
@@ -277,9 +259,7 @@ NTSTATUS WINAPI TargetNtOpenProcessTokenEx(
       break;
     }
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("NtOpenProcessTokenEx");
-#endif
+    mozilla::sandboxing::LogAllowed("NtOpenProcessTokenEx");
     return answer.nt_status;
   } while (false);
 
@@ -301,14 +281,13 @@ BOOL WINAPI TargetCreateProcessW(CreateProcessWFunction orig_CreateProcessW,
     return TRUE;
   }
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("CreateProcessW", application_name);
-#endif
-  DWORD original_error = ::GetLastError();
+  mozilla::sandboxing::LogBlocked("CreateProcessW", application_name);
 
   // We don't trust that the IPC can work this early.
   if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
     return FALSE;
+
+  DWORD original_error = ::GetLastError();
 
   do {
     if (!ValidParameter(process_information, sizeof(PROCESS_INFORMATION),
@@ -341,9 +320,7 @@ BOOL WINAPI TargetCreateProcessW(CreateProcessWFunction orig_CreateProcessW,
     if (ERROR_SUCCESS != answer.win32_result)
       return FALSE;
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("CreateProcessW", application_name);
-#endif
+    mozilla::sandboxing::LogAllowed("CreateProcessW", application_name);
     return TRUE;
   } while (false);
 
@@ -366,14 +343,13 @@ BOOL WINAPI TargetCreateProcessA(CreateProcessAFunction orig_CreateProcessA,
     return TRUE;
   }
 
-#ifdef MOZ_CONTENT_SANDBOX
-  mozilla::warnonlysandbox::LogBlocked("CreateProcessA", application_name);
-#endif
-  DWORD original_error = ::GetLastError();
+  mozilla::sandboxing::LogBlocked("CreateProcessA", application_name);
 
   // We don't trust that the IPC can work this early.
   if (!SandboxFactory::GetTargetServices()->GetState()->InitCalled())
     return FALSE;
+
+  DWORD original_error = ::GetLastError();
 
   do {
     if (!ValidParameter(process_information, sizeof(PROCESS_INFORMATION),
@@ -429,60 +405,12 @@ BOOL WINAPI TargetCreateProcessA(CreateProcessAFunction orig_CreateProcessA,
     if (ERROR_SUCCESS != answer.win32_result)
       return FALSE;
 
-#ifdef MOZ_CONTENT_SANDBOX
-    mozilla::warnonlysandbox::LogAllowed("CreateProcessA", application_name);
-#endif
+    mozilla::sandboxing::LogAllowed("CreateProcessA", application_name);
     return TRUE;
   } while (false);
 
   ::SetLastError(original_error);
   return FALSE;
-}
-
-// Creates a thread without registering with CSRSS. This is required if we
-// closed the CSRSS ALPC port after lockdown.
-HANDLE WINAPI TargetCreateThread(CreateThreadFunction orig_CreateThread,
-                                 LPSECURITY_ATTRIBUTES thread_attributes,
-                                 SIZE_T stack_size,
-                                 LPTHREAD_START_ROUTINE start_address,
-                                 PVOID parameter,
-                                 DWORD creation_flags,
-                                 LPDWORD thread_id) {
-// Try the normal CreateThread; switch to RtlCreateUserThread if needed.
-  static bool use_create_thread = true;
-  HANDLE thread;
-  if (use_create_thread) {
-    thread = orig_CreateThread(thread_attributes, stack_size, start_address,
-                               parameter, creation_flags, thread_id);
-    if (thread)
-      return thread;
-  }
-
-  PSECURITY_DESCRIPTOR sd =
-      thread_attributes ? thread_attributes->lpSecurityDescriptor : NULL;
-  CLIENT_ID client_id;
-
-  NTSTATUS result = g_nt.RtlCreateUserThread(NtCurrentProcess, sd,
-                                             creation_flags & CREATE_SUSPENDED,
-                                             0, stack_size, 0, start_address,
-                                             parameter, &thread, &client_id);
-  if (!NT_SUCCESS(result))
-    return 0;
-
-  // CSRSS is closed if we got here, so use RtlCreateUserThread from here on.
-  use_create_thread = false;
-  if (thread_id)
-    *thread_id = HandleToUlong(client_id.UniqueThread);
-  return thread;
-}
-
-// Cache the default LCID to avoid pinging CSRSS after lockdown.
-// TODO(jschuh): This approach will miss a default locale changes after
-// lockdown. In the future we may want to have the broker check instead.
-LCID WINAPI TargetGetUserDefaultLCID(
-    GetUserDefaultLCIDFunction orig_GetUserDefaultLCID) {
-  static LCID default_lcid = orig_GetUserDefaultLCID();
-  return default_lcid;
 }
 
 }  // namespace sandbox

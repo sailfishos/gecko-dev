@@ -235,9 +235,8 @@ private:
   DECL_GFX_PREF(Live, "image.mem.decode_bytes_at_a_time",      ImageMemDecodeBytesAtATime, uint32_t, 200000);
   DECL_GFX_PREF(Live, "image.mem.decodeondraw",                ImageMemDecodeOnDraw, bool, false);
   DECL_GFX_PREF(Live, "image.mem.discardable",                 ImageMemDiscardable, bool, false);
-  DECL_GFX_PREF(Live, "image.mem.hard_limit_decoded_image_kb", ImageMemHardLimitDecodedImageKB, uint32_t, 0);
-  DECL_GFX_PREF(Live, "image.mem.max_decoded_image_kb",        ImageMemMaxDecodedImageKB, uint32_t, 50*1024);
   DECL_GFX_PREF(Live, "image.mem.max_ms_before_yield",         ImageMemMaxMSBeforeYield, uint32_t, 400);
+  DECL_GFX_PREF(Once, "image.mem.surfacecache.discard_factor", ImageMemSurfaceCacheDiscardFactor, uint32_t, 1);
   DECL_GFX_PREF(Once, "image.mem.surfacecache.max_size_kb",    ImageMemSurfaceCacheMaxSizeKB, uint32_t, 100 * 1024);
   DECL_GFX_PREF(Once, "image.mem.surfacecache.min_expiration_ms", ImageMemSurfaceCacheMinExpirationMS, uint32_t, 60*1000);
   DECL_GFX_PREF(Once, "image.mem.surfacecache.size_factor",    ImageMemSurfaceCacheSizeFactor, uint32_t, 64);
@@ -325,6 +324,9 @@ private:
   DECL_GFX_PREF(Once, "webgl.angle.force-d3d11",               WebGLANGLEForceD3D11, bool, false);
 
   DECL_GFX_PREF(Once, "layers.stereo-video.enabled",           StereoVideoEnabled, bool, false);
+
+  DECL_GFX_PREF(Once, "dom.vr.enabled",                        VREnabled, bool, false);
+  DECL_GFX_PREF(Once, "dom.vr.add-test-devices",               VRAddTestDevices, int32_t, 1);
 public:
   // Manage the singleton:
   static gfxPrefs& GetSingleton()

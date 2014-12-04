@@ -6,6 +6,7 @@ import os
 import StringIO
 import sys
 import unittest
+import xml.etree.ElementTree as ET
 
 import mozfile
 
@@ -29,6 +30,10 @@ class TestHandler(object):
     @property
     def last_item(self):
         return self.items[-1]
+
+    @property
+    def empty(self):
+        return not self.items
 
 
 class BaseStructuredTest(unittest.TestCase):
@@ -365,7 +370,7 @@ class TestStructuredLog(BaseStructuredTest):
                                 "message": "line 4"})
 
 
-class TestTypeconversions(BaseStructuredTest):
+class TestTypeConversions(BaseStructuredTest):
     def test_raw(self):
         self.logger.log_raw({"action":"suite_start", "tests":[1], "time": "1234"})
         self.assert_log_equals({"action": "suite_start",
@@ -432,6 +437,82 @@ class TestTypeconversions(BaseStructuredTest):
                           "PASS", "FAIL", "message", "stack", {}, "unexpected")
         self.assertRaises(TypeError, self.logger.test_status, "test1", test="test2")
         self.logger.suite_end()
+
+
+class TestComponentFilter(BaseStructuredTest):
+    def test_filter_component(self):
+        component_logger = structuredlog.StructuredLogger(self.logger.name,
+                                                          "test_component")
+        component_logger.component_filter = handlers.LogLevelFilter(lambda x:x, "info")
+
+        self.logger.debug("Test")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "Test"})
+        self.assertTrue(self.handler.empty)
+
+        component_logger.info("Test 1")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "INFO",
+                                "message": "Test 1",
+                                "component": "test_component"})
+
+        component_logger.debug("Test 2")
+        self.assertTrue(self.handler.empty)
+
+        component_logger.component_filter = None
+
+        component_logger.debug("Test 3")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "Test 3",
+                                "component": "test_component"})
+
+    def test_filter_default_component(self):
+        component_logger = structuredlog.StructuredLogger(self.logger.name,
+                                                          "test_component")
+
+        self.logger.debug("Test")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "Test"})
+
+        self.logger.component_filter = handlers.LogLevelFilter(lambda x:x, "info")
+
+        self.logger.debug("Test 1")
+        self.assertTrue(self.handler.empty)
+
+        component_logger.debug("Test 2")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "Test 2",
+                                "component": "test_component"})
+
+        self.logger.component_filter = None
+
+        self.logger.debug("Test 3")
+        self.assertFalse(self.handler.empty)
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "Test 3"})
+
+    def test_filter_message_mutuate(self):
+        def filter_mutate(msg):
+            if msg["action"] == "log":
+                msg["message"] = "FILTERED! %s" % msg["message"]
+            return msg
+
+        self.logger.component_filter = filter_mutate
+        self.logger.debug("Test")
+        self.assert_log_equals({"action": "log",
+                                "level": "DEBUG",
+                                "message": "FILTERED! Test"})
+        self.logger.component_filter = None
 
 
 class FormatterTest(unittest.TestCase):
@@ -573,6 +654,58 @@ class TestMachFormatter(FormatterTest):
         self.assertIn("OK", self.loglines)
         self.assertIn("Expected results: 5", self.loglines)
         self.assertIn("Unexpected results: 0", self.loglines)
+
+
+class TestXUnitFormatter(FormatterTest):
+
+    def get_formatter(self):
+        return formatters.XUnitFormatter()
+
+    def log_as_xml(self):
+        return ET.fromstring('\n'.join(self.loglines))
+
+    def test_stacktrace_is_present(self):
+        self.logger.suite_start([])
+        self.logger.test_start("test1")
+        self.logger.test_end("test1", "fail", message="Test message", stack='this\nis\na\nstack')
+        self.logger.suite_end()
+
+        root = self.log_as_xml()
+        self.assertIn('this\nis\na\nstack', root.find('testcase/failure').text)
+
+    def test_failure_message(self):
+        self.logger.suite_start([])
+        self.logger.test_start("test1")
+        self.logger.test_end("test1", "fail", message="Test message")
+        self.logger.suite_end()
+
+        root = self.log_as_xml()
+        self.assertEquals('Expected OK, got FAIL', root.find('testcase/failure').get('message'))
+
+    def test_suite_attrs(self):
+        self.logger.suite_start([])
+        self.logger.test_start("test1")
+        self.logger.test_end("test1", "ok", message="Test message")
+        self.logger.suite_end()
+
+        root = self.log_as_xml()
+        self.assertEqual(root.get('skips'), '0')
+        self.assertEqual(root.get('failures'), '0')
+        self.assertEqual(root.get('errors'), '0')
+        self.assertEqual(root.get('tests'), '1')
+        self.assertEqual(root.get('time'), '0.00')
+
+    def test_time_is_not_rounded(self):
+        # call formatter directly, it is easier here
+        formatter = self.get_formatter()
+        formatter.suite_start(dict(time=55000))
+        formatter.test_start(dict(time=55100))
+        formatter.test_end(dict(time=55558, test='id', message='message', status='PASS'))
+        xml_string = formatter.suite_end(dict(time=55559))
+
+        root = ET.fromstring(xml_string)
+        self.assertEqual(root.get('time'), '0.56')
+        self.assertEqual(root.find('testcase').get('time'), '0.46')
 
 
 class TestCommandline(unittest.TestCase):

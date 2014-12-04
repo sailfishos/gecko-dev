@@ -7,6 +7,7 @@ package org.mozilla.gecko;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.lang.Override;
 import java.lang.reflect.Method;
 import java.net.URLEncoder;
 import java.util.EnumSet;
@@ -24,6 +25,7 @@ import org.mozilla.gecko.DynamicToolbar.VisibilityTransition;
 import org.mozilla.gecko.GeckoProfileDirectories.NoMozillaDirectoryException;
 import org.mozilla.gecko.Tabs.TabEvents;
 import org.mozilla.gecko.animation.PropertyAnimator;
+import org.mozilla.gecko.animation.TransitionsTracker;
 import org.mozilla.gecko.animation.ViewHelper;
 import org.mozilla.gecko.db.BrowserContract.Combined;
 import org.mozilla.gecko.db.BrowserContract.SearchHistory;
@@ -1953,12 +1955,12 @@ public class BrowserApp extends GeckoApp
     }
 
     /**
-     * Enters editing mode with the specified URL. This method will
-     * always open the HISTORY page on about:home.
+     * Enters editing mode with the specified URL. If a null
+     * url is given, the empty String will be used instead.
      */
     private void enterEditingMode(String url) {
         if (url == null) {
-            throw new IllegalArgumentException("Cannot handle null URLs in enterEditingMode");
+            url = "";
         }
 
         if (mBrowserToolbar.isEditing() || mBrowserToolbar.isAnimating()) {
@@ -1970,6 +1972,8 @@ public class BrowserApp extends GeckoApp
 
         final PropertyAnimator animator = new PropertyAnimator(250);
         animator.setUseHardwareLayer(false);
+
+        TransitionsTracker.track(animator);
 
         mBrowserToolbar.startEditing(url, animator);
 

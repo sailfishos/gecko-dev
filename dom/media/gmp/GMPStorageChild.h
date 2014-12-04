@@ -10,6 +10,9 @@
 #include "gmp-storage.h"
 #include "nsTHashtable.h"
 #include "nsRefPtrHashtable.h"
+#include "gmp-platform.h"
+
+#include <queue>
 
 namespace mozilla {
 namespace gmp {
@@ -39,14 +42,11 @@ public:
   void ReadComplete(GMPErr aStatus, const uint8_t* aBytes, uint32_t aLength);
   void WriteComplete(GMPErr aStatus);
 
-  void MarkClosed();
-
 private:
   ~GMPRecordImpl() {}
   const nsCString mName;
   GMPRecordClient* const mClient;
   GMPStorageChild* const mOwner;
-  bool mIsClosed;
 };
 
 class GMPStorageChild : public PGMPStorageChild
@@ -68,7 +68,14 @@ public:
                const uint8_t* aData,
                uint32_t aDataSize);
 
-  GMPErr Close(GMPRecordImpl* aRecord);
+  GMPErr Close(const nsCString& aRecordName);
+
+  GMPErr EnumerateRecords(RecvGMPRecordIteratorPtr aRecvIteratorFunc,
+                          void* aUserArg);
+
+private:
+  bool HasRecord(const nsCString& aRecordName);
+  already_AddRefed<GMPRecordImpl> GetRecord(const nsCString& aRecordName);
 
 protected:
   ~GMPStorageChild() {}
@@ -81,11 +88,27 @@ protected:
                                 const InfallibleTArray<uint8_t>& aBytes) MOZ_OVERRIDE;
   virtual bool RecvWriteComplete(const nsCString& aRecordName,
                                  const GMPErr& aStatus) MOZ_OVERRIDE;
+  virtual bool RecvRecordNames(const InfallibleTArray<nsCString>& aRecordNames,
+                               const GMPErr& aStatus) MOZ_OVERRIDE;
   virtual bool RecvShutdown() MOZ_OVERRIDE;
 
 private:
+  Monitor mMonitor;
   nsRefPtrHashtable<nsCStringHashKey, GMPRecordImpl> mRecords;
   GMPChild* mPlugin;
+
+  struct RecordIteratorContext {
+    explicit RecordIteratorContext(RecvGMPRecordIteratorPtr aFunc,
+                                   void* aUserArg)
+      : mFunc(aFunc)
+      , mUserArg(aUserArg)
+    {}
+    RecordIteratorContext() {}
+    RecvGMPRecordIteratorPtr mFunc;
+    void* mUserArg;
+  };
+
+  std::queue<RecordIteratorContext> mPendingRecordIterators;
   bool mShutdown;
 };
 

@@ -408,7 +408,7 @@ void WebGLContext::Draw_cleanup()
  */
 
 bool
-WebGLContext::ValidateBufferFetching(const char *info)
+WebGLContext::ValidateBufferFetching(const char* info)
 {
 #ifdef DEBUG
     GLint currentProgram = 0;
@@ -418,9 +418,8 @@ WebGLContext::ValidateBufferFetching(const char *info)
                "WebGL: current program doesn't agree with GL state");
 #endif
 
-    if (mBufferFetchingIsVerified) {
+    if (mBufferFetchingIsVerified)
         return true;
-    }
 
     bool hasPerVertex = false;
     uint32_t maxVertices = UINT32_MAX;
@@ -622,12 +621,20 @@ WebGLContext::UndoFakeVertexAttrib0()
     if (mBoundVertexArray->HasAttrib(0) && mBoundVertexArray->mAttribs[0].buf) {
         const WebGLVertexAttribData& attrib0 = mBoundVertexArray->mAttribs[0];
         gl->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, attrib0.buf->GLName());
-        gl->fVertexAttribPointer(0,
-                                 attrib0.size,
-                                 attrib0.type,
-                                 attrib0.normalized,
-                                 attrib0.stride,
-                                 reinterpret_cast<const GLvoid *>(attrib0.byteOffset));
+        if (attrib0.integer) {
+            gl->fVertexAttribIPointer(0,
+                                      attrib0.size,
+                                      attrib0.type,
+                                      attrib0.stride,
+                                      reinterpret_cast<const GLvoid*>(attrib0.byteOffset));
+        } else {
+            gl->fVertexAttribPointer(0,
+                                     attrib0.size,
+                                     attrib0.type,
+                                     attrib0.normalized,
+                                     attrib0.stride,
+                                     reinterpret_cast<const GLvoid*>(attrib0.byteOffset));
+        }
     } else {
         gl->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
     }
@@ -735,7 +742,7 @@ WebGLContext::UnbindFakeBlackTextures()
     gl->fActiveTexture(LOCAL_GL_TEXTURE0 + mActiveTexture);
 }
 
-WebGLContext::FakeBlackTexture::FakeBlackTexture(GLContext *gl, TexTarget target, GLenum format)
+WebGLContext::FakeBlackTexture::FakeBlackTexture(GLContext* gl, TexTarget target, GLenum format)
     : mGL(gl)
     , mGLName(0)
 {

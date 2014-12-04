@@ -52,7 +52,10 @@
 #define TARGET_SANDBOX_EXPORTS
 #include "mozilla/sandboxTarget.h"
 #include "nsDirectoryServiceDefs.h"
-#elif defined(XP_LINUX) || defined(XP_MACOSX)
+#elif defined(XP_LINUX)
+#include "mozilla/Sandbox.h"
+#include "mozilla/SandboxInfo.h"
+#elif defined(XP_MACOSX)
 #include "mozilla/Sandbox.h"
 #endif
 #endif
@@ -1032,6 +1035,11 @@ SetUpSandboxEnvironment()
 void
 ContentChild::CleanUpSandboxEnvironment()
 {
+    // Sandbox environment is only currently set up with the more strict sandbox.
+    if (!Preferences::GetBool("security.sandbox.windows.content.moreStrict")) {
+        return;
+    }
+
     nsresult rv;
     nsCOMPtr<nsIProperties> directoryService =
         do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID, &rv);
@@ -1132,20 +1140,17 @@ ContentChild::RecvSetProcessSandbox()
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 19
     // For B2G >= KitKat, sandboxing is mandatory; this has already
     // been enforced by ContentParent::StartUp().
-    MOZ_ASSERT(ContentProcessSandboxStatus() != kSandboxingWouldFail);
+    MOZ_ASSERT(SandboxInfo::Get().CanSandboxContent());
 #else
     // Otherwise, sandboxing is best-effort.
-    if (ContentProcessSandboxStatus() == kSandboxingWouldFail) {
+    if (!SandboxInfo::Get().CanSandboxContent()) {
         return true;
     }
 #endif
     SetContentProcessSandbox();
 #elif defined(XP_WIN)
-    nsAdoptingString contentSandboxPref =
-        Preferences::GetString("browser.tabs.remote.sandbox");
-    if (contentSandboxPref.EqualsLiteral("on")
-        || contentSandboxPref.EqualsLiteral("warn")) {
-        mozilla::SandboxTarget::Instance()->StartSandbox();
+    mozilla::SandboxTarget::Instance()->StartSandbox();
+    if (Preferences::GetBool("security.sandbox.windows.content.moreStrict")) {
         SetUpSandboxEnvironment();
     }
 #elif defined(XP_MACOSX)

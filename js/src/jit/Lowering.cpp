@@ -1996,13 +1996,13 @@ LIRGenerator::visitToString(MToString *ins)
 
     switch (opd->type()) {
       case MIRType_Null: {
-        const JSAtomState &names = GetIonContext()->runtime->names();
+        const JSAtomState &names = GetJitContext()->runtime->names();
         LPointer *lir = new(alloc()) LPointer(names.null);
         return define(lir, ins);
       }
 
       case MIRType_Undefined: {
-        const JSAtomState &names = GetIonContext()->runtime->names();
+        const JSAtomState &names = GetJitContext()->runtime->names();
         LPointer *lir = new(alloc()) LPointer(names.undefined);
         return define(lir, ins);
       }
@@ -2182,21 +2182,6 @@ LIRGenerator::visitStringReplace(MStringReplace *ins)
 }
 
 bool
-LIRGenerator::visitSubstr(MSubstr *ins)
-{
-    // The last temporary need to be a register that can handle 8bit moves, but
-    // there is no way to signal that to register allocator, except to give a
-    // fixed temporary that is able to do this.
-    LSubstr *lir = new (alloc()) LSubstr(useRegister(ins->string()),
-                                         useRegister(ins->begin()),
-                                         useRegister(ins->length()),
-                                         temp(),
-                                         temp(),
-                                         tempFixed(CallTempReg1));
-    return define(lir, ins) && assignSafepoint(lir, ins);
-}
-
-bool
 LIRGenerator::visitLambda(MLambda *ins)
 {
     if (ins->info().singletonType || ins->info().useNewTypeForClone) {
@@ -2328,7 +2313,7 @@ bool
 LIRGenerator::visitInterruptCheck(MInterruptCheck *ins)
 {
     // Implicit interrupt checks require asm.js signal handlers to be installed.
-    if (GetIonContext()->runtime->canUseSignalHandlers()) {
+    if (GetJitContext()->runtime->canUseSignalHandlers()) {
         LInterruptCheckImplicit *lir = new(alloc()) LInterruptCheckImplicit();
         return add(lir, ins) && assignSafepoint(lir, ins);
     }
@@ -4072,20 +4057,23 @@ LIRGenerator::visitSimdBinaryArith(MSimdBinaryArith *ins)
 
     MDefinition *lhs = ins->lhs();
     MDefinition *rhs = ins->rhs();
+
     if (ins->isCommutative())
         ReorderCommutative(&lhs, &rhs, ins);
 
-    if (ins->type() == MIRType_Int32x4) {
-        LSimdBinaryArithIx4 *add = new(alloc()) LSimdBinaryArithIx4();
-        return lowerForFPU(add, ins, lhs, rhs);
-    }
+    if (ins->type() == MIRType_Int32x4)
+        return lowerForFPU(new(alloc()) LSimdBinaryArithIx4(), ins, lhs, rhs);
 
-    if (ins->type() == MIRType_Float32x4) {
-        LSimdBinaryArithFx4 *add = new(alloc()) LSimdBinaryArithFx4();
-        return lowerForFPU(add, ins, lhs, rhs);
-    }
+    MOZ_ASSERT(ins->type() == MIRType_Float32x4, "unknown simd type on binary arith operation");
 
-    MOZ_CRASH("Unknown SIMD kind when adding values");
+    LSimdBinaryArithFx4 *lir = new(alloc()) LSimdBinaryArithFx4();
+
+    bool needsTemp = ins->operation() == MSimdBinaryArith::Max ||
+                     ins->operation() == MSimdBinaryArith::MinNum ||
+                     ins->operation() == MSimdBinaryArith::MaxNum;
+    lir->setTemp(0, needsTemp ? temp(LDefinition::FLOAT32X4) : LDefinition::BogusTemp());
+
+    return lowerForFPU(lir, ins, lhs, rhs);
 }
 
 bool

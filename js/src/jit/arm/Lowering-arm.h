@@ -30,6 +30,7 @@ class LIRGeneratorARM : public LIRGeneratorShared
     // stores and loads; on ARM all registers are okay.
     LAllocation useByteOpRegister(MDefinition *mir);
     LAllocation useByteOpRegisterOrNonDoubleConstant(MDefinition *mir);
+    LDefinition tempByteOpRegister();
 
     inline LDefinition tempToUnbox() {
         return LDefinition::BogusTemp();
@@ -56,7 +57,8 @@ class LIRGeneratorARM : public LIRGeneratorShared
 
     bool lowerForFPU(LInstructionHelper<1, 1, 0> *ins, MDefinition *mir,
                      MDefinition *src);
-    bool lowerForFPU(LInstructionHelper<1, 2, 0> *ins, MDefinition *mir,
+    template<size_t Temps>
+    bool lowerForFPU(LInstructionHelper<1, 2, Temps> *ins, MDefinition *mir,
                      MDefinition *lhs, MDefinition *rhs);
 
     bool lowerForCompIx4(LSimdBinaryCompIx4 *ins, MSimdBinaryComp *mir,
@@ -110,6 +112,7 @@ class LIRGeneratorARM : public LIRGeneratorShared
     bool visitSimdValueX4(MSimdValueX4 *ins);
     bool visitCompareExchangeTypedArrayElement(MCompareExchangeTypedArrayElement *ins);
     bool visitAtomicTypedArrayElementBinop(MAtomicTypedArrayElementBinop *ins);
+    bool visitSubstr(MSubstr *ins);
 };
 
 typedef LIRGeneratorARM LIRGeneratorSpecific;
