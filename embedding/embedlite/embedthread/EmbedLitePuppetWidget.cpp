@@ -82,7 +82,7 @@ EmbedLitePuppetWidget::IsTopLevel()
          mWindowType == eWindowType_invisible;
 }
 
-EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, uint32_t& aId)
+EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, uint32_t& aId)
   : mEmbed(aEmbed)
   , mVisible(false)
   , mEnabled(false)
@@ -351,7 +351,7 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
     return;
   }
 
-  mEmbed->SendSetInputContext(
+  mEmbed->SetInputContext(
     static_cast<int32_t>(aContext.mIMEState.mEnabled),
     static_cast<int32_t>(aContext.mIMEState.mOpen),
     aContext.mHTMLInputType,
@@ -369,7 +369,7 @@ EmbedLitePuppetWidget::GetInputContext()
   if (mEmbed) {
     int32_t enabled, open;
     intptr_t nativeIMEContext;
-    mEmbed->SendGetInputContext(&enabled, &open, &nativeIMEContext);
+    mEmbed->GetInputContext(&enabled, &open, &nativeIMEContext);
     mInputContext.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
     mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
     mInputContext.mNativeIMEContext = reinterpret_cast<void*>(nativeIMEContext);

@@ -14,6 +14,7 @@
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "TabChildHelper.h"
+#include "EmbedLiteViewChildIface.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -23,7 +24,8 @@ class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
 class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
-                                 public nsIEmbedBrowserChromeListener
+                                 public nsIEmbedBrowserChromeListener,
+                                 public EmbedLiteViewChildIface
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
@@ -31,26 +33,51 @@ public:
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
+/*---------TabChildIface---------------*/
+
+  virtual bool
+  ZoomToRect(const uint32_t& aPresShellId,
+             const ViewID& aViewId,
+             const CSSRect& aRect) MOZ_OVERRIDE;
+
+  virtual bool
+  UpdateZoomConstraints(const uint32_t& aPresShellId,
+                        const ViewID& aViewId,
+                        const bool& aIsRoot,
+                        const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+
+  virtual bool HasMessageListener(const nsAString& aMessageName) MOZ_OVERRIDE;
+
+  virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) MOZ_OVERRIDE;
+  virtual bool DoSendSyncMessage(const char16_t* aMessageName,
+                                 const char16_t* aMessage,
+                                 InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+  virtual bool DoCallRpcMessage(const char16_t* aMessageName,
+                                const char16_t* aMessage,
+                                InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+
+  /**
+   * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
+   */
+  virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
+
+  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
+  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
+
+/*---------TabChildIface---------------*/
+
   uint64_t GetOuterID() {
     return mOuterId;
   }
-  void ResetInputState();
 
-  virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
-  virtual bool DoSendSyncMessage(const char16_t* aMessageName,
-                                 const char16_t* aMessage,
-                                 InfallibleTArray<nsString>* aJSONRetVal);
-  virtual bool DoCallRpcMessage(const char16_t* aMessageName,
-                                const char16_t* aMessage,
-                                InfallibleTArray<nsString>* aJSONRetVal);
-  bool HasMessageListener(const nsAString& aMessageName);
+
   void AddGeckoContentListener(EmbedLiteContentController* listener);
   void RemoveGeckoContentListener(EmbedLiteContentController* listener);
 
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
   uint32_t GetID() { return mId; }
-  gfxSize GetGLViewSize();
+
 
   /**
    * This method is used by EmbedLiteAppService::ZoomToRect() only.
@@ -59,6 +86,27 @@ public:
 
   virtual bool RecvAsyncMessage(const nsString& aMessage,
                                 const nsString& aData);
+
+/*---------WidgetIface---------------*/
+
+  virtual void ResetInputState() MOZ_OVERRIDE;
+  virtual gfxSize GetGLViewSize() MOZ_OVERRIDE;
+
+  virtual bool
+  SetInputContext(const int32_t& IMEEnabled,
+                  const int32_t& IMEOpen,
+                  const nsString& type,
+                  const nsString& inputmode,
+                  const nsString& actionHint,
+                  const int32_t& cause,
+                  const int32_t& focusChange) MOZ_OVERRIDE;
+
+  virtual bool
+  GetInputContext(int32_t* IMEEnabled,
+                  int32_t* IMEOpen,
+                  intptr_t* NativeIMEContext) MOZ_OVERRIDE;
+
+/*---------WidgetIface---------------*/
 
 protected:
   virtual ~EmbedLiteViewThreadChild();
@@ -119,10 +167,6 @@ private:
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
 
-  /**
-   * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
-   */
-  void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics);
   void InitGeckoWindow(const uint32_t& parentId);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);

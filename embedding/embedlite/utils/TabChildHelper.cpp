@@ -9,6 +9,7 @@
 #include "nsIWidget.h"
 
 #include "TabChild.h"
+#include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "nsIDOMDocument.h"
@@ -48,7 +49,7 @@ static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
 
-TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
+TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
   , mHasValidInnerSize(false)
 {
@@ -172,7 +173,7 @@ TabChildHelper::InitTabChildGlobal()
     return true;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mView->mWebNavigation);
+  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, false);
   nsCOMPtr<nsIDOMEventTarget> chromeHandler =
     do_QueryInterface(window->GetChromeEventHandler());
@@ -221,7 +222,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
       sscanf(NS_ConvertUTF16toUTF8(aData).get(),
              "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
              &rect.x, &rect.y, &rect.width, &rect.height);
-      mView->SendZoomToRect(presShellId, viewId, rect);
+      mView->ZoomToRect(presShellId, viewId, rect);
     }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
@@ -293,13 +294,13 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 nsIWebNavigation*
 TabChildHelper::WebNavigation()
 {
-  return mView->mWebNavigation;
+  return mView->WebNavigation();
 }
 
 nsIWidget*
 TabChildHelper::WebWidget()
 {
-  return mView->mWidget;
+  return mView->WebWidget();
 }
 
 bool
@@ -445,7 +446,7 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
 nsIWidget*
 TabChildHelper::GetWidget(nsPoint* aOffset)
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mView->mWebNavigation);
+  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
@@ -462,7 +463,7 @@ TabChildHelper::GetWidget(nsPoint* aOffset)
 nsPresContext*
 TabChildHelper::GetPresContext()
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mView->mWebNavigation);
+  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
@@ -477,10 +478,10 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                         const bool& aIsRoot,
                                         const ZoomConstraints& aConstraints)
 {
-  return mView->SendUpdateZoomConstraints(aPresShellId,
-                                          aViewId,
-                                          aIsRoot,
-                                          aConstraints);
+  return mView->UpdateZoomConstraints(aPresShellId,
+                                      aViewId,
+                                      aIsRoot,
+                                      aConstraints);
 }
 
 void

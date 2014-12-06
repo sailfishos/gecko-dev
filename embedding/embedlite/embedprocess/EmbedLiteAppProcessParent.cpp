@@ -237,7 +237,7 @@ struct DelayedDeleteContentParentTask : public nsRunnable
 void
 EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
 {
-  LOGT();
+  LOGT("Reason:%d", aWhy);
 
   ShutDownProcess(true);
 

@@ -21,7 +21,7 @@
 #include "nsThreadUtils.h"
 #include "nsWeakReference.h"
 #include "mozilla/Attributes.h"
-#include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteViewChildIface.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -35,8 +35,8 @@ class EmbedLitePuppetWidget : public nsBaseWidget,
   static const size_t kMaxDimension;
 
 public:
-  EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, uint32_t& aId);
-  
+  EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, uint32_t& aId);
+
   NS_DECL_ISUPPORTS_INHERITED
 
   NS_IMETHOD Create(nsIWidget*        aParent,
@@ -164,7 +164,7 @@ private:
   bool IsTopLevel();
   void RemoveIMEComposition();
 
-  EmbedLiteViewThreadChild* mEmbed;
+  EmbedLiteViewChildIface* mEmbed;
 
   bool mVisible;
   bool mEnabled;

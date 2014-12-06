@@ -541,6 +541,8 @@ XRE_InitChildProcess(int aArgc,
           }
 
           if (isEmbedlite) {
+            // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
+            sChildProcessType = GeckoProcessType_Default;
             process = new mozilla::embedlite::EmbedLiteContentProcess(parentHandle);
             static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(process.get())->SetAppDir(appDir);
           } else {
