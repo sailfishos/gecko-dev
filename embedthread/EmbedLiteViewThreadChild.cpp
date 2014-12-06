@@ -257,6 +257,138 @@ EmbedLiteViewThreadChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
   return NS_OK;
 }
 
+
+/*----------------------------WidgetIface-----------------------------------------------------*/
+
+bool
+EmbedLiteViewThreadChild::SetInputContext(const int32_t& IMEEnabled,
+                                          const int32_t& IMEOpen,
+                                          const nsString& type,
+                                          const nsString& inputmode,
+                                          const nsString& actionHint,
+                                          const int32_t& cause,
+                                          const int32_t& focusChange)
+{
+  return SendSetInputContext(IMEEnabled,
+                             IMEOpen,
+                             type,
+                             inputmode,
+                             actionHint,
+                             cause,
+                             focusChange);
+}
+
+bool
+EmbedLiteViewThreadChild::GetInputContext(int32_t* IMEEnabled,
+                                          int32_t* IMEOpen,
+                                          intptr_t* NativeIMEContext)
+{
+  return SendGetInputContext(IMEEnabled, IMEOpen, NativeIMEContext);
+}
+
+gfxSize
+EmbedLiteViewThreadChild::GetGLViewSize()
+{
+  if (mGLViewSize.IsEmpty()) {
+    SendGetGLViewSize(&mGLViewSize);
+  }
+  return mGLViewSize;
+}
+
+void EmbedLiteViewThreadChild::ResetInputState()
+{
+  if (!mIMEComposing) {
+    return;
+  }
+
+  mIMEComposing = false;
+}
+
+/*----------------------------WidgetIface-----------------------------------------------------*/
+
+/*----------------------------TabChildIface-----------------------------------------------------*/
+
+bool
+EmbedLiteViewThreadChild::ZoomToRect(const uint32_t& aPresShellId,
+                                     const ViewID& aViewId,
+                                     const CSSRect& aRect)
+{
+  return SendZoomToRect(aPresShellId, aViewId, aRect);
+}
+
+bool
+EmbedLiteViewThreadChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
+                                                const ViewID& aViewId,
+                                                const bool& aIsRoot,
+                                                const ZoomConstraints& aConstraints)
+{
+  return SendUpdateZoomConstraints(aPresShellId,
+                                   aViewId,
+                                   aIsRoot,
+                                   aConstraints);
+}
+
+void
+EmbedLiteViewThreadChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
+{
+  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
+    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
+  }
+}
+
+bool
+EmbedLiteViewThreadChild::HasMessageListener(const nsAString& aMessageName)
+{
+  if (mRegisteredMessages.Get(aMessageName)) {
+    return true;
+  }
+  return false;
+}
+
+bool
+EmbedLiteViewThreadChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
+{
+  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
+    return SendAsyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage));
+  }
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+{
+  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
+    return SendSyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
+  }
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+{
+  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
+    SendRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
+  }
+  return true;
+}
+
+nsIWebNavigation*
+EmbedLiteViewThreadChild::WebNavigation()
+{
+  return mWebNavigation;
+}
+
+nsIWidget*
+EmbedLiteViewThreadChild::WebWidget()
+{
+  return mWidget;
+}
+
+/*----------------------------TabChildIface-----------------------------------------------------*/
+
 bool
 EmbedLiteViewThreadChild::RecvLoadURL(const nsString& url)
 {
@@ -420,44 +552,6 @@ EmbedLiteViewThreadChild::RecvAsyncMessage(const nsString& aMessage,
   return true;
 }
 
-bool
-EmbedLiteViewThreadChild::HasMessageListener(const nsAString& aMessageName)
-{
-  if (mRegisteredMessages.Get(aMessageName)) {
-    return true;
-  }
-  return false;
-}
-
-bool
-EmbedLiteViewThreadChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
-{
-  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
-  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
-    return SendAsyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage));
-  }
-  return true;
-}
-
-bool
-EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
-{
-  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
-  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
-    return SendSyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
-  }
-  return true;
-}
-
-bool
-EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
-{
-  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
-  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
-    SendRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
-  }
-  return true;
-}
 
 void
 EmbedLiteViewThreadChild::RecvAsyncMessage(const nsAString& aMessage,
@@ -520,15 +614,6 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
   mHelper->ReportSizeUpdate(aSize);
 
   return true;
-}
-
-gfxSize
-EmbedLiteViewThreadChild::GetGLViewSize()
-{
-  if (mGLViewSize.IsEmpty()) {
-    SendGetGLViewSize(&mGLViewSize);
-  }
-  return mGLViewSize;
 }
 
 bool
@@ -605,15 +690,6 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   return ret;
 }
-
-void
-EmbedLiteViewThreadChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
-{
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
-  }
-}
-
 bool
 EmbedLiteViewThreadChild::RecvHandleDoubleTap(const nsIntPoint& aPoint)
 {
@@ -782,15 +858,6 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
   }
 
   return true;
-}
-
-void EmbedLiteViewThreadChild::ResetInputState()
-{
-  if (!mIMEComposing) {
-    return;
-  }
-
-  mIMEComposing = false;
 }
 
 bool

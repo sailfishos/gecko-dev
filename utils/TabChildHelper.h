@@ -24,14 +24,14 @@ class nsIDOMWindowUtils;
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewThreadChild;
+class EmbedLiteViewChildIface;
 class TabChildHelper : public mozilla::dom::TabChildBase,
                        public nsIDOMEventListener,
                        public nsIObserver
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
-  TabChildHelper(EmbedLiteViewThreadChild* aView);
+  TabChildHelper(EmbedLiteViewChildIface* aView);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
@@ -78,7 +78,9 @@ private:
   void Unload();
 
   friend class EmbedLiteViewThreadChild;
-  EmbedLiteViewThreadChild* mView;
+  friend class EmbedLiteViewProcessChild;
+  friend class EmbedLiteViewChildIface;
+  EmbedLiteViewChildIface* mView;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
   bool mHasValidInnerSize;
 };
