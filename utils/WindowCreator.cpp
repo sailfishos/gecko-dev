@@ -10,12 +10,12 @@
 #include "WindowCreator.h"
 #include "nsStringGlue.h"
 #include <stdio.h>
-#include "EmbedLiteAppThreadChild.h"
-#include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteViewChildIface.h"
+#include "EmbedLiteAppChildIface.h"
 
 using namespace mozilla::embedlite;
 
-WindowCreator::WindowCreator(EmbedLiteAppThreadChild* aChild)
+WindowCreator::WindowCreator(EmbedLiteAppChildIface* aChild)
   : mChild(aChild)
 {
   LOGT();
@@ -53,10 +53,10 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
   }
   LOGF("parent:%p, chrfl:%u, contfl:%u, spec:%s", aParent, aChromeFlags, aContextFlags, spec.get());
 
-  EmbedLiteViewThreadChild* parent = mChild->GetViewByChromeParent(aParent);
+  EmbedLiteViewChildIface* parent = mChild->GetViewByChromeParent(aParent);
   uint32_t createdID = 0;
   uint32_t parentID = parent ? parent->GetID() : 0;
-  mChild->SendCreateWindow(parentID, spec, aChromeFlags, aContextFlags, &createdID, aCancel);
+  mChild->CreateWindow(parentID, spec, aChromeFlags, aContextFlags, &createdID, aCancel);
 
   if (*aCancel) {
     return NS_OK;
@@ -72,7 +72,7 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
     if (NS_SUCCEEDED(rv) && !processedEvent) {
       rv = NS_ERROR_UNEXPECTED;
     }
-    EmbedLiteViewThreadChild* view = mChild->GetViewByID(createdID);
+    EmbedLiteViewChildIface* view = mChild->GetViewByID(createdID);
     if (view) {
       view->GetBrowserChrome(getter_AddRefs(browser));
     }

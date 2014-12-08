@@ -84,6 +84,19 @@ protected:
 
   /*------------------------------------------------------------------*/
 
+  virtual uint32_t GetID() MOZ_OVERRIDE;
+  virtual nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome) MOZ_OVERRIDE;
+
+  virtual nsresult GetBrowser(nsIWebBrowser** outBrowser) MOZ_OVERRIDE;
+  virtual uint64_t GetOuterID() MOZ_OVERRIDE;
+  virtual void AddGeckoContentListener(EmbedLiteContentController* listener) MOZ_OVERRIDE;
+  virtual void RemoveGeckoContentListener(EmbedLiteContentController* listener) MOZ_OVERRIDE;
+
+  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) MOZ_OVERRIDE;
+  virtual bool ContentReceivedTouch(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault) MOZ_OVERRIDE;
+
+
+  /*------------------------------------------------------------------*/
   virtual bool
   RecvLoadURL(const nsString& url) MOZ_OVERRIDE;
 

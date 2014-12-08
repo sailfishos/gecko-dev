@@ -8,6 +8,7 @@
 
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
 #include "nsIObserver.h"                           // for nsIObserver
+#include "EmbedLiteAppChildIface.h"
 
 class EmbedLiteAppService;
 class nsIWebBrowserChrome;
@@ -17,7 +18,8 @@ namespace embedlite {
 
 class EmbedLiteViewThreadChild;
 class EmbedLiteAppThreadChild : public PEmbedLiteAppChild,
-                                public nsIObserver
+                                public nsIObserver,
+                                public EmbedLiteAppChildIface
 {
 public:
   NS_DECL_ISUPPORTS
@@ -26,9 +28,10 @@ public:
   EmbedLiteAppThreadChild(MessageLoop* aParentLoop);
   void Init(MessageChannel* aParentChannel);
   static EmbedLiteAppThreadChild* GetInstance();
-  EmbedLiteViewThreadChild* GetViewByID(uint32_t aId);
+  EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
   ::EmbedLiteAppService* AppService();
-  EmbedLiteViewThreadChild* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
+  EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
+  bool CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
 
 protected:
   virtual ~EmbedLiteAppThreadChild();

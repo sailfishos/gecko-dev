@@ -8,6 +8,7 @@
 #define EmbedLiteJSON_H_
 
 #include "nsIEmbedLiteJSON.h"
+#include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
 
 class EmbedLiteJSON : public nsIEmbedLiteJSON
 {
@@ -21,6 +22,8 @@ public:
 protected:
   virtual ~EmbedLiteJSON();
 };
+
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
 
 #define NS_EMBED_LITE_JSON_CONTRACTID "@mozilla.org/embedlite-json;1"
 #define NS_EMBED_LITE_JSON_SERVICE_CLASSNAME "EmbedLite JSON Component"

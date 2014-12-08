@@ -84,17 +84,17 @@ EmbedLiteAppService::Observe(nsISupports* aSubject,
   return NS_OK;
 }
 
-static EmbedLiteViewThreadChild* sGetViewById(uint32_t aId)
+static EmbedLiteViewChildIface* sGetViewById(uint32_t aId)
 {
   EmbedLiteAppThreadChild* app = EmbedLiteAppThreadChild::GetInstance();
   NS_ENSURE_TRUE(app, nullptr);
-  EmbedLiteViewThreadChild* view = app->GetViewByID(aId);
+  EmbedLiteViewChildIface* view = app->GetViewByID(aId);
   return view;
 }
 
 void EmbedLiteAppService::RegisterView(uint32_t aId)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, );
   mIDMap[view->GetOuterID()] = aId;
 }
@@ -134,7 +134,7 @@ EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
 NS_IMETHODIMP
 EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   view->DoSendAsyncMessage(messageName, message);
   return NS_OK;
@@ -143,7 +143,7 @@ EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const char16_t* messageName,
 NS_IMETHODIMP
 EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message, nsAString& retval)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   InfallibleTArray<nsString> retvalArray;
   view->DoSendSyncMessage(messageName, message, &retvalArray);
@@ -248,7 +248,7 @@ NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
 NS_IMETHODIMP
 EmbedLiteAppService::AddContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
+  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   view->AddGeckoContentListener(listener);
   return NS_OK;
@@ -257,7 +257,7 @@ EmbedLiteAppService::AddContentListener(uint32_t aWinId, EmbedLiteContentControl
 NS_IMETHODIMP
 EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
+  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   view->RemoveGeckoContentListener(listener);
   return NS_OK;
@@ -266,13 +266,13 @@ EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, EmbedLiteContentCont
 NS_IMETHODIMP
 EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidth, float aHeight)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
+  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
 
   uint32_t presShellId;
   mozilla::layers::FrameMetrics::ViewID viewId;
   if (view->GetScrollIdentifiers(&presShellId, &viewId)) {
-    view->SendZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
+    view->ZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
   }
 
   return NS_OK;
@@ -281,16 +281,16 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
 NS_IMETHODIMP
 EmbedLiteAppService::ContentReceivedTouch(uint32_t aWinId, bool aPreventDefault)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
+  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
+  view->ContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteAppService::GetBrowserByID(uint32_t aId, nsIWebBrowser * *outWindow)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   nsresult rv;
   nsCOMPtr<nsIWebBrowser> br;
@@ -304,7 +304,7 @@ EmbedLiteAppService::GetBrowserByID(uint32_t aId, nsIWebBrowser * *outWindow)
 NS_IMETHODIMP
 EmbedLiteAppService::GetContentWindowByID(uint32_t aId, nsIDOMWindow * *outWindow)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   nsresult rv;
   nsCOMPtr<nsIWebBrowser> br;
@@ -332,7 +332,7 @@ EmbedLiteAppService::GetCompositedRectInCSS(const mozilla::layers::FrameMetrics&
 NS_IMETHODIMP
 EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
-  EmbedLiteViewThreadChild* view = sGetViewById(aId);
+  EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   view->RecvAsyncMessage(nsDependentString(messageName), nsDependentString(message));
   return NS_OK;
@@ -353,7 +353,7 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
 {
   std::map<uint64_t, uint32_t>::iterator it;
   for (it = mIDMap.begin(); it != mIDMap.end(); ++it) {
-    EmbedLiteViewThreadChild* view = sGetViewById(it->second);
+    EmbedLiteViewChildIface* view = sGetViewById(it->second);
     if (view) {
       if (!aActive) {
         nsresult rv;

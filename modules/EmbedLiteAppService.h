@@ -13,13 +13,14 @@
 #include "nsClassHashtable.h"
 #include <string>
 #include <map>
+#include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
 
 class JSContext;
 class EmbedLiteAppService : public nsIObserver,
                             public nsIEmbedAppService
 {
 public:
-  EmbedLiteAppService(); 
+  EmbedLiteAppService();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
@@ -40,6 +41,8 @@ private:
   int mPushedSomething;
   bool mHandlingMessages;
 };
+
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteAppService)
 
 #define NS_EMBED_LITE_APP_CONTRACTID "@mozilla.org/embedlite-app-service;1"
 #define NS_EMBED_LITE_APP_SERVICE_CLASSNAME "EmbedLiteApp Component"

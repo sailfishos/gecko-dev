@@ -78,7 +78,6 @@ public:
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
   uint32_t GetID() { return mId; }
 
-
   /**
    * This method is used by EmbedLiteAppService::ZoomToRect() only.
    */
@@ -107,6 +106,8 @@ public:
                   intptr_t* NativeIMEContext) MOZ_OVERRIDE;
 
 /*---------WidgetIface---------------*/
+
+  virtual bool ContentReceivedTouch(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
 
 protected:
   virtual ~EmbedLiteViewThreadChild();

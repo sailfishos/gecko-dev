@@ -20,6 +20,18 @@
 #include "nsIConsoleService.h"
 #include "nsDebugImpl.h"
 #include "EmbedLiteViewProcessChild.h"
+#include "nsIWindowCreator.h"
+#include "nsIWindowWatcher.h"
+#include "WindowCreator.h"
+#include "nsIEmbedAppService.h"
+#include "EmbedLiteAppService.h"
+#include "EmbedLiteViewChildIface.h"
+#include "EmbedLiteJSON.h"
+#include "nsIComponentRegistrar.h"             // for nsIComponentRegistrar
+#include "nsIComponentManager.h"               // for nsIComponentManager
+#include "nsIFactory.h"
+#include "mozilla/GenericFactory.h"
+#include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
 
 using namespace base;
 using namespace mozilla::ipc;
@@ -88,7 +100,90 @@ void
 EmbedLiteAppProcessChild::InitXPCOM()
 {
   LOGT("Initialize some global XPCOM stuff here");
+
+  InitWindowWatcher();
+
+  RecvSetBoolPref(nsDependentCString("layers.offmainthreadcomposition.enabled"), true);
+
+  mozilla::DebugOnly<nsresult> rv = InitAppService();
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  SendInitialized();
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+
+  if (observerService) {
+    observerService->NotifyObservers(nullptr, "embedliteInitialized", nullptr);
+  }
+
   unused << SendInitialized();
+}
+
+nsresult
+EmbedLiteAppProcessChild::InitAppService()
+{
+  LOGT();
+
+  nsCOMPtr<nsIComponentRegistrar> cr;
+  nsresult rv = NS_GetComponentRegistrar(getter_AddRefs(cr));
+  NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
+
+  nsCOMPtr<nsIComponentManager> cm;
+  rv = NS_GetComponentManager (getter_AddRefs (cm));
+  NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
+
+  {
+    nsCOMPtr<nsIFactory> f = new mozilla::GenericFactory(EmbedLiteAppServiceConstructor);
+    if (!f) {
+      NS_WARNING("Unable to create factory for component");
+      return NS_ERROR_FAILURE;
+    }
+
+    nsCID appCID = NS_EMBED_LITE_APP_SERVICE_CID;
+    rv = cr->RegisterFactory(appCID, NS_EMBED_LITE_APP_SERVICE_CLASSNAME,
+                             NS_EMBED_LITE_APP_CONTRACTID, f);
+  }
+
+  {
+    nsCOMPtr<nsIFactory> f = new mozilla::GenericFactory(EmbedLiteJSONConstructor);
+    if (!f) {
+      NS_WARNING("Unable to create factory for component");
+      return NS_ERROR_FAILURE;
+    }
+
+    nsCID appCID = NS_IEMBEDLITEJSON_IID;
+    rv = cr->RegisterFactory(appCID, NS_EMBED_LITE_JSON_SERVICE_CLASSNAME,
+                             NS_EMBED_LITE_JSON_CONTRACTID, f);
+  }
+
+  return NS_OK;
+}
+
+EmbedLiteAppService*
+EmbedLiteAppProcessChild::AppService()
+{
+  nsCOMPtr<nsIEmbedAppService> service =
+    do_GetService("@mozilla.org/embedlite-app-service;1");
+  return static_cast<EmbedLiteAppService*>(service.get());
+}
+
+void
+EmbedLiteAppProcessChild::InitWindowWatcher()
+{
+  // create an nsWindowCreator and give it to the WindowWatcher service
+  nsCOMPtr<nsIWindowCreator> creator(new WindowCreator(this));
+  if (!creator) {
+    LOGE("Out of memory");
+    return;
+  }
+  nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
+  if (!wwatch) {
+    LOGE("Fail to get watcher service");
+    return;
+  }
+  LOGT("Created window watcher!");
+  wwatch->SetWindowCreator(creator);
 }
 
 void
@@ -127,6 +222,30 @@ EmbedLiteAppProcessChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
   p->Release();
   return true;
 }
+
+/*---------------------------------*/
+
+EmbedLiteViewChildIface*
+EmbedLiteAppProcessChild::GetViewByID(uint32_t aId)
+{
+  LOGNI();
+  return nullptr;
+}
+
+EmbedLiteViewChildIface*
+EmbedLiteAppProcessChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
+{
+  LOGNI();
+  return nullptr;
+}
+
+bool EmbedLiteAppProcessChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
+{
+  LOGNI();
+  return false;
+}
+
+/*---------------------------------*/
 
 bool
 EmbedLiteAppProcessChild::RecvPreDestroy()

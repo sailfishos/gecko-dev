@@ -7,11 +7,14 @@
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
+#include "EmbedLiteAppChildIface.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteAppProcessChild : public PEmbedLiteAppChild
+class EmbedLiteViewChildIface;
+class EmbedLiteAppProcessChild : public PEmbedLiteAppChild,
+                                 public EmbedLiteAppChildIface
 {
 public:
   EmbedLiteAppProcessChild();
@@ -42,6 +45,14 @@ public:
     return mAppInfo;
   }
 
+  ::EmbedLiteAppService* AppService();
+
+/*--------------------------------*/
+  virtual EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
+  virtual EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
+  virtual bool CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
+
+
 protected:
   // Embed API ipdl interface
   virtual bool RecvSetBoolPref(const nsCString&, const bool&) MOZ_OVERRIDE;
@@ -66,6 +77,8 @@ protected:
 
 private:
   void QuickExit();
+  void InitWindowWatcher();
+  nsresult InitAppService();
 
   AppInfo mAppInfo;
   static EmbedLiteAppProcessChild* sSingleton;

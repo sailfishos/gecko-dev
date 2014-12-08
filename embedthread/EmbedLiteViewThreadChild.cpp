@@ -922,6 +922,11 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   return !ignored;
 }
 
+bool EmbedLiteViewThreadChild::ContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+{
+  return SendContentReceivedTouch(aGuid, aInputBlockId, aPreventDefault);
+}
+
 bool
 EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
