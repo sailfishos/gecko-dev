@@ -30,9 +30,6 @@ using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteAppService)
-NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
-
 namespace mozilla {
 namespace embedlite {
 
@@ -188,13 +185,18 @@ EmbedLiteAppThreadChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
   return true;
 }
 
-EmbedLiteViewThreadChild*
+bool EmbedLiteAppThreadChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
+{
+  return SendCreateWindow(parentId, uri, chromeFlags, contextFlags, createdID, cancel);
+}
+
+EmbedLiteViewChildIface*
 EmbedLiteAppThreadChild::GetViewByID(uint32_t aId)
 {
   return aId ? mWeakViewMap[aId] : nullptr;
 }
 
-EmbedLiteViewThreadChild*
+EmbedLiteViewChildIface*
 EmbedLiteAppThreadChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
 {
   LOGT("mWeakViewMap:%i", mWeakViewMap.size());

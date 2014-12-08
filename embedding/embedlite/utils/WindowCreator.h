@@ -11,12 +11,12 @@
 
 namespace mozilla {
 namespace embedlite {
-class EmbedLiteAppThreadChild;
+class EmbedLiteAppChildIface;
 }}
 class WindowCreator : public nsIWindowCreator2
 {
 public:
-  WindowCreator(mozilla::embedlite::EmbedLiteAppThreadChild* aChild);
+  WindowCreator(mozilla::embedlite::EmbedLiteAppChildIface* aChild);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWINDOWCREATOR
@@ -26,7 +26,7 @@ protected:
   virtual ~WindowCreator();
 
 private:
-  mozilla::embedlite::EmbedLiteAppThreadChild* mChild;
+  mozilla::embedlite::EmbedLiteAppChildIface* mChild;
 };
 
 #endif

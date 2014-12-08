@@ -250,73 +250,133 @@ EmbedLiteViewProcessChild::WebWidget()
 /* void onLocationChanged (in string aLocation, in boolean aCanGoBack, in boolean aCanGoForward); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnLocationChanged(const char * aLocation, bool aCanGoBack, bool aCanGoForward)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onLoadStarted (in string aLocation); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnLoadStarted(const char * aLocation)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onLoadFinished (); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnLoadFinished()
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onLoadRedirect (); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnLoadRedirect()
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onWindowCloseRequested (); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnWindowCloseRequested()
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onLoadProgress (in int32_t aProgress, in int32_t aCurTotal, in int32_t aMaxTotal); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onSecurityChanged (in string aStatus, in uint32_t aState); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnSecurityChanged(const char * aStatus, uint32_t aState)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onFirstPaint (in int32_t aX, in int32_t aY); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnFirstPaint(int32_t aX, int32_t aY)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onScrolledAreaChanged (in uint32_t aWidth, in uint32_t aHeight); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onScrollChanged (in int32_t offSetX, in int32_t offSetY); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onTitleChanged (in wstring aTitle); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnTitleChanged(const char16_t * aTitle)
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 /* void onUpdateDisplayPort (); */
 NS_IMETHODIMP EmbedLiteViewProcessChild::OnUpdateDisplayPort()
 {
+  LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/*-----------------------WindowCreator---------------------------------------------*/
+
+NS_IMETHODIMP EmbedLiteViewProcessChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
+{
+  LOGNI();
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/*-------------------------------------- */
+
+uint32_t EmbedLiteViewProcessChild::GetID()
+{
+  LOGNI();
+  return 0;
+}
+
+nsresult EmbedLiteViewProcessChild::GetBrowser(nsIWebBrowser** outBrowser)
+{
+  LOGNI();
+  return NS_ERROR_FAILURE;
+}
+
+uint64_t EmbedLiteViewProcessChild::GetOuterID()
+{
+  LOGNI();
+  return 0;
+}
+
+void EmbedLiteViewProcessChild::AddGeckoContentListener(EmbedLiteContentController* listener)
+{
+}
+
+void EmbedLiteViewProcessChild::RemoveGeckoContentListener(EmbedLiteContentController* listener)
+{
+}
+
+bool EmbedLiteViewProcessChild::GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId)
+{
+  LOGNI();
+  return false;
+}
+
+bool EmbedLiteViewProcessChild::ContentReceivedTouch(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+{
+  LOGNI();
+  return false;
 }
 
 /*-----------------------PEmbedLiteViewChild---------------------------------------------*/
