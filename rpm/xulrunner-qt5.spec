@@ -8,7 +8,6 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
-Patch0:     add-sailfishos-org-certs.patch
 Patch1:     confgiure-system-sqlite-to-use-jemalloc-25229.patch
 Patch2:     workaround-for-bug-977015.patch
 Patch3:     fix-20430-invalidate-obsolete-scroll-offset.patch
@@ -72,7 +71,6 @@ Tests and misc files for xulrunner
 
 %prep
 %setup -q -n %{name}-%{version}
-%patch0 -p1
 %patch1 -p1
 %patch2 -p1
 %patch3 -p1
