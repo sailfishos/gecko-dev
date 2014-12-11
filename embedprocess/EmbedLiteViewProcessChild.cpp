@@ -20,6 +20,7 @@ namespace embedlite {
 
 MOZ_IMPLICIT
 EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t& id, const uint32_t& parentId)
+  : EmbedLiteViewBaseChild(id, parentId)
 {
   LOGT();
   MOZ_COUNT_CTOR(EmbedLiteViewProcessChild);
@@ -110,8 +111,7 @@ EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
-#warning "Return me back"
-  //AppChild()->AppService()->RegisterView(mId);
+  AppChild()->AppService()->RegisterView(mId);
 
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);

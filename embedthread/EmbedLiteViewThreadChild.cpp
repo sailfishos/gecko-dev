@@ -76,7 +76,8 @@ static void ReadAZPCPrefs()
 }
 
 EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId)
-  : mId(aId)
+  : EmbedLiteViewBaseChild(aId, parentId)
+  , mId(aId)
   , mOuterId(0)
   , mViewSize(0, 0)
   , mViewResized(false)
