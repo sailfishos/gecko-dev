@@ -7,8 +7,9 @@
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
-#include "EmbedLiteAppChildIface.h"
+#include "mozilla/embedlite/EmbedLiteAppChildIface.h"
 
+class EmbedLiteAppService;
 namespace mozilla {
 namespace embedlite {
 
@@ -45,7 +46,7 @@ public:
     return mAppInfo;
   }
 
-  ::EmbedLiteAppService* AppService();
+  EmbedLiteAppService* AppService();
 
 /*--------------------------------*/
   virtual EmbedLiteViewChildIface* GetViewByID(uint32_t aId);

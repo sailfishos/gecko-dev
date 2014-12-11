@@ -15,13 +15,15 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
+#include "EmbedLiteViewBaseChild.h"
 
 namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteViewProcessChild : public PEmbedLiteViewChild,
                                   public nsIEmbedBrowserChromeListener,
-                                  public EmbedLiteViewChildIface
+                                  public EmbedLiteViewChildIface,
+                                  public EmbedLiteViewBaseChild
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewProcessChild)
 public:

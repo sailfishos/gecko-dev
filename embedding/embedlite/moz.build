@@ -22,6 +22,8 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'embedLite'
 
 EXPORTS.mozilla.embedlite += [
+    'embedhelpers/EmbedLiteAppChildIface.h',
+    'embedhelpers/EmbedLiteViewChildIface.h',
     'EmbedInitGlue.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
@@ -37,6 +39,7 @@ EXPORTS.ipc = ['embedhelpers/InputDataIPC.h']
 UNIFIED_SOURCES += [
     'embedhelpers/EmbedLiteSubThread.cpp',
     'embedhelpers/EmbedLiteUILoop.cpp',
+    'embedhelpers/EmbedLiteViewBaseChild.cpp',
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
     'EmbedLiteView.cpp',
