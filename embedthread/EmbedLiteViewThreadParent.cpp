@@ -25,7 +25,7 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
   : mId(id)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
