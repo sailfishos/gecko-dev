@@ -29,7 +29,6 @@ public:
   void Init(MessageChannel* aParentChannel);
   static EmbedLiteAppThreadChild* GetInstance();
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
-  ::EmbedLiteAppService* AppService();
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
   bool CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
 

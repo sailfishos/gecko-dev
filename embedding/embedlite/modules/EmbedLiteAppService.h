@@ -29,6 +29,7 @@ public:
   void RegisterView(uint32_t aId);
   void UnregisterView(uint32_t aId);
   void HandleAsyncMessage(const char* aMessage, const nsString& aData);
+  static EmbedLiteAppService* AppService();
 
 protected:
   virtual ~EmbedLiteAppService();

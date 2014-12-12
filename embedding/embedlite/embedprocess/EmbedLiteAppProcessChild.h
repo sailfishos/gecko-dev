@@ -46,8 +46,6 @@ public:
     return mAppInfo;
   }
 
-  EmbedLiteAppService* AppService();
-
 /*--------------------------------*/
   virtual EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
   virtual EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
