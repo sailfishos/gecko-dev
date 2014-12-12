@@ -163,10 +163,10 @@ EmbedLiteAppThreadChild::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId);
+  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId, isPrivateWindow);
   mWeakViewMap[id] = view;
   view->AddRef();
   return view;
