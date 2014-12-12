@@ -127,14 +127,6 @@ EmbedLiteAppThreadChild::InitAppService()
   return NS_OK;
 }
 
-EmbedLiteAppService*
-EmbedLiteAppThreadChild::AppService()
-{
-  nsCOMPtr<nsIEmbedAppService> service =
-    do_GetService("@mozilla.org/embedlite-app-service;1");
-  return static_cast<EmbedLiteAppService*>(service.get());
-}
-
 void
 EmbedLiteAppThreadChild::InitWindowWatcher()
 {

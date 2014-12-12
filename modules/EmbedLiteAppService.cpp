@@ -74,6 +74,14 @@ EmbedLiteAppService::~EmbedLiteAppService()
 {
 }
 
+EmbedLiteAppService*
+EmbedLiteAppService::AppService()
+{
+  nsCOMPtr<nsIEmbedAppService> service =
+    do_GetService("@mozilla.org/embedlite-app-service;1");
+  return static_cast<EmbedLiteAppService*>(service.get());
+}
+
 NS_IMPL_ISUPPORTS(EmbedLiteAppService, nsIObserver, nsIEmbedAppService)
 
 NS_IMETHODIMP
