@@ -21,7 +21,7 @@ class EmbedLiteViewThreadParent : public PEmbedLiteViewParent,
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewThreadParent)
 public:
-  EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId);
+  EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_EMBEDLITEVIEWIFACE
 

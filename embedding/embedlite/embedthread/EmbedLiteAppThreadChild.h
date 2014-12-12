@@ -51,7 +51,7 @@ protected:
   virtual bool RecvAddObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
   virtual bool RecvRemoveObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
 
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId) MOZ_OVERRIDE;
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) MOZ_OVERRIDE;
   virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
 
 private:

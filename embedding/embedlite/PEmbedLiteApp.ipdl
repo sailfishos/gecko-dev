@@ -16,7 +16,7 @@ parent:
     returns (uint32_t createdID, bool cancel);
 
 child:
-  PEmbedLiteView(uint32_t id, uint32_t parentId);
+  PEmbedLiteView(uint32_t id, uint32_t parentId, bool isPrivateWindow);
   PreDestroy();
   SetBoolPref(nsCString name, bool value);
   SetCharPref(nsCString name, nsCString value);
