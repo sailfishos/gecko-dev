@@ -15,7 +15,6 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
-#include "EmbedLiteViewBaseChild.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -24,7 +23,9 @@ class EmbedLiteContentController;
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
-class EmbedLiteViewThreadChild : public EmbedLiteViewBaseChild
+class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
+                                 public nsIEmbedBrowserChromeListener,
+                                 public EmbedLiteViewChildIface
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
@@ -33,6 +34,17 @@ public:
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
 /*---------TabChildIface---------------*/
+
+  virtual bool
+  ZoomToRect(const uint32_t& aPresShellId,
+             const ViewID& aViewId,
+             const CSSRect& aRect) MOZ_OVERRIDE;
+
+  virtual bool
+  UpdateZoomConstraints(const uint32_t& aPresShellId,
+                        const ViewID& aViewId,
+                        const bool& aIsRoot,
+                        const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) MOZ_OVERRIDE;
 
@@ -49,10 +61,22 @@ public:
    */
   virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
 
+  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
+  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
+
 /*---------TabChildIface---------------*/
+
+  uint64_t GetOuterID() {
+    return mOuterId;
+  }
+
 
   void AddGeckoContentListener(EmbedLiteContentController* listener);
   void RemoveGeckoContentListener(EmbedLiteContentController* listener);
+
+  nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
+  nsresult GetBrowser(nsIWebBrowser** outBrowser);
+  uint32_t GetID() { return mId; }
 
   /**
    * This method is used by EmbedLiteAppService::ZoomToRect() only.
@@ -67,22 +91,51 @@ public:
   virtual void ResetInputState() MOZ_OVERRIDE;
   virtual gfxSize GetGLViewSize() MOZ_OVERRIDE;
 
+  virtual bool
+  SetInputContext(const int32_t& IMEEnabled,
+                  const int32_t& IMEOpen,
+                  const nsString& type,
+                  const nsString& inputmode,
+                  const nsString& actionHint,
+                  const int32_t& cause,
+                  const int32_t& focusChange) MOZ_OVERRIDE;
+
+  virtual bool
+  GetInputContext(int32_t* IMEEnabled,
+                  int32_t* IMEOpen,
+                  intptr_t* NativeIMEContext) MOZ_OVERRIDE;
+
 /*---------WidgetIface---------------*/
+
+  virtual bool ContentReceivedTouch(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
 
 protected:
   virtual ~EmbedLiteViewThreadChild();
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual bool RecvDestroy() MOZ_OVERRIDE;
+  virtual bool RecvLoadURL(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvGoBack() MOZ_OVERRIDE;
+  virtual bool RecvGoForward() MOZ_OVERRIDE;
+  virtual bool RecvStopLoad() MOZ_OVERRIDE;
+  virtual bool RecvReload(const bool&) MOZ_OVERRIDE;
 
+  virtual bool RecvSetIsActive(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSetIsFocused(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
+  virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
+  virtual bool RecvSetViewSize(const gfxSize&) MOZ_OVERRIDE;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
                                        const gfxSize& scrollSize) MOZ_OVERRIDE;
 
+  virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) MOZ_OVERRIDE;
   virtual bool RecvHandleLongTap(const nsIntPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) MOZ_OVERRIDE;
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) MOZ_OVERRIDE;
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
                               const float&    aY,
@@ -102,6 +155,7 @@ protected:
   RecvRemoveMessageListener(const nsCString&) MOZ_OVERRIDE;
   void RecvAsyncMessage(const nsAString& aMessage,
                         const nsAString& aData) MOZ_OVERRIDE;
+  virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
 
   virtual bool
   RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
@@ -114,12 +168,26 @@ private:
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
 
+  void InitGeckoWindow(const uint32_t& parentId);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
 
+  uint32_t mId;
+  uint64_t mOuterId;
+  nsCOMPtr<nsIWidget> mWidget;
+  nsCOMPtr<nsIWebBrowser> mWebBrowser;
+  nsRefPtr<WebBrowserChrome> mChrome;
+  nsCOMPtr<nsIDOMWindow> mDOMWindow;
+  nsCOMPtr<nsIWebNavigation> mWebNavigation;
+  gfxSize mViewSize;
+  bool mViewResized;
+  gfxSize mGLViewSize;
+
+  nsRefPtr<TabChildHelper> mHelper;
   bool mDispatchSynthMouseEvents;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
+  CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
   nsTArray<EmbedLiteContentController*> mControllerListeners;

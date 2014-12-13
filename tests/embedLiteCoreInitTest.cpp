@@ -46,7 +46,7 @@ int main(int argc, char** argv)
     MyListener* listener = new MyListener(mapp);
     mapp->SetListener(listener);
     MessagePumpQt* mQtPump = new MessagePumpQt(mapp);
-    bool res = mapp->StartWithCustomPump(EmbedLiteApp::EMBED_PROCESS, mQtPump->EmbedLoop());
+    bool res = mapp->StartWithCustomPump(getenv("PROCESS") != 0 ? EmbedLiteApp::EMBED_PROCESS : EmbedLiteApp::EMBED_THREAD, mQtPump->EmbedLoop());
     printf("XUL Symbols loaded: init res:%i\n", res);
     app.exec();
     delete mQtPump;

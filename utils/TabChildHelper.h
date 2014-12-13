@@ -80,8 +80,6 @@ private:
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
   friend class EmbedLiteViewChildIface;
-  friend class EmbedLiteViewBaseChild;
-
   EmbedLiteViewChildIface* mView;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
   bool mHasValidInnerSize;

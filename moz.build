@@ -39,7 +39,6 @@ EXPORTS.ipc = ['embedhelpers/InputDataIPC.h']
 UNIFIED_SOURCES += [
     'embedhelpers/EmbedLiteSubThread.cpp',
     'embedhelpers/EmbedLiteUILoop.cpp',
-    'embedhelpers/EmbedLiteViewBaseChild.cpp',
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
     'EmbedLiteView.cpp',
