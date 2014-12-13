@@ -40,19 +40,70 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
+static struct {
+    bool viewport;
+    bool scroll;
+    bool singleTap;
+    bool doubleTap;
+    bool longTap;
+} sHandleDefaultAZPC;
+static struct {
+    bool viewport;
+    bool scroll;
+    bool singleTap;
+    bool doubleTap;
+    bool longTap;
+} sPostAZPCAsJson;
+
+static bool sAllowKeyWordURL = false;
+
+static void ReadAZPCPrefs()
+{
+  // Init default azpc notifications behavior
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", true);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.doubleTap, "embedlite.azpc.handle.doubletap", true);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", true);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
+
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.doubleTap, "embedlite.azpc.json.doubletap", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.scroll, "embedlite.azpc.json.scroll", false);
+
+  Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
+}
+
 EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId)
-  : EmbedLiteViewBaseChild(aId, parentId)
+  : mId(aId)
+  , mOuterId(0)
+  , mViewSize(0, 0)
+  , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
 {
   LOGT("id:%u, parentID:%u", aId, parentId);
+  // Init default prefs
+  static bool sPrefInitialized = false;
+  if (!sPrefInitialized) {
+    sPrefInitialized = true;
+    ReadAZPCPrefs();
+  }
+  mInitWindowTask = NewRunnableMethod(this,
+                                      &EmbedLiteViewThreadChild::InitGeckoWindow, parentId);
+  MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
 }
 
 EmbedLiteViewThreadChild::~EmbedLiteViewThreadChild()
 {
   LOGT();
   NS_ASSERTION(mControllerListeners.IsEmpty(), "Controller listeners list is not empty...");
+  if (mInitWindowTask) {
+    mInitWindowTask->Cancel();
+  }
+  mInitWindowTask = nullptr;
 }
 
 EmbedLiteAppThreadChild*
@@ -75,10 +126,165 @@ bool EmbedLiteViewThreadChild::RecvDestroy()
 {
   LOGT("destroy");
   mControllerListeners.Clear();
+  EmbedLiteAppService::AppService()->UnregisterView(mId);
+  if (mHelper)
+    mHelper->Unload();
+  if (mChrome)
+    mChrome->RemoveEventHandler();
+  mWidget = nullptr;
+  mWebBrowser = nullptr;
+  mChrome = nullptr;
+  mDOMWindow = nullptr;
+  mWebNavigation = nullptr;
+  PEmbedLiteViewChild::Send__delete__(this);
   return true;
 }
 
+void
+EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
+{
+  if (mInitWindowTask) {
+    mInitWindowTask->Cancel();
+  }
+  mInitWindowTask = nullptr;
+  LOGT("parentID: %u", parentId);
+  nsresult rv;
+  mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  gfxPrefs::GetSingleton();
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  mWidget = new EmbedLitePuppetWidget(this, mId);
+
+  nsWidgetInitData  widgetInit;
+  widgetInit.clipChildren = true;
+  widgetInit.mWindowType = eWindowType_toplevel;
+  mWidget->Create(
+    nullptr, 0,              // no parents
+    nsIntRect(nsIntPoint(0, 0), nsIntSize(mGLViewSize.width, mGLViewSize.height)),
+    nullptr,                 // HandleWidgetEvent
+    &widgetInit              // nsDeviceContext
+  );
+
+  if (!mWidget) {
+    NS_ERROR("couldn't create fake widget");
+    return;
+  }
+
+  rv = baseWindow->InitWindow(0, mWidget, 0, 0, mViewSize.width, mViewSize.height);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  nsCOMPtr<nsIDOMWindow> domWindow;
+
+  mChrome = new WebBrowserChrome(this);
+  uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
+
+  mWebBrowser->SetContainerWindow(mChrome);
+
+  mChrome->SetChromeFlags(aChromeFlags);
+  if (aChromeFlags & (nsIWebBrowserChrome::CHROME_OPENAS_CHROME |
+                      nsIWebBrowserChrome::CHROME_OPENAS_DIALOG)) {
+    nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
+    docShellItem->SetItemType(nsIDocShellTreeItem::typeChromeWrapper);
+    LOGT("Chrome window created\n");
+  }
+
+  if (NS_FAILED(baseWindow->Create())) {
+    NS_ERROR("Creation of basewindow failed.\n");
+  }
+
+  if (NS_FAILED(mWebBrowser->GetContentDOMWindow(getter_AddRefs(domWindow)))) {
+    NS_ERROR("Failed to get the content DOM window.\n");
+  }
+
+  mDOMWindow = do_QueryInterface(domWindow);
+  if (!mDOMWindow) {
+    NS_ERROR("Got stuck with DOMWindow1!");
+  }
+
+  mozilla::dom::AutoNoJSAPI nojsapi;
+  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
+  utils->GetOuterWindowID(&mOuterId);
+
+  EmbedLiteAppService::AppService()->RegisterView(mId);
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewcreated", nullptr);
+  }
+
+  mWebNavigation = do_QueryInterface(baseWindow);
+  if (!mWebNavigation) {
+    NS_ERROR("Failed to get the web navigation interface.");
+  }
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
+
+  mChrome->SetWebBrowser(mWebBrowser);
+
+  rv = baseWindow->SetVisibility(true);
+  if (NS_FAILED(rv)) {
+    NS_ERROR("SetVisibility failed.\n");
+  }
+
+  mHelper = new TabChildHelper(this);
+  unused << SendInitialized();
+}
+
+nsresult
+EmbedLiteViewThreadChild::GetBrowser(nsIWebBrowser** outBrowser)
+{
+  if (!mWebBrowser)
+    return NS_ERROR_FAILURE;
+  NS_ADDREF(*outBrowser = mWebBrowser.get());
+  return NS_OK;
+}
+
+nsresult
+EmbedLiteViewThreadChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
+{
+  if (!mChrome)
+    return NS_ERROR_FAILURE;
+  NS_ADDREF(*outChrome = mChrome.get());
+  return NS_OK;
+}
+
+
 /*----------------------------WidgetIface-----------------------------------------------------*/
+
+bool
+EmbedLiteViewThreadChild::SetInputContext(const int32_t& IMEEnabled,
+                                          const int32_t& IMEOpen,
+                                          const nsString& type,
+                                          const nsString& inputmode,
+                                          const nsString& actionHint,
+                                          const int32_t& cause,
+                                          const int32_t& focusChange)
+{
+  return SendSetInputContext(IMEEnabled,
+                             IMEOpen,
+                             type,
+                             inputmode,
+                             actionHint,
+                             cause,
+                             focusChange);
+}
+
+bool
+EmbedLiteViewThreadChild::GetInputContext(int32_t* IMEEnabled,
+                                          int32_t* IMEOpen,
+                                          intptr_t* NativeIMEContext)
+{
+  return SendGetInputContext(IMEEnabled, IMEOpen, NativeIMEContext);
+}
 
 gfxSize
 EmbedLiteViewThreadChild::GetGLViewSize()
@@ -98,7 +304,29 @@ void EmbedLiteViewThreadChild::ResetInputState()
   mIMEComposing = false;
 }
 
+/*----------------------------WidgetIface-----------------------------------------------------*/
+
 /*----------------------------TabChildIface-----------------------------------------------------*/
+
+bool
+EmbedLiteViewThreadChild::ZoomToRect(const uint32_t& aPresShellId,
+                                     const ViewID& aViewId,
+                                     const CSSRect& aRect)
+{
+  return SendZoomToRect(aPresShellId, aViewId, aRect);
+}
+
+bool
+EmbedLiteViewThreadChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
+                                                const ViewID& aViewId,
+                                                const bool& aIsRoot,
+                                                const ZoomConstraints& aConstraints)
+{
+  return SendUpdateZoomConstraints(aPresShellId,
+                                   aViewId,
+                                   aIsRoot,
+                                   aConstraints);
+}
 
 void
 EmbedLiteViewThreadChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
@@ -114,7 +342,6 @@ EmbedLiteViewThreadChild::HasMessageListener(const nsAString& aMessageName)
   if (mRegisteredMessages.Get(aMessageName)) {
     return true;
   }
-
   return false;
 }
 
@@ -148,7 +375,172 @@ EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const c
   return true;
 }
 
+nsIWebNavigation*
+EmbedLiteViewThreadChild::WebNavigation()
+{
+  return mWebNavigation;
+}
+
+nsIWidget*
+EmbedLiteViewThreadChild::WebWidget()
+{
+  return mWidget;
+}
+
 /*----------------------------TabChildIface-----------------------------------------------------*/
+
+bool
+EmbedLiteViewThreadChild::RecvLoadURL(const nsString& url)
+{
+  LOGT("url:%s", NS_ConvertUTF16toUTF8(url).get());
+  NS_ENSURE_TRUE(mWebNavigation, false);
+
+  nsCOMPtr<nsIIOService> ioService = do_GetService(NS_IOSERVICE_CONTRACTID);
+  if (!ioService) {
+    return true;
+  }
+
+  ioService->SetOffline(false);
+  uint32_t flags = 0;
+  if (sAllowKeyWordURL) {
+    flags |= nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
+  }
+  mWebNavigation->LoadURI(url.get(),
+                          flags,
+                          0, 0, 0);
+
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvGoBack()
+{
+  NS_ENSURE_TRUE(mWebNavigation, false);
+
+  mWebNavigation->GoBack();
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvGoForward()
+{
+  NS_ENSURE_TRUE(mWebNavigation, false);
+
+  mWebNavigation->GoForward();
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvStopLoad()
+{
+  NS_ENSURE_TRUE(mWebNavigation, false);
+
+  mWebNavigation->Stop(nsIWebNavigation::STOP_NETWORK);
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvReload(const bool& aHardReload)
+{
+  NS_ENSURE_TRUE(mWebNavigation, false);
+  uint32_t reloadFlags = aHardReload ?
+                         nsIWebNavigation::LOAD_FLAGS_BYPASS_PROXY | nsIWebNavigation::LOAD_FLAGS_BYPASS_CACHE :
+                         nsIWebNavigation::LOAD_FLAGS_NONE;
+
+  mWebNavigation->Reload(reloadFlags);
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvSetIsActive(const bool& aIsActive)
+{
+  if (!mWebBrowser || !mDOMWindow) {
+    return false;
+  }
+
+  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  NS_ENSURE_TRUE(fm, false);
+  if (aIsActive) {
+    fm->WindowRaised(mDOMWindow);
+    LOGT("Activate browser");
+  } else {
+    fm->WindowLowered(mDOMWindow);
+    LOGT("Deactivate browser");
+  }
+  mWebBrowser->SetIsActive(aIsActive);
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvSetIsFocused(const bool& aIsFocused)
+{
+  if (!mWebBrowser || !mDOMWindow) {
+    return false;
+  }
+
+  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  NS_ENSURE_TRUE(fm, false);
+  nsIWidgetListener* listener = mWidget->GetWidgetListener();
+  if (listener) {
+    if (aIsFocused) {
+      LOGT("Activate browser focus");
+      listener->WindowActivated();
+    }
+    else {
+      listener->WindowDeactivated();
+    }
+  }
+  if (!aIsFocused) {
+    fm->ClearFocus(mDOMWindow);
+    LOGT("Clear browser focus");
+  }
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvSuspendTimeouts()
+{
+  if (!mDOMWindow) {
+    return false;
+  }
+
+  nsresult rv;
+  nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  NS_ENSURE_SUCCESS(rv, false);
+  if (!pwindow->TimeoutSuspendCount()) {
+    pwindow->SuspendTimeouts();
+  }
+
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvResumeTimeouts()
+{
+  if (!mDOMWindow) {
+    return false;
+  }
+
+  nsresult rv;
+  nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  NS_ENSURE_SUCCESS(rv, false);
+
+  if (pwindow->TimeoutSuspendCount()) {
+    rv = pwindow->ResumeTimeouts();
+    NS_ENSURE_SUCCESS(rv, false);
+  }
+
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvLoadFrameScript(const nsString& uri)
+{
+  if (mHelper) {
+    return mHelper->DoLoadFrameScript(uri, true);
+  }
+  return false;
+}
 
 bool
 EmbedLiteViewThreadChild::RecvAsyncMessage(const nsString& aMessage,
@@ -203,6 +595,35 @@ EmbedLiteViewThreadChild::RecvRemoveMessageListeners(const InfallibleTArray<nsSt
   return true;
 }
 
+bool
+EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
+{
+  mViewResized = aSize != mViewSize;
+  mViewSize = aSize;
+  LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
+
+  if (!mWebBrowser) {
+    return true;
+  }
+
+  mWidget->Resize(0, 0, aSize.width, aSize.height, true);
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
+  baseWindow->SetVisibility(true);
+
+  mHelper->ReportSizeUpdate(aSize);
+
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvSetGLViewSize(const gfxSize& aSize)
+{
+  mGLViewSize = aSize;
+  LOGT("sz[%g,%g]", mGLViewSize.width, mGLViewSize.height);
+  return true;
+}
+
 void
 EmbedLiteViewThreadChild::AddGeckoContentListener(EmbedLiteContentController* listener)
 {
@@ -247,6 +668,29 @@ EmbedLiteViewThreadChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
 }
 
 bool
+EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+{
+  if (!mWebBrowser) {
+    return true;
+  }
+
+  if (mViewResized &&
+      aFrameMetrics.GetIsRoot() &&
+      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
+      mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
+    mViewResized = false;
+  }
+
+  RelayFrameMetrics(aFrameMetrics);
+
+  bool ret = true;
+  if (sHandleDefaultAZPC.viewport) {
+    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
+  }
+
+  return ret;
+}
+bool
 EmbedLiteViewThreadChild::RecvHandleDoubleTap(const nsIntPoint& aPoint)
 {
   if (!mWebBrowser) {
@@ -262,6 +706,19 @@ EmbedLiteViewThreadChild::RecvHandleDoubleTap(const nsIntPoint& aPoint)
     data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
   }
+
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
+                                                      const uint32_t& aScrollGeneration)
+{
+  if (!mWebBrowser) {
+    return true;
+  }
+
+  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
 
   return true;
 }
@@ -463,6 +920,11 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
                         aIgnoreRootScrollFrame, 0, 0, false, 4, &ignored);
 
   return !ignored;
+}
+
+bool EmbedLiteViewThreadChild::ContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+{
+  return SendContentReceivedTouch(aGuid, aInputBlockId, aPreventDefault);
 }
 
 bool

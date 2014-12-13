@@ -7,9 +7,8 @@
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
-#include "mozilla/embedlite/EmbedLiteAppChildIface.h"
+#include "EmbedLiteAppChildIface.h"
 
-class EmbedLiteAppService;
 namespace mozilla {
 namespace embedlite {
 
