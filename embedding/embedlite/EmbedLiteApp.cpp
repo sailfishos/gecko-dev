@@ -393,13 +393,13 @@ void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
 }
 
 EmbedLiteView*
-EmbedLiteApp::CreateView(uint32_t aParent)
+EmbedLiteApp::CreateView(uint32_t aParent, bool aIsPrivateWindow)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   mViewCreateID++;
 
-  EmbedLiteViewThreadParent* viewParent = static_cast<EmbedLiteViewThreadParent*>(mAppParent->SendPEmbedLiteViewConstructor(mViewCreateID, aParent));
+  EmbedLiteViewThreadParent* viewParent = static_cast<EmbedLiteViewThreadParent*>(mAppParent->SendPEmbedLiteViewConstructor(mViewCreateID, aParent, aIsPrivateWindow));
   EmbedLiteView* view = new EmbedLiteView(this, viewParent, mViewCreateID);
   mViews[mViewCreateID] = view;
   return view;
