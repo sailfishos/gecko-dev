@@ -19,6 +19,7 @@
 #include "nsIDocShell.h"
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
+#include "nsIWebBrowserChrome.h"
 
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -75,7 +76,7 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId)
+EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const uint32_t& parentId, const bool& isPrivateWindow)
   : mId(aId)
   , mOuterId(0)
   , mViewSize(0, 0)
@@ -92,7 +93,7 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
     ReadAZPCPrefs();
   }
   mInitWindowTask = NewRunnableMethod(this,
-                                      &EmbedLiteViewThreadChild::InitGeckoWindow, parentId);
+                                      &EmbedLiteViewThreadChild::InitGeckoWindow, parentId, isPrivateWindow);
   MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
 }
 
@@ -141,7 +142,7 @@ bool EmbedLiteViewThreadChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
+EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow)
 {
   if (mInitWindowTask) {
     mInitWindowTask->Cancel();
@@ -187,6 +188,10 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
   mChrome = new WebBrowserChrome(this);
   uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
 
+  if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
+    aChromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
+  }
+
   mWebBrowser->SetContainerWindow(mChrome);
 
   mChrome->SetChromeFlags(aChromeFlags);
@@ -226,7 +231,20 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
+    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(docShell);
+
+    docShell->SetAffectPrivateSessionLifetime(true);
+  }
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
+    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(loadContext);
+
+    loadContext->SetPrivateBrowsing(true);
+  }
 
   mChrome->SetWebBrowser(mWebBrowser);
 
