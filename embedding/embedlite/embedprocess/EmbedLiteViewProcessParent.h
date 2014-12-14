@@ -17,7 +17,7 @@ class EmbedLiteViewProcessParent : public PEmbedLiteViewParent,
 {
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewProcessParent)
 public:
-    MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& id, const uint32_t& parentId);
+    MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& id, const uint32_t& parentId, const bool&);
     virtual ~EmbedLiteViewProcessParent();
 
     NS_DECL_EMBEDLITEVIEWIFACE

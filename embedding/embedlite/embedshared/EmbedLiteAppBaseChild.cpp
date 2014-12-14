@@ -5,7 +5,7 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteAppThreadChild.h"
+#include "EmbedLiteAppBaseChild.h"
 
 #include "nsIComponentRegistrar.h"             // for nsIComponentRegistrar
 #include "nsIComponentManager.h"               // for nsIComponentManager
@@ -33,31 +33,31 @@ using namespace mozilla::layers;
 namespace mozilla {
 namespace embedlite {
 
-static EmbedLiteAppThreadChild* sAppThreadChild = nullptr;
+static EmbedLiteAppBaseChild* sAppBaseChild = nullptr;
 
-EmbedLiteAppThreadChild*
-EmbedLiteAppThreadChild::GetInstance()
+EmbedLiteAppBaseChild*
+EmbedLiteAppBaseChild::GetInstance()
 {
-  return sAppThreadChild;
+  return sAppBaseChild;
 }
 
-EmbedLiteAppThreadChild::EmbedLiteAppThreadChild(MessageLoop* aParentLoop)
+EmbedLiteAppBaseChild::EmbedLiteAppBaseChild(MessageLoop* aParentLoop)
   : mParentLoop(aParentLoop)
 {
   LOGT();
-  sAppThreadChild = this;
+  sAppBaseChild = this;
 }
 
-NS_IMPL_ISUPPORTS(EmbedLiteAppThreadChild, nsIObserver)
+NS_IMPL_ISUPPORTS(EmbedLiteAppBaseChild, nsIObserver)
 
-EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
+EmbedLiteAppBaseChild::~EmbedLiteAppBaseChild()
 {
   LOGT();
-  sAppThreadChild = nullptr;
+  sAppBaseChild = nullptr;
 }
 
 NS_IMETHODIMP
-EmbedLiteAppThreadChild::Observe(nsISupports* aSubject,
+EmbedLiteAppBaseChild::Observe(nsISupports* aSubject,
                                  const char* aTopic,
                                  const char16_t* aData)
 {
@@ -67,7 +67,7 @@ EmbedLiteAppThreadChild::Observe(nsISupports* aSubject,
 }
 
 void
-EmbedLiteAppThreadChild::Init(MessageChannel* aParentChannel)
+EmbedLiteAppBaseChild::Init(MessageChannel* aParentChannel)
 {
   LOGT();
   InitWindowWatcher();
@@ -88,7 +88,7 @@ EmbedLiteAppThreadChild::Init(MessageChannel* aParentChannel)
 }
 
 nsresult
-EmbedLiteAppThreadChild::InitAppService()
+EmbedLiteAppBaseChild::InitAppService()
 {
   LOGT();
 
@@ -128,7 +128,7 @@ EmbedLiteAppThreadChild::InitAppService()
 }
 
 void
-EmbedLiteAppThreadChild::InitWindowWatcher()
+EmbedLiteAppBaseChild::InitWindowWatcher()
 {
   // create an nsWindowCreator and give it to the WindowWatcher service
   nsCOMPtr<nsIWindowCreator> creator(new WindowCreator(this));
@@ -146,53 +146,43 @@ EmbedLiteAppThreadChild::InitWindowWatcher()
 }
 
 void
-EmbedLiteAppThreadChild::ActorDestroy(ActorDestroyReason aWhy)
+EmbedLiteAppBaseChild::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
 }
 
-PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
-{
-  LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId);
-  mWeakViewMap[id] = view;
-  view->AddRef();
-  return view;
-}
-
 bool
-EmbedLiteAppThreadChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
+EmbedLiteAppBaseChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
 {
   LOGT();
-  std::map<uint32_t, EmbedLiteViewThreadChild*>::iterator it;
+  std::map<uint32_t, EmbedLiteViewBaseChild*>::iterator it;
   for (it = mWeakViewMap.begin(); it != mWeakViewMap.end(); ++it) {
     if (actor == it->second) {
       break;
     }
   }
   mWeakViewMap.erase(it);
-  EmbedLiteViewThreadChild* p = static_cast<EmbedLiteViewThreadChild*>(actor);
+  EmbedLiteViewBaseChild* p = static_cast<EmbedLiteViewBaseChild*>(actor);
   p->Release();
   return true;
 }
 
-bool EmbedLiteAppThreadChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
+bool EmbedLiteAppBaseChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
 {
   return SendCreateWindow(parentId, uri, chromeFlags, contextFlags, createdID, cancel);
 }
 
 EmbedLiteViewChildIface*
-EmbedLiteAppThreadChild::GetViewByID(uint32_t aId)
+EmbedLiteAppBaseChild::GetViewByID(uint32_t aId)
 {
   return aId ? mWeakViewMap[aId] : nullptr;
 }
 
 EmbedLiteViewChildIface*
-EmbedLiteAppThreadChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
+EmbedLiteAppBaseChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
 {
   LOGT("mWeakViewMap:%i", mWeakViewMap.size());
-  std::map<uint32_t, EmbedLiteViewThreadChild*>::iterator it;
+  std::map<uint32_t, EmbedLiteViewBaseChild*>::iterator it;
   for (it = mWeakViewMap.begin(); it != mWeakViewMap.end(); ++it) {
     if (aParent == it->second->mChrome.get()) {
       return it->second;
@@ -202,7 +192,7 @@ EmbedLiteAppThreadChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
 }
 
 bool
-EmbedLiteAppThreadChild::RecvPreDestroy()
+EmbedLiteAppBaseChild::RecvPreDestroy()
 {
   LOGT();
   ImageBridgeChild::ShutDown();
@@ -211,7 +201,7 @@ EmbedLiteAppThreadChild::RecvPreDestroy()
 }
 
 bool
-EmbedLiteAppThreadChild::RecvSetBoolPref(const nsCString& aName, const bool& aValue)
+EmbedLiteAppBaseChild::RecvSetBoolPref(const nsCString& aName, const bool& aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
   nsresult rv;
@@ -225,7 +215,7 @@ EmbedLiteAppThreadChild::RecvSetBoolPref(const nsCString& aName, const bool& aVa
   return true;
 }
 
-bool EmbedLiteAppThreadChild::RecvSetCharPref(const nsCString& aName, const nsCString& aValue)
+bool EmbedLiteAppBaseChild::RecvSetCharPref(const nsCString& aName, const nsCString& aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%s", aName.get(), aValue.get());
   nsresult rv;
@@ -239,7 +229,7 @@ bool EmbedLiteAppThreadChild::RecvSetCharPref(const nsCString& aName, const nsCS
   return true;
 }
 
-bool EmbedLiteAppThreadChild::RecvSetIntPref(const nsCString& aName, const int& aValue)
+bool EmbedLiteAppBaseChild::RecvSetIntPref(const nsCString& aName, const int& aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
   nsresult rv;
@@ -254,7 +244,7 @@ bool EmbedLiteAppThreadChild::RecvSetIntPref(const nsCString& aName, const int& 
 }
 
 bool
-EmbedLiteAppThreadChild::RecvLoadGlobalStyleSheet(const nsCString& uri, const bool& aEnable)
+EmbedLiteAppBaseChild::RecvLoadGlobalStyleSheet(const nsCString& uri, const bool& aEnable)
 {
   LOGT("uri:%s, enable:%i", uri.get(), aEnable);
   nsCOMPtr<nsIStyleSheetService> styleSheetService =
@@ -271,7 +261,7 @@ EmbedLiteAppThreadChild::RecvLoadGlobalStyleSheet(const nsCString& uri, const bo
   return true;
 }
 
-bool EmbedLiteAppThreadChild::RecvLoadComponentManifest(const nsCString& manifest)
+bool EmbedLiteAppBaseChild::RecvLoadComponentManifest(const nsCString& manifest)
 {
   nsCOMPtr<nsIFile> f;
   NS_NewNativeLocalFile(manifest, true,
@@ -286,7 +276,7 @@ bool EmbedLiteAppThreadChild::RecvLoadComponentManifest(const nsCString& manifes
 }
 
 bool
-EmbedLiteAppThreadChild::RecvObserve(const nsCString& topic,
+EmbedLiteAppBaseChild::RecvObserve(const nsCString& topic,
                                      const nsString& data)
 {
   LOGT("topic:%s", topic.get());
@@ -299,7 +289,7 @@ EmbedLiteAppThreadChild::RecvObserve(const nsCString& topic,
 }
 
 bool
-EmbedLiteAppThreadChild::RecvAddObserver(const nsCString& topic)
+EmbedLiteAppBaseChild::RecvAddObserver(const nsCString& topic)
 {
   LOGT("topic:%s", topic.get());
   nsCOMPtr<nsIObserverService> observerService =
@@ -315,7 +305,7 @@ EmbedLiteAppThreadChild::RecvAddObserver(const nsCString& topic)
 }
 
 bool
-EmbedLiteAppThreadChild::RecvRemoveObserver(const nsCString& topic)
+EmbedLiteAppBaseChild::RecvRemoveObserver(const nsCString& topic)
 {
   LOGT("topic:%s", topic.get());
   nsCOMPtr<nsIObserverService> observerService =
@@ -330,7 +320,7 @@ EmbedLiteAppThreadChild::RecvRemoveObserver(const nsCString& topic)
 }
 
 bool
-EmbedLiteAppThreadChild::RecvAddObservers(const InfallibleTArray<nsCString>& observers)
+EmbedLiteAppBaseChild::RecvAddObservers(const InfallibleTArray<nsCString>& observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -347,7 +337,7 @@ EmbedLiteAppThreadChild::RecvAddObservers(const InfallibleTArray<nsCString>& obs
 }
 
 bool
-EmbedLiteAppThreadChild::RecvRemoveObservers(const InfallibleTArray<nsCString>& observers)
+EmbedLiteAppBaseChild::RecvRemoveObservers(const InfallibleTArray<nsCString>& observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);

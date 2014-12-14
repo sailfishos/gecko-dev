@@ -198,10 +198,10 @@ EmbedLiteAppProcessChild::QuickExit()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId);
+  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId, isPrivateWindow);
   view->AddRef();
   return view;
 }

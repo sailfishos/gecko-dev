@@ -25,14 +25,14 @@ class EmbedLiteViewProcessChild : public PEmbedLiteViewChild,
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewProcessChild)
 public:
-  MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t& id, const uint32_t& parentId);
+  MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
   virtual ~EmbedLiteViewProcessChild();
 
 private:
-  void InitGeckoWindow(const uint32_t& parentId);
+  void InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow);
 
 protected:
   virtual bool

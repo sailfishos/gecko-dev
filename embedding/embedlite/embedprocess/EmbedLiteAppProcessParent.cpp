@@ -181,7 +181,9 @@ EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
                                             bool* cancel)
 {
   LOGT();
-  return false;
+  *createdID = mApp->CreateWindowRequested(chromeFlags, uri.get(), contextFlags, parentId);
+  *cancel = !*createdID;
+  return true;
 }
 
 bool
@@ -192,10 +194,10 @@ EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& d
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT();
-  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(id, parentId);
+  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(id, parentId, isPrivateWindow);
   p->AddRef();
   return p;
 }

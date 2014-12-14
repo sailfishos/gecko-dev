@@ -13,7 +13,7 @@ FAIL_ON_WARNINGS = True
 FINAL_LIBRARY = 'xul'
 
 XPIDL_SOURCES += [
-    'embedhelpers/EmbedLiteViewIface.idl',
+    'embedshared/EmbedLiteViewIface.idl',
     'modules/nsIEmbedAppService.idl',
     'modules/nsIEmbedLiteJSON.idl',
     'utils/nsIEmbedBrowserChromeListener.idl',
@@ -22,8 +22,6 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'embedLite'
 
 EXPORTS.mozilla.embedlite += [
-    'embedhelpers/EmbedLiteAppChildIface.h',
-    'embedhelpers/EmbedLiteViewChildIface.h',
     'EmbedInitGlue.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
@@ -31,6 +29,8 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'embedprocess/EmbedLiteAppProcessChild.h',
+    'embedshared/EmbedLiteAppChildIface.h',
+    'embedshared/EmbedLiteViewChildIface.h',
     'utils/EmbedLog.h',
 ]
 
@@ -47,6 +47,8 @@ UNIFIED_SOURCES += [
     'embedprocess/EmbedLiteContentProcess.cpp',
     'embedprocess/EmbedLiteViewProcessChild.cpp',
     'embedprocess/EmbedLiteViewProcessParent.cpp',
+    'embedshared/EmbedLiteAppBaseChild.cpp',
+    'embedshared/EmbedLiteViewBaseChild.cpp',
     'embedthread/EmbedContentController.cpp',
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',
@@ -85,6 +87,7 @@ LOCAL_INCLUDES += [
     '/xpcom/threads',
     'embedhelpers',
     'embedprocess',
+    'embedshared',
     'embedthread',
     'modules',
     'utils',

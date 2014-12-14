@@ -9,6 +9,7 @@
 #include "nsEmbedCID.h"
 #include "nsIIOService.h"
 #include "nsNetCID.h"
+#include "nsILoadContext.h"
 
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -19,12 +20,12 @@ namespace mozilla {
 namespace embedlite {
 
 MOZ_IMPLICIT
-EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t& id, const uint32_t& parentId)
+EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT();
   MOZ_COUNT_CTOR(EmbedLiteViewProcessChild);
   mInitWindowTask = NewRunnableMethod(this,
-                                      &EmbedLiteViewProcessChild::InitGeckoWindow, parentId);
+                                      &EmbedLiteViewProcessChild::InitGeckoWindow, parentId, isPrivateWindow);
   MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
 }
 
@@ -35,7 +36,7 @@ MOZ_IMPLICIT EmbedLiteViewProcessChild::~EmbedLiteViewProcessChild()
 }
 
 void
-EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
+EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("parentID: %u", parentId);
   if (mInitWindowTask) {
@@ -83,6 +84,10 @@ EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
   mChrome = new WebBrowserChrome(this);
   uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
 
+  if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
+    aChromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
+  }
+
   mWebBrowser->SetContainerWindow(mChrome);
 
   mChrome->SetChromeFlags(aChromeFlags);
@@ -110,7 +115,6 @@ EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
-#warning "Return me back"
   EmbedLiteAppService::AppService()->RegisterView(mId);
 
   nsCOMPtr<nsIObserverService> observerService =
@@ -123,7 +127,19 @@ EmbedLiteViewProcessChild::InitGeckoWindow(const uint32_t& parentId)
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
+    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(docShell);
+
+    docShell->SetAffectPrivateSessionLifetime(true);
+  }
+
+  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
+    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWebNavigation);
+    MOZ_ASSERT(loadContext);
+    loadContext->SetPrivateBrowsing(true);
+  }
 
   mChrome->SetWebBrowser(mWebBrowser);
 
