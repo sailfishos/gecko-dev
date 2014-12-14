@@ -7,7 +7,7 @@
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
-#include "EmbedLiteAppChildIface.h"
+#include "mozilla/embedlite/EmbedLiteAppChildIface.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -70,7 +70,7 @@ protected:
   virtual bool RecvAddObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
   virtual bool RecvRemoveObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
 
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId) MOZ_OVERRIDE;
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) MOZ_OVERRIDE;
   virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
 
 private:

@@ -46,9 +46,7 @@ protected:
           const nsString& data);
 
   virtual PEmbedLiteViewParent*
-  AllocPEmbedLiteViewParent(
-          const uint32_t& id,
-          const uint32_t& parentId);
+  AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId, const bool&);
 
   virtual bool
   DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aActor);
