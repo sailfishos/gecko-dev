@@ -170,6 +170,7 @@ private:
   friend class EmbedLiteAppThreadParent;
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteAppProcessParent;
+  friend class EmbedLiteViewBaseParent;
   friend class EmbedLiteCompositorParent;
   friend class EmbedLitePuppetWidget;
 

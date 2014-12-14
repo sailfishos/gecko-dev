@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef MOZ_VIEW_EMBED_THREAD_PARENT_H
-#define MOZ_VIEW_EMBED_THREAD_PARENT_H
+#ifndef MOZ_VIEW_EMBED_BASE_PARENT_H
+#define MOZ_VIEW_EMBED_BASE_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteViewParent.h"
 #include "EmbedLiteViewIface.h"
@@ -16,19 +16,19 @@ namespace embedlite {
 class EmbedLiteView;
 class EmbedLiteCompositorParent;
 class EmbedContentController;
-class EmbedLiteViewThreadParent : public PEmbedLiteViewParent,
-                                  public EmbedLiteViewIface
+class EmbedLiteViewBaseParent : public PEmbedLiteViewParent,
+                                public EmbedLiteViewIface
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewThreadParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewBaseParent)
 public:
-  EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewBaseParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_EMBEDLITEVIEWIFACE
 
   EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); };
 
 protected:
-  virtual ~EmbedLiteViewThreadParent();
+  virtual ~EmbedLiteViewBaseParent();
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
 
   virtual bool
@@ -129,10 +129,10 @@ private:
   GLuint mUploadTexture;
   nsRefPtr<EmbedContentController> mController;
 
-  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadParent);
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseParent);
 };
 
 } // namespace embedlite
 } // namespace mozilla
 
-#endif // MOZ_VIEW_EMBED_THREAD_PARENT_H
+#endif // MOZ_VIEW_EMBED_BASE_PARENT_H

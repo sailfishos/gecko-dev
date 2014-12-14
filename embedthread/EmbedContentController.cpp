@@ -7,7 +7,7 @@
 #include "EmbedLog.h"
 #include "EmbedLiteView.h"
 #include "mozilla/unused.h"
-#include "EmbedLiteViewThreadParent.h"
+#include "EmbedLiteViewBaseParent.h"
 #include "mozilla/layers/CompositorParent.h"
 #include "mozilla/layers/APZCTreeManager.h"
 #include "EmbedLiteCompositorParent.h"
@@ -18,7 +18,7 @@ using namespace mozilla::layers;
 
 class FakeListener : public EmbedLiteViewListener {};
 
-EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop)
+EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
   , mHaveZoomConstraints(false)
