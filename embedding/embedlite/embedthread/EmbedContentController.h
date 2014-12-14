@@ -16,7 +16,7 @@ class APZCTreeManager;
 }
 namespace embedlite {
 class EmbedLiteViewListener;
-class EmbedLiteViewThreadParent;
+class EmbedLiteViewBaseParent;
 
 class EmbedContentController : public mozilla::layers::GeckoContentController
 {
@@ -25,7 +25,7 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
-  EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop);
+  EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop);
 
   // This method build APZCTreeManager for give layer tree
   void SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId);
@@ -53,7 +53,7 @@ public:
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 
-  // Methods used by EmbedLiteViewThreadParent to set fields stored here.
+  // Methods used by EmbedLiteViewBaseParent to set fields stored here.
 
   void SaveZoomConstraints(const ZoomConstraints& aConstraints);
 
@@ -62,7 +62,7 @@ private:
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
 
   MessageLoop* mUILoop;
-  EmbedLiteViewThreadParent* mRenderFrame;
+  EmbedLiteViewBaseParent* mRenderFrame;
 
   bool mHaveZoomConstraints;
   ZoomConstraints mZoomConstraints;

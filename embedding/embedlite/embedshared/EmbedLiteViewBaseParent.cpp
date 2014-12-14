@@ -5,7 +5,7 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteViewThreadParent.h"
+#include "EmbedLiteViewBaseParent.h"
 #include "EmbedLiteApp.h"
 #include "EmbedLiteView.h"
 #include "gfxImageSurface.h"
@@ -25,7 +25,7 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
   : mId(id)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
@@ -34,12 +34,12 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mUploadTexture(0)
   , mController(new EmbedContentController(this, mUILoop))
 {
-  MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
+  MOZ_COUNT_CTOR(EmbedLiteViewBaseParent);
 }
 
-EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
+EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
 {
-  MOZ_COUNT_DTOR(EmbedLiteViewThreadParent);
+  MOZ_COUNT_DTOR(EmbedLiteViewBaseParent);
   LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
   bool mHadCompositor = mCompositor.get() != nullptr;
   mController = nullptr;
@@ -52,14 +52,14 @@ EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
 }
 
 void
-EmbedLiteViewThreadParent::ActorDestroy(ActorDestroyReason aWhy)
+EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
   mController = nullptr;
 }
 
 void
-EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
+EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 {
   LOGT();
   mCompositor = aCompositor;
@@ -69,7 +69,7 @@ EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::UpdateScrollController()
+EmbedLiteViewBaseParent::UpdateScrollController()
 {
   if (mViewAPIDestroyed) {
     return NS_OK;
@@ -89,7 +89,7 @@ EmbedLiteViewThreadParent::UpdateScrollController()
 // Child notification
 
 bool
-EmbedLiteViewThreadParent::RecvInitialized()
+EmbedLiteViewBaseParent::RecvInitialized()
 {
   if (mViewAPIDestroyed) {
     return true;
@@ -101,7 +101,7 @@ EmbedLiteViewThreadParent::RecvInitialized()
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnLocationChanged(const nsCString& aLocation,
+EmbedLiteViewBaseParent::RecvOnLocationChanged(const nsCString& aLocation,
                                                  const bool& aCanGoBack,
                                                  const bool& aCanGoForward)
 {
@@ -116,7 +116,7 @@ EmbedLiteViewThreadParent::RecvOnLocationChanged(const nsCString& aLocation,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnLoadStarted(const nsCString& aLocation)
+EmbedLiteViewBaseParent::RecvOnLoadStarted(const nsCString& aLocation)
 {
   LOGNI();
   if (mViewAPIDestroyed) {
@@ -129,7 +129,7 @@ EmbedLiteViewThreadParent::RecvOnLoadStarted(const nsCString& aLocation)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnLoadFinished()
+EmbedLiteViewBaseParent::RecvOnLoadFinished()
 {
   LOGNI();
   if (mViewAPIDestroyed) {
@@ -142,7 +142,7 @@ EmbedLiteViewThreadParent::RecvOnLoadFinished()
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnWindowCloseRequested()
+EmbedLiteViewBaseParent::RecvOnWindowCloseRequested()
 {
   LOGNI();
   if (mViewAPIDestroyed) {
@@ -155,7 +155,7 @@ EmbedLiteViewThreadParent::RecvOnWindowCloseRequested()
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnLoadRedirect()
+EmbedLiteViewBaseParent::RecvOnLoadRedirect()
 {
   LOGNI();
   if (mViewAPIDestroyed) {
@@ -168,7 +168,7 @@ EmbedLiteViewThreadParent::RecvOnLoadRedirect()
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnLoadProgress(const int32_t& aProgress, const int32_t& aCurTotal, const int32_t& aMaxTotal)
+EmbedLiteViewBaseParent::RecvOnLoadProgress(const int32_t& aProgress, const int32_t& aCurTotal, const int32_t& aMaxTotal)
 {
   LOGNI("progress:%i", aProgress);
   NS_ENSURE_TRUE(mView, true);
@@ -181,7 +181,7 @@ EmbedLiteViewThreadParent::RecvOnLoadProgress(const int32_t& aProgress, const in
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnSecurityChanged(const nsCString& aStatus,
+EmbedLiteViewBaseParent::RecvOnSecurityChanged(const nsCString& aStatus,
                                                  const uint32_t& aState)
 {
   LOGNI();
@@ -195,7 +195,7 @@ EmbedLiteViewThreadParent::RecvOnSecurityChanged(const nsCString& aStatus,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnFirstPaint(const int32_t& aX,
+EmbedLiteViewBaseParent::RecvOnFirstPaint(const int32_t& aX,
                                             const int32_t& aY)
 {
   LOGNI();
@@ -209,7 +209,7 @@ EmbedLiteViewThreadParent::RecvOnFirstPaint(const int32_t& aX,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnScrolledAreaChanged(const uint32_t& aWidth,
+EmbedLiteViewBaseParent::RecvOnScrolledAreaChanged(const uint32_t& aWidth,
                                                      const uint32_t& aHeight)
 {
   LOGNI("area[%u,%u]", aWidth, aHeight);
@@ -223,7 +223,7 @@ EmbedLiteViewThreadParent::RecvOnScrolledAreaChanged(const uint32_t& aWidth,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnScrollChanged(const int32_t& offSetX,
+EmbedLiteViewBaseParent::RecvOnScrollChanged(const int32_t& offSetX,
                                                const int32_t& offSetY)
 {
   LOGNI("off[%i,%i]", offSetX, offSetY);
@@ -237,7 +237,7 @@ EmbedLiteViewThreadParent::RecvOnScrollChanged(const int32_t& offSetX,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
+EmbedLiteViewBaseParent::RecvOnTitleChanged(const nsString& aTitle)
 {
   if (mViewAPIDestroyed) {
     return true;
@@ -248,7 +248,7 @@ EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
+EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                                                      const ViewID& aViewId,
                                                      const bool& aIsRoot,
                                                      const ZoomConstraints& aConstraints)
@@ -264,7 +264,7 @@ EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellI
 }
 
 bool
-EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
+EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                           const ViewID& aViewId,
                                           const CSSRect& aRect)
 {
@@ -275,7 +275,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+EmbedLiteViewBaseParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedTouch(aInputBlockId, aPreventDefault);
@@ -284,7 +284,7 @@ EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& a
 }
 
 bool
-EmbedLiteViewThreadParent::RecvSetBackgroundColor(const nscolor& aColor)
+EmbedLiteViewBaseParent::RecvSetBackgroundColor(const nscolor& aColor)
 {
   if (mViewAPIDestroyed) {
     return true;
@@ -298,7 +298,7 @@ EmbedLiteViewThreadParent::RecvSetBackgroundColor(const nscolor& aColor)
 // Incoming API calls
 
 bool
-EmbedLiteViewThreadParent::RecvAsyncMessage(const nsString& aMessage,
+EmbedLiteViewBaseParent::RecvAsyncMessage(const nsString& aMessage,
                                             const nsString& aData)
 {
   if (mViewAPIDestroyed) {
@@ -314,7 +314,7 @@ EmbedLiteViewThreadParent::RecvAsyncMessage(const nsString& aMessage,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
+EmbedLiteViewBaseParent::RecvSyncMessage(const nsString& aMessage,
                                            const nsString& aJSON,
                                            InfallibleTArray<nsString>* aJSONRetVal)
 {
@@ -334,7 +334,7 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvRpcMessage(const nsString& aMessage,
+EmbedLiteViewBaseParent::RecvRpcMessage(const nsString& aMessage,
                                           const nsString& aJSON,
                                           InfallibleTArray<nsString>* aJSONRetVal)
 {
@@ -357,7 +357,7 @@ _depth_to_gfxformat(int depth)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
+EmbedLiteViewBaseParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
 {
   LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
   if (mCompositor) {
@@ -371,7 +371,7 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetViewSize(int width, int height)
+EmbedLiteViewBaseParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
   mViewSize = ScreenIntSize(width, height);
@@ -381,14 +381,14 @@ EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvGetGLViewSize(gfxSize* aSize)
+EmbedLiteViewBaseParent::RecvGetGLViewSize(gfxSize* aSize)
 {
   *aSize = mGLViewPortSize;
   return true;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
+EmbedLiteViewBaseParent::SetGLViewPortSize(int width, int height)
 {
   mGLViewPortSize = gfxSize(width, height);
   if (mCompositor) {
@@ -400,7 +400,7 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::ResumeRendering()
+EmbedLiteViewBaseParent::ResumeRendering()
 {
   if (mCompositor) {
     mCompositor->ResumeRendering();
@@ -410,7 +410,7 @@ EmbedLiteViewThreadParent::ResumeRendering()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SuspendRendering()
+EmbedLiteViewBaseParent::SuspendRendering()
 {
   if (mCompositor) {
     mCompositor->SuspendRendering();
@@ -420,7 +420,7 @@ EmbedLiteViewThreadParent::SuspendRendering()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
+EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
@@ -449,7 +449,7 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
+EmbedLiteViewBaseParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
@@ -463,7 +463,7 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::ViewAPIDestroyed()
+EmbedLiteViewBaseParent::ViewAPIDestroyed()
 {
   if (mController) {
     mController->ClearRenderFrame();
@@ -475,7 +475,7 @@ EmbedLiteViewThreadParent::ViewAPIDestroyed()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
+EmbedLiteViewBaseParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
   unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
@@ -484,7 +484,7 @@ EmbedLiteViewThreadParent::SendKeyPress(int domKeyCode, int gmodifiers, int char
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
+EmbedLiteViewBaseParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
   unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
@@ -493,7 +493,7 @@ EmbedLiteViewThreadParent::SendKeyRelease(int domKeyCode, int gmodifiers, int ch
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
+EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp(), modifiers);
@@ -510,7 +510,7 @@ EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int but
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
+EmbedLiteViewBaseParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp(), modifiers);
@@ -528,7 +528,7 @@ EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int b
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
+EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp(), modifiers);
@@ -546,7 +546,7 @@ EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int butt
 }
 
 bool
-EmbedLiteViewThreadParent::RecvGetInputContext(int32_t* aIMEEnabled,
+EmbedLiteViewBaseParent::RecvGetInputContext(int32_t* aIMEEnabled,
                                                int32_t* aIMEOpen,
                                                intptr_t* aNativeIMEContext)
 {
@@ -561,7 +561,7 @@ EmbedLiteViewThreadParent::RecvGetInputContext(int32_t* aIMEEnabled,
 }
 
 bool
-EmbedLiteViewThreadParent::RecvSetInputContext(const int32_t& aIMEEnabled,
+EmbedLiteViewBaseParent::RecvSetInputContext(const int32_t& aIMEEnabled,
                                                const int32_t& aIMEOpen,
                                                const nsString& aType,
                                                const nsString& aInputmode,
@@ -583,7 +583,7 @@ EmbedLiteViewThreadParent::RecvSetInputContext(const int32_t& aIMEEnabled,
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
+EmbedLiteViewBaseParent::GetUniqueID(uint32_t *aId)
 {
   *aId = mId;
 
@@ -591,7 +591,7 @@ EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
+EmbedLiteViewBaseParent::GetPlatformImage(void* *aImage, int* width, int* height)
 {
   NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
   *aImage = mCompositor->GetPlatformImage(width, height);
@@ -599,7 +599,7 @@ EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* heig
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetEmbedAPIView(EmbedLiteView *aView)
+EmbedLiteViewBaseParent::SetEmbedAPIView(EmbedLiteView *aView)
 {
   LOGT();
   mView = aView;
