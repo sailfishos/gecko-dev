@@ -8,11 +8,13 @@
 #include "EmbedLiteViewThreadParent.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteApp.h"
+#include "mozilla/layers/PCompositorParent.h"
 
 #include "mozilla/unused.h"
 
 using namespace base;
 using namespace mozilla::ipc;
+using namespace mozilla::layers;
 
 namespace mozilla {
 namespace embedlite {
@@ -103,6 +105,14 @@ EmbedLiteAppThreadParent::RecvObserve(const nsCString& topic,
   LOGT("topic:%s", topic.get());
   mApp->GetListener()->OnObserve(topic.get(), data.get());
   return true;
+}
+
+PCompositorParent*
+EmbedLiteAppThreadParent::AllocPCompositorParent(Transport* aTransport,
+                                                  ProcessId aOtherProcess)
+{
+  LOGT();
+  return 0;
 }
 
 } // namespace embedlite

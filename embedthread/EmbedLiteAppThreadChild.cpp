@@ -40,6 +40,13 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint
   return view;
 }
 
+PCompositorChild*
+EmbedLiteAppThreadChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
+{
+  LOGT();
+  return 0;
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

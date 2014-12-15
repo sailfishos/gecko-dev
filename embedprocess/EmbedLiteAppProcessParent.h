@@ -54,6 +54,9 @@ protected:
   virtual void
   ActorDestroy(ActorDestroyReason aWhy);
 
+  virtual PCompositorParent*
+  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
+
 private:
   virtual ~EmbedLiteAppProcessParent();
   void ShutDownProcess(bool aCloseWithError);
