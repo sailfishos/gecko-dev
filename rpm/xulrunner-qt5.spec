@@ -90,6 +90,7 @@ echo "ac_add_options --disable-installer" >> mozconfig
 echo "ac_add_options --disable-javaxpcom" >> mozconfig
 echo "ac_add_options --disable-crashreporter" >> mozconfig
 echo "ac_add_options --enable-gold" >> mozconfig
+echo "ac_add_options --disable-startupcache" >> mozconfig
 echo "ac_add_options --without-x" >> mozconfig
 echo "ac_add_options --with-app-name=%{name}" >> mozconfig
 export MOZCONFIG=$PWD/mozconfig
