@@ -40,9 +40,14 @@ using namespace mozilla::layers;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteAppProcessChild* EmbedLiteAppProcessChild::sSingleton;
+EmbedLiteAppProcessChild*
+EmbedLiteAppProcessChild::GetSingleton()
+{
+  return static_cast<EmbedLiteAppProcessChild*>(EmbedLiteAppBaseChild::GetInstance());
+}
 
 EmbedLiteAppProcessChild::EmbedLiteAppProcessChild()
+  : EmbedLiteAppBaseChild(nullptr)
 {
   LOGT();
   nsDebugImpl::SetMultiprocessMode("Child");
@@ -78,8 +83,6 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
   SetTransport(aChannel);
 #endif
 
-  NS_ASSERTION(!sSingleton, "only one ContentChild per child");
-
   // Once we start sending IPC messages, we need the thread manager to be
   // initialized so we can deal with the responses. Do that here before we
   // try to construct the crash reporter.
@@ -91,7 +94,6 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
   if (!Open(aChannel, aParentHandle, aIOLoop)) {
     return false;
   }
-  sSingleton = this;
 
   return true;
 }
@@ -120,64 +122,6 @@ EmbedLiteAppProcessChild::InitXPCOM()
   unused << SendInitialized();
 }
 
-nsresult
-EmbedLiteAppProcessChild::InitAppService()
-{
-  LOGT();
-
-  nsCOMPtr<nsIComponentRegistrar> cr;
-  nsresult rv = NS_GetComponentRegistrar(getter_AddRefs(cr));
-  NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsIComponentManager> cm;
-  rv = NS_GetComponentManager (getter_AddRefs (cm));
-  NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
-
-  {
-    nsCOMPtr<nsIFactory> f = new mozilla::GenericFactory(EmbedLiteAppServiceConstructor);
-    if (!f) {
-      NS_WARNING("Unable to create factory for component");
-      return NS_ERROR_FAILURE;
-    }
-
-    nsCID appCID = NS_EMBED_LITE_APP_SERVICE_CID;
-    rv = cr->RegisterFactory(appCID, NS_EMBED_LITE_APP_SERVICE_CLASSNAME,
-                             NS_EMBED_LITE_APP_CONTRACTID, f);
-  }
-
-  {
-    nsCOMPtr<nsIFactory> f = new mozilla::GenericFactory(EmbedLiteJSONConstructor);
-    if (!f) {
-      NS_WARNING("Unable to create factory for component");
-      return NS_ERROR_FAILURE;
-    }
-
-    nsCID appCID = NS_IEMBEDLITEJSON_IID;
-    rv = cr->RegisterFactory(appCID, NS_EMBED_LITE_JSON_SERVICE_CLASSNAME,
-                             NS_EMBED_LITE_JSON_CONTRACTID, f);
-  }
-
-  return NS_OK;
-}
-
-void
-EmbedLiteAppProcessChild::InitWindowWatcher()
-{
-  // create an nsWindowCreator and give it to the WindowWatcher service
-  nsCOMPtr<nsIWindowCreator> creator(new WindowCreator(this));
-  if (!creator) {
-    LOGE("Out of memory");
-    return;
-  }
-  nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
-  if (!wwatch) {
-    LOGE("Fail to get watcher service");
-    return;
-  }
-  LOGT("Created window watcher!");
-  wwatch->SetWindowCreator(creator);
-}
-
 void
 EmbedLiteAppProcessChild::ActorDestroy(ActorDestroyReason aWhy)
 {
@@ -204,112 +148,6 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uin
   EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId, isPrivateWindow);
   view->AddRef();
   return view;
-}
-
-bool
-EmbedLiteAppProcessChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
-{
-  LOGT();
-  EmbedLiteViewProcessChild* p = static_cast<EmbedLiteViewProcessChild*>(actor);
-  p->Release();
-  return true;
-}
-
-/*---------------------------------*/
-
-EmbedLiteViewChildIface*
-EmbedLiteAppProcessChild::GetViewByID(uint32_t aId)
-{
-  LOGNI();
-  return nullptr;
-}
-
-EmbedLiteViewChildIface*
-EmbedLiteAppProcessChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
-{
-  LOGNI();
-  return nullptr;
-}
-
-bool EmbedLiteAppProcessChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
-{
-  LOGNI();
-  return false;
-}
-
-/*---------------------------------*/
-
-bool
-EmbedLiteAppProcessChild::RecvPreDestroy()
-{
-  LOGT();
-  SendReadyToShutdown();
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvSetBoolPref(const nsCString& aName, const bool& aValue)
-{
-  LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
-  return true;
-}
-
-bool EmbedLiteAppProcessChild::RecvSetCharPref(const nsCString& aName, const nsCString& aValue)
-{
-  LOGC("EmbedPrefs", "n:%s, v:%s", aName.get(), aValue.get());
-  return true;
-}
-
-bool EmbedLiteAppProcessChild::RecvSetIntPref(const nsCString& aName, const int& aValue)
-{
-  LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvLoadGlobalStyleSheet(const nsCString& uri, const bool& aEnable)
-{
-  return true;
-}
-
-bool EmbedLiteAppProcessChild::RecvLoadComponentManifest(const nsCString& manifest)
-{
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvObserve(const nsCString& topic, const nsString& data)
-{
-  LOGT("topic:%s", topic.get());
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvAddObserver(const nsCString& topic)
-{
-  LOGT("topic:%s", topic.get());
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvRemoveObserver(const nsCString& topic)
-{
-  LOGT("topic:%s", topic.get());
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvAddObservers(const InfallibleTArray<nsCString>& observers)
-{
-  LOGT();
-  return true;
-}
-
-bool
-EmbedLiteAppProcessChild::RecvRemoveObservers(const InfallibleTArray<nsCString>& observers)
-{
-  LOGT();
-  return true;
 }
 
 } // namespace embedlite

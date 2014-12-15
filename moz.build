@@ -29,6 +29,7 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'embedprocess/EmbedLiteAppProcessChild.h',
+    'embedshared/EmbedLiteAppBaseChild.h',
     'embedshared/EmbedLiteAppChildIface.h',
     'embedshared/EmbedLiteViewChildIface.h',
     'utils/EmbedLog.h',

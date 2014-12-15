@@ -9,7 +9,6 @@
 #include "mozilla/embedlite/PEmbedLiteAppChild.h"  // for PEmbedLiteAppChild
 #include "nsIObserver.h"                           // for nsIObserver
 #include "EmbedLiteAppChildIface.h"
-#include "EmbedLiteViewBaseChild.h"
 
 class EmbedLiteAppService;
 class nsIWebBrowserChrome;
@@ -17,6 +16,7 @@ class nsIWebBrowserChrome;
 namespace mozilla {
 namespace embedlite {
 
+class EmbedLiteViewBaseChild;
 class EmbedLiteAppBaseChild : public PEmbedLiteAppChild,
                               public nsIObserver,
                               public EmbedLiteAppChildIface
@@ -57,13 +57,14 @@ protected:
 protected:
   MessageLoop* mParentLoop;
   std::map<uint32_t, EmbedLiteViewBaseChild*> mWeakViewMap;
-
-private:
   void InitWindowWatcher();
   nsresult InitAppService();
+
+private:
   friend class EmbedLiteViewBaseChild;
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
+  friend class EmbedLiteAppProcessChild;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppBaseChild);
 };
