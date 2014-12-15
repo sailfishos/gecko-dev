@@ -1,4 +1,4 @@
-%define greversion 31.0a1
+%define greversion 35.0
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -8,17 +8,18 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
+Patch0:     add-sailfishos-org-certs.patch
+Patch1:     Bug-973619-Update-FrameMetrics-zoom-when-viewport-set.patch
+Patch2:     exclude-wptrunner.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(libpulse)
+BuildRequires:  pkgconfig(libproxy-1.0)
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-app-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
-%ifarch armv7hl armv7tnhl
-BuildRequires:  pkgconfig(libresourceqt5)
-%endif
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
@@ -36,7 +37,7 @@ BuildRequires:  yasm
 BuildRequires:  fdupes
 
 %description
-Mozilla XUL runner
+Mozilla XUL runner.
 
 %package devel
 Group: Applications/Internet
@@ -57,10 +58,13 @@ Tests and misc files for xulrunner.
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
+%patch1 -p1
+%patch2 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done
@@ -82,6 +86,7 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
 echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
+echo "ac_add_options --enable-libproxy" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
 echo "ac_add_options --disable-mochitest" >> mozconfig
 echo "ac_add_options --disable-installer" >> mozconfig
@@ -94,7 +99,7 @@ export MOZCONFIG=$PWD/mozconfig
 
 %install
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done
@@ -119,6 +124,7 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %files
 %defattr(-,root,root,-)
 %attr(755,-,-) %{_bindir}/*
+%dir %{_libdir}/%{name}-%{greversion}
 %dir %{_libdir}/%{name}-%{greversion}/defaults
 %{_libdir}/%{name}-%{greversion}/*.so
 %{_libdir}/%{name}-%{greversion}/omni.ja

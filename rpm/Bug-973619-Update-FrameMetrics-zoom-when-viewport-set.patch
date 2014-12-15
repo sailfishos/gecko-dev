@@ -1,0 +1,24 @@
+From 464ddab5a0529a7455a9b9909be7fc1114a0f71b Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 15 Dec 2014 14:27:35 +0200
+Subject: Bug 973619 - Update FrameMetrics zoom when viewport is dynamically set
+
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 3e9ea30..ee9bfaa 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -2692,6 +2692,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     // change, so we can accept the viewport it's calculated.
+     if (mFrameMetrics.GetViewport().width != aLayerMetrics.GetViewport().width ||
+         mFrameMetrics.GetViewport().height != aLayerMetrics.GetViewport().height) {
++      mFrameMetrics.SetZoom(aLayerMetrics.GetZoom());
+       needContentRepaint = true;
+     }
+     mFrameMetrics.SetViewport(aLayerMetrics.GetViewport());
+-- 
+1.9.1
+

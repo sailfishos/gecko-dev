@@ -1,0 +1,12 @@
+diff --git a/build/mach_bootstrap.py b/build/mach_bootstrap.py
+index 97bafb8..69ea646 100644
+--- a/build/mach_bootstrap.py
++++ b/build/mach_bootstrap.py
+@@ -82,7 +82,6 @@ MACH_MODULES = [
+     'testing/mochitest/mach_commands.py',
+     'testing/xpcshell/mach_commands.py',
+     'testing/talos/mach_commands.py',
+-    'testing/web-platform/mach_commands.py',
+     'testing/xpcshell/mach_commands.py',
+     'tools/docs/mach_commands.py',
+     'tools/mercurial/mach_commands.py',
