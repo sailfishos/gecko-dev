@@ -271,6 +271,15 @@ EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
   }
 }
 
+PCompositorParent*
+EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
+                                                  ProcessId aOtherProcess)
+{
+  LOGT();
+  return 0;
+}
+
+
 } // namespace embedlite
 } // namespace mozilla
 

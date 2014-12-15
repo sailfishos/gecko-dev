@@ -9,6 +9,11 @@
 #include "mozilla/embedlite/PEmbedLiteAppParent.h"
 
 namespace mozilla {
+
+namespace layers {
+class PCompositorParent;
+} // namespace layers
+
 namespace embedlite {
 
 class EmbedLiteApp;
@@ -40,6 +45,9 @@ protected:
           const uint32_t& contextFlags,
           uint32_t* createdID,
           bool* cancel) MOZ_OVERRIDE;
+
+  virtual PCompositorParent*
+  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
 
 private:
   virtual ~EmbedLiteAppThreadParent();

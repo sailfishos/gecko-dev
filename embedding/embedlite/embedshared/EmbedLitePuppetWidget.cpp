@@ -104,6 +104,7 @@ EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
 NS_IMETHODIMP
 EmbedLitePuppetWidget::SetParent(nsIWidget* aParent)
 {
+  LOGT();
   mParent = aParent;
   return NS_OK;
 }
@@ -164,11 +165,10 @@ EmbedLitePuppetWidget::CreateChild(const nsIntRect&  aRect,
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Destroy()
 {
+  LOGT();
   if (mOnDestroyCalled) {
     return NS_OK;
   }
-
-  LOGF();
 
   mOnDestroyCalled = true;
 
@@ -192,7 +192,7 @@ EmbedLitePuppetWidget::Destroy()
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Show(bool aState)
 {
-  LOGF("t:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
+  LOGT("t:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
   NS_ASSERTION(mEnabled,
                "does it make sense to Show()/Hide() a disabled widget?");
 
@@ -222,7 +222,7 @@ EmbedLitePuppetWidget::Resize(double aWidth,
                               bool    aRepaint)
 {
   nsIntRect oldBounds = mBounds;
-  LOGF("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
+  LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
   mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
   nsIWidget* topWidget = GetTopLevelWidget();
   if (topWidget)
@@ -252,7 +252,7 @@ EmbedLitePuppetWidget::Resize(double aWidth,
 NS_IMETHODIMP
 EmbedLitePuppetWidget::SetFocus(bool aRaise)
 {
-  LOGNI();
+  LOGT();
   return NS_OK;
 }
 
@@ -322,6 +322,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
 NS_IMETHODIMP
 EmbedLitePuppetWidget::ResetInputState()
 {
+  LOGT();
   RemoveIMEComposition();
   return NS_OK;
 }
@@ -331,7 +332,7 @@ NS_IMETHODIMP_(void)
 EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
                                        const InputContextAction& aAction)
 {
-  LOGF("IME: SetInputContext: s=0x%X, 0x%X, action=0x%X, 0x%X",
+  LOGT("IME: SetInputContext: s=0x%X, 0x%X, action=0x%X, 0x%X",
        aContext.mIMEState.mEnabled, aContext.mIMEState.mOpen,
        aAction.mCause, aAction.mFocusChange);
 
@@ -379,7 +380,7 @@ EmbedLitePuppetWidget::GetInputContext()
 
 NS_IMETHODIMP EmbedLitePuppetWidget::OnIMEFocusChange(bool aFocus)
 {
-  LOGF("aFocus:%i", aFocus);
+  LOGT("aFocus:%i", aFocus);
   if (!aFocus) {
     mIMEComposing = false;
     mIMEComposingText.Truncate();
@@ -439,7 +440,7 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     return mLayerManager;
   }
 
-  LOGF();
+  LOGT();
 
   nsIWidget* topWidget = GetTopLevelWidget();
   if (topWidget != this) {
@@ -490,12 +491,14 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
 CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
+  LOGT();
   gfxPlatform::GetPlatform();
   return new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
 }
 
 void EmbedLitePuppetWidget::CreateCompositor()
 {
+  LOGT();
   gfxSize glSize = mEmbed->GetGLViewSize();
   CreateCompositor(glSize.width, glSize.height);
 }
@@ -515,6 +518,7 @@ CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
 
 void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
+  LOGT();
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
   nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
