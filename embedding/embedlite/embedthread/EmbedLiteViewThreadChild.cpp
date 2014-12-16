@@ -897,8 +897,11 @@ EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid&
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward)
+EmbedLiteViewThreadChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
+  if (!aIsSameDocument) {
+    mHelper->mContentDocumentIsDisplayed = false;
+  }
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
