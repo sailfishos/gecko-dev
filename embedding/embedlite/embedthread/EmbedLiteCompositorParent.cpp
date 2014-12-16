@@ -124,7 +124,7 @@ EmbedLiteCompositorParent::UpdateTransformState()
   }
 
   if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
-    context->ResizeOffscreen(gfx::IntSize(mLastViewSize.width, mLastViewSize.height));
+    context->ResizeOffscreen(mLastViewSize);
     ScheduleRenderOnCompositorThread();
   }
 }
