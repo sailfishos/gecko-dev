@@ -21,6 +21,7 @@ Patch9:     workaround-for-bug-10381-late-access-message-loop.patch
 Patch10:    0002-config-Define-HAS_NEMO_RESOURCE.patch
 Patch11:    disabledestructible.patch
 Patch12:    0001-Don-t-zoom-video-when-in-full-screen.patch
+Patch13:    Disallow-image-locking-no-matter-what.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -81,6 +82,7 @@ Tests and misc files for xulrunner
 %patch10 -p1
 %patch11 -p1
 %patch12 -p1
+%patch13 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
