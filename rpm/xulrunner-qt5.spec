@@ -11,6 +11,7 @@ Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
 Patch1:     Bug-973619-Update-FrameMetrics-zoom-when-viewport-set.patch
 Patch2:     exclude-wptrunner.patch
+Patch3:     Disallow-image-locking-no-matter-what-jb25287.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -61,6 +62,7 @@ Tests and misc files for xulrunner.
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
+%patch3 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1

@@ -1,0 +1,13 @@
+diff --git a/content/base/src/nsDocument.cpp b/content/base/src/nsDocument.cpp
+index f292c05..9f86000 100644
+--- a/content/base/src/nsDocument.cpp
++++ b/content/base/src/nsDocument.cpp
+@@ -10207,6 +10207,8 @@ nsDocument::SetImageLockingState(bool aLocked)
+       !Preferences::GetBool("image.mem.allow_locking_in_content_processes", true)) {
+     return NS_OK;
+   }
++  // In embedlite we don't allow locking even if process type is not content.
++  return NS_OK;
+ 
+   // If there's no change, there's nothing to do.
+   if (mLockingImages == aLocked)
