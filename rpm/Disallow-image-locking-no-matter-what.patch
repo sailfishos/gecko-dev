@@ -1,0 +1,25 @@
+From 2d214b02cb06695a4c909d544007c8592e62fe82 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Thu, 18 Dec 2014 16:59:07 +0200
+Subject: [PATCH] PATCH Disallow image locking no matter what
+
+---
+ content/base/src/nsDocument.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/content/base/src/nsDocument.cpp b/content/base/src/nsDocument.cpp
+index 3493bce..8bd0003 100644
+--- a/content/base/src/nsDocument.cpp
++++ b/content/base/src/nsDocument.cpp
+@@ -10040,6 +10040,8 @@ nsDocument::SetImageLockingState(bool aLocked)
+       !Preferences::GetBool("image.mem.allow_locking_in_content_processes", true)) {
+     return NS_OK;
+   }
++  // In embedlite we don't allow locking even if process type is not content.
++  return NS_OK;
+ 
+   // If there's no change, there's nothing to do.
+   if (mLockingImages == aLocked)
+-- 
+1.9.1
+
