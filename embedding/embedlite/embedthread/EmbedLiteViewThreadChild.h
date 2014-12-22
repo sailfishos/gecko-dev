@@ -27,7 +27,7 @@ class EmbedLiteViewThreadChild : public PEmbedLiteViewChild,
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewThreadChild)
 public:
-  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId);
+  EmbedLiteViewThreadChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -123,7 +123,7 @@ private:
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
    */
   void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  void InitGeckoWindow(const uint32_t& parentId);
+  void InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
 
