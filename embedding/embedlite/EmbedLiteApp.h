@@ -104,7 +104,7 @@ public:
   // Must be called from same thread as StartChildThread, and before Stop()
   virtual bool StopChildThread();
 
-  virtual EmbedLiteView* CreateView(uint32_t aParent = 0);
+  virtual EmbedLiteView* CreateView(uint32_t aParent = 0, bool aIsPrivateWindow = false);
   virtual void DestroyView(EmbedLiteView* aView);
 
   virtual void SetIsAccelerated(bool aIsAccelerated);
