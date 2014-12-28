@@ -17,6 +17,7 @@
 #include "gfxImageSurface.h"
 #include "mozilla/Base64.h"
 #include "imgIEncoder.h"
+#include "InputData.h"
 
 namespace mozilla {
 namespace embedlite {

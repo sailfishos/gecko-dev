@@ -10,11 +10,11 @@
 #include "nsStringGlue.h"
 #include "gfxMatrix.h"
 #include "nsRect.h"
-#include "InputData.h"
 
 class EmbedLiteViewIface;
 
 namespace mozilla {
+class InputData;
 namespace embedlite {
 
 class EmbedLiteViewThreadParent;

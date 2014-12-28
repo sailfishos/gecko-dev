@@ -287,11 +287,11 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::ContentReceivedTouch(uint32_t aWinId, bool aPreventDefault)
+EmbedLiteAppService::ContentReceivedInputBlock(uint32_t aWinId, bool aPreventDefault)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->ContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
+  view->ContentReceivedInputBlock(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
   return NS_OK;
 }
 

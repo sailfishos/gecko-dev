@@ -97,7 +97,7 @@ parent:
      */
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     SetBackgroundColor(nscolor color);
-    ContentReceivedTouch(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
+    ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
     sync GetGLViewSize()
       returns (gfxSize aSize);
 

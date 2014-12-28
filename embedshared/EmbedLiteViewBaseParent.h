@@ -92,9 +92,9 @@ protected:
                               const ViewID& aViewId,
                               const CSSRect& aRect) MOZ_OVERRIDE;
   virtual bool RecvSetBackgroundColor(const nscolor& aColor) MOZ_OVERRIDE;
-  virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid,
-                                        const uint64_t& aInputBlockId,
-                                        const bool& aPreventDefault) MOZ_OVERRIDE;
+  virtual bool RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid,
+                                             const uint64_t& aInputBlockId,
+                                             const bool& aPreventDefault) MOZ_OVERRIDE;
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,

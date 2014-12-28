@@ -35,8 +35,6 @@
 #include "MacQuirks.h"
 #endif
 
-#include "mozilla/Telemetry.h"
-
 #ifdef WIN32
 //TODO: make this file fully X platform
 #  include <windows.h>
@@ -57,7 +55,6 @@
 #ifdef XRE_HAS_DLL_BLOCKLIST
 XRE_SetupDllBlocklistType XRE_SetupDllBlocklist = 0;
 #endif
-XRE_TelemetryAccumulateType XRE_TelemetryAccumulate = 0;
 XRE_GetEmbedLiteType XRE_GetEmbedLite = 0;
 XRE_InitEmbedding2Type XRE_InitEmbedding2 = 0;
 XRE_TermEmbeddingType XRE_TermEmbedding = 0;
@@ -84,7 +81,7 @@ static inline bool IsLibXulInThePath(const char* path, std::string& xpcomPath)
 
 bool LoadEmbedLite(int argc = 0, char** argv = 0)
 {
-  if (XRE_TelemetryAccumulate) {
+  if (XRE_GetEmbedLite) {
     printf("EmbedLite already loaded\n");
     return false;
   }
@@ -155,20 +152,6 @@ bool LoadEmbedLite(int argc = 0, char** argv = 0)
   TriggerQuirks();
 #endif
 
-  int gotCounters;
-#if defined(XP_UNIX)
-  struct rusage initialRUsage;
-  gotCounters = !getrusage(RUSAGE_SELF, &initialRUsage);
-#elif defined(XP_WIN)
-  // GetProcessIoCounters().ReadOperationCount seems to have little to
-  // do with actual read operations. It reports 0 or 1 at this stage
-  // in the program. Luckily 1 coincides with when prefetch is
-  // enabled. If Windows prefetch didn't happen we can do our own
-  // faster dll preloading.
-  IO_COUNTERS ioCounters;
-  gotCounters = GetProcessIoCounters(GetCurrentProcess(), &ioCounters);
-  if (gotCounters && !ioCounters.ReadOperationCount)
-#endif
   {
     XPCOMGlueEnablePreload();
   }
@@ -186,7 +169,6 @@ bool LoadEmbedLite(int argc = 0, char** argv = 0)
 #ifdef XRE_HAS_DLL_BLOCKLIST
     { "XRE_SetupDllBlocklist", (NSFuncPtr*)& XRE_SetupDllBlocklist },
 #endif
-    { "XRE_TelemetryAccumulate", (NSFuncPtr*)& XRE_TelemetryAccumulate },
     { "XRE_InitEmbedding2", (NSFuncPtr*)& XRE_InitEmbedding2},
     { "XRE_TermEmbedding", (NSFuncPtr*)& XRE_TermEmbedding},
     { "XRE_NotifyProfile", (NSFuncPtr*)& XRE_NotifyProfile},
@@ -205,30 +187,6 @@ bool LoadEmbedLite(int argc = 0, char** argv = 0)
 #ifdef XRE_HAS_DLL_BLOCKLIST
   XRE_SetupDllBlocklist();
 #endif
-
-  if (gotCounters) {
-#if defined(XP_WIN)
-    XRE_TelemetryAccumulate(mozilla::Telemetry::EARLY_GLUESTARTUP_READ_OPS,
-                            int(ioCounters.ReadOperationCount));
-    XRE_TelemetryAccumulate(mozilla::Telemetry::EARLY_GLUESTARTUP_READ_TRANSFER,
-                            int(ioCounters.ReadTransferCount / 1024));
-    IO_COUNTERS newIoCounters;
-    if (GetProcessIoCounters(GetCurrentProcess(), &newIoCounters)) {
-      XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_READ_OPS,
-                              int(newIoCounters.ReadOperationCount - ioCounters.ReadOperationCount));
-      XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_READ_TRANSFER,
-                              int((newIoCounters.ReadTransferCount - ioCounters.ReadTransferCount) / 1024));
-    }
-#elif defined(XP_UNIX)
-    XRE_TelemetryAccumulate(mozilla::Telemetry::EARLY_GLUESTARTUP_HARD_FAULTS,
-                            int(initialRUsage.ru_majflt));
-    struct rusage newRUsage;
-    if (!getrusage(RUSAGE_SELF, &newRUsage)) {
-      XRE_TelemetryAccumulate(mozilla::Telemetry::GLUESTARTUP_HARD_FAULTS,
-                              int(newRUsage.ru_majflt - initialRUsage.ru_majflt));
-    }
-#endif
-  }
 
   return true;
 }

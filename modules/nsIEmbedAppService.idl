@@ -64,7 +64,7 @@ interface nsIEmbedAppService : nsISupports
     // AZPC Interface
     void getCompositedRectInCSS(in nsConstFrameMetrics aMetrics, out float aX, out float aY, out float aWidth, out float aHeight);
     void zoomToRect(in uint32_t aId, in float aX, in float aY, in float aWidth, in float aHeight);
-    void contentReceivedTouch(in uint32_t aId, in boolean aPreventDefault);
+    void contentReceivedInputBlock(in uint32_t aId, in boolean aPreventDefault);
     // Not sure how else to add event listener from js component without browser
     void chromeEventHandler(in nsIDOMWindow aWin, [retval] out nsIDOMEventTarget eventHandler);
     void getAnyEmbedWindow([optional] in boolean aActive, [retval] out nsIDOMWindow aWin);

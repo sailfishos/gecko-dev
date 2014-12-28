@@ -275,10 +275,10 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
 }
 
 bool
-EmbedLiteViewBaseParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
   if (mController->GetManager()) {
-    mController->GetManager()->ContentReceivedTouch(aInputBlockId, aPreventDefault);
+    mController->GetManager()->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
   }
   return true;
 }
