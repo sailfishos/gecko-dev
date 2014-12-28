@@ -1031,7 +1031,7 @@ imgLoader::imgLoader()
 already_AddRefed<imgLoader>
 imgLoader::GetInstance()
 {
-  static StaticRefPtr<imgLoader> singleton;
+  static nsRefPtr<imgLoader> singleton;
   if (!singleton) {
     singleton = imgLoader::Create();
     if (!singleton)
@@ -2304,10 +2304,19 @@ nsresult imgLoader::LoadImageWithChannel(nsIChannel *channel, imgINotificationOb
   return rv;
 }
 
-bool imgLoader::SupportImageWithMimeType(const char* aMimeType)
+bool
+imgLoader::SupportImageWithMimeType(const char* aMimeType,
+                                    AcceptedMimeTypes aAccept
+                                      /* = AcceptedMimeTypes::IMAGES */)
 {
   nsAutoCString mimeType(aMimeType);
   ToLowerCase(mimeType);
+
+  if (aAccept == AcceptedMimeTypes::IMAGES_AND_DOCUMENTS &&
+      mimeType.EqualsLiteral("image/svg+xml")) {
+    return true;
+  }
+
   return Image::GetDecoderType(mimeType.get()) != Image::eDecoderType_unknown;
 }
 

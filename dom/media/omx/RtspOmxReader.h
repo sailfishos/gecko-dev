@@ -46,8 +46,9 @@ public:
   }
 
   // Implement a time-based seek instead of byte-based..
-  virtual void Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
-                    int64_t aCurrentTime) MOZ_FINAL MOZ_OVERRIDE;
+  virtual nsRefPtr<SeekPromise>
+  Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
+       int64_t aCurrentTime) MOZ_FINAL MOZ_OVERRIDE;
 
   // Override GetBuffered() to do nothing for below reasons:
   // 1. Because the Rtsp stream is a/v separated. The buffered data in a/v
@@ -59,7 +60,7 @@ public:
   // ChannelMediaResource, it has a "cache" that can store the whole streaming
   // data so the |GetBuffered| function can retrieve useful time ranges.
   virtual nsresult GetBuffered(mozilla::dom::TimeRanges* aBuffered) MOZ_FINAL MOZ_OVERRIDE {
-    return NS_OK;
+    return NS_ERROR_NOT_IMPLEMENTED;
   }
 
   virtual void SetIdle() MOZ_OVERRIDE;

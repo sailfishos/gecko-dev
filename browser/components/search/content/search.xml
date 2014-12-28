@@ -121,13 +121,17 @@
 
         // Make sure to break the cycle from _textbox to us. Otherwise we leak
         // the world. But make sure it's actually pointing to us.
-        if (this._textbox.mController.input == this)
+        // Also make sure the textbox has ever been constructed, otherwise the
+        // _textbox getter will cause the textbox constructor to run, add an
+        // observer, and leak the world too.
+        if (this._textboxInitialized && this._textbox.mController.input == this)
           this._textbox.mController.input = null;
         ]]></body>
       </method>
 
       <field name="_stringBundle">document.getAnonymousElementByAttribute(this,
           "anonid", "searchbar-stringbundle");</field>
+      <field name="_textboxInitialized">false</field>
       <field name="_textbox">document.getAnonymousElementByAttribute(this,
           "anonid", "searchbar-textbox");</field>
       <field name="_popup">document.getAnonymousElementByAttribute(this,
@@ -270,6 +274,7 @@
               }
             }
           }
+          BrowserSearch.updateSearchButton();
         ]]></body>
       </method>
 
@@ -295,6 +300,7 @@
               }
             }
           }
+          BrowserSearch.updateSearchButton();
         ]]></body>
       </method>
 
@@ -349,7 +355,7 @@
               popup.removeChild(items[i]);
           }
 
-          var addengines = getBrowser().mCurrentBrowser.engines;
+          var addengines = gBrowser.selectedBrowser.engines;
           if (addengines && addengines.length > 0) {
             const kXULNS =
                "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
@@ -461,6 +467,9 @@
 
           aEvent.preventDefault();
           aEvent.stopPropagation();
+
+          if (this.hasAttribute("oneoffui"))
+            this.openSuggestionsPanel();
         ]]></body>
       </method>
 
@@ -472,6 +481,8 @@
           var textValue = textBox.value;
 
           var where = "current";
+
+          // Open ctrl/cmd clicks on one-off buttons in a new background tab.
           if (aEvent && aEvent.originalTarget.getAttribute("anonid") == "search-go-button") {
             if (aEvent.button == 2)
               return;
@@ -479,11 +490,20 @@
           }
           else {
             var newTabPref = textBox._prefBranch.getBoolPref("browser.search.openintab");
-            if ((aEvent && aEvent.altKey) ^ newTabPref)
+            if (((aEvent instanceof KeyboardEvent) && aEvent.altKey) ^ newTabPref)
               where = "tab";
+            if ((aEvent instanceof MouseEvent) && (aEvent.button == 1 ||
+#ifdef XP_MACOSX
+                                                   aEvent.metaKey))
+#else
+                                                   aEvent.ctrlKey))
+#endif
+              where = "tab-background";
           }
 
           this.doSearch(textValue, where, aEngine);
+          if (where == "tab-background")
+            this.focus();
         ]]></body>
       </method>
 
@@ -509,7 +529,13 @@
           var submission = engine.getSubmission(aData, null, "searchbar");
           BrowserSearch.recordSearchInHealthReport(engine, "searchbar");
           // null parameter below specifies HTML response for search
-          openUILinkIn(submission.uri.spec, aWhere, null, submission.postData);
+          let params = {
+            postData: submission.postData,
+            inBackground: aWhere == "tab-background"
+          };
+          openUILinkIn(submission.uri.spec,
+                       aWhere == "tab-background" ? "tab" : aWhere,
+                       params);
         ]]></body>
       </method>
     </implementation>
@@ -578,7 +604,6 @@
                    autocompletesearchparam="searchbar-history"
                    maxrows="10"
                    completeselectedindex="true"
-                   tabscrolling="true"
                    xbl:inherits="disabled,disableautocomplete,searchengine,src,newlines">
         <!--
         Empty <box> to properly position the icon within the autocomplete
@@ -589,6 +614,7 @@
           <xul:hbox class="searchbar-search-button-container">
             <xul:image class="searchbar-search-button"
                        anonid="searchbar-search-button"
+                       xbl:inherits="addengines"
                        tooltiptext="&searchEndCap.label;"/>
           </xul:hbox>
           <xul:button class="searchbar-engine-button"
@@ -622,10 +648,11 @@
         this.destroy();
       ]]></destructor>
 
-      <method name="selectEngine">
+      <field name="_ignoreFocus">false</field>
+
+      <method name="rebuildPopup">
         <body><![CDATA[
-          // Override this method to avoid accidentally changing the default
-          // engine using the keyboard shortcuts of the old UI.
+          this._textbox.popup.updateHeader();
         ]]></body>
       </method>
 
@@ -665,16 +692,42 @@
     <handlers>
       <handler event="input" action="this.inputChanged();"/>
       <handler event="drop" action="this.inputChanged();"/>
-      <handler event="focus">
+
+      <handler event="blur">
       <![CDATA[
-        if (this._textbox.value)
-          this.openSuggestionsPanel();
+        // If the input field is still focused then a different window has
+        // received focus, ignore the next focus event.
+        this._ignoreFocus = (document.activeElement == this._textbox.inputField);
       ]]></handler>
 
-      <handler event="click">
+      <handler event="focus">
       <![CDATA[
-        if (event.originalTarget.getAttribute("anonid") == "searchbar-search-button")
+        if (this._ignoreFocus) {
+          // This window has been re-focused, don't show the suggestions
+          this._ignoreFocus = false;
+          return;
+        }
+
+        // Don't open the suggestions if there is no text in the textbox.
+        if (!this._textbox.value)
+          return;
+
+        // Don't open the suggestions if the mouse was used to focus the
+        // textbox, that will be taken care of in the click handler.
+        if (Services.focus.getLastFocusMethod(window) == Services.focus.FLAG_BYMOUSE)
+          return;
+
+        this.openSuggestionsPanel();
+      ]]></handler>
+
+      <handler event="click" button="0">
+      <![CDATA[
+        // Open the suggestions whenever clicking on the search icon or if there
+        // is text in the textbox.
+        if (event.originalTarget.getAttribute("anonid") == "searchbar-search-button" ||
+            this._textbox.value) {
           this.openSuggestionsPanel(true);
+        }
       ]]></handler>
 
     </handlers>
@@ -761,6 +814,7 @@
         cxmenu.appendChild(element);
 
         this.controllers.appendController(this.searchbarController);
+        document.getBindingParent(this)._textboxInitialized = true;
 
         // Add observer for suggest preference
         var prefs = Components.classes["@mozilla.org/preferences-service;1"]
@@ -862,7 +916,11 @@
           <![CDATA[
             // Don't open search popup if history popup is open
             if (!this.popupOpen) {
-              document.getBindingParent(this).searchButton.open = true;
+              let searchBox = document.getBindingParent(this);
+              if (searchBox.hasAttribute("oneoffui"))
+                searchBox.openSuggestionsPanel();
+              else
+                searchBox.searchButton.open = true;
               return false;
             }
             return true;
@@ -928,7 +986,53 @@
           if (!list)
             return;
 
+          // accel + up/down changes the default engine and shouldn't affect
+          // the selection on the one-off buttons.
+#ifdef XP_MACOSX
+          if (aEvent.metaKey)
+#else
+          if (aEvent.ctrlKey)
+#endif
+            return;
+
           let selectedButton = this.getSelectedOneOff();
+
+          // Alt + up/down is very similar to (shift +) tab but differs in that
+          // it loops through the list, whereas tab will move the focus out.
+          if (aEvent.altKey &&
+              (aEvent.keyCode == KeyEvent.DOM_VK_DOWN ||
+               aEvent.keyCode == KeyEvent.DOM_VK_UP)) {
+            let forward = aEvent.keyCode == KeyEvent.DOM_VK_DOWN;
+            if (selectedButton) {
+              // cycle though the list of one-off buttons.
+              selectedButton.removeAttribute("selected");
+              if (forward)
+                selectedButton = selectedButton.nextSibling;
+              else
+                selectedButton = selectedButton.previousSibling;
+
+              // Avoid selecting dummy buttons.
+              if (selectedButton && selectedButton.classList.contains("dummy"))
+                selectedButton = null;
+            }
+            else {
+              // If no selection, select the first or last one-off button.
+              if (forward) {
+                selectedButton = list.firstChild;
+              }
+              else {
+                selectedButton = list.lastChild;
+                while (selectedButton.classList.contains("dummy"))
+                  selectedButton = selectedButton.previousSibling;
+              }
+            }
+            if (selectedButton)
+              selectedButton.setAttribute("selected", "true");
+
+            aEvent.preventDefault();
+            aEvent.stopPropagation();
+            return;
+          }
 
           // If the last suggestion is selected, DOWN selects the first one-off.
           if (aEvent.keyCode == KeyEvent.DOM_VK_DOWN &&
@@ -1005,15 +1109,12 @@
               }
             }
             else {
-              // If no selection, select the first or last one-off button.
-              if (aEvent.shiftKey) {
-                selectedButton = list.lastChild;
-                while (selectedButton.classList.contains("dummy"))
-                  selectedButton = selectedButton.previousSibling;
-              }
-              else {
-                selectedButton = list.firstChild;
-              }
+              // If no selection, let the focus escape the panel for shift+<tab>
+              if (aEvent.shiftKey)
+                return;
+
+              // and select the first one-off button for <tab>.
+              selectedButton = list.firstChild;
             }
             selectedButton.setAttribute("selected", "true");
 

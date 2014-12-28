@@ -164,7 +164,7 @@ namespace jit {
     _(SetArrayLength)                                                       \
     _(TypedArrayLength)                                                     \
     _(TypedArrayElements)                                                   \
-    _(TypedObjectProto)                                                     \
+    _(TypedObjectDescr)                                                     \
     _(TypedObjectElements)                                                  \
     _(SetTypedObjectOffset)                                                 \
     _(InitializedLength)                                                    \
@@ -232,7 +232,6 @@ namespace jit {
     _(SetDOMProperty)                                                       \
     _(IsCallable)                                                           \
     _(IsObject)                                                             \
-    _(HaveSameClass)                                                        \
     _(HasClass)                                                             \
     _(AsmJSNeg)                                                             \
     _(AsmJSUnsignedToDouble)                                                \
@@ -276,7 +275,7 @@ namespace jit {
 class MDefinitionVisitor // interface i.e. pure abstract class
 {
   public:
-#define VISIT_INS(op) virtual bool visit##op(M##op *) = 0;
+#define VISIT_INS(op) virtual void visit##op(M##op *) = 0;
     MIR_OPCODE_LIST(VISIT_INS)
 #undef VISIT_INS
 };
@@ -286,7 +285,7 @@ class MDefinitionVisitor // interface i.e. pure abstract class
 class MDefinitionVisitorDefaultNYI : public MDefinitionVisitor
 {
   public:
-#define VISIT_INS(op) virtual bool visit##op(M##op *) { MOZ_CRASH("NYI: " #op); }
+#define VISIT_INS(op) virtual void visit##op(M##op *) { MOZ_CRASH("NYI: " #op); }
     MIR_OPCODE_LIST(VISIT_INS)
 #undef VISIT_INS
 };
@@ -295,7 +294,7 @@ class MDefinitionVisitorDefaultNYI : public MDefinitionVisitor
 class MDefinitionVisitorDefaultNoop : public MDefinitionVisitor
 {
   public:
-#define VISIT_INS(op) virtual bool visit##op(M##op *) { return true; }
+#define VISIT_INS(op) virtual void visit##op(M##op *) { }
     MIR_OPCODE_LIST(VISIT_INS)
 #undef VISIT_INS
 };

@@ -481,6 +481,26 @@ public:
     }
   }
 
+  // Container-width for the line is changing (and therefore if writing mode
+  // was vertical-rl, the line will move physically; this is like SlideBy,
+  // but it is the container width instead of the line's own logical coord
+  // that is changing.
+  nscoord UpdateContainerWidth(nscoord aNewContainerWidth)
+  {
+    NS_ASSERTION(mContainerWidth != -1, "container width not set");
+    nscoord delta = mContainerWidth - aNewContainerWidth;
+    mContainerWidth = aNewContainerWidth;
+    // this has a physical-coordinate effect only in vertical-rl mode
+    if (mWritingMode.IsVerticalRL() && mData) {
+      nsPoint physicalDelta = mozilla::LogicalPoint(mWritingMode, 0, delta).
+                                         GetPhysicalPoint(mWritingMode, 0);
+      NS_FOR_FRAME_OVERFLOW_TYPES(otype) {
+        mData->mOverflowAreas.Overflow(otype) += physicalDelta;
+      }
+    }
+    return delta;
+  }
+
   void IndentBy(nscoord aDICoord, nscoord aContainerWidth) {
     NS_ASSERTION(aContainerWidth == mContainerWidth || mContainerWidth == -1,
                  "container width doesn't match");
@@ -1701,8 +1721,7 @@ public:
   NS_IMETHOD GetLine(int32_t aLineNumber,
                      nsIFrame** aFirstFrameOnLine,
                      int32_t* aNumFramesOnLine,
-                     nsRect& aLineBounds,
-                     uint32_t* aLineFlags) MOZ_OVERRIDE;
+                     nsRect& aLineBounds) MOZ_OVERRIDE;
   virtual int32_t FindLineContaining(nsIFrame* aFrame, int32_t aStartLine = 0) MOZ_OVERRIDE;
   NS_IMETHOD FindFrameAt(int32_t aLineNumber,
                          nsPoint aPos,

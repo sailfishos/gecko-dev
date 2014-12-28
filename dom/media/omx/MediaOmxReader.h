@@ -98,13 +98,14 @@ public:
   virtual void PreReadMetadata() MOZ_OVERRIDE;
   virtual nsresult ReadMetadata(MediaInfo* aInfo,
                                 MetadataTags** aTags);
-  virtual void Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime, int64_t aCurrentTime);
+  virtual nsRefPtr<SeekPromise>
+  Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime, int64_t aCurrentTime) MOZ_OVERRIDE;
 
   virtual bool IsMediaSeekable() MOZ_OVERRIDE;
 
   virtual void SetIdle() MOZ_OVERRIDE;
 
-  virtual void Shutdown() MOZ_OVERRIDE;
+  virtual nsRefPtr<ShutdownPromise> Shutdown() MOZ_OVERRIDE;
 
   bool IsShutdown() {
     MutexAutoLock lock(mMutex);

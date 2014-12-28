@@ -67,6 +67,7 @@ public:
 };
 
 bool InputEqualsByteString(Input input, const ByteString& bs);
+ByteString InputToByteString(Input input);
 
 // python DottedOIDToCode.py --tlv id-kp-OCSPSigning 1.3.6.1.5.5.7.3.9
 static const uint8_t tlv_id_kp_OCSPSigning[] = {
@@ -195,6 +196,13 @@ DNSName(const char (&bytes)[L])
 {
   return DNSName(ByteString(reinterpret_cast<const uint8_t (&)[L]>(bytes),
                             L - 1));
+}
+
+inline ByteString
+IPAddress()
+{
+  // (2 << 6) means "context-specific", 7 is the GeneralName tag.
+  return TLV((2 << 6) | 7, ByteString());
 }
 
 template <size_t L>

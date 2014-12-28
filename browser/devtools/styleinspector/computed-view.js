@@ -555,6 +555,7 @@ CssHtmlTree.prototype = {
     for (let propView of this.propertyViews) {
       propView.updateSourceLinks();
     }
+    this.inspector.emit("computed-view-sourcelinks-updated");
   },
 
   /**
@@ -588,7 +589,14 @@ CssHtmlTree.prototype = {
     CssHtmlTree.propertyNames.push.apply(CssHtmlTree.propertyNames,
       mozProps.sort());
 
-    this._createPropertyViews();
+    this._createPropertyViews().then(null, e => {
+      if (!this.styleInspector) {
+        console.warn("The creation of property views was cancelled because the " +
+          "computed-view was destroyed before it was done creating views");
+      } else {
+        console.error(e);
+      }
+    });
   },
 
   /**
@@ -1371,7 +1379,7 @@ SelectorView.prototype = {
    */
   updateSourceLink: function()
   {
-    this.updateSource().then((oldSource) => {
+    return this.updateSource().then((oldSource) => {
       if (oldSource != this.source && this.tree.element) {
         let selector = '[sourcelocation="' + oldSource + '"]';
         let link = this.tree.element.querySelector(selector);

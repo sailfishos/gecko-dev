@@ -670,6 +670,10 @@ public:
 
   virtual float RequestProperty(const nsAString& property) { return -1; }
 
+  const TimeStamp& GetAnimationReadyTime() const {
+    return mAnimationReadyTime;
+  }
+
 protected:
   nsRefPtr<Layer> mRoot;
   gfx::UserData mUserData;
@@ -693,6 +697,9 @@ protected:
   static PRLogModuleInfo* sLog;
   uint64_t mId;
   bool mInTransaction;
+  // The time when painting most recently finished. This is recorded so that
+  // we can time any play-pending animations from this point.
+  TimeStamp mAnimationReadyTime;
 private:
   struct FramesTimingRecording
   {
@@ -1100,6 +1107,11 @@ public:
   // This is only called when the layer tree is updated. Do not call this from
   // layout code.  To add an animation to this layer, use AddAnimation.
   void SetAnimations(const AnimationArray& aAnimations);
+  // Go through all animations in this layer and its children and, for
+  // any animations with a null start time, update their start time such
+  // that at |aReadyTime| the animation's current time corresponds to its
+  // 'initial current time' value.
+  void StartPendingAnimations(const TimeStamp& aReadyTime);
 
   // These are a parallel to AddAnimation and clearAnimations, except
   // they add pending animations that apply only when the next
@@ -1387,6 +1399,23 @@ public:
    * such ancestor), but for BasicLayers it's different.
    */
   const gfx::Matrix4x4& GetEffectiveTransform() const { return mEffectiveTransform; }
+
+  /**
+   * This returns the effective transform for Layer's buffer computed by
+   * ComputeEffectiveTransforms. Typically this is a transform that transforms
+   * this layer's buffer all the way to some intermediate surface or destination
+   * surface. For non-BasicLayers this will be a transform to the nearest
+   * ancestor with UseIntermediateSurface() (or to the root, if there is no
+   * such ancestor), but for BasicLayers it's different.
+   *
+   * By default, its value is same to GetEffectiveTransform().
+   * When ImageLayer is rendered with ScaleMode::STRETCH,
+   * it becomes different from GetEffectiveTransform().
+   */
+  virtual const gfx::Matrix4x4& GetEffectiveTransformForBuffer() const
+  {
+    return mEffectiveTransform;
+  }
 
   /**
    * @param aTransformToSurface the composition of the transforms

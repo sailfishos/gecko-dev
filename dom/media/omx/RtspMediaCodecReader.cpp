@@ -38,7 +38,7 @@ RtspMediaCodecReader::CreateExtractor()
   return mExtractor != nullptr;
 }
 
-void
+nsRefPtr<MediaDecoderReader::SeekPromise>
 RtspMediaCodecReader::Seek(int64_t aTime, int64_t aStartTime,
                            int64_t aEndTime, int64_t aCurrentTime)
 {
@@ -48,7 +48,7 @@ RtspMediaCodecReader::Seek(int64_t aTime, int64_t aStartTime,
   // RtspMediaResource.
   mRtspResource->SeekTime(aTime);
 
-  MediaCodecReader::Seek(aTime, aStartTime, aEndTime, aCurrentTime);
+  return MediaCodecReader::Seek(aTime, aStartTime, aEndTime, aCurrentTime);
 }
 
 void
@@ -74,19 +74,19 @@ RtspMediaCodecReader::EnsureActive()
   mRtspResource->SetSuspend(false);
 }
 
-void
+nsRefPtr<MediaDecoderReader::AudioDataPromise>
 RtspMediaCodecReader::RequestAudioData()
 {
   EnsureActive();
-  MediaCodecReader::RequestAudioData();
+  return MediaCodecReader::RequestAudioData();
 }
 
-void
+nsRefPtr<MediaDecoderReader::VideoDataPromise>
 RtspMediaCodecReader::RequestVideoData(bool aSkipToNextKeyframe,
                                        int64_t aTimeThreshold)
 {
   EnsureActive();
-  MediaCodecReader::RequestVideoData(aSkipToNextKeyframe, aTimeThreshold);
+  return MediaCodecReader::RequestVideoData(aSkipToNextKeyframe, aTimeThreshold);
 }
 
 nsresult

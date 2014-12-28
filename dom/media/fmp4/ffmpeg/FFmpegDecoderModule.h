@@ -18,7 +18,12 @@ template <int V>
 class FFmpegDecoderModule : public PlatformDecoderModule
 {
 public:
-  static PlatformDecoderModule* Create() { return new FFmpegDecoderModule(); }
+  static already_AddRefed<PlatformDecoderModule>
+  Create()
+  {
+    nsRefPtr<PlatformDecoderModule> pdm = new FFmpegDecoderModule();
+    return pdm.forget();
+  }
 
   FFmpegDecoderModule() {}
   virtual ~FFmpegDecoderModule() {}
@@ -52,6 +57,12 @@ public:
   {
     return FFmpegAudioDecoder<V>::GetCodecId(aMimeType) != AV_CODEC_ID_NONE;
   }
+
+  virtual bool SupportsVideoMimeType(const char* aMimeType) MOZ_OVERRIDE
+  {
+    return FFmpegH264Decoder<V>::GetCodecId(aMimeType) != AV_CODEC_ID_NONE;
+  }
+
 };
 
 } // namespace mozilla

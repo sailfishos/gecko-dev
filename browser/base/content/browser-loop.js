@@ -6,6 +6,7 @@
 let LoopUI;
 
 XPCOMUtils.defineLazyModuleGetter(this, "injectLoopAPI", "resource:///modules/loop/MozLoopAPI.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LoopRooms", "resource:///modules/loop/LoopRooms.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "MozLoopService", "resource:///modules/loop/MozLoopService.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/PanelFrame.jsm");
 
@@ -15,6 +16,22 @@ XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/Panel
     get toolbarButton() {
       delete this.toolbarButton;
       return this.toolbarButton = CustomizableUI.getWidget("loop-button").forWindow(window);
+    },
+
+    /**
+     * @return {Promise}
+     */
+    promiseDocumentVisible(aDocument) {
+      if (!aDocument.hidden) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        aDocument.addEventListener("visibilitychange", function onVisibilityChanged() {
+          aDocument.removeEventListener("visibilitychange", onVisibilityChanged);
+          resolve();
+        });
+      });
     },
 
     /**
@@ -32,7 +49,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/Panel
           // Helper function to show a specific tab view in the panel.
           function showTab() {
             if (!tabId) {
-              resolve();
+              resolve(LoopUI.promiseDocumentVisible(iframe.contentDocument));
               return;
             }
 
@@ -44,7 +61,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/Panel
               }
             }, win));
             win.dispatchEvent(ev);
-            resolve();
+            resolve(LoopUI.promiseDocumentVisible(iframe.contentDocument));
           }
 
           // If the panel has been opened and initialized before, we can skip waiting
@@ -68,8 +85,70 @@ XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/Panel
         // Used to clear the temporary "login" state from the button.
         Services.obs.notifyObservers(null, "loop-status-changed", null);
 
-        PanelFrame.showPopup(window, event ? event.target : this.toolbarButton.node,
-                             "loop", null, "about:looppanel", null, callback);
+        this.shouldResumeTour().then((resume) => {
+          if (resume) {
+            // Assume the conversation with the visitor wasn't open since we would
+            // have resumed the tour as soon as the visitor joined if it was (and
+            // the pref would have been set to false already.
+            MozLoopService.resumeTour("waiting");
+            resolve();
+            return;
+          }
+
+          PanelFrame.showPopup(window, event ? event.target : this.toolbarButton.node,
+                               "loop", null, "about:looppanel", null, callback);
+        });
+      });
+    },
+
+    /**
+     * Method to know whether actions to open the panel should instead resume the tour.
+     *
+     * We need the panel to be opened via UITour so that it gets @noautohide.
+     *
+     * @return {Promise} resolving with a {Boolean} of whether the tour should be resumed instead of
+     *                   opening the panel.
+     */
+    shouldResumeTour: Task.async(function* () {
+      // Resume the FTU tour if this is the first time a room was joined by
+      // someone else since the tour.
+      if (!Services.prefs.getBoolPref("loop.gettingStarted.resumeOnFirstJoin")) {
+        return false;
+      }
+
+      if (!LoopRooms.participantsCount) {
+        // Nobody is in the rooms
+        return false;
+      }
+
+      let roomsWithNonOwners = yield this.roomsWithNonOwners();
+      if (!roomsWithNonOwners.length) {
+        // We were the only one in a room but we want to know about someone else joining.
+        return false;
+      }
+
+      return true;
+    }),
+
+    /**
+     * @return {Promise} resolved with an array of Rooms with participants (excluding owners)
+     */
+    roomsWithNonOwners: function() {
+      return new Promise(resolve => {
+        LoopRooms.getAll((error, rooms) => {
+          let roomsWithNonOwners = [];
+          for (let room of rooms) {
+            if (!("participants" in room)) {
+              continue;
+            }
+            let numNonOwners = room.participants.filter(participant => !participant.owner).length;
+            if (!numNonOwners) {
+              continue;
+            }
+            roomsWithNonOwners.push(room);
+          }
+          resolve(roomsWithNonOwners);
+        });
       });
     },
 
@@ -158,8 +237,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "PanelFrame", "resource:///modules/Panel
       if (options.sound) {
         // This will not do anything, until bug bug 1105222 is resolved.
         notificationOptions.mozbehavior = {
-          soundFile: `chrome://browser/content/loop/shared/sounds/${options.sound}.ogg`
+          soundFile: ""
         };
+        this.playSound(options.sound);
       }
 
       let notification = new window.Notification(options.title, notificationOptions);

@@ -300,6 +300,7 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
                                              currentValue) ||
           currentValue != segment.mToValue) {
         // stop the transition
+        player->Cancel();
         players.RemoveElementAt(i);
         collection->UpdateAnimationGeneration(mPresContext);
       }
@@ -539,7 +540,7 @@ nsTransitionManager::ConsiderStartingTransition(
   segment.mTimingFunction.Init(tf);
 
   nsRefPtr<CSSTransitionPlayer> player = new CSSTransitionPlayer(timeline);
-  player->mStartTime = timeline->GetCurrentTime();
+  player->PlayFromStyle();
   player->SetSource(pt);
 
   if (!aElementTransitions) {

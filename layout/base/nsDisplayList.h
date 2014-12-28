@@ -351,6 +351,11 @@ public:
   {
     mAncestorHasTouchEventHandler = aValue;
   }
+  bool GetAncestorHasScrollEventHandler() { return mAncestorHasScrollEventHandler; }
+  void SetAncestorHasScrollEventHandler(bool aValue)
+  {
+    mAncestorHasScrollEventHandler = aValue;
+  }
 
   bool HaveScrollableDisplayPort() const { return mHaveScrollableDisplayPort; }
   void SetHaveScrollableDisplayPort() { mHaveScrollableDisplayPort = true; }
@@ -561,7 +566,8 @@ public:
         mPrevOffset(aBuilder->mCurrentOffsetToReferenceFrame),
         mPrevDirtyRect(aBuilder->mDirtyRect),
         mPrevIsAtRootOfPseudoStackingContext(aBuilder->mIsAtRootOfPseudoStackingContext),
-        mPrevAncestorHasTouchEventHandler(aBuilder->mAncestorHasTouchEventHandler)
+        mPrevAncestorHasTouchEventHandler(aBuilder->mAncestorHasTouchEventHandler),
+        mPrevAncestorHasScrollEventHandler(aBuilder->mAncestorHasScrollEventHandler)
     {
       if (aForChild->IsTransformed()) {
         aBuilder->mCurrentOffsetToReferenceFrame = nsPoint();
@@ -607,6 +613,7 @@ public:
       mBuilder->mDirtyRect = mPrevDirtyRect;
       mBuilder->mIsAtRootOfPseudoStackingContext = mPrevIsAtRootOfPseudoStackingContext;
       mBuilder->mAncestorHasTouchEventHandler = mPrevAncestorHasTouchEventHandler;
+      mBuilder->mAncestorHasScrollEventHandler = mPrevAncestorHasScrollEventHandler;
       mBuilder->mCurrentAnimatedGeometryRoot = mPrevAnimatedGeometryRoot;
     }
   private:
@@ -619,6 +626,7 @@ public:
     nsRect                mPrevDirtyRect;
     bool                  mPrevIsAtRootOfPseudoStackingContext;
     bool                  mPrevAncestorHasTouchEventHandler;
+    bool                  mPrevAncestorHasScrollEventHandler;
   };
 
   /**
@@ -868,6 +876,7 @@ private:
   bool                           mIsCompositingCheap;
   bool                           mContainsPluginItem;
   bool                           mAncestorHasTouchEventHandler;
+  bool                           mAncestorHasScrollEventHandler;
   // True when the first async-scrollable scroll frame for which we build a
   // display list has a display port. An async-scrollable scroll frame is one
   // which WantsAsyncScroll().
@@ -2600,12 +2609,12 @@ public:
   nsDisplayLayerEventRegions(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
     : nsDisplayItem(aBuilder, aFrame)
   {
-    MOZ_COUNT_CTOR(nsDisplayEventReceiver);
+    MOZ_COUNT_CTOR(nsDisplayLayerEventRegions);
     AddFrame(aBuilder, aFrame);
   }
 #ifdef NS_BUILD_REFCNT_LOGGING
   virtual ~nsDisplayLayerEventRegions() {
-    MOZ_COUNT_DTOR(nsDisplayEventReceiver);
+    MOZ_COUNT_DTOR(nsDisplayLayerEventRegions);
   }
 #endif
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) MOZ_OVERRIDE

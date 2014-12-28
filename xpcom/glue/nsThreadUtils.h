@@ -271,35 +271,33 @@ public:
 template<class ClassType, typename Arg, bool Owning>
 struct nsRunnableMethodReceiver
 {
-  ClassType* mObj;
+  nsRefPtr<ClassType> mObj;
   Arg mArg;
   nsRunnableMethodReceiver(ClassType* aObj, Arg aArg)
     : mObj(aObj)
     , mArg(aArg)
   {
-    NS_IF_ADDREF(mObj);
   }
   ~nsRunnableMethodReceiver() { Revoke(); }
-  void Revoke() { NS_IF_RELEASE(mObj); }
+  void Revoke() { mObj = nullptr; }
 };
 
 template<class ClassType, bool Owning>
 struct nsRunnableMethodReceiver<ClassType, void, Owning>
 {
-  ClassType* mObj;
+  nsRefPtr<ClassType> mObj;
   explicit nsRunnableMethodReceiver(ClassType* aObj)
     : mObj(aObj)
   {
-    NS_IF_ADDREF(mObj);
   }
   ~nsRunnableMethodReceiver() { Revoke(); }
-  void Revoke() { NS_IF_RELEASE(mObj); }
+  void Revoke() { mObj = nullptr; }
 };
 
 template<class ClassType>
 struct nsRunnableMethodReceiver<ClassType, void, false>
 {
-  ClassType* mObj;
+  ClassType* MOZ_NON_OWNING_REF mObj;
   explicit nsRunnableMethodReceiver(ClassType* aObj) : mObj(aObj) {}
   void Revoke() { mObj = nullptr; }
 };
@@ -564,5 +562,20 @@ private:
 
 void
 NS_SetMainThread();
+
+/**
+ * Helpers for thread to report their status when compiled with Nuwa.
+ */
+#ifdef MOZILLA_INTERNAL_API
+#ifdef MOZ_NUWA_PROCESS
+extern void
+NS_SetIgnoreStatusOfCurrentThread();
+#else // MOZ_NUWA_PROCESS
+inline void
+NS_SetIgnoreStatusOfCurrentThread()
+{
+}
+#endif // MOZ_NUWA_PROCESS
+#endif // MOZILLA_INTERNAL_API
 
 #endif  // nsThreadUtils_h__

@@ -234,7 +234,8 @@ const UnsolicitedNotifications = {
   "appOpen": "appOpen",
   "appClose": "appClose",
   "appInstall": "appInstall",
-  "appUninstall": "appUninstall"
+  "appUninstall": "appUninstall",
+  "evaluationResult": "evaluationResult",
 };
 
 /**
@@ -372,9 +373,9 @@ DebuggerClient.Argument.prototype.getArgument = function (aParams) {
 };
 
 // Expose this to save callers the trouble of importing DebuggerSocket
-DebuggerClient.socketConnect = function(host, port) {
+DebuggerClient.socketConnect = function(options) {
   // Defined here instead of just copying the function to allow lazy-load
-  return DebuggerSocket.connect(host, port);
+  return DebuggerSocket.connect(options);
 };
 
 DebuggerClient.prototype = {

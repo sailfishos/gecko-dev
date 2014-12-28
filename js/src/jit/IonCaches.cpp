@@ -542,7 +542,7 @@ IsCacheableNoProperty(JSObject *obj, JSObject *holder, Shape *shape, jsbytecode 
 
     // Just because we didn't find the property on the object doesn't mean it
     // won't magically appear through various engine hacks:
-    if (obj->getClass()->getProperty && obj->getClass()->getProperty != JS_PropertyStub)
+    if (obj->getClass()->getProperty)
         return false;
 
     // Don't generate missing property ICs if we skipped a non-native object, as
@@ -2596,7 +2596,7 @@ GenerateAddSlot(JSContext *cx, MacroAssembler &masm, IonCache::StubAttacher &att
         masm.push(object);
         masm.loadPtr(Address(object, JSObject::offsetOfType()), object);
         masm.branchPtr(Assembler::Equal,
-                       Address(object, types::TypeObject::offsetOfNewScript()),
+                       Address(object, types::TypeObject::offsetOfAddendum()),
                        ImmWord(0),
                        &noTypeChange);
         masm.pop(object);
@@ -2731,13 +2731,12 @@ IsPropertyAddInlineable(NativeObject *obj, HandleId id, ConstantOrRegister val, 
     // the shape must be the one we just added.
     MOZ_ASSERT(shape == obj->lastProperty());
 
-    // If object has a non-default resolve hook, don't inline
-    if (obj->getClass()->resolve != JS_ResolveStub)
+    // If object has a resolve hook, don't inline
+    if (obj->getClass()->resolve)
         return false;
 
-    // Likewise for a non-default addProperty hook, since we'll need
-    // to invoke it.
-    if (obj->getClass()->addProperty != JS_PropertyStub)
+    // Likewise for an addProperty hook, since we'll need to invoke it.
+    if (obj->getClass()->addProperty)
         return false;
 
     if (!obj->nonProxyIsExtensible() || !shape->writable())
@@ -2759,7 +2758,7 @@ IsPropertyAddInlineable(NativeObject *obj, HandleId id, ConstantOrRegister val, 
         // Otherwise, if there's no such property, watch out for a resolve
         // hook that would need to be invoked and thus prevent inlining of
         // property addition.
-        if (proto->getClass()->resolve != JS_ResolveStub)
+        if (proto->getClass()->resolve)
              return false;
     }
 
@@ -3491,7 +3490,7 @@ GetElementIC::update(JSContext *cx, size_t cacheIndex, HandleObject obj,
     AutoDetectInvalidation adi(cx, res, ion);
 
     if (cache.isDisabled()) {
-        if (!GetObjectElementOperation(cx, JSOp(*pc), obj, /* wasObject = */true, idval, res))
+        if (!GetObjectElementOperation(cx, JSOp(*pc), obj, idval, res))
             return false;
         if (!cache.monitoredResult())
             types::TypeScript::Monitor(cx, script, pc, res);
@@ -3533,7 +3532,7 @@ GetElementIC::update(JSContext *cx, size_t cacheIndex, HandleObject obj,
         }
     }
 
-    if (!GetObjectElementOperation(cx, JSOp(*pc), obj, /* wasObject = */true, idval, res))
+    if (!GetObjectElementOperation(cx, JSOp(*pc), obj, idval, res))
         return false;
 
     // Disable cache when we reach max stubs or update failed too much.

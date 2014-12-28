@@ -30,6 +30,9 @@ public class FindInPageBar extends LinearLayout implements TextWatcher, View.OnC
     private static final String LOGTAG = "GeckoFindInPageBar";
     private static final String REQUEST_ID = "FindInPageBar";
 
+    // Will be removed by Bug 1113297.
+    private static final boolean MATCH_CASE_ENABLED = AppConstants.NIGHTLY_BUILD;
+
     private final Context mContext;
     private CustomEditText mFindText;
     private CheckedTextView mMatchCase;
@@ -68,7 +71,11 @@ public class FindInPageBar extends LinearLayout implements TextWatcher, View.OnC
         });
 
         mMatchCase = (CheckedTextView) content.findViewById(R.id.find_matchcase);
-        mMatchCase.setOnClickListener(this);
+        if (MATCH_CASE_ENABLED) {
+            mMatchCase.setOnClickListener(this);
+        } else {
+            mMatchCase.setVisibility(View.GONE);
+        }
 
         mStatusText = (TextView) content.findViewById(R.id.find_status);
 
@@ -217,7 +224,8 @@ public class FindInPageBar extends LinearLayout implements TextWatcher, View.OnC
                 updateResult(total, current);
             }
 
-            public void onError() {
+            @Override
+            public void onError(NativeJSObject error) {
                 // Gecko didn't respond due to state change, javascript error, etc.
                 updateResult(0, 0);
                 Log.d(LOGTAG, "No response from Gecko on request to match string: [" +

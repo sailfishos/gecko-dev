@@ -28,7 +28,6 @@
 #include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScrollViewChangeEvent.h"
-#include "mozilla/dom/SelectionStateChangedEvent.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/TreeWalker.h"
 #include "mozilla/Preferences.h"
@@ -64,13 +63,6 @@ static const char* kSelectionCaretsLogModuleName = "SelectionCarets";
 static const int32_t kMoveStartTolerancePx = 5;
 // Time for trigger scroll end event, in miliseconds.
 static const int32_t kScrollEndTimerDelay = 300;
-// Read from preference "selectioncaret.noneditable". Indicate whether support
-// non-editable fields selection or not. We have stable state for editable
-// fields selection now. And we don't want to break this stable state when
-// enabling non-editable support. So I add a pref to control to support or
-// not. Once non-editable fields support is stable. We should remove this
-// pref.
-static bool kSupportNonEditableFields = false;
 
 NS_IMPL_ISUPPORTS(SelectionCarets,
                   nsIReflowObserver,
@@ -88,6 +80,7 @@ SelectionCarets::SelectionCarets(nsIPresShell* aPresShell)
   , mAsyncPanZoomEnabled(false)
   , mEndCaretVisible(false)
   , mStartCaretVisible(false)
+  , mSelectionVisibleInScrollFrames(true)
   , mVisible(false)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -104,8 +97,6 @@ SelectionCarets::SelectionCarets(nsIPresShell* aPresShell)
   if (!addedPref) {
     Preferences::AddIntVarCache(&sSelectionCaretsInflateSize,
                                 "selectioncaret.inflatesize.threshold");
-    Preferences::AddBoolVarCache(&kSupportNonEditableFields,
-                                 "selectioncaret.noneditable");
     addedPref = true;
   }
 }
@@ -248,6 +239,16 @@ SelectionCarets::HandleEvent(WidgetEvent* aEvent)
     if (mDragMode == START_FRAME || mDragMode == END_FRAME) {
       if (mActiveTouchId == nowTouchId) {
         ptInRoot.y += mCaretCenterToDownPointOffsetY;
+
+        if (mDragMode == START_FRAME) {
+          if (ptInRoot.y > mDragDownYBoundary) {
+            ptInRoot.y = mDragDownYBoundary;
+          }
+        } else if (mDragMode == END_FRAME) {
+          if (ptInRoot.y < mDragUpYBoundary) {
+            ptInRoot.y = mDragUpYBoundary;
+          }
+        }
         return DragSelection(ptInRoot);
       }
 
@@ -460,6 +461,11 @@ SelectionCarets::UpdateSelectionCarets()
 
   // Check start and end frame is rtl or ltr text
   nsRefPtr<nsFrameSelection> fs = GetFrameSelection();
+  if (!fs) {
+    SetVisibility(false);
+    return;
+  }
+
   int32_t startOffset;
   nsIFrame* startFrame = FindFirstNodeWithFrame(mPresShell->GetDocument(),
                                                 firstRange, fs, false, startOffset);
@@ -473,14 +479,6 @@ SelectionCarets::UpdateSelectionCarets()
     return;
   }
 
-  // If frame isn't editable and we don't support non-editable fields, bail
-  // out.
-  if (!kSupportNonEditableFields &&
-      (!startFrame->GetContent()->IsEditable() ||
-       !endFrame->GetContent()->IsEditable())) {
-    return;
-  }
-
   // Check if startFrame is after endFrame.
   if (nsLayoutUtils::CompareTreePosition(startFrame, endFrame) > 0) {
     SetVisibility(false);
@@ -488,47 +486,55 @@ SelectionCarets::UpdateSelectionCarets()
   }
 
   mPresShell->FlushPendingNotifications(Flush_Layout);
-  nsRect firstRectInRootFrame =
+
+  // If the selection is not visible, we should dispatch a event.
+  nsIFrame* commonAncestorFrame =
+    nsLayoutUtils::FindNearestCommonAncestorFrame(startFrame, endFrame);
+
+  nsRect selectionRectInRootFrame = GetSelectionBoundingRect(selection);
+  nsRect selectionRectInCommonAncestorFrame = selectionRectInRootFrame;
+  nsLayoutUtils::TransformRect(rootFrame, commonAncestorFrame,
+                               selectionRectInCommonAncestorFrame);
+
+  mSelectionVisibleInScrollFrames =
+    nsLayoutUtils::IsRectVisibleInScrollFrames(commonAncestorFrame,
+                                               selectionRectInCommonAncestorFrame);
+  SELECTIONCARETS_LOG("Selection visibility %s",
+                      (mSelectionVisibleInScrollFrames ? "shown" : "hidden"));
+
+
+  nsRect firstRectInStartFrame =
     nsCaret::GetGeometryForFrame(startFrame, startOffset, nullptr);
-  nsRect lastRectInRootFrame =
+  nsRect lastRectInEndFrame =
     nsCaret::GetGeometryForFrame(endFrame, endOffset, nullptr);
 
-  // GetGeometryForFrame may return a rect that outside frame's rect. So
-  // constrain rect inside frame's rect.
-  firstRectInRootFrame = firstRectInRootFrame.ForceInside(startFrame->GetRectRelativeToSelf());
-  lastRectInRootFrame = lastRectInRootFrame.ForceInside(endFrame->GetRectRelativeToSelf());
-  nsRect firstRectInCanvasFrame = firstRectInRootFrame;
-  nsRect lastRectInCanvasFrame =lastRectInRootFrame;
-  nsLayoutUtils::TransformRect(startFrame, rootFrame, firstRectInRootFrame);
-  nsLayoutUtils::TransformRect(endFrame, rootFrame, lastRectInRootFrame);
+  bool startFrameVisible =
+    nsLayoutUtils::IsRectVisibleInScrollFrames(startFrame, firstRectInStartFrame);
+  bool endFrameVisible =
+    nsLayoutUtils::IsRectVisibleInScrollFrames(endFrame, lastRectInEndFrame);
+
+  nsRect firstRectInCanvasFrame = firstRectInStartFrame;
+  nsRect lastRectInCanvasFrame = lastRectInEndFrame;
   nsLayoutUtils::TransformRect(startFrame, canvasFrame, firstRectInCanvasFrame);
   nsLayoutUtils::TransformRect(endFrame, canvasFrame, lastRectInCanvasFrame);
 
-  firstRectInRootFrame.Inflate(AppUnitsPerCSSPixel(), 0);
-  lastRectInRootFrame.Inflate(AppUnitsPerCSSPixel(), 0);
-
-  nsAutoTArray<nsIFrame*, 16> hitFramesInFirstRect;
-  nsLayoutUtils::GetFramesForArea(rootFrame,
-    firstRectInRootFrame,
-    hitFramesInFirstRect,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
-      nsLayoutUtils::IGNORE_CROSS_DOC |
-      nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME);
-
-  nsAutoTArray<nsIFrame*, 16> hitFramesInLastRect;
-  nsLayoutUtils::GetFramesForArea(rootFrame,
-    lastRectInRootFrame,
-    hitFramesInLastRect,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
-      nsLayoutUtils::IGNORE_CROSS_DOC |
-      nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME);
-
-  SetStartFrameVisibility(hitFramesInFirstRect.Contains(startFrame));
-  SetEndFrameVisibility(hitFramesInLastRect.Contains(endFrame));
+  SetStartFrameVisibility(startFrameVisible);
+  SetEndFrameVisibility(endFrameVisible);
 
   SetStartFramePos(firstRectInCanvasFrame.BottomLeft());
   SetEndFramePos(lastRectInCanvasFrame.BottomRight());
   SetVisibility(true);
+
+  nsRect firstRectInRootFrame = firstRectInStartFrame;
+  nsRect lastRectInRootFrame = lastRectInEndFrame;
+  nsLayoutUtils::TransformRect(startFrame, rootFrame, firstRectInRootFrame);
+  nsLayoutUtils::TransformRect(endFrame, rootFrame, lastRectInRootFrame);
+
+  // Use half of the first(last) rect as the dragup(dragdown) boundary
+  mDragUpYBoundary =
+    (firstRectInRootFrame.BottomLeft().y + firstRectInRootFrame.TopLeft().y) / 2;
+  mDragDownYBoundary =
+    (lastRectInRootFrame.BottomRight().y + lastRectInRootFrame.TopRight().y) / 2;
 
   nsRect rectStart = GetStartFrameRect();
   nsRect rectEnd = GetEndFrameRect();
@@ -556,12 +562,6 @@ SelectionCarets::SelectWord()
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, mDownPoint,
     nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC);
   if (!ptFrame) {
-    return NS_OK;
-  }
-
-  // If frame isn't editable and we don't support non-editable fields, bail
-  // out.
-  if (!kSupportNonEditableFields && !ptFrame->GetContent()->IsEditable()) {
     return NS_OK;
   }
 
@@ -610,7 +610,9 @@ SelectionCarets::SelectWord()
 
   // Clear maintain selection otherwise we cannot select less than a word
   nsRefPtr<nsFrameSelection> fs = GetFrameSelection();
-  fs->MaintainSelection();
+  if (fs) {
+    fs->MaintainSelection();
+  }
   return rs;
 }
 
@@ -700,6 +702,9 @@ SelectionCarets::DragSelection(const nsPoint &movePoint)
   }
 
   nsRefPtr<nsFrameSelection> fs = GetFrameSelection();
+  if (!fs) {
+    return nsEventStatus_eConsumeNoDefault;
+  }
 
   nsresult result;
   nsIFrame *newFrame = nullptr;
@@ -724,6 +729,10 @@ SelectionCarets::DragSelection(const nsPoint &movePoint)
   }
 
   nsRefPtr<dom::Selection> selection = GetSelection();
+  if (!selection) {
+    return nsEventStatus_eConsumeNoDefault;
+  }
+
   int32_t rangeCount = selection->GetRangeCount();
   if (rangeCount <= 0) {
     return nsEventStatus_eConsumeNoDefault;
@@ -774,12 +783,19 @@ SelectionCarets::GetCaretYCenterPosition()
   }
 
   nsRefPtr<dom::Selection> selection = GetSelection();
+  if (!selection) {
+    return 0;
+  }
+
   int32_t rangeCount = selection->GetRangeCount();
   if (rangeCount <= 0) {
     return 0;
   }
 
   nsRefPtr<nsFrameSelection> fs = GetFrameSelection();
+  if (!fs) {
+    return 0;
+  }
 
   MOZ_ASSERT(mDragMode != NONE);
   nsCOMPtr<nsIContent> node;
@@ -812,14 +828,18 @@ void
 SelectionCarets::SetSelectionDragState(bool aState)
 {
   nsRefPtr<nsFrameSelection> fs = GetFrameSelection();
-  fs->SetDragState(aState);
+  if (fs) {
+    fs->SetDragState(aState);
+  }
 }
 
 void
 SelectionCarets::SetSelectionDirection(bool aForward)
 {
   nsRefPtr<dom::Selection> selection = GetSelection();
-  selection->SetDirection(aForward ? eDirNext : eDirPrevious);
+  if (selection) {
+    selection->SetDirection(aForward ? eDirNext : eDirPrevious);
+  }
 }
 
 static void
@@ -936,7 +956,15 @@ SelectionCarets::GetFrameSelection()
     if (!focusFrame) {
       return nullptr;
     }
-    return focusFrame->GetFrameSelection();
+
+    // Prevent us from touching the nsFrameSelection associated to other
+    // PresShell.
+    nsRefPtr<nsFrameSelection> fs = focusFrame->GetFrameSelection();
+    if (!fs || fs->GetShell() != mPresShell) {
+      return nullptr;
+    }
+
+    return fs.forget();
   } else {
     return mPresShell->FrameSelection();
   }
@@ -970,15 +998,14 @@ GetSelectionStates(int16_t aReason)
   return states;
 }
 
-static nsRect
-GetSelectionBoundingRect(Selection* aSel, nsIPresShell* aShell)
+nsRect
+SelectionCarets::GetSelectionBoundingRect(Selection* aSel)
 {
   nsRect res;
   // Bounding client rect may be empty after calling GetBoundingClientRect
   // when range is collapsed. So we get caret's rect when range is
   // collapsed.
   if (aSel->IsCollapsed()) {
-    aShell->FlushPendingNotifications(Flush_Layout);
     nsIFrame* frame = nsCaret::GetGeometry(aSel, &res);
     if (frame) {
       nsIFrame* relativeTo =
@@ -1002,27 +1029,37 @@ GetSelectionBoundingRect(Selection* aSel, nsIPresShell* aShell)
   return res;
 }
 
-static void
-DispatchSelectionStateChangedEvent(nsIPresShell* aPresShell,
-                             nsISelection* aSel,
-                             const dom::Sequence<SelectionState>& aStates)
+void
+SelectionCarets::DispatchSelectionStateChangedEvent(Selection* aSelection,
+                                                    SelectionState aState)
 {
-  nsIDocument* doc = aPresShell->GetDocument();
+  dom::Sequence<SelectionState> state;
+  state.AppendElement(aState);
+  DispatchSelectionStateChangedEvent(aSelection, state);
+}
+
+void
+SelectionCarets::DispatchSelectionStateChangedEvent(Selection* aSelection,
+                                                    const Sequence<SelectionState>& aStates)
+{
+  nsIDocument* doc = mPresShell->GetDocument();
 
   MOZ_ASSERT(doc);
 
   SelectionStateChangedEventInit init;
   init.mBubbles = true;
 
-  if (aSel) {
-    Selection* selection = static_cast<Selection*>(aSel);
-    nsRect rect = GetSelectionBoundingRect(selection, doc->GetShell());
+  if (aSelection) {
+    // XXX: Do we need to flush layout?
+    mPresShell->FlushPendingNotifications(Flush_Layout);
+    nsRect rect = GetSelectionBoundingRect(aSelection);
     nsRefPtr<DOMRect>domRect = new DOMRect(ToSupports(doc));
 
     domRect->SetLayoutRect(rect);
     init.mBoundingClientRect = domRect;
+    init.mVisible = mSelectionVisibleInScrollFrames;
 
-    selection->Stringify(init.mSelectedText);
+    aSelection->Stringify(init.mSelectedText);
   }
   init.mStates = aStates;
 
@@ -1039,10 +1076,8 @@ void
 SelectionCarets::NotifyBlur()
 {
   SetVisibility(false);
-
-  dom::Sequence<SelectionState> state;
-  state.AppendElement(dom::SelectionState::Blur);
-  DispatchSelectionStateChangedEvent(mPresShell, nullptr, state);
+  CancelLongTapDetector();
+  DispatchSelectionStateChangedEvent(nullptr, SelectionState::Blur);
 }
 
 nsresult
@@ -1059,7 +1094,8 @@ SelectionCarets::NotifySelectionChanged(nsIDOMDocument* aDoc,
     UpdateSelectionCarets();
   }
 
-  DispatchSelectionStateChangedEvent(mPresShell, aSel, GetSelectionStates(aReason));
+  DispatchSelectionStateChangedEvent(static_cast<Selection*>(aSel),
+                                     GetSelectionStates(aReason));
   return NS_OK;
 }
 
@@ -1097,10 +1133,16 @@ SelectionCarets::AsyncPanZoomStarted(const mozilla::CSSIntPoint aScrollPos)
 void
 SelectionCarets::AsyncPanZoomStopped(const mozilla::CSSIntPoint aScrollPos)
 {
+  SELECTIONCARETS_LOG("Update selection carets after APZ is stopped!");
   UpdateSelectionCarets();
+
+  // SelectionStateChangedEvent should be dispatched before ScrollViewChangeEvent.
+  DispatchSelectionStateChangedEvent(GetSelection(),
+                                     SelectionState::Updateposition);
 
   SELECTIONCARETS_LOG("Dispatch scroll stopped with position x=%d, y=%d",
                       aScrollPos.x, aScrollPos.y);
+
   DispatchScrollViewChangeEvent(mPresShell, dom::ScrollState::Stopped, aScrollPos);
 }
 
@@ -1190,6 +1232,8 @@ SelectionCarets::FireScrollEnd(nsITimer* aTimer, void* aSelectionCarets)
   SELECTIONCARETS_LOG_STATIC("Update selection carets!");
   self->SetVisibility(true);
   self->UpdateSelectionCarets();
+  self->DispatchSelectionStateChangedEvent(self->GetSelection(),
+                                           SelectionState::Updateposition);
 }
 
 NS_IMETHODIMP
@@ -1198,6 +1242,9 @@ SelectionCarets::Reflow(DOMHighResTimeStamp aStart, DOMHighResTimeStamp aEnd)
   if (mVisible) {
     SELECTIONCARETS_LOG("Update selection carets after reflow!");
     UpdateSelectionCarets();
+
+    DispatchSelectionStateChangedEvent(GetSelection(),
+                                       SelectionState::Updateposition);
   }
   return NS_OK;
 }

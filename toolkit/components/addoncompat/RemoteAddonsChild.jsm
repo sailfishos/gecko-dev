@@ -80,14 +80,17 @@ let NotificationTracker = {
     }
   },
 
-  watch: function(component1, watcher) {
-    setDefault(this._watchers, component1, []).push(watcher);
-    this._registered.set(watcher, new Set());
+  findPaths: function(prefix) {
+    let tracked = this._paths;
+    for (let component of prefix) {
+      tracked = setDefault(tracked, component, {});
+    }
 
+    let result = [];
     let enumerate = (tracked, curPath) => {
       for (let component in tracked) {
         if (component == "_count") {
-          this.runCallback(watcher, curPath, tracked._count);
+          result.push([curPath, tracked._count]);
         } else {
           let path = curPath.slice();
           if (component === "true") {
@@ -100,7 +103,24 @@ let NotificationTracker = {
         }
       }
     }
-    enumerate(this._paths[component1] || {}, [component1]);
+    enumerate(tracked, prefix);
+
+    return result;
+  },
+
+  findSuffixes: function(prefix) {
+    let paths = this.findPaths(prefix);
+    return paths.map(([path, count]) => path[path.length - 1]);
+  },
+
+  watch: function(component1, watcher) {
+    setDefault(this._watchers, component1, []).push(watcher);
+    this._registered.set(watcher, new Set());
+
+    let paths = this.findPaths([component1]);
+    for (let [path, count] of paths) {
+      this.runCallback(watcher, path, count);
+    }
   },
 
   unwatch: function(component1, watcher) {
@@ -204,7 +224,7 @@ AboutProtocolChannel.prototype = {
       contractID: this._contractID
     }, {
       notificationCallbacks: this.notificationCallbacks,
-      loadGroupNotificationCallbacks: this.loadGroup.notificationCallbacks
+      loadGroupNotificationCallbacks: this.loadGroup ? this.loadGroup.notificationCallbacks : null,
     });
 
     if (rval.length != 1) {
@@ -310,10 +330,12 @@ AboutProtocolInstance.prototype = {
 
 let AboutProtocolChild = {
   _classDescription: "Addon shim about: protocol handler",
-  _classID: Components.ID("8d56a310-0c80-11e4-9191-0800200c9a66"),
 
   init: function() {
-    this._instances = {};
+    // Maps contractIDs to instances
+    this._instances = new Map();
+    // Maps contractIDs to classIDs
+    this._classIDs = new Map();
     NotificationTracker.watch("about-protocol", this);
   },
 
@@ -322,11 +344,19 @@ let AboutProtocolChild = {
     let registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
     if (register) {
       let instance = new AboutProtocolInstance(contractID);
-      this._instances[contractID] = instance;
-      registrar.registerFactory(this._classID, this._classDescription, contractID, instance);
+      let classID = Cc["@mozilla.org/uuid-generator;1"]
+                      .getService(Ci.nsIUUIDGenerator)
+                      .generateUUID();
+
+      this._instances.set(contractID, instance);
+      this._classIDs.set(contractID, classID);
+      registrar.registerFactory(classID, this._classDescription, contractID, instance);
     } else {
-      registrar.unregisterFactory(this._classID, this._instances[contractID]);
-      delete this._instances[contractID];
+      let instance = this._instances.get(contractID);
+      let classID = this._classIDs.get(contractID);
+      registrar.unregisterFactory(classID, instance);
+      this._instances.delete(contractID);
+      this._classIDs.delete(contractID);
     }
   },
 };

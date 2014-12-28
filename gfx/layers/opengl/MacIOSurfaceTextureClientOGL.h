@@ -16,7 +16,8 @@ namespace layers {
 class MacIOSurfaceTextureClientOGL : public TextureClient
 {
 public:
-  explicit MacIOSurfaceTextureClientOGL(TextureFlags aFlags);
+  explicit MacIOSurfaceTextureClientOGL(ISurfaceAllocator* aAllcator,
+                                        TextureFlags aFlags);
 
   virtual ~MacIOSurfaceTextureClientOGL();
 
@@ -35,6 +36,8 @@ public:
   virtual gfx::IntSize GetSize() const;
 
   virtual bool HasInternalBuffer() const MOZ_OVERRIDE { return false; }
+
+  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() MOZ_OVERRIDE;
 
   // This TextureClient should not be used in a context where we use CreateSimilar
   // (ex. component alpha) because the underlying texture data is always created by

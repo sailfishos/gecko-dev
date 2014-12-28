@@ -47,6 +47,7 @@ class OverscrollHandoffChain;
 struct OverscrollHandoffState;
 class LayerMetricsWrapper;
 class InputQueue;
+class GeckoContentController;
 
 /**
  * ****************** NOTE ON LOCK ORDERING IN APZ **************************
@@ -211,8 +212,7 @@ public:
    * that have come in. If |aPreventDefault| is true, any touch events in the
    * queue will be discarded.
    */
-  void ContentReceivedTouch(uint64_t aInputBlockId,
-                            bool aPreventDefault);
+  void ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault);
 
   /**
    * When the event regions code is enabled, this function should be invoked to
@@ -227,6 +227,12 @@ public:
    */
   void SetTargetAPZC(uint64_t aInputBlockId,
                      const nsTArray<ScrollableLayerGuid>& aTargets);
+
+  /**
+   * Helper function for SetTargetAPZC when used with single-target events,
+   * such as mouse wheel events.
+   */
+  void SetTargetAPZC(uint64_t aInputBlockId, const ScrollableLayerGuid& aTarget);
 
   /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
@@ -381,6 +387,10 @@ protected:
   // Protected destructor, to discourage deletion outside of Release():
   virtual ~APZCTreeManager();
 
+  // Hook for gtests subclass
+  virtual AsyncPanZoomController* MakeAPZCInstance(uint64_t aLayersId,
+                                                   GeckoContentController* aController);
+
 public:
   /* Some helper functions to find an APZC given some identifying input. These functions
      lock the tree of APZCs while they find the right one, and then return an addref'd
@@ -413,6 +423,9 @@ private:
   already_AddRefed<AsyncPanZoomController> GetTouchInputBlockAPZC(const MultiTouchInput& aEvent,
                                                                   HitTestResult* aOutHitResult);
   nsEventStatus ProcessTouchInput(MultiTouchInput& aInput,
+                                  ScrollableLayerGuid* aOutTargetGuid,
+                                  uint64_t* aOutInputBlockId);
+  nsEventStatus ProcessWheelEvent(WidgetWheelEvent& aEvent,
                                   ScrollableLayerGuid* aOutTargetGuid,
                                   uint64_t* aOutInputBlockId);
   nsEventStatus ProcessEvent(WidgetInputEvent& inputEvent,

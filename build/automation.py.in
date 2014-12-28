@@ -487,7 +487,6 @@ class Automation(object):
       preloadEnvVar = "MOZ_REPLACE_MALLOC_LIB"
 
     if dmdPath and dmdLibrary and preloadEnvVar:
-      env['DMD'] = '1'
       env[preloadEnvVar] = os.path.join(dmdPath, dmdLibrary)
 
     if crashreporter and not debugger:
@@ -507,7 +506,7 @@ class Automation(object):
     env['NS_TRACE_MALLOC_DISABLE_STACKS'] = '1'
 
     # Set WebRTC logging in case it is not set yet
-    env.setdefault('NSPR_LOG_MODULES', 'signaling:5,mtransport:5,datachannel:5')
+    env.setdefault('NSPR_LOG_MODULES', 'signaling:5,mtransport:5,datachannel:5,jsep:5,MediaPipelineFactory:5')
     env.setdefault('R_LOG_LEVEL', '6')
     env.setdefault('R_LOG_DESTINATION', 'stderr')
     env.setdefault('R_LOG_VERBOSE', '1')

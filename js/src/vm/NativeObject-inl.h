@@ -296,7 +296,7 @@ NativeObject::initDenseElementsUnbarriered(uint32_t dstStart, const Value *src, 
      */
     MOZ_ASSERT(dstStart + count <= getDenseCapacity());
     MOZ_ASSERT(!denseElementsAreCopyOnWrite());
-#if defined(DEBUG) && defined(JSGC_GENERATIONAL)
+#ifdef DEBUG
     /*
      * This asserts a global invariant: parallel code does not
      * observe objects inside the generational GC's nursery.
@@ -370,19 +370,17 @@ NativeObject::setSlotWithType(ExclusiveContext *cx, Shape *shape,
 }
 
 /* Make an object with pregenerated shape from a NEWOBJECT bytecode. */
-static inline NativeObject *
-CopyInitializerObject(JSContext *cx, HandleNativeObject baseobj, NewObjectKind newKind = GenericObject)
+static inline PlainObject *
+CopyInitializerObject(JSContext *cx, HandlePlainObject baseobj, NewObjectKind newKind = GenericObject)
 {
-    MOZ_ASSERT(baseobj->getClass() == &JSObject::class_);
     MOZ_ASSERT(!baseobj->inDictionaryMode());
 
     gc::AllocKind allocKind = gc::GetGCObjectFixedSlotsKind(baseobj->numFixedSlots());
     allocKind = gc::GetBackgroundAllocKind(allocKind);
     MOZ_ASSERT_IF(baseobj->isTenured(), allocKind == baseobj->asTenured().getAllocKind());
-    JSObject *baseObj = NewBuiltinClassInstance(cx, &JSObject::class_, allocKind, newKind);
-    if (!baseObj)
+    RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx, allocKind, newKind));
+    if (!obj)
         return nullptr;
-    RootedNativeObject obj(cx, &baseObj->as<NativeObject>());
 
     RootedObject metadata(cx, obj->getMetadata());
     RootedShape lastProp(cx, baseobj->lastProperty());
@@ -419,20 +417,6 @@ NewNativeObjectWithGivenProto(ExclusiveContext *cx, const js::Class *clasp,
 }
 
 inline NativeObject *
-NewNativeBuiltinClassInstance(ExclusiveContext *cx, const Class *clasp,
-                              gc::AllocKind allocKind, NewObjectKind newKind = GenericObject)
-{
-    return MaybeNativeObject(NewBuiltinClassInstance(cx, clasp, allocKind, newKind));
-}
-
-inline NativeObject *
-NewNativeBuiltinClassInstance(ExclusiveContext *cx, const Class *clasp,
-                              NewObjectKind newKind = GenericObject)
-{
-    return MaybeNativeObject(NewBuiltinClassInstance(cx, clasp, newKind));
-}
-
-inline NativeObject *
 NewNativeObjectWithClassProto(ExclusiveContext *cx, const js::Class *clasp, JSObject *proto, JSObject *parent,
                               gc::AllocKind allocKind, NewObjectKind newKind = GenericObject)
 {
@@ -444,20 +428,6 @@ NewNativeObjectWithClassProto(ExclusiveContext *cx, const js::Class *clasp, JSOb
                               NewObjectKind newKind = GenericObject)
 {
     return MaybeNativeObject(NewObjectWithClassProto(cx, clasp, proto, parent, newKind));
-}
-
-inline NativeObject *
-NewNativeObjectWithType(JSContext *cx, HandleTypeObject type, JSObject *parent, gc::AllocKind allocKind,
-                        NewObjectKind newKind = GenericObject)
-{
-    return MaybeNativeObject(NewObjectWithType(cx, type, parent, allocKind, newKind));
-}
-
-inline NativeObject *
-NewNativeObjectWithType(JSContext *cx, HandleTypeObject type, JSObject *parent,
-                        NewObjectKind newKind = GenericObject)
-{
-    return MaybeNativeObject(NewObjectWithType(cx, type, parent, newKind));
 }
 
 /*
@@ -566,7 +536,13 @@ LookupOwnPropertyInline(ExclusiveContext *cx,
     }
 
     // id was not found in obj. Try obj's resolve hook, if any.
-    if (obj->getClass()->resolve != JS_ResolveStub) {
+    if (obj->getClass()->resolve
+#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 4
+        // Workaround. See the comment on JS_ResolveStub in jsapi.h.
+        && obj->getClass()->resolve != JS_ResolveStub
+#endif
+        )
+    {
         if (!cx->shouldBeJSContext() || !allowGC)
             return false;
 
@@ -596,6 +572,36 @@ LookupOwnPropertyInline(ExclusiveContext *cx,
 
     *donep = false;
     return true;
+}
+
+/*
+ * Simplified version of LookupOwnPropertyInline that doesn't call resolve
+ * hooks.
+ */
+static inline void
+NativeLookupOwnPropertyNoResolve(ExclusiveContext *cx, HandleNativeObject obj, HandleId id,
+                                 MutableHandleShape result)
+{
+    // Check for a native dense element.
+    if (JSID_IS_INT(id) && obj->containsDenseElement(JSID_TO_INT(id))) {
+        MarkDenseOrTypedArrayElementFound<CanGC>(result);
+        return;
+    }
+
+    // Check for a typed array element.
+    if (IsAnyTypedArray(obj)) {
+        uint64_t index;
+        if (IsTypedArrayIndex(id, &index)) {
+            if (index < AnyTypedArrayLength(obj))
+                MarkDenseOrTypedArrayElementFound<CanGC>(result);
+            else
+                result.set(nullptr);
+            return;
+        }
+    }
+
+    // Check for a native property.
+    result.set(obj->lookup(cx, id));
 }
 
 template <AllowGC allowGC>
@@ -648,6 +654,9 @@ DefineNativeProperty(ExclusiveContext *cx, HandleNativeObject obj,
                      PropertyName *name, HandleValue value,
                      PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
+    MOZ_ASSERT(getter != JS_PropertyStub);
+    MOZ_ASSERT(setter != JS_StrictPropertyStub);
+
     RootedId id(cx, NameToId(name));
     return DefineNativeProperty(cx, obj, id, value, getter, setter, attrs);
 }

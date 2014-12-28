@@ -6,6 +6,9 @@
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
        xmlns:gecko="http://schemas.android.com/apk/res-auto">
 
+    <!-- The layout_height value is used in TabsPanel.getTabsLayoutContainerHeight
+         and as an offset in PrivateTabsPanel: if you change it here,
+         change it there! -->
     <RelativeLayout android:id="@+id/tabs_panel_header"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/browser_toolbar_height">
@@ -14,6 +17,11 @@
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:background="@color/background_tabs">
+
+            <ViewStub android:id="@+id/nav_back_stub"
+                      android:layout="@layout/new_tablet_tabs_panel_back_button"
+                      android:layout_width="wrap_content"
+                      android:layout_height="match_parent"/>
 
             <org.mozilla.gecko.widget.IconTabWidget android:id="@+id/tab_widget"
                                                     android:layout_width="wrap_content"

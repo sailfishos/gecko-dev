@@ -21,8 +21,8 @@
 using namespace android;
 
 namespace android {
-struct MOZ_EXPORT ALooper;
-class MOZ_EXPORT MediaBuffer;
+struct ALooper;
+class MediaBuffer;
 struct MOZ_EXPORT AString;
 class GonkNativeWindow;
 } // namespace android
@@ -51,6 +51,8 @@ public:
                           nsRefPtr<MediaData>& aOutput) MOZ_OVERRIDE;
 
   virtual nsresult Flush() MOZ_OVERRIDE;
+
+  virtual void AllocateMediaResources();
 
   virtual void ReleaseMediaResources();
 

@@ -214,10 +214,11 @@ CollectJitStackScripts(JSContext *cx, const Debugger::ExecutionObservableSet &ob
                     // Otherwise, we are in the middle of handling an
                     // exception. This happens since we could have bailed out
                     // in place from Ion after a throw, settling on the pc
-                    // *after* the bytecode that threw the exception, which
-                    // may have no ICEntry.
+                    // which may have no ICEntry (e.g., Ion is free to insert
+                    // resume points after non-effectful ops for better
+                    // register allocation).
                     MOZ_ASSERT(iter.baselineFrame()->isDebuggerHandlingException());
-                    jsbytecode *pc = script->baselineScript()->pcForReturnAddress(script, retAddr);
+                    jsbytecode *pc = script->baselineScript()->pcForNativeAddress(script, retAddr);
                     if (!entries.append(DebugModeOSREntry(script, script->pcToOffset(pc))))
                         return false;
                 }
@@ -403,7 +404,7 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const Debugger::ExecutionObservab
             if (kind == ICEntry::Kind_Op) {
                 // Case A above.
                 //
-                // Patching this case needs to patch both the stub frame and
+                // Patching these cases needs to patch both the stub frame and
                 // the baseline frame. The stub frame is patched below. For
                 // the baseline frame here, we resume right after the IC
                 // returns.
@@ -671,6 +672,7 @@ RecompileBaselineScriptForDebugMode(JSContext *cx, JSScript *script,
     _(GetProp_CallDOMProxyNative)               \
     _(GetProp_CallDOMProxyWithGenerationNative) \
     _(GetProp_DOMProxyShadowed)                 \
+    _(GetProp_Generic)                          \
     _(SetProp_CallScripted)                     \
     _(SetProp_CallNative)
 
@@ -819,10 +821,8 @@ jit::RecompileOnStackBaselineScriptsForDebugMode(JSContext *cx,
     if (entries.empty())
         return true;
 
-#ifdef JSGC_GENERATIONAL
     // Scripts can entrain nursery things. See note in js::ReleaseAllJITCode.
     cx->runtime()->gc.evictNursery();
-#endif
 
     // When the profiler is enabled, we need to have suppressed sampling,
     // since the basline jit scripts are in a state of flux.

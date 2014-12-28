@@ -269,9 +269,17 @@ js::ZonesIter::atAtomsZone(JSRuntime *rt)
     return rt->isAtomsZone(*it);
 }
 
-bool Zone::isOnList()
+bool
+Zone::isOnList() const
 {
     return listNext_ != NotOnList;
+}
+
+Zone *
+Zone::nextZone() const
+{
+    MOZ_ASSERT(isOnList());
+    return listNext_;
 }
 
 ZoneList::ZoneList()
@@ -281,8 +289,13 @@ ZoneList::ZoneList()
 ZoneList::ZoneList(Zone *zone)
   : head(zone), tail(zone)
 {
-    MOZ_ASSERT(!zone->isOnList());
+    MOZ_RELEASE_ASSERT(!zone->isOnList());
     zone->listNext_ = nullptr;
+}
+
+ZoneList::~ZoneList()
+{
+    MOZ_ASSERT(isEmpty());
 }
 
 void
@@ -290,14 +303,17 @@ ZoneList::check() const
 {
 #ifdef DEBUG
     MOZ_ASSERT((head == nullptr) == (tail == nullptr));
-    if (head) {
-        Zone *zone = head;
-        while (zone != tail) {
-            zone = zone->listNext_;
-            MOZ_ASSERT(zone);
-        }
-        MOZ_ASSERT(!zone->listNext_);
+    if (!head)
+        return;
+
+    Zone *zone = head;
+    for (;;) {
+        MOZ_ASSERT(zone && zone->isOnList());
+        if  (zone == tail)
+            break;
+        zone = zone->listNext_;
     }
+    MOZ_ASSERT(!zone->listNext_);
 #endif
 }
 
@@ -310,6 +326,7 @@ Zone *
 ZoneList::front() const
 {
     MOZ_ASSERT(!isEmpty());
+    MOZ_ASSERT(head->isOnList());
     return head;
 }
 
@@ -317,11 +334,11 @@ void
 ZoneList::append(Zone *zone)
 {
     ZoneList singleZone(zone);
-    append(singleZone);
+    transferFrom(singleZone);
 }
 
 void
-ZoneList::append(ZoneList &other)
+ZoneList::transferFrom(ZoneList &other)
 {
     check();
     other.check();
@@ -332,9 +349,12 @@ ZoneList::append(ZoneList &other)
     else
         head = other.head;
     tail = other.tail;
+
+    other.head = nullptr;
+    other.tail = nullptr;
 }
 
-Zone *
+void
 ZoneList::removeFront()
 {
     MOZ_ASSERT(!isEmpty());
@@ -346,17 +366,4 @@ ZoneList::removeFront()
         tail = nullptr;
 
     front->listNext_ = Zone::NotOnList;
-    return front;
-}
-
-void
-ZoneList::transferFrom(ZoneList& other)
-{
-    MOZ_ASSERT(isEmpty());
-    other.check();
-
-    head = other.head;
-    tail = other.tail;
-    other.head = nullptr;
-    other.tail = nullptr;
 }

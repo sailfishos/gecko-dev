@@ -54,6 +54,7 @@
 #include "StickyScrollContainer.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/LookAndFeel.h"
+#include "mozilla/PendingPlayerTracker.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/UniquePtr.h"
 #include "ActiveLayerTracker.h"
@@ -65,6 +66,12 @@
 #include "RestyleManager.h"
 #include "nsCaret.h"
 #include "nsISelection.h"
+
+// GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
+// GetTickCount().
+#ifdef GetCurrentTime
+#undef GetCurrentTime
+#endif
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -355,7 +362,12 @@ AddAnimationForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
     aLayer->AddAnimation();
 
   const AnimationTiming& timing = aPlayer->GetSource()->Timing();
-  animation->startTime() = aPlayer->Timeline()->ToTimeStamp(aPlayer->mStartTime.Value() + timing.mDelay);
+  animation->startTime() = aPlayer->GetStartTime().IsNull()
+                         ? TimeStamp()
+                         : aPlayer->Timeline()->ToTimeStamp(
+                             aPlayer->GetStartTime().Value() + timing.mDelay);
+  animation->initialCurrentTime() = aPlayer->GetCurrentTime().Value()
+                                    - timing.mDelay;
   animation->duration() = timing.mIterationDuration;
   animation->iterationCount() = timing.mIterationCount;
   animation->direction() = timing.mDirection;
@@ -412,6 +424,23 @@ AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
           player->IsRunning())) {
       continue;
     }
+
+    // Don't add animations that are pending when their corresponding
+    // refresh driver is under test control. This is because any pending
+    // animations on layers will have their start time updated with the
+    // current timestamp but when the refresh driver is under test control
+    // its refresh times are unrelated to timestamp values.
+    //
+    // Instead we leave the animation running on the main thread and the
+    // next time the refresh driver is advanced it will trigger any pending
+    // animations.
+    if (player->PlayState() == AnimationPlayState::Pending) {
+      nsRefreshDriver* driver = player->Timeline()->GetRefreshDriver();
+      if (driver && driver->IsTestControllingRefreshesEnabled()) {
+        continue;
+      }
+    }
+
     AddAnimationForProperty(aFrame, aProperty, player, aLayer, aData, aPending);
     player->SetIsRunningOnCompositor();
   }
@@ -533,7 +562,7 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mCurrentTableItem(nullptr),
       mCurrentFrame(aReferenceFrame),
       mCurrentReferenceFrame(aReferenceFrame),
-      mCurrentAnimatedGeometryRoot(aReferenceFrame),
+      mCurrentAnimatedGeometryRoot(nullptr),
       mWillChangeBudgetCalculated(false),
       mDirtyRect(-1,-1,-1,-1),
       mGlassDisplayItem(nullptr),
@@ -557,11 +586,13 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mIsCompositingCheap(false),
       mContainsPluginItem(false),
       mAncestorHasTouchEventHandler(false),
+      mAncestorHasScrollEventHandler(false),
       mHaveScrollableDisplayPort(false)
 {
   MOZ_COUNT_CTOR(nsDisplayListBuilder);
   PL_InitArenaPool(&mPool, "displayListArena", 1024,
                    std::max(NS_ALIGNMENT_OF(void*),NS_ALIGNMENT_OF(double))-1);
+  RecomputeCurrentAnimatedGeometryRoot();
 
   nsPresContext* pc = aReferenceFrame->PresContext();
   nsIPresShell *shell = pc->PresShell();
@@ -685,9 +716,9 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
     }
     nsRect dp;
     if (nsLayoutUtils::GetDisplayPort(content, &dp)) {
-      metrics.mDisplayPort = CSSRect::FromAppUnits(dp);
+      metrics.SetDisplayPort(CSSRect::FromAppUnits(dp));
       nsLayoutUtils::LogTestDataForPaint(aLayer->Manager(), scrollId, "displayport",
-          metrics.mDisplayPort);
+          metrics.GetDisplayPort());
     }
     if (nsLayoutUtils::GetCriticalDisplayPort(content, &dp)) {
       metrics.mCriticalDisplayPort = CSSRect::FromAppUnits(dp);
@@ -703,8 +734,8 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
   if (aScrollFrame)
     scrollableFrame = aScrollFrame->GetScrollTargetFrame();
 
-  metrics.mScrollableRect = CSSRect::FromAppUnits(
-    nsLayoutUtils::CalculateScrollableRectForFrame(scrollableFrame, aForFrame));
+  metrics.SetScrollableRect(CSSRect::FromAppUnits(
+    nsLayoutUtils::CalculateScrollableRectForFrame(scrollableFrame, aForFrame)));
 
   if (scrollableFrame) {
     nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
@@ -747,21 +778,21 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
   // all the pres shells from here up to the root, as well as any css-driven
   // resolution. We don't need to compute it as it's already stored in the
   // container parameters.
-  metrics.mCumulativeResolution = LayoutDeviceToLayerScale(aContainerParameters.mXScale,
-                                                           aContainerParameters.mYScale);
+  metrics.SetCumulativeResolution(LayoutDeviceToLayerScale(aContainerParameters.mXScale,
+                                                           aContainerParameters.mYScale));
 
   LayoutDeviceToScreenScale resolutionToScreen(
       presShell->GetCumulativeResolution().width
     * nsLayoutUtils::GetTransformToAncestorScale(aScrollFrame ? aScrollFrame : aForFrame).width);
-  metrics.SetExtraResolution(metrics.mCumulativeResolution / resolutionToScreen);
+  metrics.SetExtraResolution(metrics.GetCumulativeResolution() / resolutionToScreen);
 
-  metrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(
-    (float)nsPresContext::AppUnitsPerCSSPixel() / auPerDevPixel);
+  metrics.SetDevPixelsPerCSSPixel(CSSToLayoutDeviceScale(
+    (float)nsPresContext::AppUnitsPerCSSPixel() / auPerDevPixel));
 
   // Initially, AsyncPanZoomController should render the content to the screen
   // at the painted resolution.
   const LayerToParentLayerScale layerToParentLayerScale(1.0f);
-  metrics.SetZoom(metrics.mCumulativeResolution * metrics.mDevPixelsPerCSSPixel
+  metrics.SetZoom(metrics.GetCumulativeResolution() * metrics.GetDevPixelsPerCSSPixel()
                   * layerToParentLayerScale);
 
   if (presShell) {
@@ -770,7 +801,7 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
     if (document) {
       nsCOMPtr<nsPIDOMWindow> innerWin(document->GetInnerWindow());
       if (innerWin) {
-        metrics.SetMayHaveTouchListeners(innerWin->HasTouchEventListeners());
+        metrics.SetMayHaveTouchListeners(innerWin->HasApzAwareEventListeners());
       }
     }
     metrics.SetMayHaveTouchCaret(presShell->MayHaveTouchCaret());
@@ -784,7 +815,7 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
   nsRect compositionBounds(frameForCompositionBoundsCalculation->GetOffsetToCrossDoc(aReferenceFrame),
                            frameForCompositionBoundsCalculation->GetSize());
   ParentLayerRect frameBounds = LayoutDeviceRect::FromAppUnits(compositionBounds, auPerDevPixel)
-                              * metrics.mCumulativeResolution
+                              * metrics.GetCumulativeResolution()
                               * layerToParentLayerScale;
   metrics.mCompositionBounds = frameBounds;
 
@@ -1245,6 +1276,8 @@ nsDisplayListBuilder::AddToWillChangeBudget(nsIFrame* aFrame, const nsSize& aRec
 
 bool
 nsDisplayListBuilder::IsInWillChangeBudget(nsIFrame* aFrame) const {
+  uint32_t multiplier = 3;
+
   mWillChangeBudgetCalculated = true;
 
   nsPresContext* key = aFrame->PresContext();
@@ -1261,7 +1294,22 @@ nsDisplayListBuilder::IsInWillChangeBudget(nsIFrame* aFrame) const {
   uint32_t budgetLimit = nsPresContext::AppUnitsToIntCSSPixels(area.width) *
     nsPresContext::AppUnitsToIntCSSPixels(area.height);
 
-  return budget.mBudget / 3 < budgetLimit;
+  bool onBudget = budget.mBudget / multiplier < budgetLimit;
+  if (!onBudget) {
+    nsString usageStr;
+    usageStr.AppendInt(budget.mBudget);
+
+    nsString multiplierStr;
+    multiplierStr.AppendInt(multiplier);
+
+    nsString limitStr;
+    limitStr.AppendInt(budgetLimit);
+
+    const char16_t* params[] = { usageStr.get(), multiplierStr.get(), limitStr.get() };
+    key->Document()->WarnOnceAbout(nsIDocument::eWillChangeBudget, false,
+                                   params, ArrayLength(params));
+  }
+  return onBudget;
 }
 
 void nsDisplayListSet::MoveTo(const nsDisplayListSet& aDestination) const
@@ -1318,7 +1366,9 @@ TreatAsOpaque(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder)
 {
   bool snap;
   nsRegion opaque = aItem->GetOpaqueRegion(aBuilder, &snap);
-  if (aBuilder->IsForPluginGeometry()) {
+  if (aBuilder->IsForPluginGeometry() &&
+      aItem->GetType() != nsDisplayItem::TYPE_LAYER_EVENT_REGIONS)
+  {
     // Treat all leaf chrome items as opaque, unless their frames are opacity:0.
     // Since opacity:0 frames generate an nsDisplayOpacity, that item will
     // not be treated as opaque here, so opacity:0 chrome content will be
@@ -1382,6 +1432,33 @@ nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
 
   mIsOpaque = !aVisibleRegion->Intersects(aListVisibleBounds);
   return anyVisible;
+}
+
+static bool
+StartPendingAnimationsOnSubDocuments(nsIDocument* aDocument, void* aReadyTime)
+{
+  PendingPlayerTracker* tracker = aDocument->GetPendingPlayerTracker();
+  if (tracker) {
+    nsIPresShell* shell = aDocument->GetShell();
+    // If paint-suppression is in effect then we haven't finished painting
+    // this document yet so we shouldn't start animations
+    if (!shell || !shell->IsPaintingSuppressed()) {
+      tracker->StartPendingPlayers(*static_cast<TimeStamp*>(aReadyTime));
+    }
+  }
+  aDocument->EnumerateSubDocuments(StartPendingAnimationsOnSubDocuments,
+                                   aReadyTime);
+  return true;
+}
+
+static void
+StartPendingAnimations(nsIDocument* aDocument,
+                       const TimeStamp& aReadyTime) {
+  MOZ_ASSERT(!aReadyTime.IsNull(),
+             "Animation ready time is not set. Perhaps we're using a layer"
+             " manager that doesn't update it");
+  StartPendingAnimationsOnSubDocuments(aDocument,
+                                       const_cast<TimeStamp*>(&aReadyTime));
 }
 
 /**
@@ -1481,23 +1558,25 @@ already_AddRefed<LayerManager> nsDisplayList::PaintRoot(nsDisplayListBuilder* aB
   root->SetPostScale(1.0f/containerParameters.mXScale,
                      1.0f/containerParameters.mYScale);
 
-  bool isRoot = presContext->IsRootContentDocument();
+  if (gfxPrefs::LayoutUseContainersForRootFrames()) {
+    bool isRoot = presContext->IsRootContentDocument();
 
-  nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
+    nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
 
-  nsRect viewport(aBuilder->ToReferenceFrame(frame), frame->GetSize());
+    nsRect viewport(aBuilder->ToReferenceFrame(frame), frame->GetSize());
 
-  root->SetFrameMetrics(
-    nsDisplayScrollLayer::ComputeFrameMetrics(frame, rootScrollFrame,
-                       aBuilder->FindReferenceFrameFor(frame),
-                       root, FrameMetrics::NULL_SCROLL_ID, viewport,
-                       !isRoot, isRoot, containerParameters));
+    root->SetFrameMetrics(
+      nsDisplayScrollLayer::ComputeFrameMetrics(frame, rootScrollFrame,
+                         aBuilder->FindReferenceFrameFor(frame),
+                         root, FrameMetrics::NULL_SCROLL_ID, viewport,
+                         !isRoot, isRoot, containerParameters));
+  }
 
   // NS_WARNING is debug-only, so don't even bother checking the conditions in
   // a release build.
 #ifdef DEBUG
   bool usingDisplayport = false;
-  if (rootScrollFrame) {
+  if (nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame()) {
     nsIContent* content = rootScrollFrame->GetContent();
     if (content) {
       usingDisplayport = nsLayoutUtils::GetDisplayPort(content, nullptr);
@@ -1542,6 +1621,10 @@ already_AddRefed<LayerManager> nsDisplayList::PaintRoot(nsDisplayListBuilder* aB
                                aBuilder, flags);
   aBuilder->SetIsCompositingCheap(temp);
   layerBuilder->DidEndTransaction();
+
+  if (document) {
+    StartPendingAnimations(document, layerManager->GetAnimationReadyTime());
+  }
 
   nsIntRegion invalid;
   if (props) {
@@ -2980,7 +3063,9 @@ nsDisplayLayerEventRegions::AddFrame(nsDisplayListBuilder* aBuilder,
   } else {
     mHitRegion.Or(mHitRegion, borderBox);
   }
-  if (aBuilder->GetAncestorHasTouchEventHandler()) {
+  if (aBuilder->GetAncestorHasTouchEventHandler() ||
+      aBuilder->GetAncestorHasScrollEventHandler())
+  {
     mDispatchToContentHitRegion.Or(mDispatchToContentHitRegion, borderBox);
   }
 }

@@ -413,16 +413,18 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     dirty = dirty.ConvertAppUnitsRoundOut(parentAPD, subdocAPD);
 
     if (nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame()) {
-      // for root content documents we want the base to be the composition bounds
-      nsRect displayportBase = presContext->IsRootContentDocument() ?
-          nsRect(nsPoint(0,0), nsLayoutUtils::CalculateCompositionSizeForFrame(rootScrollFrame)) :
-          dirty.Intersect(nsRect(nsPoint(0,0), subdocRootFrame->GetSize()));
-      nsRect displayPort;
-      if (aBuilder->IsPaintingToWindow() &&
-          nsLayoutUtils::GetOrMaybeCreateDisplayPort(
-            *aBuilder, rootScrollFrame, displayportBase, &displayPort)) {
-        haveDisplayPort = true;
-        dirty = displayPort;
+      if (gfxPrefs::LayoutUseContainersForRootFrames()) {
+        // for root content documents we want the base to be the composition bounds
+        nsRect displayportBase = presContext->IsRootContentDocument() ?
+            nsRect(nsPoint(0,0), nsLayoutUtils::CalculateCompositionSizeForFrame(rootScrollFrame)) :
+            dirty.Intersect(nsRect(nsPoint(0,0), subdocRootFrame->GetSize()));
+        nsRect displayPort;
+        if (aBuilder->IsPaintingToWindow() &&
+            nsLayoutUtils::GetOrMaybeCreateDisplayPort(
+              *aBuilder, rootScrollFrame, displayportBase, &displayPort)) {
+          haveDisplayPort = true;
+          dirty = displayPort;
+        }
       }
 
       ignoreViewportScrolling = presShell->IgnoringViewportScrolling();
@@ -453,9 +455,15 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   bool constructResolutionItem = subdocRootFrame &&
     (presShell->GetXResolution() != 1.0 || presShell->GetYResolution() != 1.0);
   bool constructZoomItem = subdocRootFrame && parentAPD != subdocAPD;
-  bool needsOwnLayer = constructResolutionItem || constructZoomItem ||
-    haveDisplayPort ||
-    presContext->IsRootContentDocument() || (sf && sf->IsScrollingActive(aBuilder));
+  bool needsOwnLayer = false;
+  if (constructResolutionItem ||
+      constructZoomItem ||
+      haveDisplayPort ||
+      presContext->IsRootContentDocument() ||
+      (sf && sf->IsScrollingActive(aBuilder)))
+  {
+    needsOwnLayer = true;
+  }
 
   nsDisplayList childItems;
 
@@ -478,6 +486,7 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
               : aBuilder->GetCurrentScrollParentId());
 
       aBuilder->SetAncestorHasTouchEventHandler(false);
+      aBuilder->SetAncestorHasScrollEventHandler(false);
       subdocRootFrame->
         BuildDisplayListForStackingContext(aBuilder, dirty, &childItems);
     }
@@ -1257,4 +1266,25 @@ nsSubDocumentFrame::ObtainIntrinsicSizeFrame()
     }
   }
   return nullptr;
+}
+
+nsIntPoint
+nsSubDocumentFrame::GetChromeDisplacement()
+{
+  nsIFrame* nextFrame = nsLayoutUtils::GetCrossDocParentFrame(this);
+  if (!nextFrame) {
+    NS_WARNING("Couldn't find window chrome to calculate displacement to.");
+    return nsIntPoint();
+  }
+
+  nsIFrame* rootFrame = nextFrame;
+  while (nextFrame) {
+    rootFrame = nextFrame;
+    nextFrame = nsLayoutUtils::GetCrossDocParentFrame(rootFrame);
+  }
+
+  nsPoint offset = GetOffsetToCrossDoc(rootFrame);
+  int32_t appUnitsPerDevPixel = rootFrame->PresContext()->AppUnitsPerDevPixel();
+  return nsIntPoint((int)(offset.x/appUnitsPerDevPixel),
+                    (int)(offset.y/appUnitsPerDevPixel));
 }

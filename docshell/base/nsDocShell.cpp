@@ -1345,6 +1345,11 @@ nsDocShell::LoadURI(nsIURI * aURI,
     if (!IsNavigationAllowed(true, false)) {
       return NS_OK; // JS may not handle returning of an error code
     }
+
+    if (DoAppRedirectIfNeeded(aURI, aLoadInfo, aFirstParty)) {
+      return NS_OK;
+    }
+
     nsCOMPtr<nsIURI> referrer;
     nsCOMPtr<nsIInputStream> postStream;
     nsCOMPtr<nsIInputStream> headersStream;
@@ -2893,6 +2898,11 @@ nsDocShell::PopProfileTimelineMarkers(JSContext* aCx,
     const char* startMarkerName = startPayload->GetName();
 
     bool hasSeenPaintedLayer = false;
+    bool isPaint = strcmp(startMarkerName, "Paint") == 0;
+
+    // If we are processing a Paint marker, we append information from
+    // all the embedded Layer markers to this array.
+    mozilla::dom::Sequence<mozilla::dom::ProfileTimelineLayerRect> layerRectangles;
 
     if (startPayload->GetMetaData() == TRACING_INTERVAL_START) {
       bool hasSeenEnd = false;
@@ -2910,14 +2920,14 @@ nsDocShell::PopProfileTimelineMarkers(JSContext* aCx,
         const char* endMarkerName = endPayload->GetName();
 
         // Look for Layer markers to stream out paint markers.
-        if (strcmp(endMarkerName, "Layer") == 0) {
+        if (isPaint && strcmp(endMarkerName, "Layer") == 0) {
           hasSeenPaintedLayer = true;
+          endPayload->AddLayerRectangles(layerRectangles);
         }
 
         if (!startPayload->Equals(endPayload)) {
           continue;
         }
-        bool isPaint = strcmp(startMarkerName, "Paint") == 0;
 
         // Pair start and end markers.
         if (endPayload->GetMetaData() == TRACING_INTERVAL_START) {
@@ -2933,7 +2943,11 @@ nsDocShell::PopProfileTimelineMarkers(JSContext* aCx,
               marker.mName = NS_ConvertUTF8toUTF16(startPayload->GetName());
               marker.mStart = startPayload->GetTime();
               marker.mEnd = endPayload->GetTime();
-              startPayload->AddDetails(marker);
+              if (isPaint) {
+                marker.mRectangles.Construct(layerRectangles);
+              } else {
+                startPayload->AddDetails(marker);
+              }
               profileTimelineMarkers.AppendElement(marker);
             }
 
@@ -6584,10 +6598,6 @@ nsDocShell::ForceRefreshURI(nsIURI * aURI,
     }
     else {
         loadInfo->SetLoadType(nsIDocShellLoadInfo::loadRefresh);
-    }
-
-    if (DoAppRedirectIfNeeded(aURI, loadInfo, true)) {
-      return NS_OK;
     }
 
     /*

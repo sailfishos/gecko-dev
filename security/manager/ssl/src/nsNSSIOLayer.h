@@ -96,13 +96,6 @@ public:
   void SetPreliminaryHandshakeDone() { mPreliminaryHandshakeDone = true; }
 
   void SetKEAUsed(uint16_t kea) { mKEAUsed = kea; }
-  inline int16_t GetKEAExpected() // infallible in nsISSLSocketControl
-  {
-    int16_t result;
-    mozilla::DebugOnly<nsresult> rv = GetKEAExpected(&result);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
-    return result;
-  }
 
   void SetKEAKeyBits(uint32_t keaBits) { mKEAKeyBits = keaBits; }
 
@@ -160,7 +153,6 @@ private:
   // mKEA* are used in false start and http/2 detetermination
   // Values are from nsISSLSocketControl
   int16_t mKEAUsed;
-  int16_t mKEAExpected;
   uint32_t mKEAKeyBits;
   int16_t mSSLVersionUsed;
   int16_t mMACAlgorithmUsed;
@@ -225,7 +217,9 @@ public:
                                    PRErrorCode intoleranceReason);
   bool rememberStrongCiphersFailed(const nsACString& hostName, int16_t port,
                                    PRErrorCode intoleranceReason);
-  void forgetIntolerance(const nsACString& hostname, int16_t port);
+  // returns the known tolerant version
+  // or 0 if there is no known tolerant version
+  uint16_t forgetIntolerance(const nsACString& hostname, int16_t port);
   void adjustForTLSIntolerance(const nsACString& hostname, int16_t port,
                                /*in/out*/ SSLVersionRange& range,
                                /*out*/ StrongCipherStatus& strongCipherStatus);

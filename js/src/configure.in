@@ -205,19 +205,7 @@ if test -n "$gonkdir" ; then
     STLPORT_CPPFLAGS="-I$_topsrcdir/build/stlport/stlport -I$gonkdir/ndk/sources/cxx-stl/system/include"
     STLPORT_LIBS="-lstlport"
 
-    case "$target_cpu" in
-    arm)
-        ARCH_DIR=arch-arm
-        ;;
-    i?86)
-        ARCH_DIR=arch-x86
-        ;;
-    mips*)
-        ARCH_DIR=arch-mips
-        ;;
-    esac
-
-    CPPFLAGS="-DANDROID -isystem $gonkdir/bionic/libc/$ARCH_DIR/include -isystem $gonkdir/bionic/libc/include/ -isystem $gonkdir/bionic/libc/kernel/common -isystem $gonkdir/bionic/libc/kernel/$ARCH_DIR -isystem $gonkdir/bionic/libm/include -I$gonkdir/frameworks/base/native/include -I$gonkdir/system/core/include -isystem $gonkdir/bionic $CPPFLAGS -I$gonkdir/external/valgrind/fxos-include"
+    CPPFLAGS="-DANDROID $TARGET_C_INCLUDES -I$gonkdir/frameworks/base/native/include -I$gonkdir/system/core/include -isystem $gonkdir/bionic $CPPFLAGS -I$gonkdir/external/valgrind/fxos-include"
     CFLAGS="-mandroid -fno-short-enums -fno-exceptions $CFLAGS"
     CXXFLAGS="-mandroid -fno-short-enums -fno-exceptions -Wno-psabi $CXXFLAGS $STLPORT_CPPFLAGS"
     LIBS="$LIBS $STLPORT_LIBS"
@@ -439,9 +427,7 @@ case "$target" in
         AC_DEFINE(_CRT_SECURE_NO_WARNINGS)
         AC_DEFINE(_CRT_NONSTDC_NO_WARNINGS)
 
-        if test "$_CC_MAJOR_VERSION" = "16"; then
-            _CC_SUITE=10
-        elif test "$_CC_MAJOR_VERSION" = "17"; then
+        if test "$_CC_MAJOR_VERSION" = "17"; then
             _CC_SUITE=11
         elif test "$_CC_MAJOR_VERSION" = "18"; then
             _CC_SUITE=12
@@ -1091,6 +1077,20 @@ if test -n "$MOZ_MSAN"; then
     MOZ_PATH_PROG(LLVM_SYMBOLIZER, llvm-symbolizer)
 fi
 AC_SUBST(MOZ_MSAN)
+
+dnl ========================================================
+dnl = Use Thread Sanitizer
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(thread-sanitizer,
+[  --enable-thread-sanitizer       Enable Thread Sanitizer (default=no)],
+   MOZ_TSAN=1,
+   MOZ_TSAN= )
+if test -n "$MOZ_TSAN"; then
+    MOZ_LLVM_HACKS=1
+    AC_DEFINE(MOZ_TSAN)
+    MOZ_PATH_PROG(LLVM_SYMBOLIZER, llvm-symbolizer)
+fi
+AC_SUBST(MOZ_TSAN)
 
 # The LLVM symbolizer is used by all sanitizers
 AC_SUBST(LLVM_SYMBOLIZER)
@@ -1820,8 +1820,17 @@ ia64*-hpux*)
         dnl For profile-guided optimization
         PROFILE_GEN_CFLAGS="-GL"
         PROFILE_GEN_LDFLAGS="-LTCG:PGINSTRUMENT"
-        PROFILE_USE_CFLAGS="-GL"
-        PROFILE_USE_LDFLAGS="-LTCG:PGOPTIMIZE"
+        dnl XXX: PGO builds can fail with warnings treated as errors,
+        dnl specifically "no profile data available" appears to be
+        dnl treated as an error sometimes. This might be a consequence
+        dnl of using WARNINGS_AS_ERRORS in some modules, combined
+        dnl with the linker doing most of the work in the whole-program
+        dnl optimization/PGO case. I think it's probably a compiler bug,
+        dnl but we work around it here.
+        PROFILE_USE_CFLAGS="-GL -wd4624 -wd4952"
+        dnl XXX: should be -LTCG:PGOPTIMIZE, but that fails on libxul.
+        dnl Probably also a compiler bug, but what can you do?
+        PROFILE_USE_LDFLAGS="-LTCG:PGUPDATE"
         LDFLAGS="$LDFLAGS -DYNAMICBASE"
     fi
     AC_DEFINE(HAVE_SNPRINTF)
@@ -3131,45 +3140,6 @@ dnl ========================================================
 MOZ_ARG_WITH_STRING(wrap-malloc,
 [  --with-wrap-malloc=DIR  Location of malloc wrapper library],
     WRAP_LDFLAGS="${WRAP_LDFLAGS} $withval")
-
-dnl ========================================================
-dnl = Use JS Call tracing
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(trace-jscalls,
-[  --enable-trace-jscalls  Enable JS call enter/exit callback (default=no)],
-    MOZ_TRACE_JSCALLS=1,
-    MOZ_TRACE_JSCALLS= )
-if test -n "$MOZ_TRACE_JSCALLS"; then
-    AC_DEFINE(MOZ_TRACE_JSCALLS)
-fi
-
-dnl ========================================================
-dnl = Use incremental GC
-dnl ========================================================
-JSGC_INCREMENTAL=1
-MOZ_ARG_DISABLE_BOOL(gcincremental,
-[  --disable-gcincremental Disable incremental GC],
-    JSGC_INCREMENTAL= )
-if test -n "$JSGC_INCREMENTAL"; then
-    AC_DEFINE(JSGC_INCREMENTAL)
-fi
-
-dnl ========================================================
-dnl = Use generational GC
-dnl ========================================================
-dnl Use generational GC by default in all shell builds. The top-level mozilla
-dnl configure.in will configure SpiderMonkey with --disable-gcgenerational as
-dnl needed on a per-platform basis.
-JSGC_GENERATIONAL=1
-MOZ_ARG_DISABLE_BOOL(gcgenerational,
-[  --disable-gcgenerational Disable generational GC],
-    JSGC_GENERATIONAL= ,
-    JSGC_GENERATIONAL=1 )
-if test -n "$JSGC_GENERATIONAL"; then
-    AC_DEFINE(JSGC_GENERATIONAL)
-fi
-JSGC_GENERATIONAL_CONFIGURED=$JSGC_GENERATIONAL
-AC_SUBST(JSGC_GENERATIONAL_CONFIGURED)
 
 dnl ========================================================
 dnl = Use compacting GC

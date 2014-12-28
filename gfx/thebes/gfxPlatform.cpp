@@ -104,6 +104,7 @@ class mozilla::gl::SkiaGLGlue : public GenericAtomicRefCounted {
 
 #include "nsIGfxInfo.h"
 #include "nsIXULRuntime.h"
+#include "VsyncSource.h"
 
 namespace mozilla {
 namespace layers {
@@ -164,7 +165,7 @@ public:
 class CrashStatsLogForwarder: public mozilla::gfx::LogForwarder
 {
 public:
-  CrashStatsLogForwarder(const char* aKey);
+  explicit CrashStatsLogForwarder(const char* aKey);
   virtual void Log(const std::string& aString) MOZ_OVERRIDE;
 
   void SetCircularBufferSize(uint32_t aCapacity);
@@ -547,6 +548,10 @@ gfxPlatform::Init()
     }
 
     RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
+
+    if (XRE_IsParentProcess() && gfxPrefs::HardwareVsyncEnabled()) {
+      gPlatform->mVsyncSource = gPlatform->CreateHardwareVsyncSource();
+    }
 }
 
 static bool sLayersIPCIsUp = false;
@@ -593,6 +598,7 @@ gfxPlatform::Shutdown()
 
         gPlatform->mMemoryPressureObserver = nullptr;
         gPlatform->mSkiaGlue = nullptr;
+        gPlatform->mVsyncSource = nullptr;
     }
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -2179,6 +2185,10 @@ InitLayersAccelerationPrefs()
           if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
             sLayersSupportsD3D11 = true;
           }
+        }
+        if (!gfxPrefs::LayersD3D11DisableWARP()) {
+          // Always support D3D11 when WARP is allowed.
+          sLayersSupportsD3D11 = true;
         }
       }
     }

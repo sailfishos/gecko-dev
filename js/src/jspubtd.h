@@ -21,7 +21,7 @@
 
 #include "js/TypeDecls.h"
 
-#if (defined(JSGC_GENERATIONAL) && defined(JS_GC_ZEAL)) || \
+#if (defined(JS_GC_ZEAL)) || \
     (defined(JSGC_COMPACTING) && defined(DEBUG))
 # define JSGC_HASH_TABLE_CHECKS
 #endif
@@ -84,43 +84,6 @@ enum JSProtoKey {
     JSProto_LIMIT
 };
 
-/*
- * This enum type is used to control the behavior of a JSObject property
- * iterator function that has type JSNewEnumerate.
- */
-enum JSIterateOp {
-    /* Create new iterator state over enumerable properties. */
-    JSENUMERATE_INIT,
-
-    /* Create new iterator state over all properties. */
-    JSENUMERATE_INIT_ALL,
-
-    /* Iterate once. */
-    JSENUMERATE_NEXT,
-
-    /* Destroy iterator state. */
-    JSENUMERATE_DESTROY
-};
-
-/* See Value::gcKind() and JSTraceCallback in Tracer.h. */
-enum JSGCTraceKind {
-    JSTRACE_OBJECT,
-    JSTRACE_STRING,
-    JSTRACE_SYMBOL,
-    JSTRACE_SCRIPT,
-
-    /*
-     * Trace kinds internal to the engine. The embedding can only see them if
-     * it implements JSTraceCallback.
-     */
-    JSTRACE_LAZY_SCRIPT,
-    JSTRACE_JITCODE,
-    JSTRACE_SHAPE,
-    JSTRACE_BASE_SHAPE,
-    JSTRACE_TYPE_OBJECT,
-    JSTRACE_LAST = JSTRACE_TYPE_OBJECT
-};
-
 /* Struct forward declarations. */
 struct JSClass;
 struct JSCompartment;
@@ -179,30 +142,20 @@ struct Runtime
     /* Restrict zone access during Minor GC. */
     bool needsIncrementalBarrier_;
 
-#ifdef JSGC_GENERATIONAL
   private:
     js::gc::StoreBuffer *gcStoreBufferPtr_;
-#endif
 
   public:
-    explicit Runtime(
-#ifdef JSGC_GENERATIONAL
-        js::gc::StoreBuffer *storeBuffer
-#endif
-    )
+    explicit Runtime(js::gc::StoreBuffer *storeBuffer)
       : needsIncrementalBarrier_(false)
-#ifdef JSGC_GENERATIONAL
       , gcStoreBufferPtr_(storeBuffer)
-#endif
     {}
 
     bool needsIncrementalBarrier() const {
         return needsIncrementalBarrier_;
     }
 
-#ifdef JSGC_GENERATIONAL
     js::gc::StoreBuffer *gcStoreBufferPtr() { return gcStoreBufferPtr_; }
-#endif
 
     static JS::shadow::Runtime *asShadowRuntime(JSRuntime *rt) {
         return reinterpret_cast<JS::shadow::Runtime*>(rt);

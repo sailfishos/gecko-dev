@@ -301,12 +301,17 @@ ReportError(JSContext *cx, const char *message, JSErrorReport *reportp,
         reportp->flags |= JSREPORT_EXCEPTION;
     }
 
+    if (cx->options().autoJSAPIOwnsErrorReporting() || JS_IsRunning(cx)) {
+        if (js_ErrorToException(cx, message, reportp, callback, userRef)) {
+            return;
+        }
+    }
+
     /*
      * Call the error reporter only if an exception wasn't raised.
      */
-    if (!JS_IsRunning(cx) || !js_ErrorToException(cx, message, reportp, callback, userRef)) {
-        if (message)
-            CallErrorReporter(cx, message, reportp);
+    if (message) {
+        CallErrorReporter(cx, message, reportp);
     }
 }
 
@@ -523,16 +528,16 @@ js::ReportUsageError(JSContext *cx, HandleObject callee, const char *msg)
     const char *usageStr = "usage";
     PropertyName *usageAtom = Atomize(cx, usageStr, strlen(usageStr))->asPropertyName();
     RootedId id(cx, NameToId(usageAtom));
-    DebugOnly<Shape *> shape = static_cast<Shape *>(callee->as<NativeObject>().lookup(cx, id));
+    DebugOnly<Shape *> shape = static_cast<Shape *>(callee->as<JSFunction>().lookup(cx, id));
     MOZ_ASSERT(!shape->configurable());
     MOZ_ASSERT(!shape->writable());
     MOZ_ASSERT(shape->hasDefaultGetter());
 
     RootedValue usage(cx);
-    if (!JS_LookupProperty(cx, callee, "usage", &usage))
+    if (!JS_GetProperty(cx, callee, "usage", &usage))
         return;
 
-    if (usage.isUndefined()) {
+    if (!usage.isString()) {
         JS_ReportError(cx, "%s", msg);
     } else {
         JSString *str = usage.toString();
@@ -1025,9 +1030,6 @@ JSContext::JSContext(JSRuntime *rt)
     data2(nullptr),
     outstandingRequests(0),
     jitIsBroken(false)
-#ifdef MOZ_TRACE_JSCALLS
-  , functionCallback(nullptr)
-#endif
 {
     MOZ_ASSERT(static_cast<ContextFriendFields*>(this) ==
                ContextFriendFields::get(this));
@@ -1202,6 +1204,9 @@ JSContext::mark(JSTracer *trc)
         MarkValueRoot(trc, &unwrappedException_, "unwrapped exception");
 
     TraceCycleDetectionSet(trc, cycleDetectorSet);
+
+    if (compartment_)
+        compartment_->mark();
 }
 
 void *

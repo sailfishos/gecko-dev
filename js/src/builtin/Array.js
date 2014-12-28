@@ -582,7 +582,7 @@ function ArrayFill(value, start = 0, end = undefined) {
 }
 
 // Proposed for ES7:
-// https://github.com/domenic/Array.prototype.includes/blob/master/spec.md
+// https://github.com/tc39/Array.prototype.includes/blob/7c023c19a0/spec.md
 function ArrayIncludes(searchElement, fromIndex = 0) {
     // Steps 1-2.
     var O = ToObject(this);
@@ -651,9 +651,10 @@ function ArrayIteratorIdentity() {
 }
 
 function ArrayIteratorNext() {
-    // FIXME: ArrayIterator prototype should not pass this test.  Bug 924059.
-    if (!IsObject(this) || !IsArrayIterator(this))
-        ThrowError(JSMSG_INCOMPATIBLE_METHOD, "ArrayIterator", "next", ToString(this));
+    if (!IsObject(this) || !IsArrayIterator(this)) {
+        return callFunction(CallArrayIteratorMethodIfWrapped, this,
+                            "ArrayIteratorNext");
+    }
 
     var a = UnsafeGetReservedSlot(this, ARRAY_ITERATOR_SLOT_ITERATED_OBJECT);
     var index = UnsafeGetReservedSlot(this, ARRAY_ITERATOR_SLOT_NEXT_INDEX);

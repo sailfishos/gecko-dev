@@ -56,9 +56,10 @@ class imgIContainer;
 // See nsStyleContext::AssertStructsNotUsedElsewhere
 // (This bit is currently only used in #ifdef DEBUG code.)
 #define NS_STYLE_IS_GOING_AWAY             0x040000000
+// See nsStyleContext::IsDirectlyInsideRuby
+#define NS_STYLE_IS_DIRECTLY_INSIDE_RUBY   0x080000000
 // See nsStyleContext::GetPseudoEnum
-#define NS_STYLE_CONTEXT_TYPE_MASK         0xf80000000
-#define NS_STYLE_CONTEXT_TYPE_SHIFT        31
+#define NS_STYLE_CONTEXT_TYPE_SHIFT        32
 
 // Additional bits for nsRuleNode's mDependentBits:
 #define NS_RULE_NODE_GC_MARK                0x02000000
@@ -1595,8 +1596,8 @@ struct nsStyleText {
   uint8_t mWordBreak;                   // [inherited] see nsStyleConsts.h
   uint8_t mWordWrap;                    // [inherited] see nsStyleConsts.h
   uint8_t mHyphens;                     // [inherited] see nsStyleConsts.h
+  uint8_t mRubyPosition;                // [inherited] see nsStyleConsts.h
   uint8_t mTextSizeAdjust;              // [inherited] see nsStyleConsts.h
-  uint8_t mTextOrientation;             // [inherited] see nsStyleConsts.h
   uint8_t mTextCombineUpright;          // [inherited] see nsStyleConsts.h
   uint8_t mControlCharacterVisibility;  // [inherited] see nsStyleConsts.h
   int32_t mTabSize;                     // [inherited] see nsStyleConsts.h
@@ -1780,6 +1781,7 @@ struct nsStyleVisibility {
   uint8_t mVisible;                    // [inherited]
   uint8_t mPointerEvents;              // [inherited] see nsStyleConsts.h
   uint8_t mWritingMode;                // [inherited] see nsStyleConsts.h
+  uint8_t mTextOrientation;            // [inherited] see nsStyleConsts.h
 
   bool IsVisible() const {
     return (mVisible == NS_STYLE_VISIBILITY_VISIBLE);
@@ -2074,8 +2076,9 @@ struct nsStyleDisplay {
   bool IsBlockInsideStyle() const {
     return NS_STYLE_DISPLAY_BLOCK == mDisplay ||
            NS_STYLE_DISPLAY_LIST_ITEM == mDisplay ||
-           NS_STYLE_DISPLAY_INLINE_BLOCK == mDisplay;
-    // Should TABLE_CELL and TABLE_CAPTION go here?  They have
+           NS_STYLE_DISPLAY_INLINE_BLOCK == mDisplay ||
+           NS_STYLE_DISPLAY_TABLE_CAPTION == mDisplay;
+    // Should TABLE_CELL be included here?  They have
     // block frames nested inside of them.
     // (But please audit all callers before changing.)
   }
@@ -2888,11 +2891,11 @@ public:
     return false;
   }
   nsStyleCorners& GetRadius() {
-    NS_ASSERTION(mType == eInset, "expected circle or ellipse");
+    NS_ASSERTION(mType == eInset, "expected inset");
     return mRadius;
   }
   const nsStyleCorners& GetRadius() const {
-    NS_ASSERTION(mType == eInset, "expected circle or ellipse");
+    NS_ASSERTION(mType == eInset, "expected inset");
     return mRadius;
   }
 

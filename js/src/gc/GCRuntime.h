@@ -10,13 +10,9 @@
 #include "jsgc.h"
 
 #include "gc/Heap.h"
-#ifdef JSGC_GENERATIONAL
-# include "gc/Nursery.h"
-#endif
+#include "gc/Nursery.h"
 #include "gc/Statistics.h"
-#ifdef JSGC_GENERATIONAL
-# include "gc/StoreBuffer.h"
-#endif
+#include "gc/StoreBuffer.h"
 #include "gc/Tracer.h"
 
 /* Perform validation of incremental marking in debug builds but not on B2G. */
@@ -374,9 +370,7 @@ class GCRuntime
         allocTask.cancel(GCParallelTask::CancelAndWait);
     }
 
-#ifdef JSGC_GENERATIONAL
     void requestMinorGC(JS::gcreason::Reason reason);
-#endif
 
 #ifdef DEBUG
 
@@ -444,6 +438,7 @@ class GCRuntime
 #ifdef JSGC_COMPACTING
     void disableCompactingGC();
     void enableCompactingGC();
+    bool isCompactingGCEnabled();
 #endif
 
     void setGrayRootsTracer(JSTraceDataOp traceOp, void *data);
@@ -488,9 +483,7 @@ class GCRuntime
     bool areGrayBitsValid() { return grayBitsValid; }
     void setGrayBitsInvalid() { grayBitsValid = false; }
 
-#ifdef JSGC_GENERATIONAL
     bool isGcNeeded() { return minorGCRequested || majorGCRequested; }
-#endif
 
     double computeHeapGrowthFactor(size_t lastBytes);
     size_t computeTriggerBytes(double growthFactor, size_t lastBytes);
@@ -644,10 +637,8 @@ class GCRuntime
     /* List of compartments and zones (protected by the GC lock). */
     js::gc::ZoneVector zones;
 
-#ifdef JSGC_GENERATIONAL
     js::Nursery nursery;
     js::gc::StoreBuffer storeBuffer;
-#endif
 
     js::gcstats::Statistics stats;
 
@@ -709,10 +700,8 @@ class GCRuntime
     volatile uintptr_t majorGCRequested;
     JS::gcreason::Reason majorGCTriggerReason;
 
-#ifdef JSGC_GENERATIONAL
     bool minorGCRequested;
     JS::gcreason::Reason minorGCTriggerReason;
-#endif
 
     /* Incremented at the start of every major GC. */
     uint64_t majorGCNumber;

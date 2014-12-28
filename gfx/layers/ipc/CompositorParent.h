@@ -35,6 +35,7 @@
 #include "nsISupportsImpl.h"
 #include "nsSize.h"                     // for nsIntSize
 #include "ThreadSafeRefcountingWithMainThreadDestruction.h"
+#include "mozilla/VsyncDispatcher.h"
 
 class CancelableTask;
 class MessageLoop;
@@ -51,6 +52,7 @@ namespace layers {
 class APZCTreeManager;
 class AsyncCompositionManager;
 class Compositor;
+class CompositorParent;
 class LayerManagerComposite;
 class LayerTransactionParent;
 
@@ -87,10 +89,46 @@ private:
   friend class CompositorParent;
 };
 
-class CompositorParent : public PCompositorParent,
-                         public ShadowLayersManager
+/**
+ * Manages the vsync (de)registration and tracking on behalf of the
+ * compositor when it need to paint.
+ * Turns vsync notifications into scheduled composites.
+ **/
+
+class CompositorVsyncObserver MOZ_FINAL : public VsyncObserver
+{
+  friend class CompositorParent;
+
+public:
+  explicit CompositorVsyncObserver(CompositorParent* aCompositorParent, nsIWidget* aWidget);
+  virtual bool NotifyVsync(TimeStamp aVsyncTimestamp) MOZ_OVERRIDE;
+  void SetNeedsComposite(bool aSchedule);
+  bool NeedsComposite();
+  void CancelCurrentCompositeTask();
+
+private:
+  virtual ~CompositorVsyncObserver();
+
+  void Composite(TimeStamp aVsyncTimestamp);
+  void NotifyCompositeTaskExecuted();
+  void ObserveVsync();
+  void UnobserveVsync();
+  void DispatchTouchEvents(TimeStamp aVsyncTimestamp);
+
+  bool mNeedsComposite;
+  bool mIsObservingVsync;
+  nsRefPtr<CompositorParent> mCompositorParent;
+  nsRefPtr<CompositorVsyncDispatcher> mCompositorVsyncDispatcher;
+
+  mozilla::Monitor mCurrentCompositeTaskMonitor;
+  CancelableTask* mCurrentCompositeTask;
+};
+
+class CompositorParent MOZ_FINAL : public PCompositorParent,
+                                   public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorParent)
+  friend class CompositorVsyncObserver;
 
 public:
   explicit CompositorParent(nsIWidget* aWidget,
@@ -289,7 +327,7 @@ protected:
                                  bool* aSuccess) MOZ_OVERRIDE;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
   virtual void ScheduleTask(CancelableTask*, int);
-  void CompositeCallback();
+  void CompositeCallback(TimeStamp aScheduleTime);
   void CompositeToTarget(gfx::DrawTarget* aTarget, const nsIntRect* aRect = nullptr);
   void ForceComposeToTarget(gfx::DrawTarget* aTarget, const nsIntRect* aRect = nullptr);
 
@@ -301,6 +339,7 @@ protected:
   void ResumeCompositionAndResize(int width, int height);
   void ForceComposition();
   void CancelCurrentCompositeTask();
+  void ScheduleSoftwareTimerComposition();
 
   /**
    * Add a compositor to the global compositor map.
@@ -350,6 +389,7 @@ protected:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
+  nsRefPtr<CompositorVsyncObserver> mCompositorVsyncObserver;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };

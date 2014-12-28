@@ -75,7 +75,6 @@ void vp8_short_walsh4x4_neon(
     d0s16 = vsub_s16(d0s16, vreinterpret_s16_u16(d16u16));
 
     // Second for-loop
-
     v2tmp2 = vtrn_s32(vreinterpret_s32_s16(d1s16),
                       vreinterpret_s32_s16(d3s16));
     v2tmp3 = vtrn_s32(vreinterpret_s32_s16(d0s16),

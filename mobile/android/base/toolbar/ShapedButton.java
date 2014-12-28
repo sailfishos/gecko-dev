@@ -5,9 +5,9 @@
 package org.mozilla.gecko.toolbar;
 
 import org.mozilla.gecko.GeckoApplication;
-import org.mozilla.gecko.LightweightTheme;
-import org.mozilla.gecko.LightweightThemeDrawable;
 import org.mozilla.gecko.R;
+import org.mozilla.gecko.lwt.LightweightTheme;
+import org.mozilla.gecko.lwt.LightweightThemeDrawable;
 import org.mozilla.gecko.tabs.TabCurve;
 import org.mozilla.gecko.widget.ThemedImageButton;
 
@@ -23,14 +23,12 @@ import android.util.AttributeSet;
 
 public class ShapedButton extends ThemedImageButton
                           implements CanvasDelegate.DrawManager {
-    protected final LightweightTheme mTheme;
 
     protected final Path mPath;
     protected final CanvasDelegate mCanvasDelegate;
 
     public ShapedButton(Context context, AttributeSet attrs) {
         super(context, attrs);
-        mTheme = ((GeckoApplication) context.getApplicationContext()).getLightweightTheme();
 
         // Path is clipped.
         mPath = new Path();
@@ -61,7 +59,7 @@ public class ShapedButton extends ThemedImageButton
     @Override
     public void onLightweightThemeChanged() {
         final int background = getResources().getColor(R.color.background_tabs);
-        final LightweightThemeDrawable lightWeight = mTheme.getColorDrawable(this, background);
+        final LightweightThemeDrawable lightWeight = getTheme().getColorDrawable(this, background);
 
         if (lightWeight == null)
             return;

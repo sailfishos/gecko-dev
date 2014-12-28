@@ -89,6 +89,14 @@ APZCTreeManager::~APZCTreeManager()
 {
 }
 
+AsyncPanZoomController*
+APZCTreeManager::MakeAPZCInstance(uint64_t aLayersId,
+                                  GeckoContentController* aController)
+{
+  return new AsyncPanZoomController(aLayersId, this, mInputQueue,
+    aController, AsyncPanZoomController::USE_GESTURE_DETECTOR);
+}
+
 void
 APZCTreeManager::GetAllowedTouchBehavior(WidgetInputEvent* aEvent,
                                          nsTArray<TouchBehaviorFlags>& aOutValues)
@@ -206,10 +214,10 @@ ComputeTouchSensitiveRegion(GeckoContentController* aController,
     // this approximation may not be accurate in the presence of a css-driven
     // resolution.
     LayoutDeviceToParentLayerScale parentCumulativeResolution =
-          aMetrics.mCumulativeResolution
+          aMetrics.GetCumulativeResolution()
         / ParentLayerToLayerScale(aMetrics.mPresShellResolution);
     visible = visible.Intersect(touchSensitiveRegion
-                                * aMetrics.mDevPixelsPerCSSPixel
+                                * aMetrics.GetDevPixelsPerCSSPixel()
                                 * parentCumulativeResolution);
   }
 
@@ -227,7 +235,7 @@ APZCTreeManager::PrintAPZCInfo(const LayerMetricsWrapper& aLayer,
 {
   const FrameMetrics& metrics = aLayer.Metrics();
   mApzcTreeLog << "APZC " << apzc->GetGuid() << "\tcb=" << metrics.mCompositionBounds
-               << "\tsr=" << metrics.mScrollableRect
+               << "\tsr=" << metrics.GetScrollableRect()
                << (aLayer.IsScrollInfoLayer() ? "\tscrollinfo" : "")
                << (apzc->HasScrollgrab() ? "\tscrollgrab" : "") << "\t"
                << metrics.GetContentDescription().get();
@@ -307,8 +315,7 @@ APZCTreeManager::PrepareAPZCForLayer(const LayerMetricsWrapper& aLayer,
     // a new one.
     bool newApzc = (apzc == nullptr || apzc->IsDestroyed());
     if (newApzc) {
-      apzc = new AsyncPanZoomController(aLayersId, this, mInputQueue, state->mController,
-                                        AsyncPanZoomController::USE_GESTURE_DETECTOR);
+      apzc = MakeAPZCInstance(aLayersId, state->mController);
       apzc->SetCompositorParent(aState.mCompositor);
       if (state->mCrossProcessParent != nullptr) {
         apzc->ShareFrameMetricsAcrossProcesses();
@@ -554,11 +561,11 @@ APZCTreeManager::UpdatePanZoomControllerTree(TreeBuildingState& aState,
         // resolution; this approximation may not be accurate in the presence of
         // a css-driven resolution.
         LayoutDeviceToParentLayerScale parentCumulativeResolution =
-            aLayer.Metrics().mCumulativeResolution
+            aLayer.Metrics().GetCumulativeResolution()
             / ParentLayerToLayerScale(aLayer.Metrics().mPresShellResolution);
         subtreeEventRegions.AndWith(ParentLayerIntRect::ToUntyped(
             RoundedIn(touchSensitiveRegion
-                    * aLayer.Metrics().mDevPixelsPerCSSPixel
+                    * aLayer.Metrics().GetDevPixelsPerCSSPixel()
                     * parentCumulativeResolution)));
       }
       apzc->AddHitTestRegions(subtreeEventRegions);
@@ -614,7 +621,7 @@ APZCTreeManager::ReceiveInputEvent(InputData& aEvent,
 
         result = mInputQueue->ReceiveInputEvent(
           apzc,
-          /* aTargetConfirmed = */ hitResult,
+          /* aTargetConfirmed = */ hitResult == ApzcHitRegion,
           wheelInput, aOutInputBlockId);
 
         // Update the out-parameters so they are what the caller expects.
@@ -902,6 +909,30 @@ APZCTreeManager::ProcessEvent(WidgetInputEvent& aEvent,
 }
 
 nsEventStatus
+APZCTreeManager::ProcessWheelEvent(WidgetWheelEvent& aEvent,
+                                   ScrollableLayerGuid* aOutTargetGuid,
+                                   uint64_t* aOutInputBlockId)
+{
+  ScrollWheelInput::ScrollMode scrollMode = ScrollWheelInput::SCROLLMODE_INSTANT;
+  if (Preferences::GetBool("general.smoothScroll")) {
+    scrollMode = ScrollWheelInput::SCROLLMODE_SMOOTH;
+  }
+
+  ScreenPoint origin(aEvent.refPoint.x, aEvent.refPoint.y);
+  ScrollWheelInput input(aEvent.time, aEvent.timeStamp, 0,
+                         scrollMode,
+                         ScrollWheelInput::SCROLLDELTA_LINE,
+                         origin,
+                         aEvent.lineOrPageDeltaX,
+                         aEvent.lineOrPageDeltaY);
+
+  nsEventStatus status = ReceiveInputEvent(input, aOutTargetGuid, aOutInputBlockId);
+  aEvent.refPoint.x = input.mOrigin.x;
+  aEvent.refPoint.y = input.mOrigin.y;
+  return status;
+}
+
+nsEventStatus
 APZCTreeManager::ReceiveInputEvent(WidgetInputEvent& aEvent,
                                    ScrollableLayerGuid* aOutTargetGuid,
                                    uint64_t* aOutInputBlockId)
@@ -934,6 +965,17 @@ APZCTreeManager::ReceiveInputEvent(WidgetInputEvent& aEvent,
       }
       return result;
     }
+    case eWheelEventClass: {
+      WidgetWheelEvent& wheelEvent = *aEvent.AsWheelEvent();
+      if (wheelEvent.IsControl() ||
+          wheelEvent.deltaMode != nsIDOMWheelEvent::DOM_DELTA_LINE)
+      {
+        // Don't send through APZ if we could be ctrl+zooming or if the delta
+        // mode is not line-based.
+        return ProcessEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
+      }
+      return ProcessWheelEvent(wheelEvent, aOutTargetGuid, aOutInputBlockId);
+    }
     default: {
       return ProcessEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
     }
@@ -951,10 +993,9 @@ APZCTreeManager::ZoomToRect(const ScrollableLayerGuid& aGuid,
 }
 
 void
-APZCTreeManager::ContentReceivedTouch(uint64_t aInputBlockId,
-                                      bool aPreventDefault)
+APZCTreeManager::ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
 {
-  mInputQueue->ContentReceivedTouch(aInputBlockId, aPreventDefault);
+  mInputQueue->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
 }
 
 void
@@ -969,6 +1010,13 @@ APZCTreeManager::SetTargetAPZC(uint64_t aInputBlockId,
     nsRefPtr<AsyncPanZoomController> apzc2 = GetTargetAPZC(aTargets[i]);
     target = GetMultitouchTarget(target, apzc2);
   }
+  mInputQueue->SetConfirmedTargetApzc(aInputBlockId, target);
+}
+
+void
+APZCTreeManager::SetTargetAPZC(uint64_t aInputBlockId, const ScrollableLayerGuid& aTarget)
+{
+  nsRefPtr<AsyncPanZoomController> target = GetTargetAPZC(aTarget);
   mInputQueue->SetConfirmedTargetApzc(aInputBlockId, target);
 }
 

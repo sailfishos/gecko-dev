@@ -27,7 +27,7 @@ class MediaKeySession;
 class DecryptionClient {
 public:
   virtual ~DecryptionClient() {}
-  virtual void Decrypted(nsresult aResult,
+  virtual void Decrypted(GMPErr aResult,
                          mp4_demuxer::MP4Sample* aSample) = 0;
 };
 
@@ -104,6 +104,9 @@ public:
   // Main thread only.
   void Shutdown();
 
+  // Main thread only.
+  void Terminated();
+
   // Threadsafe.
   const nsCString& GetNodeId() const;
 
@@ -156,9 +159,6 @@ public:
   void gmp_Decrypted(uint32_t aId,
                      GMPErr aResult,
                      const nsTArray<uint8_t>& aDecryptedData);
-
-  // GMP thread only.
-  void gmp_Terminated();
 
   CDMCaps& Capabilites();
 

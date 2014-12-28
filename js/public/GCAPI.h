@@ -286,6 +286,21 @@ extern JS_FRIEND_API(bool)
 IsIncrementalGCEnabled(JSRuntime *rt);
 
 /*
+ * Compacting GC defaults to enabled, but may be disabled for testing or in
+ * embeddings that have not implemented the necessary object moved hooks or weak
+ * pointer callbacks.  There is not currently a way to re-enable compacting GC
+ * once it has been disabled on the runtime.
+ */
+extern JS_FRIEND_API(void)
+DisableCompactingGC(JSRuntime *rt);
+
+/*
+ * Returns true if compacting GC is enabled.
+ */
+extern JS_FRIEND_API(bool)
+IsCompactingGCEnabled(JSRuntime *rt);
+
+/*
  * Returns true while an incremental GC is ongoing, both when actively
  * collecting and between slices.
  */
@@ -308,7 +323,7 @@ IsIncrementalBarrierNeeded(JSContext *cx);
  * These methods must be called if IsIncrementalBarrierNeeded.
  */
 extern JS_FRIEND_API(void)
-IncrementalReferenceBarrier(void *ptr, JSGCTraceKind kind);
+IncrementalReferenceBarrier(GCCellPtr thing);
 
 extern JS_FRIEND_API(void)
 IncrementalValueBarrier(const Value &v);
@@ -334,7 +349,7 @@ WasIncrementalGC(JSRuntime *rt);
 class JS_FRIEND_API(AutoDisableGenerationalGC)
 {
     js::gc::GCRuntime *gc;
-#if defined(JSGC_GENERATIONAL) && defined(JS_GC_ZEAL)
+#ifdef JS_GC_ZEAL
     bool restartVerifier;
 #endif
 
@@ -471,7 +486,7 @@ class JS_PUBLIC_API(AutoCheckCannotGC) : public AutoAssertOnGC
  * JSTRACE_SHAPE. |thing| should be non-null.
  */
 extern JS_FRIEND_API(bool)
-UnmarkGrayGCThingRecursively(void *thing, JSGCTraceKind kind);
+UnmarkGrayGCThingRecursively(GCCellPtr thing);
 
 } /* namespace JS */
 
@@ -479,24 +494,35 @@ namespace js {
 namespace gc {
 
 static MOZ_ALWAYS_INLINE void
-ExposeGCThingToActiveJS(void *thing, JSGCTraceKind kind)
+ExposeGCThingToActiveJS(JS::GCCellPtr thing)
 {
-    MOZ_ASSERT(kind != JSTRACE_SHAPE);
+    MOZ_ASSERT(thing.kind() != JSTRACE_SHAPE);
 
-    JS::shadow::Runtime *rt = GetGCThingRuntime(thing);
-#ifdef JSGC_GENERATIONAL
     /*
      * GC things residing in the nursery cannot be gray: they have no mark bits.
      * All live objects in the nursery are moved to tenured at the beginning of
      * each GC slice, so the gray marker never sees nursery things.
      */
-    if (IsInsideNursery((Cell *)thing))
+    if (IsInsideNursery(thing.asCell()))
         return;
-#endif
-    if (JS::IsIncrementalBarrierNeededOnTenuredGCThing(rt, thing, kind))
-        JS::IncrementalReferenceBarrier(thing, kind);
+    JS::shadow::Runtime *rt = detail::GetGCThingRuntime(thing.unsafeAsUIntPtr());
+    if (IsIncrementalBarrierNeededOnTenuredGCThing(rt, thing))
+        JS::IncrementalReferenceBarrier(thing);
     else if (JS::GCThingIsMarkedGray(thing))
-        JS::UnmarkGrayGCThingRecursively(thing, kind);
+        JS::UnmarkGrayGCThingRecursively(thing);
+}
+
+static MOZ_ALWAYS_INLINE void
+MarkGCThingAsLive(JSRuntime *aRt, JS::GCCellPtr thing)
+{
+    JS::shadow::Runtime *rt = JS::shadow::Runtime::asShadowRuntime(aRt);
+    /*
+     * Any object in the nursery will not be freed during any GC running at that time.
+     */
+    if (IsInsideNursery(thing.asCell()))
+        return;
+    if (IsIncrementalBarrierNeededOnTenuredGCThing(rt, thing))
+        JS::IncrementalReferenceBarrier(thing);
 }
 
 } /* namespace gc */
@@ -513,38 +539,23 @@ namespace JS {
 static MOZ_ALWAYS_INLINE void
 ExposeObjectToActiveJS(JSObject *obj)
 {
-    js::gc::ExposeGCThingToActiveJS(obj, JSTRACE_OBJECT);
+    js::gc::ExposeGCThingToActiveJS(GCCellPtr(obj));
 }
 
 static MOZ_ALWAYS_INLINE void
 ExposeScriptToActiveJS(JSScript *script)
 {
-    js::gc::ExposeGCThingToActiveJS(script, JSTRACE_SCRIPT);
+    js::gc::ExposeGCThingToActiveJS(GCCellPtr(script));
 }
 
 /*
- * If a GC is currently marking, mark the object black.
+ * If a GC is currently marking, mark the string black.
  */
-static MOZ_ALWAYS_INLINE void
-MarkGCThingAsLive(JSRuntime *rt_, void *thing, JSGCTraceKind kind)
-{
-    shadow::Runtime *rt = shadow::Runtime::asShadowRuntime(rt_);
-#ifdef JSGC_GENERATIONAL
-    /*
-     * Any object in the nursery will not be freed during any GC running at that time.
-     */
-    if (js::gc::IsInsideNursery((js::gc::Cell *)thing))
-        return;
-#endif
-    if (IsIncrementalBarrierNeededOnTenuredGCThing(rt, thing, kind))
-        IncrementalReferenceBarrier(thing, kind);
-}
-
 static MOZ_ALWAYS_INLINE void
 MarkStringAsLive(Zone *zone, JSString *string)
 {
     JSRuntime *rt = JS::shadow::Zone::asShadowZone(zone)->runtimeFromMainThread();
-    MarkGCThingAsLive(rt, string, JSTRACE_STRING);
+    js::gc::MarkGCThingAsLive(rt, GCCellPtr(string));
 }
 
 /*

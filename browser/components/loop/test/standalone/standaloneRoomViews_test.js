@@ -203,6 +203,14 @@ describe("loop.standaloneRoomViews", function() {
             expect(view.getDOMNode().querySelector(".failed-room-message"))
               .not.eql(null);
           });
+
+        it("should display a retry button",
+          function() {
+            activeRoomStore.setStoreState({roomState: ROOM_STATES.FAILED});
+
+            expect(view.getDOMNode().querySelector(".btn-info"))
+              .not.eql(null);
+          });
       });
 
       describe("Join button", function() {
@@ -292,7 +300,10 @@ describe("loop.standaloneRoomViews", function() {
 
       describe("Feedback", function() {
         beforeEach(function() {
-          activeRoomStore.setStoreState({roomState: ROOM_STATES.ENDED});
+          activeRoomStore.setStoreState({
+            roomState: ROOM_STATES.ENDED,
+            used: true
+          });
         });
 
         it("should display a feedback form when the user leaves the room",
@@ -310,6 +321,13 @@ describe("loop.standaloneRoomViews", function() {
             sinon.assert.calledOnce(dispatch);
             sinon.assert.calledWithExactly(dispatch, new sharedActions.FeedbackComplete());
           });
+
+        it("should NOT display a feedback form if the room has not been used",
+          function() {
+            activeRoomStore.setStoreState({used: false});
+            expect(view.getDOMNode().querySelector(".faces")).eql(null);
+          });
+
       });
 
       describe("Mute", function() {
@@ -323,6 +341,26 @@ describe("loop.standaloneRoomViews", function() {
             expect(view.getDOMNode().querySelector(".local-stream-audio"))
               .not.eql(null);
           });
+      });
+
+      describe("Marketplace hidden iframe", function() {
+
+        it("should set src when the store state change",
+           function(done) {
+
+          var marketplace = view.getDOMNode().querySelector("#marketplace");
+          expect(marketplace.src).to.be.equal("");
+
+          activeRoomStore.setStoreState({
+            marketplaceSrc: "http://market/",
+            onMarketplaceMessage: function () {}
+          });
+
+          view.forceUpdate(function() {
+            expect(marketplace.src).to.be.equal("http://market/");
+            done();
+          });
+        });
       });
     });
   });

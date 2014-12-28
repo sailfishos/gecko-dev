@@ -193,6 +193,7 @@ body {
 
 .room-list {
   max-height: 335px; /* XXX better computation needed */
+  min-height: 7px;
   overflow: auto;
   border-top: 1px solid #ccc;
   border-bottom: 1px solid #ccc;
@@ -677,6 +678,10 @@ body[dir=rtl] .generate-url-spinner {
 
 .settings-menu .icon-settings {
   background: transparent url(../img/svg/glyph-settings-16x16.svg) no-repeat center center;
+}
+
+.settings-menu .icon-tour {
+  background: transparent url("../img/icons-16x16.svg#tour") no-repeat center center;
 }
 
 .settings-menu .icon-account {

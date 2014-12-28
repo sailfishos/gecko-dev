@@ -410,16 +410,14 @@ RestyleManager::RecomputePosition(nsIFrame* aFrame)
 
   // For relative positioning, we can simply update the frame rect
   if (display->IsRelativelyPositionedStyle()) {
-    if (display->IsInnerTableStyle()) {
-      // We don't currently support relative positioning of inner table
-      // elements (bug 35168).  If we apply offsets to things we haven't
-      // previously offset, we'll get confused.  So bail.
-      return true;
-    }
-
-
     // Move the frame
     if (display->mPosition == NS_STYLE_POSITION_STICKY) {
+      if (display->IsInnerTableStyle()) {
+        // We don't currently support sticky positioning of inner table
+        // elements (bug 975644). Bail.
+        return true;
+      }
+
       // Update sticky positioning for an entire element at once, starting with
       // the first continuation or ib-split sibling.
       // It's rare that the frame we already have isn't already the first
@@ -2900,6 +2898,13 @@ ElementRestyler::ComputeRestyleResultFromNewContext(nsIFrame* aSelf,
   if (oldContext->HasPseudoElementData() !=
         aNewContext->HasPseudoElementData()) {
     LOG_RESTYLE_CONTINUE("NS_STYLE_HAS_PSEUDO_ELEMENT_DATA differs between old"
+                         " and new style contexts");
+    return eRestyleResult_Continue;
+  }
+
+  if (oldContext->IsDirectlyInsideRuby() !=
+        aNewContext->IsDirectlyInsideRuby()) {
+    LOG_RESTYLE_CONTINUE("NS_STYLE_IS_DIRECTLY_INSIDE_RUBY differes between old"
                          " and new style contexts");
     return eRestyleResult_Continue;
   }

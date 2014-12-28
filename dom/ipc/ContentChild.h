@@ -336,7 +336,9 @@ public:
                                       const bool& aIsSharing,
                                       const bool& aIsFormatting,
                                       const bool& aIsFake,
-                                      const bool& aIsUnmounting) MOZ_OVERRIDE;
+                                      const bool& aIsUnmounting,
+                                      const bool& aIsRemovable,
+                                      const bool& aIsHotSwappable) MOZ_OVERRIDE;
 
     virtual bool RecvNuwaFork() MOZ_OVERRIDE;
 
@@ -349,6 +351,8 @@ public:
     virtual bool RecvUnregisterSheet(const URIParams& aURI, const uint32_t& aType) MOZ_OVERRIDE;
 
     virtual bool RecvNotifyPhoneStateChange(const nsString& state) MOZ_OVERRIDE;
+
+    virtual bool RecvNuwaFreeze() MOZ_OVERRIDE;
 
     void AddIdleObserver(nsIObserver* aObserver, uint32_t aIdleTimeInS);
     void RemoveIdleObserver(nsIObserver* aObserver, uint32_t aIdleTimeInS);
@@ -363,7 +367,7 @@ public:
                                    const nsTArray<nsCString>& aFeatures,
                                    const nsTArray<nsCString>& aThreadNameFilters) MOZ_OVERRIDE;
     virtual bool RecvStopProfiler() MOZ_OVERRIDE;
-    virtual bool AnswerGetProfile(nsCString* aProfile) MOZ_OVERRIDE;
+    virtual bool RecvGetProfile(nsCString* aProfile) MOZ_OVERRIDE;
 
 #ifdef ANDROID
     gfxIntSize GetScreenSize() { return mScreenSize; }

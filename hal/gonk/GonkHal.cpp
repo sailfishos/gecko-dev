@@ -27,7 +27,7 @@
 #include <sys/syscall.h>
 #include <sys/resource.h>
 #include <time.h>
-#include <asm/page.h>
+#include <unistd.h>
 
 #include "mozilla/DebugOnly.h"
 
@@ -238,7 +238,7 @@ namespace {
  * This runnable runs for the lifetime of the program, once started.  It's
  * responsible for "playing" vibration patterns.
  */
-class VibratorRunnable
+class VibratorRunnable MOZ_FINAL
   : public nsIRunnable
   , public nsIObserver
 {
@@ -1212,11 +1212,9 @@ OomVictimLogger::Observe(
   // deprecated the old klog defs.
   // Our current bionic does not hit this
   // change yet so handle the future change.
+  // (ICS doesn't have KLOG_SIZE_BUFFER but 
+  // JB and onwards does.)
   #define KLOG_SIZE_BUFFER KLOG_WRITE
-#else
-  // Once the change hits our bionic this ifndef
-  // can be removed.
-  #warning "Please remove KLOG_UNREAD_SIZE compatability def"
 #endif
   // Retreive kernel log
   int msg_buf_size = klogctl(KLOG_SIZE_BUFFER, NULL, 0);
@@ -1319,6 +1317,8 @@ EnsureKernelLowMemKillerParamsSet()
   int32_t lowerBoundOfNextKillUnderKB = 0;
   int32_t countOfLowmemorykillerParametersSets = 0;
 
+  long page_size = sysconf(_SC_PAGESIZE);
+
   for (int i = NUM_PROCESS_PRIORITY - 1; i >= 0; i--) {
     // The system doesn't function correctly if we're missing these prefs, so
     // crash loudly.
@@ -1356,7 +1356,7 @@ EnsureKernelLowMemKillerParamsSet()
     adjParams.AppendPrintf("%d,", OomAdjOfOomScoreAdj(oomScoreAdj));
 
     // minfree is in pages.
-    minfreeParams.AppendPrintf("%d,", killUnderKB * 1024 / PAGE_SIZE);
+    minfreeParams.AppendPrintf("%ld,", killUnderKB * 1024 / page_size);
 
     lowerBoundOfNextOomScoreAdj = oomScoreAdj;
     lowerBoundOfNextKillUnderKB = killUnderKB;
@@ -1379,7 +1379,7 @@ EnsureKernelLowMemKillerParamsSet()
 
     // notify_trigger is in pages.
     WriteToFile("/sys/module/lowmemorykiller/parameters/notify_trigger",
-      nsPrintfCString("%d", lowMemNotifyThresholdKB * 1024 / PAGE_SIZE).get());
+      nsPrintfCString("%ld", lowMemNotifyThresholdKB * 1024 / page_size).get());
   }
 
   // Ensure OOM events appear in logcat
@@ -1777,6 +1777,8 @@ FactoryReset(FactoryResetReason& aReason)
 
   if (aReason == FactoryResetReason::Wipe) {
     recoveryService->FactoryReset("wipe");
+  } else if (aReason == FactoryResetReason::Root) {
+    recoveryService->FactoryReset("root");
   } else {
     recoveryService->FactoryReset("normal");
   }

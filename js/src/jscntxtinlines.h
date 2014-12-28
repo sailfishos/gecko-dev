@@ -322,7 +322,10 @@ CallJSDeletePropertyOp(JSContext *cx, JSDeletePropertyOp op, HandleObject receiv
     JS_CHECK_RECURSION(cx, return false);
 
     assertSameCompartment(cx, receiver, id);
-    return op(cx, receiver, id, succeeded);
+    if (op)
+        return op(cx, receiver, id, succeeded);
+    *succeeded = true;
+    return true;
 }
 
 inline bool
@@ -336,6 +339,9 @@ CallSetter(JSContext *cx, HandleObject obj, HandleId id, StrictPropertyOp op, un
 
     if (attrs & JSPROP_GETTER)
         return js_ReportGetterOnlyAssignment(cx, strict);
+
+    if (!op)
+        return true;
 
     return CallJSPropertyOpSetter(cx, op, obj, id, strict, vp);
 }

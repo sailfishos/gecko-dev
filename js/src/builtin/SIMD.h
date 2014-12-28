@@ -97,9 +97,9 @@
   V(notEqual, (CompareFunc<Int32x4, NotEqual>), 2, 0)                               \
   V(or, (BinaryFunc<Int32x4, Or, Int32x4>), 2, 0)                                   \
   V(sub, (BinaryFunc<Int32x4, Sub, Int32x4>), 2, 0)                                 \
-  V(shiftLeft, (Int32x4BinaryScalar<ShiftLeft>), 2, 0)                              \
-  V(shiftRight, (Int32x4BinaryScalar<ShiftRight>), 2, 0)                            \
-  V(shiftRightLogical, (Int32x4BinaryScalar<ShiftRightLogical>), 2, 0)              \
+  V(shiftLeftByScalar, (Int32x4BinaryScalar<ShiftLeft>), 2, 0)                      \
+  V(shiftRightArithmeticByScalar, (Int32x4BinaryScalar<ShiftRight>), 2, 0)          \
+  V(shiftRightLogicalByScalar, (Int32x4BinaryScalar<ShiftRightLogical>), 2, 0)      \
   V(store,    (Store<Int32x4, 4>), 3, 0)                                            \
   V(storeXYZ, (Store<Int32x4, 3>), 3, 0)                                            \
   V(storeXY,  (Store<Int32x4, 2>), 3, 0)                                            \
@@ -130,9 +130,9 @@
 #define FOREACH_INT32X4_SIMD_OP(_)   \
     _(fromFloat32x4)                 \
     _(fromFloat32x4Bits)             \
-    _(shiftLeft)                     \
-    _(shiftRight)                    \
-    _(shiftRightLogical)
+    _(shiftLeftByScalar)             \
+    _(shiftRightArithmeticByScalar)  \
+    _(shiftRightLogicalByScalar)
 #define FOREACH_FLOAT32X4_SIMD_OP(_) \
     _(abs)                           \
     _(sqrt)                          \
@@ -140,7 +140,6 @@
     _(reciprocalSqrt)                \
     _(fromInt32x4)                   \
     _(fromInt32x4Bits)               \
-    _(mul)                           \
     _(div)                           \
     _(max)                           \
     _(min)                           \
@@ -149,6 +148,7 @@
 #define FOREACH_COMMONX4_SIMD_OP(_)  \
     _(add)                           \
     _(sub)                           \
+    _(mul)                           \
     _(lessThan)                      \
     _(lessThanOrEqual)               \
     _(equal)                         \

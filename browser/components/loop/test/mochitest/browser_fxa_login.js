@@ -7,7 +7,7 @@
 
 "use strict";
 
-const BASE_URL = "http://mochi.test:8888/browser/browser/components/loop/test/mochitest/loop_fxa.sjs?";
+const BASE_URL = Services.prefs.getCharPref("loop.server");
 
 function* checkFxA401() {
   let err = MozLoopService.errors.get("login");
@@ -23,7 +23,7 @@ function* checkFxA401() {
      "state of loop button should be error after a 401 with login");
 
   let loopPanel = document.getElementById("loop-notification-panel");
-  yield loadLoopPanel({loopURL: BASE_URL });
+  yield loadLoopPanel();
   let loopDoc = document.getElementById("loop").contentDocument;
   is(loopDoc.querySelector(".alert-error .message").textContent,
      getLoopString("could_not_authenticate"),
@@ -38,8 +38,6 @@ function* checkFxA401() {
 }
 
 add_task(function* setup() {
-  Services.prefs.setCharPref("loop.server", BASE_URL);
-  Services.prefs.setCharPref("services.push.serverURL", "ws://localhost/");
   Services.prefs.setBoolPref("loop.gettingStarted.seen", true);
   MozLoopServiceInternal.mocks.pushHandler = mockPushHandler;
   // Normally the same pushUrl would be registered but we change it in the test
@@ -50,8 +48,6 @@ add_task(function* setup() {
   registerCleanupFunction(function* () {
     info("cleanup time");
     yield promiseDeletedOAuthParams(BASE_URL);
-    Services.prefs.clearUserPref("loop.server");
-    Services.prefs.clearUserPref("services.push.serverURL");
     Services.prefs.clearUserPref("loop.gettingStarted.seen");
     MozLoopServiceInternal.mocks.pushHandler = undefined;
     delete mockPushHandler.registeredChannels[MozLoopService.channelIDs.callsFxA];
@@ -134,18 +130,24 @@ add_task(function* params_no_hawk_session() {
 });
 
 add_task(function* params_nonJSON() {
+  let loopServerUrl = Services.prefs.getCharPref("loop.server");
   Services.prefs.setCharPref("loop.server", "https://localhost:3000/invalid");
-  // Reset after changing the server so a new HawkClient is created
-  yield resetFxA();
+  try {
+    // Reset after changing the server so a new HawkClient is created
+    yield resetFxA();
 
-  let loginPromise = MozLoopService.logInToFxA();
-  let caught = false;
-  yield loginPromise.catch(() => {
-    ok(true, "The login promise should be rejected due to non-JSON params");
-    caught = true;
-  });
-  ok(caught, "Should have caught the rejection");
-  Services.prefs.setCharPref("loop.server", BASE_URL);
+    let loginPromise = MozLoopService.logInToFxA();
+    let caught = false;
+    yield loginPromise.catch(() => {
+      ok(true, "The login promise should be rejected due to non-JSON params");
+      caught = true;
+    });
+    ok(caught, "Should have caught the rejection");
+  } catch (err) {
+    throw err;
+  } finally {
+    Services.prefs.setCharPref("loop.server", loopServerUrl);
+  }
 });
 
 add_task(function* invalidState() {
@@ -289,7 +291,7 @@ add_task(function* basicAuthorizationAndRegistration() {
   yield MozLoopService.promiseRegisteredWithServers();
 
   let statusChangedPromise = promiseObserverNotified("loop-status-changed");
-  yield loadLoopPanel({loopURL: BASE_URL, stayOnline: true});
+  yield loadLoopPanel({stayOnline: true});
   yield statusChangedPromise;
   let loopDoc = document.getElementById("loop").contentDocument;
   let visibleEmail = loopDoc.getElementsByClassName("user-identity")[0];
@@ -319,7 +321,7 @@ add_task(function* basicAuthorizationAndRegistration() {
   let loopPanel = document.getElementById("loop-notification-panel");
   loopPanel.hidePopup();
   statusChangedPromise = promiseObserverNotified("loop-status-changed");
-  yield loadLoopPanel({loopURL: BASE_URL, stayOnline: true});
+  yield loadLoopPanel({stayOnline: true});
   yield statusChangedPromise;
   is(loopButton.getAttribute("state"), "", "state of loop button should return to empty after panel is opened");
   loopPanel.hidePopup();

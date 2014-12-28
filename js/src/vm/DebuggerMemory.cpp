@@ -70,15 +70,7 @@ DebuggerMemory::construct(JSContext *cx, unsigned argc, Value *vp)
 /* static */ const Class DebuggerMemory::class_ = {
     "Memory",
     JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS |
-    JSCLASS_HAS_RESERVED_SLOTS(JSSLOT_COUNT),
-
-    JS_PropertyStub,       // addProperty
-    JS_DeletePropertyStub, // delProperty
-    JS_PropertyStub,       // getProperty
-    JS_StrictPropertyStub, // setProperty
-    JS_EnumerateStub,      // enumerate
-    JS_ResolveStub,        // resolve
-    JS_ConvertStub,        // convert
+    JSCLASS_HAS_RESERVED_SLOTS(JSSLOT_COUNT)
 };
 
 /* static */ DebuggerMemory *
@@ -201,7 +193,7 @@ DebuggerMemory::drainAllocationsLog(JSContext *cx, unsigned argc, Value *vp)
     result->ensureDenseInitializedLength(cx, 0, length);
 
     for (size_t i = 0; i < length; i++) {
-        RootedObject obj(cx, NewBuiltinClassInstance(cx, &JSObject::class_));
+        RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
         if (!obj)
             return false;
 
@@ -363,7 +355,7 @@ class Tally {
     size_t total() const { return total_; }
 
     bool report(Census &census, MutableHandleValue report) {
-        RootedObject obj(census.cx, NewBuiltinClassInstance(census.cx, &JSObject::class_));
+        RootedPlainObject obj(census.cx, NewBuiltinClassInstance<PlainObject>(census.cx));
         RootedValue countValue(census.cx, NumberValue(total_));
         if (!obj ||
             !JSObject::defineProperty(census.cx, obj, census.cx->names().count, countValue))
@@ -435,7 +427,7 @@ class ByJSType {
     bool report(Census &census, MutableHandleValue report) {
         JSContext *cx = census.cx;
 
-        RootedObject obj(cx, NewBuiltinClassInstance(cx, &JSObject::class_));
+        RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
         if (!obj)
             return false;
 
@@ -456,7 +448,7 @@ class ByJSType {
 
         RootedValue otherReport(cx);
         if (!other.report(census, &otherReport) ||
-            !JSObject::defineProperty(cx, obj, cx->names().other,   otherReport))
+            !JSObject::defineProperty(cx, obj, cx->names().other, otherReport))
             return false;
 
         report.setObject(*obj);
@@ -552,7 +544,7 @@ class ByObjectClass {
         qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries);
 
         // Now build the result by iterating over the sorted vector.
-        RootedObject obj(cx, NewBuiltinClassInstance(cx, &JSObject::class_));
+        RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
         if (!obj)
             return false;
         for (Entry **entryPtr = entries.begin(); entryPtr < entries.end(); entryPtr++) {
@@ -661,7 +653,7 @@ class ByUbinodeType {
         qsort(entries.begin(), entries.length(), sizeof(*entries.begin()), compareEntries);
 
         // Now build the result by iterating over the sorted vector.
-        RootedObject obj(cx, NewBuiltinClassInstance(cx, &JSObject::class_));
+        RootedPlainObject obj(cx, NewBuiltinClassInstance<PlainObject>(cx));
         if (!obj)
             return false;
         for (Entry **entryPtr = entries.begin(); entryPtr < entries.end(); entryPtr++) {
@@ -765,22 +757,18 @@ DebuggerMemory::takeCensus(JSContext *cx, unsigned argc, Value *vp)
         return false;
 
     Debugger *dbg = memory->getDebugger();
+    RootedObject dbgObj(cx, dbg->object);
 
-    // Populate census.debuggeeZones and ensure that all of our debuggee globals
-    // are rooted so that they are visible in the RootList.
-    JS::AutoObjectVector debuggees(cx);
+    // Populate our target set of debuggee zones.
     for (GlobalObjectSet::Range r = dbg->allDebuggees(); !r.empty(); r.popFront()) {
-        if (!census.debuggeeZones.put(r.front()->zone()) ||
-            !debuggees.append(static_cast<JSObject *>(r.front())))
-        {
+        if (!census.debuggeeZones.put(r.front()->zone()))
             return false;
-        }
     }
 
     {
         Maybe<JS::AutoCheckCannotGC> maybeNoGC;
         JS::ubi::RootList rootList(cx, maybeNoGC);
-        if (!rootList.init(cx, census.debuggeeZones))
+        if (!rootList.init(dbgObj))
             return false;
 
         dbg::DefaultCensusTraversal traversal(cx, handler, maybeNoGC.ref());

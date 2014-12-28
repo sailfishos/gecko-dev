@@ -68,9 +68,9 @@ class JSAPITest
     }
 
     virtual ~JSAPITest() {
-        MOZ_ASSERT(!rt);
-        MOZ_ASSERT(!cx);
-        MOZ_ASSERT(!global);
+        MOZ_RELEASE_ASSERT(!rt);
+        MOZ_RELEASE_ASSERT(!cx);
+        MOZ_RELEASE_ASSERT(!global);
     }
 
     virtual bool init();
@@ -228,8 +228,8 @@ class JSAPITest
     static const JSClass * basicGlobalClass() {
         static const JSClass c = {
             "global", JSCLASS_GLOBAL_FLAGS,
-            JS_PropertyStub, JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-            JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, nullptr,
+            nullptr, nullptr, nullptr, nullptr,
+            nullptr, nullptr, nullptr, nullptr,
             nullptr, nullptr, nullptr,
             JS_GlobalObjectTraceHook
         };
@@ -290,9 +290,10 @@ class JSAPITest
     }
 
     virtual void destroyRuntime() {
-        MOZ_ASSERT(!cx);
-        MOZ_ASSERT(rt);
+        MOZ_RELEASE_ASSERT(!cx);
+        MOZ_RELEASE_ASSERT(rt);
         JS_DestroyRuntime(rt);
+        rt = nullptr;
     }
 
     static void reportError(JSContext *cx, const char *message, JSErrorReport *report) {

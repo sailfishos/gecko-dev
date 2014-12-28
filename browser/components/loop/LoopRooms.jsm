@@ -34,6 +34,8 @@ const roomsPushNotification = function(version, channelID) {
 // of date. The Push server may notify us of this event, which will set the global
 // 'dirty' flag to TRUE.
 let gDirty = true;
+// Global variable that keeps track of the currently used account.
+let gCurrentUser = null;
 
 /**
  * Extend a `target` object with the properties defined in `source`.
@@ -135,7 +137,7 @@ let LoopRoomsInternal = {
   get participantsCount() {
     let count = 0;
     for (let room of this.rooms.values()) {
-      if (!("participants" in room)) {
+      if (room.deleted || !("participants" in room)) {
         continue;
       }
       count += room.participants.length;
@@ -153,7 +155,7 @@ let LoopRoomsInternal = {
    *                             `Error` object or `null`. The second argument will
    *                             be the list of rooms, if it was fetched successfully.
    */
-  getAll: function(version = null, callback) {
+  getAll: function(version = null, callback = null) {
     if (!callback) {
       callback = version;
       version = null;
@@ -345,8 +347,9 @@ let LoopRoomsInternal = {
     MozLoopService.hawkRequest(this.sessionType, url, "DELETE")
       .then(response => {
         this.rooms.delete(roomToken);
+        eventEmitter.emit("delete", room);
+        eventEmitter.emit("delete:" + room.roomToken, room);
         callback(null, room);
-        // We'll emit an update when the push notification is received.
       }, error => callback(error)).catch(error => callback(error));
   },
 
@@ -468,9 +471,36 @@ let LoopRoomsInternal = {
    * @param {String} channelID Notification channel identifier.
    */
   onNotification: function(version, channelID) {
+    // See if we received a notification for the channel that's currently active:
+    let channelIDs = MozLoopService.channelIDs;
+    if ((this.sessionType == LOOP_SESSION_TYPE.GUEST && channelID != channelIDs.roomsGuest) ||
+        (this.sessionType == LOOP_SESSION_TYPE.FXA   && channelID != channelIDs.roomsFxA)) {
+      return;
+    }
+
     gDirty = true;
     this.getAll(version, () => {});
   },
+
+  /**
+   * When a user logs in or out, this method should be invoked to check whether
+   * the rooms cache needs to be refreshed.
+   *
+   * @param {String|null} user The FxA userID or NULL
+   */
+  maybeRefresh: function(user = null) {
+    if (gCurrentUser == user) {
+      return;
+    }
+
+    gCurrentUser = user;
+    if (!gDirty) {
+      gDirty = true;
+      this.rooms.clear();
+      eventEmitter.emit("refresh");
+      this.getAll(null, () => {});
+    }
+  }
 };
 Object.freeze(LoopRoomsInternal);
 
@@ -534,6 +564,31 @@ this.LoopRooms = {
 
   getGuestCreatedRoom: function() {
     return LoopRoomsInternal.getGuestCreatedRoom();
+  },
+
+  maybeRefresh: function(user) {
+    return LoopRoomsInternal.maybeRefresh(user);
+  },
+
+  /**
+   * This method is only useful for unit tests to set the rooms cache to contain
+   * a list of fake room data that can be asserted in tests.
+   *
+   * @param {Map} stub Stub cache containing fake rooms data
+   */
+  stubCache: function(stub) {
+    LoopRoomsInternal.rooms.clear();
+    if (stub) {
+      // Fill up the rooms cache with room objects provided in the `stub` Map.
+      for (let [key, value] of stub.entries()) {
+        LoopRoomsInternal.rooms.set(key, value);
+      }
+      gDirty = false;
+    } else {
+      // Restore the cache to not be stubbed anymore, but it'll need a refresh
+      // from the server for sure.
+      gDirty = true;
+    }
   },
 
   promise: function(method, ...params) {

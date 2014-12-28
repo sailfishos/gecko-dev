@@ -71,6 +71,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "roomsPushNotification",
 XPCOMUtils.defineLazyModuleGetter(this, "MozLoopPushHandler",
                                   "resource:///modules/loop/MozLoopPushHandler.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "UITour",
+                                  "resource:///modules/UITour.jsm");
+
 XPCOMUtils.defineLazyServiceGetter(this, "uuidgen",
                                    "@mozilla.org/uuid-generator;1",
                                    "nsIUUIDGenerator");
@@ -240,7 +243,8 @@ let MozLoopServiceInternal = {
   notifyStatusChanged: function(aReason = null) {
     log.debug("notifyStatusChanged with reason:", aReason);
     let profile = MozLoopService.userProfile;
-    LoopStorage.switchDatabase(profile ? profile.uid : null);
+    LoopStorage.switchDatabase(profile && profile.uid);
+    LoopRooms.maybeRefresh(profile && profile.uid);
     Services.obs.notifyObservers(null, "loop-status-changed", aReason);
   },
 
@@ -428,52 +432,79 @@ let MozLoopServiceInternal = {
    * @param {String} method The request method, e.g. 'POST', 'GET'.
    * @param {Object} payloadObj An object which is converted to JSON and
    *                            transmitted with the request.
+   * @param {Boolean} [retryOn401=true] Whether to retry if authentication fails.
    * @returns {Promise}
    *        Returns a promise that resolves to the response of the API call,
    *        or is rejected with an error.  If the server response can be parsed
    *        as JSON and contains an 'error' property, the promise will be
    *        rejected with this JSON-parsed response.
    */
-  hawkRequestInternal: function(sessionType, path, method, payloadObj) {
+  hawkRequestInternal: function(sessionType, path, method, payloadObj, retryOn401 = true) {
     if (!gHawkClient) {
       gHawkClient = new HawkClient(this.loopServerUri);
     }
 
-    let sessionToken;
+    let sessionToken, credentials;
     try {
       sessionToken = Services.prefs.getCharPref(this.getSessionTokenPrefName(sessionType));
     } catch (x) {
       // It is ok for this not to exist, we'll default to sending no-creds
     }
 
-    let credentials;
     if (sessionToken) {
       // true = use a hex key, as required by the server (see bug 1032738).
       credentials = deriveHawkCredentials(sessionToken, "sessionToken",
                                           2 * 32, true);
     }
 
-    return gHawkClient.request(path, method, credentials, payloadObj).then((result) => {
-      this.clearError("network");
-      return result;
-    }, (error) => {
-      if (error.code == 401) {
-        this.clearSessionToken(sessionType);
-
-        if (sessionType == LOOP_SESSION_TYPE.FXA) {
-          MozLoopService.logOutFromFxA().then(() => {
-            // Set a user-visible error after logOutFromFxA clears existing ones.
-            this.setError("login", error);
-          });
+    if (payloadObj) {
+      // Note: we must copy the object rather than mutate it, to avoid
+      // mutating the values of the object passed in.
+      let newPayloadObj = {};
+      for (let property of Object.getOwnPropertyNames(payloadObj)) {
+        if (typeof payloadObj[property] == "string") {
+          newPayloadObj[property] = CommonUtils.encodeUTF8(payloadObj[property]);
         } else {
-          if (!this.urlExpiryTimeIsInFuture()) {
-            // If there are no Guest URLs in the future, don't use setError to notify the user since
-            // there isn't a need for a Guest registration at this time.
-            throw error;
-          }
-
-          this.setError("registration", error);
+          newPayloadObj[property] = payloadObj[property];
         }
+      };
+      payloadObj = newPayloadObj;
+    }
+
+    let handle401Error = (error) => {
+      if (sessionType === LOOP_SESSION_TYPE.FXA) {
+        MozLoopService.logOutFromFxA().then(() => {
+          // Set a user-visible error after logOutFromFxA clears existing ones.
+          this.setError("login", error);
+        });
+      } else if (this.urlExpiryTimeIsInFuture()) {
+        // If there are no Guest URLs in the future, don't use setError to notify the user since
+        // there isn't a need for a Guest registration at this time.
+        this.setError("registration", error);
+      }
+    };
+
+    return gHawkClient.request(path, method, credentials, payloadObj).then(
+      (result) => {
+        this.clearError("network");
+        return result;
+      },
+      (error) => {
+      if (error.code && error.code == 401) {
+        this.clearSessionToken(sessionType);
+        if (retryOn401 && sessionType === LOOP_SESSION_TYPE.GUEST) {
+          log.info("401 and INVALID_AUTH_TOKEN - retry registration");
+          return this.registerWithLoopServer(sessionType, false).then(
+            () => {
+              return this.hawkRequestInternal(sessionType, path, method, payloadObj, false);
+            },
+            () => {
+              handle401Error(error); //Process the original error that triggered the retry.
+              throw error;
+            }
+          );
+        }
+        handle401Error(error);
       }
       throw error;
     });
@@ -607,7 +638,7 @@ let MozLoopServiceInternal = {
           rooms: roomsPushURL,
         },
     };
-    return this.hawkRequestInternal(sessionType, "/registration", "POST", msg)
+    return this.hawkRequestInternal(sessionType, "/registration", "POST", msg, false)
       .then((response) => {
         // If this failed we got an invalid token.
         if (!this.storeSessionToken(sessionType, response.headers)) {
@@ -766,6 +797,22 @@ let MozLoopServiceInternal = {
     }, pc.id);
   },
 
+  getChatWindowID: function(conversationWindowData) {
+    // Try getting a window ID that can (re-)identify this conversation, or resort
+    // to a globally unique one as a last resort.
+    // XXX We can clean this up once rooms and direct contact calling are the only
+    //     two modes left.
+    let windowId = ("contact" in conversationWindowData) ?
+                   conversationWindowData.contact._guid || gLastWindowId++ :
+                   conversationWindowData.roomToken || conversationWindowData.callId ||
+                   gLastWindowId++;
+    return windowId.toString();
+  },
+
+  getChatURL: function(chatWindowId) {
+    return "about:loopconversation#" + chatWindowId;
+  },
+
   /**
    * Opens the chat window
    *
@@ -776,20 +823,11 @@ let MozLoopServiceInternal = {
   openChatWindow: function(conversationWindowData) {
     // So I guess the origin is the loop server!?
     let origin = this.loopServerUri;
-    // Try getting a window ID that can (re-)identify this conversation, or resort
-    // to a globally unique one as a last resort.
-    // XXX We can clean this up once rooms and direct contact calling are the only
-    //     two modes left.
-    let windowId = ("contact" in conversationWindowData) ?
-                   conversationWindowData.contact._guid || gLastWindowId++ :
-                   conversationWindowData.roomToken || conversationWindowData.callId ||
-                   gLastWindowId++;
-    // Store the id as a string, as that's what we use elsewhere.
-    windowId = windowId.toString();
+    let windowId = this.getChatWindowID(conversationWindowData);
 
     gConversationWindowData.set(windowId, conversationWindowData);
 
-    let url = "about:loopconversation#" + windowId;
+    let url = this.getChatURL(windowId);
 
     let callback = chatbox => {
       // We need to use DOMContentLoaded as otherwise the injection will happen
@@ -810,6 +848,17 @@ let MozLoopServiceInternal = {
         chatbox.removeEventListener("DOMContentLoaded", loaded, true);
 
         let window = chatbox.contentWindow;
+
+        function socialFrameChanged(eventName) {
+          UITour.availableTargetsCache.clear();
+          UITour.notify(eventName);
+        }
+
+        window.addEventListener("socialFrameHide", socialFrameChanged.bind(null, "Loop:ChatWindowHidden"));
+        window.addEventListener("socialFrameShow", socialFrameChanged.bind(null, "Loop:ChatWindowShown"));
+        window.addEventListener("socialFrameDetached", socialFrameChanged.bind(null, "Loop:ChatWindowDetached"));
+        window.addEventListener("unload", socialFrameChanged.bind(null, "Loop:ChatWindowClosed"));
+
         injectLoopAPI(window);
 
         let ourID = window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -850,6 +899,8 @@ let MozLoopServiceInternal = {
 
         let pc_static = new window.mozRTCPeerConnectionStatic();
         pc_static.registerPeerConnectionLifecycleCallback(onPCLifecycleChange);
+
+        UITour.notify("Loop:ChatWindowOpened");
       }.bind(this), true);
     };
 
@@ -951,7 +1002,7 @@ let MozLoopServiceInternal = {
       code: code,
       state: state,
     };
-    return this.hawkRequest(LOOP_SESSION_TYPE.FXA, "/fxa-oauth/token", "POST", payload).then(response => {
+    return this.hawkRequestInternal(LOOP_SESSION_TYPE.FXA, "/fxa-oauth/token", "POST", payload).then(response => {
       return JSON.parse(response.body);
     },
     error => {this._hawkRequestError(error);});
@@ -1043,11 +1094,13 @@ this.MozLoopService = {
 
     // The Loop toolbar button should change icon when the room participant count
     // changes from 0 to something.
-    const onRoomsChange = () => {
-      MozLoopServiceInternal.notifyStatusChanged();
+    const onRoomsChange = (e) => {
+      // Pass the event name as notification reason for better logging.
+      MozLoopServiceInternal.notifyStatusChanged("room-" + e);
     };
     LoopRooms.on("add", onRoomsChange);
     LoopRooms.on("update", onRoomsChange);
+    LoopRooms.on("delete", onRoomsChange);
     LoopRooms.on("joined", (e, room, participant) => {
       // Don't alert if we're in the doNotDisturb mode, or the participant
       // is the owner - the content code deals with the rest of the sounds.
@@ -1066,6 +1119,8 @@ this.MozLoopService = {
       }
     });
 
+    LoopRooms.on("joined", this.maybeResumeTourOnRoomJoined.bind(this));
+
     // If expiresTime is not in the future and the user hasn't
     // previously authenticated then skip registration.
     if (!MozLoopServiceInternal.urlExpiryTimeIsInFuture() &&
@@ -1079,6 +1134,49 @@ this.MozLoopService = {
 
     return deferredInitialization.promise;
   }),
+
+  /**
+   * Maybe resume the tour (re-opening the tab, if necessary) if someone else joins
+   * a room of ours and it's currently open.
+   */
+  maybeResumeTourOnRoomJoined: function(e, room, participant) {
+    let isOwnerInRoom = false;
+    let isOtherInRoom = false;
+
+    if (!this.getLoopPref("gettingStarted.resumeOnFirstJoin")) {
+      return;
+    }
+
+    if (!room.participants) {
+      return;
+    }
+
+    // The particpant that joined isn't necessarily included in room.participants (depending on
+    // when the broadcast happens) so concatenate.
+    for (let participant of room.participants.concat(participant)) {
+      if (participant.owner) {
+        isOwnerInRoom = true;
+      } else {
+        isOtherInRoom = true;
+      }
+    }
+
+    if (!isOwnerInRoom || !isOtherInRoom) {
+      return;
+    }
+
+    // Check that the room chatbox is still actually open using its URL
+    let chatboxesForRoom = [...Chat.chatboxes].filter(chatbox => {
+      return chatbox.src == MozLoopServiceInternal.getChatURL(room.roomToken);
+    });
+
+    if (!chatboxesForRoom.length) {
+      log.warn("Tried to resume the tour from a join when the chatbox was closed", room);
+      return;
+    }
+
+    this.resumeTour("open");
+  },
 
   /**
    * The core of the initialization work that happens once the browser is ready
@@ -1444,22 +1542,67 @@ this.MozLoopService = {
   }),
 
   /**
+   * Gets the tour URL.
+   *
+   * @param {String} aSrc A string representing the entry point to begin the tour, optional.
+   * @param {Object} aAdditionalParams An object with keys used as query parameter names
+   */
+  getTourURL: function(aSrc = null, aAdditionalParams = {}) {
+    let urlStr = this.getLoopPref("gettingStarted.url");
+    let url = new URL(Services.urlFormatter.formatURL(urlStr));
+    for (let paramName in aAdditionalParams) {
+      url.searchParams.append(paramName, aAdditionalParams[paramName]);
+    }
+    if (aSrc) {
+      url.searchParams.set("utm_source", "firefox-browser");
+      url.searchParams.set("utm_medium", "firefox-browser");
+      url.searchParams.set("utm_campaign", aSrc);
+    }
+    return url;
+  },
+
+  resumeTour: function(aIncomingConversationState) {
+    if (!this.getLoopPref("gettingStarted.resumeOnFirstJoin")) {
+      return;
+    }
+
+    let url = this.getTourURL("resume-with-conversation", {
+      incomingConversation: aIncomingConversationState,
+    });
+
+    let win = Services.wm.getMostRecentWindow("navigator:browser");
+
+    this.setLoopPref("gettingStarted.resumeOnFirstJoin", false);
+
+    // The query parameters of the url can vary but we always want to re-use a Loop tour tab that's
+    // already open so we ignore the fragment and query string.
+    let hadExistingTab = win.switchToTabHavingURI(url, true, {
+      ignoreFragment: true,
+      ignoreQueryString: true,
+    });
+
+    // If the tab was already open, send an event instead of using the query
+    // parameter above (that we don't replace on existing tabs to avoid a reload).
+    if (hadExistingTab) {
+      UITour.notify("Loop:IncomingConversation", {
+        conversationOpen: aIncomingConversationState === "open",
+      });
+    }
+  },
+
+  /**
    * Opens the Getting Started tour in the browser.
    *
-   * @param {String} aSrc
-   *   - The UI element that the user used to begin the tour, optional.
+   * @param {String} [aSrc] A string representing the entry point to begin the tour, optional.
    */
   openGettingStartedTour: Task.async(function(aSrc = null) {
     try {
-      let urlStr = Services.prefs.getCharPref("loop.gettingStarted.url");
-      let url = new URL(Services.urlFormatter.formatURL(urlStr));
-      if (aSrc) {
-        url.searchParams.set("utm_source", "firefox-browser");
-        url.searchParams.set("utm_medium", "firefox-browser");
-        url.searchParams.set("utm_campaign", aSrc);
-      }
+      let url = this.getTourURL(aSrc);
       let win = Services.wm.getMostRecentWindow("navigator:browser");
-      win.switchToTabHavingURI(url, true, {replaceQueryString: true});
+      win.switchToTabHavingURI(url, true, {
+        ignoreFragment: true,
+        replaceQueryString: true,
+      });
     } catch (ex) {
       log.error("Error opening Getting Started tour", ex);
     }

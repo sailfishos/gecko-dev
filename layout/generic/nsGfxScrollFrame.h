@@ -450,6 +450,7 @@ public:
   // If true, the layer should always be active because we always build a
   // scrollable layer. Used for asynchronous scrolling.
   bool mShouldBuildScrollableLayer:1;
+
   // If true, add clipping in ScrollFrameHelper::ComputeFrameMetrics.
   bool mAddClipRectToLayer:1;
 
@@ -506,6 +507,14 @@ public:
 
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS
+
+  virtual mozilla::WritingMode GetWritingMode() const MOZ_OVERRIDE
+  {
+    if (mHelper.mScrolledFrame) {
+      return mHelper.mScrolledFrame->GetWritingMode();
+    }
+    return nsIFrame::GetWritingMode();
+  }
 
   virtual void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                 const nsRect&           aDirtyRect,

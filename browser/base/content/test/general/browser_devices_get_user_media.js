@@ -437,7 +437,7 @@ let gTests = [
 
     yield checkSharingUI({video: true, audio: true});
 
-    PopupNotifications.getNotification("webRTC-sharingDevices").reshow();
+    yield promiseNotificationShown(PopupNotifications.getNotification("webRTC-sharingDevices"));
     activateSecondaryAction(kActionDeny);
 
     yield promiseObserverCalled("recording-device-events");
@@ -702,7 +702,7 @@ let gTests = [
       expectObserverCalled("recording-device-events");
       yield checkSharingUI({video: aRequestVideo, audio: aRequestAudio});
 
-      PopupNotifications.getNotification("webRTC-sharingDevices").reshow();
+      yield promiseNotificationShown(PopupNotifications.getNotification("webRTC-sharingDevices"));
       let expectedIcon = "webRTC-sharingDevices";
       if (aRequestAudio && !aRequestVideo)
         expectedIcon = "webRTC-sharingMicrophone";
@@ -799,7 +799,7 @@ let gTests = [
   run: function checkNoAlwaysOnHttp() {
     // Load an http page instead of the https version.
     let deferred = Promise.defer();
-    let browser = gBrowser.selectedTab.linkedBrowser;
+    let browser = gBrowser.selectedBrowser;
     browser.addEventListener("load", function onload() {
       browser.removeEventListener("load", onload, true);
       deferred.resolve();

@@ -19,6 +19,7 @@
 
 #include "jsobjinlines.h"
 
+#include "vm/Interpreter-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -867,13 +868,13 @@ const Class MapIteratorObject::class_ = {
     "Map Iterator",
     JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(MapIteratorObject::SlotCount),
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
     MapIteratorObject::finalize
 };
 
@@ -903,8 +904,8 @@ GlobalObject::initMapIteratorProto(JSContext *cx, Handle<GlobalObject *> global)
     JSObject *base = GlobalObject::getOrCreateIteratorPrototype(cx, global);
     if (!base)
         return false;
-    RootedNativeObject proto(cx,
-        NewNativeObjectWithGivenProto(cx, &MapIteratorObject::class_, base, global));
+    Rooted<MapIteratorObject *> proto(cx,
+        NewObjectWithGivenProto<MapIteratorObject>(cx, base, global));
     if (!proto)
         return false;
     proto->setSlot(MapIteratorObject::RangeSlot, PrivateValue(nullptr));
@@ -927,7 +928,7 @@ MapIteratorObject::create(JSContext *cx, HandleObject mapobj, ValueMap *data,
     if (!range)
         return nullptr;
 
-    NativeObject *iterobj = NewNativeObjectWithGivenProto(cx, &class_, proto, global);
+    MapIteratorObject *iterobj = NewObjectWithGivenProto<MapIteratorObject>(cx, proto, global);
     if (!iterobj) {
         js_delete(range);
         return nullptr;
@@ -935,7 +936,7 @@ MapIteratorObject::create(JSContext *cx, HandleObject mapobj, ValueMap *data,
     iterobj->setSlot(TargetSlot, ObjectValue(*mapobj));
     iterobj->setSlot(KindSlot, Int32Value(int32_t(kind)));
     iterobj->setSlot(RangeSlot, PrivateValue(range));
-    return static_cast<MapIteratorObject *>(iterobj);
+    return iterobj;
 }
 
 void
@@ -1011,17 +1012,17 @@ const Class MapObject::class_ = {
     "Map",
     JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_CACHED_PROTO(JSProto_Map),
-    JS_PropertyStub,         // addProperty
-    JS_DeletePropertyStub,   // delProperty
-    JS_PropertyStub,         // getProperty
-    JS_StrictPropertyStub,   // setProperty
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
+    nullptr, // addProperty
+    nullptr, // delProperty
+    nullptr, // getProperty
+    nullptr, // setProperty
+    nullptr, // enumerate
+    nullptr, // resolve
+    nullptr, // convert
     finalize,
-    nullptr,                 // call
-    nullptr,                 // hasInstance
-    nullptr,                 // construct
+    nullptr, // call
+    nullptr, // hasInstance
+    nullptr, // construct
     mark
 };
 
@@ -1112,7 +1113,6 @@ MapObject::mark(JSTracer *trc, JSObject *obj)
     }
 }
 
-#ifdef JSGC_GENERATIONAL
 struct UnbarrieredHashPolicy {
     typedef Value Lookup;
     static HashNumber hash(const Lookup &v) { return v.asRawBits(); }
@@ -1138,30 +1138,25 @@ class OrderedHashTableRef : public gc::BufferableRef
         table->rekeyOneEntry(prior, key);
     }
 };
-#endif
 
 inline static void
 WriteBarrierPost(JSRuntime *rt, ValueMap *map, const Value &key)
 {
-#ifdef JSGC_GENERATIONAL
     typedef OrderedHashMap<Value, Value, UnbarrieredHashPolicy, RuntimeAllocPolicy> UnbarrieredMap;
     if (MOZ_UNLIKELY(key.isObject() && IsInsideNursery(&key.toObject()))) {
         rt->gc.storeBuffer.putGeneric(OrderedHashTableRef<UnbarrieredMap>(
                     reinterpret_cast<UnbarrieredMap *>(map), key));
     }
-#endif
 }
 
 inline static void
 WriteBarrierPost(JSRuntime *rt, ValueSet *set, const Value &key)
 {
-#ifdef JSGC_GENERATIONAL
     typedef OrderedHashSet<Value, UnbarrieredHashPolicy, RuntimeAllocPolicy> UnbarrieredSet;
     if (MOZ_UNLIKELY(key.isObject() && IsInsideNursery(&key.toObject()))) {
         rt->gc.storeBuffer.putGeneric(OrderedHashTableRef<UnbarrieredSet>(
                     reinterpret_cast<UnbarrieredSet *>(set), key));
     }
-#endif
 }
 
 bool
@@ -1206,7 +1201,7 @@ MapObject::set(JSContext *cx, HandleObject obj, HandleValue k, HandleValue v)
 MapObject*
 MapObject::create(JSContext *cx)
 {
-    RootedNativeObject obj(cx, NewNativeBuiltinClassInstance(cx, &class_));
+    Rooted<MapObject *> obj(cx, NewBuiltinClassInstance<MapObject>(cx));
     if (!obj)
         return nullptr;
 
@@ -1218,7 +1213,7 @@ MapObject::create(JSContext *cx)
     }
 
     obj->setPrivate(map);
-    return &obj->as<MapObject>();
+    return obj;
 }
 
 void
@@ -1237,11 +1232,24 @@ MapObject::construct(JSContext *cx, unsigned argc, Value *vp)
 
     CallArgs args = CallArgsFromVp(argc, vp);
     if (!args.get(0).isNullOrUndefined()) {
+        RootedValue adderVal(cx);
+        if (!JSObject::getProperty(cx, obj, obj, cx->names().set, &adderVal))
+            return false;
+
+        if (!IsCallable(adderVal))
+            return ReportIsNotFunction(cx, adderVal);
+
+        bool isOriginalAdder = IsNativeFunction(adderVal, MapObject::set);
+        RootedValue mapVal(cx, ObjectValue(*obj));
+        FastInvokeGuard fig(cx, adderVal);
+        InvokeArgs &args2 = fig.args();
+
         ForOfIterator iter(cx);
         if (!iter.init(args[0]))
             return false;
         RootedValue pairVal(cx);
         RootedObject pairObj(cx);
+        AutoHashableValueRooter hkey(cx);
         ValueMap *map = obj->getData();
         while (true) {
             bool done;
@@ -1263,20 +1271,32 @@ MapObject::construct(JSContext *cx, unsigned argc, Value *vp)
             if (!JSObject::getElement(cx, pairObj, pairObj, 0, &key))
                 return false;
 
-            AutoHashableValueRooter hkey(cx);
-            if (!hkey.setValue(cx, key))
-                return false;
-
             RootedValue val(cx);
             if (!JSObject::getElement(cx, pairObj, pairObj, 1, &val))
                 return false;
 
-            RelocatableValue rval(val);
-            if (!map->put(hkey, rval)) {
-                js_ReportOutOfMemory(cx);
-                return false;
+            if (isOriginalAdder) {
+                if (!hkey.setValue(cx, key))
+                    return false;
+
+                RelocatableValue rval(val);
+                if (!map->put(hkey, rval)) {
+                    js_ReportOutOfMemory(cx);
+                    return false;
+                }
+                WriteBarrierPost(cx->runtime(), map, key);
+            } else {
+                if (!args2.init(2))
+                    return false;
+
+                args2.setCallee(adderVal);
+                args2.setThis(mapVal);
+                args2[0].set(key);
+                args2[1].set(val);
+
+                if (!fig.invoke(cx))
+                    return false;
             }
-            WriteBarrierPost(cx->runtime(), map, key);
         }
     }
 
@@ -1524,13 +1544,13 @@ const Class SetIteratorObject::class_ = {
     "Set Iterator",
     JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(SetIteratorObject::SlotCount),
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
     SetIteratorObject::finalize
 };
 
@@ -1560,8 +1580,8 @@ GlobalObject::initSetIteratorProto(JSContext *cx, Handle<GlobalObject*> global)
     JSObject *base = GlobalObject::getOrCreateIteratorPrototype(cx, global);
     if (!base)
         return false;
-    RootedNativeObject proto(cx, NewNativeObjectWithGivenProto(cx, &SetIteratorObject::class_,
-                                                               base, global));
+    Rooted<SetIteratorObject *> proto(cx,
+        NewObjectWithGivenProto<SetIteratorObject>(cx, base, global));
     if (!proto)
         return false;
     proto->setSlot(SetIteratorObject::RangeSlot, PrivateValue(nullptr));
@@ -1584,7 +1604,7 @@ SetIteratorObject::create(JSContext *cx, HandleObject setobj, ValueSet *data,
     if (!range)
         return nullptr;
 
-    NativeObject *iterobj = NewNativeObjectWithGivenProto(cx, &class_, proto, global);
+    SetIteratorObject *iterobj = NewObjectWithGivenProto<SetIteratorObject>(cx, proto, global);
     if (!iterobj) {
         js_delete(range);
         return nullptr;
@@ -1592,7 +1612,7 @@ SetIteratorObject::create(JSContext *cx, HandleObject setobj, ValueSet *data,
     iterobj->setSlot(TargetSlot, ObjectValue(*setobj));
     iterobj->setSlot(KindSlot, Int32Value(int32_t(kind)));
     iterobj->setSlot(RangeSlot, PrivateValue(range));
-    return static_cast<SetIteratorObject *>(iterobj);
+    return iterobj;
 }
 
 void
@@ -1664,17 +1684,17 @@ const Class SetObject::class_ = {
     "Set",
     JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_CACHED_PROTO(JSProto_Set),
-    JS_PropertyStub,         // addProperty
-    JS_DeletePropertyStub,   // delProperty
-    JS_PropertyStub,         // getProperty
-    JS_StrictPropertyStub,   // setProperty
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
+    nullptr, // addProperty
+    nullptr, // delProperty
+    nullptr, // getProperty
+    nullptr, // setProperty
+    nullptr, // enumerate
+    nullptr, // resolve
+    nullptr, // convert
     finalize,
-    nullptr,                 // call
-    nullptr,                 // hasInstance
-    nullptr,                 // construct
+    nullptr, // call
+    nullptr, // hasInstance
+    nullptr, // construct
     mark
 };
 
@@ -1760,7 +1780,7 @@ SetObject::add(JSContext *cx, HandleObject obj, HandleValue k)
 SetObject*
 SetObject::create(JSContext *cx)
 {
-    RootedNativeObject obj(cx, NewNativeBuiltinClassInstance(cx, &class_));
+    SetObject *obj = NewBuiltinClassInstance<SetObject>(cx);
     if (!obj)
         return nullptr;
 
@@ -1771,7 +1791,7 @@ SetObject::create(JSContext *cx)
         return nullptr;
     }
     obj->setPrivate(set);
-    return &obj->as<SetObject>();
+    return obj;
 }
 
 void
@@ -1801,6 +1821,18 @@ SetObject::construct(JSContext *cx, unsigned argc, Value *vp)
 
     CallArgs args = CallArgsFromVp(argc, vp);
     if (!args.get(0).isNullOrUndefined()) {
+        RootedValue adderVal(cx);
+        if (!JSObject::getProperty(cx, obj, obj, cx->names().add, &adderVal))
+            return false;
+
+        if (!IsCallable(adderVal))
+            return ReportIsNotFunction(cx, adderVal);
+
+        bool isOriginalAdder = IsNativeFunction(adderVal, SetObject::add);
+        RootedValue setVal(cx, ObjectValue(*obj));
+        FastInvokeGuard fig(cx, adderVal);
+        InvokeArgs &args2 = fig.args();
+
         RootedValue keyVal(cx);
         ForOfIterator iter(cx);
         if (!iter.init(args[0]))
@@ -1813,13 +1845,26 @@ SetObject::construct(JSContext *cx, unsigned argc, Value *vp)
                 return false;
             if (done)
                 break;
-            if (!key.setValue(cx, keyVal))
-                return false;
-            if (!set->put(key)) {
-                js_ReportOutOfMemory(cx);
-                return false;
+
+            if (isOriginalAdder) {
+                if (!key.setValue(cx, keyVal))
+                    return false;
+                if (!set->put(key)) {
+                    js_ReportOutOfMemory(cx);
+                    return false;
+                }
+                WriteBarrierPost(cx->runtime(), set, keyVal);
+            } else {
+                if (!args2.init(1))
+                    return false;
+
+                args2.setCallee(adderVal);
+                args2.setThis(setVal);
+                args2[0].set(keyVal);
+
+                if (!fig.invoke(cx))
+                    return false;
             }
-            WriteBarrierPost(cx->runtime(), set, keyVal);
         }
     }
 

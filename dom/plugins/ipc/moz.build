@@ -83,6 +83,7 @@ UNIFIED_SOURCES += [
     'PluginBackgroundDestroyer.cpp',
     'PluginInstanceParent.cpp',
     'PluginMessageUtils.cpp',
+    'PluginModuleParent.cpp',
     'PluginProcessChild.cpp',
     'PluginProcessParent.cpp',
     'PluginScriptableObjectChild.cpp',
@@ -94,7 +95,6 @@ UNIFIED_SOURCES += [
 SOURCES += [
     'PluginInstanceChild.cpp', # 'PluginThreadCallback' : ambiguous symbol
     'PluginModuleChild.cpp',   # Redefinition of mozilla::WindowsDllInterceptor sUser32Intercept
-    'PluginModuleParent.cpp',
     'PluginWidgetChild.cpp',
     'PluginWidgetParent.cpp',
 ]

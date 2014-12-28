@@ -49,6 +49,7 @@ public:
     nsWindow();
     virtual ~nsWindow();
 
+    static void NotifyVsync(mozilla::TimeStamp aVsyncTimestamp);
     static void DoDraw(void);
     static nsEventStatus DispatchInputEvent(mozilla::WidgetGUIEvent& aEvent,
                                             bool* aWasCaptured = nullptr);
@@ -119,6 +120,10 @@ public:
     virtual bool NeedsPaint();
 
     virtual Composer2D* GetComposer2D() MOZ_OVERRIDE;
+
+protected:
+    // nsBaseWidget
+    already_AddRefed<GeckoContentController> CreateRootContentController() MOZ_OVERRIDE;
 
 protected:
     nsWindow* mParent;

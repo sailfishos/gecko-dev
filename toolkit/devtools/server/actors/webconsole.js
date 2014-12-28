@@ -83,6 +83,7 @@ function WebConsoleActor(aConnection, aParentActor)
 
   this.traits = {
     customNetworkRequest: !this._parentIsContentActor,
+    transferredResponseSize: true
   };
 }
 
@@ -726,6 +727,39 @@ WebConsoleActor.prototype =
       from: this.actorID,
       messages: messages,
     };
+  },
+
+  /**
+   * Handler for the "evaluateJSAsync" request. This method evaluates the given
+   * JavaScript string and sends back a packet with a unique ID.
+   * The result will be returned later as an unsolicited `evaluationResult`,
+   * that can be associated back to this request via the `resultID` field.
+   *
+   * @param object aRequest
+   *        The JSON request object received from the Web Console client.
+   * @return object
+   *         The response packet to send to with the unique id in the
+   *         `resultID` field.
+   */
+  onEvaluateJSAsync: function WCA_onEvaluateJSAsync(aRequest)
+  {
+    // We want to be able to run console commands without waiting
+    // for the first to return (see Bug 1088861).
+
+    // First, send a response packet with the id only.
+    let resultID = Date.now();
+    this.conn.send({
+      from: this.actorID,
+      resultID: resultID
+    });
+
+    // Then, execute the script that may pause.
+    let response = this.onEvaluateJS(aRequest);
+    response.resultID = resultID;
+
+    // Finally, send an unsolicited evaluationResult packet with
+    // the normal return value
+    this.conn.sendActorEvent(this.actorID, "evaluationResult", response);
   },
 
   /**
@@ -1471,6 +1505,7 @@ WebConsoleActor.prototype.requestTypes =
   stopListeners: WebConsoleActor.prototype.onStopListeners,
   getCachedMessages: WebConsoleActor.prototype.onGetCachedMessages,
   evaluateJS: WebConsoleActor.prototype.onEvaluateJS,
+  evaluateJSAsync: WebConsoleActor.prototype.onEvaluateJSAsync,
   autocomplete: WebConsoleActor.prototype.onAutocomplete,
   clearMessagesCache: WebConsoleActor.prototype.onClearMessagesCache,
   getPreferences: WebConsoleActor.prototype.onGetPreferences,
@@ -1940,6 +1975,7 @@ NetworkEventActor.prototype =
       updateType: "responseContent",
       mimeType: aContent.mimeType,
       contentSize: aContent.text.length,
+      transferredSize: aContent.transferredSize,
       discardResponseBody: aDiscardedResponseBody,
     };
 

@@ -11,25 +11,24 @@
 #include "nsIDocument.h" // For nsIDocument
 #include "nsIPresShell.h" // For nsIPresShell
 #include "nsLayoutUtils.h" // For PostRestyleEvent (remove after bug 1073336)
+#include "PendingPlayerTracker.h" // For PendingPlayerTracker
 
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AnimationPlayer, mTimeline, mSource)
-
-NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(AnimationPlayer, AddRef)
-NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(AnimationPlayer, Release)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(AnimationPlayer, mTimeline,
+                                      mSource, mReady)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(AnimationPlayer)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(AnimationPlayer)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AnimationPlayer)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
+NS_INTERFACE_MAP_END
 
 JSObject*
 AnimationPlayer::WrapObject(JSContext* aCx)
 {
   return dom::AnimationPlayerBinding::Wrap(aCx, this);
-}
-
-Nullable<double>
-AnimationPlayer::GetStartTime() const
-{
-  return AnimationUtils::TimeDurationToDouble(mStartTime);
 }
 
 Nullable<TimeDuration>
@@ -38,9 +37,12 @@ AnimationPlayer::GetCurrentTime() const
   Nullable<TimeDuration> result;
   if (!mHoldTime.IsNull()) {
     result = mHoldTime;
-  } else {
+    return result;
+  }
+
+  if (!mStartTime.IsNull()) {
     Nullable<TimeDuration> timelineTime = mTimeline->GetCurrentTime();
-    if (!timelineTime.IsNull() && !mStartTime.IsNull()) {
+    if (!timelineTime.IsNull()) {
       result.SetValue(timelineTime.Value() - mStartTime.Value());
     }
   }
@@ -50,12 +52,16 @@ AnimationPlayer::GetCurrentTime() const
 AnimationPlayState
 AnimationPlayer::PlayState() const
 {
+  if (mIsPending) {
+    return AnimationPlayState::Pending;
+  }
+
   Nullable<TimeDuration> currentTime = GetCurrentTime();
   if (currentTime.IsNull()) {
     return AnimationPlayState::Idle;
   }
 
-  if (mIsPaused) {
+  if (mStartTime.IsNull()) {
     return AnimationPlayState::Paused;
   }
 
@@ -64,6 +70,26 @@ AnimationPlayer::PlayState() const
   }
 
   return AnimationPlayState::Running;
+}
+
+Promise*
+AnimationPlayer::GetReady(ErrorResult& aRv)
+{
+  // Lazily create the ready promise if it doesn't exist
+  if (!mReady) {
+    nsIGlobalObject* global = mTimeline->GetParentObject();
+    if (global) {
+      mReady = Promise::Create(global, aRv);
+      if (mReady && PlayState() != AnimationPlayState::Pending) {
+        mReady->MaybeResolve(this);
+      }
+    }
+  }
+  if (!mReady) {
+    aRv.Throw(NS_ERROR_FAILURE);
+  }
+
+  return mReady;
 }
 
 void
@@ -78,6 +104,12 @@ AnimationPlayer::Pause()
 {
   DoPause();
   PostUpdate();
+}
+
+Nullable<double>
+AnimationPlayer::GetStartTimeAsDouble() const
+{
+  return AnimationUtils::TimeDurationToDouble(mStartTime);
 }
 
 Nullable<double>
@@ -101,9 +133,43 @@ AnimationPlayer::SetSource(Animation* aSource)
 void
 AnimationPlayer::Tick()
 {
-  if (mSource) {
-    mSource->SetParentTime(GetCurrentTime());
+  UpdateSourceContent();
+}
+
+void
+AnimationPlayer::StartNow()
+{
+  // Currently we only expect this method to be called when we are in the
+  // middle of initiating/resuming playback so we should have an unresolved
+  // start time to update and a fixed current time to seek to.
+  MOZ_ASSERT(mStartTime.IsNull() && !mHoldTime.IsNull(),
+             "Resolving the start time but we don't appear to be waiting"
+             " to begin playback");
+
+  Nullable<TimeDuration> readyTime = mTimeline->GetCurrentTime();
+  // Bug 1096776: Once we support disappearing or inactive timelines we
+  // will need special handling here.
+  MOZ_ASSERT(!readyTime.IsNull(), "Missing or inactive timeline");
+  mStartTime.SetValue(readyTime.Value() - mHoldTime.Value());
+  mHoldTime.SetNull();
+
+  if (mReady) {
+    mReady->MaybeResolve(this);
   }
+}
+
+void
+AnimationPlayer::Cancel()
+{
+  if (mIsPending) {
+    CancelPendingPlay();
+    if (mReady) {
+      mReady->MaybeReject(NS_ERROR_DOM_ABORT_ERR);
+    }
+  }
+
+  mHoldTime.SetNull();
+  mStartTime.SetNull();
 }
 
 bool
@@ -152,7 +218,8 @@ AnimationPlayer::ComposeStyle(nsRefPtr<css::AnimValuesStyleRule>& aStyleRule,
   }
 
   AnimationPlayState playState = PlayState();
-  if (playState == AnimationPlayState::Running) {
+  if (playState == AnimationPlayState::Running ||
+      playState == AnimationPlayState::Pending) {
     aNeedsRefreshes = true;
   }
 
@@ -164,40 +231,54 @@ AnimationPlayer::ComposeStyle(nsRefPtr<css::AnimValuesStyleRule>& aStyleRule,
 void
 AnimationPlayer::DoPlay()
 {
-  // FIXME: When we implement finishing behavior (bug 1074630) we should
-  // not return early if mIsPaused is false since we may still need to seek.
-  // (However, we will need to pass a flag so that when we start playing due to
-  //  a change in animation-play-state we *don't* trigger finishing behavior.)
-  if (!mIsPaused) {
-    return;
-  }
-  mIsPaused = false;
+  // FIXME: When we implement finishing behavior (bug 1074630) we will
+  // need to pass a flag so that when we start playing due to a change in
+  // animation-play-state we *don't* trigger finishing behavior.
 
-  Nullable<TimeDuration> timelineTime = mTimeline->GetCurrentTime();
-  if (timelineTime.IsNull()) {
-    // FIXME: We should just sit in the pending state in this case.
-    // We will introduce the pending state in Bug 927349.
+  Nullable<TimeDuration> currentTime = GetCurrentTime();
+  if (currentTime.IsNull()) {
+    mHoldTime.SetValue(TimeDuration(0));
+  } else if (mHoldTime.IsNull()) {
+    // If the hold time is null, we are already playing normally
     return;
   }
 
-  // Update start time to an appropriate offset from the current timeline time
-  MOZ_ASSERT(!mHoldTime.IsNull(), "Hold time should not be null when paused");
-  mStartTime.SetValue(timelineTime.Value() - mHoldTime.Value());
-  mHoldTime.SetNull();
+  // Clear ready promise. We'll create a new one lazily.
+  mReady = nullptr;
+
+  StartNow();
 }
 
 void
 AnimationPlayer::DoPause()
 {
-  if (mIsPaused) {
-    return;
+  if (mIsPending) {
+    CancelPendingPlay();
+    // Resolve the ready promise since we currently only use it for
+    // players that are waiting to play. Later (in bug 1109390), we will
+    // use this for players waiting to pause as well and then we won't
+    // want to resolve it just yet.
+    if (mReady) {
+      mReady->MaybeResolve(this);
+    }
   }
-  mIsPaused = true;
+
+  // Mark this as no longer running on the compositor so that next time
+  // we update animations we won't throttle them and will have a chance
+  // to remove the animation from any layer it might be on.
   mIsRunningOnCompositor = false;
 
-  // Bug 927349 - check for null result here and go to pending state
+  // Bug 1109390 - check for null result here and go to pending state
   mHoldTime = GetCurrentTime();
   mStartTime.SetNull();
+}
+
+void
+AnimationPlayer::UpdateSourceContent()
+{
+  if (mSource) {
+    mSource->SetParentTime(GetCurrentTime());
+  }
 }
 
 void
@@ -216,6 +297,24 @@ AnimationPlayer::PostUpdate()
   if (collection) {
     collection->NotifyPlayerUpdated();
   }
+}
+
+void
+AnimationPlayer::CancelPendingPlay()
+{
+  if (!mIsPending) {
+    return;
+  }
+
+  nsIDocument* doc = GetRenderedDocument();
+  if (doc) {
+    PendingPlayerTracker* tracker = doc->GetPendingPlayerTracker();
+    if (tracker) {
+      tracker->RemovePlayPending(*this);
+    }
+  }
+
+  mIsPending = false;
 }
 
 StickyTimeDuration

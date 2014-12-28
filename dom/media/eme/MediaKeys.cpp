@@ -66,6 +66,43 @@ MediaKeys::~MediaKeys()
   Shutdown();
 }
 
+static PLDHashOperator
+CopySessions(const nsAString& aKey,
+             nsRefPtr<MediaKeySession>& aSession,
+             void* aClosure)
+{
+  KeySessionHashMap* p = static_cast<KeySessionHashMap*>(aClosure);
+  p->Put(aSession->GetSessionId(), aSession);
+  return PL_DHASH_NEXT;
+}
+
+static PLDHashOperator
+CloseSessions(const nsAString& aKey,
+              nsRefPtr<MediaKeySession>& aSession,
+              void* aClosure)
+{
+  aSession->OnClosed();
+  return PL_DHASH_NEXT;
+}
+
+void
+MediaKeys::Terminated()
+{
+  KeySessionHashMap keySessions;
+  // Remove entries during iteration will screw it. Make a copy first.
+  mKeySessions.Enumerate(&CopySessions, &keySessions);
+  keySessions.Enumerate(&CloseSessions, nullptr);
+  keySessions.Clear();
+  MOZ_ASSERT(mKeySessions.Count() == 0);
+
+  // Notify the element about that CDM has terminated.
+  if (mElement) {
+    mElement->DecodeError();
+  }
+
+  Shutdown();
+}
+
 void
 MediaKeys::Shutdown()
 {
@@ -462,12 +499,6 @@ CopyArrayBufferViewOrArrayBufferData(const ArrayBufferViewOrArrayBuffer& aBuffer
     return false;
   }
   return true;
-}
-
-nsIDocument*
-MediaKeys::GetOwnerDoc() const
-{
-  return mElement ? mElement->OwnerDoc() : nullptr;
 }
 
 } // namespace dom

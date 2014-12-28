@@ -59,6 +59,7 @@ class MediaStreamAudioSourceNode;
 class OscillatorNode;
 class PannerNode;
 class ScriptProcessorNode;
+class StereoPannerNode;
 class WaveShaperNode;
 class PeriodicWave;
 class Promise;
@@ -142,6 +143,9 @@ public:
                         uint32_t aNumberOfInputChannels,
                         uint32_t aNumberOfOutputChannels,
                         ErrorResult& aRv);
+
+  already_AddRefed<StereoPannerNode>
+  CreateStereoPanner();
 
   already_AddRefed<AnalyserNode>
   CreateAnalyser();
@@ -267,7 +271,6 @@ private:
   const float mSampleRate;
   nsRefPtr<AudioDestinationNode> mDestination;
   nsRefPtr<AudioListener> mListener;
-  MediaBufferDecoder mDecoder;
   nsTArray<nsRefPtr<WebAudioDecodeJob> > mDecodeJobs;
   // See RegisterActiveNode.  These will keep the AudioContext alive while it
   // is rendering and the window remains alive.

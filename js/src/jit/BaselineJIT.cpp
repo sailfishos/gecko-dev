@@ -416,10 +416,8 @@ BaselineScript::trace(JSTracer *trc)
 void
 BaselineScript::writeBarrierPre(Zone *zone, BaselineScript *script)
 {
-#ifdef JSGC_INCREMENTAL
     if (zone->needsIncrementalBarrier())
         script->trace(zone->barrierTracer());
-#endif
 }
 
 void
@@ -431,7 +429,6 @@ BaselineScript::Trace(JSTracer *trc, BaselineScript *script)
 void
 BaselineScript::Destroy(FreeOp *fop, BaselineScript *script)
 {
-#ifdef JSGC_GENERATIONAL
     /*
      * When the script contains pointers to nursery things, the store buffer
      * will contain entries refering to the referenced things. Since we can
@@ -440,7 +437,6 @@ BaselineScript::Destroy(FreeOp *fop, BaselineScript *script)
      * outside of a GC that we at least emptied the nursery first.
      */
     MOZ_ASSERT(fop->runtime()->gc.nursery.isEmpty());
-#endif
 
     script->unlinkDependentAsmJSModules(fop);
 
@@ -554,14 +550,16 @@ BaselineScript::returnAddressForIC(const ICEntry &ent)
     return method()->raw() + ent.returnOffset().offset();
 }
 
-static inline
-size_t ComputeBinarySearchMid(BaselineScript *baseline, uint32_t pcOffset)
+ICEntry &
+BaselineScript::icEntryFromPCOffset(uint32_t pcOffset)
 {
+    // Multiple IC entries can have the same PC offset, but this method only looks for
+    // those which have isForOp() set.
     size_t bottom = 0;
-    size_t top = baseline->numICEntries();
+    size_t top = numICEntries();
     size_t mid = bottom + (top - bottom) / 2;
     while (mid < top) {
-        ICEntry &midEntry = baseline->icEntry(mid);
+        ICEntry &midEntry = icEntry(mid);
         if (midEntry.pcOffset() < pcOffset)
             bottom = mid + 1;
         else if (midEntry.pcOffset() > pcOffset)
@@ -570,28 +568,6 @@ size_t ComputeBinarySearchMid(BaselineScript *baseline, uint32_t pcOffset)
             break;
         mid = bottom + (top - bottom) / 2;
     }
-    return mid;
-}
-
-ICEntry &
-BaselineScript::anyKindICEntryFromPCOffset(uint32_t pcOffset)
-{
-    size_t mid = ComputeBinarySearchMid(this, pcOffset);
-
-    // Return any IC entry with a matching PC offset.
-    for (size_t i = mid; i < numICEntries() && icEntry(i).pcOffset() == pcOffset; i--)
-            return icEntry(i);
-    for (size_t i = mid+1; i < numICEntries() && icEntry(i).pcOffset() == pcOffset; i++)
-        return icEntry(i);
-    MOZ_CRASH("Invalid PC offset for IC entry.");
-}
-
-ICEntry &
-BaselineScript::icEntryFromPCOffset(uint32_t pcOffset)
-{
-    // Multiple IC entries can have the same PC offset, but this method only looks for
-    // those which have isForOp() set.
-    size_t mid = ComputeBinarySearchMid(this, pcOffset);
 
     // Found an IC entry with a matching PC offset.  Search backward, and then
     // forward from this IC entry, looking for one with the same PC offset which

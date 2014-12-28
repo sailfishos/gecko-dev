@@ -939,12 +939,24 @@
             this.closePopup();
             controller.handleEscape();
 
-            // Fill in the search bar's value
-            searchBar.value = search;
-
             // open the search results according to the clicking subtlety
             var where = whereToOpenLink(aEvent, false, true);
+
+            // But open ctrl/cmd clicks on autocomplete items in a new background tab.
+            if (where == "tab" && (aEvent instanceof MouseEvent) &&
+                (aEvent.button == 1 ||
+#ifdef XP_MACOSX
+                 aEvent.metaKey))
+#else
+                 aEvent.ctrlKey))
+#endif
+              where = "tab-background";
+
             searchBar.doSearch(search, where);
+            if (where == "tab-background")
+              searchBar.focus();
+            else
+              searchBar.value = search;
           }
         ]]></body>
       </method>
@@ -960,7 +972,8 @@
       <xul:hbox xbl:inherits="collapsed=showonlysettings" anonid="searchbar-engine"
                 class="search-panel-header search-panel-current-engine">
         <xul:image class="searchbar-engine-image" xbl:inherits="src"/>
-        <xul:label anonid="searchbar-engine-name" flex="1" crop="end"/>
+        <xul:label anonid="searchbar-engine-name" flex="1" crop="end"
+                   role="presentation"/>
       </xul:hbox>
       <xul:tree anonid="tree" flex="1"
                 class="autocomplete-tree plain search-panel-tree"
@@ -987,6 +1000,32 @@
                   class="search-setting-button search-panel-header"
                   label="&changeSearchSettings.button;"/>
     </content>
+    <implementation>
+      <method name="updateHeader">
+        <body><![CDATA[
+          let currentEngine = Services.search.currentEngine;
+          let uri = currentEngine.iconURI;
+          if (uri) {
+            uri = uri.spec;
+            this.setAttribute("src", PlacesUtils.getImageURLForResolution(window, uri));
+          }
+          else {
+            // If the default has just been changed to a provider without icon,
+            // avoid showing the icon of the previous default provider.
+            this.removeAttribute("src");
+          }
+
+          const kBundleURI = "chrome://browser/locale/search.properties";
+          let bundle = Services.strings.createBundle(kBundleURI);
+          let headerText = bundle.formatStringFromName("searchHeader",
+                                                       [currentEngine.name], 1);
+          document.getAnonymousElementByAttribute(this, "anonid", "searchbar-engine-name")
+                  .setAttribute("value", headerText);
+          document.getAnonymousElementByAttribute(this, "anonid", "searchbar-engine")
+                  .engine = currentEngine;
+        ]]></body>
+      </method>
+    </implementation>
     <handlers>
       <handler event="popupshowing"><![CDATA[
         // First handle deciding if we are showing the reduced version of the
@@ -1009,24 +1048,7 @@
         }
 
         // Show the current default engine in the top header of the panel.
-        let currentEngine = Services.search.currentEngine;
-        let uri = currentEngine.iconURI;
-        if (uri) {
-          uri = uri.spec;
-          this.setAttribute("src", PlacesUtils.getImageURLForResolution(window, uri));
-        }
-        else {
-          // If the default has just been changed to a provider without icon,
-          // avoid showing the icon of the previous default provider.
-          this.removeAttribute("src");
-        }
-
-        const kBundleURI = "chrome://browser/locale/search.properties";
-        let bundle = Services.strings.createBundle(kBundleURI);
-        let headerText = bundle.formatStringFromName("searchHeader",
-                                                     [currentEngine.name], 1);
-        document.getAnonymousElementByAttribute(this, "anonid", "searchbar-engine-name")
-                .setAttribute("value", headerText);
+        this.updateHeader();
 
         // Update the 'Search for <keywords> with:" header.
         let headerSearchText =
@@ -1034,17 +1056,17 @@
                                                   "searchbar-oneoffheader-searchtext");
         let textbox = searchbar.textbox;
         let self = this;
-        let keyPressHandler = function() {
+        let inputHandler = function() {
           headerSearchText.setAttribute("value", textbox.value);
           if (textbox.value)
             self.removeAttribute("showonlysettings");
         };
-        textbox.addEventListener("keyup", keyPressHandler);
+        textbox.addEventListener("input", inputHandler);
         this.addEventListener("popuphiding", function hiding() {
-          textbox.removeEventListener("keyup", keyPressHandler);
+          textbox.removeEventListener("input", inputHandler);
           this.removeEventListener("popuphiding", hiding);
         });
-        keyPressHandler();
+        inputHandler();
 
         // Handle opensearch items. This needs to be done before building the
         // list of one off providers, as that code will return early if all the
@@ -1057,7 +1079,7 @@
         const kXULNS =
           "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-        let addEngines = getBrowser().mCurrentBrowser.engines;
+        let addEngines = gBrowser.selectedBrowser.engines;
         if (addEngines && addEngines.length > 0) {
           const kBundleURI = "chrome://browser/locale/search.properties";
           let bundle = Services.strings.createBundle(kBundleURI);
@@ -1096,8 +1118,9 @@
           hiddenList = [];
         }
 
+        let currentEngineName = Services.search.currentEngine.name;
         let engines = Services.search.getVisibleEngines()
-                              .filter(e => e.name != currentEngine.name &&
+                              .filter(e => e.name != currentEngineName &&
                                            hiddenList.indexOf(e.name) == -1);
 
         let header = document.getAnonymousElementByAttribute(this, "anonid",
@@ -1107,16 +1130,22 @@
         if (!engines.length)
           return;
 
-        let panel = document.getElementById("PopupSearchAutoComplete");
-        let minWidth = parseInt(panel.width) + 23;
-        panel.setAttribute("style", "min-width: " + minWidth + "px");
-
         // 49px is the min-width of each search engine button,
         // adapt this const when changing the css.
         // It's actually 48px + 1px of right border.
-        // The + 1 is because the last button doesn't have a right border.
+        const ENGINE_WIDTH = 49;
+
+        let panel = document.getElementById("PopupSearchAutoComplete");
+        // The + 23 is because the panel width only spans to the textbox
+        // size, but we also want it to include the magnifier icon's width.
+        let minWidth = parseInt(panel.width) + 23;
+        // Ensure the panel is wide enough to fit at least 3 engines.
+        minWidth = Math.max(minWidth, ENGINE_WIDTH * 3);
+        panel.setAttribute("style", "min-width: " + minWidth + "px");
+
         let panelWidth = parseInt(panel.clientWidth);
-        let enginesPerRow = Math.floor((panelWidth + 1) / 49);
+        // The + 1 is because the last button doesn't have a right border.
+        let enginesPerRow = Math.floor((panelWidth + 1) / ENGINE_WIDTH);
         let buttonWidth = Math.floor(panelWidth / enginesPerRow);
         // There will be an emtpy area of:
         //   panelWidth - enginesPerRow * buttonWidth  px
@@ -1187,11 +1216,13 @@
           return; // ignore right clicks.
 
         let button = event.originalTarget;
-        if (button.localName != "button" || !button.engine)
+        let engine = button.engine || button.parentNode.engine;
+
+        if (!engine)
           return;
 
         let searchbar = document.getElementById("searchbar");
-        searchbar.handleSearchCommand(event, button.engine);
+        searchbar.handleSearchCommand(event, engine);
       ]]></handler>
 
       <handler event="command"><![CDATA[
@@ -1213,6 +1244,13 @@
     </handlers>
   </binding>
 
+  <!-- Used for additional open search providers in the search panel. -->
+  <binding id="addengine-icon" extends="xul:box">
+    <content>
+      <xul:image class="addengine-icon" xbl:inherits="src"/>
+      <xul:image class="addengine-badge"/>
+    </content>
+  </binding>
 
   <binding id="urlbar-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
     <implementation>
@@ -1224,8 +1262,9 @@
           createBundle("chrome://browser/locale/places/places.properties");
       </field>
 
-      <!-- Override this so that navigating between items results in an item
-           always being selected. This is contrary to the normal behaviour where
+      <!-- Override this so that when UnifiedComplete is enabled, navigating
+           between items results in an item always being selected. This is
+           contrary to the old behaviour (UnifiedComplete disabled) where
            if you navigate beyond either end of the list, no item will be
            selected. -->
       <method name="getNextIndex">
@@ -1239,10 +1278,23 @@
 
           let newIndex = index + (reverse ? -1 : 1) * amount;
 
-          // We don't want to wrap if navigation in any direction by one item.
-          // Otherwise we clamp to one end of the list.
+          // We only want to wrap if navigation is in any direction by one item,
+          // otherwise we clamp to one end of the list.
           // ie, hitting page-down will only cause is to wrap if we're already
           // at one end of the list.
+
+          if (!Services.prefs.getBoolPref("browser.urlbar.unifiedcomplete")) {
+            if (reverse && index == -1 || newIndex > maxRow && index != maxRow)
+              newIndex = maxRow;
+            else if (!reverse && index == -1 || newIndex < 0 && index != 0)
+              newIndex = 0;
+
+            if (newIndex < 0 && index == 0 || newIndex > maxRow && index == maxRow)
+              newIndex = -1;
+
+            return newIndex;
+          }
+
           if (newIndex < 0) {
             newIndex = index > 0 ? 0 : maxRow;
           } else if (newIndex > maxRow) {

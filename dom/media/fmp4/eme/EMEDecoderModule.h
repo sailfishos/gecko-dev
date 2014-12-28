@@ -24,8 +24,7 @@ public:
   EMEDecoderModule(CDMProxy* aProxy,
                    PlatformDecoderModule* aPDM,
                    bool aCDMDecodesAudio,
-                   bool aCDMDecodesVideo,
-                   already_AddRefed<MediaTaskQueue> aDecodeTaskQueue);
+                   bool aCDMDecodesVideo);
 
   virtual ~EMEDecoderModule();
 
@@ -46,10 +45,13 @@ public:
                      MediaTaskQueue* aAudioTaskQueue,
                      MediaDataDecoderCallback* aCallback) MOZ_OVERRIDE;
 
+  virtual bool
+  DecoderNeedsAVCC(const mp4_demuxer::VideoDecoderConfig& aConfig) MOZ_OVERRIDE;
+
 private:
   nsRefPtr<CDMProxy> mProxy;
   // Will be null if CDM has decoding capability.
-  nsAutoPtr<PlatformDecoderModule> mPDM;
+  nsRefPtr<PlatformDecoderModule> mPDM;
   // We run the PDM on its own task queue.
   nsRefPtr<MediaTaskQueue> mTaskQueue;
   bool mCDMDecodesAudio;

@@ -12,12 +12,15 @@
 #include "mozilla/Monitor.h"
 #include "SharedThreadPool.h"
 #include "nsThreadUtils.h"
+#include "MediaPromise.h"
 
 class nsIRunnable;
 
 namespace mozilla {
 
 class SharedThreadPool;
+
+typedef MediaPromise<bool, bool> ShutdownPromise;
 
 // Abstracts executing runnables in order in a thread pool. The runnables
 // dispatched to the MediaTaskQueue will be executed in the order in which
@@ -34,6 +37,10 @@ public:
 
   nsresult Dispatch(TemporaryRef<nsIRunnable> aRunnable);
 
+  // This should only be used for things that absolutely can't afford to be
+  // flushed. Normal operations should use Dispatch.
+  nsresult ForceDispatch(TemporaryRef<nsIRunnable> aRunnable);
+
   nsresult SyncDispatch(TemporaryRef<nsIRunnable> aRunnable);
 
   nsresult FlushAndDispatch(TemporaryRef<nsIRunnable> aRunnable);
@@ -46,7 +53,9 @@ public:
   // remain alive at least until all the events are drained, because the Runners
   // hold a strong reference to the task queue, and one of them is always held
   // by the threadpool event queue when the task queue is non-empty.
-  void BeginShutdown();
+  //
+  // The returned promise is resolved when the queue goes empty.
+  nsRefPtr<ShutdownPromise> BeginShutdown();
 
   // Blocks until all task finish executing.
   void AwaitIdle();
@@ -68,18 +77,28 @@ private:
   // mQueueMonitor must be held.
   void AwaitIdleLocked();
 
-  enum DispatchMode { AbortIfFlushing, IgnoreFlushing };
+  enum DispatchMode { AbortIfFlushing, IgnoreFlushing, Forced };
 
   nsresult DispatchLocked(TemporaryRef<nsIRunnable> aRunnable,
                           DispatchMode aMode);
+  void FlushLocked();
 
   RefPtr<SharedThreadPool> mPool;
 
   // Monitor that protects the queue and mIsRunning;
   Monitor mQueueMonitor;
 
+  struct TaskQueueEntry {
+    RefPtr<nsIRunnable> mRunnable;
+    bool mForceDispatch;
+
+    explicit TaskQueueEntry(TemporaryRef<nsIRunnable> aRunnable,
+                            bool aForceDispatch = false)
+      : mRunnable(aRunnable), mForceDispatch(aForceDispatch) {}
+  };
+
   // Queue of tasks to run.
-  std::queue<RefPtr<nsIRunnable>> mTasks;
+  std::queue<TaskQueueEntry> mTasks;
 
   // The thread currently running the task queue. We store a reference
   // to this so that IsCurrentThreadIn() can tell if the current thread
@@ -92,6 +111,7 @@ private:
 
   // True if we've started our shutdown process.
   bool mIsShutdown;
+  MediaPromiseHolder<ShutdownPromise> mShutdownPromise;
 
   class MOZ_STACK_CLASS AutoSetFlushing
   {

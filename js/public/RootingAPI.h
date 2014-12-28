@@ -167,10 +167,8 @@ struct JS_PUBLIC_API(NullPtr)
     static void * const constNullValue;
 };
 
-#ifdef JSGC_GENERATIONAL
 JS_FRIEND_API(void) HeapCellPostBarrier(js::gc::Cell **cellp);
 JS_FRIEND_API(void) HeapCellRelocate(js::gc::Cell **cellp);
-#endif
 
 #ifdef JS_DEBUG
 /*
@@ -284,16 +282,12 @@ class Heap : public js::HeapBase<T>
     }
 
     void post() {
-#ifdef JSGC_GENERATIONAL
         MOZ_ASSERT(js::GCMethods<T>::needsPostBarrier(ptr));
         js::GCMethods<T>::postBarrier(&ptr);
-#endif
     }
 
     void relocate() {
-#ifdef JSGC_GENERATIONAL
         js::GCMethods<T>::relocate(&ptr);
-#endif
     }
 
     enum {
@@ -656,10 +650,8 @@ struct GCMethods<T *>
     static T *initial() { return nullptr; }
     static bool poisoned(T *v) { return JS::IsPoisonedPtr(v); }
     static bool needsPostBarrier(T *v) { return false; }
-#ifdef JSGC_GENERATIONAL
     static void postBarrier(T **vp) {}
     static void relocate(T **vp) {}
-#endif
 };
 
 template <>
@@ -676,14 +668,12 @@ struct GCMethods<JSObject *>
     static bool needsPostBarrier(JSObject *v) {
         return v != nullptr && gc::IsInsideNursery(reinterpret_cast<gc::Cell *>(v));
     }
-#ifdef JSGC_GENERATIONAL
     static void postBarrier(JSObject **vp) {
         JS::HeapCellPostBarrier(reinterpret_cast<js::gc::Cell **>(vp));
     }
     static void relocate(JSObject **vp) {
         JS::HeapCellRelocate(reinterpret_cast<js::gc::Cell **>(vp));
     }
-#endif
 };
 
 template <>
@@ -694,21 +684,13 @@ struct GCMethods<JSFunction *>
     static bool needsPostBarrier(JSFunction *v) {
         return v != nullptr && gc::IsInsideNursery(reinterpret_cast<gc::Cell *>(v));
     }
-#ifdef JSGC_GENERATIONAL
     static void postBarrier(JSFunction **vp) {
         JS::HeapCellPostBarrier(reinterpret_cast<js::gc::Cell **>(vp));
     }
     static void relocate(JSFunction **vp) {
         JS::HeapCellRelocate(reinterpret_cast<js::gc::Cell **>(vp));
     }
-#endif
 };
-
-#ifdef JS_DEBUG
-/* This helper allows us to assert that Rooted<T> is scoped within a request. */
-extern JS_PUBLIC_API(bool)
-IsInRequest(JSContext *cx);
-#endif
 
 } /* namespace js */
 
@@ -742,9 +724,6 @@ class MOZ_STACK_CLASS Rooted : public js::RootedBase<T>
       : ptr(js::GCMethods<T>::initial())
     {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-#ifdef JS_DEBUG
-        MOZ_ASSERT(js::IsInRequest(cx));
-#endif
         init(js::ContextFriendFields::get(cx));
     }
 
@@ -753,9 +732,6 @@ class MOZ_STACK_CLASS Rooted : public js::RootedBase<T>
       : ptr(initial)
     {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-#ifdef JS_DEBUG
-        MOZ_ASSERT(js::IsInRequest(cx));
-#endif
         init(js::ContextFriendFields::get(cx));
     }
 

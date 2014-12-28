@@ -26,6 +26,7 @@
 #include "mozilla/LookAndFeel.h"
 #include "nsDocShell.h"
 #include "nsImageFrame.h"
+#include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 
 #include "GeckoProfiler.h"
 #include "mozilla/gfx/Tools.h"
@@ -510,7 +511,7 @@ public:
   /**
    * The union of all the bounds of the display items in this layer.
    */
-  nsIntRegion mBounds;
+  nsIntRect mBounds;
 
 private:
   /**
@@ -1628,7 +1629,7 @@ ContainerState::CreateOrRecyclePaintedLayer(const nsIFrame* aAnimatedGeometryRoo
   nsRefPtr<PaintedLayer> layer;
   PaintedDisplayItemLayerUserData* data;
   bool layerRecycled = false;
-#if !defined(MOZ_WIDGET_ANDROID) && !defined(USE_ANDROID_OMTC_HACKS)
+#ifndef MOZ_WIDGET_ANDROID
   bool didResetScrollPositionForLayerPixelAlignment = false;
 #endif
 
@@ -1680,7 +1681,7 @@ ContainerState::CreateOrRecyclePaintedLayer(const nsIFrame* aAnimatedGeometryRoo
       }
 #endif
         InvalidateEntirePaintedLayer(layer, aAnimatedGeometryRoot);
-#if !defined(MOZ_WIDGET_ANDROID) && !defined(USE_ANDROID_OMTC_HACKS)
+#ifndef MOZ_WIDGET_ANDROID
         didResetScrollPositionForLayerPixelAlignment = true;
 #endif
       }
@@ -1716,7 +1717,7 @@ ContainerState::CreateOrRecyclePaintedLayer(const nsIFrame* aAnimatedGeometryRoo
     data = new PaintedDisplayItemLayerUserData();
     layer->SetUserData(&gPaintedDisplayItemLayerUserData, data);
     ResetScrollPositionForLayerPixelAlignment(aAnimatedGeometryRoot);
-#if !defined(MOZ_WIDGET_ANDROID) && !defined(USE_ANDROID_OMTC_HACKS)
+#ifndef MOZ_WIDGET_ANDROID
     didResetScrollPositionForLayerPixelAlignment = true;
 #endif
   }
@@ -1746,7 +1747,7 @@ ContainerState::CreateOrRecyclePaintedLayer(const nsIFrame* aAnimatedGeometryRoo
   layer->SetBaseTransform(Matrix4x4::From2D(matrix));
 
   // FIXME: Temporary workaround for bug 681192 and bug 724786.
-#if !defined(MOZ_WIDGET_ANDROID) && !defined(USE_ANDROID_OMTC_HACKS)
+#ifndef MOZ_WIDGET_ANDROID
   // Calculate exact position of the top-left of the active scrolled root.
   // This might not be 0,0 due to the snapping in ScaleToNearestPixels.
   gfxPoint animatedGeometryRootTopLeft = scaledOffset - ThebesPoint(matrix.GetTranslation()) + mParameters.mOffset;
@@ -2183,7 +2184,7 @@ ContainerState::PopPaintedLayerData()
     SetOuterVisibleRegionForLayer(layer, data->mVisibleRegion);
   }
 
-  nsIntRect layerBounds = data->mBounds.GetBounds();
+  nsIntRect layerBounds = data->mBounds;
   layerBounds.MoveBy(-GetTranslationForPaintedLayer(data->mLayer));
   layer->SetLayerBounds(layerBounds);
 
@@ -2351,7 +2352,7 @@ PaintedLayerData::Accumulate(ContainerState* aState,
 
   bool snap;
   nsRect itemBounds = aItem->GetBounds(aState->mBuilder, &snap);
-  mBounds.OrWith(aState->ScaleToOutsidePixels(itemBounds, snap));
+  mBounds = mBounds.Union(aState->ScaleToOutsidePixels(itemBounds, snap));
 
   if (aState->mBuilder->NeedToForceTransparentSurfaceForItem(aItem)) {
     mForceTransparentSurface = true;
@@ -3033,9 +3034,11 @@ ContainerState::ProcessDisplayItems(nsDisplayList* aList)
             scrollItem->IsDisplayPortOpaque();
         newLayerEntry->mBaseFrameMetrics =
             scrollItem->ComputeFrameMetrics(ownLayer, mParameters);
-      } else if (itemType == nsDisplayItem::TYPE_SUBDOCUMENT ||
-                 itemType == nsDisplayItem::TYPE_ZOOM ||
-                 itemType == nsDisplayItem::TYPE_RESOLUTION) {
+      } else if ((itemType == nsDisplayItem::TYPE_SUBDOCUMENT ||
+                  itemType == nsDisplayItem::TYPE_ZOOM ||
+                  itemType == nsDisplayItem::TYPE_RESOLUTION) &&
+                 gfxPrefs::LayoutUseContainersForRootFrames())
+      {
         newLayerEntry->mBaseFrameMetrics =
           static_cast<nsDisplaySubDocument*>(item)->ComputeFrameMetrics(ownLayer, mParameters);
       }
@@ -4419,6 +4422,36 @@ static void DrawForcedBackgroundColor(DrawTarget& aDrawTarget,
   }
 }
 
+class LayerTimelineMarker : public nsDocShell::TimelineMarker
+{
+public:
+  LayerTimelineMarker(nsDocShell* aDocShell, const nsIntRegion& aRegion)
+    : nsDocShell::TimelineMarker(aDocShell, "Layer", TRACING_EVENT)
+    , mRegion(aRegion)
+  {
+  }
+
+  ~LayerTimelineMarker()
+  {
+  }
+
+  virtual void AddLayerRectangles(mozilla::dom::Sequence<mozilla::dom::ProfileTimelineLayerRect>& aRectangles)
+  {
+    nsIntRegionRectIterator it(mRegion);
+    while (const nsIntRect* iterRect = it.Next()) {
+      mozilla::dom::ProfileTimelineLayerRect rect;
+      rect.mX = iterRect->X();
+      rect.mY = iterRect->Y();
+      rect.mWidth = iterRect->Width();
+      rect.mHeight = iterRect->Height();
+      aRectangles.AppendElement(rect);
+    }
+  }
+
+private:
+  nsIntRegion mRegion;
+};
+
 /*
  * A note on residual transforms:
  *
@@ -4568,7 +4601,13 @@ FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
 
   if (presContext && presContext->GetDocShell() && isActiveLayerManager) {
     nsDocShell* docShell = static_cast<nsDocShell*>(presContext->GetDocShell());
-    docShell->AddProfileTimelineMarker("Layer", TRACING_EVENT);
+    bool isRecording;
+    docShell->GetRecordProfileTimelineMarkers(&isRecording);
+    if (isRecording) {
+      mozilla::UniquePtr<nsDocShell::TimelineMarker> marker =
+        MakeUnique<LayerTimelineMarker>(docShell, aRegionToDraw);
+      docShell->AddProfileTimelineMarker(marker);
+    }
   }
 
   if (!aRegionToInvalidate.IsEmpty()) {

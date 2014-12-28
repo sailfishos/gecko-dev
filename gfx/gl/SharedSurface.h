@@ -269,7 +269,7 @@ public:
     }
 
     SharedSurface* Surf() const {
-        NS_WARN_IF(mSurf.get() == nullptr);
+        MOZ_ASSERT(mSurf.get());
         return mSurf.get();
     }
 };
@@ -284,7 +284,7 @@ class ScopedReadbackFB
     SharedSurface* mSurfToLock;
 
 public:
-    ScopedReadbackFB(SharedSurface* src);
+    explicit ScopedReadbackFB(SharedSurface* src);
     ~ScopedReadbackFB();
 };
 

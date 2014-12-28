@@ -25,8 +25,7 @@ var matchstickDevice = {
   id: "matchstick:dial",
   target: "urn:dial-multiscreen-org:service:dial:1",
   filters: {
-    server: null,
-    modelName: "Eureka Dongle"
+    manufacturer: "openflint"
   },
   factory: function(aService) {
     Cu.import("resource://gre/modules/MatchstickApp.jsm");
@@ -98,7 +97,7 @@ var CastingApps = {
           let callbackFunc = function(aService) {
             let app = SimpleServiceDiscovery.findAppForService(aService);
             if (app) {
-              app.mirror(function() {}, window, BrowserApp.selectedTab.getViewport(), this._mirrorStarted.bind(this));
+              app.mirror(function() {}, window, BrowserApp.selectedTab.getViewport(), this._mirrorStarted.bind(this), window.BrowserApp.selectedBrowser.contentWindow);
             }
           }.bind(this);
 
@@ -649,6 +648,10 @@ var CastingApps = {
   },
 
   _shutdown: function() {
+    if (!this.session) {
+      return;
+    }
+
     this.session.app.stop();
     let video = this.session.videoRef.get();
     if (video) {

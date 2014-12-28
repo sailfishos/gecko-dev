@@ -76,10 +76,12 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Fetch a new call url from the server, intended to be sent over email when
+     * Fetch a new room url from the server, intended to be sent over email when
      * a contact can't be reached.
      */
-    FetchEmailLink: Action.define("fetchEmailLink", {
+    FetchRoomEmailLink: Action.define("fetchRoomEmailLink", {
+      roomOwner: String,
+      roomName: String
     }),
 
     /**
@@ -196,11 +198,22 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * When a room has been created.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    CreatedRoom: Action.define("createdRoom", {
+      roomToken: String
+    }),
+
+    /**
      * Rooms creation error.
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     CreateRoomError: Action.define("createRoomError", {
-      error: Error
+      // There's two types of error possible - one thrown by our code (and Error)
+      // and the other is an Object about the error codes from the server as
+      // returned by the Hawk request.
+      error: Object
     }),
 
     /**
@@ -216,7 +229,10 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     DeleteRoomError: Action.define("deleteRoomError", {
-      error: Error
+      // There's two types of error possible - one thrown by our code (and Error)
+      // and the other is an Object about the error codes from the server as
+      // returned by the Hawk request.
+      error: Object
     }),
 
     /**
@@ -260,6 +276,14 @@ loop.shared.actions = (function() {
     RenameRoom: Action.define("renameRoom", {
       roomToken: String,
       newRoomName: String
+    }),
+
+    /**
+     * Renaming a room error.
+     * XXX: should move to some roomActions module - refs bug 1079284
+     */
+    RenameRoomError: Action.define("renameRoomError", {
+      error: [Error, Object]
     }),
 
     /**

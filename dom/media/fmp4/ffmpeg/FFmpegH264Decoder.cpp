@@ -10,6 +10,7 @@
 #include "ImageContainer.h"
 
 #include "mp4_demuxer/mp4_demuxer.h"
+#include "mp4_demuxer/AnnexB.h"
 
 #include "FFmpegH264Decoder.h"
 
@@ -27,12 +28,11 @@ FFmpegH264Decoder<LIBAV_VER>::FFmpegH264Decoder(
   MediaTaskQueue* aTaskQueue, MediaDataDecoderCallback* aCallback,
   const mp4_demuxer::VideoDecoderConfig& aConfig,
   ImageContainer* aImageContainer)
-  : FFmpegDataDecoder(aTaskQueue, AV_CODEC_ID_H264)
+  : FFmpegDataDecoder(aTaskQueue, GetCodecId(aConfig.mime_type))
   , mCallback(aCallback)
   , mImageContainer(aImageContainer)
 {
   MOZ_COUNT_CTOR(FFmpegH264Decoder);
-  mExtraData.append(aConfig.extra_data.begin(), aConfig.extra_data.length());
 }
 
 nsresult
@@ -53,6 +53,7 @@ FFmpegH264Decoder<LIBAV_VER>::DoDecodeFrame(mp4_demuxer::MP4Sample* aSample)
   AVPacket packet;
   av_init_packet(&packet);
 
+  mp4_demuxer::AnnexB::ConvertSampleToAnnexB(aSample);
   aSample->Pad(FF_INPUT_BUFFER_PADDING_SIZE);
   packet.data = aSample->data;
   packet.size = aSample->size;
@@ -174,6 +175,10 @@ FFmpegH264Decoder<LIBAV_VER>::AllocateYUV420PVideoBuffer(
   bool needAlign = aCodecContext->codec->capabilities & CODEC_CAP_DR1;
   int edgeWidth =  needAlign ? avcodec_get_edge_width() : 0;
   int decodeWidth = aCodecContext->width + edgeWidth * 2;
+  // Make sure the decodeWidth is a multiple of 32, so a UV plane stride will be
+  // a multiple of 16. FFmpeg uses SSE2 accelerated code to copy a frame line by
+  // line.
+  decodeWidth = (decodeWidth + 31) & ~31;
   int decodeHeight = aCodecContext->height + edgeWidth * 2;
 
   if (needAlign) {
@@ -273,6 +278,20 @@ FFmpegH264Decoder<LIBAV_VER>::Flush()
 FFmpegH264Decoder<LIBAV_VER>::~FFmpegH264Decoder()
 {
   MOZ_COUNT_DTOR(FFmpegH264Decoder);
+}
+
+AVCodecID
+FFmpegH264Decoder<LIBAV_VER>::GetCodecId(const char* aMimeType)
+{
+  if (!strcmp(aMimeType, "video/avc")) {
+    return AV_CODEC_ID_H264;
+  }
+
+  if (!strcmp(aMimeType, "video/x-vnd.on2.vp6")) {
+    return AV_CODEC_ID_VP6F;
+  }
+
+  return AV_CODEC_ID_NONE;
 }
 
 } // namespace mozilla

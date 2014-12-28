@@ -94,12 +94,6 @@ StaticRefPtr<BluetoothService> sBluetoothService;
 bool sInShutdown = false;
 bool sToggleInProgress = false;
 
-bool
-IsMainProcess()
-{
-  return XRE_GetProcessType() == GeckoProcessType_Default;
-}
-
 void
 ShutdownTimeExceeded(nsITimer* aTimer, void* aClosure)
 {
@@ -273,6 +267,17 @@ BluetoothService::RegisterBluetoothSignalHandler(
   }
 
   ol->AddObserver(aHandler);
+
+  // Distribute pending pairing requests when pairing listener has been added
+  // to signal observer table.
+  if (IsMainProcess() &&
+      !mPendingPairReqSignals.IsEmpty() &&
+      aNodeName.EqualsLiteral(KEY_PAIRING_LISTENER)) {
+    for (uint32_t i = 0; i < mPendingPairReqSignals.Length(); ++i) {
+      DistributeSignal(mPendingPairReqSignals[i]);
+    }
+    mPendingPairReqSignals.Clear();
+  }
 }
 
 void
@@ -331,8 +336,19 @@ BluetoothService::DistributeSignal(const BluetoothSignal& aSignal)
 
   BluetoothSignalObserverList* ol;
   if (!mBluetoothSignalObserverTable.Get(aSignal.path(), &ol)) {
-    BT_WARNING("No observer registered for path %s",
-               NS_ConvertUTF16toUTF8(aSignal.path()).get());
+    // If there is no BluetoohPairingListener in observer table, put the signal
+    // into a pending queue of pairing requests and send a system message to
+    // launch bluetooth certified app.
+    if (aSignal.path().EqualsLiteral(KEY_PAIRING_LISTENER)) {
+      mPendingPairReqSignals.AppendElement(aSignal);
+
+      BT_ENSURE_TRUE_VOID_BROADCAST_SYSMSG(
+        NS_LITERAL_STRING(SYS_MSG_BT_PAIRING_REQ),
+        BluetoothValue(EmptyString()));
+    } else {
+      BT_WARNING("No observer registered for path %s",
+                 NS_ConvertUTF16toUTF8(aSignal.path()).get());
+    }
     return;
   }
 
@@ -383,37 +399,6 @@ BluetoothService::StopBluetooth(bool aIsStartup,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  BluetoothProfileManagerBase* profile;
-  profile = BluetoothHfpManager::Get();
-  NS_ENSURE_TRUE(profile, NS_ERROR_FAILURE);
-  if (profile->IsConnected()) {
-    profile->Disconnect(nullptr);
-  } else {
-    profile->Reset();
-  }
-
-  profile = BluetoothOppManager::Get();
-  NS_ENSURE_TRUE(profile, NS_ERROR_FAILURE);
-  if (profile->IsConnected()) {
-    profile->Disconnect(nullptr);
-  }
-
-  profile = BluetoothA2dpManager::Get();
-  NS_ENSURE_TRUE(profile, NS_ERROR_FAILURE);
-  if (profile->IsConnected()) {
-    profile->Disconnect(nullptr);
-  } else {
-    profile->Reset();
-  }
-
-  profile = BluetoothHidManager::Get();
-  NS_ENSURE_TRUE(profile, NS_ERROR_FAILURE);
-  if (profile->IsConnected()) {
-    profile->Disconnect(nullptr);
-  } else {
-    profile->Reset();
-  }
-
   /* When IsEnabled() is false, we don't switch off Bluetooth but we still
    * send ToggleBtAck task. One special case happens at startup stage. At
    * startup, the initialization of BluetoothService still has to be done
@@ -422,7 +407,7 @@ BluetoothService::StopBluetooth(bool aIsStartup,
    * Please see bug 892392 for more information.
    */
   if (aIsStartup || IsEnabled()) {
-    // Switch Bluetooth off
+    // Any connected Bluetooth profile would be disconnected.
     nsresult rv = StopInternal(aRunnable);
     if (NS_FAILED(rv)) {
       BT_WARNING("Bluetooth service failed to stop!");

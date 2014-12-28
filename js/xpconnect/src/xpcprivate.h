@@ -243,12 +243,6 @@ static inline bool IS_WN_REFLECTOR(JSObject *obj)
 // returned as function call result values they are not addref'd. Exceptions
 // to this rule are noted explicitly.
 
-inline bool
-AddToCCKind(JSGCTraceKind kind)
-{
-    return kind == JSTRACE_OBJECT || kind == JSTRACE_SCRIPT;
-}
-
 class nsXPConnect : public nsIXPConnect,
                     public nsIThreadObserver,
                     public nsSupportsWeakReference,
@@ -628,6 +622,8 @@ public:
     void DeleteSingletonScopes();
 
     PRTime GetWatchdogTimestamp(WatchdogTimestampCategory aCategory);
+
+    void OnProcessNextEvent() { mSlowScriptCheckpoint = mozilla::TimeStamp::NowLoRes(); }
     void OnAfterProcessNextEvent() { mSlowScriptCheckpoint = mozilla::TimeStamp(); }
 
     nsTArray<nsXPCWrappedJS*>& WrappedJSToReleaseArray() { return mWrappedJSToReleaseArray; }
@@ -948,10 +944,6 @@ XPC_WN_CallMethod(JSContext *cx, unsigned argc, jsval *vp);
 extern bool
 XPC_WN_GetterSetter(JSContext *cx, unsigned argc, jsval *vp);
 
-extern bool
-XPC_WN_JSOp_Enumerate(JSContext *cx, JS::HandleObject obj, JSIterateOp enum_op,
-                      JS::MutableHandleValue statep, JS::MutableHandleId idp);
-
 extern JSObject*
 XPC_WN_JSOp_ThisObject(JSContext *cx, JS::HandleObject obj);
 
@@ -975,7 +967,7 @@ XPC_WN_JSOp_ThisObject(JSContext *cx, JS::HandleObject obj);
         nullptr, /* deleteGeneric */                                          \
         nullptr, nullptr, /* watch/unwatch */                                 \
         nullptr, /* getElements */                                            \
-        XPC_WN_JSOp_Enumerate,                                                \
+        nullptr, /* enumerate */                                              \
         XPC_WN_JSOp_ThisObject,                                               \
     }
 
@@ -998,7 +990,7 @@ XPC_WN_JSOp_ThisObject(JSContext *cx, JS::HandleObject obj);
         nullptr, /* deleteGeneric */                                          \
         nullptr, nullptr, /* watch/unwatch */                                 \
         nullptr, /* getElements */                                            \
-        XPC_WN_JSOp_Enumerate,                                                \
+        nullptr, /* enumerate */                                              \
         XPC_WN_JSOp_ThisObject,                                               \
     }
 
@@ -1626,7 +1618,6 @@ public:
     bool UseJSStubForAddProperty()      GET_IT(USE_JSSTUB_FOR_ADDPROPERTY)
     bool UseJSStubForDelProperty()      GET_IT(USE_JSSTUB_FOR_DELPROPERTY)
     bool UseJSStubForSetProperty()      GET_IT(USE_JSSTUB_FOR_SETPROPERTY)
-    bool DontEnumStaticProps()          GET_IT(DONT_ENUM_STATIC_PROPS)
     bool DontEnumQueryInterface()       GET_IT(DONT_ENUM_QUERY_INTERFACE)
     bool DontAskInstanceForScriptable() GET_IT(DONT_ASK_INSTANCE_FOR_SCRIPTABLE)
     bool ClassInfoInterfacesOnly()      GET_IT(CLASSINFO_INTERFACES_ONLY)
@@ -3358,14 +3349,10 @@ struct GlobalProperties {
     GlobalProperties() {
       mozilla::PodZero(this);
 
-      // Promise is supposed to be part of ES, and therefore should appear on
-      // every global.
-      Promise = true;
     }
     bool Parse(JSContext *cx, JS::HandleObject obj);
     bool Define(JSContext *cx, JS::HandleObject obj);
     bool CSS : 1;
-    bool Promise : 1;
     bool indexedDB : 1;
     bool XMLHttpRequest : 1;
     bool TextDecoder : 1;

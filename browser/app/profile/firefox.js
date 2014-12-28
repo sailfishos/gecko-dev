@@ -404,6 +404,8 @@ pref("browser.search.order.1",                "chrome://browser-region/locale/re
 pref("browser.search.order.2",                "chrome://browser-region/locale/region.properties");
 pref("browser.search.order.3",                "chrome://browser-region/locale/region.properties");
 
+// Market-specific search defaults (US market only)
+pref("browser.search.geoSpecificDefaults", true);
 pref("browser.search.defaultenginename.US",      "data:text/plain,browser.search.defaultenginename.US=Yahoo");
 pref("browser.search.order.US.1",                "data:text/plain,browser.search.order.US.1=Yahoo");
 pref("browser.search.order.US.2",                "data:text/plain,browser.search.order.US.2=Google");
@@ -436,6 +438,12 @@ pref("browser.search.official", true);
 
 // How many times to show the new search highlight
 pref("browser.search.highlightCount", 5);
+
+// geoip end-point and timeout
+pref("browser.search.geoip.url", "https://location.services.mozilla.com/v1/country?key=%MOZILLA_API_KEY%");
+// NOTE: this timeout figure is also the "high" value for the telemetry probe
+// SEARCH_SERVICE_COUNTRY_FETCH_MS - if you change this also change that probe.
+pref("browser.search.geoip.timeout", 2000);
 
 pref("browser.sessionhistory.max_entries", 50);
 
@@ -1422,9 +1430,11 @@ pref("devtools.debugger.ui.variables-sorting-enabled", true);
 pref("devtools.debugger.ui.variables-only-enum-visible", false);
 pref("devtools.debugger.ui.variables-searchbox-visible", false);
 
-// Enable the Profiler and the Timeline
+// Enable the Profiler
 pref("devtools.profiler.enabled", true);
-#ifdef MOZ_DEV_EDITION
+
+// Timeline panel settings
+#ifdef NIGHTLY_BUILD
 pref("devtools.timeline.enabled", true);
 #else
 pref("devtools.timeline.enabled", false);
@@ -1506,9 +1516,9 @@ pref("devtools.gcli.hideIntro", false);
 pref("devtools.gcli.eagerHelper", 2);
 
 // Alias to the script URLs for inject command.
-pref("devtools.gcli.jquerySrc", "http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js");
-pref("devtools.gcli.lodashSrc", "http://cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.min.js");
-pref("devtools.gcli.underscoreSrc", "http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.6.0/underscore-min.js");
+pref("devtools.gcli.jquerySrc", "https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js");
+pref("devtools.gcli.lodashSrc", "https://cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.min.js");
+pref("devtools.gcli.underscoreSrc", "https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.7.0/underscore-min.js");
 
 // Remember the Web Console filters
 pref("devtools.webconsole.filter.network", true);
@@ -1660,7 +1670,8 @@ pref("loop.enabled", true);
 pref("loop.server", "https://loop.services.mozilla.com/v0");
 pref("loop.seenToS", "unseen");
 pref("loop.gettingStarted.seen", false);
-pref("loop.gettingStarted.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/hello/start");
+pref("loop.gettingStarted.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/hello/start/");
+pref("loop.gettingStarted.resumeOnFirstJoin", false);
 pref("loop.learnMoreUrl", "https://www.firefox.com/hello/");
 pref("loop.legal.ToS_url", "https://www.mozilla.org/about/legal/terms/firefox-hello/");
 pref("loop.legal.privacy_url", "https://www.mozilla.org/privacy/firefox-hello/");
@@ -1846,3 +1857,6 @@ pref("extensions.interposition.enabled", true);
 #endif
 
 pref("browser.defaultbrowser.notificationbar", false);
+
+// How many milliseconds to wait for a CPOW response from the child process.
+pref("dom.ipc.cpow.timeout", 0);

@@ -35,6 +35,13 @@ MediaTaskQueue::Dispatch(TemporaryRef<nsIRunnable> aRunnable)
 }
 
 nsresult
+MediaTaskQueue::ForceDispatch(TemporaryRef<nsIRunnable> aRunnable)
+{
+  MonitorAutoLock mon(mQueueMonitor);
+  return DispatchLocked(aRunnable, Forced);
+}
+
+nsresult
 MediaTaskQueue::DispatchLocked(TemporaryRef<nsIRunnable> aRunnable,
                                DispatchMode aMode)
 {
@@ -45,7 +52,7 @@ MediaTaskQueue::DispatchLocked(TemporaryRef<nsIRunnable> aRunnable,
   if (mIsShutdown) {
     return NS_ERROR_FAILURE;
   }
-  mTasks.push(aRunnable);
+  mTasks.push(TaskQueueEntry(aRunnable, aMode == Forced));
   if (mIsRunning) {
     return NS_OK;
   }
@@ -127,12 +134,17 @@ MediaTaskQueue::AwaitShutdownAndIdle()
   AwaitIdleLocked();
 }
 
-void
+nsRefPtr<ShutdownPromise>
 MediaTaskQueue::BeginShutdown()
 {
   MonitorAutoLock mon(mQueueMonitor);
   mIsShutdown = true;
+  nsRefPtr<ShutdownPromise> p = mShutdownPromise.Ensure(__func__);
+  if (!mIsRunning) {
+    mShutdownPromise.Resolve(true, __func__);
+  }
   mon.NotifyAll();
+  return p;
 }
 
 nsresult
@@ -140,9 +152,7 @@ MediaTaskQueue::FlushAndDispatch(TemporaryRef<nsIRunnable> aRunnable)
 {
   MonitorAutoLock mon(mQueueMonitor);
   AutoSetFlushing autoFlush(this);
-  while (!mTasks.empty()) {
-    mTasks.pop();
-  }
+  FlushLocked();
   nsresult rv = DispatchLocked(aRunnable, IgnoreFlushing);
   NS_ENSURE_SUCCESS(rv, rv);
   AwaitIdleLocked();
@@ -154,10 +164,25 @@ MediaTaskQueue::Flush()
 {
   MonitorAutoLock mon(mQueueMonitor);
   AutoSetFlushing autoFlush(this);
-  while (!mTasks.empty()) {
+  FlushLocked();
+  AwaitIdleLocked();
+}
+
+void
+MediaTaskQueue::FlushLocked()
+{
+  mQueueMonitor.AssertCurrentThreadOwns();
+  MOZ_ASSERT(mIsFlushing);
+
+  // Clear the tasks, but preserve those with mForceDispatch by re-appending
+  // them to the queue.
+  size_t numTasks = mTasks.size();
+  for (size_t i = 0; i < numTasks; ++i) {
+    if (mTasks.front().mForceDispatch) {
+      mTasks.push(mTasks.front());
+    }
     mTasks.pop();
   }
-  AwaitIdleLocked();
 }
 
 bool
@@ -188,10 +213,11 @@ MediaTaskQueue::Runner::Run()
     mQueue->mRunningThread = NS_GetCurrentThread();
     if (mQueue->mTasks.size() == 0) {
       mQueue->mIsRunning = false;
+      mQueue->mShutdownPromise.ResolveIfExists(true, __func__);
       mon.NotifyAll();
       return NS_OK;
     }
-    event = mQueue->mTasks.front();
+    event = mQueue->mTasks.front().mRunnable;
     mQueue->mTasks.pop();
   }
   MOZ_ASSERT(event);
@@ -215,6 +241,7 @@ MediaTaskQueue::Runner::Run()
     if (mQueue->mTasks.size() == 0) {
       // No more events to run. Exit the task runner.
       mQueue->mIsRunning = false;
+      mQueue->mShutdownPromise.ResolveIfExists(true, __func__);
       mon.NotifyAll();
       mQueue->mRunningThread = nullptr;
       return NS_OK;

@@ -295,13 +295,6 @@ nsXPConnect::GarbageCollect(uint32_t reason)
     return NS_OK;
 }
 
-bool
-xpc_GCThingIsGrayCCThing(void *thing)
-{
-    return AddToCCKind(js::GCThingTraceKind(thing)) &&
-           xpc_IsGrayGCThing(thing);
-}
-
 void
 xpc_MarkInCCGeneration(nsISupports* aVariant, uint32_t aGeneration)
 {
@@ -1039,6 +1032,9 @@ nsXPConnect::OnProcessNextEvent(nsIThreadInternal *aThread, bool aMayWait,
 
     // Record this event.
     mEventDepth++;
+
+    // Start the slow script timer.
+    mRuntime->OnProcessNextEvent();
 
     // Push a null JSContext so that we don't see any script during
     // event processing.

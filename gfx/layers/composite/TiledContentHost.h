@@ -62,15 +62,21 @@ public:
   // Constructs a TileHost from a gfxSharedReadLock and TextureHost.
   TileHost(gfxSharedReadLock* aSharedLock,
                TextureHost* aTextureHost,
-               TextureHost* aTextureHostOnWhite)
+               TextureHost* aTextureHostOnWhite,
+               TextureSource* aSource,
+               TextureSource* aSourceOnWhite)
     : mSharedLock(aSharedLock)
     , mTextureHost(aTextureHost)
     , mTextureHostOnWhite(aTextureHostOnWhite)
+    , mTextureSource(aSource)
+    , mTextureSourceOnWhite(aSourceOnWhite)
   {}
 
   TileHost(const TileHost& o) {
     mTextureHost = o.mTextureHost;
     mTextureHostOnWhite = o.mTextureHostOnWhite;
+    mTextureSource = o.mTextureSource;
+    mTextureSourceOnWhite = o.mTextureSourceOnWhite;
     mSharedLock = o.mSharedLock;
   }
   TileHost& operator=(const TileHost& o) {
@@ -79,6 +85,8 @@ public:
     }
     mTextureHost = o.mTextureHost;
     mTextureHostOnWhite = o.mTextureHostOnWhite;
+    mTextureSource = o.mTextureSource;
+    mTextureSourceOnWhite = o.mTextureSourceOnWhite;
     mSharedLock = o.mSharedLock;
     return *this;
   }
@@ -98,9 +106,16 @@ public:
     }
   }
 
+  void DumpTexture(std::stringstream& aStream) {
+    // TODO We should combine the OnWhite/OnBlack here an just output a single image.
+    CompositableHost::DumpTextureHost(aStream, mTextureHost);
+  }
+
   RefPtr<gfxSharedReadLock> mSharedLock;
-  RefPtr<TextureHost> mTextureHost;
-  RefPtr<TextureHost> mTextureHostOnWhite;
+  CompositableTextureHostRef mTextureHost;
+  CompositableTextureHostRef mTextureHostOnWhite;
+  mutable CompositableTextureSourceRef mTextureSource;
+  mutable CompositableTextureSourceRef mTextureSourceOnWhite;
 };
 
 class TiledLayerBufferComposite
@@ -114,7 +129,8 @@ public:
   TiledLayerBufferComposite();
   TiledLayerBufferComposite(ISurfaceAllocator* aAllocator,
                             const SurfaceDescriptorTiles& aDescriptor,
-                            const nsIntRegion& aOldPaintedRegion);
+                            const nsIntRegion& aOldPaintedRegion,
+                            Compositor* aCompositor);
 
   TileHost GetPlaceholderTile() const { return TileHost(); }
 
@@ -245,11 +261,9 @@ public:
   virtual void Detach(Layer* aLayer = nullptr,
                       AttachFlags aFlags = NO_FLAGS) MOZ_OVERRIDE;
 
-#ifdef MOZ_DUMP_PAINTING
   virtual void Dump(std::stringstream& aStream,
                     const char* aPrefix="",
                     bool aDumpHtml=false) MOZ_OVERRIDE;
-#endif
 
   virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
 

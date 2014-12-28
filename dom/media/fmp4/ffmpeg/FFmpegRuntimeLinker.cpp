@@ -21,14 +21,14 @@ FFmpegRuntimeLinker::LinkStatus FFmpegRuntimeLinker::sLinkStatus =
 struct AvFormatLib
 {
   const char* Name;
-  PlatformDecoderModule* (*Factory)();
+  already_AddRefed<PlatformDecoderModule> (*Factory)();
   uint32_t Version;
 };
 
 template <int V> class FFmpegDecoderModule
 {
 public:
-  static PlatformDecoderModule* Create();
+  static already_AddRefed<PlatformDecoderModule> Create();
 };
 
 static const AvFormatLib sLibs[] = {
@@ -36,6 +36,10 @@ static const AvFormatLib sLibs[] = {
   { "libavformat.so.55", FFmpegDecoderModule<55>::Create, 55 },
   { "libavformat.so.54", FFmpegDecoderModule<54>::Create, 54 },
   { "libavformat.so.53", FFmpegDecoderModule<53>::Create, 53 },
+  { "libavformat.56.dylib", FFmpegDecoderModule<55>::Create, 55 },
+  { "libavformat.55.dylib", FFmpegDecoderModule<55>::Create, 55 },
+  { "libavformat.54.dylib", FFmpegDecoderModule<54>::Create, 54 },
+  { "libavformat.53.dylib", FFmpegDecoderModule<53>::Create, 53 },
 };
 
 void* FFmpegRuntimeLinker::sLinkedLib = nullptr;
@@ -97,14 +101,14 @@ FFmpegRuntimeLinker::Bind(const char* aLibName, uint32_t Version)
   return true;
 }
 
-/* static */ PlatformDecoderModule*
+/* static */ already_AddRefed<PlatformDecoderModule>
 FFmpegRuntimeLinker::CreateDecoderModule()
 {
   if (!Link()) {
     return nullptr;
   }
-  PlatformDecoderModule* module = sLib->Factory();
-  return module;
+  nsRefPtr<PlatformDecoderModule> module = sLib->Factory();
+  return module.forget();
 }
 
 /* static */ void

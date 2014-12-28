@@ -218,7 +218,8 @@ WebMReader::~WebMReader()
   MOZ_COUNT_DTOR(WebMReader);
 }
 
-void WebMReader::Shutdown()
+nsRefPtr<ShutdownPromise>
+WebMReader::Shutdown()
 {
 #if defined(MOZ_PDM_VPX)
   if (mVideoTaskQueue) {
@@ -232,7 +233,7 @@ void WebMReader::Shutdown()
     mVideoDecoder = nullptr;
   }
 
-  MediaDecoderReader::Shutdown();
+  return MediaDecoderReader::Shutdown();
 }
 
 nsresult WebMReader::Init(MediaDecoderReader* aCloneDonor)
@@ -743,7 +744,7 @@ bool WebMReader::DecodeOpus(const unsigned char* aData, size_t aLength,
     // Discard padding should be used only on the final packet, so
     // decoding after a padding discard is invalid.
     LOG(PR_LOG_DEBUG, ("Opus error, discard padding on interstitial packet"));
-    GetCallback()->OnNotDecoded(MediaData::AUDIO_DATA, RequestSampleCallback::DECODE_ERROR);
+    mHitAudioDecodeError = true;
     return false;
   }
 
@@ -797,8 +798,7 @@ bool WebMReader::DecodeOpus(const unsigned char* aData, size_t aLength,
   if (discardPadding < 0) {
     // Negative discard padding is invalid.
     LOG(PR_LOG_DEBUG, ("Opus error, negative discard padding"));
-    GetCallback()->OnNotDecoded(MediaData::AUDIO_DATA, RequestSampleCallback::DECODE_ERROR);
-    return false;
+    mHitAudioDecodeError = true;
   }
   if (discardPadding > 0) {
     CheckedInt64 discardFrames = UsecsToFrames(discardPadding / NS_PER_USEC,
@@ -810,7 +810,7 @@ bool WebMReader::DecodeOpus(const unsigned char* aData, size_t aLength,
     if (discardFrames.value() > frames) {
       // Discarding more than the entire packet is invalid.
       LOG(PR_LOG_DEBUG, ("Opus error, discard padding larger than packet"));
-      GetCallback()->OnNotDecoded(MediaData::AUDIO_DATA, RequestSampleCallback::DECODE_ERROR);
+      mHitAudioDecodeError = true;
       return false;
     }
     LOG(PR_LOG_DEBUG, ("Opus decoder discarding %d of %d frames",
@@ -951,11 +951,16 @@ void WebMReader::PushVideoPacket(NesteggPacketHolder* aItem)
     mVideoPackets.PushFront(aItem);
 }
 
-void WebMReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndTime,
+nsRefPtr<MediaDecoderReader::SeekPromise>
+WebMReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndTime,
                       int64_t aCurrentTime)
 {
   nsresult res = SeekInternal(aTarget, aStartTime);
-  GetCallback()->OnSeekCompleted(res);
+  if (NS_FAILED(res)) {
+    return SeekPromise::CreateAndReject(res, __func__);
+  } else {
+    return SeekPromise::CreateAndResolve(true, __func__);
+  }
 }
 
 nsresult WebMReader::SeekInternal(int64_t aTarget, int64_t aStartTime)

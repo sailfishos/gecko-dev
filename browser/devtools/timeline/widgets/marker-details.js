@@ -22,19 +22,25 @@ loader.lazyRequireGetter(this, "EventEmitter",
  *
  * @param nsIDOMNode parent
  *        The parent node holding the view.
+ * @param nsIDOMNode splitter
+ *        The splitter node that the resize event is bound to.
  */
-function MarkerDetails(parent) {
+function MarkerDetails(parent, splitter) {
   EventEmitter.decorate(this);
   this._document = parent.ownerDocument;
   this._parent = parent;
-  this._splitter = this._document.querySelector("#timeline-waterfall-container > splitter");
+  this._splitter = splitter;
   this._splitter.addEventListener("mouseup", () => this.emit("resize"));
 }
 
 MarkerDetails.prototype = {
+  /**
+   * Removes any node references from this view.
+   */
   destroy: function() {
     this.empty();
     this._parent = null;
+    this._splitter = null;
   },
 
   /**
@@ -85,8 +91,8 @@ MarkerDetails.prototype = {
     let hbox = this._document.createElement("hbox");
     let labelName = this._document.createElement("label");
     let labelValue = this._document.createElement("label");
-    labelName.className = "marker-details-labelname";
-    labelValue.className = "marker-details-labelvalue";
+    labelName.className = "plain marker-details-labelname";
+    labelValue.className = "plain marker-details-labelvalue";
     labelName.setAttribute("value", L10N.getStr(l10nName));
     labelValue.setAttribute("value", value);
     hbox.appendChild(labelName);

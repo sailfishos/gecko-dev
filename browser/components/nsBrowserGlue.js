@@ -53,9 +53,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
 XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
                                   "resource://gre/modules/NewTabUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "BrowserNewTabPreloader",
-                                  "resource:///modules/BrowserNewTabPreloader.jsm");
-
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizationTabPreloader",
                                   "resource:///modules/CustomizationTabPreloader.jsm");
 
@@ -146,6 +143,28 @@ const BOOKMARKS_BACKUP_MIN_INTERVAL_DAYS = 1;
 // Maximum interval between backups.  If the last backup is older than these
 // days we will try to create a new one more aggressively.
 const BOOKMARKS_BACKUP_MAX_INTERVAL_DAYS = 3;
+
+// Record the current default search engine in Telemetry.
+function recordDefaultSearchEngine() {
+  let engine;
+  try {
+    engine = Services.search.defaultEngine;
+  } catch (e) {}
+  let name;
+
+  if (!engine) {
+    name = "NONE";
+  } else if (engine.identifier) {
+    name = engine.identifier;
+  } else if (engine.name) {
+    name = "other-" + engine.name;
+  } else {
+    name = "UNDEFINED";
+  }
+
+  let engines = Services.telemetry.getKeyedHistogramById("SEARCH_DEFAULT_ENGINE");
+  engines.add(name, true)
+}
 
 // Factory object
 const BrowserGlueServiceFactory = {
@@ -405,12 +424,14 @@ BrowserGlue.prototype = {
           ss.defaultEngine = ss.currentEngine;
         else
           ss.currentEngine = ss.defaultEngine;
+        recordDefaultSearchEngine();
         break;
       case "browser-search-service":
         if (data != "init-complete")
           return;
         Services.obs.removeObserver(this, "browser-search-service");
         this._syncSearchEngines();
+        recordDefaultSearchEngine();
         break;
 #ifdef NIGHTLY_BUILD
       case "nsPref:changed":
@@ -791,7 +812,6 @@ BrowserGlue.prototype = {
       Cu.reportError("Could not end startup crash tracking in quit-application-granted: " + e);
     }
 
-    BrowserNewTabPreloader.uninit();
     CustomizationTabPreloader.uninit();
     WebappManager.uninit();
 #ifdef NIGHTLY_BUILD
@@ -811,7 +831,7 @@ BrowserGlue.prototype = {
         Cu.import("resource://gre/modules/RokuApp.jsm");
         return new RokuApp(aService);
       },
-      mirror: false,
+      mirror: true,
       types: ["video/mp4"],
       extensions: ["mp4"]
     };
@@ -1459,7 +1479,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 26;
+    const UI_VERSION = 27;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
     let currentUIVersion = 0;
     try {
@@ -1766,6 +1786,15 @@ BrowserGlue.prototype = {
       if (defaultBehavior != -1 &&
           !!(defaultBehavior & Ci.mozIPlacesAutoComplete["BEHAVIOR_TYPED"])) {
         Services.prefs.setBoolPref("browser.urlbar.suggest.history.onlyTyped", true);
+      }
+    }
+
+    if (currentUIVersion < 27) {
+      // Fix up document color use:
+      const kOldColorPref = "browser.display.use_document_colors";
+      if (Services.prefs.prefHasUserValue(kOldColorPref) &&
+          !Services.prefs.getBoolPref(kOldColorPref)) {
+        Services.prefs.setIntPref("browser.display.document_color_use", 2);
       }
     }
 

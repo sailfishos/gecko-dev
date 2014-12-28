@@ -30,6 +30,8 @@ using CrashReporter::AnnotationTable;
 using CrashReporter::GetIDFromMinidump;
 #endif
 
+#include "mozilla/Telemetry.h"
+
 namespace mozilla {
 
 #ifdef LOG
@@ -146,27 +148,30 @@ GMPParent::LoadProcess()
 
     bool opened = Open(mProcess->GetChannel(), mProcess->GetChildProcessHandle());
     if (!opened) {
+      LOGD(("%s::%s: Failed to create new child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
       mProcess->Delete();
       mProcess = nullptr;
       return NS_ERROR_FAILURE;
     }
-    LOGD(("%s::%s: Created new process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
+    LOGD(("%s::%s: Created new child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
 
     bool ok = SendSetNodeId(mNodeId);
     if (!ok) {
+      LOGD(("%s::%s: Failed to send node id to child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
       mProcess->Delete();
       mProcess = nullptr;
       return NS_ERROR_FAILURE;
     }
-    LOGD(("%s::%s: Failed to send node id %p", __CLASS__, __FUNCTION__, (void *)mProcess));
+    LOGD(("%s::%s: Sent node id to child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
 
     ok = SendStartPlugin();
     if (!ok) {
+      LOGD(("%s::%s: Failed to send start to child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
       mProcess->Delete();
       mProcess = nullptr;
       return NS_ERROR_FAILURE;
     }
-    LOGD(("%s::%s: Failed to send start %p", __CLASS__, __FUNCTION__, (void *)mProcess));
+    LOGD(("%s::%s: Sent StartPlugin to child process %p", __CLASS__, __FUNCTION__, (void *)mProcess));
   }
 
   mState = GMPStateLoaded;
@@ -653,6 +658,8 @@ GMPParent::ActorDestroy(ActorDestroyReason aWhy)
   LOGD(("%s::%s: %p (%d)", __CLASS__, __FUNCTION__, this, (int) aWhy));
 #ifdef MOZ_CRASHREPORTER
   if (AbnormalShutdown == aWhy) {
+    Telemetry::Accumulate(Telemetry::SUBPROCESS_ABNORMAL_ABORT,
+                          NS_LITERAL_CSTRING("gmplugin"), 1);
     nsString dumpID;
     GetCrashID(dumpID);
     nsString id;
@@ -962,7 +969,7 @@ GMPParent::ReadGMPMetaData()
     }
 
 #if defined(XP_LINUX) && defined(MOZ_GMP_SANDBOX)
-    if (cap->mAPIName.EqualsLiteral("eme-decrypt") &&
+    if (cap->mAPIName.EqualsLiteral(GMP_API_DECRYPTOR) &&
         !mozilla::SandboxInfo::Get().CanSandboxMedia()) {
       printf_stderr("GMPParent::ReadGMPMetaData: Plugin \"%s\" is an EME CDM"
                     " but this system can't sandbox it; not loading.\n",

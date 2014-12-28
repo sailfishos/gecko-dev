@@ -1295,10 +1295,10 @@ Assembler::oom() const
            preBarriers_.oom();
 }
 
-bool
+void
 Assembler::addCodeLabel(CodeLabel label)
 {
-    return codeLabels_.append(label);
+    propagateOOM(codeLabels_.append(label));
 }
 
 // Size of the instruction stream, in bytes. Including pools. This function
@@ -2214,8 +2214,7 @@ Assembler::as_vxfer(Register vt1, Register vt2, VFPRegister vm, FloatToCore_ f2c
         MOZ_ASSERT(idx == 0 || idx == 1);
         // If we are transferring a single half of the double then it must be
         // moving a VFP reg to a core reg.
-        if (vt2 == InvalidReg)
-            MOZ_ASSERT(f2c == FloatToCore);
+        MOZ_ASSERT_IF(vt2 == InvalidReg, f2c == FloatToCore);
         idx = idx << 21;
     } else {
         MOZ_ASSERT(idx == 0);
@@ -2884,8 +2883,10 @@ void Assembler::UpdateBoundsCheck(uint32_t heapSize, Instruction *inst)
     Register index;
     cmp->extractOp1(&index);
 
+#ifdef DEBUG
     Operand2 op = cmp->extractOp2();
     MOZ_ASSERT(op.isImm8());
+#endif
 
     Imm8 imm8 = Imm8(heapSize);
     MOZ_ASSERT(!imm8.invalid);
@@ -2901,8 +2902,8 @@ InstructionIterator::InstructionIterator(Instruction *i_) : i(i_)
     // Work around pools with an artificial pool guard and around nop-fill.
     i = i->skipPool();
 }
-Assembler *Assembler::Dummy = nullptr;
 
+Assembler *Assembler::Dummy = nullptr;
 uint32_t Assembler::NopFill = 0;
 
 uint32_t

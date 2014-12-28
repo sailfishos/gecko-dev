@@ -28,19 +28,10 @@
 #define DESCR_STRUCT_FIELD_OFFSETS(obj) \
     UnsafeGetReservedSlot(obj, JS_DESCR_SLOT_STRUCT_FIELD_OFFSETS)
 
-// Typed prototype slots
-
-#define TYPROTO_DESCR(obj) \
-    UnsafeGetReservedSlot(obj, JS_TYPROTO_SLOT_DESCR)
-
 // Other
 
 #define HAS_PROPERTY(obj, prop) \
     callFunction(std_Object_hasOwnProperty, obj, prop)
-
-function TypedObjectTypeDescr(typedObj) {
-  return TYPROTO_DESCR(std_Object_getPrototypeOf(typedObj));
-}
 
 ///////////////////////////////////////////////////////////////////////////
 // Getting values
@@ -1134,6 +1125,9 @@ function MapTypedParImplDepth1(inArray, inArrayType, outArrayType, func) {
   const outArray = new outArrayType();
   if (length === 0)
     return outArray;
+
+  if (outArray.length != length)
+    ThrowError(JSMSG_TYPEDOBJECT_ARRAYTYPE_BAD_ARGS);
 
   const outGrainTypeIsTransparent = ObjectIsTransparentTypedObject(outArray);
 

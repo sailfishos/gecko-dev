@@ -30,9 +30,11 @@ nsMIMEInfoUnix::LoadUriInternal(nsIURI * aURI)
 {
   nsresult rv = nsGNOMERegistry::LoadURL(aURI);
 
+#ifdef MOZ_WIDGET_QT
   if (NS_FAILED(rv)) {
     rv = nsMIMEInfoQt::LoadUriInternal(aURI);
   }
+#endif
 
   return rv;
 }

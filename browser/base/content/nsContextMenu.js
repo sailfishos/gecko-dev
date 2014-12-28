@@ -5,6 +5,7 @@
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Components.utils.import("resource://gre/modules/InlineSpellChecker.jsm");
+Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
 
 var gContextMenuContentData = null;
 
@@ -23,10 +24,15 @@ nsContextMenu.prototype = {
       return;
 
     this.hasPageMenu = false;
-    // FIXME (bug 1047751) - The page menu is disabled in e10s.
-    if (!aIsShift && !this.isRemote) {
-      this.hasPageMenu = PageMenu.maybeBuildAndAttachMenu(this.target,
-                                                          aXulMenu);
+    if (!aIsShift) {
+      if (this.isRemote) {
+        this.hasPageMenu =
+          PageMenuParent.addToPopup(gContextMenuContentData.customMenuItems,
+                                    this.browser, aXulMenu);
+      }
+      else {
+        this.hasPageMenu = PageMenuParent.buildAndAddToPopup(this.target, aXulMenu);
+      }
     }
 
     this.isFrameImage = document.getElementById("isFrameImage");
@@ -857,13 +863,20 @@ nsContextMenu.prototype = {
     return aNode.spellcheck;
   },
 
+  _openLinkInParameters : function (doc, extra) {
+    let params = { charset: doc.characterSet };
+    if (!BrowserUtils.linkHasNoReferrer(this.link))
+      params.referrerURI = document.documentURIObject;
+    for (let p in extra)
+      params[p] = extra[p];
+    return params;
+  },
+
   // Open linked-to URL in a new window.
   openLink : function () {
     var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this._unremotePrincipal(doc.nodePrincipal));
-    openLinkIn(this.linkURL, "window",
-               { charset: doc.characterSet,
-                 referrerURI: doc.documentURIObject });
+    openLinkIn(this.linkURL, "window", this._openLinkInParameters(doc));
   },
 
   // Open linked-to URL in a new private window.
@@ -871,9 +884,7 @@ nsContextMenu.prototype = {
     var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this._unremotePrincipal(doc.nodePrincipal));
     openLinkIn(this.linkURL, "window",
-               { charset: doc.characterSet,
-                 referrerURI: doc.documentURIObject,
-                 private: true });
+               this._openLinkInParameters(doc, { private: true }));
   },
 
   // Open linked-to URL in a new tab.
@@ -897,19 +908,17 @@ nsContextMenu.prototype = {
       catch (e) { }
     }
 
-    openLinkIn(this.linkURL, "tab",
-               { charset: doc.characterSet,
-                 referrerURI: referrerURI,
-                 allowMixedContent: persistAllowMixedContentInChildTab });
+    let params = this._openLinkInParameters(doc, {
+      allowMixedContent: persistAllowMixedContentInChildTab,
+    });
+    openLinkIn(this.linkURL, "tab", params);
   },
 
   // open URL in current tab
   openLinkInCurrent: function() {
     var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this._unremotePrincipal(doc.nodePrincipal));
-    openLinkIn(this.linkURL, "current",
-               { charset: doc.characterSet,
-                 referrerURI: doc.documentURIObject });
+    openLinkIn(this.linkURL, "current", this._openLinkInParameters(doc));
   },
 
   // Open frame in a new tab.
@@ -1063,7 +1072,7 @@ nsContextMenu.prototype = {
       mm.removeMessageListener("ContextMenu:SaveVideoFrameAsImage:Result", onMessage);
       let dataURL = message.data.dataURL;
       saveImageURL(dataURL, name, "SaveImageTitle", true, false,
-                   document.documentURIObject, this.target.ownerDocument);
+                   document.documentURIObject, document);
     };
     mm.addMessageListener("ContextMenu:SaveVideoFrameAsImage:Result", onMessage);
   },
@@ -1762,7 +1771,7 @@ nsContextMenu.prototype = {
       }
 
       // Check if this is a page menu item:
-      if (e.target.hasAttribute(PageMenu.GENERATEDITEMID_ATTR)) {
+      if (e.target.hasAttribute(PageMenuParent.GENERATEDITEMID_ATTR)) {
         this._telemetryClickID = "custom-page-item";
       } else {
         this._telemetryClickID = (e.target.id || "unknown").replace(/^context-/i, "");

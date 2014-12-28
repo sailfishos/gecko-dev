@@ -367,9 +367,8 @@ ChannelMediaResource::OnStartRequest(nsIRequest* aRequest)
     mIgnoreResume = false;
   }
 
-  // Fires an initial progress event and sets up the stall counter so stall events
-  // fire if no download occurs within the required time frame.
-  mDecoder->Progress(false);
+  // Fires an initial progress event.
+  owner->DownloadProgressed();
 
   return NS_OK;
 }
@@ -1010,6 +1009,13 @@ ChannelMediaResource::CacheClientNotifyPrincipalChanged()
   mDecoder->NotifyPrincipalChanged();
 }
 
+void
+ChannelMediaResource::CacheClientNotifySuspendedStatusChanged()
+{
+  NS_ASSERTION(NS_IsMainThread(), "Don't call on non-main thread");
+  mDecoder->NotifySuspendedStatusChanged();
+}
+
 nsresult
 ChannelMediaResource::CacheClientSeek(int64_t aOffset, bool aResume)
 {
@@ -1068,8 +1074,6 @@ nsresult
 ChannelMediaResource::CacheClientSuspend()
 {
   Suspend(false);
-
-  mDecoder->NotifySuspendedStatusChanged();
   return NS_OK;
 }
 
@@ -1077,8 +1081,6 @@ nsresult
 ChannelMediaResource::CacheClientResume()
 {
   Resume();
-
-  mDecoder->NotifySuspendedStatusChanged();
   return NS_OK;
 }
 
@@ -1578,9 +1580,11 @@ MediaResource::Create(MediaDecoder* aDecoder, nsIChannel* aChannel)
   return resource.forget();
 }
 
-void BaseMediaResource::MoveLoadsToBackground() {
-  NS_ASSERTION(!mLoadInBackground, "Why are you calling this more than once?");
-  mLoadInBackground = true;
+void BaseMediaResource::SetLoadInBackground(bool aLoadInBackground) {
+  if (aLoadInBackground == mLoadInBackground) {
+    return;
+  }
+  mLoadInBackground = aLoadInBackground;
   if (!mChannel) {
     // No channel, resource is probably already loaded.
     return;
@@ -1588,12 +1592,12 @@ void BaseMediaResource::MoveLoadsToBackground() {
 
   MediaDecoderOwner* owner = mDecoder->GetMediaOwner();
   if (!owner) {
-    NS_WARNING("Null owner in MediaResource::MoveLoadsToBackground()");
+    NS_WARNING("Null owner in MediaResource::SetLoadInBackground()");
     return;
   }
   dom::HTMLMediaElement* element = owner->GetMediaElement();
   if (!element) {
-    NS_WARNING("Null element in MediaResource::MoveLoadsToBackground()");
+    NS_WARNING("Null element in MediaResource::SetLoadInBackground()");
     return;
   }
 
@@ -1604,7 +1608,11 @@ void BaseMediaResource::MoveLoadsToBackground() {
     DebugOnly<nsresult> rv = mChannel->GetLoadFlags(&loadFlags);
     NS_ASSERTION(NS_SUCCEEDED(rv), "GetLoadFlags() failed!");
 
-    loadFlags |= nsIRequest::LOAD_BACKGROUND;
+    if (aLoadInBackground) {
+      loadFlags |= nsIRequest::LOAD_BACKGROUND;
+    } else {
+      loadFlags &= ~nsIRequest::LOAD_BACKGROUND;
+    }
     ModifyLoadFlags(loadFlags);
   }
 }

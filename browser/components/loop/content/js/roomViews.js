@@ -67,22 +67,37 @@ loop.roomViews = (function(mozL10n) {
     getInitialState: function() {
       return {
         copiedUrl: false,
-        newRoomName: ""
+        newRoomName: "",
+        error: null,
       };
+    },
+
+    componentWillMount: function() {
+      this.listenTo(this.props.roomStore, "change:error",
+                    this.onRoomError);
+    },
+
+    componentWillUnmount: function() {
+      this.stopListening(this.props.roomStore);
+    },
+
+    handleTextareaKeyDown: function(event) {
+      // Submit the form as soon as the user press Enter in that field
+      // Note: We're using a textarea instead of a simple text input to display
+      // placeholder and entered text on two lines, to circumvent l10n
+      // rendering/UX issues for some locales.
+      if (event.which === 13) {
+        this.handleFormSubmit(event);
+      }
     },
 
     handleFormSubmit: function(event) {
       event.preventDefault();
 
-      var newRoomName = this.state.newRoomName;
-
-      if (newRoomName && this.state.roomName != newRoomName) {
-        this.props.dispatcher.dispatch(
-          new sharedActions.RenameRoom({
-            roomToken: this.state.roomToken,
-            newRoomName: newRoomName
-          }));
-      }
+      this.props.dispatcher.dispatch(new sharedActions.RenameRoom({
+        roomToken: this.state.roomToken,
+        newRoomName: this.state.newRoomName
+      }));
     },
 
     handleEmailButtonClick: function(event) {
@@ -101,13 +116,28 @@ loop.roomViews = (function(mozL10n) {
       this.setState({copiedUrl: true});
     },
 
+    onRoomError: function() {
+      // Only update the state if we're mounted, to avoid the problem where
+      // stopListening doesn't nuke the active listeners during a event
+      // processing.
+      if (this.isMounted()) {
+        this.setState({error: this.props.roomStore.getStoreState("error")});
+      }
+    },
+
     render: function() {
+      var cx = React.addons.classSet;
       return (
         React.DOM.div({className: "room-invitation-overlay"}, 
+          React.DOM.p({className: cx({"error": !!this.state.error,
+                            "error-display-area": true})}, 
+            mozL10n.get("rooms_name_change_failed_label")
+          ), 
           React.DOM.form({onSubmit: this.handleFormSubmit}, 
-            React.DOM.input({type: "text", className: "input-room-name", 
+            React.DOM.textarea({rows: "2", type: "text", className: "input-room-name", 
               valueLink: this.linkState("newRoomName"), 
               onBlur: this.handleFormSubmit, 
+              onKeyDown: this.handleTextareaKeyDown, 
               placeholder: mozL10n.get("rooms_name_this_room_label")})
           ), 
           React.DOM.p(null, mozL10n.get("invite_header_text")), 
@@ -162,15 +192,20 @@ loop.roomViews = (function(mozL10n) {
        */
       window.addEventListener('orientationchange', this.updateVideoContainer);
       window.addEventListener('resize', this.updateVideoContainer);
+    },
 
+    componentWillUpdate: function(nextProps, nextState) {
       // The SDK needs to know about the configuration and the elements to use
       // for display. So the best way seems to pass the information here - ideally
       // the sdk wouldn't need to know this, but we can't change that.
-      this.props.dispatcher.dispatch(new sharedActions.SetupStreamElements({
-        publisherConfig: this._getPublisherConfig(),
-        getLocalElementFunc: this._getElement.bind(this, ".local"),
-        getRemoteElementFunc: this._getElement.bind(this, ".remote")
-      }));
+      if (this.state.roomState !== ROOM_STATES.MEDIA_WAIT &&
+          nextState.roomState === ROOM_STATES.MEDIA_WAIT) {
+        this.props.dispatcher.dispatch(new sharedActions.SetupStreamElements({
+          publisherConfig: this._getPublisherConfig(),
+          getLocalElementFunc: this._getElement.bind(this, ".local"),
+          getRemoteElementFunc: this._getElement.bind(this, ".remote")
+        }));
+      }
     },
 
     _getPublisherConfig: function() {
@@ -265,10 +300,16 @@ loop.roomViews = (function(mozL10n) {
           );
         }
         case ROOM_STATES.ENDED: {
-          return sharedViews.FeedbackView({
-            feedbackStore: this.props.feedbackStore, 
-            onAfterFeedbackReceived: this.closeWindow}
-          );
+          if (this.state.used)
+            return sharedViews.FeedbackView({
+              feedbackStore: this.props.feedbackStore, 
+              onAfterFeedbackReceived: this.closeWindow}
+            );
+
+          // In case the room was not used (no one was here), we
+          // bypass the feedback form.
+          this.closeWindow();
+          return null;
         }
         default: {
           return (

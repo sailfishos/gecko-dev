@@ -9,12 +9,10 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
-import org.json.JSONObject;
 import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoApplication;
-import org.mozilla.gecko.LightweightTheme;
 import org.mozilla.gecko.NewTabletUI;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.Tab;
@@ -24,6 +22,8 @@ import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.PropertyAnimator.PropertyAnimationListener;
 import org.mozilla.gecko.animation.ViewHelper;
+import org.mozilla.gecko.lwt.LightweightTheme;
+import org.mozilla.gecko.lwt.LightweightThemeDrawable;
 import org.mozilla.gecko.menu.GeckoMenu;
 import org.mozilla.gecko.menu.MenuPopup;
 import org.mozilla.gecko.tabs.TabHistoryController;
@@ -77,6 +77,8 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
                                      implements Tabs.OnTabsChangedListener,
                                                 GeckoMenu.ActionItemBarPresenter {
     private static final String LOGTAG = "GeckoToolbar";
+
+    private static final int LIGHTWEIGHT_THEME_INVERT_ALPHA = 34; // 255 - alpha = invert_alpha
 
     public interface OnActivateListener {
         public void onActivate();
@@ -138,7 +140,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     private final Paint shadowPaint;
     private final int shadowSize;
 
-    private final LightweightTheme theme;
     private final ToolbarPrefs prefs;
 
     public abstract boolean isAnimating();
@@ -150,6 +151,13 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     protected abstract void triggerStartEditingTransition(PropertyAnimator animator);
     protected abstract void triggerStopEditingTransition();
     public abstract void triggerTabsPanelTransition(PropertyAnimator animator, boolean areTabsShown);
+
+    /**
+     * Returns a Drawable overlaid with the theme's bitmap.
+     */
+    protected Drawable getLWTDefaultStateSetDrawable() {
+        return getTheme().getDrawable(this);
+    }
 
     public static BrowserToolbar create(final Context context, final AttributeSet attrs) {
         final BrowserToolbar toolbar;
@@ -170,7 +178,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
         setWillNotDraw(false);
 
         isNewTablet = NewTabletUI.isEnabled(context);
-        theme = ((GeckoApplication) context.getApplicationContext()).getLightweightTheme();
 
         // BrowserToolbar is attached to BrowserApp only.
         activity = (BrowserApp) context;
@@ -910,11 +917,12 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
     @Override
     public void onLightweightThemeChanged() {
-        Drawable drawable = theme.getDrawable(this);
-        if (drawable == null)
+        final Drawable drawable = getLWTDefaultStateSetDrawable();
+        if (drawable == null) {
             return;
+        }
 
-        StateListDrawable stateList = new StateListDrawable();
+        final StateListDrawable stateList = new StateListDrawable();
         stateList.addState(PRIVATE_STATE_SET, getColorDrawable(R.color.background_private));
         stateList.addState(EMPTY_STATE_SET, drawable);
 
@@ -927,6 +935,18 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
     public void onLightweightThemeReset() {
         setBackgroundResource(R.drawable.url_bar_bg);
         editCancel.onLightweightThemeReset();
+    }
+
+    public static LightweightThemeDrawable getLightweightThemeDrawable(final View view,
+            final Resources res, final LightweightTheme theme, final int colorResID) {
+        final int color = res.getColor(colorResID);
+
+        final LightweightThemeDrawable drawable = theme.getColorDrawable(view, color);
+        if (drawable != null) {
+            drawable.setAlpha(LIGHTWEIGHT_THEME_INVERT_ALPHA, LIGHTWEIGHT_THEME_INVERT_ALPHA);
+        }
+
+        return drawable;
     }
 
     public static class TabEditingState {

@@ -8,6 +8,7 @@ describe("loop.conversationViews", function () {
 
   var sharedUtils = loop.shared.utils;
   var sandbox, oldTitle, view, dispatcher, contact, fakeAudioXHR;
+  var fakeMozLoop, fakeWindow;
 
   var CALL_STATES = loop.store.CALL_STATES;
 
@@ -43,7 +44,7 @@ describe("loop.conversationViews", function () {
       onload: null
     };
 
-    navigator.mozLoop = {
+    fakeMozLoop = navigator.mozLoop = {
       getLoopPref: sinon.stub().returns("http://fakeurl"),
       composeEmail: sinon.spy(),
       get appVersionInfo() {
@@ -55,11 +56,22 @@ describe("loop.conversationViews", function () {
       },
       getAudioBlob: sinon.spy(function(name, callback) {
         callback(null, new Blob([new ArrayBuffer(10)], {type: "audio/ogg"}));
-      })
+      }),
+      userProfile: {
+        email: "bob@invalid.tld"
+      }
     };
+
+    fakeWindow = {
+      navigator: { mozLoop: fakeMozLoop },
+      close: sandbox.stub(),
+    };
+    loop.shared.mixins.setRootObject(fakeWindow);
+
   });
 
   afterEach(function() {
+    loop.shared.mixins.setRootObject(window);
     document.title = oldTitle;
     view = undefined;
     delete navigator.mozLoop;
@@ -232,19 +244,22 @@ describe("loop.conversationViews", function () {
   describe("CallFailedView", function() {
     var store, fakeAudio;
 
-    function mountTestComponent(props) {
+    var contact = {email: [{value: "test@test.tld"}]};
+
+    function mountTestComponent(options) {
+      options = options || {};
       return TestUtils.renderIntoDocument(
         loop.conversationViews.CallFailedView({
           dispatcher: dispatcher,
           store: store,
-          contact: {email: [{value: "test@test.tld"}]}
+          contact: options.contact
         }));
     }
 
     beforeEach(function() {
-      store = new loop.store.ConversationStore({}, {
-        dispatcher: dispatcher,
+      store = new loop.store.ConversationStore(dispatcher, {
         client: {},
+        mozLoop: navigator.mozLoop,
         sdkDriver: {}
       });
       fakeAudio = {
@@ -257,7 +272,7 @@ describe("loop.conversationViews", function () {
 
     it("should dispatch a retryCall action when the retry button is pressed",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
         var retryBtn = view.getDOMNode().querySelector('.btn-retry');
 
@@ -270,7 +285,7 @@ describe("loop.conversationViews", function () {
 
     it("should dispatch a cancelCall action when the cancel button is pressed",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
         var cancelBtn = view.getDOMNode().querySelector('.btn-cancel');
 
@@ -281,9 +296,9 @@ describe("loop.conversationViews", function () {
           sinon.match.hasOwn("name", "cancelCall"));
       });
 
-    it("should dispatch a fetchEmailLink action when the cancel button is pressed",
+    it("should dispatch a fetchRoomEmailLink action when the email button is pressed",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
         var emailLinkBtn = view.getDOMNode().querySelector('.btn-email');
 
@@ -291,12 +306,32 @@ describe("loop.conversationViews", function () {
 
         sinon.assert.calledOnce(dispatcher.dispatch);
         sinon.assert.calledWithMatch(dispatcher.dispatch,
-          sinon.match.hasOwn("name", "fetchEmailLink"));
+          sinon.match.hasOwn("name", "fetchRoomEmailLink"));
+        sinon.assert.calledWithMatch(dispatcher.dispatch,
+          sinon.match.hasOwn("roomOwner", fakeMozLoop.userProfile.email));
+        sinon.assert.calledWithMatch(dispatcher.dispatch,
+          sinon.match.hasOwn("roomName", "test@test.tld"));
+      });
+
+    it("should name the created room using the contact name when available",
+      function() {
+        view = mountTestComponent({contact: {
+          email: [{value: "test@test.tld"}],
+          name: ["Mr Fake ContactName"]
+        }});
+
+        var emailLinkBtn = view.getDOMNode().querySelector('.btn-email');
+
+        React.addons.TestUtils.Simulate.click(emailLinkBtn);
+
+        sinon.assert.calledOnce(dispatcher.dispatch);
+        sinon.assert.calledWithMatch(dispatcher.dispatch,
+          sinon.match.hasOwn("roomName", "Mr Fake ContactName"));
       });
 
     it("should disable the email link button once the action is dispatched",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
         var emailLinkBtn = view.getDOMNode().querySelector('.btn-email');
         React.addons.TestUtils.Simulate.click(emailLinkBtn);
 
@@ -305,8 +340,8 @@ describe("loop.conversationViews", function () {
 
     it("should compose an email once the email link is received", function() {
       var composeCallUrlEmail = sandbox.stub(sharedUtils, "composeCallUrlEmail");
-      view = mountTestComponent();
-      store.set("emailLink", "http://fake.invalid/");
+      view = mountTestComponent({contact: contact});
+      store.setStoreState({emailLink: "http://fake.invalid/"});
 
       sinon.assert.calledOnce(composeCallUrlEmail);
       sinon.assert.calledWithExactly(composeCallUrlEmail,
@@ -315,17 +350,16 @@ describe("loop.conversationViews", function () {
 
     it("should close the conversation window once the email link is received",
       function() {
-        sandbox.stub(window, "close");
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
-        store.set("emailLink", "http://fake.invalid/");
+        store.setStoreState({emailLink: "http://fake.invalid/"});
 
-        sinon.assert.calledOnce(window.close);
+        sinon.assert.calledOnce(fakeWindow.close);
       });
 
     it("should display an error message in case email link retrieval failed",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
         store.trigger("error:emailLink");
 
@@ -334,7 +368,7 @@ describe("loop.conversationViews", function () {
 
     it("should allow retrying to get a call url if it failed previously",
       function() {
-        view = mountTestComponent();
+        view = mountTestComponent({contact: contact});
 
         store.trigger("error:emailLink");
 
@@ -342,7 +376,7 @@ describe("loop.conversationViews", function () {
       });
 
     it("should play a failure sound, once", function() {
-      view = mountTestComponent();
+      view = mountTestComponent({contact: contact});
 
       sinon.assert.calledOnce(navigator.mozLoop.getAudioBlob);
       sinon.assert.calledWithExactly(navigator.mozLoop.getAudioBlob,
@@ -457,9 +491,9 @@ describe("loop.conversationViews", function () {
     }
 
     beforeEach(function() {
-      store = new loop.store.ConversationStore({}, {
-        dispatcher: dispatcher,
+      store = new loop.store.ConversationStore(dispatcher, {
         client: {},
+        mozLoop: fakeMozLoop,
         sdkDriver: {}
       });
       feedbackStore = new loop.store.FeedbackStore(dispatcher, {
@@ -469,7 +503,7 @@ describe("loop.conversationViews", function () {
 
     it("should render the CallFailedView when the call state is 'terminated'",
       function() {
-        store.set({callState: CALL_STATES.TERMINATED});
+        store.setStoreState({callState: CALL_STATES.TERMINATED});
 
         view = mountTestComponent();
 
@@ -479,7 +513,7 @@ describe("loop.conversationViews", function () {
 
     it("should render the PendingConversationView when the call state is 'gather'",
       function() {
-        store.set({
+        store.setStoreState({
           callState: CALL_STATES.GATHER,
           contact: contact
         });
@@ -492,7 +526,7 @@ describe("loop.conversationViews", function () {
 
     it("should render the OngoingConversationView when the call state is 'ongoing'",
       function() {
-        store.set({callState: CALL_STATES.ONGOING});
+        store.setStoreState({callState: CALL_STATES.ONGOING});
 
         view = mountTestComponent();
 
@@ -502,7 +536,7 @@ describe("loop.conversationViews", function () {
 
     it("should render the FeedbackView when the call state is 'finished'",
       function() {
-        store.set({callState: CALL_STATES.FINISHED});
+        store.setStoreState({callState: CALL_STATES.FINISHED});
 
         view = mountTestComponent();
 
@@ -519,7 +553,7 @@ describe("loop.conversationViews", function () {
         };
         sandbox.stub(window, "Audio").returns(fakeAudio);
 
-        store.set({callState: CALL_STATES.FINISHED});
+        store.setStoreState({callState: CALL_STATES.FINISHED});
 
         view = mountTestComponent();
 
@@ -528,7 +562,7 @@ describe("loop.conversationViews", function () {
 
     it("should update the rendered views when the state is changed.",
       function() {
-        store.set({
+        store.setStoreState({
           callState: CALL_STATES.GATHER,
           contact: contact
         });
@@ -538,7 +572,7 @@ describe("loop.conversationViews", function () {
         TestUtils.findRenderedComponentWithType(view,
           loop.conversationViews.PendingConversationView);
 
-        store.set({callState: CALL_STATES.TERMINATED});
+        store.setStoreState({callState: CALL_STATES.TERMINATED});
 
         TestUtils.findRenderedComponentWithType(view,
           loop.conversationViews.CallFailedView);

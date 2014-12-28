@@ -18,6 +18,12 @@ let gIsWindows = ("@mozilla.org/windows-registry-key;1" in Cc);
 const isDebugBuild = Cc["@mozilla.org/xpcom/debug;1"]
                        .getService(Ci.nsIDebug2).isDebugBuild;
 
+// The test EV roots are only enabled in debug builds as a security measure.
+//
+// Bug 1008316: B2G doesn't have EV enabled, so EV is not expected even in debug
+// builds.
+const gEVExpected = isDebugBuild && !("@mozilla.org/b2g-process-global;1" in Cc);
+
 const SSS_STATE_FILE_NAME = "SiteSecurityServiceState.txt";
 
 const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
@@ -363,7 +369,9 @@ function _setupTLSServerTest(serverBinName)
                  .getService(Ci.nsIEnvironment);
   let greBinDir = directoryService.get("GreBinD", Ci.nsIFile);
   envSvc.set("DYLD_LIBRARY_PATH", greBinDir.path);
-  envSvc.set("LD_LIBRARY_PATH", greBinDir.path);
+  // Android libraries are in /data/local/xpcb, but "GreBinD" does not return
+  // this path on Android, so hard code it here.
+  envSvc.set("LD_LIBRARY_PATH", greBinDir.path + ":/data/local/xpcb");
   envSvc.set("MOZ_TLS_SERVER_DEBUG_LEVEL", "3");
   envSvc.set("MOZ_TLS_SERVER_CALLBACK_PORT", CALLBACK_PORT);
 

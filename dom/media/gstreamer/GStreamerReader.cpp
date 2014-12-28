@@ -94,6 +94,7 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
   mMP3FrameParser(aDecoder->GetResource()->GetLength()),
   mDataOffset(0),
   mUseParserDuration(false),
+  mLastParserDuration(-1),
 #if GST_VERSION_MAJOR >= 1
   mAllocator(nullptr),
   mBufferPool(nullptr),
@@ -824,10 +825,11 @@ bool GStreamerReader::DecodeVideoFrame(bool &aKeyFrameSkip,
   return true;
 }
 
-void GStreamerReader::Seek(int64_t aTarget,
-                           int64_t aStartTime,
-                           int64_t aEndTime,
-                           int64_t aCurrentTime)
+nsRefPtr<MediaDecoderReader::SeekPromise>
+GStreamerReader::Seek(int64_t aTarget,
+                      int64_t aStartTime,
+                      int64_t aEndTime,
+                      int64_t aCurrentTime)
 {
   NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
 
@@ -841,8 +843,7 @@ void GStreamerReader::Seek(int64_t aTarget,
                                static_cast<GstSeekFlags>(flags),
                                seekPos)) {
     LOG(PR_LOG_ERROR, "seek failed");
-    GetCallback()->OnSeekCompleted(NS_ERROR_FAILURE);
-    return;
+    return SeekPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
   LOG(PR_LOG_DEBUG, "seek succeeded");
   GstMessage* message = gst_bus_timed_pop_filtered(mBus, GST_CLOCK_TIME_NONE,
@@ -850,7 +851,7 @@ void GStreamerReader::Seek(int64_t aTarget,
   gst_message_unref(message);
   LOG(PR_LOG_DEBUG, "seek completed");
 
-  GetCallback()->OnSeekCompleted(NS_OK);
+  return SeekPromise::CreateAndResolve(true, __func__);
 }
 
 nsresult GStreamerReader::GetBuffered(dom::TimeRanges* aBuffered)

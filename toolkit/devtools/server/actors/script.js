@@ -12,12 +12,14 @@ const { ActorPool, getOffsetColumn } = require("devtools/server/actors/common");
 const { DebuggerServer } = require("devtools/server/main");
 const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 const { dbg_assert, dumpn, update, fetch } = DevToolsUtils;
+const { dirname, joinURI } = require("devtools/toolkit/path");
 const { SourceMapConsumer, SourceMapGenerator } = require("source-map");
 const promise = require("promise");
 const PromiseDebugging = require("PromiseDebugging");
 const Debugger = require("Debugger");
 const xpcInspector = require("xpcInspector");
 const mapURIToAddonID = require("./utils/map-uri-to-addon-id");
+const ScriptStore = require("./utils/ScriptStore");
 
 const { defer, resolve, reject, all } = require("devtools/toolkit/deprecated-sync-thenables");
 const { CssLogic } = require("devtools/styleinspector/css-logic");
@@ -58,300 +60,153 @@ Debugger.Object.prototype.getPromiseState = function () {
 };
 
 /**
- * BreakpointStore objects keep track of all breakpoints that get set so that we
- * can reset them when the same script is introduced to the thread again (such
- * as after a refresh).
+ * A BreakpointActorMap is a map from locations to instances of BreakpointActor.
  */
-function BreakpointStore() {
+function BreakpointActorMap() {
   this._size = 0;
-
-  // If we have a whole-line breakpoint set at LINE in URL, then
-  //
-  //   this._wholeLineBreakpoints[URL][LINE]
-  //
-  // is an object
-  //
-  //   { url, line[, actor] }
-  //
-  // where the `actor` property is optional.
-  this._wholeLineBreakpoints = Object.create(null);
-
-  // If we have a breakpoint set at LINE, COLUMN in URL, then
-  //
-  //   this._breakpoints[URL][LINE][COLUMN]
-  //
-  // is an object
-  //
-  //   { url, line, column[, actor] }
-  //
-  // where the `actor` property is optional.
-  this._breakpoints = Object.create(null);
+  this._actors = {};
 }
 
-BreakpointStore.prototype = {
-  _size: null,
-  get size() { return this._size; },
-
+BreakpointActorMap.prototype = {
   /**
-   * Add a breakpoint to the breakpoint store if it doesn't already exist.
+   * Return the number of instances of BreakpointActor in this instance of
+   * BreakpointActorMap.
    *
-   * @param Object aBreakpoint
-   *        The breakpoint to be added (not copied). It is an object with the
-   *        following properties:
-   *          - source
-   *          - line
-   *          - column (optional; omission implies that the breakpoint is for
-   *            the whole line)
-   *          - condition (optional)
-   *          - actor (optional)
-   * @returns Object aBreakpoint
-   *          The new or existing breakpoint.
+   * @returns Number
+   *          The number of instances of BreakpointACtor in this instance of
+   *          BreakpointActorMap.
    */
-  addBreakpoint: function (aBreakpoint) {
-    let { source: { actor }, line, column } = aBreakpoint;
-
-    if (column != null) {
-      if (!this._breakpoints[actor]) {
-        this._breakpoints[actor] = [];
-      }
-      if (!this._breakpoints[actor][line]) {
-        this._breakpoints[actor][line] = [];
-      }
-
-      if (!this._breakpoints[actor][line][column]) {
-        this._breakpoints[actor][line][column] = aBreakpoint;
-        this._size++;
-      }
-      return this._breakpoints[actor][line][column];
-    } else {
-      // Add a breakpoint that breaks on the whole line.
-      if (!this._wholeLineBreakpoints[actor]) {
-        this._wholeLineBreakpoints[actor] = [];
-      }
-
-      if (!this._wholeLineBreakpoints[actor][line]) {
-        this._wholeLineBreakpoints[actor][line] = aBreakpoint;
-        this._size++;
-      }
-      return this._wholeLineBreakpoints[actor][line];
-    }
+  get size() {
+    return this._size;
   },
 
   /**
-   * Remove a breakpoint from the breakpoint store.
+   * Generate all instances of BreakpointActor that match the given query in
+   * this instance of BreakpointActorMap.
    *
-   * @param Object aBreakpoint
-   *        The breakpoint to be removed. It is an object with the following
-   *        properties:
-   *          - source
-   *          - line
-   *          - column (optional)
+   * @param Object query
+   *        An optional object with the following properties:
+   *        - source (optional)
+   *        - line (optional, requires source)
+   *        - column (optional, requires line)
    */
-  removeBreakpoint: function ({ source: { actor }, line, column }) {
-    if (column != null) {
-      if (this._breakpoints[actor]) {
-        if (this._breakpoints[actor][line]) {
-          if (this._breakpoints[actor][line][column]) {
-            delete this._breakpoints[actor][line][column];
-            this._size--;
-
-            // If this was the last breakpoint on this line, delete the line from
-            // `this._breakpoints[url]` as well. Otherwise `_iterLines` will yield
-            // this line even though we no longer have breakpoints on
-            // it. Furthermore, we use Object.keys() instead of just checking
-            // `this._breakpoints[url].length` directly, because deleting
-            // properties from sparse arrays doesn't update the `length` property
-            // like adding them does.
-            if (Object.keys(this._breakpoints[actor][line]).length === 0) {
-              delete this._breakpoints[actor][line];
-            }
-          }
+  findActors: function* (query = {}) {
+    function* findKeys(object, key) {
+      if (key !== undefined) {
+        if (key in object) {
+          yield key;
         }
       }
-    } else {
-      if (this._wholeLineBreakpoints[actor]) {
-        if (this._wholeLineBreakpoints[actor][line]) {
-          delete this._wholeLineBreakpoints[actor][line];
-          this._size--;
+      else {
+        for (let key of Object.keys(object)) {
+          yield key;
         }
       }
     }
-  },
 
-  /**
-   * Move the breakpoint to the new location.
-   *
-   * @param Object aBreakpoint
-   *        The breakpoint being moved. See `addBreakpoint` for a description of
-   *        its expected properties.
-   * @param Object aNewLocation
-   *        The location to move the breakpoint to. Properties:
-   *          - line
-   *          - column (optional; omission implies whole line breakpoint)
-   */
-  moveBreakpoint: function (aBreakpoint, aNewLocation) {
-    const existingBreakpoint = this.getBreakpoint(aBreakpoint);
-    this.removeBreakpoint(existingBreakpoint);
+    query.actor = query.source ? query.source.actor : undefined;
+    query.beginColumn = query.column ? query.column : undefined;
+    query.endColumn = query.column ? query.column + 1 : undefined;
 
-    const { line, column } = aNewLocation;
-    existingBreakpoint.line = line;
-    existingBreakpoint.column = column;
-    this.addBreakpoint(existingBreakpoint);
-  },
-
-  /**
-   * Get a breakpoint from the breakpoint store. Will throw an error if the
-   * breakpoint is not found.
-   *
-   * @param Object aLocation
-   *        The location of the breakpoint you are retrieving. It is an object
-   *        with the following properties:
-   *          - source
-   *          - line
-   *          - column (optional)
-   */
-  getBreakpoint: function (aLocation) {
-    let { source: { actor, url }, line, column } = aLocation;
-    dbg_assert(actor != null);
-    dbg_assert(line != null);
-
-    var foundBreakpoint = this.hasBreakpoint(aLocation);
-    if (foundBreakpoint == null) {
-      throw new Error("No breakpoint at = " + (url || actor)
-          + ", line = " + line
-          + ", column = " + column);
+    for (let actor of findKeys(this._actors, query.actor))
+    for (let line of findKeys(this._actors[actor], query.line))
+    for (let beginColumn of findKeys(this._actors[actor][line], query.beginColumn))
+    for (let endColumn of findKeys(this._actors[actor][line][beginColumn], query.endColumn)) {
+      yield this._actors[actor][line][beginColumn][endColumn];
     }
-
-    return foundBreakpoint;
   },
 
   /**
-   * Checks if the breakpoint store has a requested breakpoint.
+   * Return the instance of BreakpointActor at the given location in this
+   * instance of BreakpointActorMap.
    *
-   * @param Object aLocation
-   *        The location of the breakpoint you are retrieving. It is an object
-   *        with the following properties:
-   *          - source
-   *          - line
-   *          - column (optional)
-   * @returns The stored breakpoint if it exists, null otherwise.
+   * @param Object location
+   *        An object with the following properties:
+   *        - source
+   *        - line
+   *        - column (optional)
+   *
+   * @returns BreakpointActor actor
+   *          The instance of BreakpointActor at the given location.
    */
-  hasBreakpoint: function (aLocation) {
-    let { source: { actor }, line, column } = aLocation;
-    dbg_assert(actor != null);
-    dbg_assert(line != null);
-    for (let bp of this.findBreakpoints(aLocation)) {
-      // We will get whole line breakpoints before individual columns, so just
-      // return the first one and if they didn't specify a column then they will
-      // get the whole line breakpoint, and otherwise we will find the correct
-      // one.
-      return bp;
+  getActor: function (location) {
+    for (let actor of this.findActors(location)) {
+      return actor;
     }
 
     return null;
   },
 
   /**
-   * Iterate over the breakpoints in this breakpoint store. You can optionally
-   * provide search parameters to filter the set of breakpoints down to those
-   * that match your parameters.
+   * Set the given instance of BreakpointActor to the given location in this
+   * instance of BreakpointActorMap.
    *
-   * @param Object aSearchParams
-   *        Optional. An object with the following properties:
-   *          - source
-   *          - line (optional; requires the url property)
-   *          - column (optional; requires the line property)
+   * @param Object location
+   *        An object with the following properties:
+   *        - source
+   *        - line
+   *        - column (optional)
+   *
+   * @param BreakpointActor actor
+   *        The instance of BreakpointActor to be set to the given location.
    */
-  findBreakpoints: function* (aSearchParams={}) {
-    if (aSearchParams.column != null) {
-      dbg_assert(aSearchParams.line != null);
-    }
-    if (aSearchParams.line != null) {
-      dbg_assert(aSearchParams.source != null);
-      dbg_assert(aSearchParams.source.actor != null);
-    }
+  setActor: function (location, actor) {
+    let { source, line, column } = location;
 
-    let actor = aSearchParams.source ? aSearchParams.source.actor : null;
-    for (let actor of this._iterActors(actor)) {
-      for (let line of this._iterLines(actor, aSearchParams.line)) {
-        // Always yield whole line breakpoints first. See comment in
-        // |BreakpointStore.prototype.hasBreakpoint|.
-        if (aSearchParams.column == null
-            && this._wholeLineBreakpoints[actor]
-            && this._wholeLineBreakpoints[actor][line]) {
-          yield this._wholeLineBreakpoints[actor][line];
-        }
-        for (let column of this._iterColumns(actor, line, aSearchParams.column)) {
-          yield this._breakpoints[actor][line][column];
-        }
-      }
+    let beginColumn = column ? column : 0;
+    let endColumn = column ? column + 1 : Infinity;
+
+    if (!this._actors[source.actor]) {
+      this._actors[source.actor] = [];
     }
+    if (!this._actors[source.actor][line]) {
+      this._actors[source.actor][line] = [];
+    }
+    if (!this._actors[source.actor][line][beginColumn]) {
+      this._actors[source.actor][line][beginColumn] = [];
+    }
+    if (!this._actors[source.actor][line][beginColumn][endColumn]) {
+      ++this._size;
+    }
+    this._actors[source.actor][line][beginColumn][endColumn] = actor;
   },
 
-  _iterActors: function* (aActor) {
-    if (aActor) {
-      if (this._breakpoints[aActor] || this._wholeLineBreakpoints[aActor]) {
-        yield aActor;
-      }
-    } else {
-      for (let actor of Object.keys(this._wholeLineBreakpoints)) {
-        yield actor;
-      }
-      for (let actor of Object.keys(this._breakpoints)) {
-        if (actor in this._wholeLineBreakpoints) {
-          continue;
+  /**
+   * Delete the instance of BreakpointActor from the given location in this
+   * instance of BreakpointActorMap.
+   *
+   * @param Object location
+   *        An object with the following properties:
+   *        - source
+   *        - line
+   *        - column (optional)
+   */
+  deleteActor: function (location) {
+    let { source, line, column } = location;
+
+    let beginColumn = column ? column : 0;
+    let endColumn = column ? column + 1 : Infinity;
+
+    if (this._actors[source.actor]) {
+      if (this._actors[source.actor][line]) {
+        if (this._actors[source.actor][line][beginColumn]) {
+          if (this._actors[source.actor][line][beginColumn][endColumn]) {
+            --this._size;
+          }
+          delete this._actors[source.actor][line][beginColumn][endColumn];
+          if (Object.keys(this._actors[source.actor][line][beginColumn]).length === 0) {
+            delete this._actors[source.actor][line][beginColumn];
+          }
         }
-        yield actor;
-      }
-    }
-  },
-
-  _iterLines: function* (aActor, aLine) {
-    if (aLine != null) {
-      if ((this._wholeLineBreakpoints[aActor]
-           && this._wholeLineBreakpoints[aActor][aLine])
-          || (this._breakpoints[aActor] && this._breakpoints[aActor][aLine])) {
-        yield aLine;
-      }
-    } else {
-      const wholeLines = this._wholeLineBreakpoints[aActor]
-        ? Object.keys(this._wholeLineBreakpoints[aActor])
-        : [];
-      const columnLines = this._breakpoints[aActor]
-        ? Object.keys(this._breakpoints[aActor])
-        : [];
-
-      const lines = wholeLines.concat(columnLines).sort();
-
-      let lastLine;
-      for (let line of lines) {
-        if (line === lastLine) {
-          continue;
+        if (Object.keys(this._actors[source.actor][line]).length === 0) {
+          delete this._actors[source.actor][line];
         }
-        yield line;
-        lastLine = line;
       }
     }
-  },
-
-  _iterColumns: function* (aActor, aLine, aColumn) {
-    if (!this._breakpoints[aActor] || !this._breakpoints[aActor][aLine]) {
-      return;
-    }
-
-    if (aColumn != null) {
-      if (this._breakpoints[aActor][aLine][aColumn]) {
-        yield aColumn;
-      }
-    } else {
-      for (let column in this._breakpoints[aActor][aLine]) {
-        yield column;
-      }
-    }
-  },
+  }
 };
 
-exports.BreakpointStore = BreakpointStore;
+exports.BreakpointActorMap = BreakpointActorMap;
 
 /**
  * Keeps track of persistent sources across reloads and ties different
@@ -579,13 +434,15 @@ function ThreadActor(aParent, aGlobal)
   this._gripDepth = 0;
   this._threadLifetimePool = null;
   this._tabClosed = false;
+  this._scripts = null;
+  this._sources = null;
 
   this._options = {
     useSourceMaps: false,
     autoBlackBox: false
   };
 
-  this.breakpointStore = new BreakpointStore();
+  this.breakpointActorMap = new BreakpointActorMap();
   this.sourceActorStore = new SourceActorStore();
   this.blackBoxedSources = new Set(["self-hosted"]);
   this.prettyPrintedSources = new Map();
@@ -642,6 +499,14 @@ ThreadActor.prototype = {
       this._threadLifetimePool.objectActors = new WeakMap();
     }
     return this._threadLifetimePool;
+  },
+
+  get scripts() {
+    if (!this._scripts) {
+      this._scripts = new ScriptStore();
+      this._scripts.addScripts(this.dbg.findScripts());
+    }
+    return this._scripts;
   },
 
   get sources() {
@@ -720,6 +585,7 @@ ThreadActor.prototype = {
       this.dbg.removeAllDebuggees();
     }
     this._sources = null;
+    this._scripts = null;
   },
 
   /**
@@ -1330,18 +1196,16 @@ ThreadActor.prototype = {
     for (let line = 0, n = offsets.length; line < n; line++) {
       if (offsets[line]) {
         let location = { line: line };
-        let resp = sourceActor.createAndStoreBreakpoint(location);
+        let resp = sourceActor.setBreakpoint(location);
         dbg_assert(!resp.actualLocation, "No actualLocation should be returned");
         if (resp.error) {
           reportError(new Error("Unable to set breakpoint on event listener"));
           return;
         }
-        let bp = this.breakpointStore.getBreakpoint({
+        let bpActor = this.breakpointActorMap.getActor({
           source: sourceActor.form(),
           line: location.line
         });
-        let bpActor = bp.actor;
-        dbg_assert(bp, "Breakpoint must exist");
         dbg_assert(bpActor, "Breakpoint actor must be created");
         this._hiddenBreakpoints.set(bpActor.actorID, bpActor);
         break;
@@ -1468,9 +1332,11 @@ ThreadActor.prototype = {
    * Get the script and source lists from the debugger.
    */
   _discoverSources: function () {
-    // Only get one script per url.
+    // Only get one script per Debugger.Source.
     const sourcesToScripts = new Map();
-    for (let s of this.dbg.findScripts()) {
+    const scripts = this.scripts.getAllScripts();
+    for (let i = 0, len = scripts.length; i < len; i++) {
+      let s = scripts[i];
       if (s.source) {
         sourcesToScripts.set(s.source, s);
       }
@@ -1496,10 +1362,8 @@ ThreadActor.prototype = {
    * caches won't hold on to the Debugger.Script objects leaking memory.
    */
   disableAllBreakpoints: function () {
-    for (let bp of this.breakpointStore.findBreakpoints()) {
-      if (bp.actor) {
-        bp.actor.removeScripts();
-      }
+    for (let bpActor of this.breakpointActorMap.findActors()) {
+      bpActor.removeScripts();
     }
   },
 
@@ -2094,6 +1958,15 @@ ThreadActor.prototype = {
    */
   onNewScript: function (aScript, aGlobal) {
     this.sources.sourcesForScript(aScript);
+
+    // XXX: The scripts must be added to the ScriptStore before restoring
+    // breakpoints in _addScript. If we try to add them to the ScriptStore
+    // inside _addScript, we can accidentally set a breakpoint in a top level
+    // script as a "closest match" because we wouldn't have added the child
+    // scripts to the ScriptStore yet.
+    this.scripts.addScript(aScript);
+    this.scripts.addScripts(aScript.getChildScripts());
+
     this._addScript(aScript);
 
     // |onNewScript| is only fired for top level scripts (AKA staticLevel == 0),
@@ -2128,11 +2001,11 @@ ThreadActor.prototype = {
    * Restore any pre-existing breakpoints to the scripts that we have access to.
    */
   _restoreBreakpoints: function () {
-    if (this.breakpointStore.size === 0) {
+    if (this.breakpointActorMap.size === 0) {
       return;
     }
 
-    for (let s of this.dbg.findScripts()) {
+    for (let s of this.scripts.getAllScripts()) {
       this._addScript(s);
     }
   },
@@ -2153,11 +2026,11 @@ ThreadActor.prototype = {
 
     let endLine = aScript.startLine + aScript.lineCount - 1;
     let source = this.sources.source({ source: aScript.source });
-    for (let bp of this.breakpointStore.findBreakpoints(source.form())) {
+    for (let bpActor of this.breakpointActorMap.findActors({ source: source.form() })) {
       // Limit the search to the line numbers contained in the new script.
-      if (bp.line >= aScript.startLine
-          && bp.line <= endLine) {
-        source._setBreakpoint(bp, aScript);
+      if (bpActor.location.line >= aScript.startLine
+          && bpActor.location.line <= endLine) {
+        source.setBreakpoint(bpActor.location, aScript);
       }
     }
 
@@ -2388,9 +2261,10 @@ SourceActor.prototype = {
 
   get threadActor() { return this._threadActor; },
   get dbg() { return this.threadActor.dbg; },
+  get scripts() { return this.threadActor.scripts; },
   get source() { return this._source; },
   get generatedSource() { return this._generatedSource; },
-  get breakpointStore() { return this.threadActor.breakpointStore; },
+  get breakpointActorMap() { return this.threadActor.breakpointActorMap; },
   get url() {
     if (this.source) {
       return getSourceURL(this.source);
@@ -2572,7 +2446,7 @@ SourceActor.prototype = {
    **/
   getExecutableOffsets: function  (source, onlyLine) {
     let offsets = new Set();
-    for (let s of this.threadActor.dbg.findScripts({ source: source })) {
+    for (let s of this.threadActor.scripts.getScriptsBySource(source)) {
       for (let offset of s.getAllColumnOffsets()) {
         offsets.add(onlyLine ? offset.lineNumber : offset);
       }
@@ -2841,7 +2715,7 @@ SourceActor.prototype = {
 
   _createBreakpoint: function(loc, originalLoc, condition) {
     return resolve(null).then(() => {
-      return this.createAndStoreBreakpoint({
+      return this.setBreakpoint({
         line: loc.line,
         column: loc.column,
         condition: condition
@@ -2904,50 +2778,31 @@ SourceActor.prototype = {
     });
   },
 
-  /**
-   * Create a breakpoint at the specified location and store it in the
-   * cache. Takes ownership of `aRequest`. This is the
-   * generated location if this source is sourcemapped.
-   * Used by the XPCShell test harness to set breakpoints in a script before
-   * it has loaded.
-   *
-   * @param Object aRequest
-   *        An object of the form { line[, column, condition] }. The
-   *        location is in the generated source, if sourcemapped.
-   */
-  createAndStoreBreakpoint: function (aRequest) {
-    let bp = update({}, aRequest, { source: this.form() });
-    this.breakpointStore.addBreakpoint(bp);
-    return this._setBreakpoint(aRequest);
-  },
-
   /** Get or create the BreakpointActor for the breakpoint at the given location.
    *
    * NB: This will override a pre-existing BreakpointActor's condition with
    * the given the location's condition.
    *
    * @param Object location
-   *        The breakpoint location. See BreakpointStore.prototype.addBreakpoint
+   *        The breakpoint location. See BreakpointStore.prototype.setActor
    *        for more information.
    * @returns BreakpointActor
    */
   _getOrCreateBreakpointActor: function (location) {
-    let actor;
-    const storedBp = this.breakpointStore.getBreakpoint(location);
-
-    if (storedBp.actor) {
-      actor = storedBp.actor;
-      actor.condition = location.condition;
+    let actor = this.breakpointActorMap.getActor(location);
+    if (!actor) {
+      actor = new BreakpointActor(this.threadActor, {
+        sourceActor: this,
+        line: location.line,
+        column: location.column,
+        condition: location.condition
+      });
+      this.threadActor.threadLifetimePool.addActor(actor);
+      this.breakpointActorMap.setActor(location, actor);
       return actor;
     }
 
-    storedBp.actor = actor = new BreakpointActor(this.threadActor, {
-      sourceActor: this,
-      line: location.line,
-      column: location.column,
-      condition: location.condition
-    });
-    this.threadActor.threadLifetimePool.addActor(actor);
+    actor.condition = location.condition;
     return actor;
   },
 
@@ -3053,7 +2908,7 @@ SourceActor.prototype = {
    *        If provided, only set breakpoints in this Debugger.Script, and
    *        nowhere else.
    */
-  _setBreakpoint: function (aLocation, aOnlyThisScript=null) {
+  setBreakpoint: function (aLocation, aOnlyThisScript=null) {
     const location = {
       source: this.form(),
       line: aLocation.line,
@@ -3062,16 +2917,13 @@ SourceActor.prototype = {
     };
     const actor = location.actor = this._getOrCreateBreakpointActor(location);
 
-    // Find all scripts matching the given location. We will almost
-    // always have a `source` object to query, but inline HTML scripts
-    // are all represented by 1 SourceActor even though they have
-    // separate source objects, so we need to query based on the url
-    // of the page for them.
-    const scripts = this.dbg.findScripts({
-      source: this.source || undefined,
-      url: this._originalUrl || undefined,
-      line: location.line,
-    });
+    // Find all scripts matching the given location. We will almost always have
+    // a `source` object to query, but multiple inline HTML scripts are all
+    // represented by a single SourceActor even though they have separate source
+    // objects, so we need to query based on the url of the page for them.
+    const scripts = this.source
+      ? this.scripts.getScriptsBySourceAndLine(this.source, location.line)
+      : this.scripts.getScriptsByURLAndLine(this._originalUrl, location.line);
 
     if (scripts.length === 0) {
       // Since we did not find any scripts to set the breakpoint on now, return
@@ -3112,12 +2964,12 @@ SourceActor.prototype = {
       // above is redundant and must be destroyed. If we do not have an existing
       // actor, we need to update the breakpoint store with the new location.
 
-      const existingBreakpoint = this.breakpointStore.hasBreakpoint(actualLocation);
-      if (existingBreakpoint && existingBreakpoint.actor) {
+      let existingActor = this.breakpointActorMap.getActor(actualLocation);
+      if (existingActor) {
         actor.onDelete();
-        this.breakpointStore.removeBreakpoint(location);
+        this.breakpointActorMap.deleteActor(location);
         return {
-          actor: existingBreakpoint.actor.actorID,
+          actor: existingActor.actorID,
           actualLocation
         };
       } else {
@@ -3126,7 +2978,8 @@ SourceActor.prototype = {
           sourceActor: this,
           line: actualLocation.line
         };
-        this.breakpointStore.moveBreakpoint(location, actualLocation);
+        this.breakpointActorMap.deleteActor(location);
+        this.breakpointActorMap.setActor(actualLocation, actor);
       }
     }
 
@@ -4911,7 +4764,7 @@ BreakpointActor.prototype = {
    */
   onDelete: function (aRequest) {
     // Remove from the breakpoint store.
-    this.threadActor.breakpointStore.removeBreakpoint(
+    this.threadActor.breakpointActorMap.deleteActor(
       update({}, this.location, { source: this.location.sourceActor.form() })
     );
     this.threadActor.threadLifetimePool.removeActor(this);
@@ -5134,6 +4987,9 @@ Debugger.Script.prototype.toString = function() {
   let output = "";
   if (this.url) {
     output += this.url;
+  }
+  if (typeof this.staticLevel != "undefined") {
+    output += ":L" + this.staticLevel;
   }
   if (typeof this.startLine != "undefined") {
     output += ":" + this.startLine;
@@ -5433,7 +5289,9 @@ ThreadSources.prototype = {
    * Only to be used when we aren't source mapping.
    */
   _sourceForScript: function (aScript) {
-    let url = getSourceURL(aScript.source);
+    // Don't use getSourceURL because we don't want to consider the
+    // displayURL property if it's an eval source
+    let url = isEvalSource(aScript.source) ? null : aScript.source.url;
     let spec = {
       source: aScript.source
     };
@@ -5924,17 +5782,30 @@ function getSymbolName(symbol) {
   return name || undefined;
 }
 
-function getSourceURL(source) {
+function isEvalSource(source) {
   let introType = source.introductionType;
   // These are all the sources that are essentially eval-ed (either
   // by calling eval or passing a string to one of these functions).
-  // Current these have a `url` property when the shouldn't, so
-  // forcefully only consider displayURL
-  if (introType === 'eval' ||
-      introType === 'Function' ||
-      introType === 'eventHandler' ||
-      introType === 'setTimeout' ||
-      introType === 'setInterval') {
+  return (introType === 'eval' ||
+          introType === 'Function' ||
+          introType === 'eventHandler' ||
+          introType === 'setTimeout' ||
+          introType === 'setInterval');
+}
+
+function getSourceURL(source) {
+  if(isEvalSource(source)) {
+    // Eval sources have no urls, but they might have a `displayURL`
+    // created with the sourceURL pragma. If the introduction script
+    // is a non-eval script, generate an full absolute URL relative to it.
+
+    if(source.displayURL &&
+       source.introductionScript &&
+       !isEvalSource(source.introductionScript.source)) {
+      return joinURI(dirname(source.introductionScript.source.url),
+                     source.displayURL);
+    }
+
     return source.displayURL;
   }
   return source.url;

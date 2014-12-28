@@ -194,9 +194,8 @@ SetConst(JSContext *cx, HandlePropertyName name, HandleObject scopeChain, Handle
 }
 
 bool
-MutatePrototype(JSContext *cx, HandleObject obj, HandleValue value)
+MutatePrototype(JSContext *cx, HandlePlainObject obj, HandleValue value)
 {
-    MOZ_ASSERT(obj->is<JSObject>(), "must only be used with object literals");
     if (!value.isObjectOrNull())
         return true;
 
@@ -283,7 +282,7 @@ template bool StringsEqual<true>(JSContext *cx, HandleString lhs, HandleString r
 template bool StringsEqual<false>(JSContext *cx, HandleString lhs, HandleString rhs, bool *res);
 
 JSObject*
-NewInitObject(JSContext *cx, HandleNativeObject templateObject)
+NewInitObject(JSContext *cx, HandlePlainObject templateObject)
 {
     NewObjectKind newKind = templateObject->hasSingletonType() ? SingletonObject : GenericObject;
     if (!templateObject->hasLazyType() && templateObject->type()->shouldPreTenure())
@@ -300,7 +299,7 @@ NewInitObject(JSContext *cx, HandleNativeObject templateObject)
 }
 
 JSObject *
-NewInitObjectWithClassPrototype(JSContext *cx, HandleObject templateObject)
+NewInitObjectWithClassPrototype(JSContext *cx, HandlePlainObject templateObject)
 {
     MOZ_ASSERT(!templateObject->hasSingletonType());
     MOZ_ASSERT(!templateObject->hasLazyType());
@@ -308,11 +307,10 @@ NewInitObjectWithClassPrototype(JSContext *cx, HandleObject templateObject)
     NewObjectKind newKind = templateObject->type()->shouldPreTenure()
                             ? TenuredObject
                             : GenericObject;
-    JSObject *obj = NewObjectWithGivenProto(cx,
-                                            templateObject->getClass(),
-                                            templateObject->getProto(),
-                                            cx->global(),
-                                            newKind);
+    PlainObject *obj = NewObjectWithGivenProto<PlainObject>(cx,
+                                                            templateObject->getProto(),
+                                                            cx->global(),
+                                                            newKind);
     if (!obj)
         return nullptr;
 
@@ -545,13 +543,11 @@ NewCallObject(JSContext *cx, HandleShape shape, HandleTypeObject type, uint32_t 
     if (!obj)
         return nullptr;
 
-#ifdef JSGC_GENERATIONAL
     // The JIT creates call objects in the nursery, so elides barriers for
     // the initializing writes. The interpreter, however, may have allocated
     // the call object tenured, so barrier as needed before re-entering.
     if (!IsInsideNursery(obj))
         cx->runtime()->gc.storeBuffer.putWholeCellFromMainThread(obj);
-#endif
 
     return obj;
 }
@@ -563,14 +559,12 @@ NewSingletonCallObject(JSContext *cx, HandleShape shape, uint32_t lexicalBegin)
     if (!obj)
         return nullptr;
 
-#ifdef JSGC_GENERATIONAL
     // The JIT creates call objects in the nursery, so elides barriers for
     // the initializing writes. The interpreter, however, may have allocated
     // the call object tenured, so barrier as needed before re-entering.
     MOZ_ASSERT(!IsInsideNursery(obj),
                "singletons are created in the tenured heap");
     cx->runtime()->gc.storeBuffer.putWholeCellFromMainThread(obj);
-#endif
 
     return obj;
 }
@@ -706,7 +700,6 @@ FilterArgumentsOrEval(JSContext *cx, JSString *str)
         !StringHasPattern(linear, eval, mozilla::ArrayLength(eval));
 }
 
-#ifdef JSGC_GENERATIONAL
 void
 PostWriteBarrier(JSRuntime *rt, JSObject *obj)
 {
@@ -723,7 +716,6 @@ PostGlobalWriteBarrier(JSRuntime *rt, JSObject *obj)
         obj->compartment()->globalWriteBarriered = true;
     }
 }
-#endif
 
 uint32_t
 GetIndexFromString(JSString *str)
@@ -1298,15 +1290,6 @@ AssertValidValue(JSContext *cx, Value *v)
         AssertValidSymbolPtr(cx, v->toSymbol());
 }
 #endif
-
-// Definition of the MTypedObjectProto MIR.
-JSObject *
-TypedObjectProto(JSObject *obj)
-{
-    MOZ_ASSERT(obj->is<TypedObject>());
-    TypedObject &typedObj = obj->as<TypedObject>();
-    return &typedObj.typedProto();
-}
 
 bool
 ObjectIsCallable(JSObject *obj)

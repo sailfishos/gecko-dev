@@ -269,7 +269,12 @@ ClientLayerManager::EndTransactionInternal(DrawPaintedLayerCallback aCallback,
   if (!mRepeatTransaction && !GetRoot()->GetInvalidRegion().IsEmpty()) {
     GetRoot()->Mutated();
   }
-  
+
+  if (!mIsRepeatTransaction) {
+    mAnimationReadyTime = TimeStamp::Now();
+    GetRoot()->StartPendingAnimations(mAnimationReadyTime);
+  }
+
   mPaintedLayerCallback = nullptr;
   mPaintedLayerCallbackData = nullptr;
 
@@ -529,6 +534,10 @@ ClientLayerManager::StopFrameTimeRecording(uint32_t         aStartIndex,
 void
 ClientLayerManager::ForwardTransaction(bool aScheduleComposite)
 {
+  if (mForwarder->GetSyncObject()) {
+    mForwarder->GetSyncObject()->FinalizeFrame();
+  }
+
   mPhase = PHASE_FORWARD;
 
   mLatestTransactionId = mTransactionIdAllocator->GetTransactionId();
@@ -744,7 +753,7 @@ ClientLayerManager::ProgressiveUpdateCallback(bool aHasPendingNewThebesContent,
   CSSToLayerScale paintScale = aMetrics.LayersPixelsPerCSSPixel();
   const CSSRect& metricsDisplayPort =
     (aDrawingCritical && !aMetrics.mCriticalDisplayPort.IsEmpty()) ?
-      aMetrics.mCriticalDisplayPort : aMetrics.mDisplayPort;
+      aMetrics.mCriticalDisplayPort : aMetrics.GetDisplayPort();
   LayerRect displayPort = (metricsDisplayPort + aMetrics.GetScrollOffset()) * paintScale;
 
   ParentLayerPoint scrollOffset;

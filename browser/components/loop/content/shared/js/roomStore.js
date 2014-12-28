@@ -7,7 +7,7 @@
 var loop = loop || {};
 loop.store = loop.store || {};
 
-(function() {
+(function(mozL10n) {
   "use strict";
 
   /**
@@ -15,6 +15,20 @@ loop.store = loop.store || {};
    * @type {Object}
    */
   var sharedActions = loop.shared.actions;
+
+  /**
+   * Maximum size given to createRoom; only 2 is supported (and is
+   * always passed) because that's what the user-experience is currently
+   * designed and tested to handle.
+   * @type {Number}
+   */
+  var MAX_ROOM_CREATION_SIZE = loop.store.MAX_ROOM_CREATION_SIZE = 2;
+
+  /**
+   * The number of hours for which the room will exist - default 8 weeks
+   * @type {Number}
+   */
+  var DEFAULT_EXPIRES_IN = loop.store.DEFAULT_EXPIRES_IN = 24 * 7 * 8;
 
   /**
    * Room validation schema. See validate.js.
@@ -53,6 +67,8 @@ loop.store = loop.store || {};
    * - {mozLoop}         mozLoop          The MozLoop API object.
    * - {ActiveRoomStore} activeRoomStore  An optional substore for active room
    *                                      state.
+   * - {Notifications}   notifications    An optional notifications item that is
+   *                                      required if create actions are to be used
    */
   loop.store.RoomStore = loop.store.createStore({
     /**
@@ -61,13 +77,13 @@ loop.store = loop.store || {};
      * designed and tested to handle.
      * @type {Number}
      */
-    maxRoomCreationSize: 2,
+    maxRoomCreationSize: MAX_ROOM_CREATION_SIZE,
 
     /**
      * The number of hours for which the room will exist - default 8 weeks
      * @type {Number}
      */
-    defaultExpiresIn: 24 * 7 * 8,
+    defaultExpiresIn: DEFAULT_EXPIRES_IN,
 
     /**
      * Registered actions.
@@ -75,6 +91,7 @@ loop.store = loop.store || {};
      */
     actions: [
       "createRoom",
+      "createdRoom",
       "createRoomError",
       "copyRoomUrl",
       "deleteRoom",
@@ -84,6 +101,7 @@ loop.store = loop.store || {};
       "getAllRoomsError",
       "openRoom",
       "renameRoom",
+      "renameRoomError",
       "updateRoomList"
     ],
 
@@ -92,6 +110,7 @@ loop.store = loop.store || {};
         throw new Error("Missing option mozLoop");
       }
       this._mozLoop = options.mozLoop;
+      this._notifications = options.notifications;
 
       if (options.activeRoomStore) {
         this.activeRoomStore = options.activeRoomStore;
@@ -106,7 +125,7 @@ loop.store = loop.store || {};
         error: null,
         pendingCreation: false,
         pendingInitialRetrieval: false,
-        rooms: []
+        rooms: [],
       };
     },
 
@@ -118,6 +137,7 @@ loop.store = loop.store || {};
       this._mozLoop.rooms.on("add", this._onRoomAdded.bind(this));
       this._mozLoop.rooms.on("update", this._onRoomUpdated.bind(this));
       this._mozLoop.rooms.on("delete", this._onRoomRemoved.bind(this));
+      this._mozLoop.rooms.on("refresh", this._onRoomsRefresh.bind(this));
     },
 
     /**
@@ -134,10 +154,13 @@ loop.store = loop.store || {};
      * @param {Object} addedRoomData The added room data.
      */
     _onRoomAdded: function(eventName, addedRoomData) {
-      addedRoomData.participants = [];
-      addedRoomData.ctime = new Date().getTime();
+      addedRoomData.participants = addedRoomData.participants || [];
+      addedRoomData.ctime = addedRoomData.ctime || new Date().getTime();
       this.dispatchAction(new sharedActions.UpdateRoomList({
-        roomList: this._storeState.rooms.concat(new Room(addedRoomData))
+        // Ensure the room isn't part of the list already, then add it.
+        roomList: this._storeState.rooms.filter(function(room) {
+          return addedRoomData.roomToken !== room.roomToken;
+        }).concat(new Room(addedRoomData))
       }));
     },
 
@@ -167,6 +190,17 @@ loop.store = loop.store || {};
         roomList: this._storeState.rooms.filter(function(room) {
           return room.roomToken !== removedRoomData.roomToken;
         })
+      }));
+    },
+
+    /**
+     * Executed when the user switches accounts.
+     *
+     * @param {String} eventName The event name (unused).
+     */
+    _onRoomsRefresh: function(eventName) {
+      this.dispatchAction(new sharedActions.UpdateRoomList({
+        roomList: []
       }));
     },
 
@@ -230,7 +264,10 @@ loop.store = loop.store || {};
      * @param {sharedActions.CreateRoom} actionData The new room information.
      */
     createRoom: function(actionData) {
-      this.setStoreState({pendingCreation: true});
+      this.setStoreState({
+        pendingCreation: true,
+        error: null,
+      });
 
       var roomCreationData = {
         roomName:  this._generateNewRoomName(actionData.nameTemplate),
@@ -239,17 +276,30 @@ loop.store = loop.store || {};
         expiresIn: this.defaultExpiresIn
       };
 
+      this._notifications.remove("create-room-error");
+
       this._mozLoop.rooms.create(roomCreationData, function(err, createdRoom) {
-        this.setStoreState({pendingCreation: false});
         if (err) {
           this.dispatchAction(new sharedActions.CreateRoomError({error: err}));
           return;
         }
-        // Opens the newly created room
-        this.dispatchAction(new sharedActions.OpenRoom({
+
+        this.dispatchAction(new sharedActions.CreatedRoom({
           roomToken: createdRoom.roomToken
         }));
       }.bind(this));
+    },
+
+    /**
+     * Executed when a room has been created
+     */
+    createdRoom: function(actionData) {
+      this.setStoreState({pendingCreation: false});
+
+      // Opens the newly created room
+      this.dispatchAction(new sharedActions.OpenRoom({
+        roomToken: actionData.roomToken
+      }));
     },
 
     /**
@@ -262,6 +312,13 @@ loop.store = loop.store || {};
         error: actionData.error,
         pendingCreation: false
       });
+
+      // XXX Needs a more descriptive error - bug 1109151.
+      this._notifications.set({
+        id: "create-room-error",
+        level: "error",
+        message: mozL10n.get("generic_failure_title")
+      });
     },
 
     /**
@@ -271,6 +328,7 @@ loop.store = loop.store || {};
      */
     copyRoomUrl: function(actionData) {
       this._mozLoop.copyString(actionData.roomUrl);
+      this._mozLoop.notifyUITour("Loop:RoomURLCopied");
     },
 
     /**
@@ -280,6 +338,7 @@ loop.store = loop.store || {};
      */
     emailRoomUrl: function(actionData) {
       loop.shared.utils.composeCallUrlEmail(actionData.roomUrl);
+      this._mozLoop.notifyUITour("Loop:RoomURLEmailed");
     },
 
     /**
@@ -364,13 +423,25 @@ loop.store = loop.store || {};
      * @param {sharedActions.RenameRoom} actionData
      */
     renameRoom: function(actionData) {
-      this._mozLoop.rooms.rename(actionData.roomToken, actionData.newRoomName,
+      var oldRoomName = this.getStoreState("roomName");
+      var newRoomName = actionData.newRoomName.trim();
+
+      // Skip update if name is unchanged or empty.
+      if (!newRoomName || oldRoomName === newRoomName) {
+        return;
+      }
+
+      this.setStoreState({error: null});
+      this._mozLoop.rooms.rename(actionData.roomToken, newRoomName,
         function(err) {
           if (err) {
-            // XXX Give this a proper UI - bug 1100595.
-            console.error("Failed to rename the room", err);
+            this.dispatchAction(new sharedActions.RenameRoomError({error: err}));
           }
-        });
+        }.bind(this));
+    },
+
+    renameRoomError: function(actionData) {
+      this.setStoreState({error: actionData.error});
     }
   });
-})();
+})(document.mozL10n || navigator.mozL10n);

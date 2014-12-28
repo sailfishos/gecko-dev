@@ -343,7 +343,7 @@ sandbox_convert(JSContext *cx, HandleObject obj, JSType type, MutableHandleValue
         return true;
     }
 
-    return JS_ConvertStub(cx, obj, type, vp);
+    return JS::OrdinaryToPrimitive(cx, obj, type, vp);
 }
 
 static bool
@@ -446,7 +446,7 @@ sandbox_addProperty(JSContext *cx, HandleObject obj, HandleId id, MutableHandleV
         return false;
     unsigned attrs = pd.attributes() & ~(JSPROP_GETTER | JSPROP_SETTER);
     if (!JS_DefinePropertyById(cx, obj, id, vp,
-                               attrs | JSPROP_PROPOP_ACCESSORS,
+                               attrs | JSPROP_PROPOP_ACCESSORS | JSPROP_REDEFINE_NONCONFIGURABLE,
                                JS_PROPERTYOP_GETTER(writeToProto_getProperty),
                                JS_PROPERTYOP_SETTER(writeToProto_setProperty)))
         return false;
@@ -459,7 +459,7 @@ sandbox_addProperty(JSContext *cx, HandleObject obj, HandleId id, MutableHandleV
 static const js::Class SandboxClass = {
     "Sandbox",
     XPCONNECT_GLOBAL_FLAGS_WITH_EXTRA_SLOTS(1),
-    JS_PropertyStub,   JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+    nullptr, nullptr, nullptr, nullptr,
     sandbox_enumerate, sandbox_resolve, sandbox_convert,  sandbox_finalize,
     nullptr, nullptr, nullptr, JS_GlobalObjectTraceHook,
     JS_NULL_CLASS_SPEC,
@@ -478,7 +478,7 @@ static const js::Class SandboxClass = {
 static const js::Class SandboxWriteToProtoClass = {
     "Sandbox",
     XPCONNECT_GLOBAL_FLAGS_WITH_EXTRA_SLOTS(1),
-    sandbox_addProperty,   JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
+    sandbox_addProperty, nullptr, nullptr, nullptr,
     sandbox_enumerate, sandbox_resolve, sandbox_convert,  sandbox_finalize,
     nullptr, nullptr, nullptr, JS_GlobalObjectTraceHook,
     JS_NULL_CLASS_SPEC,
@@ -737,10 +737,10 @@ xpc::SandboxProxyHandler::getOwnEnumerablePropertyKeys(JSContext *cx,
 }
 
 bool
-xpc::SandboxProxyHandler::iterate(JSContext *cx, JS::Handle<JSObject*> proxy,
-                                  unsigned flags, JS::MutableHandle<JSObject*> objp) const
+xpc::SandboxProxyHandler::enumerate(JSContext *cx, JS::Handle<JSObject*> proxy,
+                                    JS::MutableHandle<JSObject*> objp) const
 {
-    return BaseProxyHandler::iterate(cx, proxy, flags, objp);
+    return BaseProxyHandler::enumerate(cx, proxy, objp);
 }
 
 bool
@@ -761,9 +761,7 @@ xpc::GlobalProperties::Parse(JSContext *cx, JS::HandleObject obj)
         }
         JSAutoByteString name(cx, nameValue.toString());
         NS_ENSURE_TRUE(name, false);
-        if (Promise && !strcmp(name.ptr(), "-Promise")) {
-            Promise = false;
-        } else if (!strcmp(name.ptr(), "CSS")) {
+        if (!strcmp(name.ptr(), "CSS")) {
             CSS = true;
         } else if (!strcmp(name.ptr(), "indexedDB")) {
             indexedDB = true;
@@ -797,9 +795,6 @@ bool
 xpc::GlobalProperties::Define(JSContext *cx, JS::HandleObject obj)
 {
     if (CSS && !dom::CSSBinding::GetConstructorObject(cx, obj))
-        return false;
-
-    if (Promise && !dom::PromiseBinding::GetConstructorObject(cx, obj))
         return false;
 
     if (indexedDB && AccessCheck::isChrome(obj) &&
@@ -969,6 +964,11 @@ xpc::CreateSandboxObject(JSContext *cx, MutableHandleValue vp, nsISupports *prin
             return NS_ERROR_XPC_UNEXPECTED;
 
         if (!options.globalProperties.Define(cx, sandbox))
+            return NS_ERROR_XPC_UNEXPECTED;
+
+        // Promise is supposed to be part of ES, and therefore should appear on
+        // every global.
+        if (!dom::PromiseBinding::GetConstructorObject(cx, sandbox))
             return NS_ERROR_XPC_UNEXPECTED;
 
         // Resolve standard classes eagerly to avoid triggering mirroring hooks for them.
@@ -1415,6 +1415,10 @@ nsXPCComponents_utils_Sandbox::CallOrConstruct(nsIXPConnectWrappedNative *wrappe
         } else {
             ok = GetPrincipalOrSOP(cx, obj, getter_AddRefs(prinOrSop));
         }
+    } else if (args[0].isNull()) {
+        // Null means that we just pass prinOrSop = nullptr, and get an
+        // nsNullPrincipal.
+        ok = true;
     }
 
     if (!ok)

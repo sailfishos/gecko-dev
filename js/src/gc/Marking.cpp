@@ -23,9 +23,7 @@
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
 
-#ifdef JSGC_GENERATIONAL
-# include "gc/Nursery-inl.h"
-#endif
+#include "gc/Nursery-inl.h"
 #include "vm/String-inl.h"
 #include "vm/Symbol-inl.h"
 
@@ -439,10 +437,9 @@ IsMarked(T **thingp)
 {
     MOZ_ASSERT(thingp);
     MOZ_ASSERT(*thingp);
-#ifdef JSGC_GENERATIONAL
     JSRuntime* rt = (*thingp)->runtimeFromAnyThread();
 #ifdef JSGC_FJGENERATIONAL
-    // Must precede the case for JSGC_GENERATIONAL because IsInsideNursery()
+    // Must precede the case for GGC because IsInsideNursery()
     // will also be true for the ForkJoinNursery.
     if (rt->isFJMinorCollecting()) {
         ForkJoinContext *ctx = ForkJoinContext::current();
@@ -458,7 +455,7 @@ IsMarked(T **thingp)
             return nursery.getForwardedPointer(thingp);
         }
     }
-#endif  // JSGC_GENERATIONAL
+
     Zone *zone = (*thingp)->asTenured().zone();
     if (!zone->isCollecting() || zone->isGCFinished())
         return true;
@@ -492,7 +489,6 @@ IsAboutToBeFinalizedFromAnyThread(T **thingp)
     if (ThingIsPermanentAtom(thing) && !TlsPerThreadData.get()->associatedWith(rt))
         return false;
 
-#ifdef JSGC_GENERATIONAL
 #ifdef JSGC_FJGENERATIONAL
     if (rt->isFJMinorCollecting()) {
         ForkJoinContext *ctx = ForkJoinContext::current();
@@ -511,7 +507,6 @@ IsAboutToBeFinalizedFromAnyThread(T **thingp)
             return false;
         }
     }
-#endif  // JSGC_GENERATIONAL
 
     Zone *zone = thing->asTenured().zoneFromAnyThread();
     if (zone->isGCSweeping()) {
@@ -537,8 +532,6 @@ UpdateIfRelocated(JSRuntime *rt, T **thingp)
     if (!*thingp)
         return nullptr;
 
-#ifdef JSGC_GENERATIONAL
-
 #ifdef JSGC_FJGENERATIONAL
     if (rt->isFJMinorCollecting()) {
         ForkJoinContext *ctx = ForkJoinContext::current();
@@ -553,7 +546,6 @@ UpdateIfRelocated(JSRuntime *rt, T **thingp)
         rt->gc.nursery.getForwardedPointer(thingp);
         return *thingp;
     }
-#endif  // JSGC_GENERATIONAL
 
 #ifdef JSGC_COMPACTING
     Zone *zone = (*thingp)->zone();
@@ -656,6 +648,7 @@ DeclMarkerImpl(Object, GlobalObject)
 DeclMarkerImpl(Object, JSObject)
 DeclMarkerImpl(Object, JSFunction)
 DeclMarkerImpl(Object, NestedScopeObject)
+DeclMarkerImpl(Object, PlainObject)
 DeclMarkerImpl(Object, SavedFrame)
 DeclMarkerImpl(Object, ScopeObject)
 DeclMarkerImpl(Object, SharedArrayBufferObject)
@@ -688,14 +681,20 @@ gc::MarkKind(JSTracer *trc, void **thingp, JSGCTraceKind kind)
       case JSTRACE_OBJECT:
         MarkInternal(trc, reinterpret_cast<JSObject **>(thingp));
         break;
+      case JSTRACE_SCRIPT:
+        MarkInternal(trc, reinterpret_cast<JSScript **>(thingp));
+        break;
       case JSTRACE_STRING:
         MarkInternal(trc, reinterpret_cast<JSString **>(thingp));
         break;
       case JSTRACE_SYMBOL:
         MarkInternal(trc, reinterpret_cast<JS::Symbol **>(thingp));
         break;
-      case JSTRACE_SCRIPT:
-        MarkInternal(trc, reinterpret_cast<JSScript **>(thingp));
+      case JSTRACE_BASE_SHAPE:
+        MarkInternal(trc, reinterpret_cast<BaseShape **>(thingp));
+        break;
+      case JSTRACE_JITCODE:
+        MarkInternal(trc, reinterpret_cast<jit::JitCode **>(thingp));
         break;
       case JSTRACE_LAZY_SCRIPT:
         MarkInternal(trc, reinterpret_cast<LazyScript **>(thingp));
@@ -703,15 +702,11 @@ gc::MarkKind(JSTracer *trc, void **thingp, JSGCTraceKind kind)
       case JSTRACE_SHAPE:
         MarkInternal(trc, reinterpret_cast<Shape **>(thingp));
         break;
-      case JSTRACE_BASE_SHAPE:
-        MarkInternal(trc, reinterpret_cast<BaseShape **>(thingp));
-        break;
       case JSTRACE_TYPE_OBJECT:
         MarkInternal(trc, reinterpret_cast<types::TypeObject **>(thingp));
         break;
-      case JSTRACE_JITCODE:
-        MarkInternal(trc, reinterpret_cast<jit::JitCode **>(thingp));
-        break;
+      default:
+        MOZ_CRASH("Invalid trace kind in MarkKind.");
     }
 }
 
@@ -1541,6 +1536,10 @@ gc::PushArena(GCMarker *gcmarker, ArenaHeader *aheader)
         PushArenaTyped<JSObject>(gcmarker, aheader);
         break;
 
+      case JSTRACE_SCRIPT:
+        PushArenaTyped<JSScript>(gcmarker, aheader);
+        break;
+
       case JSTRACE_STRING:
         PushArenaTyped<JSString>(gcmarker, aheader);
         break;
@@ -1549,8 +1548,12 @@ gc::PushArena(GCMarker *gcmarker, ArenaHeader *aheader)
         PushArenaTyped<JS::Symbol>(gcmarker, aheader);
         break;
 
-      case JSTRACE_SCRIPT:
-        PushArenaTyped<JSScript>(gcmarker, aheader);
+      case JSTRACE_BASE_SHAPE:
+        PushArenaTyped<js::BaseShape>(gcmarker, aheader);
+        break;
+
+      case JSTRACE_JITCODE:
+        PushArenaTyped<js::jit::JitCode>(gcmarker, aheader);
         break;
 
       case JSTRACE_LAZY_SCRIPT:
@@ -1561,17 +1564,12 @@ gc::PushArena(GCMarker *gcmarker, ArenaHeader *aheader)
         PushArenaTyped<js::Shape>(gcmarker, aheader);
         break;
 
-      case JSTRACE_BASE_SHAPE:
-        PushArenaTyped<js::BaseShape>(gcmarker, aheader);
-        break;
-
       case JSTRACE_TYPE_OBJECT:
         PushArenaTyped<js::types::TypeObject>(gcmarker, aheader);
         break;
 
-      case JSTRACE_JITCODE:
-        PushArenaTyped<js::jit::JitCode>(gcmarker, aheader);
-        break;
+      default:
+        MOZ_CRASH("Invalid trace kind in PushArena.");
     }
 }
 
@@ -1788,9 +1786,10 @@ GCMarker::processMarkStackTop(SliceBudget &budget)
 
   scan_typed_obj:
     {
-        const int32_t *list = obj->as<InlineOpaqueTypedObject>().typeDescr().traceList();
-        if (!list)
+        TypeDescr *descr = &obj->as<InlineOpaqueTypedObject>().typeDescr();
+        if (!descr->hasTraceList())
             return;
+        const int32_t *list = descr->traceList();
         uint8_t *memory = obj->as<InlineOpaqueTypedObject>().inlineTypedMem();
         while (*list != -1) {
             JSString *str = *reinterpret_cast<JSString **>(memory + *list);
@@ -1945,6 +1944,10 @@ js::TraceChildren(JSTracer *trc, void *thing, JSGCTraceKind kind)
         MarkChildren(trc, static_cast<JSObject *>(thing));
         break;
 
+      case JSTRACE_SCRIPT:
+        MarkChildren(trc, static_cast<JSScript *>(thing));
+        break;
+
       case JSTRACE_STRING:
         MarkChildren(trc, static_cast<JSString *>(thing));
         break;
@@ -1953,8 +1956,12 @@ js::TraceChildren(JSTracer *trc, void *thing, JSGCTraceKind kind)
         MarkChildren(trc, static_cast<JS::Symbol *>(thing));
         break;
 
-      case JSTRACE_SCRIPT:
-        MarkChildren(trc, static_cast<JSScript *>(thing));
+      case JSTRACE_BASE_SHAPE:
+        MarkChildren(trc, static_cast<BaseShape *>(thing));
+        break;
+
+      case JSTRACE_JITCODE:
+        MarkChildren(trc, (js::jit::JitCode *)thing);
         break;
 
       case JSTRACE_LAZY_SCRIPT:
@@ -1965,17 +1972,12 @@ js::TraceChildren(JSTracer *trc, void *thing, JSGCTraceKind kind)
         MarkChildren(trc, static_cast<Shape *>(thing));
         break;
 
-      case JSTRACE_JITCODE:
-        MarkChildren(trc, (js::jit::JitCode *)thing);
-        break;
-
-      case JSTRACE_BASE_SHAPE:
-        MarkChildren(trc, static_cast<BaseShape *>(thing));
-        break;
-
       case JSTRACE_TYPE_OBJECT:
         MarkChildren(trc, (types::TypeObject *)thing);
         break;
+
+      default:
+        MOZ_CRASH("Invalid trace kind in TraceChildren.");
     }
 }
 
@@ -1983,7 +1985,8 @@ js::TraceChildren(JSTracer *trc, void *thing, JSGCTraceKind kind)
 static void
 AssertNonGrayGCThing(JSTracer *trc, void **thingp, JSGCTraceKind kind)
 {
-    MOZ_ASSERT(!JS::GCThingIsMarkedGray(*thingp));
+    DebugOnly<Cell *> thing(static_cast<Cell *>(*thingp));
+    MOZ_ASSERT_IF(thing->isTenured(), !thing->asTenured().isMarked(js::gc::GRAY));
 }
 #endif
 
@@ -2014,7 +2017,7 @@ struct UnmarkGrayTracer : public JSTracer
     bool tracingShape;
 
     /* If tracingShape, shape child or nullptr. Otherwise, nullptr. */
-    void *previousShape;
+    Shape *previousShape;
 
     /* Whether we unmarked anything. */
     bool unmarkedAny;
@@ -2053,9 +2056,10 @@ struct UnmarkGrayTracer : public JSTracer
 static void
 UnmarkGrayChildren(JSTracer *trc, void **thingp, JSGCTraceKind kind)
 {
-    void *thing = *thingp;
     int stackDummy;
-    if (!JS_CHECK_STACK_SIZE(trc->runtime()->mainThread.nativeStackLimit[StackForSystemCode], &stackDummy)) {
+    if (!JS_CHECK_STACK_SIZE(trc->runtime()->mainThread.nativeStackLimit[StackForSystemCode],
+                             &stackDummy))
+    {
         /*
          * If we run out of stack, we take a more drastic measure: require that
          * we GC again before the next CC.
@@ -2064,55 +2068,63 @@ UnmarkGrayChildren(JSTracer *trc, void **thingp, JSGCTraceKind kind)
         return;
     }
 
-#ifdef DEBUG
-    if (gc::IsInsideNursery(static_cast<gc::Cell *>(thing))) {
-        JSTracer nongray(trc->runtime(), AssertNonGrayGCThing);
-        JS_TraceChildren(&nongray, thing, kind);
-    }
-#endif
+    Cell *cell = static_cast<Cell *>(*thingp);
 
-    if (!JS::GCThingIsMarkedGray(thing))
+    // Cells in the nursery cannot be gray, and therefore must necessarily point
+    // to only black edges.
+    if (!cell->isTenured()) {
+#ifdef DEBUG
+        JSTracer nongray(trc->runtime(), AssertNonGrayGCThing);
+        TraceChildren(&nongray, cell, kind);
+#endif
         return;
+    }
+
+    TenuredCell &tenured = cell->asTenured();
+    if (!tenured.isMarked(js::gc::GRAY))
+        return;
+    tenured.unmark(js::gc::GRAY);
 
     UnmarkGrayTracer *tracer = static_cast<UnmarkGrayTracer *>(trc);
-    TenuredCell::fromPointer(thing)->unmark(js::gc::GRAY);
     tracer->unmarkedAny = true;
 
-    /*
-     * Trace children of |thing|. If |thing| and its parent are both shapes,
-     * |thing| will get saved to mPreviousShape without being traced. The parent
-     * will later trace |thing|. This is done to avoid increasing the stack
-     * depth during shape tracing. It is safe to do because a shape can only
-     * have one child that is a shape.
-     */
+    // Trace children of |tenured|. If |tenured| and its parent are both
+    // shapes, |tenured| will get saved to mPreviousShape without being traced.
+    // The parent will later trace |tenured|. This is done to avoid increasing
+    // the stack depth during shape tracing. It is safe to do because a shape
+    // can only have one child that is a shape.
     UnmarkGrayTracer childTracer(tracer, kind == JSTRACE_SHAPE);
 
     if (kind != JSTRACE_SHAPE) {
-        JS_TraceChildren(&childTracer, thing, kind);
+        TraceChildren(&childTracer, &tenured, kind);
         MOZ_ASSERT(!childTracer.previousShape);
         tracer->unmarkedAny |= childTracer.unmarkedAny;
         return;
     }
 
+    MOZ_ASSERT(kind == JSTRACE_SHAPE);
+    Shape *shape = static_cast<Shape *>(&tenured);
     if (tracer->tracingShape) {
         MOZ_ASSERT(!tracer->previousShape);
-        tracer->previousShape = thing;
+        tracer->previousShape = shape;
         return;
     }
 
     do {
-        MOZ_ASSERT(!JS::GCThingIsMarkedGray(thing));
-        JS_TraceChildren(&childTracer, thing, JSTRACE_SHAPE);
-        thing = childTracer.previousShape;
+        MOZ_ASSERT(!shape->isMarked(js::gc::GRAY));
+        TraceChildren(&childTracer, shape, JSTRACE_SHAPE);
+        shape = childTracer.previousShape;
         childTracer.previousShape = nullptr;
-    } while (thing);
+    } while (shape);
     tracer->unmarkedAny |= childTracer.unmarkedAny;
 }
 
-JS_FRIEND_API(bool)
-JS::UnmarkGrayGCThingRecursively(void *thing, JSGCTraceKind kind)
+bool
+js::UnmarkGrayCellRecursively(gc::Cell *cell, JSGCTraceKind kind)
 {
-    JSRuntime *rt = static_cast<Cell *>(thing)->runtimeFromMainThread();
+    MOZ_ASSERT(cell);
+
+    JSRuntime *rt = cell->runtimeFromMainThread();
 
     // When the ReadBarriered type is used in a HashTable, it is difficult or
     // impossible to suppress the implicit cast operator while iterating for GC.
@@ -2120,16 +2132,28 @@ JS::UnmarkGrayGCThingRecursively(void *thing, JSGCTraceKind kind)
         return false;
 
     bool unmarkedArg = false;
-    if (!IsInsideNursery(static_cast<Cell *>(thing))) {
-        if (!JS::GCThingIsMarkedGray(thing))
+    if (cell->isTenured()) {
+        if (!cell->asTenured().isMarked(GRAY))
             return false;
 
-        TenuredCell::fromPointer(thing)->unmark(js::gc::GRAY);
+        cell->asTenured().unmark(GRAY);
         unmarkedArg = true;
     }
 
     UnmarkGrayTracer trc(rt);
-    JS_TraceChildren(&trc, thing, kind);
+    TraceChildren(&trc, cell, kind);
 
     return unmarkedArg || trc.unmarkedAny;
+}
+
+bool
+js::UnmarkGrayShapeRecursively(Shape *shape)
+{
+    return js::UnmarkGrayCellRecursively(shape, JSTRACE_SHAPE);
+}
+
+JS_FRIEND_API(bool)
+JS::UnmarkGrayGCThingRecursively(JS::GCCellPtr thing)
+{
+    return js::UnmarkGrayCellRecursively(thing.asCell(), thing.kind());
 }

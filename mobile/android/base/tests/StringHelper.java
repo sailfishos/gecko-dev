@@ -51,6 +51,7 @@ public class StringHelper {
     public static final String CONTEXT_MENU_EDIT_SITE_SETTINGS = "Edit Site Settings";
     public static final String CONTEXT_MENU_ADD_TO_HOME_SCREEN = "Add to Home Screen";
     public static final String CONTEXT_MENU_PIN_SITE = "Pin Site";
+    public static final String CONTEXT_MENU_UNPIN_SITE = "Unpin Site";
 
     // Context Menu menu items
     public static final String[] CONTEXT_MENU_ITEMS_IN_PRIVATE_TAB = new String[] {
@@ -176,7 +177,8 @@ public class StringHelper {
     public static final String SHOW_PAGE_ADDRESS_LABEL = "Show page address";
 
     // Privacy
-    public static final String TRACKING_LABEL = "Do not track";
+    public static final String TRACKING_PROTECTION_LABEL = "Tracking protection";
+    public static final String DNT_LABEL = "Do not track";
     public static final String COOKIES_LABEL = "Cookies";
     public static final String REMEMBER_PASSWORDS_LABEL = "Remember passwords";
     public static final String MASTER_PASSWORD_LABEL = "Use master password";

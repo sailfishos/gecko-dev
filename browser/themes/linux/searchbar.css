@@ -82,6 +82,10 @@ menuitem[cmd="cmd_clearhistory"][disabled] {
   margin: -2px -2px;
 }
 
+.searchbar-search-button[addengines="true"] {
+  list-style-image: url("chrome://browser/skin/search-indicator-badge-add.png");
+}
+
 .searchbar-search-button:hover {
   -moz-image-region: rect(0, 40px, 20px, 20px);
 }
@@ -202,8 +206,15 @@ searchbar[oneoffui] .search-go-button:-moz-locale-dir(rtl) > .toolbarbutton-icon
   color: HighlightText;
 }
 
-.addengine-item > .button-box > .button-icon {
+.addengine-icon {
   width: 16px;
+}
+
+.addengine-badge {
+  width: 16px;
+  height: 16px;
+  margin: -7px -9px 7px 9px;
+  list-style-image: url("chrome://browser/skin/badge-add-engine.png");
 }
 
 .addengine-item > .button-box > .button-text {
@@ -221,8 +232,25 @@ searchbar[oneoffui] .searchbar-engine-button {
 }
 
 .search-panel-tree > .autocomplete-treebody::-moz-tree-cell {
-  -moz-padding-start: 16px;
   border-top: none !important;
+}
+
+.search-panel-tree > .autocomplete-treebody::-moz-tree-cell-text {
+  -moz-padding-start: 4px;
+}
+
+.search-panel-tree > .autocomplete-treebody::-moz-tree-image {
+  -moz-padding-start: 6px;
+  width: 14px;
+  height: 14px;
+}
+
+.search-panel-tree > .autocomplete-treebody::-moz-tree-image(fromhistory) {
+  list-style-image: url("chrome://browser/skin/search-history-icon.svg#search-history-icon");
+}
+
+.search-panel-tree > .autocomplete-treebody::-moz-tree-image(fromhistory, selected) {
+  list-style-image: url("chrome://browser/skin/search-history-icon.svg#search-history-icon-active");
 }
 
 searchbar[oneoffui] .searchbar-engine-image {

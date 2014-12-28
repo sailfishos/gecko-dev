@@ -287,8 +287,7 @@ JitRuntime::generateEnterJIT(JSContext *cx, EnterJitType type)
     if (type == EnterJitBaseline) {
         // Baseline OSR will return here.
         masm.bind(returnLabel.src());
-        if (!masm.addCodeLabel(returnLabel))
-            return nullptr;
+        masm.addCodeLabel(returnLabel);
     }
 
     // Pop arguments off the stack.
@@ -1006,11 +1005,11 @@ JitRuntime::generateDebugTrapHandler(JSContext *cx)
 
 
 JitCode *
-JitRuntime::generateExceptionTailStub(JSContext *cx)
+JitRuntime::generateExceptionTailStub(JSContext *cx, void *handler)
 {
     MacroAssembler masm;
 
-    masm.handleFailureWithHandlerTail();
+    masm.handleFailureWithHandlerTail(handler);
 
     Linker linker(masm);
     AutoFlushICache afc("ExceptionTailStub");

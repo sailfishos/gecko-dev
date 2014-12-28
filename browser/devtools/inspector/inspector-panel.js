@@ -8,7 +8,7 @@ const {Cc, Ci, Cu, Cr} = require("chrome");
 
 Cu.import("resource://gre/modules/Services.jsm");
 
-let promise = require("devtools/toolkit/deprecated-sync-thenables");
+let promise = require("resource://gre/modules/Promise.jsm").Promise;
 let EventEmitter = require("devtools/toolkit/event-emitter");
 let clipboard = require("sdk/clipboard");
 
@@ -48,8 +48,14 @@ const LAYOUT_CHANGE_TIMER = 250;
  *      Fired when a property is expanded in the computed rules view
  * - computed-view-property-collapsed
  *      Fired when a property is collapsed in the computed rules view
+ * - computed-view-sourcelinks-updated
+ *      Fired when the stylesheet source links have been updated (when switching
+ *      to source-mapped files)
  * - rule-view-refreshed
  *      Fired when the rule view updates to a new node
+ * - rule-view-sourcelinks-updated
+ *      Fired when the stylesheet source links have been updated (when switching
+ *      to source-mapped files)
  */
 function InspectorPanel(iframeWindow, toolbox) {
   this._toolbox = toolbox;
@@ -418,9 +424,18 @@ InspectorPanel.prototype = {
     if (reason !== "navigateaway" &&
         this.canGetUniqueSelector &&
         this.selection.isElementNode()) {
-      selection.getUniqueSelector().then((selector) => {
+      selection.getUniqueSelector().then(selector => {
         this.selectionCssSelector = selector;
-      }).then(null, console.error);
+      }).then(null, e => {
+        // Only log this as an error if the panel hasn't been destroyed in the
+        // meantime.
+        if (!this._panelDestroyer) {
+          console.error(e);
+        } else {
+          console.warn("Could not set the unique selector for the newly "+
+            "selected node, the inspector was destroyed.");
+        }
+      });
     }
 
     let selfUpdate = this.updating("inspector-panel");
@@ -534,7 +549,7 @@ InspectorPanel.prototype = {
     this._toolbox.off("select", this.updateDebuggerPausedWarning);
 
     this.sidebar.off("select", this._setDefaultSidebar);
-    this.sidebar.destroy();
+    let sidebarDestroyer = this.sidebar.destroy();
     this.sidebar = null;
 
     this.nodemenu.removeEventListener("popupshowing", this._setupNodeMenu, true);
@@ -546,7 +561,7 @@ InspectorPanel.prototype = {
     this.selection.off("before-new-node", this.onBeforeNewSelection);
     this.selection.off("before-new-node-front", this.onBeforeNewSelection);
     this.selection.off("detached-front", this.onDetached);
-    this._panelDestroyer = this._destroyMarkup();
+    let markupDestroyer = this._destroyMarkup();
     this.panelWin.inspector = null;
     this.target = null;
     this.panelDoc = null;
@@ -556,6 +571,11 @@ InspectorPanel.prototype = {
     this.lastNodemenuItem = null;
     this.nodemenu = null;
     this._toolbox = null;
+
+    this._panelDestroyer = promise.all([
+      sidebarDestroyer,
+      markupDestroyer
+    ]);
 
     return this._panelDestroyer;
   },

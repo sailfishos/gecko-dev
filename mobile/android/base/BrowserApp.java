@@ -90,7 +90,6 @@ import org.mozilla.gecko.widget.GeckoActionProvider;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -149,7 +148,6 @@ public class BrowserApp extends GeckoApp
                                    LayerView.OnMetricsChangedListener,
                                    BrowserSearch.OnSearchListener,
                                    BrowserSearch.OnEditSuggestionListener,
-                                   HomePager.OnNewTabsListener,
                                    OnUrlOpenListener,
                                    OnUrlOpenInBackgroundListener,
                                    ActionModeCompat.Presenter,
@@ -531,7 +529,7 @@ public class BrowserApp extends GeckoApp
                     public void run() {
                         final TabHistoryFragment fragment = TabHistoryFragment.newInstance(historyPageList, toIndex);
                         final FragmentManager fragmentManager = getSupportFragmentManager();
-                        GeckoAppShell.vibrateOnHapticFeedbackEnabled(getResources().getInteger(R.integer.long_press_vibrate_msec));
+                        GeckoAppShell.vibrateOnHapticFeedbackEnabled(getResources().getIntArray(R.array.long_press_vibrate_msec));
                         fragment.show(R.id.tab_history_panel, fragmentManager.beginTransaction(), TAB_HISTORY_FRAGMENT_TAG);
                     }
                 });
@@ -769,19 +767,6 @@ public class BrowserApp extends GeckoApp
             doRestart(getIntent());
             GeckoAppShell.systemExit();
             return;
-        }
-
-        final KeyguardManager manager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        // The test machines return null for the KeyguardService, despite running Android 4.2.
-        if (Versions.feature11Plus && manager != null) {
-            // If the keyguard is showing AND we're either in guest mode or the keyguard is insecure,
-            // allow showing this window. We do this in onResume so that we can avoid setting these flags if the keyguard
-            // is not showing since it affects Android's layout of the window.
-            if (manager.isKeyguardLocked() && (GeckoProfile.get(this).inGuestMode() || !manager.isKeyguardSecure())) {
-                GuestSession.configureWindow(getWindow());
-            } else {
-                GuestSession.unconfigureWindow(getWindow());
-            }
         }
 
         EventDispatcher.getInstance().unregisterGeckoThreadListener((GeckoEventListener)this,
@@ -1544,19 +1529,19 @@ public class BrowserApp extends GeckoApp
             }
 
         } else if ("Telemetry:Gather".equals(event)) {
-            Telemetry.HistogramAdd("PLACES_PAGES_COUNT",
+            Telemetry.addToHistogram("PLACES_PAGES_COUNT",
                     BrowserDB.getCount(getContentResolver(), "history"));
-            Telemetry.HistogramAdd("PLACES_BOOKMARKS_COUNT",
+            Telemetry.addToHistogram("PLACES_BOOKMARKS_COUNT",
                     BrowserDB.getCount(getContentResolver(), "bookmarks"));
-            Telemetry.HistogramAdd("FENNEC_FAVICONS_COUNT",
+            Telemetry.addToHistogram("FENNEC_FAVICONS_COUNT",
                     BrowserDB.getCount(getContentResolver(), "favicons"));
-            Telemetry.HistogramAdd("FENNEC_THUMBNAILS_COUNT",
+            Telemetry.addToHistogram("FENNEC_THUMBNAILS_COUNT",
                     BrowserDB.getCount(getContentResolver(), "thumbnails"));
-            Telemetry.HistogramAdd("FENNEC_READING_LIST_COUNT",
+            Telemetry.addToHistogram("FENNEC_READING_LIST_COUNT",
                     BrowserDB.getCount(getContentResolver(), "readinglist"));
-            Telemetry.HistogramAdd("BROWSER_IS_USER_DEFAULT", (isDefaultBrowser(Intent.ACTION_VIEW) ? 1 : 0));
+            Telemetry.addToHistogram("BROWSER_IS_USER_DEFAULT", (isDefaultBrowser(Intent.ACTION_VIEW) ? 1 : 0));
             if (Versions.feature16Plus) {
-                Telemetry.HistogramAdd("BROWSER_IS_ASSIST_DEFAULT", (isDefaultBrowser(Intent.ACTION_ASSIST) ? 1 : 0));
+                Telemetry.addToHistogram("BROWSER_IS_ASSIST_DEFAULT", (isDefaultBrowser(Intent.ACTION_ASSIST) ? 1 : 0));
             }
         } else if ("Updater:Launch".equals(event)) {
             handleUpdaterLaunch();
@@ -2197,7 +2182,7 @@ public class BrowserApp extends GeckoApp
                         if (locale == null) {
                             return;
                         }
-                        onLocaleChanged(BrowserLocaleManager.getLanguageTag(locale));
+                        onLocaleChanged(Locales.getLanguageTag(locale));
                     }
                 });
                 break;
@@ -2930,7 +2915,7 @@ public class BrowserApp extends GeckoApp
         if (itemId == R.id.help) {
             final String VERSION = AppConstants.MOZ_APP_VERSION;
             final String OS = AppConstants.OS_TARGET;
-            final String LOCALE = BrowserLocaleManager.getLanguageTag(Locale.getDefault());
+            final String LOCALE = Locales.getLanguageTag(Locale.getDefault());
 
             final String URL = getResources().getString(R.string.help_link, VERSION, OS, LOCALE);
             Tabs.getInstance().loadUrlInTab(URL);
@@ -3024,13 +3009,7 @@ public class BrowserApp extends GeckoApp
                             GuestSession.hideNotification(BrowserApp.this);
                         }
 
-                        if (!GuestSession.isSecureKeyguardLocked(BrowserApp.this)) {
-                            doRestart(args);
-                        } else {
-                            // If the secure keyguard is up, we don't want to restart.
-                            // Just clear the guest profile data.
-                            GeckoProfile.maybeCleanupGuestProfile(BrowserApp.this);
-                        }
+                        doRestart(args);
                         GeckoAppShell.systemExit();
                     }
                 } catch(JSONException ex) {
@@ -3176,18 +3155,6 @@ public class BrowserApp extends GeckoApp
                 callback.sendSuccess(url);
             }
         }).execute();
-    }
-
-    // HomePager.OnNewTabsListener
-    @Override
-    public void onNewTabs(List<String> urls) {
-        final EnumSet<OnUrlOpenListener.Flags> flags = EnumSet.of(OnUrlOpenListener.Flags.ALLOW_SWITCH_TO_TAB);
-
-        for (String url : urls) {
-            if (!maybeSwitchToTab(url, flags)) {
-                openUrlAndStopEditing(url, true);
-            }
-        }
     }
 
     // HomePager.OnUrlOpenListener

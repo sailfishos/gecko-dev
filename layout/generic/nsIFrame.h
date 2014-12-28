@@ -247,14 +247,6 @@ typedef uint32_t nsReflowStatus;
 #define NS_FRAME_SET_OVERFLOW_INCOMPLETE(status) \
   status = (status & ~NS_FRAME_NOT_COMPLETE) | NS_FRAME_OVERFLOW_INCOMPLETE
 
-// This macro tests to see if an nsReflowStatus is an error value
-// or just a regular return value
-#define NS_IS_REFLOW_ERROR(_status) (int32_t(_status) < 0)
-
-/**
- * Extensions to the reflow status bits defined by nsIFrameReflow
- */
-
 // This bit is set, when a break is requested. This bit is orthogonal
 // to the nsIFrame::nsReflowStatus completion bits.
 #define NS_INLINE_BREAK              0x0100
@@ -611,7 +603,7 @@ public:
   /**
    * The frame's writing-mode, used for logical layout computations.
    */
-  mozilla::WritingMode GetWritingMode() const {
+  virtual mozilla::WritingMode GetWritingMode() const {
     return mozilla::WritingMode(StyleContext());
   }
 
@@ -758,6 +750,11 @@ public:
   }
 
   /**
+   * Return frame's rect without relative positioning
+   */
+  nsRect GetNormalRect() const;
+
+  /**
    * Return frame's position without relative positioning
    */
   nsPoint GetNormalPosition() const;
@@ -765,8 +762,12 @@ public:
   GetLogicalNormalPosition(mozilla::WritingMode aWritingMode,
                            nscoord aContainerWidth) const
   {
+    // Subtract the width of this frame from the container width to get
+    // the correct position in rtl frames where the origin is on the
+    // right instead of the left
     return mozilla::LogicalPoint(aWritingMode,
-                                 GetNormalPosition(), aContainerWidth);
+                                 GetNormalPosition(),
+                                 aContainerWidth - mRect.width);
   }
 
   virtual nsPoint GetPositionOfChildIgnoringScrolling(nsIFrame* aChild)
@@ -2870,6 +2871,11 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
    * Is this a flex or grid item? (i.e. a non-abs-pos child of a flex/grid container)
    */
   inline bool IsFlexOrGridItem() const;
+
+  /**
+   * @return true if this frame is used as a table caption.
+   */
+  inline bool IsTableCaption() const;
 
   inline bool IsBlockInside() const;
   inline bool IsBlockOutside() const;

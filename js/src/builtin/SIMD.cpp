@@ -13,6 +13,7 @@
 
 #include "builtin/SIMD.h"
 
+#include "mozilla/IntegerTypeTraits.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
 
@@ -147,12 +148,17 @@ static bool SignMask(JSContext *cx, unsigned argc, Value *vp)
         return false;
     }
 
-    Elem *data = reinterpret_cast<Elem *>(typedObj.typedMem());
-    int32_t mx = data[0] < 0.0 ? 1 : 0;
-    int32_t my = data[1] < 0.0 ? 1 : 0;
-    int32_t mz = data[2] < 0.0 ? 1 : 0;
-    int32_t mw = data[3] < 0.0 ? 1 : 0;
-    int32_t result = mx | my << 1 | mz << 2 | mw << 3;
+    // Load the data as integer so that we treat the sign bit consistently,
+    // since -0.0 is not less than zero, but it still has the sign bit set.
+    typedef typename mozilla::SignedStdintTypeForSize<sizeof(Elem)>::Type Int;
+    static_assert(SimdType::lanes * sizeof(Int) <= jit::Simd128DataSize,
+                  "signMask access should respect the bounds of the type");
+    const Elem *elems = reinterpret_cast<const Elem *>(typedObj.typedMem());
+    int32_t result = 0;
+    for (unsigned i = 0; i < SimdType::lanes; ++i) {
+        Int x = mozilla::BitwiseCast<Int>(elems[i]);
+        result |= (x < 0) << i;
+    }
     args.rval().setInt32(result);
     return true;
 }
@@ -168,18 +174,15 @@ static bool type##SignMask(JSContext *cx, unsigned argc, Value *vp) { \
 const Class SimdTypeDescr::class_ = {
     "SIMD",
     JSCLASS_HAS_RESERVED_SLOTS(JS_DESCR_SLOTS) | JSCLASS_BACKGROUND_FINALIZE,
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
     TypeDescr::finalize,
-    call,                /* call        */
-    nullptr,             /* hasInstance */
-    nullptr,             /* construct   */
-    nullptr
+    call
 };
 
 // These classes just exist to group together various properties and so on.
@@ -244,9 +247,7 @@ const JSFunctionSpec js::Int32x4Defn::TypedObjectMethods[] = {
 
 template<typename T>
 static JSObject *
-CreateSimdClass(JSContext *cx,
-              Handle<GlobalObject*> global,
-              HandlePropertyName stringRepr)
+CreateSimdClass(JSContext *cx, Handle<GlobalObject*> global, HandlePropertyName stringRepr)
 {
     const SimdTypeDescr::Type type = T::type;
 
@@ -257,7 +258,7 @@ CreateSimdClass(JSContext *cx,
     // Create type constructor itself and initialize its reserved slots.
 
     Rooted<SimdTypeDescr*> typeDescr(cx);
-    typeDescr = NewObjectWithProto<SimdTypeDescr>(cx, funcProto, global, TenuredObject);
+    typeDescr = NewObjectWithProto<SimdTypeDescr>(cx, funcProto, global, SingletonObject);
     if (!typeDescr)
         return nullptr;
 
@@ -267,7 +268,6 @@ CreateSimdClass(JSContext *cx,
     typeDescr->initReservedSlot(JS_DESCR_SLOT_SIZE, Int32Value(SimdTypeDescr::size(type)));
     typeDescr->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(false));
     typeDescr->initReservedSlot(JS_DESCR_SLOT_TYPE, Int32Value(T::type));
-    typeDescr->initReservedSlot(JS_DESCR_SLOT_TRACE_LIST, PrivateValue(nullptr));
 
     if (!CreateUserSizeAndAlignmentProperties(cx, typeDescr))
         return nullptr;
@@ -278,10 +278,9 @@ CreateSimdClass(JSContext *cx,
     if (!objProto)
         return nullptr;
     Rooted<TypedProto*> proto(cx);
-    proto = NewObjectWithProto<TypedProto>(cx, objProto, nullptr, TenuredObject);
+    proto = NewObjectWithProto<TypedProto>(cx, objProto, nullptr, SingletonObject);
     if (!proto)
         return nullptr;
-    proto->initTypeDescrSlot(*typeDescr);
     typeDescr->initReservedSlot(JS_DESCR_SLOT_TYPROTO, ObjectValue(*proto));
 
     // Link constructor to prototype and install properties.
@@ -303,7 +302,6 @@ bool
 SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    const unsigned LANES = 4;
 
     Rooted<SimdTypeDescr*> descr(cx, &args.callee().as<SimdTypeDescr>());
     if (args.length() == 1) {
@@ -317,12 +315,6 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
         return true;
     }
 
-    if (args.length() < LANES) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_MORE_ARGS_NEEDED,
-                             args.callee().getClass()->name, "3", "s");
-        return false;
-    }
-
     Rooted<TypedObject*> result(cx, TypedObject::createZeroed(cx, descr, 0));
     if (!result)
         return false;
@@ -331,7 +323,7 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
       case SimdTypeDescr::TYPE_INT32: {
         int32_t *mem = reinterpret_cast<int32_t*>(result->typedMem());
         for (unsigned i = 0; i < 4; i++) {
-            if (!ToInt32(cx, args[i], &mem[i]))
+            if (!ToInt32(cx, args.get(i), &mem[i]))
                 return false;
         }
         break;
@@ -339,7 +331,7 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
       case SimdTypeDescr::TYPE_FLOAT32: {
         float *mem = reinterpret_cast<float*>(result->typedMem());
         for (unsigned i = 0; i < 4; i++) {
-            if (!RoundFloat32(cx, args[i], &mem[i]))
+            if (!RoundFloat32(cx, args.get(i), &mem[i]))
                 return false;
         }
         break;
@@ -353,20 +345,8 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
 // SIMD class
 
 const Class SIMDObject::class_ = {
-        "SIMD",
-        JSCLASS_HAS_CACHED_PROTO(JSProto_SIMD),
-        JS_PropertyStub,         /* addProperty */
-        JS_DeletePropertyStub,   /* delProperty */
-        JS_PropertyStub,         /* getProperty */
-        JS_StrictPropertyStub,   /* setProperty */
-        JS_EnumerateStub,
-        JS_ResolveStub,
-        JS_ConvertStub,
-        nullptr,             /* finalize    */
-        nullptr,             /* call        */
-        nullptr,             /* hasInstance */
-        nullptr,             /* construct   */
-        nullptr
+    "SIMD",
+    JSCLASS_HAS_CACHED_PROTO(JSProto_SIMD)
 };
 
 JSObject *

@@ -77,6 +77,9 @@
 
   // Local mocks
 
+  var mockMozLoopRooms = _.extend({}, navigator.mozLoop);
+  mockMozLoopRooms.roomsEnabled = true;
+
   var mockContact = {
     name: ["Mr Smith"],
     email: [{
@@ -215,6 +218,7 @@
             Example({summary: "Call URL retrieved", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          callUrl: "http://invalid.example.url/", 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
@@ -222,34 +226,40 @@
               PanelView({client: mockClient, notifications: notifications, 
                          callUrl: "http://invalid.example.url/", 
                          userProfile: {email: "test@example.com"}, 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
             Example({summary: "Pending call url retrieval", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
             Example({summary: "Pending call url retrieval - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          userProfile: {email: "test@example.com"}, 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
             Example({summary: "Error Notification", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: errNotifications, 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
             Example({summary: "Error Notification - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: errNotifications, 
                          userProfile: {email: "test@example.com"}, 
+                         mozLoop: navigator.mozLoop, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore})
             ), 
             Example({summary: "Room list tab", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          userProfile: {email: "test@example.com"}, 
+                         mozLoop: mockMozLoopRooms, 
                          dispatcher: dispatcher, 
                          roomStore: roomStore, 
                          selectedTab: "rooms"})
@@ -535,7 +545,7 @@
           Section({name: "UnsupportedBrowserView"}, 
             Example({summary: "Standalone Unsupported Browser"}, 
               React.DOM.div({className: "standalone"}, 
-                UnsupportedBrowserView(null)
+                UnsupportedBrowserView({helper: {isFirefox: returnFalse}})
               )
             )
           ), 
@@ -621,6 +631,17 @@
               )
             ), 
 
+            Example({summary: "Standalone room conversation (feedback)"}, 
+              React.DOM.div({className: "standalone"}, 
+                StandaloneRoomView({
+                  dispatcher: dispatcher, 
+                  activeRoomStore: activeRoomStore, 
+                  feedbackStore: feedbackStore, 
+                  roomState: ROOM_STATES.ENDED, 
+                  helper: {isFirefox: returnFalse}})
+              )
+            ), 
+
             Example({summary: "Standalone room conversation (failed)"}, 
               React.DOM.div({className: "standalone"}, 
                 StandaloneRoomView({
@@ -683,7 +704,11 @@
   }
 
   window.addEventListener("DOMContentLoaded", function() {
-    React.renderComponent(App(null), document.body);
+    try {
+      React.renderComponent(App(null), document.body);
+    } catch(err) {
+      console.log(err);
+    }
 
     _renderComponentsInIframes();
 

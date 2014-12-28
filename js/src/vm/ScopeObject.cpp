@@ -291,27 +291,13 @@ CallObject::createForStrictEval(JSContext *cx, AbstractFramePtr frame)
 
 const Class CallObject::class_ = {
     "Call",
-    JSCLASS_IS_ANONYMOUS | JSCLASS_HAS_RESERVED_SLOTS(CallObject::RESERVED_SLOTS),
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    nullptr                  /* convert: Leave it nullptr so we notice if calls ever escape */
+    JSCLASS_IS_ANONYMOUS | JSCLASS_HAS_RESERVED_SLOTS(CallObject::RESERVED_SLOTS)
 };
 
 const Class DeclEnvObject::class_ = {
     js_Object_str,
     JSCLASS_HAS_RESERVED_SLOTS(DeclEnvObject::RESERVED_SLOTS) |
-    JSCLASS_HAS_CACHED_PROTO(JSProto_Object),
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub
+    JSCLASS_HAS_CACHED_PROTO(JSProto_Object)
 };
 
 /*
@@ -344,8 +330,14 @@ DeclEnvObject::createTemplateObject(JSContext *cx, HandleFunction fun, gc::Initi
     Rooted<jsid> id(cx, AtomToId(fun->atom()));
     const Class *clasp = obj->getClass();
     unsigned attrs = JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY;
-    if (!NativeObject::putProperty<SequentialExecution>(cx, obj, id, clasp->getProperty,
-                                                        clasp->setProperty, lambdaSlot(), attrs, 0)) {
+
+    JSPropertyOp getter = clasp->getProperty;
+    JSStrictPropertyOp setter = clasp->setProperty;
+    MOZ_ASSERT(getter != JS_PropertyStub);
+    MOZ_ASSERT(setter != JS_StrictPropertyStub);
+
+    if (!NativeObject::putProperty<SequentialExecution>(cx, obj, id, getter, setter, lambdaSlot(),
+                                                        attrs, 0)) {
         return nullptr;
     }
 
@@ -587,32 +579,25 @@ const Class StaticWithObject::class_ = {
     "WithTemplate",
     JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(StaticWithObject::RESERVED_SLOTS) |
-    JSCLASS_IS_ANONYMOUS,
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub
+    JSCLASS_IS_ANONYMOUS
 };
 
 const Class DynamicWithObject::class_ = {
     "With",
     JSCLASS_HAS_RESERVED_SLOTS(DynamicWithObject::RESERVED_SLOTS) |
     JSCLASS_IS_ANONYMOUS,
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
-    nullptr,                 /* finalize */
-    nullptr,                 /* call        */
-    nullptr,                 /* hasInstance */
-    nullptr,                 /* construct   */
-    nullptr,                 /* trace       */
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
+    nullptr, /* finalize */
+    nullptr, /* call */
+    nullptr, /* hasInstance */
+    nullptr, /* construct */
+    nullptr, /* trace */
     JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     {
@@ -716,7 +701,7 @@ StaticBlockObject::addVar(ExclusiveContext *cx, Handle<StaticBlockObject*> block
 
     *redeclared = false;
 
-    /* Inline JSObject::addProperty in order to trap the redefinition case. */
+    /* Inline NativeObject::addProperty in order to trap the redefinition case. */
     Shape **spp;
     if (Shape::search(cx, block->lastProperty(), id, &spp, true)) {
         *redeclared = true;
@@ -744,14 +729,7 @@ const Class BlockObject::class_ = {
     "Block",
     JSCLASS_IMPLEMENTS_BARRIERS |
     JSCLASS_HAS_RESERVED_SLOTS(BlockObject::RESERVED_SLOTS) |
-    JSCLASS_IS_ANONYMOUS,
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub
+    JSCLASS_IS_ANONYMOUS
 };
 
 template<XDRMode mode>
@@ -1041,18 +1019,18 @@ const Class UninitializedLexicalObject::class_ = {
     "UninitializedLexical",
     JSCLASS_HAS_RESERVED_SLOTS(UninitializedLexicalObject::RESERVED_SLOTS) |
     JSCLASS_IS_ANONYMOUS,
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
-    nullptr,                 /* finalize */
-    nullptr,                 /* call        */
-    nullptr,                 /* hasInstance */
-    nullptr,                 /* construct   */
-    nullptr,                 /* trace       */
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
+    nullptr, /* finalize */
+    nullptr, /* call */
+    nullptr, /* hasInstance */
+    nullptr, /* construct */
+    nullptr, /* trace */
     JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     {
@@ -1510,13 +1488,33 @@ class DebugScopeProxy : public BaseProxyHandler
     }
 
     /*
+     * Check if the value is the magic value JS_OPTIMIZED_ARGUMENTS. The
+     * arguments analysis may have optimized out the 'arguments', and this
+     * magic value could have propagated to other local slots. e.g.,
+     *
+     *   function f() { var a = arguments; h(); }
+     *   function h() { evalInFrame(1, "a.push(0)"); }
+     *
+     * where evalInFrame(N, str) means to evaluate str N frames up.
+     *
+     * In this case we don't know we need to recover a missing arguments
+     * object until after we've performed the property get.
+     */
+    static bool isMagicMissingArgumentsValue(JSContext *cx, ScopeObject &scope, HandleValue v)
+    {
+        bool isMagic = v.isMagic() && v.whyMagic() == JS_OPTIMIZED_ARGUMENTS;
+        MOZ_ASSERT_IF(isMagic, isFunctionScope(scope) &&
+                               !scope.as<CallObject>().callee().nonLazyScript()->needsArgsObj());
+        return isMagic;
+    }
+
+    /*
      * Create a missing arguments object. If the function returns true but
      * argsObj is null, it means the scope is dead.
      */
-    static bool createMissingArguments(JSContext *cx, jsid id, ScopeObject &scope,
+    static bool createMissingArguments(JSContext *cx, ScopeObject &scope,
                                        MutableHandleArgumentsObject argsObj)
     {
-        MOZ_ASSERT(isMissingArguments(cx, id, scope));
         argsObj.set(nullptr);
 
         ScopeIterVal *maybeScope = DebugScopes::hasLiveScope(scope);
@@ -1554,30 +1552,37 @@ class DebugScopeProxy : public BaseProxyHandler
         return getOwnPropertyDescriptor(cx, proxy, id, desc);
     }
 
+    bool getMissingArgumentsPropertyDescriptor(JSContext *cx,
+                                               Handle<DebugScopeObject *> debugScope,
+                                               ScopeObject &scope,
+                                               MutableHandle<PropertyDescriptor> desc) const
+    {
+        RootedArgumentsObject argsObj(cx);
+        if (!createMissingArguments(cx, scope, &argsObj))
+            return false;
+
+        if (!argsObj) {
+            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
+                                 "Debugger scope");
+            return false;
+        }
+
+        desc.object().set(debugScope);
+        desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
+        desc.value().setObject(*argsObj);
+        desc.setGetter(nullptr);
+        desc.setSetter(nullptr);
+        return true;
+    }
+
     bool getOwnPropertyDescriptor(JSContext *cx, HandleObject proxy, HandleId id,
-                                  MutableHandle<PropertyDescriptor> desc) const MOZ_OVERRIDE
+                                  MutableHandle<PropertyDescriptor> desc) const
     {
         Rooted<DebugScopeObject*> debugScope(cx, &proxy->as<DebugScopeObject>());
         Rooted<ScopeObject*> scope(cx, &debugScope->scope());
 
-        if (isMissingArguments(cx, id, *scope)) {
-            RootedArgumentsObject argsObj(cx);
-            if (!createMissingArguments(cx, id, *scope, &argsObj))
-                return false;
-
-            if (!argsObj) {
-                JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
-                                     "Debugger scope");
-                return false;
-            }
-
-            desc.object().set(debugScope);
-            desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
-            desc.value().setObject(*argsObj);
-            desc.setGetter(nullptr);
-            desc.setSetter(nullptr);
-            return true;
-        }
+        if (isMissingArguments(cx, id, *scope))
+            return getMissingArgumentsPropertyDescriptor(cx, debugScope, *scope, desc);
 
         RootedValue v(cx);
         AccessResult access;
@@ -1586,6 +1591,8 @@ class DebugScopeProxy : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
+            if (isMagicMissingArgumentsValue(cx, *scope, v))
+                return getMissingArgumentsPropertyDescriptor(cx, debugScope, *scope, desc);
             desc.object().set(debugScope);
             desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
             desc.value().set(v);
@@ -1602,26 +1609,30 @@ class DebugScopeProxy : public BaseProxyHandler
         }
     }
 
+    bool getMissingArguments(JSContext *cx, ScopeObject &scope, MutableHandleValue vp) const
+    {
+        RootedArgumentsObject argsObj(cx);
+        if (!createMissingArguments(cx, scope, &argsObj))
+            return false;
+
+        if (!argsObj) {
+            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
+                                 "Debugger scope");
+            return false;
+        }
+
+        vp.setObject(*argsObj);
+        return true;
+    }
+
     bool get(JSContext *cx, HandleObject proxy, HandleObject receiver, HandleId id,
              MutableHandleValue vp) const MOZ_OVERRIDE
     {
         Rooted<DebugScopeObject*> debugScope(cx, &proxy->as<DebugScopeObject>());
         Rooted<ScopeObject*> scope(cx, &proxy->as<DebugScopeObject>().scope());
 
-        if (isMissingArguments(cx, id, *scope)) {
-            RootedArgumentsObject argsObj(cx);
-            if (!createMissingArguments(cx, id, *scope, &argsObj))
-                return false;
-
-            if (!argsObj) {
-                JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
-                                     "Debugger scope");
-                return false;
-            }
-
-            vp.setObject(*argsObj);
-            return true;
-        }
+        if (isMissingArguments(cx, id, *scope))
+            return getMissingArguments(cx, *scope, vp);
 
         AccessResult access;
         if (!handleUnaliasedAccess(cx, debugScope, scope, id, GET, vp, &access))
@@ -1629,6 +1640,8 @@ class DebugScopeProxy : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
+            if (isMagicMissingArgumentsValue(cx, *scope, vp))
+                return getMissingArguments(cx, *scope, vp);
             return true;
           case ACCESS_GENERIC:
             return JSObject::getGeneric(cx, scope, scope, id, vp);
@@ -1640,6 +1653,16 @@ class DebugScopeProxy : public BaseProxyHandler
         }
     }
 
+    bool getMissingArgumentsMaybeSentinelValue(JSContext *cx, ScopeObject &scope,
+                                               MutableHandleValue vp) const
+    {
+        RootedArgumentsObject argsObj(cx);
+        if (!createMissingArguments(cx, scope, &argsObj))
+            return false;
+        vp.set(argsObj ? ObjectValue(*argsObj) : MagicValue(JS_OPTIMIZED_ARGUMENTS));
+        return true;
+    }
+
     /*
      * Like 'get', but returns sentinel values instead of throwing on
      * exceptional cases.
@@ -1649,13 +1672,8 @@ class DebugScopeProxy : public BaseProxyHandler
     {
         Rooted<ScopeObject*> scope(cx, &debugScope->scope());
 
-        if (isMissingArguments(cx, id, *scope)) {
-            RootedArgumentsObject argsObj(cx);
-            if (!createMissingArguments(cx, id, *scope, &argsObj))
-                return false;
-            vp.set(argsObj ? ObjectValue(*argsObj) : MagicValue(JS_OPTIMIZED_ARGUMENTS));
-            return true;
-        }
+        if (isMissingArguments(cx, id, *scope))
+            return getMissingArgumentsMaybeSentinelValue(cx, *scope, vp);
 
         AccessResult access;
         if (!handleUnaliasedAccess(cx, debugScope, scope, id, GET, vp, &access))
@@ -1663,6 +1681,8 @@ class DebugScopeProxy : public BaseProxyHandler
 
         switch (access) {
           case ACCESS_UNALIASED:
+            if (isMagicMissingArgumentsValue(cx, *scope, vp))
+                return getMissingArgumentsMaybeSentinelValue(cx, *scope, vp);
             return true;
           case ACCESS_GENERIC:
             return JSObject::getGeneric(cx, scope, scope, id, vp);
@@ -1714,8 +1734,7 @@ class DebugScopeProxy : public BaseProxyHandler
                                      JS_PROPERTYOP_SETTER(desc.setter()));
     }
 
-    bool getScopePropertyNames(JSContext *cx, HandleObject proxy, AutoIdVector &props,
-                               unsigned flags) const
+    bool ownPropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props) const
     {
         Rooted<ScopeObject*> scope(cx, &proxy->as<DebugScopeObject>().scope());
 
@@ -1732,7 +1751,7 @@ class DebugScopeProxy : public BaseProxyHandler
         // issue, and punch a hole through to the with object target.
         Rooted<JSObject*> target(cx, (scope->is<DynamicWithObject>()
                                       ? &scope->as<DynamicWithObject>().object() : scope));
-        if (!GetPropertyKeys(cx, target, flags, &props))
+        if (!GetPropertyKeys(cx, target, JSITER_OWNONLY, &props))
             return false;
 
         /*
@@ -1750,14 +1769,9 @@ class DebugScopeProxy : public BaseProxyHandler
         return true;
     }
 
-    bool ownPropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props) const MOZ_OVERRIDE
+    bool enumerate(JSContext *cx, HandleObject proxy, MutableHandleObject objp) const MOZ_OVERRIDE
     {
-        return getScopePropertyNames(cx, proxy, props, JSITER_OWNONLY);
-    }
-
-    bool getEnumerablePropertyKeys(JSContext *cx, HandleObject proxy, AutoIdVector &props) const MOZ_OVERRIDE
-    {
-        return getScopePropertyNames(cx, proxy, props, 0);
+        return BaseProxyHandler::enumerate(cx, proxy, objp);
     }
 
     bool has(JSContext *cx, HandleObject proxy, HandleId id_, bool *bp) const MOZ_OVERRIDE
@@ -1879,13 +1893,10 @@ js_IsDebugScopeSlow(ProxyObject *proxy)
 DebugScopes::proxiedScopesPostWriteBarrier(JSRuntime *rt, ObjectWeakMap *map,
                                            const PreBarrieredObject &key)
 {
-#ifdef JSGC_GENERATIONAL
     if (key && IsInsideNursery(key))
         rt->gc.storeBuffer.putGeneric(UnbarrieredRef(map, key.get()));
-#endif
 }
 
-#ifdef JSGC_GENERATIONAL
 class DebugScopes::MissingScopesRef : public gc::BufferableRef
 {
     MissingScopeMap *map;
@@ -1904,22 +1915,18 @@ class DebugScopes::MissingScopesRef : public gc::BufferableRef
         map->rekeyIfMoved(prior, key);
     }
 };
-#endif
 
 /* static */ MOZ_ALWAYS_INLINE void
 DebugScopes::missingScopesPostWriteBarrier(JSRuntime *rt, MissingScopeMap *map,
                                            const ScopeIterKey &key)
 {
-#ifdef JSGC_GENERATIONAL
     if (key.enclosingScope() && IsInsideNursery(key.enclosingScope()))
         rt->gc.storeBuffer.putGeneric(MissingScopesRef(map, key));
-#endif
 }
 
 /* static */ MOZ_ALWAYS_INLINE void
 DebugScopes::liveScopesPostWriteBarrier(JSRuntime *rt, LiveScopeMap *map, ScopeObject *key)
 {
-#ifdef JSGC_GENERATIONAL
     // As above.  Otherwise, barriers could fire during GC when moving the
     // value.
     typedef HashMap<ScopeObject *,
@@ -1929,7 +1936,6 @@ DebugScopes::liveScopesPostWriteBarrier(JSRuntime *rt, LiveScopeMap *map, ScopeO
     typedef gc::HashKeyRef<UnbarrieredLiveScopeMap, ScopeObject *> Ref;
     if (key && IsInsideNursery(key))
         rt->gc.storeBuffer.putGeneric(Ref(reinterpret_cast<UnbarrieredLiveScopeMap *>(map), key));
-#endif
 }
 
 DebugScopes::DebugScopes(JSContext *cx)
@@ -2381,7 +2387,7 @@ DebugScopes::hasLiveScope(ScopeObject &scope)
 }
 
 /* static */ void
-DebugScopes::rekeyMissingScopes(JSContext *cx, AbstractFramePtr from, AbstractFramePtr to)
+DebugScopes::forwardLiveFrame(JSContext *cx, AbstractFramePtr from, AbstractFramePtr to)
 {
     DebugScopes *scopes = cx->compartment()->debugScopes;
     if (!scopes)
@@ -2393,6 +2399,12 @@ DebugScopes::rekeyMissingScopes(JSContext *cx, AbstractFramePtr from, AbstractFr
             key.updateFrame(to);
             e.rekeyFront(key);
         }
+    }
+
+    for (LiveScopeMap::Enum e(scopes->liveScopes); !e.empty(); e.popFront()) {
+        ScopeIterVal &val = e.front().value();
+        if (val.frame() == from)
+            val.updateFrame(to);
     }
 }
 
@@ -2598,7 +2610,7 @@ RemoveReferencedNames(JSContext *cx, HandleScript script, PropertyNameSet &remai
         PropertyName *name;
 
         switch (JSOp(*pc)) {
-          case JSOP_NAME:
+          case JSOP_GETNAME:
           case JSOP_SETNAME:
             name = script->getName(pc);
             break;

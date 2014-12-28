@@ -8,8 +8,6 @@
 #ifndef gc_Nursery_h
 #define gc_Nursery_h
 
-#ifdef JSGC_GENERATIONAL
-
 #include "jsalloc.h"
 #include "jspubtd.h"
 
@@ -67,7 +65,9 @@ class Nursery
         heapEnd_(0),
         currentChunk_(0),
         numActiveChunks_(0),
-        numNurseryChunks_(0)
+        numNurseryChunks_(0),
+        profileThreshold_(0),
+        enableProfiling_(false)
     {}
     ~Nursery();
 
@@ -203,6 +203,10 @@ class Nursery
     /* Number of chunks allocated for the nursery. */
     int numNurseryChunks_;
 
+    /* Report minor collections taking more than this many us, if enabled. */
+    int64_t profileThreshold_;
+    bool enableProfiling_;
+
     /*
      * The set of externally malloced slots potentially kept live by objects
      * stored in the nursery. Any external slots that do not belong to a
@@ -333,5 +337,4 @@ class Nursery
 
 } /* namespace js */
 
-#endif /* JSGC_GENERATIONAL */
 #endif /* gc_Nursery_h */

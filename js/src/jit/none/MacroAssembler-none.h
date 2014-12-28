@@ -410,15 +410,13 @@ class MacroAssemblerNone : public Assembler
     void inc64(AbsoluteAddress) { MOZ_CRASH(); }
     void incrementInt32Value(Address) { MOZ_CRASH(); }
     void ensureDouble(ValueOperand, FloatRegister, Label *) { MOZ_CRASH(); }
-    void handleFailureWithHandler(void *) { MOZ_CRASH(); }
+    void handleFailureWithHandlerTail(void *) { MOZ_CRASH(); }
     void makeFrameDescriptor(Register, FrameType) { MOZ_CRASH(); }
 
-#ifdef JSGC_GENERATIONAL
     void branchPtrInNurseryRange(Condition, Register, Register, Label *) { MOZ_CRASH(); }
     void branchValueIsNurseryObject(Condition, ValueOperand, Register, Label *) { MOZ_CRASH(); }
-#endif
 
-    bool buildFakeExitFrame(Register, uint32_t *) { MOZ_CRASH(); }
+    void buildFakeExitFrame(Register, uint32_t *) { MOZ_CRASH(); }
     bool buildOOLFakeExitFrame(void *) { MOZ_CRASH(); }
     void loadAsmJSActivation(Register) { MOZ_CRASH(); }
     void loadAsmJSHeapRegisterFromGlobalData() { MOZ_CRASH(); }

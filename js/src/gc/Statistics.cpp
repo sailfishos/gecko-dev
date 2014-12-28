@@ -283,6 +283,13 @@ struct PhaseInfo
 
 static const Phase PHASE_NO_PARENT = PHASE_LIMIT;
 
+/*
+ * Note that PHASE_MUTATOR, PHASE_GC_BEGIN, and PHASE_GC_END never have any
+ * child phases. If beginPhase is called while one of these is active, they
+ * will automatically be suspended and resumed when the phase stack is next
+ * empty. Timings for these phases are thus exclusive of any other phase.
+ */
+
 static const PhaseInfo phases[] = {
     { PHASE_MUTATOR, "Mutator Running", PHASE_NO_PARENT },
     { PHASE_GC_BEGIN, "Begin Callback", PHASE_NO_PARENT },
@@ -639,11 +646,11 @@ Statistics::Statistics(JSRuntime *rt)
     fullFormat(false),
     gcDepth(0),
     nonincrementalReason(nullptr),
-    timingMutator(false),
     timedGCStart(0),
     preBytes(0),
     maxPauseInInterval(0),
     phaseNestingDepth(0),
+    suspendedPhaseNestingDepth(0),
     sliceCallback(nullptr)
 {
     PodArrayZero(phaseTotals);
@@ -749,28 +756,26 @@ Statistics::endGC()
     for (int i = 0; i < PHASE_LIMIT; i++)
         phaseTotals[i] += phaseTimes[i];
 
-    if (JSAccumulateTelemetryDataCallback cb = runtime->telemetryCallback) {
-        int64_t total, longest;
-        gcDuration(&total, &longest);
+    int64_t total, longest;
+    gcDuration(&total, &longest);
 
-        int64_t sccTotal, sccLongest;
-        sccDurations(&sccTotal, &sccLongest);
+    int64_t sccTotal, sccLongest;
+    sccDurations(&sccTotal, &sccLongest);
 
-        (*cb)(JS_TELEMETRY_GC_IS_COMPARTMENTAL, !zoneStats.isCollectingAllZones());
-        (*cb)(JS_TELEMETRY_GC_MS, t(total));
-        (*cb)(JS_TELEMETRY_GC_MAX_PAUSE_MS, t(longest));
-        (*cb)(JS_TELEMETRY_GC_MARK_MS, t(phaseTimes[PHASE_MARK]));
-        (*cb)(JS_TELEMETRY_GC_SWEEP_MS, t(phaseTimes[PHASE_SWEEP]));
-        (*cb)(JS_TELEMETRY_GC_MARK_ROOTS_MS, t(phaseTimes[PHASE_MARK_ROOTS]));
-        (*cb)(JS_TELEMETRY_GC_MARK_GRAY_MS, t(phaseTimes[PHASE_SWEEP_MARK_GRAY]));
-        (*cb)(JS_TELEMETRY_GC_NON_INCREMENTAL, !!nonincrementalReason);
-        (*cb)(JS_TELEMETRY_GC_INCREMENTAL_DISABLED, !runtime->gc.isIncrementalGCAllowed());
-        (*cb)(JS_TELEMETRY_GC_SCC_SWEEP_TOTAL_MS, t(sccTotal));
-        (*cb)(JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS, t(sccLongest));
-
-        double mmu50 = computeMMU(50 * PRMJ_USEC_PER_MSEC);
-        (*cb)(JS_TELEMETRY_GC_MMU_50, mmu50 * 100);
-    }
+    runtime->addTelemetry(JS_TELEMETRY_GC_IS_COMPARTMENTAL, !zoneStats.isCollectingAllZones());
+    runtime->addTelemetry(JS_TELEMETRY_GC_MS, t(total));
+    runtime->addTelemetry(JS_TELEMETRY_GC_MAX_PAUSE_MS, t(longest));
+    runtime->addTelemetry(JS_TELEMETRY_GC_MARK_MS, t(phaseTimes[PHASE_MARK]));
+    runtime->addTelemetry(JS_TELEMETRY_GC_SWEEP_MS, t(phaseTimes[PHASE_SWEEP]));
+    runtime->addTelemetry(JS_TELEMETRY_GC_MARK_ROOTS_MS, t(phaseTimes[PHASE_MARK_ROOTS]));
+    runtime->addTelemetry(JS_TELEMETRY_GC_MARK_GRAY_MS, t(phaseTimes[PHASE_SWEEP_MARK_GRAY]));
+    runtime->addTelemetry(JS_TELEMETRY_GC_NON_INCREMENTAL, !!nonincrementalReason);
+    runtime->addTelemetry(JS_TELEMETRY_GC_INCREMENTAL_DISABLED, !runtime->gc.isIncrementalGCAllowed());
+    runtime->addTelemetry(JS_TELEMETRY_GC_SCC_SWEEP_TOTAL_MS, t(sccTotal));
+    runtime->addTelemetry(JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS, t(sccLongest));
+ 
+    double mmu50 = computeMMU(50 * PRMJ_USEC_PER_MSEC);
+    runtime->addTelemetry(JS_TELEMETRY_GC_MMU_50, mmu50 * 100);
 
     if (fp)
         printStats();
@@ -795,8 +800,7 @@ Statistics::beginSlice(const ZoneGCStats &zoneStats, JSGCInvocationKind gckind,
     if (!slices.append(data))
         CrashAtUnhandlableOOM("Failed to allocate statistics slice.");
 
-    if (JSAccumulateTelemetryDataCallback cb = runtime->telemetryCallback)
-        (*cb)(JS_TELEMETRY_GC_REASON, reason);
+    runtime->addTelemetry(JS_TELEMETRY_GC_REASON, reason);
 
     // Slice callbacks should only fire for the outermost level
     if (++gcDepth == 1) {
@@ -813,10 +817,8 @@ Statistics::endSlice()
     slices.back().end = PRMJ_Now();
     slices.back().endFaults = GetPageFaultCount();
 
-    if (JSAccumulateTelemetryDataCallback cb = runtime->telemetryCallback) {
-        (*cb)(JS_TELEMETRY_GC_SLICE_MS, t(slices.back().end - slices.back().start));
-        (*cb)(JS_TELEMETRY_GC_RESET, !!slices.back().resetReason);
-    }
+    runtime->addTelemetry(JS_TELEMETRY_GC_SLICE_MS, t(slices.back().end - slices.back().start));
+    runtime->addTelemetry(JS_TELEMETRY_GC_RESET, !!slices.back().resetReason);
 
     bool last = runtime->gc.state() == gc::NO_INCREMENTAL;
     if (last)
@@ -838,12 +840,10 @@ Statistics::endSlice()
 void
 Statistics::startTimingMutator()
 {
-    MOZ_ASSERT(!timingMutator);
-
     // Should only be called from outside of GC
     MOZ_ASSERT(phaseNestingDepth == 0);
+    MOZ_ASSERT(suspendedPhaseNestingDepth == 0);
 
-    timingMutator = true;
     timedGCTime = 0;
     phaseStartTimes[PHASE_MUTATOR] = 0;
     phaseTimes[PHASE_MUTATOR] = 0;
@@ -852,40 +852,43 @@ Statistics::startTimingMutator()
     beginPhase(PHASE_MUTATOR);
 }
 
-void
+bool
 Statistics::stopTimingMutator(double &mutator_ms, double &gc_ms)
 {
-    MOZ_ASSERT(timingMutator);
-
-    // Should only be called from outside of GC
-    MOZ_ASSERT(phaseNestingDepth == 1 && phaseNesting[0] == PHASE_MUTATOR);
+    // This should only be called from outside of GC, while timing the mutator.
+    if (phaseNestingDepth != 1 || phaseNesting[0] != PHASE_MUTATOR)
+        return false;
 
     endPhase(PHASE_MUTATOR);
     mutator_ms = t(phaseTimes[PHASE_MUTATOR]);
     gc_ms = t(timedGCTime);
-    timingMutator = false;
+
+    return true;
 }
 
 void
 Statistics::beginPhase(Phase phase)
 {
-    /* Guard against re-entry */
-    MOZ_ASSERT(!phaseStartTimes[phase]);
+    Phase parent = phaseNestingDepth ? phaseNesting[phaseNestingDepth - 1] : PHASE_NO_PARENT;
 
-    if (timingMutator) {
-        if (phaseNestingDepth == 1 && phaseNesting[0] == PHASE_MUTATOR) {
-            endPhase(PHASE_MUTATOR);
-            timedGCStart = PRMJ_Now();
-        }
+    // Re-entry is allowed during callbacks, so pause callback phases while
+    // other phases are in progress, auto-resuming after they end. As a result,
+    // nested GC time will not be accounted against the callback phases.
+    //
+    // Reuse this mechanism for managing PHASE_MUTATOR.
+    if (parent == PHASE_GC_BEGIN || parent == PHASE_GC_END || parent == PHASE_MUTATOR) {
+        suspendedPhases[suspendedPhaseNestingDepth++] = parent;
+        MOZ_ASSERT(suspendedPhaseNestingDepth <= mozilla::ArrayLength(suspendedPhases));
+        recordPhaseEnd(parent);
+        parent = phaseNestingDepth ? phaseNesting[phaseNestingDepth - 1] : PHASE_NO_PARENT;
     }
 
-#ifdef DEBUG
+    // Guard against any other re-entry.
+    MOZ_ASSERT(!phaseStartTimes[phase]);
+
     MOZ_ASSERT(phases[phase].index == phase);
-    Phase parent = phaseNestingDepth ? phaseNesting[phaseNestingDepth - 1] : PHASE_NO_PARENT;
     MOZ_ASSERT(phaseNestingDepth < MAX_NESTING);
-    // Major and minor GCs can nest inside PHASE_GC_BEGIN/PHASE_GC_END.
     MOZ_ASSERT_IF(gcDepth == 1 && phase != PHASE_MINOR_GC, phases[phase].parent == parent);
-#endif
 
     phaseNesting[phaseNestingDepth] = phase;
     phaseNestingDepth++;
@@ -894,22 +897,34 @@ Statistics::beginPhase(Phase phase)
 }
 
 void
-Statistics::endPhase(Phase phase)
+Statistics::recordPhaseEnd(Phase phase)
 {
+    int64_t now = PRMJ_Now();
+
+    if (phase == PHASE_MUTATOR)
+        timedGCStart = now;
+
     phaseNestingDepth--;
 
-    int64_t now = PRMJ_Now();
     int64_t t = now - phaseStartTimes[phase];
     if (!slices.empty())
         slices.back().phaseTimes[phase] += t;
     phaseTimes[phase] += t;
     phaseStartTimes[phase] = 0;
+}
 
-    if (timingMutator) {
-        if (phaseNestingDepth == 0 && phase != PHASE_MUTATOR) {
-            timedGCTime += now - timedGCStart;
-            beginPhase(PHASE_MUTATOR);
-        }
+void
+Statistics::endPhase(Phase phase)
+{
+    recordPhaseEnd(phase);
+
+    // When emptying the stack, we may need to resume a callback phase
+    // (PHASE_GC_BEGIN/END) or return to timing the mutator (PHASE_MUTATOR).
+    if (phaseNestingDepth == 0 && suspendedPhaseNestingDepth > 0) {
+        Phase resumePhase = suspendedPhases[--suspendedPhaseNestingDepth];
+        if (resumePhase == PHASE_MUTATOR)
+            timedGCTime += PRMJ_Now() - timedGCStart;
+        beginPhase(resumePhase);
     }
 }
 

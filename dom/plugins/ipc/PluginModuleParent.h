@@ -16,6 +16,7 @@
 #include "mozilla/plugins/PPluginModuleParent.h"
 #include "mozilla/plugins/PluginMessageUtils.h"
 #include "mozilla/plugins/PluginTypes.h"
+#include "mozilla/TimeStamp.h"
 #include "npapi.h"
 #include "npfunctions.h"
 #include "nsAutoPtr.h"
@@ -26,6 +27,8 @@
 #ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
 #endif
+
+class nsPluginTag;
 
 namespace mozilla {
 namespace dom {
@@ -104,6 +107,10 @@ public:
     }
 
     void ProcessRemoteNativeEventsInInterruptCall();
+
+    nsCString GetHistogramKey() const {
+        return mPluginName + mPluginVersion;
+    }
 
 protected:
     virtual mozilla::ipc::RacyInterruptPolicy
@@ -245,6 +252,7 @@ protected:
     nsString mBrowserDumpID;
     nsString mHangID;
     nsRefPtr<nsIObserver> mProfilerObserver;
+    TimeDuration mTimeBlocked;
     nsCString mPluginName;
     nsCString mPluginVersion;
 
@@ -274,6 +282,8 @@ class PluginModuleContentParent : public PluginModuleParent
 #ifdef MOZ_CRASHREPORTER_INJECTOR
     void OnCrash(DWORD processID) MOZ_OVERRIDE {}
 #endif
+
+    static PluginModuleContentParent* sSavedModuleParent;
 };
 
 class PluginModuleChromeParent
@@ -287,7 +297,8 @@ class PluginModuleChromeParent
      * This may or may not launch a plugin child process,
      * and may or may not be very expensive.
      */
-    static PluginLibrary* LoadModule(const char* aFilePath, uint32_t aPluginId);
+    static PluginLibrary* LoadModule(const char* aFilePath, uint32_t aPluginId,
+                                     nsPluginTag* aPluginTag);
 
     virtual ~PluginModuleChromeParent();
 

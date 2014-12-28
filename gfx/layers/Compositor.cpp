@@ -104,15 +104,6 @@ Compositor::DrawDiagnostics(DiagnosticFlags aFlags,
                           aFlashCounter);
 }
 
-RenderTargetRect
-Compositor::ClipRectInLayersCoordinates(RenderTargetIntRect aClip) const {
-  RenderTargetRect result;
-  aClip = aClip + RenderTargetIntPoint(GetCurrentRenderTarget()->GetOrigin().x,
-                                       GetCurrentRenderTarget()->GetOrigin().y);
-  result = RenderTargetRect(aClip.x, aClip.y, aClip.width, aClip.height);
-  return result;
-}
-
 void
 Compositor::DrawDiagnosticsInternal(DiagnosticFlags aFlags,
                                     const gfx::Rect& aVisibleRect,

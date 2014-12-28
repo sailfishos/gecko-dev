@@ -31,9 +31,9 @@ UNIFIED_SOURCES += [
     'testFindSCCs.cpp',
     'testForOfIterator.cpp',
     'testFreshGlobalEvalRedefinition.cpp',
-    'testFuncCallback.cpp',
     'testFunctionProperties.cpp',
     'testGCAllocator.cpp',
+    'testGCCellPtr.cpp',
     'testGCChunkPool.cpp',
     'testGCExactRooting.cpp',
     'testGCFinalizeCallback.cpp',
@@ -109,3 +109,6 @@ USE_LIBS += [
 ]
 
 OS_LIBS += CONFIG['MOZ_ZLIB_LIBS']
+
+if CONFIG['CLANG_CXX']:
+    FAIL_ON_WARNINGS = True

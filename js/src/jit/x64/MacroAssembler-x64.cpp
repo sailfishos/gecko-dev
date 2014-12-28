@@ -293,7 +293,7 @@ MacroAssemblerX64::callWithABIPre(uint32_t *stackAdjust)
 #ifdef DEBUG
     {
         Label good;
-        testq(rsp, Imm32(ABIStackAlignment - 1));
+        testPtr(rsp, Imm32(ABIStackAlignment - 1));
         j(Equal, &good);
         breakpoint();
         bind(&good);
@@ -378,24 +378,17 @@ MacroAssemblerX64::callWithABI(Register fun, MoveOp::Type result)
 }
 
 void
-MacroAssemblerX64::handleFailureWithHandler(void *handler)
+MacroAssemblerX64::handleFailureWithHandlerTail(void *handler)
 {
     // Reserve space for exception information.
     subq(Imm32(sizeof(ResumeFromException)), rsp);
     movq(rsp, rax);
 
-    // Ask for an exception handler.
+    // Call the handler.
     setupUnalignedABICall(1, rcx);
     passABIArg(rax);
     callWithABI(handler);
 
-    JitCode *excTail = GetJitContext()->runtime->jitRuntime()->getExceptionTail();
-    jmp(excTail);
-}
-
-void
-MacroAssemblerX64::handleFailureWithHandlerTail()
-{
     Label entryFrame;
     Label catch_;
     Label finally;
@@ -497,8 +490,6 @@ template void
 MacroAssemblerX64::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const BaseIndex &dest,
                                      MIRType slotType);
 
-#ifdef JSGC_GENERATIONAL
-
 void
 MacroAssemblerX64::branchPtrInNurseryRange(Condition cond, Register ptr, Register temp, Label *label)
 {
@@ -528,5 +519,3 @@ MacroAssemblerX64::branchValueIsNurseryObject(Condition cond, ValueOperand value
     branchPtr(cond == Assembler::Equal ? Assembler::Below : Assembler::AboveOrEqual,
               ScratchReg, Imm32(nursery.nurserySize()), label);
 }
-
-#endif

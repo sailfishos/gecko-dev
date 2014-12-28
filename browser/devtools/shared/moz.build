@@ -23,6 +23,7 @@ EXTRA_JS_MODULES.devtools += [
     'widgets/BreadcrumbsWidget.jsm',
     'widgets/Chart.jsm',
     'widgets/Graphs.jsm',
+    'widgets/GraphsWorker.js',
     'widgets/SideMenuWidget.jsm',
     'widgets/SimpleListWidget.jsm',
     'widgets/VariablesView.jsm',
@@ -39,6 +40,7 @@ EXTRA_JS_MODULES.devtools.shared += [
     'observable-object.js',
     'telemetry.js',
     'theme-switching.js',
+    'theme.js',
     'undo.js',
 ]
 

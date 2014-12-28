@@ -75,6 +75,7 @@ protected:
     virtual bool RecvSettingChanged(const PluginSettings& aSettings) MOZ_OVERRIDE;
 
     // Implement the PPluginModuleChild interface
+    virtual bool RecvDisableFlashProtectedMode() MOZ_OVERRIDE;
     virtual bool AnswerNP_GetEntryPoints(NPError* rv) MOZ_OVERRIDE;
     virtual bool AnswerNP_Initialize(const PluginSettings& aSettings, NPError* rv) MOZ_OVERRIDE;
 
@@ -150,7 +151,7 @@ protected:
     virtual bool AnswerGetProfile(nsCString* aProfile) MOZ_OVERRIDE;
 
 public:
-    PluginModuleChild(bool aIsChrome);
+    explicit PluginModuleChild(bool aIsChrome);
     virtual ~PluginModuleChild();
 
     bool CommonInit(base::ProcessHandle aParentProcessHandle,
@@ -293,6 +294,12 @@ private:
     void InitQuirksModes(const nsCString& aMimeType);
     bool InitGraphics();
     void DeinitGraphics();
+
+#if defined(OS_WIN)
+    void HookProtectedMode();
+    void CleanupProtectedModeHook();
+#endif
+
 #if defined(MOZ_WIDGET_GTK)
     static gboolean DetectNestedEventLoop(gpointer data);
     static gboolean ProcessBrowserEvents(gpointer data);

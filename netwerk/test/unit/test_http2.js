@@ -25,7 +25,7 @@ var bigListenerMD5 = '8f607cfdd2c87d6a7eedb657dafbd836';
 
 function checkIsHttp2(request) {
   try {
-    if (request.getResponseHeader("X-Firefox-Spdy") == "h2-15") {
+    if (request.getResponseHeader("X-Firefox-Spdy") == "h2-16") {
       if (request.getResponseHeader("X-Connection-Http2") == "yes") {
         return true;
       }
@@ -199,6 +199,14 @@ function makeChan(url) {
 // Make sure we make a HTTP2 connection and both us and the server mark it as such
 function test_http2_basic() {
   var chan = makeChan("https://localhost:6944/");
+  var listener = new Http2CheckListener();
+  chan.asyncOpen(listener, null);
+}
+
+function test_http2_basic_unblocked_dep() {
+  var chan = makeChan("https://localhost:6944/basic_unblocked_dep");
+  var cos = chan.QueryInterface(Ci.nsIClassOfService);
+  cos.addClassFlags(Ci.nsIClassOfService.Unblocked);
   var listener = new Http2CheckListener();
   chan.asyncOpen(listener, null);
 }
@@ -378,7 +386,7 @@ var altsvcClientListener = {
 function altsvcHttp1Server(metadata, response) {
   response.setStatusLine(metadata.httpVersion, 200, "OK");
   response.setHeader("Content-Type", "text/plain", false);
-  response.setHeader("Alt-Svc", 'h2-15=":6944"', false);
+  response.setHeader("Alt-Svc", 'h2-16=":6944"', false);
   var body = "this is where a cool kid would write something neat.\n";
   response.bodyOutputStream.write(body, body.length);
 }
@@ -521,6 +529,7 @@ function test_complete() {
 // a stalled stream when a SETTINGS frame arrives
 var tests = [ test_http2_post_big
             , test_http2_basic
+            , test_http2_basic_unblocked_dep
             , test_http2_nospdy
             , test_http2_push1
             , test_http2_push2

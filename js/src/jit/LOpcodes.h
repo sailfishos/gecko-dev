@@ -10,6 +10,7 @@
 #define LIR_COMMON_OPCODE_LIST(_)   \
     _(Label)                        \
     _(Nop)                          \
+    _(Mop)                          \
     _(OsiPoint)                     \
     _(MoveGroup)                    \
     _(Integer)                      \
@@ -285,7 +286,7 @@
     _(SetArrayLength)               \
     _(TypedArrayLength)             \
     _(TypedArrayElements)           \
-    _(TypedObjectProto)             \
+    _(TypedObjectDescr)             \
     _(TypedObjectElements)          \
     _(SetTypedObjectOffset)         \
     _(StringLength)                 \
@@ -321,7 +322,6 @@
     _(IsCallable)                   \
     _(IsObject)                     \
     _(IsObjectAndBranch)            \
-    _(HaveSameClass)                \
     _(HasClass)                     \
     _(AsmJSLoadHeap)                \
     _(AsmJSStoreHeap)               \

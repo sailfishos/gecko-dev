@@ -27,7 +27,7 @@
 #include "nsJSPrincipals.h"
 #include "nsContentPolicyUtils.h"
 #include "nsIHttpChannel.h"
-#include "nsIHttpChannelInternal.h"
+#include "nsIClassOfService.h"
 #include "nsITimedChannel.h"
 #include "nsIScriptElement.h"
 #include "nsIDOMHTMLScriptElement.h"
@@ -321,18 +321,17 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType,
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsIScriptElement *script = aRequest->mElement;
-  nsCOMPtr<nsIHttpChannelInternal>
-    internalHttpChannel(do_QueryInterface(channel));
+  nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(channel));
 
-  if (internalHttpChannel) {
+  if (cos) {
     if (aScriptFromHead &&
         !(script && (script->GetScriptAsync() || script->GetScriptDeferred()))) {
       // synchronous head scripts block lading of most other non js/css
       // content such as images
-      internalHttpChannel->SetLoadAsBlocking(true);
+      cos->AddClassFlags(nsIClassOfService::Leader);
     } else if (!(script && script->GetScriptDeferred())) {
       // other scripts are neither blocked nor prioritized unless marked deferred
-      internalHttpChannel->SetLoadUnblocked(true);
+      cos->AddClassFlags(nsIClassOfService::Unblocked);
     }
   }
 
@@ -438,6 +437,8 @@ static bool
 CSPAllowsInlineScript(nsIScriptElement *aElement, nsIDocument *aDocument)
 {
   nsCOMPtr<nsIContentSecurityPolicy> csp;
+  // Note: For imports NodePrincipal and the principal of the master are
+  // the same.
   nsresult rv = aDocument->NodePrincipal()->GetCsp(getter_AddRefs(csp));
   NS_ENSURE_SUCCESS(rv, false);
 
@@ -818,7 +819,12 @@ NotifyOffThreadScriptLoadCompletedRunnable::Run()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsresult rv = mLoader->ProcessOffThreadRequest(mRequest, &mToken);
+  // We want these to be dropped on the main thread, once we return from this
+  // function.
+  nsRefPtr<nsScriptLoadRequest> request = mRequest.forget();
+  nsRefPtr<nsScriptLoader> loader = mLoader.forget();
+
+  nsresult rv = loader->ProcessOffThreadRequest(request, &mToken);
 
   if (mToken) {
     // The result of the off thread parse was not actually needed to process

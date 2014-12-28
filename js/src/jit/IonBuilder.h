@@ -598,6 +598,8 @@ class IonBuilder
     MDefinition *getAliasedVar(ScopeCoordinate sc);
     MDefinition *addLexicalCheck(MDefinition *input);
 
+    bool tryFoldInstanceOf(MDefinition *lhs, JSObject *protoObject);
+
     bool jsop_add(MDefinition *left, MDefinition *right);
     bool jsop_bitnot();
     bool jsop_bitop(JSOp op);
@@ -774,6 +776,10 @@ class IonBuilder
     // ForkJoin intrinsics
     InliningStatus inlineForkJoinGetSlice(CallInfo &callInfo);
 
+    // TypedArray intrinsics.
+    InliningStatus inlineIsTypedArray(CallInfo &callInfo);
+    InliningStatus inlineTypedArrayLength(CallInfo &callInfo);
+
     // TypedObject intrinsics and natives.
     InliningStatus inlineObjectIsTypeDescr(CallInfo &callInfo);
     InliningStatus inlineSetTypedObjectOffset(CallInfo &callInfo);
@@ -784,7 +790,6 @@ class IonBuilder
     // Utility intrinsics.
     InliningStatus inlineIsCallable(CallInfo &callInfo);
     InliningStatus inlineIsObject(CallInfo &callInfo);
-    InliningStatus inlineHaveSameClass(CallInfo &callInfo);
     InliningStatus inlineToObject(CallInfo &callInfo);
     InliningStatus inlineToInteger(CallInfo &callInfo);
     InliningStatus inlineToString(CallInfo &callInfo);

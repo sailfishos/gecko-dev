@@ -463,8 +463,12 @@ static bool
 array_length_setter(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHandleValue vp)
 {
     if (!obj->is<ArrayObject>()) {
+        // This array .length property was found on the prototype
+        // chain. Ideally the setter should not have been called, but since
+        // we're here, do an impression of SetPropertyByDefining.
+        const Class *clasp = obj->getClass();
         return JSObject::defineProperty(cx, obj, cx->names().length, vp,
-                                        nullptr, nullptr, JSPROP_ENUMERATE);
+                                        clasp->getProperty, clasp->setProperty, JSPROP_ENUMERATE);
     }
 
     Rooted<ArrayObject*> arr(cx, &obj->as<ArrayObject>());
@@ -2785,12 +2789,8 @@ GetIndexedPropertiesInRange(JSContext *cx, HandleObject obj, uint32_t begin, uin
     // properties.
     JSObject *pobj = obj;
     do {
-        if (!pobj->isNative() ||
-            pobj->getClass()->resolve != JS_ResolveStub ||
-            pobj->getOps()->lookupGeneric)
-        {
+        if (!pobj->isNative() || pobj->getClass()->resolve || pobj->getOps()->lookupGeneric)
             return true;
-        }
     } while ((pobj = pobj->getProto()));
 
     // Collect indexed property names.
@@ -3364,17 +3364,17 @@ const Class ArrayObject::class_ = {
     "Array",
     JSCLASS_HAS_CACHED_PROTO(JSProto_Array),
     array_addProperty,
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
-    JS_EnumerateStub,
-    JS_ResolveStub,
-    JS_ConvertStub,
-    nullptr,
-    nullptr,        /* call        */
-    nullptr,        /* hasInstance */
-    nullptr,        /* construct   */
-    nullptr,        /* trace       */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
+    nullptr, /* enumerate */
+    nullptr, /* resolve */
+    nullptr, /* convert */
+    nullptr, /* finalize */
+    nullptr, /* call */
+    nullptr, /* hasInstance */
+    nullptr, /* construct */
+    nullptr, /* trace */
     {
         GenericCreateConstructor<js_Array, 1, JSFunction::FinalizeKind>,
         CreateArrayPrototype,
@@ -3627,7 +3627,7 @@ js::NewDenseFullyAllocatedArrayWithTemplate(JSContext *cx, uint32_t length, JSOb
 }
 
 JSObject *
-js::NewDenseCopyOnWriteArray(JSContext *cx, HandleNativeObject templateObject, gc::InitialHeap heap)
+js::NewDenseCopyOnWriteArray(JSContext *cx, HandleArrayObject templateObject, gc::InitialHeap heap)
 {
     RootedShape shape(cx, templateObject->lastProperty());
 

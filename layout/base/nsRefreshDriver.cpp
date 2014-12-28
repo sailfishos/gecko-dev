@@ -27,6 +27,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AutoRestore.h"
+#include "nsHostObjectProtocolHandler.h"
 #include "nsRefreshDriver.h"
 #include "nsITimer.h"
 #include "nsLayoutUtils.h"
@@ -37,6 +38,7 @@
 #include "nsIDocument.h"
 #include "jsapi.h"
 #include "nsContentUtils.h"
+#include "mozilla/PendingPlayerTracker.h"
 #include "mozilla/Preferences.h"
 #include "nsViewManager.h"
 #include "GeckoProfiler.h"
@@ -862,6 +864,18 @@ nsRefreshDriver::EnsureTimerStarted(bool aAdjustingTimer)
     return;
   }
 
+  if (mPresContext->Document()->IsBeingUsedAsImage()) {
+    // Image documents receive ticks from clients' refresh drivers.
+    // XXXdholbert Exclude SVG-in-opentype fonts from this optimization, until
+    // they receive refresh-driver ticks from their client docs (bug 1107252).
+    nsIURI* uri = mPresContext->Document()->GetDocumentURI();
+    if (!uri || !IsFontTableURI(uri)) {
+      MOZ_ASSERT(!mActiveTimer,
+                 "image doc refresh driver should never have its own timer");
+      return;
+    }
+  }
+
   // We got here because we're either adjusting the time *or* we're
   // starting it for the first time.  Add to the right timer,
   // prehaps removing it from a previously-set one.
@@ -1056,6 +1070,18 @@ static nsDocShell* GetDocShell(nsPresContext* aPresContext)
   return static_cast<nsDocShell*>(aPresContext->GetDocShell());
 }
 
+static bool
+HasPendingAnimations(nsIPresShell* aShell)
+{
+  nsIDocument* doc = aShell->GetDocument();
+  if (!doc) {
+    return false;
+  }
+
+  PendingPlayerTracker* tracker = doc->GetPendingPlayerTracker();
+  return tracker && tracker->HasPendingPlayers();
+}
+
 /**
  * Return a list of all the child docShells in a given root docShell that are
  * visible and are recording markers for the profilingTimeline
@@ -1167,7 +1193,7 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
     while (etor.HasMore()) {
       nsRefPtr<nsARefreshObserver> obs = etor.GetNext();
       obs->WillRefresh(aNowTime);
-      
+
       if (!mPresContext || !mPresContext->GetPresShell()) {
         StopTimer();
         return;
@@ -1291,8 +1317,10 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
           mLayoutFlushObservers.RemoveElement(shell);
           shell->mReflowScheduled = false;
           shell->mSuppressInterruptibleReflows = false;
-          shell->FlushPendingNotifications(ChangesToFlush(Flush_InterruptibleLayout,
-                                                          false));
+          mozFlushType flushType = HasPendingAnimations(shell)
+                                 ? Flush_Layout
+                                 : Flush_InterruptibleLayout;
+          shell->FlushPendingNotifications(ChangesToFlush(flushType, false));
           // Inform the FontFaceSet that we ticked, so that it can resolve its
           // ready promise if it needs to.
           nsPresContext* presContext = shell->GetPresContext();
@@ -1372,6 +1400,8 @@ nsRefreshDriver::Tick(int64_t aNowEpoch, TimeStamp aNowTime)
       nsJSContext::NotifyDidPaint();
     }
   }
+
+  mozilla::Telemetry::AccumulateTimeDelta(mozilla::Telemetry::REFRESH_DRIVER_TICK, mTickStart);
 
   for (uint32_t i = 0; i < mPostRefreshObservers.Length(); ++i) {
     mPostRefreshObservers[i]->DidRefresh();

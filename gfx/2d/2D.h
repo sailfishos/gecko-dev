@@ -598,20 +598,6 @@ protected:
   UserData mUserData;
 };
 
-#ifdef MOZ_ENABLE_FREETYPE
-/**
- * Describes a font.
- * Used to pass the key informatin from a gfxFont into Azure
- * @todo Should be replaced by a more long term solution, perhaps Bug 738014
- */
-struct FontOptions
-{
-  std::string mName;
-  FontStyle mStyle;
-};
-#endif
-
-
 /** This class is designed to allow passing additional glyph rendering
  * parameters to the glyph drawing functions. This is an empty wrapper class
  * merely used to allow holding on to and passing around platform specific
@@ -1088,6 +1074,11 @@ public:
    * doesn't exceed the given limit.
    */
   static bool CheckSurfaceSize(const IntSize &sz, int32_t limit = 0);
+
+  /** Make sure the given dimension satisfies the CheckSurfaceSize and is
+   * within 8k limit.  The 8k value is chosen a bit randomly.
+   */
+  static bool ReasonableSurfaceSize(const IntSize &aSize);
 
   static TemporaryRef<DrawTarget> CreateDrawTargetForCairoSurface(cairo_surface_t* aSurface, const IntSize& aSize, SurfaceFormat* aFormat = nullptr);
 

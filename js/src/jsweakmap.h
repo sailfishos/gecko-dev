@@ -251,8 +251,8 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
             gc::Cell *value = gc::ToMarkable(r.front().value());
             if (key && value) {
                 tracer->callback(tracer, memberOf,
-                                 key, gc::TraceKind(r.front().key()),
-                                 value, gc::TraceKind(r.front().value()));
+                                 JS::GCCellPtr(r.front().key()),
+                                 JS::GCCellPtr(r.front().value()));
             }
         }
     }
@@ -280,7 +280,6 @@ protected:
     }
 };
 
-#ifdef JSGC_GENERATIONAL
 /*
  * At times, you will need to ignore barriers when accessing WeakMap entries.
  * Localize the templatized casting craziness here.
@@ -302,7 +301,6 @@ UnbarrieredRef(WeakMap<PreBarriered<Key>, RelocatablePtr<Value>> *map, Key key)
     typedef gc::HashKeyRef<UnbarrieredMap, Key> UnbarrieredKeyRef;
     return UnbarrieredKeyRef(reinterpret_cast<UnbarrieredMap*>(baseMap), key);
 }
-#endif
 
 /* WeakMap methods exposed so they can be installed in the self-hosting global. */
 

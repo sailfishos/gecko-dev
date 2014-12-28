@@ -27,6 +27,7 @@
 #include "SharedSurfaceEGL.h"
 #include "SharedSurfaceGL.h"
 #include "../opengl/CompositorOGL.h"
+#include "gfxUtils.h"
 
 #ifdef MOZ_ENABLE_D3D10_LAYER
 #include "../d3d11/CompositorD3D11.h"
@@ -326,6 +327,18 @@ TextureHost::PrintInfo(std::stringstream& aStream, const char* aPrefix)
     Unlock();
   }
   AppendToString(aStream, mFlags, " [flags=", "]");
+#ifdef MOZ_DUMP_PAINTING
+  if (gfxPrefs::LayersDumpTexture() || profiler_feature_active("layersdump")) {
+    nsAutoCString pfx(aPrefix);
+    pfx += "  ";
+
+    aStream << "\n" << pfx.get() << "Surface: ";
+    RefPtr<gfx::DataSourceSurface> dSurf = GetAsSurface();
+    if (dSurf) {
+      aStream << gfxUtils::GetAsLZ4Base64Str(dSurf).get();
+    }
+  }
+#endif
 }
 
 TextureSource::TextureSource()
@@ -547,7 +560,10 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
                                                     gfx::SurfaceFormat::A8);
     // We don't support partial updates for Y U V textures
     NS_ASSERTION(!aRegion, "Unsupported partial updates for YCbCr textures");
-    if (!srcY->Update(tempY) ||
+    if (!tempY ||
+        !tempCb ||
+        !tempCr ||
+        !srcY->Update(tempY) ||
         !srcU->Update(tempCb) ||
         !srcV->Update(tempCr)) {
       NS_WARNING("failed to update the DataTextureSource");

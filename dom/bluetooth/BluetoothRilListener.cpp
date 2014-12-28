@@ -102,13 +102,6 @@ MobileConnectionListener::NotifyDataChanged()
 }
 
 NS_IMETHODIMP
-MobileConnectionListener::NotifyUssdReceived(const nsAString & message,
-                                             bool sessionEnded)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 MobileConnectionListener::NotifyDataError(const nsAString & message)
 {
   return NS_OK;
@@ -133,12 +126,6 @@ MobileConnectionListener::NotifyEmergencyCbModeChanged(bool active,
 
 NS_IMETHODIMP
 MobileConnectionListener::NotifyOtaStatusChanged(const nsAString & status)
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-MobileConnectionListener::NotifyIccChanged()
 {
   return NS_OK;
 }

@@ -186,8 +186,8 @@
 #define SM_CONVERTIBLESLATEMODE 0x2003
 #endif
 
-#include "mozilla/layers/CompositorParent.h"
-#include "InputData.h"
+#include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/InputAPZContext.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -3740,50 +3740,22 @@ bool nsWindow::DispatchKeyboardEvent(WidgetGUIEvent* event)
   return ConvertStatus(status);
 }
 
-nsEventStatus nsWindow::MaybeDispatchAsyncWheelEvent(WidgetGUIEvent* aEvent)
-{
-  if (aEvent->mClass != eWheelEventClass) {
-    return nsEventStatus_eIgnore;
-  }
-
-  WidgetWheelEvent* event = aEvent->AsWheelEvent();
-
-  // Otherwise, scroll-zoom won't work.
-  if (event->IsControl()) {
-    return nsEventStatus_eIgnore;
-  }
-
-
-  // Other scrolling modes aren't supported yet.
-  if (event->deltaMode != nsIDOMWheelEvent::DOM_DELTA_LINE) {
-    return nsEventStatus_eIgnore;
-  }
-
-  ScrollWheelInput::ScrollMode scrollMode = ScrollWheelInput::SCROLLMODE_INSTANT;
-  if (Preferences::GetBool("general.smoothScroll"))
-    scrollMode = ScrollWheelInput::SCROLLMODE_SMOOTH;
-
-  ScreenPoint origin(event->refPoint.x, event->refPoint.y);
-  ScrollWheelInput input(event->time, event->timeStamp, 0,
-                         scrollMode,
-                         ScrollWheelInput::SCROLLDELTA_LINE,
-                         origin,
-                         event->lineOrPageDeltaX,
-                         event->lineOrPageDeltaY);
-
-  ScrollableLayerGuid ignoreGuid;
-  return mAPZC->ReceiveInputEvent(input, &ignoreGuid, nullptr);
-}
-
 bool nsWindow::DispatchScrollEvent(WidgetGUIEvent* aEvent)
 {
-  if (mAPZC) {
-    if (MaybeDispatchAsyncWheelEvent(aEvent) == nsEventStatus_eConsumeNoDefault)
-      return true;
-  }
-
   nsEventStatus status;
-  DispatchEvent(aEvent, status);
+
+  if (mAPZC && aEvent->mClass == eWheelEventClass) {
+    uint64_t inputBlockId = 0;
+    ScrollableLayerGuid guid;
+
+    nsEventStatus result = mAPZC->ReceiveInputEvent(*aEvent->AsWheelEvent(), &guid, &inputBlockId);
+    if (result == nsEventStatus_eConsumeNoDefault) {
+      return true;
+    }
+    status = DispatchEventForAPZ(aEvent, guid, inputBlockId);
+  } else {
+    DispatchEvent(aEvent, status);
+  }
   return ConvertStatus(status);
 }
 
@@ -3961,6 +3933,7 @@ bool nsWindow::DispatchMouseEvent(uint32_t aEventType, WPARAM wParam,
     event.message = NS_MOUSE_BUTTON_DOWN;
     event.button = aButton;
     sLastClickCount = 2;
+    sLastMouseDownTime = curMsgTime;
   }
   else if (aEventType == NS_MOUSE_BUTTON_UP) {
     // remember when this happened for the next mouse down
@@ -6773,18 +6746,12 @@ nsWindow::GetPreferredCompositorBackends(nsTArray<LayersBackend>& aHints)
     }
 
     ID3D11Device* device = gfxWindowsPlatform::GetPlatform()->GetD3D11Device();
-    if (device &&
-        device->GetFeatureLevel() >= D3D_FEATURE_LEVEL_10_0 &&
-        !DoesD3D11DeviceWork(device)) {
-      // bug 1083071 - bad things - fall back to basic layers
-      // This should not happen aside from driver bugs, and in particular
-      // should not happen on our test machines, so let's NS_ERROR to ensure
-      // that we would catch it as a test failure.
-      NS_ERROR("Can't use Direct3D 11 because of a driver bug");
-    } else {
-      if (!prefs.mPreferD3D9) {
-        aHints.AppendElement(LayersBackend::LAYERS_D3D11);
-      }
+
+    if (!prefs.mPreferD3D9) {
+      aHints.AppendElement(LayersBackend::LAYERS_D3D11);
+    }
+    if (prefs.mPreferD3D9 || !mozilla::IsVistaOrLater()) {
+      // We don't want D3D9 except on Windows XP
       aHints.AppendElement(LayersBackend::LAYERS_D3D9);
     }
   }
@@ -7714,19 +7681,6 @@ void nsWindow::PickerClosed()
   if (!mPickerDisplayCount && mDestroyCalled) {
     Destroy();
   }
-}
-
-CompositorParent* nsWindow::NewCompositorParent(int aSurfaceWidth,
-                                                int aSurfaceHeight)
-{
-  CompositorParent *compositor = new CompositorParent(this, false, aSurfaceWidth, aSurfaceHeight);
-
-  if (gfxPrefs::AsyncPanZoomEnabled()) {
-    mAPZC = CompositorParent::GetAPZCTreeManager(compositor->RootLayerTreeId());
-    APZCTreeManager::SetDPI(GetDPI());
-  }
-
-  return compositor;
 }
 
 /**************************************************************

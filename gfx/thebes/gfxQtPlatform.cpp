@@ -32,6 +32,7 @@
 #include "nsMathUtils.h"
 #include "nsTArray.h"
 #ifdef MOZ_X11
+#include "gfxXlibSurface.h"
 #include "prenv.h"
 #endif
 
@@ -52,8 +53,8 @@ gfxQtPlatform::gfxQtPlatform()
     if (!sFontconfigUtils)
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
 
-    mScreenDepth = qApp && qApp->primaryScreen() ? qApp->primaryScreen()->depth() : 24;
-    if (mScreenDepth == 16 || Preferences::GetBool("gfx.qt.rgb16.force", false)) {
+    mScreenDepth = qApp->primaryScreen()->depth();
+    if (mScreenDepth == 16) {
         sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
     uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);

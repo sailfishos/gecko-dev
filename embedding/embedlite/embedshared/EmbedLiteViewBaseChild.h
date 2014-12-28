@@ -103,7 +103,7 @@ public:
 
 /*---------WidgetIface---------------*/
 
-  virtual bool ContentReceivedTouch(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
+  virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
 
 protected:
   virtual ~EmbedLiteViewBaseChild();

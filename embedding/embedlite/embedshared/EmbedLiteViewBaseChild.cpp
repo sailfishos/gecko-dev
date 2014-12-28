@@ -804,7 +804,7 @@ EmbedLiteViewBaseChild::RecvHandleLongTap(const nsIntPoint& aPoint, const Scroll
                    false /* Ignore root scroll frame */);
   }
 
-  SendContentReceivedTouch(aGuid, aInputBlockId, eventHandled);
+  SendContentReceivedInputBlock(aGuid, aInputBlockId, eventHandled);
 
   return true;
 }
@@ -934,9 +934,9 @@ EmbedLiteViewBaseChild::RecvMouseEvent(const nsString& aType,
   return !ignored;
 }
 
-bool EmbedLiteViewBaseChild::ContentReceivedTouch(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+bool EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
-  return SendContentReceivedTouch(aGuid, aInputBlockId, aPreventDefault);
+  return SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
 }
 
 bool
@@ -949,7 +949,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(aGuid, mPendingTouchPreventedBlockId, nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId, nsIPresShell::gPreventMouseEvents);
     }
     mPendingTouchPreventedBlockId = aInputBlockId;
     static bool sDispatchMouseEvents;

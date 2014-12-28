@@ -387,12 +387,8 @@ str_enumerate(JSContext *cx, HandleObject obj)
         if (!str1)
             return false;
         value.setString(str1);
-        if (!JSObject::defineElement(cx, obj, i, value,
-                                     JS_PropertyStub, JS_StrictPropertyStub,
-                                     STRING_ELEMENT_ATTRS))
-        {
+        if (!JSObject::defineElement(cx, obj, i, value, nullptr, nullptr, STRING_ELEMENT_ATTRS))
             return false;
-        }
     }
 
     return true;
@@ -426,13 +422,12 @@ const Class StringObject::class_ = {
     js_String_str,
     JSCLASS_HAS_RESERVED_SLOTS(StringObject::RESERVED_SLOTS) |
     JSCLASS_HAS_CACHED_PROTO(JSProto_String),
-    JS_PropertyStub,         /* addProperty */
-    JS_DeletePropertyStub,   /* delProperty */
-    JS_PropertyStub,         /* getProperty */
-    JS_StrictPropertyStub,   /* setProperty */
+    nullptr, /* addProperty */
+    nullptr, /* delProperty */
+    nullptr, /* getProperty */
+    nullptr, /* setProperty */
     str_enumerate,
-    str_resolve,
-    JS_ConvertStub
+    str_resolve
 };
 
 /*
@@ -481,24 +476,6 @@ IsString(HandleValue v)
 }
 
 #if JS_HAS_TOSOURCE
-
-/*
- * String.prototype.quote is generic (as are most string methods), unlike
- * toSource, toString, and valueOf.
- */
-static bool
-str_quote(JSContext *cx, unsigned argc, Value *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    RootedString str(cx, ThisToStringForStringProto(cx, args));
-    if (!str)
-        return false;
-    str = js_QuoteString(cx, str, '"');
-    if (!str)
-        return false;
-    args.rval().setString(str);
-    return true;
-}
 
 MOZ_ALWAYS_INLINE bool
 str_toSource_impl(JSContext *cx, CallArgs args)
@@ -554,26 +531,6 @@ js_str_toString(JSContext *cx, unsigned argc, Value *vp)
 /*
  * Java-like string native methods.
  */
-
-static MOZ_ALWAYS_INLINE bool
-ValueToIntegerRange(JSContext *cx, HandleValue v, int32_t *out)
-{
-    if (v.isInt32()) {
-        *out = v.toInt32();
-    } else {
-        double d;
-        if (!ToInteger(cx, v, &d))
-            return false;
-        if (d > INT32_MAX)
-            *out = INT32_MAX;
-        else if (d < INT32_MIN)
-            *out = INT32_MIN;
-        else
-            *out = int32_t(d);
-    }
-
-    return true;
-}
 
 JSString *
 js::SubstringKernel(JSContext *cx, HandleString str, int32_t beginInt, int32_t lengthInt)
@@ -3976,7 +3933,6 @@ str_concat(JSContext *cx, unsigned argc, Value *vp)
 
 static const JSFunctionSpec string_methods[] = {
 #if JS_HAS_TOSOURCE
-    JS_FN("quote",             str_quote,             0,JSFUN_GENERIC_NATIVE),
     JS_FN(js_toSource_str,     str_toSource,          0,0),
 #endif
 

@@ -976,7 +976,7 @@ bool OggReader::ReadOggPage(ogg_page* aPage)
 
 ogg_packet* OggReader::NextOggPacket(OggCodecState* aCodecState)
 {
-  NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
+  MOZ_ASSERT(mDecoder->OnDecodeThread(), "Should be on decode thread.");
 
   if (!aCodecState || !aCodecState->mActive) {
     return nullptr;
@@ -1424,13 +1424,18 @@ nsresult OggReader::SeekInUnbuffered(int64_t aTarget,
   return SeekBisection(seekTarget, k, SEEK_FUZZ_USECS);
 }
 
-void OggReader::Seek(int64_t aTarget,
-                     int64_t aStartTime,
-                     int64_t aEndTime,
-                     int64_t aCurrentTime)
+nsRefPtr<MediaDecoderReader::SeekPromise>
+OggReader::Seek(int64_t aTarget,
+                int64_t aStartTime,
+                int64_t aEndTime,
+                int64_t aCurrentTime)
 {
   nsresult res = SeekInternal(aTarget, aStartTime, aEndTime, aCurrentTime);
-  GetCallback()->OnSeekCompleted(res);
+  if (NS_FAILED(res)) {
+    return SeekPromise::CreateAndReject(res, __func__);
+  } else {
+    return SeekPromise::CreateAndResolve(true, __func__);
+  }
 }
 
 nsresult OggReader::SeekInternal(int64_t aTarget,

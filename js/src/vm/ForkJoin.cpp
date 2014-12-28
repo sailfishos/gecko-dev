@@ -1643,13 +1643,11 @@ ForkJoinShared::executePortion(PerThreadData *perThread, ThreadPoolWorker *worke
 void
 ForkJoinShared::setAbortFlagDueToInterrupt(ForkJoinContext &cx)
 {
-#ifdef JSGC_FJGENERATIONAL
     MOZ_ASSERT(cx_->runtime()->hasPendingInterruptPar());
     // The GC Needed flag should not be set during parallel
     // execution.  Instead, one of the requestGC() or
     // requestZoneGC() methods should be invoked.
     MOZ_ASSERT(!cx_->runtime()->gc.isGcNeeded());
-#endif
 
     if (!abort_) {
         cx.bailoutRecord->joinCause(ParallelBailoutInterrupt);
@@ -1875,41 +1873,6 @@ ParallelBailoutRecord::reset()
 {
     RematerializedFrame::FreeInVector(frames());
     cause = ParallelBailoutNone;
-}
-
-void
-ParallelBailoutRecord::rematerializeFrames(ForkJoinContext *cx, JitFrameIterator &frameIter)
-{
-    // This function is infallible. These are only called when we are already
-    // erroring out. If we OOM here, free what we've allocated and return. Error
-    // reporting is then unable to give the user detailed stack information.
-
-    MOZ_ASSERT(frames().empty());
-
-    for (; !frameIter.done(); ++frameIter) {
-        if (!frameIter.isIonJS())
-            continue;
-
-        InlineFrameIterator inlineIter(cx, &frameIter);
-        Vector<RematerializedFrame *> inlineFrames(cx);
-
-        if (!RematerializedFrame::RematerializeInlineFrames(cx, frameIter.fp(),
-                                                            inlineIter, inlineFrames))
-        {
-            RematerializedFrame::FreeInVector(inlineFrames);
-            RematerializedFrame::FreeInVector(frames());
-            return;
-        }
-
-        // Reverse the inline frames into the main vector.
-        while (!inlineFrames.empty()) {
-            if (!frames().append(inlineFrames.popCopy())) {
-                RematerializedFrame::FreeInVector(inlineFrames);
-                RematerializedFrame::FreeInVector(frames());
-                return;
-            }
-        }
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
