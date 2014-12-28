@@ -30,6 +30,8 @@
 #include "base/command_line.h"
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
+#include "mozilla/layers/CompositorParent.h"
+#include "mozilla/layers/ImageBridgeParent.h"
 
 #include "EmbedLiteViewProcessParent.h"
 
@@ -98,6 +100,15 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   extraArgs.push_back("-embedlite");
   mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
   Open(mSubprocess->GetChannel(), mSubprocess->GetOwnedChildProcessHandle());
+
+  mozilla::layers::CompositorParent::StartUp();
+  bool useOffMainThreadCompositing = !!CompositorParent::CompositorLoop();
+  LOGT("useOffMainThreadCompositing:%i", useOffMainThreadCompositing);
+  if (useOffMainThreadCompositing)
+  {
+    DebugOnly<bool> opened = PCompositor::Open(this);
+    MOZ_ASSERT(opened);
+  }
 }
 
 EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
@@ -276,7 +287,7 @@ EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
   LOGT();
-  return 0;
+  return CompositorParent::Create(aTransport, aOtherProcess);
 }
 
 

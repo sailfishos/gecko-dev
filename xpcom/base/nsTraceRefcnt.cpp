@@ -128,7 +128,7 @@ struct nsTraceRefcntStats
   double mObjsOutstandingSquared;
 };
 
-#ifdef DEBUG
+#ifndef DEBUG
 static const char kStaticCtorDtorWarning[] =
   "XPCOM objects created/destroyed from static ctor/dtor";
 

@@ -32,6 +32,8 @@
 #include "nsIFactory.h"
 #include "mozilla/GenericFactory.h"
 #include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
+#include "mozilla/layers/PCompositorChild.h"
+
 
 using namespace base;
 using namespace mozilla::ipc;
@@ -154,7 +156,7 @@ PCompositorChild*
 EmbedLiteAppProcessChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
 {
   LOGT();
-  return 0;
+  return CompositorChild::Create(aTransport, aOtherProcess);
 }
 
 } // namespace embedlite
