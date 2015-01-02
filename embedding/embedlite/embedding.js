@@ -119,6 +119,8 @@ pref("browser.cache.disk.max_entry_size", 4096); // kilobytes
 pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
 pref("browser.cache.memory.capacity", 1024);
+pref("browser.cache.use_new_backend",       0);
+pref("browser.cache.use_new_backend_temp",  false);
 
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
