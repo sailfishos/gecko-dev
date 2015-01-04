@@ -100,15 +100,6 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   extraArgs.push_back("-embedlite");
   mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
   Open(mSubprocess->GetChannel(), mSubprocess->GetOwnedChildProcessHandle());
-
-  mozilla::layers::CompositorParent::StartUp();
-  bool useOffMainThreadCompositing = !!CompositorParent::CompositorLoop();
-  LOGT("useOffMainThreadCompositing:%i", useOffMainThreadCompositing);
-  if (useOffMainThreadCompositing)
-  {
-    DebugOnly<bool> opened = PCompositor::Open(this);
-    MOZ_ASSERT(opened);
-  }
 }
 
 EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
@@ -208,6 +199,20 @@ PEmbedLiteViewParent*
 EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT();
+
+  static bool sCompositorCreated = false;
+  if (!sCompositorCreated) {
+    sCompositorCreated = true;
+    mozilla::layers::CompositorParent::StartUp();
+    bool useOffMainThreadCompositing = !!CompositorParent::CompositorLoop();
+    LOGT("useOffMainThreadCompositing:%i", useOffMainThreadCompositing);
+    if (useOffMainThreadCompositing)
+    {
+      DebugOnly<bool> opened = PCompositor::Open(this);
+      MOZ_ASSERT(opened);
+    }
+  }
+
   EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(id, parentId, isPrivateWindow);
   p->AddRef();
   return p;
@@ -252,7 +257,9 @@ EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("Reason:%d", aWhy);
 
-  ShutDownProcess(true);
+  if (aWhy != NormalShutdown) {
+    ShutDownProcess(true);
+  }
 
   MessageLoop::current()->
     PostTask(FROM_HERE,
@@ -286,8 +293,8 @@ PCompositorParent*
 EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
-  LOGT();
-  return CompositorParent::Create(aTransport, aOtherProcess);
+  LOGT("!!!!!!!!!!!!!!!!!!!!!!!Need to CompositorParent::Create(aTransport, aOtherProcess)");
+  return 0; //CompositorParent::Create(aTransport, aOtherProcess);
 }
 
 

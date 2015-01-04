@@ -147,6 +147,11 @@ PEmbedLiteViewChild*
 EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
+  static bool sViewInitializeOnce = false;
+  if (!sViewInitializeOnce) {
+    gfxPlatform::GetPlatform()->ComputeTileSize();
+    sViewInitializeOnce = true;
+  }
   EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId, isPrivateWindow);
   view->AddRef();
   return view;
@@ -155,8 +160,8 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uin
 PCompositorChild*
 EmbedLiteAppProcessChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
 {
-  LOGT();
-  return CompositorChild::Create(aTransport, aOtherProcess);
+  LOGT("!!!!!!!!!!!!!!!!!!!!!!!!!Need to CompositorChild::Create(aTransport, aOtherProcess)");
+  return 0; //CompositorChild::Create(aTransport, aOtherProcess);
 }
 
 } // namespace embedlite

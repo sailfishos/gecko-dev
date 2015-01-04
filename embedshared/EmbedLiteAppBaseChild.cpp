@@ -158,10 +158,10 @@ EmbedLiteAppBaseChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
   std::map<uint32_t, EmbedLiteViewBaseChild*>::iterator it;
   for (it = mWeakViewMap.begin(); it != mWeakViewMap.end(); ++it) {
     if (actor == it->second) {
+      mWeakViewMap.erase(it);
       break;
     }
   }
-  mWeakViewMap.erase(it);
   EmbedLiteViewBaseChild* p = static_cast<EmbedLiteViewBaseChild*>(actor);
   p->Release();
   return true;

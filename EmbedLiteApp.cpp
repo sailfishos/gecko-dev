@@ -272,6 +272,10 @@ void _FinalStop(EmbedLiteApp* app)
 void
 EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
 {
+  if (app->mAppParent == nullptr) {
+    LOGE("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!app->mAppParent is null, wrong logic?");
+    return;
+  }
   unused << app->mAppParent->SendPreDestroy();
 }
 
