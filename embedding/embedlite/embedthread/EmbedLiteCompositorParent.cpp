@@ -15,6 +15,7 @@
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
 #include "gfxUtils.h"
+#include "nsRefreshDriver.h"
 
 #include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
@@ -29,6 +30,8 @@ using namespace mozilla::gl;
 
 namespace mozilla {
 namespace embedlite {
+
+static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
 EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
                                                      bool aRenderToEGLSurface,
@@ -148,7 +151,7 @@ EmbedLiteCompositorParent::Invalidate()
 
   if (view->GetListener() && !view->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
-    MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, 16);
+    MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
   }
 
