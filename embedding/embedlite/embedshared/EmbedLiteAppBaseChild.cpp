@@ -33,6 +33,8 @@ using namespace mozilla::layers;
 namespace mozilla {
 namespace embedlite {
 
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
+
 static EmbedLiteAppBaseChild* sAppBaseChild = nullptr;
 
 EmbedLiteAppBaseChild*

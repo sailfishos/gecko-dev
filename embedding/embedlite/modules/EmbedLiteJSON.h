@@ -23,8 +23,6 @@ protected:
   virtual ~EmbedLiteJSON();
 };
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
-
 #define NS_EMBED_LITE_JSON_CONTRACTID "@mozilla.org/embedlite-json;1"
 #define NS_EMBED_LITE_JSON_SERVICE_CLASSNAME "EmbedLite JSON Component"
 #define NS_EMBED_LITE_JSON_SERVICE_CID NS_IEMBEDLITEJSON_IID

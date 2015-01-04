@@ -39,9 +39,8 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, PEmbedLiteViewParent* aViewImpl
 EmbedLiteView::~EmbedLiteView()
 {
   LOGT("impl:%p", mViewImpl);
-  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
-    EmbedLiteViewThreadParent* impl = static_cast<EmbedLiteViewThreadParent*>(mViewImpl);
-    unused << impl->SendDestroy();
+  if (mViewImpl) {
+    unused << mViewParent->SendDestroy();
   } else {
     LOGNI();
   }

@@ -112,10 +112,10 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
   std::map<uint64_t, uint32_t>::iterator it;
   for (it = mIDMap.begin(); it != mIDMap.end(); ++it) {
     if (aId == it->second) {
+      mIDMap.erase(it);
       break;
     }
   }
-  mIDMap.erase(it);
 }
 
 NS_IMETHODIMP
