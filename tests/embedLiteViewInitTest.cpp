@@ -127,6 +127,9 @@ void MyListener::CreateView(void* aData)
 
 void MyListener::Initialized()
 {
+  static bool sAppInititalized = false;
+  MOZ_ASSERT(!sAppInititalized, "EmbedliteApp sent Initialized notification twice\n");
+  sAppInititalized = true;
   printf("Embedding initialized, let's make view");
 
   int defaultViewCount = 2;

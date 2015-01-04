@@ -112,8 +112,6 @@ EmbedLiteAppProcessChild::InitXPCOM()
   mozilla::DebugOnly<nsresult> rv = InitAppService();
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-  SendInitialized();
-
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
 
