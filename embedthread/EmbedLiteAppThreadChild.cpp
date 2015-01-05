@@ -5,6 +5,8 @@
 
 #include "EmbedLog.h"
 #include "EmbedLiteAppThreadChild.h"
+#include "EmbedLiteViewThreadChild.h"
+#include "mozilla/layers/PCompositorChild.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -40,10 +42,10 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint
   return view;
 }
 
-PCompositorChild*
+mozilla::layers::PCompositorChild*
 EmbedLiteAppThreadChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
 {
-  LOGT();
+  LOGNI();
   return 0;
 }
 

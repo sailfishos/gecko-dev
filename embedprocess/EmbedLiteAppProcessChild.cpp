@@ -24,7 +24,6 @@
 #include "nsIWindowWatcher.h"
 #include "WindowCreator.h"
 #include "nsIEmbedAppService.h"
-#include "EmbedLiteAppService.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteJSON.h"
 #include "nsIComponentRegistrar.h"             // for nsIComponentRegistrar
@@ -158,8 +157,8 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uin
 PCompositorChild*
 EmbedLiteAppProcessChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
 {
-  LOGT("!!!!!!!!!!!!!!!!!!!!!!!!!Need to CompositorChild::Create(aTransport, aOtherProcess)");
-  return 0; //CompositorChild::Create(aTransport, aOtherProcess);
+  LOGT();
+  return CompositorChild::Create(aTransport, aOtherProcess);
 }
 
 } // namespace embedlite

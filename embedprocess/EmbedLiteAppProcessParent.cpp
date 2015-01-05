@@ -34,6 +34,7 @@
 #include "mozilla/layers/ImageBridgeParent.h"
 
 #include "EmbedLiteViewProcessParent.h"
+#include "EmbedLiteCompositorProcessParent.h"
 
 static BrowserProcessSubThread* sIOThread;
 
@@ -293,8 +294,8 @@ PCompositorParent*
 EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
-  LOGT("!!!!!!!!!!!!!!!!!!!!!!!Need to CompositorParent::Create(aTransport, aOtherProcess)");
-  return 0; //CompositorParent::Create(aTransport, aOtherProcess);
+  LOGT();
+  return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess);
 }
 
 
