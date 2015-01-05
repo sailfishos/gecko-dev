@@ -34,6 +34,7 @@ namespace mozilla {
 namespace embedlite {
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteJSON)
+NS_GENERIC_FACTORY_CONSTRUCTOR(EmbedLiteAppService)
 
 static EmbedLiteAppBaseChild* sAppBaseChild = nullptr;
 

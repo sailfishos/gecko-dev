@@ -527,10 +527,10 @@ XRE_InitChildProcess(int aArgc,
         break;
 
       case GeckoProcessType_Content: {
-          bool isEmbedlite = false;
+          bool isEmbedliteProcess = false;
           for (int idx = aArgc; idx > 0; idx--) {
             if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
-              isEmbedlite = true;
+              isEmbedliteProcess = true;
               break;
             }
           }
@@ -543,7 +543,7 @@ XRE_InitChildProcess(int aArgc,
             }
           }
 
-          if (isEmbedlite) {
+          if (isEmbedliteProcess) {
             // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
             sChildProcessType = GeckoProcessType_Default;
             process = new mozilla::embedlite::EmbedLiteContentProcess(parentHandle);
