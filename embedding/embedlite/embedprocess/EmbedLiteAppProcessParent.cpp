@@ -34,7 +34,6 @@
 #include "mozilla/layers/ImageBridgeParent.h"
 
 #include "EmbedLiteViewProcessParent.h"
-#include "EmbedLiteCompositorProcessParent.h"
 
 static BrowserProcessSubThread* sIOThread;
 
@@ -49,6 +48,31 @@ using namespace mozilla::net;
 
 namespace mozilla {
 namespace embedlite {
+
+// Temporary manager which allows to call InitLog
+class EmbedLiteAppProcessParentManager MOZ_FINAL : public mozilla::layers::LayerManager
+{
+public:
+  explicit EmbedLiteAppProcessParentManager()
+  {
+    mozilla::layers::LayerManager::InitLog();
+  }
+
+protected:
+  virtual void BeginTransaction() {}
+  virtual void BeginTransactionWithTarget(gfxContext*) {}
+  virtual bool EndEmptyTransaction(mozilla::layers::LayerManager::EndTransactionFlags) { return false; }
+  virtual void EndTransaction(mozilla::layers::LayerManager::DrawPaintedLayerCallback, void*, mozilla::layers::LayerManager::EndTransactionFlags) {}
+  virtual void SetRoot(mozilla::layers::Layer*) {}
+  virtual already_AddRefed<mozilla::layers::PaintedLayer> CreatePaintedLayer() { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ContainerLayer> CreateContainerLayer() { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ImageLayer> CreateImageLayer() { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ColorLayer> CreateColorLayer() { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::CanvasLayer> CreateCanvasLayer() { return nullptr; }
+  virtual mozilla::layers::LayersBackend GetBackendType() { return LayersBackend::LAYERS_OPENGL; }
+  virtual int32_t GetMaxTextureSize() const { return 0; }
+  virtual void GetBackendName(nsAString_internal&) {}
+};
 
 EmbedLiteAppProcessParent*
 EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent()
@@ -295,7 +319,8 @@ EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
   LOGT();
-  return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess);
+  RefPtr<EmbedLiteAppProcessParentManager> mgr = new EmbedLiteAppProcessParentManager(); // Dummy manager in order to initialize layers log, fix me by creating proper manager for this process type
+  return CompositorParent::Create(aTransport, aOtherProcess);
 }
 
 

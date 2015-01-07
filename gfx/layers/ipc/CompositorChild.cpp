@@ -93,6 +93,11 @@ CompositorChild::Create(Transport* aTransport, ProcessId aOtherProcess)
   // We release this ref in ActorDestroy().
   sCompositor = child.forget().take();
 
+  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+    gfxPlatform::GetPlatform()->ComputeTileSize();
+    return sCompositor;
+  }
+
   int32_t width;
   int32_t height;
   sCompositor->SendGetTileSize(&width, &height);
@@ -106,7 +111,7 @@ CompositorChild::Create(Transport* aTransport, ProcessId aOtherProcess)
 CompositorChild::Get()
 {
   // This is only expected to be used in child processes.
-  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Default || XRE_IsEmbedliteProcess());
   return sCompositor;
 }
 

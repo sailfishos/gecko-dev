@@ -150,6 +150,7 @@ int main(int argc, char** argv)
 
   printf("Load XUL Symbols\n");
   if (LoadEmbedLite(argc, argv)) {
+    sleep(3);
     printf("XUL Symbols loaded\n");
     EmbedLiteApp* mapp = XRE_GetEmbedLite();
     MyListener* listener = new MyListener(mapp);

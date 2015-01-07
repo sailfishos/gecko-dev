@@ -28,6 +28,9 @@
 #include "EmbedLiteAppProcessParent.h"
 
 namespace mozilla {
+namespace startup {
+extern bool sIsEmbedlite;
+}
 namespace embedlite {
 
 EmbedLiteApp* EmbedLiteApp::sSingleton = nullptr;
@@ -57,6 +60,7 @@ EmbedLiteApp::EmbedLiteApp()
   , mIsAsyncLoop(false)
 {
   LOGT();
+  mozilla::startup::sIsEmbedlite = true;
   sSingleton = this;
 }
 

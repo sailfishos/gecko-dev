@@ -644,7 +644,7 @@ gfxPlatform::InitLayersIPC()
 
     AsyncTransactionTrackersHolder::Initialize();
 
-    if (XRE_GetProcessType() == GeckoProcessType_Default)
+    if (XRE_GetProcessType() == GeckoProcessType_Default && !XRE_IsEmbedliteProcess())
     {
         mozilla::layers::CompositorParent::StartUp();
 #ifndef MOZ_WIDGET_GONK
@@ -666,7 +666,7 @@ gfxPlatform::ShutdownLayersIPC()
     }
     sLayersIPCIsUp = false;
 
-    if (XRE_GetProcessType() == GeckoProcessType_Default)
+    if (XRE_GetProcessType() == GeckoProcessType_Default && !XRE_IsEmbedliteProcess())
     {
         // This must happen after the shutdown of media and widgets, which
         // are triggered by the NS_XPCOM_SHUTDOWN_OBSERVER_ID notification.

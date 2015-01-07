@@ -1366,7 +1366,9 @@ public:
     , mNotifyAfterRemotePaint(false)
   {
     MOZ_ASSERT(NS_IsMainThread());
-    gfxPlatform::GetPlatform()->ComputeTileSize();
+    if (!XRE_IsEmbedliteProcess()) {
+      gfxPlatform::GetPlatform()->ComputeTileSize();
+    }
   }
 
   // IToplevelProtocol::CloneToplevel()

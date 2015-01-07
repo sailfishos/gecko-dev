@@ -24,8 +24,8 @@ class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
 class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
-                                 public nsIEmbedBrowserChromeListener,
-                                 public EmbedLiteViewChildIface
+                               public nsIEmbedBrowserChromeListener,
+                               public EmbedLiteViewChildIface
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
 public:
@@ -151,6 +151,7 @@ protected:
   virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
   virtual bool RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
   virtual bool RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
+  virtual void OnGeckoWindowInitialized() {}
 
 private:
   friend class TabChildHelper;

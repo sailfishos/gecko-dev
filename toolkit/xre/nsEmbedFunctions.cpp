@@ -218,6 +218,7 @@ XRE_ChildProcessTypeToString(GeckoProcessType aProcessType)
 namespace mozilla {
 namespace startup {
 GeckoProcessType sChildProcessType = GeckoProcessType_Default;
+bool sIsEmbedlite = false;
 }
 }
 
@@ -291,6 +292,11 @@ SetTaskbarGroupId(const nsString& aId)
         ::FreeLibrary(hDLL);
 }
 #endif
+
+bool XRE_IsEmbedliteProcess()
+{
+  return startup::sIsEmbedlite;
+}
 
 nsresult
 XRE_InitChildProcess(int aArgc,
@@ -527,10 +533,9 @@ XRE_InitChildProcess(int aArgc,
         break;
 
       case GeckoProcessType_Content: {
-          bool isEmbedliteProcess = false;
           for (int idx = aArgc; idx > 0; idx--) {
             if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
-              isEmbedliteProcess = true;
+              startup::sIsEmbedlite = true;
               break;
             }
           }
@@ -543,7 +548,7 @@ XRE_InitChildProcess(int aArgc,
             }
           }
 
-          if (isEmbedliteProcess) {
+          if (startup::sIsEmbedlite) {
             // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
             sChildProcessType = GeckoProcessType_Default;
             process = new mozilla::embedlite::EmbedLiteContentProcess(parentHandle);
