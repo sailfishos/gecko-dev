@@ -451,6 +451,17 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     return mLayerManager;
   }
 
+  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
+    printf("Create Layer Manager for Process View\n");
+    mLayerManager = new ClientLayerManager(this);
+    ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
+    if (!lf->HasShadowManager() && aShadowManager) {
+      lf->SetShadowManager(aShadowManager);
+    }
+
+    return mLayerManager;
+  }
+
   if (!ViewIsValid()) {
     printf("Embed View has been destroyed early\n");
     mLayerManager = CreateBasicLayerManager();

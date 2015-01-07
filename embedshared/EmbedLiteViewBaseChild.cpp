@@ -248,6 +248,9 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   mHelper = new TabChildHelper(this);
+
+  OnGeckoWindowInitialized();
+
   unused << SendInitialized();
 }
 
