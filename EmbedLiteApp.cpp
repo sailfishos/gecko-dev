@@ -60,7 +60,6 @@ EmbedLiteApp::EmbedLiteApp()
   , mIsAsyncLoop(false)
 {
   LOGT();
-  mozilla::startup::sIsEmbedlite = true;
   sSingleton = this;
 }
 
@@ -165,6 +164,7 @@ bool
 EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aEventLoop)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
+  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   SetState(STARTING);
@@ -181,6 +181,7 @@ bool
 EmbedLiteApp::Start(EmbedType aEmbedType)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
+  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   SetState(STARTING);
