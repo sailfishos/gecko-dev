@@ -9,7 +9,7 @@ License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
-Patch1:     disable-jmalloc-in-storage-service.patch
+Patch1:     confgiure-system-sqlite-to-use-jemalloc-25229.patch
 Patch2:     workaround-for-bug-977015.patch
 Patch3:     fix-20430-invalidate-obsolete-scroll-offset.patch
 Patch4:     workaround-wrong-viewport-in-wikipedia.patch
@@ -26,6 +26,7 @@ BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
+BuildRequires:  pkgconfig(sqlite3)
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
 BuildRequires:  pkgconfig(gstreamer-0.10)
@@ -108,7 +109,9 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
 echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
+echo "ac_add_options --enable-system-sqlite" >> mozconfig
 echo "ac_add_options --enable-libproxy" >> mozconfig
+echo "ac_add_options --enable-jemalloc" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
 echo "ac_add_options --disable-mochitest" >> mozconfig
 echo "ac_add_options --disable-installer" >> mozconfig
