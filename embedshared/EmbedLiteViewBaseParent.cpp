@@ -64,8 +64,9 @@ EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   LOGT();
   mCompositor = aCompositor;
   UpdateScrollController();
-  if (mCompositor)
+  if (mCompositor) {
     mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
+  }
 }
 
 NS_IMETHODIMP
@@ -375,6 +376,9 @@ EmbedLiteViewBaseParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
   mViewSize = ScreenIntSize(width, height);
+  if (mGLViewPortSize.width == 0 && mGLViewPortSize.height == 0) {
+    mGLViewPortSize = gfxSize(width, height);
+  }
   unused << SendSetViewSize(gfxSize(width, height));
 
   return NS_OK;

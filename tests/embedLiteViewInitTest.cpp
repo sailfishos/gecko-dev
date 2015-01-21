@@ -55,6 +55,7 @@ public:
   {
     mView = mAppListener->App()->CreateView();
     mView->SetListener(this);
+    mView->SetViewSize(800, 600);
   }
   virtual ~MyViewListener() {
     printf("~MyViewListener\n");
@@ -63,7 +64,6 @@ public:
     printf("Embedding has created view:%p, Yay\n", mView);
     // FIXME if resize is not called,
     // then Widget/View not initialized properly and prevent destroy process
-    mView->SetViewSize(800, 600);
     mView->LoadURL("data:text/html,<body bgcolor=red>TestApp</body>");
   }
   virtual void ViewDestroyed() {

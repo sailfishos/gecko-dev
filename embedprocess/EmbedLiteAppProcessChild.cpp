@@ -33,6 +33,8 @@
 #include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
 #include "mozilla/layers/PCompositorChild.h"
 
+#include "mozilla/Preferences.h"
+#include "mozilla/dom/PContent.h"
 
 using namespace base;
 using namespace mozilla::ipc;
@@ -119,6 +121,10 @@ EmbedLiteAppProcessChild::InitXPCOM()
   }
 
   unused << SendInitialized();
+
+  InfallibleTArray<mozilla::dom::PrefSetting> prefs;
+  Preferences::GetPreferences(&prefs);
+  SendPrefsArrayInitialized(prefs);
 }
 
 void

@@ -38,9 +38,9 @@ protected:
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) MOZ_OVERRIDE;
   virtual void ScheduleTask(CancelableTask*, int) MOZ_OVERRIDE;
+  void PrepareOffscreen();
 
 private:
-  void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
   bool RenderGL();
