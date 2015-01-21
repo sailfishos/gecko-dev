@@ -115,6 +115,13 @@ EmbedLiteAppThreadParent::AllocPCompositorParent(Transport* aTransport,
   return 0;
 }
 
+bool
+EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(const nsTArray<PrefSetting>& prefs)
+{
+  LOGT();
+  return false;
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

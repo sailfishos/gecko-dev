@@ -34,6 +34,7 @@
 #include "mozilla/layers/ImageBridgeParent.h"
 
 #include "EmbedLiteViewProcessParent.h"
+#include "EmbedLiteCompositorProcessParent.h"
 
 static BrowserProcessSubThread* sIOThread;
 
@@ -74,6 +75,14 @@ protected:
   virtual void GetBackendName(nsAString_internal&) {}
 };
 
+static EmbedLiteAppProcessParent* sAppProcessParent = nullptr;
+
+EmbedLiteAppProcessParent*
+EmbedLiteAppProcessParent::GetInstance()
+{
+  return sAppProcessParent;
+}
+
 EmbedLiteAppProcessParent*
 EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent()
 {
@@ -94,6 +103,7 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
 {
   LOGT();
   MOZ_COUNT_CTOR(EmbedLiteAppProcessParent);
+  sAppProcessParent = this;
 
   mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, base::PRIVILEGES_DEFAULT);
 
@@ -174,10 +184,6 @@ EmbedLiteAppProcessParent::OnChannelConnected(int32_t pid)
     }
 #endif
   }
-
-  // Set a reply timeout. The only time the parent process will actually
-  // timeout is through urgent messages (which are used by CPOWs).
-  SetReplyTimeoutMs(Preferences::GetInt("dom.ipc.cpow.timeout", 3000));
 }
 
 
@@ -185,6 +191,7 @@ bool
 EmbedLiteAppProcessParent::RecvInitialized()
 {
   LOGT();
+  PR_SetEnv("MOZ_LAYERS_PREFER_OFFSCREEN=1");
   mApp->Initialized();
   return true;
 }
@@ -320,9 +327,23 @@ EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
 {
   LOGT();
   RefPtr<EmbedLiteAppProcessParentManager> mgr = new EmbedLiteAppProcessParentManager(); // Dummy manager in order to initialize layers log, fix me by creating proper manager for this process type
-  return CompositorParent::Create(aTransport, aOtherProcess);
+//  return CompositorParent::Create(aTransport, aOtherProcess);
+  return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess, 480, 800, 1);
 }
 
+bool
+EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(const nsTArray<mozilla::dom::PrefSetting>& prefs)
+{
+  LOGT();
+  mPrefs = prefs;
+  return true;
+}
+
+void
+EmbedLiteAppProcessParent::GetPrefs(InfallibleTArray<PrefSetting>* prefs)
+{
+  prefs = &mPrefs;
+}
 
 } // namespace embedlite
 } // namespace mozilla

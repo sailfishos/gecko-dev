@@ -15,6 +15,9 @@ using struct mozilla::SerializedStructuredCloneBuffer
 using struct nsID
   from "nsID.h";
 
+using struct mozilla::null_t
+  from "ipc/IPCMessageUtils.h";
+
 namespace mozilla {
 namespace dom {
 
@@ -133,6 +136,23 @@ union BlobConstructorParams
 {
   ChildBlobConstructorParams;
   ParentBlobConstructorParams;
+};
+
+union PrefValue {
+  nsCString;
+  int32_t;
+  bool;
+};
+
+union MaybePrefValue {
+  PrefValue;
+  null_t;
+};
+
+struct PrefSetting {
+  nsCString name;
+  MaybePrefValue defaultValue;
+  MaybePrefValue userValue;
 };
 
 } // namespace dom

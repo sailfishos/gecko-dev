@@ -49,6 +49,9 @@ protected:
   virtual PCompositorParent*
   AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
 
+  virtual bool
+  RecvPrefsArrayInitialized(const nsTArray<PrefSetting>& prefs);
+
 private:
   virtual ~EmbedLiteAppThreadParent();
 

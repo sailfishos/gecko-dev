@@ -30,6 +30,7 @@
 namespace mozilla {
 namespace startup {
 extern bool sIsEmbedlite;
+extern GeckoProcessType sChildProcessType;
 }
 namespace embedlite {
 
@@ -236,6 +237,7 @@ EmbedLiteApp::StartChildThread()
   }
 
   GeckoLoader::InitEmbedding(mProfilePath);
+  mAppParent = EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent();
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);

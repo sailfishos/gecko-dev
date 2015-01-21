@@ -12,8 +12,12 @@ namespace mozilla {
 namespace ipc {
 class GeckoChildProcessHost;
 }
+namespace dom {
+class PrefSetting;
+}
 namespace embedlite {
 
+class EmbedLiteApp;
 class EmbedLiteAppProcessParent : public PEmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppProcessParent)
@@ -21,6 +25,10 @@ class EmbedLiteAppProcessParent : public PEmbedLiteAppParent
 
 public:
   static EmbedLiteAppProcessParent* CreateEmbedLiteAppProcessParent();
+
+  static EmbedLiteAppProcessParent* GetInstance();
+
+  void GetPrefs(InfallibleTArray<PrefSetting>* prefs);
 
 protected:
   void OnChannelConnected(int32_t pid) MOZ_OVERRIDE;
@@ -57,12 +65,16 @@ protected:
   virtual PCompositorParent*
   AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
 
+  virtual bool
+  RecvPrefsArrayInitialized(const nsTArray<mozilla::dom::PrefSetting>& prefs);
+
 private:
   virtual ~EmbedLiteAppProcessParent();
   void ShutDownProcess(bool aCloseWithError);
 
   EmbedLiteApp* mApp;
   mozilla::ipc::GeckoChildProcessHost* mSubprocess;
+  InfallibleTArray<PrefSetting> mPrefs;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessParent);
 };

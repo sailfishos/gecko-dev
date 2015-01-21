@@ -282,23 +282,6 @@ union FileSystemParams
   FileSystemRemoveParams;
 };
 
-union PrefValue {
-  nsCString;
-  int32_t;
-  bool;
-};
-
-union MaybePrefValue {
-  PrefValue;
-  null_t;
-};
-
-struct PrefSetting {
-  nsCString name;
-  MaybePrefValue defaultValue;
-  MaybePrefValue userValue;
-};
-
 struct DataStoreSetting {
   nsString name;
   nsString originURL;

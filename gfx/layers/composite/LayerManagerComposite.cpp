@@ -133,7 +133,9 @@ void
 LayerManagerComposite::Destroy()
 {
   if (!mDestroyed) {
-    mCompositor->GetWidget()->CleanupWindowEffects();
+    if (mCompositor->GetWidget()) {
+      mCompositor->GetWidget()->CleanupWindowEffects();
+    }
     if (mRoot) {
       RootLayer()->Destroy();
     }
@@ -648,9 +650,10 @@ LayerManagerComposite::Render()
   /** Our more efficient but less powerful alter ego, if one is available. */
   nsRefPtr<Composer2D> composer2D;
 
+  bool hasWidget = mCompositor->GetWidget() != nullptr;
   // We can't use composert2D if we have layer effects, so only get it
   // when we don't have any effects.
-  if (!haveLayerEffects) {
+  if (!haveLayerEffects && hasWidget) {
     composer2D = mCompositor->GetWidget()->GetComposer2D();
   }
 
@@ -674,7 +677,7 @@ LayerManagerComposite::Render()
     PROFILER_LABEL("LayerManagerComposite", "PreRender",
       js::ProfileEntry::Category::GRAPHICS);
 
-    if (!mCompositor->GetWidget()->PreRender(this)) {
+    if (hasWidget && !mCompositor->GetWidget()->PreRender(this)) {
       return;
     }
   }
@@ -704,16 +707,18 @@ LayerManagerComposite::Render()
     clipRect = nsIntRect(rect.x, rect.y, rect.width, rect.height);
   }
 
-  if (actualBounds.IsEmpty()) {
+  if (actualBounds.IsEmpty() && hasWidget) {
     mCompositor->GetWidget()->PostRender(this);
     return;
   }
 
   // Allow widget to render a custom background.
-  mCompositor->GetWidget()->DrawWindowUnderlay(this, nsIntRect(actualBounds.x,
-                                                               actualBounds.y,
-                                                               actualBounds.width,
-                                                               actualBounds.height));
+  if (hasWidget) {
+    mCompositor->GetWidget()->DrawWindowUnderlay(this, nsIntRect(actualBounds.x,
+                                                                 actualBounds.y,
+                                                                 actualBounds.width,
+                                                                 actualBounds.height));
+  }
 
   RefPtr<CompositingRenderTarget> previousTarget;
   if (haveLayerEffects) {
@@ -741,10 +746,12 @@ LayerManagerComposite::Render()
   }
 
   // Allow widget to render a custom foreground.
-  mCompositor->GetWidget()->DrawWindowOverlay(this, nsIntRect(actualBounds.x,
-                                                              actualBounds.y,
-                                                              actualBounds.width,
-                                                              actualBounds.height));
+  if (hasWidget) {
+    mCompositor->GetWidget()->DrawWindowOverlay(this, nsIntRect(actualBounds.x,
+                                                                actualBounds.y,
+                                                                actualBounds.width,
+                                                                actualBounds.height));
+  }
 
   // Debugging
   RenderDebugOverlay(actualBounds);
@@ -757,7 +764,9 @@ LayerManagerComposite::Render()
     mCompositor->SetFBAcquireFence(mRoot);
   }
 
-  mCompositor->GetWidget()->PostRender(this);
+  if (hasWidget) {
+    mCompositor->GetWidget()->PostRender(this);
+  }
 
   RecordFrame();
 }

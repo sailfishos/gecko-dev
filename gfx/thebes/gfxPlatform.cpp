@@ -69,6 +69,7 @@
 #include "qcms.h"
 
 #include "imgITools.h"
+#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
 
 #include "plstr.h"
 #include "nsCRT.h"
@@ -484,6 +485,13 @@ gfxPlatform::Init()
 
     InitLayersIPC();
 
+    mozilla::gl::GLContext::PlatformStartup();
+
+    mozilla::embedlite::EmbedLiteAppProcessParent* parent = mozilla::embedlite::EmbedLiteAppProcessParent::GetInstance();
+    if (parent != nullptr) {
+      return;
+    }
+
     nsresult rv;
 
 #if defined(XP_MACOSX) || defined(XP_WIN) || defined(ANDROID) // temporary, until this is implemented on others
@@ -519,8 +527,6 @@ gfxPlatform::Init()
     gPlatform->mFontPrefsObserver = new FontPrefsObserver();
     Preferences::AddStrongObservers(gPlatform->mFontPrefsObserver, kObservedPrefs);
 
-    mozilla::gl::GLContext::PlatformStartup();
-
 #ifdef MOZ_WIDGET_ANDROID
     // Texture pool init
     mozilla::gl::TexturePoolOGL::Init();
@@ -544,7 +550,8 @@ gfxPlatform::Init()
     // Request the imgITools service, implicitly initializing ImageLib.
     nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
     if (!imgTools) {
-      NS_RUNTIMEABORT("Could not initialize ImageLib");
+//      return;
+//      NS_RUNTIMEABORT("Could not initialize ImageLib");
     }
 
     RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
