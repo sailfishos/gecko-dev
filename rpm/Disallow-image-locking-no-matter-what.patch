@@ -23,3 +23,16 @@ index 3493bce..8bd0003 100644
 -- 
 1.9.1
 
+diff --git a/embedding/embedlite/embedding.js b/embedding/embedlite/embedding.js
+index 67c5f75..571cbb2 100644
+--- a/embedding/embedlite/embedding.js
++++ b/embedding/embedlite/embedding.js
+@@ -261,7 +261,7 @@ pref("media.preload.auto", 2);    // preload metadata if preload=auto
+ // optimize images memory usage
+ pref("image.mem.decodeondraw", true);
+ pref("image.mem.allow_locking_in_content_processes", false);
+-pref("image.mem.min_discard_timeout_ms", 10000);
++pref("image.mem.min_discard_timeout_ms", 86400000); /* 24h, we rely on the out of memory hook */
+ pref("image.onload.decode.limit", 24); /* don't decode more than 24 images eagerly */
+ 
+ // SimplePush
