@@ -121,15 +121,11 @@ CompositorThreadHolder::CompositorThreadHolder()
 
 CompositorThreadHolder::~CompositorThreadHolder()
 {
-  // Check if compositor started already with StartUpWithExistingThread
-  if (sCompositorThreadID) {
-    return;
-  }
-  MOZ_ASSERT(!sCompositorLoop);
-  EnsureLayerTreeMapReady();
-  CreateCompositorMap();
-  CreateThread();
-  sMainLoop = MessageLoop::current();
+  MOZ_ASSERT(NS_IsMainThread());
+
+  MOZ_COUNT_DTOR(CompositorThreadHolder);
+
+  DestroyCompositorThread(mCompositorThread);
 }
 
 static StaticRefPtr<CompositorThreadHolder> sCompositorThreadHolder;
