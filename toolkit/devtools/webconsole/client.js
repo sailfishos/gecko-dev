@@ -137,6 +137,12 @@ WebConsoleClient.prototype = {
    */
   evaluateJSAsync: function(aString, aOnResponse, aOptions = {})
   {
+    // Pre-37 servers don't support async evaluation.
+    if (!this.traits.evaluateJSAsync) {
+      this.evaluateJS(aString, aOnResponse, aOptions);
+      return;
+    }
+
     let packet = {
       to: this._actor,
       type: "evaluateJSAsync",
@@ -356,6 +362,23 @@ WebConsoleClient.prototype = {
     let packet = {
       to: aActor,
       type: "getEventTimings",
+    };
+    this._client.request(packet, aOnResponse);
+  },
+
+  /**
+   * Retrieve the security information for the given NetworkEventActor.
+   *
+   * @param string aActor
+   *        The NetworkEventActor ID.
+   * @param function aOnResponse
+   *        The function invoked when the response is received.
+   */
+  getSecurityInfo: function WCC_getSecurityInfo(aActor, aOnResponse)
+  {
+    let packet = {
+      to: aActor,
+      type: "getSecurityInfo",
     };
     this._client.request(packet, aOnResponse);
   },

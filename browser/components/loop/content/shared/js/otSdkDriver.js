@@ -8,7 +8,7 @@ var loop = loop || {};
 loop.OTSdkDriver = (function() {
 
   var sharedActions = loop.shared.actions;
-  var FAILURE_REASONS = loop.shared.utils.FAILURE_REASONS;
+  var FAILURE_DETAILS = loop.shared.utils.FAILURE_DETAILS;
 
   /**
    * This is a wrapper for the OT sdk. It is used to translate the SDK events into
@@ -160,7 +160,7 @@ loop.OTSdkDriver = (function() {
       if (error) {
         console.error("Failed to complete connection", error);
         this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-          reason: FAILURE_REASONS.COULD_NOT_CONNECT
+          reason: FAILURE_DETAILS.COULD_NOT_CONNECT
         }));
         return;
       }
@@ -194,12 +194,22 @@ loop.OTSdkDriver = (function() {
      * https://tokbox.com/opentok/libraries/client/js/reference/SessionDisconnectEvent.html
      */
     _onSessionDisconnected: function(event) {
-      // We only need to worry about the network disconnected reason here.
-      if (event.reason === "networkDisconnected") {
-        this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-          reason: FAILURE_REASONS.NETWORK_DISCONNECTED
-        }));
+      var reason;
+      switch (event.reason) {
+        case "networkDisconnected":
+          reason = FAILURE_DETAILS.NETWORK_DISCONNECTED;
+          break;
+        case "forceDisconnected":
+          reason = FAILURE_DETAILS.EXPIRED_OR_INVALID;
+          break;
+        default:
+          // Other cases don't need to be handled.
+          return;
       }
+
+      this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
+        reason: reason
+      }));
     },
 
     /**
@@ -268,7 +278,7 @@ loop.OTSdkDriver = (function() {
       event.preventDefault();
 
       this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
-        reason: FAILURE_REASONS.MEDIA_DENIED
+        reason: FAILURE_DETAILS.MEDIA_DENIED
       }));
     },
 

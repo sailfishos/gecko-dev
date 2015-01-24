@@ -804,13 +804,6 @@ class XPCShellTests(object):
         self.headJSPath = self.testharnessdir.replace("\\", "/") + "/head.js"
         self.xpcshell = os.path.abspath(self.xpcshell)
 
-        # we assume that httpd.js lives in components/ relative to xpcshell
-        self.httpdJSPath = os.path.join(os.path.dirname(self.xpcshell), 'components', 'httpd.js')
-        self.httpdJSPath = self.httpdJSPath.replace('\\', '/')
-
-        self.httpdManifest = os.path.join(os.path.dirname(self.xpcshell), 'components', 'httpd.manifest')
-        self.httpdManifest = self.httpdManifest.replace('\\', '/')
-
         if self.xrePath is None:
             self.xrePath = os.path.dirname(self.xpcshell)
             if mozinfo.isMac:
@@ -821,6 +814,13 @@ class XPCShellTests(object):
                     self.xrePath = appBundlePath
         else:
             self.xrePath = os.path.abspath(self.xrePath)
+
+        # httpd.js belongs in xrePath/components, which is Contents/Resources on mac
+        self.httpdJSPath = os.path.join(self.xrePath, 'components', 'httpd.js')
+        self.httpdJSPath = self.httpdJSPath.replace('\\', '/')
+
+        self.httpdManifest = os.path.join(self.xrePath, 'components', 'httpd.manifest')
+        self.httpdManifest = self.httpdManifest.replace('\\', '/')
 
         if self.mozInfo is None:
             self.mozInfo = os.path.join(self.testharnessdir, "mozinfo.json")
@@ -836,9 +836,6 @@ class XPCShellTests(object):
             self.env["MOZ_CRASHREPORTER"] = "1"
         # Don't launch the crash reporter client
         self.env["MOZ_CRASHREPORTER_NO_REPORT"] = "1"
-        # Capturing backtraces is very slow on some platforms, and it's
-        # disabled by automation.py too
-        self.env["NS_TRACE_MALLOC_DISABLE_STACKS"] = "1"
         # Don't permit remote connections by default.
         # MOZ_DISABLE_NONLOCAL_CONNECTIONS can be set to "0" to temporarily
         # enable non-local connections for the purposes of local testing.
@@ -960,6 +957,12 @@ class XPCShellTests(object):
                         msg = process.stdout.readline()
                         if 'server listening' in msg:
                             nodeMozInfo['hasNode'] = True
+                            searchObj = re.search( r'SPDY server listening on port (.*)', msg, 0)
+                            if searchObj:
+                              self.env["MOZSPDY-PORT"] = searchObj.group(1)
+                            searchObj = re.search( r'HTTP2 server listening on port (.*)', msg, 0)
+                            if searchObj:
+                              self.env["MOZHTTP2-PORT"] = searchObj.group(1)
                     except OSError, e:
                         # This occurs if the subprocess couldn't be started
                         self.log.error('Could not run %s server: %s' % (name, str(e)))

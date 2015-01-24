@@ -214,36 +214,36 @@ public:
     { return mFrameSelection; }
 
   //NSISELECTIONCONTROLLER INTERFACES
-  NS_IMETHOD SetDisplaySelection(int16_t toggle);
-  NS_IMETHOD GetDisplaySelection(int16_t *_retval);
-  NS_IMETHOD SetSelectionFlags(int16_t aInEnable);
-  NS_IMETHOD GetSelectionFlags(int16_t *aOutEnable);
-  NS_IMETHOD GetSelection(int16_t type, nsISelection **_retval);
-  NS_IMETHOD ScrollSelectionIntoView(int16_t aType, int16_t aRegion, int16_t aFlags);
-  NS_IMETHOD RepaintSelection(int16_t type);
+  NS_IMETHOD SetDisplaySelection(int16_t toggle) MOZ_OVERRIDE;
+  NS_IMETHOD GetDisplaySelection(int16_t* _retval) MOZ_OVERRIDE;
+  NS_IMETHOD SetSelectionFlags(int16_t aInEnable) MOZ_OVERRIDE;
+  NS_IMETHOD GetSelectionFlags(int16_t *aOutEnable) MOZ_OVERRIDE;
+  NS_IMETHOD GetSelection(int16_t type, nsISelection** _retval) MOZ_OVERRIDE;
+  NS_IMETHOD ScrollSelectionIntoView(int16_t aType, int16_t aRegion, int16_t aFlags) MOZ_OVERRIDE;
+  NS_IMETHOD RepaintSelection(int16_t type) MOZ_OVERRIDE;
   NS_IMETHOD RepaintSelection(nsPresContext* aPresContext, SelectionType aSelectionType);
-  NS_IMETHOD SetCaretEnabled(bool enabled);
-  NS_IMETHOD SetCaretReadOnly(bool aReadOnly);
-  NS_IMETHOD GetCaretEnabled(bool *_retval);
-  NS_IMETHOD GetCaretVisible(bool *_retval);
-  NS_IMETHOD SetCaretVisibilityDuringSelection(bool aVisibility);
+  NS_IMETHOD SetCaretEnabled(bool enabled) MOZ_OVERRIDE;
+  NS_IMETHOD SetCaretReadOnly(bool aReadOnly) MOZ_OVERRIDE;
+  NS_IMETHOD GetCaretEnabled(bool* _retval) MOZ_OVERRIDE;
+  NS_IMETHOD GetCaretVisible(bool* _retval) MOZ_OVERRIDE;
+  NS_IMETHOD SetCaretVisibilityDuringSelection(bool aVisibility) MOZ_OVERRIDE;
   NS_IMETHOD PhysicalMove(int16_t aDirection, int16_t aAmount, bool aExtend) MOZ_OVERRIDE;
-  NS_IMETHOD CharacterMove(bool aForward, bool aExtend);
-  NS_IMETHOD CharacterExtendForDelete();
-  NS_IMETHOD CharacterExtendForBackspace();
-  NS_IMETHOD WordMove(bool aForward, bool aExtend);
-  NS_IMETHOD WordExtendForDelete(bool aForward);
-  NS_IMETHOD LineMove(bool aForward, bool aExtend);
-  NS_IMETHOD IntraLineMove(bool aForward, bool aExtend);
-  NS_IMETHOD PageMove(bool aForward, bool aExtend);
-  NS_IMETHOD CompleteScroll(bool aForward);
-  NS_IMETHOD CompleteMove(bool aForward, bool aExtend);
-  NS_IMETHOD ScrollPage(bool aForward);
-  NS_IMETHOD ScrollLine(bool aForward);
-  NS_IMETHOD ScrollCharacter(bool aRight);
-  NS_IMETHOD SelectAll(void);
-  NS_IMETHOD CheckVisibility(nsIDOMNode *node, int16_t startOffset, int16_t EndOffset, bool *_retval);
-  virtual nsresult CheckVisibilityContent(nsIContent* aNode, int16_t aStartOffset, int16_t aEndOffset, bool* aRetval);
+  NS_IMETHOD CharacterMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD CharacterExtendForDelete() MOZ_OVERRIDE;
+  NS_IMETHOD CharacterExtendForBackspace() MOZ_OVERRIDE;
+  NS_IMETHOD WordMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD WordExtendForDelete(bool aForward) MOZ_OVERRIDE;
+  NS_IMETHOD LineMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD IntraLineMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD PageMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD CompleteScroll(bool aForward) MOZ_OVERRIDE;
+  NS_IMETHOD CompleteMove(bool aForward, bool aExtend) MOZ_OVERRIDE;
+  NS_IMETHOD ScrollPage(bool aForward) MOZ_OVERRIDE;
+  NS_IMETHOD ScrollLine(bool aForward) MOZ_OVERRIDE;
+  NS_IMETHOD ScrollCharacter(bool aRight) MOZ_OVERRIDE;
+  NS_IMETHOD SelectAll(void) MOZ_OVERRIDE;
+  NS_IMETHOD CheckVisibility(nsIDOMNode *node, int16_t startOffset, int16_t EndOffset, bool* _retval) MOZ_OVERRIDE;
+  virtual nsresult CheckVisibilityContent(nsIContent* aNode, int16_t aStartOffset, int16_t aEndOffset, bool* aRetval) MOZ_OVERRIDE;
 
 private:
   nsRefPtr<nsFrameSelection> mFrameSelection;
@@ -979,7 +979,6 @@ nsTextEditorState::nsTextEditorState(nsITextControlElement* aOwningElement)
   : mTextCtrlElement(aOwningElement),
     mRestoringSelection(nullptr),
     mBoundFrame(nullptr),
-    mTextListener(nullptr),
     mEverInited(false),
     mEditorInitialized(false),
     mInitializing(false),
@@ -1012,7 +1011,7 @@ nsTextEditorState::Clear()
     // for us.
     DestroyEditor();
   }
-  NS_IF_RELEASE(mTextListener);
+  mTextListener = nullptr;
 }
 
 void nsTextEditorState::Unlink()
@@ -1125,8 +1124,8 @@ nsTextEditorState::BindToFrame(nsTextControlFrame* aFrame)
 
   // Create a SelectionController
   mSelCon = new nsTextInputSelectionImpl(frameSel, shell, rootNode);
+  MOZ_ASSERT(!mTextListener, "Should not overwrite the object");
   mTextListener = new nsTextInputListener(mTextCtrlElement);
-  NS_ADDREF(mTextListener);
 
   mTextListener->SetFrame(mBoundFrame);
   mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_ON);
@@ -1397,7 +1396,8 @@ nsTextEditorState::PrepareEditor(const nsAString *aValue)
     rv = newEditor->EnableUndo(false);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    SetValue(defaultValue, false, false);
+    bool success = SetValue(defaultValue, false, false);
+    NS_ENSURE_TRUE(success, NS_ERROR_OUT_OF_MEMORY);
 
     rv = newEditor->EnableUndo(true);
     NS_ASSERTION(NS_SUCCEEDED(rv),"Transaction Manager must have failed");
@@ -1646,7 +1646,6 @@ nsTextEditorState::UnbindFromFrame(nsTextControlFrame* aFrame)
         TrustedEventsAtSystemGroupBubble());
     }
 
-    NS_RELEASE(mTextListener);
     mTextListener = nullptr;
   }
 
@@ -1655,7 +1654,9 @@ nsTextEditorState::UnbindFromFrame(nsTextControlFrame* aFrame)
   // Now that we don't have a frame any more, store the value in the text buffer.
   // The only case where we don't do this is if a value transfer is in progress.
   if (!mValueTransferInProgress) {
-    SetValue(value, false, false);
+    bool success = SetValue(value, false, false);
+    // TODO Find something better to do if this fails...
+    NS_ENSURE_TRUE_VOID(success);
   }
 
   if (mRootNode && mMutationObserver) {
@@ -1868,10 +1869,12 @@ nsTextEditorState::GetValue(nsAString& aValue, bool aIgnoreWrap) const
   }
 }
 
-void
+bool
 nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
                             bool aSetValueChanged)
 {
+  mozilla::fallible_t fallible;
+
   if (mEditor && mBoundFrame) {
     // The InsertText call below might flush pending notifications, which
     // could lead into a scheduled PrepareEditor to be called.  That will
@@ -1901,16 +1904,21 @@ nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
       // so convert windows and mac platform linebreaks to \n:
       // Unfortunately aValue is declared const, so we have to copy
       // in order to do this substitution.
-      nsString newValue(aValue);
+      nsString newValue;
+      if (!newValue.Assign(aValue, fallible)) {
+        return false;
+      }
       if (aValue.FindChar(char16_t('\r')) != -1) {
-        nsContentUtils::PlatformToDOMLineBreaks(newValue);
+        if (!nsContentUtils::PlatformToDOMLineBreaks(newValue, fallible)) {
+          return false;
+        }
       }
 
       nsCOMPtr<nsIDOMDocument> domDoc;
       mEditor->GetDocument(getter_AddRefs(domDoc));
       if (!domDoc) {
         NS_WARNING("Why don't we have a document?");
-        return;
+        return true;
       }
 
       // Time to mess with our security context... See comments in GetValue()
@@ -1947,7 +1955,7 @@ nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
         nsCOMPtr<nsIPlaintextEditor> plaintextEditor = do_QueryInterface(mEditor);
         if (!plaintextEditor || !weakFrame.IsAlive()) {
           NS_WARNING("Somehow not a plaintext editor?");
-          return;
+          return true;
         }
 
         valueSetter.Init();
@@ -1986,13 +1994,15 @@ nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
           // the existing selection -- see bug 574558), in which case we don't
           // need to reset the value here.
           if (!mBoundFrame) {
-            SetValue(newValue, false, aSetValueChanged);
+            return SetValue(newValue, false, aSetValueChanged);
           }
-          return;
+          return true;
         }
 
         if (!IsSingleLineTextControl()) {
-          mCachedValue = newValue;
+          if (!mCachedValue.Assign(newValue, fallible)) {
+            return false;
+          }
         }
 
         plaintextEditor->SetMaxTextLength(savedMaxLength);
@@ -2005,9 +2015,16 @@ nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
     if (!mValue) {
       mValue = new nsCString;
     }
-    nsString value(aValue);
-    nsContentUtils::PlatformToDOMLineBreaks(value);
-    CopyUTF16toUTF8(value, *mValue);
+    nsString value;
+    if (!value.Assign(aValue, fallible)) {
+      return false;
+    }
+    if (!nsContentUtils::PlatformToDOMLineBreaks(value, fallible)) {
+      return false;
+    }
+    if (!CopyUTF16toUTF8(value, *mValue, fallible)) {
+      return false;
+    }
 
     // Update the frame display if needed
     if (mBoundFrame) {
@@ -2020,6 +2037,8 @@ nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
   ValueWasChanged(!!mRootNode);
 
   mTextCtrlElement->OnValueChanged(!!mRootNode);
+
+  return true;
 }
 
 void

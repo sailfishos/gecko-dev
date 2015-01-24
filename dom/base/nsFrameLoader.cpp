@@ -154,6 +154,7 @@ nsFrameLoader::nsFrameLoader(Element* aOwner, bool aNetworkCreated)
   : mOwnerContent(aOwner)
   , mAppIdSentToPermissionManager(nsIScriptSecurityManager::NO_APP_ID)
   , mDetachedSubdocViews(nullptr)
+  , mIsPrerendered(false)
   , mDepthTooGreat(false)
   , mIsTopLevelContent(false)
   , mDestroyCalled(false)
@@ -293,6 +294,15 @@ nsFrameLoader::LoadURI(nsIURI* aURI)
     mURIToLoad = nullptr;
   }
   return rv;
+}
+
+NS_IMETHODIMP
+nsFrameLoader::SetIsPrerendered()
+{
+  MOZ_ASSERT(!mDocShell, "Please call SetIsPrerendered before docShell is created");
+  mIsPrerendered = true;
+
+  return NS_OK;
 }
 
 nsresult
@@ -1613,6 +1623,11 @@ nsFrameLoader::MaybeCreateDocShell()
   mDocShell = do_CreateInstance("@mozilla.org/docshell;1");
   NS_ENSURE_TRUE(mDocShell, NS_ERROR_FAILURE);
 
+  if (mIsPrerendered) {
+    nsresult rv = mDocShell->SetIsPrerendered(true);
+    NS_ENSURE_SUCCESS(rv,rv);
+  }
+
   // Apply sandbox flags even if our owner is not an iframe, as this copies
   // flags from our owning content's owning document.
   uint32_t sandboxFlags = 0;
@@ -1948,10 +1963,11 @@ nsFrameLoader::UpdatePositionAndSize(nsSubDocumentFrame *aIFrame)
     }
     return NS_OK;
   }
-  return UpdateBaseWindowPositionAndSize(aIFrame);
+  UpdateBaseWindowPositionAndSize(aIFrame);
+  return NS_OK;
 }
 
-nsresult
+void
 nsFrameLoader::UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame)
 {
   nsCOMPtr<nsIDocShell> docShell;
@@ -1965,19 +1981,17 @@ nsFrameLoader::UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame)
 
     nsWeakFrame weakFrame(aIFrame);
 
-    baseWindow->GetPositionAndSize(&x, &y, nullptr, nullptr);
+    baseWindow->GetPosition(&x, &y);
 
     if (!weakFrame.IsAlive()) {
-      // GetPositionAndSize() killed us
-      return NS_OK;
+      // GetPosition() killed us
+      return;
     }
 
     nsIntSize size = aIFrame->GetSubdocumentSize();
 
     baseWindow->SetPositionAndSize(x, y, size.width, size.height, false);
   }
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -2203,6 +2217,20 @@ nsFrameLoader::DeactivateRemoteFrame() {
   return NS_ERROR_UNEXPECTED;
 }
 
+void
+nsFrameLoader::ActivateUpdateHitRegion() {
+  if (mRemoteBrowser) {
+    unused << mRemoteBrowser->SendSetUpdateHitRegion(true);
+  }
+}
+
+void
+nsFrameLoader::DeactivateUpdateHitRegion() {
+  if (mRemoteBrowser) {
+    unused << mRemoteBrowser->SendSetUpdateHitRegion(false);
+  }
+}
+
 NS_IMETHODIMP
 nsFrameLoader::SendCrossProcessMouseEvent(const nsAString& aType,
                                           float aX,
@@ -2276,7 +2304,7 @@ nsFrameLoader::CreateStaticClone(nsIFrameLoader* aDest)
 bool
 nsFrameLoader::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
-  mozilla::dom::PBrowserParent* tabParent = GetRemoteBrowser();
+  auto* tabParent = static_cast<TabParent*>(GetRemoteBrowser());
   if (tabParent) {
     return tabParent->SendLoadRemoteScript(nsString(aURL), aRunInGlobalScope);
   }
@@ -2392,7 +2420,13 @@ nsFrameLoader::EnsureMessageManager()
     return rv;
   }
 
-  if (!mIsTopLevelContent && !OwnerIsBrowserOrAppFrame() && !mRemoteFrame) {
+  if (!mIsTopLevelContent &&
+      !OwnerIsBrowserOrAppFrame() &&
+      !mRemoteFrame &&
+      !(mOwnerContent->IsXUL() &&
+        mOwnerContent->AttrValueIs(kNameSpaceID_None,
+                                   nsGkAtoms::forcemessagemanager,
+                                   nsGkAtoms::_true, eCaseMatters))) {
     return NS_OK;
   }
 

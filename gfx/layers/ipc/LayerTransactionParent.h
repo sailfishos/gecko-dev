@@ -67,13 +67,13 @@ public:
   // ISurfaceAllocator
   virtual bool AllocShmem(size_t aSize,
                           ipc::SharedMemory::SharedMemoryType aType,
-                          ipc::Shmem* aShmem) {
+                          ipc::Shmem* aShmem) MOZ_OVERRIDE {
     return PLayerTransactionParent::AllocShmem(aSize, aType, aShmem);
   }
 
   virtual bool AllocUnsafeShmem(size_t aSize,
                                 ipc::SharedMemory::SharedMemoryType aType,
-                                ipc::Shmem* aShmem) {
+                                ipc::Shmem* aShmem) MOZ_OVERRIDE {
     return PLayerTransactionParent::AllocUnsafeShmem(aSize, aType, aShmem);
   }
 
@@ -107,7 +107,7 @@ public:
 protected:
   virtual bool RecvShutdown() MOZ_OVERRIDE;
 
-  virtual bool RecvUpdate(const EditArray& cset,
+  virtual bool RecvUpdate(EditArray&& cset,
                           const uint64_t& aTransactionId,
                           const TargetConfig& targetConfig,
                           const bool& isFirstPaint,
@@ -117,7 +117,7 @@ protected:
                           const mozilla::TimeStamp& aTransactionStart,
                           EditReplyArray* reply) MOZ_OVERRIDE;
 
-  virtual bool RecvUpdateNoSwap(const EditArray& cset,
+  virtual bool RecvUpdateNoSwap(EditArray&& cset,
                                 const uint64_t& aTransactionId,
                                 const TargetConfig& targetConfig,
                                 const bool& isFirstPaint,
@@ -151,7 +151,7 @@ protected:
   virtual bool DeallocPTextureParent(PTextureParent* actor) MOZ_OVERRIDE;
 
   virtual bool
-  RecvChildAsyncMessages(const InfallibleTArray<AsyncChildMessageData>& aMessages) MOZ_OVERRIDE;
+  RecvChildAsyncMessages(InfallibleTArray<AsyncChildMessageData>&& aMessages) MOZ_OVERRIDE;
 
   virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
 

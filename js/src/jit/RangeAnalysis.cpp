@@ -14,7 +14,7 @@
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
-#include "vm/NumericConversions.h"
+#include "js/Conversions.h"
 #include "vm/TypedArrayCommon.h"
 
 #include "jsopcodeinlines.h"
@@ -35,6 +35,7 @@ using mozilla::NegativeInfinity;
 using mozilla::PositiveInfinity;
 using mozilla::Swap;
 using JS::GenericNaN;
+using JS::ToInt32;
 
 // This algorithm is based on the paper "Eliminating Range Checks Using
 // Static Single Assignment Form" by Gough and Klaren.
@@ -155,8 +156,11 @@ RangeAnalysis::addBetaNodes()
 
         MCompare *compare = test->getOperand(0)->toCompare();
 
-        if (compare->compareType() == MCompare::Compare_Unknown)
+        if (compare->compareType() == MCompare::Compare_Unknown ||
+            compare->compareType() == MCompare::Compare_Value)
+        {
             continue;
+        }
 
         // TODO: support unsigned comparisons
         if (compare->compareType() == MCompare::Compare_UInt32)
@@ -2206,15 +2210,17 @@ RangeAnalysis::analyze()
                 if (iter->isAsmJSLoadHeap()) {
                     MAsmJSLoadHeap *ins = iter->toAsmJSLoadHeap();
                     Range *range = ins->ptr()->range();
+                    uint32_t elemSize = TypedArrayElemSize(ins->viewType());
                     if (range && range->hasInt32LowerBound() && range->lower() >= 0 &&
-                        range->hasInt32UpperBound() && (uint32_t) range->upper() < minHeapLength) {
+                        range->hasInt32UpperBound() && uint32_t(range->upper()) + elemSize <= minHeapLength) {
                         ins->removeBoundsCheck();
                     }
                 } else if (iter->isAsmJSStoreHeap()) {
                     MAsmJSStoreHeap *ins = iter->toAsmJSStoreHeap();
                     Range *range = ins->ptr()->range();
+                    uint32_t elemSize = TypedArrayElemSize(ins->viewType());
                     if (range && range->hasInt32LowerBound() && range->lower() >= 0 &&
-                        range->hasInt32UpperBound() && (uint32_t) range->upper() < minHeapLength) {
+                        range->hasInt32UpperBound() && uint32_t(range->upper()) + elemSize <= minHeapLength) {
                         ins->removeBoundsCheck();
                     }
                 }
@@ -2723,10 +2729,10 @@ CloneForDeadBranches(TempAllocator &alloc, MInstruction *candidate)
 
     MDefinitionVector operands(alloc);
     size_t end = candidate->numOperands();
-    for (size_t i = 0; i < end; i++) {
-        if (!operands.append(candidate->getOperand(i)))
-            return false;
-    }
+    if (!operands.reserve(end))
+        return false;
+    for (size_t i = 0; i < end; ++i)
+        operands.infallibleAppend(candidate->getOperand(i));
 
     MInstruction *clone = candidate->clone(alloc, operands);
     clone->setRange(nullptr);

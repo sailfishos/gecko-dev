@@ -16,7 +16,22 @@ class Box;
 class BoxContext;
 class Moof;
 
-class Tkhd
+class Atom
+{
+public:
+  Atom()
+    : mValid(false)
+  {
+  }
+  virtual bool IsValid()
+  {
+    return mValid;
+  }
+protected:
+  bool mValid;
+};
+
+class Tkhd : public Atom
 {
 public:
   Tkhd()
@@ -34,7 +49,7 @@ public:
   uint64_t mDuration;
 };
 
-class Mdhd
+class Mdhd : public Atom
 {
 public:
   Mdhd()
@@ -57,7 +72,7 @@ public:
   uint64_t mDuration;
 };
 
-class Trex
+class Trex : public Atom
 {
 public:
   explicit Trex(uint32_t aTrackId)
@@ -83,26 +98,42 @@ public:
 class Tfhd : public Trex
 {
 public:
-  explicit Tfhd(Trex& aTrex) : Trex(aTrex), mBaseDataOffset(0) {}
+  explicit Tfhd(Trex& aTrex)
+    : Trex(aTrex)
+    , mBaseDataOffset(0)
+  {
+    mValid = aTrex.IsValid();
+  }
   Tfhd(Box& aBox, Trex& aTrex);
 
   uint64_t mBaseDataOffset;
 };
 
-class Tfdt
+class Tfdt : public Atom
 {
 public:
-  Tfdt() : mBaseMediaDecodeTime(0) {}
+  Tfdt()
+    : mBaseMediaDecodeTime(0)
+  {
+  }
   explicit Tfdt(Box& aBox);
 
   uint64_t mBaseMediaDecodeTime;
 };
 
-class Edts
+class Edts : public Atom
 {
 public:
-  Edts() : mMediaStart(0) {}
+  Edts()
+    : mMediaStart(0)
+  {
+  }
   explicit Edts(Box& aBox);
+  virtual bool IsValid()
+  {
+    // edts is optional
+    return true;
+  }
 
   int64_t mMediaStart;
 };
@@ -116,7 +147,7 @@ struct Sample
   bool mSync;
 };
 
-class Saiz
+class Saiz : public Atom
 {
 public:
   explicit Saiz(Box& aBox);
@@ -126,7 +157,7 @@ public:
   nsTArray<uint8_t> mSampleInfoSize;
 };
 
-class Saio
+class Saio : public Atom
 {
 public:
   explicit Saio(Box& aBox);
@@ -142,16 +173,15 @@ public:
   bool GetByteRanges(nsTArray<MediaByteRange>* aByteRanges);
 
 private:
-
   int64_t mMoofOffset;
   Saiz& mSaiz;
   Saio& mSaio;
 };
 
-class Moof
+class Moof : public Atom
 {
 public:
-  Moof(Box& aBox, Trex& aTrex, Mdhd& aMdhd, Edts& aEdts);
+  Moof(Box& aBox, Trex& aTrex, Mdhd& aMdhd, Edts& aEdts, Microseconds aTimestampOffset);
   bool GetAuxInfo(AtomType aType, nsTArray<MediaByteRange>* aByteRanges);
   void FixRounding(const Moof& aMoof);
 
@@ -169,14 +199,17 @@ private:
   void ParseSaiz(Box& aBox);
   void ParseSaio(Box& aBox);
   bool ProcessCenc();
+  Microseconds mTimestampOffset;
   uint64_t mMaxRoundingError;
 };
 
 class MoofParser
 {
 public:
-  MoofParser(Stream* aSource, uint32_t aTrackId, Monitor* aMonitor)
-    : mSource(aSource), mOffset(0), mTrex(aTrackId), mMonitor(aMonitor)
+  MoofParser(Stream* aSource, uint32_t aTrackId,
+             Microseconds aTimestampOffset, Monitor* aMonitor)
+    : mSource(aSource), mOffset(0), mTimestampOffset(aTimestampOffset),
+      mTrex(aTrackId), mMonitor(aMonitor)
   {
     // Setting the mTrex.mTrackId to 0 is a nasty work around for calculating
     // the composition range for MSE. We need an array of tracks.
@@ -197,6 +230,7 @@ public:
   mozilla::MediaByteRange mInitRange;
   nsRefPtr<Stream> mSource;
   uint64_t mOffset;
+  Microseconds mTimestampOffset;
   nsTArray<uint64_t> mMoofOffsets;
   Mdhd mMdhd;
   Trex mTrex;

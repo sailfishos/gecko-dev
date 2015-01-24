@@ -21,6 +21,9 @@ dictionary NfcCommandOptions
 
   boolean isP2P;
   sequence<MozNDEFRecordOptions> records;
+
+  NFCTechType technology;
+  Uint8Array command;
 };
 
 dictionary NfcEventOptions
@@ -37,6 +40,7 @@ dictionary NfcEventOptions
 
   boolean isP2P;
   sequence<NFCTechType> techList;
+  Uint8Array tagId;
   sequence<MozNDEFRecordOptions> records;
 
   NFCTagType tagType;
@@ -50,4 +54,7 @@ dictionary NfcEventOptions
   DOMString origin;
   Uint8Array aid;
   Uint8Array payload;
+
+  // Tag transceive response data
+  Uint8Array response;
 };

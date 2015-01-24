@@ -24,7 +24,6 @@
 
 #include "pkixder.h"
 
-#include "pkix/bind.h"
 #include "pkixutil.h"
 
 namespace mozilla { namespace pkix { namespace der {
@@ -224,6 +223,42 @@ SignatureAlgorithmOIDValue(Reader& algorithmID,
   return Success;
 }
 
+static Result
+NamedCurveOIDValue(Reader& namedCurveID, /*out*/ NamedCurve& namedCurve)
+{
+  // RFC 5480
+  // python DottedOIDToCode.py secp256r1 1.2.840.10045.3.1.7
+  static const uint8_t secp256r1[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07
+  };
+
+  // RFC 5480
+  // python DottedOIDToCode.py id-secp384r1 1.3.132.0.34
+  static const uint8_t secp384r1[] = {
+    0x2b, 0x81, 0x04, 0x00, 0x22
+  };
+
+  // RFC 5480
+  // python DottedOIDToCode.py id-secp521r1 1.3.132.0.35
+  static const uint8_t secp521r1[] = {
+    0x2b, 0x81, 0x04, 0x00, 0x23
+  };
+
+  // Matching is attempted based on a rough estimate of the commonality of the
+  // named curve, to minimize the number of MatchRest calls.
+  if (namedCurveID.MatchRest(secp256r1)) {
+    namedCurve = NamedCurve::secp256r1;
+  } else if (namedCurveID.MatchRest(secp384r1)) {
+    namedCurve = NamedCurve::secp384r1;
+  } else if (namedCurveID.MatchRest(secp521r1)) {
+    namedCurve = NamedCurve::secp521r1;
+  } else {
+    return Result::ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+  }
+
+  return Success;
+}
+
 template <typename OidValueParser, typename Algorithm>
 Result
 AlgorithmIdentifier(OidValueParser oidValueParser, Reader& input,
@@ -266,6 +301,23 @@ Result
 DigestAlgorithmIdentifier(Reader& input, /*out*/ DigestAlgorithm& algorithm)
 {
   return AlgorithmIdentifier(DigestAlgorithmOIDValue, input, algorithm);
+}
+
+Result
+NamedCurveOID(Reader& input, /*out*/ NamedCurve& namedCurve)
+{
+  Reader namedCurveID;
+  Result rv = ExpectTagAndGetValue(input, der::OIDTag, namedCurveID);
+  if (rv != Success) {
+    return rv;
+  }
+
+  rv = NamedCurveOIDValue(namedCurveID, namedCurve);
+  if (rv != Success) {
+    return rv;
+  }
+
+  return Success;
 }
 
 Result
@@ -319,9 +371,7 @@ BitStringWithNoUnusedBits(Reader& input, /*out*/ Input& value)
   if (unusedBitsAtEnd != 0) {
     return Result::ERROR_BAD_DER;
   }
-  Reader::Mark mark(valueWithUnusedBits.GetMark());
-  valueWithUnusedBits.SkipToEnd();
-  return valueWithUnusedBits.GetInput(mark, value);
+  return valueWithUnusedBits.SkipToEnd(value);
 }
 
 static inline Result
@@ -329,10 +379,10 @@ ReadDigit(Reader& input, /*out*/ unsigned int& value)
 {
   uint8_t b;
   if (input.Read(b) != Success) {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   if (b < '0' || b > '9') {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   value = static_cast<unsigned int>(b - static_cast<uint8_t>('0'));
   return Success;
@@ -354,7 +404,7 @@ ReadTwoDigits(Reader& input, unsigned int minValue, unsigned int maxValue,
   }
   value = (hi * 10) + lo;
   if (value < minValue || value > maxValue) {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   return Success;
 }
@@ -396,12 +446,12 @@ TimeChoice(Reader& tagged, uint8_t expectedTag, /*out*/ Time& time)
     yearHi = yearLo >= 50u ? 19u : 20u;
   } else {
     return NotReached("invalid tag given to TimeChoice",
-                      Result::ERROR_INVALID_TIME);
+                      Result::ERROR_INVALID_DER_TIME);
   }
   unsigned int year = (yearHi * 100u) + yearLo;
   if (year < 1970u) {
     // We don't support dates before January 1, 1970 because that is the epoch.
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   days = DaysBeforeYear(year);
 
@@ -480,13 +530,13 @@ TimeChoice(Reader& tagged, uint8_t expectedTag, /*out*/ Time& time)
 
   uint8_t b;
   if (input.Read(b) != Success) {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   if (b != 'Z') {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
   if (End(input) != Success) {
-    return Result::ERROR_INVALID_TIME;
+    return Result::ERROR_INVALID_DER_TIME;
   }
 
   uint64_t totalSeconds = (static_cast<uint64_t>(days) * 24u * 60u * 60u) +

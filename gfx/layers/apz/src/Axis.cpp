@@ -38,7 +38,9 @@ Axis::Axis(AsyncPanZoomController* aAsyncPanZoomController)
     mAxisLocked(false),
     mAsyncPanZoomController(aAsyncPanZoomController),
     mOverscroll(0),
-    mInUnderscroll(false)
+    mFirstOverscrollAnimationSample(0),
+    mOverscrollOffset(0),
+    mOverscrollScale(1.0f)
 {
 }
 
@@ -124,6 +126,8 @@ bool Axis::AdjustDisplacement(ParentLayerCoord aDisplacement,
     return false;
   }
 
+  StopSamplingOverscrollAnimation();
+
   ParentLayerCoord displacement = aDisplacement;
 
   // First consume any overscroll in the opposite direction along this axis.
@@ -158,12 +162,13 @@ ParentLayerCoord Axis::ApplyResistance(ParentLayerCoord aRequestedOverscroll) co
   // The actual overscroll is the requested overscroll multiplied by this
   // factor; this should prevent overscrolling by more than the composition
   // length.
-  float resistanceFactor = 1 - fabsf(mOverscroll) / GetCompositionLength();
+  float resistanceFactor = 1 - fabsf(GetOverscroll()) / GetCompositionLength();
   return resistanceFactor < 0 ? ParentLayerCoord(0) : aRequestedOverscroll * resistanceFactor;
 }
 
 void Axis::OverscrollBy(ParentLayerCoord aOverscroll) {
   MOZ_ASSERT(CanScroll());
+  StopSamplingOverscrollAnimation();
   aOverscroll = ApplyResistance(aOverscroll);
   if (aOverscroll > 0) {
 #ifdef DEBUG
@@ -190,14 +195,21 @@ void Axis::OverscrollBy(ParentLayerCoord aOverscroll) {
 }
 
 ParentLayerCoord Axis::GetOverscroll() const {
-  return mOverscroll;
+  ParentLayerCoord result = (mOverscroll - mOverscrollOffset) / mOverscrollScale;
+
+  // Assert that we return overscroll in the correct direction
+  MOZ_ASSERT((result.value * mFirstOverscrollAnimationSample.value) >= 0.0f);
+
+  return result;
 }
 
-bool Axis::IsInUnderscroll() const {
-  return mInUnderscroll;
+void Axis::StopSamplingOverscrollAnimation() {
+  ParentLayerCoord overscroll = GetOverscroll();
+  ClearOverscroll();
+  mOverscroll = overscroll;
 }
 
-bool Axis::SampleOverscrollAnimation(const TimeDuration& aDelta) {
+void Axis::StepOverscrollAnimation(double aStepDurationMilliseconds) {
   // Apply spring physics to the overscroll as time goes on.
   // Note: this method of sampling isn't perfectly smooth, as it assumes
   // a constant velocity over 'aDelta', instead of an accelerating velocity.
@@ -218,25 +230,63 @@ bool Axis::SampleOverscrollAnimation(const TimeDuration& aDelta) {
   // Apply spring force.
   float springForce = -1 * kSpringStiffness * mOverscroll;
   // Assume unit mass, so force = acceleration.
-  mVelocity += springForce * aDelta.ToMilliseconds();
+  float oldVelocity = mVelocity;
+  mVelocity += springForce * aStepDurationMilliseconds;
 
   // Apply dampening.
-  mVelocity *= pow(double(1 - kSpringFriction), aDelta.ToMilliseconds());
+  mVelocity *= pow(double(1 - kSpringFriction), aStepDurationMilliseconds);
   AXIS_LOG("%p|%s sampled overscroll animation, leaving velocity at %f\n",
     mAsyncPanZoomController, Name(), mVelocity);
 
-  // Adjust the amount of overscroll based on the velocity.
-  // Note that we allow for oscillations. mInUnderscroll tracks whether
-  // we are currently in a state where we have overshot and the spring is
-  // displaced in the other direction.
-  float oldOverscroll = mOverscroll;
-  mOverscroll += (mVelocity * aDelta.ToMilliseconds());
-  bool signChange = (oldOverscroll * mOverscroll) < 0;
-  if (signChange) {
-    // If the sign of mOverscroll changed, we have either entered underscroll
-    // or exited it.
-    mInUnderscroll = !mInUnderscroll;
+  // At the peak of each oscillation, record new offset and scaling factors for
+  // overscroll, to ensure that GetOverscroll always returns a value of the
+  // same sign, and that this value is correctly adjusted as the spring is
+  // dampened.
+  bool velocitySignChange = (oldVelocity * mVelocity) < 0;
+  if (mFirstOverscrollAnimationSample == 0.0f) {
+    mFirstOverscrollAnimationSample = mOverscroll;
+
+    // It's possible to start sampling overscroll with velocity == 0, or
+    // velocity in the opposite direction of overscroll, so make sure we
+    // correctly record the peak in this case.
+    if ((mOverscroll >= 0 ? oldVelocity : -oldVelocity) <= 0.0f) {
+      velocitySignChange = true;
+    }
   }
+  if (velocitySignChange) {
+    bool oddOscillation = (mOverscroll.value * mFirstOverscrollAnimationSample.value) < 0.0f;
+    mOverscrollOffset = oddOscillation ? mOverscroll : -mOverscroll;
+    mOverscrollScale = 2.0f;
+  }
+
+  // Adjust the amount of overscroll based on the velocity.
+  // Note that we allow for oscillations.
+  mOverscroll += (mVelocity * aStepDurationMilliseconds);
+}
+
+bool Axis::SampleOverscrollAnimation(const TimeDuration& aDelta) {
+  // Short-circuit early rather than running through all the sampling code.
+  if (mVelocity == 0.0f && mOverscroll == 0.0f) {
+    return false;
+  }
+
+  // We approximate the curve traced out by the velocity of the spring
+  // over time by breaking up the curve into small segments over which we
+  // consider the velocity to be constant. If the animation is sampled
+  // sufficiently often, then treating |aDelta| as a single segment of this
+  // sort would be fine, but the frequency at which the animation is sampled
+  // can be affected by external factors, and as the segment size grows larger,
+  // the approximation gets worse and the approximated curve can even diverge
+  // (i.e. oscillate forever, with displacements of increasing absolute value)!
+  // To avoid this, we break up |aDelta| into smaller segments of length 1 ms
+  // each, and a segment of any remaining fractional milliseconds.
+  double milliseconds = aDelta.ToMilliseconds();
+  int wholeMilliseconds = (int) aDelta.ToMilliseconds();
+  double fractionalMilliseconds = milliseconds - wholeMilliseconds;
+  for (int i = 0; i < wholeMilliseconds; ++i) {
+    StepOverscrollAnimation(1);
+  }
+  StepOverscrollAnimation(fractionalMilliseconds);
 
   // If both the velocity and the displacement fall below a threshold, stop
   // the animation so we don't continue doing tiny oscillations that aren't
@@ -247,9 +297,8 @@ bool Axis::SampleOverscrollAnimation(const TimeDuration& aDelta) {
     // velocity and overscroll are already low.
     AXIS_LOG("%p|%s oscillation dropped below threshold, going to rest\n",
       mAsyncPanZoomController, Name());
-    mOverscroll = 0;
+    ClearOverscroll();
     mVelocity = 0;
-    mInUnderscroll = false;
     return false;
   }
 
@@ -263,6 +312,9 @@ bool Axis::IsOverscrolled() const {
 
 void Axis::ClearOverscroll() {
   mOverscroll = 0;
+  mFirstOverscrollAnimationSample = 0;
+  mOverscrollOffset = 0;
+  mOverscrollScale = 1.0f;
 }
 
 ParentLayerCoord Axis::PanStart() const {

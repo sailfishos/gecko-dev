@@ -676,6 +676,34 @@ DOMException::GetMessageMoz(nsString& retval)
   CopyUTF8toUTF16(mMessage, retval);
 }
 
+already_AddRefed<DOMException>
+DOMException::Constructor(GlobalObject& /* unused */,
+                          const nsAString& aMessage,
+                          const Optional<nsAString>& aName,
+                          ErrorResult& aError)
+{
+  nsresult exceptionResult = NS_OK;
+  uint16_t exceptionCode = 0;
+  nsCString name(NS_LITERAL_CSTRING("Error"));
+
+  if (aName.WasPassed()) {
+    CopyUTF16toUTF8(aName.Value(), name);
+    for (uint32_t idx = 0; idx < ArrayLength(sDOMErrorMsgMap); idx++) {
+      if (name.EqualsASCII(sDOMErrorMsgMap[idx].mName)) {
+        exceptionResult = sDOMErrorMsgMap[idx].mNSResult;
+        exceptionCode = sDOMErrorMsgMap[idx].mCode;
+      }
+    }
+  }
+
+  nsRefPtr<DOMException> retval =
+    new DOMException(exceptionResult,
+                     NS_ConvertUTF16toUTF8(aMessage),
+                     name,
+                     exceptionCode);
+  return retval.forget();
+}
+
 JSObject*
 DOMException::WrapObject(JSContext* aCx)
 {
@@ -692,6 +720,33 @@ DOMException::Create(nsresult aRv)
   nsRefPtr<DOMException> inst =
     new DOMException(aRv, message, name, code);
   return inst.forget();
+}
+
+bool
+DOMException::Sanitize(JSContext* aCx,
+                       JS::MutableHandle<JS::Value> aSanitizedValue)
+{
+  nsRefPtr<DOMException> retval = this;
+  if (mLocation && !mLocation->CallerSubsumes(aCx)) {
+    nsString message;
+    GetMessageMoz(message);
+    nsString name;
+    GetName(name);
+    retval = new dom::DOMException(nsresult(Result()),
+                                   NS_ConvertUTF16toUTF8(message),
+                                   NS_ConvertUTF16toUTF8(name),
+                                   Code());
+    // Now it's possible that the stack on retval still starts with
+    // stuff aCx is not supposed to touch; it depends on what's on the
+    // stack right this second.  Walk past all of that.
+    while (retval->mLocation && !retval->mLocation->CallerSubsumes(aCx)) {
+      nsCOMPtr<nsIStackFrame> caller;
+      retval->mLocation->GetCaller(getter_AddRefs(caller));
+      retval->mLocation.swap(caller);
+    }
+  }
+
+  return ToJSValue(aCx, retval, aSanitizedValue);
 }
 
 } // namespace dom

@@ -18,27 +18,27 @@ class MediaEngineTabVideoSource : public MediaEngineVideoSource, nsIDOMEventList
     NS_DECL_NSITIMERCALLBACK
     MediaEngineTabVideoSource();
 
-    virtual void GetName(nsAString_internal&);
-    virtual void GetUUID(nsAString_internal&);
+    virtual void GetName(nsAString_internal&) MOZ_OVERRIDE;
+    virtual void GetUUID(nsAString_internal&) MOZ_OVERRIDE;
     virtual nsresult Allocate(const VideoTrackConstraintsN &,
-                              const mozilla::MediaEnginePrefs&);
-    virtual nsresult Deallocate();
-    virtual nsresult Start(mozilla::SourceMediaStream*, mozilla::TrackID);
-    virtual void SetDirectListeners(bool aHasDirectListeners) {};
-    virtual void NotifyPull(mozilla::MediaStreamGraph*, mozilla::SourceMediaStream*, mozilla::TrackID, mozilla::StreamTime, mozilla::StreamTime&);
-    virtual nsresult Stop(mozilla::SourceMediaStream*, mozilla::TrackID);
-    virtual nsresult Config(bool, uint32_t, bool, uint32_t, bool, uint32_t, int32_t);
-    virtual bool IsFake();
-    virtual const MediaSourceType GetMediaSource() {
-      return MediaSourceType::Browser;
+                              const mozilla::MediaEnginePrefs&) MOZ_OVERRIDE;
+    virtual nsresult Deallocate() MOZ_OVERRIDE;
+    virtual nsresult Start(mozilla::SourceMediaStream*, mozilla::TrackID) MOZ_OVERRIDE;
+    virtual void SetDirectListeners(bool aHasDirectListeners) MOZ_OVERRIDE {};
+    virtual void NotifyPull(mozilla::MediaStreamGraph*, mozilla::SourceMediaStream*, mozilla::TrackID, mozilla::StreamTime) MOZ_OVERRIDE;
+    virtual nsresult Stop(mozilla::SourceMediaStream*, mozilla::TrackID) MOZ_OVERRIDE;
+    virtual nsresult Config(bool, uint32_t, bool, uint32_t, bool, uint32_t, int32_t) MOZ_OVERRIDE;
+    virtual bool IsFake() MOZ_OVERRIDE;
+    virtual const dom::MediaSourceEnum GetMediaSource() MOZ_OVERRIDE {
+      return dom::MediaSourceEnum::Browser;
     }
     virtual bool SatisfiesConstraintSets(
-      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets)
+      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets) MOZ_OVERRIDE
     {
       return true;
     }
 
-    virtual nsresult TakePhoto(PhotoCallback* aCallback)
+    virtual nsresult TakePhoto(PhotoCallback* aCallback) MOZ_OVERRIDE
     {
       return NS_ERROR_NOT_IMPLEMENTED;
     }
@@ -70,12 +70,13 @@ protected:
     ~MediaEngineTabVideoSource() {}
 
 private:
-    int mBufW;
-    int mBufH;
+    int mBufWidthMax;
+    int mBufHeightMax;
     int64_t mWindowId;
     bool mScrollWithPage;
     int mTimePerFrame;
     ScopedFreePtr<unsigned char> mData;
+    size_t mDataSize;
     nsCOMPtr<nsIDOMWindow> mWindow;
     nsRefPtr<layers::CairoImage> mImage;
     nsCOMPtr<nsITimer> mTimer;

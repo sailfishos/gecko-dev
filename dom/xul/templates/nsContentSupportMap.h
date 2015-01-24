@@ -25,10 +25,10 @@ public:
     ~nsContentSupportMap() { Finish(); }
 
     nsresult Put(nsIContent* aElement, nsTemplateMatch* aMatch) {
-        if (!mMap.ops)
+        if (!mMap.IsInitialized())
             return NS_ERROR_NOT_INITIALIZED;
 
-        PLDHashEntryHdr* hdr = PL_DHashTableOperate(&mMap, aElement, PL_DHASH_ADD);
+        PLDHashEntryHdr* hdr = PL_DHashTableAdd(&mMap, aElement);
         if (!hdr)
             return NS_ERROR_OUT_OF_MEMORY;
 
@@ -39,10 +39,10 @@ public:
         return NS_OK; }
 
     bool Get(nsIContent* aElement, nsTemplateMatch** aMatch) {
-        if (!mMap.ops)
+        if (!mMap.IsInitialized())
             return false;
 
-        PLDHashEntryHdr* hdr = PL_DHashTableOperate(&mMap, aElement, PL_DHASH_LOOKUP);
+        PLDHashEntryHdr* hdr = PL_DHashTableLookup(&mMap, aElement);
         if (PL_DHASH_ENTRY_IS_FREE(hdr))
             return false;
 

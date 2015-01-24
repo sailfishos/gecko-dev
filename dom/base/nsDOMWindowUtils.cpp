@@ -511,6 +511,27 @@ nsDOMWindowUtils::SetResolution(float aXResolution, float aYResolution)
 }
 
 NS_IMETHODIMP
+nsDOMWindowUtils::SetResolutionAndScaleTo(float aXResolution, float aYResolution)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  nsIPresShell* presShell = GetPresShell();
+  if (!presShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
+  if (sf) {
+    sf->SetResolutionAndScaleTo(gfxSize(aXResolution, aYResolution));
+    presShell->SetResolutionAndScaleTo(aXResolution, aYResolution);
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDOMWindowUtils::GetResolution(float* aXResolution, float* aYResolution)
 {
   MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
@@ -2654,8 +2675,6 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds)
 {
   MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
 
-  nsRefreshDriver* driver = GetPresContext()->RefreshDriver();
-
   // Before we advance the time, we should trigger any animations that are
   // waiting to start. This is because there are many tests that call this
   // which expect animations to start immediately. Ideally, we should make
@@ -2668,10 +2687,11 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds)
   if (doc) {
     PendingPlayerTracker* tracker = doc->GetPendingPlayerTracker();
     if (tracker) {
-      tracker->StartPendingPlayers(driver->MostRecentRefresh());
+      tracker->StartPendingPlayersNow();
     }
   }
 
+  nsRefreshDriver* driver = GetPresContext()->RefreshDriver();
   driver->AdvanceTimeAndRefresh(aMilliseconds);
 
   RefPtr<LayerTransactionChild> transaction = GetLayerTransaction();
@@ -2754,18 +2774,10 @@ nsDOMWindowUtils::ComputeAnimationDistance(nsIDOMElement* aElement,
   nsCOMPtr<nsIContent> content = do_QueryInterface(aElement, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Convert direction-dependent properties as appropriate, e.g.,
-  // border-left to border-left-value.
   nsCSSProperty property =
     nsCSSProps::LookupProperty(aProperty, nsCSSProps::eIgnoreEnabledState);
   if (property != eCSSProperty_UNKNOWN && nsCSSProps::IsShorthand(property)) {
-    nsCSSProperty subprop0 = *nsCSSProps::SubpropertyEntryFor(property);
-    if (nsCSSProps::PropHasFlags(subprop0, CSS_PROPERTY_REPORT_OTHER_NAME) &&
-        nsCSSProps::OtherNameFor(subprop0) == property) {
-      property = subprop0;
-    } else {
-      property = eCSSProperty_UNKNOWN;
-    }
+    property = eCSSProperty_UNKNOWN;
   }
 
   NS_ABORT_IF_FALSE(property == eCSSProperty_UNKNOWN ||
@@ -3139,8 +3151,7 @@ nsDOMWindowUtils::GetFileReferences(const nsAString& aDatabaseName, int64_t aId,
 
   nsCString origin;
   nsresult rv =
-    quota::QuotaManager::GetInfoFromWindow(window, nullptr, &origin, nullptr,
-                                           nullptr);
+    quota::QuotaManager::GetInfoFromWindow(window, nullptr, &origin, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
 
   IDBOpenDBOptions options;
@@ -3970,6 +3981,30 @@ nsDOMWindowUtils::AskPermission(nsIContentPermissionRequest* aRequest)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_QueryReferent(mWindow);
   return nsContentPermissionUtils::AskPermission(aRequest, window->GetCurrentInnerWindow());
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetFramesConstructed(uint64_t* aResult)
+{
+  nsPresContext* presContext = GetPresContext();
+  if (!presContext) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aResult = presContext->FramesConstructedCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetFramesReflowed(uint64_t* aResult)
+{
+  nsPresContext* presContext = GetPresContext();
+  if (!presContext) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aResult = presContext->FramesReflowedCount();
+  return NS_OK;
 }
 
 NS_INTERFACE_MAP_BEGIN(nsTranslationNodeList)

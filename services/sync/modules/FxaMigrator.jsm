@@ -138,11 +138,14 @@ Migrator.prototype = {
 
   _promiseCurrentUserState: Task.async(function* (forceObserver) {
     this.log.trace("starting _promiseCurrentUserState");
-    let update = (newState, subject=null) => {
+    let update = (newState, email=null) => {
       this.log.info("Migration state: '${state}' => '${newState}'",
                     {state: this._state, newState: newState});
       if (forceObserver || newState !== this._state) {
         this._state = newState;
+        let subject = Cc["@mozilla.org/supports-string;1"]
+                      .createInstance(Ci.nsISupportsString);
+        subject.data = email || "";
         Services.obs.notifyObservers(subject, OBSERVER_STATE_CHANGE_TOPIC, newState);
       }
       return newState;
@@ -173,13 +176,14 @@ Migrator.prototype = {
     // So we are in EOL mode - have we a user?
     let fxauser = yield fxAccounts.getSignedInUser();
     if (!fxauser) {
-      return update(this.STATE_USER_FXA);
+      // See if there is a migration sentinel so we can send the email
+      // address that was used on a different device for this account (ie, if
+      // this is a "join the party" migration rather than the first)
+      let sentinel = yield this._getSyncMigrationSentinel();
+      return update(this.STATE_USER_FXA, sentinel && sentinel.email);
     }
     if (!fxauser.verified) {
-      let email = Cc["@mozilla.org/supports-string;1"].
-                  createInstance(Ci.nsISupportsString);
-      email.data = fxauser.email || "";
-      return update(this.STATE_USER_FXA_VERIFIED, email);
+      return update(this.STATE_USER_FXA_VERIFIED, fxauser.email);
     }
 
     // So we just have housekeeping to do - we aren't blocked on a user, so
@@ -201,6 +205,9 @@ Migrator.prototype = {
     // Write the migration sentinel if necessary.
     yield this._setMigrationSentinelIfNecessary();
 
+    // Get the list of enabled engines to we can restore that state.
+    let enginePrefs = this._getEngineEnabledPrefs();
+
     // Must be ready to perform the actual migration.
     this.log.info("Performing final sync migration steps");
     // Do the actual migration.
@@ -209,6 +216,21 @@ Migrator.prototype = {
       Services.obs.addObserver(observe = () => {
         this.log.info("observed that startOver is complete");
         Services.obs.removeObserver(observe, "weave:service:start-over:finish");
+        // We've now reset all sync prefs - set the engine related prefs back to
+        // what they were.
+        for (let [prefName, prefType, prefVal] of enginePrefs) {
+          switch (prefType) {
+            case Services.prefs.PREF_BOOL:
+              Services.prefs.setBoolPref(prefName, prefVal);
+              break;
+            case Services.prefs.PREF_STRING:
+              Services.prefs.setCharPref(prefName, prefVal);
+              break;
+            default:
+              // _getEngineEnabledPrefs doesn't return any other type...
+              Cu.reportError("unknown engine pref type for " + prefName + ": " + prefType);
+          }
+        }
         resolve();
       }, "weave:service:start-over:finish", false);
     });
@@ -311,6 +333,33 @@ Migrator.prototype = {
     Weave.Service.scheduler.unblockSync();
   },
 
+  /* Return a list of [prefName, prefType, prefVal] for all engine related
+     preferences.
+  */
+  _getEngineEnabledPrefs() {
+    let result = [];
+    for (let engine of Weave.Service.engineManager.getAll()) {
+      let prefName = "services.sync.engine." + engine.prefName;
+      let prefVal;
+      try {
+        prefVal = Services.prefs.getBoolPref(prefName);
+        result.push([prefName, Services.prefs.PREF_BOOL, prefVal]);
+      } catch (ex) {} /* just skip this pref */
+    }
+    // and the declined list.
+    try {
+      let prefName = "services.sync.declinedEngines";
+      let prefVal = Services.prefs.getCharPref(prefName);
+      result.push([prefName, Services.prefs.PREF_STRING, prefVal]);
+    } catch (ex) {}
+    return result;
+  },
+
+  /* return true if all engines are enabled, false otherwise. */
+  _allEnginesEnabled() {
+    return Weave.Service.engineManager.getAll().every(e => e.enabled);
+  },
+
   /*
    * Some helpers for the UI to try and move to the next state.
    */
@@ -321,9 +370,26 @@ Migrator.prototype = {
   // we'll move to either the STATE_USER_FXA_VERIFIED state or we'll just
   // complete the migration if they login as an already verified user.
   createFxAccount: Task.async(function* (win) {
+    let {url, options} = yield this.getFxAccountCreationOptions();
+    win.switchToTabHavingURI(url, true, options);
+    // An FxA observer will fire when the user completes this, which will
+    // cause us to move to the next "user blocked" state and notify via our
+    // observer notification.
+  }),
+
+  // Returns an object with properties "url" and "options", suitable for
+  // opening FxAccounts to create/signin to FxA suitable for the migration
+  // state.  The caller of this is responsible for the actual opening of the
+  // page.
+  // This should only be called while we are in the STATE_USER_FXA state.  When
+  // the user completes the creation we'll see an ONLOGIN_NOTIFICATION
+  // notification from FxA and we'll move to either the STATE_USER_FXA_VERIFIED
+  // state or we'll just complete the migration if they login as an already
+  // verified user.
+  getFxAccountCreationOptions: Task.async(function* (win) {
     // warn if we aren't in the expected state - but go ahead anyway!
     if (this._state != this.STATE_USER_FXA) {
-      this.log.warn("createFxAccount called in an unexpected state: ${}", this._state);
+      this.log.warn("getFxAccountCreationOptions called in an unexpected state: ${}", this._state);
     }
     // We need to obtain the sentinel and apply any prefs that might be
     // specified *before* attempting to setup FxA as the prefs might
@@ -338,11 +404,17 @@ Migrator.prototype = {
     // See if we can find a default account name to use.
     let email = yield this._getDefaultAccountName(sentinel);
     let tail = email ? "&email=" + encodeURIComponent(email) : "";
-    win.switchToTabHavingURI("about:accounts?" + action + tail, true,
-                             {ignoreFragment: true, replaceQueryString: true});
-    // An FxA observer will fire when the user completes this, which will
-    // cause us to move to the next "user blocked" state and notify via our
-    // observer notification.
+    // A special flag so server-side metrics can tell this is part of migration.
+    tail += "&migration=sync11";
+    // We want to ask FxA to offer a "Customize Sync" checkbox iff any engines
+    // are disabled.
+    let customize = !this._allEnginesEnabled();
+    tail += "&customizeSync=" + customize;
+
+    return {
+      url: "about:accounts?action=" + action + tail,
+      options: {ignoreFragment: true, replaceQueryString: true}
+    };
   }),
 
   // Ask the FxA servers to re-send a verification mail for the currently
@@ -353,7 +425,7 @@ Migrator.prototype = {
   resendVerificationMail: Task.async(function * (win) {
     // warn if we aren't in the expected state - but go ahead anyway!
     if (this._state != this.STATE_USER_FXA_VERIFIED) {
-      this.log.warn("createFxAccount called in an unexpected state: ${}", this._state);
+      this.log.warn("resendVerificationMail called in an unexpected state: ${}", this._state);
     }
     let ok = true;
     try {
@@ -388,7 +460,7 @@ Migrator.prototype = {
   forgetFxAccount: Task.async(function * () {
     // warn if we aren't in the expected state - but go ahead anyway!
     if (this._state != this.STATE_USER_FXA_VERIFIED) {
-      this.log.warn("createFxAccount called in an unexpected state: ${}", this._state);
+      this.log.warn("forgetFxAccount called in an unexpected state: ${}", this._state);
     }
     return fxAccounts.signOut();
   }),

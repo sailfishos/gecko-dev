@@ -63,19 +63,14 @@ using mozilla::RotateLeft;
 
 typedef Rooted<GlobalObject *> RootedGlobalObject;
 
-/* static */ uint32_t
-Bindings::argumentsVarIndex(ExclusiveContext *cx, InternalBindingsHandle bindings,
-                            uint32_t *unaliasedSlot)
+/* static */ BindingIter
+Bindings::argumentsBinding(ExclusiveContext *cx, InternalBindingsHandle bindings)
 {
     HandlePropertyName arguments = cx->names().arguments;
     BindingIter bi(bindings);
     while (bi->name() != arguments)
         bi++;
-
-    if (unaliasedSlot)
-        *unaliasedSlot = bi->aliased() ? UINT32_MAX : bi.frameIndex();
-
-    return bi.localIndex();
+    return bi;
 }
 
 bool
@@ -986,10 +981,11 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
                 }
 
                 StaticScopeIter<NoGC> ssi(funEnclosingScope);
-                if (ssi.done() || ssi.type() == StaticScopeIter<NoGC>::FUNCTION) {
+
+                if (ssi.done() || ssi.type() == StaticScopeIter<NoGC>::Function) {
                     MOZ_ASSERT(ssi.done() == !fun);
                     funEnclosingScopeIndex = UINT32_MAX;
-                } else if (ssi.type() == StaticScopeIter<NoGC>::BLOCK) {
+                } else if (ssi.type() == StaticScopeIter<NoGC>::Block) {
                     funEnclosingScopeIndex = FindScopeObjectIndex(script, ssi.block());
                     MOZ_ASSERT(funEnclosingScopeIndex < i);
                 } else {
@@ -3022,9 +3018,9 @@ js::CloneScript(JSContext *cx, HandleObject enclosingScope, HandleFunction fun, 
                     RootedObject staticScope(cx, innerFun->nonLazyScript()->enclosingStaticScope());
                     StaticScopeIter<CanGC> ssi(cx, staticScope);
                     RootedObject enclosingScope(cx);
-                    if (ssi.done() || ssi.type() == StaticScopeIter<CanGC>::FUNCTION)
+                    if (ssi.done() || ssi.type() == StaticScopeIter<CanGC>::Function)
                         enclosingScope = fun;
-                    else if (ssi.type() == StaticScopeIter<CanGC>::BLOCK)
+                    else if (ssi.type() == StaticScopeIter<CanGC>::Block)
                         enclosingScope = objects[FindScopeObjectIndex(src, ssi.block())];
                     else
                         enclosingScope = objects[FindScopeObjectIndex(src, ssi.staticWith())];
@@ -3172,10 +3168,18 @@ js::CloneFunctionScript(JSContext *cx, HandleFunction original, HandleFunction c
     RootedScript script(cx, clone->nonLazyScript());
     MOZ_ASSERT(script);
     MOZ_ASSERT(script->compartment() == original->compartment());
-    MOZ_ASSERT_IF(script->compartment() != cx->compartment(),
-                  !script->enclosingStaticScope());
 
+    // The only scripts with enclosing static scopes that may be cloned across
+    // compartments are non-strict, indirect eval scripts, as their dynamic
+    // scope chains terminate in the global scope immediately.
     RootedObject scope(cx, script->enclosingStaticScope());
+    if (script->compartment() != cx->compartment() && scope) {
+        MOZ_ASSERT(!scope->as<StaticEvalObject>().isDirect() &&
+                   !scope->as<StaticEvalObject>().isStrict());
+        scope = StaticEvalObject::create(cx, NullPtr());
+        if (!scope)
+            return false;
+    }
 
     clone->mutableScript().init(nullptr);
 
@@ -3474,7 +3478,7 @@ LazyScript::finalize(FreeOp *fop)
 }
 
 NestedScopeObject *
-JSScript::getStaticScope(jsbytecode *pc)
+JSScript::getStaticBlockScope(jsbytecode *pc)
 {
     MOZ_ASSERT(containsPC(pc));
 
@@ -3528,6 +3532,22 @@ JSScript::getStaticScope(jsbytecode *pc)
     return blockChain;
 }
 
+JSObject *
+JSScript::innermostStaticScopeInScript(jsbytecode *pc)
+{
+    if (JSObject *scope = getStaticBlockScope(pc))
+        return scope;
+    return functionNonDelazifying();
+}
+
+JSObject *
+JSScript::innermostStaticScope(jsbytecode *pc)
+{
+    if (JSObject *scope = innermostStaticScopeInScript(pc))
+        return scope;
+    return enclosingStaticScope();
+}
+
 void
 JSScript::setArgumentsHasVarBinding()
 {
@@ -3553,10 +3573,9 @@ js::SetFrameArgumentsObject(JSContext *cx, AbstractFramePtr frame,
      */
 
     InternalBindingsHandle bindings(script, &script->bindings);
-    uint32_t unaliasedSlot;
-    const uint32_t var = Bindings::argumentsVarIndex(cx, bindings, &unaliasedSlot);
+    BindingIter bi = Bindings::argumentsBinding(cx, bindings);
 
-    if (script->varIsAliased(var)) {
+    if (script->bindingIsAliased(bi)) {
         /*
          * Scan the script to find the slot in the call object that 'arguments'
          * is assigned to.
@@ -3573,8 +3592,8 @@ js::SetFrameArgumentsObject(JSContext *cx, AbstractFramePtr frame,
         if (IsOptimizedPlaceholderMagicValue(frame.callObj().as<ScopeObject>().aliasedVar(ScopeCoordinate(pc))))
             frame.callObj().as<ScopeObject>().setAliasedVar(cx, ScopeCoordinate(pc), cx->names().arguments, ObjectValue(*argsobj));
     } else {
-        if (IsOptimizedPlaceholderMagicValue(frame.unaliasedLocal(unaliasedSlot)))
-            frame.unaliasedLocal(unaliasedSlot) = ObjectValue(*argsobj);
+        if (IsOptimizedPlaceholderMagicValue(frame.unaliasedLocal(bi.frameIndex())))
+            frame.unaliasedLocal(bi.frameIndex()) = ObjectValue(*argsobj);
     }
 }
 
@@ -3651,21 +3670,22 @@ JSScript::argumentsOptimizationFailed(JSContext *cx, HandleScript script)
 }
 
 bool
-JSScript::varIsAliased(uint32_t varSlot)
+JSScript::bindingIsAliased(const BindingIter &bi)
 {
-    return bodyLevelLocalIsAliased(varSlot);
-}
-
-bool
-JSScript::bodyLevelLocalIsAliased(uint32_t localSlot)
-{
-    return bindings.bindingIsAliased(bindings.numArgs() + localSlot);
+    return bindings.bindingIsAliased(bi.i_);
 }
 
 bool
 JSScript::formalIsAliased(unsigned argSlot)
 {
+    MOZ_ASSERT(argSlot < bindings.numArgs());
     return bindings.bindingIsAliased(argSlot);
+}
+
+bool
+JSScript::cookieIsAliased(const frontend::UpvarCookie &cookie)
+{
+    return bindings.bindingIsAliased(bindings.numArgs() + cookie.slot());
 }
 
 bool
@@ -3769,8 +3789,9 @@ LazyScript::CreateRaw(ExclusiveContext *cx, HandleFunction fun,
     p.strict = false;
     p.bindingsAccessedDynamically = false;
     p.hasDebuggerStatement = false;
+    p.hasDirectEval = false;
     p.directlyInsideEval = false;
-    p.usesArgumentsAndApply = false;
+    p.usesArgumentsApplyAndThis = false;
 
     LazyScript *res = LazyScript::CreateRaw(cx, fun, packedFields, begin, end, lineno, column);
     MOZ_ASSERT_IF(res, res->version() == version);
@@ -3842,7 +3863,7 @@ uint32_t
 LazyScript::staticLevel(JSContext *cx) const
 {
     for (StaticScopeIter<NoGC> ssi(enclosingScope()); !ssi.done(); ssi++) {
-        if (ssi.type() == StaticScopeIter<NoGC>::FUNCTION)
+        if (ssi.type() == StaticScopeIter<NoGC>::Function)
             return ssi.funScript()->staticLevel() + 1;
     }
     return 1;

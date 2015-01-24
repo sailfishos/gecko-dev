@@ -176,7 +176,7 @@ AttachToContainerAsEGLImage(ImageContainer* container,
   EGLImageImage::Data data;
   data.mImage = image;
   data.mSize = gfx::IntSize(rect.width, rect.height);
-  data.mInverted = instance->Inverted();
+  data.mOriginPos = instance->OriginPos();
 
   EGLImageImage* typedImg = static_cast<EGLImageImage*>(img.get());
   typedImg->SetData(data);
@@ -203,7 +203,7 @@ AttachToContainerAsSurfaceTexture(ImageContainer* container,
   SurfaceTextureImage::Data data;
   data.mSurfTex = surfTex;
   data.mSize = gfx::IntSize(rect.width, rect.height);
-  data.mInverted = instance->Inverted();
+  data.mOriginPos = instance->OriginPos();
 
   SurfaceTextureImage* typedImg = static_cast<SurfaceTextureImage*>(img.get());
   typedImg->SetData(data);
@@ -662,7 +662,6 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
   nsViewManager* vm = mPluginFrame->PresContext()->GetPresShell()->GetViewManager();
   if (!vm)
     return NS_ERROR_FAILURE;
-#if defined(XP_WIN)
   // This property is provided to allow a "windowless" plugin to determine the window it is drawing
   // in, so it can translate mouse coordinates it receives directly from the operating system
   // to coordinates relative to itself.
@@ -681,7 +680,8 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
   // we only attempt to get the nearest window if this really is a "windowless" plugin so as not
   // to change any behaviour for the much more common windowed plugins,
   // though why this method would even be being called for a windowed plugin escapes me.
-  if (mPluginWindow && mPluginWindow->type == NPWindowTypeDrawable) {
+  if (XRE_GetProcessType() != GeckoProcessType_Content &&
+      mPluginWindow && mPluginWindow->type == NPWindowTypeDrawable) {
     // it turns out that flash also uses this window for determining focus, and is currently
     // unable to show a caret correctly if we return the enclosing window. Therefore for
     // now we only return the enclosing window when there is an actual offset which
@@ -706,12 +706,11 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
       }
     }
   }
-#endif
   // simply return the topmost document window
   nsCOMPtr<nsIWidget> widget;
   vm->GetRootWidget(getter_AddRefs(widget));
   if (widget) {
-    *pvalue = (void*)widget->GetNativeData(NS_NATIVE_WINDOW);
+    *pvalue = (void*)widget->GetNativeData(NS_NATIVE_SHAREABLE_WINDOW);
   } else {
     NS_ASSERTION(widget, "couldn't get doc's widget in getting doc's window handle");
   }
@@ -1356,7 +1355,8 @@ void nsPluginInstanceOwner::RemovePluginView()
   if (!mInstance || !mJavaView)
     return;
 
-  mozilla::widget::android::GeckoAppShell::RemovePluginView((jobject)mJavaView, mFullScreen);
+  widget::GeckoAppShell::RemovePluginView(
+      jni::Object::Ref::From(jobject(mJavaView)), mFullScreen);
   AndroidBridge::GetJNIEnv()->DeleteGlobalRef((jobject)mJavaView);
   mJavaView = nullptr;
 
@@ -1386,7 +1386,8 @@ nsPluginInstanceOwner::GetImageContainerForVideo(nsNPAPIPluginInstance::VideoInf
 
   // The logic below for Honeycomb is just a guess, but seems to work. We don't have a separate
   // inverted flag for video.
-  data.mInverted = AndroidBridge::Bridge()->IsHoneycomb() ? true : mInstance->Inverted();
+  data.mOriginPos = AndroidBridge::Bridge()->IsHoneycomb() ? gl::OriginPos::BottomLeft
+                                                           : mInstance->OriginPos();
   data.mSize = gfx::IntSize(aVideoInfo->mDimensions.width, aVideoInfo->mDimensions.height);
 
   SurfaceTextureImage* typedImg = static_cast<SurfaceTextureImage*>(img.get());
@@ -1451,6 +1452,28 @@ void nsPluginInstanceOwner::ExitFullScreen(jobject view) {
 }
 
 #endif
+
+void
+nsPluginInstanceOwner::NotifyHostAsyncInitFailed()
+{
+  nsCOMPtr<nsIObjectLoadingContent> content = do_QueryInterface(mContent);
+  content->StopPluginInstance();
+}
+
+void
+nsPluginInstanceOwner::NotifyHostCreateWidget()
+{
+  mPluginHost->CreateWidget(this);
+#ifdef XP_MACOSX
+  FixUpPluginWindow(ePluginPaintEnable);
+#else
+  if (mPluginFrame) {
+    mPluginFrame->InvalidateFrame();
+  } else {
+    CallSetWindow();
+  }
+#endif
+}
 
 nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(nsIDOMEvent* aFocusEvent)
 {
@@ -3169,6 +3192,10 @@ nsPluginInstanceOwner::UpdateDocumentActiveState(bool aIsActive)
 NS_IMETHODIMP
 nsPluginInstanceOwner::CallSetWindow()
 {
+  if (!mWidgetCreationComplete) {
+    // No widget yet, we can't run this code
+    return NS_OK;
+  }
   if (mPluginFrame) {
     mPluginFrame->CallSetWindow(false);
   } else if (mInstance) {

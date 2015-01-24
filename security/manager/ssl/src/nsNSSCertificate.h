@@ -65,7 +65,7 @@ private:
   nsresult CreateTBSCertificateASN1Struct(nsIASN1Sequence** retSequence,
                                           nsINSSComponent* nssComponent);
   nsresult GetSortableDate(PRTime aTime, nsAString& _aSortableDate);
-  virtual void virtualDestroyNSSReference();
+  virtual void virtualDestroyNSSReference() MOZ_OVERRIDE;
   void destructorSafeDestroyNSSReference();
   bool InitFromDER(char* certDER, int derLen);  // return false on failure
 
@@ -105,13 +105,13 @@ public:
                                      proofOfLock);
 private:
    virtual ~nsNSSCertList();
-   virtual void virtualDestroyNSSReference();
+   virtual void virtualDestroyNSSReference() MOZ_OVERRIDE;
    void destructorSafeDestroyNSSReference();
 
    mozilla::ScopedCERTCertList mCertList;
 
-   nsNSSCertList(const nsNSSCertList&) MOZ_DELETE;
-   void operator=(const nsNSSCertList&) MOZ_DELETE;
+   nsNSSCertList(const nsNSSCertList&) = delete;
+   void operator=(const nsNSSCertList&) = delete;
 };
 
 class nsNSSCertListEnumerator: public nsISimpleEnumerator,
@@ -125,13 +125,13 @@ public:
                            const nsNSSShutDownPreventionLock& proofOfLock);
 private:
    virtual ~nsNSSCertListEnumerator();
-   virtual void virtualDestroyNSSReference();
+   virtual void virtualDestroyNSSReference() MOZ_OVERRIDE;
    void destructorSafeDestroyNSSReference();
 
    mozilla::ScopedCERTCertList mCertList;
 
-   nsNSSCertListEnumerator(const nsNSSCertListEnumerator&) MOZ_DELETE;
-   void operator=(const nsNSSCertListEnumerator&) MOZ_DELETE;
+   nsNSSCertListEnumerator(const nsNSSCertListEnumerator&) = delete;
+   void operator=(const nsNSSCertListEnumerator&) = delete;
 };
 
 

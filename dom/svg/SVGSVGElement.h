@@ -148,6 +148,15 @@ public:
   // public helpers:
 
   /**
+   * Returns -1 if the width/height is a percentage, else returns the user unit
+   * length clamped to fit in a int32_t.
+   * XXX see bug 1112533 comment 3 - we should fix drawImage so that we can
+   * change these methods to make zero the error flag for percentages.
+   */
+  int32_t GetIntrinsicWidth();
+  int32_t GetIntrinsicHeight();
+
+  /**
    * Returns true if this element has a base/anim value for its "viewBox"
    * attribute that defines a viewBox rectangle with finite values, or
    * if there is a view element overriding this element's viewBox and it
@@ -237,7 +246,7 @@ public:
   uint32_t SuspendRedraw(uint32_t max_wait_milliseconds);
   void UnsuspendRedraw(uint32_t suspend_handle_id);
   void UnsuspendRedrawAll();
-  void ForceRedraw(ErrorResult& rv);
+  void ForceRedraw();
   void PauseAnimations();
   void UnpauseAnimations();
   bool AnimationsPaused();

@@ -114,7 +114,11 @@ static bool LockD3DTexture(T* aTexture)
   aTexture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
   // Textures created by the DXVA decoders don't have a mutex for synchronization
   if (mutex) {
-    HRESULT hr = mutex->AcquireSync(0, INFINITE);
+    HRESULT hr = mutex->AcquireSync(0, 10000);
+    if (hr == WAIT_TIMEOUT) {
+      MOZ_CRASH();
+    }
+
     if (FAILED(hr)) {
       NS_WARNING("Failed to lock the texture");
       return false;
@@ -347,14 +351,15 @@ TextureClientD3D11::BorrowDrawTarget()
   }
 
   // This may return a null DrawTarget
-#if USE_D2D1_1
   if (mTexture) {
     mDrawTarget = Factory::CreateDrawTargetForD3D11Texture(mTexture, mFormat);
   } else
-#endif
   {
     MOZ_ASSERT(mTexture10);
     mDrawTarget = Factory::CreateDrawTargetForD3D10Texture(mTexture10, mFormat);
+  }
+  if (!mDrawTarget) {
+      gfxWarning() << "Invalid draw target for borrowing";
   }
   return mDrawTarget;
 }
@@ -370,7 +375,6 @@ TextureClientD3D11::AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlag
     return false;
   }
 
-#ifdef USE_D2D1_1
   ID3D11Device* d3d11device = gfxWindowsPlatform::GetPlatform()->GetD3D11ContentDevice();
 
   if (gfxPrefs::Direct2DUse1_1() && d3d11device) {
@@ -383,7 +387,6 @@ TextureClientD3D11::AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlag
 
     hr = d3d11device->CreateTexture2D(&newDesc, nullptr, byRef(mTexture));
   } else
-#endif
   {
     ID3D10Device* device = gfxWindowsPlatform::GetPlatform()->GetD3D10Device();
 
@@ -762,7 +765,11 @@ SyncObjectD3D11::FinalizeFrame()
   if (mD3D10SyncedTextures.size()) {
     RefPtr<IDXGIKeyedMutex> mutex;
     hr = mD3D10Texture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
-    mutex->AcquireSync(0, INFINITE);
+    hr = mutex->AcquireSync(0, 10000);
+
+    if (hr == WAIT_TIMEOUT) {
+      MOZ_CRASH();
+    }
 
     D3D10_BOX box;
     box.front = box.top = box.left = 0;
@@ -782,7 +789,11 @@ SyncObjectD3D11::FinalizeFrame()
   if (mD3D11SyncedTextures.size()) {
     RefPtr<IDXGIKeyedMutex> mutex;
     hr = mD3D11Texture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
-    mutex->AcquireSync(0, INFINITE);
+    hr = mutex->AcquireSync(0, 10000);
+
+    if (hr == WAIT_TIMEOUT) {
+      MOZ_CRASH();
+    }
 
     D3D11_BOX box;
     box.front = box.top = box.left = 0;

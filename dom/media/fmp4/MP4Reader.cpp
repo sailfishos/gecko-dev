@@ -7,6 +7,7 @@
 #include "MP4Reader.h"
 #include "MP4Stream.h"
 #include "MediaResource.h"
+#include "nsPrintfCString.h"
 #include "nsSize.h"
 #include "VideoUtils.h"
 #include "mozilla/dom/HTMLMediaElement.h"
@@ -63,6 +64,49 @@ TrackTypeToStr(TrackType aTrack)
 }
 #endif
 
+// MP4Demuxer wants to do various blocking reads, which cause deadlocks while
+// mDemuxerMonitor is held. This stuff should really be redesigned, but we don't
+// have time for that right now. So in order to get proper synchronization while
+// keeping behavior as similar as possible, we do the following nasty hack:
+//
+// The demuxer has a Stream object with APIs to do both blocking and non-blocking
+// reads. When it does a blocking read, MP4Stream actually redirects it to a non-
+// blocking read, but records the parameters of the read on the MP4Stream itself.
+// This means that, when the read failure bubbles up to MP4Reader.cpp, we can
+// detect whether we in fact just needed to block, and do that while releasing the
+// monitor. We distinguish these fake failures from bonafide EOS by tracking the
+// previous failed read as well. If we ever do a blocking read on the same segment
+// twice, we know we've hit EOS.
+template<typename ThisType, typename ReturnType>
+ReturnType
+InvokeAndRetry(ThisType* aThisVal, ReturnType(ThisType::*aMethod)(), MP4Stream* aStream, Monitor* aMonitor)
+{
+  AutoPinned<MP4Stream> stream(aStream);
+  MP4Stream::ReadRecord prevFailure(-1, 0);
+  while (true) {
+    ReturnType result = ((*aThisVal).*aMethod)();
+    if (result) {
+      return result;
+    }
+    MP4Stream::ReadRecord failure(-1, 0);
+    if (NS_WARN_IF(!stream->LastReadFailed(&failure))) {
+      return result;
+    }
+    stream->ClearFailedRead();
+
+    if (NS_WARN_IF(failure == prevFailure)) {
+      NS_WARNING(nsPrintfCString("Failed reading the same block twice: offset=%lld, count=%lu",
+                                 failure.mOffset, failure.mCount).get());
+      return result;
+    }
+
+    prevFailure = failure;
+    if (NS_WARN_IF(!stream->BlockingReadIntoCache(failure.mOffset, failure.mCount, aMonitor))) {
+      return result;
+    }
+  }
+}
+
 MP4Reader::MP4Reader(AbstractMediaDecoder* aDecoder)
   : MediaDecoderReader(aDecoder)
   , mAudio(MediaData::AUDIO_DATA, Preferences::GetUint("media.mp4-audio-decode-ahead", 2))
@@ -72,7 +116,7 @@ MP4Reader::MP4Reader(AbstractMediaDecoder* aDecoder)
   , mDemuxerInitialized(false)
   , mIsEncrypted(false)
   , mIndexReady(false)
-  , mIndexMonitor("MP4 index")
+  , mDemuxerMonitor("MP4 Demuxer")
 {
   MOZ_ASSERT(NS_IsMainThread(), "Must be on main thread.");
   MOZ_COUNT_CTOR(MP4Reader);
@@ -151,13 +195,15 @@ MP4Reader::InitLayersBackendType()
 }
 
 static bool sIsEMEEnabled = false;
+static bool sDemuxSkipToNextKeyframe = true;
 
 nsresult
 MP4Reader::Init(MediaDecoderReader* aCloneDonor)
 {
   MOZ_ASSERT(NS_IsMainThread(), "Must be on main thread.");
   PlatformDecoderModule::Init();
-  mDemuxer = new MP4Demuxer(new MP4Stream(mDecoder->GetResource(), &mIndexMonitor), &mIndexMonitor);
+  mStream = new MP4Stream(mDecoder->GetResource());
+  mTimestampOffset = GetDecoder()->GetTimestampOffset();
 
   InitLayersBackendType();
 
@@ -171,6 +217,7 @@ MP4Reader::Init(MediaDecoderReader* aCloneDonor)
   if (!sSetupPrefCache) {
     sSetupPrefCache = true;
     Preferences::AddBoolVarCache(&sIsEMEEnabled, "media.eme.enabled", false);
+    Preferences::AddBoolVarCache(&sDemuxSkipToNextKeyframe, "media.fmp4.demux-skip", true);
   }
 
   return NS_OK;
@@ -289,17 +336,22 @@ MP4Reader::PreReadMetadata()
   }
 }
 
+bool
+MP4Reader::InitDemuxer()
+{
+  mDemuxer = new MP4Demuxer(mStream, mTimestampOffset, &mDemuxerMonitor);
+  return mDemuxer->Init();
+}
+
 nsresult
 MP4Reader::ReadMetadata(MediaInfo* aInfo,
                         MetadataTags** aTags)
 {
   if (!mDemuxerInitialized) {
-    {
-      MonitorAutoLock mon(mIndexMonitor);
-      bool ok = mDemuxer->Init();
-      NS_ENSURE_TRUE(ok, NS_ERROR_FAILURE);
-      mIndexReady = true;
-    }
+    MonitorAutoLock mon(mDemuxerMonitor);
+    bool ok = InvokeAndRetry(this, &MP4Reader::InitDemuxer, mStream, &mDemuxerMonitor);
+    NS_ENSURE_TRUE(ok, NS_ERROR_FAILURE);
+    mIndexReady = true;
 
     // To decode, we need valid video and a place to put it.
     mInfo.mVideo.mHasVideo = mVideo.mActive = mDemuxer->HasValidVideo() &&
@@ -308,6 +360,7 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
     mInfo.mAudio.mHasAudio = mAudio.mActive = mDemuxer->HasValidAudio();
 
     {
+      MonitorAutoUnlock unlock(mDemuxerMonitor);
       ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
       mIsEncrypted = mDemuxer->Crypto().valid;
     }
@@ -411,7 +464,11 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
   }
 
   // Get the duration, and report it to the decoder if we have it.
-  Microseconds duration = mDemuxer->Duration();
+  Microseconds duration;
+  {
+    MonitorAutoLock lock(mDemuxerMonitor);
+    duration = mDemuxer->Duration();
+  }
   if (duration != -1) {
     ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
     mDecoder->SetMediaDuration(duration);
@@ -420,7 +477,7 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
   *aInfo = mInfo;
   *aTags = nullptr;
 
-  MonitorAutoLock mon(mIndexMonitor);
+  MonitorAutoLock mon(mDemuxerMonitor);
   UpdateIndex();
 
   return NS_OK;
@@ -437,6 +494,7 @@ MP4Reader::IsMediaSeekable()
 {
   // We can seek if we get a duration *and* the reader reports that it's
   // seekable.
+  MonitorAutoLock mon(mDemuxerMonitor);
   return mDecoder->GetResource()->IsTransportSeekable() && mDemuxer->CanSeek();
 }
 
@@ -462,6 +520,29 @@ MP4Reader::GetDecoderData(TrackType aTrack)
   return mVideo;
 }
 
+Microseconds
+MP4Reader::GetNextKeyframeTime()
+{
+  MonitorAutoLock mon(mDemuxerMonitor);
+  return mDemuxer->GetNextKeyframeTime();
+}
+
+bool
+MP4Reader::ShouldSkip(bool aSkipToNextKeyframe, int64_t aTimeThreshold)
+{
+  // The MP4Reader doesn't do normal skip-to-next-keyframe if the demuxer
+  // has exposes where the next keyframe is. We can then instead skip only
+  // if the time threshold (the current playback position) is after the next
+  // keyframe in the stream. This means we'll only skip frames that we have
+  // no hope of ever playing.
+  Microseconds nextKeyframe = -1;
+  if (!sDemuxSkipToNextKeyframe ||
+      (nextKeyframe = GetNextKeyframeTime()) == -1) {
+    return aSkipToNextKeyframe;
+  }
+  return nextKeyframe < aTimeThreshold;
+}
+
 nsRefPtr<MediaDecoderReader::VideoDataPromise>
 MP4Reader::RequestVideoData(bool aSkipToNextKeyframe,
                             int64_t aTimeThreshold)
@@ -469,10 +550,18 @@ MP4Reader::RequestVideoData(bool aSkipToNextKeyframe,
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
   VLOG("RequestVideoData skip=%d time=%lld", aSkipToNextKeyframe, aTimeThreshold);
 
+  if (mShutdown) {
+    NS_WARNING("RequestVideoData on shutdown MP4Reader!");
+    MonitorAutoLock lock(mVideo.mMonitor);
+    nsRefPtr<VideoDataPromise> p = mVideo.mPromise.Ensure(__func__);
+    p->Reject(CANCELED, __func__);
+    return p;
+  }
+
   MOZ_ASSERT(HasVideo() && mPlatform && mVideo.mDecoder);
 
   bool eos = false;
-  if (aSkipToNextKeyframe) {
+  if (ShouldSkip(aSkipToNextKeyframe, aTimeThreshold)) {
     uint32_t parsed = 0;
     eos = !SkipVideoDemuxToNextKeyFrame(aTimeThreshold, parsed);
     if (!eos && NS_FAILED(mVideo.mDecoder->Flush())) {
@@ -499,7 +588,12 @@ MP4Reader::RequestAudioData()
   VLOG("RequestAudioData");
   MonitorAutoLock lock(mAudio.mMonitor);
   nsRefPtr<AudioDataPromise> p = mAudio.mPromise.Ensure(__func__);
-  ScheduleUpdate(kAudio);
+  if (!mShutdown) {
+    ScheduleUpdate(kAudio);
+  } else {
+    NS_WARNING("RequestAudioData on shutdown MP4Reader!");
+    p->Reject(CANCELED, __func__);
+  }
   return p;
 }
 
@@ -540,6 +634,10 @@ void
 MP4Reader::Update(TrackType aTrack)
 {
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
+
+  if (mShutdown) {
+    return;
+  }
 
   // Record number of frames decoded and parsed. Automatically update the
   // stats counters using the AutoNotifyDecoded stack-based class.
@@ -631,16 +729,22 @@ MP4Reader::ReturnOutput(MediaData* aData, TrackType aTrack)
 MP4Sample*
 MP4Reader::PopSample(TrackType aTrack)
 {
-  MonitorAutoLock mon(mIndexMonitor);
+  MonitorAutoLock mon(mDemuxerMonitor);
+  return PopSampleLocked(aTrack);
+}
+
+MP4Sample*
+MP4Reader::PopSampleLocked(TrackType aTrack)
+{
+  mDemuxerMonitor.AssertCurrentThreadOwns();
   switch (aTrack) {
     case kAudio:
-      return mDemuxer->DemuxAudioSample();
-
+      return InvokeAndRetry(mDemuxer.get(), &MP4Demuxer::DemuxAudioSample, mStream, &mDemuxerMonitor);
     case kVideo:
       if (mQueuedVideoSample) {
         return mQueuedVideoSample.forget();
       }
-      return mDemuxer->DemuxVideoSample();
+      return InvokeAndRetry(mDemuxer.get(), &MP4Demuxer::DemuxVideoSample, mStream, &mDemuxerMonitor);
 
     default:
       return nullptr;
@@ -673,13 +777,17 @@ MP4Reader::ResetDecode()
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
   Flush(kVideo);
   {
-    MonitorAutoLock mon(mIndexMonitor);
-    mDemuxer->SeekVideo(0);
+    MonitorAutoLock mon(mDemuxerMonitor);
+    if (mDemuxer) {
+      mDemuxer->SeekVideo(0);
+    }
   }
   Flush(kAudio);
   {
-    MonitorAutoLock mon(mIndexMonitor);
-    mDemuxer->SeekAudio(0);
+    MonitorAutoLock mon(mDemuxerMonitor);
+    if (mDemuxer) {
+      mDemuxer->SeekAudio(0);
+    }
   }
   return MediaDecoderReader::ResetDecode();
 }
@@ -814,29 +922,30 @@ MP4Reader::SkipVideoDemuxToNextKeyFrame(int64_t aTimeThreshold, uint32_t& parsed
 }
 
 nsRefPtr<MediaDecoderReader::SeekPromise>
-MP4Reader::Seek(int64_t aTime,
-                int64_t aStartTime,
-                int64_t aEndTime,
-                int64_t aCurrentTime)
+MP4Reader::Seek(int64_t aTime, int64_t aEndTime)
 {
   LOG("MP4Reader::Seek(%lld)", aTime);
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
+  MonitorAutoLock mon(mDemuxerMonitor);
   if (!mDecoder->GetResource()->IsTransportSeekable() || !mDemuxer->CanSeek()) {
     VLOG("Seek() END (Unseekable)");
     return SeekPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
 
+  int64_t seekTime = aTime;
   mQueuedVideoSample = nullptr;
   if (mDemuxer->HasValidVideo()) {
-    mDemuxer->SeekVideo(aTime);
-    mQueuedVideoSample = PopSample(kVideo);
+    mDemuxer->SeekVideo(seekTime);
+    mQueuedVideoSample = PopSampleLocked(kVideo);
+    if (mQueuedVideoSample) {
+      seekTime = mQueuedVideoSample->composition_timestamp;
+    }
   }
   if (mDemuxer->HasValidAudio()) {
-    mDemuxer->SeekAudio(
-      mQueuedVideoSample ? mQueuedVideoSample->composition_timestamp : aTime);
+    mDemuxer->SeekAudio(seekTime);
   }
   LOG("MP4Reader::Seek(%lld) exit", aTime);
-  return SeekPromise::CreateAndResolve(true, __func__);
+  return SeekPromise::CreateAndResolve(seekTime, __func__);
 }
 
 void
@@ -856,7 +965,7 @@ MP4Reader::UpdateIndex()
 int64_t
 MP4Reader::GetEvictionOffset(double aTime)
 {
-  MonitorAutoLock mon(mIndexMonitor);
+  MonitorAutoLock mon(mDemuxerMonitor);
   if (!mIndexReady) {
     return 0;
   }
@@ -867,7 +976,7 @@ MP4Reader::GetEvictionOffset(double aTime)
 nsresult
 MP4Reader::GetBuffered(dom::TimeRanges* aBuffered)
 {
-  MonitorAutoLock mon(mIndexMonitor);
+  MonitorAutoLock mon(mDemuxerMonitor);
   if (!mIndexReady) {
     return NS_OK;
   }

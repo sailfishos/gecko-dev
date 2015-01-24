@@ -251,7 +251,7 @@ TabChildBase::InitializeRootMetrics()
   mLastRootMetrics.SetCumulativeResolution(mLastRootMetrics.GetZoom() / mLastRootMetrics.GetDevPixelsPerCSSPixel() * ParentLayerToLayerScale(1));
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
-  mLastRootMetrics.mPresShellResolution = mLastRootMetrics.GetCumulativeResolution().scale;
+  mLastRootMetrics.SetPresShellResolution(mLastRootMetrics.GetCumulativeResolution().scale);
   mLastRootMetrics.SetScrollOffset(CSSPoint(0, 0));
 
   TABC_LOG("After InitializeRootMetrics, mLastRootMetrics is %s\n",
@@ -434,8 +434,8 @@ TabChildBase::HandlePossibleViewportChange(const ScreenIntSize& aOldScreenSize)
                                 * ParentLayerToLayerScale(1));
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
-  metrics.mPresShellResolution = metrics.GetCumulativeResolution().scale;
-  utils->SetResolution(metrics.mPresShellResolution, metrics.mPresShellResolution);
+  metrics.SetPresShellResolution(metrics.GetCumulativeResolution().scale);
+  utils->SetResolutionAndScaleTo(metrics.GetPresShellResolution(), metrics.GetPresShellResolution());
 
   CSSSize scrollPort = metrics.CalculateCompositedSizeInCssPixels();
   utils->SetScrollPositionClampingScrollPortSize(scrollPort.width, scrollPort.height);
@@ -495,7 +495,7 @@ TabChildBase::GetDOMWindowUtils()
 }
 
 already_AddRefed<nsIDocument>
-TabChildBase::GetDocument()
+TabChildBase::GetDocument() const
 {
   nsCOMPtr<nsIDOMDocument> domDoc;
   WebNavigation()->GetDocument(getter_AddRefs(domDoc));
@@ -777,7 +777,10 @@ private:
         MOZ_ASSERT(NS_IsMainThread());
         MOZ_ASSERT(mTabChild);
 
-        unused << PBrowserChild::Send__delete__(mTabChild);
+        // Check in case ActorDestroy was called after RecvDestroy message.
+        if (mTabChild->IPCOpen()) {
+            unused << PBrowserChild::Send__delete__(mTabChild);
+        }
 
         mTabChild = nullptr;
         return NS_OK;
@@ -905,6 +908,7 @@ TabChild::TabChild(nsIContentChild* aManager,
   , mUniqueId(aTabId)
   , mDPI(0)
   , mDefaultScale(0)
+  , mIPCOpen(true)
 {
   if (!sActiveDurationMsSet) {
     Preferences::AddIntVarCache(&sActiveDurationMs,
@@ -974,8 +978,8 @@ TabChild::Observe(nsISupports *aSubject,
         // until we we get an inner size.
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
-          utils->SetResolution(mLastRootMetrics.mPresShellResolution,
-                               mLastRootMetrics.mPresShellResolution);
+          utils->SetResolutionAndScaleTo(mLastRootMetrics.GetPresShellResolution(),
+                                         mLastRootMetrics.GetPresShellResolution());
           HandlePossibleViewportChange(mInnerSize);
         }
       }
@@ -1305,9 +1309,9 @@ NS_IMETHODIMP
 TabChild::SetDimensions(uint32_t aFlags, int32_t aX, int32_t aY,
                              int32_t aCx, int32_t aCy)
 {
-  NS_NOTREACHED("TabChild::SetDimensions not supported in TabChild");
+  unused << PBrowserChild::SendSetDimensions(aFlags, aX, aY, aCx, aCy);
 
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1425,93 +1429,53 @@ TabChild::ProvideWindow(nsIDOMWindow* aParent, uint32_t aChromeFlags,
     // isn't a request to open a modal-type window, we're going to create a new
     // <iframe mozbrowser/mozapp> and return its window here.
     nsCOMPtr<nsIDocShell> docshell = do_GetInterface(aParent);
-    if (docshell && docshell->GetIsInBrowserOrApp() &&
-        !(aChromeFlags & (nsIWebBrowserChrome::CHROME_MODAL |
-                          nsIWebBrowserChrome::CHROME_OPENAS_DIALOG |
-                          nsIWebBrowserChrome::CHROME_OPENAS_CHROME))) {
+    bool iframeMoz = (docshell && docshell->GetIsInBrowserOrApp() &&
+                      !(aChromeFlags & (nsIWebBrowserChrome::CHROME_MODAL |
+                                        nsIWebBrowserChrome::CHROME_OPENAS_DIALOG |
+                                        nsIWebBrowserChrome::CHROME_OPENAS_CHROME)));
 
-      // Note that BrowserFrameProvideWindow may return NS_ERROR_ABORT if the
-      // open window call was canceled.  It's important that we pass this error
-      // code back to our caller.
-      return BrowserFrameProvideWindow(aParent, aURI, aName, aFeatures,
-                                       aWindowIsNew, aReturn);
+    if (!iframeMoz) {
+      int32_t openLocation =
+        nsWindowWatcher::GetWindowOpenLocation(aParent, aChromeFlags, aCalledFromJS,
+                                               aPositionSpecified, aSizeSpecified);
+
+      // If it turns out we're opening in the current browser, just hand over the
+      // current browser's docshell.
+      if (openLocation == nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
+        nsCOMPtr<nsIWebBrowser> browser = do_GetInterface(WebNavigation());
+        *aWindowIsNew = false;
+        return browser->GetContentDOMWindow(aReturn);
+      }
     }
 
-    int32_t openLocation =
-      nsWindowWatcher::GetWindowOpenLocation(aParent, aChromeFlags, aCalledFromJS,
-                                             aPositionSpecified, aSizeSpecified);
-
-    // If it turns out we're opening in the current browser, just hand over the
-    // current browser's docshell.
-    if (openLocation == nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
-      nsCOMPtr<nsIWebBrowser> browser = do_GetInterface(WebNavigation());
-      *aWindowIsNew = false;
-      return browser->GetContentDOMWindow(aReturn);
-    }
-
-    // Otherwise, we're opening a new tab or a new window. We have to contact
-    // TabParent in order to do either.
-
-    PBrowserChild* newChild;
-
-    nsAutoCString uriString;
-    if (aURI) {
-      aURI->GetSpec(uriString);
-    }
-
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    aParent->GetDocument(getter_AddRefs(domDoc));
-    if (!domDoc) {
-      NS_ERROR("Could retrieve document from nsIBaseWindow");
-      return NS_ERROR_FAILURE;
-    }
-
-    nsCOMPtr<nsIDocument> doc;
-    doc = do_QueryInterface(domDoc);
-    if (!doc) {
-      NS_ERROR("Document from nsIBaseWindow didn't QI to nsIDocument");
-      return NS_ERROR_FAILURE;
-    }
-
-    nsCOMPtr<nsIURI> baseURI = doc->GetDocBaseURI();
-    if (!baseURI) {
-      NS_ERROR("nsIDocument didn't return a base URI");
-      return NS_ERROR_FAILURE;
-    }
-
-    nsAutoCString baseURIString;
-    baseURI->GetSpec(baseURIString);
-
-    nsAutoString nameString;
-    nameString.Assign(aName);
-    nsAutoCString features;
-
-    // We can assume that if content is requesting to open a window from a remote
-    // tab, then we want to enforce that the new window is also a remote tab.
-    features.Assign(aFeatures);
-    features.Append(",remote");
-
-    if (!CallCreateWindow(aChromeFlags, aCalledFromJS, aPositionSpecified,
-                          aSizeSpecified, NS_ConvertUTF8toUTF16(uriString),
-                          nameString, NS_ConvertUTF8toUTF16(features),
-                          NS_ConvertUTF8toUTF16(baseURIString),
-                          aWindowIsNew, &newChild)) {
-        return NS_ERROR_NOT_AVAILABLE;
-    }
-
-    nsCOMPtr<nsIDOMWindow> win =
-        do_GetInterface(static_cast<TabChild*>(newChild)->WebNavigation());
-    win.forget(aReturn);
-    return NS_OK;
+    // Note that ProvideWindowCommon may return NS_ERROR_ABORT if the
+    // open window call was canceled.  It's important that we pass this error
+    // code back to our caller.
+    return ProvideWindowCommon(aParent,
+                               iframeMoz,
+                               aChromeFlags,
+                               aCalledFromJS,
+                               aPositionSpecified,
+                               aSizeSpecified,
+                               aURI,
+                               aName,
+                               aFeatures,
+                               aWindowIsNew,
+                               aReturn);
 }
 
 nsresult
-TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
-                                    nsIURI* aURI,
-                                    const nsAString& aName,
-                                    const nsACString& aFeatures,
-                                    bool* aWindowIsNew,
-                                    nsIDOMWindow** aReturn)
+TabChild::ProvideWindowCommon(nsIDOMWindow* aOpener,
+                              bool aIframeMoz,
+                              uint32_t aChromeFlags,
+                              bool aCalledFromJS,
+                              bool aPositionSpecified,
+                              bool aSizeSpecified,
+                              nsIURI* aURI,
+                              const nsAString& aName,
+                              const nsACString& aFeatures,
+                              bool* aWindowIsNew,
+                              nsIDOMWindow** aReturn)
 {
   *aReturn = nullptr;
 
@@ -1535,7 +1499,7 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
                         &tabId);
 
   nsRefPtr<TabChild> newChild = new TabChild(ContentChild::GetSingleton(), tabId,
-                                             /* TabContext */ *this, /* chromeFlags */ 0);
+                                             /* TabContext */ *this, aChromeFlags);
   if (NS_FAILED(newChild->Init())) {
     return NS_ERROR_ABORT;
   }
@@ -1544,7 +1508,7 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
   unused << Manager()->SendPBrowserConstructor(
       // We release this ref in DeallocPBrowserChild
       nsRefPtr<TabChild>(newChild).forget().take(),
-      tabId, IPCTabContext(context, mScrolling), /* chromeFlags */ 0,
+      tabId, IPCTabContext(context, mScrolling), aChromeFlags,
       cc->GetID(), cc->IsForApp(), cc->IsForBrowser());
 
   nsAutoCString spec;
@@ -1554,9 +1518,53 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
 
   NS_ConvertUTF8toUTF16 url(spec);
   nsString name(aName);
-  NS_ConvertUTF8toUTF16 features(aFeatures);
-  newChild->SendBrowserFrameOpenWindow(this, url, name,
-                                       features, aWindowIsNew);
+  nsAutoCString features(aFeatures);
+  nsTArray<FrameScriptInfo> frameScripts;
+  nsCString urlToLoad;
+
+  if (aIframeMoz) {
+    newChild->SendBrowserFrameOpenWindow(this, url, name,
+                                         NS_ConvertUTF8toUTF16(features),
+                                         aWindowIsNew);
+  } else {
+    nsCOMPtr<nsIDOMDocument> domDoc;
+    aOpener->GetDocument(getter_AddRefs(domDoc));
+    if (!domDoc) {
+      NS_ERROR("Could retrieve document from nsIBaseWindow");
+      return NS_ERROR_FAILURE;
+    }
+
+    nsCOMPtr<nsIDocument> doc;
+    doc = do_QueryInterface(domDoc);
+    if (!doc) {
+      NS_ERROR("Document from nsIBaseWindow didn't QI to nsIDocument");
+      return NS_ERROR_FAILURE;
+    }
+
+    nsCOMPtr<nsIURI> baseURI = doc->GetDocBaseURI();
+    if (!baseURI) {
+      NS_ERROR("nsIDocument didn't return a base URI");
+      return NS_ERROR_FAILURE;
+    }
+
+    nsAutoCString baseURIString;
+    baseURI->GetSpec(baseURIString);
+
+    // We can assume that if content is requesting to open a window from a remote
+    // tab, then we want to enforce that the new window is also a remote tab.
+    features.AppendLiteral(",remote");
+
+    if (!SendCreateWindow(newChild,
+                          aChromeFlags, aCalledFromJS, aPositionSpecified,
+                          aSizeSpecified, url,
+                          name, NS_ConvertUTF8toUTF16(features),
+                          NS_ConvertUTF8toUTF16(baseURIString),
+                          aWindowIsNew,
+                          &frameScripts,
+                          &urlToLoad)) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+  }
   if (!*aWindowIsNew) {
     PBrowserChild::Send__delete__(newChild);
     return NS_ERROR_ABORT;
@@ -1578,6 +1586,17 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
   // Unfortunately we don't get a window unless we've shown the frame.  That's
   // pretty bogus; see bug 763602.
   newChild->DoFakeShow(scrolling, textureFactoryIdentifier, layersId, renderFrame);
+
+  for (size_t i = 0; i < frameScripts.Length(); i++) {
+    FrameScriptInfo& info = frameScripts[i];
+    if (!newChild->RecvLoadRemoteScript(info.url(), info.runInGlobalScope())) {
+      MOZ_CRASH();
+    }
+  }
+
+  if (!urlToLoad.IsEmpty()) {
+    newChild->RecvLoadURL(urlToLoad);
+  }
 
   nsCOMPtr<nsIDOMWindow> win = do_GetInterface(newChild->WebNavigation());
   win.forget(aReturn);
@@ -1654,6 +1673,8 @@ TabChild::DestroyWindow()
 void
 TabChild::ActorDestroy(ActorDestroyReason why)
 {
+  mIPCOpen = false;
+
   DestroyWindow();
 
   if (mTabChildGlobal) {
@@ -1908,7 +1929,14 @@ TabChild::ApplyShowInfo(const ShowInfo& aInfo)
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
   if (docShell) {
     nsCOMPtr<nsIDocShellTreeItem> item = do_GetInterface(docShell);
-    item->SetName(aInfo.name());
+    if (IsBrowserOrApp()) {
+      // B2G allows window.name to be set by changing the name attribute on the
+      // <iframe mozbrowser> element. window.open calls cause this attribute to
+      // be set to the correct value. A normal <xul:browser> element has no such
+      // attribute. The data we get here comes from reading the attribute, so we
+      // shouldn't trust it for <xul:browser> elements.
+      item->SetName(aInfo.name());
+    }
     docShell->SetFullscreenAllowed(aInfo.fullscreenAllowed());
     if (aInfo.isPrivate()) {
       bool nonBlank;
@@ -2092,7 +2120,8 @@ TabChild::RecvHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
         return true;
     }
 
-    CSSPoint point = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
+    CSSPoint point = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid,
+        GetPresShellResolution());
     nsString data;
     data.AppendLiteral("{ \"x\" : ");
     data.AppendFloat(point.x);
@@ -2120,7 +2149,9 @@ TabChild::RecvHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
     return true;
   }
 
-  LayoutDevicePoint currentPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid) * mWidget->GetDefaultScale();;
+  LayoutDevicePoint currentPoint =
+      APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid, GetPresShellResolution())
+    * mWidget->GetDefaultScale();;
   if (!mActiveElementManager->ActiveElementUsesStyle()) {
     // If the active element isn't visually affected by the :active style, we
     // have no need to wait the extra sActiveDurationMs to make the activation
@@ -2172,7 +2203,7 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& a
 
   bool eventHandled =
       DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"),
-                         APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid),
+                         APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid, GetPresShellResolution()),
                          2, 1, 0, true,
                          nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
 
@@ -2181,7 +2212,8 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& a
   // If no one handle context menu, fire MOZLONGTAP event
   if (!eventHandled) {
     LayoutDevicePoint currentPoint =
-      APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid) * mWidget->GetDefaultScale();
+        APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid, GetPresShellResolution())
+      * mWidget->GetDefaultScale();
     int time = 0;
     nsEventStatus status =
       DispatchSynthesizedMouseEvent(NS_MOUSE_MOZLONGTAP, time, currentPoint, mWidget);
@@ -2640,6 +2672,17 @@ TabChild::SendSetTargetAPZCNotification(const WidgetTouchEvent& aEvent,
   SendSetTargetAPZCNotification(shell, aInputBlockId, targets, waitForRefresh);
 }
 
+float
+TabChild::GetPresShellResolution() const
+{
+  nsCOMPtr<nsIDocument> document(GetDocument());
+  nsIPresShell* shell = document->GetShell();
+  if (!shell) {
+    return 1.0f;
+  }
+  return shell->GetXResolution();
+}
+
 bool
 TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
                              const ScrollableLayerGuid& aGuid,
@@ -2648,7 +2691,9 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
   TABC_LOG("Receiving touch event of type %d\n", aEvent.message);
 
   for (size_t i = 0; i < aEvent.touches.Length(); i++) {
-    aEvent.touches[i]->mRefPoint = APZCCallbackHelper::ApplyCallbackTransform(aEvent.touches[i]->mRefPoint, aGuid, mWidget->GetDefaultScale());
+    aEvent.touches[i]->mRefPoint = APZCCallbackHelper::ApplyCallbackTransform(
+        aEvent.touches[i]->mRefPoint, aGuid, mWidget->GetDefaultScale(),
+        GetPresShellResolution());
   }
 
   if (aEvent.message == NS_TOUCH_START && IsAsyncPanZoomEnabled()) {
@@ -2956,7 +3001,7 @@ TabChild::RecvLoadRemoteScript(const nsString& aURL, const bool& aRunInGlobalSco
 bool
 TabChild::RecvAsyncMessage(const nsString& aMessage,
                            const ClonedMessageData& aData,
-                           const InfallibleTArray<CpowEntry>& aCpows,
+                           InfallibleTArray<CpowEntry>&& aCpows,
                            const IPC::Principal& aPrincipal)
 {
   if (mTabChildGlobal) {
@@ -3043,6 +3088,21 @@ bool
 TabChild::RecvSetUpdateHitRegion(const bool& aEnabled)
 {
     mUpdateHitRegion = aEnabled;
+
+    // We need to trigger a repaint of the child frame to ensure that it
+    // recomputes and sends its region.
+    if (!mUpdateHitRegion) {
+      return true;
+    }
+
+    nsCOMPtr<nsIDocument> document(GetDocument());
+    NS_ENSURE_TRUE(document, true);
+    nsCOMPtr<nsIPresShell> presShell = document->GetShell();
+    NS_ENSURE_TRUE(presShell, true);
+    nsRefPtr<nsPresContext> presContext = presShell->GetPresContext();
+    NS_ENSURE_TRUE(presContext, true);
+    presContext->InvalidatePaintedLayers();
+
     return true;
 }
 
@@ -3318,6 +3378,14 @@ TabChild::EnableDisableCommands(const nsAString& aAction,
                                            aEnabledCommands, aDisabledCommands);
 }
 
+
+NS_IMETHODIMP
+TabChild::GetTabId(uint64_t* aId)
+{
+  *aId = GetTabId();
+  return NS_OK;
+}
+
 bool
 TabChild::DoSendBlockingMessage(JSContext* aCx,
                                 const nsAString& aMessage,
@@ -3505,6 +3573,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildGlobal)
   NS_INTERFACE_MAP_ENTRY(nsIContentFrameMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIScriptObjectPrincipal)
   NS_INTERFACE_MAP_ENTRY(nsIGlobalObject)
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(ContentFrameMessageManager)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 

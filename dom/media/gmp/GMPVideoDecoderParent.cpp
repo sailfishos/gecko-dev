@@ -8,6 +8,7 @@
 #include "mozilla/unused.h"
 #include "nsAutoRef.h"
 #include "nsThreadUtils.h"
+#include "GMPUtils.h"
 #include "GMPVideoEncodedFrameImpl.h"
 #include "GMPVideoi420FrameImpl.h"
 #include "GMPParent.h"
@@ -48,7 +49,7 @@ GMPVideoDecoderParent::GMPVideoDecoderParent(GMPParent* aPlugin)
   , mShuttingDown(false)
   , mPlugin(aPlugin)
   , mCallback(nullptr)
-  , mVideoHost(MOZ_THIS_IN_INITIALIZER_LIST())
+  , mVideoHost(this)
 {
   MOZ_ASSERT(mPlugin);
 }
@@ -76,7 +77,7 @@ GMPVideoDecoderParent::Close()
 
   // In case this is the last reference
   nsRefPtr<GMPVideoDecoderParent> kungfudeathgrip(this);
-  NS_RELEASE(kungfudeathgrip);
+  Release();
   Shutdown();
 }
 
@@ -108,7 +109,7 @@ GMPVideoDecoderParent::InitDecode(const GMPVideoCodec& aCodecSettings,
 }
 
 nsresult
-GMPVideoDecoderParent::Decode(UniquePtr<GMPVideoEncodedFrame> aInputFrame,
+GMPVideoDecoderParent::Decode(GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame,
                               bool aMissingFrames,
                               const nsTArray<uint8_t>& aCodecSpecificInfo,
                               int64_t aRenderTimeMs)
@@ -120,7 +121,7 @@ GMPVideoDecoderParent::Decode(UniquePtr<GMPVideoEncodedFrame> aInputFrame,
 
   MOZ_ASSERT(mPlugin->GMPThread() == NS_GetCurrentThread());
 
-  UniquePtr<GMPVideoEncodedFrameImpl> inputFrameImpl(
+  GMPUniquePtr<GMPVideoEncodedFrameImpl> inputFrameImpl(
     static_cast<GMPVideoEncodedFrameImpl*>(aInputFrame.release()));
 
   // Very rough kill-switch if the plugin stops processing.  If it's merely
@@ -322,7 +323,7 @@ GMPVideoDecoderParent::RecvError(const GMPErr& aError)
 }
 
 bool
-GMPVideoDecoderParent::RecvParentShmemForPool(Shmem& aEncodedBuffer)
+GMPVideoDecoderParent::RecvParentShmemForPool(Shmem&& aEncodedBuffer)
 {
   if (aEncodedBuffer.IsWritable()) {
     mVideoHost.SharedMemMgr()->MgrDeallocShmem(GMPSharedMem::kGMPEncodedData,

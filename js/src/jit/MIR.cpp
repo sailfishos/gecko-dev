@@ -19,6 +19,7 @@
 #include "jit/JitSpewer.h"
 #include "jit/MIRGraph.h"
 #include "jit/RangeAnalysis.h"
+#include "js/Conversions.h"
 
 #include "jsatominlines.h"
 #include "jsinferinlines.h"
@@ -26,6 +27,8 @@
 
 using namespace js;
 using namespace js::jit;
+
+using JS::ToInt32;
 
 using mozilla::NumbersAreIdentical;
 using mozilla::IsFloat32Representable;
@@ -141,10 +144,16 @@ EvaluateConstantOperands(TempAllocator &alloc, MBinaryInstruction *ins, bool *pt
         ret.setNumber(lhs.toNumber() * rhs.toNumber());
         break;
       case MDefinition::Op_Div:
-        ret.setNumber(NumberDiv(lhs.toNumber(), rhs.toNumber()));
+        if (ins->toDiv()->isUnsigned())
+            ret.setInt32(rhs.isInt32(0) ? 0 : uint32_t(lhs.toInt32()) / uint32_t(rhs.toInt32()));
+        else
+            ret.setNumber(NumberDiv(lhs.toNumber(), rhs.toNumber()));
         break;
       case MDefinition::Op_Mod:
-        ret.setNumber(NumberMod(lhs.toNumber(), rhs.toNumber()));
+        if (ins->toMod()->isUnsigned())
+            ret.setInt32(rhs.isInt32(0) ? 0 : uint32_t(lhs.toInt32()) % uint32_t(rhs.toInt32()));
+        else
+            ret.setNumber(NumberMod(lhs.toNumber(), rhs.toNumber()));
         break;
       default:
         MOZ_CRASH("NYI");
@@ -330,7 +339,7 @@ MInstruction::clearResumePoint()
 }
 
 static bool
-MaybeEmulatesUndefined(MDefinition *op)
+MaybeEmulatesUndefined(types::CompilerConstraintList *constraints, MDefinition *op)
 {
     if (!op->mightBeType(MIRType_Object))
         return false;
@@ -339,11 +348,11 @@ MaybeEmulatesUndefined(MDefinition *op)
     if (!types)
         return true;
 
-    return types->maybeEmulatesUndefined();
+    return types->maybeEmulatesUndefined(constraints);
 }
 
 static bool
-MaybeCallable(MDefinition *op)
+MaybeCallable(types::CompilerConstraintList *constraints, MDefinition *op)
 {
     if (!op->mightBeType(MIRType_Object))
         return false;
@@ -352,7 +361,7 @@ MaybeCallable(MDefinition *op)
     if (!types)
         return true;
 
-    return types->maybeCallable();
+    return types->maybeCallable(constraints);
 }
 
 MTest *
@@ -362,11 +371,11 @@ MTest::New(TempAllocator &alloc, MDefinition *ins, MBasicBlock *ifTrue, MBasicBl
 }
 
 void
-MTest::cacheOperandMightEmulateUndefined()
+MTest::cacheOperandMightEmulateUndefined(types::CompilerConstraintList *constraints)
 {
     MOZ_ASSERT(operandMightEmulateUndefined());
 
-    if (!MaybeEmulatesUndefined(getOperand(0)))
+    if (!MaybeEmulatesUndefined(constraints, getOperand(0)))
         markOperandCantEmulateUndefined();
 }
 
@@ -618,12 +627,18 @@ MConstant::New(TempAllocator &alloc, const Value &v, types::CompilerConstraintLi
 }
 
 MConstant *
-MConstant::NewAsmJS(TempAllocator &alloc, const Value &v, MIRType type)
+MConstant::NewTypedValue(TempAllocator &alloc, const Value &v, MIRType type, types::CompilerConstraintList *constraints)
 {
     MOZ_ASSERT(!IsSimdType(type));
-    MConstant *constant = new(alloc) MConstant(v, nullptr);
+    MConstant *constant = new(alloc) MConstant(v, constraints);
     constant->setResultType(type);
     return constant;
+}
+
+MConstant *
+MConstant::NewAsmJS(TempAllocator &alloc, const Value &v, MIRType type)
+{
+    return NewTypedValue(alloc, v, type);
 }
 
 MConstant *
@@ -641,7 +656,7 @@ jit::MakeSingletonTypeSet(types::CompilerConstraintList *constraints, JSObject *
     // (because mutating __proto__ will change an object's TypeObject).
     MOZ_ASSERT(constraints);
     types::TypeObjectKey *objType = types::TypeObjectKey::get(obj);
-    objType->hasFlags(constraints, types::OBJECT_FLAG_UNKNOWN_PROPERTIES);
+    objType->hasStableClassAndProto(constraints);
 
     LifoAlloc *alloc = GetJitContext()->temp->lifoAlloc();
     return alloc->new_<types::TemporaryTypeSet>(alloc, types::Type::ObjectType(obj));
@@ -749,6 +764,9 @@ MConstant::printOpcode(FILE *fp) const
         }
         fprintf(fp, "object %p (%s)", (void *)&value().toObject(),
                 value().toObject().getClass()->name);
+        break;
+      case MIRType_Symbol:
+        fprintf(fp, "symbol at %p", (void *)value().toSymbol());
         break;
       case MIRType_String:
         fprintf(fp, "string %p", (void *)value().toString());
@@ -958,6 +976,101 @@ MMathFunction::printOpcode(FILE *fp) const
     fprintf(fp, " %s", FunctionName(function()));
 }
 
+MDefinition *
+MMathFunction::foldsTo(TempAllocator &alloc)
+{
+    MDefinition *input = getOperand(0);
+    if (!input->isConstant())
+        return this;
+
+    Value val = input->toConstant()->value();
+    if (!val.isNumber())
+        return this;
+
+    double in = val.toNumber();
+    double out;
+    switch (function_) {
+      case Log:
+        out = js::math_log_uncached(in);
+        break;
+      case Sin:
+        out = js::math_sin_uncached(in);
+        break;
+      case Cos:
+        out = js::math_cos_uncached(in);
+        break;
+      case Exp:
+        out = js::math_exp_uncached(in);
+        break;
+      case Tan:
+        out = js::math_tan_uncached(in);
+        break;
+      case ACos:
+        out = js::math_acos_uncached(in);
+        break;
+      case ASin:
+        out = js::math_asin_uncached(in);
+        break;
+      case ATan:
+        out = js::math_atan_uncached(in);
+        break;
+      case Log10:
+        out = js::math_log10_uncached(in);
+        break;
+      case Log2:
+        out = js::math_log2_uncached(in);
+        break;
+      case Log1P:
+        out = js::math_log1p_uncached(in);
+        break;
+      case ExpM1:
+        out = js::math_expm1_uncached(in);
+        break;
+      case CosH:
+        out = js::math_cosh_uncached(in);
+        break;
+      case SinH:
+        out = js::math_sinh_uncached(in);
+        break;
+      case TanH:
+        out = js::math_tanh_uncached(in);
+        break;
+      case ACosH:
+        out = js::math_acosh_uncached(in);
+        break;
+      case ASinH:
+        out = js::math_asinh_uncached(in);
+        break;
+      case ATanH:
+        out = js::math_atanh_uncached(in);
+        break;
+      case Sign:
+        out = js::math_sign_uncached(in);
+        break;
+      case Trunc:
+        out = js::math_trunc_uncached(in);
+        break;
+      case Cbrt:
+        out = js::math_cbrt_uncached(in);
+        break;
+      case Floor:
+        out = js::math_floor_impl(in);
+        break;
+      case Ceil:
+        out = js::math_ceil_impl(in);
+        break;
+      case Round:
+        out = js::math_round_impl(in);
+        break;
+      default:
+        return this;
+    }
+
+    if (input->type() == MIRType_Float32)
+        return MConstant::NewTypedValue(alloc, DoubleValue(out), MIRType_Float32);
+    return MConstant::New(alloc, DoubleValue(out));
+}
+
 MParameter *
 MParameter::New(TempAllocator &alloc, int32_t index, types::TemporaryTypeSet *types)
 {
@@ -1013,11 +1126,10 @@ MCallDOMNative::getAliasSet() const
 {
     const JSJitInfo *jitInfo = getJitInfo();
 
-    MOZ_ASSERT(jitInfo->aliasSet() != JSJitInfo::AliasNone);
     // If we don't know anything about the types of our arguments, we have to
     // assume that type-coercions can have side-effects, so we need to alias
     // everything.
-    if (jitInfo->aliasSet() != JSJitInfo::AliasDOMSets || !jitInfo->isTypedMethodJitInfo())
+    if (jitInfo->aliasSet() == JSJitInfo::AliasEverything || !jitInfo->isTypedMethodJitInfo())
         return AliasSet::Store(AliasSet::Any);
 
     uint32_t argIndex = 0;
@@ -1048,8 +1160,12 @@ MCallDOMNative::getAliasSet() const
          }
     }
 
-    // We checked all the args, and they check out.  So we only
-    // alias DOM mutations.
+    // We checked all the args, and they check out.  So we only alias DOM
+    // mutations or alias nothing, depending on the alias set in the jitinfo.
+    if (jitInfo->aliasSet() == JSJitInfo::AliasNone)
+        return AliasSet::None();
+
+    MOZ_ASSERT(jitInfo->aliasSet() == JSJitInfo::AliasDOMSets);
     return AliasSet::Load(AliasSet::DOMProperty);
 }
 
@@ -1129,6 +1245,18 @@ MStringLength::foldsTo(TempAllocator &alloc)
         JSAtom *atom = &value.toString()->asAtom();
         return MConstant::New(alloc, Int32Value(atom->length()));
     }
+
+    return this;
+}
+
+MDefinition *
+MConcat::foldsTo(TempAllocator &alloc)
+{
+    if (lhs()->isConstantValue() && lhs()->constantValue().toString()->empty())
+        return rhs();
+
+    if (rhs()->isConstantValue() && rhs()->constantValue().toString()->empty())
+        return lhs();
 
     return this;
 }
@@ -1912,6 +2040,38 @@ MMinMax::foldsTo(TempAllocator &alloc)
     if (!lhs()->isConstant() && !rhs()->isConstant())
         return this;
 
+    // Directly apply math utility to compare the rhs() and lhs() when
+    // they are both constants.
+    if (lhs()->isConstant() && rhs()->isConstant()) {
+        Value lval = lhs()->toConstant()->value();
+        Value rval = rhs()->toConstant()->value();
+        if (!lval.isNumber() || !rval.isNumber())
+            return this;
+
+        double lnum = lval.toNumber();
+        double rnum = rval.toNumber();
+        double result;
+        if (isMax())
+            result = js::math_max_impl(lnum, rnum);
+        else
+            result = js::math_min_impl(lnum, rnum);
+
+        // The folded MConstant should maintain the same MIRType with
+        // the original MMinMax.
+        MConstant *constant;
+        if (type() == MIRType_Int32) {
+            int32_t cast = static_cast<int32_t>(result);
+            MOZ_ASSERT(cast == result);
+            constant = MConstant::New(alloc, Int32Value(cast));
+        } else {
+            MOZ_ASSERT(IsFloatingPointType(type()));
+            constant = MConstant::New(alloc, DoubleValue(result));
+            if (type() == MIRType_Float32)
+                constant->setResultType(MIRType_Float32);
+        }
+        return constant;
+    }
+
     MDefinition *operand = lhs()->isConstantValue() ? rhs() : lhs();
     const js::Value &val = lhs()->isConstantValue() ? lhs()->constantValue() : rhs()->constantValue();
 
@@ -2186,14 +2346,6 @@ MBinaryArithInstruction::infer(TempAllocator &alloc, BaselineInspector *inspecto
 
     specialization_ = MIRType_None;
 
-    // Don't specialize if one operand could be an object or symbol. If we
-    // specialize as int32 or double based on baseline feedback, we could DCE
-    // this instruction and fail to invoke any valueOf methods.
-    if (getOperand(0)->mightBeType(MIRType_Object) || getOperand(1)->mightBeType(MIRType_Object))
-        return;
-    if (getOperand(0)->mightBeType(MIRType_Symbol) || getOperand(1)->mightBeType(MIRType_Symbol))
-        return;
-
     // Anything complex - strings, symbols, and objects - are not specialized
     // unless baseline type hints suggest it might be profitable
     if (!SimpleArithOperand(getOperand(0)) || !SimpleArithOperand(getOperand(1)))
@@ -2265,17 +2417,6 @@ MBinaryArithInstruction::inferFallback(BaselineInspector *inspector,
         return;
     }
 
-    // In parallel execution, for now anyhow, we *only* support adding
-    // and manipulating numbers (not strings or objects).  So no
-    // matter what we can specialize to double...if the result ought
-    // to have been something else, we'll fail in the various type
-    // guards that get inserted later.
-    if (block()->info().executionMode() == ParallelExecution) {
-        specialization_ = MIRType_Double;
-        setResultType(MIRType_Double);
-        return;
-    }
-
     // If we can't specialize because we have no type information at all for
     // the lhs or rhs, mark the binary instruction as having no possible types
     // either to avoid degrading subsequent analysis.
@@ -2309,7 +2450,8 @@ ObjectOrSimplePrimitive(MDefinition *op)
 }
 
 static bool
-CanDoValueBitwiseCmp(MDefinition *lhs, MDefinition *rhs, bool looseEq)
+CanDoValueBitwiseCmp(types::CompilerConstraintList *constraints,
+                     MDefinition *lhs, MDefinition *rhs, bool looseEq)
 {
     // Only primitive (not double/string) or objects are supported.
     // I.e. Undefined/Null/Boolean/Int32 and Object
@@ -2317,7 +2459,7 @@ CanDoValueBitwiseCmp(MDefinition *lhs, MDefinition *rhs, bool looseEq)
         return false;
 
     // Objects that emulate undefined are not supported.
-    if (MaybeEmulatesUndefined(lhs) || MaybeEmulatesUndefined(rhs))
+    if (MaybeEmulatesUndefined(constraints, lhs) || MaybeEmulatesUndefined(constraints, rhs))
         return false;
 
     // In the loose comparison more values could be the same,
@@ -2431,12 +2573,15 @@ MBinaryInstruction::tryUseUnsignedOperands()
 }
 
 void
-MCompare::infer(BaselineInspector *inspector, jsbytecode *pc)
+MCompare::infer(types::CompilerConstraintList *constraints, BaselineInspector *inspector, jsbytecode *pc)
 {
     MOZ_ASSERT(operandMightEmulateUndefined());
 
-    if (!MaybeEmulatesUndefined(getOperand(0)) && !MaybeEmulatesUndefined(getOperand(1)))
+    if (!MaybeEmulatesUndefined(constraints, getOperand(0)) &&
+        !MaybeEmulatesUndefined(constraints, getOperand(1)))
+    {
         markNoOperandEmulatesUndefined();
+    }
 
     MIRType lhs = getOperand(0)->type();
     MIRType rhs = getOperand(1)->type();
@@ -2540,7 +2685,7 @@ MCompare::infer(BaselineInspector *inspector, jsbytecode *pc)
     }
 
     // Determine if we can do the compare based on a quick value check.
-    if (!relationalEq && CanDoValueBitwiseCmp(getOperand(0), getOperand(1), looseEq)) {
+    if (!relationalEq && CanDoValueBitwiseCmp(constraints, getOperand(0), getOperand(1), looseEq)) {
         compareType_ = Compare_Value;
         return;
     }
@@ -2636,11 +2781,11 @@ MTypeOf::foldsTo(TempAllocator &alloc)
 }
 
 void
-MTypeOf::cacheInputMaybeCallableOrEmulatesUndefined()
+MTypeOf::cacheInputMaybeCallableOrEmulatesUndefined(types::CompilerConstraintList *constraints)
 {
     MOZ_ASSERT(inputMaybeCallableOrEmulatesUndefined());
 
-    if (!MaybeEmulatesUndefined(input()) && !MaybeCallable(input()))
+    if (!MaybeEmulatesUndefined(constraints, input()) && !MaybeCallable(constraints, input()))
         markInputNotCallableOrEmulatesUndefined();
 }
 
@@ -3058,7 +3203,7 @@ MCompare::tryFold(bool *result)
             }
             if (!lhs()->mightBeType(MIRType_Null) &&
                 !lhs()->mightBeType(MIRType_Undefined) &&
-                !operandMightEmulateUndefined())
+                !(lhs()->mightBeType(MIRType_Object) && operandMightEmulateUndefined()))
             {
                 *result = (op == JSOP_NE);
                 return true;
@@ -3351,11 +3496,11 @@ MCompare::filtersUndefinedOrNull(bool trueBranch, MDefinition **subject, bool *f
 }
 
 void
-MNot::cacheOperandMightEmulateUndefined()
+MNot::cacheOperandMightEmulateUndefined(types::CompilerConstraintList *constraints)
 {
     MOZ_ASSERT(operandMightEmulateUndefined());
 
-    if (!MaybeEmulatesUndefined(getOperand(0)))
+    if (!MaybeEmulatesUndefined(constraints, getOperand(0)))
         markOperandCantEmulateUndefined();
 }
 
@@ -4059,7 +4204,8 @@ MArrayJoin::foldsTo(TempAllocator &alloc) {
 }
 
 bool
-jit::ElementAccessIsDenseNative(MDefinition *obj, MDefinition *id)
+jit::ElementAccessIsDenseNative(types::CompilerConstraintList *constraints,
+                                MDefinition *obj, MDefinition *id)
 {
     if (obj->mightBeType(MIRType_String))
         return false;
@@ -4072,12 +4218,13 @@ jit::ElementAccessIsDenseNative(MDefinition *obj, MDefinition *id)
         return false;
 
     // Typed arrays are native classes but do not have dense elements.
-    const Class *clasp = types->getKnownClass();
+    const Class *clasp = types->getKnownClass(constraints);
     return clasp && clasp->isNative() && !IsAnyTypedArrayClass(clasp);
 }
 
 bool
-jit::ElementAccessIsAnyTypedArray(MDefinition *obj, MDefinition *id,
+jit::ElementAccessIsAnyTypedArray(types::CompilerConstraintList *constraints,
+                                  MDefinition *obj, MDefinition *id,
                                   Scalar::Type *arrayType)
 {
     if (obj->mightBeType(MIRType_String))
@@ -4090,10 +4237,10 @@ jit::ElementAccessIsAnyTypedArray(MDefinition *obj, MDefinition *id,
     if (!types)
         return false;
 
-    *arrayType = types->getTypedArrayType();
+    *arrayType = types->getTypedArrayType(constraints);
     if (*arrayType != Scalar::MaxTypedArrayViewType)
         return true;
-    *arrayType = types->getSharedTypedArrayType();
+    *arrayType = types->getSharedTypedArrayType(constraints);
     return *arrayType != Scalar::MaxTypedArrayViewType;
 }
 
@@ -4305,7 +4452,7 @@ jit::PropertyReadOnPrototypeNeedsTypeBarrier(types::CompilerConstraintList *cons
         if (!object)
             continue;
         while (true) {
-            if (!object->hasTenuredProto())
+            if (!object->hasStableClassAndProto(constraints) || !object->hasTenuredProto())
                 return BarrierKind::TypeSet;
             if (!object->proto().isObject())
                 break;

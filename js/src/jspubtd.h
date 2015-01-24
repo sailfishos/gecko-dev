@@ -13,7 +13,6 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/LinkedList.h"
-#include "mozilla/NullPtr.h"
 #include "mozilla/PodOperations.h"
 
 #include "jsprototypes.h"
@@ -21,8 +20,7 @@
 
 #include "js/TypeDecls.h"
 
-#if (defined(JS_GC_ZEAL)) || \
-    (defined(JSGC_COMPACTING) && defined(DEBUG))
+#if (defined(JS_GC_ZEAL)) || defined(DEBUG)
 # define JSGC_HASH_TABLE_CHECKS
 #endif
 
@@ -146,9 +144,9 @@ struct Runtime
     js::gc::StoreBuffer *gcStoreBufferPtr_;
 
   public:
-    explicit Runtime(js::gc::StoreBuffer *storeBuffer)
+    Runtime()
       : needsIncrementalBarrier_(false)
-      , gcStoreBufferPtr_(storeBuffer)
+      , gcStoreBufferPtr_(nullptr)
     {}
 
     bool needsIncrementalBarrier() const {
@@ -159,6 +157,11 @@ struct Runtime
 
     static JS::shadow::Runtime *asShadowRuntime(JSRuntime *rt) {
         return reinterpret_cast<JS::shadow::Runtime*>(rt);
+    }
+
+  protected:
+    void setGCStoreBufferPtr(js::gc::StoreBuffer *storeBuffer) {
+        gcStoreBufferPtr_ = storeBuffer;
     }
 
     /* Allow inlining of PersistentRooted constructors and destructors. */
@@ -268,27 +271,15 @@ class JS_PUBLIC_API(AutoGCRooter)
     AutoGCRooter ** const stackTop;
 
     /* No copy or assignment semantics. */
-    AutoGCRooter(AutoGCRooter &ida) MOZ_DELETE;
-    void operator=(AutoGCRooter &ida) MOZ_DELETE;
+    AutoGCRooter(AutoGCRooter &ida) = delete;
+    void operator=(AutoGCRooter &ida) = delete;
 };
 
 } /* namespace JS */
 
 namespace js {
 
-/*
- * Parallel operations in general can have one of three states. They may
- * succeed, fail, or "bail", where bail indicates that the code encountered an
- * unexpected condition and should be re-run sequentially. Different
- * subcategories of the "bail" state are encoded as variants of TP_RETRY_*.
- */
-enum ParallelResult { TP_SUCCESS, TP_RETRY_SEQUENTIALLY, TP_RETRY_AFTER_GC, TP_FATAL };
-
-struct ThreadSafeContext;
-class ForkJoinContext;
 class ExclusiveContext;
-
-class Allocator;
 
 enum ThingRootKind
 {

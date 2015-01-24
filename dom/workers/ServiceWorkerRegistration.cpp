@@ -115,7 +115,7 @@ public:
   }
 
   NS_IMETHODIMP
-  UnregisterSucceeded(bool aState)
+  UnregisterSucceeded(bool aState) MOZ_OVERRIDE
   {
     AssertIsOnMainThread();
     mPromise->MaybeResolve(aState);
@@ -123,7 +123,7 @@ public:
   }
 
   NS_IMETHODIMP
-  UnregisterFailed()
+  UnregisterFailed() MOZ_OVERRIDE
   {
     AssertIsOnMainThread();
 
@@ -237,7 +237,9 @@ ServiceWorkerRegistration::GetWorkerReference(WhichServiceWorker aWhichOne)
       MOZ_CRASH("Invalid enum value");
   }
 
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+  NS_WARN_IF_FALSE(NS_SUCCEEDED(rv) || rv == NS_ERROR_DOM_NOT_FOUND_ERR,
+                   "Unexpected error getting service worker instance from ServiceWorkerManager");
+  if (NS_FAILED(rv)) {
     return nullptr;
   }
 
@@ -262,6 +264,28 @@ ServiceWorkerRegistration::InvalidateWorkerReference(WhichServiceWorker aWhichOn
   }
 }
 
+void
+ServiceWorkerRegistration::QueueStateChangeEvent(WhichServiceWorker aWhichOne,
+                                                 ServiceWorkerState aState) const
+{
+  nsRefPtr<ServiceWorker> worker;
+  if (aWhichOne == WhichServiceWorker::INSTALLING_WORKER) {
+    worker = mInstallingWorker;
+  } else if (aWhichOne == WhichServiceWorker::WAITING_WORKER) {
+    worker = mWaitingWorker;
+  } else if (aWhichOne == WhichServiceWorker::ACTIVE_WORKER) {
+    worker = mActiveWorker;
+  } else {
+    MOZ_CRASH("Invalid case");
+  }
+
+  if (worker) {
+    worker->SetState(aState);
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableMethod(worker, &ServiceWorker::DispatchStateChange);
+    NS_DispatchToMainThread(r);
+  }
+}
+
 // XXXnsm, maybe this can be optimized to only add when a event handler is
 // registered.
 void
@@ -269,7 +293,7 @@ ServiceWorkerRegistration::StartListeningForEvents()
 {
   nsCOMPtr<nsIServiceWorkerManager> swm = do_GetService(SERVICEWORKERMANAGER_CONTRACTID);
   if (swm) {
-    swm->AddRegistrationEventListener(GetDocumentURI(), this);
+    swm->AddRegistrationEventListener(mScope, this);
     mListeningForEvents = true;
   }
 }
@@ -283,16 +307,9 @@ ServiceWorkerRegistration::StopListeningForEvents()
 
   nsCOMPtr<nsIServiceWorkerManager> swm = do_GetService(SERVICEWORKERMANAGER_CONTRACTID);
   if (swm) {
-    swm->RemoveRegistrationEventListener(GetDocumentURI(), this);
+    swm->RemoveRegistrationEventListener(mScope, this);
     mListeningForEvents = false;
   }
-}
-
-nsIURI*
-ServiceWorkerRegistration::GetDocumentURI() const
-{
-  MOZ_ASSERT(GetOwner());
-  return GetOwner()->GetDocumentURI();
 }
 
 } // dom namespace

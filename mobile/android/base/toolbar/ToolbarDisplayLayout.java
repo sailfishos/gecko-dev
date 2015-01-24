@@ -203,10 +203,6 @@ public class ToolbarDisplayLayout extends ThemedLinearLayout
         Button.OnClickListener faviconListener = new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (mSiteSecurity.getVisibility() != View.VISIBLE) {
-                    return;
-                }
-
                 mSiteIdentityPopup.show();
             }
         };
@@ -354,6 +350,12 @@ public class ToolbarDisplayLayout extends ThemedLinearLayout
             builder.setSpan(mBlockedColor, 0, title.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
 
             setTitle(builder);
+            return;
+        }
+
+        // If the pref to show the title is set, use the tab's display title.
+        if (!mPrefs.shouldShowUrl(mActivity) || url == null) {
+            setTitle(tab.getDisplayTitle());
             return;
         }
 

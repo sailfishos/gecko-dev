@@ -61,6 +61,7 @@
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "mozilla/Preferences.h"
+#include "MultipartFileImpl.h"
 #include "nsAlgorithm.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -307,6 +308,84 @@ LogErrorToConsole(const nsAString& aMessage,
   fflush(stderr);
 }
 
+// Recursive!
+already_AddRefed<FileImpl>
+EnsureBlobForBackgroundManager(FileImpl* aBlobImpl,
+                               PBackgroundChild* aManager = nullptr)
+{
+  MOZ_ASSERT(aBlobImpl);
+
+  if (!aManager) {
+    aManager = BackgroundChild::GetForCurrentThread();
+    MOZ_ASSERT(aManager);
+  }
+
+  nsRefPtr<FileImpl> blobImpl = aBlobImpl;
+
+  const nsTArray<nsRefPtr<FileImpl>>* subBlobImpls =
+    aBlobImpl->GetSubBlobImpls();
+
+  if (!subBlobImpls) {
+    if (nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryObject(blobImpl)) {
+      // Always make sure we have a blob from an actor we can use on this
+      // thread.
+      BlobChild* blobChild = BlobChild::GetOrCreate(aManager, blobImpl);
+      MOZ_ASSERT(blobChild);
+
+      blobImpl = blobChild->GetBlobImpl();
+      MOZ_ASSERT(blobImpl);
+
+      DebugOnly<bool> isMutable;
+      MOZ_ASSERT(NS_SUCCEEDED(blobImpl->GetMutable(&isMutable)));
+      MOZ_ASSERT(!isMutable);
+    } else {
+      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blobImpl->SetMutable(false)));
+    }
+
+    return blobImpl.forget();
+  }
+
+  const uint32_t subBlobCount = subBlobImpls->Length();
+  MOZ_ASSERT(subBlobCount);
+
+  nsTArray<nsRefPtr<FileImpl>> newSubBlobImpls;
+  newSubBlobImpls.SetLength(subBlobCount);
+
+  bool newBlobImplNeeded = false;
+
+  for (uint32_t index = 0; index < subBlobCount; index++) {
+    const nsRefPtr<FileImpl>& subBlobImpl = subBlobImpls->ElementAt(index);
+    MOZ_ASSERT(subBlobImpl);
+
+    nsRefPtr<FileImpl>& newSubBlobImpl = newSubBlobImpls[index];
+
+    newSubBlobImpl = EnsureBlobForBackgroundManager(subBlobImpl, aManager);
+    MOZ_ASSERT(newSubBlobImpl);
+
+    if (subBlobImpl != newSubBlobImpl) {
+      newBlobImplNeeded = true;
+    }
+  }
+
+  if (newBlobImplNeeded) {
+    nsString contentType;
+    blobImpl->GetType(contentType);
+
+    if (blobImpl->IsFile()) {
+      nsString name;
+      blobImpl->GetName(name);
+
+      blobImpl = new MultipartFileImpl(newSubBlobImpls, name, contentType);
+    } else {
+      blobImpl = new MultipartFileImpl(newSubBlobImpls, contentType);
+    }
+
+    MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blobImpl->SetMutable(false)));
+  }
+
+  return blobImpl.forget();
+}
+
 void
 ReadBlobOrFile(JSContext* aCx,
                JSStructuredCloneReader* aReader,
@@ -327,22 +406,8 @@ ReadBlobOrFile(JSContext* aCx,
     blobImpl = rawBlobImpl;
   }
 
-  DebugOnly<bool> isMutable;
-  MOZ_ASSERT(NS_SUCCEEDED(blobImpl->GetMutable(&isMutable)));
-  MOZ_ASSERT(!isMutable);
-
-  if (nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryObject(blobImpl)) {
-    PBackgroundChild* backgroundManager =
-      BackgroundChild::GetForCurrentThread();
-    MOZ_ASSERT(backgroundManager);
-
-    // Always make sure we have a blob from an actor we can use on this thread.
-    BlobChild* blobChild = BlobChild::GetOrCreate(backgroundManager, blobImpl);
-    MOZ_ASSERT(blobChild);
-
-    blobImpl = blobChild->GetBlobImpl();
-    MOZ_ASSERT(blobImpl);
-  }
+  blobImpl = EnsureBlobForBackgroundManager(blobImpl);
+  MOZ_ASSERT(blobImpl);
 
   nsCOMPtr<nsISupports> parent;
   if (aIsMainThread) {
@@ -376,24 +441,10 @@ WriteBlobOrFile(JSContext* aCx,
   MOZ_ASSERT(aWriter);
   MOZ_ASSERT(aBlobOrFileImpl);
 
-  nsRefPtr<FileImpl> newBlobOrFileImpl;
-  if (nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryObject(aBlobOrFileImpl)) {
-    PBackgroundChild* backgroundManager =
-      BackgroundChild::GetForCurrentThread();
-    MOZ_ASSERT(backgroundManager);
+  nsRefPtr<FileImpl> blobImpl = EnsureBlobForBackgroundManager(aBlobOrFileImpl);
+  MOZ_ASSERT(blobImpl);
 
-    // Always make sure we have a blob from an actor we can use on this thread.
-    BlobChild* blobChild =
-      BlobChild::GetOrCreate(backgroundManager, aBlobOrFileImpl);
-    MOZ_ASSERT(blobChild);
-
-    newBlobOrFileImpl = blobChild->GetBlobImpl();
-    MOZ_ASSERT(newBlobOrFileImpl);
-
-    aBlobOrFileImpl = newBlobOrFileImpl;
-  }
-
-  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(aBlobOrFileImpl->SetMutable(false)));
+  aBlobOrFileImpl = blobImpl;
 
   if (NS_WARN_IF(!JS_WriteUint32Pair(aWriter, DOMWORKER_SCTAG_BLOB, 0)) ||
       NS_WARN_IF(!JS_WriteBytes(aWriter,
@@ -525,8 +576,8 @@ struct MainThreadWorkerStructuredCloneCallbacks
         FileImpl* blobImpl = blob->Impl();
         MOZ_ASSERT(blobImpl);
 
-        if (blobImpl->IsCCed()) {
-          NS_WARNING("Cycle collected blob objects are not supported!");
+        if (!blobImpl->MayBeClonedToOtherThreads()) {
+          NS_WARNING("Not all the blob implementations can be sent between threads.");
         } else if (WriteBlobOrFile(aCx, aWriter, blobImpl, *clonedObjects)) {
           return true;
         }
@@ -1267,15 +1318,20 @@ private:
         return true;
       }
 
-      if (aWorkerPrivate->IsServiceWorker()) {
-        nsRefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-        MOZ_ASSERT(swm);
-        swm->HandleError(aCx, aWorkerPrivate->SharedWorkerName(),
-                         aWorkerPrivate->ScriptURL(),
-                         mMessage,
-                         mFilename, mLine, mLineNumber, mColumnNumber, mFlags);
-        return true;
-      } else if (aWorkerPrivate->IsSharedWorker()) {
+      if (aWorkerPrivate->IsServiceWorker() || aWorkerPrivate->IsSharedWorker()) {
+        if (aWorkerPrivate->IsServiceWorker()) {
+          nsRefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
+          MOZ_ASSERT(swm);
+          bool handled = swm->HandleError(aCx, aWorkerPrivate->SharedWorkerName(),
+                                          aWorkerPrivate->ScriptURL(),
+                                          mMessage,
+                                          mFilename, mLine, mLineNumber,
+                                          mColumnNumber, mFlags);
+          if (handled) {
+            return true;
+          }
+        }
+
         aWorkerPrivate->BroadcastErrorToSharedWorkers(aCx, mMessage, mFilename,
                                                       mLine, mLineNumber,
                                                       mColumnNumber, mFlags);
@@ -1678,6 +1734,14 @@ private:
   bool mIsOffline;
 };
 
+#ifdef DEBUG
+static bool
+StartsWithExplicit(nsACString& s)
+{
+    return StringBeginsWith(s, NS_LITERAL_CSTRING("explicit/"));
+}
+#endif
+
 class WorkerJSRuntimeStats : public JS::RuntimeStats
 {
   const nsACString& mRtPath;
@@ -1710,6 +1774,9 @@ public:
     xpc::ZoneStatsExtras* extras = new xpc::ZoneStatsExtras;
     extras->pathPrefix = mRtPath;
     extras->pathPrefix += nsPrintfCString("zone(0x%p)/", (void *)aZone);
+
+    MOZ_ASSERT(StartsWithExplicit(extras->pathPrefix));
+
     aZoneStats->extra = extras;
   }
 
@@ -1735,6 +1802,9 @@ public:
 
     // This should never be used when reporting with workers (hence the "?!").
     extras->domPathPrefix.AssignLiteral("explicit/workers/?!/");
+
+    MOZ_ASSERT(StartsWithExplicit(extras->jsPathPrefix));
+    MOZ_ASSERT(StartsWithExplicit(extras->domPathPrefix));
 
     extras->location = nullptr;
 
@@ -2025,17 +2095,22 @@ public:
 
   NS_IMETHOD
   CollectReports(nsIMemoryReporterCallback* aCallback,
-                 nsISupports* aClosure, bool aAnonymize)
+                 nsISupports* aClosure, bool aAnonymize) MOZ_OVERRIDE
   {
     AssertIsOnMainThread();
 
     // Assumes that WorkerJSRuntimeStats will hold a reference to |path|, and
-    // not a copy, as TryToMapAddon() may later modify if.
+    // not a copy, as TryToMapAddon() may later modify it.
     nsCString path;
     WorkerJSRuntimeStats rtStats(path);
 
     {
       MutexAutoLock lock(mMutex);
+
+      if (!mWorkerPrivate) {
+        // Returning NS_OK here will effectively report 0 memory.
+        return NS_OK;
+      }
 
       path.AppendLiteral("explicit/workers/workers(");
       if (aAnonymize && !mWorkerPrivate->Domain().IsEmpty()) {
@@ -2057,8 +2132,7 @@ public:
 
       TryToMapAddon(path);
 
-      if (!mWorkerPrivate ||
-          !mWorkerPrivate->BlockAndCollectRuntimeStats(&rtStats, aAnonymize)) {
+      if (!mWorkerPrivate->BlockAndCollectRuntimeStats(&rtStats, aAnonymize)) {
         // Returning NS_OK here will effectively report 0 memory.
         return NS_OK;
       }
@@ -3451,7 +3525,7 @@ WorkerPrivateParent<Derived>::SetBaseURI(nsIURI* aBaseURI)
   if (NS_SUCCEEDED(aBaseURI->GetRef(temp)) && !temp.IsEmpty()) {
     nsCOMPtr<nsITextToSubURI> converter =
       do_GetService(NS_ITEXTTOSUBURI_CONTRACTID);
-    if (converter) {
+    if (converter && nsContentUtils::EncodeDecodeURLHash()) {
       nsCString charset;
       nsAutoString unicodeRef;
       if (NS_SUCCEEDED(aBaseURI->GetOriginCharset(charset)) &&
@@ -5702,13 +5776,7 @@ WorkerPrivate::SetTimeout(JSContext* aCx,
   newInfo->mTargetTime = TimeStamp::Now() + newInfo->mInterval;
 
   if (!newInfo->mTimeoutString.IsEmpty()) {
-    const char* filenameChars;
-    uint32_t lineNumber;
-    if (nsJSUtils::GetCallingLocation(aCx, &filenameChars, &lineNumber)) {
-      newInfo->mFilename = filenameChars;
-      newInfo->mLineNumber = lineNumber;
-    }
-    else {
+    if (!nsJSUtils::GetCallingLocation(aCx, newInfo->mFilename, &newInfo->mLineNumber)) {
       NS_WARNING("Failed to get calling location!");
     }
   }
@@ -6026,14 +6094,14 @@ WorkerPrivate::GarbageCollectInternal(JSContext* aCx, bool aShrinking,
     JS::PrepareForFullGC(rt);
 
     if (aShrinking) {
-      JS::ShrinkingGC(rt, JS::gcreason::DOM_WORKER);
+      JS::GCForReason(rt, GC_SHRINK, JS::gcreason::DOM_WORKER);
 
       if (!aCollectChildren) {
         LOG(("Worker %p collected idle garbage\n", this));
       }
     }
     else {
-      JS::GCForReason(rt, JS::gcreason::DOM_WORKER);
+      JS::GCForReason(rt, GC_NORMAL, JS::gcreason::DOM_WORKER);
       LOG(("Worker %p collected garbage\n", this));
     }
   }
@@ -6259,8 +6327,10 @@ WorkerPrivate::CreateGlobalScope(JSContext* aCx)
     globalScope = new DedicatedWorkerGlobalScope(this);
   }
 
-  JS::Rooted<JSObject*> global(aCx, globalScope->WrapGlobalObject(aCx));
-  NS_ENSURE_TRUE(global, nullptr);
+  JS::Rooted<JSObject*> global(aCx);
+  if (!globalScope->WrapGlobalObject(aCx, &global)) {
+    return nullptr;
+  }
 
   JSAutoCompartment ac(aCx, global);
 

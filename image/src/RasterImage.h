@@ -18,7 +18,6 @@
 #define mozilla_imagelib_RasterImage_h_
 
 #include "Image.h"
-#include "FrameBlender.h"
 #include "nsCOMPtr.h"
 #include "imgIContainer.h"
 #include "nsIProperties.h"
@@ -30,7 +29,6 @@
 #include "nsIObserver.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
-#include "mozilla/ReentrantMonitor.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TypedEnum.h"
 #include "mozilla/WeakPtr.h"
@@ -133,6 +131,13 @@ namespace image {
 
 class Decoder;
 class FrameAnimator;
+class SourceBuffer;
+
+MOZ_BEGIN_ENUM_CLASS(DecodeStrategy, uint8_t)
+  ASYNC,
+  SYNC_FOR_SMALL_IMAGES,
+  SYNC_IF_POSSIBLE
+MOZ_END_ENUM_CLASS(DecodeStrategy)
 
 class RasterImage MOZ_FINAL : public ImageResource
                             , public nsIProperties
@@ -153,32 +158,38 @@ public:
   NS_DECL_IMGICONTAINERDEBUG
 #endif
 
-  virtual nsresult StartAnimation();
-  virtual nsresult StopAnimation();
+  virtual nsresult StartAnimation() MOZ_OVERRIDE;
+  virtual nsresult StopAnimation() MOZ_OVERRIDE;
 
   // Methods inherited from Image
   nsresult Init(const char* aMimeType,
-                uint32_t aFlags);
-  virtual nsIntRect FrameRect(uint32_t aWhichFrame) MOZ_OVERRIDE;
+                uint32_t aFlags) MOZ_OVERRIDE;
+
   virtual void OnSurfaceDiscarded() MOZ_OVERRIDE;
 
   // Raster-specific methods
-  static NS_METHOD WriteToRasterImage(nsIInputStream* aIn, void* aClosure,
-                                      const char* aFromRawSegment,
-                                      uint32_t aToOffset, uint32_t aCount,
-                                      uint32_t* aWriteCount);
+  static NS_METHOD WriteToSourceBuffer(nsIInputStream* aIn, void* aClosure,
+                                       const char* aFromRawSegment,
+                                       uint32_t aToOffset, uint32_t aCount,
+                                       uint32_t* aWriteCount);
 
   /* The total number of frames in this image. */
-  uint32_t GetNumFrames() const;
+  uint32_t GetNumFrames() const { return mFrameCount; }
 
-  virtual size_t SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const;
+  virtual size_t SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
   virtual size_t SizeOfDecoded(gfxMemoryLocation aLocation,
-                               MallocSizeOf aMallocSizeOf) const;
+                               MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
 
   /* Triggers discarding. */
   void Discard();
 
-  /* Callbacks for decoders */
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Decoder callbacks.
+  //////////////////////////////////////////////////////////////////////////////
+
+  void OnAddedFrame(uint32_t aNewFrameCount, const nsIntRect& aNewRefreshArea);
+
   /** Sets the size and inherent orientation of the container. This should only
    * be called by the decoder. This function may be called multiple times, but
    * will throw an error if subsequent calls do not match the first.
@@ -186,38 +197,40 @@ public:
   nsresult SetSize(int32_t aWidth, int32_t aHeight, Orientation aOrientation);
 
   /**
-   * Ensures that a given frame number exists with the given parameters, and
-   * returns a RawAccessFrameRef for that frame.
-   * It is not possible to create sparse frame arrays; you can only append
-   * frames to the current frame array, or if there is only one frame in the
-   * array, replace that frame.
-   * If a non-paletted frame is desired, pass 0 for aPaletteDepth.
-   */
-  RawAccessFrameRef EnsureFrame(uint32_t aFrameNum,
-                                const nsIntRect& aFrameRect,
-                                uint32_t aDecodeFlags,
-                                gfx::SurfaceFormat aFormat,
-                                uint8_t aPaletteDepth,
-                                imgFrame* aPreviousFrame);
-
-  /* notification that the entire image has been decoded */
-  void DecodingComplete(imgFrame* aFinalFrame);
-
-  /**
    * Number of times to loop the image.
    * @note -1 means forever.
    */
   void     SetLoopCount(int32_t aLoopCount);
 
-  /* Add compressed source data to the imgContainer.
+  /// Notification that the entire image has been decoded.
+  void OnDecodingComplete();
+
+  /**
+   * Sends the provided progress notifications to ProgressTracker.
    *
-   * The decoder will use this data, either immediately or at draw time, to
-   * decode the image.
+   * Main-thread only.
    *
-   * XXX This method's only caller (WriteToContainer) ignores the return
-   * value. Should this just return void?
+   * @param aProgress    The progress notifications to send.
+   * @param aInvalidRect An invalidation rect to send.
+   * @param aFlags       The decode flags used by the decoder that generated
+   *                     these notifications, or DECODE_FLAGS_DEFAULT if the
+   *                     notifications don't come from a decoder.
    */
-  nsresult AddSourceData(const char *aBuffer, uint32_t aCount);
+  void NotifyProgress(Progress aProgress,
+                      const nsIntRect& aInvalidRect = nsIntRect(),
+                      uint32_t aFlags = 0);
+
+  /**
+   * Records telemetry and does final teardown of the provided decoder.
+   *
+   * Main-thread only.
+   */
+  void FinalizeDecoder(Decoder* aDecoder);
+
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Network callbacks.
+  //////////////////////////////////////////////////////////////////////////////
 
   virtual nsresult OnImageDataAvailable(nsIRequest* aRequest,
                                         nsISupports* aContext,
@@ -228,9 +241,8 @@ public:
                                        nsISupports* aContext,
                                        nsresult aStatus,
                                        bool aLastPart) MOZ_OVERRIDE;
-  virtual nsresult OnNewSourceData() MOZ_OVERRIDE;
 
-  static already_AddRefed<nsIEventTarget> GetEventTarget();
+  void BlockOnloadForDecodeOnDraw();
 
   /**
    * A hint of the number of bytes of source data that the image contains. If
@@ -243,7 +255,7 @@ public:
    * Thus, pre-allocation simplifies code and reduces the total number of
    * allocations.
    */
-  nsresult SetSourceSizeHint(uint32_t sizeHint);
+  nsresult SetSourceSizeHint(uint32_t aSizeHint);
 
   /* Provide a hint for the requested resolution of the resulting image. */
   void SetRequestedResolution(const nsIntSize requestedResolution) {
@@ -270,17 +282,7 @@ public:
     return spec;
   }
 
-  static void Initialize();
-
 private:
-  friend class DecodePool;
-  friend class DecodeWorker;
-  friend class FrameNeededWorker;
-  friend class NotifyProgressWorker;
-
-  nsresult FinishedSomeDecoding(ShutdownReason aReason = ShutdownReason::DONE,
-                                Progress aProgress = NoProgress);
-
   void DrawWithPreDownscaleIfNeeded(DrawableFrameRef&& aFrameRef,
                                     gfxContext* aContext,
                                     const nsIntSize& aSize,
@@ -296,7 +298,7 @@ private:
                                                     bool aShouldSyncNotify = true);
 
   DrawableFrameRef LookupFrameInternal(uint32_t aFrameNum,
-                                       const nsIntSize& aSize,
+                                       const gfx::IntSize& aSize,
                                        uint32_t aFlags);
   DrawableFrameRef LookupFrame(uint32_t aFrameNum,
                                const nsIntSize& aSize,
@@ -310,23 +312,9 @@ private:
   size_t SizeOfDecodedWithComputedFallbackIfHeap(gfxMemoryLocation aLocation,
                                                  MallocSizeOf aMallocSizeOf) const;
 
-  RawAccessFrameRef InternalAddFrame(uint32_t aFrameNum,
-                                     const nsIntRect& aFrameRect,
-                                     uint32_t aDecodeFlags,
-                                     gfx::SurfaceFormat aFormat,
-                                     uint8_t aPaletteDepth,
-                                     imgFrame* aPreviousFrame);
-  nsresult DoImageDataComplete();
-
-  already_AddRefed<layers::Image> GetCurrentImage();
+  already_AddRefed<layers::Image>
+    GetCurrentImage(layers::ImageContainer* aContainer);
   void UpdateImageContainer();
-
-  enum RequestDecodeType {
-      ASYNCHRONOUS,
-      SYNCHRONOUS_NOTIFY,
-      SYNCHRONOUS_NOTIFY_AND_SOME_DECODE
-  };
-  NS_IMETHOD RequestDecodeCore(RequestDecodeType aDecodeType);
 
   // We would like to just check if we have a zero lock count, but we can't do
   // that for animated images because in EnsureAnimExists we lock the image and
@@ -334,31 +322,39 @@ private:
   // that case we use our animation consumers count as a proxy for lock count.
   bool IsUnlocked() { return (mLockCount == 0 || (mAnim && mAnimationConsumers == 0)); }
 
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Decoding.
+  //////////////////////////////////////////////////////////////////////////////
+
+  /**
+   * Creates and runs a decoder, either synchronously or asynchronously
+   * according to @aStrategy. Passes the provided target size @aSize and decode
+   * flags @aFlags to CreateDecoder. If a size decode is desired, pass Nothing
+   * for @aSize.
+   */
+  NS_IMETHOD Decode(DecodeStrategy aStrategy,
+                    const Maybe<nsIntSize>& aSize,
+                    uint32_t aFlags);
+
+  /**
+   * Creates a new decoder with a target size of @aSize and decode flags
+   * specified by @aFlags. If a size decode is desired, pass Nothing() for
+   * @aSize.
+   */
+  already_AddRefed<Decoder> CreateDecoder(const Maybe<nsIntSize>& aSize,
+                                          uint32_t aFlags);
+
+  void WantDecodedFrames(const nsIntSize& aSize, uint32_t aFlags,
+                         bool aShouldSyncNotify);
+
 private: // data
   nsIntSize                  mSize;
   Orientation                mOrientation;
 
-  // Whether our frames were decoded using any special flags.
-  // Some flags (e.g. unpremultiplied data) may not be compatible
-  // with the browser's needs for displaying the image to the user.
-  // As such, we may need to redecode if we're being asked for
-  // a frame with different flags.  0 indicates default flags.
-  //
-  // Valid flag bits are imgIContainer::FLAG_DECODE_NO_PREMULTIPLY_ALPHA
-  // and imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION.
-  uint32_t                   mFrameDecodeFlags;
-
-  //! All the frames of the image.
-  Maybe<FrameBlender>       mFrameBlender;
-
-  //! The last frame we decoded for multipart images.
-  DrawableFrameRef          mMultipartDecodedFrame;
-
   nsCOMPtr<nsIProperties>   mProperties;
 
-  // IMPORTANT: if you use mAnim in a method, call EnsureImageIsDecoded() first to ensure
-  // that the frames actually exist (they may have been discarded to save memory, or
-  // we maybe decoding on draw).
+  /// If this image is animated, a FrameAnimator which manages its animation.
   UniquePtr<FrameAnimator> mAnim;
 
   // Image locking.
@@ -377,45 +373,29 @@ private: // data
   // A hint for image decoder that directly scale the image to smaller buffer
   int                        mRequestedSampleSize;
 
-  // Cached value for GetImageContainer.
-  nsRefPtr<layers::ImageContainer> mImageContainer;
-
-  // If not cached in mImageContainer, this might have our image container
-  WeakPtr<layers::ImageContainer> mImageContainerCache;
+  // A weak pointer to our ImageContainer, which stays alive only as long as
+  // the layer system needs it.
+  WeakPtr<layers::ImageContainer> mImageContainer;
 
 #ifdef DEBUG
   uint32_t                       mFramesNotified;
 #endif
 
-  // Below are the pieces of data that can be accessed on more than one thread
-  // at once, and hence need to be locked by mDecodingMonitor.
+  // The source data for this image.
+  nsRefPtr<SourceBuffer>     mSourceBuffer;
 
-  // BEGIN LOCKED MEMBER VARIABLES
-  ReentrantMonitor           mDecodingMonitor;
-
-  FallibleTArray<char>       mSourceData;
-
-  // Decoder and friends
-  nsRefPtr<Decoder>          mDecoder;
-  DecodeStatus               mDecodeStatus;
-  // END LOCKED MEMBER VARIABLES
-
-  // Notification state. Used to avoid recursive notifications.
-  Progress                   mNotifyProgress;
-  nsIntRect                  mNotifyInvalidRect;
-  bool                       mNotifying:1;
+  // The number of frames this image has.
+  uint32_t                   mFrameCount;
 
   // Boolean flags (clustered together to conserve space):
   bool                       mHasSize:1;       // Has SetSize() been called?
+  bool                       mBlockedOnload:1; // Did send BLOCK_ONLOAD?
   bool                       mDecodeOnDraw:1;  // Decoding on draw?
-  bool                       mMultipart:1;     // Multipart?
+  bool                       mTransient:1;     // Is the image short-lived?
   bool                       mDiscardable:1;   // Is container discardable?
   bool                       mHasSourceData:1; // Do we have source data?
-
-  // Do we have the frames in decoded form?
-  bool                       mDecoded:1;
-  bool                       mHasFirstFrame:1;
-  bool                       mHasBeenDecoded:1;
+  bool                       mHasBeenDecoded:1; // Decoded at least once?
+  bool                       mDownscaleDuringDecode:1;
 
   // Whether we're waiting to start animation. If we get a StartAnimation() call
   // but we don't yet have more than one frame, mPendingAnimation is set so that
@@ -430,26 +410,10 @@ private: // data
   // off a full decode.
   bool                       mWantFullDecode:1;
 
-  // Set when a decode worker detects an error off-main-thread. Once the error
-  // is handled on the main thread, mError is set, but mPendingError is used to
-  // stop decode work immediately.
-  bool                       mPendingError:1;
-
-  // Decoding
-  nsresult RequestDecodeIfNeeded(nsresult aStatus, ShutdownReason aReason,
-                                 bool aDone, bool aWasSize);
-  nsresult WantDecodedFrames(uint32_t aFlags, bool aShouldSyncNotify);
-  nsresult SyncDecode();
-  nsresult InitDecoder(bool aDoSizeDecode);
-  nsresult WriteToDecoder(const char *aBuffer, uint32_t aCount, DecodeStrategy aStrategy);
-  nsresult DecodeSomeData(size_t aMaxBytes, DecodeStrategy aStrategy);
-  bool     IsDecodeFinished();
   TimeStamp mDrawStartTime;
 
   // Initializes ProgressTracker and resets it on RasterImage destruction.
   nsAutoPtr<ProgressTrackerInit> mProgressTrackerInit;
-
-  nsresult ShutdownDecoder(ShutdownReason aReason);
 
 
   //////////////////////////////////////////////////////////////////////////////
@@ -461,6 +425,9 @@ private: // data
 
   // Determines whether we can perform an HQ scale with the given parameters.
   bool CanScale(GraphicsFilter aFilter, const nsIntSize& aSize, uint32_t aFlags);
+
+  // Determines whether we can downscale during decode with the given parameters.
+  bool CanDownscaleDuringDecode(const nsIntSize& aSize, uint32_t aFlags);
 
   // Called by the HQ scaler when a new scaled frame is ready.
   void NotifyNewScaledFrame();
@@ -491,13 +458,12 @@ private: // data
 
   // Helpers
   bool CanDiscard();
-  bool StoringSourceData() const;
 
 protected:
   explicit RasterImage(ProgressTracker* aProgressTracker = nullptr,
                        ImageURL* aURI = nullptr);
 
-  bool ShouldAnimate();
+  bool ShouldAnimate() MOZ_OVERRIDE;
 
   friend class ImageFactory;
 };

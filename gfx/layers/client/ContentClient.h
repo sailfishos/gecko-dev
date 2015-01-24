@@ -137,7 +137,7 @@ public:
   typedef RotatedContentBuffer::PaintState PaintState;
   typedef RotatedContentBuffer::ContentType ContentType;
 
-  virtual void Clear() { RotatedContentBuffer::Clear(); }
+  virtual void Clear() MOZ_OVERRIDE { RotatedContentBuffer::Clear(); }
   virtual PaintState BeginPaintBuffer(PaintedLayer* aLayer,
                                       uint32_t aFlags) MOZ_OVERRIDE
   {
@@ -206,7 +206,7 @@ public:
   typedef RotatedContentBuffer::PaintState PaintState;
   typedef RotatedContentBuffer::ContentType ContentType;
 
-  virtual void Clear()
+  virtual void Clear() MOZ_OVERRIDE
   {
     RotatedContentBuffer::Clear();
     mTextureClient = nullptr;
@@ -245,7 +245,7 @@ public:
 
   virtual void Updated(const nsIntRegion& aRegionToDraw,
                        const nsIntRegion& aVisibleRegion,
-                       bool aDidSelfCopy);
+                       bool aDidSelfCopy) MOZ_OVERRIDE;
 
   virtual void SwapBuffers(const nsIntRegion& aFrontUpdatedRegion) MOZ_OVERRIDE;
 
@@ -347,6 +347,9 @@ public:
     return TextureInfo(CompositableType::CONTENT_DOUBLE, mTextureFlags);
   }
 
+  virtual void Dump(std::stringstream& aStream,
+                    const char* aPrefix="",
+                    bool aDumpHtml=false) MOZ_OVERRIDE;
 protected:
   virtual void DestroyFrontBuffer() MOZ_OVERRIDE;
 
@@ -416,12 +419,12 @@ public:
   typedef RotatedContentBuffer::PaintState PaintState;
   typedef RotatedContentBuffer::ContentType ContentType;
 
-  virtual TextureInfo GetTextureInfo() const
+  virtual TextureInfo GetTextureInfo() const MOZ_OVERRIDE
   {
     return mTextureInfo;
   }
 
-  virtual void Clear()
+  virtual void Clear() MOZ_OVERRIDE
   {
     mBufferRect.SetEmpty();
     mHasBuffer = false;
@@ -439,9 +442,9 @@ public:
 
   virtual void Updated(const nsIntRegion& aRegionToDraw,
                        const nsIntRegion& aVisibleRegion,
-                       bool aDidSelfCopy);
+                       bool aDidSelfCopy) MOZ_OVERRIDE;
 
-  virtual void EndPaint(nsTArray<ReadbackProcessor::Update>* aReadbackUpdates = nullptr)
+  virtual void EndPaint(nsTArray<ReadbackProcessor::Update>* aReadbackUpdates = nullptr) MOZ_OVERRIDE
   {
     if (IsSurfaceDescriptorValid(mUpdateDescriptor)) {
       mForwarder->DestroySharedSurface(&mUpdateDescriptor);

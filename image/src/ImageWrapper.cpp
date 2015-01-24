@@ -33,12 +33,6 @@ ImageWrapper::GetProgressTracker()
   return mInnerImage->GetProgressTracker();
 }
 
-nsIntRect
-ImageWrapper::FrameRect(uint32_t aWhichFrame)
-{
-  return mInnerImage->FrameRect(aWhichFrame);
-}
-
 size_t
 ImageWrapper::SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const
 {
@@ -95,12 +89,6 @@ ImageWrapper::OnImageDataComplete(nsIRequest* aRequest,
 {
   return mInnerImage->OnImageDataComplete(aRequest, aContext, aStatus,
                                           aLastPart);
-}
-
-nsresult
-ImageWrapper::OnNewSourceData()
-{
-  return mInnerImage->OnNewSourceData();
 }
 
 void
@@ -234,6 +222,12 @@ NS_IMETHODIMP
 ImageWrapper::StartDecoding()
 {
   return mInnerImage->StartDecoding();
+}
+
+NS_IMETHODIMP
+ImageWrapper::RequestDecodeForSize(const nsIntSize& aSize, uint32_t aFlags)
+{
+  return mInnerImage->RequestDecodeForSize(aSize, aFlags);
 }
 
 bool

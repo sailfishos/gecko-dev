@@ -29,7 +29,7 @@ NS_INTERFACE_MAP_BEGIN(WorkerDataStore)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 WorkerDataStore::WorkerDataStore(WorkerGlobalScope* aScope)
-  : DOMEventTargetHelper(aScope)
+  : DOMEventTargetHelper(static_cast<DOMEventTargetHelper*>(aScope))
 {}
 
 already_AddRefed<WorkerDataStore>
@@ -713,12 +713,6 @@ WorkerDataStore::Sync(JSContext* aCx,
   runnable->Dispatch(aCx);
 
   return workerCursor.forget();
-}
-
-void
-WorkerDataStore::SetDataStoreImpl(DataStoreImpl& aStore, ErrorResult& aRv)
-{
-  NS_NOTREACHED("We don't use this for the WorkerDataStore!");
 }
 
 void

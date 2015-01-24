@@ -212,8 +212,8 @@ GrallocTextureHostOGL::GetRenderState()
     if (mIsOpaque) {
       flags |= LayerRenderStateFlags::OPAQUE;
     }
-    if (mFlags & TextureFlags::NEEDS_Y_FLIP) {
-      flags |= LayerRenderStateFlags::Y_FLIPPED;
+    if (mFlags & TextureFlags::ORIGIN_BOTTOM_LEFT) {
+      flags |= LayerRenderStateFlags::ORIGIN_BOTTOM_LEFT;
     }
     if (mFlags & TextureFlags::RB_SWAPPED) {
       flags |= LayerRenderStateFlags::FORMAT_RB_SWAP;
@@ -231,7 +231,7 @@ TemporaryRef<gfx::DataSourceSurface>
 GrallocTextureHostOGL::GetAsSurface() {
   android::GraphicBuffer* graphicBuffer = GetGraphicBufferFromDesc(mGrallocHandle).get();
   uint8_t* grallocData;
-  int32_t rv = graphicBuffer->lock(GRALLOC_USAGE_SW_READ_OFTEN, reinterpret_cast<void**>(&grallocData));
+  graphicBuffer->lock(GRALLOC_USAGE_SW_READ_OFTEN, reinterpret_cast<void**>(&grallocData));
   RefPtr<gfx::DataSourceSurface> grallocTempSurf =
     gfx::Factory::CreateWrappingDataSourceSurface(grallocData,
                                                   graphicBuffer->getStride() * android::bytesPerPixel(graphicBuffer->getPixelFormat()),

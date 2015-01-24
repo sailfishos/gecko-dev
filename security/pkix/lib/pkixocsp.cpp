@@ -24,7 +24,6 @@
 
 #include <limits>
 
-#include "pkix/bind.h"
 #include "pkix/pkix.h"
 #include "pkixcheck.h"
 #include "pkixutil.h"
@@ -33,13 +32,13 @@
 namespace mozilla { namespace pkix {
 
 // These values correspond to the tag values in the ASN.1 CertStatus
-MOZILLA_PKIX_ENUM_CLASS CertStatus : uint8_t {
+enum class CertStatus : uint8_t {
   Good = der::CONTEXT_SPECIFIC | 0,
   Revoked = der::CONTEXT_SPECIFIC | der::CONSTRUCTED | 1,
   Unknown = der::CONTEXT_SPECIFIC | 2
 };
 
-class Context
+class Context final
 {
 public:
   Context(TrustDomain& trustDomain, const CertID& certID, Time time,
@@ -71,9 +70,8 @@ public:
   Time* validThrough;
   bool expired;
 
-private:
-  Context(const Context&); // delete
-  void operator=(const Context&); // delete
+  Context(const Context&) = delete;
+  void operator=(const Context&) = delete;
 };
 
 // Verify that potentialSigner is a valid delegated OCSP response signing cert
@@ -140,7 +138,7 @@ CheckOCSPResponseSignerCert(TrustDomain& trustDomain,
   return rv;
 }
 
-MOZILLA_PKIX_ENUM_CLASS ResponderIDType : uint8_t
+enum class ResponderIDType : uint8_t
 {
   byName = der::CONTEXT_SPECIFIC | der::CONSTRUCTED | 1,
   byKey = der::CONTEXT_SPECIFIC | der::CONSTRUCTED | 2
@@ -299,8 +297,9 @@ VerifyEncodedOCSPResponse(TrustDomain& trustDomain, const struct CertID& certID,
                   thisUpdate, validThrough);
 
   Reader input(encodedResponse);
-  Result rv = der::Nested(input, der::SEQUENCE,
-                          bind(OCSPResponse, _1, ref(context)));
+  Result rv = der::Nested(input, der::SEQUENCE, [&context](Reader& r) {
+    return OCSPResponse(r, context);
+  });
   if (rv != Success) {
     return MapBadDERToMalformedOCSPResponse(rv);
   }
@@ -359,7 +358,9 @@ OCSPResponse(Reader& input, Context& context)
   }
 
   return der::Nested(input, der::CONTEXT_SPECIFIC | der::CONSTRUCTED | 0,
-                     der::SEQUENCE, bind(ResponseBytes, _1, ref(context)));
+                     der::SEQUENCE, [&context](Reader& r) {
+    return ResponseBytes(r, context);
+  });
 }
 
 // ResponseBytes ::=       SEQUENCE {
@@ -378,7 +379,9 @@ ResponseBytes(Reader& input, Context& context)
   }
 
   return der::Nested(input, der::OCTET_STRING, der::SEQUENCE,
-                     bind(BasicResponse, _1, ref(context)));
+                     [&context](Reader& r) {
+    return BasicResponse(r, context);
+  });
 }
 
 // BasicOCSPResponse       ::= SEQUENCE {
@@ -494,8 +497,9 @@ ResponseData(Reader& input, Context& context,
   // responder will never return an empty response, and handling the case of an
   // empty response makes things unnecessarily complicated.
   rv = der::NestedOf(input, der::SEQUENCE, der::SEQUENCE,
-                     der::EmptyAllowed::No,
-                     bind(SingleResponse, _1, ref(context)));
+                     der::EmptyAllowed::No, [&context](Reader& r) {
+    return SingleResponse(r, context);
+  });
   if (rv != Success) {
     return rv;
   }
@@ -518,8 +522,9 @@ static inline Result
 SingleResponse(Reader& input, Context& context)
 {
   bool match = false;
-  Result rv = der::Nested(input, der::SEQUENCE,
-                          bind(CertID, _1, cref(context), ref(match)));
+  Result rv = der::Nested(input, der::SEQUENCE, [&context, &match](Reader& r) {
+    return CertID(r, context, match);
+  });
   if (rv != Success) {
     return rv;
   }
@@ -600,8 +605,9 @@ SingleResponse(Reader& input, Context& context)
     der::CONTEXT_SPECIFIC | der::CONSTRUCTED | 0;
   if (input.Peek(NEXT_UPDATE_TAG)) {
     Time nextUpdate(Time::uninitialized);
-    rv = der::Nested(input, NEXT_UPDATE_TAG,
-                    bind(der::GeneralizedTime, _1, ref(nextUpdate)));
+    rv = der::Nested(input, NEXT_UPDATE_TAG, [&nextUpdate](Reader& r) {
+      return der::GeneralizedTime(r, nextUpdate);
+    });
     if (rv != Success) {
       return rv;
     }

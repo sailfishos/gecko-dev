@@ -73,9 +73,9 @@ public:
   NS_DISPLAY_DECL_NAME("nsDisplaySVGPathGeometry", TYPE_SVG_PATH_GEOMETRY)
 
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
-                       HitTestState* aState, nsTArray<nsIFrame*> *aOutFrames);
+                       HitTestState* aState, nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx);
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
 };
 
 void
@@ -471,9 +471,17 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
 
   bool gotSimpleBounds = false;
   if (!StyleSVGReset()->HasNonScalingStroke()) {
-    Float strokeWidth = getStroke ? nsSVGUtils::GetStrokeWidth(this) : 0.f;
+    SVGContentUtils::AutoStrokeOptions strokeOptions;
+    strokeOptions.mLineWidth = 0.f;
+    if (getStroke) {
+      SVGContentUtils::GetStrokeOptions(&strokeOptions, element,
+        StyleContext(), nullptr,
+        SVGContentUtils::eIgnoreStrokeDashing);
+    }
     Rect simpleBounds;
-    gotSimpleBounds = element->GetGeometryBounds(&simpleBounds, strokeWidth,
+    gotSimpleBounds = element->GetGeometryBounds(&simpleBounds,
+                                                 strokeOptions.mLineWidth,
+                                                 strokeOptions.mLineCap,
                                                  aToBBoxUserspace);
     if (gotSimpleBounds) {
       bbox = simpleBounds;

@@ -158,7 +158,7 @@ class StoreBuffer
         }
 
       private:
-        MonoTypeBuffer &operator=(const MonoTypeBuffer& other) MOZ_DELETE;
+        MonoTypeBuffer &operator=(const MonoTypeBuffer& other) = delete;
     };
 
     struct GenericBuffer
@@ -215,7 +215,7 @@ class StoreBuffer
         }
 
       private:
-        GenericBuffer &operator=(const GenericBuffer& other) MOZ_DELETE;
+        GenericBuffer &operator=(const GenericBuffer& other) = delete;
     };
 
     template <typename Edge>
@@ -481,9 +481,6 @@ class StoreBuffer
     void markRelocatableValues(JSTracer *trc) { bufferRelocVal.mark(this, trc); }
     void markRelocatableCells(JSTracer *trc)  { bufferRelocCell.mark(this, trc); }
     void markGenericEntries(JSTracer *trc)    { bufferGeneric.mark(this, trc); }
-
-    /* We cannot call InParallelSection directly because of a circular dependency. */
-    bool inParallelSection() const;
 
     /* For use by our owned buffers and for testing. */
     void setAboutToOverflow();

@@ -900,11 +900,18 @@ TextRenderedRun::GetRunUserSpaceRect(nsPresContext* aContext,
   uint32_t offset, length;
   ConvertOriginalToSkipped(it, mTextFrameContentOffset, mTextFrameContentLength,
                            offset, length);
+  if (length == 0) {
+    return r;
+  }
 
   // Measure that range.
   gfxTextRun::Metrics metrics =
     textRun->MeasureText(offset, length, gfxFont::LOOSE_INK_EXTENTS,
                          nullptr, nullptr);
+  // Make sure it includes the font-box.
+  gfxRect fontBox(0, -metrics.mAscent,
+      metrics.mAdvanceWidth, metrics.mAscent + metrics.mDescent);
+  metrics.mBoundingBox.UnionRect(metrics.mBoundingBox, fontBox);
 
   // Determine the rectangle that covers the rendered run's fill,
   // taking into account the measured vertical overflow due to
@@ -947,6 +954,7 @@ TextRenderedRun::GetRunUserSpaceRect(nsPresContext* aContext,
 
   // Include the stroke if requested.
   if ((aFlags & eIncludeStroke) &&
+      !fill.IsEmpty() &&
       nsSVGUtils::GetStrokeWidth(mFrame) > 0) {
     r.UnionEdges(nsSVGUtils::PathExtentsToMaxStrokeExtents(fill, mFrame,
                                                            gfxMatrix()));
@@ -2908,8 +2916,9 @@ void
 SVGTextDrawPathCallbacks::HandleTextGeometry()
 {
   if (IsClipPathChild()) {
-    gfx->SetColor(gfxRGBA(1.0f, 1.0f, 1.0f, 1.0f));
-    gfx->Fill();
+    RefPtr<Path> path = gfx->GetPath();
+    ColorPattern white(Color(1.f, 1.f, 1.f, 1.f)); // for masking, so no ToDeviceColor
+    gfx->GetDrawTarget()->Fill(path, white);
   } else {
     // Normal painting.
     gfxContextMatrixAutoSaveRestore saveMatrix(gfx);
@@ -2976,11 +2985,15 @@ SVGTextDrawPathCallbacks::FillGeometry()
   GeneralPattern fillPattern;
   MakeFillPattern(&fillPattern);
   if (fillPattern.GetPattern()) {
-    gfx->SetFillRule(
-      nsSVGUtils::ToFillRule(
-        IsClipPathChild() ?
-          mFrame->StyleSVG()->mClipRule : mFrame->StyleSVG()->mFillRule));
-    gfx->Fill(fillPattern);
+    RefPtr<Path> path = gfx->GetPath();
+    FillRule fillRule = nsSVGUtils::ToFillRule(IsClipPathChild() ?
+                          mFrame->StyleSVG()->mClipRule :
+                          mFrame->StyleSVG()->mFillRule);
+    if (fillRule != path->GetFillRule()) {
+      RefPtr<PathBuilder> builder = path->CopyToBuilder(fillRule);
+      path = builder->Finish();
+    }
+    gfx->GetDrawTarget()->Fill(path, fillPattern);
   }
 }
 
@@ -4808,8 +4821,8 @@ SVGTextFrame::AdjustPositionsForClusters()
   }
 }
 
-nsIFrame*
-SVGTextFrame::GetTextPathPathFrame(nsIFrame* aTextPathFrame)
+SVGPathElement*
+SVGTextFrame::GetTextPathPathElement(nsIFrame* aTextPathFrame)
 {
   nsSVGTextPathProperty *property = static_cast<nsSVGTextPathProperty*>
     (aTextPathFrame->Properties().Get(nsSVGEffects::HrefProperty()));
@@ -4834,20 +4847,18 @@ SVGTextFrame::GetTextPathPathFrame(nsIFrame* aTextPathFrame)
       return nullptr;
   }
 
-  return property->GetReferencedFrame(nsGkAtoms::svgPathGeometryFrame, nullptr);
+  Element* element = property->GetReferencedElement();
+  return (element && element->IsSVG(nsGkAtoms::path)) ?
+    static_cast<SVGPathElement*>(element) : nullptr;
 }
 
 TemporaryRef<Path>
 SVGTextFrame::GetTextPath(nsIFrame* aTextPathFrame)
 {
-  nsIFrame *pathFrame = GetTextPathPathFrame(aTextPathFrame);
-
-  if (!pathFrame) {
+  SVGPathElement* element = GetTextPathPathElement(aTextPathFrame);
+  if (!element) {
     return nullptr;
   }
-
-  nsSVGPathGeometryElement *element =
-    static_cast<nsSVGPathGeometryElement*>(pathFrame->GetContent());
 
   RefPtr<Path> path = element->GetOrBuildPathForMeasuring();
   if (!path) {
@@ -4867,12 +4878,11 @@ SVGTextFrame::GetTextPath(nsIFrame* aTextPathFrame)
 gfxFloat
 SVGTextFrame::GetOffsetScale(nsIFrame* aTextPathFrame)
 {
-  nsIFrame *pathFrame = GetTextPathPathFrame(aTextPathFrame);
-  if (!pathFrame)
+  SVGPathElement* pathElement = GetTextPathPathElement(aTextPathFrame);
+  if (!pathElement)
     return 1.0;
 
-  return static_cast<dom::SVGPathElement*>(pathFrame->GetContent())->
-    GetPathLengthScale(dom::SVGPathElement::eForTextPath);
+  return pathElement->GetPathLengthScale(dom::SVGPathElement::eForTextPath);
 }
 
 gfxFloat

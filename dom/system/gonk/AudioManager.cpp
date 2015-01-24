@@ -51,6 +51,7 @@ using namespace mozilla::hal;
 using namespace mozilla;
 using namespace mozilla::dom::bluetooth;
 
+#undef LOG
 #define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "AudioManager" , ## args)
 
 #define HEADPHONES_STATUS_HEADSET     MOZ_UTF16("headset")
@@ -380,11 +381,8 @@ AudioManager::Observe(nsISupports* aSubject,
   // To process the volume control on each audio channel according to
   // change of settings
   else if (!strcmp(aTopic, MOZ_SETTINGS_CHANGE_ID)) {
-    AutoJSAPI jsapi;
-    jsapi.Init();
-    JSContext* cx = jsapi.cx();
-    RootedDictionary<dom::SettingChangeNotification> setting(cx);
-    if (!WrappedJSToDictionary(cx, aSubject, setting)) {
+    RootedDictionary<dom::SettingChangeNotification> setting(nsContentUtils::RootingCxForThread());
+    if (!WrappedJSToDictionary(aSubject, setting)) {
       return NS_OK;
     }
     if (!setting.mKey.EqualsASCII("audio.volume.bt_sco")) {

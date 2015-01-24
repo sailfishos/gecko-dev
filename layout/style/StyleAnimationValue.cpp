@@ -2539,13 +2539,9 @@ StyleAnimationValue::ComputeValue(nsCSSProperty aProperty,
                     "we should only be able to actively animate nodes that "
                     "are in a document");
 
-  nsCSSProperty propToParse =
-    nsCSSProps::PropHasFlags(aProperty, CSS_PROPERTY_REPORT_OTHER_NAME)
-      ? nsCSSProps::OtherNameFor(aProperty) : aProperty;
-
   // Parse specified value into a temporary css::StyleRule
   nsRefPtr<css::StyleRule> styleRule =
-    BuildStyleRule(propToParse, aTargetElement, aSpecifiedValue, aUseSVGMode);
+    BuildStyleRule(aProperty, aTargetElement, aSpecifiedValue, aUseSVGMode);
   if (!styleRule) {
     return false;
   }
@@ -2927,8 +2923,8 @@ StyleAnimationValue::ExtractComputedValue(nsCSSProperty aProperty,
               GetComputedBorder().side_);                                     \
           break;
         BORDER_WIDTH_CASE(eCSSProperty_border_bottom_width, bottom)
-        BORDER_WIDTH_CASE(eCSSProperty_border_left_width_value, left)
-        BORDER_WIDTH_CASE(eCSSProperty_border_right_width_value, right)
+        BORDER_WIDTH_CASE(eCSSProperty_border_left_width, left)
+        BORDER_WIDTH_CASE(eCSSProperty_border_right_width, right)
         BORDER_WIDTH_CASE(eCSSProperty_border_top_width, top)
         #undef BORDER_WIDTH_CASE
 
@@ -2942,11 +2938,11 @@ StyleAnimationValue::ExtractComputedValue(nsCSSProperty aProperty,
           ExtractBorderColor(aStyleContext, styleStruct, NS_SIDE_BOTTOM,
                              aComputedValue);
           break;
-        case eCSSProperty_border_left_color_value:
+        case eCSSProperty_border_left_color:
           ExtractBorderColor(aStyleContext, styleStruct, NS_SIDE_LEFT,
                              aComputedValue);
           break;
-        case eCSSProperty_border_right_color_value:
+        case eCSSProperty_border_right_color:
           ExtractBorderColor(aStyleContext, styleStruct, NS_SIDE_RIGHT,
                              aComputedValue);
           break;

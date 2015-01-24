@@ -2943,22 +2943,42 @@ nsBlockFrame::IsSelfEmpty()
   // Blocks which are margin-roots (including inline-blocks) cannot be treated
   // as empty for margin-collapsing and other purposes. They're more like
   // replaced elements.
-  if (GetStateBits() & NS_BLOCK_MARGIN_ROOT)
+  if (GetStateBits() & NS_BLOCK_MARGIN_ROOT) {
     return false;
+  }
 
   const nsStylePosition* position = StylePosition();
+  bool vertical = GetWritingMode().IsVertical();
 
-  if (IsNonAutoNonZeroHeight(position->mMinHeight) ||
-      IsNonAutoNonZeroHeight(position->mHeight))
-    return false;
+  if (vertical) {
+    if (IsNonAutoNonZeroHeight(position->mMinWidth) ||
+        IsNonAutoNonZeroHeight(position->mWidth)) {
+      return false;
+    }
+  } else {
+    if (IsNonAutoNonZeroHeight(position->mMinHeight) ||
+        IsNonAutoNonZeroHeight(position->mHeight)) {
+      return false;
+    }
+  }
 
   const nsStyleBorder* border = StyleBorder();
   const nsStylePadding* padding = StylePadding();
-  if (border->GetComputedBorderWidth(NS_SIDE_TOP) != 0 ||
-      border->GetComputedBorderWidth(NS_SIDE_BOTTOM) != 0 ||
-      !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetTop()) ||
-      !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetBottom())) {
-    return false;
+
+  if (vertical) {
+    if (border->GetComputedBorderWidth(NS_SIDE_LEFT) != 0 ||
+        border->GetComputedBorderWidth(NS_SIDE_RIGHT) != 0 ||
+        !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetLeft()) ||
+        !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetRight())) {
+      return false;
+    }
+  } else {
+    if (border->GetComputedBorderWidth(NS_SIDE_TOP) != 0 ||
+        border->GetComputedBorderWidth(NS_SIDE_BOTTOM) != 0 ||
+        !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetTop()) ||
+        !nsLayoutUtils::IsPaddingZero(padding->mPadding.GetBottom())) {
+      return false;
+    }
   }
 
   if (HasOutsideBullet() && !BulletIsEmpty()) {
@@ -5034,8 +5054,8 @@ nsBlockFrame::AddFrames(nsFrameList& aFrameList, nsIFrame* aPrevSibling)
   }
   
   // Attempt to find the line that contains the previous sibling
-  FrameLines* overflowLines;
   nsLineList* lineList = &mLines;
+  nsFrameList* frames = &mFrames;
   nsLineList::iterator prevSibLine = lineList->end();
   int32_t prevSiblingIndex = -1;
   if (aPrevSibling) {
@@ -5048,23 +5068,23 @@ nsBlockFrame::AddFrames(nsFrameList& aFrameList, nsIFrame* aPrevSibling)
                                         prevSibLine, mFrames.LastChild(),
                                         &prevSiblingIndex)) {
       // Not in mLines - try overflow lines.
-      overflowLines = GetOverflowLines();
-      lineList = overflowLines ? &overflowLines->mLines : nullptr;
+      FrameLines* overflowLines = GetOverflowLines();
+      bool found = false;
       if (overflowLines) {
         prevSibLine = overflowLines->mLines.end();
         prevSiblingIndex = -1;
-        if (!nsLineBox::RFindLineContaining(aPrevSibling, lineList->begin(),
-                                            prevSibLine,
-                                            overflowLines->mFrames.LastChild(),
-                                            &prevSiblingIndex)) {
-          lineList = nullptr;
-        }
+        found = nsLineBox::RFindLineContaining(aPrevSibling, lineList->begin(),
+                                               prevSibLine,
+                                               overflowLines->mFrames.LastChild(),
+                                               &prevSiblingIndex);
       }
-      if (!lineList) {
+      if (MOZ_LIKELY(found)) {
+        lineList = &overflowLines->mLines;
+        frames = &overflowLines->mFrames;
+      } else {
         // Note: defensive code! RFindLineContaining must not return
         // false in this case, so if it does...
         NS_NOTREACHED("prev sibling not in line list");
-        lineList = &mLines;
         aPrevSibling = nullptr;
         prevSibLine = lineList->end();
       }
@@ -5095,9 +5115,8 @@ nsBlockFrame::AddFrames(nsFrameList& aFrameList, nsIFrame* aPrevSibling)
     lineList->front()->MarkDirty();
     lineList->front()->SetInvalidateTextRuns(true);
   }
-  nsFrameList& frames = lineList == &mLines ? mFrames : overflowLines->mFrames;
   const nsFrameList::Slice& newFrames =
-    frames.InsertFrames(nullptr, aPrevSibling, aFrameList);
+    frames->InsertFrames(nullptr, aPrevSibling, aFrameList);
 
   // Walk through the new frames being added and update the line data
   // structures to fit.

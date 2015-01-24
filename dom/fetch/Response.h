@@ -25,8 +25,8 @@ class InternalHeaders;
 class Promise;
 
 class Response MOZ_FINAL : public nsISupports
-                         , public nsWrapperCache
                          , public FetchBody<Response>
+                         , public nsWrapperCache
 {
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Response)
@@ -34,10 +34,10 @@ class Response MOZ_FINAL : public nsISupports
 public:
   Response(nsIGlobalObject* aGlobal, InternalResponse* aInternalResponse);
 
-  Response(const Response& aOther) MOZ_DELETE;
+  Response(const Response& aOther) = delete;
 
   JSObject*
-  WrapObject(JSContext* aCx)
+  WrapObject(JSContext* aCx) MOZ_OVERRIDE
   {
     return ResponseBinding::Wrap(aCx, this);
   }
@@ -83,7 +83,7 @@ public:
   Error(const GlobalObject& aGlobal);
 
   static already_AddRefed<Response>
-  Redirect(const GlobalObject& aGlobal, const nsAString& aUrl, uint16_t aStatus);
+  Redirect(const GlobalObject& aGlobal, const nsAString& aUrl, uint16_t aStatus, ErrorResult& aRv);
 
   static already_AddRefed<Response>
   Constructor(const GlobalObject& aGlobal,

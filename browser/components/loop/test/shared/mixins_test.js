@@ -20,6 +20,7 @@ describe("loop.shared.mixins", function() {
 
   afterEach(function() {
     sandbox.restore();
+    sharedMixins.setRootObject(window);
   });
 
   describe("loop.shared.mixins.UrlHashChangeMixin", function() {
@@ -31,7 +32,7 @@ describe("loop.shared.mixins", function() {
           return React.DOM.div();
         }
       });
-      return new TestComp();
+      return new React.createElement(TestComp);
     }
 
     it("should watch for hashchange event", function() {
@@ -83,7 +84,7 @@ describe("loop.shared.mixins", function() {
     });
 
     it("should call window.location.reload", function() {
-      var comp = TestUtils.renderIntoDocument(TestComp());
+      var comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
       comp.locationReload();
 
@@ -109,7 +110,7 @@ describe("loop.shared.mixins", function() {
     });
 
     it("should set window.document.title", function() {
-      var comp = TestUtils.renderIntoDocument(TestComp());
+      var comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
       comp.setTitle("It's a Fake!");
 
@@ -136,7 +137,7 @@ describe("loop.shared.mixins", function() {
     });
 
     it("should call window.close", function() {
-      var comp = TestUtils.renderIntoDocument(TestComp());
+      var comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
       comp.closeWindow();
 
@@ -162,10 +163,6 @@ describe("loop.shared.mixins", function() {
       });
     });
 
-    afterEach(function() {
-      loop.shared.mixins.setRootObject(window);
-    });
-
     function setupFakeVisibilityEventDispatcher(event) {
       loop.shared.mixins.setRootObject({
         document: {
@@ -181,7 +178,7 @@ describe("loop.shared.mixins", function() {
       function() {
         setupFakeVisibilityEventDispatcher({target: {hidden: false}});
 
-        comp = TestUtils.renderIntoDocument(TestComp());
+        comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
         sinon.assert.calledOnce(onDocumentVisibleStub);
       });
@@ -190,10 +187,104 @@ describe("loop.shared.mixins", function() {
       function() {
         setupFakeVisibilityEventDispatcher({target: {hidden: true}});
 
-        comp = TestUtils.renderIntoDocument(TestComp());
+        comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
         sinon.assert.calledOnce(onDocumentHiddenStub);
       });
+  });
+
+  describe("loop.shared.mixins.MediaSetupMixin", function() {
+    var view, TestComp, rootObject;
+
+    beforeEach(function() {
+      TestComp = React.createClass({
+        mixins: [loop.shared.mixins.MediaSetupMixin],
+        render: function() {
+          return React.DOM.div();
+        }
+      });
+
+      rootObject = {
+        events: {},
+        addEventListener: function(eventName, listener) {
+          this.events[eventName] = listener;
+        },
+        removeEventListener: function(eventName) {
+          delete this.events[eventName];
+        }
+      };
+
+      sharedMixins.setRootObject(rootObject);
+
+      view = TestUtils.renderIntoDocument(React.createElement(TestComp));
+    });
+
+    describe("#getDefaultPublisherConfig", function() {
+      it("should provide a default publisher configuration", function() {
+        var defaultConfig = view.getDefaultPublisherConfig({publishVideo: true});
+
+        expect(defaultConfig.publishVideo).eql(true);
+      });
+    });
+
+    describe("Events", function() {
+      var localElement, remoteElement;
+
+      beforeEach(function() {
+        sandbox.stub(view, "getDOMNode").returns({
+          querySelector: function(classSelector) {
+            if (classSelector.contains("local")) {
+              return localElement;
+            }
+            return remoteElement;
+          }
+        });
+      });
+
+      describe("resize", function() {
+        it("should update the width on the local stream element", function() {
+          localElement = {
+            style: { width: "0%" }
+          };
+
+          rootObject.events.resize();
+
+          expect(localElement.style.width).eql("100%");
+        });
+
+        it("should update the height on the remote stream element", function() {
+          remoteElement = {
+            style: { height: "0%" }
+          };
+
+          rootObject.events.resize();
+
+          expect(remoteElement.style.height).eql("100%");
+        });
+      });
+
+      describe("orientationchange", function() {
+        it("should update the width on the local stream element", function() {
+          localElement = {
+            style: { width: "0%" }
+          };
+
+          rootObject.events.orientationchange();
+
+          expect(localElement.style.width).eql("100%");
+        });
+
+        it("should update the height on the remote stream element", function() {
+          remoteElement = {
+            style: { height: "0%" }
+          };
+
+          rootObject.events.orientationchange();
+
+          expect(remoteElement.style.height).eql("100%");
+        });
+      });
+    });
   });
 
   describe("loop.shared.mixins.AudioMixin", function() {
@@ -227,14 +318,14 @@ describe("loop.shared.mixins", function() {
     });
 
     it("should not play a failure sound when doNotDisturb true", function() {
-      view = TestUtils.renderIntoDocument(TestComp());
+      view = TestUtils.renderIntoDocument(React.createElement(TestComp));
       sinon.assert.notCalled(navigator.mozLoop.getAudioBlob);
       sinon.assert.notCalled(fakeAudio.play);
     });
 
     it("should play a failure sound, once", function() {
       navigator.mozLoop.doNotDisturb = false;
-      view = TestUtils.renderIntoDocument(TestComp());
+      view = TestUtils.renderIntoDocument(React.createElement(TestComp));
       sinon.assert.calledOnce(navigator.mozLoop.getAudioBlob);
       sinon.assert.calledWithExactly(navigator.mozLoop.getAudioBlob,
                                      "failure", sinon.match.func);
@@ -258,7 +349,8 @@ describe("loop.shared.mixins", function() {
         }
       });
 
-      var renderedComp = TestUtils.renderIntoDocument(TestComp());
+      var renderedComp = TestUtils.renderIntoDocument(
+        React.createElement(TestComp));
       sandbox.stub(renderedComp, "play");
       return renderedComp;
     }

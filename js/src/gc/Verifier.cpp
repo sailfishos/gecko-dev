@@ -170,7 +170,7 @@ NextNode(VerifyNode *node)
 void
 gc::GCRuntime::startVerifyPreBarriers()
 {
-    if (verifyPreData || incrementalState != NO_INCREMENTAL)
+    if (verifyPreData || isIncrementalGCInProgress())
         return;
 
     /*
@@ -197,6 +197,8 @@ gc::GCRuntime::startVerifyPreBarriers()
     VerifyPreTracer *trc = js_new<VerifyPreTracer>(rt, JSTraceCallback(nullptr));
     if (!trc)
         return;
+
+    gcstats::AutoPhase ap(stats, gcstats::PHASE_TRACE_HEAP);
 
     /*
      * Passing a function pointer directly to js_new trips a compiler bug in
@@ -252,7 +254,7 @@ gc::GCRuntime::startVerifyPreBarriers()
     for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
         PurgeJITCaches(zone);
         zone->setNeedsIncrementalBarrier(true, Zone::UpdateJit);
-        zone->allocator.arenas.purge();
+        zone->arenas.purge();
     }
 
     return;
@@ -403,11 +405,8 @@ struct VerifyPostTracer : JSTracer
 void
 gc::GCRuntime::startVerifyPostBarriers()
 {
-    if (verifyPostData ||
-        incrementalState != NO_INCREMENTAL)
-    {
+    if (verifyPostData || isIncrementalGCInProgress())
         return;
-    }
 
     evictNursery();
 
@@ -498,10 +497,7 @@ js::gc::GCRuntime::endVerifyPostBarriers()
     if (!edges.init())
         goto oom;
     trc->edges = &edges;
-    {
-        gcstats::AutoPhase ap(stats, gcstats::PHASE_MINOR_GC);
-        storeBuffer.markAll(trc);
-    }
+    storeBuffer.markAll(trc);
 
     /* Walk the heap to find any edges not the the |edges| set. */
     trc->setTraceCallback(PostVerifierVisitEdge);

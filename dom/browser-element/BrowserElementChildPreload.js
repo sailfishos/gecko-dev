@@ -94,7 +94,7 @@ function BrowserElementChild() {
 
   this._isContentWindowCreated = false;
   this._pendingSetInputMethodActive = [];
-  this._forceDispatchSelectionStateChanged = false;
+  this._selectionStateChangedTarget = null;
 
   this._init();
 };
@@ -164,17 +164,17 @@ BrowserElementChild.prototype = {
 
     addEventListener('mozselectionstatechanged',
                      this._selectionStateChangedHandler.bind(this),
-                     /* useCapture = */ false,
+                     /* useCapture = */ true,
                      /* wantsUntrusted = */ false);
 
     addEventListener('scrollviewchange',
                      this._ScrollViewChangeHandler.bind(this),
-                     /* useCapture = */ false,
+                     /* useCapture = */ true,
                      /* wantsUntrusted = */ false);
 
     addEventListener('touchcarettap',
                      this._touchCaretTapHandler.bind(this),
-                     /* useCapture = */ false,
+                     /* useCapture = */ true,
                      /* wantsUntrusted = */ false);
 
 
@@ -594,13 +594,18 @@ BrowserElementChild.prototype = {
 
   _selectionStateChangedHandler: function(e) {
     e.stopPropagation();
+
+    if (!this._isContentWindowCreated) {
+      return;
+    }
+
     let boundingClientRect = e.boundingClientRect;
 
     let isCollapsed = (e.selectedText.length == 0);
     let isMouseUp = (e.states.indexOf('mouseup') == 0);
     let canPaste = this._isCommandEnabled("paste");
 
-    if (!this._forceDispatchSelectionStateChanged) {
+    if (this._selectionStateChangedTarget != e.target) {
       // SelectionStateChanged events with the following states are not
       // necessary to trigger the text dialog, bypass these events
       // by default.
@@ -613,28 +618,28 @@ BrowserElementChild.prototype = {
       }
 
       // The collapsed SelectionStateChanged event is unnecessary to dispatch,
-      // bypass this event by default. But there is one exception to support
-      // the shortcut mode which can paste previous copied content easily
+      // bypass this event by default, but here comes some exceptional cases
       if (isCollapsed) {
         if (isMouseUp && canPaste) {
-          //Dispatch this selection change event to support shortcut mode
+          // Always dispatch to support shortcut mode which can paste previous
+          // copied content easily
+        } else if (e.states.indexOf('blur') == 0) {
+          // Always dispatch to notify the blur for the focus content
         } else {
           return;
         }
       }
     }
 
-    // For every touch on the screen, there are always two mouse events received,
-    // mousedown/mouseup, no matter touch or long tap on the screen. When there is
-    // is a non-collapsed selection change event which comes with mouseup reason,
-    // it implies some texts are selected. In order to hide the text dialog during next
-    // touch, here sets the forceDispatchSelectionStateChanged flag as true to dispatch the
-    // next SelecitonChange event(with the mousedown) so that the parent side can
-    // hide the text dialog.
-    if (isMouseUp && !isCollapsed) {
-      this._forceDispatchSelectionStateChanged = true;
+    // If we select something and selection range is visible, we cache current
+    // event's target to selectionStateChangedTarget.
+    // And dispatch the next SelectionStateChagne event if target is matched, so
+    // that the parent side can hide the text dialog.
+    // We clear selectionStateChangedTarget if selection carets are invisible.
+    if (e.visible && !isCollapsed) {
+      this._selectionStateChangedTarget = e.target;
     } else {
-      this._forceDispatchSelectionStateChanged = false;
+      this._selectionStateChangedTarget = null;
     }
 
     let zoomFactor = content.screen.width / content.innerWidth;
@@ -662,13 +667,13 @@ BrowserElementChild.prototype = {
 
     // Get correct geometry information if we have nested iframe.
     let currentWindow = e.target.defaultView;
-    while (currentWindow.top != currentWindow) {
-      let currentRect = currentWindow.frameElement.getBoundingClientRect();
+    while (currentWindow.realFrameElement) {
+      let currentRect = currentWindow.realFrameElement.getBoundingClientRect();
       detail.rect.top += currentRect.top;
       detail.rect.bottom += currentRect.top;
       detail.rect.left += currentRect.left;
       detail.rect.right += currentRect.left;
-      currentWindow = currentWindow.parent;
+      currentWindow = currentWindow.realFrameElement.ownerDocument.defaultView;
     }
 
     sendAsyncMsg('selectionstatechanged', detail);

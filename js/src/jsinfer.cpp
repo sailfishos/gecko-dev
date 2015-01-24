@@ -22,6 +22,7 @@
 
 #include "gc/Marking.h"
 #include "jit/BaselineJIT.h"
+#include "jit/CompileInfo.h"
 #include "jit/Ion.h"
 #include "jit/IonAnalysis.h"
 #include "jit/JitCompartment.h"
@@ -35,7 +36,6 @@
 #include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
-#include "jit/ExecutionMode-inl.h"
 #include "vm/NativeObject-inl.h"
 
 using namespace js;
@@ -49,26 +49,31 @@ using mozilla::PodCopy;
 using mozilla::PodZero;
 
 static inline jsid
-id_prototype(JSContext *cx) {
+id_prototype(JSContext *cx)
+{
     return NameToId(cx->names().prototype);
 }
 
+#ifdef DEBUG
+
 static inline jsid
-id___proto__(JSContext *cx) {
+id___proto__(JSContext *cx)
+{
     return NameToId(cx->names().proto);
 }
 
 static inline jsid
-id_constructor(JSContext *cx) {
+id_constructor(JSContext *cx)
+{
     return NameToId(cx->names().constructor);
 }
 
 static inline jsid
-id_caller(JSContext *cx) {
+id_caller(JSContext *cx)
+{
     return NameToId(cx->names().caller);
 }
 
-#ifdef DEBUG
 const char *
 types::TypeIdStringImpl(jsid id)
 {
@@ -84,6 +89,7 @@ types::TypeIdStringImpl(jsid id)
     PutEscapedString(bufs[which], 100, JSID_TO_FLAT_STRING(id), 0);
     return bufs[which];
 }
+
 #endif
 
 /////////////////////////////////////////////////////////////////////
@@ -248,6 +254,15 @@ types::TypeHasProperty(JSContext *cx, TypeObject *obj, jsid id, const Value &val
             return true;
 
         Type type = GetValueType(value);
+
+        // Type set guards might miss when an object's type changes and its
+        // properties become unknown.
+        if (value.isObject() &&
+            !value.toObject().hasLazyType() &&
+            value.toObject().type()->flags() & OBJECT_FLAG_UNKNOWN_PROPERTIES)
+        {
+            return true;
+        }
 
         AutoEnterAnalysis enter(cx);
 
@@ -536,8 +551,13 @@ TypeSet::addType(Type type, LifoAlloc *alloc)
             JS_STATIC_ASSERT(TYPE_FLAG_DOMOBJECT_COUNT_LIMIT >= TYPE_FLAG_OBJECT_COUNT_LIMIT);
             // Examining the entire type set is only required when we first hit
             // the normal object limit.
-            if (objectCount == TYPE_FLAG_OBJECT_COUNT_LIMIT && !isDOMClass())
-                goto unknownObject;
+            if (objectCount == TYPE_FLAG_OBJECT_COUNT_LIMIT) {
+                for (unsigned i = 0; i < objectCount; i++) {
+                    const Class *clasp = getObjectClass(i);
+                    if (clasp && !clasp->isDOMClass())
+                        goto unknownObject;
+                }
+            }
 
             // Make sure the newly added object is also a DOM object.
             if (!object->clasp()->isDOMClass())
@@ -1199,13 +1219,13 @@ class TypeConstraintFreezeStack : public TypeConstraint
 } /* anonymous namespace */
 
 bool
-types::FinishCompilation(JSContext *cx, HandleScript script, ExecutionMode executionMode,
-                         CompilerConstraintList *constraints, RecompileInfo *precompileInfo)
+types::FinishCompilation(JSContext *cx, HandleScript script, CompilerConstraintList *constraints,
+                         RecompileInfo *precompileInfo)
 {
     if (constraints->failed())
         return false;
 
-    CompilerOutput co(script, executionMode);
+    CompilerOutput co(script);
 
     TypeZone &types = cx->zone()->types;
     if (!types.compilerOutputs) {
@@ -1217,7 +1237,7 @@ types::FinishCompilation(JSContext *cx, HandleScript script, ExecutionMode execu
 #ifdef DEBUG
     for (size_t i = 0; i < types.compilerOutputs->length(); i++) {
         const CompilerOutput &co = (*types.compilerOutputs)[i];
-        MOZ_ASSERT_IF(co.isValid(), co.script() != script || co.mode() != executionMode);
+        MOZ_ASSERT_IF(co.isValid(), co.script() != script);
     }
 #endif
 
@@ -1588,6 +1608,12 @@ TypeObjectKey::hasFlags(CompilerConstraintList *constraints, TypeObjectFlags fla
     typedef CompilerConstraintInstance<ConstraintDataFreezeObjectFlags> T;
     constraints->add(alloc->new_<T>(alloc, objectProperty, ConstraintDataFreezeObjectFlags(flags)));
     return false;
+}
+
+bool
+TypeObjectKey::hasStableClassAndProto(CompilerConstraintList *constraints)
+{
+    return !hasFlags(constraints, OBJECT_FLAG_UNKNOWN_PROPERTIES);
 }
 
 bool
@@ -2007,7 +2033,7 @@ TemporaryTypeSet::convertDoubleElements(CompilerConstraintList *constraints)
 }
 
 const Class *
-TemporaryTypeSet::getKnownClass()
+TemporaryTypeSet::getKnownClass(CompilerConstraintList *constraints)
 {
     if (unknownObject())
         return nullptr;
@@ -2020,16 +2046,28 @@ TemporaryTypeSet::getKnownClass()
         if (!nclasp)
             continue;
 
+        if (getObject(i)->unknownProperties())
+            return nullptr;
+
         if (clasp && clasp != nclasp)
             return nullptr;
         clasp = nclasp;
+    }
+
+    if (clasp) {
+        for (unsigned i = 0; i < count; i++) {
+            TypeObjectKey *type = getObject(i);
+            if (type && !type->hasStableClassAndProto(constraints))
+                return nullptr;
+        }
     }
 
     return clasp;
 }
 
 TemporaryTypeSet::ForAllResult
-TemporaryTypeSet::forAllClasses(bool (*func)(const Class* clasp))
+TemporaryTypeSet::forAllClasses(CompilerConstraintList *constraints,
+                                bool (*func)(const Class* clasp))
 {
     if (unknownObject())
         return ForAllResult::MIXED;
@@ -2043,14 +2081,18 @@ TemporaryTypeSet::forAllClasses(bool (*func)(const Class* clasp))
     for (unsigned i = 0; i < count; i++) {
         const Class *clasp = getObjectClass(i);
         if (!clasp)
+            continue;
+        if (!getObject(i)->hasStableClassAndProto(constraints))
             return ForAllResult::MIXED;
         if (func(clasp)) {
             true_results = true;
-            if (false_results) return ForAllResult::MIXED;
+            if (false_results)
+                return ForAllResult::MIXED;
         }
         else {
             false_results = true;
-            if (true_results) return ForAllResult::MIXED;
+            if (true_results)
+                return ForAllResult::MIXED;
         }
     }
 
@@ -2060,9 +2102,9 @@ TemporaryTypeSet::forAllClasses(bool (*func)(const Class* clasp))
 }
 
 Scalar::Type
-TemporaryTypeSet::getTypedArrayType()
+TemporaryTypeSet::getTypedArrayType(CompilerConstraintList *constraints)
 {
-    const Class *clasp = getKnownClass();
+    const Class *clasp = getKnownClass(constraints);
 
     if (clasp && IsTypedArrayClass(clasp))
         return (Scalar::Type) (clasp - &TypedArrayObject::classes[0]);
@@ -2070,9 +2112,9 @@ TemporaryTypeSet::getTypedArrayType()
 }
 
 Scalar::Type
-TemporaryTypeSet::getSharedTypedArrayType()
+TemporaryTypeSet::getSharedTypedArrayType(CompilerConstraintList *constraints)
 {
-    const Class *clasp = getKnownClass();
+    const Class *clasp = getKnownClass(constraints);
 
     if (clasp && IsSharedTypedArrayClass(clasp))
         return (Scalar::Type) (clasp - &SharedTypedArrayObject::classes[0]);
@@ -2080,7 +2122,7 @@ TemporaryTypeSet::getSharedTypedArrayType()
 }
 
 bool
-TypeSet::isDOMClass()
+TemporaryTypeSet::isDOMClass(CompilerConstraintList *constraints)
 {
     if (unknownObject())
         return false;
@@ -2088,7 +2130,9 @@ TypeSet::isDOMClass()
     unsigned count = getObjectCount();
     for (unsigned i = 0; i < count; i++) {
         const Class *clasp = getObjectClass(i);
-        if (clasp && !clasp->isDOMClass())
+        if (!clasp)
+            continue;
+        if (!clasp->isDOMClass() || !getObject(i)->hasStableClassAndProto(constraints))
             return false;
     }
 
@@ -2096,7 +2140,7 @@ TypeSet::isDOMClass()
 }
 
 bool
-TemporaryTypeSet::maybeCallable()
+TemporaryTypeSet::maybeCallable(CompilerConstraintList *constraints)
 {
     if (!maybeObject())
         return false;
@@ -2107,7 +2151,11 @@ TemporaryTypeSet::maybeCallable()
     unsigned count = getObjectCount();
     for (unsigned i = 0; i < count; i++) {
         const Class *clasp = getObjectClass(i);
-        if (clasp && (clasp->isProxy() || clasp->nonProxyCallable()))
+        if (!clasp)
+            continue;
+        if (clasp->isProxy() || clasp->nonProxyCallable())
+            return true;
+        if (!getObject(i)->hasStableClassAndProto(constraints))
             return true;
     }
 
@@ -2115,7 +2163,7 @@ TemporaryTypeSet::maybeCallable()
 }
 
 bool
-TemporaryTypeSet::maybeEmulatesUndefined()
+TemporaryTypeSet::maybeEmulatesUndefined(CompilerConstraintList *constraints)
 {
     if (!maybeObject())
         return false;
@@ -2129,7 +2177,11 @@ TemporaryTypeSet::maybeEmulatesUndefined()
         // it's a WrapperObject, see EmulatesUndefined. Since all wrappers are
         // proxies, we can just check for that.
         const Class *clasp = getObjectClass(i);
-        if (clasp && (clasp->emulatesUndefined() || clasp->isProxy()))
+        if (!clasp)
+            continue;
+        if (clasp->emulatesUndefined() || clasp->isProxy())
+            return true;
+        if (!getObject(i)->hasStableClassAndProto(constraints))
             return true;
     }
 
@@ -2137,7 +2189,7 @@ TemporaryTypeSet::maybeEmulatesUndefined()
 }
 
 JSObject *
-TemporaryTypeSet::getCommonPrototype()
+TemporaryTypeSet::getCommonPrototype(CompilerConstraintList *constraints)
 {
     if (unknownObject())
         return nullptr;
@@ -2150,7 +2202,7 @@ TemporaryTypeSet::getCommonPrototype()
         if (!object)
             continue;
 
-        if (!object->hasTenuredProto())
+        if (object->unknownProperties() || !object->hasTenuredProto())
             return nullptr;
 
         TaggedProto nproto = object->proto();
@@ -2162,6 +2214,13 @@ TemporaryTypeSet::getCommonPrototype()
                 return nullptr;
             proto = nproto.toObject();
         }
+    }
+
+    // Guard against mutating __proto__.
+    for (unsigned i = 0; i < count; i++) {
+        TypeObjectKey *object = getObject(i);
+        if (object)
+            JS_ALWAYS_TRUE(object->hasStableClassAndProto(constraints));
     }
 
     return proto;
@@ -2401,7 +2460,7 @@ bool
 types::TypeCanHaveExtraIndexedProperties(CompilerConstraintList *constraints,
                                          TemporaryTypeSet *types)
 {
-    const Class *clasp = types->getKnownClass();
+    const Class *clasp = types->getKnownClass(constraints);
 
     // Note: typed arrays have indexed properties not accounted for by type
     // information, though these are all in bounds and will be accounted for
@@ -2412,7 +2471,7 @@ types::TypeCanHaveExtraIndexedProperties(CompilerConstraintList *constraints,
     if (types->hasObjectFlags(constraints, types::OBJECT_FLAG_SPARSE_INDEXES))
         return true;
 
-    JSObject *proto = types->getCommonPrototype();
+    JSObject *proto = types->getCommonPrototype(constraints);
     if (!proto)
         return true;
 
@@ -2470,51 +2529,11 @@ TypeZone::addPendingRecompile(JSContext *cx, JSScript *script)
     if (script->hasIonScript())
         addPendingRecompile(cx, script->ionScript()->recompileInfo());
 
-    if (script->hasParallelIonScript())
-        addPendingRecompile(cx, script->parallelIonScript()->recompileInfo());
-
     // When one script is inlined into another the caller listens to state
     // changes on the callee's script, so trigger these to force recompilation
     // of any such callers.
     if (script->functionNonDelazifying() && !script->functionNonDelazifying()->hasLazyType())
         ObjectStateChange(cx, script->functionNonDelazifying()->type(), false);
-}
-
-void
-TypeCompartment::markSetsUnknown(JSContext *cx, TypeObject *target)
-{
-    MOZ_ASSERT(this == &cx->compartment()->types);
-    MOZ_ASSERT(!(target->flags() & OBJECT_FLAG_SETS_MARKED_UNKNOWN));
-    MOZ_ASSERT(!target->singleton());
-    MOZ_ASSERT(target->unknownProperties());
-
-    AutoEnterAnalysis enter(cx);
-
-    /* Mark type sets which contain obj as having a generic object types. */
-
-    for (gc::ZoneCellIter i(cx->zone(), gc::FINALIZE_TYPE_OBJECT); !i.done(); i.next()) {
-        TypeObject *object = i.get<TypeObject>();
-        unsigned count = object->getPropertyCount();
-        for (unsigned i = 0; i < count; i++) {
-            Property *prop = object->getProperty(i);
-            if (prop && prop->types.hasType(Type::ObjectType(target)))
-                prop->types.addType(cx, Type::AnyObjectType());
-        }
-    }
-
-    for (gc::ZoneCellIter i(cx->zone(), gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
-        JSScript *script = i.get<JSScript>();
-        if (script->types()) {
-            unsigned count = TypeScript::NumTypeSets(script);
-            StackTypeSet *typeArray = script->types()->typeArray();
-            for (unsigned i = 0; i < count; i++) {
-                if (typeArray[i].hasType(Type::ObjectType(target)))
-                    typeArray[i].addType(cx, Type::AnyObjectType());
-            }
-        }
-    }
-
-    target->addFlags(OBJECT_FLAG_SETS_MARKED_UNKNOWN);
 }
 
 void
@@ -3338,7 +3357,7 @@ TypeObject::print()
             fprintf(stderr, " noLengthOverflow");
         if (hasAnyFlags(OBJECT_FLAG_ITERATED))
             fprintf(stderr, " iterated");
-        if (interpretedFunction)
+        if (maybeInterpretedFunction())
             fprintf(stderr, " ifun");
     }
 
@@ -3669,12 +3688,12 @@ types::UseNewTypeForClone(JSFunction *fun)
 
     uint32_t begin, end;
     if (fun->hasScript()) {
-        if (!fun->nonLazyScript()->usesArgumentsAndApply())
+        if (!fun->nonLazyScript()->usesArgumentsApplyAndThis())
             return false;
         begin = fun->nonLazyScript()->sourceStart();
         end = fun->nonLazyScript()->sourceEnd();
     } else {
-        if (!fun->lazyScript()->usesArgumentsAndApply())
+        if (!fun->lazyScript()->usesArgumentsApplyAndThis())
             return false;
         begin = fun->lazyScript()->begin();
         end = fun->lazyScript()->end();
@@ -3743,7 +3762,7 @@ JSFunction::setTypeForScriptedFunction(ExclusiveContext *cx, HandleFunction fun,
             return false;
 
         fun->setType(type);
-        type->interpretedFunction = fun;
+        type->setInterpretedFunction(fun);
     }
 
     return true;
@@ -3779,6 +3798,15 @@ TypeNewScript::make(JSContext *cx, TypeObject *type, JSFunction *fun)
     type->setNewScript(newScript.forget());
 
     gc::TraceTypeNewScript(type);
+}
+
+size_t
+TypeNewScript::sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const
+{
+    size_t n = mallocSizeOf(this);
+    n += mallocSizeOf(preliminaryObjects);
+    n += mallocSizeOf(initializerList);
+    return n;
 }
 
 void
@@ -4068,7 +4096,7 @@ TypeNewScript::maybeAnalyze(JSContext *cx, TypeObject *type, bool *regenerate, b
     // to represent partially initialized objects.
     MOZ_ASSERT(prefixShape->slotSpan() > templateObject()->slotSpan());
 
-    TypeObjectFlags initialFlags = type->flags() & OBJECT_FLAG_UNKNOWN_MASK;
+    TypeObjectFlags initialFlags = type->flags() & OBJECT_FLAG_DYNAMIC_MASK;
 
     Rooted<TaggedProto> protoRoot(cx, type->proto());
     TypeObject *initialType =
@@ -4313,7 +4341,7 @@ JSObject::makeLazyType(JSContext *cx, HandleObject obj)
     type->initSingleton(obj);
 
     if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted())
-        type->interpretedFunction = &obj->as<JSFunction>();
+        type->setInterpretedFunction(&obj->as<JSFunction>());
 
     obj->type_ = type;
 
@@ -4466,15 +4494,8 @@ ExclusiveContext::getNewType(const Class *clasp, TaggedProto proto, JSObject *as
         return nullptr;
 
     TypeObjectFlags initialFlags = 0;
-    if (!proto.isObject() || proto.toObject()->lastProperty()->hasObjectFlag(BaseShape::NEW_TYPE_UNKNOWN)) {
-        // The new type is not present in any type sets, so mark the object as
-        // unknown in all type sets it appears in. This allows the prototype of
-        // such objects to mutate freely without triggering an expensive walk of
-        // the compartment's type sets. (While scripts normally don't mutate
-        // __proto__, the browser will for proxies and such, and we need to
-        // accommodate this behavior).
-        initialFlags = OBJECT_FLAG_UNKNOWN_MASK | OBJECT_FLAG_SETS_MARKED_UNKNOWN;
-    }
+    if (!proto.isObject() || proto.toObject()->lastProperty()->hasObjectFlag(BaseShape::NEW_TYPE_UNKNOWN))
+        initialFlags = OBJECT_FLAG_DYNAMIC_MASK;
 
     Rooted<TaggedProto> protoRoot(this, proto);
     TypeObject *type = compartment()->types.newTypeObject(this, clasp, protoRoot, initialFlags);
@@ -4574,7 +4595,6 @@ ConstraintTypeSet::sweep(Zone *zone, AutoClearTypeInferenceStateOnOOM &oom)
     // IsAboutToBeFinalized doesn't work right on tenured objects when called
     // during a minor collection.
     MOZ_ASSERT(!zone->runtimeFromMainThread()->isHeapMinorCollecting());
-    MOZ_ASSERT(!zone->runtimeFromMainThread()->isFJMinorCollecting());
 
     /*
      * Purge references to type objects that are no longer live. Type sets hold
@@ -4648,7 +4668,9 @@ TypeObject::clearProperties()
 bool
 TypeObject::needsSweep()
 {
-    return generation() != zone()->types.generation;
+    // Note: this can be called off thread during compacting GCs, in which case
+    // nothing will be running on the main thread.
+    return generation() != zoneFromAnyThread()->types.generation;
 }
 #endif
 
@@ -4878,8 +4900,6 @@ JSCompartment::sweepNewTypeObjectTable(NewTypeObjectTable &table)
     }
 }
 
-#ifdef JSGC_COMPACTING
-
 void
 JSCompartment::fixupNewTypeObjectTable(NewTypeObjectTable &table)
 {
@@ -4943,15 +4963,15 @@ TypeObject::fixupAfterMovingGC()
             if (IsForwarded(&typeDescr()))
                 addendum_ = Forwarded(&typeDescr());
             break;
+          case Addendum_InterpretedFunction:
+            if (IsForwarded(maybeInterpretedFunction()))
+                addendum_ = Forwarded(maybeInterpretedFunction());
+            break;
           default:
             MOZ_CRASH();
         }
     }
-    if (interpretedFunction && IsForwarded(interpretedFunction.get()))
-        interpretedFunction = Forwarded(interpretedFunction.get());
 }
-
-#endif // JSGC_COMPACTING
 
 #ifdef JSGC_HASH_TABLE_CHECKS
 
@@ -5017,8 +5037,7 @@ JSScript::maybeSweepTypes(AutoClearTypeInferenceStateOnOOM *oom)
     // the case unless the script has been compiled since we started sweeping.
     if (types.sweepReleaseTypes &&
         !hasBaselineScript() &&
-        !hasIonScript() &&
-        !hasParallelIonScript())
+        !hasIonScript())
     {
         types_->destroy();
         types_ = nullptr;
@@ -5040,8 +5059,6 @@ JSScript::maybeSweepTypes(AutoClearTypeInferenceStateOnOOM *oom)
     // Update the recompile indexes in any IonScripts still on the script.
     if (hasIonScript())
         ionScript()->recompileInfoRef().shouldSweep(types);
-    if (hasParallelIonScript())
-        parallelIonScript()->recompileInfoRef().shouldSweep(types);
 }
 
 void
@@ -5093,7 +5110,8 @@ TypeCompartment::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
 size_t
 TypeObject::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const
 {
-    return mallocSizeOf(newScriptDontCheckGeneration());
+    TypeNewScript *newScript = newScriptDontCheckGeneration();
+    return newScript ? newScript->sizeOfIncludingThis(mallocSizeOf) : 0;
 }
 
 TypeZone::TypeZone(Zone *zone)
@@ -5135,12 +5153,11 @@ TypeZone::beginSweep(FreeOp *fop, bool releaseTypes, AutoClearTypeInferenceState
             CompilerOutput &output = (*compilerOutputs)[i];
             if (output.isValid()) {
                 JSScript *script = output.script();
-                ExecutionMode mode = output.mode();
                 if (IsScriptAboutToBeFinalized(&script)) {
-                    jit::GetIonScript(script, mode)->recompileInfoRef() = RecompileInfo();
+                    script->ionScript()->recompileInfoRef() = RecompileInfo();
                     output.invalidate();
                 } else {
-                    CompilerOutput newOutput(script, output.mode());
+                    CompilerOutput newOutput(script);
 
                     if (!newCompilerOutputs)
                         newCompilerOutputs = js_new<CompilerOutputVector>();
@@ -5148,7 +5165,7 @@ TypeZone::beginSweep(FreeOp *fop, bool releaseTypes, AutoClearTypeInferenceState
                         output.setSweepIndex(newCompilerOutputs->length() - 1);
                     } else {
                         oom.setOOM();
-                        jit::GetIonScript(script, mode)->recompileInfoRef() = RecompileInfo();
+                        script->ionScript()->recompileInfoRef() = RecompileInfo();
                         output.invalidate();
                     }
                 }
@@ -5262,11 +5279,11 @@ TypeObject::setAddendum(AddendumKind kind, void *addendum)
 {
     MOZ_ASSERT(!needsSweep());
     MOZ_ASSERT(kind <= (OBJECT_FLAG_ADDENDUM_MASK >> OBJECT_FLAG_ADDENDUM_SHIFT));
-    MOZ_ASSERT(!(flags_ & OBJECT_FLAG_ADDENDUM_MASK));
+    MOZ_ASSERT(addendumKind() == 0 || addendumKind() == kind);
 
     // Manually trigger barriers if we are clearing a TypeNewScript. Other
     // kinds of addendums are immutable.
-    if (addendum_) {
+    if (newScript()) {
         MOZ_ASSERT(kind == Addendum_NewScript);
         TypeNewScript::writeBarrierPre(newScript());
     }

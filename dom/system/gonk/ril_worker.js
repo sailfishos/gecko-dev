@@ -616,23 +616,25 @@ RilObject.prototype = {
         this.enterICCPUK2(options);
         break;
       case GECKO_CARDLOCK_NCK:
+      case GECKO_CARDLOCK_NSCK:
       case GECKO_CARDLOCK_NCK1:
       case GECKO_CARDLOCK_NCK2:
       case GECKO_CARDLOCK_HNCK:
       case GECKO_CARDLOCK_CCK:
       case GECKO_CARDLOCK_SPCK:
+      case GECKO_CARDLOCK_PCK:
       case GECKO_CARDLOCK_RCCK:
       case GECKO_CARDLOCK_RSPCK:
       case GECKO_CARDLOCK_NCK_PUK:
+      case GECKO_CARDLOCK_NSCK_PUK:
       case GECKO_CARDLOCK_NCK1_PUK:
       case GECKO_CARDLOCK_NCK2_PUK:
       case GECKO_CARDLOCK_HNCK_PUK:
       case GECKO_CARDLOCK_CCK_PUK:
       case GECKO_CARDLOCK_SPCK_PUK:
+      case GECKO_CARDLOCK_PCK_PUK:
       case GECKO_CARDLOCK_RCCK_PUK: // Fall through.
       case GECKO_CARDLOCK_RSPCK_PUK:
-        options.personlization =
-          GECKO_PERSO_LOCK_TO_CARD_PERSO_LOCK[options.lockType];
         this.enterDepersonalization(options);
         break;
       default:
@@ -690,7 +692,7 @@ RilObject.prototype = {
   enterDepersonalization: function(options) {
     let Buf = this.context.Buf;
     Buf.newParcel(REQUEST_ENTER_NETWORK_DEPERSONALIZATION_CODE, options);
-    Buf.writeInt32(options.personlization);
+    Buf.writeInt32(1);
     Buf.writeString(options.password);
     Buf.sendParcel();
   },
@@ -863,8 +865,11 @@ RilObject.prototype = {
       case GECKO_CARDLOCK_PUK:
       case GECKO_CARDLOCK_PUK2:
       case GECKO_CARDLOCK_NCK:
+      case GECKO_CARDLOCK_NSCK:
       case GECKO_CARDLOCK_CCK: // Fall through.
       case GECKO_CARDLOCK_SPCK:
+      // TODO: Bug 1116072: identify the mapping between RIL_PERSOSUBSTATE_SIM_SIM
+      //       @ ril.h and TS 27.007, clause 8.65 for GECKO_CARDLOCK_SPCK.
         options.selCode = GECKO_CARDLOCK_TO_SEL_CODE[options.lockType];
         break;
       default:
@@ -1504,6 +1509,22 @@ RilObject.prototype = {
   },
 
   /**
+   * Get UICC service state
+   */
+  getIccServiceState: function(options) {
+    switch (options.service) {
+      case GECKO_CARDSERVICE_FDN:
+        let ICCUtilsHelper = this.context.ICCUtilsHelper;
+        options.result = ICCUtilsHelper.isICCServiceAvailable("FDN");
+        break;
+      default:
+        options.errorMsg = GECKO_ERROR_REQUEST_NOT_SUPPORTED;
+        break;
+    }
+    this.sendChromeMessage(options);
+  },
+
+  /**
    * Enable/Disable UICC subscription
    */
   setUiccSubscription: function(options) {
@@ -1687,7 +1708,7 @@ RilObject.prototype = {
    */
   hangUpAll: function() {
     for (let callIndex in this.currentCalls) {
-      this.hangUp({callIndex: callIndex});
+      this.hangUpCall({callIndex: callIndex});
     }
   },
 
@@ -1697,9 +1718,14 @@ RilObject.prototype = {
    * @param callIndex
    *        Call index (1-based) as reported by REQUEST_GET_CURRENT_CALLS.
    */
-  hangUp: function(options) {
+  hangUpCall: function(options) {
     let call = this.currentCalls[options.callIndex];
     if (!call) {
+      // |hangUpCall()| is used to remove a call from the current call list,
+      // so we consider it as an successful case when hanging up a call that
+      // doesn't exist in the current call list.
+      options.success = true;
+      this.sendChromeMessage(options);
       return;
     }
 
@@ -1781,6 +1807,9 @@ RilObject.prototype = {
   answerCall: function(options) {
     let call = this.currentCalls[options.callIndex];
     if (!call) {
+      options.success = false;
+      options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+      this.sendChromeMessage(options);
       return;
     }
 
@@ -1791,13 +1820,19 @@ RilObject.prototype = {
     switch (call.state) {
       case CALL_STATE_INCOMING:
         this.telephonyRequestQueue.push(REQUEST_ANSWER, () => {
-          this.context.Buf.simpleRequest(REQUEST_ANSWER);
+          this.context.Buf.simpleRequest(REQUEST_ANSWER, options);
         });
         break;
       case CALL_STATE_WAITING:
         // Answer the waiting (second) call, and hold the first call.
         this.switchActiveCall(options);
         break;
+      default:
+        if (DEBUG) this.context.debug("AnswerCall: Invalid call state");
+
+        options.success = false;
+        options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+        this.sendChromeMessage(options);
     }
   },
 
@@ -1808,12 +1843,13 @@ RilObject.prototype = {
    *        Call index of the call to reject.
    */
   rejectCall: function(options) {
-    // Check for races. Since we dispatched the incoming/waiting call
-    // notification the incoming/waiting call may have changed. The main
-    // thread thinks that it is rejecting the call with the given index,
-    // so only reject if that is still incoming/waiting.
     let call = this.currentCalls[options.callIndex];
     if (!call) {
+      // |hangUpCall()| is used to remove an imcoming call from the current
+      // call list, so we consider it as an successful case when rejecting
+      // a call that doesn't exist in the current call list.
+      options.success = true;
+      this.sendChromeMessage(options);
       return;
     }
 
@@ -1825,6 +1861,10 @@ RilObject.prototype = {
       return;
     }
 
+    // Check for races. Since we dispatched the incoming/waiting call
+    // notification the incoming/waiting call may have changed. The main
+    // thread thinks that it is rejecting the call with the given index,
+    // so only reject if that is still incoming/waiting.
     switch (call.state) {
       case CALL_STATE_INCOMING:
         this.udub(options);
@@ -1833,6 +1873,12 @@ RilObject.prototype = {
         // Reject the waiting (second) call, and remain the first call.
         this.hangUpBackground(options);
         break;
+      default:
+        if (DEBUG) this.context.debug("RejectCall: Invalid call state");
+
+        options.success = false;
+        options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+        this.sendChromeMessage(options);
     }
   },
 
@@ -1921,7 +1967,7 @@ RilObject.prototype = {
       }
 
       options.callIndex = 1;
-      this.hangUp(options);
+      this.hangUpCall(options);
       return;
     }
 
@@ -1934,6 +1980,10 @@ RilObject.prototype = {
 
   holdConference: function(options) {
     if (this._isCdma) {
+      // We cannot hold a conference call on CDMA.
+      options.success = false;
+      options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+      this.sendChromeMessage(options);
       return;
     }
 
@@ -1942,6 +1992,10 @@ RilObject.prototype = {
 
   resumeConference: function(options) {
     if (this._isCdma) {
+      // We cannot resume a conference call on CDMA
+      options.success = false;
+      options.errorMsg = GECKO_ERROR_GENERIC_FAILURE;
+      this.sendChromeMessage(options);
       return;
     }
 
@@ -2219,7 +2273,7 @@ RilObject.prototype = {
    */
   startTone: function(options) {
     let Buf = this.context.Buf;
-    Buf.newParcel(REQUEST_DTMF_START);
+    Buf.newParcel(REQUEST_DTMF_START, options);
     Buf.writeString(options.dtmfChar);
     Buf.sendParcel();
   },
@@ -2869,6 +2923,7 @@ RilObject.prototype = {
    * @param command
    * @param deviceIdentities
    * @param resultCode
+   * @param [optional] additionalInformation
    * @param [optional] itemIdentifier
    * @param [optional] input
    * @param [optional] isYesNo
@@ -2899,7 +2954,7 @@ RilObject.prototype = {
     GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_COMMAND_DETAILS |
                                COMPREHENSIONTLV_FLAG_CR);
     GsmPDUHelper.writeHexOctet(3);
-    if (response.command) {
+    if (command) {
       GsmPDUHelper.writeHexOctet(command.commandNumber);
       GsmPDUHelper.writeHexOctet(command.typeOfCommand);
       GsmPDUHelper.writeHexOctet(command.commandQualifier);
@@ -2924,8 +2979,25 @@ RilObject.prototype = {
     // Result
     GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_RESULT |
                                COMPREHENSIONTLV_FLAG_CR);
-    GsmPDUHelper.writeHexOctet(1);
-    GsmPDUHelper.writeHexOctet(response.resultCode);
+    if ("additionalInformation" in response) {
+      // In |12.12 Result| TS 11.14, the length of additional information is
+      // varied and all possible values are addressed in 12.12.1-11 of TS 11.14
+      // and 8.12.1-13 in TS 31.111.
+      // However,
+      // 1. Only SEND SS requires info with more than 1 octet.
+      // 2. In rild design, SEND SS is expected to be handled by modem and
+      //    UNSOLICITED_STK_EVENT_NOTIFY will be sent to application layer to
+      //    indicate appropriate messages to users. TR is not required in this
+      //    case.
+      // Hence, we simplify the structure of |additionalInformation| to a
+      // numeric value instead of a octet array.
+      GsmPDUHelper.writeHexOctet(2);
+      GsmPDUHelper.writeHexOctet(response.resultCode);
+      GsmPDUHelper.writeHexOctet(response.additionalInformation);
+    } else {
+      GsmPDUHelper.writeHexOctet(1);
+      GsmPDUHelper.writeHexOctet(response.resultCode);
+    }
 
     // Item Identifier
     if (response.itemIdentifier != null) {
@@ -2938,52 +3010,46 @@ RilObject.prototype = {
     // No need to process Text data if user requests help information.
     if (response.resultCode != STK_RESULT_HELP_INFO_REQUIRED) {
       let text;
-      if (response.isYesNo !== undefined) {
-        // GET_INKEY
-        // When the ME issues a successful TERMINAL RESPONSE for a GET INKEY
-        // ("Yes/No") command with command qualifier set to "Yes/No", it shall
-        // supply the value '01' when the answer is "positive" and the value
-        // '00' when the answer is "negative" in the Text string data object.
-        text = response.isYesNo ? String.fromCharCode(0x01)
-                                : String.fromCharCode(0x00);
-      } else {
-        text = response.input;
-      }
-
-      if (text) {
-        GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_TEXT_STRING |
-                                   COMPREHENSIONTLV_FLAG_CR);
-
-        // 2nd mark for text length
-        Buf.startCalOutgoingSize(function(size) {
-          // Text length is in number of hexOctets, which costs 4 uint8 per hexOctet.
-          GsmPDUHelper.writeHexOctet(size / 4);
-        });
-
-        let coding = command.options.isUCS2 ?
+      let coding = command.options.isUCS2 ?
                        STK_TEXT_CODING_UCS2 :
                        (command.options.isPacked ?
                           STK_TEXT_CODING_GSM_7BIT_PACKED :
                           STK_TEXT_CODING_GSM_8BIT);
+      if (response.isYesNo !== undefined) {
+        // Tag: GET_INKEY
+        // When the ME issues a successful TERMINAL RESPONSE for a GET INKEY
+        // ("Yes/No") command with command qualifier set to "Yes/No", it shall
+        // supply the value '01' when the answer is "positive" and the value
+        // '00' when the answer is "negative" in the Text string data object.
+        GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_TEXT_STRING |
+                                   COMPREHENSIONTLV_FLAG_CR);
+        // Length: 2
+        GsmPDUHelper.writeHexOctet(2);
+        // Value: Coding, Yes/No.
         GsmPDUHelper.writeHexOctet(coding);
-
-        // Write Text String.
-        switch (coding) {
-          case STK_TEXT_CODING_UCS2:
-            GsmPDUHelper.writeUCS2String(text);
-            break;
-          case STK_TEXT_CODING_GSM_7BIT_PACKED:
-            GsmPDUHelper.writeStringAsSeptets(text, 0, 0, 0);
-            break;
-          case STK_TEXT_CODING_GSM_8BIT:
-            for (let i = 0; i < text.length; i++) {
-              GsmPDUHelper.writeHexOctet(text.charCodeAt(i));
-            }
-            break;
+        GsmPDUHelper.writeHexOctet(response.isYesNo ? 0x01 : 0x00);
+      } else {
+        if (response.input !== undefined) {
+            ComprehensionTlvHelper.writeTextStringTlv(response.input, coding);
         }
+      }
+    }
 
-        // Calculate and write text length to 2nd mark
-        Buf.stopCalOutgoingSize();
+    // Duration
+    if (response.resultCode === STK_RESULT_NO_RESPONSE_FROM_USER) {
+      // In TS102 223, 6.4.2 GET INKEY, "if the UICC requests a variable timeout,
+      // the terminal shall wait until either the user enters a single character
+      // or the timeout expires. The timer starts when the text is displayed on
+      // the screen and stops when the TERMINAL RESPONSE is sent. The terminal
+      // shall pass the total display text duration (command execution duration)
+      // to the UICC using the TERMINAL RESPONSE. The time unit of the response
+      // is identical to the time unit of the requested variable timeout."
+      let duration = command && command.options && command.options.duration;
+      if (duration) {
+        GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_DURATION);
+        GsmPDUHelper.writeHexOctet(2);
+        GsmPDUHelper.writeHexOctet(duration.timeUnit);
+        GsmPDUHelper.writeHexOctet(duration.timeInterval);
       }
     }
 
@@ -4085,7 +4151,7 @@ RilObject.prototype = {
 
   _addVoiceCall: function(newCall) {
     newCall.number = this._formatInternationalNumber(newCall.number, newCall.toa);
-    newCall.isOutgoing = !(newCall.state == CALL_STATE_INCOMING);
+    newCall.isOutgoing = !newCall.isMT;
     newCall.isConference = false;
 
     this.currentCalls[newCall.callIndex] = newCall;
@@ -5487,6 +5553,10 @@ RilObject.prototype[REQUEST_GET_IMSI] = function REQUEST_GET_IMSI(length, option
   this.sendChromeMessage(options);
 };
 RilObject.prototype[REQUEST_HANGUP] = function REQUEST_HANGUP(length, options) {
+  if (options.rilMessageType == null) {
+    return;
+  }
+
   options.success = (options.rilRequestError === 0);
   options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
   this.sendChromeMessage(options);
@@ -5514,6 +5584,11 @@ RilObject.prototype[REQUEST_CONFERENCE] = function REQUEST_CONFERENCE(length, op
   this.sendChromeMessage(options);
 };
 RilObject.prototype[REQUEST_UDUB] = function REQUEST_UDUB(length, options) {
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
 };
 RilObject.prototype[REQUEST_LAST_CALL_FAIL_CAUSE] = function REQUEST_LAST_CALL_FAIL_CAUSE(length, options) {
   let Buf = this.context.Buf;
@@ -5968,6 +6043,11 @@ RilObject.prototype[REQUEST_GET_IMEISV] = function REQUEST_GET_IMEISV(length, op
   this.IMEISV = this.context.Buf.readString();
 };
 RilObject.prototype[REQUEST_ANSWER] = function REQUEST_ANSWER(length, options) {
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
 };
 RilObject.prototype[REQUEST_DEACTIVATE_DATA_CALL] = function REQUEST_DEACTIVATE_DATA_CALL(length, options) {
   if (options.rilRequestError) {
@@ -6148,7 +6228,13 @@ RilObject.prototype[REQUEST_QUERY_AVAILABLE_NETWORKS] = function REQUEST_QUERY_A
   }
   this.sendChromeMessage(options);
 };
-RilObject.prototype[REQUEST_DTMF_START] = null;
+RilObject.prototype[REQUEST_DTMF_START] = function REQUEST_DTMF_START(length, options) {
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
+};
 RilObject.prototype[REQUEST_DTMF_STOP] = null;
 RilObject.prototype[REQUEST_BASEBAND_VERSION] = function REQUEST_BASEBAND_VERSION(length, options) {
   if (options.rilRequestError) {
@@ -7114,6 +7200,36 @@ GsmPDUHelperObject.prototype = {
   },
 
   /**
+   * Helper to write data into a temporary buffer for easier length encoding when
+   * the number of octets for the length encoding is varied.
+   *
+   * @param writeFunction
+   *        Function of how the data to be written into temporary buffer.
+   *
+   * @return array of written octets.
+   **/
+  writeWithBuffer: function(writeFunction) {
+    let buf = [];
+    let writeHexOctet = this.writeHexOctet;
+    this.writeHexOctet = function(octet) {
+      buf.push(octet);
+    }
+
+    try {
+      writeFunction();
+    } catch (e) {
+      if (DEBUG) {
+        debug("Error when writeWithBuffer: " + e);
+      }
+      buf = [];
+    } finally {
+      this.writeHexOctet = writeHexOctet;
+    }
+
+    return buf;
+  },
+
+  /**
    * Convert an octet (number) to a BCD number.
    *
    * Any nibbles that are not in the BCD range count as 0.
@@ -7462,6 +7578,28 @@ GsmPDUHelperObject.prototype = {
 
     if (dataBits !== 0) {
       this.writeHexOctet(data & 0xFF);
+    }
+  },
+
+  writeStringAs8BitUnpacked: function(text) {
+    const langTable = PDU_NL_LOCKING_SHIFT_TABLES[PDU_NL_IDENTIFIER_DEFAULT];
+    const langShiftTable = PDU_NL_SINGLE_SHIFT_TABLES[PDU_NL_IDENTIFIER_DEFAULT];
+
+    let len = text ? text.length : 0;
+    for (let i = 0; i < len; i++) {
+      let c = text.charAt(i);
+      let octet = langTable.indexOf(c);
+
+      if (octet == -1) {
+        octet = langShiftTable.indexOf(c);
+        if (octet == -1) {
+          // Fallback to ASCII space.
+          octet = langTable.indexOf(' ');
+        } else {
+          this.writeHexOctet(PDU_NL_EXTENDED_ESCAPE);
+        }
+      }
+      this.writeHexOctet(octet);
     }
   },
 
@@ -10297,9 +10435,10 @@ ICCPDUHelperObject.prototype = {
         if (octet == -1) {
           // Fallback to ASCII space.
           octet = langTable.indexOf(' ');
+        } else {
+          GsmPDUHelper.writeHexOctet(PDU_NL_EXTENDED_ESCAPE);
+          j++;
         }
-        GsmPDUHelper.writeHexOctet(PDU_NL_EXTENDED_ESCAPE);
-        j++;
       }
       GsmPDUHelper.writeHexOctet(octet);
       j++;
@@ -12074,6 +12213,40 @@ ComprehensionTlvHelperObject.prototype = {
     GsmPDUHelper.writeSwappedNibbleBCDNum(seconds % 60);
   },
 
+  writeTextStringTlv: function(text, coding) {
+    let GsmPDUHelper = this.context.GsmPDUHelper;
+    let buf = GsmPDUHelper.writeWithBuffer(() => {
+      // Write Coding.
+      GsmPDUHelper.writeHexOctet(coding);
+
+      // Write Text String.
+      switch (coding) {
+        case STK_TEXT_CODING_UCS2:
+          GsmPDUHelper.writeUCS2String(text);
+          break;
+        case STK_TEXT_CODING_GSM_7BIT_PACKED:
+          GsmPDUHelper.writeStringAsSeptets(text, 0, 0, 0);
+          break;
+        case STK_TEXT_CODING_GSM_8BIT:
+          GsmPDUHelper.writeStringAs8BitUnpacked(text);
+          break;
+      }
+    });
+
+    let length = buf.length;
+    if (length) {
+      // Write Tag.
+      GsmPDUHelper.writeHexOctet(COMPREHENSIONTLV_TAG_TEXT_STRING |
+                                 COMPREHENSIONTLV_FLAG_CR);
+      // Write Length.
+      this.writeLength(length);
+      // Write Value.
+      for (let i = 0; i < length; i++) {
+        GsmPDUHelper.writeHexOctet(buf[i]);
+      }
+    }
+  },
+
   getSizeOfLengthOctets: function(length) {
     if (length >= 0x10000) {
       return 4; // 0x83, len_1, len_2, len_3
@@ -12281,8 +12454,8 @@ BerTlvHelperObject.prototype = {
     };
     // byte 5 ~ 7 are mandatory for linear fixed and cyclic files, otherwise
     // they are not applicable.
-    if (fileStructure === UICC_EF_STRUCTURE[EF_TYPE_LINEAR_FIXED] ||
-        fileStructure === UICC_EF_STRUCTURE[EF_TYPE_CYCLIC]) {
+    if (fileStructure === UICC_EF_STRUCTURE[EF_STRUCTURE_LINEAR_FIXED] ||
+        fileStructure === UICC_EF_STRUCTURE[EF_STRUCTURE_CYCLIC]) {
       fileDescriptor.recordLength = (GsmPDUHelper.readHexOctet() << 8) +
                                      GsmPDUHelper.readHexOctet();
       fileDescriptor.numOfRecords = GsmPDUHelper.readHexOctet();
@@ -12502,7 +12675,7 @@ ICCIOHelperObject.prototype = {
       this.context.RIL.iccIO(options);
     }).bind(this);
 
-    options.type = EF_TYPE_LINEAR_FIXED;
+    options.structure = EF_STRUCTURE_LINEAR_FIXED;
     options.pathId = this.context.ICCFileHelper.getEFPath(options.fileId);
     if (options.recordSize) {
       readRecord(options);
@@ -12544,7 +12717,7 @@ ICCIOHelperObject.prototype = {
                       " or recordNumber " + options.recordNumber);
     }
 
-    options.type = EF_TYPE_LINEAR_FIXED;
+    options.structure = EF_STRUCTURE_LINEAR_FIXED;
     options.pathId = this.context.ICCFileHelper.getEFPath(options.fileId);
     let cb = options.callback;
     options.callback = function callback(options) {
@@ -12569,7 +12742,7 @@ ICCIOHelperObject.prototype = {
    *        The callback function shall be called when failure.
    */
   loadTransparentEF: function(options) {
-    options.type = EF_TYPE_TRANSPARENT;
+    options.structure = EF_STRUCTURE_TRANSPARENT;
     let cb = options.callback;
     options.callback = function callback(options) {
       options.callback = cb;
@@ -12654,13 +12827,15 @@ ICCIOHelperObject.prototype = {
     let iter = Iterator(berTlv.value);
     let tlv = BerTlvHelper.searchForNextTag(BER_FCP_FILE_DESCRIPTOR_TAG,
                                             iter);
-    if (!tlv || (tlv.value.fileStructure !== UICC_EF_STRUCTURE[options.type])) {
-      throw new Error("Expected EF type " + UICC_EF_STRUCTURE[options.type] +
+    if (!tlv ||
+        (tlv.value.fileStructure !== UICC_EF_STRUCTURE[options.structure])) {
+      throw new Error("Expected EF structure " +
+                      UICC_EF_STRUCTURE[options.structure] +
                       " but read " + tlv.value.fileStructure);
     }
 
-    if (tlv.value.fileStructure === UICC_EF_STRUCTURE[EF_TYPE_LINEAR_FIXED] ||
-        tlv.value.fileStructure === UICC_EF_STRUCTURE[EF_TYPE_CYCLIC]) {
+    if (tlv.value.fileStructure === UICC_EF_STRUCTURE[EF_STRUCTURE_LINEAR_FIXED] ||
+        tlv.value.fileStructure === UICC_EF_STRUCTURE[EF_STRUCTURE_CYCLIC]) {
       options.recordSize = tlv.value.recordLength;
       options.totalRecords = tlv.value.numOfRecords;
     }
@@ -12716,15 +12891,16 @@ ICCIOHelperObject.prototype = {
         Buf.PDU_HEX_OCTET_SIZE));
 
     // Read Structure of EF, data[13]
-    let efType = GsmPDUHelper.readHexOctet();
-    if (efType != options.type) {
-      throw new Error("Expected EF type " + options.type + " but read " + efType);
+    let efStructure = GsmPDUHelper.readHexOctet();
+    if (efStructure != options.structure) {
+      throw new Error("Expected EF structure " + options.structure +
+                      " but read " + efStructure);
     }
 
-    // TODO: Bug 952025.
     // Length of a record, data[14].
     // Only available for LINEAR_FIXED and CYCLIC.
-    if (efType == EF_TYPE_LINEAR_FIXED || efType == EF_TYPE_CYCLIC) {
+    if (efStructure == EF_STRUCTURE_LINEAR_FIXED ||
+        efStructure == EF_STRUCTURE_CYCLIC) {
       options.recordSize = GsmPDUHelper.readHexOctet();
       options.totalRecords = options.fileSize / options.recordSize;
     } else {
@@ -15229,6 +15405,7 @@ ICCContactHelperObject.prototype = {
    */
   readICCContacts: function(appType, contactType, onsuccess, onerror) {
     let ICCRecordHelper = this.context.ICCRecordHelper;
+    let ICCUtilsHelper = this.context.ICCUtilsHelper;
 
     switch (contactType) {
       case GECKO_CARDCONTACT_TYPE_ADN:
@@ -15239,10 +15416,13 @@ ICCContactHelperObject.prototype = {
         }
         break;
       case GECKO_CARDCONTACT_TYPE_FDN:
+        if (!ICCUtilsHelper.isICCServiceAvailable("FDN")) {
+          onerror(CONTACT_ERR_CONTACT_TYPE_NOT_SUPPORTED);
+          break;
+        }
         ICCRecordHelper.readADNLike(ICC_EF_FDN, onsuccess, onerror);
         break;
       case GECKO_CARDCONTACT_TYPE_SDN:
-        let ICCUtilsHelper = this.context.ICCUtilsHelper;
         if (!ICCUtilsHelper.isICCServiceAvailable("SDN")) {
           onerror(CONTACT_ERR_CONTACT_TYPE_NOT_SUPPORTED);
           break;
@@ -15369,6 +15549,7 @@ ICCContactHelperObject.prototype = {
    */
   updateICCContact: function(appType, contactType, contact, pin2, onsuccess, onerror) {
     let ICCRecordHelper = this.context.ICCRecordHelper;
+    let ICCUtilsHelper = this.context.ICCUtilsHelper;
 
     switch (contactType) {
       case GECKO_CARDCONTACT_TYPE_ADN:
@@ -15382,6 +15563,10 @@ ICCContactHelperObject.prototype = {
         if (!pin2) {
           onerror(GECKO_ERROR_SIM_PIN2);
           return;
+        }
+        if (!ICCUtilsHelper.isICCServiceAvailable("FDN")) {
+          onerror(CONTACT_ERR_CONTACT_TYPE_NOT_SUPPORTED);
+          break;
         }
         ICCRecordHelper.updateADNLike(ICC_EF_FDN, contact, pin2, onsuccess, onerror);
         break;
@@ -15417,7 +15602,7 @@ ICCContactHelperObject.prototype = {
    */
   readAllPhonebookSets: function(pbrs, onsuccess, onerror) {
     let allContacts = [], pbrIndex = 0;
-    let readPhonebook = function readPhonebook(contacts) {
+    let readPhonebook = function(contacts) {
       if (contacts) {
         allContacts = allContacts.concat(contacts);
       }

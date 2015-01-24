@@ -33,7 +33,6 @@ this.Cc = Cc;
 this.CC = CC;
 this.Cu = Cu;
 this.Cr = Cr;
-this.Debugger = Debugger;
 this.Services = Services;
 this.ActorPool = ActorPool;
 this.DevToolsUtils = DevToolsUtils;
@@ -76,7 +75,8 @@ function loadSubScript(aURL)
   }
 }
 
-let events = require("sdk/event/core");
+loader.lazyRequireGetter(this, "events", "sdk/event/core");
+
 let {defer, resolve, reject, all} = require("devtools/toolkit/deprecated-sync-thenables");
 this.defer = defer;
 this.resolve = resolve;
@@ -146,7 +146,6 @@ function ModuleAPI() {
 var DebuggerServer = {
   _listeners: [],
   _initialized: false,
-  _transportInitialized: false,
   // Map of global actor names to actor constructors provided by extensions.
   globalActorFactories: {},
   // Map of tab actor names to actor constructors provided by extensions.
@@ -171,26 +170,13 @@ var DebuggerServer = {
       return;
     }
 
-    this.initTransport();
+    this._connections = {};
+    this._nextConnID = 0;
 
     this._initialized = true;
   },
 
-  protocol: require("devtools/server/protocol"),
-
-  /**
-   * Initialize the debugger server's transport variables.  This can be
-   * in place of init() for cases where the jsdebugger isn't needed.
-   */
-  initTransport: function DS_initTransport() {
-    if (this._transportInitialized) {
-      return;
-    }
-
-    this._connections = {};
-    this._nextConnID = 0;
-    this._transportInitialized = true;
-  },
+  get protocol() require("devtools/server/protocol"),
 
   get initialized() this._initialized,
 
@@ -218,10 +204,22 @@ var DebuggerServer = {
     this.closeAllListeners();
     this.globalActorFactories = {};
     this.tabActorFactories = {};
-    this._transportInitialized = false;
     this._initialized = false;
 
     dumpn("Debugger server is shut down.");
+  },
+
+  /**
+   * Raises an exception if the server has not been properly initialized.
+   */
+  _checkInit: function DS_checkInit() {
+    if (!this._initialized) {
+      throw "DebuggerServer has not been initialized.";
+    }
+
+    if (!this.createRootActor) {
+      throw "Use DebuggerServer.addActors() to add a root actor implementation.";
+    }
   },
 
   /**
@@ -378,7 +376,14 @@ var DebuggerServer = {
         type: { global: true }
       });
     }
-
+    let win = Services.wm.getMostRecentWindow(DebuggerServer.chromeWindowType);
+    if (win && win.navigator.mozSettings) {
+      this.registerModule("devtools/server/actors/settings", {
+        prefix: "settings",
+        constructor: "SettingsActor",
+        type: { global: true }
+      });
+    }
     this.registerModule("devtools/server/actors/webapps", {
       prefix: "webapps",
       constructor: "WebappsActor",
@@ -731,6 +736,31 @@ var DebuggerServer = {
   get isInChildProcess() !!this.parentMessageManager,
 
   /**
+   * In a chrome parent process, ask all content child processes
+   * to execute a given module setup helper.
+   *
+   * @param module
+   *        The module to be required
+   * @param setupChild
+   *        The name of the setup helper exported by the above module
+   *        (setup helper signature: function ({mm}) { ... })
+   */
+  setupInChild: function({ module, setupChild, args }) {
+    if (this.isInChildProcess) {
+      return;
+    }
+
+    const gMessageManager = Cc["@mozilla.org/globalmessagemanager;1"].
+      getService(Ci.nsIMessageListenerManager);
+
+    gMessageManager.broadcastAsyncMessage("debug:setup-in-child", {
+      module: module,
+      setupChild: setupChild,
+      args: args,
+    });
+  },
+
+  /**
    * In a content child process, ask the DebuggerServer in the parent process
    * to execute a given module setup helper.
    *
@@ -829,6 +859,8 @@ var DebuggerServer = {
       let { NetworkMonitorManager } = require("devtools/toolkit/webconsole/network-monitor");
       netMonitor = new NetworkMonitorManager(aFrame, actor.actor);
 
+      events.emit(DebuggerServer, "new-child-process", { mm: mm });
+
       deferred.resolve(actor);
     }).bind(this);
     mm.addMessageListener("debug:actor", onActorCreated);
@@ -900,19 +932,6 @@ var DebuggerServer = {
     mm.sendAsyncMessage("debug:connect", { prefix: prefix });
 
     return deferred.promise;
-  },
-
-  /**
-   * Raises an exception if the server has not been properly initialized.
-   */
-  _checkInit: function DS_checkInit() {
-    if (!this._transportInitialized) {
-      throw "DebuggerServer has not been initialized.";
-    }
-
-    if (!this.createRootActor) {
-      throw "Use DebuggerServer.addActors() to add a root actor implementation.";
-    }
   },
 
   /**
@@ -1126,7 +1145,7 @@ function DebuggerServerConnection(aPrefix, aTransport)
   this._nextID = 1;
 
   this._actorPool = new ActorPool(this);
-  this._extraPools = [];
+  this._extraPools = [this._actorPool];
 
   // Responses to a given actor must be returned the the client
   // in the same order as the requests that they're replying to, but
@@ -1269,10 +1288,6 @@ DebuggerServerConnection.prototype = {
   },
 
   poolFor: function DSC_actorPool(aActorID) {
-    if (this._actorPool && this._actorPool.has(aActorID)) {
-      return this._actorPool;
-    }
-
     for (let pool of this._extraPools) {
       if (pool.has(aActorID)) {
         return pool;
@@ -1509,7 +1524,6 @@ DebuggerServerConnection.prototype = {
     }
     events.emit(this, "closed", aStatus);
 
-    this._actorPool.cleanup();
     this._actorPool = null;
     this._extraPools.map(function(p) { p.cleanup(); });
     this._extraPools = null;
@@ -1526,9 +1540,12 @@ DebuggerServerConnection.prototype = {
       dumpn("--------------------- actorPool actors: " +
             uneval(Object.keys(this._actorPool._actors)));
     }
-    for each (let pool in this._extraPools)
-      dumpn("--------------------- extraPool actors: " +
-            uneval(Object.keys(pool._actors)));
+    for each (let pool in this._extraPools) {
+      if (pool !== this._actorPool) {
+        dumpn("--------------------- extraPool actors: " +
+              uneval(Object.keys(pool._actors)));
+      }
+    }
   },
 
   /*

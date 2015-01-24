@@ -2032,7 +2032,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsDocument)
     tmp->mAnimationController->Traverse(&cb);
   }
 
-  if (tmp->mSubDocuments && tmp->mSubDocuments->ops) {
+  if (tmp->mSubDocuments && tmp->mSubDocuments->IsInitialized()) {
     PL_DHashTableEnumerate(tmp->mSubDocuments, SubDocTraverser, &cb);
   }
 
@@ -3282,6 +3282,15 @@ nsDocument::GetUndoManager()
   return undoManager.forget();
 }
 
+bool
+nsDocument::IsWebAnimationsEnabled(JSContext* /*unused*/, JSObject* /*unused*/)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  return nsContentUtils::IsCallerChrome() ||
+         Preferences::GetBool("dom.animations-api.core.enabled");
+}
+
 AnimationTimeline*
 nsDocument::Timeline()
 {
@@ -3608,7 +3617,7 @@ nsDocument::SetBaseURI(nsIURI* aURI)
   nsCOMPtr<nsIContentSecurityPolicy> csp;
   nsresult rv = NodePrincipal()->GetCsp(getter_AddRefs(csp));
   NS_ENSURE_SUCCESS(rv, rv);
-  if (csp) {
+  if (csp && aURI) {
     bool permitsBaseURI = false;
 
     // base-uri is only enforced if explicitly defined in the
@@ -3951,8 +3960,7 @@ nsDocument::SetSubDocumentFor(Element* aElement, nsIDocument* aSubDoc)
     if (mSubDocuments) {
       SubDocMapEntry *entry =
         static_cast<SubDocMapEntry*>
-                   (PL_DHashTableOperate(mSubDocuments, aElement,
-                                         PL_DHASH_LOOKUP));
+                   (PL_DHashTableLookup(mSubDocuments, aElement));
 
       if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
         PL_DHashTableRawRemove(mSubDocuments, entry);
@@ -3964,18 +3972,14 @@ nsDocument::SetSubDocumentFor(Element* aElement, nsIDocument* aSubDoc)
 
       static const PLDHashTableOps hash_table_ops =
       {
-        PL_DHashAllocTable,
-        PL_DHashFreeTable,
         PL_DHashVoidPtrKeyStub,
         PL_DHashMatchEntryStub,
         PL_DHashMoveEntryStub,
         SubDocClearEntry,
-        PL_DHashFinalizeStub,
         SubDocInitEntry
       };
 
-      mSubDocuments = PL_NewDHashTable(&hash_table_ops, nullptr,
-                                       sizeof(SubDocMapEntry));
+      mSubDocuments = PL_NewDHashTable(&hash_table_ops, sizeof(SubDocMapEntry));
       if (!mSubDocuments) {
         return NS_ERROR_OUT_OF_MEMORY;
       }
@@ -3984,8 +3988,7 @@ nsDocument::SetSubDocumentFor(Element* aElement, nsIDocument* aSubDoc)
     // Add a mapping to the hash table
     SubDocMapEntry *entry =
       static_cast<SubDocMapEntry*>
-                 (PL_DHashTableOperate(mSubDocuments, aElement,
-                                       PL_DHASH_ADD));
+                 (PL_DHashTableAdd(mSubDocuments, aElement));
 
     if (!entry) {
       return NS_ERROR_OUT_OF_MEMORY;
@@ -4013,8 +4016,7 @@ nsDocument::GetSubDocumentFor(nsIContent *aContent) const
   if (mSubDocuments && aContent->IsElement()) {
     SubDocMapEntry *entry =
       static_cast<SubDocMapEntry*>
-                 (PL_DHashTableOperate(mSubDocuments, aContent->AsElement(),
-                                       PL_DHASH_LOOKUP));
+                 (PL_DHashTableLookup(mSubDocuments, aContent->AsElement()));
 
     if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
       return entry->mSubDocument;
@@ -5250,6 +5252,7 @@ nsIDocument::InsertAnonymousContent(Element& aElement, ErrorResult& aRv)
     return nullptr;
   }
 
+  nsAutoScriptBlocker scriptBlocker;
   nsCOMPtr<Element> container = shell->GetCanvasFrame()
                                      ->GetCustomContentContainer();
   if (!container) {
@@ -5274,6 +5277,8 @@ nsIDocument::InsertAnonymousContent(Element& aElement, ErrorResult& aRv)
     new AnonymousContent(clonedElement->AsElement());
   mAnonymousContents.AppendElement(anonymousContent);
 
+  shell->GetCanvasFrame()->ShowCustomContentContainer();
+
   return anonymousContent.forget();
 }
 
@@ -5287,6 +5292,7 @@ nsIDocument::RemoveAnonymousContent(AnonymousContent& aContent,
     return;
   }
 
+  nsAutoScriptBlocker scriptBlocker;
   nsCOMPtr<Element> container = shell->GetCanvasFrame()
                                      ->GetCustomContentContainer();
   if (!container) {
@@ -5294,8 +5300,8 @@ nsIDocument::RemoveAnonymousContent(AnonymousContent& aContent,
     return;
   }
 
-  // Iterate over know customContents to get and remove the right one
-  for (int32_t i = mAnonymousContents.Length() - 1; i >= 0; --i) {
+  // Iterate over mAnonymousContents to find and remove the given node.
+  for (size_t i = 0, len = mAnonymousContents.Length(); i < len; ++i) {
     if (mAnonymousContents[i] == &aContent) {
       // Get the node from the customContent
       nsCOMPtr<Element> node = aContent.GetContentNode();
@@ -5311,6 +5317,9 @@ nsIDocument::RemoveAnonymousContent(AnonymousContent& aContent,
 
       break;
     }
+  }
+  if (mAnonymousContents.IsEmpty()) {
+    shell->GetCanvasFrame()->HideCustomContentContainer();
   }
 }
 
@@ -5838,6 +5847,7 @@ nsDocument::RegisterUnresolvedElement(Element* aElement, nsIAtom* aTypeName)
 
   nsRefPtr<Element>* elem = unresolved->AppendElement();
   *elem = aElement;
+  aElement->AddStates(NS_EVENT_STATE_UNRESOLVED);
 
   return NS_OK;
 }
@@ -6268,11 +6278,17 @@ nsDocument::RegisterElement(JSContext* aCx, const nsAString& aType,
     for (size_t i = 0; i < candidates->Length(); ++i) {
       Element *elem = candidates->ElementAt(i);
 
+      elem->RemoveStates(NS_EVENT_STATE_UNRESOLVED);
+
       // Make sure that the element name matches the name in the definition.
       // (e.g. a definition for x-button extending button should match
       // <button is="x-button"> but not <x-button>.
-      if (elem->NodeInfo()->NameAtom() != nameAtom) {
-        // Skip over this element because definition does not apply.
+      // Note: we also check the tag name, because if it's not the above
+      // mentioned case, it can be that only the |is| property has been
+      // changed, which we should ignore by the spec.
+      if (elem->NodeInfo()->NameAtom() != nameAtom &&
+          elem->Tag() == nameAtom) {
+        //Skip over this element because definition does not apply.
         continue;
       }
 
@@ -9697,7 +9713,7 @@ class StubCSSLoaderObserver MOZ_FINAL : public nsICSSLoaderObserver {
   ~StubCSSLoaderObserver() {}
 public:
   NS_IMETHOD
-  StyleSheetLoaded(CSSStyleSheet*, bool, nsresult)
+  StyleSheetLoaded(CSSStyleSheet*, bool, nsresult) MOZ_OVERRIDE
   {
     return NS_OK;
   }
@@ -11837,7 +11853,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSICONTENTPERMISSIONREQUEST
 
-  NS_IMETHOD Run()
+  NS_IMETHOD Run() MOZ_OVERRIDE
   {
     nsCOMPtr<Element> e = do_QueryReferent(mElement);
     nsCOMPtr<nsIDocument> d = do_QueryReferent(mDocument);

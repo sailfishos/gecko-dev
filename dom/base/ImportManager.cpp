@@ -10,7 +10,7 @@
 #include "HTMLLinkElement.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
-#include "nsCrossSiteListenerProxy.h"
+#include "nsCORSListenerProxy.h"
 #include "nsIChannel.h"
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
@@ -293,7 +293,7 @@ ImportLoader::ImportLoader(nsIURI* aURI, nsIDocument* aImportParent)
   , mReady(false)
   , mStopped(false)
   , mBlockingScripts(false)
-  , mUpdater(MOZ_THIS_IN_INITIALIZER_LIST())
+  , mUpdater(this)
 {
 }
 

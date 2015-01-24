@@ -282,7 +282,17 @@ public:
     return gfx::SurfaceFormat::UNKNOWN;
   }
 
-  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() { return nullptr; }
+  /**
+   * This method is strictly for debugging. It causes locking and
+   * needless copies.
+   */
+  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() {
+    Lock(OpenMode::OPEN_READ);
+    RefPtr<gfx::SourceSurface> surf = BorrowDrawTarget()->Snapshot();
+    RefPtr<gfx::DataSourceSurface> data = surf->GetDataSurface();
+    Unlock();
+    return data;
+  }
 
   virtual void PrintInfo(std::stringstream& aStream, const char* aPrefix);
 
@@ -416,8 +426,10 @@ public:
    * If the texture flags contain TextureFlags::DEALLOCATE_CLIENT, the destruction
    * will be synchronously coordinated with the compositor side, otherwise it
    * will be done asynchronously.
+   * If sync is true, the destruction will be synchronous regardless of the
+   * texture's flags (bad for performance, use with care).
    */
-  void ForceRemove();
+  void ForceRemove(bool sync = false);
 
   virtual void SetReleaseFenceHandle(FenceHandle aReleaseFenceHandle)
   {
@@ -558,11 +570,11 @@ public:
 
   virtual ~BufferTextureClient();
 
-  virtual bool IsAllocated() const = 0;
+  virtual bool IsAllocated() const MOZ_OVERRIDE = 0;
 
   virtual uint8_t* GetBuffer() const = 0;
 
-  virtual gfx::IntSize GetSize() const { return mSize; }
+  virtual gfx::IntSize GetSize() const MOZ_OVERRIDE { return mSize; }
 
   virtual bool Lock(OpenMode aMode) MOZ_OVERRIDE;
 

@@ -13,7 +13,7 @@
 #include "nsSiteSecurityService.h"
 #include "nsString.h"
 #include "nsTArray.h"
-#include "pkix/nullptr.h"
+#include "pkix/stdkeywords.h"
 #include "pkix/pkixtypes.h"
 #include "prlog.h"
 #include "RootCertificateTelemetryUtils.h"
@@ -365,5 +365,18 @@ PublicKeyPinningService::ChainHasValidPins(const CERTCertList* certList,
   if (!hostname || hostname[0] == 0) {
     return CheckChainAgainstAllNames(certList, enforceTestMode, time);
   }
-  return CheckPinsForHostname(certList, hostname, enforceTestMode, time);
+  nsAutoCString canonicalizedHostname(CanonicalizeHostname(hostname));
+  return CheckPinsForHostname(certList, canonicalizedHostname.get(),
+                              enforceTestMode, time);
+}
+
+nsAutoCString
+PublicKeyPinningService::CanonicalizeHostname(const char* hostname)
+{
+  nsAutoCString canonicalizedHostname(hostname);
+  ToLowerCase(canonicalizedHostname);
+  while (canonicalizedHostname.Last() == '.') {
+    canonicalizedHostname.Truncate(canonicalizedHostname.Length() - 1);
+  }
+  return canonicalizedHostname;
 }

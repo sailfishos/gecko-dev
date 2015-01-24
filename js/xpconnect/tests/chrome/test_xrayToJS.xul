@@ -172,15 +172,14 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
       "findIndex", "copyWithin", "fill", kIteratorSymbol, "entries", "keys", "constructor"];
   if (isNightlyBuild) {
     gPrototypeProperties['Array'].push('includes');
-    let pjsMethods = ['mapPar', 'reducePar', 'scanPar', 'scatterPar', 'filterPar'];
-    gPrototypeProperties['Array'] = gPrototypeProperties['Array'].concat(pjsMethods);
   }
   for (var c of typedArrayClasses) {
     gPrototypeProperties[c] = ["constructor", "BYTES_PER_ELEMENT"];
   }
   gPrototypeProperties['TypedArray'] =
     ["length", "buffer", "byteLength", "byteOffset", kIteratorSymbol, "subarray",
-     "set", "copyWithin", "find", "findIndex", "indexOf", "lastIndexOf", "reverse"];
+     "set", "copyWithin", "find", "findIndex", "indexOf", "lastIndexOf", "reverse",
+     "join", "every", "some", "reduce", "reduceRight", "entries", "keys", "values"];
   if (isNightlyBuild) {
     gPrototypeProperties['TypedArray'].push('includes');
   }

@@ -89,7 +89,7 @@ protected:
     AnswerNPP_HandleEvent(const NPRemoteEvent& event, int16_t* handled) MOZ_OVERRIDE;
     virtual bool
     AnswerNPP_HandleEvent_Shmem(const NPRemoteEvent& event,
-                                Shmem& mem,
+                                Shmem&& mem,
                                 int16_t* handled,
                                 Shmem* rtnmem) MOZ_OVERRIDE;
     virtual bool
@@ -143,29 +143,31 @@ protected:
     virtual bool
     RecvPPluginScriptableObjectConstructor(PPluginScriptableObjectChild* aActor) MOZ_OVERRIDE;
 
+    virtual bool
+    RecvPBrowserStreamConstructor(PBrowserStreamChild* aActor, const nsCString& aURL,
+                                  const uint32_t& aLength, const uint32_t& aLastmodified,
+                                  PStreamNotifyChild* aNotifyData, const nsCString& aHeaders) MOZ_OVERRIDE;
+
+    virtual bool
+    AnswerNPP_NewStream(
+            PBrowserStreamChild* actor,
+            const nsCString& mimeType,
+            const bool& seekable,
+            NPError* rv,
+            uint16_t* stype) MOZ_OVERRIDE;
+
+    virtual bool
+    RecvAsyncNPP_NewStream(
+            PBrowserStreamChild* actor,
+            const nsCString& mimeType,
+            const bool& seekable) MOZ_OVERRIDE;
+
     virtual PBrowserStreamChild*
     AllocPBrowserStreamChild(const nsCString& url,
                              const uint32_t& length,
                              const uint32_t& lastmodified,
                              PStreamNotifyChild* notifyData,
-                             const nsCString& headers,
-                             const nsCString& mimeType,
-                             const bool& seekable,
-                             NPError* rv,
-                             uint16_t *stype) MOZ_OVERRIDE;
-
-    virtual bool
-    AnswerPBrowserStreamConstructor(
-            PBrowserStreamChild* aActor,
-            const nsCString& url,
-            const uint32_t& length,
-            const uint32_t& lastmodified,
-            PStreamNotifyChild* notifyData,
-            const nsCString& headers,
-            const nsCString& mimeType,
-            const bool& seekable,
-            NPError* rv,
-            uint16_t* stype) MOZ_OVERRIDE;
+                             const nsCString& headers) MOZ_OVERRIDE;
 
     virtual bool
     DeallocPBrowserStreamChild(PBrowserStreamChild* stream) MOZ_OVERRIDE;
@@ -202,9 +204,21 @@ protected:
 #endif
 
 public:
-    explicit PluginInstanceChild(const NPPluginFuncs* aPluginIface);
+    PluginInstanceChild(const NPPluginFuncs* aPluginIface,
+                        const nsCString& aMimeType,
+                        const uint16_t& aMode,
+                        const InfallibleTArray<nsCString>& aNames,
+                        const InfallibleTArray<nsCString>& aValues);
 
     virtual ~PluginInstanceChild();
+
+    NPError DoNPP_New();
+
+    // Common sync+async implementation of NPP_NewStream
+    NPError DoNPP_NewStream(BrowserStreamChild* actor,
+                            const nsCString& mimeType,
+                            const bool& seekable,
+                            uint16_t* stype);
 
     bool Initialize();
 
@@ -352,6 +366,10 @@ private:
 
 #endif
     const NPPluginFuncs* mPluginIface;
+    nsCString                   mMimeType;
+    uint16_t                    mMode;
+    InfallibleTArray<nsCString> mNames;
+    InfallibleTArray<nsCString> mValues;
     NPP_t mData;
     NPWindow mWindow;
 #if defined(XP_MACOSX)
@@ -527,7 +545,7 @@ private:
 
     void Destroy();
 
-    void ActorDestroy(ActorDestroyReason why);
+    void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
 
     // Set as true when SetupLayer called
     // and go with different path in InvalidateRect function

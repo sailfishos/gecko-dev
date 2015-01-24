@@ -11,7 +11,6 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/LinkedList.h"
-#include "mozilla/NullPtr.h"
 #include "mozilla/TypeTraits.h"
 
 #include "jspubtd.h"
@@ -118,6 +117,9 @@ class MutableHandleBase {};
 
 template <typename T>
 class HeapBase {};
+
+template <typename T>
+class PersistentRootedBase {};
 
 /*
  * js::NullPtr acts like a nullptr pointer in contexts that require a Handle.
@@ -492,8 +494,8 @@ class MOZ_NONHEAP_CLASS Handle : public js::HandleBase<T>
 
     const T *ptr;
 
-    template <typename S> void operator=(S) MOZ_DELETE;
-    void operator=(Handle) MOZ_DELETE;
+    template <typename S> void operator=(S) = delete;
+    void operator=(Handle) = delete;
 };
 
 /*
@@ -512,15 +514,8 @@ class MOZ_STACK_CLASS MutableHandle : public js::MutableHandleBase<T>
     inline MOZ_IMPLICIT MutableHandle(PersistentRooted<T> *root);
 
   private:
-    // Disallow true nullptr and emulated nullptr (gcc 4.4/4.5, __null, appears
-    // as int/long [32/64-bit]) for overloading purposes.
-    template<typename N>
-    MutableHandle(N,
-                  typename mozilla::EnableIf<mozilla::IsNullPointer<N>::value ||
-                                             mozilla::IsSame<N, int>::value ||
-                                             mozilla::IsSame<N, long>::value,
-                                             int>::Type dummy = 0)
-    MOZ_DELETE;
+    // Disallow nullptr for overloading purposes.
+    MutableHandle(decltype(nullptr)) = delete;
 
   public:
     void set(T v) {
@@ -556,8 +551,8 @@ class MOZ_STACK_CLASS MutableHandle : public js::MutableHandleBase<T>
 
     T *ptr;
 
-    template <typename S> void operator=(S v) MOZ_DELETE;
-    void operator=(MutableHandle other) MOZ_DELETE;
+    template <typename S> void operator=(S v) = delete;
+    void operator=(MutableHandle other) = delete;
 };
 
 } /* namespace JS */
@@ -624,7 +619,7 @@ class InternalHandle<T*>
         offset(uintptr_t(field))
     {}
 
-    void operator=(InternalHandle<T*> other) MOZ_DELETE;
+    void operator=(InternalHandle<T*> other) = delete;
 };
 
 /*
@@ -836,7 +831,7 @@ class MOZ_STACK_CLASS Rooted : public js::RootedBase<T>
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-    Rooted(const Rooted &) MOZ_DELETE;
+    Rooted(const Rooted &) = delete;
 };
 
 } /* namespace JS */
@@ -927,7 +922,7 @@ class FakeRooted : public RootedBase<T>
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-    FakeRooted(const FakeRooted &) MOZ_DELETE;
+    FakeRooted(const FakeRooted &) = delete;
 };
 
 /* Interface substitute for MutableHandle<T> which is not required to point to rooted memory. */
@@ -960,9 +955,9 @@ class FakeMutableHandle : public js::MutableHandleBase<T>
     T *ptr;
 
     template <typename S>
-    void operator=(S v) MOZ_DELETE;
+    void operator=(S v) = delete;
 
-    void operator=(const FakeMutableHandle<T>& other) MOZ_DELETE;
+    void operator=(const FakeMutableHandle<T>& other) = delete;
 };
 
 /*
@@ -1078,7 +1073,9 @@ MutableHandle<T>::MutableHandle(PersistentRooted<T> *root)
  * These roots can be used in heap-allocated data structures, so they are not
  * associated with any particular JSContext or stack. They are registered with
  * the JSRuntime itself, without locking, so they require a full JSContext to be
- * constructed, not one of its more restricted superclasses.
+ * initialized, not one of its more restricted superclasses.  Initialization may
+ * take place on construction, or in two phases if the no-argument constructor
+ * is called followed by init().
  *
  * Note that you must not use an PersistentRooted in an object owned by a JS
  * object:
@@ -1104,40 +1101,45 @@ MutableHandle<T>::MutableHandle(PersistentRooted<T> *root)
  * marked when the object itself is marked.
  */
 template<typename T>
-class PersistentRooted : private mozilla::LinkedListElement<PersistentRooted<T> > {
+class PersistentRooted : public js::PersistentRootedBase<T>,
+                         private mozilla::LinkedListElement<PersistentRooted<T>>
+{
+    typedef mozilla::LinkedListElement<PersistentRooted<T>> ListBase;
+
     friend class mozilla::LinkedList<PersistentRooted>;
     friend class mozilla::LinkedListElement<PersistentRooted>;
 
     friend struct js::gc::PersistentRootedMarker<T>;
 
+    friend void js::gc::FinishPersistentRootedChains(JSRuntime *rt);
+
     void registerWithRuntime(JSRuntime *rt) {
+        MOZ_ASSERT(!initialized());
         JS::shadow::Runtime *srt = JS::shadow::Runtime::asShadowRuntime(rt);
         srt->getPersistentRootedList<T>().insertBack(this);
     }
 
   public:
-    explicit PersistentRooted(JSContext *cx) : ptr(js::GCMethods<T>::initial())
-    {
-        registerWithRuntime(js::GetRuntime(cx));
+    PersistentRooted() : ptr(js::GCMethods<T>::initial()) {}
+
+    explicit PersistentRooted(JSContext *cx) {
+        init(cx);
     }
 
-    PersistentRooted(JSContext *cx, T initial) : ptr(initial)
-    {
-        registerWithRuntime(js::GetRuntime(cx));
+    PersistentRooted(JSContext *cx, T initial) {
+        init(cx, initial);
     }
 
-    explicit PersistentRooted(JSRuntime *rt) : ptr(js::GCMethods<T>::initial())
-    {
-        registerWithRuntime(rt);
+    explicit PersistentRooted(JSRuntime *rt) {
+        init(rt);
     }
 
-    PersistentRooted(JSRuntime *rt, T initial) : ptr(initial)
-    {
-        registerWithRuntime(rt);
+    PersistentRooted(JSRuntime *rt, T initial) {
+        init(rt, initial);
     }
 
     PersistentRooted(const PersistentRooted &rhs)
-      : mozilla::LinkedListElement<PersistentRooted<T> >(),
+      : mozilla::LinkedListElement<PersistentRooted<T>>(),
         ptr(rhs.ptr)
     {
         /*
@@ -1149,6 +1151,37 @@ class PersistentRooted : private mozilla::LinkedListElement<PersistentRooted<T> 
          * anyway. C++ doesn't let us declare mutable base classes.
          */
         const_cast<PersistentRooted &>(rhs).setNext(this);
+    }
+
+    bool initialized() {
+        return ListBase::isInList();
+    }
+
+    void init(JSContext *cx) {
+        init(cx, js::GCMethods<T>::initial());
+    }
+
+    void init(JSContext *cx, T initial)
+    {
+        ptr = initial;
+        registerWithRuntime(js::GetRuntime(cx));
+    }
+
+    void init(JSRuntime *rt) {
+        init(rt, js::GCMethods<T>::initial());
+    }
+
+    void init(JSRuntime *rt, T initial)
+    {
+        ptr = initial;
+        registerWithRuntime(rt);
+    }
+
+    void reset() {
+        if (initialized()) {
+            set(js::GCMethods<T>::initial());
+            ListBase::remove();
+        }
     }
 
     /*
@@ -1163,17 +1196,17 @@ class PersistentRooted : private mozilla::LinkedListElement<PersistentRooted<T> 
     const T &get() const { return ptr; }
 
     T &operator=(T value) {
-        MOZ_ASSERT(!js::GCMethods<T>::poisoned(value));
-        ptr = value;
+        set(value);
         return ptr;
     }
 
-    T &operator=(const PersistentRooted &value) {
-        ptr = value;
+    T &operator=(const PersistentRooted &other) {
+        set(other.ptr);
         return ptr;
     }
 
     void set(T value) {
+        MOZ_ASSERT(initialized());
         MOZ_ASSERT(!js::GCMethods<T>::poisoned(value));
         ptr = value;
     }

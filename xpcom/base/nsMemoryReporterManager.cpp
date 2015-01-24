@@ -602,7 +602,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     int64_t amount;
     nsresult rv = VsizeDistinguishedAmount(&amount);
@@ -629,7 +629,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     int64_t amount;
     nsresult rv = ResidentDistinguishedAmount(&amount);
@@ -663,7 +663,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     struct rusage usage;
     int err = getrusage(RUSAGE_SELF, &usage);
@@ -707,7 +707,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     int64_t amount = 0;
     nsresult rv = PageFaultsHardDistinguishedAmount(&amount);
@@ -756,7 +756,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     jemalloc_stats_t stats;
     jemalloc_stats(&stats);
@@ -862,7 +862,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     size_t Main, Static;
     NS_SizeOfAtomTablesIncludingThis(MallocSizeOf, &Main, &Static);
@@ -899,7 +899,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_METHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                           nsISupports* aData, bool aAnonymize)
+                           nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     return MOZ_COLLECT_REPORT(
       "explicit/deadlock-detector", KIND_HEAP, UNITS_BYTES,
@@ -957,7 +957,7 @@ public:
            "Memory used by DMD's live block table.");
 
     REPORT("explicit/dmd/dead-block-list",
-           sizes.mDeadBlockList,
+           sizes.mDeadBlockTable,
            "Memory used by DMD's dead block list.");
 
 #undef REPORT
@@ -984,7 +984,7 @@ NS_IMPL_ISUPPORTS(nsMemoryReporterManager, nsIMemoryReporterManager)
 NS_IMETHODIMP
 nsMemoryReporterManager::Init()
 {
-#if defined(HAVE_JEMALLOC_STATS) && defined(XP_LINUX)
+#if defined(HAVE_JEMALLOC_STATS) && defined(MOZ_GLUE_IN_PROGRAM)
   if (!jemalloc_stats) {
     return NS_ERROR_FAILURE;
   }
@@ -1578,7 +1578,7 @@ public:
   NS_IMETHOD Callback(const nsACString& aProcess, const nsACString& aPath,
                       int32_t aKind, int32_t aUnits, int64_t aAmount,
                       const nsACString& aDescription,
-                      nsISupports* aWrappedExplicit)
+                      nsISupports* aWrappedExplicit) MOZ_OVERRIDE
   {
     // Using the "heap-allocated" reporter here instead of
     // nsMemoryReporterManager.heapAllocated goes against the usual

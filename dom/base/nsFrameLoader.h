@@ -224,6 +224,9 @@ public:
 
   void GetURL(nsString& aURL);
 
+  void ActivateUpdateHitRegion();
+  void DeactivateUpdateHitRegion();
+
 private:
 
   void SetOwnerContent(mozilla::dom::Element* aContent);
@@ -284,7 +287,7 @@ private:
 
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.
-  nsresult UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame);
+  void UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame);
   nsresult CheckURILoad(nsIURI* aURI);
   void FireErrorEvent();
   nsresult ReallyStartLoadingInternal();
@@ -331,6 +334,7 @@ private:
   // a reframe, so that we know not to restore the presentation.
   nsCOMPtr<nsIDocument> mContainerDocWhileDetached;
 
+  bool mIsPrerendered : 1;
   bool mDepthTooGreat : 1;
   bool mIsTopLevelContent : 1;
   bool mDestroyCalled : 1;

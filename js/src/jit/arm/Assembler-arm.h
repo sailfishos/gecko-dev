@@ -147,15 +147,25 @@ static MOZ_CONSTEXPR_VAR FloatRegister d15 = {FloatRegisters::d15, VFPRegister::
 // function boundaries. I'm trying to make sure this is always true.
 static const uint32_t ABIStackAlignment = 8;
 static const uint32_t CodeAlignment = 8;
+static const uint32_t JitStackAlignment = 8;
 
 // This boolean indicates whether we support SIMD instructions flavoured for
 // this architecture or not. Rather than a method in the LIRGenerator, it is
 // here such that it is accessible from the entire codebase. Once full support
 // for SIMD is reached on all tier-1 platforms, this constant can be deleted.
 static const bool SupportsSimd = false;
-static const uint32_t SimdStackAlignment = 8;
+static const uint32_t SimdMemoryAlignment = 8;
 
-static const uint32_t AsmJSStackAlignment = SimdStackAlignment;
+static_assert(CodeAlignment % SimdMemoryAlignment == 0,
+  "Code alignment should be larger than any of the alignments which are used for "
+  "the constant sections of the code buffer.  Thus it should be larger than the "
+  "alignment for SIMD constants.");
+
+static_assert(JitStackAlignment % SimdMemoryAlignment == 0,
+  "Stack alignment should be larger than any of the alignments which are used for "
+  "spilled values.  Thus it should be larger than the alignment for SIMD accesses.");
+
+static const uint32_t AsmJSStackAlignment = SimdMemoryAlignment;
 
 static const Scale ScalePointer = TimesFour;
 

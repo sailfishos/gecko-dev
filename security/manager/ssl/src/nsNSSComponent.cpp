@@ -9,11 +9,14 @@
 #include "ExtendedValidation.h"
 #include "NSSCertDBTrustDomain.h"
 #include "mozilla/Telemetry.h"
+#include "nsAppDirectoryServiceDefs.h"
 #include "nsCertVerificationThread.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsICertOverrideService.h"
+#include "NSSCertDBTrustDomain.h"
+#include "nsThreadUtils.h"
 #include "mozilla/Preferences.h"
 #include "nsThreadUtils.h"
 #include "mozilla/PublicSSL.h"
@@ -154,6 +157,7 @@ bool EnsureNSSInitialized(EnsureNSSOperator op)
     // call do_GetService for nss component to ensure it.
   case nssEnsure:
   case nssEnsureOnChromeOnly:
+  case nssEnsureChromeOrContent:
     // We are reentered during nss component creation or nss component is already up
     if (PR_AtomicAdd(&haveLoaded, 0) || loading)
       return true;
@@ -1078,6 +1082,12 @@ nsNSSComponent::InitializeNSS()
     return NS_ERROR_FAILURE;
   }
 
+  // ensure the CertBlocklist is initialised
+  nsCOMPtr<nsICertBlocklist> certList = do_GetService(NS_CERTBLOCKLIST_CONTRACTID);
+  if (!certList) {
+    return NS_ERROR_FAILURE;
+  }
+
   // dynamic options from prefs
   setValidationOptions(true, lock);
 
@@ -1142,8 +1152,6 @@ nsNSSComponent::ShutdownNSS()
   }
 }
 
-static const bool SEND_LM_DEFAULT = false;
-
 NS_IMETHODIMP
 nsNSSComponent::Init()
 {
@@ -1178,10 +1186,6 @@ nsNSSComponent::Init()
     mNSSErrorsBundle->GetStringFromName(dummy_name.get(),
                                         getter_Copies(result));
   }
-
-  bool sendLM = Preferences::GetBool("network.ntlm.send-lm-response",
-                                     SEND_LM_DEFAULT);
-  nsNTLMAuthModule::SetSendLM(sendLM);
 
   // Do that before NSS init, to make sure we won't get unloaded.
   RegisterObservers();
@@ -1362,11 +1366,6 @@ nsNSSComponent::Observe(nsISupports* aSubject, const char* aTopic,
                prefName.EqualsLiteral("security.cert_pinning.enforcement_level")) {
       MutexAutoLock lock(mutex);
       setValidationOptions(false, lock);
-    } else if (prefName.EqualsLiteral("network.ntlm.send-lm-response")) {
-      bool sendLM = Preferences::GetBool("network.ntlm.send-lm-response",
-                                         SEND_LM_DEFAULT);
-      nsNTLMAuthModule::SetSendLM(sendLM);
-      clearSessionCache = false;
     } else {
       clearSessionCache = false;
     }

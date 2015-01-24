@@ -27,42 +27,103 @@ let ReaderMode = {
   // performance reasons)
   MAX_ELEMS_TO_PARSE: 3000,
 
+  get isEnabledForParseOnLoad() {
+    delete this.isEnabledForParseOnLoad;
+
+    // Listen for future pref changes.
+    Services.prefs.addObserver("reader.parse-on-load.", this, false);
+
+    return this.isEnabledForParseOnLoad = this._getStateForParseOnLoad();
+  },
+
+  get isOnLowMemoryPlatform() {
+    let memory = Cc["@mozilla.org/xpcom/memory-service;1"].getService(Ci.nsIMemory);
+    delete this.isOnLowMemoryPlatform;
+    return this.isOnLowMemoryPlatform = memory.isLowMemoryPlatform();
+  },
+
+  _getStateForParseOnLoad: function () {
+    let isEnabled = Services.prefs.getBoolPref("reader.parse-on-load.enabled");
+    let isForceEnabled = Services.prefs.getBoolPref("reader.parse-on-load.force-enabled");
+    // For low-memory devices, don't allow reader mode since it takes up a lot of memory.
+    // See https://bugzilla.mozilla.org/show_bug.cgi?id=792603 for details.
+    return isForceEnabled || (isEnabled && !this.isOnLowMemoryPlatform);
+  },
+
   observe: function(aMessage, aTopic, aData) {
     switch(aTopic) {
-      case "nsPref:changed": {
+      case "nsPref:changed":
         if (aData.startsWith("reader.parse-on-load.")) {
           this.isEnabledForParseOnLoad = this._getStateForParseOnLoad();
         }
         break;
-      }
     }
   },
 
   /**
-   * Gets an article from a loaded browser's document. This method will parse the document
-   * if it does not find the article in the cache.
+   * Gets an article from a loaded browser's document. This method will not attempt
+   * to parse certain URIs (e.g. about: URIs).
    *
-   * @param browser A browser with a loaded page.
+   * @param doc A document to parse.
    * @return {Promise}
    * @resolves JS object representing the article, or null if no article is found.
    */
-  parseDocumentFromBrowser: Task.async(function* (browser) {
-    let uri = browser.currentURI;
+  parseDocument: Task.async(function* (doc) {
+    let uri = Services.io.newURI(doc.documentURI, null, null);
     if (!this._shouldCheckUri(uri)) {
       this.log("Reader mode disabled for URI");
       return null;
     }
 
-    // First, try to find a parsed article in the cache.
-    let article = yield this.getArticleFromCache(uri);
-    if (article) {
-      this.log("Page found in cache, return article immediately");
-      return article;
-    }
-
-    let doc = browser.contentWindow.document;
-    return yield this.readerParse(uri, doc);
+    return yield this._readerParse(uri, doc);
   }),
+
+  /**
+   * Downloads and parses a document from a URL.
+   *
+   * @param url URL to download and parse.
+   * @return {Promise}
+   * @resolves JS object representing the article, or null if no article is found.
+   */
+  downloadAndParseDocument: Task.async(function* (url) {
+    let uri = Services.io.newURI(url, null, null);
+    let doc = yield this._downloadDocument(url);
+    return yield this._readerParse(uri, doc);
+  }),
+
+  _downloadDocument: function (url) {
+    return new Promise((resolve, reject) => {
+      let xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.onerror = evt => reject(evt.error);
+      xhr.responseType = "document";
+      xhr.onload = evt => {
+        if (xhr.status !== 200) {
+          reject("Reader mode XHR failed with status: " + xhr.status);
+          return;
+        }
+
+        let doc = xhr.responseXML;
+
+        // Manually follow a meta refresh tag if one exists.
+        let meta = doc.querySelector("meta[http-equiv=refresh]");
+        if (meta) {
+          let content = meta.getAttribute("content");
+          if (content) {
+            let urlIndex = content.indexOf("URL=");
+            if (urlIndex > -1) {
+              let url = content.substring(urlIndex + 4);
+              this._downloadDocument(url).then((doc) => resolve(doc));
+              return;
+            }
+          }
+        }
+        resolve(doc);
+      }
+      xhr.send();
+    });
+  },
+
 
   /**
    * Retrieves an article from the cache given an article URI.
@@ -138,7 +199,7 @@ let ReaderMode = {
    * @return {Promise}
    * @resolves JS object representing the article, or null if no article is found.
    */
-  readerParse: function (uri, doc) {
+  _readerParse: function (uri, doc) {
     return new Promise((resolve, reject) => {
       let numTags = doc.getElementsByTagName("*").length;
       if (numTags > this.MAX_ELEMS_TO_PARSE) {

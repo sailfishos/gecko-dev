@@ -305,15 +305,9 @@ SVGSVGElement::UnsuspendRedrawAll()
 }
 
 void
-SVGSVGElement::ForceRedraw(ErrorResult& rv)
+SVGSVGElement::ForceRedraw()
 {
-  nsIDocument* doc = GetComposedDoc();
-  if (!doc) {
-    rv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
-
-  doc->FlushPendingNotifications(Flush_Display);
+  // no-op
 }
 
 void
@@ -1245,6 +1239,34 @@ bool
 SVGSVGElement::ClearTransformProperty()
 {
   return UnsetProperty(nsGkAtoms::transform);
+}
+
+int32_t
+SVGSVGElement::GetIntrinsicWidth()
+{
+  if (mLengthAttributes[ATTR_WIDTH].IsPercentage()) {
+    return -1;
+  }
+  // Passing |this| as a SVGSVGElement* invokes the variant of GetAnimValue
+  // that uses the passed argument as the context, but that's fine since we
+  // know the length isn't a percentage so the context won't be used (and we
+  // need to pass the element to be able to resolve em/ex units).
+  float width = mLengthAttributes[ATTR_WIDTH].GetAnimValue(this);
+  return nsSVGUtils::ClampToInt(width);
+}
+
+int32_t
+SVGSVGElement::GetIntrinsicHeight()
+{
+  if (mLengthAttributes[ATTR_HEIGHT].IsPercentage()) {
+    return -1;
+  }
+  // Passing |this| as a SVGSVGElement* invokes the variant of GetAnimValue
+  // that uses the passed argument as the context, but that's fine since we
+  // know the length isn't a percentage so the context won't be used (and we
+  // need to pass the element to be able to resolve em/ex units).
+  float height = mLengthAttributes[ATTR_HEIGHT].GetAnimValue(this);
+  return nsSVGUtils::ClampToInt(height);
 }
 
 } // namespace dom

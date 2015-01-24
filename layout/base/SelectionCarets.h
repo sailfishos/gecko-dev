@@ -77,7 +77,7 @@ public:
   NS_DECL_NSISELECTIONLISTENER
 
   // Notify selection carets about the blur event to hidden itself
-  void NotifyBlur();
+  void NotifyBlur(bool aIsLeavingDocument);
 
   // nsIScrollObserver
   virtual void ScrollPositionChanged() MOZ_OVERRIDE;
@@ -108,7 +108,7 @@ public:
 private:
   virtual ~SelectionCarets();
 
-  SelectionCarets() MOZ_DELETE;
+  SelectionCarets() = delete;
 
   /**
    * Set visibility for selection caret.
@@ -121,8 +121,8 @@ private:
   void UpdateSelectionCarets();
 
   /**
-   * Select word base on current position, only active when element
-   * is focused. Triggered by long tap event.
+   * Select a word base on current position, which activates only if element is
+   * selectable. Triggered by long tap event.
    */
   nsresult SelectWord();
 
@@ -207,6 +207,7 @@ private:
                                           dom::SelectionState aState);
   void DispatchSelectionStateChangedEvent(dom::Selection* aSelection,
                                           const dom::Sequence<dom::SelectionState>& aStates);
+  void DispatchCustomEvent(const nsAString& aEvent);
   nsRect GetSelectionBoundingRect(dom::Selection* aSel);
 
   /**

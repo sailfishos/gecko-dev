@@ -9,7 +9,7 @@ let { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
 // Enable logging for all the tests. Both the debugger server and frontend will
 // be affected by this pref.
 let gEnableLogging = Services.prefs.getBoolPref("devtools.debugger.log");
-Services.prefs.setBoolPref("devtools.debugger.log", true);
+Services.prefs.setBoolPref("devtools.debugger.log", false);
 
 let { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
 let { Promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
@@ -30,6 +30,7 @@ const DESTROY_NODES_URL = EXAMPLE_URL + "doc_destroy-nodes.html";
 const CONNECT_PARAM_URL = EXAMPLE_URL + "doc_connect-param.html";
 const CONNECT_MULTI_PARAM_URL = EXAMPLE_URL + "doc_connect-multi-param.html";
 const IFRAME_CONTEXT_URL = EXAMPLE_URL + "doc_iframe-context.html";
+const AUTOMATION_URL = EXAMPLE_URL + "doc_automation.html";
 
 // All tests are asynchronous.
 waitForExplicitFinish();
@@ -230,7 +231,7 @@ function checkVariableView (view, index, hash, description = "") {
   // If node shouldn't display any properties, ensure that the 'empty' message is
   // visible
   if (!variables.length) {
-    ok(isVisible(scope.window.$("#properties-tabpanel-content-empty")),
+    ok(isVisible(scope.window.$("#properties-empty")),
       description + " should show the empty properties tab.");
     return;
   }
@@ -317,6 +318,12 @@ function mouseOver (win, element) {
   EventUtils.sendMouseEvent({ type: "mouseover" }, element, win);
 }
 
+function command (button) {
+  let ev = button.ownerDocument.createEvent("XULCommandEvent");
+  ev.initCommandEvent("command", true, true, button.ownerDocument.defaultView, 0, false, false, false, false, null);
+  button.dispatchEvent(ev);
+}
+
 function isVisible (element) {
   return !element.getAttribute("hidden");
 }
@@ -394,6 +401,46 @@ function forceCC () {
 }
 
 /**
+ * Takes a `values` array of automation value entries,
+ * looking for the value at `time` seconds, checking
+ * to see if the value is close to `expected`.
+ */
+function checkAutomationValue (values, time, expected) {
+  // Remain flexible on values as we can approximate points
+  let EPSILON = 0.01;
+
+  let value = getValueAt(values, time);
+  ok(Math.abs(value - expected) < EPSILON, "Timeline value at " + time + " with value " + value + " should have value very close to " + expected);
+
+  /**
+   * Entries are ordered in `values` according to time, so if we can't find an exact point
+   * on a time of interest, return the point in between the threshold. This should
+   * get us a very close value.
+   */
+  function getValueAt (values, time) {
+    for (let i = 0; i < values.length; i++) {
+      if (values[i].delta === time) {
+        return values[i].value;
+      }
+      if (values[i].delta > time) {
+        return (values[i - 1].value + values[i].value) / 2;
+      }
+    }
+    return values[values.length - 1].value;
+  }
+}
+
+/**
+ * Wait for all inspector tabs to complete rendering.
+ */
+function waitForInspectorRender (panelWin, EVENTS) {
+  return Promise.all([
+    once(panelWin, EVENTS.UI_PROPERTIES_TAB_RENDERED),
+    once(panelWin, EVENTS.UI_AUTOMATION_TAB_RENDERED)
+  ]);
+}
+
+/**
  * List of audio node properties to test against expectations of the AudioNode actor
  */
 
@@ -466,5 +513,8 @@ const NODE_DEFAULT_VALUES = {
     "type": "sine",
     "frequency": 440,
     "detune": 0
+  },
+  "StereoPannerNode": {
+    "pan": 0
   }
 };

@@ -57,10 +57,11 @@ MediaOmxCommonDecoder::CheckDecoderCanOffloadAudio()
 }
 
 void
-MediaOmxCommonDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo)
+MediaOmxCommonDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo,
+                                        bool aRestoredFromDormant)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  MediaDecoder::FirstFrameLoaded(aInfo);
+  MediaDecoder::FirstFrameLoaded(aInfo, aRestoredFromDormant);
 
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
   if (!CheckDecoderCanOffloadAudio()) {

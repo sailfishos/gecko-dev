@@ -21,9 +21,6 @@ public:
   // Called by the media decoder to indicate that the download is progressing.
   virtual void DownloadProgressed() = 0;
 
-  // Dispatch a synchronous event to the decoder owner
-  virtual nsresult DispatchEvent(const nsAString& aName) = 0;
-
   // Dispatch an asynchronous event to the decoder owner
   virtual nsresult DispatchAsyncEvent(const nsAString& aName) = 0;
 
@@ -122,6 +119,12 @@ public:
   // decide whether to set the ready state to HAVE_CURRENT_DATA,
   // HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA.
   virtual void UpdateReadyStateForData(NextFrameStatus aNextFrame) = 0;
+
+  // Check if the decoder owner is active.
+  virtual bool IsActive() = 0;
+
+  // Check if the decoder owner is hidden.
+  virtual bool IsHidden() = 0;
 
   // Called by the media decoder and the video frame to get the
   // ImageContainer containing the video data.

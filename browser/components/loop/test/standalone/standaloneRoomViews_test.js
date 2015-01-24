@@ -26,6 +26,7 @@ describe("loop.standaloneRoomViews", function() {
     feedbackStore = new loop.store.FeedbackStore(dispatcher, {
       feedbackClient: {}
     });
+    loop.store.StoreMixin.register({feedbackStore: feedbackStore});
 
     sandbox.useFakeTimers();
 
@@ -40,12 +41,12 @@ describe("loop.standaloneRoomViews", function() {
   describe("StandaloneRoomView", function() {
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
-        loop.standaloneRoomViews.StandaloneRoomView({
-          dispatcher: dispatcher,
-          activeRoomStore: activeRoomStore,
-          feedbackStore: feedbackStore,
-          helper: new loop.shared.utils.Helper()
-        }));
+        React.createElement(
+          loop.standaloneRoomViews.StandaloneRoomView, {
+            dispatcher: dispatcher,
+            activeRoomStore: activeRoomStore,
+            helper: new loop.shared.utils.Helper()
+          }));
     }
 
     function expectActionDispatched(view) {

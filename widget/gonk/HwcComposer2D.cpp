@@ -30,7 +30,8 @@
 #include "mozilla/StaticPtr.h"
 #include "cutils/properties.h"
 #include "gfx2DGlue.h"
-#include "nsWindow.h"
+#include "gfxPlatform.h"
+#include "VsyncSource.h"
 
 #if ANDROID_VERSION >= 17
 #include "libdisplay/FramebufferSurface.h"
@@ -116,6 +117,9 @@ HwcComposer2D::HwcComposer2D()
     , mHasHWVsync(false)
     , mLock("mozilla.HwcComposer2D.mLock")
 {
+#if ANDROID_VERSION >= 17
+    RegisterHwcEventCallback();
+#endif
 }
 
 HwcComposer2D::~HwcComposer2D() {
@@ -154,8 +158,6 @@ HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur, gl::GLContext* aGLCont
         mColorFill = false;
         mRBSwapSupport = false;
     }
-
-    RegisterHwcEventCallback();
 #else
     char propValue[PROPERTY_VALUE_MAX];
     property_get("ro.display.colorfill", propValue, "0");
@@ -194,8 +196,9 @@ HwcComposer2D::EnableVsync(bool aEnable)
       return false;
     }
 
-    device->eventControl(device, HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, aEnable);
-    return aEnable;
+    return !device->eventControl(device, HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, aEnable) && aEnable;
+#else
+    return false;
 #endif
 }
 
@@ -225,7 +228,8 @@ HwcComposer2D::Vsync(int aDisplay, nsecs_t aVsyncTimestamp)
       LOGE("Non-uniform vsync interval: %lld\n", vsyncInterval);
     }
     mLastVsyncTime = aVsyncTimestamp;
-    nsWindow::NotifyVsync(vsyncTime);
+
+    gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().NotifyVsync(vsyncTime);
 }
 
 // Called on the "invalidator" thread (run from HAL).
@@ -426,13 +430,16 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
         return false;
     }
 
+    const bool needsYFlip = state.OriginBottomLeft() ? true
+                                                     : false;
+
     hwc_rect_t sourceCrop, displayFrame;
     if(!HwcUtils::PrepareLayerRects(visibleRect,
                           layerTransform,
                           layerBufferTransform,
                           clip,
                           bufferRect,
-                          state.YFlipped(),
+                          needsYFlip,
                           &(sourceCrop),
                           &(displayFrame)))
     {
@@ -609,7 +616,10 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
             }
         }
 
-        if (state.YFlipped()) {
+        const bool needsYFlip = state.OriginBottomLeft() ? true
+                                                         : false;
+
+        if (needsYFlip) {
            // Invert vertical reflection flag if it was already set
            hwcLayer.transform ^= HWC_TRANSFORM_FLIP_V;
         }

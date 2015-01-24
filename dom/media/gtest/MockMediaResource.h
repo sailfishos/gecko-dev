@@ -38,7 +38,7 @@ public:
     return NS_OK;
   }
   virtual nsresult ReadAt(int64_t aOffset, char* aBuffer, uint32_t aCount,
-                          uint32_t* aBytes);
+                          uint32_t* aBytes) MOZ_OVERRIDE;
   virtual nsresult Seek(int32_t aWhence, int64_t aOffset) MOZ_OVERRIDE
   {
     return NS_OK;
@@ -57,10 +57,14 @@ public:
   virtual bool IsSuspendedByCache() MOZ_OVERRIDE { return false; }
   virtual bool IsSuspended() MOZ_OVERRIDE { return false; }
   virtual nsresult ReadFromCache(char* aBuffer, int64_t aOffset,
-                                 uint32_t aCount)
+                                 uint32_t aCount) MOZ_OVERRIDE
   {
-    return NS_OK;
+    uint32_t bytesRead = 0;
+    nsresult rv = ReadAt(aOffset, aBuffer, aCount, &bytesRead);
+    NS_ENSURE_SUCCESS(rv, rv);
+    return bytesRead == aCount ? NS_OK : NS_ERROR_FAILURE;
   }
+
   virtual bool IsTransportSeekable() MOZ_OVERRIDE { return true; }
   virtual nsresult Open(nsIStreamListener** aStreamListener) MOZ_OVERRIDE;
   virtual nsresult GetCachedRanges(nsTArray<MediaByteRange>& aRanges)

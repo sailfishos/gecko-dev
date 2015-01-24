@@ -11,6 +11,7 @@
 #include "mozilla/a11y/DocManager.h"
 #include "mozilla/a11y/FocusManager.h"
 #include "mozilla/a11y/SelectionManager.h"
+#include "mozilla/Preferences.h"
 
 #include "nsIObserver.h"
 
@@ -63,7 +64,7 @@ public:
 
   // nsIAccessibilityService
   virtual Accessible* GetRootDocumentAccessible(nsIPresShell* aPresShell,
-                                                bool aCanCreate);
+                                                bool aCanCreate) MOZ_OVERRIDE;
   already_AddRefed<Accessible>
     CreatePluginAccessible(nsPluginFrame* aFrame, nsIContent* aContent,
                            Accessible* aContext);
@@ -72,8 +73,8 @@ public:
    * Adds/remove ATK root accessible for gtk+ native window to/from children
    * of the application accessible.
    */
-  virtual Accessible* AddNativeRootAccessible(void* aAtkAccessible);
-  virtual void RemoveNativeRootAccessible(Accessible* aRootAccessible);
+  virtual Accessible* AddNativeRootAccessible(void* aAtkAccessible) MOZ_OVERRIDE;
+  virtual void RemoveNativeRootAccessible(Accessible* aRootAccessible) MOZ_OVERRIDE;
 
   virtual bool HasAccessible(nsIDOMNode* aDOMNode) MOZ_OVERRIDE;
 
@@ -144,7 +145,7 @@ public:
    */
   void RecreateAccessible(nsIPresShell* aPresShell, nsIContent* aContent);
 
-  virtual void FireAccessibleEvent(uint32_t aEvent, Accessible* aTarget);
+  virtual void FireAccessibleEvent(uint32_t aEvent, Accessible* aTarget) MOZ_OVERRIDE;
 
   // nsAccessibiltiyService
 
@@ -251,12 +252,11 @@ GetAccService()
 inline bool
 IPCAccessibilityActive()
 {
-  // XXX temporarily disable ipc accessibility because of crashes.
-return false;
 #ifdef MOZ_B2G
   return false;
 #else
-  return XRE_GetProcessType() == GeckoProcessType_Content;
+  return XRE_GetProcessType() == GeckoProcessType_Content &&
+    mozilla::Preferences::GetBool("accessibility.ipc_architecture.enabled", true);
 #endif
 }
 

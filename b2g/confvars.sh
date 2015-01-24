@@ -5,12 +5,12 @@
 MOZ_APP_BASENAME=B2G
 MOZ_APP_VENDOR=Mozilla
 
-MOZ_APP_VERSION=37.0a1
+MOZ_APP_VERSION=38.0a1
 MOZ_APP_UA_NAME=Firefox
 
 MOZ_UA_OS_AGNOSTIC=1
 
-MOZ_B2G_VERSION=2.2.0.0-prerelease
+MOZ_B2G_VERSION=3.0.0.0-prerelease
 MOZ_B2G_OS_NAME=Boot2Gecko
 
 MOZ_BRANDING_DIRECTORY=b2g/branding/unofficial
@@ -59,6 +59,10 @@ MOZ_B2G=1
 if test "$OS_TARGET" = "Android"; then
 MOZ_NUWA_PROCESS=1
 MOZ_B2G_LOADER=1
+# Warnings-as-errors cannot be enabled on Lollipop until bug 1119980 is fixed.
+if test "$PLATFORM_SDK_VERSION" -lt 21; then
+MOZ_ENABLE_WARNINGS_AS_ERRORS=1
+fi
 fi
 
 MOZ_JSDOWNLOADS=1

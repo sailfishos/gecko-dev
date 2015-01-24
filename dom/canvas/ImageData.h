@@ -73,13 +73,13 @@ public:
     return mData;
   }
 
-  JSObject* WrapObject(JSContext* cx);
+  bool WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector);
 
 private:
   void HoldData();
   void DropData();
 
-  ImageData() MOZ_DELETE;
+  ImageData() = delete;
 
   uint32_t mWidth, mHeight;
   JS::Heap<JSObject*> mData;

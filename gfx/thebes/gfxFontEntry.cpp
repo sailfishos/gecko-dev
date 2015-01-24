@@ -85,6 +85,8 @@ gfxFontEntry::gfxFontEntry() :
     mHasSpaceFeaturesKerning(false),
     mHasSpaceFeaturesNonKerning(false),
     mSkipDefaultFeatureSpaceCheck(false),
+    mSpaceGlyphIsInvisible(false),
+    mSpaceGlyphIsInvisibleInitialized(false),
     mCheckedForGraphiteTables(false),
     mHasCmapTable(false),
     mGrFaceInitialized(false),
@@ -120,6 +122,8 @@ gfxFontEntry::gfxFontEntry(const nsAString& aName, bool aIsStandardFace) :
     mHasSpaceFeaturesKerning(false),
     mHasSpaceFeaturesNonKerning(false),
     mSkipDefaultFeatureSpaceCheck(false),
+    mSpaceGlyphIsInvisible(false),
+    mSpaceGlyphIsInvisibleInitialized(false),
     mCheckedForGraphiteTables(false),
     mHasCmapTable(false),
     mGrFaceInitialized(false),
@@ -1461,15 +1465,15 @@ gfxFontFamily::FindFontForChar(GlobalFontMatch *aMatchData)
     }
 
     bool needsBold;
-    gfxFontStyle normal;
-    gfxFontEntry *fe = FindFontForStyle(
-                  (aMatchData->mStyle == nullptr) ? *aMatchData->mStyle : normal,
-                  needsBold);
+    gfxFontEntry *fe =
+        FindFontForStyle(aMatchData->mStyle ? *aMatchData->mStyle
+                                            : gfxFontStyle(),
+                         needsBold);
 
     if (fe && !fe->SkipDuringSystemFallback()) {
         int32_t rank = 0;
 
-        if (fe->TestCharacterMap(aMatchData->mCh)) {
+        if (fe->HasCharacter(aMatchData->mCh)) {
             rank += RANK_MATCHED_CMAP;
             aMatchData->mCount++;
 #ifdef PR_LOGGING
@@ -1516,7 +1520,7 @@ gfxFontFamily::SearchAllFontsForChar(GlobalFontMatch *aMatchData)
     uint32_t i, numFonts = mAvailableFonts.Length();
     for (i = 0; i < numFonts; i++) {
         gfxFontEntry *fe = mAvailableFonts[i];
-        if (fe && fe->TestCharacterMap(aMatchData->mCh)) {
+        if (fe && fe->HasCharacter(aMatchData->mCh)) {
             int32_t rank = RANK_MATCHED_CMAP;
             rank += CalcStyleMatch(fe, aMatchData->mStyle);
             if (rank > aMatchData->mMatchRank

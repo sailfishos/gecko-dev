@@ -23,6 +23,7 @@
 #include "nsIFile.h"
 #include "plbase64.h"
 #include "nsIXULRuntime.h"
+#include "imgLoader.h"
 
 #include "nsIGfxInfo.h"
 #include "GfxDriverInfo.h"
@@ -326,7 +327,7 @@ NS_IMPL_ISUPPORTS(GPUAdapterReporter, nsIMemoryReporter)
 
 gfxWindowsPlatform::gfxWindowsPlatform()
   : mD3D11DeviceInitialized(false)
-  , mPrefFonts(32)
+  , mIsWARP(false)
 {
     mUseClearTypeForDownloadableFonts = UNINITIALIZED_VALUE;
     mUseClearTypeAlways = UNINITIALIZED_VALUE;
@@ -385,6 +386,17 @@ gfxWindowsPlatform::UpdateRenderMode()
 /* Pick the default render mode for
  * desktop.
  */
+    if (DidRenderingDeviceReset()) {
+      mD3D11DeviceInitialized = false;
+      mD3D11Device = nullptr;
+      mD3D11ContentDevice = nullptr;
+      mAdapter = nullptr;
+
+      imgLoader::Singleton()->ClearCache(true);
+      imgLoader::Singleton()->ClearCache(false);
+      Factory::SetDirect3D11Device(nullptr);
+    }
+
     mRenderMode = RENDER_GDI;
 
     bool isVistaOrHigher = IsVistaOrLater();
@@ -486,18 +498,14 @@ gfxWindowsPlatform::UpdateRenderMode()
     if (mRenderMode == RENDER_DIRECT2D) {
       canvasMask |= BackendTypeBit(BackendType::DIRECT2D);
       contentMask |= BackendTypeBit(BackendType::DIRECT2D);
-#ifdef USE_D2D1_1
       if (gfxPrefs::Direct2DUse1_1() && Factory::SupportsD2D1() &&
           GetD3D11ContentDevice()) {
         contentMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
         canvasMask |= BackendTypeBit(BackendType::DIRECT2D1_1);
         defaultBackend = BackendType::DIRECT2D1_1;
       } else {
-#endif
         defaultBackend = BackendType::DIRECT2D;
-#ifdef USE_D2D1_1
       }
-#endif
     } else {
       canvasMask |= BackendTypeBit(BackendType::SKIA);
     }
@@ -620,13 +628,11 @@ gfxWindowsPlatform::VerifyD2DDevice(bool aAttemptForce)
         mozilla::gfx::Factory::SetDirect3D10Device(cairo_d2d_device_get_device(mD2DDevice));
     }
 
-#ifdef USE_D2D1_1
     ScopedGfxFeatureReporter reporter1_1("D2D1.1");
 
     if (Factory::SupportsD2D1()) {
       reporter1_1.SetSuccessful();
     }
-#endif
 #endif
 }
 
@@ -1042,24 +1048,22 @@ gfxWindowsPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlag
 bool
 gfxWindowsPlatform::DidRenderingDeviceReset()
 {
-  return GetD3D10Device() && GetD3D10Device()->GetDeviceRemovedReason() != S_OK;
-}
-
-gfxFontFamily *
-gfxWindowsPlatform::FindFontFamily(const nsAString& aName)
-{
-    return gfxPlatformFontList::PlatformFontList()->FindFamily(aName);
-}
-
-gfxFontEntry *
-gfxWindowsPlatform::FindFontEntry(const nsAString& aName, const gfxFontStyle& aFontStyle)
-{
-    nsRefPtr<gfxFontFamily> ff = FindFontFamily(aName);
-    if (!ff)
-        return nullptr;
-
-    bool aNeedsBold;
-    return ff->FindFontForStyle(aFontStyle, aNeedsBold);
+  if (mD3D11Device) {
+    if (mD3D11Device->GetDeviceRemovedReason() != S_OK) {
+      return true;
+    }
+  }
+  if (mD3D11ContentDevice) {
+    if (mD3D11ContentDevice->GetDeviceRemovedReason() != S_OK) {
+      return true;
+    }
+  }
+  if (GetD3D10Device()) {
+    if (GetD3D10Device()->GetDeviceRemovedReason() != S_OK) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void
@@ -1096,18 +1100,6 @@ gfxWindowsPlatform::GetPlatformCMSOutputProfile(void* &mem, size_t &mem_size)
                 NS_ConvertUTF16toUTF8(str).get());
 #endif // DEBUG_tor
 #endif // _WIN32
-}
-
-bool
-gfxWindowsPlatform::GetPrefFontEntries(const nsCString& aKey, nsTArray<nsRefPtr<gfxFontEntry> > *array)
-{
-    return mPrefFonts.Get(aKey, array);
-}
-
-void
-gfxWindowsPlatform::SetPrefFontEntries(const nsCString& aKey, nsTArray<nsRefPtr<gfxFontEntry> >& array)
-{
-    mPrefFonts.Put(aKey, array);
 }
 
 bool
@@ -1590,8 +1582,6 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
   return true;
 }
 
-#define TEXTURE_SIZE 32
-
 // See bug 1083071. On some drivers, Direct3D 11 CreateShaderResourceView fails
 // with E_OUTOFMEMORY.
 bool DoesD3D11TextureSharingWork(ID3D11Device *device)
@@ -1610,10 +1600,25 @@ bool DoesD3D11TextureSharingWork(ID3D11Device *device)
     return true;
   }
 
+  if (GetModuleHandleW(L"atidxx32.dll")) {
+    nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
+    if (gfxInfo) {
+      nsString vendorID, vendorID2;
+      gfxInfo->GetAdapterVendorID(vendorID);
+      gfxInfo->GetAdapterVendorID2(vendorID2);
+      if (vendorID.EqualsLiteral("0x8086") && vendorID2.IsEmpty()) {
+#if defined(MOZ_CRASHREPORTER)
+        CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("Unexpected Intel/AMD dual-GPU setup\n"));
+#endif
+        return false;
+      }
+    }
+  }
+
   RefPtr<ID3D11Texture2D> texture;
   D3D11_TEXTURE2D_DESC desc;
-  desc.Width = TEXTURE_SIZE;
-  desc.Height = TEXTURE_SIZE;
+  desc.Width = 32;
+  desc.Height = 32;
   desc.MipLevels = 1;
   desc.ArraySize = 1;
   desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -1623,16 +1628,7 @@ bool DoesD3D11TextureSharingWork(ID3D11Device *device)
   desc.CPUAccessFlags = 0;
   desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
   desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-
-  int color[TEXTURE_SIZE * TEXTURE_SIZE];
-  D3D11_SUBRESOURCE_DATA data;
-  data.pSysMem = color;
-  data.SysMemPitch = TEXTURE_SIZE * 4;
-  data.SysMemSlicePitch = 0;
-  for (int i = 0; i < sizeof(color)/sizeof(color[0]); i++) {
-      color[i] = 0xff00ffff;
-  }
-  if (FAILED(device->CreateTexture2D(&desc, &data, byRef(texture)))) {
+  if (FAILED(device->CreateTexture2D(&desc, NULL, byRef(texture)))) {
     return false;
   }
 
@@ -1659,47 +1655,6 @@ bool DoesD3D11TextureSharingWork(ID3D11Device *device)
   if (FAILED(sharedResource->QueryInterface(__uuidof(ID3D11Texture2D),
                                             getter_AddRefs(sharedTexture))))
   {
-    return false;
-  }
-
-  desc.Usage = D3D11_USAGE_STAGING;
-  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-  desc.MiscFlags = 0;
-  desc.BindFlags = 0;
-
-  RefPtr<ID3D11Texture2D> cpuTexture;
-  if (FAILED(device->CreateTexture2D(&desc, &data, byRef(cpuTexture)))) {
-    return false;
-  }
-
-  nsRefPtr<IDXGIKeyedMutex> sharedMutex;
-  nsRefPtr<ID3D11DeviceContext> deviceContext;
-  sharedResource->QueryInterface(__uuidof(IDXGIKeyedMutex), getter_AddRefs(sharedMutex));
-  device->GetImmediateContext(getter_AddRefs(deviceContext));
-  if (FAILED(sharedMutex->AcquireSync(0, 30*1000))) {
-#if defined(MOZ_CRASHREPORTER)
-    CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("Keyed Mutex timeout\n"));
-#endif
-    // only wait for 30 seconds
-    return false;
-  }
-
-  int resultColor;
-  deviceContext->CopyResource(cpuTexture, sharedTexture);
-
-  D3D11_MAPPED_SUBRESOURCE mapped;
-  deviceContext->Map(cpuTexture, 0, D3D11_MAP_READ, 0, &mapped);
-  resultColor = *(int*)mapped.pData;
-  deviceContext->Unmap(cpuTexture, 0);
-
-  sharedMutex->ReleaseSync(0);
-
-  if (resultColor != color[0]) {
-    // Shared surfaces seem to be broken on dual AMD & Intel HW when using the
-    // AMD GPU
-#if defined(MOZ_CRASHREPORTER)
-    CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("Shared Surfaces don't work\n"));
-#endif
     return false;
   }
 
@@ -1833,12 +1788,12 @@ gfxWindowsPlatform::InitD3D11Devices()
       MOZ_CRASH();
     }
 
+    mIsWARP = true;
     reporterWARP.SetSuccessful();
   }
 
   mD3D11Device->SetExceptionMode(0);
 
-#ifdef USE_D2D1_1
   // We create our device for D2D content drawing here. Normally we don't use
   // D2D content drawing when using WARP. However when WARP is forced by
   // default we will let Direct2D use WARP as well.
@@ -1864,7 +1819,6 @@ gfxWindowsPlatform::InitD3D11Devices()
 
     Factory::SetDirect3D11Device(mD3D11ContentDevice);
   }
-#endif
 
   // We leak these everywhere and we need them our entire runtime anyway, let's
   // leak it here as well.

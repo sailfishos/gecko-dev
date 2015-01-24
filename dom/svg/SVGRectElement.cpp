@@ -112,7 +112,7 @@ SVGRectElement::GetLengthInfo()
 
 bool
 SVGRectElement::GetGeometryBounds(Rect* aBounds, Float aStrokeWidth,
-                                  const Matrix& aTransform)
+                                  CapStyle aCapStyle, const Matrix& aTransform)
 {
   Rect rect;
   Float rx, ry;
@@ -122,7 +122,8 @@ SVGRectElement::GetGeometryBounds(Rect* aBounds, Float aStrokeWidth,
   if (rect.IsEmpty()) {
     // Rendering of the element disabled
     rect.SetEmpty(); // Make sure width/height are zero and not negative
-    *aBounds = rect; // We still want the x/y position from 'rect'
+    // We still want the x/y position from 'rect'
+    *aBounds = aTransform.TransformBounds(rect);
     return true;
   }
 

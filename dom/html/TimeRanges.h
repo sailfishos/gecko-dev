@@ -50,7 +50,7 @@ public:
   // Mutate this TimeRange to be the intersection of this and aOtherRanges.
   void Intersection(const TimeRanges* aOtherRanges);
 
-  JSObject* WrapObject(JSContext* aCx);
+  bool WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector);
 
   uint32_t Length() const
   {
@@ -91,7 +91,7 @@ public:
   typedef nsTArray<TimeRange>::index_type index_type;
   static const index_type NoIndex = index_type(-1);
 
-  index_type Find(double aTime);
+  index_type Find(double aTime, double aError = 0);
 
   bool Contains(double aStart, double aEnd) {
     index_type target = Find(aStart);

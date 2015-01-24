@@ -137,7 +137,7 @@ static const ManifestDirective kParsingTable[] = {
     nullptr, &nsChromeRegistry::ManifestOverride, nullptr
   },
   {
-    "resource",         2, true, true, false, false,
+    "resource",         2, true, true, true, false,
     nullptr, &nsChromeRegistry::ManifestResource, nullptr
   }
 };
@@ -579,7 +579,7 @@ ParseManifest(NSLocationType aType, FileLocation& aFile, char* aBuf,
     mozilla::AndroidBridge::Bridge()->GetStaticStringField("android/os/Build$VERSION",
                                                            "RELEASE",
                                                            osVersion);
-    isTablet = mozilla::widget::android::GeckoAppShell::IsTablet();
+    isTablet = mozilla::widget::GeckoAppShell::IsTablet();
   }
 #endif
 

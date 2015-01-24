@@ -29,6 +29,7 @@
 #include "mozilla/layers/TextureHost.h"  // for TextureSource, etc
 #include "mozilla/layers/TextureHostOGL.h"  // for TextureSourceOGL, etc
 #include "mozilla/mozalloc.h"           // for operator delete, etc
+#include "nsAppRunner.h"
 #include "nsAString.h"
 #include "nsIConsoleService.h"          // for nsIConsoleService, etc
 #include "nsIWidget.h"                  // for nsIWidget
@@ -103,6 +104,13 @@ already_AddRefed<mozilla::gl::GLContext>
 CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
+
+  // Used by mock widget to create an offscreen context
+  void* widgetOpenGLContext = mWidget->GetNativeData(NS_NATIVE_OPENGL_CONTEXT);
+  if (widgetOpenGLContext) {
+    GLContext* alreadyRefed = reinterpret_cast<GLContext*>(widgetOpenGLContext);
+    return already_AddRefed<GLContext>(alreadyRefed);
+  }
 
 #ifdef XP_WIN
   if (PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
@@ -570,7 +578,7 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   PROFILER_LABEL("CompositorOGL", "BeginFrame",
     js::ProfileEntry::Category::GRAPHICS);
 
-  MOZ_ASSERT(!mFrameInProgress, "frame still in progress (should have called EndFrame or AbortFrame");
+  MOZ_ASSERT(!mFrameInProgress, "frame still in progress (should have called EndFrame");
 
   mFrameInProgress = true;
   gfx::Rect rect;
@@ -1311,18 +1319,6 @@ CompositorOGL::EndFrameForExternalComposition(const gfx::Matrix& aTransform)
     CopyToTarget(mTarget, mTargetBounds.TopLeft(), aTransform);
     mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
   }
-  if (mTexturePool) {
-    mTexturePool->EndFrame();
-  }
-}
-
-void
-CompositorOGL::AbortFrame()
-{
-  mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
-  mFrameInProgress = false;
-  mCurrentRenderTarget = nullptr;
-
   if (mTexturePool) {
     mTexturePool->EndFrame();
   }

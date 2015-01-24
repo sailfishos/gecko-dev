@@ -7,7 +7,7 @@
 #define mozilla_dom_workers_serviceworkerevents_h__
 
 #include "mozilla/dom/Event.h"
-#include "mozilla/dom/InstallPhaseEventBinding.h"
+#include "mozilla/dom/ExtendableEventBinding.h"
 #include "mozilla/dom/InstallEventBinding.h"
 
 namespace mozilla {
@@ -20,40 +20,37 @@ BEGIN_WORKERS_NAMESPACE
 
 class ServiceWorker;
 
-bool
-ServiceWorkerEventsVisible(JSContext* aCx, JSObject* aObj);
-
-class InstallPhaseEvent : public Event
+class ExtendableEvent : public Event
 {
   nsRefPtr<Promise> mPromise;
 
 protected:
-  explicit InstallPhaseEvent(mozilla::dom::EventTarget* aOwner);
-  ~InstallPhaseEvent() {}
+  explicit ExtendableEvent(mozilla::dom::EventTarget* aOwner);
+  ~ExtendableEvent() {}
 
 public:
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(InstallPhaseEvent, Event)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(ExtendableEvent, Event)
   NS_FORWARD_TO_EVENT
 
   virtual JSObject* WrapObjectInternal(JSContext* aCx) MOZ_OVERRIDE
   {
-    return mozilla::dom::InstallPhaseEventBinding_workers::Wrap(aCx, this);
+    return mozilla::dom::ExtendableEventBinding::Wrap(aCx, this);
   }
 
-  static already_AddRefed<InstallPhaseEvent>
+  static already_AddRefed<ExtendableEvent>
   Constructor(mozilla::dom::EventTarget* aOwner,
               const nsAString& aType,
               const EventInit& aOptions)
   {
-    nsRefPtr<InstallPhaseEvent> e = new InstallPhaseEvent(aOwner);
+    nsRefPtr<ExtendableEvent> e = new ExtendableEvent(aOwner);
     bool trusted = e->Init(aOwner);
     e->InitEvent(aType, aOptions.mBubbles, aOptions.mCancelable);
     e->SetTrusted(trusted);
     return e.forget();
   }
 
-  static already_AddRefed<InstallPhaseEvent>
+  static already_AddRefed<ExtendableEvent>
   Constructor(const GlobalObject& aGlobal,
               const nsAString& aType,
               const EventInit& aOptions,
@@ -74,10 +71,11 @@ public:
   }
 };
 
-class InstallEvent MOZ_FINAL : public InstallPhaseEvent
+class InstallEvent MOZ_FINAL : public ExtendableEvent
 {
   // FIXME(nsm): Bug 982787 will allow actually populating this.
   nsRefPtr<ServiceWorker> mActiveWorker;
+  bool mActivateImmediately;
 
 protected:
   explicit InstallEvent(mozilla::dom::EventTarget* aOwner);
@@ -85,12 +83,12 @@ protected:
 
 public:
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(InstallEvent, InstallPhaseEvent)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(InstallEvent, ExtendableEvent)
   NS_FORWARD_TO_EVENT
 
   virtual JSObject* WrapObjectInternal(JSContext* aCx) MOZ_OVERRIDE
   {
-    return mozilla::dom::InstallEventBinding_workers::Wrap(aCx, this);
+    return mozilla::dom::InstallEventBinding::Wrap(aCx, this);
   }
 
   static already_AddRefed<InstallEvent>
@@ -126,9 +124,14 @@ public:
   void
   Replace()
   {
-    // FIXME(nsm): Unspecced. Bug 982711
-    NS_WARNING("Not Implemented");
+    mActivateImmediately = true;
   };
+
+  bool
+  ActivateImmediately() const
+  {
+    return mActivateImmediately;
+  }
 };
 
 END_WORKERS_NAMESPACE

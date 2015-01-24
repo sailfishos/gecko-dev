@@ -520,7 +520,8 @@ let emulator = (function() {
       promises.push(promise);
     }
 
-    call.answer();
+    promise = call.answer();
+    promises.push(promise);
 
     return Promise.all(promises).then(() => call);
   }
@@ -535,12 +536,16 @@ let emulator = (function() {
   function hold(call) {
     log("Putting the call on hold.");
 
+    let promises = [];
+
     let promise = waitForNamedStateEvent(call, "holding")
       .then(() => waitForNamedStateEvent(call, "held"));
+    promises.push(promise);
 
-    call.hold();
+    promise = call.hold();
+    promises.push(promise);
 
-    return promise;
+    return Promise.all(promises).then(() => call);
   }
 
   /**
@@ -553,12 +558,16 @@ let emulator = (function() {
   function resume(call) {
     log("Resuming the held call.");
 
+    let promises = [];
+
     let promise = waitForNamedStateEvent(call, "resuming")
       .then(() => waitForNamedStateEvent(call, "connected"));
+    promises.push(promise);
 
-    call.resume();
+    promise = call.resume();
+    promises.push(promise);
 
-    return promise;
+    return Promise.all(promises).then(() => call);
   }
 
   /**
@@ -571,12 +580,16 @@ let emulator = (function() {
   function hangUp(call) {
     log("Local hanging up the call: " + call.id.number);
 
+    let promises = [];
+
     let promise = waitForNamedStateEvent(call, "disconnecting")
       .then(() => waitForNamedStateEvent(call, "disconnected"));
+    promises.push(promise);
 
-    call.hangUp();
+    promise = call.hangUp();
+    promises.push(promise);
 
-    return promise;
+    return Promise.all(promises).then(() => call);
   }
 
   /**
@@ -665,11 +678,9 @@ let emulator = (function() {
    * @param connectedCallback [optional]
    *        A callback function which is called when conference state becomes
    *        connected.
-   * @param twice [optional]
-   *        To send conference request twice. It is only used for special test.
    * @return Promise<[TelephonyCall ...]>
    */
-  function addCallsToConference(callsToAdd, connectedCallback, twice) {
+  function addCallsToConference(callsToAdd, connectedCallback) {
     log("Add " + callsToAdd.length + " calls into conference.");
 
     let promises = [];
@@ -690,13 +701,12 @@ let emulator = (function() {
     promises.push(promise);
 
     // Cannot use apply() through webidl, so just separate the cases to handle.
-    let requestCount = twice ? 2 : 1;
-    for (let i = 0; i < requestCount; ++i) {
-      if (callsToAdd.length == 2) {
-        conference.add(callsToAdd[0], callsToAdd[1]);
-      } else {
-        conference.add(callsToAdd[0]);
-      }
+    if (callsToAdd.length == 2) {
+      promise = conference.add(callsToAdd[0], callsToAdd[1]);
+      promises.push(promise);
+    } else {
+      promise = conference.add(callsToAdd[0]);
+      promises.push(promise);
     }
 
     return Promise.all(promises).then(() => conference.calls);
@@ -732,7 +742,7 @@ let emulator = (function() {
       });
     promises.push(promise);
 
-    conference.hold();
+    promises.push(conference.hold());
 
     return Promise.all(promises).then(() => conference.calls);
   }
@@ -767,7 +777,7 @@ let emulator = (function() {
       });
     promises.push(promise);
 
-    conference.resume();
+    promises.push(conference.resume());
 
     return Promise.all(promises).then(() => conference.calls);
   }
@@ -824,7 +834,7 @@ let emulator = (function() {
       });
     promises.push(promise);
 
-    conference.remove(callToRemove);
+    promises.push(conference.remove(callToRemove));
 
     return Promise.all(promises)
       .then(() => checkCalls(conference.calls, remainedCalls))

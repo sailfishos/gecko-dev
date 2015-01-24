@@ -366,7 +366,7 @@ MSG_DEF(JSMSG_DEBUG_BAD_LINE,          0, JSEXN_TYPEERR, "invalid line number")
 MSG_DEF(JSMSG_DEBUG_BAD_OFFSET,        0, JSEXN_TYPEERR, "invalid script offset")
 MSG_DEF(JSMSG_DEBUG_BAD_REFERENT,      2, JSEXN_TYPEERR, "{0} does not refer to {1}")
 MSG_DEF(JSMSG_DEBUG_BAD_RESUMPTION,    0, JSEXN_TYPEERR, "debugger resumption value must be undefined, {throw: val}, {return: val}, or null")
-MSG_DEF(JSMSG_DEBUG_CANT_DEBUG_GLOBAL, 0, JSEXN_ERR, "passing non-debuggable global to addDebuggee")
+MSG_DEF(JSMSG_DEBUG_CANT_DEBUG_GLOBAL, 0, JSEXN_TYPEERR, "passing non-debuggable global to addDebuggee")
 MSG_DEF(JSMSG_DEBUG_CCW_REQUIRED,      1, JSEXN_TYPEERR, "{0}: argument must be an object from a different compartment")
 MSG_DEF(JSMSG_DEBUG_COMPARTMENT_MISMATCH, 2, JSEXN_TYPEERR, "{0}: descriptor .{1} property is an object in a different compartment than the target object")
 MSG_DEF(JSMSG_DEBUG_LOOP,              0, JSEXN_TYPEERR, "cannot debug an object in same compartment as debugger or a compartment that is already debugging the debugger")
@@ -386,6 +386,8 @@ MSG_DEF(JSMSG_NOT_TRACKING_ALLOCATIONS, 1, JSEXN_ERR, "Cannot call {0} without s
 MSG_DEF(JSMSG_OBJECT_METADATA_CALLBACK_ALREADY_SET, 0, JSEXN_ERR, "Cannot track object allocation, because other tools are already doing so")
 MSG_DEF(JSMSG_QUERY_INNERMOST_WITHOUT_LINE_URL, 0, JSEXN_TYPEERR, "findScripts query object with 'innermost' property must have 'line' and either 'displayURL', 'url', or 'source'")
 MSG_DEF(JSMSG_QUERY_LINE_WITHOUT_URL, 0, JSEXN_TYPEERR, "findScripts query object has 'line' property, but no 'displayURL', 'url', or 'source' property")
+MSG_DEF(JSMSG_DEBUG_CANT_SET_OPT_ENV, 1, JSEXN_REFERENCEERR, "can't set `{0}' in an optimized-out environment")
+MSG_DEF(JSMSG_DEBUG_INVISIBLE_COMPARTMENT, 0, JSEXN_TYPEERR, "object in compartment marked as invisible to Debugger")
 
 // Intl
 MSG_DEF(JSMSG_DATE_NOT_FINITE,         0, JSEXN_RANGEERR, "date value is not finite in DateTimeFormat.format()")
@@ -443,12 +445,6 @@ MSG_DEF(JSMSG_SHARED_TYPED_ARRAY_BAD_OBJECT,  0, JSEXN_TYPEERR, "invalid object 
 MSG_DEF(JSMSG_SHARED_TYPED_ARRAY_BAD_ARGS,    0, JSEXN_RANGEERR, "bad combination of offset, length, and element size")
 MSG_DEF(JSMSG_SHARED_TYPED_ARRAY_ARG_RANGE,   1, JSEXN_RANGEERR, "argument {0} out of range")
 MSG_DEF(JSMSG_SHARED_TYPED_ARRAY_BAD_LENGTH,  0, JSEXN_TYPEERR, "length argument must not be an object")
-
-// Parallel array
-MSG_DEF(JSMSG_PAR_ARRAY_BAD_ARG,       0, JSEXN_RANGEERR, "invalid parallel method argument")
-MSG_DEF(JSMSG_PAR_ARRAY_SCATTER_BAD_TARGET, 1, JSEXN_ERR, "target for index {0} is not an integer")
-MSG_DEF(JSMSG_PAR_ARRAY_SCATTER_BOUNDS,0, JSEXN_ERR, "index in scatter vector out of bounds")
-MSG_DEF(JSMSG_PAR_ARRAY_SCATTER_CONFLICT, 0, JSEXN_ERR, "no conflict resolution function provided")
 
 // Reflect
 MSG_DEF(JSMSG_BAD_PARSE_NODE,          0, JSEXN_INTERNALERR, "bad parse node")

@@ -202,14 +202,21 @@ function whenNewWindowLoaded(aOptions, aCallback) {
   }, false);
 }
 
-function promiseWindowClosed(win) {
-  let deferred = Promise.defer();
-  win.addEventListener("unload", function onunload() {
-    win.removeEventListener("unload", onunload);
-    deferred.resolve();
+function promiseWindowWillBeClosed(win) {
+  return new Promise((resolve, reject) => {
+    Services.obs.addObserver(function observe(subject, topic) {
+      if (subject == win) {
+        Services.obs.removeObserver(observe, topic);
+        resolve();
+      }
+    }, "domwindowclosed", false);
   });
+}
+
+function promiseWindowClosed(win) {
+  let promise = promiseWindowWillBeClosed(win);
   win.close();
-  return deferred.promise;
+  return promise;
 }
 
 function promiseOpenAndLoadWindow(aOptions, aWaitForDelayedStartup=false) {
@@ -374,40 +381,6 @@ function promiseHistoryClearedState(aURIs, aShouldBeCleared) {
   });
 
   return deferred.promise;
-}
-
-/**
- * Allows waiting for an observer notification once.
- *
- * @param topic
- *        Notification topic to observe.
- *
- * @return {Promise}
- * @resolves The array [subject, data] from the observed notification.
- * @rejects Never.
- */
-function promiseTopicObserved(topic)
-{
-  let deferred = Promise.defer();
-  info("Waiting for observer topic " + topic);
-  Services.obs.addObserver(function PTO_observe(subject, topic, data) {
-    Services.obs.removeObserver(PTO_observe, topic);
-    deferred.resolve([subject, data]);
-  }, topic, false);
-  return deferred.promise;
-}
-
-/**
- * Clears history asynchronously.
- *
- * @return {Promise}
- * @resolves When history has been cleared.
- * @rejects Never.
- */
-function promiseClearHistory() {
-  let promise = promiseTopicObserved(PlacesUtils.TOPIC_EXPIRATION_FINISHED);
-  PlacesUtils.bhistory.removeAllPages();
-  return promise;
 }
 
 /**

@@ -32,12 +32,12 @@
 
 #include "builtin/Intl.h"
 #include "builtin/RegExp.h"
+#include "js/Conversions.h"
 #if ENABLE_INTL_API
 #include "unicode/unorm.h"
 #endif
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
-#include "vm/NumericConversions.h"
 #include "vm/Opcodes.h"
 #include "vm/RegExpObject.h"
 #include "vm/RegExpStatics.h"
@@ -57,6 +57,8 @@ using namespace js::unicode;
 
 using JS::Symbol;
 using JS::SymbolCode;
+using JS::ToInt32;
+using JS::ToUint32;
 
 using mozilla::AssertedCast;
 using mozilla::CheckedInt;
@@ -387,7 +389,7 @@ str_enumerate(JSContext *cx, HandleObject obj)
         if (!str1)
             return false;
         value.setString(str1);
-        if (!JSObject::defineElement(cx, obj, i, value, nullptr, nullptr, STRING_ELEMENT_ATTRS))
+        if (!DefineElement(cx, obj, i, value, nullptr, nullptr, STRING_ELEMENT_ATTRS))
             return false;
     }
 
@@ -408,11 +410,8 @@ js::str_resolve(JSContext *cx, HandleObject obj, HandleId id, bool *resolvedp)
         if (!str1)
             return false;
         RootedValue value(cx, StringValue(str1));
-        if (!JSObject::defineElement(cx, obj, uint32_t(slot), value, nullptr, nullptr,
-                                     STRING_ELEMENT_ATTRS))
-        {
+        if (!DefineElement(cx, obj, uint32_t(slot), value, nullptr, nullptr, STRING_ELEMENT_ATTRS))
             return false;
-        }
         *resolvedp = true;
     }
     return true;
@@ -759,14 +758,14 @@ ToUpperCase(JSContext *cx, JSLinearString *str)
                 return nullptr;
 
             ToUpperCaseImpl(buf.get(), chars, i, length);
-            newChars.construct<Latin1CharPtr>(buf);
+            newChars.construct<Latin1CharPtr>(Move(buf));
         } else {
             TwoByteCharPtr buf = cx->make_pod_array<char16_t>(length + 1);
             if (!buf)
                 return nullptr;
 
             ToUpperCaseImpl(buf.get(), chars, i, length);
-            newChars.construct<TwoByteCharPtr>(buf);
+            newChars.construct<TwoByteCharPtr>(Move(buf));
         }
     }
 
@@ -1662,7 +1661,7 @@ js::str_lastIndexOf(JSContext *cx, unsigned argc, Value *vp)
             if (!ToNumber(cx, args[1], &d))
                 return false;
             if (!IsNaN(d)) {
-                d = ToInteger(d);
+                d = JS::ToInteger(d);
                 if (d <= 0)
                     start = 0;
                 else if (d < start)
@@ -2171,7 +2170,7 @@ class MOZ_STACK_CLASS StringRegExpGuard
 
         // Handle everything else generically (including throwing if .lastIndex is non-writable).
         RootedValue zero(cx, Int32Value(0));
-        return JSObject::setProperty(cx, obj_, obj_, cx->names().lastIndex, &zero, true);
+        return SetProperty(cx, obj_, obj_, cx->names().lastIndex, &zero, true);
     }
 
     RegExpShared &regExp() { return *re_; }
@@ -2183,8 +2182,8 @@ class MOZ_STACK_CLASS StringRegExpGuard
     }
 
   private:
-    StringRegExpGuard(const StringRegExpGuard &) MOZ_DELETE;
-    void operator=(const StringRegExpGuard &) MOZ_DELETE;
+    StringRegExpGuard(const StringRegExpGuard &) = delete;
+    void operator=(const StringRegExpGuard &) = delete;
 };
 
 } /* anonymous namespace */
@@ -2333,9 +2332,9 @@ BuildFlatMatchArray(JSContext *cx, HandleString textstr, const FlatMatch &fm, Ca
     RootedValue matchVal(cx, Int32Value(fm.match()));
     RootedValue textVal(cx, StringValue(textstr));
 
-    if (!JSObject::defineElement(cx, obj, 0, patternVal) ||
-        !JSObject::defineProperty(cx, obj, cx->names().index, matchVal) ||
-        !JSObject::defineProperty(cx, obj, cx->names().input, textVal))
+    if (!DefineElement(cx, obj, 0, patternVal) ||
+        !DefineProperty(cx, obj, cx->names().index, matchVal) ||
+        !DefineProperty(cx, obj, cx->names().input, textVal))
     {
         return false;
     }
@@ -2436,8 +2435,8 @@ class RopeBuilder {
     JSContext *cx;
     RootedString res;
 
-    RopeBuilder(const RopeBuilder &other) MOZ_DELETE;
-    void operator=(const RopeBuilder &other) MOZ_DELETE;
+    RopeBuilder(const RopeBuilder &other) = delete;
+    void operator=(const RopeBuilder &other) = delete;
 
   public:
     explicit RopeBuilder(JSContext *cx)
@@ -4263,7 +4262,7 @@ js::ValueToSource(JSContext *cx, HandleValue v)
 
     RootedValue fval(cx);
     RootedObject obj(cx, &v.toObject());
-    if (!JSObject::getProperty(cx, obj, obj, cx->names().toSource, &fval))
+    if (!GetProperty(cx, obj, obj, cx->names().toSource, &fval))
         return nullptr;
     if (IsCallable(fval)) {
         RootedValue rval(cx);
@@ -4440,7 +4439,7 @@ js_strcmp(const char16_t *lhs, const char16_t *rhs)
 }
 
 UniquePtr<char[], JS::FreePolicy>
-js::DuplicateString(js::ThreadSafeContext *cx, const char *s)
+js::DuplicateString(js::ExclusiveContext *cx, const char *s)
 {
     size_t n = strlen(s) + 1;
     auto ret = cx->make_pod_array<char>(n);
@@ -4451,7 +4450,7 @@ js::DuplicateString(js::ThreadSafeContext *cx, const char *s)
 }
 
 UniquePtr<char16_t[], JS::FreePolicy>
-js::DuplicateString(js::ThreadSafeContext *cx, const char16_t *s)
+js::DuplicateString(js::ExclusiveContext *cx, const char16_t *s)
 {
     size_t n = js_strlen(s) + 1;
     auto ret = cx->make_pod_array<char16_t>(n);
@@ -4480,7 +4479,7 @@ template const char16_t *
 js_strchr_limit(const char16_t *s, char16_t c, const char16_t *limit);
 
 char16_t *
-js::InflateString(ThreadSafeContext *cx, const char *bytes, size_t *lengthp)
+js::InflateString(ExclusiveContext *cx, const char *bytes, size_t *lengthp)
 {
     size_t nchars;
     char16_t *chars;
@@ -5080,6 +5079,10 @@ js::PutEscapedStringImpl(char *buffer, size_t bufferSize, FILE *fp, const CharT 
 
 template size_t
 js::PutEscapedStringImpl(char *buffer, size_t bufferSize, FILE *fp, const Latin1Char *chars,
+                         size_t length, uint32_t quote);
+
+template size_t
+js::PutEscapedStringImpl(char *buffer, size_t bufferSize, FILE *fp, const char *chars,
                          size_t length, uint32_t quote);
 
 template size_t

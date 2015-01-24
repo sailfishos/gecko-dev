@@ -37,39 +37,38 @@ class MediaEngineDefaultVideoSource : public nsITimerCallback,
 public:
   MediaEngineDefaultVideoSource();
 
-  virtual void GetName(nsAString&);
-  virtual void GetUUID(nsAString&);
+  virtual void GetName(nsAString&) MOZ_OVERRIDE;
+  virtual void GetUUID(nsAString&) MOZ_OVERRIDE;
 
   virtual nsresult Allocate(const VideoTrackConstraintsN &aConstraints,
-                            const MediaEnginePrefs &aPrefs);
-  virtual nsresult Deallocate();
-  virtual nsresult Start(SourceMediaStream*, TrackID);
-  virtual nsresult Stop(SourceMediaStream*, TrackID);
-  virtual void SetDirectListeners(bool aHasDirectListeners) {};
+                            const MediaEnginePrefs &aPrefs) MOZ_OVERRIDE;
+  virtual nsresult Deallocate() MOZ_OVERRIDE;
+  virtual nsresult Start(SourceMediaStream*, TrackID) MOZ_OVERRIDE;
+  virtual nsresult Stop(SourceMediaStream*, TrackID) MOZ_OVERRIDE;
+  virtual void SetDirectListeners(bool aHasDirectListeners) MOZ_OVERRIDE {};
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
                           bool aNoiseOn, uint32_t aNoise,
-                          int32_t aPlayoutDelay) { return NS_OK; };
+                          int32_t aPlayoutDelay) MOZ_OVERRIDE { return NS_OK; };
   virtual void NotifyPull(MediaStreamGraph* aGraph,
                           SourceMediaStream *aSource,
                           TrackID aId,
-                          StreamTime aDesiredTime,
-                          StreamTime &aLastEndTime);
+                          StreamTime aDesiredTime) MOZ_OVERRIDE;
   virtual bool SatisfiesConstraintSets(
-      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets)
+      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets) MOZ_OVERRIDE
   {
     return true;
   }
 
-  virtual bool IsFake() {
+  virtual bool IsFake() MOZ_OVERRIDE {
     return true;
   }
 
-  virtual const MediaSourceType GetMediaSource() {
-    return MediaSourceType::Camera;
+  virtual const dom::MediaSourceEnum GetMediaSource() MOZ_OVERRIDE {
+    return dom::MediaSourceEnum::Camera;
   }
 
-  virtual nsresult TakePhoto(PhotoCallback* aCallback)
+  virtual nsresult TakePhoto(PhotoCallback* aCallback) MOZ_OVERRIDE
   {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
@@ -106,34 +105,33 @@ class MediaEngineDefaultAudioSource : public nsITimerCallback,
 public:
   MediaEngineDefaultAudioSource();
 
-  virtual void GetName(nsAString&);
-  virtual void GetUUID(nsAString&);
+  virtual void GetName(nsAString&) MOZ_OVERRIDE;
+  virtual void GetUUID(nsAString&) MOZ_OVERRIDE;
 
   virtual nsresult Allocate(const AudioTrackConstraintsN &aConstraints,
-                            const MediaEnginePrefs &aPrefs);
-  virtual nsresult Deallocate();
-  virtual nsresult Start(SourceMediaStream*, TrackID);
-  virtual nsresult Stop(SourceMediaStream*, TrackID);
-  virtual void SetDirectListeners(bool aHasDirectListeners) {};
+                            const MediaEnginePrefs &aPrefs) MOZ_OVERRIDE;
+  virtual nsresult Deallocate() MOZ_OVERRIDE;
+  virtual nsresult Start(SourceMediaStream*, TrackID) MOZ_OVERRIDE;
+  virtual nsresult Stop(SourceMediaStream*, TrackID) MOZ_OVERRIDE;
+  virtual void SetDirectListeners(bool aHasDirectListeners) MOZ_OVERRIDE {};
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
                           bool aNoiseOn, uint32_t aNoise,
-                          int32_t aPlayoutDelay) { return NS_OK; };
+                          int32_t aPlayoutDelay) MOZ_OVERRIDE { return NS_OK; };
   virtual void NotifyPull(MediaStreamGraph* aGraph,
                           SourceMediaStream *aSource,
                           TrackID aId,
-                          StreamTime aDesiredTime,
-                          StreamTime &aLastEndTime) {}
+                          StreamTime aDesiredTime) MOZ_OVERRIDE {}
 
-  virtual bool IsFake() {
+  virtual bool IsFake() MOZ_OVERRIDE {
     return true;
   }
 
-  virtual const MediaSourceType GetMediaSource() {
-    return MediaSourceType::Microphone;
+  virtual const dom::MediaSourceEnum GetMediaSource() MOZ_OVERRIDE {
+    return dom::MediaSourceEnum::Microphone;
   }
 
-  virtual nsresult TakePhoto(PhotoCallback* aCallback)
+  virtual nsresult TakePhoto(PhotoCallback* aCallback) MOZ_OVERRIDE
   {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
@@ -160,9 +158,9 @@ public:
     , mMutex("mozilla::MediaEngineDefault")
   {}
 
-  virtual void EnumerateVideoDevices(MediaSourceType,
+  virtual void EnumerateVideoDevices(dom::MediaSourceEnum,
                                      nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
-  virtual void EnumerateAudioDevices(MediaSourceType,
+  virtual void EnumerateAudioDevices(dom::MediaSourceEnum,
                                      nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
 
 protected:

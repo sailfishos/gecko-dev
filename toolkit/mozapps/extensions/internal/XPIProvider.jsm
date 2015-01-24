@@ -2094,6 +2094,8 @@ this.XPIProvider = {
       // Changes to installed extensions may have changed which theme is selected
       this.applyThemeChange();
 
+      AddonManagerPrivate.markProviderSafe(this);
+
       if (aAppChanged === undefined) {
         // For new profiles we will never need to show the add-on selection UI
         Services.prefs.setBoolPref(PREF_SHOWN_SELECTION_UI, true);
@@ -4443,6 +4445,13 @@ this.XPIProvider = {
       if (aMethod == "shutdown" && aReason != BOOTSTRAP_REASONS.APP_SHUTDOWN) {
         logger.debug("Removing manifest for " + aFile.path);
         Components.manager.removeBootstrappedManifestLocation(aFile);
+
+        let manifest = getURIForResourceInFile(aFile, "chrome.manifest");
+        for (let line of ChromeManifestParser.parseSync(manifest)) {
+          if (line.type == "resource") {
+            ResProtocolHandler.setSubstitution(line.args[0], null);
+          }
+        }
       }
       this.setTelemetry(aAddon.id, aMethod + "_MS", new Date() - timeStart);
     }
@@ -5011,8 +5020,11 @@ AddonInstall.prototype = {
   cancel: function AI_cancel() {
     switch (this.state) {
     case AddonManager.STATE_DOWNLOADING:
-      if (this.channel)
+      if (this.channel) {
+        logger.debug("Cancelling download of " + this.sourceURI.spec);
         this.channel.cancel(Cr.NS_BINDING_ABORTED);
+      }
+      break;
     case AddonManager.STATE_AVAILABLE:
     case AddonManager.STATE_DOWNLOADED:
       logger.debug("Cancelling download of " + this.sourceURI.spec);
@@ -5499,8 +5511,20 @@ AddonInstall.prototype = {
     this.badCerthandler = null;
     Services.obs.removeObserver(this, "network:offline-about-to-go-offline");
 
-    // If the download was cancelled then all events will have already been sent
+    // If the download was cancelled then update the state and send events
     if (aStatus == Cr.NS_BINDING_ABORTED) {
+      if (this.state == AddonManager.STATE_DOWNLOADING) {
+        logger.debug("Cancelled download of " + this.sourceURI.spec);
+        this.state = AddonManager.STATE_CANCELLED;
+        XPIProvider.removeActiveInstall(this);
+        AddonManagerPrivate.callInstallListeners("onDownloadCancelled",
+                                                 this.listeners, this.wrapper);
+        // If a listener restarted the download then there is no need to
+        // remove the temporary file
+        if (this.state != AddonManager.STATE_CANCELLED)
+          return;
+      }
+
       this.removeTemporaryFile();
       if (this.restartDownload)
         this.openChannel();

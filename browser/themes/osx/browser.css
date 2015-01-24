@@ -75,10 +75,6 @@
 
 /** Begin titlebar **/
 
-#titlebar {
-  -moz-window-dragging: drag;
-}
-
 #titlebar-buttonbox > .titlebar-button {
   display: none;
 }
@@ -117,7 +113,7 @@
  * tabstrip can overlap it.
  */
 #main-window[tabsintitlebar] > #titlebar {
-  min-height: calc(@tabMinHeight@ + var(--space-above-tabbar) - @tabToolbarNavbarOverlap@);
+  min-height: calc(var(--tab-min-height) + var(--space-above-tabbar) - var(--tab-toolbar-navbar-overlap));
 }
 
 /**
@@ -191,7 +187,7 @@ toolbarseparator {
 #TabsToolbar:not([collapsed="true"]) + #nav-bar:-moz-lwtheme {
   border-top: 1px solid hsla(0,0%,0%,.3);
   background-clip: padding-box;
-  margin-top: -@tabToolbarNavbarOverlap@;
+  margin-top: calc(-1 * var(--tab-toolbar-navbar-overlap));
   /* Position the toolbar above the bottom of background tabs */
   position: relative;
   z-index: 1;
@@ -203,7 +199,7 @@ toolbarseparator {
   #main-window[tabsintitlebar] #TabsToolbar:not([collapsed="true"]) + #nav-bar:not(:-moz-lwtheme) {
     border-top: 1px solid hsla(0,0%,0%,.2);
     background-clip: padding-box;
-    margin-top: -@tabToolbarNavbarOverlap@;
+    margin-top: calc(-1 * var(--tab-toolbar-navbar-overlap));
     /* Position the toolbar above the bottom of background tabs */
     position: relative;
     z-index: 1;
@@ -578,6 +574,7 @@ toolbar .toolbarbutton-1:not([type="menu-button"]),
   border: 0;
 }
 
+.findbar-button,
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],#back-button,#forward-button)),
 toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-button,
 toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
@@ -587,10 +584,16 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
   transition-duration: 250ms;
 }
 
+.findbar-button {
+  background: none;
+  box-shadow: none;
+}
+
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],#back-button,#forward-button)) {
   padding: 0 4px;
 }
 
+.findbar-button:not(:-moz-any([checked="true"],[disabled="true"])):hover,
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],[disabled],[open],#back-button,#forward-button)):hover,
 toolbar .toolbarbutton-1[type="menu-button"]:not([disabled]) > .toolbarbutton-menubutton-button[open] + .toolbarbutton-menubutton-dropmarker,
 toolbar .toolbarbutton-1[type="menu-button"]:not([disabled]):-moz-any(:hover,[open]) > .toolbarbutton-menubutton-button,
@@ -600,12 +603,14 @@ toolbar .toolbaritem-combined-buttons:hover > .toolbarbutton-combined {
   box-shadow: var(--toolbarbutton-hover-boxshadow);
 }
 
+.findbar-button:not(:-moz-any([checked="true"],[disabled="true"])):hover,
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],[disabled],[open],#back-button,#forward-button)):hover,
 toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open]))[buttonover] > .toolbarbutton-menubutton-button,
 toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open],[buttonover])):hover > .toolbarbutton-menubutton-dropmarker {
   background: var(--toolbarbutton-hover-background);
 }
 
+.findbar-button:not([disabled=true]):-moz-any([checked="true"],:hover:active),
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],[disabled],#back-button,#forward-button)):-moz-any(:hover:active,[open],[checked]),
 toolbar .toolbarbutton-1[type="menu-button"]:not([disabled]) > .toolbarbutton-menubutton-button[open],
 toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open]))[buttonover]:active > .toolbarbutton-menubutton-button,
@@ -617,6 +622,7 @@ toolbar .toolbarbutton-1[type="menu-button"][open]:not([disabled]) > .toolbarbut
   transition-duration: 10ms;
 }
 
+.findbar-button[checked="true"]:not(:active):hover,
 toolbar .toolbarbutton-1[checked]:not(:active):hover {
   background-color: var(--toolbarbutton-checkedhover-backgroundcolor);
   transition: background-color 250ms;
@@ -2512,6 +2518,32 @@ richlistitem[type~="action"][actiontype="switchtab"][selected="true"] > .ac-url-
   }
 }
 
+/* Reader mode button */
+
+#reader-mode-button {
+  list-style-image: url("chrome://browser/skin/reader-mode-16.png");
+  -moz-image-region: rect(0, 16px, 16px, 0);
+}
+
+#reader-mode-button:hover:active,
+#reader-mode-button[readeractive] {
+   -moz-image-region: rect(0, 32px, 16px, 16px);
+}
+
+@media (min-resolution: 2dppx) {
+  #reader-mode-button{
+    list-style-image: url("chrome://browser/skin/reader-mode-16@2x.png");
+    -moz-image-region: rect(0, 32px, 32px, 0);
+    width: 22px;
+  }
+
+  #reader-mode-button:hover:active,
+  #reader-mode-button[readeractive] {
+    -moz-image-region: rect(0, 64px, 32px, 32px);
+  }
+}
+
+
 /* social share panel */
 .social-share-frame {
   border-top: 1px solid #f8f8f8;
@@ -3174,7 +3206,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   -moz-image-region: rect(0, 13px, 20px, 0);
-  margin: 0 0 @tabToolbarNavbarOverlap@;
+  margin: 0 0 var(--tab-toolbar-navbar-overlap);
   padding: 0 4px;
   border: none;
 }
@@ -3300,7 +3332,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 }
 
 #TabsToolbar .toolbarbutton-1 {
-  margin-bottom: @tabToolbarNavbarOverlap@;
+  margin-bottom: var(--tab-toolbar-navbar-overlap);
 }
 
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
@@ -4134,7 +4166,6 @@ menulist.translate-infobar-element > .menulist-dropmarker {
 }
 
 .popup-notification-icon[popupid="indexedDB-permissions-prompt"],
-.popup-notification-icon[popupid="indexedDB-quota-prompt"],
 .popup-notification-icon[popupid*="offline-app-requested"],
 .popup-notification-icon[popupid="offline-app-usage"] {
   list-style-image: url(chrome://global/skin/icons/question-64.png);
@@ -4719,7 +4750,7 @@ window > chatbox {
 
 @media (-moz-mac-lion-theme) {
   #TabsToolbar > .private-browsing-indicator {
-    transform: translateY(calc(0px - var(--space-above-tabbar)));
+    transform: translateY(calc(-1 * var(--space-above-tabbar)));
     /* We offset by 38px for mask graphic, plus 4px to account for the
      * margin-left, which sums to 42px.
      */

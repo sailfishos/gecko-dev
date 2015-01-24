@@ -35,7 +35,7 @@ public:
   static already_AddRefed<WorkerDataStoreCursor> Constructor(GlobalObject& aGlobal,
                                                              ErrorResult& aRv);
 
-  JSObject* WrapObject(JSContext *aCx);
+  bool WrapObject(JSContext *aCx, JS::MutableHandle<JSObject*> aReflector);
 
   // WebIDL (public APIs)
 
@@ -44,9 +44,6 @@ public:
   already_AddRefed<Promise> Next(JSContext *aCx, ErrorResult& aRv);
 
   void Close(JSContext *aCx, ErrorResult& aRv);
-
-  // We don't use this for the WorkerDataStore.
-  void SetDataStoreCursorImpl(DataStoreCursorImpl& aCursor);
 
   void SetBackingDataStoreCursor(
     const nsMainThreadPtrHandle<DataStoreCursor>& aBackingCursor);

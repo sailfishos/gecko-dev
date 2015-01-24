@@ -65,7 +65,8 @@ class TabChildBase;
 class TabChildGlobal : public DOMEventTargetHelper,
                        public nsIContentFrameMessageManager,
                        public nsIScriptObjectPrincipal,
-                       public nsIGlobalObject
+                       public nsIGlobalObject,
+                       public nsSupportsWeakReference
 {
 public:
   explicit TabChildGlobal(TabChildBase* aTabChild);
@@ -80,7 +81,7 @@ public:
                              nsIPrincipal* aPrincipal,
                              JSContext* aCx,
                              uint8_t aArgc,
-                             JS::MutableHandle<JS::Value> aRetval)
+                             JS::MutableHandle<JS::Value> aRetval) MOZ_OVERRIDE
   {
     return mMessageManager
       ? mMessageManager->SendSyncMessage(aMessageName, aObject, aRemote,
@@ -93,7 +94,7 @@ public:
                             nsIPrincipal* aPrincipal,
                             JSContext* aCx,
                             uint8_t aArgc,
-                            JS::MutableHandle<JS::Value> aRetval)
+                            JS::MutableHandle<JS::Value> aRetval) MOZ_OVERRIDE
   {
     return mMessageManager
       ? mMessageManager->SendRpcMessage(aMessageName, aObject, aRemote,
@@ -112,9 +113,9 @@ public:
   NS_IMETHOD Atob(const nsAString& aAsciiString,
                   nsAString& aBinaryData) MOZ_OVERRIDE;
 
-  NS_IMETHOD AddEventListener(const nsAString& aType,
-                              nsIDOMEventListener* aListener,
-                              bool aUseCapture)
+  nsresult AddEventListener(const nsAString& aType,
+                            nsIDOMEventListener* aListener,
+                            bool aUseCapture)
   {
     // By default add listeners only for trusted events!
     return DOMEventTargetHelper::AddEventListener(aType, aListener,
@@ -133,7 +134,7 @@ public:
   }
 
   nsresult
-  PreHandleEvent(EventChainPreVisitor& aVisitor)
+  PreHandleEvent(EventChainPreVisitor& aVisitor) MOZ_OVERRIDE
   {
     aVisitor.mForceContentDispatch = true;
     return NS_OK;
@@ -180,7 +181,7 @@ public:
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TabChildBase)
 
-    virtual nsIWebNavigation* WebNavigation() = 0;
+    virtual nsIWebNavigation* WebNavigation() const = 0;
     virtual nsIWidget* WebWidget() = 0;
     nsIPrincipal* GetPrincipal() { return mPrincipal; }
     bool IsAsyncPanZoomEnabled();
@@ -206,7 +207,7 @@ protected:
     // Get the DOMWindowUtils for the top-level window in this tab.
     already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
     // Get the Document for the top-level window in this tab.
-    already_AddRefed<nsIDocument> GetDocument();
+    already_AddRefed<nsIDocument> GetDocument() const;
 
     // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
     // variables local to this class before setting it.
@@ -375,7 +376,7 @@ public:
                                       const bool& aRunInGlobalScope) MOZ_OVERRIDE;
     virtual bool RecvAsyncMessage(const nsString& aMessage,
                                   const ClonedMessageData& aData,
-                                  const InfallibleTArray<CpowEntry>& aCpows,
+                                  InfallibleTArray<CpowEntry>&& aCpows,
                                   const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
 
     virtual bool RecvAppOfflineStatus(const uint32_t& aId, const bool& aOffline) MOZ_OVERRIDE;
@@ -418,7 +419,7 @@ public:
                                        PIndexedDBPermissionRequestChild* aActor)
                                        MOZ_OVERRIDE;
 
-    virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE { return mWebNav; }
+    virtual nsIWebNavigation* WebNavigation() const MOZ_OVERRIDE { return mWebNav; }
     virtual nsIWidget* WebWidget() MOZ_OVERRIDE { return mWidget; }
 
     /** Return the DPI of the widget this TabChild draws to. */
@@ -499,6 +500,8 @@ public:
 
     nsIntPoint GetChromeDisplacement() { return mChromeDisp; };
 
+    bool IPCOpen() { return mIPCOpen; }
+
 protected:
     virtual ~TabChild();
 
@@ -508,7 +511,7 @@ protected:
     virtual bool RecvSetUpdateHitRegion(const bool& aEnabled) MOZ_OVERRIDE;
     virtual bool RecvSetIsDocShellActive(const bool& aIsActive) MOZ_OVERRIDE;
 
-    virtual bool RecvRequestNotifyAfterRemotePaint();
+    virtual bool RecvRequestNotifyAfterRemotePaint() MOZ_OVERRIDE;
 
     virtual bool RecvParentActivated(const bool& aActivated) MOZ_OVERRIDE;
 
@@ -572,12 +575,17 @@ private:
     void UpdateTapState(const WidgetTouchEvent& aEvent, nsEventStatus aStatus);
 
     nsresult
-    BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
-                              nsIURI* aURI,
-                              const nsAString& aName,
-                              const nsACString& aFeatures,
-                              bool* aWindowIsNew,
-                              nsIDOMWindow** aReturn);
+    ProvideWindowCommon(nsIDOMWindow* aOpener,
+                        bool aIframeMoz,
+                        uint32_t aChromeFlags,
+                        bool aCalledFromJS,
+                        bool aPositionSpecified,
+                        bool aSizeSpecified,
+                        nsIURI* aURI,
+                        const nsAString& aName,
+                        const nsACString& aFeatures,
+                        bool* aWindowIsNew,
+                        nsIDOMWindow** aReturn);
 
     bool HasValidInnerSize();
 
@@ -603,6 +611,9 @@ private:
     void SendSetTargetAPZCNotification(const WidgetTouchEvent& aEvent,
                                        const mozilla::layers::ScrollableLayerGuid& aGuid,
                                        const uint64_t& aInputBlockId);
+
+    // Get the pres shell resolution of the document in this tab.
+    float GetPresShellResolution() const;
 
     void SetTabId(const TabId& aTabId)
     {
@@ -662,6 +673,7 @@ private:
     TabId mUniqueId;
     float mDPI;
     double mDefaultScale;
+    bool mIPCOpen;
 
     DISALLOW_EVIL_CONSTRUCTORS(TabChild);
 };

@@ -29,12 +29,12 @@ public:
 
   virtual bool RecvAsyncMessage(const nsString& aMsg,
                                 const ClonedMessageData& aData,
-                                const InfallibleTArray<jsipc::CpowEntry>& aCpows,
+                                InfallibleTArray<jsipc::CpowEntry>&& aCpows,
                                 const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
 
   virtual PBlobChild*
   SendPBlobConstructor(PBlobChild* actor,
-                       const BlobConstructorParams& params);
+                       const BlobConstructorParams& aParams) MOZ_OVERRIDE;
 
   jsipc::JavaScriptShared* GetCPOWManager() MOZ_OVERRIDE;
 

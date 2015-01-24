@@ -115,8 +115,6 @@ pref("dom.quotaManager.testing", false);
 
 // Whether or not indexedDB is enabled.
 pref("dom.indexedDB.enabled", true);
-// Space to allow indexedDB databases before prompting (in MB).
-pref("dom.indexedDB.warningQuota", 50);
 // Whether or not indexedDB experimental features are enabled.
 pref("dom.indexedDB.experimental", false);
 // Enable indexedDB logging.
@@ -135,11 +133,7 @@ pref("dom.workers.maxPerDomain", 20);
 pref("dom.workers.sharedWorkers.enabled", true);
 
 // WebSocket in workers are disabled by default.
-#ifdef RELEASE_BUILD
-pref("dom.workers.websocket.enabled", false);
-#else
 pref("dom.workers.websocket.enabled", true);
-#endif
 
 // Service workers
 pref("dom.serviceWorkers.enabled", false);
@@ -170,6 +164,10 @@ pref("dom.webcrypto.enabled", true);
 
 // Whether the UndoManager API is enabled
 pref("dom.undo_manager.enabled", false);
+
+// Whether URL,nsLocation,Link::GetHash should be percent encoded
+// in setter and percent decoded in getter (old behaviour = true)
+pref("dom.url.encode_decode_hash", false);
 
 // Whether to run add-on code in different compartments from browser code. This
 // causes a separate compartment for each (addon, global) combination, which may
@@ -360,7 +358,7 @@ pref("media.peerconnection.video.start_bitrate", 300);
 pref("media.peerconnection.video.max_bitrate", 2000);
 #endif
 pref("media.navigator.permission.disabled", false);
-pref("media.peerconnection.default_iceservers", "[{\"url\": \"stun:stun.services.mozilla.com\"}]");
+pref("media.peerconnection.default_iceservers", "[{\"urls\": [\"stun:stun.services.mozilla.com\"]}]");
 pref("media.peerconnection.ice.loopback", false); // Set only for testing in offline environments.
 pref("media.peerconnection.use_document_iceservers", true);
 // Do not enable identity before ensuring that the UX cannot be spoofed
@@ -428,12 +426,21 @@ pref("media.webvtt.regions.enabled", false);
 // AudioTrack and VideoTrack support
 pref("media.track.enabled", false);
 
-// Whether to enable MediaSource support
-#ifdef RELEASE_BUILD
-pref("media.mediasource.enabled", false);
-#else
+// Whether to enable MediaSource support.  We want to enable on non-release
+// builds and on release windows, but on release builds restrict to YouTube.  We
+// don't enable for YouTube on non-Windows for now because the MP4 code for
+// those platforms isn't ready yet.
+#if defined(XP_WIN) || !defined(RELEASE_BUILD)
 pref("media.mediasource.enabled", true);
+#else
+pref("media.mediasource.enabled", false);
 #endif
+
+#ifdef RELEASE_BUILD
+pref("media.mediasource.youtubeonly", true);
+#else
+pref("media.mediasource.youtubeonly", false);
+#endif // RELEASE_BUILD
 
 #ifdef MOZ_WIDGET_GONK
 pref("media.mediasource.mp4.enabled", false);
@@ -592,6 +599,10 @@ pref("gfx.bundled_fonts.enabled", true);
 pref("gfx.bundled_fonts.force-enabled", false);
 #endif
 
+// Do we fire a notification about missing fonts, so the front-end can decide
+// whether to try and do something about it (e.g. download additional fonts)?
+pref("gfx.missing_fonts.notify", false);
+
 pref("gfx.filter.nearest.force-enabled", false);
 
 // prefs controlling the font (name/cmap) loader that runs shortly after startup
@@ -697,6 +708,8 @@ pref("canvas.path.enabled", true);
 // further checks.
 pref("accessibility.force_disabled", 0);
 
+pref("accessibility.ipc_architecture.enabled", true);
+
 #ifdef XP_WIN
 // Some accessibility tools poke at windows in the plugin process during setup
 // which can cause hangs.  To hack around this set accessibility.delay_plugins
@@ -779,6 +792,7 @@ pref("devtools.chrome.enabled", false);
 
 // Disable remote debugging protocol logging
 pref("devtools.debugger.log", false);
+pref("devtools.debugger.log.verbose", false);
 // Disable remote debugging connections
 #ifdef MOZ_DEV_EDITION
 pref("devtools.debugger.remote-enabled", true);
@@ -1355,11 +1369,9 @@ pref("network.websocket.timeout.ping.request", 0);
 // event is sent to the javascript websockets application
 pref("network.websocket.timeout.ping.response", 10);
 
-// Defines whether or not to try and negotiate the stream-deflate compression
-// extension with the websocket server. Stream-Deflate has been removed from
-// the standards track document, but can still be used by servers who opt
-// into it.
-pref("network.websocket.extensions.stream-deflate", false);
+// Defines whether or not to try to negotiate the permessage compression
+// extension with the websocket server.
+pref("network.websocket.extensions.permessage-deflate", true);
 
 // the maximum number of concurrent websocket sessions. By specification there
 // is never more than one handshake oustanding to an individual host at
@@ -1571,7 +1583,7 @@ pref("network.dir.format", 2);
 pref("network.prefetch-next", true);
 
 // enables the predictive service
-pref("network.predictor.enabled", false);
+pref("network.predictor.enabled", true);
 pref("network.predictor.enable-hover-on-ssl", false);
 pref("network.predictor.page-degradation.day", 0);
 pref("network.predictor.page-degradation.week", 5);
@@ -1586,9 +1598,8 @@ pref("network.predictor.subresource-degradation.max", 100);
 pref("network.predictor.preconnect-min-confidence", 90);
 pref("network.predictor.preresolve-min-confidence", 60);
 pref("network.predictor.redirect-likely-confidence", 75);
-pref("network.predictor.max-queue-size", 50);
-pref("network.predictor.max-db-size", 157286400); // bytes
-pref("network.predictor.preserve", 80); // percentage of predictor data to keep when cleaning up
+pref("network.predictor.max-resources-per-entry", 100);
+pref("network.predictor.cleaned-up", false);
 
 // The following prefs pertain to the negotiate-auth extension (see bug 17578),
 // which provides transparent Kerberos or NTLM authentication using the SPNEGO
@@ -1597,10 +1608,8 @@ pref("network.predictor.preserve", 80); // percentage of predictor data to keep 
 //   [scheme "://"] [host [":" port]]
 // For example, "foo.com" would match "http://www.foo.com/bar", etc.
 
-// Allow insecure NTLMv1 when needed.
-pref("network.negotiate-auth.allow-insecure-ntlm-v1", false);
-// Allow insecure NTLMv1 for HTTPS protected sites by default.
-pref("network.negotiate-auth.allow-insecure-ntlm-v1-https", true);
+// Force less-secure NTLMv1 when needed (NTLMv2 is the default).
+pref("network.auth.force-generic-ntlm-v1", false);
 
 // This list controls which URIs can use the negotiate-auth protocol.  This
 // list should be limited to the servers you know you'll need to login to.
@@ -1643,14 +1652,6 @@ pref("network.auth.force-generic-ntlm", false);
 pref("network.automatic-ntlm-auth.allow-proxies", true);
 pref("network.automatic-ntlm-auth.allow-non-fqdn", false);
 pref("network.automatic-ntlm-auth.trusted-uris", "");
-
-// This preference controls whether or not the LM hash will be included in
-// response to a NTLM challenge.  By default, this is disabled since servers
-// should almost never need the LM hash, and the LM hash is what makes NTLM
-// authentication less secure.  See bug 250691 for further details.
-// NOTE: automatic-ntlm-auth which leverages the OS-provided NTLM
-//       implementation will not be affected by this preference.
-pref("network.ntlm.send-lm-response", false);
 
 pref("permissions.default.image",           1); // 1-Accept, 2-Deny, 3-dontAcceptForeign
 
@@ -2166,11 +2167,7 @@ pref("layout.css.grid.enabled", false);
 pref("layout.css.ruby.enabled", false);
 
 // Is support for CSS display:contents enabled?
-#ifdef RELEASE_BUILD
-pref("layout.css.display-contents.enabled", false);
-#else
 pref("layout.css.display-contents.enabled", true);
-#endif
 
 // Is support for CSS box-decoration-break enabled?
 pref("layout.css.box-decoration-break.enabled", true);
@@ -2226,10 +2223,8 @@ pref("layout.interruptible-reflow.enabled", true);
 // specific information is available).
 pref("layout.frame_rate", -1);
 
-// pref to dump the display list to the log. Useful for debugging invalidation problems.
-#ifdef MOZ_DUMP_PAINTING
+// pref to dump the display list to the log. Useful for debugging drawing.
 pref("layout.display-list.dump", false);
-#endif
 
 // pref to control precision of the frame rate timer. When true,
 // we use a "precise" timer, which means each notification fires
@@ -2282,6 +2277,7 @@ pref("editor.positioning.offset",            0);
 
 pref("dom.use_watchdog", true);
 pref("dom.max_chrome_script_run_time", 20);
+pref("dom.max_child_script_run_time", 10);
 pref("dom.max_script_run_time", 10);
 
 // If true, ArchiveReader will be enabled
@@ -2328,6 +2324,9 @@ pref("dom.ipc.plugins.timeoutSecs", 45);
 // to a synchronous request before terminating itself. After this
 // point the child assumes the parent is hung. Currently disabled.
 pref("dom.ipc.plugins.parentTimeoutSecs", 0);
+// How long a plugin in e10s is allowed to process a synchronous IPC
+// message before we notify the chrome process of a hang.
+pref("dom.ipc.plugins.contentTimeoutSecs", 45);
 // How long a plugin launch is allowed to take before
 // we consider it failed.
 pref("dom.ipc.plugins.processLaunchTimeoutSecs", 45);
@@ -2345,6 +2344,7 @@ pref("dom.ipc.tabs.shutdownTimeoutSecs", 5);
 #else
 // No timeout in DEBUG builds
 pref("dom.ipc.plugins.timeoutSecs", 0);
+pref("dom.ipc.plugins.contentTimeoutSecs", 0);
 pref("dom.ipc.plugins.processLaunchTimeoutSecs", 0);
 pref("dom.ipc.plugins.parentTimeoutSecs", 0);
 #ifdef XP_WIN
@@ -2368,6 +2368,8 @@ pref("dom.ipc.plugins.reportCrashURL", true);
 // How long we wait before unloading an idle plugin process.
 // Defaults to 30 seconds.
 pref("dom.ipc.plugins.unloadTimeoutSecs", 30);
+
+pref("dom.ipc.plugins.asyncInit", false);
 
 pref("dom.ipc.processCount", 1);
 
@@ -3749,12 +3751,19 @@ pref("browser.zoom.reflowZoom.reflowTimeout", 500);
  */
 pref("browser.zoom.reflowZoom.reflowTextOnPageLoad", true);
 
+//
 // Image-related prefs
+//
+
 // The maximum size, in bytes, of the decoded images we cache
 pref("image.cache.size", 5242880);
+
 // A weight, from 0-1000, to place on time when comparing to size.
 // Size is given a weight of 1000 - timeweight.
 pref("image.cache.timeweight", 500);
+
+// Whether we attempt to downscale images during decoding.
+pref("image.downscale-during-decode.enabled", false);
 
 // The default Accept header sent for images loaded over HTTP(S)
 pref("image.http.accept", "image/png,image/*;q=0.8,*/*;q=0.5");
@@ -3787,12 +3796,9 @@ pref("image.mem.allow_locking_in_content_processes", true);
 // Chunk size for calls to the image decoders
 pref("image.mem.decode_bytes_at_a_time", 16384);
 
-// The longest time we can spend in an iteration of an async decode
-pref("image.mem.max_ms_before_yield", 5);
-
 // Minimum timeout for expiring unused images from the surface cache, in
 // milliseconds. This controls how long we store cached temporary surfaces.
-pref("image.mem.surfacecache.min_expiration_ms", 60000); // 60ms
+pref("image.mem.surfacecache.min_expiration_ms", 60000); // 60s
 
 // Maximum size for the surface cache, in kilobytes.
 pref("image.mem.surfacecache.max_size_kb", 1048576); // 1GB
@@ -3810,10 +3816,6 @@ pref("image.mem.surfacecache.size_factor", 4);
 // of the data, and so forth. The default should be a good balance for desktop
 // and laptop systems, where we never discard visible images.
 pref("image.mem.surfacecache.discard_factor", 1);
-
-// Whether we decode images on multiple background threads rather than the
-// foreground thread.
-pref("image.multithreaded_decoding.enabled", true);
 
 // How many threads we'll use for multithreaded decoding. If < 0, will be
 // automatically determined based on the system's number of cores.
@@ -3835,7 +3837,6 @@ pref("gl.msaa-level", 2);
 #endif
 pref("webgl.force-enabled", false);
 pref("webgl.disabled", false);
-pref("webgl.shader_validator", true);
 pref("webgl.disable-angle", false);
 pref("webgl.min_capability_mode", false);
 pref("webgl.disable-extensions", false);
@@ -3849,6 +3850,7 @@ pref("webgl.restore-context-when-visible", true);
 pref("webgl.max-warnings-per-context", 32);
 pref("webgl.enable-draft-extensions", false);
 pref("webgl.enable-privileged-extensions", false);
+pref("webgl.bypass-shader-validation", false);
 #ifdef XP_WIN
 pref("webgl.angle.try-d3d11", true);
 pref("webgl.angle.force-d3d11", false);
@@ -4340,6 +4342,9 @@ pref("dom.voicemail.enabled", false);
 // parameter omitted.
 pref("dom.voicemail.defaultServiceId", 0);
 
+// DOM BroadcastChannel API.
+pref("dom.broadcastChannel.enabled", true);
+
 // DOM Inter-App Communication API.
 pref("dom.inter-app-communication-api.enabled", false);
 
@@ -4416,6 +4421,9 @@ pref("dom.udpsocket.enabled", false);
 // Disable before keyboard events and after keyboard events by default.
 pref("dom.beforeAfterKeyboardEvent.enabled", false);
 
+// Presentation API
+pref("dom.presentation.enabled", false);
+
 // Use raw ICU instead of CoreServices API in Unicode collation
 #ifdef XP_MACOSX
 pref("intl.collation.mac.use_icu", true);
@@ -4440,3 +4448,86 @@ pref("dom.mozSettings.SettingsService.verbose.enabled", false);
 // IndexedDB transactions to be opened as readonly or keep everything as
 // readwrite.
 pref("dom.mozSettings.allowForceReadOnly", false);
+
+// RequestSync API is disabled by default.
+pref("dom.requestSync.enabled", false);
+
+// Search service settings
+pref("browser.search.log", false);
+pref("browser.search.update", true);
+pref("browser.search.update.log", false);
+pref("browser.search.update.interval", 21600);
+pref("browser.search.suggest.enabled", true);
+pref("browser.search.geoSpecificDefaults", false);
+pref("browser.search.geoip.url", "https://location.services.mozilla.com/v1/country?key=%MOZILLA_API_KEY%");
+// NOTE: this timeout figure is also the "high" value for the telemetry probe
+// SEARCH_SERVICE_COUNTRY_FETCH_MS - if you change this also change that probe.
+pref("browser.search.geoip.timeout", 2000);
+
+#ifdef MOZ_OFFICIAL_BRANDING
+// {moz:official} expands to "official"
+pref("browser.search.official", true);
+#endif
+
+#ifndef MOZ_WIDGET_GONK
+// GMPInstallManager prefs
+
+// Enables some extra logging (can reduce performance)
+pref("media.gmp-manager.log", false);
+
+// User-settable override to media.gmp-manager.url for testing purposes.
+//pref("media.gmp-manager.url.override", "");
+
+// Update service URL for GMP install/updates:
+pref("media.gmp-manager.url", "https://aus4.mozilla.org/update/3/GMP/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+
+// When |media.gmp-manager.cert.requireBuiltIn| is true or not specified the
+// final certificate and all certificates the connection is redirected to before
+// the final certificate for the url specified in the |media.gmp-manager.url|
+// preference must be built-in.
+pref("media.gmp-manager.cert.requireBuiltIn", true);
+
+// The |media.gmp-manager.certs.| preference branch contains branches that are
+// sequentially numbered starting at 1 that contain attribute name / value
+// pairs for the certificate used by the server that hosts the update xml file
+// as specified in the |media.gmp-manager.url| preference. When these preferences are
+// present the following conditions apply for a successful update check:
+// 1. the uri scheme must be https
+// 2. the preference name must exist as an attribute name on the certificate and
+//    the value for the name must be the same as the value for the attribute name
+//    on the certificate.
+// If these conditions aren't met it will be treated the same as when there is
+// no update available. This validation will not be performed when the
+// |media.gmp-manager.url.override| user preference has been set for testing updates or
+// when the |media.gmp-manager.cert.checkAttributes| preference is set to false. Also,
+// the |media.gmp-manager.url.override| preference should ONLY be used for testing.
+// IMPORTANT! app.update.certs.* prefs should also be updated if these
+// are updated.
+pref("media.gmp-manager.cert.checkAttributes", true);
+pref("media.gmp-manager.certs.1.issuerName", "CN=DigiCert Secure Server CA,O=DigiCert Inc,C=US");
+pref("media.gmp-manager.certs.1.commonName", "aus4.mozilla.org");
+pref("media.gmp-manager.certs.2.issuerName", "CN=Thawte SSL CA,O=\"Thawte, Inc.\",C=US");
+pref("media.gmp-manager.certs.2.commonName", "aus4.mozilla.org");
+#endif
+
+// Whether or not to perform reader mode article parsing on page load.
+// If this pref is disabled, we will never show a reader mode icon in the toolbar.
+pref("reader.parse-on-load.enabled", true);
+
+// Force-enables reader mode parsing, even on low-memory platforms, where it
+// is disabled by default.
+pref("reader.parse-on-load.force-enabled", false);
+
+// The default relative font size in reader mode (1-5)
+pref("reader.font_size", 3);
+
+// The default color scheme in reader mode (light, dark, auto)
+// auto = color automatically adjusts according to ambient light level
+pref("reader.color_scheme", "auto");
+
+// The font type in reader (sans-serif, serif)
+pref("reader.font_type", "sans-serif");
+
+// Whether or not the user has interacted with the reader mode toolbar.
+// This is used to show a first-launch tip in reader mode.
+pref("reader.has_used_toolbar", false);

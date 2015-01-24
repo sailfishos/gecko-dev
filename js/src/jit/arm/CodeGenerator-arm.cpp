@@ -17,6 +17,7 @@
 #include "jit/JitFrames.h"
 #include "jit/MIR.h"
 #include "jit/MIRGraph.h"
+#include "js/Conversions.h"
 #include "vm/Shape.h"
 #include "vm/TraceLogging.h"
 
@@ -30,6 +31,7 @@ using namespace js::jit;
 using mozilla::FloorLog2;
 using mozilla::NegativeInfinity;
 using JS::GenericNaN;
+using JS::ToInt32;
 
 // shared
 CodeGeneratorARM::CodeGeneratorARM(MIRGenerator *gen, LIRGraph *graph, MacroAssembler *masm)
@@ -45,9 +47,17 @@ CodeGeneratorARM::generatePrologue()
 #ifdef JS_USE_LINK_REGISTER
     masm.pushReturnAddress();
 #endif
+
+    // If profiling, save the current frame pointer to a per-thread global field.
+    if (isProfilerInstrumentationEnabled())
+        masm.profilerEnterFrame(StackPointer, CallTempReg0);
+
     // Note that this automatically sets MacroAssembler::framePushed().
     masm.reserveStack(frameSize());
     masm.checkStackAlignment();
+
+    emitTracelogIonStart();
+
     return true;
 }
 
@@ -57,17 +67,16 @@ CodeGeneratorARM::generateEpilogue()
     MOZ_ASSERT(!gen->compilingAsmJS());
     masm.bind(&returnLabel_);
 
-#ifdef JS_TRACE_LOGGING
-    if (gen->info().executionMode() == SequentialExecution) {
-        if (!emitTracelogStopEvent(TraceLogger::IonMonkey))
-            return false;
-        if (!emitTracelogScriptStop())
-            return false;
-    }
-#endif
+    emitTracelogIonStop();
 
     masm.freeStack(frameSize());
     MOZ_ASSERT(masm.framePushed() == 0);
+
+    // If profiling, reset the per-thread global lastJitFrame to point to
+    // the previous frame.
+    if (isProfilerInstrumentationEnabled())
+        masm.profilerExitFrame();
+
     masm.pop(pc);
     masm.flushBuffer();
     return true;
@@ -150,7 +159,7 @@ CodeGeneratorARM::generateOutOfLineCode()
         // Push the frame size, so the handler can recover the IonScript.
         masm.ma_mov(Imm32(frameSize()), lr);
 
-        JitCode *handler = gen->jitRuntime()->getGenericBailoutHandler(gen->info().executionMode());
+        JitCode *handler = gen->jitRuntime()->getGenericBailoutHandler();
         masm.branch(handler);
     }
 
@@ -2129,10 +2138,11 @@ CodeGeneratorARM::visitAsmJSStoreGlobalVar(LAsmJSStoreGlobalVar *ins)
 
     MIRType type = mir->value()->type();
     MOZ_ASSERT(IsNumberType(type));
+
     unsigned addr = mir->globalDataOffset() - AsmJSGlobalRegBias;
-    if (mir->value()->type() == MIRType_Int32) {
+    if (type == MIRType_Int32) {
         masm.ma_dtr(IsStore, GlobalReg, Imm32(addr), ToRegister(ins->value()));
-    } else if (mir->value()->type() == MIRType_Float32) {
+    } else if (type == MIRType_Float32) {
         VFPRegister vd(ToFloatRegister(ins->value()));
         masm.ma_vstr(vd.singleOverlay(), Operand(GlobalReg, addr));
     } else {
@@ -2182,18 +2192,6 @@ CodeGeneratorARM::visitNegF(LNegF *ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
     masm.ma_vneg_f32(input, ToFloatRegister(ins->output()));
-}
-
-void
-CodeGeneratorARM::visitForkJoinGetSlice(LForkJoinGetSlice *ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-JitCode *
-JitRuntime::generateForkJoinGetSliceStub(JSContext *cx)
-{
-    MOZ_CRASH("NYI");
 }
 
 void

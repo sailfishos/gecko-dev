@@ -360,11 +360,12 @@ public:
   // called.
   virtual nsresult Play();
 
-  // Set/Unset dormant state if necessary.
+  // Notify activity of the decoder owner is changed.
+  // Based on the activity, dormant state is updated.
   // Dormant state is a state to free all scarce media resources
   //  (like hw video codec), did not decoding and stay dormant.
   // It is used to share scarece media resources in system.
-  virtual void SetDormantIfNecessary(bool aDormant);
+  virtual void NotifyOwnerActivityChanged();
 
   // Pause video playback.
   virtual void Pause();
@@ -616,7 +617,7 @@ public:
   virtual bool IsMediaSeekable() MOZ_FINAL MOZ_OVERRIDE;
   // Returns true if seeking is supported on a transport level (e.g. the server
   // supports range requests, we are playing a file, etc.).
-  virtual bool IsTransportSeekable();
+  virtual bool IsTransportSeekable() MOZ_OVERRIDE;
 
   // Return the time ranges that can be seeked into.
   virtual nsresult GetSeekable(dom::TimeRanges* aSeekable);
@@ -749,7 +750,7 @@ public:
   // or equal to aPublishTime.
   void QueueMetadata(int64_t aPublishTime,
                      nsAutoPtr<MediaInfo> aInfo,
-                     nsAutoPtr<MetadataTags> aTags);
+                     nsAutoPtr<MetadataTags> aTags) MOZ_OVERRIDE;
 
   int64_t GetSeekTime() { return mRequestedSeekTarget.mTime; }
   void ResetSeekTime() { mRequestedSeekTarget.Reset(); }
@@ -775,11 +776,13 @@ public:
   // Called when the metadata from the media file has been loaded by the
   // state machine. Call on the main thread only.
   virtual void MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
-                              nsAutoPtr<MetadataTags> aTags);
+                              nsAutoPtr<MetadataTags> aTags,
+                              bool aRestoredFromDormant) MOZ_OVERRIDE;
 
   // Called when the first audio and/or video from the media file has been loaded
   // by the state machine. Call on the main thread only.
-  virtual void FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo);
+  virtual void FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo,
+                                bool aRestoredFromDormant) MOZ_OVERRIDE;
 
   // Called from MetadataLoaded(). Creates audio tracks and adds them to its
   // owner's audio track list, and implies to video tracks respectively.
@@ -1213,6 +1216,9 @@ protected:
   // Stores media info, including info of audio tracks and video tracks, should
   // only be accessed from main thread.
   nsAutoPtr<MediaInfo> mInfo;
+
+  // True if MediaDecoder is in dormant state.
+  bool mIsDormant;
 };
 
 } // namespace mozilla

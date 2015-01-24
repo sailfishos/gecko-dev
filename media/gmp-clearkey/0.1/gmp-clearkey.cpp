@@ -5,12 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ClearKeyDecryptionManager.h"
+#include "ClearKeySessionManager.h"
 
 #include "gmp-api/gmp-decryption.h"
 #include "gmp-api/gmp-platform.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/NullPtr.h"
 
 static GMPPlatformAPI* sPlatform = nullptr;
 GMPPlatformAPI*
@@ -35,7 +34,7 @@ GMPGetAPI(const char* aApiName, void* aHostAPI, void** aPluginAPI)
     return GMPNotImplementedErr;
   }
 
-  *aPluginAPI = new ClearKeyDecryptionManager();
+  *aPluginAPI = new ClearKeySessionManager();
 
   return GMPNoErr;
 }

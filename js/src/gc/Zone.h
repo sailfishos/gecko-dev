@@ -24,25 +24,6 @@ namespace jit {
 class JitZone;
 }
 
-// Encapsulates the data needed to perform allocation. Typically there is
-// precisely one of these per zone (|cx->zone().allocator|). However, in
-// parallel execution mode, there will be one per worker thread.
-class Allocator
-{
-  public:
-    explicit Allocator(JS::Zone *zone);
-
-    js::gc::ArenaLists arenas;
-
-  private:
-    // Since allocators can be accessed from worker threads, the parent zone_
-    // should not be accessed in general. GCRuntime is allowed to actually do
-    // the allocation, however.
-    friend class js::gc::GCRuntime;
-
-    JS::Zone *zone_;
-};
-
 namespace gc {
 
 // This class encapsulates the data that determines when we need to do a zone GC.
@@ -62,6 +43,7 @@ class ZoneHeapThreshold
 
     double gcHeapGrowthFactor() const { return gcHeapGrowthFactor_; }
     size_t gcTriggerBytes() const { return gcTriggerBytes_; }
+    bool isCloseToAllocTrigger(const js::gc::HeapUsage& usage, bool highFrequencyGC) const;
 
     void updateAfterGC(size_t lastBytes, JSGCInvocationKind gckind,
                        const GCSchedulingTunables &tunables, const GCSchedulingState &state);
@@ -255,7 +237,7 @@ struct Zone : public JS::shadow::Zone,
     }
 
   public:
-    js::Allocator allocator;
+    js::gc::ArenaLists arenas;
 
     js::types::TypeZone types;
 

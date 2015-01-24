@@ -12,6 +12,7 @@
 #include "nsPIDOMWindow.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptContext.h"
+#include "nsIWeakReferenceUtils.h"
 #include "MainThreadUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventListenerManager.h"
@@ -42,6 +43,13 @@ public:
     , mHasOrHasHadOwnerWindow(false)
   {
     BindToOwner(aWindow);
+  }
+  explicit DOMEventTargetHelper(nsIGlobalObject* aGlobalObject)
+    : mParentObject(nullptr)
+    , mOwnerWindow(nullptr)
+    , mHasOrHasHadOwnerWindow(false)
+  {
+    BindToOwner(aGlobalObject);
   }
   explicit DOMEventTargetHelper(DOMEventTargetHelper* aOther)
     : mParentObject(nullptr)
@@ -94,6 +102,11 @@ public:
     return static_cast<DOMEventTargetHelper*>(target);
   }
 
+  bool HasListenersFor(const nsAString& aType)
+  {
+    return mListenerManager && mListenerManager->HasListenersFor(aType);
+  }
+
   bool HasListenersFor(nsIAtom* aTypeWithOn)
   {
     return mListenerManager && mListenerManager->HasListenersFor(aTypeWithOn);
@@ -126,7 +139,10 @@ public:
   void BindToOwner(nsPIDOMWindow* aOwner);
   void BindToOwner(DOMEventTargetHelper* aOther);
   virtual void DisconnectFromOwner();                   
-  nsIGlobalObject* GetParentObject() const { return mParentObject; }
+  nsIGlobalObject* GetParentObject() const {
+    nsCOMPtr<nsIGlobalObject> parentObject = do_QueryReferent(mParentObject);
+    return parentObject;
+  }
   bool HasOrHasHadOwner() { return mHasOrHasHadOwnerWindow; }
 
   virtual void EventListenerAdded(nsIAtom* aType) MOZ_OVERRIDE;
@@ -152,10 +168,11 @@ protected:
   virtual void LastRelease() {}
 private:
   // Inner window or sandbox.
-  nsIGlobalObject*           mParentObject;
+  nsWeakPtr                  mParentObject;
   // mParentObject pre QI-ed and cached (inner window)
   // (it is needed for off main thread access)
-  nsPIDOMWindow*             mOwnerWindow;
+  // It is obtained in BindToOwner and reset in DisconnectFromOwner.
+  nsPIDOMWindow* MOZ_NON_OWNING_REF mOwnerWindow;
   bool                       mHasOrHasHadOwnerWindow;
 };
 
@@ -264,11 +281,11 @@ NS_DEFINE_STATIC_IID_ACCESSOR(DOMEventTargetHelper,
   using _class::RemoveEventListener;                \
   NS_FORWARD_NSIDOMEVENTTARGET(_class::)            \
   virtual mozilla::EventListenerManager*            \
-  GetOrCreateListenerManager() {                    \
+  GetOrCreateListenerManager() MOZ_OVERRIDE {       \
     return _class::GetOrCreateListenerManager();    \
   }                                                 \
   virtual mozilla::EventListenerManager*            \
-  GetExistingListenerManager() const {              \
+  GetExistingListenerManager() const MOZ_OVERRIDE { \
     return _class::GetExistingListenerManager();    \
   }
 

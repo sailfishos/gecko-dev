@@ -11,6 +11,7 @@
 #include "mozilla/gmp/PGMPVideoEncoderParent.h"
 #include "GMPMessageUtils.h"
 #include "GMPSharedMemManager.h"
+#include "GMPUtils.h"
 #include "GMPVideoHost.h"
 #include "GMPVideoEncoderProxy.h"
 
@@ -38,7 +39,7 @@ public:
                             GMPVideoEncoderCallbackProxy* aCallback,
                             int32_t aNumberOfCores,
                             uint32_t aMaxPayloadSize) MOZ_OVERRIDE;
-  virtual GMPErr Encode(UniquePtr<GMPVideoi420Frame> aInputFrame,
+  virtual GMPErr Encode(GMPUniquePtr<GMPVideoi420Frame> aInputFrame,
                         const nsTArray<uint8_t>& aCodecSpecificInfo,
                         const nsTArray<GMPVideoFrameType>& aFrameTypes) MOZ_OVERRIDE;
   virtual GMPErr SetChannelParameters(uint32_t aPacketLoss, uint32_t aRTT) MOZ_OVERRIDE;
@@ -66,9 +67,9 @@ private:
   // PGMPVideoEncoderParent
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual bool RecvEncoded(const GMPVideoEncodedFrameData& aEncodedFrame,
-                           const nsTArray<uint8_t>& aCodecSpecificInfo) MOZ_OVERRIDE;
+                           InfallibleTArray<uint8_t>&& aCodecSpecificInfo) MOZ_OVERRIDE;
   virtual bool RecvError(const GMPErr& aError) MOZ_OVERRIDE;
-  virtual bool RecvParentShmemForPool(Shmem& aFrameBuffer) MOZ_OVERRIDE;
+  virtual bool RecvParentShmemForPool(Shmem&& aFrameBuffer) MOZ_OVERRIDE;
   virtual bool AnswerNeedShmem(const uint32_t& aEncodedBufferSize,
                                Shmem* aMem) MOZ_OVERRIDE;
   virtual bool Recv__delete__() MOZ_OVERRIDE;

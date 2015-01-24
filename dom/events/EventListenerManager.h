@@ -162,7 +162,7 @@ public:
     nsString mTypeString; // for non-main-threads
     uint16_t mEventType;
 
-    enum ListenerType MOZ_ENUM_TYPE(uint8_t)
+    enum ListenerType : uint8_t
     {
       eNativeListener = 0,
       eJSEventListener,
@@ -558,7 +558,7 @@ protected:
   uint32_t mNoListenerForEvent : 23;
 
   nsAutoTObserverArray<Listener, 2> mListeners;
-  dom::EventTarget* mTarget;  // WEAK
+  dom::EventTarget* MOZ_NON_OWNING_REF mTarget;
   nsCOMPtr<nsIAtom> mNoListenerForEventAtom;
 
   friend class ELMCreationDetector;

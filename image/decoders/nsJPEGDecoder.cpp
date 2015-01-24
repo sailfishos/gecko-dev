@@ -18,12 +18,13 @@
 #include "jerror.h"
 
 #include "gfxPlatform.h"
+#include "mozilla/Endian.h"
 
 extern "C" {
 #include "iccjpeg.h"
 }
 
-#if defined(IS_BIG_ENDIAN)
+#if MOZ_BIG_ENDIAN
 #define MOZ_JCS_EXT_NATIVE_ENDIAN_XRGB JCS_EXT_XRGB
 #else
 #define MOZ_JCS_EXT_NATIVE_ENDIAN_XRGB JCS_EXT_BGRX
@@ -84,7 +85,7 @@ METHODDEF(void) my_error_exit (j_common_ptr cinfo);
 #define MAX_JPEG_MARKER_LENGTH  (((uint32_t)1 << 16) - 1)
 
 
-nsJPEGDecoder::nsJPEGDecoder(RasterImage& aImage,
+nsJPEGDecoder::nsJPEGDecoder(RasterImage* aImage,
                              Decoder::DecodeStyle aDecodeStyle)
  : Decoder(aImage)
  , mDecodeStyle(aDecodeStyle)
@@ -139,6 +140,20 @@ nsJPEGDecoder::SpeedHistogram()
   return Telemetry::IMAGE_DECODE_SPEED_JPEG;
 }
 
+nsresult
+nsJPEGDecoder::SetTargetSize(const nsIntSize& aSize)
+{
+  // Make sure the size is reasonable.
+  if (MOZ_UNLIKELY(aSize.width <= 0 || aSize.height <= 0)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // Create a downscaler that we'll filter our output through.
+  mDownscaler.emplace(aSize);
+
+  return NS_OK;
+}
+
 void
 nsJPEGDecoder::InitInternal()
 {
@@ -190,8 +205,7 @@ nsJPEGDecoder::FinishInternal()
 }
 
 void
-nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount,
-                             DecodeStrategy)
+nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
 {
   mSegment = (const JOCTET*)aBuffer;
   mSegmentLen = aCount;
@@ -238,7 +252,7 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount,
         return; // I/O suspension
       }
 
-      int sampleSize = mImage.GetRequestedSampleSize();
+      int sampleSize = mImage->GetRequestedSampleSize();
       if (sampleSize > 0) {
         mInfo.scale_num = 1;
         mInfo.scale_denom = sampleSize;
@@ -395,6 +409,17 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount,
       return;
     }
 
+    if (mDownscaler) {
+      nsresult rv = mDownscaler->BeginFrame(GetSize(),
+                                            mImageData,
+                                            /* aHasAlpha = */ false);
+      if (NS_FAILED(rv)) {
+        mState = JPEG_ERROR;
+        return;
+      }
+    }
+
+
     PR_LOG(GetJPEGDecoderAccountingLog(), PR_LOG_DEBUG,
            ("        JPEGDecoderAccounting: nsJPEGDecoder::"
             "Write -- created image frame with %ux%u pixels",
@@ -513,6 +538,9 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount,
             break;
 
           mInfo.output_scanline = 0;
+          if (mDownscaler) {
+            mDownscaler->ResetForNextProgressivePass();
+          }
         }
       }
 
@@ -580,7 +608,7 @@ nsJPEGDecoder::ReadOrientationFromEXIF()
 void
 nsJPEGDecoder::NotifyDone()
 {
-  PostFrameStop(FrameBlender::kFrameOpaque);
+  PostFrameStop(Opacity::OPAQUE);
   PostDecodeDone();
 }
 
@@ -592,15 +620,24 @@ nsJPEGDecoder::OutputScanlines(bool* suspend)
   const uint32_t top = mInfo.output_scanline;
 
   while ((mInfo.output_scanline < mInfo.output_height)) {
-      // Use the Cairo image buffer as scanline buffer
-      uint32_t* imageRow = ((uint32_t*)mImageData) +
-                           (mInfo.output_scanline * mInfo.output_width);
+      uint32_t* imageRow = nullptr;
+      if (mDownscaler) {
+        imageRow = reinterpret_cast<uint32_t*>(mDownscaler->RowBuffer());
+      } else {
+        imageRow = reinterpret_cast<uint32_t*>(mImageData) +
+                   (mInfo.output_scanline * mInfo.output_width);
+      }
+
+      MOZ_ASSERT(imageRow, "Should have a row buffer here");
 
       if (mInfo.out_color_space == MOZ_JCS_EXT_NATIVE_ENDIAN_XRGB) {
         // Special case: scanline will be directly converted into packed ARGB
         if (jpeg_read_scanlines(&mInfo, (JSAMPARRAY)&imageRow, 1) != 1) {
           *suspend = true; // suspend
           break;
+        }
+        if (mDownscaler) {
+          mDownscaler->CommitRow();
         }
         continue; // all done for this row!
       }
@@ -677,13 +714,22 @@ nsJPEGDecoder::OutputScanlines(bool* suspend)
                                      sampleRow[2]);
         sampleRow += 3;
       }
+
+      if (mDownscaler) {
+        mDownscaler->CommitRow();
+      }
   }
 
   if (top != mInfo.output_scanline) {
-      nsIntRect r(0, top, mInfo.output_width, mInfo.output_scanline-top);
-      PostInvalidation(r);
+    PostInvalidation(nsIntRect(0, top,
+                               mInfo.output_width,
+                               mInfo.output_scanline - top),
+                     mDownscaler ? Some(mDownscaler->TakeInvalidRect())
+                                 : Nothing());
   }
 
+  MOZ_ASSERT(!mDownscaler || !mDownscaler->HasInvalidation(),
+             "Didn't send downscaler's invalidation");
 }
 
 

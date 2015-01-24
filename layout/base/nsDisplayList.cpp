@@ -721,7 +721,7 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
           metrics.GetDisplayPort());
     }
     if (nsLayoutUtils::GetCriticalDisplayPort(content, &dp)) {
-      metrics.mCriticalDisplayPort = CSSRect::FromAppUnits(dp);
+      metrics.SetCriticalDisplayPort(CSSRect::FromAppUnits(dp));
     }
     DisplayPortMarginsPropertyData* marginsData =
         static_cast<DisplayPortMarginsPropertyData*>(content->GetProperty(nsGkAtoms::DisplayPortMargins));
@@ -769,9 +769,9 @@ nsDisplayScrollLayer::ComputeFrameMetrics(nsIFrame* aForFrame,
   // Only the root scrollable frame for a given presShell should pick up
   // the presShell's resolution. All the other frames are 1.0.
   if (aScrollFrame == presShell->GetRootScrollFrame()) {
-    metrics.mPresShellResolution = presShell->GetXResolution();
+    metrics.SetPresShellResolution(presShell->GetXResolution());
   } else {
-    metrics.mPresShellResolution = 1.0f;
+    metrics.SetPresShellResolution(1.0f);
   }
   // The cumulative resolution is the resolution at which the scroll frame's
   // content is actually rendered. It includes the pres shell resolutions of
@@ -1182,12 +1182,28 @@ nsDisplayListBuilder::IsAnimatedGeometryRoot(nsIFrame* aFrame, nsIFrame** aParen
   return false;
 }
 
+bool
+nsDisplayListBuilder::GetCachedAnimatedGeometryRoot(const nsIFrame* aFrame,
+                                                    const nsIFrame* aStopAtAncestor,
+                                                    nsIFrame** aOutResult)
+{
+  AnimatedGeometryRootLookup lookup(aFrame, aStopAtAncestor);
+  return mAnimatedGeometryRootCache.Get(lookup, aOutResult);
+}
+
 static nsIFrame*
 ComputeAnimatedGeometryRootFor(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                               const nsIFrame* aStopAtAncestor = nullptr)
+                               const nsIFrame* aStopAtAncestor = nullptr,
+                               bool aUseCache = false)
 {
   nsIFrame* cursor = aFrame;
   while (cursor != aStopAtAncestor) {
+    if (aUseCache) {
+      nsIFrame* result;
+      if (aBuilder->GetCachedAnimatedGeometryRoot(cursor, aStopAtAncestor, &result)) {
+        return result;
+      }
+    }
     nsIFrame* next;
     if (aBuilder->IsAnimatedGeometryRoot(cursor, &next))
       return cursor;
@@ -1202,20 +1218,47 @@ nsDisplayListBuilder::FindAnimatedGeometryRootFor(nsIFrame* aFrame, const nsIFra
   if (aFrame == mCurrentFrame) {
     return mCurrentAnimatedGeometryRoot;
   }
-  return ComputeAnimatedGeometryRootFor(this, aFrame, aStopAtAncestor);
+
+  nsIFrame* result = ComputeAnimatedGeometryRootFor(this, aFrame, aStopAtAncestor, true);
+  AnimatedGeometryRootLookup lookup(aFrame, aStopAtAncestor);
+  mAnimatedGeometryRootCache.Put(lookup, result);
+  return result;
 }
 
 void
 nsDisplayListBuilder::RecomputeCurrentAnimatedGeometryRoot()
 {
   mCurrentAnimatedGeometryRoot = ComputeAnimatedGeometryRootFor(this, const_cast<nsIFrame *>(mCurrentFrame));
+  AnimatedGeometryRootLookup lookup(mCurrentFrame, nullptr);
+  mAnimatedGeometryRootCache.Put(lookup, mCurrentAnimatedGeometryRoot);
 }
 
 void
 nsDisplayListBuilder::AdjustWindowDraggingRegion(nsIFrame* aFrame)
 {
-  if (!IsForPainting() || IsInSubdocument() || IsInTransform()) {
+  if (!IsForPainting() || IsInSubdocument()) {
     return;
+  }
+
+  Matrix4x4 referenceFrameToRootReferenceFrame;
+
+  // The const_cast is for nsLayoutUtils::GetTransformToAncestor.
+  nsIFrame* referenceFrame = const_cast<nsIFrame*>(FindReferenceFrameFor(aFrame));
+
+  if (IsInTransform()) {
+    // Only support 2d rectilinear transforms. Transform support is needed for
+    // the horizontal flip transform that's applied to the urlbar textbox in
+    // RTL mode - it should be able to exclude itself from the draggable region.
+    referenceFrameToRootReferenceFrame =
+      nsLayoutUtils::GetTransformToAncestor(referenceFrame, mReferenceFrame);
+    Matrix referenceFrameToRootReferenceFrame2d;
+    if (!referenceFrameToRootReferenceFrame.Is2D(&referenceFrameToRootReferenceFrame2d) ||
+        !referenceFrameToRootReferenceFrame2d.IsRectilinear()) {
+      return;
+    }
+  } else {
+    MOZ_ASSERT(referenceFrame == mReferenceFrame,
+               "referenceFrameToRootReferenceFrame needs to be adjusted");
   }
 
   // We do some basic visibility checking on the frame's border box here.
@@ -1238,11 +1281,19 @@ nsDisplayListBuilder::AdjustWindowDraggingRegion(nsIFrame* aFrame)
     borderBox = clip->ApplyNonRoundedIntersection(borderBox);
   }
   if (!borderBox.IsEmpty()) {
-    const nsStyleUserInterface* styleUI = aFrame->StyleUserInterface();
-    if (styleUI->mWindowDragging == NS_STYLE_WINDOW_DRAGGING_DRAG) {
-      mWindowDraggingRegion.OrWith(borderBox);
-    } else {
-      mWindowDraggingRegion.SubOut(borderBox);
+    LayoutDeviceRect devPixelBorderBox =
+      LayoutDevicePixel::FromAppUnits(borderBox, aFrame->PresContext()->AppUnitsPerDevPixel());
+    LayoutDeviceRect transformedDevPixelBorderBox =
+      TransformTo<LayoutDevicePixel>(referenceFrameToRootReferenceFrame, devPixelBorderBox);
+    transformedDevPixelBorderBox.Round();
+    LayoutDeviceIntRect transformedDevPixelBorderBoxInt;
+    if (transformedDevPixelBorderBox.ToIntRect(&transformedDevPixelBorderBoxInt)) {
+      const nsStyleUserInterface* styleUI = aFrame->StyleUserInterface();
+      if (styleUI->mWindowDragging == NS_STYLE_WINDOW_DRAGGING_DRAG) {
+        mWindowDraggingRegion.OrWith(LayoutDevicePixel::ToUntyped(transformedDevPixelBorderBoxInt));
+      } else {
+        mWindowDraggingRegion.SubOut(LayoutDevicePixel::ToUntyped(transformedDevPixelBorderBoxInt));
+      }
     }
   }
 }
@@ -1251,8 +1302,8 @@ void
 nsDisplayListBuilder::AddToWillChangeBudget(nsIFrame* aFrame, const nsSize& aRect) {
   // Make sure that we don't query the budget before the display list is fully
   // built and that the will change budget is locked in.
-  MOZ_ASSERT(!mWillChangeBudgetCalculated,
-             "Can't modify the budget once it's been used.");
+  NS_ASSERTION(!mWillChangeBudgetCalculated,
+               "Can't modify the budget once it's been used.");
 
   DocumentWillChangeBudget budget;
 
@@ -1282,8 +1333,8 @@ nsDisplayListBuilder::IsInWillChangeBudget(nsIFrame* aFrame) const {
 
   nsPresContext* key = aFrame->PresContext();
   if (!mWillChangeBudget.Contains(key)) {
-    MOZ_ASSERT(false, "If we added nothing to our budget then this "
-                      "shouldn't be called.");
+    NS_ASSERTION(false, "If we added nothing to our budget then this "
+                        "shouldn't be called.");
     return false;
   }
 
@@ -1443,7 +1494,8 @@ StartPendingAnimationsOnSubDocuments(nsIDocument* aDocument, void* aReadyTime)
     // If paint-suppression is in effect then we haven't finished painting
     // this document yet so we shouldn't start animations
     if (!shell || !shell->IsPaintingSuppressed()) {
-      tracker->StartPendingPlayers(*static_cast<TimeStamp*>(aReadyTime));
+      const TimeStamp& readyTime = *static_cast<TimeStamp*>(aReadyTime);
+      tracker->StartPendingPlayersOnNextTick(readyTime);
     }
   }
   aDocument->EnumerateSubDocuments(StartPendingAnimationsOnSubDocuments,
@@ -1557,6 +1609,8 @@ already_AddRefed<LayerManager> nsDisplayList::PaintRoot(nsDisplayListBuilder* aB
   // Root is being scaled up by the X/Y resolution. Scale it back down.
   root->SetPostScale(1.0f/containerParameters.mXScale,
                      1.0f/containerParameters.mYScale);
+  root->SetScaleToResolution(presShell->ScaleToResolution(),
+      containerParameters.mXScale);
 
   if (gfxPrefs::LayoutUseContainersForRootFrames()) {
     bool isRoot = presContext->IsRootContentDocument();
@@ -2030,7 +2084,6 @@ nsDisplaySolidColor::Paint(nsDisplayListBuilder* aBuilder,
   drawTarget->FillRect(rect, ColorPattern(ToDeviceColor(mColor)));
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplaySolidColor::WriteDebugInfo(std::stringstream& aStream)
 {
@@ -2040,7 +2093,6 @@ nsDisplaySolidColor::WriteDebugInfo(std::stringstream& aStream)
           << (int)NS_GET_B(mColor) << ","
           << (int)NS_GET_A(mColor) << ")";
 }
-#endif
 
 static void
 RegisterThemeGeometry(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
@@ -2136,7 +2188,9 @@ nsDisplayBackgroundImage::AppendBackgroundItemsToTop(nsDisplayListBuilder* aBuil
   }
 
   bool drawBackgroundColor = false;
-  nscolor color;
+  // Dummy initialisation to keep Valgrind/Memcheck happy.
+  // See bug 1122375 comment 1.
+  nscolor color = NS_RGBA(0,0,0,0);
   if (!nsCSSRendering::IsCanvasFrame(aFrame) && bg) {
     bool drawBackgroundImage;
     color =
@@ -2746,13 +2800,11 @@ nsDisplayThemedBackground::~nsDisplayThemedBackground()
 #endif
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayThemedBackground::WriteDebugInfo(std::stringstream& aStream)
 {
   aStream << " (themed, appearance:" << (int)mAppearance << ")";
 }
-#endif
 
 void
 nsDisplayThemedBackground::HitTest(nsDisplayListBuilder* aBuilder,
@@ -2951,14 +3003,12 @@ nsDisplayBackgroundColor::HitTest(nsDisplayListBuilder* aBuilder,
   aOutFrames->AppendElement(mFrame);
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayBackgroundColor::WriteDebugInfo(std::stringstream& aStream)
 {
   aStream << " (rgba " << mColor.r << "," << mColor.g << ","
           << mColor.b << "," << mColor.a << ")";
 }
-#endif
 
 already_AddRefed<Layer>
 nsDisplayClearBackground::BuildLayer(nsDisplayListBuilder* aBuilder,
@@ -3037,7 +3087,18 @@ nsDisplayLayerEventRegions::AddFrame(nsDisplayListBuilder* aBuilder,
 {
   NS_ASSERTION(aBuilder->FindReferenceFrameFor(aFrame) == aBuilder->FindReferenceFrameFor(mFrame),
                "Reference frame mismatch");
-  uint8_t pointerEvents = aFrame->StyleVisibility()->mPointerEvents;
+  if (!aFrame->GetParent()) {
+    MOZ_ASSERT(aFrame->GetType() == nsGkAtoms::viewportFrame);
+    nsSubDocumentFrame* subdoc = static_cast<nsSubDocumentFrame*>(
+        nsLayoutUtils::GetCrossDocParentFrame(aFrame));
+    if (subdoc && subdoc->PassPointerEventsToChildren()) {
+      // If this viewport frame is for a subdocument with
+      // mozpasspointerevents, then we don't want to add the viewport itself
+      // to the event regions. Instead we want to add only subframes.
+      return;
+    }
+  }
+  uint8_t pointerEvents = aFrame->StyleVisibility()->GetEffectivePointerEvents(aFrame);
   if (pointerEvents == NS_STYLE_POINTER_EVENTS_NONE) {
     return;
   }
@@ -3076,7 +3137,6 @@ nsDisplayLayerEventRegions::AddInactiveScrollPort(const nsRect& aRect)
   mDispatchToContentHitRegion.Or(mDispatchToContentHitRegion, aRect);
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayLayerEventRegions::WriteDebugInfo(std::stringstream& aStream)
 {
@@ -3090,7 +3150,6 @@ nsDisplayLayerEventRegions::WriteDebugInfo(std::stringstream& aStream)
     AppendToString(aStream, mDispatchToContentHitRegion, " (dispatchToContentRegion ", ")");
   }
 }
-#endif
 
 nsDisplayCaret::nsDisplayCaret(nsDisplayListBuilder* aBuilder,
                                nsIFrame* aCaretFrame)
@@ -3376,6 +3435,8 @@ nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
 {
   MOZ_COUNT_CTOR(nsDisplayWrapList);
 
+  mBaseVisibleRect = mVisibleRect;
+
   mList.AppendToTop(aList);
   UpdateBounds(aBuilder);
 
@@ -3423,6 +3484,8 @@ nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
   , mHasZIndexOverride(false)
 {
   MOZ_COUNT_CTOR(nsDisplayWrapList);
+
+  mBaseVisibleRect = mVisibleRect;
 
   mList.AppendToTop(aItem);
   UpdateBounds(aBuilder);
@@ -3788,13 +3851,11 @@ bool nsDisplayOpacity::TryMerge(nsDisplayListBuilder* aBuilder, nsDisplayItem* a
   return true;
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayOpacity::WriteDebugInfo(std::stringstream& aStream)
 {
   aStream << " (opacity " << mOpacity << ")";
 }
-#endif
 
 nsDisplayMixBlendMode::nsDisplayMixBlendMode(nsDisplayListBuilder* aBuilder,
                                              nsIFrame* aFrame, nsDisplayList* aList,
@@ -3962,6 +4023,9 @@ nsDisplayOwnLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
   }
   if (mFlags & HORIZONTAL_SCROLLBAR) {
     layer->SetScrollbarData(mScrollTarget, Layer::ScrollDirection::HORIZONTAL);
+  }
+  if (mFlags & SCROLLBAR_CONTAINER) {
+    layer->SetIsScrollbarContainer();
   }
 
   if (mFlags & GENERATE_SUBDOC_INVALIDATIONS) {
@@ -4141,6 +4205,8 @@ nsDisplayResolution::BuildLayer(nsDisplayListBuilder* aBuilder,
     aBuilder, aManager, containerParameters);
   layer->SetPostScale(1.0f / presShell->GetXResolution(),
                       1.0f / presShell->GetYResolution());
+  layer->AsContainerLayer()->SetScaleToResolution(
+      presShell->ScaleToResolution(), presShell->GetXResolution());
   return layer.forget();
 }
 
@@ -4553,20 +4619,19 @@ nsDisplayScrollLayer::GetScrollLayerCount()
 #endif
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayScrollLayer::WriteDebugInfo(std::stringstream& aStream)
 {
   aStream << " (scrollframe " << mScrollFrame
           << " scrolledFrame " << mScrolledFrame << ")";
 }
-#endif
 
 nsDisplayScrollInfoLayer::nsDisplayScrollInfoLayer(
   nsDisplayListBuilder* aBuilder,
   nsIFrame* aScrolledFrame,
   nsIFrame* aScrollFrame)
   : nsDisplayScrollLayer(aBuilder, aScrollFrame, aScrolledFrame, aScrollFrame)
+  , mHoisted(false)
 {
 #ifdef NS_BUILD_REFCNT_LOGGING
   MOZ_COUNT_CTOR(nsDisplayScrollInfoLayer);
@@ -4584,11 +4649,33 @@ nsDisplayScrollInfoLayer::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
   return nsDisplayWrapList::GetBounds(aBuilder, aSnap);
 }
 
+already_AddRefed<Layer>
+nsDisplayScrollInfoLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
+                                     LayerManager* aManager,
+                                     const ContainerLayerParameters& aContainerParameters)
+{
+  // Only build scrollinfo layers if event-regions are disabled, so that the
+  // compositor knows where the inactive scrollframes are. When event-regions
+  // are enabled, the dispatch-to-content regions generally provide this
+  // information to the APZ code. However, in some cases, there might be
+  // content that cannot be layerized, and so needs to scroll synchronously.
+  // To handle those cases (which are indicated by setting mHoisted to true), we
+  // still want to generate scrollinfo layers.
+  if (gfxPrefs::LayoutEventRegionsEnabled() && !mHoisted) {
+    return nullptr;
+  }
+  return nsDisplayScrollLayer::BuildLayer(aBuilder, aManager, aContainerParameters);
+}
+
 LayerState
 nsDisplayScrollInfoLayer::GetLayerState(nsDisplayListBuilder* aBuilder,
                                         LayerManager* aManager,
                                         const ContainerLayerParameters& aParameters)
 {
+  // See comment in BuildLayer
+  if (gfxPrefs::LayoutEventRegionsEnabled() && !mHoisted) {
+    return LAYER_NONE;
+  }
   return LAYER_ACTIVE_EMPTY;
 }
 
@@ -5741,13 +5828,11 @@ bool nsDisplayTransform::UntransformVisibleRect(nsDisplayListBuilder* aBuilder,
   return true;
 }
 
-#ifdef MOZ_DUMP_PAINTING
 void
 nsDisplayTransform::WriteDebugInfo(std::stringstream& aStream)
 {
   AppendToString(aStream, GetTransform());
 }
-#endif
 
 nsDisplaySVGEffects::nsDisplaySVGEffects(nsDisplayListBuilder* aBuilder,
                                          nsIFrame* aFrame, nsDisplayList* aList)

@@ -30,7 +30,7 @@
 #include "nsIURL.h"
 #include "nsTArray.h"
 #include "nsReadableUtils.h"
-#include "nsIProtocolProxyService2.h"
+#include "nsProtocolProxyService.h"
 #include "nsIStreamConverterService.h"
 #include "nsIFile.h"
 #if defined(XP_MACOSX)
@@ -50,6 +50,7 @@
 #include "nsPluginStreamListenerPeer.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/plugins/PluginAsyncSurrogate.h"
 #include "mozilla/plugins/PluginBridge.h"
 #include "mozilla/plugins/PluginTypes.h"
 #include "mozilla/Preferences.h"
@@ -110,6 +111,7 @@
 using namespace mozilla;
 using mozilla::TimeStamp;
 using mozilla::plugins::PluginTag;
+using mozilla::plugins::PluginAsyncSurrogate;
 
 // Null out a strong ref to a linked list iteratively to avoid
 // exhausting the stack (bug 486349).
@@ -578,8 +580,7 @@ nsresult nsPluginHost::PostURL(nsISupports* pluginInst,
     }
   }
 
-  // if we don't have a target, just create a stream.  This does
-  // NS_OpenURI()!
+  // if we don't have a target, just create a stream.
   if (streamListener)
     rv = NewPluginURLStream(NS_ConvertUTF8toUTF16(url), instance,
                             streamListener,
@@ -605,32 +606,30 @@ nsresult nsPluginHost::FindProxyForURL(const char* url, char* *result)
   }
   nsresult res;
 
-  nsCOMPtr<nsIURI> uriIn;
-  nsCOMPtr<nsIProtocolProxyService> proxyService;
-  nsCOMPtr<nsIProtocolProxyService2> proxyService2;
-  nsCOMPtr<nsIIOService> ioService;
-
-  proxyService = do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &res);
+  nsCOMPtr<nsIProtocolProxyService> proxyService =
+    do_GetService(NS_PROTOCOLPROXYSERVICE_CONTRACTID, &res);
   if (NS_FAILED(res) || !proxyService)
     return res;
 
-  proxyService2 = do_QueryInterface(proxyService, &res);
-  if (NS_FAILED(res) || !proxyService2)
-    return res;
+  nsRefPtr<nsProtocolProxyService> rawProxyService = do_QueryObject(proxyService);
+  if (!rawProxyService) {
+    return NS_ERROR_FAILURE;
+  }
 
-  ioService = do_GetService(NS_IOSERVICE_CONTRACTID, &res);
+  nsCOMPtr<nsIIOService> ioService = do_GetService(NS_IOSERVICE_CONTRACTID, &res);
   if (NS_FAILED(res) || !ioService)
     return res;
 
-  // make an nsURI from the argument url
-  res = ioService->NewURI(nsDependentCString(url), nullptr, nullptr, getter_AddRefs(uriIn));
+  // make a temporary channel from the argument url
+  nsCOMPtr<nsIChannel> tempChannel;
+  res = ioService->NewChannel(nsDependentCString(url), nullptr, nullptr, getter_AddRefs(tempChannel));
   if (NS_FAILED(res))
     return res;
 
   nsCOMPtr<nsIProxyInfo> pi;
 
-  // Remove this with bug 778201
-  res = proxyService2->DeprecatedBlockingResolve(uriIn, 0, getter_AddRefs(pi));
+  // Remove this deprecated call in the future (see Bug 778201):
+  res = rawProxyService->DeprecatedBlockingResolve(tempChannel, 0, getter_AddRefs(pi));
   if (NS_FAILED(res))
     return res;
 
@@ -830,6 +829,7 @@ nsPluginHost::InstantiatePluginInstance(const char *aMimeType, nsIURI* aURL,
   if (NS_FAILED(rv)) {
     return NS_ERROR_FAILURE;
   }
+  const bool isAsyncInit = (rv == NS_PLUGIN_INIT_PENDING);
 
   nsRefPtr<nsNPAPIPluginInstance> instance;
   rv = instanceOwner->GetInstance(getter_AddRefs(instance));
@@ -837,11 +837,9 @@ nsPluginHost::InstantiatePluginInstance(const char *aMimeType, nsIURI* aURL,
     return rv;
   }
 
-  if (instance) {
-    instanceOwner->CreateWidget();
-
-    // If we've got a native window, the let the plugin know about it.
-    instanceOwner->CallSetWindow();
+  // Async init plugins will initiate their own widget creation.
+  if (!isAsyncInit && instance) {
+    CreateWidget(instanceOwner);
   }
 
   // At this point we consider instantiation to be successful. Do not return an error.
@@ -1556,6 +1554,10 @@ nsPluginHost::ClearSiteData(nsIPluginTag* plugin, const nsACString& domain,
   }
 
   nsPluginTag* tag = static_cast<nsPluginTag*>(plugin);
+
+  if (!tag->IsEnabled()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   // We only ensure support for clearing Flash site data for now.
   // We will also attempt to clear data for any plugin that happens
@@ -3327,6 +3329,14 @@ nsresult nsPluginHost::NewPluginStreamListener(nsIURI* aURI,
   return NS_OK;
 }
 
+void nsPluginHost::CreateWidget(nsPluginInstanceOwner* aOwner)
+{
+  aOwner->CreateWidget();
+
+  // If we've got a native window, the let the plugin know about it.
+  aOwner->CallSetWindow();
+}
+
 NS_IMETHODIMP nsPluginHost::Observe(nsISupports *aSubject,
                                     const char *aTopic,
                                     const char16_t *someData)
@@ -3952,6 +3962,12 @@ PluginDestructionGuard::PluginDestructionGuard(nsNPAPIPluginInstance *aInstance)
   : mInstance(aInstance)
 {
   Init();
+}
+
+PluginDestructionGuard::PluginDestructionGuard(PluginAsyncSurrogate *aSurrogate)
+  : mInstance(static_cast<nsNPAPIPluginInstance*>(aSurrogate->GetNPP()->ndata))
+{
+  InitAsync();
 }
 
 PluginDestructionGuard::PluginDestructionGuard(NPP npp)

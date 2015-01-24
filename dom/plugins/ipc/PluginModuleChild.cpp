@@ -65,6 +65,7 @@ const wchar_t * kMozillaWindowClass = L"MozillaWindowClass";
 #endif
 
 namespace {
+// see PluginModuleChild::GetChrome()
 PluginModuleChild* gChromeInstance = nullptr;
 nsTArray<PluginModuleChild*>* gAllInstances;
 }
@@ -94,6 +95,13 @@ typedef BOOL (WINAPI *GetWindowInfoPtr)(HWND hwnd, PWINDOWINFO pwi);
 static GetWindowInfoPtr sGetWindowInfoPtrStub = nullptr;
 static HWND sBrowserHwnd = nullptr;
 #endif
+
+template<>
+struct RunnableMethodTraits<PluginModuleChild>
+{
+    static void RetainCallee(PluginModuleChild* obj) { }
+    static void ReleaseCallee(PluginModuleChild* obj) { }
+};
 
 /* static */
 PluginModuleChild*
@@ -184,6 +192,9 @@ PluginModuleChild::~PluginModuleChild()
 PluginModuleChild*
 PluginModuleChild::GetChrome()
 {
+    // A special PluginModuleChild instance that talks to the chrome process
+    // during startup and shutdown. Synchronous messages to or from this actor
+    // should be avoided because they may lead to hangs.
     MOZ_ASSERT(gChromeInstance);
     return gChromeInstance;
 }
@@ -223,7 +234,6 @@ PluginModuleChild::InitForContent(base::ProcessHandle aParentProcessHandle,
     mTransport = aChannel;
 
     mLibrary = GetChrome()->mLibrary;
-    mQuirks = GetChrome()->mQuirks;
     mFunctions = GetChrome()->mFunctions;
 
     return true;
@@ -1881,7 +1891,21 @@ PluginModuleChild::AnswerNP_GetEntryPoints(NPError* _retval)
 }
 
 bool
-PluginModuleChild::AnswerNP_Initialize(const PluginSettings& aSettings, NPError* _retval)
+PluginModuleChild::AnswerNP_Initialize(const PluginSettings& aSettings, NPError* rv)
+{
+    *rv = DoNP_Initialize(aSettings);
+    return true;
+}
+
+bool
+PluginModuleChild::RecvAsyncNP_Initialize(const PluginSettings& aSettings)
+{
+    NPError error = DoNP_Initialize(aSettings);
+    return SendNP_InitializeResult(error);
+}
+
+NPError
+PluginModuleChild::DoNP_Initialize(const PluginSettings& aSettings)
 {
     PLUGIN_LOG_DEBUG_METHOD;
     AssertPluginThread();
@@ -1900,12 +1924,11 @@ PluginModuleChild::AnswerNP_Initialize(const PluginSettings& aSettings, NPError*
     SendBackUpXResources(FileDescriptor(xSocketFd));
 #endif
 
+    NPError result;
 #if defined(OS_LINUX) || defined(OS_BSD)
-    *_retval = mInitializeFunc(&sBrowserFuncs, &mFunctions);
-    return true;
+    result = mInitializeFunc(&sBrowserFuncs, &mFunctions);
 #elif defined(OS_WIN) || defined(OS_MACOSX)
-    *_retval = mInitializeFunc(&sBrowserFuncs);
-    return true;
+    result = mInitializeFunc(&sBrowserFuncs);
 #else
 #  error Please implement me for your platform
 #endif
@@ -1913,6 +1936,8 @@ PluginModuleChild::AnswerNP_Initialize(const PluginSettings& aSettings, NPError*
 #ifdef XP_WIN
     CleanupProtectedModeHook();
 #endif
+
+    return result;
 }
 
 #if defined(XP_WIN)
@@ -2035,13 +2060,18 @@ PPluginInstanceChild*
 PluginModuleChild::AllocPPluginInstanceChild(const nsCString& aMimeType,
                                              const uint16_t& aMode,
                                              const InfallibleTArray<nsCString>& aNames,
-                                             const InfallibleTArray<nsCString>& aValues,
-                                             NPError* rv)
+                                             const InfallibleTArray<nsCString>& aValues)
 {
     PLUGIN_LOG_DEBUG_METHOD;
     AssertPluginThread();
 
-    InitQuirksModes(aMimeType);
+    // In e10s, gChromeInstance hands out quirks to instances, but never
+    // allocates an instance on its own. Make sure it gets the latest copy
+    // of quirks once we have them. Also note, with process-per-tab, we may
+    // have multiple PluginModuleChilds in the same plugin process, so only
+    // initialize this once in gChromeInstance, which is a singleton.
+    GetChrome()->InitQuirksModes(aMimeType);
+    mQuirks = GetChrome()->mQuirks;
 
 #ifdef XP_WIN
     if ((mQuirks & QUIRK_FLASH_HOOK_GETWINDOWINFO) &&
@@ -2052,7 +2082,8 @@ PluginModuleChild::AllocPPluginInstanceChild(const nsCString& aMimeType,
     }
 #endif
 
-    return new PluginInstanceChild(&mFunctions);
+    return new PluginInstanceChild(&mFunctions, aMimeType, aMode, aNames,
+                                   aValues);
 }
 
 void
@@ -2096,6 +2127,7 @@ PluginModuleChild::InitQuirksModes(const nsCString& aMimeType)
     NS_NAMED_LITERAL_CSTRING(quicktime, "QuickTime Plugin.plugin");
     if (FindInReadable(flash, aMimeType)) {
       mQuirks |= QUIRK_FLASH_AVOID_CGMODE_CRASHES;
+      mQuirks |= QUIRK_FLASH_HIDE_HIDPI_SUPPORT;
     }
     if (FindInReadable(flash, aMimeType) ||
         FindInReadable(quicktime, mPluginFilename)) {
@@ -2105,68 +2137,39 @@ PluginModuleChild::InitQuirksModes(const nsCString& aMimeType)
 }
 
 bool
-PluginModuleChild::AnswerPPluginInstanceConstructor(PPluginInstanceChild* aActor,
-                                                    const nsCString& aMimeType,
-                                                    const uint16_t& aMode,
-                                                    const InfallibleTArray<nsCString>& aNames,
-                                                    const InfallibleTArray<nsCString>& aValues,
-                                                    NPError* rv)
+PluginModuleChild::RecvPPluginInstanceConstructor(PPluginInstanceChild* aActor,
+                                                  const nsCString& aMimeType,
+                                                  const uint16_t& aMode,
+                                                  InfallibleTArray<nsCString>&& aNames,
+                                                  InfallibleTArray<nsCString>&& aValues)
 {
     PLUGIN_LOG_DEBUG_METHOD;
     AssertPluginThread();
 
+    NS_ASSERTION(aActor, "Null actor!");
+    return true;
+}
+
+bool
+PluginModuleChild::AnswerSyncNPP_New(PPluginInstanceChild* aActor, NPError* rv)
+{
+    PLUGIN_LOG_DEBUG_METHOD;
     PluginInstanceChild* childInstance =
         reinterpret_cast<PluginInstanceChild*>(aActor);
-    NS_ASSERTION(childInstance, "Null actor!");
+    AssertPluginThread();
+    *rv = childInstance->DoNPP_New();
+    return true;
+}
 
-    // unpack the arguments into a C format
-    int argc = aNames.Length();
-    NS_ASSERTION(argc == (int) aValues.Length(),
-                 "argn.length != argv.length");
-
-    nsAutoArrayPtr<char*> argn(new char*[1 + argc]);
-    nsAutoArrayPtr<char*> argv(new char*[1 + argc]);
-    argn[argc] = 0;
-    argv[argc] = 0;
-
-    for (int i = 0; i < argc; ++i) {
-        argn[i] = const_cast<char*>(NullableStringGet(aNames[i]));
-        argv[i] = const_cast<char*>(NullableStringGet(aValues[i]));
-    }
-
-    NPP npp = childInstance->GetNPP();
-
-    // FIXME/cjones: use SAFE_CALL stuff
-    *rv = mFunctions.newp((char*)NullableStringGet(aMimeType),
-                          npp,
-                          aMode,
-                          argc,
-                          argn,
-                          argv,
-                          0);
-    if (NPERR_NO_ERROR != *rv) {
-        return true;
-    }
-
-    childInstance->Initialize();
-
-#if defined(XP_MACOSX) && defined(__i386__)
-    // If an i386 Mac OS X plugin has selected the Carbon event model then
-    // we have to fail. We do not support putting Carbon event model plugins
-    // out of process. Note that Carbon is the default model so out of process
-    // plugins need to actively negotiate something else in order to work
-    // out of process.
-    if (childInstance->EventModel() == NPEventModelCarbon) {
-      // Send notification that a plugin tried to negotiate Carbon NPAPI so that
-      // users can be notified that restarting the browser in i386 mode may allow
-      // them to use the plugin.
-      childInstance->SendNegotiatedCarbon();
-
-      // Fail to instantiate.
-      *rv = NPERR_MODULE_LOAD_FAILED_ERROR;
-    }
-#endif
-
+bool
+PluginModuleChild::RecvAsyncNPP_New(PPluginInstanceChild* aActor)
+{
+    PLUGIN_LOG_DEBUG_METHOD;
+    PluginInstanceChild* childInstance =
+        reinterpret_cast<PluginInstanceChild*>(aActor);
+    AssertPluginThread();
+    NPError rv = childInstance->DoNPP_New();
+    childInstance->SendAsyncNPP_NewResult(rv);
     return true;
 }
 
@@ -2484,8 +2487,8 @@ PluginModuleChild::ProcessNativeEvents() {
 bool
 PluginModuleChild::RecvStartProfiler(const uint32_t& aEntries,
                                      const double& aInterval,
-                                     const nsTArray<nsCString>& aFeatures,
-                                     const nsTArray<nsCString>& aThreadNameFilters)
+                                     nsTArray<nsCString>&& aFeatures,
+                                     nsTArray<nsCString>&& aThreadNameFilters)
 {
     nsTArray<const char*> featureArray;
     for (size_t i = 0; i < aFeatures.Length(); ++i) {

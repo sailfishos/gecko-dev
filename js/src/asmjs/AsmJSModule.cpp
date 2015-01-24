@@ -37,6 +37,7 @@
 
 #include "frontend/Parser.h"
 #include "jit/IonCode.h"
+#include "js/Conversions.h"
 #include "js/MemoryMetrics.h"
 
 #include "jsobjinlines.h"
@@ -289,7 +290,7 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
     // The global data section sits immediately after the executable (and
     // other) data allocated by the MacroAssembler, so ensure it is
     // SIMD-aligned.
-    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), SimdStackAlignment);
+    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), SimdMemoryAlignment);
 
     // The entire region is allocated via mmap/VirtualAlloc which requires
     // units of pages.
@@ -671,7 +672,7 @@ AddressOf(AsmJSImmKind kind, ExclusiveContext *cx)
       case AsmJSImm_CoerceInPlace_ToNumber:
         return RedirectCall(FuncCast(CoerceInPlace_ToNumber), Args_General1);
       case AsmJSImm_ToInt32:
-        return RedirectCall(FuncCast<int32_t (double)>(js::ToInt32), Args_Int_Double);
+        return RedirectCall(FuncCast<int32_t (double)>(JS::ToInt32), Args_Int_Double);
 #if defined(JS_CODEGEN_ARM)
       case AsmJSImm_aeabi_idivmod:
         return RedirectCall(FuncCast(__aeabi_idivmod), Args_General2);
@@ -782,7 +783,7 @@ AsmJSModule::initHeap(Handle<ArrayBufferObjectMaybeShared *> heap, JSContext *cx
             //      ptr + data-type-byte-size > heapLength
             // i.e. ptr >= heapLength + 1 - data-type-byte-size
             // (Note that we need >= as this is what codegen uses.)
-            size_t scalarByteSize = 1 << TypedArrayShift(access.type());
+            size_t scalarByteSize = TypedArrayElemSize(access.type());
             X86Assembler::setPointer(access.patchLengthAt(code_),
                                      (void*)(heap->byteLength() + 1 - scalarByteSize));
         }
@@ -804,7 +805,7 @@ AsmJSModule::initHeap(Handle<ArrayBufferObjectMaybeShared *> heap, JSContext *cx
         const jit::AsmJSHeapAccess &access = heapAccesses_[i];
         if (access.hasLengthCheck()) {
             // See comment above for x86 codegen.
-            size_t scalarByteSize = 1 << TypedArrayShift(access.type());
+            size_t scalarByteSize = TypedArrayElemSize(access.type());
             X86Assembler::setInt32(access.patchLengthAt(code_), heapLength + 1 - scalarByteSize);
         }
     }

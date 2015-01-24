@@ -32,6 +32,7 @@
 #include "pk11pub.h"
 #include "pkix/pkix.h"
 #include "pkix/ScopedPtr.h"
+#include "pkixder.h"
 #include "secerr.h"
 #include "sslerr.h"
 
@@ -39,7 +40,7 @@ namespace mozilla { namespace pkix {
 
 typedef ScopedPtr<SECKEYPublicKey, SECKEY_DestroyPublicKey> ScopedSECKeyPublicKey;
 
-Result
+static Result
 CheckPublicKeySize(Input subjectPublicKeyInfo, unsigned int minimumNonECCBits,
                    /*out*/ ScopedSECKeyPublicKey& publicKey)
 {
@@ -57,20 +58,53 @@ CheckPublicKeySize(Input subjectPublicKeyInfo, unsigned int minimumNonECCBits,
 
   switch (publicKey.get()->keyType) {
     case ecKey:
-      // TODO(bug 1077790): We should check which curve.
+    {
+      SECKEYECParams* encodedParams = &publicKey.get()->u.ec.DEREncodedParams;
+      if (!encodedParams) {
+        return Result::ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+      }
+
+      Input input;
+      Result rv = input.Init(encodedParams->data, encodedParams->len);
+      if (rv != Success) {
+        return rv;
+      }
+
+      Reader reader(input);
+      NamedCurve namedCurve;
+      rv = der::NamedCurveOID(reader, namedCurve);
+      if (rv != Success) {
+        return rv;
+      }
+
+      rv = der::End(reader);
+      if (rv != Success) {
+        return rv;
+      }
+
+      switch (namedCurve) {
+        case NamedCurve::secp256r1: // fall through
+        case NamedCurve::secp384r1: // fall through
+        case NamedCurve::secp521r1:
+          break;
+        default:
+          return Result::ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+      }
+
       return Success;
-    case dsaKey: // fall through
+    }
     case rsaKey:
       if (SECKEY_PublicKeyStrengthInBits(publicKey.get()) < minimumNonECCBits) {
         return Result::ERROR_INADEQUATE_KEY_SIZE;
       }
       break;
-    case nullKey:
-    case fortezzaKey:
-    case dhKey:
-    case keaKey:
-    case rsaPssKey:
-    case rsaOaepKey:
+    case dsaKey: // fall through
+    case nullKey: // fall through
+    case fortezzaKey: // fall through
+    case dhKey: // fall through
+    case keaKey: // fall through
+    case rsaPssKey: // fall through
+    case rsaOaepKey: // fall through
     default:
       return Result::ERROR_UNSUPPORTED_KEYALG;
   }
@@ -79,16 +113,16 @@ CheckPublicKeySize(Input subjectPublicKeyInfo, unsigned int minimumNonECCBits,
 }
 
 Result
-CheckPublicKey(Input subjectPublicKeyInfo, unsigned int minimumNonECCBits)
+CheckPublicKeyNSS(Input subjectPublicKeyInfo, unsigned int minimumNonECCBits)
 {
   ScopedSECKeyPublicKey unused;
   return CheckPublicKeySize(subjectPublicKeyInfo, minimumNonECCBits, unused);
 }
 
 Result
-VerifySignedData(const SignedDataWithSignature& sd,
-                 Input subjectPublicKeyInfo, unsigned int minimumNonECCBits,
-                 void* pkcs11PinArg)
+VerifySignedDataNSS(const SignedDataWithSignature& sd,
+                    Input subjectPublicKeyInfo, unsigned int minimumNonECCBits,
+                    void* pkcs11PinArg)
 {
   SECOidTag pubKeyAlg;
   SECOidTag digestAlg;
@@ -125,10 +159,10 @@ VerifySignedData(const SignedDataWithSignature& sd,
       pubKeyAlg = SEC_OID_PKCS1_RSA_ENCRYPTION;
       digestAlg = SEC_OID_SHA1;
       break;
-    case SignatureAlgorithm::unsupported_algorithm:
+    case SignatureAlgorithm::unsupported_algorithm: // fall through
     default:
-      PR_NOT_REACHED("unknown signature algorithm");
-      return Result::ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED;
+      return NotReached("unknown signature algorithm",
+                        Result::ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED);
   }
 
   Result rv;
@@ -159,13 +193,12 @@ VerifySignedData(const SignedDataWithSignature& sd,
 }
 
 Result
-DigestBuf(Input item, /*out*/ uint8_t* digestBuf, size_t digestBufLen)
+DigestBufNSS(Input item, /*out*/ uint8_t* digestBuf, size_t digestBufLen)
 {
   static_assert(TrustDomain::DIGEST_LENGTH == SHA1_LENGTH,
                 "TrustDomain::DIGEST_LENGTH must be 20 (SHA-1 digest length)");
   if (digestBufLen != TrustDomain::DIGEST_LENGTH) {
-    PR_NOT_REACHED("invalid hash length");
-    return Result::FATAL_ERROR_INVALID_ARGS;
+    return NotReached("invalid hash length", Result::FATAL_ERROR_INVALID_ARGS);
   }
   SECItem itemSECItem = UnsafeMapInputToSECItem(item);
   if (itemSECItem.len >
@@ -222,7 +255,7 @@ RegisterErrorTable()
 {
   // Note that these error strings are not localizable.
   // When these strings change, update the localization information too.
-  static const struct PRErrorMessage ErrorTableText[] = {
+  static const PRErrorMessage ErrorTableText[] = {
     { "MOZILLA_PKIX_ERROR_KEY_PINNING_FAILURE",
       "The server uses key pinning (HPKP) but no trusted certificate chain "
       "could be constructed that matches the pinset. Key pinning violations "
@@ -244,7 +277,7 @@ RegisterErrorTable()
   // Note that these error strings are not localizable.
   // When these strings change, update the localization information too.
 
-  static const struct PRErrorTable ErrorTable = {
+  static const PRErrorTable ErrorTable = {
     ErrorTableText,
     "pkixerrors",
     ERROR_BASE,

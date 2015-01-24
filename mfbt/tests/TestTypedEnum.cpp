@@ -27,16 +27,8 @@
 #    if __has_extension(is_literal) && __has_include(<type_traits>)
 #      define MOZ_HAVE_IS_LITERAL
 #    endif
-#  elif defined(__GNUC__)
-#    if defined(__GXX_EXPERIMENTAL_CXX0X__)
-#      if MOZ_GCC_VERSION_AT_LEAST(4, 6, 0)
-#        define MOZ_HAVE_IS_LITERAL
-#      endif
-#    endif
-#  elif defined(_MSC_VER)
-#    if _MSC_VER >= 1700
-#      define MOZ_HAVE_IS_LITERAL
-#    endif
+#  elif defined(__GNUC__) || defined(_MSC_VER)
+#    define MOZ_HAVE_IS_LITERAL
 #  endif
 #endif
 

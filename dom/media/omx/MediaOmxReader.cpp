@@ -138,15 +138,15 @@ void MediaOmxReader::CancelProcessCachedData()
 MediaOmxReader::MediaOmxReader(AbstractMediaDecoder *aDecoder)
   : MediaOmxCommonReader(aDecoder)
   , mMutex("MediaOmxReader.Data")
-  , mMP3FrameParser(-1)
   , mHasVideo(false)
   , mHasAudio(false)
   , mVideoSeekTimeUs(-1)
   , mAudioSeekTimeUs(-1)
+  , mLastParserDuration(-1)
   , mSkipCount(0)
   , mUseParserDuration(false)
-  , mLastParserDuration(-1)
   , mIsShutdown(false)
+  , mMP3FrameParser(-1)
   , mIsWaitingResources(false)
 {
 #ifdef PR_LOGGING
@@ -546,7 +546,7 @@ bool MediaOmxReader::DecodeAudioData()
 }
 
 nsRefPtr<MediaDecoderReader::SeekPromise>
-MediaOmxReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndTime, int64_t aCurrentTime)
+MediaOmxReader::Seek(int64_t aTarget, int64_t aEndTime)
 {
   NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
   EnsureActive();
@@ -572,7 +572,7 @@ MediaOmxReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndTime, int6
     mAudioSeekTimeUs = mVideoSeekTimeUs = aTarget;
   }
 
-  return SeekPromise::CreateAndResolve(true, __func__);
+  return SeekPromise::CreateAndResolve(mAudioSeekTimeUs, __func__);
 }
 
 void MediaOmxReader::SetIdle() {

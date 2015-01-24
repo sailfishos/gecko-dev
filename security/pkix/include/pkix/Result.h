@@ -27,8 +27,6 @@
 
 #include <cassert>
 
-#include "pkix/enumclass.h"
-
 namespace mozilla { namespace pkix {
 
 static const unsigned int FATAL_ERROR_FLAG = 0x800;
@@ -40,7 +38,7 @@ static const unsigned int FATAL_ERROR_FLAG = 0x800;
 //         means that the end-entity certificate was actively distrusted.
 // Result::ERROR_UNTRUSTED_ISSUER
 //         means that path building failed because of active distrust.
-// Result::ERROR_INVALID_TIME
+// Result::ERROR_INVALID_DER_TIME
 //         means the DER-encoded time was unexpected, such as being before the
 //         UNIX epoch (allowed by X500, but not valid here).
 // Result::ERROR_EXPIRED_CERTIFICATE
@@ -111,7 +109,7 @@ static const unsigned int FATAL_ERROR_FLAG = 0x800;
                      SEC_ERROR_INADEQUATE_KEY_USAGE) \
     MOZILLA_PKIX_MAP(ERROR_INVALID_ALGORITHM, 12, \
                      SEC_ERROR_INVALID_ALGORITHM) \
-    MOZILLA_PKIX_MAP(ERROR_INVALID_TIME, 13, \
+    MOZILLA_PKIX_MAP(ERROR_INVALID_DER_TIME, 13, \
                      SEC_ERROR_INVALID_TIME) \
     MOZILLA_PKIX_MAP(ERROR_KEY_PINNING_FAILURE, 14, \
                      MOZILLA_PKIX_ERROR_KEY_PINNING_FAILURE) \
@@ -173,6 +171,8 @@ static const unsigned int FATAL_ERROR_FLAG = 0x800;
                      SSL_ERROR_BAD_CERT_DOMAIN) \
     MOZILLA_PKIX_MAP(ERROR_NO_RFC822NAME_MATCH, 43, \
                      MOZILLA_PKIX_ERROR_NO_RFC822NAME_MATCH) \
+    MOZILLA_PKIX_MAP(ERROR_UNSUPPORTED_ELLIPTIC_CURVE, 44, \
+                     SEC_ERROR_UNSUPPORTED_ELLIPTIC_CURVE) \
     MOZILLA_PKIX_MAP(FATAL_ERROR_INVALID_ARGS, FATAL_ERROR_FLAG | 1, \
                      SEC_ERROR_INVALID_ARGS) \
     MOZILLA_PKIX_MAP(FATAL_ERROR_INVALID_STATE, FATAL_ERROR_FLAG | 2, \
@@ -183,7 +183,7 @@ static const unsigned int FATAL_ERROR_FLAG = 0x800;
                      SEC_ERROR_NO_MEMORY) \
     /* nothing here */
 
-MOZILLA_PKIX_ENUM_CLASS Result
+enum class Result
 {
 #define MOZILLA_PKIX_MAP(name, value, nss_name) name = value,
   MOZILLA_PKIX_MAP_LIST
@@ -197,13 +197,7 @@ const char* MapResultToName(Result result);
 // We write many comparisons as (x != Success), and this shortened name makes
 // those comparisons clearer, especially because the shortened name often
 // results in less line wrapping.
-//
-// If MOZILLA_PKIX_ENUM_CLASS doesn't expand to "enum class" then
-// Result::Success will already be in scope, and compilation would fail if we
-// were to try to define a variable named "Success" here.
-#ifdef MOZILLA_PKIX_ENUM_CLASS_REALLY_IS_ENUM_CLASS
 static const Result Success = Result::Success;
-#endif
 
 inline bool
 IsFatalError(Result rv)

@@ -456,8 +456,8 @@ bool
 RegExpShared::compile(JSContext *cx, HandleLinearString input,
                       CompilationMode mode, ForceByteCodeEnum force)
 {
-    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
-    AutoTraceLog logCompile(logger, TraceLogger::IrregexpCompile);
+    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
+    AutoTraceLog logCompile(logger, TraceLogger_IrregexpCompile);
 
     if (!sticky()) {
         RootedAtom pattern(cx, source);
@@ -543,7 +543,7 @@ RegExpRunStatus
 RegExpShared::execute(JSContext *cx, HandleLinearString input, size_t start,
                       MatchPairs *matches)
 {
-    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    TraceLoggerThread *logger = TraceLoggerForMainThread(cx->runtime());
 
     CompilationMode mode = matches ? Normal : MatchOnly;
 
@@ -599,7 +599,7 @@ RegExpShared::execute(JSContext *cx, HandleLinearString input, size_t start,
 
         RegExpRunStatus result;
         {
-            AutoTraceLog logJIT(logger, TraceLogger::IrregexpExecute);
+            AutoTraceLog logJIT(logger, TraceLogger_IrregexpExecute);
             AutoCheckCannotGC nogc;
             if (input->hasLatin1Chars()) {
                 const Latin1Char *chars = input->latin1Chars(nogc) + charsOffset;
@@ -638,7 +638,7 @@ RegExpShared::execute(JSContext *cx, HandleLinearString input, size_t start,
         return RegExpRunStatus_Error;
 
     uint8_t *byteCode = compilation(mode, input->hasLatin1Chars()).byteCode;
-    AutoTraceLog logInterpreter(logger, TraceLogger::IrregexpExecute);
+    AutoTraceLog logInterpreter(logger, TraceLogger_IrregexpExecute);
 
     AutoStableStringChars inputChars(cx);
     if (!inputChars.init(cx, input))
@@ -710,20 +710,22 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
     Rooted<TaggedProto> proto(cx, templateObject->getTaggedProto());
     types::TypeObject *type =
         cx->compartment()->types.newTypeObject(cx, templateObject->getClass(), proto);
+    if (!type)
+        return matchResultTemplateObject_; // = nullptr
     templateObject->setType(type);
 
     /* Set dummy index property */
     RootedValue index(cx, Int32Value(0));
-    if (!baseops::DefineProperty(cx, templateObject, cx->names().index, index, nullptr, nullptr,
-                                 JSPROP_ENUMERATE))
+    if (!NativeDefineProperty(cx, templateObject, cx->names().index, index, nullptr, nullptr,
+                              JSPROP_ENUMERATE))
     {
         return matchResultTemplateObject_; // = nullptr
     }
 
     /* Set dummy input property */
     RootedValue inputVal(cx, StringValue(cx->runtime()->emptyString));
-    if (!baseops::DefineProperty(cx, templateObject, cx->names().input, inputVal, nullptr, nullptr,
-                                 JSPROP_ENUMERATE))
+    if (!NativeDefineProperty(cx, templateObject, cx->names().input, inputVal, nullptr, nullptr,
+                              JSPROP_ENUMERATE))
     {
         return matchResultTemplateObject_; // = nullptr
     }
@@ -773,7 +775,7 @@ RegExpCompartment::sweep(JSRuntime *rt)
         // the RegExpShared if it was accidentally marked earlier but wasn't
         // marked by the current trace.
         bool keep = shared->marked() &&
-                    !IsStringAboutToBeFinalizedFromAnyThread(shared->source.unsafeGet());
+                    IsStringMarkedFromAnyThread(&shared->source);
         for (size_t i = 0; i < ArrayLength(shared->compilationArray); i++) {
             RegExpShared::RegExpCompilation &compilation = shared->compilationArray[i];
             if (compilation.jitCode &&

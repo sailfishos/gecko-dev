@@ -18,6 +18,7 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/MediaKeySessionBinding.h"
 #include "mozilla/dom/MediaKeysBinding.h"
+#include "mozilla/dom/MediaKeyMessageEventBinding.h"
 
 struct JSContext;
 
@@ -43,7 +44,7 @@ public:
                   SessionType aSessionType,
                   ErrorResult& aRv);
 
-  void Init(const nsAString& aSessionId);
+  void SetSessionId(const nsAString& aSessionId);
 
   virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE;
 
@@ -79,8 +80,8 @@ public:
 
   already_AddRefed<Promise> GetUsableKeyIds(ErrorResult& aRv);
 
-  void DispatchKeyMessage(const nsTArray<uint8_t>& aMessage,
-                          const nsAString& aURL);
+  void DispatchKeyMessage(MediaKeyMessageType aMessageType,
+                          const nsTArray<uint8_t>& aMessage);
 
   void DispatchKeyError(uint32_t system_code);
 
@@ -89,6 +90,9 @@ public:
   void OnClosed();
 
   bool IsClosed() const;
+
+  // Process-unique identifier.
+  uint32_t Token() const;
 
 private:
   ~MediaKeySession();
@@ -100,6 +104,7 @@ private:
   const nsString mKeySystem;
   nsString mSessionId;
   const SessionType mSessionType;
+  const uint32_t mToken;
   bool mIsClosed;
   bool mUninitialized;
 };

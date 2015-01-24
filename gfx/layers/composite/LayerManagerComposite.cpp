@@ -43,6 +43,7 @@
 #include "ipc/CompositorBench.h"        // for CompositorBench
 #include "ipc/ShadowLayerUtils.h"
 #include "mozilla/mozalloc.h"           // for operator new, etc
+#include "nsAppRunner.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsDebug.h"                    // for NS_WARNING, NS_RUNTIMEABORT, etc
@@ -334,15 +335,19 @@ LayerManagerComposite::CreateOptimalMaskDrawTarget(const IntSize &aSize)
 already_AddRefed<PaintedLayer>
 LayerManagerComposite::CreatePaintedLayer()
 {
-  NS_RUNTIMEABORT("Should only be called on the drawing side");
-  return nullptr;
+  MOZ_ASSERT(gIsGtest, "Unless you're testing the compositor using GTest,"
+                       "this should only be called on the drawing side");
+  nsRefPtr<PaintedLayer> layer = new PaintedLayerComposite(this);
+  return layer.forget();
 }
 
 already_AddRefed<ContainerLayer>
 LayerManagerComposite::CreateContainerLayer()
 {
-  NS_RUNTIMEABORT("Should only be called on the drawing side");
-  return nullptr;
+  MOZ_ASSERT(gIsGtest, "Unless you're testing the compositor using GTest,"
+                       "this should only be called on the drawing side");
+  nsRefPtr<ContainerLayer> layer = new ContainerLayerComposite(this);
+  return layer.forget();
 }
 
 already_AddRefed<ImageLayer>
@@ -355,8 +360,10 @@ LayerManagerComposite::CreateImageLayer()
 already_AddRefed<ColorLayer>
 LayerManagerComposite::CreateColorLayer()
 {
-  NS_RUNTIMEABORT("Should only be called on the drawing side");
-  return nullptr;
+  MOZ_ASSERT(gIsGtest, "Unless you're testing the compositor using GTest,"
+                       "this should only be called on the drawing side");
+  nsRefPtr<ColorLayer> layer = new ColorLayerComposite(this);
+  return layer.forget();
 }
 
 already_AddRefed<CanvasLayer>
@@ -658,6 +665,7 @@ LayerManagerComposite::Render()
   }
 
   if (!mTarget && composer2D && composer2D->TryRender(mRoot, mGeometryChanged)) {
+    LayerScope::SetHWComposed();
     if (mFPS) {
       double fps = mFPS->mCompositionFps.AddFrameAndGetFps(TimeStamp::Now());
       if (gfxPrefs::LayersDrawFPS()) {
@@ -917,7 +925,7 @@ LayerManagerComposite::ComputeRenderIntegrity()
     Layer* rootScrollable = rootScrollableLayers[0];
     const FrameMetrics& metrics = LayerMetricsWrapper::TopmostScrollableMetrics(rootScrollable);
     Matrix4x4 transform = rootScrollable->GetEffectiveTransform();
-    transform.PostScale(metrics.mPresShellResolution, metrics.mPresShellResolution, 1);
+    transform.PostScale(metrics.GetPresShellResolution(), metrics.GetPresShellResolution(), 1);
 
     // Clip the screen rect to the document bounds
     Rect documentBounds =
@@ -937,10 +945,10 @@ LayerManagerComposite::ComputeRenderIntegrity()
 
     // Work out how much of the critical display-port covers the screen
     bool hasLowPrecision = false;
-    if (!metrics.mCriticalDisplayPort.IsEmpty()) {
+    if (!metrics.GetCriticalDisplayPort().IsEmpty()) {
       hasLowPrecision = true;
       highPrecisionMultiplier =
-        GetDisplayportCoverage(metrics.mCriticalDisplayPort, transform, screenRect);
+        GetDisplayportCoverage(metrics.GetCriticalDisplayPort(), transform, screenRect);
     }
 
     // Work out how much of the display-port covers the screen

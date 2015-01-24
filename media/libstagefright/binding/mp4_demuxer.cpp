@@ -73,8 +73,10 @@ private:
   nsRefPtr<Stream> mSource;
 };
 
-MP4Demuxer::MP4Demuxer(Stream* source, Monitor* aMonitor)
-  : mPrivate(new StageFrightPrivate()), mSource(source), mMonitor(aMonitor)
+MP4Demuxer::MP4Demuxer(Stream* source, Microseconds aTimestampOffset, Monitor* aMonitor)
+  : mPrivate(new StageFrightPrivate()), mSource(source),
+    mTimestampOffset(aTimestampOffset), mMonitor(aMonitor),
+    mNextKeyframeTime(-1)
 {
   mPrivate->mExtractor = new MPEG4Extractor(new DataSourceAdapter(source));
 }
@@ -92,8 +94,17 @@ MP4Demuxer::~MP4Demuxer()
 bool
 MP4Demuxer::Init()
 {
+  mMonitor->AssertCurrentThreadOwns();
   sp<MediaExtractor> e = mPrivate->mExtractor;
-  for (size_t i = 0; i < e->countTracks(); i++) {
+
+  // Read the number of tracks. If we can't find any, make sure to bail now before
+  // attempting any new reads to make the retry system work.
+  size_t trackCount = e->countTracks();
+  if (trackCount == 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < trackCount; i++) {
     sp<MetaData> metaData = e->getTrackMetaData(i);
 
     const char* mimeType;
@@ -109,9 +120,10 @@ MP4Demuxer::Init()
       mPrivate->mAudio = track;
       mAudioConfig.Update(metaData, mimeType);
       nsRefPtr<Index> index = new Index(mPrivate->mAudio->exportIndex(),
-                                        mSource, mAudioConfig.mTrackId, mMonitor);
+                                        mSource, mAudioConfig.mTrackId,
+                                        mTimestampOffset, mMonitor);
       mPrivate->mIndexes.AppendElement(index);
-      if (index->IsFragmented()) {
+      if (index->IsFragmented() && !mAudioConfig.crypto.valid) {
         mPrivate->mAudioIterator = new SampleIterator(index);
       }
     } else if (!mPrivate->mVideo.get() && !strncmp(mimeType, "video/", 6)) {
@@ -122,9 +134,10 @@ MP4Demuxer::Init()
       mPrivate->mVideo = track;
       mVideoConfig.Update(metaData, mimeType);
       nsRefPtr<Index> index = new Index(mPrivate->mVideo->exportIndex(),
-                                        mSource, mVideoConfig.mTrackId, mMonitor);
+                                        mSource, mVideoConfig.mTrackId,
+                                        mTimestampOffset, mMonitor);
       mPrivate->mIndexes.AppendElement(index);
-      if (index->IsFragmented()) {
+      if (index->IsFragmented() && !mVideoConfig.crypto.valid) {
         mPrivate->mVideoIterator = new SampleIterator(index);
       }
     }
@@ -132,36 +145,48 @@ MP4Demuxer::Init()
   sp<MetaData> metaData = e->getMetaData();
   mCrypto.Update(metaData);
 
+  int64_t movieDuration;
+  if (!mVideoConfig.duration && !mAudioConfig.duration &&
+      metaData->findInt64(kKeyMovieDuration, &movieDuration)) {
+    // No duration were found in either tracks, use movie extend header box one.
+    mVideoConfig.duration = mAudioConfig.duration = movieDuration;
+  }
+
   return mPrivate->mAudio.get() || mPrivate->mVideo.get();
 }
 
 bool
 MP4Demuxer::HasValidAudio()
 {
+  mMonitor->AssertCurrentThreadOwns();
   return mPrivate->mAudio.get() && mAudioConfig.IsValid();
 }
 
 bool
 MP4Demuxer::HasValidVideo()
 {
+  mMonitor->AssertCurrentThreadOwns();
   return mPrivate->mVideo.get() && mVideoConfig.IsValid();
 }
 
 Microseconds
 MP4Demuxer::Duration()
 {
+  mMonitor->AssertCurrentThreadOwns();
   return std::max(mVideoConfig.duration, mAudioConfig.duration);
 }
 
 bool
 MP4Demuxer::CanSeek()
 {
+  mMonitor->AssertCurrentThreadOwns();
   return mPrivate->mExtractor->flags() & MediaExtractor::CAN_SEEK;
 }
 
 void
 MP4Demuxer::SeekAudio(Microseconds aTime)
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mAudioIterator) {
     mPrivate->mAudioIterator->Seek(aTime);
   } else {
@@ -173,6 +198,7 @@ MP4Demuxer::SeekAudio(Microseconds aTime)
 void
 MP4Demuxer::SeekVideo(Microseconds aTime)
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mVideoIterator) {
     mPrivate->mVideoIterator->Seek(aTime);
   } else {
@@ -184,6 +210,7 @@ MP4Demuxer::SeekVideo(Microseconds aTime)
 MP4Sample*
 MP4Demuxer::DemuxAudioSample()
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mAudioIterator) {
     nsAutoPtr<MP4Sample> sample(mPrivate->mAudioIterator->GetNext());
     if (sample) {
@@ -205,7 +232,7 @@ MP4Demuxer::DemuxAudioSample()
     return nullptr;
   }
 
-  sample->Update(mAudioConfig.media_time);
+  sample->Update(mAudioConfig.media_time, mTimestampOffset);
 
   return sample.forget();
 }
@@ -213,6 +240,7 @@ MP4Demuxer::DemuxAudioSample()
 MP4Sample*
 MP4Demuxer::DemuxVideoSample()
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mVideoIterator) {
     nsAutoPtr<MP4Sample> sample(mPrivate->mVideoIterator->GetNext());
     if (sample) {
@@ -220,6 +248,9 @@ MP4Demuxer::DemuxVideoSample()
       if (sample->crypto.valid) {
         sample->crypto.mode = mVideoConfig.crypto.mode;
         sample->crypto.key.AppendElements(mVideoConfig.crypto.key);
+      }
+      if (sample->composition_timestamp >= mNextKeyframeTime) {
+        mNextKeyframeTime = mPrivate->mVideoIterator->GetNextKeyframeTime();
       }
     }
     return sample.forget();
@@ -234,7 +265,7 @@ MP4Demuxer::DemuxVideoSample()
     return nullptr;
   }
 
-  sample->Update(mVideoConfig.media_time);
+  sample->Update(mVideoConfig.media_time, mTimestampOffset);
   sample->extra_data = mVideoConfig.extra_data;
 
   return sample.forget();
@@ -243,6 +274,7 @@ MP4Demuxer::DemuxVideoSample()
 void
 MP4Demuxer::UpdateIndex(const nsTArray<mozilla::MediaByteRange>& aByteRanges)
 {
+  mMonitor->AssertCurrentThreadOwns();
   for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
     mPrivate->mIndexes[i]->UpdateMoofIndex(aByteRanges);
   }
@@ -253,6 +285,7 @@ MP4Demuxer::ConvertByteRangesToTime(
   const nsTArray<mozilla::MediaByteRange>& aByteRanges,
   nsTArray<Interval<Microseconds>>* aIntervals)
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mIndexes.IsEmpty()) {
     return;
   }
@@ -292,6 +325,7 @@ MP4Demuxer::ConvertByteRangesToTime(
 int64_t
 MP4Demuxer::GetEvictionOffset(Microseconds aTime)
 {
+  mMonitor->AssertCurrentThreadOwns();
   if (mPrivate->mIndexes.IsEmpty()) {
     return 0;
   }
@@ -301,6 +335,16 @@ MP4Demuxer::GetEvictionOffset(Microseconds aTime)
     offset = std::min(offset, mPrivate->mIndexes[i]->GetEvictionOffset(aTime));
   }
   return offset == std::numeric_limits<uint64_t>::max() ? -1 : offset;
+}
+
+Microseconds
+MP4Demuxer::GetNextKeyframeTime()
+{
+  mMonitor->AssertCurrentThreadOwns();
+  if (!mPrivate->mVideoIterator) {
+    return -1;
+  }
+  return mNextKeyframeTime;
 }
 
 } // namespace mp4_demuxer

@@ -154,7 +154,8 @@ nsIContent::GetFlattenedTreeParent() const
 {
   nsIContent* parent = GetParent();
 
-  if (nsContentUtils::HasDistributedChildren(parent)) {
+  if (parent && nsContentUtils::HasDistributedChildren(parent) &&
+      nsContentUtils::IsInSameAnonymousTree(parent, this)) {
     // This node is distributed to insertion points, thus we
     // need to consult the destination insertion points list to
     // figure out where this node was inserted in the flattened tree.
@@ -2109,7 +2110,7 @@ private:
     uint32_t mLength;
   };
 public:
-  StringBuilder() : mLast(MOZ_THIS_IN_INITIALIZER_LIST()), mLength(0)
+  StringBuilder() : mLast(this), mLength(0)
   {
     MOZ_COUNT_CTOR(StringBuilder);
   }
@@ -2547,16 +2548,12 @@ ShouldEscape(nsIContent* aParent)
 }
 
 static inline bool
-IsVoidTag(Element* aElement)
+IsVoidTag(nsIAtom* aTag)
 {
-  if (!aElement->IsHTML()) {
-    return false;
-  }
-
   static const nsIAtom* voidElements[] = {
     nsGkAtoms::area, nsGkAtoms::base, nsGkAtoms::basefont,
     nsGkAtoms::bgsound, nsGkAtoms::br, nsGkAtoms::col,
-    nsGkAtoms::command, nsGkAtoms::embed, nsGkAtoms::frame,
+    nsGkAtoms::embed, nsGkAtoms::frame,
     nsGkAtoms::hr, nsGkAtoms::img, nsGkAtoms::input,
     nsGkAtoms::keygen, nsGkAtoms::link, nsGkAtoms::meta,
     nsGkAtoms::param, nsGkAtoms::source, nsGkAtoms::track,
@@ -2571,16 +2568,31 @@ IsVoidTag(Element* aElement)
       sFilter.add(voidElements[i]);
     }
   }
-  
-  nsIAtom* tag = aElement->Tag();
-  if (sFilter.mightContain(tag)) {
+
+  if (sFilter.mightContain(aTag)) {
     for (uint32_t i = 0; i < ArrayLength(voidElements); ++i) {
-      if (tag == voidElements[i]) {
+      if (aTag == voidElements[i]) {
         return true;
       }
     }
   }
   return false;
+}
+
+static inline bool
+IsVoidTag(Element* aElement)
+{
+  if (!aElement->IsHTML()) {
+    return false;
+  }
+  return IsVoidTag(aElement->Tag());
+}
+
+/* static */
+bool
+FragmentOrElement::IsHTMLVoid(nsIAtom* aLocalName)
+{
+  return aLocalName && IsVoidTag(aLocalName);
 }
 
 static bool

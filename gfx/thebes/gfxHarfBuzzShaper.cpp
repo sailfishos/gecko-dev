@@ -41,6 +41,8 @@ gfxHarfBuzzShaper::gfxHarfBuzzShaper(gfxFont *aFont)
       mHmtxTable(nullptr),
       mVmtxTable(nullptr),
       mVORGTable(nullptr),
+      mLocaTable(nullptr),
+      mGlyfTable(nullptr),
       mCmapTable(nullptr),
       mCmapFormat(-1),
       mSubtableOffset(0),
@@ -50,7 +52,8 @@ gfxHarfBuzzShaper::gfxHarfBuzzShaper(gfxFont *aFont)
       mUseFontGetGlyph(aFont->ProvidesGetGlyph()),
       mUseFontGlyphWidths(false),
       mInitialized(false),
-      mVerticalInitialized(false)
+      mVerticalInitialized(false),
+      mLocaLongOffsets(false)
 {
 }
 
@@ -64,6 +67,18 @@ gfxHarfBuzzShaper::~gfxHarfBuzzShaper()
     }
     if (mKernTable) {
         hb_blob_destroy(mKernTable);
+    }
+    if (mVmtxTable) {
+        hb_blob_destroy(mVmtxTable);
+    }
+    if (mVORGTable) {
+        hb_blob_destroy(mVORGTable);
+    }
+    if (mLocaTable) {
+        hb_blob_destroy(mLocaTable);
+    }
+    if (mGlyfTable) {
+        hb_blob_destroy(mGlyfTable);
     }
     if (mHBFont) {
         hb_font_destroy(mHBFont);
@@ -253,10 +268,10 @@ gfxHarfBuzzShaper::HBGetGlyphVAdvance(hb_font_t *font, void *font_data,
 {
     const gfxHarfBuzzShaper::FontCallbackData *fcd =
         static_cast<const gfxHarfBuzzShaper::FontCallbackData*>(font_data);
-    gfxFont *gfxfont = fcd->mShaper->GetFont();
-    if (gfxfont->ProvidesGlyphWidths()) {
-        return gfxfont->GetGlyphWidth(*fcd->mContext->GetDrawTarget(), glyph);
-    }
+    // Currently, we don't offer gfxFont subclasses a method to override this
+    // and provide hinted platform-specific vertical advances (analogous to the
+    // GetGlyphWidth method for horizontal advances). If that proves necessary,
+    // we'll add a new gfxFont method and call it from here.
     return fcd->mShaper->GetGlyphVAdvance(glyph);
 }
 
@@ -328,6 +343,72 @@ gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
                                 int16_t(vorg->defaultVertOriginY));
         }
         return;
+    }
+
+    if (mVmtxTable) {
+        if (mLocaTable && mGlyfTable) {
+            // TrueType outlines: use glyph bbox + top sidebearing
+            uint32_t offset; // offset of glyph record in the 'glyf' table
+            uint32_t len;
+            const char* data = hb_blob_get_data(mLocaTable, &len);
+            if (mLocaLongOffsets) {
+                if ((aGlyph + 1) * sizeof(AutoSwap_PRUint32) > len) {
+                    *aY = 0;
+                    return;
+                }
+                const AutoSwap_PRUint32* offsets =
+                    reinterpret_cast<const AutoSwap_PRUint32*>(data);
+                offset = offsets[aGlyph];
+                if (offset == offsets[aGlyph + 1]) {
+                    // empty glyph
+                    *aY = 0;
+                    return;
+                }
+            } else {
+                if ((aGlyph + 1) * sizeof(AutoSwap_PRUint16) > len) {
+                    *aY = 0;
+                    return;
+                }
+                const AutoSwap_PRUint16* offsets =
+                    reinterpret_cast<const AutoSwap_PRUint16*>(data);
+                offset = uint16_t(offsets[aGlyph]);
+                if (offset == uint16_t(offsets[aGlyph + 1])) {
+                    // empty glyph
+                    *aY = 0;
+                    return;
+                }
+                offset *= 2;
+            }
+
+            struct Glyf { // we only need the bounding-box at the beginning
+                          // of the glyph record, not the actual outline data
+                AutoSwap_PRInt16 numberOfContours;
+                AutoSwap_PRInt16 xMin;
+                AutoSwap_PRInt16 yMin;
+                AutoSwap_PRInt16 xMax;
+                AutoSwap_PRInt16 yMax;
+            };
+            data = hb_blob_get_data(mGlyfTable, &len);
+            if (offset + sizeof(Glyf) > len) {
+                *aY = 0;
+                return;
+            }
+            const Glyf* glyf = reinterpret_cast<const Glyf*>(data + offset);
+
+            if (aGlyph >= uint32_t(mNumLongVMetrics)) {
+                aGlyph = mNumLongVMetrics - 1;
+            }
+            const GlyphMetrics* metrics =
+                reinterpret_cast<const GlyphMetrics*>
+                    (hb_blob_get_data(mVmtxTable, nullptr));
+            *aY = -FloatToFixed(mFont->FUnitsToDevUnitsFactor() *
+                                (int16_t(metrics->metrics[aGlyph].lsb) +
+                                 int16_t(glyf->yMax)));
+            return;
+        } else {
+            // XXX TODO: CFF outlines - need to get glyph extents.
+            // For now, fall through to default code below.
+        }
     }
 
     // XXX should we consider using OS/2 sTypo* metrics if available?
@@ -1144,6 +1225,20 @@ gfxHarfBuzzShaper::InitializeVertical()
                 mVORGTable = nullptr;
             }
         }
+    } else if (mVmtxTable) {
+        // Otherwise, try to load loca and glyf tables so that we can read
+        // bounding boxes (needed to support vertical glyph origin).
+        uint32_t len;
+        gfxFontEntry::AutoTable headTable(entry,
+                                          TRUETYPE_TAG('h','e','a','d'));
+        const HeadTable* head =
+            reinterpret_cast<const HeadTable*>(hb_blob_get_data(headTable,
+                                                                &len));
+        if (len >= sizeof(HeadTable)) {
+            mLocaLongOffsets = int16_t(head->indexToLocFormat) > 0;
+            mLocaTable = entry->GetFontTable(TRUETYPE_TAG('l','o','c','a'));
+            mGlyfTable = entry->GetFontTable(TRUETYPE_TAG('g','l','y','f'));
+        }
     }
 
     return true;
@@ -1177,9 +1272,6 @@ gfxHarfBuzzShaper::ShapeText(gfxContext      *aContext,
 
     const gfxFontStyle *style = mFont->GetStyle();
 
-    nsAutoTArray<hb_feature_t,20> features;
-    nsDataHashtable<nsUint32HashKey,uint32_t> mergedFeatures;
-
     // determine whether petite-caps falls back to small-caps
     bool addSmallCaps = false;
     if (style->variantCaps != NS_FONT_VARIANT_CAPS_NORMAL) {
@@ -1196,16 +1288,16 @@ gfxHarfBuzzShaper::ShapeText(gfxContext      *aContext,
     }
 
     gfxFontEntry *entry = mFont->GetFontEntry();
-    if (MergeFontFeatures(style,
-                          entry->mFeatureSettings,
-                          aShapedText->DisableLigatures(),
-                          entry->FamilyName(),
-                          addSmallCaps,
-                          mergedFeatures))
-    {
-        // enumerate result and insert into hb_feature array
-        mergedFeatures.Enumerate(AddOpenTypeFeature, &features);
-    }
+
+    // insert any merged features into hb_feature array
+    nsAutoTArray<hb_feature_t,20> features;
+    MergeFontFeatures(style,
+                      entry->mFeatureSettings,
+                      aShapedText->DisableLigatures(),
+                      entry->FamilyName(),
+                      addSmallCaps,
+                      AddOpenTypeFeature,
+                      &features);
 
     bool isRightToLeft = aShapedText->IsRightToLeft();
     hb_buffer_t *buffer = hb_buffer_create();

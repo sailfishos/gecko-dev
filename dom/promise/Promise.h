@@ -19,6 +19,7 @@
 #include "nsWrapperCache.h"
 #include "nsAutoPtr.h"
 #include "js/TypeDecls.h"
+#include "jspubtd.h"
 
 #include "mozilla/dom/workers/bindings/WorkerFeature.h"
 
@@ -52,6 +53,10 @@ public:
   Notify(JSContext* aCx, workers::Status aStatus) MOZ_OVERRIDE;
 };
 
+#define NS_PROMISE_IID \
+  { 0x1b8d6215, 0x3e67, 0x43ba, \
+    { 0x8a, 0xf9, 0x31, 0x5e, 0x8f, 0xce, 0x75, 0x65 } }
+
 class Promise : public nsISupports,
                 public nsWrapperCache,
                 public SupportsWeakPtr<Promise>
@@ -68,6 +73,7 @@ class Promise : public nsISupports,
   friend class WrapperPromiseCallback;
 
 public:
+  NS_DECLARE_STATIC_IID_ACCESSOR(NS_PROMISE_IID)
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(Promise)
   MOZ_DECLARE_REFCOUNTED_TYPENAME(Promise)
@@ -171,6 +177,10 @@ public:
 
   void AppendNativeHandler(PromiseNativeHandler* aRunnable);
 
+  JSObject* GlobalJSObject() const;
+
+  JSCompartment* Compartment() const;
+
 protected:
   // Do NOT call this unless you're Promise::Create.  I wish we could enforce
   // that from inside this class too, somehow.
@@ -239,7 +249,7 @@ private:
   void MaybeReportRejectedOnce() {
     MaybeReportRejected();
     RemoveFeature();
-    mResult = JS::UndefinedValue();
+    mResult.setUndefined();
   }
 
   void MaybeResolveInternal(JSContext* aCx,
@@ -331,6 +341,8 @@ private:
   // The time when this promise transitioned out of the pending state.
   TimeStamp mSettlementTimestamp;
 };
+
+NS_DEFINE_STATIC_IID_ACCESSOR(Promise, NS_PROMISE_IID)
 
 } // namespace dom
 } // namespace mozilla

@@ -22,6 +22,7 @@
 #include "nsWrapperCache.h"
 #include "xpcexception.h"
 #include "nsString.h"
+#include "mozilla/dom/BindingDeclarations.h"
 
 class nsIStackFrame;
 class nsString;
@@ -35,6 +36,8 @@ namespace mozilla {
 class ErrorResult;
 
 namespace dom {
+
+class GlobalObject;
 
 #define MOZILLA_EXCEPTION_IID \
 { 0x55eda557, 0xeba0, 0x4fe3, \
@@ -136,6 +139,12 @@ public:
   virtual JSObject* WrapObject(JSContext* aCx)
     MOZ_OVERRIDE;
 
+  static already_AddRefed<DOMException>
+  Constructor(GlobalObject& /* unused */,
+              const nsAString& aMessage,
+              const Optional<nsAString>& aName,
+              ErrorResult& aError);
+
   uint16_t Code() const {
     return mCode;
   }
@@ -146,6 +155,15 @@ public:
 
   static already_AddRefed<DOMException>
   Create(nsresult aRv);
+
+  // Sanitize() is a workaround for the fact that DOMExceptions can leak stack
+  // information for the first stackframe to callers that should not have access
+  // to it.  To prevent this, we check whether aCx subsumes our first stackframe
+  // and if not hand out a JS::Value for a clone of ourselves.  Otherwise we
+  // hand out a JS::Value for ourselves.
+  //
+  // If the return value is false, an exception was thrown on aCx.
+  bool Sanitize(JSContext* aCx, JS::MutableHandle<JS::Value> aSanitizedValue);
 
 protected:
 

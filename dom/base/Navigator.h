@@ -235,6 +235,8 @@ public:
                             systemMessageCallback* aCallback,
                             ErrorResult& aRv);
   bool MozHasPendingMessage(const nsAString& aType, ErrorResult& aRv);
+  void MozSetMessageHandlerPromise(Promise& aPromise, ErrorResult& aRv);
+
 #ifdef MOZ_B2G
   already_AddRefed<Promise> GetMobileIdAssertion(const MobileIdOptions& options,
                                                  ErrorResult& aRv);
@@ -320,6 +322,10 @@ public:
 
   virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE;
 
+  // GetWindowFromGlobal returns the inner window for this global, if
+  // any, else null.
+  static already_AddRefed<nsPIDOMWindow> GetWindowFromGlobal(JSObject* aGlobal);
+
 #ifdef MOZ_EME
   already_AddRefed<Promise>
   RequestMediaKeySystemAccess(const nsAString& aKeySystem,
@@ -332,9 +338,6 @@ private:
 
   bool CheckPermission(const char* type);
   static bool CheckPermission(nsPIDOMWindow* aWindow, const char* aType);
-  // GetWindowFromGlobal returns the inner window for this global, if
-  // any, else null.
-  static already_AddRefed<nsPIDOMWindow> GetWindowFromGlobal(JSObject* aGlobal);
 
   nsRefPtr<nsMimeTypeArray> mMimeTypes;
   nsRefPtr<nsPluginArray> mPlugins;

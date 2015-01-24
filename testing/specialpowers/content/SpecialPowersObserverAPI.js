@@ -184,7 +184,14 @@ SpecialPowersObserverAPI.prototype = {
     // to evaluate http:// urls...
     var scriptableStream = Cc["@mozilla.org/scriptableinputstream;1"]
                              .getService(Ci.nsIScriptableInputStream);
-    var channel = Services.io.newChannel(aUrl, null, null);
+    var channel = Services.io.newChannel2(aUrl,
+                                          null,
+                                          null,
+                                          null,      // aLoadingNode
+                                          Services.scriptSecurityManager.getSystemPrincipal(),
+                                          null,      // aTriggeringPrincipal
+                                          Ci.nsILoadInfo.SEC_NORMAL,
+                                          Ci.nsIContentPolicy.TYPE_OTHER);
     var input = channel.open();
     scriptableStream.init(input);
 
@@ -358,6 +365,13 @@ SpecialPowersObserverAPI.prototype = {
               let utils = {};
               Components.utils.import("resource://gre/modules/AppsUtils.jsm", utils);
               utils.AppsUtils.allowUnsignedAddons = true;
+              return;
+            }
+          case "debug-customizations":
+            {
+              let scope = {};
+              Components.utils.import("resource://gre/modules/UserCustomizations.jsm", scope);
+              scope.UserCustomizations._debug = aMessage.json.value;
               return;
             }
           default:

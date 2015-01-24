@@ -216,6 +216,10 @@ toolbar[customizing] > .overflow-button {
 
 #titlebar {
   -moz-binding: url("chrome://global/content/bindings/general.xml#windowdragbox");
+
+%ifdef XP_MACOSX
+  -moz-window-dragging: drag;
+%endif
 }
 
 #titlebar-spacer {
@@ -418,16 +422,16 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
 
 /* For results that are actions, their description text is shown instead of
    the URL - this needs to follow the locale's direction, unlike URLs. */
-panel:not([noactions]) > richlistbox > richlistitem[type~="action"]:-moz-locale-dir(rtl) > .ac-url-box {
+panel:not([noactions]) > richlistbox > richlistitem.overridable-action:-moz-locale-dir(rtl) > .ac-url-box {
   direction: rtl;
 }
 
-panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .ac-url > .ac-action-text,
-panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .ac-action-icon {
+panel[noactions] > richlistbox > richlistitem.overridable-action > .ac-url-box > .ac-url > .ac-action-text,
+panel[noactions] > richlistbox > richlistitem.overridable-action > .ac-url-box > .ac-action-icon {
   visibility: collapse;
 }
 
-panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .ac-url > .ac-url-text {
+panel[noactions] > richlistbox > richlistitem.overridable-action > .ac-url-box > .ac-url > .ac-url-text {
   visibility: visible;
 }
 
@@ -441,7 +445,6 @@ panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .a
 
 #PopupSearchAutoComplete {
   -moz-binding: url("chrome://browser/content/urlbarBindings.xml#browser-search-autocomplete-result-popup");
-  margin-left: -23px;
 }
 
 /* Overlay a badge on top of the icon of additional open search providers
@@ -1170,7 +1173,9 @@ toolbarpaletteitem[dragover] {
 
 toolbarpaletteitem[place="palette"] {
   width: 10em;
-  height: calc(40px + 2em);
+  /* icon (32) + margin (2 * 4) + button padding/border (2 * 4) + label margin (~2) + label
+   * line-height (1.5em): */
+  height: calc(50px + 1.5em);
   margin-bottom: 5px;
   overflow: hidden;
   display: inline-block;

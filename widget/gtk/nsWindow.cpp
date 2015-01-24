@@ -123,6 +123,8 @@ extern "C" {
 #include "NativeKeyBindings.h"
 #include "nsWindow.h"
 
+#include "mozilla/layers/APZCTreeManager.h"
+
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::widget;
@@ -634,7 +636,7 @@ nsWindow::Destroy(void)
     if (rollupListener) {
         nsCOMPtr<nsIWidget> rollupWidget = rollupListener->GetRollupWidget();
         if (static_cast<nsIWidget *>(this) == rollupWidget) {
-            rollupListener->Rollup(0, nullptr, nullptr);
+            rollupListener->Rollup(0, false, nullptr, nullptr);
         }
     }
 
@@ -3156,8 +3158,19 @@ nsWindow::OnScrollEvent(GdkEventScroll *aEvent)
 
     wheelEvent.time = aEvent->time;
 
-    nsEventStatus status;
-    DispatchEvent(&wheelEvent, status);
+    if (mAPZC) {
+        uint64_t inputBlockId = 0;
+        ScrollableLayerGuid guid;
+
+        nsEventStatus result = mAPZC->ReceiveInputEvent(*wheelEvent.AsWheelEvent(), &guid, &inputBlockId);
+        if (result == nsEventStatus_eConsumeNoDefault) {
+            return;
+        }
+        DispatchEventForAPZ(&wheelEvent, guid, inputBlockId);
+    } else {
+        nsEventStatus status;
+        DispatchEvent(&wheelEvent, status);
+    }
 }
 
 void
@@ -4832,7 +4845,7 @@ nsWindow::CheckForRollup(gdouble aMouseX, gdouble aMouseY,
         // if we've determined that we should still rollup, do it.
         bool usePoint = !aIsWheel && !aAlwaysRollup;
         nsIntPoint point(aMouseX, aMouseY);
-        if (rollup && rollupListener->Rollup(popupsToRollup, usePoint ? &point : nullptr, nullptr)) {
+        if (rollup && rollupListener->Rollup(popupsToRollup, true, usePoint ? &point : nullptr, nullptr)) {
             retVal = true;
         }
     }

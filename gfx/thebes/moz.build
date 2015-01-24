@@ -52,6 +52,7 @@ EXPORTS += [
     'gfxVR.h',
     'GraphicsFilter.h',
     'RoundedRect.h',
+    'SoftwareVsyncSource.h',
     'VsyncSource.h',
 ]
 
@@ -188,8 +189,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
             'gfxDWriteCommon.cpp',
             'gfxDWriteFonts.cpp',
         ]
-    if CONFIG['MOZ_ENABLE_DIRECT2D1_1']:
-        DEFINES['USE_D2D1_1'] = True
 
 # Are we targeting x86 or x64?  If so, build gfxAlphaRecoverySSE2.cpp.
 if CONFIG['INTEL_ARCHITECTURE']:
@@ -247,6 +246,7 @@ UNIFIED_SOURCES += [
     'gfxUtils.cpp',
     'gfxVR.cpp',
     'nsUnicodeRange.cpp',
+    'SoftwareVsyncSource.cpp',
     'VsyncSource.cpp',
 ]
 

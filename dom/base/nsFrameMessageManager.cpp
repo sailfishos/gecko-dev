@@ -1075,7 +1075,7 @@ nsFrameMessageManager::ReceiveMessage(nsISupports* aTarget,
         thisValue.setObject(*object);
       }
 
-      JS::Rooted<JS::Value> rval(cx, JSVAL_VOID);
+      JS::Rooted<JS::Value> rval(cx, JS::UndefinedValue());
       JS::Rooted<JS::Value> argv(cx, JS::ObjectValue(*param));
 
       {
@@ -1855,7 +1855,7 @@ public:
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
                                   JS::Handle<JSObject *> aCpows,
-                                  nsIPrincipal* aPrincipal)
+                                  nsIPrincipal* aPrincipal) MOZ_OVERRIDE
   {
     if (!nsFrameMessageManager::sPendingSameProcessAsyncMessages) {
       nsFrameMessageManager::sPendingSameProcessAsyncMessages = new nsTArray<nsCOMPtr<nsIRunnable> >;

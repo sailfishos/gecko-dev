@@ -14,6 +14,7 @@ var Cu = Components.utils;
 Cu.import("resource://specialpowers/MockFilePicker.jsm");
 Cu.import("resource://specialpowers/MockColorPicker.jsm");
 Cu.import("resource://specialpowers/MockPermissionPrompt.jsm");
+Cu.import("resource://specialpowers/MockPaymentsUIGlue.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -213,8 +214,9 @@ function unwrapPrivileged(x) {
   if (!isWrapper(x))
     throw "Trying to unwrap a non-wrapped object!";
 
-  // Unwrap.
-  return x.SpecialPowers_wrappedObject;
+  var obj = x.SpecialPowers_wrappedObject;
+  // unwrapped.
+  return obj;
 };
 
 function crawlProtoChain(obj, fn) {
@@ -520,15 +522,19 @@ SpecialPowersAPI.prototype = {
   },
 
   get MockFilePicker() {
-    return MockFilePicker
+    return MockFilePicker;
   },
 
   get MockColorPicker() {
-    return MockColorPicker
+    return MockColorPicker;
   },
 
   get MockPermissionPrompt() {
-    return MockPermissionPrompt
+    return MockPermissionPrompt;
+  },
+
+  get MockPaymentsUIGlue() {
+    return MockPaymentsUIGlue;
   },
 
   loadChromeScript: function (url) {
@@ -576,7 +582,7 @@ SpecialPowersAPI.prototype = {
 
         if (aMessage.name == "SPChromeScriptMessage") {
           listeners.filter(o => (o.name == name))
-                   .forEach(o => o.listener(this.wrap(message)));
+                   .forEach(o => o.listener(message));
         } else if (aMessage.name == "SPChromeScriptAssert") {
           assert(aMessage.json);
         }
@@ -662,10 +668,10 @@ SpecialPowersAPI.prototype = {
    * we don't SpecialPowers-wrap Components.interfaces, because it's available
    * to untrusted content, and wrapping it confuses QI and identity checks.
    */
-  get Cc() { return wrapPrivileged(this.getFullComponents()).classes; },
+  get Cc() { return wrapPrivileged(this.getFullComponents().classes); },
   get Ci() { return this.Components.interfaces; },
-  get Cu() { return wrapPrivileged(this.getFullComponents()).utils; },
-  get Cr() { return wrapPrivileged(this.Components).results; },
+  get Cu() { return wrapPrivileged(this.getFullComponents().utils); },
+  get Cr() { return wrapPrivileged(this.Components.results); },
 
   /*
    * SpecialPowers.getRawComponents() allows content to get a reference to a
@@ -1103,6 +1109,14 @@ SpecialPowersAPI.prototype = {
   allowUnsignedAddons: function() {
     this._sendSyncMessage("SPWebAppService", {
       op: "allow-unsigned-addons"
+    });
+  },
+
+  // Turn on debug information from UserCustomizations.jsm
+  debugUserCustomizations: function(value) {
+    this._sendSyncMessage("SPWebAppService", {
+      op: "debug-customizations",
+      value: value
     });
   },
 

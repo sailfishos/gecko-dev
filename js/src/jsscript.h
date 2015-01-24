@@ -52,6 +52,7 @@ class NestedScopeObject;
 
 namespace frontend {
     struct BytecodeEmitter;
+    class UpvarCookie;
 }
 
 }
@@ -62,12 +63,12 @@ namespace frontend {
  * for exception unwinding, but storing their boundaries here is helpful for
  * heuristics that need to know whether a given op is inside a loop.
  */
-typedef enum JSTryNoteKind {
+enum JSTryNoteKind {
     JSTRY_CATCH,
     JSTRY_FINALLY,
     JSTRY_ITER,
     JSTRY_LOOP
-} JSTryNoteKind;
+};
 
 /*
  * Exception handling record.
@@ -285,7 +286,7 @@ class Bindings
     uint32_t numUnaliasedBodyLevelLocals() const { return numUnaliasedVars_ + numUnaliasedBodyLevelLexicals_; }
     uint32_t numAliasedBodyLevelLocals() const { return numBodyLevelLocals() - numUnaliasedBodyLevelLocals(); }
     uint32_t numLocals() const { return numVars() + numBodyLevelLexicals() + numBlockScoped(); }
-    uint32_t numUnaliasedLocals() const { return numUnaliasedVars() + numUnaliasedBodyLevelLexicals() + numBlockScoped(); }
+    uint32_t numFixedLocals() const { return numUnaliasedVars() + numUnaliasedBodyLevelLexicals() + numBlockScoped(); }
     uint32_t lexicalBegin() const { return numArgs() + numVars(); }
     uint32_t aliasedBodyLevelLexicalBegin() const { return aliasedBodyLevelLexicalBegin_; }
 
@@ -299,8 +300,7 @@ class Bindings
     Shape *callObjShape() const { return callObjShape_; }
 
     /* Convenience method to get the var index of 'arguments'. */
-    static uint32_t argumentsVarIndex(ExclusiveContext *cx, InternalBindingsHandle,
-                                      uint32_t *unaliasedSlot = nullptr);
+    static BindingIter argumentsBinding(ExclusiveContext *cx, InternalBindingsHandle);
 
     /* Return whether the binding at bindingIndex is aliased. */
     bool bindingIsAliased(uint32_t bindingIndex);
@@ -841,9 +841,6 @@ class JSScript : public js::gc::TenuredCell
     js::jit::IonScript *ion;
     js::jit::BaselineScript *baseline;
 
-    /* Information attached by Ion for parallel mode execution */
-    js::jit::IonScript *parallelIon;
-
     /* Information used to re-lazify a lazily-parsed interpreted function. */
     js::LazyScript *lazyScript;
 
@@ -969,9 +966,10 @@ class JSScript : public js::gc::TenuredCell
     // Set for functions defined at the top level within an 'eval' script.
     bool directlyInsideEval_:1;
 
-    // Both 'arguments' and f.apply() are used. This is likely to be a wrapper.
-    bool usesArgumentsAndApply_:1;
+    // 'this', 'arguments' and f.apply() are used. This is likely to be a wrapper.
+    bool usesArgumentsApplyAndThis_:1;
 
+    // PJS FIXME bug 1121433 - clone at call site may be obsolete
     /* script is attempted to be cloned anew at each callsite. This is
        temporarily needed for ParallelArray selfhosted code until type
        information can be made context sensitive. See discussion in
@@ -1013,6 +1011,18 @@ class JSScript : public js::gc::TenuredCell
     // This should be a uint32 but is instead a bool so that MSVC packs it
     // correctly.
     bool typesGeneration_:1;
+
+    // Do not relazify this script. This is only used by the relazify()
+    // testing function for scripts that are on the stack. Usually we don't
+    // relazify functions in compartments with scripts on the stack.
+    bool doNotRelazify_:1;
+
+    // Add padding so JSScript is gc::Cell aligned. Make padding protected
+    // instead of private to suppress -Wunused-private-field compiler warnings.
+  protected:
+#if JS_BITS_PER_WORD == 32
+    uint32_t padding;
+#endif
 
     //
     // End of fields.  Start methods.
@@ -1090,7 +1100,7 @@ class JSScript : public js::gc::TenuredCell
     // The fixed part of a stack frame is comprised of vars (in function code)
     // and block-scoped locals (in all kinds of code).
     size_t nfixed() const {
-        return function_ ? bindings.numUnaliasedLocals() : bindings.numBlockScoped();
+        return function_ ? bindings.numFixedLocals() : bindings.numBlockScoped();
     }
 
     // Number of fixed slots reserved for vars.  Only nonzero for function
@@ -1197,10 +1207,10 @@ class JSScript : public js::gc::TenuredCell
     void setActiveEval() { isActiveEval_ = true; }
     void setDirectlyInsideEval() { directlyInsideEval_ = true; }
 
-    bool usesArgumentsAndApply() const {
-        return usesArgumentsAndApply_;
+    bool usesArgumentsApplyAndThis() const {
+        return usesArgumentsApplyAndThis_;
     }
-    void setUsesArgumentsAndApply() { usesArgumentsAndApply_ = true; }
+    void setUsesArgumentsApplyAndThis() { usesArgumentsApplyAndThis_ = true; }
 
     bool shouldCloneAtCallsite() const {
         return shouldCloneAtCallsite_;
@@ -1311,8 +1321,12 @@ class JSScript : public js::gc::TenuredCell
         typesGeneration_ = (bool) generation;
     }
 
+    void setDoNotRelazify(bool b) {
+        doNotRelazify_ = b;
+    }
+
     bool hasAnyIonScript() const {
-        return hasIonScript() || hasParallelIonScript();
+        return hasIonScript();
     }
 
     bool hasIonScript() const {
@@ -1372,39 +1386,11 @@ class JSScript : public js::gc::TenuredCell
         return ion->pendingBuilder();
     }
 
-    bool hasParallelIonScript() const {
-        return parallelIon && parallelIon != ION_DISABLED_SCRIPT && parallelIon != ION_COMPILING_SCRIPT;
-    }
-
-    bool canParallelIonCompile() const {
-        return parallelIon != ION_DISABLED_SCRIPT;
-    }
-
-    bool isParallelIonCompilingOffThread() const {
-        return parallelIon == ION_COMPILING_SCRIPT;
-    }
-
-    js::jit::IonScript *parallelIonScript() const {
-        MOZ_ASSERT(hasParallelIonScript());
-        return parallelIon;
-    }
-    js::jit::IonScript *maybeParallelIonScript() const {
-        return parallelIon;
-    }
-    void setParallelIonScript(js::jit::IonScript *ionScript) {
-        if (hasParallelIonScript())
-            js::jit::IonScript::writeBarrierPre(zone(), parallelIon);
-        parallelIon = ionScript;
-    }
-
     static size_t offsetOfBaselineScript() {
         return offsetof(JSScript, baseline);
     }
     static size_t offsetOfIonScript() {
         return offsetof(JSScript, ion);
-    }
-    static size_t offsetOfParallelIonScript() {
-        return offsetof(JSScript, parallelIon);
     }
     static size_t offsetOfBaselineOrIonRaw() {
         return offsetof(JSScript, baselineOrIonRaw);
@@ -1418,7 +1404,8 @@ class JSScript : public js::gc::TenuredCell
 
     bool isRelazifiable() const {
         return (selfHosted() || lazyScript) &&
-               !isGenerator() && !hasBaselineScript() && !hasAnyIonScript();
+               !isGenerator() && !hasBaselineScript() && !hasAnyIonScript() &&
+               !hasScriptCounts() && !doNotRelazify_;
     }
     void setLazyScript(js::LazyScript *lazy) {
         lazyScript = lazy;
@@ -1643,7 +1630,15 @@ class JSScript : public js::gc::TenuredCell
         return arr->vector[index];
     }
 
-    js::NestedScopeObject *getStaticScope(jsbytecode *pc);
+    js::NestedScopeObject *getStaticBlockScope(jsbytecode *pc);
+
+    // Returns the innermost static scope at pc if it falls within the extent
+    // of the script. Returns nullptr otherwise.
+    JSObject *innermostStaticScopeInScript(jsbytecode *pc);
+
+    // As innermostStaticScopeInScript, but returns the enclosing static scope
+    // if the innermost static scope falls without the extent of the script.
+    JSObject *innermostStaticScope(jsbytecode *pc);
 
     /*
      * The isEmpty method tells whether this script has code that computes any
@@ -1660,10 +1655,12 @@ class JSScript : public js::gc::TenuredCell
         return JSOp(*pc) == JSOP_RETRVAL;
     }
 
-    bool varIsAliased(uint32_t varSlot);
-    bool bodyLevelLocalIsAliased(uint32_t localSlot);
+    bool bindingIsAliased(const js::BindingIter &bi);
     bool formalIsAliased(unsigned argSlot);
     bool formalLivesInArgumentsObject(unsigned argSlot);
+
+    // Frontend-only.
+    bool cookieIsAliased(const js::frontend::UpvarCookie &cookie);
 
   private:
     /* Change this->stepMode to |newValue|. */
@@ -1734,6 +1731,7 @@ class BindingIter
     uint32_t i_;
     uint32_t unaliasedLocal_;
 
+    friend class ::JSScript;
     friend class Bindings;
 
   public:
@@ -1872,16 +1870,20 @@ class LazyScript : public gc::TenuredCell
     // Heap allocated table with any free variables or inner functions.
     void *table_;
 
+    // Add padding so LazyScript is gc::Cell aligned. Make padding protected
+    // instead of private to suppress -Wunused-private-field compiler warnings.
+  protected:
 #if JS_BITS_PER_WORD == 32
     uint32_t padding;
 #endif
+  private:
 
     struct PackedView {
         // Assorted bits that should really be in ScriptSourceObject.
         uint32_t version : 8;
 
         uint32_t numFreeVariables : 24;
-        uint32_t numInnerFunctions : 23;
+        uint32_t numInnerFunctions : 22;
 
         uint32_t generatorKindBits : 2;
 
@@ -1889,8 +1891,9 @@ class LazyScript : public gc::TenuredCell
         uint32_t strict : 1;
         uint32_t bindingsAccessedDynamically : 1;
         uint32_t hasDebuggerStatement : 1;
+        uint32_t hasDirectEval : 1;
         uint32_t directlyInsideEval : 1;
-        uint32_t usesArgumentsAndApply : 1;
+        uint32_t usesArgumentsApplyAndThis : 1;
         uint32_t hasBeenCloned : 1;
         uint32_t treatAsRunOnce : 1;
     };
@@ -2014,6 +2017,13 @@ class LazyScript : public gc::TenuredCell
         p_.hasDebuggerStatement = true;
     }
 
+    bool hasDirectEval() const {
+        return p_.hasDirectEval;
+    }
+    void setHasDirectEval() {
+        p_.hasDirectEval = true;
+    }
+
     bool directlyInsideEval() const {
         return p_.directlyInsideEval;
     }
@@ -2021,11 +2031,11 @@ class LazyScript : public gc::TenuredCell
         p_.directlyInsideEval = true;
     }
 
-    bool usesArgumentsAndApply() const {
-        return p_.usesArgumentsAndApply;
+    bool usesArgumentsApplyAndThis() const {
+        return p_.usesArgumentsApplyAndThis;
     }
-    void setUsesArgumentsAndApply() {
-        p_.usesArgumentsAndApply = true;
+    void setUsesArgumentsApplyAndThis() {
+        p_.usesArgumentsApplyAndThis = true;
     }
 
     bool hasBeenCloned() const {
@@ -2101,8 +2111,8 @@ struct SharedScriptData
     }
 
   private:
-    SharedScriptData() MOZ_DELETE;
-    SharedScriptData(const SharedScriptData&) MOZ_DELETE;
+    SharedScriptData() = delete;
+    SharedScriptData(const SharedScriptData&) = delete;
 };
 
 struct ScriptBytecodeHasher

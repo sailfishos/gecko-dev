@@ -71,6 +71,10 @@ this.DataReportingService = function () {
 
   this._stateDir = null;
   this._stateFilePath = null;
+
+  // Used for testing only, when true results in getSessionRecorder() returning
+  // undefined. Controlled via simulate* methods.
+  this._simulateNoSessionRecorder = false;
 }
 
 DataReportingService.prototype = Object.freeze({
@@ -390,6 +394,25 @@ DataReportingService.prototype = Object.freeze({
 
     return this._clientID;
   }),
+
+  /**
+   * Returns the SessionRecorder instance associated with the data reporting service.
+   * Returns an actual object only if FHR is enabled and after initialization,
+   * else returns undefined.
+   */
+  getSessionRecorder: function() {
+    return this._simulateNoSessionRecorder ? undefined : this.sessionRecorder;
+  },
+
+  // These two simulate* methods below are only used for testings and control
+  // whether getSessionRecorder() behaves normally or forced to return undefined
+  simulateNoSessionRecorder() {
+    this._simulateNoSessionRecorder = true;
+  },
+
+  simulateRestoreSessionRecorder() {
+    this._simulateNoSessionRecorder = false;
+  },
 
   /*
    * Simulate a restart of the service. This is for testing only.

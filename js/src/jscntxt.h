@@ -21,15 +21,6 @@
 
 struct DtoaState;
 
-extern void
-js_ReportOutOfMemory(js::ThreadSafeContext *cx);
-
-extern void
-js_ReportAllocationOverflow(js::ThreadSafeContext *cx);
-
-extern void
-js_ReportOverRecursed(js::ThreadSafeContext *cx);
-
 namespace js {
 
 namespace jit {
@@ -121,7 +112,6 @@ TraceCycleDetectionSet(JSTracer *trc, ObjectSet &set);
 
 struct AutoResolving;
 class DtoaCache;
-class ForkJoinContext;
 class RegExpStatics;
 
 namespace frontend { struct CompileError; }
@@ -133,10 +123,6 @@ namespace frontend { struct CompileError; }
  * on the VM. Each context is thread local, but varies in what data it can
  * access and what other threads may be running.
  *
- * - ThreadSafeContext is used by threads operating in one compartment which
- * may run in parallel with other threads operating on the same or other
- * compartments.
- *
  * - ExclusiveContext is used by threads operating in one compartment/zone,
  * where other threads may operate in other compartments, but *not* the same
  * compartment or zone which the ExclusiveContext is in. A thread with an
@@ -144,33 +130,32 @@ namespace frontend { struct CompileError; }
  * which case a lock is used.
  *
  * - JSContext is used only by the runtime's main thread. The context may
- * operate in any compartment or zone which is not used by an ExclusiveContext
- * or ThreadSafeContext, and will only run in parallel with threads using such
- * contexts.
+ * operate in any compartment or zone which is not used by an ExclusiveContext,
+ * and will only run in parallel with threads using such contexts.
  *
- * An ExclusiveContext coerces to a ThreadSafeContext, and a JSContext coerces
- * to an ExclusiveContext or ThreadSafeContext.
- *
- * Contexts which are a ThreadSafeContext but not an ExclusiveContext are used
- * to represent a ForkJoinContext, the per-thread parallel context used in PJS.
+ * A JSContext coerces to an ExclusiveContext.
  */
 
-struct ThreadSafeContext : ContextFriendFields,
-                           public MallocProvider<ThreadSafeContext>
+struct HelperThread;
+
+class ExclusiveContext : public ContextFriendFields,
+                         public MallocProvider<ExclusiveContext>
 {
+    friend class gc::ArenaLists;
+    friend class AutoCompartment;
+    friend class AutoLockForExclusiveAccess;
     friend struct StackBaseShape;
+    friend void JSScript::initCompartment(ExclusiveContext *cx);
+    friend class jit::JitContext;
     friend class Activation;
-    friend UnownedBaseShape *BaseShape::lookupUnowned(ThreadSafeContext *cx,
-                                                      const StackBaseShape &base);
-    friend Shape *NativeObject::lookupChildProperty(ThreadSafeContext *cx,
-                                                    HandleNativeObject obj, HandleShape parent,
-                                                    StackShape &child);
+
+    // The thread on which this context is running, if this is not a JSContext.
+    HelperThread *helperThread_;
 
   public:
     enum ContextKind {
         Context_JS,
-        Context_Exclusive,
-        Context_ForkJoin
+        Context_Exclusive
     };
 
   private:
@@ -179,7 +164,7 @@ struct ThreadSafeContext : ContextFriendFields,
   public:
     PerThreadData *perThreadData;
 
-    ThreadSafeContext(JSRuntime *rt, PerThreadData *pt, ContextKind kind);
+    ExclusiveContext(JSRuntime *rt, PerThreadData *pt, ContextKind kind);
 
     bool isJSContext() const {
         return contextKind_ == Context_JS;
@@ -212,45 +197,11 @@ struct ThreadSafeContext : ContextFriendFields,
         return isJSContext();
     }
 
-    bool isExclusiveContext() const {
-        return contextKind_ == Context_JS || contextKind_ == Context_Exclusive;
-    }
-
-    ExclusiveContext *maybeExclusiveContext() const {
-        if (isExclusiveContext())
-            return (ExclusiveContext *) this;
-        return nullptr;
-    }
-
-    ExclusiveContext *asExclusiveContext() const {
-        MOZ_ASSERT(isExclusiveContext());
-        return maybeExclusiveContext();
-    }
-
-    bool isForkJoinContext() const;
-    ForkJoinContext *asForkJoinContext();
-
-    /*
-     * Allocator used when allocating GCThings on this context. If we are a
-     * JSContext, this is the Zone allocator of the JSContext's zone.
-     * Otherwise, this is a per-thread allocator.
-     *
-     * This does not live in PerThreadData because the notion of an allocator
-     * is only per-thread when off the main thread. The runtime (and the main
-     * thread) can have more than one zone, each with its own allocator, and
-     * it's up to the context to specify what compartment and zone we are
-     * operating in.
-     */
   protected:
-    Allocator *allocator_;
+    js::gc::ArenaLists *arenas_;
 
   public:
-    static size_t offsetOfAllocator() { return offsetof(ThreadSafeContext, allocator_); }
-
-    inline Allocator *allocator() const;
-
-    // Allocations can only trigger GC when running on the main thread.
-    inline AllowGC allowGC() const { return isJSContext() ? CanGC : NoGC; }
+    inline js::gc::ArenaLists *arenas() const { return arenas_; }
 
     template <typename T>
     bool isInsideCurrentZone(T thing) const {
@@ -261,9 +212,6 @@ struct ThreadSafeContext : ContextFriendFields,
     inline bool isInsideCurrentCompartment(T thing) const {
         return thing->compartment() == compartment_;
     }
-
-    template <typename T>
-    inline bool isThreadLocal(T thing) const;
 
     void *onOutOfMemory(void *p, size_t nbytes) {
         return runtime_->onOutOfMemory(p, nbytes, maybeJSContext());
@@ -302,29 +250,6 @@ struct ThreadSafeContext : ContextFriendFields,
     DtoaState *dtoaState() {
         return perThreadData->dtoaState;
     }
-};
-
-struct HelperThread;
-
-class ExclusiveContext : public ThreadSafeContext
-{
-    friend class gc::ArenaLists;
-    friend class AutoCompartment;
-    friend class AutoLockForExclusiveAccess;
-    friend struct StackBaseShape;
-    friend void JSScript::initCompartment(ExclusiveContext *cx);
-    friend class jit::JitContext;
-
-    // The thread on which this context is running, if this is not a JSContext.
-    HelperThread *helperThread_;
-
-  public:
-
-    ExclusiveContext(JSRuntime *rt, PerThreadData *pt, ContextKind kind)
-      : ThreadSafeContext(rt, pt, kind),
-        helperThread_(nullptr),
-        enterCompartmentDepth_(0)
-    {}
 
     /*
      * "Entering" a compartment changes cx->compartment (which changes
@@ -963,19 +888,11 @@ bool intrinsic_UnsafePutElements(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_DefineDataProperty(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_UnsafeSetReservedSlot(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_UnsafeGetReservedSlot(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_UnsafeGetObjectFromReservedSlot(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_UnsafeGetInt32FromReservedSlot(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_UnsafeGetStringFromReservedSlot(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_UnsafeGetBooleanFromReservedSlot(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_IsPackedArray(JSContext *cx, unsigned argc, Value *vp);
-
-bool intrinsic_ShouldForceSequential(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_ForkJoinGetSlice(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_InParallelSection(JSContext *cx, unsigned argc, Value *vp);
-
-bool intrinsic_ObjectIsTypedObject(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_ObjectIsTransparentTypedObject(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_ObjectIsOpaqueTypedObject(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_ObjectIsTypeDescr(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_TypeDescrIsSimpleType(JSContext *cx, unsigned argc, Value *vp);
-bool intrinsic_TypeDescrIsArrayType(JSContext *cx, unsigned argc, Value *vp);
 
 bool intrinsic_IsSuspendedStarGenerator(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_IsArrayIterator(JSContext *cx, unsigned argc, Value *vp);

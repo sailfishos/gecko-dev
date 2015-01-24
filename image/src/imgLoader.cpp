@@ -16,7 +16,7 @@
 #include "nsCOMPtr.h"
 
 #include "nsContentUtils.h"
-#include "nsCrossSiteListenerProxy.h"
+#include "nsCORSListenerProxy.h"
 #include "nsNetUtil.h"
 #include "nsMimeTypes.h"
 #include "nsStreamUtils.h"
@@ -59,7 +59,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                            nsISupports* aData, bool aAnonymize)
+                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     nsresult rv;
     nsTArray<ImageMemoryCounter> chrome;
@@ -460,8 +460,8 @@ NS_IMPL_ISUPPORTS(nsProgressNotificationProxy,
 NS_IMETHODIMP
 nsProgressNotificationProxy::OnProgress(nsIRequest* request,
                                         nsISupports* ctxt,
-                                        uint64_t progress,
-                                        uint64_t progressMax)
+                                        int64_t progress,
+                                        int64_t progressMax)
 {
   nsCOMPtr<nsILoadGroup> loadGroup;
   request->GetLoadGroup(getter_AddRefs(loadGroup));
@@ -2431,6 +2431,16 @@ NS_IMETHODIMP ProxyListener::OnStartRequest(nsIRequest *aRequest, nsISupports *c
 
   nsCOMPtr<nsIChannel> channel(do_QueryInterface(aRequest));
   if (channel) {
+    // We need to set the initiator type for the image load
+    nsCOMPtr<nsITimedChannel> timedChannel = do_QueryInterface(channel);
+    if (timedChannel) {
+      nsAutoString type;
+      timedChannel->GetInitiatorType(type);
+      if (type.IsEmpty()) {
+        timedChannel->SetInitiatorType(NS_LITERAL_STRING("img"));
+      }
+    }
+
     nsAutoCString contentType;
     nsresult rv = channel->GetContentType(contentType);
 

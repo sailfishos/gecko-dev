@@ -2171,6 +2171,19 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     nsNPAPIPluginInstance *inst =
       (nsNPAPIPluginInstance *) (npp ? npp->ndata : nullptr);
     double scaleFactor = inst ? inst->GetContentsScaleFactor() : 1.0;
+    // Work around a Flash ActionScript bug that causes long hangs if
+    // Flash thinks HiDPI support is available. Adobe is tracking this as
+    // ADBE 3921114. If this turns out to be Adobe's fault and they fix it,
+    // we'll no longer need this quirk. See QUIRK_FLASH_HIDE_HIDPI_SUPPORT
+    // in PluginModuleChild.h, and also bug 1118615.
+    if (inst) {
+      const char *mimeType;
+      inst->GetMIMEType(&mimeType);
+      NS_NAMED_LITERAL_CSTRING(flash, "application/x-shockwave-flash");
+      if (!PL_strncasecmp(mimeType, flash.get(), flash.Length())) {
+        scaleFactor = 1.0;
+      }
+    }
     *(double*)result = scaleFactor;
     return NPERR_NO_ERROR;
   }
@@ -2269,12 +2282,11 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     }
 
     case kJavaContext_ANPGetValue: {
-      jobject ret = mozilla::widget::android::GeckoAppShell::GetContext();
+      auto ret = widget::GeckoAppShell::GetContext();
       if (!ret)
         return NPERR_GENERIC_ERROR;
 
-      int32_t* i  = reinterpret_cast<int32_t*>(result);
-      *i = reinterpret_cast<int32_t>(ret);
+      *static_cast<jobject*>(result) = ret.Forget();
       return NPERR_NO_ERROR;
     }
 

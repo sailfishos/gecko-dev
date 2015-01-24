@@ -62,9 +62,9 @@ class ContentChild : public PContentChild
 public:
     ContentChild();
     virtual ~ContentChild();
-    NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr);
-    NS_IMETHOD_(MozExternalRefCountType) AddRef(void) { return 1; }
-    NS_IMETHOD_(MozExternalRefCountType) Release(void) { return 1; }
+    NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) MOZ_OVERRIDE;
+    NS_IMETHOD_(MozExternalRefCountType) AddRef(void) MOZ_OVERRIDE { return 1; }
+    NS_IMETHOD_(MozExternalRefCountType) Release(void) MOZ_OVERRIDE { return 1; }
 
     struct AppInfo
     {
@@ -126,6 +126,10 @@ public:
     AllocPImageBridgeChild(mozilla::ipc::Transport* aTransport,
                            base::ProcessId aOtherProcess) MOZ_OVERRIDE;
 
+    PProcessHangMonitorChild*
+    AllocPProcessHangMonitorChild(Transport* aTransport,
+                                  ProcessId aOtherProcess) MOZ_OVERRIDE;
+
 #if defined(XP_WIN) && defined(MOZ_CONTENT_SANDBOX)
     // Cleans up any resources used by the process when sandboxed.
     void CleanUpSandboxEnvironment();
@@ -142,14 +146,18 @@ public:
                                               const uint32_t& aChromeFlags,
                                               const ContentParentId& aCpID,
                                               const bool& aIsForApp,
-                                              const bool& aIsForBrowser);
-    virtual bool DeallocPBrowserChild(PBrowserChild*);
+                                              const bool& aIsForBrowser)
+                                              MOZ_OVERRIDE;
+    virtual bool DeallocPBrowserChild(PBrowserChild*) MOZ_OVERRIDE;
 
-    virtual PDeviceStorageRequestChild* AllocPDeviceStorageRequestChild(const DeviceStorageParams&);
-    virtual bool DeallocPDeviceStorageRequestChild(PDeviceStorageRequestChild*);
+    virtual PDeviceStorageRequestChild* AllocPDeviceStorageRequestChild(const DeviceStorageParams&)
+                                                                        MOZ_OVERRIDE;
+    virtual bool DeallocPDeviceStorageRequestChild(PDeviceStorageRequestChild*)
+                                                   MOZ_OVERRIDE;
 
-    virtual PFileSystemRequestChild* AllocPFileSystemRequestChild(const FileSystemParams&);
-    virtual bool DeallocPFileSystemRequestChild(PFileSystemRequestChild*);
+    virtual PFileSystemRequestChild* AllocPFileSystemRequestChild(const FileSystemParams&)
+                                                                  MOZ_OVERRIDE;
+    virtual bool DeallocPFileSystemRequestChild(PFileSystemRequestChild*) MOZ_OVERRIDE;
 
     virtual PBlobChild* AllocPBlobChild(const BlobConstructorParams& aParams)
                                         MOZ_OVERRIDE;
@@ -268,9 +276,9 @@ public:
     virtual PSpeechSynthesisChild* AllocPSpeechSynthesisChild() MOZ_OVERRIDE;
     virtual bool DeallocPSpeechSynthesisChild(PSpeechSynthesisChild* aActor) MOZ_OVERRIDE;
 
-    virtual bool RecvRegisterChrome(const InfallibleTArray<ChromePackage>& packages,
-                                    const InfallibleTArray<ResourceMapping>& resources,
-                                    const InfallibleTArray<OverrideMapping>& overrides,
+    virtual bool RecvRegisterChrome(InfallibleTArray<ChromePackage>&& packages,
+                                    InfallibleTArray<ResourceMapping>&& resources,
+                                    InfallibleTArray<OverrideMapping>&& overrides,
                                     const nsCString& locale,
                                     const bool& reset) MOZ_OVERRIDE;
     virtual bool RecvRegisterChromeItem(const ChromeRegistryItem& item) MOZ_OVERRIDE;
@@ -298,14 +306,14 @@ public:
 
     virtual bool RecvAsyncMessage(const nsString& aMsg,
                                   const ClonedMessageData& aData,
-                                  const InfallibleTArray<CpowEntry>& aCpows,
+                                  InfallibleTArray<CpowEntry>&& aCpows,
                                   const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
 
     virtual bool RecvGeolocationUpdate(const GeoPosition& somewhere) MOZ_OVERRIDE;
 
     virtual bool RecvGeolocationError(const uint16_t& errorCode) MOZ_OVERRIDE;
 
-    virtual bool RecvUpdateDictionaryList(const InfallibleTArray<nsString>& aDictionaries) MOZ_OVERRIDE;
+    virtual bool RecvUpdateDictionaryList(InfallibleTArray<nsString>&& aDictionaries) MOZ_OVERRIDE;
 
     virtual bool RecvAddPermission(const IPC::Permission& permission) MOZ_OVERRIDE;
 
@@ -362,12 +370,18 @@ public:
 
     virtual bool RecvOnAppThemeChanged() MOZ_OVERRIDE;
 
+    virtual bool RecvAssociatePluginId(const uint32_t& aPluginId,
+                                       const base::ProcessId& aProcessId) MOZ_OVERRIDE;
+    virtual bool RecvLoadPluginResult(const uint32_t& aPluginId,
+                                      const bool& aResult) MOZ_OVERRIDE;
+
     virtual bool RecvStartProfiler(const uint32_t& aEntries,
                                    const double& aInterval,
-                                   const nsTArray<nsCString>& aFeatures,
-                                   const nsTArray<nsCString>& aThreadNameFilters) MOZ_OVERRIDE;
+                                   nsTArray<nsCString>&& aFeatures,
+                                   nsTArray<nsCString>&& aThreadNameFilters) MOZ_OVERRIDE;
     virtual bool RecvStopProfiler() MOZ_OVERRIDE;
     virtual bool RecvGetProfile(nsCString* aProfile) MOZ_OVERRIDE;
+    virtual bool RecvShutdown() MOZ_OVERRIDE;
 
 #ifdef ANDROID
     gfxIntSize GetScreenSize() { return mScreenSize; }

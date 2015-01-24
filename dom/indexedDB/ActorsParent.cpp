@@ -3036,7 +3036,7 @@ private:
   virtual bool
   RecvPBackgroundIDBTransactionConstructor(
                                     PBackgroundIDBTransactionParent* aActor,
-                                    const nsTArray<nsString>& aObjectStoreNames,
+                                    InfallibleTArray<nsString>&& aObjectStoreNames,
                                     const Mode& aMode)
                                     MOZ_OVERRIDE;
 
@@ -3667,7 +3667,7 @@ public:
   }
 
   mozIStorageStatement*
-  operator->()
+  operator->() MOZ_NO_ADDREF_RELEASE_ON_RETURN
   {
     MOZ_ASSERT(mStatement);
     return mStatement;
@@ -3699,8 +3699,8 @@ private:
   }
 
   // No funny business allowed.
-  CachedStatement(const CachedStatement&) MOZ_DELETE;
-  CachedStatement& operator=(const CachedStatement&) MOZ_DELETE;
+  CachedStatement(const CachedStatement&) = delete;
+  CachedStatement& operator=(const CachedStatement&) = delete;
 };
 
 class NormalTransaction MOZ_FINAL
@@ -3939,7 +3939,6 @@ protected:
   nsCString mDatabaseId;
   State mState;
   bool mIsApp;
-  bool mHasUnlimStoragePerm;
   bool mEnforcingQuota;
   const bool mDeleting;
   bool mBlockedQuotaManager;
@@ -4077,7 +4076,7 @@ struct FactoryOp::MaybeBlockedDatabaseInfo MOZ_FINAL
   }
 
   Database*
-  operator->()
+  operator->() MOZ_NO_ADDREF_RELEASE_ON_RETURN
   {
     return mDatabase;
   }
@@ -4898,7 +4897,7 @@ private:
 
   // Must call SendResponseInternal!
   bool
-  SendResponse(const CursorResponse& aResponse) MOZ_DELETE;
+  SendResponse(const CursorResponse& aResponse) = delete;
 
   // IPDL methods.
   virtual void
@@ -5210,7 +5209,7 @@ public:
   void
   NoteBackgroundThread(nsIEventTarget* aBackgroundThread);
 
-  NS_INLINE_DECL_REFCOUNTING(QuotaClient)
+  NS_INLINE_DECL_REFCOUNTING(QuotaClient, MOZ_OVERRIDE)
 
   virtual mozilla::dom::quota::Client::Type
   GetType() MOZ_OVERRIDE;
@@ -6526,7 +6525,7 @@ Database::AllocPBackgroundIDBTransactionParent(
 bool
 Database::RecvPBackgroundIDBTransactionConstructor(
                                     PBackgroundIDBTransactionParent* aActor,
-                                    const nsTArray<nsString>& aObjectStoreNames,
+                                    InfallibleTArray<nsString>&& aObjectStoreNames,
                                     const Mode& aMode)
 {
   AssertIsOnBackgroundThread();
@@ -10503,7 +10502,6 @@ FactoryOp::FactoryOp(Factory* aFactory,
   , mCommonParams(aCommonParams)
   , mState(State_Initial)
   , mIsApp(false)
-  , mHasUnlimStoragePerm(false)
   , mEnforcingQuota(true)
   , mDeleting(aDeleting)
   , mBlockedQuotaManager(false)
@@ -10748,7 +10746,9 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mState == State_Initial || mState == State_PermissionRetry);
 
-  if (NS_WARN_IF(!Preferences::GetBool(kPrefIndexedDBEnabled, false))) {
+  const PrincipalInfo& principalInfo = mCommonParams.principalInfo();
+  if (principalInfo.type() != PrincipalInfo::TSystemPrincipalInfo &&
+      NS_WARN_IF(!Preferences::GetBool(kPrefIndexedDBEnabled, false))) {
     if (aContentParent) {
       // The DOM in the other process should have kept us from receiving any
       // indexedDB messages so assume that the child is misbehaving.
@@ -10764,7 +10764,6 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
 
   PersistenceType persistenceType = mCommonParams.metadata().persistenceType();
 
-  const PrincipalInfo& principalInfo = mCommonParams.principalInfo();
   MOZ_ASSERT(principalInfo.type() != PrincipalInfo::TNullPrincipalInfo);
 
   if (principalInfo.type() == PrincipalInfo::TSystemPrincipalInfo) {
@@ -10818,15 +10817,13 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
     }
 
     if (State_Initial == mState) {
-      QuotaManager::GetInfoForChrome(&mGroup, &mOrigin, &mIsApp,
-                                     &mHasUnlimStoragePerm);
+      QuotaManager::GetInfoForChrome(&mGroup, &mOrigin, &mIsApp);
 
       MOZ_ASSERT(!QuotaManager::IsFirstPromptRequired(persistenceType, mOrigin,
                                                       mIsApp));
 
       mEnforcingQuota =
-        QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp,
-                                      mHasUnlimStoragePerm);
+        QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp);
     }
 
     *aPermission = PermissionRequestBase::kPermissionAllowed;
@@ -10845,12 +10842,18 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
   nsCString group;
   nsCString origin;
   bool isApp;
-  bool hasUnlimStoragePerm;
-  rv = QuotaManager::GetInfoFromPrincipal(principal, &group, &origin,
-                                          &isApp, &hasUnlimStoragePerm);
+  rv = QuotaManager::GetInfoFromPrincipal(principal, &group, &origin, &isApp);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
+
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
+  if (persistenceType == PERSISTENCE_TYPE_PERSISTENT &&
+      !QuotaManager::IsOriginWhitelistedForPersistentStorage(origin) &&
+      !isApp) {
+    return NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR;
+  }
+#endif
 
   PermissionRequestBase::PermissionValue permission;
 
@@ -10884,11 +10887,9 @@ FactoryOp::CheckPermission(ContentParent* aContentParent,
     mGroup = group;
     mOrigin = origin;
     mIsApp = isApp;
-    mHasUnlimStoragePerm = hasUnlimStoragePerm;
 
     mEnforcingQuota =
-      QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp,
-                                    mHasUnlimStoragePerm);
+      QuotaManager::IsQuotaEnforced(persistenceType, mOrigin, mIsApp);
   }
 
   *aPermission = permission;
@@ -11280,7 +11281,6 @@ OpenDatabaseOp::DoDatabaseWork()
                                             mGroup,
                                             mOrigin,
                                             mIsApp,
-                                            mHasUnlimStoragePerm,
                                             getter_AddRefs(dbDirectory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;

@@ -119,7 +119,7 @@ NS_IMPL_ISUPPORTS(MediaMemoryTracker, nsIMemoryReporter)
 
 NS_IMPL_ISUPPORTS(MediaDecoder, nsIObserver)
 
-void MediaDecoder::SetDormantIfNecessary(bool aDormant)
+void MediaDecoder::NotifyOwnerActivityChanged()
 {
   MOZ_ASSERT(NS_IsMainThread());
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
@@ -130,9 +130,29 @@ void MediaDecoder::SetDormantIfNecessary(bool aDormant)
     return;
   }
 
-  if(aDormant) {
+  if (!mOwner) {
+    NS_WARNING("MediaDecoder without a decoder owner, can't update dormant");
+    return;
+  }
+
+  bool prevDormant = mIsDormant;
+  mIsDormant = false;
+  if (!mOwner->IsActive() && mOwner->GetVideoFrameContainer()) {
+    mIsDormant = true;
+  }
+#ifdef MOZ_WIDGET_GONK
+  if (mOwner->IsHidden() && mOwner->GetVideoFrameContainer()) {
+    mIsDormant = true;
+  }
+#endif
+
+  if (prevDormant == mIsDormant) {
+    // No update to dormant state
+    return;
+  }
+
+  if (mIsDormant) {
     // enter dormant state
-    DestroyDecodedStream();
     mDecoderStateMachine->SetDormant(true);
 
     int64_t timeUsecs = 0;
@@ -453,7 +473,8 @@ MediaDecoder::MediaDecoder() :
   mShuttingDown(false),
   mPausedForPlaybackRateNull(false),
   mMinimizePreroll(false),
-  mMediaTracksConstructed(false)
+  mMediaTracksConstructed(false),
+  mIsDormant(false)
 {
   MOZ_COUNT_CTOR(MediaDecoder);
   MOZ_ASSERT(NS_IsMainThread());
@@ -636,10 +657,8 @@ nsresult MediaDecoder::Seek(double aTime, SeekTarget::Type aSeekType)
   mRequestedSeekTarget = SeekTarget(timeUsecs, aSeekType);
   mCurrentTime = aTime;
 
-  // If we are already in the seeking state, then setting mRequestedSeekTarget
-  // above will result in the new seek occurring when the current seek
-  // completes.
-  if (mPlayState != PLAY_STATE_LOADING && mPlayState != PLAY_STATE_SEEKING) {
+  // If we are already in the seeking state, the new seek overrides the old one.
+  if (mPlayState != PLAY_STATE_LOADING) {
     bool paused = false;
     if (mOwner) {
       paused = mOwner->GetPaused();
@@ -700,7 +719,8 @@ MediaDecoder::IsExpectingMoreData()
 }
 
 void MediaDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
-                                  nsAutoPtr<MetadataTags> aTags)
+                                  nsAutoPtr<MetadataTags> aTags,
+                                  bool aRestoredFromDormant)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -731,11 +751,14 @@ void MediaDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
     // Make sure the element and the frame (if any) are told about
     // our new size.
     Invalidate();
-    mOwner->MetadataLoaded(mInfo, nsAutoPtr<const MetadataTags>(aTags.forget()));
+    if (!aRestoredFromDormant) {
+      mOwner->MetadataLoaded(mInfo, nsAutoPtr<const MetadataTags>(aTags.forget()));
+    }
   }
 }
 
-void MediaDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo)
+void MediaDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo,
+                                    bool aRestoredFromDormant)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -751,7 +774,9 @@ void MediaDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo)
 
   if (mOwner) {
     Invalidate();
-    mOwner->FirstFrameLoaded();
+    if (!aRestoredFromDormant) {
+      mOwner->FirstFrameLoaded();
+    }
   }
 
   // This can run cache callbacks.
@@ -1254,7 +1279,7 @@ void MediaDecoder::DurationChanged()
 
   if (mOwner && oldDuration != mDuration && !IsInfinite()) {
     DECODER_LOG("Duration changed to %lld", mDuration);
-    mOwner->DispatchEvent(NS_LITERAL_STRING("durationchange"));
+    mOwner->DispatchAsyncEvent(NS_LITERAL_STRING("durationchange"));
   }
 }
 
@@ -1565,7 +1590,10 @@ void MediaDecoder::UnpinForSeek()
 bool MediaDecoder::CanPlayThrough()
 {
   Statistics stats = GetStatistics();
-  if ((stats.mTotalBytes < 0 && stats.mDownloadRateReliable) ||
+
+  NS_ASSERTION(mDecoderStateMachine, "CanPlayThrough should have state machine!");
+  if (mDecoderStateMachine->IsRealTime() ||
+      (stats.mTotalBytes < 0 && stats.mDownloadRateReliable) ||
       (stats.mTotalBytes >= 0 && stats.mTotalBytes == stats.mDownloadPosition)) {
     return true;
   }

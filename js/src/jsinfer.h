@@ -117,91 +117,6 @@ class RootedBase<TaggedProto> : public TaggedProtoOperations<Rooted<TaggedProto>
 
 class CallObject;
 
-/*
- * Execution Mode Overview
- *
- * JavaScript code can execute either sequentially or in parallel, such as in
- * PJS. Functions which behave identically in either execution mode can take a
- * ThreadSafeContext, and functions which have similar but not identical
- * behavior between execution modes can be templated on the mode. Such
- * functions use a context parameter type from ExecutionModeTraits below
- * indicating whether they are only permitted constrained operations (such as
- * thread safety, and side effects limited to being thread-local), or whether
- * they can have arbitrary side effects.
- */
-
-enum ExecutionMode {
-    /* Normal JavaScript execution. */
-    SequentialExecution,
-
-    /*
-     * JavaScript code to be executed in parallel worker threads in PJS in a
-     * fork join fashion.
-     */
-    ParallelExecution,
-
-    /*
-     * Modes after this point are internal and are not counted in
-     * NumExecutionModes below.
-     */
-
-    /*
-     * MIR analysis performed when invoking 'new' on a script, to determine
-     * definite properties. Used by the optimizing JIT.
-     */
-    DefinitePropertiesAnalysis,
-
-    /*
-     * MIR analysis performed when executing a script which uses its arguments,
-     * when it is not known whether a lazy arguments value can be used.
-     */
-    ArgumentsUsageAnalysis
-};
-
-inline const char *
-ExecutionModeString(ExecutionMode mode)
-{
-    switch (mode) {
-      case SequentialExecution:
-        return "SequentialExecution";
-      case ParallelExecution:
-        return "ParallelExecution";
-      case DefinitePropertiesAnalysis:
-        return "DefinitePropertiesAnalysis";
-      case ArgumentsUsageAnalysis:
-        return "ArgumentsUsageAnalysis";
-      default:
-        MOZ_CRASH("Invalid ExecutionMode");
-    }
-}
-
-/*
- * Not as part of the enum so we don't get warnings about unhandled enum
- * values.
- */
-static const unsigned NumExecutionModes = ParallelExecution + 1;
-
-template <ExecutionMode mode>
-struct ExecutionModeTraits
-{
-};
-
-template <> struct ExecutionModeTraits<SequentialExecution>
-{
-    typedef JSContext * ContextType;
-    typedef ExclusiveContext * ExclusiveContextType;
-
-    static inline JSContext *toContextType(ExclusiveContext *cx);
-};
-
-template <> struct ExecutionModeTraits<ParallelExecution>
-{
-    typedef ForkJoinContext * ContextType;
-    typedef ForkJoinContext * ExclusiveContextType;
-
-    static inline ForkJoinContext *toContextType(ForkJoinContext *cx) { return cx; }
-};
-
 namespace jit {
     struct IonScript;
     class JitAllocPolicy;
@@ -378,7 +293,7 @@ public:
 };
 
 /* Flags and other state stored in TypeSet::flags */
-enum MOZ_ENUM_TYPE(uint32_t) {
+enum : uint32_t {
     TYPE_FLAG_UNDEFINED =   0x1,
     TYPE_FLAG_NULL      =   0x2,
     TYPE_FLAG_BOOLEAN   =   0x4,
@@ -437,7 +352,7 @@ enum MOZ_ENUM_TYPE(uint32_t) {
 typedef uint32_t TypeFlags;
 
 /* Flags and other state stored in TypeObject::flags */
-enum MOZ_ENUM_TYPE(uint32_t) {
+enum : uint32_t {
     /* Whether this type object is associated with some allocation site. */
     OBJECT_FLAG_FROM_ALLOCATION_SITE  = 0x1,
 
@@ -446,12 +361,6 @@ enum MOZ_ENUM_TYPE(uint32_t) {
      * used during Ion compilation (which may be occurring off thread).
      */
     OBJECT_FLAG_NURSERY_PROTO         = 0x2,
-
-    /*
-     * Whether we have ensured all type sets in the compartment contain
-     * ANYOBJECT instead of this object.
-     */
-    OBJECT_FLAG_SETS_MARKED_UNKNOWN   = 0x4,
 
     /* Mask/shift for the number of properties in propertySet */
     OBJECT_FLAG_PROPERTY_COUNT_MASK   = 0xfff8,
@@ -507,19 +416,14 @@ enum MOZ_ENUM_TYPE(uint32_t) {
     /* Flags which indicate dynamic properties of represented objects. */
     OBJECT_FLAG_DYNAMIC_MASK          = 0x03ff0000,
 
-    /* Mask for objects created with unknown properties. */
-    OBJECT_FLAG_UNKNOWN_MASK =
-        OBJECT_FLAG_DYNAMIC_MASK
-      | OBJECT_FLAG_SETS_MARKED_UNKNOWN,
-
     // Mask/shift for the kind of addendum attached to this type object.
-    OBJECT_FLAG_ADDENDUM_MASK         = 0x04000000,
+    OBJECT_FLAG_ADDENDUM_MASK         = 0x0c000000,
     OBJECT_FLAG_ADDENDUM_SHIFT        = 26,
 
     // Mask/shift for this type object's generation. If out of sync with the
     // TypeZone's generation, this TypeObject hasn't been swept yet.
-    OBJECT_FLAG_GENERATION_MASK       = 0x08000000,
-    OBJECT_FLAG_GENERATION_SHIFT      = 27,
+    OBJECT_FLAG_GENERATION_MASK       = 0x10000000,
+    OBJECT_FLAG_GENERATION_SHIFT      = 28,
 };
 typedef uint32_t TypeObjectFlags;
 
@@ -541,6 +445,13 @@ class TemporaryTypeSet;
  *
  * - TemporaryTypeSet are created during compilation and do not outlive
  *   that compilation.
+ *
+ * The contents of a type set completely describe the values that a particular
+ * lvalue might have, except in cases where an object's type is mutated. In
+ * such cases, type sets which had the object's old type might not have the
+ * object's new type. Type mutation occurs only in specific circumstances ---
+ * when an object's prototype changes, and when it is swapped with another
+ * object --- and will cause the object's properties to be marked as unknown.
  */
 class TypeSet
 {
@@ -626,9 +537,6 @@ class TypeSet
 
     /* Whether any values in this set might have the specified type. */
     bool mightBeMIRType(jit::MIRType type);
-
-    /* Whether all objects have JSCLASS_IS_DOMJSCLASS set. */
-    bool isDOMClass();
 
     /*
      * Get whether this type set is known to be a subset of other.
@@ -787,7 +695,7 @@ class TemporaryTypeSet : public TypeSet
     bool hasObjectFlags(CompilerConstraintList *constraints, TypeObjectFlags flags);
 
     /* Get the class shared by all objects in this set, or nullptr. */
-    const Class *getKnownClass();
+    const Class *getKnownClass(CompilerConstraintList *constraints);
 
     /* Result returned from forAllClasses */
     enum ForAllResult {
@@ -802,22 +710,26 @@ class TemporaryTypeSet : public TypeSet
     /* Apply func to the members of the set and return an appropriate result.
      * The iteration may end early if the result becomes known early.
      */
-    ForAllResult forAllClasses(bool (*func)(const Class *clasp));
+    ForAllResult forAllClasses(CompilerConstraintList *constraints,
+                               bool (*func)(const Class *clasp));
 
     /* Get the prototype shared by all objects in this set, or nullptr. */
-    JSObject *getCommonPrototype();
+    JSObject *getCommonPrototype(CompilerConstraintList *constraints);
 
     /* Get the typed array type of all objects in this set, or Scalar::MaxTypedArrayViewType. */
-    Scalar::Type getTypedArrayType();
+    Scalar::Type getTypedArrayType(CompilerConstraintList *constraints);
 
     /* Get the shared typed array type of all objects in this set, or Scalar::MaxTypedArrayViewType. */
-    Scalar::Type getSharedTypedArrayType();
+    Scalar::Type getSharedTypedArrayType(CompilerConstraintList *constraints);
+
+    /* Whether all objects have JSCLASS_IS_DOMJSCLASS set. */
+    bool isDOMClass(CompilerConstraintList *constraints);
 
     /* Whether clasp->isCallable() is true for one or more objects in this set. */
-    bool maybeCallable();
+    bool maybeCallable(CompilerConstraintList *constraints);
 
     /* Whether clasp->emulatesUndefined() is true for one or more objects in this set. */
-    bool maybeEmulatesUndefined();
+    bool maybeEmulatesUndefined(CompilerConstraintList *constraints);
 
     /* Get the single value which can appear in this type set, otherwise nullptr. */
     JSObject *getSingleton();
@@ -1013,10 +925,7 @@ class TypeNewScript
 
     void trace(JSTracer *trc);
     void sweep();
-
-#ifdef JSGC_COMPACTING
     void fixupAfterMovingGC();
-#endif
 
     void registerNewObject(PlainObject *res);
     void unregisterNewObject(PlainObject *res);
@@ -1025,6 +934,8 @@ class TypeNewScript
     void rollbackPartiallyInitializedObjects(JSContext *cx, TypeObject *type);
 
     static void make(JSContext *cx, TypeObject *type, JSFunction *fun);
+
+    size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 };
 
 /*
@@ -1107,8 +1018,19 @@ struct TypeObject : public gc::TenuredCell
     /* Flags for this object. */
     TypeObjectFlags flags_;
 
+    // Kinds of addendums which can be attached to TypeObjects.
     enum AddendumKind {
+        Addendum_None,
+
+        // When used by interpreted function, the addendum stores the
+        // canonical JSFunction object.
+        Addendum_InterpretedFunction,
+
+        // When used by the 'new' type when constructing an interpreted
+        // function, the addendum stores a TypeNewScript.
         Addendum_NewScript,
+
+        // When used by typed objects, the addendum stores a TypeDescr.
         Addendum_TypeDescr
     };
 
@@ -1155,15 +1077,33 @@ struct TypeObject : public gc::TenuredCell
         setAddendum(Addendum_NewScript, newScript);
     }
 
-    TypeDescr &typeDescr() {
+    TypeDescr *maybeTypeDescr() {
         // Note: there is no need to sweep when accessing the type descriptor
         // of an object, as it is strongly held and immutable.
+        if (addendumKind() == Addendum_TypeDescr)
+            return reinterpret_cast<TypeDescr *>(addendum_);
+        return nullptr;
+    }
+
+    TypeDescr &typeDescr() {
         MOZ_ASSERT(addendumKind() == Addendum_TypeDescr);
-        return *reinterpret_cast<TypeDescr *>(addendum_);
+        return *maybeTypeDescr();
     }
 
     void setTypeDescr(TypeDescr *descr) {
         setAddendum(Addendum_TypeDescr, descr);
+    }
+
+    JSFunction *maybeInterpretedFunction() {
+        // Note: as with type descriptors, there is no need to sweep when
+        // accessing the interpreted function associated with an object.
+        if (addendumKind() == Addendum_InterpretedFunction)
+            return reinterpret_cast<JSFunction *>(addendum_);
+        return nullptr;
+    }
+
+    void setInterpretedFunction(JSFunction *fun) {
+        setAddendum(Addendum_InterpretedFunction, fun);
     }
 
   private:
@@ -1210,13 +1150,6 @@ struct TypeObject : public gc::TenuredCell
      */
     Property **propertySet;
   public:
-
-    /* If this is an interpreted function, the function object. */
-    HeapPtrFunction interpretedFunction;
-
-#if JS_BITS_PER_WORD == 32
-    uint32_t padding;
-#endif
 
     inline TypeObject(const Class *clasp, TaggedProto proto, TypeObjectFlags initialFlags);
 
@@ -1307,9 +1240,7 @@ struct TypeObject : public gc::TenuredCell
         flags_ |= generation << OBJECT_FLAG_GENERATION_SHIFT;
     }
 
-#ifdef JSGC_COMPACTING
     void fixupAfterMovingGC();
-#endif
 
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -1505,8 +1436,8 @@ class RecompileInfo;
 // constraints for the compilation. Returns whether the type constraints
 // still hold.
 bool
-FinishCompilation(JSContext *cx, HandleScript script, ExecutionMode executionMode,
-                  CompilerConstraintList *constraints, RecompileInfo *precompileInfo);
+FinishCompilation(JSContext *cx, HandleScript script, CompilerConstraintList *constraints,
+                  RecompileInfo *precompileInfo);
 
 // Update the actual types in any scripts queried by constraints with any
 // speculative types added during the definite properties analysis.
@@ -1567,6 +1498,7 @@ struct TypeObjectKey
 
     bool unknownProperties();
     bool hasFlags(CompilerConstraintList *constraints, TypeObjectFlags flags);
+    bool hasStableClassAndProto(CompilerConstraintList *constraints);
     void watchStateChangeForInlinedCall(CompilerConstraintList *constraints);
     void watchStateChangeForTypedArrayData(CompilerConstraintList *constraints);
     HeapTypeSetKey property(jsid id);
@@ -1628,30 +1560,28 @@ class CompilerOutput
     // If this compilation has not been invalidated, the associated script and
     // kind of compilation being performed.
     JSScript *script_;
-    ExecutionMode mode_ : 2;
 
     // Whether this compilation is about to be invalidated.
     bool pendingInvalidation_ : 1;
 
     // During sweeping, the list of compiler outputs is compacted and invalidated
     // outputs are removed. This gives the new index for a valid compiler output.
-    uint32_t sweepIndex_ : 29;
+    uint32_t sweepIndex_ : 31;
 
   public:
-    static const uint32_t INVALID_SWEEP_INDEX = (1 << 29) - 1;
+    static const uint32_t INVALID_SWEEP_INDEX = static_cast<uint32_t>(1 << 31) - 1;
 
     CompilerOutput()
-      : script_(nullptr), mode_(SequentialExecution),
+      : script_(nullptr),
         pendingInvalidation_(false), sweepIndex_(INVALID_SWEEP_INDEX)
     {}
 
-    CompilerOutput(JSScript *script, ExecutionMode mode)
-      : script_(script), mode_(mode),
+    explicit CompilerOutput(JSScript *script)
+      : script_(script),
         pendingInvalidation_(false), sweepIndex_(INVALID_SWEEP_INDEX)
     {}
 
     JSScript *script() const { return script_; }
-    inline ExecutionMode mode() const { return mode_; }
 
     inline jit::IonScript *ion() const;
 
@@ -1748,9 +1678,6 @@ struct TypeCompartment
 
     /* Get or make an object for an allocation site, and add to the allocation site table. */
     TypeObject *addAllocationSiteTypeObject(JSContext *cx, AllocationSiteKey key);
-
-    /* Mark any type set containing obj as having a generic object type. */
-    void markSetsUnknown(JSContext *cx, TypeObject *obj);
 
     void clearTables();
     void sweep(FreeOp *fop);

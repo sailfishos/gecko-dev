@@ -57,7 +57,8 @@ public:
   // Uses the CDM to create a key session.
   // Calls MediaKeys::OnSessionActivated() when session is created.
   // Assumes ownership of (Move()s) aInitData's contents.
-  void CreateSession(dom::SessionType aSessionType,
+  void CreateSession(uint32_t aCreateSessionToken,
+                     dom::SessionType aSessionType,
                      PromiseId aPromiseId,
                      const nsAString& aInitDataType,
                      nsTArray<uint8_t>& aInitData);
@@ -111,16 +112,16 @@ public:
   const nsCString& GetNodeId() const;
 
   // Main thread only.
-  void OnResolveNewSessionPromise(uint32_t aPromiseId,
-                                  const nsAString& aSessionId);
+  void OnSetSessionId(uint32_t aCreateSessionToken,
+                      const nsAString& aSessionId);
 
   // Main thread only.
   void OnResolveLoadSessionPromise(uint32_t aPromiseId, bool aSuccess);
 
   // Main thread only.
   void OnSessionMessage(const nsAString& aSessionId,
-                        nsTArray<uint8_t>& aMessage,
-                        const nsAString& aDestinationURL);
+                        GMPSessionMessageType aMessageType,
+                        nsTArray<uint8_t>& aMessage);
 
   // Main thread only.
   void OnExpirationChange(const nsAString& aSessionId,
@@ -189,6 +190,7 @@ private:
 
   struct CreateSessionData {
     dom::SessionType mSessionType;
+    uint32_t mCreateSessionToken;
     PromiseId mPromiseId;
     nsAutoCString mInitDataType;
     nsTArray<uint8_t> mInitData;
@@ -280,7 +282,7 @@ private:
       mPtr = nullptr;
     }
 
-    Type* operator->() const {
+    Type* operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN {
       MOZ_ASSERT(NS_IsMainThread());
       return mPtr;
     }

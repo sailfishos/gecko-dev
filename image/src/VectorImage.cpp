@@ -359,12 +359,6 @@ VectorImage::Init(const char* aMimeType,
   return NS_OK;
 }
 
-nsIntRect
-VectorImage::FrameRect(uint32_t aWhichFrame)
-{
-  return nsIntRect::GetMaxSizedIntRect();
-}
-
 size_t
 VectorImage::SizeOfSourceWithComputedFallback(MallocSizeOf aMallocSizeOf) const
 {
@@ -429,12 +423,6 @@ VectorImage::OnImageDataAvailable(nsIRequest* aRequest,
 }
 
 nsresult
-VectorImage::OnNewSourceData()
-{
-  return NS_OK;
-}
-
-nsresult
 VectorImage::StartAnimation()
 {
   if (mError)
@@ -484,17 +472,14 @@ NS_IMETHODIMP
 VectorImage::GetWidth(int32_t* aWidth)
 {
   if (mError || !mIsFullyLoaded) {
-    *aWidth = 0;
-    return NS_ERROR_FAILURE;
+    *aWidth = -1;
+  } else {
+    SVGSVGElement* rootElem = mSVGDocumentWrapper->GetRootSVGElem();
+    MOZ_ASSERT(rootElem, "Should have a root SVG elem, since we finished "
+                         "loading without errors");
+    *aWidth = rootElem->GetIntrinsicWidth();
   }
-
-  if (!mSVGDocumentWrapper->GetWidthOrHeight(SVGDocumentWrapper::eWidth,
-                                             *aWidth)) {
-    *aWidth = 0;
-    return NS_ERROR_FAILURE;
-  }
-
-  return NS_OK;
+  return *aWidth >= 0 ? NS_OK : NS_ERROR_FAILURE;
 }
 
 //******************************************************************************
@@ -553,17 +538,14 @@ NS_IMETHODIMP
 VectorImage::GetHeight(int32_t* aHeight)
 {
   if (mError || !mIsFullyLoaded) {
-    *aHeight = 0;
-    return NS_ERROR_FAILURE;
+    *aHeight = -1;
+  } else {
+    SVGSVGElement* rootElem = mSVGDocumentWrapper->GetRootSVGElem();
+    MOZ_ASSERT(rootElem, "Should have a root SVG elem, since we finished "
+                         "loading without errors");
+    *aHeight = rootElem->GetIntrinsicHeight();
   }
-
-  if (!mSVGDocumentWrapper->GetWidthOrHeight(SVGDocumentWrapper::eHeight,
-                                             *aHeight)) {
-    *aHeight = 0;
-    return NS_ERROR_FAILURE;
-  }
-
-  return NS_OK;
+  return *aHeight >= 0 ? NS_OK : NS_ERROR_FAILURE;
 }
 
 //******************************************************************************
@@ -675,17 +657,20 @@ VectorImage::GetFrame(uint32_t aWhichFrame,
   if (aWhichFrame > FRAME_MAX_VALUE)
     return nullptr;
 
-  if (mError)
+  if (mError || !mIsFullyLoaded)
     return nullptr;
 
   // Look up height & width
   // ----------------------
-  nsIntSize imageIntSize;
-  if (!mSVGDocumentWrapper->GetWidthOrHeight(SVGDocumentWrapper::eWidth,
-                                             imageIntSize.width) ||
-      !mSVGDocumentWrapper->GetWidthOrHeight(SVGDocumentWrapper::eHeight,
-                                             imageIntSize.height)) {
-    // We'll get here if our SVG doc has a percent-valued width or height.
+  SVGSVGElement* svgElem = mSVGDocumentWrapper->GetRootSVGElem();
+  MOZ_ASSERT(svgElem, "Should have a root SVG elem, since we finished "
+                      "loading without errors");
+  nsIntSize imageIntSize(svgElem->GetIntrinsicWidth(),
+                         svgElem->GetIntrinsicHeight());
+  
+  if (imageIntSize.IsEmpty()) {
+    // We'll get here if our SVG doc has a percent-valued or negative width or
+    // height.
     return nullptr;
   }
 
@@ -908,6 +893,15 @@ NS_IMETHODIMP
 VectorImage::StartDecoding()
 {
   // Nothing to do for SVG images
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+VectorImage::RequestDecodeForSize(const nsIntSize& aSize, uint32_t aFlags)
+{
+  // Nothing to do for SVG images, though in theory we could rasterize to the
+  // provided size ahead of time if we supported off-main-thread SVG
+  // rasterization...
   return NS_OK;
 }
 

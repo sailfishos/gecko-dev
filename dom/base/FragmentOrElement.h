@@ -99,7 +99,7 @@ public:
 
   // nsIWeakReference
   NS_DECL_NSIWEAKREFERENCE
-  virtual size_t SizeOfOnlyThis(mozilla::MallocSizeOf aMallocSizeOf) const;
+  virtual size_t SizeOfOnlyThis(mozilla::MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
 
   void NoticeNodeDestruction()
   {
@@ -269,6 +269,10 @@ public:
   static void MarkUserData(void* aObject, nsIAtom* aKey, void* aChild,
                            void *aData);
 
+  /**
+   * Is the HTML local name a void element?
+   */
+  static bool IsHTMLVoid(nsIAtom* aLocalName);
 protected:
   virtual ~FragmentOrElement();
 

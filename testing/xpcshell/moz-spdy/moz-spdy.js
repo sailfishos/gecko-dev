@@ -74,7 +74,33 @@ function finishPost(res, content) {
   res.end(content);
 }
 
+var runlater = function() {};
+runlater.prototype = {
+  req : null,
+  resp : null,
+
+  onTimeout : function onTimeout() {
+    this.resp.writeHead(200);
+    this.resp.end("It's all good spdy 750ms.");
+  }
+};
+
+function executeRunLater(arg) {
+  arg.onTimeout();
+}
+
 function handleRequest(req, res) {
+  try {
+    realHandleRequest(req, res);
+  } catch (e) {
+    console.log("spdy server suffered unhandled exception. will restart " + e);
+    var p = webServer.address().port;
+    webServer.close();
+    webServer = spdy.createServer(options, handleRequest).listen(p, "0.0.0.0", 200, listenok);
+  }
+}
+
+function realHandleRequest(req, res) {
   var u = url.parse(req.url);
   var content = getHttpContent(u.pathname);
 
@@ -83,6 +109,16 @@ function handleRequest(req, res) {
     res.setHeader('X-Spdy-StreamId', '' + req.streamID);
   } else {
     res.setHeader('X-Connection-Spdy', 'no');
+  }
+
+console.log(u.pathname);
+
+  if (u.pathname === '/750ms') {
+    var rl = new runlater();
+    rl.req = req;
+    rl.resp = res;
+    setTimeout(executeRunLater, 750, rl);
+    return;
   }
 
   if (u.pathname == '/exit') {
@@ -163,8 +199,11 @@ var options = {
   windowSize: 16000000,
 };
 
-spdy.createServer(options, handleRequest).listen(4443);
-console.log('SPDY server listening on port 4443');
+function listenok() {
+  console.log('SPDY server listening on port ' + webServer.address().port);
+}
+
+var webServer = spdy.createServer(options, handleRequest).listen(-1, "0.0.0.0", 200, listenok);
 
 // Set up to exit when the user finishes our stdin
 process.stdin.resume();

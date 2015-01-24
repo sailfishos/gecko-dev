@@ -29,6 +29,7 @@
 #include "jit/arm/Simulator-arm.h"
 
 #include "mozilla/Casting.h"
+#include "mozilla/DebugOnly.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MathAlgorithms.h"
@@ -280,9 +281,9 @@ class SimInstruction {
         return (bit(one_bit) << 4) | bits(four_bit + 3, four_bit);
     }
 
-    SimInstruction() MOZ_DELETE;
-    SimInstruction(const SimInstruction &other) MOZ_DELETE;
-    void operator=(const SimInstruction &other) MOZ_DELETE;
+    SimInstruction() = delete;
+    SimInstruction(const SimInstruction &other) = delete;
+    void operator=(const SimInstruction &other) = delete;
 };
 
 double
@@ -373,7 +374,7 @@ class SimulatorRuntime
   protected:
     ICacheMap icache_;
 
-    // Synchronize access between main thread and compilation/PJS threads.
+    // Synchronize access between main thread and compilation threads.
     PRLock *lock_;
     mozilla::DebugOnly<PRThread *> lockOwner_;
 
@@ -2692,7 +2693,7 @@ Simulator::decodeType01(SimInstruction *instr)
                 if (instr->bits(27, 23) == 2) {
                     // Register operand. For now we only emit mask 0b1100.
                     int rm = instr->rmValue();
-                    uint32_t mask = instr->bits(19, 16);
+                    mozilla::DebugOnly<uint32_t> mask = instr->bits(19, 16);
                     MOZ_ASSERT(mask == (3 << 2));
 
                     uint32_t flags = get_register(rm);
@@ -2717,9 +2718,14 @@ Simulator::decodeType01(SimInstruction *instr)
                 break;
               }
               case 7: { // BKPT
-                ArmDebugger dbg(this);
-                printf("Simulator hit BKPT.\n");
-                dbg.debug();
+                fprintf(stderr, "Simulator hit BKPT.\n");
+                if (getenv("ARM_SIM_DEBUGGER")) {
+                    ArmDebugger dbg(this);
+                    dbg.debug();
+                } else {
+                    fprintf(stderr, "Use ARM_SIM_DEBUGGER=1 to enter the builtin debugger.\n");
+                    MOZ_CRASH("ARM simulator breakpoint");
+                }
                 break;
               }
               default:

@@ -20,7 +20,9 @@ describe("loop.roomViews", function () {
         mozLoop: {
           getAudioBlob: sinon.stub()
         }
-      }
+      },
+      addEventListener: function() {},
+      removeEventListener: function() {}
     };
     loop.shared.mixins.setRootObject(fakeWindow);
 
@@ -55,9 +57,10 @@ describe("loop.roomViews", function () {
         render: function() { return React.DOM.div(); }
       });
 
-      var testView = TestUtils.renderIntoDocument(TestView({
-        roomStore: roomStore
-      }));
+      var testView = TestUtils.renderIntoDocument(
+        React.createElement(TestView, {
+          roomStore: roomStore
+        }));
 
       expect(testView.state).eql({
         roomState: ROOM_STATES.INIT,
@@ -74,9 +77,10 @@ describe("loop.roomViews", function () {
         mixins: [loop.roomViews.ActiveRoomStoreMixin],
         render: function() { return React.DOM.div(); }
       });
-      var testView = TestUtils.renderIntoDocument(TestView({
-        roomStore: roomStore
-      }));
+      var testView = TestUtils.renderIntoDocument(
+        React.createElement(TestView, {
+          roomStore: roomStore
+        }));
 
       activeRoomStore.setStoreState({roomState: ROOM_STATES.READY});
 
@@ -97,10 +101,11 @@ describe("loop.roomViews", function () {
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
-        new loop.roomViews.DesktopRoomInvitationView({
-          dispatcher: dispatcher,
-          roomStore: roomStore
-        }));
+        React.createElement(
+          loop.roomViews.DesktopRoomInvitationView, {
+            dispatcher: dispatcher,
+            roomStore: roomStore
+          }));
     }
 
     it("should dispatch an EmailRoomUrl action when the email button is " +
@@ -197,17 +202,19 @@ describe("loop.roomViews", function () {
     var view;
 
     beforeEach(function() {
+      loop.store.StoreMixin.register({
+        feedbackStore: new loop.store.FeedbackStore(dispatcher, {
+          feedbackClient: {}
+        })
+      });
       sandbox.stub(dispatcher, "dispatch");
     });
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
-        new loop.roomViews.DesktopRoomConversationView({
+        React.createElement(loop.roomViews.DesktopRoomConversationView, {
           dispatcher: dispatcher,
-          roomStore: roomStore,
-          feedbackStore: new loop.store.FeedbackStore(dispatcher, {
-            feedbackClient: {}
-          })
+          roomStore: roomStore
         }));
     }
 
@@ -321,7 +328,7 @@ describe("loop.roomViews", function () {
           view = mountTestComponent();
 
           TestUtils.findRenderedComponentWithType(view,
-            loop.conversation.GenericFailureView);
+            loop.conversationViews.GenericFailureView);
         });
 
       it("should render the GenericFailureView if the roomState is `FULL`",
@@ -331,7 +338,7 @@ describe("loop.roomViews", function () {
           view = mountTestComponent();
 
           TestUtils.findRenderedComponentWithType(view,
-            loop.conversation.GenericFailureView);
+            loop.conversationViews.GenericFailureView);
         });
 
       it("should render the DesktopRoomInvitationView if roomState is `JOINED`",

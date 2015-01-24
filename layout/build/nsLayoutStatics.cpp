@@ -46,7 +46,7 @@
 #include "nsCCUncollectableMarker.h"
 #include "nsTextFragment.h"
 #include "nsCSSRuleProcessor.h"
-#include "nsCrossSiteListenerProxy.h"
+#include "nsCORSListenerProxy.h"
 #include "nsHTMLDNSPrefetch.h"
 #include "nsHtml5Module.h"
 #include "mozilla/dom/FallbackEncoding.h"
@@ -64,6 +64,7 @@
 #include "ActiveLayerTracker.h"
 #include "CounterStyleManager.h"
 #include "FrameLayerBuilder.h"
+#include "mozilla/dom/RequestSyncWifiService.h"
 
 #include "AudioChannelService.h"
 #include "mozilla/dom/DataStoreService.h"
@@ -299,6 +300,10 @@ nsLayoutStatics::Initialize()
   CameraPreferences::Initialize();
 
   IMEStateManager::Init();
+
+#ifdef MOZ_B2G
+  RequestSyncWifiService::Init();
+#endif
 
   return NS_OK;
 }

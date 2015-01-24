@@ -92,7 +92,7 @@ pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
 // predictive actions
-pref("network.predictor.enable", false); // disabled on b2g
+pref("network.predictor.enabled", false); // disabled on b2g
 pref("network.predictor.max-db-size", 2097152); // bytes
 pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
@@ -161,16 +161,8 @@ pref("accessibility.typeaheadfind.casesensitive", 0);
 pref("browser.ssl_override_behavior", 2);
 pref("browser.xul.error_pages.expert_bad_cert", false);
 
-// disable logging for the search service by default
-pref("browser.search.log", false);
-
 // disable updating
 pref("browser.search.update", false);
-pref("browser.search.update.log", false);
-pref("browser.search.updateinterval", 6);
-
-// enable search suggestions by default
-pref("browser.search.suggest.enabled", true);
 
 // tell the search service that we don't really expose the "current engine"
 pref("browser.search.noCurrentEngine", true);
@@ -223,6 +215,7 @@ pref("dom.use_watchdog", false);
 // ensure that those calls don't accidentally trigger the dialog.
 pref("dom.max_script_run_time", 0);
 pref("dom.max_chrome_script_run_time", 0);
+pref("dom.max_child_script_run_time", 0);
 
 // plugins
 pref("plugin.disable", true);
@@ -308,9 +301,6 @@ pref("gfx.content.azure.backends", "cairo");
 // Web Notifications
 pref("notification.feature.enabled", true);
 
-// IndexedDB
-pref("dom.indexedDB.warningQuota", 5);
-
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
@@ -329,7 +319,7 @@ pref("media.fragmented-mp4.gonk.enabled", true);
 pref("media.video-queue.default-size", 3);
 
 // optimize images' memory usage
-pref("image.mem.decodeondraw", true);
+pref("image.mem.decodeondraw", false);
 pref("image.mem.allow_locking_in_content_processes", false); /* don't allow image locking */
 // Limit the surface cache to 1/8 of main memory or 128MB, whichever is smaller.
 // Almost everything that was factored into 'max_decoded_image_kb' is now stored
@@ -703,50 +693,65 @@ pref("dom.ipc.processPriorityManager.backgroundLRUPoolLevels", 5);
 // Kernel parameters for process priorities.  These affect how processes are
 // killed on low-memory and their relative CPU priorities.
 //
-// Note: The maximum nice value on Linux is 19, but the max value you should
-// use here is 18.  NSPR adds 1 to some threads' nice values, to mark
-// low-priority threads.  If the process priority manager were to renice a
-// process (and all its threads) to 19, all threads would have the same
-// niceness.  Then when we reniced the process to (say) 10, all threads would
-// /still/ have the same niceness; we'd effectively have erased NSPR's thread
-// priorities.
-
 // The kernel can only accept 6 (OomScoreAdjust, KillUnderKB) pairs. But it is
 // okay, kernel will still kill processes with larger OomScoreAdjust first even
 // its OomScoreAdjust don't have a corresponding KillUnderKB.
 
 pref("hal.processPriorityManager.gonk.MASTER.OomScoreAdjust", 0);
 pref("hal.processPriorityManager.gonk.MASTER.KillUnderKB", 4096);
-pref("hal.processPriorityManager.gonk.MASTER.Nice", 0);
+pref("hal.processPriorityManager.gonk.MASTER.cgroup", "");
 
 pref("hal.processPriorityManager.gonk.PREALLOC.OomScoreAdjust", 67);
-pref("hal.processPriorityManager.gonk.PREALLOC.Nice", 18);
+pref("hal.processPriorityManager.gonk.PREALLOC.cgroup", "apps/bg_non_interactive");
 
 pref("hal.processPriorityManager.gonk.FOREGROUND_HIGH.OomScoreAdjust", 67);
 pref("hal.processPriorityManager.gonk.FOREGROUND_HIGH.KillUnderKB", 5120);
-pref("hal.processPriorityManager.gonk.FOREGROUND_HIGH.Nice", 0);
+pref("hal.processPriorityManager.gonk.FOREGROUND_HIGH.cgroup", "apps/critical");
 
 pref("hal.processPriorityManager.gonk.FOREGROUND.OomScoreAdjust", 134);
 pref("hal.processPriorityManager.gonk.FOREGROUND.KillUnderKB", 6144);
-pref("hal.processPriorityManager.gonk.FOREGROUND.Nice", 1);
+pref("hal.processPriorityManager.gonk.FOREGROUND.cgroup", "apps");
 
 pref("hal.processPriorityManager.gonk.FOREGROUND_KEYBOARD.OomScoreAdjust", 200);
-pref("hal.processPriorityManager.gonk.FOREGROUND_KEYBOARD.Nice", 1);
+pref("hal.processPriorityManager.gonk.FOREGROUND_KEYBOARD.cgroup", "apps");
 
 pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.OomScoreAdjust", 400);
 pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.KillUnderKB", 7168);
-pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.Nice", 7);
+pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.cgroup", "apps/bg_perceivable");
 
 pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.OomScoreAdjust", 534);
 pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.KillUnderKB", 8192);
-pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.Nice", 18);
+pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.cgroup", "apps/bg_non_interactive");
 
 pref("hal.processPriorityManager.gonk.BACKGROUND.OomScoreAdjust", 667);
 pref("hal.processPriorityManager.gonk.BACKGROUND.KillUnderKB", 20480);
-pref("hal.processPriorityManager.gonk.BACKGROUND.Nice", 18);
+pref("hal.processPriorityManager.gonk.BACKGROUND.cgroup", "apps/bg_non_interactive");
 
-// Processes get this niceness when they have low CPU priority.
-pref("hal.processPriorityManager.gonk.LowCPUNice", 18);
+// Control group definitions (i.e., CPU priority groups) for B2G processes.
+//
+// memory_swappiness -   0 - The kernel will swap only to avoid an out of memory condition
+// memory_swappiness -  60 - The default value.
+// memory_swappiness - 100 - The kernel will swap aggressively.
+
+// Foreground apps
+pref("hal.processPriorityManager.gonk.cgroups.apps.cpu_shares", 1024);
+pref("hal.processPriorityManager.gonk.cgroups.apps.cpu_notify_on_migrate", 1);
+pref("hal.processPriorityManager.gonk.cgroups.apps.memory_swappiness", 10);
+
+// Foreground apps with high priority, 16x more CPU than foreground ones
+pref("hal.processPriorityManager.gonk.cgroups.apps/critical.cpu_shares", 16384);
+pref("hal.processPriorityManager.gonk.cgroups.apps/critical.cpu_notify_on_migrate", 1);
+pref("hal.processPriorityManager.gonk.cgroups.apps/critical.memory_swappiness", 0);
+
+// Background perceivable apps, ~10x less CPU than foreground ones
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_perceivable.cpu_shares", 103);
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_perceivable.cpu_notify_on_migrate", 0);
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_perceivable.memory_swappiness", 60);
+
+// Background apps, ~20x less CPU than foreground ones and ~2x less than perceivable ones
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_non_interactive.cpu_shares", 52);
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_non_interactive.cpu_notify_on_migrate", 0);
+pref("hal.processPriorityManager.gonk.cgroups.apps/bg_non_interactive.memory_swappiness", 100);
 
 // By default the compositor thread on gonk runs without real-time priority.  RT
 // priority can be enabled by setting this pref to a value between 1 and 99.
@@ -1020,6 +1025,9 @@ pref("apz.overscroll.spring_friction", "0.02");
 pref("apz.overscroll.stop_distance_threshold", "5.0");
 pref("apz.overscroll.stop_velocity_threshold", "0.01");
 
+// For event-regions based hit-testing
+pref("layout.event-regions.enabled", true);
+
 // This preference allows FirefoxOS apps (and content, I think) to force
 // the use of software (instead of hardware accelerated) 2D canvases by
 // creating a context like this:
@@ -1058,6 +1066,9 @@ pref("services.mobileid.server.uri", "https://msisdn.services.mozilla.com");
 pref("dom.mapped_arraybuffer.enabled", true);
 #endif
 
+// BroadcastChannel API
+pref("dom.broadcastChannel.enabled", true);
+
 // UDPSocket API
 pref("dom.udpsocket.enabled", true);
 
@@ -1078,3 +1089,6 @@ pref("dom.mozSettings.SettingsService.verbose.enabled", false);
 // IndexedDB transactions to be opened as readonly or keep everything as
 // readwrite.
 pref("dom.mozSettings.allowForceReadOnly", false);
+
+// RequestSync API is enabled by default on B2G.
+pref("dom.requestSync.enabled", true);

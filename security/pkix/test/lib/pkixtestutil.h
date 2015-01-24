@@ -29,7 +29,6 @@
 #include <stdint.h> // Some Mozilla-supported compilers lack <cstdint>
 #include <string>
 
-#include "pkix/enumclass.h"
 #include "pkix/pkixtypes.h"
 #include "pkix/ScopedPtr.h"
 
@@ -55,16 +54,6 @@ inline bool ENCODING_FAILED(const ByteString& bs) { return bs.empty(); }
 //
 // XXX: Evaluates its argument twice
 #define MOZILLA_PKIX_ARRAY_LENGTH(x) (sizeof(x) / sizeof((x)[0]))
-
-class TestInput : public Input
-{
-public:
-  template <size_t N>
-  explicit TestInput(const char (&valueString)[N])
-    : Input(reinterpret_cast<const uint8_t(&)[N-1]>(valueString))
-  {
-  }
-};
 
 bool InputEqualsByteString(Input input, const ByteString& bs);
 ByteString InputToByteString(Input input);
@@ -247,12 +236,13 @@ protected:
   {
   }
 
-  TestKeyPair(const TestKeyPair&) /*= delete*/;
-  void operator=(const TestKeyPair&) /*= delete*/;
+  TestKeyPair(const TestKeyPair&) = delete;
+  void operator=(const TestKeyPair&) = delete;
 };
 
 TestKeyPair* CloneReusedKeyPair();
 TestKeyPair* GenerateKeyPair();
+TestKeyPair* GenerateDSSKeyPair();
 inline void DeleteTestKeyPair(TestKeyPair* keyPair) { delete keyPair; }
 typedef ScopedPtr<TestKeyPair, DeleteTestKeyPair> ScopedTestKeyPair;
 
@@ -302,20 +292,19 @@ ByteString CreateEncodedCertificate(long version, const ByteString& signature,
 
 ByteString CreateEncodedSerialNumber(long value);
 
-MOZILLA_PKIX_ENUM_CLASS ExtensionCriticality { NotCritical = 0, Critical = 1 };
+enum class Critical { No = 0, Yes = 1 };
 
 ByteString CreateEncodedBasicConstraints(bool isCA,
                                          /*optional*/ long* pathLenConstraint,
-                                         ExtensionCriticality criticality);
+                                         Critical critical);
 
 // Creates a DER-encoded extKeyUsage extension with one EKU OID.
-ByteString CreateEncodedEKUExtension(Input eku,
-                                     ExtensionCriticality criticality);
+ByteString CreateEncodedEKUExtension(Input eku, Critical critical);
 
 ///////////////////////////////////////////////////////////////////////////////
 // Encode OCSP responses
 
-class OCSPResponseExtension
+class OCSPResponseExtension final
 {
 public:
   ByteString id;
@@ -324,7 +313,7 @@ public:
   OCSPResponseExtension* next;
 };
 
-class OCSPResponseContext
+class OCSPResponseContext final
 {
 public:
   OCSPResponseContext(const CertID& certID, std::time_t time);
@@ -334,7 +323,8 @@ public:
 
   // The fields below are in the order that they appear in an OCSP response.
 
-  enum OCSPResponseStatus {
+  enum OCSPResponseStatus
+  {
     successful = 0,
     malformedRequest = 1,
     internalError = 2,
@@ -364,7 +354,8 @@ public:
 
   // The following fields are on a per-SingleResponse basis. In the future we
   // may support including multiple SingleResponses per response.
-  enum CertStatus {
+  enum CertStatus
+  {
     good = 0,
     revoked = 1,
     unknown = 2,

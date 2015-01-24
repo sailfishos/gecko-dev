@@ -25,29 +25,21 @@ InternalRequest::GetRequestConstructorCopy(nsIGlobalObject* aGlobal, ErrorResult
   copy->mURL.Assign(mURL);
   copy->SetMethod(mMethod);
   copy->mHeaders = new InternalHeaders(*mHeaders);
+  copy->SetUnsafeRequest();
 
   copy->mBodyStream = mBodyStream;
+  copy->mForceOriginHeader = true;
+  // The "client" is not stored in our implementation. Fetch API users should
+  // use the appropriate window/document/principal and other Gecko security
+  // mechanisms as appropriate.
+  copy->mSameOriginDataURL = true;
   copy->mPreserveContentCodings = true;
-
-  if (NS_IsMainThread()) {
-    nsIPrincipal* principal = aGlobal->PrincipalOrNull();
-    MOZ_ASSERT(principal);
-    aRv = nsContentUtils::GetASCIIOrigin(principal, copy->mOrigin);
-    if (NS_WARN_IF(aRv.Failed())) {
-      return nullptr;
-    }
-  } else {
-    workers::WorkerPrivate* worker = workers::GetCurrentThreadWorkerPrivate();
-    MOZ_ASSERT(worker);
-    worker->AssertIsOnWorkerThread();
-
-    workers::WorkerPrivate::LocationInfo& location = worker->GetLocationInfo();
-    copy->mOrigin = NS_ConvertUTF16toUTF8(location.mOrigin);
-  }
+  // The default referrer is already about:client.
 
   copy->mContext = nsIContentPolicy::TYPE_FETCH;
   copy->mMode = mMode;
   copy->mCredentialsMode = mCredentialsMode;
+  copy->mCacheMode = mCacheMode;
   return copy.forget();
 }
 

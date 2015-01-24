@@ -271,7 +271,7 @@ EvalKernel(JSContext *cx, const CallArgs &args, EvalType evalType, AbstractFrame
         staticLevel = 0;
 
         // Use the global as 'this', modulo outerization.
-        JSObject *thisobj = JSObject::thisObject(cx, scopeobj);
+        JSObject *thisobj = GetThisObject(cx, scopeobj);
         if (!thisobj)
             return false;
         thisv = ObjectValue(*thisobj);
@@ -307,6 +307,11 @@ EvalKernel(JSContext *cx, const CallArgs &args, EvalType evalType, AbstractFrame
         if (maybeScript && maybeScript->scriptSource()->introducerFilename())
             introducerFilename = maybeScript->scriptSource()->introducerFilename();
 
+        RootedObject enclosing(cx);
+        if (evalType == DIRECT_EVAL)
+            enclosing = callerScript->innermostStaticScope(pc);
+        Rooted<StaticEvalObject *> staticScope(cx, StaticEvalObject::create(cx, enclosing));
+
         CompileOptions options(cx);
         options.setFileAndLine(filename, 1)
                .setCompileAndGo(true)
@@ -326,10 +331,13 @@ EvalKernel(JSContext *cx, const CallArgs &args, EvalType evalType, AbstractFrame
                                                   : SourceBufferHolder::NoOwnership;
         SourceBufferHolder srcBuf(chars, flatStr->length(), ownership);
         JSScript *compiled = frontend::CompileScript(cx, &cx->tempLifoAlloc(),
-                                                     scopeobj, callerScript, options,
-                                                     srcBuf, flatStr, staticLevel);
+                                                     scopeobj, callerScript, staticScope,
+                                                     options, srcBuf, flatStr, staticLevel);
         if (!compiled)
             return false;
+
+        if (compiled->strict())
+            staticScope->setStrict();
 
         esg.setNewScript(compiled);
     }
@@ -381,6 +389,11 @@ js::DirectEvalStringFromIon(JSContext *cx,
         if (maybeScript && maybeScript->scriptSource()->introducerFilename())
             introducerFilename = maybeScript->scriptSource()->introducerFilename();
 
+        RootedObject enclosing(cx, callerScript->innermostStaticScope(pc));
+        Rooted<StaticEvalObject *> staticScope(cx, StaticEvalObject::create(cx, enclosing));
+        if (!staticScope)
+            return false;
+
         CompileOptions options(cx);
         options.setFileAndLine(filename, 1)
                .setCompileAndGo(true)
@@ -400,10 +413,13 @@ js::DirectEvalStringFromIon(JSContext *cx,
                                                   : SourceBufferHolder::NoOwnership;
         SourceBufferHolder srcBuf(chars, flatStr->length(), ownership);
         JSScript *compiled = frontend::CompileScript(cx, &cx->tempLifoAlloc(),
-                                                     scopeobj, callerScript, options,
-                                                     srcBuf, flatStr, staticLevel);
+                                                     scopeobj, callerScript, staticScope,
+                                                     options, srcBuf, flatStr, staticLevel);
         if (!compiled)
             return false;
+
+        if (compiled->strict())
+            staticScope->setStrict();
 
         esg.setNewScript(compiled);
     }
@@ -412,7 +428,19 @@ js::DirectEvalStringFromIon(JSContext *cx,
     // the calling frame cannot be updated to store the new object.
     MOZ_ASSERT(thisValue.isObject() || thisValue.isUndefined() || thisValue.isNull());
 
-    return ExecuteKernel(cx, esg.script(), *scopeobj, thisValue, ExecuteType(DIRECT_EVAL),
+    // When eval'ing strict code in a non-strict context, compute the 'this'
+    // value to use from what the caller passed in. This isn't necessary if
+    // the callee is not strict, as it will compute the non-strict 'this'
+    // value as necessary while it executes.
+    RootedValue nthisValue(cx, thisValue);
+    if (!callerScript->strict() && esg.script()->strict() && !thisValue.isObject()) {
+        JSObject *obj = BoxNonStrictThis(cx, thisValue);
+        if (!obj)
+            return false;
+        nthisValue = ObjectValue(*obj);
+    }
+
+    return ExecuteKernel(cx, esg.script(), *scopeobj, nthisValue, ExecuteType(DIRECT_EVAL),
                          NullFramePtr() /* evalInFrame */, vp.address());
 }
 
@@ -493,7 +521,7 @@ js::ExecuteInGlobalAndReturnScope(JSContext *cx, HandleObject global, HandleScri
     if (!scope->setUnqualifiedVarObj(cx))
         return false;
 
-    JSObject *thisobj = JSObject::thisObject(cx, global);
+    JSObject *thisobj = GetThisObject(cx, global);
     if (!thisobj)
         return false;
 

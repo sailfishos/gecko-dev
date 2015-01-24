@@ -425,7 +425,7 @@ asserts(0-1) load 592118.html
 load 594808-1.html
 load 595435-1.xhtml
 load 595740-1.html
-pref(layout.float-fragments-inside-column.enabled,true) asserts(1) load 600100.xhtml # bug 866955
+pref(layout.float-fragments-inside-column.enabled,true) load 600100.xhtml
 pref(layout.float-fragments-inside-column.enabled,false) load 600100.xhtml
 load 603490-1.html
 load 603510-1.html
@@ -496,7 +496,7 @@ load 785555.html
 load 786740-1.html
 asserts(0-4) test-pref(font.size.inflation.emPerLine,15) load 791601.xhtml # 3 counts of bug 871327, 1 bug 367185
 test-pref(font.size.inflation.minTwips,120) load 794693.html
-asserts-if(!Android,8) load 798020-1.html
+asserts-if(!Android,4) load 798020-1.html
 load 798235-1.html
 load 799207-1.html
 load 799207-2.html
@@ -564,5 +564,6 @@ load outline-on-frameset.xhtml
 pref(font.size.inflation.minTwips,200) load 1032450.html
 load 1037903.html
 load 1039454-1.html
-load 1058954-1.html
 load 1042489.html
+load 1054010-1.html
+load 1058954-1.html

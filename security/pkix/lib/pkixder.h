@@ -74,7 +74,7 @@ enum Tag
   GENERALIZED_TIME = UNIVERSAL | 0x18,
 };
 
-MOZILLA_PKIX_ENUM_CLASS EmptyAllowed { No = 0, Yes = 1 };
+enum class EmptyAllowed { No = 0, Yes = 1 };
 
 Result ReadTagAndGetValue(Reader& input, /*out*/ uint8_t& tag,
                           /*out*/ Input& value);
@@ -166,9 +166,6 @@ template <typename Decoder>
 inline Result
 Nested(Reader& input, uint8_t outerTag, uint8_t innerTag, Decoder decoder)
 {
-  // XXX: This doesn't work (in VS2010):
-  // return Nested(input, outerTag, bind(Nested, _1, innerTag, decoder));
-
   Reader nestedInput;
   Result rv = ExpectTagAndGetValue(input, outerTag, nestedInput);
   if (rv != Success) {
@@ -189,14 +186,24 @@ Nested(Reader& input, uint8_t outerTag, uint8_t innerTag, Decoder decoder)
 //     Foo ::= SEQUENCE {
 //     }
 //
-// using a call like this:
+// using code like this:
 //
-//    rv = NestedOf(input, SEQEUENCE, SEQUENCE, bind(_1, Foo));
+//    Result Foo(Reader& r) { /*...*/ }
 //
-//    Result Foo(Reader& input) {
-//    }
+//    rv = der::NestedOf(input, der::SEQEUENCE, der::SEQUENCE, Foo);
 //
-// In this example, Foo will get called once for each element of foos.
+// or:
+//
+//    Result Bar(Reader& r, int value) { /*...*/ }
+//
+//    int value = /*...*/;
+//
+//    rv = der::NestedOf(input, der::SEQUENCE, [value](Reader& r) {
+//      return Bar(r, value);
+//    });
+//
+// In these examples the function will get called once for each element of
+// foos.
 //
 template <typename Decoder>
 inline Result
@@ -477,7 +484,7 @@ CertificateSerialNumber(Reader& input, /*out*/ Input& value)
 
 // x.509 and OCSP both use this same version numbering scheme, though OCSP
 // only supports v1.
-MOZILLA_PKIX_ENUM_CLASS Version { v1 = 0, v2 = 1, v3 = 2, v4 = 3 };
+enum class Version { v1 = 0, v2 = 1, v3 = 2, v4 = 3 };
 
 // X.509 Certificate and OCSP ResponseData both use this
 // "[0] EXPLICIT Version DEFAULT <defaultVersion>" construct, but with
@@ -600,6 +607,8 @@ Result DigestAlgorithmIdentifier(Reader& input,
 
 Result SignatureAlgorithmIdentifier(Reader& input,
                                     /*out*/ SignatureAlgorithm& algorithm);
+
+Result NamedCurveOID(Reader& input, /*out*/ NamedCurve& namedCurve);
 
 // Parses a SEQUENCE into tbs and then parses an AlgorithmIdentifier followed
 // by a BIT STRING into signedData. This handles the commonality between

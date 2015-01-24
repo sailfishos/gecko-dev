@@ -649,8 +649,6 @@ JSCompartment::sweepCrossCompartmentWrappers()
     }
 }
 
-#ifdef JSGC_COMPACTING
-
 void JSCompartment::fixupAfterMovingGC()
 {
     fixupGlobal();
@@ -666,8 +664,6 @@ JSCompartment::fixupGlobal()
     if (global)
         global_.set(MaybeForwarded(global));
 }
-
-#endif // JSGC_COMPACTING
 
 void
 JSCompartment::purge()
@@ -831,10 +827,4 @@ JSCompartment::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
     *crossCompartmentWrappersArg += crossCompartmentWrappers.sizeOfExcludingThis(mallocSizeOf);
     *regexpCompartment += regExps.sizeOfExcludingThis(mallocSizeOf);
     *savedStacksSet += savedStacks_.sizeOfExcludingThis(mallocSizeOf);
-}
-
-void
-JSCompartment::adoptWorkerAllocator(Allocator *workerAllocator)
-{
-    zone()->allocator.arenas.adoptArenas(runtimeFromMainThread(), &workerAllocator->arenas);
 }

@@ -2404,7 +2404,7 @@ class FunctionCompiler
         jitContext_.emplace(m_.cx(), alloc_);
 
         graph_  = lifo_.new_<MIRGraph>(alloc_);
-        info_   = lifo_.new_<CompileInfo>(locals_.count(), SequentialExecution);
+        info_   = lifo_.new_<CompileInfo>(locals_.count());
         const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_AsmJS);
         const JitCompileOptions options;
         mirGen_ = lifo_.new_<MIRGenerator>(CompileCompartment::get(cx()->compartment()),
@@ -2647,8 +2647,8 @@ class FunctionCompiler
         return ins;
     }
 
-    MDefinition *ternarySimd(MDefinition *mask, MDefinition *lhs, MDefinition *rhs,
-                             MSimdTernaryBitwise::Operation op, MIRType type)
+    MDefinition *selectSimd(MDefinition *mask, MDefinition *lhs, MDefinition *rhs, MIRType type,
+                            bool isElementWise)
     {
         if (inDeadCode())
             return nullptr;
@@ -2657,7 +2657,7 @@ class FunctionCompiler
         MOZ_ASSERT(mask->type() == MIRType_Int32x4);
         MOZ_ASSERT(IsSimdType(lhs->type()) && rhs->type() == lhs->type());
         MOZ_ASSERT(lhs->type() == type);
-        MSimdTernaryBitwise *ins = MSimdTernaryBitwise::NewAsmJS(alloc(), mask, lhs, rhs, op, type);
+        MSimdSelect *ins = MSimdSelect::NewAsmJS(alloc(), mask, lhs, rhs, type, isElementWise);
         curBlock_->add(ins);
         return ins;
     }
@@ -2913,7 +2913,7 @@ class FunctionCompiler
             return nullptr;
 
         MOZ_ASSERT(IsSimdType(type));
-        T *ins = T::New(alloc(), type, x, y, z, w);
+        T *ins = T::NewAsmJS(alloc(), type, x, y, z, w);
         curBlock_->add(ins);
         return ins;
     }
@@ -4162,50 +4162,22 @@ IsLiteralOrConst(FunctionCompiler &f, ParseNode *pn, AsmJSNumLit *lit)
 }
 
 static bool
-CheckFinalReturn(FunctionCompiler &f, ParseNode *stmt, RetType *retType)
+CheckFinalReturn(FunctionCompiler &f, ParseNode *lastNonEmptyStmt)
 {
-    if (stmt && stmt->isKind(PNK_RETURN)) {
-        if (ParseNode *coercionNode = BinaryLeft(stmt)) {
-            AsmJSNumLit lit;
-            if (IsLiteralOrConst(f, coercionNode, &lit)) {
-                switch (lit.which()) {
-                  case AsmJSNumLit::BigUnsigned:
-                  case AsmJSNumLit::OutOfRangeInt:
-                    return f.fail(coercionNode, "returned literal is out of integer range");
-                  case AsmJSNumLit::Fixnum:
-                  case AsmJSNumLit::NegativeInt:
-                    *retType = RetType::Signed;
-                    break;
-                  case AsmJSNumLit::Double:
-                    *retType = RetType::Double;
-                    break;
-                  case AsmJSNumLit::Float:
-                    *retType = RetType::Float;
-                    break;
-                  case AsmJSNumLit::Int32x4:
-                    *retType = RetType::Int32x4;
-                    break;
-                  case AsmJSNumLit::Float32x4:
-                    *retType = RetType::Float32x4;
-                    break;
-                }
-                return true;
-            }
-
-            AsmJSCoercion coercion;
-            if (!CheckTypeAnnotation(f.m(), coercionNode, &coercion))
-                return false;
-
-            *retType = RetType(coercion);
-            return true;
-        }
-
-        *retType = RetType::Void;
+    if (!f.hasAlreadyReturned()) {
+        f.setReturnedType(RetType::Void);
+        f.returnVoid();
         return true;
     }
 
-    *retType = RetType::Void;
-    f.returnVoid();
+    if (!lastNonEmptyStmt->isKind(PNK_RETURN)) {
+        if (f.returnedType() != RetType::Void)
+            return f.fail(lastNonEmptyStmt, "void incompatible with previous return type");
+
+        f.returnVoid();
+        return true;
+    }
+
     return true;
 }
 
@@ -4360,7 +4332,7 @@ CheckArrayAccess(FunctionCompiler &f, ParseNode *viewName, ParseNode *indexExpr,
         if (byteOffset > INT32_MAX)
             return f.fail(indexExpr, "constant index out of range");
 
-        unsigned elementSize = 1 << TypedArrayShift(*viewType);
+        unsigned elementSize = TypedArrayElemSize(*viewType);
         if (!f.m().tryRequireHeapLengthToBeAtLeast(byteOffset + elementSize)) {
             return f.failf(indexExpr, "constant index outside heap size range declared by the "
                                       "change-heap function (0x%x - 0x%x)",
@@ -4375,7 +4347,7 @@ CheckArrayAccess(FunctionCompiler &f, ParseNode *viewName, ParseNode *indexExpr,
     // Mask off the low bits to account for the clearing effect of a right shift
     // followed by the left shift implicit in the array access. E.g., H32[i>>2]
     // loses the low two bits.
-    int32_t mask = ~((uint32_t(1) << TypedArrayShift(*viewType)) - 1);
+    int32_t mask = ~(TypedArrayElemSize(*viewType) - 1);
 
     MDefinition *pointerDef;
     if (indexExpr->isKind(PNK_RSH)) {
@@ -5709,6 +5681,18 @@ CheckSimdStore(FunctionCompiler &f, ParseNode *call, AsmJSSimdType opType, MDefi
 }
 
 static bool
+CheckSimdSelect(FunctionCompiler &f, ParseNode *call, AsmJSSimdType opType, bool isElementWise,
+                MDefinition **def, Type *type)
+{
+    DefinitionVector defs;
+    if (!CheckSimdCallArgs(f, call, 3, CheckSimdSelectArgs(opType), &defs))
+        return false;
+    *type = opType;
+    *def = f.selectSimd(defs[0], defs[1], defs[2], type->toMIRType(), isElementWise);
+    return true;
+}
+
+static bool
 CheckSimdOperationCall(FunctionCompiler &f, ParseNode *call, const ModuleCompiler::Global *global,
                        MDefinition **def, Type *type)
 {
@@ -5802,22 +5786,17 @@ CheckSimdOperationCall(FunctionCompiler &f, ParseNode *call, const ModuleCompile
       case AsmJSSimdOperation_store:
         return CheckSimdStore(f, call, opType, def, type);
 
+      case AsmJSSimdOperation_bitselect:
+        return CheckSimdSelect(f, call, opType, /*isElementWise */ false, def, type);
+      case AsmJSSimdOperation_select:
+        return CheckSimdSelect(f, call, opType, /*isElementWise */ true, def, type);
+
       case AsmJSSimdOperation_splat: {
         DefinitionVector defs;
         if (!CheckSimdCallArgs(f, call, 1, CheckSimdScalarArgs(opType), &defs))
             return false;
         *type = opType;
         *def = f.splatSimd(defs[0], type->toMIRType());
-        return true;
-      }
-
-      case AsmJSSimdOperation_select: {
-        DefinitionVector defs;
-        if (!CheckSimdCallArgs(f, call, 3, CheckSimdSelectArgs(opType), &defs))
-            return false;
-        *type = opType;
-        *def = f.ternarySimd(defs[0], defs[1], defs[2], MSimdTernaryBitwise::select,
-                             type->toMIRType());
         return true;
       }
     }
@@ -7481,14 +7460,10 @@ CheckFunction(ModuleCompiler &m, LifoAlloc &lifo, MIRGenerator **mir, ModuleComp
             lastNonEmptyStmt = stmtIter;
     }
 
-    RetType retType;
-    if (!CheckFinalReturn(f, lastNonEmptyStmt, &retType))
+    if (!CheckFinalReturn(f, lastNonEmptyStmt))
         return false;
 
-    if (!CheckReturnType(f, lastNonEmptyStmt, retType))
-        return false;
-
-    Signature sig(Move(argTypes), retType);
+    Signature sig(Move(argTypes), f.returnedType());
     ModuleCompiler::Func *func = nullptr;
     if (!CheckFunctionSignature(m, fn, Move(sig), FunctionName(fn), &func))
         return false;
@@ -8485,7 +8460,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
 
     // 2.4. Load callee executable entry point
     masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), callee);
-    masm.loadBaselineOrIonNoArgCheck(callee, callee, SequentialExecution, nullptr);
+    masm.loadBaselineOrIonNoArgCheck(callee, callee, nullptr);
 
     // 3. Argc
     unsigned argc = exit.sig().args().length();
@@ -8534,22 +8509,49 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
         //   act.prevJitTop_ = cx->mainThread().jitTop;
         //   act.prevJitJSContext_ = cx->mainThread().jitJSContext;
         //   cx->mainThread().jitJSContext = cx;
+        //   act.prevJitActivation_ = cx->mainThread().jitActivation;
+        //   cx->mainThread().jitActivation = act;
+        //   act.prevProfilingActivation_ = cx->mainThread().profilingActivation;
+        //   cx->mainThread().profilingActivation_ = act;
         // On the ARM store8() uses the secondScratchReg (lr) as a temp.
         size_t offsetOfActivation = offsetof(JSRuntime, mainThread) +
                                     PerThreadData::offsetOfActivation();
         size_t offsetOfJitTop = offsetof(JSRuntime, mainThread) + offsetof(PerThreadData, jitTop);
         size_t offsetOfJitJSContext = offsetof(JSRuntime, mainThread) +
                                       offsetof(PerThreadData, jitJSContext);
+        size_t offsetOfJitActivation = offsetof(JSRuntime, mainThread) +
+                                       offsetof(PerThreadData, jitActivation);
+        size_t offsetOfProfilingActivation = offsetof(JSRuntime, mainThread) +
+                                             PerThreadData::offsetOfProfilingActivation();
         masm.loadAsmJSActivation(reg0);
         masm.loadPtr(Address(reg0, AsmJSActivation::offsetOfContext()), reg3);
         masm.loadPtr(Address(reg3, JSContext::offsetOfRuntime()), reg0);
         masm.loadPtr(Address(reg0, offsetOfActivation), reg1);
+
+        //   act.active_ = true;
         masm.store8(Imm32(1), Address(reg1, JitActivation::offsetOfActiveUint8()));
+
+        //   act.prevJitTop_ = cx->mainThread().jitTop;
         masm.loadPtr(Address(reg0, offsetOfJitTop), reg2);
         masm.storePtr(reg2, Address(reg1, JitActivation::offsetOfPrevJitTop()));
+
+        //   act.prevJitJSContext_ = cx->mainThread().jitJSContext;
         masm.loadPtr(Address(reg0, offsetOfJitJSContext), reg2);
         masm.storePtr(reg2, Address(reg1, JitActivation::offsetOfPrevJitJSContext()));
+        //   cx->mainThread().jitJSContext = cx;
         masm.storePtr(reg3, Address(reg0, offsetOfJitJSContext));
+
+        //   act.prevJitActivation_ = cx->mainThread().jitActivation;
+        masm.loadPtr(Address(reg0, offsetOfJitActivation), reg2);
+        masm.storePtr(reg2, Address(reg1, JitActivation::offsetOfPrevJitActivation()));
+        //   cx->mainThread().jitActivation = act;
+        masm.storePtr(reg1, Address(reg0, offsetOfJitActivation));
+
+        //   act.prevProfilingActivation_ = cx->mainThread().profilingActivation;
+        masm.loadPtr(Address(reg0, offsetOfProfilingActivation), reg2);
+        masm.storePtr(reg2, Address(reg1, Activation::offsetOfPrevProfiling()));
+        //   cx->mainThread().profilingActivation_ = act;
+        masm.storePtr(reg1, Address(reg0, offsetOfProfilingActivation));
     }
 
     // 2. Call
@@ -8569,22 +8571,43 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
         Register reg2 = AsmJSIonExitRegD2;
 
         // The following is inlined:
+        //   rt->mainThread.profilingActivation = prevProfilingActivation_;
         //   rt->mainThread.activation()->active_ = false;
         //   rt->mainThread.jitTop = prevJitTop_;
         //   rt->mainThread.jitJSContext = prevJitJSContext_;
+        //   rt->mainThread.jitActivation = prevJitActivation_;
         // On the ARM store8() uses the secondScratchReg (lr) as a temp.
         size_t offsetOfActivation = offsetof(JSRuntime, mainThread) +
                                     PerThreadData::offsetOfActivation();
         size_t offsetOfJitTop = offsetof(JSRuntime, mainThread) + offsetof(PerThreadData, jitTop);
         size_t offsetOfJitJSContext = offsetof(JSRuntime, mainThread) +
                                       offsetof(PerThreadData, jitJSContext);
+        size_t offsetOfJitActivation = offsetof(JSRuntime, mainThread) +
+                                       offsetof(PerThreadData, jitActivation);
+        size_t offsetOfProfilingActivation = offsetof(JSRuntime, mainThread) +
+                                             PerThreadData::offsetOfProfilingActivation();
+
         masm.movePtr(AsmJSImmPtr(AsmJSImm_Runtime), reg0);
         masm.loadPtr(Address(reg0, offsetOfActivation), reg1);
-        masm.store8(Imm32(0), Address(reg1, JitActivation::offsetOfActiveUint8()));
+
+        //   rt->mainThread.jitTop = prevJitTop_;
         masm.loadPtr(Address(reg1, JitActivation::offsetOfPrevJitTop()), reg2);
         masm.storePtr(reg2, Address(reg0, offsetOfJitTop));
+
+        //   rt->mainThread.profilingActivation = rt->mainThread.activation()->prevProfiling_;
+        masm.loadPtr(Address(reg1, Activation::offsetOfPrevProfiling()), reg2);
+        masm.storePtr(reg2, Address(reg0, offsetOfProfilingActivation));
+
+        //   rt->mainThread.activation()->active_ = false;
+        masm.store8(Imm32(0), Address(reg1, JitActivation::offsetOfActiveUint8()));
+
+        //   rt->mainThread.jitJSContext = prevJitJSContext_;
         masm.loadPtr(Address(reg1, JitActivation::offsetOfPrevJitJSContext()), reg2);
         masm.storePtr(reg2, Address(reg0, offsetOfJitJSContext));
+
+        //   rt->mainThread.jitActivation = prevJitActivation_;
+        masm.loadPtr(Address(reg1, JitActivation::offsetOfPrevJitActivation()), reg2);
+        masm.storePtr(reg2, Address(reg0, offsetOfJitActivation));
     }
 
     MOZ_ASSERT(masm.framePushed() == framePushed);

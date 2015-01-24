@@ -104,7 +104,7 @@ struct CrossCompartmentKey
     }
 
   private:
-    CrossCompartmentKey() MOZ_DELETE;
+    CrossCompartmentKey() = delete;
 };
 
 struct WrapperHasher : public DefaultHasher<CrossCompartmentKey>
@@ -220,13 +220,6 @@ struct JSCompartment
     inline void initGlobal(js::GlobalObject &global);
 
   public:
-    /*
-     * Moves all data from the allocator |workerAllocator|, which was
-     * in use by a parallel worker, into the compartment's main
-     * allocator.  This is used at the end of a parallel section.
-     */
-    void adoptWorkerAllocator(js::Allocator *workerAllocator);
-
     /* Type information about the scripts and objects in this compartment. */
     js::types::TypeCompartment   types;
 
@@ -405,12 +398,10 @@ struct JSCompartment
     void purge();
     void clearTables();
 
-#ifdef JSGC_COMPACTING
     void fixupInitialShapeTable();
     void fixupNewTypeObjectTable(js::types::NewTypeObjectTable &table);
     void fixupAfterMovingGC();
     void fixupGlobal();
-#endif
 
     bool hasObjectMetadataCallback() const { return objectMetadataCallback; }
     void setObjectMetadataCallback(js::ObjectMetadataCallback callback);
@@ -597,8 +588,8 @@ class AutoCompartment
     JSCompartment *origin() const { return origin_; }
 
   private:
-    AutoCompartment(const AutoCompartment &) MOZ_DELETE;
-    AutoCompartment & operator=(const AutoCompartment &) MOZ_DELETE;
+    AutoCompartment(const AutoCompartment &) = delete;
+    AutoCompartment & operator=(const AutoCompartment &) = delete;
 };
 
 /*

@@ -69,11 +69,12 @@ interface MozNFCManager {
   Promise<void> powerOff();
 };
 
-[JSImplementation="@mozilla.org/navigatorNfc;1",
+[JSImplementation="@mozilla.org/nfc/manager;1",
  NavigatorProperty="mozNfc",
  Func="Navigator::HasNFCSupport",
  CheckPermissions="nfc nfc-share",
- AvailableIn="PrivilegedApps"]
+ AvailableIn="PrivilegedApps",
+ UnsafeInPrerendering]
 interface MozNFC : EventTarget {
   /**
    * Indicate if NFC is enabled.

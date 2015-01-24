@@ -65,7 +65,7 @@ using JS::CanonicalizeNaN;
 // a stable ID, it need not be at the end of the list and should not be used for
 // sizing data structures.
 
-enum StructuredDataType MOZ_ENUM_TYPE(uint32_t) {
+enum StructuredDataType : uint32_t {
     /* Structured data types provided by the engine */
     SCTAG_FLOAT_MAX = 0xFFF00000,
     SCTAG_NULL = 0xFFFF0000,
@@ -1245,7 +1245,7 @@ JSStructuredCloneWriter::write(HandleValue v)
                 if (found) {
                     RootedValue val(context());
                     if (!startWrite(key) ||
-                        !JSObject::getGeneric(context(), obj, obj, id, &val) ||
+                        !GetProperty(context(), obj, obj, id, &val) ||
                         !startWrite(val))
                     {
                         return false;
@@ -1863,7 +1863,7 @@ JSStructuredCloneReader::read(MutableHandleValue vp)
             if (!ValueToId<CanGC>(context(), key, &id))
                 return false;
 
-            if (!JSObject::defineGeneric(context(), obj, id, val))
+            if (!DefineProperty(context(), obj, id, val))
                 return false;
          }
     }

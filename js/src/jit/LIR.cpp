@@ -110,7 +110,9 @@ LBlock::init(TempAllocator &alloc)
             if (!inputs)
                 return false;
 
-            LPhi *lphi = new (&phis_[phiIndex++]) LPhi(phi, inputs);
+            // MSVC 2015 cannot handle "new (&phis_[phiIndex++])"
+            void *addr = &phis_[phiIndex++];
+            LPhi *lphi = new (addr) LPhi(phi, inputs);
             lphi->setBlock(this);
         }
     }
@@ -550,15 +552,15 @@ LMoveGroup::add(LAllocation *from, LAllocation *to, LDefinition::Type type)
     if (LDefinition(type).isSimdType()) {
         if (from->isMemory()) {
             if (from->isArgument())
-                MOZ_ASSERT(from->toArgument()->index() % SimdStackAlignment == 0);
+                MOZ_ASSERT(from->toArgument()->index() % SimdMemoryAlignment == 0);
             else
-                MOZ_ASSERT(from->toStackSlot()->slot() % SimdStackAlignment == 0);
+                MOZ_ASSERT(from->toStackSlot()->slot() % SimdMemoryAlignment == 0);
         }
         if (to->isMemory()) {
             if (to->isArgument())
-                MOZ_ASSERT(to->toArgument()->index() % SimdStackAlignment == 0);
+                MOZ_ASSERT(to->toArgument()->index() % SimdMemoryAlignment == 0);
             else
-                MOZ_ASSERT(to->toStackSlot()->slot() % SimdStackAlignment == 0);
+                MOZ_ASSERT(to->toStackSlot()->slot() % SimdMemoryAlignment == 0);
         }
     }
 #endif

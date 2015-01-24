@@ -12,12 +12,12 @@ include('android-services.mozbuild')
 thirdparty_source_dir = TOPSRCDIR + '/mobile/android/thirdparty/'
 
 constants_jar = add_java_jar('constants')
-constants_jar.sources = []
+constants_jar.sources = [
+    'SysInfo.java',
+]
 constants_jar.generated_sources = [
     'preprocessed/org/mozilla/gecko/AppConstants.java',
-    'preprocessed/org/mozilla/gecko/SysInfo.java',
 ]
-constants_jar.generated_sources += ['preprocessed/org/mozilla/gecko/' + f for f in sync_generated_java_files]
 
 resjar = add_java_jar('gecko-R')
 resjar.sources = []
@@ -84,6 +84,7 @@ gujar.sources += [
     'util/ThreadUtils.java',
     'util/UIAsyncTask.java',
     'util/WebActivityMapper.java',
+    'util/WindowUtils.java',
 ]
 gujar.extra_jars = [
     'constants.jar',
@@ -158,15 +159,23 @@ gbjar.sources += [
     'db/FormHistoryProvider.java',
     'db/HomeProvider.java',
     'db/LocalBrowserDB.java',
+    'db/LocalSearches.java',
+    'db/LocalTabsAccessor.java',
+    'db/LocalURLMetadata.java',
     'db/PasswordsProvider.java',
     'db/PerProfileDatabaseProvider.java',
     'db/PerProfileDatabases.java',
     'db/ReadingListProvider.java',
+    'db/RemoteClient.java',
+    'db/RemoteTab.java',
+    'db/Searches.java',
     'db/SearchHistoryProvider.java',
     'db/SharedBrowserDatabaseProvider.java',
     'db/SQLiteBridgeContentProvider.java',
+    'db/StubBrowserDB.java',
     'db/SuggestedSites.java',
     'db/Table.java',
+    'db/TabsAccessor.java',
     'db/TabsProvider.java',
     'db/TopSitesCursorWrapper.java',
     'db/URLMetadata.java',
@@ -410,12 +419,12 @@ gbjar.sources += [
     'tabs/TabHistoryFragment.java',
     'tabs/TabHistoryItemRow.java',
     'tabs/TabHistoryPage.java',
+    'tabs/TabPanelBackButton.java',
     'tabs/TabsGridLayout.java',
     'tabs/TabsLayoutAdapter.java',
     'tabs/TabsLayoutItemView.java',
     'tabs/TabsListLayout.java',
     'tabs/TabsPanel.java',
-    'TabsAccessor.java',
     'Telemetry.java',
     'TelemetryContract.java',
     'TextSelection.java',
@@ -473,6 +482,8 @@ gbjar.sources += [
     'widget/Divider.java',
     'widget/DoorHanger.java',
     'widget/EllipsisTextView.java',
+    'widget/FadedMultiColorTextView.java',
+    'widget/FadedSingleColorTextView.java',
     'widget/FadedTextView.java',
     'widget/FaviconView.java',
     'widget/FloatingHintEditText.java',
@@ -540,6 +551,8 @@ if (CONFIG['MOZ_ANDROID_MAX_SDK_VERSION']):
 else:
     max_sdk_version = 999
 
+# Only bother to include new tablet code if we're building for tablet-capable
+# OS releases.
 if CONFIG['MOZ_ANDROID_NEW_TABLET_UI'] and max_sdk_version >= 11:
     gbjar.sources += [
         'tabs/TabStrip.java',
@@ -667,7 +680,7 @@ for var in ('MOZ_UPDATER', 'MOZ_PKG_SPECIAL'):
     if CONFIG[var]:
         DEFINES[var] = CONFIG[var]
 
-for var in ('ANDROID_PACKAGE_NAME', 'ANDROID_CPU_ARCH', 'CPU_ARCH',
+for var in ('ANDROID_PACKAGE_NAME', 'ANDROID_CPU_ARCH',
             'GRE_MILESTONE', 'MOZ_APP_BASENAME',
             'MOZ_APP_DISPLAYNAME', 'MOZ_APP_ID', 'MOZ_APP_NAME',
             'MOZ_APP_VENDOR', 'MOZ_APP_VERSION', 'MOZ_CHILD_PROCESS_NAME',

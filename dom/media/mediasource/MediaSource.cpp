@@ -19,14 +19,19 @@
 #include "mozilla/dom/TimeRanges.h"
 #include "mozilla/mozalloc.h"
 #include "nsContentTypeParser.h"
+#include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsError.h"
+#include "nsIEffectiveTLDService.h"
 #include "nsIRunnable.h"
 #include "nsIScriptObjectPrincipal.h"
+#include "nsIURI.h"
+#include "nsNetCID.h"
 #include "nsPIDOMWindow.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "prlog.h"
+#include "nsServiceManagerUtils.h"
 
 struct JSContext;
 class JSObject;
@@ -174,7 +179,7 @@ void
 MediaSource::SetDuration(double aDuration, ErrorResult& aRv)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  MSE_API("MediaSource(%p)::SetDuration(aDuration=%f)", this, aDuration);
+  MSE_API("MediaSource(%p)::SetDuration(aDuration=%f, ErrorResult)", this, aDuration);
   if (aDuration < 0 || IsNaN(aDuration)) {
     aRv.Throw(NS_ERROR_DOM_INVALID_ACCESS_ERR);
     return;
@@ -184,7 +189,15 @@ MediaSource::SetDuration(double aDuration, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
-  mDecoder->SetMediaSourceDuration(aDuration);
+  SetDuration(aDuration, MSRangeRemovalAction::RUN);
+}
+
+void
+MediaSource::SetDuration(double aDuration, MSRangeRemovalAction aAction)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MSE_API("MediaSource(%p)::SetDuration(aDuration=%f)", this, aDuration);
+  mDecoder->SetMediaSourceDuration(aDuration, aAction);
 }
 
 already_AddRefed<SourceBuffer>
@@ -272,7 +285,8 @@ MediaSource::EndOfStream(const Optional<MediaSourceEndOfStreamError>& aError, Er
   mSourceBuffers->Ended();
   mDecoder->Ended();
   if (!aError.WasPassed()) {
-    mDecoder->SetMediaSourceDuration(mSourceBuffers->GetHighestBufferedEndTime());
+    mDecoder->SetMediaSourceDuration(mSourceBuffers->GetHighestBufferedEndTime(),
+                                     MSRangeRemovalAction::SKIP);
     if (aRv.Failed()) {
       return;
     }
@@ -306,15 +320,65 @@ MediaSource::IsTypeSupported(const GlobalObject&, const nsAString& aType)
   return NS_SUCCEEDED(rv);
 }
 
+/* static */ bool
+MediaSource::Enabled(JSContext* cx, JSObject* aGlobal)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // Don't use aGlobal across Preferences stuff, which the static
+  // analysis thinks can GC.
+  JS::Rooted<JSObject*> global(cx, aGlobal);
+
+  bool enabled = Preferences::GetBool("media.mediasource.enabled");
+  if (!enabled) {
+    return false;
+  }
+
+  // Check whether it's enabled everywhere or just YouTube.
+  bool restrict = Preferences::GetBool("media.mediasource.youtubeonly", false);
+  if (!restrict) {
+    return true;
+  }
+
+  // We want to restrict to YouTube only.
+  // We define that as the origin being https://*.youtube.com.
+  // We also support https://*.youtube-nocookie.com.
+  nsIPrincipal* principal = nsContentUtils::ObjectPrincipal(global);
+  nsCOMPtr<nsIURI> uri;
+  if (NS_FAILED(principal->GetURI(getter_AddRefs(uri))) || !uri) {
+    return false;
+  }
+
+  bool isHttps = false;
+  if (NS_FAILED(uri->SchemeIs("https", &isHttps)) || !isHttps) {
+    return false;
+  }
+
+  nsCOMPtr<nsIEffectiveTLDService> tldServ =
+    do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+  NS_ENSURE_TRUE(tldServ, false);
+
+  nsAutoCString eTLDplusOne;
+   if (NS_FAILED(tldServ->GetBaseDomain(uri, 0, eTLDplusOne))) {
+     return false;
+   }
+
+   return eTLDplusOne.EqualsLiteral("youtube.com") ||
+          eTLDplusOne.EqualsLiteral("youtube-nocookie.com");
+}
+
 bool
 MediaSource::Attach(MediaSourceDecoder* aDecoder)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MSE_DEBUG("MediaSource(%p)::Attach(aDecoder=%p) owner=%p", this, aDecoder, aDecoder->GetOwner());
   MOZ_ASSERT(aDecoder);
+  MOZ_ASSERT(aDecoder->GetOwner());
   if (mReadyState != MediaSourceReadyState::Closed) {
     return false;
   }
+  MOZ_ASSERT(!mMediaElement);
+  mMediaElement = aDecoder->GetOwner()->GetMediaElement();
   MOZ_ASSERT(!mDecoder);
   mDecoder = aDecoder;
   mDecoder->AttachMediaSource(this);
@@ -335,6 +399,7 @@ MediaSource::Detach()
   }
   mDecoder->DetachMediaSource();
   mDecoder = nullptr;
+  mMediaElement = nullptr;
   mFirstSourceBufferInitialized = false;
   SetReadyState(MediaSourceReadyState::Closed);
   if (mActiveSourceBuffers) {
@@ -421,7 +486,8 @@ MediaSource::DurationChange(double aOldDuration, double aNewDuration)
   MSE_DEBUG("MediaSource(%p)::DurationChange(aOldDuration=%f, aNewDuration=%f)", this, aOldDuration, aNewDuration);
 
   if (aNewDuration < aOldDuration) {
-    mSourceBuffers->RangeRemoval(aNewDuration, aOldDuration);
+    // Remove all buffered data from aNewDuration.
+    mSourceBuffers->RangeRemoval(aNewDuration, PositiveInfinity<double>());
   }
   // TODO: If partial audio frames/text cues exist, clamp duration based on mSourceBuffers.
 }
@@ -487,6 +553,7 @@ MediaSource::WrapObject(JSContext* aCx)
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaSource, DOMEventTargetHelper,
+                                   mMediaElement,
                                    mSourceBuffers, mActiveSourceBuffers)
 
 NS_IMPL_ADDREF_INHERITED(MediaSource, DOMEventTargetHelper)

@@ -1145,11 +1145,12 @@ nsFocusManager::ActivateOrDeactivate(nsPIDOMWindow* aWindow, bool aActive)
   aWindow->ActivateOrDeactivate(aActive);
 
   // Send the activate event.
-  nsContentUtils::DispatchTrustedEvent(aWindow->GetExtantDoc(),
-                                       aWindow,
-                                       aActive ? NS_LITERAL_STRING("activate") :
-                                                 NS_LITERAL_STRING("deactivate"),
-                                       true, true, nullptr);
+  nsContentUtils::DispatchEventOnlyToChrome(aWindow->GetExtantDoc(),
+                                            aWindow,
+                                            aActive ?
+                                              NS_LITERAL_STRING("activate") :
+                                              NS_LITERAL_STRING("deactivate"),
+                                            true, true, nullptr);
 
   // Look for any remote child frames, iterate over them and send the activation notification.
   nsContentUtils::CallOnAllRemoteChildren(aWindow, ActivateOrDeactivateChild,
@@ -1685,12 +1686,12 @@ nsFocusManager::Blur(nsPIDOMWindow* aWindowToClear,
   // invisible.
   if (aIsLeavingDocument || !mActiveWindow) {
     SetCaretVisible(presShell, false, nullptr);
-    nsRefPtr<SelectionCarets> selectionCarets = presShell->GetSelectionCarets();
-    if (selectionCarets) {
-      selectionCarets->NotifyBlur();
-    }
   }
 
+  nsRefPtr<SelectionCarets> selectionCarets = presShell->GetSelectionCarets();
+  if (selectionCarets) {
+    selectionCarets->NotifyBlur(aIsLeavingDocument || !mActiveWindow);
+  }
 
   // at this point, it is expected that this window will be still be
   // focused, but the focused content will be null, as it was cleared before

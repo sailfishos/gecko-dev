@@ -359,7 +359,7 @@ class OrderedHashTable
 
       private:
         // Prohibit copy assignment.
-        Range &operator=(const Range &other) MOZ_DELETE;
+        Range &operator=(const Range &other) = delete;
 
         void seek() {
             while (i < ht.dataLength && Ops::isEmpty(Ops::getKey(ht.data[i].element)))
@@ -667,8 +667,8 @@ class OrderedHashTable
     }
 
     // Not copyable.
-    OrderedHashTable &operator=(const OrderedHashTable &) MOZ_DELETE;
-    OrderedHashTable(const OrderedHashTable &) MOZ_DELETE;
+    OrderedHashTable &operator=(const OrderedHashTable &) = delete;
+    OrderedHashTable(const OrderedHashTable &) = delete;
 };
 
 }  // namespace detail
@@ -1233,7 +1233,7 @@ MapObject::construct(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
     if (!args.get(0).isNullOrUndefined()) {
         RootedValue adderVal(cx);
-        if (!JSObject::getProperty(cx, obj, obj, cx->names().set, &adderVal))
+        if (!GetProperty(cx, obj, obj, cx->names().set, &adderVal))
             return false;
 
         if (!IsCallable(adderVal))
@@ -1268,11 +1268,11 @@ MapObject::construct(JSContext *cx, unsigned argc, Value *vp)
                 return false;
 
             RootedValue key(cx);
-            if (!JSObject::getElement(cx, pairObj, pairObj, 0, &key))
+            if (!GetElement(cx, pairObj, pairObj, 0, &key))
                 return false;
 
             RootedValue val(cx);
-            if (!JSObject::getElement(cx, pairObj, pairObj, 1, &val))
+            if (!GetElement(cx, pairObj, pairObj, 1, &val))
                 return false;
 
             if (isOriginalAdder) {
@@ -1822,7 +1822,7 @@ SetObject::construct(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
     if (!args.get(0).isNullOrUndefined()) {
         RootedValue adderVal(cx);
-        if (!JSObject::getProperty(cx, obj, obj, cx->names().add, &adderVal))
+        if (!GetProperty(cx, obj, obj, cx->names().add, &adderVal))
             return false;
 
         if (!IsCallable(adderVal))

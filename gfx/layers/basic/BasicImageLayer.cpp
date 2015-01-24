@@ -26,8 +26,7 @@ namespace layers {
 class BasicImageLayer : public ImageLayer, public BasicImplData {
 public:
   explicit BasicImageLayer(BasicLayerManager* aLayerManager) :
-    ImageLayer(aLayerManager,
-               static_cast<BasicImplData*>(MOZ_THIS_IN_INITIALIZER_LIST())),
+    ImageLayer(aLayerManager, static_cast<BasicImplData*>(this)),
     mSize(-1, -1)
   {
     MOZ_COUNT_CTOR(BasicImageLayer);
@@ -39,7 +38,7 @@ protected:
   }
 
 public:
-  virtual void SetVisibleRegion(const nsIntRegion& aRegion)
+  virtual void SetVisibleRegion(const nsIntRegion& aRegion) MOZ_OVERRIDE
   {
     NS_ASSERTION(BasicManager()->InConstruction(),
                  "Can only set properties in construction phase");
@@ -57,12 +56,6 @@ protected:
   {
     return static_cast<BasicLayerManager*>(mManager);
   }
-
-  // only paints the image if aContext is non-null
-  void
-  GetAndPaintCurrentImage(DrawTarget* aTarget,
-                          float aOpacity,
-                          SourceSurface* aMaskSurface);
 
   gfx::IntSize mSize;
 };
@@ -96,46 +89,6 @@ BasicImageLayer::Paint(DrawTarget* aDT,
 
   mContainer->SetImageFactory(originalIF);
   GetContainer()->NotifyPaintedImage(image);
-}
-
-void
-BasicImageLayer::GetAndPaintCurrentImage(DrawTarget* aTarget,
-                                         float aOpacity,
-                                         SourceSurface* aMaskSurface)
-{
-  if (!mContainer) {
-    return;
-  }
-
-  nsRefPtr<ImageFactory> originalIF = mContainer->GetImageFactory();
-  mContainer->SetImageFactory(mManager->IsCompositingCheap() ?
-                              nullptr :
-                              BasicManager()->GetImageFactory());
-  IntSize size;
-  Image* image = nullptr;
-  RefPtr<SourceSurface> surf =
-    mContainer->LockCurrentAsSourceSurface(&size, &image);
-
-  if (!surf) {
-    mContainer->SetImageFactory(originalIF);
-    return;
-  }
-
-  if (aTarget) {
-    // The visible region can extend outside the image, so just draw
-    // within the image bounds.
-    SurfacePattern pat(surf, ExtendMode::CLAMP, Matrix(), ToFilter(mFilter));
-    CompositionOp op = GetEffectiveOperator(this);
-    DrawOptions opts(aOpacity, op);
-
-    aTarget->MaskSurface(pat, aMaskSurface, Point(0, 0), opts);
-
-    GetContainer()->NotifyPaintedImage(image);
-  }
-
-  mContainer->SetImageFactory(originalIF);
-
-  mContainer->UnlockCurrentImage();
 }
 
 TemporaryRef<SourceSurface>

@@ -396,7 +396,7 @@ public:
     NS_RELEASE_THIS();
   }
 
-  NS_IMETHODIMP Run()
+  NS_IMETHODIMP Run() MOZ_OVERRIDE
   {
     if (mFrame.IsAlive()) {
       static_cast<nsComboboxControlFrame*>(mFrame.GetFrame())->
@@ -1392,7 +1392,8 @@ nsComboboxControlFrame::SetInitialChildList(ChildListID     aListID,
   //nsIRollupListener
 //----------------------------------------------------------------------
 bool
-nsComboboxControlFrame::Rollup(uint32_t aCount, const nsIntPoint* pos, nsIContent** aLastRolledUp)
+nsComboboxControlFrame::Rollup(uint32_t aCount, bool aFlush,
+                               const nsIntPoint* pos, nsIContent** aLastRolledUp)
 {
   if (!mDroppedDown) {
     return false;
@@ -1411,6 +1412,14 @@ nsComboboxControlFrame::Rollup(uint32_t aCount, const nsIntPoint* pos, nsIConten
   if (weakFrame.IsAlive()) {
     mListControlFrame->CaptureMouseEvents(false);
   }
+
+  if (aFlush && weakFrame.IsAlive()) {
+    // The popup's visibility doesn't update until the minimize animation has
+    // finished, so call UpdateWidgetGeometry to update it right away.
+    nsViewManager* viewManager = mDropdownFrame->GetView()->GetViewManager();
+    viewManager->UpdateWidgetGeometry();
+  }
+
   return consume;
 }
 
@@ -1460,7 +1469,7 @@ void nsDisplayComboboxFocus::Paint(nsDisplayListBuilder* aBuilder,
                                    nsRenderingContext* aCtx)
 {
   static_cast<nsComboboxControlFrame*>(mFrame)
-    ->PaintFocus(*aCtx, ToReferenceFrame());
+    ->PaintFocus(*aCtx->GetDrawTarget(), ToReferenceFrame());
 }
 
 void
@@ -1502,7 +1511,7 @@ nsComboboxControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   DisplaySelectionOverlay(aBuilder, aLists.Content());
 }
 
-void nsComboboxControlFrame::PaintFocus(nsRenderingContext& aRenderingContext,
+void nsComboboxControlFrame::PaintFocus(DrawTarget& aDrawTarget,
                                         nsPoint aPt)
 {
   /* Do we need to do anything? */
@@ -1510,13 +1519,12 @@ void nsComboboxControlFrame::PaintFocus(nsRenderingContext& aRenderingContext,
   if (eventStates.HasState(NS_EVENT_STATE_DISABLED) || sFocused != this)
     return;
 
-  gfxContext* gfx = aRenderingContext.ThebesContext();
+  int32_t appUnitsPerDevPixel = PresContext()->AppUnitsPerDevPixel();
 
-  gfx->Save();
   nsRect clipRect = mDisplayFrame->GetRect() + aPt;
-  gfx->Clip(NSRectToSnappedRect(clipRect,
-                                PresContext()->AppUnitsPerDevPixel(),
-                                *aRenderingContext.GetDrawTarget()));
+  aDrawTarget.PushClipRect(NSRectToSnappedRect(clipRect,
+                                               appUnitsPerDevPixel,
+                                               aDrawTarget));
 
   // REVIEW: Why does the old code paint mDisplayFrame again? We've
   // already painted it in the children above. So clipping it here won't do
@@ -1531,12 +1539,10 @@ void nsComboboxControlFrame::PaintFocus(nsRenderingContext& aRenderingContext,
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
   clipRect.width -= onePixel;
   clipRect.height -= onePixel;
-  Rect r =
-    ToRect(nsLayoutUtils::RectToGfxRect(clipRect, PresContext()->AppUnitsPerDevPixel()));
-  StrokeSnappedEdgesOfRect(r, *aRenderingContext.GetDrawTarget(),
-                           color, strokeOptions);
+  Rect r = ToRect(nsLayoutUtils::RectToGfxRect(clipRect, appUnitsPerDevPixel));
+  StrokeSnappedEdgesOfRect(r, aDrawTarget, color, strokeOptions);
 
-  gfx->Restore();
+  aDrawTarget.PopClip();
 }
 
 //---------------------------------------------------------

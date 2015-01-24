@@ -7,6 +7,8 @@
 #ifndef gc_GCRuntime_h
 #define gc_GCRuntime_h
 
+#include "mozilla/Atomics.h"
+
 #include "jsgc.h"
 
 #include "gc/Heap.h"
@@ -32,11 +34,8 @@ struct FinalizePhase;
 class MarkingValidator;
 struct AutoPrepareForTracing;
 class AutoTraceSession;
-
-#ifdef JSGC_COMPACTING
 struct ArenasToUpdate;
 struct MovingTracer;
-#endif
 
 class ChunkPool
 {
@@ -196,8 +195,294 @@ class GCSchedulingTunables
 };
 
 /*
- * Internal values that effect GC scheduling that are not directly exposed
- * in the GC API.
+ * GC Scheduling Overview
+ * ======================
+ *
+ * Scheduling GC's in SpiderMonkey/Firefox is tremendously complicated because
+ * of the large number of subtle, cross-cutting, and widely dispersed factors
+ * that must be taken into account. A summary of some of the more important
+ * factors follows.
+ *
+ * Cost factors:
+ *
+ *   * GC too soon and we'll revisit an object graph almost identical to the
+ *     one we just visited; since we are unlikely to find new garbage, the
+ *     traversal will be largely overhead. We rely heavily on external factors
+ *     to signal us that we are likely to find lots of garbage: e.g. "a tab
+ *     just got closed".
+ *
+ *   * GC too late and we'll run out of memory to allocate (e.g. Out-Of-Memory,
+ *     hereafter simply abbreviated to OOM). If this happens inside
+ *     SpiderMonkey we may be able to recover, but most embedder allocations
+ *     will simply crash on OOM, even if the GC has plenty of free memory it
+ *     could surrender.
+ *
+ *   * Memory fragmentation: if we fill the process with GC allocations, a
+ *     request for a large block of contiguous memory may fail because no
+ *     contiguous block is free, despite having enough memory available to
+ *     service the request.
+ *
+ *   * Management overhead: if our GC heap becomes large, we create extra
+ *     overhead when managing the GC's structures, even if the allocations are
+ *     mostly unused.
+ *
+ * Heap Management Factors:
+ *
+ *   * GC memory: The GC has its own allocator that it uses to make fixed size
+ *     allocations for GC managed things. In cases where the GC thing requires
+ *     larger or variable sized memory to implement itself, it is responsible
+ *     for using the system heap.
+ *
+ *   * C Heap Memory: Rather than allowing for large or variable allocations,
+ *     the SpiderMonkey GC allows GC things to hold pointers to C heap memory.
+ *     It is the responsibility of the thing to free this memory with a custom
+ *     finalizer (with the sole exception of NativeObject, which knows about
+ *     slots and elements for performance reasons). C heap memory has different
+ *     performance and overhead tradeoffs than GC internal memory, which need
+ *     to be considered with scheduling a GC.
+ *
+ * Application Factors:
+ *
+ *   * Most applications allocate heavily at startup, then enter a processing
+ *     stage where memory utilization remains roughly fixed with a slower
+ *     allocation rate. This is not always the case, however, so while we may
+ *     optimize for this pattern, we must be able to handle arbitrary
+ *     allocation patterns.
+ *
+ * Other factors:
+ *
+ *   * Other memory: This is memory allocated outside the purview of the GC.
+ *     Data mapped by the system for code libraries, data allocated by those
+ *     libraries, data in the JSRuntime that is used to manage the engine,
+ *     memory used by the embedding that is not attached to a GC thing, memory
+ *     used by unrelated processes running on the hardware that use space we
+ *     could otherwise use for allocation, etc. While we don't have to manage
+ *     it, we do have to take it into account when scheduling since it affects
+ *     when we will OOM.
+ *
+ *   * Physical Reality: All real machines have limits on the number of bits
+ *     that they are physically able to store. While modern operating systems
+ *     can generally make additional space available with swapping, at some
+ *     point there are simply no more bits to allocate. There is also the
+ *     factor of address space limitations, particularly on 32bit machines.
+ *
+ *   * Platform Factors: Each OS makes use of wildly different memory
+ *     management techniques. These differences result in different performance
+ *     tradeoffs, different fragmentation patterns, and different hard limits
+ *     on the amount of physical and/or virtual memory that we can use before
+ *     OOMing.
+ *
+ *
+ * Reasons for scheduling GC
+ * -------------------------
+ *
+ *  While code generally takes the above factors into account in only an ad-hoc
+ *  fashion, the API forces the user to pick a "reason" for the GC. We have a
+ *  bunch of JS::gcreason reasons in GCAPI.h. These fall into a few categories
+ *  that generally coincide with one or more of the above factors.
+ *
+ *  Embedding reasons:
+ *
+ *   1) Do a GC now because the embedding knows something useful about the
+ *      zone's memory retention state. These are gcreasons like LOAD_END,
+ *      PAGE_HIDE, SET_NEW_DOCUMENT, DOM_UTILS. Mostly, Gecko uses these to
+ *      indicate that a significant fraction of the scheduled zone's memory is
+ *      probably reclaimable.
+ *
+ *   2) Do some known amount of GC work now because the embedding knows now is
+ *      a good time to do a long, unblockable operation of a known duration.
+ *      These are INTER_SLICE_GC and REFRESH_FRAME.
+ *
+ *  Correctness reasons:
+ *
+ *   3) Do a GC now because correctness depends on some GC property. For
+ *      example, CC_WAITING is where the embedding requires the mark bits
+ *      to be set correct. Also, EVICT_NURSERY where we need to work on the tenured
+ *      heap.
+ *
+ *   4) Do a GC because we are shutting down: e.g. SHUTDOWN_CC or DESTROY_*.
+ *
+ *   5) Do a GC because a compartment was accessed between GC slices when we
+ *      would have otherwise discarded it. We have to do a second GC to clean
+ *      it up: e.g. COMPARTMENT_REVIVED.
+ *
+ *  Emergency Reasons:
+ *
+ *   6) Do an all-zones, non-incremental GC now because the embedding knows it
+ *      cannot wait: e.g. MEM_PRESSURE.
+ *
+ *   7) OOM when fetching a new Chunk results in a LAST_DITCH GC.
+ *
+ *  Heap Size Limitation Reasons:
+ *
+ *   8) Do an incremental, zonal GC with reason MAYBEGC when we discover that
+ *      the gc's allocated size is approaching the current trigger. This is
+ *      called MAYBEGC because we make this check in the MaybeGC function.
+ *      MaybeGC gets called at the top of the main event loop. Normally, it is
+ *      expected that this callback will keep the heap size limited. It is
+ *      relatively inexpensive, because it is invoked with no JS running and
+ *      thus few stack roots to scan. For this reason, the GC's "trigger" bytes
+ *      is less than the GC's "max" bytes as used by the trigger below.
+ *
+ *   9) Do an incremental, zonal GC with reason MAYBEGC when we go to allocate
+ *      a new GC thing and find that the GC heap size has grown beyond the
+ *      configured maximum (JSGC_MAX_BYTES). We trigger this GC by returning
+ *      nullptr and then calling maybeGC at the top level of the allocator.
+ *      This is then guaranteed to fail the "size greater than trigger" check
+ *      above, since trigger is always less than max. After performing the GC,
+ *      the allocator unconditionally returns nullptr to force an OOM exception
+ *      is raised by the script.
+ *
+ *      Note that this differs from a LAST_DITCH GC where we actually run out
+ *      of memory (i.e., a call to a system allocator fails) when trying to
+ *      allocate. Unlike above, LAST_DITCH GC only happens when we are really
+ *      out of memory, not just when we cross an arbitrary trigger; despite
+ *      this, it may still return an allocation at the end and allow the script
+ *      to continue, if the LAST_DITCH GC was able to free up enough memory.
+ *
+ *  10) Do a GC under reason ALLOC_TRIGGER when we are over the GC heap trigger
+ *      limit, but in the allocator rather than in a random call to maybeGC.
+ *      This occurs if we allocate too much before returning to the event loop
+ *      and calling maybeGC; this is extremely common in benchmarks and
+ *      long-running Worker computations. Note that this uses a wildly
+ *      different mechanism from the above in that it sets the interrupt flag
+ *      and does the GC at the next loop head, before the next alloc, or
+ *      maybeGC. The reason for this is that this check is made after the
+ *      allocation and we cannot GC with an uninitialized thing in the heap.
+ *
+ *  11) Do an incremental, zonal GC with reason TOO_MUCH_MALLOC when we have
+ *      malloced more than JSGC_MAX_MALLOC_BYTES in a zone since the last GC.
+ *
+ *
+ * Size Limitation Triggers Explanation
+ * ------------------------------------
+ *
+ *  The GC internally is entirely unaware of the context of the execution of
+ *  the mutator. It sees only:
+ *
+ *   A) Allocated size: this is the amount of memory currently requested by the
+ *      mutator. This quantity is monotonically increasing: i.e. the allocation
+ *      rate is always >= 0. It is also easy for the system to track.
+ *
+ *   B) Retained size: this is the amount of memory that the mutator can
+ *      currently reach. Said another way, it is the size of the heap
+ *      immediately after a GC (modulo background sweeping). This size is very
+ *      costly to know exactly and also extremely hard to estimate with any
+ *      fidelity.
+ *
+ *   For reference, a common allocated vs. retained graph might look like:
+ *
+ *       |                                  **         **
+ *       |                       **       ** *       **
+ *       |                     ** *     **   *     **
+ *       |           *       **   *   **     *   **
+ *       |          **     **     * **       * **
+ *      s|         * *   **       ** +  +    **
+ *      i|        *  *  *      +  +       +  +     +
+ *      z|       *   * * +  +                   +     +  +
+ *      e|      *    **+
+ *       |     *     +
+ *       |    *    +
+ *       |   *   +
+ *       |  *  +
+ *       | * +
+ *       |*+
+ *       +--------------------------------------------------
+ *                               time
+ *                                           *** = allocated
+ *                                           +++ = retained
+ *
+ *           Note that this is a bit of a simplification
+ *           because in reality we track malloc and GC heap
+ *           sizes separately and have a different level of
+ *           granularity and accuracy on each heap.
+ *
+ *   This presents some obvious implications for Mark-and-Sweep collectors.
+ *   Namely:
+ *       -> t[marking] ~= size[retained]
+ *       -> t[sweeping] ~= size[allocated] - size[retained]
+ *
+ *   In a non-incremental collector, maintaining low latency and high
+ *   responsiveness requires that total GC times be as low as possible. Thus,
+ *   in order to stay responsive when we did not have a fully incremental
+ *   collector, our GC triggers were focused on minimizing collection time.
+ *   Furthermore, since size[retained] is not under control of the GC, all the
+ *   GC could do to control collection times was reduce sweep times by
+ *   minimizing size[allocated], per the equation above.
+ *
+ *   The result of the above is GC triggers that focus on size[allocated] to
+ *   the exclusion of other important factors and default heuristics that are
+ *   not optimal for a fully incremental collector. On the other hand, this is
+ *   not all bad: minimizing size[allocated] also minimizes the chance of OOM
+ *   and sweeping remains one of the hardest areas to further incrementalize.
+ *
+ *      MAYBEGC
+ *      -------
+ *      Occurs when we return to the event loop and find our heap is getting
+ *      largish, but before t[marking] OR t[sweeping] is too large for a
+ *      responsive non-incremental GC. This is intended to be the common case
+ *      in normal web applications: e.g. we just finished an event handler and
+ *      the few objects we allocated when computing the new whatzitz have
+ *      pushed us slightly over the limit. After this GC we rescale the new
+ *      MAYBEGC trigger to 150% of size[retained] so that our non-incremental
+ *      GC times will always be proportional to this size rather than being
+ *      dominated by sweeping.
+ *
+ *      As a concession to mutators that allocate heavily during their startup
+ *      phase, we have a highFrequencyGCMode that ups the growth rate to 300%
+ *      of the current size[retained] so that we'll do fewer longer GCs at the
+ *      end of the mutator startup rather than more, smaller GCs.
+ *
+ *          Assumptions:
+ *            -> Responsiveness is proportional to t[marking] + t[sweeping].
+ *            -> size[retained] is proportional only to GC allocations.
+ *
+ *      ALLOC_TRIGGER (non-incremental)
+ *      -------------------------------
+ *      If we do not return to the event loop before getting all the way to our
+ *      gc trigger bytes then MAYBEGC will never fire. To avoid OOMing, we
+ *      succeed the current allocation and set the script interrupt so that we
+ *      will (hopefully) do a GC before we overflow our max and have to raise
+ *      an OOM exception for the script.
+ *
+ *          Assumptions:
+ *            -> Common web scripts will return to the event loop before using
+ *               10% of the current gcTriggerBytes worth of GC memory.
+ *
+ *      ALLOC_TRIGGER (incremental)
+ *      ---------------------------
+ *      In practice the above trigger is rough: if a website is just on the
+ *      cusp, sometimes it will trigger a non-incremental GC moments before
+ *      returning to the event loop, where it could have done an incremental
+ *      GC. Thus, we recently added an incremental version of the above with a
+ *      substantially lower threshold, so that we have a soft limit here. If
+ *      IGC can collect faster than the allocator generates garbage, even if
+ *      the allocator does not return to the event loop frequently, we should
+ *      not have to fall back to a non-incremental GC.
+ *
+ *      TOO_MUCH_MALLOC
+ *      ---------------
+ *      Performs a GC before size[allocated] - size[retained] gets too large
+ *      for non-incremental sweeping to be fast in the case that we have
+ *      significantly more malloc allocation than GC allocation. This is meant
+ *      to complement MAYBEGC triggers. We track this by counting malloced
+ *      bytes; the counter gets reset at every GC since we do not always have a
+ *      size at the time we call free. Because of this, the malloc heuristic
+ *      is, unfortunatly, not usefully able to augment our other GC heap
+ *      triggers and is limited to this singular heuristic.
+ *
+ *          Assumptions:
+ *            -> EITHER size[allocated_by_malloc] ~= size[allocated_by_GC]
+ *                 OR   time[sweeping] ~= size[allocated_by_malloc]
+ *            -> size[retained] @ t0 ~= size[retained] @ t1
+ *               i.e. That the mutator is in steady-state operation.
+ *
+ *      LAST_DITCH_GC
+ *      -------------
+ *      Does a GC because we are out of memory.
+ *
+ *          Assumptions:
+ *            -> size[retained] < size[available_memory]
  */
 class GCSchedulingState
 {
@@ -273,19 +558,25 @@ class ChainedIter
     T operator->() const { return get(); }
 };
 
+typedef js::HashMap<Value *,
+                    const char *,
+                    js::DefaultHasher<Value *>,
+                    js::SystemAllocPolicy> RootedValueMap;
+
 class GCRuntime
 {
   public:
     explicit GCRuntime(JSRuntime *rt);
     bool init(uint32_t maxbytes, uint32_t maxNurseryBytes);
+    void finishRoots();
     void finish();
 
     inline int zeal();
     inline bool upcomingZealousGC();
     inline bool needZealousGC();
 
-    template <typename T> bool addRoot(T *rp, const char *name, JSGCRootType rootType);
-    void removeRoot(void *rp);
+    bool addRoot(Value *vp, const char *name);
+    void removeRoot(Value *vp);
     void setMarkStackLimit(size_t limit);
 
     void setParameter(JSGCParamKey key, uint32_t value);
@@ -295,34 +586,29 @@ class GCRuntime
     bool isHeapMajorCollecting() { return heapState == js::MajorCollecting; }
     bool isHeapMinorCollecting() { return heapState == js::MinorCollecting; }
     bool isHeapCollecting() { return isHeapMajorCollecting() || isHeapMinorCollecting(); }
-#ifdef JSGC_COMPACTING
     bool isHeapCompacting() { return isHeapMajorCollecting() && state() == COMPACT; }
-#else
-    bool isHeapCompacting() { return false; }
-#endif
-
-    // Performance note: if isFJMinorCollecting turns out to be slow because
-    // reading the counter is slow then we may be able to augment the counter
-    // with a volatile flag that is set iff the counter is greater than
-    // zero. (It will require some care to make sure the two variables stay in
-    // sync.)
-    bool isFJMinorCollecting() { return fjCollectionCounter > 0; }
-    void incFJMinorCollecting() { fjCollectionCounter++; }
-    void decFJMinorCollecting() { fjCollectionCounter--; }
 
     bool triggerGC(JS::gcreason::Reason reason);
     void maybeAllocTriggerZoneGC(Zone *zone, const AutoLockGC &lock);
     bool triggerZoneGC(Zone *zone, JS::gcreason::Reason reason);
     bool maybeGC(Zone *zone);
     void maybePeriodicFullGC();
-    void minorGC(JS::gcreason::Reason reason);
+    void minorGC(JS::gcreason::Reason reason) {
+        gcstats::AutoPhase ap(stats, gcstats::PHASE_MINOR_GC);
+        minorGCImpl(reason, nullptr);
+    }
     void minorGC(JSContext *cx, JS::gcreason::Reason reason);
-    void evictNursery(JS::gcreason::Reason reason = JS::gcreason::EVICT_NURSERY) { minorGC(reason); }
+    void evictNursery(JS::gcreason::Reason reason = JS::gcreason::EVICT_NURSERY) {
+        gcstats::AutoPhase ap(stats, gcstats::PHASE_EVICT_NURSERY);
+        minorGCImpl(reason, nullptr);
+    }
     bool gcIfNeeded(JSContext *cx = nullptr);
     void gc(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
-    void gcSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
-    void gcFinalSlice(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
-    void gcDebugSlice(SliceBudget &budget);
+    void startGC(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
+    void gcSlice(JS::gcreason::Reason reason, int64_t millis = 0);
+    void finishGC(JS::gcreason::Reason reason);
+    void startDebugGC(JSGCInvocationKind gckind, SliceBudget &budget);
+    void debugGCSlice(SliceBudget &budget);
 
     void runDebugGC();
     inline void poke();
@@ -346,6 +632,7 @@ class GCRuntime
 
 #ifdef JS_GC_ZEAL
     const void *addressOfZealMode() { return &zealMode; }
+    void getZeal(uint8_t *zeal, uint32_t *frequency, uint32_t *nextScheduled);
     void setZeal(uint8_t zeal, uint32_t frequency);
     bool parseAndSetZeal(const char *str);
     void setNextScheduled(uint32_t count);
@@ -429,17 +716,15 @@ class GCRuntime
     void disallowIncrementalGC() { incrementalAllowed = false; }
 
     bool isIncrementalGCEnabled() { return mode == JSGC_MODE_INCREMENTAL && incrementalAllowed; }
-    bool isIncrementalGCInProgress() { return state() != gc::NO_INCREMENTAL && !verifyPreData; }
+    bool isIncrementalGCInProgress() { return state() != gc::NO_INCREMENTAL; }
 
     bool isGenerationalGCEnabled() { return generationalDisabled == 0; }
     void disableGenerationalGC();
     void enableGenerationalGC();
 
-#ifdef JSGC_COMPACTING
     void disableCompactingGC();
     void enableCompactingGC();
     bool isCompactingGCEnabled();
-#endif
 
     void setGrayRootsTracer(JSTraceDataOp traceOp, void *data);
     bool addBlackRootsTracer(JSTraceDataOp traceOp, void *data);
@@ -483,7 +768,9 @@ class GCRuntime
     bool areGrayBitsValid() { return grayBitsValid; }
     void setGrayBitsInvalid() { grayBitsValid = false; }
 
-    bool isGcNeeded() { return minorGCRequested || majorGCRequested; }
+    bool minorGCRequested() const { return minorGCTriggerReason != JS::gcreason::NO_REASON; }
+    bool majorGCRequested() const { return majorGCTriggerReason != JS::gcreason::NO_REASON; }
+    bool isGcNeeded() { return minorGCRequested() || majorGCRequested(); }
 
     double computeHeapGrowthFactor(size_t lastBytes);
     size_t computeTriggerBytes(double growthFactor, size_t lastBytes);
@@ -520,7 +807,7 @@ class GCRuntime
 #endif
 
     template <AllowGC allowGC>
-    static void *refillFreeListFromAnyThread(ThreadSafeContext *cx, AllocKind thingKind);
+    static void *refillFreeListFromAnyThread(ExclusiveContext *cx, AllocKind thingKind);
     static void *refillFreeListInGC(Zone *zone, AllocKind thingKind);
 
     // Free certain LifoAlloc blocks from the background sweep thread.
@@ -530,7 +817,11 @@ class GCRuntime
     // Public here for ReleaseArenaLists and FinalizeTypedArenas.
     void releaseArena(ArenaHeader *aheader, const AutoLockGC &lock);
 
+    void releaseHeldRelocatedArenas();
+
   private:
+    void minorGCImpl(JS::gcreason::Reason reason, Nursery::TypeObjectList *pretenureTypes);
+
     // For ArenaLists::allocateFromArena()
     friend class ArenaLists;
     Chunk *pickChunk(const AutoLockGC &lock,
@@ -541,7 +832,6 @@ class GCRuntime
     template <AllowGC allowGC>
     static void *refillFreeListFromMainThread(JSContext *cx, AllocKind thingKind);
     static void *refillFreeListOffMainThread(ExclusiveContext *cx, AllocKind thingKind);
-    static void *refillFreeListPJS(ForkJoinContext *cx, AllocKind thingKind);
 
     /*
      * Return the list of chunks that can be released outside the GC lock.
@@ -550,7 +840,6 @@ class GCRuntime
     ChunkPool expireEmptyChunkPool(bool shrinkBuffers, const AutoLockGC &lock);
     void freeEmptyChunks(JSRuntime *rt, const AutoLockGC &lock);
     void prepareToFreeChunk(ChunkInfo &info);
-    void releaseChunk(Chunk *chunk);
 
     friend class BackgroundAllocTask;
     friend class AutoMaybeStartBackgroundAllocation;
@@ -558,10 +847,9 @@ class GCRuntime
     void startBackgroundAllocTaskIfIdle();
 
     void requestMajorGC(JS::gcreason::Reason reason);
-    void collect(bool incremental, SliceBudget &budget, JSGCInvocationKind gckind,
-                 JS::gcreason::Reason reason);
-    bool gcCycle(bool incremental, SliceBudget &budget, JSGCInvocationKind gckind,
-                 JS::gcreason::Reason reason);
+    SliceBudget defaultBudget(JS::gcreason::Reason reason, int64_t millis);
+    void collect(bool incremental, SliceBudget budget, JS::gcreason::Reason reason);
+    bool gcCycle(bool incremental, SliceBudget &budget, JS::gcreason::Reason reason);
     gcstats::ZoneGCStats scanZonesBeforeGC();
     void budgetIncrementalGC(SliceBudget &budget);
     void resetIncrementalGC(const char *reason);
@@ -594,24 +882,22 @@ class GCRuntime
     void decommitAllWithoutUnlocking(const AutoLockGC &lock);
     void decommitArenas(AutoLockGC &lock);
     void expireChunksAndArenas(bool shouldShrink, AutoLockGC &lock);
-    void queueZonesForBackgroundSweep(js::gc::ZoneList& zones);
-    void sweepBackgroundThings(js::gc::ZoneList &zones, ThreadType threadType);
+    void queueZonesForBackgroundSweep(ZoneList &zones);
+    void sweepBackgroundThings(ZoneList &zones, LifoAlloc &freeBlocks, ThreadType threadType);
     void assertBackgroundSweepingFinished();
     bool shouldCompact();
     bool compactPhase(bool lastGC);
-#ifdef JSGC_COMPACTING
     void sweepTypesAfterCompacting(Zone *zone);
     void sweepZoneAfterCompacting(Zone *zone);
     ArenaHeader *relocateArenas();
-    void updateAllCellPointersParallel(ArenasToUpdate &source);
-    void updateAllCellPointersSerial(MovingTracer *trc, ArenasToUpdate &source);
+    void updateAllCellPointersParallel(MovingTracer *trc);
+    void updateAllCellPointersSerial(MovingTracer *trc);
     void updatePointersToRelocatedCells();
     void releaseRelocatedArenas(ArenaHeader *relocatedList);
     void releaseRelocatedArenasWithoutUnlocking(ArenaHeader *relocatedList, const AutoLockGC& lock);
 #ifdef DEBUG
     void protectRelocatedArenas(ArenaHeader *relocatedList);
     void unprotectRelocatedArenas(ArenaHeader *relocatedList);
-#endif
 #endif
     void finishCollection();
 
@@ -670,7 +956,7 @@ class GCRuntime
     // so as to reduce the cost of operations on the available lists.
     ChunkPool             fullChunks_;
 
-    js::RootedValueMap rootsHash;
+    RootedValueMap rootsHash;
 
     size_t maxMallocBytes;
 
@@ -697,10 +983,8 @@ class GCRuntime
      */
     bool grayBitsValid;
 
-    volatile uintptr_t majorGCRequested;
-    JS::gcreason::Reason majorGCTriggerReason;
+    mozilla::Atomic<JS::gcreason::Reason, mozilla::Relaxed> majorGCTriggerReason;
 
-    bool minorGCRequested;
     JS::gcreason::Reason minorGCTriggerReason;
 
     /* Incremented at the start of every major GC. */
@@ -751,7 +1035,7 @@ class GCRuntime
     bool foundBlackGrayEdges;
 
     /* Singly linekd list of zones to be swept in the background. */
-    js::gc::ZoneList backgroundSweepZones;
+    ZoneList backgroundSweepZones;
     /*
      * Free LIFO blocks are transferred to this allocator before being freed on
      * the background GC thread.
@@ -792,7 +1076,7 @@ class GCRuntime
      * frame, rather than at the beginning. In this case, the next slice will be
      * delayed so that we don't get back-to-back slices.
      */
-    volatile uintptr_t interFrameGC;
+    bool interFrameGC;
 
     /* Default budget for incremental GC slice. See SliceBudget in jsgc.h. */
     int64_t sliceBudget;
@@ -808,14 +1092,11 @@ class GCRuntime
      */
     unsigned generationalDisabled;
 
-#ifdef JSGC_COMPACTING
     /*
      * Some code cannot tolerate compacting GC so it can be disabled with this
-     * counter.  This can happen from code executing in a ThreadSafeContext so
-     * we make it atomic.
+     * counter.
      */
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> compactingDisabled;
-#endif
+    unsigned compactingDisabled;
 
     /*
      * This is true if we are in the middle of a brain transplant (e.g.,
@@ -839,16 +1120,6 @@ class GCRuntime
     volatile js::HeapState heapState;
 
     /*
-     * ForkJoin workers enter and leave GC independently; this counter
-     * tracks the number that are currently in GC.
-     *
-     * Technically this should be #ifdef JSGC_FJGENERATIONAL but that
-     * affects the observed size of JSRuntime in problematic ways, see
-     * note in vm/ThreadPool.h.
-     */
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> fjCollectionCounter;
-
-    /*
      * These options control the zealousness of the GC. The fundamental values
      * are nextScheduled and gcDebugCompartmentGC. At every allocation,
      * nextScheduled is decremented. When it reaches zero, we do either a full
@@ -860,10 +1131,10 @@ class GCRuntime
      *
      * You can control these values in several ways:
      *   - Set the JS_GC_ZEAL environment variable
-     *   - Call zeal() or schedulegc() from inside shell-executed JS code
+     *   - Call gczeal() or schedulegc() from inside shell-executed JS code
      *     (see the help for details)
      *
-     * If gzZeal_ == 1 then we perform GCs in select places (during MaybeGC and
+     * If gcZeal_ == 1 then we perform GCs in select places (during MaybeGC and
      * whenever a GC poke happens). This option is mainly useful to embedders.
      *
      * We use zeal_ == 4 to enable write barrier verification. See the comment
@@ -893,7 +1164,7 @@ class GCRuntime
 
     /*
      * Malloc counter to measure memory pressure for GC scheduling. It runs
-     * from   maxMallocBytes down to zero.
+     * from maxMallocBytes down to zero.
      */
     mozilla::Atomic<ptrdiff_t, mozilla::ReleaseAcquire> mallocBytes;
 
@@ -926,9 +1197,7 @@ class GCRuntime
 
     size_t noGCOrAllocationCheck;
 
-#ifdef JSGC_COMPACTING
     ArenaHeader* relocatedArenasToRelease;
-#endif
 
 #endif
 

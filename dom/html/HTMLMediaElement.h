@@ -211,14 +211,16 @@ public:
   // suspended the channel.
   virtual void NotifySuspendedByCache(bool aIsSuspended) MOZ_FINAL MOZ_OVERRIDE;
 
+  virtual bool IsActive() MOZ_FINAL MOZ_OVERRIDE;
+
+  virtual bool IsHidden() MOZ_FINAL MOZ_OVERRIDE;
+
   // Called by the media decoder and the video frame to get the
   // ImageContainer containing the video data.
   virtual VideoFrameContainer* GetVideoFrameContainer() MOZ_FINAL MOZ_OVERRIDE;
   layers::ImageContainer* GetImageContainer();
 
   // Dispatch events
-  using nsGenericHTMLElement::DispatchEvent;
-  virtual nsresult DispatchEvent(const nsAString& aName) MOZ_FINAL MOZ_OVERRIDE;
   virtual nsresult DispatchAsyncEvent(const nsAString& aName) MOZ_FINAL MOZ_OVERRIDE;
 
   // Dispatch events that were raised while in the bfcache
@@ -281,6 +283,11 @@ public:
 
   void NotifyMediaTrackEnabled(MediaTrack* aTrack);
 
+  /**
+   * Called when tracks become available to the source media stream.
+   */
+  void NotifyMediaStreamTracksAvailable(DOMMediaStream* aStream);
+
   virtual bool IsNodeOfType(uint32_t aFlags) const MOZ_OVERRIDE;
 
   /**
@@ -334,7 +341,11 @@ public:
   MediaStream* GetSrcMediaStream() const
   {
     NS_ASSERTION(mSrcStream, "Don't call this when not playing a stream");
-    return mSrcStream->GetStream();
+    if (!mPlaybackStream) {
+      // XXX Remove this check with CameraPreviewMediaStream per bug 1124630.
+      return mSrcStream->GetStream();
+    }
+    return mPlaybackStream->GetStream();
   }
 
   // WebIDL
@@ -371,7 +382,7 @@ public:
 
   // Called by the media decoder object, on the main thread,
   // when the connection between Rtsp server and client gets lost.
-  void ResetConnectionState() MOZ_FINAL MOZ_OVERRIDE;
+  virtual void ResetConnectionState() MOZ_FINAL MOZ_OVERRIDE;
 
   // XPCOM GetPreload() is OK
   void SetPreload(const nsAString& aValue, ErrorResult& aRv)
@@ -537,7 +548,7 @@ public:
   void SetOnencrypted(mozilla::dom::EventHandlerNonNull* listener);
 
   void DispatchEncrypted(const nsTArray<uint8_t>& aInitData,
-                         const nsAString& aInitDataType);
+                         const nsAString& aInitDataType) MOZ_OVERRIDE;
 
 
   bool IsEventAttributeName(nsIAtom* aName) MOZ_OVERRIDE;
@@ -579,7 +590,7 @@ public:
 
   VideoTrackList* VideoTracks();
 
-  TextTrackList* TextTracks();
+  TextTrackList* GetTextTracks();
 
   already_AddRefed<TextTrack> AddTextTrack(TextTrackKind aKind,
                                            const nsAString& aLabel,
@@ -612,6 +623,7 @@ protected:
   virtual ~HTMLMediaElement();
 
   class MediaLoadListener;
+  class MediaStreamTracksAvailableCallback;
   class StreamListener;
 
   virtual void GetItemValueText(nsAString& text) MOZ_OVERRIDE;
@@ -974,6 +986,11 @@ protected:
   // MediaElement doesn't yet have one then it will create it.
   TextTrackManager* GetOrCreateTextTrackManager();
 
+  class nsAsyncEventRunner;
+  using nsGenericHTMLElement::DispatchEvent;
+  // For nsAsyncEventRunner.
+  nsresult DispatchEvent(const nsAString& aName);
+
   // The current decoder. Load() has been called on this decoder.
   // At most one of mDecoder and mSrcStream can be non-null.
   nsRefPtr<MediaDecoder> mDecoder;
@@ -990,6 +1007,14 @@ protected:
   // actually playing.
   // At most one of mDecoder and mSrcStream can be non-null.
   nsRefPtr<DOMMediaStream> mSrcStream;
+
+  // Holds a reference to a MediaInputPort connecting mSrcStream to mPlaybackStream.
+  nsRefPtr<MediaInputPort> mPlaybackStreamInputPort;
+
+  // Holds a reference to a stream with mSrcStream as input but intended for
+  // playback. Used so we don't block playback of other video elements
+  // playing the same mSrcStream.
+  nsRefPtr<DOMMediaStream> mPlaybackStream;
 
   // Holds references to the DOM wrappers for the MediaStreams that we're
   // writing to.
@@ -1035,6 +1060,9 @@ protected:
   //   http://www.whatwg.org/specs/web-apps/current-work/#video)
   nsMediaNetworkState mNetworkState;
   nsMediaReadyState mReadyState;
+
+  // Last value passed from codec or stream source to UpdateReadyStateForData.
+  NextFrameStatus mLastNextFrameStatus;
 
   enum LoadAlgorithmState {
     // No load algorithm instance is waiting for a source to be added to the

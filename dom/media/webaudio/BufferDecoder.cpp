@@ -140,13 +140,13 @@ BufferDecoder::IsMediaSeekable()
 }
 
 void
-BufferDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags)
+BufferDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags, bool aRestoredFromDormant)
 {
   // ignore
 }
 
 void
-BufferDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo)
+BufferDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo, bool aRestoredFromDormant)
 {
   // ignore
 }

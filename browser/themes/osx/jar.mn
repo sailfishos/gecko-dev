@@ -7,6 +7,7 @@ browser.jar:
   skin/classic/browser/sanitizeDialog.css                   (sanitizeDialog.css)
   skin/classic/browser/aboutNetError.css                    (../shared/aboutNetError.css)
   skin/classic/browser/aboutNetError_info.svg               (../shared/aboutNetError_info.svg)
+  skin/classic/browser/aboutNetError_alert.svg              (../shared/aboutNetError_alert.svg)
 * skin/classic/browser/aboutSessionRestore.css              (aboutSessionRestore.css)
   skin/classic/browser/aboutSessionRestore-window-icon.png
   skin/classic/browser/aboutWelcomeBack.css                 (../shared/aboutWelcomeBack.css)
@@ -134,6 +135,8 @@ browser.jar:
   skin/classic/browser/urlbar-arrow@2x.png
   skin/classic/browser/urlbar-popup-blocked.png
   skin/classic/browser/urlbar-popup-blocked@2x.png
+  skin/classic/browser/reader-mode-16.png             (../shared/reader/reader-mode-16.png)
+  skin/classic/browser/reader-mode-16@2x.png          (../shared/reader/reader-mode-16@2x.png)
   skin/classic/browser/webRTC-shareDevice-16.png
   skin/classic/browser/webRTC-shareDevice-16@2x.png
   skin/classic/browser/webRTC-shareDevice-64.png
@@ -198,7 +201,7 @@ browser.jar:
   skin/classic/browser/downloads/allDownloadsViewOverlay.css (downloads/allDownloadsViewOverlay.css)
   skin/classic/browser/downloads/buttons.png                (downloads/buttons.png)
   skin/classic/browser/downloads/buttons@2x.png             (downloads/buttons@2x.png)
-* skin/classic/browser/downloads/contentAreaDownloadsView.css (downloads/contentAreaDownloadsView.css)
+  skin/classic/browser/downloads/contentAreaDownloadsView.css (downloads/contentAreaDownloadsView.css)
   skin/classic/browser/downloads/download-glow-menuPanel.png (downloads/download-glow-menuPanel.png)
   skin/classic/browser/downloads/download-glow-menuPanel@2x.png (downloads/download-glow-menuPanel@2x.png)
   skin/classic/browser/downloads/download-notification-finish.png  (downloads/download-notification-finish.png)
@@ -357,6 +360,7 @@ browser.jar:
   skin/classic/browser/devtools/newtab-inverted.png         (../shared/devtools/images/newtab-inverted.png)
   skin/classic/browser/devtools/newtab-inverted@2x.png      (../shared/devtools/images/newtab-inverted@2x.png)
 * skin/classic/browser/devtools/widgets.css                 (devtools/widgets.css)
+  skin/classic/browser/devtools/power.svg                   (../shared/devtools/images/power.svg)
   skin/classic/browser/devtools/filetype-dir-close.svg      (../shared/devtools/images/filetypes/dir-close.svg)
   skin/classic/browser/devtools/filetype-dir-open.svg       (../shared/devtools/images/filetypes/dir-open.svg)
   skin/classic/browser/devtools/filetype-globe.svg          (../shared/devtools/images/filetypes/globe.svg)
@@ -398,6 +402,7 @@ browser.jar:
   skin/classic/browser/devtools/breadcrumbs-divider@2x.png      (../shared/devtools/images/breadcrumbs-divider@2x.png)
   skin/classic/browser/devtools/breadcrumbs-scrollbutton.png    (../shared/devtools/images/breadcrumbs-scrollbutton.png)
   skin/classic/browser/devtools/breadcrumbs-scrollbutton@2x.png (../shared/devtools/images/breadcrumbs-scrollbutton@2x.png)
+  skin/classic/browser/devtools/animationinspector.css          (../shared/devtools/animationinspector.css)
 * skin/classic/browser/devtools/canvasdebugger.css          (devtools/canvasdebugger.css)
 * skin/classic/browser/devtools/debugger.css                (devtools/debugger.css)
   skin/classic/browser/devtools/eyedropper.css              (../shared/devtools/eyedropper.css)
@@ -405,6 +410,7 @@ browser.jar:
 * skin/classic/browser/devtools/profiler.css                (devtools/profiler.css)
 * skin/classic/browser/devtools/performance.css             (devtools/performance.css)
 * skin/classic/browser/devtools/timeline.css                (devtools/timeline.css)
+  skin/classic/browser/devtools/timeline-filter.svg         (../shared/devtools/images/timeline-filter.svg)
 * skin/classic/browser/devtools/scratchpad.css              (devtools/scratchpad.css)
 * skin/classic/browser/devtools/shadereditor.css            (devtools/shadereditor.css)
 * skin/classic/browser/devtools/splitview.css               (../shared/devtools/splitview.css)
@@ -576,6 +582,8 @@ browser.jar:
 #ifdef E10S_TESTING_ONLY
   skin/classic/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
 #endif
+  skin/classic/browser/warning16.png                        (../shared/warning16.png)
+  skin/classic/browser/warning16@2x.png                     (../shared/warning16@2x.png)
 
 % override chrome://browser/skin/toolbarbutton-dropmarker.png              chrome://browser/skin/lion/toolbarbutton-dropmarker.png                 os=Darwin osversion>=10.7
 % override chrome://browser/skin/tabbrowser/alltabs-box-bkgnd-icon.png     chrome://browser/skin/lion/tabbrowser/alltabs-box-bkgnd-icon.png        os=Darwin osversion>=10.7

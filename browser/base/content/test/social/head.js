@@ -73,13 +73,11 @@ function checkProviderPrefsEmpty(isError) {
 }
 
 function defaultFinishChecks() {
-  PopupNotifications.transitionsEnabled = true;
   checkProviderPrefsEmpty(true);
   finish();
 }
 
 function runSocialTestWithProvider(manifest, callback, finishcallback) {
-  PopupNotifications.transitionsEnabled = false;
 
   let SocialService = Cu.import("resource://gre/modules/SocialService.jsm", {}).SocialService;
 
@@ -167,12 +165,17 @@ function runSocialTestWithProvider(manifest, callback, finishcallback) {
 }
 
 function runSocialTests(tests, cbPreTest, cbPostTest, cbFinish) {
-  let testIter = Iterator(tests);
+  let testIter = (function*() {
+    for (let name in tests) {
+      if (tests.hasOwnProperty(name)) {
+        yield [name, tests[name]];
+      }
+    }
+  })();
   let providersAtStart = Social.providers.length;
   info("runSocialTests: start test run with " + providersAtStart + " providers");
   window.focus();
 
-  PopupNotifications.transitionsEnabled = false;
 
   if (cbPreTest === undefined) {
     cbPreTest = function(cb) {cb()};
@@ -182,16 +185,15 @@ function runSocialTests(tests, cbPreTest, cbPostTest, cbFinish) {
   }
 
   function runNextTest() {
-    let name, func;
-    try {
-      [name, func] = testIter.next();
-    } catch (err if err instanceof StopIteration) {
+    let result = testIter.next();
+    if (result.done) {
       // out of items:
       (cbFinish || defaultFinishChecks)();
       is(providersAtStart, Social.providers.length,
          "runSocialTests: finish test run with " + Social.providers.length + " providers");
       return;
     }
+    let [name, func] = result.value;
     // We run on a timeout as the frameworker also makes use of timeouts, so
     // this helps keep the debug messages sane.
     executeSoon(function() {

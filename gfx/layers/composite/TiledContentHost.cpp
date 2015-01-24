@@ -52,6 +52,12 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
   mRetainedHeight = aDescriptor.retainedHeight();
   mResolution = aDescriptor.resolution();
   mFrameResolution = CSSToParentLayerScale(aDescriptor.frameResolution());
+  if (mResolution == 0 || IsNaN(mResolution)) {
+    // There are divisions by mResolution so this protects the compositor process
+    // against malicious content processes and fuzzing.
+    mIsValid = false;
+    return;
+  }
 
   // Combine any valid content that wasn't already uploaded
   nsIntRegion oldPaintedRegion(aOldPaintedRegion);
@@ -91,7 +97,7 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
           sharedLock = reinterpret_cast<gfxMemorySharedReadLock*>(ipcLock.get_uintptr_t());
           if (sharedLock) {
             // The corresponding AddRef is in TiledClient::GetTileDescriptor
-            sharedLock->Release();
+            sharedLock.get()->Release();
           }
         }
 

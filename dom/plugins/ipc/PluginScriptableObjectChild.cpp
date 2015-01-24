@@ -753,7 +753,7 @@ PluginScriptableObjectChild::AnswerHasMethod(const PluginIdentifier& aId,
 
 bool
 PluginScriptableObjectChild::AnswerInvoke(const PluginIdentifier& aId,
-                                          const InfallibleTArray<Variant>& aArgs,
+                                          InfallibleTArray<Variant>&& aArgs,
                                           Variant* aResult,
                                           bool* aSuccess)
 {
@@ -823,7 +823,7 @@ PluginScriptableObjectChild::AnswerInvoke(const PluginIdentifier& aId,
 }
 
 bool
-PluginScriptableObjectChild::AnswerInvokeDefault(const InfallibleTArray<Variant>& aArgs,
+PluginScriptableObjectChild::AnswerInvokeDefault(InfallibleTArray<Variant>&& aArgs,
                                                  Variant* aResult,
                                                  bool* aSuccess)
 {
@@ -1074,7 +1074,7 @@ PluginScriptableObjectChild::AnswerEnumerate(InfallibleTArray<PluginIdentifier>*
 }
 
 bool
-PluginScriptableObjectChild::AnswerConstruct(const InfallibleTArray<Variant>& aArgs,
+PluginScriptableObjectChild::AnswerConstruct(InfallibleTArray<Variant>&& aArgs,
                                              Variant* aResult,
                                              bool* aSuccess)
 {
@@ -1281,5 +1281,7 @@ PluginScriptableObjectChild::CollectForInstance(NPObjectData* d, void* userArg)
 PluginScriptableObjectChild::NotifyOfInstanceShutdown(PluginInstanceChild* aInstance)
 {
   AssertPluginThread();
-  sObjectMap->EnumerateEntries(CollectForInstance, aInstance);
+  if (sObjectMap) {
+    sObjectMap->EnumerateEntries(CollectForInstance, aInstance);
+  }
 }

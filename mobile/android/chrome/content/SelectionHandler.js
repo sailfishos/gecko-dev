@@ -6,11 +6,28 @@
 
 // Define elements that bound phone number containers.
 const PHONE_NUMBER_CONTAINERS = "td,div";
+const DEFER_CLOSE_TRIGGER_MS = 125; // Grace period delay before deferred _closeSelection()
 
 var SelectionHandler = {
-  HANDLE_TYPE_START: "START",
-  HANDLE_TYPE_MIDDLE: "MIDDLE",
-  HANDLE_TYPE_END: "END",
+
+  // Successful startSelection() or attachCaret().
+  ERROR_NONE: "",
+
+  // Error codes returned during startSelection().
+  START_ERROR_INVALID_MODE: "Invalid selection mode requested.",
+  START_ERROR_NONTEXT_INPUT: "Target element by definition contains no text.",
+  START_ERROR_NO_WORD_SELECTED: "No word selected at point.",
+  START_ERROR_SELECT_WORD_FAILED: "Word selection at point failed.",
+  START_ERROR_SELECT_ALL_PARAGRAPH_FAILED: "Select-All Paragraph failed.",
+  START_ERROR_NO_SELECTION: "Selection performed, but nothing resulted.",
+  START_ERROR_PROXIMITY: "Selection target and result seem unrelated.",
+
+  // Error codes returned during attachCaret().
+  ATTACH_ERROR_INCOMPATIBLE: "Element disabled, handled natively, or not editable.",
+
+  HANDLE_TYPE_ANCHOR: "ANCHOR",
+  HANDLE_TYPE_CARET: "CARET",
+  HANDLE_TYPE_FOCUS: "FOCUS",
 
   TYPE_NONE: 0,
   TYPE_CURSOR: 1,
@@ -26,6 +43,7 @@ var SelectionHandler = {
   _draggingHandles: false, // True while user drags text selection handles
   _ignoreCompositionChanges: false, // Persist caret during IME composition updates
   _prevHandlePositions: [], // Avoid issuing duplicate "TextSelection:Position" messages
+  _deferCloseTimer: null, // Used to defer _closeSelection() actions during programmatic changes
 
   // TargetElement changes (text <--> no text) trigger actionbar UI update
   _prevTargetElementHasText: null,
@@ -89,6 +107,11 @@ var SelectionHandler = {
   },
 
   observe: function sh_observe(aSubject, aTopic, aData) {
+    // Ignore all but selectionListener notifications during deferred _closeSelection().
+    if (this._deferCloseTimer) {
+      return;
+    }
+
     switch (aTopic) {
       // Update handle/caret position on page reflow (keyboard open/close,
       // dynamic DOM changes, orientation updates, etc).
@@ -133,7 +156,7 @@ var SelectionHandler = {
         let data = JSON.parse(aData);
         if (this._activeType == this.TYPE_SELECTION) {
           this._startDraggingHandles();
-          this._moveSelection(data.handleType == this.HANDLE_TYPE_START, data.x, data.y);
+          this._moveSelection(data.handleType == this.HANDLE_TYPE_ANCHOR, data.x, data.y);
 
         } else if (this._activeType == this.TYPE_CURSOR) {
           this._startDraggingHandles();
@@ -152,7 +175,7 @@ var SelectionHandler = {
           this._startDraggingHandles();
 
           // Check to see if the handles should be reversed.
-          let isStartHandle = JSON.parse(aData).handleType == this.HANDLE_TYPE_START;
+          let isStartHandle = JSON.parse(aData).handleType == this.HANDLE_TYPE_ANCHOR;
           try {
             let selectionReversed = this._updateCacheForSelection(isStartHandle);
             if (selectionReversed) {
@@ -216,13 +239,26 @@ var SelectionHandler = {
   },
 
   handleEvent: function sh_handleEvent(aEvent) {
+    // Ignore all but selectionListener notifications during deferred _closeSelection().
+    if (this._deferCloseTimer) {
+      return;
+    }
+
     switch (aEvent.type) {
       case "scroll":
         // Maintain position when top-level document is scrolled
         this._positionHandlesOnChange();
         break;
 
-      case "pagehide":
+      case "pagehide": {
+        // We only care about events on the selected tab.
+        let tab = BrowserApp.getTabForWindow(aEvent.originalTarget.defaultView);
+        if (tab == BrowserApp.selectedTab) {
+          this._closeSelection();
+        }
+        break;
+      }
+
       case "blur":
         this._closeSelection();
         break;
@@ -260,7 +296,13 @@ var SelectionHandler = {
     };
   },
 
+  /**
+   * Observe and react to programmatic SelectionChange notifications.
+   */
   notifySelectionChanged: function sh_notifySelectionChanged(aDocument, aSelection, aReason) {
+    // Cancel any in-progress / deferred _closeSelection() action.
+    this._cancelDeferredCloseSelection();
+
     // Ignore selectionChange notifications during handle movements
     if (this._draggingHandles) {
       return;
@@ -273,10 +315,15 @@ var SelectionHandler = {
       return;
     }
 
-    // If selected text no longer exists, close
+    // If selected text no longer exists, schedule a deferred close action.
     if (!aSelection.toString()) {
-      this._closeSelection();
+      this._deferCloseSelection();
+      return;
     }
+
+    // Update the selection handle positions.
+    this._updateCacheForSelection();
+    this._positionHandles();
   },
 
   /*
@@ -296,22 +343,26 @@ var SelectionHandler = {
     this._closeSelection();
 
     if (this._isNonTextInputElement(aElement)) {
-      return false;
+      return this.START_ERROR_NONTEXT_INPUT;
     }
 
     this._initTargetInfo(aElement, this.TYPE_SELECTION);
 
     // Perform the appropriate selection method, if we can't determine method, or it fails, return
-    if (!this._performSelection(aOptions)) {
+    let selectionResult = this._performSelection(aOptions);
+    if (selectionResult !== this.ERROR_NONE) {
       this._deactivate();
-      return false;
+      return selectionResult;
     }
 
     // Double check results of successful selection operation
     let selection = this._getSelection();
-    if (!selection || selection.rangeCount == 0 || selection.getRangeAt(0).collapsed) {
+    if (!selection ||
+        selection.rangeCount == 0 ||
+        selection.getRangeAt(0).collapsed ||
+        this._getSelectedText().length == 0) {
       this._deactivate();
-      return false;
+      return this.START_ERROR_NO_SELECTION;
     }
 
     // Add a listener to end the selection if it's removed programatically
@@ -319,28 +370,27 @@ var SelectionHandler = {
     this._activeType = this.TYPE_SELECTION;
 
     // Initialize the cache
-    this._cache = { start: {}, end: {}};
+    this._cache = { anchorPt: {}, focusPt: {}};
     this._updateCacheForSelection();
 
     let scroll = this._getScrollPos();
     // Figure out the distance between the selection and the click
     let positions = this._getHandlePositions(scroll);
 
-    if (aOptions.mode == this.SELECT_AT_POINT && !this._selectionNearClick(scroll.X + aOptions.x,
-                                                                      scroll.Y + aOptions.y,
-                                                                      positions)) {
+    if (aOptions.mode == this.SELECT_AT_POINT &&
+        !this._selectionNearClick(scroll.X + aOptions.x, scroll.Y + aOptions.y, positions)) {
         this._closeSelection();
-        return false;
+        return this.START_ERROR_PROXIMITY;
     }
 
     // Determine position and show handles, open actionbar
     this._positionHandles(positions);
     Messaging.sendRequest({
       type: "TextSelection:ShowHandles",
-      handles: [this.HANDLE_TYPE_START, this.HANDLE_TYPE_END]
+      handles: [this.HANDLE_TYPE_ANCHOR, this.HANDLE_TYPE_FOCUS]
     });
     this._updateMenu();
-    return true;
+    return this.ERROR_NONE;
   },
 
   /*
@@ -350,8 +400,12 @@ var SelectionHandler = {
     if (aOptions.mode == this.SELECT_AT_POINT) {
       // Clear any ranges selected outside SelectionHandler, by code such as Find-In-Page.
       this._contentWindow.getSelection().removeAllRanges();
-      if (!this._domWinUtils.selectAtPoint(aOptions.x, aOptions.y, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE)) {
-        return false;
+      try {
+        if (!this._domWinUtils.selectAtPoint(aOptions.x, aOptions.y, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE)) {
+          return this.START_ERROR_NO_WORD_SELECTED;
+        }
+      } catch (e) {
+        return this.START_ERROR_SELECT_WORD_FAILED;
       }
 
       // Perform additional phone-number "smart selection".
@@ -359,17 +413,22 @@ var SelectionHandler = {
         this._selectSmartPhoneNumber();
       }
 
-      return true;
+      return this.ERROR_NONE;
     }
 
+    // Only selectAll() assumed from this point.
     if (aOptions.mode != this.SELECT_ALL) {
-      Cu.reportError("SelectionHandler.js: _performSelection() Invalid selection mode " + aOptions.mode);
-      return false;
+      return this.START_ERROR_INVALID_MODE;
     }
 
     // HTMLPreElement is a #text node, SELECT_ALL implies entire paragraph
     if (this._targetElement instanceof HTMLPreElement)  {
-      return this._domWinUtils.selectAtPoint(1, 1, Ci.nsIDOMWindowUtils.SELECT_PARAGRAPH);
+      try {
+        this._domWinUtils.selectAtPoint(1, 1, Ci.nsIDOMWindowUtils.SELECT_PARAGRAPH);
+        return this.ERROR_NONE;
+      } catch (e) {
+        return this.START_ERROR_SELECT_ALL_PARAGRAPH_FAILED;
+      }
     }
 
     // Else default to selectALL Document
@@ -396,7 +455,7 @@ var SelectionHandler = {
       }
     }
 
-    return true;
+    return this.ERROR_NONE;
   },
 
   /*
@@ -700,7 +759,7 @@ var SelectionHandler = {
   attachCaret: function sh_attachCaret(aElement) {
     // Ensure it isn't disabled, isn't handled by Android native dialog, and is editable text element
     if (aElement.disabled || InputWidgetHelper.hasInputWidget(aElement) || !this.isElementEditableText(aElement)) {
-      return false;
+      return this.ATTACH_ERROR_INCOMPATIBLE;
     }
 
     this._initTargetInfo(aElement, this.TYPE_CURSOR);
@@ -716,11 +775,11 @@ var SelectionHandler = {
     this._positionHandles();
     Messaging.sendRequest({
       type: "TextSelection:ShowHandles",
-      handles: [this.HANDLE_TYPE_MIDDLE]
+      handles: [this.HANDLE_TYPE_CARET]
     });
     this._updateMenu();
 
-    return true;
+    return this.ERROR_NONE;
   },
 
   // Target initialization for both TYPE_CURSOR and TYPE_SELECTION
@@ -843,11 +902,11 @@ var SelectionHandler = {
 
     // Update the cache as the handle is dragged (keep the cache in client coordinates).
     if (aIsStartHandle) {
-      this._cache.start.x = aX;
-      this._cache.start.y = aY;
+      this._cache.anchorPt.x = aX;
+      this._cache.anchorPt.y = aY;
     } else {
-      this._cache.end.x = aX;
-      this._cache.end.y = aY;
+      this._cache.focusPt.x = aX;
+      this._cache.focusPt.y = aY;
     }
 
     let selection = this._getSelection();
@@ -856,7 +915,7 @@ var SelectionHandler = {
     // are reversed, so we need to reverse the logic to extend the selection.
     if ((aIsStartHandle && !this._isRTL) || (!aIsStartHandle && this._isRTL)) {
       if (targetIsEditable) {
-        let anchorX = this._isRTL ? this._cache.start.x : this._cache.end.x;
+        let anchorX = this._isRTL ? this._cache.anchorPt.x : this._cache.focusPt.x;
         this._moveSelectionInEditable(anchorX, aX, caretPos);
       } else {
         let focusNode = selection.focusNode;
@@ -866,7 +925,7 @@ var SelectionHandler = {
       }
     } else {
       if (targetIsEditable) {
-        let anchorX = this._isRTL ? this._cache.end.x : this._cache.start.x;
+        let anchorX = this._isRTL ? this._cache.focusPt.x : this._cache.anchorPt.x;
         this._moveSelectionInEditable(anchorX, aX, caretPos);
       } else {
         selection.extend(caretPos.offsetNode, caretPos.offset);
@@ -972,6 +1031,48 @@ var SelectionHandler = {
     this._closeSelection();
   },
 
+  /**
+   * Deferred _closeSelection() actions allow for brief periods where programmatic
+   * selection changes have effectively closed the selection, but we anticipate further
+   * activity that may restore it.
+   *
+   * At this point, we hide the UI handles, and stop responding to messages until
+   * either the final _closeSelection() is triggered, or until our Gecko selectionListener
+   * notices a subsequent programmatic selection that results in a new selection.
+   */
+  _deferCloseSelection: function() {
+    // Schedule the deferred _closeSelection() action.
+    this._deferCloseTimer = setTimeout((function() {
+      // Time is up! Close the selection.
+      this._deferCloseTimer = null;
+      this._closeSelection();
+    }).bind(this), DEFER_CLOSE_TRIGGER_MS);
+
+    // Hide any handles while deferClosed.
+    if (this._prevHandlePositions.length) {
+      let positions = this._prevHandlePositions;
+      for (let i in positions) {
+        positions[i].hidden = true;
+      }
+
+      Messaging.sendRequest({
+        type: "TextSelection:PositionHandles",
+        positions: positions,
+        rtl: this._isRTL
+      });
+    }
+  },
+
+  /**
+   * Cancel any current deferred _closeSelection() action.
+   */
+  _cancelDeferredCloseSelection: function() {
+    if (this._deferCloseTimer) {
+      clearTimeout(this._deferCloseTimer);
+      this._deferCloseTimer = null;
+    }
+  },
+
   /*
    * Shuts SelectionHandler down.
    */
@@ -987,13 +1088,22 @@ var SelectionHandler = {
   },
 
   _clearSelection: function sh_clearSelection() {
+    // Cancel any in-progress / deferred _closeSelection() process.
+    this._cancelDeferredCloseSelection();
+
     let selection = this._getSelection();
     if (selection) {
       // Remove our listener before we clear the selection
       selection.QueryInterface(Ci.nsISelectionPrivate).removeSelectionListener(this);
-      // Clear selection without clearing the anchorNode or focusNode
+
+      // Remove the selection. For editables, we clear selection without losing
+      // element focus. For non-editables, just clear all.
       if (selection.rangeCount != 0) {
-        selection.collapseToStart();
+        if (this.isElementEditableText(this._targetElement)) {
+          selection.collapseToStart();
+        } else {
+          selection.removeAllRanges();
+        }
       }
     }
   },
@@ -1052,14 +1162,14 @@ var SelectionHandler = {
     let end = { x: this._isRTL ? rects[rects.length - 1].left : rects[rects.length - 1].right, y: rects[rects.length - 1].bottom };
 
     let selectionReversed = false;
-    if (this._cache.start) {
+    if (this._cache.anchorPt) {
       // If the end moved past the old end, but we're dragging the start handle, then that handle should become the end handle (and vice versa)
-      selectionReversed = (aIsStartHandle && (end.y > this._cache.end.y || (end.y == this._cache.end.y && end.x > this._cache.end.x))) ||
-                          (!aIsStartHandle && (start.y < this._cache.start.y || (start.y == this._cache.start.y && start.x < this._cache.start.x)));
+      selectionReversed = (aIsStartHandle && (end.y > this._cache.focusPt.y || (end.y == this._cache.focusPt.y && end.x > this._cache.focusPt.x))) ||
+                          (!aIsStartHandle && (start.y < this._cache.anchorPt.y || (start.y == this._cache.anchorPt.y && start.x < this._cache.anchorPt.x)));
     }
 
-    this._cache.start = start;
-    this._cache.end = end;
+    this._cache.anchorPt = start;
+    this._cache.focusPt = end;
 
     return selectionReversed;
   },
@@ -1089,28 +1199,28 @@ var SelectionHandler = {
       // divide by the pixel ratio
       let x = cursor.left / window.devicePixelRatio;
       let y = (cursor.top + cursor.height) / window.devicePixelRatio;
-      return [{ handle: this.HANDLE_TYPE_MIDDLE,
+      return [{ handle: this.HANDLE_TYPE_CARET,
                 left: x + scroll.X,
                 top: y + scroll.Y,
                 hidden: checkHidden(x, y) }];
     } else {
-      let sx = this._cache.start.x;
-      let sy = this._cache.start.y;
-      let ex = this._cache.end.x;
-      let ey = this._cache.end.y;
+      let anchorX = this._cache.anchorPt.x;
+      let anchorY = this._cache.anchorPt.y;
+      let focusX = this._cache.focusPt.x;
+      let focusY = this._cache.focusPt.y;
 
       // Translate coordinates to account for selections in sub-frames. We can't cache
       // this because the top-level page may have scrolled since selection started.
       let offset = this._getViewOffset();
 
-      return  [{ handle: this.HANDLE_TYPE_START,
-                 left: sx + offset.x + scroll.X,
-                 top: sy + offset.y + scroll.Y,
-                 hidden: checkHidden(sx, sy) },
-               { handle: this.HANDLE_TYPE_END,
-                 left: ex + offset.x + scroll.X,
-                 top: ey + offset.y + scroll.Y,
-                 hidden: checkHidden(ex, ey) }];
+      return  [{ handle: this.HANDLE_TYPE_ANCHOR,
+                 left: anchorX + offset.x + scroll.X,
+                 top: anchorY + offset.y + scroll.Y,
+                 hidden: checkHidden(anchorX, anchorY) },
+               { handle: this.HANDLE_TYPE_FOCUS,
+                 left: focusX + offset.x + scroll.X,
+                 top: focusY + offset.y + scroll.Y,
+                 hidden: checkHidden(focusX, focusY) }];
     }
   },
 
@@ -1162,6 +1272,11 @@ var SelectionHandler = {
   },
 
   subdocumentScrolled: function sh_subdocumentScrolled(aElement) {
+    // Ignore all but selectionListener notifications during deferred _closeSelection().
+    if (this._deferCloseTimer) {
+      return;
+    }
+
     if (this._activeType == this.TYPE_NONE) {
       return;
     }

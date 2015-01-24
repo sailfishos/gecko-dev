@@ -15,6 +15,11 @@
 #include "nsDisplayList.h"
 #include "JustificationUtils.h"
 
+// Undo the windows.h damage
+#if defined(XP_WIN) && defined(DrawText)
+#undef DrawText
+#endif
+
 class nsTextPaintStyle;
 class PropertyProvider;
 struct SelectionDetails;
@@ -578,6 +583,17 @@ protected:
                       const nsCharClipDisplayItem::ClipEdges& aClipEdges,
                       nscoord aLeftSideOffset,
                       gfxRect& aBoundingBox);
+
+  void PaintShadows(nsCSSShadowArray* aShadow,
+                    uint32_t aOffset, uint32_t aLength,
+                    const nsRect& aDirtyRect,
+                    const gfxPoint& aFramePt,
+                    const gfxPoint& aTextBaselinePt,
+                    nscoord aLeftEdgeOffset,
+                    PropertyProvider& aProvider,
+                    nscolor aForegroundColor,
+                    const nsCharClipDisplayItem::ClipEdges& aClipEdges,
+                    gfxContext* aCtx);
 
   struct LineDecoration {
     nsIFrame* mFrame;

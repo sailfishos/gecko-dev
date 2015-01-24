@@ -185,7 +185,6 @@ static uint32_t sForgetSkippableBeforeCC = 0;
 static uint32_t sPreviousSuspectedCount = 0;
 static uint32_t sCleanupsSinceLastGC = UINT32_MAX;
 static bool sNeedsFullCC = false;
-static bool sNeedsFullGC = false;
 static bool sNeedsGCAfterCC = false;
 static bool sIncrementalCC = false;
 static bool sDidPaintAfterPreviousICCSlice = false;
@@ -1087,177 +1086,6 @@ nsJSContext::AddSupportsPrimitiveTojsvals(nsISupports *aArg, JS::Value *aArgv)
   return NS_OK;
 }
 
-#ifdef NS_TRACE_MALLOC
-
-#include <errno.h>              // XXX assume Linux if NS_TRACE_MALLOC
-#include <fcntl.h>
-#ifdef XP_UNIX
-#include <unistd.h>
-#endif
-#ifdef XP_WIN32
-#include <io.h>
-#endif
-#include "nsTraceMalloc.h"
-
-static bool
-CheckUniversalXPConnectForTraceMalloc(JSContext *cx)
-{
-    if (nsContentUtils::IsCallerChrome())
-        return true;
-    JS_ReportError(cx, "trace-malloc functions require UniversalXPConnect");
-    return false;
-}
-
-static bool
-TraceMallocDisable(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    NS_TraceMallocDisable();
-    args.rval().setUndefined();
-    return true;
-}
-
-static bool
-TraceMallocEnable(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    NS_TraceMallocEnable();
-    args.rval().setUndefined();
-    return true;
-}
-
-static bool
-TraceMallocOpenLogFile(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    int fd;
-    if (argc == 0) {
-        fd = -1;
-    } else {
-        JSString *str = JS::ToString(cx, args[0]);
-        if (!str)
-            return false;
-        JSAutoByteString filename(cx, str);
-        if (!filename)
-            return false;
-        fd = open(filename.ptr(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
-        if (fd < 0) {
-            JS_ReportError(cx, "can't open %s: %s", filename.ptr(), strerror(errno));
-            return false;
-        }
-    }
-    args.rval().setInt32(fd);
-    return true;
-}
-
-static bool
-TraceMallocChangeLogFD(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = CallArgsFromVp(argc, vp);
-
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    int32_t fd, oldfd;
-    if (args.length() == 0) {
-        oldfd = -1;
-    } else {
-        if (!JS::ToInt32(cx, args[0], &fd))
-            return false;
-        oldfd = NS_TraceMallocChangeLogFD(fd);
-        if (oldfd == -2) {
-            JS_ReportOutOfMemory(cx);
-            return false;
-        }
-    }
-    args.rval().setInt32(oldfd);
-    return true;
-}
-
-static bool
-TraceMallocCloseLogFD(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = CallArgsFromVp(argc, vp);
-
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    int32_t fd;
-    if (args.length() == 0) {
-        args.rval().setUndefined();
-        return true;
-    }
-    if (!JS::ToInt32(cx, args[0], &fd))
-        return false;
-    NS_TraceMallocCloseLogFD((int) fd);
-    args.rval().setInt32(fd);
-    return true;
-}
-
-static bool
-TraceMallocLogTimestamp(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    JSString *str = JS::ToString(cx, args.get(0));
-    if (!str)
-        return false;
-    JSAutoByteString caption(cx, str);
-    if (!caption)
-        return false;
-    NS_TraceMallocLogTimestamp(caption.ptr());
-    args.rval().setUndefined();
-    return true;
-}
-
-static bool
-TraceMallocDumpAllocations(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-    JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-    if (!CheckUniversalXPConnectForTraceMalloc(cx))
-        return false;
-
-    JSString *str = JS::ToString(cx, args.get(0));
-    if (!str)
-        return false;
-    JSAutoByteString pathname(cx, str);
-    if (!pathname)
-        return false;
-    if (NS_TraceMallocDumpAllocations(pathname.ptr()) < 0) {
-        JS_ReportError(cx, "can't dump to %s: %s", pathname.ptr(), strerror(errno));
-        return false;
-    }
-    args.rval().setUndefined();
-    return true;
-}
-
-static const JSFunctionSpec TraceMallocFunctions[] = {
-    JS_FS("TraceMallocDisable",         TraceMallocDisable,         0, 0),
-    JS_FS("TraceMallocEnable",          TraceMallocEnable,          0, 0),
-    JS_FS("TraceMallocOpenLogFile",     TraceMallocOpenLogFile,     1, 0),
-    JS_FS("TraceMallocChangeLogFD",     TraceMallocChangeLogFD,     1, 0),
-    JS_FS("TraceMallocCloseLogFD",      TraceMallocCloseLogFD,      1, 0),
-    JS_FS("TraceMallocLogTimestamp",    TraceMallocLogTimestamp,    1, 0),
-    JS_FS("TraceMallocDumpAllocations", TraceMallocDumpAllocations, 1, 0),
-    JS_FS_END
-};
-
-#endif /* NS_TRACE_MALLOC */
-
 #ifdef MOZ_JPROF
 
 #include <signal.h>
@@ -1374,13 +1202,6 @@ nsJSContext::InitClasses(JS::Handle<JSObject*> aGlobalObj)
   // Attempt to initialize profiling functions
   ::JS_DefineProfilingFunctions(cx, aGlobalObj);
 
-#ifdef NS_TRACE_MALLOC
-  if (nsContentUtils::IsCallerChrome()) {
-    // Attempt to initialize TraceMalloc functions
-    ::JS_DefineFunctions(cx, aGlobalObj, TraceMallocFunctions);
-  }
-#endif
-
 #ifdef MOZ_JPROF
   // Attempt to initialize JProf functions
   ::JS_DefineFunctions(cx, aGlobalObj, JProfFunctions);
@@ -1459,24 +1280,17 @@ nsJSContext::GarbageCollectNow(JS::gcreason::Reason aReason,
   if (sCCLockedOut && aIncremental == IncrementalGC) {
     // We're in the middle of incremental GC. Do another slice.
     JS::PrepareForIncrementalGC(sRuntime);
-    JS::IncrementalGC(sRuntime, aReason, aSliceMillis);
+    JS::IncrementalGCSlice(sRuntime, aReason, aSliceMillis);
     return;
   }
 
-  if (sNeedsFullGC || aReason != JS::gcreason::CC_WAITING) {
-    sNeedsFullGC = false;
-    JS::PrepareForFullGC(sRuntime);
-  } else {
-    CycleCollectedJSRuntime::Get()->PrepareWaitingZonesForGC();
-  }
-
+  JS::PrepareForFullGC(sRuntime);
   if (aIncremental == IncrementalGC) {
     MOZ_ASSERT(aShrinking == NonShrinkingGC);
-    JS::IncrementalGC(sRuntime, aReason, aSliceMillis);
-  } else if (aShrinking == ShrinkingGC) {
-    JS::ShrinkingGC(sRuntime, aReason);
+    JS::StartIncrementalGC(sRuntime, GC_NORMAL, aReason, aSliceMillis);
   } else {
-    JS::GCForReason(sRuntime, aReason);
+    JSGCInvocationKind gckind = aShrinking == ShrinkingGC ? GC_SHRINK : GC_NORMAL;
+    JS::GCForReason(sRuntime, gckind, aReason);
   }
 }
 
@@ -2156,8 +1970,6 @@ nsJSContext::RunNextCollectorTimer()
 void
 nsJSContext::PokeGC(JS::gcreason::Reason aReason, int aDelay)
 {
-  sNeedsFullGC = sNeedsFullGC || aReason != JS::gcreason::CC_WAITING;
-
   if (sGCTimer || sInterSliceGCTimer || sShuttingDown) {
     // There's already a timer for GC'ing, just return
     return;
@@ -2334,86 +2146,104 @@ DOMGCSliceCallback(JSRuntime *aRt, JS::GCProgress aProgress, const JS::GCDescrip
 {
   NS_ASSERTION(NS_IsMainThread(), "GCs must run on the main thread");
 
-  if (aProgress == JS::GC_CYCLE_END) {
-    PRTime delta = GetCollectionTimeDelta();
+  switch (aProgress) {
+    case JS::GC_CYCLE_BEGIN: {
+      // Prevent cycle collections and shrinking during incremental GC.
+      sCCLockedOut = true;
 
-    if (sPostGCEventsToConsole) {
-      NS_NAMED_LITERAL_STRING(kFmt, "GC(T+%.1f) ");
-      nsString prefix, gcstats;
-      gcstats.Adopt(aDesc.formatMessage(aRt));
-      prefix.Adopt(nsTextFormatter::smprintf(kFmt.get(),
+      nsJSContext::KillShrinkGCBuffersTimer();
+
+      break;
+    }
+
+    case JS::GC_CYCLE_END: {
+      PRTime delta = GetCollectionTimeDelta();
+
+      if (sPostGCEventsToConsole) {
+        NS_NAMED_LITERAL_STRING(kFmt, "GC(T+%.1f) ");
+        nsString prefix, gcstats;
+        gcstats.Adopt(aDesc.formatMessage(aRt));
+        prefix.Adopt(nsTextFormatter::smprintf(kFmt.get(),
                                              double(delta) / PR_USEC_PER_SEC));
-      nsString msg = prefix + gcstats;
-      nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
-      if (cs) {
-        cs->LogStringMessage(msg.get());
+        nsString msg = prefix + gcstats;
+        nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+        if (cs) {
+          cs->LogStringMessage(msg.get());
+        }
       }
-    }
 
-    if (sPostGCEventsToObserver) {
-      nsString json;
-      json.Adopt(aDesc.formatJSON(aRt, PR_Now()));
-      nsRefPtr<NotifyGCEndRunnable> notify = new NotifyGCEndRunnable(json);
-      NS_DispatchToMainThread(notify);
-    }
-  }
-
-  // Prevent cycle collections and shrinking during incremental GC.
-  if (aProgress == JS::GC_CYCLE_BEGIN) {
-    sCCLockedOut = true;
-    nsJSContext::KillShrinkGCBuffersTimer();
-  } else if (aProgress == JS::GC_CYCLE_END) {
-    sCCLockedOut = false;
-  }
-
-  // The GC has more work to do, so schedule another GC slice.
-  if (aProgress == JS::GC_SLICE_END) {
-    nsJSContext::KillInterSliceGCTimer();
-    if (!sShuttingDown) {
-      CallCreateInstance("@mozilla.org/timer;1", &sInterSliceGCTimer);
-      sInterSliceGCTimer->InitWithFuncCallback(InterSliceGCTimerFired,
-                                               nullptr,
-                                               NS_INTERSLICE_GC_DELAY,
-                                               nsITimer::TYPE_ONE_SHOT);
-    }
-  }
-
-  if (aProgress == JS::GC_CYCLE_END) {
-    // May need to kill the inter-slice GC timer
-    nsJSContext::KillInterSliceGCTimer();
-
-    sCCollectedWaitingForGC = 0;
-    sCCollectedZonesWaitingForGC = 0;
-    sLikelyShortLivingObjectsNeedingGC = 0;
-    sCleanupsSinceLastGC = 0;
-    sNeedsFullCC = true;
-    sHasRunGC = true;
-    nsJSContext::MaybePokeCC();
-
-    if (aDesc.isCompartment_) {
-      if (!sFullGCTimer && !sShuttingDown) {
-        CallCreateInstance("@mozilla.org/timer;1", &sFullGCTimer);
-        sFullGCTimer->InitWithFuncCallback(FullGCTimerFired,
-                                           nullptr,
-                                           NS_FULL_GC_DELAY,
-                                           nsITimer::TYPE_ONE_SHOT);
+      if (sPostGCEventsToObserver) {
+        nsString json;
+        json.Adopt(aDesc.formatJSON(aRt, PR_Now()));
+        nsRefPtr<NotifyGCEndRunnable> notify = new NotifyGCEndRunnable(json);
+        NS_DispatchToMainThread(notify);
       }
-    } else {
-      nsJSContext::KillFullGCTimer();
 
-      // Avoid shrinking during heavy activity, which is suggested by
-      // compartment GC.
-      nsJSContext::PokeShrinkGCBuffers();
+      sCCLockedOut = false;
+
+      // May need to kill the inter-slice GC timer
+      nsJSContext::KillInterSliceGCTimer();
+
+      sCCollectedWaitingForGC = 0;
+      sCCollectedZonesWaitingForGC = 0;
+      sLikelyShortLivingObjectsNeedingGC = 0;
+      sCleanupsSinceLastGC = 0;
+      sNeedsFullCC = true;
+      sHasRunGC = true;
+      nsJSContext::MaybePokeCC();
+
+      if (aDesc.isCompartment_) {
+        if (!sFullGCTimer && !sShuttingDown) {
+          CallCreateInstance("@mozilla.org/timer;1", &sFullGCTimer);
+          sFullGCTimer->InitWithFuncCallback(FullGCTimerFired,
+                                             nullptr,
+                                             NS_FULL_GC_DELAY,
+                                             nsITimer::TYPE_ONE_SHOT);
+        }
+      } else {
+        nsJSContext::KillFullGCTimer();
+
+        // Avoid shrinking during heavy activity, which is suggested by
+        // compartment GC.
+        nsJSContext::PokeShrinkGCBuffers();
+      }
+
+      if (ShouldTriggerCC(nsCycleCollector_suspectedCount())) {
+        nsCycleCollector_dispatchDeferredDeletion();
+      }
+
+      break;
     }
+
+    case JS::GC_SLICE_BEGIN:
+      break;
+
+    case JS::GC_SLICE_END:
+
+      // The GC has more work to do, so schedule another GC slice.
+      nsJSContext::KillInterSliceGCTimer();
+      if (!sShuttingDown) {
+        CallCreateInstance("@mozilla.org/timer;1", &sInterSliceGCTimer);
+        sInterSliceGCTimer->InitWithFuncCallback(InterSliceGCTimerFired,
+                                                 nullptr,
+                                                 NS_INTERSLICE_GC_DELAY,
+                                                 nsITimer::TYPE_ONE_SHOT);
+      }
+
+      if (ShouldTriggerCC(nsCycleCollector_suspectedCount())) {
+        nsCycleCollector_dispatchDeferredDeletion();
+      }
+
+      break;
+
+    default:
+      MOZ_CRASH("Unexpected GCProgress value");
   }
 
-  if ((aProgress == JS::GC_SLICE_END || aProgress == JS::GC_CYCLE_END) &&
-      ShouldTriggerCC(nsCycleCollector_suspectedCount())) {
-    nsCycleCollector_dispatchDeferredDeletion();
-  }
-
-  if (sPrevGCSliceCallback)
+  if (sPrevGCSliceCallback) {
     (*sPrevGCSliceCallback)(aRt, aProgress, aDesc);
+  }
+
 }
 
 void
@@ -2461,7 +2291,6 @@ mozilla::dom::StartupJSEnvironment()
   sLikelyShortLivingObjectsNeedingGC = 0;
   sPostGCEventsToConsole = false;
   sNeedsFullCC = false;
-  sNeedsFullGC = false;
   sNeedsGCAfterCC = false;
   gNameSpaceManager = nullptr;
   sRuntimeService = nullptr;
@@ -2924,7 +2753,7 @@ public:
   NS_DECL_NSIARRAY
 
   // nsIJSArgArray
-  nsresult GetArgs(uint32_t *argc, void **argv);
+  nsresult GetArgs(uint32_t* argc, void** argv) MOZ_OVERRIDE;
 
   void ReleaseJSObjects();
 

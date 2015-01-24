@@ -208,6 +208,7 @@ Layer::Layer(LayerManager* aManager, void* aImplData) :
   mStickyPositionData(nullptr),
   mScrollbarTargetId(FrameMetrics::NULL_SCROLL_ID),
   mScrollbarDirection(ScrollDirection::NONE),
+  mIsScrollbarContainer(false),
   mDebugColorIndex(0),
   mAnimationGeneration(0)
 {}
@@ -737,7 +738,7 @@ const Matrix4x4
 Layer::GetTransform() const
 {
   Matrix4x4 transform = mTransform;
-  transform.PostScale(mPostXScale, mPostYScale, 1.0f);
+  transform.PostScale(GetPostXScale(), GetPostYScale(), 1.0f);
   if (const ContainerLayer* c = AsContainerLayer()) {
     transform.PreScale(c->GetPreXScale(), c->GetPreYScale(), 1.0f);
   }
@@ -753,7 +754,7 @@ Layer::GetLocalTransform()
   else
     transform = mTransform;
 
-  transform.PostScale(mPostXScale, mPostYScale, 1.0f);
+  transform.PostScale(GetPostXScale(), GetPostYScale(), 1.0f);
   if (ContainerLayer* c = AsContainerLayer()) {
     transform.PreScale(c->GetPreXScale(), c->GetPreYScale(), 1.0f);
   }
@@ -858,6 +859,8 @@ ContainerLayer::ContainerLayer(LayerManager* aManager, void* aImplData)
     mPreYScale(1.0f),
     mInheritedXScale(1.0f),
     mInheritedYScale(1.0f),
+    mPresShellResolution(1.0f),
+    mScaleToResolution(false),
     mUseIntermediateSurface(false),
     mSupportsComponentAlphaChildren(false),
     mMayHaveReadbackChild(false),
@@ -1017,6 +1020,7 @@ ContainerLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs)
 {
   aAttrs = ContainerLayerAttributes(mPreXScale, mPreYScale,
                                     mInheritedXScale, mInheritedYScale,
+                                    mPresShellResolution, mScaleToResolution,
                                     reinterpret_cast<uint64_t>(mHMDInfo.get()));
 }
 
@@ -1680,6 +1684,9 @@ ContainerLayer::PrintInfo(std::stringstream& aStream, const char* aPrefix)
   }
   if (1.0 != mPreXScale || 1.0 != mPreYScale) {
     aStream << nsPrintfCString(" [preScale=%g, %g]", mPreXScale, mPreYScale).get();
+  }
+  if (mScaleToResolution) {
+    aStream << nsPrintfCString(" [presShellResolution=%g]", mPresShellResolution).get();
   }
   if (mHMDInfo) {
     aStream << nsPrintfCString(" [hmd=%p]", mHMDInfo.get()).get();

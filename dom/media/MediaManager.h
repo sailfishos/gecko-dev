@@ -89,8 +89,6 @@ public:
     mStream = aStream;
     mAudioSource = aAudioSource;
     mVideoSource = aVideoSource;
-    mLastEndTimeAudio = 0;
-    mLastEndTimeVideo = 0;
 
     mStream->AddListener(this);
   }
@@ -118,7 +116,7 @@ public:
   {
     NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
     return mVideoSource && !mStopped &&
-           mVideoSource->GetMediaSource() == MediaSourceType::Camera &&
+           mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Camera &&
            (!mVideoSource->IsFake() ||
             Preferences::GetBool("media.navigator.permission.fake"));
   }
@@ -133,19 +131,19 @@ public:
   {
     NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
     return mVideoSource && !mStopped && !mVideoSource->IsAvailable() &&
-           mVideoSource->GetMediaSource() == MediaSourceType::Screen;
+           mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Screen;
   }
   bool CapturingWindow()
   {
     NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
     return mVideoSource && !mStopped && !mVideoSource->IsAvailable() &&
-           mVideoSource->GetMediaSource() == MediaSourceType::Window;
+           mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Window;
   }
   bool CapturingApplication()
   {
     NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
     return mVideoSource && !mStopped && !mVideoSource->IsAvailable() &&
-           mVideoSource->GetMediaSource() == MediaSourceType::Application;
+           mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Application;
   }
 
   void SetStopped()
@@ -187,10 +185,10 @@ public:
     // Currently audio sources ignore NotifyPull, but they could
     // watch it especially for fake audio.
     if (mAudioSource) {
-      mAudioSource->NotifyPull(aGraph, mStream, kAudioTrack, aDesiredTime, mLastEndTimeAudio);
+      mAudioSource->NotifyPull(aGraph, mStream, kAudioTrack, aDesiredTime);
     }
     if (mVideoSource) {
-      mVideoSource->NotifyPull(aGraph, mStream, kVideoTrack, aDesiredTime, mLastEndTimeVideo);
+      mVideoSource->NotifyPull(aGraph, mStream, kVideoTrack, aDesiredTime);
     }
   }
 
@@ -239,8 +237,6 @@ private:
   nsRefPtr<MediaEngineSource> mAudioSource; // threadsafe refcnt
   nsRefPtr<MediaEngineSource> mVideoSource; // threadsafe refcnt
   nsRefPtr<SourceMediaStream> mStream; // threadsafe refcnt
-  StreamTime mLastEndTimeAudio;
-  StreamTime mLastEndTimeVideo;
   bool mFinished;
 
   // Accessed from MainThread and MSG thread
@@ -512,7 +508,7 @@ protected:
   nsString mID;
   bool mHasFacingMode;
   dom::VideoFacingModeEnum mFacingMode;
-  MediaSourceType mMediaSource;
+  dom::MediaSourceEnum mMediaSource;
   nsRefPtr<MediaEngineSource> mSource;
 };
 

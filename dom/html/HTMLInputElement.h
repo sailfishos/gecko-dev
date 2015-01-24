@@ -119,6 +119,9 @@ public:
   virtual void Blur(ErrorResult& aError) MOZ_OVERRIDE;
   virtual void Focus(ErrorResult& aError) MOZ_OVERRIDE;
 
+  // Element
+  virtual bool IsInteractiveHTMLContent() const MOZ_OVERRIDE;
+
   // nsIDOMHTMLInputElement
   NS_DECL_NSIDOMHTMLINPUTELEMENT
 
@@ -177,8 +180,8 @@ public:
 
   // Element
 private:
-  virtual void AddStates(EventStates aStates);
-  virtual void RemoveStates(EventStates aStates);
+  virtual void AddStates(EventStates aStates) MOZ_OVERRIDE;
+  virtual void RemoveStates(EventStates aStates) MOZ_OVERRIDE;
 
 public:
 

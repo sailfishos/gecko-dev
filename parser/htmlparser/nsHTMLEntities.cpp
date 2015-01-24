@@ -52,24 +52,18 @@ static PLDHashNumber
 
 
 static const PLDHashTableOps EntityToUnicodeOps = {
-  PL_DHashAllocTable,
-  PL_DHashFreeTable,
   PL_DHashStringKey,
   matchNodeString,
   PL_DHashMoveEntryStub,
   PL_DHashClearEntryStub,
-  PL_DHashFinalizeStub,
   nullptr,
 }; 
 
 static const PLDHashTableOps UnicodeToEntityOps = {
-  PL_DHashAllocTable,
-  PL_DHashFreeTable,
   hashUnicodeValue,
   matchNodeUnicode,
   PL_DHashMoveEntryStub,
   PL_DHashClearEntryStub,
-  PL_DHashFinalizeStub,
   nullptr,
 };
 
@@ -90,16 +84,14 @@ nsHTMLEntities::AddRefTable(void)
 {
   if (!gTableRefCnt) {
     if (!PL_DHashTableInit(&gEntityToUnicode, &EntityToUnicodeOps,
-                           nullptr, sizeof(EntityNodeEntry),
+                           sizeof(EntityNodeEntry),
                            fallible_t(), NS_HTML_ENTITY_COUNT)) {
-      gEntityToUnicode.ops = nullptr;
       return NS_ERROR_OUT_OF_MEMORY;
     }
     if (!PL_DHashTableInit(&gUnicodeToEntity, &UnicodeToEntityOps,
-                           nullptr, sizeof(EntityNodeEntry),
+                           sizeof(EntityNodeEntry),
                            fallible_t(), NS_HTML_ENTITY_COUNT)) {
       PL_DHashTableFinish(&gEntityToUnicode);
-      gEntityToUnicode.ops = gUnicodeToEntity.ops = nullptr;
       return NS_ERROR_OUT_OF_MEMORY;
     }
     for (const EntityNode *node = gEntityArray,
@@ -109,9 +101,7 @@ nsHTMLEntities::AddRefTable(void)
       // add to Entity->Unicode table
       EntityNodeEntry* entry =
         static_cast<EntityNodeEntry*>
-                   (PL_DHashTableOperate(&gEntityToUnicode,
-                                            node->mStr,
-                                            PL_DHASH_ADD));
+                   (PL_DHashTableAdd(&gEntityToUnicode, node->mStr));
       NS_ASSERTION(entry, "Error adding an entry");
       // Prefer earlier entries when we have duplication.
       if (!entry->node)
@@ -119,9 +109,8 @@ nsHTMLEntities::AddRefTable(void)
 
       // add to Unicode->Entity table
       entry = static_cast<EntityNodeEntry*>
-                         (PL_DHashTableOperate(&gUnicodeToEntity,
-                                                  NS_INT32_TO_PTR(node->mUnicode),
-                                                  PL_DHASH_ADD));
+                         (PL_DHashTableAdd(&gUnicodeToEntity,
+                                           NS_INT32_TO_PTR(node->mUnicode)));
       NS_ASSERTION(entry, "Error adding an entry");
       // Prefer earlier entries when we have duplication.
       if (!entry->node)
@@ -137,27 +126,25 @@ nsHTMLEntities::AddRefTable(void)
 }
 
 void
-nsHTMLEntities::ReleaseTable(void) 
+nsHTMLEntities::ReleaseTable(void)
 {
   if (--gTableRefCnt != 0)
     return;
 
-  if (gEntityToUnicode.ops) {
+  if (gEntityToUnicode.IsInitialized()) {
     PL_DHashTableFinish(&gEntityToUnicode);
-    gEntityToUnicode.ops = nullptr;
   }
-  if (gUnicodeToEntity.ops) {
+  if (gUnicodeToEntity.IsInitialized()) {
     PL_DHashTableFinish(&gUnicodeToEntity);
-    gUnicodeToEntity.ops = nullptr;
   }
-
 }
 
-int32_t 
+int32_t
 nsHTMLEntities::EntityToUnicode(const nsCString& aEntity)
 {
-  NS_ASSERTION(gEntityToUnicode.ops, "no lookup table, needs addref");
-  if (!gEntityToUnicode.ops)
+  NS_ASSERTION(gEntityToUnicode.IsInitialized(),
+               "no lookup table, needs addref");
+  if (!gEntityToUnicode.IsInitialized())
     return -1;
 
     //this little piece of code exists because entities may or may not have the terminating ';'.
@@ -171,7 +158,7 @@ nsHTMLEntities::EntityToUnicode(const nsCString& aEntity)
       
   EntityNodeEntry* entry = 
     static_cast<EntityNodeEntry*>
-               (PL_DHashTableOperate(&gEntityToUnicode, aEntity.get(), PL_DHASH_LOOKUP));
+               (PL_DHashTableLookup(&gEntityToUnicode, aEntity.get()));
 
   if (!entry || PL_DHASH_ENTRY_IS_FREE(entry))
   return -1;
@@ -194,10 +181,11 @@ nsHTMLEntities::EntityToUnicode(const nsAString& aEntity) {
 const char*
 nsHTMLEntities::UnicodeToEntity(int32_t aUnicode)
 {
-  NS_ASSERTION(gUnicodeToEntity.ops, "no lookup table, needs addref");
+  NS_ASSERTION(gUnicodeToEntity.IsInitialized(),
+               "no lookup table, needs addref");
   EntityNodeEntry* entry =
     static_cast<EntityNodeEntry*>
-               (PL_DHashTableOperate(&gUnicodeToEntity, NS_INT32_TO_PTR(aUnicode), PL_DHASH_LOOKUP));
+               (PL_DHashTableLookup(&gUnicodeToEntity, NS_INT32_TO_PTR(aUnicode)));
                    
   if (!entry || PL_DHASH_ENTRY_IS_FREE(entry))
   return nullptr;

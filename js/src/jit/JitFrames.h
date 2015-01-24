@@ -13,6 +13,7 @@
 #include "jsfun.h"
 
 #include "jit/JitFrameIterator.h"
+#include "jit/Safepoints.h"
 
 namespace js {
 namespace jit {
@@ -269,7 +270,6 @@ struct ResumeFromException
 };
 
 void HandleException(ResumeFromException *rfe);
-void HandleParallelFailure(ResumeFromException *rfe);
 
 void EnsureExitFrame(CommonFrameLayout *frame);
 
@@ -279,7 +279,6 @@ void MarkIonCompilerRoots(JSTracer *trc);
 JSCompartment *
 TopmostIonActivationCompartment(JSRuntime *rt);
 
-template<typename T>
 void UpdateJitActivationsForMinorGC(PerThreadData *ptd, JSTracer *trc);
 
 static inline uint32_t
@@ -290,7 +289,7 @@ MakeFrameDescriptor(uint32_t frameSize, FrameType type)
 
 // Returns the JSScript associated with the topmost JIT frame.
 inline JSScript *
-GetTopJitJSScript(ThreadSafeContext *cx, void **returnAddrOut = nullptr)
+GetTopJitJSScript(JSContext *cx, void **returnAddrOut = nullptr)
 {
     JitFrameIterator iter(cx);
     MOZ_ASSERT(iter.type() == JitFrame_Exit);
@@ -332,6 +331,9 @@ class CommonFrameLayout
   public:
     static size_t offsetOfDescriptor() {
         return offsetof(CommonFrameLayout, descriptor_);
+    }
+    uintptr_t descriptor() const {
+        return descriptor_;
     }
     static size_t offsetOfReturnAddress() {
         return offsetof(CommonFrameLayout, returnAddress_);
@@ -399,11 +401,10 @@ class JitFrameLayout : public CommonFrameLayout
         return numActualArgs_;
     }
 
-    // Computes a reference to a slot, where a slot is a distance from the base
-    // frame pointer (as would be used for LStackSlot).
-    uintptr_t *slotRef(uint32_t slot) {
-        return (uintptr_t *)((uint8_t *)this - slot);
-    }
+    // Computes a reference to a stack or argument slot, where a slot is a
+    // distance from the base frame pointer, as would be used for LStackSlot
+    // or LArgument.
+    uintptr_t *slotRef(SafepointSlotEntry where);
 
     static inline size_t Size() {
         return sizeof(JitFrameLayout);
@@ -823,6 +824,11 @@ class BaselineStubFrameLayout : public CommonFrameLayout
     }
     static inline int reverseOffsetOfSavedFramePtr() {
         return -int(2 * sizeof(void *));
+    }
+
+    void *reverseSavedFramePtr() {
+        uint8_t *addr = ((uint8_t *) this) + reverseOffsetOfSavedFramePtr();
+        return *(void **)addr;
     }
 
     inline ICStub *maybeStubPtr() {

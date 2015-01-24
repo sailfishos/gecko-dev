@@ -23,18 +23,15 @@ import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.db.BrowserContract.CommonColumns;
 import org.mozilla.gecko.db.BrowserContract.URLColumns;
 import org.mozilla.gecko.util.EventCallback;
-import org.mozilla.gecko.util.GeckoRequest;
 import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.ThreadUtils;
 
-import android.app.Activity;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.database.MatrixCursor.RowBuilder;
 import android.os.Bundle;
-import android.support.v4.app.LoaderManager.LoaderCallbacks;
 import android.support.v4.content.Loader;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -396,6 +393,7 @@ public class RecentTabsPanel extends HomeFragment
                 textView.setText(title);
             } else if (itemType == ROW_STANDARD) {
                 final TwoLinePageRow pageRow = (TwoLinePageRow) view;
+                pageRow.setShowIcons(false);
                 pageRow.updateFromCursor(c);
             }
          }

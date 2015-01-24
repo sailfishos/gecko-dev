@@ -10,6 +10,7 @@
 
 #include "jsprf.h"
 
+#include "gc/GCInternals.h"
 #include "jit/IonCode.h"
 #include "js/SliceBudget.h"
 #include "vm/ArgumentsObject.h"
@@ -160,28 +161,14 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
     T *thing = *thingp;
     MOZ_ASSERT(*thingp);
 
-#ifdef JSGC_COMPACTING
     thing = MaybeForwarded(thing);
-#endif
-
-# ifdef JSGC_FJGENERATIONAL
-    /*
-     * The code below (runtimeFromMainThread(), etc) makes assumptions
-     * not valid for the ForkJoin worker threads during ForkJoin GGC,
-     * so just bail.
-     */
-    if (ForkJoinContext::current())
-        return;
-# endif
 
     /* This function uses data that's not available in the nursery. */
     if (IsInsideNursery(thing))
         return;
 
-#ifdef JSGC_COMPACTING
     MOZ_ASSERT_IF(!MovingTracer::IsMovingTracer(trc) && !Nursery::IsMinorCollectionTracer(trc),
                   !IsForwarded(*thingp));
-#endif
 
     /*
      * Permanent atoms are not associated with this runtime, but will be ignored
@@ -193,13 +180,8 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
     Zone *zone = thing->zoneFromAnyThread();
     JSRuntime *rt = trc->runtime();
 
-#ifdef JSGC_COMPACTING
     MOZ_ASSERT_IF(!MovingTracer::IsMovingTracer(trc), CurrentThreadCanAccessZone(zone));
     MOZ_ASSERT_IF(!MovingTracer::IsMovingTracer(trc), CurrentThreadCanAccessRuntime(rt));
-#else
-    MOZ_ASSERT(CurrentThreadCanAccessZone(zone));
-    MOZ_ASSERT(CurrentThreadCanAccessRuntime(rt));
-#endif
 
     MOZ_ASSERT(zone->runtimeFromAnyThread() == trc->runtime());
     MOZ_ASSERT(trc->hasTracingDetails());
@@ -227,9 +209,11 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
      * Try to assert that the thing is allocated.  This is complicated by the
      * fact that allocated things may still contain the poison pattern if that
      * part has not been overwritten, and that the free span list head in the
-     * ArenaHeader may not be synced with the real one in ArenaLists.
+     * ArenaHeader may not be synced with the real one in ArenaLists.  Also,
+     * background sweeping may be running and concurrently modifiying the free
+     * list.
      */
-    MOZ_ASSERT_IF(IsThingPoisoned(thing) && rt->isHeapBusy(),
+    MOZ_ASSERT_IF(IsThingPoisoned(thing) && rt->isHeapBusy() && !rt->gc.isBackgroundSweeping(),
                   !InFreeList(thing->asTenured().arenaHeader(), thing));
 #endif
 }
@@ -276,16 +260,6 @@ MarkInternal(JSTracer *trc, T **thingp)
     T *thing = *thingp;
 
     if (!trc->callback) {
-#ifdef JSGC_FJGENERATIONAL
-        /*
-         * This case should never be reached from PJS collections as
-         * those should all be using a ForkJoinNurseryCollectionTracer
-         * that carries a callback.
-         */
-        MOZ_ASSERT(!ForkJoinContext::current());
-        MOZ_ASSERT(!trc->runtime()->isFJMinorCollecting());
-#endif
-
         /*
          * We may mark a Nursery thing outside the context of the
          * MinorCollectionTracer because of a pre-barrier. The pre-barrier is
@@ -435,34 +409,29 @@ template <typename T>
 static bool
 IsMarked(T **thingp)
 {
+    MOZ_ASSERT_IF(!ThingIsPermanentAtom(*thingp),
+                  CurrentThreadCanAccessRuntime((*thingp)->runtimeFromMainThread()));
+    return IsMarkedFromAnyThread(thingp);
+}
+
+template <typename T>
+static bool
+IsMarkedFromAnyThread(T **thingp)
+{
     MOZ_ASSERT(thingp);
     MOZ_ASSERT(*thingp);
     JSRuntime* rt = (*thingp)->runtimeFromAnyThread();
-#ifdef JSGC_FJGENERATIONAL
-    // Must precede the case for GGC because IsInsideNursery()
-    // will also be true for the ForkJoinNursery.
-    if (rt->isFJMinorCollecting()) {
-        ForkJoinContext *ctx = ForkJoinContext::current();
-        ForkJoinNursery &nursery = ctx->nursery();
-        if (nursery.isInsideFromspace(*thingp))
-            return nursery.getForwardedPointer(thingp);
-    }
-    else
-#endif
-    {
-        if (IsInsideNursery(*thingp)) {
-            Nursery &nursery = rt->gc.nursery;
-            return nursery.getForwardedPointer(thingp);
-        }
+
+    if (IsInsideNursery(*thingp)) {
+        Nursery &nursery = rt->gc.nursery;
+        return nursery.getForwardedPointer(thingp);
     }
 
-    Zone *zone = (*thingp)->asTenured().zone();
-    if (!zone->isCollecting() || zone->isGCFinished())
+    Zone *zone = (*thingp)->asTenured().zoneFromAnyThread();
+    if (!zone->isCollectingFromAnyThread() || zone->isGCFinished())
         return true;
-#ifdef JSGC_COMPACTING
     if (zone->isGCCompacting() && IsForwarded(*thingp))
         *thingp = Forwarded(*thingp);
-#endif
     return (*thingp)->asTenured().isMarked();
 }
 
@@ -489,23 +458,12 @@ IsAboutToBeFinalizedFromAnyThread(T **thingp)
     if (ThingIsPermanentAtom(thing) && !TlsPerThreadData.get()->associatedWith(rt))
         return false;
 
-#ifdef JSGC_FJGENERATIONAL
-    if (rt->isFJMinorCollecting()) {
-        ForkJoinContext *ctx = ForkJoinContext::current();
-        ForkJoinNursery &nursery = ctx->nursery();
-        if (nursery.isInsideFromspace(thing))
+    Nursery &nursery = rt->gc.nursery;
+    MOZ_ASSERT_IF(!rt->isHeapMinorCollecting(), !IsInsideNursery(thing));
+    if (rt->isHeapMinorCollecting()) {
+        if (IsInsideNursery(thing))
             return !nursery.getForwardedPointer(thingp);
-    }
-    else
-#endif
-    {
-        Nursery &nursery = rt->gc.nursery;
-        MOZ_ASSERT_IF(!rt->isHeapMinorCollecting(), !IsInsideNursery(thing));
-        if (rt->isHeapMinorCollecting()) {
-            if (IsInsideNursery(thing))
-                return !nursery.getForwardedPointer(thingp);
-            return false;
-        }
+        return false;
     }
 
     Zone *zone = thing->asTenured().zoneFromAnyThread();
@@ -514,12 +472,10 @@ IsAboutToBeFinalizedFromAnyThread(T **thingp)
             return false;
         return !thing->asTenured().isMarked();
     }
-#ifdef JSGC_COMPACTING
     else if (zone->isGCCompacting() && IsForwarded(thing)) {
         *thingp = Forwarded(thing);
         return false;
     }
-#endif
 
     return false;
 }
@@ -532,26 +488,15 @@ UpdateIfRelocated(JSRuntime *rt, T **thingp)
     if (!*thingp)
         return nullptr;
 
-#ifdef JSGC_FJGENERATIONAL
-    if (rt->isFJMinorCollecting()) {
-        ForkJoinContext *ctx = ForkJoinContext::current();
-        ForkJoinNursery &nursery = ctx->nursery();
-        if (nursery.isInsideFromspace(*thingp))
-            nursery.getForwardedPointer(thingp);
-        return *thingp;
-    }
-#endif
-
     if (rt->isHeapMinorCollecting() && IsInsideNursery(*thingp)) {
         rt->gc.nursery.getForwardedPointer(thingp);
         return *thingp;
     }
 
-#ifdef JSGC_COMPACTING
     Zone *zone = (*thingp)->zone();
     if (zone->isGCCompacting() && IsForwarded(*thingp))
         *thingp = Forwarded(*thingp);
-#endif
+
     return *thingp;
 }
 
@@ -595,6 +540,12 @@ bool                                                                            
 Is##base##Marked(type **thingp)                                                                   \
 {                                                                                                 \
     return IsMarked<type>(thingp);                                                                \
+}                                                                                                 \
+                                                                                                  \
+bool                                                                                              \
+Is##base##MarkedFromAnyThread(BarrieredBase<type*> *thingp)                                       \
+{                                                                                                 \
+    return IsMarkedFromAnyThread<type>(thingp->unsafeGet());                                      \
 }                                                                                                 \
                                                                                                   \
 bool                                                                                              \
@@ -1487,8 +1438,11 @@ ScanTypeObject(GCMarker *gcmarker, types::TypeObject *type)
     if (type->newScript())
         type->newScript()->trace(gcmarker);
 
-    if (type->interpretedFunction)
-        PushMarkStack(gcmarker, type->interpretedFunction);
+    if (TypeDescr *descr = type->maybeTypeDescr())
+        PushMarkStack(gcmarker, descr);
+
+    if (JSFunction *fun = type->maybeInterpretedFunction())
+        PushMarkStack(gcmarker, fun);
 }
 
 static void
@@ -1510,8 +1464,15 @@ gc::MarkChildren(JSTracer *trc, types::TypeObject *type)
     if (type->newScript())
         type->newScript()->trace(trc);
 
-    if (type->interpretedFunction)
-        MarkObject(trc, &type->interpretedFunction, "type_function");
+    if (JSObject *descr = type->maybeTypeDescr()) {
+        MarkObjectUnbarriered(trc, &descr, "type_descr");
+        type->setTypeDescr(&descr->as<TypeDescr>());
+    }
+
+    if (JSObject *fun = type->maybeInterpretedFunction()) {
+        MarkObjectUnbarriered(trc, &fun, "type_function");
+        type->setInterpretedFunction(&fun->as<JSFunction>());
+    }
 }
 
 static void
@@ -1842,10 +1803,8 @@ GCMarker::processMarkStackTop(SliceBudget &budget)
             // Global objects all have the same trace hook. That hook is safe without barriers
             // if the global has no custom trace hook of its own, or has been moved to a different
             // compartment, and so can't have one.
-            MOZ_ASSERT_IF(runtime()->gc.isIncrementalGCEnabled() &&
-                          !(clasp->trace == JS_GlobalObjectTraceHook &&
-                            (!obj->compartment()->options().getTrace() ||
-                             !obj->isOwnGlobal())),
+            MOZ_ASSERT_IF(!(clasp->trace == JS_GlobalObjectTraceHook &&
+                            (!obj->compartment()->options().getTrace() || !obj->isOwnGlobal())),
                           clasp->flags & JSCLASS_IMPLEMENTS_BARRIERS);
             if (clasp->trace == InlineTypedObject::obj_trace)
                 goto scan_typed_obj;

@@ -155,9 +155,9 @@ LIRGeneratorX86Shared::lowerForBitAndAndBranch(LBitAndAndBranch *baab, MInstruct
 void
 LIRGeneratorX86Shared::lowerMulI(MMul *mul, MDefinition *lhs, MDefinition *rhs)
 {
-    // Note: lhs is used twice, so that we can restore the original value for the
-    // negative zero check.
-    LMulI *lir = new(alloc()) LMulI(useRegisterAtStart(lhs), useOrConstant(rhs), use(lhs));
+    // Note: If we need a negative zero check, lhs is used twice.
+    LAllocation lhsCopy = mul->canBeNegativeZero() ? use(lhs) : LAllocation();
+    LMulI *lir = new(alloc()) LMulI(useRegisterAtStart(lhs), useOrConstant(rhs), lhsCopy);
     if (mul->fallible())
         assignSnapshot(lir, Bailout_DoubleOutput);
     defineReuseInput(lir, mul, 0);
@@ -356,19 +356,6 @@ LIRGeneratorX86Shared::lowerTruncateFToInt32(MTruncateToInt32 *ins)
 
     LDefinition maybeTemp = Assembler::HasSSE3() ? LDefinition::BogusTemp() : tempFloat32();
     define(new(alloc()) LTruncateFToInt32(useRegister(opd), maybeTemp), ins);
-}
-
-void
-LIRGeneratorX86Shared::visitForkJoinGetSlice(MForkJoinGetSlice *ins)
-{
-    // We fix eax and edx for cmpxchg and div.
-    LForkJoinGetSlice *lir = new(alloc())
-        LForkJoinGetSlice(useFixed(ins->forkJoinContext(), ForkJoinGetSliceReg_cx),
-                          tempFixed(eax),
-                          tempFixed(edx),
-                          tempFixed(ForkJoinGetSliceReg_temp0),
-                          tempFixed(ForkJoinGetSliceReg_temp1));
-    defineFixed(lir, ins, LAllocation(AnyRegister(ForkJoinGetSliceReg_output)));
 }
 
 void
@@ -671,25 +658,23 @@ LIRGeneratorX86Shared::visitSimdBinaryArith(MSimdBinaryArith *ins)
 }
 
 void
-LIRGeneratorX86Shared::visitSimdTernaryBitwise(MSimdTernaryBitwise *ins)
+LIRGeneratorX86Shared::visitSimdSelect(MSimdSelect *ins)
 {
     MOZ_ASSERT(IsSimdType(ins->type()));
+    MOZ_ASSERT(ins->type() == MIRType_Int32x4 || ins->type() == MIRType_Float32x4,
+               "Unknown SIMD kind when doing bitwise operations");
 
-    if (ins->type() == MIRType_Int32x4 || ins->type() == MIRType_Float32x4) {
-        LSimdSelect *lins = new(alloc()) LSimdSelect;
-        MDefinition *r0 = ins->getOperand(0);
-        MDefinition *r1 = ins->getOperand(1);
-        MDefinition *r2 = ins->getOperand(2);
+    LSimdSelect *lins = new(alloc()) LSimdSelect;
+    MDefinition *r0 = ins->getOperand(0);
+    MDefinition *r1 = ins->getOperand(1);
+    MDefinition *r2 = ins->getOperand(2);
 
-        lins->setOperand(0, useRegister(r0));
-        lins->setOperand(1, useRegister(r1));
-        lins->setOperand(2, useRegister(r2));
-        lins->setTemp(0, temp(LDefinition::FLOAT32X4));
+    lins->setOperand(0, useRegister(r0));
+    lins->setOperand(1, useRegister(r1));
+    lins->setOperand(2, useRegister(r2));
+    lins->setTemp(0, temp(LDefinition::FLOAT32X4));
 
-        define(lins, ins);
-    } else {
-        MOZ_CRASH("Unknown SIMD kind when doing bitwise operations");
-    }
+    define(lins, ins);
 }
 
 void

@@ -9,25 +9,25 @@
 void
 nsContentSupportMap::Init()
 {
-    PL_DHashTableInit(&mMap, PL_DHashGetStubOps(), nullptr, sizeof(Entry));
+    PL_DHashTableInit(&mMap, PL_DHashGetStubOps(), sizeof(Entry));
 }
 
 void
 nsContentSupportMap::Finish()
 {
-    if (mMap.ops)
+    if (mMap.IsInitialized())
         PL_DHashTableFinish(&mMap);
 }
 
 nsresult
 nsContentSupportMap::Remove(nsIContent* aElement)
 {
-    if (!mMap.ops)
+    if (!mMap.IsInitialized())
         return NS_ERROR_NOT_INITIALIZED;
 
     nsIContent* child = aElement;
     do {
-        PL_DHashTableOperate(&mMap, child, PL_DHASH_REMOVE);
+        PL_DHashTableRemove(&mMap, child);
         child = child->GetNextNode(aElement);
     } while(child);
 

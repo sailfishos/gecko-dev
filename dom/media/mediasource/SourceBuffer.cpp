@@ -36,9 +36,36 @@ extern PRLogModuleInfo* GetMediaSourceAPILog();
 #define MSE_API(...)
 #endif
 
+// RangeRemoval must be synchronous if appendBuffer is also synchronous.
+// While waiting for bug 1118589 to land, ensure RangeRemoval is synchronous
+#define APPENDBUFFER_IS_SYNCHRONOUS
+
 namespace mozilla {
 
 namespace dom {
+
+class RangeRemovalRunnable : public nsRunnable {
+public:
+  RangeRemovalRunnable(SourceBuffer* aSourceBuffer,
+                     double aStart,
+                     double aEnd)
+  : mSourceBuffer(aSourceBuffer)
+  , mStart(aStart)
+  , mEnd(aEnd)
+  { }
+
+  NS_IMETHOD Run() MOZ_OVERRIDE MOZ_FINAL {
+
+    mSourceBuffer->DoRangeRemoval(mStart, mEnd);
+
+    return NS_OK;
+  }
+
+private:
+  nsRefPtr<SourceBuffer> mSourceBuffer;
+  double mStart;
+  double mEnd;
+};
 
 void
 SourceBuffer::SetMode(SourceBufferAppendMode aMode, ErrorResult& aRv)
@@ -47,6 +74,10 @@ SourceBuffer::SetMode(SourceBufferAppendMode aMode, ErrorResult& aRv)
   MSE_API("SourceBuffer(%p)::SetMode(aMode=%d)", this, aMode);
   if (!IsAttached() || mUpdating) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return;
+  }
+  if (aMode == SourceBufferAppendMode::Sequence) {
+    aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return;
   }
   MOZ_ASSERT(mMediaSource->ReadyState() != MediaSourceReadyState::Closed);
@@ -161,16 +192,22 @@ SourceBuffer::Abort(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
-  if (mUpdating) {
-    // TODO: Abort segment parser loop, buffer append, and stream append loop algorithms.
-    AbortUpdating();
-  }
-  // TODO: Run reset parser algorithm.
+  Abort();
+  mTrackBuffer->ResetParserState();
   mAppendWindowStart = 0;
   mAppendWindowEnd = PositiveInfinity<double>();
 
   MSE_DEBUG("SourceBuffer(%p)::Abort() Discarding decoder", this);
   mTrackBuffer->DiscardDecoder();
+}
+
+void
+SourceBuffer::Abort()
+{
+  if (mUpdating) {
+    // TODO: Abort segment parser loop, buffer append, and stream append loop algorithms.
+    AbortUpdating();
+  }
 }
 
 void
@@ -202,13 +239,37 @@ void
 SourceBuffer::RangeRemoval(double aStart, double aEnd)
 {
   StartUpdating();
-  /// TODO: Run coded frame removal algorithm.
 
-  // Run the final step of the coded frame removal algorithm asynchronously
-  // to ensure the SourceBuffer's updating flag transition behaves as
-  // required by the spec.
+#if defined(APPENDBUFFER_IS_SYNCHRONOUS)
+  DoRangeRemoval(aStart, aEnd);
+
+  // Run the final step of the buffer append algorithm asynchronously to
+  // ensure the SourceBuffer's updating flag transition behaves as required
+  // by the spec.
   nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &SourceBuffer::StopUpdating);
   NS_DispatchToMainThread(event);
+#else
+  nsRefPtr<nsIRunnable> task = new RangeRemovalRunnable(this, aStart, aEnd);
+  NS_DispatchToMainThread(task);
+#endif
+}
+
+void
+SourceBuffer::DoRangeRemoval(double aStart, double aEnd)
+{
+  if (!mUpdating) {
+    // abort was called in between.
+    return;
+  }
+  if (mTrackBuffer && !IsInfinite(aStart)) {
+    int64_t start = aStart * USECS_PER_S;
+    int64_t end = IsInfinite(aEnd) ? INT64_MAX : (int64_t)(aEnd * USECS_PER_S);
+    mTrackBuffer->RangeRemoval(start, end);
+  }
+
+#if !defined(APPENDBUFFER_IS_SYNCHRONOUS)
+  StopUpdating();
+#endif
 }
 
 void
@@ -216,6 +277,7 @@ SourceBuffer::Detach()
 {
   MOZ_ASSERT(NS_IsMainThread());
   MSE_DEBUG("SourceBuffer(%p)::Detach", this);
+  Abort();
   if (mTrackBuffer) {
     mTrackBuffer->Detach();
   }
@@ -229,7 +291,7 @@ SourceBuffer::Ended()
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(IsAttached());
   MSE_DEBUG("SourceBuffer(%p)::Ended", this);
-  mTrackBuffer->DiscardDecoder();
+  mTrackBuffer->EndCurrentDecoder();
 }
 
 SourceBuffer::SourceBuffer(MediaSource* aMediaSource, const nsACString& aType)
@@ -323,6 +385,16 @@ SourceBuffer::AbortUpdating()
 }
 
 void
+SourceBuffer::CheckEndTime()
+{
+  // Check if we need to update mMediaSource duration
+  double endTime = GetBufferedEnd();
+  if (endTime > mMediaSource->Duration()) {
+    mMediaSource->SetDuration(endTime, MSRangeRemovalAction::SKIP);
+  }
+}
+
+void
 SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aRv)
 {
   MSE_DEBUG("SourceBuffer(%p)::AppendData(aLength=%u)", this, aLength);
@@ -331,16 +403,20 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
   }
   StartUpdating();
 
-  if (!mTrackBuffer->AppendData(aData, aLength)) {
-    Optional<MediaSourceEndOfStreamError> decodeError(MediaSourceEndOfStreamError::Decode);
-    ErrorResult dummy;
-    mMediaSource->EndOfStream(decodeError, dummy);
-    aRv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
+  MOZ_ASSERT(mAppendMode == SourceBufferAppendMode::Segments,
+             "We don't handle timestampOffset for sequence mode yet");
+  if (aLength) {
+    if (!mTrackBuffer->AppendData(aData, aLength, mTimestampOffset * USECS_PER_S)) {
+      nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethodWithArg<bool>(this, &SourceBuffer::AppendError, true);
+      NS_DispatchToMainThread(event);
+      return;
+    }
 
-  if (mTrackBuffer->HasInitSegment()) {
-    mMediaSource->QueueInitializationEvent();
+    if (mTrackBuffer->HasInitSegment()) {
+      mMediaSource->QueueInitializationEvent();
+    }
+
+    CheckEndTime();
   }
 
   // Run the final step of the buffer append algorithm asynchronously to
@@ -348,6 +424,29 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
   // by the spec.
   nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &SourceBuffer::StopUpdating);
   NS_DispatchToMainThread(event);
+}
+
+void
+SourceBuffer::AppendError(bool aDecoderError)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!mUpdating) {
+    // The buffer append algorithm has been interrupted by abort().
+    return;
+  }
+  mTrackBuffer->ResetParserState();
+
+  mUpdating = false;
+
+  QueueAsyncSimpleEvent("error");
+  QueueAsyncSimpleEvent("updateend");
+
+  if (aDecoderError) {
+    Optional<MediaSourceEndOfStreamError> decodeError(
+      MediaSourceEndOfStreamError::Decode);
+    ErrorResult dummy;
+    mMediaSource->EndOfStream(decodeError, dummy);
+  }
 }
 
 bool
@@ -369,14 +468,17 @@ SourceBuffer::PrepareAppend(ErrorResult& aRv)
   // TODO: Make the eviction threshold smaller for audio-only streams.
   // TODO: Drive evictions off memory pressure notifications.
   // TODO: Consider a global eviction threshold  rather than per TrackBuffer.
-  bool evicted = mTrackBuffer->EvictData(mEvictionThreshold);
+  double newBufferStartTime = 0.0;
+  bool evicted =
+    mTrackBuffer->EvictData(mMediaSource->GetDecoder()->GetCurrentTime(),
+                            mEvictionThreshold, &newBufferStartTime);
   if (evicted) {
     MSE_DEBUG("SourceBuffer(%p)::AppendData Evict; current buffered start=%f",
               this, GetBufferedStart());
 
     // We notify that we've evicted from the time range 0 through to
     // the current start point.
-    mMediaSource->NotifyEvicted(0.0, GetBufferedStart());
+    mMediaSource->NotifyEvicted(0.0, newBufferStartTime);
   }
 
   // TODO: Test buffer full flag.

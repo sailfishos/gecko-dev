@@ -14,7 +14,7 @@ let test = Task.async(function*() {
 
   // Verify original recording.
 
-  let originalData = PerformanceController.getAllData();
+  let originalData = PerformanceController.getCurrentRecording().getAllData();
   ok(originalData, "The original recording is not empty.");
 
   // Save recording.
@@ -23,7 +23,7 @@ let test = Task.async(function*() {
   file.createUnique(Ci.nsIFile.NORMAL_FILE_TYPE, parseInt("666", 8));
 
   let exported = once(PerformanceController, EVENTS.RECORDING_EXPORTED);
-  yield PerformanceController.exportRecording("", file);
+  yield PerformanceController.exportRecording("", PerformanceController.getCurrentRecording(), file);
 
   yield exported;
   ok(true, "The recording data appears to have been successfully saved.");
@@ -42,20 +42,19 @@ let test = Task.async(function*() {
 
   // Verify imported recording.
 
-  let importedData = PerformanceController.getAllData();
+  let importedData = PerformanceController.getCurrentRecording().getAllData();
 
-  is(importedData.startTime, originalData.startTime,
+  is(importedData.label, originalData.label,
     "The impored data is identical to the original data (1).");
-  is(importedData.endTime, originalData.endTime,
+  is(importedData.duration, originalData.duration,
     "The impored data is identical to the original data (2).");
-
   is(importedData.markers.toSource(), originalData.markers.toSource(),
     "The impored data is identical to the original data (3).");
   is(importedData.memory.toSource(), originalData.memory.toSource(),
     "The impored data is identical to the original data (4).");
   is(importedData.ticks.toSource(), originalData.ticks.toSource(),
     "The impored data is identical to the original data (5).");
-  is(importedData.profilerData.toSource(), originalData.profilerData.toSource(),
+  is(importedData.profile.toSource(), originalData.profile.toSource(),
     "The impored data is identical to the original data (6).");
 
   yield teardown(panel);

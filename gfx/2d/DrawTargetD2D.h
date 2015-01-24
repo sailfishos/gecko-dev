@@ -14,11 +14,7 @@
 #include <vector>
 #include <sstream>
 
-#ifdef _MSC_VER
-#include <hash_set>
-#else
 #include <unordered_set>
-#endif
 
 struct IDWriteFactory;
 
@@ -142,9 +138,7 @@ public:
   TemporaryRef<ID2D1Layer> GetCachedLayer();
   void PopCachedLayer(ID2D1RenderTarget *aRT);
 
-#ifdef USE_D2D1_1
   TemporaryRef<ID2D1Image> GetImageForSurface(SourceSurface *aSurface);
-#endif
 
   static ID2D1Factory *factory();
   static void CleanupD2D();
@@ -167,11 +161,7 @@ private:
   friend class AutoSaveRestoreClippedOut;
   friend class SourceSurfaceD2DTarget;
 
-#ifdef _MSC_VER
-  typedef stdext::hash_set<DrawTargetD2D*> TargetSet;
-#else
   typedef std::unordered_set<DrawTargetD2D*> TargetSet;
-#endif
 
   bool InitD2DRenderTarget();
   void PrepareForDrawing(ID2D1RenderTarget *aRT);

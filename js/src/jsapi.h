@@ -321,8 +321,8 @@ class AutoHashMapRooter : protected AutoGCRooter
     friend void AutoGCRooter::trace(JSTracer *trc);
 
   private:
-    AutoHashMapRooter(const AutoHashMapRooter &hmr) MOZ_DELETE;
-    AutoHashMapRooter &operator=(const AutoHashMapRooter &hmr) MOZ_DELETE;
+    AutoHashMapRooter(const AutoHashMapRooter &hmr) = delete;
+    AutoHashMapRooter &operator=(const AutoHashMapRooter &hmr) = delete;
 
     HashMapImpl map;
 
@@ -430,8 +430,8 @@ class AutoHashSetRooter : protected AutoGCRooter
     friend void AutoGCRooter::trace(JSTracer *trc);
 
   private:
-    AutoHashSetRooter(const AutoHashSetRooter &hmr) MOZ_DELETE;
-    AutoHashSetRooter &operator=(const AutoHashSetRooter &hmr) MOZ_DELETE;
+    AutoHashSetRooter(const AutoHashSetRooter &hmr) = delete;
+    AutoHashSetRooter &operator=(const AutoHashSetRooter &hmr) = delete;
 
     HashSetImpl set;
 
@@ -932,8 +932,8 @@ class MOZ_STACK_CLASS SourceBufferHolder MOZ_FINAL
     }
 
   private:
-    SourceBufferHolder(SourceBufferHolder &) MOZ_DELETE;
-    SourceBufferHolder &operator=(SourceBufferHolder &) MOZ_DELETE;
+    SourceBufferHolder(SourceBufferHolder &) = delete;
+    SourceBufferHolder &operator=(SourceBufferHolder &) = delete;
 
     const char16_t *data_;
     size_t length_;
@@ -1042,6 +1042,19 @@ JS_GetEmptyStringValue(JSContext *cx);
 extern JS_PUBLIC_API(JSString *)
 JS_GetEmptyString(JSRuntime *rt);
 
+struct CompartmentTimeStats {
+    char compartmentName[1024];
+    JSAddonId *addonId;
+    JSCompartment *compartment;
+    uint64_t time;  // microseconds
+    uint64_t cpowTime; // microseconds
+};
+
+typedef js::Vector<CompartmentTimeStats, 0, js::SystemAllocPolicy> CompartmentStatsVector;
+
+extern JS_PUBLIC_API(bool)
+JS_GetCompartmentStats(JSRuntime *rt, CompartmentStatsVector &stats);
+
 /*
  * Format is a string of the following characters (spaces are insignificant),
  * specifying the tabulated type conversions:
@@ -1116,6 +1129,13 @@ ToBooleanSlow(JS::HandleValue v);
  */
 extern JS_PUBLIC_API(JSString*)
 ToStringSlow(JSContext *cx, JS::HandleValue v);
+
+/*
+ * DO NOT CALL THIS. Use JS::ToObject.
+ */
+extern JS_PUBLIC_API(JSObject*)
+ToObjectSlow(JSContext *cx, JS::HandleValue vp, bool reportScanStack);
+
 } /* namespace js */
 
 namespace JS {
@@ -1161,6 +1181,15 @@ ToString(JSContext *cx, HandleValue v)
     return js::ToStringSlow(cx, v);
 }
 
+/* ES5 9.9 ToObject. */
+MOZ_ALWAYS_INLINE JSObject*
+ToObject(JSContext *cx, HandleValue vp)
+{
+    if (vp.isObject())
+        return &vp.toObject();
+    return js::ToObjectSlow(cx, vp, false);
+}
+
 /*
  * Implements ES6 draft rev 28 (2014 Oct 14) 7.1.1, second algorithm.
  *
@@ -1170,7 +1199,8 @@ ToString(JSContext *cx, HandleValue v)
  * as a fallback.
  */
 extern JS_PUBLIC_API(bool)
-OrdinaryToPrimitive(JSContext *cx, HandleObject obj, JSType type, MutableHandleValue vp);
+OrdinaryToPrimitive(JSContext *cx, JS::HandleObject obj, JSType type,
+                    JS::MutableHandleValue vp);
 
 } /* namespace JS */
 
@@ -1966,83 +1996,6 @@ JS_strdup(JSContext *cx, const char *s);
 extern JS_PUBLIC_API(char *)
 JS_strdup(JSRuntime *rt, const char *s);
 
-namespace JS {
-
-/*
- * A GC root is a pointer to a jsval, JSObject * or JSString * that itself
- * points into the GC heap. JS_AddValueRoot takes a pointer to a jsval and
- * JS_AddGCThingRoot takes a pointer to a JSObject * or JString *.
- *
- * Note that, since JS_Add*Root stores the address of a variable (of type
- * jsval, JSString *, or JSObject *), that variable must live until
- * JS_Remove*Root is called to remove that variable. For example, after:
- *
- *   void some_function() {
- *     jsval v;
- *     JS_AddNamedValueRoot(cx, &v, "name");
- *
- * the caller must perform
- *
- *     JS_RemoveValueRoot(cx, &v);
- *
- * before some_function() returns.
- *
- * Also, use JS_AddNamed*Root(cx, &structPtr->memberObj, "structPtr->memberObj")
- * in preference to JS_Add*Root(cx, &structPtr->memberObj), in order to identify
- * roots by their source callsites.  This way, you can find the callsite while
- * debugging if you should fail to do JS_Remove*Root(cx, &structPtr->memberObj)
- * before freeing structPtr's memory.
- */
-extern JS_PUBLIC_API(bool)
-AddValueRoot(JSContext *cx, JS::Heap<JS::Value> *vp);
-
-extern JS_PUBLIC_API(bool)
-AddStringRoot(JSContext *cx, JS::Heap<JSString *> *rp);
-
-extern JS_PUBLIC_API(bool)
-AddObjectRoot(JSContext *cx, JS::Heap<JSObject *> *rp);
-
-extern JS_PUBLIC_API(bool)
-AddNamedValueRoot(JSContext *cx, JS::Heap<JS::Value> *vp, const char *name);
-
-extern JS_PUBLIC_API(bool)
-AddNamedValueRootRT(JSRuntime *rt, JS::Heap<JS::Value> *vp, const char *name);
-
-extern JS_PUBLIC_API(bool)
-AddNamedStringRoot(JSContext *cx, JS::Heap<JSString *> *rp, const char *name);
-
-extern JS_PUBLIC_API(bool)
-AddNamedObjectRoot(JSContext *cx, JS::Heap<JSObject *> *rp, const char *name);
-
-extern JS_PUBLIC_API(bool)
-AddNamedScriptRoot(JSContext *cx, JS::Heap<JSScript *> *rp, const char *name);
-
-extern JS_PUBLIC_API(void)
-RemoveValueRoot(JSContext *cx, JS::Heap<JS::Value> *vp);
-
-extern JS_PUBLIC_API(void)
-RemoveStringRoot(JSContext *cx, JS::Heap<JSString *> *rp);
-
-extern JS_PUBLIC_API(void)
-RemoveObjectRoot(JSContext *cx, JS::Heap<JSObject *> *rp);
-
-extern JS_PUBLIC_API(void)
-RemoveScriptRoot(JSContext *cx, JS::Heap<JSScript *> *rp);
-
-extern JS_PUBLIC_API(void)
-RemoveValueRootRT(JSRuntime *rt, JS::Heap<JS::Value> *vp);
-
-extern JS_PUBLIC_API(void)
-RemoveStringRootRT(JSRuntime *rt, JS::Heap<JSString *> *rp);
-
-extern JS_PUBLIC_API(void)
-RemoveObjectRootRT(JSRuntime *rt, JS::Heap<JSObject *> *rp);
-
-extern JS_PUBLIC_API(void)
-RemoveScriptRootRT(JSRuntime *rt, JS::Heap<JSScript *> *rp);
-
-} /* namespace JS */
-
 /*
  * Register externally maintained GC roots.
  *
@@ -2056,29 +2009,6 @@ JS_AddExtraGCRootsTracer(JSRuntime *rt, JSTraceDataOp traceOp, void *data);
 /* Undo a call to JS_AddExtraGCRootsTracer. */
 extern JS_PUBLIC_API(void)
 JS_RemoveExtraGCRootsTracer(JSRuntime *rt, JSTraceDataOp traceOp, void *data);
-
-#ifdef JS_DEBUG
-
-/*
- * Debug-only method to dump the object graph of heap-allocated things.
- *
- * fp:              file for the dump output.
- * start:           when non-null, dump only things reachable from start
- *                  thing. Otherwise dump all things reachable from the
- *                  runtime roots.
- * startKind:       trace kind of start if start is not null. Must be
- *                  JSTRACE_OBJECT when start is null.
- * thingToFind:     dump only paths in the object graph leading to thingToFind
- *                  when non-null.
- * maxDepth:        the upper bound on the number of edges to descend from the
- *                  graph roots.
- * thingToIgnore:   thing to ignore during the graph traversal when non-null.
- */
-extern JS_PUBLIC_API(bool)
-JS_DumpHeap(JSRuntime *rt, FILE *fp, void* startThing, JSGCTraceKind kind,
-            void *thingToFind, size_t maxDepth, void *thingToIgnore);
-
-#endif
 
 /*
  * Garbage collector API.
@@ -2256,8 +2186,7 @@ extern JS_PUBLIC_API(bool)
 JS_IsExternalString(JSString *str);
 
 /*
- * Return the 'closure' arg passed to JS_NewExternalStringWithClosure or
- * nullptr if the external string was created via JS_NewExternalString.
+ * Return the 'fin' arg passed to JS_NewExternalString.
  */
 extern JS_PUBLIC_API(const JSStringFinalizer *)
 JS_GetExternalStringFinalizer(JSString *str);
@@ -2339,8 +2268,8 @@ class AutoIdArray : private AutoGCRooter
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
     /* No copy or assignment semantics. */
-    AutoIdArray(AutoIdArray &ida) MOZ_DELETE;
-    void operator=(AutoIdArray &ida) MOZ_DELETE;
+    AutoIdArray(AutoIdArray &ida) = delete;
+    void operator=(AutoIdArray &ida) = delete;
 };
 
 } /* namespace JS */
@@ -2371,17 +2300,6 @@ JS_PropertyStub(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
 extern JS_PUBLIC_API(bool)
 JS_StrictPropertyStub(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool strict,
                       JS::MutableHandleValue vp);
-
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 4
-/*
- * This is here because GCC 4.4 for Android ICS can't compile the JS engine
- * without it. The function is unused, but if you delete it, we'll trigger a
- * compiler bug. When we no longer support ICS, this can be deleted.
- * See bug 1103152.
- */
-extern JS_PUBLIC_API(bool)
-JS_ResolveStub(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool *resolvedp);
-#endif  /* GCC 4.4 */
 
 template<typename T>
 struct JSConstScalarSpec {
@@ -3215,6 +3133,10 @@ extern JS_PUBLIC_API(bool)
 JS_SetPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v);
 
 extern JS_PUBLIC_API(bool)
+JS_ForwardSetPropertyTo(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue onBehalfOf,
+                        bool strict, JS::HandleValue vp);
+
+extern JS_PUBLIC_API(bool)
 JS_DeleteProperty(JSContext *cx, JS::HandleObject obj, const char *name);
 
 extern JS_PUBLIC_API(bool)
@@ -3741,7 +3663,7 @@ class JS_FRIEND_API(ReadOnlyCompileOptions)
 
   private:
     static JSObject * const nullObjectPtr;
-    void operator=(const ReadOnlyCompileOptions &) MOZ_DELETE;
+    void operator=(const ReadOnlyCompileOptions &) = delete;
 };
 
 /*
@@ -3831,7 +3753,7 @@ class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
     }
 
   private:
-    void operator=(const CompileOptions &rhs) MOZ_DELETE;
+    void operator=(const CompileOptions &rhs) = delete;
 };
 
 /*
@@ -3917,7 +3839,7 @@ class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) : public ReadOnlyCompileOpti
     }
 
   private:
-    void operator=(const CompileOptions &rhs) MOZ_DELETE;
+    void operator=(const CompileOptions &rhs) = delete;
 };
 
 /*
@@ -5046,6 +4968,9 @@ JS_NewObjectForConstructor(JSContext *cx, const JSClass *clasp, const JS::CallAr
 #define JS_DEFAULT_ZEAL_FREQ 100
 
 extern JS_PUBLIC_API(void)
+JS_GetGCZeal(JSContext *cx, uint8_t *zeal, uint32_t *frequency, uint32_t *nextScheduled);
+
+extern JS_PUBLIC_API(void)
 JS_SetGCZeal(JSContext *cx, uint8_t zeal, uint32_t frequency);
 
 extern JS_PUBLIC_API(void)
@@ -5119,8 +5044,8 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(AutoFilename)
 {
     void *scriptSource_;
 
-    AutoFilename(const AutoFilename &) MOZ_DELETE;
-    void operator=(const AutoFilename &) MOZ_DELETE;
+    AutoFilename(const AutoFilename &) = delete;
+    void operator=(const AutoFilename &) = delete;
 
   public:
     AutoFilename() : scriptSource_(nullptr) {}
@@ -5316,8 +5241,8 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
 
     static const uint32_t NOT_ARRAY = UINT32_MAX;
 
-    ForOfIterator(const ForOfIterator &) MOZ_DELETE;
-    ForOfIterator &operator=(const ForOfIterator &) MOZ_DELETE;
+    ForOfIterator(const ForOfIterator &) = delete;
+    ForOfIterator &operator=(const ForOfIterator &) = delete;
 
   public:
     explicit ForOfIterator(JSContext *cx) : cx_(cx), iterator(cx_), index(NOT_ARRAY) { }

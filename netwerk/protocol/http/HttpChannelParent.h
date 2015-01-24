@@ -114,7 +114,8 @@ protected:
                    const ipc::PrincipalInfo&  aRequestingPrincipalInfo,
                    const ipc::PrincipalInfo&  aTriggeringPrincipalInfo,
                    const uint32_t&            aSecurityFlags,
-                   const uint32_t&            aContentPolicyType);
+                   const uint32_t&            aContentPolicyType,
+                   const uint32_t&            aInnerWindowID);
 
   virtual bool RecvSetPriority(const uint16_t& priority) MOZ_OVERRIDE;
   virtual bool RecvSetClassOfService(const uint32_t& cos) MOZ_OVERRIDE;
@@ -162,8 +163,8 @@ private:
   // state for combining OnStatus/OnProgress with OnDataAvailable
   // into one IPDL call to child.
   nsresult mStoredStatus;
-  uint64_t mStoredProgress;
-  uint64_t mStoredProgressMax;
+  int64_t mStoredProgress;
+  int64_t mStoredProgressMax;
 
   bool mSentRedirect1Begin          : 1;
   bool mSentRedirect1BeginFailed    : 1;

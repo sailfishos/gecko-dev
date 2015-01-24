@@ -8,6 +8,7 @@ import java.util.Map;
 
 import org.mozilla.gecko.Actions;
 import org.mozilla.gecko.Assert;
+import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.Driver;
 import org.mozilla.gecko.FennecNativeActions;
 import org.mozilla.gecko.FennecNativeDriver;
@@ -78,7 +79,7 @@ abstract class UITest extends BaseRobocopTest
             mAsserter.endTest();
             // request a force quit of the browser and wait for it to take effect
             GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Robocop:Quit", null));
-            mSolo.sleep(7000);
+            mSolo.sleep(120000);
             // if still running, finish activities as recommended by Robotium
             mSolo.finishOpenedActivities();
         } catch (Throwable e) {
@@ -192,6 +193,9 @@ abstract class UITest extends BaseRobocopTest
 
     private static Intent createActivityIntent(final Map<String, String> config) {
         final Intent intent = new Intent(Intent.ACTION_MAIN);
+
+        // Don't show the first run experience.
+        intent.putExtra(BrowserApp.EXTRA_SKIP_STARTPANE, true);
 
         final String profile = config.get("profile");
         intent.putExtra("args", "-no-remote -profile " + profile);

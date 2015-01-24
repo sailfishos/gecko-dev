@@ -48,9 +48,9 @@ MFTDecoder::Create(const GUID& aMFTClsID)
 
 HRESULT
 MFTDecoder::SetMediaTypes(IMFMediaType* aInputType,
-                          const GUID& aOutputSubType)
+                          IMFMediaType* aOutputType)
 {
-  mOutputSubtype = aOutputSubType;
+  mOutputType = aOutputType;
 
   // Set the input type to the one the caller gave us...
   HRESULT hr = mDecoder->SetInputType(0, aInputType, 0);
@@ -96,16 +96,14 @@ MFTDecoder::SetDecoderOutputType()
   RefPtr<IMFMediaType> outputType;
   UINT32 typeIndex = 0;
   while (SUCCEEDED(mDecoder->GetOutputAvailableType(0, typeIndex++, byRef(outputType)))) {
-    GUID subtype;
-    hr = outputType->GetGUID(MF_MT_SUBTYPE, &subtype);
-    if (FAILED(hr)) {
-      continue;
-    }
-    if (subtype == mOutputSubtype) {
+    BOOL resultMatch;
+    hr = mOutputType->Compare(outputType, MF_ATTRIBUTES_MATCH_OUR_ITEMS, &resultMatch);
+    if (SUCCEEDED(hr) && resultMatch == TRUE) {
       hr = mDecoder->SetOutputType(0, outputType, 0);
       NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
       return S_OK;
     }
+    outputType = nullptr;
   }
   return E_FAIL;
 }

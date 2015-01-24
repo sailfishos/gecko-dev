@@ -236,7 +236,7 @@ Preferences::SizeOfIncludingThisAndOtherStuff(mozilla::MallocSizeOf aMallocSizeO
   NS_ENSURE_TRUE(InitStaticMembers(), 0);
 
   size_t n = aMallocSizeOf(sPreferences);
-  if (gHashTable.ops) {
+  if (gHashTable.IsInitialized()) {
     // pref keys are allocated in a private arena, which we count elsewhere.
     // pref stringvals are allocated out of the same private arena.
     n += PL_DHashTableSizeOfExcludingThis(&gHashTable, nullptr, aMallocSizeOf);
@@ -601,14 +601,7 @@ Preferences::Observe(nsISupports *aSubject, const char *aTopic,
   nsresult rv = NS_OK;
 
   if (!nsCRT::strcmp(aTopic, "profile-before-change")) {
-    if (!nsCRT::strcmp(someData, MOZ_UTF16("shutdown-cleanse"))) {
-      if (mCurrentFile) {
-        mCurrentFile->Remove(false);
-        mCurrentFile = nullptr;
-      }
-    } else {
-      rv = SavePrefFile(nullptr);
-    }
+    rv = SavePrefFile(nullptr);
   } else if (!strcmp(aTopic, "load-extension-defaults")) {
     pref_LoadPrefsInDirList(NS_EXT_PREFS_DEFAULTS_DIR_LIST);
   } else if (!nsCRT::strcmp(aTopic, "reload-default-prefs")) {
@@ -976,7 +969,7 @@ Preferences::WritePrefFile(nsIFile* aFile)
   uint32_t                  writeAmount;
   nsresult                  rv;
 
-  if (!gHashTable.ops)
+  if (!gHashTable.IsInitialized())
     return NS_ERROR_NOT_INITIALIZED;
 
   // execute a "safe" save by saving through a tempfile

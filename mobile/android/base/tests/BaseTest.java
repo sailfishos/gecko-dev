@@ -16,6 +16,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.gecko.Actions;
+import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.Driver;
 import org.mozilla.gecko.Element;
 import org.mozilla.gecko.FennecNativeActions;
@@ -25,7 +26,6 @@ import org.mozilla.gecko.GeckoEvent;
 import org.mozilla.gecko.GeckoProfile;
 import org.mozilla.gecko.GeckoThread;
 import org.mozilla.gecko.GeckoThread.LaunchState;
-import org.mozilla.gecko.NewTabletUI;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.RobocopUtils;
 import org.mozilla.gecko.Tab;
@@ -113,7 +113,12 @@ abstract class BaseTest extends BaseRobocopTest {
         // Create the intent to be used with all the important arguments.
         Intent i = new Intent(Intent.ACTION_MAIN);
         mProfile = mConfig.get("profile");
+
+        // Don't show the first run experience.
+        i.putExtra(BrowserApp.EXTRA_SKIP_STARTPANE, true);
+
         i.putExtra("args", "-no-remote -profile " + mProfile);
+
         String envString = mConfig.get("envvars");
         if (envString != "") {
             String[] envStrings = envString.split(",");
@@ -176,7 +181,7 @@ abstract class BaseTest extends BaseRobocopTest {
             mAsserter.endTest();
             // request a force quit of the browser and wait for it to take effect
             GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Robocop:Quit", null));
-            mSolo.sleep(7000);
+            mSolo.sleep(120000);
             // if still running, finish activities as recommended by Robotium
             mSolo.finishOpenedActivities();
         } catch (Throwable e) {
@@ -859,14 +864,14 @@ abstract class BaseTest extends BaseRobocopTest {
             Actions.EventExpecter pageShowExpecter = mActions.expectGeckoEvent("Content:PageShow");
 
             if (devType.equals("tablet")) {
-                Element fwdBtn = mDriver.findElement(getActivity(), R.id.forward);
-                fwdBtn.click();
+                mSolo.waitForView(R.id.forward);
+                mSolo.clickOnView(mSolo.getView(R.id.forward));
             } else {
                 mActions.sendSpecialKey(Actions.SpecialKey.MENU);
                 waitForText("^New Tab$");
                 if (!osVersion.equals("2.x")) {
-                    Element fwdBtn = mDriver.findElement(getActivity(), R.id.forward);
-                    fwdBtn.click();
+                    mSolo.waitForView(R.id.forward);
+                    mSolo.clickOnView(mSolo.getView(R.id.forward));
                 } else {
                     mSolo.clickOnText("^Forward$");
                 }
@@ -879,14 +884,14 @@ abstract class BaseTest extends BaseRobocopTest {
 
         public void reload() {
             if (devType.equals("tablet")) {
-                Element reloadBtn = mDriver.findElement(getActivity(), R.id.reload);
-                reloadBtn.click();
+                mSolo.waitForView(R.id.reload);
+                mSolo.clickOnView(mSolo.getView(R.id.reload));
             } else {
                 mActions.sendSpecialKey(Actions.SpecialKey.MENU);
                 waitForText("^New Tab$");
                 if (!osVersion.equals("2.x")) {
-                    Element reloadBtn = mDriver.findElement(getActivity(), R.id.reload);
-                    reloadBtn.click();
+                    mSolo.waitForView(R.id.reload);
+                    mSolo.clickOnView(mSolo.getView(R.id.reload));
                 } else {
                     mSolo.clickOnText("^Reload$");
                 }

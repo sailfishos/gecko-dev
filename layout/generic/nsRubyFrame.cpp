@@ -10,8 +10,10 @@
 #include "nsPresContext.h"
 #include "nsStyleContext.h"
 #include "WritingModes.h"
+#include "RubyUtils.h"
 #include "nsRubyBaseContainerFrame.h"
 #include "nsRubyTextContainerFrame.h"
+#include "mozilla/Maybe.h"
 
 using namespace mozilla;
 
@@ -22,7 +24,7 @@ using namespace mozilla;
 
 NS_QUERYFRAME_HEAD(nsRubyFrame)
   NS_QUERYFRAME_ENTRY(nsRubyFrame)
-NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
+NS_QUERYFRAME_TAIL_INHERITING(nsRubyFrameSuper)
 
 NS_IMPL_FRAMEARENA_HELPERS(nsRubyFrame)
 
@@ -47,8 +49,10 @@ nsRubyFrame::GetType() const
 /* virtual */ bool
 nsRubyFrame::IsFrameOfType(uint32_t aFlags) const
 {
-  return nsContainerFrame::IsFrameOfType(aFlags &
-    ~(nsIFrame::eLineParticipant));
+  if (aFlags & eBidiInlineContainer) {
+    return false;
+  }
+  return nsRubyFrameSuper::IsFrameOfType(aFlags);
 }
 
 #ifdef DEBUG_FRAME_DUMP
@@ -58,71 +62,6 @@ nsRubyFrame::GetFrameName(nsAString& aResult) const
   return MakeFrameName(NS_LITERAL_STRING("Ruby"), aResult);
 }
 #endif
-
-class MOZ_STACK_CLASS TextContainerIterator
-{
-public:
-  explicit TextContainerIterator(nsRubyBaseContainerFrame* aBaseContainer);
-  void Next();
-  bool AtEnd() const { return !mFrame; }
-  nsRubyTextContainerFrame* GetTextContainer() const
-  {
-    return static_cast<nsRubyTextContainerFrame*>(mFrame);
-  }
-
-private:
-  nsIFrame* mFrame;
-};
-
-TextContainerIterator::TextContainerIterator(
-    nsRubyBaseContainerFrame* aBaseContainer)
-{
-  mFrame = aBaseContainer;
-  Next();
-}
-
-void
-TextContainerIterator::Next()
-{
-  if (mFrame) {
-    mFrame = mFrame->GetNextSibling();
-    if (mFrame && mFrame->GetType() != nsGkAtoms::rubyTextContainerFrame) {
-      mFrame = nullptr;
-    }
-  }
-}
-
-/**
- * This class is responsible for appending and clearing
- * text container list of the base container.
- */
-class MOZ_STACK_CLASS AutoSetTextContainers
-{
-public:
-  explicit AutoSetTextContainers(nsRubyBaseContainerFrame* aBaseContainer);
-  ~AutoSetTextContainers();
-
-private:
-  nsRubyBaseContainerFrame* mBaseContainer;
-};
-
-AutoSetTextContainers::AutoSetTextContainers(
-    nsRubyBaseContainerFrame* aBaseContainer)
-  : mBaseContainer(aBaseContainer)
-{
-#ifdef DEBUG
-  aBaseContainer->AssertTextContainersEmpty();
-#endif
-  for (TextContainerIterator iter(aBaseContainer);
-       !iter.AtEnd(); iter.Next()) {
-    aBaseContainer->AppendTextContainer(iter.GetTextContainer());
-  }
-}
-
-AutoSetTextContainers::~AutoSetTextContainers()
-{
-  mBaseContainer->ClearTextContainers();
-}
 
 /**
  * This enumerator enumerates each segment.
@@ -169,7 +108,6 @@ nsRubyFrame::AddInlineMinISize(nsRenderingContext *aRenderingContext,
 {
   nscoord max = 0;
   for (SegmentEnumerator e(this); !e.AtEnd(); e.Next()) {
-    AutoSetTextContainers holder(e.GetBaseContainer());
     max = std::max(max, e.GetBaseContainer()->GetMinISize(aRenderingContext));
   }
   aData->currentLine += max;
@@ -181,36 +119,9 @@ nsRubyFrame::AddInlinePrefISize(nsRenderingContext *aRenderingContext,
 {
   nscoord sum = 0;
   for (SegmentEnumerator e(this); !e.AtEnd(); e.Next()) {
-    AutoSetTextContainers holder(e.GetBaseContainer());
     sum += e.GetBaseContainer()->GetPrefISize(aRenderingContext);
   }
   aData->currentLine += sum;
-}
-
-/* virtual */ LogicalSize
-nsRubyFrame::ComputeSize(nsRenderingContext *aRenderingContext,
-                           WritingMode aWM,
-                           const LogicalSize& aCBSize,
-                           nscoord aAvailableISize,
-                           const LogicalSize& aMargin,
-                           const LogicalSize& aBorder,
-                           const LogicalSize& aPadding,
-                           ComputeSizeFlags aFlags)
-{
-  // Ruby frame is inline, hence don't compute size before reflow.
-  return LogicalSize(aWM, NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
-}
-
-/* virtual */ nscoord
-nsRubyFrame::GetLogicalBaseline(WritingMode aWritingMode) const
-{
-  return mBaseline;
-}
-
-/* virtual */ bool
-nsRubyFrame::CanContinueTextRun() const
-{
-  return true;
 }
 
 /* virtual */ void
@@ -232,16 +143,25 @@ nsRubyFrame::Reflow(nsPresContext* aPresContext,
   // Grab overflow frames from prev-in-flow and its own.
   MoveOverflowToChildList();
 
+  // Clear leadings
+  mBStartLeading = mBEndLeading = 0;
+
   // Begin the span for the ruby frame
   WritingMode frameWM = aReflowState.GetWritingMode();
   WritingMode lineWM = aReflowState.mLineLayout->GetWritingMode();
   LogicalMargin borderPadding = aReflowState.ComputedLogicalBorderPadding();
-  nscoord startEdge = borderPadding.IStart(frameWM);
-  nscoord endEdge = aReflowState.AvailableISize() - borderPadding.IEnd(frameWM);
+  nscoord startEdge = 0;
+  const bool boxDecorationBreakClone =
+    StyleBorder()->mBoxDecorationBreak == NS_STYLE_BOX_DECORATION_BREAK_CLONE;
+  if (boxDecorationBreakClone || !GetPrevContinuation()) {
+    startEdge = borderPadding.IStart(frameWM);
+  }
   NS_ASSERTION(aReflowState.AvailableISize() != NS_UNCONSTRAINEDSIZE,
                "should no longer use available widths");
+  nscoord availableISize = aReflowState.AvailableISize();
+  availableISize -= startEdge + borderPadding.IEnd(frameWM);
   aReflowState.mLineLayout->BeginSpan(this, &aReflowState,
-                                      startEdge, endEdge, &mBaseline);
+                                      startEdge, availableISize, &mBaseline);
 
   aStatus = NS_FRAME_COMPLETE;
   for (SegmentEnumerator e(this); !e.AtEnd(); e.Next()) {
@@ -267,26 +187,16 @@ nsRubyFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(!NS_FRAME_OVERFLOW_IS_INCOMPLETE(aStatus));
 
   aDesiredSize.ISize(lineWM) = aReflowState.mLineLayout->EndSpan(this);
-  nsLayoutUtils::SetBSizeFromFontMetrics(this, aDesiredSize, aReflowState,
+  if (boxDecorationBreakClone || !GetPrevContinuation()) {
+    aDesiredSize.ISize(lineWM) += borderPadding.IStart(frameWM);
+  }
+  if (boxDecorationBreakClone || NS_FRAME_IS_COMPLETE(aStatus)) {
+    aDesiredSize.ISize(lineWM) += borderPadding.IEnd(frameWM);
+  }
+
+  nsLayoutUtils::SetBSizeFromFontMetrics(this, aDesiredSize,
                                          borderPadding, lineWM, frameWM);
 }
-
-#ifdef DEBUG
-static void
-SanityCheckRubyPosition(int8_t aRubyPosition)
-{
-  uint8_t horizontalPosition = aRubyPosition &
-    (NS_STYLE_RUBY_POSITION_LEFT | NS_STYLE_RUBY_POSITION_RIGHT);
-  MOZ_ASSERT(horizontalPosition == NS_STYLE_RUBY_POSITION_LEFT ||
-             horizontalPosition == NS_STYLE_RUBY_POSITION_RIGHT);
-  uint8_t verticalPosition = aRubyPosition &
-    (NS_STYLE_RUBY_POSITION_OVER | NS_STYLE_RUBY_POSITION_UNDER |
-     NS_STYLE_RUBY_POSITION_INTER_CHARACTER);
-  MOZ_ASSERT(verticalPosition == NS_STYLE_RUBY_POSITION_OVER ||
-             verticalPosition == NS_STYLE_RUBY_POSITION_UNDER ||
-             verticalPosition == NS_STYLE_RUBY_POSITION_INTER_CHARACTER);
-}
-#endif
 
 void
 nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
@@ -294,13 +204,12 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
                            nsRubyBaseContainerFrame* aBaseContainer,
                            nsReflowStatus& aStatus)
 {
-  AutoSetTextContainers holder(aBaseContainer);
   WritingMode lineWM = aReflowState.mLineLayout->GetWritingMode();
   LogicalSize availSize(lineWM, aReflowState.AvailableISize(),
                         aReflowState.AvailableBSize());
 
   nsAutoTArray<nsRubyTextContainerFrame*, RTC_ARRAY_SIZE> textContainers;
-  for (TextContainerIterator iter(aBaseContainer); !iter.AtEnd(); iter.Next()) {
+  for (RubyTextContainerIterator iter(aBaseContainer); !iter.AtEnd(); iter.Next()) {
     textContainers.AppendElement(iter.GetTextContainer());
   }
   const uint32_t rtcCount = textContainers.Length();
@@ -356,7 +265,12 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
         mFrames.InsertFrame(nullptr, newLastChild, newTextContainer);
         newLastChild = newTextContainer;
       }
-      PushChildren(newBaseContainer, lastChild);
+    }
+    if (lastChild != mFrames.LastChild()) {
+      // Always push the next frame after the last child in this segment.
+      // It is possible that we pulled it back before our next-in-flow
+      // drain our overflow.
+      PushChildren(lastChild->GetNextSibling(), lastChild);
       aReflowState.mLineLayout->SetDirtyNextLine();
     }
   } else {
@@ -372,6 +286,7 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
     }
   }
 
+  nscoord segmentISize = baseMetrics.ISize(lineWM);
   nsRect baseRect = aBaseContainer->GetRect();
   // We need to position our rtc frames on one side or the other of the
   // base container's rect, using a coordinate space that's relative to
@@ -401,43 +316,69 @@ nsRubyFrame::ReflowSegment(nsPresContext* aPresContext,
     // handled when reflowing the base containers.
     NS_ASSERTION(textReflowStatus == NS_FRAME_COMPLETE,
                  "Ruby text container must not break itself inside");
-    textContainer->SetSize(LogicalSize(lineWM, textMetrics.ISize(lineWM),
-                                       textMetrics.BSize(lineWM)));
-
-    nscoord x, y;
+    nscoord isize = textMetrics.ISize(lineWM);
     nscoord bsize = textMetrics.BSize(lineWM);
+    textContainer->SetSize(LogicalSize(lineWM, isize, bsize));
+
+    nscoord reservedISize = RubyUtils::GetReservedISize(textContainer);
+    segmentISize = std::max(segmentISize, isize + reservedISize);
+
     uint8_t rubyPosition = textContainer->StyleText()->mRubyPosition;
-#ifdef DEBUG
-    SanityCheckRubyPosition(rubyPosition);
-#endif
-    if (lineWM.IsVertical()) {
-      // writing-mode is vertical, so bsize is the annotation's *width*
-      if (rubyPosition & NS_STYLE_RUBY_POSITION_LEFT) {
-        x = offsetRect.X() - bsize;
-        offsetRect.SetLeftEdge(x);
-      } else {
-        x = offsetRect.XMost();
-        offsetRect.SetRightEdge(x + bsize);
-      }
-      y = offsetRect.Y();
+    MOZ_ASSERT(rubyPosition == NS_STYLE_RUBY_POSITION_OVER ||
+               rubyPosition == NS_STYLE_RUBY_POSITION_UNDER);
+    Maybe<Side> side;
+    if (rubyPosition == NS_STYLE_RUBY_POSITION_OVER) {
+      side.emplace(lineWM.PhysicalSide(eLineRelativeDirOver));
+    } else if (rubyPosition == NS_STYLE_RUBY_POSITION_UNDER) {
+      side.emplace(lineWM.PhysicalSide(eLineRelativeDirUnder));
     } else {
-      // writing-mode is horizontal, so bsize is the annotation's *height*
-      x = offsetRect.X();
-      if (rubyPosition & NS_STYLE_RUBY_POSITION_OVER) {
-        y = offsetRect.Y() - bsize;
-        offsetRect.SetTopEdge(y);
-      } else if (rubyPosition & NS_STYLE_RUBY_POSITION_UNDER) {
-        y = offsetRect.YMost();
-        offsetRect.SetBottomEdge(y + bsize);
-      } else {
-        // XXX inter-character support in bug 1055672
-        MOZ_ASSERT_UNREACHABLE("Unsupported ruby-position");
-        y = offsetRect.Y();
+      // XXX inter-character support in bug 1055672
+      MOZ_ASSERT_UNREACHABLE("Unsupported ruby-position");
+    }
+
+    nsPoint position;
+    if (side.isSome()) {
+      switch (side.value()) {
+      case eSideLeft:
+        offsetRect.SetLeftEdge(offsetRect.X() - bsize);
+        position = offsetRect.TopLeft();
+        break;
+      case eSideRight:
+        position = offsetRect.TopRight();
+        offsetRect.SetRightEdge(offsetRect.XMost() + bsize);
+        break;
+      case eSideTop:
+        offsetRect.SetTopEdge(offsetRect.Y() - bsize);
+        position = offsetRect.TopLeft();
+        break;
+      case eSideBottom:
+        position = offsetRect.BottomLeft();
+        offsetRect.SetBottomEdge(offsetRect.YMost() + bsize);
+        break;
       }
     }
     FinishReflowChild(textContainer, aPresContext, textMetrics,
-                      &textReflowState, x, y, 0);
+                      &textReflowState, position.x, position.y, 0);
   }
+  MOZ_ASSERT(LogicalSize(lineWM, baseRect.Size()).ISize(lineWM) ==
+             LogicalSize(lineWM, offsetRect.Size()).ISize(lineWM),
+             "Annotations should only be placed on the block directions");
+
+  nscoord deltaISize = segmentISize - baseMetrics.ISize(lineWM);
+  if (deltaISize <= 0) {
+    RubyUtils::ClearReservedISize(aBaseContainer);
+  } else {
+    RubyUtils::SetReservedISize(aBaseContainer, deltaISize);
+    aReflowState.mLineLayout->AdvanceICoord(deltaISize);
+  }
+
+  // Set block leadings of the base container
+  LogicalMargin leadings(lineWM, offsetRect - baseRect);
+  NS_ASSERTION(leadings.BStart(lineWM) >= 0 && leadings.BEnd(lineWM) >= 0,
+               "Leadings should be non-negative (because adding "
+               "ruby annotation can only increase the size)");
+  mBStartLeading = std::max(mBStartLeading, leadings.BStart(lineWM));
+  mBEndLeading = std::max(mBEndLeading, leadings.BEnd(lineWM));
 }
 
 nsRubyBaseContainerFrame*

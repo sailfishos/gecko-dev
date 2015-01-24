@@ -525,7 +525,7 @@
 
           if (aCallGlobalListeners != false &&
               aBrowser == this.mCurrentBrowser) {
-            this.mProgressListeners.forEach(function (p) {
+            for (let p of this.mProgressListeners) {
               if (aMethod in p) {
                 try {
                   if (!p[aMethod].apply(p, aArguments))
@@ -535,13 +535,13 @@
                   Components.utils.reportError(e);
                 }
               }
-            });
+            }
           }
 
           if (aCallTabsListeners != false) {
             aArguments.unshift(aBrowser);
 
-            this.mTabsProgressListeners.forEach(function (p) {
+            for (let p of this.mTabsProgressListeners) {
               if (aMethod in p) {
                 try {
                   if (!p[aMethod].apply(p, aArguments))
@@ -551,7 +551,7 @@
                   Components.utils.reportError(e);
                 }
               }
-            });
+            }
           }
 
           return rv;
@@ -1466,6 +1466,8 @@
             let index = tab._tPos;
             let filter = this.mTabFilters[index];
             aBrowser.webProgress.removeProgressListener(filter);
+            // Make sure the browser is destroyed so it unregisters from observer notifications
+            aBrowser.destroy();
 
             // Change the "remote" attribute.
             let parent = aBrowser.parentNode;
@@ -1489,6 +1491,10 @@
 
             if (wasActive)
               aBrowser.focus();
+
+            let evt = document.createEvent("Events");
+            evt.initEvent("TabRemotenessChange", true, false);
+            tab.dispatchEvent(evt);
 
             return true;
           ]]>
@@ -2041,25 +2047,6 @@
               return false;
 
             var browser = this.getBrowserForTab(aTab);
-            if (!aTab._pendingPermitUnload && !aTabWillBeMoved) {
-              let ds = browser.docShell;
-              if (ds && ds.contentViewer) {
-                // We need to block while calling permitUnload() because it
-                // processes the event queue and may lead to another removeTab()
-                // call before permitUnload() even returned.
-                aTab._pendingPermitUnload = true;
-                let permitUnload = ds.contentViewer.permitUnload();
-                delete aTab._pendingPermitUnload;
-                // If we were closed during onbeforeunload, we return false now
-                // so we don't (try to) close the same tab again. Of course, we
-                // also stop if the unload was cancelled by the user:
-                if (aTab.closing || !permitUnload) {
-                  // NB: deliberately keep the _closedDuringPermitUnload set to
-                  // true so we keep exiting early in case of multiple calls.
-                  return false;
-                }
-              }
-            }
 
             var closeWindow = false;
             var newTab = false;
@@ -2081,6 +2068,26 @@
               }
 
               newTab = true;
+            }
+
+            if (!aTab._pendingPermitUnload && !aTabWillBeMoved) {
+              let ds = browser.docShell;
+              if (ds && ds.contentViewer) {
+                // We need to block while calling permitUnload() because it
+                // processes the event queue and may lead to another removeTab()
+                // call before permitUnload() returns.
+                aTab._pendingPermitUnload = true;
+                let permitUnload = ds.contentViewer.permitUnload();
+                delete aTab._pendingPermitUnload;
+                // If we were closed during onbeforeunload, we return false now
+                // so we don't (try to) close the same tab again. Of course, we
+                // also stop if the unload was cancelled by the user:
+                if (aTab.closing || !permitUnload) {
+                  // NB: deliberately keep the _closedDuringPermitUnload set to
+                  // true so we keep exiting early in case of multiple calls.
+                  return false;
+                }
+              }
             }
 
             aTab.closing = true;
@@ -2129,11 +2136,11 @@
             browser.setAttribute("type", "content-targetable");
 
             // Remove this tab as the owner of any other tabs, since it's going away.
-            Array.forEach(this.tabs, function (tab) {
+            for (let tab of this.tabs) {
               if ("owner" in tab && tab.owner == aTab)
                 // |tab| is a child of the tab we're removing, make it an orphan
                 tab.owner = null;
-            });
+            }
 
             aTab._endRemoveArgs = [closeWindow, newTab];
             return true;
@@ -2537,12 +2544,12 @@
         <parameter name="aTabs"/>
         <body>
         <![CDATA[
-          Array.forEach(this.tabs, function(tab) {
+          for (let tab of this.tabs) {
             if (aTabs.indexOf(tab) == -1)
               this.hideTab(tab);
             else
               this.showTab(tab);
-          }, this);
+          }
 
           this.tabContainer._handleTabSelect(false);
         ]]>
@@ -2648,15 +2655,6 @@
           <![CDATA[
             if (this.tabs.length == 1)
               return null;
-
-            let event = new CustomEvent("TabBecomingWindow", {
-              bubbles: true,
-              cancelable: true
-            });
-            aTab.dispatchEvent(event);
-            if (event.defaultPrevented) {
-              return null;
-            }
 
             var options = "chrome,dialog=no,all";
             for (var name in aOptions)
@@ -3651,8 +3649,8 @@
         if (tabs._lastTabClosedByMouse)
           tabs._expandSpacerBy(this._scrollButtonDown.clientWidth);
 
-        tabs.tabbrowser._removingTabs.forEach(tabs.tabbrowser.removeTab,
-                                              tabs.tabbrowser);
+        for (let tab of tabs.tabbrowser._removingTabs)
+          tabs.tabbrowser.removeTab(tab);
 
         tabs._positionPinnedTabs();
       ]]></handler>

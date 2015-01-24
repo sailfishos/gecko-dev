@@ -367,8 +367,14 @@ nsHttpTransaction::Init(uint32_t caps,
     else
         mRequestStream = headers;
 
-    rv = mRequestStream->Available(&mRequestSize);
-    if (NS_FAILED(rv)) return rv;
+    uint64_t size_u64;
+    rv = mRequestStream->Available(&size_u64);
+    if (NS_FAILED(rv)) {
+        return rv;
+    }
+
+    // make sure it fits within js MAX_SAFE_INTEGER
+    mRequestSize = InScriptableRange(size_u64) ? static_cast<int64_t>(size_u64) : -1;
 
     // create pipe for response stream
     rv = NS_NewPipe2(getter_AddRefs(mPipeIn),
@@ -499,9 +505,9 @@ nsHttpTransaction::SetSecurityCallbacks(nsIInterfaceRequestor* aCallbacks)
 
 void
 nsHttpTransaction::OnTransportStatus(nsITransport* transport,
-                                     nsresult status, uint64_t progress)
+                                     nsresult status, int64_t progress)
 {
-    LOG(("nsHttpTransaction::OnSocketStatus [this=%p status=%x progress=%llu]\n",
+    LOG(("nsHttpTransaction::OnSocketStatus [this=%p status=%x progress=%lld]\n",
         this, status, progress));
 
     if (TimingEnabled()) {
@@ -548,23 +554,30 @@ nsHttpTransaction::OnTransportStatus(nsITransport* transport,
     if (status == NS_NET_STATUS_RECEIVING_FROM)
         return;
 
-    uint64_t progressMax;
+    int64_t progressMax;
 
     if (status == NS_NET_STATUS_SENDING_TO) {
         // suppress progress when only writing request headers
-        if (!mHasRequestBody)
+        if (!mHasRequestBody) {
+            LOG(("nsHttpTransaction::OnTransportStatus %p "
+                 "SENDING_TO without request body\n", this));
             return;
+        }
 
         nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mRequestStream);
-        MOZ_ASSERT(seekable, "Request stream isn't seekable?!?");
-
-        int64_t prog = 0;
-        seekable->Tell(&prog);
-        progress = prog;
+        if (!seekable) {
+            LOG(("nsHttpTransaction::OnTransportStatus %p "
+                 "SENDING_TO without seekable request stream\n", this));
+            progress = 0;
+        } else {
+            int64_t prog = 0;
+            seekable->Tell(&prog);
+            progress = prog;
+        }
 
         // when uploading, we include the request headers in the progress
         // notifications.
-        progressMax = mRequestSize; // XXX mRequestSize is 32-bit!
+        progressMax = mRequestSize;
     }
     else {
         progress = 0;
@@ -1612,10 +1625,6 @@ nsHttpTransaction::HandleContent(char *buf,
     if (*contentRead) {
         // update count of content bytes read and report progress...
         mContentRead += *contentRead;
-        /* when uncommenting, take care of 64-bit integers w/ std::max...
-        if (mProgressSink)
-            mProgressSink->OnProgress(nullptr, nullptr, mContentRead, std::max(0, mContentLength));
-        */
     }
 
     LOG(("nsHttpTransaction::HandleContent [this=%p count=%u read=%u mContentRead=%lld mContentLength=%lld]\n",

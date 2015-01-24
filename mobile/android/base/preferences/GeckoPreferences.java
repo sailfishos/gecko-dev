@@ -29,7 +29,6 @@ import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.GuestSession;
 import org.mozilla.gecko.LocaleManager;
 import org.mozilla.gecko.Locales;
-import org.mozilla.gecko.NewTabletUI;
 import org.mozilla.gecko.PrefsHelper;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.RestrictedProfiles;
@@ -121,6 +120,7 @@ OnSharedPreferenceChangeListener
     private static final String PREFS_HEALTHREPORT_LINK = NON_PREF_PREFIX + "healthreport.link";
     private static final String PREFS_DEVTOOLS_REMOTE_ENABLED = "devtools.debugger.remote-enabled";
     private static final String PREFS_DISPLAY_REFLOW_ON_ZOOM = "browser.zoom.reflowOnZoom";
+    private static final String PREFS_DISPLAY_TITLEBAR_MODE = "browser.chrome.titlebarMode";
     private static final String PREFS_SYNC = NON_PREF_PREFIX + "sync";
     private static final String PREFS_TRACKING_PROTECTION = "privacy.trackingprotection.enabled";
     private static final String PREFS_TRACKING_PROTECTION_LEARN_MORE = NON_PREF_PREFIX + "trackingprotection.learn_more";
@@ -132,7 +132,6 @@ OnSharedPreferenceChangeListener
 
     public static final String PREFS_RESTORE_SESSION = NON_PREF_PREFIX + "restoreSession3";
     public static final String PREFS_SUGGESTED_SITES = NON_PREF_PREFIX + "home_suggested_sites";
-    public static final String PREFS_NEW_TABLET_UI = NON_PREF_PREFIX + "new_tablet_ui";
 
     // These values are chosen to be distinct from other Activity constants.
     private static final int REQUEST_CODE_PREF_SCREEN = 5;
@@ -673,12 +672,6 @@ OnSharedPreferenceChangeListener
                     preferences.removePreference(pref);
                     i--;
                     continue;
-                } else if ((AppConstants.RELEASE_BUILD || !HardwareUtils.isTablet()) &&
-                           PREFS_NEW_TABLET_UI.equals(key)) {
-                    // Remove toggle for new tablet UI on release builds and phones.
-                    preferences.removePreference(pref);
-                    i--;
-                    continue;
                 } else if (!AppConstants.NIGHTLY_BUILD &&
                            (PREFS_TRACKING_PROTECTION.equals(key) ||
                             PREFS_TRACKING_PROTECTION_LEARN_MORE.equals(key))) {
@@ -739,6 +732,12 @@ OnSharedPreferenceChangeListener
                             return true;
                         }
                     });
+                } else if (PREFS_DISPLAY_TITLEBAR_MODE.equals(key) &&
+                           HardwareUtils.isTablet()) {
+                    // New tablet always shows URLS, not titles.
+                    preferences.removePreference(pref);
+                    i--;
+                    continue;
                 } else if (handlers.containsKey(key)) {
                     PrefHandler handler = handlers.get(key);
                     if (!handler.setupPref(this, pref)) {
@@ -1018,8 +1017,6 @@ OnSharedPreferenceChangeListener
                              sharedPreferences.getString(key, null));
         } else if (PREFS_SUGGESTED_SITES.equals(key)) {
             refreshSuggestedSites();
-        } else if (PREFS_NEW_TABLET_UI.equals(key)) {
-            Toast.makeText(this, R.string.new_tablet_restart, Toast.LENGTH_SHORT).show();
         }
     }
 

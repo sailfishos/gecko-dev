@@ -373,7 +373,7 @@ Tester.prototype = {
       }
 
       if (testScope.__expected == 'fail' && testScope.__num_failed <= 0) {
-        this.currentTest.addResult(new testResult(false, "We expected at least one assertion to fail because this test file was marked as fail-if in the manifest", "", false));
+        this.currentTest.addResult(new testResult(false, "We expected at least one assertion to fail because this test file was marked as fail-if in the manifest!", "", true));
       }
 
       this.Promise.Debugging.flushUncaughtErrors();
@@ -715,7 +715,8 @@ Tester.prototype = {
       var self = this;
       var timeoutExpires = Date.now() + gTimeoutSeconds * 1000;
       var waitUntilAtLeast = timeoutExpires - 1000;
-      this.currentTest.scope.__waitTimer = setTimeout(function timeoutFn() {
+      this.currentTest.scope.__waitTimer =
+        this.SimpleTest._originalSetTimeout.apply(window, [function timeoutFn() {
         // We sometimes get woken up long before the gTimeoutSeconds
         // have elapsed (when running in chaos mode for example). This
         // code ensures that we don't wrongly time out in that case.
@@ -754,7 +755,7 @@ Tester.prototype = {
         self.currentTest.timedOut = true;
         self.currentTest.scope.__waitTimer = null;
         self.nextTest();
-      }, gTimeoutSeconds * 1000);
+      }, gTimeoutSeconds * 1000]);
     }
   },
 

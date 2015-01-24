@@ -28,7 +28,7 @@ public:
 
   explicit HTMLAnchorElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
     : nsGenericHTMLElement(aNodeInfo)
-    , Link(MOZ_THIS_IN_INITIALIZER_LIST())
+    , Link(this)
   {
   }
 
@@ -41,6 +41,12 @@ public:
 
   virtual int32_t TabIndexDefault() MOZ_OVERRIDE;
   virtual bool Draggable() const MOZ_OVERRIDE;
+
+  // Element
+  virtual bool IsInteractiveHTMLContent() const MOZ_OVERRIDE
+  {
+    return true;
+  }
 
   // nsIDOMHTMLAnchorElement
   NS_DECL_NSIDOMHTMLANCHORELEMENT
@@ -81,9 +87,9 @@ public:
 
   virtual EventStates IntrinsicState() const MOZ_OVERRIDE;
 
-  virtual void OnDNSPrefetchDeferred();
-  virtual void OnDNSPrefetchRequested();
-  virtual bool HasDeferredDNSPrefetchRequest();
+  virtual void OnDNSPrefetchDeferred() MOZ_OVERRIDE;
+  virtual void OnDNSPrefetchRequested() MOZ_OVERRIDE;
+  virtual bool HasDeferredDNSPrefetchRequest() MOZ_OVERRIDE;
 
   // WebIDL API
   void GetHref(nsAString& aValue, ErrorResult& rv)

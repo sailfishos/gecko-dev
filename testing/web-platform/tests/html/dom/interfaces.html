@@ -47,12 +47,6 @@ exception DOMException {
   unsigned short code;
 };
 
-[Constructor(DOMString name, optional DOMString message = "")]
-interface DOMError {
-  readonly attribute DOMString name;
-  readonly attribute DOMString message;
-};
-
 [Constructor(DOMString type, optional EventInit eventInitDict),
  Exposed=Window,Worker]
 interface Event {
@@ -266,6 +260,7 @@ interface Document : Node {
   readonly attribute DOMString origin;
   readonly attribute DOMString compatMode;
   readonly attribute DOMString characterSet;
+  readonly attribute DOMString inputEncoding; // legacy alias of .characterSet
   readonly attribute DOMString contentType;
 
   readonly attribute DocumentType? doctype;
@@ -3244,6 +3239,7 @@ window.onload = function() {
 			'document.createElement("wbr")',
 			'document.createElement("summary")',
 			'document.createElement("acronym")',
+			'document.createElement("basefont")',
 		],
 		HTMLUnknownElement: [
 			'document.createElement("quasit")',
@@ -3253,7 +3249,6 @@ window.onload = function() {
 			'document.createElement("nextid")',
 			'document.createElement("rb")',
 			'document.createElement("spacer")',
-			'document.createElement("basefont")',
 			'document.createElement("directory")',
 			'document.createElement("mod")',
 		],

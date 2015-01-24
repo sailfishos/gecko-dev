@@ -73,6 +73,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mForceNoIntercept(false)
   , mSuspendCount(0)
   , mProxyResolveFlags(0)
+  , mProxyURI(nullptr)
   , mContentDispositionHint(UINT32_MAX)
   , mHttpHandler(gHttpHandler)
   , mReferrerPolicy(REFERRER_POLICY_NO_REFERRER_WHEN_DOWNGRADE)
@@ -1039,8 +1040,9 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
     if (NS_FAILED(rv)) return rv;
 
     // It's ok to send referrer for https-to-http scenarios if the referrer
-    // policy is "unsafe-url" or "origin".
+    // policy is "unsafe-url", "origin", or "origin-when-crossorigin".
     if (referrerPolicy != REFERRER_POLICY_UNSAFE_URL &&
+	referrerPolicy != REFERRER_POLICY_ORIGIN_WHEN_XORIGIN &&
         referrerPolicy != REFERRER_POLICY_ORIGIN) {
 
       // in other referrer policies, https->http is not allowed...
@@ -1066,17 +1068,24 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
 
   // for cross-origin-based referrer changes (not just host-based), figure out
   // if the referrer is being sent cross-origin.
-  nsCOMPtr<nsIURI> loadingURI;
+  nsCOMPtr<nsIURI> triggeringURI;
   bool isCrossOrigin = true;
   if (mLoadInfo) {
-    mLoadInfo->LoadingPrincipal()->GetURI(getter_AddRefs(loadingURI));
+    mLoadInfo->TriggeringPrincipal()->GetURI(getter_AddRefs(triggeringURI));
   }
-  if (loadingURI) {
+  if (triggeringURI) {
+    if (LOG_ENABLED()) {
+      nsAutoCString triggeringURISpec;
+      rv = triggeringURI->GetAsciiSpec(triggeringURISpec);
+      if (!NS_FAILED(rv)) {
+        LOG(("triggeringURI=%s\n", triggeringURISpec.get()));
+      }
+    }
     nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-    rv = ssm->CheckSameOriginURI(loadingURI, mURI, false);
+    rv = ssm->CheckSameOriginURI(triggeringURI, mURI, false);
     isCrossOrigin = NS_FAILED(rv);
   } else {
-    NS_WARNING("no loading principal available via loadInfo, assumming load is cross-origin");
+    NS_WARNING("no triggering principal available via loadInfo, assuming load is cross-origin");
   }
 
   nsCOMPtr<nsIURI> clone;
@@ -1188,6 +1197,17 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
 
   mReferrer = clone;
   mReferrerPolicy = referrerPolicy;
+  return NS_OK;
+}
+
+// Return the channel's proxy URI, or if it doesn't exist, the
+// channel's main URI.
+NS_IMETHODIMP
+HttpBaseChannel::GetProxyURI(nsIURI **aOut)
+{
+  NS_ENSURE_ARG_POINTER(aOut);
+  nsCOMPtr<nsIURI> result(mProxyURI);
+  result.forget(aOut);
   return NS_OK;
 }
 
@@ -1358,6 +1378,15 @@ HttpBaseChannel::IsNoCacheResponse(bool *value)
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::IsPrivateResponse(bool *value)
+{
+  if (!mResponseHead)
+    return NS_ERROR_NOT_AVAILABLE;
+  *value = mResponseHead->Private();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetResponseStatus(uint32_t *aValue)
 {
   if (!mResponseHead)
@@ -1400,6 +1429,15 @@ HttpBaseChannel::RedirectTo(nsIURI *newURI)
 //-----------------------------------------------------------------------------
 // HttpBaseChannel::nsIHttpChannelInternal
 //-----------------------------------------------------------------------------
+
+NS_IMETHODIMP
+HttpBaseChannel::ContinueBeginConnect()
+{
+  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Default,
+             "The parent overrides this");
+  MOZ_ASSERT(false, "This method must be overridden");
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
 
 NS_IMETHODIMP
 HttpBaseChannel::GetTopWindowURI(nsIURI **aTopWindowURI)
@@ -1623,7 +1661,7 @@ HttpBaseChannel::TakeAllSecurityMessages(
  * More information can be found here:
  * https://bugzilla.mozilla.org/show_bug.cgi?id=846918
  */
-NS_IMETHODIMP
+nsresult
 HttpBaseChannel::AddSecurityMessage(const nsAString &aMessageTag,
     const nsAString &aMessageCategory)
 {
@@ -2157,8 +2195,10 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
       nsCOMPtr<nsIURI> uri;
       mRedirects[i]->GetURI(getter_AddRefs(uri));
       nsCString spec;
-      uri->GetSpec(spec);
-      LOG(("HttpBaseChannel::SetupReplacementChannel adding redirect %s "
+      if (uri) {
+        uri->GetSpec(spec);
+      }
+      LOG(("HttpBaseChannel::SetupReplacementChannel adding redirect \'%s\' "
            "[this=%p]", spec.get(), this));
 #endif
       httpInternal->AddRedirect(mRedirects[i]);

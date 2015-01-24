@@ -12,7 +12,6 @@ loader.lazyGetter(this, "NetworkHelper", () => require("devtools/toolkit/webcons
 loader.lazyImporter(this, "Services", "resource://gre/modules/Services.jsm");
 loader.lazyImporter(this, "DevToolsUtils", "resource://gre/modules/devtools/DevToolsUtils.jsm");
 loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
-loader.lazyImporter(this, "PrivateBrowsingUtils", "resource://gre/modules/PrivateBrowsingUtils.jsm");
 loader.lazyServiceGetter(this, "gActivityDistributor",
                          "@mozilla.org/network/http-activity-distributor;1",
                          "nsIHttpActivityDistributor");
@@ -83,6 +82,20 @@ NetworkResponseListener.prototype = {
       return this._wrappedNotificationCallbacks.getInterface(iid);
     }
     throw Cr.NS_ERROR_NO_INTERFACE;
+  },
+
+  /**
+   * Forward notifications for interfaces this object implements, in case other
+   * objects also implemented them.
+   */
+  _forwardNotification(iid, method, args) {
+    if (!this._wrappedNotificationCallbacks) {
+      return;
+    }
+    try {
+      let impl = this._wrappedNotificationCallbacks.getInterface(iid);
+      impl[method].apply(impl, args);
+    } catch(e if e.result == Cr.NS_ERROR_NO_INTERFACE) {}
   },
 
   /**
@@ -191,10 +204,25 @@ NetworkResponseListener.prototype = {
   onStartRequest: function NRL_onStartRequest(aRequest)
   {
     this.request = aRequest;
+    this._getSecurityInfo();
     this._findOpenResponse();
     // Asynchronously wait for the data coming from the request.
     this.setAsyncListener(this.sink.inputStream, this);
   },
+
+  /**
+   * Parse security state of this request and report it to the client.
+   */
+  _getSecurityInfo: DevToolsUtils.makeInfallible(function NRL_getSecurityInfo() {
+    // Take the security information from the original nsIHTTPChannel instead of
+    // the nsIRequest received in onStartRequest. If response to this request
+    // was a redirect from http to https, the request object seems to contain
+    // security info for the https request after redirect.
+    let secinfo = this.httpActivity.channel.securityInfo;
+    let info = NetworkHelper.parseSecurityInfo(secinfo, this.httpActivity);
+
+    this.httpActivity.owner.addSecurityInfo(info);
+  }),
 
   /**
    * Handle the onStopRequest by closing the sink output stream.
@@ -216,9 +244,14 @@ NetworkResponseListener.prototype = {
    */
   onProgress: function(request, context, progress, progressMax) {
     this.transferredSize = progress;
+    // Need to forward as well to keep things like Download Manager's progress
+    // bar working properly.
+    this._forwardNotification(Ci.nsIProgressEventSink, "onProgress", arguments);
   },
 
-  onStatus: function () {},
+  onStatus: function () {
+    this._forwardNotification(Ci.nsIProgressEventSink, "onStatus", arguments);
+  },
 
   /**
    * Find the open response object associated to the current request. The
@@ -695,7 +728,9 @@ NetworkMonitor.prototype = {
 
     // see NM__onRequestBodySent()
     httpActivity.charset = win ? win.document.characterSet : null;
-    httpActivity.private = win ? PrivateBrowsingUtils.isWindowPrivate(win) : false;
+
+    aChannel.QueryInterface(Ci.nsIPrivateBrowsingChannel);
+    httpActivity.private = aChannel.isChannelPrivate;
 
     httpActivity.timings.REQUEST_HEADER = {
       first: aTimestamp,
@@ -781,6 +816,7 @@ NetworkMonitor.prototype = {
       channel: aChannel,
       charset: null, // see NM__onRequestHeader()
       url: aChannel.URI.spec,
+      hostname: aChannel.URI.host, // needed for host specific security info
       discardRequestBody: !this.saveRequestAndResponseBodies,
       discardResponseBody: !this.saveRequestAndResponseBodies,
       timings: {}, // internal timing information, see NM_observeActivity()
@@ -1205,8 +1241,8 @@ NetworkEventActorProxy.prototype = {
 (function() {
   // Listeners for new network event data coming from the NetworkMonitor.
   let methods = ["addRequestHeaders", "addRequestCookies", "addRequestPostData",
-                 "addResponseStart", "addResponseHeaders", "addResponseCookies",
-                 "addResponseContent", "addEventTimings"];
+                 "addResponseStart", "addSecurityInfo", "addResponseHeaders",
+                 "addResponseCookies", "addResponseContent", "addEventTimings"];
   let factory = NetworkEventActorProxy.methodFactory;
   for (let method of methods) {
     NetworkEventActorProxy.prototype[method] = factory(method);

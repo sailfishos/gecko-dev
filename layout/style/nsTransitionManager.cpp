@@ -229,7 +229,8 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
                                      &startedAny, &whichStarted);
         }
       } else if (nsCSSProps::IsShorthand(property)) {
-        CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(subprop, property) {
+        CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(
+            subprop, property, nsCSSProps::eEnabledForAllContent) {
           ConsiderStartingTransition(*subprop, t, aElement, collection,
                                      aOldStyleContext, aNewStyleContext,
                                      &startedAny, &whichStarted);
@@ -268,7 +269,8 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
             allTransitionProperties.AddProperty(p);
           }
         } else if (nsCSSProps::IsShorthand(property)) {
-          CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(subprop, property) {
+          CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(
+              subprop, property, nsCSSProps::eEnabledForAllContent) {
             allTransitionProperties.AddProperty(*subprop);
           }
         } else {
@@ -452,6 +454,7 @@ nsTransitionManager::ConsiderStartingTransition(
       // currently in the 'transition-delay').  It also might happen because we
       // just got a style change to a value that can't be interpolated.
       AnimationPlayerPtrArray& players = aElementTransitions->mPlayers;
+      players[currentIndex]->Cancel();
       oldPT = nullptr; // Clear pointer so it doesn't dangle
       players.RemoveElementAt(currentIndex);
       aElementTransitions->UpdateAnimationGeneration(mPresContext);
@@ -540,8 +543,12 @@ nsTransitionManager::ConsiderStartingTransition(
   segment.mTimingFunction.Init(tf);
 
   nsRefPtr<CSSTransitionPlayer> player = new CSSTransitionPlayer(timeline);
-  player->PlayFromStyle();
+  // The order of the following two calls is important since PlayFromStyle
+  // will add the player to the PendingPlayerTracker of its source content's
+  // document. When we come to make source writeable (bug 1049975) we should
+  // remove this dependency.
   player->SetSource(pt);
+  player->PlayFromStyle();
 
   if (!aElementTransitions) {
     aElementTransitions =
@@ -695,10 +702,6 @@ nsTransitionManager::FlushTransitions(FlushFlags aFlags)
             MOZ_ASSERT(player->GetSource()->Properties().Length() == 1,
                        "Should have one animation property for a transition");
             nsCSSProperty prop = player->GetSource()->Properties()[0].mProperty;
-            if (nsCSSProps::PropHasFlags(prop, CSS_PROPERTY_REPORT_OTHER_NAME))
-            {
-              prop = nsCSSProps::OtherNameFor(prop);
-            }
             TimeDuration duration =
               player->GetSource()->Timing().mIterationDuration;
             events.AppendElement(

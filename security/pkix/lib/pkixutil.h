@@ -38,7 +38,7 @@ namespace mozilla { namespace pkix {
 // Each BackCert contains pointers to all the given certificate's extensions
 // so that we can parse the extension block once and then process the
 // extensions in an order that may be different than they appear in the cert.
-class BackCert
+class BackCert final
 {
 public:
   // certDER and childCert must be valid for the lifetime of BackCert.
@@ -140,14 +140,14 @@ private:
   Input subjectAltName;
   Input criticalNetscapeCertificateType;
 
-  Result RememberExtension(Reader& extnID, const Input& extnValue,
-                           bool critical, /*out*/ bool& understood);
+  Result RememberExtension(Reader& extnID, Input extnValue, bool critical,
+                           /*out*/ bool& understood);
 
-  BackCert(const BackCert&) /* = delete */;
-  void operator=(const BackCert&); /* = delete */;
+  BackCert(const BackCert&) = delete;
+  void operator=(const BackCert&) = delete;
 };
 
-class NonOwningDERArray : public DERArray
+class NonOwningDERArray final : public DERArray
 {
 public:
   NonOwningDERArray()
@@ -157,9 +157,9 @@ public:
     // numItems before accessing i.
   }
 
-  virtual size_t GetLength() const { return numItems; }
+  size_t GetLength() const override { return numItems; }
 
-  virtual const Input* GetDER(size_t i) const
+  const Input* GetDER(size_t i) const override
   {
     return i < numItems ? &items[i] : nullptr;
   }
@@ -183,8 +183,8 @@ private:
   Input items[MAX_LENGTH]; // avoids any heap allocations
   size_t numItems;
 
-  NonOwningDERArray(const NonOwningDERArray&) /* = delete*/;
-  void operator=(const NonOwningDERArray&) /* = delete*/;
+  NonOwningDERArray(const NonOwningDERArray&) = delete;
+  void operator=(const NonOwningDERArray&) = delete;
 };
 
 inline unsigned int

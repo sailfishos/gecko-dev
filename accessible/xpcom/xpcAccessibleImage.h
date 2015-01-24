@@ -24,8 +24,8 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   NS_IMETHOD GetImagePosition(uint32_t aCoordType,
-                              int32_t* aX, int32_t* aY) MOZ_FINAL;
-  NS_IMETHOD GetImageSize(int32_t* aWidth, int32_t* aHeight) MOZ_FINAL;
+                              int32_t* aX, int32_t* aY) MOZ_FINAL MOZ_OVERRIDE;
+  NS_IMETHOD GetImageSize(int32_t* aWidth, int32_t* aHeight) MOZ_FINAL MOZ_OVERRIDE;
 
 protected:
   virtual ~xpcAccessibleImage() {}
@@ -33,8 +33,8 @@ protected:
 private:
   ImageAccessible* Intl() { return mIntl->AsImage(); }
 
-  xpcAccessibleImage(const xpcAccessibleImage&) MOZ_DELETE;
-  xpcAccessibleImage& operator =(const xpcAccessibleImage&) MOZ_DELETE;
+  xpcAccessibleImage(const xpcAccessibleImage&) = delete;
+  xpcAccessibleImage& operator =(const xpcAccessibleImage&) = delete;
 };
 
 } // namespace a11y

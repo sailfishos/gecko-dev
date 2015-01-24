@@ -31,10 +31,10 @@
 #include "asmjs/AsmJSValidate.h"
 #include "gc/Barrier.h"
 #include "gc/Marking.h"
+#include "js/Conversions.h"
 #include "vm/ArrayBufferObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
-#include "vm/NumericConversions.h"
 #include "vm/SharedArrayObject.h"
 #include "vm/TypedArrayCommon.h"
 #include "vm/WrapperObject.h"
@@ -55,6 +55,8 @@ using mozilla::PodCopy;
 using mozilla::PositiveInfinity;
 using JS::CanonicalizeNaN;
 using JS::GenericNaN;
+using JS::ToInt32;
+using JS::ToUint32;
 
 TypedArrayLayout SharedTypedArrayObject::layout_(true, // shared
                                                  false, // neuterable
@@ -354,7 +356,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
         if (!getter)
             return false;
 
-        return DefineNativeProperty(cx, proto, id, UndefinedHandleValue,
+        return NativeDefineProperty(cx, proto, id, UndefinedHandleValue,
                                     JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr,
                                     attrs);
     }
@@ -748,10 +750,10 @@ SharedTypedArrayObjectTemplate<NativeType>::FinishClassInit(JSContext *cx,
 {
     RootedValue bytesValue(cx, Int32Value(BYTES_PER_ELEMENT));
 
-    if (!JSObject::defineProperty(cx, ctor, cx->names().BYTES_PER_ELEMENT, bytesValue,
-                                  nullptr, nullptr, JSPROP_PERMANENT | JSPROP_READONLY) ||
-        !JSObject::defineProperty(cx, proto, cx->names().BYTES_PER_ELEMENT, bytesValue,
-                                  nullptr, nullptr, JSPROP_PERMANENT | JSPROP_READONLY))
+    if (!DefineProperty(cx, ctor, cx->names().BYTES_PER_ELEMENT, bytesValue,
+                        nullptr, nullptr, JSPROP_PERMANENT | JSPROP_READONLY) ||
+        !DefineProperty(cx, proto, cx->names().BYTES_PER_ELEMENT, bytesValue,
+                        nullptr, nullptr, JSPROP_PERMANENT | JSPROP_READONLY))
     {
         return false;
     }

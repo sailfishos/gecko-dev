@@ -23,7 +23,7 @@ Zone * const Zone::NotOnList = reinterpret_cast<Zone *>(1);
 
 JS::Zone::Zone(JSRuntime *rt)
   : JS::shadow::Zone(rt, &rt->gc.marker),
-    allocator(this),
+    arenas(rt),
     types(this),
     compartments(),
     gcGrayRoots(),
@@ -185,8 +185,7 @@ Zone::discardJitCode(FreeOp *fop)
 
         for (ZoneCellIterUnderGC i(this, FINALIZE_SCRIPT); !i.done(); i.next()) {
             JSScript *script = i.get<JSScript>();
-            jit::FinishInvalidation<SequentialExecution>(fop, script);
-            jit::FinishInvalidation<ParallelExecution>(fop, script);
+            jit::FinishInvalidation(fop, script);
 
             /*
              * Discard baseline script if it's not marked as active. Note that
@@ -317,7 +316,8 @@ ZoneList::check() const
 #endif
 }
 
-bool ZoneList::isEmpty() const
+bool
+ZoneList::isEmpty() const
 {
     return head == nullptr;
 }

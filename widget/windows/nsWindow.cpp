@@ -133,14 +133,6 @@
 #include "mozilla/WindowsVersion.h"
 #include "nsThemeConstants.h"
 
-#ifdef MOZ_ENABLE_D3D9_LAYER
-#include "LayerManagerD3D9.h"
-#endif
-
-#ifdef MOZ_ENABLE_D3D10_LAYER
-#include "LayerManagerD3D10.h"
-#endif
-
 #include "nsIGfxInfo.h"
 #include "nsUXThemeConstants.h"
 #include "KeyboardLayout.h"
@@ -255,9 +247,6 @@ int             nsWindow::sTrimOnMinimize         = 2;
 
 // Default value for general window class (used when the pref is the empty string).
 const char*     nsWindow::sDefaultMainWindowClass = kClassNameGeneral;
-
-// If we're using D3D9, this will not be allowed during initial 5 seconds.
-bool            nsWindow::sAllowD3D9              = false;
 
 TriStateBool nsWindow::sHasBogusPopupsDropShadowOnMultiMonitor = TRI_UNKNOWN;
 
@@ -2933,8 +2922,9 @@ void* nsWindow::GetNativeData(uint32_t aDataType)
     case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_WIDGET:
     case NS_NATIVE_WINDOW:
-    case NS_NATIVE_SHAREABLE_WINDOW:
       return (void*)mWnd;
+    case NS_NATIVE_SHAREABLE_WINDOW:
+      return (void*) WinUtils::GetTopLevelHWND(mWnd);
     case NS_NATIVE_GRAPHIC:
       // XXX:  This is sleezy!!  Remember to Release the DC after using it!
 #ifdef MOZ_XUL
@@ -3318,88 +3308,21 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
     *aAllowRetaining = true;
   }
 
-#ifdef MOZ_ENABLE_D3D10_LAYER
-  if (mLayerManager) {
-    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_D3D10)
-    {
-      LayerManagerD3D10 *layerManagerD3D10 =
-        static_cast<LayerManagerD3D10*>(mLayerManager.get());
-      if (layerManagerD3D10->device() !=
-          gfxWindowsPlatform::GetPlatform()->GetD3D10Device())
-      {
-        MOZ_ASSERT(!mLayerManager->IsInTransaction());
-
-        mLayerManager->Destroy();
-        mLayerManager = nullptr;
-      }
-    }
-  }
-#endif
-
   RECT windowRect;
   ::GetClientRect(mWnd, &windowRect);
 
   // Try OMTC first.
   if (!mLayerManager && ShouldUseOffMainThreadCompositing()) {
+    gfxWindowsPlatform::GetPlatform()->UpdateRenderMode();
+
     // e10s uses the parameter to pass in the shadow manager from the TabChild
     // so we don't expect to see it there since this doesn't support e10s.
     NS_ASSERTION(aShadowManager == nullptr, "Async Compositor not supported with e10s");
     CreateCompositor();
   }
 
-  if (!mLayerManager ||
-      (!sAllowD3D9 && aPersistence == LAYER_MANAGER_PERSISTENT &&
-        mLayerManager->GetBackendType() == LayersBackend::LAYERS_BASIC &&
-        !ShouldUseOffMainThreadCompositing())) {
-    // If D3D9 is not currently allowed but the permanent manager is required,
-    // -and- we're currently using basic layers, run through this check.
-    LayerManagerPrefs prefs;
-    GetLayerManagerPrefs(&prefs);
-
-    /* We don't currently support using an accelerated layer manager with
-     * transparent windows so don't even try. I'm also not sure if we even
-     * want to support this case. See bug #593471 */
-    if (eTransparencyTransparent == mTransparencyMode ||
-        prefs.mDisableAcceleration ||
-        windowRect.right - windowRect.left > MAX_ACCELERATED_DIMENSION ||
-        windowRect.bottom - windowRect.top > MAX_ACCELERATED_DIMENSION)
-      mUseLayersAcceleration = false;
-    else if (prefs.mAccelerateByDefault)
-      mUseLayersAcceleration = true;
-
-    if (mUseLayersAcceleration) {
-      if (aPersistence == LAYER_MANAGER_PERSISTENT && !sAllowD3D9) {
-        MOZ_ASSERT(!mLayerManager || !mLayerManager->IsInTransaction());
-
-        // This will clear out our existing layer manager if we have one since
-        // if we hit this with a LayerManager we're always using BasicLayers.
-        nsToolkit::StartAllowingD3D9();
-      }
-
-#ifdef MOZ_ENABLE_D3D10_LAYER
-      if (!prefs.mPreferD3D9 && !prefs.mPreferOpenGL) {
-        nsRefPtr<LayerManagerD3D10> layerManager =
-          new LayerManagerD3D10(this);
-        if (layerManager->Initialize(prefs.mForceAcceleration)) {
-          mLayerManager = layerManager;
-        }
-      }
-#endif
-#ifdef MOZ_ENABLE_D3D9_LAYER
-      if (!prefs.mPreferOpenGL && !mLayerManager && sAllowD3D9) {
-        nsRefPtr<LayerManagerD3D9> layerManager =
-          new LayerManagerD3D9(this);
-        if (layerManager->Initialize(prefs.mForceAcceleration)) {
-          mLayerManager = layerManager;
-        }
-      }
-#endif
-    }
-
-    // Fall back to software if we couldn't use any hardware backends.
-    if (!mLayerManager) {
-      mLayerManager = CreateBasicLayerManager();
-    }
+  if (!mLayerManager) {
+    mLayerManager = CreateBasicLayerManager();
   }
 
   NS_ASSERTION(mLayerManager, "Couldn't provide a valid layer manager.");
@@ -5122,8 +5045,11 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
       break;
 
     case WM_APPCOMMAND:
-      result = HandleAppCommandMsg(wParam, lParam, aRetValue);
+    {
+      MSG nativeMsg = WinUtils::InitMSG(msg, wParam, lParam, mWnd);
+      result = HandleAppCommandMsg(nativeMsg, aRetValue);
       break;
+    }
 
     // The WM_ACTIVATE event is fired when a window is raised or lowered,
     // and the loword of wParam specifies which. But we don't want to tell
@@ -6602,7 +6528,7 @@ void nsWindow::OnDestroy()
   }
   if (this == rollupWidget) {
     if ( rollupListener )
-      rollupListener->Rollup(0, nullptr, nullptr);
+      rollupListener->Rollup(0, false, nullptr, nullptr);
     CaptureRollupEvents(nullptr, false);
   }
 
@@ -6665,56 +6591,6 @@ bool nsWindow::OnHotKey(WPARAM wParam, LPARAM lParam)
 bool nsWindow::AutoErase(HDC dc)
 {
   return false;
-}
-
-void
-nsWindow::AllowD3D9Callback(nsWindow *aWindow)
-{
-  if (aWindow->mLayerManager && !aWindow->ShouldUseOffMainThreadCompositing()) {
-    aWindow->mLayerManager->Destroy();
-    aWindow->mLayerManager = nullptr;
-  }
-}
-
-void
-nsWindow::AllowD3D9WithReinitializeCallback(nsWindow *aWindow)
-{
-  if (aWindow->mLayerManager && !aWindow->ShouldUseOffMainThreadCompositing()) {
-    aWindow->mLayerManager->Destroy();
-    aWindow->mLayerManager = nullptr;
-    (void) aWindow->GetLayerManager();
-  }
-}
-
-void
-nsWindow::StartAllowingD3D9(bool aReinitialize)
-{
-  sAllowD3D9 = true;
-
-  LayerManagerPrefs prefs;
-  GetLayerManagerPrefs(&prefs);
-  if (prefs.mDisableAcceleration) {
-    // The guarantee here is, if there's *any* chance that after we
-    // throw out our layer managers we'd create at least one new,
-    // accelerated one, we *will* throw out all the current layer
-    // managers.  We early-return here because currently, if
-    // |disableAcceleration|, we will always use basic managers and
-    // it's a waste to recreate them. If we're using OMTC we don't want to
-    // recreate out layer manager and its compositor either. This is even
-    // more wasteful.
-    //
-    // NB: the above implies that it's eminently possible for us to
-    // skip this early return but still recreate basic managers.
-    // That's OK.  It's *not* OK to take this early return when we
-    // *might* have created an accelerated manager.
-    return;
-  }
-
-  if (aReinitialize) {
-    EnumAllWindows(AllowD3D9WithReinitializeCallback);
-  } else {
-    EnumAllWindows(AllowD3D9Callback);
-  }
 }
 
 bool
@@ -7548,11 +7424,11 @@ nsWindow::DealWithPopups(HWND aWnd, UINT aMessage,
     nsIntPoint pos(pt.x, pt.y);
 
     consumeRollupEvent =
-      rollupListener->Rollup(popupsToRollup, &pos, &mLastRollup);
+      rollupListener->Rollup(popupsToRollup, true, &pos, &mLastRollup);
     NS_IF_ADDREF(mLastRollup);
   } else {
     consumeRollupEvent =
-      rollupListener->Rollup(popupsToRollup, nullptr, nullptr);
+      rollupListener->Rollup(popupsToRollup, true, nullptr, nullptr);
   }
 
   // Tell hook to stop processing messages

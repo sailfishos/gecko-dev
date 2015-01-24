@@ -437,13 +437,11 @@ public:
     return mGlobalDisplay;
   }
 
-protected:
   class GonkDisplay MOZ_FINAL : public VsyncSource::Display
   {
   public:
     GonkDisplay() : mVsyncEnabled(false)
     {
-      EnableVsync();
     }
 
     ~GonkDisplay()
@@ -454,12 +452,18 @@ protected:
     virtual void EnableVsync() MOZ_OVERRIDE
     {
       MOZ_ASSERT(NS_IsMainThread());
+      if (IsVsyncEnabled()) {
+        return;
+      }
       mVsyncEnabled = HwcComposer2D::GetInstance()->EnableVsync(true);
     }
 
     virtual void DisableVsync() MOZ_OVERRIDE
     {
       MOZ_ASSERT(NS_IsMainThread());
+      if (!IsVsyncEnabled()) {
+        return;
+      }
       mVsyncEnabled = HwcComposer2D::GetInstance()->EnableVsync(false);
     }
 
@@ -485,7 +489,14 @@ already_AddRefed<mozilla::gfx::VsyncSource>
 gfxAndroidPlatform::CreateHardwareVsyncSource()
 {
 #ifdef MOZ_WIDGET_GONK
-    nsRefPtr<VsyncSource> vsyncSource = new GonkVsyncSource();
+    nsRefPtr<GonkVsyncSource> vsyncSource = new GonkVsyncSource();
+    VsyncSource::Display& display = vsyncSource->GetGlobalDisplay();
+    display.EnableVsync();
+    if (!display.IsVsyncEnabled()) {
+        NS_WARNING("Error enabling gonk vsync. Falling back to software vsync\n");
+        return gfxPlatform::CreateHardwareVsyncSource();
+    }
+    display.DisableVsync();
     return vsyncSource.forget();
 #else
     NS_WARNING("Hardware vsync not supported on android yet");

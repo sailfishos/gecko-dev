@@ -177,7 +177,8 @@ public:
   static void Shutdown();
 
   void Init(nsDisplayListBuilder* aBuilder, LayerManager* aManager,
-            PaintedLayerData* aLayerData = nullptr);
+            PaintedLayerData* aLayerData = nullptr,
+            ContainerState* aContainingContainerState = nullptr);
 
   /**
    * Call this to notify that we have just started a transaction on the
@@ -268,13 +269,11 @@ public:
                               const nsIntRegion& aRegionToInvalidate,
                               void* aCallbackData);
 
-#ifdef MOZ_DUMP_PAINTING
   /**
    * Dumps this FrameLayerBuilder's retained layer manager's retained
    * layer tree. Defaults to dumping to stdout in non-HTML format.
    */
   static void DumpRetainedLayerTree(LayerManager* aManager, std::stringstream& aStream, bool aDumpHtml = false);
-#endif
 
   /******* PRIVATE METHODS to FrameLayerBuilder.cpp ********/
   /* These are only in the public section because they need
@@ -308,7 +307,7 @@ public:
                             nsDisplayItem* aItem,
                             const DisplayItemClip& aClip,
                             const nsIntRect& aItemVisibleRect,
-                            const ContainerState& aContainerState,
+                            ContainerState& aContainerState,
                             LayerState aLayerState,
                             const nsPoint& aTopLeft);
 
@@ -638,6 +637,11 @@ public:
     return !mContainingPaintedLayer && mRetainingManager;
   }
 
+  ContainerState* GetContainingContainerState()
+  {
+    return mContainingContainerState;
+  }
+
   /**
    * Attempt to build the most compressed layer tree possible, even if it means
    * throwing away existing retained buffers.
@@ -691,7 +695,9 @@ protected:
    * When building layers for an inactive layer, this is where the
    * inactive layer will be placed.
    */
-  PaintedLayerData*                    mContainingPaintedLayer;
+  PaintedLayerData*                   mContainingPaintedLayer;
+
+  ContainerState*                     mContainingContainerState;
 
   /**
    * Saved generation counter so we can detect DOM changes.

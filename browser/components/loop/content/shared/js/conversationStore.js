@@ -11,6 +11,7 @@ loop.store = loop.store || {};
   var sharedActions = loop.shared.actions;
   var CALL_TYPES = loop.shared.utils.CALL_TYPES;
 
+  var REST_ERRNOS = loop.shared.utils.REST_ERRNOS;
   /**
    * Websocket states taken from:
    * https://docs.services.mozilla.com/loop/apis.html#call-progress-state-change-progress
@@ -374,8 +375,12 @@ loop.store = loop.store || {};
         function(err, result) {
           if (err) {
             console.error("Failed to get outgoing call data", err);
+            var failureReason = "setup";
+            if (err.errno == REST_ERRNOS.USER_UNAVAILABLE) {
+              failureReason = REST_ERRNOS.USER_UNAVAILABLE;
+            }
             this.dispatcher.dispatch(
-              new sharedActions.ConnectionFailure({reason: "setup"}));
+              new sharedActions.ConnectionFailure({reason: failureReason}));
             return;
           }
 

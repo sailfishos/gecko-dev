@@ -137,7 +137,10 @@ public:
    * combined area (== overflow area) for the line, and handle view
    * sizing/positioning and the setting of the overflow rect.
    */
-  void RelativePositionFrames(nsOverflowAreas& aOverflowAreas);
+  void RelativePositionFrames(nsOverflowAreas& aOverflowAreas)
+  {
+    RelativePositionFrames(mRootSpan, aOverflowAreas);
+  }
 
   // Support methods for word-wrapping during line reflow
 
@@ -358,15 +361,15 @@ public:
    * Move the inline position where the next frame will be reflowed forward by
    * aAmount.
    */
-  void AdvanceICoord(nscoord aAmount);
+  void AdvanceICoord(nscoord aAmount) { mCurrentSpan->mICoord += aAmount; }
   /**
    * Returns the writing mode for the root span.
    */
-  mozilla::WritingMode GetWritingMode();
+  mozilla::WritingMode GetWritingMode() { return mRootSpan->mWritingMode; }
   /**
    * Returns the inline position where the next frame will be reflowed.
    */
-  nscoord GetCurrentICoord();
+  nscoord GetCurrentICoord() { return mCurrentSpan->mICoord; }
 
 protected:
   // This state is constant for a given block frame doing line layout
@@ -374,13 +377,22 @@ protected:
   const nsStyleText* mStyleText; // for the block
   const nsHTMLReflowState* mBlockReflowState;
 
-  // The line layout for the base text. It is usually same as |this|.
-  // It becomes different when the current line layout is for ruby
-  // annotations. All line layouts share the same base line layout
-  // when they are associated. The base line layout is responsible
-  // for managing the life cycle of per-frame data and per-span data,
-  // and handling floats.
+  // The line layout for the base text.  It is usually nullptr.
+  // It becomes not null when the current line layout is for ruby
+  // annotations. When there is nested ruby inside annotation, it
+  // forms a linked list from the inner annotation to the outermost
+  // line layout. The outermost line layout, which has this member
+  // being nullptr, is responsible for managing the life cycle of
+  // per-frame data and per-span data, and handling floats.
   nsLineLayout* const mBaseLineLayout;
+
+  nsLineLayout* GetOutermostLineLayout() {
+    nsLineLayout* lineLayout = this;
+    while (lineLayout->mBaseLineLayout) {
+      lineLayout = lineLayout->mBaseLineLayout;
+    }
+    return lineLayout;
+  }
 
   nsIFrame* mLastOptionalBreakFrame;
   nsIFrame* mForceBreakFrame;
@@ -485,11 +497,7 @@ protected:
       return mJustificationInfo.mIsEndJustifiable;
     }
 
-    bool ParticipatesInJustification() const
-    {
-      // Skip bullets and empty frames
-      return !mIsBullet && !mIsEmpty;
-    }
+    bool ParticipatesInJustification() const;
   };
   PerFrameData* mFrameFreeList;
 
@@ -635,6 +643,8 @@ protected:
   void AllowForStartMargin(PerFrameData* pfd,
                            nsHTMLReflowState& aReflowState);
 
+  void SyncAnnotationContainersBounds(PerFrameData* aRubyFrame);
+
   bool CanPlaceFrame(PerFrameData* pfd,
                        bool aNotSafeToBreak,
                        bool aFrameCanContinueTextRun,
@@ -651,6 +661,11 @@ protected:
   void PlaceTopBottomFrames(PerSpanData* psd,
                             nscoord aDistanceFromStart,
                             nscoord aLineBSize);
+
+  void ApplyRelativePositioning(PerFrameData* aPFD);
+
+  void RelativePositionAnnotations(PerSpanData* aRubyPSD,
+                                   nsOverflowAreas& aOverflowAreas);
 
   void RelativePositionFrames(PerSpanData* psd, nsOverflowAreas& aOverflowAreas);
 

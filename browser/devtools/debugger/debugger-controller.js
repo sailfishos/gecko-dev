@@ -8,7 +8,7 @@
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 const DBG_STRINGS_URI = "chrome://browser/locale/devtools/debugger.properties";
-const NEW_SOURCE_IGNORED_URLS = ["debugger eval code", "self-hosted", "XStringBundle"];
+const NEW_SOURCE_IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const NEW_SOURCE_DISPLAY_DELAY = 200; // ms
 const FETCH_SOURCE_RESPONSE_DELAY = 200; // ms
 const FETCH_EVENT_LISTENERS_DELAY = 200; // ms
@@ -2393,19 +2393,24 @@ DebuggerController.HitCounts = new HitCounts();
  */
 Object.defineProperties(window, {
   "gTarget": {
-    get: function() DebuggerController._target
+    get: function() DebuggerController._target,
+    configurable: true
   },
   "gHostType": {
-    get: function() DebuggerView._hostType
+    get: function() DebuggerView._hostType,
+    configurable: true
   },
   "gClient": {
-    get: function() DebuggerController.client
+    get: function() DebuggerController.client,
+    configurable: true
   },
   "gThreadClient": {
-    get: function() DebuggerController.activeThread
+    get: function() DebuggerController.activeThread,
+    configurable: true
   },
   "gCallStackPageSize": {
-    get: function() CALL_STACK_PAGE_SIZE
+    get: function() CALL_STACK_PAGE_SIZE,
+    configurable: true
   }
 });
 

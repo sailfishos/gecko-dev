@@ -46,13 +46,16 @@ public:
 
   virtual bool Draggable() const MOZ_OVERRIDE;
 
+  // Element
+  virtual bool IsInteractiveHTMLContent() const MOZ_OVERRIDE;
+
   // nsIDOMHTMLImageElement
   NS_DECL_NSIDOMHTMLIMAGEELEMENT
 
   NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLImageElement, img)
 
   // override from nsImageLoadingContent
-  CORSMode GetCORSMode();
+  CORSMode GetCORSMode() MOZ_OVERRIDE;
 
   // nsIContent
   virtual bool ParseAttribute(int32_t aNamespaceID,

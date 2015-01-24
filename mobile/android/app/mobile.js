@@ -101,7 +101,7 @@ pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
 // predictive actions
-pref("network.predictor.enabled", false);
+pref("network.predictor.enabled", true);
 pref("network.predictor.max-db-size", 2097152); // bytes
 pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
@@ -123,6 +123,7 @@ pref("browser.sessionstore.interval", 10000); // milliseconds
 pref("browser.sessionstore.max_tabs_undo", 5);
 pref("browser.sessionstore.max_resumed_crashes", 1);
 pref("browser.sessionstore.recent_crashes", 0);
+pref("browser.sessionstore.privacy_level", 0); // saving data: 0 = all, 1 = unencrypted sites, 2 = never
 
 /* these should help performance */
 pref("mozilla.widget.force-24bpp", true);
@@ -251,9 +252,6 @@ pref("browser.search.param.maxSuggestions", "4");
 pref("browser.ssl_override_behavior", 2);
 pref("browser.xul.error_pages.expert_bad_cert", false);
 
-// disable logging for the search service by default
-pref("browser.search.log", false);
-
 // ordering of search engines in the engine list.
 pref("browser.search.order.1", "chrome://browser/locale/region.properties");
 pref("browser.search.order.2", "chrome://browser/locale/region.properties");
@@ -261,8 +259,6 @@ pref("browser.search.order.3", "chrome://browser/locale/region.properties");
 
 // disable updating
 pref("browser.search.update", false);
-pref("browser.search.update.log", false);
-pref("browser.search.updateinterval", 6);
 
 // disable search suggestions by default
 pref("browser.search.suggest.enabled", false);
@@ -275,10 +271,8 @@ pref("browser.search.jarURIs", "chrome://browser/locale/searchplugins/");
 // tell the search service that we don't really expose the "current engine"
 pref("browser.search.noCurrentEngine", true);
 
-#ifdef MOZ_OFFICIAL_BRANDING
-// {moz:official} expands to "official"
-pref("browser.search.official", true);
-#endif
+// disable the search service geoIP check
+pref("browser.search.geoip.url", "");
 
 // Control media casting & mirroring features
 pref("browser.casting.enabled", true);
@@ -544,7 +538,6 @@ pref("dom.webnotifications.enabled", true);
 
 // prevent tooltips from showing up
 pref("browser.chrome.toolbar_tips", false);
-pref("dom.indexedDB.warningQuota", 5);
 
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
@@ -670,6 +663,19 @@ pref("ui.scrolling.negate_wheel_scrollY", true);
 // auto-detect based on reported hardware values
 pref("ui.scrolling.gamepad_dead_zone", 115);
 
+// Prefs for fling acceleration
+pref("ui.scrolling.fling_accel_interval", -1);
+pref("ui.scrolling.fling_accel_base_multiplier", -1);
+pref("ui.scrolling.fling_accel_supplemental_multiplier", -1);
+
+// Prefs for fling curving
+pref("ui.scrolling.fling_curve_function_x1", -1);
+pref("ui.scrolling.fling_curve_function_y1", -1);
+pref("ui.scrolling.fling_curve_function_x2", -1);
+pref("ui.scrolling.fling_curve_function_y2", -1);
+pref("ui.scrolling.fling_curve_threshold_velocity", -1);
+pref("ui.scrolling.fling_curve_max_velocity", -1);
+pref("ui.scrolling.fling_curve_newton_iterations", -1);
 
 // Enable accessibility mode if platform accessibility is enabled.
 pref("accessibility.accessfu.activate", 2);
@@ -690,26 +696,6 @@ pref("network.manage-offline-status", true);
 
 // increase the timeout clamp for background tabs to 15 minutes
 pref("dom.min_background_timeout_value", 900000);
-
-// The default state of reader mode works on loaded a page.
-pref("reader.parse-on-load.enabled", true);
-
-// Force to enable reader mode to parse on loaded a page.
-// Allow reader mode even on low-memory platforms
-pref("reader.parse-on-load.force-enabled", false);
-
-// The default of font size in reader (1-5)
-pref("reader.font_size", 3);
-
-// The default color scheme in reader (light, dark, sepia, auto)
-// auto = color automatically adjusts according to ambient light level
-pref("reader.color_scheme", "auto");
-
-// The font type in reader (sans-serif, serif)
-pref("reader.font_type", "sans-serif");
-
-// Used to show a first-launch tip in reader
-pref("reader.has_used_toolbar", false);
 
 // Media plugins for libstagefright playback on android
 pref("media.plugins.enabled", true);
@@ -738,6 +724,11 @@ pref("layers.enable-tiles", true);
 
 // Enable the dynamic toolbar
 pref("browser.chrome.dynamictoolbar", true);
+
+// The mode of browser titlebar
+// 0: Show a current page title.
+// 1: Show a current page url.
+pref("browser.chrome.titlebarMode", 1);
 
 // Hide common parts of URLs like "www." or "http://"
 pref("browser.urlbar.trimURLs", true);
@@ -850,3 +841,6 @@ pref("device.storage.enabled", true);
 
 // Enable meta-viewport support for font inflation code
 pref("dom.meta-viewport.enabled", true);
+
+// Enable the OpenH264 plugin support in the addon manager.
+pref("media.gmp-gmpopenh264.provider.enabled", true);

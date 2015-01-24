@@ -485,8 +485,7 @@ nsJARChannel::FireOnProgress(uint64_t aProgress)
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mProgressSink);
 
-  mProgressSink->OnProgress(this, nullptr, aProgress,
-                            uint64_t(mContentLength));
+  mProgressSink->OnProgress(this, nullptr, aProgress, mContentLength);
 }
 
 nsresult
@@ -862,6 +861,8 @@ nsJARChannel::AsyncOpen(nsIStreamListener *listener, nsISupports *ctx)
     mListenerContext = ctx;
     mIsPending = true;
 
+    nsCOMPtr<nsIChannel> channel;
+
     if (!mJarFile) {
         // Not a local file...
         // kick off an async download of the base URI...
@@ -869,26 +870,32 @@ nsJARChannel::AsyncOpen(nsIStreamListener *listener, nsISupports *ctx)
         if (NS_SUCCEEDED(rv)) {
             // Since we might not have a loadinfo on all channels yet
             // we have to provide default arguments in case mLoadInfo is null;
+            uint32_t loadFlags =
+              mLoadFlags & ~(LOAD_DOCUMENT_URI | LOAD_CALL_CONTENT_SNIFFERS);
             if (mLoadInfo) {
-              rv = NS_OpenURIInternal(mDownloader,
-                                      nullptr,   // aContext
-                                      mJarBaseURI,
-                                      mLoadInfo,
-                                      mLoadGroup,
-                                      mCallbacks,
-                                      mLoadFlags & ~(LOAD_DOCUMENT_URI | LOAD_CALL_CONTENT_SNIFFERS));
+              rv = NS_NewChannelInternal(getter_AddRefs(channel),
+                                         mJarBaseURI,
+                                         mLoadInfo,
+                                         mLoadGroup,
+                                         mCallbacks,
+                                         loadFlags);
+            } else {
+              rv = NS_NewChannel(getter_AddRefs(channel),
+                                 mJarBaseURI,
+                                 nsContentUtils::GetSystemPrincipal(),
+                                 nsILoadInfo::SEC_NORMAL,
+                                 nsIContentPolicy::TYPE_OTHER,
+                                 mLoadGroup,
+                                 mCallbacks,
+                                 loadFlags);
             }
-            else {
-              rv = NS_OpenURI(mDownloader,
-                              nullptr,   // aContext
-                              mJarBaseURI,
-                              nsContentUtils::GetSystemPrincipal(),
-                              nsILoadInfo::SEC_NORMAL,
-                              nsIContentPolicy::TYPE_OTHER,
-                              mLoadGroup,
-                              mCallbacks,
-                              mLoadFlags & ~(LOAD_DOCUMENT_URI | LOAD_CALL_CONTENT_SNIFFERS));
+            if (NS_FAILED(rv)) {
+              mIsPending = false;
+              mListenerContext = nullptr;
+              mListener = nullptr;
+              return rv;
             }
+            channel->AsyncOpen(mDownloader, nullptr);
         }
     } else if (mOpeningRemote) {
         // nothing to do: already asked parent to open file.

@@ -36,8 +36,9 @@ const NS_DIRECTORY_SERVICE_CONTRACTID =
 const NS_OBSERVER_SERVICE_CONTRACTID =
           "@mozilla.org/observer-service;1";
 
-Components.utils.import("resource://gre/modules/FileUtils.jsm");
-Components.utils.import("chrome://reftest/content/httpd.jsm", this);
+CU.import("resource://gre/modules/FileUtils.jsm");
+CU.import("chrome://reftest/content/httpd.jsm", this);
+CU.import("resource://gre/modules/Services.jsm");
 
 var gLoadTimeout = 0;
 var gTimeoutHook = null;
@@ -667,9 +668,12 @@ function BuildConditionSandbox(aURL) {
     sandbox.http = new sandbox.Object();
     httpProps.forEach((x) => sandbox.http[x] = hh[x]);
 
-    // Set OSX to the Mac OS X version for Mac, and 0 otherwise.
-    var osxmatch = /Mac OS X (\d+.\d+)$/.exec(hh.oscpu);
-    sandbox.OSX = osxmatch ? parseFloat(osxmatch[1]) : 0;
+    // Set OSX to be the Mac OS X version, as an integer, or undefined
+    // for other platforms.  The integer is formed by 100 times the
+    // major version plus the minor version, so 1006 for 10.6, 1010 for
+    // 10.10, etc.
+    var osxmatch = /Mac OS X (\d+).(\d+)$/.exec(hh.oscpu);
+    sandbox.OSX = osxmatch ? parseInt(osxmatch[1]) * 100 + parseInt(osxmatch[2]) : undefined;
 
     // see if we have the test plugin available,
     // and set a sandox prop accordingly
@@ -798,7 +802,12 @@ function ReadManifest(aURL, inherited_status)
                      .getService(CI.nsIScriptSecurityManager);
 
     var listURL = aURL;
-    var channel = gIOService.newChannelFromURI(aURL);
+    var channel = gIOService.newChannelFromURI2(aURL,
+                                                null,      // aLoadingNode
+                                                Services.scriptSecurityManager.getSystemPrincipal(),
+                                                null,      // aTriggeringPrincipal
+                                                CI.nsILoadInfo.SEC_NORMAL,
+                                                CI.nsIContentPolicy.TYPE_OTHER);
     var inputStream = channel.open();
     if (channel instanceof Components.interfaces.nsIHttpChannel
         && channel.responseStatus != 200) {

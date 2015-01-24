@@ -13,6 +13,7 @@
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
 #include "mozilla/gfx/Rect.h"           // for Rect, RectTyped
+#include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/LayerMetricsWrapper.h" // for LayerMetricsWrapper
 #include "mozilla/layers/LayersMessages.h"
 #include "mozilla/mozalloc.h"           // for operator delete, etc
@@ -23,12 +24,9 @@
 namespace mozilla {
 namespace layers {
 
-
 ClientTiledPaintedLayer::ClientTiledPaintedLayer(ClientLayerManager* const aManager,
                                                ClientLayerManager::PaintedLayerCreationHint aCreationHint)
-  : PaintedLayer(aManager,
-                static_cast<ClientLayer*>(MOZ_THIS_IN_INITIALIZER_LIST()),
-                aCreationHint)
+  : PaintedLayer(aManager, static_cast<ClientLayer*>(this), aCreationHint)
   , mContentClient()
 {
   MOZ_COUNT_CTOR(ClientTiledPaintedLayer);
@@ -72,10 +70,21 @@ GetTransformToAncestorsParentLayer(Layer* aStart, const LayerMetricsWrapper& aAn
        ancestorParent ? iter != ancestorParent : iter.IsValid();
        iter = iter.GetParent()) {
     transform = transform * iter.GetTransform();
-    // If the layer has a non-transient async transform then we need to apply it here
-    // because it will get applied by the APZ in the compositor as well
-    const FrameMetrics& metrics = iter.Metrics();
-    transform.PostScale(metrics.mPresShellResolution, metrics.mPresShellResolution, 1.f);
+
+    if (gfxPrefs::LayoutUseContainersForRootFrames()) {
+      // When scrolling containers, layout adds a post-scale into the transform
+      // of the displayport-ancestor (which we pick up in GetTransform() above)
+      // to cancel out the pres shell resolution (for historical reasons). The
+      // compositor in turn cancels out this post-scale (i.e., scales by the
+      // pres shell resolution), and to get correct calculations, we need to do
+      // so here, too.
+      //
+      // With containerless scrolling, the offending post-scale is on the
+      // parent layer of the displayport-ancestor, which we don't reach in this
+      // loop, so we don't need to worry about it.
+      const FrameMetrics& metrics = iter.Metrics();
+      transform.PostScale(metrics.GetPresShellResolution(), metrics.GetPresShellResolution(), 1.f);
+    }
   }
   return transform;
 }
@@ -152,7 +161,7 @@ ClientTiledPaintedLayer::BeginPaint()
   // Compute the critical display port that applies to this layer in the
   // LayoutDevice space of this layer.
   ParentLayerRect criticalDisplayPort =
-    (displayportMetrics.mCriticalDisplayPort * displayportMetrics.GetZoom())
+    (displayportMetrics.GetCriticalDisplayPort() * displayportMetrics.GetZoom())
     + displayportMetrics.mCompositionBounds.TopLeft();
   mPaintData.mCriticalDisplayPort = RoundedOut(
     ApplyParentLayerToLayerTransform(transformDisplayPortToLayer, criticalDisplayPort));
@@ -161,7 +170,7 @@ ClientTiledPaintedLayer::BeginPaint()
   // Store the resolution from the displayport ancestor layer. Because this is Gecko-side,
   // before any async transforms have occurred, we can use the zoom for this.
   mPaintData.mResolution = displayportMetrics.GetZoom();
-  TILING_LOG("TILING %p: Resolution %f\n", this, mPaintData.mPresShellResolution.scale);
+  TILING_LOG("TILING %p: Resolution %f\n", this, mPaintData.mResolution.scale);
 
   // Store the applicable composition bounds in this layer's Layer units.
   mPaintData.mTransformToCompBounds =
@@ -178,6 +187,36 @@ ClientTiledPaintedLayer::BeginPaint()
 }
 
 bool
+ClientTiledPaintedLayer::IsScrollingOnCompositor(const FrameMetrics& aParentMetrics)
+{
+  CompositorChild* compositor = nullptr;
+  if (Manager() && Manager()->AsClientLayerManager()) {
+    compositor = Manager()->AsClientLayerManager()->GetCompositorChild();
+  }
+
+  if (!compositor) {
+    return false;
+  }
+
+  FrameMetrics compositorMetrics;
+  if (!compositor->LookupCompositorFrameMetrics(aParentMetrics.GetScrollId(),
+                                                compositorMetrics)) {
+    return false;
+  }
+
+  // 1 is a tad high for a fuzzy equals epsilon however if our scroll delta
+  // is so small then we have nothing to gain from using paint heuristics.
+  float COORDINATE_EPSILON = 1.f;
+
+  return !FuzzyEqualsAdditive(compositorMetrics.GetScrollOffset().x,
+                              aParentMetrics.GetScrollOffset().x,
+                              COORDINATE_EPSILON) ||
+         !FuzzyEqualsAdditive(compositorMetrics.GetScrollOffset().y,
+                              aParentMetrics.GetScrollOffset().y,
+                              COORDINATE_EPSILON);
+}
+
+bool
 ClientTiledPaintedLayer::UseFastPath()
 {
   LayerMetricsWrapper scrollAncestor;
@@ -189,9 +228,15 @@ ClientTiledPaintedLayer::UseFastPath()
 
   bool multipleTransactionsNeeded = gfxPlatform::GetPlatform()->UseProgressivePaint()
                                  || gfxPrefs::UseLowPrecisionBuffer()
-                                 || !parentMetrics.mCriticalDisplayPort.IsEmpty();
+                                 || !parentMetrics.GetCriticalDisplayPort().IsEmpty();
   bool isFixed = GetIsFixedPosition() || GetParent()->GetIsFixedPosition();
-  return !multipleTransactionsNeeded || isFixed || parentMetrics.GetDisplayPort().IsEmpty();
+  bool isScrollable = parentMetrics.IsScrollable();
+
+  return !multipleTransactionsNeeded || isFixed || !isScrollable
+#if !defined(MOZ_WIDGET_ANDROID) || defined(MOZ_ANDROID_APZ)
+         || !IsScrollingOnCompositor(parentMetrics)
+#endif
+         ;
 }
 
 bool

@@ -17,8 +17,8 @@ namespace mozilla {
 // object on the main thread.
 class CDMCallbackProxy : public GMPDecryptorProxyCallback {
 public:
-  virtual void ResolveNewSessionPromise(uint32_t aPromiseId,
-                                        const nsCString& aSessionId) MOZ_OVERRIDE;
+  virtual void SetSessionId(uint32_t aCreateSessionToken,
+                            const nsCString& aSessionId) MOZ_OVERRIDE;
 
   virtual void ResolveLoadSessionPromise(uint32_t aPromiseId,
                                          bool aSuccess) MOZ_OVERRIDE;
@@ -30,8 +30,8 @@ public:
                              const nsCString& aSessionId) MOZ_OVERRIDE;
 
   virtual void SessionMessage(const nsCString& aSessionId,
-                              const nsTArray<uint8_t>& aMessage,
-                              const nsCString& aDestinationURL) MOZ_OVERRIDE;
+                              GMPSessionMessageType aMessageType,
+                              const nsTArray<uint8_t>& aMessage) MOZ_OVERRIDE;
 
   virtual void ExpirationChange(const nsCString& aSessionId,
                                 GMPTimestamp aExpiryTime) MOZ_OVERRIDE;

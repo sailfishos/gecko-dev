@@ -34,8 +34,10 @@ public:
   virtual void GetMarkPoints(nsTArray<nsSVGMark> *aMarks) MOZ_OVERRIDE;
   virtual void GetAsSimplePath(SimplePath* aSimplePath) MOZ_OVERRIDE;
   virtual TemporaryRef<Path> BuildPath(PathBuilder* aBuilder) MOZ_OVERRIDE;
+  virtual bool GetGeometryBounds(Rect* aBounds, Float aStrokeWidth,
+                                 CapStyle cap, const Matrix& aTransform) MOZ_OVERRIDE;
 
-  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult) const;
+  virtual nsresult Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult) const MOZ_OVERRIDE;
 
   // WebIDL
   already_AddRefed<SVGAnimatedLength> X1();

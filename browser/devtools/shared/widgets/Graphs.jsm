@@ -7,10 +7,14 @@ const Cu = Components.utils;
 
 Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
 const promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
-const {EventEmitter} = Cu.import("resource://gre/modules/devtools/event-emitter.js", {});
 const {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
+const {EventEmitter} = Cu.import("resource://gre/modules/devtools/event-emitter.js", {});
 
 this.EXPORTED_SYMBOLS = [
+  "GraphCursor",
+  "GraphSelection",
+  "GraphSelectionDragger",
+  "GraphSelectionResizer",
   "AbstractCanvasGraph",
   "LineGraphWidget",
   "BarGraphWidget",
@@ -45,7 +49,6 @@ const GRAPH_STRIPE_PATTERN_LINE_SPACING = 4; // px
 // Line graph constants.
 
 const LINE_GRAPH_DAMPEN_VALUES = 0.85;
-const LINE_GRAPH_MIN_SQUARED_DISTANCE_BETWEEN_POINTS = 1; // px
 const LINE_GRAPH_TOOLTIP_SAFE_BOUNDS = 8; // px
 const LINE_GRAPH_MIN_MAX_TOOLTIP_DISTANCE = 14; // px
 
@@ -93,28 +96,23 @@ const BAR_GRAPH_LEGEND_MOUSEOVER_DEBOUNCE = 50; // ms
 /**
  * Small data primitives for all graphs.
  */
-this.GraphCursor = function() {};
-this.GraphSelection = function() {};
-this.GraphSelectionDragger = function() {};
-this.GraphSelectionResizer = function() {};
-
-GraphCursor.prototype = {
-  x: null,
-  y: null
+this.GraphCursor = function() {
+  this.x = null;
+  this.y = null;
 };
 
-GraphSelection.prototype = {
-  start: null,
-  end: null
+this.GraphSelection = function() {
+  this.start = null;
+  this.end = null;
 };
 
-GraphSelectionDragger.prototype = {
-  origin: null,
-  anchor: new GraphSelection()
+this.GraphSelectionDragger = function() {
+  this.origin = null;
+  this.anchor = new GraphSelection();
 };
 
-GraphSelectionResizer.prototype = {
-  margin: null
+this.GraphSelectionResizer = function() {
+  this.margin = null;
 };
 
 /**
@@ -244,6 +242,11 @@ AbstractCanvasGraph.prototype = {
 
     this._window.cancelAnimationFrame(this._animationId);
     this._iframe.remove();
+
+    this._cursor = null;
+    this._selection = null;
+    this._selectionDragger = null;
+    this._selectionResizer = null;
 
     this._data = null;
     this._mask = null;
@@ -441,34 +444,67 @@ AbstractCanvasGraph.prototype = {
   },
 
   /**
+   * Sets the selection bounds, scaled to correlate with the data source ranges,
+   * such that a [0, max width] selection maps to [first value, last value].
+   *
+   * @param object selection
+   *        The selection's { start, end } values.
+   * @param object { mapStart, mapEnd } mapping [optional]
+   *        Invoked when retrieving the numbers in the data source representing
+   *        the first and last values, on the X axis.
+   */
+  setMappedSelection: function(selection, mapping = {}) {
+    if (!this.hasData()) {
+      throw "A data source is necessary for retrieving a mapped selection.";
+    }
+    if (!selection || selection.start == null || selection.end == null) {
+      throw "Invalid selection coordinates";
+    }
+
+    let { mapStart, mapEnd } = mapping;
+    let startTime = (mapStart || (e => e.delta))(this._data[0]);
+    let endTime = (mapEnd || (e => e.delta))(this._data[this._data.length - 1]);
+
+    // The selection's start and end values are not guaranteed to be ascending.
+    // Also make sure that the selection bounds fit inside the data bounds.
+    let min = Math.max(Math.min(selection.start, selection.end), startTime);
+    let max = Math.min(Math.max(selection.start, selection.end), endTime);
+    min = map(min, startTime, endTime, 0, this._width);
+    max = map(max, startTime, endTime, 0, this._width);
+
+    this.setSelection({ start: min, end: max });
+  },
+
+  /**
    * Gets the selection bounds, scaled to correlate with the data source ranges,
    * such that a [0, max width] selection maps to [first value, last value].
    *
-   * @param function unpack [optional]
+   * @param object { mapStart, mapEnd } mapping [optional]
    *        Invoked when retrieving the numbers in the data source representing
-   *        the first and last values, on the X axis. Currently, all graphs
-   *        store this in a "delta" property for all entries, but in the future
-   *        this may change as new graphs with different data source format
-   *        requirements are implemented.
+   *        the first and last values, on the X axis.
    * @return object
    *         The mapped selection's { min, max } values.
    */
-  getMappedSelection: function(unpack = e => e.delta) {
-    if (!this.hasData() || !this.hasSelection()) {
+  getMappedSelection: function(mapping = {}) {
+    if (!this.hasData()) {
+      throw "A data source is necessary for retrieving a mapped selection.";
+    }
+    if (!this.hasSelection() && !this.hasSelectionInProgress()) {
       return { min: null, max: null };
     }
-    let selection = this.getSelection();
-    let totalTicks = this._data.length;
-    let firstTick = unpack(this._data[0]);
-    let lastTick = unpack(this._data[totalTicks - 1]);
+
+    let { mapStart, mapEnd } = mapping;
+    let startTime = (mapStart || (e => e.delta))(this._data[0]);
+    let endTime = (mapEnd || (e => e.delta))(this._data[this._data.length - 1]);
 
     // The selection's start and end values are not guaranteed to be ascending.
     // This can happen, for example, when click & dragging from right to left.
     // Also make sure that the selection bounds fit inside the canvas bounds.
+    let selection = this.getSelection();
     let min = Math.max(Math.min(selection.start, selection.end), 0);
     let max = Math.min(Math.max(selection.start, selection.end), this._width);
-    min = map(min, 0, this._width, firstTick, lastTick);
-    max = map(max, 0, this._width, firstTick, lastTick);
+    min = map(min, 0, this._width, startTime, endTime);
+    max = map(max, 0, this._width, startTime, endTime);
 
     return { min: min, max: max };
   },
@@ -616,14 +652,19 @@ AbstractCanvasGraph.prototype = {
 
   /**
    * Updates this graph to reflect the new dimensions of the parent node.
+   *
+   * @param boolean options.force
+   *        Force redrawing everything
    */
-  refresh: function() {
+  refresh: function(options={}) {
     let bounds = this._parent.getBoundingClientRect();
     let newWidth = this.fixedWidth || bounds.width;
     let newHeight = this.fixedHeight || bounds.height;
 
-    // Prevent redrawing everything if the graph's width & height won't change.
-    if (this._width == newWidth * this._pixelRatio &&
+    // Prevent redrawing everything if the graph's width & height won't change,
+    // except if force=true.
+    if (!options.force &&
+        this._width == newWidth * this._pixelRatio &&
         this._height == newHeight * this._pixelRatio) {
       this.emit("refresh-cancelled");
       return;
@@ -887,6 +928,9 @@ AbstractCanvasGraph.prototype = {
 
   /**
    * Gets the offset of this graph's container relative to the owner window.
+   *
+   * @return object
+   *         The { left, top } offset.
    */
   _getContainerOffset: function() {
     let node = this._canvas;
@@ -1164,20 +1208,32 @@ AbstractCanvasGraph.prototype = {
  *
  * @param nsIDOMNode parent
  *        The parent node holding the graph.
- * @param string metric [optional]
- *        The metric displayed in the graph, e.g. "fps" or "bananas".
+ * @param object options [optional]
+ *        `metric`: The metric displayed in the graph, e.g. "fps" or "bananas".
+ *        `min`: Boolean whether to show the min tooltip/gutter/line (default: true)
+ *        `max`: Boolean whether to show the max tooltip/gutter/line (default: true)
+ *        `avg`: Boolean whether to show the avg tooltip/gutter/line (default: true)
  */
-this.LineGraphWidget = function(parent, metric, ...args) {
+this.LineGraphWidget = function(parent, options, ...args) {
+  options = options || {};
+  let metric = options.metric;
+
+  this._showMin = options.min !== false;
+  this._showMax = options.max !== false;
+  this._showAvg = options.avg !== false;
   AbstractCanvasGraph.apply(this, [parent, "line-graph", ...args]);
 
   this.once("ready", () => {
+    // Create all gutters and tooltips incase the showing of min/max/avg
+    // are changed later
     this._gutter = this._createGutter();
+
     this._maxGutterLine = this._createGutterLine("maximum");
-    this._avgGutterLine = this._createGutterLine("average");
-    this._minGutterLine = this._createGutterLine("minimum");
     this._maxTooltip = this._createTooltip("maximum", "start", "max", metric);
-    this._avgTooltip = this._createTooltip("average", "end", "avg", metric);
+    this._minGutterLine = this._createGutterLine("minimum");
     this._minTooltip = this._createTooltip("minimum", "start", "min", metric);
+    this._avgGutterLine = this._createGutterLine("average");
+    this._avgTooltip = this._createTooltip("average", "end", "avg", metric);
   });
 };
 
@@ -1203,16 +1259,15 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
   dataOffsetX: 0,
 
   /**
-   * The scalar used to multiply the graph values to leave some headroom
-   * on the top.
+   * Optionally uses this value instead of the last tick in the data source
+   * to compute the horizontal scaling.
    */
-  dampenValuesFactor: LINE_GRAPH_DAMPEN_VALUES,
+  dataDuration: 0,
 
   /**
-   * Points that are too close too each other in the graph will not be rendered.
-   * This scalar specifies the required minimum squared distance between points.
+   * The scalar used to multiply the graph values to leave some headroom.
    */
-  minSquaredDistanceBetweenPoints: LINE_GRAPH_MIN_SQUARED_DISTANCE_BETWEEN_POINTS,
+  dampenValuesFactor: LINE_GRAPH_DAMPEN_VALUES,
 
   /**
    * Specifies if min/max/avg tooltips have arrow handlers on their sides.
@@ -1242,11 +1297,6 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
       plottedData,
       plottedMinMaxSum
     } = yield CanvasGraphUtils._performTaskInWorker("plotTimestampsGraph", {
-      width: this._width,
-      height: this._height,
-      dataOffsetX: this.dataOffsetX,
-      dampenValuesFactor: this.dampenValuesFactor,
-      minSquaredDistanceBetweenPoints: this.minSquaredDistanceBetweenPoints,
       timestamps: timestamps,
       interval: interval
     });
@@ -1270,16 +1320,11 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
     let maxValue = Number.MIN_SAFE_INTEGER;
     let minValue = Number.MAX_SAFE_INTEGER;
     let avgValue = 0;
-    let forceDrawAllPoints = false;
 
     if (this._tempMinMaxSum) {
       maxValue = this._tempMinMaxSum.maxValue;
       minValue = this._tempMinMaxSum.minValue;
       avgValue = this._tempMinMaxSum.avgValue;
-      // If we use cached `minValue`, `maxValue`, `avgValue` then we can assume
-      // that we've already removed points that did not meet the
-      // `minSquaredDistanceBetweenPoints` requirement.
-      forceDrawAllPoints = true;
     } else {
       let sumValues = 0;
       for (let { delta, value } of this._data) {
@@ -1290,7 +1335,8 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
       avgValue = sumValues / totalTicks;
     }
 
-    let dataScaleX = this.dataScaleX = width / (lastTick - this.dataOffsetX);
+    let duration = this.dataDuration || lastTick;
+    let dataScaleX = this.dataScaleX = width / (duration - this.dataOffsetX);
     let dataScaleY = this.dataScaleY = height / maxValue * this.dampenValuesFactor;
 
     // Draw the background.
@@ -1308,10 +1354,6 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
     ctx.lineWidth = this.strokeWidth * this._pixelRatio;
     ctx.beginPath();
 
-    let prevX = 0;
-    let prevY = 0;
-    let minSqDist = this.minSquaredDistanceBetweenPoints;
-
     for (let { delta, value } of this._data) {
       let currX = (delta - this.dataOffsetX) * dataScaleX;
       let currY = height - value * dataScaleY;
@@ -1321,11 +1363,7 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
         ctx.lineTo(-LINE_GRAPH_STROKE_WIDTH, currY);
       }
 
-      if (forceDrawAllPoints || distSquared(prevX, prevY, currX, currY) >= minSqDist) {
-        ctx.lineTo(currX, currY);
-        prevX = currX;
-        prevY = currY;
-      }
+      ctx.lineTo(currX, currY);
 
       if (delta == lastTick) {
         ctx.lineTo(width + LINE_GRAPH_STROKE_WIDTH, currY);
@@ -1357,37 +1395,40 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
     let totalTicks = this._data.length;
 
     // Draw the maximum value horizontal line.
-
-    ctx.strokeStyle = this.maximumLineColor;
-    ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
-    ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
-    ctx.beginPath();
-    let maximumY = height - maxValue * dataScaleY;
-    ctx.moveTo(0, maximumY);
-    ctx.lineTo(width, maximumY);
-    ctx.stroke();
+    if (this._showMax) {
+      ctx.strokeStyle = this.maximumLineColor;
+      ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
+      ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
+      ctx.beginPath();
+      let maximumY = height - maxValue * dataScaleY;
+      ctx.moveTo(0, maximumY);
+      ctx.lineTo(width, maximumY);
+      ctx.stroke();
+    }
 
     // Draw the average value horizontal line.
-
-    ctx.strokeStyle = this.averageLineColor;
-    ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
-    ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
-    ctx.beginPath();
-    let averageY = height - avgValue * dataScaleY;
-    ctx.moveTo(0, averageY);
-    ctx.lineTo(width, averageY);
-    ctx.stroke();
+    if (this._showAvg) {
+      ctx.strokeStyle = this.averageLineColor;
+      ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
+      ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
+      ctx.beginPath();
+      let averageY = height - avgValue * dataScaleY;
+      ctx.moveTo(0, averageY);
+      ctx.lineTo(width, averageY);
+      ctx.stroke();
+    }
 
     // Draw the minimum value horizontal line.
-
-    ctx.strokeStyle = this.minimumLineColor;
-    ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
-    ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
-    ctx.beginPath();
-    let minimumY = height - minValue * dataScaleY;
-    ctx.moveTo(0, minimumY);
-    ctx.lineTo(width, minimumY);
-    ctx.stroke();
+    if (this._showMin) {
+      ctx.strokeStyle = this.minimumLineColor;
+      ctx.lineWidth = LINE_GRAPH_HELPER_LINES_WIDTH;
+      ctx.setLineDash(LINE_GRAPH_HELPER_LINES_DASH);
+      ctx.beginPath();
+      let minimumY = height - minValue * dataScaleY;
+      ctx.moveTo(0, minimumY);
+      ctx.lineTo(width, minimumY);
+      ctx.stroke();
+    }
 
     // Update the tooltips text and gutter lines.
 
@@ -1426,10 +1467,14 @@ LineGraphWidget.prototype = Heritage.extend(AbstractCanvasGraph.prototype, {
     this._minTooltip.setAttribute("with-arrows", this.withTooltipArrows);
 
     let distanceMinMax = Math.abs(maxTooltipTop - minTooltipTop);
-    this._maxTooltip.hidden = !totalTicks || distanceMinMax < LINE_GRAPH_MIN_MAX_TOOLTIP_DISTANCE;
-    this._avgTooltip.hidden = !totalTicks;
-    this._minTooltip.hidden = !totalTicks;
-    this._gutter.hidden = !totalTicks || !this.withTooltipArrows;
+    this._maxTooltip.hidden = this._showMax === false || !totalTicks || distanceMinMax < LINE_GRAPH_MIN_MAX_TOOLTIP_DISTANCE;
+    this._avgTooltip.hidden = this._showAvg === false || !totalTicks;
+    this._minTooltip.hidden = this._showMin === false || !totalTicks;
+    this._gutter.hidden = (this._showMin === false && this._showAvg === false && this._showMax === false) || !totalTicks;
+
+    this._maxGutterLine.hidden = this._showMax === false;
+    this._avgGutterLine.hidden = this._showAvg === false;
+    this._minGutterLine.hidden = this._showMin === false;
   },
 
   /**

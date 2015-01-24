@@ -17,7 +17,7 @@ GMPVideoEncoderChild::GMPVideoEncoderChild(GMPChild* aPlugin)
 : GMPSharedMemManager(aPlugin),
   mPlugin(aPlugin),
   mVideoEncoder(nullptr),
-  mVideoHost(MOZ_THIS_IN_INITIALIZER_LIST())
+  mVideoHost(this)
 {
   MOZ_ASSERT(mPlugin);
 }
@@ -68,7 +68,7 @@ GMPVideoEncoderChild::Error(GMPErr aError)
 
 bool
 GMPVideoEncoderChild::RecvInitEncode(const GMPVideoCodec& aCodecSettings,
-                                     const nsTArray<uint8_t>& aCodecSpecific,
+                                     InfallibleTArray<uint8_t>&& aCodecSpecific,
                                      const int32_t& aNumberOfCores,
                                      const uint32_t& aMaxPayloadSize)
 {
@@ -89,8 +89,8 @@ GMPVideoEncoderChild::RecvInitEncode(const GMPVideoCodec& aCodecSettings,
 
 bool
 GMPVideoEncoderChild::RecvEncode(const GMPVideoi420FrameData& aInputFrame,
-                                 const nsTArray<uint8_t>& aCodecSpecificInfo,
-                                 const nsTArray<GMPVideoFrameType>& aFrameTypes)
+                                 InfallibleTArray<uint8_t>&& aCodecSpecificInfo,
+                                 InfallibleTArray<GMPVideoFrameType>&& aFrameTypes)
 {
   if (!mVideoEncoder) {
     return false;
@@ -109,7 +109,7 @@ GMPVideoEncoderChild::RecvEncode(const GMPVideoi420FrameData& aInputFrame,
 }
 
 bool
-GMPVideoEncoderChild::RecvChildShmemForPool(Shmem& aEncodedBuffer)
+GMPVideoEncoderChild::RecvChildShmemForPool(Shmem&& aEncodedBuffer)
 {
   if (aEncodedBuffer.IsWritable()) {
     mVideoHost.SharedMemMgr()->MgrDeallocShmem(GMPSharedMem::kGMPEncodedData,

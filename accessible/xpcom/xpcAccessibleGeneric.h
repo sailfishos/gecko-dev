@@ -41,7 +41,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(xpcAccessibleGeneric, nsIAccessible)
 
   // nsIAccessible
-  virtual Accessible* ToInternalAccessible() const MOZ_FINAL;
+  virtual Accessible* ToInternalAccessible() const MOZ_FINAL MOZ_OVERRIDE;
 
   // xpcAccessibleGeneric
   virtual void Shutdown();
@@ -66,8 +66,8 @@ private:
   friend class xpcAccessibleSelectable;
   friend class xpcAccessibleValue;
 
-  xpcAccessibleGeneric(const xpcAccessibleGeneric&) MOZ_DELETE;
-  xpcAccessibleGeneric& operator =(const xpcAccessibleGeneric&) MOZ_DELETE;
+  xpcAccessibleGeneric(const xpcAccessibleGeneric&) = delete;
+  xpcAccessibleGeneric& operator =(const xpcAccessibleGeneric&) = delete;
 };
 
 inline Accessible*

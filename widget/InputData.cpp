@@ -10,6 +10,7 @@
 #include "nsThreadUtils.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "UnitTransforms.h"
 
 namespace mozilla {
 
@@ -115,6 +116,59 @@ MultiTouchInput::ToWidgetTouchEvent(nsIWidget* aWidget) const
   return event;
 }
 
+WidgetMouseEvent
+MultiTouchInput::ToWidgetMouseEvent(nsIWidget* aWidget) const
+{
+  NS_ABORT_IF_FALSE(NS_IsMainThread(),
+                    "Can only convert To WidgetMouseEvent on main thread");
+
+  uint32_t mouseEventType = NS_EVENT_NULL;
+  switch (mType) {
+    case MultiTouchInput::MULTITOUCH_START:
+      mouseEventType = NS_MOUSE_BUTTON_DOWN;
+      break;
+    case MultiTouchInput::MULTITOUCH_MOVE:
+      mouseEventType = NS_MOUSE_MOVE;
+      break;
+    case MultiTouchInput::MULTITOUCH_CANCEL:
+    case MultiTouchInput::MULTITOUCH_END:
+      mouseEventType = NS_MOUSE_BUTTON_UP;
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Did not assign a type to WidgetMouseEvent");
+      break;
+  }
+
+  WidgetMouseEvent event(true, mouseEventType, aWidget,
+                         WidgetMouseEvent::eReal, WidgetMouseEvent::eNormal);
+
+  const SingleTouchData& firstTouch = mTouches[0];
+  event.refPoint.x = firstTouch.mScreenPoint.x;
+  event.refPoint.y = firstTouch.mScreenPoint.y;
+
+  event.time = mTime;
+  event.button = WidgetMouseEvent::eLeftButton;
+  event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+  event.modifiers = modifiers;
+
+  if (mouseEventType != NS_MOUSE_MOVE) {
+    event.clickCount = 1;
+  }
+
+  return event;
+}
+
+int32_t
+MultiTouchInput::IndexOfTouch(int32_t aTouchIdentifier)
+{
+  for (size_t i = 0; i < mTouches.Length(); i++) {
+    if (mTouches[i].mIdentifier == aTouchIdentifier) {
+      return (int32_t)i;
+    }
+  }
+  return -1;
+}
+
 // This conversion from WidgetMouseEvent to MultiTouchInput is needed because on
 // the B2G emulator we can only receive mouse events, but we need to be able
 // to pan correctly. To do this, we convert the events into a format that the
@@ -157,4 +211,38 @@ MultiTouchInput::MultiTouchInput(const WidgetMouseEvent& aMouseEvent)
                                          180.0f,
                                          1.0f));
 }
+
+void
+MultiTouchInput::TransformToLocal(const gfx::Matrix4x4& aTransform)
+{
+  for (size_t i = 0; i < mTouches.Length(); i++) {
+    mTouches[i].mLocalScreenPoint = TransformTo<ParentLayerPixel>(aTransform, ScreenPoint(mTouches[i].mScreenPoint));
+  }
 }
+
+void
+PanGestureInput::TransformToLocal(const gfx::Matrix4x4& aTransform)
+{
+  mLocalPanStartPoint = TransformTo<ParentLayerPixel>(aTransform, mPanStartPoint);
+  mLocalPanDisplacement = TransformVector<ParentLayerPixel>(aTransform, mPanDisplacement, mPanStartPoint);
+}
+
+void
+PinchGestureInput::TransformToLocal(const gfx::Matrix4x4& aTransform)
+{
+  mLocalFocusPoint = TransformTo<ParentLayerPixel>(aTransform, mFocusPoint);
+}
+
+void
+TapGestureInput::TransformToLocal(const gfx::Matrix4x4& aTransform)
+{
+  mLocalPoint = TransformTo<ParentLayerPixel>(aTransform, mPoint);
+}
+
+void
+ScrollWheelInput::TransformToLocal(const gfx::Matrix4x4& aTransform)
+{
+  mLocalOrigin = TransformTo<ParentLayerPixel>(aTransform, mOrigin);
+}
+
+} // namespace mozilla

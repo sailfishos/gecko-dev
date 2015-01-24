@@ -155,16 +155,32 @@ class BytecodeSite : public TempObject
     }
 };
 
+enum AnalysisMode {
+    /* JavaScript execution, not analysis. */
+    Analysis_None,
+
+    /*
+     * MIR analysis performed when invoking 'new' on a script, to determine
+     * definite properties. Used by the optimizing JIT.
+     */
+    Analysis_DefiniteProperties,
+
+    /*
+     * MIR analysis performed when executing a script which uses its arguments,
+     * when it is not known whether a lazy arguments value can be used.
+     */
+    Analysis_ArgumentsUsage
+};
 
 // Contains information about the compilation source for IR being generated.
 class CompileInfo
 {
   public:
     CompileInfo(JSScript *script, JSFunction *fun, jsbytecode *osrPc, bool constructing,
-                ExecutionMode executionMode, bool scriptNeedsArgsObj,
+                AnalysisMode analysisMode, bool scriptNeedsArgsObj,
                 InlineScriptTree *inlineScriptTree)
       : script_(script), fun_(fun), osrPc_(osrPc), constructing_(constructing),
-        executionMode_(executionMode), scriptNeedsArgsObj_(scriptNeedsArgsObj),
+        analysisMode_(analysisMode), scriptNeedsArgsObj_(scriptNeedsArgsObj),
         inlineScriptTree_(inlineScriptTree)
     {
         MOZ_ASSERT_IF(osrPc, JSOp(*osrPc) == JSOP_LOOPENTRY);
@@ -178,7 +194,7 @@ class CompileInfo
             MOZ_ASSERT(fun_->isTenured());
         }
 
-        osrStaticScope_ = osrPc ? script->getStaticScope(osrPc) : nullptr;
+        osrStaticScope_ = osrPc ? script->getStaticBlockScope(osrPc) : nullptr;
 
         nimplicit_ = StartArgSlot(script)                   /* scope chain and argument obj */
                    + (fun ? 1 : 0);                         /* this */
@@ -190,9 +206,9 @@ class CompileInfo
         nslots_ = nimplicit_ + nargs_ + nlocals_ + nstack_;
     }
 
-    CompileInfo(unsigned nlocals, ExecutionMode executionMode)
+    explicit CompileInfo(unsigned nlocals)
       : script_(nullptr), fun_(nullptr), osrPc_(nullptr), osrStaticScope_(nullptr),
-        constructing_(false), executionMode_(executionMode), scriptNeedsArgsObj_(false),
+        constructing_(false), analysisMode_(Analysis_None), scriptNeedsArgsObj_(false),
         inlineScriptTree_(nullptr)
     {
         nimplicit_ = 0;
@@ -379,9 +395,15 @@ class CompileInfo
 
         uint32_t local = index - firstLocalSlot();
         if (local < nlocals()) {
-            // First, check if this local is body-level.
+            // First, check if this local is body-level. If we have a slot for
+            // it, it is by definition unaliased. Aliased body-level locals do
+            // not have fixed slots on the frame and live in the CallObject.
+            //
+            // Note that this is not true for lexical (block-scoped)
+            // bindings. Such bindings, even when aliased, may be considered
+            // part of the "fixed" part (< nlocals()) of the frame.
             if (local < nbodyfixed())
-                return script()->bodyLevelLocalIsAliased(local);
+                return false;
 
             // Otherwise, it might be part of a block scope.
             for (; staticScope; staticScope = staticScope->enclosingNestedScope()) {
@@ -423,16 +445,12 @@ class CompileInfo
         return scriptNeedsArgsObj_ && !script()->strict();
     }
 
-    ExecutionMode executionMode() const {
-        return executionMode_;
+    AnalysisMode analysisMode() const {
+        return analysisMode_;
     }
 
-    bool executionModeIsAnalysis() const {
-        return executionMode_ == DefinitePropertiesAnalysis || executionMode_ == ArgumentsUsageAnalysis;
-    }
-
-    bool isParallelExecution() const {
-        return executionMode_ == ParallelExecution;
+    bool isAnalysis() const {
+        return analysisMode_ != Analysis_None;
     }
 
     // Returns true if a slot can be observed out-side the current frame while
@@ -518,7 +536,7 @@ class CompileInfo
     jsbytecode *osrPc_;
     NestedScopeObject *osrStaticScope_;
     bool constructing_;
-    ExecutionMode executionMode_;
+    AnalysisMode analysisMode_;
 
     // Whether a script needs an arguments object is unstable over compilation
     // since the arguments optimization could be marked as failed on the main

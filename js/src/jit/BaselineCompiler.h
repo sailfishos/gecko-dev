@@ -254,8 +254,11 @@ class BaselineCompiler : public BaselineCompilerSpecific
     bool emitArgumentTypeChecks();
     bool emitDebugPrologue();
     bool emitDebugTrap();
-    bool emitSPSPush();
-    void emitSPSPop();
+    bool emitTraceLoggerEnter();
+    bool emitTraceLoggerExit();
+
+    void emitProfilerEnterFrame();
+    void emitProfilerExitFrame();
 
     bool initScopeChain();
 

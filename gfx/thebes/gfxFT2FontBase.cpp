@@ -20,6 +20,8 @@ gfxFT2FontBase::gfxFT2FontBase(cairo_scaled_font_t *aScaledFont,
       mHasMetrics(false)
 {
     cairo_scaled_font_reference(mScaledFont);
+    gfxFT2LockedFace face(this);
+    mFUnitsConvFactor = face.XScale();
 }
 
 gfxFT2FontBase::~gfxFT2FontBase()
@@ -114,10 +116,9 @@ gfxFT2FontBase::GetHorizontalMetrics()
 
     if (MOZ_UNLIKELY(GetStyle()->size <= 0.0)) {
         new(&mMetrics) gfxFont::Metrics(); // zero initialize
-        mSpaceGlyph = 0;
+        mSpaceGlyph = GetGlyph(' ');
     } else {
         gfxFT2LockedFace face(this);
-        mFUnitsConvFactor = face.XScale();
         face.GetMetrics(&mMetrics, &mSpaceGlyph);
     }
 
@@ -143,8 +144,6 @@ gfxFT2FontBase::GetHorizontalMetrics()
 uint32_t
 gfxFT2FontBase::GetSpaceGlyph()
 {
-    NS_ASSERTION(GetStyle()->size != 0,
-                 "forgot to short-circuit a text run with zero-sized font?");
     GetHorizontalMetrics();
     return mSpaceGlyph;
 }

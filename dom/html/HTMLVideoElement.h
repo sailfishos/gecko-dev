@@ -49,6 +49,9 @@ public:
 
   virtual nsresult SetAcceptHeader(nsIHttpChannel* aChannel) MOZ_OVERRIDE;
 
+  // Element
+  virtual bool IsInteractiveHTMLContent() const MOZ_OVERRIDE;
+
   // WebIDL
 
   uint32_t Width() const
@@ -111,8 +114,8 @@ protected:
 
   virtual JSObject* WrapNode(JSContext* aCx) MOZ_OVERRIDE;
 
-  virtual void WakeLockCreate();
-  virtual void WakeLockRelease();
+  virtual void WakeLockCreate() MOZ_OVERRIDE;
+  virtual void WakeLockRelease() MOZ_OVERRIDE;
   void UpdateScreenWakeLock();
 
   nsRefPtr<WakeLock> mScreenWakeLock;

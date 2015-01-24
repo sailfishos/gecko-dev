@@ -19,6 +19,7 @@
 #include "jit/IonOptimizationLevels.h"
 #include "jit/IonTypes.h"
 #include "js/UbiNode.h"
+#include "vm/TraceLogging.h"
 
 namespace js {
 
@@ -96,6 +97,10 @@ class JitCode : public gc::TenuredCell
     }
     uint8_t *rawEnd() const {
         return code_ + insnSize_;
+    }
+    bool containsNativePC(const void *addr) const {
+        const uint8_t *addr_u8 = (const uint8_t *) addr;
+        return raw() <= addr_u8 && addr_u8 < rawEnd();
     }
     size_t instructionsSize() const {
         return insnSize_;
@@ -192,18 +197,8 @@ struct IonScript
     // Number of times this script bailed out without invalidation.
     uint32_t numBailouts_;
 
-    // Flag set when it is likely that one of our (transitive) call
-    // targets is not compiled.  Used in ForkJoin.cpp to decide when
-    // we should add call targets to the worklist.
-    mozilla::Atomic<bool, mozilla::Relaxed> hasUncompiledCallTarget_;
-
-    // Flag set when this script is used as an entry script to parallel
-    // execution. If this is true, then the parent JSScript must be in its
-    // JitCompartment's parallel entry script set.
-    bool isParallelEntryScript_;
-
-    // Flag set if IonScript was compiled with SPS profiling enabled.
-    bool hasSPSInstrumentation_;
+    // Flag set if IonScript was compiled with profiling enabled.
+    bool hasProfilingInstrumentation_;
 
     // Flag for if this script is getting recompiled.
     uint32_t recompiling_;
@@ -230,6 +225,9 @@ struct IonScript
     // Number of bytes this function reserves on the stack.
     uint32_t frameSlots_;
 
+    // Number of bytes used passed in as formal arguments or |this|.
+    uint32_t argumentSlots_;
+
     // Frame size is the value that can be added to the StackPointer along
     // with the frame prefix to get a valid JitFrameLayout.
     uint32_t frameSize_;
@@ -255,25 +253,12 @@ struct IonScript
     uint32_t constantTable_;
     uint32_t constantEntries_;
 
-    // List of scripts that we call.
-    //
-    // Currently this is only non-nullptr for parallel IonScripts.
-    uint32_t callTargetList_;
-    uint32_t callTargetEntries_;
-
     // List of patchable backedges which are threaded into the runtime's list.
     uint32_t backedgeList_;
     uint32_t backedgeEntries_;
 
     // Number of references from invalidation records.
     uint32_t invalidationCount_;
-
-    // If this is a parallel script, the number of major GC collections it has
-    // been idle, otherwise 0.
-    //
-    // JSScripts with parallel IonScripts are preserved across GC if the
-    // parallel age is < MAX_PARALLEL_AGE.
-    uint32_t parallelAge_;
 
     // Identifier of the compilation which produced this code.
     types::RecompileInfo recompileInfo_;
@@ -284,6 +269,9 @@ struct IonScript
     // Number of times we tried to enter this script via OSR but failed due to
     // a LOOPENTRY pc other than osrPc_.
     uint32_t osrPcMismatchCounter_;
+
+    // The tracelogger event used to log the start/stop of this IonScript.
+    TraceLoggerEvent traceLoggerScriptEvent_;
 
     IonBuilder *pendingBuilder_;
 
@@ -329,9 +317,6 @@ struct IonScript
     uint8_t *runtimeData() {
         return  &bottomBuffer()[runtimeData_];
     }
-    JSScript **callTargetList() {
-        return (JSScript **) &bottomBuffer()[callTargetList_];
-    }
     PatchableBackedge *backedgeList() {
         return (PatchableBackedge *) &bottomBuffer()[backedgeList_];
     }
@@ -344,14 +329,13 @@ struct IonScript
     IonScript();
 
     static IonScript *New(JSContext *cx, types::RecompileInfo recompileInfo,
-                          uint32_t frameLocals, uint32_t frameSize,
+                          uint32_t frameSlots, uint32_t argumentSlots, uint32_t frameSize,
                           size_t snapshotsListSize, size_t snapshotsRVATableSize,
                           size_t recoversSize, size_t bailoutEntries,
                           size_t constants, size_t safepointIndexEntries,
                           size_t osiIndexEntries, size_t cacheEntries,
                           size_t runtimeSize, size_t safepointsSize,
-                          size_t callTargetEntries, size_t backedgeEntries,
-                          OptimizationLevel optimizationLevel);
+                          size_t backedgeEntries, OptimizationLevel optimizationLevel);
     static void Trace(JSTracer *trc, IonScript *script);
     static void Destroy(FreeOp *fop, IonScript *script);
 
@@ -435,32 +419,17 @@ struct IonScript
     bool bailoutExpected() const {
         return numBailouts_ > 0;
     }
-    void setHasUncompiledCallTarget() {
-        hasUncompiledCallTarget_ = true;
+    void setHasProfilingInstrumentation() {
+        hasProfilingInstrumentation_ = true;
     }
-    void clearHasUncompiledCallTarget() {
-        hasUncompiledCallTarget_ = false;
+    void clearHasProfilingInstrumentation() {
+        hasProfilingInstrumentation_ = false;
     }
-    bool hasUncompiledCallTarget() const {
-        return hasUncompiledCallTarget_;
+    bool hasProfilingInstrumentation() const {
+        return hasProfilingInstrumentation_;
     }
-    void setIsParallelEntryScript() {
-        isParallelEntryScript_ = true;
-    }
-    void clearIsParallelEntryScript() {
-        isParallelEntryScript_ = false;
-    }
-    bool isParallelEntryScript() const {
-        return isParallelEntryScript_;
-    }
-    void setHasSPSInstrumentation() {
-        hasSPSInstrumentation_ = true;
-    }
-    void clearHasSPSInstrumentation() {
-        hasSPSInstrumentation_ = false;
-    }
-    bool hasSPSInstrumentation() const {
-        return hasSPSInstrumentation_;
+    void setTraceLoggerEvent(TraceLoggerEvent &event) {
+        traceLoggerScriptEvent_ = event;
     }
     const uint8_t *snapshots() const {
         return reinterpret_cast<const uint8_t *>(this) + snapshots_;
@@ -483,9 +452,6 @@ struct IonScript
     size_t safepointsSize() const {
         return safepointsSize_;
     }
-    size_t callTargetEntries() const {
-        return callTargetEntries_;
-    }
     size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
         return mallocSizeOf(this);
     }
@@ -498,6 +464,9 @@ struct IonScript
     }
     uint32_t frameSlots() const {
         return frameSlots_;
+    }
+    uint32_t argumentSlots() const {
+        return argumentSlots_;
     }
     uint32_t frameSize() const {
         return frameSize_;
@@ -545,7 +514,6 @@ struct IonScript
     void copyRuntimeData(const uint8_t *data);
     void copyCacheEntries(const uint32_t *caches, MacroAssembler &masm);
     void copySafepoints(const SafepointWriter *writer);
-    void copyCallTargetEntries(JSScript **callTargets);
     void copyPatchableBackedges(JSContext *cx, JitCode *code,
                                 PatchableBackedgeInfo *backedges,
                                 MacroAssembler &masm);
@@ -597,24 +565,10 @@ struct IonScript
         recompiling_ = false;
     }
 
-    static const uint32_t MAX_PARALLEL_AGE = 5;
-
     enum ShouldIncreaseAge {
         IncreaseAge = true,
         KeepAge = false
     };
-
-    void resetParallelAge() {
-        MOZ_ASSERT(isParallelEntryScript());
-        parallelAge_ = 0;
-    }
-    uint32_t parallelAge() const {
-        return parallelAge_;
-    }
-    uint32_t shouldPreserveParallelCode(ShouldIncreaseAge increaseAge = KeepAge) {
-        MOZ_ASSERT(isParallelEntryScript());
-        return (increaseAge ? ++parallelAge_ : parallelAge_) < MAX_PARALLEL_AGE;
-    }
 
     static void writeBarrierPre(Zone *zone, IonScript *ionScript);
 };

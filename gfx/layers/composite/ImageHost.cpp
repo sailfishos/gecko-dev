@@ -151,7 +151,7 @@ ImageHost::Composite(EffectChain& aEffectChain,
       } else {
         effect->mTextureCoords = Rect(0, 0, 1, 1);
       }
-      if (mFrontBuffer->GetFlags() & TextureFlags::NEEDS_Y_FLIP) {
+      if (mFrontBuffer->GetFlags() & TextureFlags::ORIGIN_BOTTOM_LEFT) {
         effect->mTextureCoords.y = effect->mTextureCoords.YMost();
         effect->mTextureCoords.height = -effect->mTextureCoords.height;
       }
@@ -179,7 +179,7 @@ ImageHost::Composite(EffectChain& aEffectChain,
       rect = gfx::Rect(0, 0, textureSize.width, textureSize.height);
     }
 
-    if (mFrontBuffer->GetFlags() & TextureFlags::NEEDS_Y_FLIP) {
+    if (mFrontBuffer->GetFlags() & TextureFlags::ORIGIN_BOTTOM_LEFT) {
       effect->mTextureCoords.y = effect->mTextureCoords.YMost();
       effect->mTextureCoords.height = -effect->mTextureCoords.height;
     }
@@ -250,6 +250,9 @@ bool
 ImageHost::Lock()
 {
   MOZ_ASSERT(!mLocked);
+  if (!mFrontBuffer) {
+    return false;
+  }
   if (!mFrontBuffer->Lock()) {
     return false;
   }
@@ -261,7 +264,9 @@ void
 ImageHost::Unlock()
 {
   MOZ_ASSERT(mLocked);
-  mFrontBuffer->Unlock();
+  if (mFrontBuffer) {
+    mFrontBuffer->Unlock();
+  }
   mLocked = false;
 }
 

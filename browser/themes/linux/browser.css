@@ -125,6 +125,10 @@ toolbarbutton.bookmark-item:not(.subviewbutton),
   padding: 2px 3px;
 }
 
+toolbarbutton.bookmark-item:not(.subviewbutton):not(:hover):not(:active):not([open]) {
+  color: inherit;
+}
+
 toolbarbutton.bookmark-item:not(.subviewbutton):hover:active,
 toolbarbutton.bookmark-item[open="true"] {
   padding-top: 3px;
@@ -529,6 +533,7 @@ menuitem:not([type]):not(.menuitem-tooltip):not(.menuitem-iconic-tooltip) {
   list-style-image: url("moz-icon://stock/gtk-info?size=menu");
 }
 
+#placesContext_open\:newprivatewindow,
 #privateBrowsingItem {
   list-style-image: url("chrome://browser/skin/Privacy-16.png");
 }
@@ -554,6 +559,7 @@ menuitem:not([type]):not(.menuitem-tooltip):not(.menuitem-iconic-tooltip) {
 }
 
 /* Primary toolbar buttons */
+.findbar-button,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 > .toolbarbutton-menubutton-button,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 {
   -moz-appearance: none;
@@ -564,6 +570,7 @@ menuitem:not([type]):not(.menuitem-tooltip):not(.menuitem-iconic-tooltip) {
   padding: 3px;
 }
 
+.findbar-button > .toolbarbutton-text,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 > .toolbarbutton-badge-container > .toolbarbutton-icon,
@@ -602,6 +609,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   -moz-padding-end: 5px;
 }
 
+.findbar-button:not(:-moz-any([checked="true"],[disabled="true"])):hover > .toolbarbutton-text,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1[open]:not([disabled=true]) > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1:not([disabled=true]):not([open]):hover > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1:not([disabled=true]):not([open]):hover > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon,
@@ -620,6 +628,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   margin-bottom: 4px;
 }
 
+.findbar-button:not([disabled=true]):-moz-any([checked="true"],:hover:active) > .toolbarbutton-text,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1 > .toolbarbutton-menubutton-button:not([disabled=true]):-moz-any(:hover:active, [open="true"]) > .toolbarbutton-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1[open="true"] > .toolbarbutton-menubutton-dropmarker:not([disabled=true]) > .dropmarker-icon,
 :-moz-any(#TabsToolbar, #nav-bar) .toolbarbutton-1:not([disabled=true]):-moz-any([open],[checked],:hover:active) > .toolbarbutton-badge-container > .toolbarbutton-icon,
@@ -1176,7 +1185,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 }
 
 .popup-notification-icon[popupid="indexedDB-permissions-prompt"],
-.popup-notification-icon[popupid="indexedDB-quota-prompt"],
 .popup-notification-icon[popupid*="offline-app-requested"],
 .popup-notification-icon[popupid="offline-app-usage"] {
   list-style-image: url(chrome://global/skin/icons/question-64.png);
@@ -1606,6 +1614,18 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   list-style-image: url("chrome://browser/skin/Info.png");
 }
 
+/* Reader mode button */
+
+#reader-mode-button {
+  list-style-image: url("chrome://browser/skin/reader-mode-16.png");
+  -moz-image-region: rect(0, 16px, 16px, 0);
+}
+
+#reader-mode-button:hover:active,
+#reader-mode-button[readeractive] {
+   -moz-image-region: rect(0, 32px, 16px, 16px);
+}
+
 /* social share panel */
 
 .social-share-frame {
@@ -1769,7 +1789,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 #TabsToolbar {
   min-height: 0;
   padding: 0;
-  margin-bottom: -@tabToolbarNavbarOverlap@;
+  margin-bottom: calc(-1 * var(--tab-toolbar-navbar-overlap));
 }
 
 #TabsToolbar:not(:-moz-lwtheme) {
@@ -1844,7 +1864,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   -moz-appearance: none;
   list-style-image: url("chrome://browser/skin/tabbrowser/tab-arrow-left.png");
-  margin: 0 0 @tabToolbarNavbarOverlap@;
+  margin: 0 0 var(--tab-toolbar-navbar-overlap);
 }
 
 #TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-arrowscrollbox > .scrollbutton-up,
@@ -1872,7 +1892,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 }
 
 #TabsToolbar .toolbarbutton-1 {
-  margin-bottom: @tabToolbarNavbarOverlap@;
+  margin-bottom: var(--tab-toolbar-navbar-overlap);
 }
 
 #alltabs-button {

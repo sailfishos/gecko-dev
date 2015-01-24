@@ -41,7 +41,6 @@
 #include "vm/SPSProfiler.h"
 #include "vm/Stack.h"
 #include "vm/Symbol.h"
-#include "vm/ThreadPool.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -51,10 +50,10 @@
 namespace js {
 
 class PerThreadData;
-struct ThreadSafeContext;
+class ExclusiveContext;
 class AutoKeepAtoms;
 #ifdef JS_TRACE_LOGGING
-class TraceLogger;
+class TraceLoggerThread;
 #endif
 
 /* Thread Local Storage slot for storing the runtime for a thread. */
@@ -65,13 +64,13 @@ extern mozilla::ThreadLocal<PerThreadData*> TlsPerThreadData;
 struct DtoaState;
 
 extern void
-js_ReportOutOfMemory(js::ThreadSafeContext *cx);
+js_ReportOutOfMemory(js::ExclusiveContext *cx);
 
 extern void
-js_ReportAllocationOverflow(js::ThreadSafeContext *cx);
+js_ReportAllocationOverflow(js::ExclusiveContext *maybecx);
 
 extern void
-js_ReportOverRecursed(js::ThreadSafeContext *cx);
+js_ReportOverRecursed(js::ExclusiveContext *cx);
 
 namespace js {
 
@@ -88,6 +87,7 @@ struct PcScriptCache;
 class Simulator;
 class SimulatorRuntime;
 struct AutoFlushICache;
+class CompileRuntime;
 }
 
 /*
@@ -477,8 +477,7 @@ void DisableExtraThreads();
  * Encapsulates portions of the runtime/context that are tied to a
  * single active thread.  Instances of this structure can occur for
  * the main thread as |JSRuntime::mainThread|, for select operations
- * performed off thread, such as parsing, and for Parallel JS worker
- * threads.
+ * performed off thread, such as parsing.
  */
 class PerThreadData : public PerThreadDataFriendFields
 {
@@ -521,6 +520,12 @@ class PerThreadData : public PerThreadDataFriendFields
      */
     JSContext           *jitJSContext;
 
+     /*
+     * Points to the most recent JitActivation pushed on the thread.
+     * See JitActivation constructor in vm/Stack.cpp
+     */
+    js::jit::JitActivation *jitActivation;
+
     /* See comment for JSRuntime::interrupt_. */
   private:
     mozilla::Atomic<uintptr_t, mozilla::Relaxed> jitStackLimit_;
@@ -528,7 +533,6 @@ class PerThreadData : public PerThreadDataFriendFields
     friend struct ::JSRuntime;
   public:
     void initJitStackLimit();
-    void initJitStackLimitPar(uintptr_t limit);
 
     uintptr_t jitStackLimit() const { return jitStackLimit_; }
 
@@ -540,7 +544,7 @@ class PerThreadData : public PerThreadDataFriendFields
     irregexp::RegExpStack regexpStack;
 
 #ifdef JS_TRACE_LOGGING
-    TraceLogger         *traceLogger;
+    TraceLoggerThread   *traceLogger;
 #endif
 
   private:
@@ -548,6 +552,7 @@ class PerThreadData : public PerThreadDataFriendFields
     friend class js::ActivationIterator;
     friend class js::jit::JitActivation;
     friend class js::AsmJSActivation;
+    friend class js::jit::CompileRuntime;
 #ifdef DEBUG
     friend void js::AssertCurrentThreadCanLock(RuntimeLock which);
 #endif
@@ -588,6 +593,12 @@ class PerThreadData : public PerThreadDataFriendFields
 
     js::Activation *profilingActivation() const {
         return profilingActivation_;
+    }
+    void *addressOfProfilingActivation() {
+        return (void*) &profilingActivation_;
+    }
+    static unsigned offsetOfProfilingActivation() {
+        return offsetof(PerThreadData, profilingActivation_);
     }
 
     js::AsmJSActivation *asmJSActivationStack() const {
@@ -704,7 +715,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 
   private:
     mozilla::Atomic<uint32_t, mozilla::Relaxed> interrupt_;
-    mozilla::Atomic<uint32_t, mozilla::Relaxed> interruptPar_;
 
     /* Call this to accumulate telemetry data. */
     JSAccumulateTelemetryDataCallback telemetryCallback;
@@ -746,18 +756,11 @@ struct JSRuntime : public JS::shadow::Runtime,
     MOZ_ALWAYS_INLINE bool hasPendingInterrupt() const {
         return interrupt_;
     }
-    MOZ_ALWAYS_INLINE bool hasPendingInterruptPar() const {
-        return interruptPar_;
-    }
 
     // For read-only JIT use:
     void *addressOfInterruptUint32() {
         static_assert(sizeof(interrupt_) == sizeof(uint32_t), "Assumed by JIT callers");
         return &interrupt_;
-    }
-    void *addressOfInterruptParUint32() {
-        static_assert(sizeof(interruptPar_) == sizeof(uint32_t), "Assumed by JIT callers");
-        return &interruptPar_;
     }
 
     /* Set when handling a signal for a thread associated with this runtime. */
@@ -973,8 +976,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     bool isHeapCollecting() { return gc.isHeapCollecting(); }
     bool isHeapCompacting() { return gc.isHeapCompacting(); }
 
-    bool isFJMinorCollecting() { return gc.isFJMinorCollecting(); }
-
     int gcZeal() { return gc.zeal(); }
 
     void lockGC() {
@@ -1031,7 +1032,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* Whether sampling should be enabled or not. */
   private:
-    bool                suppressProfilerSampling;
+    mozilla::Atomic<bool, mozilla::SequentiallyConsistent> suppressProfilerSampling;
 
   public:
     bool isProfilerSamplingEnabled() const {
@@ -1049,6 +1050,12 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* A context has been created on this runtime. */
     bool                haveCreatedContext;
+
+    /*
+     * Allow relazifying functions in compartments that are active. This is
+     * only used by the relazifyFunctions() testing function.
+     */
+    bool                allowRelazificationForTesting;
 
     /* Linked list of all Debugger objects in the runtime. */
     mozilla::LinkedList<js::Debugger> debuggerList;
@@ -1286,15 +1293,9 @@ struct JSRuntime : public JS::shadow::Runtime,
     // Cache for jit::GetPcScript().
     js::jit::PcScriptCache *ionPcScriptCache;
 
-    js::ThreadPool threadPool;
-
     js::DefaultJSContextCallback defaultJSContextCallback;
 
     js::CTypesActivityCallback  ctypesActivityCallback;
-
-    // Non-zero if this is a ForkJoin warmup execution.  See
-    // js::ForkJoin() for more information.
-    uint32_t forkJoinWarmup;
 
   private:
     static mozilla::Atomic<size_t> liveRuntimesCount;
@@ -1542,8 +1543,8 @@ class MOZ_STACK_CLASS AutoLockGC
     mozilla::DebugOnly<bool> wasUnlocked_;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-    AutoLockGC(const AutoLockGC&) MOZ_DELETE;
-    AutoLockGC& operator=(const AutoLockGC&) MOZ_DELETE;
+    AutoLockGC(const AutoLockGC&) = delete;
+    AutoLockGC& operator=(const AutoLockGC&) = delete;
 };
 
 class MOZ_STACK_CLASS AutoUnlockGC
@@ -1565,8 +1566,8 @@ class MOZ_STACK_CLASS AutoUnlockGC
     AutoLockGC& lock;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-    AutoUnlockGC(const AutoUnlockGC&) MOZ_DELETE;
-    AutoUnlockGC& operator=(const AutoUnlockGC&) MOZ_DELETE;
+    AutoUnlockGC(const AutoUnlockGC&) = delete;
+    AutoUnlockGC& operator=(const AutoUnlockGC&) = delete;
 };
 
 class MOZ_STACK_CLASS AutoKeepAtoms

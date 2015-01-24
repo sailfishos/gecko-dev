@@ -78,6 +78,10 @@ protected:
     virtual bool RecvDisableFlashProtectedMode() MOZ_OVERRIDE;
     virtual bool AnswerNP_GetEntryPoints(NPError* rv) MOZ_OVERRIDE;
     virtual bool AnswerNP_Initialize(const PluginSettings& aSettings, NPError* rv) MOZ_OVERRIDE;
+    virtual bool RecvAsyncNP_Initialize(const PluginSettings& aSettings) MOZ_OVERRIDE;
+    virtual bool AnswerSyncNPP_New(PPluginInstanceChild* aActor, NPError* rv)
+                                   MOZ_OVERRIDE;
+    virtual bool RecvAsyncNPP_New(PPluginInstanceChild* aActor) MOZ_OVERRIDE;
 
     virtual PPluginModuleChild*
     AllocPPluginModuleChild(mozilla::ipc::Transport* aTransport,
@@ -87,19 +91,19 @@ protected:
     AllocPPluginInstanceChild(const nsCString& aMimeType,
                               const uint16_t& aMode,
                               const InfallibleTArray<nsCString>& aNames,
-                              const InfallibleTArray<nsCString>& aValues,
-                              NPError* rv) MOZ_OVERRIDE;
+                              const InfallibleTArray<nsCString>& aValues)
+                              MOZ_OVERRIDE;
 
     virtual bool
     DeallocPPluginInstanceChild(PPluginInstanceChild* aActor) MOZ_OVERRIDE;
 
     virtual bool
-    AnswerPPluginInstanceConstructor(PPluginInstanceChild* aActor,
-                                     const nsCString& aMimeType,
-                                     const uint16_t& aMode,
-                                     const InfallibleTArray<nsCString>& aNames,
-                                     const InfallibleTArray<nsCString>& aValues,
-                                     NPError* rv) MOZ_OVERRIDE;
+    RecvPPluginInstanceConstructor(PPluginInstanceChild* aActor,
+                                   const nsCString& aMimeType,
+                                   const uint16_t& aMode,
+                                   InfallibleTArray<nsCString>&& aNames,
+                                   InfallibleTArray<nsCString>&& aValues)
+                                   MOZ_OVERRIDE;
     virtual bool
     AnswerNP_Shutdown(NPError *rv) MOZ_OVERRIDE;
 
@@ -145,8 +149,8 @@ protected:
 
     virtual bool RecvStartProfiler(const uint32_t& aEntries,
                                    const double& aInterval,
-                                   const nsTArray<nsCString>& aFeatures,
-                                   const nsTArray<nsCString>& aThreadNameFilters) MOZ_OVERRIDE;
+                                   nsTArray<nsCString>&& aFeatures,
+                                   nsTArray<nsCString>&& aThreadNameFilters) MOZ_OVERRIDE;
     virtual bool RecvStopProfiler() MOZ_OVERRIDE;
     virtual bool AnswerGetProfile(nsCString* aProfile) MOZ_OVERRIDE;
 
@@ -279,6 +283,11 @@ public:
         // CGContextRef we pass to it in NPP_HandleEvent(NPCocoaEventDrawRect)
         // outside of that call.  See bug 804606.
         QUIRK_FLASH_AVOID_CGMODE_CRASHES                = 1 << 10,
+        // Mac: Work around a Flash ActionScript bug that causes long hangs if
+        // Flash thinks HiDPI support is available. Adobe is tracking this as
+        // ADBE 3921114. If this turns out to be Adobe's fault and they fix it,
+        // we'll no longer need this quirk. See bug 1118615.
+        QUIRK_FLASH_HIDE_HIDPI_SUPPORT                  = 1 << 11,
     };
 
     int GetQuirks() { return mQuirks; }
@@ -286,6 +295,7 @@ public:
     const PluginSettings& Settings() const { return mCachedSettings; }
 
 private:
+    NPError DoNP_Initialize(const PluginSettings& aSettings);
     void AddQuirk(PluginQuirks quirk) {
       if (mQuirks == QUIRKS_NOT_INITIALIZED)
         mQuirks = 0;

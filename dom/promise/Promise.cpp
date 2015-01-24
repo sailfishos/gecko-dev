@@ -205,12 +205,28 @@ protected:
     JS::Rooted<JSObject*> rootedThenable(cx, mThenable);
 
     mThen->Call(rootedThenable, resolveFunc, rejectFunc, rv,
-                CallbackObject::eRethrowExceptions);
+                CallbackObject::eRethrowExceptions,
+                mPromise->Compartment());
 
     rv.WouldReportJSException();
-    if (rv.IsJSException()) {
+    if (rv.Failed()) {
       JS::Rooted<JS::Value> exn(cx);
-      rv.StealJSException(cx, &exn);
+      if (rv.IsJSException()) {
+        // Enter the compartment of mPromise before stealing the JS exception,
+        // since the StealJSException call will use the current compartment for
+        // a security check that determines how much of the stack we're allowed
+        // to see and we'll be exposing that stack to consumers of mPromise.
+        JSAutoCompartment ac(cx, mPromise->GlobalJSObject());
+        rv.StealJSException(cx, &exn);
+      } else {
+        // Convert the ErrorResult to a JS exception object that we can reject
+        // ourselves with.  This will be exactly the exception that would get
+        // thrown from a binding method whose ErrorResult ended up with
+        // whatever is on "rv" right now.
+        JSAutoCompartment ac(cx, mPromise->GlobalJSObject());
+        DebugOnly<bool> conversionResult = ToJSValue(cx, rv, &exn);
+        MOZ_ASSERT(conversionResult);
+      }
 
       bool couldMarkAsCalled = MarkAsCalledIfNotCalledBefore(cx, resolveFunc);
 
@@ -273,6 +289,7 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(Promise)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(Promise)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
+  NS_INTERFACE_MAP_ENTRY(Promise)
 NS_INTERFACE_MAP_END
 
 Promise::Promise(nsIGlobalObject* aGlobal)
@@ -417,6 +434,7 @@ Promise::JSCallback(JSContext* aCx, unsigned aArgc, JS::Value* aVp)
     }
   }
 
+  args.rval().setUndefined();
   return true;
 }
 
@@ -433,6 +451,7 @@ Promise::ThenableResolverCommon(JSContext* aCx, uint32_t aTask,
   JS::Rooted<JSObject*> thisFunc(aCx, &args.callee());
   if (!MarkAsCalledIfNotCalledBefore(aCx, thisFunc)) {
     // A function from this pair has been called before.
+    args.rval().setUndefined();
     return true;
   }
 
@@ -444,6 +463,8 @@ Promise::ThenableResolverCommon(JSContext* aCx, uint32_t aTask,
   } else {
     promise->RejectInternal(aCx, args.get(0));
   }
+
+  args.rval().setUndefined();
   return true;
 }
 
@@ -557,12 +578,20 @@ Promise::CallInitFunction(const GlobalObject& aGlobal,
     return;
   }
 
-  aInit.Call(resolveFunc, rejectFunc, aRv, CallbackObject::eRethrowExceptions);
+  aInit.Call(resolveFunc, rejectFunc, aRv, CallbackObject::eRethrowExceptions,
+             Compartment());
   aRv.WouldReportJSException();
 
   if (aRv.IsJSException()) {
     JS::Rooted<JS::Value> value(cx);
-    aRv.StealJSException(cx, &value);
+    { // scope for ac
+      // Enter the compartment of our global before stealing the JS exception,
+      // since the StealJSException call will use the current compartment for
+      // a security check that determines how much of the stack we're allowed
+      // to see, and we'll be exposing that stack to consumers of this promise.
+      JSAutoCompartment ac(cx, GlobalJSObject());
+      aRv.StealJSException(cx, &value);
+    }
 
     // we want the same behavior as this JS implementation:
     // function Promise(arg) { try { arg(a, b); } catch (e) { this.reject(e); }}
@@ -573,6 +602,12 @@ Promise::CallInitFunction(const GlobalObject& aGlobal,
 
     MaybeRejectInternal(cx, value);
   }
+
+  // Else aRv is an error.  We _could_ reject ourselves with that error, but
+  // we're just going to propagate aRv out to the binding code, which will then
+  // throw us away and create a new promise rejected with the error on aRv.  So
+  // there's no need to worry about rejecting ourselves here; the bindings
+  // will do the right thing.
 }
 
 /* static */ already_AddRefed<Promise>
@@ -788,13 +823,13 @@ public:
   }
 
   void
-  ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+  ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) MOZ_OVERRIDE
   {
     mCountdownHolder->SetValue(mIndex, aValue);
   }
 
   void
-  RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue)
+  RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue) MOZ_OVERRIDE
   {
     // Should never be attached to Promise as a reject handler.
     MOZ_ASSERT(false, "AllResolveHandler should never be attached to a Promise's reject handler!");
@@ -929,6 +964,18 @@ Promise::AppendNativeHandler(PromiseNativeHandler* aRunnable)
     new NativePromiseCallback(aRunnable, Rejected);
 
   AppendCallbacks(resolveCb, rejectCb);
+}
+
+JSObject*
+Promise::GlobalJSObject() const
+{
+  return mGlobal->GetGlobalJSObject();
+}
+
+JSCompartment*
+Promise::Compartment() const
+{
+  return js::GetObjectCompartment(GlobalJSObject());
 }
 
 void

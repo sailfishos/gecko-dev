@@ -17,6 +17,7 @@ browser.jar:
         skin/classic/browser/aboutCertError_sectionExpanded.png
         skin/classic/browser/aboutNetError.css                       (../shared/aboutNetError.css)
         skin/classic/browser/aboutNetError_info.svg                  (../shared/aboutNetError_info.svg)
+        skin/classic/browser/aboutNetError_alert.svg                 (../shared/aboutNetError_alert.svg)
         skin/classic/browser/aboutSocialError.css                    (../shared/aboutSocialError.css)
 *       skin/classic/browser/aboutProviderDirectory.css              (../shared/aboutProviderDirectory.css)
 #ifdef MOZ_SERVICES_SYNC
@@ -103,6 +104,7 @@ browser.jar:
         skin/classic/browser/urlbar-arrow.png
         skin/classic/browser/urlbar-popup-blocked.png
         skin/classic/browser/urlbar-history-dropmarker.png
+        skin/classic/browser/reader-mode-16.png                      (../shared/reader/reader-mode-16.png)
         skin/classic/browser/notification-pluginNormal.png           (../shared/plugins/notification-pluginNormal.png)
         skin/classic/browser/notification-pluginAlert.png            (../shared/plugins/notification-pluginAlert.png)
         skin/classic/browser/notification-pluginBlocked.png          (../shared/plugins/notification-pluginBlocked.png)
@@ -264,6 +266,7 @@ browser.jar:
         skin/classic/browser/devtools/newtab-inverted.png           (../shared/devtools/images/newtab-inverted.png)
         skin/classic/browser/devtools/newtab-inverted@2x.png        (../shared/devtools/images/newtab-inverted@2x.png)
 *       skin/classic/browser/devtools/widgets.css                   (devtools/widgets.css)
+        skin/classic/browser/devtools/power.svg                     (../shared/devtools/images/power.svg)
         skin/classic/browser/devtools/filetype-dir-close.svg        (../shared/devtools/images/filetypes/dir-close.svg)
         skin/classic/browser/devtools/filetype-dir-open.svg         (../shared/devtools/images/filetypes/dir-open.svg)
         skin/classic/browser/devtools/filetype-globe.svg            (../shared/devtools/images/filetypes/globe.svg)
@@ -305,6 +308,7 @@ browser.jar:
         skin/classic/browser/devtools/breadcrumbs-divider@2x.png    (../shared/devtools/images/breadcrumbs-divider@2x.png)
         skin/classic/browser/devtools/breadcrumbs-scrollbutton.png  (../shared/devtools/images/breadcrumbs-scrollbutton.png)
         skin/classic/browser/devtools/breadcrumbs-scrollbutton@2x.png (../shared/devtools/images/breadcrumbs-scrollbutton@2x.png)
+        skin/classic/browser/devtools/animationinspector.css        (../shared/devtools/animationinspector.css)
         skin/classic/browser/devtools/eyedropper.css                (../shared/devtools/eyedropper.css)
 *       skin/classic/browser/devtools/canvasdebugger.css            (devtools/canvasdebugger.css)
 *       skin/classic/browser/devtools/debugger.css                  (devtools/debugger.css)
@@ -312,6 +316,7 @@ browser.jar:
 *       skin/classic/browser/devtools/profiler.css                  (devtools/profiler.css)
 *       skin/classic/browser/devtools/performance.css               (devtools/performance.css)
 *       skin/classic/browser/devtools/timeline.css                  (devtools/timeline.css)
+        skin/classic/browser/devtools/timeline-filter.svg           (../shared/devtools/images/timeline-filter.svg)
 *       skin/classic/browser/devtools/scratchpad.css                (devtools/scratchpad.css)
 *       skin/classic/browser/devtools/shadereditor.css              (devtools/shadereditor.css)
         skin/classic/browser/devtools/storage.css                   (../shared/devtools/storage.css)
@@ -451,6 +456,8 @@ browser.jar:
 #ifdef E10S_TESTING_ONLY
         skin/classic/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
 #endif
+        skin/classic/browser/warning16.png                            (../shared/warning16.png)
+        skin/classic/browser/warning16@2x.png                         (../shared/warning16@2x.png)
 
 #ifdef XP_WIN
 browser.jar:
@@ -464,6 +471,7 @@ browser.jar:
         skin/classic/aero/browser/aboutCertError_sectionExpanded.png
         skin/classic/aero/browser/aboutNetError.css                   (../shared/aboutNetError.css)
         skin/classic/aero/browser/aboutNetError_info.svg              (../shared/aboutNetError_info.svg)
+        skin/classic/aero/browser/aboutNetError_alert.svg             (../shared/aboutNetError_alert.svg)
         skin/classic/aero/browser/aboutSocialError.css                (../shared/aboutSocialError.css)
 *       skin/classic/aero/browser/aboutProviderDirectory.css          (../shared/aboutProviderDirectory.css)
 #ifdef MOZ_SERVICES_SYNC
@@ -556,6 +564,7 @@ browser.jar:
         skin/classic/aero/browser/urlbar-arrow.png
         skin/classic/aero/browser/urlbar-popup-blocked.png
         skin/classic/aero/browser/urlbar-history-dropmarker.png
+        skin/classic/aero/browser/reader-mode-16.png                (../shared/reader/reader-mode-16.png)
         skin/classic/aero/browser/notification-pluginNormal.png     (../shared/plugins/notification-pluginNormal.png)
         skin/classic/aero/browser/notification-pluginAlert.png      (../shared/plugins/notification-pluginAlert.png)
         skin/classic/aero/browser/notification-pluginBlocked.png    (../shared/plugins/notification-pluginBlocked.png)
@@ -721,6 +730,7 @@ browser.jar:
         skin/classic/aero/browser/devtools/newtab-inverted.png       (../shared/devtools/images/newtab-inverted.png)
         skin/classic/aero/browser/devtools/newtab-inverted@2x.png    (../shared/devtools/images/newtab-inverted@2x.png)
 *       skin/classic/aero/browser/devtools/widgets.css               (devtools/widgets.css)
+        skin/classic/aero/browser/devtools/power.svg                 (../shared/devtools/images/power.svg)
         skin/classic/aero/browser/devtools/filetype-dir-close.svg    (../shared/devtools/images/filetypes/dir-close.svg)
         skin/classic/aero/browser/devtools/filetype-dir-open.svg     (../shared/devtools/images/filetypes/dir-open.svg)
         skin/classic/aero/browser/devtools/filetype-globe.svg        (../shared/devtools/images/filetypes/globe.svg)
@@ -762,6 +772,7 @@ browser.jar:
         skin/classic/aero/browser/devtools/breadcrumbs-divider@2x.png      (../shared/devtools/images/breadcrumbs-divider@2x.png)
         skin/classic/aero/browser/devtools/breadcrumbs-scrollbutton.png    (../shared/devtools/images/breadcrumbs-scrollbutton.png)
         skin/classic/aero/browser/devtools/breadcrumbs-scrollbutton@2x.png (../shared/devtools/images/breadcrumbs-scrollbutton@2x.png)
+        skin/classic/aero/browser/devtools/animationinspector.css    (../shared/devtools/animationinspector.css)
 *       skin/classic/aero/browser/devtools/canvasdebugger.css        (devtools/canvasdebugger.css)
 *       skin/classic/aero/browser/devtools/debugger.css              (devtools/debugger.css)
         skin/classic/aero/browser/devtools/eyedropper.css            (../shared/devtools/eyedropper.css)
@@ -769,6 +780,7 @@ browser.jar:
 *       skin/classic/aero/browser/devtools/profiler.css              (devtools/profiler.css)
 *       skin/classic/aero/browser/devtools/performance.css           (devtools/performance.css)
 *       skin/classic/aero/browser/devtools/timeline.css              (devtools/timeline.css)
+        skin/classic/aero/browser/devtools/timeline-filter.svg       (../shared/devtools/images/timeline-filter.svg)
 *       skin/classic/aero/browser/devtools/scratchpad.css            (devtools/scratchpad.css)
 *       skin/classic/aero/browser/devtools/shadereditor.css          (devtools/shadereditor.css)
 *       skin/classic/aero/browser/devtools/splitview.css             (../shared/devtools/splitview.css)
@@ -908,6 +920,8 @@ browser.jar:
 #ifdef E10S_TESTING_ONLY
         skin/classic/aero/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
 #endif
+        skin/classic/aero/browser/warning16.png                       (../shared/warning16.png)
+        skin/classic/aero/browser/warning16@2x.png                    (../shared/warning16@2x.png)
 
 % override chrome://browser/skin/Toolbar.png               chrome://browser/skin/Toolbar-aero.png                  os=WINNT osversion=6
 % override chrome://browser/skin/Toolbar.png               chrome://browser/skin/Toolbar-aero.png                  os=WINNT osversion=6.1

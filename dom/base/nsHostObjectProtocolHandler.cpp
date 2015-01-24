@@ -44,7 +44,7 @@ class HostObjectURLsReporter MOZ_FINAL : public nsIMemoryReporter
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                            nsISupports* aData, bool aAnonymize)
+                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     return MOZ_COLLECT_REPORT(
       "host-object-urls", KIND_OTHER, UNITS_COUNT,
@@ -62,7 +62,7 @@ class BlobURLsReporter MOZ_FINAL : public nsIMemoryReporter
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aCallback,
-                            nsISupports* aData, bool aAnonymize)
+                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
   {
     EnumArg env;
     env.mCallback = aCallback;
@@ -499,8 +499,8 @@ nsHostObjectProtocolHandler::NewChannel2(nsIURI* uri,
     return NS_ERROR_DOM_BAD_URI;
   }
 
-  nsCOMPtr<PIFileImpl> blobImpl = do_QueryInterface(info->mObject);
-  if (!blobImpl) {
+  nsCOMPtr<FileImpl> blob = do_QueryInterface(info->mObject);
+  if (!blob) {
     return NS_ERROR_DOM_BAD_URI;
   }
 
@@ -513,7 +513,6 @@ nsHostObjectProtocolHandler::NewChannel2(nsIURI* uri,
   }
 #endif
 
-  FileImpl* blob = static_cast<FileImpl*>(blobImpl.get());
   nsCOMPtr<nsIInputStream> stream;
   nsresult rv = blob->GetInternalStream(getter_AddRefs(stream));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -615,12 +614,11 @@ NS_GetBlobForBlobURI(nsIURI* aURI, FileImpl** aBlob)
 
   *aBlob = nullptr;
 
-  nsCOMPtr<PIFileImpl> blobImpl = do_QueryInterface(GetDataObject(aURI));
-  if (!blobImpl) {
+  nsCOMPtr<FileImpl> blob = do_QueryInterface(GetDataObject(aURI));
+  if (!blob) {
     return NS_ERROR_DOM_BAD_URI;
   }
 
-  nsRefPtr<FileImpl> blob = static_cast<FileImpl*>(blobImpl.get());
   blob.forget(aBlob);
   return NS_OK;
 }

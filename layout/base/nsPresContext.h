@@ -65,6 +65,7 @@ class nsAnimationManager;
 class nsRefreshDriver;
 class nsIWidget;
 class nsDeviceContext;
+class gfxMissingFontRecorder;
 
 namespace mozilla {
 class EventStateManager;
@@ -820,6 +821,20 @@ public:
                                 nsIFrame * aFrame);
 #endif
 
+  void ConstructedFrame() {
+    ++mFramesConstructed;
+  }
+  void ReflowedFrame() {
+    ++mFramesReflowed;
+  }
+
+  uint64_t FramesConstructedCount() {
+    return mFramesConstructed;
+  }
+  uint64_t FramesReflowedCount() {
+    return mFramesReflowed;
+  }
+
   /**
    * This table maps border-width enums 'thin', 'medium', 'thick'
    * to actual nscoord values.
@@ -875,6 +890,9 @@ public:
   // font set changes (e.g., because a new font loads, or because the
   // user font set is changed and fonts become unavailable).
   void UserFontSetUpdated();
+
+  gfxMissingFontRecorder *MissingFontRecorder() { return mMissingFonts; }
+  void NotifyMissingFonts();
 
   mozilla::dom::FontFaceSet* Fonts();
 
@@ -1158,11 +1176,12 @@ public:
   void StopRestyleLogging() { mRestyleLoggingEnabled = false; }
 #endif
 
+  void InvalidatePaintedLayers();
+
 protected:
   // May be called multiple times (unlink, destructor)
   void Destroy();
 
-  void InvalidatePaintedLayers();
   void AppUnitsPerDevPixelChanged();
 
   void HandleRebuildUserFontSet() {
@@ -1251,6 +1270,8 @@ protected:
   // text performance metrics
   nsAutoPtr<gfxTextPerfMetrics>   mTextPerf;
 
+  nsAutoPtr<gfxMissingFontRecorder> mMissingFonts;
+
   nsRect                mVisibleArea;
   nsSize                mPageSize;
   float                 mPageScale;
@@ -1281,6 +1302,11 @@ protected:
   nscoord               mBorderWidthTable[3];
 
   uint32_t              mInterruptChecksToSkip;
+
+  // Counters for tests and tools that want to detect frame construction
+  // or reflow.
+  uint64_t              mFramesConstructed;
+  uint64_t              mFramesReflowed;
 
   mozilla::TimeStamp    mReflowStartTime;
 

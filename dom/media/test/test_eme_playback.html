@@ -81,8 +81,6 @@ function startTest(test, token)
     manager.finished(token);
    });
 
-  v.addEventListener("error", bail(token + " got error event"));
-
   LoadTest(test, v, token).then(function(){v.play();}, bail(token + " failed to load"));
 }
 
@@ -92,6 +90,7 @@ function beginTest() {
 
 var prefs = [
   [ "media.mediasource.enabled", true ],
+  [ "media.mediasource.youtubeonly", false ],
   [ "media.mediasource.mp4.enabled", true ],
 ];
 

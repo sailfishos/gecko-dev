@@ -22,6 +22,8 @@
 #include "nsString.h"
 #include "nsTArray.h"
 
+#include <stack>
+
 class nsIContent;
 
 namespace mozilla {
@@ -30,7 +32,7 @@ class Element;
 } // namespace dom
 } // namespace mozilla
 
-class nsPlainTextSerializer : public nsIContentSerializer
+class nsPlainTextSerializer MOZ_FINAL : public nsIContentSerializer
 {
 public:
   nsPlainTextSerializer();
@@ -65,8 +67,8 @@ public:
   NS_IMETHOD AppendDocumentStart(nsIDocument *aDocument,
                                  nsAString& aStr) MOZ_OVERRIDE;
 
-protected:
-  virtual ~nsPlainTextSerializer();
+private:
+  ~nsPlainTextSerializer();
 
   nsresult GetAttributeValue(nsIAtom* aName, nsString& aValueRet);
   void AddToLine(const char16_t* aStringToAdd, int32_t aLength);
@@ -112,7 +114,9 @@ protected:
 
   bool ShouldReplaceContainerWithPlaceholder(nsIAtom* aTag);
 
-protected:
+  bool IsElementPreformatted(mozilla::dom::Element* aElement);
+
+private:
   nsString         mCurrentLine;
   uint32_t         mHeadLevel;
   bool             mAtFirstColumn;
@@ -195,6 +199,11 @@ protected:
   // refcounted.
   nsIAtom**        mTagStack;
   uint32_t         mTagStackIndex;
+
+  // The stack indicating whether the elements we've been operating on are
+  // CSS preformatted elements, so that we can tell if the text inside them
+  // should be formatted.
+  std::stack<bool> mPreformatStack;
 
   // Content in the stack above this index should be ignored:
   uint32_t          mIgnoreAboveIndex;

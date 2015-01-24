@@ -14,7 +14,7 @@ var gSmallTests = [
   { name:"seek.webm", type:"video/webm", width:320, height:240, duration:3.966 },
   { name:"vp9.webm", type:"video/webm", width:320, height:240, duration:4 },
   { name:"detodos.opus", type:"audio/ogg; codecs=opus", duration:2.9135 },
-  { name:"gizmo.mp4", type:"video/mp4", duration:5.56 },
+  { name:"gizmo.mp4", type:"video/mp4", width:560, height:320, duration:5.56 },
   { name:"bogus.duh", type:"bogus/duh" }
 ];
 
@@ -56,7 +56,9 @@ var gPlayedTests = [
   { name:"seek.webm", type:"video/webm", duration:3.966 },
   { name:"gizmo.mp4", type:"video/mp4", duration:5.56 },
   { name:"owl.mp3", type:"audio/mpeg", duration:3.29 },
-  { name:"vbr.mp3", type:"audio/mpeg", duration:10.0 },
+  // Disable vbr.mp3 to see if it reduces the error of AUDCLNT_E_CPUUSAGE_EXCEEDED.
+  // See bug 1110922 comment 26.
+  //{ name:"vbr.mp3", type:"audio/mpeg", duration:10.0 },
   { name:"bug495794.ogg", type:"audio/ogg", duration:0.3 }
 ];
 

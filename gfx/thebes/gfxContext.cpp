@@ -27,7 +27,7 @@
 #include "mozilla/gfx/DrawTargetTiled.h"
 #include <algorithm>
 
-#if CAIRO_HAS_DWRITE_FONT
+#if XP_WIN
 #include "gfxWindowsPlatform.h"
 #endif
 
@@ -295,24 +295,6 @@ gfxContext::Rectangle(const gfxRect& rect, bool snapToPixels)
   mPathBuilder->LineTo(rec.BottomRight());
   mPathBuilder->LineTo(rec.BottomLeft());
   mPathBuilder->Close();
-}
-
-void
-gfxContext::DrawSurface(gfxASurface *surface, const gfxSize& size)
-{
-  // Lifetime needs to be limited here since we may wrap surface's data.
-  RefPtr<SourceSurface> surf =
-    gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(mDT, surface);
-
-  if (!surf) {
-    return;
-  }
-
-  Rect rect(0, 0, Float(size.width), Float(size.height));
-  rect.Intersect(Rect(0, 0, Float(surf->GetSize().width), Float(surf->GetSize().height)));
-
-  // XXX - Should fix pixel snapping.
-  mDT->DrawSurface(surf, rect, rect);
 }
 
 // transform stuff
@@ -609,27 +591,6 @@ gfxContext::Clip()
     AzureState::PushedClip clip = { mPath, Rect(), mTransform };
     CurrentState().pushedClips.AppendElement(clip);
   }
-}
-
-void
-gfxContext::ResetClip()
-{
-  for (int i = mStateStack.Length() - 1; i >= 0; i--) {
-    for (unsigned int c = 0; c < mStateStack[i].pushedClips.Length(); c++) {
-      mDT->PopClip();
-    }
-
-    if (mStateStack[i].clipWasReset) {
-      break;
-    }
-  }
-  CurrentState().pushedClips.Clear();
-  CurrentState().clipWasReset = true;
-}
-
-void
-gfxContext::UpdateSurfaceClip()
-{
 }
 
 void
@@ -1309,7 +1270,11 @@ gfxContext::PushNewDT(gfxContentType content)
     newDT = mDT->CreateSimilarDrawTarget(IntSize(64, 64), format);
 
     if (!newDT) {
-      if (!gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
+      if (!gfxPlatform::GetPlatform()->DidRenderingDeviceReset()
+#ifdef XP_WIN
+          && !(mDT->GetBackendType() == BackendType::DIRECT2D1_1 && !gfxWindowsPlatform::GetPlatform()->GetD3D11ContentDevice())
+#endif
+          ) {
         // If even this fails.. we're most likely just out of memory!
         NS_ABORT_OOM(BytesPerPixel(format) * 64 * 64);
       }

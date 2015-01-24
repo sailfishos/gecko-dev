@@ -4550,7 +4550,7 @@ nsCSSFrameConstructor::FindDisplayData(const nsStyleDisplay* aDisplay,
     }
 
     // Handle various non-scrollable blocks.
-    static const FrameConstructionData sNonScrollableBlockData[2][2] {
+    static const FrameConstructionData sNonScrollableBlockData[2][2] = {
       { FULL_CTOR_FCDATA(0,
                          &nsCSSFrameConstructor::ConstructNonScrollableBlock),
         FULL_CTOR_FCDATA(kCaptionCtorFlags,
@@ -5789,6 +5789,9 @@ nsCSSFrameConstructor::AddFrameConstructionItemsInternal(nsFrameConstructorState
 static void
 AddGenConPseudoToFrame(nsIFrame* aOwnerFrame, nsIContent* aContent)
 {
+  NS_ASSERTION(nsLayoutUtils::IsFirstContinuationOrIBSplitSibling(aOwnerFrame),
+               "property should only be set on first continuation/ib-sibling");
+
   typedef nsAutoTArray<nsIContent*, 2> T;
   const FramePropertyDescriptor* prop = nsIFrame::GenConProperty();
   FrameProperties props = aOwnerFrame->Properties();
@@ -6070,8 +6073,11 @@ AdjustAppendParentForAfterContent(nsFrameManager* aFrameManager,
       if (child && child->IsPseudoFrame(aContainer) &&
           !child->IsGeneratedContentFrame()) {
         // Drill down into non-generated pseudo frames of aContainer.
-        parent = nsLayoutUtils::LastContinuationWithChild(do_QueryFrame(child));
-        continue;
+        nsContainerFrame* childAsContainer = do_QueryFrame(child);
+        if (childAsContainer) {
+          parent = nsLayoutUtils::LastContinuationWithChild(childAsContainer);
+          continue;
+        }
       }
 
       for (; child; child = child->GetPrevSibling()) {
@@ -9290,9 +9296,9 @@ nsCSSFrameConstructor::RecreateFramesForContent(nsIContent*  aContent,
       // nsIAnonymousContentCreator that created this content knows how to make
       // that happen.
       nsIAnonymousContentCreator* acc = nullptr;
-      nsIFrame* ancestor = frame->GetParent();
+      nsIFrame* ancestor = nsLayoutUtils::GetParentOrPlaceholderFor(frame);
       while (!(acc = do_QueryFrame(ancestor))) {
-        ancestor = ancestor->GetParent();
+        ancestor = nsLayoutUtils::GetParentOrPlaceholderFor(ancestor);
       }
       NS_ASSERTION(acc, "Where is the nsIAnonymousContentCreator? We may fail "
                         "to recreate its content correctly");

@@ -102,6 +102,7 @@ EXPORTS += [
     'MediaDecoderOwner.h',
     'MediaDecoderReader.h',
     'MediaDecoderStateMachine.h',
+    'MediaDecoderStateMachineScheduler.h',
     'MediaInfo.h',
     'MediaMetadataManager.h',
     'MediaPromise.h',
@@ -253,7 +254,7 @@ LOCAL_INCLUDES += [
     '/dom/camera',
     '/layout/generic',
     '/layout/xul',
-    '/netwerk/base/src',
+    '/netwerk/base',
 ]
 
 if CONFIG['MOZ_DIRECTSHOW']:

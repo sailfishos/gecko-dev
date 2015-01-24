@@ -1045,11 +1045,12 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
   // this is important because resizing our buffers when mimised will fail and
   // cause a crash when we're restored.
   NS_ASSERTION(mHwnd, "Couldn't find an HWND when initialising?");
-  if (::IsIconic(mHwnd)) {
+  if (::IsIconic(mHwnd) || gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
     *aRenderBoundsOut = Rect();
     return;
   }
 
+  nsIntSize oldSize = mSize;
   UpdateRenderTarget();
 
   // Failed to create a render target or the view.
@@ -1069,7 +1070,13 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
   nsIntRect intRect = nsIntRect(nsIntPoint(0, 0), mSize);
   // Sometimes the invalid region is larger than we want to draw.
   nsIntRegion invalidRegionSafe;
-  invalidRegionSafe.And(aInvalidRegion, intRect);
+
+  if (mSize != oldSize) {
+    invalidRegionSafe = intRect;
+  } else {
+    invalidRegionSafe.And(aInvalidRegion, intRect);
+  }
+
   nsIntRect invalidRect = invalidRegionSafe.GetBounds();
   mInvalidRect = IntRect(invalidRect.x, invalidRect.y, invalidRect.width, invalidRect.height);
   mInvalidRegion = invalidRegionSafe;
@@ -1098,7 +1105,11 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
   mAttachments->mSyncTexture->QueryInterface((IDXGIKeyedMutex**)byRef(mutex));
 
   MOZ_ASSERT(mutex);
-  mutex->AcquireSync(0, INFINITE);
+  HRESULT hr = mutex->AcquireSync(0, 10000);
+  if (hr == WAIT_TIMEOUT) {
+    MOZ_CRASH();
+  }
+
   mutex->ReleaseSync(0);
 }
 
@@ -1180,7 +1191,7 @@ CompositorD3D11::EnsureSize()
   mSize = rect.Size();
 }
 
-void
+bool
 CompositorD3D11::VerifyBufferSize()
 {
   DXGI_SWAP_CHAIN_DESC swapDesc;
@@ -1188,13 +1199,13 @@ CompositorD3D11::VerifyBufferSize()
 
   hr = mSwapChain->GetDesc(&swapDesc);
   if (Failed(hr)) {
-    return;
+    return false;
   }
 
   if ((swapDesc.BufferDesc.Width == mSize.width &&
        swapDesc.BufferDesc.Height == mSize.height) ||
       mSize.width <= 0 || mSize.height <= 0) {
-    return;
+    return true;
   }
 
   if (mDefaultRT) {
@@ -1211,14 +1222,14 @@ CompositorD3D11::VerifyBufferSize()
     hr = mSwapChain->ResizeBuffers(2, mSize.width, mSize.height,
                                    DXGI_FORMAT_B8G8R8A8_UNORM,
                                    0);
-    HandleError(hr);
     mDisableSequenceForNextFrame = true;
   } else {
     hr = mSwapChain->ResizeBuffers(1, mSize.width, mSize.height,
                                    DXGI_FORMAT_B8G8R8A8_UNORM,
                                    0);
-    HandleError(hr);
   }
+
+  return Succeeded(hr);
 }
 
 void
@@ -1422,7 +1433,7 @@ CompositorD3D11::HandleError(HRESULT hr, Severity aSeverity)
   }
   // XXX - It would be nice to use gfxCriticalError, but it needs to
   // be made to work off the main thread first.
-  MOZ_ASSERT(aSeverity != DebugAssert);
+  //MOZ_ASSERT(aSeverity != DebugAssert);
 
   if (aSeverity == Critical) {
     MOZ_CRASH("Unrecoverable D3D11 error");

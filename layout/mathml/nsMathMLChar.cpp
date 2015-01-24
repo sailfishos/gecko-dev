@@ -37,6 +37,7 @@
 #include <algorithm>
 
 #include "gfxMathTable.h"
+#include "nsUnicodeScriptCodes.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -389,7 +390,7 @@ nsPropertiesTable::MakeTextRun(gfxContext*        aThebesContext,
                "nsPropertiesTable can only access glyphs by code point");
   return aFontGroup->
     MakeTextRun(aGlyph.code, aGlyph.Length(), aThebesContext,
-                aAppUnitsPerDevPixel, 0);
+                aAppUnitsPerDevPixel, 0, nullptr);
 }
 
 // An instance of nsOpenTypeTable is associated with one gfxFontEntry that
@@ -470,7 +471,7 @@ nsOpenTypeTable::UpdateCache(gfxContext*   aThebesContext,
   if (mCharCache != aChar) {
     nsAutoPtr<gfxTextRun> textRun;
     textRun = aFontGroup->
-      MakeTextRun(&aChar, 1, aThebesContext, aAppUnitsPerDevPixel, 0);
+      MakeTextRun(&aChar, 1, aThebesContext, aAppUnitsPerDevPixel, 0, nullptr);
     const gfxTextRun::CompressedGlyph& data = textRun->GetCharacterGlyphs()[0];
     if (data.IsSimpleGlyph()) {
       mGlyphID = data.GetSimpleGlyph();
@@ -1553,7 +1554,8 @@ nsMathMLChar::StretchInternal(nsPresContext*           aPresContext,
   nsAutoPtr<gfxTextRun> textRun;
   textRun = fm->GetThebesFontGroup()->
     MakeTextRun(static_cast<const char16_t*>(mData.get()), len, aThebesContext,
-                aPresContext->AppUnitsPerDevPixel(), 0);
+                aPresContext->AppUnitsPerDevPixel(), 0,
+                aPresContext->MissingFontRecorder());
   aDesiredStretchSize = MeasureTextRun(aThebesContext, textRun);
   mGlyphs[0] = textRun;
 
@@ -1691,6 +1693,14 @@ nsMathMLChar::StretchInternal(nsPresContext*           aPresContext,
     
   if (glyphFound) {
     return NS_OK;
+  }
+
+  // We did not find a size variant or a glyph assembly to stretch this
+  // operator. Verify whether a font with an OpenType MATH table is available
+  // and record missing math script otherwise.
+  gfxMissingFontRecorder* MFR = aPresContext->MissingFontRecorder();
+  if (MFR && !fm->GetThebesFontGroup()->GetFirstMathFont()) {
+    MFR->RecordScript(MOZ_SCRIPT_MATHEMATICAL_NOTATION);
   }
 
   // stretchy character
@@ -1840,7 +1850,7 @@ public:
 #endif
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx);
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
   NS_DISPLAY_DECL_NAME("MathMLSelectionRect", TYPE_MATHML_SELECTION_RECT)
 private:
   nsRect    mRect;
@@ -1879,7 +1889,7 @@ public:
                                          const nsDisplayItemGeometry* aGeometry,
                                          nsRegion *aInvalidRegion) MOZ_OVERRIDE;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx);
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
   NS_DISPLAY_DECL_NAME("MathMLCharBackground", TYPE_MATHML_CHAR_BACKGROUND)
 private:
   nsStyleContext* mStyleContext;
@@ -1922,7 +1932,7 @@ public:
   }
 #endif
 
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) {
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) MOZ_OVERRIDE {
     *aSnap = false;
     nsRect rect;
     mChar->GetRect(rect);
@@ -1937,7 +1947,7 @@ public:
   }
   
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx)
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE
   {
     mChar->PaintForeground(mFrame->PresContext(), *aCtx,
                            ToReferenceFrame(), mIsSelected);
@@ -1945,13 +1955,13 @@ public:
 
   NS_DISPLAY_DECL_NAME("MathMLCharForeground", TYPE_MATHML_CHAR_FOREGROUND)
 
-  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder)
+  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE
   {
     bool snap;
     return GetBounds(aBuilder, &snap);
   }
   
-  virtual uint32_t GetPerFrameKey() {
+  virtual uint32_t GetPerFrameKey() MOZ_OVERRIDE {
     return (mIndex << nsDisplayItem::TYPE_BITS)
       | nsDisplayItem::GetPerFrameKey();
   }
@@ -1977,7 +1987,7 @@ public:
 #endif
 
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx);
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
   NS_DISPLAY_DECL_NAME("MathMLCharDebug", TYPE_MATHML_CHAR_DEBUG)
 
 private:

@@ -34,7 +34,7 @@ public:
                             const nsAString& aScope);
 
   JSObject*
-  WrapObject(JSContext* aCx);
+  WrapObject(JSContext* aCx) MOZ_OVERRIDE;
 
   already_AddRefed<workers::ServiceWorker>
   GetInstalling();
@@ -55,12 +55,11 @@ public:
   Unregister(ErrorResult& aRv);
 
   // Useful methods for ServiceWorkerManager:
-
-  nsIURI*
-  GetDocumentURI() const;
-
   void
   InvalidateWorkerReference(WhichServiceWorker aWhichOnes);
+
+  void
+  QueueStateChangeEvent(WhichServiceWorker aWhichOne, ServiceWorkerState aState) const;
 
   // DOMEventTargethelper
   virtual void DisconnectFromOwner() MOZ_OVERRIDE;

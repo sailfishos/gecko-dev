@@ -78,6 +78,7 @@ class DOMMediaStream;
 
 namespace dom {
 struct RTCConfiguration;
+struct RTCIceServer;
 struct RTCOfferOptions;
 #ifdef USE_FAKE_MEDIA_STREAMS
 typedef Fake_MediaStreamTrack MediaStreamTrack;
@@ -118,6 +119,7 @@ namespace mozilla {
 
 using mozilla::dom::PeerConnectionObserver;
 using mozilla::dom::RTCConfiguration;
+using mozilla::dom::RTCIceServer;
 using mozilla::dom::RTCOfferOptions;
 using mozilla::DOMMediaStream;
 using mozilla::NrIceCtx;
@@ -251,7 +253,7 @@ public:
   NS_DECL_THREADSAFE_ISUPPORTS
 
 #ifdef MOZILLA_INTERNAL_API
-  virtual JSObject* WrapObject(JSContext* cx);
+  bool WrapObject(JSContext* aCx, JS::MutableHandle<JSObject*> aReflector);
 #endif
 
   static already_AddRefed<PeerConnectionImpl>
@@ -259,13 +261,21 @@ public:
   static PeerConnectionImpl* CreatePeerConnection();
   static nsresult ConvertRTCConfiguration(const RTCConfiguration& aSrc,
                                           IceConfiguration *aDst);
+  static nsresult AddIceServer(const RTCIceServer& aServer,
+                               IceConfiguration* aDst);
   already_AddRefed<DOMMediaStream> MakeMediaStream(uint32_t aHint);
 
   nsresult CreateRemoteSourceStreamInfo(nsRefPtr<RemoteSourceStreamInfo>* aInfo,
                                         const std::string& aId);
 
   // DataConnection observers
-  void NotifyDataChannel(already_AddRefed<mozilla::DataChannel> aChannel);
+  void NotifyDataChannel(already_AddRefed<mozilla::DataChannel> aChannel)
+#ifdef MOZILLA_INTERNAL_API
+    // PeerConnectionImpl only inherits from mozilla::DataChannelConnection
+    // inside libxul.
+    MOZ_OVERRIDE
+#endif
+    ;
 
   // Get the media object
   const nsRefPtr<PeerConnectionMedia>& media() const {

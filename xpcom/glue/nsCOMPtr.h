@@ -20,13 +20,12 @@
  *                      -- scc
  */
 
+#include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Move.h"
-#include "mozilla/NullPtr.h"
 #include "mozilla/TypeTraits.h"
 
-#include "AlreadyAddRefed.h"
 #include "nsDebug.h" // for |NS_ABORT_IF_FALSE|, |NS_ASSERTION|
 #include "nsISupportsUtils.h" // for |nsresult|, |NS_ADDREF|, |NS_GET_TEMPLATE_IID| et al
 
@@ -146,7 +145,7 @@ dont_AddRef(already_AddRefed<T>&& aAlreadyAddRefedPtr)
  *
  * See |class nsGetInterface| for an example.
  */
-class nsCOMPtr_helper
+class MOZ_STACK_CLASS nsCOMPtr_helper
 {
 public:
   virtual nsresult NS_FASTCALL operator()(const nsIID&, void**) const = 0;
@@ -693,7 +692,7 @@ public:
   // necessary to resolve ambiguity.
   operator T*() const { return get(); }
 
-  T* operator->() const
+  T* operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN
   {
     NS_ABORT_IF_FALSE(mRawPtr != 0,
                       "You can't dereference a NULL nsCOMPtr with operator->().");
@@ -972,7 +971,7 @@ public:
   // necessary to resolve ambiguity/
   operator nsISupports* () const { return get(); }
 
-  nsISupports* operator->() const
+  nsISupports* operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN
   {
     NS_ABORT_IF_FALSE(mRawPtr != 0,
                       "You can't dereference a NULL nsCOMPtr with operator->().");

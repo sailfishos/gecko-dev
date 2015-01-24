@@ -132,6 +132,11 @@ public:
       }
     }
 
+    if (mEvent.mTagId.Length() > 0) {
+      event.mTagId.Construct();
+      event.mTagId.Value().Init(Uint8Array::Create(cx, mEvent.mTagId.Length(), mEvent.mTagId.Elements()));
+    }
+
     if (mEvent.mRecords.Length() > 0) {
       int length = mEvent.mRecords.Length();
       event.mRecords.Construct();
@@ -191,6 +196,12 @@ public:
     if (mEvent.mPayload.Length() > 0) {
       event.mPayload.Construct();
       event.mPayload.Value().Init(Uint8Array::Create(cx, mEvent.mPayload.Length(), mEvent.mPayload.Elements()));
+    }
+
+    if (mEvent.mResponse.Length() > 0) {
+      event.mResponse.Construct();
+      event.mResponse.Value().Init(
+        Uint8Array::Create(cx, mEvent.mResponse.Length(), mEvent.mResponse.Elements()));
     }
 
 #undef COPY_FIELD

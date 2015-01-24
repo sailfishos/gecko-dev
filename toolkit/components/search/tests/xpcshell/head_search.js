@@ -22,6 +22,8 @@ const MODE_CREATE = FileUtils.MODE_CREATE;
 const MODE_TRUNCATE = FileUtils.MODE_TRUNCATE;
 
 // nsSearchService.js uses Services.appinfo.name to build a salt for a hash.
+var XULRuntime = Components.classesByID["{95d89e3e-a169-41a3-8e56-719978e15b12}"]
+                           .getService(Ci.nsIXULRuntime);
 var XULAppInfo = {
   vendor: "Mozilla",
   name: "XPCShell",
@@ -34,6 +36,8 @@ var XULAppInfo = {
   logConsoleErrors: true,
   OS: "XPCShell",
   XPCOMABI: "noarch-spidermonkey",
+  // mirror processType from the base implementation
+  processType: XULRuntime.processType,
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIXULAppInfo, Ci.nsIXULRuntime,
                                          Ci.nsISupports])
@@ -47,13 +51,18 @@ var XULAppInfoFactory = {
   }
 };
 
+var isChild = XULRuntime.processType == XULRuntime.PROCESS_TYPE_CONTENT;
+
 Components.manager.QueryInterface(Ci.nsIComponentRegistrar)
           .registerFactory(Components.ID("{ecff8849-cee8-40a7-bd4a-3f4fdfeddb5c}"),
                            "XULAppInfo", "@mozilla.org/xre/app-info;1",
                            XULAppInfoFactory);
 
-// Need to create and register a profile folder.
-var gProfD = do_get_profile();
+var gProfD;
+if (!isChild) {
+  // Need to create and register a profile folder.
+  gProfD = do_get_profile();
+}
 
 function dumpn(text)
 {
@@ -202,11 +211,19 @@ function isSubObjectOf(expectedObj, actualObj) {
   }
 }
 
-// Expand the amount of information available in error logs
-Services.prefs.setBoolPref("browser.search.log", true);
+// Can't set prefs if we're running in a child process, but the search  service
+// doesn't run in child processes anyways.
+if (!isChild) {
+  // Expand the amount of information available in error logs
+  Services.prefs.setBoolPref("browser.search.log", true);
 
-// Disable geoip lookups
-Services.prefs.setCharPref("browser.search.geoip.url", "");
+  // The geo-specific search tests assume certain prefs are already setup, which
+  // might not be true when run in comm-central etc.  So create them here.
+  Services.prefs.setBoolPref("browser.search.geoSpecificDefaults", true);
+  Services.prefs.setIntPref("browser.search.geoip.timeout", 2000);
+  // But still disable geoip lookups - tests that need it will re-configure this.
+  Services.prefs.setCharPref("browser.search.geoip.url", "");
+}
 
 /**
  * After useHttpServer() is called, this string contains the URL of the "data"
@@ -285,3 +302,51 @@ let addTestEngines = Task.async(function* (aItems) {
 
   return engines;
 });
+
+/**
+ * Returns a promise that is resolved when an observer notification from the
+ * search service fires with the specified data.
+ *
+ * @param aExpectedData
+ *        The value the observer notification sends that causes us to resolve
+ *        the promise.
+ */
+function waitForSearchNotification(aExpectedData) {
+  return new Promise(resolve => {
+    const SEARCH_SERVICE_TOPIC = "browser-search-service";
+    Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
+      if (aData != aExpectedData)
+        return;
+
+      Services.obs.removeObserver(observer, SEARCH_SERVICE_TOPIC);
+      resolve(aSubject);
+    }, SEARCH_SERVICE_TOPIC, false);
+  });
+}
+
+// This "enum" from nsSearchService.js
+const TELEMETRY_RESULT_ENUM = {
+  SUCCESS: 0,
+  SUCCESS_WITHOUT_DATA: 1,
+  XHRTIMEOUT: 2,
+  ERROR: 3,
+};
+
+/**
+ * Checks the value of the SEARCH_SERVICE_COUNTRY_FETCH_RESULT probe.
+ *
+ * @param aExpectedValue
+ *        If a value from TELEMETRY_RESULT_ENUM, we expect to see this value
+ *        recorded exactly once in the probe.  If |null|, we expect to see
+ *        nothing recorded in the probe at all.
+ */
+function checkCountryResultTelemetry(aExpectedValue) {
+  let histogram = Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_RESULT");
+  let snapshot = histogram.snapshot();
+  // The probe is declared with 8 values, but we get 9 back from .counts
+  let expectedCounts = [0,0,0,0,0,0,0,0,0];
+  if (aExpectedValue != null) {
+    expectedCounts[aExpectedValue] = 1;
+  }
+  deepEqual(snapshot.counts, expectedCounts);
+}

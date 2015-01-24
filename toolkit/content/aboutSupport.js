@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+"use strict";
+
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -175,10 +177,32 @@ let snapshotFormatters = {
 
     // graphics-failures-tbody tbody
     if ("failures" in data) {
-      $.append($("graphics-failures-tbody"), data.failures.map(function (val) {
-        return $.new("tr", [$.new("td", val)]);
-      }));
-      delete data.failures;
+      // If indices is there, it should be the same length as failures,
+      // (see Troubleshoot.jsm) but we check anyway:
+      if ("indices" in data && data.failures.length == data.indices.length) {
+        let combined = [];
+        for (let i = 0; i < data.failures.length; i++) {
+          let assembled = assembleFromGraphicsFailure(i, data);
+          combined.push(assembled);
+        }
+        combined.sort(function(a,b) {
+            if (a.index < b.index) return -1;
+            if (a.index > b.index) return 1;
+            return 0;});
+        $.append($("graphics-failures-tbody"),
+                 combined.map(function(val) {
+                   return $.new("tr", [$.new("th", val.header, "column"),
+                                       $.new("td", val.message)]);
+                 }));
+      } else {
+        $.append($("graphics-failures-tbody"),
+          [$.new("tr", [$.new("th", "LogFailure", "column"),
+                        $.new("td", data.failures.map(function (val) {
+                          return $.new("p", val);
+                       }))])]);
+      }
+
+	delete data.failures;
     }
 
     // graphics-tbody tbody
@@ -347,7 +371,7 @@ $.new = function $_new(tag, textContentOrChildren, className, attributes) {
 };
 
 $.append = function $_append(parent, children) {
-  children.forEach(function (c) parent.appendChild(c));
+  children.forEach(c => parent.appendChild(c));
 };
 
 function stringBundle() {
@@ -355,11 +379,37 @@ function stringBundle() {
            "chrome://global/locale/aboutSupport.properties");
 }
 
+function assembleFromGraphicsFailure(i, data)
+{
+  // Only cover the cases we have today; for example, we do not have
+  // log failures that assert and we assume the log level is 1/error.
+  let message = data.failures[i];
+  let index = data.indices[i];
+  let what = "";
+  if (message.search(/\[GFX1-\]: \(LF\)/) == 0) {
+    // Non-asserting log failure - the message is substring(14)
+    what = "LogFailure";
+    message = message.substring(14);
+  } else if (message.search(/\[GFX1-\]: /) == 0) {
+    // Non-asserting - the message is substring(9)
+    what = "Error";
+    message = message.substring(9);
+  } else if (message.search(/\[GFX1\]: /) == 0) {
+    // Asserting - the message is substring(8)
+    what = "Assert";
+    message = message.substring(8);
+  }
+  let assembled = {"index" : index,
+                   "header" : ("(#" + index + ") " + what),
+                   "message" : message};
+  return assembled;
+}
+
 function sortedArrayFromObject(obj) {
   let tuples = [];
   for (let prop in obj)
     tuples.push([prop, obj[prop]]);
-  tuples.sort(function ([prop1, v1], [prop2, v2]) prop1.localeCompare(prop2));
+  tuples.sort(([prop1, v1], [prop2, v2]) => prop1.localeCompare(prop2));
   return tuples;
 }
 

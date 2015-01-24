@@ -21,6 +21,7 @@ include protocol PFileDescriptorSet;
 include protocol PFMRadio;
 include protocol PFileSystemRequest;
 include protocol PHal;
+include protocol PProcessHangMonitor;
 include protocol PImageBridge;
 include protocol PMemoryReportRequest;
 include protocol PMobileConnection;
@@ -59,6 +60,7 @@ using struct ChromePackage from "mozilla/chrome/RegistryMessageUtils.h";
 using struct ResourceMapping from "mozilla/chrome/RegistryMessageUtils.h";
 using struct OverrideMapping from "mozilla/chrome/RegistryMessageUtils.h";
 using base::ChildPrivileges from "base/process_util.h";
+using base::ProcessId from "base/process.h";
 using struct IPC::Permission from "mozilla/net/NeckoMessageUtils.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
 using struct mozilla::null_t from "ipc/IPCMessageUtils.h";
@@ -327,6 +329,7 @@ prio(normal upto urgent) intr protocol PContent
     parent spawns PPluginModule;
 
     parent opens PCompositor;
+    parent opens PProcessHangMonitor;
     parent opens PSharedBufferManager;
     parent opens PImageBridge;
     child opens PBackground;
@@ -502,6 +505,19 @@ child:
     OnAppThemeChanged();
 
     /**
+     * Called during plugin initialization to map a plugin id to a child process
+     * id.
+     */
+    async AssociatePluginId(uint32_t aPluginId, ProcessId aProcessId);
+
+    /**
+     * This call is used by async plugin initialization to notify the
+     * PluginModuleContentParent that the PluginModuleChromeParent's async
+     * init has completed.
+     */
+    async LoadPluginResult(uint32_t aPluginId, bool aResult);
+
+    /**
      * Control the Gecko Profiler in the child process.
      */
     async StartProfiler(uint32_t aEntries, double aInterval, nsCString[] aFeatures,
@@ -511,6 +527,13 @@ child:
       returns (nsCString aProfile);
 
     NuwaFreeze();
+
+    /**
+     * Notify the child to shutdown. The child will in turn call FinishShutdown
+     * and let the parent close the channel.
+     */
+    async Shutdown();
+
 parent:
     /**
      * Tell the parent process a new accessible document has been created.
@@ -553,6 +576,14 @@ parent:
      * allocation message is dispatched before LoadPlugin returns.
      */
     sync LoadPlugin(uint32_t pluginId);
+
+    /**
+     * This call is used by asynchronous plugin instantiation to notify the
+     * content parent that it is now safe to initiate the plugin bridge for
+     * the specified plugin id. When this call returns, the requested bridge
+     * connection has been made.
+     */
+    sync ConnectPluginBridge(uint32_t aPluginId);
 
     /**
      * This call returns the set of plugins loaded in the chrome
@@ -845,6 +876,12 @@ parent:
      * offline-apps.allow_by_default is set to true.
      */
     SetOfflinePermission(Principal principal);
+
+    /**
+     * Notifies the parent to continue shutting down after the child performs
+     * its shutdown tasks.
+     */
+    async FinishShutdown();
 
 both:
      AsyncMessage(nsString aMessage, ClonedMessageData aData,

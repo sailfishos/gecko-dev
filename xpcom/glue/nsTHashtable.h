@@ -10,6 +10,7 @@
 #include "nscore.h"
 #include "pldhash.h"
 #include "nsDebug.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/MemoryChecking.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Move.h"
@@ -125,11 +126,12 @@ public:
    */
   EntryType* GetEntry(KeyType aKey) const
   {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
     EntryType* entry = reinterpret_cast<EntryType*>(
-      PL_DHashTableOperate(const_cast<PLDHashTable*>(&mTable),
-                           EntryType::KeyToPointer(aKey), PL_DHASH_LOOKUP));
+      PL_DHashTableLookup(const_cast<PLDHashTable*>(&mTable),
+                          EntryType::KeyToPointer(aKey)));
     return PL_DHASH_ENTRY_IS_BUSY(entry) ? entry : nullptr;
   }
 
@@ -156,10 +158,11 @@ public:
   }
 
   EntryType* PutEntry(KeyType aKey, const fallible_t&) NS_WARN_UNUSED_RESULT {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
-    return static_cast<EntryType*>(PL_DHashTableOperate(
-      &mTable, EntryType::KeyToPointer(aKey), PL_DHASH_ADD));
+    return static_cast<EntryType*>(PL_DHashTableAdd(
+      &mTable, EntryType::KeyToPointer(aKey)));
   }
 
   /**
@@ -168,11 +171,11 @@ public:
    */
   void RemoveEntry(KeyType aKey)
   {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
-    PL_DHashTableOperate(&mTable,
-                         EntryType::KeyToPointer(aKey),
-                         PL_DHASH_REMOVE);
+    PL_DHashTableRemove(&mTable,
+                        EntryType::KeyToPointer(aKey));
   }
 
   /**
@@ -209,7 +212,8 @@ public:
    */
   uint32_t EnumerateEntries(Enumerator aEnumFunc, void* aUserArg)
   {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
     s_EnumArgs args = { aEnumFunc, aUserArg };
     return PL_DHashTableEnumerate(&mTable, s_EnumStub, &args);
@@ -220,7 +224,8 @@ public:
    */
   void Clear()
   {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
     PL_DHashTableEnumerate(&mTable, PL_DHashStubEnumRemove, nullptr);
   }
@@ -290,6 +295,16 @@ public:
     return SizeOfIncludingThis(BasicSizeOfEntryExcludingThisFun, aMallocSizeOf);
   }
 
+  /**
+   * Swap the elements in this hashtable with the elements in aOther.
+   */
+  void SwapElements(nsTHashtable<EntryType>& aOther)
+  {
+    MOZ_ASSERT_IF(this->mTable.Ops() && aOther.mTable.Ops(),
+                  this->mTable.Ops() == aOther.mTable.Ops());
+    mozilla::Swap(this->mTable, aOther.mTable);
+  }
+
 #ifdef DEBUG
   /**
    * Mark the table as constant after initialization.
@@ -299,7 +314,8 @@ public:
    */
   void MarkImmutable()
   {
-    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.IsInitialized(),
+                 "nsTHashtable was not initialized properly.");
 
     PL_DHashMarkTableImmutable(&mTable);
   }
@@ -358,7 +374,7 @@ protected:
 
 private:
   // copy constructor, not implemented
-  nsTHashtable(nsTHashtable<EntryType>& aToCopy) MOZ_DELETE;
+  nsTHashtable(nsTHashtable<EntryType>& aToCopy) = delete;
 
   /**
    * Initialize the table.
@@ -375,7 +391,7 @@ private:
                                                  void*);
 
   // assignment operator, not implemented
-  nsTHashtable<EntryType>& operator=(nsTHashtable<EntryType>& aToEqual) MOZ_DELETE;
+  nsTHashtable<EntryType>& operator=(nsTHashtable<EntryType>& aToEqual) = delete;
 };
 
 //
@@ -392,13 +408,13 @@ nsTHashtable<EntryType>::nsTHashtable(nsTHashtable<EntryType>&& aOther)
 
   // Indicate that aOther is not initialized.  This will make its destructor a
   // nop, which is what we want.
-  aOther.mTable.ops = nullptr;
+  aOther.mTable.SetOps(nullptr);
 }
 
 template<class EntryType>
 nsTHashtable<EntryType>::~nsTHashtable()
 {
-  if (mTable.ops) {
+  if (mTable.IsInitialized()) {
     PL_DHashTableFinish(&mTable);
   }
 }
@@ -409,17 +425,14 @@ nsTHashtable<EntryType>::Init(uint32_t aInitLength)
 {
   static const PLDHashTableOps sOps =
   {
-    ::PL_DHashAllocTable,
-    ::PL_DHashFreeTable,
     s_HashKey,
     s_MatchEntry,
     EntryType::ALLOW_MEMMOVE ? ::PL_DHashMoveEntryStub : s_CopyEntry,
     s_ClearEntry,
-    ::PL_DHashFinalizeStub,
     s_InitEntry
   };
 
-  PL_DHashTableInit(&mTable, &sOps, nullptr, sizeof(EntryType), aInitLength);
+  PL_DHashTableInit(&mTable, &sOps, sizeof(EntryType), aInitLength);
 }
 
 // static

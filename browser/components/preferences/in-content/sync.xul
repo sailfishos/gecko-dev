@@ -2,9 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-<!-- Synch panel -->
+<!-- Sync panel -->
 
-<preferences>
+<preferences hidden="true" data-category="paneSync">
   <preference id="engine.addons"
               name="services.sync.engine.addons"
               type="bool"/>
@@ -46,8 +46,9 @@
     <deck id="sync-migration-deck">
       <!-- When we are in the "need FxA user" state -->
       <hbox align="center">
-        <label>&migrate.upgradeNeeded;</label>
+        <description id="sync-migrate-upgrade-description" flex="1"/>
         <spacer flex="1"/>
+        <button id="sync-migrate-unlink"/>
         <button id="sync-migrate-upgrade"/>
       </hbox>
 

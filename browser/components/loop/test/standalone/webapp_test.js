@@ -20,14 +20,16 @@ describe("loop.webapp", function() {
       stubGetPermsAndCacheMedia,
       fakeAudioXHR,
       dispatcher,
-      feedbackStore;
+      WEBSOCKET_REASONS = loop.shared.utils.WEBSOCKET_REASONS;
 
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
     dispatcher = new loop.Dispatcher();
     notifications = new sharedModels.NotificationCollection();
-    feedbackStore = new loop.store.FeedbackStore(dispatcher, {
-      feedbackClient: {}
+    loop.store.StoreMixin.register({
+      feedbackStore: new loop.store.FeedbackStore(dispatcher, {
+        feedbackClient: {}
+      })
     });
 
     stubGetPermsAndCacheMedia = sandbox.stub(
@@ -53,7 +55,7 @@ describe("loop.webapp", function() {
 
   describe("#init", function() {
     beforeEach(function() {
-      sandbox.stub(React, "renderComponent");
+      sandbox.stub(React, "render");
       loop.config.feedbackApiUrl = "http://fake.invalid";
       sandbox.stub(loop.Dispatcher.prototype, "dispatch");
     });
@@ -61,10 +63,10 @@ describe("loop.webapp", function() {
     it("should create the WebappRootView", function() {
       loop.webapp.init();
 
-      sinon.assert.calledOnce(React.renderComponent);
-      sinon.assert.calledWith(React.renderComponent,
+      sinon.assert.calledOnce(React.render);
+      sinon.assert.calledWith(React.render,
         sinon.match(function(value) {
-          return TestUtils.isDescriptorOfType(value,
+          return TestUtils.isCompositeComponentElement(value,
             loop.webapp.WebappRootView);
       }));
     });
@@ -106,7 +108,8 @@ describe("loop.webapp", function() {
 
     function mountTestComponent(props) {
       return TestUtils.renderIntoDocument(
-        loop.webapp.OutgoingConversationView(props));
+        React.createElement(
+          loop.webapp.OutgoingConversationView, props));
     }
 
     beforeEach(function() {
@@ -125,7 +128,7 @@ describe("loop.webapp", function() {
         conversation: conversation,
         notifications: notifications,
         sdk: {},
-        feedbackStore: feedbackStore
+        dispatcher: dispatcher
       });
     });
 
@@ -241,7 +244,7 @@ describe("loop.webapp", function() {
             it("should display the FailedConversationView", function() {
               ocView._websocket.trigger("progress", {
                 state: "terminated",
-                reason: "reject"
+                reason: WEBSOCKET_REASONS.REJECT
               });
 
               TestUtils.findRenderedComponentWithType(ocView,
@@ -256,17 +259,17 @@ describe("loop.webapp", function() {
 
                 ocView._websocket.trigger("progress", {
                   state: "terminated",
-                  reason: "reject"
+                  reason: WEBSOCKET_REASONS.REJECT
                 });
 
                 sinon.assert.calledOnce(multiplexGum.reset);
               });
 
-            it("should display an error message if the reason is not 'cancel'",
+            it("should display an error message if the reason is not WEBSOCKET_REASONS.CANCEL",
               function() {
                 ocView._websocket.trigger("progress", {
                   state: "terminated",
-                  reason: "reject"
+                  reason: WEBSOCKET_REASONS.REJECT
                 });
 
                 sinon.assert.calledOnce(notifications.errorL10n);
@@ -274,11 +277,11 @@ describe("loop.webapp", function() {
                   "call_timeout_notification_text");
               });
 
-            it("should not display an error message if the reason is 'cancel'",
+            it("should not display an error message if the reason is WEBSOCKET_REASONS.CANCEL",
               function() {
                 ocView._websocket.trigger("progress", {
                   state: "terminated",
-                  reason: "cancel"
+                  reason: WEBSOCKET_REASONS.CANCEL
                 });
 
                 sinon.assert.notCalled(notifications.errorL10n);
@@ -620,11 +623,12 @@ describe("loop.webapp", function() {
 
         sandbox.stub(client, "requestCallUrlInfo");
         view = React.addons.TestUtils.renderIntoDocument(
-          loop.webapp.FailedConversationView({
-            conversation: conversation,
-            client: client,
-            notifications: notifications
-          }));
+          React.createElement(
+            loop.webapp.FailedConversationView, {
+              conversation: conversation,
+              client: client,
+              notifications: notifications
+            }));
       });
 
       it("should play a failure sound, once", function() {
@@ -645,16 +649,17 @@ describe("loop.webapp", function() {
 
     function mountTestComponent() {
       return TestUtils.renderIntoDocument(
-        loop.webapp.WebappRootView({
-          client: client,
-          helper: helper,
-          notifications: notifications,
-          sdk: sdk,
-          conversation: conversationModel,
-          standaloneAppStore: standaloneAppStore,
-          activeRoomStore: activeRoomStore,
-          feedbackStore: feedbackStore
-        }));
+        React.createElement(
+          loop.webapp.WebappRootView, {
+            client: client,
+            helper: helper,
+            dispatcher: dispatcher,
+            notifications: notifications,
+            sdk: sdk,
+            conversation: conversationModel,
+            standaloneAppStore: standaloneAppStore,
+            activeRoomStore: activeRoomStore
+          }));
     }
 
     beforeEach(function() {
@@ -739,7 +744,8 @@ describe("loop.webapp", function() {
       standaloneMedia.setSingleton(multiplexGum);
       sandbox.stub(standaloneMedia._MultiplexGum.prototype, "reset");
 
-      TestUtils.renderIntoDocument(loop.webapp.HomeView());
+      TestUtils.renderIntoDocument(
+        React.createElement(loop.webapp.HomeView));
 
       sinon.assert.calledOnce(multiplexGum.reset);
       sinon.assert.calledWithExactly(multiplexGum.reset);
@@ -766,9 +772,10 @@ describe("loop.webapp", function() {
       sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
 
       view = React.addons.TestUtils.renderIntoDocument(
-        loop.webapp.WaitingConversationView({
-          websocket: websocket
-        })
+        React.createElement(
+          loop.webapp.WaitingConversationView, {
+            websocket: websocket
+          })
       );
     });
 
@@ -849,12 +856,12 @@ describe("loop.webapp", function() {
         };
 
         view = React.addons.TestUtils.renderIntoDocument(
-            loop.webapp.StartConversationView({
+          React.createElement(
+            loop.webapp.StartConversationView, {
               conversation: conversation,
               notifications: notifications,
               client: standaloneClientStub
-            })
-        );
+            }));
       });
 
       it("should start the audio-video conversation establishment process",
@@ -945,12 +952,12 @@ describe("loop.webapp", function() {
         requestCallUrlInfo = sandbox.stub();
 
         view = React.addons.TestUtils.renderIntoDocument(
-            loop.webapp.StartConversationView({
-              conversation: conversation,
-              notifications: notifications,
-              client: {requestCallUrlInfo: requestCallUrlInfo}
-            })
-          );
+            React.createElement(
+              loop.webapp.StartConversationView, {
+                conversation: conversation,
+                notifications: notifications,
+                client: {requestCallUrlInfo: requestCallUrlInfo}
+              }));
 
         loop.config.marketplaceUrl = "http://market/";
       });
@@ -1030,12 +1037,12 @@ describe("loop.webapp", function() {
         var tos;
 
         view = React.addons.TestUtils.renderIntoDocument(
-          loop.webapp.StartConversationView({
-            conversation: conversation,
-            notifications: notifications,
-            client: {requestCallUrlInfo: requestCallUrlInfo}
-          })
-        );
+          React.createElement(
+            loop.webapp.StartConversationView, {
+              conversation: conversation,
+              notifications: notifications,
+              client: {requestCallUrlInfo: requestCallUrlInfo}
+            }));
         tos = view.getDOMNode().querySelector(".terms-service");
 
         expect(tos.classList.contains("hide")).to.equal(false);
@@ -1046,12 +1053,12 @@ describe("loop.webapp", function() {
 
         localStorage.setItem("has-seen-tos", "true");
         view = React.addons.TestUtils.renderIntoDocument(
-          loop.webapp.StartConversationView({
-            conversation: conversation,
-            notifications: notifications,
-            client: {requestCallUrlInfo: requestCallUrlInfo}
-          })
-        );
+          React.createElement(
+            loop.webapp.StartConversationView, {
+              conversation: conversation,
+              notifications: notifications,
+              client: {requestCallUrlInfo: requestCallUrlInfo}
+            }));
         tos = view.getDOMNode().querySelector(".terms-service");
 
         expect(tos.classList.contains("hide")).to.equal(true);
@@ -1075,13 +1082,12 @@ describe("loop.webapp", function() {
       });
       sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
       view = React.addons.TestUtils.renderIntoDocument(
-        loop.webapp.EndedConversationView({
-          conversation: conversation,
-          sdk: {},
-          feedbackStore: feedbackStore,
-          onAfterFeedbackReceived: function(){}
-        })
-      );
+        React.createElement(
+          loop.webapp.EndedConversationView, {
+            conversation: conversation,
+            sdk: {},
+            onAfterFeedbackReceived: function(){}
+          }));
     });
 
     it("should render a ConversationView", function() {
@@ -1096,17 +1102,20 @@ describe("loop.webapp", function() {
   describe("PromoteFirefoxView", function() {
     describe("#render", function() {
       it("should not render when using Firefox", function() {
-        var comp = TestUtils.renderIntoDocument(loop.webapp.PromoteFirefoxView({
-          helper: {isFirefox: function() { return true; }}
-        }));
+        var comp = TestUtils.renderIntoDocument(
+          React.createElement(loop.webapp.PromoteFirefoxView, {
+            helper: {isFirefox: function() { return true; }}
+          }));
 
         expect(comp.getDOMNode().querySelectorAll("h3").length).eql(0);
       });
 
       it("should render when not using Firefox", function() {
-        var comp = TestUtils.renderIntoDocument(loop.webapp.PromoteFirefoxView({
-          helper: {isFirefox: function() { return false; }}
-        }));
+        var comp = TestUtils.renderIntoDocument(
+          React.createElement(
+            loop.webapp.PromoteFirefoxView, {
+              helper: {isFirefox: function() { return false; }}
+            }));
 
         expect(comp.getDOMNode().querySelectorAll("h3").length).eql(1);
       });
@@ -1144,12 +1153,12 @@ describe("loop.webapp", function() {
         };
 
         view = React.addons.TestUtils.renderIntoDocument(
-            loop.webapp.StartConversationView({
+          React.createElement(
+            loop.webapp.StartConversationView, {
               conversation: conversation,
               notifications: notifications,
               client: standaloneClientStub
-            })
-        );
+            }));
 
         // default to succeeding with a null local media object
         stubGetPermsAndCacheMedia.callsArgWith(1, {});
@@ -1292,12 +1301,12 @@ describe("loop.webapp", function() {
 
         before(function() {
           view = React.addons.TestUtils.renderIntoDocument(
-            loop.webapp.StartConversationView({
-              conversation: model,
-              notifications: notifications,
-              client: {requestCallUrlInfo: sandbox.stub()}
-            })
-          );
+            React.createElement(
+              loop.webapp.StartConversationView, {
+                conversation: model,
+                notifications: notifications,
+                client: {requestCallUrlInfo: sandbox.stub()}
+              }));
         });
 
         beforeEach(function() {

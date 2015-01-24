@@ -411,7 +411,7 @@ DrawTargetD2D1::Stroke(const Path *aPath,
                        const StrokeOptions &aStrokeOptions,
                        const DrawOptions &aOptions)
 {
-  if (aPath->GetBackendType() != BackendType::DIRECT2D) {
+  if (aPath->GetBackendType() != BackendType::DIRECT2D1_1) {
     gfxDebug() << *this << ": Ignoring drawing call for incompatible path.";
     return;
   }
@@ -434,7 +434,7 @@ DrawTargetD2D1::Fill(const Path *aPath,
                      const Pattern &aPattern,
                      const DrawOptions &aOptions)
 {
-  if (aPath->GetBackendType() != BackendType::DIRECT2D) {
+  if (aPath->GetBackendType() != BackendType::DIRECT2D1_1) {
     gfxDebug() << *this << ": Ignoring drawing call for incompatible path.";
     return;
   }
@@ -560,7 +560,7 @@ DrawTargetD2D1::Mask(const Pattern &aSource,
 void
 DrawTargetD2D1::PushClip(const Path *aPath)
 {
-  if (aPath->GetBackendType() != BackendType::DIRECT2D) {
+  if (aPath->GetBackendType() != BackendType::DIRECT2D1_1) {
     gfxDebug() << *this << ": Ignoring clipping call for incompatible path.";
     return;
   }
@@ -694,7 +694,7 @@ DrawTargetD2D1::CreatePathBuilder(FillRule aFillRule) const
     sink->SetFillMode(D2D1_FILL_MODE_WINDING);
   }
 
-  return new PathBuilderD2D(sink, path, aFillRule);
+  return new PathBuilderD2D(sink, path, aFillRule, BackendType::DIRECT2D1_1);
 }
 
 TemporaryRef<GradientStops>
@@ -859,7 +859,12 @@ DrawTargetD2D1::factory()
     return mFactory;
   }
 
-  HRESULT hr = D2DFactory()->QueryInterface((ID2D1Factory1**)&mFactory);
+  ID2D1Factory* d2dFactory = D2DFactory();
+  if (!d2dFactory) {
+    return nullptr;
+  }
+
+  HRESULT hr = d2dFactory->QueryInterface((ID2D1Factory1**)&mFactory);
 
   if (FAILED(hr)) {
     return nullptr;

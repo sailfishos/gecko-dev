@@ -193,7 +193,7 @@ public:
 
   // nsIObserver implementation.
   NS_IMETHODIMP
-  Observe(nsISupports *aSubject, const char *aTopic, const char16_t *data)
+  Observe(nsISupports *aSubject, const char *aTopic, const char16_t *data) MOZ_OVERRIDE
   {
     MOZ_ASSERT(!nsCRT::strcmp(aTopic, "webapps-clear-data"));
 
@@ -1452,13 +1452,8 @@ NS_IMETHODIMP nsPermissionManager::Observe(nsISupports *aSubject, const char *aT
     // The profile is about to change,
     // or is going away because the application is shutting down.
     mIsShuttingDown = true;
-    if (!nsCRT::strcmp(someData, MOZ_UTF16("shutdown-cleanse"))) {
-      // Clear the permissions file and close the db asynchronously
-      RemoveAllInternal(false);
-    } else {
-      RemoveAllFromMemory();
-      CloseDB(false);
-    }
+    RemoveAllFromMemory();
+    CloseDB(false);
   }
   else if (!nsCRT::strcmp(aTopic, "profile-do-change")) {
     // the profile has already changed; init the db from the new location

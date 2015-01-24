@@ -15,7 +15,9 @@ function startupWebAudioEditor() {
   return all([
     WebAudioEditorController.initialize(),
     ContextView.initialize(),
-    InspectorView.initialize()
+    InspectorView.initialize(),
+    PropertiesView.initialize(),
+    AutomationView.initialize()
   ]);
 }
 
@@ -27,6 +29,8 @@ function shutdownWebAudioEditor() {
     WebAudioEditorController.destroy(),
     ContextView.destroy(),
     InspectorView.destroy(),
+    PropertiesView.destroy(),
+    AutomationView.destroy()
   ]);
 }
 
@@ -37,7 +41,7 @@ let WebAudioEditorController = {
   /**
    * Listen for events emitted by the current tab target.
    */
-  initialize: function() {
+  initialize: Task.async(function* () {
     telemetry.toolOpened("webaudioeditor");
     this._onTabNavigated = this._onTabNavigated.bind(this);
     this._onThemeChange = this._onThemeChange.bind(this);
@@ -56,7 +60,10 @@ let WebAudioEditorController = {
     // the graph's marker styling, since we can't do this
     // with CSS
     gDevTools.on("pref-changed", this._onThemeChange);
-  },
+
+    // Store the AudioNode definitions from the WebAudioFront
+    AUDIO_NODE_DEFINITION = yield gFront.getDefinition();
+  }),
 
   /**
    * Remove events emitted by the current tab target.
@@ -83,6 +90,7 @@ let WebAudioEditorController = {
     $("#content").hidden = true;
     ContextView.resetUI();
     InspectorView.resetUI();
+    PropertiesView.resetUI();
   },
 
   // Since node create and connect are probably executed back to back,

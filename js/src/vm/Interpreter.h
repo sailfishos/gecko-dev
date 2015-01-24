@@ -149,10 +149,10 @@ class RunState
     bool maybeCreateThisForConstructor(JSContext *cx);
 
   private:
-    RunState(const RunState &other) MOZ_DELETE;
-    RunState(const ExecuteState &other) MOZ_DELETE;
-    RunState(const InvokeState &other) MOZ_DELETE;
-    void operator=(const RunState &other) MOZ_DELETE;
+    RunState(const RunState &other) = delete;
+    RunState(const ExecuteState &other) = delete;
+    RunState(const InvokeState &other) = delete;
+    void operator=(const RunState &other) = delete;
 };
 
 // Eval or global script.
@@ -246,7 +246,7 @@ UnwindScope(JSContext *cx, ScopeIter &si, jsbytecode *pc);
 
 // Unwind all scopes.
 extern void
-UnwindAllScopes(JSContext *cx, ScopeIter &si);
+UnwindAllScopesInFrame(JSContext *cx, ScopeIter &si);
 
 // Compute the pc needed to unwind the scope to the beginning of the block
 // pointed to by the try note.
@@ -396,8 +396,8 @@ SpreadCallOperation(JSContext *cx, HandleScript script, jsbytecode *pc, HandleVa
 inline bool
 SetConstOperation(JSContext *cx, HandleObject varobj, HandlePropertyName name, HandleValue rval)
 {
-    return JSObject::defineProperty(cx, varobj, name, rval, nullptr, nullptr,
-                                    JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY);
+    return DefineProperty(cx, varobj, name, rval, nullptr, nullptr,
+                          JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY);
 }
 
 void

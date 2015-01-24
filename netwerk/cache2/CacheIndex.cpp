@@ -179,26 +179,26 @@ public:
 private:
   virtual ~FileOpenHelper() {}
 
-  NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult);
+  NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE;
   NS_IMETHOD OnDataWritten(CacheFileHandle *aHandle, const char *aBuf,
-                           nsresult aResult) {
+                           nsresult aResult) MOZ_OVERRIDE {
     MOZ_CRASH("FileOpenHelper::OnDataWritten should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
   NS_IMETHOD OnDataRead(CacheFileHandle *aHandle, char *aBuf,
-                        nsresult aResult) {
+                        nsresult aResult) MOZ_OVERRIDE {
     MOZ_CRASH("FileOpenHelper::OnDataRead should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnFileDoomed(CacheFileHandle *aHandle, nsresult aResult) {
+  NS_IMETHOD OnFileDoomed(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
     MOZ_CRASH("FileOpenHelper::OnFileDoomed should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnEOFSet(CacheFileHandle *aHandle, nsresult aResult) {
+  NS_IMETHOD OnEOFSet(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
     MOZ_CRASH("FileOpenHelper::OnEOFSet should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD OnFileRenamed(CacheFileHandle *aHandle, nsresult aResult) {
+  NS_IMETHOD OnFileRenamed(CacheFileHandle *aHandle, nsresult aResult) MOZ_OVERRIDE {
     MOZ_CRASH("FileOpenHelper::OnFileRenamed should not be called!");
     return NS_ERROR_UNEXPECTED;
   }
@@ -2201,9 +2201,10 @@ CacheIndex::ParseRecords()
 
   if (pos != mRWBufPos) {
     memmove(mRWBuf, mRWBuf + pos, mRWBufPos - pos);
-    mRWBufPos -= pos;
-    pos = 0;
   }
+
+  mRWBufPos -= pos;
+  pos = 0;
 
   int64_t fileOffset = sizeof(CacheIndexHeader) +
                        mSkipEntries * sizeof(CacheIndexRecord) + mRWBufPos;
@@ -2286,7 +2287,7 @@ CacheIndex::StartReadingJournal()
 void
 CacheIndex::ParseJournal()
 {
-  LOG(("CacheIndex::ParseRecords()"));
+  LOG(("CacheIndex::ParseJournal()"));
 
   nsresult rv;
 
@@ -2322,9 +2323,10 @@ CacheIndex::ParseJournal()
 
   if (pos != mRWBufPos) {
     memmove(mRWBuf, mRWBuf + pos, mRWBufPos - pos);
-    mRWBufPos -= pos;
-    pos = 0;
   }
+
+  mRWBufPos -= pos;
+  pos = 0;
 
   int64_t fileOffset = mSkipEntries * sizeof(CacheIndexRecord) + mRWBufPos;
 

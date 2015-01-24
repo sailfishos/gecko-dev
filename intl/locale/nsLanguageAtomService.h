@@ -20,15 +20,15 @@ public:
 
   // nsILanguageAtomService
   virtual nsIAtom*
-    LookupLanguage(const nsACString &aLanguage, nsresult *aError);
+    LookupLanguage(const nsACString &aLanguage, nsresult *aError) MOZ_OVERRIDE;
 
   virtual already_AddRefed<nsIAtom>
-    LookupCharSet(const nsACString& aCharSet);
+    LookupCharSet(const nsACString& aCharSet) MOZ_OVERRIDE;
 
-  virtual nsIAtom* GetLocaleLanguage(nsresult *aError);
+  virtual nsIAtom* GetLocaleLanguage(nsresult *aError) MOZ_OVERRIDE;
 
   virtual nsIAtom* GetLanguageGroup(nsIAtom *aLanguage,
-                                                nsresult *aError);
+                                                nsresult *aError) MOZ_OVERRIDE;
 
   nsLanguageAtomService();
 
@@ -36,9 +36,6 @@ private:
   ~nsLanguageAtomService() { }
 
 protected:
-  nsresult InitLangGroupTable();
-
   nsInterfaceHashtable<nsISupportsHashKey, nsIAtom> mLangToGroup;
-  nsCOMPtr<nsIStringBundle> mLangGroups;
   nsCOMPtr<nsIAtom> mLocaleLanguage;
 };

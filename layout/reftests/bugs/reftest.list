@@ -557,9 +557,9 @@ skip-if(B2G) == 363858-1.html 363858-1-ref.html
 skip-if(B2G) == 363858-2.html 363858-2-ref.html
 skip-if(B2G) == 363858-3.html 363858-3-ref.html
 skip-if(B2G) == 363858-4.html 363858-4-ref.html
-fuzzy-if(OSX==10.8,45,2) == 363858-5a.html 363858-5-ref.html
+fuzzy-if(OSX>=1008,45,2) == 363858-5a.html 363858-5-ref.html
 == 363858-5b.html 363858-5-ref.html
-fuzzy-if(OSX==10.8,45,2) == 363858-6a.html 363858-6-ref.html
+fuzzy-if(OSX>=1008,45,2) == 363858-6a.html 363858-6-ref.html
 == 363858-6b.html 363858-6-ref.html
 == 363874.html 363874-ref.html
 == 363874-max-width.html 363874-max-width-ref.html
@@ -1194,11 +1194,11 @@ test-pref(dom.use_xbl_scopes_for_remote_xul,true) != 449149-1b.html about:blank
 == 455105-2.html 455105-ref.html
 == 455171-5.html 455171-5-ref.html
 == 455280-1.xhtml 455280-1-ref.xhtml
-skip-if(B2G) fails-if(Android) == 455826-1.html 455826-1-ref.html
+skip-if(B2G) == 455826-1.html 455826-1-ref.html
 skip-if(B2G) fails-if(cocoaWidget) fails-if(Android) == 456147.xul 456147-ref.html # bug 458047
-fuzzy-if(Android,11,40) fuzzy-if(B2G,11,35) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1a.html 456219-1-ref.html # bug 853273
-fuzzy-if(Android,11,40) fuzzy-if(B2G,11,35) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1b.html 456219-1-ref.html # bug 853273
-fuzzy-if(Android,11,40) fuzzy-if(B2G,11,35) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1c.html 456219-1-ref.html # bug 853273
+fuzzy-if(Android,11,40) fuzzy-if(B2G,11,40) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1a.html 456219-1-ref.html # bug 853273
+fuzzy-if(Android,11,40) fuzzy-if(B2G,11,40) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1b.html 456219-1-ref.html # bug 853273
+fuzzy-if(Android,11,40) fuzzy-if(B2G,11,40) fuzzy-if(d2d&&/^Windows\x20NT\x206\.2/.test(http.oscpu),1,69) == 456219-1c.html 456219-1-ref.html # bug 853273
 == 456219-2.html 456219-2-ref.html
 == 456330-1.gif 456330-1-ref.png
 == 456484-1.html 456484-1-ref.html
@@ -1460,7 +1460,7 @@ random-if(d2d) == 523468-1.html 523468-1-ref.html
 == 534804-1.html 534804-1-ref.html
 == 534808-1.html 534808-1-ref.html
 == 534808-2.html 534808-2-ref.html
-fails-if(OSX==10.7) == 534919-1.html 534919-1-ref.html # Bug 705044
+fails-if(OSX==1007) == 534919-1.html 534919-1-ref.html # Bug 705044
 random == 536061.html 536061-ref.html # fixedpoint division in blur code makes this fail
 == 537471-1.html 537471-1-ref.html
 skip-if(B2G&&browserIsRemote) == 537507-1.xul 537507-1-ref.xul # bug 974780
@@ -1587,7 +1587,7 @@ skip-if(B2G) == 582476-1.svg 582476-1-ref.svg
 == 584699-1.html 584699-1-ref.html
 == 585598-2.xhtml 585598-2-ref.xhtml
 == 586400-1.html 586400-1-ref.html
-skip-if(B2G) fuzzy-if(d2d,52,1051) fuzzy-if(OSX==10.8,129,1068) == 586683-1.html 586683-1-ref.html
+skip-if(B2G) fuzzy-if(d2d,52,1051) fuzzy-if(OSX==1008,129,1068) == 586683-1.html 586683-1-ref.html
 == 589615-1a.xhtml 589615-1-ref.html
 == 589615-1b.html 589615-1-ref.html
 == 589672-1.html 589672-1-ref.html
@@ -1644,7 +1644,7 @@ skip-if(Android) HTTP(..) == 621253-1-externalFilter.html 621253-1-ref.html
 skip-if(Android) == 621253-1-internalFilter.html 621253-1-ref.html
 HTTP(..) == 621253-2-externalFilter.html 621253-2-ref.html
 == 621253-2-internalFilter.html 621253-2-ref.html
-skip-if(B2G) random-if(winWidget) fuzzy-if(OSX==10.8,19,17) == 621918-1.svg 621918-1-ref.svg # 1-pixel diacritic positioning discrepancy in rotated text (may depend on platform fonts)
+skip-if(B2G) random-if(winWidget) fuzzy-if(OSX==1008,19,17) == 621918-1.svg 621918-1-ref.svg # 1-pixel diacritic positioning discrepancy in rotated text (may depend on platform fonts)
 random-if(winWidget) HTTP(..) == 621918-2.svg 621918-2-ref.svg # same 1px issue as above, and HTTP(..) for filters.svg, used to mask antialiasing issues where glyphs touch
 fuzzy-if(d2d,5,1) == 622585-1.html 622585-1-ref.html # bug 789402
 fuzzy-if(Android&&AndroidVersion>=15,8,300) == 625409-1.html 625409-1-ref.html
@@ -1791,7 +1791,7 @@ fuzzy-if(cocoaWidget,1,40) == 928607-1.html 928607-1-ref.html
 == 931464-1.html 931464-1-ref.html
 == 931853.html 931853-ref.html
 == 931853-quirks.html 931853-quirks-ref.html
-fuzzy-if(OSX==10.6,2,30) skip-if(B2G&&browserIsRemote) == 933264-1.html 933264-1-ref.html
+fuzzy-if(OSX==1006,2,30) skip-if(B2G&&browserIsRemote) == 933264-1.html 933264-1-ref.html
 == 936670-1.svg 936670-1-ref.svg
 == 941940-1.html 941940-1-ref.html
 fails == 942017.html 942017-ref.html # bug 942017
@@ -1802,7 +1802,7 @@ fuzzy-if(B2G,1,7) == 942672-1.html 942672-1-ref.html
 == 950436-1.html 950436-1-ref.html
 == 957770-1.svg 957770-1-ref.svg
 == 960277-1.html 960277-1-ref.html
-pref(layout.css.overflow-clip-box.enabled,true) fuzzy(50,31) == 966992-1.html 966992-1-ref.html
+pref(layout.css.overflow-clip-box.enabled,true) fuzzy(50,145) == 966992-1.html 966992-1-ref.html
 skip-if(Android) == 966510-1.html 966510-1-ref.html # scrollable elements other than the root probably won't work well on android until bug 776030 is fixed
 skip-if(Android) == 966510-2.html 966510-2-ref.html # same as above
 == 978911-1.svg 978911-1-ref.svg
@@ -1841,12 +1841,18 @@ test-pref(layout.css.grid.enabled,true) == 1053035-1-grid.html 1053035-1-ref.htm
 == 1059498-1.html 1059498-1-ref.html
 == 1059498-2.html 1059498-1-ref.html
 == 1059498-3.html 1059498-1-ref.html
+== 1062108-1.html 1062108-1-ref.html
 fails-if(Android) == 1062792-1.html 1062792-1-ref.html
 == 1062963-floatmanager-reflow.html 1062963-floatmanager-reflow-ref.html
 test-pref(dom.webcomponents.enabled,true) == 1066554-1.html 1066554-1-ref.html
 == 1069716-1.html 1069716-1-ref.html
 == 1078262-1.html about:blank
 test-pref(layout.testing.overlay-scrollbars.always-visible,false) == 1081072-1.html 1081072-1-ref.html
-fuzzy-if(winWidget&&!layersGPUAccelerated,1,31) == 1081185-1.html 1081185-1-ref.html
+fuzzy-if(winWidget&&!layersGPUAccelerated,1,31) fuzzy-if(B2G,128,75) == 1081185-1.html 1081185-1-ref.html   # fuzzy with event-regions, see bug 1107843
 == 1097437-1.html 1097437-1-ref.html
+== 1103258-1.html 1103258-1-ref.html # assertion crash test with layers culling test
 == 1105137-1.html 1105137-1-ref.html
+fuzzy-if(d2d,36,304) HTTP(..) == 1116480-1-fakeitalic-overflow.html 1116480-1-fakeitalic-overflow-ref.html
+== 1111753-1.html about:blank
+== 1119117-1a.html 1119117-1-ref.html
+== 1119117-1b.html 1119117-1-ref.html

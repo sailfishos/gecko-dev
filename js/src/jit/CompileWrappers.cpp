@@ -41,6 +41,18 @@ CompileRuntime::addressOfJitTop()
 }
 
 const void *
+CompileRuntime::addressOfJitActivation()
+{
+    return &runtime()->mainThread.jitActivation;
+}
+
+const void *
+CompileRuntime::addressOfProfilingActivation()
+{
+    return (const void *) &runtime()->mainThread.profilingActivation_;
+}
+
+const void *
 CompileRuntime::addressOfJitStackLimit()
 {
     return runtime()->mainThread.addressOfJitStackLimit();
@@ -76,18 +88,6 @@ const void *
 CompileRuntime::addressOfInterruptUint32()
 {
     return runtime()->addressOfInterruptUint32();
-}
-
-const void *
-CompileRuntime::addressOfInterruptParUint32()
-{
-    return runtime()->addressOfInterruptParUint32();
-}
-
-const void *
-CompileRuntime::addressOfThreadPool()
-{
-    return &runtime()->threadPool;
 }
 
 const JitRuntime *
@@ -210,13 +210,13 @@ CompileZone::addressOfNeedsIncrementalBarrier()
 const void *
 CompileZone::addressOfFreeListFirst(gc::AllocKind allocKind)
 {
-    return zone()->allocator.arenas.getFreeList(allocKind)->addressOfFirst();
+    return zone()->arenas.getFreeList(allocKind)->addressOfFirst();
 }
 
 const void *
 CompileZone::addressOfFreeListLast(gc::AllocKind allocKind)
 {
-    return zone()->allocator.arenas.getFreeList(allocKind)->addressOfLast();
+    return zone()->arenas.getFreeList(allocKind)->addressOfLast();
 }
 
 JSCompartment *

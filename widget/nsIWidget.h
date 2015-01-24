@@ -91,6 +91,7 @@ typedef void* nsNativeWidget;
 // Has to match to NPNVnetscapeWindow, and shareable across processes
 // HWND on Windows and XID on X11
 #define NS_NATIVE_SHAREABLE_WINDOW 11
+#define NS_NATIVE_OPENGL_CONTEXT   12
 #ifdef XP_MACOSX
 #define NS_NATIVE_PLUGIN_PORT_QD    100
 #define NS_NATIVE_PLUGIN_PORT_CG    101
@@ -224,7 +225,7 @@ struct nsIMEUpdatePreference {
 
   typedef uint8_t Notifications;
 
-  enum MOZ_ENUM_TYPE(Notifications)
+  enum : Notifications
   {
     NOTIFY_NOTHING                       = 0,
     NOTIFY_SELECTION_CHANGE              = 1 << 0,
@@ -407,7 +408,10 @@ struct IMEState {
 };
 
 struct InputContext {
-  InputContext() : mNativeIMEContext(nullptr) {}
+  InputContext()
+    : mNativeIMEContext(nullptr)
+    , mOrigin(XRE_IsParentProcess() ? ORIGIN_MAIN : ORIGIN_CONTENT)
+  {}
 
   bool IsPasswordEditor() const
   {
@@ -429,6 +433,37 @@ struct InputContext {
      SetInputContext().  If there is only one context in the process, this may
      be nullptr. */
   void* mNativeIMEContext;
+
+
+  /**
+   * mOrigin indicates whether this focus event refers to main or remote content.
+   */
+  enum Origin
+  {
+    // Adjusting focus of content on the main process
+    ORIGIN_MAIN,
+    // Adjusting focus of content in a remote process
+    ORIGIN_CONTENT
+  };
+  Origin mOrigin;
+
+  bool IsOriginMainProcess() const
+  {
+    return mOrigin == ORIGIN_MAIN;
+  }
+
+  bool IsOriginContentProcess() const
+  {
+    return mOrigin == ORIGIN_CONTENT;
+  }
+
+  bool IsOriginCurrentProcess() const
+  {
+    if (XRE_IsParentProcess()) {
+      return IsOriginMainProcess();
+    }
+    return IsOriginContentProcess();
+  }
 };
 
 struct InputContextAction {
@@ -515,7 +550,7 @@ struct SizeConstraints {
 // Update values in GeckoEditable.java if you make changes here.
 // XXX Negative values are used in Android...
 typedef int8_t IMEMessageType;
-enum IMEMessage MOZ_ENUM_TYPE(IMEMessageType)
+enum IMEMessage : IMEMessageType
 {
   // An editable content is getting focus
   NOTIFY_IME_OF_FOCUS = 1,
@@ -2179,9 +2214,9 @@ protected:
     // lastchild pointers are weak, which is fine as long as they are
     // maintained properly.
     nsCOMPtr<nsIWidget> mFirstChild;
-    nsIWidget* mLastChild;
+    nsIWidget* MOZ_NON_OWNING_REF mLastChild;
     nsCOMPtr<nsIWidget> mNextSibling;
-    nsIWidget* mPrevSibling;
+    nsIWidget* MOZ_NON_OWNING_REF mPrevSibling;
     // When Destroy() is called, the sub class should set this true.
     bool mOnDestroyCalled;
     nsWindowType mWindowType;

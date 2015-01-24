@@ -202,6 +202,7 @@ WebGLContextOptions::WebGLContextOptions()
 
 WebGLContext::WebGLContext()
     : WebGLContextUnchecked(nullptr)
+    , mBypassShaderValidation(false)
     , mNeedsFakeNoAlpha(false)
 {
     mGeneration = 0;
@@ -214,8 +215,6 @@ WebGLContext::WebGLContext()
     mPixelStoreFlipY = false;
     mPixelStorePremultiplyAlpha = false;
     mPixelStoreColorspaceConversion = BROWSER_DEFAULT_WEBGL;
-
-    mShaderValidation = true;
 
     mFakeBlackStatus = WebGLContextFakeBlackStatus::NotNeeded;
 
@@ -330,7 +329,9 @@ WebGLContext::DestroyResourcesAndContext()
     mBoundTransformFeedbackBuffer = nullptr;
     mBoundUniformBuffer = nullptr;
     mCurrentProgram = nullptr;
-    mBoundFramebuffer = nullptr;
+    mActiveProgramLinkInfo = nullptr;
+    mBoundDrawFramebuffer = nullptr;
+    mBoundReadFramebuffer = nullptr;
     mActiveOcclusionQuery = nullptr;
     mBoundRenderbuffer = nullptr;
     mBoundVertexArray = nullptr;
@@ -1887,7 +1888,8 @@ NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(WebGLContext,
   mBoundTransformFeedbackBuffer,
   mBoundUniformBuffer,
   mCurrentProgram,
-  mBoundFramebuffer,
+  mBoundDrawFramebuffer,
+  mBoundReadFramebuffer,
   mBoundRenderbuffer,
   mBoundVertexArray,
   mDefaultVertexArray,

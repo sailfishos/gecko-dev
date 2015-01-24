@@ -34,7 +34,6 @@
 // constraints, the reference identifier is the entire encoded name constraint
 // extension value.
 
-#include "pkix/bind.h"
 #include "pkixcheck.h"
 #include "pkixutil.h"
 
@@ -52,7 +51,7 @@ namespace {
 //      uniformResourceIdentifier       [6]     IA5String,
 //      iPAddress                       [7]     OCTET STRING,
 //      registeredID                    [8]     OBJECT IDENTIFIER }
-MOZILLA_PKIX_ENUM_CLASS GeneralNameType : uint8_t
+enum class GeneralNameType : uint8_t
 {
   // Note that these values are NOT contiguous. Some values have the
   // der::CONSTRUCTED bit set while others do not.
@@ -115,9 +114,9 @@ ReadGeneralName(Reader& reader,
   return Success;
 }
 
-MOZILLA_PKIX_ENUM_CLASS FallBackToSearchWithinSubject { No = 0, Yes = 1 };
+enum class FallBackToSearchWithinSubject { No = 0, Yes = 1 };
 
-MOZILLA_PKIX_ENUM_CLASS MatchResult
+enum class MatchResult
 {
   NoNamesOfGivenType = 0,
   Mismatch = 1,
@@ -159,36 +158,29 @@ Result CheckPresentedIDConformsToConstraints(GeneralNameType referenceIDType,
 uint8_t LocaleInsensitveToLower(uint8_t a);
 bool StartsWithIDNALabel(Input id);
 
-MOZILLA_PKIX_ENUM_CLASS IDRole
+enum class IDRole
 {
   ReferenceID = 0,
   PresentedID = 1,
   NameConstraint = 2,
 };
 
-MOZILLA_PKIX_ENUM_CLASS Wildcards
-{
-  AllowWildcards = 0,
-  DisallowWildcards = 1
-};
+enum class AllowWildcards { No = 0, Yes = 1 };
 
 // DNSName constraints implicitly allow subdomain matching when there is no
 // leading dot ("foo.example.com" matches a constraint of "example.com"), but
 // RFC822Name constraints only allow subdomain matching when there is a leading
 // dot ("foo.example.com" does not match "example.com" but does match
 // ".example.com").
-MOZILLA_PKIX_ENUM_CLASS DotlessSubdomainMatches
-{
-  DisallowDotlessSubdomainMatches = 0,
-  AllowDotlessSubdomainMatches = 1
-};
+enum class AllowDotlessSubdomainMatches { No = 0, Yes = 1 };
 
-bool IsValidDNSID(Input hostname, IDRole idRole, Wildcards allowWildcards);
+bool IsValidDNSID(Input hostname, IDRole idRole,
+                  AllowWildcards allowWildcards);
 
 Result MatchPresentedDNSIDWithReferenceDNSID(
          Input presentedDNSID,
-         Wildcards allowWildcards,
-         DotlessSubdomainMatches allowDotlessSubdomainMatches,
+         AllowWildcards allowWildcards,
+         AllowDotlessSubdomainMatches allowDotlessSubdomainMatches,
          IDRole referenceDNSIDRole,
          Input referenceDNSID,
          /*out*/ bool& matches);
@@ -211,9 +203,8 @@ MatchPresentedDNSIDWithReferenceDNSID(Input presentedDNSID,
                                       /*out*/ bool& matches)
 {
   return MatchPresentedDNSIDWithReferenceDNSID(
-           presentedDNSID, Wildcards::AllowWildcards,
-           DotlessSubdomainMatches::AllowDotlessSubdomainMatches,
-           IDRole::ReferenceID,
+           presentedDNSID, AllowWildcards::Yes,
+           AllowDotlessSubdomainMatches::Yes, IDRole::ReferenceID,
            referenceDNSID, matches);
 }
 
@@ -476,10 +467,10 @@ SearchNames(/*optional*/ const Input* subjectAltName,
   //   SET SIZE (1..MAX) OF AttributeTypeAndValue
   Reader subjectReader(subject);
   return der::NestedOf(subjectReader, der::SEQUENCE, der::SET,
-                       der::EmptyAllowed::Yes,
-                       bind(SearchWithinRDN, _1, referenceIDType,
-                            referenceID, fallBackToEmailAddress,
-                            fallBackToCommonName, ref(match)));
+                       der::EmptyAllowed::Yes, [&](Reader& r) {
+    return SearchWithinRDN(r, referenceIDType, referenceID,
+                          fallBackToEmailAddress, fallBackToCommonName, match);
+  });
 }
 
 // RelativeDistinguishedName ::=
@@ -497,10 +488,11 @@ SearchWithinRDN(Reader& rdn,
                 /*in/out*/ MatchResult& match)
 {
   do {
-    Result rv = der::Nested(rdn, der::SEQUENCE,
-                            bind(SearchWithinAVA, _1, referenceIDType,
-                                 referenceID, fallBackToEmailAddress,
-                                 fallBackToCommonName, ref(match)));
+    Result rv = der::Nested(rdn, der::SEQUENCE, [&](Reader& r) {
+      return SearchWithinAVA(r, referenceIDType, referenceID,
+                             fallBackToEmailAddress, fallBackToCommonName,
+                             match);
+    });
     if (rv != Success) {
       return rv;
     }
@@ -701,9 +693,9 @@ MatchPresentedIDWithReferenceID(GeneralNameType presentedIDType,
   switch (referenceIDType) {
     case GeneralNameType::dNSName:
       rv = MatchPresentedDNSIDWithReferenceDNSID(
-             presentedID, Wildcards::AllowWildcards,
-             DotlessSubdomainMatches::AllowDotlessSubdomainMatches,
-             IDRole::ReferenceID, referenceID, foundMatch);
+             presentedID, AllowWildcards::Yes,
+             AllowDotlessSubdomainMatches::Yes, IDRole::ReferenceID,
+             referenceID, foundMatch);
       break;
 
     case GeneralNameType::iPAddress:
@@ -741,7 +733,7 @@ MatchPresentedIDWithReferenceID(GeneralNameType presentedIDType,
   return Success;
 }
 
-MOZILLA_PKIX_ENUM_CLASS NameConstraintsSubtrees : uint8_t
+enum class NameConstraintsSubtrees : uint8_t
 {
   permittedSubtrees = der::CONSTRUCTED | der::CONTEXT_SPECIFIC | 0,
   excludedSubtrees  = der::CONSTRUCTED | der::CONTEXT_SPECIFIC | 1
@@ -858,9 +850,9 @@ CheckPresentedIDConformsToNameConstraintsSubtrees(
       switch (presentedIDType) {
         case GeneralNameType::dNSName:
           rv = MatchPresentedDNSIDWithReferenceDNSID(
-                 presentedID, Wildcards::AllowWildcards,
-                 DotlessSubdomainMatches::AllowDotlessSubdomainMatches,
-                 IDRole::NameConstraint, base, matches);
+                 presentedID, AllowWildcards::Yes,
+                 AllowDotlessSubdomainMatches::Yes, IDRole::NameConstraint,
+                 base, matches);
           if (rv != Success) {
             return rv;
           }
@@ -1067,8 +1059,8 @@ CheckPresentedIDConformsToNameConstraintsSubtrees(
 Result
 MatchPresentedDNSIDWithReferenceDNSID(
   Input presentedDNSID,
-  Wildcards allowWildcards,
-  DotlessSubdomainMatches allowDotlessSubdomainMatches,
+  AllowWildcards allowWildcards,
+  AllowDotlessSubdomainMatches allowDotlessSubdomainMatches,
   IDRole referenceDNSIDRole,
   Input referenceDNSID,
   /*out*/ bool& matches)
@@ -1077,8 +1069,7 @@ MatchPresentedDNSIDWithReferenceDNSID(
     return Result::ERROR_BAD_DER;
   }
 
-  if (!IsValidDNSID(referenceDNSID, referenceDNSIDRole,
-                    Wildcards::DisallowWildcards)) {
+  if (!IsValidDNSID(referenceDNSID, referenceDNSIDRole, AllowWildcards::No)) {
     return Result::ERROR_BAD_DER;
   }
 
@@ -1129,7 +1120,7 @@ MatchPresentedDNSIDWithReferenceDNSID(
                               Result::FATAL_ERROR_LIBRARY_FAILURE);
           }
         } else if (allowDotlessSubdomainMatches ==
-                   DotlessSubdomainMatches::AllowDotlessSubdomainMatches) {
+                   AllowDotlessSubdomainMatches::Yes) {
           if (presented.Skip(static_cast<Input::size_type>(
                                presentedDNSID.GetLength() -
                                  referenceDNSID.GetLength() - 1)) != Success) {
@@ -1452,9 +1443,10 @@ IsValidRFC822Name(Input input)
           return false;
         }
         Input domain;
-        reader.SkipToEnd(domain);
-        return IsValidDNSID(domain, IDRole::PresentedID,
-                            Wildcards::DisallowWildcards);
+        if (reader.SkipToEnd(domain) != Success) {
+          return false;
+        }
+        return IsValidDNSID(domain, IDRole::PresentedID, AllowWildcards::No);
       }
 
       default:
@@ -1503,12 +1495,14 @@ MatchPresentedRFC822NameWithReferenceRFC822Name(Input presentedRFC822Name,
       }
 
       Input presentedDNSID;
-      presented.SkipToEnd(presentedDNSID);
+      if (presented.SkipToEnd(presentedDNSID) != Success) {
+        return Result::FATAL_ERROR_LIBRARY_FAILURE;
+      }
 
       return MatchPresentedDNSIDWithReferenceDNSID(
-               presentedDNSID, Wildcards::DisallowWildcards,
-               DotlessSubdomainMatches::DisallowDotlessSubdomainMatches,
-               IDRole::NameConstraint, referenceRFC822Name, matches);
+               presentedDNSID, AllowWildcards::No,
+               AllowDotlessSubdomainMatches::No, IDRole::NameConstraint,
+               referenceRFC822Name, matches);
     }
 
     default:
@@ -1817,21 +1811,19 @@ ParseIPv6Address(Input hostname, /*out*/ uint8_t (&out)[16])
 bool
 IsValidReferenceDNSID(Input hostname)
 {
-  return IsValidDNSID(hostname, IDRole::ReferenceID,
-                      Wildcards::DisallowWildcards);
+  return IsValidDNSID(hostname, IDRole::ReferenceID, AllowWildcards::No);
 }
 
 bool
 IsValidPresentedDNSID(Input hostname)
 {
-  return IsValidDNSID(hostname, IDRole::PresentedID,
-                      Wildcards::AllowWildcards);
+  return IsValidDNSID(hostname, IDRole::PresentedID, AllowWildcards::Yes);
 }
 
 namespace {
 
 bool
-IsValidDNSID(Input hostname, IDRole idRole, Wildcards allowWildcards)
+IsValidDNSID(Input hostname, IDRole idRole, AllowWildcards allowWildcards)
 {
   if (hostname.GetLength() > 253) {
     return false;
@@ -1851,8 +1843,7 @@ IsValidDNSID(Input hostname, IDRole idRole, Wildcards allowWildcards)
   // Only presented IDs are allowed to have wildcard labels. And, like
   // Chromium, be stricter than RFC 6125 requires by insisting that a
   // wildcard label consist only of '*'.
-  bool isWildcard = allowWildcards == Wildcards::AllowWildcards &&
-                    input.Peek('*');
+  bool isWildcard = allowWildcards == AllowWildcards::Yes && input.Peek('*');
   bool isFirstByte = !isWildcard;
   if (isWildcard) {
     Result rv = input.Skip(1);

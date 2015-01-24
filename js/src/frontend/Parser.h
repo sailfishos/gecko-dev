@@ -519,6 +519,9 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     }
 
   private:
+    enum InvokedPrediction { PredictUninvoked = false, PredictInvoked = true };
+
+  private:
     /*
      * JS parsers, from lowest to highest precedence.
      *
@@ -536,7 +539,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
      * suffix) and a never-inlined version (with an 'n' suffix).
      */
     Node functionStmt();
-    Node functionExpr();
+    Node functionExpr(InvokedPrediction invoked = PredictUninvoked);
     Node statements();
 
     Node blockStatement();
@@ -558,19 +561,20 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     Node letStatement();
     Node importDeclaration();
     Node exportDeclaration();
-    Node expressionStatement();
+    Node expressionStatement(InvokedPrediction invoked = PredictUninvoked);
     Node variables(ParseNodeKind kind, bool *psimple = nullptr,
                    StaticBlockObject *blockObj = nullptr,
                    VarContext varContext = HoistVars);
-    Node expr();
-    Node assignExpr();
+    Node expr(InvokedPrediction invoked = PredictUninvoked);
+    Node assignExpr(InvokedPrediction invoked = PredictUninvoked);
     Node assignExprWithoutYield(unsigned err);
     Node yieldExpression();
-    Node condExpr1();
-    Node orExpr1();
-    Node unaryExpr();
-    Node memberExpr(TokenKind tt, bool allowCallSyntax);
-    Node primaryExpr(TokenKind tt);
+    Node condExpr1(InvokedPrediction invoked = PredictUninvoked);
+    Node orExpr1(InvokedPrediction invoked = PredictUninvoked);
+    Node unaryExpr(InvokedPrediction invoked = PredictUninvoked);
+    Node memberExpr(TokenKind tt, bool allowCallSyntax,
+                    InvokedPrediction invoked = PredictUninvoked);
+    Node primaryExpr(TokenKind tt, InvokedPrediction invoked = PredictUninvoked);
     Node parenExprOrGeneratorComprehension();
     Node exprInParens();
 
@@ -580,15 +584,15 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     /*
      * Additional JS parsers.
      */
-    bool functionArguments(FunctionSyntaxKind kind, Node *list, Node funcpn, bool *hasRest);
+    bool functionArguments(FunctionSyntaxKind kind, FunctionType type, Node *list, Node funcpn,
+                           bool *hasRest);
 
     Node functionDef(HandlePropertyName name, FunctionType type, FunctionSyntaxKind kind,
-                     GeneratorKind generatorKind);
+                     GeneratorKind generatorKind, InvokedPrediction invoked = PredictUninvoked);
     bool functionArgsAndBody(Node pn, HandleFunction fun,
                              FunctionType type, FunctionSyntaxKind kind,
                              GeneratorKind generatorKind,
-                             Directives inheritedDirectives, Directives *newDirectives,
-                             bool bodyLevelHoistedUse);
+                             Directives inheritedDirectives, Directives *newDirectives);
 
     Node unaryOpExpr(ParseNodeKind kind, JSOp op, uint32_t begin);
 
@@ -638,12 +642,11 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     bool matchInOrOf(bool *isForInp, bool *isForOfp);
 
     bool checkFunctionArguments();
-    bool makeDefIntoUse(Definition *dn, Node pn, JSAtom *atom, bool *pbodyLevelHoistedUse);
+    bool makeDefIntoUse(Definition *dn, Node pn, JSAtom *atom);
     bool checkFunctionDefinition(HandlePropertyName funName, Node *pn, FunctionSyntaxKind kind,
-                                 bool *pbodyProcessed, bool *pbodyLevelHoistedUse);
+                                 bool *pbodyProcessed);
     bool finishFunctionDefinition(Node pn, FunctionBox *funbox, Node prelude, Node body);
-    bool addFreeVariablesFromLazyFunction(JSFunction *fun, ParseContext<ParseHandler> *pc,
-                                          bool bodyLevelHoistedUse);
+    bool addFreeVariablesFromLazyFunction(JSFunction *fun, ParseContext<ParseHandler> *pc);
 
     bool isValidForStatementLHS(Node pn1, JSVersion version, bool forDecl, bool forEach,
                                 ParseNodeKind headKind);
@@ -669,6 +672,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     bool bindDestructuringVar(BindData<ParseHandler> *data, Node pn);
     bool bindDestructuringLHS(Node pn);
     bool makeSetCall(Node pn, unsigned msg);
+    Node cloneDestructuringDefault(Node opn);
     Node cloneLeftHandSide(Node opn);
     Node cloneParseTree(Node opn);
 
@@ -695,7 +699,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     DefinitionNode getOrCreateLexicalDependency(ParseContext<ParseHandler> *pc, JSAtom *atom);
 
     bool leaveFunction(Node fn, ParseContext<ParseHandler> *outerpc,
-                       bool bodyLevelHoistedUse, FunctionSyntaxKind kind = Expression);
+                       FunctionSyntaxKind kind = Expression);
 
     TokenPos pos() const { return tokenStream.currentToken().pos; }
 

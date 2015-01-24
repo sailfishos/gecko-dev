@@ -133,29 +133,51 @@ AnimationPlayer::SetSource(Animation* aSource)
 void
 AnimationPlayer::Tick()
 {
+  // Since we are not guaranteed to get only one call per refresh driver tick,
+  // it's possible that mPendingReadyTime is set to a time in the future.
+  // In that case, we should wait until the next refresh driver tick before
+  // resuming.
+  if (mIsPending &&
+      !mPendingReadyTime.IsNull() &&
+      mPendingReadyTime.Value() <= mTimeline->GetCurrentTime().Value()) {
+    ResumeAt(mPendingReadyTime.Value());
+    mPendingReadyTime.SetNull();
+  }
+
+  if (IsPossiblyOrphanedPendingPlayer()) {
+    MOZ_ASSERT(mTimeline && !mTimeline->GetCurrentTime().IsNull(),
+               "Orphaned pending players should have an active timeline");
+    ResumeAt(mTimeline->GetCurrentTime().Value());
+  }
+
   UpdateSourceContent();
+}
+
+void
+AnimationPlayer::StartOnNextTick(const Nullable<TimeDuration>& aReadyTime)
+{
+  // Normally we expect the play state to be pending but it's possible that,
+  // due to the handling of possibly orphaned players in Tick() [coming
+  // in a later patch in this series], this player got started whilst still
+  // being in another document's pending player map.
+  if (PlayState() != AnimationPlayState::Pending) {
+    return;
+  }
+
+  // If aReadyTime.IsNull() we'll detect this in Tick() where we check for
+  // orphaned players and trigger this animation anyway
+  mPendingReadyTime = aReadyTime;
 }
 
 void
 AnimationPlayer::StartNow()
 {
-  // Currently we only expect this method to be called when we are in the
-  // middle of initiating/resuming playback so we should have an unresolved
-  // start time to update and a fixed current time to seek to.
-  MOZ_ASSERT(mStartTime.IsNull() && !mHoldTime.IsNull(),
-             "Resolving the start time but we don't appear to be waiting"
-             " to begin playback");
+  MOZ_ASSERT(PlayState() == AnimationPlayState::Pending,
+             "Expected to start a pending player");
+  MOZ_ASSERT(mTimeline && !mTimeline->GetCurrentTime().IsNull(),
+             "Expected an active timeline");
 
-  Nullable<TimeDuration> readyTime = mTimeline->GetCurrentTime();
-  // Bug 1096776: Once we support disappearing or inactive timelines we
-  // will need special handling here.
-  MOZ_ASSERT(!readyTime.IsNull(), "Missing or inactive timeline");
-  mStartTime.SetValue(readyTime.Value() - mHoldTime.Value());
-  mHoldTime.SetNull();
-
-  if (mReady) {
-    mReady->MaybeResolve(this);
-  }
+  ResumeAt(mTimeline->GetCurrentTime().Value());
 }
 
 void
@@ -246,7 +268,20 @@ AnimationPlayer::DoPlay()
   // Clear ready promise. We'll create a new one lazily.
   mReady = nullptr;
 
-  StartNow();
+  mIsPending = true;
+
+  nsIDocument* doc = GetRenderedDocument();
+  if (!doc) {
+    StartOnNextTick(Nullable<TimeDuration>());
+    return;
+  }
+
+  PendingPlayerTracker* tracker = doc->GetOrCreatePendingPlayerTracker();
+  tracker->AddPlayPending(*this);
+
+  // We may have updated the current time when we set the hold time above
+  // so notify source content.
+  UpdateSourceContent();
 }
 
 void
@@ -271,6 +306,28 @@ AnimationPlayer::DoPause()
   // Bug 1109390 - check for null result here and go to pending state
   mHoldTime = GetCurrentTime();
   mStartTime.SetNull();
+}
+
+void
+AnimationPlayer::ResumeAt(const TimeDuration& aResumeTime)
+{
+  // This method is only expected to be called for a player that is
+  // waiting to play. We can easily adapt it to handle other states
+  // but it's currently not necessary.
+  MOZ_ASSERT(PlayState() == AnimationPlayState::Pending,
+             "Expected to resume a pending player");
+  MOZ_ASSERT(!mHoldTime.IsNull(),
+             "A player in the pending state should have a resolved hold time");
+
+  mStartTime.SetValue(aResumeTime - mHoldTime.Value());
+  mHoldTime.SetNull();
+  mIsPending = false;
+
+  UpdateSourceContent();
+
+  if (mReady) {
+    mReady->MaybeResolve(this);
+  }
 }
 
 void
@@ -315,6 +372,56 @@ AnimationPlayer::CancelPendingPlay()
   }
 
   mIsPending = false;
+  mPendingReadyTime.SetNull();
+}
+
+bool
+AnimationPlayer::IsPossiblyOrphanedPendingPlayer() const
+{
+  // Check if we are pending but might never start because we are not being
+  // tracked.
+  //
+  // This covers the following cases:
+  //
+  // * We started playing but our source content's target element was orphaned
+  //   or bound to a different document.
+  //   (note that for the case of our source content changing we should handle
+  //   that in SetSource)
+  // * We started playing but our timeline became inactive.
+  //   In this case the pending player tracker will drop us from its hashmap
+  //   when we have been painted.
+  // * When we started playing we couldn't find a PendingPlayerTracker to
+  //   register with (perhaps the source content had no document) so we simply
+  //   set mIsPending in DoPlay and relied on this method to catch us on the
+  //   next tick.
+
+  // If we're not pending we're ok.
+  if (!mIsPending) {
+    return false;
+  }
+
+  // If we have a pending ready time then we will be started on the next
+  // tick.
+  if (!mPendingReadyTime.IsNull()) {
+    return false;
+  }
+
+  // If we don't have an active timeline then we shouldn't start until
+  // we do.
+  if (!mTimeline || mTimeline->GetCurrentTime().IsNull()) {
+    return false;
+  }
+
+  // If we have no rendered document, or we're not in our rendered document's
+  // PendingPlayerTracker then there's a good chance no one is tracking us.
+  //
+  // If we're wrong and another document is tracking us then, at worst, we'll
+  // simply start the animation one tick too soon. That's better than never
+  // starting the animation and is unlikely.
+  nsIDocument* doc = GetRenderedDocument();
+  return !doc ||
+         !doc->GetPendingPlayerTracker() ||
+         !doc->GetPendingPlayerTracker()->IsWaitingToPlay(*this);
 }
 
 StickyTimeDuration

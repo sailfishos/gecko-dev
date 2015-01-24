@@ -318,6 +318,7 @@ public:
     PRIntervalTime GetPipelineTimeout()   { return mPipelineReadTimeout; }
 
     SpdyInformation *SpdyInfo() { return &mSpdyInfo; }
+    bool IsH2MandatorySuiteEnabled() { return mH2MandatorySuiteEnabled; }
 
     // returns true in between Init and Shutdown states
     bool Active() { return mHandlerActive; }
@@ -386,6 +387,7 @@ private:
     uint16_t mMaxRequestDelay;
     uint16_t mIdleSynTimeout;
 
+    bool     mH2MandatorySuiteEnabled;
     bool     mPipeliningEnabled;
     uint16_t mMaxConnections;
     uint8_t  mMaxPersistentConnectionsPerServer;
@@ -496,7 +498,7 @@ private:
     // when starting a new speculative connection.
     uint32_t       mParallelSpeculativeConnectLimit;
 
-    // For Rate Pacing of HTTP/1 requests through a netwerk/base/src/EventTokenBucket
+    // For Rate Pacing of HTTP/1 requests through a netwerk/base/EventTokenBucket
     // Active requests <= *MinParallelism are not subject to the rate pacing
     bool           mRequestTokenBucketEnabled;
     uint16_t       mRequestTokenBucketMinParallelism;

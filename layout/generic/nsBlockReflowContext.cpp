@@ -354,7 +354,7 @@ nsBlockReflowContext::PlaceBlock(const nsHTMLReflowState&  aReflowState,
     aBEndMarginResult.Include(aReflowState.ComputedLogicalMargin().
       ConvertTo(parentWM, wm).BEnd(parentWM));
   } else {
-    // The used bottom-margin is set to zero above a break.
+    // The used block-end-margin is set to zero before a break.
     aBEndMarginResult.Zero();
   }
 
@@ -406,7 +406,7 @@ nsBlockReflowContext::PlaceBlock(const nsHTMLReflowState&  aReflowState,
   // See if the frame fit. If it's the first frame or empty then it
   // always fits. If the block-size is unconstrained then it always fits,
   // even if there's some sort of integer overflow that makes bCoord +
-  // mMetrics.BSize() appear to go beyond the available height.
+  // mMetrics.BSize() appear to go beyond the available block size.
   if (!empty && !aForceFit &&
       mSpace.BSize(mWritingMode) != NS_UNCONSTRAINEDSIZE) {
     nscoord bEnd = mBCoord -
@@ -424,20 +424,18 @@ nsBlockReflowContext::PlaceBlock(const nsHTMLReflowState&  aReflowState,
                    mMetrics.ISize(mWritingMode), mMetrics.BSize(mWritingMode),
                    mContainerWidth);
 
-  // XXX temporary until other classes are logicalized
-  nsPoint position = LogicalRect(mWritingMode,
-                                 mICoord, mBCoord,
-                                 mMetrics.ISize(mWritingMode),
-                                 mMetrics.BSize(mWritingMode)).
-                       GetPhysicalPosition(mWritingMode, mContainerWidth);
-
-  aReflowState.ApplyRelativePositioning(&position);
+  WritingMode frameWM = mFrame->GetWritingMode();
+  LogicalPoint logPos =
+    LogicalPoint(mWritingMode, mICoord, mBCoord).
+      ConvertTo(frameWM, mWritingMode, mContainerWidth - mMetrics.Width());
+  aReflowState.ApplyRelativePositioning(&logPos, mContainerWidth);
 
   // Now place the frame and complete the reflow process
   nsContainerFrame::FinishReflowChild(mFrame, mPresContext, mMetrics,
-                                      &aReflowState, position.x, position.y, 0);
+                                      &aReflowState, frameWM, logPos,
+                                      mContainerWidth, 0);
 
-  aOverflowAreas = mMetrics.mOverflowAreas + position;
+  aOverflowAreas = mMetrics.mOverflowAreas + mFrame->GetPosition();
 
   return true;
 }

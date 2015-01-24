@@ -14,6 +14,8 @@
 #include "jit/IonCode.h"
 #include "jit/Snapshots.h"
 
+#include "js/ProfilingFrameIterator.h"
+
 namespace js {
     class ActivationIterator;
 };
@@ -86,6 +88,10 @@ class BaselineFrame;
 
 class JitActivation;
 
+// Iterate over the JIT stack to assert that all invariants are respected.
+//  - Check that all entry frames are aligned on StackAlignment.
+void AssertValidJitStack(JSContext *cx);
+
 class JitFrameIterator
 {
   protected:
@@ -93,7 +99,6 @@ class JitFrameIterator
     FrameType type_;
     uint8_t *returnAddressToFp_;
     size_t frameSize_;
-    ExecutionMode mode_;
 
   private:
     mutable const SafepointIndex *cachedSafepointIndex_;
@@ -103,7 +108,7 @@ class JitFrameIterator
 
   public:
     explicit JitFrameIterator();
-    explicit JitFrameIterator(ThreadSafeContext *cx);
+    explicit JitFrameIterator(JSContext *cx);
     explicit JitFrameIterator(const ActivationIterator &activations);
 
     // Current frame information.
@@ -154,6 +159,12 @@ class JitFrameIterator
     }
     bool isBaselineStub() const {
         return type_ == JitFrame_BaselineStub;
+    }
+    bool isBaselineStubMaybeUnwound() const {
+        return type_ == JitFrame_BaselineStub || type_ == JitFrame_Unwound_BaselineStub;
+    }
+    bool isRectifierMaybeUnwound() const {
+        return type_ == JitFrame_Rectifier || type_ == JitFrame_Unwound_Rectifier;
     }
     bool isBareExit() const;
     template <typename T> bool isExitFrameLayout() const;
@@ -254,6 +265,33 @@ class JitFrameIterator
 #else
     inline bool verifyReturnAddressUsingNativeToBytecodeMap() { return true; }
 #endif
+};
+
+class JitcodeGlobalTable;
+
+class JitProfilingFrameIterator
+{
+    uint8_t *fp_;
+    FrameType type_;
+    void *returnAddressToFp_;
+
+    inline JitFrameLayout *framePtr();
+    inline JSScript *frameScript();
+    bool tryInitWithPC(void *pc);
+    bool tryInitWithTable(JitcodeGlobalTable *table, void *pc, JSRuntime *rt);
+
+  public:
+    JitProfilingFrameIterator(JSRuntime *rt,
+                              const JS::ProfilingFrameIterator::RegisterState &state);
+    explicit JitProfilingFrameIterator(void *exitFrame);
+
+    void operator++();
+    bool done() const { return fp_ == nullptr; }
+
+    void *fp() const { MOZ_ASSERT(!done()); return fp_; }
+    void *stackAddress() const { return fp(); }
+    FrameType frameType() const { MOZ_ASSERT(!done()); return type_; }
+    void *returnAddressToFp() const { MOZ_ASSERT(!done()); return returnAddressToFp_; }
 };
 
 class RInstructionResults
@@ -605,9 +643,9 @@ class InlineFrameIterator
                                 bool *hasCallObj = nullptr) const;
 
   public:
-    InlineFrameIterator(ThreadSafeContext *cx, const JitFrameIterator *iter);
+    InlineFrameIterator(JSContext *cx, const JitFrameIterator *iter);
     InlineFrameIterator(JSRuntime *rt, const JitFrameIterator *iter);
-    InlineFrameIterator(ThreadSafeContext *cx, const InlineFrameIterator *iter);
+    InlineFrameIterator(JSContext *cx, const InlineFrameIterator *iter);
 
     bool more() const {
         return frame_ && framesRead_ < frameCount_;
@@ -643,7 +681,7 @@ class InlineFrameIterator
     }
 
     template <class ArgOp, class LocalOp>
-    void readFrameArgsAndLocals(ThreadSafeContext *cx, ArgOp &argOp, LocalOp &localOp,
+    void readFrameArgsAndLocals(JSContext *cx, ArgOp &argOp, LocalOp &localOp,
                                 JSObject **scopeChain, bool *hasCallObj, Value *rval,
                                 ArgumentsObject **argsObj, Value *thisv,
                                 ReadFrameArgsBehavior behavior,
@@ -653,8 +691,6 @@ class InlineFrameIterator
 
         // Read the scope chain.
         if (scopeChain) {
-            MOZ_ASSERT(!fallback.canRecoverResults());
-            JS::AutoSuppressGCAnalysis nogc; // If we cannot recover then we cannot GC.
             Value scopeChainValue = s.maybeRead(fallback);
             *scopeChain = computeScopeChain(scopeChainValue, fallback, hasCallObj);
         } else {
@@ -720,14 +756,8 @@ class InlineFrameIterator
 
         // At this point we've read all the formals in s, and can read the
         // locals.
-        for (unsigned i = 0; i < script()->nfixed(); i++) {
-            // We have to use maybeRead here, some of these might be recover
-            // instructions, and currently InlineFrameIter does not support
-            // recovering slots.
-            //
-            // FIXME bug 1029963.
+        for (unsigned i = 0; i < script()->nfixed(); i++)
             localOp(s.maybeRead(fallback));
-        }
     }
 
     template <class Op>
@@ -800,8 +830,8 @@ class InlineFrameIterator
     }
 
   private:
-    InlineFrameIterator() MOZ_DELETE;
-    InlineFrameIterator(const InlineFrameIterator &iter) MOZ_DELETE;
+    InlineFrameIterator() = delete;
+    InlineFrameIterator(const InlineFrameIterator &iter) = delete;
 };
 
 } // namespace jit

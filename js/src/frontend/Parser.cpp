@@ -611,6 +611,7 @@ FunctionBox::FunctionBox(ExclusiveContext *cx, ObjectBox* traceListHead, JSFunct
     insideUseAsm(outerpc && outerpc->useAsmOrInsideUseAsm()),
     usesArguments(false),
     usesApply(false),
+    usesThis(false),
     funCxFlags()
 {
     // Functions created at parse time may be set singleton after parsing and
@@ -1114,12 +1115,8 @@ Parser<ParseHandler>::functionBody(FunctionSyntaxKind kind, FunctionBodyType typ
 /* See comment for use in Parser::functionDef. */
 template <>
 bool
-Parser<FullParseHandler>::makeDefIntoUse(Definition *dn, ParseNode *pn, JSAtom *atom,
-                                         bool *pbodyLevelHoistedUse)
+Parser<FullParseHandler>::makeDefIntoUse(Definition *dn, ParseNode *pn, JSAtom *atom)
 {
-    // See comment in addFreeVariablesFromLazyFunction.
-    *pbodyLevelHoistedUse = !!dn->dn_uses;
-
     /* Turn pn into a definition. */
     pc->updateDecl(atom, pn);
 
@@ -1364,10 +1361,11 @@ AssociateUsesWithOuterDefinition(ParseNode *pnu, Definition *dn, Definition *out
 template <>
 bool
 Parser<FullParseHandler>::leaveFunction(ParseNode *fn, ParseContext<FullParseHandler> *outerpc,
-                                        bool bodyLevelHoistedUse, FunctionSyntaxKind kind)
+                                        FunctionSyntaxKind kind)
 {
     outerpc->blockidGen = pc->blockidGen;
 
+    bool bodyLevel = outerpc->atBodyLevel();
     FunctionBox *funbox = fn->pn_funbox;
     MOZ_ASSERT(funbox == pc->sc->asFunctionBox());
 
@@ -1437,25 +1435,33 @@ Parser<FullParseHandler>::leaveFunction(ParseNode *fn, ParseContext<FullParseHan
             if (dn != outer_dn) {
                 if (ParseNode *pnu = dn->dn_uses) {
                     // In ES6, lexical bindings cannot be accessed until
-                    // initialized. If we are parsing a function with a
-                    // hoisted body-level use, all free variables that get
-                    // linked to an outer lexical binding need to be marked as
-                    // needing dead zone checks. e.g.,
+                    // initialized. If we are parsing a body-level function,
+                    // it is hoisted to the top, so we conservatively mark all
+                    // uses linked to an outer lexical binding as needing TDZ
+                    // checks. e.g.,
                     //
                     // function outer() {
-                    //   inner();
+                    //   inner2();
                     //   function inner() { use(x); }
+                    //   function inner2() { inner(); }
                     //   let x;
                     // }
                     //
                     // The use of 'x' inside 'inner' needs to be marked.
+                    //
+                    // Note that to not be fully conservative requires a call
+                    // graph analysis of all body-level functions to compute
+                    // the transitive closure of which hoisted body level use
+                    // of which function forces TDZ checks on which uses. This
+                    // is unreasonably difficult to do in a single pass parser
+                    // like ours.
                     //
                     // Similarly, if we are closing over a lexical binding
                     // from another case in a switch, those uses also need to
                     // be marked as needing dead zone checks.
                     RootedAtom name(context, atom);
                     bool markUsesAsLexical = outer_dn->isLexical() &&
-                                             (bodyLevelHoistedUse ||
+                                             (bodyLevel ||
                                               IsNonDominatingInScopedSwitch(outerpc, name, outer_dn));
                     AssociateUsesWithOuterDefinition(pnu, dn, outer_dn, markUsesAsLexical);
                 }
@@ -1476,12 +1482,12 @@ Parser<FullParseHandler>::leaveFunction(ParseNode *fn, ParseContext<FullParseHan
 template <>
 bool
 Parser<SyntaxParseHandler>::leaveFunction(Node fn, ParseContext<SyntaxParseHandler> *outerpc,
-                                          bool bodyLevelHoistedUse, FunctionSyntaxKind kind)
+                                          FunctionSyntaxKind kind)
 {
     outerpc->blockidGen = pc->blockidGen;
 
     FunctionBox *funbox = pc->sc->asFunctionBox();
-    return addFreeVariablesFromLazyFunction(funbox->function(), outerpc, bodyLevelHoistedUse);
+    return addFreeVariablesFromLazyFunction(funbox->function(), outerpc);
 }
 
 /*
@@ -1571,8 +1577,8 @@ Parser<ParseHandler>::bindDestructuringArg(BindData<ParseHandler> *data,
 
 template <typename ParseHandler>
 bool
-Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, Node funcpn,
-                                        bool *hasRest)
+Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, FunctionType type, Node *listp,
+                                        Node funcpn, bool *hasRest)
 {
     FunctionBox *funbox = pc->sc->asFunctionBox();
 
@@ -1620,6 +1626,12 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
         bool hasDefaults = false;
         Node duplicatedArg = null();
         Node list = null();
+        bool disallowDuplicateArgs = false;
+
+        if (type == Getter) {
+            report(ParseError, false, null(), JSMSG_ACCESSOR_WRONG_ARGS, "getter", "no", "s");
+            return false;
+        }
 
         while (true) {
             if (*hasRest) {
@@ -1636,6 +1648,7 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
               case TOK_LC:
               {
                 /* See comment below in the TOK_NAME case. */
+                disallowDuplicateArgs = true;
                 if (duplicatedArg) {
                     report(ParseError, false, duplicatedArg, JSMSG_BAD_DUP_ARGS);
                     return false;
@@ -1696,11 +1709,22 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
 
               case TOK_TRIPLEDOT:
               {
+                if (type == Setter) {
+                    report(ParseError, false, null(),
+                           JSMSG_ACCESSOR_WRONG_ARGS, "setter", "one", "");
+                    return false;
+                }
                 *hasRest = true;
                 if (!tokenStream.getToken(&tt))
                     return false;
                 if (tt != TOK_NAME) {
                     report(ParseError, false, null(), JSMSG_NO_REST_NAME);
+                    return false;
+                }
+                disallowDuplicateArgs = true;
+                if (duplicatedArg) {
+                    // Has duplicated args before the rest parameter.
+                    report(ParseError, false, duplicatedArg, JSMSG_BAD_DUP_ARGS);
                     return false;
                 }
                 goto TOK_NAME;
@@ -1713,7 +1737,6 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
                     funbox->setStart(tokenStream);
 
                 RootedPropertyName name(context, tokenStream.currentName());
-                bool disallowDuplicateArgs = funbox->hasDestructuringArgs || hasDefaults;
                 if (!defineArg(funcpn, name, disallowDuplicateArgs, &duplicatedArg))
                     return false;
 
@@ -1731,6 +1754,7 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
                         report(ParseError, false, null(), JSMSG_REST_WITH_DEFAULT);
                         return false;
                     }
+                    disallowDuplicateArgs = true;
                     if (duplicatedArg) {
                         report(ParseError, false, duplicatedArg, JSMSG_BAD_DUP_ARGS);
                         return false;
@@ -1756,7 +1780,7 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
                 return false;
             }
 
-            if (parenFreeArrow)
+            if (parenFreeArrow || type == Setter)
                 break;
 
             bool matched;
@@ -1771,6 +1795,12 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
             if (!tokenStream.getToken(&tt))
                 return false;
             if (tt != TOK_RP) {
+                if (type == Setter) {
+                    report(ParseError, false, null(),
+                           JSMSG_ACCESSOR_WRONG_ARGS, "setter", "one", "");
+                    return false;
+                }
+
                 report(ParseError, false, null(), JSMSG_PAREN_AFTER_FORMAL);
                 return false;
             }
@@ -1778,6 +1808,9 @@ Parser<ParseHandler>::functionArguments(FunctionSyntaxKind kind, Node *listp, No
 
         if (!hasDefaults)
             funbox->length = pc->numArgs() - *hasRest;
+    } else if (type == Setter) {
+        report(ParseError, false, null(), JSMSG_ACCESSOR_WRONG_ARGS, "setter", "one", "");
+        return false;
     }
 
     return true;
@@ -1787,12 +1820,10 @@ template <>
 bool
 Parser<FullParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
                                                   ParseNode **pn_, FunctionSyntaxKind kind,
-                                                  bool *pbodyProcessed,
-                                                  bool *pbodyLevelHoistedUse)
+                                                  bool *pbodyProcessed)
 {
     ParseNode *&pn = *pn_;
     *pbodyProcessed = false;
-    *pbodyLevelHoistedUse = false;
 
     /* Function statements add a binding to the enclosing scope. */
     bool bodyLevel = pc->atBodyLevel();
@@ -1842,7 +1873,7 @@ Parser<FullParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
                     pn->pn_dflags |= PND_BOUND;
                     dn->markAsAssigned();
                 } else {
-                    if (!makeDefIntoUse(dn, pn, funName, pbodyLevelHoistedUse))
+                    if (!makeDefIntoUse(dn, pn, funName))
                         return false;
                 }
             }
@@ -1865,8 +1896,6 @@ Parser<FullParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
                 pc->lexdeps->remove(funName);
                 handler.freeTree(pn);
                 pn = fn;
-
-                *pbodyLevelHoistedUse = true;
             }
 
             if (!pc->define(tokenStream, funName, pn, Definition::VAR))
@@ -1935,7 +1964,7 @@ Parser<FullParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
         if (!funbox)
             return false;
 
-        if (!addFreeVariablesFromLazyFunction(fun, pc, *pbodyLevelHoistedUse))
+        if (!addFreeVariablesFromLazyFunction(fun, pc))
             return false;
 
         // The position passed to tokenStream.advance() is an offset of the sort
@@ -1956,23 +1985,23 @@ template <class T, class U>
 static inline void
 PropagateTransitiveParseFlags(const T *inner, U *outer)
 {
-   if (inner->bindingsAccessedDynamically())
-     outer->setBindingsAccessedDynamically();
-   if (inner->hasDebuggerStatement())
-     outer->setHasDebuggerStatement();
+    if (inner->bindingsAccessedDynamically())
+        outer->setBindingsAccessedDynamically();
+    if (inner->hasDebuggerStatement())
+        outer->setHasDebuggerStatement();
+    if (inner->hasDirectEval())
+        outer->setHasDirectEval();
 }
 
 template <typename ParseHandler>
 bool
 Parser<ParseHandler>::addFreeVariablesFromLazyFunction(JSFunction *fun,
-                                                       ParseContext<ParseHandler> *pc,
-                                                       bool bodyLevelHoistedUse)
+                                                       ParseContext<ParseHandler> *pc)
 {
-    MOZ_ASSERT_IF(bodyLevelHoistedUse, fun->displayAtom() && pc->atBodyLevel());
-
     // Update any definition nodes in this context according to free variables
     // in a lazily parsed inner function.
 
+    bool bodyLevel = pc->atBodyLevel();
     LazyScript *lazy = fun->lazyScript();
     LazyScript::FreeVariable *freeVariables = lazy->freeVariables();
     for (size_t i = 0; i < lazy->numFreeVariables(); i++) {
@@ -2005,7 +2034,7 @@ Parser<ParseHandler>::addFreeVariablesFromLazyFunction(JSFunction *fun,
         // lexical declaration would have aborted syntax parsing, and a
         // textually following declaration would return true for
         // handler.isPlaceholderDefinition(dn) below.
-        if (handler.isPlaceholderDefinition(dn) || bodyLevelHoistedUse)
+        if (handler.isPlaceholderDefinition(dn) || bodyLevel)
             freeVariables[i].setIsHoistedUse();
 
         /* Mark the outer dn as escaping. */
@@ -2020,11 +2049,9 @@ template <>
 bool
 Parser<SyntaxParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
                                                     Node *pn, FunctionSyntaxKind kind,
-                                                    bool *pbodyProcessed,
-                                                    bool *pbodyLevelHoistedUse)
+                                                    bool *pbodyProcessed)
 {
     *pbodyProcessed = false;
-    *pbodyLevelHoistedUse = false;
 
     /* Function statements add a binding to the enclosing scope. */
     bool bodyLevel = pc->atBodyLevel();
@@ -2048,10 +2075,8 @@ Parser<SyntaxParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
                 }
             }
         } else if (bodyLevel) {
-            if (pc->lexdeps.lookupDefn<SyntaxParseHandler>(funName)) {
-                *pbodyLevelHoistedUse = true;
+            if (pc->lexdeps.lookupDefn<SyntaxParseHandler>(funName))
                 pc->lexdeps->remove(funName);
-            }
 
             if (!pc->define(tokenStream, funName, *pn, Definition::VAR))
                 return false;
@@ -2138,7 +2163,7 @@ template <typename ParseHandler>
 typename ParseHandler::Node
 Parser<ParseHandler>::functionDef(HandlePropertyName funName,
                                   FunctionType type, FunctionSyntaxKind kind,
-                                  GeneratorKind generatorKind)
+                                  GeneratorKind generatorKind, InvokedPrediction invoked)
 {
     MOZ_ASSERT_IF(kind == Statement, funName);
 
@@ -2147,9 +2172,11 @@ Parser<ParseHandler>::functionDef(HandlePropertyName funName,
     if (!pn)
         return null();
 
+    if (invoked)
+        pn = handler.setLikelyIIFE(pn);
+
     bool bodyProcessed;
-    bool bodyLevelHoistedUse;
-    if (!checkFunctionDefinition(funName, &pn, kind, &bodyProcessed, &bodyLevelHoistedUse))
+    if (!checkFunctionDefinition(funName, &pn, kind, &bodyProcessed))
         return null();
 
     if (bodyProcessed)
@@ -2180,8 +2207,7 @@ Parser<ParseHandler>::functionDef(HandlePropertyName funName,
     tokenStream.tell(&start);
 
     while (true) {
-        if (functionArgsAndBody(pn, fun, type, kind, generatorKind, directives, &newDirectives,
-                                bodyLevelHoistedUse))
+        if (functionArgsAndBody(pn, fun, type, kind, generatorKind, directives, &newDirectives))
             break;
         if (tokenStream.hadError() || directives == newDirectives)
             return null();
@@ -2283,8 +2309,8 @@ Parser<SyntaxParseHandler>::finishFunctionDefinition(Node pn, FunctionBox *funbo
     if (pc->sc->strict)
         lazy->setStrict();
     lazy->setGeneratorKind(funbox->generatorKind());
-    if (funbox->usesArguments && funbox->usesApply)
-        lazy->setUsesArgumentsAndApply();
+    if (funbox->usesArguments && funbox->usesApply && funbox->usesThis)
+        lazy->setUsesArgumentsApplyAndThis();
     PropagateTransitiveParseFlags(funbox, lazy);
 
     fun->initLazyScript(lazy);
@@ -2297,8 +2323,7 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
                                               FunctionType type, FunctionSyntaxKind kind,
                                               GeneratorKind generatorKind,
                                               Directives inheritedDirectives,
-                                              Directives *newDirectives,
-                                              bool bodyLevelHoistedUse)
+                                              Directives *newDirectives)
 {
     ParseContext<FullParseHandler> *outerpc = pc;
 
@@ -2309,6 +2334,13 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
 
     // Try a syntax parse for this inner function.
     do {
+        // If we're assuming this function is an IIFE, always perform a full
+        // parse to avoid the overhead of a lazy syntax-only parse. Although
+        // the prediction may be incorrect, IIFEs are common enough that it
+        // pays off for lots of code.
+        if (pn->isLikelyIIFE() && !funbox->isGenerator())
+            break;
+
         Parser<SyntaxParseHandler> *parser = handler.syntaxParser;
         if (!parser)
             break;
@@ -2350,7 +2382,7 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
             pn->pn_pos.end = tokenStream.currentToken().pos.end;
         }
 
-        if (!addFreeVariablesFromLazyFunction(fun, pc, bodyLevelHoistedUse))
+        if (!addFreeVariablesFromLazyFunction(fun, pc))
             return false;
 
         pn->pn_blockid = outerpc->blockid();
@@ -2368,7 +2400,7 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
     if (!functionArgsAndBodyGeneric(pn, fun, type, kind))
         return false;
 
-    if (!leaveFunction(pn, outerpc, bodyLevelHoistedUse, kind))
+    if (!leaveFunction(pn, outerpc, kind))
         return false;
 
     pn->pn_blockid = outerpc->blockid();
@@ -2389,8 +2421,7 @@ Parser<SyntaxParseHandler>::functionArgsAndBody(Node pn, HandleFunction fun,
                                                 FunctionType type, FunctionSyntaxKind kind,
                                                 GeneratorKind generatorKind,
                                                 Directives inheritedDirectives,
-                                                Directives *newDirectives,
-                                                bool bodyLevelHoistedUse)
+                                                Directives *newDirectives)
 {
     ParseContext<SyntaxParseHandler> *outerpc = pc;
 
@@ -2409,7 +2440,7 @@ Parser<SyntaxParseHandler>::functionArgsAndBody(Node pn, HandleFunction fun,
     if (!functionArgsAndBodyGeneric(pn, fun, type, kind))
         return false;
 
-    if (!leaveFunction(pn, outerpc, bodyLevelHoistedUse, kind))
+    if (!leaveFunction(pn, outerpc, kind))
         return false;
 
     // This is a lazy function inner to another lazy function. Remember the
@@ -2502,7 +2533,7 @@ Parser<ParseHandler>::functionArgsAndBodyGeneric(Node pn, HandleFunction fun, Fu
 
     Node prelude = null();
     bool hasRest;
-    if (!functionArguments(kind, &prelude, pn, &hasRest))
+    if (!functionArguments(kind, type, &prelude, pn, &hasRest))
         return false;
 
     FunctionBox *funbox = pc->sc->asFunctionBox();
@@ -2510,15 +2541,6 @@ Parser<ParseHandler>::functionArgsAndBodyGeneric(Node pn, HandleFunction fun, Fu
     fun->setArgCount(pc->numArgs());
     if (hasRest)
         fun->setHasRest();
-
-    if (type == Getter && fun->nargs() > 0) {
-        report(ParseError, false, null(), JSMSG_ACCESSOR_WRONG_ARGS, "getter", "no", "s");
-        return false;
-    }
-    if (type == Setter && fun->nargs() != 1) {
-        report(ParseError, false, null(), JSMSG_ACCESSOR_WRONG_ARGS, "setter", "one", "");
-        return false;
-    }
 
     if (kind == Arrow) {
         bool matched;
@@ -2633,7 +2655,7 @@ Parser<ParseHandler>::functionStmt()
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::functionExpr()
+Parser<ParseHandler>::functionExpr(InvokedPrediction invoked)
 {
     MOZ_ASSERT(tokenStream.isCurrentTokenType(TOK_FUNCTION));
 
@@ -2659,7 +2681,7 @@ Parser<ParseHandler>::functionExpr()
         tokenStream.ungetToken();
     }
 
-    return functionDef(name, Normal, Expression, generatorKind);
+    return functionDef(name, Normal, Expression, generatorKind, invoked);
 }
 
 /*
@@ -3371,6 +3393,8 @@ Parser<FullParseHandler>::checkDestructuringObject(BindData<FullParseHandler> *d
             MOZ_ASSERT(member->isKind(PNK_COLON) || member->isKind(PNK_SHORTHAND));
             expr = member->pn_right;
         }
+        if (expr->isKind(PNK_ASSIGN))
+            expr = expr->pn_left;
 
         bool ok;
         if (expr->isKind(PNK_ARRAY) || expr->isKind(PNK_OBJECT)) {
@@ -3415,6 +3439,8 @@ Parser<FullParseHandler>::checkDestructuringArray(BindData<FullParseHandler> *da
                 report(ParseError, false, target, JSMSG_BAD_DESTRUCT_TARGET);
                 return false;
             }
+        } else if (target->isKind(PNK_ASSIGN)) {
+            target = target->pn_left;
         }
 
         bool ok;
@@ -4401,10 +4427,10 @@ Parser<SyntaxParseHandler>::exportDeclaration()
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::expressionStatement()
+Parser<ParseHandler>::expressionStatement(InvokedPrediction invoked)
 {
     tokenStream.ungetToken();
-    Node pnexpr = expr();
+    Node pnexpr = expr(invoked);
     if (!pnexpr)
         return null();
     if (!MatchOrInsertSemicolon(tokenStream))
@@ -5882,6 +5908,9 @@ Parser<ParseHandler>::statement(bool canHaveDirectives)
         return expressionStatement();
       }
 
+      case TOK_NEW:
+        return expressionStatement(PredictInvoked);
+
       default:
         return expressionStatement();
     }
@@ -5889,9 +5918,9 @@ Parser<ParseHandler>::statement(bool canHaveDirectives)
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::expr()
+Parser<ParseHandler>::expr(InvokedPrediction invoked)
 {
-    Node pn = assignExpr();
+    Node pn = assignExpr(invoked);
     if (!pn)
         return null();
 
@@ -6013,7 +6042,7 @@ Precedence(ParseNodeKind pnk) {
 
 template <typename ParseHandler>
 MOZ_ALWAYS_INLINE typename ParseHandler::Node
-Parser<ParseHandler>::orExpr1()
+Parser<ParseHandler>::orExpr1(InvokedPrediction invoked)
 {
     // Shift-reduce parser for the left-associative binary operator part of
     // the JS syntax.
@@ -6029,7 +6058,7 @@ Parser<ParseHandler>::orExpr1()
 
     Node pn;
     for (;;) {
-        pn = unaryExpr();
+        pn = unaryExpr(invoked);
         if (!pn)
             return pn;
 
@@ -6079,9 +6108,9 @@ Parser<ParseHandler>::orExpr1()
 
 template <typename ParseHandler>
 MOZ_ALWAYS_INLINE typename ParseHandler::Node
-Parser<ParseHandler>::condExpr1()
+Parser<ParseHandler>::condExpr1(InvokedPrediction invoked)
 {
-    Node condition = orExpr1();
+    Node condition = orExpr1(invoked);
     if (!condition || !tokenStream.isCurrentTokenType(TOK_HOOK))
         return condition;
 
@@ -6180,7 +6209,7 @@ Parser<SyntaxParseHandler>::checkAndMarkAsAssignmentLhs(Node pn, AssignmentFlavo
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::assignExpr()
+Parser<ParseHandler>::assignExpr(InvokedPrediction invoked)
 {
     JS_CHECK_RECURSION(context, return null());
 
@@ -6232,7 +6261,7 @@ Parser<ParseHandler>::assignExpr()
     TokenStream::Position start(keepAtoms);
     tokenStream.tell(&start);
 
-    Node lhs = condExpr1();
+    Node lhs = condExpr1(invoked);
     if (!lhs)
         return null();
 
@@ -6338,7 +6367,7 @@ Parser<ParseHandler>::unaryOpExpr(ParseNodeKind kind, JSOp op, uint32_t begin)
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::unaryExpr()
+Parser<ParseHandler>::unaryExpr(InvokedPrediction invoked)
 {
     Node pn, pn2;
 
@@ -6396,7 +6425,7 @@ Parser<ParseHandler>::unaryExpr()
       }
 
       default:
-        pn = memberExpr(tt, true);
+        pn = memberExpr(tt, /* allowCallSyntax = */ true, invoked);
         if (!pn)
             return null();
 
@@ -7125,7 +7154,7 @@ Parser<ParseHandler>::generatorComprehensionLambda(GeneratorKind comprehensionKi
 
     PropagateTransitiveParseFlags(genFunbox, outerpc->sc);
 
-    if (!leaveFunction(genfn, outerpc, /* bodyLevelHoistedUse = */ false))
+    if (!leaveFunction(genfn, outerpc))
         return null();
 
     return genfn;
@@ -7499,7 +7528,7 @@ Parser<ParseHandler>::argumentList(Node listNode, bool *isSpread)
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::memberExpr(TokenKind tt, bool allowCallSyntax)
+Parser<ParseHandler>::memberExpr(TokenKind tt, bool allowCallSyntax, InvokedPrediction invoked)
 {
     MOZ_ASSERT(tokenStream.isCurrentTokenType(tt));
 
@@ -7515,7 +7544,7 @@ Parser<ParseHandler>::memberExpr(TokenKind tt, bool allowCallSyntax)
 
         if (!tokenStream.getToken(&tt, TokenStream::Operand))
             return null();
-        Node ctorExpr = memberExpr(tt, false);
+        Node ctorExpr = memberExpr(tt, false, PredictInvoked);
         if (!ctorExpr)
             return null();
 
@@ -7532,7 +7561,7 @@ Parser<ParseHandler>::memberExpr(TokenKind tt, bool allowCallSyntax)
                 handler.setOp(lhs, JSOP_SPREADNEW);
         }
     } else {
-        lhs = primaryExpr(tt);
+        lhs = primaryExpr(tt, invoked);
         if (!lhs)
             return null();
     }
@@ -7584,6 +7613,7 @@ Parser<ParseHandler>::memberExpr(TokenKind tt, bool allowCallSyntax)
                     /* Select JSOP_EVAL and flag pc as heavyweight. */
                     op = pc->sc->strict ? JSOP_STRICTEVAL : JSOP_EVAL;
                     pc->sc->setBindingsAccessedDynamically();
+                    pc->sc->setHasDirectEval();
 
                     /*
                      * In non-strict mode code, direct calls to eval can add
@@ -8124,14 +8154,14 @@ Parser<ParseHandler>::methodDefinition(Node literal, Node propname, FunctionType
 
 template <typename ParseHandler>
 typename ParseHandler::Node
-Parser<ParseHandler>::primaryExpr(TokenKind tt)
+Parser<ParseHandler>::primaryExpr(TokenKind tt, InvokedPrediction invoked)
 {
     MOZ_ASSERT(tokenStream.isCurrentTokenType(tt));
     JS_CHECK_RECURSION(context, return null());
 
     switch (tt) {
       case TOK_FUNCTION:
-        return functionExpr();
+        return functionExpr(invoked);
 
       case TOK_LB:
         return arrayInitializer();
@@ -8194,6 +8224,8 @@ Parser<ParseHandler>::primaryExpr(TokenKind tt)
       case TOK_FALSE:
         return handler.newBooleanLiteral(false, pos());
       case TOK_THIS:
+        if (pc->sc->isFunctionBox())
+            pc->sc->asFunctionBox()->usesThis = true;
         return handler.newThisLiteral(pos());
       case TOK_NULL:
         return handler.newNullLiteral(pos());
@@ -8263,7 +8295,7 @@ Parser<ParseHandler>::parenExprOrGeneratorComprehension()
      */
     bool oldParsingForInit = pc->parsingForInit;
     pc->parsingForInit = false;
-    Node pn = expr();
+    Node pn = expr(PredictInvoked);
     pc->parsingForInit = oldParsingForInit;
 
     if (!pn)
@@ -8341,7 +8373,7 @@ Parser<ParseHandler>::exprInParens()
      */
     bool oldParsingForInit = pc->parsingForInit;
     pc->parsingForInit = false;
-    Node pn = expr();
+    Node pn = expr(PredictInvoked);
     pc->parsingForInit = oldParsingForInit;
 
     if (!pn)

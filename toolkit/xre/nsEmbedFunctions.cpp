@@ -460,9 +460,13 @@ XRE_InitChildProcess(int aArgc,
   base::ProcessId parentPID = strtol(parentPIDString, &end, 10);
   NS_ABORT_IF_FALSE(!*end, "invalid parent PID");
 
-  base::ProcessHandle parentHandle;
-  mozilla::DebugOnly<bool> ok = base::OpenProcessHandle(parentPID, &parentHandle);
-  NS_ABORT_IF_FALSE(ok, "can't open handle to parent");
+  // Retrieve the parent process handle. We need this for shared memory use and
+  // for creating new transports in the child.
+  base::ProcessHandle parentHandle = 0;
+  if (XRE_GetProcessType() != GeckoProcessType_GMPlugin) {
+    mozilla::DebugOnly<bool> ok = base::OpenProcessHandle(parentPID, &parentHandle);
+    NS_ABORT_IF_FALSE(ok, "can't open handle to parent");
+  }
 
 #if defined(XP_WIN)
   // On Win7+, register the application user model id passed in by
@@ -897,9 +901,10 @@ XRE_ProcLoaderPreload(const char* aProgramDir, const nsXREAppData* aAppData)
     rv = NS_NewNativeLocalFile(nsCString(aProgramDir),
 			       true,
 			       getter_AddRefs(omnijarFile));
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+
     rv = omnijarFile->AppendNative(NS_LITERAL_CSTRING(NS_STRINGIFY(OMNIJAR_NAME)));
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
 
     /*
      * gAppData is required by nsXULAppInfo.  The manifest parser

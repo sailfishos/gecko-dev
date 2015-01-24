@@ -1276,7 +1276,8 @@ InitTypeClasses(JSContext* cx, HandleObject parent)
       INT_TO_JSVAL(ffiType.alignment), &ffiType));                             \
   if (!typeObj_##name)                                                         \
     return false;
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_TYPE(DEFINE_TYPE)
+#undef DEFINE_TYPE
 
   // Alias 'ctypes.unsigned' as 'ctypes.unsigned_int', since they represent
   // the same type in C.
@@ -1666,14 +1667,15 @@ jsvalToInteger(JSContext* cx, jsval val, IntegerType* result)
       // Check whether the source type is always representable, with exact
       // precision, by the target type. If it is, convert the value.
       switch (CType::GetTypeCode(typeObj)) {
-#define DEFINE_INT_TYPE(name, fromType, ffiType)                               \
+#define INTEGER_CASE(name, fromType, ffiType)                                  \
       case TYPE_##name:                                                        \
         if (!IsAlwaysExact<IntegerType, fromType>())                           \
           return false;                                                        \
         *result = IntegerType(*static_cast<fromType*>(data));                  \
         return true;
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+      CTYPES_FOR_EACH_INT_TYPE(INTEGER_CASE)
+      CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGER_CASE)
+#undef INTEGER_CASE
       case TYPE_void_t:
       case TYPE_bool:
       case TYPE_float:
@@ -1755,15 +1757,16 @@ jsvalToFloat(JSContext *cx, jsval val, FloatType* result)
       // Check whether the source type is always representable, with exact
       // precision, by the target type. If it is, convert the value.
       switch (CType::GetTypeCode(typeObj)) {
-#define DEFINE_FLOAT_TYPE(name, fromType, ffiType)                             \
+#define NUMERIC_CASE(name, fromType, ffiType)                                  \
       case TYPE_##name:                                                        \
         if (!IsAlwaysExact<FloatType, fromType>())                             \
           return false;                                                        \
         *result = FloatType(*static_cast<fromType*>(data));                    \
         return true;
-#define DEFINE_INT_TYPE(x, y, z) DEFINE_FLOAT_TYPE(x, y, z)
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+      CTYPES_FOR_EACH_FLOAT_TYPE(NUMERIC_CASE)
+      CTYPES_FOR_EACH_INT_TYPE(NUMERIC_CASE)
+      CTYPES_FOR_EACH_WRAPPED_INT_TYPE(NUMERIC_CASE)
+#undef NUMERIC_CASE
       case TYPE_void_t:
       case TYPE_bool:
       case TYPE_char:
@@ -2130,7 +2133,7 @@ ConvertToJS(JSContext* cx,
   case TYPE_bool:
     result.setBoolean(*static_cast<bool*>(data));
     break;
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
+#define INT_CASE(name, type, ffiType)                                          \
   case TYPE_##name: {                                                          \
     type value = *static_cast<type*>(data);                                    \
     if (sizeof(type) < 4)                                                      \
@@ -2139,7 +2142,9 @@ ConvertToJS(JSContext* cx,
       result.setDouble(double(value));                                         \
     break;                                                                     \
   }
-#define DEFINE_WRAPPED_INT_TYPE(name, type, ffiType)                           \
+  CTYPES_FOR_EACH_INT_TYPE(INT_CASE)
+#undef INT_CASE
+#define WRAPPED_INT_CASE(name, type, ffiType)                                  \
   case TYPE_##name: {                                                          \
     /* Return an Int64 or UInt64 object - do not convert to a JS number. */    \
     uint64_t value;                                                            \
@@ -2165,19 +2170,24 @@ ConvertToJS(JSContext* cx,
     result.setObject(*obj);                                                    \
     break;                                                                     \
   }
-#define DEFINE_FLOAT_TYPE(name, type, ffiType)                                 \
+  CTYPES_FOR_EACH_WRAPPED_INT_TYPE(WRAPPED_INT_CASE)
+#undef WRAPPED_INT_CASE
+#define FLOAT_CASE(name, type, ffiType)                                        \
   case TYPE_##name: {                                                          \
     type value = *static_cast<type*>(data);                                    \
     result.setDouble(double(value));                                           \
     break;                                                                     \
   }
-#define DEFINE_CHAR_TYPE(name, type, ffiType)                                  \
+  CTYPES_FOR_EACH_FLOAT_TYPE(FLOAT_CASE)
+#undef FLOAT_CASE
+#define CHAR_CASE(name, type, ffiType)                                         \
   case TYPE_##name:                                                            \
     /* Convert to an integer. We have no idea what character encoding to */    \
     /* use, if any. */                                                         \
     result.setInt32(*static_cast<type*>(data));                                \
     break;
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_CHAR_TYPE(CHAR_CASE)
+#undef CHAR_CASE
   case TYPE_char16_t: {
     // Convert the char16_t to a 1-character string.
     JSString* str = JS_NewUCStringCopyN(cx, static_cast<char16_t*>(data), 1);
@@ -2216,7 +2226,7 @@ ConvertToJS(JSContext* cx,
 // ctypes.int8_t, UInt8Array to ctypes.uint8_t, etc.
 bool CanConvertTypedArrayItemTo(JSObject *baseType, JSObject *valObj, JSContext *cx) {
   TypeCode baseTypeCode = CType::GetTypeCode(baseType);
-  if (baseTypeCode == TYPE_void_t) {
+  if (baseTypeCode == TYPE_void_t || baseTypeCode == TYPE_char) {
     return true;
   }
   TypeCode elementTypeCode;
@@ -2249,6 +2259,7 @@ bool CanConvertTypedArrayItemTo(JSObject *baseType, JSObject *valObj, JSContext 
   default:
     return false;
   }
+
   return elementTypeCode == baseTypeCode;
 }
 
@@ -2325,26 +2336,7 @@ ImplicitConvert(JSContext* cx,
     *static_cast<bool*>(buffer) = result;
     break;
   }
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
-  case TYPE_##name: {                                                          \
-    /* Do not implicitly lose bits. */                                         \
-    type result;                                                               \
-    if (!jsvalToInteger(cx, val, &result))                                     \
-      return TypeError(cx, #name, val);                                        \
-    *static_cast<type*>(buffer) = result;                                      \
-    break;                                                                     \
-  }
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_FLOAT_TYPE(name, type, ffiType)                                 \
-  case TYPE_##name: {                                                          \
-    type result;                                                               \
-    if (!jsvalToFloat(cx, val, &result))                                       \
-      return TypeError(cx, #name, val);                                        \
-    *static_cast<type*>(buffer) = result;                                      \
-    break;                                                                     \
-  }
-#define DEFINE_CHAR_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR16_TYPE(name, type, ffiType)                                \
+#define CHAR16_CASE(name, type, ffiType)                                       \
   case TYPE_##name: {                                                          \
     /* Convert from a 1-character string, regardless of encoding, */           \
     /* or from an integer, provided the result fits in 'type'. */              \
@@ -2363,7 +2355,35 @@ ImplicitConvert(JSContext* cx,
     *static_cast<type*>(buffer) = result;                                      \
     break;                                                                     \
   }
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_CHAR16_TYPE(CHAR16_CASE)
+#undef CHAR16_CASE
+#define INTEGRAL_CASE(name, type, ffiType)                                     \
+  case TYPE_##name: {                                                          \
+    /* Do not implicitly lose bits. */                                         \
+    type result;                                                               \
+    if (!jsvalToInteger(cx, val, &result))                                     \
+      return TypeError(cx, #name, val);                                        \
+    *static_cast<type*>(buffer) = result;                                      \
+    break;                                                                     \
+  }
+  CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGRAL_CASE)
+  // It's hard to believe ctypes.char16_t("f") should work yet ctypes.char("f")
+  // should not.  Ditto for ctypes.{un,}signed_char.  But this is how ctypes
+  // has always worked, so preserve these semantics, and don't switch to an
+  // algorithm similar to that in DEFINE_CHAR16_TYPE above, just yet.
+  CTYPES_FOR_EACH_CHAR_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
+#define FLOAT_CASE(name, type, ffiType)                                        \
+  case TYPE_##name: {                                                          \
+    type result;                                                               \
+    if (!jsvalToFloat(cx, val, &result))                                       \
+      return TypeError(cx, #name, val);                                        \
+    *static_cast<type*>(buffer) = result;                                      \
+    break;                                                                     \
+  }
+  CTYPES_FOR_EACH_FLOAT_TYPE(FLOAT_CASE)
+#undef FLOAT_CASE
   case TYPE_pointer: {
     if (val.isNull()) {
       // Convert to a null pointer.
@@ -2451,9 +2471,13 @@ ImplicitConvert(JSContext* cx,
       }
       break;
     } else if (val.isObject() && JS_IsArrayBufferObject(valObj)) {
-      // Convert ArrayBuffer to pointer without any copy. Just as with C
-      // arrays, we make no effort to keep the ArrayBuffer alive. This
-      // functionality will be removed for all but arguments in bug 1080262.
+      // Convert ArrayBuffer to pointer without any copy. This is only valid
+      // when converting an argument to a function call, as it is possible for
+      // the pointer to be invalidated by anything that runs JS code. (It is
+      // invalid to invoke JS code from a ctypes function call.)
+      if (!isArgument) {
+        return TypeError(cx, "arraybuffer pointer", val);
+      }
       void* ptr;
       {
           JS::AutoCheckCannotGC nogc;
@@ -2464,11 +2488,14 @@ ImplicitConvert(JSContext* cx,
       }
       *static_cast<void**>(buffer) = ptr;
       break;
-    } if (val.isObject() && JS_IsTypedArrayObject(valObj)) {
-      // Same as ArrayBuffer, above, though note that this will take the offset
-      // of the view into account.
+    } else if (val.isObject() && JS_IsArrayBufferViewObject(valObj)) {
+      // Same as ArrayBuffer, above, though note that this will take the
+      // offset of the view into account.
       if(!CanConvertTypedArrayItemTo(baseType, valObj, cx)) {
         return TypeError(cx, "typed array with the appropriate type", val);
+      }
+      if (!isArgument) {
+        return TypeError(cx, "typed array pointer", val);
       }
       void* ptr;
       {
@@ -2556,7 +2583,7 @@ ImplicitConvert(JSContext* cx,
       // Convert into an intermediate, in case of failure.
       size_t elementSize = CType::GetSize(baseType);
       size_t arraySize = elementSize * targetLength;
-      AutoPtr<char> intermediate(cx->pod_malloc<char>(arraySize));
+      auto intermediate = cx->make_pod_array<char>(arraySize);
       if (!intermediate) {
         JS_ReportAllocationOverflow(cx);
         return false;
@@ -2621,7 +2648,7 @@ ImplicitConvert(JSContext* cx,
 
       // Convert into an intermediate, in case of failure.
       size_t structSize = CType::GetSize(targetType);
-      AutoPtr<char> intermediate(cx->pod_malloc<char>(structSize));
+      auto intermediate = cx->make_pod_array<char>(structSize);
       if (!intermediate) {
         JS_ReportAllocationOverflow(cx);
         return false;
@@ -2699,7 +2726,7 @@ ExplicitConvert(JSContext* cx, HandleValue val, HandleObject targetType, void* b
     *static_cast<bool*>(buffer) = ToBoolean(val);
     break;
   }
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
+#define INTEGRAL_CASE(name, type, ffiType)                                     \
   case TYPE_##name: {                                                          \
     /* Convert numeric values with a C-style cast, and */                      \
     /* allow conversion from a base-10 or base-16 string. */                   \
@@ -2711,10 +2738,11 @@ ExplicitConvert(JSContext* cx, HandleValue val, HandleObject targetType, void* b
     *static_cast<type*>(buffer) = result;                                      \
     break;                                                                     \
   }
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR16_TYPE(x, y, z) DEFINE_CHAR_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_CHAR_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_CHAR16_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
   case TYPE_pointer: {
     // Convert a number, Int64 object, or UInt64 object to a pointer.
     uintptr_t result;
@@ -2867,9 +2895,9 @@ BuildTypeSource(JSContext* cx,
   // Walk the types, building up the toSource() string.
   switch (CType::GetTypeCode(typeObj)) {
   case TYPE_void_t:
-#define DEFINE_TYPE(name, type, ffiType)  \
-  case TYPE_##name:
-#include "ctypes/typedefs.h"
+#define CASE_FOR_TYPE(name, type, ffiType)  case TYPE_##name:
+  CTYPES_FOR_EACH_TYPE(CASE_FOR_TYPE)
+#undef CASE_FOR_TYPE
   {
     AppendString(result, "ctypes.");
     JSString* nameStr = CType::GetName(cx, typeObj);
@@ -3018,12 +3046,14 @@ BuildDataSource(JSContext* cx,
     else
       AppendString(result, "false");
     break;
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
+#define INTEGRAL_CASE(name, type, ffiType)                                     \
   case TYPE_##name:                                                            \
     /* Serialize as a primitive decimal integer. */                            \
     IntegerToString(*static_cast<type*>(data), 10, result);                    \
     break;
-#define DEFINE_WRAPPED_INT_TYPE(name, type, ffiType)                           \
+  CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
+#define WRAPPED_INT_CASE(name, type, ffiType)                                  \
   case TYPE_##name:                                                            \
     /* Serialize as a wrapped decimal integer. */                              \
     if (!NumericLimits<type>::is_signed)                                       \
@@ -3034,7 +3064,9 @@ BuildDataSource(JSContext* cx,
     IntegerToString(*static_cast<type*>(data), 10, result);                    \
     AppendString(result, "\")");                                               \
     break;
-#define DEFINE_FLOAT_TYPE(name, type, ffiType)                                 \
+  CTYPES_FOR_EACH_WRAPPED_INT_TYPE(WRAPPED_INT_CASE)
+#undef WRAPPED_INT_CASE
+#define FLOAT_CASE(name, type, ffiType)                                        \
   case TYPE_##name: {                                                          \
     /* Serialize as a primitive double. */                                     \
     double fp = *static_cast<type*>(data);                                     \
@@ -3048,12 +3080,15 @@ BuildDataSource(JSContext* cx,
     result.append(str, strlen(str));                                           \
     break;                                                                     \
   }
-#define DEFINE_CHAR_TYPE(name, type, ffiType)                                  \
+  CTYPES_FOR_EACH_FLOAT_TYPE(FLOAT_CASE)
+#undef FLOAT_CASE
+#define CHAR_CASE(name, type, ffiType)                                         \
   case TYPE_##name:                                                            \
     /* Serialize as an integer. */                                             \
     IntegerToString(*static_cast<type*>(data), 10, result);                    \
     break;
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_CHAR_TYPE(CHAR_CASE)
+#undef CHAR_CASE
   case TYPE_char16_t: {
     // Serialize as a 1-character JS string.
     JSString* str = JS_NewUCStringCopyN(cx, static_cast<char16_t*>(data), 1);
@@ -3597,7 +3632,7 @@ CType::GetFFIType(JSContext* cx, JSObject* obj)
     return static_cast<ffi_type*>(slot.toPrivate());
   }
 
-  AutoPtr<ffi_type> result;
+  UniquePtrFFIType result;
   switch (CType::GetTypeCode(obj)) {
   case TYPE_array:
     result = ArrayType::BuildFFIType(cx, obj);
@@ -3614,7 +3649,7 @@ CType::GetFFIType(JSContext* cx, JSObject* obj)
   if (!result)
     return nullptr;
   JS_SetReservedSlot(obj, SLOT_FFITYPE, PRIVATE_TO_JSVAL(result.get()));
-  return result.forget();
+  return result.release();
 }
 
 JSString*
@@ -4461,7 +4496,7 @@ ArrayType::GetLength(JSObject* obj)
   return Convert<size_t>(length.toDouble());
 }
 
-ffi_type*
+UniquePtrFFIType
 ArrayType::BuildFFIType(JSContext* cx, JSObject* obj)
 {
   MOZ_ASSERT(CType::IsCType(obj));
@@ -4482,7 +4517,7 @@ ArrayType::BuildFFIType(JSContext* cx, JSObject* obj)
   // values. It would be nice to not do all the work of setting up 'elements',
   // but some libffi platforms currently require that it be meaningful. I'm
   // looking at you, x86_64.
-  AutoPtr<ffi_type> ffiType(cx->new_<ffi_type>());
+  auto ffiType = cx->make_unique<ffi_type>();
   if (!ffiType) {
     JS_ReportOutOfMemory(cx);
     return nullptr;
@@ -4501,7 +4536,7 @@ ArrayType::BuildFFIType(JSContext* cx, JSObject* obj)
     ffiType->elements[i] = ffiBaseType;
   ffiType->elements[length] = nullptr;
 
-  return ffiType.forget();
+  return Move(ffiType);
 }
 
 bool
@@ -4845,7 +4880,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
   // its constituents. (We cannot simply stash the hash in a reserved slot now
   // to get GC safety for free, since if anything in this function fails we
   // do not want to mutate 'typeObj'.)
-  AutoPtr<FieldInfoHash> fields(cx->new_<FieldInfoHash>());
+  auto fields = cx->make_unique<FieldInfoHash>();
   if (!fields || !fields->init(len)) {
     JS_ReportOutOfMemory(cx);
     return false;
@@ -4938,7 +4973,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
   if (!SizeTojsval(cx, structSize, &sizeVal))
     return false;
 
-  JS_SetReservedSlot(typeObj, SLOT_FIELDINFO, PRIVATE_TO_JSVAL(fields.forget()));
+  JS_SetReservedSlot(typeObj, SLOT_FIELDINFO, PRIVATE_TO_JSVAL(fields.release()));
 
   JS_SetReservedSlot(typeObj, SLOT_SIZE, sizeVal);
   JS_SetReservedSlot(typeObj, SLOT_ALIGN, INT_TO_JSVAL(structAlign));
@@ -4948,7 +4983,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
   return true;
 }
 
-ffi_type*
+UniquePtrFFIType
 StructType::BuildFFIType(JSContext* cx, JSObject* obj)
 {
   MOZ_ASSERT(CType::IsCType(obj));
@@ -4961,20 +4996,21 @@ StructType::BuildFFIType(JSContext* cx, JSObject* obj)
   size_t structSize = CType::GetSize(obj);
   size_t structAlign = CType::GetAlignment(obj);
 
-  AutoPtr<ffi_type> ffiType(cx->new_<ffi_type>());
+  auto ffiType = cx->make_unique<ffi_type>();
   if (!ffiType) {
     JS_ReportOutOfMemory(cx);
     return nullptr;
   }
   ffiType->type = FFI_TYPE_STRUCT;
 
-  AutoPtr<ffi_type*> elements;
+  size_t count = len != 0 ? len + 1 : 2;
+  auto elements = cx->make_pod_array<ffi_type*>(count);
+  if (!elements) {
+    JS_ReportOutOfMemory(cx);
+    return nullptr;
+  }
+
   if (len != 0) {
-    elements = cx->pod_malloc<ffi_type*>(len + 1);
-    if (!elements) {
-      JS_ReportOutOfMemory(cx);
-      return nullptr;
-    }
     elements[len] = nullptr;
 
     for (FieldInfoHash::Range r = fields->all(); !r.empty(); r.popFront()) {
@@ -4984,21 +5020,15 @@ StructType::BuildFFIType(JSContext* cx, JSObject* obj)
         return nullptr;
       elements[entry.value().mIndex] = fieldType;
     }
-
   } else {
     // Represent an empty struct as having a size of 1 byte, just like C++.
     MOZ_ASSERT(structSize == 1);
     MOZ_ASSERT(structAlign == 1);
-    elements = cx->pod_malloc<ffi_type*>(2);
-    if (!elements) {
-      JS_ReportOutOfMemory(cx);
-      return nullptr;
-    }
     elements[0] = &ffi_type_uint8;
     elements[1] = nullptr;
   }
 
-  ffiType->elements = elements.get();
+  ffiType->elements = elements.release();
 
 #ifdef DEBUG
   // Perform a sanity check: the result of our struct size and alignment
@@ -5020,8 +5050,7 @@ StructType::BuildFFIType(JSContext* cx, JSObject* obj)
   ffiType->alignment = structAlign;
 #endif
 
-  elements.forget();
-  return ffiType.forget();
+  return Move(ffiType);
 }
 
 bool
@@ -5553,84 +5582,85 @@ FunctionType::BuildSymbolName(JSString* name,
   }
 }
 
-static FunctionInfo*
-NewFunctionInfo(JSContext* cx,
-                jsval abiType,
-                jsval returnType,
-                jsval* argTypes,
-                unsigned argLength)
+static bool
+CreateFunctionInfo(JSContext* cx,
+                   HandleObject typeObj,
+                   HandleValue abiType,
+                   HandleObject returnType,
+                   const HandleValueArray& args)
 {
-  AutoPtr<FunctionInfo> fninfo(cx->new_<FunctionInfo>());
+  FunctionInfo *fninfo(cx->new_<FunctionInfo>());
   if (!fninfo) {
     JS_ReportOutOfMemory(cx);
-    return nullptr;
+    return false;
   }
+
+  // Stash the FunctionInfo in a reserved slot.
+  JS_SetReservedSlot(typeObj, SLOT_FNINFO, PRIVATE_TO_JSVAL(fninfo));
 
   ffi_abi abi;
   if (!GetABI(cx, abiType, &abi)) {
     JS_ReportError(cx, "Invalid ABI specification");
-    return nullptr;
+    return false;
   }
   fninfo->mABI = abiType.toObjectOrNull();
 
-  // prepare the result type
-  fninfo->mReturnType = PrepareReturnType(cx, returnType);
-  if (!fninfo->mReturnType)
-    return nullptr;
+  fninfo->mReturnType = returnType;
 
   // prepare the argument types
-  if (!fninfo->mArgTypes.reserve(argLength) ||
-      !fninfo->mFFITypes.reserve(argLength)) {
+  if (!fninfo->mArgTypes.reserve(args.length()) ||
+      !fninfo->mFFITypes.reserve(args.length())) {
     JS_ReportOutOfMemory(cx);
-    return nullptr;
+    return false;
   }
 
   fninfo->mIsVariadic = false;
 
-  for (uint32_t i = 0; i < argLength; ++i) {
+  for (uint32_t i = 0; i < args.length(); ++i) {
     bool isEllipsis;
-    if (!IsEllipsis(cx, argTypes[i], &isEllipsis))
+    if (!IsEllipsis(cx, args[i], &isEllipsis))
       return nullptr;
     if (isEllipsis) {
       fninfo->mIsVariadic = true;
       if (i < 1) {
         JS_ReportError(cx, "\"...\" may not be the first and only parameter "
                        "type of a variadic function declaration");
-        return nullptr;
+        return false;
       }
-      if (i < argLength - 1) {
+      if (i < args.length() - 1) {
         JS_ReportError(cx, "\"...\" must be the last parameter type of a "
                        "variadic function declaration");
-        return nullptr;
+        return false;
       }
       if (GetABICode(fninfo->mABI) != ABI_DEFAULT) {
         JS_ReportError(cx, "Variadic functions must use the __cdecl calling "
                        "convention");
-        return nullptr;
+        return false;
       }
       break;
     }
 
-    JSObject* argType = PrepareType(cx, argTypes[i]);
+    JSObject* argType = PrepareType(cx, args[i]);
     if (!argType)
-      return nullptr;
+      return false;
 
     ffi_type* ffiType = CType::GetFFIType(cx, argType);
     if (!ffiType)
-      return nullptr;
+      return false;
 
     fninfo->mArgTypes.infallibleAppend(argType);
     fninfo->mFFITypes.infallibleAppend(ffiType);
   }
 
-  if (fninfo->mIsVariadic)
+  if (fninfo->mIsVariadic) {
     // wait to PrepareCIF until function is called
-    return fninfo.forget();
+    return true;
+  }
 
-  if (!PrepareCIF(cx, fninfo.get()))
-    return nullptr;
+  if (!PrepareCIF(cx, fninfo))
+    return false;
 
-  return fninfo.forget();
+  return true;
 }
 
 bool
@@ -5671,8 +5701,7 @@ FunctionType::Create(JSContext* cx, unsigned argc, jsval* vp)
       return false;
   }
 
-  JSObject* result = CreateInternal(cx, args[0], args[1],
-      argTypes.begin(), argTypes.length());
+  JSObject* result = CreateInternal(cx, args[0], args[1], argTypes);
   if (!result)
     return false;
 
@@ -5682,35 +5711,33 @@ FunctionType::Create(JSContext* cx, unsigned argc, jsval* vp)
 
 JSObject*
 FunctionType::CreateInternal(JSContext* cx,
-                             jsval abi,
-                             jsval rtype,
-                             jsval* argtypes,
-                             unsigned arglen)
+                             HandleValue abi,
+                             HandleValue rtype,
+                             const HandleValueArray& args)
 {
-  // Determine and check the types, and prepare the function CIF.
-  AutoPtr<FunctionInfo> fninfo(NewFunctionInfo(cx, abi, rtype, argtypes, arglen));
-  if (!fninfo)
+  // Prepare the result type
+  RootedObject returnType(cx, PrepareReturnType(cx, rtype));
+  if (!returnType)
     return nullptr;
 
   // Get ctypes.FunctionType.prototype and the common prototype for CData objects
   // of this type, from ctypes.CType.prototype.
-  RootedObject typeProto(cx, CType::GetProtoFromType(cx, fninfo->mReturnType,
-                                                     SLOT_FUNCTIONPROTO));
+  RootedObject typeProto(cx, CType::GetProtoFromType(cx, returnType, SLOT_FUNCTIONPROTO));
   if (!typeProto)
     return nullptr;
-  RootedObject dataProto(cx, CType::GetProtoFromType(cx, fninfo->mReturnType,
-                                                     SLOT_FUNCTIONDATAPROTO));
+  RootedObject dataProto(cx, CType::GetProtoFromType(cx, returnType, SLOT_FUNCTIONDATAPROTO));
   if (!dataProto)
     return nullptr;
 
   // Create a new CType object with the common properties and slots.
-  JSObject* typeObj = CType::Create(cx, typeProto, dataProto, TYPE_function,
-                        nullptr, JSVAL_VOID, JSVAL_VOID, nullptr);
+  RootedObject typeObj(cx, CType::Create(cx, typeProto, dataProto, TYPE_function,
+                                         nullptr, JSVAL_VOID, JSVAL_VOID, nullptr));
   if (!typeObj)
     return nullptr;
 
-  // Stash the FunctionInfo in a reserved slot.
-  JS_SetReservedSlot(typeObj, SLOT_FNINFO, PRIVATE_TO_JSVAL(fninfo.forget()));
+  // Determine and check the types, and prepare the function CIF.
+  if (!CreateFunctionInfo(cx, typeObj, abi, returnType, args))
+      return nullptr;
 
   return typeObj;
 }
@@ -5931,18 +5958,19 @@ FunctionType::Call(JSContext* cx,
   // Small integer types get returned as a word-sized ffi_arg. Coerce it back
   // into the correct size for ConvertToJS.
   switch (typeCode) {
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
+#define INTEGRAL_CASE(name, type, ffiType)                                     \
   case TYPE_##name:                                                            \
     if (sizeof(type) < sizeof(ffi_arg)) {                                      \
       ffi_arg data = *static_cast<ffi_arg*>(returnValue.mData);                \
       *static_cast<type*>(returnValue.mData) = static_cast<type>(data);        \
     }                                                                          \
     break;
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_BOOL_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR16_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+  CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_BOOL_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_CHAR_TYPE(INTEGRAL_CASE)
+  CTYPES_FOR_EACH_CHAR16_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
   default:
     break;
   }
@@ -6056,12 +6084,6 @@ CClosure::Create(JSContext* cx,
   MOZ_ASSERT(!fninfo->mIsVariadic);
   MOZ_ASSERT(GetABICode(fninfo->mABI) != ABI_WINAPI);
 
-  AutoPtr<ClosureInfo> cinfo(cx->new_<ClosureInfo>(JS_GetRuntime(cx)));
-  if (!cinfo) {
-    JS_ReportOutOfMemory(cx);
-    return nullptr;
-  }
-
   // Get the prototype of the FunctionType object, of class CTypeProto,
   // which stores our JSContext for use with the closure.
   RootedObject proto(cx);
@@ -6071,12 +6093,13 @@ CClosure::Create(JSContext* cx,
   MOZ_ASSERT(CType::IsCTypeProto(proto));
 
   // Get a JSContext for use with the closure.
-  cinfo->cx = js::DefaultJSContext(JS_GetRuntime(cx));
+  JSContext *closeureCx = js::DefaultJSContext(JS_GetRuntime(cx));
 
   // Prepare the error sentinel value. It's important to do this now, because
   // we might be unable to convert the value to the proper type. If so, we want
   // the caller to know about it _now_, rather than some uncertain time in the
   // future when the error sentinel is actually needed.
+  mozilla::UniquePtr<uint8_t[], JS::FreePolicy> errResult;
   if (!errVal.isUndefined()) {
 
     // Make sure the callback returns something.
@@ -6091,23 +6114,31 @@ CClosure::Create(JSContext* cx,
 
     // Allocate a buffer for the return value.
     size_t rvSize = CType::GetSize(fninfo->mReturnType);
-    cinfo->errResult = result->zone()->pod_malloc<uint8_t>(rvSize);
-    if (!cinfo->errResult)
+    errResult = result->zone()->make_pod_array<uint8_t>(rvSize);
+    if (!errResult)
       return nullptr;
 
     // Do the value conversion. This might fail, in which case we throw.
-    if (!ImplicitConvert(cx, errVal, fninfo->mReturnType, cinfo->errResult,
-                         false, nullptr))
+    if (!ImplicitConvert(cx, errVal, fninfo->mReturnType, errResult.get(), false, nullptr))
       return nullptr;
-  } else {
-    cinfo->errResult = nullptr;
+  }
+
+  ClosureInfo* cinfo = cx->new_<ClosureInfo>(JS_GetRuntime(cx));
+  if (!cinfo) {
+    JS_ReportOutOfMemory(cx);
+    return nullptr;
   }
 
   // Copy the important bits of context into cinfo.
+  cinfo->cx = closeureCx;
+  cinfo->errResult = errResult.release();
   cinfo->closureObj = result;
   cinfo->typeObj = typeObj;
   cinfo->thisObj = thisObj;
   cinfo->jsfnObj = fnObj;
+
+  // Stash the ClosureInfo struct on our new object.
+  JS_SetReservedSlot(result, SLOT_CLOSUREINFO, PRIVATE_TO_JSVAL(cinfo));
 
   // Create an ffi_closure object and initialize it.
   void* code;
@@ -6119,14 +6150,11 @@ CClosure::Create(JSContext* cx,
   }
 
   ffi_status status = ffi_prep_closure_loc(cinfo->closure, &fninfo->mCIF,
-    CClosure::ClosureStub, cinfo.get(), code);
+    CClosure::ClosureStub, cinfo, code);
   if (status != FFI_OK) {
     JS_ReportError(cx, "couldn't create closure - libffi error");
     return nullptr;
   }
-
-  // Stash the ClosureInfo struct on our new object.
-  JS_SetReservedSlot(result, SLOT_CLOSUREINFO, PRIVATE_TO_JSVAL(cinfo.forget()));
 
   // Casting between void* and a function pointer is forbidden in C and C++.
   // Do it via an integral type.
@@ -6203,13 +6231,13 @@ CClosure::ClosureStub(ffi_cif* cif, void* result, void** args, void* userData)
   if (cif->rtype != &ffi_type_void) {
     rvSize = cif->rtype->size;
     switch (typeCode) {
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
-    case TYPE_##name:
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_BOOL_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR16_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+#define INTEGRAL_CASE(name, type, ffiType)  case TYPE_##name:
+    CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_BOOL_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_CHAR_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_CHAR16_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
       rvSize = Align(rvSize, sizeof(ffi_arg));
       break;
     default:
@@ -6284,18 +6312,19 @@ CClosure::ClosureStub(ffi_cif* cif, void* result, void** args, void* userData)
   // Small integer types must be returned as a word-sized ffi_arg. Coerce it
   // back into the size libffi expects.
   switch (typeCode) {
-#define DEFINE_INT_TYPE(name, type, ffiType)                                   \
+#define INTEGRAL_CASE(name, type, ffiType)                                     \
   case TYPE_##name:                                                            \
     if (sizeof(type) < sizeof(ffi_arg)) {                                      \
       ffi_arg data = *static_cast<type*>(result);                              \
       *static_cast<ffi_arg*>(result) = data;                                   \
     }                                                                          \
     break;
-#define DEFINE_WRAPPED_INT_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_BOOL_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#define DEFINE_CHAR16_TYPE(x, y, z) DEFINE_INT_TYPE(x, y, z)
-#include "ctypes/typedefs.h"
+    CTYPES_FOR_EACH_INT_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_WRAPPED_INT_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_BOOL_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_CHAR_TYPE(INTEGRAL_CASE)
+    CTYPES_FOR_EACH_CHAR16_TYPE(INTEGRAL_CASE)
+#undef INTEGRAL_CASE
   default:
     break;
   }

@@ -40,6 +40,7 @@
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/ProcessHangMonitor.h"
 #include "AccessCheck.h"
 #include "nsGlobalWindow.h"
 #include "nsAboutProtocolUtils.h"
@@ -1112,6 +1113,7 @@ class Watchdog
 #include "ipc/Nuwa.h"
 #endif
 
+#define PREF_MAX_SCRIPT_RUN_TIME_CHILD "dom.max_child_script_run_time"
 #define PREF_MAX_SCRIPT_RUN_TIME_CONTENT "dom.max_script_run_time"
 #define PREF_MAX_SCRIPT_RUN_TIME_CHROME "dom.max_chrome_script_run_time"
 
@@ -1134,6 +1136,7 @@ class WatchdogManager : public nsIObserver
         mozilla::Preferences::AddStrongObserver(this, "dom.use_watchdog");
         mozilla::Preferences::AddStrongObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CONTENT);
         mozilla::Preferences::AddStrongObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CHROME);
+        mozilla::Preferences::AddStrongObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CHILD);
     }
 
   protected:
@@ -1147,12 +1150,13 @@ class WatchdogManager : public nsIObserver
         mozilla::Preferences::RemoveObserver(this, "dom.use_watchdog");
         mozilla::Preferences::RemoveObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CONTENT);
         mozilla::Preferences::RemoveObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CHROME);
+        mozilla::Preferences::RemoveObserver(this, PREF_MAX_SCRIPT_RUN_TIME_CHILD);
     }
 
   public:
 
     NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
-                       const char16_t* aData)
+                       const char16_t* aData) MOZ_OVERRIDE
     {
         RefreshWatchdog();
         return NS_OK;
@@ -1224,7 +1228,10 @@ class WatchdogManager : public nsIObserver
             int32_t chromeTime = Preferences::GetInt(PREF_MAX_SCRIPT_RUN_TIME_CHROME, 20);
             if (chromeTime <= 0)
                 chromeTime = INT32_MAX;
-            mWatchdog->SetMinScriptRunTimeSeconds(std::min(contentTime, chromeTime));
+            int32_t childTime = Preferences::GetInt(PREF_MAX_SCRIPT_RUN_TIME_CHILD, 3);
+            if (childTime <= 0)
+                childTime = INT32_MAX;
+            mWatchdog->SetMinScriptRunTimeSeconds(std::min(std::min(contentTime, chromeTime), childTime));
         }
     }
 
@@ -1300,7 +1307,18 @@ WatchdogMain(void *arg)
         // Don't request an interrupt callback unless the current script has
         // been running long enough that we might show the slow script dialog.
         // Triggering the callback from off the main thread can be expensive.
-        PRTime usecs = self->MinScriptRunTimeSeconds() * PR_USEC_PER_SEC;
+
+        // We want to avoid showing the slow script dialog if the user's laptop
+        // goes to sleep in the middle of running a script. To ensure this, we
+        // invoke the interrupt callback after only half the timeout has
+        // elapsed. The callback simply records the fact that it was called in
+        // the mSlowScriptSecondHalf flag. Then we wait another (timeout/2)
+        // seconds and invoke the callback again. This time around it sees
+        // mSlowScriptSecondHalf is set and so it shows the slow script
+        // dialog. If the computer is put to sleep during one of the (timeout/2)
+        // periods, the script still has the other (timeout/2) seconds to
+        // finish.
+        PRTime usecs = self->MinScriptRunTimeSeconds() * PR_USEC_PER_SEC / 2;
         if (manager->IsRuntimeActive() &&
             manager->TimeSinceLastRuntimeStateChange() >= usecs)
         {
@@ -1341,6 +1359,10 @@ XPCJSRuntime::DefaultJSContextCallback(JSRuntime *rt)
 void
 XPCJSRuntime::ActivityCallback(void *arg, bool active)
 {
+    if (!active) {
+        ProcessHangMonitor::ClearHang();
+    }
+
     XPCJSRuntime* self = static_cast<XPCJSRuntime*>(arg);
     self->mWatchdogManager->RecordRuntimeActivity(active);
 }
@@ -1367,10 +1389,12 @@ XPCJSRuntime::InterruptCallback(JSContext *cx)
 {
     XPCJSRuntime *self = XPCJSRuntime::Get();
 
-    // If this is the first time the interrupt callback has fired since we last
-    // returned to the event loop, mark the checkpoint.
+    // Normally we record mSlowScriptCheckpoint when we start to process an
+    // event. However, we can run JS outside of event handlers. This code takes
+    // care of that case.
     if (self->mSlowScriptCheckpoint.IsNull()) {
         self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
+        self->mSlowScriptSecondHalf = false;
         return true;
     }
 
@@ -1379,18 +1403,30 @@ XPCJSRuntime::InterruptCallback(JSContext *cx)
     if (!nsContentUtils::IsInitialized())
         return true;
 
+    bool contentProcess = XRE_GetProcessType() == GeckoProcessType_Content;
+
     // This is at least the second interrupt callback we've received since
     // returning to the event loop. See how long it's been, and what the limit
     // is.
     TimeDuration duration = TimeStamp::NowLoRes() - self->mSlowScriptCheckpoint;
     bool chrome = nsContentUtils::IsCallerChrome();
-    const char *prefName = chrome ? PREF_MAX_SCRIPT_RUN_TIME_CHROME
-                                  : PREF_MAX_SCRIPT_RUN_TIME_CONTENT;
+    const char *prefName = contentProcess ? PREF_MAX_SCRIPT_RUN_TIME_CHILD
+                                 : chrome ? PREF_MAX_SCRIPT_RUN_TIME_CHROME
+                                          : PREF_MAX_SCRIPT_RUN_TIME_CONTENT;
     int32_t limit = Preferences::GetInt(prefName, chrome ? 20 : 10);
 
     // If there's no limit, or we're within the limit, let it go.
-    if (limit == 0 || duration.ToSeconds() < limit)
+    if (limit == 0 || duration.ToSeconds() < limit / 2.0)
         return true;
+
+    // In order to guard against time changes or laptops going to sleep, we
+    // don't trigger the slow script warning until (limit/2) seconds have
+    // elapsed twice.
+    if (!self->mSlowScriptSecondHalf) {
+        self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
+        self->mSlowScriptSecondHalf = true;
+        return true;
+    }
 
     //
     // This has gone on long enough! Time to take action. ;-)
@@ -1423,7 +1459,9 @@ XPCJSRuntime::InterruptCallback(JSContext *cx)
 
     // The user chose to continue the script. Reset the timer, and disable this
     // machinery with a pref of the user opted out of future slow-script dialogs.
-    self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
+    if (response != nsGlobalWindow::ContinueSlowScriptAndKeepNotifying)
+        self->mSlowScriptCheckpoint = TimeStamp::NowLoRes();
+
     if (response == nsGlobalWindow::AlwaysContinueSlowScript)
         Preferences::SetInt(prefName, 0);
 
@@ -1754,7 +1792,7 @@ class JSMainRuntimeTemporaryPeakReporter MOZ_FINAL : public nsIMemoryReporter
     NS_DECL_ISUPPORTS
 
     NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                              nsISupports* aData, bool aAnonymize)
+                              nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
     {
         return MOZ_COLLECT_REPORT("js-main-runtime-temporary-peak",
             KIND_OTHER, UNITS_BYTES,
@@ -2592,7 +2630,7 @@ class JSMainRuntimeCompartmentsReporter MOZ_FINAL : public nsIMemoryReporter
     }
 
     NS_IMETHOD CollectReports(nsIMemoryReporterCallback *cb,
-                              nsISupports *closure, bool anonymize)
+                              nsISupports *closure, bool anonymize) MOZ_OVERRIDE
     {
         // First we collect the compartment paths.  Then we report them.  Doing
         // the two steps interleaved is a bad idea, because calling |cb|
@@ -2664,8 +2702,7 @@ class OrphanReporter : public JS::ObjectPrivateVisitor
 static bool
 StartsWithExplicit(nsACString& s)
 {
-    const char* e = "explicit/";
-    return Substring(s, 0, strlen(e)).Equals(e);
+    return StringBeginsWith(s, NS_LITERAL_CSTRING("explicit/"));
 }
 #endif
 
@@ -3156,7 +3193,7 @@ static const JSWrapObjectCallbacks WrapObjectCallbacks = {
 
 XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
    : CycleCollectedJSRuntime(nullptr, JS::DefaultHeapMaxBytes, JS::DefaultNurseryBytes),
-   mJSContextStack(new XPCJSContextStack(MOZ_THIS_IN_INITIALIZER_LIST())),
+   mJSContextStack(new XPCJSContextStack(this)),
    mCallContext(nullptr),
    mAutoRoots(nullptr),
    mResolveName(JSID_VOID),
@@ -3177,11 +3214,12 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
    mVariantRoots(nullptr),
    mWrappedJSRoots(nullptr),
    mObjectHolderRoots(nullptr),
-   mWatchdogManager(new WatchdogManager(MOZ_THIS_IN_INITIALIZER_LIST())),
-   mUnprivilegedJunkScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
-   mPrivilegedJunkScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
-   mCompilationScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
-   mAsyncSnowWhiteFreer(new AsyncFreeSnowWhite())
+   mWatchdogManager(new WatchdogManager(this)),
+   mUnprivilegedJunkScope(this->Runtime(), nullptr),
+   mPrivilegedJunkScope(this->Runtime(), nullptr),
+   mCompilationScope(this->Runtime(), nullptr),
+   mAsyncSnowWhiteFreer(new AsyncFreeSnowWhite()),
+   mSlowScriptSecondHalf(false)
 {
     // these jsids filled in later when we have a JSContext to work with.
     mStrIDs[0] = JSID_VOID;

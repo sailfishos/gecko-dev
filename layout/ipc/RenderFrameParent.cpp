@@ -8,6 +8,7 @@
 #include "base/basictypes.h"
 
 #include "BasicLayers.h"
+#include "gfxPrefs.h"
 #ifdef MOZ_ENABLE_D3D9_LAYER
 # include "LayerManagerD3D9.h"
 #endif //MOZ_ENABLE_D3D9_LAYER
@@ -217,7 +218,7 @@ public:
     MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
   }
 
-  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
+  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) MOZ_OVERRIDE
   {
     if (mHaveZoomConstraints && aOutConstraints) {
       *aOutConstraints = mZoomConstraints;
@@ -225,7 +226,7 @@ public:
     return mHaveZoomConstraints;
   }
 
-  virtual bool GetTouchSensitiveRegion(CSSRect* aOutRegion)
+  virtual bool GetTouchSensitiveRegion(CSSRect* aOutRegion) MOZ_OVERRIDE
   {
     if (mTouchSensitiveRegion.IsEmpty())
       return false;
@@ -236,7 +237,7 @@ public:
 
   virtual void NotifyAPZStateChange(const ScrollableLayerGuid& aGuid,
                                     APZStateChange aChange,
-                                    int aArg)
+                                    int aArg) MOZ_OVERRIDE
   {
     if (MessageLoop::current() != mUILoop) {
       mUILoop->PostTask(
@@ -328,7 +329,7 @@ RenderFrameParent::GetApzcTreeManager()
   // created and the static getter knows which CompositorParent is
   // instantiated with this layers ID. That's why try to fetch it when
   // we first need it and cache the result.
-  if (!mApzcTreeManager) {
+  if (!mApzcTreeManager && gfxPrefs::AsyncPanZoomEnabled()) {
     mApzcTreeManager = CompositorParent::GetAPZCTreeManager(mLayersId);
   }
   return mApzcTreeManager.get();

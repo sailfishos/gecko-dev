@@ -79,6 +79,12 @@ struct ShowInfo
   double defaultScale;
 };
 
+struct FrameScriptInfo
+{
+    nsString url;
+    bool runInGlobalScope;
+};
+
 prio(normal upto urgent) intr protocol PBrowser
 {
     manager PContent or PContentBridge;
@@ -110,6 +116,12 @@ parent:
     sync PPluginWidget();
 
     /**
+     * Return native data of root widget
+     */
+    sync GetWidgetNativeData() returns (WindowsHandle value);
+
+parent:
+    /**
      * When child sends this message, parent should move focus to
      * the next or previous focusable element.
      */
@@ -117,7 +129,8 @@ parent:
 
     Event(RemoteDOMEvent aEvent);
 
-    intr CreateWindow(uint32_t aChromeFlags,
+    sync CreateWindow(PBrowser aNewTab,
+                      uint32_t aChromeFlags,
                       bool aCalledFromJS,
                       bool aPositionSpecified,
                       bool aSizeSpecified,
@@ -125,7 +138,7 @@ parent:
                       nsString aName,
                       nsString aFeatures,
                       nsString aBaseURI)
-      returns (bool windowIsNew, PBrowser window);
+      returns (bool windowOpened, FrameScriptInfo[] frameScripts, nsCString urlToLoad);
 
     sync SyncMessage(nsString aMessage, ClonedMessageData aData,
                      CpowEntry[] aCpows, Principal aPrincipal)
@@ -228,6 +241,23 @@ parent:
       returns (bool consumedByIME);
 
     /**
+     * Notifies chrome to currect editor rect
+     *
+     *  rect         Rect of current focused editor
+     */
+    prio(urgent) async NotifyIMEEditorRect(nsIntRect rect);
+
+    /**
+     * Notifies chrome to position change
+     *
+     *  editorRect   Rect of current focused editor
+     *  compositionRects     Rects of current composition string
+     */
+    prio(urgent) async NotifyIMEPositionChange(nsIntRect editorRect,
+                                               nsIntRect[] compositionRects,
+                                               nsIntRect caretRect);
+
+    /**
      * Instructs chrome to end any pending composition
      *
      *  cancel       PR_TRUE if composition should be cancelled
@@ -277,11 +307,6 @@ parent:
      * Gets the default scaling factor of the screen corresponding to this browser.
      */
     sync GetDefaultScale() returns (double value);
-
-    /**
-     * Return native data of root widget
-     */
-    sync GetWidgetNativeData() returns (WindowsHandle value);
 
     /**
      * Set the native cursor.
@@ -420,6 +445,12 @@ parent:
         returns (ScrollingBehavior scrolling,
                  TextureFactoryIdentifier textureFactoryIdentifier,
                  uint64_t layersId);
+
+    /**
+     * Sent by the child to the parent to inform it that an update to the
+     * dimensions has been requested, likely through win.moveTo or resizeTo
+     */
+    async SetDimensions(uint32_t aFlags, int32_t aX, int32_t aY, int32_t aCx, int32_t aCy);
 
 child:
     /**

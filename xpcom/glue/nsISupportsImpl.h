@@ -339,8 +339,8 @@ public:
 
   static const bool isThreadSafe = false;
 private:
-  nsrefcnt operator++(int) MOZ_DELETE;
-  nsrefcnt operator--(int) MOZ_DELETE;
+  nsrefcnt operator++(int) = delete;
+  nsrefcnt operator--(int) = delete;
   nsrefcnt mValue;
 };
 
@@ -365,8 +365,8 @@ public:
 
   static const bool isThreadSafe = true;
 private:
-  nsrefcnt operator++(int) MOZ_DELETE;
-  nsrefcnt operator--(int) MOZ_DELETE;
+  nsrefcnt operator++(int) = delete;
+  nsrefcnt operator--(int) = delete;
   // In theory, RelaseAcquire consistency (but no weaker) is sufficient for
   // the counter. Making it weaker could speed up builds on ARM (but not x86),
   // but could break pre-existing code that assumes sequential consistency.
@@ -497,21 +497,15 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Previously used to initialize the reference count, but no longer needed.
- *
- * DEPRECATED.
- */
-#define NS_INIT_ISUPPORTS() ((void)0)
-
-/**
  * Use this macro to declare and implement the AddRef & Release methods for a
  * given non-XPCOM <i>_class</i>.
  *
  * @param _class The name of the class implementing the method
+ * @param optional MOZ_OVERRIDE Mark the AddRef & Release methods as overrides.
  */
-#define NS_INLINE_DECL_REFCOUNTING(_class)                                    \
+#define NS_INLINE_DECL_REFCOUNTING(_class, ...)                               \
 public:                                                                       \
-  NS_METHOD_(MozExternalRefCountType) AddRef(void) {                          \
+  NS_METHOD_(MozExternalRefCountType) AddRef(void) __VA_ARGS__ {              \
     MOZ_ASSERT_TYPE_OK_FOR_REFCOUNTING(_class)                                \
     MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");                      \
     NS_ASSERT_OWNINGTHREAD(_class);                                           \
@@ -519,7 +513,7 @@ public:                                                                       \
     NS_LOG_ADDREF(this, mRefCnt, #_class, sizeof(*this));                     \
     return mRefCnt;                                                           \
   }                                                                           \
-  NS_METHOD_(MozExternalRefCountType) Release(void) {                         \
+  NS_METHOD_(MozExternalRefCountType) Release(void) __VA_ARGS__ {             \
     MOZ_ASSERT(int32_t(mRefCnt) > 0, "dup release");                          \
     NS_ASSERT_OWNINGTHREAD(_class);                                           \
     --mRefCnt;                                                                \
@@ -545,16 +539,16 @@ public:
  *
  * @param _class The name of the class implementing the method
  */
-#define NS_INLINE_DECL_THREADSAFE_REFCOUNTING(_class)                         \
+#define NS_INLINE_DECL_THREADSAFE_REFCOUNTING(_class, ...)                    \
 public:                                                                       \
-  NS_METHOD_(MozExternalRefCountType) AddRef(void) {                          \
+  NS_METHOD_(MozExternalRefCountType) AddRef(void) __VA_ARGS__ {              \
     MOZ_ASSERT_TYPE_OK_FOR_REFCOUNTING(_class)                                \
     MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");                      \
     nsrefcnt count = ++mRefCnt;                                               \
     NS_LOG_ADDREF(this, count, #_class, sizeof(*this));                       \
     return (nsrefcnt) count;                                                  \
   }                                                                           \
-  NS_METHOD_(MozExternalRefCountType) Release(void) {                         \
+  NS_METHOD_(MozExternalRefCountType) Release(void) __VA_ARGS__ {             \
     MOZ_ASSERT(int32_t(mRefCnt) > 0, "dup release");                          \
     nsrefcnt count = --mRefCnt;                                               \
     NS_LOG_RELEASE(this, count, #_class);                                     \

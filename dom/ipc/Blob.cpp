@@ -1923,7 +1923,11 @@ public:
   virtual int64_t
   GetFileId() MOZ_OVERRIDE;
 
-  virtual int64_t GetLastModified(ErrorResult& aRv) MOZ_OVERRIDE;
+  virtual int64_t
+  GetLastModified(ErrorResult& aRv) MOZ_OVERRIDE;
+
+  virtual nsresult
+  SetMutable(bool aMutable) MOZ_OVERRIDE;
 
   virtual BlobChild*
   GetBlobChild() MOZ_OVERRIDE;
@@ -2005,6 +2009,17 @@ public:
     return mStart;
   }
 
+  void
+  EnsureActorWasCreated()
+  {
+    MOZ_ASSERT_IF(!ActorEventTargetIsOnCurrentThread(),
+                  mActorWasCreated);
+
+    if (!mActorWasCreated) {
+      EnsureActorWasCreatedInternal();
+    }
+  }
+
   NS_DECL_ISUPPORTS_INHERITED
 
   virtual BlobChild*
@@ -2013,6 +2028,9 @@ public:
 private:
   ~RemoteBlobSliceImpl()
   { }
+
+  void
+  EnsureActorWasCreatedInternal();
 };
 
 /*******************************************************************************
@@ -2107,11 +2125,8 @@ public:
   virtual bool
   IsFile() const MOZ_OVERRIDE;
 
-  virtual void
-  Unlink() MOZ_OVERRIDE;
-
-  virtual void
-  Traverse(nsCycleCollectionTraversalCallback& aCallback) MOZ_OVERRIDE;
+  virtual bool
+  MayBeClonedToOtherThreads() const MOZ_OVERRIDE;
 
   virtual BlobChild*
   GetBlobChild() MOZ_OVERRIDE;
@@ -2393,6 +2408,26 @@ RemoteBlobImpl::GetLastModified(ErrorResult& aRv)
   return mLastModificationDate;
 }
 
+nsresult
+BlobChild::
+RemoteBlobImpl::SetMutable(bool aMutable)
+{
+  if (!aMutable && IsSlice()) {
+    // Make sure that slices are backed by a real actor now while we are still
+    // on the correct thread.
+    AsSlice()->EnsureActorWasCreated();
+  }
+
+  nsresult rv = FileImplBase::SetMutable(aMutable);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  MOZ_ASSERT_IF(!aMutable, mImmutable);
+
+  return NS_OK;
+}
+
 BlobChild*
 BlobChild::
 RemoteBlobImpl::GetBlobChild()
@@ -2575,21 +2610,12 @@ RemoteBlobSliceImpl::RemoteBlobSliceImpl(RemoteBlobImpl* aParent,
   mStart = aParent->IsSlice() ? aParent->AsSlice()->mStart + aStart : aStart;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED0(BlobChild::RemoteBlobSliceImpl,
-                             BlobChild::RemoteBlobImpl)
-
-BlobChild*
+void
 BlobChild::
-RemoteBlobSliceImpl::GetBlobChild()
+RemoteBlobSliceImpl::EnsureActorWasCreatedInternal()
 {
-  MOZ_ASSERT_IF(!ActorEventTargetIsOnCurrentThread(),
-                mActorWasCreated);
-
-  if (mActorWasCreated) {
-    return RemoteBlobImpl::GetBlobChild();
-  }
-
   MOZ_ASSERT(ActorEventTargetIsOnCurrentThread());
+  MOZ_ASSERT(!mActorWasCreated);
 
   mActorWasCreated = true;
 
@@ -2614,8 +2640,18 @@ RemoteBlobSliceImpl::GetBlobChild()
     mActor =
       SendSliceConstructor(baseActor->GetBackgroundManager(), this, params);
   }
+}
 
-  return mActor;
+NS_IMPL_ISUPPORTS_INHERITED0(BlobChild::RemoteBlobSliceImpl,
+                             BlobChild::RemoteBlobImpl)
+
+BlobChild*
+BlobChild::
+RemoteBlobSliceImpl::GetBlobChild()
+{
+  EnsureActorWasCreated();
+
+  return RemoteBlobImpl::GetBlobChild();
 }
 
 /*******************************************************************************
@@ -2840,18 +2876,11 @@ RemoteBlobImpl::IsFile() const
   return mBlobImpl->IsFile();
 }
 
-void
+bool
 BlobParent::
-RemoteBlobImpl::Unlink()
+RemoteBlobImpl::MayBeClonedToOtherThreads() const
 {
-  return mBlobImpl->Unlink();
-}
-
-void
-BlobParent::
-RemoteBlobImpl::Traverse(nsCycleCollectionTraversalCallback& aCallback)
-{
-  return mBlobImpl->Traverse(aCallback);
+  return mBlobImpl->MayBeClonedToOtherThreads();
 }
 
 BlobChild*
@@ -3308,7 +3337,6 @@ BlobChild::GetOrCreateFromImpl(ChildManagerType* aManager,
   ParentBlobConstructorParams params(blobParams);
 
   if (NS_WARN_IF(!aManager->SendPBlobConstructor(actor, params))) {
-    BlobChild::Destroy(actor);
     return nullptr;
   }
 
@@ -3373,7 +3401,6 @@ BlobChild::SendSliceConstructor(ChildManagerType* aManager,
     return newActor;
   }
 
-  BlobChild::Destroy(newActor);
   return nullptr;
 }
 
@@ -3859,7 +3886,6 @@ BlobParent::GetOrCreateFromImpl(ParentManagerType* aManager,
 
   ChildBlobConstructorParams params(id, blobParams);
   if (NS_WARN_IF(!aManager->SendPBlobConstructor(actor, params))) {
-    BlobParent::Destroy(actor);
     return nullptr;
   }
 
@@ -4022,7 +4048,6 @@ BlobParent::SendSliceConstructor(
     return newActor;
   }
 
-  BlobParent::Destroy(newActor);
   return nullptr;
 }
 

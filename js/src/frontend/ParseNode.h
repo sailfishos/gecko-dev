@@ -466,8 +466,8 @@ class ParseNode
                         pn_used   : 1,  /* name node is on a use-chain */
                         pn_defn   : 1;  /* this node is a Definition */
 
-    ParseNode(const ParseNode &other) MOZ_DELETE;
-    void operator=(const ParseNode &other) MOZ_DELETE;
+    ParseNode(const ParseNode &other) = delete;
+    void operator=(const ParseNode &other) = delete;
 
   public:
     ParseNode(ParseNodeKind kind, JSOp op, ParseNodeArity arity)
@@ -511,6 +511,7 @@ class ParseNode
 
     /* Boolean attributes. */
     bool isInParens() const                { return pn_parens; }
+    bool isLikelyIIFE() const              { return isInParens(); }
     void setInParens(bool enabled)         { pn_parens = enabled; }
     bool isUsed() const                    { return pn_used; }
     void setUsed(bool enabled)             { pn_used = enabled; }

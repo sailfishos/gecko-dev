@@ -35,11 +35,11 @@
 #include "jswrapper.h"
 #include "prmjtime.h"
 
+#include "js/Conversions.h"
 #include "js/Date.h"
 #include "vm/DateTime.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
-#include "vm/NumericConversions.h"
 #include "vm/String.h"
 #include "vm/StringBuffer.h"
 
@@ -54,6 +54,7 @@ using mozilla::IsNaN;
 
 using JS::AutoCheckCannotGC;
 using JS::GenericNaN;
+using JS::ToInteger;
 
 /*
  * The JS 'Date' object is patterned after the Java 'Date' object.
@@ -303,7 +304,7 @@ DayFromMonth(int month, bool isLeapYear)
 
 template<typename T>
 static inline int
-DayFromMonth(T month, bool isLeapYear) MOZ_DELETE;
+DayFromMonth(T month, bool isLeapYear) = delete;
 
 /* ES5 15.9.1.12 (out of order to accommodate DaylightSavingTA). */
 static double
@@ -521,7 +522,7 @@ date_convert(JSContext *cx, HandleObject obj, JSType hint, MutableHandleValue vp
     MOZ_ASSERT(hint == JSTYPE_NUMBER || hint == JSTYPE_STRING || hint == JSTYPE_VOID);
     MOZ_ASSERT(obj->is<DateObject>());
 
-    return DefaultValue(cx, obj, (hint == JSTYPE_VOID) ? JSTYPE_STRING : hint, vp);
+    return JS::OrdinaryToPrimitive(cx, obj, hint == JSTYPE_VOID ? JSTYPE_STRING : hint, vp);
 }
 
 /* for use by date_parse */
@@ -2461,7 +2462,7 @@ date_toJSON(JSContext *cx, unsigned argc, Value *vp)
 
     /* Step 4. */
     RootedValue toISO(cx);
-    if (!JSObject::getProperty(cx, obj, obj, cx->names().toISOString, &toISO))
+    if (!GetProperty(cx, obj, obj, cx->names().toISOString, &toISO))
         return false;
 
     /* Step 5. */
@@ -3011,9 +3012,9 @@ FinishDateClassInit(JSContext *cx, HandleObject ctor, HandleObject proto)
     RootedValue toUTCStringFun(cx);
     RootedId toUTCStringId(cx, NameToId(cx->names().toUTCString));
     RootedId toGMTStringId(cx, NameToId(cx->names().toGMTString));
-    return baseops::GetProperty(cx, proto.as<DateObject>(), toUTCStringId, &toUTCStringFun) &&
-           baseops::DefineGeneric(cx, proto.as<DateObject>(), toGMTStringId, toUTCStringFun,
-                                  nullptr, nullptr, 0);
+    return NativeGetProperty(cx, proto.as<DateObject>(), toUTCStringId, &toUTCStringFun) &&
+           NativeDefineProperty(cx, proto.as<DateObject>(), toGMTStringId, toUTCStringFun,
+                                nullptr, nullptr, 0);
 }
 
 const Class DateObject::class_ = {

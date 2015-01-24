@@ -68,6 +68,11 @@ class BaselineCompilerShared
     mozilla::DebugOnly<bool> inCall_;
 
     CodeOffsetLabel spsPushToggleOffset_;
+    CodeOffsetLabel profilerEnterFrameToggleOffset_;
+    CodeOffsetLabel profilerExitFrameToggleOffset_;
+    CodeOffsetLabel traceLoggerEnterToggleOffset_;
+    CodeOffsetLabel traceLoggerExitToggleOffset_;
+    CodeOffsetLabel traceLoggerScriptTextIdOffset_;
 
     BaselineCompilerShared(JSContext *cx, TempAllocator &alloc, JSScript *script);
 
@@ -85,6 +90,13 @@ class BaselineCompilerShared
 
         // Return pointer to the IC entry
         return &vecEntry;
+    }
+
+    // Append an ICEntry without a stub.
+    bool appendICEntry(ICEntry::Kind kind, uint32_t returnOffset) {
+        ICEntry entry(script->pcToOffset(pc), kind);
+        entry.setReturnOffset(CodeOffsetLabel(returnOffset));
+        return icEntries_.append(entry);
     }
 
     bool addICLoadLabel(CodeOffsetLabel label) {
@@ -136,6 +148,13 @@ class BaselineCompilerShared
         CHECK_OVER_RECURSED
     };
     bool callVM(const VMFunction &fun, CallVMPhase phase=POST_INITIALIZE);
+
+    bool callVMNonOp(const VMFunction &fun, CallVMPhase phase=POST_INITIALIZE) {
+        if (!callVM(fun, phase))
+            return false;
+        icEntries_.back().setFakeKind(ICEntry::Kind_NonOpCallVM);
+        return true;
+    }
 
   public:
     BytecodeAnalysis &analysis() {

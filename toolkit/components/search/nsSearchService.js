@@ -25,6 +25,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "Deprecated",
   "resource://gre/modules/Deprecated.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "SearchStaticData",
   "resource://gre/modules/SearchStaticData.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
+  "resource://gre/modules/Timer.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "clearTimeout",
+  "resource://gre/modules/Timer.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gTextToSubURI",
                                    "@mozilla.org/intl/texttosuburi;1",
@@ -403,18 +407,24 @@ loadListener.prototype = {
   onStatus: function (aRequest, aContext, aStatus, aStatusArg) {}
 }
 
-// Hacky method that tries to determine if this user is in a US geography, and
-// using an en-US build.
-function getIsUS() {
+// Method to determine if we should be using geo-specific defaults
+function geoSpecificDefaultsEnabled() {
   let geoSpecificDefaults = false;
   try {
     geoSpecificDefaults = Services.prefs.getBoolPref("browser.search.geoSpecificDefaults");
   } catch(e) {}
 
-  if (!geoSpecificDefaults) {
-    return false;
-  }
+  let distroID;
+  try {
+    distroID = Services.prefs.getCharPref("distribution.id");
+  } catch (e) {}
 
+  return (geoSpecificDefaults && !distroID);
+}
+
+// Hacky method that tries to determine if this user is in a US geography, and
+// using an en-US build.
+function getIsUS() {
   // If we've set the pref before, just return that result.
   let cachePref = "browser.search.isUS";
   try {
@@ -428,6 +438,15 @@ function getIsUS() {
   let isNA = isUSTimezone();
   Services.prefs.setBoolPref(cachePref, isNA);
   return isNA;
+}
+
+// Helper method to modify preference keys with geo-specific modifiers, if needed
+function getGeoSpecificPrefName(basepref) {
+  if (!geoSpecificDefaultsEnabled())
+    return basepref;
+  if (getIsUS())
+    return basepref + ".US";
+  return basepref;
 }
 
 function isUSTimezone() {
@@ -458,61 +477,113 @@ let ensureKnownCountryCode = Task.async(function* () {
     Services.prefs.getCharPref("browser.search.countryCode");
     return; // pref exists, so we've done this before.
   } catch(e) {}
-  // we don't have it cached, so fetch it.
-  let cc = yield fetchCountryCode();
-  if (cc) {
-    // we got one - stash it away
-    Services.prefs.setCharPref("browser.search.countryCode", cc);
-    // and update our "isUS" cache pref if it is US - that will prevent a
-    // fallback to the timezone check.
-    // However, only do this if the locale also matches.
-    if (getLocale() == "en-US") {
-      Services.prefs.setBoolPref("browser.search.isUS", (cc == "US"));
-    }
-    // and telemetry...
-    let isTimezoneUS = isUSTimezone();
-    if (cc == "US" && !isTimezoneUS) {
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_US_COUNTRY_MISMATCHED_TIMEZONE").add(1);
-    }
-    if (cc != "US" && isTimezoneUS) {
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_US_TIMEZONE_MISMATCHED_COUNTRY").add(1);
-    }
-  }
+  // We don't have it cached, so fetch it. fetchCountryCode() will call
+  // storeCountryCode if it gets a result (even if that happens after the
+  // promise resolves)
+  yield fetchCountryCode();
+  // If gInitialized is true then the search service was forced to perform
+  // a sync initialization during our XHR - capture this via telemetry.
+  Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_CAUSED_SYNC_INIT").add(gInitialized);
 });
+
+// Store the result of the geoip request as well as any other values and
+// telemetry which depend on it.
+function storeCountryCode(cc) {
+  // Set the country-code itself.
+  Services.prefs.setCharPref("browser.search.countryCode", cc);
+  // and update our "isUS" cache pref if it is US - that will prevent a
+  // fallback to the timezone check.
+  // However, only do this if the locale also matches.
+  if (getLocale() == "en-US") {
+    Services.prefs.setBoolPref("browser.search.isUS", (cc == "US"));
+  }
+  // and telemetry...
+  let isTimezoneUS = isUSTimezone();
+  if (cc == "US" && !isTimezoneUS) {
+    Services.telemetry.getHistogramById("SEARCH_SERVICE_US_COUNTRY_MISMATCHED_TIMEZONE").add(1);
+  }
+  if (cc != "US" && isTimezoneUS) {
+    Services.telemetry.getHistogramById("SEARCH_SERVICE_US_TIMEZONE_MISMATCHED_COUNTRY").add(1);
+  }
+}
 
 // Get the country we are in via a XHR geoip request.
 function fetchCountryCode() {
+  // values for the SEARCH_SERVICE_COUNTRY_FETCH_RESULT 'enum' telemetry probe.
+  const TELEMETRY_RESULT_ENUM = {
+    SUCCESS: 0,
+    SUCCESS_WITHOUT_DATA: 1,
+    XHRTIMEOUT: 2,
+    ERROR: 3,
+    // Note that we expect to add finer-grained error types here later (eg,
+    // dns error, network error, ssl error, etc) with .ERROR remaining as the
+    // generic catch-all that doesn't fit into other categories.
+  };
   let endpoint = Services.urlFormatter.formatURLPref("browser.search.geoip.url");
   // As an escape hatch, no endpoint means no geoip.
   if (!endpoint) {
-    return Promise.resolve(null);
+    return Promise.resolve();
   }
   let startTime = Date.now();
   return new Promise(resolve => {
+    // Instead of using a timeout on the xhr object itself, we simulate one
+    // using a timer and let the XHR request complete.  This allows us to
+    // capture reliable telemetry on what timeout value should actually be
+    // used to ensure most users don't see one while not making it so large
+    // that many users end up doing a sync init of the search service and thus
+    // would see the jank that implies.
+    // (Note we do actually use a timeout on the XHR, but that's set to be a
+    // large value just incase the request never completes - we don't want the
+    // XHR object to live forever)
+    let timeoutMS = Services.prefs.getIntPref("browser.search.geoip.timeout");
+    let timerId = setTimeout(() => {
+      LOG("_fetchCountryCode: timeout fetching country information");
+      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_TIMEOUT").add(1);
+      timerId = null;
+      resolve();
+    }, timeoutMS);
+
+    let resolveAndReportSuccess = (result, reason) => {
+      // Even if we timed out, we want to save the country code and everything
+      // related so next startup sees the value and doesn't retry this dance.
+      if (result) {
+        storeCountryCode(result);
+      }
+      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_RESULT").add(reason);
+
+      // This notification is just for tests...
+      Services.obs.notifyObservers(null, SEARCH_SERVICE_TOPIC, "geoip-lookup-xhr-complete");
+
+      // If we've already timed out then we've already resolved the promise,
+      // so there's nothing else to do.
+      if (timerId == null) {
+        return;
+      }
+      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_TIMEOUT").add(0);
+      clearTimeout(timerId);
+      resolve();
+    };
+
     let request = new XMLHttpRequest();
-    request.timeout = Services.prefs.getIntPref("browser.search.geoip.timeout");
+    // This notification is just for tests...
+    Services.obs.notifyObservers(request, SEARCH_SERVICE_TOPIC, "geoip-lookup-xhr-starting");
+    request.timeout = 100000; // 100 seconds as the last-chance fallback
     request.onload = function(event) {
       let took = Date.now() - startTime;
       let cc = event.target.response && event.target.response.country_code;
       LOG("_fetchCountryCode got success response in " + took + "ms: " + cc);
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_MS").add(took);
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_SUCCESS").add(cc ? 1 : 0);
-      if (!cc) {
-        Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_SUCCESS_WITHOUT_DATA").add(1);
-      }
-      resolve(cc);
+      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_TIME_MS").add(took);
+      let reason = cc ? TELEMETRY_RESULT_ENUM.SUCCESS : TELEMETRY_RESULT_ENUM.SUCCESS_WITHOUT_DATA;
+      resolveAndReportSuccess(cc, reason);
+    };
+    request.ontimeout = function(event) {
+      LOG("_fetchCountryCode: XHR finally timed-out fetching country information");
+      resolveAndReportSuccess(null, TELEMETRY_RESULT_ENUM.XHRTIMEOUT);
     };
     request.onerror = function(event) {
       LOG("_fetchCountryCode: failed to retrieve country information");
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_SUCCESS").add(0);
-      resolve(null);
+      resolveAndReportSuccess(null, TELEMETRY_RESULT_ENUM.ERROR);
     };
-    request.ontimeout = function(event) {
-      LOG("_fetchCountryCode: timeout fetching country information");
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_TIMEOUT").add(1);
-      Services.telemetry.getHistogramById("SEARCH_SERVICE_COUNTRY_SUCCESS").add(0);
-      resolve(null);
-    }
     request.open("POST", endpoint, true);
     request.setRequestHeader("Content-Type", "application/json");
     request.responseType = "json";
@@ -1902,8 +1973,9 @@ Engine.prototype = {
     let defaultPrefB = Services.prefs.getDefaultBranch(BROWSER_SEARCH_PREF);
     let nsIPLS = Ci.nsIPrefLocalizedString;
     let defaultEngine;
+    let pref = getGeoSpecificPrefName("defaultenginename");
     try {
-      defaultEngine = defaultPrefB.getComplexValue("defaultenginename", nsIPLS).data;
+      defaultEngine = defaultPrefB.getComplexValue(pref, nsIPLS).data;
     } catch (ex) {}
     return this.name == defaultEngine;
   },
@@ -3121,13 +3193,7 @@ SearchService.prototype = {
     let nsIPLS = Ci.nsIPrefLocalizedString;
     let defaultEngine;
 
-    let defPref;
-    if (getIsUS()) {
-      defPref = "defaultenginename.US";
-    } else {
-      defPref = "defaultenginename";
-    }
-
+    let defPref = getGeoSpecificPrefName("defaultenginename");
     try {
       defaultEngine = defaultPrefB.getComplexValue(defPref, nsIPLS).data;
     } catch (ex) {
@@ -3908,12 +3974,10 @@ SearchService.prototype = {
       }
       catch (e) { }
 
+      let prefNameBase = getGeoSpecificPrefName(BROWSER_SEARCH_PREF + "order");
       while (true) {
-        prefName = BROWSER_SEARCH_PREF + "order.";
-        if (getIsUS()) {
-          prefName += "US.";
-        }
-        engineName = getLocalizedPref(prefName + (++i));
+        prefName = prefNameBase + "." + (++i);
+        engineName = getLocalizedPref(prefName);
         if (!engineName)
           break;
 
@@ -4074,12 +4138,9 @@ SearchService.prototype = {
     }
 
     // Now look through the "browser.search.order" branch.
+    let prefNameBase = getGeoSpecificPrefName(BROWSER_SEARCH_PREF + "order");
     for (var j = 1; ; j++) {
-      var prefName = BROWSER_SEARCH_PREF + "order.";
-      if (getIsUS()) {
-        prefName += "US.";
-      }
-      prefName += j;
+      let prefName = prefNameBase + "." + j;
       engineName = getLocalizedPref(prefName);
       if (!engineName)
         break;
@@ -4292,7 +4353,7 @@ SearchService.prototype = {
   get defaultEngine() {
     this._ensureInitialized();
     if (!this._defaultEngine) {
-      let defPref = BROWSER_SEARCH_PREF + "defaultenginename";
+      let defPref = getGeoSpecificPrefName(BROWSER_SEARCH_PREF + "defaultenginename");
       let defaultEngine = this.getEngineByName(getLocalizedPref(defPref, ""))
       if (!defaultEngine)
         defaultEngine = this._getSortedEngines(false)[0] || null;
@@ -4320,7 +4381,8 @@ SearchService.prototype = {
 
     this._defaultEngine = newDefaultEngine;
 
-    let defPref = BROWSER_SEARCH_PREF + "defaultenginename";
+    let defPref = getGeoSpecificPrefName(BROWSER_SEARCH_PREF + "defaultenginename");
+
     // If we change the default engine in the future, that change should impact
     // users who have switched away from and then back to the build's "default"
     // engine. So clear the user pref when the defaultEngine is set to the

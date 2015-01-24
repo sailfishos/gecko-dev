@@ -1104,7 +1104,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
     void boxDouble(FloatRegister src, const ValueOperand &dest) {
-        movq(src, dest.valueReg());
+        vmovq(src, dest.valueReg());
     }
     void boxNonDouble(JSValueType type, Register src, const ValueOperand &dest) {
         MOZ_ASSERT(src != dest.valueReg());
@@ -1151,7 +1151,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
     void unboxDouble(const ValueOperand &src, FloatRegister dest) {
-        movq(src.valueReg(), dest);
+        vmovq(src.valueReg(), dest);
     }
     void unboxPrivate(const ValueOperand &src, const Register dest) {
         movq(src.valueReg(), dest);
@@ -1165,9 +1165,6 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     // Unbox any non-double value into dest. Prefer unboxInt32 or unboxBoolean
     // instead if the source type is known.
     void unboxNonDouble(const ValueOperand &src, Register dest) {
-        // In a non-trivial coupling, we're not permitted to use ScratchReg when
-        // src and dest are different registers, because of how extractObject is
-        // implemented.
         if (src.valueReg() == dest) {
             mov(ImmWord(JSVAL_PAYLOAD_MASK), ScratchReg);
             andq(ScratchReg, dest);
@@ -1201,16 +1198,14 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     void unboxObject(const ValueOperand &src, Register dest) { unboxNonDouble(src, dest); }
     void unboxObject(const Operand &src, Register dest) { unboxNonDouble(src, dest); }
     void unboxObject(const Address &src, Register dest) { unboxNonDouble(Operand(src), dest); }
+    void unboxObject(const BaseIndex &src, Register dest) { unboxNonDouble(Operand(src), dest); }
 
     // Extended unboxing API. If the payload is already in a register, returns
     // that register. Otherwise, provides a move to the given scratch register,
     // and returns that.
     Register extractObject(const Address &address, Register scratch) {
         MOZ_ASSERT(scratch != ScratchReg);
-        loadPtr(address, ScratchReg);
-        // We have a special coupling with unboxObject. As long as the registers
-        // aren't equal, it doesn't use ScratchReg.
-        unboxObject(ValueOperand(ScratchReg), scratch);
+        unboxObject(address, scratch);
         return scratch;
     }
     Register extractObject(const ValueOperand &value, Register scratch) {
@@ -1450,6 +1445,10 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
 
     void branchPtrInNurseryRange(Condition cond, Register ptr, Register temp, Label *label);
     void branchValueIsNurseryObject(Condition cond, ValueOperand value, Register temp, Label *label);
+
+    // Instrumentation for entering and leaving the profiler.
+    void profilerEnterFrame(Register framePtr, Register scratch);
+    void profilerExitFrame();
 };
 
 typedef MacroAssemblerX64 MacroAssemblerSpecific;

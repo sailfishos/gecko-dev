@@ -164,6 +164,7 @@ class LAllocation : public TempObject
     bool isMemory() const {
         return isStackSlot() || isArgument();
     }
+    inline uint32_t memorySlot() const;
     inline LUse *toUse();
     inline const LUse *toUse() const;
     inline const LGeneralReg *toGeneralReg() const;
@@ -360,14 +361,21 @@ class LStackSlot : public LAllocation
 class LArgument : public LAllocation
 {
   public:
-    explicit LArgument(int32_t index)
+    explicit LArgument(uint32_t index)
       : LAllocation(ARGUMENT_SLOT, index)
     { }
 
-    int32_t index() const {
+    uint32_t index() const {
         return data();
     }
 };
+
+inline uint32_t
+LAllocation::memorySlot() const
+{
+    MOZ_ASSERT(isMemory());
+    return isStackSlot() ? toStackSlot()->slot() : toArgument()->index();
+}
 
 // Represents storage for a definition.
 class LDefinition
@@ -568,8 +576,6 @@ class LDefinition
           case MIRType_Elements:
             return LDefinition::SLOTS;
           case MIRType_Pointer:
-            return LDefinition::GENERAL;
-          case MIRType_ForkJoinContext:
             return LDefinition::GENERAL;
           case MIRType_Int32x4:
             return LDefinition::INT32X4;
@@ -1031,14 +1037,14 @@ class LInstructionHelper : public LInstruction
         temps_[index] = a;
     }
 
-    size_t numSuccessors() const {
+    size_t numSuccessors() const MOZ_OVERRIDE {
         return 0;
     }
-    MBasicBlock *getSuccessor(size_t i) const {
+    MBasicBlock *getSuccessor(size_t i) const MOZ_OVERRIDE {
         MOZ_ASSERT(false);
         return nullptr;
     }
-    void setSuccessor(size_t i, MBasicBlock *successor) {
+    void setSuccessor(size_t i, MBasicBlock *successor) MOZ_OVERRIDE {
         MOZ_ASSERT(false);
     }
 
@@ -1234,6 +1240,22 @@ class LSnapshot : public TempObject
     void rewriteRecoveredInput(LUse input);
 };
 
+struct SafepointSlotEntry {
+    // Flag indicating whether this is a slot in the stack or argument space.
+    uint32_t stack:1;
+
+    // Byte offset of the slot, as in LStackSlot or LArgument.
+    uint32_t slot:31;
+
+    SafepointSlotEntry() { }
+    SafepointSlotEntry(bool stack, uint32_t slot)
+      : stack(stack), slot(slot)
+    { }
+    explicit SafepointSlotEntry(const LAllocation *a)
+      : stack(a->isStackSlot()), slot(a->memorySlot())
+    { }
+};
+
 struct SafepointNunboxEntry {
     uint32_t typeVreg;
     LAllocation type;
@@ -1247,10 +1269,11 @@ struct SafepointNunboxEntry {
 
 class LSafepoint : public TempObject
 {
+    typedef SafepointSlotEntry SlotEntry;
     typedef SafepointNunboxEntry NunboxEntry;
 
   public:
-    typedef Vector<uint32_t, 0, JitAllocPolicy> SlotList;
+    typedef Vector<SlotEntry, 0, JitAllocPolicy> SlotList;
     typedef Vector<NunboxEntry, 0, JitAllocPolicy> NunboxList;
 
   private:
@@ -1285,14 +1308,14 @@ class LSafepoint : public TempObject
     // Assembler buffer displacement to OSI point's call location.
     uint32_t osiCallPointOffset_;
 
-    // List of stack slots which have gcthing pointers.
+    // List of slots which have gcthing pointers.
     SlotList gcSlots_;
 
-    // List of stack slots which have Values.
+    // List of slots which have Values.
     SlotList valueSlots_;
 
 #ifdef JS_NUNBOX32
-    // List of registers (in liveRegs) and stack slots which contain pieces of Values.
+    // List of registers (in liveRegs) and slots which contain pieces of Values.
     NunboxList nunboxParts_;
 #elif JS_PUNBOX64
     // The subset of liveRegs which have Values.
@@ -1302,7 +1325,7 @@ class LSafepoint : public TempObject
     // The subset of liveRegs which contains pointers to slots/elements.
     GeneralRegisterSet slotsOrElementsRegs_;
 
-    // List of stack slots which have slots/elements pointers.
+    // List of slots which have slots/elements pointers.
     SlotList slotsOrElementsSlots_;
 
   public:
@@ -1349,8 +1372,8 @@ class LSafepoint : public TempObject
     GeneralRegisterSet gcRegs() const {
         return gcRegs_;
     }
-    bool addGcSlot(uint32_t slot) {
-        bool result = gcSlots_.append(slot);
+    bool addGcSlot(bool stack, uint32_t slot) {
+        bool result = gcSlots_.append(SlotEntry(stack, slot));
         if (result)
             assertInvariants();
         return result;
@@ -1369,15 +1392,15 @@ class LSafepoint : public TempObject
         slotsOrElementsRegs_.addUnchecked(reg);
         assertInvariants();
     }
-    bool addSlotsOrElementsSlot(uint32_t slot) {
-        bool result = slotsOrElementsSlots_.append(slot);
+    bool addSlotsOrElementsSlot(bool stack, uint32_t slot) {
+        bool result = slotsOrElementsSlots_.append(SlotEntry(stack, slot));
         if (result)
             assertInvariants();
         return result;
     }
     bool addSlotsOrElementsPointer(LAllocation alloc) {
-        if (alloc.isStackSlot())
-            return addSlotsOrElementsSlot(alloc.toStackSlot()->slot());
+        if (alloc.isMemory())
+            return addSlotsOrElementsSlot(alloc.isStackSlot(), alloc.memorySlot());
         MOZ_ASSERT(alloc.isRegister());
         addSlotsOrElementsRegister(alloc.toRegister().gpr());
         assertInvariants();
@@ -1386,19 +1409,17 @@ class LSafepoint : public TempObject
     bool hasSlotsOrElementsPointer(LAllocation alloc) const {
         if (alloc.isRegister())
             return slotsOrElementsRegs().has(alloc.toRegister().gpr());
-        if (alloc.isStackSlot()) {
-            for (size_t i = 0; i < slotsOrElementsSlots_.length(); i++) {
-                if (slotsOrElementsSlots_[i] == alloc.toStackSlot()->slot())
-                    return true;
-            }
-            return false;
+        for (size_t i = 0; i < slotsOrElementsSlots_.length(); i++) {
+            const SlotEntry &entry = slotsOrElementsSlots_[i];
+            if (entry.stack == alloc.isStackSlot() && entry.slot == alloc.memorySlot())
+                return true;
         }
         return false;
     }
 
     bool addGcPointer(LAllocation alloc) {
-        if (alloc.isStackSlot())
-            return addGcSlot(alloc.toStackSlot()->slot());
+        if (alloc.isMemory())
+            return addGcSlot(alloc.isStackSlot(), alloc.memorySlot());
         if (alloc.isRegister())
             addGcRegister(alloc.toRegister().gpr());
         assertInvariants();
@@ -1408,19 +1429,16 @@ class LSafepoint : public TempObject
     bool hasGcPointer(LAllocation alloc) const {
         if (alloc.isRegister())
             return gcRegs().has(alloc.toRegister().gpr());
-        if (alloc.isStackSlot()) {
-            for (size_t i = 0; i < gcSlots_.length(); i++) {
-                if (gcSlots_[i] == alloc.toStackSlot()->slot())
-                    return true;
-            }
-            return false;
+        MOZ_ASSERT(alloc.isMemory());
+        for (size_t i = 0; i < gcSlots_.length(); i++) {
+            if (gcSlots_[i].stack == alloc.isStackSlot() && gcSlots_[i].slot == alloc.memorySlot())
+                return true;
         }
-        MOZ_ASSERT(alloc.isArgument());
-        return true;
+        return false;
     }
 
-    bool addValueSlot(uint32_t slot) {
-        bool result = valueSlots_.append(slot);
+    bool addValueSlot(bool stack, uint32_t slot) {
+        bool result = valueSlots_.append(SlotEntry(stack, slot));
         if (result)
             assertInvariants();
         return result;
@@ -1429,9 +1447,9 @@ class LSafepoint : public TempObject
         return valueSlots_;
     }
 
-    bool hasValueSlot(uint32_t slot) const {
+    bool hasValueSlot(bool stack, uint32_t slot) const {
         for (size_t i = 0; i < valueSlots_.length(); i++) {
-            if (valueSlots_[i] == slot)
+            if (valueSlots_[i].stack == stack && valueSlots_[i].slot == slot)
                 return true;
         }
         return false;
@@ -1496,9 +1514,7 @@ class LSafepoint : public TempObject
 
 #ifdef DEBUG
     bool hasNunboxPayload(LAllocation payload) const {
-        if (payload.isArgument())
-            return true;
-        if (payload.isStackSlot() && hasValueSlot(payload.toStackSlot()->slot()))
+        if (payload.isMemory() && hasValueSlot(payload.isStackSlot(), payload.memorySlot()))
             return true;
         for (size_t i = 0; i < nunboxParts_.length(); i++) {
             if (nunboxParts_[i].payload == payload)
@@ -1529,25 +1545,15 @@ class LSafepoint : public TempObject
                 addValueRegister(reg);
             return true;
         }
-        if (alloc.isStackSlot()) {
-            uint32_t slot = alloc.toStackSlot()->slot();
-            for (size_t i = 0; i < valueSlots().length(); i++) {
-                if (valueSlots()[i] == slot)
-                    return true;
-            }
-            return addValueSlot(slot);
-        }
-        MOZ_ASSERT(alloc.isArgument());
-        return true;
+        if (hasValueSlot(alloc.isStackSlot(), alloc.memorySlot()))
+            return true;
+        return addValueSlot(alloc.isStackSlot(), alloc.memorySlot());
     }
 
     bool hasBoxedValue(LAllocation alloc) const {
         if (alloc.isRegister())
             return valueRegs().has(alloc.toRegister().gpr());
-        if (alloc.isStackSlot())
-            return hasValueSlot(alloc.toStackSlot()->slot());
-        MOZ_ASSERT(alloc.isArgument());
-        return true;
+        return hasValueSlot(alloc.isStackSlot(), alloc.memorySlot());
     }
 
 #endif // JS_PUNBOX64

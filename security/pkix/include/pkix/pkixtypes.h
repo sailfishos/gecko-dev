@@ -31,7 +31,7 @@
 
 namespace mozilla { namespace pkix {
 
-MOZILLA_PKIX_ENUM_CLASS DigestAlgorithm
+enum class DigestAlgorithm
 {
   sha512 = 1,
   sha384 = 2,
@@ -39,11 +39,19 @@ MOZILLA_PKIX_ENUM_CLASS DigestAlgorithm
   sha1 = 4,
 };
 
-// Named ECC Curves:
-//   * secp521r1 (OID 1.3.132.0.35, RFC 5480)
-//   * secp384r1 (OID 1.3.132.0.34, RFC 5480)
-//   * secp256r1 (OID 1.2.840.10045.3.17, RFC 5480)
-MOZILLA_PKIX_ENUM_CLASS SignatureAlgorithm
+enum class NamedCurve
+{
+  // secp521r1 (OID 1.3.132.0.35, RFC 5480)
+  secp521r1 = 1,
+
+  // secp384r1 (OID 1.3.132.0.34, RFC 5480)
+  secp384r1 = 2,
+
+  // secp256r1 (OID 1.2.840.10045.3.1.7, RFC 5480)
+  secp256r1 = 3,
+};
+
+enum class SignatureAlgorithm
 {
   // ecdsa-with-SHA512 (OID 1.2.840.10045.4.3.4, RFC 5758 Section 3.2)
   ecdsa_with_sha512 = 1,
@@ -73,20 +81,20 @@ MOZILLA_PKIX_ENUM_CLASS SignatureAlgorithm
   unsupported_algorithm = 19,
 };
 
-struct SignedDataWithSignature
+struct SignedDataWithSignature final
 {
 public:
   Input data;
   SignatureAlgorithm algorithm;
   Input signature;
 
-private:
-  void operator=(const SignedDataWithSignature&) /*= delete*/;
+  void operator=(const SignedDataWithSignature&) = delete;
 };
 
-MOZILLA_PKIX_ENUM_CLASS EndEntityOrCA { MustBeEndEntity = 0, MustBeCA = 1 };
+enum class EndEntityOrCA { MustBeEndEntity = 0, MustBeCA = 1 };
 
-MOZILLA_PKIX_ENUM_CLASS KeyUsage : uint8_t {
+enum class KeyUsage : uint8_t
+{
   digitalSignature = 0,
   nonRepudiation   = 1,
   keyEncipherment  = 2,
@@ -99,7 +107,8 @@ MOZILLA_PKIX_ENUM_CLASS KeyUsage : uint8_t {
   noParticularKeyUsageRequired = 0xff,
 };
 
-MOZILLA_PKIX_ENUM_CLASS KeyPurposeId {
+enum class KeyPurposeId
+{
   anyExtendedKeyUsage = 0,
   id_kp_serverAuth = 1,           // id-kp-serverAuth
   id_kp_clientAuth = 2,           // id-kp-clientAuth
@@ -108,7 +117,8 @@ MOZILLA_PKIX_ENUM_CLASS KeyPurposeId {
   id_kp_OCSPSigning = 9,          // id-kp-OCSPSigning
 };
 
-struct CertPolicyId {
+struct CertPolicyId final
+{
   uint16_t numBytes;
   static const uint16_t MAX_BYTES = 24;
   uint8_t bytes[MAX_BYTES];
@@ -118,7 +128,8 @@ struct CertPolicyId {
   static const CertPolicyId anyPolicy;
 };
 
-MOZILLA_PKIX_ENUM_CLASS TrustLevel {
+enum class TrustLevel
+{
   TrustAnchor = 1,        // certificate is a trusted root CA certificate or
                           // equivalent *for the given policy*.
   ActivelyDistrusted = 2, // certificate is known to be bad
@@ -136,7 +147,7 @@ MOZILLA_PKIX_ENUM_CLASS TrustLevel {
 // field from the issuer's certificate. serialNumber is the entire DER-encoded
 // serial number from the subject certificate (the certificate for which we are
 // checking the revocation status).
-struct CertID
+struct CertID final
 {
 public:
   CertID(Input issuer, Input issuerSubjectPublicKeyInfo, Input serialNumber)
@@ -148,8 +159,8 @@ public:
   const Input issuer;
   const Input issuerSubjectPublicKeyInfo;
   const Input serialNumber;
-private:
-  void operator=(const CertID&) /*= delete*/;
+
+  void operator=(const CertID&) = delete;
 };
 
 class DERArray
@@ -209,28 +220,26 @@ public:
   protected:
     IssuerChecker();
     virtual ~IssuerChecker();
-  private:
-    IssuerChecker(const IssuerChecker&) /*= delete*/;
-    void operator=(const IssuerChecker&) /*= delete*/;
+
+    IssuerChecker(const IssuerChecker&) = delete;
+    void operator=(const IssuerChecker&) = delete;
   };
 
   // Search for a CA certificate with the given name. The implementation must
   // call checker.Check with the DER encoding of the potential issuer
   // certificate. The implementation must follow these rules:
   //
-  // * The subject name of the certificate given to checker.Check must be equal
-  //   to encodedIssuerName.
   // * The implementation must be reentrant and must limit the amount of stack
   //   space it uses; see the note on reentrancy and stack usage below.
-  // * When checker.Check does not return SECSuccess then immediately return
-  //   SECFailure.
-  // * When checker.Check returns SECSuccess and sets keepGoing = false, then
-  //   immediately return SECSuccess.
-  // * When checker.Check returns SECSuccess and sets keepGoing = true, then
+  // * When checker.Check does not return Success then immediately return its
+  //   return value.
+  // * When checker.Check returns Success and sets keepGoing = false, then
+  //   immediately return Success.
+  // * When checker.Check returns Success and sets keepGoing = true, then
   //   call checker.Check again with a different potential issuer certificate,
   //   if any more are available.
   // * When no more potential issuer certificates are available, return
-  //   SECSuccess.
+  //   Success.
   // * Don't call checker.Check with the same potential issuer certificate more
   //   than once in a given call of FindIssuer.
   // * The given time parameter may be used to filter out certificates that are
@@ -255,41 +264,46 @@ public:
   //
   // checker.Check is responsible for limiting the recursion to a reasonable
   // limit.
+  //
+  // checker.Check will verify that the subject's issuer field matches the
+  // potential issuer's subject field. It will also check that the potential
+  // issuer is valid at the given time. However, if the FindIssuer
+  // implementation has an efficient way of filtering potential issuers by name
+  // and/or validity period itself, then it is probably better for performance
+  // for it to do so.
   virtual Result FindIssuer(Input encodedIssuerName,
                             IssuerChecker& checker, Time time) = 0;
 
   // Called as soon as we think we have a valid chain but before revocation
   // checks are done. This function can be used to compute additional checks,
-  // especilaly checks that require the entire certificate chain. This callback
+  // especially checks that require the entire certificate chain. This callback
   // can also be used to save a copy of the built certificate chain for later
   // use.
   //
   // This function may be called multiple times, regardless of whether it
-  // returns SECSuccess or SECFailure. It is guaranteed that BuildCertChain
-  // will not return SECSuccess unless the last call to IsChainValid returns
-  // SECSuccess. Further, it is guaranteed that when BuildCertChain returns
-  // SECSuccess the last chain passed to IsChainValid is the valid chain that
-  // should be used for further operations that require the whole chain.
+  // returns success or failure. It is guaranteed that BuildCertChain will not
+  // return Success unless the last call to IsChainValid returns Success. Further,
+  // it is guaranteed that when BuildCertChain returns Success the last chain
+  // passed to IsChainValid is the valid chain that should be used for further
+  // operations that require the whole chain.
   //
   // Keep in mind, in particular, that if the application saves a copy of the
   // certificate chain the last invocation of IsChainValid during a validation,
-  // it is still possible for BuildCertChain to fail (return SECFailure), in
-  // which case the application must not assume anything about the validity of
-  // the last certificate chain passed to IsChainValid; especially, it would be
-  // very wrong to assume that the certificate chain is valid.
+  // it is still possible for BuildCertChain to fail, in which case the
+  // application must not assume anything about the validity of the last
+  // certificate chain passed to IsChainValid; especially, it would be very
+  // wrong to assume that the certificate chain is valid.
   //
   // certChain.GetDER(0) is the trust anchor.
   virtual Result IsChainValid(const DERArray& certChain, Time time) = 0;
 
-  // issuerCertToDup is only non-const so CERT_DupCertificate can be called on
-  // it.
   virtual Result CheckRevocation(EndEntityOrCA endEntityOrCA,
                                  const CertID& certID, Time time,
                     /*optional*/ const Input* stapledOCSPresponse,
                     /*optional*/ const Input* aiaExtension) = 0;
 
-  // Check that the key size, algorithm, and parameters of the given public key
-  // are acceptable.
+  // Check that the key size, algorithm, elliptic curve used (if applicable),
+  // and parameters of the given public key are acceptable.
   //
   // VerifySignedData() should do the same checks that this function does, but
   // mainly for efficiency, some keys are not passed to VerifySignedData().
@@ -322,9 +336,8 @@ public:
 protected:
   TrustDomain() { }
 
-private:
-  TrustDomain(const TrustDomain&) /* = delete */;
-  void operator=(const TrustDomain&) /* = delete */;
+  TrustDomain(const TrustDomain&) = delete;
+  void operator=(const TrustDomain&) = delete;
 };
 
 } } // namespace mozilla::pkix

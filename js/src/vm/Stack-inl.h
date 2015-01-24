@@ -775,6 +775,20 @@ AbstractFramePtr::setPrevUpToDate() const
     asRematerializedFrame()->setPrevUpToDate();
 }
 
+inline void
+AbstractFramePtr::unsetPrevUpToDate() const
+{
+    if (isInterpreterFrame()) {
+        asInterpreterFrame()->unsetPrevUpToDate();
+        return;
+    }
+    if (isBaselineFrame()) {
+        asBaselineFrame()->unsetPrevUpToDate();
+        return;
+    }
+    asRematerializedFrame()->unsetPrevUpToDate();
+}
+
 inline Value &
 AbstractFramePtr::thisValue() const
 {
@@ -805,9 +819,9 @@ AbstractFramePtr::popWith(JSContext *cx) const
     asBaselineFrame()->popWith(cx);
 }
 
-Activation::Activation(ThreadSafeContext *cx, Kind kind)
+Activation::Activation(JSContext *cx, Kind kind)
   : cx_(cx),
-    compartment_(cx->compartment_),
+    compartment_(cx->compartment()),
     prev_(cx->perThreadData->activation_),
     prevProfiling_(prev_ ? prev_->mostRecentProfiling() : nullptr),
     savedFrameChain_(0),
@@ -833,9 +847,6 @@ Activation::isProfiling() const
 
     if (isJit())
         return asJit()->isProfiling();
-
-    if (isForkJoin())
-        return asForkJoin()->isProfiling();
 
     MOZ_ASSERT(isAsmJS());
     return asAsmJS()->isProfiling();

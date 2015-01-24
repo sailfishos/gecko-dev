@@ -18,8 +18,8 @@ class GMPDecryptorProxyCallback : public GMPCallbackBase {
 public:
   ~GMPDecryptorProxyCallback() {}
 
-  virtual void ResolveNewSessionPromise(uint32_t aPromiseId,
-                                        const nsCString& aSessionId) = 0;
+  virtual void SetSessionId(uint32_t aCreateSessionId,
+                            const nsCString& aSessionId) = 0;
 
   virtual void ResolveLoadSessionPromise(uint32_t aPromiseId,
                                          bool aSuccess) = 0;
@@ -31,8 +31,8 @@ public:
                              const nsCString& aSessionId) = 0;
 
   virtual void SessionMessage(const nsCString& aSessionId,
-                              const nsTArray<uint8_t>& aMessage,
-                              const nsCString& aDestinationURL) = 0;
+                              GMPSessionMessageType aMessageType,
+                              const nsTArray<uint8_t>& aMessage) = 0;
 
   virtual void ExpirationChange(const nsCString& aSessionId,
                                 GMPTimestamp aExpiryTime) = 0;
@@ -63,7 +63,8 @@ public:
 
   virtual nsresult Init(GMPDecryptorProxyCallback* aCallback) = 0;
 
-  virtual void CreateSession(uint32_t aPromiseId,
+  virtual void CreateSession(uint32_t aCreateSessionToken,
+                             uint32_t aPromiseId,
                              const nsCString& aInitDataType,
                              const nsTArray<uint8_t>& aInitData,
                              GMPSessionType aSessionType) = 0;

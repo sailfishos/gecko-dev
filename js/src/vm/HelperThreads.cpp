@@ -9,6 +9,7 @@
 #include "mozilla/DebugOnly.h"
 
 #include "jsnativestack.h"
+#include "jsnum.h" // For FIX_FPU()
 #include "prmjtime.h"
 
 #include "frontend/BytecodeCompiler.h"
@@ -360,7 +361,7 @@ js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &optio
 
     ScopedJSDeletePtr<ExclusiveContext> helpercx(
         cx->new_<ExclusiveContext>(cx->runtime(), (PerThreadData *) nullptr,
-                                   ThreadSafeContext::Context_Exclusive));
+                                   ExclusiveContext::Context_Exclusive));
     if (!helpercx)
         return false;
 
@@ -468,7 +469,7 @@ GlobalHelperThreadState::GlobalHelperThreadState()
    threads(nullptr),
    asmJSCompilationInProgress(false),
    helperLock(nullptr),
-#ifdef DEbUG
+#ifdef DEBUG
    lockOwner(nullptr),
 #endif
    consumerWakeup(nullptr),
@@ -926,6 +927,8 @@ GlobalHelperThreadState::finishParseTask(JSContext *maybecx, JSRuntime *rt, void
         parseTask->errors[i]->throwError(cx);
     if (parseTask->overRecursed)
         js_ReportOverRecursed(cx);
+    if (cx->isExceptionPending())
+        return nullptr;
 
     if (script) {
         // The Debugger only needs to be told about the topmost script that was compiled.
@@ -980,6 +983,12 @@ HelperThread::ThreadMain(void *arg)
         NuwaMarkCurrentThread(nullptr, nullptr);
     }
 #endif
+
+    //See bug 1104658.
+    //Set the FPU control word to be the same as the main thread's, or math
+    //computations on this thread may use incorrect precision rules during
+    //Ion compilation.
+    FIX_FPU();
 
     static_cast<HelperThread *>(arg)->threadLoop();
 }
@@ -1058,9 +1067,10 @@ HelperThread::handleIonWorkload()
     ionBuilder = builder;
     ionBuilder->setPauseFlag(&pause);
 
-    TraceLogger *logger = TraceLoggerForCurrentThread();
-    AutoTraceLog logScript(logger, TraceLogCreateTextId(logger, ionBuilder->script()));
-    AutoTraceLog logCompile(logger, TraceLogger::IonCompilation);
+    TraceLoggerThread *logger = TraceLoggerForCurrentThread();
+    TraceLoggerEvent event(logger, TraceLogger_AnnotateScripts, ionBuilder->script());
+    AutoTraceLog logScript(logger, event);
+    AutoTraceLog logCompile(logger, TraceLogger_IonCompilation);
 
     JSRuntime *rt = ionBuilder->script()->compartment()->runtimeFromAnyThread();
 
@@ -1128,8 +1138,8 @@ CurrentHelperThread()
 void
 js::PauseCurrentHelperThread()
 {
-    TraceLogger *logger = TraceLoggerForCurrentThread();
-    AutoTraceLog logPaused(logger, TraceLogger::IonCompilationPaused);
+    TraceLoggerThread *logger = TraceLoggerForCurrentThread();
+    AutoTraceLog logPaused(logger, TraceLogger_IonCompilationPaused);
 
     HelperThread *thread = CurrentHelperThread();
 
@@ -1180,7 +1190,7 @@ HelperThread::handleParseWorkload()
         SourceBufferHolder srcBuf(parseTask->chars, parseTask->length,
                                   SourceBufferHolder::NoOwnership);
         parseTask->script = frontend::CompileScript(parseTask->cx, &parseTask->alloc,
-                                                    NullPtr(), NullPtr(),
+                                                    NullPtr(), NullPtr(), NullPtr(),
                                                     parseTask->options,
                                                     srcBuf);
     }

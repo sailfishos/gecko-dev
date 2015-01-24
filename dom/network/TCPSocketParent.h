@@ -52,7 +52,7 @@ public:
   TCPSocketParent() {}
 
   virtual bool RecvOpen(const nsString& aHost, const uint16_t& aPort,
-                        const bool& useSSL, const nsString& aBinaryType);
+                        const bool& useSSL, const nsString& aBinaryType) MOZ_OVERRIDE;
 
   virtual bool RecvStartTLS() MOZ_OVERRIDE;
   virtual bool RecvSuspend() MOZ_OVERRIDE;
@@ -63,6 +63,7 @@ public:
   virtual bool RecvRequestDelete() MOZ_OVERRIDE;
   virtual nsresult OfflineNotification(nsISupports *) MOZ_OVERRIDE;
   virtual uint32_t GetAppId() MOZ_OVERRIDE;
+  bool GetInBrowser();
 
 private:
   virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;

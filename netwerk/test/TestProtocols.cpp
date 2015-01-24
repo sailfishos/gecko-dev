@@ -573,7 +573,7 @@ public:
     NotificationCallbacks() {
     }
 
-    NS_IMETHOD GetInterface(const nsIID& iid, void* *result) {
+    NS_IMETHOD GetInterface(const nsIID& iid, void* *result) MOZ_OVERRIDE {
         nsresult rv = NS_ERROR_FAILURE;
 
         if (iid.Equals(NS_GET_IID(nsIChannelEventSink))) {
@@ -649,7 +649,7 @@ nsresult StartLoadingURL(const char* aUrlString)
 
         NS_RELEASE(callbacks);
         if (NS_FAILED(rv)) {
-            LOG(("ERROR: NS_OpenURI failed for %s [rv=%x]\n", aUrlString, rv));
+            LOG(("ERROR: NS_NewChannel failed for %s [rv=%x]\n", aUrlString, rv));
             return rv;
         }
 

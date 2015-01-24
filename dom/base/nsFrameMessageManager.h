@@ -148,7 +148,8 @@ public:
   {
   }
 
-  bool ToObject(JSContext* aCx, JS::MutableHandle<JSObject*> aObjp);
+  virtual bool ToObject(JSContext* aCx, JS::MutableHandle<JSObject*> aObjp)
+    MOZ_OVERRIDE;
 
 private:
   JS::Rooted<JSObject*> mObj;
@@ -427,7 +428,7 @@ class nsScriptCacheCleaner MOZ_FINAL : public nsIObserver
 
   NS_IMETHODIMP Observe(nsISupports *aSubject,
                         const char *aTopic,
-                        const char16_t *aData)
+                        const char16_t *aData) MOZ_OVERRIDE
   {
     nsFrameScriptExecutor::Shutdown();
     return NS_OK;

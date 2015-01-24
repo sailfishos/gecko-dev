@@ -180,7 +180,6 @@ void VolumeManager::InitConfig()
     return;
   }
   while(fgets(line, sizeof(line), fp)) {
-    const char *delim = " \t\n";
     n++;
 
     if (line[0] == '#')
@@ -389,7 +388,7 @@ VolumeManager::WriteCommandData()
     Restart();
     return;
   }
-  DBG("Wrote %ld bytes (of %d)", bytesWritten, cmd->BytesRemaining());
+  DBG("Wrote %d bytes (of %d)", bytesWritten, cmd->BytesRemaining());
   cmd->ConsumeBytes(bytesWritten);
   if (cmd->BytesRemaining() == 0) {
     return;

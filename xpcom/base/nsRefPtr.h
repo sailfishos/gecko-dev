@@ -7,7 +7,8 @@
 #ifndef nsRefPtr_h
 #define nsRefPtr_h
 
-#include "AlreadyAddRefed.h"
+#include "mozilla/AlreadyAddRefed.h"
+#include "mozilla/Attributes.h"
 #include "nsDebug.h"
 #include "nsISupportsUtils.h"
 
@@ -222,7 +223,7 @@ public:
   }
 
   T*
-  operator->() const
+  operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN
   {
     NS_PRECONDITION(mRawPtr != 0,
                     "You can't dereference a NULL nsRefPtr with operator->().");

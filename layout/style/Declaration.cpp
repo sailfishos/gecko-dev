@@ -69,7 +69,8 @@ Declaration::RemoveProperty(nsCSSProperty aProperty)
   NS_ABORT_IF_FALSE(!mData && !mImportantData, "Expand didn't null things out");
 
   if (nsCSSProps::IsShorthand(aProperty)) {
-    CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty) {
+    CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty,
+                                         nsCSSProps::eEnabledForAllContent) {
       data.ClearLonghandProperty(*p);
       mOrder.RemoveElement(static_cast<uint32_t>(*p));
     }
@@ -168,10 +169,10 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
   uint32_t totalCount = 0, importantCount = 0,
            initialCount = 0, inheritCount = 0, unsetCount = 0,
            matchingTokenStreamCount = 0, nonMatchingTokenStreamCount = 0;
-  CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty) {
-    if (*p == eCSSProperty__x_system_font ||
-         nsCSSProps::PropHasFlags(*p, CSS_PROPERTY_DIRECTIONAL_SOURCE)) {
-      // The system-font subproperty and the *-source properties don't count.
+  CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty,
+                                       nsCSSProps::eEnabledForAllContent) {
+    if (*p == eCSSProperty__x_system_font) {
+      // The system-font subproperty doesn't count.
       continue;
     }
     ++totalCount;
@@ -349,8 +350,6 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
       for (const nsCSSProperty** subprops = subproptables,
                **subprops_end = ArrayEnd(subproptables);
            subprops < subprops_end; ++subprops) {
-        // Check only the first four subprops in each table, since the
-        // others are extras for dimensional box properties.
         const nsCSSValue *firstSide = data->ValueFor((*subprops)[0]);
         for (int32_t side = 1; side < 4; ++side) {
           const nsCSSValue *otherSide =
@@ -377,9 +376,7 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
       const nsCSSProperty* subprops =
         nsCSSProps::SubpropertyEntryFor(aProperty);
       NS_ABORT_IF_FALSE(StringEndsWith(nsCSSProps::GetStringValue(subprops[2]),
-                                       NS_LITERAL_CSTRING("-color")) ||
-                        StringEndsWith(nsCSSProps::GetStringValue(subprops[2]),
-                                       NS_LITERAL_CSTRING("-color-value")),
+                                       NS_LITERAL_CSTRING("-color")),
                         "third subprop must be the color property");
       const nsCSSValue *colorValue = data->ValueFor(subprops[2]);
       bool isMozUseTextColor =
@@ -394,33 +391,6 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
              AppendValueToString(subprops[2], aValue, aSerialization)))) {
         aValue.Truncate();
       }
-      break;
-    }
-    case eCSSProperty_margin_left:
-    case eCSSProperty_margin_right:
-    case eCSSProperty_margin_start:
-    case eCSSProperty_margin_end:
-    case eCSSProperty_padding_left:
-    case eCSSProperty_padding_right:
-    case eCSSProperty_padding_start:
-    case eCSSProperty_padding_end:
-    case eCSSProperty_border_left_color:
-    case eCSSProperty_border_left_style:
-    case eCSSProperty_border_left_width:
-    case eCSSProperty_border_right_color:
-    case eCSSProperty_border_right_style:
-    case eCSSProperty_border_right_width:
-    case eCSSProperty_border_start_color:
-    case eCSSProperty_border_start_style:
-    case eCSSProperty_border_start_width:
-    case eCSSProperty_border_end_color:
-    case eCSSProperty_border_end_style:
-    case eCSSProperty_border_end_width: {
-      const nsCSSProperty* subprops =
-        nsCSSProps::SubpropertyEntryFor(aProperty);
-      NS_ABORT_IF_FALSE(subprops[3] == eCSSProperty_UNKNOWN,
-                        "not box property with physical vs. logical cascading");
-      AppendValueToString(subprops[0], aValue, aSerialization);
       break;
     }
     case eCSSProperty_background: {
@@ -453,6 +423,13 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
         data->ValueFor(eCSSProperty_background_size)->
         GetPairListValue();
       for (;;) {
+        // Serialize background-color at the beginning of the last item.
+        if (!image->mNext) {
+          AppendValueToString(eCSSProperty_background_color, aValue,
+                              aSerialization);
+          aValue.Append(char16_t(' '));
+        }
+
         image->mValue.AppendToString(eCSSProperty_background_image, aValue,
                                      aSerialization);
         aValue.Append(char16_t(' '));
@@ -535,10 +512,6 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
         aValue.Append(char16_t(','));
         aValue.Append(char16_t(' '));
       }
-
-      aValue.Append(char16_t(' '));
-      AppendValueToString(eCSSProperty_background_color, aValue,
-                          aSerialization);
       break;
     }
     case eCSSProperty_font: {
@@ -1154,7 +1127,8 @@ Declaration::GetValueIsImportant(nsCSSProperty aProperty) const
     return mImportantData->ValueFor(aProperty) != nullptr;
   }
 
-  CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty) {
+  CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(p, aProperty,
+                                       nsCSSProps::eEnabledForAllContent) {
     if (*p == eCSSProperty__x_system_font) {
       // The system_font subproperty doesn't count.
       continue;

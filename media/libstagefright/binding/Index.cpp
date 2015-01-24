@@ -90,8 +90,6 @@ MP4Sample* SampleIterator::GetNext()
     return nullptr;
   }
 
-  Next();
-
   nsAutoPtr<MP4Sample> sample(new MP4Sample());
   sample->decode_timestamp = s->mDecodeTime;
   sample->composition_timestamp = s->mCompositionRange.start;
@@ -130,6 +128,8 @@ MP4Sample* SampleIterator::GetNext()
       sample->crypto.iv_size = 16;
     }
   }
+
+  Next();
 
   return sample.forget();
 }
@@ -186,13 +186,39 @@ void SampleIterator::Seek(Microseconds aTime)
   mCurrentSample = syncSample;
 }
 
+Microseconds
+SampleIterator::GetNextKeyframeTime()
+{
+  nsTArray<Moof>& moofs = mIndex->mMoofParser->Moofs();
+  size_t sample = mCurrentSample + 1;
+  size_t moof = mCurrentMoof;
+  while (true) {
+    while (true) {
+      if (moof == moofs.Length()) {
+        return -1;
+      }
+      if (sample < moofs[moof].mIndex.Length()) {
+        break;
+      }
+      sample = 0;
+      ++moof;
+    }
+    if (moofs[moof].mIndex[sample].mSync) {
+      return moofs[moof].mIndex[sample].mDecodeTime;
+    }
+    ++sample;
+  }
+  MOZ_ASSERT(false); // should not be reached.
+}
+
 Index::Index(const stagefright::Vector<MediaSource::Indice>& aIndex,
-             Stream* aSource, uint32_t aTrackId, Monitor* aMonitor)
+             Stream* aSource, uint32_t aTrackId, Microseconds aTimestampOffset,
+             Monitor* aMonitor)
   : mSource(aSource)
   , mMonitor(aMonitor)
 {
   if (aIndex.isEmpty()) {
-    mMoofParser = new MoofParser(aSource, aTrackId, aMonitor);
+    mMoofParser = new MoofParser(aSource, aTrackId, aTimestampOffset, aMonitor);
   } else {
     for (size_t i = 0; i < aIndex.size(); i++) {
       const MediaSource::Indice& indice = aIndex[i];

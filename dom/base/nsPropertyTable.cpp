@@ -95,8 +95,7 @@ nsPropertyTable::TransferOrDeleteAllPropertiesFor(nsPropertyOwner aObject,
   for (PropertyList* prop = mPropertyList; prop; prop = prop->mNext) {
     if (prop->mTransfer) {
       PropertyListMapEntry *entry = static_cast<PropertyListMapEntry*>
-                                               (PL_DHashTableOperate(&prop->mObjectValueMap, aObject,
-                               PL_DHASH_LOOKUP));
+                                               (PL_DHashTableLookup(&prop->mObjectValueMap, aObject));
       if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
         rv = aOtherTable->SetProperty(aObject, prop->mName,
                                       entry->value, prop->mDtorFunc,
@@ -126,7 +125,7 @@ nsPropertyTable::Enumerate(nsPropertyOwner aObject,
   PropertyList* prop;
   for (prop = mPropertyList; prop; prop = prop->mNext) {
     PropertyListMapEntry *entry = static_cast<PropertyListMapEntry*>
-      (PL_DHashTableOperate(&prop->mObjectValueMap, aObject, PL_DHASH_LOOKUP));
+      (PL_DHashTableLookup(&prop->mObjectValueMap, aObject));
     if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
       aCallback(const_cast<void*>(aObject.get()), prop->mName, entry->value,
                  aData);
@@ -174,8 +173,7 @@ nsPropertyTable::GetPropertyInternal(nsPropertyOwner aObject,
   PropertyList* propertyList = GetPropertyListFor(aPropertyName);
   if (propertyList) {
     PropertyListMapEntry *entry = static_cast<PropertyListMapEntry*>
-                                             (PL_DHashTableOperate(&propertyList->mObjectValueMap, aObject,
-                             PL_DHASH_LOOKUP));
+                                             (PL_DHashTableLookup(&propertyList->mObjectValueMap, aObject));
     if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
       propValue = entry->value;
       if (aRemove) {
@@ -217,7 +215,7 @@ nsPropertyTable::SetPropertyInternal(nsPropertyOwner     aObject,
   } else {
     propertyList = new PropertyList(aPropertyName, aPropDtorFunc,
                                     aPropDtorData, aTransfer);
-    if (!propertyList || !propertyList->mObjectValueMap.ops) {
+    if (!propertyList || !propertyList->mObjectValueMap.IsInitialized()) {
       delete propertyList;
       return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -230,7 +228,7 @@ nsPropertyTable::SetPropertyInternal(nsPropertyOwner     aObject,
   // value is destroyed
   nsresult result = NS_OK;
   PropertyListMapEntry *entry = static_cast<PropertyListMapEntry*>
-                                           (PL_DHashTableOperate(&propertyList->mObjectValueMap, aObject, PL_DHASH_ADD));
+                                           (PL_DHashTableAdd(&propertyList->mObjectValueMap, aObject));
   if (!entry)
     return NS_ERROR_OUT_OF_MEMORY;
   // A nullptr entry->key is the sign that the entry has just been allocated
@@ -282,7 +280,7 @@ nsPropertyTable::GetPropertyListFor(nsIAtom* aPropertyName) const
 }
 
 //----------------------------------------------------------------------
-    
+
 nsPropertyTable::PropertyList::PropertyList(nsIAtom            *aName,
                                             NSPropertyDtorFunc  aDtorFunc,
                                             void               *aDtorData,
@@ -293,7 +291,7 @@ nsPropertyTable::PropertyList::PropertyList(nsIAtom            *aName,
     mTransfer(aTransfer),
     mNext(nullptr)
 {
-  PL_DHashTableInit(&mObjectValueMap, PL_DHashGetStubOps(), this,
+  PL_DHashTableInit(&mObjectValueMap, PL_DHashGetStubOps(),
                     sizeof(PropertyListMapEntry));
 }
 
@@ -308,7 +306,7 @@ DestroyPropertyEnumerator(PLDHashTable *table, PLDHashEntryHdr *hdr,
                           uint32_t number, void *arg)
 {
   nsPropertyTable::PropertyList *propList =
-      static_cast<nsPropertyTable::PropertyList*>(table->data);
+      static_cast<nsPropertyTable::PropertyList*>(arg);
   PropertyListMapEntry* entry = static_cast<PropertyListMapEntry*>(hdr);
 
   propList->mDtorFunc(const_cast<void*>(entry->key), propList->mName,
@@ -321,15 +319,14 @@ nsPropertyTable::PropertyList::Destroy()
 {
   // Enumerate any remaining object/value pairs and destroy the value object
   if (mDtorFunc)
-    PL_DHashTableEnumerate(&mObjectValueMap, DestroyPropertyEnumerator,
-                           nullptr);
+    PL_DHashTableEnumerate(&mObjectValueMap, DestroyPropertyEnumerator, this);
 }
 
 bool
 nsPropertyTable::PropertyList::DeletePropertyFor(nsPropertyOwner aObject)
 {
   PropertyListMapEntry *entry = static_cast<PropertyListMapEntry*>
-                                           (PL_DHashTableOperate(&mObjectValueMap, aObject, PL_DHASH_LOOKUP));
+                                           (PL_DHashTableLookup(&mObjectValueMap, aObject));
   if (!PL_DHASH_ENTRY_IS_BUSY(entry))
     return false;
 

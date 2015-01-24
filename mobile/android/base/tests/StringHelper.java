@@ -1,3 +1,8 @@
+/* -*- Mode: Java; c-basic-offset: 4; tab-width: 4; indent-tabs-mode: nil; -*-
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 package org.mozilla.gecko.tests;
 
 
@@ -167,7 +172,6 @@ public class StringHelper {
     public static final String TEXT_SIZE_LABEL = "Text size";
     public static final String TITLE_BAR_LABEL = "Title bar";
     public static final String SCROLL_TITLE_BAR_LABEL = "Full-screen browsing";
-    public static final String NEW_TABLET_UI = "Enable new tablet UI";
     public static final String TEXT_REFLOW_LABEL = "Text reflow";
     public static final String CHARACTER_ENCODING_LABEL = "Character encoding";
     public static final String PLUGINS_LABEL = "Plugins";

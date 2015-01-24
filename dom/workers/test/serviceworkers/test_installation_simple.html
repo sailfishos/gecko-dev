@@ -66,9 +66,9 @@
       // because the registration is for the realworker scope, so the workers
       // should be obtained for that scope and not for
       // test_installation_simple.html
-      var worker = wr.installing || wr.waiting || wr.active;
-      ok(worker && worker.scope.match(/realworker$/) &&
-         worker.url.match(/worker.js$/), "Valid worker instance should be available.");
+      var worker = wr.installing;
+      ok(worker && wr.scope.match(/realworker$/) &&
+         worker.scriptURL.match(/worker.js$/), "Valid worker instance should be available.");
     }, function(e) {
       info("Error: " + e.name);
       ok(false, "realWorker Registration should have succeeded!");
@@ -95,15 +95,15 @@
   }
 
   function networkError404() {
-    return navigator.serviceWorker.register("404.js").then(function(w) {
-        todo(false, "Should fail with NetworkError");
+    return navigator.serviceWorker.register("404.js", { scope: "network_error/"}).then(function(w) {
+        ok(false, "Should fail with NetworkError");
       }, function(e) {
-        todo(e.name === "NetworkError", "Should fail with NetworkError");
+        ok(e.name === "NetworkError", "Should fail with NetworkError");
       });
   }
 
   function parseError() {
-    var p = navigator.serviceWorker.register("parse_error_worker.js");
+    var p = navigator.serviceWorker.register("parse_error_worker.js", { scope: "parse_error/" });
     return p.then(function(wr) {
       ok(false, "Registration should fail with parse error");
     }, function(e) {

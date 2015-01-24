@@ -43,7 +43,7 @@ TrustDomain::IssuerChecker::~IssuerChecker() { }
 
 // The implementation of TrustDomain::IssuerTracker is in a subclass only to
 // hide the implementation from external users.
-class PathBuildingStep : public TrustDomain::IssuerChecker
+class PathBuildingStep final : public TrustDomain::IssuerChecker
 {
 public:
   PathBuildingStep(TrustDomain& trustDomain, const BackCert& subject,
@@ -66,7 +66,7 @@ public:
 
   Result Check(Input potentialIssuerDER,
                /*optional*/ const Input* additionalNameConstraints,
-               /*out*/ bool& keepGoing);
+               /*out*/ bool& keepGoing) override;
 
   Result CheckResult() const;
 
@@ -84,8 +84,8 @@ private:
   Result result;
   bool resultWasSet;
 
-  PathBuildingStep(const PathBuildingStep&) /*= delete*/;
-  void operator=(const PathBuildingStep&) /*= delete*/;
+  PathBuildingStep(const PathBuildingStep&) = delete;
+  void operator=(const PathBuildingStep&) = delete;
 };
 
 Result
@@ -139,8 +139,17 @@ PathBuildingStep::Check(Input potentialIssuerDER,
     return RecordResult(rv, keepGoing);
   }
 
-  // RFC5280 4.2.1.1. Authority Key Identifier
-  // RFC5280 4.2.1.2. Subject Key Identifier
+  // Simple TrustDomain::FindIssuers implementations may pass in all possible
+  // CA certificates without any filtering. Because of this, we don't consider
+  // a mismatched name to be an error. Instead, we just pretend that any
+  // certificate without a matching name was never passed to us. In particular,
+  // we treat the case where the TrustDomain only asks us to check CA
+  // certificates with mismatched names as equivalent to the case where the
+  // TrustDomain never called Check() at all.
+  if (!InputsAreEqual(potentialIssuer.GetSubject(), subject.GetIssuer())) {
+    keepGoing = true;
+    return Success;
+  }
 
   // Loop prevention, done as recommended by RFC4158 Section 5.2
   // TODO: this doesn't account for subjectAltNames!

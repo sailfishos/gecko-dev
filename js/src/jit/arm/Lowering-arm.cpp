@@ -551,19 +551,13 @@ LIRGeneratorARM::visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic
 }
 
 void
-LIRGeneratorARM::visitForkJoinGetSlice(MForkJoinGetSlice *ins)
-{
-    MOZ_CRASH("NYI");
-}
-
-void
 LIRGeneratorARM::visitSimdBinaryArith(MSimdBinaryArith *ins)
 {
     MOZ_CRASH("NYI");
 }
 
 void
-LIRGeneratorARM::visitSimdTernaryBitwise(MSimdTernaryBitwise *ins)
+LIRGeneratorARM::visitSimdSelect(MSimdSelect *ins)
 {
     MOZ_CRASH("NYI");
 }

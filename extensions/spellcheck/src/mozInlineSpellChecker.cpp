@@ -500,7 +500,7 @@ public:
   explicit InitEditorSpellCheckCallback(mozInlineSpellChecker* aSpellChecker)
     : mSpellChecker(aSpellChecker) {}
 
-  NS_IMETHOD EditorSpellCheckDone()
+  NS_IMETHOD EditorSpellCheckDone() MOZ_OVERRIDE
   {
     return mSpellChecker ? mSpellChecker->EditorSpellCheckInited() : NS_OK;
   }
@@ -902,7 +902,11 @@ mozInlineSpellChecker::SpellCheckAfterEditorChange(
 nsresult
 mozInlineSpellChecker::SpellCheckRange(nsIDOMRange* aRange)
 {
-  NS_ENSURE_TRUE(mSpellCheck, NS_ERROR_NOT_INITIALIZED);
+  if (!mSpellCheck) {
+    NS_WARN_IF_FALSE(mPendingSpellCheck,
+                     "Trying to spellcheck, but checking seems to be disabled");
+    return NS_ERROR_NOT_INITIALIZED;
+  }
 
   mozInlineSpellStatus status(this);
   nsRange* range = static_cast<nsRange*>(aRange);
@@ -1950,7 +1954,7 @@ public:
                                            uint32_t aDisabledAsyncToken)
     : mSpellChecker(aSpellChecker), mDisabledAsyncToken(aDisabledAsyncToken) {}
 
-  NS_IMETHOD EditorSpellCheckDone()
+  NS_IMETHOD EditorSpellCheckDone() MOZ_OVERRIDE
   {
     // Ignore this callback if SetEnableRealTimeSpell(false) was called after
     // the UpdateCurrentDictionary call that triggered it.

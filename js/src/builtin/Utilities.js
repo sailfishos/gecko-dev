@@ -43,7 +43,10 @@ var std_StopIteration = StopIteration;
 
 
 /* Spec: ECMAScript Language Specification, 5.1 edition, 8.8 */
-function List() {}
+function List() {
+    this.length = 0;
+}
+
 {
   let ListProto = std_Object_create(null);
   ListProto.indexOf = std_Array_indexOf;
@@ -103,38 +106,50 @@ function ToLength(v) {
     return std_Math_min(v, 0x1fffffffffffff);
 }
 
-// Spec: ECMAScript Draft, 6th edition Oct 14, 2014, 7.2.4.
+/* Spec: ECMAScript Draft, 6th edition Oct 14, 2014, 7.2.4 */
 function SameValueZero(x, y) {
     return x === y || (x !== x && y !== y);
 }
 
-/********** Testing code **********/
+/* Spec: ECMAScript Draft, 6th edition Dec 24, 2014, 7.3.8 */
+function GetMethod(O, P) {
+    // Step 1.
+    assert(IsPropertyKey(P), "Invalid property key");
 
-#ifdef ENABLE_PARALLEL_JS
+    // Steps 2-3.
+    var func = ToObject(O)[P];
 
-/**
- * Internal debugging tool: checks that the given `mode` permits
- * sequential execution
- */
-function AssertSequentialIsOK(mode) {
-  if (mode && mode.mode && mode.mode !== "seq" && ParallelTestsShouldPass())
-    ThrowError(JSMSG_WRONG_VALUE, "parallel execution", "sequential was forced");
+    // Step 4.
+    if (func === undefined || func === null)
+        return undefined;
+
+    // Step 5.
+    if (!IsCallable(func))
+        ThrowError(JSMSG_NOT_FUNCTION, typeof func);
+
+    // Step 6.
+    return func;
 }
 
-function ForkJoinMode(mode) {
-  // WARNING: this must match the enum ForkJoinMode in ForkJoin.cpp
-  if (!mode || !mode.mode) {
-    return 0;
-  } else if (mode.mode === "compile") {
-    return 1;
-  } else if (mode.mode === "par") {
-    return 2;
-  } else if (mode.mode === "recover") {
-    return 3;
-  } else if (mode.mode === "bailout") {
-    return 4;
-  }
-  ThrowError(JSMSG_PAR_ARRAY_BAD_ARG);
+/* Spec: ECMAScript Draft, 6th edition Dec 24, 2014, 7.2.7 */
+function IsPropertyKey(argument) {
+    var type = typeof argument;
+    return type === "string" || type === "symbol";
 }
 
-#endif
+/* Spec: ECMAScript Draft, 6th edition Dec 24, 2014, 7.4.1 */
+function GetIterator(obj, method) {
+    // Steps 1-2.
+    if (arguments.length === 1)
+        method = GetMethod(obj, std_iterator);
+
+    // Steps 3-4.
+    var iterator = callFunction(method, obj);
+
+    // Step 5.
+    if (!IsObject(iterator))
+        ThrowError(JSMSG_NOT_ITERABLE, ToString(iterator));
+
+    // Step 6.
+    return iterator;
+}

@@ -218,7 +218,6 @@ SelectionCarets::HandleEvent(WidgetEvent* aEvent)
     } else {
       mDragMode = NONE;
       mActiveTouchId = -1;
-      SetVisibility(false);
       LaunchLongTapDetector();
     }
   } else if (aEvent->message == NS_TOUCH_END ||
@@ -263,7 +262,13 @@ SelectionCarets::HandleEvent(WidgetEvent* aEvent)
   } else if (aEvent->message == NS_MOUSE_MOZLONGTAP) {
     if (!mVisible) {
       SELECTIONCARETS_LOG("SelectWord from APZ");
-      SelectWord();
+      nsresult wordSelected = SelectWord();
+
+      if (NS_FAILED(wordSelected)) {
+        SELECTIONCARETS_LOG("SelectWord from APZ failed!")
+        return nsEventStatus_eIgnore;
+      }
+
       return nsEventStatus_eConsumeNoDefault;
     }
   }
@@ -293,6 +298,10 @@ SelectionCarets::SetVisibility(bool aVisible)
     SELECTIONCARETS_LOG("Set visibility %s, same as the old one",
                         (aVisible ? "shown" : "hidden"));
     return;
+  }
+
+  if (!aVisible) {
+    mSelectionVisibleInScrollFrames = false;
   }
 
   mVisible = aVisible;
@@ -550,39 +559,63 @@ nsresult
 SelectionCarets::SelectWord()
 {
   if (!mPresShell) {
-    return NS_OK;
+    return NS_ERROR_UNEXPECTED;
   }
 
   nsIFrame* rootFrame = mPresShell->GetRootFrame();
   if (!rootFrame) {
-    return NS_OK;
+    return NS_ERROR_NOT_AVAILABLE;
   }
 
   // Find content offsets for mouse down point
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, mDownPoint,
     nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC);
   if (!ptFrame) {
-    return NS_OK;
+    return NS_ERROR_FAILURE;
   }
 
   bool selectable;
   ptFrame->IsSelectable(&selectable, nullptr);
   if (!selectable) {
-    return NS_OK;
+    SELECTIONCARETS_LOG(" frame %p is not selectable", ptFrame);
+    return NS_ERROR_FAILURE;
   }
 
   nsPoint ptInFrame = mDownPoint;
   nsLayoutUtils::TransformPoint(rootFrame, ptFrame, ptInFrame);
 
-  // If target frame is editable, we should move focus to targe frame. If
-  // target frame isn't editable and our focus content is editable, we should
+  nsIFrame* currFrame = ptFrame;
+  nsIContent* newFocusContent = nullptr;
+  while (currFrame) {
+    int32_t tabIndexUnused = 0;
+    if (currFrame->IsFocusable(&tabIndexUnused, true)) {
+      newFocusContent = currFrame->GetContent();
+      nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocusContent));
+      if (domElement)
+        break;
+    }
+    currFrame = currFrame->GetParent();
+  }
+
+
+  // If target frame is focusable, we should move focus to it. If target frame
+  // isn't focusable, and our previous focused content is editable, we should
   // clear focus.
   nsFocusManager* fm = nsFocusManager::GetFocusManager();
   nsIContent* editingHost = ptFrame->GetContent()->GetEditingHost();
-  if (editingHost) {
-    nsCOMPtr<nsIDOMElement> elt = do_QueryInterface(editingHost->GetParent());
-    if (elt) {
-      fm->SetFocus(elt, 0);
+  if (newFocusContent && currFrame) {
+    nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(newFocusContent));
+    fm->SetFocus(domElement,0);
+
+    if (editingHost && !nsContentUtils::HasNonEmptyTextContent(
+          editingHost, nsContentUtils::eRecurseIntoChildren)) {
+      SELECTIONCARETS_LOG("Select a editable content %p with empty text",
+                          editingHost);
+      // Long tap on the content with empty text, no action for
+      // selectioncarets but need to dispatch the touchcarettap event
+      // to support the short cut mode
+      DispatchCustomEvent(NS_LITERAL_STRING("touchcarettap"));
+      return NS_OK;
     }
   } else {
     nsIContent* focusedContent = GetFocusedContent();
@@ -1030,6 +1063,21 @@ SelectionCarets::GetSelectionBoundingRect(Selection* aSel)
 }
 
 void
+SelectionCarets::DispatchCustomEvent(const nsAString& aEvent)
+{
+  SELECTIONCARETS_LOG("dispatch %s event", NS_ConvertUTF16toUTF8(aEvent).get());
+  bool defaultActionEnabled = true;
+  nsIDocument* doc = mPresShell->GetDocument();
+  MOZ_ASSERT(doc);
+  nsContentUtils::DispatchTrustedEvent(doc,
+                                       ToSupports(doc),
+                                       aEvent,
+                                       true,
+                                       false,
+                                       &defaultActionEnabled);
+}
+
+void
 SelectionCarets::DispatchSelectionStateChangedEvent(Selection* aSelection,
                                                     SelectionState aState)
 {
@@ -1073,10 +1121,13 @@ SelectionCarets::DispatchSelectionStateChangedEvent(Selection* aSelection,
 }
 
 void
-SelectionCarets::NotifyBlur()
+SelectionCarets::NotifyBlur(bool aIsLeavingDocument)
 {
+  SELECTIONCARETS_LOG("Send out the blur event");
   SetVisibility(false);
-  CancelLongTapDetector();
+  if (aIsLeavingDocument) {
+    CancelLongTapDetector();
+  }
   DispatchSelectionStateChangedEvent(nullptr, SelectionState::Blur);
 }
 
@@ -1086,6 +1137,12 @@ SelectionCarets::NotifySelectionChanged(nsIDOMDocument* aDoc,
                                         int16_t aReason)
 {
   SELECTIONCARETS_LOG("aSel (%p), Reason=%d", aSel, aReason);
+
+  if (aSel != GetSelection()) {
+    SELECTIONCARETS_LOG("Return for selection mismatch!");
+    return NS_OK;
+  }
+
   if (!aReason || (aReason & (nsISelectionListener::DRAG_REASON |
                               nsISelectionListener::KEYPRESS_REASON |
                               nsISelectionListener::MOUSEDOWN_REASON))) {
@@ -1203,7 +1260,11 @@ SelectionCarets::FireLongTap(nsITimer* aTimer, void* aSelectionCarets)
                   "Unexpected timer");
 
   SELECTIONCARETS_LOG_STATIC("SelectWord from non-APZ");
-  self->SelectWord();
+  nsresult wordSelected = self->SelectWord();
+
+  if (NS_FAILED(wordSelected)) {
+    SELECTIONCARETS_LOG_STATIC("SelectWord from non-APZ failed!");
+  }
 }
 
 void
@@ -1230,7 +1291,6 @@ SelectionCarets::FireScrollEnd(nsITimer* aTimer, void* aSelectionCarets)
                   "Unexpected timer");
 
   SELECTIONCARETS_LOG_STATIC("Update selection carets!");
-  self->SetVisibility(true);
   self->UpdateSelectionCarets();
   self->DispatchSelectionStateChangedEvent(self->GetSelection(),
                                            SelectionState::Updateposition);
@@ -1243,8 +1303,12 @@ SelectionCarets::Reflow(DOMHighResTimeStamp aStart, DOMHighResTimeStamp aEnd)
     SELECTIONCARETS_LOG("Update selection carets after reflow!");
     UpdateSelectionCarets();
 
-    DispatchSelectionStateChangedEvent(GetSelection(),
-                                       SelectionState::Updateposition);
+    // We don't care selection state when we're at drag mode. We always hide
+    // bubble in drag mode. So, don't dispatch event here.
+    if (mDragMode == NONE) {
+      DispatchSelectionStateChangedEvent(GetSelection(),
+                                         SelectionState::Updateposition);
+    }
   }
   return NS_OK;
 }

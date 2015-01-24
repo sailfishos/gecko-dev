@@ -66,10 +66,6 @@ checkSize(JS::HandleObject map, uint32_t expected)
 }
 END_TEST(testWeakMap_basicOperations)
 
-// TODO: this test stores object pointers in a private slot which is not marked
-// and so doesn't work with compacting GC.
-#ifndef JSGC_COMPACTING
-
 BEGIN_TEST(testWeakMap_keyDelegates)
 {
     JS_SetGCParameter(rt, JSGC_MODE, JSGC_MODE_INCREMENTAL);
@@ -91,7 +87,8 @@ BEGIN_TEST(testWeakMap_keyDelegates)
      */
     CHECK(newCCW(map, delegate));
     js::SliceBudget budget(js::WorkBudget(1000000));
-    rt->gc.gcDebugSlice(budget);
+    rt->gc.startDebugGC(GC_NORMAL, budget);
+    CHECK(!JS::IsIncrementalGCInProgress(rt));
 #ifdef DEBUG
     CHECK(map->zone()->lastZoneGroupIndex() < delegate->zone()->lastZoneGroupIndex());
 #endif
@@ -105,7 +102,8 @@ BEGIN_TEST(testWeakMap_keyDelegates)
     key = nullptr;
     CHECK(newCCW(map, delegate));
     budget = js::SliceBudget(js::WorkBudget(100000));
-    rt->gc.gcDebugSlice(budget);
+    rt->gc.startDebugGC(GC_NORMAL, budget);
+    CHECK(!JS::IsIncrementalGCInProgress(rt));
     CHECK(checkSize(map, 1));
 
     /*
@@ -127,6 +125,9 @@ BEGIN_TEST(testWeakMap_keyDelegates)
 
 static void DelegateObjectMoved(JSObject *obj, const JSObject *old)
 {
+    if (!keyDelegate)
+        return;  // Object got moved before we set keyDelegate to point to it.
+
     MOZ_RELEASE_ASSERT(keyDelegate == old);
     keyDelegate = obj;
 }
@@ -232,12 +233,6 @@ JSObject *newDelegate()
                                 options);
     JS_SetReservedSlot(global, 0, JS::Int32Value(42));
 
-    /*
-     * Ensure the delegate is not in the nursery because for the purpose of this
-     * test we're going to put it in a private slot where it won't get updated.
-     */
-    JS_GC(rt);
-
     return global;
 }
 
@@ -254,5 +249,3 @@ checkSize(JS::HandleObject map, uint32_t expected)
     return true;
 }
 END_TEST(testWeakMap_keyDelegates)
-
-#endif

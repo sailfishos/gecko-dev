@@ -57,7 +57,6 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidBridge.h"
-using namespace mozilla::widget::android;
 #endif
 
 #ifdef MOZ_WIDGET_GTK
@@ -2525,9 +2524,9 @@ nsDownloadManager::Observe(nsISupports *aSubject,
 
     ConfirmCancelDownloads(mCurrentPrivateDownloads.Count(), cancelDownloads,
                            MOZ_UTF16("leavePrivateBrowsingCancelDownloadsAlertTitle"),
-                           MOZ_UTF16("leavePrivateBrowsingWindowsCancelDownloadsAlertMsgMultiple"),
-                           MOZ_UTF16("leavePrivateBrowsingWindowsCancelDownloadsAlertMsg"),
-                           MOZ_UTF16("dontLeavePrivateBrowsingButton"));
+                           MOZ_UTF16("leavePrivateBrowsingWindowsCancelDownloadsAlertMsgMultiple2"),
+                           MOZ_UTF16("leavePrivateBrowsingWindowsCancelDownloadsAlertMsg2"),
+                           MOZ_UTF16("dontLeavePrivateBrowsingButton2"));
   }
 
   return NS_OK;
@@ -2787,7 +2786,7 @@ nsDownload::SetState(DownloadState aState)
             if (mimeInfo)
               mimeInfo->GetMIMEType(contentType);
 
-            mozilla::widget::android::DownloadsIntegration::ScanMedia(path, NS_ConvertUTF8toUTF16(contentType));
+            mozilla::widget::DownloadsIntegration::ScanMedia(path, NS_ConvertUTF8toUTF16(contentType));
           }
 #else
           if (addToRecentDocs && !mPrivate) {

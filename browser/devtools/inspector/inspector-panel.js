@@ -313,7 +313,9 @@ InspectorPanel.prototype = {
    */
   setupSidebar: function InspectorPanel_setupSidebar() {
     let tabbox = this.panelDoc.querySelector("#inspector-sidebar");
-    this.sidebar = new ToolSidebar(tabbox, this, "inspector");
+    this.sidebar = new ToolSidebar(tabbox, this, "inspector", {
+      showAllTabsMenu: true
+    });
 
     let defaultTab = Services.prefs.getCharPref("devtools.inspector.activeSidebar");
 
@@ -341,7 +343,11 @@ InspectorPanel.prototype = {
                         "chrome://browser/content/devtools/layoutview/view.xhtml",
                         "layoutview" == defaultTab);
 
-    let ruleViewTab = this.sidebar.getTab("ruleview");
+    if (this.target.form.animationsActor) {
+      this.sidebar.addTab("animationinspector",
+                          "chrome://browser/content/devtools/animationinspector/animation-inspector.xhtml",
+                          "animationinspector" == defaultTab);
+    }
 
     this.sidebar.show();
   },

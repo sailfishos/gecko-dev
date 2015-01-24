@@ -1489,11 +1489,18 @@ nsChangeHint nsStylePosition::CalcDifference(const nsStylePosition& aOther) cons
 {
   nsChangeHint hint = nsChangeHint(0);
 
-  // Changes to "z-index", "object-fit", & "object-position" require a repaint.
-  if (mZIndex != aOther.mZIndex ||
-      mObjectFit != aOther.mObjectFit ||
-      mObjectPosition != aOther.mObjectPosition) {
+  // Changes to "z-index" require a repaint.
+  if (mZIndex != aOther.mZIndex) {
     NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
+  }
+
+  // Changes to "object-fit" & "object-position" require a repaint.  They
+  // may also require a reflow, if we have a nsSubDocumentFrame, so that we
+  // can adjust the size & position of the subdocument.
+  if (mObjectFit != aOther.mObjectFit ||
+      mObjectPosition != aOther.mObjectPosition) {
+    NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_RepaintFrame,
+                                       nsChangeHint_NeedReflow));
   }
 
   if (mOrder != aOther.mOrder) {
@@ -3344,7 +3351,7 @@ nsStyleText::nsStyleText(void)
   mWordBreak = NS_STYLE_WORDBREAK_NORMAL;
   mWordWrap = NS_STYLE_WORDWRAP_NORMAL;
   mHyphens = NS_STYLE_HYPHENS_MANUAL;
-  mRubyPosition = NS_STYLE_RUBY_POSITION_INITIAL;
+  mRubyPosition = NS_STYLE_RUBY_POSITION_OVER;
   mTextSizeAdjust = NS_STYLE_TEXT_SIZE_ADJUST_AUTO;
   mTextCombineUpright = NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE;
   mControlCharacterVisibility = NS_STYLE_CONTROL_CHARACTER_VISIBILITY_HIDDEN;

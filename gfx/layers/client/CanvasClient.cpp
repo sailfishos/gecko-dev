@@ -72,8 +72,8 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
     gfxImageFormat format
       = gfxPlatform::GetPlatform()->OptimalFormatForContent(contentType);
     TextureFlags flags = TextureFlags::DEFAULT;
-    if (mTextureFlags & TextureFlags::NEEDS_Y_FLIP) {
-      flags |= TextureFlags::NEEDS_Y_FLIP;
+    if (mTextureFlags & TextureFlags::ORIGIN_BOTTOM_LEFT) {
+      flags |= TextureFlags::ORIGIN_BOTTOM_LEFT;
     }
 
     gfx::SurfaceFormat surfaceFormat = gfx::ImageFormatToSurfaceFormat(format);
@@ -401,6 +401,21 @@ CanvasClientSharedSurface::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
 
   forwarder->UpdatedTexture(this, mFrontTex, nullptr);
   forwarder->UseTexture(this, mFrontTex);
+}
+
+void
+CanvasClientSharedSurface::ClearSurfaces()
+{
+  if (mFrontTex && (mFront || mPrevFront)) {
+    // Force a synchronous destruction so that the TextureHost does not
+    // outlive the SharedSurface. This won't be needed once TextureClient/Host
+    // and SharedSurface are merged.
+    mFrontTex->ForceRemove(true /* sync */);
+    mFrontTex = nullptr;
+  }
+  // It is important to destroy the SharedSurface *after* the TextureClient.
+  mFront = nullptr;
+  mPrevFront = nullptr;
 }
 
 }
