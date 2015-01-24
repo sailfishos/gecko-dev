@@ -50,8 +50,8 @@ protected:
                            const nsString& data) MOZ_OVERRIDE;
   virtual bool RecvAddObserver(const nsCString&) MOZ_OVERRIDE;
   virtual bool RecvRemoveObserver(const nsCString&) MOZ_OVERRIDE;
-  virtual bool RecvAddObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
-  virtual bool RecvRemoveObservers(const InfallibleTArray<nsCString>& observers) MOZ_OVERRIDE;
+  virtual bool RecvAddObservers(InfallibleTArray<nsCString>&& observers) MOZ_OVERRIDE;
+  virtual bool RecvRemoveObservers(InfallibleTArray<nsCString>&& observers) MOZ_OVERRIDE;
   virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) MOZ_OVERRIDE;
 
 protected:

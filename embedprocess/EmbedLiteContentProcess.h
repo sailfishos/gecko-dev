@@ -8,13 +8,15 @@
 
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/ipc/ScopedXREEmbed.h"
-#include "EmbedLiteAppProcessChild.h"
+//#include "EmbedLiteAppProcessChild.h"
 
 #undef _MOZ_LOG
 #define _MOZ_LOG(s)  printf("[ContentProcess] %s", s)
 
 namespace mozilla {
 namespace embedlite {
+
+class EmbedLiteAppProcessChild;
 
 /**
  * EmbedLiteContentProcess is a singleton on the content process which represents
@@ -25,12 +27,8 @@ class EmbedLiteContentProcess : public mozilla::ipc::ProcessChild
     typedef mozilla::ipc::ProcessChild ProcessChild;
 
 public:
-    EmbedLiteContentProcess(ProcessHandle mParentHandle)
-        : ProcessChild(mParentHandle)
-    { }
-
-    ~EmbedLiteContentProcess()
-    { }
+    EmbedLiteContentProcess(ProcessHandle mParentHandle);
+    ~EmbedLiteContentProcess();
 
     virtual bool Init();
     virtual void CleanUp();
@@ -38,7 +36,7 @@ public:
     void SetAppDir(const nsACString& aPath);
 
 private:
-    EmbedLiteAppProcessChild mContent;
+    EmbedLiteAppProcessChild* mContent;
     mozilla::ipc::ScopedXREEmbed mXREEmbed;
 
     DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteContentProcess);

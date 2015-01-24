@@ -66,7 +66,7 @@ protected:
   AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
 
   virtual bool
-  RecvPrefsArrayInitialized(const nsTArray<mozilla::dom::PrefSetting>& prefs);
+  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs);
 
 private:
   virtual ~EmbedLiteAppProcessParent();

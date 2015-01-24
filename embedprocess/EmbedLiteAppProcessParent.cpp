@@ -332,7 +332,7 @@ EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
 }
 
 bool
-EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(const nsTArray<mozilla::dom::PrefSetting>& prefs)
+EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs)
 {
   LOGT();
   mPrefs = prefs;

@@ -248,8 +248,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
         if (HasValidInnerSize()) {
           InitializeRootMetrics();
 
-          utils->SetResolution(mLastRootMetrics.mPresShellResolution,
-                               mLastRootMetrics.mPresShellResolution);
+          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
+                               mLastRootMetrics.GetPresShellResolution());
           HandlePossibleViewportChange(mInnerSize);
           // Relay frame metrics to subscribed listeners
           mView->RelayFrameMetrics(mLastRootMetrics);
@@ -292,7 +292,7 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 }
 
 nsIWebNavigation*
-TabChildHelper::WebNavigation()
+TabChildHelper::WebNavigation() const
 {
   return mView->WebNavigation();
 }

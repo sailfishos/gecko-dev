@@ -149,8 +149,8 @@ protected:
   virtual bool RecvRemoveMessageListener(const nsCString&) MOZ_OVERRIDE;
   virtual void RecvAsyncMessage(const nsAString& aMessage, const nsAString& aData) MOZ_OVERRIDE;
   virtual bool RecvSetGLViewSize(const gfxSize&) MOZ_OVERRIDE;
-  virtual bool RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
-  virtual bool RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames) MOZ_OVERRIDE;
+  virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) MOZ_OVERRIDE;
+  virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) MOZ_OVERRIDE;
   virtual void OnGeckoWindowInitialized() {}
 
 private:

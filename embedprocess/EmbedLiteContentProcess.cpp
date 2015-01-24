@@ -7,11 +7,23 @@
 #include "mozilla/ipc/IOThreadChild.h"
 
 #include "EmbedLiteContentProcess.h"
+#include "EmbedLiteAppProcessChild.h"
 
 using mozilla::ipc::IOThreadChild;
 
 namespace mozilla {
 namespace embedlite {
+
+EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessHandle mParentHandle)
+  : ProcessChild(mParentHandle)
+{
+  mContent = new EmbedLiteAppProcessChild();
+}
+
+EmbedLiteContentProcess::~EmbedLiteContentProcess()
+{
+  delete mContent;
+}
 
 void
 EmbedLiteContentProcess::SetAppDir(const nsACString& aPath)
@@ -23,12 +35,12 @@ bool
 EmbedLiteContentProcess::Init()
 {
   LOGT();
-  mContent.Init(IOThreadChild::message_loop(),
-                ParentHandle(),
-                IOThreadChild::channel());
+  mContent->Init(IOThreadChild::message_loop(),
+                 ParentHandle(),
+                 IOThreadChild::channel());
 
   mXREEmbed.Start();
-  mContent.InitXPCOM();
+  mContent->InitXPCOM();
 
   return true;
 }
