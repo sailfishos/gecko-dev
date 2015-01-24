@@ -11,7 +11,6 @@
 #include "mozilla/gmp/PGMPVideoDecoderParent.h"
 #include "GMPMessageUtils.h"
 #include "GMPSharedMemManager.h"
-#include "GMPUtils.h"
 #include "GMPVideoHost.h"
 #include "GMPVideoDecoderProxy.h"
 
@@ -38,7 +37,7 @@ public:
                               const nsTArray<uint8_t>& aCodecSpecific,
                               GMPVideoDecoderCallbackProxy* aCallback,
                               int32_t aCoreCount) MOZ_OVERRIDE;
-  virtual nsresult Decode(GMPUniquePtr<GMPVideoEncodedFrame> aInputFrame,
+  virtual nsresult Decode(UniquePtr<GMPVideoEncodedFrame> aInputFrame,
                           bool aMissingFrames,
                           const nsTArray<uint8_t>& aCodecSpecificInfo,
                           int64_t aRenderTimeMs = -1) MOZ_OVERRIDE;
