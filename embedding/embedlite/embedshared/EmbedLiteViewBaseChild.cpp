@@ -593,7 +593,7 @@ EmbedLiteViewBaseChild::RecvRemoveMessageListener(const nsCString& name)
 }
 
 bool
-EmbedLiteViewBaseChild::RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames)
+EmbedLiteViewBaseChild::RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Put(messageNames[i], 1);
@@ -602,7 +602,7 @@ EmbedLiteViewBaseChild::RecvAddMessageListeners(const InfallibleTArray<nsString>
 }
 
 bool
-EmbedLiteViewBaseChild::RecvRemoveMessageListeners(const InfallibleTArray<nsString>& messageNames)
+EmbedLiteViewBaseChild::RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Remove(messageNames[i]);

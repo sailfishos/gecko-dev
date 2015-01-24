@@ -47,10 +47,10 @@ protected:
           bool* cancel) MOZ_OVERRIDE;
 
   virtual PCompositorParent*
-  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
+  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess) MOZ_OVERRIDE;
 
   virtual bool
-  RecvPrefsArrayInitialized(const nsTArray<PrefSetting>& prefs);
+  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs) MOZ_OVERRIDE;
 
 private:
   virtual ~EmbedLiteAppThreadParent();

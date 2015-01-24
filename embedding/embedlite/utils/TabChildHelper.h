@@ -39,7 +39,7 @@ public:
 
   bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
-  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
+  virtual nsIWebNavigation* WebNavigation() const MOZ_OVERRIDE;
   virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
 
   virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope) MOZ_OVERRIDE;

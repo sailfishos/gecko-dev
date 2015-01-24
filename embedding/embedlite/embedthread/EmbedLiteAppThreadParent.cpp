@@ -116,7 +116,7 @@ EmbedLiteAppThreadParent::AllocPCompositorParent(Transport* aTransport,
 }
 
 bool
-EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(const nsTArray<PrefSetting>& prefs)
+EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(nsTArray<PrefSetting>&& prefs)
 {
   LOGT();
   return false;

@@ -323,7 +323,7 @@ EmbedLiteAppBaseChild::RecvRemoveObserver(const nsCString& topic)
 }
 
 bool
-EmbedLiteAppBaseChild::RecvAddObservers(const InfallibleTArray<nsCString>& observers)
+EmbedLiteAppBaseChild::RecvAddObservers(InfallibleTArray<nsCString>&& observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -340,7 +340,7 @@ EmbedLiteAppBaseChild::RecvAddObservers(const InfallibleTArray<nsCString>& obser
 }
 
 bool
-EmbedLiteAppBaseChild::RecvRemoveObservers(const InfallibleTArray<nsCString>& observers)
+EmbedLiteAppBaseChild::RecvRemoveObservers(InfallibleTArray<nsCString>&& observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
