@@ -237,7 +237,6 @@ EmbedLiteApp::StartChildThread()
   }
 
   GeckoLoader::InitEmbedding(mProfilePath);
-  mAppParent = EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent();
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
