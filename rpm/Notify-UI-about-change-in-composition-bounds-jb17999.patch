@@ -1,0 +1,41 @@
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 55bd26e..dd9a7ba 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1733,6 +1733,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+ 
+   mPaintThrottler.TaskComplete(GetFrameTime());
+   bool needContentRepaint = false;
++  bool needSendScrollEvent = false;
+   if (aLayerMetrics.mCompositionBounds.width == mFrameMetrics.mCompositionBounds.width &&
+       aLayerMetrics.mCompositionBounds.height == mFrameMetrics.mCompositionBounds.height) {
+     // Remote content has sync'd up to the composition geometry
+@@ -1744,6 +1745,10 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
+   }
+ 
++  if (aLayerMetrics.mCompositionBounds.height <= mFrameMetrics.mCompositionBounds.height) {
++    needSendScrollEvent = true;
++  }
++
+   // If the layers update was not triggered by our own repaint request, then
+   // we want to take the new scroll offset. Check the scroll generation as well
+   // to filter duplicate calls to NotifyLayersUpdated with the same scroll offset
+@@ -1818,6 +1823,8 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+ 
+   if (needContentRepaint) {
+     RequestContentRepaint();
++  } else if (needSendScrollEvent) {
++    SendAsyncScrollEvent();
+   }
+   UpdateSharedCompositorFrameMetrics();
+ }
+@@ -1868,7 +1875,7 @@ void AsyncPanZoomController::ZoomToRect(CSSRect aRect) {
+         (currentZoom == localMaxZoom && targetZoom >= localMaxZoom) ||
+         (currentZoom == localMinZoom && targetZoom <= localMinZoom)) {
+       CSSSize compositedSize = mFrameMetrics.CalculateCompositedSizeInCssPixels();
+-      float y = scrollOffset.y;
++      float y = aRect.IsEmpty() ? scrollOffset.y : aRect.y;
+       float newHeight =
+         cssPageRect.width * (compositedSize.height / compositedSize.width);
+       float dh = compositedSize.height - newHeight;

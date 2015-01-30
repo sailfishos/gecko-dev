@@ -22,6 +22,7 @@ Patch10:    0002-config-Define-HAS_NEMO_RESOURCE.patch
 Patch11:    disabledestructible.patch
 Patch12:    0001-Don-t-zoom-video-when-in-full-screen.patch
 Patch13:    Disallow-image-locking-no-matter-what.patch
+Patch14:    Notify-UI-about-change-in-composition-bounds-jb17999.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
