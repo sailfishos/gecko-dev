@@ -273,14 +273,10 @@ static void ConnectImageBridge(ImageBridgeChild * child, ImageBridgeParent * par
 ImageBridgeChild::ImageBridgeChild()
   : mShuttingDown(false)
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   mTxn = new CompositableTransaction();
 }
 ImageBridgeChild::~ImageBridgeChild()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   delete mTxn;
 }
 
@@ -588,7 +584,7 @@ PImageBridgeChild*
 ImageBridgeChild::StartUpInChildProcess(Transport* aTransport,
                                         ProcessId aOtherProcess)
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  NS_ASSERTION(NS_IsMainThread(), "Should be on the main Thread!");
 
   ProcessHandle processHandle;
   if (!base::OpenProcessHandle(aOtherProcess, &processHandle)) {
@@ -611,7 +607,7 @@ ImageBridgeChild::StartUpInChildProcess(Transport* aTransport,
 
 void ImageBridgeChild::ShutDown()
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(NS_IsMainThread(), "Should be on the main Thread!");
   if (ImageBridgeChild::IsCreated()) {
     MOZ_ASSERT(!sImageBridgeChildSingleton->mShuttingDown);
 
@@ -639,8 +635,6 @@ void ImageBridgeChild::ShutDown()
       }
     }
 
-    sImageBridgeChildSingleton = nullptr;
-
     delete sImageBridgeChildThread;
     sImageBridgeChildThread = nullptr;
   }
@@ -656,7 +650,7 @@ bool ImageBridgeChild::StartUpOnThread(Thread* aThread)
     }
     sImageBridgeChildSingleton = new ImageBridgeChild();
     sImageBridgeParentSingleton = new ImageBridgeParent(
-      CompositorParent::CompositorLoop(), nullptr, base::GetProcId(base::GetCurrentProcessHandle()));
+      CompositorParent::CompositorLoop(), nullptr);
     sImageBridgeChildSingleton->ConnectAsync(sImageBridgeParentSingleton);
     return true;
   } else {

@@ -434,6 +434,11 @@ public:
     return mViewport;
   }
 
+  const CSSRect& GetScrollableRect() const
+  {
+    return mScrollableRect;
+  }
+
 private:
   // New fields from now on should be made private and old fields should
   // be refactored to be private.

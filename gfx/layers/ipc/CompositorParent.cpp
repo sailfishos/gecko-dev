@@ -52,9 +52,6 @@
 #include "GeckoProfiler.h"
 #include "mozilla/ipc/ProtocolTypes.h"
 #include "mozilla/unused.h"
-#include "mozilla/Hal.h"
-#include "mozilla/HalTypes.h"
-#include "mozilla/StaticPtr.h"
 
 using namespace base;
 using namespace mozilla;
@@ -85,65 +82,87 @@ static void EnsureLayerTreeMapReady()
   }
 }
 
-/**
-  * A global map referencing each compositor by ID.
-  *
-  * This map is used by the ImageBridge protocol to trigger
-  * compositions without having to keep references to the
-  * compositor
-  */
-typedef map<uint64_t,CompositorParent*> CompositorMap;
-static CompositorMap* sCompositorMap;
-
-static void CreateCompositorMap()
-{
-  MOZ_ASSERT(!sCompositorMap);
-  sCompositorMap = new CompositorMap;
-}
-
-static void DestroyCompositorMap()
-{
-  MOZ_ASSERT(sCompositorMap);
-  MOZ_ASSERT(sCompositorMap->empty());
-  delete sCompositorMap;
-  sCompositorMap = nullptr;
-}
+// FIXME/bug 774386: we're assuming that there's only one
+// CompositorParent, but that's not always true.  This assumption only
+// affects CrossProcessCompositorParent below.
+static Thread* sCompositorThread = nullptr;
+// manual reference count of the compositor thread.
+static int sCompositorThreadRefCount = 0;
+static MessageLoop* sMainLoop = nullptr;
+// When ContentParent::StartUp() is called, we use the Thread global.
+// When StartUpWithExistingThread() is used, we have to use the two
+// duplicated globals, because there's no API to make a Thread from an
+// existing thread.
+static PlatformThreadId sCompositorThreadID = 0;
+static MessageLoop* sCompositorLoop = nullptr;
 
 // See ImageBridgeChild.cpp
 void ReleaseImageBridgeParentSingleton();
 
-CompositorThreadHolder::CompositorThreadHolder()
-  : mCompositorThread(CreateCompositorThread())
+static void DeferredDeleteCompositorParent(CompositorParent* aNowReadyToDie)
 {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_COUNT_CTOR(CompositorThreadHolder);
+  aNowReadyToDie->Release();
 }
 
-CompositorThreadHolder::~CompositorThreadHolder()
+static void DeleteCompositorThread()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  MOZ_COUNT_DTOR(CompositorThreadHolder);
-
-  DestroyCompositorThread(mCompositorThread);
+  if (NS_IsMainThread()){
+    ReleaseImageBridgeParentSingleton();
+    delete sCompositorThread;
+    sCompositorThread = nullptr;
+    sCompositorLoop = nullptr;
+    sCompositorThreadID = 0;
+  } else {
+    sMainLoop->PostTask(FROM_HERE, NewRunnableFunction(&DeleteCompositorThread));
+  }
 }
 
-static StaticRefPtr<CompositorThreadHolder> sCompositorThreadHolder;
-static bool sFinishedCompositorShutDown = false;
-
-CompositorThreadHolder* GetCompositorThreadHolder()
+static void ReleaseCompositorThread()
 {
-  return sCompositorThreadHolder;
+  if(--sCompositorThreadRefCount == 0) {
+    DeleteCompositorThread();
+  }
 }
 
-/* static */ Thread*
-CompositorThreadHolder::CreateCompositorThread()
+void
+CompositorParent::StartUpWithExistingThread(MessageLoop* aMsgLoop,
+                                            PlatformThreadId aThreadID)
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(!sCompositorThread);
+  CreateCompositorMap();
+  sCompositorLoop = aMsgLoop;
+  sCompositorThreadID = aThreadID;
+  sMainLoop = MessageLoop::current();
+  sCompositorThreadRefCount = 1;
+}
 
-  MOZ_ASSERT(!sCompositorThreadHolder, "The compositor thread has already been started!");
+void CompositorParent::StartUp()
+{
+  // Check if compositor started already with StartUpWithExistingThread
+  if (sCompositorThreadID) {
+    return;
+  }
+  MOZ_ASSERT(!sCompositorLoop);
+  EnsureLayerTreeMapReady();
+  CreateCompositorMap();
+  CreateThread();
+  sMainLoop = MessageLoop::current();
+}
 
-  Thread* compositorThread = new Thread("Compositor");
+void CompositorParent::ShutDown()
+{
+  DestroyThread();
+  DestroyCompositorMap();
+}
+
+bool CompositorParent::CreateThread()
+{
+  NS_ASSERTION(NS_IsMainThread(), "Should be on the main Thread!");
+  if (sCompositorThread || sCompositorLoop) {
+    return true;
+  }
+  sCompositorThreadRefCount = 1;
+  sCompositorThread = new Thread("Compositor");
 
   Thread::Options options;
   /* Timeout values are powers-of-two to enable us get better data.
@@ -154,59 +173,23 @@ CompositorThreadHolder::CreateCompositorThread()
      than the default hang timeout on major platforms (about 5 seconds). */
   options.permanent_hang_timeout = 8192; // milliseconds
 
-  if (!compositorThread->StartWithOptions(options)) {
-    delete compositorThread;
-    return nullptr;
+  if (!sCompositorThread->StartWithOptions(options)) {
+    delete sCompositorThread;
+    sCompositorThread = nullptr;
+    return false;
   }
-
-  CreateCompositorMap();
-
-  return compositorThread;
+  return true;
 }
 
-/* static */ void
-CompositorThreadHolder::DestroyCompositorThread(Thread* aCompositorThread)
+void CompositorParent::DestroyThread()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  MOZ_ASSERT(!sCompositorThreadHolder, "We shouldn't be destroying the compositor thread yet.");
-
-  DestroyCompositorMap();
-  delete aCompositorThread;
-  sFinishedCompositorShutDown = true;
-}
-
-static Thread* CompositorThread() {
-  return sCompositorThreadHolder ? sCompositorThreadHolder->GetCompositorThread() : nullptr;
-}
-
-void CompositorParent::StartUp()
-{
-  MOZ_ASSERT(NS_IsMainThread(), "Should be on the main Thread!");
-  MOZ_ASSERT(!sCompositorThreadHolder, "The compositor thread has already been started!");
-
-  sCompositorThreadHolder = new CompositorThreadHolder();
-}
-
-void CompositorParent::ShutDown()
-{
-  MOZ_ASSERT(NS_IsMainThread(), "Should be on the main Thread!");
-  MOZ_ASSERT(sCompositorThreadHolder, "The compositor thread has already been shut down!");
-
-  ReleaseImageBridgeParentSingleton();
-
-  sCompositorThreadHolder = nullptr;
-
-  // No locking is needed around sFinishedCompositorShutDown because it is only
-  // ever accessed on the main thread.
-  while (!sFinishedCompositorShutDown) {
-    NS_ProcessNextEvent(nullptr, true);
-  }
+  NS_ASSERTION(NS_IsMainThread(), "Should be on the main Thread!");
+  ReleaseCompositorThread();
 }
 
 MessageLoop* CompositorParent::CompositorLoop()
 {
-  return CompositorThread() ? CompositorThread()->message_loop() : nullptr;
+  return sCompositorThread ? sCompositorThread->message_loop() : sCompositorLoop;
 }
 
 CompositorParent::CompositorParent(nsIWidget* aWidget,
@@ -223,11 +206,9 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   , mOverrideComposeReadiness(false)
   , mForceCompositionTask(nullptr)
   , mWantDidCompositeEvent(false)
-  , mCompositorThreadHolder(sCompositorThreadHolder)
 {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(CompositorThread(),
-             "The compositor thread must be Initialized before instanciating a CompositorParent.");
+  NS_ABORT_IF_FALSE(sCompositorThread != nullptr || sCompositorThreadID,
+                    "The compositor thread must be Initialized before instanciating a COmpositorParent.");
   MOZ_COUNT_CTOR(CompositorParent);
   mCompositorID = 0;
   // FIXME: This holds on the the fact that right now the only thing that
@@ -244,12 +225,19 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   }
 
   mApzcTreeManager = new APZCTreeManager();
+  ++sCompositorThreadRefCount;
+}
+
+PlatformThreadId
+CompositorParent::CompositorThreadID()
+{
+  return sCompositorThread ? sCompositorThread->thread_id() : sCompositorThreadID;
 }
 
 bool
 CompositorParent::IsInCompositorThread()
 {
-  return CompositorThread() && CompositorThread()->thread_id() == PlatformThread::CurrentId();
+  return CompositorThreadID() == PlatformThread::CurrentId();
 }
 
 uint64_t
@@ -260,8 +248,9 @@ CompositorParent::RootLayerTreeId()
 
 CompositorParent::~CompositorParent()
 {
-  MOZ_ASSERT(NS_IsMainThread());
   MOZ_COUNT_DTOR(CompositorParent);
+
+  ReleaseCompositorThread();
 }
 
 void
@@ -315,13 +304,6 @@ CompositorParent::RecvWillStop()
   return true;
 }
 
-void CompositorParent::DeferredDestroy()
-{
-  MOZ_ASSERT(!NS_IsMainThread());
-  mCompositorThreadHolder = nullptr;
-  Release();
-}
-
 bool
 CompositorParent::RecvStop()
 {
@@ -331,9 +313,10 @@ CompositorParent::RecvStop()
   // this thread.
   // We must keep the compositor parent alive untill the code handling message
   // reception is finished on this thread.
-  this->AddRef(); // Corresponds to DeferredDestroy's Release
-  MessageLoop::current()->PostTask(FROM_HERE,
-                                   NewRunnableMethod(this,&CompositorParent::DeferredDestroy));
+  this->AddRef(); // Corresponds to DeferredDeleteCompositorParent's Release
+  CompositorLoop()->PostTask(FROM_HERE,
+                           NewRunnableFunction(&DeferredDeleteCompositorParent,
+                                               this));
   return true;
 }
 
@@ -437,8 +420,8 @@ CompositorParent::ScheduleRenderOnCompositorThread()
 void
 CompositorParent::PauseComposition()
 {
-  MOZ_ASSERT(IsInCompositorThread(),
-             "PauseComposition() can only be called on the compositor thread");
+  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
+                    "PauseComposition() can only be called on the compositor thread");
 
   MonitorAutoLock lock(mPauseCompositionMonitor);
 
@@ -455,8 +438,8 @@ CompositorParent::PauseComposition()
 void
 CompositorParent::ResumeComposition()
 {
-  MOZ_ASSERT(IsInCompositorThread(),
-             "ResumeComposition() can only be called on the compositor thread");
+  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
+                    "ResumeComposition() can only be called on the compositor thread");
 
   MonitorAutoLock lock(mResumeCompositionMonitor);
 
@@ -639,8 +622,8 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget)
 {
   profiler_tracing("Paint", "Composite", TRACING_INTERVAL_START);
   PROFILER_LABEL("CompositorParent", "Composite");
-  MOZ_ASSERT(IsInCompositorThread(),
-             "Composite can only be called on the compositor thread");
+  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
+                    "Composite can only be called on the compositor thread");
 
 #ifdef COMPOSITOR_PERFORMANCE_WARNING
   TimeDuration scheduleDelta = TimeStamp::Now() - mExpectedComposeStartTime;
@@ -954,6 +937,27 @@ CompositorParent::DeallocPLayerTransactionParent(PLayerTransactionParent* actor)
   return true;
 }
 
+
+typedef map<uint64_t,CompositorParent*> CompositorMap;
+static CompositorMap* sCompositorMap;
+
+void CompositorParent::CreateCompositorMap()
+{
+  if (sCompositorMap == nullptr) {
+    sCompositorMap = new CompositorMap;
+  }
+}
+
+void CompositorParent::DestroyCompositorMap()
+{
+  if (sCompositorMap != nullptr) {
+    NS_ASSERTION(sCompositorMap->empty(),
+                 "The Compositor map should be empty when destroyed>");
+    delete sCompositorMap;
+    sCompositorMap = nullptr;
+  }
+}
+
 CompositorParent* CompositorParent::GetCompositor(uint64_t id)
 {
   CompositorMap::iterator it = sCompositorMap->find(id);
@@ -1093,15 +1097,11 @@ class CrossProcessCompositorParent MOZ_FINAL : public PCompositorParent,
 {
   friend class CompositorParent;
 
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CrossProcessCompositorParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CrossProcessCompositorParent)
 public:
-  CrossProcessCompositorParent(Transport* aTransport, ProcessId aOtherProcess)
+  CrossProcessCompositorParent(Transport* aTransport)
     : mTransport(aTransport)
-    , mChildProcessId(aOtherProcess)
-    , mCompositorThreadHolder(sCompositorThreadHolder)
-  {
-    MOZ_ASSERT(NS_IsMainThread());
-  }
+  {}
 
   // IToplevelProtocol::CloneToplevel()
   virtual IToplevelProtocol*
@@ -1155,10 +1155,6 @@ private:
   // ourself.  This is released (deferred) in ActorDestroy().
   nsRefPtr<CrossProcessCompositorParent> mSelfRef;
   Transport* mTransport;
-  // Child side's process Id.
-  base::ProcessId mChildProcessId;
-
-  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
 };
 
 static void
@@ -1173,10 +1169,8 @@ OpenCompositor(CrossProcessCompositorParent* aCompositor,
 /*static*/ PCompositorParent*
 CompositorParent::Create(Transport* aTransport, ProcessId aOtherProcess)
 {
-  gfxPlatform::InitLayersIPC();
-
   nsRefPtr<CrossProcessCompositorParent> cpcp =
-    new CrossProcessCompositorParent(aTransport, aOtherProcess);
+    new CrossProcessCompositorParent(aTransport);
   ProcessHandle handle;
   if (!base::OpenProcessHandle(aOtherProcess, &handle)) {
     // XXX need to kill |aOtherProcess|, it's boned
@@ -1352,14 +1346,16 @@ CrossProcessCompositorParent::GetCompositionManager(LayerTransactionParent* aLay
 void
 CrossProcessCompositorParent::DeferredDestroy()
 {
-  mCompositorThreadHolder = nullptr;
-  mSelfRef = nullptr;
+  CrossProcessCompositorParent* self;
+  mSelfRef.forget(&self);
+
+  nsCOMPtr<nsIRunnable> runnable =
+    NS_NewNonOwningRunnableMethod(self, &CrossProcessCompositorParent::Release);
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable)));
 }
 
 CrossProcessCompositorParent::~CrossProcessCompositorParent()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(XRE_GetIOMessageLoop());
   XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
                                    new DeleteTask<Transport>(mTransport));
 }

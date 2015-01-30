@@ -102,6 +102,7 @@ protected:
 private:
     virtual void GetPlatformCMSOutputProfile(void *&mem, size_t &size);
 
+    virtual bool SupportsOffMainThreadCompositing();
 #ifdef MOZ_X11
     static bool sUseXRender;
 #endif

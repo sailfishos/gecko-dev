@@ -20,7 +20,6 @@
 #include "ShadowLayersManager.h"        // for ShadowLayersManager
 #include "base/basictypes.h"            // for DISALLOW_EVIL_CONSTRUCTORS
 #include "base/platform_thread.h"       // for PlatformThreadId
-#include "base/thread.h"                // for Thread
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT_HELPER2
 #include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
 #include "mozilla/Monitor.h"            // for Monitor
@@ -33,7 +32,6 @@
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsISupportsImpl.h"
 #include "nsSize.h"                     // for nsIntSize
-#include "ThreadSafeRefcountingWithMainThreadDestruction.h"
 
 class CancelableTask;
 class MessageLoop;
@@ -64,32 +62,10 @@ private:
   uint64_t mLayersId;
 };
 
-class CompositorThreadHolder MOZ_FINAL
-{
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorThreadHolder)
-
-public:
-  CompositorThreadHolder();
-
-  base::Thread* GetCompositorThread() const {
-    return mCompositorThread;
-  }
-
-private:
-  ~CompositorThreadHolder();
-
-  base::Thread* const mCompositorThread;
-
-  static base::Thread* CreateCompositorThread();
-  static void DestroyCompositorThread(base::Thread* aCompositorThread);
-
-  friend class CompositorParent;
-};
-
 class CompositorParent : public PCompositorParent,
                          public ShadowLayersManager
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorParent)
 
 public:
   CompositorParent(nsIWidget* aWidget,
@@ -177,10 +153,7 @@ public:
   static void StartUp();
 
   /**
-   * Waits for all [CrossProcess]CompositorParent's to be gone,
-   * and destroys the compositor thread and global compositor map.
-   *
-   * Does not return until all of that has completed.
+   * Destroys the compositor thread and the global compositor map.
    */
   static void ShutDown();
 
@@ -220,6 +193,15 @@ public:
   static PCompositorParent*
   Create(Transport* aTransport, ProcessId aOtherProcess);
 
+  /**
+   * Setup external message loop and thread ID for Compositor.
+   * Should be used when CompositorParent should work in existing thread/MessageLoop,
+   * for example moving Compositor into native toolkit main thread will allow to avoid
+   * extra synchronization and call ::Composite() right from toolkit::Paint event
+   */
+  static void StartUpWithExistingThread(MessageLoop* aMsgLoop,
+                                        PlatformThreadId aThreadID);
+
   struct LayerTreeState {
     LayerTreeState();
     nsRefPtr<Layer> mRoot;
@@ -251,8 +233,6 @@ protected:
   // Private destructor, to discourage deletion outside of Release():
   virtual ~CompositorParent();
 
-  void DeferredDestroy();
-
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                  const uint64_t& aId,
@@ -265,14 +245,45 @@ protected:
   void ForceComposeToTarget(gfx::DrawTarget* aTarget);
 
   void SetEGLSurfaceSize(int width, int height);
-  void CancelCurrentCompositeTask();
 
-private:
   void InitializeLayerManager(const nsTArray<LayersBackend>& aBackendHints);
   void PauseComposition();
   void ResumeComposition();
   void ResumeCompositionAndResize(int width, int height);
   void ForceComposition();
+  void CancelCurrentCompositeTask();
+
+  inline static PlatformThreadId CompositorThreadID();
+
+  /**
+   * Creates a global map referencing each compositor by ID.
+   *
+   * This map is used by the ImageBridge protocol to trigger
+   * compositions without having to keep references to the
+   * compositor
+   */
+  static void CreateCompositorMap();
+  static void DestroyCompositorMap();
+
+  /**
+   * Creates the compositor thread.
+   *
+   * All compositors live on the same thread.
+   * The thread is not lazily created on first access to avoid dealing with
+   * thread safety. Therefore it's best to create and destroy the thread when
+   * we know we areb't using it (So creating/destroying along with gfxPlatform
+   * looks like a good place).
+   */
+  static bool CreateThread();
+
+  /**
+   * Destroys the compositor thread.
+   *
+   * It is safe to call this fucntion more than once, although the second call
+   * will have no effect.
+   * This function is not thread-safe.
+   */
+  static void DestroyThread();
 
   /**
    * Add a compositor to the global compositor map.
@@ -320,7 +331,6 @@ private:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   bool mWantDidCompositeEvent;
-  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };
