@@ -827,12 +827,12 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   // probably logic here is over engineered, but clean enough
   bool prevIsComposition = mIMEComposing;
   bool StartComposite = !prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
-  bool UpdateComposite = prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
+  bool ChangeComposite = prevIsComposition && commit.IsEmpty() && !preEdit.IsEmpty();
   bool EndComposite = prevIsComposition && preEdit.IsEmpty();
-  mIMEComposing = UpdateComposite || StartComposite;
+  mIMEComposing = ChangeComposite || StartComposite;
   nsString pushStr = preEdit.IsEmpty() ? commit : preEdit;
   if (!commit.IsEmpty() && !EndComposite) {
-    StartComposite = UpdateComposite = EndComposite = true;
+    StartComposite = ChangeComposite = EndComposite = true;
   }
 
   if (StartComposite) {
@@ -841,16 +841,25 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
     mHelper->DispatchWidgetEvent(event);
   }
 
-  if (StartComposite || UpdateComposite || EndComposite) {
-    WidgetCompositionEvent updateEvent(true, NS_COMPOSITION_UPDATE, widget);
-    InitEvent(updateEvent, nullptr);
-    updateEvent.mData = pushStr;
-    mHelper->DispatchWidgetEvent(updateEvent);
+  if (StartComposite || ChangeComposite || EndComposite) {
 
-    WidgetCompositionEvent event(true, NS_COMPOSITION_CHANGE, widget);
-    InitEvent(event, nullptr);
-    event.mData = pushStr;
-    mHelper->DispatchWidgetEvent(event);
+    {
+      WidgetCompositionEvent event(true, NS_COMPOSITION_CHANGE, widget);
+      InitEvent(event, nullptr);
+      event.mData = pushStr;
+
+      if (!EndComposite) {
+        // Because we're leaving the composition open, we need to
+        // include proper text ranges to make the editor happy.
+        TextRange range;
+        range.mStartOffset = 0;
+        range.mEndOffset = event.mData.Length();
+        range.mRangeType = NS_TEXTRANGE_RAWINPUT;
+        event.mRanges = new TextRangeArray();
+        event.mRanges->AppendElement(range);
+      }
+      mHelper->DispatchWidgetEvent(event);
+    }
 
     nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
     if (!ps) {
