@@ -178,22 +178,21 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
-  // Allow to create offscreen GL context for main Layer Manager
-  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
-    SurfaceCaps caps = SurfaceCaps::ForRGB();
-    caps.preserve = false;
-    caps.alpha = true;
-    caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
-    context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
-                                                            mSurfaceSize.height), caps);
-  }
-
 #ifdef XP_WIN
-  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
+  if (PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
     printf_stderr("Trying GL layers...\n");
     context = gl::GLContextProviderEGL::CreateForWindow(mWidget);
   }
 #endif
+
+  // Allow to create offscreen GL context for main Layer Manager
+  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
+    SurfaceCaps caps = SurfaceCaps::ForRGB();
+    caps.preserve = false;
+    caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
+    context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
+                                                            mSurfaceSize.height), caps);
+  }
 
   if (!context)
     context = gl::GLContextProvider::CreateForWindow(mWidget);
