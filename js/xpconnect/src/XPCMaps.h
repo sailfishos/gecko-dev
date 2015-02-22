@@ -111,10 +111,8 @@ public:
     inline XPCWrappedNative* Find(nsISupports* Obj)
     {
         NS_PRECONDITION(Obj,"bad param");
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, Obj);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, Obj);
+        return entry ? entry->value : nullptr;
     }
 
     inline XPCWrappedNative* Add(XPCWrappedNative* wrapper)
@@ -122,7 +120,8 @@ public:
         NS_PRECONDITION(wrapper,"bad param");
         nsISupports* obj = wrapper->GetIdentityObject();
         MOZ_ASSERT(!Find(obj), "wrapper already in new scope!");
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, obj);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, obj, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)
@@ -179,17 +178,16 @@ public:
 
     inline nsXPCWrappedJSClass* Find(REFNSIID iid)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, &iid);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, &iid);
+        return entry ? entry->value : nullptr;
     }
 
     inline nsXPCWrappedJSClass* Add(nsXPCWrappedJSClass* clazz)
     {
         NS_PRECONDITION(clazz,"bad param");
         const nsIID* iid = &clazz->GetIID();
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, iid);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, iid, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)
@@ -234,17 +232,16 @@ public:
 
     inline XPCNativeInterface* Find(REFNSIID iid)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, &iid);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, &iid);
+        return entry ? entry->value : nullptr;
     }
 
     inline XPCNativeInterface* Add(XPCNativeInterface* iface)
     {
         NS_PRECONDITION(iface,"bad param");
         const nsIID* iid = iface->GetIID();
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, iid);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, iid, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)
@@ -292,16 +289,15 @@ public:
 
     inline XPCNativeSet* Find(nsIClassInfo* info)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, info);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, info);
+        return entry ? entry->value : nullptr;
     }
 
     inline XPCNativeSet* Add(nsIClassInfo* info, XPCNativeSet* set)
     {
         NS_PRECONDITION(info,"bad param");
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, info);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, info, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)
@@ -350,16 +346,15 @@ public:
 
     inline XPCWrappedNativeProto* Find(nsIClassInfo* info)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, info);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, info);
+        return entry ? entry->value : nullptr;
     }
 
     inline XPCWrappedNativeProto* Add(nsIClassInfo* info, XPCWrappedNativeProto* proto)
     {
         NS_PRECONDITION(info,"bad param");
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, info);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, info, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)
@@ -413,17 +408,16 @@ public:
 
     inline XPCNativeSet* Find(XPCNativeSetKey* key)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, key);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->key_value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, key);
+        return entry ? entry->key_value : nullptr;
     }
 
     inline XPCNativeSet* Add(const XPCNativeSetKey* key, XPCNativeSet* set)
     {
         NS_PRECONDITION(key,"bad param");
         NS_PRECONDITION(set,"bad param");
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, key);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, key, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key_value)
@@ -488,17 +482,15 @@ public:
 
     inline nsIXPCFunctionThisTranslator* Find(REFNSIID iid)
     {
-        Entry* entry = (Entry*) PL_DHashTableLookup(mTable, &iid);
-        if (PL_DHASH_ENTRY_IS_FREE(entry))
-            return nullptr;
-        return entry->value;
+        Entry* entry = (Entry*) PL_DHashTableSearch(mTable, &iid);
+        return entry ? entry->value : nullptr;
     }
 
     inline nsIXPCFunctionThisTranslator* Add(REFNSIID iid,
                                              nsIXPCFunctionThisTranslator* obj)
     {
-
-        Entry* entry = (Entry*) PL_DHashTableAdd(mTable, &iid);
+        Entry* entry = static_cast<Entry*>
+            (PL_DHashTableAdd(mTable, &iid, mozilla::fallible));
         if (!entry)
             return nullptr;
         entry->value = obj;
@@ -569,8 +561,8 @@ public:
     inline XPCWrappedNativeProto* Add(XPCWrappedNativeProto* proto)
     {
         NS_PRECONDITION(proto,"bad param");
-        PLDHashEntryStub* entry = (PLDHashEntryStub*)
-            PL_DHashTableAdd(mTable, proto);
+        PLDHashEntryStub* entry = static_cast<PLDHashEntryStub*>
+            (PL_DHashTableAdd(mTable, proto, mozilla::fallible));
         if (!entry)
             return nullptr;
         if (entry->key)

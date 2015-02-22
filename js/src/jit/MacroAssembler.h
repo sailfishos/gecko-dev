@@ -118,20 +118,20 @@ class MacroAssembler : public MacroAssemblerSpecific
     };
 
     /*
-     * Creates a branch based on a specific types::Type.
-     * Note: emits number test (int/double) for types::Type::DoubleType()
+     * Creates a branch based on a specific TypeSet::Type.
+     * Note: emits number test (int/double) for TypeSet::DoubleType()
      */
     class BranchType : public Branch
     {
-        types::Type type_;
+        TypeSet::Type type_;
 
       public:
         BranchType()
           : Branch(),
-            type_(types::Type::UnknownType())
+            type_(TypeSet::UnknownType())
         { }
 
-        BranchType(Condition cond, Register reg, types::Type type, Label *jump)
+        BranchType(Condition cond, Register reg, TypeSet::Type type, Label *jump)
           : Branch(cond, reg, jump),
             type_(type)
         { }
@@ -278,7 +278,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     template <typename TypeSet>
     void guardObjectType(Register obj, const TypeSet *types, Register scratch, Label *miss);
     template <typename Source>
-    void guardType(const Source &address, types::Type type, Register scratch, Label *miss);
+    void guardType(const Source &address, TypeSet::Type type, Register scratch, Label *miss);
 
     void loadObjShape(Register objReg, Register dest) {
         loadPtr(Address(objReg, JSObject::offsetOfShape()), dest);
@@ -289,13 +289,13 @@ class MacroAssembler : public MacroAssemblerSpecific
         loadPtr(Address(dest, Shape::offsetOfBase()), dest);
     }
     void loadObjClass(Register objReg, Register dest) {
-        loadPtr(Address(objReg, JSObject::offsetOfType()), dest);
-        loadPtr(Address(dest, types::TypeObject::offsetOfClasp()), dest);
+        loadPtr(Address(objReg, JSObject::offsetOfGroup()), dest);
+        loadPtr(Address(dest, ObjectGroup::offsetOfClasp()), dest);
     }
     void branchTestObjClass(Condition cond, Register obj, Register scratch, const js::Class *clasp,
                             Label *label) {
-        loadPtr(Address(obj, JSObject::offsetOfType()), scratch);
-        branchPtr(cond, Address(scratch, types::TypeObject::offsetOfClasp()), ImmPtr(clasp), label);
+        loadPtr(Address(obj, JSObject::offsetOfGroup()), scratch);
+        branchPtr(cond, Address(scratch, ObjectGroup::offsetOfClasp()), ImmPtr(clasp), label);
     }
     void branchTestObjShape(Condition cond, Register obj, const Shape *shape, Label *label) {
         branchPtr(cond, Address(obj, JSObject::offsetOfShape()), ImmGCPtr(shape), label);
@@ -347,8 +347,8 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
     void loadObjProto(Register obj, Register dest) {
-        loadPtr(Address(obj, JSObject::offsetOfType()), dest);
-        loadPtr(Address(dest, types::TypeObject::offsetOfProto()), dest);
+        loadPtr(Address(obj, JSObject::offsetOfGroup()), dest);
+        loadPtr(Address(dest, ObjectGroup::offsetOfProto()), dest);
     }
 
     void loadStringLength(Register str, Register dest) {
@@ -422,6 +422,17 @@ class MacroAssembler : public MacroAssemblerSpecific
         } else {
             storeValue(ValueTypeFromMIRType(src.type()), src.typedReg().gpr(), dest);
         }
+    }
+
+    template <typename T>
+    void storeObjectOrNull(Register src, const T &dest) {
+        Label notNull, done;
+        branchTestPtr(Assembler::NonZero, src, src, &notNull);
+        storeValue(NullValue(), dest);
+        jump(&done);
+        bind(&notNull);
+        storeValue(JSVAL_TYPE_OBJECT, src, dest);
+        bind(&done);
     }
 
     template <typename T>
@@ -694,7 +705,8 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
     template<typename T>
-    void loadFromTypedArray(Scalar::Type arrayType, const T &src, AnyRegister dest, Register temp, Label *fail);
+    void loadFromTypedArray(Scalar::Type arrayType, const T &src, AnyRegister dest, Register temp, Label *fail,
+                            bool canonicalizeDoubles = true);
 
     template<typename T>
     void loadFromTypedArray(Scalar::Type arrayType, const T &src, const ValueOperand &dest, bool allowDouble,
@@ -731,6 +743,17 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     void storeToTypedFloatArray(Scalar::Type arrayType, FloatRegister value, const BaseIndex &dest);
     void storeToTypedFloatArray(Scalar::Type arrayType, FloatRegister value, const Address &dest);
+
+    // Load a property from an UnboxedPlainObject.
+    template <typename T>
+    void loadUnboxedProperty(T address, JSValueType type, TypedOrValueRegister output);
+
+    // Store a property to an UnboxedPlainObject, without triggering barriers.
+    // If failure is null, the value definitely has a type suitable for storing
+    // in the property.
+    template <typename T>
+    void storeUnboxedProperty(T address, JSValueType type,
+                              ConstantOrRegister value, Label *failure);
 
     Register extractString(const Address &address, Register scratch) {
         return extractObject(address, scratch);
@@ -804,7 +827,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void createGCObject(Register result, Register temp, JSObject *templateObj,
                         gc::InitialHeap initialHeap, Label *fail, bool initFixedSlots = true);
 
-    void newGCThing(Register result, Register temp, NativeObject *templateObj,
+    void newGCThing(Register result, Register temp, JSObject *templateObj,
                      gc::InitialHeap initialHeap, Label *fail);
     void initGCThing(Register obj, Register temp, JSObject *templateObj,
                      bool initFixedSlots = true);
@@ -976,6 +999,10 @@ class MacroAssembler : public MacroAssemblerSpecific
     void link(JitCode *code);
 
     void assumeUnreachable(const char *output);
+
+    template<typename T>
+    void assertTestInt32(Condition cond, const T &value, const char *output);
+
     void printf(const char *output);
     void printf(const char *output, Register value);
 
@@ -1235,6 +1262,12 @@ class MacroAssembler : public MacroAssemblerSpecific
         MOZ_ASSERT(framePushed() == aic.initialStack);
         PopRegsInMask(liveRegs);
     }
+
+    // Align the stack pointer based on the number of arguments which are pushed
+    // on the stack, such that the JitFrameLayout would be correctly aligned on
+    // the JitStackAlignment.
+    void alignJitStackBasedOnNArgs(Register nargs);
+    void alignJitStackBasedOnNArgs(uint32_t nargs);
 
     void assertStackAlignment(uint32_t alignment, int32_t offset = 0) {
 #ifdef DEBUG

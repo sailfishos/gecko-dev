@@ -13,6 +13,7 @@
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
+#include "vm/UnboxedObject.h"
 
 namespace js {
 namespace jit {
@@ -111,6 +112,10 @@ IsObjectEscaped(MInstruction *ins, JSObject *objDefault = nullptr)
         obj = ins->toNewCallObject()->templateObject();
     else
         obj = objDefault;
+
+    // Don't optimize unboxed objects, which aren't handled by MObjectState.
+    if (obj->is<UnboxedPlainObject>())
+        return true;
 
     // Check if the object is escaped. If the object is not the first argument
     // of either a known Store / Load, then we consider it as escaped. This is a

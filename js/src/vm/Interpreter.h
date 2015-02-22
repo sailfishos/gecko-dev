@@ -194,18 +194,18 @@ class InvokeState : public RunState
 {
     CallArgs &args_;
     InitialFrameFlags initial_;
-    bool useNewType_;
+    bool createSingleton_;
 
   public:
     InvokeState(JSContext *cx, CallArgs &args, InitialFrameFlags initial)
       : RunState(cx, Invoke, args.callee().as<JSFunction>().nonLazyScript()),
         args_(args),
         initial_(initial),
-        useNewType_(false)
+        createSingleton_(false)
     { }
 
-    bool useNewType() const { return useNewType_; }
-    void setUseNewType() { useNewType_ = true; }
+    bool createSingleton() const { return createSingleton_; }
+    void setCreateSingleton() { createSingleton_ = true; }
 
     bool constructing() const { return InitialFrameFlagsAreConstructing(initial_); }
     CallArgs &args() const { return args_; }
@@ -221,14 +221,14 @@ extern bool
 RunScript(JSContext *cx, RunState &state);
 
 extern bool
-StrictlyEqual(JSContext *cx, const Value &lval, const Value &rval, bool *equal);
+StrictlyEqual(JSContext *cx, HandleValue lval, HandleValue rval, bool *equal);
 
 extern bool
-LooselyEqual(JSContext *cx, const Value &lval, const Value &rval, bool *equal);
+LooselyEqual(JSContext *cx, HandleValue lval, HandleValue rval, bool *equal);
 
 /* === except that NaN is the same as NaN and -0 is not the same as +0. */
 extern bool
-SameValue(JSContext *cx, const Value &v1, const Value &v2, bool *same);
+SameValue(JSContext *cx, HandleValue v1, HandleValue v2, bool *same);
 
 extern JSType
 TypeOfObject(JSObject *obj);
@@ -340,10 +340,6 @@ ModValues(JSContext *cx, MutableHandleValue lhs, MutableHandleValue rhs, Mutable
 
 bool
 UrshValues(JSContext *cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res);
-
-template <bool strict>
-bool
-SetProperty(JSContext *cx, HandleObject obj, HandleId id, const Value &value);
 
 template <bool strict>
 bool

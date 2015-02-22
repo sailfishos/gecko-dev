@@ -8,6 +8,7 @@ let {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource:///modules/ContentWebRTC.jsm");
+Cu.import("resource:///modules/ContentObservers.jsm");
 Cu.import("resource://gre/modules/InlineSpellChecker.jsm");
 Cu.import("resource://gre/modules/InlineSpellCheckerContent.jsm");
 
@@ -162,7 +163,10 @@ let handleContentContextMenu = function (event) {
     }
 
     let customMenuItems = PageMenuChild.build(event.target);
-    sendSyncMessage("contextmenu", { editFlags, spellInfo, customMenuItems, addonInfo }, { event, popupNode: event.target });
+    let principal = event.target.ownerDocument.nodePrincipal;
+    sendSyncMessage("contextmenu",
+                    { editFlags, spellInfo, customMenuItems, addonInfo, principal },
+                    { event, popupNode: event.target });
   }
   else {
     // Break out to the parent window and pass the add-on info along
@@ -508,12 +512,15 @@ let AboutReaderListener = {
         }
 
         ReaderMode.parseDocument(content.document).then(article => {
+          // Do nothing if there is no article, or if the content window has been destroyed.
+          if (article === null || content === null) {
+            return;
+          }
+
           // The loaded page may have changed while we were parsing the document.
           // Make sure we've got the current one.
           let currentURL = Services.io.newURI(content.document.documentURI, null, null).specIgnoringRef;
-
-          // Do nothing if there's no article or the page in this tab has changed.
-          if (article == null || (article.url != currentURL)) {
+          if (article.url !== currentURL) {
             return;
           }
 
@@ -1056,4 +1063,43 @@ addMessageListener("ContextMenu:SaveVideoFrameAsImage", (message) => {
   sendAsyncMessage("ContextMenu:SaveVideoFrameAsImage:Result", {
     dataURL: canvas.toDataURL("image/jpeg", ""),
   });
+});
+
+addMessageListener("ContextMenu:MediaCommand", (message) => {
+  let media = message.objects.element;
+
+  switch (message.data.command) {
+    case "play":
+      media.play();
+      break;
+    case "pause":
+      media.pause();
+      break;
+    case "mute":
+      media.muted = true;
+      break;
+    case "unmute":
+      media.muted = false;
+      break;
+    case "playbackRate":
+      media.playbackRate = message.data.data;
+      break;
+    case "hidecontrols":
+      media.removeAttribute("controls");
+      break;
+    case "showcontrols":
+      media.setAttribute("controls", "true");
+      break;
+    case "hidestats":
+    case "showstats":
+      let event = media.ownerDocument.createEvent("CustomEvent");
+      event.initCustomEvent("media-showStatistics", false, true,
+                            message.data.command == "showstats");
+      media.dispatchEvent(event);
+      break;
+    case "fullscreen":
+      if (content.document.mozFullScreenEnabled)
+        media.mozRequestFullScreen();
+      break;
+  }
 });

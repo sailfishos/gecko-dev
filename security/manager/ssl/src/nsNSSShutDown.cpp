@@ -23,13 +23,11 @@ ObjectSetMatchEntry(PLDHashTable *table, const PLDHashEntryHdr *hdr,
   return entry->obj == static_cast<const nsNSSShutDownObject*>(key);
 }
 
-static bool
-ObjectSetInitEntry(PLDHashTable *table, PLDHashEntryHdr *hdr,
-                     const void *key)
+static void
+ObjectSetInitEntry(PLDHashEntryHdr *hdr, const void *key)
 {
   ObjectHashEntry *entry = static_cast<ObjectHashEntry*>(hdr);
   entry->obj = const_cast<nsNSSShutDownObject*>(static_cast<const nsNSSShutDownObject*>(key));
-  return true;
 }
 
 static const PLDHashTableOps gSetOps = {
@@ -70,7 +68,7 @@ void nsNSSShutDownList::remember(nsNSSShutDownObject *o)
   
   PR_ASSERT(o);
   MutexAutoLock lock(singleton->mListLock);
-  PL_DHashTableAdd(&singleton->mObjects, o);
+  PL_DHashTableAdd(&singleton->mObjects, o, fallible);
 }
 
 void nsNSSShutDownList::forget(nsNSSShutDownObject *o)
@@ -90,7 +88,7 @@ void nsNSSShutDownList::remember(nsOnPK11LogoutCancelObject *o)
   
   PR_ASSERT(o);
   MutexAutoLock lock(singleton->mListLock);
-  PL_DHashTableAdd(&singleton->mPK11LogoutCancelObjects, o);
+  PL_DHashTableAdd(&singleton->mPK11LogoutCancelObjects, o, fallible);
 }
 
 void nsNSSShutDownList::forget(nsOnPK11LogoutCancelObject *o)

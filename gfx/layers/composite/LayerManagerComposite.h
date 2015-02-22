@@ -67,8 +67,6 @@ class TextRenderer;
 class CompositingRenderTarget;
 struct FPSState;
 
-static const int kVisualWarningTrigger = 200; // ms
-static const int kVisualWarningMax = 1000; // ms
 static const int kVisualWarningDuration = 150; // ms
 
 class LayerManagerComposite MOZ_FINAL : public LayerManager
@@ -442,6 +440,13 @@ public:
   bool GetShadowTransformSetByAnimation() { return mShadowTransformSetByAnimation; }
   bool HasLayerBeenComposited() { return mLayerComposited; }
   nsIntRect GetClearRect() { return mClearRect; }
+
+  /**
+   * Return the part of the visible region that has been fully rendered.
+   * While progressive drawing is in progress this region will be
+   * a subset of the shadow visible region.
+   */
+  nsIntRegion GetFullyRenderedRegion();
 
 protected:
   gfx::Matrix4x4 mShadowTransform;

@@ -89,6 +89,7 @@ class UpvarCookie
     F(OBJECT) \
     F(CALL) \
     F(NAME) \
+    F(OBJECT_PROPERTY_NAME) \
     F(COMPUTED_NAME) \
     F(NUMBER) \
     F(STRING) \
@@ -103,7 +104,6 @@ class UpvarCookie
     F(THIS) \
     F(FUNCTION) \
     F(IF) \
-    F(ELSE) \
     F(SWITCH) \
     F(CASE) \
     F(DEFAULT) \
@@ -122,7 +122,6 @@ class UpvarCookie
     F(TRY) \
     F(CATCH) \
     F(CATCHLIST) \
-    F(FINALLY) \
     F(THROW) \
     F(DEBUGGER) \
     F(GENERATOR) \
@@ -133,6 +132,8 @@ class UpvarCookie
     F(ARRAYPUSH) \
     F(LEXICALSCOPE) \
     F(LET) \
+    F(LETBLOCK) \
+    F(LETEXPR) \
     F(IMPORT) \
     F(IMPORT_SPEC_LIST) \
     F(IMPORT_SPEC) \
@@ -287,10 +288,11 @@ enum ParseNodeKind
  *                          pn_kid3:  update expr after second ';' or nullptr
  * PNK_THROW    unary       pn_op: JSOP_THROW, pn_kid: exception
  * PNK_TRY      ternary     pn_kid1: try block
- *                          pn_kid2: null or PNK_CATCHLIST list of
- *                          PNK_LEXICALSCOPE nodes, each with pn_expr pointing
- *                          to a PNK_CATCH node
+ *                          pn_kid2: null or PNK_CATCHLIST list
  *                          pn_kid3: null or finally block
+ * PNK_CATCHLIST list       pn_head: list of PNK_LEXICALSCOPE nodes, one per
+ *                                   catch-block, each with pn_expr pointing
+ *                                   to a PNK_CATCH node
  * PNK_CATCH    ternary     pn_kid1: PNK_NAME, PNK_ARRAY, or PNK_OBJECT catch var node
  *                                   (PNK_ARRAY or PNK_OBJECT if destructuring)
  *                          pn_kid2: null or the catch guard expression
@@ -509,6 +511,11 @@ class ParseNode
         return PNK_ASSIGNMENT_START <= kind && kind <= PNK_ASSIGNMENT_LAST;
     }
 
+    bool isBinaryOperation() const {
+        ParseNodeKind kind = getKind();
+        return PNK_BINOP_FIRST <= kind && kind <= PNK_BINOP_LAST;
+    }
+
     /* Boolean attributes. */
     bool isInParens() const                { return pn_parens; }
     bool isLikelyIIFE() const              { return isInParens(); }
@@ -638,25 +645,14 @@ class ParseNode
         pn_next = pn_link = nullptr;
     }
 
-    static ParseNode *create(ParseNodeKind kind, ParseNodeArity arity, FullParseHandler *handler);
-
   public:
     /*
-     * Append right to left, forming a list node.  |left| must have the given
-     * kind and op, and op must be left-associative.
+     * If |left| is a list of the given kind/left-associative op, append
+     * |right| to it and return |left|.  Otherwise return a [left, right] list.
      */
     static ParseNode *
-    append(ParseNodeKind tt, JSOp op, ParseNode *left, ParseNode *right, FullParseHandler *handler);
-
-    /*
-     * Either append right to left, if left meets the conditions necessary to
-     * append (see append), or form a binary node whose children are right and
-     * left.
-     */
-    static ParseNode *
-    newBinaryOrAppend(ParseNodeKind kind, JSOp op, ParseNode *left, ParseNode *right,
-                      FullParseHandler *handler, ParseContext<FullParseHandler> *pc,
-                      bool foldConstants);
+    appendOrCreateList(ParseNodeKind kind, JSOp op, ParseNode *left, ParseNode *right,
+                       FullParseHandler *handler, ParseContext<FullParseHandler> *pc);
 
     inline PropertyName *name() const;
     inline JSAtom *atom() const;
@@ -850,6 +846,15 @@ class ParseNode
         pn_count++;
     }
 
+    void prepend(ParseNode *pn) {
+        MOZ_ASSERT(pn_arity == PN_LIST);
+        pn->pn_next = pn_head;
+        pn_head = pn;
+        if (pn_tail == &pn_head)
+            pn_tail = &pn->pn_next;
+        pn_count++;
+    }
+
     void checkListConsistency()
 #ifndef DEBUG
     {}
@@ -922,10 +927,6 @@ struct UnaryNode : public ParseNode
         pn_kid = kid;
     }
 
-    static inline UnaryNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (UnaryNode *) ParseNode::create(kind, PN_UNARY, handler);
-    }
-
     static bool test(const ParseNode &node) {
         return node.isArity(PN_UNARY);
     }
@@ -951,10 +952,6 @@ struct BinaryNode : public ParseNode
         pn_right = right;
     }
 
-    static inline BinaryNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (BinaryNode *) ParseNode::create(kind, PN_BINARY, handler);
-    }
-
     static bool test(const ParseNode &node) {
         return node.isArity(PN_BINARY);
     }
@@ -973,10 +970,6 @@ struct BinaryObjNode : public ParseNode
         pn_left = left;
         pn_right = right;
         pn_binary_obj = objbox;
-    }
-
-    static inline BinaryObjNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (BinaryObjNode *) ParseNode::create(kind, PN_BINARY_OBJ, handler);
     }
 
     static bool test(const ParseNode &node) {
@@ -1009,10 +1002,6 @@ struct TernaryNode : public ParseNode
         pn_kid3 = kid3;
     }
 
-    static inline TernaryNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (TernaryNode *) ParseNode::create(kind, PN_TERNARY, handler);
-    }
-
     static bool test(const ParseNode &node) {
         return node.isArity(PN_TERNARY);
     }
@@ -1030,14 +1019,16 @@ struct ListNode : public ParseNode
         makeEmpty();
     }
 
+    ListNode(ParseNodeKind kind, JSOp op, const TokenPos &pos)
+      : ParseNode(kind, op, PN_LIST, pos)
+    {
+        makeEmpty();
+    }
+
     ListNode(ParseNodeKind kind, JSOp op, ParseNode *kid)
       : ParseNode(kind, op, PN_LIST, kid->pn_pos)
     {
         initList(kid);
-    }
-
-    static inline ListNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (ListNode *) ParseNode::create(kind, PN_LIST, handler);
     }
 
     static bool test(const ParseNode &node) {
@@ -1051,8 +1042,13 @@ struct ListNode : public ParseNode
 
 struct CodeNode : public ParseNode
 {
-    static inline CodeNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (CodeNode *) ParseNode::create(kind, PN_CODE, handler);
+    explicit CodeNode(const TokenPos &pos)
+      : ParseNode(PNK_FUNCTION, JSOP_NOP, PN_CODE, pos)
+    {
+        MOZ_ASSERT(!pn_body);
+        MOZ_ASSERT(!pn_funbox);
+        MOZ_ASSERT(pn_dflags == 0);
+        pn_cookie.makeFree();
     }
 
     static bool test(const ParseNode &node) {
@@ -1089,8 +1085,22 @@ struct NameNode : public ParseNode
 
 struct LexicalScopeNode : public ParseNode
 {
-    static inline LexicalScopeNode *create(ParseNodeKind kind, FullParseHandler *handler) {
-        return (LexicalScopeNode *) ParseNode::create(kind, PN_NAME, handler);
+    LexicalScopeNode(ObjectBox *blockBox, const TokenPos &pos)
+      : ParseNode(PNK_LEXICALSCOPE, JSOP_NOP, PN_NAME, pos)
+    {
+        MOZ_ASSERT(!pn_expr);
+        MOZ_ASSERT(pn_dflags == 0);
+        MOZ_ASSERT(pn_blockid == 0);
+        pn_objbox = blockBox;
+        pn_cookie.makeFree();
+    }
+
+    LexicalScopeNode(ObjectBox *blockBox, ParseNode *blockNode)
+      : ParseNode(PNK_LEXICALSCOPE, JSOP_NOP, PN_NAME, blockNode->pn_pos)
+    {
+        pn_objbox = blockBox;
+        pn_expr = blockNode;
+        pn_blockid = blockNode->pn_blockid;
     }
 };
 

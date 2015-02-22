@@ -84,7 +84,7 @@ pref("network.http.max-persistent-connections-per-proxy", 20);
 pref("network.cookie.cookieBehavior", 0);
 
 // spdy
-pref("network.http.spdy.enabled.http2draft", false);
+pref("network.http.spdy.enabled.http2draft", true);
 pref("network.http.spdy.push-allowance", 32768);
 
 // See bug 545869 for details on why these are set the way they are
@@ -319,7 +319,7 @@ pref("media.fragmented-mp4.gonk.enabled", true);
 pref("media.video-queue.default-size", 3);
 
 // optimize images' memory usage
-pref("image.mem.decodeondraw", false);
+pref("image.mem.decodeondraw", true);
 pref("image.mem.allow_locking_in_content_processes", false); /* don't allow image locking */
 // Limit the surface cache to 1/8 of main memory or 128MB, whichever is smaller.
 // Almost everything that was factored into 'max_decoded_image_kb' is now stored
@@ -340,10 +340,26 @@ pref("dom.w3c_touch_events.safetyY", 120); // escape borders in units of 1/240"
 
 #ifdef MOZ_SAFE_BROWSING
 // Safe browsing does nothing unless this pref is set
-pref("browser.safebrowsing.enabled", true);
+pref("browser.safebrowsing.enabled", false);
 
 // Prevent loading of pages identified as malware
-pref("browser.safebrowsing.malware.enabled", true);
+pref("browser.safebrowsing.malware.enabled", false);
+
+pref("browser.safebrowsing.debug", false);
+pref("browser.safebrowsing.updateURL", "https://safebrowsing.google.com/safebrowsing/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2&key=%GOOGLE_API_KEY%");
+pref("browser.safebrowsing.gethashURL", "https://safebrowsing.google.com/safebrowsing/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
+pref("browser.safebrowsing.reportURL", "https://safebrowsing.google.com/safebrowsing/report?");
+pref("browser.safebrowsing.reportGenericURL", "http://%LOCALE%.phish-generic.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.reportErrorURL", "http://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.reportPhishURL", "http://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.reportMalwareURL", "http://%LOCALE%.malware-report.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.reportMalwareErrorURL", "http://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.appRepURL", "https://sb-ssl.google.com/safebrowsing/clientreport/download?key=%GOOGLE_API_KEY%");
+
+pref("browser.safebrowsing.id", "Firefox");
+
+// Tables for application reputation.
+pref("urlclassifier.downloadBlockTable", "goog-badbinurl-shavar");
 
 // Non-enhanced mode (local url lists) URL list to check for updates
 pref("browser.safebrowsing.provider.0.updateURL", "https://safebrowsing.google.com/safebrowsing/downloads?client={moz:client}&appver={moz:version}&pver=2.2&key=%GOOGLE_API_KEY%");
@@ -363,10 +379,6 @@ pref("browser.safebrowsing.provider.0.reportMalwareURL", "http://{moz:locale}.ma
 pref("browser.safebrowsing.provider.0.reportMalwareErrorURL", "http://{moz:locale}.malware-error.mozilla.com/?hl={moz:locale}");
 
 // FAQ URLs
-
-// Name of the about: page contributed by safebrowsing to handle display of error
-// pages on phishing/malware hits.  (bug 399233)
-pref("urlclassifier.alternate_error_page", "blocked");
 
 // The number of random entries to send with a gethash request.
 pref("urlclassifier.gethashnoise", 4);
@@ -676,6 +688,9 @@ pref("ui.useOverlayScrollbars", 1);
 pref("ui.scrollbarFadeBeginDelay", 450);
 pref("ui.scrollbarFadeDuration", 200);
 
+// Scrollbar position follows the document `dir` attribute
+pref("layout.scrollbar.side", 1);
+
 // Enable the ProcessPriorityManager, and give processes with no visible
 // documents a 1s grace period before they're eligible to be marked as
 // background. Background processes that are perceivable due to playing
@@ -735,12 +750,12 @@ pref("hal.processPriorityManager.gonk.BACKGROUND.cgroup", "apps/bg_non_interacti
 
 // Foreground apps
 pref("hal.processPriorityManager.gonk.cgroups.apps.cpu_shares", 1024);
-pref("hal.processPriorityManager.gonk.cgroups.apps.cpu_notify_on_migrate", 1);
+pref("hal.processPriorityManager.gonk.cgroups.apps.cpu_notify_on_migrate", 0);
 pref("hal.processPriorityManager.gonk.cgroups.apps.memory_swappiness", 10);
 
 // Foreground apps with high priority, 16x more CPU than foreground ones
 pref("hal.processPriorityManager.gonk.cgroups.apps/critical.cpu_shares", 16384);
-pref("hal.processPriorityManager.gonk.cgroups.apps/critical.cpu_notify_on_migrate", 1);
+pref("hal.processPriorityManager.gonk.cgroups.apps/critical.cpu_notify_on_migrate", 0);
 pref("hal.processPriorityManager.gonk.cgroups.apps/critical.memory_swappiness", 0);
 
 // Background perceivable apps, ~10x less CPU than foreground ones
@@ -875,6 +890,9 @@ pref("dom.identity.enabled", true);
 
 // Wait up to this much milliseconds when orientation changed
 pref("layers.orientation.sync.timeout", 1000);
+
+// Animate the orientation change
+pref("b2g.orientation.animate", true);
 
 // Don't discard WebGL contexts for foreground apps on memory
 // pressure.
@@ -1015,7 +1033,6 @@ pref("apz.y_stationary_size_multiplier", "1.8");
 pref("apz.enlarge_displayport_when_clipped", true);
 // Use "sticky" axis locking
 pref("apz.axis_lock.mode", 2);
-pref("apz.subframe.enabled", true);
 
 // Overscroll-related settings
 pref("apz.overscroll.enabled", true);
@@ -1092,3 +1109,16 @@ pref("dom.mozSettings.allowForceReadOnly", false);
 
 // RequestSync API is enabled by default on B2G.
 pref("dom.requestSync.enabled", true);
+
+// Only enable for kit kat and above devices
+// kit kat == 19, L = 21, 20 is kit-kat for wearables
+// 15 is for the ICS emulators which will fallback to software vsync
+#if ANDROID_VERSION == 19 || ANDROID_VERSION == 21 || ANDROID_VERSION == 15
+pref("gfx.vsync.hw-vsync.enabled", true);
+pref("gfx.vsync.compositor", true);
+pref("gfx.touch.resample", true);
+#else
+pref("gfx.vsync.hw-vsync.enabled", false);
+pref("gfx.vsync.compositor", false);
+pref("gfx.touch.resample", false);
+#endif

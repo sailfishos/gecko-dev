@@ -100,6 +100,12 @@
 #if MOZ_PACKAGE_MSVC_DLLS
 @BINPATH@/@MSVC_C_RUNTIME_DLL@
 @BINPATH@/@MSVC_CXX_RUNTIME_DLL@
+#ifdef MSVC_APPCRT_DLL
+@BINPATH@/@MSVC_APPCRT_DLL@
+#endif
+#ifdef MSVC_DESKTOPCRT_DLL
+@BINPATH@/@MSVC_DESKTOPCRT_DLL@
+#endif
 #endif
 #endif
 #ifndef MOZ_NATIVE_ICU
@@ -257,7 +263,6 @@
 @RESPATH@/components/htmlparser.xpt
 @RESPATH@/components/identity.xpt
 @RESPATH@/components/imglib2.xpt
-@RESPATH@/components/imgicon.xpt
 @RESPATH@/components/inspector.xpt
 @RESPATH@/components/intl.xpt
 @RESPATH@/components/jar.xpt
@@ -377,8 +382,6 @@
 @RESPATH@/browser/components/nsBrowserGlue.js
 @RESPATH@/browser/components/nsSetDefaultBrowser.manifest
 @RESPATH@/browser/components/nsSetDefaultBrowser.js
-@RESPATH@/browser/components/BrowserDownloads.manifest
-@RESPATH@/browser/components/DownloadsStartup.js
 @RESPATH@/browser/components/devtools-clhandler.manifest
 @RESPATH@/browser/components/devtools-clhandler.js
 @RESPATH@/browser/components/webideCli.js
@@ -396,6 +399,7 @@
 @RESPATH@/components/toolkitsearch.manifest
 @RESPATH@/components/nsSearchService.js
 @RESPATH@/components/nsSearchSuggestions.js
+@RESPATH@/components/nsSidebar.js
 @RESPATH@/components/passwordmgr.manifest
 @RESPATH@/components/nsLoginInfo.js
 @RESPATH@/components/nsLoginManager.js
@@ -415,8 +419,6 @@
 @RESPATH@/components/nsHelperAppDlg.js
 @RESPATH@/components/NetworkGeolocationProvider.manifest
 @RESPATH@/components/NetworkGeolocationProvider.js
-@RESPATH@/browser/components/nsSidebar.manifest
-@RESPATH@/browser/components/nsSidebar.js
 @RESPATH@/components/extensions.manifest
 @RESPATH@/components/addonManager.js
 @RESPATH@/components/amContentHandler.js
@@ -576,6 +578,7 @@
 @RESPATH@/components/TCPSocket.manifest
 
 #ifdef MOZ_ACTIVITIES
+@RESPATH@/components/SystemMessageCache.js
 @RESPATH@/components/SystemMessageInternal.js
 @RESPATH@/components/SystemMessageManager.js
 @RESPATH@/components/SystemMessageManager.manifest

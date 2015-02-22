@@ -182,6 +182,10 @@ GeckoMediaPluginService::Init()
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "last-pb-context-exited", false)));
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "browser:purge-session-history", false)));
 
+#ifdef DEBUG
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, "mediakeys-request", false)));
+#endif
+
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefs) {
     prefs->AddObserver("media.gmp.plugin.crash", this, false);
@@ -218,7 +222,8 @@ GeckoMediaPluginService::Observe(nsISupports* aSubject,
                                  const char* aTopic,
                                  const char16_t* aSomeData)
 {
-  LOGD(("%s::%s: %s", __CLASS__, __FUNCTION__, aTopic));
+  LOGD(("%s::%s topic='%s' data='%s'", __CLASS__, __FUNCTION__,
+       aTopic, NS_ConvertUTF16toUTF8(aSomeData).get()));
   if (!strcmp(aTopic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID)) {
     nsCOMPtr<nsIPrefBranch> branch( do_QueryInterface(aSubject) );
     if (branch) {
@@ -668,13 +673,34 @@ public:
 };
 
 NS_IMETHODIMP
-GeckoMediaPluginService::HasPluginForAPI(const nsACString& aAPI,
-                                         nsTArray<nsCString>* aTags,
-                                         bool* aResult)
+GeckoMediaPluginService::GetPluginVersionForAPI(const nsACString& aAPI,
+                                                nsTArray<nsCString>* aTags,
+                                                nsACString& aOutVersion)
 {
   NS_ENSURE_ARG(aTags && aTags->Length() > 0);
-  NS_ENSURE_ARG(aResult);
 
+  nsresult rv = EnsurePluginsOnDiskScanned();
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Failed to load GMPs from disk.");
+    return rv;
+  }
+
+  {
+    MutexAutoLock lock(mMutex);
+    nsCString api(aAPI);
+    GMPParent* gmp = FindPluginForAPIFrom(0, api, *aTags, nullptr);
+    if (!gmp) {
+      return NS_ERROR_FAILURE;
+    }
+    aOutVersion = gmp->GetVersion();
+  }
+
+  return NS_OK;
+}
+
+nsresult
+GeckoMediaPluginService::EnsurePluginsOnDiskScanned()
+{
   const char* env = nullptr;
   if (!mScannedPluginOnDisk && (env = PR_GetEnv("MOZ_GMP_PATH")) && *env) {
     // We have a MOZ_GMP_PATH environment variable which may specify the
@@ -688,11 +714,28 @@ GeckoMediaPluginService::HasPluginForAPI(const nsACString& aAPI,
     MOZ_ASSERT(mScannedPluginOnDisk, "Should have scanned MOZ_GMP_PATH by now");
   }
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GeckoMediaPluginService::HasPluginForAPI(const nsACString& aAPI,
+                                         nsTArray<nsCString>* aTags,
+                                         bool* aOutHavePlugin)
+{
+  NS_ENSURE_ARG(aTags && aTags->Length() > 0);
+  NS_ENSURE_ARG(aOutHavePlugin);
+
+  nsresult rv = EnsurePluginsOnDiskScanned();
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Failed to load GMPs from disk.");
+    return rv;
+  }
+
   {
     MutexAutoLock lock(mMutex);
     nsCString api(aAPI);
     GMPParent* gmp = FindPluginForAPIFrom(0, api, *aTags, nullptr);
-    *aResult = (gmp != nullptr);
+    *aOutHavePlugin = (gmp != nullptr);
   }
 
   return NS_OK;
@@ -775,6 +818,15 @@ class CreateGMPParentTask : public nsRunnable {
 public:
   NS_IMETHOD Run() {
     MOZ_ASSERT(NS_IsMainThread());
+#if defined(XP_LINUX) && defined(MOZ_GMP_SANDBOX)
+    if (!SandboxInfo::Get().CanSandboxMedia()) {
+      if (!Preferences::GetBool("media.gmp.insecure.allow")) {
+        NS_WARNING("Denying media plugin load due to lack of sandboxing.");
+        return NS_ERROR_NOT_AVAILABLE;
+      }
+      NS_WARNING("Loading media plugin despite lack of sandboxing.");
+    }
+#endif
     mParent = new GMPParent();
     return NS_OK;
   }
@@ -832,7 +884,7 @@ GeckoMediaPluginService::AddOnGMPThread(const nsAString& aDirectory)
   MOZ_ASSERT(mainThread);
   mozilla::SyncRunnable::DispatchToThread(mainThread, task);
   nsRefPtr<GMPParent> gmp = task->GetParent();
-  rv = gmp->Init(this, directory);
+  rv = gmp ? gmp->Init(this, directory) : NS_ERROR_NOT_AVAILABLE;
   if (NS_FAILED(rv)) {
     NS_WARNING("Can't Create GMPParent");
     return;

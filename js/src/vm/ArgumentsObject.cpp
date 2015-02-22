@@ -6,8 +6,6 @@
 
 #include "vm/ArgumentsObject-inl.h"
 
-#include "jsinfer.h"
-
 #include "jit/JitFrames.h"
 #include "vm/GlobalObject.h"
 #include "vm/Stack.h"
@@ -167,8 +165,8 @@ ArgumentsObject::create(JSContext *cx, HandleScript script, HandleFunction calle
     bool strict = callee->strict();
     const Class *clasp = strict ? &StrictArgumentsObject::class_ : &NormalArgumentsObject::class_;
 
-    RootedTypeObject type(cx, cx->getNewType(clasp, TaggedProto(proto.get())));
-    if (!type)
+    RootedObjectGroup group(cx, ObjectGroup::defaultNewGroup(cx, clasp, TaggedProto(proto.get())));
+    if (!group)
         return nullptr;
 
     JSObject *metadata = nullptr;
@@ -188,15 +186,16 @@ ArgumentsObject::create(JSContext *cx, HandleScript script, HandleFunction calle
                         numDeletedWords * sizeof(size_t) +
                         numArgs * sizeof(Value);
 
+    // Allocate zeroed memory to make the object GC-safe for early attachment.
     ArgumentsData *data = reinterpret_cast<ArgumentsData *>(
-            cx->zone()->pod_malloc<uint8_t>(numBytes));
+            cx->zone()->pod_calloc<uint8_t>(numBytes));
     if (!data)
         return nullptr;
 
     Rooted<ArgumentsObject *> obj(cx);
     JSObject *base = JSObject::create(cx, FINALIZE_KIND,
                                       GetInitialHeap(GenericObject, clasp),
-                                      shape, type);
+                                      shape, group);
     if (!base) {
         js_free(data);
         return nullptr;
@@ -207,18 +206,17 @@ ArgumentsObject::create(JSContext *cx, HandleScript script, HandleFunction calle
     data->callee.init(ObjectValue(*callee.get()));
     data->script = script;
 
-    // Initialize with dummy UndefinedValue, and attach it to the argument
-    // object such as the GC can trace ArgumentsData as they are recovered.
-    HeapValue *dst = data->args, *dstEnd = data->args + numArgs;
-    for (HeapValue *iter = dst; iter != dstEnd; iter++)
-        iter->init(UndefinedValue());
-
+    // Attach the argument object.
+    // Because the argument object was zeroed by pod_calloc(), each Value in
+    // ArgumentsData is DoubleValue(0) and therefore safe for GC tracing.
+    MOZ_ASSERT(DoubleValue(0).asRawBits() == 0x0);
+    MOZ_ASSERT_IF(numArgs > 0, data->args[0].asRawBits() == 0x0);
     obj->initFixedSlot(DATA_SLOT, PrivateValue(data));
 
     /* Copy [0, numArgs) into data->slots. */
-    copy.copyArgs(cx, dst, numArgs);
+    copy.copyArgs(cx, data->args, numArgs);
 
-    data->deletedBits = reinterpret_cast<size_t *>(dstEnd);
+    data->deletedBits = reinterpret_cast<size_t *>(data->args + numArgs);
     ClearAllBitArrayElements(data->deletedBits, numDeletedWords);
 
     obj->initFixedSlot(INITIAL_LENGTH_SLOT, Int32Value(numActuals << PACKED_BITS_COUNT));
@@ -325,9 +323,11 @@ ArgSetter(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHand
         return true;
     Handle<NormalArgumentsObject*> argsobj = obj.as<NormalArgumentsObject>();
 
-    unsigned attrs;
-    if (!NativeGetPropertyAttributes(cx, argsobj, id, &attrs))
+    Rooted<PropertyDescriptor> desc(cx);
+    if (!GetOwnPropertyDescriptor(cx, argsobj, id, &desc))
         return false;
+    MOZ_ASSERT(desc.object());
+    unsigned attrs = desc.attributes();
     MOZ_ASSERT(!(attrs & JSPROP_READONLY));
     attrs &= (JSPROP_ENUMERATE | JSPROP_PERMANENT); /* only valid attributes */
 
@@ -338,7 +338,7 @@ ArgSetter(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHand
         if (arg < argsobj->initialLength() && !argsobj->isElementDeleted(arg)) {
             argsobj->setElement(cx, arg, vp);
             if (arg < script->functionNonDelazifying()->nargs())
-                types::TypeScript::SetArgument(cx, script, arg, vp);
+                TypeScript::SetArgument(cx, script, arg, vp);
             return true;
         }
     } else {
@@ -391,25 +391,25 @@ static bool
 args_enumerate(JSContext *cx, HandleObject obj)
 {
     Rooted<NormalArgumentsObject*> argsobj(cx, &obj->as<NormalArgumentsObject>());
+
     RootedId id(cx);
+    bool found;
 
-    /*
-     * Trigger reflection in args_resolve using a series of js_LookupProperty
-     * calls.
-     */
-    int argc = int(argsobj->initialLength());
-    for (int i = -2; i != argc; i++) {
-        id = (i == -2)
-             ? NameToId(cx->names().length)
-             : (i == -1)
-             ? NameToId(cx->names().callee)
-             : INT_TO_JSID(i);
+    // Trigger reflection.
+    id = NameToId(cx->names().length);
+    if (!HasProperty(cx, argsobj, id, &found))
+        return false;
 
-        RootedObject pobj(cx);
-        RootedShape prop(cx);
-        if (!NativeLookupProperty<CanGC>(cx, argsobj, id, &pobj, &prop))
+    id = NameToId(cx->names().callee);
+    if (!HasProperty(cx, argsobj, id, &found))
+        return false;
+
+    for (unsigned i = 0; i < argsobj->initialLength(); i++) {
+        id = INT_TO_JSID(i);
+        if (!HasProperty(cx, argsobj, id, &found))
             return false;
     }
+
     return true;
 }
 
@@ -444,9 +444,11 @@ StrictArgSetter(JSContext *cx, HandleObject obj, HandleId id, bool strict, Mutab
         return true;
     Handle<StrictArgumentsObject*> argsobj = obj.as<StrictArgumentsObject>();
 
-    unsigned attrs;
-    if (!NativeGetPropertyAttributes(cx, argsobj, id, &attrs))
+    Rooted<PropertyDescriptor> desc(cx);
+    if (!GetOwnPropertyDescriptor(cx, argsobj, id, &desc))
         return false;
+    MOZ_ASSERT(desc.object());
+    unsigned attrs = desc.attributes();
     MOZ_ASSERT(!(attrs & JSPROP_READONLY));
     attrs &= (JSPROP_ENUMERATE | JSPROP_PERMANENT); /* only valid attributes */
 
@@ -509,32 +511,25 @@ strictargs_enumerate(JSContext *cx, HandleObject obj)
 {
     Rooted<StrictArgumentsObject*> argsobj(cx, &obj->as<StrictArgumentsObject>());
 
-    /*
-     * Trigger reflection in strictargs_resolve using a series of
-     * js_LookupProperty calls.
-     */
-    RootedObject pobj(cx);
-    RootedShape prop(cx);
     RootedId id(cx);
+    bool found;
 
-    // length
+    // Trigger reflection.
     id = NameToId(cx->names().length);
-    if (!NativeLookupProperty<CanGC>(cx, argsobj, id, &pobj, &prop))
+    if (!HasProperty(cx, argsobj, id, &found))
         return false;
 
-    // callee
     id = NameToId(cx->names().callee);
-    if (!NativeLookupProperty<CanGC>(cx, argsobj, id, &pobj, &prop))
+    if (!HasProperty(cx, argsobj, id, &found))
         return false;
 
-    // caller
     id = NameToId(cx->names().caller);
-    if (!NativeLookupProperty<CanGC>(cx, argsobj, id, &pobj, &prop))
+    if (!HasProperty(cx, argsobj, id, &found))
         return false;
 
-    for (uint32_t i = 0, argc = argsobj->initialLength(); i < argc; i++) {
+    for (unsigned i = 0; i < argsobj->initialLength(); i++) {
         id = INT_TO_JSID(i);
-        if (!NativeLookupProperty<CanGC>(cx, argsobj, id, &pobj, &prop))
+        if (!HasProperty(cx, argsobj, id, &found))
             return false;
     }
 

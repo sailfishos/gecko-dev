@@ -40,7 +40,6 @@
 #include "webrtc/voice_engine/include/voe_volume_control.h"
 #include "webrtc/voice_engine/include/voe_external_media.h"
 #include "webrtc/voice_engine/include/voe_audio_processing.h"
-#include "webrtc/voice_engine/include/voe_call_report.h"
 
 // Video Engine
 // conflicts with #include of scoped_ptr.h
@@ -69,6 +68,7 @@ public:
   virtual int DeliverFrame(unsigned char* buffer,
                            int size,
                            uint32_t time_stamp,
+                           int64_t ntp_time_ms,
                            int64_t render_time,
                            void *handle) MOZ_OVERRIDE;
   /**
@@ -89,7 +89,7 @@ public:
     Init();
   }
 
-  virtual nsresult Allocate(const VideoTrackConstraintsN& aConstraints,
+  virtual nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
                             const MediaEnginePrefs& aPrefs) MOZ_OVERRIDE;
   virtual nsresult Deallocate() MOZ_OVERRIDE;
   virtual nsresult Start(SourceMediaStream*, TrackID) MOZ_OVERRIDE;
@@ -109,9 +109,6 @@ public:
 
   void Refresh(int aIndex);
 
-  bool SatisfiesConstraintSets(
-      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets) MOZ_OVERRIDE;
-
 protected:
   ~MediaEngineWebRTCVideoSource() { Shutdown(); }
 
@@ -129,10 +126,8 @@ private:
   int mMinFps; // Min rate we want to accept
   dom::MediaSourceEnum mMediaSource; // source of media (camera | application | screen)
 
-  static bool SatisfiesConstraintSet(const dom::MediaTrackConstraintSet& aConstraints,
-                                     const webrtc::CaptureCapability& aCandidate);
-  void ChooseCapability(const VideoTrackConstraintsN& aConstraints,
-                        const MediaEnginePrefs& aPrefs);
+  size_t NumCapabilities() MOZ_OVERRIDE;
+  void GetCapability(size_t aIndex, webrtc::CaptureCapability& aOut) MOZ_OVERRIDE;
 };
 
 class MediaEngineWebRTCAudioSource : public MediaEngineAudioSource,
@@ -165,7 +160,7 @@ public:
   virtual void GetName(nsAString& aName) MOZ_OVERRIDE;
   virtual void GetUUID(nsAString& aUUID) MOZ_OVERRIDE;
 
-  virtual nsresult Allocate(const AudioTrackConstraintsN& aConstraints,
+  virtual nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
                             const MediaEnginePrefs& aPrefs) MOZ_OVERRIDE;
   virtual nsresult Deallocate() MOZ_OVERRIDE;
   virtual nsresult Start(SourceMediaStream* aStream, TrackID aID) MOZ_OVERRIDE;
@@ -219,7 +214,6 @@ private:
   ScopedCustomReleasePtr<webrtc::VoEExternalMedia> mVoERender;
   ScopedCustomReleasePtr<webrtc::VoENetwork> mVoENetwork;
   ScopedCustomReleasePtr<webrtc::VoEAudioProcessing> mVoEProcessing;
-  ScopedCustomReleasePtr<webrtc::VoECallReport> mVoECallReport;
 
   // mMonitor protects mSources[] access/changes, and transitions of mState
   // from kStarted to kStopped (which are combined with EndTrack()).

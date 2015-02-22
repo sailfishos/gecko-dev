@@ -1286,12 +1286,8 @@ struct TextNodeCorrespondence
   uint32_t mUndisplayedCharacters;
 };
 
-static void DestroyTextNodeCorrespondence(void* aPropertyValue)
-{
-  delete static_cast<TextNodeCorrespondence*>(aPropertyValue);
-}
-
-NS_DECLARE_FRAME_PROPERTY(TextNodeCorrespondenceProperty, DestroyTextNodeCorrespondence)
+NS_DECLARE_FRAME_PROPERTY(TextNodeCorrespondenceProperty,
+                          DeleteValue<TextNodeCorrespondence>)
 
 /**
  * Returns the number of undisplayed characters before the specified
@@ -2723,13 +2719,14 @@ public:
   {
   }
 
+  void NotifySelectionBackgroundNeedsFill(const Rect& aBackgroundRect,
+                                          nscolor aColor,
+                                          DrawTarget& aDrawTarget) MOZ_OVERRIDE;
   void NotifyBeforeText(nscolor aColor) MOZ_OVERRIDE;
   void NotifyGlyphPathEmitted() MOZ_OVERRIDE;
   void NotifyBeforeSVGGlyphPainted() MOZ_OVERRIDE;
   void NotifyAfterSVGGlyphPainted() MOZ_OVERRIDE;
   void NotifyAfterText() MOZ_OVERRIDE;
-  void NotifyBeforeSelectionBackground(nscolor aColor) MOZ_OVERRIDE;
-  void NotifySelectionBackgroundPathEmitted() MOZ_OVERRIDE;
   void NotifyBeforeDecorationLine(nscolor aColor) MOZ_OVERRIDE;
   void NotifyDecorationLinePathEmitted() MOZ_OVERRIDE;
   void NotifyBeforeSelectionDecorationLine(nscolor aColor) MOZ_OVERRIDE;
@@ -2739,9 +2736,8 @@ private:
   void SetupContext();
 
   bool IsClipPathChild() const {
-    // parent is the CSS text frame, grand parent must be
-    // an SVG frame of some kind
-    return mFrame->GetParent()->GetParent()->GetStateBits() &
+    return nsLayoutUtils::GetClosestFrameOfType
+             (mFrame->GetParent(), nsGkAtoms::svgTextFrame)->GetStateBits() &
              NS_STATE_SVG_CLIPPATH_CHILD;
   }
 
@@ -2787,6 +2783,27 @@ private:
 };
 
 void
+SVGTextDrawPathCallbacks::NotifySelectionBackgroundNeedsFill(
+                                                      const Rect& aBackgroundRect,
+                                                      nscolor aColor,
+                                                      DrawTarget& aDrawTarget)
+{
+  if (IsClipPathChild()) {
+    // Don't paint selection backgrounds when in a clip path.
+    return;
+  }
+
+  mColor = aColor; // currently needed by MakeFillPattern
+
+  GeneralPattern fillPattern;
+  MakeFillPattern(&fillPattern);
+  if (fillPattern.GetPattern()) {
+    DrawOptions drawOptions(aColor == NS_40PERCENT_FOREGROUND_COLOR ? 0.4 : 1.0);
+    aDrawTarget.FillRect(aBackgroundRect, fillPattern, drawOptions);
+  }
+}
+
+void
 SVGTextDrawPathCallbacks::NotifyBeforeText(nscolor aColor)
 {
   mColor = aColor;
@@ -2817,41 +2834,6 @@ SVGTextDrawPathCallbacks::NotifyAfterSVGGlyphPainted()
 void
 SVGTextDrawPathCallbacks::NotifyAfterText()
 {
-  gfx->Restore();
-}
-
-void
-SVGTextDrawPathCallbacks::NotifyBeforeSelectionBackground(nscolor aColor)
-{
-  if (IsClipPathChild()) {
-    // Don't paint selection backgrounds when in a clip path.
-    return;
-  }
-
-  mColor = aColor;
-  gfx->Save();
-}
-
-void
-SVGTextDrawPathCallbacks::NotifySelectionBackgroundPathEmitted()
-{
-  if (IsClipPathChild()) {
-    // Don't paint selection backgrounds when in a clip path.
-    return;
-  }
-
-  GeneralPattern fillPattern;
-  MakeFillPattern(&fillPattern);
-  if (fillPattern.GetPattern()) {
-    RefPtr<Path> path = gfx->GetPath();
-    FillRule fillRule = nsSVGUtils::ToFillRule(mFrame->StyleSVG()->mFillRule);
-    if (fillRule != path->GetFillRule()) {
-      RefPtr<PathBuilder> builder = path->CopyToBuilder(fillRule);
-      path = builder->Finish();
-    }
-    DrawOptions drawOptions(mColor == NS_40PERCENT_FOREGROUND_COLOR ? 0.4 : 1.0);
-    gfx->GetDrawTarget()->Fill(path, fillPattern, drawOptions);
-  }
   gfx->Restore();
 }
 
@@ -3138,7 +3120,7 @@ public:
       mDisableSubpixelAA(false)
   {
     MOZ_COUNT_CTOR(nsDisplaySVGText);
-    NS_ABORT_IF_FALSE(aFrame, "Must have a frame!");
+    MOZ_ASSERT(aFrame, "Must have a frame!");
   }
 #ifdef NS_BUILD_REFCNT_LOGGING
   virtual ~nsDisplaySVGText() {
@@ -3530,8 +3512,8 @@ SVGTextFrame::FindCloserFrameForSelection(
 void
 SVGTextFrame::NotifySVGChanged(uint32_t aFlags)
 {
-  NS_ABORT_IF_FALSE(aFlags & (TRANSFORM_CHANGED | COORD_CONTEXT_CHANGED),
-                    "Invalidation logic may need adjusting");
+  MOZ_ASSERT(aFlags & (TRANSFORM_CHANGED | COORD_CONTEXT_CHANGED),
+             "Invalidation logic may need adjusting");
 
   bool needNewBounds = false;
   bool needGlyphMetricsUpdate = false;
@@ -3849,8 +3831,8 @@ SVGTextFrame::ReflowSVG()
   NS_ASSERTION(nsSVGUtils::OuterSVGIsCallingReflowSVG(this),
                "This call is probaby a wasteful mistake");
 
-  NS_ABORT_IF_FALSE(!(GetStateBits() & NS_FRAME_IS_NONDISPLAY),
-                    "ReflowSVG mechanism not designed for this");
+  MOZ_ASSERT(!(GetStateBits() & NS_FRAME_IS_NONDISPLAY),
+             "ReflowSVG mechanism not designed for this");
 
   if (!nsSVGUtils::NeedsReflowSVG(this)) {
     NS_ASSERTION(!(mState & NS_STATE_SVG_POSITIONING_DIRTY), "How did this happen?");

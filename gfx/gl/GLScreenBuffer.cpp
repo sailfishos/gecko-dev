@@ -421,6 +421,12 @@ GLScreenBuffer::Attach(SharedSurface* surf, const gfx::IntSize& size)
     // Check that we're all set up.
     MOZ_ASSERT(SharedSurf() == surf);
 
+    // Update the ReadBuffer mode.
+    if (mGL->IsSupported(gl::GLFeature::read_buffer)) {
+        BindFB(0);
+        mRead->SetReadBuffer(mUserReadBufferMode);
+    }
+
     return true;
 }
 
@@ -518,40 +524,13 @@ GLScreenBuffer::CreateRead(SharedSurface* surf)
 }
 
 void
-GLScreenBuffer::Readback(SharedSurface* src, gfx::DataSourceSurface* dest)
+GLScreenBuffer::SetReadBuffer(GLenum mode)
 {
-  MOZ_ASSERT(src && dest);
-  MOZ_ASSERT(dest->GetSize() == src->mSize);
-  MOZ_ASSERT(dest->GetFormat() == (src->mHasAlpha ? SurfaceFormat::B8G8R8A8
-                                                  : SurfaceFormat::B8G8R8X8));
+    MOZ_ASSERT(mGL->IsSupported(gl::GLFeature::read_buffer));
+    MOZ_ASSERT(GetReadFB() == 0);
 
-  mGL->MakeCurrent();
-
-  bool needsSwap = src != SharedSurf();
-  if (needsSwap) {
-      SharedSurf()->UnlockProd();
-      src->LockProd();
-  }
-
-  {
-      // Even though we're reading. We're doing it on
-      // the producer side. So we call ProducerAcquire
-      // instead of ConsumerAcquire.
-      src->ProducerAcquire();
-
-      UniquePtr<ReadBuffer> buffer = CreateRead(src);
-      MOZ_ASSERT(buffer);
-
-      ScopedBindFramebuffer autoFB(mGL, buffer->mFB);
-      ReadPixelsIntoDataSurface(mGL, dest);
-
-      src->ProducerRelease();
-  }
-
-  if (needsSwap) {
-      src->UnlockProd();
-      SharedSurf()->LockProd();
-  }
+    mUserReadBufferMode = mode;
+    mRead->SetReadBuffer(mUserReadBufferMode);
 }
 
 bool
@@ -673,7 +652,6 @@ ReadBuffer::Create(GLContext* gl,
 
     if (surf->mAttachType == AttachmentType::Screen) {
         // Don't need anything. Our read buffer will be the 'screen'.
-
         return UniquePtr<ReadBuffer>( new ReadBuffer(gl, 0, 0, 0,
                                                      surf) );
     }
@@ -775,6 +753,32 @@ const gfx::IntSize&
 ReadBuffer::Size() const
 {
     return mSurf->mSize;
+}
+
+void
+ReadBuffer::SetReadBuffer(GLenum userMode) const
+{
+    if (!mGL->IsSupported(GLFeature::read_buffer))
+        return;
+
+    GLenum internalMode;
+
+    switch (userMode) {
+    case LOCAL_GL_BACK:
+        internalMode = (mFB == 0) ? LOCAL_GL_BACK
+                                  : LOCAL_GL_COLOR_ATTACHMENT0;
+        break;
+
+    case LOCAL_GL_NONE:
+        internalMode = LOCAL_GL_NONE;
+        break;
+
+    default:
+        MOZ_CRASH("Bad value.");
+    }
+
+    mGL->MakeCurrent();
+    mGL->fReadBuffer(internalMode);
 }
 
 } /* namespace gl */

@@ -325,11 +325,16 @@
     "kind": "flag",
     "description": "Has seen location error"
   },
+  "GEOLOCATION_OSX_SOURCE_IS_MLS": {
+    "expires_in_version": "default",
+    "kind": "boolean",
+    "description": "Geolocation on OS X is either MLS or CoreLocation"
+  },
   "JS_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT": {
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 10,
-    "description": "Use of SpiderMonkey's deprecated language extensions in web content: ForEach=0, DestructuringForIn=1, LegacyGenerator=2, ExpressionClosure=3, LetBlock=4, LetExpression=5"
+    "description": "Use of SpiderMonkey's deprecated language extensions in web content: ForEach=0, DestructuringForIn=1, LegacyGenerator=2, ExpressionClosure=3, LetBlock=4, LetExpression=5, NoSuchMethod=6"
   },
   "TELEMETRY_PING": {
     "expires_in_version": "default",
@@ -2431,6 +2436,21 @@
     "extended_statistics_ok": true,
     "description": "How many speculative connections are made needlessly"
   },
+  "URL_PATH_ENDS_IN_EXCLAMATION": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "The URL path ends in !"
+  },
+  "URL_PATH_CONTAINS_EXCLAMATION_SLASH": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "The URL path contains !/"
+  },
+  "URL_PATH_CONTAINS_EXCLAMATION_DOUBLE_SLASH": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "The URL path contains !//"
+  },
   "FIND_PLUGINS": {
     "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
     "expires_in_version": "40",
@@ -4336,6 +4356,32 @@
     "keyed": true,
     "description": "a testing histogram; not meant to be touched"
   },
+  "TELEMETRY_TEST_RELEASE_OPTOUT": {
+    "expires_in_version": "default",
+    "kind": "flag",
+    "releaseChannelCollection": "opt-out",
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_RELEASE_OPTIN": {
+    "expires_in_version": "default",
+    "kind": "flag",
+    "releaseChannelCollection": "opt-in",
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_KEYED_RELEASE_OPTIN": {
+    "expires_in_version": "default",
+    "kind": "flag",
+    "keyed": true,
+    "releaseChannelCollection": "opt-in",
+    "description": "a testing histogram; not meant to be touched"
+  },
+  "TELEMETRY_TEST_KEYED_RELEASE_OPTOUT": {
+    "expires_in_version": "default",
+    "kind": "flag",
+    "keyed": true,
+    "releaseChannelCollection": "opt-out",
+    "description": "a testing histogram; not meant to be touched"
+  },
   "STARTUP_CRASH_DETECTED": {
     "expires_in_version": "never",
     "kind": "flag",
@@ -4486,15 +4532,6 @@
     "description": "The way the GeckoApp was launched. (Normal, URL, Prefetch, Redirector)",
     "cpp_guard": "ANDROID"
   },
-  "FENNEC_STARTUP_TIME_ABOUTHOME": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "low": 100,
-    "high": "10000",
-    "n_buckets": 20,
-    "description": "Time for the about:home page to be displayed (ms)",
-    "cpp_guard": "ANDROID"
-  },
   "FENNEC_STARTUP_TIME_GECKOREADY": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -4612,6 +4649,30 @@
     "expires_in_version": "never",
     "kind": "flag",
     "description": "Set if the time-zone heuristic indicates US but the fetched country code doesn't"
+  },
+  "SEARCH_SERVICE_US_COUNTRY_MISMATCHED_PLATFORM_OSX": {
+    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If we are on OSX and either the OSX countryCode or the geoip countryCode indicates we are in the US, set to false if they both do or true otherwise"
+  },
+  "SEARCH_SERVICE_NONUS_COUNTRY_MISMATCHED_PLATFORM_OSX": {
+    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If we are on OSX and neither the OSX countryCode nor the geoip countryCode indicates we are in the US, set to false if they both agree on the value or true otherwise"
+  },
+  "SEARCH_SERVICE_US_COUNTRY_MISMATCHED_PLATFORM_WIN": {
+    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If we are on Windows and either the Windows countryCode or the geoip countryCode indicates we are in the US, set to false if they both do or true otherwise"
+  },
+  "SEARCH_SERVICE_NONUS_COUNTRY_MISMATCHED_PLATFORM_WIN": {
+    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If we are on Windows and neither the Windows countryCode nor the geoip countryCode indicates we are in the US, set to false if they both agree on the value or true otherwise"
   },
   "SOCIAL_ENABLED_ON_SESSION": {
     "expires_in_version": "never",
@@ -5388,6 +5449,30 @@
     "high": "10000",
     "n_buckets": "1000",
     "description": "The time (in milliseconds) that it took a 'reconfigure thread' request to go round trip."
+  },
+  "VIDEO_CANPLAYTYPE_H264_LEVEL": {
+    "expires_in_version": "40",
+    "kind": "enumerated",
+    "n_values": 51,
+    "description": "The H.264 level (level_idc) as extracted from the codecs parameter passed to HTMLMediaElement.canPlayType, from levels 1 (10) to 5.2 (51), with the addition of 0 for unknown values."
+  },
+  "VIDEO_CANPLAYTYPE_H264_PROFILE": {
+    "expires_in_version": "40",
+    "kind": "enumerated",
+    "n_values": 244,
+    "description": "The H.264 profile number (profile_idc) as extracted from the codecs parameter passed to HTMLMediaElement.canPlayType."
+  },
+  "VIDEO_DECODED_H264_SPS_LEVEL": {
+    "expires_in_version": "40",
+    "kind": "enumerated",
+    "n_values": 51,
+    "description": "The H.264 level (level_idc) as extracted from the decoded SPS, from levels 1 (10) to 5.2 (51), with the addition of 0 for unknown values."
+  },
+  "VIDEO_DECODED_H264_SPS_PROFILE": {
+    "expires_in_version": "40",
+    "kind": "enumerated",
+    "n_values": 244,
+    "description": "The H.264 profile number (profile_idc) as extracted from the decoded SPS."
   },
   "WEBRTC_ICE_FINAL_CONNECTION_STATE": {
     "expires_in_version": "never",
@@ -6622,7 +6707,7 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": "36",
-    "description": "ECDHE KEA (TLS_ECDHE_*) curve (1=P-256, 2=P-384, 3=P-521) in full handshake"
+    "description": "ECDHE KEA (TLS_ECDHE_*) curve (23=P-256, 24=P-384, 25=P-521) in full handshake"
   },
   "SSL_AUTH_ALGORITHM_FULL": {
     "expires_in_version": "never",
@@ -6646,7 +6731,7 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": "36",
-    "description": "ECDSA signature curve for TLS_*_ECDSA_* in full handshake (1=P-256, 2=P-384, 3=P-521)"
+    "description": "ECDSA signature curve for TLS_*_ECDSA_* in full handshake (23=P-256, 24=P-384, 25=P-521)"
   },
   "SSL_SYMMETRIC_CIPHER_FULL": {
     "expires_in_version": "never",
@@ -6987,6 +7072,13 @@
     "n_values": 3,
     "description": "Doorhanger shown = 0, Disable = 1, Enable = 2"
   },
+  "SERVICE_WORKER_REGISTRATION_LOADING": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "5000",
+    "n_buckets": 20,
+    "description": "Tracking how ServiceWorkerRegistrar loads data before the first content is shown"
+  },
   "LOOP_CLIENT_CALL_URL_REQUESTS_SUCCESS": {
     "expires_in_version": "never",
     "kind": "boolean",
@@ -7155,6 +7247,111 @@
     "n_buckets": 16,
     "description": "The number of entries in persistent DataStorage (HSTS and HPKP data, basically)"
   },
+  "VIDEO_MSE_UNLOAD_STATE": {
+    "expires_in_version": "45",
+    "kind": "enumerated",
+    "n_values": 5,
+    "description": "MSE video state when unloading. ended = 0, paused = 1, stalled = 2, seeking = 3, other = 4"
+  },
+  "FX_SANITIZE_TOTAL": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Total time it takes to sanitize (ms)"
+  },
+  "FX_SANITIZE_CACHE": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize the cache (ms)"
+  },
+  "FX_SANITIZE_COOKIES": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize cookies (ms)"
+  },
+  "FX_SANITIZE_OFFLINEAPPS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize stored offline app data (ms)"
+  },
+  "FX_SANITIZE_HISTORY": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize history (ms)"
+  },
+  "FX_SANITIZE_FORMDATA": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize stored form data (ms)"
+  },
+  "FX_SANITIZE_DOWNLOADS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize recent downloads (ms)"
+  },
+  "FX_SANITIZE_PASSWORDS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize saved passwords (ms)"
+  },
+  "FX_SANITIZE_SESSIONS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize saved sessions (ms)"
+  },
+  "FX_SANITIZE_SITESETTINGS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize site-specific settings (ms)"
+  },
+  "FX_SANITIZE_OPENWINDOWS": {
+    "alert_emails": ["firefox-dev@mozilla.org", "gavin@mozilla.com"],
+    "expires_in_version": "40",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Sanitize: Time it takes to sanitize the open windows list (ms)"
+  },
   "PWMGR_BLOCKLIST_NUM_SITES": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -7163,13 +7360,39 @@
     "extended_statistics_ok": true,
     "description": "The number of sites for which the user has explicitly rejected saving logins"
   },
+  "PWMGR_FORM_ACTION_EFFECT": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values" : 5,
+    "description": "The effect of the form action on signon autofill. (0=No effect, 1=Fewer logins after considering the form action, 2=No logins match form origin and action."
+  },
+  "PWMGR_FORM_AUTOFILL_RESULT": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values" : 20,
+    "description": "The result of auto-filling a login form. See http://mzl.la/1Mbs6jL for bucket descriptions."
+  },
+  "PWMGR_NUM_PASSWORDS_PER_HOSTNAME": {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": 21,
+    "n_buckets" : 20,
+    "description": "The number of passwords per hostname"
+  },
   "PWMGR_NUM_SAVED_PASSWORDS": {
     "expires_in_version": "never",
     "kind": "exponential",
     "high": 750,
     "n_buckets" : 50,
     "extended_statistics_ok": true,
-    "description": "The number of saved signons in storage"
+    "description": "Total number of saved logins, including those that cannot be decrypted"
+  },
+  "PWMGR_LOGIN_LAST_USED_DAYS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 750,
+    "n_buckets" : 40,
+    "description": "Time in days each saved login was last used"
   },
   "PWMGR_SAVING_ENABLED": {
     "expires_in_version": "never",
@@ -7207,5 +7430,17 @@
     "expires_in_version": "45",
     "kind": "count",
     "description": "The number of Sync 1.5 migrations completed by Android Sync."
+  },
+  "SLOW_SCRIPT_NOTICE_COUNT": {
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "count",
+    "description": "Count slow script notices"
+  },
+  "PLUGIN_HANG_NOTICE_COUNT": {
+    "alert_emails": ["perf-telemetry-alerts@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "count",
+    "description": "Count plugin hang notices in e10s"
   }
 }

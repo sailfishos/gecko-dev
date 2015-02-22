@@ -93,6 +93,13 @@ class ArithPolicy MOZ_FINAL : public TypePolicy
     virtual bool adjustInputs(TempAllocator &alloc, MInstruction *def) MOZ_OVERRIDE;
 };
 
+class AllDoublePolicy MOZ_FINAL : public TypePolicy
+{
+  public:
+    EMPTY_DATA_;
+    bool adjustInputs(TempAllocator &alloc, MInstruction *def);
+};
+
 class BitwisePolicy MOZ_FINAL : public TypePolicy
 {
   public:
@@ -314,6 +321,19 @@ class SimdScalarPolicy MOZ_FINAL : public TypePolicy
     static bool staticAdjustInputs(TempAllocator &alloc, MInstruction *def);
     virtual bool adjustInputs(TempAllocator &alloc, MInstruction *def) MOZ_OVERRIDE {
         return staticAdjustInputs(alloc, def);
+    }
+};
+
+// SIMD value-type policy, use the returned type of the instruction to determine
+// how to unbox its operand.
+template <unsigned Op>
+class SimdSameAsReturnedTypePolicy MOZ_FINAL : public TypePolicy
+{
+  public:
+    EMPTY_DATA_;
+    static bool staticAdjustInputs(TempAllocator &alloc, MInstruction *ins);
+    virtual bool adjustInputs(TempAllocator &alloc, MInstruction *ins) MOZ_OVERRIDE {
+        return staticAdjustInputs(alloc, ins);
     }
 };
 

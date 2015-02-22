@@ -50,6 +50,11 @@ nsRangeFrame::nsRangeFrame(nsStyleContext* aContext)
 
 nsRangeFrame::~nsRangeFrame()
 {
+#ifdef DEBUG
+  if (mOuterFocusStyle) {
+    mOuterFocusStyle->FrameRelease();
+  }
+#endif
 }
 
 NS_IMPL_FRAMEARENA_HELPERS(nsRangeFrame)
@@ -492,14 +497,12 @@ nsRangeFrame::GetValueAtEventPoint(WidgetGUIEvent* aEvent)
   if (aEvent->mClass == eTouchEventClass) {
     MOZ_ASSERT(aEvent->AsTouchEvent()->touches.Length() == 1,
                "Unexpected number of touches");
-    absPoint = LayoutDeviceIntPoint::FromUntyped(
-      aEvent->AsTouchEvent()->touches[0]->mRefPoint);
+    absPoint = aEvent->AsTouchEvent()->touches[0]->mRefPoint;
   } else {
     absPoint = aEvent->refPoint;
   }
   nsPoint point =
-    nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, 
-      LayoutDeviceIntPoint::ToUntyped(absPoint), this);
+    nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, absPoint, this);
 
   if (point == nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE)) {
     // We don't want to change the current value for this error state.
@@ -882,6 +885,18 @@ nsRangeFrame::SetAdditionalStyleContext(int32_t aIndex,
   MOZ_ASSERT(aIndex == 0,
              "GetAdditionalStyleContext is handling other indexes?");
 
+#ifdef DEBUG
+  if (mOuterFocusStyle) {
+    mOuterFocusStyle->FrameRelease();
+  }
+#endif
+
   // The -moz-focus-outer pseudo-element's style has changed.
   mOuterFocusStyle = aStyleContext;
+
+#ifdef DEBUG
+  if (mOuterFocusStyle) {
+    mOuterFocusStyle->FrameAddRef();
+  }
+#endif
 }

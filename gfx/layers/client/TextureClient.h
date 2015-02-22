@@ -89,9 +89,9 @@ public:
 
   static TemporaryRef<SyncObject> CreateSyncObject(SyncHandle aHandle);
 
-  MOZ_BEGIN_NESTED_ENUM_CLASS(SyncType)
+  enum class SyncType {
     D3D11,
-  MOZ_END_NESTED_ENUM_CLASS(SyncType)
+  };
 
   virtual SyncType GetSyncType() = 0;
   virtual void FinalizeFrame() = 0;
@@ -403,7 +403,7 @@ public:
    * It's a temporary hack to ensure that DXGI textures don't get destroyed
    * between serialization and deserialization.
    */
-  void KeepUntilFullDeallocation(KeepAlive* aKeep);
+  void KeepUntilFullDeallocation(UniquePtr<KeepAlive> aKeep);
 
   /**
    * Create and init the TextureChild/Parent IPDL actor pair.
@@ -459,7 +459,7 @@ public:
   /**
    * This function waits until the buffer is no longer being used.
    */
-  virtual void WaitForBufferOwnership() {}
+  virtual void WaitForBufferOwnership(bool aWaitReleaseFence = true) {}
 
   /**
    * Track how much of this texture is wasted.
@@ -600,8 +600,6 @@ public:
   virtual bool AllocateForYCbCr(gfx::IntSize aYSize,
                                 gfx::IntSize aCbCrSize,
                                 StereoMode aStereoMode) MOZ_OVERRIDE;
-
-  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() MOZ_OVERRIDE;
 
   virtual gfx::SurfaceFormat GetFormat() const MOZ_OVERRIDE { return mFormat; }
 

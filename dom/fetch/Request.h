@@ -6,6 +6,7 @@
 #ifndef mozilla_dom_Request_h
 #define mozilla_dom_Request_h
 
+#include "nsIContentPolicy.h"
 #include "nsISupportsImpl.h"
 #include "nsWrapperCache.h"
 
@@ -74,6 +75,19 @@ public:
     return mRequest->GetCacheMode();
   }
 
+  RequestContext
+  Context() const
+  {
+    return mContext;
+  }
+
+  // [ChromeOnly]
+  void
+  SetContext(RequestContext aContext)
+  {
+    mContext = aContext;
+  }
+
   void
   GetReferrer(nsAString& aReferrer) const
   {
@@ -101,7 +115,7 @@ public:
   }
 
   already_AddRefed<Request>
-  Clone() const;
+  Clone(ErrorResult& aRv) const;
 
   already_AddRefed<InternalRequest>
   GetInternalRequest();
@@ -112,6 +126,7 @@ private:
   nsRefPtr<InternalRequest> mRequest;
   // Lazily created.
   nsRefPtr<Headers> mHeaders;
+  RequestContext mContext;
 };
 
 } // namespace dom

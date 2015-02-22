@@ -4,7 +4,11 @@
     <meta name="viewport" content="initial-scale=1.0"/>
     <script type="application/javascript"
       src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
-    <script type="application/javascript">
+    <script type="application/javascript" src="SelectionUtils.js"></script>
+    <script type="application/javascript;version=1.8">
+
+// Name of this test.
+const TYPE_NAME = "Robocop:testInputSelections";
 
 // Used to create handle movement events for SelectionHandler.
 const ANCHOR = "ANCHOR";
@@ -21,11 +25,6 @@ const EST_SEL_TEXT_BOUND_CHARS = 5;
 const LTR_INPUT_TEXT_VALUE = "This input text is one character short of it's maxmimum.";
 const RTL_INPUT_TEXT_VALUE = "טקסט קלט זה קצר תו אחד של זה גדול.";
 
-
-const { classes: Cc, interfaces: Ci, results: Cr, utils: Cu } = Components;
-Cu.import("resource://gre/modules/Messaging.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
-Cu.import('resource://gre/modules/Geometry.jsm');
 
 /* =================================================================================
  *
@@ -60,20 +59,20 @@ function startTests() {
  */
 function testLTR_selectAll() {
   // Select entire LTR Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("LTRInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("LTRInput");
   element.value = LTR_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
-  var selection = sh._getSelection();
+  let selection = sh._getSelection();
 
-  var anchorNode = selection.anchorNode;
-  var anchorOffset = selection.anchorOffset;
-  var focusNode = selection.focusNode;
-  var focusOffset = selection.focusOffset;
+  let anchorNode = selection.anchorNode;
+  let anchorOffset = selection.anchorOffset;
+  let focusNode = selection.focusNode;
+  let focusOffset = selection.focusOffset;
 
-  var anchorPt = new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y);
-  var focusPt = new Point(sh._cache.focusPt.x, sh._cache.focusPt.y);
+  let anchorPt = new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y);
+  let focusPt = new Point(sh._cache.focusPt.x, sh._cache.focusPt.y);
 
   return Promise.all([
     ok(sh.isSelectionActive(),
@@ -106,7 +105,7 @@ function testLTR_selectAll() {
 
   ]).then(function() {
     // Close selection and complete test.
-    sh.observe(null, "TextSelection:End", {});
+    Services.obs.notifyObservers(null, "TextSelection:End", {});
 
     return Promise.all([
       ok(!sh.isSelectionActive(),
@@ -129,20 +128,20 @@ function testLTR_selectAll() {
  */
 function testRTL_selectAll() {
   // Select entire RTL Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("RTLInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("RTLInput");
   element.value = RTL_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
-  var selection = sh._getSelection();
+  let selection = sh._getSelection();
 
-  var anchorNode = selection.anchorNode;
-  var anchorOffset = selection.anchorOffset;
-  var focusNode = selection.focusNode;
-  var focusOffset = selection.focusOffset;
+  let anchorNode = selection.anchorNode;
+  let anchorOffset = selection.anchorOffset;
+  let focusNode = selection.focusNode;
+  let focusOffset = selection.focusOffset;
 
-  var anchorPt = new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y);
-  var focusPt = new Point(sh._cache.focusPt.x, sh._cache.focusPt.y);
+  let anchorPt = new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y);
+  let focusPt = new Point(sh._cache.focusPt.x, sh._cache.focusPt.y);
 
   return Promise.all([
     ok(sh.isSelectionActive(),
@@ -175,7 +174,7 @@ function testRTL_selectAll() {
 
   ]).then(function() {
     // Close selection and complete test.
-    sh.observe(null, "TextSelection:End", {});
+    Services.obs.notifyObservers(null, "TextSelection:End", {});
 
     return Promise.all([
       ok(!sh.isSelectionActive(),
@@ -192,35 +191,35 @@ function testRTL_selectAll() {
  */
 function testLTR_dragFocusHandleToSelf() {
   // Select entire LTR Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("LTRInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("LTRInput");
   element.value = LTR_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
   // Note initial Selection handle points.
-  var initialSelection =
+  let initialSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var initialSelectionText = sh._getSelectedText();
+  let initialSelectionText = sh._getSelectedText();
 
   // Drag focus handle and note results.
-  sh.observe(null, "TextSelection:Move",
+  Services.obs.notifyObservers(null, "TextSelection:Move",
     JSON.stringify({ handleType : FOCUS,
       x : initialSelection.focusPt.x,
       y : initialSelection.focusPt.y
     })
   );
-  sh.observe(null, "TextSelection:Position",
+  Services.obs.notifyObservers(null, "TextSelection:Position",
     JSON.stringify({ handleType : FOCUS })
   );
 
-  var focusDraggedSelection =
+  let focusDraggedSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var focusDragSelectionText = sh._getSelectedText();
+  let focusDragSelectionText = sh._getSelectedText();
 
   // Complete test, and report.
-  sh.observe(null, "TextSelection:End", {});
+  Services.obs.notifyObservers(null, "TextSelection:End", {});
 
   return Promise.all([
     ok(true, "testLTR_dragFocusHandleToSelf - Test Starts."),
@@ -250,34 +249,36 @@ function testLTR_dragFocusHandleToSelf() {
  */
 function testLTR_dragAnchorHandleToSelf() {
   // Select entire LTR Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("LTRInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("LTRInput");
   element.value = LTR_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
   // Note initial Selection handle points.
-  var initialSelection =
+  let initialSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var initialSelectionText = sh._getSelectedText();
+  let initialSelectionText = sh._getSelectedText();
 
   // Drag anchor handle and note results.
-  sh.observe(null, "TextSelection:Move",
+  // Note, due to edge case with border boundaries, we actually
+  // move inside a pixel, to maintain Selection position.
+  Services.obs.notifyObservers(null, "TextSelection:Move",
     JSON.stringify({ handleType : ANCHOR,
       x : initialSelection.anchorPt.x,
-      y : initialSelection.anchorPt.y
+      y : initialSelection.anchorPt.y - 1
     })
   );
-  sh.observe(null, "TextSelection:Position",
+  Services.obs.notifyObservers(null, "TextSelection:Position",
     JSON.stringify({ handleType : ANCHOR })
   );
-  var anchorDraggedSelection =
+  let anchorDraggedSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var anchorDragSelectionText = sh._getSelectedText();
+  let anchorDragSelectionText = sh._getSelectedText();
 
   // Complete test, and report.
-  sh.observe(null, "TextSelection:End", {});
+  Services.obs.notifyObservers(null, "TextSelection:End", {});
 
   return Promise.all([
     ok(true, "testLTR_dragAnchorHandleToSelf - Test Starts."),
@@ -287,14 +288,11 @@ function testLTR_dragAnchorHandleToSelf() {
     selectionExists(initialSelection,
       "LTR Selection initially existed at points"),
 
-    todo(false, "testLTR_dragAnchorHandleToSelf: " +
-    // is(anchorDragSelectionText, LTR_INPUT_TEXT_VALUE,
+    is(anchorDragSelectionText, LTR_INPUT_TEXT_VALUE,
       "LTR Selection text after anchor drag should match expected value."),
-    todo(false, "testLTR_dragAnchorHandleToSelf: " +
-    // selectionExists(anchorDraggedSelection,
+    selectionExists(anchorDraggedSelection,
       "LTR Selection after anchor drag existed at points"),
-    todo(false, "testLTR_dragAnchorHandleToSelf: " +
-    // selectionEquals(anchorDraggedSelection, initialSelection,
+    selectionEquals(anchorDraggedSelection, initialSelection,
       "LTR Selection points after anchor drag " +
       "should match initial selection points."),
 
@@ -310,35 +308,35 @@ function testLTR_dragAnchorHandleToSelf() {
  */
 function testRTL_dragFocusHandleToSelf() {
   // Select entire RTL Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("RTLInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("RTLInput");
   element.value = RTL_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
   // Note initial Selection handle points.
-  var initialSelection =
+  let initialSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var initialSelectionText = sh._getSelectedText();
+  let initialSelectionText = sh._getSelectedText();
 
   // Drag focus handle and note results.
-  sh.observe(null, "TextSelection:Move",
+  Services.obs.notifyObservers(null, "TextSelection:Move",
     JSON.stringify({ handleType : FOCUS,
       x : initialSelection.focusPt.x,
       y : initialSelection.focusPt.y
     })
   );
-  sh.observe(null, "TextSelection:Position",
+  Services.obs.notifyObservers(null, "TextSelection:Position",
     JSON.stringify({ handleType : FOCUS })
   );
 
-  var focusDraggedSelection =
+  let focusDraggedSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var focusDragSelectionText = sh._getSelectedText();
+  let focusDragSelectionText = sh._getSelectedText();
 
   // Complete test, and report.
-  sh.observe(null, "TextSelection:End", {});
+  Services.obs.notifyObservers(null, "TextSelection:End", {});
 
   return Promise.all([
     ok(true, "testRTL_dragFocusHandleToSelf - Test Starts."),
@@ -348,14 +346,11 @@ function testRTL_dragFocusHandleToSelf() {
     selectionExists(initialSelection,
       "RTL Selection initially existed at points"),
 
-    todo(false, "testRTL_dragAnchorHandleToSelf: " +
-    // is(focusDragSelectionText, RTL_INPUT_TEXT_VALUE,
+    is(focusDragSelectionText, RTL_INPUT_TEXT_VALUE,
       "RTL Selection text after focus drag should match expected value."),
-    todo(false, "testRTL_dragAnchorHandleToSelf: " +
-    // selectionExists(focusDraggedSelection,
+    selectionExists(focusDraggedSelection,
       "RTL Selection after focus drag existed at points"),
-    todo(false, "testRTL_dragAnchorHandleToSelf: " +
-    // selectionEquals(focusDraggedSelection, initialSelection,
+    selectionEquals(focusDraggedSelection, initialSelection,
       "RTL Selection points after focus drag " +
       "should match initial selection points."),
 
@@ -371,34 +366,36 @@ function testRTL_dragFocusHandleToSelf() {
  */
 function testRTL_dragAnchorHandleToSelf() {
   // Select entire RTL Input element.
-  var sh = getSelectionHandler();
-  var element = document.getElementById("RTLInput");
+  let sh = getSelectionHandler();
+  let element = document.getElementById("RTLInput");
   element.value = RTL_INPUT_TEXT_VALUE;
   sh.startSelection(element);
 
   // Note initial Selection handle points.
-  var initialSelection =
+  let initialSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var initialSelectionText = sh._getSelectedText();
+  let initialSelectionText = sh._getSelectedText();
 
   // Drag anchor handle and note results.
-  sh.observe(null, "TextSelection:Move",
+  // Note, due to edge case with border boundaries, we actually
+  // move inside a pixel, to maintain Selection position.
+  Services.obs.notifyObservers(null, "TextSelection:Move",
     JSON.stringify({ handleType : ANCHOR,
       x : initialSelection.anchorPt.x,
-      y : initialSelection.anchorPt.y
+      y : initialSelection.anchorPt.y - 1
     })
   );
-  sh.observe(null, "TextSelection:Position",
+  Services.obs.notifyObservers(null, "TextSelection:Position",
     JSON.stringify({ handleType : ANCHOR })
   );
-  var anchorDraggedSelection =
+  let anchorDraggedSelection =
     { anchorPt : new Point(sh._cache.anchorPt.x, sh._cache.anchorPt.y),
       focusPt : new Point(sh._cache.focusPt.x, sh._cache.focusPt.y) };
-  var anchorDragSelectionText = sh._getSelectedText();
+  let anchorDragSelectionText = sh._getSelectedText();
 
   // Complete test, and report.
-  sh.observe(null, "TextSelection:End", {});
+  Services.obs.notifyObservers(null, "TextSelection:End", {});
 
   return Promise.all([
     ok(true, "testRTL_dragAnchorHandleToSelf - Test Starts."),
@@ -420,117 +417,6 @@ function testRTL_dragAnchorHandleToSelf() {
   ]);
 }
 
-/* =================================================================================
- *
- * After finish of all selection tests, wrap up and go home.
- *
- */
-function finishTests() {
-  Messaging.sendRequest({
-    type: "Robocop:testInputSelections",
-    result: true,
-    msg: "Done!",
-    done: true
-  });
-}
-
-/* ============================== Utility functions ======================
- *
- * Common functions available to all tests.
- *
- */
-function getSelectionHandler() {
-  return (!this._selectionHandler) ?
-    this._selectionHandler = Services.wm.getMostRecentWindow("navigator:browser").SelectionHandler :
-    this._selectionHandler;
-}
-
-function todo(result, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    todo: result,
-    msg: msg
-  });
-}
-
-function ok(result, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: result,
-    msg: msg
-  });
-}
-
-function is(one, two, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: one === two,
-    msg: msg + " : " + one + " === " + two
-  });
-}
-
-function isNot(one, two, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: one !== two,
-    msg: msg + " : " + one + " !== " + two
-  });
-}
-
-function lessThan(n1, n2, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: n1 < n2,
-    msg: msg + " : " + n1 + " < " + n2
-  });
-}
-
-function greaterThan(n1, n2, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: n1 > n2,
-    msg: msg + " : " + n1 + " > " + n2
-  });
-}
-
-function pointEquals(p1, p2, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: p1.equals(p2),
-    msg: msg + " : " + p1.toString() + " == " + p2.toString()
-  });
-}
-
-function pointNotEquals(p1, p2, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: !p1.equals(p2),
-    msg: msg + " : " + p1.toString() + " == " + p2.toString()
-  });
-}
-
-function selectionExists(selection, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: !selection.anchorPt.equals(selection.focusPt),
-    msg: msg + " : anchor:" + selection.anchorPt.toString() +
-      " focus:" + selection.focusPt.toString()
-  });
-}
-
-function selectionEquals(s1, s2, msg) {
-  return Messaging.sendRequestForResult({
-    type: "Robocop:testInputSelections",
-    result: s1.anchorPt.equals(s2.anchorPt) && s1.focusPt.equals(s2.focusPt),
-    msg: msg
-  });
-}
-
-/* =================================================================================
- *
- * Page definition for all tests.
- *
- */
     </script>
   </head>
 

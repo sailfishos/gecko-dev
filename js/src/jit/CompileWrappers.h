@@ -31,22 +31,22 @@ class CompileRuntime
 
     js::PerThreadData *mainThread();
 
-    // &mainThread.jitTop
+    // &runtime()->jitTop
     const void *addressOfJitTop();
 
-    // &mainThread.jitActivation
+    // &runtime()->jitActivation
     const void *addressOfJitActivation();
 
-    // &mainThread.profilingActivation
+    // &runtime()->profilingActivation
     const void *addressOfProfilingActivation();
 
-    // rt->mainThread.jitStackLimit;
+    // rt->runtime()->jitStackLimit;
     const void *addressOfJitStackLimit();
 
-    // &mainThread.jitJSContext
+    // &runtime()->jitJSContext
     const void *addressOfJSContext();
 
-    // &mainThread.activation_
+    // &runtime()->activation_
     const void *addressOfActivation();
 
     // &GetJitContext()->runtime->nativeIterCache.last
@@ -112,8 +112,6 @@ class CompileCompartment
     CompileRuntime *runtime();
 
     const void *addressOfEnumerators();
-
-    const CallsiteCloneTable &callsiteClones();
 
     const JitCompartment *jitCompartment();
 

@@ -41,6 +41,13 @@ typedef NSInteger NSWindowAnimationBehavior;
 - (void)toggleFullScreen:(id)sender;
 @end
 
+typedef struct NSEdgeInsets {
+    CGFloat top;
+    CGFloat left;
+    CGFloat bottom;
+    CGFloat right;
+} NSEdgeInsets;
+
 #endif
 
 typedef struct _nsCocoaWindowList {
@@ -82,6 +89,7 @@ typedef struct _nsCocoaWindowList {
   BOOL mBeingShown;
   BOOL mDrawTitle;
   BOOL mBrightTitlebarForeground;
+  BOOL mUseMenuStyle;
 }
 
 - (void)importState:(NSDictionary*)aState;
@@ -119,6 +127,8 @@ typedef struct _nsCocoaWindowList {
 - (void)enableSetNeedsDisplay;
 
 - (NSRect)getAndResetNativeDirtyRect;
+
+- (void)setUseMenuStyle:(BOOL)aValue;
 
 @end
 
@@ -248,7 +258,6 @@ public:
     NS_IMETHOD              Create(nsIWidget* aParent,
                                    nsNativeWidget aNativeParent,
                                    const nsIntRect &aRect,
-                                   nsDeviceContext *aContext,
                                    nsWidgetInitData *aInitData = nullptr) MOZ_OVERRIDE;
 
     NS_IMETHOD              Destroy() MOZ_OVERRIDE;
@@ -260,7 +269,7 @@ public:
     NS_IMETHOD              SetModal(bool aState) MOZ_OVERRIDE;
     virtual bool            IsVisible() const MOZ_OVERRIDE;
     NS_IMETHOD              SetFocus(bool aState=false) MOZ_OVERRIDE;
-    virtual nsIntPoint WidgetToScreenOffset() MOZ_OVERRIDE;
+    virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() MOZ_OVERRIDE;
     virtual nsIntPoint GetClientOffset() MOZ_OVERRIDE;
     virtual nsIntSize ClientToWindowSize(const nsIntSize& aClientSize) MOZ_OVERRIDE;
 
@@ -315,7 +324,7 @@ public:
     NS_IMETHOD SetWindowTitlebarColor(nscolor aColor, bool aActive) MOZ_OVERRIDE;
     virtual void SetDrawsInTitlebar(bool aState) MOZ_OVERRIDE;
     virtual void UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries) MOZ_OVERRIDE;
-    virtual nsresult SynthesizeNativeMouseEvent(nsIntPoint aPoint,
+    virtual nsresult SynthesizeNativeMouseEvent(mozilla::LayoutDeviceIntPoint aPoint,
                                                 uint32_t aNativeMessage,
                                                 uint32_t aModifierFlags) MOZ_OVERRIDE;
 
@@ -330,7 +339,6 @@ public:
     void SetMenuBar(nsMenuBarX* aMenuBar);
     nsMenuBarX *GetMenuBar();
 
-    NS_IMETHOD NotifyIME(const IMENotification& aIMENotification) MOZ_OVERRIDE;
     NS_IMETHOD_(void) SetInputContext(
                         const InputContext& aContext,
                         const InputContextAction& aAction) MOZ_OVERRIDE;
@@ -363,8 +371,7 @@ protected:
   nsresult             CreateNativeWindow(const NSRect &aRect,
                                           nsBorderStyle aBorderStyle,
                                           bool aRectIsFrameRect);
-  nsresult             CreatePopupContentView(const nsIntRect &aRect,
-                                              nsDeviceContext *aContext);
+  nsresult             CreatePopupContentView(const nsIntRect &aRect);
   void                 DestroyNativeWindow();
   void                 AdjustWindowShadow();
   void                 SetWindowBackgroundBlur();
@@ -380,6 +387,9 @@ protected:
     nsCOMPtr<nsIWidget> widget = do_CreateInstance(kCPopUpCID);
     return widget.forget();
   }
+
+  virtual nsresult NotifyIMEInternal(
+                     const IMENotification& aIMENotification) MOZ_OVERRIDE;
 
   nsIWidget*           mParent;         // if we're a popup, this is our parent [WEAK]
   BaseWindow*          mWindow;         // our cocoa window [STRONG]

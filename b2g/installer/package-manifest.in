@@ -74,6 +74,12 @@
 #if MOZ_PACKAGE_MSVC_DLLS
 @BINPATH@/@MSVC_C_RUNTIME_DLL@
 @BINPATH@/@MSVC_CXX_RUNTIME_DLL@
+#ifdef MSVC_APPCRT_DLL
+@BINPATH@/@MSVC_APPCRT_DLL@
+#endif
+#ifdef MSVC_DESKTOPCRT_DLL
+@BINPATH@/@MSVC_DESKTOPCRT_DLL@
+#endif
 #endif
 #endif
 #ifdef MOZ_SHARED_MOZGLUE
@@ -177,6 +183,9 @@
 @BINPATH@/components/dom_geolocation.xpt
 @BINPATH@/components/dom_media.xpt
 @BINPATH@/components/dom_network.xpt
+#ifdef MOZ_SECUREELEMENT
+@BINPATH@/components/dom_secureelement.xpt
+#endif
 #ifdef MOZ_NFC
 @BINPATH@/components/dom_nfc.xpt
 #endif
@@ -231,7 +240,6 @@
 @BINPATH@/components/htmlparser.xpt
 @BINPATH@/components/identity.xpt
 @BINPATH@/components/imglib2.xpt
-@BINPATH@/components/imgicon.xpt
 @BINPATH@/components/inspector.xpt
 @BINPATH@/components/intl.xpt
 @BINPATH@/components/jar.xpt
@@ -407,6 +415,12 @@
 @BINPATH@/components/htmlMenuBuilder.manifest
 @BINPATH@/components/PresentationDeviceInfoManager.manifest
 @BINPATH@/components/PresentationDeviceInfoManager.js
+#ifdef MOZ_SECUREELEMENT
+@BINPATH@/components/SecureElement.js
+@BINPATH@/components/SecureElement.manifest
+@BINPATH@/components/UiccConnector.js
+@BINPATH@/components/UiccConnector.manifest
+#endif
 
 ; WiFi, NetworkManager, NetworkStats
 #ifdef MOZ_WIDGET_GONK
@@ -542,6 +556,10 @@
 @BINPATH@/components/NfcContentHelper.manifest
 @BINPATH@/components/NfcContentHelper.js
 #endif
+#ifdef MOZ_SECUREELEMENT
+@BINPATH@/components/DOMSecureElement.manifest
+@BINPATH@/components/DOMSecureElement.js
+#endif
 #ifdef MOZ_ENABLE_DBUS
 @BINPATH@/components/@DLL_PREFIX@dbusservice@DLL_SUFFIX@
 #endif
@@ -588,6 +606,7 @@
 
 @BINPATH@/components/SystemMessageInternal.js
 @BINPATH@/components/SystemMessageManager.js
+@BINPATH@/components/SystemMessageCache.js
 @BINPATH@/components/SystemMessageManager.manifest
 @BINPATH@/components/HCIEventTransactionSystemMessage.manifest
 @BINPATH@/components/HCIEventTransactionSystemMessageConfigurator.js

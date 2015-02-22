@@ -448,7 +448,7 @@ JSContext::currentScript(jsbytecode **ppc,
     if (ppc)
         *ppc = nullptr;
 
-    js::Activation *act = mainThread().activation();
+    js::Activation *act = runtime()->activation();
     while (act && (act->cx() != this || (act->isJit() && !act->asJit()->isActive())))
         act = act->prev();
 
@@ -460,8 +460,11 @@ JSContext::currentScript(jsbytecode **ppc,
     if (act->isJit()) {
         JSScript *script = nullptr;
         js::jit::GetPcScript(const_cast<JSContext *>(this), &script, ppc);
-        if (!allowCrossCompartment && script->compartment() != compartment())
+        if (!allowCrossCompartment && script->compartment() != compartment()) {
+            if (ppc)
+                *ppc = nullptr;
             return nullptr;
+        }
         return script;
     }
 

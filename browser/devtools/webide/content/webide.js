@@ -195,6 +195,9 @@ let UI = {
       case "runtime-apps-found":
         this.autoSelectProject();
         break;
+      case "pre-package":
+        this.prePackageLog(details);
+        break;
     };
     this._updatePromise = promise.resolve();
   },
@@ -640,7 +643,9 @@ let UI = {
     }
 
     Task.spawn(function() {
-      if (project.type == "runtimeApp") {
+      // Do not force opening apps that are already running, as they may have
+      // some activity being opened and don't want to dismiss them.
+      if (project.type == "runtimeApp" && !AppManager.isProjectRunning()) {
         yield UI.busyUntil(AppManager.launchRuntimeApp(), "running app");
       }
       yield UI.createToolbox();
@@ -766,9 +771,13 @@ let UI = {
   },
 
   selectDeckPanel: function(id) {
+    let deck = document.querySelector("#deck");
+    if (deck.selectedPanel && deck.selectedPanel.id === "deck-panel-" + id) {
+      // This panel is already displayed.
+      return;
+    }
     this.hidePanels();
     this.resetFocus();
-    let deck = document.querySelector("#deck");
     let panel = deck.querySelector("#deck-panel-" + id);
     let lazysrc = panel.getAttribute("lazysrc");
     if (lazysrc) {
@@ -911,34 +920,47 @@ let UI = {
       let json = JSON.parse(event.data);
       switch (json.name) {
         case "toolbox-close":
-          this.closeToolboxUI();
+          // There are many ways to close a toolbox:
+          // * Close button inside the toolbox
+          // * Toggle toolbox wrench in WebIDE
+          // * Disconnect the current runtime gracefully
+          // * Yank cord out of device
+          // We can't know for sure which one was used here, so reset the
+          // |toolboxPromise| since someone must be destroying it to reach here,
+          // and call our own close method.
+          this.toolboxPromise = null;
+          this._closeToolboxUI();
           break;
       }
     } catch(e) { console.error(e); }
   },
 
   destroyToolbox: function() {
+    // Only have a live toolbox if |this.toolboxPromise| exists
     if (this.toolboxPromise) {
-      return this.toolboxPromise.then(toolbox => {
-        toolbox.destroy();
-        this.toolboxPromise = null;
-      }, console.error);
+      let toolboxPromise = this.toolboxPromise;
+      this.toolboxPromise = null;
+      return toolboxPromise.then(toolbox => {
+        return toolbox.destroy();
+      }).catch(console.error)
+        .then(() => this._closeToolboxUI())
+        .catch(console.error);
     }
     return promise.resolve();
   },
 
   createToolbox: function() {
+    // If |this.toolboxPromise| exists, there is already a live toolbox
+    if (this.toolboxPromise) {
+      return this.toolboxPromise;
+    }
     this.toolboxPromise = AppManager.getTarget().then((target) => {
-      return this.showToolbox(target);
+      return this._showToolbox(target);
     }, console.error);
     return this.busyUntil(this.toolboxPromise, "opening toolbox");
   },
 
-  showToolbox: function(target) {
-    if (this.toolboxIframe) {
-      return;
-    }
-
+  _showToolbox: function(target) {
     let splitter = document.querySelector(".devtools-horizontal-splitter");
     splitter.removeAttribute("hidden");
 
@@ -962,7 +984,7 @@ let UI = {
   updateToolboxFullscreenState: function() {
     let panel = document.querySelector("#deck").selectedPanel;
     let nbox = document.querySelector("#notificationbox");
-    if (panel.id == "deck-panel-details" &&
+    if (panel && panel.id == "deck-panel-details" &&
         AppManager.selectedProject.type != "packaged" &&
         this.toolboxIframe) {
       nbox.setAttribute("toolboxfullscreen", "true");
@@ -971,7 +993,11 @@ let UI = {
     }
   },
 
-  closeToolboxUI: function() {
+  _closeToolboxUI: function() {
+    if (!this.toolboxIframe) {
+      return;
+    }
+
     this.resetFocus();
     Services.prefs.setIntPref("devtools.toolbox.footer.height", this.toolboxIframe.height);
 
@@ -985,6 +1011,12 @@ let UI = {
     document.querySelector("#action-button-debug").removeAttribute("active");
     this.updateToolboxFullscreenState();
   },
+
+  prePackageLog: function (msg) {
+    if (msg == "start") {
+      UI.selectDeckPanel("logs");
+    }
+  }
 };
 
 let Cmds = {
@@ -1230,7 +1262,11 @@ let Cmds = {
   },
 
   disconnectRuntime: function() {
-    return UI.busyUntil(AppManager.disconnectRuntime(), "disconnecting from runtime");
+    let disconnecting = Task.spawn(function*() {
+      yield UI.destroyToolbox();
+      yield AppManager.disconnectRuntime();
+    });
+    return UI.busyUntil(disconnecting, "disconnecting from runtime");
   },
 
   takeScreenshot: function() {

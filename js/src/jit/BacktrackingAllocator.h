@@ -176,9 +176,28 @@ class BacktrackingAllocator
     // should be prioritized.
     AllocatedRangeSet hotcode;
 
+    // During register allocation, virtual stack slots are used for spills.
+    // These are converted to actual spill locations
+    size_t numVirtualStackSlots;
+
+    // Information about an allocated stack slot.
+    struct SpillSlot : public TempObject, public InlineForwardListNode<SpillSlot> {
+        LStackSlot alloc;
+        AllocatedRangeSet allocated;
+
+        SpillSlot(uint32_t slot, LifoAlloc *alloc)
+          : alloc(slot), allocated(alloc)
+        {}
+    };
+    typedef InlineForwardList<SpillSlot> SpillSlotList;
+
+    // All allocated slots of each width.
+    SpillSlotList normalSlots, doubleSlots, quadSlots;
+
   public:
     BacktrackingAllocator(MIRGenerator *mir, LIRGenerator *lir, LIRGraph &graph)
-      : LiveRangeAllocator<BacktrackingVirtualRegister, /* forLSRA = */ false>(mir, lir, graph)
+      : LiveRangeAllocator<BacktrackingVirtualRegister, /* forLSRA = */ false>(mir, lir, graph),
+        numVirtualStackSlots(0)
     { }
 
     bool go();
@@ -192,13 +211,15 @@ class BacktrackingAllocator
     bool tryGroupRegisters(uint32_t vreg0, uint32_t vreg1);
     bool tryGroupReusedRegister(uint32_t def, uint32_t use);
     bool groupAndQueueRegisters();
-    bool tryAllocateFixed(LiveInterval *interval, bool *success, bool *pfixed, LiveInterval **pconflicting);
-    bool tryAllocateNonFixed(LiveInterval *interval, bool *success, bool *pfixed, LiveInterval **pconflicting);
+    bool tryAllocateFixed(LiveInterval *interval, bool *success, bool *pfixed,
+                          LiveIntervalVector &conflicting);
+    bool tryAllocateNonFixed(LiveInterval *interval, bool *success, bool *pfixed,
+                             LiveIntervalVector &conflicting);
     bool processInterval(LiveInterval *interval);
     bool processGroup(VirtualRegisterGroup *group);
     bool setIntervalRequirement(LiveInterval *interval);
     bool tryAllocateRegister(PhysicalRegister &r, LiveInterval *interval,
-                             bool *success, bool *pfixed, LiveInterval **pconflicting);
+                             bool *success, bool *pfixed, LiveIntervalVector &conflicting);
     bool tryAllocateGroupRegister(PhysicalRegister &r, VirtualRegisterGroup *group,
                                   bool *psuccess, bool *pfixed, LiveInterval **pconflicting);
     bool evictInterval(LiveInterval *interval);
@@ -213,10 +234,16 @@ class BacktrackingAllocator
     bool addLiveInterval(LiveIntervalVector &intervals, uint32_t vreg,
                          LiveInterval *spillInterval,
                          CodePosition from, CodePosition to);
+    bool pickStackSlot(LiveInterval *interval);
+    bool reuseOrAllocateStackSlot(const LiveIntervalVector &intervals, LDefinition::Type type,
+                                  LAllocation *palloc);
+    bool insertAllRanges(AllocatedRangeSet &set, const LiveIntervalVector &intervals);
 
+    bool pickStackSlots();
     bool resolveControlFlow();
     bool reifyAllocations();
     bool populateSafepoints();
+    bool annotateMoveGroups();
 
     void dumpRegisterGroups();
     void dumpFixedRanges();
@@ -236,7 +263,9 @@ class BacktrackingAllocator
     size_t computePriority(const VirtualRegisterGroup *group);
     size_t computeSpillWeight(const VirtualRegisterGroup *group);
 
-    bool chooseIntervalSplit(LiveInterval *interval, LiveInterval *conflict);
+    size_t maximumSpillWeight(const LiveIntervalVector &intervals);
+
+    bool chooseIntervalSplit(LiveInterval *interval, bool fixed, LiveInterval *conflict);
 
     bool splitAt(LiveInterval *interval,
                  const SplitPositionVector &splitPositions);
@@ -245,6 +274,15 @@ class BacktrackingAllocator
     bool trySplitBeforeFirstRegisterUse(LiveInterval *interval, LiveInterval *conflict, bool *success);
     bool splitAtAllRegisterUses(LiveInterval *interval);
     bool splitAcrossCalls(LiveInterval *interval);
+
+    bool compilingAsmJS() {
+        return mir->info().compilingAsmJS();
+    }
+
+    bool isVirtualStackSlot(LAllocation alloc) {
+        return alloc.isStackSlot() &&
+               LAllocation::DATA_MASK - alloc.toStackSlot()->slot() < numVirtualStackSlots;
+    }
 };
 
 } // namespace jit

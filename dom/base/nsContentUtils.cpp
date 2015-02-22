@@ -60,6 +60,7 @@
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
 #include "nsBindingManager.h"
+#include "nsCaret.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "nsCOMPtr.h"
@@ -242,6 +243,7 @@ bool nsContentUtils::sTrustedFullScreenOnly = true;
 bool nsContentUtils::sFullscreenApiIsContentOnly = false;
 bool nsContentUtils::sIsPerformanceTimingEnabled = false;
 bool nsContentUtils::sIsResourceTimingEnabled = false;
+bool nsContentUtils::sIsUserTimingLoggingEnabled = false;
 bool nsContentUtils::sIsExperimentalAutocompleteEnabled = false;
 bool nsContentUtils::sEncodeDecodeURLHash = false;
 
@@ -378,13 +380,11 @@ public:
   nsRefPtr<EventListenerManager> mListenerManager;
 };
 
-static bool
-EventListenerManagerHashInitEntry(PLDHashTable *table, PLDHashEntryHdr *entry,
-                                  const void *key)
+static void
+EventListenerManagerHashInitEntry(PLDHashEntryHdr *entry, const void *key)
 {
   // Initialize the entry with placement new
   new (entry) EventListenerManagerMapEntry(key);
-  return true;
 }
 
 static void
@@ -397,10 +397,10 @@ EventListenerManagerHashClearEntry(PLDHashTable *table, PLDHashEntryHdr *entry)
   lm->~EventListenerManagerMapEntry();
 }
 
-class SameOriginChecker MOZ_FINAL : public nsIChannelEventSink,
-                                    public nsIInterfaceRequestor
+class SameOriginCheckerImpl MOZ_FINAL : public nsIChannelEventSink,
+                                        public nsIInterfaceRequestor
 {
-  ~SameOriginChecker() {}
+  ~SameOriginCheckerImpl() {}
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSICHANNELEVENTSINK
@@ -514,6 +514,9 @@ nsContentUtils::Init()
 
   Preferences::AddBoolVarCache(&sIsResourceTimingEnabled,
                                "dom.enable_resource_timing", true);
+
+  Preferences::AddBoolVarCache(&sIsUserTimingLoggingEnabled,
+                               "dom.performance.enable_user_timing_logging", false);
 
   Preferences::AddBoolVarCache(&sIsExperimentalAutocompleteEnabled,
                                "dom.forms.autocomplete.experimental", false);
@@ -732,7 +735,7 @@ nsContentUtils::Atob(const nsAString& aAsciiBase64String,
   const char16_t* start = aAsciiBase64String.BeginReading();
   const char16_t* end = aAsciiBase64String.EndReading();
   nsString trimmedString;
-  if (!trimmedString.SetCapacity(aAsciiBase64String.Length(), fallible_t())) {
+  if (!trimmedString.SetCapacity(aAsciiBase64String.Length(), fallible)) {
     return NS_ERROR_DOM_INVALID_CHARACTER_ERR;
   }
   while (start < end) {
@@ -2927,9 +2930,22 @@ nsContentUtils::IsInPrivateBrowsing(nsIDocument* aDoc)
   return isPrivate;
 }
 
+bool
+nsContentUtils::DocumentInactiveForImageLoads(nsIDocument* aDocument)
+{
+  if (aDocument && !IsChromeDoc(aDocument) && !aDocument->IsResourceDoc()) {
+    nsCOMPtr<nsPIDOMWindow> win =
+      do_QueryInterface(aDocument->GetScopeObject());
+    return !win || !win->GetDocShell();
+  }
+  return false;
+}
+
 imgLoader*
 nsContentUtils::GetImgLoaderForDocument(nsIDocument* aDoc)
 {
+  NS_ENSURE_TRUE(!DocumentInactiveForImageLoads(aDoc), nullptr);
+
   if (!aDoc) {
     return imgLoader::Singleton();
   }
@@ -2939,8 +2955,11 @@ nsContentUtils::GetImgLoaderForDocument(nsIDocument* aDoc)
 
 // static
 imgLoader*
-nsContentUtils::GetImgLoaderForChannel(nsIChannel* aChannel)
+nsContentUtils::GetImgLoaderForChannel(nsIChannel* aChannel,
+                                       nsIDocument* aContext)
 {
+  NS_ENSURE_TRUE(!DocumentInactiveForImageLoads(aContext), nullptr);
+
   if (!aChannel)
     return imgLoader::Singleton();
   nsCOMPtr<nsILoadContext> context;
@@ -2980,7 +2999,7 @@ nsContentUtils::LoadImage(nsIURI* aURI, nsIDocument* aLoadingDocument,
   imgLoader* imgLoader = GetImgLoaderForDocument(aLoadingDocument);
   if (!imgLoader) {
     // nothing we can do here
-    return NS_OK;
+    return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsILoadGroup> loadGroup = aLoadingDocument->GetDocumentLoadGroup();
@@ -3941,8 +3960,8 @@ nsContentUtils::TraverseListenerManager(nsINode *aNode,
 
   EventListenerManagerMapEntry *entry =
     static_cast<EventListenerManagerMapEntry *>
-               (PL_DHashTableLookup(&sEventListenerManagersHash, aNode));
-  if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
+               (PL_DHashTableSearch(&sEventListenerManagersHash, aNode));
+  if (entry) {
     CycleCollectionNoteChild(cb, entry->mListenerManager.get(),
                              "[via hash] mListenerManager");
   }
@@ -3960,7 +3979,7 @@ nsContentUtils::GetListenerManagerForNode(nsINode *aNode)
 
   EventListenerManagerMapEntry *entry =
     static_cast<EventListenerManagerMapEntry *>
-               (PL_DHashTableAdd(&sEventListenerManagersHash, aNode));
+      (PL_DHashTableAdd(&sEventListenerManagersHash, aNode, fallible));
 
   if (!entry) {
     return nullptr;
@@ -3981,7 +4000,7 @@ nsContentUtils::GetExistingListenerManagerForNode(const nsINode *aNode)
   if (!aNode->HasFlag(NODE_HAS_LISTENERMANAGER)) {
     return nullptr;
   }
-  
+
   if (!sEventListenerManagersHash.IsInitialized()) {
     // We're already shut down, don't bother creating an event listener
     // manager.
@@ -3991,8 +4010,8 @@ nsContentUtils::GetExistingListenerManagerForNode(const nsINode *aNode)
 
   EventListenerManagerMapEntry *entry =
     static_cast<EventListenerManagerMapEntry *>
-               (PL_DHashTableLookup(&sEventListenerManagersHash, aNode));
-  if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
+               (PL_DHashTableSearch(&sEventListenerManagersHash, aNode));
+  if (entry) {
     return entry->mListenerManager;
   }
 
@@ -4006,8 +4025,8 @@ nsContentUtils::RemoveListenerManager(nsINode *aNode)
   if (sEventListenerManagersHash.IsInitialized()) {
     EventListenerManagerMapEntry *entry =
       static_cast<EventListenerManagerMapEntry *>
-                 (PL_DHashTableLookup(&sEventListenerManagersHash, aNode));
-    if (PL_DHASH_ENTRY_IS_BUSY(entry)) {
+                 (PL_DHashTableSearch(&sEventListenerManagersHash, aNode));
+    if (entry) {
       nsRefPtr<EventListenerManager> listenerManager;
       listenerManager.swap(entry->mListenerManager);
       // Remove the entry and *then* do operations that could cause further
@@ -4273,7 +4292,7 @@ nsContentUtils::ParseFragmentXML(const nsAString& aSourceBuffer,
     // sXMLFragmentSink now owns the sink
   }
   nsCOMPtr<nsIContentSink> contentsink = do_QueryInterface(sXMLFragmentSink);
-  NS_ABORT_IF_FALSE(contentsink, "Sink doesn't QI to nsIContentSink!");
+  MOZ_ASSERT(contentsink, "Sink doesn't QI to nsIContentSink!");
   sXMLFragmentParser->SetContentSink(contentsink);
 
   sXMLFragmentSink->SetTargetDocument(aDocument);
@@ -4425,20 +4444,20 @@ nsContentUtils::SetNodeTextContent(nsIContent* aContent,
 
 static bool
 AppendNodeTextContentsRecurse(nsINode* aNode, nsAString& aResult,
-                              const mozilla::fallible_t&)
+                              const fallible_t& aFallible)
 {
   for (nsIContent* child = aNode->GetFirstChild();
        child;
        child = child->GetNextSibling()) {
     if (child->IsElement()) {
       bool ok = AppendNodeTextContentsRecurse(child, aResult,
-                                              mozilla::fallible_t());
+                                              aFallible);
       if (!ok) {
         return false;
       }
     }
     else if (child->IsNodeOfType(nsINode::eTEXT)) {
-      bool ok = child->AppendTextTo(aResult, mozilla::fallible_t());
+      bool ok = child->AppendTextTo(aResult, aFallible);
       if (!ok) {
         return false;
       }
@@ -4452,21 +4471,21 @@ AppendNodeTextContentsRecurse(nsINode* aNode, nsAString& aResult,
 bool
 nsContentUtils::AppendNodeTextContent(nsINode* aNode, bool aDeep,
                                       nsAString& aResult,
-                                      const mozilla::fallible_t&)
+                                      const fallible_t& aFallible)
 {
   if (aNode->IsNodeOfType(nsINode::eTEXT)) {
     return static_cast<nsIContent*>(aNode)->AppendTextTo(aResult,
-                                                         mozilla::fallible_t());
+                                                         aFallible);
   }
   else if (aDeep) {
-    return AppendNodeTextContentsRecurse(aNode, aResult, mozilla::fallible_t());
+    return AppendNodeTextContentsRecurse(aNode, aResult, aFallible);
   }
   else {
     for (nsIContent* child = aNode->GetFirstChild();
          child;
          child = child->GetNextSibling()) {
       if (child->IsNodeOfType(nsINode::eTEXT)) {
-        bool ok = child->AppendTextTo(aResult, mozilla::fallible_t());
+        bool ok = child->AppendTextTo(aResult, fallible);
         if (!ok) {
             return false;
         }
@@ -5648,11 +5667,11 @@ nsContentUtils::StringContainsASCIIUpper(const nsAString& aStr)
 
 /* static */
 nsIInterfaceRequestor*
-nsContentUtils::GetSameOriginChecker()
+nsContentUtils::SameOriginChecker()
 {
   if (!sSameOriginChecker) {
-    sSameOriginChecker = new SameOriginChecker();
-    NS_IF_ADDREF(sSameOriginChecker);
+    sSameOriginChecker = new SameOriginCheckerImpl();
+    NS_ADDREF(sSameOriginChecker);
   }
   return sSameOriginChecker;
 }
@@ -5683,15 +5702,15 @@ nsContentUtils::CheckSameOrigin(nsIChannel *aOldChannel, nsIChannel *aNewChannel
   return rv;
 }
 
-NS_IMPL_ISUPPORTS(SameOriginChecker,
+NS_IMPL_ISUPPORTS(SameOriginCheckerImpl,
                   nsIChannelEventSink,
                   nsIInterfaceRequestor)
 
 NS_IMETHODIMP
-SameOriginChecker::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
-                                          nsIChannel *aNewChannel,
-                                          uint32_t aFlags,
-                                          nsIAsyncVerifyRedirectCallback *cb)
+SameOriginCheckerImpl::AsyncOnChannelRedirect(nsIChannel* aOldChannel,
+                                              nsIChannel* aNewChannel,
+                                              uint32_t aFlags,
+                                              nsIAsyncVerifyRedirectCallback* cb)
 {
   NS_PRECONDITION(aNewChannel, "Redirecting to null channel?");
 
@@ -5704,7 +5723,7 @@ SameOriginChecker::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
 }
 
 NS_IMETHODIMP
-SameOriginChecker::GetInterface(const nsIID & aIID, void **aResult)
+SameOriginCheckerImpl::GetInterface(const nsIID& aIID, void** aResult)
 {
   return QueryInterface(aIID, aResult);
 }
@@ -6242,7 +6261,7 @@ void nsContentUtils::RemoveNewlines(nsString &aString)
 void
 nsContentUtils::PlatformToDOMLineBreaks(nsString &aString)
 {
-  if (!PlatformToDOMLineBreaks(aString, mozilla::fallible_t())) {
+  if (!PlatformToDOMLineBreaks(aString, fallible)) {
     aString.AllocFailed(aString.Length());
   }
 }
@@ -6796,6 +6815,39 @@ nsContentUtils::GetSelectionInTextControl(Selection* aSelection,
   aOutEndOffset = std::max(anchorOffset, focusOffset);
 }
 
+/* static */
+nsRect
+nsContentUtils::GetSelectionBoundingRect(Selection* aSel)
+{
+  nsRect res;
+  // Bounding client rect may be empty after calling GetBoundingClientRect
+  // when range is collapsed. So we get caret's rect when range is
+  // collapsed.
+  if (aSel->IsCollapsed()) {
+    nsIFrame* frame = nsCaret::GetGeometry(aSel, &res);
+    if (frame) {
+      nsIFrame* relativeTo =
+        nsLayoutUtils::GetContainingBlockForClientRect(frame);
+      res = nsLayoutUtils::TransformFrameRectToAncestor(frame, res, relativeTo);
+    }
+  } else {
+    int32_t rangeCount = aSel->GetRangeCount();
+    nsLayoutUtils::RectAccumulator accumulator;
+    for (int32_t idx = 0; idx < rangeCount; ++idx) {
+      nsRange* range = aSel->GetRangeAt(idx);
+      nsRange::CollectClientRects(&accumulator, range,
+                                  range->GetStartParent(), range->StartOffset(),
+                                  range->GetEndParent(), range->EndOffset(),
+                                  true, false);
+    }
+    res = accumulator.mResultRect.IsEmpty() ? accumulator.mFirstRect :
+      accumulator.mResultRect;
+  }
+
+  return res;
+}
+
+
 nsIEditor*
 nsContentUtils::GetHTMLEditor(nsPresContext* aPresContext)
 {
@@ -6962,7 +7014,7 @@ bool
 nsContentUtils::GetNodeTextContent(nsINode* aNode, bool aDeep, nsAString& aResult)
 {
   aResult.Truncate();
-  return AppendNodeTextContent(aNode, aDeep, aResult, mozilla::fallible_t());
+  return AppendNodeTextContent(aNode, aDeep, aResult, fallible);
 }
 
 void
@@ -7095,8 +7147,7 @@ nsContentUtils::CallOnAllRemoteChildren(nsIMessageBroadcaster* aManager,
      static_cast<nsFrameMessageManager*>(tabMM.get())->GetCallback();
     if (cb) {
       nsFrameLoader* fl = static_cast<nsFrameLoader*>(cb);
-      PBrowserParent* remoteBrowser = fl->GetRemoteBrowser();
-      TabParent* remote = static_cast<TabParent*>(remoteBrowser);
+      TabParent* remote = TabParent::GetFrom(fl);
       if (remote && aCallback) {
         aCallback(remote, aArg);
       }

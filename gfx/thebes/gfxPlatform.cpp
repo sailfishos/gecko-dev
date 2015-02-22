@@ -136,10 +136,6 @@ static qcms_transform *gCMSRGBATransform = nullptr;
 static bool gCMSInitialized = false;
 static eCMSMode gCMSMode = eCMSMode_Off;
 
-static bool gCMSIntentInitialized = false;
-static int gCMSIntent = QCMS_INTENT_DEFAULT;
-
-
 static void ShutdownCMS();
 
 #include "mozilla/gfx/2D.h"
@@ -170,7 +166,7 @@ public:
   explicit CrashStatsLogForwarder(const char* aKey);
   virtual void Log(const std::string& aString) MOZ_OVERRIDE;
 
-  virtual std::vector<std::pair<int32_t,std::string> > StringsVectorCopy();
+  virtual std::vector<std::pair<int32_t,std::string> > StringsVectorCopy() MOZ_OVERRIDE;
 
   void SetCircularBufferSize(uint32_t aCapacity);
 
@@ -292,6 +288,8 @@ SRGBOverrideObserver::Observe(nsISupports *aSubject,
                            MOZ_UTF16(GFX_PREF_CMS_FORCE_SRGB)) == 0,
                  "Restarting CMS on wrong pref!");
     ShutdownCMS();
+    // Update current cms profile.
+    gfxPlatform::CreateCMSOutputProfile();
     return NS_OK;
 }
 
@@ -1106,8 +1104,9 @@ gfxPlatform::GetSkiaGLGlue()
      * FIXME: This should be stored in TLS or something, since there needs to be one for each thread using it. As it
      * stands, this only works on the main thread.
      */
-    mozilla::gl::SurfaceCaps caps = mozilla::gl::SurfaceCaps::ForRGBA();
-    nsRefPtr<mozilla::gl::GLContext> glContext = mozilla::gl::GLContextProvider::CreateOffscreen(gfxIntSize(16, 16), caps);
+    bool requireCompatProfile = true;
+    nsRefPtr<mozilla::gl::GLContext> glContext;
+    glContext = mozilla::gl::GLContextProvider::CreateHeadless(requireCompatProfile);
     if (!glContext) {
       printf_stderr("Failed to create GLContext for SkiaGL!\n");
       return nullptr;
@@ -1759,9 +1758,7 @@ gfxPlatform::OffMainThreadCompositingEnabled()
 eCMSMode
 gfxPlatform::GetCMSMode()
 {
-    if (gCMSInitialized == false) {
-        gCMSInitialized = true;
-
+    if (!gCMSInitialized) {
         int32_t mode = gfxPrefs::CMSMode();
         if (mode >= 0 && mode < eCMSMode_AllCount) {
             gCMSMode = static_cast<eCMSMode>(mode);
@@ -1771,6 +1768,7 @@ gfxPlatform::GetCMSMode()
         if (enableV4) {
             qcms_enable_iccv4();
         }
+        gCMSInitialized = true;
     }
     return gCMSMode;
 }
@@ -1778,25 +1776,19 @@ gfxPlatform::GetCMSMode()
 int
 gfxPlatform::GetRenderingIntent()
 {
-    if (!gCMSIntentInitialized) {
-        gCMSIntentInitialized = true;
+  // gfxPrefs.h is using 0 as the default for the rendering
+  // intent preference, based on that being the value for
+  // QCMS_INTENT_DEFAULT.  Assert here to catch if that ever
+  // changes and we can then figure out what to do about it.
+  MOZ_ASSERT(QCMS_INTENT_DEFAULT == 0);
 
-        // gfxPrefs.h is using 0 as the default for the rendering
-        // intent preference, based on that being the value for
-        // QCMS_INTENT_DEFAULT.  Assert here to catch if that ever
-        // changes and we can then figure out what to do about it.
-        MOZ_ASSERT(QCMS_INTENT_DEFAULT == 0);
-
-        /* Try to query the pref system for a rendering intent. */
-        int32_t pIntent = gfxPrefs::CMSRenderingIntent();
-        if ((pIntent >= QCMS_INTENT_MIN) && (pIntent <= QCMS_INTENT_MAX)) {
-            gCMSIntent = pIntent;
-        } else {
-            /* If the pref is out of range, use embedded profile. */
-            gCMSIntent = -1;
-        }
-    }
-    return gCMSIntent;
+  /* Try to query the pref system for a rendering intent. */
+  int32_t pIntent = gfxPrefs::CMSRenderingIntent();
+  if ((pIntent < QCMS_INTENT_MIN) || (pIntent > QCMS_INTENT_MAX)) {
+    /* If the pref is out of range, use embedded profile. */
+    pIntent = -1;
+  }
+  return pIntent;
 }
 
 void
@@ -1994,7 +1986,6 @@ static void ShutdownCMS()
     }
 
     // Reset the state variables
-    gCMSIntent = -2;
     gCMSMode = eCMSMode_Off;
     gCMSInitialized = false;
 }
@@ -2171,6 +2162,7 @@ gfxPlatform::OptimalFormatForContent(gfxContentType aContent)
  */
 static bool sLayersSupportsD3D9 = false;
 static bool sLayersSupportsD3D11 = false;
+static bool sLayersSupportsDXVA = false;
 static bool sBufferRotationCheckPref = true;
 static bool sPrefBrowserTabsRemoteAutostart = false;
 
@@ -2212,6 +2204,11 @@ InitLayersAccelerationPrefs()
           // Always support D3D11 when WARP is allowed.
           sLayersSupportsD3D11 = true;
         }
+        if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DXVA, &status))) {
+          if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
+            sLayersSupportsDXVA = true;
+          }
+        }
       }
     }
 #endif
@@ -2236,6 +2233,15 @@ gfxPlatform::CanUseDirect3D11()
   // safe to init the prefs etc. from here.
   MOZ_ASSERT(sLayersAccelerationPrefsInitialized);
   return sLayersSupportsD3D11;
+}
+
+bool
+gfxPlatform::CanUseDXVA()
+{
+  // this function is called from the compositor thread, so it is not
+  // safe to init the prefs etc. from here.
+  MOZ_ASSERT(sLayersAccelerationPrefsInitialized);
+  return sLayersSupportsDXVA;
 }
 
 bool

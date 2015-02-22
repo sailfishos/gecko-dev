@@ -39,9 +39,7 @@ inline void
 NativeObject::removeLastProperty(ExclusiveContext *cx)
 {
     MOZ_ASSERT(canRemoveLastProperty());
-    RootedNativeObject self(cx, this);
-    RootedShape prev(cx, lastProperty()->previous());
-    JS_ALWAYS_TRUE(setLastProperty(cx, self, prev));
+    JS_ALWAYS_TRUE(setLastProperty(cx, lastProperty()->previous()));
 }
 
 inline bool
@@ -81,9 +79,9 @@ NativeObject::setDenseElementWithType(ExclusiveContext *cx, uint32_t index,
 {
     // Avoid a slow AddTypePropertyId call if the type is the same as the type
     // of the previous element.
-    types::Type thisType = types::GetValueType(val);
-    if (index == 0 || types::GetValueType(elements_[index - 1]) != thisType)
-        types::AddTypePropertyId(cx, this, JSID_VOID, thisType);
+    TypeSet::Type thisType = TypeSet::GetValueType(val);
+    if (index == 0 || TypeSet::GetValueType(elements_[index - 1]) != thisType)
+        AddTypePropertyId(cx, this, JSID_VOID, thisType);
     setDenseElementMaybeConvertDouble(index, val);
 }
 
@@ -92,14 +90,14 @@ NativeObject::initDenseElementWithType(ExclusiveContext *cx, uint32_t index,
                                        const Value &val)
 {
     MOZ_ASSERT(!shouldConvertDoubleElements());
-    types::AddTypePropertyId(cx, this, JSID_VOID, val);
+    AddTypePropertyId(cx, this, JSID_VOID, val);
     initDenseElement(index, val);
 }
 
 inline void
 NativeObject::setDenseElementHole(ExclusiveContext *cx, uint32_t index)
 {
-    types::MarkTypeObjectFlags(cx, this, types::OBJECT_FLAG_NON_PACKED);
+    MarkObjectGroupFlags(cx, this, OBJECT_FLAG_NON_PACKED);
     setDenseElement(index, MagicValue(JS_ELEMENTS_HOLE));
 }
 
@@ -107,9 +105,7 @@ NativeObject::setDenseElementHole(ExclusiveContext *cx, uint32_t index)
 NativeObject::removeDenseElementForSparseIndex(ExclusiveContext *cx,
                                                HandleNativeObject obj, uint32_t index)
 {
-    types::MarkTypeObjectFlags(cx, obj,
-                               types::OBJECT_FLAG_NON_PACKED |
-                               types::OBJECT_FLAG_SPARSE_INDEXES);
+    MarkObjectGroupFlags(cx, obj, OBJECT_FLAG_NON_PACKED | OBJECT_FLAG_SPARSE_INDEXES);
     if (obj->containsDenseElement(index))
         obj->setDenseElement(index, MagicValue(JS_ELEMENTS_HOLE));
 }
@@ -124,7 +120,7 @@ inline void
 NativeObject::markDenseElementsNotPacked(ExclusiveContext *cx)
 {
     MOZ_ASSERT(isNative());
-    MarkTypeObjectFlags(cx, this, types::OBJECT_FLAG_NON_PACKED);
+    MarkObjectGroupFlags(cx, this, OBJECT_FLAG_NON_PACKED);
 }
 
 inline void
@@ -283,10 +279,10 @@ NativeObject::copy(ExclusiveContext *cx, gc::AllocKind kind, gc::InitialHeap hea
                    HandleNativeObject templateObject)
 {
     RootedShape shape(cx, templateObject->lastProperty());
-    RootedTypeObject type(cx, templateObject->type());
+    RootedObjectGroup group(cx, templateObject->group());
     MOZ_ASSERT(!templateObject->denseElementsAreCopyOnWrite());
 
-    JSObject *baseObj = create(cx, kind, heap, shape, type);
+    JSObject *baseObj = create(cx, kind, heap, shape, group);
     if (!baseObj)
         return nullptr;
     NativeObject *obj = &baseObj->as<NativeObject>();
@@ -311,19 +307,6 @@ NativeObject::copy(ExclusiveContext *cx, gc::AllocKind kind, gc::InitialHeap hea
     return obj;
 }
 
-inline bool
-NativeObject::setSlotIfHasType(Shape *shape, const Value &value, bool overwriting)
-{
-    if (!types::HasTypePropertyId(this, shape->propid(), value))
-        return false;
-    setSlot(shape->slot(), value);
-
-    if (overwriting)
-        shape->setOverwritten();
-
-    return true;
-}
-
 inline void
 NativeObject::setSlotWithType(ExclusiveContext *cx, Shape *shape,
                               const Value &value, bool overwriting)
@@ -333,7 +316,7 @@ NativeObject::setSlotWithType(ExclusiveContext *cx, Shape *shape,
     if (overwriting)
         shape->setOverwritten();
 
-    types::AddTypePropertyId(cx, this, shape->propid(), value);
+    AddTypePropertyId(cx, this, shape->propid(), value);
 }
 
 /* Make an object with pregenerated shape from a NEWOBJECT bytecode. */
@@ -350,8 +333,7 @@ CopyInitializerObject(JSContext *cx, HandlePlainObject baseobj, NewObjectKind ne
         return nullptr;
 
     RootedObject metadata(cx, obj->getMetadata());
-    RootedShape lastProp(cx, baseobj->lastProperty());
-    if (!NativeObject::setLastProperty(cx, obj, lastProp))
+    if (!obj->setLastProperty(cx, baseobj->lastProperty()))
         return nullptr;
     if (metadata && !JSObject::setMetadata(cx, obj, metadata))
         return nullptr;
@@ -360,39 +342,49 @@ CopyInitializerObject(JSContext *cx, HandlePlainObject baseobj, NewObjectKind ne
 }
 
 inline NativeObject *
-NewNativeObjectWithGivenProto(ExclusiveContext *cx, const js::Class *clasp,
-                              TaggedProto proto, JSObject *parent,
+NewNativeObjectWithGivenTaggedProto(ExclusiveContext *cx, const Class *clasp,
+                                    Handle<TaggedProto> proto, HandleObject parent,
+                                    gc::AllocKind allocKind, NewObjectKind newKind)
+{
+    return MaybeNativeObject(NewObjectWithGivenTaggedProto(cx, clasp, proto, parent, allocKind,
+                                                           newKind));
+}
+
+inline NativeObject *
+NewNativeObjectWithGivenTaggedProto(ExclusiveContext *cx, const Class *clasp,
+                                    Handle<TaggedProto> proto, HandleObject parent,
+                                    NewObjectKind newKind = GenericObject)
+{
+    return MaybeNativeObject(NewObjectWithGivenTaggedProto(cx, clasp, proto, parent, newKind));
+}
+
+inline NativeObject *
+NewNativeObjectWithGivenProto(ExclusiveContext *cx, const Class *clasp,
+                              HandleObject proto, HandleObject parent,
                               gc::AllocKind allocKind, NewObjectKind newKind)
 {
     return MaybeNativeObject(NewObjectWithGivenProto(cx, clasp, proto, parent, allocKind, newKind));
 }
 
 inline NativeObject *
-NewNativeObjectWithGivenProto(ExclusiveContext *cx, const js::Class *clasp,
-                              TaggedProto proto, JSObject *parent,
+NewNativeObjectWithGivenProto(ExclusiveContext *cx, const Class *clasp,
+                              HandleObject proto, HandleObject parent,
                               NewObjectKind newKind = GenericObject)
 {
     return MaybeNativeObject(NewObjectWithGivenProto(cx, clasp, proto, parent, newKind));
 }
 
 inline NativeObject *
-NewNativeObjectWithGivenProto(ExclusiveContext *cx, const js::Class *clasp,
-                              JSObject *proto, JSObject *parent,
+NewNativeObjectWithClassProto(ExclusiveContext *cx, const Class *clasp, HandleObject proto,
+                              HandleObject parent, gc::AllocKind allocKind,
                               NewObjectKind newKind = GenericObject)
-{
-    return MaybeNativeObject(NewObjectWithGivenProto(cx, clasp, proto, parent, newKind));
-}
-
-inline NativeObject *
-NewNativeObjectWithClassProto(ExclusiveContext *cx, const js::Class *clasp, JSObject *proto, JSObject *parent,
-                              gc::AllocKind allocKind, NewObjectKind newKind = GenericObject)
 {
     return MaybeNativeObject(NewObjectWithClassProto(cx, clasp, proto, parent, allocKind, newKind));
 }
 
 inline NativeObject *
-NewNativeObjectWithClassProto(ExclusiveContext *cx, const js::Class *clasp, JSObject *proto, JSObject *parent,
-                              NewObjectKind newKind = GenericObject)
+NewNativeObjectWithClassProto(ExclusiveContext *cx, const Class *clasp, HandleObject proto,
+                              HandleObject parent, NewObjectKind newKind = GenericObject)
 {
     return MaybeNativeObject(NewObjectWithClassProto(cx, clasp, proto, parent, newKind));
 }

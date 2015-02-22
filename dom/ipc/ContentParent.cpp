@@ -67,6 +67,7 @@
 #include "mozilla/ipc/PFileDescriptorSetParent.h"
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/InputStreamUtils.h"
+#include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/layers/CompositorParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
 #include "mozilla/layers/SharedBufferManagerParent.h"
@@ -118,6 +119,7 @@
 #include "nsISpellChecker.h"
 #include "nsIStyleSheet.h"
 #include "nsISupportsPrimitives.h"
+#include "nsISystemMessagesInternal.h"
 #include "nsITimer.h"
 #include "nsIURIFixup.h"
 #include "nsIWindowWatcher.h"
@@ -177,8 +179,6 @@ using namespace mozilla::system;
 #include "BluetoothParent.h"
 #include "BluetoothService.h"
 #endif
-
-#include "JavaScriptParent.h"
 
 #include "mozilla/RemoteSpellCheckEngineParent.h"
 
@@ -663,7 +663,7 @@ ContentParent::GetNewOrPreallocatedAppProcess(mozIApplication* aApp,
         if (!process->SetPriorityAndCheckIsAlive(aInitialPriority)) {
             // Kill the process just in case it's not actually dead; we don't want
             // to "leak" this process!
-            process->KillHard();
+            process->KillHard("GetNewOrPreallocatedAppProcess");
         }
         else {
             nsAutoString manifestURL;
@@ -673,6 +673,8 @@ ContentParent::GetNewOrPreallocatedAppProcess(mozIApplication* aApp,
             }
             process->TransformPreallocatedIntoApp(aOpener,
                                                   manifestURL);
+            process->ForwardKnownInfo();
+
             if (aTookPreAllocated) {
                 *aTookPreAllocated = true;
             }
@@ -689,6 +691,7 @@ ContentParent::GetNewOrPreallocatedAppProcess(mozIApplication* aApp,
                                 /* isForPreallocated = */ false,
                                 aInitialPriority);
     process->Init();
+    process->ForwardKnownInfo();
 
     if (aTookPreAllocated) {
         *aTookPreAllocated = false;
@@ -832,6 +835,7 @@ ContentParent::GetNewOrUsedBrowserProcess(bool aForBrowserElement,
                               aPriority);
         p->Init();
     }
+    p->ForwardKnownInfo();
 
     sNonAppContentParents->AppendElement(p);
     return p.forget();
@@ -951,7 +955,7 @@ ContentParent::RecvBridgeToChildProcess(const ContentParentId& aCpId)
     }
 
     // You can't bridge to a process you didn't open!
-    KillHard();
+    KillHard("BridgeToChildProcess");
     return false;
 }
 
@@ -976,15 +980,17 @@ static nsIDocShell* GetOpenerDocShellHelper(Element* aFrameElement)
 }
 
 bool
-ContentParent::RecvLoadPlugin(const uint32_t& aPluginId)
+ContentParent::RecvLoadPlugin(const uint32_t& aPluginId, nsresult* aRv)
 {
-    return mozilla::plugins::SetupBridge(aPluginId, this);
+    *aRv = NS_OK;
+    return mozilla::plugins::SetupBridge(aPluginId, this, false, aRv);
 }
 
 bool
-ContentParent::RecvConnectPluginBridge(const uint32_t& aPluginId)
+ContentParent::RecvConnectPluginBridge(const uint32_t& aPluginId, nsresult* aRv)
 {
-    return mozilla::plugins::SetupBridge(aPluginId, this, true);
+    *aRv = NS_OK;
+    return mozilla::plugins::SetupBridge(aPluginId, this, true, aRv);
 }
 
 bool
@@ -1070,7 +1076,7 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                 constructorSender->ChildID(),
                 constructorSender->IsForApp(),
                 constructorSender->IsForBrowser());
-            return static_cast<TabParent*>(browser);
+            return TabParent::GetFrom(browser);
         }
         return nullptr;
     }
@@ -1184,7 +1190,7 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
 
     if (isInContentProcess) {
         // Just return directly without the following check in content process.
-        return static_cast<TabParent*>(browser);
+        return TabParent::GetFrom(browser);
     }
 
     if (!browser) {
@@ -1192,7 +1198,7 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
         // other process has already died.
         if (!reused) {
             // Don't leave a broken ContentParent in the hashtable.
-            parent->AsContentParent()->KillHard();
+            parent->AsContentParent()->KillHard("CreateBrowserOrApp");
             sAppContentParents->Remove(manifestURL);
             parent = nullptr;
         }
@@ -1213,7 +1219,7 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
 
     parent->AsContentParent()->MaybeTakeCPUWakeLock(aFrameElement);
 
-    return static_cast<TabParent*>(browser);
+    return TabParent::GetFrom(browser);
 }
 
 /*static*/ ContentBridgeParent*
@@ -1307,6 +1313,33 @@ ContentParent::Init()
 
     DebugOnly<FileUpdateDispatcher*> observer = FileUpdateDispatcher::GetSingleton();
     NS_ASSERTION(observer, "FileUpdateDispatcher is null");
+}
+
+void
+ContentParent::ForwardKnownInfo()
+{
+    MOZ_ASSERT(mMetamorphosed);
+    if (!mMetamorphosed) {
+        return;
+    }
+#ifdef MOZ_WIDGET_GONK
+    InfallibleTArray<VolumeInfo> volumeInfo;
+    nsRefPtr<nsVolumeService> vs = nsVolumeService::GetSingleton();
+    if (vs && !mIsForBrowser) {
+        vs->GetVolumesForIPC(&volumeInfo);
+        unused << SendVolumes(volumeInfo);
+    }
+#endif /* MOZ_WIDGET_GONK */
+
+    nsCOMPtr<nsISystemMessagesInternal> systemMessenger =
+        do_GetService("@mozilla.org/system-message-internal;1");
+    if (systemMessenger && !mIsForBrowser) {
+        nsCOMPtr<nsIURI> manifestURI;
+        nsresult rv = NS_NewURI(getter_AddRefs(manifestURI), mAppManifestURL);
+        if (NS_SUCCEEDED(rv)) {
+            systemMessenger->RefreshCache(mMessageManager, manifestURI);
+        }
+    }
 }
 
 namespace {
@@ -1498,6 +1531,7 @@ ContentParent::TransformPreallocatedIntoApp(ContentParent* aOpener,
                                             const nsAString& aAppManifestURL)
 {
     MOZ_ASSERT(IsPreallocated());
+    mMetamorphosed = true;
     mOpener = aOpener;
     mAppManifestURL = aAppManifestURL;
     TryGetNameFromManifestURL(aAppManifestURL, mAppName);
@@ -1507,6 +1541,7 @@ void
 ContentParent::TransformPreallocatedIntoBrowser(ContentParent* aOpener)
 {
     // Reset mAppManifestURL, mIsForBrowser and mOSPrivileges for browser.
+    mMetamorphosed = true;
     mOpener = aOpener;
     mAppManifestURL.Truncate();
     mIsForBrowser = true;
@@ -1557,7 +1592,7 @@ ContentParent::ShutDownProcess(ShutDownMethod aMethod)
         // Kill Nuwa process forcibly to break its IPC channels and finalize
         // corresponding parents.
         if (IsNuwaProcess()) {
-            KillHard();
+            KillHard("ShutDownProcess");
         }
 #endif
     }
@@ -1715,14 +1750,13 @@ ContentParent::OnChannelConnected(int32_t pid)
 }
 
 void
-ContentParent::ProcessingError(Result what)
+ContentParent::ProcessingError(Result aCode, const char* aReason)
 {
-    if (MsgDropped == what) {
-        // Messages sent after crashes etc. are not a big deal.
+    if (MsgDropped == aCode) {
         return;
     }
     // Other errors are big deals.
-    KillHard();
+    KillHard(aReason);
 }
 
 typedef std::pair<ContentParent*, std::set<uint64_t> > IDPair;
@@ -1762,7 +1796,7 @@ ContentParent::RecvDeallocateLayerTreeId(const uint64_t& aId)
         CompositorParent::DeallocateLayerTreeId(aId);
     } else {
         // You can't deallocate layer tree ids that you didn't allocate
-        KillHard();
+        KillHard("DeallocateLayerTreeId");
     }
     return true;
 }
@@ -1996,11 +2030,11 @@ ContentParent::NotifyTabDestroyed(PBrowserParent* aTab,
     }
 }
 
-jsipc::JavaScriptShared*
+jsipc::CPOWManager*
 ContentParent::GetCPOWManager()
 {
     if (ManagedPJavaScriptParent().Length()) {
-        return static_cast<JavaScriptParent*>(ManagedPJavaScriptParent()[0]);
+        return CPOWManagerFor(ManagedPJavaScriptParent()[0]);
     }
     return nullptr;
 }
@@ -2033,6 +2067,7 @@ ContentParent::InitializeMembers()
     mGeolocationWatchID = -1;
     mNumDestroyingTabs = 0;
     mIsAlive = true;
+    mMetamorphosed = false;
     mSendPermissionUpdates = false;
     mSendDataStoreInfos = false;
     mCalledClose = false;
@@ -2063,6 +2098,10 @@ ContentParent::ContentParent(mozIApplication* aApp,
 
     // Only the preallocated process uses Nuwa.
     MOZ_ASSERT_IF(aIsNuwaProcess, aIsForPreallocated);
+
+    if (!aIsNuwaProcess && !aIsForPreallocated) {
+        mMetamorphosed = true;
+    }
 
     // Insert ourselves into the global linked list of ContentParent objects.
     if (!sContentParents) {
@@ -2339,7 +2378,7 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
     }
 #endif
     if (shouldSandbox && !SendSetProcessSandbox()) {
-        KillHard();
+        KillHard("SandboxInitFailed");
     }
 #endif
 }
@@ -2397,12 +2436,12 @@ ContentParent::RecvReadPermissions(InfallibleTArray<IPC::Permission>* aPermissio
         services::GetPermissionManager();
     nsPermissionManager* permissionManager =
         static_cast<nsPermissionManager*>(permissionManagerIface.get());
-    NS_ABORT_IF_FALSE(permissionManager,
-                 "We have no permissionManager in the Chrome process !");
+    MOZ_ASSERT(permissionManager,
+               "We have no permissionManager in the Chrome process !");
 
     nsCOMPtr<nsISimpleEnumerator> enumerator;
     DebugOnly<nsresult> rv = permissionManager->GetEnumerator(getter_AddRefs(enumerator));
-    NS_ABORT_IF_FALSE(NS_SUCCEEDED(rv), "Could not get enumerator!");
+    MOZ_ASSERT(NS_SUCCEEDED(rv), "Could not get enumerator!");
     while(1) {
         bool hasMore;
         enumerator->HasMoreElements(&hasMore);
@@ -2673,19 +2712,6 @@ ContentParent::RecvDataStoreGetStores(
 }
 
 bool
-ContentParent::RecvGetVolumes(InfallibleTArray<VolumeInfo>* aResult)
-{
-#ifdef MOZ_WIDGET_GONK
-    nsRefPtr<nsVolumeService> vs = nsVolumeService::GetSingleton();
-    vs->GetVolumesForIPC(aResult);
-    return true;
-#else
-    NS_WARNING("ContentParent::RecvGetVolumes shouldn't be called when MOZ_WIDGET_GONK is not defined");
-    return false;
-#endif
-}
-
-bool
 ContentParent::RecvNuwaReady()
 {
 #ifdef MOZ_NUWA_PROCESS
@@ -2695,7 +2721,7 @@ ContentParent::RecvNuwaReady()
                 "Terminating child process %d for unauthorized IPC message: NuwaReady",
                 Pid()).get());
 
-        KillHard();
+        KillHard("NuwaReady");
         return false;
     }
     sNuwaReady = true;
@@ -2731,7 +2757,7 @@ ContentParent::RecvAddNewProcess(const uint32_t& aPid,
                 "Terminating child process %d for unauthorized IPC message: "
                 "AddNewProcess(%d)", Pid(), aPid).get());
 
-        KillHard();
+        KillHard("AddNewProcess");
         return false;
     }
     nsRefPtr<ContentParent> content;
@@ -3215,11 +3241,11 @@ ContentParent::DeallocPRemoteSpellcheckEngineParent(PRemoteSpellcheckEngineParen
 ContentParent::ForceKillTimerCallback(nsITimer* aTimer, void* aClosure)
 {
     auto self = static_cast<ContentParent*>(aClosure);
-    self->KillHard();
+    self->KillHard("ShutDownKill");
 }
 
 void
-ContentParent::KillHard()
+ContentParent::KillHard(const char* aReason)
 {
     // On Windows, calling KillHard multiple times causes problems - the
     // process handle becomes invalid on the first call, causing a second call
@@ -3252,6 +3278,15 @@ ContentParent::KillHard()
             crashReporter->AnnotateCrashReport(
                 NS_LITERAL_CSTRING("additional_minidumps"),
                 additionalDumps);
+            if (IsKillHardAnnotationSet()) {
+              crashReporter->AnnotateCrashReport(
+                  NS_LITERAL_CSTRING("kill_hard"),
+                  GetKillHardAnnotation());
+            }
+            nsDependentCString reason(aReason);
+            crashReporter->AnnotateCrashReport(
+                NS_LITERAL_CSTRING("ipc_channel_error"),
+                reason);
         }
     }
 #endif
@@ -4145,6 +4180,14 @@ ContentParent::RecvPrivateDocShellsExist(const bool& aExist)
 }
 
 bool
+ContentParent::DoLoadMessageManagerScript(const nsAString& aURL,
+                                          bool aRunInGlobalScope)
+{
+    MOZ_ASSERT(!aRunInGlobalScope);
+    return SendLoadProcessScript(nsString(aURL));
+}
+
+bool
 ContentParent::DoSendAsyncMessage(JSContext* aCx,
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
@@ -4195,7 +4238,7 @@ ContentParent::CheckAppHasStatus(unsigned short aStatus)
 bool
 ContentParent::KillChild()
 {
-  KillHard();
+  KillHard("KillChild");
   return true;
 }
 
@@ -4401,8 +4444,8 @@ ContentParent::RecvBackUpXResources(const FileDescriptor& aXSocketFd)
 #ifndef MOZ_X11
     NS_RUNTIMEABORT("This message only makes sense on X11 platforms");
 #else
-    NS_ABORT_IF_FALSE(0 > mChildXSocketFdDup.get(),
-                      "Already backed up X resources??");
+    MOZ_ASSERT(0 > mChildXSocketFdDup.get(),
+               "Already backed up X resources??");
     mChildXSocketFdDup.forget();
     if (aXSocketFd.IsValid()) {
         mChildXSocketFdDup.reset(aXSocketFd.PlatformHandle());

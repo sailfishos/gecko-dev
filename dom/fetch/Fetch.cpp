@@ -470,7 +470,7 @@ ExtractFromUSVString(const nsString& aStr,
   }
 
   nsCString encoded;
-  if (!encoded.SetCapacity(destBufferLen, fallible_t())) {
+  if (!encoded.SetCapacity(destBufferLen, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -583,7 +583,7 @@ public:
       return rv;
     }
 
-    if (!mDecoded.SetCapacity(mDecoded.Length() + destBufferLen, fallible_t())) {
+    if (!mDecoded.SetCapacity(mDecoded.Length() + destBufferLen, fallible)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
@@ -865,6 +865,11 @@ FetchBody<Request>::FetchBody();
 
 template
 FetchBody<Response>::FetchBody();
+
+template <class Derived>
+FetchBody<Derived>::~FetchBody()
+{
+}
 
 // Returns true if addref succeeded.
 // Always succeeds on main thread.
@@ -1159,7 +1164,7 @@ FetchBody<Derived>::ConsumeBody(ConsumeType aType, ErrorResult& aRv)
 {
   mConsumeType = aType;
   if (BodyUsed()) {
-    aRv.ThrowTypeError(MSG_REQUEST_BODY_CONSUMED_ERROR);
+    aRv.ThrowTypeError(MSG_FETCH_BODY_CONSUMED_ERROR);
     return nullptr;
   }
 

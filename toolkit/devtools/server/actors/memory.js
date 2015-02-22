@@ -136,7 +136,7 @@ let MemoryActor = protocol.ActorClass({
     if (this.state == "attached") {
       if (isTopLevel && this.dbg.memory.trackingAllocationSites) {
         this._clearDebuggees();
-        nthis._frameCache.initFrames();
+        this._frameCache.initFrames();
       }
       this.dbg.addDebuggees();
     }
@@ -165,11 +165,16 @@ let MemoryActor = protocol.ActorClass({
       ? options.probability
       : 1.0;
     this.dbg.memory.trackingAllocationSites = true;
+
+    return Date.now();
   }), {
     request: {
       options: Arg(0, "nullable:AllocationsRecordingOptions")
     },
-    response: {}
+    response: {
+      // Accept `nullable` in the case of server Gecko <= 37, handled on the front
+      value: RetVal(0, "nullable:number")
+    }
   }),
 
   /**
@@ -178,9 +183,14 @@ let MemoryActor = protocol.ActorClass({
   stopRecordingAllocations: method(expectState("attached", function() {
     this.dbg.memory.trackingAllocationSites = false;
     this._clearFrames();
+
+    return Date.now();
   }), {
     request: {},
-    response: {}
+    response: {
+      // Accept `nullable` in the case of server Gecko <= 37, handled on the front
+      value: RetVal(0, "nullable:number")
+    }
   }),
 
   /**

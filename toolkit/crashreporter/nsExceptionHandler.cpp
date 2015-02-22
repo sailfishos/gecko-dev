@@ -408,7 +408,7 @@ JitExceptionHandler(void *exceptionRecord, void *context)
  * This size is bigger than xul.dll plus some extra for MinidumpWriteDump
  * allocations.
  */
-static const SIZE_T kReserveSize = 0x2800000; // 40 MB
+static const SIZE_T kReserveSize = 0x4000000; // 64 MB
 static void* gBreakpadReservedVM;
 #endif
 
@@ -2714,8 +2714,8 @@ OOPInit()
 
   MOZ_ASSERT(NS_IsMainThread());
 
-  NS_ABORT_IF_FALSE(gExceptionHandler != nullptr,
-                    "attempt to initialize OOP crash reporter before in-process crashreporter!");
+  MOZ_ASSERT(gExceptionHandler != nullptr,
+             "attempt to initialize OOP crash reporter before in-process crashreporter!");
 
 #if defined(XP_WIN)
   childCrashNotifyPipe =
@@ -2959,7 +2959,7 @@ SetRemoteExceptionHandler(const nsACString& crashPipe)
   if (crashPipe.Equals(kNullNotifyPipe))
     return true;
 
-  NS_ABORT_IF_FALSE(!gExceptionHandler, "crash client already init'd");
+  MOZ_ASSERT(!gExceptionHandler, "crash client already init'd");
 
   gExceptionHandler = new google_breakpad::
     ExceptionHandler(L"",
@@ -3003,7 +3003,7 @@ CreateNotificationPipeForChild(int* childCrashFd, int* childCrashRemapFd)
 bool
 SetRemoteExceptionHandler()
 {
-  NS_ABORT_IF_FALSE(!gExceptionHandler, "crash client already init'd");
+  MOZ_ASSERT(!gExceptionHandler, "crash client already init'd");
 
 #ifndef XP_LINUX
   xpstring path = "";
@@ -3040,7 +3040,7 @@ SetRemoteExceptionHandler(const nsACString& crashPipe)
   if (crashPipe.Equals(kNullNotifyPipe))
     return true;
 
-  NS_ABORT_IF_FALSE(!gExceptionHandler, "crash client already init'd");
+  MOZ_ASSERT(!gExceptionHandler, "crash client already init'd");
 
   gExceptionHandler = new google_breakpad::
     ExceptionHandler("",

@@ -11,7 +11,10 @@
 
 BEGIN_BLUETOOTH_NAMESPACE
 
+class BluetoothDaemonListenSocket;
 class BluetoothDaemonChannel;
+class BluetoothDaemonA2dpInterface;
+class BluetoothDaemonAvrcpInterface;
 class BluetoothDaemonHandsfreeInterface;
 class BluetoothDaemonProtocol;
 class BluetoothDaemonSocketInterface;
@@ -22,6 +25,7 @@ public:
   class CleanupResultHandler;
   class InitResultHandler;
 
+  friend class BluetoothDaemonListenSocket;
   friend class BluetoothDaemonChannel;
   friend class CleanupResultHandler;
   friend class InitResultHandler;
@@ -104,30 +108,37 @@ public:
 
 protected:
   enum Channel {
+    LISTEN_SOCKET,
     CMD_CHANNEL,
     NTF_CHANNEL
   };
 
-  BluetoothDaemonInterface(BluetoothDaemonChannel* aCmdChannel,
-                           BluetoothDaemonChannel* aNtfChannel,
-                           BluetoothDaemonProtocol* aProtocol);
+  BluetoothDaemonInterface();
   ~BluetoothDaemonInterface();
 
   void OnConnectSuccess(enum Channel aChannel);
   void OnConnectError(enum Channel aChannel);
   void OnDisconnect(enum Channel aChannel);
 
+  nsresult CreateRandomAddressString(const nsACString& aPrefix,
+                                     unsigned long aPostfixLength,
+                                     nsACString& aAddress);
+
 private:
   void DispatchError(BluetoothResultHandler* aRes, BluetoothStatus aStatus);
 
-  nsAutoPtr<BluetoothDaemonChannel> mCmdChannel;
-  nsAutoPtr<BluetoothDaemonChannel> mNtfChannel;
+  nsCString mListenSocketName;
+  nsRefPtr<BluetoothDaemonListenSocket> mListenSocket;
+  nsRefPtr<BluetoothDaemonChannel> mCmdChannel;
+  nsRefPtr<BluetoothDaemonChannel> mNtfChannel;
   nsAutoPtr<BluetoothDaemonProtocol> mProtocol;
 
   nsTArray<nsRefPtr<BluetoothResultHandler> > mResultHandlerQ;
 
   nsAutoPtr<BluetoothDaemonSocketInterface> mSocketInterface;
   nsAutoPtr<BluetoothDaemonHandsfreeInterface> mHandsfreeInterface;
+  nsAutoPtr<BluetoothDaemonA2dpInterface> mA2dpInterface;
+  nsAutoPtr<BluetoothDaemonAvrcpInterface> mAvrcpInterface;
 };
 
 END_BLUETOOTH_NAMESPACE

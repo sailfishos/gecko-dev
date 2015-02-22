@@ -8,9 +8,9 @@
 #include "WrapperFactory.h"
 #include "AccessCheck.h"
 #include "jsfriendapi.h"
-#include "jsproxy.h"
 #include "jswrapper.h"
 #include "js/StructuredClone.h"
+#include "js/Proxy.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/File.h"
@@ -464,7 +464,7 @@ CreateObjectIn(JSContext *cx, HandleValue vobj, CreateObjectInOptions &options,
     RootedObject obj(cx);
     {
         JSAutoCompartment ac(cx, scope);
-        obj = JS_NewObject(cx, nullptr, JS::NullPtr(), scope);
+        obj = JS_NewObject(cx, nullptr, scope);
         if (!obj)
             return false;
 

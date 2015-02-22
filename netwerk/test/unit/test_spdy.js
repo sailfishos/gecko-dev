@@ -1,9 +1,5 @@
 // test spdy/3.1
 
-var Ci = Components.interfaces;
-var Cc = Components.classes;
-var Cu = Components.utils;
-
 Cu.import("resource://gre/modules/Services.jsm");
 
 // Generate a small and a large post with known pre-calculated md5 sums
@@ -339,6 +335,12 @@ function test_spdy_post_big() {
   do_post(posts[1], chan, listener);
 }
 
+function test_complete() {
+  resetPrefs();
+  do_test_finished();
+  do_timeout(0,run_next_test);
+}
+
 // hack - the header test resets the multiplex object on the server,
 // so make sure header is always run before the multiplex test.
 //
@@ -346,7 +348,7 @@ function test_spdy_post_big() {
 // a stalled stream when a SETTINGS frame arrives
 var tests = [ test_spdy_post_big
             , test_spdy_basic
-	    , test_spdy_concurrent
+            , test_spdy_concurrent
             , test_spdy_push1
             , test_spdy_push2
             , test_spdy_push3
@@ -356,6 +358,8 @@ var tests = [ test_spdy_post_big
             , test_spdy_multiplex
             , test_spdy_big
             , test_spdy_post
+            // cleanup
+            , test_complete
             ];
 var current_test = 0;
 

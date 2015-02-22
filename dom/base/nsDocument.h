@@ -622,7 +622,7 @@ protected:
     DECL_SHIM(nsIApplicationCacheContainer, NSIAPPLICATIONCACHECONTAINER)
 #undef DECL_SHIM
   };
-  
+
   /**
    * Add an ExternalResource for aURI.  aViewer and aLoadGroup might be null
    * when this is called if the URI didn't result in an XML document.  This
@@ -1102,6 +1102,21 @@ public:
 
   void MaybeEndOutermostXBLUpdate();
 
+  virtual void PreloadPictureOpened() MOZ_OVERRIDE;
+  virtual void PreloadPictureClosed() MOZ_OVERRIDE;
+
+  virtual void
+    PreloadPictureImageSource(const nsAString& aSrcsetAttr,
+                              const nsAString& aSizesAttr,
+                              const nsAString& aTypeAttr,
+                              const nsAString& aMediaAttr) MOZ_OVERRIDE;
+
+  virtual already_AddRefed<nsIURI>
+    ResolvePreloadImage(nsIURI *aBaseURI,
+                        const nsAString& aSrcAttr,
+                        const nsAString& aSrcsetAttr,
+                        const nsAString& aSizesAttr) MOZ_OVERRIDE;
+
   virtual void MaybePreLoadImage(nsIURI* uri,
                                  const nsAString &aCrossOriginAttr,
                                  ReferrerPolicy aReferrerPolicy) MOZ_OVERRIDE;
@@ -1461,6 +1476,8 @@ public:
   bool ContainsEMEContent();
 #endif
 
+  bool ContainsMSEContent();
+
 protected:
   already_AddRefed<nsIPresShell> doCreateShell(nsPresContext* aContext,
                                                nsViewManager* aViewManager,
@@ -1764,6 +1781,12 @@ private:
   // make sure to not keep the image load going when no one cares
   // about it anymore.
   nsRefPtrHashtable<nsURIHashKey, imgIRequest> mPreloadingImages;
+
+  // Current depth of picture elements from parser
+  int32_t mPreloadPictureDepth;
+
+  // Set if we've found a URL for the current picture
+  nsString mPreloadPictureFoundSource;
 
   nsRefPtr<mozilla::dom::DOMImplementation> mDOMImplementation;
 

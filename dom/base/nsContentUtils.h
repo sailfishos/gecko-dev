@@ -614,6 +614,11 @@ public:
                            uint32_t aContentPolicyType = nsIContentPolicy::TYPE_IMAGE);
 
   /**
+   * Returns true if objects in aDocument shouldn't initiate image loads.
+   */
+  static bool DocumentInactiveForImageLoads(nsIDocument* aDocument);
+
+  /**
    * Method to start an image load.  This does not do any security checks.
    * This method will attempt to make aURI immutable; a caller that wants to
    * keep a mutable version around should pass in a clone.
@@ -646,7 +651,8 @@ public:
    * Null document/channel arguments return the public image loader.
    */
   static imgLoader* GetImgLoaderForDocument(nsIDocument* aDoc);
-  static imgLoader* GetImgLoaderForChannel(nsIChannel* aChannel);
+  static imgLoader* GetImgLoaderForChannel(nsIChannel* aChannel,
+                                           nsIDocument* aContext);
 
   /**
    * Returns whether the given URI is in the image cache.
@@ -1635,7 +1641,7 @@ public:
 
   // Returns NS_OK for same origin, error (NS_ERROR_DOM_BAD_URI) if not.
   static nsresult CheckSameOrigin(nsIChannel *aOldChannel, nsIChannel *aNewChannel);
-  static nsIInterfaceRequestor* GetSameOriginChecker();
+  static nsIInterfaceRequestor* SameOriginChecker();
 
   /**
    * Get the Origin of the passed in nsIPrincipal or nsIURI. If the passed in
@@ -1880,6 +1886,14 @@ public:
     return sIsPerformanceTimingEnabled;
   }
   
+  /*
+   * Returns true if user timing API should print to console.
+   */
+  static bool IsUserTimingLoggingEnabled()
+  {
+    return sIsUserTimingLoggingEnabled;
+  }
+
   /*
    * Returns true if the performance timing APIs are enabled.
    */
@@ -2169,6 +2183,14 @@ public:
                                         int32_t& aOutEndOffset);
 
   /**
+   * Takes a selection, and return selection's bounding rect which is relative
+   * to root frame.
+   *
+   * @param aSel      Selection to check
+   */
+  static nsRect GetSelectionBoundingRect(mozilla::dom::Selection* aSel);
+
+  /**
    * Takes a frame for anonymous content within a text control (<input> or
    * <textarea>), and returns an offset in the text content, adjusted for a
    * trailing <br> frame.
@@ -2360,6 +2382,7 @@ private:
   static uint32_t sHandlingInputTimeout;
   static bool sIsPerformanceTimingEnabled;
   static bool sIsResourceTimingEnabled;
+  static bool sIsUserTimingLoggingEnabled;
   static bool sIsExperimentalAutocompleteEnabled;
   static bool sEncodeDecodeURLHash;
 

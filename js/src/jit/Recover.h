@@ -11,6 +11,7 @@
 
 #include "jsarray.h"
 
+#include "jit/MIR.h"
 #include "jit/Snapshots.h"
 
 struct JSContext;
@@ -477,11 +478,14 @@ class RAtan2 MOZ_FINAL : public RInstruction
 
 class RHypot MOZ_FINAL : public RInstruction
 {
+   private:
+     uint32_t numOperands_;
+
    public:
      RINSTRUCTION_HEADER_(Hypot)
 
      virtual uint32_t numOperands() const {
-         return 2;
+         return numOperands_;
      }
 
      bool recover(JSContext *cx, SnapshotIterator &iter) const;
@@ -613,7 +617,7 @@ class RTruncateToInt32 MOZ_FINAL : public RInstruction
 class RNewObject MOZ_FINAL : public RInstruction
 {
   private:
-    bool templateObjectIsClassPrototype_;
+    MNewObject::Mode mode_;
 
   public:
     RINSTRUCTION_HEADER_(NewObject)

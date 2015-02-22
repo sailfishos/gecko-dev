@@ -30,6 +30,10 @@
 #include "nsCRT.h"
 #include "mozilla/plugins/PluginTypes.h"
 
+#ifdef XP_WIN
+#include "nsIWindowsRegKey.h"
+#endif
+
 namespace mozilla {
 namespace plugins {
 class PluginAsyncSurrogate;
@@ -171,9 +175,20 @@ public:
   // Always returns true if plugin.allowed_types is not set
   static bool IsTypeWhitelisted(const char *aType);
 
-  // checks whether aTag is a "java" plugin tag (a tag for a plugin
-  // that does Java)
-  static bool IsJavaMIMEType(const char *aType);
+  // checks whether aType is a type we recognize for potential special handling
+  enum SpecialType { eSpecialType_None,
+                     // Informs some decisions about OOP and quirks
+                     eSpecialType_Flash,
+                     // Binds to the <applet> tag, has various special
+                     // rules around opening channels, codebase, ...
+                     eSpecialType_Java,
+                     // Some IPC quirks
+                     eSpecialType_Silverlight,
+                     // Native widget quirks
+                     eSpecialType_PDF,
+                     // Native widget quirks
+                     eSpecialType_RealPlayer };
+  static SpecialType GetSpecialType(const nsACString & aMIMEType);
 
   static nsresult PostPluginUnloadEvent(PRLibrary* aLibrary);
 
@@ -315,6 +330,11 @@ private:
   nsCOMPtr<nsIFile> mPluginRegFile;
 #ifdef XP_WIN
   nsRefPtr<nsPluginDirServiceProvider> mPrivateDirServiceProvider;
+
+  // In order to reload plugins when they change, we watch the registry via
+  // this object.
+  nsCOMPtr<nsIWindowsRegKey> mRegKeyHKLM;
+  nsCOMPtr<nsIWindowsRegKey> mRegKeyHKCU;
 #endif
 
   nsCOMPtr<nsIEffectiveTLDService> mTLDService;

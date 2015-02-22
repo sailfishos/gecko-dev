@@ -7,10 +7,12 @@
 #ifndef jit_JitCompartment_h
 #define jit_JitCompartment_h
 
+#include "mozilla/Array.h"
 #include "mozilla/MemoryReporting.h"
 
 #include "jsweakcache.h"
 
+#include "builtin/TypedObject.h"
 #include "jit/CompileInfo.h"
 #include "jit/IonCode.h"
 #include "jit/JitFrames.h"
@@ -141,16 +143,8 @@ class JitRuntime
 {
     friend class JitCompartment;
 
-    // Executable allocator for all code except the main code in an IonScript.
-    // Shared with the runtime.
-    ExecutableAllocator *execAlloc_;
-
-    // Executable allocator used for allocating the main code in an IonScript.
-    // All accesses on this allocator must be protected by the runtime's
-    // interrupt lock, as the executable memory may be protected() when
-    // requesting an interrupt to force a fault in the Ion code and avoid the
-    // need for explicit interrupt checks.
-    ExecutableAllocator *ionAlloc_;
+    // Executable allocator for all code except asm.js code.
+    ExecutableAllocator execAlloc_;
 
     // Shared exception-handler tail.
     JitCode *exceptionTail_;
@@ -186,7 +180,7 @@ class JitRuntime
     JitCode *stringPreBarrier_;
     JitCode *objectPreBarrier_;
     JitCode *shapePreBarrier_;
-    JitCode *typeObjectPreBarrier_;
+    JitCode *objectGroupPreBarrier_;
 
     // Thunk to call malloc/free.
     JitCode *mallocStub_;
@@ -235,6 +229,8 @@ class JitRuntime
     // Global table of jitcode native address => bytecode address mappings.
     JitcodeGlobalTable *jitcodeGlobalTable_;
 
+    bool hasIonNurseryObjects_;
+
   private:
     JitCode *generateLazyLinkStub(JSContext *cx);
     JitCode *generateProfilerExitFrameTailStub(JSContext *cx);
@@ -252,8 +248,6 @@ class JitRuntime
     JitCode *generateBaselineDebugModeOSRHandler(JSContext *cx, uint32_t *noFrameRegPopOffsetOut);
     JitCode *generateVMWrapper(JSContext *cx, const VMFunction &f);
 
-    ExecutableAllocator *createIonAlloc(JSContext *cx);
-
   public:
     JitRuntime();
     ~JitRuntime();
@@ -264,17 +258,8 @@ class JitRuntime
 
     static void Mark(JSTracer *trc);
 
-    ExecutableAllocator *execAlloc() const {
+    ExecutableAllocator &execAlloc() {
         return execAlloc_;
-    }
-    ExecutableAllocator *getIonAlloc(JSContext *cx) {
-        return ionAlloc_ ? ionAlloc_ : createIonAlloc(cx);
-    }
-    ExecutableAllocator *ionAlloc(JSRuntime *rt) {
-        return ionAlloc_;
-    }
-    bool hasIonAlloc() const {
-        return !!ionAlloc_;
     }
 
     class AutoMutateBackedges
@@ -359,7 +344,7 @@ class JitRuntime
           case MIRType_String: return stringPreBarrier_;
           case MIRType_Object: return objectPreBarrier_;
           case MIRType_Shape: return shapePreBarrier_;
-          case MIRType_TypeObject: return typeObjectPreBarrier_;
+          case MIRType_ObjectGroup: return objectGroupPreBarrier_;
           default: MOZ_CRASH();
         }
     }
@@ -390,6 +375,13 @@ class JitRuntime
         ionReturnOverride_ = v;
     }
 
+    bool hasIonNurseryObjects() const {
+        return hasIonNurseryObjects_;
+    }
+    void setHasIonNurseryObjects(bool b)  {
+        hasIonNurseryObjects_ = b;
+    }
+
     bool hasJitcodeGlobalTable() const {
         return jitcodeGlobalTable_ != nullptr;
     }
@@ -401,6 +393,10 @@ class JitRuntime
 
     bool isProfilerInstrumentationEnabled(JSRuntime *rt) {
         return rt->spsProfiler.enabled();
+    }
+
+    bool isOptimizationTrackingEnabled(JSRuntime *rt) {
+        return isProfilerInstrumentationEnabled(rt);
     }
 };
 
@@ -439,11 +435,19 @@ class JitCompartment
     JitCode *regExpExecStub_;
     JitCode *regExpTestStub_;
 
+    mozilla::Array<ReadBarrieredObject, SimdTypeDescr::LAST_TYPE + 1> simdTemplateObjects_;
+
     JitCode *generateStringConcatStub(JSContext *cx);
     JitCode *generateRegExpExecStub(JSContext *cx);
     JitCode *generateRegExpTestStub(JSContext *cx);
 
   public:
+    JSObject *getSimdTemplateObjectFor(JSContext *cx, Handle<SimdTypeDescr*> descr) {
+        ReadBarrieredObject &tpl = simdTemplateObjects_[descr->type()];
+        if (!tpl)
+            tpl.set(TypedObject::createZeroed(cx, descr, 0, gc::TenuredHeap));
+        return tpl.get();
+    }
     JitCode *getStubCode(uint32_t key) {
         ICStubCodeMap::AddPtr p = stubCodes_->lookupForAdd(key);
         if (p)
@@ -484,8 +488,6 @@ class JitCompartment
     }
 
     void toggleBarriers(bool enabled);
-
-    ExecutableAllocator *createIonAlloc();
 
   public:
     JitCompartment();

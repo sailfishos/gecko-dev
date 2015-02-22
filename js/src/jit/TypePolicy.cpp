@@ -95,6 +95,26 @@ ArithPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
 }
 
 bool
+AllDoublePolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
+{
+    for (size_t i = 0, e = ins->numOperands(); i < e; i++) {
+        MDefinition *in = ins->getOperand(i);
+        if (in->type() == MIRType_Double)
+            continue;
+
+        MInstruction *replace = MToDouble::New(alloc, in);
+
+        ins->block()->insertBefore(ins, replace);
+        ins->replaceOperand(i, replace);
+
+        if (!replace->typePolicy()->adjustInputs(alloc, replace))
+            return false;
+    }
+
+    return true;
+}
+
+bool
 ComparePolicy::adjustInputs(TempAllocator &alloc, MInstruction *def)
 {
     MOZ_ASSERT(def->isCompare());
@@ -717,6 +737,29 @@ template bool ObjectPolicy<1>::staticAdjustInputs(TempAllocator &alloc, MInstruc
 template bool ObjectPolicy<2>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins);
 template bool ObjectPolicy<3>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins);
 
+template <unsigned Op>
+bool
+SimdSameAsReturnedTypePolicy<Op>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins)
+{
+    MIRType type = ins->type();
+    MOZ_ASSERT(IsSimdType(type));
+
+    MDefinition *in = ins->getOperand(Op);
+    if (in->type() == type)
+        return true;
+
+    MSimdUnbox *replace = MSimdUnbox::New(alloc, in, type);
+    ins->block()->insertBefore(ins, replace);
+    ins->replaceOperand(Op, replace);
+
+    return replace->typePolicy()->adjustInputs(alloc, replace);
+}
+
+template bool
+SimdSameAsReturnedTypePolicy<0>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins);
+template bool
+SimdSameAsReturnedTypePolicy<1>::staticAdjustInputs(TempAllocator &alloc, MInstruction *ins);
+
 bool
 CallPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
 {
@@ -875,7 +918,7 @@ StoreTypedArrayElementStaticPolicy::adjustInputs(TempAllocator &alloc, MInstruct
     MStoreTypedArrayElementStatic *store = ins->toStoreTypedArrayElementStatic();
 
     return ConvertToInt32Policy<0>::staticAdjustInputs(alloc, ins) &&
-        StoreTypedArrayPolicy::adjustValueInput(alloc, ins, store->viewType(), store->value(), 1);
+        StoreTypedArrayPolicy::adjustValueInput(alloc, ins, store->accessType(), store->value(), 1);
 }
 
 bool
@@ -1002,6 +1045,7 @@ FilterTypeSetPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
     _(StoreTypedArrayPolicy)                    \
     _(StoreUnboxedObjectOrNullPolicy)           \
     _(TestPolicy)                               \
+    _(AllDoublePolicy)                          \
     _(ToDoublePolicy)                           \
     _(ToInt32Policy)                            \
     _(ToStringPolicy)                           \
@@ -1042,6 +1086,7 @@ FilterTypeSetPolicy::adjustInputs(TempAllocator &alloc, MInstruction *ins)
     _(MixPolicy<ObjectPolicy<0>, StringPolicy<1> >)                     \
     _(MixPolicy<ObjectPolicy<0>, ConvertToStringPolicy<2> >)            \
     _(MixPolicy<ObjectPolicy<1>, ConvertToStringPolicy<0> >)            \
+    _(MixPolicy<SimdSameAsReturnedTypePolicy<0>, SimdSameAsReturnedTypePolicy<1> >) \
     _(MixPolicy<StringPolicy<0>, IntPolicy<1> >)                        \
     _(MixPolicy<StringPolicy<0>, StringPolicy<1> >)                     \
     _(NoFloatPolicy<0>)                                                 \

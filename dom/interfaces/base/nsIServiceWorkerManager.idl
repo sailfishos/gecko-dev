@@ -6,6 +6,8 @@
 #include "domstubs.idl"
 
 interface nsIDocument;
+interface nsIInterceptedChannel;
+interface nsIPrincipal;
 interface nsIURI;
 
 [builtinclass, uuid(d4367ffe-e435-4195-95f8-0a51b1bbfdfb)]
@@ -17,7 +19,7 @@ interface nsIServiceWorkerUnregisterCallback : nsISupports
   [noscript] void UnregisterFailed();
 };
 
-[builtinclass, uuid(430f02bf-63d0-44ab-9a59-7bd49c608949)]
+[builtinclass, uuid(464882c8-81c0-4620-b9c4-44c12085b65b)]
 interface nsIServiceWorkerManager : nsISupports
 {
   /**
@@ -34,7 +36,8 @@ interface nsIServiceWorkerManager : nsISupports
    * Unregister an existing ServiceWorker registration for `aScope`.
    * It keeps aCallback alive until the operation is concluded.
    */
-  void unregister(in nsIServiceWorkerUnregisterCallback aCallback,
+  void unregister(in nsIPrincipal aPrincipal,
+                  in nsIServiceWorkerUnregisterCallback aCallback,
                   in DOMString aScope);
 
   // Returns a Promise
@@ -48,6 +51,15 @@ interface nsIServiceWorkerManager : nsISupports
 
   // Remove ready pending Promise
   void removeReadyPromise(in nsIDOMWindow aWindow);
+
+  // Returns true if a ServiceWorker is available for the scope of aURI.
+  bool isAvailableForURI(in nsIURI aURI);
+
+  // Returns true if a given document is currently controlled by a ServiceWorker
+  bool isControlled(in nsIDocument aDocument);
+
+  // Cause a fetch event to be dispatched to the worker global associated with the given document.
+  void dispatchFetchEvent(in nsIDocument aDoc, in nsIInterceptedChannel aChannel);
 
   // aTarget MUST be a ServiceWorkerRegistration.
   [noscript] void AddRegistrationEventListener(in DOMString aScope, in nsIDOMEventTarget aTarget);

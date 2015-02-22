@@ -1286,25 +1286,11 @@ WebGLContext::ValidateCopyTexImage(GLenum format, WebGLTexImageFunc func,
     GLenum fboFormat = mOptions.alpha ? LOCAL_GL_RGBA : LOCAL_GL_RGB;
 
     if (mBoundReadFramebuffer) {
-        if (!mBoundReadFramebuffer->CheckAndInitializeAttachments()) {
-            ErrorInvalidFramebufferOperation("%s: Incomplete framebuffer.",
-                                             InfoFrom(func, dims));
+        TexInternalFormat srcFormat;
+        if (!mBoundReadFramebuffer->ValidateForRead(InfoFrom(func, dims), &srcFormat))
             return false;
-        }
 
-        GLenum readPlaneBits = LOCAL_GL_COLOR_BUFFER_BIT;
-        if (!mBoundReadFramebuffer->HasCompletePlanes(readPlaneBits)) {
-            ErrorInvalidOperation("%s: Read source attachment doesn't have the"
-                                  " correct color/depth/stencil type.",
-                                  InfoFrom(func, dims));
-            return false;
-        }
-
-        // Get the correct format for the framebuffer, as it's not the default one.
-        const WebGLFramebuffer::Attachment& color0 =
-            mBoundReadFramebuffer->GetAttachment(LOCAL_GL_COLOR_ATTACHMENT0);
-
-        fboFormat = mBoundReadFramebuffer->GetFormatForAttachment(color0);
+        fboFormat = srcFormat.get();
     }
 
     // Make sure the format of the framebuffer is a superset of the format
@@ -1779,8 +1765,8 @@ WebGLContext::InitAndValidateGL()
 
     MakeContextCurrent();
 
-    // on desktop OpenGL, we always keep vertex attrib 0 array enabled
-    if (!gl->IsGLES())
+    // For OpenGL compat. profiles, we always keep vertex attrib 0 array enabled.
+    if (gl->IsCompatibilityProfile())
         gl->fEnableVertexAttribArray(0);
 
     if (MinCapabilityMode())
@@ -1818,12 +1804,16 @@ WebGLContext::InitAndValidateGL()
         mGLMaxRenderbufferSize = MINVALUE_GL_MAX_RENDERBUFFER_SIZE;
         mGLMaxTextureImageUnits = MINVALUE_GL_MAX_TEXTURE_IMAGE_UNITS;
         mGLMaxVertexTextureImageUnits = MINVALUE_GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS;
+        mGLMaxSamples = 1;
     } else {
         gl->fGetIntegerv(LOCAL_GL_MAX_TEXTURE_SIZE, &mGLMaxTextureSize);
         gl->fGetIntegerv(LOCAL_GL_MAX_CUBE_MAP_TEXTURE_SIZE, &mGLMaxCubeMapTextureSize);
         gl->fGetIntegerv(LOCAL_GL_MAX_RENDERBUFFER_SIZE, &mGLMaxRenderbufferSize);
         gl->fGetIntegerv(LOCAL_GL_MAX_TEXTURE_IMAGE_UNITS, &mGLMaxTextureImageUnits);
         gl->fGetIntegerv(LOCAL_GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &mGLMaxVertexTextureImageUnits);
+
+        if (!gl->GetPotentialInteger(LOCAL_GL_MAX_SAMPLES, (GLint*)&mGLMaxSamples))
+            mGLMaxSamples = 1;
     }
 
     // Calculate log2 of mGLMaxTextureSize and mGLMaxCubeMapTextureSize
@@ -1889,7 +1879,7 @@ WebGLContext::InitAndValidateGL()
     // Always 1 for GLES2
     mMaxFramebufferColorAttachments = 1;
 
-    if (!gl->IsGLES()) {
+    if (gl->IsCompatibilityProfile()) {
         // gl_PointSize is always available in ES2 GLSL, but has to be
         // specifically enabled on desktop GLSL.
         gl->fEnable(LOCAL_GL_VERTEX_PROGRAM_POINT_SIZE);

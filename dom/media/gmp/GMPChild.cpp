@@ -37,9 +37,6 @@ static const int MAX_VOUCHER_LENGTH = 500000;
 #if defined(XP_WIN)
 #define TARGET_SANDBOX_EXPORTS
 #include "mozilla/sandboxTarget.h"
-#elif defined (XP_LINUX)
-#include "mozilla/Sandbox.h"
-#include "mozilla/SandboxInfo.h"
 #elif defined(XP_MACOSX)
 #include "mozilla/Sandbox.h"
 #endif
@@ -462,9 +459,9 @@ GMPChild::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 void
-GMPChild::ProcessingError(Result aWhat)
+GMPChild::ProcessingError(Result aCode, const char* aReason)
 {
-  switch (aWhat) {
+  switch (aCode) {
     case MsgDropped:
       _exit(0); // Don't trigger a crash report.
     case MsgNotKnown:

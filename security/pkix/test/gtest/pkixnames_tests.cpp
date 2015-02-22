@@ -72,7 +72,8 @@ struct PresentedMatchesReference
   { \
     ByteString(reinterpret_cast<const uint8_t*>(a), sizeof(a) - 1), \
     ByteString(reinterpret_cast<const uint8_t*>(b), sizeof(b) - 1), \
-    Result::ERROR_BAD_DER \
+    Result::ERROR_BAD_DER, \
+    false \
   }
 
 static const PresentedMatchesReference DNSID_MATCH_PARAMS[] =
@@ -286,6 +287,10 @@ static const PresentedMatchesReference DNSID_MATCH_PARAMS[] =
   DNS_ID_MATCH("*.co.uk", "foo.co.uk."),
   DNS_ID_BAD_DER("*.co.uk.", "foo.co.uk"),
   DNS_ID_BAD_DER("*.co.uk.", "foo.co.uk."),
+
+  DNS_ID_MISMATCH("*.example.com", "localhost"),
+  DNS_ID_MISMATCH("*.example.com", "localhost."),
+  // Note that we already have the testcase DNS_ID_BAD_DER("*", "foo") above
 };
 
 struct InputValidity

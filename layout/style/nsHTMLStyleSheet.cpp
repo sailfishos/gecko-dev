@@ -208,9 +208,8 @@ LangRuleTable_MatchEntry(PLDHashTable *table, const PLDHashEntryHdr *hdr,
   return entry->mRule->mLang == *lang;
 }
 
-static bool
-LangRuleTable_InitEntry(PLDHashTable *table, PLDHashEntryHdr *hdr,
-                        const void *key)
+static void
+LangRuleTable_InitEntry(PLDHashEntryHdr *hdr, const void *key)
 {
   const nsString *lang = static_cast<const nsString*>(key);
 
@@ -218,8 +217,6 @@ LangRuleTable_InitEntry(PLDHashTable *table, PLDHashEntryHdr *hdr,
 
   // Create the unique rule for this language
   entry->mRule = new nsHTMLStyleSheet::LangRule(*lang);
-
-  return true;
 }
 
 static const PLDHashTableOps LangRuleTable_Ops = {
@@ -483,8 +480,9 @@ nsHTMLStyleSheet::UniqueMappedAttributes(nsMappedAttributes* aMapped)
     PL_DHashTableInit(&mMappedAttrTable, &MappedAttrTable_Ops,
                       sizeof(MappedAttrTableEntry));
   }
-  MappedAttrTableEntry *entry = static_cast<MappedAttrTableEntry*>
-                                           (PL_DHashTableAdd(&mMappedAttrTable, aMapped));
+  MappedAttrTableEntry *entry =
+    static_cast<MappedAttrTableEntry*>
+               (PL_DHashTableAdd(&mMappedAttrTable, aMapped, fallible));
   if (!entry)
     return nullptr;
   if (!entry->mAttributes) {
@@ -518,7 +516,7 @@ nsHTMLStyleSheet::LangRuleFor(const nsString& aLanguage)
                       sizeof(LangRuleTableEntry));
   }
   LangRuleTableEntry *entry = static_cast<LangRuleTableEntry*>
-    (PL_DHashTableAdd(&mLangRuleTable, &aLanguage));
+    (PL_DHashTableAdd(&mLangRuleTable, &aLanguage, fallible));
   if (!entry) {
     NS_ASSERTION(false, "out of memory");
     return nullptr;

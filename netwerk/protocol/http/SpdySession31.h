@@ -134,7 +134,6 @@ public:
   const static uint32_t kQueueTailRoom    =  4096;
   const static uint32_t kQueueReserved    =  1024;
 
-  const static uint32_t kDefaultMaxConcurrent = 100;
   const static uint32_t kMaxStreamID = 0x7800000;
 
   // This is a sentinel for a deleted stream. It is not a valid
@@ -195,6 +194,8 @@ public:
   void DecrementRemoteSessionWindow (uint32_t bytes) { mRemoteSessionWindow -= bytes; }
 
   void SendPing() MOZ_OVERRIDE;
+
+  bool MaybeReTunnel(nsAHttpTransaction *) MOZ_OVERRIDE;
 
 private:
 
@@ -416,6 +417,7 @@ private:
 private:
 /// connect tunnels
   void DispatchOnTunnel(nsAHttpTransaction *, nsIInterfaceRequestor *);
+  void CreateTunnel(nsHttpTransaction *, nsHttpConnectionInfo *, nsIInterfaceRequestor *);
   void RegisterTunnel(SpdyStream31 *);
   void UnRegisterTunnel(SpdyStream31 *);
   uint32_t FindTunnelCount(nsHttpConnectionInfo *);

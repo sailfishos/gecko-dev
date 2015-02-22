@@ -16,7 +16,6 @@
 #include "jit/Lowering.h"
 #include "jit/MIRGraph.h"
 
-#include "jsinferinlines.h"
 #include "jsobjinlines.h"
 #include "jsopcodeinlines.h"
 
@@ -2064,7 +2063,7 @@ IsResumableMIRType(MIRType type)
       case MIRType_Elements:
       case MIRType_Pointer:
       case MIRType_Shape:
-      case MIRType_TypeObject:
+      case MIRType_ObjectGroup:
       case MIRType_Float32x4:
       case MIRType_Int32x4:
       case MIRType_Doublex2:
@@ -2484,8 +2483,8 @@ TryEliminateTypeBarrier(MTypeBarrier *barrier, bool *eliminated)
 {
     MOZ_ASSERT(!*eliminated);
 
-    const types::TemporaryTypeSet *barrierTypes = barrier->resultTypeSet();
-    const types::TemporaryTypeSet *inputTypes = barrier->input()->resultTypeSet();
+    const TemporaryTypeSet *barrierTypes = barrier->resultTypeSet();
+    const TemporaryTypeSet *inputTypes = barrier->input()->resultTypeSet();
 
     // Disregard the possible unbox added before the Typebarrier.
     if (barrier->input()->isUnbox() && barrier->input()->toUnbox()->mode() != MUnbox::Fallible)
@@ -2494,8 +2493,8 @@ TryEliminateTypeBarrier(MTypeBarrier *barrier, bool *eliminated)
     if (!barrierTypes || !inputTypes)
         return true;
 
-    bool filtersNull = barrierTypes->filtersType(inputTypes, types::Type::NullType());
-    bool filtersUndefined = barrierTypes->filtersType(inputTypes, types::Type::UndefinedType());
+    bool filtersNull = barrierTypes->filtersType(inputTypes, TypeSet::NullType());
+    bool filtersUndefined = barrierTypes->filtersType(inputTypes, TypeSet::UndefinedType());
 
     if (!filtersNull && !filtersUndefined)
         return true;
@@ -2519,6 +2518,89 @@ TryEliminateTypeBarrier(MTypeBarrier *barrier, bool *eliminated)
     return true;
 }
 
+static bool
+TryOptimizeLoadObjectOrNull(MDefinition *def, MDefinitionVector *peliminateList)
+{
+    if (def->type() != MIRType_Value)
+        return true;
+
+    // Check if this definition can only produce object or null values.
+    TemporaryTypeSet *types = def->resultTypeSet();
+    if (!types)
+        return true;
+    if (types->baseFlags() & ~(TYPE_FLAG_NULL | TYPE_FLAG_ANYOBJECT))
+        return true;
+
+    MDefinitionVector eliminateList(def->block()->graph().alloc());
+
+    for (MUseDefIterator iter(def); iter; ++iter) {
+        MDefinition *ndef = iter.def();
+        switch (ndef->op()) {
+          case MDefinition::Op_Compare:
+            if (ndef->toCompare()->compareType() != MCompare::Compare_Null)
+                return true;
+            break;
+          case MDefinition::Op_Test:
+            break;
+          case MDefinition::Op_PostWriteBarrier:
+            break;
+          case MDefinition::Op_StoreFixedSlot:
+            break;
+          case MDefinition::Op_StoreSlot:
+            break;
+          case MDefinition::Op_ToObjectOrNull:
+            if (!eliminateList.append(ndef->toToObjectOrNull()))
+                return false;
+            break;
+          case MDefinition::Op_Unbox:
+            MOZ_ASSERT(ndef->type() == MIRType_Object);
+            break;
+          case MDefinition::Op_TypeBarrier:
+            // For now, only handle type barriers which are not consumed
+            // anywhere and only test that the value is null.
+            if (ndef->hasUses() || ndef->resultTypeSet()->getKnownMIRType() != MIRType_Null)
+                return true;
+            break;
+          default:
+            return true;
+        }
+    }
+
+    // On punboxing systems we are better off leaving the value boxed if it
+    // is only stored back to the heap.
+#ifdef JS_PUNBOX64
+    bool foundUse = false;
+    for (MUseDefIterator iter(def); iter; ++iter) {
+        MDefinition *ndef = iter.def();
+        if (!ndef->isStoreFixedSlot() && !ndef->isStoreSlot()) {
+            foundUse = true;
+            break;
+        }
+    }
+    if (!foundUse)
+        return true;
+#endif // JS_PUNBOX64
+
+    def->setResultType(MIRType_ObjectOrNull);
+
+    // Fixup the result type of MTypeBarrier uses.
+    for (MUseDefIterator iter(def); iter; ++iter) {
+        MDefinition *ndef = iter.def();
+        if (ndef->isTypeBarrier())
+            ndef->setResultType(MIRType_ObjectOrNull);
+    }
+
+    // Eliminate MToObjectOrNull instruction uses.
+    for (size_t i = 0; i < eliminateList.length(); i++) {
+        MDefinition *ndef = eliminateList[i];
+        ndef->replaceAllUsesWith(def);
+        if (!peliminateList->append(ndef))
+            return false;
+    }
+
+    return true;
+}
+
 static inline MDefinition *
 PassthroughOperand(MDefinition *def)
 {
@@ -2526,6 +2608,8 @@ PassthroughOperand(MDefinition *def)
         return def->toConvertElementsToDoubles()->elements();
     if (def->isMaybeCopyElementsForWrite())
         return def->toMaybeCopyElementsForWrite()->object();
+    if (def->isConvertUnboxedObjectToNative())
+        return def->toConvertUnboxedObjectToNative()->object();
     return nullptr;
 }
 
@@ -2566,6 +2650,8 @@ jit::EliminateRedundantChecks(MIRGraph &graph)
         }
     }
 
+    MDefinitionVector eliminateList(graph.alloc());
+
     // Starting from each self-dominating block, traverse the CFG in pre-order.
     while (!worklist.empty()) {
         MBasicBlock *block = worklist.popCopy();
@@ -2581,18 +2667,28 @@ jit::EliminateRedundantChecks(MIRGraph &graph)
 
             bool eliminated = false;
 
-            if (def->isBoundsCheck()) {
+            switch (def->op()) {
+              case MDefinition::Op_BoundsCheck:
                 if (!TryEliminateBoundsCheck(checks, index, def->toBoundsCheck(), &eliminated))
                     return false;
-            } else if (def->isTypeBarrier()) {
+                break;
+              case MDefinition::Op_TypeBarrier:
                 if (!TryEliminateTypeBarrier(def->toTypeBarrier(), &eliminated))
                     return false;
-            } else {
+                break;
+              case MDefinition::Op_LoadFixedSlot:
+              case MDefinition::Op_LoadSlot:
+              case MDefinition::Op_LoadUnboxedObjectOrNull:
+                if (!TryOptimizeLoadObjectOrNull(def, &eliminateList))
+                    return false;
+                break;
+              default:
                 // Now that code motion passes have finished, replace
                 // instructions which pass through one of their operands
                 // (and perform additional checks) with that operand.
                 if (MDefinition *passthrough = PassthroughOperand(def))
                     def->replaceAllUsesWith(passthrough);
+                break;
             }
 
             if (eliminated)
@@ -2602,6 +2698,12 @@ jit::EliminateRedundantChecks(MIRGraph &graph)
     }
 
     MOZ_ASSERT(index == graph.numBlocks());
+
+    for (size_t i = 0; i < eliminateList.length(); i++) {
+        MDefinition *def = eliminateList[i];
+        def->block()->discardDef(def);
+    }
+
     return true;
 }
 
@@ -2880,10 +2982,10 @@ jit::ConvertLinearInequality(TempAllocator &alloc, MBasicBlock *block, const Lin
 }
 
 static bool
-AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
+AnalyzePoppedThis(JSContext *cx, ObjectGroup *group,
                   MDefinition *thisValue, MInstruction *ins, bool definitelyExecuted,
                   HandlePlainObject baseobj,
-                  Vector<types::TypeNewScript::Initializer> *initializerList,
+                  Vector<TypeNewScript::Initializer> *initializerList,
                   Vector<PropertyName *> *accessedProperties,
                   bool *phandled)
 {
@@ -2896,9 +2998,6 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
         if (setprop->object() != thisValue)
             return true;
 
-        // Don't use GetAtomId here, we need to watch for SETPROP on
-        // integer properties and bail out. We can't mark the aggregate
-        // JSID_VOID type property as being in a definite slot.
         if (setprop->name() == cx->names().prototype ||
             setprop->name() == cx->names().proto ||
             setprop->name() == cx->names().constructor)
@@ -2929,7 +3028,7 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
             return true;
 
         RootedId id(cx, NameToId(setprop->name()));
-        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, id)) {
+        if (!AddClearDefiniteGetterSetterForPrototypeChain(cx, group, id)) {
             // The prototype chain already contains a getter/setter for this
             // property, or type information is too imprecise.
             return true;
@@ -2955,15 +3054,15 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
         for (int i = callerResumePoints.length() - 1; i >= 0; i--) {
             MResumePoint *rp = callerResumePoints[i];
             JSScript *script = rp->block()->info().script();
-            types::TypeNewScript::Initializer entry(types::TypeNewScript::Initializer::SETPROP_FRAME,
-                                                    script->pcToOffset(rp->pc()));
+            TypeNewScript::Initializer entry(TypeNewScript::Initializer::SETPROP_FRAME,
+                                             script->pcToOffset(rp->pc()));
             if (!initializerList->append(entry))
                 return false;
         }
 
         JSScript *script = ins->block()->info().script();
-        types::TypeNewScript::Initializer entry(types::TypeNewScript::Initializer::SETPROP,
-                                                script->pcToOffset(setprop->resumePoint()->pc()));
+        TypeNewScript::Initializer entry(TypeNewScript::Initializer::SETPROP,
+                                         script->pcToOffset(setprop->resumePoint()->pc()));
         if (!initializerList->append(entry))
             return false;
 
@@ -2989,7 +3088,7 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
         if (!baseobj->lookup(cx, id) && !accessedProperties->append(get->name()))
             return false;
 
-        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, id)) {
+        if (!AddClearDefiniteGetterSetterForPrototypeChain(cx, group, id)) {
             // The |this| value can escape if any property reads it does go
             // through a getter.
             return true;
@@ -3016,8 +3115,8 @@ CmpInstructions(const void *a, const void *b)
 
 bool
 jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
-                                        types::TypeObject *type, HandlePlainObject baseobj,
-                                        Vector<types::TypeNewScript::Initializer> *initializerList)
+                                        ObjectGroup *group, HandlePlainObject baseobj,
+                                        Vector<TypeNewScript::Initializer> *initializerList)
 {
     MOZ_ASSERT(cx->zone()->types.activeAnalysis);
 
@@ -3053,7 +3152,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
             return true;
     }
 
-    types::TypeScript::SetThis(cx, script, types::Type::ObjectType(type));
+    TypeScript::SetThis(cx, script, TypeSet::ObjectType(group));
 
     MIRGraph graph(&temp);
     InlineScriptTree *inlineScriptTree = InlineScriptTree::New(&temp, nullptr, nullptr, script);
@@ -3068,7 +3167,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
 
     const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_Normal);
 
-    types::CompilerConstraintList *constraints = types::NewCompilerConstraintList(temp);
+    CompilerConstraintList *constraints = NewCompilerConstraintList(temp);
     if (!constraints) {
         js_ReportOutOfMemory(cx);
         return false;
@@ -3086,7 +3185,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
         return true;
     }
 
-    types::FinishDefinitePropertiesAnalysis(cx, constraints);
+    FinishDefinitePropertiesAnalysis(cx, constraints);
 
     if (!SplitCriticalEdges(graph))
         return false;
@@ -3158,7 +3257,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
 
         bool handled = false;
         size_t slotSpan = baseobj->slotSpan();
-        if (!AnalyzePoppedThis(cx, type, thisValue, ins, definitelyExecuted,
+        if (!AnalyzePoppedThis(cx, group, thisValue, ins, definitelyExecuted,
                                baseobj, initializerList, &accessedProperties, &handled))
         {
             return false;
@@ -3186,7 +3285,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
             if (MResumePoint *rp = block->callerResumePoint()) {
                 if (block->numPredecessors() == 1 && block->getPredecessor(0) == rp->block()) {
                     JSScript *script = rp->block()->info().script();
-                    if (!types::AddClearDefiniteFunctionUsesInScript(cx, type, script, block->info().script()))
+                    if (!AddClearDefiniteFunctionUsesInScript(cx, group, script, block->info().script()))
                         return false;
                 }
             }
@@ -3237,7 +3336,7 @@ bool
 jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
 {
     RootedScript script(cx, scriptArg);
-    types::AutoEnterAnalysis enter(cx);
+    AutoEnterAnalysis enter(cx);
 
     MOZ_ASSERT(!script->analyzedArgsUsage());
 
@@ -3296,7 +3395,7 @@ jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
 
     const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_Normal);
 
-    types::CompilerConstraintList *constraints = types::NewCompilerConstraintList(temp);
+    CompilerConstraintList *constraints = NewCompilerConstraintList(temp);
     if (!constraints)
         return false;
 
@@ -3524,6 +3623,13 @@ jit::MakeLoopsContiguous(MIRGraph &graph)
         // If the loop isn't a loop, don't try to optimize it.
         if (numMarked == 0)
             continue;
+
+        // If there's an OSR block entering the loop in the middle, it's tricky,
+        // so don't try to handle it, for now.
+        if (canOsr) {
+            UnmarkLoopBlocks(graph, header);
+            continue;
+        }
 
         // Move all blocks between header and backedge that aren't marked to
         // the end of the loop, making the loop itself contiguous.

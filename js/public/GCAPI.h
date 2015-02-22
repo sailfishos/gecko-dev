@@ -45,7 +45,7 @@ namespace JS {
 #define GCREASONS(D)                            \
     /* Reasons internal to the JS engine */     \
     D(API)                                      \
-    D(MAYBEGC)                                  \
+    D(EAGER_ALLOC_TRIGGER)                      \
     D(DESTROY_RUNTIME)                          \
     D(DESTROY_CONTEXT)                          \
     D(LAST_DITCH)                               \
@@ -58,6 +58,8 @@ namespace JS {
     D(EVICT_NURSERY)                            \
     D(FULL_STORE_BUFFER)                        \
     D(SHARED_MEMORY_LIMIT)                      \
+    D(PERIODIC_FULL_GC)                         \
+    D(INCREMENTAL_TOO_SLOW)                     \
                                                 \
     /* These are reserved for future use. */    \
     D(RESERVED0)                                \
@@ -77,8 +79,6 @@ namespace JS {
     D(RESERVED14)                               \
     D(RESERVED15)                               \
     D(RESERVED16)                               \
-    D(RESERVED17)                               \
-    D(RESERVED18)                               \
                                                 \
     /* Reasons from Firefox */                  \
     D(DOM_WINDOW_UTILS)                         \
@@ -263,9 +263,10 @@ enum GCProgress {
 
 struct JS_PUBLIC_API(GCDescription) {
     bool isCompartment_;
+    JSGCInvocationKind invocationKind_;
 
-    explicit GCDescription(bool isCompartment)
-      : isCompartment_(isCompartment) {}
+    GCDescription(bool isCompartment, JSGCInvocationKind kind)
+      : isCompartment_(isCompartment), invocationKind_(kind) {}
 
     char16_t *formatMessage(JSRuntime *rt) const;
     char16_t *formatJSON(JSRuntime *rt, uint64_t timestamp) const;
@@ -301,21 +302,6 @@ DisableIncrementalGC(JSRuntime *rt);
  */
 extern JS_PUBLIC_API(bool)
 IsIncrementalGCEnabled(JSRuntime *rt);
-
-/*
- * Compacting GC defaults to enabled, but may be disabled for testing or in
- * embeddings that have not implemented the necessary object moved hooks or weak
- * pointer callbacks.  There is not currently a way to re-enable compacting GC
- * once it has been disabled on the runtime.
- */
-extern JS_PUBLIC_API(void)
-DisableCompactingGC(JSRuntime *rt);
-
-/*
- * Returns true if compacting GC is enabled.
- */
-extern JS_PUBLIC_API(bool)
-IsCompactingGCEnabled(JSRuntime *rt);
 
 /*
  * Returns true while an incremental GC is ongoing, both when actively

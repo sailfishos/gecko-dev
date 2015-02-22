@@ -72,8 +72,7 @@ BrowserStreamParent::RecvAsyncNPP_NewStreamResult(const NPError& rv,
   }
 
   if (error != NPERR_NO_ERROR) {
-    // We need to clean up the stream
-    parent::_destroystream(mNPP->GetNPP(), mStream, NPRES_DONE);
+    surrogate->DestroyAsyncStream(mStream);
     unused << PBrowserStreamParent::Send__delete__(this);
   }
 

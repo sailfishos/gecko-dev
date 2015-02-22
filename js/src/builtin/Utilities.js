@@ -10,7 +10,7 @@
 */
 
 /*global ToObject: false, ToInteger: false, IsCallable: false,
-         ThrowError: false, AssertionFailed: false, SetScriptHints: false,
+         ThrowError: false, AssertionFailed: false,
          MakeConstructible: false, DecompileArg: false,
          RuntimeDefaultLocale: false,
          ParallelDo: false, ParallelSlices: false, NewDenseArray: false,
@@ -152,4 +152,15 @@ function GetIterator(obj, method) {
 
     // Step 6.
     return iterator;
+}
+
+function SpeciesConstructor(obj, defaultConstructor) {
+    var C = obj.constructor;
+    if (C === undefined) {
+        return defaultConstructor;
+    }
+    if (!IsConstructor(C)) {
+        ThrowError(JSMSG_NOT_CONSTRUCTOR, DecompileArg(1, C));
+    }
+    return C;
 }

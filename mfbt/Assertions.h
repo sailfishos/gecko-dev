@@ -131,7 +131,7 @@ extern "C" {
  * method is primarily for internal use in this header, and only secondarily
  * for use in implementing release-build assertions.
  */
-static MOZ_ALWAYS_INLINE void
+static MOZ_COLD MOZ_ALWAYS_INLINE void
 MOZ_ReportAssertionFailure(const char* aStr, const char* aFilename, int aLine)
   MOZ_PRETEND_NORETURN_FOR_STATIC_ANALYSIS
 {
@@ -148,7 +148,7 @@ MOZ_ReportAssertionFailure(const char* aStr, const char* aFilename, int aLine)
 #endif
 }
 
-static MOZ_ALWAYS_INLINE void
+static MOZ_COLD MOZ_ALWAYS_INLINE void
 MOZ_ReportCrash(const char* aStr, const char* aFilename, int aLine)
   MOZ_PRETEND_NORETURN_FOR_STATIC_ANALYSIS
 {
@@ -294,6 +294,13 @@ __declspec(noreturn) __inline void MOZ_NoReturn() {}
  * MOZ_ASSERT has no effect in non-debug builds.  It is designed to catch bugs
  * *only* during debugging, not "in the field". If you want the latter, use
  * MOZ_RELEASE_ASSERT, which applies to non-debug builds as well.
+ *
+ * MOZ_DIAGNOSTIC_ASSERT works like MOZ_RELEASE_ASSERT in Nightly/Aurora and
+ * MOZ_ASSERT in Beta/Release - use this when a condition is potentially rare
+ * enough to require real user testing to hit, but is not security-sensitive.
+ * This can cause user pain, so use it sparingly. If a MOZ_DIAGNOSTIC_ASSERT
+ * is firing, it should promptly be converted to a MOZ_ASSERT while the failure
+ * is being investigated, rather than letting users suffer.
  */
 
 /*
@@ -302,14 +309,6 @@ __declspec(noreturn) __inline void MOZ_NoReturn() {}
  */
 
 #ifdef __cplusplus
-#  if defined(__clang__) || defined(__GNUC__)
-#    define MOZ_SUPPORT_ASSERT_CONDITION_TYPE_VALIDATION
-#  elif defined(_MSC_VER)
-//   Disabled for now because of insufficient decltype support. Bug 1004028.
-#  endif
-#endif
-
-#ifdef MOZ_SUPPORT_ASSERT_CONDITION_TYPE_VALIDATION
 #  include "mozilla/TypeTraits.h"
 namespace mozilla {
 namespace detail {
@@ -385,6 +384,12 @@ struct AssertionConditionType
 #else
 #  define MOZ_ASSERT(...) do { } while (0)
 #endif /* DEBUG */
+
+#ifdef RELEASE_BUILD
+#  define MOZ_DIAGNOSTIC_ASSERT MOZ_ASSERT
+#else
+#  define MOZ_DIAGNOSTIC_ASSERT MOZ_RELEASE_ASSERT
+#endif
 
 /*
  * MOZ_ASSERT_IF(cond1, cond2) is equivalent to MOZ_ASSERT(cond2) if cond1 is

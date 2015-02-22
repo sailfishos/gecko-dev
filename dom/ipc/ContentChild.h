@@ -209,7 +209,7 @@ public:
     virtual PTestShellChild* AllocPTestShellChild() MOZ_OVERRIDE;
     virtual bool DeallocPTestShellChild(PTestShellChild*) MOZ_OVERRIDE;
     virtual bool RecvPTestShellConstructor(PTestShellChild*) MOZ_OVERRIDE;
-    jsipc::JavaScriptShared* GetCPOWManager() MOZ_OVERRIDE;
+    jsipc::CPOWManager* GetCPOWManager() MOZ_OVERRIDE;
 
     PMobileConnectionChild*
     SendPMobileConnectionConstructor(PMobileConnectionChild* aActor,
@@ -304,6 +304,8 @@ public:
     virtual bool RecvNotifyAlertsObserver(const nsCString& aType,
                                           const nsString& aData) MOZ_OVERRIDE;
 
+    virtual bool RecvLoadProcessScript(const nsString& aURL) MOZ_OVERRIDE;
+
     virtual bool RecvAsyncMessage(const nsString& aMsg,
                                   const ClonedMessageData& aData,
                                   InfallibleTArray<CpowEntry>&& aCpows,
@@ -332,6 +334,7 @@ public:
 
     virtual bool RecvLastPrivateDocShellDestroyed() MOZ_OVERRIDE;
 
+    virtual bool RecvVolumes(InfallibleTArray<VolumeInfo>&& aVolumes) MOZ_OVERRIDE;
     virtual bool RecvFilePathUpdate(const nsString& aStorageType,
                                     const nsString& aStorageName,
                                     const nsString& aPath,
@@ -440,7 +443,7 @@ public:
 private:
     virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
 
-    virtual void ProcessingError(Result what) MOZ_OVERRIDE;
+    virtual void ProcessingError(Result aCode, const char* aReason) MOZ_OVERRIDE;
 
     /**
      * Exit *now*.  Do not shut down XPCOM, do not pass Go, do not run
@@ -480,6 +483,9 @@ private:
 
     DISALLOW_EVIL_CONSTRUCTORS(ContentChild);
 };
+
+uint64_t
+NextWindowID();
 
 } // namespace dom
 } // namespace mozilla

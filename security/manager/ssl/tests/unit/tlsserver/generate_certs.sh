@@ -271,6 +271,7 @@ export_cert testINT test-int.der
 make_EE ocspEEWithIntermediate 'CN=Test End-entity with Intermediate' testINT "localhost,*.example.com"
 make_EE expired 'CN=Expired Test End-entity' testCA "expired.example.com" "-w -400"
 export_cert expired expired-ee.der
+make_EE notYetValid 'CN=Not Yet Valid Test End-entity' testCA "notyetvalid.example.com" "-w 400"
 make_EE mismatch 'CN=Mismatch Test End-entity' testCA "doesntmatch.example.com"
 make_EE selfsigned 'CN=Self-signed Test End-entity' testCA "selfsigned.example.com" "-x"
 # If the certificate 'CN=Test Intermediate' isn't loaded into memory,
@@ -284,12 +285,22 @@ export_cert unknownissuer unknown-issuer.der
 
 $RUN_MOZILLA $CERTUTIL -d $DB_ARGUMENT -D -n deletedINT
 
+# certutil doesn't expose a way to directly specify a notBefore time.
+# Workaround this by just providing a large enough warp that the notBefore time
+# falls before the UNIX Epoch.
+make_EE beforeEpoch 'CN=Before UNIX Epoch Test End-entity' testCA "before-epoch.example.com" "-w -720 -v 960"
+make_INT beforeEpochINT 'CN=Before UNIX Epoch Test Intermediate' testCA "-w -720 -v 960"
+make_EE beforeEpochIssuer 'CN=Test End-entity with Before UNIX Epoch issuer' beforeEpochINT "before-epoch-issuer.example.com"
+
 make_INT expiredINT 'CN=Expired Test Intermediate' testCA "-w -400"
 make_EE expiredissuer 'CN=Test End-entity with expired issuer' expiredINT "expiredissuer.example.com"
+make_INT notYetValidINT 'CN=Not Yet Valid Test Intermediate' testCA "-w 400"
+make_EE notYetValidIssuer 'CN=Test End-entity with not yet valid issuer' notYetValidINT "notyetvalidissuer.example.com"
 NSS_ALLOW_WEAK_SIGNATURE_ALG=1 make_EE md5signature 'CN=Test End-entity with MD5 signature' testCA "md5signature.example.com" "-Z MD5"
 make_EE untrustedissuer 'CN=Test End-entity with untrusted issuer' otherCA "untrustedissuer.example.com"
 
 make_EE mismatch-expired 'CN=Mismatch-Expired Test End-entity' testCA "doesntmatch.example.com" "-w -400"
+make_EE mismatch-notYetValid 'CN=Mismatch-Not Yet Valid Test End-entity' testCA "doesntmatch.example.com" "-w 400"
 make_EE mismatch-untrusted 'CN=Mismatch-Untrusted Test End-entity' otherCA "doesntmatch.example.com"
 make_EE untrusted-expired 'CN=Untrusted-Expired Test End-entity' otherCA "untrusted-expired.example.com" "-w -400"
 make_EE mismatch-untrusted-expired 'CN=Mismatch-Untrusted-Expired Test End-entity' otherCA "doesntmatch.example.com" "-w -400"
@@ -325,5 +336,7 @@ make_EE eeIssuedByV1Cert 'CN=EE Issued by V1 Cert' v1Cert "localhost,*.example.c
 # Make a valid EE using testINT to test OneCRL revocation of testINT
 make_EE eeIssuedByIntermediate 'CN=EE issued by intermediate' testINT "localhost"
 export_cert eeIssuedByIntermediate test-int-ee.der
+
+make_EE badSubjectAltNames 'CN=EE with bad subjectAltNames' testCA "*.*.example.com"
 
 cleanup

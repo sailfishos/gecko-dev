@@ -892,24 +892,16 @@ PtrInfo*
 CCGraph::FindNode(void* aPtr)
 {
   PtrToNodeEntry* e =
-    static_cast<PtrToNodeEntry*>(PL_DHashTableLookup(&mPtrToNodeMap, aPtr));
-  if (!PL_DHASH_ENTRY_IS_BUSY(e)) {
-    return nullptr;
-  }
-  return e->mNode;
+    static_cast<PtrToNodeEntry*>(PL_DHashTableSearch(&mPtrToNodeMap, aPtr));
+  return e ? e->mNode : nullptr;
 }
 
 PtrToNodeEntry*
 CCGraph::AddNodeToMap(void* aPtr)
 {
   JS::AutoSuppressGCAnalysis suppress;
-  PtrToNodeEntry* e =
-    static_cast<PtrToNodeEntry*>(PL_DHashTableAdd(&mPtrToNodeMap, aPtr));
-  if (!e) {
-    // Caller should track OOMs
-    return nullptr;
-  }
-  return e;
+  return static_cast<PtrToNodeEntry*>
+    (PL_DHashTableAdd(&mPtrToNodeMap, aPtr)); // infallible add
 }
 
 void
@@ -1034,7 +1026,7 @@ public:
 
   void StartBlock(Block* aBlock)
   {
-    NS_ABORT_IF_FALSE(!mFreeList, "should not have free list");
+    MOZ_ASSERT(!mFreeList, "should not have free list");
 
     // Put all the entries in the block on the free list.
     nsPurpleBufferEntry* entries = aBlock->mEntries;
@@ -1360,7 +1352,7 @@ private:
     if (!aPi) {
       MOZ_CRASH();
     }
-    if (!aQueue.Push(aPi, fallible_t())) {
+    if (!aQueue.Push(aPi, fallible)) {
       mVisitor.Failed();
     }
   }
@@ -2040,7 +2032,6 @@ private:
   nsCString mNextEdgeName;
   nsCOMPtr<nsICycleCollectorListener> mListener;
   bool mMergeZones;
-  bool mRanOutOfMemory;
   nsAutoPtr<NodePool::Enumerator> mCurrNode;
 
 public:
@@ -2155,7 +2146,6 @@ CCGraphBuilder::CCGraphBuilder(CCGraph& aGraph,
   , mJSZoneParticipant(nullptr)
   , mListener(aListener)
   , mMergeZones(aMergeZones)
-  , mRanOutOfMemory(false)
 {
   if (aJSRuntime) {
     mJSParticipant = aJSRuntime->GCThingParticipant();
@@ -2189,11 +2179,6 @@ PtrInfo*
 CCGraphBuilder::AddNode(void* aPtr, nsCycleCollectionParticipant* aParticipant)
 {
   PtrToNodeEntry* e = mGraph.AddNodeToMap(aPtr);
-  if (!e) {
-    mRanOutOfMemory = true;
-    return nullptr;
-  }
-
   PtrInfo* result;
   if (!e->mNode) {
     // New entry.
@@ -2272,11 +2257,6 @@ CCGraphBuilder::BuildGraph(SliceBudget& aBudget)
 
   if (mGraph.mRootCount > 0) {
     SetLastChild();
-  }
-
-  if (mRanOutOfMemory) {
-    MOZ_ASSERT(false, "Ran out of memory while building cycle collector graph");
-    CC_TELEMETRY(_OOM, true);
   }
 
   mCurrNode = nullptr;

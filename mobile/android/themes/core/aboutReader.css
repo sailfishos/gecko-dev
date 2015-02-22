@@ -107,61 +107,61 @@ body {
   color: #aaaaaa;
 }
 
-.font-size1 > .header > h1 {
+.font-size1 > body > .header > h1 {
   font-size: 27px;
 }
 
-.font-size2 > .header > h1 {
+.font-size2 > body > .header > h1 {
   font-size: 29px;
 }
 
-.font-size3 > .header > h1 {
+.font-size3 > body > .header > h1 {
   font-size: 31px;
 }
 
-.font-size4 > .header > h1 {
+.font-size4 > body > .header > h1 {
   font-size: 33px;
 }
 
-.font-size5 > .header > h1 {
+.font-size5 > body > .header > h1 {
   font-size: 35px;
 }
 
 /* This covers caption, domain, and credits
    texts in the reader UI */
 
-.font-size1 > .content .wp-caption-text,
-.font-size1 > .content figcaption,
-.font-size1 > .header > .domain,
-.font-size1 > .header > .credits {
+.font-size1 > body > .content .wp-caption-text,
+.font-size1 > body > .content figcaption,
+.font-size1 > body > .header > .domain,
+.font-size1 > body > .header > .credits {
   font-size: 10px;
 }
 
-.font-size2 > .content .wp-caption-text,
-.font-size2 > .content figcaption,
-.font-size2 > .header > .domain,
-.font-size2 > .header > .credits {
+.font-size2 > body > .content .wp-caption-text,
+.font-size2 > body > .content figcaption,
+.font-size2 > body > .header > .domain,
+.font-size2 > body > .header > .credits {
   font-size: 13px;
 }
 
-.font-size3 > .content .wp-caption-text,
-.font-size3 > .content figcaption,
-.font-size3 > .header > .domain,
-.font-size3 > .header > .credits {
+.font-size3 > body > .content .wp-caption-text,
+.font-size3 > body > .content figcaption,
+.font-size3 > body > .header > .domain,
+.font-size3 > body > .header > .credits {
   font-size: 15px;
 }
 
-.font-size4 > .content .wp-caption-text,
-.font-size4 > .content figcaption,
-.font-size4 > .header > .domain,
-.font-size4 > .header > .credits {
+.font-size4 > body > .content .wp-caption-text,
+.font-size4 > body > .content figcaption,
+.font-size4 > body > .header > .domain,
+.font-size4 > body > .header > .credits {
   font-size: 17px;
 }
 
-.font-size5 > .content .wp-caption-text,
-.font-size5 > .content figcaption,
-.font-size5 > .header > .domain,
-.font-size5 > .header > .credits {
+.font-size5 > body > .content .wp-caption-text,
+.font-size5 > body > .content figcaption,
+.font-size5 > body > .header > .domain,
+.font-size5 > body > .header > .credits {
   font-size: 19px;
 }
 
@@ -296,27 +296,27 @@ body {
 }
 
 .font-size1-sample,
-.font-size1 > .content {
+.font-size1 > body > .content {
   font-size: 14px !important;
 }
 
 .font-size2-sample,
-.font-size2 > .content {
+.font-size2 > body > .content {
   font-size: 16px !important;
 }
 
 .font-size3-sample,
-.font-size3 > .content {
+.font-size3 > body > .content {
   font-size: 18px !important;
 }
 
 .font-size4-sample,
-.font-size4 > .content {
+.font-size4 > body > .content {
   font-size: 20px !important;
 }
 
 .font-size5-sample,
-.font-size5 > .content {
+.font-size5 > body > .content {
   font-size: 22px !important;
 }
 
@@ -355,6 +355,14 @@ body {
   background-position: center;
   background-size: 30px 24px;
   background-repeat: no-repeat;
+  background-color: transparent;
+  border: 0;
+  width: 100%;
+}
+
+/* Remove dotted border when button is focused */
+.button::-moz-focus-inner {
+  border: 0;
 }
 
 .dropdown {
@@ -488,6 +496,12 @@ body {
   font-size: 12px;
 }
 
+ /* desktop-only controls */
+.close-button,
+.list-button {
+  display: none;
+}
+
 .toggle-button.on {
   background-image: url('chrome://browser/skin/images/reader-toggle-on-icon-mdpi.png');
 }
@@ -507,14 +521,6 @@ body {
 @media screen and (min-resolution: 1.25dppx) {
   .dropdown-arrow {
     background-image: url('chrome://browser/skin/images/reader-dropdown-arrow-hdpi.png');
-  }
-
-  .step-control > .plus-button {
-    background-image: url('chrome://browser/skin/images/reader-plus-icon-hdpi.png');
-  }
-
-  .step-control > .minus-button {
-    background-image: url('chrome://browser/skin/images/reader-minus-icon-hdpi.png');
   }
 
   .toggle-button.on {
@@ -537,14 +543,6 @@ body {
 @media screen and (min-resolution: 2dppx) {
   .dropdown-arrow {
     background-image: url('chrome://browser/skin/images/reader-dropdown-arrow-xhdpi.png');
-  }
-
-  .step-control > .plus-button {
-    background-image: url('chrome://browser/skin/images/reader-plus-icon-xhdpi.png');
-  }
-
-  .step-control > .minus-button {
-    background-image: url('chrome://browser/skin/images/reader-minus-icon-xhdpi.png');
   }
 
   .toggle-button.on {

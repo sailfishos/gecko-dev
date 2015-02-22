@@ -19,25 +19,60 @@ namespace mozilla {
 // Manage the data flow from inputting encoded data and outputting decode data.
 class GonkDecoderManager {
 public:
+  GonkDecoderManager(MediaTaskQueue* aTaskQueue);
+
   virtual ~GonkDecoderManager() {}
 
   // Creates and initializs the GonkDecoder.
   // Returns nullptr on failure.
   virtual android::sp<android::MediaCodecProxy> Init(MediaDataDecoderCallback* aCallback) = 0;
 
+  // Add samples into OMX decoder or queue them if decoder is out of input buffer.
+  virtual nsresult Input(mp4_demuxer::MP4Sample* aSample);
+
   // Produces decoded output, it blocks until output can be produced or a timeout
   // is expired or until EOS. Returns NS_OK on success, or NS_ERROR_NOT_AVAILABLE
   // if there's not enough data to produce more output. If this returns a failure
   // code other than NS_ERROR_NOT_AVAILABLE, an error will be reported to the
   // MP4Reader.
-  virtual nsresult Input(mp4_demuxer::MP4Sample* aSample) = 0;
+  // The overrided class should follow the same behaviour.
   virtual nsresult Output(int64_t aStreamOffset,
                           nsRefPtr<MediaData>& aOutput) = 0;
-  virtual nsresult Flush() = 0;
 
-  virtual void AllocateMediaResources() {};
+  // Flush the queued sample.
+  // It this function is overrided by subclass, this functino should be called
+  // in the overrided function.
+  virtual nsresult Flush();
 
-  virtual void ReleaseMediaResources() {};
+  virtual void AllocateMediaResources() {}
+
+  virtual void ReleaseMediaResources() {}
+
+  // It should be called in MediaTash thread.
+  bool HasQueuedSample() {
+    MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
+    return mQueueSample.Length();
+  }
+
+  void ClearQueuedSample() {
+    MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
+    mQueueSample.Clear();
+  }
+
+protected:
+  // It performs special operation to MP4 sample, the real action is depended on
+  // the codec type.
+  virtual bool PerformFormatSpecificProcess(mp4_demuxer::MP4Sample* aSample) { return true; }
+
+  // It sends MP4Sample to OMX layer. It must be overrided by subclass.
+  virtual android::status_t SendSampleToOMX(mp4_demuxer::MP4Sample* aSample) = 0;
+
+  // An queue with the MP4 samples which are waiting to be sent into OMX.
+  // If an element is an empty MP4Sample, that menas EOS. There should not
+  // any sample be queued after EOS.
+  nsTArray<nsAutoPtr<mp4_demuxer::MP4Sample>> mQueueSample;
+
+  RefPtr<MediaTaskQueue> mTaskQueue;
 };
 
 // Samples are decoded using the GonkDecoder (MediaCodec)
@@ -48,7 +83,7 @@ public:
 class GonkMediaDataDecoder : public MediaDataDecoder {
 public:
   GonkMediaDataDecoder(GonkDecoderManager* aDecoderManager,
-                       MediaTaskQueue* aTaskQueue,
+                       FlushableMediaTaskQueue* aTaskQueue,
                        MediaDataDecoderCallback* aCallback);
 
   ~GonkMediaDataDecoder();
@@ -65,7 +100,7 @@ public:
 
   virtual bool IsWaitingMediaResources() MOZ_OVERRIDE;
 
-  virtual bool IsDormantNeeded() MOZ_OVERRIDE;
+  virtual bool IsDormantNeeded() { return true;}
 
   virtual void AllocateMediaResources() MOZ_OVERRIDE;
 
@@ -87,7 +122,7 @@ private:
   // all available output.
   void ProcessDrain();
 
-  RefPtr<MediaTaskQueue> mTaskQueue;
+  RefPtr<FlushableMediaTaskQueue> mTaskQueue;
   MediaDataDecoderCallback* mCallback;
 
   android::sp<android::MediaCodecProxy> mDecoder;

@@ -405,10 +405,13 @@ protected:
   nsresult DidCauseReflow();
   friend class nsAutoCauseReflowNotifier;
 
-  void DispatchTouchEvent(mozilla::WidgetEvent* aEvent,
-                          nsEventStatus* aStatus,
-                          nsPresShellEventCB* aEventCB,
-                          bool aTouchIsNew);
+  nsresult DispatchEventToDOM(mozilla::WidgetEvent* aEvent,
+                              nsEventStatus* aStatus,
+                              nsPresShellEventCB* aEventCB);
+  void DispatchTouchEventToDOM(mozilla::WidgetEvent* aEvent,
+                               nsEventStatus* aStatus,
+                               nsPresShellEventCB* aEventCB,
+                               bool aTouchIsNew);
 
   void     WillDoReflow();
 
@@ -690,7 +693,8 @@ protected:
   bool AdjustContextMenuKeyEvent(mozilla::WidgetMouseEvent* aEvent);
 
   //
-  bool PrepareToUseCaretPosition(nsIWidget* aEventWidget, nsIntPoint& aTargetPt);
+  bool PrepareToUseCaretPosition(nsIWidget* aEventWidget,
+                                 mozilla::LayoutDeviceIntPoint& aTargetPt);
 
   // Get the selected item and coordinates in device pixels relative to root
   // document's root view for element, first ensuring the element is onscreen
@@ -731,7 +735,7 @@ protected:
 
   nsRevocableEventPtr<nsRunnableMethod<PresShell> > mUpdateImageVisibilityEvent;
 
-  void ClearVisibleImagesList();
+  void ClearVisibleImagesList(uint32_t aNonvisibleAction);
   static void ClearImageVisibilityVisited(nsView* aView, bool aClear);
   static void MarkImagesInListVisible(const nsDisplayList& aList);
   void MarkImagesInSubtreeVisible(nsIFrame* aFrame, const nsRect& aRect);

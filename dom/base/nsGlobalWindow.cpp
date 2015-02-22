@@ -274,7 +274,6 @@ static int32_t              gRunningTimeoutDepth       = 0;
 static bool                 gMouseDown                 = false;
 static bool                 gDragServiceDisabled       = false;
 static FILE                *gDumpFile                  = nullptr;
-static uint64_t             gNextWindowID              = 0;
 static uint32_t             gSerialCounter             = 0;
 static uint32_t             gTimeoutsRecentlySet       = 0;
 static TimeStamp            gLastRecordedRecentTimeouts;
@@ -562,6 +561,13 @@ nsTimeout::HasRefCntOne()
   return mRefCnt.get() == 1;
 }
 
+namespace mozilla {
+namespace dom {
+extern uint64_t
+NextWindowID();
+}
+}
+
 nsPIDOMWindow::nsPIDOMWindow(nsPIDOMWindow *aOuterWindow)
 : mFrameElement(nullptr), mDocShell(nullptr), mModalStateDepth(0),
   mRunningTimeout(nullptr), mMutationBits(0), mIsDocumentLoaded(false),
@@ -576,7 +582,7 @@ nsPIDOMWindow::nsPIDOMWindow(nsPIDOMWindow *aOuterWindow)
   mAudioMuted(false), mAudioVolume(1.0),
   mInnerWindow(nullptr), mOuterWindow(aOuterWindow),
   // Make sure no actual window ends up with mWindowID == 0
-  mWindowID(++gNextWindowID), mHasNotifiedGlobalCreated(false),
+  mWindowID(NextWindowID()), mHasNotifiedGlobalCreated(false),
   mMarkedCCGeneration(0), mSendAfterRemotePaint(false)
  {}
 
@@ -1221,12 +1227,6 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
   if (sWindowsById) {
     sWindowsById->Put(mWindowID, this);
   }
-
-  // Ensure that the current active state is initialized for child process windows.
-  nsFocusManager* fm = nsFocusManager::GetFocusManager();
-  if (fm) {
-    mIsActive = fm->IsParentActivated();
-  }
 }
 
 #ifdef DEBUG
@@ -1524,7 +1524,7 @@ nsGlobalWindow::CleanUp()
   }
 
   if (mCleanMessageManager) {
-    NS_ABORT_IF_FALSE(mIsChrome, "only chrome should have msg manager cleaned");
+    MOZ_ASSERT(mIsChrome, "only chrome should have msg manager cleaned");
     nsGlobalChromeWindow *asChrome = static_cast<nsGlobalChromeWindow*>(this);
     if (asChrome->mMessageManager) {
       static_cast<nsFrameMessageManager*>(
@@ -3072,8 +3072,14 @@ nsGlobalWindow::PreHandleEvent(EventChainPreVisitor& aVisitor)
       gEntropyCollector->RandomUpdate((void*)&(aVisitor.mEvent->time),
                                       sizeof(uint32_t));
     }
-  } else if (msg == NS_RESIZE_EVENT) {
-    mIsHandlingResizeEvent = true;
+  } else if (msg == NS_RESIZE_EVENT && aVisitor.mEvent->mFlags.mIsTrusted) {
+    // QIing to window so that we can keep the old behavior also in case
+    // a child window is handling resize.
+    nsCOMPtr<nsPIDOMWindow> window =
+      do_QueryInterface(aVisitor.mEvent->originalTarget);
+    if (window) {
+      mIsHandlingResizeEvent = true;
+    }
   } else if (msg == NS_MOUSE_BUTTON_DOWN &&
              aVisitor.mEvent->mFlags.mIsTrusted) {
     gMouseDown = true;
@@ -4342,10 +4348,11 @@ nsGlobalWindow::GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
 }
 
 /* static */ bool
-nsGlobalWindow::IsChromeWindow(JSContext* aCx, JSObject* aObj)
+nsGlobalWindow::IsPrivilegedChromeWindow(JSContext* aCx, JSObject* aObj)
 {
   // For now, have to deal with XPConnect objects here.
-  return xpc::WindowOrNull(aObj)->IsChromeWindow();
+  return xpc::WindowOrNull(aObj)->IsChromeWindow() &&
+         nsContentUtils::ObjectPrincipal(aObj) == nsContentUtils::GetSystemPrincipal();
 }
 
 /* static */ bool
@@ -4406,7 +4413,7 @@ nsGlobalWindow::GetApplicationCache(nsIDOMOfflineResourceList **aApplicationCach
   return rv.ErrorCode();
 }
 
-nsIDOMCrypto*
+Crypto*
 nsGlobalWindow::GetCrypto(ErrorResult& aError)
 {
   FORWARD_TO_INNER_OR_THROW(GetCrypto, (aError), aError, nullptr);
@@ -4482,13 +4489,19 @@ nsGlobalWindow::GetOpenerWindow(ErrorResult& aError)
     return nullptr;
   }
 
+  nsGlobalWindow* win = static_cast<nsGlobalWindow*>(opener.get());
+
   // First, check if we were called from a privileged chrome script
   if (nsContentUtils::IsCallerChrome()) {
+    // Catch the case where we're chrome but the opener is not...
+    if (GetPrincipal() == nsContentUtils::GetSystemPrincipal() &&
+        win->GetPrincipal() != nsContentUtils::GetSystemPrincipal()) {
+      return nullptr;
+    }
     return opener;
   }
 
-  // First, ensure that we're not handing back a chrome window.
-  nsGlobalWindow *win = static_cast<nsGlobalWindow *>(opener.get());
+  // First, ensure that we're not handing back a chrome window to content:
   if (win->IsChromeWindow()) {
     return nullptr;
   }
@@ -7252,7 +7265,7 @@ nsGlobalWindow::ScrollTo(const CSSIntPoint& aScroll,
 NS_IMETHODIMP
 nsGlobalWindow::ScrollBy(int32_t aXScrollDif, int32_t aYScrollDif)
 {
-  ScrollBy(aXScrollDif, aYScrollDif);
+  ScrollBy(double(aXScrollDif), double(aYScrollDif));
 
   return NS_OK;
 }
@@ -8106,10 +8119,10 @@ PopulateMessagePortList(MessagePortBase* aKey, MessagePortBase* aValue, void* aC
 NS_IMETHODIMP
 PostMessageEvent::Run()
 {
-  NS_ABORT_IF_FALSE(mTargetWindow->IsOuterWindow(),
-                    "should have been passed an outer window!");
-  NS_ABORT_IF_FALSE(!mSource || mSource->IsOuterWindow(),
-                    "should have been passed an outer window!");
+  MOZ_ASSERT(mTargetWindow->IsOuterWindow(),
+             "should have been passed an outer window!");
+  MOZ_ASSERT(!mSource || mSource->IsOuterWindow(),
+             "should have been passed an outer window!");
 
   AutoJSAPI jsapi;
   jsapi.Init();
@@ -8124,8 +8137,8 @@ PostMessageEvent::Run()
       targetWindow->IsClosedOrClosing())
     return NS_OK;
 
-  NS_ABORT_IF_FALSE(targetWindow->IsInnerWindow(),
-                    "we ordered an inner window!");
+  MOZ_ASSERT(targetWindow->IsInnerWindow(),
+             "we ordered an inner window!");
   JSAutoCompartment ac(cx, targetWindow->GetWrapperPreserveColor());
 
   // Ensure that any origin which might have been provided is the origin of this
@@ -8222,8 +8235,8 @@ nsGlobalWindow::PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   nsRefPtr<nsGlobalWindow> callerInnerWin = CallerInnerWindow();
   nsIPrincipal* callerPrin;
   if (callerInnerWin) {
-    NS_ABORT_IF_FALSE(callerInnerWin->IsInnerWindow(),
-                      "should have gotten an inner window here");
+    MOZ_ASSERT(callerInnerWin->IsInnerWindow(),
+               "should have gotten an inner window here");
 
     // Compute the caller's origin either from its principal or, in the case the
     // principal doesn't carry a URI (e.g. the system principal), the caller's
@@ -10633,12 +10646,6 @@ nsGlobalWindow::GetIndexedDB(nsISupports** _retval)
   return rv.ErrorCode();
 }
 
-NS_IMETHODIMP
-nsGlobalWindow::GetMozIndexedDB(nsISupports** _retval)
-{
-  return GetIndexedDB(_retval);
-}
-
 //*****************************************************************************
 // nsGlobalWindow::nsIInterfaceRequestor
 //*****************************************************************************
@@ -11010,6 +11017,10 @@ nsGlobalWindow::ShowSlowScriptDialog()
 
     return ContinueSlowScriptAndKeepNotifying;
   }
+
+  // Reached only on non-e10s - once per slow script dialog.
+  // On e10s - we probe once at ProcessHangsMonitor.jsm
+  Telemetry::Accumulate(Telemetry::SLOW_SCRIPT_NOTICE_COUNT, 1);
 
   // Get the nsIPrompt interface from the docshell
   nsCOMPtr<nsIDocShell> ds = GetDocShell();

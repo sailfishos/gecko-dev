@@ -51,7 +51,7 @@ static bool
 GetBuildConfiguration(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject info(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+    RootedObject info(cx, JS_NewPlainObject(cx));
     if (!info)
         return false;
 
@@ -967,9 +967,30 @@ SaveStack(JSContext *cx, unsigned argc, jsval *vp)
         maxFrameCount = d;
     }
 
-    Rooted<JSObject*> stack(cx);
-    if (!JS::CaptureCurrentStack(cx, &stack, maxFrameCount))
+    JSCompartment *targetCompartment = cx->compartment();
+    if (args.length() >= 2) {
+        if (!args[1].isObject()) {
+            js_ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
+                                     JSDVG_SEARCH_STACK, args[0], JS::NullPtr(),
+                                     "not an object", NULL);
+            return false;
+        }
+        RootedObject obj(cx, UncheckedUnwrap(&args[1].toObject()));
+        if (!obj)
+            return false;
+        targetCompartment = obj->compartment();
+    }
+
+    RootedObject stack(cx);
+    {
+        AutoCompartment ac(cx, targetCompartment);
+        if (!JS::CaptureCurrentStack(cx, &stack, maxFrameCount))
+            return false;
+    }
+
+    if (stack && !cx->compartment()->wrap(cx, &stack))
         return false;
+
     args.rval().setObjectOrNull(stack);
     return true;
 }
@@ -1019,7 +1040,7 @@ MakeFakePromise(JSContext *cx, unsigned argc, jsval *vp)
     if (!scope)
         return false;
 
-    RootedObject obj(cx, NewObjectWithGivenProto(cx, &FakePromiseClass, nullptr, scope));
+    RootedObject obj(cx, NewObjectWithGivenProto(cx, &FakePromiseClass, NullPtr(), scope));
     if (!obj)
         return false;
 
@@ -1219,6 +1240,89 @@ DisableSPSProfiling(JSContext *cx, unsigned argc, jsval *vp)
 }
 
 static bool
+ReadSPSProfilingStack(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setUndefined();
+
+    if (!cx->runtime()->spsProfiler.enabled())
+        args.rval().setBoolean(false);
+
+    // Array holding physical jit stack frames.
+    RootedObject stack(cx, NewDenseEmptyArray(cx));
+    if (!stack)
+        return false;
+
+    RootedObject inlineStack(cx);
+    RootedObject inlineFrameInfo(cx);
+    RootedString frameKind(cx);
+    RootedString frameLabel(cx);
+    RootedId idx(cx);
+
+    JS::ProfilingFrameIterator::RegisterState state;
+    uint32_t physicalFrameNo = 0;
+    const unsigned propAttrs = JSPROP_ENUMERATE;
+    for (JS::ProfilingFrameIterator i(cx->runtime(), state); !i.done(); ++i, ++physicalFrameNo) {
+        MOZ_ASSERT(i.stackAddress() != nullptr);
+
+        // Array holding all inline frames in a single physical jit stack frame.
+        inlineStack = NewDenseEmptyArray(cx);
+        if (!inlineStack)
+            return false;
+
+        JS::ProfilingFrameIterator::Frame frames[16];
+        uint32_t nframes = i.extractStack(frames, 0, 16);
+        for (uint32_t inlineFrameNo = 0; inlineFrameNo < nframes; inlineFrameNo++) {
+
+            // Object holding frame info.
+            inlineFrameInfo = NewBuiltinClassInstance<PlainObject>(cx);
+            if (!inlineFrameInfo)
+                return false;
+
+            const char *frameKindStr = nullptr;
+            switch (frames[inlineFrameNo].kind) {
+              case JS::ProfilingFrameIterator::Frame_Baseline:
+                frameKindStr = "baseline";
+                break;
+              case JS::ProfilingFrameIterator::Frame_Ion:
+                frameKindStr = "ion";
+                break;
+              case JS::ProfilingFrameIterator::Frame_AsmJS:
+                frameKindStr = "asmjs";
+                break;
+              default:
+                frameKindStr = "unknown";
+            }
+            frameKind = NewStringCopyZ<CanGC>(cx, frameKindStr);
+            if (!frameKind)
+                return false;
+
+            if (!JS_DefineProperty(cx, inlineFrameInfo, "kind", frameKind, propAttrs))
+                return false;
+
+            frameLabel = NewStringCopyZ<CanGC>(cx, frames[inlineFrameNo].label);
+            if (!frameLabel)
+                return false;
+
+            if (!JS_DefineProperty(cx, inlineFrameInfo, "label", frameLabel, propAttrs))
+                return false;
+
+            idx = INT_TO_JSID(inlineFrameNo);
+            if (!JS_DefinePropertyById(cx, inlineStack, idx, inlineFrameInfo, 0))
+                return false;
+        }
+
+        // Push inline array into main array.
+        idx = INT_TO_JSID(physicalFrameNo);
+        if (!JS_DefinePropertyById(cx, stack, idx, inlineStack, 0))
+            return false;
+    }
+
+    args.rval().setObject(*stack);
+    return true;
+}
+
+static bool
 EnableOsiPointRegisterChecks(JSContext *, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -1353,11 +1457,11 @@ js::testingFunc_assertFloat32(JSContext *cx, unsigned argc, jsval *vp)
 }
 
 static bool
-TestingFunc_assertValidJitStack(JSContext *cx, unsigned argc, jsval *vp)
+TestingFunc_assertJitStackInvariants(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    jit::AssertValidJitStack(cx);
+    jit::AssertJitStackInvariants(cx);
     args.rval().setUndefined();
     return true;
 }
@@ -1425,7 +1529,7 @@ static bool
 GetJitCompilerOptions(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject info(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+    RootedObject info(cx, JS_NewPlainObject(cx));
     if (!info)
         return false;
 
@@ -1465,7 +1569,7 @@ class CloneBufferObject : public NativeObject {
     static const Class class_;
 
     static CloneBufferObject *Create(JSContext *cx) {
-        RootedObject obj(cx, JS_NewObject(cx, Jsvalify(&class_), JS::NullPtr(), JS::NullPtr()));
+        RootedObject obj(cx, JS_NewObject(cx, Jsvalify(&class_)));
         if (!obj)
             return nullptr;
         obj->as<CloneBufferObject>().setReservedSlot(DATA_SLOT, PrivateValue(nullptr));
@@ -1759,8 +1863,8 @@ static bool
 DumpObject(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject obj(cx);
-    if (!JS_ConvertArguments(cx, args, "o", obj.address()))
+    RootedObject obj(cx, ToObject(cx, args.get(0)));
+    if (!obj)
         return false;
 
     js_DumpObject(obj);
@@ -2094,11 +2198,19 @@ static bool
 EvalReturningScope(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-
-    RootedString str(cx);
-    RootedObject global(cx);
-    if (!JS_ConvertArguments(cx, args, "S/o", str.address(), global.address()))
+    if (!args.requireAtLeast(cx, "evalReturningScope", 1))
         return false;
+
+    RootedString str(cx, ToString(cx, args[0]));
+    if (!str)
+        return false;
+
+    RootedObject global(cx);
+    if (args.hasDefined(1)) {
+        global = ToObject(cx, args[1]);
+        if (!global)
+            return false;
+    }
 
     AutoStableStringChars strChars(cx);
     if (!strChars.initTwoByte(cx, str))
@@ -2160,10 +2272,15 @@ static bool
 ShellCloneAndExecuteScript(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
+    if (!args.requireAtLeast(cx, "cloneAndExecuteScript", 2))
+        return false;
 
-    RootedString str(cx);
-    RootedObject global(cx);
-    if (!JS_ConvertArguments(cx, args, "So", str.address(), global.address()))
+    RootedString str(cx, ToString(cx, args[0]));
+    if (!str)
+        return false;
+
+    RootedObject global(cx, ToObject(cx, args[1]));
+    if (!global)
         return false;
 
     AutoStableStringChars strChars(cx);
@@ -2300,13 +2417,15 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  SavedStacks cache."),
 
     JS_FN_HELP("saveStack", SaveStack, 0, 0,
-"saveStack()",
-"  Capture a stack.\n"),
+"saveStack([maxDepth [, compartment]])",
+"  Capture a stack. If 'maxDepth' is given, capture at most 'maxDepth' number\n"
+"  of frames. If 'compartment' is given, allocate the js::SavedFrame instances\n"
+"  with the given object's compartment."),
 
     JS_FN_HELP("enableTrackAllocations", EnableTrackAllocations, 0, 0,
 "enableTrackAllocations()",
-"  Start capturing the JS stack at every allocation. Note that this sets an "
-"  object metadata callback that will override any other object metadata "
+"  Start capturing the JS stack at every allocation. Note that this sets an\n"
+"  object metadata callback that will override any other object metadata\n"
 "  callback that may be set."),
 
     JS_FN_HELP("disableTrackAllocations", DisableTrackAllocations, 0, 0,
@@ -2435,6 +2554,10 @@ gc::ZealModeHelpText),
 "disableSPSProfiling()",
 "  Disables SPS instrumentation"),
 
+    JS_FN_HELP("readSPSProfilingStack", ReadSPSProfilingStack, 0, 0,
+"readSPSProfilingStack()",
+"  Reads the jit stack using ProfilingFrameIterator."),
+
     JS_FN_HELP("enableOsiPointRegisterChecks", EnableOsiPointRegisterChecks, 0, 0,
 "enableOsiPointRegisterChecks()",
 "Emit extra code to verify live regs at the start of a VM call are not\n"
@@ -2499,8 +2622,8 @@ gc::ZealModeHelpText),
 "bailout()",
 "  Force a bailout out of ionmonkey (if running in ionmonkey)."),
 
-    JS_FN_HELP("assertValidJitStack", TestingFunc_assertValidJitStack, 0, 0,
-"assertValidJitStack()",
+    JS_FN_HELP("assertJitStackInvariants", TestingFunc_assertJitStackInvariants, 0, 0,
+"assertJitStackInvariants()",
 "  Iterates the Jit stack and check that stack invariants hold."),
 
     JS_FN_HELP("setJitCompilerOption", SetJitCompilerOption, 2, 0,

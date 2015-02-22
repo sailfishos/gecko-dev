@@ -173,7 +173,22 @@ public class testDistribution extends ContentProviderTest {
         BrowserLocaleManager.storeAndNotifyOSLocale(GeckoSharedPrefs.forProfile(mActivity), locale);
     }
 
-    private void doReferrerTest(String ref, final TestableDistribution distribution, final Runnable distributionReady) throws InterruptedException {
+    private abstract class ExpectNoDistributionCallback implements Distribution.ReadyCallback {
+            @Override
+            public void distributionFound(final Distribution distribution) {
+                mAsserter.ok(false, "No distributionFound.", "Wasn't expecting a distribution!");
+                synchronized (distribution) {
+                    distribution.notifyAll();
+                }
+            }
+
+            @Override
+            public void distributionArrivedLate(final Distribution distribution) {
+                mAsserter.ok(false, "No distributionArrivedLate.", "Wasn't expecting a late distribution!");
+            }
+    }
+
+    private void doReferrerTest(String ref, final TestableDistribution distribution, final Distribution.ReadyCallback distributionReady) throws InterruptedException {
         final Intent intent = new Intent(ACTION_INSTALL_REFERRER);
         intent.setClassName(AppConstants.ANDROID_PACKAGE_NAME, CLASS_REFERRER_RECEIVER);
         intent.putExtra("referrer", ref);
@@ -215,10 +230,10 @@ public class testDistribution extends ContentProviderTest {
         //              --es "referrer" "utm_source=mozilla&utm_medium=testmedium&utm_term=testterm&utm_content=testcontent&utm_campaign=distribution"
         final String ref = "utm_source=mozilla&utm_medium=testmedium&utm_term=testterm&utm_content=testcontent&utm_campaign=distribution";
         final TestableDistribution distribution = new TestableDistribution(mActivity);
-        final Runnable distributionReady = new Runnable() {
+        final Distribution.ReadyCallback distributionReady = new ExpectNoDistributionCallback() {
             @Override
-            public void run() {
-                Log.i(LOGTAG, "Test told distribution is ready.");
+            public void distributionNotFound() {
+                Log.i(LOGTAG, "Test told distribution processing is done.");
                 mAsserter.ok(!distribution.exists(), "Not processed.", "No download because we're offline.");
                 ReferrerDescriptor referrerValue = TestableDistribution.getReferrerDescriptorForTesting();
                 mAsserter.dumpLog("Referrer was " + referrerValue);
@@ -246,9 +261,9 @@ public class testDistribution extends ContentProviderTest {
         //              --es "referrer" "utm_source=mozilla&utm_medium=testmedium&utm_term=testterm&utm_content=testcontent&utm_campaign=testname"
         final String ref = "utm_source=mozilla&utm_medium=testmedium&utm_term=testterm&utm_content=testcontent&utm_campaign=testname";
         final TestableDistribution distribution = new TestableDistribution(mActivity);
-        final Runnable distributionReady = new Runnable() {
+        final Distribution.ReadyCallback distributionReady = new ExpectNoDistributionCallback() {
             @Override
-            public void run() {
+            public void distributionNotFound() {
                 mAsserter.ok(!distribution.exists(), "Not processed.", "No download because campaign was wrong.");
                 ReferrerDescriptor referrerValue = TestableDistribution.getReferrerDescriptorForTesting();
                 mAsserter.is(referrerValue, null, "No referrer.");
@@ -454,7 +469,7 @@ public class testDistribution extends ContentProviderTest {
         JSONObject response = clickTrackingTile(StringHelper.DISTRIBUTION1_LABEL);
         mAsserter.is(response.getInt("click"), 0, "JSON click index matched");
         mAsserter.is(response.getString("locale"), localeCode, "JSON locale code matched");
-        mAsserter.is(response.getString("tiles"), "[{\"id\":123},{\"id\":456},{},{},{},{}]", "JSON tiles data matched");
+        mAsserter.is(response.getString("tiles"), "[{\"id\":123},{\"id\":456},{\"id\":632},{\"id\":629},{\"id\":630},{\"id\":631}]", "JSON tiles data matched");
 
         inputAndLoadUrl(StringHelper.ABOUT_HOME_URL);
 
@@ -464,7 +479,7 @@ public class testDistribution extends ContentProviderTest {
         // Click the second tracking tile and verify the posted data.
         response = clickTrackingTile(StringHelper.DISTRIBUTION2_LABEL);
         mAsserter.is(response.getInt("click"), 1, "JSON click index matched");
-        mAsserter.is(response.getString("tiles"), "[{\"id\":123},{\"id\":456,\"pin\":true},{},{},{},{}]", "JSON tiles data matched");
+        mAsserter.is(response.getString("tiles"), "[{\"id\":123},{\"id\":456,\"pin\":true},{\"id\":632},{\"id\":629},{\"id\":630},{\"id\":631}]", "JSON tiles data matched");
 
         inputAndLoadUrl(StringHelper.ABOUT_HOME_URL);
 

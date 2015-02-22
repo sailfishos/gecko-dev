@@ -260,7 +260,7 @@ partial interface Navigator {
 
 #ifdef MOZ_WEBSMS_BACKEND
 partial interface Navigator {
-  [CheckPermissions="sms", Pref="dom.sms.enabled"]
+  [CheckPermissions="sms", Pref="dom.sms.enabled", AvailableIn="CertifiedApps"]
   readonly attribute MozMobileMessageManager? mozMobileMessage;
 };
 #endif
@@ -300,17 +300,20 @@ partial interface Navigator {
 };
 
 partial interface Navigator {
-  [Throws, Pref="dom.cellbroadcast.enabled", CheckPermissions="cellbroadcast", UnsafeInPrerendering]
+  [Throws, Pref="dom.cellbroadcast.enabled", CheckPermissions="cellbroadcast",
+   AvailableIn="CertifiedApps", UnsafeInPrerendering]
   readonly attribute MozCellBroadcast mozCellBroadcast;
 };
 
 partial interface Navigator {
-  [Throws, Pref="dom.voicemail.enabled", CheckPermissions="voicemail", UnsafeInPrerendering]
+  [Throws, Pref="dom.voicemail.enabled", CheckPermissions="voicemail",
+   AvailableIn="CertifiedApps", UnsafeInPrerendering]
   readonly attribute MozVoicemail mozVoicemail;
 };
 
 partial interface Navigator {
-  [Throws, Pref="dom.icc.enabled", CheckPermissions="mobileconnection", UnsafeInPrerendering]
+  [Throws, Pref="dom.icc.enabled", CheckPermissions="mobileconnection",
+   AvailableIn="CertifiedApps", UnsafeInPrerendering]
   readonly attribute MozIccManager? mozIccManager;
 };
 
@@ -411,9 +414,16 @@ partial interface Navigator {
 
 #ifdef MOZ_EME
 partial interface Navigator {
-  [Pref="media.eme.enabled", NewObject]
+  [Pref="media.eme.apiVisible", NewObject]
   Promise<MediaKeySystemAccess>
   requestMediaKeySystemAccess(DOMString keySystem,
                               optional sequence<MediaKeySystemOptions> supportedConfigurations);
+};
+#endif
+
+#ifdef NIGHTLY_BUILD
+partial interface Navigator {
+  [Func="Navigator::IsE10sEnabled"]
+  readonly attribute boolean mozE10sEnabled;
 };
 #endif

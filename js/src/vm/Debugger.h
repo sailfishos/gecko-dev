@@ -128,8 +128,8 @@ class DebuggerWeakMap : private WeakMap<PreBarriered<UnbarrieredKey>, Relocatabl
 
     bool hasKeyInZone(JS::Zone *zone) {
         CountMap::Ptr p = zoneCounts.lookup(zone);
-        MOZ_ASSERT_IF(p, p->value() > 0);
-        return p;
+        MOZ_ASSERT_IF(p.found(), p->value() > 0);
+        return p.found();
     }
 
   private:
@@ -253,12 +253,17 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     };
     typedef mozilla::LinkedList<AllocationSite> AllocationSiteList;
 
+    bool allowUnobservedAsmJS;
+
     bool trackingAllocationSites;
     double allocationSamplingProbability;
     AllocationSiteList allocationsLog;
     size_t allocationsLogLength;
     size_t maxAllocationsLogLength;
+    bool allocationsLogOverflowed;
+
     static const size_t DEFAULT_MAX_ALLOCATIONS_LOG_LENGTH = 5000;
+
     bool appendAllocationSite(JSContext *cx, HandleSavedFrame frame, int64_t when);
     void emptyAllocationsLog();
 
@@ -400,6 +405,8 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     static bool setOnPromiseSettled(JSContext *cx, unsigned argc, Value *vp);
     static bool getUncaughtExceptionHook(JSContext *cx, unsigned argc, Value *vp);
     static bool setUncaughtExceptionHook(JSContext *cx, unsigned argc, Value *vp);
+    static bool getAllowUnobservedAsmJS(JSContext *cx, unsigned argc, Value *vp);
+    static bool setAllowUnobservedAsmJS(JSContext *cx, unsigned argc, Value *vp);
     static bool getMemory(JSContext *cx, unsigned argc, Value *vp);
     static bool addDebuggee(JSContext *cx, unsigned argc, Value *vp);
     static bool addAllGlobalsAsDebuggees(JSContext *cx, unsigned argc, Value *vp);
@@ -425,7 +432,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     static const JSPropertySpec properties[];
     static const JSFunctionSpec methods[];
 
-    static bool getNewestAbstractFramePtr(JSContext *cx);
+    static void removeFromFrameMapsAndClearBreakpointsIn(JSContext *cx, AbstractFramePtr frame);
     static bool updateExecutionObservabilityOfFrames(JSContext *cx, const ExecutionObservableSet &obs,
                                                      IsObserving observing);
     static bool updateExecutionObservabilityOfScripts(JSContext *cx, const ExecutionObservableSet &obs,
@@ -437,15 +444,22 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     // Public for DebuggerScript_setBreakpoint.
     static bool ensureExecutionObservabilityOfScript(JSContext *cx, JSScript *script);
 
+    // Whether the Debugger instance needs to observe all non-AOT JS
+    // execution of its debugees.
+    IsObserving observesAllExecution() const;
+
+    // Whether the Debugger instance needs to observe AOT-compiled asm.js
+    // execution of its debuggees.
+    IsObserving observesAsmJS() const;
+
   private:
     static bool ensureExecutionObservabilityOfFrame(JSContext *cx, AbstractFramePtr frame);
     static bool ensureExecutionObservabilityOfCompartment(JSContext *cx, JSCompartment *comp);
 
     static bool hookObservesAllExecution(Hook which);
-    bool anyOtherDebuggerObservingAllExecution(GlobalObject *global) const;
-    bool hasAnyLiveHooksThatObserveAllExecution() const;
-    bool hasAnyHooksThatObserveAllExecution() const;
-    bool setObservesAllExecution(JSContext *cx, IsObserving observing);
+
+    bool updateObservesAllExecutionOnDebuggees(JSContext *cx, IsObserving observing);
+    void updateObservesAsmJSOnDebuggees(IsObserving observing);
 
     JSObject *getHook(Hook hook) const;
     bool hasAnyLiveHooks() const;
@@ -454,8 +468,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     static bool slowPathOnLeaveFrame(JSContext *cx, AbstractFramePtr frame, bool ok);
     static JSTrapStatus slowPathOnDebuggerStatement(JSContext *cx, AbstractFramePtr frame);
     static JSTrapStatus slowPathOnExceptionUnwind(JSContext *cx, AbstractFramePtr frame);
-    static void slowPathOnNewScript(JSContext *cx, HandleScript script,
-                                    GlobalObject *compileAndGoGlobal);
+    static void slowPathOnNewScript(JSContext *cx, HandleScript script);
     static void slowPathOnNewGlobalObject(JSContext *cx, Handle<GlobalObject *> global);
     static bool slowPathOnLogAllocationSite(JSContext *cx, HandleSavedFrame frame,
                                             int64_t when, GlobalObject::DebuggerVector &dbgs);
@@ -600,15 +613,17 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
      */
     static inline bool onLeaveFrame(JSContext *cx, AbstractFramePtr frame, bool ok);
 
-    static inline void onNewScript(JSContext *cx, HandleScript script, GlobalObject *compileAndGoGlobal);
+    static inline void onNewScript(JSContext *cx, HandleScript script);
     static inline void onNewGlobalObject(JSContext *cx, Handle<GlobalObject *> global);
     static inline bool onLogAllocationSite(JSContext *cx, HandleSavedFrame frame, int64_t when);
     static JSTrapStatus onTrap(JSContext *cx, MutableHandleValue vp);
     static JSTrapStatus onSingleStep(JSContext *cx, MutableHandleValue vp);
     static bool handleBaselineOsr(JSContext *cx, InterpreterFrame *from, jit::BaselineFrame *to);
     static bool handleIonBailout(JSContext *cx, jit::RematerializedFrame *from, jit::BaselineFrame *to);
+    static void handleUnrecoverableIonBailoutError(JSContext *cx, jit::RematerializedFrame *frame);
     static void propagateForcedReturn(JSContext *cx, AbstractFramePtr frame, HandleValue rval);
     static bool hasLiveHook(GlobalObject *global, Hook which);
+    static void assertNotInFrameMaps(AbstractFramePtr frame);
 
     /************************************* Functions for use by Debugger.cpp. */
 
@@ -876,18 +891,15 @@ Debugger::observesGlobal(GlobalObject *global) const
 }
 
 /* static */ void
-Debugger::onNewScript(JSContext *cx, HandleScript script, GlobalObject *compileAndGoGlobal)
+Debugger::onNewScript(JSContext *cx, HandleScript script)
 {
-    MOZ_ASSERT_IF(script->compileAndGo(), compileAndGoGlobal);
-    MOZ_ASSERT_IF(script->compileAndGo(), compileAndGoGlobal == &script->uninlinedGlobal());
     // We early return in slowPathOnNewScript for self-hosted scripts, so we can
     // ignore those in our assertion here.
     MOZ_ASSERT_IF(!script->compartment()->options().invisibleToDebugger() &&
                   !script->selfHosted(),
                   script->compartment()->firedOnNewGlobalObject);
-    MOZ_ASSERT_IF(!script->compileAndGo(), !compileAndGoGlobal);
     if (script->compartment()->isDebuggee())
-        slowPathOnNewScript(cx, script, compileAndGoGlobal);
+        slowPathOnNewScript(cx, script);
 }
 
 /* static */ void

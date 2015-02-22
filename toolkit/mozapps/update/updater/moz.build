@@ -100,6 +100,7 @@ LOCAL_INCLUDES += [
 
 DELAYLOAD_DLLS += [
     'crypt32.dll',
+    'comctl32.dll',
     'userenv.dll',
     'wsock32.dll',
 ]
@@ -112,3 +113,5 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
 if CONFIG['MOZ_WIDGET_GTK']:
     CXXFLAGS += CONFIG['TK_CFLAGS']
     OS_LIBS += CONFIG['TK_LIBS']
+
+FAIL_ON_WARNINGS = True

@@ -73,21 +73,10 @@ const JSSecurityCallbacks js::NullSecurityCallbacks = { };
 PerThreadData::PerThreadData(JSRuntime *runtime)
   : PerThreadDataFriendFields(),
     runtime_(runtime),
-    jitTop(nullptr),
-    jitJSContext(nullptr),
-    jitActivation(nullptr),
-    jitStackLimit_(0xbad),
 #ifdef JS_TRACE_LOGGING
     traceLogger(nullptr),
 #endif
-    activation_(nullptr),
-    profilingActivation_(nullptr),
-    asmJSActivationStack_(nullptr),
     autoFlushICache_(nullptr),
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    simulator_(nullptr),
-    simulatorStackLimit_(0),
-#endif
     dtoaState(nullptr),
     suppressGC(0),
 #ifdef DEBUG
@@ -100,10 +89,6 @@ PerThreadData::~PerThreadData()
 {
     if (dtoaState)
         js_DestroyDtoaState(dtoaState);
-
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    js_delete(simulator_);
-#endif
 }
 
 bool
@@ -111,9 +96,6 @@ PerThreadData::init()
 {
     dtoaState = js_NewDtoaState();
     if (!dtoaState)
-        return false;
-
-    if (!regexpStack.init())
         return false;
 
     return true;
@@ -132,6 +114,13 @@ ReturnZeroSize(const void *p)
 
 JSRuntime::JSRuntime(JSRuntime *parentRuntime)
   : mainThread(this),
+    jitTop(nullptr),
+    jitJSContext(nullptr),
+    jitActivation(nullptr),
+    jitStackLimit_(0xbad),
+    activation_(nullptr),
+    profilingActivation_(nullptr),
+    asmJSActivationStack_(nullptr),
     parentRuntime(parentRuntime),
     interrupt_(false),
     telemetryCallback(nullptr),
@@ -145,11 +134,9 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     localeCallbacks(nullptr),
     defaultLocale(nullptr),
     defaultVersion_(JSVERSION_DEFAULT),
-    futexAPI_(nullptr),
     ownerThread_(nullptr),
     ownerThreadNative_(0),
     tempLifoAlloc(TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
-    execAlloc_(nullptr),
     jitRuntime_(nullptr),
     selfHostingGlobal_(nullptr),
     nativeStackBase(GetNativeStackBase()),
@@ -168,16 +155,13 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     gc(thisFromCtor()),
     gcInitialized(false),
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    simulatorRuntime_(nullptr),
+    simulator_(nullptr),
 #endif
     scriptAndCountsVector(nullptr),
     NaNValue(DoubleNaNValue()),
     negativeInfinityValue(DoubleValue(NegativeInfinity<double>())),
     positiveInfinityValue(DoubleValue(PositiveInfinity<double>())),
     emptyString(nullptr),
-#ifdef NIGHTLY_BUILD
-    assertOnScriptEntryHook_(nullptr),
-#endif
     spsProfiler(thisFromCtor()),
     profilingScripts(false),
     suppressProfilerSampling(false),
@@ -274,6 +258,9 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
     if (!mainThread.init())
         return false;
 
+    if (!regexpStack.init())
+        return false;
+
     js::TlsPerThreadData.set(&mainThread);
 
     if (CanUseExtraThreads())
@@ -324,8 +311,8 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
     dateTimeInfo.updateTimeZoneAdjustment();
 
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    simulatorRuntime_ = js::jit::CreateSimulatorRuntime();
-    if (!simulatorRuntime_)
+    simulator_ = js::jit::Simulator::Create();
+    if (!simulator_)
         return false;
 #endif
 
@@ -338,6 +325,9 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
     if (!spsProfiler.init())
         return false;
 
+    if (!fx.initInstance())
+        return false;
+
     return true;
 }
 
@@ -345,8 +335,7 @@ JSRuntime::~JSRuntime()
 {
     MOZ_ASSERT(!isHeapBusy());
 
-    delete futexAPI_;
-    futexAPI_ = nullptr;
+    fx.destroyInstance();
 
     if (gcInitialized) {
         /* Free source hook early, as its destructor may want to delete roots. */
@@ -433,7 +422,6 @@ JSRuntime::~JSRuntime()
     js_free(defaultLocale);
     js_delete(mathCache_);
     js_delete(jitRuntime_);
-    js_delete(execAlloc_);  /* Delete after jitRuntime_. */
 
     js_delete(ionPcScriptCache);
 
@@ -441,7 +429,7 @@ JSRuntime::~JSRuntime()
     gc.nursery.disable();
 
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    js::jit::DestroySimulatorRuntime(simulatorRuntime_);
+    js::jit::Simulator::Destroy(simulator_);
 #endif
 
     DebugOnly<size_t> oldCount = liveRuntimesCount--;
@@ -518,11 +506,8 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
     for (ScriptDataTable::Range r = scriptDataTable().all(); !r.empty(); r.popFront())
         rtSizes->scriptData += mallocSizeOf(r.front());
 
-    if (execAlloc_)
-        execAlloc_->addSizeOfCode(&rtSizes->code);
-
-    if (jitRuntime() && jitRuntime()->ionAlloc(this))
-        jitRuntime()->ionAlloc(this)->addSizeOfCode(&rtSizes->code);
+    if (jitRuntime_)
+        jitRuntime_->execAlloc().addSizeOfCode(&rtSizes->code);
 
     rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf);
     rtSizes->gc.nurseryCommitted += gc.nursery.sizeOfHeapCommitted();
@@ -536,7 +521,7 @@ InvokeInterruptCallback(JSContext *cx)
 {
     MOZ_ASSERT(cx->runtime()->requestDepth >= 1);
 
-    cx->gcIfNeeded();
+    cx->runtime()->gc.gcIfRequested();
 
     // A worker thread may have requested an interrupt after finishing an Ion
     // compilation.
@@ -594,7 +579,7 @@ InvokeInterruptCallback(JSContext *cx)
 }
 
 void
-PerThreadData::resetJitStackLimit()
+JSRuntime::resetJitStackLimit()
 {
     // Note that, for now, we use the untrusted limit for ion. This is fine,
     // because it's the most conservative limit, and if we hit it, we'll bail
@@ -602,12 +587,12 @@ PerThreadData::resetJitStackLimit()
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
     jitStackLimit_ = jit::Simulator::StackLimit();
 #else
-    jitStackLimit_ = nativeStackLimit[StackForUntrustedScript];
+    jitStackLimit_ = mainThread.nativeStackLimit[StackForUntrustedScript];
 #endif
 }
 
 void
-PerThreadData::initJitStackLimit()
+JSRuntime::initJitStackLimit()
 {
     resetJitStackLimit();
 }
@@ -616,34 +601,32 @@ void
 JSRuntime::requestInterrupt(InterruptMode mode)
 {
     interrupt_ = true;
-    mainThread.jitStackLimit_ = UINTPTR_MAX;
+    jitStackLimit_ = UINTPTR_MAX;
 
-    if (mode == JSRuntime::RequestInterruptUrgent)
+    if (mode == JSRuntime::RequestInterruptUrgent) {
+        // If this interrupt is urgent (slow script dialog and garbage
+        // collection among others), take additional steps to
+        // interrupt corner cases where the above fields are not
+        // regularly polled.  Wake both ilooping JIT code and
+        // futexWait.
+        fx.lock();
+        if (fx.isWaiting())
+            fx.wake(FutexRuntime::WakeForJSInterrupt);
+        fx.unlock();
         InterruptRunningJitCode(this);
+    }
 }
 
 bool
 JSRuntime::handleInterrupt(JSContext *cx)
 {
     MOZ_ASSERT(CurrentThreadCanAccessRuntime(cx->runtime()));
-    if (interrupt_ || mainThread.jitStackLimit_ == UINTPTR_MAX) {
+    if (interrupt_ || jitStackLimit_ == UINTPTR_MAX) {
         interrupt_ = false;
-        mainThread.resetJitStackLimit();
+        resetJitStackLimit();
         return InvokeInterruptCallback(cx);
     }
     return true;
-}
-
-jit::ExecutableAllocator *
-JSRuntime::createExecutableAllocator(JSContext *cx)
-{
-    MOZ_ASSERT(!execAlloc_);
-    MOZ_ASSERT(cx->runtime() == this);
-
-    execAlloc_ = js_new<jit::ExecutableAllocator>();
-    if (!execAlloc_)
-        js_ReportOutOfMemory(cx);
-    return execAlloc_;
 }
 
 MathCache *

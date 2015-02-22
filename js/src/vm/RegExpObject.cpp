@@ -62,16 +62,16 @@ RegExpObjectBuilder::getOrCreate()
 }
 
 bool
-RegExpObjectBuilder::getOrCreateClone(HandleTypeObject type)
+RegExpObjectBuilder::getOrCreateClone(HandleObjectGroup group)
 {
     MOZ_ASSERT(!reobj_);
-    MOZ_ASSERT(type->clasp() == &RegExpObject::class_);
+    MOZ_ASSERT(group->clasp() == &RegExpObject::class_);
 
-    JSObject *parent = type->proto().toObject()->getParent();
+    RootedObject parent(cx, group->proto().toObject()->getParent());
 
     // Note: RegExp objects are always allocated in the tenured heap. This is
     // not strictly required, but simplifies embedding them in jitcode.
-    reobj_ = NewObjectWithType<RegExpObject>(cx->asJSContext(), type, parent, TenuredObject);
+    reobj_ = NewObjectWithGroup<RegExpObject>(cx->asJSContext(), group, parent, TenuredObject);
     if (!reobj_)
         return false;
     reobj_->initPrivate(nullptr);
@@ -104,8 +104,8 @@ RegExpObjectBuilder::build(HandleAtom source, RegExpFlag flags)
 RegExpObject *
 RegExpObjectBuilder::clone(Handle<RegExpObject *> other)
 {
-    RootedTypeObject type(cx, other->type());
-    if (!getOrCreateClone(type))
+    RootedObjectGroup group(cx, other->group());
+    if (!getOrCreateClone(group))
         return nullptr;
 
     /*
@@ -337,27 +337,9 @@ RegExpObject::assignInitialShape(ExclusiveContext *cx, Handle<RegExpObject*> sel
     MOZ_ASSERT(self->empty());
 
     JS_STATIC_ASSERT(LAST_INDEX_SLOT == 0);
-    JS_STATIC_ASSERT(SOURCE_SLOT == LAST_INDEX_SLOT + 1);
-    JS_STATIC_ASSERT(GLOBAL_FLAG_SLOT == SOURCE_SLOT + 1);
-    JS_STATIC_ASSERT(IGNORE_CASE_FLAG_SLOT == GLOBAL_FLAG_SLOT + 1);
-    JS_STATIC_ASSERT(MULTILINE_FLAG_SLOT == IGNORE_CASE_FLAG_SLOT + 1);
-    JS_STATIC_ASSERT(STICKY_FLAG_SLOT == MULTILINE_FLAG_SLOT + 1);
 
     /* The lastIndex property alone is writable but non-configurable. */
-    if (!self->addDataProperty(cx, cx->names().lastIndex, LAST_INDEX_SLOT, JSPROP_PERMANENT))
-        return nullptr;
-
-    /* Remaining instance properties are non-writable and non-configurable. */
-    unsigned attrs = JSPROP_PERMANENT | JSPROP_READONLY;
-    if (!self->addDataProperty(cx, cx->names().source, SOURCE_SLOT, attrs))
-        return nullptr;
-    if (!self->addDataProperty(cx, cx->names().global, GLOBAL_FLAG_SLOT, attrs))
-        return nullptr;
-    if (!self->addDataProperty(cx, cx->names().ignoreCase, IGNORE_CASE_FLAG_SLOT, attrs))
-        return nullptr;
-    if (!self->addDataProperty(cx, cx->names().multiline, MULTILINE_FLAG_SLOT, attrs))
-        return nullptr;
-    return self->addDataProperty(cx, cx->names().sticky, STICKY_FLAG_SLOT, attrs);
+    return self->addDataProperty(cx, cx->names().lastIndex, LAST_INDEX_SLOT, JSPROP_PERMANENT);
 }
 
 bool
@@ -370,16 +352,6 @@ RegExpObject::init(ExclusiveContext *cx, HandleAtom source, RegExpFlag flags)
 
     MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().lastIndex))->slot() ==
                LAST_INDEX_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().source))->slot() ==
-               SOURCE_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().global))->slot() ==
-               GLOBAL_FLAG_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().ignoreCase))->slot() ==
-               IGNORE_CASE_FLAG_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().multiline))->slot() ==
-               MULTILINE_FLAG_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().sticky))->slot() ==
-               STICKY_FLAG_SLOT);
 
     /*
      * If this is a re-initialization with an existing RegExpShared, 'flags'
@@ -396,22 +368,179 @@ RegExpObject::init(ExclusiveContext *cx, HandleAtom source, RegExpFlag flags)
     return true;
 }
 
+static MOZ_ALWAYS_INLINE bool
+IsLineTerminator(const JS::Latin1Char c)
+{
+    return c == '\n' || c == '\r';
+}
+
+static MOZ_ALWAYS_INLINE bool
+IsLineTerminator(const char16_t c)
+{
+    return c == '\n' || c == '\r' || c == 0x2028 || c == 0x2029;
+}
+
+static MOZ_ALWAYS_INLINE bool
+AppendEscapedLineTerminator(StringBuffer &sb, const JS::Latin1Char c)
+{
+    switch (c) {
+      case '\n':
+        if (!sb.append('n'))
+            return false;
+        break;
+      case '\r':
+        if (!sb.append('r'))
+            return false;
+        break;
+      default:
+        MOZ_CRASH("Bad LineTerminator");
+    }
+    return true;
+}
+
+static MOZ_ALWAYS_INLINE bool
+AppendEscapedLineTerminator(StringBuffer &sb, const char16_t c)
+{
+    switch (c) {
+      case '\n':
+        if (!sb.append('n'))
+            return false;
+        break;
+      case '\r':
+        if (!sb.append('r'))
+            return false;
+        break;
+      case 0x2028:
+        if (!sb.append("u2028"))
+            return false;
+        break;
+      case 0x2029:
+        if (!sb.append("u2029"))
+            return false;
+        break;
+      default:
+        MOZ_CRASH("Bad LineTerminator");
+    }
+    return true;
+}
+
+template <typename CharT>
+static MOZ_ALWAYS_INLINE bool
+SetupBuffer(StringBuffer &sb, const CharT *oldChars, size_t oldLen, const CharT *it)
+{
+    if (mozilla::IsSame<CharT, char16_t>::value && !sb.ensureTwoByteChars())
+        return false;
+
+    if (!sb.reserve(oldLen + 1))
+        return false;
+
+    sb.infallibleAppend(oldChars, size_t(it - oldChars));
+    return true;
+}
+
+// Note: returns the original if no escaping need be performed.
+template <typename CharT>
+static bool
+EscapeRegExpPattern(StringBuffer &sb, const CharT *oldChars, size_t oldLen)
+{
+    bool inBrackets = false;
+    bool previousCharacterWasBackslash = false;
+
+    for (const CharT *it = oldChars; it < oldChars + oldLen; ++it) {
+        CharT ch = *it;
+        if (!previousCharacterWasBackslash) {
+            if (inBrackets) {
+                if (ch == ']')
+                    inBrackets = false;
+            } else if (ch == '/') {
+                // There's a forward slash that needs escaping.
+                if (sb.empty()) {
+                    // This is the first char we've seen that needs escaping,
+                    // copy everything up to this point.
+                    if (!SetupBuffer(sb, oldChars, oldLen, it))
+                        return false;
+                }
+                if (!sb.append('\\'))
+                    return false;
+            } else if (ch == '[') {
+                inBrackets = true;
+            }
+        }
+
+        if (IsLineTerminator(ch)) {
+            // There's LineTerminator that needs escaping.
+            if (sb.empty()) {
+                // This is the first char we've seen that needs escaping,
+                // copy everything up to this point.
+                if (!SetupBuffer(sb, oldChars, oldLen, it))
+                    return false;
+            }
+            if (!previousCharacterWasBackslash) {
+                if (!sb.append('\\'))
+                    return false;
+            }
+            if (!AppendEscapedLineTerminator(sb, ch))
+                return false;
+        } else if (!sb.empty()) {
+            if (!sb.append(ch))
+                return false;
+        }
+
+        if (previousCharacterWasBackslash)
+            previousCharacterWasBackslash = false;
+        else if (ch == '\\')
+            previousCharacterWasBackslash = true;
+    }
+
+    return true;
+}
+
+// ES6 draft rev32 21.2.3.2.4.
+JSAtom *
+js::EscapeRegExpPattern(JSContext *cx, HandleAtom src)
+{
+    // Step 2.
+    if (src->length() == 0)
+        return cx->names().emptyRegExp;
+
+    // We may never need to use |sb|. Start using it lazily.
+    StringBuffer sb(cx);
+
+    if (src->hasLatin1Chars()) {
+        JS::AutoCheckCannotGC nogc;
+        if (!::EscapeRegExpPattern(sb, src->latin1Chars(nogc), src->length()))
+            return nullptr;
+    } else {
+        JS::AutoCheckCannotGC nogc;
+        if (!::EscapeRegExpPattern(sb, src->twoByteChars(nogc), src->length()))
+            return nullptr;
+    }
+
+    // Step 3.
+    return sb.empty() ? src : sb.finishAtom();
+}
+
+// ES6 draft rev32 21.2.5.14. Optimized for RegExpObject.
 JSFlatString *
 RegExpObject::toString(JSContext *cx) const
 {
-    JSAtom *src = getSource();
+    // Steps 3-4.
+    RootedAtom src(cx, getSource());
+    if (!src)
+        return nullptr;
+    RootedAtom escapedSrc(cx, EscapeRegExpPattern(cx, src));
+
+    // Step 7.
     StringBuffer sb(cx);
-    if (size_t len = src->length()) {
-        if (!sb.reserve(len + 2))
-            return nullptr;
-        sb.infallibleAppend('/');
-        if (!sb.append(src))
-            return nullptr;
-        sb.infallibleAppend('/');
-    } else {
-        if (!sb.append("/(?:)/"))
-            return nullptr;
-    }
+    size_t len = escapedSrc->length();
+    if (!sb.reserve(len + 2))
+        return nullptr;
+    sb.infallibleAppend('/');
+    if (!sb.append(escapedSrc))
+        return nullptr;
+    sb.infallibleAppend('/');
+
+    // Steps 5-7.
     if (global() && !sb.append('g'))
         return nullptr;
     if (ignoreCase() && !sb.append('i'))
@@ -702,17 +831,16 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
     MOZ_ASSERT(!matchResultTemplateObject_);
 
     /* Create template array object */
-    RootedArrayObject templateObject(cx, NewDenseUnallocatedArray(cx, 0, nullptr, TenuredObject));
+    RootedArrayObject templateObject(cx, NewDenseUnallocatedArray(cx, 0, NullPtr(), TenuredObject));
     if (!templateObject)
         return matchResultTemplateObject_; // = nullptr
 
-    // Create a new type for the template.
+    // Create a new group for the template.
     Rooted<TaggedProto> proto(cx, templateObject->getTaggedProto());
-    types::TypeObject *type =
-        cx->compartment()->types.newTypeObject(cx, templateObject->getClass(), proto);
-    if (!type)
+    ObjectGroup *group = ObjectGroupCompartment::makeGroup(cx, templateObject->getClass(), proto);
+    if (!group)
         return matchResultTemplateObject_; // = nullptr
-    templateObject->setType(type);
+    templateObject->setGroup(group);
 
     /* Set dummy index property */
     RootedValue index(cx, Int32Value(0));
@@ -739,8 +867,8 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
 
     // Make sure type information reflects the indexed properties which might
     // be added.
-    types::AddTypePropertyId(cx, templateObject, JSID_VOID, types::Type::StringType());
-    types::AddTypePropertyId(cx, templateObject, JSID_VOID, types::Type::UndefinedType());
+    AddTypePropertyId(cx, templateObject, JSID_VOID, TypeSet::StringType());
+    AddTypePropertyId(cx, templateObject, JSID_VOID, TypeSet::UndefinedType());
 
     matchResultTemplateObject_.set(templateObject);
 
@@ -859,7 +987,7 @@ js::CloneRegExpObject(JSContext *cx, JSObject *obj_)
     RegExpObjectBuilder builder(cx);
     Rooted<RegExpObject*> regex(cx, &obj_->as<RegExpObject>());
     JSObject *res = builder.clone(regex);
-    MOZ_ASSERT_IF(res, res->type() == regex->type());
+    MOZ_ASSERT_IF(res, res->group() == regex->group());
     return res;
 }
 

@@ -250,11 +250,6 @@ const char*     nsWindow::sDefaultMainWindowClass = kClassNameGeneral;
 
 TriStateBool nsWindow::sHasBogusPopupsDropShadowOnMultiMonitor = TRI_UNKNOWN;
 
-// Used in OOPP plugin focus processing.
-const wchar_t* kOOPPPluginFocusEventId   = L"OOPP Plugin Focus Widget Event";
-uint32_t        nsWindow::sOOPPPluginFocusEvent   =
-                  RegisterWindowMessageW(kOOPPPluginFocusEventId);
-
 DWORD           nsWindow::sFirstEventTime = 0;
 TimeStamp       nsWindow::sFirstEventTimeStamp = TimeStamp();
 
@@ -465,7 +460,6 @@ nsresult
 nsWindow::Create(nsIWidget *aParent,
                  nsNativeWidget aNativeParent,
                  const nsIntRect &aRect,
-                 nsDeviceContext *aContext,
                  nsWidgetInitData *aInitData)
 {
   nsWidgetInitData defaultInitData;
@@ -485,7 +479,7 @@ nsWindow::Create(nsIWidget *aParent,
   // Ensure that the toolkit is created.
   nsToolkit::GetToolkit();
 
-  BaseCreate(baseParent, aRect, aContext, aInitData);
+  BaseCreate(baseParent, aRect, aInitData);
 
   HWND parent;
   if (aParent) { // has a nsIWidget parent
@@ -1991,7 +1985,7 @@ nsIntPoint nsWindow::GetClientOffset()
 
   RECT r1;
   GetWindowRect(mWnd, &r1);
-  nsIntPoint pt = WidgetToScreenOffset();
+  LayoutDeviceIntPoint pt = WidgetToScreenOffset();
   return nsIntPoint(pt.x - r1.left, pt.y - r1.top);
 }
 
@@ -2859,6 +2853,8 @@ nsWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
       taskbarInfo->PrepareFullScreenHWND(mWnd, TRUE);
     }
   } else {
+    if (mSizeMode != nsSizeMode_Fullscreen)
+      return NS_OK;
     SetSizeMode(mOldSizeMode);
   }
 
@@ -2876,6 +2872,13 @@ nsWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
   if (visible) {
     Show(true);
     Invalidate();
+
+    if (!aFullScreen && mOldSizeMode == nsSizeMode_Normal) {
+      // Ensure the window exiting fullscreen get activated. Window
+      // activation was bypassed by SetSizeMode, and hiding window for
+      // transition could also blur the current window.
+      DispatchFocusToTopLevelWindow(true);
+    }
   }
 
   // Notify the taskbar that we have exited full screen mode.
@@ -2919,6 +2922,7 @@ void* nsWindow::GetNativeData(uint32_t aDataType)
                                       nullptr,
                                       nsToolkit::mDllInstance,
                                       nullptr);
+    case NS_NATIVE_PLUGIN_ID:
     case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_WIDGET:
     case NS_NATIVE_WINDOW:
@@ -3060,13 +3064,13 @@ NS_METHOD nsWindow::SetIcon(const nsAString& aIconSpec)
  *
  **************************************************************/
 
-nsIntPoint nsWindow::WidgetToScreenOffset()
+LayoutDeviceIntPoint nsWindow::WidgetToScreenOffset()
 {
   POINT point;
   point.x = 0;
   point.y = 0;
   ::ClientToScreen(mWnd, &point);
-  return nsIntPoint(point.x, point.y);
+  return LayoutDeviceIntPoint(point.x, point.y);
 }
 
 nsIntSize nsWindow::ClientToWindowSize(const nsIntSize& aClientSize)
@@ -3530,8 +3534,7 @@ nsWindow::UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometries)
 {
   nsIntRegion clearRegion;
   for (size_t i = 0; i < aThemeGeometries.Length(); i++) {
-    if ((aThemeGeometries[i].mWidgetType == NS_THEME_WINDOW_BUTTON_BOX ||
-         aThemeGeometries[i].mWidgetType == NS_THEME_WINDOW_BUTTON_BOX_MAXIMIZED) &&
+    if (aThemeGeometries[i].mType == nsNativeThemeWin::eThemeGeometryTypeWindowButtons &&
         nsUXThemeData::CheckForCompositor())
     {
       nsIntRect bounds = aThemeGeometries[i].mRect;
@@ -3818,7 +3821,7 @@ bool nsWindow::DispatchMouseEvent(uint32_t aEventType, WPARAM wParam,
     aInputSource == nsIDOMMouseEvent::MOZ_SOURCE_PEN ||
     !(WinUtils::GetIsMouseFromTouch(aEventType) && mTouchWindow);
 
-  nsIntPoint mpScreen = eventPoint + WidgetToScreenOffset();
+  nsIntPoint mpScreen = eventPoint + WidgetToScreenOffsetUntyped();
 
   // Suppress mouse moves caused by widget creation
   if (aEventType == NS_MOUSE_MOVE) 
@@ -4329,9 +4332,9 @@ LRESULT CALLBACK nsWindow::WindowProcInternal(HWND hWnd, UINT msg, WPARAM wParam
 
   // Hold the window for the life of this method, in case it gets
   // destroyed during processing, unless we're in the dtor already.
-  nsCOMPtr<nsISupports> kungFuDeathGrip;
+  nsCOMPtr<nsIWidget> kungFuDeathGrip;
   if (!targetWindow->mInDtor)
-    kungFuDeathGrip = do_QueryInterface((nsBaseWidget*)targetWindow);
+    kungFuDeathGrip = targetWindow;
 
   targetWindow->IPCWindowProcHandler(msg, wParam, lParam);
 
@@ -5384,26 +5387,6 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
     }
     break;
 
-    default:
-    {
-      if (msg == nsAppShell::GetTaskbarButtonCreatedMessage())
-        SetHasTaskbarIconBeenCreated();
-      if (msg == sOOPPPluginFocusEvent) {
-        if (wParam == 1) {
-          // With OOPP, the plugin window exists in another process and is a child of
-          // this window. This window is a placeholder plugin window for the dom. We
-          // receive this event when the child window receives focus. (sent from
-          // PluginInstanceParent.cpp)
-          ::SendMessage(mWnd, WM_MOUSEACTIVATE, 0, 0); // See nsPluginNativeWindowWin.cpp
-        } else {
-          // WM_KILLFOCUS was received by the child process.
-          if (sJustGotDeactivate) {
-            DispatchFocusToTopLevelWindow(false);
-          }
-        }
-      }
-    }
-    break;
     case WM_SETTINGCHANGE:
       if (IsWin8OrLater() && lParam &&
           !wcsicmp(L"ConvertibleSlateMode", (wchar_t*)lParam)) {
@@ -5419,6 +5402,14 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
           }
         }
       }
+    break;
+
+    default:
+    {
+      if (msg == nsAppShell::GetTaskbarButtonCreatedMessage()) {
+        SetHasTaskbarIconBeenCreated();
+      }
+    }
     break;
 
   }
@@ -5810,7 +5801,7 @@ nsWindow::SynthesizeNativeKeyEvent(int32_t aNativeKeyboardLayout,
 }
 
 nsresult
-nsWindow::SynthesizeNativeMouseEvent(nsIntPoint aPoint,
+nsWindow::SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
                                      uint32_t aNativeMessage,
                                      uint32_t aModifierFlags)
 {
@@ -5827,7 +5818,7 @@ nsWindow::SynthesizeNativeMouseEvent(nsIntPoint aPoint,
 }
 
 nsresult
-nsWindow::SynthesizeNativeMouseScrollEvent(nsIntPoint aPoint,
+nsWindow::SynthesizeNativeMouseScrollEvent(LayoutDeviceIntPoint aPoint,
                                            uint32_t aNativeMessage,
                                            double aDeltaX,
                                            double aDeltaY,
@@ -6203,7 +6194,7 @@ bool nsWindow::OnTouch(WPARAM wParam, LPARAM lParam)
       touchPoint.ScreenToClient(mWnd);
       nsRefPtr<Touch> touch =
         new Touch(pInputs[i].dwID,
-                  touchPoint,
+                  LayoutDeviceIntPoint::FromUntyped(touchPoint),
                   /* radius, if known */
                   pInputs[i].dwFlags & TOUCHINPUTMASKF_CONTACTAREA ?
                     nsIntPoint(
@@ -6316,54 +6307,6 @@ bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
   return true; // Handled
 }
 
-static BOOL WINAPI EnumFirstChild(HWND hwnd, LPARAM lParam)
-{
-  *((HWND*)lParam) = hwnd;
-  return FALSE;
-}
-
-static void InvalidatePluginAsWorkaround(nsWindow *aWindow, const nsIntRect &aRect)
-{
-  aWindow->Invalidate(aRect);
-
-  // XXX - Even more evil workaround!! See bug 762948, flash's bottom
-  // level sandboxed window doesn't seem to get our invalidate. We send
-  // an invalidate to it manually. This is totally specialized for this
-  // bug, for other child window structures this will just be a more or
-  // less bogus invalidate but since that should not have any bad
-  // side-effects this will have to do for now.
-  HWND current = (HWND)aWindow->GetNativeData(NS_NATIVE_WINDOW);
-
-  RECT windowRect;
-  RECT parentRect;
-
-  ::GetWindowRect(current, &parentRect);
-        
-  HWND next = current;
-
-  do {
-    current = next;
-
-    ::EnumChildWindows(current, &EnumFirstChild, (LPARAM)&next);
-
-    ::GetWindowRect(next, &windowRect);
-    // This is relative to the screen, adjust it to be relative to the
-    // window we're reconfiguring.
-    windowRect.left -= parentRect.left;
-    windowRect.top -= parentRect.top;
-  } while (next != current && windowRect.top == 0 && windowRect.left == 0);
-
-  if (windowRect.top == 0 && windowRect.left == 0) {
-    RECT rect;
-    rect.left   = aRect.x;
-    rect.top    = aRect.y;
-    rect.right  = aRect.XMost();
-    rect.bottom = aRect.YMost();
-
-    ::InvalidateRect(next, &rect, FALSE);
-  }
-}
-
 nsresult
 nsWindow::ConfigureChildren(const nsTArray<Configuration>& aConfigurations)
 {
@@ -6406,7 +6349,7 @@ nsWindow::ConfigureChildren(const nsTArray<Configuration>& aConfigurations)
                  -bounds.y);
         nsIntRect toInvalidate = r.GetBounds();
 
-        InvalidatePluginAsWorkaround(w, toInvalidate);
+        WinUtils::InvalidatePluginAsWorkaround(w, toInvalidate);
       }
     }
     rv = w->SetWindowClipRegion(configuration.mClipRegion, false);
@@ -6440,6 +6383,10 @@ nsresult
 nsWindow::SetWindowClipRegion(const nsTArray<nsIntRect>& aRects,
                               bool aIntersectWithExisting)
 {
+  if (IsWindowClipRegionEqual(aRects)) {
+    return NS_OK;
+  }
+
   nsBaseWidget::SetWindowClipRegion(aRects, aIntersectWithExisting);
 
   HRGN dest = CreateHRGNFromArray(aRects);
@@ -6703,8 +6650,8 @@ nsWindow::OnSysColorChanged()
  **************************************************************
  **************************************************************/
 
-NS_IMETHODIMP
-nsWindow::NotifyIME(const IMENotification& aIMENotification)
+nsresult
+nsWindow::NotifyIMEInternal(const IMENotification& aIMENotification)
 {
   return IMEHandler::NotifyIME(this, aIMENotification);
 }
@@ -6751,7 +6698,7 @@ nsWindow::GetIMEUpdatePreference()
 #ifdef DEBUG
 #define NS_LOG_WMGETOBJECT(aWnd, aHwnd, aAcc)                                  \
   if (a11y::logging::IsEnabled(a11y::logging::ePlatforms)) {                   \
-    printf("Get the window:\n  {\n     HWND: %d, parent HWND: %d, wndobj: %p,\n",\
+    printf("Get the window:\n  {\n     HWND: %p, parent HWND: %p, wndobj: %p,\n",\
            aHwnd, ::GetParent(aHwnd), aWnd);                                   \
     printf("     acc: %p", aAcc);                                              \
     if (aAcc) {                                                                \

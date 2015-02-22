@@ -535,10 +535,10 @@ AbstractFramePtr::hasCallObj() const
 }
 
 inline bool
-AbstractFramePtr::useNewType() const
+AbstractFramePtr::createSingleton() const
 {
     if (isInterpreterFrame())
-        return asInterpreterFrame()->useNewType();
+        return asInterpreterFrame()->createSingleton();
     return false;
 }
 
@@ -822,21 +822,21 @@ AbstractFramePtr::popWith(JSContext *cx) const
 Activation::Activation(JSContext *cx, Kind kind)
   : cx_(cx),
     compartment_(cx->compartment()),
-    prev_(cx->perThreadData->activation_),
+    prev_(cx->runtime_->activation_),
     prevProfiling_(prev_ ? prev_->mostRecentProfiling() : nullptr),
     savedFrameChain_(0),
     hideScriptedCallerCount_(0),
     kind_(kind)
 {
-    cx->perThreadData->activation_ = this;
+    cx->runtime_->activation_ = this;
 }
 
 Activation::~Activation()
 {
-    MOZ_ASSERT_IF(isProfiling(), this != cx_->perThreadData->profilingActivation_);
-    MOZ_ASSERT(cx_->perThreadData->activation_ == this);
+    MOZ_ASSERT_IF(isProfiling(), this != cx_->runtime()->profilingActivation_);
+    MOZ_ASSERT(cx_->runtime_->activation_ == this);
     MOZ_ASSERT(hideScriptedCallerCount_ == 0);
-    cx_->perThreadData->activation_ = prev_;
+    cx_->runtime_->activation_ = prev_;
 }
 
 bool

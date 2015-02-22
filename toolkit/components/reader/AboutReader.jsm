@@ -51,23 +51,22 @@ let AboutReader = function(mm, win) {
 
   win.addEventListener("unload", this, false);
   win.addEventListener("scroll", this, false);
-  win.addEventListener("popstate", this, false);
   win.addEventListener("resize", this, false);
 
   doc.addEventListener("visibilitychange", this, false);
 
-  this._setupAllDropdowns();
-  this._setupButton("toggle-button", this._onReaderToggle.bind(this));
-  this._setupButton("share-button", this._onShare.bind(this));
+  this._setupStyleDropdown();
+  this._setupButton("close-button", this._onReaderClose.bind(this), "aboutReader.toolbar.close");
+  this._setupButton("toggle-button", this._onReaderToggle.bind(this), "aboutReader.toolbar.addToReadingList");
+  this._setupButton("share-button", this._onShare.bind(this), "aboutReader.toolbar.share");
+  this._setupButton("list-button", this._onList.bind(this), "aboutReader.toolbar.openReadingList");
 
-  let colorSchemeOptions = [
-    { name: gStrings.GetStringFromName("aboutReader.colorSchemeDark"),
-      value: "dark"},
-    { name: gStrings.GetStringFromName("aboutReader.colorSchemeLight"),
-      value: "light"},
-    { name: gStrings.GetStringFromName("aboutReader.colorSchemeAuto"),
-      value: "auto"}
-  ];
+  let colorSchemeValues = JSON.parse(Services.prefs.getCharPref("reader.color_scheme.values"));
+  let colorSchemeOptions = colorSchemeValues.map((value) => {
+    return { name: gStrings.GetStringFromName("aboutReader.colorScheme." + value),
+             value: value,
+             itemClass: value + "-button" };
+  });
 
   let colorScheme = Services.prefs.getCharPref("reader.color_scheme");
   this._setupSegmentedButton("color-scheme-buttons", colorSchemeOptions, colorScheme, this._setColorSchemePref.bind(this));
@@ -76,11 +75,11 @@ let AboutReader = function(mm, win) {
   let fontTypeSample = gStrings.GetStringFromName("aboutReader.fontTypeSample");
   let fontTypeOptions = [
     { name: fontTypeSample,
-      description: gStrings.GetStringFromName("aboutReader.fontTypeSerif"),
+      description: gStrings.GetStringFromName("aboutReader.fontType.serif"),
       value: "serif",
       linkClass: "serif" },
     { name: fontTypeSample,
-      description: gStrings.GetStringFromName("aboutReader.fontTypeSansSerif"),
+      description: gStrings.GetStringFromName("aboutReader.fontType.sans-serif"),
       value: "sans-serif",
       linkClass: "sans-serif"
     },
@@ -113,13 +112,11 @@ let AboutReader = function(mm, win) {
   this._setupSegmentedButton("font-size-buttons", fontSizeOptions, fontSize, this._setFontSize.bind(this));
   this._setFontSize(fontSize);
 
-  let queryArgs = this._decodeQueryString(win.location.href);
-
   // Track status of reader toolbar add/remove toggle button
   this._isReadingListItem = -1;
   this._updateToggleButton();
 
-  this._loadArticle(queryArgs.url);
+  this._loadArticle();
 }
 
 AboutReader.prototype = {
@@ -164,6 +161,13 @@ AboutReader.prototype = {
     return this._messageElementRef.get();
   },
 
+  get _isToolbarVertical() {
+    if (this._toolbarVertical !== undefined) {
+      return this._toolbarVertical;
+    }
+    return this._toolbarVertical = Services.prefs.getBoolPref("reader.toolbar.vertical");
+  },
+
   receiveMessage: function (message) {
     switch (message.name) {
       case "Reader:Added": {
@@ -202,10 +206,6 @@ AboutReader.prototype = {
         this._setToolbarVisibility(isScrollingUp);
         this._scrollOffset = aEvent.pageY;
         break;
-      case "popstate":
-        if (!aEvent.state)
-          this._closeAllDropdowns();
-        break;
       case "resize":
         this._updateImageMargins();
         break;
@@ -226,12 +226,14 @@ AboutReader.prototype = {
   },
 
   _updateToggleButton: function Reader_updateToggleButton() {
-    let classes = this._doc.getElementById("toggle-button").classList;
+    let button = this._doc.getElementById("toggle-button");
 
     if (this._isReadingListItem == 1) {
-      classes.add("on");
+      button.classList.add("on");
+      button.setAttribute("title", gStrings.GetStringFromName("aboutReader.toolbar.removeFromReadingList"));
     } else {
-      classes.remove("on");
+      button.classList.remove("on");
+      button.setAttribute("title", gStrings.GetStringFromName("aboutReader.toolbar.addToReadingList"));
     }
   },
 
@@ -258,6 +260,10 @@ AboutReader.prototype = {
     this._mm.sendAsyncMessage("Reader:ListStatusRequest", { url: this._article.url });
   },
 
+  _onReaderClose: function Reader_onToggle() {
+    this._win.location.href = this._getOriginalUrl();
+  },
+
   _onReaderToggle: function Reader_onToggle() {
     if (!this._article)
       return;
@@ -282,16 +288,23 @@ AboutReader.prototype = {
     UITelemetry.addEvent("share.1", "list", null);
   },
 
+  _onList: function() {
+    // To be implemented (bug 1132665)
+  },
+
   _setFontSize: function Reader_setFontSize(newFontSize) {
-    let bodyClasses = this._doc.body.classList;
+    let htmlClasses = this._doc.documentElement.classList;
 
     if (this._fontSize > 0)
-      bodyClasses.remove("font-size" + this._fontSize);
+      htmlClasses.remove("font-size" + this._fontSize);
 
     this._fontSize = newFontSize;
-    bodyClasses.add("font-size" + this._fontSize);
+    htmlClasses.add("font-size" + this._fontSize);
 
-    Services.prefs.setIntPref("reader.font_size", this._fontSize);
+    this._mm.sendAsyncMessage("Reader:SetIntPref", {
+      name: "reader.font_size",
+      value: this._fontSize
+    });
   },
 
   _handleDeviceLight: function Reader_handleDeviceLight(newLux) {
@@ -382,7 +395,10 @@ AboutReader.prototype = {
     this._enableAmbientLighting(colorSchemePref === "auto");
     this._setColorScheme(colorSchemePref);
 
-    Services.prefs.setCharPref("reader.color_scheme", colorSchemePref);
+    this._mm.sendAsyncMessage("Reader:SetCharPref", {
+      name: "reader.color_scheme",
+      value: colorSchemePref
+    });
   },
 
   _setFontType: function Reader_setFontType(newFontType) {
@@ -397,7 +413,10 @@ AboutReader.prototype = {
     this._fontType = newFontType;
     bodyClasses.add(this._fontType);
 
-    Services.prefs.setCharPref("reader.font_type", this._fontType);
+    this._mm.sendAsyncMessage("Reader:SetCharPref", {
+      name: "reader.font_type",
+      value: this._fontType
+    });
   },
 
   _getToolbarVisibility: function Reader_getToolbarVisibility() {
@@ -405,9 +424,8 @@ AboutReader.prototype = {
   },
 
   _setToolbarVisibility: function Reader_setToolbarVisibility(visible) {
-    let win = this._win;
-    if (win.history.state)
-      win.history.back();
+    let dropdown = this._doc.getElementById("style-dropdown");
+    dropdown.classList.remove("open");
 
     if (!this._toolbarEnabled)
       return;
@@ -422,13 +440,8 @@ AboutReader.prototype = {
     this._toolbarElement.classList.toggle("toolbar-hidden");
     this._setSystemUIVisibility(visible);
 
-    if (!visible && !this._hasUsedToolbar) {
-      this._hasUsedToolbar = Services.prefs.getBoolPref("reader.has_used_toolbar");
-      if (!this._hasUsedToolbar) {
-        this._mm.sendAsyncMessage("Reader:ShowToast", { toast: gStrings.GetStringFromName("aboutReader.toolbarTip") });
-        Services.prefs.setBoolPref("reader.has_used_toolbar", true);
-        this._hasUsedToolbar = true;
-      }
+    if (!visible) {
+      this._mm.sendAsyncMessage("Reader:ToolbarHidden");
     }
   },
 
@@ -436,15 +449,12 @@ AboutReader.prototype = {
     this._setToolbarVisibility(!this._getToolbarVisibility());
   },
 
-  _setBrowserToolbarVisiblity: function Reader_setBrowserToolbarVisiblity(visible) {
-    this._mm.sendAsyncMessage("Reader:ToolbarVisibility", { visible: visible });
-  },
-
   _setSystemUIVisibility: function Reader_setSystemUIVisibility(visible) {
     this._mm.sendAsyncMessage("Reader:SystemUIVisibility", { visible: visible });
   },
 
-  _loadArticle: Task.async(function* (url) {
+  _loadArticle: Task.async(function* () {
+    let url = this._getOriginalUrl();
     this._showProgressDelayed();
 
     let article = yield this._getArticle(url);
@@ -586,14 +596,15 @@ AboutReader.prototype = {
     this._headerElement.style.display = "block";
 
     let parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
-    let contentFragment = parserUtils.parseFragment(article.content, Ci.nsIParserUtils.SanitizerDropForms,
-                                                    false, articleUri, this._contentElement);
+    let contentFragment = parserUtils.parseFragment(article.content,
+      Ci.nsIParserUtils.SanitizerDropForms | Ci.nsIParserUtils.SanitizerAllowStyle,
+      false, articleUri, this._contentElement);
     this._contentElement.innerHTML = "";
     this._contentElement.appendChild(contentFragment);
-    this._updateImageMargins();
     this._maybeSetTextDirection(article);
 
     this._contentElement.style.display = "block";
+    this._updateImageMargins();
     this._requestReadingListStatus();
 
     this._toolbarEnabled = true;
@@ -622,18 +633,17 @@ AboutReader.prototype = {
     }.bind(this), 300);
   },
 
-  _decodeQueryString: function Reader_decodeQueryString(url) {
-    let result = {};
-    let query = url.split("?")[1];
-    if (query) {
-      let pairs = query.split("&");
-      for (let i = 0; i < pairs.length; i++) {
-        let [name, value] = pairs[i].split("=");
-        result[name] = decodeURIComponent(value);
-      }
+  /**
+   * Returns the original article URL for this about:reader view.
+   */
+  _getOriginalUrl: function() {
+    let url = this._win.location.href;
+    let searchParams = new URLSearchParams(url.split("?")[1]);
+    if (!searchParams.has("url")) {
+      Cu.reportError("Error finding original URL for about:reader URL: " + url);
+      return url;
     }
-
-    return result;
+    return decodeURIComponent(searchParams.get("url"));
   },
 
   _setupSegmentedButton: function Reader_setupSegmentedButton(id, options, initialValue, callback) {
@@ -648,6 +658,9 @@ AboutReader.prototype = {
       link.textContent = option.name;
       item.appendChild(link);
 
+      if (option.itemClass !== undefined)
+        item.classList.add(option.itemClass);
+
       if (option.linkClass !== undefined)
         link.classList.add(option.linkClass);
 
@@ -660,7 +673,7 @@ AboutReader.prototype = {
       link.style.MozUserSelect = 'none';
       segmentedButton.appendChild(item);
 
-      link.addEventListener("click", function(aEvent) {
+      item.addEventListener("click", function(aEvent) {
         if (!aEvent.isTrusted)
           return;
 
@@ -684,8 +697,9 @@ AboutReader.prototype = {
     }
   },
 
-  _setupButton: function Reader_setupButton(id, callback) {
+  _setupButton: function Reader_setupButton(id, callback, titleEntity) {
     let button = this._doc.getElementById(id);
+    button.setAttribute("title", gStrings.GetStringFromName(titleEntity));
 
     button.addEventListener("click", function(aEvent) {
       if (!aEvent.isTrusted)
@@ -696,26 +710,22 @@ AboutReader.prototype = {
     }, true);
   },
 
-  _setupAllDropdowns: function Reader_setupAllDropdowns() {
+  _setupStyleDropdown: function Reader_setupStyleDropdown() {
     let doc = this._doc;
     let win = this._win;
 
-    let dropdowns = doc.getElementsByClassName("dropdown");
+    let dropdown = doc.getElementById("style-dropdown");
+    let dropdownToggle = dropdown.querySelector(".dropdown-toggle");
+    let dropdownPopup = dropdown.querySelector(".dropdown-popup");
+    let dropdownArrow = dropdown.querySelector(".dropdown-arrow");
 
-    for (let i = dropdowns.length - 1; i >= 0; i--) {
-      let dropdown = dropdowns[i];
-
-      let dropdownToggle = dropdown.getElementsByClassName("dropdown-toggle")[0];
-      let dropdownPopup = dropdown.getElementsByClassName("dropdown-popup")[0];
-
-      if (!dropdownToggle || !dropdownPopup)
-        continue;
-
-      let dropdownArrow = doc.createElement("div");
-      dropdownArrow.className = "dropdown-arrow";
-      dropdownPopup.appendChild(dropdownArrow);
-
-      let updatePopupPosition = function() {
+    let updatePopupPosition = () => {
+      if (this._isToolbarVertical) {
+        let toggleHeight = dropdownToggle.offsetHeight;
+        let toggleTop = dropdownToggle.offsetTop;
+        let popupTop = toggleTop - toggleHeight / 2;
+        dropdownPopup.style.top = popupTop + "px";
+      } else {
         let popupWidth = dropdownPopup.offsetWidth + 30;
         let arrowWidth = dropdownArrow.offsetWidth;
         let toggleWidth = dropdownToggle.offsetWidth;
@@ -728,65 +738,30 @@ AboutReader.prototype = {
         let arrowShift = (toggleWidth - arrowWidth) / 2;
         let arrowLeft = toggleLeft - popupLeft + arrowShift;
         dropdownArrow.style.left = arrowLeft + "px";
-      };
+      }
+    };
 
-      win.addEventListener("resize", function(aEvent) {
-        if (!aEvent.isTrusted)
-          return;
+    win.addEventListener("resize", event => {
+      if (!event.isTrusted)
+        return;
 
-        // Wait for reflow before calculating the new position of the popup.
-        win.setTimeout(updatePopupPosition, 0);
-      }, true);
+      // Wait for reflow before calculating the new position of the popup.
+      win.setTimeout(updatePopupPosition, 0);
+    }, true);
 
-      dropdownToggle.addEventListener("click", function(aEvent) {
-        if (!aEvent.isTrusted)
-          return;
+    dropdownToggle.setAttribute("title", gStrings.GetStringFromName("aboutReader.toolbar.typeControls"));
+    dropdownToggle.addEventListener("click", event => {
+      if (!event.isTrusted)
+        return;
 
-        aEvent.stopPropagation();
+      event.stopPropagation();
 
-        if (!this._getToolbarVisibility())
-          return;
-
-        let dropdownClasses = dropdown.classList;
-
-        if (dropdownClasses.contains("open")) {
-          win.history.back();
-        } else {
-          updatePopupPosition();
-          if (!this._closeAllDropdowns())
-            this._pushDropdownState();
-
-          dropdownClasses.add("open");
-        }
-      }.bind(this), true);
-    }
+      if (dropdown.classList.contains("open")) {
+        dropdown.classList.remove("open");
+      } else {
+        dropdown.classList.add("open");
+        updatePopupPosition();
+      }
+    }, true);
   },
-
-  _pushDropdownState: function Reader_pushDropdownState() {
-    // FIXME: We're getting a NS_ERROR_UNEXPECTED error when we try
-    // to do win.history.pushState() here (see bug 682296). This is
-    // a workaround that allows us to push history state on the target
-    // content document.
-
-    let doc = this._doc;
-    let body = doc.body;
-
-    if (this._pushStateScript)
-      body.removeChild(this._pushStateScript);
-
-    this._pushStateScript = doc.createElement('script');
-    this._pushStateScript.type = "text/javascript";
-    this._pushStateScript.innerHTML = 'history.pushState({ dropdown: 1 }, document.title);';
-
-    body.appendChild(this._pushStateScript);
-  },
-
-  _closeAllDropdowns : function Reader_closeAllDropdowns() {
-    let dropdowns = this._doc.querySelectorAll(".dropdown.open");
-    for (let i = dropdowns.length - 1; i >= 0; i--) {
-      dropdowns[i].classList.remove("open");
-    }
-
-    return (dropdowns.length > 0)
-  }
 };

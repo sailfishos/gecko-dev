@@ -350,7 +350,7 @@ FetchDriver::HttpFetch(bool aCORSFlag, bool aCORSPreflightFlag, bool aAuthentica
                      uri,
                      mPrincipal,
                      nsILoadInfo::SEC_NORMAL,
-                     mRequest->GetContext(),
+                     mRequest->ContentPolicyType(),
                      mLoadGroup,
                      nullptr, /* aCallbacks */
                      nsIRequest::LOAD_NORMAL | credentialsFlag,
@@ -517,9 +517,11 @@ already_AddRefed<InternalResponse>
 FetchDriver::BeginAndGetFilteredResponse(InternalResponse* aResponse)
 {
   MOZ_ASSERT(aResponse);
-  nsAutoCString reqURL;
-  mRequest->GetURL(reqURL);
-  aResponse->SetUrl(reqURL);
+  if (!aResponse->FinalURL()) {
+    nsAutoCString reqURL;
+    mRequest->GetURL(reqURL);
+    aResponse->SetUrl(reqURL);
+  }
 
   // FIXME(nsm): Handle mixed content check, step 7 of fetch.
 

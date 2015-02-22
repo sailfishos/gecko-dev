@@ -140,16 +140,26 @@ void
 MacroAssemblerARM::convertFloat32ToInt32(FloatRegister src, Register dest,
                                          Label *fail, bool negativeZeroCheck)
 {
-    // Convert the floating point value to an integer, if it did not fit, then
-    // when we convert it *back* to a float, it will have a different value,
-    // which we can test.
-    ma_vcvt_F32_I32(src, ScratchFloat32Reg.sintOverlay());
-    // Move the value into the dest register.
-    ma_vxfer(ScratchFloat32Reg, dest);
-    ma_vcvt_I32_F32(ScratchFloat32Reg.sintOverlay(), ScratchFloat32Reg);
-    ma_vcmp_f32(src, ScratchFloat32Reg);
+    // Converting the floating point value to an integer and then converting it
+    // back to a float32 would not work, as float to int32 conversions are
+    // clamping (e.g. float(INT32_MAX + 1) would get converted into INT32_MAX
+    // and then back to float(INT32_MAX + 1)).  If this ever happens, we just
+    // bail out.
+    FloatRegister ScratchSIntReg = ScratchFloat32Reg.sintOverlay();
+    ma_vcvt_F32_I32(src, ScratchSIntReg);
+
+    // Store the result
+    ma_vxfer(ScratchSIntReg, dest);
+
+    ma_vcvt_I32_F32(ScratchSIntReg, ScratchFloat32Reg);
+    ma_vcmp(src, ScratchFloat32Reg);
     as_vmrs(pc);
     ma_b(fail, Assembler::VFP_NotEqualOrUnordered);
+
+    // Bail out in the clamped cases.
+    ma_cmp(dest, Imm32(0x7fffffff));
+    ma_cmp(dest, Imm32(0x80000000), Assembler::NotEqual);
+    ma_b(fail, Assembler::Equal);
 
     if (negativeZeroCheck) {
         ma_cmp(dest, Imm32(0));
@@ -404,52 +414,61 @@ MacroAssemblerARM::ma_nop()
     as_nop();
 }
 
-Instruction *
-NextInst(Instruction *i)
-{
-    if (i == nullptr)
-        return nullptr;
-    return i->next();
-}
-
 void
 MacroAssemblerARM::ma_movPatchable(Imm32 imm_, Register dest, Assembler::Condition c,
-                                   RelocStyle rs, Instruction *i)
+                                   RelocStyle rs)
 {
     int32_t imm = imm_.value;
-    if (i) {
-        // Make sure the current instruction is not an artificial guard inserted
-        // by the assembler buffer.
-        i = i->skipPool();
-    }
     switch(rs) {
       case L_MOVWT:
-        as_movw(dest, Imm16(imm & 0xffff), c, i);
-        // 'i' can be nullptr here. That just means "insert in the next in
-        // sequence." NextInst is special cased to not do anything when it is
-        // passed nullptr, so two consecutive instructions will be inserted.
-        i = NextInst(i);
-        as_movt(dest, Imm16(imm >> 16 & 0xffff), c, i);
+        as_movw(dest, Imm16(imm & 0xffff), c);
+        as_movt(dest, Imm16(imm >> 16 & 0xffff), c);
         break;
       case L_LDR:
-        if(i == nullptr)
-            as_Imm32Pool(dest, imm, c);
-        else
-            as_WritePoolEntry(i, c, imm);
+        as_Imm32Pool(dest, imm, c);
         break;
     }
 }
 
 void
 MacroAssemblerARM::ma_movPatchable(ImmPtr imm, Register dest, Assembler::Condition c,
-                                   RelocStyle rs, Instruction *i)
+                                   RelocStyle rs)
 {
-    return ma_movPatchable(Imm32(int32_t(imm.value)), dest, c, rs, i);
+    ma_movPatchable(Imm32(int32_t(imm.value)), dest, c, rs);
+}
+
+/* static */ void
+MacroAssemblerARM::ma_mov_patch(Imm32 imm_, Register dest, Assembler::Condition c,
+                                RelocStyle rs, Instruction *i)
+{
+    MOZ_ASSERT(i);
+    int32_t imm = imm_.value;
+
+    // Make sure the current instruction is not an artificial guard inserted
+    // by the assembler buffer.
+    i = i->skipPool();
+
+    switch(rs) {
+      case L_MOVWT:
+        Assembler::as_movw_patch(dest, Imm16(imm & 0xffff), c, i);
+        i = i->next();
+        Assembler::as_movt_patch(dest, Imm16(imm >> 16 & 0xffff), c, i);
+        break;
+      case L_LDR:
+        Assembler::WritePoolEntry(i, c, imm);
+        break;
+    }
+}
+
+/* static */ void
+MacroAssemblerARM::ma_mov_patch(ImmPtr imm, Register dest, Assembler::Condition c,
+                                RelocStyle rs, Instruction *i)
+{
+    ma_mov_patch(Imm32(int32_t(imm.value)), dest, c, rs, i);
 }
 
 void
-MacroAssemblerARM::ma_mov(Register src, Register dest,
-            SetCond_ sc, Assembler::Condition c)
+MacroAssemblerARM::ma_mov(Register src, Register dest, SetCond_ sc, Assembler::Condition c)
 {
     if (sc == SetCond || dest != src)
         as_mov(dest, O2Reg(src), sc, c);
@@ -1861,17 +1880,6 @@ MacroAssemblerARMCompat::callJit(Register callee)
 }
 
 void
-MacroAssemblerARMCompat::callJitFromAsmJS(Register callee)
-{
-    ma_callJitNoPush(callee);
-
-    // The JIT ABI has the callee pop the return address off the stack.
-    // The asm.js caller assumes that the call leaves sp unchanged, so bump
-    // the stack.
-    subPtr(Imm32(sizeof(void*)), sp);
-}
-
-void
 MacroAssembler::alignFrameForICArguments(AfterICSaveLive &aic)
 {
     // Exists for MIPS compatibility.
@@ -2683,6 +2691,20 @@ void
 MacroAssemblerARMCompat::cmpPtr(const Address &lhs, ImmPtr rhs)
 {
     cmpPtr(lhs, ImmWord(uintptr_t(rhs.value)));
+}
+
+void
+MacroAssemblerARMCompat::cmpPtr(const Address &lhs, ImmGCPtr rhs)
+{
+    loadPtr(lhs, secondScratchReg_);
+    ma_cmp(secondScratchReg_, rhs);
+}
+
+void
+MacroAssemblerARMCompat::cmpPtr(const Address &lhs, Imm32 rhs)
+{
+    loadPtr(lhs, secondScratchReg_);
+    ma_cmp(secondScratchReg_, rhs);
 }
 
 void
@@ -4160,6 +4182,8 @@ AssertValidABIFunctionType(uint32_t passedArgTypes)
       case Args_Double_DoubleDouble:
       case Args_Double_IntDouble:
       case Args_Int_IntDouble:
+      case Args_Double_DoubleDoubleDouble:
+      case Args_Double_DoubleDoubleDoubleDouble:
         break;
       default:
         MOZ_CRASH("Unexpected type");

@@ -12,7 +12,7 @@
 #include "nsContentCID.h"
 #include "nsServiceManagerUtils.h"
 #include "MainThreadUtils.h"
-#include "mozilla/EMELog.h"
+#include "mozilla/EMEUtils.h"
 #include "nsIConsoleService.h"
 #include "prenv.h"
 #include "mozilla/PodOperations.h"
@@ -415,6 +415,7 @@ ToMediaKeyMessageType(GMPSessionMessageType aMessageType) {
     case kGMPLicenseRequest: return dom::MediaKeyMessageType::License_request;
     case kGMPLicenseRenewal: return dom::MediaKeyMessageType::License_renewal;
     case kGMPLicenseRelease: return dom::MediaKeyMessageType::License_release;
+    case kGMPIndividualizationRequest: return dom::MediaKeyMessageType::Individualization_request;
     default: return dom::MediaKeyMessageType::License_request;
   };
 };
@@ -435,7 +436,7 @@ CDMProxy::OnSessionMessage(const nsAString& aSessionId,
 }
 
 void
-CDMProxy::OnKeysChange(const nsAString& aSessionId)
+CDMProxy::OnKeyStatusesChange(const nsAString& aSessionId)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (mKeys.IsNull()) {
@@ -443,7 +444,7 @@ CDMProxy::OnKeysChange(const nsAString& aSessionId)
   }
   nsRefPtr<dom::MediaKeySession> session(mKeys->GetSession(aSessionId));
   if (session) {
-    session->DispatchKeysChange();
+    session->DispatchKeyStatusesChange();
   }
 }
 

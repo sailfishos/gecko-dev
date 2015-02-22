@@ -372,14 +372,6 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     /* Unexpected end of input, i.e. TOK_EOF not at top-level. */
     bool isUnexpectedEOF_:1;
 
-    /* Used for collecting telemetry on SpiderMonkey's deprecated language extensions. */
-    bool sawDeprecatedForEach:1;
-    bool sawDeprecatedDestructuringForIn:1;
-    bool sawDeprecatedLegacyGenerator:1;
-    bool sawDeprecatedExpressionClosure:1;
-    bool sawDeprecatedLetBlock:1;
-    bool sawDeprecatedLetExpression:1;
-
     typedef typename ParseHandler::Node Node;
     typedef typename ParseHandler::DefinitionNode DefinitionNode;
 
@@ -443,11 +435,10 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
                                 Directives directives, GeneratorKind generatorKind);
 
     /*
-     * Create a new function object given parse context (pc) and a name (which
-     * is optional if this is a function expression).
+     * Create a new function object given a name (which is optional if this is
+     * a function expression).
      */
-    JSFunction *newFunction(GenericParseContext *pc, HandleAtom atom, FunctionSyntaxKind kind,
-                            JSObject *proto = nullptr);
+    JSFunction *newFunction(HandleAtom atom, FunctionSyntaxKind kind, HandleObject proto);
 
     void trace(JSTracer *trc);
 
@@ -558,7 +549,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     Node debuggerStatement();
 
     Node lexicalDeclaration(bool isConst);
-    Node letStatement();
+    Node letDeclarationOrBlock();
     Node importDeclaration();
     Node exportDeclaration();
     Node expressionStatement(InvokedPrediction invoked = PredictUninvoked);
@@ -615,7 +606,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     Node generatorComprehension(uint32_t begin);
 
     bool argumentList(Node listNode, bool *isSpread);
-    Node letBlock(LetContext letContext);
+    Node deprecatedLetBlockOrExpression(LetContext letContext);
     Node destructuringExpr(BindData<ParseHandler> *data, TokenKind tt);
     Node destructuringExprWithoutYield(BindData<ParseHandler> *data, TokenKind tt, unsigned msg);
 
@@ -705,7 +696,7 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
 
     bool asmJS(Node list);
 
-    void accumulateTelemetry();
+    void addTelemetry(JSCompartment::DeprecatedLanguageExtension e);
 
     friend class LegacyCompExprTransplanter;
     friend struct BindData<ParseHandler>;

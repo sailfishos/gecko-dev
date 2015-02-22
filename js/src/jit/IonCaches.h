@@ -30,8 +30,7 @@ class LInstruction;
     _(GetElement)                                               \
     _(SetElement)                                               \
     _(BindName)                                                 \
-    _(Name)                                                     \
-    _(CallsiteClone)
+    _(Name)
 
 // Forward declarations of Cache kinds.
 #define FORWARD_DECLARE(kind) class kind##IC;
@@ -669,6 +668,10 @@ class GetPropertyIC : public RepatchIonCache
                          HandleObject obj, HandlePropertyName name,
                          void *returnAddr, bool *emitted);
 
+    bool tryAttachUnboxed(JSContext *cx, HandleScript outerScript, IonScript *ion,
+                          HandleObject obj, HandlePropertyName name,
+                          void *returnAddr, bool *emitted);
+
     bool tryAttachTypedArrayLength(JSContext *cx, HandleScript outerScript, IonScript *ion,
                                    HandleObject obj, HandlePropertyName name, bool *emitted);
 
@@ -744,8 +747,13 @@ class SetPropertyIC : public RepatchIonCache
                           void *returnAddr);
 
     bool attachAddSlot(JSContext *cx, HandleScript outerScript, IonScript *ion,
-                       HandleNativeObject obj, HandleShape oldShape, HandleTypeObject oldType,
+                       HandleNativeObject obj, HandleShape oldShape, HandleObjectGroup oldGroup,
                        bool checkTypeset);
+
+    bool attachSetUnboxed(JSContext *cx, HandleScript outerScript, IonScript *ion,
+                          HandleObject obj, HandleId id,
+                          uint32_t unboxedOffset, JSValueType unboxedType,
+                          bool checkTypeset);
 
     bool attachGenericProxy(JSContext *cx, HandleScript outerScript, IonScript *ion,
                             void *returnAddr);
@@ -1036,44 +1044,6 @@ class NameIC : public RepatchIonCache
 
     static bool
     update(JSContext *cx, size_t cacheIndex, HandleObject scopeChain, MutableHandleValue vp);
-};
-
-class CallsiteCloneIC : public RepatchIonCache
-{
-  protected:
-    Register callee_;
-    Register output_;
-    JSScript *callScript_;
-    jsbytecode *callPc_;
-
-  public:
-    CallsiteCloneIC(Register callee, JSScript *callScript, jsbytecode *callPc, Register output)
-      : callee_(callee),
-        output_(output),
-        callScript_(callScript),
-        callPc_(callPc)
-    {
-    }
-
-    CACHE_HEADER(CallsiteClone)
-
-    Register calleeReg() const {
-        return callee_;
-    }
-    HandleScript callScript() const {
-        return HandleScript::fromMarkedLocation(&callScript_);
-    }
-    jsbytecode *callPc() const {
-        return callPc_;
-    }
-    Register outputReg() const {
-        return output_;
-    }
-
-    bool attach(JSContext *cx, HandleScript outerScript, IonScript *ion,
-                HandleFunction original, HandleFunction clone);
-
-    static JSObject *update(JSContext *cx, size_t cacheIndex, HandleObject callee);
 };
 
 #undef CACHE_HEADER

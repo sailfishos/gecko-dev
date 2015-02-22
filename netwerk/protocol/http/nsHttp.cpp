@@ -106,7 +106,7 @@ nsHttp::CreateAtomTable()
     // known atoms (NUM_HTTP_ATOMS) because we expect to encounter a few random
     // headers right off the bat.
     if (!PL_DHashTableInit(&sAtomTable, &ops, sizeof(PLDHashEntryStub),
-                           fallible_t(), NUM_HTTP_ATOMS + 10)) {
+                           fallible, NUM_HTTP_ATOMS + 10)) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
 
@@ -120,7 +120,7 @@ nsHttp::CreateAtomTable()
 
     for (int i = 0; atoms[i]; ++i) {
         PLDHashEntryStub *stub = reinterpret_cast<PLDHashEntryStub *>
-                                                 (PL_DHashTableAdd(&sAtomTable, atoms[i]));
+            (PL_DHashTableAdd(&sAtomTable, atoms[i], fallible));
         if (!stub)
             return NS_ERROR_OUT_OF_MEMORY;
 
@@ -168,7 +168,7 @@ nsHttp::ResolveAtom(const char *str)
     MutexAutoLock lock(*sLock);
 
     PLDHashEntryStub *stub = reinterpret_cast<PLDHashEntryStub *>
-                                             (PL_DHashTableAdd(&sAtomTable, str));
+        (PL_DHashTableAdd(&sAtomTable, str, fallible));
     if (!stub)
         return atom;  // out of memory
 

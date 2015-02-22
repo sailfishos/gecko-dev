@@ -2275,10 +2275,12 @@ SourceMediaStream::SetPullEnabled(bool aEnabled)
 
 void
 SourceMediaStream::AddTrackInternal(TrackID aID, TrackRate aRate, StreamTime aStart,
-                                    MediaSegment* aSegment)
+                                    MediaSegment* aSegment, uint32_t aFlags)
 {
   MutexAutoLock lock(mMutex);
-  TrackData* data = mUpdateTracks.AppendElement();
+  nsTArray<TrackData> *track_data = (aFlags & ADDTRACK_QUEUED) ?
+                                    &mPendingTracks : &mUpdateTracks;
+  TrackData* data = track_data->AppendElement();
   data->mID = aID;
   data->mInputRate = aRate;
   data->mStart = aStart;
@@ -2286,6 +2288,16 @@ SourceMediaStream::AddTrackInternal(TrackID aID, TrackRate aRate, StreamTime aSt
   data->mCommands = TRACK_CREATE;
   data->mData = aSegment;
   data->mHaveEnough = false;
+  if (!(aFlags & ADDTRACK_QUEUED) && GraphImpl()) {
+    GraphImpl()->EnsureNextIteration();
+  }
+}
+
+void
+SourceMediaStream::FinishAddTracks()
+{
+  MutexAutoLock lock(mMutex);
+  mUpdateTracks.MoveElementsFrom(mPendingTracks);
   if (GraphImpl()) {
     GraphImpl()->EnsureNextIteration();
   }
@@ -2477,12 +2489,9 @@ void
 SourceMediaStream::EndTrack(TrackID aID)
 {
   MutexAutoLock lock(mMutex);
-  // ::EndAllTrackAndFinished() can end these before the sources call this
-  if (!mFinished) {
-    TrackData *track = FindDataForTrack(aID);
-    if (track) {
-      track->mCommands |= TRACK_END;
-    }
+  TrackData *track = FindDataForTrack(aID);
+  if (track) {
+    track->mCommands |= TRACK_END;
   }
   if (auto graph = GraphImpl()) {
     graph->EnsureNextIteration();
@@ -2518,6 +2527,7 @@ SourceMediaStream::EndAllTrackAndFinish()
     SourceMediaStream::TrackData* data = &mUpdateTracks[i];
     data->mCommands |= TRACK_END;
   }
+  mPendingTracks.Clear();
   FinishWithLockHeld();
   // we will call NotifyEvent() to let GetUserMedia know
 }

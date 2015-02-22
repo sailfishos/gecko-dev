@@ -148,9 +148,6 @@ class BumpChunk
 
 } // namespace detail
 
-MOZ_NORETURN void
-CrashAtUnhandlableOOM(const char *reason);
-
 // LIFO bump allocator: used for phase-oriented and fast LIFO allocations.
 //
 // Note: |latest| is not necessary "last". We leave BumpChunks latent in the
@@ -313,7 +310,7 @@ class LifoAlloc
     // The caller is responsible for initialization.
     template <typename T>
     T *newArrayUninitialized(size_t count) {
-        if (count & mozilla::tl::MulOverflowMask<sizeof(T)>::value)
+        if (MOZ_UNLIKELY(count & mozilla::tl::MulOverflowMask<sizeof(T)>::value))
             return nullptr;
         return static_cast<T *>(alloc(sizeof(T) * count));
     }
@@ -530,7 +527,7 @@ class LifoAllocPolicy
     {}
     template <typename T>
     T *pod_malloc(size_t numElems) {
-        if (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value)
+        if (MOZ_UNLIKELY(numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value))
             return nullptr;
         size_t bytes = numElems * sizeof(T);
         void *p = fb == Fallible ? alloc_.alloc(bytes) : alloc_.allocInfallible(bytes);

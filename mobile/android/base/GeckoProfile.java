@@ -24,6 +24,7 @@ import org.mozilla.gecko.db.LocalBrowserDB;
 import org.mozilla.gecko.db.StubBrowserDB;
 import org.mozilla.gecko.distribution.Distribution;
 import org.mozilla.gecko.mozglue.RobocopTarget;
+import org.mozilla.gecko.firstrun.FirstrunPane;
 import org.mozilla.gecko.util.INIParser;
 import org.mozilla.gecko.util.INISection;
 
@@ -809,7 +810,7 @@ public final class GeckoProfile {
         // Initialize pref flag for displaying the start pane for a new non-webapp profile.
         if (!mIsWebAppProfile) {
             final SharedPreferences prefs = GeckoSharedPrefs.forProfile(mApplicationContext);
-            prefs.edit().putBoolean(BrowserApp.PREF_STARTPANE_ENABLED, true).apply();
+            prefs.edit().putBoolean(FirstrunPane.PREF_FIRSTRUN_ENABLED, true).apply();
         }
 
         return profileDir;
@@ -831,9 +832,14 @@ public final class GeckoProfile {
 
         // Add everything when we're done loading the distribution.
         final Distribution distribution = Distribution.getInstance(context);
-        distribution.addOnDistributionReadyCallback(new Runnable() {
+        distribution.addOnDistributionReadyCallback(new Distribution.ReadyCallback() {
             @Override
-            public void run() {
+            public void distributionNotFound() {
+                this.distributionFound(null);
+            }
+
+            @Override
+            public void distributionFound(Distribution distribution) {
                 Log.d(LOGTAG, "Running post-distribution task: bookmarks.");
 
                 final ContentResolver cr = context.getContentResolver();
@@ -853,8 +859,27 @@ public final class GeckoProfile {
                     // bookmarks as there are favicons, we can also guarantee that
                     // the favicon IDs won't overlap.
                     final LocalBrowserDB db = new LocalBrowserDB(getName());
-                    final int offset = db.addDistributionBookmarks(cr, distribution, 0);
+                    final int offset = distribution == null ? 0 : db.addDistributionBookmarks(cr, distribution, 0);
                     db.addDefaultBookmarks(context, cr, offset);
+                }
+            }
+
+            @Override
+            public void distributionArrivedLate(Distribution distribution) {
+                Log.d(LOGTAG, "Running late distribution task: bookmarks.");
+                // Recover as best we can.
+                synchronized (GeckoProfile.this) {
+                    // Skip initialization if the profile directory has been removed.
+                    if (!profileDir.exists()) {
+                        return;
+                    }
+
+                    final LocalBrowserDB db = new LocalBrowserDB(getName());
+                    // We assume we've been called very soon after startup, and so our offset
+                    // into "Mobile Bookmarks" is the number of bookmarks in the DB.
+                    final ContentResolver cr = context.getContentResolver();
+                    final int offset = db.getCount(cr, "bookmarks");
+                    db.addDistributionBookmarks(cr, distribution, offset);
                 }
             }
         });

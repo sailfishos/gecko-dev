@@ -270,6 +270,7 @@ template <class> struct TypeToDataType { /* Unexpected return type for a VMFunct
 template <> struct TypeToDataType<bool> { static const DataType result = Type_Bool; };
 template <> struct TypeToDataType<JSObject *> { static const DataType result = Type_Object; };
 template <> struct TypeToDataType<NativeObject *> { static const DataType result = Type_Object; };
+template <> struct TypeToDataType<PlainObject *> { static const DataType result = Type_Object; };
 template <> struct TypeToDataType<InlineTypedObject *> { static const DataType result = Type_Object; };
 template <> struct TypeToDataType<DeclEnvObject *> { static const DataType result = Type_Object; };
 template <> struct TypeToDataType<ArrayObject *> { static const DataType result = Type_Object; };
@@ -343,8 +344,8 @@ template <> struct TypeToArgProperties<MutableHandleValue> {
 template <> struct TypeToArgProperties<HandleShape> {
     static const uint32_t result = TypeToArgProperties<Shape *>::result | VMFunction::ByRef;
 };
-template <> struct TypeToArgProperties<HandleTypeObject> {
-    static const uint32_t result = TypeToArgProperties<types::TypeObject *>::result | VMFunction::ByRef;
+template <> struct TypeToArgProperties<HandleObjectGroup> {
+    static const uint32_t result = TypeToArgProperties<ObjectGroup *>::result | VMFunction::ByRef;
 };
 
 // Convert argument type to whether or not it should be passed in a float
@@ -381,7 +382,7 @@ template <> struct TypeToRootType<MutableHandleValue> {
 template <> struct TypeToRootType<HandleShape> {
     static const uint32_t result = VMFunction::RootCell;
 };
-template <> struct TypeToRootType<HandleTypeObject> {
+template <> struct TypeToRootType<HandleObjectGroup> {
     static const uint32_t result = VMFunction::RootCell;
 };
 template <> struct TypeToRootType<HandleScript> {
@@ -657,7 +658,6 @@ template<bool Equal>
 bool StringsEqual(JSContext *cx, HandleString left, HandleString right, bool *res);
 
 JSObject *NewInitObject(JSContext *cx, HandlePlainObject templateObject);
-JSObject *NewInitObjectWithClassPrototype(JSContext *cx, HandlePlainObject templateObject);
 
 bool ArrayPopDense(JSContext *cx, HandleObject obj, MutableHandleValue rval);
 bool ArrayPushDense(JSContext *cx, HandleArrayObject obj, HandleValue v, uint32_t *length);
@@ -674,7 +674,7 @@ bool SetProperty(JSContext *cx, HandleObject obj, HandlePropertyName name, Handl
 bool InterruptCheck(JSContext *cx);
 
 void *MallocWrapper(JSRuntime *rt, size_t nbytes);
-JSObject *NewCallObject(JSContext *cx, HandleShape shape, HandleTypeObject type,
+JSObject *NewCallObject(JSContext *cx, HandleShape shape, HandleObjectGroup group,
                         uint32_t lexicalBegin);
 JSObject *NewSingletonCallObject(JSContext *cx, HandleShape shape, uint32_t lexicalBegin);
 JSObject *NewStringObject(JSContext *cx, HandleString str);
@@ -698,6 +698,7 @@ uint32_t GetIndexFromString(JSString *str);
 bool DebugPrologue(JSContext *cx, BaselineFrame *frame, jsbytecode *pc, bool *mustReturn);
 bool DebugEpilogue(JSContext *cx, BaselineFrame *frame, jsbytecode *pc, bool ok);
 bool DebugEpilogueOnBaselineReturn(JSContext *cx, BaselineFrame *frame, jsbytecode *pc);
+void FrameIsDebuggeeCheck(BaselineFrame *frame);
 
 JSObject *CreateGenerator(JSContext *cx, BaselineFrame *frame);
 bool NormalSuspend(JSContext *cx, HandleObject obj, BaselineFrame *frame, jsbytecode *pc,
@@ -759,7 +760,7 @@ void MarkValueFromIon(JSRuntime *rt, Value *vp);
 void MarkStringFromIon(JSRuntime *rt, JSString **stringp);
 void MarkObjectFromIon(JSRuntime *rt, JSObject **objp);
 void MarkShapeFromIon(JSRuntime *rt, Shape **shapep);
-void MarkTypeObjectFromIon(JSRuntime *rt, types::TypeObject **typep);
+void MarkObjectGroupFromIon(JSRuntime *rt, ObjectGroup **groupp);
 
 // Helper for generatePreBarrier.
 inline void *
@@ -774,8 +775,8 @@ IonMarkFunction(MIRType type)
         return JS_FUNC_TO_DATA_PTR(void *, MarkObjectFromIon);
       case MIRType_Shape:
         return JS_FUNC_TO_DATA_PTR(void *, MarkShapeFromIon);
-      case MIRType_TypeObject:
-        return JS_FUNC_TO_DATA_PTR(void *, MarkTypeObjectFromIon);
+      case MIRType_ObjectGroup:
+        return JS_FUNC_TO_DATA_PTR(void *, MarkObjectGroupFromIon);
       default: MOZ_CRASH();
     }
 }

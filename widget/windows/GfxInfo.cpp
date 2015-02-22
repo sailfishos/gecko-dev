@@ -27,7 +27,9 @@ using namespace mozilla;
 using namespace mozilla::widget;
 
 #ifdef DEBUG
-NS_IMPL_ISUPPORTS_INHERITED(GfxInfo, GfxInfoBase, nsIGfxInfoDebug)
+NS_IMPL_ISUPPORTS_INHERITED(GfxInfo, GfxInfoBase, nsIGfxInfo2, nsIGfxInfoDebug)
+#else
+NS_IMPL_ISUPPORTS_INHERITED(GfxInfo, GfxInfoBase, nsIGfxInfo2)
 #endif
 
 static const uint32_t allWindowsVersions = 0xffffffff;
@@ -549,6 +551,8 @@ GfxInfo::Init()
 
   AddCrashReportAnnotations();
 
+  GetCountryCode();
+
   return rv;
 }
 
@@ -715,6 +719,15 @@ CheckForCiscoVPN() {
 }
 #endif
 
+/* interface nsIGfxInfo2 */
+/* readonly attribute DOMString countryCode; */
+NS_IMETHODIMP
+GfxInfo::GetCountryCode(nsAString& aCountryCode)
+{
+  aCountryCode = mCountryCode;
+  return NS_OK;
+}
+
 void
 GfxInfo::AddCrashReportAnnotations()
 {
@@ -796,6 +809,28 @@ GfxInfo::AddCrashReportAnnotations()
 #endif
 }
 
+void
+GfxInfo::GetCountryCode()
+{
+  GEOID geoid = GetUserGeoID(GEOCLASS_NATION);
+  if (geoid == GEOID_NOT_AVAILABLE) {
+    return;
+  }
+  // Get required length
+  int numChars = GetGeoInfoW(geoid, GEO_ISO2, nullptr, 0, 0);
+  if (!numChars) {
+    return;
+  }
+  // Now get the string for real
+  mCountryCode.SetLength(numChars);
+  numChars = GetGeoInfoW(geoid, GEO_ISO2, wwc(mCountryCode.BeginWriting()),
+                         mCountryCode.Length(), 0);
+  if (numChars) {
+    // numChars includes null terminator
+    mCountryCode.Truncate(numChars - 1);
+  }
+}
+
 static OperatingSystem
 WindowsVersionToOperatingSystem(int32_t aWindowsVersion)
 {
@@ -862,6 +897,12 @@ GfxInfo::GetGfxDriverInfo()
       (nsAString&) GfxDriverInfo::GetDeviceVendor(VendorATI), GfxDriverInfo::allDevices,
       GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
       DRIVER_EQUAL, V(8,832,0,0));
+
+    // Bug 1118695
+    APPEND_TO_DRIVER_BLOCKLIST2( DRIVER_OS_WINDOWS_7,
+      (nsAString&) GfxDriverInfo::GetDeviceVendor(VendorATI), GfxDriverInfo::allDevices,
+      GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_EQUAL, V(8,783,2,2000));
 
     /*
      * Bug 783517 - crashes in AMD driver on Windows 8
@@ -1033,6 +1074,11 @@ GfxInfo::GetGfxDriverInfo()
     APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
       (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorNVIDIA), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Nvidia310M),
       nsIGfxInfo::FEATURE_DIRECT2D, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+      DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions);
+
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorATI), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(AMDRadeonHD5800),
+      nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
       DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions);
   }
   return *mDriverInfo;

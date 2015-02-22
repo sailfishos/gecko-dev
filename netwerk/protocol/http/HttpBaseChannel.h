@@ -241,7 +241,7 @@ public:
     const NetAddr& GetPeerAddr() { return mPeerAddr; }
 
 public: /* Necko internal use only... */
-
+    bool IsNavigation();
 
     // Return whether upon a redirect code of httpStatus for method, the
     // request method should be rewritten to GET.
@@ -289,10 +289,8 @@ protected:
   // Checks whether or not aURI and mOriginalURI share the same domain.
   bool SameOriginWithOriginalUri(nsIURI *aURI);
 
-  // GetPrincipal
-  // Returns the channel principal. If requireAppId is true, then returns
-  // null if the principal has unknown appId.
-  nsIPrincipal *GetPrincipal(bool requireAppId);
+  // GetPrincipal Returns the channel's URI principal.
+  nsIPrincipal *GetURIPrincipal();
 
   // Returns true if this channel should intercept the network request and prepare
   // for a possible synthesized response instead.

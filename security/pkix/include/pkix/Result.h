@@ -22,8 +22,8 @@
  * limitations under the License.
  */
 
-#ifndef mozilla_pkix__Result_h
-#define mozilla_pkix__Result_h
+#ifndef mozilla_pkix_Result_h
+#define mozilla_pkix_Result_h
 
 #include <cassert>
 
@@ -173,6 +173,12 @@ static const unsigned int FATAL_ERROR_FLAG = 0x800;
                      MOZILLA_PKIX_ERROR_NO_RFC822NAME_MATCH) \
     MOZILLA_PKIX_MAP(ERROR_UNSUPPORTED_ELLIPTIC_CURVE, 44, \
                      SEC_ERROR_UNSUPPORTED_ELLIPTIC_CURVE) \
+    MOZILLA_PKIX_MAP(ERROR_NOT_YET_VALID_CERTIFICATE, 45, \
+                     MOZILLA_PKIX_ERROR_NOT_YET_VALID_CERTIFICATE) \
+    MOZILLA_PKIX_MAP(ERROR_NOT_YET_VALID_ISSUER_CERTIFICATE, 46, \
+                     MOZILLA_PKIX_ERROR_NOT_YET_VALID_ISSUER_CERTIFICATE) \
+    MOZILLA_PKIX_MAP(ERROR_UNSUPPORTED_EC_POINT_FORM, 47, \
+                     SEC_ERROR_UNSUPPORTED_EC_POINT_FORM) \
     MOZILLA_PKIX_MAP(FATAL_ERROR_INVALID_ARGS, FATAL_ERROR_FLAG | 1, \
                      SEC_ERROR_INVALID_ARGS) \
     MOZILLA_PKIX_MAP(FATAL_ERROR_INVALID_STATE, FATAL_ERROR_FLAG | 2, \
@@ -214,4 +220,4 @@ NotReached(const char* /*explanation*/, Result result)
 
 } } // namespace mozilla::pkix
 
-#endif // mozilla_pkix__Result_h
+#endif // mozilla_pkix_Result_h

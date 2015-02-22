@@ -10,6 +10,7 @@
 #include "ds/SplayTree.h"
 #include "jit/CompactBuffer.h"
 #include "jit/CompileInfo.h"
+#include "jit/OptimizationTracking.h"
 #include "jit/shared/CodeGenerator-shared.h"
 
 namespace js {
@@ -106,6 +107,23 @@ class JitcodeGlobalEntry
         // of the memory space.
         JitcodeIonTable *regionTable_;
 
+        // optsRegionTable_ points to the table within the compact
+        // optimizations map indexing all regions that have tracked
+        // optimization attempts. optsTypesTable_ is the tracked typed info
+        // associated with the attempts vectors; it is the same length as the
+        // attempts table. optsAttemptsTable_ is the table indexing those
+        // attempts vectors.
+        //
+        // All pointers point into the same block of memory; the beginning of
+        // the block is optRegionTable_->payloadStart().
+        const IonTrackedOptimizationsRegionTable *optsRegionTable_;
+        const IonTrackedOptimizationsTypesTable *optsTypesTable_;
+        const IonTrackedOptimizationsAttemptsTable *optsAttemptsTable_;
+
+        // The types table above records type sets, which have been gathered
+        // into one vector here.
+        IonTrackedTypeVector *optsAllTypes_;
+
         struct ScriptNamePair {
             JSScript *script;
             char *str;
@@ -136,6 +154,21 @@ class JitcodeGlobalEntry
             BaseEntry::init(Ion, nativeStartAddr, nativeEndAddr);
             regionTable_ = regionTable;
             scriptList_ = scriptList;
+            optsRegionTable_ = nullptr;
+            optsTypesTable_ = nullptr;
+            optsAllTypes_ = nullptr;
+            optsAttemptsTable_ = nullptr;
+        }
+
+        void initTrackedOptimizations(const IonTrackedOptimizationsRegionTable *regionTable,
+                                      const IonTrackedOptimizationsTypesTable *typesTable,
+                                      const IonTrackedOptimizationsAttemptsTable *attemptsTable,
+                                      IonTrackedTypeVector *allTypes)
+        {
+            optsRegionTable_ = regionTable;
+            optsTypesTable_ = typesTable;
+            optsAttemptsTable_ = attemptsTable;
+            optsAllTypes_ = allTypes;
         }
 
         SizedScriptList *sizedScriptList() const {
@@ -176,12 +209,39 @@ class JitcodeGlobalEntry
 
         uint32_t callStackAtAddr(JSRuntime *rt, void *ptr, const char **results,
                                  uint32_t maxResults) const;
+
+        bool hasTrackedOptimizations() const {
+            return !!optsRegionTable_;
+        }
+
+        IonTrackedOptimizationsAttempts trackedOptimizationAttempts(uint8_t index) {
+            MOZ_ASSERT(hasTrackedOptimizations());
+            return optsAttemptsTable_->entry(index);
+        }
+
+        IonTrackedOptimizationsTypeInfo trackedOptimizationTypeInfo(uint8_t index) {
+            MOZ_ASSERT(hasTrackedOptimizations());
+            return optsTypesTable_->entry(index);
+        }
+
+        const IonTrackedTypeVector *allTrackedTypes() {
+            MOZ_ASSERT(hasTrackedOptimizations());
+            return optsAllTypes_;
+        }
+
+        mozilla::Maybe<uint8_t> trackedOptimizationIndexAtAddr(void *ptr);
     };
 
     struct BaselineEntry : public BaseEntry
     {
         JSScript *script_;
         const char *str_;
+
+        // Last location that caused Ion to abort compilation and the reason
+        // therein, if any. Only actionable aborts are tracked. Internal
+        // errors like OOMs are not.
+        jsbytecode *ionAbortPc_;
+        const char *ionAbortMessage_;
 
         void init(void *nativeStartAddr, void *nativeEndAddr, JSScript *script, const char *str)
         {
@@ -197,6 +257,18 @@ class JitcodeGlobalEntry
 
         const char *str() const {
             return str_;
+        }
+
+        void trackIonAbort(jsbytecode *pc, const char *message) {
+            MOZ_ASSERT(script_->containsPC(pc));
+            MOZ_ASSERT(message);
+            ionAbortPc_ = pc;
+            ionAbortMessage_ = message;
+        }
+
+        bool hadIonAbort() const {
+            MOZ_ASSERT(!ionAbortPc_ || ionAbortMessage_);
+            return ionAbortPc_ != nullptr;
         }
 
         void destroy();
@@ -488,6 +560,46 @@ class JitcodeGlobalEntry
 
     // Compute a profiling string for a given script.
     static char *createScriptString(JSContext *cx, JSScript *script, size_t *length=nullptr);
+
+    bool hasTrackedOptimizations() const {
+        switch (kind()) {
+          case Ion:
+            return ionEntry().hasTrackedOptimizations();
+          case Baseline:
+          case IonCache:
+          case Dummy:
+            break;
+          default:
+            MOZ_CRASH("Invalid JitcodeGlobalEntry kind.");
+        }
+        return false;
+    }
+
+    mozilla::Maybe<uint8_t> trackedOptimizationIndexAtAddr(void *addr) {
+        switch (kind()) {
+          case Ion:
+            return ionEntry().trackedOptimizationIndexAtAddr(addr);
+          case Baseline:
+          case IonCache:
+          case Dummy:
+            break;
+          default:
+            MOZ_CRASH("Invalid JitcodeGlobalEntry kind.");
+        }
+        return mozilla::Nothing();
+    }
+
+    IonTrackedOptimizationsAttempts trackedOptimizationAttempts(uint8_t index) {
+        return ionEntry().trackedOptimizationAttempts(index);
+    }
+
+    IonTrackedOptimizationsTypeInfo trackedOptimizationTypeInfo(uint8_t index) {
+        return ionEntry().trackedOptimizationTypeInfo(index);
+    }
+
+    const IonTrackedTypeVector *allTrackedTypes() {
+        return ionEntry().allTrackedTypes();
+    }
 };
 
 /*

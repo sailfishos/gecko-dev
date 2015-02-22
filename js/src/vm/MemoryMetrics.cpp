@@ -358,7 +358,7 @@ StatsArenaCallback(JSRuntime *rt, void *data, gc::Arena *arena,
     // unused space like this:  arenaUnused = maxArenaUnused - arenaUsed.
     // We do this by setting arenaUnused to maxArenaUnused here, and then
     // subtracting thingSize for every used cell, in StatsCellCallback().
-    rtStats->currZoneStats->unusedGCThings += allocationSpace;
+    rtStats->currZoneStats->unusedGCThings.addToKind(traceKind, allocationSpace);
 }
 
 static CompartmentStats *
@@ -549,10 +549,10 @@ StatsCellCallback(JSRuntime *rt, void *data, void *thing, JSGCTraceKind traceKin
         break;
       }
 
-      case JSTRACE_TYPE_OBJECT: {
-        types::TypeObject *obj = static_cast<types::TypeObject *>(thing);
-        zStats->typeObjectsGCHeap += thingSize;
-        zStats->typeObjectsMallocHeap += obj->sizeOfExcludingThis(rtStats->mallocSizeOf_);
+      case JSTRACE_OBJECT_GROUP: {
+        ObjectGroup *group = static_cast<ObjectGroup *>(thing);
+        zStats->objectGroupsGCHeap += thingSize;
+        zStats->objectGroupsMallocHeap += group->sizeOfExcludingThis(rtStats->mallocSizeOf_);
         break;
       }
 
@@ -561,7 +561,7 @@ StatsCellCallback(JSRuntime *rt, void *data, void *thing, JSGCTraceKind traceKin
     }
 
     // Yes, this is a subtraction:  see StatsArenaCallback() for details.
-    zStats->unusedGCThings -= thingSize;
+    zStats->unusedGCThings.addToKind(traceKind, -thingSize);
 }
 
 bool
@@ -763,7 +763,7 @@ JS::CollectRuntimeStats(JSRuntime *rt, RuntimeStats *rtStats, ObjectPrivateVisit
 #ifdef DEBUG
     // Check that the in-arena measurements look ok.
     size_t totalArenaSize = rtStats->zTotals.gcHeapArenaAdmin +
-                            rtStats->zTotals.unusedGCThings +
+                            rtStats->zTotals.unusedGCThings.totalSize() +
                             rtStats->gcHeapGCThings;
     MOZ_ASSERT(totalArenaSize % gc::ArenaSize == 0);
 #endif
@@ -782,7 +782,7 @@ JS::CollectRuntimeStats(JSRuntime *rt, RuntimeStats *rtStats, ObjectPrivateVisit
     rtStats->gcHeapUnusedArenas = rtStats->gcHeapChunkTotal -
                                   rtStats->gcHeapDecommittedArenas -
                                   rtStats->gcHeapUnusedChunks -
-                                  rtStats->zTotals.unusedGCThings -
+                                  rtStats->zTotals.unusedGCThings.totalSize() -
                                   rtStats->gcHeapChunkAdmin -
                                   rtStats->zTotals.gcHeapArenaAdmin -
                                   rtStats->gcHeapGCThings;

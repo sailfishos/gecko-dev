@@ -330,9 +330,12 @@ IsInvisibleBreak(nsINode *aNode) {
   }
 
   // If the BRFrame has caused a visible line break, it should have a next
-  // sibling, or otherwise no siblings and a non-zero height.
+  // sibling, or otherwise no siblings (or immediately after a br) and a
+  // non-zero height.
   bool visible = frame->GetNextSibling() ||
-                 (!frame->GetPrevSibling() && frame->GetRect().Height() != 0);
+                 ((!frame->GetPrevSibling() ||
+                   frame->GetPrevSibling()->GetType() == nsGkAtoms::brFrame) &&
+                  frame->GetRect().Height() != 0);
   return !visible;
 }
 
@@ -569,7 +572,7 @@ ConvertAndWrite(const nsAString& aString,
   }
 
   nsAutoCString charXferString;
-  if (!charXferString.SetLength(charLength, fallible_t()))
+  if (!charXferString.SetLength(charLength, fallible))
     return NS_ERROR_OUT_OF_MEMORY;
 
   char* charXferBuf = charXferString.BeginWriting();
@@ -968,6 +971,7 @@ nsDocumentEncoder::SerializeRangeToString(nsRange *aRange,
   NS_ENSURE_TRUE(endParent, NS_ERROR_FAILURE);
   int32_t endOffset = aRange->EndOffset();
 
+  mStartDepth = mEndDepth = 0;
   mCommonAncestors.Clear();
   mStartNodes.Clear();
   mStartOffsets.Clear();
@@ -1068,6 +1072,7 @@ nsDocumentEncoder::EncodeToStringWithMaxLength(uint32_t aMaxLength,
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIDOMNode> node, prevNode;
+    uint32_t firstRangeStartDepth = 0;
     for (i = 0; i < count; i++) {
       mSelection->GetRangeAt(i, getter_AddRefs(range));
 
@@ -1117,7 +1122,11 @@ nsDocumentEncoder::EncodeToStringWithMaxLength(uint32_t aMaxLength,
       nsRange* r = static_cast<nsRange*>(range.get());
       rv = SerializeRangeToString(r, output);
       NS_ENSURE_SUCCESS(rv, rv);
+      if (i == 0) {
+        firstRangeStartDepth = mStartDepth;
+      }
     }
+    mStartDepth = firstRangeStartDepth;
 
     if (prevNode) {
       nsCOMPtr<nsINode> p = do_QueryInterface(prevNode);

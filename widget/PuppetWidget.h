@@ -21,7 +21,6 @@
 #include "nsBaseWidget.h"
 #include "nsIScreenManager.h"
 #include "nsThreadUtils.h"
-#include "nsWeakReference.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 
@@ -37,8 +36,7 @@ namespace widget {
 
 struct AutoCacheNativeKeyCommands;
 
-class PuppetWidget : public nsBaseWidget,
-                     public nsSupportsWeakReference
+class PuppetWidget : public nsBaseWidget
 {
   typedef mozilla::dom::TabChild TabChild;
   typedef mozilla::gfx::DrawTarget DrawTarget;
@@ -59,14 +57,12 @@ public:
   NS_IMETHOD Create(nsIWidget*        aParent,
                     nsNativeWidget    aNativeParent,
                     const nsIntRect&  aRect,
-                    nsDeviceContext*  aContext,
                     nsWidgetInitData* aInitData = nullptr) MOZ_OVERRIDE;
 
   void InitIMEState();
 
   virtual already_AddRefed<nsIWidget>
   CreateChild(const nsIntRect  &aRect,
-              nsDeviceContext  *aContext,
               nsWidgetInitData *aInitData = nullptr,
               bool             aForceUseIWidgetParent = false) MOZ_OVERRIDE;
 
@@ -126,8 +122,8 @@ public:
   { return NS_ERROR_UNEXPECTED; }
   
   // PuppetWidgets are always at <0, 0>.
-  virtual nsIntPoint WidgetToScreenOffset() MOZ_OVERRIDE
-  { return nsIntPoint(0, 0); }
+  virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() MOZ_OVERRIDE
+  { return mozilla::LayoutDeviceIntPoint(0, 0); }
 
   void InitEvent(WidgetGUIEvent& aEvent, nsIntPoint* aPoint = nullptr);
 
@@ -164,7 +160,6 @@ public:
                   LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
                   bool* aAllowRetaining = nullptr) MOZ_OVERRIDE;
 
-  NS_IMETHOD NotifyIME(const IMENotification& aIMENotification) MOZ_OVERRIDE;
   NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
                                     const InputContextAction& aAction) MOZ_OVERRIDE;
   NS_IMETHOD_(InputContext) GetInputContext() MOZ_OVERRIDE;
@@ -201,9 +196,18 @@ public:
   // Get the screen position of the application window.
   nsIntPoint GetWindowPosition();
 
+  NS_IMETHOD StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
+                            int32_t aPanelX, int32_t aPanelY,
+                            nsString& aCommitted) MOZ_OVERRIDE;
+
+  NS_IMETHOD SetPluginFocused(bool& aFocused) MOZ_OVERRIDE;
+
 protected:
   bool mEnabled;
   bool mVisible;
+
+  virtual nsresult NotifyIMEInternal(
+                     const IMENotification& aIMENotification) MOZ_OVERRIDE;
 
 private:
   nsresult Paint();
@@ -219,11 +223,11 @@ private:
   nsresult NotifyIMEOfEditorRect();
   nsresult NotifyIMEOfPositionChange();
 
-  bool GetEditorRect(nsIntRect& aEditorRect);
+  bool GetEditorRect(mozilla::LayoutDeviceIntRect& aEditorRect);
   bool GetCompositionRects(uint32_t& aStartOffset,
-                           nsTArray<nsIntRect>& aRectArray,
+                           nsTArray<mozilla::LayoutDeviceIntRect>& aRectArray,
                            uint32_t& aTargetCauseOffset);
-  bool GetCaretRect(nsIntRect& aCaretRect, uint32_t aCaretOffset);
+  bool GetCaretRect(mozilla::LayoutDeviceIntRect& aCaretRect, uint32_t aCaretOffset);
   uint32_t GetCaretOffset();
 
   class PaintTask : public nsRunnable {
@@ -252,7 +256,6 @@ private:
   mozilla::RefPtr<DrawTarget> mDrawTarget;
   // IME
   nsIMEUpdatePreference mIMEPreferenceOfParent;
-  bool mIMEComposing;
   // Latest seqno received through events
   uint32_t mIMELastReceivedSeqno;
   // Chrome's seqno value when last blur occurred

@@ -18,7 +18,7 @@ function test() {
   // If a sidebar is already open, close it.
   if (!document.getElementById("sidebar-box").hidden) {
     info("Unexpected sidebar found - a previous test failed to cleanup correctly");
-    toggleSidebar();
+    SidebarUI.hide();
   }
 
   let sidebar = document.getElementById("sidebar");
@@ -53,11 +53,10 @@ function test() {
     init: function(aCallback) {
       // Add a history entry.
       let uri = PlacesUtils._uri(TEST_URL);
-      addVisits(
-        { uri: uri, visitDate: Date.now() * 1000,
-          transition: PlacesUtils.history.TRANSITION_TYPED },
-        window,
-        aCallback);
+      PlacesTestUtils.addVisits({
+        uri: uri, visitDate: Date.now() * 1000,
+        transition: PlacesUtils.history.TRANSITION_TYPED
+      }).then(aCallback);
     },
     prepare: function() {
       sidebar.contentDocument.getElementById("byvisited").doCommand();
@@ -77,7 +76,7 @@ function test() {
 
   function testPlacesPanel(preFunc, postFunc) {
     currentTest.init(function() {
-      toggleSidebar(currentTest.sidebarName);
+      SidebarUI.show(currentTest.sidebarName);
     });
 
     sidebar.addEventListener("load", function() {
@@ -96,7 +95,7 @@ function test() {
           aSubject.Dialog.ui.button0.click();
 
           executeSoon(function () {
-              toggleSidebar(currentTest.sidebarName);
+              SidebarUI.hide();
               currentTest.cleanup(postFunc);
             });
         }

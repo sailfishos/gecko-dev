@@ -14,8 +14,6 @@
 #include "nsBaseWidget.h"
 #include "mozilla/EventForwards.h"
 
-#include "nsWeakReference.h"
-
 #include "nsGkAtoms.h"
 #include "nsIIdleServiceInternal.h"
 #include "nsIRunnable.h"
@@ -77,8 +75,7 @@ class QWheelEvent;
 namespace mozilla {
 namespace widget {
 class MozQWidget;
-class nsWindow : public nsBaseWidget,
-                 public nsSupportsWeakReference
+class nsWindow : public nsBaseWidget
 {
 public:
     nsWindow();
@@ -91,7 +88,6 @@ public:
     NS_IMETHOD Create(nsIWidget        *aParent,
                       nsNativeWidget   aNativeParent,
                       const nsIntRect  &aRect,
-                      nsDeviceContext *aContext,
                       nsWidgetInitData *aInitData);
     NS_IMETHOD Destroy(void);
 
@@ -124,7 +120,7 @@ public:
     {
         return NS_OK;
     }
-    virtual nsIntPoint WidgetToScreenOffset();
+    virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset();
     NS_IMETHOD DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
                              nsEventStatus& aStatus);
     NS_IMETHOD CaptureRollupEvents(nsIRollupListener *aListener,

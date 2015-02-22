@@ -481,9 +481,18 @@ ValueNumberer::removePredecessorAndDoDCE(MBasicBlock *block, MBasicBlock *pred, 
         MDefinition *op = phi->getOperand(predIndex);
         phi->removeOperand(predIndex);
 
-        nextDef_ = *iter;
+        nextDef_ = iter != end ? *iter : nullptr;
         if (!handleUseReleased(op, DontSetUseRemoved) || !processDeadDefs())
             return false;
+
+        // If |nextDef_| became dead while we had it pinned, advance the iterator
+        // and discard it now.
+        while (nextDef_ && !nextDef_->hasUses()) {
+            phi = nextDef_->toPhi();
+            iter++;
+            nextDef_ = iter != end ? *iter : nullptr;
+            discardDefsRecursively(phi);
+        }
     }
     nextDef_ = nullptr;
 
@@ -749,6 +758,7 @@ ValueNumberer::visitDefinition(MDefinition *def)
         JitSpew(JitSpew_GVN, "      Folded %s%u to %s%u",
                 def->opName(), def->id(), sim->opName(), sim->id());
 #endif
+        MOZ_ASSERT(!sim->isDiscarded());
         ReplaceAllUsesWith(def, sim);
 
         // The node's foldsTo said |def| can be replaced by |rep|. If |def| is a
@@ -759,7 +769,13 @@ ValueNumberer::visitDefinition(MDefinition *def)
         if (DeadIfUnused(def)) {
             if (!discardDefsRecursively(def))
                 return false;
+
+            // If that ended up discarding |sim|, then we're done here.
+            if (sim->isDiscarded())
+                return true;
         }
+
+        // Otherwise, procede to optimize with |sim| in place of |def|.
         def = sim;
     }
 

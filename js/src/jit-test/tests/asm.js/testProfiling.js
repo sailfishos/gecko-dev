@@ -56,10 +56,10 @@ var stacks;
 var ffi = function(enable) {
     if (enable == +1)
         enableSPSProfiling();
-    if (enable == -1)
-        disableSPSProfiling();
     enableSingleStepProfiling();
     stacks = disableSingleStepProfiling();
+    if (enable == -1)
+        disableSPSProfiling();
 }
 var f = asmLink(asmCompile('global','ffis',USE_ASM + "var ffi=ffis.ffi; function g(i) { i=i|0; ffi(i|0) } function f(i) { i=i|0; g(i|0) } return f"), null, {ffi});
 f(0);
@@ -128,21 +128,43 @@ setJitCompilerOption("ion.warmup.trigger", 10);
 setJitCompilerOption("baseline.warmup.trigger", 0);
 setJitCompilerOption("offthread-compilation.enable", 0);
 
+var m = asmCompile('g','ffis', USE_ASM + "var ffi1=ffis.ffi1, ffi2=ffis.ffi2; function f() { return ((ffi1()|0) + (ffi2()|0))|0 } return f");
+
 var ffi1 = function() { return 10 }
 var ffi2 = function() { return 73 }
-var f = asmLink(asmCompile('g','ffis', USE_ASM + "var ffi1=ffis.ffi1, ffi2=ffis.ffi2; function f() { return ((ffi1()|0) + (ffi2()|0))|0 } return f"), null, {ffi1,ffi2});
-// Interpreter FFI exit
+var f = asmLink(m, null, {ffi1,ffi2});
+
+// Interp FFI exit
 enableSingleStepProfiling();
 assertEq(f(), 83);
 var stacks = disableSingleStepProfiling();
 assertStackContainsSeq(stacks, ">,f,>,<,f,>,f,>,<,f,>,f,>,>");
 
+// Ion FFI exit
 for (var i = 0; i < 20; i++)
     assertEq(f(), 83);
 enableSingleStepProfiling();
 assertEq(f(), 83);
 var stacks = disableSingleStepProfiling();
 assertStackContainsSeq(stacks, ">,f,>,<,f,>,f,>,<,f,>,f,>,>");
+
+var ffi1 = function() { return { valueOf() { return 20 } } }
+var ffi2 = function() { return { valueOf() { return 74 } } }
+var f = asmLink(m, null, {ffi1,ffi2});
+
+// Interp FFI exit
+enableSingleStepProfiling();
+assertEq(f(), 94);
+var stacks = disableSingleStepProfiling();
+assertStackContainsSeq(stacks, ">,f,>,<,f,>,f,>,<,f,>,f,>,>"); // TODO: add 'valueOf' once interp shows up
+
+// Ion FFI exit
+for (var i = 0; i < 20; i++)
+    assertEq(f(), 94);
+enableSingleStepProfiling();
+assertEq(f(), 94);
+var stacks = disableSingleStepProfiling();
+assertStackContainsSeq(stacks, ">,f,>,<,f,>,f,>,<,f,>,f,>,>"); // TODO: add 'valueOf' once interp shows up
 
 var ffi1 = function() { return 15 }
 var ffi2 = function() { return f2() + 17 }
@@ -171,6 +193,20 @@ enableSingleStepProfiling();
 assertThrowsInstanceOf(f, InternalError);
 var stacks = disableSingleStepProfiling();
 assertStackContainsSeq(stacks, ">,f,>,<,f,>,inline stub,f,>,<,f,>,inline stub,f,>");
+
+
+if (isSimdAvailable() && typeof SIMD !== 'undefined') {
+    // SIMD out-of-bounds exit
+    var buf = new ArrayBuffer(0x10000);
+    var f = asmLink(asmCompile('g','ffi','buf', USE_ASM + 'var f4=g.SIMD.float32x4; var f4l=f4.load; var u8=new g.Uint8Array(buf); function f(i) { i=i|0; return f4l(u8, 0xFFFF + i | 0); } return f'), this, {}, buf);
+    enableSingleStepProfiling();
+    assertThrowsInstanceOf(() => f(4), RangeError);
+    var stacks = disableSingleStepProfiling();
+    // TODO check that expected is actually the correctly expected string, when
+    // SIMD is implemented on ARM.
+    assertStackContainsSeq(stacks, ">,f,>,inline stub,f,>");
+}
+
 
 // This takes forever to run.
 // Stack-overflow exit test

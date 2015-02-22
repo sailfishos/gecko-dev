@@ -392,22 +392,13 @@ class CGDOMJSClass(CGThing):
                       ${objectMoved} /* objectMovedOp */
                     },
                     {
-                      nullptr, /* lookupGeneric */
                       nullptr, /* lookupProperty */
-                      nullptr, /* lookupElement */
-                      nullptr, /* defineGeneric */
                       nullptr, /* defineProperty */
-                      nullptr, /* defineElement */
-                      nullptr, /* getGeneric  */
+                      nullptr, /* hasProperty */
                       nullptr, /* getProperty */
-                      nullptr, /* getElement */
-                      nullptr, /* setGeneric */
                       nullptr, /* setProperty */
-                      nullptr, /* setElement */
                       nullptr, /* getOwnPropertyDescriptor */
-                      nullptr, /* getGenericAttributes */
-                      nullptr, /* setGenericAttributes */
-                      nullptr, /* deleteGeneric */
+                      nullptr, /* deleteProperty */
                       nullptr, /* watch */
                       nullptr, /* unwatch */
                       nullptr, /* getElements */
@@ -697,12 +688,9 @@ def InterfaceObjectProtoGetter(descriptor):
            interface prototype as a JS::Handle<JSObject*> or None if no such
            function exists.
     """
-    parentWithInterfaceObject = descriptor.interface.parent
-    while (parentWithInterfaceObject and
-           not parentWithInterfaceObject.hasInterfaceObject()):
-        parentWithInterfaceObject = parentWithInterfaceObject.parent
-    if parentWithInterfaceObject:
-        parentIfaceName = parentWithInterfaceObject.identifier.name
+    parentInterface = descriptor.interface.parent
+    if parentInterface:
+        parentIfaceName = parentInterface.identifier.name
         parentDesc = descriptor.getDescriptor(parentIfaceName)
         prefix = toBindingNamespace(parentDesc.name)
         protoGetter = prefix + "::GetConstructorObject"
@@ -2108,8 +2096,8 @@ def methodLength(method):
 
 def isMaybeExposedIn(member, descriptor):
     # All we can say for sure is that if this is a worker descriptor
-    # and member is only exposed in windows, then it's not exposed.
-    return not descriptor.workers or member.exposureSet != set(["Window"])
+    # and member is not exposed in any worker, then it's not exposed.
+    return not descriptor.workers or member.isExposedInAnyWorker()
 
 def clearableCachedAttrs(descriptor):
     return (m for m in descriptor.interface.members if
@@ -4062,7 +4050,9 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
                                         declArgs=declArgs)
 
     def incrementNestingLevel():
-        return 1 if nestingLevel is "" else ++nestingLevel
+        if nestingLevel is "":
+            return 1
+        return nestingLevel + 1
 
     assert not (isEnforceRange and isClamp)  # These are mutually exclusive
 
@@ -4580,13 +4570,15 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
 
             if tag in numericSuffixes or tag is IDLType.Tags.bool:
                 defaultStr = getHandleDefault(defaultValue)
-                value = declLoc + (".Value()" if nullable else "")
+                # Make sure we actually construct the thing inside the nullable.
+                value = declLoc + (".SetValue()" if nullable else "")
                 name = getUnionMemberName(defaultValue.type)
                 default = CGGeneric("%s.RawSetAs%s() = %s;\n" %
                                     (value, name, defaultStr))
             elif isinstance(defaultValue, IDLEmptySequenceValue):
                 name = getUnionMemberName(defaultValue.type)
-                value = declLoc + (".Value()" if nullable else "")
+                # Make sure we actually construct the thing inside the nullable.
+                value = declLoc + (".SetValue()" if nullable else "")
                 # It's enough to set us to the right type; that will
                 # create an empty array, which is all we need here.
                 default = CGGeneric("%s.RawSetAs%s();\n" %
@@ -5702,7 +5694,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
 
             nsTArray<nsString> keys;
             ${result}.GetKeys(keys);
-            JS::Rooted<JSObject*> returnObj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+            JS::Rooted<JSObject*> returnObj(cx, JS_NewPlainObject(cx));
             if (!returnObj) {
               $*{exceptionCode}
             }
@@ -6283,6 +6275,9 @@ class CGCallGenerator(CGThing):
                 self.cgRoot.prepend(CGWrapper(result, post=";\n"))
                 if resultOutParam is None:
                     call = CGWrapper(call, pre=resultVar + " = ")
+        elif result is not None:
+            assert resultOutParam is None
+            call = CGWrapper(call, pre=resultVar + " = ")
 
         call = CGWrapper(call, post=";\n")
         self.cgRoot.append(call)
@@ -6504,8 +6499,10 @@ class CGPerSignatureCall(CGThing):
                 for i in descriptor.interface.getInheritedInterfaces())):
                 cgThings.append(CGGeneric(dedent(
                     """
-                    if (mozilla::dom::CheckSafetyInPrerendering(cx, obj)) {
-                        //TODO: Handle call into unsafe API during Prerendering (Bug 730101)
+                    if (!mozilla::dom::EnforceNotInPrerendering(cx, obj)) {
+                        // Return false from the JSNative in order to trigger
+                        // an uncatchable exception.
+                        MOZ_ASSERT(!JS_IsExceptionPending(cx));
                         return false;
                     }
                     """)))
@@ -6836,12 +6833,14 @@ class CGMethodCall(CGThing):
         def filteredSignatures(signatures, descriptor):
             def typeExposedInWorkers(type):
                 return (not type.isGeckoInterface() or
-                        type.inner.isExternal() or
                         type.inner.isExposedInAnyWorker())
             if descriptor.workers:
                 # Filter out the signatures that should not be exposed in a
                 # worker.  The IDL parser enforces the return value being
                 # exposed correctly, but we have to check the argument types.
+                #
+                # If this code changes, adjust the self._deps
+                # computation in CGDDescriptor.__init__ as needed.
                 assert all(typeExposedInWorkers(sig[0]) for sig in signatures)
                 signatures = filter(
                     lambda sig: all(typeExposedInWorkers(arg.type)
@@ -7542,7 +7541,7 @@ class CGJsonifierMethod(CGSpecializedMethod):
 
     def definition_body(self):
         ret = dedent("""
-            JS::Rooted<JSObject*> result(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+            JS::Rooted<JSObject*> result(cx, JS_NewPlainObject(cx));
             if (!result) {
               return false;
             }
@@ -8438,10 +8437,10 @@ class CGEnum(CGThing):
     def declare(self):
         decl = fill(
             """
-            MOZ_BEGIN_ENUM_CLASS(${name}, uint32_t)
+            enum class ${name} : uint32_t {
               $*{enums}
               EndGuard_
-            MOZ_END_ENUM_CLASS(${name})
+            };
             """,
             name=self.enum.identifier.name,
             enums=",\n".join(map(getEnumValueName, self.enum.values())) + ",\n")
@@ -8855,7 +8854,7 @@ class CGUnionStruct(CGThing):
         dtor = CGSwitch("mType", destructorCases).define()
 
         methods.append(ClassMethod("Uninit", "void", [],
-                                   visibility="private", body=dtor,
+                                   visibility="public", body=dtor,
                                    bodyInHeader=not self.ownsMembers,
                                    inline=not self.ownsMembers))
 
@@ -11012,6 +11011,21 @@ class CGDescriptor(CGThing):
         assert not descriptor.concrete or descriptor.interface.hasInterfacePrototypeObject()
 
         self._deps = descriptor.interface.getDeps()
+        # If we have a worker descriptor, add dependencies on interface types we
+        # have as method arguments to overloaded methods.  See the
+        # filteredSignatures() bit in CGMethodCall.  Note that we have to add
+        # both interfaces that _are_ exposed in workers and ones that aren't;
+        # the idea is that we have to notice when the exposure set changes.
+        if descriptor.workers:
+            methods = (m for m in descriptor.interface.members if
+                       m.isMethod() and isMaybeExposedIn(m, descriptor) and
+                       len(m.signatures()) != 1)
+            for m in methods:
+                for sig in m.signatures():
+                    for arg in sig[1]:
+                        if (arg.type.isGeckoInterface() and
+                            not arg.type.inner.isExternal()):
+                            self._deps.add(arg.type.inner.filename())
 
         cgThings = []
         cgThings.append(CGGeneric(declare="typedef %s NativeType;\n" %
@@ -11516,7 +11530,7 @@ class CGDictionary(CGThing):
         else:
             body += fill(
                 """
-                JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+                JS::Rooted<JSObject*> obj(cx, JS_NewPlainObject(cx));
                 if (!obj) {
                   return false;
                 }
@@ -11593,16 +11607,28 @@ class CGDictionary(CGThing):
                                visibility="public",
                                body=self.getMemberInitializer(m))
                    for m in self.memberInfo]
+        if d.parent:
+            # We always want to init our parent with our non-initializing
+            # constructor arg, because either we're about to init ourselves (and
+            # hence our parent) or we don't want any init happening.
+            baseConstructors = [
+                "%s(%s)" % (self.makeClassName(d.parent),
+                            self.getNonInitializingCtorArg())
+            ]
+        else:
+            baseConstructors = None
         ctors = [
             ClassConstructor(
                 [],
                 visibility="public",
+                baseConstructors=baseConstructors,
                 body=(
                     "// Safe to pass a null context if we pass a null value\n"
                     "Init(nullptr, JS::NullHandleValue);\n")),
             ClassConstructor(
-                [Argument("int", "")],
-                visibility="protected",
+                [Argument("const FastDictionaryInitializer&", "")],
+                visibility="public",
+                baseConstructors=baseConstructors,
                 explicit=True,
                 bodyInHeader=True,
                 body='// Do nothing here; this is used by our "Fast" subclass\n')
@@ -11651,7 +11677,9 @@ class CGDictionary(CGThing):
             [],
             visibility="public",
             bodyInHeader=True,
-            baseConstructors=["%s(42)" % selfName],
+            baseConstructors=["%s(%s)" %
+                              (selfName,
+                               self.getNonInitializingCtorArg())],
             body="// Doesn't matter what int we pass to the parent constructor\n")
 
         fastStruct = CGClass("Fast" + selfName,
@@ -11717,6 +11745,23 @@ class CGDictionary(CGThing):
                       "  return false;\n"
                       "}\n")
         if member.defaultValue:
+            if (member.type.isUnion() and
+                (not member.type.nullable() or
+                 not isinstance(member.defaultValue, IDLNullValue))):
+                # Since this has a default value, it might have been initialized
+                # already.  Go ahead and uninit it before we try to init it
+                # again.
+                memberName = self.makeMemberName(member.identifier.name)
+                if member.type.nullable():
+                    conversion += fill(
+                        """
+                        if (!${memberName}.IsNull()) {
+                          ${memberName}.Value().Uninit();
+                        }
+                        """,
+                        memberName=memberName)
+                else:
+                    conversion += "%s.Uninit();\n" % memberName
             conversion += "${convert}"
         elif not conversionInfo.dealWithOptional:
             # We're required, but have no default value.  Make sure
@@ -11877,6 +11922,12 @@ class CGDictionary(CGThing):
             return "JS::UndefinedValue()"
         if type.isObject():
             return "nullptr"
+        if type.isDictionary():
+            # When we construct ourselves, we don't want to init our member
+            # dictionaries.  Either we're being constructed-but-not-initialized
+            # ourselves (and then we don't want to init them) or we're about to
+            # init ourselves and then we'll init them anyway.
+            return CGDictionary.getNonInitializingCtorArg();
         return None
 
     def getMemberSourceDescription(self, member):
@@ -11886,6 +11937,10 @@ class CGDictionary(CGThing):
     @staticmethod
     def makeIdName(name):
         return IDLToCIdentifier(name) + "_id"
+
+    @staticmethod
+    def getNonInitializingCtorArg():
+        return "FastDictionaryInitializer()"
 
     @staticmethod
     def isDictionaryCopyConstructible(dictionary):

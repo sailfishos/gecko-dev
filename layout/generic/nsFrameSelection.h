@@ -68,6 +68,7 @@ struct MOZ_STACK_CLASS nsPeekOffsetStruct
                      bool aScrollViewStop,
                      bool aIsKeyboardSelect,
                      bool aVisual,
+                     bool aExtend,
                      mozilla::EWordMovementType aWordMovementType = mozilla::eDefaultBehavior);
 
   // Note: Most arguments (input and output) are only used with certain values
@@ -122,6 +123,9 @@ struct MOZ_STACK_CLASS nsPeekOffsetStruct
   // mVisual: Whether bidi caret behavior is visual (true) or logical (false).
   //          Used with: eSelectCharacter, eSelectWord, eSelectBeginLine, eSelectEndLine.
   bool mVisual;
+
+  // mExtend: Whether the selection is being extended or moved.
+  bool mExtend;
 
   /*** Output arguments ***/
 
@@ -638,6 +642,7 @@ private:
   }
 
   friend class mozilla::dom::Selection;
+  friend struct mozilla::AutoPrepareFocusRange;
 #ifdef DEBUG
   void printSelection();       // for debugging
 #endif /* DEBUG */

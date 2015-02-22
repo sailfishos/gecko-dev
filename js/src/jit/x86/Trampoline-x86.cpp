@@ -370,6 +370,9 @@ JitCode *
 JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
 {
     MacroAssembler masm(cx);
+    // Caller:
+    // [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]] <- esp
+    // '-- #esi ---'
 
     // ArgumentsRectifierReg contains the |nargs| pushed onto the current frame.
     // Including |this|, there are (|nargs| + 1) arguments to copy.
@@ -380,6 +383,22 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
     masm.mov(eax, ecx);
     masm.andl(Imm32(CalleeTokenMask), ecx);
     masm.movzwl(Operand(ecx, JSFunction::offsetOfNargs()), ecx);
+
+    // The frame pointer and its padding are pushed on the stack.
+    // Including |this|, there are (|nformals| + 1) arguments to push to the
+    // stack.  Then we push a JitFrameLayout.  We compute the padding expressed
+    // in the number of extra |undefined| values to push on the stack.
+    static_assert(sizeof(JitFrameLayout) % JitStackAlignment == 0,
+      "No need to consider the JitFrameLayout for aligning the stack");
+    static_assert((sizeof(Value) + 2 * sizeof(void *)) % JitStackAlignment == 0,
+      "No need to consider |this| and the frame pointer and its padding for aligning the stack");
+    static_assert(JitStackAlignment % sizeof(Value) == 0,
+      "Ensure that we can pad the stack by pushing extra UndefinedValue");
+
+    const uint32_t alignment = JitStackAlignment / sizeof(Value);
+    MOZ_ASSERT(IsPowerOfTwo(alignment));
+    masm.addl(Imm32(alignment - 1 /* for padding */), ecx);
+    masm.andl(Imm32(~(alignment - 1)), ecx);
     masm.subl(esi, ecx);
 
     // Copy the number of actual arguments.
@@ -393,6 +412,17 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
     // BaselineJIT.cpp/InitFromBailout.  Check for the |#if defined(JS_CODEGEN_X86)| portions.
     masm.push(FramePointer);
     masm.movl(esp, FramePointer); // Save %esp.
+    masm.push(FramePointer /* padding */);
+
+    // Caller:
+    // [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]]
+    // '-- #esi ---'
+    //
+    // Rectifier frame:
+    // [ebp'] <- ebp [padding] <- esp [undef] [undef] [arg2] [arg1] [this]
+    //                                '--- #ecx ----' '-- #esi ---'
+    //
+    // [[argc] [callee] [descr] [raddr]]
 
     // Push undefined.
     {
@@ -978,6 +1008,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
     Label handle_IonJS;
     Label handle_BaselineStub;
     Label handle_Rectifier;
+    Label handle_IonAccessorIC;
     Label handle_Entry;
     Label end;
 
@@ -985,6 +1016,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_BaselineJS), &handle_IonJS);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_BaselineStub), &handle_BaselineStub);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_Rectifier), &handle_Rectifier);
+    masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_IonAccessorIC), &handle_IonAccessorIC);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_Entry), &handle_Entry);
 
     masm.assumeUnreachable("Invalid caller frame type when exiting from Ion frame.");
@@ -1149,6 +1181,52 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
         masm.loadPtr(stubFrameSavedFramePtr, scratch3);
         masm.addPtr(Imm32(sizeof(void *)), scratch3);
         masm.storePtr(scratch3, lastProfilingFrame);
+        masm.ret();
+    }
+
+    // JitFrame_IonAccessorIC
+    //
+    // The caller is always an IonJS frame.
+    //
+    //              Ion-Descriptor
+    //              Ion-ReturnAddr
+    //              ... ion frame data ... |- AccFrame-Descriptor.Size
+    //              StubCode             |
+    //              AccFrame-Descriptor  |- IonAccessorICFrameLayout::Size()
+    //              AccFrame-ReturnAddr  |
+    //              ... accessor frame data & args ... |- Descriptor.Size
+    //              ActualArgc      |
+    //              CalleeToken     |- JitFrameLayout::Size()
+    //              Descriptor      |
+    //    FP -----> ReturnAddr      |
+    masm.bind(&handle_IonAccessorIC);
+    {
+        // scratch2 := StackPointer + Descriptor.size + JitFrameLayout::Size()
+        masm.lea(Operand(StackPointer, scratch1, TimesOne, JitFrameLayout::Size()), scratch2);
+
+        // scratch3 := AccFrame-Descriptor.Size
+        masm.loadPtr(Address(scratch2, IonAccessorICFrameLayout::offsetOfDescriptor()), scratch3);
+#ifdef DEBUG
+        // Assert previous frame is an IonJS frame.
+        masm.movePtr(scratch3, scratch1);
+        masm.and32(Imm32((1 << FRAMETYPE_BITS) - 1), scratch1);
+        {
+            Label checkOk;
+            masm.branch32(Assembler::Equal, scratch1, Imm32(JitFrame_IonJS), &checkOk);
+            masm.assumeUnreachable("IonAccessorIC frame must be preceded by IonJS frame");
+            masm.bind(&checkOk);
+        }
+#endif
+        masm.rshiftPtr(Imm32(FRAMESIZE_SHIFT), scratch3);
+
+        // lastProfilingCallSite := AccFrame-ReturnAddr
+        masm.loadPtr(Address(scratch2, IonAccessorICFrameLayout::offsetOfReturnAddress()), scratch1);
+        masm.storePtr(scratch1, lastProfilingCallSite);
+
+        // lastProfilingFrame := AccessorFrame + AccFrame-Descriptor.Size +
+        //                       IonAccessorICFrameLayout::Size()
+        masm.lea(Operand(scratch2, scratch3, TimesOne, IonAccessorICFrameLayout::Size()), scratch1);
+        masm.storePtr(scratch1, lastProfilingFrame);
         masm.ret();
     }
 

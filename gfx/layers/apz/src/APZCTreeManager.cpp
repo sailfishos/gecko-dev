@@ -12,6 +12,7 @@
 #include "Layers.h"                     // for Layer, etc
 #include "mozilla/dom/Touch.h"          // for Touch
 #include "mozilla/gfx/Point.h"          // for Point
+#include "mozilla/layers/APZThreadUtils.h"  // for AssertOnCompositorThread, etc
 #include "mozilla/layers/AsyncCompositionManager.h" // for ViewTransform
 #include "mozilla/layers/CompositorParent.h" // for CompositorParent, etc
 #include "mozilla/layers/LayerMetricsWrapper.h"
@@ -19,6 +20,7 @@
 #include "mozilla/mozalloc.h"           // for operator new
 #include "mozilla/TouchEvents.h"
 #include "mozilla/Preferences.h"        // for Preferences
+#include "mozilla/EventStateManager.h"  // for WheelPrefs
 #include "nsDebug.h"                    // for NS_WARNING
 #include "nsPoint.h"                    // for nsIntPoint
 #include "nsThreadUtils.h"              // for NS_IsMainThread
@@ -158,9 +160,7 @@ APZCTreeManager::UpdateHitTestingTree(CompositorParent* aCompositor,
                                       uint64_t aOriginatingLayersId,
                                       uint32_t aPaintSequenceNumber)
 {
-  if (AsyncPanZoomController::GetThreadAssertionsEnabled()) {
-    Compositor::AssertOnCompositorThread();
-  }
+  APZThreadUtils::AssertOnCompositorThread();
 
   MonitorAutoLock lock(mTreeLock);
 
@@ -320,6 +320,21 @@ APZCTreeManager::RecycleOrCreateNode(TreeBuildingState& aState,
   return node.forget();
 }
 
+static EventRegionsOverride
+GetEventRegionsOverride(HitTestingTreeNode* aParent,
+                       const LayerMetricsWrapper& aLayer)
+{
+  // Make it so that if the flag is set on the layer tree, it automatically
+  // propagates to all the nodes in the corresponding subtree rooted at that
+  // layer in the hit-test tree. This saves having to walk up the tree every
+  // we want to see if a hit-test node is affected by this flag.
+  EventRegionsOverride result = aLayer.GetEventRegionsOverride();
+  if (aParent) {
+    result |= aParent->GetEventRegionsOverride();
+  }
+  return result;
+}
+
 HitTestingTreeNode*
 APZCTreeManager::PrepareNodeForLayer(const LayerMetricsWrapper& aLayer,
                                      const FrameMetrics& aMetrics,
@@ -344,7 +359,8 @@ APZCTreeManager::PrepareNodeForLayer(const LayerMetricsWrapper& aLayer,
     node = RecycleOrCreateNode(aState, nullptr);
     AttachNodeToTree(node, aParent, aNextSibling);
     node->SetHitTestData(GetEventRegions(aLayer), aLayer.GetTransform(),
-        aLayer.GetClipRect() ? Some(nsIntRegion(*aLayer.GetClipRect())) : Nothing());
+        aLayer.GetClipRect() ? Some(nsIntRegion(*aLayer.GetClipRect())) : Nothing(),
+        GetEventRegionsOverride(aParent, aLayer));
     return node;
   }
 
@@ -440,7 +456,8 @@ APZCTreeManager::PrepareNodeForLayer(const LayerMetricsWrapper& aLayer,
     MOZ_ASSERT(node->IsPrimaryHolder() && node->GetApzc() && node->GetApzc()->Matches(guid));
 
     nsIntRegion clipRegion = ComputeClipRegion(state->mController, aLayer);
-    node->SetHitTestData(GetEventRegions(aLayer), aLayer.GetTransform(), Some(clipRegion));
+    node->SetHitTestData(GetEventRegions(aLayer), aLayer.GetTransform(), Some(clipRegion),
+        GetEventRegionsOverride(aParent, aLayer));
     apzc->SetAncestorTransform(aAncestorTransform);
 
     PrintAPZCInfo(aLayer, apzc);
@@ -494,7 +511,8 @@ APZCTreeManager::PrepareNodeForLayer(const LayerMetricsWrapper& aLayer,
     MOZ_ASSERT(aAncestorTransform == apzc->GetAncestorTransform());
 
     nsIntRegion clipRegion = ComputeClipRegion(state->mController, aLayer);
-    node->SetHitTestData(GetEventRegions(aLayer), aLayer.GetTransform(), Some(clipRegion));
+    node->SetHitTestData(GetEventRegions(aLayer), aLayer.GetTransform(), Some(clipRegion),
+        GetEventRegionsOverride(aParent, aLayer));
   }
 
   return node;
@@ -555,6 +573,8 @@ APZCTreeManager::ReceiveInputEvent(InputData& aEvent,
                                    ScrollableLayerGuid* aOutTargetGuid,
                                    uint64_t* aOutInputBlockId)
 {
+  APZThreadUtils::AssertOnControllerThread();
+
   // Initialize aOutInputBlockId to a sane value, and then later we overwrite
   // it if the input event goes into a block.
   if (aOutInputBlockId) {
@@ -861,11 +881,13 @@ APZCTreeManager::ReceiveInputEvent(WidgetInputEvent& aEvent,
                                    ScrollableLayerGuid* aOutTargetGuid,
                                    uint64_t* aOutInputBlockId)
 {
-  // This function will be removed as part of bug 930939.
+  // This function will be removed once metro code is modified to use the
+  // InputData version of ReceiveInputEvent.
   // In general it is preferable to use the version of ReceiveInputEvent
   // that takes an InputData, as that is usable from off-main-thread.
 
   MOZ_ASSERT(NS_IsMainThread());
+  APZThreadUtils::AssertOnControllerThread();
 
   // Initialize aOutInputBlockId to a sane value, and then later we overwrite
   // it if the input event goes into a block.
@@ -891,11 +913,11 @@ APZCTreeManager::ReceiveInputEvent(WidgetInputEvent& aEvent,
     }
     case eWheelEventClass: {
       WidgetWheelEvent& wheelEvent = *aEvent.AsWheelEvent();
-      if (wheelEvent.IsControl() ||
-          wheelEvent.deltaMode != nsIDOMWheelEvent::DOM_DELTA_LINE)
+      if (wheelEvent.deltaMode != nsIDOMWheelEvent::DOM_DELTA_LINE ||
+          !EventStateManager::WheelEventIsScrollAction(&wheelEvent))
       {
-        // Don't send through APZ if we could be ctrl+zooming or if the delta
-        // mode is not line-based.
+        // Don't send through APZ if we're not scrolling or if the delta mode
+        // is not line-based.
         return ProcessEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
       }
       return ProcessWheelEvent(wheelEvent, aOutTargetGuid, aOutInputBlockId);
@@ -919,6 +941,8 @@ APZCTreeManager::ZoomToRect(const ScrollableLayerGuid& aGuid,
 void
 APZCTreeManager::ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
 {
+  APZThreadUtils::AssertOnControllerThread();
+
   mInputQueue->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
 }
 
@@ -926,6 +950,8 @@ void
 APZCTreeManager::SetTargetAPZC(uint64_t aInputBlockId,
                                const nsTArray<ScrollableLayerGuid>& aTargets)
 {
+  APZThreadUtils::AssertOnControllerThread();
+
   nsRefPtr<AsyncPanZoomController> target = nullptr;
   if (aTargets.Length() > 0) {
     target = GetTargetAPZC(aTargets[0]);
@@ -940,6 +966,8 @@ APZCTreeManager::SetTargetAPZC(uint64_t aInputBlockId,
 void
 APZCTreeManager::SetTargetAPZC(uint64_t aInputBlockId, const ScrollableLayerGuid& aTarget)
 {
+  APZThreadUtils::AssertOnControllerThread();
+
   nsRefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aTarget);
   mInputQueue->SetConfirmedTargetApzc(aInputBlockId, apzc);
 }

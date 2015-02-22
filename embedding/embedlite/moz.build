@@ -5,6 +5,10 @@
 
 DIRS += ['tests']
 
+JS_PREFERENCE_FILES += [
+     'embedding.js',
+]
+
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['tests/gtest']
 

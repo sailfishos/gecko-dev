@@ -333,7 +333,8 @@ class SimdTypeDescr : public ComplexTypeDescr
     enum Type {
         TYPE_INT32 = JS_SIMDTYPEREPR_INT32,
         TYPE_FLOAT32 = JS_SIMDTYPEREPR_FLOAT32,
-        TYPE_FLOAT64 = JS_SIMDTYPEREPR_FLOAT64
+        TYPE_FLOAT64 = JS_SIMDTYPEREPR_FLOAT64,
+        LAST_TYPE = TYPE_FLOAT64
     };
 
     static const type::Kind Kind = type::Simd;
@@ -518,61 +519,32 @@ class TypedObject : public JSObject
                                     uint32_t index,
                                     MutableHandleValue vp);
 
-    static bool obj_setArrayElement(JSContext *cx,
-                                    Handle<TypedObject*> typedObj,
-                                    Handle<TypeDescr*> typeDescr,
-                                    uint32_t index,
-                                    MutableHandleValue vp);
-
   protected:
-    static bool obj_lookupGeneric(JSContext *cx, HandleObject obj,
-                                  HandleId id, MutableHandleObject objp,
-                                  MutableHandleShape propp);
-
     static bool obj_lookupProperty(JSContext *cx, HandleObject obj,
-                                   HandlePropertyName name,
-                                   MutableHandleObject objp,
+                                   HandleId id, MutableHandleObject objp,
                                    MutableHandleShape propp);
 
-    static bool obj_lookupElement(JSContext *cx, HandleObject obj,
-                                  uint32_t index, MutableHandleObject objp,
-                                  MutableHandleShape propp);
+    static bool obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t index,
+                                  MutableHandleObject objp, MutableHandleShape propp);
 
-    static bool obj_defineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
-                                  PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
-
-    static bool obj_defineProperty(JSContext *cx, HandleObject obj,
-                                   HandlePropertyName name, HandleValue v,
+    static bool obj_defineProperty(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
                                    PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
 
-    static bool obj_defineElement(JSContext *cx, HandleObject obj, uint32_t index, HandleValue v,
-                                  PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
-
-    static bool obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receiver,
-                               HandleId id, MutableHandleValue vp);
+    static bool obj_hasProperty(JSContext *cx, HandleObject obj, HandleId id, bool *foundp);
 
     static bool obj_getProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
-                                HandlePropertyName name, MutableHandleValue vp);
+                                HandleId id, MutableHandleValue vp);
 
     static bool obj_getElement(JSContext *cx, HandleObject obj, HandleObject receiver,
                                uint32_t index, MutableHandleValue vp);
 
-    static bool obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
-                               MutableHandleValue vp, bool strict);
-    static bool obj_setProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
-                                MutableHandleValue vp, bool strict);
-    static bool obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
-                               MutableHandleValue vp, bool strict);
+    static bool obj_setProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
+                                HandleId id, MutableHandleValue vp, bool strict);
 
     static bool obj_getOwnPropertyDescriptor(JSContext *cx, HandleObject obj, HandleId id,
                                              MutableHandle<JSPropertyDescriptor> desc);
 
-    static bool obj_getGenericAttributes(JSContext *cx, HandleObject obj,
-                                         HandleId id, unsigned *attrsp);
-    static bool obj_setGenericAttributes(JSContext *cx, HandleObject obj,
-                                         HandleId id, unsigned *attrsp);
-
-    static bool obj_deleteGeneric(JSContext *cx, HandleObject obj, HandleId id, bool *succeeded);
+    static bool obj_deleteProperty(JSContext *cx, HandleObject obj, HandleId id, bool *succeeded);
 
     static bool obj_enumerate(JSContext *cx, HandleObject obj, AutoIdVector &properties);
 
@@ -586,7 +558,7 @@ class TypedObject : public JSObject
     }
 
     TypeDescr &typeDescr() const {
-        return type()->typeDescr();
+        return group()->typeDescr();
     }
 
     TypeDescr &maybeForwardedTypeDescr() const {
@@ -729,20 +701,13 @@ class InlineTypedObject : public TypedObject
     uint8_t data_[1];
 
   public:
-    static const size_t MaximumSize =
-        sizeof(NativeObject) - sizeof(TypedObject) + NativeObject::MAX_FIXED_SLOTS * sizeof(Value);
+    static const size_t MaximumSize = JSObject::MAX_BYTE_SIZE - sizeof(TypedObject);
 
     static gc::AllocKind allocKindForTypeDescriptor(TypeDescr *descr) {
         size_t nbytes = descr->size();
         MOZ_ASSERT(nbytes <= MaximumSize);
 
-        if (nbytes <= sizeof(NativeObject) - sizeof(TypedObject))
-            return gc::FINALIZE_OBJECT0;
-        nbytes -= sizeof(NativeObject) - sizeof(TypedObject);
-
-        size_t dataSlots = AlignBytes(nbytes, sizeof(Value)) / sizeof(Value);
-        MOZ_ASSERT(nbytes <= dataSlots * sizeof(Value));
-        return gc::GetGCObjectKind(dataSlots);
+        return gc::GetGCObjectKindForBytes(nbytes + sizeof(TypedObject));
     }
 
     uint8_t *inlineTypedMem() const {

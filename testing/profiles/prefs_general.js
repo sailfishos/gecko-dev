@@ -43,6 +43,7 @@ user_pref("media.volume_scale", "0.01");
 user_pref("security.warn_viewing_mixed", false);
 user_pref("app.update.enabled", false);
 user_pref("app.update.staging.enabled", false);
+user_pref("app.update.url.android", "");
 // Make sure GMPInstallManager won't hit the network.
 user_pref("media.gmp-manager.url.override", "http://%(server)s/dummy-gmp-manager.xml");
 user_pref("browser.panorama.experienced_first_run", true); // Assume experienced
@@ -275,14 +276,20 @@ user_pref("loop.CSP","default-src 'self' about: file: chrome: data: wss://* http
 user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
 
-// Don't show the search first run UI by default
-user_pref("browser.search.highlightCount", 0);
 // Tell the search service we are running in the US.  This also has the desired
 // side-effect of preventing our geoip lookup.
 user_pref("browser.search.isUS", true);
 user_pref("browser.search.countryCode", "US");
 
+// Make sure the self support tab doesn't hit the network.
+user_pref("browser.selfsupport.url", "https://%(server)s/selfsupport-dummy/");
+
 user_pref("media.eme.enabled", true);
+user_pref("media.eme.apiVisible", true);
+
+#if defined(XP_WIN)
+user_pref("media.decoder.heuristic.dormant.timeout", 0);
+#endif
 
 // Don't prompt about e10s
 user_pref("browser.displayedE10SPrompt.1", 5);

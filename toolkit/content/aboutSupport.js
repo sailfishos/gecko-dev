@@ -21,7 +21,7 @@ window.addEventListener("load", function onload(event) {
     for (let prop in snapshotFormatters)
       snapshotFormatters[prop](snapshot[prop]);
   });
-  populateResetBox();
+  populateActionBox();
   setupEventListeners();
   } catch (e) {
     Cu.reportError("stack of load error for about:support: " + e + ": " + e.stack);
@@ -41,7 +41,12 @@ let snapshotFormatters = {
     if (data.vendor)
       version += " (" + data.vendor + ")";
     $("version-box").textContent = version;
-    $("multiprocess-box").textContent = data.numRemoteWindows + "/" + data.numTotalWindows;
+    $("buildid-box").textContent = data.buildID;
+    if (data.updateChannel)
+      $("updatechannel-box").textContent = data.updateChannel;
+
+    $("multiprocess-box").textContent = stringBundle().formatStringFromName("multiProcessStatus",
+      [data.numRemoteWindows, data.numTotalWindows, data.remoteAutoStart], 3);
   },
 
 #ifdef MOZ_CRASHREPORTER
@@ -341,7 +346,7 @@ let snapshotFormatters = {
     const keys = ["hasSeccompBPF", "canSandboxContent", "canSandboxMedia"];
     let strings = stringBundle();
     let tbody = $("sandbox-tbody");
-    for (key of keys) {
+    for (let key of keys) {
       if (key in data) {
 	tbody.appendChild($.new("tr", [
 	  $.new("th", strings.GetStringFromName(key), "column"),
@@ -679,11 +684,27 @@ function openProfileDirectory() {
 /**
  * Profile reset is only supported for the default profile if the appropriate migrator exists.
  */
-function populateResetBox() {
-  if (ResetProfile.resetSupported())
-    $("reset-box").style.visibility = "visible";
+function populateActionBox() {
+  if (ResetProfile.resetSupported()) {
+    $("reset-box").style.display = "block";
+    $("action-box").style.display = "block";
+  }
+  if (!Services.appinfo.inSafeMode) {
+    $("safe-mode-box").style.display = "block";
+    $("action-box").style.display = "block";
+  }
 }
 
+// Prompt user to restart the browser in safe mode
+function safeModeRestart() {
+  let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                     .createInstance(Ci.nsISupportsPRBool);
+  Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+
+  if (!cancelQuit.data) {
+    Services.startup.restartInSafeMode(Ci.nsIAppStartup.eAttemptQuit);
+  }
+}
 /**
  * Set up event listeners for buttons.
  */
@@ -703,5 +724,13 @@ function setupEventListeners(){
   });
   $("profile-dir-button").addEventListener("click", function (event){
     openProfileDirectory();
+  });
+  $("restart-in-safe-mode-button").addEventListener("click", function (event) {
+    if (Services.obs.enumerateObservers("restart-in-safe-mode").hasMoreElements()) {
+      Services.obs.notifyObservers(null, "restart-in-safe-mode", "");
+    }
+    else {
+      safeModeRestart();
+    }
   });
 }

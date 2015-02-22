@@ -103,8 +103,8 @@ MarkExactStackRootsAcrossTypes(T context, JSTracer *trc)
     MarkExactStackRootList<JSObject *, MarkObjectRoot>(trc, context, "exact-object");
     MarkExactStackRootList<Shape *, MarkShapeRoot>(trc, context, "exact-shape");
     MarkExactStackRootList<BaseShape *, MarkBaseShapeRoot>(trc, context, "exact-baseshape");
-    MarkExactStackRootList<types::TypeObject *, MarkTypeObjectRoot>(
-        trc, context, "exact-typeobject");
+    MarkExactStackRootList<ObjectGroup *, MarkObjectGroupRoot>(
+        trc, context, "exact-objectgroup");
     MarkExactStackRootList<JSString *, MarkStringRoot>(trc, context, "exact-string");
     MarkExactStackRootList<JS::Symbol *, MarkSymbolRoot>(trc, context, "exact-symbol");
     MarkExactStackRootList<jit::JitCode *, MarkJitCodeRoot>(trc, context, "exact-jitcode");
@@ -112,7 +112,7 @@ MarkExactStackRootsAcrossTypes(T context, JSTracer *trc)
     MarkExactStackRootList<LazyScript *, MarkLazyScriptRoot>(trc, context, "exact-lazy-script");
     MarkExactStackRootList<jsid, MarkIdRoot>(trc, context, "exact-id");
     MarkExactStackRootList<Value, MarkValueRoot>(trc, context, "exact-value");
-    MarkExactStackRootList<types::Type, MarkTypeRoot>(trc, context, "types::Type");
+    MarkExactStackRootList<TypeSet::Type, TypeSet::MarkTypeRoot>(trc, context, "TypeSet::Type");
     MarkExactStackRootList<Bindings, MarkBindingsRoot>(trc, context, "Bindings");
     MarkExactStackRootList<JSPropertyDescriptor, MarkPropertyDescriptorRoot>(
         trc, context, "JSPropertyDescriptor");
@@ -509,9 +509,9 @@ js::gc::GCRuntime::markRuntime(JSTracer *trc,
             c->lazyArrayBuffers->trace(trc);
     }
 
-    MarkInterpreterActivations(&rt->mainThread, trc);
+    MarkInterpreterActivations(rt, trc);
 
-    jit::MarkJitActivations(&rt->mainThread, trc);
+    jit::MarkJitActivations(rt, trc);
 
     if (!isHeapMinorCollecting()) {
         gcstats::AutoPhase ap(stats, gcstats::PHASE_MARK_EMBEDDING);

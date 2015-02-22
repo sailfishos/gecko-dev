@@ -299,10 +299,10 @@
                         align="center">
                     <label class="plain tabpanel-summary-label"
                            value="&netmonitorUI.summary.url;"/>
-                    <label id="headers-summary-url-value"
-                           class="plain tabpanel-summary-value devtools-monospace"
-                           crop="end"
-                           flex="1"/>
+                    <textbox id="headers-summary-url-value"
+                             class="plain tabpanel-summary-value devtools-monospace"
+                             flex="1"
+                             readonly="true"/>
                   </hbox>
                   <hbox id="headers-summary-method"
                         class="tabpanel-summary-container"
@@ -499,23 +499,29 @@
                       <vbox class="security-info-section">
                         <hbox id="security-protocol-version"
                               class="tabpanel-summary-container"
-                              align="center">
+                              align="baseline">
                           <label class="plain tabpanel-summary-label"
                                  value="&netmonitorUI.security.protocolVersion;"/>
                           <label id="security-protocol-version-value"
                                  class="plain tabpanel-summary-value devtools-monospace"
                                  crop="end"
                                  flex="1"/>
+                          <image class="security-warning-icon"
+                                 id="security-warning-sslv3"
+                                 tooltiptext="&netmonitorUI.security.warning.sslv3;" />
                         </hbox>
                         <hbox id="security-ciphersuite"
                               class="tabpanel-summary-container"
-                              align="center">
+                              align="baseline">
                           <label class="plain tabpanel-summary-label"
                                  value="&netmonitorUI.security.cipherSuite;"/>
                           <label id="security-ciphersuite-value"
                                  class="plain tabpanel-summary-value devtools-monospace"
                                  crop="end"
                                  flex="1"/>
+                          <image class="security-warning-icon"
+                                 id="security-warning-cipher"
+                                 tooltiptext="&netmonitorUI.security.warning.cipher;" />
                         </hbox>
                       </vbox>
                     </vbox>
@@ -526,7 +532,7 @@
                       <vbox class="security-info-section">
                         <hbox id="security-http-strict-transport-security"
                               class="tabpanel-summary-container"
-                              align="center">
+                              align="baseline">
                           <label class="plain tabpanel-summary-label"
                                  value="&netmonitorUI.security.hsts;"/>
                           <label id="security-http-strict-transport-security-value"
@@ -536,7 +542,7 @@
                         </hbox>
                         <hbox id="security-public-key-pinning"
                               class="tabpanel-summary-container"
-                              align="center">
+                              align="baseline">
                           <label class="plain tabpanel-summary-label"
                                  value="&netmonitorUI.security.hpkp;"/>
                           <label id="security-public-key-pinning-value"
@@ -557,7 +563,7 @@
                         </vbox>
                         <vbox class="security-info-section">
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.cn;:"/>
                             <label id="security-cert-subject-cn"
@@ -566,7 +572,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.o;:"/>
                             <label id="security-cert-subject-o"
@@ -575,7 +581,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.ou;:"/>
                             <label id="security-cert-subject-ou"
@@ -590,7 +596,7 @@
                         </vbox>
                         <vbox class="security-info-section">
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.cn;:"/>
                             <label id="security-cert-issuer-cn"
@@ -599,7 +605,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.o;:"/>
                             <label id="security-cert-issuer-o"
@@ -608,7 +614,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.ou;:"/>
                             <label id="security-cert-issuer-ou"
@@ -623,7 +629,7 @@
                         </vbox>
                         <vbox class="security-info-section">
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.begins;:"/>
                             <label id="security-cert-validity-begins"
@@ -632,7 +638,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.expires;:"/>
                             <label id="security-cert-validity-expires"
@@ -647,7 +653,7 @@
                         </vbox>
                         <vbox class="security-info-section">
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.sha256fingerprint;:"/>
                             <label id="security-cert-sha256-fingerprint"
@@ -656,7 +662,7 @@
                                    flex="1"/>
                           </hbox>
                           <hbox class="tabpanel-summary-container"
-                                align="center">
+                                align="baseline">
                             <label class="plain tabpanel-summary-label"
                                    value="&certmgr.certdetail.sha1fingerprint;:"/>
                             <label id="security-cert-sha1-fingerprint"

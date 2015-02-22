@@ -14,6 +14,7 @@
 #include "jit/MacroAssembler.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
+#include "jit/OptimizationTracking.h"
 #include "jit/Safepoints.h"
 #include "jit/Snapshots.h"
 #include "jit/VMFunctions.h"
@@ -45,6 +46,17 @@ struct PatchableBackedgeInfo
 struct ReciprocalMulConstants {
     int32_t multiplier;
     int32_t shiftAmount;
+};
+
+// This should be nested in CodeGeneratorShared, but it is used in
+// optimization tracking implementation and nested classes cannot be
+// forward-declared.
+struct NativeToTrackedOptimizations
+{
+    // [startOffset, endOffset]
+    CodeOffsetLabel startOffset;
+    CodeOffsetLabel endOffset;
+    const TrackedOptimizations *optimizations;
 };
 
 class CodeGeneratorShared : public LElementVisitor
@@ -112,6 +124,17 @@ class CodeGeneratorShared : public LElementVisitor
 
     bool isProfilerInstrumentationEnabled() {
         return gen->isProfilerInstrumentationEnabled();
+    }
+
+    js::Vector<NativeToTrackedOptimizations, 0, SystemAllocPolicy> trackedOptimizations_;
+    uint8_t *trackedOptimizationsMap_;
+    uint32_t trackedOptimizationsMapSize_;
+    uint32_t trackedOptimizationsRegionTableOffset_;
+    uint32_t trackedOptimizationsTypesTableOffset_;
+    uint32_t trackedOptimizationsAttemptsTableOffset_;
+
+    bool isOptimizationTrackingEnabled() {
+        return gen->isOptimizationTrackingEnabled();
     }
 
   protected:
@@ -243,6 +266,9 @@ class CodeGeneratorShared : public LElementVisitor
     void dumpNativeToBytecodeEntries();
     void dumpNativeToBytecodeEntry(uint32_t idx);
 
+    bool addTrackedOptimizationsEntry(const TrackedOptimizations *optimizations);
+    void extendTrackedOptimizationsEntry(const TrackedOptimizations *optimizations);
+
   public:
     MIRGenerator &mirGen() const {
         return *gen;
@@ -312,6 +338,12 @@ class CodeGeneratorShared : public LElementVisitor
     bool createNativeToBytecodeScriptList(JSContext *cx);
     bool generateCompactNativeToBytecodeMap(JSContext *cx, JitCode *code);
     void verifyCompactNativeToBytecodeMap(JitCode *code);
+
+    bool generateCompactTrackedOptimizationsMap(JSContext *cx, JitCode *code,
+                                                IonTrackedTypeVector *allTypes);
+    void verifyCompactTrackedOptimizationsMap(JitCode *code, uint32_t numRegions,
+                                              const UniqueTrackedOptimizations &unique,
+                                              const IonTrackedTypeVector *allTypes);
 
     // Mark the safepoint on |ins| as corresponding to the current assembler location.
     // The location should be just after a call.
@@ -515,6 +547,10 @@ class CodeGeneratorShared : public LElementVisitor
         emitTracelogScriptStop();
 #endif
     }
+
+    inline void verifyHeapAccessDisassembly(uint32_t begin, uint32_t end, bool isLoad,
+                                            Scalar::Type type, const Operand &mem,
+                                            LAllocation alloc);
 };
 
 // An out-of-line path is generated at the end of the function.

@@ -90,7 +90,7 @@ BaselineCompiler::compile()
         return Method_Error;
 
     // Pin analysis info during compilation.
-    types::AutoEnterAnalysis autoEnterAnalysis(cx);
+    AutoEnterAnalysis autoEnterAnalysis(cx);
 
     MOZ_ASSERT(!script->hasBaselineScript());
 
@@ -250,7 +250,7 @@ BaselineCompiler::compile()
 #endif
 
     uint32_t *bytecodeMap = baselineScript->bytecodeTypeMap();
-    types::FillBytecodeTypeMap(script, bytecodeMap);
+    FillBytecodeTypeMap(script, bytecodeMap);
 
     // The last entry in the last index found, and is used to avoid binary
     // searches for the sought entry when queries are in linear order.
@@ -413,6 +413,10 @@ BaselineCompiler::emitPrologue()
     if (!initScopeChain())
         return false;
 
+    // When compiling with Debugger instrumentation, set the debuggeeness of
+    // the frame before any operation that can call into the VM.
+    emitIsDebuggeeCheck();
+
     if (!emitStackCheck())
         return false;
 
@@ -512,7 +516,7 @@ bool
 BaselineCompiler::emitStackCheck(bool earlyCheck)
 {
     Label skipCall;
-    void *limitAddr = cx->runtime()->mainThread.addressOfJitStackLimit();
+    void *limitAddr = cx->runtime()->addressOfJitStackLimit();
     uint32_t slotsSize = script->nslots() * sizeof(Value);
     uint32_t tolerance = earlyCheck ? slotsSize : 0;
 
@@ -565,6 +569,19 @@ BaselineCompiler::emitStackCheck(bool earlyCheck)
 
     masm.bind(&skipCall);
     return true;
+}
+
+void
+BaselineCompiler::emitIsDebuggeeCheck()
+{
+    if (compileDebugInstrumentation_) {
+        masm.Push(BaselineFrameReg);
+        masm.setupUnalignedABICall(1, R0.scratchReg());
+        masm.loadBaselineFramePtr(BaselineFrameReg, R0.scratchReg());
+        masm.passABIArg(R0.scratchReg());
+        masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, jit::FrameIsDebuggeeCheck));
+        masm.Pop(BaselineFrameReg);
+    }
 }
 
 typedef bool (*DebugPrologueFn)(JSContext *, BaselineFrame *, jsbytecode *, bool *);
@@ -1721,21 +1738,21 @@ BaselineCompiler::emit_JSOP_NEWARRAY()
     frame.syncStack(0);
 
     uint32_t length = GET_UINT24(pc);
-    RootedTypeObject type(cx);
-    if (!types::UseNewTypeForInitializer(script, pc, JSProto_Array)) {
-        type = types::TypeScript::InitObject(cx, script, pc, JSProto_Array);
-        if (!type)
+    RootedObjectGroup group(cx);
+    if (!ObjectGroup::useSingletonForAllocationSite(script, pc, JSProto_Array)) {
+        group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Array);
+        if (!group)
             return false;
     }
 
-    // Pass length in R0, type in R1.
+    // Pass length in R0, group in R1.
     masm.move32(Imm32(length), R0.scratchReg());
-    masm.movePtr(ImmGCPtr(type), R1.scratchReg());
+    masm.movePtr(ImmGCPtr(group), R1.scratchReg());
 
-    ArrayObject *templateObject = NewDenseUnallocatedArray(cx, length, nullptr, TenuredObject);
+    ArrayObject *templateObject = NewDenseUnallocatedArray(cx, length, NullPtr(), TenuredObject);
     if (!templateObject)
         return false;
-    templateObject->setType(type);
+    templateObject->setGroup(group);
 
     ICNewArray_Fallback::Compiler stubCompiler(cx, templateObject);
     if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
@@ -1753,7 +1770,7 @@ bool
 BaselineCompiler::emit_JSOP_NEWARRAY_COPYONWRITE()
 {
     RootedScript scriptRoot(cx, script);
-    JSObject *obj = types::GetOrFixupCopyOnWriteObject(cx, scriptRoot, pc);
+    JSObject *obj = ObjectGroup::getOrFixupCopyOnWriteObject(cx, scriptRoot, pc);
     if (!obj)
         return false;
 
@@ -1796,10 +1813,10 @@ BaselineCompiler::emit_JSOP_NEWOBJECT()
 {
     frame.syncStack(0);
 
-    RootedTypeObject type(cx);
-    if (!types::UseNewTypeForInitializer(script, pc, JSProto_Object)) {
-        type = types::TypeScript::InitObject(cx, script, pc, JSProto_Object);
-        if (!type)
+    RootedObjectGroup group(cx);
+    if (!ObjectGroup::useSingletonForAllocationSite(script, pc, JSProto_Object)) {
+        group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Object);
+        if (!group)
             return false;
     }
 
@@ -1808,22 +1825,22 @@ BaselineCompiler::emit_JSOP_NEWOBJECT()
     if (!templateObject)
         return false;
 
-    if (type) {
-        templateObject->setType(type);
+    if (group) {
+        templateObject->setGroup(group);
     } else {
-        if (!JSObject::setSingletonType(cx, templateObject))
+        if (!JSObject::setSingleton(cx, templateObject))
             return false;
     }
 
     // Try to do the allocation inline.
     Label done;
-    if (type && !type->shouldPreTenure() && !templateObject->hasDynamicSlots()) {
+    if (group && !group->shouldPreTenure() && !templateObject->hasDynamicSlots()) {
         Label slowPath;
         Register objReg = R0.scratchReg();
         Register tempReg = R1.scratchReg();
-        masm.movePtr(ImmGCPtr(type), tempReg);
-        masm.branchTest32(Assembler::NonZero, Address(tempReg, types::TypeObject::offsetOfFlags()),
-                          Imm32(types::OBJECT_FLAG_PRE_TENURE), &slowPath);
+        masm.movePtr(ImmGCPtr(group), tempReg);
+        masm.branchTest32(Assembler::NonZero, Address(tempReg, ObjectGroup::offsetOfFlags()),
+                          Imm32(OBJECT_FLAG_PRE_TENURE), &slowPath);
         masm.branchPtr(Assembler::NotEqual, AbsoluteAddress(cx->compartment()->addressOfMetadataCallback()),
                       ImmWord(0), &slowPath);
         masm.createGCObject(objReg, tempReg, templateObject, gc::DefaultHeap, &slowPath);
@@ -1847,22 +1864,22 @@ BaselineCompiler::emit_JSOP_NEWINIT()
     frame.syncStack(0);
     JSProtoKey key = JSProtoKey(GET_UINT8(pc));
 
-    RootedTypeObject type(cx);
-    if (!types::UseNewTypeForInitializer(script, pc, key)) {
-        type = types::TypeScript::InitObject(cx, script, pc, key);
-        if (!type)
+    RootedObjectGroup group(cx);
+    if (!ObjectGroup::useSingletonForAllocationSite(script, pc, key)) {
+        group = ObjectGroup::allocationSiteGroup(cx, script, pc, key);
+        if (!group)
             return false;
     }
 
     if (key == JSProto_Array) {
-        // Pass length in R0, type in R1.
+        // Pass length in R0, group in R1.
         masm.move32(Imm32(0), R0.scratchReg());
-        masm.movePtr(ImmGCPtr(type), R1.scratchReg());
+        masm.movePtr(ImmGCPtr(group), R1.scratchReg());
 
-        ArrayObject *templateObject = NewDenseUnallocatedArray(cx, 0, nullptr, TenuredObject);
+        ArrayObject *templateObject = NewDenseUnallocatedArray(cx, 0, NullPtr(), TenuredObject);
         if (!templateObject)
             return false;
-        templateObject->setType(type);
+        templateObject->setGroup(group);
 
         ICNewArray_Fallback::Compiler stubCompiler(cx, templateObject);
         if (!emitOpIC(stubCompiler.getStub(&stubSpace_)))
@@ -1875,10 +1892,10 @@ BaselineCompiler::emit_JSOP_NEWINIT()
         if (!templateObject)
             return false;
 
-        if (type) {
-            templateObject->setType(type);
+        if (group) {
+            templateObject->setGroup(group);
         } else {
-            if (!JSObject::setSingletonType(cx, templateObject))
+            if (!JSObject::setSingleton(cx, templateObject))
                 return false;
         }
 
@@ -3361,10 +3378,10 @@ BaselineCompiler::emit_JSOP_REST()
 {
     frame.syncStack(0);
 
-    ArrayObject *templateObject = NewDenseUnallocatedArray(cx, 0, nullptr, TenuredObject);
+    ArrayObject *templateObject = NewDenseUnallocatedArray(cx, 0, NullPtr(), TenuredObject);
     if (!templateObject)
         return false;
-    types::FixRestArgumentsType(cx, templateObject);
+    ObjectGroup::fixRestArgumentsGroup(cx, templateObject);
 
     // Call IC.
     ICRest_Fallback::Compiler compiler(cx, templateObject);
@@ -3644,7 +3661,7 @@ BaselineCompiler::emit_JSOP_RESUME()
         Label skip;
         AbsoluteAddress addressOfEnabled(cx->runtime()->spsProfiler.addressOfEnabled());
         masm.branch32(Assembler::Equal, addressOfEnabled, Imm32(0), &skip);
-        masm.loadPtr(AbsoluteAddress(cx->mainThread().addressOfProfilingActivation()), scratchReg);
+        masm.loadPtr(AbsoluteAddress(cx->runtime()->addressOfProfilingActivation()), scratchReg);
         masm.storePtr(BaselineStackReg,
                       Address(scratchReg, JitActivation::offsetOfLastProfilingFrame()));
         masm.bind(&skip);

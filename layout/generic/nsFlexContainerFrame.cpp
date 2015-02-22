@@ -3676,8 +3676,12 @@ nsFlexContainerFrame::DoFlexLayout(nsPresContext*           aPresContext,
 
       //XXX Can we calculate the logical position more directly instead
       //    of this double conversion?
+      nsSize finalFlexedPhysicalSize =
+        aAxisTracker.PhysicalSizeFromLogicalSizes(item->GetMainSize(),
+                                                  item->GetCrossSize());
       LogicalPoint framePos(outerWM, physicalPosn,
-                            containerWidth - item->Frame()->GetRect().width);
+                            containerWidth - finalFlexedPhysicalSize.width -
+                              item->GetBorderPadding().LeftRight());
 
       // (Intentionally snapshotting this before ApplyRelativePositioning, to
       // maybe use for setting the flex container's baseline.)
@@ -3689,9 +3693,6 @@ nsFlexContainerFrame::DoFlexLayout(nsPresContext*           aPresContext,
       if (item->HadMeasuringReflow()) {
         // We've already reflowed the child once. Was the size we gave it in
         // that reflow the same as its final (post-flexing/stretching) size?
-        nsSize finalFlexedPhysicalSize =
-          aAxisTracker.PhysicalSizeFromLogicalSizes(item->GetMainSize(),
-                                                    item->GetCrossSize());
         if (item->Frame()->GetSize() == finalFlexedPhysicalSize) {
           // It has the correct size --> no need to reflow! Just make sure it's
           // at the right position.
@@ -3885,7 +3886,11 @@ nsFlexContainerFrame::ReflowFlexItem(nsPresContext* aPresContext,
              "We gave flex item unconstrained available height, so it "
              "should be complete");
 
-  childReflowState.ApplyRelativePositioning(&aFramePos, aContainerWidth);
+  LogicalMargin offsets =
+    childReflowState.ComputedLogicalOffsets().ConvertTo(outerWM, wm);
+  nsHTMLReflowState::ApplyRelativePositioning(aItem.Frame(), outerWM,
+                                              offsets, &aFramePos,
+                                              aContainerWidth);
 
   FinishReflowChild(aItem.Frame(), aPresContext,
                     childDesiredSize, &childReflowState,

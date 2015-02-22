@@ -606,19 +606,6 @@ MessageChannel::ShouldDeferMessage(const Message& aMsg)
     return mSide == ParentSide && aMsg.transaction_id() != mCurrentTransaction;
 }
 
-// Predicate that is true for messages that should be consolidated if 'compress' is set.
-class MatchingKinds {
-    typedef IPC::Message Message;
-    Message::msgid_t mType;
-    int32_t mRoutingId;
-public:
-    MatchingKinds(Message::msgid_t aType, int32_t aRoutingId) :
-        mType(aType), mRoutingId(aRoutingId) {}
-    bool operator()(const Message &msg) {
-        return msg.type() == mType && msg.routing_id() == mRoutingId;
-    }
-};
-
 void
 MessageChannel::OnMessageReceivedFromLink(const Message& aMsg)
 {
@@ -662,22 +649,15 @@ MessageChannel::OnMessageReceivedFromLink(const Message& aMsg)
     // Prioritized messages cannot be compressed.
     MOZ_ASSERT(!aMsg.compress() || aMsg.priority() == IPC::Message::PRIORITY_NORMAL);
 
-    bool compress = (aMsg.compress() && !mPending.empty());
+    bool compress = (aMsg.compress() && !mPending.empty() &&
+                     mPending.back().type() == aMsg.type() &&
+                     mPending.back().routing_id() == aMsg.routing_id());
     if (compress) {
-        // Check the message queue for another message with this type/destination.
-        auto it = std::find_if(mPending.rbegin(), mPending.rend(),
-                               MatchingKinds(aMsg.type(), aMsg.routing_id()));
-        if (it != mPending.rend()) {
-            // This message type has compression enabled, and the queue holds
-            // a message with the same message type and routed to the same destination.
-            // Erase it.  Note that, since we always compress these redundancies, There Can
-            // Be Only One.
-            MOZ_ASSERT((*it).compress());
-            mPending.erase((++it).base());
-        } else {
-            // No other messages with the same type/destination exist.
-            compress = false;
-        }
+        // This message type has compression enabled, and the back of the
+        // queue was the same message type and routed to the same destination.
+        // Replace it with the newer message.
+        MOZ_ASSERT(mPending.back().compress());
+        mPending.pop_back();
     }
 
     bool shouldWakeUp = AwaitingInterruptReply() ||
@@ -1506,7 +1486,7 @@ void
 MessageChannel::ReportMessageRouteError(const char* channelName) const
 {
     PrintErrorMessage(mSide, channelName, "Need a route");
-    mListener->OnProcessingError(MsgRouteError);
+    mListener->OnProcessingError(MsgRouteError, "MsgRouteError");
 }
 
 void
@@ -1540,7 +1520,7 @@ MessageChannel::ReportConnectionError(const char* aChannelName) const
     PrintErrorMessage(mSide, aChannelName, errorMsg);
 
     MonitorAutoUnlock unlock(*mMonitor);
-    mListener->OnProcessingError(MsgDropped);
+    mListener->OnProcessingError(MsgDropped, errorMsg);
 }
 
 bool
@@ -1575,14 +1555,14 @@ MessageChannel::MaybeHandleError(Result code, const Message& aMsg, const char* c
         return false;
     }
 
-    char printedMsg[512];
-    PR_snprintf(printedMsg, sizeof(printedMsg),
+    char reason[512];
+    PR_snprintf(reason, sizeof(reason),
                 "(msgtype=0x%lX,name=%s) %s",
                 aMsg.type(), aMsg.name(), errorMsg);
 
-    PrintErrorMessage(mSide, channelName, printedMsg);
+    PrintErrorMessage(mSide, channelName, reason);
 
-    mListener->OnProcessingError(code);
+    mListener->OnProcessingError(code, reason);
 
     return false;
 }

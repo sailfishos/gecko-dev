@@ -30,6 +30,7 @@ namespace dom {
 
 class ArrayBufferViewOrArrayBuffer;
 class MediaKeyError;
+class MediaKeyStatusMap;
 
 class MediaKeySession MOZ_FINAL : public DOMEventTargetHelper
 {
@@ -38,7 +39,8 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(MediaKeySession,
                                            DOMEventTargetHelper)
 public:
-  MediaKeySession(nsPIDOMWindow* aParent,
+  MediaKeySession(JSContext* aCx,
+                  nsPIDOMWindow* aParent,
                   MediaKeys* aKeys,
                   const nsAString& aKeySystem,
                   SessionType aSessionType,
@@ -50,6 +52,8 @@ public:
 
   // Mark this as resultNotAddRefed to return raw pointers
   MediaKeyError* GetError() const;
+
+  MediaKeyStatusMap* KeyStatuses() const;
 
   void GetKeySystem(nsString& aRetval) const;
 
@@ -78,14 +82,12 @@ public:
 
   already_AddRefed<Promise> Remove(ErrorResult& aRv);
 
-  already_AddRefed<Promise> GetUsableKeyIds(ErrorResult& aRv);
-
   void DispatchKeyMessage(MediaKeyMessageType aMessageType,
                           const nsTArray<uint8_t>& aMessage);
 
   void DispatchKeyError(uint32_t system_code);
 
-  void DispatchKeysChange();
+  void DispatchKeyStatusesChange();
 
   void OnClosed();
 
@@ -97,6 +99,8 @@ public:
 private:
   ~MediaKeySession();
 
+  void UpdateKeyStatusMap();
+
   nsRefPtr<Promise> mClosed;
 
   nsRefPtr<MediaKeyError> mMediaKeyError;
@@ -107,6 +111,7 @@ private:
   const uint32_t mToken;
   bool mIsClosed;
   bool mUninitialized;
+  nsRefPtr<MediaKeyStatusMap> mKeyStatusMap;
 };
 
 } // namespace dom

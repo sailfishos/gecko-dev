@@ -290,7 +290,8 @@ CreateSimdClass(JSContext *cx, Handle<GlobalObject*> global, HandlePropertyName 
     // Create type constructor itself and initialize its reserved slots.
 
     Rooted<SimdTypeDescr*> typeDescr(cx);
-    typeDescr = NewObjectWithProto<SimdTypeDescr>(cx, funcProto, global, SingletonObject);
+    typeDescr = NewObjectWithProto<SimdTypeDescr>(cx, funcProto, GlobalObject::upcast(global),
+                                                  SingletonObject);
     if (!typeDescr)
         return nullptr;
 
@@ -311,7 +312,7 @@ CreateSimdClass(JSContext *cx, Handle<GlobalObject*> global, HandlePropertyName 
     if (!objProto)
         return nullptr;
     Rooted<TypedProto*> proto(cx);
-    proto = NewObjectWithProto<TypedProto>(cx, objProto, nullptr, SingletonObject);
+    proto = NewObjectWithProto<TypedProto>(cx, objProto, NullPtr(), SingletonObject);
     if (!proto)
         return nullptr;
     typeDescr->initReservedSlot(JS_DESCR_SLOT_TYPROTO, ObjectValue(*proto));
@@ -349,16 +350,8 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     Rooted<SimdTypeDescr*> descr(cx, &args.callee().as<SimdTypeDescr>());
-    if (args.length() == 1) {
-        // SIMD type used as a coercion
-        if (!CheckVectorObject(args[0], descr->type())) {
-            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SIMD_NOT_A_VECTOR);
-            return false;
-        }
-
-        args.rval().setObject(args[0].toObject());
-        return true;
-    }
+    MOZ_ASSERT(size_t(static_cast<TypeDescr*>(descr)->size()) <= InlineTypedObject::MaximumSize,
+               "inline storage is needed for using InternalHandle belows");
 
     Rooted<TypedObject*> result(cx, TypedObject::createZeroed(cx, descr, 0));
     if (!result)
@@ -366,26 +359,32 @@ SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
 
     switch (descr->type()) {
       case SimdTypeDescr::TYPE_INT32: {
-        int32_t *mem = reinterpret_cast<int32_t*>(result->typedMem());
+        InternalHandle<int32_t *> mem(result, reinterpret_cast<int32_t*>(result->typedMem()));
+        int32_t tmp;
         for (unsigned i = 0; i < 4; i++) {
-            if (!ToInt32(cx, args.get(i), &mem[i]))
+            if (!ToInt32(cx, args.get(i), &tmp))
                 return false;
+            mem.get()[i] = tmp;
         }
         break;
       }
       case SimdTypeDescr::TYPE_FLOAT32: {
-        float *mem = reinterpret_cast<float*>(result->typedMem());
+        InternalHandle<float *> mem(result, reinterpret_cast<float*>(result->typedMem()));
+        float tmp;
         for (unsigned i = 0; i < 4; i++) {
-            if (!RoundFloat32(cx, args.get(i), &mem[i]))
+            if (!RoundFloat32(cx, args.get(i), &tmp))
                 return false;
+            mem.get()[i] = tmp;
         }
         break;
       }
       case SimdTypeDescr::TYPE_FLOAT64: {
-        double *mem = reinterpret_cast<double*>(result->typedMem());
+        InternalHandle<double *> mem(result, reinterpret_cast<double*>(result->typedMem()));
+        double tmp;
         for (unsigned i = 0; i < 2; i++) {
-            if (!ToNumber(cx, args.get(i), &mem[i]))
+            if (!ToNumber(cx, args.get(i), &tmp))
                 return false;
+            mem.get()[i] = tmp;
         }
         break;
       }
@@ -517,6 +516,10 @@ template JSObject *js::CreateSimd<Int32x4>(JSContext *cx, Int32x4::Elem *data);
 
 namespace js {
 // Unary SIMD operators
+template<typename T>
+struct Identity {
+    static inline T apply(T x) { return x; }
+};
 template<typename T>
 struct Abs {
     static inline T apply(T x) { return mozilla::Abs(x); }
@@ -719,27 +722,18 @@ FuncWith(JSContext *cx, unsigned argc, Value *vp)
     typedef typename V::Elem Elem;
 
     CallArgs args = CallArgsFromVp(argc, vp);
-    if (args.length() != 2 || !IsVectorObject<V>(args[0]) ||
-        (!args[1].isNumber() && !args[1].isBoolean()))
-    {
+    if (args.length() != 2 || !IsVectorObject<V>(args[0]))
         return ErrorBadArgs(cx);
-    }
 
-    Elem *val = TypedObjectMemory<Elem *>(args[0]);
+    Elem *vec = TypedObjectMemory<Elem *>(args[0]);
     Elem result[V::lanes];
 
-    if (args[1].isNumber()) {
-        Elem withAsNumber;
-        if (!V::toType(cx, args[1], &withAsNumber))
-            return false;
-        for (unsigned i = 0; i < V::lanes; i++)
-            result[i] = OpWith<Elem>::apply(i, withAsNumber, val[i]);
-    } else {
-        MOZ_ASSERT(args[1].isBoolean());
-        bool withAsBool = args[1].toBoolean();
-        for (unsigned i = 0; i < V::lanes; i++)
-            result[i] = OpWith<Elem>::apply(i, withAsBool, val[i]);
-    }
+    Elem value;
+    if (!V::toType(cx, args[1], &value))
+        return false;
+
+    for (unsigned i = 0; i < V::lanes; i++)
+        result[i] = OpWith<Elem>::apply(i, value, vec[i]);
     return StoreResult<V>(cx, args, result);
 }
 
@@ -813,7 +807,7 @@ Int32x4BinaryScalar(JSContext *cx, unsigned argc, Value *vp)
         return ErrorBadArgs(cx);
 
     int32_t result[4];
-    if (!IsVectorObject<Int32x4>(args[0]) || !args[1].isNumber())
+    if (!IsVectorObject<Int32x4>(args[0]))
         return ErrorBadArgs(cx);
 
     int32_t *val = TypedObjectMemory<int32_t *>(args[0]);
@@ -876,8 +870,13 @@ FuncConvertBits(JSContext *cx, unsigned argc, Value *vp)
     if (args.length() != 1 || !IsVectorObject<V>(args[0]))
         return ErrorBadArgs(cx);
 
-    RetElem *result = TypedObjectMemory<RetElem *>(args[0]);
-    return StoreResult<Vret>(cx, args, result);
+    // While we could just pass the typedMem of args[0] as StoreResults' last
+    // argument, a GC could move the pointer to its memory in the meanwhile.
+    // For consistency with other SIMD functions, simply copy the input in a
+    // temporary array.
+    RetElem copy[Vret::lanes];
+    memcpy(copy, TypedObjectMemory<RetElem*>(args[0]), Vret::lanes * sizeof(RetElem));
+    return StoreResult<Vret>(cx, args, copy);
 }
 
 template<typename Vret>
@@ -903,7 +902,7 @@ FuncSplat(JSContext *cx, unsigned argc, Value *vp)
     typedef typename Vret::Elem RetElem;
 
     CallArgs args = CallArgsFromVp(argc, vp);
-    if (args.length() != 1 || !args[0].isNumber())
+    if (args.length() != 1)
         return ErrorBadArgs(cx);
 
     RetElem arg;
@@ -1017,29 +1016,31 @@ Select(JSContext *cx, unsigned argc, Value *vp)
 
 template<class VElem, unsigned NumElem>
 static bool
-TypedArrayDataPtrFromArgs(JSContext *cx, const CallArgs &args, VElem **data)
+TypedArrayFromArgs(JSContext *cx, const CallArgs &args,
+                   MutableHandleObject typedArray, int32_t *byteStart)
 {
     if (!args[0].isObject())
         return ErrorBadArgs(cx);
 
     JSObject &argobj = args[0].toObject();
-    if (!argobj.is<TypedArrayObject>())
+    if (!IsAnyTypedArray(&argobj))
         return ErrorBadArgs(cx);
 
-    Rooted<TypedArrayObject*> typedArray(cx, &argobj.as<TypedArrayObject>());
+    typedArray.set(&argobj);
 
     int32_t index;
     if (!ToInt32(cx, args[1], &index))
         return false;
 
-    int32_t byteStart = index * typedArray->bytesPerElement();
-    if (byteStart < 0 || (uint32_t(byteStart) + NumElem * sizeof(VElem)) > typedArray->byteLength())
+    *byteStart = index * AnyTypedArrayBytesPerElement(typedArray);
+    if (*byteStart < 0 ||
+        (uint32_t(*byteStart) + NumElem * sizeof(VElem)) > AnyTypedArrayByteLength(typedArray))
     {
+        // Keep in sync with AsmJS OnOutOfBounds function.
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_BAD_INDEX);
         return false;
     }
 
-    *data = reinterpret_cast<VElem*>(static_cast<char*>(typedArray->viewData()) + byteStart);
     return true;
 }
 
@@ -1053,18 +1054,20 @@ Load(JSContext *cx, unsigned argc, Value *vp)
     if (args.length() != 2)
         return ErrorBadArgs(cx);
 
-    Elem *typedArrayData = nullptr;
-    if (!TypedArrayDataPtrFromArgs<Elem, NumElem>(cx, args, &typedArrayData))
+    int32_t byteStart;
+    RootedObject typedArray(cx);
+    if (!TypedArrayFromArgs<Elem, NumElem>(cx, args, &typedArray, &byteStart))
         return false;
 
     Rooted<TypeDescr*> typeDescr(cx, &V::GetTypeDescr(*cx->global()));
     MOZ_ASSERT(typeDescr);
-    Rooted<TypedObject *> result(cx, OutlineTypedObject::createZeroed(cx, typeDescr, 0));
+    Rooted<TypedObject *> result(cx, TypedObject::createZeroed(cx, typeDescr, 0));
     if (!result)
         return false;
 
-    Elem *dest = reinterpret_cast<Elem*>(result->typedMem());
-    memcpy(dest, typedArrayData, sizeof(Elem) * NumElem);
+    Elem *src = reinterpret_cast<Elem*>(static_cast<char*>(AnyTypedArrayViewData(typedArray)) + byteStart);
+    Elem *dst = reinterpret_cast<Elem*>(result->typedMem());
+    memcpy(dst, src, sizeof(Elem) * NumElem);
 
     args.rval().setObject(*result);
     return true;
@@ -1080,15 +1083,17 @@ Store(JSContext *cx, unsigned argc, Value *vp)
     if (args.length() != 3)
         return ErrorBadArgs(cx);
 
-    Elem *typedArrayData = nullptr;
-    if (!TypedArrayDataPtrFromArgs<Elem, NumElem>(cx, args, &typedArrayData))
+    int32_t byteStart;
+    RootedObject typedArray(cx);
+    if (!TypedArrayFromArgs<Elem, NumElem>(cx, args, &typedArray, &byteStart))
         return false;
 
     if (!IsVectorObject<V>(args[2]))
         return ErrorBadArgs(cx);
 
     Elem *src = TypedObjectMemory<Elem*>(args[2]);
-    memcpy(typedArrayData, src, sizeof(Elem) * NumElem);
+    Elem *dst = reinterpret_cast<Elem*>(static_cast<char*>(AnyTypedArrayViewData(typedArray)) + byteStart);
+    memcpy(dst, src, sizeof(Elem) * NumElem);
 
     args.rval().setObject(args[2].toObject());
     return true;

@@ -13,10 +13,10 @@
 #include "nsJSUtils.h"
 #include "mozJSComponentLoader.h"
 #include "nsContentUtils.h"
-#include "JavaScriptParent.h"
 #include "jsfriendapi.h"
 #include "js/StructuredClone.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/Preferences.h"
 #include "nsJSEnvironment.h"
 #include "mozilla/TimeStamp.h"
@@ -3400,7 +3400,7 @@ nsXPCComponents_Utils::GetWatchdogTimestamp(const nsAString& aCategory, PRTime *
 NS_IMETHODIMP
 nsXPCComponents_Utils::GetJSEngineTelemetryValue(JSContext *cx, MutableHandleValue rval)
 {
-    RootedObject obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
+    RootedObject obj(cx, JS_NewPlainObject(cx));
     if (!obj)
         return NS_ERROR_OUT_OF_MEMORY;
 

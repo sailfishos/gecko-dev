@@ -430,9 +430,11 @@ IMEContentObserver::OnMouseButtonEvent(nsPresContext* aPresContext,
     default:
       return false;
   }
-  if (NS_WARN_IF(!mWidget)) {
+  if (NS_WARN_IF(!mWidget) || NS_WARN_IF(mWidget->Destroyed())) {
     return false;
   }
+
+  nsRefPtr<IMEContentObserver> kungFuDeathGrip(this);
 
   WidgetQueryContentEvent charAtPt(true, NS_QUERY_CHARACTER_AT_POINT,
                                    aMouseEvent->widget);
@@ -441,6 +443,12 @@ IMEContentObserver::OnMouseButtonEvent(nsPresContext* aPresContext,
   handler.OnQueryCharacterAtPoint(&charAtPt);
   if (NS_WARN_IF(!charAtPt.mSucceeded) ||
       charAtPt.mReply.mOffset == WidgetQueryContentEvent::NOT_FOUND) {
+    return false;
+  }
+
+  // The widget might be destroyed during querying the content since it
+  // causes flushing layout.
+  if (!mWidget || NS_WARN_IF(mWidget->Destroyed())) {
     return false;
   }
 
@@ -455,9 +463,8 @@ IMEContentObserver::OnMouseButtonEvent(nsPresContext* aPresContext,
   // The refPt is relative to its widget.
   // We should notify it with offset in the widget.
   if (aMouseEvent->widget != mWidget) {
-    charAtPt.refPoint += LayoutDeviceIntPoint::FromUntyped(
-      aMouseEvent->widget->WidgetToScreenOffset() -
-        mWidget->WidgetToScreenOffset());
+    charAtPt.refPoint += aMouseEvent->widget->WidgetToScreenOffset() -
+      mWidget->WidgetToScreenOffset();
   }
 
   IMENotification notification(NOTIFY_IME_OF_MOUSE_BUTTON_EVENT);
@@ -465,7 +472,8 @@ IMEContentObserver::OnMouseButtonEvent(nsPresContext* aPresContext,
   notification.mMouseButtonEventData.mOffset = charAtPt.mReply.mOffset;
   notification.mMouseButtonEventData.mCursorPos.Set(
     LayoutDeviceIntPoint::ToUntyped(charAtPt.refPoint));
-  notification.mMouseButtonEventData.mCharRect.Set(charAtPt.mReply.mRect);
+  notification.mMouseButtonEventData.mCharRect.Set(
+    LayoutDevicePixel::ToUntyped(charAtPt.mReply.mRect));
   notification.mMouseButtonEventData.mButton = aMouseEvent->button;
   notification.mMouseButtonEventData.mButtons = aMouseEvent->buttons;
   notification.mMouseButtonEventData.mModifiers = aMouseEvent->modifiers;

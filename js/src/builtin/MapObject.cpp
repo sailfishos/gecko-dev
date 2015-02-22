@@ -823,7 +823,10 @@ HashableValue::operator==(const HashableValue &other) const
 
 #ifdef DEBUG
     bool same;
-    MOZ_ASSERT(SameValue(nullptr, value, other.value, &same));
+    PerThreadData *data = TlsPerThreadData.get();
+    RootedValue valueRoot(data, value);
+    RootedValue otherRoot(data, other.value);
+    MOZ_ASSERT(SameValue(nullptr, valueRoot, otherRoot, &same));
     MOZ_ASSERT(same == b);
 #endif
     return b;
@@ -901,7 +904,7 @@ MapIteratorObject::kind() const
 bool
 GlobalObject::initMapIteratorProto(JSContext *cx, Handle<GlobalObject *> global)
 {
-    JSObject *base = GlobalObject::getOrCreateIteratorPrototype(cx, global);
+    Rooted<JSObject*> base(cx, GlobalObject::getOrCreateIteratorPrototype(cx, global));
     if (!base)
         return false;
     Rooted<MapIteratorObject *> proto(cx,
@@ -1077,14 +1080,9 @@ MapObject::initClass(JSContext *cx, JSObject *obj)
 
         // Define its alias.
         RootedValue funval(cx, ObjectValue(*fun));
-#if JS_HAS_SYMBOLS
         RootedId iteratorId(cx, SYMBOL_TO_JSID(cx->wellKnownSymbols().iterator));
         if (!JS_DefinePropertyById(cx, proto, iteratorId, funval, 0))
             return nullptr;
-#else
-        if (!JS_DefineProperty(cx, proto, js_std_iterator_str, funval, 0))
-            return nullptr;
-#endif
     }
     return proto;
 }
@@ -1231,6 +1229,11 @@ MapObject::construct(JSContext *cx, unsigned argc, Value *vp)
         return false;
 
     CallArgs args = CallArgsFromVp(argc, vp);
+
+    // FIXME: bug 1083752
+    if (!WarnIfNotConstructing(cx, args, "Map"))
+        return false;
+
     if (!args.get(0).isNullOrUndefined()) {
         RootedValue adderVal(cx);
         if (!GetProperty(cx, obj, obj, cx->names().set, &adderVal))
@@ -1310,10 +1313,23 @@ MapObject::is(HandleValue v)
     return v.isObject() && v.toObject().hasClass(&class_) && v.toObject().as<MapObject>().getPrivate();
 }
 
+bool
+MapObject::is(HandleObject o)
+{
+    return o->hasClass(&class_) && o->as<MapObject>().getPrivate();
+}
+
 #define ARG0_KEY(cx, args, key)                                               \
     AutoHashableValueRooter key(cx);                                          \
     if (args.length() > 0 && !key.setValue(cx, args[0]))                      \
         return false
+
+ValueMap &
+MapObject::extract(HandleObject o)
+{
+    MOZ_ASSERT(o->hasClass(&MapObject::class_));
+    return *o->as<MapObject>().getData();
+}
 
 ValueMap &
 MapObject::extract(CallReceiver call)
@@ -1323,15 +1339,21 @@ MapObject::extract(CallReceiver call)
     return *call.thisv().toObject().as<MapObject>().getData();
 }
 
+uint32_t
+MapObject::size(JSContext *cx, HandleObject obj)
+{
+    MOZ_ASSERT(MapObject::is(obj));
+    ValueMap &map = extract(obj);
+    static_assert(sizeof(map.count()) <= sizeof(uint32_t),
+                  "map count must be precisely representable as a JS number");
+    return map.count();
+}
+
 bool
 MapObject::size_impl(JSContext *cx, CallArgs args)
 {
-    MOZ_ASSERT(MapObject::is(args.thisv()));
-
-    ValueMap &map = extract(args);
-    static_assert(sizeof(map.count()) <= sizeof(uint32_t),
-                  "map count must be precisely representable as a JS number");
-    args.rval().setNumber(map.count());
+    RootedObject obj(cx, &args.thisv().toObject());
+    args.rval().setNumber(size(cx, obj));
     return true;
 }
 
@@ -1343,18 +1365,30 @@ MapObject::size(JSContext *cx, unsigned argc, Value *vp)
 }
 
 bool
+MapObject::get(JSContext *cx, HandleObject obj,
+               HandleValue key, MutableHandleValue rval)
+{
+    MOZ_ASSERT(MapObject::is(obj));
+
+    ValueMap &map = extract(obj);
+    AutoHashableValueRooter k(cx);
+
+    if (!k.setValue(cx, key))
+        return false;
+
+    if (ValueMap::Entry *p = map.get(k))
+        rval.set(p->value);
+    else
+        rval.setUndefined();
+
+    return true;
+}
+
+bool
 MapObject::get_impl(JSContext *cx, CallArgs args)
 {
-    MOZ_ASSERT(MapObject::is(args.thisv()));
-
-    ValueMap &map = extract(args);
-    ARG0_KEY(cx, args, key);
-
-    if (ValueMap::Entry *p = map.get(key))
-        args.rval().set(p->value);
-    else
-        args.rval().setUndefined();
-    return true;
+    RootedObject obj(cx, &args.thisv().toObject());
+    return get(cx, obj, args.get(0), args.rval());
 }
 
 bool
@@ -1365,14 +1399,30 @@ MapObject::get(JSContext *cx, unsigned argc, Value *vp)
 }
 
 bool
+MapObject::has(JSContext *cx, HandleObject obj, HandleValue key, bool *rval)
+{
+    MOZ_ASSERT(MapObject::is(obj));
+
+    ValueMap &map = extract(obj);
+    AutoHashableValueRooter k(cx);
+
+    if (!k.setValue(cx, key))
+        return false;
+
+    *rval = map.has(k);
+    return true;
+}
+
+bool
 MapObject::has_impl(JSContext *cx, CallArgs args)
 {
-    MOZ_ASSERT(MapObject::is(args.thisv()));
-
-    ValueMap &map = extract(args);
-    ARG0_KEY(cx, args, key);
-    args.rval().setBoolean(map.has(key));
-    return true;
+    bool found;
+    RootedObject obj(cx, &args.thisv().toObject());
+    if (has(cx, obj, args.get(0), &found)) {
+        args.rval().setBoolean(found);
+        return true;
+    }
+    return false;
 }
 
 bool
@@ -1439,15 +1489,20 @@ MapObject::delete_(JSContext *cx, unsigned argc, Value *vp)
 }
 
 bool
+MapObject::iterator(JSContext *cx, IteratorKind kind,
+                    HandleObject obj, MutableHandleValue iter)
+{
+    MOZ_ASSERT(MapObject::is(obj));
+    ValueMap &map = extract(obj);
+    Rooted<JSObject*> iterobj(cx, MapIteratorObject::create(cx, obj, &map, kind));
+    return iterobj && (iter.setObject(*iterobj), true);
+}
+
+bool
 MapObject::iterator_impl(JSContext *cx, CallArgs args, IteratorKind kind)
 {
-    Rooted<MapObject*> mapobj(cx, &args.thisv().toObject().as<MapObject>());
-    ValueMap &map = *mapobj->getData();
-    Rooted<JSObject*> iterobj(cx, MapIteratorObject::create(cx, mapobj, &map, kind));
-    if (!iterobj)
-        return false;
-    args.rval().setObject(*iterobj);
-    return true;
+    RootedObject obj(cx, &args.thisv().toObject());
+    return iterator(cx, kind, obj, args.rval());
 }
 
 bool
@@ -1492,13 +1547,9 @@ MapObject::entries(JSContext *cx, unsigned argc, Value *vp)
 bool
 MapObject::clear_impl(JSContext *cx, CallArgs args)
 {
-    Rooted<MapObject*> mapobj(cx, &args.thisv().toObject().as<MapObject>());
-    if (!mapobj->getData()->clear()) {
-        js_ReportOutOfMemory(cx);
-        return false;
-    }
+    RootedObject obj(cx, &args.thisv().toObject());
     args.rval().setUndefined();
-    return true;
+    return clear(cx, obj);
 }
 
 bool
@@ -1506,6 +1557,18 @@ MapObject::clear(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     return CallNonGenericMethod(cx, is, clear_impl, args);
+}
+
+bool
+MapObject::clear(JSContext *cx, HandleObject obj)
+{
+    MOZ_ASSERT(MapObject::is(obj));
+    ValueMap &map = extract(obj);
+    if (!map.clear()) {
+        js_ReportOutOfMemory(cx);
+        return false;
+    }
+    return true;
 }
 
 JSObject *
@@ -1577,7 +1640,7 @@ SetIteratorObject::kind() const
 bool
 GlobalObject::initSetIteratorProto(JSContext *cx, Handle<GlobalObject*> global)
 {
-    JSObject *base = GlobalObject::getOrCreateIteratorPrototype(cx, global);
+    Rooted<JSObject*> base(cx, GlobalObject::getOrCreateIteratorPrototype(cx, global));
     if (!base)
         return false;
     Rooted<SetIteratorObject *> proto(cx,
@@ -1730,14 +1793,9 @@ SetObject::initClass(JSContext *cx, JSObject *obj)
         if (!JS_DefineProperty(cx, proto, "keys", funval, 0))
             return nullptr;
 
-#if JS_HAS_SYMBOLS
         RootedId iteratorId(cx, SYMBOL_TO_JSID(cx->wellKnownSymbols().iterator));
         if (!JS_DefinePropertyById(cx, proto, iteratorId, funval, 0))
             return nullptr;
-#else
-        if (!JS_DefineProperty(cx, proto, js_std_iterator_str, funval, 0))
-            return nullptr;
-#endif
     }
     return proto;
 }
@@ -1820,6 +1878,11 @@ SetObject::construct(JSContext *cx, unsigned argc, Value *vp)
         return false;
 
     CallArgs args = CallArgsFromVp(argc, vp);
+
+    // FIXME: bug 1083752
+    if (!WarnIfNotConstructing(cx, args, "Set"))
+        return false;
+
     if (!args.get(0).isNullOrUndefined()) {
         RootedValue adderVal(cx);
         if (!GetProperty(cx, obj, obj, cx->names().add, &adderVal))
@@ -2042,4 +2105,76 @@ bool
 js::InitSelfHostingCollectionIteratorFunctions(JSContext *cx, HandleObject obj)
 {
     return JS_DefineFunctions(cx, obj, selfhosting_collection_iterator_methods);
+}
+
+/*** JS public APIs **********************************************************/
+
+JS_PUBLIC_API(JSObject *)
+JS::NewMapObject(JSContext *cx)
+{
+    return MapObject::create(cx);
+}
+
+JS_PUBLIC_API(uint32_t)
+JS::MapSize(JSContext *cx, HandleObject obj)
+{
+    CHECK_REQUEST(cx);
+    return MapObject::size(cx, obj);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapGet(JSContext *cx, HandleObject obj,
+           HandleValue key, MutableHandleValue rval)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, key, rval);
+    return MapObject::get(cx, obj, key, rval);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapHas(JSContext *cx, HandleObject obj, HandleValue key, bool *rval)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, key);
+    return MapObject::has(cx, obj, key, rval);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapSet(JSContext *cx, HandleObject obj,
+           HandleValue key, HandleValue val)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, key, val);
+    return MapObject::set(cx, obj, key, val);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapClear(JSContext *cx, HandleObject obj)
+{
+    CHECK_REQUEST(cx);
+    return MapObject::clear(cx, obj);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapKeys(JSContext *cx, HandleObject obj, MutableHandleValue rval)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, rval);
+    return MapObject::iterator(cx, MapObject::Keys, obj, rval);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapValues(JSContext *cx, HandleObject obj, MutableHandleValue rval)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, rval);
+    return MapObject::iterator(cx, MapObject::Values, obj, rval);
+}
+
+JS_PUBLIC_API(bool)
+JS::MapEntries(JSContext *cx, HandleObject obj, MutableHandleValue rval)
+{
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, rval);
+    return MapObject::iterator(cx, MapObject::Entries, obj, rval);
 }

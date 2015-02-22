@@ -11,6 +11,7 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/TelemetryTimestamps.jsm");
 Cu.import("resource://gre/modules/TelemetryPing.jsm");
+Cu.import("resource://gre/modules/TelemetrySession.jsm");
 
 const Telemetry = Services.telemetry;
 const bundle = Services.strings.createBundle(
@@ -118,7 +119,8 @@ let GeneralData = {
     let table = document.createElement("table");
 
     let caption = document.createElement("caption");
-    caption.appendChild(document.createTextNode("General data\n"));
+    let captionString = bundle.GetStringFromName("generalDataTitle");
+    caption.appendChild(document.createTextNode(captionString + "\n"));
     table.appendChild(caption);
 
     let headings = document.createElement("tr");
@@ -950,7 +952,7 @@ function setupListeners() {
 
   document.getElementById("late-writes-fetch-symbols").addEventListener("click",
     function () {
-      let lateWrites = TelemetryPing.getPayload().lateWrites;
+      let lateWrites = TelemetrySession.getPayload().lateWrites;
       let req = new SymbolicationRequest("late-writes",
                                          LateWritesSingleton.renderHeader,
                                          lateWrites.memoryMap,
@@ -960,7 +962,7 @@ function setupListeners() {
 
   document.getElementById("late-writes-hide-symbols").addEventListener("click",
     function () {
-      let ping = TelemetryPing.getPayload();
+      let ping = TelemetrySession.getPayload();
       LateWritesSingleton.renderLateWrites(ping.lateWrites);
   }, false);
 
@@ -1112,7 +1114,7 @@ function sortStartupMilestones(aSimpleMeasurements) {
 }
 
 function displayPingData() {
-  let ping = TelemetryPing.getPayload();
+  let ping = TelemetrySession.getPayload();
 
   let keysHeader = bundle.GetStringFromName("keysHeader");
   let valuesHeader = bundle.GetStringFromName("valuesHeader");

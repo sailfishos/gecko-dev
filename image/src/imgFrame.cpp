@@ -123,7 +123,7 @@ static bool AllowedImageAndFrameDimensions(const nsIntSize& aImageSize,
   }
   nsIntRect imageRect(0, 0, aImageSize.width, aImageSize.height);
   if (!imageRect.Contains(aFrameRect)) {
-    return false;
+    NS_WARNING("Animated image frame does not fit inside bounds of image");
   }
   return true;
 }
@@ -421,8 +421,8 @@ nsresult imgFrame::Optimize()
 
   /* Figure out if the entire image is a constant color */
 
-  // this should always be true
-  if (mImageSurface->Stride() == mSize.width * 4) {
+  if (gfxPrefs::ImageSingleColorOptimizationEnabled() &&
+      mImageSurface->Stride() == mSize.width * 4) {
     uint32_t *imgData = (uint32_t*) ((uint8_t *)mVBufPtr);
     uint32_t firstPixel = * (uint32_t*) imgData;
     uint32_t pixelCount = mSize.width * mSize.height + 1;
@@ -1143,7 +1143,7 @@ imgFrame::SizeOfExcludingThis(gfxMemoryLocation aLocation,
 
   // aMallocSizeOf is only used if aLocation==gfxMemoryLocation::IN_PROCESS_HEAP.  It
   // should be nullptr otherwise.
-  NS_ABORT_IF_FALSE(
+  MOZ_ASSERT(
     (aLocation == gfxMemoryLocation::IN_PROCESS_HEAP &&  aMallocSizeOf) ||
     (aLocation != gfxMemoryLocation::IN_PROCESS_HEAP && !aMallocSizeOf),
     "mismatch between aLocation and aMallocSizeOf");

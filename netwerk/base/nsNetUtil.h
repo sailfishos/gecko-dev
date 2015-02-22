@@ -324,7 +324,22 @@ NS_NewChannelInternal(nsIChannel**           outChannel,
                       nsLoadFlags            aLoadFlags = nsIRequest::LOAD_NORMAL,
                       nsIIOService*          aIoService = nullptr)
 {
-  MOZ_ASSERT(aLoadInfo, "Can not create a channel without a loadInfo");
+  // NS_NewChannelInternal is mostly called for channel redirects. We should allow
+  // the creation of a channel even if the original channel did not have a loadinfo
+  // attached.
+  if (!aLoadInfo) {
+    return NS_NewChannelInternal(outChannel,
+                                 aUri,
+                                 nullptr, // aLoadingNode
+                                 nullptr, // aLoadingPrincipal
+                                 nullptr, // aTriggeringPrincipal
+                                 nsILoadInfo::SEC_NORMAL,
+                                 nsIContentPolicy::TYPE_OTHER,
+                                 aLoadGroup,
+                                 aCallbacks,
+                                 aLoadFlags,
+                                 aIoService);
+  }
   nsresult rv = NS_NewChannelInternal(outChannel,
                                       aUri,
                                       aLoadInfo->LoadingNode(),
@@ -581,7 +596,6 @@ NS_NewInputStreamChannelInternal(nsIChannel**        outChannel,
                                  const nsACString&   aContentCharset,
                                  nsILoadInfo*        aLoadInfo)
 {
-  MOZ_ASSERT(aLoadInfo, "can not create channel without a loadinfo");
   nsresult rv;
   nsCOMPtr<nsIInputStreamChannel> isc =
     do_CreateInstance(NS_INPUTSTREAMCHANNEL_CONTRACTID, &rv);
@@ -608,7 +622,7 @@ NS_NewInputStreamChannelInternal(nsIChannel**        outChannel,
 
   // If we're sandboxed, make sure to clear any owner the channel
   // might already have.
-  if (aLoadInfo->GetLoadingSandboxed()) {
+  if (aLoadInfo && aLoadInfo->GetLoadingSandboxed()) {
     channel->SetOwner(nullptr);
   }
 
@@ -1546,7 +1560,7 @@ NS_ReadInputStreamToString(nsIInputStream *aInputStream,
                            nsACString &aDest,
                            uint32_t aCount)
 {
-    if (!aDest.SetLength(aCount, mozilla::fallible_t()))
+    if (!aDest.SetLength(aCount, mozilla::fallible))
         return NS_ERROR_OUT_OF_MEMORY;
     void* dest = aDest.BeginWriting();
     return NS_ReadInputStreamToBuffer(aInputStream, &dest, aCount);
@@ -2419,6 +2433,56 @@ NS_IsInternalSameURIRedirect(nsIChannel *aOldChannel,
 
   bool res;
   return NS_SUCCEEDED(oldURI->Equals(newURI, &res)) && res;
+}
+
+inline bool
+NS_IsHSTSUpgradeRedirect(nsIChannel *aOldChannel,
+                         nsIChannel *aNewChannel,
+                         uint32_t aFlags)
+{
+  if (!(aFlags & nsIChannelEventSink::REDIRECT_STS_UPGRADE)) {
+    return false;
+  }
+
+  nsCOMPtr<nsIURI> oldURI, newURI;
+  aOldChannel->GetURI(getter_AddRefs(oldURI));
+  aNewChannel->GetURI(getter_AddRefs(newURI));
+
+  if (!oldURI || !newURI) {
+    return false;
+  }
+
+  bool isHttp;
+  if (NS_FAILED(oldURI->SchemeIs("http", &isHttp)) || !isHttp) {
+    return false;
+  }
+
+  bool isHttps;
+  if (NS_FAILED(newURI->SchemeIs("https", &isHttps)) || !isHttps) {
+    return false;
+  }
+
+  nsCOMPtr<nsIURI> upgradedURI;
+  if (NS_FAILED(oldURI->Clone(getter_AddRefs(upgradedURI)))) {
+    return false;
+  }
+
+  if (NS_FAILED(upgradedURI->SetScheme(NS_LITERAL_CSTRING("https")))) {
+    return false;
+  }
+
+  int32_t oldPort = -1;
+  if (NS_FAILED(oldURI->GetPort(&oldPort))) {
+    return false;
+  }
+  if (oldPort == 80 || oldPort == -1) {
+    upgradedURI->SetPort(-1);
+  } else {
+    upgradedURI->SetPort(oldPort);
+  }
+
+  bool res;
+  return NS_SUCCEEDED(upgradedURI->Equals(newURI, &res)) && res;
 }
 
 inline nsresult

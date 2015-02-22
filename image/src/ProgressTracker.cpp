@@ -87,25 +87,16 @@ CheckProgressConsistency(Progress aProgress)
 void
 ProgressTracker::SetImage(Image* aImage)
 {
-  NS_ABORT_IF_FALSE(aImage, "Setting null image");
-  NS_ABORT_IF_FALSE(!mImage, "Setting image when we already have one");
+  MOZ_ASSERT(aImage, "Setting null image");
+  MOZ_ASSERT(!mImage, "Setting image when we already have one");
   mImage = aImage;
 }
 
 void
 ProgressTracker::ResetImage()
 {
-  NS_ABORT_IF_FALSE(mImage, "Resetting image when it's already null!");
+  MOZ_ASSERT(mImage, "Resetting image when it's already null!");
   mImage = nullptr;
-}
-
-bool
-ProgressTracker::IsLoading() const
-{
-  // Checking for whether OnStopRequest has fired allows us to say we're
-  // loading before OnStartRequest gets called, letting the request properly
-  // get removed from the cache in certain cases.
-  return !(mProgress & FLAG_LOAD_COMPLETE);
 }
 
 uint32_t
@@ -510,7 +501,14 @@ ProgressTracker::OnImageAvailable()
     return;
   }
 
-  NOTIFY_IMAGE_OBSERVERS(mObservers, SetHasImage());
+  // Notify any imgRequestProxys that are observing us that we have an Image.
+  ObserverArray::ForwardIterator iter(mObservers);
+  while (iter.HasMore()) {
+    nsRefPtr<IProgressObserver> observer = iter.GetNext().get();
+    if (observer) {
+      observer->SetHasImage();
+    }
+  }
 }
 
 void

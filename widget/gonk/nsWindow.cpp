@@ -46,6 +46,7 @@
 #include "mozilla/BasicEvents.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/layers/CompositorParent.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/MouseEvents.h"
@@ -127,6 +128,8 @@ displayEnabledCallback(bool enabled)
 }
 
 } // anonymous namespace
+
+NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsBaseWidget)
 
 nsWindow::nsWindow()
 {
@@ -233,17 +236,44 @@ nsWindow::DispatchInputEvent(WidgetGUIEvent& aEvent)
 /*static*/ void
 nsWindow::DispatchTouchInput(MultiTouchInput& aInput)
 {
+    APZThreadUtils::AssertOnControllerThread();
+
     if (!gFocusedWindow) {
         return;
     }
 
-    gFocusedWindow->UserActivity();
     gFocusedWindow->DispatchTouchInputViaAPZ(aInput);
 }
+
+class DispatchTouchInputOnMainThread : public nsRunnable
+{
+public:
+    DispatchTouchInputOnMainThread(const MultiTouchInput& aInput,
+                                   const ScrollableLayerGuid& aGuid,
+                                   const uint64_t& aInputBlockId)
+      : mInput(aInput)
+      , mGuid(aGuid)
+      , mInputBlockId(aInputBlockId)
+    {}
+
+    NS_IMETHOD Run() {
+        if (gFocusedWindow) {
+            gFocusedWindow->DispatchTouchEventForAPZ(mInput, mGuid, mInputBlockId);
+        }
+        return NS_OK;
+    }
+
+private:
+    MultiTouchInput mInput;
+    ScrollableLayerGuid mGuid;
+    uint64_t mInputBlockId;
+};
 
 void
 nsWindow::DispatchTouchInputViaAPZ(MultiTouchInput& aInput)
 {
+    APZThreadUtils::AssertOnControllerThread();
+
     if (!mAPZC) {
         // In general mAPZC should not be null, but during initial setup
         // it might be, so we handle that case by ignoring touch input there.
@@ -259,6 +289,22 @@ nsWindow::DispatchTouchInputViaAPZ(MultiTouchInput& aInput)
         return;
     }
 
+    // Can't use NS_NewRunnableMethod because it only takes up to one arg and
+    // we need more. Also we can't pass in |this| to the task because nsWindow
+    // refcounting is not threadsafe. Instead we just use the gFocusedWindow
+    // static ptr inside the task.
+    NS_DispatchToMainThread(new DispatchTouchInputOnMainThread(
+        aInput, guid, inputBlockId));
+}
+
+void
+nsWindow::DispatchTouchEventForAPZ(const MultiTouchInput& aInput,
+                                   const ScrollableLayerGuid& aGuid,
+                                   const uint64_t aInputBlockId)
+{
+    MOZ_ASSERT(NS_IsMainThread());
+    UserActivity();
+
     // Convert it to an event we can send to Gecko
     WidgetTouchEvent event = aInput.ToWidgetTouchEvent(this);
 
@@ -270,7 +316,7 @@ nsWindow::DispatchTouchInputViaAPZ(MultiTouchInput& aInput)
     // and the child process will take care of responding to the event as needed
     // so we don't need to do anything else here.
     if (TabParent* capturer = TabParent::GetEventCapturer()) {
-        InputAPZContext context(guid, inputBlockId);
+        InputAPZContext context(aGuid, aInputBlockId);
         if (capturer->TryCapture(event)) {
             return;
         }
@@ -280,26 +326,26 @@ nsWindow::DispatchTouchInputViaAPZ(MultiTouchInput& aInput)
     // for "normal" flow. The event might get sent to the child process still,
     // but if it doesn't we need to notify the APZ of various things. All of
     // that happens in DispatchEventForAPZ
-    rv = DispatchEventForAPZ(&event, guid, inputBlockId);
-
-    // Finally, if the touch event had only one touch point, generate a mouse
-    // event for it and send it through the gecko root process.
-    // Technically we should not need to do this if the touch event was routed
-    // to the child process, but that seems to expose a bug in B2G where the
-    // keyboard doesn't go away in some cases.
-    // Also for now we're dispatching mouse events from all touch events because
-    // we need this for click events to work in the chrome process. Once we have
-    // APZ and ChromeProcessController::HandleSingleTap working for the chrome
-    // process we shouldn't need to do this at all.
-    if (event.touches.Length() == 1) {
-        WidgetMouseEvent mouseEvent = aInput.ToWidgetMouseEvent(this);
-        if (mouseEvent.message != NS_EVENT_NULL) {
-            mouseEvent.mFlags.mNoCrossProcessBoundaryForwarding = (rv == nsEventStatus_eConsumeNoDefault);
-            DispatchEvent(&mouseEvent, rv);
-        }
-    }
+    DispatchEventForAPZ(&event, aGuid, aInputBlockId);
 }
 
+class DispatchTouchInputOnControllerThread : public Task
+{
+public:
+    DispatchTouchInputOnControllerThread(const MultiTouchInput& aInput)
+      : Task()
+      , mInput(aInput)
+    {}
+
+    virtual void Run() MOZ_OVERRIDE {
+        if (gFocusedWindow) {
+            gFocusedWindow->DispatchTouchInputViaAPZ(mInput);
+        }
+    }
+
+private:
+    MultiTouchInput mInput;
+};
 
 nsresult
 nsWindow::SynthesizeNativeTouchPoint(uint32_t aPointerId,
@@ -361,7 +407,14 @@ nsWindow::SynthesizeNativeTouchPoint(uint32_t aPointerId,
             (float)aPointerPressure));
     }
 
-    DispatchTouchInputViaAPZ(inputToDispatch);
+    // Can't use NewRunnableMethod here because that will pass a const-ref
+    // argument to DispatchTouchInputViaAPZ whereas that function takes a
+    // non-const ref. At this callsite we don't care about the mutations that
+    // the function performs so this is fine. Also we can't pass |this| to the
+    // task because nsWindow refcounting is not threadsafe. Instead we just use
+    // the gFocusedWindow static ptr instead the task.
+    APZThreadUtils::RunOnControllerThread(new DispatchTouchInputOnControllerThread(inputToDispatch));
+
     return NS_OK;
 }
 
@@ -369,11 +422,10 @@ NS_IMETHODIMP
 nsWindow::Create(nsIWidget *aParent,
                  void *aNativeParent,
                  const nsIntRect &aRect,
-                 nsDeviceContext *aContext,
                  nsWidgetInitData *aInitData)
 {
     BaseCreate(aParent, IS_TOPLEVEL() ? sVirtualBounds : aRect,
-               aContext, aInitData);
+               aInitData);
 
     mBounds = aRect;
 
@@ -522,10 +574,10 @@ nsWindow::Invalidate(const nsIntRect &aRect)
     return NS_OK;
 }
 
-nsIntPoint
+LayoutDeviceIntPoint
 nsWindow::WidgetToScreenOffset()
 {
-    nsIntPoint p(0, 0);
+    LayoutDeviceIntPoint p(0, 0);
     nsWindow *w = this;
 
     while (w && w->mParent) {

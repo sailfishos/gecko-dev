@@ -13,10 +13,17 @@ function spawnTest () {
 
   // Select calltree view
   let viewChanged = onceSpread(DetailsView, EVENTS.DETAILS_VIEW_SELECTED);
-  command($("toolbarbutton[data-view='calltree']"));
+  command($("toolbarbutton[data-view='js-calltree']"));
   let [_, viewName] = yield viewChanged;
-  is(viewName, "calltree", "DETAILS_VIEW_SELECTED fired with view name");
-  checkViews(DetailsView, doc, "calltree");
+  is(viewName, "js-calltree", "DETAILS_VIEW_SELECTED fired with view name");
+  checkViews(DetailsView, doc, "js-calltree");
+
+  // Select flamegraph view
+  viewChanged = onceSpread(DetailsView, EVENTS.DETAILS_VIEW_SELECTED);
+  command($("toolbarbutton[data-view='js-flamegraph']"));
+  [_, viewName] = yield viewChanged;
+  is(viewName, "js-flamegraph", "DETAILS_VIEW_SELECTED fired with view name");
+  checkViews(DetailsView, doc, "js-flamegraph");
 
   // Select waterfall view
   viewChanged = onceSpread(DetailsView, EVENTS.DETAILS_VIEW_SELECTED);
@@ -25,22 +32,15 @@ function spawnTest () {
   is(viewName, "waterfall", "DETAILS_VIEW_SELECTED fired with view name");
   checkViews(DetailsView, doc, "waterfall");
 
-  // Select flamegraph view
-  viewChanged = onceSpread(DetailsView, EVENTS.DETAILS_VIEW_SELECTED);
-  command($("toolbarbutton[data-view='flamegraph']"));
-  [_, viewName] = yield viewChanged;
-  is(viewName, "flamegraph", "DETAILS_VIEW_SELECTED fired with view name");
-  checkViews(DetailsView, doc, "flamegraph");
-
   yield teardown(panel);
   finish();
 }
 
 function checkViews (DetailsView, doc, currentView) {
-  for (let viewName in DetailsView.viewIndexes) {
+  for (let viewName in DetailsView.components) {
     let button = doc.querySelector(`toolbarbutton[data-view="${viewName}"]`);
 
-    is(DetailsView.el.selectedIndex, DetailsView.viewIndexes[currentView],
+    is(DetailsView.el.selectedPanel.id, DetailsView.components[currentView].id,
       `DetailsView correctly has ${currentView} selected.`);
     if (viewName === currentView) {
       ok(button.getAttribute("checked"), `${viewName} button checked`);

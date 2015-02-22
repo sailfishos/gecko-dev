@@ -7,14 +7,17 @@
 function spawnTest () {
   let { panel } = yield initPerformance(SIMPLE_URL);
   let { EVENTS, PerformanceController, OverviewView, DetailsView } = panel.panelWin;
-  let { WaterfallView, CallTreeView, FlameGraphView } = panel.panelWin;
+  let { WaterfallView, JsCallTreeView, JsFlameGraphView } = panel.panelWin;
 
+  let updateWaterfall = () => updatedWaterfall++;
+  let updateCallTree = () => updatedCallTree++;
+  let updateFlameGraph = () => updatedFlameGraph++;
   let updatedWaterfall = 0;
   let updatedCallTree = 0;
   let updatedFlameGraph = 0;
-  WaterfallView.on(EVENTS.WATERFALL_RENDERED, () => updatedWaterfall++);
-  CallTreeView.on(EVENTS.CALL_TREE_RENDERED, () => updatedCallTree++);
-  FlameGraphView.on(EVENTS.FLAMEGRAPH_RENDERED, () => updatedFlameGraph++);
+  WaterfallView.on(EVENTS.WATERFALL_RENDERED, updateWaterfall);
+  JsCallTreeView.on(EVENTS.JS_CALL_TREE_RENDERED, updateCallTree);
+  JsFlameGraphView.on(EVENTS.JS_FLAMEGRAPH_RENDERED, updateFlameGraph);
 
   yield startRecording(panel);
   yield busyWait(100);
@@ -26,34 +29,38 @@ function spawnTest () {
   yield rendered;
   ok(true, "Waterfall rerenders when a range in the overview graph is selected.");
 
-  rendered = once(CallTreeView, EVENTS.CALL_TREE_RENDERED);
-  DetailsView.selectView("calltree");
+  rendered = once(JsCallTreeView, EVENTS.JS_CALL_TREE_RENDERED);
+  yield DetailsView.selectView("js-calltree");
   yield rendered;
   ok(true, "Call tree rerenders after its corresponding pane is shown.");
 
-  rendered = once(FlameGraphView, EVENTS.FLAMEGRAPH_RENDERED);
-  DetailsView.selectView("flamegraph");
+  rendered = once(JsFlameGraphView, EVENTS.JS_FLAMEGRAPH_RENDERED);
+  yield DetailsView.selectView("js-flamegraph");
   yield rendered;
   ok(true, "Flamegraph rerenders after its corresponding pane is shown.");
 
-  rendered = once(FlameGraphView, EVENTS.FLAMEGRAPH_RENDERED);
+  rendered = once(JsFlameGraphView, EVENTS.JS_FLAMEGRAPH_RENDERED);
   OverviewView.emit(EVENTS.OVERVIEW_RANGE_CLEARED);
   yield rendered;
   ok(true, "Flamegraph rerenders when a range in the overview graph is removed.");
 
-  rendered = once(CallTreeView, EVENTS.CALL_TREE_RENDERED);
-  DetailsView.selectView("calltree");
+  rendered = once(JsCallTreeView, EVENTS.JS_CALL_TREE_RENDERED);
+  yield DetailsView.selectView("js-calltree");
   yield rendered;
   ok(true, "Call tree rerenders after its corresponding pane is shown.");
 
   rendered = once(WaterfallView, EVENTS.WATERFALL_RENDERED);
-  DetailsView.selectView("waterfall");
+  yield DetailsView.selectView("waterfall");
   yield rendered;
   ok(true, "Waterfall rerenders after its corresponding pane is shown.");
 
   is(updatedWaterfall, 3, "WaterfallView rerendered 3 times.");
-  is(updatedCallTree, 3, "CallTreeView rerendered 3 times.");
-  is(updatedFlameGraph, 3, "FlameGraphView rerendered 3 times.");
+  is(updatedCallTree, 2, "JsCallTreeView rerendered 2 times.");
+  is(updatedFlameGraph, 2, "JsFlameGraphView rerendered 2 times.");
+
+  WaterfallView.off(EVENTS.WATERFALL_RENDERED, updateWaterfall);
+  JsCallTreeView.off(EVENTS.JS_CALL_TREE_RENDERED, updateCallTree);
+  JsFlameGraphView.off(EVENTS.JS_FLAMEGRAPH_RENDERED, updateFlameGraph);
 
   yield teardown(panel);
   finish();

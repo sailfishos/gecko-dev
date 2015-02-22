@@ -11,6 +11,7 @@
 #include "mozilla/Attributes.h"
 #include <map>
 
+#include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layout/PRenderFrameParent.h"
 #include "nsDisplayList.h"
 #include "RenderFrameUtils.h"
@@ -80,22 +81,6 @@ public:
 
   void SetBackgroundColor(nscolor aColor) { mBackgroundColor = gfxRGBA(aColor); };
 
-  /**
-   * Notify the APZ code of an input event, and get back the untransformed event.
-   * @param aEvent the input event; this is modified in-place so that the async
-   *        transforms are unapplied. This can be passed to Gecko for hit testing
-   *        and normal event dispatch.
-   * @param aOutTargetGuid An out-parameter that will contain the identifier
-   *        of the APZC instance that handled the event, if one was found. This
-   *        argument may be null.
-   * @param aOutInputBlockId An out-parameter that will contain the identifier
-   *        of the input block that this event was added to, if there was on.
-   *        This argument may be null.
-   */
-  nsEventStatus NotifyInputEvent(WidgetInputEvent& aEvent,
-                                 ScrollableLayerGuid* aOutTargetGuid,
-                                 uint64_t* aOutInputBlockId);
-
   void ZoomToRect(uint32_t aPresShellId, ViewID aViewId, const CSSRect& aRect);
 
   void ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid,
@@ -116,6 +101,9 @@ public:
   void GetTextureFactoryIdentifier(TextureFactoryIdentifier* aTextureFactoryIdentifier);
 
   inline uint64_t GetLayersId() { return mLayersId; }
+
+  void TakeFocusForClick();
+
 protected:
   void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
 
@@ -179,10 +167,7 @@ class nsDisplayRemote : public nsDisplayItem
 
 public:
   nsDisplayRemote(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
-                  RenderFrameParent* aRemoteFrame)
-    : nsDisplayItem(aBuilder, aFrame)
-    , mRemoteFrame(aRemoteFrame)
-  {}
+                  RenderFrameParent* aRemoteFrame);
 
   virtual LayerState GetLayerState(nsDisplayListBuilder* aBuilder,
                                    LayerManager* aManager,
@@ -200,6 +185,7 @@ public:
 
 private:
   RenderFrameParent* mRemoteFrame;
+  mozilla::layers::EventRegionsOverride mEventRegionsOverride;
 };
 
 

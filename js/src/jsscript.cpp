@@ -47,7 +47,6 @@
 #include "vm/Xdr.h"
 
 #include "jsfuninlines.h"
-#include "jsinferinlines.h"
 #include "jsobjinlines.h"
 
 #include "vm/ScopeObject-inl.h"
@@ -60,8 +59,6 @@ using namespace js::frontend;
 using mozilla::PodCopy;
 using mozilla::PodZero;
 using mozilla::RotateLeft;
-
-typedef Rooted<GlobalObject *> RootedGlobalObject;
 
 /* static */ BindingIter
 Bindings::argumentsBinding(ExclusiveContext *cx, InternalBindingsHandle bindings)
@@ -1090,10 +1087,8 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
         scriptp.set(script);
 
         /* see BytecodeEmitter::tellDebuggerAboutCompiledScript */
-        if (!fun) {
-            RootedGlobalObject global(cx, script->compileAndGo() ? &script->global() : nullptr);
-            Debugger::onNewScript(cx, script, global);
-        }
+        if (!fun)
+            Debugger::onNewScript(cx, script);
     }
 
     return true;
@@ -1361,7 +1356,7 @@ const Class ScriptSourceObject::class_ = {
 ScriptSourceObject *
 ScriptSourceObject::create(ExclusiveContext *cx, ScriptSource *source)
 {
-    RootedObject object(cx, NewObjectWithGivenProto(cx, &class_, nullptr, cx->global()));
+    RootedObject object(cx, NewObjectWithGivenProto(cx, &class_, NullPtr(), cx->global()));
     if (!object)
         return nullptr;
     RootedScriptSource sourceObject(cx, &object->as<ScriptSourceObject>());
@@ -2392,7 +2387,7 @@ JSScript::Create(ExclusiveContext *cx, HandleObject enclosingScope, bool savedCa
     PodZero(script.get());
     new (&script->bindings) Bindings;
 
-    script->enclosingScopeOrOriginalFunction_ = enclosingScope;
+    script->enclosingStaticScope_ = enclosingScope;
     script->savedCallerFun_ = savedCallerFun;
     script->initCompartment(cx);
 
@@ -3128,11 +3123,6 @@ js::CloneScript(JSContext *cx, HandleObject enclosingScope, HandleFunction fun, 
     dst->isGeneratorExp_ = src->isGeneratorExp();
     dst->setGeneratorKind(src->generatorKind());
 
-    /* Copy over hints. */
-    dst->shouldInline_ = src->shouldInline();
-    dst->shouldCloneAtCallsite_ = src->shouldCloneAtCallsite();
-    dst->isCallsiteClone_ = src->isCallsiteClone();
-
     if (nconsts != 0) {
         HeapValue *vector = Rebase<HeapValue>(dst, src, src->consts()->vector);
         dst->consts()->vector = vector;
@@ -3191,8 +3181,7 @@ js::CloneFunctionScript(JSContext *cx, HandleFunction original, HandleFunction c
     cscript->setFunction(clone);
 
     script = clone->nonLazyScript();
-    RootedGlobalObject global(cx, script->compileAndGo() ? &script->global() : nullptr);
-    Debugger::onNewScript(cx, script, global);
+    Debugger::onNewScript(cx, script);
 
     return true;
 }
@@ -3425,8 +3414,8 @@ JSScript::markChildren(JSTracer *trc)
     if (functionNonDelazifying())
         MarkObject(trc, &function_, "function");
 
-    if (enclosingScopeOrOriginalFunction_)
-        MarkObject(trc, &enclosingScopeOrOriginalFunction_, "enclosing");
+    if (enclosingStaticScope_)
+        MarkObject(trc, &enclosingStaticScope_, "enclosingStaticScope");
 
     if (maybeLazyScript())
         MarkLazyScriptUnbarriered(trc, &lazyScript, "lazyScript");
@@ -3740,6 +3729,12 @@ LazyScript::sourceObject() const
     return sourceObject_ ? &sourceObject_->as<ScriptSourceObject>() : nullptr;
 }
 
+ScriptSource *
+LazyScript::maybeForwardedScriptSource() const
+{
+    return UncheckedUnwrap(MaybeForwarded(sourceObject()))->as<ScriptSourceObject>().source();
+}
+
 /* static */ LazyScript *
 LazyScript::CreateRaw(ExclusiveContext *cx, HandleFunction fun,
                       uint64_t packedFields, uint32_t begin, uint32_t end,
@@ -3767,7 +3762,7 @@ LazyScript::CreateRaw(ExclusiveContext *cx, HandleFunction fun,
     if (!res)
         return nullptr;
 
-    cx->compartment()->scheduleDelazificationForDebugMode();
+    cx->compartment()->scheduleDelazificationForDebugger();
 
     return new (res) LazyScript(fun, table.forget(), packed, begin, end, lineno, column);
 }
@@ -3964,7 +3959,7 @@ LazyScriptHashPolicy::match(JSScript *script, const Lookup &lookup)
     if (!scriptChars)
         return false;
 
-    const char16_t *lazyChars = lazy->source()->chars(cx, holder);
+    const char16_t *lazyChars = lazy->scriptSource()->chars(cx, holder);
     if (!lazyChars)
         return false;
 

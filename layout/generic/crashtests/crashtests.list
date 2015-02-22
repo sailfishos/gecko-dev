@@ -125,7 +125,7 @@ load 385344-2.html
 load 385414-1.html
 load 385414-2.html
 load 385426-1.html
-skip-if(B2G) skip-if(Android&&AndroidVersion==10) load 385526.html # Bug 891347
+load 385526.html
 load 385681.html
 load 385885-1.xul
 load 386799-1.html
@@ -246,6 +246,7 @@ load 417902-1.html
 load 417902-2.html
 load 418532-1.html
 load 418932-1.html
+load 419352.html
 load 420000-1.html
 load 420718.html
 load 420785-1.xhtml
@@ -470,8 +471,8 @@ load 700031.xhtml
 load 718516.html
 load 723108.html
 load 724235.html
-load 724978.xhtml
-load 730559.html
+skip-if(OSX=1010&&isDebugBuild) load 724978.xhtml
+skip-if(OSX=1010&&isDebugBuild) load 730559.html
 load first-letter-638937.html
 load first-letter-638937-2.html
 load 734777.html
@@ -550,7 +551,9 @@ load 927558.html
 load 943509-1.html
 asserts(3-8) load 944909-1.html
 load 946167-1.html
+load 947158.html
 test-pref(layout.css.sticky.enabled,true) load 949932.html
+load 970710.html
 load 973701-1.xhtml
 load 973701-2.xhtml
 load 986899.html

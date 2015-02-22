@@ -273,7 +273,7 @@ AsmJSModule::lookupHeapAccess(void *pc) const
 
 bool
 AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembler &masm,
-                    const Label &interruptLabel)
+                    const Label &interruptLabel, const Label &outOfBoundsLabel)
 {
     MOZ_ASSERT(isFinishedWithFunctionBodies() && !isFinished());
 
@@ -315,6 +315,7 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
     // Copy over metadata, making sure to update all offsets on ARM.
 
     staticLinkData_.interruptExitOffset = masm.actualOffset(interruptLabel.offset());
+    staticLinkData_.outOfBoundsExitOffset = masm.actualOffset(outOfBoundsLabel.offset());
 
     // Heap-access metadata used for link-time patching and fault-handling.
     heapAccesses_ = masm.extractAsmJSHeapAccesses();
@@ -453,7 +454,7 @@ AsmJSModule::setAutoFlushICacheRange()
 static void
 AsmJSReportOverRecursed()
 {
-    JSContext *cx = PerThreadData::innermostAsmJSActivation()->cx();
+    JSContext *cx = JSRuntime::innermostAsmJSActivation()->cx();
     js_ReportOverRecursed(cx);
 }
 
@@ -461,14 +462,21 @@ static void
 OnDetached()
 {
     // See hasDetachedHeap comment in LinkAsmJS.
-    JSContext *cx = PerThreadData::innermostAsmJSActivation()->cx();
+    JSContext *cx = JSRuntime::innermostAsmJSActivation()->cx();
     JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_OUT_OF_MEMORY);
+}
+
+static void
+OnOutOfBounds()
+{
+    JSContext *cx = JSRuntime::innermostAsmJSActivation()->cx();
+    JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_BAD_INDEX);
 }
 
 static bool
 AsmJSHandleExecutionInterrupt()
 {
-    AsmJSActivation *act = PerThreadData::innermostAsmJSActivation();
+    AsmJSActivation *act = JSRuntime::innermostAsmJSActivation();
     act->module().setInterrupted(true);
     bool ret = CheckForInterrupt(act->cx());
     act->module().setInterrupted(false);
@@ -478,7 +486,7 @@ AsmJSHandleExecutionInterrupt()
 static int32_t
 CoerceInPlace_ToInt32(MutableHandleValue val)
 {
-    JSContext *cx = PerThreadData::innermostAsmJSActivation()->cx();
+    JSContext *cx = JSRuntime::innermostAsmJSActivation()->cx();
 
     int32_t i32;
     if (!ToInt32(cx, val, &i32))
@@ -491,7 +499,7 @@ CoerceInPlace_ToInt32(MutableHandleValue val)
 static int32_t
 CoerceInPlace_ToNumber(MutableHandleValue val)
 {
-    JSContext *cx = PerThreadData::innermostAsmJSActivation()->cx();
+    JSContext *cx = JSRuntime::innermostAsmJSActivation()->cx();
 
     double dbl;
     if (!ToNumber(cx, val, &dbl))
@@ -527,13 +535,13 @@ TryEnablingJit(JSContext *cx, AsmJSModule &module, HandleFunction fun, uint32_t 
     // BaselineScript, so if those checks hold now they must hold at least until
     // the BaselineScript is discarded and when that happens the FFI exit is
     // patched back.
-    if (!types::TypeScript::ThisTypes(script)->hasType(types::Type::UndefinedType()))
+    if (!TypeScript::ThisTypes(script)->hasType(TypeSet::UndefinedType()))
         return true;
     for (uint32_t i = 0; i < fun->nargs(); i++) {
-        types::StackTypeSet *typeset = types::TypeScript::ArgTypes(script, i);
-        types::Type type = types::Type::DoubleType();
+        StackTypeSet *typeset = TypeScript::ArgTypes(script, i);
+        TypeSet::Type type = TypeSet::DoubleType();
         if (!argv[i].isDouble())
-            type = types::Type::PrimitiveType(argv[i].extractNonDoubleType());
+            type = TypeSet::PrimitiveType(argv[i].extractNonDoubleType());
         if (!typeset->hasType(type))
             return true;
     }
@@ -570,7 +578,7 @@ InvokeFromAsmJS(AsmJSActivation *activation, int32_t exitIndex, int32_t argc, Va
 static int32_t
 InvokeFromAsmJS_Ignore(int32_t exitIndex, int32_t argc, Value *argv)
 {
-    AsmJSActivation *activation = PerThreadData::innermostAsmJSActivation();
+    AsmJSActivation *activation = JSRuntime::innermostAsmJSActivation();
     JSContext *cx = activation->cx();
 
     RootedValue rval(cx);
@@ -582,7 +590,7 @@ InvokeFromAsmJS_Ignore(int32_t exitIndex, int32_t argc, Value *argv)
 static int32_t
 InvokeFromAsmJS_ToInt32(int32_t exitIndex, int32_t argc, Value *argv)
 {
-    AsmJSActivation *activation = PerThreadData::innermostAsmJSActivation();
+    AsmJSActivation *activation = JSRuntime::innermostAsmJSActivation();
     JSContext *cx = activation->cx();
 
     RootedValue rval(cx);
@@ -602,7 +610,7 @@ InvokeFromAsmJS_ToInt32(int32_t exitIndex, int32_t argc, Value *argv)
 static int32_t
 InvokeFromAsmJS_ToNumber(int32_t exitIndex, int32_t argc, Value *argv)
 {
-    AsmJSActivation *activation = PerThreadData::innermostAsmJSActivation();
+    AsmJSActivation *activation = JSRuntime::innermostAsmJSActivation();
     JSContext *cx = activation->cx();
 
     RootedValue rval(cx);
@@ -659,6 +667,8 @@ AddressOf(AsmJSImmKind kind, ExclusiveContext *cx)
         return RedirectCall(FuncCast(AsmJSReportOverRecursed), Args_General0);
       case AsmJSImm_OnDetached:
         return RedirectCall(FuncCast(OnDetached), Args_General0);
+      case AsmJSImm_OnOutOfBounds:
+        return RedirectCall(FuncCast(OnOutOfBounds), Args_General0);
       case AsmJSImm_HandleExecutionInterrupt:
         return RedirectCall(FuncCast(AsmJSHandleExecutionInterrupt), Args_General0);
       case AsmJSImm_InvokeFromAsmJS_Ignore:
@@ -730,6 +740,7 @@ AsmJSModule::staticallyLink(ExclusiveContext *cx)
     // Process staticLinkData_
 
     interruptExit_ = code_ + staticLinkData_.interruptExitOffset;
+    outOfBoundsExit_ = code_ + staticLinkData_.outOfBoundsExitOffset;
 
     for (size_t i = 0; i < staticLinkData_.relativeLinks.length(); i++) {
         RelativeLink link = staticLinkData_.relativeLinks[i];
@@ -763,6 +774,16 @@ AsmJSModule::staticallyLink(ExclusiveContext *cx)
     MOZ_ASSERT(isStaticallyLinked());
 }
 
+#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
+static size_t
+ByteSizeOfHeapAccess(const jit::AsmJSHeapAccess access)
+{
+    Scalar::Type type = access.type();
+    if (Scalar::isSimdType(type))
+        return Scalar::scalarByteSize(type) * access.numSimdElems();
+    return TypedArrayElemSize(type);
+}
+#endif
 void
 AsmJSModule::initHeap(Handle<ArrayBufferObjectMaybeShared *> heap, JSContext *cx)
 {
@@ -783,14 +804,14 @@ AsmJSModule::initHeap(Handle<ArrayBufferObjectMaybeShared *> heap, JSContext *cx
             //      ptr + data-type-byte-size > heapLength
             // i.e. ptr >= heapLength + 1 - data-type-byte-size
             // (Note that we need >= as this is what codegen uses.)
-            size_t scalarByteSize = TypedArrayElemSize(access.type());
-            X86Assembler::setPointer(access.patchLengthAt(code_),
-                                     (void*)(heap->byteLength() + 1 - scalarByteSize));
+            size_t scalarByteSize = ByteSizeOfHeapAccess(access);
+            X86Encoding::SetPointer(access.patchLengthAt(code_),
+                                    (void*)(heap->byteLength() + 1 - scalarByteSize));
         }
         void *addr = access.patchOffsetAt(code_);
-        uint32_t disp = reinterpret_cast<uint32_t>(X86Assembler::getPointer(addr));
+        uint32_t disp = reinterpret_cast<uint32_t>(X86Encoding::GetPointer(addr));
         MOZ_ASSERT(disp <= INT32_MAX);
-        X86Assembler::setPointer(addr, (void *)(heapOffset + disp));
+        X86Encoding::SetPointer(addr, (void *)(heapOffset + disp));
     }
 #elif defined(JS_CODEGEN_X64)
     // Even with signal handling being used for most bounds checks, there may be
@@ -805,8 +826,8 @@ AsmJSModule::initHeap(Handle<ArrayBufferObjectMaybeShared *> heap, JSContext *cx
         const jit::AsmJSHeapAccess &access = heapAccesses_[i];
         if (access.hasLengthCheck()) {
             // See comment above for x86 codegen.
-            size_t scalarByteSize = TypedArrayElemSize(access.type());
-            X86Assembler::setInt32(access.patchLengthAt(code_), heapLength + 1 - scalarByteSize);
+            size_t scalarByteSize = ByteSizeOfHeapAccess(access);
+            X86Encoding::SetInt32(access.patchLengthAt(code_), heapLength + 1 - scalarByteSize);
         }
     }
 #elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
@@ -828,9 +849,9 @@ AsmJSModule::restoreHeapToInitialState(ArrayBufferObjectMaybeShared *maybePrevBu
         for (unsigned i = 0; i < heapAccesses_.length(); i++) {
             const jit::AsmJSHeapAccess &access = heapAccesses_[i];
             void *addr = access.patchOffsetAt(code_);
-            uint8_t *ptr = reinterpret_cast<uint8_t*>(X86Assembler::getPointer(addr));
+            uint8_t *ptr = reinterpret_cast<uint8_t*>(X86Encoding::GetPointer(addr));
             MOZ_ASSERT(ptr >= ptrBase);
-            X86Assembler::setPointer(addr, (void *)(ptr - ptrBase));
+            X86Encoding::SetPointer(addr, (void *)(ptr - ptrBase));
         }
     }
 #endif
@@ -942,7 +963,7 @@ const Class AsmJSModuleObject::class_ = {
 AsmJSModuleObject *
 AsmJSModuleObject::create(ExclusiveContext *cx, ScopedJSDeletePtr<AsmJSModule> *module)
 {
-    JSObject *obj = NewObjectWithGivenProto(cx, &AsmJSModuleObject::class_, nullptr, nullptr);
+    JSObject *obj = NewObjectWithGivenProto(cx, &AsmJSModuleObject::class_, NullPtr(), NullPtr());
     if (!obj)
         return nullptr;
     AsmJSModuleObject *nobj = &obj->as<AsmJSModuleObject>();
@@ -1678,7 +1699,7 @@ AsmJSModule::setProfilingEnabled(bool enabled, JSContext *cx)
 
         uint8_t *callerRetAddr = code_ + cs.returnAddressOffset();
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
-        void *callee = X86Assembler::getRel32Target(callerRetAddr);
+        void *callee = X86Encoding::GetRel32Target(callerRetAddr);
 #elif defined(JS_CODEGEN_ARM)
         uint8_t *caller = callerRetAddr - 4;
         Instruction *callerInsn = reinterpret_cast<Instruction*>(caller);
@@ -1706,7 +1727,7 @@ AsmJSModule::setProfilingEnabled(bool enabled, JSContext *cx)
         uint8_t *newCallee = enabled ? profilingEntry : entry;
 
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
-        X86Assembler::setRel32(callerRetAddr, newCallee);
+        X86Encoding::SetRel32(callerRetAddr, newCallee);
 #elif defined(JS_CODEGEN_ARM)
         new (caller) InstBLImm(BOffImm(newCallee - caller), Assembler::Always);
 #elif defined(JS_CODEGEN_MIPS)
@@ -1919,13 +1940,13 @@ class ModuleChars
 
   public:
     static uint32_t beginOffset(AsmJSParser &parser) {
-      return parser.pc->maybeFunction->pn_pos.begin;
+        return parser.pc->maybeFunction->pn_pos.begin;
     }
 
     static uint32_t endOffset(AsmJSParser &parser) {
-      TokenPos pos;
-      MOZ_ALWAYS_TRUE(parser.tokenStream.peekTokenPos(&pos));
-      return pos.end;
+        TokenPos pos(0, 0);  // initialize to silence GCC warning
+        MOZ_ALWAYS_TRUE(parser.tokenStream.peekTokenPos(&pos));
+        return pos.end;
     }
 };
 

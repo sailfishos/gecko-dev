@@ -687,6 +687,12 @@ NetworkMonitor.prototype = {
       }
     }
 
+    if (aChannel.loadInfo) {
+      if (aChannel.loadInfo.contentPolicyType == Ci.nsIContentPolicy.TYPE_BEACON) {
+        return true;
+      }
+    }
+    
     if (this.topFrame) {
       let topFrame = NetworkHelper.getTopFrameForRequest(aChannel);
       if (topFrame && topFrame === this.topFrame) {
@@ -790,7 +796,7 @@ NetworkMonitor.prototype = {
 
     this.openRequests[httpActivity.id] = httpActivity;
 
-    httpActivity.owner.addRequestHeaders(headers);
+    httpActivity.owner.addRequestHeaders(headers, aExtraStringData);
     httpActivity.owner.addRequestCookies(cookies);
   },
 
@@ -918,7 +924,7 @@ NetworkMonitor.prototype = {
     // contains the response status (e.g. HTTP/1.1 200 OK).
     //
     // Note: The response header is not saved here. Calling the
-    // channel.visitResponseHeaders() methood at this point sometimes causes an
+    // channel.visitResponseHeaders() method at this point sometimes causes an
     // NS_ERROR_NOT_AVAILABLE exception.
     //
     // We could parse aExtraStringData to get the headers and their values, but
@@ -949,7 +955,7 @@ NetworkMonitor.prototype = {
 
     response.discardResponseBody = aHttpActivity.discardResponseBody;
 
-    aHttpActivity.owner.addResponseStart(response);
+    aHttpActivity.owner.addResponseStart(response, aExtraStringData);
   },
 
   /**

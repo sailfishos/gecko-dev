@@ -24,7 +24,7 @@ const GRAPH_RESIZE_EVENTS_DRAIN = 100; // ms
 
 const GRAPH_WHEEL_ZOOM_SENSITIVITY = 0.00035;
 const GRAPH_WHEEL_SCROLL_SENSITIVITY = 0.5;
-const GRAPH_MIN_SELECTION_WIDTH = 20; // ms
+const GRAPH_MIN_SELECTION_WIDTH = 0.001; // ms
 
 const TIMELINE_TICKS_MULTIPLE = 5; // ms
 const TIMELINE_TICKS_SPACING_MIN = 75; // px
@@ -143,10 +143,10 @@ function FlameGraph(parent, sharpness) {
     this._onResize = this._onResize.bind(this);
     this.refresh = this.refresh.bind(this);
 
-    container.addEventListener("mousemove", this._onMouseMove);
-    container.addEventListener("mousedown", this._onMouseDown);
-    container.addEventListener("mouseup", this._onMouseUp);
-    container.addEventListener("MozMousePixelScroll", this._onMouseWheel);
+    this._window.addEventListener("mousemove", this._onMouseMove);
+    this._window.addEventListener("mousedown", this._onMouseDown);
+    this._window.addEventListener("mouseup", this._onMouseUp);
+    this._window.addEventListener("MozMousePixelScroll", this._onMouseWheel);
 
     let ownerWindow = this._parent.ownerDocument.defaultView;
     ownerWindow.addEventListener("resize", this._onResize);
@@ -181,11 +181,10 @@ FlameGraph.prototype = {
    * Destroys this graph.
    */
   destroy: function() {
-    let container = this._container;
-    container.removeEventListener("mousemove", this._onMouseMove);
-    container.removeEventListener("mousedown", this._onMouseDown);
-    container.removeEventListener("mouseup", this._onMouseUp);
-    container.removeEventListener("MozMousePixelScroll", this._onMouseWheel);
+    this._window.removeEventListener("mousemove", this._onMouseMove);
+    this._window.removeEventListener("mousedown", this._onMouseDown);
+    this._window.removeEventListener("mouseup", this._onMouseUp);
+    this._window.removeEventListener("MozMousePixelScroll", this._onMouseWheel);
 
     let ownerWindow = this._parent.ownerDocument.defaultView;
     ownerWindow.removeEventListener("resize", this._onResize);
@@ -856,14 +855,22 @@ const COLOR_PALLETTE = Array.from(Array(PALLETTE_SIZE)).map((_, i) => "hsla" +
  * into a format drawable by the FlameGraph.
  */
 let FlameGraphUtils = {
+  _cache: new WeakMap(),
+
   /**
    * Converts a list of samples from the profiler data to something that's
    * drawable by a FlameGraph widget.
+   *
+   * The outputted data will be cached, so the next time this method is called
+   * the previous output is returned. If this is undesirable, or should the
+   * options change, use `removeFromCache`.
    *
    * @param array samples
    *        A list of { time, frames: [{ location }] } objects.
    * @param object options [optional]
    *        Additional options supported by this operation:
+   *          - invertStack: specifies if the frames array in every sample
+   *                         should be reversed
    *          - flattenRecursion: specifies if identical consecutive frames
    *                              should be omitted from the output
    *          - filterFrames: predicate used for filtering all frames, passing
@@ -876,6 +883,11 @@ let FlameGraphUtils = {
    *         The flame graph data.
    */
   createFlameGraphDataFromSamples: function(samples, options = {}, out = []) {
+    let cached = this._cache.get(samples);
+    if (cached) {
+      return cached;
+    }
+
     // 1. Create a map of colors to arrays, representing buckets of
     // blocks inside the flame graph pyramid sharing the same style.
 
@@ -904,6 +916,11 @@ let FlameGraphUtils = {
       // should be taken into consideration.
       if (options.filterFrames) {
         frames = frames.filter(options.filterFrames);
+      }
+
+      // Invert the stack if preferred, reversing the frames array in place.
+      if (options.invertStack) {
+        frames.reverse();
       }
 
       // If no frames are available, add a pseudo "idle" block in between.
@@ -952,7 +969,16 @@ let FlameGraphUtils = {
       out.push({ color, blocks });
     }
 
+    this._cache.set(samples, out);
     return out;
+  },
+
+  /**
+   * Clears the cached flame graph data created for the given source.
+   * @param any source
+   */
+  removeFromCache: function(source) {
+    this._cache.delete(source);
   },
 
   /**

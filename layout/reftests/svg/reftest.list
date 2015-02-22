@@ -201,6 +201,7 @@ fuzzy-if(cocoaWidget,15,19679) fuzzy-if(winWidget,1,8800) fuzzy-if(!cocoaWidget&
 == marker-orientation-01.svg marker-orientation-01-ref.svg
 pref(svg.marker-improvements.enabled,true) == marker-orientation-02.svg marker-orientation-02-ref.svg
 == marker-orientation-03.svg pass.svg
+== marker-orientation-04.svg pass.svg
 == mask-basic-01.svg pass.svg
 == mask-basic-02.svg mask-basic-02-ref.svg
 == mask-basic-03.svg pass.svg
@@ -209,6 +210,7 @@ pref(svg.marker-improvements.enabled,true) == marker-orientation-02.svg marker-o
 == mask-containing-masked-content-01.svg pass.svg
 == mask-transformed-01.svg mask-transformed-01-ref.svg
 == mask-transformed-02.svg pass.svg
+== mask-transformed-child-01.svg mask-transformed-child-01-ref.svg
 pref(layout.css.masking.enabled,true) fuzzy-if(d2d,1,6400) == mask-type-01.svg mask-type-01-ref.svg
 pref(layout.css.masking.enabled,true) fuzzy-if(d2d,1,6400) == mask-type-02.svg mask-type-01-ref.svg
 pref(layout.css.masking.enabled,true) fuzzy-if(d2d,1,6400) == mask-type-03.svg mask-type-01-ref.svg
@@ -344,6 +346,7 @@ HTTP(..) == text-scale-03.svg text-scale-03-ref.svg
 == textPath-02.svg pass.svg
 == textPath-03.svg pass.svg
 == textPath-04.svg pass.svg
+== textPath-05.html pass.svg
 == text-style-01a.svg text-style-01-ref.svg
 == text-style-01b.svg text-style-01-ref.svg
 == text-style-01c.svg text-style-01-ref.svg

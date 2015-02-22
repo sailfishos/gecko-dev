@@ -56,8 +56,6 @@ const NFC_IPC_MSG_NAMES = [
   "NFC:MakeReadOnlyResponse",
   "NFC:FormatResponse",
   "NFC:TransceiveResponse",
-  "NFC:ConnectResponse",
-  "NFC:CloseResponse",
   "NFC:CheckP2PRegistrationResponse",
   "NFC:DOMEvent",
   "NFC:NotifySendFileStatusResponse",
@@ -147,6 +145,10 @@ NfcContentHelper.prototype = {
   },
 
   encodeNDEFRecords: function encodeNDEFRecords(records) {
+    if (!Array.isArray(records)) {
+      return null;
+    }
+
     let encodedRecords = [];
     for (let i = 0; i < records.length; i++) {
       let record = records[i];
@@ -278,6 +280,22 @@ NfcContentHelper.prototype = {
                            rfState: rfState});
   },
 
+  callDefaultFoundHandler: function callDefaultFoundHandler(sessionToken,
+                                                            isP2P,
+                                                            records) {
+    let encodedRecords = this.encodeNDEFRecords(records);
+    cpmm.sendAsyncMessage("NFC:CallDefaultFoundHandler",
+                          {sessionToken: sessionToken,
+                           isP2P: isP2P,
+                           records: encodedRecords});
+  },
+
+  callDefaultLostHandler: function callDefaultLostHandler(sessionToken, isP2P) {
+    cpmm.sendAsyncMessage("NFC:CallDefaultLostHandler",
+                          {sessionToken: sessionToken,
+                           isP2P: isP2P});
+  },
+
   // nsIObserver
   observe: function observe(subject, topic, data) {
     if (topic == "xpcom-shutdown") {
@@ -349,9 +367,12 @@ NfcContentHelper.prototype = {
           case NFC.TAG_EVENT_LOST:
             this.eventListener.notifyTagLost(result.sessionToken);
             break;
-          case NFC.RF_EVENT_STATE_CHANGE:
+          case NFC.RF_EVENT_STATE_CHANGED:
             this._rfState = result.rfState;
-            this.eventListener.notifyRFStateChange(this._rfState);
+            this.eventListener.notifyRFStateChanged(this._rfState);
+            break;
+          case NFC.FOCUS_CHANGED:
+            this.eventListener.notifyFocusChanged(result.focus);
             break;
         }
         break;

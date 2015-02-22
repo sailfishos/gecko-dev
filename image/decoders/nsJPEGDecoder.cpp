@@ -19,6 +19,7 @@
 
 #include "gfxPlatform.h"
 #include "mozilla/Endian.h"
+#include "mozilla/Telemetry.h"
 
 extern "C" {
 #include "iccjpeg.h"
@@ -158,7 +159,7 @@ void
 nsJPEGDecoder::InitInternal()
 {
   mCMSMode = gfxPlatform::GetCMSMode();
-  if ((mDecodeFlags & DECODER_NO_COLORSPACE_CONVERSION) != 0) {
+  if (GetDecodeFlags() & imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION) {
     mCMSMode = eCMSMode_Off;
   }
 
@@ -210,7 +211,7 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
   mSegment = (const JOCTET*)aBuffer;
   mSegmentLen = aCount;
 
-  NS_ABORT_IF_FALSE(!HasError(), "Shouldn't call WriteInternal after error!");
+  MOZ_ASSERT(!HasError(), "Shouldn't call WriteInternal after error!");
 
   // Return here if there is a fatal error within libjpeg.
   nsresult error_code;
@@ -573,8 +574,9 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
     break;
 
   case JPEG_ERROR:
-    NS_ABORT_IF_FALSE(0, "Should always return immediately after error and"
-                         " not re-enter decoder");
+    MOZ_ASSERT(false,
+               "Should always return immediately after error and not re-enter "
+               "decoder");
   }
 
   PR_LOG(GetJPEGDecoderAccountingLog(), PR_LOG_DEBUG,
@@ -946,8 +948,8 @@ term_source (j_decompress_ptr jd)
 
   // This function shouldn't be called if we ran into an error we didn't
   // recover from.
-  NS_ABORT_IF_FALSE(decoder->mState != JPEG_ERROR,
-                    "Calling term_source on a JPEG with mState == JPEG_ERROR!");
+  MOZ_ASSERT(decoder->mState != JPEG_ERROR,
+             "Calling term_source on a JPEG with mState == JPEG_ERROR!");
 
   // Notify using a helper method to get around protectedness issues.
   decoder->NotifyDone();

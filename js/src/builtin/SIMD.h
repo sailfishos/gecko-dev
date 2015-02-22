@@ -22,6 +22,7 @@
 
 #define FLOAT32X4_UNARY_FUNCTION_LIST(V)                                            \
   V(abs, (UnaryFunc<Float32x4, Abs, Float32x4>), 1, 0)                              \
+  V(check, (UnaryFunc<Float32x4, Identity, Float32x4>), 1, 0)                       \
   V(fromFloat64x2, (FuncConvert<Float64x2, Float32x4> ), 1, 0)                      \
   V(fromFloat64x2Bits, (FuncConvertBits<Float64x2, Float32x4>), 1, 0)               \
   V(fromInt32x4, (FuncConvert<Int32x4, Float32x4> ), 1, 0)                          \
@@ -81,6 +82,7 @@
 
 #define FLOAT64X2_UNARY_FUNCTION_LIST(V)                                            \
   V(abs, (UnaryFunc<Float64x2, Abs, Float64x2>), 1, 0)                              \
+  V(check, (UnaryFunc<Float64x2, Identity, Float64x2>), 1, 0)                       \
   V(fromFloat32x4, (FuncConvert<Float32x4, Float64x2> ), 1, 0)                      \
   V(fromFloat32x4Bits, (FuncConvertBits<Float32x4, Float64x2>), 1, 0)               \
   V(fromInt32x4, (FuncConvert<Int32x4, Float64x2> ), 1, 0)                          \
@@ -129,6 +131,7 @@
   FLOAT64X2_SHUFFLE_FUNCTION_LIST(V)
 
 #define INT32X4_UNARY_FUNCTION_LIST(V)                                              \
+  V(check, (UnaryFunc<Int32x4, Identity, Int32x4>), 1, 0)                           \
   V(fromFloat32x4, (FuncConvert<Float32x4, Int32x4>), 1, 0)                         \
   V(fromFloat32x4Bits, (FuncConvertBits<Float32x4, Int32x4>), 1, 0)                 \
   V(fromFloat64x2, (FuncConvert<Float64x2, Int32x4>), 1, 0)                         \
@@ -190,31 +193,37 @@
     _(shiftLeftByScalar)             \
     _(shiftRightArithmeticByScalar)  \
     _(shiftRightLogicalByScalar)
-#define FOREACH_FLOAT32X4_SIMD_OP(_) \
-    _(abs)                           \
-    _(sqrt)                          \
-    _(reciprocal)                    \
-    _(reciprocalSqrt)                \
-    _(fromInt32x4)                   \
-    _(fromInt32x4Bits)               \
+#define ARITH_FLOAT32X4_SIMD_OP(_)   \
     _(div)                           \
     _(max)                           \
     _(min)                           \
     _(maxNum)                        \
     _(minNum)
-#define FOREACH_COMMONX4_SIMD_OP(_)  \
+#define FOREACH_FLOAT32X4_SIMD_OP(_) \
+    ARITH_FLOAT32X4_SIMD_OP(_)       \
+    _(abs)                           \
+    _(sqrt)                          \
+    _(reciprocal)                    \
+    _(reciprocalSqrt)                \
+    _(fromInt32x4)                   \
+    _(fromInt32x4Bits)
+#define ARITH_COMMONX4_SIMD_OP(_)    \
     _(add)                           \
     _(sub)                           \
-    _(mul)                           \
+    _(mul)
+#define BITWISE_COMMONX4_SIMD_OP(_)  \
+    _(and)                           \
+    _(or)                            \
+    _(xor)
+#define FOREACH_COMMONX4_SIMD_OP(_)  \
+    ARITH_COMMONX4_SIMD_OP(_)        \
+    BITWISE_COMMONX4_SIMD_OP(_)      \
     _(lessThan)                      \
     _(lessThanOrEqual)               \
     _(equal)                         \
     _(notEqual)                      \
     _(greaterThan)                   \
     _(greaterThanOrEqual)            \
-    _(and)                           \
-    _(or)                            \
-    _(xor)                           \
     _(bitselect)                     \
     _(select)                        \
     _(swizzle)                       \
@@ -227,7 +236,14 @@
     _(not)                           \
     _(neg)                           \
     _(load)                          \
-    _(store)
+    _(loadX)                         \
+    _(loadXY)                        \
+    _(loadXYZ)                       \
+    _(store)                         \
+    _(storeX)                        \
+    _(storeXY)                       \
+    _(storeXYZ)                      \
+    _(check)
 #define FORALL_SIMD_OP(_)            \
     FOREACH_INT32X4_SIMD_OP(_)       \
     FOREACH_FLOAT32X4_SIMD_OP(_)     \
@@ -257,7 +273,10 @@ struct Float32x4 {
         return a;
     }
     static bool toType(JSContext *cx, JS::HandleValue v, Elem *out) {
-        *out = v.toNumber();
+        double d;
+        if (!ToNumber(cx, v, &d))
+            return false;
+        *out = float(d);
         return true;
     }
     static void setReturn(CallArgs &args, Elem value) {
@@ -277,8 +296,7 @@ struct Float64x2 {
         return a;
     }
     static bool toType(JSContext *cx, JS::HandleValue v, Elem *out) {
-        *out = v.toNumber();
-        return true;
+        return ToNumber(cx, v, out);
     }
     static void setReturn(CallArgs &args, Elem value) {
         args.rval().setDouble(JS::CanonicalizeNaN(value));

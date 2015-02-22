@@ -4,13 +4,12 @@
 // Tests if (idle) nodes are added when necessary in the flame graph data.
 
 let {FlameGraphUtils} = Cu.import("resource:///modules/devtools/FlameGraph.jsm", {});
-let {FrameNode} = devtools.require("devtools/profiler/tree-model");
+let {FrameNode} = devtools.require("devtools/shared/profiler/tree-model");
 
-let test = Task.async(function*() {
+add_task(function*() {
   yield promiseTab("about:blank");
   yield performTest();
   gBrowser.removeCurrentTab();
-  finish();
 });
 
 function* performTest() {

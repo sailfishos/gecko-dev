@@ -13,7 +13,6 @@
 #include "nsAutoPtr.h"
 
 #include "mozcontainer.h"
-#include "nsWeakReference.h"
 
 #include "nsIDragService.h"
 #include "nsITimer.h"
@@ -62,13 +61,13 @@ extern PRLogModuleInfo *gWidgetDrawLog;
 class gfxASurface;
 class gfxPattern;
 class nsDragService;
+class nsPluginNativeWindowGtk;
 #if defined(MOZ_X11) && defined(MOZ_HAVE_SHAREDMEMORYSYSV)
 #  define MOZ_HAVE_SHMIMAGE
-
 class nsShmImage;
 #endif
 
-class nsWindow : public nsBaseWidget, public nsSupportsWeakReference
+class nsWindow : public nsBaseWidget
 {
 public:
     nsWindow();
@@ -92,11 +91,11 @@ public:
     NS_IMETHOD         Create(nsIWidget        *aParent,
                               nsNativeWidget   aNativeParent,
                               const nsIntRect  &aRect,
-                              nsDeviceContext *aContext,
                               nsWidgetInitData *aInitData) MOZ_OVERRIDE;
     NS_IMETHOD         Destroy(void) MOZ_OVERRIDE;
     virtual nsIWidget *GetParent() MOZ_OVERRIDE;
     virtual float      GetDPI() MOZ_OVERRIDE;
+    virtual double     GetDefaultScaleInternal() MOZ_OVERRIDE; 
     virtual nsresult   SetParent(nsIWidget* aNewParent) MOZ_OVERRIDE;
     NS_IMETHOD         SetModal(bool aModal) MOZ_OVERRIDE;
     virtual bool       IsVisible() const MOZ_OVERRIDE;
@@ -133,10 +132,11 @@ public:
                                  uint32_t aHotspotX, uint32_t aHotspotY) MOZ_OVERRIDE;
     NS_IMETHOD         Invalidate(const nsIntRect &aRect) MOZ_OVERRIDE;
     virtual void*      GetNativeData(uint32_t aDataType) MOZ_OVERRIDE;
+    void               SetNativeData(uint32_t aDataType, uintptr_t aVal) MOZ_OVERRIDE;
     NS_IMETHOD         SetTitle(const nsAString& aTitle) MOZ_OVERRIDE;
     NS_IMETHOD         SetIcon(const nsAString& aIconSpec) MOZ_OVERRIDE;
     NS_IMETHOD         SetWindowClass(const nsAString& xulWinType) MOZ_OVERRIDE;
-    virtual nsIntPoint WidgetToScreenOffset() MOZ_OVERRIDE;
+    virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() MOZ_OVERRIDE;
     NS_IMETHOD         EnableDragDrop(bool aEnable) MOZ_OVERRIDE;
     NS_IMETHOD         CaptureMouse(bool aCapture) MOZ_OVERRIDE;
     NS_IMETHOD         CaptureRollupEvents(nsIRollupListener *aListener,
@@ -259,7 +259,6 @@ public:
     bool               DispatchKeyDownEvent(GdkEventKey *aEvent,
                                             bool *aIsCancelled);
 
-    NS_IMETHOD NotifyIME(const IMENotification& aIMENotification) MOZ_OVERRIDE;
     NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
                                       const InputContextAction& aAction) MOZ_OVERRIDE;
     NS_IMETHOD_(InputContext) GetInputContext() MOZ_OVERRIDE;
@@ -297,11 +296,11 @@ public:
 #endif
     NS_IMETHOD         ReparentNativeWidget(nsIWidget* aNewParent) MOZ_OVERRIDE;
 
-    virtual nsresult SynthesizeNativeMouseEvent(nsIntPoint aPoint,
+    virtual nsresult SynthesizeNativeMouseEvent(mozilla::LayoutDeviceIntPoint aPoint,
                                                 uint32_t aNativeMessage,
                                                 uint32_t aModifierFlags) MOZ_OVERRIDE;
 
-    virtual nsresult SynthesizeNativeMouseMove(nsIntPoint aPoint) MOZ_OVERRIDE
+    virtual nsresult SynthesizeNativeMouseMove(mozilla::LayoutDeviceIntPoint aPoint) MOZ_OVERRIDE
     { return SynthesizeNativeMouseEvent(aPoint, GDK_MOTION_NOTIFY, 0); }
 
 protected:
@@ -317,6 +316,10 @@ protected:
                                       GtkWidget* aNewContainer,
                                       GdkWindow* aNewParentWindow,
                                       GtkWidget* aOldContainer);
+
+    virtual nsresult NotifyIMEInternal(
+                         const IMENotification& aIMENotification) MOZ_OVERRIDE;
+
     nsCOMPtr<nsIWidget> mParent;
     // Is this a toplevel window?
     bool                mIsTopLevel;
@@ -427,6 +430,12 @@ private:
     void                DispatchRestoreEventAccessible();
 #endif
 
+    // Updates the bounds of the socket widget we manage for remote plugins.
+    void ResizePluginSocketWidget();
+
+    // e10s specific - for managing the socket widget this window hosts.
+    nsPluginNativeWindowGtk* mPluginNativeWindow;
+
     // The cursor cache
     static GdkCursor   *gsGtkCursorCache[eCursorCount];
 
@@ -475,6 +484,20 @@ private:
      * however, IME doesn't work at that time.
      */
     nsRefPtr<nsGtkIMModule> mIMModule;
+
+    // HiDPI scale conversion
+    gint GdkScaleFactor();
+
+    // To GDK
+    gint DevicePixelsToGdkCoordRoundUp(int pixels);
+    gint DevicePixelsToGdkCoordRoundDown(int pixels);
+    GdkPoint DevicePixelsToGdkPointRoundDown(nsIntPoint point);
+    GdkRectangle DevicePixelsToGdkRectRoundOut(nsIntRect rect);
+
+    // From GDK
+    int GdkCoordToDevicePixels(gint coord);
+    mozilla::LayoutDeviceIntPoint GdkPointToDevicePixels(GdkPoint point);
+    nsIntRect GdkRectToDevicePixels(GdkRectangle rect);
 };
 
 class nsChildWindow : public nsWindow {

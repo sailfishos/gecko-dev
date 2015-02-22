@@ -42,6 +42,7 @@
 #include "mozilla/gfx/Rect.h"           // for RoundedIn
 #include "mozilla/gfx/ScaleFactor.h"    // for ScaleFactor
 #include "mozilla/layers/APZCTreeManager.h"  // for ScrollableLayerGuid
+#include "mozilla/layers/APZThreadUtils.h"  // for AssertOnControllerThread, etc
 #include "mozilla/layers/AsyncCompositionManager.h"  // for ViewTransform
 #include "mozilla/layers/AxisPhysicsModel.h" // for AxisPhysicsModel
 #include "mozilla/layers/AxisPhysicsMSDModel.h" // for AxisPhysicsMSDModel
@@ -111,11 +112,17 @@ WidgetModifiersToDOMModifiers(mozilla::Modifiers aModifiers)
   if (aModifiers & mozilla::MODIFIER_FN) {
     result |= nsIDOMWindowUtils::MODIFIER_FN;
   }
+  if (aModifiers & mozilla::MODIFIER_FNLOCK) {
+    result |= nsIDOMWindowUtils::MODIFIER_FNLOCK;
+  }
   if (aModifiers & mozilla::MODIFIER_NUMLOCK) {
     result |= nsIDOMWindowUtils::MODIFIER_NUMLOCK;
   }
   if (aModifiers & mozilla::MODIFIER_SCROLLLOCK) {
     result |= nsIDOMWindowUtils::MODIFIER_SCROLLLOCK;
+  }
+  if (aModifiers & mozilla::MODIFIER_SYMBOL) {
+    result |= nsIDOMWindowUtils::MODIFIER_SYMBOL;
   }
   if (aModifiers & mozilla::MODIFIER_SYMBOLLOCK) {
     result |= nsIDOMWindowUtils::MODIFIER_SYMBOLLOCK;
@@ -433,8 +440,6 @@ static inline void LogRendertraceRect(const ScrollableLayerGuid& aGuid, const ch
 }
 
 static TimeStamp sFrameTime;
-static bool sThreadAssertionsEnabled = true;
-static PRThread* sControllerThread;
 
 // Counter used to give each APZC a unique id
 static uint32_t sAsyncPanZoomControllerCount = 0;
@@ -824,42 +829,6 @@ AsyncPanZoomController::SetFrameTime(const TimeStamp& aTime) {
   sFrameTime = aTime;
 }
 
-void
-AsyncPanZoomController::SetThreadAssertionsEnabled(bool aEnabled) {
-  sThreadAssertionsEnabled = aEnabled;
-}
-
-bool
-AsyncPanZoomController::GetThreadAssertionsEnabled() {
-  return sThreadAssertionsEnabled;
-}
-
-void
-AsyncPanZoomController::AssertOnControllerThread() {
-  if (!GetThreadAssertionsEnabled()) {
-    return;
-  }
-
-  static bool sControllerThreadDetermined = false;
-  if (!sControllerThreadDetermined) {
-    // Technically this may not actually pick up the correct controller thread,
-    // if the first call to this method happens from a non-controller thread.
-    // If the assertion below fires, it is possible that it is because
-    // sControllerThread is not actually the controller thread.
-    sControllerThread = PR_GetCurrentThread();
-    sControllerThreadDetermined = true;
-  }
-  MOZ_ASSERT(sControllerThread == PR_GetCurrentThread());
-}
-
-void
-AsyncPanZoomController::AssertOnCompositorThread()
-{
-  if (GetThreadAssertionsEnabled()) {
-    Compositor::AssertOnCompositorThread();
-  }
-}
-
 /*static*/ void
 AsyncPanZoomController::InitializeGlobalState()
 {
@@ -924,7 +893,7 @@ AsyncPanZoomController::~AsyncPanZoomController()
 PCompositorParent*
 AsyncPanZoomController::GetSharedFrameMetricsCompositor()
 {
-  AssertOnCompositorThread();
+  APZThreadUtils::AssertOnCompositorThread();
 
   if (mSharingFrameMetricsAcrossProcesses) {
     const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mLayersId);
@@ -956,7 +925,7 @@ AsyncPanZoomController::GetInputQueue() const {
 void
 AsyncPanZoomController::Destroy()
 {
-  AssertOnCompositorThread();
+  APZThreadUtils::AssertOnCompositorThread();
 
   CancelAnimation();
 
@@ -1031,7 +1000,7 @@ AsyncPanZoomController::ArePointerEventsConsumable(TouchBlockState* aBlock, uint
 
 nsEventStatus AsyncPanZoomController::HandleInputEvent(const InputData& aEvent,
                                                        const Matrix4x4& aTransformToApzc) {
-  AssertOnControllerThread();
+  APZThreadUtils::AssertOnControllerThread();
 
   nsEventStatus rv = nsEventStatus_eIgnore;
 
@@ -1103,7 +1072,7 @@ nsEventStatus AsyncPanZoomController::HandleInputEvent(const InputData& aEvent,
 
 nsEventStatus AsyncPanZoomController::HandleGestureEvent(const InputData& aEvent)
 {
-  AssertOnControllerThread();
+  APZThreadUtils::AssertOnControllerThread();
 
   nsEventStatus rv = nsEventStatus_eIgnore;
 
@@ -2466,7 +2435,7 @@ AsyncPanZoomController::FireAsyncScrollOnTimeout()
 bool AsyncPanZoomController::UpdateAnimation(const TimeStamp& aSampleTime,
                                              Vector<Task*>* aOutDeferredTasks)
 {
-  AssertOnCompositorThread();
+  APZThreadUtils::AssertOnCompositorThread();
 
   // This function may get called multiple with the same sample time, because
   // there may be multiple layers with this APZC, and each layer invokes this
@@ -2544,7 +2513,7 @@ Matrix4x4 AsyncPanZoomController::GetOverscrollTransform() const {
 
 bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime)
 {
-  AssertOnCompositorThread();
+  APZThreadUtils::AssertOnCompositorThread();
 
   // Don't send any state-change notifications until the end of the function,
   // because we may go through some intermediate states while we finish
@@ -2691,7 +2660,7 @@ bool AsyncPanZoomController::IsCurrentlyCheckerboarding() const {
 }
 
 void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetrics, bool aIsFirstPaint) {
-  AssertOnCompositorThread();
+  APZThreadUtils::AssertOnCompositorThread();
 
   ReentrantMonitorAutoEnter lock(mMonitor);
   bool isDefault = mFrameMetrics.IsDefault();
@@ -2800,7 +2769,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
 
       mFrameMetrics.CopyScrollInfoFrom(aLayerMetrics);
 
-      // Cancel the animation (which will also trigger a repaint request)
+      // Cancel the animation (which might also trigger a repaint request)
       // after we update the scroll offset above. Otherwise we can be left
       // in a state where things are out of sync.
       CancelAnimation();
@@ -2811,6 +2780,15 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
       // correct this we need to update mLastDispatchedPaintMetrics to be the
       // last thing we know was painted by Gecko.
       mLastDispatchedPaintMetrics = aLayerMetrics;
+
+      // Since the scroll offset has changed, we need to recompute the
+      // displayport margins and send them to layout. Otherwise there might be
+      // scenarios where for example we scroll from the top of a page (where the
+      // top displayport margin is zero) to the bottom of a page, which will
+      // result in a displayport that doesn't extend upwards at all.
+      // Note that even if the CancelAnimation call above requested a repaint
+      // this is fine because we already have repaint request deduplication.
+      needContentRepaint = true;
     }
   }
 
@@ -3058,7 +3036,7 @@ AsyncPanZoomController::GetZoomConstraints() const
 
 
 void AsyncPanZoomController::PostDelayedTask(Task* aTask, int aDelayMs) {
-  AssertOnControllerThread();
+  APZThreadUtils::AssertOnControllerThread();
   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
   if (controller) {
     controller->PostDelayedTask(aTask, aDelayMs);

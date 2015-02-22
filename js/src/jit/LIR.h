@@ -67,7 +67,6 @@ class LAllocation : public TempObject
   protected:
     static const uintptr_t DATA_BITS = (sizeof(uint32_t) * 8) - KIND_BITS;
     static const uintptr_t DATA_SHIFT = KIND_SHIFT + KIND_BITS;
-    static const uintptr_t DATA_MASK = (1 << DATA_BITS) - 1;
 
   public:
     enum Kind {
@@ -79,6 +78,8 @@ class LAllocation : public TempObject
         STACK_SLOT,     // Stack slot.
         ARGUMENT_SLOT   // Argument slot.
     };
+
+    static const uintptr_t DATA_MASK = (1 << DATA_BITS) - 1;
 
   protected:
     uint32_t data() const {
@@ -1730,7 +1731,7 @@ class LIRGraph
         // Round to ABIStackAlignment, but also round to at least sizeof(Value)
         // in case that's greater, because StackOffsetOfPassedArg rounds
         // argument slots to 8-byte boundaries.
-        size_t Alignment = Max(size_t(ABIStackAlignment), sizeof(Value));
+        size_t Alignment = Max(size_t(JitStackAlignment), sizeof(Value));
         return AlignBytes(localSlotCount(), Alignment);
     }
     size_t paddedLocalSlotsSize() const {

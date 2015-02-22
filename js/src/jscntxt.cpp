@@ -92,82 +92,6 @@ js::TraceCycleDetectionSet(JSTracer *trc, js::ObjectSet &set)
     }
 }
 
-void
-JSCompartment::sweepCallsiteClones()
-{
-    if (callsiteClones.initialized()) {
-        for (CallsiteCloneTable::Enum e(callsiteClones); !e.empty(); e.popFront()) {
-            CallsiteCloneKey key = e.front().key();
-            if (IsObjectAboutToBeFinalizedFromAnyThread(&key.original) ||
-                IsScriptAboutToBeFinalizedFromAnyThread(&key.script) ||
-                IsObjectAboutToBeFinalizedFromAnyThread(e.front().value().unsafeGet()))
-            {
-                e.removeFront();
-            } else if (key != e.front().key()) {
-                e.rekeyFront(key);
-            }
-        }
-    }
-}
-
-JSFunction *
-js::ExistingCloneFunctionAtCallsite(const CallsiteCloneTable &table, JSFunction *fun,
-                                    JSScript *script, jsbytecode *pc)
-{
-    MOZ_ASSERT(fun->nonLazyScript()->shouldCloneAtCallsite());
-    MOZ_ASSERT(!fun->nonLazyScript()->enclosingStaticScope());
-    MOZ_ASSERT(types::UseNewTypeForClone(fun));
-
-    /*
-     * If we start allocating function objects in the nursery, then the callsite
-     * clone table will need a postbarrier.
-     */
-    MOZ_ASSERT(fun->isTenured());
-
-    if (!table.initialized())
-        return nullptr;
-
-    CallsiteCloneTable::Ptr p = table.readonlyThreadsafeLookup(CallsiteCloneKey(fun, script, script->pcToOffset(pc)));
-    if (p)
-        return p->value();
-
-    return nullptr;
-}
-
-JSFunction *
-js::CloneFunctionAtCallsite(JSContext *cx, HandleFunction fun, HandleScript script, jsbytecode *pc)
-{
-    if (JSFunction *clone = ExistingCloneFunctionAtCallsite(cx->compartment()->callsiteClones, fun, script, pc))
-        return clone;
-
-    MOZ_ASSERT(fun->isSelfHostedBuiltin(),
-               "only self-hosted builtin functions may be cloned at call sites, and "
-               "Function.prototype.caller relies on this");
-
-    RootedObject parent(cx, fun->environment());
-    JSFunction *clone = CloneFunctionObject(cx, fun, parent);
-    if (!clone)
-        return nullptr;
-
-    /*
-     * Store a link back to the original for function.caller and avoid cloning
-     * clones.
-     */
-    clone->nonLazyScript()->setIsCallsiteClone(fun);
-
-    typedef CallsiteCloneKey Key;
-    typedef CallsiteCloneTable Table;
-
-    Table &table = cx->compartment()->callsiteClones;
-    if (!table.initialized() && !table.init())
-        return nullptr;
-
-    if (!table.putNew(Key(fun, script, script->pcToOffset(pc)), clone))
-        return nullptr;
-
-    return clone;
-}
-
 JSContext *
 js::NewContext(JSRuntime *rt, size_t stackChunkSize)
 {
@@ -253,7 +177,7 @@ js::DestroyContext(JSContext *cx, DestroyContextMode mode)
          * This printing depends on atoms still existing.
          */
         for (CompartmentsIter c(rt, SkipAtoms); !c.done(); c.next())
-            c->types.print(cx, false);
+            PrintTypes(cx, c, false);
     }
     if (mode == DCM_FORCE_GC) {
         MOZ_ASSERT(!rt->isHeapBusy());
@@ -1047,7 +971,7 @@ JSContext::saveFrameChain()
     if (!savedFrameChains_.append(SavedFrameChain(compartment(), enterCompartmentDepth_)))
         return false;
 
-    if (Activation *act = mainThread().activation())
+    if (Activation *act = runtime()->activation())
         act->saveFrameChain();
 
     setCompartment(nullptr);
@@ -1065,7 +989,7 @@ JSContext::restoreFrameChain()
     setCompartment(sfc.compartment);
     enterCompartmentDepth_ = sfc.enterCompartmentCount;
 
-    if (Activation *act = mainThread().activation())
+    if (Activation *act = runtime()->activation())
         act->restoreFrameChain();
 }
 
@@ -1190,9 +1114,10 @@ void *
 ExclusiveContext::stackLimitAddressForJitCode(StackKind kind)
 {
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
-    return runtime_->mainThread.addressOfSimulatorStackLimit();
-#endif
+    return runtime_->addressOfSimulatorStackLimit();
+#else
     return stackLimitAddress(kind);
+#endif
 }
 
 JSVersion

@@ -173,6 +173,7 @@ public:
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                                    const uint64_t& aTransactionId,
                                    const TargetConfig& aTargetConfig,
+                                   const InfallibleTArray<PluginWindowData>& aPlugins,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
@@ -290,6 +291,7 @@ public:
 
   struct LayerTreeState {
     LayerTreeState();
+    ~LayerTreeState();
     nsRefPtr<Layer> mRoot;
     nsRefPtr<GeckoContentController> mController;
     CompositorParent* mParent;
@@ -301,6 +303,8 @@ public:
     TargetConfig mTargetConfig;
     APZTestData mApzTestData;
     LayerTransactionParent* mLayerTree;
+    nsTArray<PluginWindowData> mPluginData;
+    bool mUpdatedPluginDataAvailable;
   };
 
   /**

@@ -115,7 +115,8 @@ public:
     }
 
     SECItem signatureItem;
-    if (SEC_SignData(&signatureItem, tbs.data(), tbs.length(),
+    if (SEC_SignData(&signatureItem, tbs.data(),
+                     static_cast<int>(tbs.length()),
                      privateKey.get(), signatureAlgorithmOidTag)
           != SECSuccess) {
       return MapPRErrorCodeToResult(PR_GetError());
@@ -369,41 +370,32 @@ GenerateDSSKeyPair()
                            privateKey.release());
 }
 
-ByteString
-SHA1(const ByteString& toHash)
+Result
+TestVerifyECDSASignedDigest(const SignedDigest& signedDigest,
+                            Input subjectPublicKeyInfo)
 {
   InitNSSIfNeeded();
-
-  uint8_t digestBuf[SHA1_LENGTH];
-  SECStatus srv = PK11_HashBuf(SEC_OID_SHA1, digestBuf, toHash.data(),
-                               static_cast<int32_t>(toHash.length()));
-  if (srv != SECSuccess) {
-    return ByteString();
-  }
-  return ByteString(digestBuf, sizeof(digestBuf));
+  return VerifyECDSASignedDigestNSS(signedDigest, subjectPublicKeyInfo,
+                                    nullptr);
 }
 
 Result
-TestCheckPublicKey(Input subjectPublicKeyInfo)
+TestVerifyRSAPKCS1SignedDigest(const SignedDigest& signedDigest,
+                               Input subjectPublicKeyInfo)
 {
   InitNSSIfNeeded();
-  return CheckPublicKeyNSS(subjectPublicKeyInfo, MINIMUM_TEST_KEY_BITS);
+  return VerifyRSAPKCS1SignedDigestNSS(signedDigest, subjectPublicKeyInfo,
+                                       nullptr);
 }
 
 Result
-TestVerifySignedData(const SignedDataWithSignature& signedData,
-                     Input subjectPublicKeyInfo)
+TestDigestBuf(Input item,
+              DigestAlgorithm digestAlg,
+              /*out*/ uint8_t* digestBuf,
+              size_t digestBufLen)
 {
   InitNSSIfNeeded();
-  return VerifySignedDataNSS(signedData, subjectPublicKeyInfo,
-                             MINIMUM_TEST_KEY_BITS, nullptr);
-}
-
-Result
-TestDigestBuf(Input item, /*out*/ uint8_t* digestBuf, size_t digestBufLen)
-{
-  InitNSSIfNeeded();
-  return DigestBufNSS(item, digestBuf, digestBufLen);
+  return DigestBufNSS(item, digestAlg, digestBuf, digestBufLen);
 }
 
 } } } // namespace mozilla::pkix::test

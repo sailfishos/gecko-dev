@@ -73,6 +73,10 @@ class CodeGeneratorARM : public CodeGeneratorShared
         bailoutIf(Assembler::Zero, snapshot);
     }
 
+    template<class T>
+    void generateUDivModZeroCheck(Register rhs, Register output, Label *done, LSnapshot *snapshot,
+                                  T *mir);
+
   protected:
     bool generatePrologue();
     bool generateEpilogue();
@@ -100,6 +104,13 @@ class CodeGeneratorARM : public CodeGeneratorShared
                               MBasicBlock *ifTrue, MBasicBlock *ifFalse)
     {
         cond = masm.testObject(cond, value);
+        emitBranch(cond, ifTrue, ifFalse);
+    }
+    void testZeroEmitBranch(Assembler::Condition cond, Register reg,
+                            MBasicBlock *ifTrue, MBasicBlock *ifFalse)
+    {
+        MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+        masm.cmpPtr(reg, ImmWord(0));
         emitBranch(cond, ifTrue, ifFalse);
     }
 
@@ -195,7 +206,7 @@ class CodeGeneratorARM : public CodeGeneratorShared
     void visitFloat32(LFloat32 *ins);
 
     void visitGuardShape(LGuardShape *guard);
-    void visitGuardObjectType(LGuardObjectType *guard);
+    void visitGuardObjectGroup(LGuardObjectGroup *guard);
     void visitGuardClass(LGuardClass *guard);
 
     void visitNegI(LNegI *lir);

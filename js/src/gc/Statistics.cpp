@@ -14,7 +14,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "jscrashreport.h"
 #include "jsprf.h"
 #include "jsutil.h"
 #include "prmjtime.h"
@@ -481,6 +480,8 @@ Statistics::sccDurations(int64_t *total, int64_t *maxPause)
 bool
 Statistics::formatData(StatisticsSerializer &ss, uint64_t timestamp)
 {
+    MOZ_ASSERT(!aborted);
+
     int64_t total, longest;
     gcDuration(&total, &longest);
 
@@ -580,6 +581,8 @@ Join(const FragmentVector &fragments) {
 UniqueChars
 Statistics::formatDescription()
 {
+    const double bytesPerMiB = 1024 * 1024;
+
     int64_t sccTotal, sccLongest;
     sccDurations(&sccTotal, &sccLongest);
 
@@ -599,6 +602,7 @@ Statistics::formatDescription()
   SCC Sweep Total (MaxPause): %.3fms (%.3fms)\n\
   HeapSize: %.3f MiB\n\
   Chunk Delta (magnitude): %+d  (%d)\n\
+  Arenas Relocated: %.3f MiB\n\
 ";
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
@@ -613,9 +617,10 @@ Statistics::formatDescription()
                 counts[STAT_STOREBUFFER_OVERFLOW],
                 mmu20 * 100., mmu50 * 100.,
                 t(sccTotal), t(sccLongest),
-                double(preBytes) / 1024. / 1024.,
+                double(preBytes) / bytesPerMiB,
                 counts[STAT_NEW_CHUNK] - counts[STAT_DESTROY_CHUNK], counts[STAT_NEW_CHUNK] +
-                                                                  counts[STAT_DESTROY_CHUNK]);
+                                                                     counts[STAT_DESTROY_CHUNK],
+                double(ArenaSize * counts[STAT_ARENA_RELOCATED]) / bytesPerMiB);
     return make_string_copy(buffer);
 }
 
@@ -770,7 +775,7 @@ Statistics::Statistics(JSRuntime *rt)
     activeDagSlot(PHASE_DAG_NONE),
     suspendedPhaseNestingDepth(0),
     sliceCallback(nullptr),
-    abortSlices(false)
+    aborted(false)
 {
     PodArrayZero(phaseTotals);
     PodArrayZero(counts);
@@ -896,6 +901,13 @@ SumPhase(Phase phase, int64_t (*times)[PHASE_LIMIT])
 void
 Statistics::printStats()
 {
+    if (aborted) {
+        if (fullFormat)
+            fprintf(fp, "OOM during GC statistics collection. The report is unavailable for this GC.\n");
+        fflush(fp);
+        return;
+    }
+
     if (fullFormat) {
         UniqueChars msg = formatDetailedMessage();
         if (msg)
@@ -928,8 +940,6 @@ Statistics::beginGC(JSGCInvocationKind kind)
 void
 Statistics::endGC()
 {
-    crash::SnapshotGCStack();
-
     for (size_t j = 0; j < MAX_MULTIPARENT_PHASES + 1; j++)
         for (int i = 0; i < PHASE_LIMIT; i++)
             phaseTotals[j][i] += phaseTimes[j][i];
@@ -954,8 +964,10 @@ Statistics::endGC()
     runtime->addTelemetry(JS_TELEMETRY_GC_SCC_SWEEP_TOTAL_MS, t(sccTotal));
     runtime->addTelemetry(JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS, t(sccLongest));
 
-    double mmu50 = computeMMU(50 * PRMJ_USEC_PER_MSEC);
-    runtime->addTelemetry(JS_TELEMETRY_GC_MMU_50, mmu50 * 100);
+    if (!aborted) {
+        double mmu50 = computeMMU(50 * PRMJ_USEC_PER_MSEC);
+        runtime->addTelemetry(JS_TELEMETRY_GC_MMU_50, mmu50 * 100);
+    }
 
     if (fp)
         printStats();
@@ -966,7 +978,7 @@ Statistics::endGC()
     for (size_t d = PHASE_DAG_NONE; d < MAX_MULTIPARENT_PHASES + 1; d++)
         PodZero(&phaseTimes[d][PHASE_GC_BEGIN], PHASE_LIMIT - PHASE_GC_BEGIN);
 
-    abortSlices = false;
+    aborted = false;
 }
 
 void
@@ -982,8 +994,7 @@ Statistics::beginSlice(const ZoneGCStats &zoneStats, JSGCInvocationKind gckind,
     SliceData data(reason, PRMJ_Now(), GetPageFaultCount());
     if (!slices.append(data)) {
         // OOM testing fails if we CrashAtUnhandlableOOM here.
-        abortSlices = true;
-        slices.clear();
+        aborted = true;
         return;
     }
 
@@ -994,14 +1005,14 @@ Statistics::beginSlice(const ZoneGCStats &zoneStats, JSGCInvocationKind gckind,
         bool wasFullGC = zoneStats.isCollectingAllZones();
         if (sliceCallback)
             (*sliceCallback)(runtime, first ? JS::GC_CYCLE_BEGIN : JS::GC_SLICE_BEGIN,
-                             JS::GCDescription(!wasFullGC));
+                             JS::GCDescription(!wasFullGC, gckind));
     }
 }
 
 void
 Statistics::endSlice()
 {
-    if (!abortSlices) {
+    if (!aborted) {
         slices.back().end = PRMJ_Now();
         slices.back().endFaults = GetPageFaultCount();
 
@@ -1018,7 +1029,7 @@ Statistics::endSlice()
         bool wasFullGC = zoneStats.isCollectingAllZones();
         if (sliceCallback)
             (*sliceCallback)(runtime, last ? JS::GC_CYCLE_END : JS::GC_SLICE_END,
-                             JS::GCDescription(!wasFullGC));
+                             JS::GCDescription(!wasFullGC, gckind));
     }
 
     /* Do this after the slice callback since it uses these values. */
@@ -1161,9 +1172,6 @@ Statistics::endSCC(unsigned scc, int64_t start)
 double
 Statistics::computeMMU(int64_t window)
 {
-    if (abortSlices)
-        return 0.0;
-
     MOZ_ASSERT(!slices.empty());
 
     int64_t gc = slices[0].end - slices[0].start;

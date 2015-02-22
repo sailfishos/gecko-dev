@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include "mozilla/Assertions.h"
 #include "mozilla/Constants.h"   // for M_PI
-#include "mozilla/TypedEnum.h"
 
 // First time gfxPrefs::GetSingleton() needs to be called on the main thread,
 // before any of the methods accessing the values are used, but after
@@ -78,14 +77,14 @@ private:
 
 private:
   // Enums for the update policy.
-  MOZ_BEGIN_NESTED_ENUM_CLASS(UpdatePolicy)
+  enum class UpdatePolicy {
     Skip, // Set the value to default, skip any Preferences calls
     Once, // Evaluate the preference once, unchanged during the session
     Live  // Evaluate the preference and set callback so it stays current/live
-  MOZ_END_NESTED_ENUM_CLASS(UpdatePolicy)
+  };
 
   // Since we cannot use const char*, use a function that returns it.
-  template <MOZ_ENUM_CLASS_ENUM_TYPE(UpdatePolicy) Update, class T, T Default(void), const char* Pref(void)>
+  template <UpdatePolicy Update, class T, T Default(void), const char* Pref(void)>
   class PrefTemplate
   {
   public:
@@ -174,7 +173,6 @@ private:
   DECL_GFX_PREF(Live, "apz.pan_repaint_interval",              APZPanRepaintInterval, int32_t, 250);
   DECL_GFX_PREF(Live, "apz.printtree",                         APZPrintTree, bool, false);
   DECL_GFX_PREF(Live, "apz.smooth_scroll_repaint_interval",    APZSmoothScrollRepaintInterval, int32_t, 75);
-  DECL_GFX_PREF(Live, "apz.subframe.enabled",                  APZSubframeEnabled, bool, false);
   DECL_GFX_PREF(Once, "apz.test.logging_enabled",              APZTestLoggingEnabled, bool, false);
   DECL_GFX_PREF(Live, "apz.touch_start_tolerance",             APZTouchStartTolerance, float, 1.0f/4.5f);
   DECL_GFX_PREF(Live, "apz.use_paint_duration",                APZUsePaintDuration, bool, true);
@@ -247,6 +245,7 @@ private:
   DECL_GFX_PREF(Once, "image.mem.surfacecache.size_factor",    ImageMemSurfaceCacheSizeFactor, uint32_t, 64);
   DECL_GFX_PREF(Live, "image.mozsamplesize.enabled",           ImageMozSampleSizeEnabled, bool, false);
   DECL_GFX_PREF(Once, "image.multithreaded_decoding.limit",    ImageMTDecodingLimit, int32_t, -1);
+  DECL_GFX_PREF(Live, "image.single-color-optimization.enabled", ImageSingleColorOptimizationEnabled, bool, true);
 
   DECL_GFX_PREF(Once, "layers.acceleration.disabled",          LayersAccelerationDisabled, bool, false);
   DECL_GFX_PREF(Live, "layers.acceleration.draw-fps",          LayersDrawFPS, bool, false);
@@ -276,7 +275,10 @@ private:
   DECL_GFX_PREF(Live, "layers.dump-texture",                   LayersDumpTexture, bool, false);
 #ifdef MOZ_DUMP_PAINTING
   DECL_GFX_PREF(Live, "layers.dump-decision",                  LayersDumpDecision, bool, false);
+  DECL_GFX_PREF(Live, "layers.dump-client-layers",             DumpClientLayers, bool, false);
+  DECL_GFX_PREF(Live, "layers.dump-host-layers",               DumpHostLayers, bool, false);
 #endif
+  DECL_GFX_PREF(Live, "layers.transaction.warning-ms",         LayerTransactionWarning, uint32_t, 200);
 
   // 0 is "no change" for contrast, positive values increase it, negative values
   // decrease it until we hit mid gray at -1 contrast, after that it gets weird.

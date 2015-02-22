@@ -127,10 +127,19 @@ LIRGeneratorMIPS::visitBox(MBox *box)
 void
 LIRGeneratorMIPS::visitUnbox(MUnbox *unbox)
 {
+    MDefinition *inner = unbox->getOperand(0);
+
+    if (inner->type() == MIRType_ObjectOrNull) {
+        LUnboxObjectOrNull *lir = new(alloc()) LUnboxObjectOrNull(useRegisterAtStart(inner));
+        if (unbox->fallible())
+            assignSnapshot(lir, unbox->bailoutKind());
+        defineReuseInput(lir, unbox, 0);
+        return;
+    }
+
     // An unbox on mips reads in a type tag (either in memory or a register) and
     // a payload. Unlike most instructions consuming a box, we ask for the type
     // second, so that the result can re-use the first input.
-    MDefinition *inner = unbox->getOperand(0);
     MOZ_ASSERT(inner->type() == MIRType_Value);
 
     ensureDefined(inner);
@@ -378,13 +387,13 @@ LIRGeneratorMIPS::visitGuardShape(MGuardShape *ins)
 }
 
 void
-LIRGeneratorMIPS::visitGuardObjectType(MGuardObjectType *ins)
+LIRGeneratorMIPS::visitGuardObjectGroup(MGuardObjectGroup *ins)
 {
     MOZ_ASSERT(ins->obj()->type() == MIRType_Object);
 
     LDefinition tempObj = temp(LDefinition::OBJECT);
-    LGuardObjectType *guard = new(alloc()) LGuardObjectType(useRegister(ins->obj()), tempObj);
-    assignSnapshot(guard, Bailout_ObjectIdentityOrTypeGuard);
+    LGuardObjectGroup *guard = new(alloc()) LGuardObjectGroup(useRegister(ins->obj()), tempObj);
+    assignSnapshot(guard, ins->bailoutKind());
     add(guard, ins);
     redefine(ins, ins->obj());
 }

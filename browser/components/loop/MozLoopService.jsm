@@ -730,6 +730,11 @@ let MozLoopServiceInternal = {
       let string = enumerator.getNext().QueryInterface(Ci.nsIPropertyElement);
       gLocalizedStrings.set(string.key, string.value);
     }
+    // Supply the strings from the branding bundle on a per-need basis.
+    let brandBundle =
+      Services.strings.createBundle("chrome://branding/locale/brand.properties");
+    // Unfortunately the `brandShortName` string is used by Loop with a lowercase 'N'.
+    gLocalizedStrings.set("brandShortname", brandBundle.GetStringFromName("brandShortName"));
 
     return gLocalizedStrings;
   },
@@ -1046,6 +1051,7 @@ let gInitializeTimerFunc = (deferredInitialization) => {
  */
 this.MozLoopService = {
   _DNSService: gDNSService,
+  _activeScreenShares: [],
 
   get channelIDs() {
     // Channel ids that will be registered with the PushServer for notifications
@@ -1535,12 +1541,28 @@ this.MozLoopService = {
     let urlStr = this.getLoopPref("gettingStarted.url");
     let url = new URL(Services.urlFormatter.formatURL(urlStr));
     for (let paramName in aAdditionalParams) {
-      url.searchParams.append(paramName, aAdditionalParams[paramName]);
+      url.searchParams.set(paramName, aAdditionalParams[paramName]);
     }
     if (aSrc) {
       url.searchParams.set("utm_source", "firefox-browser");
       url.searchParams.set("utm_medium", "firefox-browser");
       url.searchParams.set("utm_campaign", aSrc);
+    }
+
+    // Find the most recent pageID that has the Loop prefix.
+    let mostRecentLoopPageID = {id: null, lastSeen: null};
+    for (let pageID of UITour.pageIDsForSession) {
+      if (pageID[0] && pageID[0].startsWith("hello-tour_OpenPanel_") &&
+          pageID[1] && pageID[1].lastSeen > mostRecentLoopPageID.lastSeen) {
+        mostRecentLoopPageID.id = pageID[0];
+        mostRecentLoopPageID.lastSeen = pageID[1].lastSeen;
+      }
+    }
+
+    const PAGE_ID_EXPIRATION_MS = 60 * 60 * 1000;
+    if (mostRecentLoopPageID.id &&
+        mostRecentLoopPageID.lastSeen > Date.now() - PAGE_ID_EXPIRATION_MS) {
+      url.searchParams.set("utm_content", mostRecentLoopPageID.id);
     }
     return url;
   },
@@ -1638,5 +1660,33 @@ this.MozLoopService = {
 
   addConversationContext: function(windowId, context) {
     MozLoopServiceInternal.conversationContexts.set(windowId, context);
+  },
+
+  /**
+   * Used to record the screen sharing state for a window so that it can
+   * be reflected on the toolbar button.
+   *
+   * @param {String} windowId The id of the conversation window the state
+   *                          is being changed for.
+   * @param {Boolean} active  Whether or not screen sharing is now active.
+   */
+  setScreenShareState: function(windowId, active) {
+    if (active) {
+      this._activeScreenShares.push(windowId);
+    } else {
+      var index = this._activeScreenShares.indexOf(windowId);
+      if (index != -1) {
+        this._activeScreenShares.splice(index, 1);
+      }
+    }
+
+    MozLoopServiceInternal.notifyStatusChanged();
+  },
+
+  /**
+   * Returns true if screen sharing is active in at least one window.
+   */
+  get screenShareActive() {
+    return this._activeScreenShares.length > 0;
   }
 };

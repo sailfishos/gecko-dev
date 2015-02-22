@@ -20,6 +20,13 @@ EXTRA_JS_MODULES.devtools.webide += [
     'modules/config-view.js',
     'modules/remote-resources.js',
     'modules/runtimes.js',
+    'modules/simulator-process.js',
+    'modules/simulators.js',
     'modules/tab-store.js',
     'modules/utils.js'
 ]
+
+JS_PREFERENCE_FILES += [
+    'webide-prefs.js',
+]
+

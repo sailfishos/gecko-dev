@@ -54,7 +54,7 @@ public:
 
   NSSCertDBTrustDomain(SECTrustType certDBTrustType, OCSPFetching ocspFetching,
                        OCSPCache& ocspCache, void* pinArg,
-                       CertVerifier::ocsp_get_config ocspGETConfig,
+                       CertVerifier::OcspGetConfig ocspGETConfig,
                        CertVerifier::PinningMode pinningMode,
                        bool forEV,
           /*optional*/ const char* hostname = nullptr,
@@ -70,15 +70,24 @@ public:
                               /*out*/ mozilla::pkix::TrustLevel& trustLevel)
                               MOZ_OVERRIDE;
 
-  virtual Result CheckPublicKey(mozilla::pkix::Input subjectPublicKeyInfo)
-                                MOZ_OVERRIDE;
+  virtual Result CheckRSAPublicKeyModulusSizeInBits(
+                   mozilla::pkix::EndEntityOrCA endEntityOrCA,
+                   unsigned int modulusSizeInBits) MOZ_OVERRIDE;
 
-  virtual Result VerifySignedData(
-                   const mozilla::pkix::SignedDataWithSignature& signedData,
-                   mozilla::pkix::Input subjectPublicKeyInfo)
-                   MOZ_OVERRIDE;
+  virtual Result VerifyRSAPKCS1SignedDigest(
+                   const mozilla::pkix::SignedDigest& signedDigest,
+                   mozilla::pkix::Input subjectPublicKeyInfo) MOZ_OVERRIDE;
+
+  virtual Result CheckECDSACurveIsAcceptable(
+                   mozilla::pkix::EndEntityOrCA endEntityOrCA,
+                   mozilla::pkix::NamedCurve curve) MOZ_OVERRIDE;
+
+  virtual Result VerifyECDSASignedDigest(
+                   const mozilla::pkix::SignedDigest& signedDigest,
+                   mozilla::pkix::Input subjectPublicKeyInfo) MOZ_OVERRIDE;
 
   virtual Result DigestBuf(mozilla::pkix::Input item,
+                           mozilla::pkix::DigestAlgorithm digestAlg,
                            /*out*/ uint8_t* digestBuf,
                            size_t digestBufLen) MOZ_OVERRIDE;
 
@@ -116,7 +125,7 @@ private:
   const OCSPFetching mOCSPFetching;
   OCSPCache& mOCSPCache; // non-owning!
   void* mPinArg; // non-owning!
-  const CertVerifier::ocsp_get_config mOCSPGetConfig;
+  const CertVerifier::OcspGetConfig mOCSPGetConfig;
   CertVerifier::PinningMode mPinningMode;
   const unsigned int mMinimumNonECCBits;
   const char* mHostname; // non-owning - only used for pinning checks

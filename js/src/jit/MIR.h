@@ -15,6 +15,7 @@
 #include "mozilla/Array.h"
 #include "mozilla/DebugOnly.h"
 
+#include "builtin/SIMD.h"
 #include "jit/AtomicOp.h"
 #include "jit/FixedList.h"
 #include "jit/InlineList.h"
@@ -26,6 +27,7 @@
 #include "vm/ArrayObject.h"
 #include "vm/ScopeObject.h"
 #include "vm/TypedArrayCommon.h"
+#include "vm/UnboxedObject.h"
 
 // Undo windows.h damage on Win64
 #undef MemoryBarrier
@@ -363,7 +365,7 @@ class MDefinition : public MNode
     uint32_t flags_;               // Bit flags.
     Range *range_;                 // Any computed range for this def.
     MIRType resultType_;           // Representation of result type.
-    types::TemporaryTypeSet *resultTypeSet_; // Optional refinement of the result type.
+    TemporaryTypeSet *resultTypeSet_; // Optional refinement of the result type.
     union {
         MInstruction *dependency_; // Implicit dependency (store, call, etc.) of this instruction.
                                    // Used by alias analysis, GVN and LICM.
@@ -455,6 +457,11 @@ class MDefinition : public MNode
     }
     InlineScriptTree *trackedTree() const {
         return trackedSite_ ? trackedSite_->tree() : nullptr;
+    }
+    TrackedOptimizations *trackedOptimizations() const {
+        return trackedSite_ && trackedSite_->hasOptimizations()
+               ? trackedSite_->optimizations()
+               : nullptr;
     }
 
     JSScript *profilerLeaveScript() const {
@@ -603,21 +610,25 @@ class MDefinition : public MNode
         return resultType_;
     }
 
-    types::TemporaryTypeSet *resultTypeSet() const {
+    TemporaryTypeSet *resultTypeSet() const {
         return resultTypeSet_;
     }
     bool emptyResultTypeSet() const;
 
     bool mightBeType(MIRType type) const {
         MOZ_ASSERT(type != MIRType_Value);
+        MOZ_ASSERT(type != MIRType_ObjectOrNull);
 
         if (type == this->type())
             return true;
 
-        if (MIRType_Value != this->type())
-            return false;
+        if (this->type() == MIRType_ObjectOrNull)
+            return type == MIRType_Object || type == MIRType_Null;
 
-        return !resultTypeSet() || resultTypeSet()->mightBeMIRType(type);
+        if (this->type() == MIRType_Value)
+            return !resultTypeSet() || resultTypeSet()->mightBeMIRType(type);
+
+        return false;
     }
 
     bool mightBeMagicType() const;
@@ -776,7 +787,7 @@ class MDefinition : public MNode
     void setResultType(MIRType type) {
         resultType_ = type;
     }
-    void setResultTypeSet(types::TemporaryTypeSet *types) {
+    void setResultTypeSet(TemporaryTypeSet *types) {
         resultTypeSet_ = types;
     }
 
@@ -1272,15 +1283,15 @@ class MConstant : public MNullaryInstruction
     Value value_;
 
   protected:
-    MConstant(const Value &v, types::CompilerConstraintList *constraints);
+    MConstant(const Value &v, CompilerConstraintList *constraints);
     explicit MConstant(JSObject *obj);
 
   public:
     INSTRUCTION_HEADER(Constant)
     static MConstant *New(TempAllocator &alloc, const Value &v,
-                          types::CompilerConstraintList *constraints = nullptr);
+                          CompilerConstraintList *constraints = nullptr);
     static MConstant *NewTypedValue(TempAllocator &alloc, const Value &v, MIRType type,
-                                    types::CompilerConstraintList *constraints = nullptr);
+                                    CompilerConstraintList *constraints = nullptr);
     static MConstant *NewAsmJS(TempAllocator &alloc, const Value &v, MIRType type);
     static MConstant *NewConstraintlessObject(TempAllocator &alloc, JSObject *v);
 
@@ -1322,6 +1333,33 @@ class MConstant : public MNullaryInstruction
     bool canProduceFloat32() const MOZ_OVERRIDE;
 
     ALLOW_CLONE(MConstant)
+};
+
+class MNurseryObject : public MNullaryInstruction
+{
+    // Index in MIRGenerator::nurseryObjects_.
+    uint32_t index_;
+
+  protected:
+    MNurseryObject(JSObject *obj, uint32_t index, CompilerConstraintList *constraints);
+
+  public:
+    INSTRUCTION_HEADER(NurseryObject)
+    static MNurseryObject *New(TempAllocator &alloc, JSObject *obj, uint32_t index,
+                               CompilerConstraintList *constraints = nullptr);
+
+    HashNumber valueHash() const MOZ_OVERRIDE;
+    bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE;
+
+    uint32_t index() const {
+        return index_;
+    }
+
+    AliasSet getAliasSet() const MOZ_OVERRIDE {
+        return AliasSet::None();
+    }
+
+    ALLOW_CLONE(MNurseryObject)
 };
 
 // Generic constructor of SIMD valuesX4.
@@ -1922,30 +1960,22 @@ class MSimdBinaryComp
 
 class MSimdBinaryArith
   : public MBinaryInstruction,
-    public NoTypePolicy::Data
+    public MixPolicy<SimdSameAsReturnedTypePolicy<0>, SimdSameAsReturnedTypePolicy<1> >::Data
 {
   public:
     enum Operation {
-        Add,
-        Sub,
-        Mul,
-        Div,
-        Min,
-        Max,
-        MinNum,
-        MaxNum
+#define OP_LIST_(OP) Op_##OP,
+        ARITH_COMMONX4_SIMD_OP(OP_LIST_)
+        ARITH_FLOAT32X4_SIMD_OP(OP_LIST_)
+#undef OP_LIST_
     };
 
     static const char* OperationName(Operation op) {
         switch (op) {
-          case Add:    return "Add";
-          case Sub:    return "Sub";
-          case Mul:    return "Mul";
-          case Div:    return "Div";
-          case Min:    return "Min";
-          case Max:    return "Max";
-          case MinNum: return "MinNum";
-          case MaxNum: return "MaxNum";
+#define OP_CASE_LIST_(OP) case Op_##OP: return #OP;
+          ARITH_COMMONX4_SIMD_OP(OP_CASE_LIST_)
+          ARITH_FLOAT32X4_SIMD_OP(OP_CASE_LIST_)
+#undef OP_CASE_LIST_
         }
         MOZ_CRASH("unexpected operation");
     }
@@ -1956,22 +1986,28 @@ class MSimdBinaryArith
     MSimdBinaryArith(MDefinition *left, MDefinition *right, Operation op, MIRType type)
       : MBinaryInstruction(left, right), operation_(op)
     {
-        MOZ_ASSERT_IF(type == MIRType_Int32x4, op == Add || op == Sub || op == Mul);
+        MOZ_ASSERT_IF(type == MIRType_Int32x4, op == Op_add || op == Op_sub || op == Op_mul);
         MOZ_ASSERT(IsSimdType(type));
-        MOZ_ASSERT(left->type() == right->type());
-        MOZ_ASSERT(left->type() == type);
         setResultType(type);
         setMovable();
-        if (op == Add || op == Mul || op == Min || op == Max)
+        if (op == Op_add || op == Op_mul || op == Op_min || op == Op_max)
             setCommutative();
     }
 
   public:
     INSTRUCTION_HEADER(SimdBinaryArith)
+    static MSimdBinaryArith *New(TempAllocator &alloc, MDefinition *left, MDefinition *right,
+                                 Operation op, MIRType t)
+    {
+        return new(alloc) MSimdBinaryArith(left, right, op, t);
+    }
+
     static MSimdBinaryArith *NewAsmJS(TempAllocator &alloc, MDefinition *left, MDefinition *right,
                                       Operation op, MIRType t)
     {
-        return new(alloc) MSimdBinaryArith(left, right, op, t);
+        MOZ_ASSERT(left->type() == right->type());
+        MOZ_ASSERT(left->type() == t);
+        return New(alloc, left, right, op, t);
     }
 
     AliasSet getAliasSet() const MOZ_OVERRIDE {
@@ -1991,7 +2027,7 @@ class MSimdBinaryArith
 
 class MSimdBinaryBitwise
   : public MBinaryInstruction,
-    public NoTypePolicy::Data
+    public MixPolicy<SimdSameAsReturnedTypePolicy<0>, SimdSameAsReturnedTypePolicy<1> >::Data
 {
   public:
     enum Operation {
@@ -2007,8 +2043,6 @@ class MSimdBinaryBitwise
       : MBinaryInstruction(left, right), operation_(op)
     {
         MOZ_ASSERT(IsSimdType(type));
-        MOZ_ASSERT(left->type() == right->type());
-        MOZ_ASSERT(left->type() == type);
         setResultType(type);
         setMovable();
         setCommutative();
@@ -2016,9 +2050,17 @@ class MSimdBinaryBitwise
 
   public:
     INSTRUCTION_HEADER(SimdBinaryBitwise)
+    static MSimdBinaryBitwise *New(TempAllocator &alloc, MDefinition *left, MDefinition *right,
+                                   Operation op, MIRType t)
+    {
+        return new(alloc) MSimdBinaryBitwise(left, right, op, t);
+    }
+
     static MSimdBinaryBitwise *NewAsmJS(TempAllocator &alloc, MDefinition *left,
                                         MDefinition *right, Operation op, MIRType t)
     {
+        MOZ_ASSERT(left->type() == right->type());
+        MOZ_ASSERT(left->type() == t);
         return new(alloc) MSimdBinaryBitwise(left, right, op, t);
     }
 
@@ -2153,7 +2195,7 @@ class MParameter : public MNullaryInstruction
   public:
     static const int32_t THIS_SLOT = -1;
 
-    MParameter(int32_t index, types::TemporaryTypeSet *types)
+    MParameter(int32_t index, TemporaryTypeSet *types)
       : index_(index)
     {
         setResultType(MIRType_Value);
@@ -2162,7 +2204,7 @@ class MParameter : public MNullaryInstruction
 
   public:
     INSTRUCTION_HEADER(Parameter)
-    static MParameter *New(TempAllocator &alloc, int32_t index, types::TemporaryTypeSet *types);
+    static MParameter *New(TempAllocator &alloc, int32_t index, TemporaryTypeSet *types);
 
     int32_t index() const {
         return index_;
@@ -2496,7 +2538,7 @@ class MTest
     // background threads.  So make callers explicitly call it if they want us
     // to check whether the operand might do this.  If this method is never
     // called, we'll assume our operand can emulate undefined.
-    void cacheOperandMightEmulateUndefined(types::CompilerConstraintList *constraints);
+    void cacheOperandMightEmulateUndefined(CompilerConstraintList *constraints);
     MDefinition *foldsTo(TempAllocator &alloc) MOZ_OVERRIDE;
     void filtersUndefinedOrNull(bool trueBranch, MDefinition **subject, bool *filtersUndefined,
                                 bool *filtersNull);
@@ -2588,12 +2630,12 @@ class MThrow
 };
 
 // Fabricate a type set containing only the type of the specified object.
-types::TemporaryTypeSet *
-MakeSingletonTypeSet(types::CompilerConstraintList *constraints, JSObject *obj);
+TemporaryTypeSet *
+MakeSingletonTypeSet(CompilerConstraintList *constraints, JSObject *obj);
 
 bool
-MergeTypes(MIRType *ptype, types::TemporaryTypeSet **ptypeSet,
-           MIRType newType, types::TemporaryTypeSet *newTypeSet);
+MergeTypes(MIRType *ptype, TemporaryTypeSet **ptypeSet,
+           MIRType newType, TemporaryTypeSet *newTypeSet);
 
 // Helper class to assert all GC pointers embedded in MIR instructions are
 // tenured. Off-thread Ion compilation and nursery GCs can happen in parallel,
@@ -2645,7 +2687,7 @@ class MNewArray
     // Allocate space at initialization or not
     AllocatingBehaviour allocating_;
 
-    MNewArray(types::CompilerConstraintList *constraints, uint32_t count, MConstant *templateConst,
+    MNewArray(CompilerConstraintList *constraints, uint32_t count, MConstant *templateConst,
               gc::InitialHeap initialHeap, AllocatingBehaviour allocating)
       : MUnaryInstruction(templateConst),
         count_(count),
@@ -2654,14 +2696,14 @@ class MNewArray
     {
         ArrayObject *obj = templateObject();
         setResultType(MIRType_Object);
-        if (!obj->hasSingletonType())
+        if (!obj->isSingleton())
             setResultTypeSet(MakeSingletonTypeSet(constraints, obj));
     }
 
   public:
     INSTRUCTION_HEADER(NewArray)
 
-    static MNewArray *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MNewArray *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                           uint32_t count, MConstant *templateConst,
                           gc::InitialHeap initialHeap, AllocatingBehaviour allocating)
     {
@@ -2711,12 +2753,12 @@ class MNewArrayCopyOnWrite : public MNullaryInstruction
     AlwaysTenured<ArrayObject*> templateObject_;
     gc::InitialHeap initialHeap_;
 
-    MNewArrayCopyOnWrite(types::CompilerConstraintList *constraints, ArrayObject *templateObject,
+    MNewArrayCopyOnWrite(CompilerConstraintList *constraints, ArrayObject *templateObject,
               gc::InitialHeap initialHeap)
       : templateObject_(templateObject),
         initialHeap_(initialHeap)
     {
-        MOZ_ASSERT(!templateObject->hasSingletonType());
+        MOZ_ASSERT(!templateObject->isSingleton());
         setResultType(MIRType_Object);
         setResultTypeSet(MakeSingletonTypeSet(constraints, templateObject));
     }
@@ -2725,7 +2767,7 @@ class MNewArrayCopyOnWrite : public MNullaryInstruction
     INSTRUCTION_HEADER(NewArrayCopyOnWrite)
 
     static MNewArrayCopyOnWrite *New(TempAllocator &alloc,
-                                     types::CompilerConstraintList *constraints,
+                                     CompilerConstraintList *constraints,
                                      ArrayObject *templateObject,
                                      gc::InitialHeap initialHeap)
     {
@@ -2752,7 +2794,7 @@ class MNewArrayDynamicLength
     AlwaysTenured<ArrayObject*> templateObject_;
     gc::InitialHeap initialHeap_;
 
-    MNewArrayDynamicLength(types::CompilerConstraintList *constraints, ArrayObject *templateObject,
+    MNewArrayDynamicLength(CompilerConstraintList *constraints, ArrayObject *templateObject,
                            gc::InitialHeap initialHeap, MDefinition *length)
       : MUnaryInstruction(length),
         templateObject_(templateObject),
@@ -2760,14 +2802,14 @@ class MNewArrayDynamicLength
     {
         setGuard(); // Need to throw if length is negative.
         setResultType(MIRType_Object);
-        if (!templateObject->hasSingletonType())
+        if (!templateObject->isSingleton())
             setResultTypeSet(MakeSingletonTypeSet(constraints, templateObject));
     }
 
   public:
     INSTRUCTION_HEADER(NewArrayDynamicLength)
 
-    static MNewArrayDynamicLength *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MNewArrayDynamicLength *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                                        ArrayObject *templateObject, gc::InitialHeap initialHeap,
                                        MDefinition *length)
     {
@@ -2793,19 +2835,23 @@ class MNewObject
   : public MUnaryInstruction,
     public NoTypePolicy::Data
 {
-    gc::InitialHeap initialHeap_;
-    bool templateObjectIsClassPrototype_;
+  public:
+    enum Mode { ObjectLiteral, ObjectCreate };
 
-    MNewObject(types::CompilerConstraintList *constraints, MConstant *templateConst,
-               gc::InitialHeap initialHeap, bool templateObjectIsClassPrototype)
+  private:
+    gc::InitialHeap initialHeap_;
+    Mode mode_;
+
+    MNewObject(CompilerConstraintList *constraints, MConstant *templateConst,
+               gc::InitialHeap initialHeap, Mode mode)
       : MUnaryInstruction(templateConst),
         initialHeap_(initialHeap),
-        templateObjectIsClassPrototype_(templateObjectIsClassPrototype)
+        mode_(mode)
     {
         PlainObject *obj = templateObject();
-        MOZ_ASSERT_IF(templateObjectIsClassPrototype, !shouldUseVM());
+        MOZ_ASSERT_IF(mode != ObjectLiteral, !shouldUseVM());
         setResultType(MIRType_Object);
-        if (!obj->hasSingletonType())
+        if (!obj->isSingleton())
             setResultTypeSet(MakeSingletonTypeSet(constraints, obj));
 
         // The constant is kept separated in a MConstant, this way we can safely
@@ -2819,20 +2865,19 @@ class MNewObject
   public:
     INSTRUCTION_HEADER(NewObject)
 
-    static MNewObject *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MNewObject *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                            MConstant *templateConst, gc::InitialHeap initialHeap,
-                           bool templateObjectIsClassPrototype)
+                           Mode mode)
     {
-        return new(alloc) MNewObject(constraints, templateConst, initialHeap,
-                                     templateObjectIsClassPrototype);
+        return new(alloc) MNewObject(constraints, templateConst, initialHeap, mode);
     }
 
     // Returns true if the code generator should call through to the
     // VM rather than the fast path.
     bool shouldUseVM() const;
 
-    bool templateObjectIsClassPrototype() const {
-        return templateObjectIsClassPrototype_;
+    Mode mode() const {
+        return mode_;
     }
 
     PlainObject *templateObject() const {
@@ -2856,7 +2901,7 @@ class MNewTypedObject : public MNullaryInstruction
     AlwaysTenured<InlineTypedObject *> templateObject_;
     gc::InitialHeap initialHeap_;
 
-    MNewTypedObject(types::CompilerConstraintList *constraints,
+    MNewTypedObject(CompilerConstraintList *constraints,
                     InlineTypedObject *templateObject,
                     gc::InitialHeap initialHeap)
       : templateObject_(templateObject),
@@ -2870,7 +2915,7 @@ class MNewTypedObject : public MNullaryInstruction
     INSTRUCTION_HEADER(NewTypedObject)
 
     static MNewTypedObject *New(TempAllocator &alloc,
-                                types::CompilerConstraintList *constraints,
+                                CompilerConstraintList *constraints,
                                 InlineTypedObject *templateObject,
                                 gc::InitialHeap initialHeap)
     {
@@ -2931,7 +2976,7 @@ class MSimdBox
     AlwaysTenured<InlineTypedObject *> templateObject_;
     gc::InitialHeap initialHeap_;
 
-    MSimdBox(types::CompilerConstraintList *constraints,
+    MSimdBox(CompilerConstraintList *constraints,
              MDefinition *op,
              InlineTypedObject *templateObject,
              gc::InitialHeap initialHeap)
@@ -2949,7 +2994,7 @@ class MSimdBox
     INSTRUCTION_HEADER(SimdBox)
 
     static MSimdBox *New(TempAllocator &alloc,
-                         types::CompilerConstraintList *constraints,
+                         CompilerConstraintList *constraints,
                          MDefinition *op,
                          InlineTypedObject *templateObject,
                          gc::InitialHeap initialHeap)
@@ -2968,12 +3013,37 @@ class MSimdBox
     bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
         if (congruentIfOperandsEqual(ins)) {
             MOZ_ASSERT(ins->toSimdBox()->initialHeap() == initialHeap());
-            // The template object is likely to be different, but represents the
-            // same kind of objects as the MIRTypes are identical.
             return true;
         }
 
         return false;
+    }
+
+    AliasSet getAliasSet() const MOZ_OVERRIDE {
+        return AliasSet::None();
+    }
+};
+
+class MSimdUnbox
+  : public MUnaryInstruction,
+    public SingleObjectPolicy::Data
+{
+  protected:
+    MSimdUnbox(MDefinition *op, MIRType type)
+      : MUnaryInstruction(op)
+    {
+        MOZ_ASSERT(IsSimdType(type));
+        setMovable();
+        setResultType(type);
+    }
+
+  public:
+    INSTRUCTION_HEADER(SimdUnbox)
+    ALLOW_CLONE(MSimdUnbox)
+
+    static MSimdUnbox *New(TempAllocator &alloc, MDefinition *op, MIRType type)
+    {
+        return new(alloc) MSimdUnbox(op, type);
     }
 
     AliasSet getAliasSet() const MOZ_OVERRIDE {
@@ -3836,7 +3906,7 @@ class MCompare
     void filtersUndefinedOrNull(bool trueBranch, MDefinition **subject, bool *filtersUndefined,
                                 bool *filtersNull);
 
-    void infer(types::CompilerConstraintList *constraints,
+    void infer(CompilerConstraintList *constraints,
                BaselineInspector *inspector, jsbytecode *pc);
     CompareType compareType() const {
         return compareType_;
@@ -3928,10 +3998,10 @@ class MBox
         if (ins->resultTypeSet()) {
             setResultTypeSet(ins->resultTypeSet());
         } else if (ins->type() != MIRType_Value) {
-            types::Type ntype = ins->type() == MIRType_Object
-                                ? types::Type::AnyObjectType()
-                                : types::Type::PrimitiveType(ValueTypeFromMIRType(ins->type()));
-            setResultTypeSet(alloc.lifoAlloc()->new_<types::TemporaryTypeSet>(alloc.lifoAlloc(), ntype));
+            TypeSet::Type ntype = ins->type() == MIRType_Object
+                                  ? TypeSet::AnyObjectType()
+                                  : TypeSet::PrimitiveType(ValueTypeFromMIRType(ins->type()));
+            setResultTypeSet(alloc.lifoAlloc()->new_<TemporaryTypeSet>(alloc.lifoAlloc(), ntype));
         }
         setMovable();
     }
@@ -4157,7 +4227,6 @@ class MAssertRange
       : MUnaryInstruction(ins), assertedRange_(assertedRange)
     {
         setGuard();
-        setMovable();
         setResultType(MIRType_None);
     }
 
@@ -4187,7 +4256,7 @@ class MCreateThisWithTemplate
 {
     gc::InitialHeap initialHeap_;
 
-    MCreateThisWithTemplate(types::CompilerConstraintList *constraints, MConstant *templateConst,
+    MCreateThisWithTemplate(CompilerConstraintList *constraints, MConstant *templateConst,
                             gc::InitialHeap initialHeap)
       : MUnaryInstruction(templateConst),
         initialHeap_(initialHeap)
@@ -4198,15 +4267,15 @@ class MCreateThisWithTemplate
 
   public:
     INSTRUCTION_HEADER(CreateThisWithTemplate)
-    static MCreateThisWithTemplate *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MCreateThisWithTemplate *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                                         MConstant *templateConst, gc::InitialHeap initialHeap)
     {
         return new(alloc) MCreateThisWithTemplate(constraints, templateConst, initialHeap);
     }
 
     // Template for |this|, provided by TI.
-    PlainObject *templateObject() const {
-        return &getOperand(0)->toConstant()->value().toObject().as<PlainObject>();
+    JSObject *templateObject() const {
+        return &getOperand(0)->toConstant()->value().toObject();
     }
 
     gc::InitialHeap initialHeap() const {
@@ -4758,8 +4827,8 @@ class MTruncateToInt32
     }
 #endif
 
-    bool writeRecoverData(CompactBufferWriter &writer) const;
-    bool canRecoverOnBailout() const {
+    bool writeRecoverData(CompactBufferWriter &writer) const MOZ_OVERRIDE;
+    bool canRecoverOnBailout() const MOZ_OVERRIDE {
         return input()->type() < MIRType_Symbol;
     }
 
@@ -4897,7 +4966,7 @@ class MTypeOf
     }
 
     MDefinition *foldsTo(TempAllocator &alloc) MOZ_OVERRIDE;
-    void cacheInputMaybeCallableOrEmulatesUndefined(types::CompilerConstraintList *constraints);
+    void cacheInputMaybeCallableOrEmulatesUndefined(CompilerConstraintList *constraints);
 
     bool inputMaybeCallableOrEmulatesUndefined() const {
         return inputMaybeCallableOrEmulatesUndefined_;
@@ -5471,11 +5540,10 @@ class MAtan2
 
 // Inline implementation of Math.hypot().
 class MHypot
-  : public MBinaryInstruction,
-    public MixPolicy<DoublePolicy<0>, DoublePolicy<1> >::Data
+  : public MVariadicInstruction,
+    public AllDoublePolicy::Data
 {
-    MHypot(MDefinition *y, MDefinition *x)
-      : MBinaryInstruction(x, y)
+    MHypot()
     {
         setResultType(MIRType_Double);
         setMovable();
@@ -5483,17 +5551,7 @@ class MHypot
 
   public:
     INSTRUCTION_HEADER(Hypot)
-    static MHypot *New(TempAllocator &alloc, MDefinition *x, MDefinition *y) {
-        return new(alloc) MHypot(y, x);
-    }
-
-    MDefinition *x() const {
-        return getOperand(0);
-    }
-
-    MDefinition *y() const {
-        return getOperand(1);
-    }
+    static MHypot *New(TempAllocator &alloc, const MDefinitionVector &vector);
 
     bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
         return congruentIfOperandsEqual(ins);
@@ -5512,7 +5570,14 @@ class MHypot
         return true;
     }
 
-    ALLOW_CLONE(MHypot)
+    bool canClone() const MOZ_OVERRIDE {
+        return true;
+    }
+
+    MInstruction *clone(TempAllocator &alloc,
+                        const MDefinitionVector &inputs) const MOZ_OVERRIDE {
+       return MHypot::New(alloc, inputs);
+    }
 };
 
 // Inline implementation of Math.pow().
@@ -5710,7 +5775,7 @@ class MMathFunction
         return true;
     }
 
-    MDefinition *foldsTo(TempAllocator &alloc);
+    MDefinition *foldsTo(TempAllocator &alloc) MOZ_OVERRIDE;
 
     void printOpcode(FILE *fp) const MOZ_OVERRIDE;
 
@@ -6223,7 +6288,7 @@ class MStringSplit
   : public MTernaryInstruction,
     public MixPolicy<StringPolicy<0>, StringPolicy<1> >::Data
 {
-    MStringSplit(types::CompilerConstraintList *constraints, MDefinition *string, MDefinition *sep,
+    MStringSplit(CompilerConstraintList *constraints, MDefinition *string, MDefinition *sep,
                  MConstant *templateObject)
       : MTernaryInstruction(string, sep, templateObject)
     {
@@ -6234,7 +6299,7 @@ class MStringSplit
   public:
     INSTRUCTION_HEADER(StringSplit)
 
-    static MStringSplit *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MStringSplit *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                              MDefinition *string, MDefinition *sep,
                              MConstant *templateObject)
     {
@@ -6249,8 +6314,8 @@ class MStringSplit
     JSObject *templateObject() const {
         return &getOperand(2)->toConstant()->value().toObject();
     }
-    types::TypeObject *typeObject() const {
-        return templateObject()->type();
+    ObjectGroup *group() const {
+        return templateObject()->group();
     }
     bool possiblyCalls() const MOZ_OVERRIDE {
         return true;
@@ -6434,7 +6499,7 @@ class MPhi MOZ_FINAL
 
     // Add types for this phi which speculate about new inputs that may come in
     // via a loop backedge.
-    bool addBackedgeType(MIRType type, types::TemporaryTypeSet *typeSet);
+    bool addBackedgeType(MIRType type, TemporaryTypeSet *typeSet);
 
     // Initializes the operands vector to the given capacity,
     // permitting use of addInput() instead of addInputSlow().
@@ -6834,7 +6899,7 @@ class MRegExp : public MNullaryInstruction
     AlwaysTenured<RegExpObject *> source_;
     bool mustClone_;
 
-    MRegExp(types::CompilerConstraintList *constraints, RegExpObject *source, bool mustClone)
+    MRegExp(CompilerConstraintList *constraints, RegExpObject *source, bool mustClone)
       : source_(source),
         mustClone_(mustClone)
     {
@@ -6845,7 +6910,7 @@ class MRegExp : public MNullaryInstruction
   public:
     INSTRUCTION_HEADER(RegExp)
 
-    static MRegExp *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MRegExp *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                         RegExpObject *source, bool mustClone)
     {
         return new(alloc) MRegExp(constraints, source, mustClone);
@@ -6896,7 +6961,8 @@ class MRegExpExec
     bool writeRecoverData(CompactBufferWriter &writer) const MOZ_OVERRIDE;
 
     bool canRecoverOnBailout() const MOZ_OVERRIDE {
-        if (regexp()->isRegExp())
+        // XXX: always return false for now, to work around bug 1132128.
+        if (false && regexp()->isRegExp())
             return !regexp()->toRegExp()->source()->needUpdateLastIndex();
         return false;
     }
@@ -6941,7 +7007,8 @@ class MRegExpTest
         // RegExpTest has a side-effect on the regexp object's lastIndex
         // when sticky or global flags are set.
         // Return false unless we are sure it's not the case.
-        if (regexp()->isRegExp())
+        // XXX: always return false for now, to work around bug 1132128.
+        if (false && regexp()->isRegExp())
             return !regexp()->toRegExp()->source()->needUpdateLastIndex();
         return false;
     }
@@ -6999,7 +7066,8 @@ class MRegExpReplace
     bool canRecoverOnBailout() const MOZ_OVERRIDE {
         // RegExpReplace will zero the lastIndex field when global flag is set.
         // So we can only remove this if it's non-global.
-        if (pattern()->isRegExp())
+        // XXX: always return false for now, to work around bug 1132128.
+        if (false && pattern()->isRegExp())
             return !pattern()->toRegExp()->source()->global();
         return false;
     }
@@ -7088,22 +7156,22 @@ struct LambdaFunctionInfo
     uint16_t flags;
     gc::Cell *scriptOrLazyScript;
     bool singletonType;
-    bool useNewTypeForClone;
+    bool useSingletonForClone;
 
     explicit LambdaFunctionInfo(JSFunction *fun)
       : fun(fun), flags(fun->flags()),
         scriptOrLazyScript(fun->hasScript()
                            ? (gc::Cell *) fun->nonLazyScript()
                            : (gc::Cell *) fun->lazyScript()),
-        singletonType(fun->hasSingletonType()),
-        useNewTypeForClone(types::UseNewTypeForClone(fun))
+        singletonType(fun->isSingleton()),
+        useSingletonForClone(ObjectGroup::useSingletonForClone(fun))
     {}
 
     LambdaFunctionInfo(const LambdaFunctionInfo &info)
       : fun((JSFunction *) info.fun), flags(info.flags),
         scriptOrLazyScript(info.scriptOrLazyScript),
         singletonType(info.singletonType),
-        useNewTypeForClone(info.useNewTypeForClone)
+        useSingletonForClone(info.useSingletonForClone)
     {}
 };
 
@@ -7113,18 +7181,18 @@ class MLambda
 {
     LambdaFunctionInfo info_;
 
-    MLambda(types::CompilerConstraintList *constraints, MDefinition *scopeChain, MConstant *cst)
+    MLambda(CompilerConstraintList *constraints, MDefinition *scopeChain, MConstant *cst)
       : MBinaryInstruction(scopeChain, cst), info_(&cst->value().toObject().as<JSFunction>())
     {
         setResultType(MIRType_Object);
-        if (!info().fun->hasSingletonType() && !types::UseNewTypeForClone(info().fun))
+        if (!info().fun->isSingleton() && !ObjectGroup::useSingletonForClone(info().fun))
             setResultTypeSet(MakeSingletonTypeSet(constraints, info().fun));
     }
 
   public:
     INSTRUCTION_HEADER(Lambda)
 
-    static MLambda *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MLambda *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                         MDefinition *scopeChain, MConstant *fun)
     {
         return new(alloc) MLambda(constraints, scopeChain, fun);
@@ -7150,20 +7218,20 @@ class MLambdaArrow
 {
     LambdaFunctionInfo info_;
 
-    MLambdaArrow(types::CompilerConstraintList *constraints, MDefinition *scopeChain,
+    MLambdaArrow(CompilerConstraintList *constraints, MDefinition *scopeChain,
                  MDefinition *this_, JSFunction *fun)
       : MBinaryInstruction(scopeChain, this_), info_(fun)
     {
         setResultType(MIRType_Object);
-        MOZ_ASSERT(!types::UseNewTypeForClone(fun));
-        if (!fun->hasSingletonType())
+        MOZ_ASSERT(!ObjectGroup::useSingletonForClone(fun));
+        if (!fun->isSingleton())
             setResultTypeSet(MakeSingletonTypeSet(constraints, fun));
     }
 
   public:
     INSTRUCTION_HEADER(LambdaArrow)
 
-    static MLambdaArrow *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MLambdaArrow *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                              MDefinition *scopeChain, MDefinition *this_, JSFunction *fun)
     {
         return new(alloc) MLambdaArrow(constraints, scopeChain, this_, fun);
@@ -7703,7 +7771,7 @@ class MNot
 
     INSTRUCTION_HEADER(Not)
 
-    void cacheOperandMightEmulateUndefined(types::CompilerConstraintList *constraints);
+    void cacheOperandMightEmulateUndefined(CompilerConstraintList *constraints);
     MDefinition *foldsTo(TempAllocator &alloc) MOZ_OVERRIDE;
 
     void markOperandCantEmulateUndefined() {
@@ -7995,21 +8063,29 @@ class MLoadUnboxedObjectOrNull
   : public MBinaryInstruction,
     public SingleObjectPolicy::Data
 {
-    bool bailOnNull_;
+  public:
+    enum NullBehavior {
+        HandleNull,
+        BailOnNull,
+        NullNotPossible
+    };
+
+  private:
+    NullBehavior nullBehavior_;
     int32_t offsetAdjustment_;
 
     MLoadUnboxedObjectOrNull(MDefinition *elements, MDefinition *index,
-                             bool bailOnNull, int32_t offsetAdjustment)
+                             NullBehavior nullBehavior, int32_t offsetAdjustment)
       : MBinaryInstruction(elements, index),
-        bailOnNull_(bailOnNull),
+        nullBehavior_(nullBehavior),
         offsetAdjustment_(offsetAdjustment)
     {
-        if (bailOnNull) {
+        if (nullBehavior == BailOnNull) {
             // Don't eliminate loads which bail out on a null pointer, for the
             // same reason as MLoadElement.
             setGuard();
         }
-        setResultType(bailOnNull ? MIRType_Object : MIRType_Value);
+        setResultType(nullBehavior == HandleNull ? MIRType_Value : MIRType_Object);
         setMovable();
         MOZ_ASSERT(IsValidElementsType(elements, offsetAdjustment));
         MOZ_ASSERT(index->type() == MIRType_Int32);
@@ -8020,8 +8096,9 @@ class MLoadUnboxedObjectOrNull
 
     static MLoadUnboxedObjectOrNull *New(TempAllocator &alloc,
                                          MDefinition *elements, MDefinition *index,
-                                         bool bailOnNull, int32_t offsetAdjustment) {
-        return new(alloc) MLoadUnboxedObjectOrNull(elements, index, bailOnNull, offsetAdjustment);
+                                         NullBehavior nullBehavior, int32_t offsetAdjustment) {
+        return new(alloc) MLoadUnboxedObjectOrNull(elements, index, nullBehavior,
+                                                   offsetAdjustment);
     }
 
     MDefinition *elements() const {
@@ -8030,20 +8107,20 @@ class MLoadUnboxedObjectOrNull
     MDefinition *index() const {
         return getOperand(1);
     }
-    bool bailOnNull() const {
-        return bailOnNull_;
+    NullBehavior nullBehavior() const {
+        return nullBehavior_;
     }
     int32_t offsetAdjustment() const {
         return offsetAdjustment_;
     }
     bool fallible() const {
-        return bailOnNull();
+        return nullBehavior() == BailOnNull;
     }
     bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
         if (!ins->isLoadUnboxedObjectOrNull())
             return false;
         const MLoadUnboxedObjectOrNull *other = ins->toLoadUnboxedObjectOrNull();
-        if (bailOnNull() != other->bailOnNull())
+        if (nullBehavior() != other->nullBehavior())
             return false;
         if (offsetAdjustment() != other->offsetAdjustment())
             return false;
@@ -8076,7 +8153,8 @@ class MLoadUnboxedString
     INSTRUCTION_HEADER(LoadUnboxedString)
 
     static MLoadUnboxedString *New(TempAllocator &alloc,
-                                   MDefinition *elements, MDefinition *index, int32_t offsetAdjustment) {
+                                   MDefinition *elements, MDefinition *index,
+                                   int32_t offsetAdjustment = 0) {
         return new(alloc) MLoadUnboxedString(elements, index, offsetAdjustment);
     }
 
@@ -8267,7 +8345,7 @@ class MStoreUnboxedObjectOrNull
     static MStoreUnboxedObjectOrNull *New(TempAllocator &alloc,
                                           MDefinition *elements, MDefinition *index,
                                           MDefinition *value, MDefinition *typedObj,
-                                          int32_t offsetAdjustment) {
+                                          int32_t offsetAdjustment = 0) {
         return new(alloc) MStoreUnboxedObjectOrNull(elements, index, value, typedObj,
                                                     offsetAdjustment);
     }
@@ -8322,7 +8400,7 @@ class MStoreUnboxedString
 
     static MStoreUnboxedString *New(TempAllocator &alloc,
                                     MDefinition *elements, MDefinition *index,
-                                    MDefinition *value, int32_t offsetAdjustment) {
+                                    MDefinition *value, int32_t offsetAdjustment = 0) {
         return new(alloc) MStoreUnboxedString(elements, index, value, offsetAdjustment);
     }
     MDefinition *elements() const {
@@ -8343,6 +8421,60 @@ class MStoreUnboxedString
     }
 
     ALLOW_CLONE(MStoreUnboxedString)
+};
+
+// Passes through an object, after ensuring it is converted from an unboxed
+// object to a native representation.
+class MConvertUnboxedObjectToNative
+  : public MUnaryInstruction,
+    public SingleObjectPolicy::Data
+{
+    AlwaysTenured<ObjectGroup *> group_;
+
+    explicit MConvertUnboxedObjectToNative(MDefinition *obj, ObjectGroup *group)
+      : MUnaryInstruction(obj),
+        group_(group)
+    {
+        setGuard();
+        setMovable();
+        setResultType(MIRType_Object);
+    }
+
+  public:
+    INSTRUCTION_HEADER(ConvertUnboxedObjectToNative)
+
+    static MConvertUnboxedObjectToNative *New(TempAllocator &alloc, MDefinition *obj,
+                                              ObjectGroup *group) {
+        return new(alloc) MConvertUnboxedObjectToNative(obj, group);
+    }
+
+    MDefinition *object() const {
+        return getOperand(0);
+    }
+    ObjectGroup *group() const {
+        return group_;
+    }
+    bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
+        if (!congruentIfOperandsEqual(ins))
+            return false;
+        return ins->toConvertUnboxedObjectToNative()->group() == group();
+    }
+    AliasSet getAliasSet() const MOZ_OVERRIDE {
+        // This instruction can read and write to all parts of the object, but
+        // is marked as non-effectful so it can be consolidated by LICM and GVN
+        // and avoid inhibiting other optimizations.
+        //
+        // This is valid to do because when unboxed objects might have a native
+        // group they can be converted to, we do not optimize accesses to the
+        // unboxed objects and do not guard on their group or shape (other than
+        // in this opcode).
+        //
+        // Later accesses can assume the object has a native representation
+        // and optimize accordingly. Those accesses cannot be reordered before
+        // this instruction, however. This is prevented by chaining this
+        // instruction with the object itself, in the same way as MBoundsCheck.
+        return AliasSet::None();
+    }
 };
 
 // Array.prototype.pop or Array.prototype.shift on a dense array.
@@ -8434,7 +8566,7 @@ class MArrayConcat
     AlwaysTenured<ArrayObject*> templateObj_;
     gc::InitialHeap initialHeap_;
 
-    MArrayConcat(types::CompilerConstraintList *constraints, MDefinition *lhs, MDefinition *rhs,
+    MArrayConcat(CompilerConstraintList *constraints, MDefinition *lhs, MDefinition *rhs,
                  ArrayObject *templateObj, gc::InitialHeap initialHeap)
       : MBinaryInstruction(lhs, rhs),
         templateObj_(templateObj),
@@ -8447,7 +8579,7 @@ class MArrayConcat
   public:
     INSTRUCTION_HEADER(ArrayConcat)
 
-    static MArrayConcat *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MArrayConcat *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                              MDefinition *lhs, MDefinition *rhs,
                              ArrayObject *templateObj, gc::InitialHeap initialHeap)
     {
@@ -8517,14 +8649,16 @@ class MLoadTypedArrayElement
     Scalar::Type arrayType_;
     bool requiresBarrier_;
     int32_t offsetAdjustment_;
+    bool canonicalizeDoubles_;
 
     MLoadTypedArrayElement(MDefinition *elements, MDefinition *index,
                            Scalar::Type arrayType, MemoryBarrierRequirement requiresBarrier,
-                           int32_t offsetAdjustment)
+                           int32_t offsetAdjustment, bool canonicalizeDoubles)
       : MBinaryInstruction(elements, index),
         arrayType_(arrayType),
         requiresBarrier_(requiresBarrier == DoesRequireMemoryBarrier),
-        offsetAdjustment_(offsetAdjustment)
+        offsetAdjustment_(offsetAdjustment),
+        canonicalizeDoubles_(canonicalizeDoubles)
     {
         setResultType(MIRType_Value);
         if (requiresBarrier_)
@@ -8542,10 +8676,12 @@ class MLoadTypedArrayElement
     static MLoadTypedArrayElement *New(TempAllocator &alloc, MDefinition *elements, MDefinition *index,
                                        Scalar::Type arrayType,
                                        MemoryBarrierRequirement requiresBarrier=DoesNotRequireMemoryBarrier,
-                                       int32_t offsetAdjustment = 0)
+                                       int32_t offsetAdjustment = 0,
+                                       bool canonicalizeDoubles = true)
     {
         return new(alloc) MLoadTypedArrayElement(elements, index, arrayType,
-                                                 requiresBarrier, offsetAdjustment);
+                                                 requiresBarrier, offsetAdjustment,
+                                                 canonicalizeDoubles);
     }
 
     Scalar::Type arrayType() const {
@@ -8557,6 +8693,9 @@ class MLoadTypedArrayElement
     }
     bool requiresMemoryBarrier() const {
         return requiresBarrier_;
+    }
+    bool canonicalizeDoubles() const {
+        return canonicalizeDoubles_;
     }
     MDefinition *elements() const {
         return getOperand(0);
@@ -8584,6 +8723,8 @@ class MLoadTypedArrayElement
         if (arrayType_ != other->arrayType_)
             return false;
         if (offsetAdjustment() != other->offsetAdjustment())
+            return false;
+        if (canonicalizeDoubles() != other->canonicalizeDoubles())
             return false;
         return congruentIfOperandsEqual(other);
     }
@@ -8666,7 +8807,7 @@ class MLoadTypedArrayElementStatic
       : MUnaryInstruction(ptr), someTypedArray_(someTypedArray), offset_(offset),
         needsBoundsCheck_(needsBoundsCheck), fallible_(true)
     {
-        int type = viewType();
+        int type = accessType();
         if (type == Scalar::Float32)
             setResultType(MIRType_Float32);
         else if (type == Scalar::Float64)
@@ -8694,7 +8835,7 @@ class MLoadTypedArrayElementStatic
                                                        needsBoundsCheck);
     }
 
-    Scalar::Type viewType() const {
+    Scalar::Type accessType() const {
         return AnyTypedArrayType(someTypedArray_);
     }
     void *base() const;
@@ -8721,7 +8862,7 @@ class MLoadTypedArrayElementStatic
 
     void computeRange(TempAllocator &alloc) MOZ_OVERRIDE;
     bool needTruncation(TruncateKind kind) MOZ_OVERRIDE;
-    bool canProduceFloat32() const MOZ_OVERRIDE { return viewType() == Scalar::Float32; }
+    bool canProduceFloat32() const MOZ_OVERRIDE { return accessType() == Scalar::Float32; }
     void collectRangeInfoPreTrunc() MOZ_OVERRIDE;
 };
 
@@ -8908,12 +9049,12 @@ class MStoreTypedArrayElementStatic :
                                                         offset, needsBoundsCheck);
     }
 
-    Scalar::Type viewType() const {
+    Scalar::Type accessType() const {
         return AnyTypedArrayType(someTypedArray_);
     }
     bool isFloatArray() const {
-        return viewType() == Scalar::Float32 ||
-               viewType() == Scalar::Float64;
+        return accessType() == Scalar::Float32 ||
+               accessType() == Scalar::Float64;
     }
 
     void *base() const;
@@ -8931,7 +9072,7 @@ class MStoreTypedArrayElementStatic :
     TruncateKind operandTruncateKind(size_t index) const MOZ_OVERRIDE;
 
     bool canConsumeFloat32(MUse *use) const MOZ_OVERRIDE {
-        return use == getUseFor(1) && viewType() == Scalar::Float32;
+        return use == getUseFor(1) && accessType() == Scalar::Float32;
     }
     void collectRangeInfoPreTrunc() MOZ_OVERRIDE;
 };
@@ -9112,11 +9253,11 @@ typedef Vector<bool, 4, JitAllocPolicy> BoolVector;
 class InlinePropertyTable : public TempObject
 {
     struct Entry : public TempObject {
-        AlwaysTenured<types::TypeObject *> typeObj;
+        AlwaysTenured<ObjectGroup *> group;
         AlwaysTenuredFunction func;
 
-        Entry(types::TypeObject *typeObj, JSFunction *func)
-          : typeObj(typeObj), func(func)
+        Entry(ObjectGroup *group, JSFunction *func)
+          : group(group), func(func)
         { }
     };
 
@@ -9143,17 +9284,17 @@ class InlinePropertyTable : public TempObject
         return pc_;
     }
 
-    bool addEntry(TempAllocator &alloc, types::TypeObject *typeObj, JSFunction *func) {
-        return entries_.append(new(alloc) Entry(typeObj, func));
+    bool addEntry(TempAllocator &alloc, ObjectGroup *group, JSFunction *func) {
+        return entries_.append(new(alloc) Entry(group, func));
     }
 
     size_t numEntries() const {
         return entries_.length();
     }
 
-    types::TypeObject *getTypeObject(size_t i) const {
+    ObjectGroup *getObjectGroup(size_t i) const {
         MOZ_ASSERT(i < numEntries());
-        return entries_[i]->typeObj;
+        return entries_[i]->group;
     }
 
     JSFunction *getFunction(size_t i) const {
@@ -9162,13 +9303,13 @@ class InlinePropertyTable : public TempObject
     }
 
     bool hasFunction(JSFunction *func) const;
-    types::TemporaryTypeSet *buildTypeSetForFunction(JSFunction *func) const;
+    TemporaryTypeSet *buildTypeSetForFunction(JSFunction *func) const;
 
     // Remove targets that vetoed inlining from the InlinePropertyTable.
-    void trimTo(ObjectVector &targets, BoolVector &choiceSet);
+    void trimTo(const ObjectVector &targets, const BoolVector &choiceSet);
 
     // Ensure that the InlinePropertyTable's domain is a subset of |targets|.
-    void trimToTargets(ObjectVector &targets);
+    void trimToTargets(const ObjectVector &targets);
 };
 
 class CacheLocationList : public InlineConcatList<CacheLocationList>
@@ -9276,8 +9417,8 @@ class MGetPropertyCache
     bool updateForReplacement(MDefinition *ins) MOZ_OVERRIDE;
 };
 
-// Emit code to load a value from an object's slots if its shape matches
-// one of the shapes observed by the baseline IC, else bails out.
+// Emit code to load a value from an object if its shape/group matches one of
+// the shapes/groups observed by the baseline IC, else bails out.
 class MGetPropertyPolymorphic
   : public MUnaryInstruction,
     public SingleObjectPolicy::Data
@@ -9290,21 +9431,19 @@ class MGetPropertyPolymorphic
         Shape *shape;
     };
 
-    Vector<Entry, 4, JitAllocPolicy> shapes_;
+    Vector<Entry, 4, JitAllocPolicy> nativeShapes_;
+    Vector<ObjectGroup *, 4, JitAllocPolicy> unboxedGroups_;
     AlwaysTenuredPropertyName name_;
 
     MGetPropertyPolymorphic(TempAllocator &alloc, MDefinition *obj, PropertyName *name)
       : MUnaryInstruction(obj),
-        shapes_(alloc),
+        nativeShapes_(alloc),
+        unboxedGroups_(alloc),
         name_(name)
     {
         setGuard();
         setMovable();
         setResultType(MIRType_Value);
-    }
-
-    PropertyName *name() const {
-        return name_;
     }
 
   public:
@@ -9326,47 +9465,65 @@ class MGetPropertyPolymorphic
         Entry entry;
         entry.objShape = objShape;
         entry.shape = shape;
-        return shapes_.append(entry);
+        return nativeShapes_.append(entry);
+    }
+    bool addUnboxedGroup(ObjectGroup *group) {
+        return unboxedGroups_.append(group);
     }
     size_t numShapes() const {
-        return shapes_.length();
+        return nativeShapes_.length();
     }
     Shape *objShape(size_t i) const {
-        return shapes_[i].objShape;
+        return nativeShapes_[i].objShape;
     }
     Shape *shape(size_t i) const {
-        return shapes_[i].shape;
+        return nativeShapes_[i].shape;
+    }
+    size_t numUnboxedGroups() const {
+        return unboxedGroups_.length();
+    }
+    ObjectGroup *unboxedGroup(size_t i) const {
+        return unboxedGroups_[i];
+    }
+    PropertyName *name() const {
+        return name_;
     }
     MDefinition *obj() const {
         return getOperand(0);
     }
     AliasSet getAliasSet() const MOZ_OVERRIDE {
-        return AliasSet::Load(AliasSet::ObjectFields | AliasSet::FixedSlot | AliasSet::DynamicSlot);
+        return AliasSet::Load(AliasSet::ObjectFields | AliasSet::FixedSlot | AliasSet::DynamicSlot |
+                              (unboxedGroups_.empty() ? 0 : (AliasSet::TypedArrayElement | AliasSet::Element)));
     }
 
     bool mightAlias(const MDefinition *store) const MOZ_OVERRIDE;
 };
 
-// Emit code to store a value to an object's slots if its shape matches
-// one of the shapes observed by the baseline IC, else bails out.
+// Emit code to store a value to an object's slots if its shape/group matches
+// one of the shapes/groups observed by the baseline IC, else bails out.
 class MSetPropertyPolymorphic
   : public MBinaryInstruction,
-    public SingleObjectPolicy::Data
+    public MixPolicy<SingleObjectPolicy, NoFloatPolicy<1> >::Data
 {
     struct Entry {
         // The shape to guard against.
         Shape *objShape;
 
-        // The property to laod.
+        // The property to load.
         Shape *shape;
     };
 
-    Vector<Entry, 4, JitAllocPolicy> shapes_;
+    Vector<Entry, 4, JitAllocPolicy> nativeShapes_;
+    Vector<ObjectGroup *, 4, JitAllocPolicy> unboxedGroups_;
+    AlwaysTenuredPropertyName name_;
     bool needsBarrier_;
 
-    MSetPropertyPolymorphic(TempAllocator &alloc, MDefinition *obj, MDefinition *value)
+    MSetPropertyPolymorphic(TempAllocator &alloc, MDefinition *obj, MDefinition *value,
+                            PropertyName *name)
       : MBinaryInstruction(obj, value),
-        shapes_(alloc),
+        nativeShapes_(alloc),
+        unboxedGroups_(alloc),
+        name_(name),
         needsBarrier_(false)
     {
     }
@@ -9374,24 +9531,37 @@ class MSetPropertyPolymorphic
   public:
     INSTRUCTION_HEADER(SetPropertyPolymorphic)
 
-    static MSetPropertyPolymorphic *New(TempAllocator &alloc, MDefinition *obj, MDefinition *value) {
-        return new(alloc) MSetPropertyPolymorphic(alloc, obj, value);
+    static MSetPropertyPolymorphic *New(TempAllocator &alloc, MDefinition *obj, MDefinition *value,
+                                        PropertyName *name) {
+        return new(alloc) MSetPropertyPolymorphic(alloc, obj, value, name);
     }
 
     bool addShape(Shape *objShape, Shape *shape) {
         Entry entry;
         entry.objShape = objShape;
         entry.shape = shape;
-        return shapes_.append(entry);
+        return nativeShapes_.append(entry);
+    }
+    bool addUnboxedGroup(ObjectGroup *group) {
+        return unboxedGroups_.append(group);
     }
     size_t numShapes() const {
-        return shapes_.length();
+        return nativeShapes_.length();
     }
     Shape *objShape(size_t i) const {
-        return shapes_[i].objShape;
+        return nativeShapes_[i].objShape;
     }
     Shape *shape(size_t i) const {
-        return shapes_[i].shape;
+        return nativeShapes_[i].shape;
+    }
+    size_t numUnboxedGroups() const {
+        return unboxedGroups_.length();
+    }
+    ObjectGroup *unboxedGroup(size_t i) const {
+        return unboxedGroups_[i];
+    }
+    PropertyName *name() const {
+        return name_;
     }
     MDefinition *obj() const {
         return getOperand(0);
@@ -9406,7 +9576,8 @@ class MSetPropertyPolymorphic
         needsBarrier_ = true;
     }
     AliasSet getAliasSet() const MOZ_OVERRIDE {
-        return AliasSet::Store(AliasSet::ObjectFields | AliasSet::FixedSlot | AliasSet::DynamicSlot);
+        return AliasSet::Store(AliasSet::ObjectFields | AliasSet::FixedSlot | AliasSet::DynamicSlot |
+                               (unboxedGroups_.empty() ? 0 : (AliasSet::TypedArrayElement | AliasSet::Element)));
     }
 };
 
@@ -9417,14 +9588,14 @@ class MDispatchInstruction
     // Map from JSFunction* -> MBasicBlock.
     struct Entry {
         JSFunction *func;
-        // If |func| has a singleton type, |funcType| is null. Otherwise,
-        // |funcType| holds the TypeObject for |func|, and dispatch guards
-        // on the type instead of directly on the function.
-        types::TypeObject *funcType;
+        // If |func| has a singleton group, |funcGroup| is null. Otherwise,
+        // |funcGroup| holds the ObjectGroup for |func|, and dispatch guards
+        // on the group instead of directly on the function.
+        ObjectGroup *funcGroup;
         MBasicBlock *block;
 
-        Entry(JSFunction *func, types::TypeObject *funcType, MBasicBlock *block)
-          : func(func), funcType(funcType), block(block)
+        Entry(JSFunction *func, ObjectGroup *funcGroup, MBasicBlock *block)
+          : func(func), funcGroup(funcGroup), block(block)
         { }
     };
     Vector<Entry, 4, JitAllocPolicy> map_;
@@ -9492,8 +9663,8 @@ class MDispatchInstruction
     }
 
   public:
-    void addCase(JSFunction *func, types::TypeObject *funcType, MBasicBlock *block) {
-        map_.append(Entry(func, funcType, block));
+    void addCase(JSFunction *func, ObjectGroup *funcGroup, MBasicBlock *block) {
+        map_.append(Entry(func, funcGroup, block));
     }
     uint32_t numCases() const {
         return map_.length();
@@ -9501,8 +9672,8 @@ class MDispatchInstruction
     JSFunction *getCase(uint32_t i) const {
         return map_[i].func;
     }
-    types::TypeObject *getCaseTypeObject(uint32_t i) const {
-        return map_[i].funcType;
+    ObjectGroup *getCaseObjectGroup(uint32_t i) const {
+        return map_[i].funcGroup;
     }
     MBasicBlock *getCaseBlock(uint32_t i) const {
         return map_[i].block;
@@ -9526,24 +9697,24 @@ class MDispatchInstruction
     }
 };
 
-// Polymorphic dispatch for inlining, keyed off incoming TypeObject.
-class MTypeObjectDispatch : public MDispatchInstruction
+// Polymorphic dispatch for inlining, keyed off incoming ObjectGroup.
+class MObjectGroupDispatch : public MDispatchInstruction
 {
-    // Map TypeObject (of CallProp's Target Object) -> JSFunction (yielded by the CallProp).
+    // Map ObjectGroup (of CallProp's Target Object) -> JSFunction (yielded by the CallProp).
     InlinePropertyTable *inlinePropertyTable_;
 
-    MTypeObjectDispatch(TempAllocator &alloc, MDefinition *input, InlinePropertyTable *table)
+    MObjectGroupDispatch(TempAllocator &alloc, MDefinition *input, InlinePropertyTable *table)
       : MDispatchInstruction(alloc, input),
         inlinePropertyTable_(table)
     { }
 
   public:
-    INSTRUCTION_HEADER(TypeObjectDispatch)
+    INSTRUCTION_HEADER(ObjectGroupDispatch)
 
-    static MTypeObjectDispatch *New(TempAllocator &alloc, MDefinition *ins,
-                                    InlinePropertyTable *table)
+    static MObjectGroupDispatch *New(TempAllocator &alloc, MDefinition *ins,
+                                     InlinePropertyTable *table)
     {
-        return new(alloc) MTypeObjectDispatch(alloc, ins, table);
+        return new(alloc) MObjectGroupDispatch(alloc, ins, table);
     }
 
     InlinePropertyTable *propTable() const {
@@ -9657,6 +9828,11 @@ class MGuardShape
         setGuard();
         setMovable();
         setResultType(MIRType_Object);
+
+        // Disallow guarding on unboxed object shapes. The group is better to
+        // guard on, and guarding on the shape can interact badly with
+        // MConvertUnboxedObjectToNative.
+        MOZ_ASSERT(shape->getObjectClass() != &UnboxedPlainObject::class_);
     }
 
   public:
@@ -9734,47 +9910,59 @@ class MGuardShapePolymorphic
     }
 };
 
-// Guard on an object's type, inclusively or exclusively.
-class MGuardObjectType
+// Guard on an object's group, inclusively or exclusively.
+class MGuardObjectGroup
   : public MUnaryInstruction,
     public SingleObjectPolicy::Data
 {
-    AlwaysTenured<types::TypeObject *> typeObject_;
+    AlwaysTenured<ObjectGroup *> group_;
     bool bailOnEquality_;
+    BailoutKind bailoutKind_;
 
-    MGuardObjectType(MDefinition *obj, types::TypeObject *typeObject, bool bailOnEquality)
+    MGuardObjectGroup(MDefinition *obj, ObjectGroup *group, bool bailOnEquality,
+                      BailoutKind bailoutKind)
       : MUnaryInstruction(obj),
-        typeObject_(typeObject),
-        bailOnEquality_(bailOnEquality)
+        group_(group),
+        bailOnEquality_(bailOnEquality),
+        bailoutKind_(bailoutKind)
     {
         setGuard();
         setMovable();
         setResultType(MIRType_Object);
+
+        // Unboxed groups which might be converted to natives can't be guarded
+        // on, due to MConvertUnboxedObjectToNative.
+        MOZ_ASSERT_IF(group->maybeUnboxedLayout(), !group->unboxedLayout().nativeGroup());
     }
 
   public:
-    INSTRUCTION_HEADER(GuardObjectType)
+    INSTRUCTION_HEADER(GuardObjectGroup)
 
-    static MGuardObjectType *New(TempAllocator &alloc, MDefinition *obj, types::TypeObject *typeObject,
-                                 bool bailOnEquality) {
-        return new(alloc) MGuardObjectType(obj, typeObject, bailOnEquality);
+    static MGuardObjectGroup *New(TempAllocator &alloc, MDefinition *obj, ObjectGroup *group,
+                                  bool bailOnEquality, BailoutKind bailoutKind) {
+        return new(alloc) MGuardObjectGroup(obj, group, bailOnEquality, bailoutKind);
     }
 
     MDefinition *obj() const {
         return getOperand(0);
     }
-    const types::TypeObject *typeObject() const {
-        return typeObject_;
+    const ObjectGroup *group() const {
+        return group_;
     }
     bool bailOnEquality() const {
         return bailOnEquality_;
     }
+    BailoutKind bailoutKind() const {
+        return bailoutKind_;
+    }
     bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
-        if (!ins->isGuardObjectType())
+        if (!ins->isGuardObjectGroup())
             return false;
-        if (typeObject() != ins->toGuardObjectType()->typeObject())
+        if (group() != ins->toGuardObjectGroup()->group())
             return false;
-        if (bailOnEquality() != ins->toGuardObjectType()->bailOnEquality())
+        if (bailOnEquality() != ins->toGuardObjectGroup()->bailOnEquality())
+            return false;
+        if (bailoutKind() != ins->toGuardObjectGroup()->bailoutKind())
             return false;
         return congruentIfOperandsEqual(ins);
     }
@@ -9785,15 +9973,13 @@ class MGuardObjectType
 
 // Guard on an object's identity, inclusively or exclusively.
 class MGuardObjectIdentity
-  : public MUnaryInstruction,
+  : public MBinaryInstruction,
     public SingleObjectPolicy::Data
 {
-    AlwaysTenured<JSObject *> singleObject_;
     bool bailOnEquality_;
 
-    MGuardObjectIdentity(MDefinition *obj, JSObject *singleObject, bool bailOnEquality)
-      : MUnaryInstruction(obj),
-        singleObject_(singleObject),
+    MGuardObjectIdentity(MDefinition *obj, MDefinition *expected, bool bailOnEquality)
+      : MBinaryInstruction(obj, expected),
         bailOnEquality_(bailOnEquality)
     {
         setGuard();
@@ -9804,24 +9990,22 @@ class MGuardObjectIdentity
   public:
     INSTRUCTION_HEADER(GuardObjectIdentity)
 
-    static MGuardObjectIdentity *New(TempAllocator &alloc, MDefinition *obj, JSObject *singleObject,
+    static MGuardObjectIdentity *New(TempAllocator &alloc, MDefinition *obj, MDefinition *expected,
                                      bool bailOnEquality) {
-        return new(alloc) MGuardObjectIdentity(obj, singleObject, bailOnEquality);
+        return new(alloc) MGuardObjectIdentity(obj, expected, bailOnEquality);
     }
 
     MDefinition *obj() const {
         return getOperand(0);
     }
-    JSObject *singleObject() const {
-        return singleObject_;
+    MDefinition *expected() const {
+        return getOperand(1);
     }
     bool bailOnEquality() const {
         return bailOnEquality_;
     }
     bool congruentTo(const MDefinition *ins) const MOZ_OVERRIDE {
         if (!ins->isGuardObjectIdentity())
-            return false;
-        if (singleObject() != ins->toGuardObjectIdentity()->singleObject())
             return false;
         if (bailOnEquality() != ins->toGuardObjectIdentity()->bailOnEquality())
             return false;
@@ -10081,38 +10265,6 @@ class MCallGetIntrinsicValue : public MNullaryInstruction
     }
     bool possiblyCalls() const MOZ_OVERRIDE {
         return true;
-    }
-};
-
-class MCallsiteCloneCache
-  : public MUnaryInstruction,
-    public SingleObjectPolicy::Data
-{
-    jsbytecode *callPc_;
-
-    MCallsiteCloneCache(MDefinition *callee, jsbytecode *callPc)
-      : MUnaryInstruction(callee),
-        callPc_(callPc)
-    {
-        setResultType(MIRType_Object);
-    }
-
-  public:
-    INSTRUCTION_HEADER(CallsiteCloneCache)
-
-    static MCallsiteCloneCache *New(TempAllocator &alloc, MDefinition *callee, jsbytecode *callPc) {
-        return new(alloc) MCallsiteCloneCache(callee, callPc);
-    }
-    MDefinition *callee() const {
-        return getOperand(0);
-    }
-    jsbytecode *callPc() const {
-        return callPc_;
-    }
-
-    // Callsite cloning is idempotent.
-    AliasSet getAliasSet() const MOZ_OVERRIDE {
-        return AliasSet::None();
     }
 };
 
@@ -11192,7 +11344,7 @@ class MRest
     public MRestCommon,
     public IntPolicy<0>::Data
 {
-    MRest(types::CompilerConstraintList *constraints, MDefinition *numActuals, unsigned numFormals,
+    MRest(CompilerConstraintList *constraints, MDefinition *numActuals, unsigned numFormals,
           ArrayObject *templateObject)
       : MUnaryInstruction(numActuals),
         MRestCommon(numFormals, templateObject)
@@ -11204,7 +11356,7 @@ class MRest
   public:
     INSTRUCTION_HEADER(Rest)
 
-    static MRest *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+    static MRest *New(TempAllocator &alloc, CompilerConstraintList *constraints,
                       MDefinition *numActuals, unsigned numFormals,
                       ArrayObject *templateObject)
     {
@@ -11227,7 +11379,7 @@ class MFilterTypeSet
   : public MUnaryInstruction,
     public FilterTypeSetPolicy::Data
 {
-    MFilterTypeSet(MDefinition *def, types::TemporaryTypeSet *types)
+    MFilterTypeSet(MDefinition *def, TemporaryTypeSet *types)
       : MUnaryInstruction(def)
     {
         MOZ_ASSERT(!types->unknown());
@@ -11238,7 +11390,7 @@ class MFilterTypeSet
   public:
     INSTRUCTION_HEADER(FilterTypeSet)
 
-    static MFilterTypeSet *New(TempAllocator &alloc, MDefinition *def, types::TemporaryTypeSet *types) {
+    static MFilterTypeSet *New(TempAllocator &alloc, MDefinition *def, TemporaryTypeSet *types) {
         return new(alloc) MFilterTypeSet(def, types);
     }
 
@@ -11261,7 +11413,7 @@ class MTypeBarrier
 {
     BarrierKind barrierKind_;
 
-    MTypeBarrier(MDefinition *def, types::TemporaryTypeSet *types, BarrierKind kind)
+    MTypeBarrier(MDefinition *def, TemporaryTypeSet *types, BarrierKind kind)
       : MUnaryInstruction(def),
         barrierKind_(kind)
     {
@@ -11278,7 +11430,7 @@ class MTypeBarrier
   public:
     INSTRUCTION_HEADER(TypeBarrier)
 
-    static MTypeBarrier *New(TempAllocator &alloc, MDefinition *def, types::TemporaryTypeSet *types,
+    static MTypeBarrier *New(TempAllocator &alloc, MDefinition *def, TemporaryTypeSet *types,
                              BarrierKind kind = BarrierKind::TypeSet) {
         return new(alloc) MTypeBarrier(def, types, kind);
     }
@@ -11317,10 +11469,10 @@ class MMonitorTypes
   : public MUnaryInstruction,
     public BoxInputsPolicy::Data
 {
-    const types::TemporaryTypeSet *typeSet_;
+    const TemporaryTypeSet *typeSet_;
     BarrierKind barrierKind_;
 
-    MMonitorTypes(MDefinition *def, const types::TemporaryTypeSet *types, BarrierKind kind)
+    MMonitorTypes(MDefinition *def, const TemporaryTypeSet *types, BarrierKind kind)
       : MUnaryInstruction(def),
         typeSet_(types),
         barrierKind_(kind)
@@ -11334,12 +11486,12 @@ class MMonitorTypes
   public:
     INSTRUCTION_HEADER(MonitorTypes)
 
-    static MMonitorTypes *New(TempAllocator &alloc, MDefinition *def, const types::TemporaryTypeSet *types,
+    static MMonitorTypes *New(TempAllocator &alloc, MDefinition *def, const TemporaryTypeSet *types,
                               BarrierKind kind) {
         return new(alloc) MMonitorTypes(def, types, kind);
     }
 
-    const types::TemporaryTypeSet *typeSet() const {
+    const TemporaryTypeSet *typeSet() const {
         return typeSet_;
     }
     BarrierKind barrierKind() const {
@@ -12020,17 +12172,25 @@ class MAsmJSNeg
 
 class MAsmJSHeapAccess
 {
-    Scalar::Type viewType_;
+    Scalar::Type accessType_;
     bool needsBoundsCheck_;
+    Label *outOfBoundsLabel_;
+    unsigned numSimdElems_;
 
   public:
-    MAsmJSHeapAccess(Scalar::Type vt, bool needsBoundsCheck)
-      : viewType_(vt), needsBoundsCheck_(needsBoundsCheck)
-    {}
+    MAsmJSHeapAccess(Scalar::Type accessType, bool needsBoundsCheck,
+                     Label *outOfBoundsLabel = nullptr, unsigned numSimdElems = 0)
+      : accessType_(accessType), needsBoundsCheck_(needsBoundsCheck),
+        outOfBoundsLabel_(outOfBoundsLabel), numSimdElems_(numSimdElems)
+    {
+        MOZ_ASSERT(numSimdElems <= ScalarTypeToLength(accessType));
+    }
 
-    Scalar::Type viewType() const { return viewType_; }
+    Scalar::Type accessType() const { return accessType_; }
     bool needsBoundsCheck() const { return needsBoundsCheck_; }
     void removeBoundsCheck() { needsBoundsCheck_ = false; }
+    Label *outOfBoundsLabel() const { return outOfBoundsLabel_; }
+    unsigned numSimdElems() const { MOZ_ASSERT(Scalar::isSimdType(accessType_)); return numSimdElems_; }
 };
 
 class MAsmJSLoadHeap
@@ -12041,10 +12201,11 @@ class MAsmJSLoadHeap
     MemoryBarrierBits barrierBefore_;
     MemoryBarrierBits barrierAfter_;
 
-    MAsmJSLoadHeap(Scalar::Type vt, MDefinition *ptr, bool needsBoundsCheck,
+    MAsmJSLoadHeap(Scalar::Type accessType, MDefinition *ptr, bool needsBoundsCheck,
+                   Label *outOfBoundsLabel, unsigned numSimdElems,
                    MemoryBarrierBits before, MemoryBarrierBits after)
       : MUnaryInstruction(ptr),
-        MAsmJSHeapAccess(vt, needsBoundsCheck),
+        MAsmJSHeapAccess(accessType, needsBoundsCheck, outOfBoundsLabel, numSimdElems),
         barrierBefore_(before),
         barrierAfter_(after)
     {
@@ -12053,7 +12214,7 @@ class MAsmJSLoadHeap
         else
             setMovable();
 
-        switch (vt) {
+        switch (accessType) {
           case Scalar::Int8:
           case Scalar::Uint8:
           case Scalar::Int16:
@@ -12076,19 +12237,22 @@ class MAsmJSLoadHeap
             break;
           case Scalar::Uint8Clamped:
           case Scalar::MaxTypedArrayViewType:
-            MOZ_CRASH("unexpected uint8clamped load heap in asm.js");
+            MOZ_CRASH("unexpected load heap in asm.js");
         }
     }
 
   public:
     INSTRUCTION_HEADER(AsmJSLoadHeap)
 
-    static MAsmJSLoadHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSLoadHeap *New(TempAllocator &alloc, Scalar::Type accessType,
                                MDefinition *ptr, bool needsBoundsCheck,
+                               Label *outOfBoundsLabel = nullptr,
+                               unsigned numSimdElems = 0,
                                MemoryBarrierBits barrierBefore = MembarNobits,
                                MemoryBarrierBits barrierAfter = MembarNobits)
     {
-        return new(alloc) MAsmJSLoadHeap(vt, ptr, needsBoundsCheck, barrierBefore, barrierAfter);
+        return new(alloc) MAsmJSLoadHeap(accessType, ptr, needsBoundsCheck, outOfBoundsLabel,
+                                         numSimdElems, barrierBefore, barrierAfter);
     }
 
     MDefinition *ptr() const { return getOperand(0); }
@@ -12110,10 +12274,11 @@ class MAsmJSStoreHeap
     MemoryBarrierBits barrierBefore_;
     MemoryBarrierBits barrierAfter_;
 
-    MAsmJSStoreHeap(Scalar::Type vt, MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
+    MAsmJSStoreHeap(Scalar::Type accessType, MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
+                    Label *outOfBoundsLabel, unsigned numSimdElems,
                     MemoryBarrierBits before, MemoryBarrierBits after)
       : MBinaryInstruction(ptr, v),
-        MAsmJSHeapAccess(vt, needsBoundsCheck),
+        MAsmJSHeapAccess(accessType, needsBoundsCheck, outOfBoundsLabel, numSimdElems),
         barrierBefore_(before),
         barrierAfter_(after)
     {
@@ -12124,13 +12289,15 @@ class MAsmJSStoreHeap
   public:
     INSTRUCTION_HEADER(AsmJSStoreHeap)
 
-    static MAsmJSStoreHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSStoreHeap *New(TempAllocator &alloc, Scalar::Type accessType,
                                 MDefinition *ptr, MDefinition *v, bool needsBoundsCheck,
+                                Label *outOfBoundsLabel = nullptr,
+                                unsigned numSimdElems = 0,
                                 MemoryBarrierBits barrierBefore = MembarNobits,
                                 MemoryBarrierBits barrierAfter = MembarNobits)
     {
-        return new(alloc) MAsmJSStoreHeap(vt, ptr, v, needsBoundsCheck,
-                                          barrierBefore, barrierAfter);
+        return new(alloc) MAsmJSStoreHeap(accessType, ptr, v, needsBoundsCheck, outOfBoundsLabel,
+                                          numSimdElems, barrierBefore, barrierAfter);
     }
 
     MDefinition *ptr() const { return getOperand(0); }
@@ -12148,10 +12315,10 @@ class MAsmJSCompareExchangeHeap
     public MAsmJSHeapAccess,
     public NoTypePolicy::Data
 {
-    MAsmJSCompareExchangeHeap(Scalar::Type vt, MDefinition *ptr, MDefinition *oldv, MDefinition *newv,
-                              bool needsBoundsCheck)
+    MAsmJSCompareExchangeHeap(Scalar::Type accessType, MDefinition *ptr, MDefinition *oldv,
+                              MDefinition *newv, bool needsBoundsCheck)
         : MTernaryInstruction(ptr, oldv, newv),
-          MAsmJSHeapAccess(vt, needsBoundsCheck)
+          MAsmJSHeapAccess(accessType, needsBoundsCheck)
     {
         setGuard();             // Not removable
         setResultType(MIRType_Int32);
@@ -12160,11 +12327,11 @@ class MAsmJSCompareExchangeHeap
   public:
     INSTRUCTION_HEADER(AsmJSCompareExchangeHeap)
 
-    static MAsmJSCompareExchangeHeap *New(TempAllocator &alloc, Scalar::Type vt,
+    static MAsmJSCompareExchangeHeap *New(TempAllocator &alloc, Scalar::Type accessType,
                                           MDefinition *ptr, MDefinition *oldv,
                                           MDefinition *newv, bool needsBoundsCheck)
     {
-        return new(alloc) MAsmJSCompareExchangeHeap(vt, ptr, oldv, newv, needsBoundsCheck);
+        return new(alloc) MAsmJSCompareExchangeHeap(accessType, ptr, oldv, newv, needsBoundsCheck);
     }
 
     MDefinition *ptr() const { return getOperand(0); }
@@ -12183,10 +12350,10 @@ class MAsmJSAtomicBinopHeap
 {
     AtomicOp op_;
 
-    MAsmJSAtomicBinopHeap(AtomicOp op, Scalar::Type vt, MDefinition *ptr, MDefinition *v,
+    MAsmJSAtomicBinopHeap(AtomicOp op, Scalar::Type accessType, MDefinition *ptr, MDefinition *v,
                           bool needsBoundsCheck)
         : MBinaryInstruction(ptr, v),
-          MAsmJSHeapAccess(vt, needsBoundsCheck),
+          MAsmJSHeapAccess(accessType, needsBoundsCheck),
           op_(op)
     {
         setGuard();         // Not removable
@@ -12196,10 +12363,10 @@ class MAsmJSAtomicBinopHeap
   public:
     INSTRUCTION_HEADER(AsmJSAtomicBinopHeap)
 
-    static MAsmJSAtomicBinopHeap *New(TempAllocator &alloc, AtomicOp op, Scalar::Type vt,
+    static MAsmJSAtomicBinopHeap *New(TempAllocator &alloc, AtomicOp op, Scalar::Type accessType,
                                       MDefinition *ptr, MDefinition *v, bool needsBoundsCheck)
     {
-        return new(alloc) MAsmJSAtomicBinopHeap(op, vt, ptr, v, needsBoundsCheck);
+        return new(alloc) MAsmJSAtomicBinopHeap(op, accessType, ptr, v, needsBoundsCheck);
     }
 
     AtomicOp operation() const { return op_; }
@@ -12559,35 +12726,35 @@ MControlInstruction *MDefinition::toControlInstruction() {
 
 // Helper functions used to decide how to build MIR.
 
-bool ElementAccessIsDenseNative(types::CompilerConstraintList *constraints,
+bool ElementAccessIsDenseNative(CompilerConstraintList *constraints,
                                 MDefinition *obj, MDefinition *id);
-bool ElementAccessIsAnyTypedArray(types::CompilerConstraintList *constraints,
+bool ElementAccessIsAnyTypedArray(CompilerConstraintList *constraints,
                                   MDefinition *obj, MDefinition *id,
                                   Scalar::Type *arrayType);
-bool ElementAccessIsPacked(types::CompilerConstraintList *constraints, MDefinition *obj);
-bool ElementAccessMightBeCopyOnWrite(types::CompilerConstraintList *constraints, MDefinition *obj);
-bool ElementAccessHasExtraIndexedProperty(types::CompilerConstraintList *constraints,
+bool ElementAccessIsPacked(CompilerConstraintList *constraints, MDefinition *obj);
+bool ElementAccessMightBeCopyOnWrite(CompilerConstraintList *constraints, MDefinition *obj);
+bool ElementAccessHasExtraIndexedProperty(CompilerConstraintList *constraints,
                                           MDefinition *obj);
-MIRType DenseNativeElementType(types::CompilerConstraintList *constraints, MDefinition *obj);
+MIRType DenseNativeElementType(CompilerConstraintList *constraints, MDefinition *obj);
 BarrierKind PropertyReadNeedsTypeBarrier(JSContext *propertycx,
-                                         types::CompilerConstraintList *constraints,
-                                         types::TypeObjectKey *object, PropertyName *name,
-                                         types::TemporaryTypeSet *observed, bool updateObserved);
+                                         CompilerConstraintList *constraints,
+                                         TypeSet::ObjectKey *key, PropertyName *name,
+                                         TemporaryTypeSet *observed, bool updateObserved);
 BarrierKind PropertyReadNeedsTypeBarrier(JSContext *propertycx,
-                                         types::CompilerConstraintList *constraints,
+                                         CompilerConstraintList *constraints,
                                          MDefinition *obj, PropertyName *name,
-                                         types::TemporaryTypeSet *observed);
-BarrierKind PropertyReadOnPrototypeNeedsTypeBarrier(types::CompilerConstraintList *constraints,
+                                         TemporaryTypeSet *observed);
+BarrierKind PropertyReadOnPrototypeNeedsTypeBarrier(CompilerConstraintList *constraints,
                                                     MDefinition *obj, PropertyName *name,
-                                                    types::TemporaryTypeSet *observed);
-bool PropertyReadIsIdempotent(types::CompilerConstraintList *constraints,
+                                                    TemporaryTypeSet *observed);
+bool PropertyReadIsIdempotent(CompilerConstraintList *constraints,
                               MDefinition *obj, PropertyName *name);
 void AddObjectsForPropertyRead(MDefinition *obj, PropertyName *name,
-                               types::TemporaryTypeSet *observed);
-bool CanWriteProperty(TempAllocator &alloc, types::CompilerConstraintList *constraints,
-                      types::HeapTypeSetKey property, MDefinition *value,
+                               TemporaryTypeSet *observed);
+bool CanWriteProperty(TempAllocator &alloc, CompilerConstraintList *constraints,
+                      HeapTypeSetKey property, MDefinition *value,
                       MIRType implicitType = MIRType_None);
-bool PropertyWriteNeedsTypeBarrier(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+bool PropertyWriteNeedsTypeBarrier(TempAllocator &alloc, CompilerConstraintList *constraints,
                                    MBasicBlock *current, MDefinition **pobj,
                                    PropertyName *name, MDefinition **pvalue,
                                    bool canModify, MIRType implicitType = MIRType_None);

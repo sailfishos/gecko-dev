@@ -9,6 +9,7 @@
 
 #include "jsfriendapi.h"
 #include "jswrapper.h"
+#include "js/Conversions.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Alignment.h"
 #include "mozilla/Array.h"
@@ -102,8 +103,15 @@ ThrowMethodFailedWithDetails(JSContext* cx, ErrorResult& rv,
                              const char* memberName,
                              bool reportJSContentExceptions = false)
 {
-  if (rv.IsTypeError()) {
-    rv.ReportTypeError(cx);
+  if (rv.IsUncatchableException()) {
+    // Nuke any existing exception on aCx, to make sure we're uncatchable.
+    JS_ClearPendingException(cx);
+    // Don't do any reporting.  Just return false, to create an
+    // uncatchable exception.
+    return false;
+  }
+  if (rv.IsErrorWithMessage()) {
+    rv.ReportErrorWithMessage(cx);
     return false;
   }
   if (rv.IsJSException()) {
@@ -2797,7 +2805,7 @@ public:
                JS::Handle<JSObject*> aProto, JS::Handle<JSObject*> aParent,
                T* aNative, JS::MutableHandle<JSObject*> aReflector)
   {
-    aReflector.set(JS_NewObject(aCx, aClass, aProto, aParent));
+    aReflector.set(JS_NewObjectWithGivenProto(aCx, aClass, aProto, aParent));
     if (aReflector) {
       js::SetReservedSlot(aReflector, DOM_OBJECT_SLOT, JS::PrivateValue(aNative));
       mNative = aNative;
@@ -3142,9 +3150,20 @@ AssertReturnTypeMatchesJitinfo(const JSJitInfo* aJitinfo,
 bool
 CheckPermissions(JSContext* aCx, JSObject* aObj, const char* const aPermissions[]);
 
-//Returns true if page is being prerendered.
+// This function is called by the bindings layer for methods/getters/setters
+// that are not safe to be called in prerendering mode.  It checks to make sure
+// that the |this| object is not running in a global that is in prerendering
+// mode.  Otherwise, it aborts execution of timers and event handlers, and
+// returns false which gets converted to an uncatchable exception by the
+// bindings layer.
 bool
-CheckSafetyInPrerendering(JSContext* aCx, JSObject* aObj);
+EnforceNotInPrerendering(JSContext* aCx, JSObject* aObj);
+
+// Handles the violation of a blacklisted action in prerendering mode by
+// aborting the scripts, and preventing timers and event handlers from running
+// in the window in the future.
+void
+HandlePrerenderingViolation(nsPIDOMWindow* aWindow);
 
 bool
 CallerSubsumes(JSObject* aObject);

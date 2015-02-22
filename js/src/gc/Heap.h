@@ -94,7 +94,7 @@ enum AllocKind {
     FINALIZE_SHAPE,
     FINALIZE_ACCESSOR_SHAPE,
     FINALIZE_BASE_SHAPE,
-    FINALIZE_TYPE_OBJECT,
+    FINALIZE_OBJECT_GROUP,
     FINALIZE_FAT_INLINE_STRING,
     FINALIZE_STRING,
     FINALIZE_EXTERNAL_STRING,
@@ -110,29 +110,29 @@ static inline JSGCTraceKind
 MapAllocToTraceKind(AllocKind kind)
 {
     static const JSGCTraceKind map[] = {
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT0 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT0_BACKGROUND */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT2 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT2_BACKGROUND */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT4 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT4_BACKGROUND */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT8 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT8_BACKGROUND */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT12 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT12_BACKGROUND */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT16 */
-        JSTRACE_OBJECT,     /* FINALIZE_OBJECT16_BACKGROUND */
-        JSTRACE_SCRIPT,     /* FINALIZE_SCRIPT */
-        JSTRACE_LAZY_SCRIPT,/* FINALIZE_LAZY_SCRIPT */
-        JSTRACE_SHAPE,      /* FINALIZE_SHAPE */
-        JSTRACE_SHAPE,      /* FINALIZE_ACCESSOR_SHAPE */
-        JSTRACE_BASE_SHAPE, /* FINALIZE_BASE_SHAPE */
-        JSTRACE_TYPE_OBJECT,/* FINALIZE_TYPE_OBJECT */
-        JSTRACE_STRING,     /* FINALIZE_FAT_INLINE_STRING */
-        JSTRACE_STRING,     /* FINALIZE_STRING */
-        JSTRACE_STRING,     /* FINALIZE_EXTERNAL_STRING */
-        JSTRACE_SYMBOL,     /* FINALIZE_SYMBOL */
-        JSTRACE_JITCODE,    /* FINALIZE_JITCODE */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT0 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT0_BACKGROUND */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT2 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT2_BACKGROUND */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT4 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT4_BACKGROUND */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT8 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT8_BACKGROUND */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT12 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT12_BACKGROUND */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT16 */
+        JSTRACE_OBJECT,       /* FINALIZE_OBJECT16_BACKGROUND */
+        JSTRACE_SCRIPT,       /* FINALIZE_SCRIPT */
+        JSTRACE_LAZY_SCRIPT,  /* FINALIZE_LAZY_SCRIPT */
+        JSTRACE_SHAPE,        /* FINALIZE_SHAPE */
+        JSTRACE_SHAPE,        /* FINALIZE_ACCESSOR_SHAPE */
+        JSTRACE_BASE_SHAPE,   /* FINALIZE_BASE_SHAPE */
+        JSTRACE_OBJECT_GROUP, /* FINALIZE_OBJECT_GROUP */
+        JSTRACE_STRING,       /* FINALIZE_FAT_INLINE_STRING */
+        JSTRACE_STRING,       /* FINALIZE_STRING */
+        JSTRACE_STRING,       /* FINALIZE_EXTERNAL_STRING */
+        JSTRACE_SYMBOL,       /* FINALIZE_SYMBOL */
+        JSTRACE_JITCODE,      /* FINALIZE_JITCODE */
     };
 
     static_assert(MOZ_ARRAY_LENGTH(map) == FINALIZE_LIMIT,
@@ -528,14 +528,12 @@ struct ArenaHeader
     /*
      * One of AllocKind constants or FINALIZE_LIMIT when the arena does not
      * contain any GC things and is on the list of empty arenas in the GC
-     * chunk. The latter allows to quickly check if the arena is allocated
-     * during the conservative GC scanning without searching the arena in the
-     * list.
+     * chunk.
      *
      * We use 8 bits for the allocKind so the compiler can use byte-level memory
      * instructions to access it.
      */
-    size_t       allocKind          : 8;
+    size_t allocKind : 8;
 
     /*
      * When collecting we sometimes need to keep an auxillary list of arenas,
@@ -561,7 +559,7 @@ struct ArenaHeader
      * flags.
      */
   public:
-    size_t       hasDelayedMarking  : 1;
+    size_t       hasDelayedMarking : 1;
     size_t       allocatedDuringIncremental : 1;
     size_t       markOverflow : 1;
     size_t       auxNextLink : JS_BITS_PER_WORD - 8 - 1 - 1 - 1;

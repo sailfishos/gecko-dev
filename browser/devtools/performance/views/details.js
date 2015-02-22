@@ -3,20 +3,20 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const DEFAULT_DETAILS_SUBVIEW = "waterfall";
-
 /**
  * Details view containing profiler call tree and markers waterfall. Manages
  * subviews and toggles visibility between them.
  */
 let DetailsView = {
   /**
-   * Name to index mapping of subviews, used by selecting view.
+   * Name to node+object mapping of subviews.
    */
   components: {
-    waterfall: { index: 0, view: WaterfallView },
-    calltree: { index: 1, view: CallTreeView },
-    flamegraph: { index: 2, view: FlameGraphView }
+    "waterfall": { id: "waterfall-view", view: WaterfallView, requires: ["timeline"] },
+    "js-calltree": { id: "js-calltree-view", view: JsCallTreeView },
+    "js-flamegraph": { id: "js-flamegraph-view", view: JsFlameGraphView, requires: ["timeline"] },
+    "memory-calltree": { id: "memory-calltree-view", view: MemoryCallTreeView, requires: ["memory"], pref: "enable-memory" },
+    "memory-flamegraph": { id: "memory-flamegraph-view", view: MemoryFlameGraphView, requires: ["memory", "timeline"], pref: "enable-memory" }
   },
 
   /**
@@ -27,16 +27,19 @@ let DetailsView = {
     this.toolbar = $("#performance-toolbar-controls-detail-views");
 
     this._onViewToggle = this._onViewToggle.bind(this);
+    this._onRecordingStoppedOrSelected = this._onRecordingStoppedOrSelected.bind(this);
+    this.setAvailableViews = this.setAvailableViews.bind(this);
 
     for (let button of $$("toolbarbutton[data-view]", this.toolbar)) {
       button.addEventListener("command", this._onViewToggle);
     }
 
-    yield WaterfallView.initialize();
-    yield CallTreeView.initialize();
-    yield FlameGraphView.initialize();
+    yield this.selectDefaultView();
+    yield this.setAvailableViews();
 
-    this.selectView(DEFAULT_DETAILS_SUBVIEW);
+    PerformanceController.on(EVENTS.RECORDING_STOPPED, this._onRecordingStoppedOrSelected);
+    PerformanceController.on(EVENTS.RECORDING_SELECTED, this._onRecordingStoppedOrSelected);
+    PerformanceController.on(EVENTS.PREF_CHANGED, this.setAvailableViews);
   }),
 
   /**
@@ -47,9 +50,39 @@ let DetailsView = {
       button.removeEventListener("command", this._onViewToggle);
     }
 
-    yield WaterfallView.destroy();
-    yield CallTreeView.destroy();
-    yield FlameGraphView.destroy();
+    for (let [_, component] of Iterator(this.components)) {
+      component.initialized && (yield component.view.destroy());
+    }
+
+    PerformanceController.off(EVENTS.RECORDING_STOPPED, this._onRecordingStoppedOrSelected);
+    PerformanceController.off(EVENTS.RECORDING_SELECTED, this._onRecordingStoppedOrSelected);
+    PerformanceController.off(EVENTS.PREF_CHANGED, this.setAvailableViews);
+  }),
+
+  /**
+   * Sets the possible views based off of prefs and server actor support by hiding/showing the
+   * buttons that select them and going to default view if currently selected.
+   * Called when a preference changes in `devtools.performance.ui.`.
+   */
+  setAvailableViews: Task.async(function* () {
+    let mocks = gFront.getMocksInUse();
+    for (let [name, { view, pref, requires }] of Iterator(this.components)) {
+      let recording = PerformanceController.getCurrentRecording();
+
+      let isRecorded = recording && !recording.isRecording();
+      // View is enabled view prefs
+      let isEnabled = !pref || PerformanceController.getPref(pref);
+      // View is supported by the server actor, and the requried actor is not being mocked
+      let isSupported = !requires || requires.every(r => !mocks[r]);
+
+      $(`toolbarbutton[data-view=${name}]`).hidden = !isRecorded || !(isEnabled && isSupported);
+
+      // If the view is currently selected and not enabled, go back to the
+      // default view.
+      if (!isEnabled && this.isViewSelected(view)) {
+        yield this.selectDefaultView();
+      }
+    }
   }),
 
   /**
@@ -59,8 +92,11 @@ let DetailsView = {
    * @param String viewName
    *        Name of the view to be shown.
    */
-  selectView: function (viewName) {
-    this.el.selectedIndex = this.components[viewName].index;
+  selectView: Task.async(function *(viewName) {
+    let component = this.components[viewName];
+    this.el.selectedPanel = $("#" + component.id);
+
+    yield this._whenViewInitialized(component);
 
     for (let button of $$("toolbarbutton[data-view]", this.toolbar)) {
       if (button.getAttribute("data-view") === viewName) {
@@ -71,6 +107,22 @@ let DetailsView = {
     }
 
     this.emit(EVENTS.DETAILS_VIEW_SELECTED, viewName);
+  }),
+
+  /**
+   * Selects a default view based off of protocol support
+   * and preferences enabled.
+   */
+  selectDefaultView: function () {
+    let { timeline: mockTimeline } = gFront.getMocksInUse();
+    // If timelines are mocked, the first view available is the js-calltree.
+    if (mockTimeline) {
+      return this.selectView("js-calltree");
+    } else {
+      // In every other scenario with preferences and mocks, waterfall will
+      // be the default view.
+      return this.selectView("waterfall");
+    }
   },
 
   /**
@@ -80,10 +132,11 @@ let DetailsView = {
    * @return boolean
    */
   isViewSelected: function(viewObject) {
-    let selectedIndex = this.el.selectedIndex;
+    let selectedPanel = this.el.selectedPanel;
+    let selectedId = selectedPanel.id;
 
-    for (let [, { index, view }] of Iterator(this.components)) {
-      if (index == selectedIndex && view == viewObject) {
+    for (let [, { id, view }] of Iterator(this.components)) {
+      if (id == selectedId && view == viewObject) {
         return true;
       }
     }
@@ -107,11 +160,44 @@ let DetailsView = {
   }),
 
   /**
+   * Initializes a subview if it wasn't already set up, and makes sure
+   * it's populated with recording data if there is some available.
+   *
+   * @param object component
+   *        A component descriptor from DetailsView.components
+   */
+  _whenViewInitialized: Task.async(function *(component) {
+    if (component.initialized) {
+      return;
+    }
+    component.initialized = true;
+    yield component.view.initialize();
+
+    // If this view is initialized *after* a recording is shown, it won't display
+    // any data. Make sure it's populated by setting `shouldUpdateWhenShown`.
+    // All detail views require a recording to be complete, so do not
+    // attempt to render if recording is in progress or does not exist.
+    let recording = PerformanceController.getCurrentRecording();
+    if (recording && !recording.isRecording()) {
+      component.view.shouldUpdateWhenShown = true;
+    }
+  }),
+
+  /**
+   * Called when recording stops or is selected.
+   */
+  _onRecordingStoppedOrSelected: function(_, recording) {
+    this.setAvailableViews();
+  },
+
+  /**
    * Called when a view button is clicked.
    */
   _onViewToggle: function (e) {
     this.selectView(e.target.getAttribute("data-view"));
-  }
+  },
+
+  toString: () => "[object DetailsView]"
 };
 
 /**

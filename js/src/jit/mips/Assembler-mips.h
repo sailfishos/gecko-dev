@@ -244,6 +244,7 @@ static const uint32_t SAMask = ((1 << SABits) - 1) << SAShift;
 static const uint32_t FunctionMask = ((1 << FunctionBits) - 1) << FunctionShift;
 static const uint32_t RegMask = Registers::Total - 1;
 
+static const uint32_t BREAK_STACK_UNALIGNED = 1;
 static const uint32_t MAX_BREAK_CODE = 1024 - 1;
 
 class Instruction;
@@ -745,7 +746,6 @@ class Assembler : public AssemblerShared
 
     CompactBufferWriter jumpRelocations_;
     CompactBufferWriter dataRelocations_;
-    CompactBufferWriter relocations_;
     CompactBufferWriter preBarriers_;
 
     MIPSBuffer m_buffer;
@@ -1012,6 +1012,9 @@ class Assembler : public AssemblerShared
     static void TraceJumpRelocations(JSTracer *trc, JitCode *code, CompactBufferReader &reader);
     static void TraceDataRelocations(JSTracer *trc, JitCode *code, CompactBufferReader &reader);
 
+    static void FixupNurseryObjects(JSContext *cx, JitCode *code, CompactBufferReader &reader,
+                                    const ObjectVector &nurseryObjects);
+
     static bool SupportsFloatingPoint() {
 #if (defined(__mips_hard_float) && !defined(__mips_single_float)) || defined(JS_MIPS_SIMULATOR)
         return true;
@@ -1085,6 +1088,12 @@ class Assembler : public AssemblerShared
 
     bool bailed() {
         return m_buffer.bail();
+    }
+
+    void verifyHeapAccessDisassembly(uint32_t begin, uint32_t end,
+                                     const Disassembler::HeapAccess &heapAccess)
+    {
+        // Implement this if we implement a disassembler.
     }
 }; // Assembler
 

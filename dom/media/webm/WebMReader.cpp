@@ -249,7 +249,7 @@ nsresult WebMReader::Init(MediaDecoderReader* aCloneDonor)
 
     InitLayersBackendType();
 
-    mVideoTaskQueue = new MediaTaskQueue(
+    mVideoTaskQueue = new FlushableMediaTaskQueue(
       SharedThreadPool::Get(NS_LITERAL_CSTRING("IntelVP8 Video Decode")));
     NS_ENSURE_TRUE(mVideoTaskQueue, NS_ERROR_FAILURE);
   }
@@ -337,7 +337,7 @@ nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
   io.tell = webm_tell;
   io.userdata = mDecoder;
   int64_t maxOffset = mDecoder->HasInitializationData() ?
-    mDecoder->GetResource()->GetLength() : -1;
+    mBufferedState->GetInitEndOffset() : -1;
   int r = nestegg_init(&mContext, io, &webm_log, maxOffset);
   if (r == -1) {
     return NS_ERROR_FAILURE;

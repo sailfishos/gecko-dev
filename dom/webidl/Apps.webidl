@@ -11,7 +11,7 @@ dictionary InstallParameters {
 
 dictionary LanguageDesc {
   DOMString target;
-  DOMString version;
+  long revision;
   DOMString name;
 };
 
@@ -121,6 +121,8 @@ interface DOMApplicationsManager : EventTarget {
   Promise<any> extractManifest(Blob blob);
 
   void setEnabled(DOMApplication app, boolean state);
+  Promise<Blob> getIcon(DOMApplication app, DOMString iconID,
+                        optional DOMString entryPoint);
 
   attribute EventHandler oninstall;
   attribute EventHandler onuninstall;

@@ -22,6 +22,7 @@
 #include "gfxPlatform.h"
 #include "gfxTypes.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/Atomics.h"
 #include "nsTArray.h"
 #include "nsDataHashtable.h"
 
@@ -251,6 +252,12 @@ public:
     static bool IsOptimus();
 
     bool IsWARP() { return mIsWARP; }
+
+    virtual already_AddRefed<mozilla::gfx::VsyncSource> CreateHardwareVsyncSource() MOZ_OVERRIDE;
+    static mozilla::Atomic<size_t> sD3D11MemoryUsed;
+    static mozilla::Atomic<size_t> sD3D9MemoryUsed;
+    static mozilla::Atomic<size_t> sD3D9SurfaceImageUsed;
+    static mozilla::Atomic<size_t> sD3D9SharedTextureUsed;
 
 protected:
     RenderMode mRenderMode;

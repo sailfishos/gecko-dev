@@ -4,9 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "jsproxy.h"
 #include "jswrapper.h" // UncheckedUnwrap
 
+#include "js/Proxy.h"
 #include "vm/ProxyObject.h"
 
 #include "jsobjinlines.h"
@@ -20,7 +20,7 @@ DirectProxyHandler::getPropertyDescriptor(JSContext *cx, HandleObject proxy, Han
     assertEnteredPolicy(cx, proxy, id, GET | SET | GET_PROPERTY_DESCRIPTOR);
     MOZ_ASSERT(!hasPrototype()); // Should never be called if there's a prototype.
     RootedObject target(cx, proxy->as<ProxyObject>().target());
-    return JS_GetPropertyDescriptorById(cx, target, id, desc);
+    return GetPropertyDescriptor(cx, target, id, desc);
 }
 
 bool
@@ -29,7 +29,7 @@ DirectProxyHandler::getOwnPropertyDescriptor(JSContext *cx, HandleObject proxy, 
 {
     assertEnteredPolicy(cx, proxy, id, GET | SET | GET_PROPERTY_DESCRIPTOR);
     RootedObject target(cx, proxy->as<ProxyObject>().target());
-    return js::GetOwnPropertyDescriptor(cx, target, id, desc);
+    return GetOwnPropertyDescriptor(cx, target, id, desc);
 }
 
 bool
@@ -38,11 +38,8 @@ DirectProxyHandler::defineProperty(JSContext *cx, HandleObject proxy, HandleId i
 {
     assertEnteredPolicy(cx, proxy, id, SET);
     RootedObject target(cx, proxy->as<ProxyObject>().target());
-    RootedValue v(cx, desc.value());
-    return CheckDefineProperty(cx, target, id, v, desc.attributes(),
-                               desc.getter(), desc.setter()) &&
-           DefineProperty(cx, target, id, v, desc.getter(), desc.setter(),
-                          desc.attributes());
+    bool ignored;
+    return StandardDefineProperty(cx, target, id, desc, &ignored);
 }
 
 bool

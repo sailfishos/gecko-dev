@@ -44,7 +44,7 @@
 #include "nsTArrayForwardDeclare.h"     // for InfallibleTArray
 #include "nscore.h"                     // for nsACString, nsAString
 #include "prlog.h"                      // for PRLogModuleInfo
-#include "gfx2DGlue.h"
+#include "nsIWidget.h"                  // For plugin window configuration information structs
 #include "gfxVR.h"
 
 class gfxContext;
@@ -307,7 +307,7 @@ public:
 
   virtual bool HasShadowManagerInternal() const { return false; }
   bool HasShadowManager() const { return HasShadowManagerInternal(); }
-
+  virtual void StorePluginWidgetConfigurations(const nsTArray<nsIWidget::Configuration>& aConfigurations) {}
   bool IsSnappingEffectiveTransforms() { return mSnapEffectiveTransforms; }
 
 
@@ -916,6 +916,13 @@ public:
    * outside the dispatch-to-content region, we can initiate a gesture without
    * consulting the content thread. Otherwise we must dispatch the event to
    * content.
+   * Note that if a layer or any ancestor layer has a ForceEmptyHitRegion
+   * override in GetEventRegionsOverride() then the hit-region must be treated
+   * as empty. Similarly, if there is a ForceDispatchToContent override then
+   * the dispatch-to-content region must be treated as encompassing the entire
+   * hit region, and therefore we must consult the content thread before
+   * initiating a gesture. (If both flags are set, ForceEmptyHitRegion takes
+   * priority.)
    */
   /**
    * CONSTRUCTION PHASE ONLY
@@ -1250,6 +1257,24 @@ public:
   bool IsScrollbarContainer() { return mIsScrollbarContainer; }
   Layer* GetMaskLayer() const { return mMaskLayer; }
 
+
+  /**
+   * Retrieve the root level visible region for |this| taking into account
+   * clipping applied to parent layers of |this| as well as subtracting
+   * visible regions of higher siblings of this layer and each ancestor.
+   *
+   * Note translation values for offsets of visible regions and accumulated
+   * aLayerOffset are integer rounded using Point's RoundedToInt.
+   *
+   * @param aResult - the resulting visible region of this layer.
+   * @param aLayerOffset - this layer's total offset from the root layer.
+   * @return - false if during layer tree traversal a parent or sibling
+   *  transform is found to be non-translational. This method returns early
+   *  in this case, results will not be valid. Returns true on successful
+   *  traversal.
+   */
+  bool GetVisibleRegionRelativeToRootLayer(nsIntRegion& aResult,
+                                           nsIntPoint* aLayerOffset);
 
   // Note that all lengths in animation data are either in CSS pixels or app
   // units and must be converted to device pixels by the compositor.
@@ -1949,6 +1974,20 @@ public:
     mChildrenChanged = aVal;
   }
 
+  void SetEventRegionsOverride(EventRegionsOverride aVal) {
+    if (mEventRegionsOverride == aVal) {
+      return;
+    }
+
+    MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) EventRegionsOverride", this));
+    mEventRegionsOverride = aVal;
+    Mutated();
+  }
+
+  EventRegionsOverride GetEventRegionsOverride() const {
+    return mEventRegionsOverride;
+  }
+
   /**
    * VR
    */
@@ -2005,6 +2044,7 @@ protected:
   // This is updated by ComputeDifferences. This will be true if we need to invalidate
   // the intermediate surface.
   bool mChildrenChanged;
+  EventRegionsOverride mEventRegionsOverride;
   nsRefPtr<gfx::VRHMDInfo> mHMDInfo;
 };
 

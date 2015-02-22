@@ -107,13 +107,6 @@ public:
 
     bool      ProxyConnectFailed() { return mProxyConnectFailed; }
 
-    // setting mDontRouteViaWildCard to true means the transaction should only
-    // be dispatched on a specific ConnectionInfo Hash Key (as opposed to a
-    // generic wild card one). That means in the specific case of carrying this
-    // transaction on an HTTP/2 tunnel it will only be dispatched onto an
-    // existing tunnel instead of triggering creation of a new one.
-    void SetDontRouteViaWildCard(bool var) { mDontRouteViaWildCard = var; }
-    bool DontRouteViaWildCard() { return mDontRouteViaWildCard; }
     void EnableKeepAlive() { mCaps |= NS_HTTP_ALLOW_KEEPALIVE; }
     void MakeSticky() { mCaps |= NS_HTTP_STICKY_CONNECTION; }
 
@@ -133,7 +126,7 @@ public:
 
     // overload of nsAHttpTransaction::LoadGroupConnectionInfo()
     nsILoadGroupConnectionInfo *LoadGroupConnectionInfo() MOZ_OVERRIDE { return mLoadGroupCI.get(); }
-    void SetLoadGroupConnectionInfo(nsILoadGroupConnectionInfo *aLoadGroupCI) { mLoadGroupCI = aLoadGroupCI; }
+    void SetLoadGroupConnectionInfo(nsILoadGroupConnectionInfo *aLoadGroupCI);
     void DispatchedAsBlocking();
     void RemoveDispatchedAsBlocking();
 
@@ -248,15 +241,18 @@ private:
 
     uint16_t                        mRestartCount;        // the number of times this transaction has been restarted
     uint32_t                        mCaps;
-    // mCapsToClear holds flags that should be cleared in mCaps, e.g. unset
-    // NS_HTTP_REFRESH_DNS when DNS refresh request has completed to avoid
-    // redundant requests on the network. To deal with raciness, only unsetting
-    // bitfields should be allowed: 'lost races' will thus err on the
-    // conservative side, e.g. by going ahead with a 2nd DNS refresh.
-    uint32_t                        mCapsToClear;
     enum Classifier                 mClassification;
     int32_t                         mPipelinePosition;
     int64_t                         mMaxPipelineObjectSize;
+
+    // mCapsToClear holds flags that should be cleared in mCaps, e.g. unset
+    // NS_HTTP_REFRESH_DNS when DNS refresh request has completed to avoid
+    // redundant requests on the network. The member itself is atomic, but
+    // access to it from the networking thread may happen either before or
+    // after the main thread modifies it. To deal with raciness, only unsetting
+    // bitfields should be allowed: 'lost races' will thus err on the
+    // conservative side, e.g. by going ahead with a 2nd DNS refresh.
+    Atomic<uint32_t>                mCapsToClear;
 
     nsHttpVersion                   mHttpVersion;
 
@@ -279,7 +275,6 @@ private:
     bool                            mPreserveStream;
     bool                            mDispatchedAsBlocking;
     bool                            mResponseTimeoutEnabled;
-    bool                            mDontRouteViaWildCard;
     bool                            mForceRestart;
     bool                            mReuseOnRestart;
 
@@ -391,6 +386,7 @@ private:
     uint64_t                           mCountRecv;
     uint64_t                           mCountSent;
     uint32_t                           mAppId;
+    bool                               mIsInBrowser;
 #ifdef MOZ_WIDGET_GONK
     nsMainThreadPtrHandle<nsINetworkInterface> mActiveNetwork;
 #endif
@@ -410,6 +406,21 @@ public:
     uint32_t ClassOfService() { return mClassOfService; }
 private:
     uint32_t mClassOfService;
+
+public:
+    // setting TunnelProvider to non-null means the transaction should only
+    // be dispatched on a specific ConnectionInfo Hash Key (as opposed to a
+    // generic wild card one). That means in the specific case of carrying this
+    // transaction on an HTTP/2 tunnel it will only be dispatched onto an
+    // existing tunnel instead of triggering creation of a new one.
+    // The tunnel provider is used for ASpdySession::MaybeReTunnel() checks.
+
+    void SetTunnelProvider(ASpdySession *provider) { mTunnelProvider = provider; }
+    ASpdySession *TunnelProvider() { return mTunnelProvider; }
+    nsIInterfaceRequestor *SecurityCallbacks() { return mCallbacks; }
+
+private:
+    nsRefPtr<ASpdySession> mTunnelProvider;
 };
 
 }} // namespace mozilla::net

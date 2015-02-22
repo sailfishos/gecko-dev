@@ -210,7 +210,7 @@ class HashMap
     /************************************************** Shorthand operations */
 
     bool has(const Lookup &l) const {
-        return impl.lookup(l) != nullptr;
+        return impl.lookup(l).found();
     }
 
     // Overwrite existing value with v. Return false on oom.
@@ -253,10 +253,13 @@ class HashMap
             rekeyAs(old_key, new_key, new_key);
     }
 
-    // Infallibly rekey one entry, if present.
-    void rekeyAs(const Lookup &old_lookup, const Lookup &new_lookup, const Key &new_key) {
-        if (Ptr p = lookup(old_lookup))
+    // Infallibly rekey one entry if present, and return whether that happened.
+    bool rekeyAs(const Lookup &old_lookup, const Lookup &new_lookup, const Key &new_key) {
+        if (Ptr p = lookup(old_lookup)) {
             impl.rekeyAndMaybeRehash(p, new_lookup, new_key);
+            return true;
+        }
+        return false;
     }
 
     // HashMap is movable
@@ -438,7 +441,7 @@ class HashSet
     /************************************************** Shorthand operations */
 
     bool has(const Lookup &l) const {
-        return impl.lookup(l) != nullptr;
+        return impl.lookup(l).found();
     }
 
     // Add |u| if it is not present already. Return false on oom.
@@ -471,10 +474,13 @@ class HashSet
             rekeyAs(old_value, new_value, new_value);
     }
 
-    // Infallibly rekey one entry, if present.
-    void rekeyAs(const Lookup &old_lookup, const Lookup &new_lookup, const T &new_value) {
-        if (Ptr p = lookup(old_lookup))
+    // Infallibly rekey one entry if present, and return whether that happened.
+    bool rekeyAs(const Lookup &old_lookup, const Lookup &new_lookup, const T &new_value) {
+        if (Ptr p = lookup(old_lookup)) {
             impl.rekeyAndMaybeRehash(p, new_lookup, new_value);
+            return true;
+        }
+        return false;
     }
 
     // Infallibly rekey one entry with a new key that is equivalent.
@@ -761,8 +767,6 @@ class HashTable : private AllocPolicy
     class Ptr
     {
         friend class HashTable;
-        typedef void (Ptr::* ConvertibleToBool)();
-        void nonNull() {}
 
         Entry *entry_;
 #ifdef JS_DEBUG
@@ -794,8 +798,8 @@ class HashTable : private AllocPolicy
             return entry_->isLive();
         }
 
-        operator ConvertibleToBool() const {
-            return found() ? &Ptr::nonNull : 0;
+        explicit operator bool() const {
+            return found();
         }
 
         bool operator==(const Ptr &rhs) const {
@@ -1116,7 +1120,7 @@ class HashTable : private AllocPolicy
         // Reject all lengths whose initial computed capacity would exceed
         // sMaxCapacity.  Round that maximum length down to the nearest power
         // of two for speedier code.
-        if (length > sMaxInit) {
+        if (MOZ_UNLIKELY(length > sMaxInit)) {
             this->reportAllocOverflow();
             return false;
         }
@@ -1324,7 +1328,7 @@ class HashTable : private AllocPolicy
         uint32_t oldCap = capacity();
         uint32_t newLog2 = sHashBits - hashShift + deltaLog2;
         uint32_t newCapacity = JS_BIT(newLog2);
-        if (newCapacity > sMaxCapacity) {
+        if (MOZ_UNLIKELY(newCapacity > sMaxCapacity)) {
             this->reportAllocOverflow();
             return RehashFailed;
         }

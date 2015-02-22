@@ -95,7 +95,7 @@ Response::Redirect(const GlobalObject& aGlobal, const nsAString& aUrl,
   }
 
   if (aStatus != 301 && aStatus != 302 && aStatus != 303 && aStatus != 307 && aStatus != 308) {
-    aRv.Throw(NS_ERROR_RANGE_ERR);
+    aRv.ThrowRangeError(MSG_INVALID_REDIRECT_STATUSCODE_ERROR);
     return nullptr;
   }
 
@@ -122,7 +122,7 @@ Response::Constructor(const GlobalObject& aGlobal,
                       const ResponseInit& aInit, ErrorResult& aRv)
 {
   if (aInit.mStatus < 200 || aInit.mStatus > 599) {
-    aRv.Throw(NS_ERROR_RANGE_ERR);
+    aRv.ThrowRangeError(MSG_INVALID_RESPONSE_STATUSCODE_ERROR);
     return nullptr;
   }
 
@@ -190,19 +190,23 @@ Response::Constructor(const GlobalObject& aGlobal,
   return r.forget();
 }
 
-// FIXME(nsm): Bug 1073231: This is currently unspecced!
 already_AddRefed<Response>
-Response::Clone()
+Response::Clone(ErrorResult& aRv) const
 {
-  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(mOwner);
-  nsRefPtr<Response> response = new Response(global, mInternalResponse);
+  if (BodyUsed()) {
+    aRv.ThrowTypeError(MSG_FETCH_BODY_CONSUMED_ERROR);
+    return nullptr;
+  }
+
+  nsRefPtr<InternalResponse> ir = mInternalResponse->Clone();
+  nsRefPtr<Response> response = new Response(mOwner, ir);
   return response.forget();
 }
 
 void
 Response::SetBody(nsIInputStream* aBody)
 {
-  // FIXME(nsm): Do we flip bodyUsed here?
+  MOZ_ASSERT(!BodyUsed());
   mInternalResponse->SetBody(aBody);
 }
 
@@ -214,6 +218,19 @@ Response::Headers_()
   }
 
   return mHeaders;
+}
+
+void
+Response::SetFinalURL(bool aFinalURL, ErrorResult& aRv)
+{
+  nsCString url;
+  mInternalResponse->GetUrl(url);
+  if (url.IsEmpty()) {
+    aRv.ThrowTypeError(MSG_RESPONSE_URL_IS_NULL);
+    return;
+  }
+
+  mInternalResponse->SetFinalURL(aFinalURL);
 }
 } // namespace dom
 } // namespace mozilla

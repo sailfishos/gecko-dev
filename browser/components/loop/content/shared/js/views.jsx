@@ -8,11 +8,13 @@
 /* global loop:true, React */
 var loop = loop || {};
 loop.shared = loop.shared || {};
-loop.shared.views = (function(_, OT, l10n) {
+loop.shared.views = (function(_, l10n) {
   "use strict";
 
+  var sharedActions = loop.shared.actions;
   var sharedModels = loop.shared.models;
   var sharedMixins = loop.shared.mixins;
+  var SCREEN_SHARE_STATES = loop.shared.utils.SCREEN_SHARE_STATES;
 
   /**
    * Media control button.
@@ -46,6 +48,7 @@ loop.shared.views = (function(_, OT, l10n) {
       var classesObj = {
         "btn": true,
         "media-control": true,
+        "transparent-button": true,
         "local-media": this.props.scope === "local",
         "muted": !this.props.enabled,
         "hide": !this.props.visible
@@ -73,6 +76,96 @@ loop.shared.views = (function(_, OT, l10n) {
   });
 
   /**
+   * Screen sharing control button.
+   *
+   * Required props:
+   * - {loop.Dispatcher} dispatcher  The dispatcher instance
+   * - {Boolean}         visible     Set to true to display the button
+   * - {String}          state       One of the screen sharing states, see
+   *                                 loop.shared.utils.SCREEN_SHARE_STATES
+   */
+  var ScreenShareControlButton = React.createClass({
+    mixins: [sharedMixins.DropdownMenuMixin],
+
+    propTypes: {
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
+      visible: React.PropTypes.bool.isRequired,
+      state: React.PropTypes.string.isRequired,
+    },
+
+    handleClick: function() {
+      if (this.props.state === SCREEN_SHARE_STATES.ACTIVE) {
+        this.props.dispatcher.dispatch(
+          new sharedActions.EndScreenShare({}));
+      } else {
+        this.toggleDropdownMenu();
+      }
+    },
+
+    _startScreenShare: function(type) {
+      this.props.dispatcher.dispatch(new sharedActions.StartScreenShare({
+        type: type
+      }));
+    },
+
+    _handleShareTabs: function() {
+      this._startScreenShare("browser");
+    },
+
+    _handleShareWindows: function() {
+      this._startScreenShare("window");
+    },
+
+    _getTitle: function() {
+      var prefix = this.props.state === SCREEN_SHARE_STATES.ACTIVE ?
+        "active" : "inactive";
+
+      return l10n.get(prefix + "_screenshare_button_title");
+    },
+
+    render: function() {
+      if (!this.props.visible) {
+        return null;
+      }
+
+      var cx = React.addons.classSet;
+
+      var isActive = this.props.state === SCREEN_SHARE_STATES.ACTIVE;
+      var screenShareClasses = cx({
+        "btn": true,
+        "btn-screen-share": true,
+        "transparent-button": true,
+        "menu-showing": this.state.showMenu,
+        "active": isActive,
+        "disabled": this.props.state === SCREEN_SHARE_STATES.PENDING
+      });
+      var dropdownMenuClasses = cx({
+        "native-dropdown-menu": true,
+        "conversation-window-dropdown": true,
+        "visually-hidden": !this.state.showMenu
+      });
+
+      return (
+        <div>
+          <button className={screenShareClasses}
+                  onClick={this.handleClick}
+                  title={this._getTitle()}>
+            {isActive ? null : <span className="chevron"/>}
+          </button>
+          <ul ref="menu" className={dropdownMenuClasses}>
+            <li onClick={this._handleShareTabs} className="disabled">
+              {l10n.get("share_tabs_button_title")}
+            </li>
+            <li onClick={this._handleShareWindows}>
+              {l10n.get("share_windows_button_title")}
+            </li>
+          </ul>
+        </div>
+      );
+    }
+  });
+
+  /**
    * Conversation controls.
    */
   var ConversationToolbar = React.createClass({
@@ -80,13 +173,16 @@ loop.shared.views = (function(_, OT, l10n) {
       return {
         video: {enabled: true, visible: true},
         audio: {enabled: true, visible: true},
+        screenShare: {state: SCREEN_SHARE_STATES.INACTIVE, visible: false},
         enableHangup: true
       };
     },
 
     propTypes: {
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
       video: React.PropTypes.object.isRequired,
       audio: React.PropTypes.object.isRequired,
+      screenShare: React.PropTypes.object,
       hangup: React.PropTypes.func.isRequired,
       publishStream: React.PropTypes.func.isRequired,
       hangupButtonLabel: React.PropTypes.string,
@@ -110,7 +206,6 @@ loop.shared.views = (function(_, OT, l10n) {
     },
 
     render: function() {
-      var cx = React.addons.classSet;
       return (
         <ul className="conversation-toolbar">
           <li className="conversation-toolbar-btn-box btn-hangup-entry">
@@ -131,6 +226,11 @@ loop.shared.views = (function(_, OT, l10n) {
                                 enabled={this.props.audio.enabled}
                                 visible={this.props.audio.visible}
                                 scope="local" type="audio" />
+          </li>
+          <li className="conversation-toolbar-btn-box btn-screen-share-entry">
+            <ScreenShareControlButton dispatcher={this.props.dispatcher}
+                                      visible={this.props.screenShare.visible}
+                                      state={this.props.screenShare.state} />
           </li>
         </ul>
       );
@@ -291,10 +391,10 @@ loop.shared.views = (function(_, OT, l10n) {
       /* jshint ignore:start */
       return (
         <div className="video-layout-wrapper">
-          <div className="conversation">
+          <div className="conversation in-call">
             <div className="media nested">
               <div className="video_wrapper remote_wrapper">
-                <div className="video_inner remote"></div>
+                <div className="video_inner remote focus-stream"></div>
               </div>
               <div className={localStreamClasses}></div>
             </div>
@@ -461,6 +561,7 @@ loop.shared.views = (function(_, OT, l10n) {
     ConversationView: ConversationView,
     ConversationToolbar: ConversationToolbar,
     MediaControlButton: MediaControlButton,
+    ScreenShareControlButton: ScreenShareControlButton,
     NotificationListView: NotificationListView
   };
-})(_, window.OT, navigator.mozL10n || document.mozL10n);
+})(_, navigator.mozL10n || document.mozL10n);

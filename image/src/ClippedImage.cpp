@@ -147,7 +147,8 @@ ClippedImage::ShouldClip()
       // If the clipping region is the same size as the underlying image we
       // don't have to do anything.
       mShouldClip.emplace(!mClip.IsEqualInterior(nsIntRect(0, 0, width, height)));
-    } else if (progressTracker && progressTracker->IsLoading()) {
+    } else if (progressTracker &&
+               !(progressTracker->GetProgress() & FLAG_LOAD_COMPLETE)) {
       // The image just hasn't finished loading yet. We don't yet know whether
       // clipping with be needed or not for now. Just return without memoizing
       // anything.
@@ -296,7 +297,7 @@ MustCreateSurface(gfxContext* aContext,
   return willTile || willResample;
 }
 
-NS_IMETHODIMP
+NS_IMETHODIMP_(DrawResult)
 ClippedImage::Draw(gfxContext* aContext,
                    const nsIntSize& aSize,
                    const ImageRegion& aRegion,
@@ -317,7 +318,9 @@ ClippedImage::Draw(gfxContext* aContext,
     // GetFrame will call DrawSingleTile internally.
     RefPtr<SourceSurface> surface =
       GetFrameInternal(aSize, aSVGContext, aWhichFrame, aFlags);
-    NS_ENSURE_TRUE(surface, NS_ERROR_FAILURE);
+    if (!surface) {
+      return DrawResult::TEMPORARY_ERROR;
+    }
 
     // Create a drawable from that surface.
     nsRefPtr<gfxSurfaceDrawable> drawable =
@@ -327,7 +330,7 @@ ClippedImage::Draw(gfxContext* aContext,
     gfxUtils::DrawPixelSnapped(aContext, drawable, aSize, aRegion,
                                SurfaceFormat::B8G8R8A8, aFilter);
 
-    return NS_OK;
+    return DrawResult::SUCCESS;
   }
 
   return DrawSingleTile(aContext, aSize, aRegion, aWhichFrame,
@@ -351,7 +354,7 @@ UnclipViewport(const SVGImageContext& aOldContext,
                          aOldContext.GetPreserveAspectRatio());
 }
 
-nsresult
+DrawResult
 ClippedImage::DrawSingleTile(gfxContext* aContext,
                              const nsIntSize& aSize,
                              const ImageRegion& aRegion,

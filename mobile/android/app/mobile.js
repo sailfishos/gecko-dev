@@ -257,6 +257,13 @@ pref("browser.search.order.1", "chrome://browser/locale/region.properties");
 pref("browser.search.order.2", "chrome://browser/locale/region.properties");
 pref("browser.search.order.3", "chrome://browser/locale/region.properties");
 
+// Market-specific search defaults (US market only)
+pref("browser.search.geoSpecificDefaults", true);
+pref("browser.search.defaultenginename.US", "chrome://browser/locale/region.properties");
+pref("browser.search.order.US.1", "chrome://browser/locale/region.properties");
+pref("browser.search.order.US.2", "chrome://browser/locale/region.properties");
+pref("browser.search.order.US.3", "chrome://browser/locale/region.properties");
+
 // disable updating
 pref("browser.search.update", false);
 
@@ -271,17 +278,16 @@ pref("browser.search.jarURIs", "chrome://browser/locale/searchplugins/");
 // tell the search service that we don't really expose the "current engine"
 pref("browser.search.noCurrentEngine", true);
 
-// disable the search service geoIP check
-pref("browser.search.geoip.url", "");
-
 // Control media casting & mirroring features
 pref("browser.casting.enabled", true);
-pref("browser.mirroring.enabled", true);
 #ifdef RELEASE_BUILD
 // Roku does not yet support mirroring in production
 pref("browser.mirroring.enabled.roku", false);
+// Chromecast mirroring is broken (bug 1131084)
+pref("browser.mirroring.enabled", false);
 #else
 pref("browser.mirroring.enabled.roku", true);
+pref("browser.mirroring.enabled", true);
 #endif
 
 // Enable sparse localization by setting a few package locale overrides
@@ -395,6 +401,9 @@ pref("font.size.inflation.minTwips", 120);
 // When true, zooming will be enabled on all sites, even ones that declare user-scalable=no.
 pref("browser.ui.zoom.force-user-scalable", false);
 
+pref("ui.zoomedview.enabled", false);
+pref("ui.zoomedview.limitReadableSize", 8);  // value in layer pixels
+
 pref("ui.touch.radius.enabled", false);
 pref("ui.touch.radius.leftmm", 3);
 pref("ui.touch.radius.topmm", 5);
@@ -498,14 +507,13 @@ pref("app.update.timerMinimumDelay", 30); // seconds
 // used by update service to decide whether or not to
 // automatically download an update
 pref("app.update.autodownload", "wifi");
+pref("app.update.url.android", "https://aus4.mozilla.org/update/4/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/%MOZ_VERSION%/update.xml");
 
 #ifdef MOZ_UPDATER
 /* prefs used specifically for updating the app */
 pref("app.update.enabled", false);
 pref("app.update.channel", "@MOZ_UPDATE_CHANNEL@");
 
-// If you are looking for app.update.url, we no longer use it.
-// See mobile/android/base/updater/UpdateServiceHelper.java
 #endif
 
 // replace newlines with spaces on paste into single-line text boxes
@@ -842,5 +850,16 @@ pref("device.storage.enabled", true);
 // Enable meta-viewport support for font inflation code
 pref("dom.meta-viewport.enabled", true);
 
-// Enable the OpenH264 plugin support in the addon manager.
-pref("media.gmp-gmpopenh264.provider.enabled", true);
+// Enable GMP support in the addon manager.
+pref("media.gmp-provider.enabled", true);
+
+// The default color scheme in reader mode (light, dark, auto)
+// auto = color automatically adjusts according to ambient light level
+// (auto only works on platforms where the 'devicelight' event is enabled)
+pref("reader.color_scheme", "auto");
+
+// Color scheme values available in reader mode UI.
+pref("reader.color_scheme.values", "[\"light\",\"dark\",\"auto\"]");
+
+// Whether to use a vertical or horizontal toolbar.
+pref("reader.toolbar.vertical", false);

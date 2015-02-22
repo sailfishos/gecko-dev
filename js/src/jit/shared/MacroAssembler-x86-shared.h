@@ -213,17 +213,17 @@ class MacroAssemblerX86Shared : public Assembler
     }
     void atomic_cmpxchg8(Register newval, const Operand &addr, Register oldval_and_result) {
         // %eax must be explicitly provided for calling clarity.
-        MOZ_ASSERT(oldval_and_result.code() == X86Registers::eax);
+        MOZ_ASSERT(oldval_and_result.code() == X86Encoding::rax);
         lock_cmpxchg8(newval, addr);
     }
     void atomic_cmpxchg16(Register newval, const Operand &addr, Register oldval_and_result) {
         // %eax must be explicitly provided for calling clarity.
-        MOZ_ASSERT(oldval_and_result.code() == X86Registers::eax);
+        MOZ_ASSERT(oldval_and_result.code() == X86Encoding::rax);
         lock_cmpxchg16(newval, addr);
     }
     void atomic_cmpxchg32(Register newval, const Operand &addr, Register oldval_and_result) {
         // %eax must be explicitly provided for calling clarity.
-        MOZ_ASSERT(oldval_and_result.code() == X86Registers::eax);
+        MOZ_ASSERT(oldval_and_result.code() == X86Encoding::rax);
         lock_cmpxchg32(newval, addr);
     }
 
@@ -650,6 +650,48 @@ class MacroAssemblerX86Shared : public Assembler
         Condition cond = testDoubleTruthy(truthy, reg);
         j(cond, label);
     }
+
+    // Class which ensures that registers used in byte ops are compatible with
+    // such instructions, even if the original register passed in wasn't. This
+    // only applies to x86, as on x64 all registers are valid single byte regs.
+    // This doesn't lead to great code but helps to simplify code generation.
+    //
+    // Note that this can currently only be used in cases where the register is
+    // read from by the guarded instruction, not written to.
+    class AutoEnsureByteRegister {
+        MacroAssemblerX86Shared *masm;
+        Register original_;
+        Register substitute_;
+
+      public:
+        template <typename T>
+        AutoEnsureByteRegister(MacroAssemblerX86Shared *masm, T address, Register reg)
+          : masm(masm), original_(reg)
+        {
+            GeneralRegisterSet singleByteRegs(Registers::SingleByteRegs);
+            if (singleByteRegs.has(reg)) {
+                substitute_ = reg;
+            } else {
+                MOZ_ASSERT(address.base != StackPointer);
+                do {
+                    substitute_ = singleByteRegs.takeAny();
+                } while (Operand(address).containsReg(substitute_));
+
+                masm->push(substitute_);
+                masm->mov(reg, substitute_);
+            }
+        }
+
+        ~AutoEnsureByteRegister() {
+            if (original_ != substitute_)
+                masm->pop(substitute_);
+        }
+
+        Register reg() {
+            return substitute_;
+        }
+    };
+
     void load8ZeroExtend(const Address &src, Register dest) {
         movzbl(Operand(src), dest);
     }
@@ -662,9 +704,14 @@ class MacroAssemblerX86Shared : public Assembler
     void load8SignExtend(const BaseIndex &src, Register dest) {
         movsbl(Operand(src), dest);
     }
-    template <typename S, typename T>
-    void store8(const S &src, const T &dest) {
+    template <typename T>
+    void store8(Imm32 src, const T &dest) {
         movb(src, Operand(dest));
+    }
+    template <typename T>
+    void store8(Register src, const T &dest) {
+        AutoEnsureByteRegister ensure(this, dest, src);
+        movb(ensure.reg(), Operand(dest));
     }
     template <typename T>
     void compareExchange8ZeroExtend(const T &mem, Register oldval, Register newval, Register output) {

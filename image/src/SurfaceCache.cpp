@@ -11,7 +11,7 @@
 
 #include <algorithm>
 #include "mozilla/Assertions.h"
-#include "mozilla/Attributes.h"  // for MOZ_THIS_IN_INITIALIZER_LIST
+#include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Move.h"
@@ -161,6 +161,7 @@ public:
   CostEntry GetCostEntry() { return image::CostEntry(this, mCost); }
   nsExpirationState* GetExpirationState() { return &mExpirationState; }
   Lifetime GetLifetime() const { return mLifetime; }
+  bool IsDecoded() const { return mSurface->IsImageComplete(); }
 
   // A helper type used by SurfaceCacheImpl::SizeOfSurfacesSum.
   struct SizeOfSurfacesSum
@@ -315,6 +316,17 @@ private:
     }
 
     MOZ_ASSERT(context->mBestMatch, "Should have a current best match");
+
+    // Always prefer completely decoded surfaces.
+    bool bestMatchIsDecoded = context->mBestMatch->IsDecoded();
+    if (bestMatchIsDecoded && !aSurface->IsDecoded()) {
+      return PL_DHASH_NEXT;
+    }
+    if (!bestMatchIsDecoded && aSurface->IsDecoded()) {
+      context->mBestMatch = aSurface;
+      return PL_DHASH_NEXT;
+    }
+
     SurfaceKey bestMatchKey = context->mBestMatch->GetSurfaceKey();
 
     // Compare sizes. We use an area-based heuristic here instead of computing a
@@ -362,7 +374,7 @@ public:
   SurfaceCacheImpl(uint32_t aSurfaceCacheExpirationTimeMS,
                    uint32_t aSurfaceCacheDiscardFactor,
                    uint32_t aSurfaceCacheSize)
-    : mExpirationTracker(this, aSurfaceCacheExpirationTimeMS)
+    : mExpirationTracker(aSurfaceCacheExpirationTimeMS)
     , mMemoryPressureObserver(new MemoryPressureObserver)
     , mMutex("SurfaceCache")
     , mDiscardFactor(aSurfaceCacheDiscardFactor)
@@ -742,6 +754,8 @@ public:
                  nsISupports*             aData,
                  bool                     aAnonymize) MOZ_OVERRIDE
   {
+    MutexAutoLock lock(mMutex);
+
     // We have explicit memory reporting for the surface cache which is more
     // accurate than the cost metrics we report here, but these metrics are
     // still useful to report, since they control the cache's behavior.
@@ -809,21 +823,18 @@ private:
 
   struct SurfaceTracker : public nsExpirationTracker<CachedSurface, 2>
   {
-    SurfaceTracker(SurfaceCacheImpl* aCache, uint32_t aSurfaceCacheExpirationTimeMS)
+    explicit SurfaceTracker(uint32_t aSurfaceCacheExpirationTimeMS)
       : nsExpirationTracker<CachedSurface, 2>(aSurfaceCacheExpirationTimeMS)
-      , mCache(aCache)
     { }
 
   protected:
     virtual void NotifyExpired(CachedSurface* aSurface) MOZ_OVERRIDE
     {
-      if (mCache) {
-        mCache->Remove(aSurface);
+      if (sInstance) {
+        MutexAutoLock lock(sInstance->GetMutex());
+        sInstance->Remove(aSurface);
       }
     }
-
-  private:
-    SurfaceCacheImpl* const mCache;  // Weak pointer to owner.
   };
 
   struct MemoryPressureObserver : public nsIObserver
@@ -835,6 +846,7 @@ private:
                        const char16_t*) MOZ_OVERRIDE
     {
       if (sInstance && strcmp(aTopic, "memory-pressure") == 0) {
+        MutexAutoLock lock(sInstance->GetMutex());
         sInstance->DiscardForMemoryPressure();
       }
       return NS_OK;

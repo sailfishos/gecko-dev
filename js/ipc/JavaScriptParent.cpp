@@ -9,8 +9,8 @@
 #include "mozilla/dom/ContentParent.h"
 #include "nsJSUtils.h"
 #include "jsfriendapi.h"
-#include "jsproxy.h"
 #include "jswrapper.h"
+#include "js/Proxy.h"
 #include "HeapAPI.h"
 #include "xpcprivate.h"
 #include "mozilla/Casting.h"
@@ -75,4 +75,21 @@ JavaScriptParent::CloneProtocol(Channel* aChannel, ProtocolCloneContext* aCtx)
         return nullptr;
     }
     return actor.forget();
+}
+
+PJavaScriptParent *
+mozilla::jsipc::NewJavaScriptParent(JSRuntime *rt)
+{
+    JavaScriptParent *parent = new JavaScriptParent(rt);
+    if (!parent->init()) {
+        delete parent;
+        return nullptr;
+    }
+    return parent;
+}
+
+void
+mozilla::jsipc::ReleaseJavaScriptParent(PJavaScriptParent *parent)
+{
+    static_cast<JavaScriptParent *>(parent)->decref();
 }

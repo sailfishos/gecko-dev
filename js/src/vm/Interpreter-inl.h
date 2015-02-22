@@ -10,7 +10,6 @@
 #include "vm/Interpreter.h"
 
 #include "jscompartment.h"
-#include "jsinfer.h"
 #include "jsnum.h"
 #include "jsstr.h"
 
@@ -18,7 +17,6 @@
 #include "vm/ArgumentsObject.h"
 
 #include "jsatominlines.h"
-#include "jsinferinlines.h"
 #include "jsobjinlines.h"
 
 #include "vm/ScopeObject-inl.h"
@@ -293,7 +291,7 @@ SetAliasedVarOperation(JSContext *cx, JSScript *script, jsbytecode *pc,
 
     // Avoid computing the name if no type updates are needed, as this may be
     // expensive on scopes with large numbers of variables.
-    PropertyName *name = obj.hasSingletonType()
+    PropertyName *name = obj.isSingleton()
                          ? ScopeCoordinateName(cx->runtime()->scopeCoordinateNameCache, script, pc)
                          : nullptr;
 
@@ -349,9 +347,9 @@ DefVarOrConstOperation(JSContext *cx, HandleObject varobj, HandlePropertyName dn
          * Extension: ordinarily we'd be done here -- but for |const|.  If we
          * see a redeclaration that's |const|, we consider it a conflict.
          */
-        unsigned oldAttrs;
         RootedId id(cx, NameToId(dn));
-        if (!GetPropertyAttributes(cx, varobj, id, &oldAttrs))
+        Rooted<PropertyDescriptor> desc(cx);
+        if (!GetOwnPropertyDescriptor(cx, obj2, id, &desc))
             return false;
 
         JSAutoByteString bytes;
@@ -359,9 +357,7 @@ DefVarOrConstOperation(JSContext *cx, HandleObject varobj, HandlePropertyName dn
             JS_ALWAYS_FALSE(JS_ReportErrorFlagsAndNumber(cx, JSREPORT_ERROR,
                                                          js_GetErrorMessage,
                                                          nullptr, JSMSG_REDECLARED_VAR,
-                                                         (oldAttrs & JSPROP_READONLY)
-                                                         ? "const"
-                                                         : "var",
+                                                         desc.isReadonly() ? "const" : "var",
                                                          bytes.ptr()));
         }
         return false;

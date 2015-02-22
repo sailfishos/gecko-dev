@@ -11,7 +11,6 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PodOperations.h"
 
-#include "jsinfer.h"
 #include "jstypes.h"
 
 #include "gc/Heap.h"
@@ -20,6 +19,7 @@
 #include "jit/IonTypes.h"
 #include "js/UbiNode.h"
 #include "vm/TraceLogging.h"
+#include "vm/TypeInference.h"
 
 namespace js {
 
@@ -31,6 +31,8 @@ class MacroAssembler;
 class CodeOffsetLabel;
 class PatchableBackedge;
 class IonBuilder;
+
+typedef Vector<JSObject *, 4, JitAllocPolicy> ObjectVector;
 
 class JitCode : public gc::TenuredCell
 {
@@ -111,6 +113,8 @@ class JitCode : public gc::TenuredCell
     void setInvalidated() {
         invalidated_ = true;
     }
+
+    void fixupNurseryObjects(JSContext *cx, const ObjectVector &nurseryObjects);
 
     void setHasBytecodeMap() {
         hasBytecodeMap_ = true;
@@ -261,7 +265,7 @@ struct IonScript
     uint32_t invalidationCount_;
 
     // Identifier of the compilation which produced this code.
-    types::RecompileInfo recompileInfo_;
+    RecompileInfo recompileInfo_;
 
     // The optimization level this script was compiled in.
     OptimizationLevel optimizationLevel_;
@@ -328,7 +332,7 @@ struct IonScript
     // Do not call directly, use IonScript::New. This is public for cx->new_.
     IonScript();
 
-    static IonScript *New(JSContext *cx, types::RecompileInfo recompileInfo,
+    static IonScript *New(JSContext *cx, RecompileInfo recompileInfo,
                           uint32_t frameSlots, uint32_t argumentSlots, uint32_t frameSize,
                           size_t snapshotsListSize, size_t snapshotsRVATableSize,
                           size_t recoversSize, size_t bailoutEntries,
@@ -537,10 +541,10 @@ struct IonScript
         if (!invalidationCount_)
             Destroy(fop, this);
     }
-    const types::RecompileInfo& recompileInfo() const {
+    const RecompileInfo& recompileInfo() const {
         return recompileInfo_;
     }
-    types::RecompileInfo& recompileInfoRef() {
+    RecompileInfo& recompileInfoRef() {
         return recompileInfo_;
     }
     OptimizationLevel optimizationLevel() const {

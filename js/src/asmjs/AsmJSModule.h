@@ -779,6 +779,7 @@ class AsmJSModule
     struct StaticLinkData
     {
         uint32_t interruptExitOffset;
+        uint32_t outOfBoundsExitOffset;
         RelativeLinkVector relativeLinks;
         AbsoluteLinkArray absoluteLinks;
 
@@ -841,6 +842,7 @@ class AsmJSModule
     PropertyName *                        bufferArgumentName_;
     uint8_t *                             code_;
     uint8_t *                             interruptExit_;
+    uint8_t *                             outOfBoundsExit_;
     StaticLinkData                        staticLinkData_;
     HeapPtrArrayBufferObjectMaybeShared   maybeHeap_;
     AsmJSModule **                        prevLinked_;
@@ -1281,7 +1283,8 @@ class AsmJSModule
     bool finish(ExclusiveContext *cx,
                 frontend::TokenStream &tokenStream,
                 jit::MacroAssembler &masm,
-                const jit::Label &interruptLabel);
+                const jit::Label &interruptLabel,
+                const jit::Label &outOfBoundsLabel);
 
     /*************************************************************************/
     // These accessor functions can be used after finish():
@@ -1546,6 +1549,10 @@ class AsmJSModule
     uint8_t *interruptExit() const {
         MOZ_ASSERT(isDynamicallyLinked());
         return interruptExit_;
+    }
+    uint8_t *outOfBoundsExit() const {
+        MOZ_ASSERT(isDynamicallyLinked());
+        return outOfBoundsExit_;
     }
     uint8_t *maybeHeap() const {
         MOZ_ASSERT(isDynamicallyLinked());

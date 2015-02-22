@@ -1362,7 +1362,14 @@ function getLocale() {
     return gLocale;
 
   for (let res of ['app', 'gre']) {
-    var channel = Services.io.newChannel("resource://" + res + "/" + FILE_UPDATE_LOCALE, null, null);
+    var channel = Services.io.newChannel2("resource://" + res + "/" + FILE_UPDATE_LOCALE,
+                                          null,
+                                          null,
+                                          null,      // aLoadingNode
+                                          Services.scriptSecurityManager.getSystemPrincipal(),
+                                          null,      // aTriggeringPrincipal
+                                          Ci.nsILoadInfo.SEC_NORMAL,
+                                          Ci.nsIContentPolicy.TYPE_DATAREQUEST);
     try {
       var inputStream = channel.open();
       gLocale = readStringFromInputStream(inputStream);
@@ -2995,7 +3002,7 @@ UpdateService.prototype = {
         if (status == STATE_NONE)
           cleanupActiveUpdate();
         self._update = null;
-        this._backgroundUpdateCheckCodePing(PING_BGUC_CHECK_NO_INCOMPAT);
+        self._backgroundUpdateCheckCodePing(PING_BGUC_CHECK_NO_INCOMPAT);
       }
     });
   },
@@ -3523,7 +3530,11 @@ UpdateManager.prototype = {
     }
   },
 
-  refreshUpdateStatus: function UM_refreshUpdateStatus(update) {
+  /**
+   * See nsIUpdateService.idl
+   */
+  refreshUpdateStatus: function UM_refreshUpdateStatus(aUpdate) {
+    var update = this._activeUpdate ? this._activeUpdate : aUpdate;
     var updateSucceeded = true;
     var status = readStatusFile(getUpdatesDir());
     var ary = status.split(":");

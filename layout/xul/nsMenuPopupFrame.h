@@ -116,8 +116,6 @@ enum FlipType {
 #define POPUPPOSITION_HFLIP(v) (v ^ 1)
 #define POPUPPOSITION_VFLIP(v) (v ^ 2)
 
-#define INC_TYP_INTERVAL  1000  // 1s. If the interval between two keypresses is shorter than this, 
-                                //   treat as a continue typing
 // XXX, kyle.yuan@sun.com, there are 4 definitions for the same purpose:
 //  nsMenuPopupFrame.h, nsListControlFrame.cpp, listbox.xml, tree.xml
 //  need to find a good place to put them together.
@@ -366,7 +364,9 @@ public:
   // Later, when bug 357725 is implemented, we can make this adjust aChange by
   // the amount that the side can be resized, so that minimums and maximums
   // can be taken into account.
-  void CanAdjustEdges(int8_t aHorizontalSide, int8_t aVerticalSide, nsIntPoint& aChange);
+  void CanAdjustEdges(int8_t aHorizontalSide,
+                      int8_t aVerticalSide,
+                      mozilla::LayoutDeviceIntPoint& aChange);
 
   // Return true if the popup is positioned relative to an anchor.
   bool IsAnchored() const { return mScreenXPos == -1 && mScreenYPos == -1; }
@@ -543,6 +543,9 @@ protected:
   bool mVFlip;
 
   static int8_t sDefaultLevelIsTop;
+
+  // If 0, never timed out.  Otherwise, the value is in milliseconds.
+  static uint32_t sTimeoutOfIncrementalSearch;
 }; // class nsMenuPopupFrame
 
 #endif

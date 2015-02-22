@@ -74,7 +74,6 @@ class nsIBaseWindow;
 class nsIContent;
 class nsICSSDeclaration;
 class nsIDocShellTreeOwner;
-class nsIDOMCrypto;
 class nsIDOMOfflineResourceList;
 class nsIScrollableFrame;
 class nsIControllers;
@@ -101,6 +100,7 @@ class DOMEventTargetHelper;
 namespace dom {
 class BarProp;
 class Console;
+class Crypto;
 class External;
 class Function;
 class Gamepad;
@@ -491,7 +491,7 @@ public:
 
   void GetSupportedNames(nsTArray<nsString>& aNames);
 
-  static bool IsChromeWindow(JSContext* /* unused */, JSObject* aObj);
+  static bool IsPrivilegedChromeWindow(JSContext* /* unused */, JSObject* aObj);
 
   static bool IsShowModalDialogEnabled(JSContext* /* unused */ = nullptr,
                                        JSObject* /* unused */ = nullptr);
@@ -977,11 +977,6 @@ public:
     GetDefaultComputedStyle(mozilla::dom::Element& aElt,
                             const nsAString& aPseudoElt,
                             mozilla::ErrorResult& aError);
-  mozilla::dom::indexedDB::IDBFactory*
-    GetMozIndexedDB(mozilla::ErrorResult& aError)
-  {
-    return GetIndexedDB(aError);
-  }
   int32_t MozRequestAnimationFrame(nsIFrameRequestCallback* aRequestCallback,
                                    mozilla::ErrorResult& aError);
   void MozCancelAnimationFrame(int32_t aHandle, mozilla::ErrorResult& aError)
@@ -995,7 +990,7 @@ public:
   }
   int64_t GetMozAnimationStartTime(mozilla::ErrorResult& aError);
   void SizeToContent(mozilla::ErrorResult& aError);
-  nsIDOMCrypto* GetCrypto(mozilla::ErrorResult& aError);
+  mozilla::dom::Crypto* GetCrypto(mozilla::ErrorResult& aError);
   nsIControllers* GetControllers(mozilla::ErrorResult& aError);
   mozilla::dom::Element* GetRealFrameElement(mozilla::ErrorResult& aError);
   float GetMozInnerScreenX(mozilla::ErrorResult& aError);
@@ -1556,7 +1551,7 @@ protected:
   nsString                      mStatus;
   nsString                      mDefaultStatus;
   nsGlobalWindowObserver*       mObserver; // Inner windows only.
-  nsCOMPtr<nsIDOMCrypto>        mCrypto;
+  nsRefPtr<mozilla::dom::Crypto>  mCrypto;
   nsRefPtr<mozilla::dom::Console> mConsole;
   // We need to store an nsISupports pointer to this object because the
   // mozilla::dom::External class doesn't exist on b2g and using the type
@@ -1718,8 +1713,8 @@ protected:
 
   ~nsGlobalChromeWindow()
   {
-    NS_ABORT_IF_FALSE(mCleanMessageManager,
-                      "chrome windows may always disconnect the msg manager");
+    MOZ_ASSERT(mCleanMessageManager,
+               "chrome windows may always disconnect the msg manager");
 
     mGroupMessageManagers.EnumerateRead(DisconnectGroupMessageManager, nullptr);
     mGroupMessageManagers.Clear();

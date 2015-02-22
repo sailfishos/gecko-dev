@@ -147,6 +147,14 @@ class CodeGeneratorX86Shared : public CodeGeneratorShared
         emitBranch(cond, ifTrue, ifFalse);
     }
 
+    void testZeroEmitBranch(Assembler::Condition cond, Register reg,
+                            MBasicBlock *ifTrue, MBasicBlock *ifFalse)
+    {
+        MOZ_ASSERT(cond == Assembler::Equal || cond == Assembler::NotEqual);
+        masm.cmpPtr(reg, ImmWord(0));
+        emitBranch(cond, ifTrue, ifFalse);
+    }
+
     void emitTableSwitchDispatch(MTableSwitch *mir, Register index, Register base);
 
   public:
@@ -198,7 +206,7 @@ class CodeGeneratorX86Shared : public CodeGeneratorShared
     virtual void visitRound(LRound *lir);
     virtual void visitRoundF(LRoundF *lir);
     virtual void visitGuardShape(LGuardShape *guard);
-    virtual void visitGuardObjectType(LGuardObjectType *guard);
+    virtual void visitGuardObjectGroup(LGuardObjectGroup *guard);
     virtual void visitGuardClass(LGuardClass *guard);
     virtual void visitEffectiveAddress(LEffectiveAddress *ins);
     virtual void visitUDivOrMod(LUDivOrMod *ins);

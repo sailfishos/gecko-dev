@@ -352,6 +352,12 @@ public:
   static nsIntRect ToIntRect(const RECT& aRect);
 
   /**
+   * Helper used in invalidating flash plugin windows owned
+   * by low rights flash containers.
+   */
+  static void InvalidatePluginAsWorkaround(nsIWidget *aWidget, const nsIntRect &aRect);
+
+  /**
    * Returns true if the context or IME state is enabled.  Otherwise, false.
    */
   static bool IsIMEEnabled(const InputContext& aInputContext);
@@ -374,6 +380,7 @@ public:
   typedef HRESULT (WINAPI*DwmInvalidateIconicBitmapsProc)(HWND hWnd);
   typedef HRESULT (WINAPI*DwmDefWindowProcProc)(HWND hWnd, UINT msg, LPARAM lParam, WPARAM wParam, LRESULT *aRetValue);
   typedef HRESULT (WINAPI*DwmGetCompositionTimingInfoProc)(HWND hWnd, DWM_TIMING_INFO *info);
+  typedef HRESULT (WINAPI*DwmFlushProc)(void);
 
   static DwmExtendFrameIntoClientAreaProc dwmExtendFrameIntoClientAreaPtr;
   static DwmIsCompositionEnabledProc dwmIsCompositionEnabledPtr;
@@ -384,6 +391,7 @@ public:
   static DwmInvalidateIconicBitmapsProc dwmInvalidateIconicBitmapsPtr;
   static DwmDefWindowProcProc dwmDwmDefWindowProcPtr;
   static DwmGetCompositionTimingInfoProc dwmGetCompositionTimingInfoPtr;
+  static DwmFlushProc dwmFlushProcPtr;
 
   static void Initialize();
 

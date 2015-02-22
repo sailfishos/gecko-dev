@@ -416,17 +416,17 @@ class GCSchedulingTunables
  *   not all bad: minimizing size[allocated] also minimizes the chance of OOM
  *   and sweeping remains one of the hardest areas to further incrementalize.
  *
- *      MAYBEGC
- *      -------
+ *      EAGER_ALLOC_TRIGGER
+ *      -------------------
  *      Occurs when we return to the event loop and find our heap is getting
  *      largish, but before t[marking] OR t[sweeping] is too large for a
  *      responsive non-incremental GC. This is intended to be the common case
  *      in normal web applications: e.g. we just finished an event handler and
  *      the few objects we allocated when computing the new whatzitz have
  *      pushed us slightly over the limit. After this GC we rescale the new
- *      MAYBEGC trigger to 150% of size[retained] so that our non-incremental
- *      GC times will always be proportional to this size rather than being
- *      dominated by sweeping.
+ *      EAGER_ALLOC_TRIGGER trigger to 150% of size[retained] so that our
+ *      non-incremental GC times will always be proportional to this size
+ *      rather than being dominated by sweeping.
  *
  *      As a concession to mutators that allocate heavily during their startup
  *      phase, we have a highFrequencyGCMode that ups the growth rate to 300%
@@ -436,6 +436,14 @@ class GCSchedulingTunables
  *          Assumptions:
  *            -> Responsiveness is proportional to t[marking] + t[sweeping].
  *            -> size[retained] is proportional only to GC allocations.
+ *
+ *      PERIODIC_FULL_GC
+ *      ----------------
+ *      When we return to the event loop and it has been 20 seconds since we've
+ *      done a GC, we start an incremenal, all-zones, shrinking GC.
+ *
+ *          Assumptions:
+ *            -> Our triggers are incomplete.
  *
  *      ALLOC_TRIGGER (non-incremental)
  *      -------------------------------
@@ -459,6 +467,13 @@ class GCSchedulingTunables
  *      IGC can collect faster than the allocator generates garbage, even if
  *      the allocator does not return to the event loop frequently, we should
  *      not have to fall back to a non-incremental GC.
+ *
+ *      INCREMENTAL_TOO_SLOW
+ *      --------------------
+ *      Do a full, non-incremental GC if we overflow ALLOC_TRIGGER during an
+ *      incremental GC. When in the middle of an incremental GC, we suppress
+ *      our other triggers, so we need a way to backstop the IGC if the
+ *      mutator allocates faster than the IGC can clean things up.
  *
  *      TOO_MUCH_MALLOC
  *      ---------------
@@ -602,7 +617,7 @@ class GCRuntime
         gcstats::AutoPhase ap(stats, gcstats::PHASE_EVICT_NURSERY);
         minorGCImpl(reason, nullptr);
     }
-    bool gcIfNeeded(JSContext *cx = nullptr);
+    bool gcIfRequested(JSContext *cx = nullptr);
     void gc(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
     void startGC(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
     void gcSlice(JS::gcreason::Reason reason, int64_t millis = 0);
@@ -732,7 +747,7 @@ class GCRuntime
 
     void setMaxMallocBytes(size_t value);
     void resetMallocBytes();
-    bool isTooMuchMalloc() const { return mallocBytes <= 0; }
+    bool isTooMuchMalloc() const { return mallocBytesUntilGC <= 0; }
     void updateMallocCounter(JS::Zone *zone, size_t nbytes);
     void onTooMuchMalloc();
 
@@ -820,7 +835,13 @@ class GCRuntime
     void releaseHeldRelocatedArenas();
 
   private:
-    void minorGCImpl(JS::gcreason::Reason reason, Nursery::TypeObjectList *pretenureTypes);
+    enum IncrementalProgress
+    {
+        NotFinished = 0,
+        Finished
+    };
+
+    void minorGCImpl(JS::gcreason::Reason reason, Nursery::ObjectGroupList *pretenureGroups);
 
     // For ArenaLists::allocateFromArena()
     friend class ArenaLists;
@@ -831,6 +852,7 @@ class GCRuntime
 
     template <AllowGC allowGC>
     static void *refillFreeListFromMainThread(JSContext *cx, AllocKind thingKind);
+    static void *tryRefillFreeListFromMainThread(JSContext *cx, AllocKind thingKind);
     static void *refillFreeListOffMainThread(ExclusiveContext *cx, AllocKind thingKind);
 
     /*
@@ -860,7 +882,7 @@ class GCRuntime
     bool shouldPreserveJITCode(JSCompartment *comp, int64_t currentTime,
                                JS::gcreason::Reason reason);
     void bufferGrayRoots();
-    bool drainMarkStack(SliceBudget &sliceBudget, gcstats::Phase phase);
+    IncrementalProgress drainMarkStack(SliceBudget &sliceBudget, gcstats::Phase phase);
     template <class CompartmentIterT> void markWeakReferences(gcstats::Phase phase);
     void markWeakReferencesInCurrentGroup(gcstats::Phase phase);
     template <class ZoneIterT, class CompartmentIterT> void markGrayReferences(gcstats::Phase phase);
@@ -876,7 +898,7 @@ class GCRuntime
     void beginSweepingZoneGroup();
     bool shouldReleaseObservedTypes();
     void endSweepingZoneGroup();
-    bool sweepPhase(SliceBudget &sliceBudget);
+    IncrementalProgress sweepPhase(SliceBudget &sliceBudget);
     void endSweepPhase(bool lastGC);
     void sweepZones(FreeOp *fop, bool lastGC);
     void decommitAllWithoutUnlocking(const AutoLockGC &lock);
@@ -886,7 +908,7 @@ class GCRuntime
     void sweepBackgroundThings(ZoneList &zones, LifoAlloc &freeBlocks, ThreadType threadType);
     void assertBackgroundSweepingFinished();
     bool shouldCompact();
-    bool compactPhase(bool lastGC);
+    IncrementalProgress compactPhase(bool lastGC);
     void sweepTypesAfterCompacting(Zone *zone);
     void sweepZoneAfterCompacting(Zone *zone);
     ArenaHeader *relocateArenas();
@@ -904,8 +926,6 @@ class GCRuntime
     void computeNonIncrementalMarkingForValidation();
     void validateIncrementalMarking();
     void finishMarkingValidation();
-
-    void markConservativeStackRoots(JSTracer *trc, bool useSavedRoots);
 
 #ifdef DEBUG
     void checkForCompartmentMismatches();
@@ -1005,6 +1025,9 @@ class GCRuntime
     /* Whether all compartments are being collected in first GC slice. */
     bool isFull;
 
+    /* Whether the heap will be compacted at the end of GC. */
+    bool isCompacting;
+
     /* The invocation kind of the current GC, taken from the first slice. */
     JSGCInvocationKind invocationKind;
 
@@ -1093,10 +1116,15 @@ class GCRuntime
     unsigned generationalDisabled;
 
     /*
-     * Some code cannot tolerate compacting GC so it can be disabled with this
-     * counter.
+     * Whether compacting GC can is enabled globally.
      */
-    unsigned compactingDisabled;
+    bool compactingEnabled;
+
+    /*
+     * Some code cannot tolerate compacting GC so it can be disabled temporarily
+     * with AutoDisableCompactingGC which uses this counter.
+     */
+    unsigned compactingDisabledCount;
 
     /*
      * This is true if we are in the middle of a brain transplant (e.g.,
@@ -1166,11 +1194,11 @@ class GCRuntime
      * Malloc counter to measure memory pressure for GC scheduling. It runs
      * from maxMallocBytes down to zero.
      */
-    mozilla::Atomic<ptrdiff_t, mozilla::ReleaseAcquire> mallocBytes;
+    mozilla::Atomic<ptrdiff_t, mozilla::ReleaseAcquire> mallocBytesUntilGC;
 
     /*
-     * Whether a GC has been triggered as a result of mallocBytes falling
-     * below zero.
+     * Whether a GC has been triggered as a result of mallocBytesUntilGC
+     * falling below zero.
      */
     mozilla::Atomic<bool, mozilla::ReleaseAcquire> mallocGCTriggered;
 

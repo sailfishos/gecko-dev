@@ -54,7 +54,7 @@ NSSCertDBTrustDomain::NSSCertDBTrustDomain(SECTrustType certDBTrustType,
                                            OCSPFetching ocspFetching,
                                            OCSPCache& ocspCache,
              /*optional but shouldn't be*/ void* pinArg,
-                                           CertVerifier::ocsp_get_config ocspGETConfig,
+                                           CertVerifier::OcspGetConfig ocspGETConfig,
                                            CertVerifier::PinningMode pinningMode,
                                            bool forEV,
                               /*optional*/ const char* hostname,
@@ -257,18 +257,10 @@ NSSCertDBTrustDomain::GetCertTrust(EndEntityOrCA endEntityOrCA,
 }
 
 Result
-NSSCertDBTrustDomain::VerifySignedData(const SignedDataWithSignature& signedData,
-                                       Input subjectPublicKeyInfo)
-{
-  return ::mozilla::pkix::VerifySignedDataNSS(signedData, subjectPublicKeyInfo,
-                                              mMinimumNonECCBits, mPinArg);
-}
-
-Result
-NSSCertDBTrustDomain::DigestBuf(Input item,
+NSSCertDBTrustDomain::DigestBuf(Input item, DigestAlgorithm digestAlg,
                                 /*out*/ uint8_t* digestBuf, size_t digestBufLen)
 {
-  return ::mozilla::pkix::DigestBufNSS(item, digestBuf, digestBufLen);
+  return DigestBufNSS(item, digestAlg, digestBuf, digestBufLen);
 }
 
 
@@ -570,7 +562,7 @@ NSSCertDBTrustDomain::CheckRevocation(EndEntityOrCA endEntityOrCA,
     const SECItem* responseSECItem =
       DoOCSPRequest(arena.get(), url, &ocspRequestItem,
                     OCSPFetchingTypeToTimeoutTime(mOCSPFetching),
-                    mOCSPGetConfig == CertVerifier::ocsp_get_enabled);
+                    mOCSPGetConfig == CertVerifier::ocspGetEnabled);
     if (!responseSECItem) {
       rv = MapPRErrorCodeToResult(PR_GetError());
     } else if (response.Init(responseSECItem->data, responseSECItem->len)
@@ -721,10 +713,44 @@ NSSCertDBTrustDomain::IsChainValid(const DERArray& certArray, Time time)
 }
 
 Result
-NSSCertDBTrustDomain::CheckPublicKey(Input subjectPublicKeyInfo)
+NSSCertDBTrustDomain::CheckRSAPublicKeyModulusSizeInBits(
+  EndEntityOrCA /*endEntityOrCA*/, unsigned int modulusSizeInBits)
 {
-  return ::mozilla::pkix::CheckPublicKeyNSS(subjectPublicKeyInfo,
-                                            mMinimumNonECCBits);
+  if (modulusSizeInBits < mMinimumNonECCBits) {
+    return Result::ERROR_INADEQUATE_KEY_SIZE;
+  }
+  return Success;
+}
+
+Result
+NSSCertDBTrustDomain::VerifyRSAPKCS1SignedDigest(
+  const SignedDigest& signedDigest,
+  Input subjectPublicKeyInfo)
+{
+  return VerifyRSAPKCS1SignedDigestNSS(signedDigest, subjectPublicKeyInfo,
+                                       mPinArg);
+}
+
+Result
+NSSCertDBTrustDomain::CheckECDSACurveIsAcceptable(
+  EndEntityOrCA /*endEntityOrCA*/, NamedCurve curve)
+{
+  switch (curve) {
+    case NamedCurve::secp256r1: // fall through
+    case NamedCurve::secp384r1: // fall through
+    case NamedCurve::secp521r1:
+      return Success;
+  }
+
+  return Result::ERROR_UNSUPPORTED_ELLIPTIC_CURVE;
+}
+
+Result
+NSSCertDBTrustDomain::VerifyECDSASignedDigest(const SignedDigest& signedDigest,
+                                              Input subjectPublicKeyInfo)
+{
+  return VerifyECDSASignedDigestNSS(signedDigest, subjectPublicKeyInfo,
+                                    mPinArg);
 }
 
 namespace {

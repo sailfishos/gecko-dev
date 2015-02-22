@@ -189,7 +189,6 @@ class nsIDocumentLoaderFactory;
 #endif /* MOZ_XUL */
 
 #include "inDeepTreeWalker.h"
-#include "inFlasher.h"
 #include "inCSSValueSearch.h"
 #include "inDOMUtils.h"
 
@@ -249,6 +248,8 @@ static void Shutdown();
 #include "GMPService.h"
 
 #include "mozilla/dom/presentation/PresentationDeviceManager.h"
+
+#include "mozilla/TextInputProcessor.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -377,6 +378,7 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(TVTunerData)
 NS_GENERIC_FACTORY_CONSTRUCTOR(TVChannelData)
 NS_GENERIC_FACTORY_CONSTRUCTOR(TVProgramData)
 NS_GENERIC_FACTORY_CONSTRUCTOR(PresentationDeviceManager)
+NS_GENERIC_FACTORY_CONSTRUCTOR(TextInputProcessor)
 
 //-----------------------------------------------------------------------------
 
@@ -522,7 +524,6 @@ MAKE_CTOR(CreateNewContainerBoxObject,  nsIBoxObject,           NS_NewContainerB
 NS_GENERIC_FACTORY_CONSTRUCTOR(inDOMView)
 #endif
 NS_GENERIC_FACTORY_CONSTRUCTOR(inDeepTreeWalker)
-NS_GENERIC_FACTORY_CONSTRUCTOR(inFlasher)
 NS_GENERIC_FACTORY_CONSTRUCTOR(inCSSValueSearch)
 NS_GENERIC_FACTORY_CONSTRUCTOR(inDOMUtils)
 
@@ -676,7 +677,6 @@ NS_DEFINE_NAMED_CID(NS_TREEBOXOBJECT_CID);
 NS_DEFINE_NAMED_CID(IN_DOMVIEW_CID);
 #endif
 NS_DEFINE_NAMED_CID(IN_DEEPTREEWALKER_CID);
-NS_DEFINE_NAMED_CID(IN_FLASHER_CID);
 NS_DEFINE_NAMED_CID(IN_CSSVALUESEARCH_CID);
 NS_DEFINE_NAMED_CID(IN_DOMUTILS_CID);
 NS_DEFINE_NAMED_CID(NS_CONTENT_VIEWER_CID);
@@ -823,6 +823,8 @@ NS_DEFINE_NAMED_CID(GECKO_MEDIA_PLUGIN_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_MOBILE_CONNECTION_SERVICE_CID);
 
 NS_DEFINE_NAMED_CID(PRESENTATION_DEVICE_MANAGER_CID);
+
+NS_DEFINE_NAMED_CID(TEXT_INPUT_PROCESSOR_CID);
 
 static nsresult
 CreateWindowCommandTableConstructor(nsISupports *aOuter,
@@ -972,7 +974,6 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kIN_DOMVIEW_CID, false, nullptr, inDOMViewConstructor },
 #endif
   { &kIN_DEEPTREEWALKER_CID, false, nullptr, inDeepTreeWalkerConstructor },
-  { &kIN_FLASHER_CID, false, nullptr, inFlasherConstructor },
   { &kIN_CSSVALUESEARCH_CID, false, nullptr, inCSSValueSearchConstructor },
   { &kIN_DOMUTILS_CID, false, nullptr, inDOMUtilsConstructor },
   { &kNS_CONTENT_VIEWER_CID, false, nullptr, CreateContentViewer },
@@ -1113,6 +1114,7 @@ static const mozilla::Module::CIDEntry kLayoutCIDs[] = {
   { &kTV_CHANNEL_DATA_CID, false, nullptr, TVChannelDataConstructor },
   { &kTV_PROGRAM_DATA_CID, false, nullptr, TVProgramDataConstructor },
   { &kPRESENTATION_DEVICE_MANAGER_CID, false, nullptr, PresentationDeviceManagerConstructor },
+  { &kTEXT_INPUT_PROCESSOR_CID, false, nullptr, TextInputProcessorConstructor },
   { nullptr }
 };
 
@@ -1131,7 +1133,6 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { "@mozilla.org/inspector/dom-view;1", &kIN_DOMVIEW_CID },
 #endif
   { "@mozilla.org/inspector/deep-tree-walker;1", &kIN_DEEPTREEWALKER_CID },
-  { "@mozilla.org/inspector/flasher;1", &kIN_FLASHER_CID },
   { "@mozilla.org/inspector/search;1?type=cssvalue", &kIN_CSSVALUESEARCH_CID },
   { IN_DOMUTILS_CONTRACTID, &kIN_DOMUTILS_CID },
   { "@mozilla.org/xml/xml-document;1", &kNS_XMLDOCUMENT_CID },
@@ -1273,6 +1274,7 @@ static const mozilla::Module::ContractIDEntry kLayoutContracts[] = {
   { NS_MOBILE_CONNECTION_SERVICE_CONTRACTID, &kNS_MOBILE_CONNECTION_SERVICE_CID },
   { NS_VOICEMAIL_SERVICE_CONTRACTID, &kNS_VOICEMAIL_SERVICE_CID },
   { PRESENTATION_DEVICE_MANAGER_CONTRACTID, &kPRESENTATION_DEVICE_MANAGER_CID },
+  { "@mozilla.org/text-input-processor;1", &kTEXT_INPUT_PROCESSOR_CID },
   { nullptr }
 };
 

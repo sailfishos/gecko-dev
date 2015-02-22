@@ -106,7 +106,10 @@ using namespace mozilla::dom;
 #define XML_HTTP_REQUEST_HEADERS_RECEIVED (1 << 2) // 2 HEADERS_RECEIVED
 #define XML_HTTP_REQUEST_LOADING          (1 << 3) // 3 LOADING
 #define XML_HTTP_REQUEST_DONE             (1 << 4) // 4 DONE
-#define XML_HTTP_REQUEST_SENT             (1 << 5) // Internal, OPENED in IE and external view
+#define XML_HTTP_REQUEST_SENT             (1 << 5) // Internal, corresponds to
+                                                   // "OPENED and the send()
+                                                   // flag is set" in spec
+                                                   // terms.
 // The above states are mutually exclusive, change with ChangeState() only.
 // The states below can be combined.
 #define XML_HTTP_REQUEST_ABORTED        (1 << 7)  // Internal
@@ -321,7 +324,7 @@ nsXMLHttpRequest::~nsXMLHttpRequest()
     Abort();
   }
 
-  NS_ABORT_IF_FALSE(!(mState & XML_HTTP_REQUEST_SYNCLOOPING), "we rather crash than hang");
+  MOZ_ASSERT(!(mState & XML_HTTP_REQUEST_SYNCLOOPING), "we rather crash than hang");
   mState &= ~XML_HTTP_REQUEST_SYNCLOOPING;
 
   mResultJSON.setUndefined();
@@ -670,7 +673,7 @@ nsXMLHttpRequest::AppendToResponseText(const char * aSrcBuffer,
                                        &destBufferLen);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (!mResponseText.SetCapacity(mResponseText.Length() + destBufferLen, fallible_t())) {
+  if (!mResponseText.SetCapacity(mResponseText.Length() + destBufferLen, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -1078,8 +1081,7 @@ nsXMLHttpRequest::GetResponseURL(nsAString& aUrl)
 {
   aUrl.Truncate();
 
-  uint16_t readyState;
-  GetReadyState(&readyState);
+  uint16_t readyState = ReadyState();
   if ((readyState == UNSENT || readyState == OPENED) || !mChannel) {
     return;
   }
@@ -1915,7 +1917,7 @@ nsXMLHttpRequest::OnDataAvailable(nsIRequest *request,
 {
   NS_ENSURE_ARG_POINTER(inStr);
 
-  NS_ABORT_IF_FALSE(mContext.get() == ctxt,"start context different from OnDataAvailable context");
+  MOZ_ASSERT(mContext.get() == ctxt,"start context different from OnDataAvailable context");
 
   mProgressSinceLastProgressEvent = true;
 
@@ -3236,8 +3238,8 @@ nsXMLHttpRequest::SetTimeout(uint32_t aTimeout, ErrorResult& aRv)
 void
 nsXMLHttpRequest::StartTimeoutTimer()
 {
-  NS_ABORT_IF_FALSE(mRequestSentTime,
-                    "StartTimeoutTimer mustn't be called before the request was sent!");
+  MOZ_ASSERT(mRequestSentTime,
+             "StartTimeoutTimer mustn't be called before the request was sent!");
   if (mState & XML_HTTP_REQUEST_DONE) {
     // do nothing!
     return;
@@ -3367,9 +3369,12 @@ nsXMLHttpRequest::SetWithCredentials(bool aWithCredentials)
 void
 nsXMLHttpRequest::SetWithCredentials(bool aWithCredentials, ErrorResult& aRv)
 {
-  // Return error if we're already processing a request
-  if (XML_HTTP_REQUEST_SENT & mState) {
-    aRv = NS_ERROR_FAILURE;
+  // Return error if we're already processing a request.  Note that we can't use
+  // ReadyState() here, because it can't differentiate between "opened" and
+  // "sent", so we use mState directly.
+  if (!(mState & XML_HTTP_REQUEST_UNSENT) &&
+      !(mState & XML_HTTP_REQUEST_OPENED)) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 

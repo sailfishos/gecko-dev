@@ -380,17 +380,46 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
     // Do not erase the frame pointer in this function.
 
     MacroAssembler masm(cx);
+    // Caller:
+    // [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]] <- rsp
+    // '--- #r8 ---'
 
     // ArgumentsRectifierReg contains the |nargs| pushed onto the current frame.
     // Including |this|, there are (|nargs| + 1) arguments to copy.
     MOZ_ASSERT(ArgumentsRectifierReg == r8);
 
-    // Load the number of |undefined|s to push into %rcx.
+    // Add |this|, in the counter of known arguments.
+    masm.addl(Imm32(1), r8);
+
+    // Load |nformals| into %rcx.
     masm.loadPtr(Address(rsp, RectifierFrameLayout::offsetOfCalleeToken()), rax);
     masm.mov(rax, rcx);
     masm.andq(Imm32(uint32_t(CalleeTokenMask)), rcx);
     masm.movzwl(Operand(rcx, JSFunction::offsetOfNargs()), rcx);
+
+    // Including |this|, there are (|nformals| + 1) arguments to push to the
+    // stack.  Then we push a JitFrameLayout.  We compute the padding expressed
+    // in the number of extra |undefined| values to push on the stack.
+    static_assert(sizeof(JitFrameLayout) % JitStackAlignment == 0,
+      "No need to consider the JitFrameLayout for aligning the stack");
+    static_assert(JitStackAlignment % sizeof(Value) == 0,
+      "Ensure that we can pad the stack by pushing extra UndefinedValue");
+
+    const uint32_t alignment = JitStackAlignment / sizeof(Value);
+    MOZ_ASSERT(IsPowerOfTwo(alignment));
+    masm.addl(Imm32(alignment - 1 /* for padding */ + 1 /* for |this| */), rcx);
+    masm.andl(Imm32(~(alignment - 1)), rcx);
+
+    // Load the number of |undefined|s to push into %rcx.
     masm.subq(r8, rcx);
+
+    // Caller:
+    // [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]] <- rsp <- r9
+    // '------ #r8 -------'
+    //
+    // Rectifier frame:
+    // [undef] [undef] [undef] [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]]
+    // '------- #rcx --------' '------ #r8 -------'
 
     // Copy the number of actual arguments
     masm.loadPtr(Address(rsp, RectifierFrameLayout::offsetOfNumActualArgs()), rdx);
@@ -399,7 +428,7 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
 
     masm.movq(rsp, r9); // Save %rsp.
 
-    // Push undefined.
+    // Push undefined. (including the padding)
     {
         Label undefLoopTop;
         masm.bind(&undefLoopTop);
@@ -410,11 +439,14 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
     }
 
     // Get the topmost argument.
-    BaseIndex b = BaseIndex(r9, r8, TimesEight, sizeof(RectifierFrameLayout));
+    static_assert(sizeof(Value) == 8, "TimesEight is used to skip arguments");
+
+    // | - sizeof(Value)| is used to put rcx such that we can read the last
+    // argument, and not the value which is after.
+    BaseIndex b = BaseIndex(r9, r8, TimesEight, sizeof(RectifierFrameLayout) - sizeof(Value));
     masm.lea(Operand(b), rcx);
 
-    // Push arguments, |nargs| + 1 times (to include |this|).
-    masm.addl(Imm32(1), r8);
+    // Copy & Push arguments, |nargs| + 1 times (to include |this|).
     {
         Label copyLoopTop;
 
@@ -424,6 +456,14 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, void **returnAddrOut)
         masm.subl(Imm32(1), r8);
         masm.j(Assembler::NonZero, &copyLoopTop);
     }
+
+    // Caller:
+    // [arg2] [arg1] [this] [[argc] [callee] [descr] [raddr]] <- r9
+    //
+    //
+    // Rectifier frame:
+    // [undef] [undef] [undef] [arg2] [arg1] [this] <- rsp [[argc] [callee] [descr] [raddr]]
+    //
 
     // Construct descriptor.
     masm.subq(rsp, r9);
@@ -941,6 +981,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
     Label handle_IonJS;
     Label handle_BaselineStub;
     Label handle_Rectifier;
+    Label handle_IonAccessorIC;
     Label handle_Entry;
     Label end;
 
@@ -948,6 +989,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_BaselineJS), &handle_IonJS);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_BaselineStub), &handle_BaselineStub);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_Rectifier), &handle_Rectifier);
+    masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_IonAccessorIC), &handle_IonAccessorIC);
     masm.branch32(Assembler::Equal, scratch2, Imm32(JitFrame_Entry), &handle_Entry);
 
     masm.assumeUnreachable("Invalid caller frame type when exiting from Ion frame.");
@@ -1110,6 +1152,52 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext *cx)
         masm.loadPtr(stubFrameSavedFramePtr, scratch3);
         masm.addPtr(Imm32(sizeof(void *)), scratch3);
         masm.storePtr(scratch3, lastProfilingFrame);
+        masm.ret();
+    }
+
+    // JitFrame_IonAccessorIC
+    //
+    // The caller is always an IonJS frame.
+    //
+    //              Ion-Descriptor
+    //              Ion-ReturnAddr
+    //              ... ion frame data ... |- AccFrame-Descriptor.Size
+    //              StubCode             |
+    //              AccFrame-Descriptor  |- IonAccessorICFrameLayout::Size()
+    //              AccFrame-ReturnAddr  |
+    //              ... accessor frame data & args ... |- Descriptor.Size
+    //              ActualArgc      |
+    //              CalleeToken     |- JitFrameLayout::Size()
+    //              Descriptor      |
+    //    FP -----> ReturnAddr      |
+    masm.bind(&handle_IonAccessorIC);
+    {
+        // scratch2 := StackPointer + Descriptor.size + JitFrameLayout::Size()
+        masm.lea(Operand(StackPointer, scratch1, TimesOne, JitFrameLayout::Size()), scratch2);
+
+        // scratch3 := AccFrame-Descriptor.Size
+        masm.loadPtr(Address(scratch2, IonAccessorICFrameLayout::offsetOfDescriptor()), scratch3);
+#ifdef DEBUG
+        // Assert previous frame is an IonJS frame.
+        masm.movePtr(scratch3, scratch1);
+        masm.and32(Imm32((1 << FRAMETYPE_BITS) - 1), scratch1);
+        {
+            Label checkOk;
+            masm.branch32(Assembler::Equal, scratch1, Imm32(JitFrame_IonJS), &checkOk);
+            masm.assumeUnreachable("IonAccessorIC frame must be preceded by IonJS frame");
+            masm.bind(&checkOk);
+        }
+#endif
+        masm.rshiftPtr(Imm32(FRAMESIZE_SHIFT), scratch3);
+
+        // lastProfilingCallSite := AccFrame-ReturnAddr
+        masm.loadPtr(Address(scratch2, IonAccessorICFrameLayout::offsetOfReturnAddress()), scratch1);
+        masm.storePtr(scratch1, lastProfilingCallSite);
+
+        // lastProfilingFrame := AccessorFrame + AccFrame-Descriptor.Size +
+        //                       IonAccessorICFrameLayout::Size()
+        masm.lea(Operand(scratch2, scratch3, TimesOne, IonAccessorICFrameLayout::Size()), scratch1);
+        masm.storePtr(scratch1, lastProfilingFrame);
         masm.ret();
     }
 

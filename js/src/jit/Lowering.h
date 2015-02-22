@@ -109,7 +109,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitTest(MTest *test);
     void visitGotoWithFake(MGotoWithFake *ins);
     void visitFunctionDispatch(MFunctionDispatch *ins);
-    void visitTypeObjectDispatch(MTypeObjectDispatch *ins);
+    void visitObjectGroupDispatch(MObjectGroupDispatch *ins);
     void visitCompare(MCompare *comp);
     void visitTypeOf(MTypeOf *ins);
     void visitToId(MToId *ins);
@@ -197,6 +197,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitStoreElementHole(MStoreElementHole *ins);
     void visitStoreUnboxedObjectOrNull(MStoreUnboxedObjectOrNull *ins);
     void visitStoreUnboxedString(MStoreUnboxedString *ins);
+    void visitConvertUnboxedObjectToNative(MConvertUnboxedObjectToNative *ins);
     void visitEffectiveAddress(MEffectiveAddress *ins);
     void visitArrayPopShift(MArrayPopShift *ins);
     void visitArrayPush(MArrayPush *ins);
@@ -227,7 +228,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitDeleteElement(MDeleteElement *ins);
     void visitGetNameCache(MGetNameCache *ins);
     void visitCallGetIntrinsicValue(MCallGetIntrinsicValue *ins);
-    void visitCallsiteCloneCache(MCallsiteCloneCache *ins);
     void visitCallGetElement(MCallGetElement *ins);
     void visitCallSetElement(MCallSetElement *ins);
     void visitCallInitElementArray(MCallInitElementArray *ins);
@@ -266,6 +266,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitRecompileCheck(MRecompileCheck *ins);
     void visitMemoryBarrier(MMemoryBarrier *ins);
     void visitSimdBox(MSimdBox *ins);
+    void visitSimdUnbox(MSimdUnbox *ins);
     void visitSimdExtractElement(MSimdExtractElement *ins);
     void visitSimdInsertElement(MSimdInsertElement *ins);
     void visitSimdSignMask(MSimdSignMask *ins);
@@ -286,6 +287,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitLexicalCheck(MLexicalCheck *ins);
     void visitThrowUninitializedLexical(MThrowUninitializedLexical *ins);
     void visitDebugger(MDebugger *ins);
+    void visitNurseryObject(MNurseryObject *ins);
 };
 
 } // namespace jit

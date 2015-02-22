@@ -7,6 +7,8 @@
 #ifndef jit_LIR_Common_h
 #define jit_LIR_Common_h
 
+#include "jsutil.h"
+
 #include "jit/AtomicOp.h"
 #include "jit/shared/Assembler-shared.h"
 
@@ -108,6 +110,11 @@ class LMoveGroup : public LInstructionHelper<0, 0, 0>
 {
     js::Vector<LMove, 2, JitAllocPolicy> moves_;
 
+#ifdef JS_CODEGEN_X86
+    // Optional general register available for use when executing moves.
+    LAllocation scratchRegister_;
+#endif
+
     explicit LMoveGroup(TempAllocator &alloc)
       : moves_(alloc)
     { }
@@ -133,6 +140,28 @@ class LMoveGroup : public LInstructionHelper<0, 0, 0>
     const LMove &getMove(size_t i) const {
         return moves_[i];
     }
+
+#ifdef JS_CODEGEN_X86
+    void setScratchRegister(Register reg) {
+        scratchRegister_ = LGeneralReg(reg);
+    }
+#endif
+    LAllocation maybeScratchRegister() {
+#ifdef JS_CODEGEN_X86
+        return scratchRegister_;
+#else
+        return LAllocation();
+#endif
+    }
+
+    bool uses(Register reg) {
+        for (size_t i = 0; i < numMoves(); i++) {
+            LMove move = getMove(i);
+            if (*move.from() == LGeneralReg(reg) || *move.to() == LGeneralReg(reg))
+                return true;
+        }
+        return false;
+    }
 };
 
 
@@ -154,6 +183,26 @@ class LSimdBox : public LInstructionHelper<1, 1, 1>
 
     MSimdBox *mir() const {
         return mir_->toSimdBox();
+    }
+};
+
+class LSimdUnbox : public LInstructionHelper<1, 1, 1>
+{
+  public:
+    LIR_HEADER(SimdUnbox)
+
+    LSimdUnbox(const LAllocation &obj, const LDefinition &temp)
+    {
+        setOperand(0, obj);
+        setTemp(0, temp);
+    }
+
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+
+    MSimdUnbox *mir() const {
+        return mir_->toSimdUnbox();
     }
 };
 
@@ -642,6 +691,16 @@ class LValue : public LInstructionHelper<BOX_PIECES, 0, 0>
 
     Value value() const {
         return v_;
+    }
+};
+
+class LNurseryObject : public LInstructionHelper<1, 0, 0>
+{
+  public:
+    LIR_HEADER(NurseryObject);
+
+    MNurseryObject *mir() const {
+        return mir_->toNurseryObject();
     }
 };
 
@@ -1434,6 +1493,9 @@ class LJSCallInstructionHelper : public LCallInstructionHelper<Defs, Operands, T
 {
   public:
     uint32_t argslot() const {
+        static const uint32_t alignment = JitStackAlignment / sizeof(Value);
+        if (alignment > 1)
+            return AlignBytes(mir()->numStackArgs(), alignment);
         return mir()->numStackArgs();
     }
     MCall *mir() const {
@@ -1715,7 +1777,7 @@ class LApplyArgsGeneric : public LCallInstructionHelper<BOX_PIECES, BOX_PIECES +
     const LDefinition *getTempObject() {
         return getTemp(0);
     }
-    const LDefinition *getTempCopy() {
+    const LDefinition *getTempStackCounter() {
         return getTemp(1);
     }
 };
@@ -2050,15 +2112,15 @@ class LFunctionDispatch : public LInstructionHelper<0, 1, 0>
     }
 };
 
-class LTypeObjectDispatch : public LInstructionHelper<0, 1, 1>
+class LObjectGroupDispatch : public LInstructionHelper<0, 1, 1>
 {
-    // Dispatch is performed based on a TypeObject -> block
+    // Dispatch is performed based on an ObjectGroup -> block
     // map inferred by the MIR.
 
   public:
-    LIR_HEADER(TypeObjectDispatch);
+    LIR_HEADER(ObjectGroupDispatch);
 
-    LTypeObjectDispatch(const LAllocation &in, const LDefinition &temp) {
+    LObjectGroupDispatch(const LAllocation &in, const LDefinition &temp) {
         setOperand(0, in);
         setTemp(0, temp);
     }
@@ -2067,8 +2129,8 @@ class LTypeObjectDispatch : public LInstructionHelper<0, 1, 1>
         return getTemp(0);
     }
 
-    MTypeObjectDispatch *mir() {
-        return mir_->toTypeObjectDispatch();
+    MObjectGroupDispatch *mir() {
+        return mir_->toObjectGroupDispatch();
     }
 };
 
@@ -2445,12 +2507,15 @@ class LBitAndAndBranch : public LControlInstructionHelper<2, 2, 0>
     }
 };
 
-class LIsNullOrLikeUndefined : public LInstructionHelper<1, BOX_PIECES, 2>
+// Takes a value and tests whether it is null, undefined, or is an object that
+// emulates |undefined|, as determined by the JSCLASS_EMULATES_UNDEFINED class
+// flag on unwrapped objects.  See also js::EmulatesUndefined.
+class LIsNullOrLikeUndefinedV : public LInstructionHelper<1, BOX_PIECES, 2>
 {
   public:
-    LIR_HEADER(IsNullOrLikeUndefined)
+    LIR_HEADER(IsNullOrLikeUndefinedV)
 
-    LIsNullOrLikeUndefined(const LDefinition &temp, const LDefinition &tempToUnbox)
+    LIsNullOrLikeUndefinedV(const LDefinition &temp, const LDefinition &tempToUnbox)
     {
         setTemp(0, temp);
         setTemp(1, tempToUnbox);
@@ -2471,15 +2536,32 @@ class LIsNullOrLikeUndefined : public LInstructionHelper<1, BOX_PIECES, 2>
     }
 };
 
-class LIsNullOrLikeUndefinedAndBranch : public LControlInstructionHelper<2, BOX_PIECES, 2>
+// Takes an object or object-or-null pointer and tests whether it is null or is
+// an object that emulates |undefined|, as above.
+class LIsNullOrLikeUndefinedT : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(IsNullOrLikeUndefinedT)
+
+    explicit LIsNullOrLikeUndefinedT(const LAllocation &input)
+    {
+        setOperand(0, input);
+    }
+
+    MCompare *mir() {
+        return mir_->toCompare();
+    }
+};
+
+class LIsNullOrLikeUndefinedAndBranchV : public LControlInstructionHelper<2, BOX_PIECES, 2>
 {
     MCompare *cmpMir_;
 
   public:
-    LIR_HEADER(IsNullOrLikeUndefinedAndBranch)
+    LIR_HEADER(IsNullOrLikeUndefinedAndBranchV)
 
-    LIsNullOrLikeUndefinedAndBranch(MCompare *cmpMir, MBasicBlock *ifTrue, MBasicBlock *ifFalse,
-                                    const LDefinition &temp, const LDefinition &tempToUnbox)
+    LIsNullOrLikeUndefinedAndBranchV(MCompare *cmpMir, MBasicBlock *ifTrue, MBasicBlock *ifFalse,
+                                     const LDefinition &temp, const LDefinition &tempToUnbox)
       : cmpMir_(cmpMir)
     {
         setSuccessor(0, ifTrue);
@@ -2510,34 +2592,16 @@ class LIsNullOrLikeUndefinedAndBranch : public LControlInstructionHelper<2, BOX_
     }
 };
 
-// Takes an object and tests whether it emulates |undefined|, as determined by
-// the JSCLASS_EMULATES_UNDEFINED class flag on unwrapped objects.  See also
-// js::EmulatesUndefined.
-class LEmulatesUndefined : public LInstructionHelper<1, 1, 0>
-{
-  public:
-    LIR_HEADER(EmulatesUndefined)
-
-    explicit LEmulatesUndefined(const LAllocation &input)
-    {
-        setOperand(0, input);
-    }
-
-    MCompare *mir() {
-        return mir_->toCompare();
-    }
-};
-
-class LEmulatesUndefinedAndBranch : public LControlInstructionHelper<2, 1, 1>
+class LIsNullOrLikeUndefinedAndBranchT : public LControlInstructionHelper<2, 1, 1>
 {
     MCompare *cmpMir_;
 
   public:
-    LIR_HEADER(EmulatesUndefinedAndBranch)
+    LIR_HEADER(IsNullOrLikeUndefinedAndBranchT)
 
-    LEmulatesUndefinedAndBranch(MCompare *cmpMir, const LAllocation &input,
-                                MBasicBlock *ifTrue, MBasicBlock *ifFalse,
-                                const LDefinition &temp)
+    LIsNullOrLikeUndefinedAndBranchT(MCompare *cmpMir, const LAllocation &input,
+                                     MBasicBlock *ifTrue, MBasicBlock *ifFalse,
+                                     const LDefinition &temp)
       : cmpMir_(cmpMir)
     {
         setOperand(0, input);
@@ -2945,15 +3009,39 @@ class LAtan2D : public LCallInstructionHelper<1, 2, 1>
     }
 };
 
-class LHypot : public LCallInstructionHelper<1, 2, 1>
+class LHypot : public LCallInstructionHelper<1, 4, 1>
 {
+    uint32_t numOperands_;
   public:
     LIR_HEADER(Hypot)
-    LHypot(const LAllocation &x, const LAllocation &y, const LDefinition &temp) {
+    LHypot(const LAllocation &x, const LAllocation &y, const LDefinition &temp)
+      : numOperands_(2)
+    {
         setOperand(0, x);
         setOperand(1, y);
         setTemp(0, temp);
     }
+
+    LHypot(const LAllocation &x, const LAllocation &y, const LAllocation &z, const LDefinition &temp)
+      : numOperands_(3)
+    {
+        setOperand(0, x);
+        setOperand(1, y);
+        setOperand(2, z);
+        setTemp(0, temp);
+    }
+
+    LHypot(const LAllocation &x, const LAllocation &y, const LAllocation &z, const LAllocation &w, const LDefinition &temp)
+      : numOperands_(4)
+    {
+        setOperand(0, x);
+        setOperand(1, y);
+        setOperand(2, z);
+        setOperand(3, w);
+        setTemp(0, temp);
+    }
+
+    uint32_t numArgs() const { return numOperands_; }
 
     const LAllocation *x() {
         return getOperand(0);
@@ -4407,6 +4495,24 @@ class LLoadUnboxedPointerT : public LInstructionHelper<1, 2, 0>
     }
 };
 
+class LUnboxObjectOrNull : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(UnboxObjectOrNull);
+
+    explicit LUnboxObjectOrNull(const LAllocation &input)
+    {
+        setOperand(0, input);
+    }
+
+    MUnbox *mir() const {
+        return mir_->toUnbox();
+    }
+    const LAllocation *input() {
+        return getOperand(0);
+    }
+};
+
 // Store a boxed value to a dense array's element vector.
 class LStoreElementV : public LInstructionHelper<0, 2 + BOX_PIECES, 0>
 {
@@ -4552,6 +4658,22 @@ class LStoreUnboxedPointer : public LInstructionHelper<0, 3, 0>
     }
     const LAllocation *value() {
         return getOperand(2);
+    }
+};
+
+// If necessary, convert an unboxed object in a particular group to its native
+// representation.
+class LConvertUnboxedObjectToNative : public LInstructionHelper<0, 1, 0>
+{
+  public:
+    LIR_HEADER(ConvertUnboxedObjectToNative)
+
+    explicit LConvertUnboxedObjectToNative(const LAllocation &object) {
+        setOperand(0, object);
+    }
+
+    MConvertUnboxedObjectToNative *mir() {
+        return mir_->toConvertUnboxedObjectToNative();
     }
 };
 
@@ -4952,13 +5074,14 @@ class LClampIToUint8 : public LInstructionHelper<1, 1, 0>
     }
 };
 
-class LClampDToUint8 : public LInstructionHelper<1, 1, 0>
+class LClampDToUint8 : public LInstructionHelper<1, 1, 1>
 {
   public:
     LIR_HEADER(ClampDToUint8)
 
-    explicit LClampDToUint8(const LAllocation &in) {
+    LClampDToUint8(const LAllocation &in, const LDefinition &temp) {
         setOperand(0, in);
+        setTemp(0, temp);
     }
 };
 
@@ -5075,22 +5198,6 @@ class LCallGetIntrinsicValue : public LCallInstructionHelper<BOX_PIECES, 0, 0>
 
     const MCallGetIntrinsicValue *mir() const {
         return mir_->toCallGetIntrinsicValue();
-    }
-};
-
-class LCallsiteCloneCache : public LInstructionHelper<1, 1, 0>
-{
-  public:
-    LIR_HEADER(CallsiteCloneCache);
-
-    explicit LCallsiteCloneCache(const LAllocation &callee) {
-        setOperand(0, callee);
-    }
-    const LAllocation *callee() {
-        return getOperand(0);
-    }
-    const MCallsiteCloneCache *mir() const {
-        return mir_->toCallsiteCloneCache();
     }
 };
 
@@ -6058,13 +6165,20 @@ class LPostWriteBarrierV : public LInstructionHelper<0, 1 + BOX_PIECES, 1>
 };
 
 // Guard against an object's identity.
-class LGuardObjectIdentity : public LInstructionHelper<0, 1, 0>
+class LGuardObjectIdentity : public LInstructionHelper<0, 2, 0>
 {
   public:
     LIR_HEADER(GuardObjectIdentity)
 
-    explicit LGuardObjectIdentity(const LAllocation &in) {
+    explicit LGuardObjectIdentity(const LAllocation &in, const LAllocation &expected) {
         setOperand(0, in);
+        setOperand(1, expected);
+    }
+    const LAllocation *input() {
+        return getOperand(0);
+    }
+    const LAllocation *expected() {
+        return getOperand(1);
     }
     const MGuardObjectIdentity *mir() const {
         return mir_->toGuardObjectIdentity();

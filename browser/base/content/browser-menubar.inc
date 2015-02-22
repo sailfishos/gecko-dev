@@ -107,11 +107,11 @@
                           oncommand="BrowserOffline.toggleOfflineStatus();"/>
                 <menuitem id="menu_FileQuitItem"
 #ifdef XP_WIN
-                          label="&quitApplicationCmdWin.label;"
-                          accesskey="&quitApplicationCmdWin.accesskey;"
+                          label="&quitApplicationCmdWin2.label;"
+                          accesskey="&quitApplicationCmdWin2.accesskey;"
 #else
 #ifdef XP_MACOSX
-                          label="&quitApplicationCmdMac.label;"
+                          label="&quitApplicationCmdMac2.label;"
 #else
                           label="&quitApplicationCmd.label;"
                           accesskey="&quitApplicationCmd.accesskey;"
@@ -223,6 +223,11 @@
                               key="key_gotoHistory"
                               observes="viewHistorySidebar"
                               label="&historyButton.label;"/>
+                    <menuitem id="menu_readingListSidebar"
+                              key="key_readingListSidebar"
+                              observes="readingListSidebar"
+                              label="&readingList.label;"/>
+
                     <!-- Service providers with sidebars are inserted between these two menuseperators -->
                     <menuseparator hidden="true"/>
                     <menuseparator class="social-provider-menu" hidden="true"/>

@@ -90,6 +90,7 @@ nsBaseChannel::Redirect(nsIChannel *newChannel, uint32_t redirectFlags,
   newChannel->SetLoadGroup(mLoadGroup);
   newChannel->SetNotificationCallbacks(mCallbacks);
   newChannel->SetLoadFlags(mLoadFlags | LOAD_REPLACE);
+  newChannel->SetLoadInfo(mLoadInfo);
 
   // Try to preserve the privacy bit if it has been overridden
   if (mPrivateBrowsingOverriden) {
@@ -292,7 +293,7 @@ nsBaseChannel::ClassifyURI()
   if (mLoadFlags & LOAD_CLASSIFY_URI) {
     nsRefPtr<nsChannelClassifier> classifier = new nsChannelClassifier();
     if (classifier) {
-      classifier->Start(this);
+      classifier->Start(this, false);
     } else {
       Cancel(NS_ERROR_OUT_OF_MEMORY);
     }

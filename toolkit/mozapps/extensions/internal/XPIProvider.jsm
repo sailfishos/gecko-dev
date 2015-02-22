@@ -81,6 +81,7 @@ const PREF_XPI_FILE_WHITELISTED       = "xpinstall.whitelist.fileRequest";
 const PREF_XPI_PERMISSIONS_BRANCH     = "xpinstall.";
 const PREF_XPI_UNPACK                 = "extensions.alwaysUnpack";
 const PREF_INSTALL_REQUIREBUILTINCERTS = "extensions.install.requireBuiltInCerts";
+const PREF_INSTALL_REQUIRESECUREORIGIN = "extensions.install.requireSecureOrigin";
 const PREF_INSTALL_DISTRO_ADDONS      = "extensions.installDistroAddons";
 const PREF_BRANCH_INSTALLED_ADDON     = "extensions.installedDistroAddon.";
 const PREF_SHOWN_SELECTION_UI         = "extensions.shownSelectionUI";
@@ -1928,7 +1929,12 @@ this.XPIProvider = {
 
         let chan;
         try {
-          chan = Services.io.newChannelFromURI(aURI);
+          chan = Services.io.newChannelFromURI2(aURI,
+                                                null,      // aLoadingNode
+                                                Services.scriptSecurityManager.getSystemPrincipal(),
+                                                null,      // aTriggeringPrincipal
+                                                Ci.nsILoadInfo.SEC_NORMAL,
+                                                Ci.nsIContentPolicy.TYPE_OTHER);
         }
         catch (ex) {
           return null;
@@ -2396,7 +2402,9 @@ this.XPIProvider = {
     }
     catch (e) { }
 
-    Cu.import("resource://gre/modules/TelemetryPing.jsm", {}).TelemetryPing.setAddOns(data);
+    let TelemetrySession =
+      Cu.import("resource://gre/modules/TelemetrySession.jsm", {}).TelemetrySession;
+    TelemetrySession.setAddOns(data);
   },
 
   /**
@@ -3735,6 +3743,11 @@ this.XPIProvider = {
 
     let requireWhitelist = Preferences.get(PREF_XPI_WHITELIST_REQUIRED, true);
     if (requireWhitelist && (permission != Ci.nsIPermissionManager.ALLOW_ACTION))
+      return false;
+
+    let requireSecureOrigin = Preferences.get(PREF_INSTALL_REQUIRESECUREORIGIN, true);
+    let safeSchemes = ["https", "chrome", "file"];
+    if (requireSecureOrigin && safeSchemes.indexOf(aUri.scheme) == -1)
       return false;
 
     return true;
@@ -5392,7 +5405,14 @@ AddonInstall.prototype = {
       let requireBuiltIn = Preferences.get(PREF_INSTALL_REQUIREBUILTINCERTS, true);
       this.badCertHandler = new BadCertHandler(!requireBuiltIn);
 
-      this.channel = NetUtil.newChannel(this.sourceURI);
+      this.channel = NetUtil.newChannel2(this.sourceURI,
+                                         null,
+                                         null,
+                                         null,      // aLoadingNode
+                                         Services.scriptSecurityManager.getSystemPrincipal(),
+                                         null,      // aTriggeringPrincipal
+                                         Ci.nsILoadInfo.SEC_NORMAL,
+                                         Ci.nsIContentPolicy.TYPE_OTHER);
       this.channel.notificationCallbacks = this;
       if (this.channel instanceof Ci.nsIHttpChannel) {
         this.channel.setRequestHeader("Moz-XPI-Update", "1", true);
@@ -6438,6 +6458,8 @@ AddonInternal.prototype = {
         }
       });
     });
+    if (aUpdate.multiprocessCompatible !== undefined)
+      this.multiprocessCompatible = aUpdate.multiprocessCompatible;
     this.appDisabled = !isUsableAddon(this);
   },
 
@@ -6597,7 +6619,7 @@ function AddonWrapper(aAddon) {
    "providesUpdatesSecurely", "blocklistState", "blocklistURL", "appDisabled",
    "softDisabled", "skinnable", "size", "foreignInstall", "hasBinaryComponents",
    "strictCompatibility", "compatibilityOverrides", "updateURL",
-   "getDataDirectory"].forEach(function(aProp) {
+   "getDataDirectory", "multiprocessCompatible"].forEach(function(aProp) {
      this.__defineGetter__(aProp, function AddonWrapper_propertyGetter() aAddon[aProp]);
   }, this);
 

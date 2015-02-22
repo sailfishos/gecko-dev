@@ -150,6 +150,16 @@ nsChannelClassifier::ShouldEnableTrackingProtection(nsIChannel *aChannel,
     // the security state. If any channels are subsequently cancelled
     // (page elements blocked) the state will be then updated.
     if (*result) {
+#ifdef DEBUG
+      nsCString topspec;
+      nsCString spec;
+      uri->GetSpec(topspec);
+      aChannel->GetURI(getter_AddRefs(uri));
+      uri->GetSpec(spec);
+      LOG(("nsChannelClassifier[%p]: Enabling tracking protection checks on channel[%p] "
+           "with uri %s for toplevel window %s", this, aChannel, spec.get(),
+           topspec.get()));
+#endif
       return NS_OK;
     }
 
@@ -211,10 +221,14 @@ nsChannelClassifier::NotifyTrackingProtectionDisabled(nsIChannel *aChannel)
 }
 
 void
-nsChannelClassifier::Start(nsIChannel *aChannel)
+nsChannelClassifier::Start(nsIChannel *aChannel, bool aContinueBeginConnect)
 {
   mChannel = aChannel;
-  nsresult rv = StartInternal(aChannel);
+  if (aContinueBeginConnect) {
+    mChannelInternal = do_QueryInterface(aChannel);
+  }
+
+  nsresult rv = StartInternal();
   if (NS_FAILED(rv)) {
     // If we aren't getting a callback for any reason, assume a good verdict and
     // make sure we resume the channel if necessary.
@@ -223,7 +237,7 @@ nsChannelClassifier::Start(nsIChannel *aChannel)
 }
 
 nsresult
-nsChannelClassifier::StartInternal(nsIChannel *aChannel)
+nsChannelClassifier::StartInternal()
 {
     // Should only be called in the parent process.
     MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
@@ -231,18 +245,18 @@ nsChannelClassifier::StartInternal(nsIChannel *aChannel)
     // Don't bother to run the classifier on a load that has already failed.
     // (this might happen after a redirect)
     nsresult status;
-    aChannel->GetStatus(&status);
+    mChannel->GetStatus(&status);
     if (NS_FAILED(status))
         return status;
 
     // Don't bother to run the classifier on a cached load that was
     // previously classified as good.
-    if (HasBeenClassified(aChannel)) {
+    if (HasBeenClassified(mChannel)) {
         return NS_ERROR_UNEXPECTED;
     }
 
     nsCOMPtr<nsIURI> uri;
-    nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
+    nsresult rv = mChannel->GetURI(getter_AddRefs(uri));
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Don't bother checking certain types of URIs.
@@ -285,14 +299,25 @@ nsChannelClassifier::StartInternal(nsIChannel *aChannel)
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIPrincipal> principal;
-    rv = securityManager->GetChannelResultPrincipal(aChannel,
-                                                    getter_AddRefs(principal));
+    rv = securityManager->GetChannelURIPrincipal(mChannel, getter_AddRefs(principal));
     NS_ENSURE_SUCCESS(rv, rv);
 
     bool expectCallback;
     bool trackingProtectionEnabled = false;
-    (void)ShouldEnableTrackingProtection(aChannel, &trackingProtectionEnabled);
+    (void)ShouldEnableTrackingProtection(mChannel, &trackingProtectionEnabled);
 
+#ifdef DEBUG
+    {
+      nsCString uriSpec;
+      uri->GetSpec(uriSpec);
+      nsCOMPtr<nsIURI> principalURI;
+      principal->GetURI(getter_AddRefs(principalURI));
+      nsCString principalSpec;
+      principalURI->GetSpec(principalSpec);
+      LOG(("nsChannelClassifier: Classifying principal %s on channel with uri %s "
+           "[this=%p]", principalSpec.get(), uriSpec.get(), this));
+    }
+#endif
     rv = uriClassifier->Classify(principal, trackingProtectionEnabled, this,
                                  &expectCallback);
     if (NS_FAILED(rv)) {
@@ -302,7 +327,7 @@ nsChannelClassifier::StartInternal(nsIChannel *aChannel)
     if (expectCallback) {
         // Suspend the channel, it will be resumed when we get the classifier
         // callback.
-        rv = aChannel->Suspend();
+        rv = mChannel->Suspend();
         if (NS_FAILED(rv)) {
             // Some channels (including nsJSChannel) fail on Suspend.  This
             // shouldn't be fatal, but will prevent malware from being
@@ -460,7 +485,7 @@ nsChannelClassifier::OnClassifyComplete(nsresult aErrorCode)
     // Should only be called in the parent process.
     MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
 
-    LOG(("nsChannelClassifier[%p]:OnClassifyComplete", this));
+    LOG(("nsChannelClassifier[%p]:OnClassifyComplete %d", this, aErrorCode));
     if (mSuspendedChannel) {
         MarkEntryClassified(aErrorCode);
 
@@ -488,14 +513,14 @@ nsChannelClassifier::OnClassifyComplete(nsresult aErrorCode)
              "OnClassifyComplete", this, mChannel.get()));
         mChannel->Resume();
     }
-    nsresult rv;
-    nsCOMPtr<nsIHttpChannelInternal> channel = do_QueryInterface(mChannel, &rv);
-    // Even if we have cancelled the channel, we need to call
+
+    // Even if we have cancelled the channel, we may need to call
     // ContinueBeginConnect so that we abort appropriately.
-    if (NS_SUCCEEDED(rv)) {
-        channel->ContinueBeginConnect();
+    if (mChannelInternal) {
+        mChannelInternal->ContinueBeginConnect();
     }
     mChannel = nullptr;
+    mChannelInternal = nullptr;
 
     return NS_OK;
 }

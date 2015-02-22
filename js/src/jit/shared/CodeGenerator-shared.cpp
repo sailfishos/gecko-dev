@@ -15,6 +15,7 @@
 #include "jit/MacroAssembler.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
+#include "jit/OptimizationTracking.h"
 #include "js/Conversions.h"
 #include "vm/TraceLogging.h"
 
@@ -59,6 +60,11 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator *gen, LIRGraph *graph, Mac
     nativeToBytecodeNumRegions_(0),
     nativeToBytecodeScriptList_(nullptr),
     nativeToBytecodeScriptListLength_(0),
+    trackedOptimizationsMap_(nullptr),
+    trackedOptimizationsMapSize_(0),
+    trackedOptimizationsRegionTableOffset_(0),
+    trackedOptimizationsTypesTableOffset_(0),
+    trackedOptimizationsAttemptsTableOffset_(0),
     osrEntryOffset_(0),
     skipArgCheckEntryOffset_(0),
 #ifdef CHECK_OSIPOINT_REGISTERS
@@ -261,6 +267,53 @@ CodeGeneratorShared::dumpNativeToBytecodeEntry(uint32_t idx)
 #endif
 }
 
+bool
+CodeGeneratorShared::addTrackedOptimizationsEntry(const TrackedOptimizations *optimizations)
+{
+    if (!isOptimizationTrackingEnabled())
+        return true;
+
+    MOZ_ASSERT(optimizations);
+
+    uint32_t nativeOffset = masm.currentOffset();
+
+    if (!trackedOptimizations_.empty()) {
+        NativeToTrackedOptimizations &lastEntry = trackedOptimizations_.back();
+        MOZ_ASSERT(nativeOffset >= lastEntry.endOffset.offset());
+
+        // If we're still generating code for the same set of optimizations,
+        // we are done.
+        if (lastEntry.optimizations == optimizations)
+            return true;
+    }
+
+    // If we're generating code for a new set of optimizations, add a new
+    // entry.
+    NativeToTrackedOptimizations entry;
+    entry.startOffset = CodeOffsetLabel(nativeOffset);
+    entry.endOffset = CodeOffsetLabel(nativeOffset);
+    entry.optimizations = optimizations;
+    return trackedOptimizations_.append(entry);
+}
+
+void
+CodeGeneratorShared::extendTrackedOptimizationsEntry(const TrackedOptimizations *optimizations)
+{
+    if (!isOptimizationTrackingEnabled())
+        return;
+
+    uint32_t nativeOffset = masm.currentOffset();
+    NativeToTrackedOptimizations &entry = trackedOptimizations_.back();
+    MOZ_ASSERT(entry.optimizations == optimizations);
+    MOZ_ASSERT(nativeOffset >= entry.endOffset.offset());
+
+    entry.endOffset = CodeOffsetLabel(nativeOffset);
+
+    // If we generated no code, remove the last entry.
+    if (nativeOffset == entry.startOffset.offset())
+        trackedOptimizations_.popBack();
+}
+
 // see OffsetOfFrameSlot
 static inline int32_t
 ToStackIndex(LAllocation *a)
@@ -325,12 +378,14 @@ CodeGeneratorShared::encodeAllocation(LSnapshot *snapshot, MDefinition *mir,
       case MIRType_String:
       case MIRType_Symbol:
       case MIRType_Object:
+      case MIRType_ObjectOrNull:
       case MIRType_Boolean:
       case MIRType_Double:
       case MIRType_Float32:
       {
         LAllocation *payload = snapshot->payloadOfSlot(*allocIndex);
-        JSValueType valueType = ValueTypeFromMIRType(type);
+        JSValueType valueType =
+            (type == MIRType_ObjectOrNull) ? JSVAL_TYPE_OBJECT : ValueTypeFromMIRType(type);
         if (payload->isMemory()) {
             if (type == MIRType_Float32)
                 alloc = RValueAllocation::Float32(ToStackIndex(payload));
@@ -722,6 +777,203 @@ CodeGeneratorShared::verifyCompactNativeToBytecodeMap(JitCode *code)
 #endif // DEBUG
 }
 
+bool
+CodeGeneratorShared::generateCompactTrackedOptimizationsMap(JSContext *cx, JitCode *code,
+                                                            IonTrackedTypeVector *allTypes)
+{
+    MOZ_ASSERT(trackedOptimizationsMap_ == nullptr);
+    MOZ_ASSERT(trackedOptimizationsMapSize_ == 0);
+    MOZ_ASSERT(trackedOptimizationsRegionTableOffset_ == 0);
+    MOZ_ASSERT(trackedOptimizationsTypesTableOffset_ == 0);
+    MOZ_ASSERT(trackedOptimizationsAttemptsTableOffset_ == 0);
+
+    if (trackedOptimizations_.empty())
+        return true;
+
+    UniqueTrackedOptimizations unique(cx);
+    if (!unique.init())
+        return false;
+
+    // Iterate through all entries, fix up their masm offsets and deduplicate
+    // their optimization attempts.
+    for (size_t i = 0; i < trackedOptimizations_.length(); i++) {
+        NativeToTrackedOptimizations &entry = trackedOptimizations_[i];
+        entry.startOffset = CodeOffsetLabel(masm.actualOffset(entry.startOffset.offset()));
+        entry.endOffset = CodeOffsetLabel(masm.actualOffset(entry.endOffset.offset()));
+        if (!unique.add(entry.optimizations))
+            return false;
+    }
+
+    // Sort the unique optimization attempts by frequency to stabilize the
+    // attempts' indices in the compact table we will write later.
+    if (!unique.sortByFrequency(cx))
+        return false;
+
+    // Write out the ranges and the table.
+    CompactBufferWriter writer;
+    uint32_t numRegions;
+    uint32_t regionTableOffset;
+    uint32_t typesTableOffset;
+    uint32_t attemptsTableOffset;
+    if (!WriteIonTrackedOptimizationsTable(cx, writer,
+                                           trackedOptimizations_.begin(),
+                                           trackedOptimizations_.end(),
+                                           unique, &numRegions,
+                                           &regionTableOffset, &typesTableOffset,
+                                           &attemptsTableOffset, allTypes))
+    {
+        return false;
+    }
+
+    MOZ_ASSERT(regionTableOffset > 0);
+    MOZ_ASSERT(typesTableOffset > 0);
+    MOZ_ASSERT(attemptsTableOffset > 0);
+    MOZ_ASSERT(typesTableOffset > regionTableOffset);
+    MOZ_ASSERT(attemptsTableOffset > typesTableOffset);
+
+    // Copy over the table out of the writer's buffer.
+    uint8_t *data = cx->runtime()->pod_malloc<uint8_t>(writer.length());
+    if (!data)
+        return false;
+
+    memcpy(data, writer.buffer(), writer.length());
+    trackedOptimizationsMap_ = data;
+    trackedOptimizationsMapSize_ = writer.length();
+    trackedOptimizationsRegionTableOffset_ = regionTableOffset;
+    trackedOptimizationsTypesTableOffset_ = typesTableOffset;
+    trackedOptimizationsAttemptsTableOffset_ = attemptsTableOffset;
+
+    verifyCompactTrackedOptimizationsMap(code, numRegions, unique, allTypes);
+
+    JitSpew(JitSpew_OptimizationTracking,
+            "== Compact Native To Optimizations Map [%p-%p] size %u",
+            data, data + trackedOptimizationsMapSize_, trackedOptimizationsMapSize_);
+    JitSpew(JitSpew_OptimizationTracking,
+            "     with type list of length %u, size %u",
+            allTypes->length(), allTypes->length() * sizeof(IonTrackedTypeWithAddendum));
+
+    return true;
+}
+
+#ifdef DEBUG
+// Since this is a DEBUG-only verification, crash on OOM in the forEach ops
+// below.
+
+class ReadTempAttemptsVectorOp : public JS::ForEachTrackedOptimizationAttemptOp
+{
+    TempOptimizationAttemptsVector *attempts_;
+
+  public:
+    explicit ReadTempAttemptsVectorOp(TempOptimizationAttemptsVector *attempts)
+      : attempts_(attempts)
+    { }
+
+    void operator()(JS::TrackedStrategy strategy, JS::TrackedOutcome outcome) MOZ_OVERRIDE {
+        MOZ_ALWAYS_TRUE(attempts_->append(OptimizationAttempt(strategy, outcome)));
+    }
+};
+
+struct ReadTempTypeInfoVectorOp : public IonTrackedOptimizationsTypeInfo::ForEachOp
+{
+    TempOptimizationTypeInfoVector *types_;
+    TypeSet::TypeList accTypes_;
+
+  public:
+    explicit ReadTempTypeInfoVectorOp(TempOptimizationTypeInfoVector *types)
+      : types_(types)
+    { }
+
+    void readType(const IonTrackedTypeWithAddendum &tracked) MOZ_OVERRIDE {
+        MOZ_ALWAYS_TRUE(accTypes_.append(tracked.type));
+    }
+
+    void operator()(JS::TrackedTypeSite site, MIRType mirType) MOZ_OVERRIDE {
+        OptimizationTypeInfo ty(site, mirType);
+        for (uint32_t i = 0; i < accTypes_.length(); i++)
+            MOZ_ALWAYS_TRUE(ty.trackType(accTypes_[i]));
+        MOZ_ALWAYS_TRUE(types_->append(mozilla::Move(ty)));
+        accTypes_.clear();
+    }
+};
+#endif // DEBUG
+
+void
+CodeGeneratorShared::verifyCompactTrackedOptimizationsMap(JitCode *code, uint32_t numRegions,
+                                                          const UniqueTrackedOptimizations &unique,
+                                                          const IonTrackedTypeVector *allTypes)
+{
+#ifdef DEBUG
+    MOZ_ASSERT(trackedOptimizationsMap_ != nullptr);
+    MOZ_ASSERT(trackedOptimizationsMapSize_ > 0);
+    MOZ_ASSERT(trackedOptimizationsRegionTableOffset_ > 0);
+    MOZ_ASSERT(trackedOptimizationsTypesTableOffset_ > 0);
+    MOZ_ASSERT(trackedOptimizationsAttemptsTableOffset_ > 0);
+
+    // Table pointers must all be 4-byte aligned.
+    const uint8_t *regionTableAddr = trackedOptimizationsMap_ +
+                                     trackedOptimizationsRegionTableOffset_;
+    const uint8_t *typesTableAddr = trackedOptimizationsMap_ +
+                                    trackedOptimizationsTypesTableOffset_;
+    const uint8_t *attemptsTableAddr = trackedOptimizationsMap_ +
+                                       trackedOptimizationsAttemptsTableOffset_;
+    MOZ_ASSERT(uintptr_t(regionTableAddr) % sizeof(uint32_t) == 0);
+    MOZ_ASSERT(uintptr_t(typesTableAddr) % sizeof(uint32_t) == 0);
+    MOZ_ASSERT(uintptr_t(attemptsTableAddr) % sizeof(uint32_t) == 0);
+
+    // Assert that the number of entries matches up for the tables.
+    const IonTrackedOptimizationsRegionTable *regionTable =
+        (const IonTrackedOptimizationsRegionTable *) regionTableAddr;
+    MOZ_ASSERT(regionTable->numEntries() == numRegions);
+    const IonTrackedOptimizationsTypesTable *typesTable =
+        (const IonTrackedOptimizationsTypesTable *) typesTableAddr;
+    MOZ_ASSERT(typesTable->numEntries() == unique.count());
+    const IonTrackedOptimizationsAttemptsTable *attemptsTable =
+        (const IonTrackedOptimizationsAttemptsTable *) attemptsTableAddr;
+    MOZ_ASSERT(attemptsTable->numEntries() == unique.count());
+
+    // Verify each region.
+    uint32_t trackedIdx = 0;
+    for (uint32_t regionIdx = 0; regionIdx < regionTable->numEntries(); regionIdx++) {
+        // Check reverse offsets are within bounds.
+        MOZ_ASSERT(regionTable->entryOffset(regionIdx) <= trackedOptimizationsRegionTableOffset_);
+        MOZ_ASSERT_IF(regionIdx > 0, regionTable->entryOffset(regionIdx) <
+                                     regionTable->entryOffset(regionIdx - 1));
+
+        IonTrackedOptimizationsRegion region = regionTable->entry(regionIdx);
+
+        // Check the region range is covered by jitcode.
+        MOZ_ASSERT(region.startOffset() <= code->instructionsSize());
+        MOZ_ASSERT(region.endOffset() <= code->instructionsSize());
+
+        IonTrackedOptimizationsRegion::RangeIterator iter = region.ranges();
+        while (iter.more()) {
+            // Assert that the offsets are correctly decoded from the delta.
+            uint32_t startOffset, endOffset;
+            uint8_t index;
+            iter.readNext(&startOffset, &endOffset, &index);
+            NativeToTrackedOptimizations &entry = trackedOptimizations_[trackedIdx++];
+            MOZ_ASSERT(startOffset == entry.startOffset.offset());
+            MOZ_ASSERT(endOffset == entry.endOffset.offset());
+            MOZ_ASSERT(index == unique.indexOf(entry.optimizations));
+
+            // Assert that the type info and attempts vectors are correctly
+            // decoded.
+            IonTrackedOptimizationsTypeInfo typeInfo = typesTable->entry(index);
+            TempOptimizationTypeInfoVector tvec(alloc());
+            ReadTempTypeInfoVectorOp top(&tvec);
+            typeInfo.forEach(top, allTypes);
+            MOZ_ASSERT(entry.optimizations->matchTypes(tvec));
+
+            IonTrackedOptimizationsAttempts attempts = attemptsTable->entry(index);
+            TempOptimizationAttemptsVector avec(alloc());
+            ReadTempAttemptsVectorOp aop(&avec);
+            attempts.forEach(aop);
+            MOZ_ASSERT(entry.optimizations->matchAttempts(avec));
+        }
+    }
+#endif
+}
+
 void
 CodeGeneratorShared::markSafepoint(LInstruction *ins)
 {
@@ -914,6 +1166,10 @@ CodeGeneratorShared::verifyOsiPointRegs(LSafepoint *safepoint)
     // will potentially add a call at a random location, by patching the code
     // before the return address.
     masm.branch32(Assembler::NotEqual, checkRegs, Imm32(1), &failure);
+
+    // Set checkRegs to 0, so that we don't try to verify registers after we
+    // return from this script to the caller.
+    masm.store32(Imm32(0), checkRegs);
 
     // Ignore clobbered registers. Some instructions (like LValueToInt32) modify
     // temps after calling into the VM. This is fine because no other

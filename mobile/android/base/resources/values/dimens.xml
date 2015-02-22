@@ -29,7 +29,6 @@
     <dimen name="new_tablet_tab_strip_height">48dp</dimen>
     <dimen name="new_tablet_tab_strip_item_width">208dp</dimen>
     <dimen name="new_tablet_tab_strip_item_margin">-28dp</dimen>
-    <dimen name="new_tablet_tab_strip_favicon_size">16dp</dimen>
     <dimen name="new_tablet_tab_strip_fading_edge_size">15dp</dimen>
     <dimen name="new_tablet_site_security_height">60dp</dimen>
     <dimen name="new_tablet_site_security_width">34dp</dimen>
@@ -38,7 +37,6 @@
     <dimen name="new_tablet_site_security_padding_horizontal">8dp</dimen>
     <dimen name="new_tablet_site_security_right_margin">1dp</dimen>
     <dimen name="new_tablet_browser_toolbar_height">60dp</dimen>
-    <dimen name="new_tablet_browser_toolbar_menu_right_margin">6dp</dimen>
     <dimen name="new_tablet_browser_toolbar_menu_item_width">56dp</dimen>
     <!-- Padding combines with an 18dp image to form the menu item width and height. -->
     <dimen name="new_tablet_browser_toolbar_menu_item_padding_horizontal">19dp</dimen>
@@ -61,6 +59,9 @@
          database. The largest available size is always stored in the database, regardless of this
          value.-->
     <dimen name="favicon_largest_interesting_size">32dp</dimen>
+
+    <dimen name="firstrun_content_width">300dp</dimen>
+    <dimen name="firstrun_min_height">180dp</dimen>
 
     <!-- Site security icon -->
     <!-- If one of these values changes, they all should. -->
@@ -191,6 +192,8 @@
     <dimen name="tab_history_title_text_size">14sp</dimen>
     <dimen name="tab_history_bg_width">2dp</dimen>
     <dimen name="tab_history_border_padding">2dp</dimen>
+
+    <dimen name="horizontal_drag_area">256dp</dimen>
 
     <!-- Find-In-Page dialog dimensions. -->
     <dimen name="find_in_page_text_margin_left">5dip</dimen>

@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
 #include "th_char.h"
 #define th_isalpha(c)   (((c)>='a'&&(c)<='z')||((c)>='A'&&(c)<='Z'))
 #define th_isspace(c)   ((c)==' '||(c)=='\t')

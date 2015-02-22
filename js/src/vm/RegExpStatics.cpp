@@ -53,9 +53,10 @@ const Class RegExpStaticsObject::class_ = {
 };
 
 RegExpStaticsObject *
-RegExpStatics::create(ExclusiveContext *cx, GlobalObject *parent)
+RegExpStatics::create(ExclusiveContext *cx, Handle<GlobalObject*> parent)
 {
-    RegExpStaticsObject *obj = NewObjectWithGivenProto<RegExpStaticsObject>(cx, nullptr, parent);
+    RegExpStaticsObject *obj = NewObjectWithGivenProto<RegExpStaticsObject>(cx, NullPtr(),
+        GlobalObject::upcast(parent));
     if (!obj)
         return nullptr;
     RegExpStatics *res = cx->new_<RegExpStatics>();
@@ -76,7 +77,7 @@ RegExpStatics::markFlagsSet(JSContext *cx)
     // always be performed).
     MOZ_ASSERT_IF(cx->global()->hasRegExpStatics(), this == cx->global()->getRegExpStatics(cx));
 
-    types::MarkTypeObjectFlags(cx, cx->global(), types::OBJECT_FLAG_REGEXP_FLAGS_SET);
+    MarkObjectGroupFlags(cx, cx->global(), OBJECT_FLAG_REGEXP_FLAGS_SET);
 }
 
 bool

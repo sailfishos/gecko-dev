@@ -501,12 +501,23 @@ WebGLContext::ErrorInvalidEnum(const char* fmt, ...)
 }
 
 void
-WebGLContext::ErrorInvalidEnumInfo(const char* info, GLenum enumvalue)
+WebGLContext::ErrorInvalidEnumInfo(const char* info, GLenum enumValue)
 {
     nsCString name;
-    EnumName(enumvalue, &name);
+    EnumName(enumValue, &name);
 
-    return ErrorInvalidEnum("%s: invalid enum value %s", info, name.get());
+    return ErrorInvalidEnum("%s: invalid enum value %s", info, name.BeginReading());
+}
+
+void
+WebGLContext::ErrorInvalidEnumInfo(const char* info, const char* funcName,
+                                   GLenum enumValue)
+{
+    nsCString name;
+    EnumName(enumValue, &name);
+
+    ErrorInvalidEnum("%s: %s: Invalid enum: 0x%04x (%s).", funcName, info,
+                     enumValue, name.BeginReading());
 }
 
 void
@@ -1117,14 +1128,22 @@ WebGLContext::AssertCachedState()
     AssertUintParamCorrect(gl, LOCAL_GL_STENCIL_CLEAR_VALUE, mStencilClearValue);
 
     GLint stencilBits = 0;
-    gl->fGetIntegerv(LOCAL_GL_STENCIL_BITS, &stencilBits);
-    const GLuint stencilRefMask = (1 << stencilBits) - 1;
+    if (GetStencilBits(&stencilBits)) {
+        const GLuint stencilRefMask = (1 << stencilBits) - 1;
 
-    AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_REF,      stencilRefMask, mStencilRefFront);
-    AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_BACK_REF, stencilRefMask, mStencilRefBack);
+        AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_REF,      stencilRefMask, mStencilRefFront);
+        AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_BACK_REF, stencilRefMask, mStencilRefBack);
+    }
 
-    AssertUintParamCorrect(gl, LOCAL_GL_STENCIL_VALUE_MASK,      mStencilValueMaskFront);
-    AssertUintParamCorrect(gl, LOCAL_GL_STENCIL_BACK_VALUE_MASK, mStencilValueMaskBack);
+    // GLES 3.0.4, $4.1.4, p177:
+    //   [...] the front and back stencil mask are both set to the value `2^s - 1`, where
+    //   `s` is greater than or equal to the number of bits in the deepest stencil buffer
+    //   supported by the GL implementation.
+    const int maxStencilBits = 8;
+    const GLuint maxStencilBitsMask = (1 << maxStencilBits) - 1;
+
+    AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_VALUE_MASK,      maxStencilBitsMask, mStencilValueMaskFront);
+    AssertMaskedUintParamCorrect(gl, LOCAL_GL_STENCIL_BACK_VALUE_MASK, maxStencilBitsMask, mStencilValueMaskBack);
 
     AssertUintParamCorrect(gl, LOCAL_GL_STENCIL_WRITEMASK,      mStencilWriteMaskFront);
     AssertUintParamCorrect(gl, LOCAL_GL_STENCIL_BACK_WRITEMASK, mStencilWriteMaskBack);

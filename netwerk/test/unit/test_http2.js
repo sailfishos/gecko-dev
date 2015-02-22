@@ -15,6 +15,7 @@ function generateContent(size) {
 var posts = [];
 posts.push(generateContent(10));
 posts.push(generateContent(250000));
+posts.push(generateContent(128000));
 
 // pre-calculated md5sums (in hex) of the above posts
 var md5s = ['f1b708bba17f1ce948dc979f4d7092bc',
@@ -109,7 +110,7 @@ Http2MultiplexListener.prototype.onStopRequest = function(request, ctx, status) 
   do_check_true(this.onDataAvailableFired);
   do_check_true(this.isHttp2Connection);
   do_check_true(this.buffer == multiplexContent);
-  
+
   // This is what does most of the hard work for us
   register_completed_channel(this);
 };
@@ -144,6 +145,63 @@ Http2PushListener.prototype.onDataAvailable = function(request, ctx, stream, off
     do_check_eq(request.getResponseHeader("pushed"), "yes");
   }
   read_stream(stream, cnt);
+};
+
+const pushHdrTxt = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const pullHdrTxt = pushHdrTxt.split('').reverse().join('');
+
+function checkContinuedHeaders(getHeader, headerPrefix, headerText) {
+  for (var i = 0; i < 265; i++) {
+    do_check_eq(getHeader(headerPrefix + 1), headerText);
+  }
+}
+
+var Http2ContinuedHeaderListener = function() {};
+
+Http2ContinuedHeaderListener.prototype = new Http2CheckListener();
+
+Http2ContinuedHeaderListener.prototype.onStopsLeft = 2;
+
+Http2ContinuedHeaderListener.prototype.QueryInterface = function (aIID) {
+  if (aIID.equals(Ci.nsIHttpPushListener) ||
+      aIID.equals(Ci.nsIStreamListener))
+    return this;
+  throw Components.results.NS_ERROR_NO_INTERFACE;
+};
+
+Http2ContinuedHeaderListener.prototype.getInterface = function(aIID) {
+  return this.QueryInterface(aIID);
+};
+
+Http2ContinuedHeaderListener.prototype.onDataAvailable = function (request, ctx, stream, off, cnt) {
+  this.onDataAvailableFired = true;
+  this.isHttp2Connection = checkIsHttp2(request);
+  if (request.originalURI.spec == "https://localhost:" + serverPort + "/continuedheaders") {
+    // This is the original request, so the only one where we'll have continued response headers
+    checkContinuedHeaders(request.getResponseHeader, "X-Pull-Test-Header-", pullHdrTxt);
+  }
+  read_stream(stream, cnt);
+};
+
+Http2ContinuedHeaderListener.prototype.onStopRequest = function (request, ctx, status) {
+  do_check_true(this.onStartRequestFired);
+  do_check_true(Components.isSuccessCode(status));
+  do_check_true(this.onDataAvailableFired);
+  do_check_true(this.isHttp2Connection);
+
+  --this.onStopsLeft;
+  if (this.onStopsLeft === 0) {
+    run_next_test();
+    do_test_finished();
+  }
+};
+
+Http2ContinuedHeaderListener.prototype.onPush = function(associatedChannel, pushChannel) {
+  do_check_eq(associatedChannel.originalURI.spec, "https://localhost:" + serverPort + "/continuedheaders");
+  do_check_eq(pushChannel.getRequestHeader("x-pushed-request"), "true");
+  checkContinuedHeaders(pushChannel.getRequestHeader, "X-Push-Test-Header-", pushHdrTxt);
+
+  pushChannel.asyncOpen(this, pushChannel);
 };
 
 // Does the appropriate checks for a large GET response
@@ -277,11 +335,20 @@ var Http2ConcurrentListener = function() {};
 Http2ConcurrentListener.prototype = new Http2CheckListener();
 Http2ConcurrentListener.prototype.count = 0;
 Http2ConcurrentListener.prototype.target = 0;
+Http2ConcurrentListener.prototype.reset = 0;
+Http2ConcurrentListener.prototype.recvdHdr = 0;
 
 Http2ConcurrentListener.prototype.onStopRequest = function(request, ctx, status) {
   this.count++;
   do_check_true(this.isHttp2Connection);
+  if (this.recvdHdr > 0) {
+    do_check_eq(request.getResponseHeader("X-Recvd"), this.recvdHdr);
+  }
+
   if (this.count == this.target) {
+    if (this.reset > 0) {
+      prefs.setIntPref("network.http.spdy.default-concurrent", this.reset);
+    }
     run_next_test();
     do_test_finished();
   }
@@ -290,9 +357,32 @@ Http2ConcurrentListener.prototype.onStopRequest = function(request, ctx, status)
 function test_http2_concurrent() {
   var concurrent_listener = new Http2ConcurrentListener();
   concurrent_listener.target = 201;
+  concurrent_listener.reset = prefs.getIntPref("network.http.spdy.default-concurrent");
+  prefs.setIntPref("network.http.spdy.default-concurrent", 100);
+
   for (var i = 0; i < concurrent_listener.target; i++) {
     concurrent_channels[i] = makeChan("https://localhost:" + serverPort + "/750ms");
     concurrent_channels[i].loadFlags = Ci.nsIRequest.LOAD_BYPASS_CACHE;
+    concurrent_channels[i].asyncOpen(concurrent_listener, null);
+  }
+}
+
+function test_http2_concurrent_post() {
+  var concurrent_listener = new Http2ConcurrentListener();
+  concurrent_listener.target = 8;
+  concurrent_listener.recvdHdr = posts[2].length;
+  concurrent_listener.reset = prefs.getIntPref("network.http.spdy.default-concurrent");
+  prefs.setIntPref("network.http.spdy.default-concurrent", 3);
+
+  for (var i = 0; i < concurrent_listener.target; i++) {
+    concurrent_channels[i] = makeChan("https://localhost:" + serverPort + "/750msPost");
+    concurrent_channels[i].loadFlags = Ci.nsIRequest.LOAD_BYPASS_CACHE;
+    var stream = Cc["@mozilla.org/io/string-input-stream;1"]
+               .createInstance(Ci.nsIStringInputStream);
+    stream.data = posts[2];
+    var uchan = concurrent_channels[i].QueryInterface(Ci.nsIUploadChannel);
+    uchan.setUploadStream(stream, "text/plain", stream.available());
+    concurrent_channels[i].requestMethod = "POST";
     concurrent_channels[i].asyncOpen(concurrent_listener, null);
   }
 }
@@ -389,7 +479,7 @@ function test_http2_huge_suspended() {
 }
 
 // Support for doing a POST
-function do_post(content, chan, listener) {
+function do_post(content, chan, listener, method) {
   var stream = Cc["@mozilla.org/io/string-input-stream;1"]
                .createInstance(Ci.nsIStringInputStream);
   stream.data = content;
@@ -397,7 +487,7 @@ function do_post(content, chan, listener) {
   var uchan = chan.QueryInterface(Ci.nsIUploadChannel);
   uchan.setUploadStream(stream, "text/plain", stream.available());
 
-  chan.requestMethod = "POST";
+  chan.requestMethod = method;
 
   chan.asyncOpen(listener, null);
 }
@@ -406,20 +496,28 @@ function do_post(content, chan, listener) {
 function test_http2_post() {
   var chan = makeChan("https://localhost:" + serverPort + "/post");
   var listener = new Http2PostListener(md5s[0]);
-  do_post(posts[0], chan, listener);
+  do_post(posts[0], chan, listener, "POST");
+}
+
+// Make sure we can do a simple PATCH
+function test_http2_patch() {
+  var chan = makeChan("https://localhost:" + serverPort + "/patch");
+  var listener = new Http2PostListener(md5s[0]);
+  do_post(posts[0], chan, listener, "PATCH");
 }
 
 // Make sure we can do a POST that covers more than 2 frames
 function test_http2_post_big() {
   var chan = makeChan("https://localhost:" + serverPort + "/post");
   var listener = new Http2PostListener(md5s[1]);
-  do_post(posts[1], chan, listener);
+  do_post(posts[1], chan, listener, "POST");
 }
 
 Cu.import("resource://testing-common/httpd.js");
 Cu.import("resource://gre/modules/Services.jsm");
 
 var httpserv = null;
+var httpserv2 = null;
 var ios = Components.classes["@mozilla.org/network/io-service;1"]
                     .getService(Components.interfaces.nsIIOService);
 
@@ -433,23 +531,48 @@ var altsvcClientListener = {
   },
 
   onStopRequest: function test_onStopR(request, ctx, status) {
-    var isHttp2Connection = checkIsHttp2(request);
+    var isHttp2Connection = checkIsHttp2(request.QueryInterface(Components.interfaces.nsIHttpChannel));
     if (!isHttp2Connection) {
-	// not over tls yet - retry. It's all async and transparent to client
-	var chan = ios.newChannel2("http://localhost:" + httpserv.identity.primaryPort + "/altsvc1",
-                             null,
-                             null,
-                             null,      // aLoadingNode
-                             Services.scriptSecurityManager.getSystemPrincipal(),
-                             null,      // aTriggeringPrincipal
-                             Ci.nsILoadInfo.SEC_NORMAL,
-                             Ci.nsIContentPolicy.TYPE_OTHER)
+      dump("/altsvc1 not over h2 yet - retry\n");
+      var chan = makeChan("http://localhost:" + httpserv.identity.primaryPort + "/altsvc1")
                 .QueryInterface(Components.interfaces.nsIHttpChannel);
-	chan.asyncOpen(altsvcClientListener, null);
+      // we use this header to tell the server to issue a altsvc frame for the
+      // speficied origin we will use in the next part of the test
+      chan.setRequestHeader("x-redirect-origin",
+                 "http://localhost:" + httpserv2.identity.primaryPort, false);
+      chan.loadFlags = Ci.nsIRequest.LOAD_BYPASS_CACHE;
+      chan.asyncOpen(altsvcClientListener, chan);
     } else {
-        do_check_true(isHttp2Connection);
-	httpserv.stop(do_test_finished);
-	run_next_test();
+      do_check_true(isHttp2Connection);
+      var chan = makeChan("http://localhost:" + httpserv2.identity.primaryPort + "/altsvc2")
+                .QueryInterface(Components.interfaces.nsIHttpChannel);
+      chan.loadFlags = Ci.nsIRequest.LOAD_BYPASS_CACHE;
+      chan.asyncOpen(altsvcClientListener2, chan);
+    }
+  }
+};
+
+var altsvcClientListener2 = {
+  onStartRequest: function test_onStartR(request, ctx) {
+    do_check_eq(request.status, Components.results.NS_OK);
+  },
+
+  onDataAvailable: function test_ODA(request, cx, stream, offset, cnt) {
+   read_stream(stream, cnt);
+  },
+
+  onStopRequest: function test_onStopR(request, ctx, status) {
+    var isHttp2Connection = checkIsHttp2(request.QueryInterface(Components.interfaces.nsIHttpChannel));
+    if (!isHttp2Connection) {
+      dump("/altsvc2 not over h2 yet - retry\n");
+      var chan = makeChan("http://localhost:" + httpserv2.identity.primaryPort + "/altsvc2")
+                .QueryInterface(Components.interfaces.nsIHttpChannel);
+      chan.loadFlags = Ci.nsIRequest.LOAD_BYPASS_CACHE;
+      chan.asyncOpen(altsvcClientListener2, chan);
+    } else {
+      do_check_true(isHttp2Connection);
+      run_next_test();
+      do_test_finished();
     }
   }
 };
@@ -457,26 +580,27 @@ var altsvcClientListener = {
 function altsvcHttp1Server(metadata, response) {
   response.setStatusLine(metadata.httpVersion, 200, "OK");
   response.setHeader("Content-Type", "text/plain", false);
+  response.setHeader("Connection", "close", false);
   response.setHeader("Alt-Svc", 'h2-16=":' + serverPort + '"', false);
   var body = "this is where a cool kid would write something neat.\n";
   response.bodyOutputStream.write(body, body.length);
 }
 
-function test_http2_altsvc() {
-  httpserv = new HttpServer();
-  httpserv.registerPathHandler("/altsvc1", altsvcHttp1Server);
-  httpserv.start(-1);
+function altsvcHttp1Server2(metadata, response) {
+// this server should never be used thanks to an alt svc frame from the
+// h2 server.. but in case of some async lag in setting the alt svc route
+// up we have it.
+  response.setStatusLine(metadata.httpVersion, 200, "OK");
+  response.setHeader("Content-Type", "text/plain", false);
+  response.setHeader("Connection", "close", false);
+  var body = "hanging.\n";
+  response.bodyOutputStream.write(body, body.length);
+}
 
-  var chan = ios.newChannel2("http://localhost:" + httpserv.identity.primaryPort + "/altsvc1",
-                             null,
-                             null,
-                             null,      // aLoadingNode
-                             Services.scriptSecurityManager.getSystemPrincipal(),
-                             null,      // aTriggeringPrincipal
-                             Ci.nsILoadInfo.SEC_NORMAL,
-                             Ci.nsIContentPolicy.TYPE_OTHER)
-                .QueryInterface(Components.interfaces.nsIHttpChannel);
-  chan.asyncOpen(altsvcClientListener, null);
+function test_http2_altsvc() {
+  var chan = makeChan("http://localhost:" + httpserv.identity.primaryPort + "/altsvc1")
+           .QueryInterface(Components.interfaces.nsIHttpChannel);
+  chan.asyncOpen(altsvcClientListener, chan);
 }
 
 var Http2PushApiListener = function() {};
@@ -502,7 +626,7 @@ Http2PushApiListener.prototype = {
 
     pushChannel.asyncOpen(this, pushChannel);
     if (pushChannel.originalURI.spec == "https://localhost:" + serverPort + "/pushapi1/2") {
-	pushChannel.cancel(Components.results.NS_ERROR_ABORT);
+      pushChannel.cancel(Components.results.NS_ERROR_ABORT);
     }
   },
 
@@ -516,30 +640,30 @@ Http2PushApiListener.prototype = {
     var data = read_stream(stream, cnt);
 
     if (ctx.originalURI.spec == "https://localhost:" + serverPort + "/pushapi1") {
-	do_check_eq(data[0], '0');
-	--this.checksPending;
+      do_check_eq(data[0], '0');
+      --this.checksPending;
     } else if (ctx.originalURI.spec == "https://localhost:" + serverPort + "/pushapi1/1") {
-	do_check_eq(data[0], '1');
-	--this.checksPending; // twice
+      do_check_eq(data[0], '1');
+      --this.checksPending; // twice
     } else if (ctx.originalURI.spec == "https://localhost:" + serverPort + "/pushapi1/3") {
-	do_check_eq(data[0], '3');
-	--this.checksPending;
+      do_check_eq(data[0], '3');
+      --this.checksPending;
     } else {
-	do_check_eq(true, false);
+      do_check_eq(true, false);
     }
   },
 
   onStopRequest: function test_onStopR(request, ctx, status) {
     if (ctx.originalURI.spec == "https://localhost:" + serverPort + "/pushapi1/2") {
-	do_check_eq(request.status, Components.results.NS_ERROR_ABORT);
+      do_check_eq(request.status, Components.results.NS_ERROR_ABORT);
     } else {
-	do_check_eq(request.status, Components.results.NS_OK);
+      do_check_eq(request.status, Components.results.NS_OK);
     }
 
     --this.checksPending; // 5 times - one for each push plus the pull
     if (!this.checksPending) {
-	run_next_test();
-        do_test_finished();
+      run_next_test();
+      do_test_finished();
     }
   }
 };
@@ -611,8 +735,21 @@ function test_http2_retry_rst() {
   chan.asyncOpen(listener, null);
 }
 
+function test_http2_continuations() {
+  var chan = makeChan("https://localhost:" + serverPort + "/continuedheaders");
+  chan.loadGroup = loadGroup;
+  var listener = new Http2ContinuedHeaderListener();
+  chan.notificationCallbacks = listener;
+  chan.asyncOpen(listener, chan);
+}
+
 function test_complete() {
   resetPrefs();
+  do_test_pending();
+  httpserv.stop(do_test_finished);
+  do_test_pending();
+  httpserv2.stop(do_test_finished);
+
   do_test_finished();
   do_timeout(0,run_next_test);
 }
@@ -625,13 +762,14 @@ function test_complete() {
 var tests = [ test_http2_post_big
             , test_http2_basic
             , test_http2_concurrent
+            , test_http2_concurrent_post
             , test_http2_basic_unblocked_dep
             , test_http2_nospdy
             , test_http2_push1
             , test_http2_push2
             , test_http2_push3
             , test_http2_push4
-	    , test_http2_altsvc
+            , test_http2_altsvc
             , test_http2_doubleheader
             , test_http2_xhr
             , test_http2_header
@@ -640,8 +778,11 @@ var tests = [ test_http2_post_big
             , test_http2_big
             , test_http2_huge_suspended
             , test_http2_post
+            , test_http2_patch
             , test_http2_pushapi_1
+            , test_http2_continuations
             // These next two must always come in this order
+	    // best to add new tests before h1 streams get too involved
             , test_http2_h11required_stream
             , test_http2_h11required_session
             , test_http2_retry_rst
@@ -772,6 +913,14 @@ function run_test() {
   prefs.setBoolPref("network.http.altsvc.oe", true);
 
   loadGroup = Cc["@mozilla.org/network/load-group;1"].createInstance(Ci.nsILoadGroup);
+
+  httpserv = new HttpServer();
+  httpserv.registerPathHandler("/altsvc1", altsvcHttp1Server);
+  httpserv.start(-1);
+
+  httpserv2 = new HttpServer();
+  httpserv2.registerPathHandler("/altsvc2", altsvcHttp1Server2);
+  httpserv2.start(-1);
 
   // And make go!
   run_next_test();

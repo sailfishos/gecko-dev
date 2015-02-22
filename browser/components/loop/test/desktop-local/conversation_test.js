@@ -83,7 +83,7 @@ describe("loop.conversation", function() {
 
       sandbox.stub(loop.Dispatcher.prototype, "dispatch");
 
-      sandbox.stub(loop.shared.utils.Helper.prototype,
+      sandbox.stub(loop.shared.utils,
         "locationData").returns({
           hash: "#42",
           pathname: "/"
@@ -141,7 +141,8 @@ describe("loop.conversation", function() {
           sdk: {},
           conversationStore: conversationStore,
           conversationAppStore: conversationAppStore,
-          dispatcher: dispatcher
+          dispatcher: dispatcher,
+          mozLoop: navigator.mozLoop
         }));
     }
 

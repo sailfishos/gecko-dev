@@ -1374,6 +1374,9 @@ FilterNodeColorMatrixSoftware::RequestFromInputsForRect(const IntRect &aRect)
 IntRect
 FilterNodeColorMatrixSoftware::GetOutputRectInRect(const IntRect& aRect)
 {
+  if (mMatrix._54 > 0.0f) {
+    return aRect;
+  }
   return GetInputRectInRect(IN_COLOR_MATRIX_IN, aRect);
 }
 
@@ -1547,7 +1550,16 @@ FilterNodeTileSoftware::Render(const IntRect& aRect)
           return nullptr;
         }
       }
-      MOZ_ASSERT(input->GetFormat() == target->GetFormat(), "different surface formats from the same input?");
+
+      if (input->GetFormat() != target->GetFormat()) {
+        // Different rectangles of the input can have different formats. If
+        // that happens, just convert everything to B8G8R8A8.
+        target = FilterProcessing::ConvertToB8G8R8A8(target);
+        input = FilterProcessing::ConvertToB8G8R8A8(input);
+        if (MOZ2D_WARN_IF(!target) || MOZ2D_WARN_IF(!input)) {
+          return nullptr;
+        }
+      }
 
       CopyRect(input, target, srcRect - srcRect.TopLeft(), destRect.TopLeft() - aRect.TopLeft());
     }
@@ -1722,7 +1734,10 @@ FilterNodeComponentTransferSoftware::RequestFromInputsForRect(const IntRect &aRe
 IntRect
 FilterNodeComponentTransferSoftware::GetOutputRectInRect(const IntRect& aRect)
 {
-  return GetInputRectInRect(IN_TRANSFER_IN, aRect);
+  if (mDisableA) {
+    return GetInputRectInRect(IN_TRANSFER_IN, aRect);
+  }
+  return aRect;
 }
 
 int32_t

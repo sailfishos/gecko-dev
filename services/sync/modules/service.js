@@ -926,6 +926,9 @@ Sync11Service.prototype = {
 
     this.identity.finalize().then(
       () => {
+        // an observer so the FxA migration code can take some action before
+        // the new identity is created.
+        Svc.Obs.notify("weave:service:start-over:init-identity");
         this.identity.username = "";
         this.status.__authManager = null;
         this.identity = Status._authManager;
@@ -1586,7 +1589,9 @@ Sync11Service.prototype = {
 
       // Only wipe the engines provided.
       if (engines) {
-        engines.forEach(function(e) this.clientsEngine.sendCommand("wipeEngine", [e]), this);
+        engines.forEach(function(e) {
+            this.clientsEngine.sendCommand("wipeEngine", [e]);
+          }, this);
       }
       // Tell the remote machines to wipe themselves.
       else {

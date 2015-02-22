@@ -88,6 +88,10 @@ const SNAPSHOT_SCHEMA = {
           required: true,
           type: "string",
         },
+        buildID: {
+          required: true,
+          type: "string",
+        },
         userAgent: {
           required: true,
           type: "string",
@@ -95,8 +99,15 @@ const SNAPSHOT_SCHEMA = {
         vendor: {
           type: "string",
         },
+        updateChannel: {
+          type: "string",
+        },
         supportURL: {
           type: "string",
+        },
+        remoteAutoStart: {
+          type: "boolean",
+          required: true,
         },
         numTotalWindows: {
           type: "number",

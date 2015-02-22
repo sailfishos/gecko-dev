@@ -739,7 +739,10 @@ SharedTextureClientD3D9::SharedTextureClientD3D9(ISurfaceAllocator* aAllocator,
 SharedTextureClientD3D9::~SharedTextureClientD3D9()
 {
   if (mTexture && mActor) {
-    KeepUntilFullDeallocation(new TKeepAlive<IDirect3DTexture9>(mTexture));
+    KeepUntilFullDeallocation(MakeUnique<TKeepAlive<IDirect3DTexture9>>(mTexture));
+  }
+  if (mTexture) {
+    gfxWindowsPlatform::sD3D9SharedTextureUsed -= mDesc.Width * mDesc.Height * 4;
   }
   MOZ_COUNT_DTOR(SharedTextureClientD3D9);
 }

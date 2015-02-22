@@ -46,7 +46,7 @@ public:
   nsrefcnt AddRef()
   {
     NS_PRECONDITION(int32_t(mRefCnt) >= 0, "illegal refcnt");
-    NS_ABORT_IF_FALSE(_mOwningThread.GetThread() == PR_GetCurrentThread(), "imgCacheEntry addref isn't thread-safe!");
+    MOZ_ASSERT(_mOwningThread.GetThread() == PR_GetCurrentThread(), "imgCacheEntry addref isn't thread-safe!");
     ++mRefCnt;
     NS_LOG_ADDREF(this, mRefCnt, "imgCacheEntry", sizeof(*this));
     return mRefCnt;
@@ -55,7 +55,7 @@ public:
   nsrefcnt Release()
   {
     NS_PRECONDITION(0 != mRefCnt, "dup release");
-    NS_ABORT_IF_FALSE(_mOwningThread.GetThread() == PR_GetCurrentThread(), "imgCacheEntry release isn't thread-safe!");
+    MOZ_ASSERT(_mOwningThread.GetThread() == PR_GetCurrentThread(), "imgCacheEntry release isn't thread-safe!");
     --mRefCnt;
     NS_LOG_RELEASE(this, mRefCnt, "imgCacheEntry");
     if (mRefCnt == 0) {
@@ -206,10 +206,10 @@ private:
   uint32_t mSize;
 };
 
-MOZ_BEGIN_ENUM_CLASS(AcceptedMimeTypes, uint8_t)
+enum class AcceptedMimeTypes : uint8_t {
   IMAGES,
   IMAGES_AND_DOCUMENTS,
-MOZ_END_ENUM_CLASS(AcceptedMimeTypes)
+};
 
 class imgLoader MOZ_FINAL : public imgILoader,
                             public nsIContentSniffer,

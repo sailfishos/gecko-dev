@@ -231,7 +231,7 @@ protected:
                                          const nsIntRect& aRect) MOZ_OVERRIDE;
 
 #if defined(XP_UNIX) && !defined(XP_MACOSX) && !defined(MOZ_WIDGET_GONK)
-    virtual nsresult NP_Initialize(NPNetscapeFuncs* bFuncs, NPPluginFuncs* pFuncs, NPError* error);
+    virtual nsresult NP_Initialize(NPNetscapeFuncs* bFuncs, NPPluginFuncs* pFuncs, NPError* error) MOZ_OVERRIDE;
 #else
     virtual nsresult NP_Initialize(NPNetscapeFuncs* bFuncs, NPError* error) MOZ_OVERRIDE;
 #endif
@@ -259,6 +259,7 @@ protected:
     void InitAsyncSurrogates();
 
 protected:
+    void NotifyFlashHang();
     void NotifyPluginCrashed();
     void OnInitFailure();
 
@@ -314,6 +315,10 @@ class PluginModuleContentParent : public PluginModuleParent
 
     virtual ~PluginModuleContentParent();
 
+#if defined(XP_WIN) || defined(XP_MACOSX)
+    nsresult NP_Initialize(NPNetscapeFuncs* bFuncs, NPError* error) MOZ_OVERRIDE;
+#endif
+
   private:
     virtual bool ShouldContinueFromReplyTimeout() MOZ_OVERRIDE;
     virtual void OnExitedSyncSend() MOZ_OVERRIDE;
@@ -340,6 +345,14 @@ class PluginModuleChromeParent
      */
     static PluginLibrary* LoadModule(const char* aFilePath, uint32_t aPluginId,
                                      nsPluginTag* aPluginTag);
+
+    /**
+     * The following two functions are called by SetupBridge to determine
+     * whether an existing plugin module was reused, or whether a new module
+     * was instantiated by the plugin host.
+     */
+    static void ClearInstantiationFlag() { sInstantiated = false; }
+    static bool DidInstantiate() { return sInstantiated; }
 
     virtual ~PluginModuleChromeParent();
 
@@ -516,6 +529,8 @@ private:
     dom::ContentParent* mContentParent;
     nsCOMPtr<nsIObserver> mOfflineObserver;
     bool mIsFlashPlugin;
+    bool mIsBlocklisted;
+    static bool sInstantiated;
 };
 
 } // namespace plugins

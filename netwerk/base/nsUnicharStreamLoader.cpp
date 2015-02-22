@@ -26,7 +26,7 @@ nsUnicharStreamLoader::Init(nsIUnicharStreamLoaderObserver *aObserver)
 
   mObserver = aObserver;
 
-  if (!mRawData.SetCapacity(SNIFFING_BUFFER_SIZE, fallible_t()))
+  if (!mRawData.SetCapacity(SNIFFING_BUFFER_SIZE, fallible))
     return NS_ERROR_OUT_OF_MEMORY;
 
   return NS_OK;
@@ -87,8 +87,8 @@ nsUnicharStreamLoader::OnStopRequest(nsIRequest *aRequest,
 
   nsresult rv = NS_OK;
   if (mRawData.Length() > 0 && NS_SUCCEEDED(aStatus)) {
-    NS_ABORT_IF_FALSE(mBuffer.Length() == 0,
-                      "should not have both decoded and raw data");
+    MOZ_ASSERT(mBuffer.Length() == 0,
+               "should not have both decoded and raw data");
     rv = DetermineCharset();
   }
 
@@ -152,7 +152,7 @@ nsUnicharStreamLoader::OnDataAvailable(nsIRequest *aRequest,
           aInputStream->ReadSegments(WriteSegmentFun, this, aCount - n, &dummy);
         }
       } else {
-        NS_ABORT_IF_FALSE(n == aCount, "didn't read as much as was available");
+        MOZ_ASSERT(n == aCount, "didn't read as much as was available");
       }
     }
   }
@@ -214,7 +214,7 @@ nsUnicharStreamLoader::WriteSegmentFun(nsIInputStream *,
   self->mDecoder->GetMaxLength(aSegment, srcLen, &dstLen);
 
   uint32_t capacity = haveRead + dstLen;
-  if (!self->mBuffer.SetCapacity(capacity, fallible_t())) {
+  if (!self->mBuffer.SetCapacity(capacity, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 

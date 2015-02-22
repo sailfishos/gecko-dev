@@ -20,6 +20,7 @@
 #include "nsIDOMHTMLElement.h"
 #include "nsFrameList.h"
 #include "nsGkAtoms.h"
+#include "nsHtml5Atoms.h"
 #include "nsIAtom.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSAnonBoxes.h"
@@ -779,8 +780,8 @@ nsLayoutUtils::FindOrCreateIDFor(nsIContent* aContent)
 nsIContent*
 nsLayoutUtils::FindContentFor(ViewID aId)
 {
-  NS_ABORT_IF_FALSE(aId != FrameMetrics::NULL_SCROLL_ID,
-                    "Cannot find a content element in map for null IDs.");
+  MOZ_ASSERT(aId != FrameMetrics::NULL_SCROLL_ID,
+             "Cannot find a content element in map for null IDs.");
   nsIContent* content;
   bool exists = GetContentMap().Get(aId, &content);
 
@@ -866,6 +867,11 @@ GetDisplayPortFromMarginsData(nsIContent* aContent,
     // We want the scroll frame, the root scroll frame differs from all
     // others in that the primary frame is not the scroll frame.
     frame = frame->PresContext()->PresShell()->GetRootScrollFrame();
+    if (!frame) {
+      // If there is no root scrollframe, just exit.
+      return ApplyRectMultiplier(base, aMultiplier);
+    }
+
     isRoot = true;
   }
 
@@ -908,7 +914,7 @@ GetDisplayPortFromMarginsData(nsIContent* aContent,
   //   screen resolution; since this is what Layout does most of the time,
   //   this is a good approximation. A proper solution would involve moving the
   //   choosing of the resolution to display-list building time.
-  if (alignmentX > 0 && alignmentY > 0) {
+  if (gfxPrefs::LayersTilesEnabled() && (alignmentX > 0 && alignmentY > 0)) {
     // Inflate the rectangle by 1 so that we always push to the next tile
     // boundary. This is desirable to stop from having a rectangle with a
     // moving origin occasionally being smaller when it coincidentally lines
@@ -1912,13 +1918,13 @@ nsLayoutUtils::GetEventCoordinatesRelativeTo(const WidgetEvent* aEvent,
     return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
 
   return GetEventCoordinatesRelativeTo(aEvent,
-           LayoutDeviceIntPoint::ToUntyped(aEvent->AsGUIEvent()->refPoint),
+           aEvent->AsGUIEvent()->refPoint,
            aFrame);
 }
 
 nsPoint
 nsLayoutUtils::GetEventCoordinatesRelativeTo(const WidgetEvent* aEvent,
-                                             const nsIntPoint aPoint,
+                                             const LayoutDeviceIntPoint& aPoint,
                                              nsIFrame* aFrame)
 {
   if (!aFrame) {
@@ -1935,7 +1941,7 @@ nsLayoutUtils::GetEventCoordinatesRelativeTo(const WidgetEvent* aEvent,
 
 nsPoint
 nsLayoutUtils::GetEventCoordinatesRelativeTo(nsIWidget* aWidget,
-                                             const nsIntPoint aPoint,
+                                             const LayoutDeviceIntPoint& aPoint,
                                              nsIFrame* aFrame)
 {
   if (!aFrame || !aWidget) {
@@ -2189,10 +2195,10 @@ static bool
 CheckCorner(nscoord aXOffset, nscoord aYOffset,
             nscoord aXRadius, nscoord aYRadius)
 {
-  NS_ABORT_IF_FALSE(aXOffset > 0 && aYOffset > 0,
-                    "must not pass nonpositives to CheckCorner");
-  NS_ABORT_IF_FALSE(aXRadius >= 0 && aYRadius >= 0,
-                    "must not pass negatives to CheckCorner");
+  MOZ_ASSERT(aXOffset > 0 && aYOffset > 0,
+             "must not pass nonpositives to CheckCorner");
+  MOZ_ASSERT(aXRadius >= 0 && aYRadius >= 0,
+             "must not pass negatives to CheckCorner");
 
   // Avoid floating point math unless we're either (1) within the
   // quarter-ellipse area at the rounded corner or (2) outside the
@@ -2627,8 +2633,8 @@ nsLayoutUtils::TransformFrameRectToAncestor(nsIFrame* aFrame,
                 NSFloatPixelsToAppUnits(float(result.height), destAppUnitsPerDevPixel));
 }
 
-static nsIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
-  nsIntPoint offset(0, 0);
+static LayoutDeviceIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
+  LayoutDeviceIntPoint offset(0, 0);
   while ((aWidget->WindowType() == eWindowType_child ||
           aWidget->IsPlugin())) {
     nsIWidget* parent = aWidget->GetParent();
@@ -2637,18 +2643,19 @@ static nsIntPoint GetWidgetOffset(nsIWidget* aWidget, nsIWidget*& aRootWidget) {
     }
     nsIntRect bounds;
     aWidget->GetBounds(bounds);
-    offset += bounds.TopLeft();
+    offset += LayoutDeviceIntPoint::FromUntyped(bounds.TopLeft());
     aWidget = parent;
   }
   aRootWidget = aWidget;
   return offset;
 }
 
-static nsIntPoint WidgetToWidgetOffset(nsIWidget* aFrom, nsIWidget* aTo) {
+static LayoutDeviceIntPoint
+WidgetToWidgetOffset(nsIWidget* aFrom, nsIWidget* aTo) {
   nsIWidget* fromRoot;
-  nsIntPoint fromOffset = GetWidgetOffset(aFrom, fromRoot);
+  LayoutDeviceIntPoint fromOffset = GetWidgetOffset(aFrom, fromRoot);
   nsIWidget* toRoot;
-  nsIntPoint toOffset = GetWidgetOffset(aTo, toRoot);
+  LayoutDeviceIntPoint toOffset = GetWidgetOffset(aTo, toRoot);
 
   if (fromRoot == toRoot) {
     return fromOffset - toOffset;
@@ -2658,7 +2665,7 @@ static nsIntPoint WidgetToWidgetOffset(nsIWidget* aFrom, nsIWidget* aTo) {
 
 nsPoint
 nsLayoutUtils::TranslateWidgetToView(nsPresContext* aPresContext,
-                                     nsIWidget* aWidget, nsIntPoint aPt,
+                                     nsIWidget* aWidget, const LayoutDeviceIntPoint& aPt,
                                      nsView* aView)
 {
   nsPoint viewOffset;
@@ -2667,13 +2674,13 @@ nsLayoutUtils::TranslateWidgetToView(nsPresContext* aPresContext,
     return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
   }
 
-  nsIntPoint widgetPoint = aPt + WidgetToWidgetOffset(aWidget, viewWidget);
+  LayoutDeviceIntPoint widgetPoint = aPt + WidgetToWidgetOffset(aWidget, viewWidget);
   nsPoint widgetAppUnits(aPresContext->DevPixelsToAppUnits(widgetPoint.x),
                          aPresContext->DevPixelsToAppUnits(widgetPoint.y));
   return widgetAppUnits - viewOffset;
 }
 
-nsIntPoint
+LayoutDeviceIntPoint
 nsLayoutUtils::TranslateViewToWidget(nsPresContext* aPresContext,
                                      nsView* aView, nsPoint aPt,
                                      nsIWidget* aWidget)
@@ -2681,11 +2688,11 @@ nsLayoutUtils::TranslateViewToWidget(nsPresContext* aPresContext,
   nsPoint viewOffset;
   nsIWidget* viewWidget = aView->GetNearestWidget(&viewOffset);
   if (!viewWidget) {
-    return nsIntPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+    return LayoutDeviceIntPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
   }
 
-  nsIntPoint relativeToViewWidget(aPresContext->AppUnitsToDevPixels(aPt.x + viewOffset.x),
-                                  aPresContext->AppUnitsToDevPixels(aPt.y + viewOffset.y));
+  LayoutDeviceIntPoint relativeToViewWidget(aPresContext->AppUnitsToDevPixels(aPt.x + viewOffset.x),
+                                            aPresContext->AppUnitsToDevPixels(aPt.y + viewOffset.y));
   return relativeToViewWidget + WidgetToWidgetOffset(viewWidget, aWidget);
 }
 
@@ -2891,7 +2898,8 @@ nsLayoutUtils::GetOrMaybeCreateDisplayPort(nsDisplayListBuilder& aBuilder,
   // displayport.
   // Note: we only do this in processes where we do subframe scrolling to
   //       begin with (i.e., not in the parent process on B2G).
-  if (aBuilder.IsPaintingToWindow() && WantSubAPZC() &&
+  if (aBuilder.IsPaintingToWindow() &&
+      gfxPrefs::AsyncPanZoomEnabled() &&
       !aBuilder.HaveScrollableDisplayPort() &&
       scrollableFrame->WantAsyncScroll()) {
 
@@ -3226,6 +3234,14 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
 #endif
   }
 
+#ifdef MOZ_DUMP_PAINTING
+  if (gfxPrefs::DumpClientLayers()) {
+    std::stringstream ss;
+    FrameLayerBuilder::DumpRetainedLayerTree(layerManager, ss, false);
+    printf_stderr("%s", ss.str().c_str());
+  }
+#endif
+
   // Update the widget's opaque region information. This sets
   // glass boundaries on Windows. Also set up the window dragging region
   // and plugin clip regions and bounds.
@@ -3252,7 +3268,17 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
     // We could instead have the compositor send back an equivalent to WillPaintWindow,
     // but it should be close enough to now not to matter.
     if (layerManager && !layerManager->NeedsWidgetInvalidation()) {
-      rootPresContext->ApplyPluginGeometryUpdates();
+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
+      if (XRE_GetProcessType() == GeckoProcessType_Content) {
+        // If this is a remotely managed widget (PluginWidgetProxy in content)
+        // store this information in the compositor, which ships this
+        // over to chrome for application when we paint.
+        rootPresContext->CollectPluginGeometryUpdates(layerManager);
+      } else
+#endif
+      {
+        rootPresContext->ApplyPluginGeometryUpdates();
+      }
     }
 
     // We told the compositor thread not to composite when it received the transaction because
@@ -4856,15 +4882,26 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(WritingMode aWM,
         tentBSize = nsPresContext::CSSPixelsToAppUnits(150);
       }
 
-      nsSize autoSize =
-        ComputeAutoSizeWithIntrinsicDimensions(minISize, minBSize,
-                                               maxISize, maxBSize,
-                                               tentISize, tentBSize);
-      // The nsSize that ComputeAutoSizeWithIntrinsicDimensions returns will
-      // actually contain logical values if the parameters passed to it were
-      // logical coordinates, so we do NOT perform a physical-to-logical
-      // conversion here, but just assign the fields directly to our result.
-      return LogicalSize(aWM, autoSize.width, autoSize.height);
+      if (aIntrinsicRatio != nsSize(0, 0)) {
+        nsSize autoSize =
+          ComputeAutoSizeWithIntrinsicDimensions(minISize, minBSize,
+                                                 maxISize, maxBSize,
+                                                 tentISize, tentBSize);
+        // The nsSize that ComputeAutoSizeWithIntrinsicDimensions returns will
+        // actually contain logical values if the parameters passed to it were
+        // logical coordinates, so we do NOT perform a physical-to-logical
+        // conversion here, but just assign the fields directly to our result.
+        iSize = autoSize.width;
+        bSize = autoSize.height;
+      } else {
+        // No intrinsic ratio, so just clamp the dimensions
+        // independently without calling
+        // ComputeAutoSizeWithIntrinsicDimensions, which deals with
+        // propagating these changes to the other dimension (and would
+        // be incorrect when there is no intrinsic ratio).
+        iSize = NS_CSS_MINMAX(tentISize, minISize, maxISize);
+        bSize = NS_CSS_MINMAX(tentBSize, minBSize, maxBSize);
+      }
     } else {
 
       // 'auto' iSize, non-'auto' bSize
@@ -5077,6 +5114,19 @@ nsLayoutUtils::GetSnappedBaselineY(nsIFrame* aFrame, gfxContext* aContext,
   if (!aContext->UserToDevicePixelSnapped(putativeRect, true))
     return baseline;
   return aContext->DeviceToUser(putativeRect.TopLeft()).y * appUnitsPerDevUnit;
+}
+
+gfxFloat
+nsLayoutUtils::GetSnappedBaselineX(nsIFrame* aFrame, gfxContext* aContext,
+                                   nscoord aX, nscoord aAscent)
+{
+  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
+  gfxFloat baseline = gfxFloat(aX) + aAscent;
+  gfxRect putativeRect(baseline / appUnitsPerDevUnit, 0, 1, 1);
+  if (!aContext->UserToDevicePixelSnapped(putativeRect, true)) {
+    return baseline;
+  }
+  return aContext->DeviceToUser(putativeRect.TopLeft()).x * appUnitsPerDevUnit;
 }
 
 // Hard limit substring lengths to 8000 characters ... this lets us statically
@@ -5852,7 +5902,7 @@ ComputeSnappedImageDrawingParameters(gfxContext*     aCtx,
 }
 
 
-static nsresult
+static DrawResult
 DrawImageInternal(gfxContext&            aContext,
                   nsPresContext*         aPresContext,
                   imgIContainer*         aImage,
@@ -5880,8 +5930,9 @@ DrawImageInternal(gfxContext&            aContext,
                                          aFill, aAnchor, aDirty, aImage,
                                          aGraphicsFilter, aImageFlags);
 
-  if (!params.shouldDraw)
-    return NS_OK;
+  if (!params.shouldDraw) {
+    return DrawResult::SUCCESS;
+  }
 
   gfxContextMatrixAutoSaveRestore contextMatrixRestorer(&aContext);
   aContext.SetMatrix(params.imageSpaceToDeviceSpace);
@@ -5892,13 +5943,12 @@ DrawImageInternal(gfxContext&            aContext,
     svgContext = Some(SVGImageContext(params.svgViewportSize, Nothing()));
   }
 
-  aImage->Draw(&aContext, params.size, params.region, imgIContainer::FRAME_CURRENT,
-               aGraphicsFilter, svgContext, aImageFlags);
-
-  return NS_OK;
+  return aImage->Draw(&aContext, params.size, params.region,
+                      imgIContainer::FRAME_CURRENT, aGraphicsFilter,
+                      svgContext, aImageFlags);
 }
 
-/* static */ nsresult
+/* static */ DrawResult
 nsLayoutUtils::DrawSingleUnscaledImage(gfxContext&          aContext,
                                        nsPresContext*       aPresContext,
                                        imgIContainer*       aImage,
@@ -5911,7 +5961,10 @@ nsLayoutUtils::DrawSingleUnscaledImage(gfxContext&          aContext,
   nsIntSize imageSize;
   aImage->GetWidth(&imageSize.width);
   aImage->GetHeight(&imageSize.height);
-  NS_ENSURE_TRUE(imageSize.width > 0 && imageSize.height > 0, NS_ERROR_FAILURE);
+  if (imageSize.width < 1 || imageSize.height < 1) {
+    NS_WARNING("Image width or height is non-positive");
+    return DrawResult::TEMPORARY_ERROR;
+  }
 
   nscoord appUnitsPerCSSPixel = nsDeviceContext::AppUnitsPerCSSPixel();
   nsSize size(imageSize.width*appUnitsPerCSSPixel,
@@ -5936,7 +5989,7 @@ nsLayoutUtils::DrawSingleUnscaledImage(gfxContext&          aContext,
                            nullptr, aImageFlags);
 }
 
-/* static */ nsresult
+/* static */ DrawResult
 nsLayoutUtils::DrawSingleImage(gfxContext&            aContext,
                                nsPresContext*         aPresContext,
                                imgIContainer*         aImage,
@@ -5950,7 +6003,11 @@ nsLayoutUtils::DrawSingleImage(gfxContext&            aContext,
 {
   nscoord appUnitsPerCSSPixel = nsDeviceContext::AppUnitsPerCSSPixel();
   nsIntSize pixelImageSize(ComputeSizeForDrawingWithFallback(aImage, aDest.Size()));
-  NS_ENSURE_TRUE(pixelImageSize.width > 0 && pixelImageSize.height > 0, NS_ERROR_FAILURE);
+  if (pixelImageSize.width < 1 || pixelImageSize.height < 1) {
+    NS_WARNING("Image width or height is non-positive");
+    return DrawResult::TEMPORARY_ERROR;
+  }
+
   nsSize imageSize(pixelImageSize.width * appUnitsPerCSSPixel,
                    pixelImageSize.height * appUnitsPerCSSPixel);
 
@@ -6049,7 +6106,7 @@ nsLayoutUtils::ComputeSizeForDrawingWithFallback(imgIContainer* aImage,
   return imageSize;
 }
 
-/* static */ nsresult
+/* static */ DrawResult
 nsLayoutUtils::DrawBackgroundImage(gfxContext&         aContext,
                                    nsPresContext*      aPresContext,
                                    imgIContainer*      aImage,
@@ -6075,7 +6132,7 @@ nsLayoutUtils::DrawBackgroundImage(gfxContext&         aContext,
                            aDirty, &svgContext, aImageFlags);
 }
 
-/* static */ nsresult
+/* static */ DrawResult
 nsLayoutUtils::DrawImage(gfxContext&         aContext,
                          nsPresContext*      aPresContext,
                          imgIContainer*      aImage,
@@ -7264,7 +7321,7 @@ nsLayoutUtils::InflationMinFontSizeFor(const nsIFrame *aFrame)
     }
   }
 
-  NS_ABORT_IF_FALSE(false, "root should always be container");
+  MOZ_ASSERT(false, "root should always be container");
 
   return 0;
 }
@@ -7634,20 +7691,6 @@ nsLayoutUtils::CalculateExpandedScrollableRect(nsIFrame* aFrame)
 }
 
 /* static */ bool
-nsLayoutUtils::WantSubAPZC()
-{
-  // TODO Turn this on for inprocess OMTC on all platforms
-  bool wantSubAPZC = gfxPrefs::AsyncPanZoomEnabled() &&
-                     gfxPrefs::APZSubframeEnabled();
-#ifdef MOZ_WIDGET_GONK
-  if (XRE_GetProcessType() != GeckoProcessType_Content) {
-    wantSubAPZC = false;
-  }
-#endif
-  return wantSubAPZC;
-}
-
-/* static */ bool
 nsLayoutUtils::UsesAsyncScrolling()
 {
 #ifdef MOZ_WIDGET_ANDROID
@@ -7824,4 +7867,35 @@ nsLayoutUtils::SetBSizeFromFontMetrics(const nsIFrame* aFrame,
   aMetrics.SetBlockStartAscent(aMetrics.BlockStartAscent() +
                                aFramePadding.BStart(aFrameWM));
   aMetrics.BSize(aLineWM) += aFramePadding.BStartEnd(aFrameWM);
+}
+
+/* static */ bool
+nsLayoutUtils::HasApzAwareListeners(EventListenerManager* aElm)
+{
+  if (!aElm) {
+    return false;
+  }
+  return aElm->HasListenersFor(nsGkAtoms::ontouchstart) ||
+         aElm->HasListenersFor(nsGkAtoms::ontouchmove) ||
+         aElm->HasListenersFor(nsGkAtoms::onwheel) ||
+         aElm->HasListenersFor(nsGkAtoms::onDOMMouseScroll) ||
+         aElm->HasListenersFor(nsHtml5Atoms::onmousewheel);
+}
+
+/* static */ bool
+nsLayoutUtils::HasDocumentLevelListenersForApzAwareEvents(nsIPresShell* aShell)
+{
+  if (nsIDocument* doc = aShell->GetDocument()) {
+    WidgetEvent event(true, NS_EVENT_NULL);
+    nsTArray<EventTarget*> targets;
+    nsresult rv = EventDispatcher::Dispatch(doc, nullptr, &event, nullptr,
+        nullptr, nullptr, &targets);
+    NS_ENSURE_SUCCESS(rv, false);
+    for (size_t i = 0; i < targets.Length(); i++) {
+      if (HasApzAwareListeners(targets[i]->GetExistingListenerManager())) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

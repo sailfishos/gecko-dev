@@ -49,6 +49,9 @@ CodeGeneratorMIPS::generatePrologue()
     if (isProfilerInstrumentationEnabled())
         masm.profilerEnterFrame(StackPointer, CallTempReg0);
 
+    // Ensure that the Ion frames is properly aligned.
+    masm.assertStackAlignment(JitStackAlignment, 0);
+
     // Note that this automatically sets MacroAssembler::framePushed().
     masm.reserveStack(frameSize());
     masm.checkStackAlignment();
@@ -1744,16 +1747,16 @@ CodeGeneratorMIPS::visitGuardShape(LGuardShape *guard)
 }
 
 void
-CodeGeneratorMIPS::visitGuardObjectType(LGuardObjectType *guard)
+CodeGeneratorMIPS::visitGuardObjectGroup(LGuardObjectGroup *guard)
 {
     Register obj = ToRegister(guard->input());
     Register tmp = ToRegister(guard->tempInt());
 
-    masm.loadPtr(Address(obj, JSObject::offsetOfType()), tmp);
+    masm.loadPtr(Address(obj, JSObject::offsetOfGroup()), tmp);
     Assembler::Condition cond = guard->mir()->bailOnEquality()
                                 ? Assembler::Equal
                                 : Assembler::NotEqual;
-    bailoutCmpPtr(cond, tmp, ImmGCPtr(guard->mir()->typeObject()), guard->snapshot());
+    bailoutCmpPtr(cond, tmp, ImmGCPtr(guard->mir()->group()), guard->snapshot());
 }
 
 void
@@ -1828,7 +1831,7 @@ CodeGeneratorMIPS::visitAsmJSLoadHeap(LAsmJSLoadHeap *ins)
     bool isSigned;
     int size;
     bool isFloat = false;
-    switch (mir->viewType()) {
+    switch (mir->accessType()) {
       case Scalar::Int8:    isSigned = true;  size =  8; break;
       case Scalar::Uint8:   isSigned = false; size =  8; break;
       case Scalar::Int16:   isSigned = true;  size = 16; break;
@@ -1916,7 +1919,7 @@ CodeGeneratorMIPS::visitAsmJSStoreHeap(LAsmJSStoreHeap *ins)
     bool isSigned;
     int size;
     bool isFloat = false;
-    switch (mir->viewType()) {
+    switch (mir->accessType()) {
       case Scalar::Int8:    isSigned = true;  size =  8; break;
       case Scalar::Uint8:   isSigned = false; size =  8; break;
       case Scalar::Int16:   isSigned = true;  size = 16; break;

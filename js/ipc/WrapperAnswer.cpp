@@ -179,26 +179,9 @@ WrapperAnswer::RecvDefineProperty(const ObjectId &objId, const JSIDVariant &idVa
     if (!toDescriptor(cx, descriptor, &desc))
         return fail(cx, rs);
 
-    if (!js::CheckDefineProperty(cx, obj, id, desc.value(), desc.attributes(),
-                                 desc.getter(), desc.setter()))
-    {
+    bool ignored;
+    if (!js_DefineOwnProperty(cx, obj, id, desc, &ignored))
         return fail(cx, rs);
-    }
-
-    if (!JS_DefinePropertyById(cx, obj, id, desc.value(),
-                               // Descrriptors never store JSNatives for
-                               // accessors: they have either JSFunctions or
-                               // JSPropertyOps.
-                               desc.attributes() | JSPROP_PROPOP_ACCESSORS,
-                               JS_PROPERTYOP_GETTER(desc.getter()
-                                                    ? desc.getter()
-                                                    : JS_PropertyStub),
-                               JS_PROPERTYOP_SETTER(desc.setter()
-                                                    ? desc.setter()
-                                                    : JS_StrictPropertyStub)))
-    {
-        return fail(cx, rs);
-    }
 
     return ok(rs);
 }
@@ -417,9 +400,7 @@ WrapperAnswer::RecvCallOrConstruct(const ObjectId &objId,
     for (size_t i = 0; i < argv.Length(); i++) {
         if (argv[i].type() == JSParam::Tvoid_t) {
             // This is an outparam.
-            JSCompartment *compartment = js::GetContextCompartment(cx);
-            RootedObject global(cx, JS_GetGlobalForCompartmentOrNull(cx, compartment));
-            RootedObject obj(cx, xpc::NewOutObject(cx, global));
+            RootedObject obj(cx, xpc::NewOutObject(cx));
             if (!obj)
                 return fail(cx, rs);
             if (!outobjects.append(ObjectValue(*obj)))
@@ -554,6 +535,32 @@ WrapperAnswer::RecvClassName(const ObjectId &objId, nsString *name)
 
     *name = NS_ConvertASCIItoUTF16(js_ObjectClassName(cx, obj));
     return true;
+}
+
+bool
+WrapperAnswer::RecvGetPrototypeOf(const ObjectId &objId, ReturnStatus *rs, ObjectOrNullVariant *result)
+{
+    *result = NullVariant();
+
+    AutoJSAPI jsapi;
+    if (NS_WARN_IF(!jsapi.Init(scopeForTargetObjects())))
+        return false;
+    JSContext *cx = jsapi.cx();
+
+    RootedObject obj(cx, findObjectById(cx, objId));
+    if (!obj)
+        return fail(cx, rs);
+
+    JS::RootedObject proto(cx);
+    if (!JS_GetPrototype(cx, obj, &proto))
+        return fail(cx, rs);
+
+    if (!toObjectOrNullVariant(cx, proto, result))
+        return fail(cx, rs);
+
+    LOG("getPrototypeOf(%s)", ReceiverObj(objId));
+
+    return ok(rs);
 }
 
 bool

@@ -275,6 +275,17 @@ public:
    */
   static void DumpRetainedLayerTree(LayerManager* aManager, std::stringstream& aStream, bool aDumpHtml = false);
 
+  /**
+   * Returns the most recently allocated geometry item for the given display
+   * item.
+   *
+   * XXX(seth): The current implementation must iterate through all display
+   * items allocated for this display item's frame. This may lead to O(n^2)
+   * behavior in some situations.
+   */
+  static nsDisplayItemGeometry* GetMostRecentGeometry(nsDisplayItem* aItem);
+
+
   /******* PRIVATE METHODS to FrameLayerBuilder.cpp ********/
   /* These are only in the public section because they need
    * to be called by file-scope helper functions in FrameLayerBuilder.cpp.
@@ -310,12 +321,6 @@ public:
                             ContainerState& aContainerState,
                             LayerState aLayerState,
                             const nsPoint& aTopLeft);
-
-  /**
-   * Gets the frame property descriptor for the given manager, or for the current
-   * widget layer manager if nullptr is passed.
-   */
-  static const FramePropertyDescriptor* GetDescriptorForManager(LayerManager* aManager);
 
   /**
    * Calls GetOldLayerForFrame on the underlying frame of the display item,
@@ -404,6 +409,7 @@ public:
 
     uint32_t GetDisplayItemKey() { return mDisplayItemKey; }
     Layer* GetLayer() { return mLayer; }
+    nsDisplayItemGeometry* GetGeometry() const { return mGeometry.get(); }
     void Invalidate() { mIsInvalid = true; }
 
   private:
@@ -652,10 +658,6 @@ public:
   void ComputeGeometryChangeForItem(DisplayItemData* aData);
 
 protected:
-  void RemoveThebesItemsAndOwnerDataForLayerSubtree(Layer* aLayer,
-                                                    bool aRemoveThebesItems,
-                                                    bool aRemoveOwnerData);
-
   static PLDHashOperator ProcessRemovedDisplayItems(nsRefPtrHashKey<DisplayItemData>* aEntry,
                                                     void* aUserArg);
   static PLDHashOperator RestoreDisplayItemData(nsRefPtrHashKey<DisplayItemData>* aEntry,

@@ -13,9 +13,12 @@
 #include "ImageMetadata.h"
 #include "Orientation.h"
 #include "SourceBuffer.h"
-#include "mozilla/Telemetry.h"
 
 namespace mozilla {
+
+namespace Telemetry {
+  enum ID : uint32_t;
+}
 
 namespace image {
 
@@ -108,7 +111,7 @@ public:
   }
 
   // We're not COM-y, so we don't get refcounts by default
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Decoder)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(Decoder, MOZ_OVERRIDE)
 
   // Implement IResumable.
   virtual void Resume() MOZ_OVERRIDE;
@@ -189,6 +192,19 @@ public:
     mImageIsTransient = aIsTransient;
   }
 
+  /**
+   * Set whether the image is locked for the lifetime of this decoder. We lock
+   * the image during our initial decode to ensure that we don't evict any
+   * surfaces before we realize that the image is animated.
+   */
+  void SetImageIsLocked()
+  {
+    MOZ_ASSERT(!mInitialized, "Shouldn't be initialized yet");
+    mImageIsLocked = true;
+  }
+
+  bool ImageIsLocked() const { return mImageIsLocked; }
+
   size_t BytesDecoded() const { return mBytesDecoded; }
 
   // The amount of time we've spent inside Write() so far for this decoder.
@@ -227,21 +243,14 @@ public:
    */
   bool WasAborted() const { return mDecodeAborted; }
 
-  // flags.  Keep these in sync with imgIContainer.idl.
-  // SetDecodeFlags must be called before Init(), otherwise
-  // default flags are assumed.
-  enum {
-    DECODER_NO_PREMULTIPLY_ALPHA = 0x2,     // imgIContainer::FLAG_DECODE_NO_PREMULTIPLY_ALPHA
-    DECODER_NO_COLORSPACE_CONVERSION = 0x4  // imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION
-  };
-
   enum DecodeStyle {
       PROGRESSIVE, // produce intermediate frames representing the partial state of the image
       SEQUENTIAL // decode to final image immediately
   };
 
-  void SetDecodeFlags(uint32_t aFlags) { mDecodeFlags = aFlags; }
-  uint32_t GetDecodeFlags() { return mDecodeFlags; }
+  void SetFlags(uint32_t aFlags) { mFlags = aFlags; }
+  uint32_t GetFlags() const { return mFlags; }
+  uint32_t GetDecodeFlags() const { return DecodeFlags(mFlags); }
 
   bool HasSize() const { return mImageMetadata.HasSize(); }
   void SetSizeOnImage();
@@ -257,8 +266,7 @@ public:
     return mImageMetadata.GetSize();
   }
 
-  // Use HistogramCount as an invalid Histogram ID
-  virtual Telemetry::ID SpeedHistogram() { return Telemetry::HistogramCount; }
+  virtual Telemetry::ID SpeedHistogram();
 
   ImageMetadata& GetImageMetadata() { return mImageMetadata; }
 
@@ -390,6 +398,13 @@ protected:
   bool NeedsToFlushData() const { return mNeedsToFlushData; }
 
   /**
+   * CompleteDecode() finishes up the decoding process after Decode() determines
+   * that we're finished. It records final progress and does all the cleanup
+   * that's possible off-main-thread.
+   */
+  void CompleteDecode();
+
+  /**
    * Ensures that a given frame number exists with the given parameters, and
    * returns a RawAccessFrameRef for that frame.
    * It is not possible to create sparse frame arrays; you can only append
@@ -437,14 +452,16 @@ protected:
   TimeDuration mDecodeTime;
   uint32_t mChunkCount;
 
-  uint32_t mDecodeFlags;
+  uint32_t mFlags;
   size_t mBytesDecoded;
   bool mSendPartialInvalidations;
   bool mDataDone;
   bool mDecodeDone;
   bool mDataError;
   bool mDecodeAborted;
+  bool mShouldReportError;
   bool mImageIsTransient;
+  bool mImageIsLocked;
 
 private:
   uint32_t mFrameCount; // Number of frames, including anything in-progress

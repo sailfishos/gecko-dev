@@ -13,7 +13,7 @@
 #include "nsContentCID.h"
 #include "nsServiceManagerUtils.h"
 #include "MainThreadUtils.h"
-#include "EMELog.h"
+#include "mozilla/EMEUtils.h"
 
 namespace mozilla {
 
@@ -267,40 +267,23 @@ CDMCallbackProxy::SessionError(const nsCString& aSessionId,
 }
 
 void
-CDMCallbackProxy::KeyIdUsable(const nsCString& aSessionId,
-                              const nsTArray<uint8_t>& aKeyId)
+CDMCallbackProxy::KeyStatusChanged(const nsCString& aSessionId,
+                                   const nsTArray<uint8_t>& aKeyId,
+                                   GMPMediaKeyStatus aStatus)
 {
   MOZ_ASSERT(mProxy->IsOnGMPThread());
 
-  bool keysChange = false;
+  bool keyStatusesChange = false;
   {
     CDMCaps::AutoLock caps(mProxy->Capabilites());
-    keysChange = caps.SetKeyUsable(aKeyId, NS_ConvertUTF8toUTF16(aSessionId));
+    keyStatusesChange = caps.SetKeyStatus(aKeyId,
+                                          NS_ConvertUTF8toUTF16(aSessionId),
+                                          aStatus);
   }
-  if (keysChange) {
+  if (keyStatusesChange) {
     nsRefPtr<nsIRunnable> task;
     task = NS_NewRunnableMethodWithArg<nsString>(mProxy,
-                                                 &CDMProxy::OnKeysChange,
-                                                 NS_ConvertUTF8toUTF16(aSessionId));
-    NS_DispatchToMainThread(task);
-  }
-}
-
-void
-CDMCallbackProxy::KeyIdNotUsable(const nsCString& aSessionId,
-                                 const nsTArray<uint8_t>& aKeyId)
-{
-  MOZ_ASSERT(mProxy->IsOnGMPThread());
-
-  bool keysChange = false;
-  {
-    CDMCaps::AutoLock caps(mProxy->Capabilites());
-    keysChange = caps.SetKeyUnusable(aKeyId, NS_ConvertUTF8toUTF16(aSessionId));
-  }
-  if (keysChange) {
-    nsRefPtr<nsIRunnable> task;
-    task = NS_NewRunnableMethodWithArg<nsString>(mProxy,
-                                                 &CDMProxy::OnKeysChange,
+                                                 &CDMProxy::OnKeyStatusesChange,
                                                  NS_ConvertUTF8toUTF16(aSessionId));
     NS_DispatchToMainThread(task);
   }

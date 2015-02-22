@@ -63,6 +63,7 @@ struct nsStyleImageOrientation;
 struct nsOverflowAreas;
 
 namespace mozilla {
+class EventListenerManager;
 class SVGImageContext;
 struct IntrinsicSize;
 struct ContainerLayerParameters;
@@ -127,6 +128,7 @@ class nsLayoutUtils
   typedef mozilla::gfx::Matrix4x4 Matrix4x4;
   typedef mozilla::gfx::RectCornerRadii RectCornerRadii;
   typedef mozilla::gfx::StrokeOptions StrokeOptions;
+  typedef mozilla::image::DrawResult DrawResult;
 
 public:
   typedef mozilla::layers::FrameMetrics FrameMetrics;
@@ -163,10 +165,10 @@ public:
    */
   static bool GetDisplayPort(nsIContent* aContent, nsRect *aResult = nullptr);
 
-  MOZ_BEGIN_NESTED_ENUM_CLASS(RepaintMode, uint8_t)
+  enum class RepaintMode : uint8_t {
     Repaint,
     DoNotRepaint
-  MOZ_END_NESTED_ENUM_CLASS(RepaintMode)
+  };
 
   /**
    * Set the display port margins for a content element to be used with a
@@ -679,7 +681,7 @@ public:
    */
   static nsPoint GetEventCoordinatesRelativeTo(
                    const mozilla::WidgetEvent* aEvent,
-                   const nsIntPoint aPoint,
+                   const mozilla::LayoutDeviceIntPoint& aPoint,
                    nsIFrame* aFrame);
 
   /**
@@ -693,7 +695,7 @@ public:
    * the event is not a GUI event).
    */
   static nsPoint GetEventCoordinatesRelativeTo(nsIWidget* aWidget,
-                                               const nsIntPoint aPoint,
+                                               const mozilla::LayoutDeviceIntPoint& aPoint,
                                                nsIFrame* aFrame);
 
   /**
@@ -716,7 +718,8 @@ public:
    * @return the point in the view's coordinates
    */
   static nsPoint TranslateWidgetToView(nsPresContext* aPresContext,
-                                       nsIWidget* aWidget, nsIntPoint aPt,
+                                       nsIWidget* aWidget,
+                                       const mozilla::LayoutDeviceIntPoint& aPt,
                                        nsView* aView);
 
   /**
@@ -727,9 +730,10 @@ public:
    * @param aWidget the widget to which returned coordinates are relative
    * @return the point in the view's coordinates
    */
-  static nsIntPoint TranslateViewToWidget(nsPresContext* aPresContext,
-                                          nsView* aView, nsPoint aPt,
-                                          nsIWidget* aWidget);
+  static mozilla::LayoutDeviceIntPoint
+    TranslateViewToWidget(nsPresContext* aPresContext,
+                          nsView* aView, nsPoint aPt,
+                          nsIWidget* aWidget);
 
   enum FrameForPointFlags {
     /**
@@ -1473,6 +1477,10 @@ public:
   // Get a baseline y position in app units that is snapped to device pixels.
   static gfxFloat GetSnappedBaselineY(nsIFrame* aFrame, gfxContext* aContext,
                                       nscoord aY, nscoord aAscent);
+  // Ditto for an x position (for vertical text). Note that for vertical-rl
+  // writing mode, the ascent value should be negated by the caller.
+  static gfxFloat GetSnappedBaselineX(nsIFrame* aFrame, gfxContext* aContext,
+                                      nscoord aX, nscoord aAscent);
 
   static nscoord AppUnitWidthOfString(char16_t aC,
                                       nsFontMetrics& aFontMetrics,
@@ -1655,16 +1663,16 @@ public:
    *   @param aDirty            Pixels outside this area may be skipped.
    *   @param aImageFlags       Image flags of the imgIContainer::FLAG_* variety
    */
-  static nsresult DrawBackgroundImage(gfxContext&         aContext,
-                                      nsPresContext*      aPresContext,
-                                      imgIContainer*      aImage,
-                                      const nsIntSize&    aImageSize,
-                                      GraphicsFilter      aGraphicsFilter,
-                                      const nsRect&       aDest,
-                                      const nsRect&       aFill,
-                                      const nsPoint&      aAnchor,
-                                      const nsRect&       aDirty,
-                                      uint32_t            aImageFlags);
+  static DrawResult DrawBackgroundImage(gfxContext&         aContext,
+                                        nsPresContext*      aPresContext,
+                                        imgIContainer*      aImage,
+                                        const nsIntSize&    aImageSize,
+                                        GraphicsFilter      aGraphicsFilter,
+                                        const nsRect&       aDest,
+                                        const nsRect&       aFill,
+                                        const nsPoint&      aAnchor,
+                                        const nsRect&       aDirty,
+                                        uint32_t            aImageFlags);
 
   /**
    * Draw an image.
@@ -1681,15 +1689,15 @@ public:
    *   @param aDirty            Pixels outside this area may be skipped.
    *   @param aImageFlags       Image flags of the imgIContainer::FLAG_* variety
    */
-  static nsresult DrawImage(gfxContext&         aContext,
-                            nsPresContext*      aPresContext,
-                            imgIContainer*      aImage,
-                            GraphicsFilter      aGraphicsFilter,
-                            const nsRect&       aDest,
-                            const nsRect&       aFill,
-                            const nsPoint&      aAnchor,
-                            const nsRect&       aDirty,
-                            uint32_t            aImageFlags);
+  static DrawResult DrawImage(gfxContext&         aContext,
+                              nsPresContext*      aPresContext,
+                              imgIContainer*      aImage,
+                              GraphicsFilter      aGraphicsFilter,
+                              const nsRect&       aDest,
+                              const nsRect&       aFill,
+                              const nsPoint&      aAnchor,
+                              const nsRect&       aDirty,
+                              uint32_t            aImageFlags);
 
   static inline void InitDashPattern(StrokeOptions& aStrokeOptions,
                                      uint8_t aBorderStyle) {
@@ -1735,14 +1743,14 @@ public:
    *                            in appunits. For best results it should
    *                            be aligned with image pixels.
    */
-  static nsresult DrawSingleUnscaledImage(gfxContext&          aContext,
-                                          nsPresContext*       aPresContext,
-                                          imgIContainer*       aImage,
-                                          GraphicsFilter       aGraphicsFilter,
-                                          const nsPoint&       aDest,
-                                          const nsRect*        aDirty,
-                                          uint32_t             aImageFlags,
-                                          const nsRect*        aSourceArea = nullptr);
+  static DrawResult DrawSingleUnscaledImage(gfxContext&          aContext,
+                                            nsPresContext*       aPresContext,
+                                            imgIContainer*       aImage,
+                                            GraphicsFilter       aGraphicsFilter,
+                                            const nsPoint&       aDest,
+                                            const nsRect*        aDirty,
+                                            uint32_t             aImageFlags,
+                                            const nsRect*        aSourceArea = nullptr);
 
   /**
    * Draw a whole image without tiling.
@@ -1766,16 +1774,16 @@ public:
    *                            in appunits. For best results it should
    *                            be aligned with image pixels.
    */
-  static nsresult DrawSingleImage(gfxContext&         aContext,
-                                  nsPresContext*      aPresContext,
-                                  imgIContainer*      aImage,
-                                  GraphicsFilter      aGraphicsFilter,
-                                  const nsRect&       aDest,
-                                  const nsRect&       aDirty,
-                                  const mozilla::SVGImageContext* aSVGContext,
-                                  uint32_t            aImageFlags,
-                                  const nsPoint*      aAnchorPoint = nullptr,
-                                  const nsRect*       aSourceArea = nullptr);
+  static DrawResult DrawSingleImage(gfxContext&         aContext,
+                                    nsPresContext*      aPresContext,
+                                    imgIContainer*      aImage,
+                                    GraphicsFilter      aGraphicsFilter,
+                                    const nsRect&       aDest,
+                                    const nsRect&       aDirty,
+                                    const mozilla::SVGImageContext* aSVGContext,
+                                    uint32_t            aImageFlags,
+                                    const nsPoint*      aAnchorPoint = nullptr,
+                                    const nsRect*       aSourceArea = nullptr);
 
   /**
    * Given an imgIContainer, this method attempts to obtain an intrinsic
@@ -2471,12 +2479,6 @@ public:
   CalculateExpandedScrollableRect(nsIFrame* aFrame);
 
   /**
-   * Return whether we want to use APZ for subframes in this process.
-   * Currently we don't support APZ for the parent process on B2G.
-   */
-  static bool WantSubAPZC();
-
-  /**
    * Returns true if we're using asynchronous scrolling (either through
    * APZ or the android frontend).
    */
@@ -2554,6 +2556,9 @@ public:
                                       mozilla::WritingMode aLineWM,
                                       mozilla::WritingMode aFrameWM);
 
+  static bool HasApzAwareListeners(mozilla::EventListenerManager* aElm);
+  static bool HasDocumentLevelListenersForApzAwareEvents(nsIPresShell* aShell);
+
 private:
   static uint32_t sFontSizeInflationEmPerLine;
   static uint32_t sFontSizeInflationMinTwips;
@@ -2576,8 +2581,6 @@ private:
 
   static bool IsAPZTestLoggingEnabled();
 };
-
-MOZ_FINISH_NESTED_ENUM_CLASS(nsLayoutUtils::RepaintMode)
 
 template<typename PointType, typename RectType, typename CoordType>
 /* static */ bool

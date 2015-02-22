@@ -31,6 +31,7 @@
 #include "mozilla/dom/DOMStorageIPC.h"
 #include "mozilla/dom/ExternalHelperAppChild.h"
 #include "mozilla/dom/PCrashReporterChild.h"
+#include "mozilla/dom/ProcessGlobal.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/asmjscache/AsmJSCache.h"
 #include "mozilla/dom/asmjscache/PAsmJSCacheEntryChild.h"
@@ -41,6 +42,7 @@
 #include "mozilla/ipc/FileDescriptorUtils.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/TestShellChild.h"
+#include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/PCompositorChild.h"
@@ -90,6 +92,9 @@
 #include "nsAnonymousTemporaryFile.h"
 #include "nsISpellChecker.h"
 #include "nsClipboardProxy.h"
+#include "nsISystemMessageCache.h"
+#include "nsDirectoryServiceUtils.h"
+#include "nsDirectoryServiceDefs.h"
 
 #include "IHistory.h"
 #include "nsNetUtil.h"
@@ -163,7 +168,6 @@
 #include "nsIPrincipal.h"
 #include "nsDeviceStorage.h"
 #include "AudioChannelService.h"
-#include "JavaScriptChild.h"
 #include "mozilla/dom/DataStoreService.h"
 #include "mozilla/dom/telephony/PTelephonyChild.h"
 #include "mozilla/dom/time/DateCacheCleaner.h"
@@ -171,7 +175,6 @@
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "mozilla/RemoteSpellCheckEngineChild.h"
 
-using namespace base;
 using namespace mozilla;
 using namespace mozilla::docshell;
 using namespace mozilla::dom::bluetooth;
@@ -529,6 +532,10 @@ InitOnContentProcessCreated()
     }
     PostForkPreload();
 #endif
+
+    nsCOMPtr<nsISystemMessageCache> smc =
+        do_GetService("@mozilla.org/system-message-cache;1");
+    NS_WARN_IF(!smc);
 
     // This will register cross-process observer.
     mozilla::dom::time::InitializeDateCacheCleaner();
@@ -1076,8 +1083,11 @@ ContentChild::CleanUpSandboxEnvironment()
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
+
+#include <stdlib.h>
+
 static bool
-GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
+GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath, nsCString &aAppDir)
 {
   nsAutoCString appPath;
   nsAutoCString appBinaryPath(
@@ -1107,6 +1117,23 @@ GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
     return false;
   }
 
+  nsCOMPtr<nsIFile> appDir;
+  nsCOMPtr<nsIProperties> dirSvc =
+    do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID);
+  if (!dirSvc) {
+    return false;
+  }
+  rv = dirSvc->Get(NS_XPCOM_CURRENT_PROCESS_DIR,
+                   NS_GET_IID(nsIFile), getter_AddRefs(appDir));
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+  bool exists;
+  rv = appDir->Exists(&exists);
+  if (NS_FAILED(rv) || !exists) {
+    return false;
+  }
+
   bool isLink;
   app->IsSymlink(&isLink);
   if (isLink) {
@@ -1120,6 +1147,12 @@ GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
   } else {
     appBinary->GetNativePath(aAppBinaryPath);
   }
+  appDir->IsSymlink(&isLink);
+  if (isLink) {
+    appDir->GetNativeTarget(aAppDir);
+  } else {
+    appDir->GetNativePath(aAppDir);
+  }
 
   return true;
 }
@@ -1127,8 +1160,8 @@ GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
 static void
 StartMacOSContentSandbox()
 {
-  nsAutoCString appPath, appBinaryPath;
-  if (!GetAppPaths(appPath, appBinaryPath)) {
+  nsAutoCString appPath, appBinaryPath, appDir;
+  if (!GetAppPaths(appPath, appBinaryPath, appDir)) {
     MOZ_CRASH("Error resolving child process path");
   }
 
@@ -1136,6 +1169,7 @@ StartMacOSContentSandbox()
   info.type = MacSandboxType_Content;
   info.appPath.Assign(appPath);
   info.appBinaryPath.Assign(appBinaryPath);
+  info.appDir.Assign(appDir);
 
   nsAutoCString err;
   if (!mozilla::StartMacSandbox(info, err)) {
@@ -1403,14 +1437,13 @@ ContentChild::DeallocPTestShellChild(PTestShellChild* shell)
     return true;
 }
 
-jsipc::JavaScriptShared*
+jsipc::CPOWManager*
 ContentChild::GetCPOWManager()
 {
     if (ManagedPJavaScriptChild().Length()) {
-        return static_cast<JavaScriptChild*>(ManagedPJavaScriptChild()[0]);
+        return CPOWManagerFor(ManagedPJavaScriptChild()[0]);
     }
-    JavaScriptChild* actor = static_cast<JavaScriptChild*>(SendPJavaScriptConstructor());
-    return actor;
+    return CPOWManagerFor(SendPJavaScriptConstructor());
 }
 
 bool
@@ -1806,28 +1839,36 @@ ContentChild::ActorDestroy(ActorDestroyReason why)
 }
 
 void
-ContentChild::ProcessingError(Result what)
+ContentChild::ProcessingError(Result aCode, const char* aReason)
 {
-    switch (what) {
-    case MsgDropped:
-        NS_WARNING("MsgDropped in ContentChild");
-        return;
-    case MsgNotKnown:
-        NS_RUNTIMEABORT("aborting because of MsgNotKnown");
-    case MsgNotAllowed:
-        NS_RUNTIMEABORT("aborting because of MsgNotAllowed");
-    case MsgPayloadError:
-        NS_RUNTIMEABORT("aborting because of MsgPayloadError");
-    case MsgProcessingError:
-        NS_RUNTIMEABORT("aborting because of MsgProcessingError");
-    case MsgRouteError:
-        NS_RUNTIMEABORT("aborting because of MsgRouteError");
-    case MsgValueError:
-        NS_RUNTIMEABORT("aborting because of MsgValueError");
+    switch (aCode) {
+        case MsgDropped:
+            NS_WARNING("MsgDropped in ContentChild");
+            return;
 
-    default:
-        NS_RUNTIMEABORT("not reached");
+        case MsgNotKnown:
+        case MsgNotAllowed:
+        case MsgPayloadError:
+        case MsgProcessingError:
+        case MsgRouteError:
+        case MsgValueError:
+            break;
+
+        default:
+            NS_RUNTIMEABORT("not reached");
     }
+
+#if defined(MOZ_CRASHREPORTER) && !defined(MOZ_B2G)
+    if (ManagedPCrashReporterChild().Length() > 0) {
+        CrashReporterChild* crashReporter =
+            static_cast<CrashReporterChild*>(ManagedPCrashReporterChild()[0]);
+            nsDependentCString reason(aReason);
+            crashReporter->SendAnnotateCrashReport(
+                NS_LITERAL_CSTRING("ipc_channel_error"),
+                reason);
+    }
+#endif
+    NS_RUNTIMEABORT("Content child abort due to IPC error");
 }
 
 void
@@ -1903,15 +1944,23 @@ ContentChild::RecvNotifyVisited(const URIParams& aURI)
 }
 
 bool
+ContentChild::RecvLoadProcessScript(const nsString& aURL)
+{
+    ProcessGlobal* global = ProcessGlobal::Get();
+    global->LoadScript(aURL);
+    return true;
+}
+
+bool
 ContentChild::RecvAsyncMessage(const nsString& aMsg,
                                const ClonedMessageData& aData,
                                InfallibleTArray<CpowEntry>&& aCpows,
                                const IPC::Principal& aPrincipal)
 {
-    nsRefPtr<nsFrameMessageManager> cpm = nsFrameMessageManager::sChildProcessManager;
+    nsRefPtr<nsFrameMessageManager> cpm = nsFrameMessageManager::GetChildProcessManager();
     if (cpm) {
         StructuredCloneData cloneData = ipc::UnpackClonedMessageDataForChild(aData);
-        CpowIdHolder cpows(this, aCpows);
+        CrossProcessCpowHolder cpows(this, aCpows);
         cpm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(cpm.get()),
                             aMsg, false, &cloneData, &cpows, aPrincipal, nullptr);
     }
@@ -1957,8 +2006,8 @@ ContentChild::RecvAddPermission(const IPC::Permission& permission)
         services::GetPermissionManager();
     nsPermissionManager* permissionManager =
         static_cast<nsPermissionManager*>(permissionManagerIface.get());
-    NS_ABORT_IF_FALSE(permissionManager,
-                     "We have no permissionManager in the Content process !");
+    MOZ_ASSERT(permissionManager,
+               "We have no permissionManager in the Content process !");
 
     nsCOMPtr<nsIURI> uri;
     NS_NewURI(getter_AddRefs(uri), NS_LITERAL_CSTRING("http://") + nsCString(permission.host));
@@ -2134,6 +2183,18 @@ ContentChild::RecvLastPrivateDocShellDestroyed()
 {
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     obs->NotifyObservers(nullptr, "last-pb-context-exited", nullptr);
+    return true;
+}
+
+bool
+ContentChild::RecvVolumes(nsTArray<VolumeInfo>&& aVolumes)
+{
+#ifdef MOZ_WIDGET_GONK
+    nsRefPtr<nsVolumeService> vs = nsVolumeService::GetSingleton();
+    if (vs) {
+        vs->RecvVolumesFromParent(aVolumes);
+    }
+#endif
     return true;
 }
 
@@ -2485,7 +2546,10 @@ ContentChild::RecvGetProfile(nsCString* aProfile)
 bool
 ContentChild::RecvLoadPluginResult(const uint32_t& aPluginId, const bool& aResult)
 {
-    bool finalResult = aResult && SendConnectPluginBridge(aPluginId);
+    nsresult rv;
+    bool finalResult = aResult &&
+                       SendConnectPluginBridge(aPluginId, &rv) &&
+                       NS_SUCCEEDED(rv);
     plugins::PluginModuleContentParent::OnLoadPluginResult(aPluginId,
                                                            finalResult);
     return true;
@@ -2523,6 +2587,41 @@ ContentChild::GetBrowserOrId(TabChild* aTabChild)
     else {
         return PBrowserOrId(aTabChild->GetTabId());
     }
+}
+
+// This code goes here rather than nsGlobalWindow.cpp because nsGlobalWindow.cpp
+// can't include ContentChild.h since it includes windows.h.
+
+static uint64_t gNextWindowID = 0;
+
+// We use only 53 bits for the window ID so that it can be converted to and from
+// a JS value without loss of precision. The upper bits of the window ID hold the
+// process ID. The lower bits identify the window.
+static const uint64_t kWindowIDTotalBits = 53;
+static const uint64_t kWindowIDProcessBits = 22;
+static const uint64_t kWindowIDWindowBits = kWindowIDTotalBits - kWindowIDProcessBits;
+
+// Try to return a window ID that is unique across processes and that will never
+// be recycled.
+uint64_t
+NextWindowID()
+{
+  uint64_t processID = 0;
+  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+    ContentChild* cc = ContentChild::GetSingleton();
+    processID = cc->GetID();
+  }
+
+  MOZ_RELEASE_ASSERT(processID < (uint64_t(1) << kWindowIDProcessBits));
+  uint64_t processBits = processID & ((uint64_t(1) << kWindowIDProcessBits) - 1);
+
+  // Make sure no actual window ends up with mWindowID == 0.
+  uint64_t windowID = ++gNextWindowID;
+
+  MOZ_RELEASE_ASSERT(windowID < (uint64_t(1) << kWindowIDWindowBits));
+  uint64_t windowBits = windowID & ((uint64_t(1) << kWindowIDWindowBits) - 1);
+
+  return (processBits << kWindowIDWindowBits) | windowBits;
 }
 
 } // namespace dom

@@ -85,7 +85,12 @@ typedef HANDLE (WINAPI *CreateFileWPtr)(LPCWSTR fname, DWORD access,
                                         DWORD creation, DWORD flags,
                                         HANDLE ftemplate);
 static CreateFileWPtr sCreateFileWStub = nullptr;
-static WCHAR* sReplacementConfigFile;
+typedef HANDLE (WINAPI *CreateFileAPtr)(LPCSTR fname, DWORD access,
+                                        DWORD share,
+                                        LPSECURITY_ATTRIBUTES security,
+                                        DWORD creation, DWORD flags,
+                                        HANDLE ftemplate);
+static CreateFileAPtr sCreateFileAStub = nullptr;
 
 // Used with fix for flash fullscreen window loosing focus.
 static bool gDelayFlashFocusReplyUntilEval = false;
@@ -511,10 +516,10 @@ PluginModuleChild::DetectNestedEventLoop(gpointer data)
 {
     PluginModuleChild* pmc = static_cast<PluginModuleChild*>(data);
 
-    NS_ABORT_IF_FALSE(0 != pmc->mNestedLoopTimerId,
-                      "callback after descheduling");
-    NS_ABORT_IF_FALSE(pmc->mTopLoopDepth < g_main_depth(),
-                      "not canceled before returning to main event loop!");
+    MOZ_ASSERT(0 != pmc->mNestedLoopTimerId,
+               "callback after descheduling");
+    MOZ_ASSERT(pmc->mTopLoopDepth < g_main_depth(),
+               "not canceled before returning to main event loop!");
 
     PLUGIN_LOG_DEBUG(("Detected nested glib event loop"));
 
@@ -537,8 +542,8 @@ PluginModuleChild::ProcessBrowserEvents(gpointer data)
 {
     PluginModuleChild* pmc = static_cast<PluginModuleChild*>(data);
 
-    NS_ABORT_IF_FALSE(pmc->mTopLoopDepth < g_main_depth(),
-                      "not canceled before returning to main event loop!");
+    MOZ_ASSERT(pmc->mTopLoopDepth < g_main_depth(),
+               "not canceled before returning to main event loop!");
 
     pmc->CallProcessSomeEvents();
 
@@ -548,8 +553,8 @@ PluginModuleChild::ProcessBrowserEvents(gpointer data)
 void
 PluginModuleChild::EnteredCxxStack()
 {
-    NS_ABORT_IF_FALSE(0 == mNestedLoopTimerId,
-                      "previous timer not descheduled");
+    MOZ_ASSERT(0 == mNestedLoopTimerId,
+               "previous timer not descheduled");
 
     mNestedLoopTimerId =
         g_timeout_add_full(kNestedLoopDetectorPriority,
@@ -566,8 +571,8 @@ PluginModuleChild::EnteredCxxStack()
 void
 PluginModuleChild::ExitedCxxStack()
 {
-    NS_ABORT_IF_FALSE(0 < mNestedLoopTimerId,
-                      "nested loop timeout not scheduled");
+    MOZ_ASSERT(0 < mNestedLoopTimerId,
+               "nested loop timeout not scheduled");
 
     g_source_remove(mNestedLoopTimerId);
     mNestedLoopTimerId = 0;
@@ -577,8 +582,8 @@ PluginModuleChild::ExitedCxxStack()
 void
 PluginModuleChild::EnteredCxxStack()
 {
-    NS_ABORT_IF_FALSE(mNestedLoopTimerObject == nullptr,
-                      "previous timer not descheduled");
+    MOZ_ASSERT(mNestedLoopTimerObject == nullptr,
+               "previous timer not descheduled");
     mNestedLoopTimerObject = new NestedLoopTimer(this);
     QTimer::singleShot(kNestedLoopDetectorIntervalMs,
                        mNestedLoopTimerObject, SLOT(timeOut()));
@@ -587,8 +592,8 @@ PluginModuleChild::EnteredCxxStack()
 void
 PluginModuleChild::ExitedCxxStack()
 {
-    NS_ABORT_IF_FALSE(mNestedLoopTimerObject != nullptr,
-                      "nested loop timeout not scheduled");
+    MOZ_ASSERT(mNestedLoopTimerObject != nullptr,
+               "nested loop timeout not scheduled");
     delete mNestedLoopTimerObject;
     mNestedLoopTimerObject = nullptr;
 }
@@ -631,8 +636,8 @@ PluginModuleChild::InitGraphics()
     // called.  (Toggle references wouldn't detect if the reference count
     // might be higher.)
     GObjectDisposeFn* dispose = &G_OBJECT_CLASS(gtk_plug_class)->dispose;
-    NS_ABORT_IF_FALSE(*dispose != wrap_gtk_plug_dispose,
-                      "InitGraphics called twice");
+    MOZ_ASSERT(*dispose != wrap_gtk_plug_dispose,
+               "InitGraphics called twice");
     real_gtk_plug_dispose = *dispose;
     *dispose = wrap_gtk_plug_dispose;
 
@@ -1083,7 +1088,7 @@ const NPNetscapeFuncs PluginModuleChild::sBrowserFuncs = {
 PluginInstanceChild*
 InstCast(NPP aNPP)
 {
-    NS_ABORT_IF_FALSE(!!(aNPP->ndata), "nil instance");
+    MOZ_ASSERT(!!(aNPP->ndata), "nil instance");
     return static_cast<PluginInstanceChild*>(aNPP->ndata);
 }
 
@@ -1933,19 +1938,49 @@ PluginModuleChild::DoNP_Initialize(const PluginSettings& aSettings)
 #  error Please implement me for your platform
 #endif
 
-#ifdef XP_WIN
-    CleanupProtectedModeHook();
-#endif
-
     return result;
 }
 
 #if defined(XP_WIN)
 
+// Windows 8 RTM (kernelbase's version is 6.2.9200.16384) doesn't call
+// CreateFileW from CreateFileA.
+// So we hook CreateFileA too to use CreateFileW hook.
+
+static HANDLE WINAPI
+CreateFileAHookFn(LPCSTR fname, DWORD access, DWORD share,
+                  LPSECURITY_ATTRIBUTES security, DWORD creation, DWORD flags,
+                  HANDLE ftemplate)
+{
+    while (true) { // goto out
+        // Our hook is for mms.cfg into \Windows\System32\Macromed\Flash
+        // We don't requrie supporting too long path.
+        WCHAR unicodeName[MAX_PATH];
+        size_t len = strlen(fname);
+
+        if (len >= MAX_PATH) {
+            break;
+        }
+
+        // We call to CreateFileW for workaround of Windows 8 RTM
+        int newLen = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, fname,
+                                         len, unicodeName, MAX_PATH);
+        if (newLen == 0 || newLen >= MAX_PATH) {
+            break;
+        }
+        unicodeName[newLen] = '\0';
+
+        return CreateFileW(unicodeName, access, share, security, creation, flags, ftemplate);
+    }
+
+    return sCreateFileAStub(fname, access, share, security, creation, flags,
+                            ftemplate);
+}
+
 HANDLE WINAPI
-CreateFileHookFn(LPCWSTR fname, DWORD access, DWORD share,
-                 LPSECURITY_ATTRIBUTES security, DWORD creation, DWORD flags,
-                 HANDLE ftemplate)
+CreateFileWHookFn(LPCWSTR fname, DWORD access, DWORD share,
+                  LPSECURITY_ATTRIBUTES security, DWORD creation, DWORD flags,
+                  HANDLE ftemplate)
 {
     static const WCHAR kConfigFile[] = L"mms.cfg";
     static const size_t kConfigLength = ArrayLength(kConfigFile) - 1;
@@ -1971,7 +2006,8 @@ CreateFileHookFn(LPCWSTR fname, DWORD access, DWORD share,
         HANDLE replacement =
             sCreateFileWStub(tempFile, GENERIC_READ | GENERIC_WRITE, share,
                              security, TRUNCATE_EXISTING,
-                             FILE_ATTRIBUTE_TEMPORARY,
+                             FILE_ATTRIBUTE_TEMPORARY |
+                               FILE_FLAG_DELETE_ON_CLOSE,
                              NULL);
         if (replacement == INVALID_HANDLE_VALUE) {
             break;
@@ -2001,7 +2037,6 @@ CreateFileHookFn(LPCWSTR fname, DWORD access, DWORD share,
         WriteFile(replacement, static_cast<const void*>(kSettingString),
                   sizeof(kSettingString) - 1, &wbytes, NULL);
         SetFilePointer(replacement, 0, NULL, FILE_BEGIN);
-        sReplacementConfigFile = _wcsdup(tempFile);
         return replacement;
     }
     return sCreateFileWStub(fname, access, share, security, creation, flags,
@@ -2013,18 +2048,11 @@ PluginModuleChild::HookProtectedMode()
 {
     sKernel32Intercept.Init("kernel32.dll");
     sKernel32Intercept.AddHook("CreateFileW",
-                               reinterpret_cast<intptr_t>(CreateFileHookFn),
+                               reinterpret_cast<intptr_t>(CreateFileWHookFn),
                                (void**) &sCreateFileWStub);
-}
-
-void
-PluginModuleChild::CleanupProtectedModeHook()
-{
-    if (sReplacementConfigFile) {
-        DeleteFile(sReplacementConfigFile);
-        free(sReplacementConfigFile);
-        sReplacementConfigFile = nullptr;
-    }
+    sKernel32Intercept.AddHook("CreateFileA",
+                               reinterpret_cast<intptr_t>(CreateFileAHookFn),
+                               (void**) &sCreateFileAStub);
 }
 
 BOOL WINAPI
@@ -2092,10 +2120,10 @@ PluginModuleChild::InitQuirksModes(const nsCString& aMimeType)
     if (mQuirks != QUIRKS_NOT_INITIALIZED)
       return;
     mQuirks = 0;
-    // application/x-silverlight
-    // application/x-silverlight-2
-    NS_NAMED_LITERAL_CSTRING(silverlight, "application/x-silverlight");
-    if (FindInReadable(silverlight, aMimeType)) {
+
+    nsPluginHost::SpecialType specialType = nsPluginHost::GetSpecialType(aMimeType);
+
+    if (specialType == nsPluginHost::eSpecialType_Silverlight) {
         mQuirks |= QUIRK_SILVERLIGHT_DEFAULT_TRANSPARENT;
 #ifdef OS_WIN
         mQuirks |= QUIRK_WINLESS_TRACKPOPUP_HOOK;
@@ -2104,11 +2132,9 @@ PluginModuleChild::InitQuirksModes(const nsCString& aMimeType)
     }
 
 #ifdef OS_WIN
-    // application/x-shockwave-flash
-    NS_NAMED_LITERAL_CSTRING(flash, "application/x-shockwave-flash");
-    if (FindInReadable(flash, aMimeType)) {
+    if (specialType == nsPluginHost::eSpecialType_Flash) {
         mQuirks |= QUIRK_WINLESS_TRACKPOPUP_HOOK;
-        mQuirks |= QUIRK_FLASH_THROTTLE_WMUSER_EVENTS; 
+        mQuirks |= QUIRK_FLASH_THROTTLE_WMUSER_EVENTS;
         mQuirks |= QUIRK_FLASH_HOOK_SETLONGPTR;
         mQuirks |= QUIRK_FLASH_HOOK_GETWINDOWINFO;
         mQuirks |= QUIRK_FLASH_FIXUP_MOUSE_CAPTURE;
@@ -2117,20 +2143,17 @@ PluginModuleChild::InitQuirksModes(const nsCString& aMimeType)
     // QuickTime plugin usually loaded with audio/mpeg mimetype
     NS_NAMED_LITERAL_CSTRING(quicktime, "npqtplugin");
     if (FindInReadable(quicktime, mPluginFilename)) {
-      mQuirks |= QUIRK_QUICKTIME_AVOID_SETWINDOW;
+        mQuirks |= QUIRK_QUICKTIME_AVOID_SETWINDOW;
     }
 #endif
 
 #ifdef XP_MACOSX
     // Whitelist Flash and Quicktime to support offline renderer
-    NS_NAMED_LITERAL_CSTRING(flash, "application/x-shockwave-flash");
     NS_NAMED_LITERAL_CSTRING(quicktime, "QuickTime Plugin.plugin");
-    if (FindInReadable(flash, aMimeType)) {
-      mQuirks |= QUIRK_FLASH_AVOID_CGMODE_CRASHES;
-      mQuirks |= QUIRK_FLASH_HIDE_HIDPI_SUPPORT;
-    }
-    if (FindInReadable(flash, aMimeType) ||
-        FindInReadable(quicktime, mPluginFilename)) {
+    if (specialType == nsPluginHost::eSpecialType_Flash) {
+        mQuirks |= QUIRK_FLASH_AVOID_CGMODE_CRASHES;
+        mQuirks |= QUIRK_ALLOW_OFFLINE_RENDERER;
+    } else if (FindInReadable(quicktime, mPluginFilename)) {
         mQuirks |= QUIRK_ALLOW_OFFLINE_RENDERER;
     }
 #endif

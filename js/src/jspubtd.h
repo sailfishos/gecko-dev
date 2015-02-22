@@ -286,7 +286,7 @@ enum ThingRootKind
     THING_ROOT_OBJECT,
     THING_ROOT_SHAPE,
     THING_ROOT_BASE_SHAPE,
-    THING_ROOT_TYPE_OBJECT,
+    THING_ROOT_OBJECT_GROUP,
     THING_ROOT_STRING,
     THING_ROOT_SYMBOL,
     THING_ROOT_JIT_CODE,
@@ -454,7 +454,7 @@ struct PerThreadDataFriendFields
     }
 
     /* Limit pointer for checking native stack consumption. */
-    uintptr_t nativeStackLimit[StackKindCount];
+    uintptr_t nativeStackLimit[js::StackKindCount];
 
     static const size_t RuntimeMainThreadOffset = offsetof(RuntimeDummy, mainThread);
 

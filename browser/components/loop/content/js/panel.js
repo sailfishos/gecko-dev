@@ -25,13 +25,22 @@ loop.panel = (function(_, mozL10n) {
     propTypes: {
       buttonsHidden: React.PropTypes.array,
       // The selectedTab prop is used by the UI showcase.
-      selectedTab: React.PropTypes.string
+      selectedTab: React.PropTypes.string,
+      mozLoop: React.PropTypes.object
     },
 
     getDefaultProps: function() {
       return {
         buttonsHidden: []
       };
+    },
+
+    shouldComponentUpdate: function(nextProps, nextState) {
+      var tabChange = this.state.selectedTab !== nextState.selectedTab;
+      if (tabChange) {
+        this.props.mozLoop.notifyUITour("Loop:PanelTabChanged", nextState.selectedTab);
+      }
+      return tabChange;
     },
 
     getInitialState: function() {
@@ -67,6 +76,7 @@ loop.panel = (function(_, mozL10n) {
             React.createElement("li", {className: cx({selected: isSelected}), 
                 key: i, 
                 "data-tab-name": tabName, 
+                title: mozL10n.get(tabName + "_tab_button_tooltip"), 
                 onClick: this.handleSelectTab})
           );
         }
@@ -319,11 +329,6 @@ loop.panel = (function(_, mozL10n) {
     render: function() {
       var cx = React.addons.classSet;
 
-      // For now all of the menu entries require FxA so hide the whole gear if FxA is disabled.
-      if (!navigator.mozLoop.fxAEnabled) {
-        return null;
-      }
-
       return (
         React.createElement("div", {className: "settings-menu dropdown"}, 
           React.createElement("a", {className: "button-settings", onClick: this.showDropdownMenu, 
@@ -337,7 +342,7 @@ loop.panel = (function(_, mozL10n) {
             React.createElement(SettingsDropdownEntry, {label: mozL10n.get("settings_menu_item_account"), 
                                    onClick: this.handleClickAccountEntry, 
                                    icon: "account", 
-                                   displayed: this._isSignedIn()}), 
+                                   displayed: this._isSignedIn() && navigator.mozLoop.fxAEnabled}), 
             React.createElement(SettingsDropdownEntry, {icon: "tour", 
                                    label: mozL10n.get("tour_label"), 
                                    onClick: this.openGettingStartedTour}), 
@@ -798,7 +803,7 @@ loop.panel = (function(_, mozL10n) {
           React.createElement(NotificationListView, {notifications: this.props.notifications, 
                                 clearOnDocumentHidden: true}), 
           React.createElement(TabView, {ref: "tabView", selectedTab: this.props.selectedTab, 
-            buttonsHidden: hideButtons}, 
+            buttonsHidden: hideButtons, mozLoop: this.props.mozLoop}, 
             React.createElement(Tab, {name: "rooms"}, 
               React.createElement(RoomList, {dispatcher: this.props.dispatcher, 
                         store: this.props.roomStore, 

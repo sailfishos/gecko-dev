@@ -518,7 +518,7 @@ public:
 
   // Note: the return value matters here.  We call into this method, it's not
   // just xpcom boilerplate.
-  NS_IMETHOD Complete(nsresult aResult, nsISupports* aStatement)
+  NS_IMETHOD Complete(nsresult aResult, nsISupports* aStatement) MOZ_OVERRIDE
   {
     NS_ENSURE_SUCCESS(aResult, aResult);
     nsCOMPtr<mozIStorageAsyncStatement> stmt = do_QueryInterface(aStatement);
@@ -531,7 +531,7 @@ public:
     return stmt->ExecuteAsync(this, getter_AddRefs(handle));
   }
 
-  NS_IMETHOD HandleResult(mozIStorageResultSet* aResults)
+  NS_IMETHOD HandleResult(mozIStorageResultSet* aResults) MOZ_OVERRIDE
   {
     // If this method is called, we've gotten results, which means we have a
     // visit.
@@ -539,14 +539,14 @@ public:
     return NS_OK;
   }
 
-  NS_IMETHOD HandleError(mozIStorageError* aError)
+  NS_IMETHOD HandleError(mozIStorageError* aError) MOZ_OVERRIDE
   {
     // mIsVisited is already set to false, and that's the assumption we will
     // make if an error occurred.
     return NS_OK;
   }
 
-  NS_IMETHOD HandleCompletion(uint16_t aReason)
+  NS_IMETHOD HandleCompletion(uint16_t aReason) MOZ_OVERRIDE
   {
     if (aReason != mozIStorageStatementCallback::REASON_FINISHED) {
       return NS_OK;
@@ -912,14 +912,19 @@ public:
     mozStorageTransaction transaction(mDBConn, false,
                                       mozIStorageConnection::TRANSACTION_IMMEDIATE);
 
-    VisitData* lastPlace = nullptr;
+    VisitData* lastFetchedPlace = nullptr;
     for (nsTArray<VisitData>::size_type i = 0; i < mPlaces.Length(); i++) {
       VisitData& place = mPlaces.ElementAt(i);
       VisitData& referrer = mReferrers.ElementAt(i);
 
+      // Fetching from the database can overwrite this information, so save it
+      // apart.
+      bool typed = place.typed;
+      bool hidden = place.hidden;
+
       // We can avoid a database lookup if it's the same place as the last
       // visit we added.
-      bool known = lastPlace && lastPlace->IsSamePlaceAs(place);
+      bool known = lastFetchedPlace && lastFetchedPlace->IsSamePlaceAs(place);
       if (!known) {
         nsresult rv = mHistory->FetchPageInfo(place, &known);
         if (NS_FAILED(rv)) {
@@ -930,6 +935,17 @@ public:
           }
           return NS_OK;
         }
+        lastFetchedPlace = &mPlaces.ElementAt(i);
+      }
+
+      // If any transition is typed, ensure the page is marked as typed.
+      if (typed != lastFetchedPlace->typed) {
+        place.typed = true;
+      }
+
+      // If any transition is visible, ensure the page is marked as visible.
+      if (hidden != lastFetchedPlace->hidden) {
+        place.hidden = false;
       }
 
       FetchReferrerInfo(referrer, place);
@@ -953,8 +969,6 @@ public:
         rv = NS_DispatchToMainThread(event);
         NS_ENSURE_SUCCESS(rv, rv);
       }
-
-      lastPlace = &mPlaces.ElementAt(i);
     }
 
     nsresult rv = transaction.Commit();
@@ -1474,13 +1488,13 @@ public:
     MOZ_ASSERT(NS_IsMainThread());
   }
 
-  NS_IMETHOD HandleError(nsresult aResultCode, mozIPlaceInfo *aPlaceInfo)
+  NS_IMETHOD HandleError(nsresult aResultCode, mozIPlaceInfo *aPlaceInfo) MOZ_OVERRIDE
   {
     // Just don't add the annotations in case the visit isn't added.
     return NS_OK;
   }
 
-  NS_IMETHOD HandleResult(mozIPlaceInfo *aPlaceInfo)
+  NS_IMETHOD HandleResult(mozIPlaceInfo *aPlaceInfo) MOZ_OVERRIDE
   {
     // Exit silently if the download destination is not a local file.
     nsCOMPtr<nsIFileURL> destinationFileURL = do_QueryInterface(mDestination);
@@ -1542,7 +1556,7 @@ public:
     return NS_OK;
   }
 
-  NS_IMETHOD HandleCompletion()
+  NS_IMETHOD HandleCompletion() MOZ_OVERRIDE
   {
     return NS_OK;
   }
@@ -2013,8 +2027,8 @@ History::NotifyVisited(nsIURI* aURI)
       link->SetLinkState(eLinkState_Visited);
       // Verify that the observers hash doesn't mutate while looping through
       // the links associated with this URI.
-      NS_ABORT_IF_FALSE(key == mObservers.GetEntry(aURI),
-                        "The URIs hash mutated!");
+      MOZ_ASSERT(key == mObservers.GetEntry(aURI),
+                 "The URIs hash mutated!");
     }
   }
 
@@ -2033,7 +2047,7 @@ public:
     MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
 
-  NS_IMETHOD Complete(nsresult aStatus, nsISupports* aConnection) {
+  NS_IMETHOD Complete(nsresult aStatus, nsISupports* aConnection) MOZ_OVERRIDE {
     if (NS_FAILED(aStatus))
       return NS_OK;
     mReadOnlyDBConn = do_QueryInterface(aConnection);
@@ -2291,24 +2305,15 @@ History::FetchPageInfo(VisitData& _place, bool* _exists)
                             (_place.title.IsEmpty() && title.IsVoid()));
   }
 
-  if (_place.hidden) {
-    // If this transition was hidden, it is possible that others were not.
-    // Any one visible transition makes this location visible. If database
-    // has location as visible, reflect that in our data structure.
-    int32_t hidden;
-    rv = stmt->GetInt32(3, &hidden);
-    NS_ENSURE_SUCCESS(rv, rv);
-    _place.hidden = !!hidden;
-  }
+  int32_t hidden;
+  rv = stmt->GetInt32(3, &hidden);
+  NS_ENSURE_SUCCESS(rv, rv);
+  _place.hidden = !!hidden;
 
-  if (!_place.typed) {
-    // If this transition wasn't typed, others might have been. If database
-    // has location as typed, reflect that in our data structure.
-    int32_t typed;
-    rv = stmt->GetInt32(4, &typed);
-    NS_ENSURE_SUCCESS(rv, rv);
-    _place.typed = !!typed;
-  }
+  int32_t typed;
+  rv = stmt->GetInt32(4, &typed);
+  NS_ENSURE_SUCCESS(rv, rv);
+  _place.typed = !!typed;
 
   rv = stmt->GetInt32(5, &_place.frecency);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -2344,7 +2349,7 @@ History::GetService()
   }
 
   nsCOMPtr<IHistory> service(do_GetService(NS_IHISTORY_CONTRACTID));
-  NS_ABORT_IF_FALSE(service, "Cannot obtain IHistory service!");
+  MOZ_ASSERT(service, "Cannot obtain IHistory service!");
   NS_ASSERTION(gService, "Our constructor was not run?!");
 
   return gService;

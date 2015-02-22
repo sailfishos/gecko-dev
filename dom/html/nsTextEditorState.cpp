@@ -1873,8 +1873,6 @@ bool
 nsTextEditorState::SetValue(const nsAString& aValue, bool aUserInput,
                             bool aSetValueChanged)
 {
-  mozilla::fallible_t fallible;
-
   if (mEditor && mBoundFrame) {
     // The InsertText call below might flush pending notifications, which
     // could lead into a scheduled PrepareEditor to be called.  That will
@@ -2109,7 +2107,7 @@ nsTextEditorState::UpdatePlaceholderVisibility(bool aNotify)
 void
 nsTextEditorState::HideSelectionIfBlurred()
 {
-  NS_ABORT_IF_FALSE(mSelCon, "Should have a selection controller if we have a frame!");
+  MOZ_ASSERT(mSelCon, "Should have a selection controller if we have a frame!");
   nsCOMPtr<nsIContent> content = do_QueryInterface(mTextCtrlElement);
   if (!nsContentUtils::IsFocusedContent(content)) {
     mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_HIDDEN);

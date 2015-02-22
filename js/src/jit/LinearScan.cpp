@@ -484,15 +484,11 @@ LinearScanAllocator::isSpilledAt(LiveInterval *interval, CodePosition pos)
 bool
 LinearScanAllocator::populateSafepoints()
 {
-    // Populate all safepoints with this/argument slots. These are never changed
+    // Populate all safepoints with argument slots. These are never changed
     // by the allocator and are not necessarily populated by the code below.
     size_t nargs = graph.getBlock(0)->mir()->info().nargs();
     for (size_t i = 0; i < graph.numSafepoints(); i++) {
         LSafepoint *safepoint = graph.getSafepoint(i)->safepoint();
-
-        if (!safepoint->addValueSlot(/* stack = */ false, THIS_FRAME_ARGSLOT * sizeof(Value)))
-            return false;
-
         for (size_t j = 0; j < nargs; j++) {
             if (!safepoint->addValueSlot(/* stack = */ false, (j + 1) * sizeof(Value)))
                 return false;
@@ -827,7 +823,9 @@ LinearScanAllocator::allocateSlotFor(const LiveInterval *interval)
     LinearScanVirtualRegister *reg = &vregs[interval->vreg()];
 
     SlotList *freed;
-    if (reg->type() == LDefinition::DOUBLE)
+    if (reg->def()->isSimdType())
+        freed = &finishedQuadSlots_;
+    else if (reg->type() == LDefinition::DOUBLE)
         freed = &finishedDoubleSlots_;
 #if JS_BITS_PER_WORD == 64
     else if (reg->type() == LDefinition::GENERAL ||
@@ -920,7 +918,9 @@ LinearScanAllocator::freeAllocation(LiveInterval *interval, LAllocation *alloc)
     LinearScanVirtualRegister *mine = &vregs[interval->vreg()];
     if (!IsNunbox(mine)) {
         if (alloc->isStackSlot()) {
-            if (mine->type() == LDefinition::DOUBLE)
+            if (mine->def()->isSimdType())
+                finishedQuadSlots_.append(interval);
+            else if (mine->type() == LDefinition::DOUBLE)
                 finishedDoubleSlots_.append(interval);
 #if JS_BITS_PER_WORD == 64
             else if (mine->type() == LDefinition::GENERAL ||

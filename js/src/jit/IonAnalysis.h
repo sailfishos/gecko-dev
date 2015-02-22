@@ -170,8 +170,8 @@ ConvertLinearInequality(TempAllocator &alloc, MBasicBlock *block, const LinearSu
 
 bool
 AnalyzeNewScriptDefiniteProperties(JSContext *cx, JSFunction *fun,
-                                   types::TypeObject *type, HandlePlainObject baseobj,
-                                   Vector<types::TypeNewScript::Initializer> *initializerList);
+                                   ObjectGroup *group, HandlePlainObject baseobj,
+                                   Vector<TypeNewScript::Initializer> *initializerList);
 
 bool
 AnalyzeArgumentsUsage(JSContext *cx, JSScript *script);

@@ -44,6 +44,7 @@
 #include "nsMenuUtilsX.h"
 #include "nsMenuBarX.h"
 #include "NativeKeyBindings.h"
+#include "ComplexTextInputPanel.h"
 
 #include "gfxContext.h"
 #include "gfxQuartzSurface.h"
@@ -88,6 +89,7 @@
 #include "nsLayoutUtils.h"
 #include "InputData.h"
 #include "VibrancyManager.h"
+#include "nsNativeThemeCocoa.h"
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -464,7 +466,6 @@ nsChildView::ReleaseTitlebarCGContext()
 nsresult nsChildView::Create(nsIWidget *aParent,
                              nsNativeWidget aNativeParent,
                              const nsIntRect &aRect,
-                             nsDeviceContext *aContext,
                              nsWidgetInitData *aInitData)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
@@ -495,7 +496,7 @@ nsresult nsChildView::Create(nsIWidget *aParent,
   // Ensure that the toolkit is created.
   nsToolkit::GetToolkit();
 
-  BaseCreate(aParent, aRect, aContext, aInitData);
+  BaseCreate(aParent, aRect, aInitData);
 
   // inherit things from the parent view and create our parallel
   // NSView in the Cocoa display system
@@ -542,6 +543,8 @@ nsresult nsChildView::Create(nsIWidget *aParent,
 
   NS_ASSERTION(!mTextInputHandler, "mTextInputHandler has already existed");
   mTextInputHandler = new TextInputHandler(this, mView);
+
+  mPluginFocused = false;
 
   return NS_OK;
 
@@ -923,7 +926,7 @@ NS_IMETHODIMP nsChildView::GetClientBounds(nsIntRect &aRect)
   if (!mParentWidget) {
     // For top level widgets we want the position on screen, not the position
     // of this view inside the window.
-    aRect.MoveTo(WidgetToScreenOffset());
+    aRect.MoveTo(WidgetToScreenOffsetUntyped());
   }
   return NS_OK;
 }
@@ -931,7 +934,7 @@ NS_IMETHODIMP nsChildView::GetClientBounds(nsIntRect &aRect)
 NS_IMETHODIMP nsChildView::GetScreenBounds(nsIntRect &aRect)
 {
   GetBounds(aRect);
-  aRect.MoveTo(WidgetToScreenOffset());
+  aRect.MoveTo(WidgetToScreenOffsetUntyped());
   return NS_OK;
 }
 
@@ -1125,7 +1128,7 @@ nsresult nsChildView::SynthesizeNativeKeyEvent(int32_t aNativeKeyboardLayout,
                                                      aUnmodifiedCharacters);
 }
 
-nsresult nsChildView::SynthesizeNativeMouseEvent(nsIntPoint aPoint,
+nsresult nsChildView::SynthesizeNativeMouseEvent(LayoutDeviceIntPoint aPoint,
                                                  uint32_t aNativeMessage,
                                                  uint32_t aModifierFlags)
 {
@@ -1482,7 +1485,7 @@ void nsChildView::ReportSizeEvent()
 
 //    Return the offset between this child view and the screen.
 //    @return       -- widget origin in device-pixel coords
-nsIntPoint nsChildView::WidgetToScreenOffset()
+LayoutDeviceIntPoint nsChildView::WidgetToScreenOffset()
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_RETURN;
 
@@ -1500,9 +1503,9 @@ nsIntPoint nsChildView::WidgetToScreenOffset()
   FlipCocoaScreenCoordinate(origin);
 
   // convert to device pixels
-  return CocoaPointsToDevPixels(origin);
+  return LayoutDeviceIntPoint::FromUntyped(CocoaPointsToDevPixels(origin));
 
-  NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(nsIntPoint(0,0));
+  NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(LayoutDeviceIntPoint(0,0));
 }
 
 NS_IMETHODIMP nsChildView::CaptureRollupEvents(nsIRollupListener * aListener,
@@ -1579,8 +1582,8 @@ bool nsChildView::HasPendingInputEvent()
 
 #pragma mark -
 
-NS_IMETHODIMP
-nsChildView::NotifyIME(const IMENotification& aIMENotification)
+nsresult
+nsChildView::NotifyIMEInternal(const IMENotification& aIMENotification)
 {
   switch (aIMENotification.mMessage) {
     case REQUEST_TO_COMMIT_COMPOSITION:
@@ -1615,6 +1618,48 @@ nsChildView::NotifyIME(const IMENotification& aIMENotification)
     default:
       return NS_ERROR_NOT_IMPLEMENTED;
   }
+}
+
+NS_IMETHODIMP
+nsChildView::StartPluginIME(const mozilla::WidgetKeyboardEvent& aKeyboardEvent,
+                            int32_t aPanelX, int32_t aPanelY,
+                            nsString& aCommitted)
+{
+  NS_ENSURE_TRUE(mView, NS_ERROR_NOT_AVAILABLE);
+
+  ComplexTextInputPanel* ctiPanel =
+    ComplexTextInputPanel::GetSharedComplexTextInputPanel();
+
+  ctiPanel->PlacePanel(aPanelX, aPanelY);
+  // We deliberately don't use TextInputHandler::GetCurrentKeyEvent() to
+  // obtain the NSEvent* we pass to InterpretKeyEvent().  This works fine in
+  // non-e10s mode.  But in e10s mode TextInputHandler::HandleKeyDownEvent()
+  // has already returned, so the relevant KeyEventState* (and its NSEvent*)
+  // is already out of scope.  Furthermore we don't *need* to use it.
+  // StartPluginIME() is only ever called to start a new IME session when none
+  // currently exists.  So nested IME should never reach here, and so it should
+  // be fine to use the last key-down event received by -[ChildView keyDown:]
+  // (as we currently do).
+  ctiPanel->InterpretKeyEvent([mView lastKeyDownEvent], aCommitted);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsChildView::SetPluginFocused(bool& aFocused)
+{
+  if (aFocused == mPluginFocused) {
+    return NS_OK;
+  }
+  if (!aFocused) {
+    ComplexTextInputPanel* ctiPanel =
+      ComplexTextInputPanel::GetSharedComplexTextInputPanel();
+    if (ctiPanel) {
+      ctiPanel->CancelComposition();
+    }
+  }
+  mPluginFocused = aFocused;
+  return NS_OK;
 }
 
 NS_IMETHODIMP_(void)
@@ -2276,7 +2321,7 @@ FindTitlebarBottom(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
   int32_t titlebarBottom = 0;
   for (uint32_t i = 0; i < aThemeGeometries.Length(); ++i) {
     const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if ((g.mWidgetType == NS_THEME_WINDOW_TITLEBAR) &&
+    if ((g.mType == nsNativeThemeCocoa::eThemeGeometryTypeTitlebar) &&
         g.mRect.X() <= 0 &&
         g.mRect.XMost() >= aWindowWidth &&
         g.mRect.Y() <= 0) {
@@ -2293,8 +2338,7 @@ FindUnifiedToolbarBottom(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometr
   int32_t unifiedToolbarBottom = aTitlebarBottom;
   for (uint32_t i = 0; i < aThemeGeometries.Length(); ++i) {
     const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if ((g.mWidgetType == NS_THEME_MOZ_MAC_UNIFIED_TOOLBAR ||
-         g.mWidgetType == NS_THEME_TOOLBAR) &&
+    if ((g.mType == nsNativeThemeCocoa::eThemeGeometryTypeToolbar) &&
         g.mRect.X() <= 0 &&
         g.mRect.XMost() >= aWindowWidth &&
         g.mRect.Y() <= aTitlebarBottom) {
@@ -2306,11 +2350,11 @@ FindUnifiedToolbarBottom(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometr
 
 static nsIntRect
 FindFirstRectOfType(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
-                    uint8_t aWidgetType)
+                    nsITheme::ThemeGeometryType aThemeGeometryType)
 {
   for (uint32_t i = 0; i < aThemeGeometries.Length(); ++i) {
     const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if (g.mWidgetType == aWidgetType) {
+    if (g.mType == aThemeGeometryType) {
       return g.mRect;
     }
   }
@@ -2342,24 +2386,46 @@ nsChildView::UpdateThemeGeometries(const nsTArray<ThemeGeometry>& aThemeGeometri
   [win setUnifiedToolbarHeight:DevPixelsToCocoaPoints(devUnifiedHeight)];
 
   // Update titlebar control offsets.
-  nsIntRect windowButtonRect = FindFirstRectOfType(aThemeGeometries, NS_THEME_WINDOW_BUTTON_BOX);
+  nsIntRect windowButtonRect = FindFirstRectOfType(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeWindowButtons);
   [win placeWindowButtons:[mView convertRect:DevPixelsToCocoaPoints(windowButtonRect) toView:nil]];
-  nsIntRect fullScreenButtonRect = FindFirstRectOfType(aThemeGeometries, NS_THEME_MOZ_MAC_FULLSCREEN_BUTTON);
+  nsIntRect fullScreenButtonRect = FindFirstRectOfType(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeFullscreenButton);
   [win placeFullScreenButton:[mView convertRect:DevPixelsToCocoaPoints(fullScreenButtonRect) toView:nil]];
 }
 
 static nsIntRegion
 GatherThemeGeometryRegion(const nsTArray<nsIWidget::ThemeGeometry>& aThemeGeometries,
-                          uint8_t aWidgetType)
+                          nsITheme::ThemeGeometryType aThemeGeometryType)
 {
   nsIntRegion region;
   for (size_t i = 0; i < aThemeGeometries.Length(); ++i) {
     const nsIWidget::ThemeGeometry& g = aThemeGeometries[i];
-    if (g.mWidgetType == aWidgetType) {
+    if (g.mType == aThemeGeometryType) {
       region.OrWith(g.mRect);
     }
   }
   return region;
+}
+
+template<typename Region>
+static void MakeRegionsNonOverlappingImpl(Region& aOutUnion) { }
+
+template<typename Region, typename ... Regions>
+static void MakeRegionsNonOverlappingImpl(Region& aOutUnion, Region& aFirst, Regions& ... aRest)
+{
+  MakeRegionsNonOverlappingImpl(aOutUnion, aRest...);
+  aFirst.SubOut(aOutUnion);
+  aOutUnion.OrWith(aFirst);
+}
+
+// Subtracts parts from regions in such a way that they don't have any overlap.
+// Each region in the argument list will have the union of all the regions
+// *following* it subtracted from itself. In other words, the arguments are
+// sorted low priority to high priority.
+template<typename Region, typename ... Regions>
+static void MakeRegionsNonOverlapping(Region& aFirst, Regions& ... aRest)
+{
+  Region unionOfAll;
+  MakeRegionsNonOverlappingImpl(unionOfAll, aFirst, aRest...);
 }
 
 void
@@ -2370,19 +2436,24 @@ nsChildView::UpdateVibrancy(const nsTArray<ThemeGeometry>& aThemeGeometries)
   }
 
   nsIntRegion vibrantLightRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, NS_THEME_MAC_VIBRANCY_LIGHT);
+    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeVibrancyLight);
   nsIntRegion vibrantDarkRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, NS_THEME_MAC_VIBRANCY_DARK);
+    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeVibrancyDark);
+  nsIntRegion menuRegion =
+    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeMenu);
   nsIntRegion tooltipRegion =
-    GatherThemeGeometryRegion(aThemeGeometries, NS_THEME_TOOLTIP);
+    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeTooltip);
+  nsIntRegion highlightedMenuItemRegion =
+    GatherThemeGeometryRegion(aThemeGeometries, nsNativeThemeCocoa::eThemeGeometryTypeHighlightedMenuItem);
 
-  vibrantDarkRegion.SubOut(vibrantLightRegion);
-  vibrantDarkRegion.SubOut(tooltipRegion);
-  vibrantLightRegion.SubOut(tooltipRegion);
+  MakeRegionsNonOverlapping(vibrantLightRegion, vibrantDarkRegion, menuRegion,
+                            tooltipRegion, highlightedMenuItemRegion);
 
   auto& vm = EnsureVibrancyManager();
   vm.UpdateVibrantRegion(VibrancyType::LIGHT, vibrantLightRegion);
   vm.UpdateVibrantRegion(VibrancyType::TOOLTIP, tooltipRegion);
+  vm.UpdateVibrantRegion(VibrancyType::MENU, menuRegion);
+  vm.UpdateVibrantRegion(VibrancyType::HIGHLIGHTED_MENUITEM, highlightedMenuItemRegion);
   vm.UpdateVibrantRegion(VibrancyType::DARK, vibrantDarkRegion);
 }
 
@@ -2395,36 +2466,40 @@ nsChildView::ClearVibrantAreas()
 }
 
 static VibrancyType
-WidgetTypeToVibrancyType(uint8_t aWidgetType)
+ThemeGeometryTypeToVibrancyType(nsITheme::ThemeGeometryType aThemeGeometryType)
 {
-  switch (aWidgetType) {
-    case NS_THEME_MAC_VIBRANCY_LIGHT:
+  switch (aThemeGeometryType) {
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyLight:
       return VibrancyType::LIGHT;
-    case NS_THEME_MAC_VIBRANCY_DARK:
+    case nsNativeThemeCocoa::eThemeGeometryTypeVibrancyDark:
       return VibrancyType::DARK;
-    case NS_THEME_TOOLTIP:
+    case nsNativeThemeCocoa::eThemeGeometryTypeTooltip:
       return VibrancyType::TOOLTIP;
+    case nsNativeThemeCocoa::eThemeGeometryTypeMenu:
+      return VibrancyType::MENU;
+    case nsNativeThemeCocoa::eThemeGeometryTypeHighlightedMenuItem:
+      return VibrancyType::HIGHLIGHTED_MENUITEM;
     default:
       MOZ_CRASH();
   }
 }
 
 NSColor*
-nsChildView::VibrancyFillColorForWidgetType(uint8_t aWidgetType)
+nsChildView::VibrancyFillColorForThemeGeometryType(nsITheme::ThemeGeometryType aThemeGeometryType)
 {
   if (VibrancyManager::SystemSupportsVibrancy()) {
     return EnsureVibrancyManager().VibrancyFillColorForType(
-      WidgetTypeToVibrancyType(aWidgetType));
+      ThemeGeometryTypeToVibrancyType(aThemeGeometryType));
   }
   return [NSColor whiteColor];
 }
 
 NSColor*
-nsChildView::VibrancyFontSmoothingBackgroundColorForWidgetType(uint8_t aWidgetType)
+nsChildView::VibrancyFontSmoothingBackgroundColorForThemeGeometryType(nsITheme::ThemeGeometryType aThemeGeometryType)
 {
   if (VibrancyManager::SystemSupportsVibrancy()) {
     return EnsureVibrancyManager().VibrancyFontSmoothingBackgroundColorForType(
-      WidgetTypeToVibrancyType(aWidgetType));
+      ThemeGeometryTypeToVibrancyType(aThemeGeometryType));
   }
   return [NSColor clearColor];
 }
@@ -2871,6 +2946,7 @@ NSEvent* gLastDragMouseDownEvent = nil;
     mExpectingWheelStop = NO;
 
     mLastMouseDownEvent = nil;
+    mLastKeyDownEvent = nil;
     mClickThroughMouseDownEvent = nil;
     mDragService = nullptr;
 
@@ -2923,6 +2999,26 @@ NSEvent* gLastDragMouseDownEvent = nil;
   return self;
 
   NS_OBJC_END_TRY_ABORT_BLOCK_NIL;
+}
+
+// ComplexTextInputPanel's interpretKeyEvent hack won't work without this.
+// It makes calls to +[NSTextInputContext currentContext], deep in system
+// code, return the appropriate context.
+- (NSTextInputContext *)inputContext
+{
+  NSTextInputContext* pluginContext = NULL;
+  if (mGeckoChild && mGeckoChild->IsPluginFocused()) {
+    ComplexTextInputPanel* ctiPanel =
+      ComplexTextInputPanel::GetSharedComplexTextInputPanel();
+    if (ctiPanel) {
+      pluginContext = (NSTextInputContext*) ctiPanel->GetInputContext();
+    }
+  }
+  if (pluginContext) {
+    return pluginContext;
+  } else {
+    return [super inputContext];
+  }
 }
 
 - (void)installTextInputHandler:(TextInputHandler*)aHandler
@@ -3002,6 +3098,7 @@ NSEvent* gLastDragMouseDownEvent = nil;
   [mGLContext release];
   [mPendingDirtyRects release];
   [mLastMouseDownEvent release];
+  [mLastKeyDownEvent release];
   [mClickThroughMouseDownEvent release];
   CGImageRelease(mTopLeftCornerMask);
   ChildViewMouseTracker::OnDestroyView(self);
@@ -3244,20 +3341,20 @@ NSEvent* gLastDragMouseDownEvent = nil;
          [(BaseWindow*)[self window] drawsContentsIntoWindowFrame];
 }
 
-- (NSColor*)vibrancyFillColorForWidgetType:(uint8_t)aWidgetType
+- (NSColor*)vibrancyFillColorForThemeGeometryType:(nsITheme::ThemeGeometryType)aThemeGeometryType
 {
   if (!mGeckoChild) {
     return [NSColor whiteColor];
   }
-  return mGeckoChild->VibrancyFillColorForWidgetType(aWidgetType);
+  return mGeckoChild->VibrancyFillColorForThemeGeometryType(aThemeGeometryType);
 }
 
-- (NSColor*)vibrancyFontSmoothingBackgroundColorForWidgetType:(uint8_t)aWidgetType
+- (NSColor*)vibrancyFontSmoothingBackgroundColorForThemeGeometryType:(nsITheme::ThemeGeometryType)aThemeGeometryType
 {
   if (!mGeckoChild) {
     return [NSColor clearColor];
   }
-  return mGeckoChild->VibrancyFontSmoothingBackgroundColorForWidgetType(aWidgetType);
+  return mGeckoChild->VibrancyFontSmoothingBackgroundColorForThemeGeometryType(aThemeGeometryType);
 }
 
 - (nsIntRegion)nativeDirtyRegionWithBoundingRect:(NSRect)aRect
@@ -5139,6 +5236,15 @@ static int32_t RoundUp(double aDouble)
   NS_OBJC_END_TRY_ABORT_BLOCK_RETURN(NSMakeRange(0, 0));
 }
 
+- (BOOL)drawsVerticallyForCharacterAtIndex:(NSUInteger)charIndex
+{
+  NS_ENSURE_TRUE(mTextInputHandler, NO);
+  if (charIndex == NSNotFound) {
+    return NO;
+  }
+  return mTextInputHandler->DrawsVerticallyForCharacterAtIndex(charIndex);
+}
+
 - (NSRect) firstRectForCharacterRange:(NSRange)theRange
 {
   NSRect rect;
@@ -5242,9 +5348,17 @@ static int32_t RoundUp(double aDouble)
   return YES;
 }
 
+- (NSEvent*)lastKeyDownEvent
+{
+  return mLastKeyDownEvent;
+}
+
 - (void)keyDown:(NSEvent*)theEvent
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+
+  [mLastKeyDownEvent release];
+  mLastKeyDownEvent = [theEvent retain];
 
   // Weird things can happen on keyboard input if the key window isn't in the
   // current space.  For example see bug 1056251.  To get around this, always

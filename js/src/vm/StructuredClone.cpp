@@ -31,7 +31,6 @@
 
 #include "mozilla/Endian.h"
 #include "mozilla/FloatingPoint.h"
-#include "mozilla/TypedEnum.h"
 
 #include <algorithm>
 
@@ -336,6 +335,7 @@ struct JSStructuredCloneWriter {
     RootedValue transferable;
     AutoObjectVector transferableObjects;
 
+    friend bool JS_WriteString(JSStructuredCloneWriter *w, HandleString str);
     friend bool JS_WriteTypedArray(JSStructuredCloneWriter *w, HandleValue v);
 };
 
@@ -905,7 +905,7 @@ JSStructuredCloneWriter::startObject(HandleObject obj, bool *backref)
 {
     /* Handle cycles in the object graph. */
     CloneMemory::AddPtr p = memory.lookupForAdd(obj);
-    if ((*backref = p))
+    if ((*backref = p.found()))
         return out.writePair(SCTAG_BACK_REFERENCE_OBJECT, p->value());
     if (!memory.add(p, obj, memory.count()))
         return false;
@@ -2129,6 +2129,12 @@ JS_PUBLIC_API(bool)
 JS_WriteBytes(JSStructuredCloneWriter *w, const void *p, size_t len)
 {
     return w->output().writeBytes(p, len);
+}
+
+JS_PUBLIC_API(bool)
+JS_WriteString(JSStructuredCloneWriter *w, HandleString str)
+{
+    return w->writeString(SCTAG_STRING, str);
 }
 
 JS_PUBLIC_API(bool)

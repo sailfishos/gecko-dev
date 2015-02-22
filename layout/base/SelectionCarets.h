@@ -208,7 +208,6 @@ private:
   void DispatchSelectionStateChangedEvent(dom::Selection* aSelection,
                                           const dom::Sequence<dom::SelectionState>& aStates);
   void DispatchCustomEvent(const nsAString& aEvent);
-  nsRect GetSelectionBoundingRect(dom::Selection* aSel);
 
   /**
    * Detecting long tap using timer
@@ -218,6 +217,7 @@ private:
   static void FireLongTap(nsITimer* aTimer, void* aSelectionCarets);
 
   void LaunchScrollEndDetector();
+  void CancelScrollEndDetector();
   static void FireScrollEnd(nsITimer* aTimer, void* aSelectionCarets);
 
   nsIPresShell* mPresShell;
@@ -260,6 +260,8 @@ private:
 
   // True if AsyncPanZoom is enabled
   bool mAsyncPanZoomEnabled;
+  // True if AsyncPanZoom is started
+  bool mInAsyncPanZoomGesture;
 
   bool mEndCaretVisible;
   bool mStartCaretVisible;

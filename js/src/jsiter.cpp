@@ -19,13 +19,13 @@
 #include "jsgc.h"
 #include "jsobj.h"
 #include "jsopcode.h"
-#include "jsproxy.h"
 #include "jsscript.h"
 #include "jstypes.h"
 #include "jsutil.h"
 
 #include "ds/Sort.h"
 #include "gc/Marking.h"
+#include "js/Proxy.h"
 #include "vm/GeneratorObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
@@ -33,8 +33,6 @@
 #include "vm/StopIterationObject.h"
 #include "vm/TypedArrayCommon.h"
 
-#include "jsinferinlines.h"
-#include "jsobjinlines.h"
 #include "jsscriptinlines.h"
 
 #include "vm/NativeObject-inl.h"
@@ -483,8 +481,9 @@ static inline PropertyIteratorObject *
 NewPropertyIteratorObject(JSContext *cx, unsigned flags)
 {
     if (flags & JSITER_ENUMERATE) {
-        RootedTypeObject type(cx, cx->getNewType(&PropertyIteratorObject::class_, TaggedProto(nullptr)));
-        if (!type)
+        RootedObjectGroup group(cx, ObjectGroup::defaultNewGroup(cx, &PropertyIteratorObject::class_,
+                                                                 TaggedProto(nullptr)));
+        if (!group)
             return nullptr;
 
         JSObject *metadata = nullptr;
@@ -498,7 +497,7 @@ NewPropertyIteratorObject(JSContext *cx, unsigned flags)
             return nullptr;
 
         JSObject *obj = JSObject::create(cx, ITERATOR_FINALIZE_KIND,
-                                         GetInitialHeap(GenericObject, clasp), shape, type);
+                                         GetInitialHeap(GenericObject, clasp), shape, group);
         if (!obj)
             return nullptr;
         PropertyIteratorObject *res = &obj->as<PropertyIteratorObject>();
@@ -577,9 +576,9 @@ VectorToKeyIterator(JSContext *cx, HandleObject obj, unsigned flags, AutoIdVecto
 {
     MOZ_ASSERT(!(flags & JSITER_FOREACH));
 
-    if (obj->hasSingletonType() && !obj->setIteratedSingleton(cx))
+    if (obj->isSingleton() && !obj->setIteratedSingleton(cx))
         return false;
-    types::MarkTypeObjectFlags(cx, obj, types::OBJECT_FLAG_ITERATED);
+    MarkObjectGroupFlags(cx, obj, OBJECT_FLAG_ITERATED);
 
     Rooted<PropertyIteratorObject *> iterobj(cx, NewPropertyIteratorObject(cx, flags));
     if (!iterobj)
@@ -620,9 +619,9 @@ VectorToValueIterator(JSContext *cx, HandleObject obj, unsigned flags, AutoIdVec
 {
     MOZ_ASSERT(flags & JSITER_FOREACH);
 
-    if (obj->hasSingletonType() && !obj->setIteratedSingleton(cx))
+    if (obj->isSingleton() && !obj->setIteratedSingleton(cx))
         return false;
-    types::MarkTypeObjectFlags(cx, obj, types::OBJECT_FLAG_ITERATED);
+    MarkObjectGroupFlags(cx, obj, OBJECT_FLAG_ITERATED);
 
     Rooted<PropertyIteratorObject*> iterobj(cx, NewPropertyIteratorObject(cx, flags));
     if (!iterobj)
@@ -1166,28 +1165,23 @@ SuppressDeletedPropertyHelper(JSContext *cx, HandleObject obj, StringPredicate p
                     if (!GetPrototype(cx, obj, &proto))
                         return false;
                     if (proto) {
-                        RootedObject obj2(cx);
-                        RootedShape prop(cx);
                         RootedId id(cx);
                         RootedValue idv(cx, StringValue(*idp));
                         if (!ValueToId<CanGC>(cx, idv, &id))
                             return false;
-                        if (!LookupProperty(cx, proto, id, &obj2, &prop))
-                            return false;
-                        if (prop) {
-                            unsigned attrs;
-                            if (obj2->isNative())
-                                attrs = GetShapeAttributes(obj2, prop);
-                            else if (!GetPropertyAttributes(cx, obj2, id, &attrs))
-                                return false;
 
-                            if (attrs & JSPROP_ENUMERATE)
+                        Rooted<PropertyDescriptor> desc(cx);
+                        if (!GetPropertyDescriptor(cx, proto, id, &desc))
+                            return false;
+
+                        if (desc.object()) {
+                            if (desc.isEnumerable())
                                 continue;
                         }
                     }
 
                     /*
-                     * If lookupProperty or getAttributes above removed a property from
+                     * If GetPropertyDescriptorById above removed a property from
                      * ni, start over.
                      */
                     if (props_end != ni->props_end || props_cursor != ni->props_cursor)
@@ -1416,7 +1410,7 @@ GlobalObject::initIteratorClasses(JSContext *cx, Handle<GlobalObject *> global)
     RootedObject proto(cx);
     if (global->getSlot(ARRAY_ITERATOR_PROTO).isUndefined()) {
         const Class *cls = &ArrayIteratorPrototypeClass;
-        proto = global->createBlankPrototypeInheriting(cx, cls, *iteratorProto);
+        proto = global->createBlankPrototypeInheriting(cx, cls, iteratorProto);
         if (!proto || !DefinePropertiesAndFunctions(cx, proto, nullptr, array_iterator_methods))
             return false;
         global->setReservedSlot(ARRAY_ITERATOR_PROTO, ObjectValue(*proto));

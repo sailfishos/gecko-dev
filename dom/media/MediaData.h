@@ -12,6 +12,8 @@
 #include "AudioSampleFormat.h"
 #include "nsIMemoryReporter.h"
 #include "SharedBuffer.h"
+#include "nsRefPtr.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 
@@ -81,6 +83,15 @@ public:
     , mChannels(aChannels)
     , mRate(aRate)
     , mAudioData(aData) {}
+
+  // Creates a new VideoData identical to aOther, but with a different
+  // specified timestamp and duration. All data from aOther is copied
+  // into the new AudioData but the audio data which is transferred.
+  // After such call, the original aOther is unusable.
+  static already_AddRefed<AudioData>
+  TransferAndUpdateTimestampAndDuration(AudioData* aOther,
+                                        int64_t aTimestamp,
+                                        int64_t aDuration);
 
   size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const;
 
@@ -270,6 +281,15 @@ public:
 
 protected:
   ~VideoData();
+};
+
+  // LargeDataBuffer is a ref counted fallible TArray.
+  // It is designed to share potentially big byte arrays.
+class LargeDataBuffer : public FallibleTArray<uint8_t> {
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(LargeDataBuffer);
+
+private:
+  ~LargeDataBuffer() {}
 };
 
 } // namespace mozilla

@@ -222,22 +222,13 @@ const static js::Class sNPObjectJSWrapperClass =
       NPObjWrapper_ObjectMoved
     },
     {
-        nullptr, // lookupGeneric
         nullptr, // lookupProperty
-        nullptr, // lookupElement
-        nullptr, // defineGeneric
         nullptr, // defineProperty
-        nullptr, // defineElement
-        nullptr, // getGeneric
+        nullptr, // hasProperty
         nullptr, // getProperty
-        nullptr, // getElement
-        nullptr, // setGeneric
         nullptr, // setProperty
-        nullptr, // setElement
         nullptr, // getOwnPropertyDescriptor
-        nullptr, // getGenericAttributes
-        nullptr, // setGenericAttributes
-        nullptr, // deleteGeneric
+        nullptr, // deleteProperty
         nullptr, nullptr, // watch/unwatch
         nullptr, // getElements
         NPObjWrapper_Enumerate,
@@ -1773,12 +1764,12 @@ NPObjWrapper_ObjectMoved(JSObject *obj, const JSObject *old)
     return;
   }
 
-  // Calling PL_DHashTableLookup() will not result in GC.
+  // Calling PL_DHashTableSearch() will not result in GC.
   JS::AutoSuppressGCAnalysis nogc;
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableLookup(&sNPObjWrappers, npobj));
-  MOZ_ASSERT(PL_DHASH_ENTRY_IS_BUSY(entry) && entry->mJSObj);
+    (PL_DHashTableSearch(&sNPObjWrappers, npobj));
+  MOZ_ASSERT(entry && entry->mJSObj);
   MOZ_ASSERT(entry->mJSObj == old);
   entry->mJSObj = obj;
 }
@@ -1830,9 +1821,9 @@ nsNPObjWrapper::OnDestroy(NPObject *npobj)
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableLookup(&sNPObjWrappers, npobj));
+    (PL_DHashTableSearch(&sNPObjWrappers, npobj));
 
-  if (PL_DHASH_ENTRY_IS_BUSY(entry) && entry->mJSObj) {
+  if (entry && entry->mJSObj) {
     // Found a live NPObject wrapper, null out its JSObjects' private
     // data.
 
@@ -1881,7 +1872,7 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableAdd(&sNPObjWrappers, npobj));
+    (PL_DHashTableAdd(&sNPObjWrappers, npobj, fallible));
 
   if (!entry) {
     // Out of memory
@@ -1890,7 +1881,7 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
     return nullptr;
   }
 
-  if (PL_DHASH_ENTRY_IS_BUSY(entry) && entry->mJSObj) {
+  if (entry->mJSObj) {
     // Found a live NPObject wrapper. It may not be in the same compartment
     // as cx, so we need to wrap it before returning it.
     JS::Rooted<JSObject*> obj(cx, entry->mJSObj);
@@ -1907,16 +1898,13 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
 
   // No existing JSObject, create one.
 
-  JS::Rooted<JSObject*> obj(cx, ::JS_NewObject(cx, js::Jsvalify(&sNPObjectJSWrapperClass),
-                                               JS::NullPtr(), JS::NullPtr()));
+  JS::Rooted<JSObject*> obj(cx, ::JS_NewObject(cx, js::Jsvalify(&sNPObjectJSWrapperClass)));
 
   if (generation != sNPObjWrappers.Generation()) {
       // Reload entry if the JS_NewObject call caused a GC and reallocated
       // the table (see bug 445229). This is guaranteed to succeed.
 
-      entry = static_cast<NPObjWrapperHashEntry *>
-        (PL_DHashTableLookup(&sNPObjWrappers, npobj));
-      NS_ASSERTION(entry && PL_DHASH_ENTRY_IS_BUSY(entry),
+      NS_ASSERTION(PL_DHashTableSearch(&sNPObjWrappers, npobj),
                    "Hashtable didn't find what we just added?");
   }
 
@@ -2047,9 +2035,9 @@ LookupNPP(NPObject *npobj)
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableAdd(&sNPObjWrappers, npobj));
+    (PL_DHashTableAdd(&sNPObjWrappers, npobj, fallible));
 
-  if (PL_DHASH_ENTRY_IS_FREE(entry)) {
+  if (!entry) {
     return nullptr;
   }
 
@@ -2079,7 +2067,7 @@ CreateNPObjectMember(NPP npp, JSContext *cx, JSObject *obj, NPObject* npobj,
   // during initialization.
   memset(memberPrivate, 0, sizeof(NPObjectMemberPrivate));
 
-  JSObject *memobj = ::JS_NewObject(cx, &sNPObjectMemberClass, JS::NullPtr(), JS::NullPtr());
+  JSObject *memobj = ::JS_NewObject(cx, &sNPObjectMemberClass);
   if (!memobj) {
     PR_Free(memberPrivate);
     return false;

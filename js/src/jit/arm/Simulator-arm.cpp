@@ -352,97 +352,44 @@ class CachePage
     char validity_map_[kValidityMapSize];  // One byte per line.
 };
 
-class Redirection;
-
-class SimulatorRuntime
+// Protects the icache() and redirection() properties of the
+// Simulator.
+class AutoLockSimulatorCache
 {
-    friend class AutoLockSimulatorRuntime;
-
-    Redirection *redirection_;
-
-    // ICache checking.
-    struct ICacheHasher {
-        typedef void *Key;
-        typedef void *Lookup;
-        static HashNumber hash(const Lookup &l);
-        static bool match(const Key &k, const Lookup &l);
-    };
-
   public:
-    typedef HashMap<void *, CachePage *, ICacheHasher, SystemAllocPolicy> ICacheMap;
-
-  protected:
-    ICacheMap icache_;
-
-    // Synchronize access between main thread and compilation threads.
-    PRLock *lock_;
-    mozilla::DebugOnly<PRThread *> lockOwner_;
-
-  public:
-    SimulatorRuntime()
-      : redirection_(nullptr),
-        lock_(nullptr),
-        lockOwner_(nullptr)
-    {}
-    ~SimulatorRuntime();
-    bool init() {
-        lock_ = PR_NewLock();
-        if (!lock_)
-            return false;
-        if (!icache_.init())
-            return false;
-        return true;
-    }
-    ICacheMap &icache() {
-        MOZ_ASSERT(lockOwner_ == PR_GetCurrentThread());
-        return icache_;
-    }
-    Redirection *redirection() const {
-        MOZ_ASSERT(lockOwner_ == PR_GetCurrentThread());
-        return redirection_;
-    }
-    void setRedirection(js::jit::Redirection *redirection) {
-        MOZ_ASSERT(lockOwner_ == PR_GetCurrentThread());
-        redirection_ = redirection;
-    }
-};
-
-class AutoLockSimulatorRuntime
-{
-  protected:
-    SimulatorRuntime *srt_;
-
-  public:
-    AutoLockSimulatorRuntime(SimulatorRuntime *srt)
-      : srt_(srt)
-    {
-        PR_Lock(srt_->lock_);
-        MOZ_ASSERT(!srt_->lockOwner_);
+    explicit AutoLockSimulatorCache(Simulator *sim) : sim_(sim) {
+        PR_Lock(sim_->cacheLock_);
+        MOZ_ASSERT(!sim_->cacheLockHolder_);
 #ifdef DEBUG
-        srt_->lockOwner_ = PR_GetCurrentThread();
+        sim_->cacheLockHolder_ = PR_GetCurrentThread();
 #endif
     }
 
-    ~AutoLockSimulatorRuntime() {
-        MOZ_ASSERT(srt_->lockOwner_ == PR_GetCurrentThread());
-        srt_->lockOwner_ = nullptr;
-        PR_Unlock(srt_->lock_);
+    ~AutoLockSimulatorCache() {
+        MOZ_ASSERT(sim_->cacheLockHolder_);
+#ifdef DEBUG
+        sim_->cacheLockHolder_ = nullptr;
+#endif
+        PR_Unlock(sim_->cacheLock_);
     }
+
+  private:
+    Simulator *const sim_;
 };
 
 bool Simulator::ICacheCheckingEnabled = false;
 
 int64_t Simulator::StopSimAt = -1L;
 
-SimulatorRuntime *
-CreateSimulatorRuntime()
+Simulator *
+Simulator::Create()
 {
-    SimulatorRuntime *srt = js_new<SimulatorRuntime>();
-    if (!srt)
+    Simulator *sim = js_new<Simulator>();
+    if (!sim)
         return nullptr;
 
-    if (!srt->init()) {
-        js_delete(srt);
+    if (!sim->init()) {
+        js_delete(sim);
         return nullptr;
     }
 
@@ -456,13 +403,13 @@ CreateSimulatorRuntime()
         Simulator::StopSimAt = stopAt;
     }
 
-    return srt;
+    return sim;
 }
 
 void
-DestroySimulatorRuntime(SimulatorRuntime *srt)
+Simulator::Destroy(Simulator *sim)
 {
-    js_delete(srt);
+    js_delete(sim);
 }
 
 // The ArmDebugger class is used by the simulator while debugging simulated ARM
@@ -1000,11 +947,11 @@ AllOnOnePage(uintptr_t start, int size)
 }
 
 static CachePage *
-GetCachePage(SimulatorRuntime::ICacheMap &i_cache, void *page)
+GetCachePageLocked(Simulator::ICacheMap &i_cache, void *page)
 {
     MOZ_ASSERT(Simulator::ICacheCheckingEnabled);
 
-    SimulatorRuntime::ICacheMap::AddPtr p = i_cache.lookupForAdd(page);
+    Simulator::ICacheMap::AddPtr p = i_cache.lookupForAdd(page);
     if (p)
         return p->value();
 
@@ -1016,7 +963,7 @@ GetCachePage(SimulatorRuntime::ICacheMap &i_cache, void *page)
 
 // Flush from start up to and not including start + size.
 static void
-FlushOnePage(SimulatorRuntime::ICacheMap &i_cache, intptr_t start, int size)
+FlushOnePageLocked(Simulator::ICacheMap &i_cache, intptr_t start, int size)
 {
     MOZ_ASSERT(size <= CachePage::kPageSize);
     MOZ_ASSERT(AllOnOnePage(start, size - 1));
@@ -1025,13 +972,13 @@ FlushOnePage(SimulatorRuntime::ICacheMap &i_cache, intptr_t start, int size)
 
     void *page = reinterpret_cast<void*>(start & (~CachePage::kPageMask));
     int offset = (start & CachePage::kPageMask);
-    CachePage *cache_page = GetCachePage(i_cache, page);
+    CachePage *cache_page = GetCachePageLocked(i_cache, page);
     char *valid_bytemap = cache_page->validityByte(offset);
     memset(valid_bytemap, CachePage::LINE_INVALID, size >> CachePage::kLineShift);
 }
 
 static void
-FlushICache(SimulatorRuntime::ICacheMap &i_cache, void *start_addr, size_t size)
+FlushICacheLocked(Simulator::ICacheMap &i_cache, void *start_addr, size_t size)
 {
     intptr_t start = reinterpret_cast<intptr_t>(start_addr);
     int intra_line = (start & CachePage::kLineMask);
@@ -1041,24 +988,24 @@ FlushICache(SimulatorRuntime::ICacheMap &i_cache, void *start_addr, size_t size)
     int offset = (start & CachePage::kPageMask);
     while (!AllOnOnePage(start, size - 1)) {
         int bytes_to_flush = CachePage::kPageSize - offset;
-        FlushOnePage(i_cache, start, bytes_to_flush);
+        FlushOnePageLocked(i_cache, start, bytes_to_flush);
         start += bytes_to_flush;
         size -= bytes_to_flush;
         MOZ_ASSERT((start & CachePage::kPageMask) == 0);
         offset = 0;
     }
     if (size != 0)
-        FlushOnePage(i_cache, start, size);
+        FlushOnePageLocked(i_cache, start, size);
 }
 
 static void
-CheckICache(SimulatorRuntime::ICacheMap &i_cache, SimInstruction *instr)
+CheckICacheLocked(Simulator::ICacheMap &i_cache, SimInstruction *instr)
 {
     intptr_t address = reinterpret_cast<intptr_t>(instr);
     void *page = reinterpret_cast<void*>(address & (~CachePage::kPageMask));
     void *line = reinterpret_cast<void*>(address & (~CachePage::kLineMask));
     int offset = (address & CachePage::kPageMask);
-    CachePage* cache_page = GetCachePage(i_cache, page);
+    CachePage* cache_page = GetCachePageLocked(i_cache, page);
     char *cache_valid_byte = cache_page->validityByte(offset);
     bool cache_hit = (*cache_valid_byte == CachePage::LINE_VALID);
     char *cached_line = cache_page->cachedData(offset & ~CachePage::kLineMask);
@@ -1075,13 +1022,13 @@ CheckICache(SimulatorRuntime::ICacheMap &i_cache, SimInstruction *instr)
 }
 
 HashNumber
-SimulatorRuntime::ICacheHasher::hash(const Lookup &l)
+Simulator::ICacheHasher::hash(const Lookup &l)
 {
     return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(l)) >> 2;
 }
 
 bool
-SimulatorRuntime::ICacheHasher::match(const Key &k, const Lookup &l)
+Simulator::ICacheHasher::match(const Key &k, const Lookup &l)
 {
     MOZ_ASSERT((reinterpret_cast<intptr_t>(k) & CachePage::kPageMask) == 0);
     MOZ_ASSERT((reinterpret_cast<intptr_t>(l) & CachePage::kPageMask) == 0);
@@ -1099,32 +1046,25 @@ void
 Simulator::FlushICache(void *start_addr, size_t size)
 {
     JitSpewCont(JitSpew_CacheFlush, "[%p %zx]", start_addr, size);
-    if (!Simulator::ICacheCheckingEnabled)
-        return;
-    SimulatorRuntime *srt = TlsPerThreadData.get()->simulatorRuntime();
-    AutoLockSimulatorRuntime alsr(srt);
-    js::jit::FlushICache(srt->icache(), start_addr, size);
+    if (Simulator::ICacheCheckingEnabled) {
+        Simulator *sim = Simulator::Current();
+
+        AutoLockSimulatorCache als(sim);
+
+        js::jit::FlushICacheLocked(sim->icache(), start_addr, size);
+    }
 }
 
-Simulator::~Simulator()
-{
-    js_free(stack_);
-}
-
-Simulator::Simulator(SimulatorRuntime *srt)
-  : srt_(srt)
+Simulator::Simulator()
 {
     // Set up simulator support first. Some of this information is needed to
     // setup the architecture state.
 
-    // Allocate 2MB for the stack. Note that we will only use 1MB, see also
-    // Simulator::stackLimit().
-    static const size_t stackSize = 2 * 1024*1024;
-    stack_ = reinterpret_cast<char*>(js_malloc(stackSize));
-    if (!stack_) {
-        MOZ_ReportAssertionFailure("[unhandlable oom] Simulator stack", __FILE__, __LINE__);
-        MOZ_CRASH();
-    }
+    // Note, allocation and anything that depends on allocated memory is
+    // deferred until init(), in order to handle OOM properly.
+
+    stack_ = nullptr;
+    stackLimit_ = 0;
     pc_modified_ = false;
     icount_ = 0L;
     resume_pc_ = 0;
@@ -1161,17 +1101,46 @@ Simulator::Simulator(SimulatorRuntime *srt)
     underflow_vfp_flag_ = false;
     inexact_vfp_flag_ = false;
 
-    // The sp is initialized to point to the bottom (high address) of the
-    // allocated stack area. To be safe in potential stack underflows we leave
-    // some buffer below.
-    registers_[sp] = reinterpret_cast<int32_t>(stack_) + stackSize - 64;
-
     // The lr and pc are initialized to a known bad value that will cause an
     // access violation if the simulator ever tries to execute it.
     registers_[pc] = bad_lr;
     registers_[lr] = bad_lr;
 
     lastDebuggerInput_ = nullptr;
+
+    cacheLock_ = nullptr;
+#ifdef DEBUG
+    cacheLockHolder_ = nullptr;
+#endif
+    redirection_ = nullptr;
+}
+
+bool
+Simulator::init()
+{
+    cacheLock_ = PR_NewLock();
+    if (!cacheLock_)
+        return false;
+
+    if (!icache_.init())
+        return false;
+
+    // Allocate 2MB for the stack. Note that we will only use 1MB, see below.
+    static const size_t stackSize = 2 * 1024*1024;
+    stack_ = reinterpret_cast<char*>(js_malloc(stackSize));
+    if (!stack_)
+        return false;
+
+    // Leave a safety margin of 1MB to prevent overrunning the stack when
+    // pushing values (total stack size is 2MB).
+    stackLimit_ = reinterpret_cast<uintptr_t>(stack_) + 1024 * 1024;
+
+    // The sp is initialized to point to the bottom (high address) of the
+    // allocated stack area. To be safe in potential stack underflows we leave
+    // some buffer below.
+    registers_[sp] = reinterpret_cast<int32_t>(stack_) + stackSize - 64;
+
+    return true;
 }
 
 // When the generated code calls a VM function (masm.callWithABI) we need to
@@ -1182,18 +1151,19 @@ Simulator::Simulator(SimulatorRuntime *srt)
 // offset from the svc instruction so the simulator knows what to call.
 class Redirection
 {
-    friend class SimulatorRuntime;
+    friend class Simulator;
 
-    Redirection(void *nativeFunction, ABIFunctionType type, SimulatorRuntime *srt)
+    // sim's lock must already be held.
+    Redirection(void *nativeFunction, ABIFunctionType type, Simulator *sim)
       : nativeFunction_(nativeFunction),
         swiInstruction_(Assembler::AL | (0xf * (1 << 24)) | kCallRtRedirected),
         type_(type),
         next_(nullptr)
     {
-        next_ = srt->redirection();
+        next_ = sim->redirection();
         if (Simulator::ICacheCheckingEnabled)
-            FlushICache(srt->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
-        srt->setRedirection(this);
+            FlushICacheLocked(sim->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
+        sim->setRedirection(this);
     }
 
   public:
@@ -1202,13 +1172,11 @@ class Redirection
     ABIFunctionType type() const { return type_; }
 
     static Redirection *Get(void *nativeFunction, ABIFunctionType type) {
-        PerThreadData *pt = TlsPerThreadData.get();
-        SimulatorRuntime *srt = pt->simulatorRuntime();
-        AutoLockSimulatorRuntime alsr(srt);
+        Simulator *sim = Simulator::Current();
 
-        MOZ_ASSERT_IF(pt->simulator(), pt->simulator()->srt_ == srt);
+        AutoLockSimulatorCache als(sim);
 
-        Redirection *current = srt->redirection();
+        Redirection *current = sim->redirection();
         for (; current != nullptr; current = current->next_) {
             if (current->nativeFunction_ == nativeFunction) {
                 MOZ_ASSERT(current->type() == type);
@@ -1222,7 +1190,7 @@ class Redirection
                                        __FILE__, __LINE__);
             MOZ_CRASH();
         }
-        new(redir) Redirection(nativeFunction, type, srt);
+        new(redir) Redirection(nativeFunction, type, sim);
         return redir;
     }
 
@@ -1239,23 +1207,23 @@ class Redirection
     Redirection *next_;
 };
 
-/* static */ void *
-Simulator::RedirectNativeFunction(void *nativeFunction, ABIFunctionType type)
+Simulator::~Simulator()
 {
-    Redirection *redirection = Redirection::Get(nativeFunction, type);
-    return redirection->addressOfSwiInstruction();
-}
-
-SimulatorRuntime::~SimulatorRuntime()
-{
+    js_free(stack_);
+    PR_DestroyLock(cacheLock_);
     Redirection *r = redirection_;
     while (r) {
         Redirection *next = r->next_;
         js_delete(r);
         r = next;
     }
-    if (lock_)
-        PR_DestroyLock(lock_);
+}
+
+/* static */ void *
+Simulator::RedirectNativeFunction(void *nativeFunction, ABIFunctionType type)
+{
+    Redirection *redirection = Redirection::Get(nativeFunction, type);
+    return redirection->addressOfSwiInstruction();
 }
 
 // Sets the register in the architecture state. It will also deal with updating
@@ -1450,6 +1418,15 @@ Simulator::getFpArgs(double *x, double *y, int32_t *z)
 }
 
 void
+Simulator::getFpFromStack(int32_t *stack, double *x)
+{
+    MOZ_ASSERT(stack && x);
+    char buffer[2 * sizeof(stack[0])];
+    memcpy(buffer, stack, 2 * sizeof(stack[0]));
+    memcpy(x, buffer, 2 * sizeof(stack[0]));
+}
+
+void
 Simulator::setCallResultDouble(double result)
 {
     // The return value is either in r0/r1 or d0.
@@ -1621,9 +1598,13 @@ Simulator::writeDW(int32_t addr, int32_t value1, int32_t value2)
 uintptr_t
 Simulator::stackLimit() const
 {
-    // Leave a safety margin of 1MB to prevent overrunning the stack when
-    // pushing values (total stack size is 2MB).
-    return reinterpret_cast<uintptr_t>(stack_) + 1024 * 1024;
+    return stackLimit_;
+}
+
+uintptr_t *
+Simulator::addressOfStackLimit()
+{
+    return &stackLimit_;
 }
 
 bool
@@ -2078,6 +2059,9 @@ typedef double (*Prototype_Double_IntDouble)(int32_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
 typedef int32_t (*Prototype_Int_IntDouble)(int32_t arg0, double arg1);
 
+typedef double (*Prototype_Double_DoubleDoubleDouble)(double arg0, double arg1, double arg2);
+typedef double (*Prototype_Double_DoubleDoubleDoubleDouble)(double arg0, double arg1,
+                                                            double arg2, double arg3);
 
 // Fill the volatile registers with scratch values.
 //
@@ -2297,6 +2281,31 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             int32_t result = target(ival, dval0);
             scratchVolatileRegisters(/* scratchFloat = true */);
             set_register(r0, result);
+            break;
+          }
+          case Args_Double_DoubleDoubleDouble: {
+            double dval0, dval1, dval2;
+            int32_t ival;
+            getFpArgs(&dval0, &dval1, &ival);
+            // the last argument is on stack
+            getFpFromStack(stack_pointer, &dval2);
+            Prototype_Double_DoubleDoubleDouble target = reinterpret_cast<Prototype_Double_DoubleDoubleDouble>(external);
+            double dresult = target(dval0, dval1, dval2);
+            scratchVolatileRegisters(/* scratchFloat = true */);
+            setCallResultDouble(dresult);
+            break;
+         }
+         case Args_Double_DoubleDoubleDoubleDouble: {
+            double dval0, dval1, dval2, dval3;
+            int32_t ival;
+            getFpArgs(&dval0, &dval1, &ival);
+            // the two last arguments are on stack
+            getFpFromStack(stack_pointer, &dval2);
+            getFpFromStack(stack_pointer + 2, &dval3);
+            Prototype_Double_DoubleDoubleDoubleDouble target = reinterpret_cast<Prototype_Double_DoubleDoubleDoubleDouble>(external);
+            double dresult = target(dval0, dval1, dval2, dval3);
+            scratchVolatileRegisters(/* scratchFloat = true */);
+            setCallResultDouble(dresult);
             break;
           }
           default:
@@ -4134,8 +4143,8 @@ void
 Simulator::instructionDecode(SimInstruction *instr)
 {
     if (Simulator::ICacheCheckingEnabled) {
-        AutoLockSimulatorRuntime alsr(srt_);
-        CheckICache(srt_->icache(), instr);
+        AutoLockSimulatorCache als(this);
+        CheckICacheLocked(icache(), instr);
     }
 
     pc_modified_ = false;
@@ -4226,7 +4235,7 @@ Simulator::execute()
             int32_t rpc = resume_pc_;
             if (MOZ_UNLIKELY(rpc != 0)) {
                 // AsmJS signal handler ran and we have to adjust the pc.
-                PerThreadData::innermostAsmJSActivation()->setResumePC((void *)get_pc());
+                JSRuntime::innermostAsmJSActivation()->setResumePC((void *)get_pc());
                 set_pc(rpc);
                 resume_pc_ = 0;
             }
@@ -4404,53 +4413,26 @@ Simulator::call(uint8_t* entry, int argument_count, ...)
 Simulator *
 Simulator::Current()
 {
-    PerThreadData *pt = TlsPerThreadData.get();
-    Simulator *sim = pt->simulator();
-    if (!sim) {
-        sim = js_new<Simulator>(pt->simulatorRuntime());
-        pt->setSimulator(sim);
-    }
-
-    return sim;
+    return TlsPerThreadData.get()->simulator();
 }
 
 } // namespace jit
 } // namespace js
 
 js::jit::Simulator *
-js::PerThreadData::simulator() const
+JSRuntime::simulator() const
 {
     return simulator_;
 }
 
-void
-js::PerThreadData::setSimulator(js::jit::Simulator *sim)
-{
-    simulator_ = sim;
-    simulatorStackLimit_ = sim->stackLimit();
-}
-
-js::jit::SimulatorRuntime *
-js::PerThreadData::simulatorRuntime() const
-{
-    return runtime_->simulatorRuntime();
-}
-
 uintptr_t *
-js::PerThreadData::addressOfSimulatorStackLimit()
+JSRuntime::addressOfSimulatorStackLimit()
 {
-    return &simulatorStackLimit_;
+    return simulator_->addressOfStackLimit();
 }
 
-js::jit::SimulatorRuntime *
-JSRuntime::simulatorRuntime() const
+js::jit::Simulator *
+js::PerThreadData::simulator() const
 {
-    return simulatorRuntime_;
-}
-
-void
-JSRuntime::setSimulatorRuntime(js::jit::SimulatorRuntime *srt)
-{
-    MOZ_ASSERT(!simulatorRuntime_);
-    simulatorRuntime_ = srt;
+    return runtime_->simulator();
 }

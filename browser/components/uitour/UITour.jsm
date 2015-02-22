@@ -13,6 +13,8 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 
+Cu.importGlobalProperties(["URL"]);
+
 XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
   "resource://gre/modules/LightweightThemeManager.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ResetProfile",
@@ -31,8 +33,12 @@ const PREF_LOG_LEVEL      = "browser.uitour.loglevel";
 const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
 
 const BACKGROUND_PAGE_ACTIONS_ALLOWED = new Set([
+  "endUrlbarCapture",
   "getConfiguration",
   "getTreatmentTag",
+  "hideHighlight",
+  "hideInfo",
+  "hideMenu",
   "ping",
   "registerPageID",
   "setConfiguration",
@@ -68,6 +74,9 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 this.UITour = {
   url: null,
   seenPageIDs: null,
+  // This map is not persisted and is used for
+  // building the content source of a potential tour.
+  pageIDsForSession: new Map(),
   pageIDSourceBrowsers: new WeakMap(),
   /* Map from browser chrome windows to a Set of <browser>s in which a tour is open (both visible and hidden) */
   tourBrowsersByWindow: new WeakMap(),
@@ -118,31 +127,35 @@ this.UITour = {
     ["help",        {query: "#PanelUI-help"}],
     ["home",        {query: "#home-button"}],
     ["forget", {
+      allowAdd: true,
       query: "#panic-button",
       widgetName: "panic-button",
-      allowAdd: true,
     }],
-    ["loop",        {query: "#loop-button"}],
+    ["loop",        {
+      allowAdd: true,
+      query: "#loop-button",
+      widgetName: "loop-button",
+    }],
     ["loop-newRoom", {
       infoPanelPosition: "leftcenter topright",
       query: (aDocument) => {
-        let loopBrowser = aDocument.querySelector("#loop-notification-panel > #loop-panel-iframe");
-        if (!loopBrowser) {
+        let loopUI = aDocument.defaultView.LoopUI;
+        if (loopUI.selectedTab != "rooms") {
           return null;
         }
         // Use the parentElement full-width container of the button so our arrow
         // doesn't overlap the panel contents much.
-        return loopBrowser.contentDocument.querySelector(".new-room-button").parentElement;
+        return loopUI.browser.contentDocument.querySelector(".new-room-button").parentElement;
       },
     }],
     ["loop-roomList", {
       infoPanelPosition: "leftcenter topright",
       query: (aDocument) => {
-        let loopBrowser = aDocument.querySelector("#loop-notification-panel > #loop-panel-iframe");
-        if (!loopBrowser) {
+        let loopUI = aDocument.defaultView.LoopUI;
+        if (loopUI.selectedTab != "rooms") {
           return null;
         }
-        return loopBrowser.contentDocument.querySelector(".room-list");
+        return loopUI.browser.contentDocument.querySelector(".room-list");
       },
     }],
     ["loop-selectedRoomButtons", {
@@ -165,7 +178,7 @@ this.UITour = {
     }],
     ["loop-signInUpLink", {
       query: (aDocument) => {
-        let loopBrowser = aDocument.querySelector("#loop-notification-panel > #loop-panel-iframe");
+        let loopBrowser = aDocument.defaultView.LoopUI.browser;
         if (!loopBrowser) {
           return null;
         }
@@ -329,9 +342,17 @@ this.UITour = {
   },
 
   onPageEvent: function(aMessage, aEvent) {
-    let contentDocument = null;
     let browser = aMessage.target;
     let window = browser.ownerDocument.defaultView;
+
+    // Does the window have tabs? We need to make sure since windowless browsers do
+    // not have tabs.
+    if (!window.gBrowser) {
+      // When using windowless browsers we don't have a valid |window|. If that's the case,
+      // use the most recent window as a target for UITour functions (see Bug 1111022).
+      window = Services.wm.getMostRecentWindow("navigator:browser");
+    }
+
     let tab = window.gBrowser.getTabForBrowser(browser);
     let messageManager = browser.messageManager;
 
@@ -364,22 +385,24 @@ this.UITour = {
     // Do this before bailing if there's no tab, so later we can pick up the pieces:
     window.gBrowser.tabContainer.addEventListener("TabSelect", this);
 
-    if (!window.gMultiProcessBrowser) { // Non-e10s. See bug 1089000.
-      contentDocument = browser.contentWindow.document;
-    }
-
     switch (action) {
       case "registerPageID": {
-        // This is only relevant if Telemtry is enabled.
+        if (typeof data.pageID != "string") {
+          log.warn("registerPageID: pageID must be a string");
+          break;
+        }
+
+        this.pageIDsForSession.set(data.pageID, {lastSeen: Date.now()});
+
+        // The rest is only relevant if Telemetry is enabled.
         if (!UITelemetry.enabled) {
-          log.debug("registerPageID: Telemery disabled, not doing anything");
+          log.debug("registerPageID: Telemetry disabled, not doing anything");
           break;
         }
 
         // We don't want to allow BrowserUITelemetry.BUCKET_SEPARATOR in the
         // pageID, as it could make parsing the telemetry bucket name difficult.
-        if (typeof data.pageID != "string" ||
-            data.pageID.contains(BrowserUITelemetry.BUCKET_SEPARATOR)) {
+        if (data.pageID.contains(BrowserUITelemetry.BUCKET_SEPARATOR)) {
           log.warn("registerPageID: Invalid page ID specified");
           break;
         }
@@ -388,6 +411,29 @@ this.UITour = {
         this.pageIDSourceBrowsers.set(browser, data.pageID);
         this.setTelemetryBucket(data.pageID);
 
+        break;
+      }
+
+      case "showHeartbeat": {
+        // Validate the input parameters.
+        if (typeof data.message !== "string" || data.message === "") {
+          log.error("showHeartbeat: Invalid message specified.");
+          break;
+        }
+
+        if (typeof data.thankyouMessage !== "string" || data.thankyouMessage === "") {
+          log.error("showHeartbeat: Invalid thank you message specified.");
+          break;
+        }
+
+        if (typeof data.flowId !== "string" || data.flowId === "") {
+          log.error("showHeartbeat: Invalid flowId specified.");
+          break;
+        }
+
+        // Finally show the Heartbeat UI.
+        this.showHeartbeat(window, messageManager, data.message, data.thankyouMessage, data.flowId,
+                           data.engagementURL);
         break;
       }
 
@@ -507,6 +553,7 @@ this.UITour = {
         }
 
         let secman = Services.scriptSecurityManager;
+        let contentDocument = browser.contentWindow.document;
         let principal = contentDocument.nodePrincipal;
         let flags = secman.DISALLOW_INHERIT_PRINCIPAL;
         try {
@@ -549,7 +596,7 @@ this.UITour = {
         // 'signup' is the only action that makes sense currently, so we don't
         // accept arbitrary actions just to be safe...
         // We want to replace the current tab.
-        contentDocument.location.href = "about:accounts?action=signup&entrypoint=uitour";
+        browser.loadURI("about:accounts?action=signup&entrypoint=uitour");
         break;
       }
 
@@ -638,10 +685,7 @@ this.UITour = {
     }
     this.tourBrowsersByWindow.get(window).add(browser);
 
-    // We don't have a tab if we're in a <browser> without a tab.
-    if (tab) {
-      tab.addEventListener("TabClose", this);
-    }
+    Services.obs.addObserver(this, "message-manager-disconnect", false);
 
     window.addEventListener("SSWindowClosing", this);
 
@@ -654,13 +698,6 @@ this.UITour = {
       case "pagehide": {
         let window = this.getChromeWindow(aEvent.target);
         this.teardownTourForWindow(window);
-        break;
-      }
-
-      case "TabClose": {
-        let tab = aEvent.target;
-        let window = tab.ownerDocument.defaultView;
-        this.teardownTourForBrowser(window, tab.linkedBrowser, true);
         break;
       }
 
@@ -689,6 +726,37 @@ this.UITour = {
         if (aEvent.target.id == "urlbar") {
           let window = aEvent.target.ownerDocument.defaultView;
           this.handleUrlbarInput(window);
+        }
+        break;
+      }
+    }
+  },
+
+  observe: function(aSubject, aTopic, aData) {
+    log.debug("observe: aTopic =", aTopic);
+    switch (aTopic) {
+      // The browser message manager is disconnected when the <browser> is
+      // destroyed and we want to teardown at that point.
+      case "message-manager-disconnect": {
+        let winEnum = Services.wm.getEnumerator("navigator:browser");
+        while (winEnum.hasMoreElements()) {
+          let window = winEnum.getNext();
+          if (window.closed)
+            continue;
+
+          let tourBrowsers = this.tourBrowsersByWindow.get(window);
+          if (!tourBrowsers)
+            continue;
+
+          for (let browser of tourBrowsers) {
+            let messageManager = browser.messageManager;
+            if (aSubject != messageManager) {
+              continue;
+            }
+
+            this.teardownTourForBrowser(window, browser, true);
+            return;
+          }
         }
         break;
       }
@@ -728,14 +796,8 @@ this.UITour = {
     }
 
     let openTourBrowsers = this.tourBrowsersByWindow.get(aWindow);
-    if (aTourPageClosing) {
-      let tab = aWindow.gBrowser.getTabForBrowser(aBrowser);
-      if (tab) { // Handle standalone <browser>
-        tab.removeEventListener("TabClose", this);
-        if (openTourBrowsers) {
-          openTourBrowsers.delete(aBrowser);
-        }
-      }
+    if (aTourPageClosing && openTourBrowsers) {
+      openTourBrowsers.delete(aBrowser);
     }
 
     this.hideHighlight(aWindow);
@@ -776,9 +838,6 @@ this.UITour = {
           let pageID = this.pageIDSourceBrowsers.get(browser);
           this.setExpiringTelemetryBucket(pageID, "closed");
         }
-
-        let tab = aWindow.gBrowser.getTabForBrowser(browser);
-        tab.removeEventListener("TabClose", this);
       }
     }
 
@@ -960,6 +1019,157 @@ this.UITour = {
   },
 
   /**
+   * Show the Heartbeat UI to request user feedback. This function reports back to the
+   * caller using |notify|. The notification event name reflects the current status the UI
+   * is in (either "Heartbeat:NotificationOffered", "Heartbeat:NotificationClosed" or
+   * "Heartbeat:Voted"). When a "Heartbeat:Voted" event is notified the data payload contains
+   * a |score| field which holds the rating picked by the user.
+   * Please note that input parameters are already validated by the caller.
+   *
+   * @param aChromeWindow
+   *        The chrome window that the heartbeat notification is displayed in.
+   * @param aMessageManager
+   *        The message manager to communicate with the API caller.
+   * @param aMessage
+   *        The message, or question, to display on the notification.
+   * @param aThankyouMessage
+   *        The thank you message to display after user votes.
+   * @param aFlowId
+   *        An identifier for this rating flow. Please note that this is only used to
+   *        identify the notification box.
+   * @param [aEngagementURL]
+   *        The engagement URL to open in a new tab once user has voted. If this is null
+   *        or invalid, no new tab is opened.
+   */
+  showHeartbeat: function(aChromeWindow, aMessageManager, aMessage, aThankyouMessage, aFlowId,
+                          aEngagementURL = null) {
+    let nb = aChromeWindow.document.getElementById("high-priority-global-notificationbox");
+
+    // Create the notification. Prefix its ID to decrease the chances of collisions.
+    let notice = nb.appendNotification(aMessage, "heartbeat-" + aFlowId,
+      "chrome://branding/content/icon64.png", nb.PRIORITY_INFO_HIGH, null, function() {
+        // Let the consumer know the notification bar was closed. This also happens
+        // after voting.
+        this.notify("Heartbeat:NotificationClosed", { flowId: aFlowId, timestamp: Date.now() });
+    }.bind(this));
+
+    // Get the elements we need to style.
+    let messageImage =
+      aChromeWindow.document.getAnonymousElementByAttribute(notice, "anonid", "messageImage");
+    let messageText =
+      aChromeWindow.document.getAnonymousElementByAttribute(notice, "anonid", "messageText");
+
+    // Create the fragment holding the rating UI.
+    let frag = aChromeWindow.document.createDocumentFragment();
+
+    // Build the Heartbeat star rating.
+    const numStars = 5;
+    let ratingContainer = aChromeWindow.document.createElement("hbox");
+    ratingContainer.id = "star-rating-container";
+
+    for (let i = 0; i < numStars; i++) {
+      // Create a star rating element.
+      let ratingElement = aChromeWindow.document.createElement("toolbarbutton");
+
+      // Style it.
+      let starIndex = numStars - i;
+      ratingElement.className = "plain star-x";
+      ratingElement.id = "star" + starIndex;
+      ratingElement.setAttribute("data-score", starIndex);
+
+      // Add the click handler.
+      ratingElement.addEventListener("click", function (evt) {
+        let rating = Number(evt.target.getAttribute("data-score"), 10);
+
+        // Let the consumer know user voted.
+        this.notify("Heartbeat:Voted", { flowId: aFlowId, score: rating, timestamp: Date.now() });
+
+        // Display the Heart and make it pulse twice.
+        notice.image = "chrome://browser/skin/heartbeat-icon.svg";
+        notice.label = aThankyouMessage;
+        messageImage.classList.remove("pulse-onshow");
+        messageImage.classList.add("pulse-twice");
+
+        // Remove all the children of the notice (rating container
+        // and the flex).
+        while (notice.firstChild) {
+          notice.removeChild(notice.firstChild);
+        }
+
+        // Make sure that we have a valid URL. If we haven't, do not open the engagement page.
+        let engagementURL = null;
+        try {
+          engagementURL = new URL(aEngagementURL);
+        } catch (error) {
+          log.error("showHeartbeat: Invalid URL specified.");
+        }
+
+        // Just open the engagement tab if we have a valid engagement URL.
+        if (engagementURL) {
+          // Append the score data to the engagement URL.
+          engagementURL.searchParams.append("type", "stars");
+          engagementURL.searchParams.append("score", rating);
+          engagementURL.searchParams.append("flowid", aFlowId);
+
+          // Open the engagement URL in a new tab.
+          aChromeWindow.gBrowser.selectedTab =
+            aChromeWindow.gBrowser.addTab(engagementURL.toString(), {
+              owner: aChromeWindow.gBrowser.selectedTab,
+              relatedToCurrent: true
+            });
+        }
+
+        // Remove the notification bar after 3 seconds.
+        aChromeWindow.setTimeout(() => {
+          nb.removeNotification(notice);
+        }, 3000);
+      }.bind(this));
+
+      // Add it to the container.
+      ratingContainer.appendChild(ratingElement);
+    }
+
+    frag.appendChild(ratingContainer);
+
+    // Make sure the stars are not pushed to the right by the spacer.
+    let rightSpacer = aChromeWindow.document.createElement("spacer");
+    rightSpacer.flex = 20;
+    frag.appendChild(rightSpacer);
+
+    let leftSpacer = messageText.nextSibling;
+    leftSpacer.flex = 0;
+
+    // Append the fragment and apply the styling.
+    notice.appendChild(frag);
+    notice.classList.add("heartbeat");
+    messageImage.classList.add("heartbeat", "pulse-onshow");
+    messageText.classList.add("heartbeat");
+
+    // Let the consumer know the notification was shown.
+    this.notify("Heartbeat:NotificationOffered", { flowId: aFlowId, timestamp: Date.now() });
+  },
+
+  /**
+   * The node to which a highlight or notification(-popup) is anchored is sometimes
+   * obscured because it may be inside an overflow menu. This function should figure
+   * that out and offer the overflow chevron as an alternative.
+   *
+   * @param {Node} aAnchor The element that's supposed to be the anchor
+   * @type {Node}
+   */
+  _correctAnchor: function(aAnchor) {
+    // If the target is in the overflow panel, just return the overflow button.
+    if (aAnchor.getAttribute("overflowedItem")) {
+      let doc = aAnchor.ownerDocument;
+      let placement = CustomizableUI.getPlacementOfWidget(aAnchor.id);
+      let areaNode = doc.getElementById(placement.area);
+      return areaNode.overflowable._chevron;
+    }
+
+    return aAnchor;
+  },
+
+  /**
    * @param aChromeWindow The chrome window that the highlight is in. Necessary since some targets
    *                      are in a sub-frame so the defaultView is not the same as the chrome
    *                      window.
@@ -998,16 +1208,7 @@ this.UITour = {
       highlighter.parentElement.setAttribute("targetName", aTarget.targetName);
       highlighter.parentElement.hidden = false;
 
-      let highlightAnchor;
-      // If the target is in the overflow panel, just highlight the overflow button.
-      if (aTarget.node.getAttribute("overflowedItem")) {
-        let doc = aTarget.node.ownerDocument;
-        let placement = CustomizableUI.getPlacementOfWidget(aTarget.widgetName || aTarget.node.id);
-        let areaNode = doc.getElementById(placement.area);
-        highlightAnchor = areaNode.overflowable._chevron;
-      } else {
-        highlightAnchor = aTarget.node;
-      }
+      let highlightAnchor = this._correctAnchor(aTarget.node);
       let targetRect = highlightAnchor.getBoundingClientRect();
       let highlightHeight = targetRect.height;
       let highlightWidth = targetRect.width;
@@ -1206,7 +1407,7 @@ this.UITour = {
 
     this._setAppMenuStateForAnnotation(aChromeWindow, "info",
                                        this.targetIsInAppMenu(aAnchor),
-                                       showInfoPanel.bind(this, aAnchor.node));
+                                       showInfoPanel.bind(this, this._correctAnchor(aAnchor.node)));
   },
 
   hideInfo: function(aWindow) {
@@ -1399,19 +1600,19 @@ this.UITour = {
 
   getConfiguration: function(aMessageManager, aWindow, aConfiguration, aCallbackID) {
     switch (aConfiguration) {
-      case "availableTargets":
-        this.getAvailableTargets(aMessageManager, aWindow, aCallbackID);
-        break;
-      case "sync":
-        this.sendPageCallback(aMessageManager, aCallbackID, {
-          setup: Services.prefs.prefHasUserValue("services.sync.username"),
-        });
-        break;
       case "appinfo":
         let props = ["defaultUpdateChannel", "version"];
         let appinfo = {};
         props.forEach(property => appinfo[property] = Services.appinfo[property]);
         this.sendPageCallback(aMessageManager, aCallbackID, appinfo);
+        break;
+      case "availableTargets":
+        this.getAvailableTargets(aMessageManager, aWindow, aCallbackID);
+        break;
+      case "loop":
+        this.sendPageCallback(aMessageManager, aCallbackID, {
+          gettingStartedSeen: Services.prefs.getBoolPref("loop.gettingStarted.seen"),
+        });
         break;
       case "selectedSearchEngine":
         Services.search.init(rv => {
@@ -1424,6 +1625,11 @@ this.UITour = {
           this.sendPageCallback(aMessageManager, aCallbackID, {
             searchEngineIdentifier: engine.identifier
           });
+        });
+        break;
+      case "sync":
+        this.sendPageCallback(aMessageManager, aCallbackID, {
+          setup: Services.prefs.prefHasUserValue("services.sync.username"),
         });
         break;
       default:

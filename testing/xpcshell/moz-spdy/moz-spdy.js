@@ -90,17 +90,6 @@ function executeRunLater(arg) {
 }
 
 function handleRequest(req, res) {
-  try {
-    realHandleRequest(req, res);
-  } catch (e) {
-    console.log("spdy server suffered unhandled exception. will restart " + e);
-    var p = webServer.address().port;
-    webServer.close();
-    webServer = spdy.createServer(options, handleRequest).listen(p, "0.0.0.0", 200, listenok);
-  }
-}
-
-function realHandleRequest(req, res) {
   var u = url.parse(req.url);
   var content = getHttpContent(u.pathname);
 
@@ -110,8 +99,6 @@ function realHandleRequest(req, res) {
   } else {
     res.setHeader('X-Connection-Spdy', 'no');
   }
-
-console.log(u.pathname);
 
   if (u.pathname === '/750ms') {
     var rl = new runlater();
@@ -145,26 +132,22 @@ console.log(u.pathname);
       res.setHeader("X-Received-Test-Header", val);
     }
   } else if (u.pathname == "/push") {
-    res.push('/push.js',
+    var stream = res.push('/push.js',
      { 'content-type': 'application/javascript',
        'pushed' : 'yes',
        'content-length' : 11,
-       'X-Connection-Spdy': 'yes'},
-     function(err, stream) {
-       if (err) return;
-         stream.end('// comments');
-       });
+       'X-Connection-Spdy': 'yes'});
+      stream.on('error', function(){});
+      stream.end('// comments');
       content = '<head> <script src="push.js"/></head>body text';
   } else if (u.pathname == "/push2") {
-      res.push('/push2.js',
+      var stream = res.push('/push2.js',
        { 'content-type': 'application/javascript',
 	 'pushed' : 'yes',
 	 // no content-length
-	 'X-Connection-Spdy': 'yes'},
-       function(err, stream) {
-        if (err) return;
-         stream.end('// comments');
-       });
+	 'X-Connection-Spdy': 'yes'});
+      stream.on('error', function(){});
+      stream.end('// comments');
       content = '<head> <script src="push2.js"/></head>body text';
   } else if (u.pathname == "/big") {
     content = getHugeContent(128 * 1024);
