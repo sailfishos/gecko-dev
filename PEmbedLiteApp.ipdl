@@ -10,7 +10,7 @@ include DOMTypes;
 namespace mozilla {
 namespace embedlite {
 
-prio(normal upto high) intr protocol PEmbedLiteApp {
+prio(normal upto urgent) sync protocol PEmbedLiteApp {
   parent opens PCompositor;
   manages PEmbedLiteView;
 parent:
