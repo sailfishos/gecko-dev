@@ -23,6 +23,7 @@ Patch11:    disabledestructible.patch
 Patch12:    0001-Don-t-zoom-video-when-in-full-screen.patch
 Patch13:    Disallow-image-locking-no-matter-what.patch
 Patch14:    Notify-UI-about-change-in-composition-bounds-jb17999.patch
+Patch15:    cairo-limit-surface-area-rather-than-width-and-height.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -86,6 +87,7 @@ Tests and misc files for xulrunner
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
+%patch15 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1

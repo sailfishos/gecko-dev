@@ -1,0 +1,14 @@
+--- a/gfx/cairo/cairo/src/cairo-image-surface.c
++++ b/gfx/cairo/cairo/src/cairo-image-surface.c
+@@ -91,8 +91,9 @@ _pixman_image_for_solid (const cairo_solid_pattern_t *pattern);
+ static cairo_bool_t
+ _cairo_image_surface_is_size_valid (int width, int height)
+ {
+-    return 0 <= width  &&  width <= MAX_IMAGE_SIZE &&
+-	   0 <= height && height <= MAX_IMAGE_SIZE;
++    const int area = width*height;
++    return 0 <= width && 0 <= height && 0 <= area &&
++        area <= (MAX_IMAGE_SIZE*MAX_IMAGE_SIZE);
+ }
+ 
+ cairo_format_t
