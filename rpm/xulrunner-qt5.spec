@@ -32,9 +32,9 @@ BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(sqlite3)
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
-BuildRequires:  pkgconfig(gstreamer-0.10)
-BuildRequires:  pkgconfig(gstreamer-app-0.10)
-BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
+BuildRequires:  pkgconfig(gstreamer-1.0)
+BuildRequires:  pkgconfig(gstreamer-app-1.0)
+BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0)
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
@@ -126,6 +126,7 @@ echo "ac_add_options --disable-javaxpcom" >> mozconfig
 echo "ac_add_options --disable-crashreporter" >> mozconfig
 echo "ac_add_options --without-x" >> mozconfig
 echo "ac_add_options --with-app-name=%{name}" >> mozconfig
+
 export MOZCONFIG=$PWD/mozconfig
 %{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
 
