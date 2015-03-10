@@ -624,6 +624,7 @@ nsSliderFrame::PageUpDown(nscoord change)
 void
 nsSliderFrame::CurrentPositionChanged()
 {
+#if 0
   nsIFrame* scrollbarBox = GetScrollbar();
   nsCOMPtr<nsIContent> scrollbar;
   scrollbar = GetContentOfBox(scrollbarBox);
@@ -686,6 +687,7 @@ nsSliderFrame::CurrentPositionChanged()
         new nsValueChangedRunnable(sliderListener, nsGkAtoms::curpos, mCurPos, mUserChanged));
     }
   }
+#endif
 }
 
 static void UpdateAttribute(nsIContent* aScrollbar, nscoord aNewPos, bool aNotify, bool aIsSmooth) {
