@@ -192,11 +192,7 @@ nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
   g_object_set(mPlayBin, "buffer-size", 0, nullptr);
   mBus = gst_pipeline_get_bus(GST_PIPELINE(mPlayBin));
 
-#ifndef HAS_NEMO_RESOURCE
   mVideoSink = gst_parse_bin_from_description("capsfilter name=filter ! "
-#else
-  mVideoSink = gst_parse_bin_from_description("colorconv ! capsfilter name=filter ! "
-#endif
       "appsink name=videosink sync=false max-buffers=1 "
 #if GST_VERSION_MAJOR >= 1
       "caps=video/x-raw,format=I420"
