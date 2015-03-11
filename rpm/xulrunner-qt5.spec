@@ -8,7 +8,6 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
-Patch0:     add-sailfishos-org-certs.patch
 Patch1:     confgiure-system-sqlite-to-use-jemalloc-25229.patch
 Patch2:     workaround-for-bug-977015.patch
 Patch3:     fix-20430-invalidate-obsolete-scroll-offset.patch
@@ -49,6 +48,8 @@ BuildRequires:  libjpeg-turbo-devel
 BuildRequires:  yasm
 %endif
 BuildRequires:  fdupes
+# See below on why the system version of this library is used
+Requires: nss-ckbi
 
 %description
 Mozilla XUL runner
@@ -72,7 +73,6 @@ Tests and misc files for xulrunner
 
 %prep
 %setup -q -n %{name}-%{version}
-%patch0 -p1
 %patch1 -p1
 %patch2 -p1
 %patch3 -p1
@@ -144,6 +144,12 @@ chmod +x %{buildroot}%{_libdir}/%{name}-%{greversion}/*.so
 %{__rm} -rf ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/dictionaries
 ln -s %{_datadir}/myspell ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/dictionaries
 mkdir ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/defaults
+
+# symlink to the system libnssckbi.so (CA trust library). It is replaced by
+# the p11-kit-nss-ckbi package to use p11-kit's trust store.
+# There is a strong binary compatibility guarantee.
+rm ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/libnssckbi.so
+ln -s %{_libdir}/libnssckbi.so ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/libnssckbi.so
 
 %post
 # >> post
