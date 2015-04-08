@@ -33,6 +33,8 @@ public:
   virtual void SuspendRendering();
   virtual void ResumeRendering();
 
+  virtual bool RequestGLContext();
+
 protected:
   virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
