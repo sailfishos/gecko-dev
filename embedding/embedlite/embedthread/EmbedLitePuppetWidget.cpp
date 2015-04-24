@@ -571,5 +571,13 @@ EmbedLitePuppetWidget::HasGLContext()
   return parent->RequestGLContext();
 }
 
+void
+EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteCompositorParent* parent =
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
+  parent->DrawWindowUnderlay(aManager, aRect);
+}
+
 }  // namespace widget
 }  // namespace mozilla

@@ -14,6 +14,11 @@
 #include "EmbedLiteViewThreadParent.h"
 
 namespace mozilla {
+
+namespace layers {
+class LayerManagerComposite;
+}
+
 namespace embedlite {
 
 class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
@@ -34,6 +39,8 @@ public:
   virtual void ResumeRendering();
 
   virtual bool RequestGLContext();
+
+  void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
 
 protected:
   virtual ~EmbedLiteCompositorParent();
