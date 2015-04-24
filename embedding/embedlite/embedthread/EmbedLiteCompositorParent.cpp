@@ -295,6 +295,14 @@ EmbedLiteCompositorParent::RequestGLContext()
   return view ? view->GetListener()->RequestCurrentGLContext() : false;
 }
 
+void mozilla::embedlite::EmbedLiteCompositorParent::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (view) {
+    view->GetListener()->DrawUnderlay();
+  }
+}
+
 } // namespace embedlite
 } // namespace mozilla
 
