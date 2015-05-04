@@ -29,6 +29,8 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   : mId(id)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
+  , mRotation(ROTATION_0)
+  , mPendingRotation(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
@@ -65,6 +67,10 @@ EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   mCompositor = aCompositor;
   UpdateScrollController();
   if (mCompositor)
+    if (mPendingRotation) {
+      mCompositor->SetScreenRotation(mRotation, mWorldTransform);
+      mPendingRotation = false;
+    }
     mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
 }
 
@@ -396,6 +402,20 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
   }
   unused << SendSetGLViewSize(mGLViewPortSize);
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SetScreenRotation(const mozilla::ScreenRotation& rotation, const gfx::Matrix& matrix)
+{
+  mWorldTransform = matrix;
+  mRotation = rotation;
+
+  if (mCompositor) {
+    mCompositor->SetScreenRotation(rotation, matrix);
+  } else {
+    mPendingRotation = true;
+  }
   return NS_OK;
 }
 
