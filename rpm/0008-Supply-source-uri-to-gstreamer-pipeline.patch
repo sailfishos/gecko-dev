@@ -1,0 +1,269 @@
+From 60c80664aec8bbf0c1d2746c33426e595d6ef783 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:10:46 +0300
+Subject: [PATCH 08/16] Supply source uri to gstreamer pipeline
+
+---
+ content/media/gstreamer/GStreamerFormatHelper.cpp  | 11 ++++-
+ content/media/gstreamer/GStreamerFunctionList.h    |  8 +++
+ content/media/gstreamer/GStreamerLoader.cpp        |  6 ++-
+ content/media/gstreamer/GStreamerReader.cpp        | 57 ++++++++++++++++++++++
+ content/media/gstreamer/GStreamerReader.h          | 11 +++++
+ netwerk/mime/nsMimeTypes.h                         |  1 +
+ toolkit/components/mediasniffer/nsMediaSniffer.cpp |  4 +-
+ 7 files changed, 93 insertions(+), 5 deletions(-)
+
+diff --git a/content/media/gstreamer/GStreamerFormatHelper.cpp b/content/media/gstreamer/GStreamerFormatHelper.cpp
+index ebd12c2..a4b82ba 100644
+--- a/content/media/gstreamer/GStreamerFormatHelper.cpp
++++ b/content/media/gstreamer/GStreamerFormatHelper.cpp
+@@ -35,13 +35,17 @@ void GStreamerFormatHelper::Shutdown() {
+   gInstance = nullptr;
+ }
+ 
+-static char const *const sContainers[6][2] = {
++static char const *const sContainers[10][2] = {
+   {"video/mp4", "video/quicktime"},
+   {"video/quicktime", "video/quicktime"},
+   {"audio/mp4", "audio/x-m4a"},
+   {"audio/x-m4a", "audio/x-m4a"},
+   {"audio/mpeg", "audio/mpeg, mpegversion=(int)1"},
+   {"audio/mp3", "audio/mpeg, mpegversion=(int)1"},
++  {"audio/x-mpegurl", "application/x-hls"},
++  {"application/x-mpegurl", "application/x-hls"},
++  {"application/vnd.apple.mpegurl", "application/x-hls"},
++  {"video/mpegts", "video/mpegts"}
+ };
+ 
+ static char const *const sCodecs[9][2] = {
+@@ -62,7 +66,10 @@ static char const * const sDefaultCodecCaps[][2] = {
+   {"audio/mp4", "audio/mpeg, mpegversion=(int)4"},
+   {"audio/x-m4a", "audio/mpeg, mpegversion=(int)4"},
+   {"audio/mp3", "audio/mpeg, layer=(int)3"},
+-  {"audio/mpeg", "audio/mpeg, layer=(int)3"}
++  {"audio/mpeg", "audio/mpeg, layer=(int)3"},
++  {"audio/x-mpegurl", "video/x-h264"},
++  {"application/x-mpegurl", "video/x-h264"},
++  {"application/vnd.apple.mpegurl", "video/x-h264"},
+ };
+ 
+ static char const * const sPluginBlacklist[] = {
+diff --git a/content/media/gstreamer/GStreamerFunctionList.h b/content/media/gstreamer/GStreamerFunctionList.h
+index ebdeeb6..4b77e15 100644
+--- a/content/media/gstreamer/GStreamerFunctionList.h
++++ b/content/media/gstreamer/GStreamerFunctionList.h
+@@ -18,6 +18,7 @@ GST_FUNC(LIBGSTAPP, gst_app_src_set_callbacks)
+ GST_FUNC(LIBGSTAPP, gst_app_src_set_caps)
+ GST_FUNC(LIBGSTAPP, gst_app_src_set_size)
+ GST_FUNC(LIBGSTAPP, gst_app_src_set_stream_type)
++GST_FUNC(LIBGSTBASE, gst_base_src_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_bin_get_by_name)
+ GST_FUNC(LIBGSTREAMER, gst_bin_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_bin_iterate_recurse)
+@@ -57,11 +58,13 @@ GST_FUNC(LIBGSTREAMER, gst_object_get_name)
+ GST_FUNC(LIBGSTREAMER, gst_object_get_parent)
+ GST_FUNC(LIBGSTREAMER, gst_object_unref)
+ GST_FUNC(LIBGSTREAMER, gst_pad_get_element_private)
++GST_FUNC(LIBGSTREAMER, gst_pad_query_default)
+ GST_FUNC(LIBGSTREAMER, gst_pad_set_element_private)
+ GST_FUNC(LIBGSTREAMER, gst_parse_bin_from_description)
+ GST_FUNC(LIBGSTREAMER, gst_pipeline_get_bus)
+ GST_FUNC(LIBGSTREAMER, gst_pipeline_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_plugin_feature_get_rank)
++GST_FUNC(LIBGSTREAMER, gst_query_set_uri)
+ GST_FUNC(LIBGSTREAMER, gst_plugin_feature_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_registry_feature_filter)
+ GST_FUNC(LIBGSTREAMER, gst_registry_get_feature_list_cookie)
+@@ -73,6 +76,9 @@ GST_FUNC(LIBGSTREAMER, gst_structure_get_fraction)
+ GST_FUNC(LIBGSTREAMER, gst_structure_get_int)
+ GST_FUNC(LIBGSTREAMER, gst_structure_get_value)
+ GST_FUNC(LIBGSTREAMER, gst_structure_new)
++GST_FUNC(LIBGSTREAMER, gst_uri_handler_get_type)
++GST_FUNC(LIBGSTREAMER, gst_uri_handler_get_uri)
++GST_FUNC(LIBGSTREAMER, gst_uri_handler_set_uri)
+ GST_FUNC(LIBGSTREAMER, gst_util_uint64_scale)
+ 
+ #if GST_VERSION_MAJOR == 0
+@@ -89,6 +95,7 @@ GST_FUNC(LIBGSTREAMER, gst_pad_add_event_probe)
+ GST_FUNC(LIBGSTREAMER, gst_pad_alloc_buffer)
+ GST_FUNC(LIBGSTREAMER, gst_pad_get_negotiated_caps)
+ GST_FUNC(LIBGSTREAMER, gst_pad_set_bufferalloc_function)
++GST_FUNC(LIBGSTREAMER, gst_pad_set_query_function)
+ GST_FUNC(LIBGSTREAMER, gst_plugin_feature_get_name)
+ GST_FUNC(LIBGSTREAMER, gst_registry_get_default)
+ GST_FUNC(LIBGSTREAMER, gst_segment_set_newsegment)
+@@ -132,6 +139,7 @@ GST_FUNC(LIBGSTREAMER, gst_object_get_type)
+ GST_FUNC(LIBGSTREAMER, gst_pad_add_probe)
+ GST_FUNC(LIBGSTREAMER, gst_pad_get_current_caps)
+ GST_FUNC(LIBGSTREAMER, gst_pad_probe_info_get_query)
++GST_FUNC(LIBGSTREAMER, gst_pad_set_query_function_full)
+ GST_FUNC(LIBGSTREAMER, gst_query_add_allocation_meta)
+ GST_FUNC(LIBGSTREAMER, gst_query_add_allocation_param)
+ GST_FUNC(LIBGSTREAMER, gst_query_add_allocation_pool)
+diff --git a/content/media/gstreamer/GStreamerLoader.cpp b/content/media/gstreamer/GStreamerLoader.cpp
+index e6457e0..cfc3ba1 100644
+--- a/content/media/gstreamer/GStreamerLoader.cpp
++++ b/content/media/gstreamer/GStreamerLoader.cpp
+@@ -14,6 +14,7 @@
+ #define LIBGSTREAMER 0
+ #define LIBGSTAPP 1
+ #define LIBGSTVIDEO 2
++#define LIBGSTBASE 3
+ 
+ #ifdef __OpenBSD__
+ #define LIB_GST_SUFFIX ".so"
+@@ -74,10 +75,11 @@ load_gstreamer()
+     gstreamerLib = dlopen("libgstreamer-" GST_API_VERSION LIB_GST_SUFFIX, RTLD_NOW | RTLD_LOCAL);
+   }
+ 
+-  void *handles[3] = {
++  void *handles[4] = {
+     gstreamerLib,
+     dlopen("libgstapp-" GST_API_VERSION LIB_GST_SUFFIX, RTLD_NOW | RTLD_LOCAL),
+-    dlopen("libgstvideo-" GST_API_VERSION LIB_GST_SUFFIX, RTLD_NOW | RTLD_LOCAL)
++    dlopen("libgstvideo-" GST_API_VERSION LIB_GST_SUFFIX, RTLD_NOW | RTLD_LOCAL),
++    dlopen("libgstbase-" GST_API_VERSION LIB_GST_SUFFIX, RTLD_NOW | RTLD_LOCAL)
+   };
+ 
+   for (size_t i = 0; i < sizeof(handles) / sizeof(handles[0]); i++) {
+diff --git a/content/media/gstreamer/GStreamerReader.cpp b/content/media/gstreamer/GStreamerReader.cpp
+index 4202e5a..090f713 100644
+--- a/content/media/gstreamer/GStreamerReader.cpp
++++ b/content/media/gstreamer/GStreamerReader.cpp
+@@ -134,6 +134,11 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
+ 
+   gst_segment_init(&mVideoSegment, GST_FORMAT_UNDEFINED);
+   gst_segment_init(&mAudioSegment, GST_FORMAT_UNDEFINED);
++
++  nsIURI *uri = aDecoder->GetResource()->URI();
++  if (uri) {
++    uri->GetAsciiSpec(mUri);
++  }
+ }
+ 
+ GStreamerReader::~GStreamerReader()
+@@ -303,6 +308,51 @@ void GStreamerReader::PlayBinSourceSetupCb(GstElement* aPlayBin,
+   g_object_get(aPlayBin, "source", &source, nullptr);
+   reader->PlayBinSourceSetup(GST_APP_SRC(source));
+ }
++#if GST_VERSION_MAJOR == 1
++gboolean GStreamerReader::AppSrcQueryCB(GstPad *pad, GstObject *parent, GstQuery *query)
++{
++  GstBaseSrc *src = GST_BASE_SRC(parent);
++#else
++gboolean GStreamerReader::AppSrcQueryCB(GstPad *pad, GstQuery *query)
++{
++  GstBaseSrc *src = GST_BASE_SRC(gst_pad_get_parent(pad));
++#endif
++  gboolean result;
++
++  if (!src)
++    return FALSE;
++
++  switch (GST_QUERY_TYPE (query)) {
++    case GST_QUERY_URI: {
++        GStreamerReader *reader = static_cast<GStreamerReader *>(gst_pad_get_element_private(pad));
++
++        const char *uri;
++        if (NS_CStringGetData(reader->mUri, &uri) > 0) {
++          gst_query_set_uri(query, uri);
++          result = TRUE;
++        } else {
++          result = FALSE;
++        }
++        break;
++    }
++    default: {
++      GstBaseSrcClass *bclass = GST_BASE_SRC_GET_CLASS(src);
++      if (bclass->query)
++        result = bclass->query(src, query);
++      else
++#if GST_VERSION_MAJOR == 1
++        result = gst_pad_query_default(pad, parent, query);
++#else
++        result = gst_pad_query_default(pad, query);
++#endif
++    }
++  }
++
++#if GST_VERSION_MAJOR == 0
++  gst_object_unref(src);
++#endif
++  return result;
++}
+ 
+ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
+ {
+@@ -335,6 +385,13 @@ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
+     gst_app_src_set_stream_type(mSource, GST_APP_STREAM_TYPE_SEEKABLE);
+   }
+ 
++  GstPad *srcPad = gst_element_get_static_pad(GST_ELEMENT(mSource), "src");
++  if (srcPad) {
++    gst_pad_set_element_private(srcPad, this);
++    gst_pad_set_query_function(srcPad, AppSrcQueryCB);
++    gst_object_unref (srcPad);
++  }
++
+   // Set the source MIME type to stop typefind trying every. single. format.
+   GstCaps *caps =
+     GStreamerFormatHelper::ConvertFormatsToCaps(mDecoder->GetResource()->GetContentType().get(),
+diff --git a/content/media/gstreamer/GStreamerReader.h b/content/media/gstreamer/GStreamerReader.h
+index 77a4864..cdbe70a 100644
+--- a/content/media/gstreamer/GStreamerReader.h
++++ b/content/media/gstreamer/GStreamerReader.h
+@@ -118,6 +118,15 @@ private:
+                              GstCaps *aCaps,
+                              GValueArray *aFactories);
+ 
++  /* Called to query information about source. Used to provide URI to
++   * upstream elements.
++   */
++#if GST_VERSION_MAJOR == 1
++  static gboolean AppSrcQueryCB(GstPad *pad, GstObject *parent, GstQuery *query);
++#else
++  static gboolean AppSrcQueryCB(GstPad *pad, GstQuery *query);
++#endif
++
+   /* Called on the source-setup signal emitted by playbin. Used to
+    * configure appsrc .
+    */
+@@ -266,6 +275,8 @@ private:
+ #endif
+   int fpsNum;
+   int fpsDen;
++
++  nsAutoCString mUri;
+ };
+ 
+ } // namespace mozilla
+diff --git a/netwerk/mime/nsMimeTypes.h b/netwerk/mime/nsMimeTypes.h
+index 4e875a5..2d7db3d 100644
+--- a/netwerk/mime/nsMimeTypes.h
++++ b/netwerk/mime/nsMimeTypes.h
+@@ -147,6 +147,7 @@
+ #define VIDEO_OGG                           "video/ogg"
+ #define VIDEO_WEBM                          "video/webm"
+ #define VIDEO_3GPP                          "video/3gpp"
++#define VIDEO_M3U8                          "application/vnd.apple.mpegurl"
+ #define APPLICATION_OGG                     "application/ogg"
+ 
+ /* x-uuencode-apple-single. QuickMail made me do this. */
+diff --git a/toolkit/components/mediasniffer/nsMediaSniffer.cpp b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
+index 5ae9bdc..ccc5e82 100644
+--- a/toolkit/components/mediasniffer/nsMediaSniffer.cpp
++++ b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
+@@ -35,7 +35,9 @@ nsMediaSniffer::nsMediaSnifferEntry nsMediaSniffer::sSnifferEntries[] = {
+   // The string RIFF, followed by four bytes, followed by the string WAVE
+   PATTERN_ENTRY("\xFF\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF", "RIFF\x00\x00\x00\x00WAVE", AUDIO_WAV),
+   // mp3 with ID3 tags, the string "ID3".
+-  PATTERN_ENTRY("\xFF\xFF\xFF", "ID3", AUDIO_MP3)
++  PATTERN_ENTRY("\xFF\xFF\xFF", "ID3", AUDIO_MP3),
++  // live stream m3u playlist, the string ""#EXTM3U"
++  PATTERN_ENTRY("\xFF\xFF\xFF\xFF\xFF\xFF\xFF", "#EXTM3U", VIDEO_M3U8)
+ };
+ 
+ // This function implements mp4 sniffing algorithm, described at
+-- 
+1.9.1
+

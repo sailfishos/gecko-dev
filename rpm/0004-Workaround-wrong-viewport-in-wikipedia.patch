@@ -1,0 +1,26 @@
+From ed60c6b6f75db8080537ee7950c58292a169ea72 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:03:43 +0300
+Subject: [PATCH 04/16] Workaround wrong viewport in wikipedia
+
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 55bd26e..b779ce4 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1740,6 +1740,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width ||
+         mFrameMetrics.mViewport.height != aLayerMetrics.mViewport.height) {
+       needContentRepaint = true;
++      if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
++        mFrameMetrics.SetZoom(aLayerMetrics.GetZoom());
++      }
+     }
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
+   }
+-- 
+1.9.1
+

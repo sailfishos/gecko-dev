@@ -1,0 +1,50 @@
+From acc90b0ce996edca7ff2f1c79c0f13ec51f81c28 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:14:02 +0300
+Subject: [PATCH 11/16] Disable destructible
+
+Can be removed after update to 33.
+---
+ mfbt/Attributes.h            | 2 ++
+ xpcom/glue/nsISupportsImpl.h | 4 +++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/mfbt/Attributes.h b/mfbt/Attributes.h
+index e4f92f3..0dbc982 100644
+--- a/mfbt/Attributes.h
++++ b/mfbt/Attributes.h
+@@ -76,7 +76,9 @@
+ #elif defined(__GNUC__)
+ #  if defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L
+ #    if MOZ_GCC_VERSION_AT_LEAST(4, 7, 0)
++#if 0
+ #      define MOZ_HAVE_CXX11_OVERRIDE
++#endif
+ #      define MOZ_HAVE_CXX11_FINAL       final
+ #    endif
+ #    if MOZ_GCC_VERSION_AT_LEAST(4, 6, 0)
+diff --git a/xpcom/glue/nsISupportsImpl.h b/xpcom/glue/nsISupportsImpl.h
+index 531720c..babbf0c 100644
+--- a/xpcom/glue/nsISupportsImpl.h
++++ b/xpcom/glue/nsISupportsImpl.h
+@@ -35,7 +35,8 @@ struct HasDangerousPublicDestructor
+   static const bool value = false;
+ };
+ }
+-
++// This causes it to not build under gcc 4.8.
++#if 0
+ #if defined(__clang__)
+    // bug 1028428 shows that at least in FreeBSD 10.0 with Clang 3.4 and libc++ 3.4,
+    // std::is_destructible is buggy in that it returns false when it should return true
+@@ -52,6 +53,7 @@ struct HasDangerousPublicDestructor
+ #    define MOZ_CAN_USE_IS_DESTRUCTIBLE_FALLBACK
+ #  endif
+ #endif
++#endif
+ 
+ #ifdef MOZ_HAVE_STD_IS_DESTRUCTIBLE
+ #  include <type_traits>
+-- 
+1.9.1
+

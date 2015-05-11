@@ -1,0 +1,27 @@
+From 0a8eb8a0935daf88588d36ec2f587c464cfe3217 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:06:14 +0300
+Subject: [PATCH 06/16] Workaround for wrong viewport after orientation change.
+ jb20684
+
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index e7e1d58..8d5b02a 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1760,6 +1760,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+       }
+     }
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
++  } else if (aLayerMetrics.mCompositionBounds.height <= mFrameMetrics.mCompositionBounds.width &&
++      aLayerMetrics.mCompositionBounds.width >= mFrameMetrics.mCompositionBounds.height) {
++    mFrameMetrics.mViewport = aLayerMetrics.mViewport;
+   }
+ 
+   // If the layers update was not triggered by our own repaint request, then
+-- 
+1.9.1
+
