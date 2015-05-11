@@ -295,6 +295,14 @@ EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
   mViewImpl->SetScreenRotation(rotation);
 }
 
+
+void
+EmbedLiteView::ScheduleUpdate()
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->ScheduleUpdate();
+}
+
 void
 EmbedLiteView::SuspendRendering()
 {
