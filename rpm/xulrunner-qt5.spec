@@ -22,7 +22,7 @@ Patch11:    0011-Disable-destructible.patch
 Patch12:    0012-Don-t-zoom-video-when-in-full-screen.patch
 Patch13:    0013-Disallow-image-locking-no-matter-what.patch
 Patch14:    0014-Notify-UI-about-change-in-composition-bounds.-jb1799.patch
-Patch15:    0015-limit-surface-area-rather-than-width-and-heigh.patch
+Patch15:    0015-limit-surface-area-rather-than-width-and-height.patch
 Patch16:    0016-Enable-external-window-usage.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
