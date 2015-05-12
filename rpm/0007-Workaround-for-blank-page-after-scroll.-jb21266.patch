@@ -1,0 +1,23 @@
+From 8c0a1695b25f99a9acf8820e005f52751eb2e97e Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:06:52 +0300
+Subject: [PATCH 07/16] Workaround for blank page after scroll. jb21266
+
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 8d5b02a..5468f9c 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1834,6 +1834,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+       APZC_LOG("%p sending scroll update acknowledgement with gen %lu\n", this, aLayerMetrics.GetScrollGeneration());
+       controller->AcknowledgeScrollUpdate(aLayerMetrics.GetScrollId(),
+                                           aLayerMetrics.GetScrollGeneration());
++      needContentRepaint = true;
+     }
+   }
+
+--
+1.9.1
