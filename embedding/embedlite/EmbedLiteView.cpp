@@ -289,11 +289,10 @@ EmbedLiteView::SetGLViewPortSize(int width, int height)
 }
 
 void
-EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation, gfxMatrix matrix)
+EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
 {
   NS_ENSURE_TRUE(mViewImpl, );
-  gfx::Matrix m(matrix.xx, matrix.yx, matrix.xy, matrix.yy, matrix.x0, matrix.y0);
-  mViewImpl->SetScreenRotation(rotation, m);
+  mViewImpl->SetScreenRotation(rotation);
 }
 
 void
