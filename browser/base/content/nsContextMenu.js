@@ -218,15 +218,43 @@ nsContextMenu.prototype = {
     this.showItem("context-sendaudio", this.onAudio);
     this.setItemAttr("context-sendvideo", "disabled", !this.mediaURL);
     this.setItemAttr("context-sendaudio", "disabled", !this.mediaURL);
+    let shouldShowCast = Services.prefs.getBoolPref("browser.casting.enabled");
     // getServicesForVideo alone would be sufficient here (it depends on
-    // SimpleServiceDiscovery.services), but SimpleServiceDiscovery is garanteed
-    // to be already loaded, since we load it on startup, and CastingApps isn't,
-    // so check SimpleServiceDiscovery.services first to avoid needing to load
-    // CastingApps.jsm if we don't need to.
-    let shouldShowCast = this.mediaURL &&
-                         SimpleServiceDiscovery.services.length > 0 &&
-                         CastingApps.getServicesForVideo(this.target).length > 0;
+    // SimpleServiceDiscovery.services), but SimpleServiceDiscovery is guaranteed
+    // to be already loaded, since we load it on startup in nsBrowserGlue,
+    // and CastingApps isn't, so check SimpleServiceDiscovery.services first
+    // to avoid needing to load CastingApps.jsm if we don't need to.
+    shouldShowCast = shouldShowCast && this.mediaURL &&
+                     SimpleServiceDiscovery.services.length > 0 &&
+                     CastingApps.getServicesForVideo(this.target).length > 0;
     this.setItemAttr("context-castvideo", "disabled", !shouldShowCast);
+
+    let canPocket = false;
+    if (shouldShow && window.gBrowser &&
+        this.browser.getTabBrowser() == window.gBrowser) {
+      let uri = this.browser.currentURI;
+      canPocket =
+        CustomizableUI.getPlacementOfWidget("pocket-button") &&
+        (uri.schemeIs("http") || uri.schemeIs("https") ||
+         (uri.schemeIs("about") && ReaderMode.getOriginalUrl(uri.spec)));
+      if (canPocket) {
+        let locale = Cc["@mozilla.org/chrome/chrome-registry;1"].
+                     getService(Ci.nsIXULChromeRegistry).
+                     getSelectedLocale("browser");
+        let url = "chrome://browser/content/browser-pocket-" + locale + ".properties";
+        let bundle = Services.strings.createBundle(url);
+        let item = document.getElementById("context-pocket");
+        try {
+          item.setAttribute("label", bundle.GetStringFromName("saveToPocketCmd.label"));
+          item.setAttribute("accesskey", bundle.GetStringFromName("saveToPocketCmd.accesskey"));
+        } catch (err) {
+          // GetStringFromName throws when the bundle doesn't exist.  In that
+          // case, the item will retain the browser-pocket.dtd en-US string that
+          // it has in the markup.
+        }
+      }
+    }
+    this.showItem("context-pocket", canPocket && window.pktApi && window.pktApi.isUserLoggedIn());
   },
 
   initViewItems: function CM_initViewItems() {
@@ -576,6 +604,7 @@ nsContextMenu.prototype = {
     this.linkURL           = "";
     this.linkURI           = null;
     this.linkProtocol      = "";
+    this.linkHasNoReferrer = false;
     this.onMathML          = false;
     this.inFrame           = false;
     this.inSrcdocFrame     = false;
@@ -738,6 +767,7 @@ nsContextMenu.prototype = {
           this.linkProtocol = this.getLinkProtocol();
           this.onMailtoLink = (this.linkProtocol == "mailto");
           this.onSaveableLink = this.isLinkSaveable( this.link );
+          this.linkHasNoReferrer = BrowserUtils.linkHasNoReferrer(elem);
         }
 
         // Background image?  Don't bother if we've already found a
@@ -864,10 +894,11 @@ nsContextMenu.prototype = {
     return aNode.spellcheck;
   },
 
-  _openLinkInParameters : function (doc, extra) {
-    let params = { charset: doc.characterSet,
-                   referrerURI: doc.documentURIObject,
-                   noReferrer: BrowserUtils.linkHasNoReferrer(this.link) };
+  _openLinkInParameters : function (extra) {
+    let params = { charset: gContextMenuContentData.charSet,
+                   referrerURI: gContextMenuContentData.documentURIObject,
+                   referrerPolicy: gContextMenuContentData.referrerPolicy,
+                   noReferrer: this.linkHasNoReferrer };
     for (let p in extra)
       params[p] = extra[p];
     return params;
@@ -875,41 +906,38 @@ nsContextMenu.prototype = {
 
   // Open linked-to URL in a new window.
   openLink : function () {
-    var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this.principal);
-    openLinkIn(this.linkURL, "window", this._openLinkInParameters(doc));
+    openLinkIn(this.linkURL, "window", this._openLinkInParameters());
   },
 
   // Open linked-to URL in a new private window.
   openLinkInPrivateWindow : function () {
-    var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this.principal);
     openLinkIn(this.linkURL, "window",
-               this._openLinkInParameters(doc, { private: true }));
+               this._openLinkInParameters({ private: true }));
   },
 
   // Open linked-to URL in a new tab.
   openLinkInTab: function() {
-    var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this.principal);
-    var referrerURI = doc.documentURIObject;
+    let referrerURI = gContextMenuContentData.documentURIObject;
 
     // if the mixedContentChannel is present and the referring URI passes
     // a same origin check with the target URI, we can preserve the users
     // decision of disabling MCB on a page for it's child tabs.
-    var persistAllowMixedContentInChildTab = false;
+    let persistAllowMixedContentInChildTab = false;
 
     if (this.browser.docShell && this.browser.docShell.mixedContentChannel) {
       const sm = Services.scriptSecurityManager;
       try {
-        var targetURI = this.linkURI;
+        let targetURI = this.linkURI;
         sm.checkSameOriginURI(referrerURI, targetURI, false);
         persistAllowMixedContentInChildTab = true;
       }
       catch (e) { }
     }
 
-    let params = this._openLinkInParameters(doc, {
+    let params = this._openLinkInParameters({
       allowMixedContent: persistAllowMixedContentInChildTab,
     });
     openLinkIn(this.linkURL, "tab", params);
@@ -917,18 +945,15 @@ nsContextMenu.prototype = {
 
   // open URL in current tab
   openLinkInCurrent: function() {
-    var doc = this.target.ownerDocument;
     urlSecurityCheck(this.linkURL, this.principal);
-    openLinkIn(this.linkURL, "current", this._openLinkInParameters(doc));
+    openLinkIn(this.linkURL, "current", this._openLinkInParameters());
   },
 
   // Open frame in a new tab.
   openFrameInTab: function() {
-    var doc = this.target.ownerDocument;
-    var frameURL = doc.location.href;
-    var referrer = doc.referrer;
-    openLinkIn(frameURL, "tab",
-               { charset: doc.characterSet,
+    let referrer = gContextMenuContentData.referrer;
+    openLinkIn(gContextMenuContentData.docLocation, "tab",
+               { charset: gContextMenuContentData.charSet,
                  referrerURI: referrer ? makeURI(referrer) : null });
   },
 
@@ -939,25 +964,21 @@ nsContextMenu.prototype = {
 
   // Open clicked-in frame in its own window.
   openFrame: function() {
-    var doc = this.target.ownerDocument;
-    var frameURL = doc.location.href;
-    var referrer = doc.referrer;
-    openLinkIn(frameURL, "window",
-               { charset: doc.characterSet,
+    let referrer = gContextMenuContentData.referrer;
+    openLinkIn(gContextMenuContentData.docLocation, "window",
+               { charset: gContextMenuContentData.charSet,
                  referrerURI: referrer ? makeURI(referrer) : null });
   },
 
   // Open clicked-in frame in the same window.
   showOnlyThisFrame: function() {
-    var doc = this.target.ownerDocument;
-    var frameURL = doc.location.href;
-
-    urlSecurityCheck(frameURL,
+    urlSecurityCheck(gContextMenuContentData.docLocation,
                      this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-    var referrer = doc.referrer;
-    openUILinkIn(frameURL, "current", { disallowInheritPrincipal: true,
-                                        referrerURI: referrer ? makeURI(referrer) : null });
+    let referrer = gContextMenuContentData.referrer;
+    openUILinkIn(gContextMenuContentData.docLocation, "current",
+                 { disallowInheritPrincipal: true,
+                   referrerURI: referrer ? makeURI(referrer) : null });
   },
 
   reload: function(event) {
@@ -1651,6 +1672,22 @@ nsContextMenu.prototype = {
 
   savePageAs: function CM_savePageAs() {
     saveDocument(this.browser.contentDocumentAsCPOW);
+  },
+
+  saveToPocket: function CM_saveToPocket() {
+    let pocketWidget = document.getElementById("pocket-button");
+    let placement = CustomizableUI.getPlacementOfWidget("pocket-button");
+    if (!placement)
+      return;
+
+    if (placement.area == CustomizableUI.AREA_PANEL) {
+      PanelUI.show().then(function() {
+        pocketWidget = document.getElementById("pocket-button");
+        pocketWidget.doCommand();
+      });
+    } else {
+      pocketWidget.doCommand();
+    }
   },
 
   printFrame: function CM_printFrame() {

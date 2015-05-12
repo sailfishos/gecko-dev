@@ -169,6 +169,29 @@ var PrintUtils = {
     let printSettings = this.getPrintSettings();
 
     let mm = aBrowser.messageManager;
+
+    mm.addMessageListener("Printing:Print:Done", function onPrintingDone(msg) {
+      mm.removeMessageListener("Printing:Print:Done", onPrintingDone);
+      let rv = msg.data.rv;
+      let printSettings = msg.objects.printSettings;
+      if (rv != Components.results.NS_OK &&
+          rv != Components.results.NS_ERROR_ABORT) {
+        Cu.reportError(`In Printing:Print:Done handler, got unexpected rv
+                        ${rv}.`);
+      }
+
+      if (gPrintSettingsAreGlobal && gSavePrintSettings) {
+        let PSSVC =
+          Components.classes["@mozilla.org/gfx/printsettings-service;1"]
+                    .getService(Components.interfaces.nsIPrintSettingsService);
+
+        PSSVC.savePrintSettingsToPrefs(printSettings, true,
+                                       printSettings.kInitSaveAll);
+        PSSVC.savePrintSettingsToPrefs(printSettings, false,
+                                       printSettings.kInitSavePrinterName);
+      }
+    });
+
     mm.sendAsyncMessage("Printing:Print", null, {
       printSettings: printSettings,
       contentWindow: aWindow,
@@ -441,7 +464,8 @@ var PrintUtils = {
     let printSettings = this.getPrintSettings();
     mm.sendAsyncMessage("Printing:Preview:Enter", null, {
       printSettings: printSettings,
-      contentWindow: this._sourceBrowser.contentWindowAsCPOW,
+      contentWindow: this._sourceBrowser.contentWindowAsCPOW ||
+                     this._sourceBrowser.contentWindow,
     });
 
     if (this._webProgressPP.value) {

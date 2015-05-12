@@ -295,11 +295,12 @@ private:
 
 // A probe value of 1 means "no error".
 uint32_t
-MapCertErrorToProbeValue(PRErrorCode errorCode)
+MapOverridableErrorToProbeValue(PRErrorCode errorCode)
 {
   switch (errorCode)
   {
     case SEC_ERROR_UNKNOWN_ISSUER:                     return  2;
+    case SEC_ERROR_CA_CERT_INVALID:                    return  3;
     case SEC_ERROR_UNTRUSTED_ISSUER:                   return  4;
     case SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE:         return  5;
     case SEC_ERROR_UNTRUSTED_CERT:                     return  6;
@@ -315,9 +316,37 @@ MapCertErrorToProbeValue(PRErrorCode errorCode)
       return 15;
     case SEC_ERROR_INVALID_TIME: return 16;
   }
-  NS_WARNING("Unknown certificate error code. Does MapCertErrorToProbeValue "
+  NS_WARNING("Unknown certificate error code. Does MapOverridableErrorToProbeValue "
              "handle everything in DetermineCertOverrideErrors?");
   return 0;
+}
+
+static uint32_t
+MapCertErrorToProbeValue(PRErrorCode errorCode)
+{
+  uint32_t probeValue;
+  switch (errorCode)
+  {
+    // see security/pkix/include/pkix/Result.h
+#define MOZILLA_PKIX_MAP(name, value, nss_name) case nss_name: probeValue = value; break;
+    MOZILLA_PKIX_MAP_LIST
+#undef MOZILLA_PKIX_MAP
+    default: return 0;
+  }
+
+  // Since FATAL_ERROR_FLAG is 0x800, fatal error values are much larger than
+  // non-fatal error values. To conserve space, we remap these so they start at
+  // (decimal) 90 instead of 0x800. Currently there are ~50 non-fatal errors
+  // mozilla::pkix might return, so saving space for 90 should be sufficient
+  // (similarly, there are 4 fatal errors, so saving space for 10 should also
+  // be sufficient).
+  static_assert(FATAL_ERROR_FLAG == 0x800,
+                "mozilla::pkix::FATAL_ERROR_FLAG is not what we were expecting");
+  if (probeValue & FATAL_ERROR_FLAG) {
+    probeValue ^= FATAL_ERROR_FLAG;
+    probeValue += 90;
+  }
+  return probeValue;
 }
 
 SECStatus
@@ -342,6 +371,7 @@ DetermineCertOverrideErrors(CERTCertificate* cert, const char* hostName,
     case SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED:
     case SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE:
     case SEC_ERROR_UNKNOWN_ISSUER:
+    case SEC_ERROR_CA_CERT_INVALID:
     case mozilla::pkix::MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY:
     case mozilla::pkix::MOZILLA_PKIX_ERROR_INADEQUATE_KEY_SIZE:
     case mozilla::pkix::MOZILLA_PKIX_ERROR_V1_CERT_USED_AS_CA:
@@ -499,15 +529,15 @@ CertErrorRunnable::CheckCertOverrides()
       // different types of errors. Since this is telemetry and we just
       // want a ballpark answer, we don't care.
       if (mErrorCodeTrust != 0) {
-        uint32_t probeValue = MapCertErrorToProbeValue(mErrorCodeTrust);
+        uint32_t probeValue = MapOverridableErrorToProbeValue(mErrorCodeTrust);
         Telemetry::Accumulate(Telemetry::SSL_CERT_ERROR_OVERRIDES, probeValue);
       }
       if (mErrorCodeMismatch != 0) {
-        uint32_t probeValue = MapCertErrorToProbeValue(mErrorCodeMismatch);
+        uint32_t probeValue = MapOverridableErrorToProbeValue(mErrorCodeMismatch);
         Telemetry::Accumulate(Telemetry::SSL_CERT_ERROR_OVERRIDES, probeValue);
       }
       if (mErrorCodeTime != 0) {
-        uint32_t probeValue = MapCertErrorToProbeValue(mErrorCodeTime);
+        uint32_t probeValue = MapOverridableErrorToProbeValue(mErrorCodeTime);
         Telemetry::Accumulate(Telemetry::SSL_CERT_ERROR_OVERRIDES, probeValue);
       }
 
@@ -589,6 +619,9 @@ CreateCertErrorRunnable(CertVerifier& certVerifier,
 {
   MOZ_ASSERT(infoObject);
   MOZ_ASSERT(cert);
+
+  uint32_t probeValue = MapCertErrorToProbeValue(defaultErrorCodeToReport);
+  Telemetry::Accumulate(Telemetry::SSL_CERT_VERIFICATION_ERRORS, probeValue);
 
   uint32_t collected_errors = 0;
   PRErrorCode errorCodeTrust = 0;
@@ -1108,12 +1141,14 @@ AuthCertificate(CertVerifier& certVerifier,
   ScopedCERTCertList certList;
   CertVerifier::OCSPStaplingStatus ocspStaplingStatus =
     CertVerifier::OCSP_STAPLING_NEVER_CHECKED;
+  KeySizeStatus keySizeStatus = KeySizeStatus::NeverChecked;
 
   rv = certVerifier.VerifySSLServerCert(cert, stapledOCSPResponse,
                                         time, infoObject,
                                         infoObject->GetHostNameRaw(),
                                         saveIntermediates, 0, &certList,
-                                        &evOidPolicy, &ocspStaplingStatus);
+                                        &evOidPolicy, &ocspStaplingStatus,
+                                        &keySizeStatus);
   PRErrorCode savedErrorCode;
   if (rv != SECSuccess) {
     savedErrorCode = PR_GetError();
@@ -1121,6 +1156,10 @@ AuthCertificate(CertVerifier& certVerifier,
 
   if (ocspStaplingStatus != CertVerifier::OCSP_STAPLING_NEVER_CHECKED) {
     Telemetry::Accumulate(Telemetry::SSL_OCSP_STAPLING, ocspStaplingStatus);
+  }
+  if (keySizeStatus != KeySizeStatus::NeverChecked) {
+    Telemetry::Accumulate(Telemetry::CERT_CHAIN_KEY_SIZE_STATUS,
+                          static_cast<uint32_t>(keySizeStatus));
   }
 
   // We want to remember the CA certs in the temp db, so that the application can find the
@@ -1489,14 +1528,14 @@ AuthCertificateHook(void* arg, PRFileDesc* fd, PRBool checkSig, PRBool isServer)
 #ifndef MOZ_NO_EV_CERTS
 class InitializeIdentityInfo : public CryptoTask
 {
-  virtual nsresult CalculateResult() MOZ_OVERRIDE
+  virtual nsresult CalculateResult() override
   {
     EnsureIdentityInfoLoaded();
     return NS_OK;
   }
 
-  virtual void ReleaseNSSResources() MOZ_OVERRIDE { } // no-op
-  virtual void CallCallback(nsresult rv) MOZ_OVERRIDE { } // no-op
+  virtual void ReleaseNSSResources() override { } // no-op
+  virtual void CallCallback(nsresult rv) override { } // no-op
 };
 #endif
 

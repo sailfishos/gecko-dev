@@ -306,6 +306,9 @@
                           type="checkbox"
                           observes="View:FullScreen"/>
 #endif
+                <menuitem id="menu_readerModeItem"
+                          observes="View:ReaderView"
+                          hidden="true"/>
                 <menuitem id="menu_showAllTabs"
                           hidden="true"
                           accesskey="&showAllTabsCmd.accesskey;"
@@ -395,6 +398,7 @@
                oncommand="BookmarksEventHandler.onCommand(event, this.parentNode._placesView);"
                onclick="BookmarksEventHandler.onClick(event, this.parentNode._placesView);"
                onpopupshowing="BookmarkingUI.onMainMenuPopupShowing(event);
+                               BookmarkingUI.updatePocketItemVisibility('menu_');
                                if (!this.parentNode._placesView)
                                  new PlacesMenu(event, 'place:folder=BOOKMARKS_MENU');"
                tooltip="bhTooltip" popupsinherittooltip="true">
@@ -403,6 +407,9 @@
                 command="Browser:ShowAllBookmarks"
                 key="manBookmarkKb"/>
       <menuseparator id="organizeBookmarksSeparator"/>
+      <menuitem id="menu_pocket" label="&pocketMenuitem.label;"
+                oncommand="openUILink(Pocket.listURL, event);"/>
+      <menuseparator id="menu_pocketSeparator"/>
       <menuitem id="menu_bookmarkThisPage"
                 command="Browser:AddBookmarkAs"
                 observes="bookmarkThisPageBroadcaster"
@@ -444,6 +451,30 @@
                    onpopupshowing="if (!this.parentNode._placesView)
                                      new PlacesMenu(event, 'place:folder=TOOLBAR');"/>
       </menu>
+#ifndef XP_MACOSX
+# Disabled on Mac because we can't fill native menupopups asynchronously
+      <menuseparator id="menu_readingListSeparator">
+        <observes element="readingListSidebar" attribute="hidden"/>
+      </menuseparator>
+      <menu id="menu_readingList"
+            class="menu-iconic bookmark-item"
+            label="&readingList.label;"
+            container="true">
+        <observes element="readingListSidebar" attribute="hidden"/>
+        <menupopup id="readingListPopup"
+#ifndef XP_MACOSX
+                   placespopup="true"
+#endif
+                   onpopupshowing="ReadingListUI.onReadingListPopupShowing(this);">
+          <menuseparator id="viewReadingListSidebarSeparator"/>
+          <menuitem id="viewReadingListSidebar" class="subviewbutton"
+                    oncommand="SidebarUI.toggle('readingListSidebar');"
+                    label="&readingList.showSidebar.label;">
+            <observes element="readingListSidebar" attribute="checked"/>
+          </menuitem>
+        </menupopup>
+      </menu>
+#endif
       <menuseparator id="bookmarksMenuItemsSeparator"/>
       <!-- Bookmarks menu items -->
       <menuseparator builder="end"

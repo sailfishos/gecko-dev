@@ -144,7 +144,7 @@ using namespace mozilla::gfx;
 
 /* Class to listen for pref changes so that chrome code can dynamically
    force sRGB as an output profile. See Bug #452125. */
-class SRGBOverrideObserver MOZ_FINAL : public nsIObserver,
+class SRGBOverrideObserver final : public nsIObserver,
                                        public nsSupportsWeakReference
 {
     ~SRGBOverrideObserver() {}
@@ -164,9 +164,9 @@ class CrashStatsLogForwarder: public mozilla::gfx::LogForwarder
 {
 public:
   explicit CrashStatsLogForwarder(const char* aKey);
-  virtual void Log(const std::string& aString) MOZ_OVERRIDE;
+  virtual void Log(const std::string& aString) override;
 
-  virtual std::vector<std::pair<int32_t,std::string> > StringsVectorCopy() MOZ_OVERRIDE;
+  virtual std::vector<std::pair<int32_t,std::string> > StringsVectorCopy() override;
 
   void SetCircularBufferSize(uint32_t aCapacity);
 
@@ -300,7 +300,7 @@ static const char* kObservedPrefs[] = {
     nullptr
 };
 
-class FontPrefsObserver MOZ_FINAL : public nsIObserver
+class FontPrefsObserver final : public nsIObserver
 {
     ~FontPrefsObserver() {}
 public:
@@ -325,7 +325,7 @@ FontPrefsObserver::Observe(nsISupports *aSubject,
     return NS_OK;
 }
 
-class MemoryPressureObserver MOZ_FINAL : public nsIObserver
+class MemoryPressureObserver final : public nsIObserver
 {
     ~MemoryPressureObserver() {}
 public:
@@ -1179,7 +1179,12 @@ gfxPlatform::CreateOffscreenCanvasDrawTarget(const IntSize& aSize, SurfaceFormat
     return target.forget();
   }
 
+#ifdef XP_WIN
+  // On Windows, the fallback backend (Cairo) should use its image backend.
+  return Factory::CreateDrawTarget(mFallbackCanvasBackend, aSize, aFormat);
+#else
   return CreateDrawTargetForBackend(mFallbackCanvasBackend, aSize, aFormat);
+#endif
 }
 
 TemporaryRef<DrawTarget>
@@ -2163,6 +2168,7 @@ gfxPlatform::OptimalFormatForContent(gfxContentType aContent)
 static bool sLayersSupportsD3D9 = false;
 static bool sLayersSupportsD3D11 = false;
 static bool sLayersSupportsDXVA = false;
+static bool sANGLESupportsD3D11 = false;
 static bool sBufferRotationCheckPref = true;
 static bool sPrefBrowserTabsRemoteAutostart = false;
 
@@ -2209,6 +2215,11 @@ InitLayersAccelerationPrefs()
             sLayersSupportsDXVA = true;
           }
         }
+        if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_11_ANGLE, &status))) {
+          if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
+            sANGLESupportsD3D11 = true;
+          }
+        }
       }
     }
 #endif
@@ -2243,6 +2254,14 @@ gfxPlatform::CanUseDXVA()
   MOZ_ASSERT(sLayersAccelerationPrefsInitialized);
   return sLayersSupportsDXVA;
 }
+
+bool
+gfxPlatform::CanUseDirect3D11ANGLE()
+{
+  MOZ_ASSERT(sLayersAccelerationPrefsInitialized);
+  return sANGLESupportsD3D11;
+}
+
 
 bool
 gfxPlatform::BufferRotationEnabled()

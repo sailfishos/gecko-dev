@@ -17,6 +17,7 @@
 #include "nsIRadioVisitor.h"
 #include "nsIPhonetic.h"
 
+#include "mozilla/Telemetry.h"
 #include "nsIControllers.h"
 #include "nsIStringBundle.h"
 #include "nsFocusManager.h"
@@ -209,7 +210,7 @@ const Decimal HTMLInputElement::kStepAny = Decimal(0);
 #define PROGRESS_STR "progress"
 static const uint32_t kProgressEventInterval = 50; // ms
 
-class HTMLInputElementState MOZ_FINAL : public nsISupports
+class HTMLInputElementState final : public nsISupports
 {
   public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_INPUT_ELEMENT_STATE_IID)
@@ -331,7 +332,7 @@ namespace {
  * nsIFile::GetDirectoryEntries, which is not guaranteed to group a directory's
  * subdirectories at the beginning of the list that it returns).
  */
-class DirPickerRecursiveFileEnumerator MOZ_FINAL
+class DirPickerRecursiveFileEnumerator final
   : public nsISimpleEnumerator
 {
   ~DirPickerRecursiveFileEnumerator() {}
@@ -367,7 +368,7 @@ public:
   }
 
   NS_IMETHOD
-  GetNext(nsISupports** aResult) MOZ_OVERRIDE
+  GetNext(nsISupports** aResult) override
   {
     MOZ_ASSERT(!NS_IsMainThread(),
                "Walking the directory tree involves I/O, so using this "
@@ -401,7 +402,7 @@ public:
   }
 
   NS_IMETHOD
-  HasMoreElements(bool* aResult) MOZ_OVERRIDE
+  HasMoreElements(bool* aResult) override
   {
     *aResult = !!mNextFile;
     return NS_OK;
@@ -501,7 +502,7 @@ DOMFileToLocalFile(nsIDOMFile* aDomFile)
 
 } // anonymous namespace
 
-class DirPickerFileListBuilderTask MOZ_FINAL
+class DirPickerFileListBuilderTask final
   : public nsRunnable
 {
 public:
@@ -723,7 +724,7 @@ HTMLInputElement::nsFilePickerShownCallback::Done(int16_t aResult)
 NS_IMPL_ISUPPORTS(HTMLInputElement::nsFilePickerShownCallback,
                   nsIFilePickerShownCallback)
 
-class nsColorPickerShownCallback MOZ_FINAL
+class nsColorPickerShownCallback final
   : public nsIColorPickerShownCallback
 {
   ~nsColorPickerShownCallback() {}
@@ -738,8 +739,8 @@ public:
 
   NS_DECL_ISUPPORTS
 
-  NS_IMETHOD Update(const nsAString& aColor) MOZ_OVERRIDE;
-  NS_IMETHOD Done(const nsAString& aColor) MOZ_OVERRIDE;
+  NS_IMETHOD Update(const nsAString& aColor) override;
+  NS_IMETHOD Done(const nsAString& aColor) override;
 
 private:
   /**
@@ -2331,9 +2332,14 @@ HTMLInputElement::MozGetFileNameArray(uint32_t* aLength, char16_t*** aFileNames)
 void
 HTMLInputElement::MozSetFileArray(const Sequence<OwningNonNull<File>>& aFiles)
 {
+  nsCOMPtr<nsIGlobalObject> global = OwnerDoc()->GetScopeObject();
+  MOZ_ASSERT(global);
+  if (!global) {
+    return;
+  }
   nsTArray<nsRefPtr<File>> files;
   for (uint32_t i = 0; i < aFiles.Length(); ++i) {
-    files.AppendElement(aFiles[i]);
+    files.AppendElement(new File(global, aFiles[i].get()->Impl()));
   }
   SetFiles(files, true);
 }
@@ -3222,7 +3228,7 @@ HTMLInputElement::Focus(ErrorResult& aError)
 }
 
 bool
-HTMLInputElement::IsInteractiveHTMLContent() const
+HTMLInputElement::IsInteractiveHTMLContent(bool aIgnoreTabindex) const
 {
   return mType != NS_FORM_INPUT_HIDDEN;
 }
@@ -4495,6 +4501,12 @@ HTMLInputElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
 
   // And now make sure our state is up to date
   UpdateState(false);
+
+#ifdef EARLY_BETA_OR_EARLIER
+  if (mType == NS_FORM_INPUT_PASSWORD) {
+    Telemetry::Accumulate(Telemetry::PWMGR_PASSWORD_INPUT_IN_FORM, !!mForm);
+  }
+#endif
 
   return rv;
 }
@@ -7219,7 +7231,7 @@ HTMLInputElement::GetCols()
 NS_IMETHODIMP_(int32_t)
 HTMLInputElement::GetWrapCols()
 {
-  return -1; // only textarea's can have wrap cols
+  return 0; // only textarea's can have wrap cols
 }
 
 NS_IMETHODIMP_(int32_t)

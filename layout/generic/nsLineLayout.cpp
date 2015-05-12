@@ -942,8 +942,9 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
   metrics.ISize(lineWM) = nscoord(0xdeadbeef);
   metrics.BSize(lineWM) = nscoord(0xdeadbeef);
 #endif
-  LogicalPoint tPt = pfd->mBounds.Origin(lineWM);
-  WritingMode oldWM = mFloatManager->Translate(lineWM, tPt);
+  nscoord tI = pfd->mBounds.LineLeft(lineWM, ContainerWidth());
+  nscoord tB = pfd->mBounds.BStart(lineWM);
+  mFloatManager->Translate(tI, tB);
 
   int32_t savedOptionalBreakOffset;
   gfxBreakPriority savedOptionalBreakPriority;
@@ -1031,7 +1032,7 @@ nsLineLayout::ReflowFrame(nsIFrame* aFrame,
   }
   pfd->mIsEmpty = isEmpty;
 
-  mFloatManager->Untranslate(oldWM, tPt);
+  mFloatManager->Translate(-tI, -tB);
 
   NS_ASSERTION(metrics.ISize(lineWM) >= 0, "bad inline size");
   NS_ASSERTION(metrics.BSize(lineWM) >= 0,"bad block size");
@@ -2892,7 +2893,10 @@ FindNearestRubyBaseAncestor(nsIFrame* aFrame)
   while (aFrame && aFrame->GetType() != nsGkAtoms::rubyBaseFrame) {
     aFrame = aFrame->GetParent();
   }
-  MOZ_ASSERT(aFrame, "No ruby base ancestor?");
+  // XXX It is possible that no ruby base ancestor is found because of
+  // some edge cases like form control or canvas inside ruby text.
+  // See bug 1138092 comment 4.
+  NS_ASSERTION(aFrame, "No ruby base ancestor?");
   return aFrame;
 }
 
@@ -3063,7 +3067,7 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
       if (firstFrame->mFrame->StyleContext()->IsInlineDescendantOfRuby()) {
         MOZ_ASSERT(!firstFrame->mJustificationAssignment.mGapsAtStart);
         nsIFrame* rubyBase = FindNearestRubyBaseAncestor(firstFrame->mFrame);
-        if (IsRubyAlignSpaceAround(rubyBase)) {
+        if (rubyBase && IsRubyAlignSpaceAround(rubyBase)) {
           firstFrame->mJustificationAssignment.mGapsAtStart = 1;
           additionalGaps++;
         }
@@ -3072,7 +3076,7 @@ nsLineLayout::TextAlignLine(nsLineBox* aLine,
       if (lastFrame->mFrame->StyleContext()->IsInlineDescendantOfRuby()) {
         MOZ_ASSERT(!lastFrame->mJustificationAssignment.mGapsAtEnd);
         nsIFrame* rubyBase = FindNearestRubyBaseAncestor(lastFrame->mFrame);
-        if (IsRubyAlignSpaceAround(rubyBase)) {
+        if (rubyBase && IsRubyAlignSpaceAround(rubyBase)) {
           lastFrame->mJustificationAssignment.mGapsAtEnd = 1;
           additionalGaps++;
         }

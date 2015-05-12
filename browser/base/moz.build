@@ -6,10 +6,6 @@
 
 SPHINX_TREES['sslerrorreport'] = 'content/docs/sslerrorreport'
 
-TESTING_JS_MODULES += [
-    'content/test/BrowserUITestUtils.jsm',
-]
-
 MOCHITEST_MANIFESTS += [
     'content/test/general/mochitest.ini',
 ]
@@ -24,6 +20,7 @@ BROWSER_CHROME_MANIFESTS += [
     'content/test/newtab/browser.ini',
     'content/test/plugins/browser.ini',
     'content/test/popupNotifications/browser.ini',
+    'content/test/referrer/browser.ini',
     'content/test/social/browser.ini',
 ]
 

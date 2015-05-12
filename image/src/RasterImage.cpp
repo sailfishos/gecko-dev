@@ -167,7 +167,7 @@ public:
     return true;
   }
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     if (mState == eReady) {
       // Collect information from the frames that we need to scale.
@@ -325,6 +325,7 @@ RasterImage::Init(const char* aMimeType,
 
   // Lock this image's surfaces in the SurfaceCache if we're not discardable.
   if (!mDiscardable) {
+    mLockCount++;
     SurfaceCache::LockImage(ImageKey(this));
   }
 

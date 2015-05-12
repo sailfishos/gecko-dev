@@ -13,17 +13,23 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils","resource://gre/modules/PlacesUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ReadingList", "resource:///modules/readinglist/ReadingList.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "UITour", "resource:///modules/UITour.jsm");
 
-const gStringBundle = Services.strings.createBundle("chrome://browser/locale/readerMode.properties");
+const gStringBundle = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
 
 let ReaderParent = {
+  _readerModeInfoPanelOpen: false,
 
   MESSAGES: [
     "Reader:AddToList",
+    "Reader:AddToPocket",
     "Reader:ArticleGet",
     "Reader:FaviconRequest",
     "Reader:ListStatusRequest",
+    "Reader:PocketEnabledGet",
     "Reader:RemoveFromList",
     "Reader:Share",
     "Reader:SystemUIVisibility",
@@ -41,9 +47,40 @@ let ReaderParent = {
 
   receiveMessage: function(message) {
     switch (message.name) {
-      case "Reader:AddToList":
-        // XXX: To implement.
+      case "Reader:AddToList": {
+        let article = message.data.article;
+        ReadingList.getMetadataFromBrowser(message.target).then(function(metadata) {
+          if (metadata.previews.length > 0) {
+            article.preview = metadata.previews[0];
+          }
+
+          ReadingList.addItem({
+            url: article.url,
+            title: article.title,
+            excerpt: article.excerpt,
+            preview: article.preview
+          });
+        });
         break;
+      }
+
+      case "Reader:AddToPocket": {
+        let doc = message.target.ownerDocument;
+        let pocketWidget = doc.getElementById("pocket-button");
+        let placement = CustomizableUI.getPlacementOfWidget("pocket-button");
+        if (placement) {
+          if (placement.area == CustomizableUI.AREA_PANEL) {
+            doc.defaultView.PanelUI.show().then(function() {
+              // The DOM node might not exist yet if the panel wasn't opened before.
+              pocketWidget = doc.getElementById("pocket-button");
+              pocketWidget.doCommand();
+            });
+          } else {
+            pocketWidget.doCommand();
+          }
+        }
+        break;
+      }
 
       case "Reader:ArticleGet":
         this._getArticle(message.data.url, message.target).then((article) => {
@@ -54,16 +91,44 @@ let ReaderParent = {
         });
         break;
 
+      case "Reader:PocketEnabledGet": {
+        let pocketPlacement = CustomizableUI.getPlacementOfWidget("pocket-button");
+        let isPocketEnabled = pocketPlacement && pocketPlacement.area;
+        message.target.messageManager.sendAsyncMessage("Reader:PocketEnabledData", { enabled: !!isPocketEnabled});
+        break;
+      }
+
       case "Reader:FaviconRequest": {
-        // XXX: To implement.
+        if (message.target.messageManager) {
+          let faviconUrl = PlacesUtils.promiseFaviconLinkUrl(message.data.url);
+          faviconUrl.then(function onResolution(favicon) {
+            message.target.messageManager.sendAsyncMessage("Reader:FaviconReturn", {
+              url: message.data.url,
+              faviconUrl: favicon.path.replace(/^favicon:/, "")
+            })
+          },
+          function onRejection(reason) {
+            Cu.reportError("Error requesting favicon URL for about:reader content: " + reason);
+          }).catch(Cu.reportError);
+        }
         break;
       }
       case "Reader:ListStatusRequest":
-        // XXX: To implement.
+        ReadingList.hasItemForURL(message.data.url).then(inList => {
+          let mm = message.target.messageManager
+          // Make sure the target browser is still alive before trying to send data back.
+          if (mm) {
+            mm.sendAsyncMessage("Reader:ListStatusData",
+                                { inReadingList: inList, url: message.data.url });
+          }
+        });
         break;
 
       case "Reader:RemoveFromList":
-        // XXX: To implement.
+        // We need to get the "real" item to delete it.
+        ReadingList.itemForURL(message.data.url).then(item => {
+          ReadingList.deleteItem(item)
+        });
         break;
 
       case "Reader:Share":
@@ -104,66 +169,87 @@ let ReaderParent = {
     }
 
     let button = win.document.getElementById("reader-mode-button");
+    let command = win.document.getElementById("View:ReaderView");
     if (browser.currentURI.spec.startsWith("about:reader")) {
       button.setAttribute("readeractive", true);
       button.hidden = false;
-      button.setAttribute("tooltiptext", gStringBundle.GetStringFromName("readerView.exit"));
+      let closeText = gStringBundle.GetStringFromName("readerView.close");
+      button.setAttribute("tooltiptext", closeText);
+      command.setAttribute("label", closeText);
+      command.setAttribute("hidden", false);
     } else {
       button.removeAttribute("readeractive");
-      button.setAttribute("tooltiptext", gStringBundle.GetStringFromName("readerView.enter"));
       button.hidden = !browser.isArticle;
+      let enterText = gStringBundle.GetStringFromName("readerView.enter");
+      button.setAttribute("tooltiptext", enterText);
+      command.setAttribute("label", enterText);
+      command.setAttribute("hidden", !browser.isArticle);
+    }
+
+    let currentUriHost = browser.currentURI && browser.currentURI.asciiHost;
+    if (browser.isArticle &&
+        !Services.prefs.getBoolPref("browser.reader.detectedFirstArticle") &&
+        currentUriHost && !currentUriHost.endsWith("mozilla.org")) {
+      this.showReaderModeInfoPanel(browser);
+      Services.prefs.setBoolPref("browser.reader.detectedFirstArticle", true);
+      this._readerModeInfoPanelOpen = true;
+    } else if (this._readerModeInfoPanelOpen) {
+      if (UITour.isInfoOnTarget(win, "readerMode-urlBar")) {
+        UITour.hideInfo(win);
+      }
+      this._readerModeInfoPanelOpen = false;
     }
   },
 
-  handleReaderButtonEvent: function(event) {
-    event.stopPropagation();
-
-    if ((event.type == "click" && event.button != 0) ||
-        (event.type == "keypress" && event.charCode != Ci.nsIDOMKeyEvent.DOM_VK_SPACE &&
-         event.keyCode != Ci.nsIDOMKeyEvent.DOM_VK_RETURN)) {
-      return; // Left click, space or enter only
+  buttonClick: function(event) {
+    if (event.button != 0) {
+      return;
     }
+    this.toggleReaderMode(event);
+  },
 
+  toggleReaderMode: function(event) {
     let win = event.target.ownerDocument.defaultView;
-    let url = win.gBrowser.selectedBrowser.currentURI.spec;
+    let browser = win.gBrowser.selectedBrowser;
+    let url = browser.currentURI.spec;
 
     if (url.startsWith("about:reader")) {
-      let originalURL = this._getOriginalUrl(url);
+      let originalURL = ReaderMode.getOriginalUrl(url);
       if (!originalURL) {
         Cu.reportError("Error finding original URL for about:reader URL: " + url);
       } else {
-        win.openUILinkIn(originalURL, "current");
+        win.openUILinkIn(originalURL, "current", {"allowPinnedTabHostChange": true});
       }
     } else {
-      win.openUILinkIn("about:reader?url=" + encodeURIComponent(url), "current");
+      browser.messageManager.sendAsyncMessage("Reader:ParseDocument", { url: url });
     }
-  },
-
-  parseReaderUrl: function(url) {
-    if (!url.startsWith("about:reader?")) {
-      return null;
-    }
-    return this._getOriginalUrl(url);
   },
 
   /**
-   * Returns original URL from an about:reader URL.
+   * Shows an info panel from the UITour for Reader Mode.
    *
-   * @param url An about:reader URL.
-   * @return The original URL for the article, or null if we did not find
-   *         a properly formatted about:reader URL.
+   * @param browser The <browser> that the tour should be started for.
    */
-  _getOriginalUrl: function(url) {
-    let searchParams = new URLSearchParams(url.substring("about:reader?".length));
-    if (!searchParams.has("url")) {
-      return null;
-    }
-    return decodeURIComponent(searchParams.get("url"));
+  showReaderModeInfoPanel(browser) {
+    let win = browser.ownerDocument.defaultView;
+    let targetPromise = UITour.getTarget(win, "readerMode-urlBar");
+    targetPromise.then(target => {
+      let browserBundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
+      let icon = "chrome://browser/skin/";
+      if (win.devicePixelRatio > 1) {
+        icon += "reader-tour@2x.png";
+      } else {
+        icon += "reader-tour.png";
+      }
+      UITour.showInfo(win, browser.messageManager, target,
+                      browserBundle.GetStringFromName("readingList.promo.firstUse.readerView.title"),
+                      browserBundle.GetStringFromName("readingList.promo.firstUse.readerView.body"),
+                      icon);
+    });
   },
 
   /**
-   * Gets an article for a given URL. This method will download and parse a document
-   * if it does not find the article in the tab data or the cache.
+   * Gets an article for a given URL. This method will download and parse a document.
    *
    * @param url The article URL.
    * @param browser The browser where the article is currently loaded.
@@ -171,33 +257,6 @@ let ReaderParent = {
    * @resolves JS object representing the article, or null if no article is found.
    */
   _getArticle: Task.async(function* (url, browser) {
-    // First, look for a saved article.
-    let article = yield this._getSavedArticle(browser);
-    if (article && article.url == url) {
-      return article;
-    }
-
-    // Next, try to find a parsed article in the cache.
-    let uri = Services.io.newURI(url, null, null);
-    article = yield ReaderMode.getArticleFromCache(uri);
-    if (article) {
-      return article;
-    }
-
-    // Article hasn't been found in the cache, we need to
-    // download the page and parse the article out of it.
     return yield ReaderMode.downloadAndParseDocument(url);
-  }),
-
-  _getSavedArticle: function(browser) {
-    return new Promise((resolve, reject) => {
-      let mm = browser.messageManager;
-      let listener = (message) => {
-        mm.removeMessageListener("Reader:SavedArticleData", listener);
-        resolve(message.data.article);
-      };
-      mm.addMessageListener("Reader:SavedArticleData", listener);
-      mm.sendAsyncMessage("Reader:SavedArticleGet");
-    });
-  }
+  })
 };

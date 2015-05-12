@@ -16,6 +16,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "Notifications", "resource://gre/modules
 XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Services", "resource://gre/modules/Services.jsm");
 
+XPCOMUtils.defineLazyServiceGetter(this, "ParentalControls",
+  "@mozilla.org/parental-controls-service;1", "nsIParentalControlsService");
+
 let Log = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.i.bind(null, "DownloadNotifications"); 
 
 XPCOMUtils.defineLazyGetter(this, "strings",
@@ -55,6 +58,13 @@ var DownloadNotifications = {
     // We still add notifications for canceled downloads in case the
     // user decides to retry the download.
     if (download.succeeded && !this._viewAdded) {
+      return;
+    }
+
+    if (!ParentalControls.isAllowed(ParentalControls.DOWNLOAD)) {
+      download.cancel().catch(Cu.reportError);
+      download.removePartialData().catch(Cu.reportError);
+      window.NativeWindow.toast.show(strings.GetStringFromName("downloads.disabledInGuest"), "long");
       return;
     }
 
@@ -218,6 +228,12 @@ DownloadNotification.prototype = {
 
     if (this._show) {
       if (!this.id) {
+        this.id = Notifications.create(this.options);
+      } else if (!this.options.ongoing) {
+        // We need to explictly cancel ongoing notifications,
+        // since updating them to be non-ongoing doesn't seem
+        // to work. See bug 1130834.
+        Notifications.cancel(this.id);
         this.id = Notifications.create(this.options);
       } else {
         Notifications.update(this.id, this.options);

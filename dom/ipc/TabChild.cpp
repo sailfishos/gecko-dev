@@ -117,7 +117,7 @@ static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 typedef nsDataHashtable<nsUint64HashKey, TabChild*> TabChildMap;
 static TabChildMap* sTabChildren;
 
-class TabChild::DelayedFireContextMenuEvent MOZ_FINAL : public nsITimerCallback
+class TabChild::DelayedFireContextMenuEvent final : public nsITimerCallback
 {
 public:
   NS_DECL_ISUPPORTS
@@ -127,7 +127,7 @@ public:
   {
   }
 
-  NS_IMETHODIMP Notify(nsITimer*) MOZ_OVERRIDE
+  NS_IMETHODIMP Notify(nsITimer*) override
   {
     mTabChild->FireContextMenuEvent();
     return NS_OK;
@@ -664,7 +664,7 @@ private:
     }
 };
 
-class TabChild::DelayedDeleteRunnable MOZ_FINAL
+class TabChild::DelayedDeleteRunnable final
   : public nsRunnable
 {
     nsRefPtr<TabChild> mTabChild;
@@ -690,10 +690,7 @@ private:
         MOZ_ASSERT(NS_IsMainThread());
         MOZ_ASSERT(mTabChild);
 
-        // Check in case ActorDestroy was called after RecvDestroy message.
-        if (mTabChild->IPCOpen()) {
-            unused << PBrowserChild::Send__delete__(mTabChild);
-        }
+        unused << PBrowserChild::Send__delete__(mTabChild);
 
         mTabChild = nullptr;
         return NS_OK;
@@ -809,7 +806,7 @@ public:
     : mTabChild(do_GetWeakReference(static_cast<nsITabChild*>(aTabChild)))
   {}
 
-  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const MOZ_OVERRIDE {
+  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const override {
     if (nsCOMPtr<nsITabChild> tabChild = do_QueryReferent(mTabChild)) {
       static_cast<TabChild*>(tabChild.get())->SendSetTargetAPZC(aInputBlockId, aTargets);
     }
@@ -825,7 +822,7 @@ public:
     : mTabChild(do_GetWeakReference(static_cast<nsITabChild*>(aTabChild)))
   {}
 
-  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const MOZ_OVERRIDE {
+  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const override {
     if (nsCOMPtr<nsITabChild> tabChild = do_QueryReferent(mTabChild)) {
       static_cast<TabChild*>(tabChild.get())->SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
     }
@@ -859,7 +856,6 @@ TabChild::TabChild(nsIContentChild* aManager,
   , mUniqueId(aTabId)
   , mDPI(0)
   , mDefaultScale(0)
-  , mIPCOpen(true)
   , mParentIsActive(false)
 {
   // preloaded TabChild should not be added to child map
@@ -1609,8 +1605,6 @@ TabChild::DestroyWindow()
 void
 TabChild::ActorDestroy(ActorDestroyReason why)
 {
-  mIPCOpen = false;
-
   DestroyWindow();
 
   if (mTabChildGlobal) {

@@ -37,9 +37,16 @@ XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
                                   "resource:///modules/ContentSearch.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AboutHome",
                                   "resource:///modules/AboutHome.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Log",
+                                  "resource://gre/modules/Log.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "Favicons",
+                                   "@mozilla.org/browser/favicon-service;1",
+                                   "mozIAsyncFavicons");
 XPCOMUtils.defineLazyServiceGetter(this, "gDNSService",
                                    "@mozilla.org/network/dns-service;1",
                                    "nsIDNSService");
+XPCOMUtils.defineLazyModuleGetter(this, "Pocket",
+                                  "resource:///modules/Pocket.jsm");
 
 const nsIWebNavigation = Ci.nsIWebNavigation;
 
@@ -202,6 +209,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "CastingApps",
 
 XPCOMUtils.defineLazyModuleGetter(this, "SimpleServiceDiscovery",
   "resource://gre/modules/SimpleServiceDiscovery.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+  "resource://gre/modules/ReaderMode.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
   "resource:///modules/ReaderParent.jsm");
@@ -822,10 +832,16 @@ function gKeywordURIFixup({ target: browser, data: fixupInfo }) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
-function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
+function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
+  let flags = params.flags || 0;
+  let referrer = params.referrerURI;
+  let referrerPolicy = ('referrerPolicy' in params ? params.referrerPolicy :
+                        Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT);
+  let charset = params.charset;
+  let postdata = params.postData;
 
   if (!(flags & browser.webNavigation.LOAD_FLAGS_FROM_EXTERNAL)) {
     browser.userTypedClear++;
@@ -837,12 +853,15 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
                           !E10SUtils.canLoadURIInProcess(uri, process);
   try {
     if (!mustChangeProcess) {
-      browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
+      browser.webNavigation.loadURIWithOptions(uri, flags,
+                                               referrer, referrerPolicy,
+                                               postdata, null, null);
     } else {
       LoadInOtherProcess(browser, {
         uri: uri,
         flags: flags,
         referrer: referrer ? referrer.spec : null,
+        referrerPolicy: referrerPolicy,
       });
     }
   } catch (e) {
@@ -851,7 +870,8 @@ function _loadURIWithFlags(browser, uri, flags, referrer, charset, postdata) {
     // This might be necessary if SessionStore wasn't initialized yet i.e.
     // when the homepage is a non-remote page.
     gBrowser.updateBrowserRemotenessByURL(browser, uri);
-    browser.webNavigation.loadURI(uri, flags, referrer, postdata, null);
+    browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+                                             postdata, null, null);
   } finally {
     if (browser.userTypedClear) {
       browser.userTypedClear--;
@@ -1171,12 +1191,23 @@ var gBrowserInit = {
           Cu.reportError(e);
         }
       }
-      // window.arguments[2]: referrer (nsIURI)
+      // window.arguments[2]: referrer (nsIURI | string)
       //                 [3]: postData (nsIInputStream)
       //                 [4]: allowThirdPartyFixup (bool)
+      //                 [5]: referrerPolicy (int)
       else if (window.arguments.length >= 3) {
-        loadURI(uriToLoad, window.arguments[2], window.arguments[3] || null,
-                window.arguments[4] || false);
+        let referrerURI = window.arguments[2];
+        if (typeof(referrerURI) == "string") {
+          try {
+            referrerURI = makeURI(referrerURI);
+          } catch (e) {
+            referrerURI = null;
+          }
+        }
+        let referrerPolicy = (window.arguments[5] != undefined ?
+            window.arguments[5] : Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT);
+        loadURI(uriToLoad, referrerURI, window.arguments[3] || null,
+                window.arguments[4] || false, referrerPolicy);
         window.focus();
       }
       // Note: loadOneOrMoreURIs *must not* be called if window.arguments.length >= 3.
@@ -1205,6 +1236,7 @@ var gBrowserInit = {
 #ifdef E10S_TESTING_ONLY
     gRemoteTabsUI.init();
 #endif
+    ReadingListUI.init();
 
     // Initialize the full zoom setting.
     // We do this before the session restore service gets initialized so we can
@@ -1374,7 +1406,6 @@ var gBrowserInit = {
 
       SocialUI.init();
       TabView.init();
-      ReadingListUI.init();
 
       // Telemetry for master-password - we do this after 5 seconds as it
       // can cause IO if NSS/PSM has not already initialized.
@@ -2060,10 +2091,11 @@ function BrowserTryToCloseWindow()
     window.close();     // WindowIsClosing does all the necessary checks
 }
 
-function loadURI(uri, referrer, postData, allowThirdPartyFixup) {
+function loadURI(uri, referrer, postData, allowThirdPartyFixup, referrerPolicy) {
   try {
     openLinkIn(uri, "current",
                { referrerURI: referrer,
+                 referrerPolicy: referrerPolicy,
                  postData: postData,
                  allowThirdPartyFixup: allowThirdPartyFixup });
   } catch (e) {}
@@ -2416,6 +2448,7 @@ function UpdatePageProxyState()
 function SetPageProxyState(aState)
 {
   BookmarkingUI.onPageProxyStateChanged(aState);
+  ReadingListUI.onPageProxyStateChanged(aState);
 
   if (!gURLBar)
     return;
@@ -2503,11 +2536,7 @@ let gMenuButtonUpdateBadge = {
         // If the update is successfully applied, or if the updater has fallen back
         // to non-staged updates, add a badge to the hamburger menu to indicate an
         // update will be applied once the browser restarts.
-        let badge = document.getAnonymousElementByAttribute(PanelUI.menuButton,
-                                                            "class",
-                                                            "toolbarbutton-badge");
-        badge.style.backgroundColor = '#74BF43';
-        PanelUI.menuButton.setAttribute("badge", "\u2B06");
+        PanelUI.menuButton.setAttribute("update-status", "succeeded");
 
         let brandBundle = document.getElementById("bundle_brand");
         let brandShortName = brandBundle.getString("brandShortName");
@@ -2525,6 +2554,7 @@ let gMenuButtonUpdateBadge = {
       case STATE_FAILED:
         // Background update has failed, let's show the UI responsible for
         // prompting the user to update manually.
+        PanelUI.menuButton.setAttribute("update-status", "failed");
         PanelUI.menuButton.setAttribute("badge", "!");
 
         stringId = "appmenu.updateFailed.description";
@@ -2944,7 +2974,10 @@ function BrowserFullScreen()
 }
 
 function mirrorShow(popup) {
-  let services = CastingApps.getServicesForMirroring();
+  let services = [];
+  if (Services.prefs.getBoolPref("browser.casting.enabled")) {
+    services = CastingApps.getServicesForMirroring();
+  }
   popup.ownerDocument.getElementById("menu_mirrorTabCmd").hidden = !services.length;
 }
 
@@ -2954,8 +2987,11 @@ function mirrorMenuItemClicked(event) {
 }
 
 function populateMirrorTabMenu(popup) {
-  let videoEl = this.target;
   popup.innerHTML = null;
+  if (!Services.prefs.getBoolPref("browser.casting.enabled")) {
+    return;
+  }
+  let videoEl = this.target;
   let doc = popup.ownerDocument;
   let services = CastingApps.getServicesForMirroring();
   services.forEach(service => {
@@ -4156,6 +4192,8 @@ var XULBrowserWindow = {
 
         BookmarkingUI.onLocationChange();
         SocialUI.updateState(location);
+        UITour.onLocationChange(location);
+        Pocket.onLocationChange(browser, aLocationURI);
       }
 
       // Utility functions for disabling find
@@ -4511,8 +4549,12 @@ var TabsProgressListener = {
                               aFlags) {
     // Filter out location changes caused by anchor navigation
     // or history.push/pop/replaceState.
-    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)
+    if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
+      // Reader mode actually cares about these:
+      let mm = gBrowser.selectedBrowser.messageManager;
+      mm.sendAsyncMessage("Reader:PushState");
       return;
+    }
 
     // Filter out location changes in sub documents.
     if (!aWebProgress.isTopLevel)
@@ -4583,7 +4625,8 @@ function nsBrowserAccess() { }
 nsBrowserAccess.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIBrowserDOMWindow, Ci.nsISupports]),
 
-  _openURIInNewTab: function(aURI, aReferrer, aIsPrivate, aIsExternal, aForceNotRemote=false) {
+  _openURIInNewTab: function(aURI, aReferrer, aReferrerPolicy, aIsPrivate,
+                             aIsExternal, aForceNotRemote=false) {
     let win, needToFocusWin;
 
     // try the current window.  if we're in a popup, fall back on the most recent browser window
@@ -4609,6 +4652,7 @@ nsBrowserAccess.prototype = {
 
     let tab = win.gBrowser.loadOneTab(aURI ? aURI.spec : "about:blank", {
                                       referrerURI: aReferrer,
+                                      referrerPolicy: aReferrerPolicy,
                                       fromExternal: aIsExternal,
                                       inBackground: loadInBackground,
                                       forceNotRemote: aForceNotRemote});
@@ -4650,7 +4694,14 @@ nsBrowserAccess.prototype = {
       else
         aWhere = gPrefService.getIntPref("browser.link.open_newwindow");
     }
+
+    let referrer = aOpener ? makeURI(aOpener.location.href) : null;
+    let referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT;
+    if (aOpener && aOpener.document) {
+      referrerPolicy = aOpener.document.referrerPolicy;
+    }
     let isPrivate = PrivateBrowsingUtils.isWindowPrivate(aOpener || window);
+
     switch (aWhere) {
       case Ci.nsIBrowserDOMWindow.OPEN_NEWWINDOW :
         // FIXME: Bug 408379. So how come this doesn't send the
@@ -4665,7 +4716,6 @@ nsBrowserAccess.prototype = {
         newWindow = openDialog(getBrowserURL(), "_blank", features, url, null, null, null);
         break;
       case Ci.nsIBrowserDOMWindow.OPEN_NEWTAB :
-        let referrer = aOpener ? makeURI(aOpener.location.href) : null;
         // If we have an opener, that means that the caller is expecting access
         // to the nsIDOMWindow of the opened tab right away. For e10s windows,
         // this means forcing the newly opened browser to be non-remote so that
@@ -4673,18 +4723,23 @@ nsBrowserAccess.prototype = {
         // will do the job of shuttling off the newly opened browser to run in
         // the right process once it starts loading a URI.
         let forceNotRemote = !!aOpener;
-        let browser = this._openURIInNewTab(aURI, referrer, isPrivate, isExternal, forceNotRemote);
+        let browser = this._openURIInNewTab(aURI, referrer, referrerPolicy,
+                                            isPrivate, isExternal,
+                                            forceNotRemote);
         if (browser)
           newWindow = browser.contentWindow;
         break;
       default : // OPEN_CURRENTWINDOW or an illegal value
         newWindow = content;
         if (aURI) {
-          let referrer = aOpener ? makeURI(aOpener.location.href) : null;
           let loadflags = isExternal ?
                             Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL :
                             Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
-          gBrowser.loadURIWithFlags(aURI.spec, loadflags, referrer, null, null);
+          gBrowser.loadURIWithFlags(aURI.spec, {
+                                    flags: loadflags,
+                                    referrerURI: referrer,
+                                    referrerPolicy: referrerPolicy,
+                                    });
         }
         if (!gPrefService.getBoolPref("browser.tabs.loadDivertedInBackground"))
           window.focus();
@@ -4699,7 +4754,9 @@ nsBrowserAccess.prototype = {
     }
 
     var isExternal = (aContext == Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL);
-    let browser = this._openURIInNewTab(aURI, aParams.referrer, aParams.isPrivate, isExternal);
+    let browser = this._openURIInNewTab(aURI, aParams.referrer,
+                                        aParams.referrerPolicy,
+                                        aParams.isPrivate, isExternal);
     if (browser)
       return browser.QueryInterface(Ci.nsIFrameLoaderOwner);
 
@@ -5513,6 +5570,7 @@ function handleLinkClick(event, href, linkNode) {
   let params = { charset: doc.characterSet,
                  allowMixedContent: persistAllowMixedContentInChildTab,
                  referrerURI: referrerURI,
+                 referrerPolicy: doc.referrerPolicy,
                  noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
   openLinkIn(href, where, params);
   event.preventDefault();

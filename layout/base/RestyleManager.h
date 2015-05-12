@@ -33,7 +33,7 @@ namespace dom {
   class Element;
 } // namespace dom
 
-class RestyleManager MOZ_FINAL
+class RestyleManager final
 {
 public:
   friend class ::nsRefreshDriver;
@@ -167,7 +167,7 @@ public:
    */
   typedef nsRefPtrHashtable<nsRefPtrHashKey<nsIContent>, nsStyleContext>
             ReframingStyleContextTable;
-  class MOZ_STACK_CLASS ReframingStyleContexts MOZ_FINAL {
+  class MOZ_STACK_CLASS ReframingStyleContexts final {
   public:
     /**
      * Construct a ReframingStyleContexts object.  The caller must
@@ -228,12 +228,13 @@ public:
   /**
    * Try starting a transition for an element or a ::before or ::after
    * pseudo-element, given an old and new style context.  This may
-   * change the new style context if a transition is started.
+   * change the new style context if a transition is started.  Returns
+   * true iff it does change aNewStyleContext.
    *
    * For the pseudo-elements, aContent must be the anonymous content
    * that we're creating for that pseudo-element, not the real element.
    */
-  static void
+  static bool
   TryStartingTransition(nsPresContext* aPresContext, nsIContent* aContent,
                         nsStyleContext* aOldStyleContext,
                         nsRefPtr<nsStyleContext>* aNewStyleContext /* inout */);
@@ -494,7 +495,7 @@ private:
  * An ElementRestyler is created for *each* element in a subtree that we
  * recompute styles for.
  */
-class ElementRestyler MOZ_FINAL
+class ElementRestyler final
 {
 public:
   typedef mozilla::dom::Element Element;
@@ -743,7 +744,7 @@ private:
  * (and further ancestors) may be display:contents nodes which have
  * not yet been pushed onto TreeMatchContext.
  */
-class MOZ_STACK_CLASS AutoDisplayContentsAncestorPusher MOZ_FINAL
+class MOZ_STACK_CLASS AutoDisplayContentsAncestorPusher final
 {
  public:
   typedef mozilla::dom::Element Element;

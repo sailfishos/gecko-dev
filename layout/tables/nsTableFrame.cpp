@@ -1108,12 +1108,12 @@ public:
   }
 #endif
 
-  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE;
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
   virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                          const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) MOZ_OVERRIDE;
+                                         nsRegion *aInvalidRegion) override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
+                     nsRenderingContext* aCtx) override;
   NS_DISPLAY_DECL_NAME("TableBorderBackground", TYPE_TABLE_BORDER_BACKGROUND)
 };
 
@@ -2233,6 +2233,7 @@ nsTableFrame::AppendFrames(ChildListID     aListID,
       InsertColGroups(startColIndex,
                       nsFrameList::Slice(mColGroups, f, f->GetNextSibling()));
     } else if (IsRowGroup(display->mDisplay)) {
+      DrainSelfOverflowList(); // ensure the last frame is in mFrames
       // Append the new row group frame to the sibling chain
       mFrames.AppendFrame(nullptr, f);
 
@@ -2403,6 +2404,7 @@ nsTableFrame::HomogenousInsertFrames(ChildListID     aListID,
     InsertColGroups(startColIndex, newColgroups);
   } else if (IsRowGroup(display->mDisplay)) {
     NS_ASSERTION(aListID == kPrincipalList, "unexpected child list");
+    DrainSelfOverflowList(); // ensure aPrevFrame is in mFrames
     // Insert the frames in the sibling chain
     const nsFrameList::Slice& newRowGroups =
       mFrames.InsertFrames(nullptr, aPrevFrame, aFrameList);
@@ -4749,7 +4751,7 @@ public:
   explicit nsDelayedCalcBCBorders(nsIFrame* aFrame) :
     mFrame(aFrame) {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE {
+  NS_IMETHOD Run() override {
     if (mFrame) {
       nsTableFrame* tableFrame = static_cast <nsTableFrame*>(mFrame.GetFrame());
       if (tableFrame->NeedToCalcBCBorders()) {

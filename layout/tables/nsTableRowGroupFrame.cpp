@@ -147,12 +147,12 @@ public:
   }
 #endif
 
-  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE;
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
   virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                          const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) MOZ_OVERRIDE;
+                                         nsRegion *aInvalidRegion) override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
+                     nsRenderingContext* aCtx) override;
 
   NS_DISPLAY_DECL_NAME("TableRowGroupBackground", TYPE_TABLE_ROW_GROUP_BACKGROUND)
 };
@@ -1416,6 +1416,7 @@ nsTableRowGroupFrame::AppendFrames(ChildListID     aListID,
 {
   NS_ASSERTION(aListID == kPrincipalList, "unexpected child list");
 
+  DrainSelfOverflowList(); // ensure the last frame is in mFrames
   ClearRowCursor();
 
   // collect the new row frames in an array
@@ -1455,6 +1456,7 @@ nsTableRowGroupFrame::InsertFrames(ChildListID     aListID,
   NS_ASSERTION(!aPrevFrame || aPrevFrame->GetParent() == this,
                "inserting after sibling frame with different parent");
 
+  DrainSelfOverflowList(); // ensure aPrevFrame is in mFrames
   ClearRowCursor();
 
   // collect the new row frames in an array

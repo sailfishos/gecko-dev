@@ -191,7 +191,7 @@ GetDocumentFromWindow(nsIDOMWindow *aWindow)
 /* mozilla::UITimerCallback                                       */
 /******************************************************************/
 
-class UITimerCallback MOZ_FINAL : public nsITimerCallback
+class UITimerCallback final : public nsITimerCallback
 {
 public:
   UITimerCallback() : mPreviousCount(0) {}
@@ -2009,6 +2009,7 @@ EventStateManager::DoScrollZoom(nsIFrame* aTargetFrame,
       } else {
         ChangeTextSize(change);
       }
+      EnsureDocument(mPresContext);
       nsContentUtils::DispatchChromeEvent(mDocument, static_cast<nsIDocument*>(mDocument),
                                           NS_LITERAL_STRING("ZoomChangeUsingMouseWheel"),
                                           true, true);

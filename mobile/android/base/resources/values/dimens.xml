@@ -5,6 +5,8 @@
 
 <resources>
 
+    <dimen name="button_corner_radius">3dp</dimen>
+
     <dimen name="autocomplete_min_width">200dp</dimen>
     <dimen name="autocomplete_row_height">32dp</dimen>
 
@@ -96,6 +98,8 @@
     <dimen name="doorhanger_spinner_textsize">9sp</dimen>
     <dimen name="doorhanger_padding">15dp</dimen>
 
+    <dimen name="context_menu_item_horizontal_padding">10dp</dimen>
+
     <dimen name="flow_layout_spacing">6dp</dimen>
     <dimen name="menu_item_icon">21dp</dimen>
     <dimen name="menu_item_textsize">16sp</dimen>
@@ -177,6 +181,7 @@
     <dimen name="arrow_popup_arrow_width">40dip</dimen>
     <dimen name="arrow_popup_arrow_height">12dip</dimen>
     <dimen name="arrow_popup_arrow_offset">8dp</dimen>
+    <dimen name="arrow_popup_container_width">@dimen/custom_match_parent</dimen>
 
     <!-- TabHistoryItemRow dimensions. -->
     <dimen name="tab_history_timeline_width">3dp</dimen>
@@ -203,5 +208,13 @@
     <dimen name="find_in_page_status_margin_right">10dip</dimen>
     <dimen name="find_in_page_matchcase_padding">10dip</dimen>
     <dimen name="find_in_page_control_margin_top">2dip</dimen>
+
+    <!-- The share icon asset has no padding while the other action bar items do
+         so we dynamically add padding to compensate. To be removed in bug 1122752. -->
+    <dimen name="ab_share_padding">12dp</dimen>
+
+    <!-- Use android attr in dimens, via http://stackoverflow.com/a/19043952 -->
+    <dimen name="custom_match_parent">-2px</dimen>
+    <dimen name="custom_wrap_content">-1px</dimen>
 
 </resources>

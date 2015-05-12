@@ -39,7 +39,8 @@ ParseInteger(const nsAString& aString, int32_t& aInt)
   return !(parseResult &
            ( nsContentUtils::eParseHTMLInteger_Error |
              nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput |
-             nsContentUtils::eParseHTMLInteger_IsPercent ));
+             nsContentUtils::eParseHTMLInteger_IsPercent |
+             nsContentUtils::eParseHTMLInteger_NonStandard ));
 }
 
 ResponsiveImageSelector::ResponsiveImageSelector(nsIContent *aContent)
@@ -103,20 +104,18 @@ ResponsiveImageSelector::SetCandidatesFromSourceSet(const nsAString & aSrcSet)
     // Find end of url
     for (;iter != end && !nsContentUtils::IsHTMLWhitespace(*iter); ++iter);
 
-    urlEnd = iter;
-
     // Omit trailing commas from URL.
     // Multiple commas are a non-fatal error.
-    while (urlEnd != url) {
-      if (*(--urlEnd) != char16_t(',')) {
-        urlEnd++;
+    while (iter != url) {
+      if (*(--iter) != char16_t(',')) {
+        iter++;
         break;
       }
     }
 
-    const nsDependentSubstring &urlStr = Substring(url, urlEnd);
+    const nsDependentSubstring &urlStr = Substring(url, iter);
 
-    MOZ_ASSERT(url != urlEnd, "Shouldn't have empty URL at this point");
+    MOZ_ASSERT(url != iter, "Shouldn't have empty URL at this point");
 
     ResponsiveImageCandidate candidate;
     if (candidate.ConsumeDescriptors(iter, end)) {
@@ -622,11 +621,13 @@ ResponsiveImageCandidate::ConsumeDescriptors(nsAString::const_iterator& aIter,
         // End of current descriptor, consume it, skip spaces
         // ("After descriptor" state in spec) before continuing
         descriptors.AddDescriptor(Substring(currentDescriptor, iter));
-        for (; iter != end && *iter == char16_t(' '); ++iter);
+        for (; iter != end && nsContentUtils::IsHTMLWhitespace(*iter); ++iter);
         if (iter == end) {
           break;
         }
         currentDescriptor = iter;
+        // Leave one whitespace so the loop advances to this position next iteration
+        iter--;
       } else if (*iter == char16_t('(')) {
         inParens = true;
       }

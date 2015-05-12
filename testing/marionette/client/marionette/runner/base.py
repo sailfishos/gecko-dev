@@ -17,7 +17,7 @@ import unittest
 import xml.dom.minidom as dom
 
 from manifestparser import TestManifest
-from marionette import Marionette
+from marionette_driver.marionette import Marionette
 from mixins.b2g import B2GTestResultMixin, get_b2g_pid, get_dm
 from mozhttpd import MozHttpd
 from mozlog.structured.structuredlog import get_default_logger
@@ -535,7 +535,7 @@ class BaseMarionetteTestRunner(object):
         self.result_callbacks = result_callbacks if result_callbacks is not None else []
         self._adb_host = adb_host
         self._adb_port = adb_port
-        self.prefs = prefs
+        self.prefs = prefs or {}
 
         def gather_debug(test, status):
             rv = {}

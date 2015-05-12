@@ -80,17 +80,17 @@ public:
 
   void CompositorRecycle();
 
-  virtual bool RecvClientRecycle() MOZ_OVERRIDE;
+  virtual bool RecvClientRecycle() override;
 
-  virtual bool RecvClearTextureHostSync() MOZ_OVERRIDE;
+  virtual bool RecvClearTextureHostSync() override;
 
-  virtual bool RecvRemoveTexture() MOZ_OVERRIDE;
+  virtual bool RecvRemoveTexture() override;
 
-  virtual bool RecvRecycleTexture(const TextureFlags& aTextureFlags) MOZ_OVERRIDE;
+  virtual bool RecvRecycleTexture(const TextureFlags& aTextureFlags) override;
 
   TextureHost* GetTextureHost() { return mTextureHost; }
 
-  void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
+  void ActorDestroy(ActorDestroyReason why) override;
 
   void ClearTextureHost();
 
@@ -360,7 +360,14 @@ BufferTextureHost::BufferTextureHost(gfx::SurfaceFormat aFormat,
 , mUpdateSerial(1)
 , mLocked(false)
 , mNeedsFullUpdate(false)
-{}
+{
+  if (aFlags & TextureFlags::COMPONENT_ALPHA) {
+    // One texture of a component alpha texture pair will start out all white.
+    // This hack allows us to easily make sure that white will be uploaded.
+    // See bug 1138934
+    mNeedsFullUpdate = true;
+  }
+}
 
 void
 BufferTextureHost::InitSize()
@@ -494,10 +501,8 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
     return false;
   }
   if (!mCompositor) {
-    NS_WARNING("Tried to upload without a compositor. Skipping texture upload...");
-    // If we are in this situation it means we should have called SetCompositor
-    // earlier. It is conceivable that on certain rare conditions with async-video
-    // we may end up here for the first frame, but this should not happen repeatedly.
+    // This can happen if we send textures to a compositable that isn't yet
+    // attached to a layer.
     return false;
   }
   if (mFormat == gfx::SurfaceFormat::UNKNOWN) {

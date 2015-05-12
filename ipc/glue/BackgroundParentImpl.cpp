@@ -46,7 +46,7 @@ AssertIsOnMainThread()
   MOZ_ASSERT(NS_IsMainThread());
 }
 
-class TestParent MOZ_FINAL : public mozilla::ipc::PBackgroundTestParent
+class TestParent final : public mozilla::ipc::PBackgroundTestParent
 {
   friend class mozilla::ipc::BackgroundParentImpl;
 
@@ -63,7 +63,7 @@ protected:
 
 public:
   virtual void
-  ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
+  ActorDestroy(ActorDestroyReason aWhy) override;
 };
 
 } // anonymous namespace
@@ -250,17 +250,18 @@ mozilla::dom::PBroadcastChannelParent*
 BackgroundParentImpl::AllocPBroadcastChannelParent(
                                             const PrincipalInfo& aPrincipalInfo,
                                             const nsString& aOrigin,
-                                            const nsString& aChannel)
+                                            const nsString& aChannel,
+                                            const bool& aPrivateBrowsing)
 {
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
 
-  return new BroadcastChannelParent(aOrigin, aChannel);
+  return new BroadcastChannelParent(aOrigin, aChannel, aPrivateBrowsing);
 }
 
 namespace {
 
-class CheckPrincipalRunnable MOZ_FINAL : public nsRunnable
+class CheckPrincipalRunnable final : public nsRunnable
 {
 public:
   CheckPrincipalRunnable(already_AddRefed<ContentParent> aParent,
@@ -323,7 +324,8 @@ BackgroundParentImpl::RecvPBroadcastChannelConstructor(
                                             PBroadcastChannelParent* actor,
                                             const PrincipalInfo& aPrincipalInfo,
                                             const nsString& aOrigin,
-                                            const nsString& aChannel)
+                                            const nsString& aChannel,
+                                            const bool& aPrivateBrowsing)
 {
   AssertIsInMainProcess();
   AssertIsOnBackgroundThread();
@@ -358,7 +360,7 @@ BackgroundParentImpl::DeallocPBroadcastChannelParent(
 
 namespace {
 
-class RegisterServiceWorkerCallback MOZ_FINAL : public nsRunnable
+class RegisterServiceWorkerCallback final : public nsRunnable
 {
 public:
   explicit RegisterServiceWorkerCallback(
@@ -387,7 +389,7 @@ private:
   ServiceWorkerRegistrationData mData;
 };
 
-class UnregisterServiceWorkerCallback MOZ_FINAL : public nsRunnable
+class UnregisterServiceWorkerCallback final : public nsRunnable
 {
 public:
   explicit UnregisterServiceWorkerCallback(const nsString& aScope)
@@ -415,7 +417,7 @@ private:
   nsString mScope;
 };
 
-class CheckPrincipalWithCallbackRunnable MOZ_FINAL : public nsRunnable
+class CheckPrincipalWithCallbackRunnable final : public nsRunnable
 {
 public:
   CheckPrincipalWithCallbackRunnable(already_AddRefed<ContentParent> aParent,

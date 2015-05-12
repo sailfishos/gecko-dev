@@ -23,6 +23,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "hookWindowCloseForPanelClose",
                                         "resource://gre/modules/MozSocialAPI.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
                                         "resource://gre/modules/PluralForm.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "UpdateChannel",
+                                        "resource://gre/modules/UpdateChannel.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITour",
                                         "resource:///modules/UITour.jsm");
 XPCOMUtils.defineLazyGetter(this, "appInfo", function() {
@@ -118,6 +120,15 @@ const cloneValueInto = function(value, targetWindow) {
 };
 
 /**
+ * Get the two-digit hexadecimal code for a byte
+ *
+ * @param {byte} charCode
+ */
+const toHexString = function(charCode) {
+  return ("0" + charCode.toString(16)).slice(-2);
+};
+
+/**
  * Inject any API containing _only_ function properties into the given window.
  *
  * @param {Object}       api          Object containing functions that need to
@@ -156,6 +167,7 @@ const injectObjectAPI = function(api, targetWindow) {
           lastParam = cloneValueInto(lastParam, api);
           return cloneValueInto(api[func](...params, lastParam), targetWindow);
         } catch (ex) {
+          MozLoopService.log.error(func + " error: ", ex, params, lastParam);
           return cloneValueInto(ex, targetWindow);
         }
       }
@@ -187,6 +199,7 @@ function injectLoopAPI(targetWindow) {
   let contactsAPI;
   let roomsAPI;
   let callsAPI;
+  let savedWindowListeners = new Map();
 
   let api = {
     /**
@@ -254,6 +267,73 @@ function injectLoopAPI(targetWindow) {
       enumerable: true,
       get: function() {
         return MozLoopService.locale;
+      }
+    },
+
+    /**
+     * Adds a listener to the most recent window for browser/tab sharing. The
+     * listener will be notified straight away of the current tab id, then every
+     * time there is a change of tab.
+     *
+     * Listener parameters:
+     * - {Object}  err      If there is a error this will be defined, null otherwise.
+     * - {Number} windowId The new windowId after a change of tab.
+     *
+     * @param {Function} listener The listener to handle the windowId changes.
+     */
+    addBrowserSharingListener: {
+      enumerable: true,
+      writable: true,
+      value: function(listener) {
+        let win = Services.wm.getMostRecentWindow("navigator:browser");
+        let browser = win && win.gBrowser.selectedTab.linkedBrowser;
+        if (!win || !browser) {
+          // This may happen when an undocked conversation window is the only
+          // window left.
+          let err = new Error("No tabs available to share.");
+          MozLoopService.log.error(err);
+          listener(cloneValueInto(err, targetWindow));
+          return;
+        }
+        if (browser.getAttribute("remote") == "true") {
+          // Tab sharing is not supported yet for e10s-enabled browsers. This will
+          // be fixed in bug 1137634.
+          let err = new Error("Tab sharing is not supported for e10s-enabled browsers");
+          MozLoopService.log.error(err);
+          listener(cloneValueInto(err, targetWindow));
+          return;
+        }
+
+        win.LoopUI.addBrowserSharingListener(listener);
+
+        savedWindowListeners.set(listener, Cu.getWeakReference(win));
+      }
+    },
+
+    /**
+     * Removes a listener that was previously added.
+     *
+     * @param {Function} listener The listener to handle the windowId changes.
+     */
+    removeBrowserSharingListener: {
+      enumerable: true,
+      writable: true,
+      value: function(listener) {
+        if (!savedWindowListeners.has(listener)) {
+          return;
+        }
+
+        let win = savedWindowListeners.get(listener).get();
+
+        // Remove the element, regardless of if the window exists or not so
+        // that we clean the map.
+        savedWindowListeners.delete(listener);
+
+        if (!win) {
+          return;
+        }
+
+        win.LoopUI.removeBrowserSharingListener(listener);
       }
     },
 
@@ -555,6 +635,13 @@ function injectLoopAPI(targetWindow) {
       }
     },
 
+    SHARING_STATE_CHANGE: {
+      enumerable: true,
+      get: function() {
+        return Cu.cloneInto(SHARING_STATE_CHANGE, targetWindow);
+      }
+    },
+
     fxAEnabled: {
       enumerable: true,
       get: function() {
@@ -601,6 +688,19 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
+     * Opens a URL in a new tab in the browser.
+     *
+     * @param {String} url The new url to open
+     */
+    openURL: {
+      enumerable: true,
+      writable: true,
+      value: function(url) {
+        return MozLoopService.openURL(url);
+      }
+    },
+
+    /**
      * Copies passed string onto the system clipboard.
      *
      * @param {String} str The string to copy
@@ -625,13 +725,11 @@ function injectLoopAPI(targetWindow) {
       enumerable: true,
       get: function() {
         if (!appVersionInfo) {
-          let defaults = Services.prefs.getDefaultBranch(null);
-
           // If the lazy getter explodes, we're probably loaded in xpcshell,
           // which doesn't have what we need, so log an error.
           try {
             appVersionInfo = Cu.cloneInto({
-              channel: defaults.getCharPref("app.update.channel"),
+              channel: UpdateChannel.get(),
               version: appInfo.version,
               OS: appInfo.OS
             }, targetWindow);
@@ -663,6 +761,20 @@ function injectLoopAPI(targetWindow) {
                         "?subject=" + encodeURIComponent(subject) +
                         "&body=" + encodeURIComponent(body);
         extProtocolSvc.loadURI(CommonUtils.makeURI(mailtoURL));
+      }
+    },
+
+    /**
+     * Adds a value to a telemetry histogram.
+     *
+     * @param  {string} histogramId Name of the telemetry histogram to update.
+     * @param  {string} value       Label of bucket to increment in the histogram.
+     */
+    telemetryAddKeyedValue: {
+      enumerable: true,
+      writable: true,
+      value: function(histogramId, value) {
+        Services.telemetry.getKeyedHistogramById(histogramId).add(value);
       }
     },
 
@@ -713,6 +825,43 @@ function injectLoopAPI(targetWindow) {
         };
 
         request.send();
+      }
+    },
+
+    /**
+     * Compose a URL pointing to the location of an avatar by email address.
+     * At the moment we use the Gravatar service to match email addresses with
+     * avatars. This might change in the future as avatars might come from another
+     * source.
+     *
+     * @param {String} emailAddress Users' email address
+     * @param {Number} size         Size of the avatar image to return in pixels.
+     *                              Optional. Default value: 40.
+     * @return the URL pointing to an avatar matching the provided email address.
+     */
+    getUserAvatar: {
+      enumerable: true,
+      writable: true,
+      value: function(emailAddress, size = 40) {
+        const kEmptyGif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        if (!emailAddress || !MozLoopService.getLoopPref("contacts.gravatars.show")) {
+          return kEmptyGif;
+        }
+
+        // Do the MD5 dance.
+        let hasher = Cc["@mozilla.org/security/hash;1"]
+                       .createInstance(Ci.nsICryptoHash);
+        hasher.init(Ci.nsICryptoHash.MD5);
+        let stringStream = Cc["@mozilla.org/io/string-input-stream;1"]
+                             .createInstance(Ci.nsIStringInputStream);
+        stringStream.data = emailAddress.trim().toLowerCase();
+        hasher.updateFromStream(stringStream, -1);
+        let hash = hasher.finish(false);
+        // Convert the binary hash data to a hex string.
+        let md5Email = [toHexString(hash.charCodeAt(i)) for (i in hash)].join("");
+
+        // Compose the Gravatar URL.
+        return "https://www.gravatar.com/avatar/" + md5Email + ".jpg?default=blank&s=" + size;
       }
     },
 

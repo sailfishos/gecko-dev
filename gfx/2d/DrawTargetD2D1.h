@@ -35,7 +35,7 @@ public:
   DrawTargetD2D1();
   virtual ~DrawTargetD2D1();
 
-  virtual DrawTargetType GetType() const MOZ_OVERRIDE { return DrawTargetType::HARDWARE_RASTER; }
+  virtual DrawTargetType GetType() const override { return DrawTargetType::HARDWARE_RASTER; }
   virtual BackendType GetBackendType() const { return BackendType::DIRECT2D1_1; }
   virtual TemporaryRef<SourceSurface> Snapshot();
   virtual IntSize GetSize() { return mSize; }
@@ -144,6 +144,10 @@ public:
     return stream.str();
   }
 
+  static uint32_t GetMaxSurfaceSize() {
+    return D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION;
+  }
+
   static uint64_t mVRAMUsageDT;
   static uint64_t mVRAMUsageSS;
 
@@ -171,9 +175,12 @@ private:
   // bounds to correctly reflect the total clip. This is in device space.
   TemporaryRef<ID2D1Geometry> GetClippedGeometry(IntRect *aClipBounds);
 
+  TemporaryRef<ID2D1Geometry> GetInverseClippedGeometry();
+
   bool GetDeviceSpaceClipRect(D2D1_RECT_F& aClipRect, bool& aIsPixelAligned);
 
   void PopAllClips();
+  void PushAllClips();
   void PushClipsToDC(ID2D1DeviceContext *aDC);
   void PopClipsFromDC(ID2D1DeviceContext *aDC);
 

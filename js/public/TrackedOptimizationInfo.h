@@ -18,6 +18,8 @@ namespace JS {
       "getprop inferred constant")                      \
     _(GetProp_Constant,                                 \
       "getprop constant")                               \
+    _(GetProp_StaticName,                               \
+      "getprop static name")                            \
     _(GetProp_TypedObject,                              \
       "getprop TypedObject")                            \
     _(GetProp_DefiniteSlot,                             \
@@ -263,13 +265,13 @@ enum class TrackedTypeSite : uint32_t {
     Count
 };
 
-extern JS_PUBLIC_API(const char *)
+extern JS_PUBLIC_API(const char*)
 TrackedStrategyString(TrackedStrategy strategy);
 
-extern JS_PUBLIC_API(const char *)
+extern JS_PUBLIC_API(const char*)
 TrackedOutcomeString(TrackedOutcome outcome);
 
-extern JS_PUBLIC_API(const char *)
+extern JS_PUBLIC_API(const char*)
 TrackedTypeSiteString(TrackedTypeSite site);
 
 struct ForEachTrackedOptimizationAttemptOp
@@ -278,8 +280,8 @@ struct ForEachTrackedOptimizationAttemptOp
 };
 
 JS_PUBLIC_API(void)
-ForEachTrackedOptimizationAttempt(JSRuntime *rt, void *addr,
-                                  ForEachTrackedOptimizationAttemptOp &op);
+ForEachTrackedOptimizationAttempt(JSRuntime* rt, void* addr,
+                                  ForEachTrackedOptimizationAttemptOp& op);
 
 struct ForEachTrackedOptimizationTypeInfoOp
 {
@@ -302,16 +304,16 @@ struct ForEachTrackedOptimizationTypeInfoOp
     // If the type is keyed by "constructor", "alloc site", or if the type
     // itself refers to a scripted function, the location and lineno
     // parameters will be respectively non-nullptr and non-0.
-    virtual void readType(const char *keyedBy, const char *name,
-                          const char *location, unsigned lineno) = 0;
+    virtual void readType(const char* keyedBy, const char* name,
+                          const char* location, unsigned lineno) = 0;
 
     // Called once per entry.
-    virtual void operator()(TrackedTypeSite site, const char *mirType) = 0;
+    virtual void operator()(TrackedTypeSite site, const char* mirType) = 0;
 };
 
 extern JS_PUBLIC_API(void)
-ForEachTrackedOptimizationTypeInfo(JSRuntime *rt, void *addr,
-                                   ForEachTrackedOptimizationTypeInfoOp &op);
+ForEachTrackedOptimizationTypeInfo(JSRuntime* rt, void* addr,
+                                   ForEachTrackedOptimizationTypeInfoOp& op);
 
 } // namespace JS
 

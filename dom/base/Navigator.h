@@ -19,7 +19,7 @@
 #include "nsString.h"
 #include "nsTArray.h"
 #ifdef MOZ_EME
-#include "mozilla/dom/MediaKeySystemAccess.h"
+#include "mozilla/dom/MediaKeySystemAccessManager.h"
 #endif
 
 class nsPluginArray;
@@ -108,7 +108,7 @@ class AudioChannelManager;
 #endif
 } // namespace system
 
-class Navigator MOZ_FINAL : public nsIDOMNavigator
+class Navigator final : public nsIDOMNavigator
                           , public nsIMozNavigatorNetwork
                           , public nsWrapperCache
 {
@@ -324,7 +324,7 @@ public:
     return GetWindow();
   }
 
-  virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE;
+  virtual JSObject* WrapObject(JSContext* cx) override;
 
   // GetWindowFromGlobal returns the inner window for this global, if
   // any, else null.
@@ -335,6 +335,8 @@ public:
   RequestMediaKeySystemAccess(const nsAString& aKeySystem,
                               const Optional<Sequence<MediaKeySystemOptions>>& aOptions,
                               ErrorResult& aRv);
+private:
+  nsRefPtr<MediaKeySystemAccessManager> mMediaKeySystemAccessManager;
 #endif
 
 private:

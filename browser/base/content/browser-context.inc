@@ -266,6 +266,10 @@
                 label="&savePageCmd.label;"
                 accesskey="&savePageCmd.accesskey2;"
                 oncommand="gContextMenu.savePageAs();"/>
+      <menuitem id="context-pocket"
+                label="&saveToPocketCmd.label;"
+                accesskey="&saveToPocketCmd.accesskey;"
+                oncommand="gContextMenu.saveToPocket();"/>
       <menu id="context-markpageMenu" label="&social.markpageMenu.label;"
             accesskey="&social.markpageMenu.accesskey;">
         <menupopup/>
@@ -421,4 +425,5 @@
                 hidden="true"
                 label="&emeLearnMoreContextMenu.label;"
                 accesskey="&emeLearnMoreContextMenu.accesskey;"
-                onclick="gContextMenu.drmLearnMore(event);"/>
+                oncommand="gContextMenu.drmLearnMore(event);"
+                onclick="checkForMiddleClick(this, event);"/>

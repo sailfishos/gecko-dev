@@ -27,14 +27,31 @@ loop.OTSdkDriver = (function() {
       this.dispatcher = options.dispatcher;
       this.sdk = options.sdk;
 
+      if (options.mozLoop) {
+        this.mozLoop = options.mozLoop;
+      }
+
       this.connections = {};
 
       this.dispatcher.register(this, [
         "setupStreamElements",
-        "setMute",
-        "startScreenShare",
-        "endScreenShare"
+        "setMute"
       ]);
+
+    /**
+     * XXX This is a workaround for desktop machines that do not have a
+     * camera installed. As we don't yet have device enumeration, when
+     * we do, this can be removed (bug 1138851), and the sdk should handle it.
+     */
+    if ("isDesktop" in options && options.isDesktop &&
+        !window.MediaStreamTrack.getSources) {
+      // If there's no getSources function, the sdk defines its own and caches
+      // the result. So here we define the "normal" one which doesn't get cached, so
+      // we can change it later.
+      window.MediaStreamTrack.getSources = function(callback) {
+        callback([{kind: "audio"}, {kind: "video"}]);
+      };
+    }
   };
 
   OTSdkDriver.prototype = {
@@ -59,9 +76,19 @@ loop.OTSdkDriver = (function() {
       this.getRemoteElement = actionData.getRemoteElementFunc;
       this.publisherConfig = actionData.publisherConfig;
 
+      this.sdk.on("exception", this._onOTException.bind(this));
+
       // At this state we init the publisher, even though we might be waiting for
       // the initial connect of the session. This saves time when setting up
       // the media.
+      this._publishLocalStreams();
+    },
+
+    /**
+     * Internal function to publish a local stream.
+     * XXX This can be simplified when bug 1138851 is actioned.
+     */
+    _publishLocalStreams: function() {
       this.publisher = this.sdk.initPublisher(this.getLocalElement(),
         this._getCopyPublisherConfig());
       this.publisher.on("streamCreated", this._onLocalStreamCreated.bind(this));
@@ -69,6 +96,17 @@ loop.OTSdkDriver = (function() {
       this.publisher.on("accessDenied", this._onPublishDenied.bind(this));
       this.publisher.on("accessDialogOpened",
         this._onAccessDialogOpened.bind(this));
+    },
+
+    /**
+     * Forces the sdk into not using video, and starts publishing again.
+     * XXX This is part of the work around that will be removed by bug 1138851.
+     */
+    retryPublishWithoutVideo: function() {
+      window.MediaStreamTrack.getSources = function(callback) {
+        callback([{kind: "audio"}]);
+      };
+      this._publishLocalStreams();
     },
 
     /**
@@ -88,36 +126,68 @@ loop.OTSdkDriver = (function() {
 
     /**
      * Initiates a screen sharing publisher.
+     *
+     * options items:
+     *  - {String}  videoSource    The type of screen to share. Values of 'screen',
+     *                             'window', 'application' and 'browser' are
+     *                             currently supported.
+     *  - {mixed}   browserWindow  The unique identifier of a browser window. May
+     *                             be passed when `videoSource` is 'browser'.
+     *  - {Boolean} scrollWithPage Flag to signal that scrolling a page should
+     *                             update the stream. May be passed when
+     *                             `videoSource` is 'browser'.
+     *
+     * @param {Object} options Hash containing options for the SDK
      */
-    startScreenShare: function(actionData) {
-      this.dispatcher.dispatch(new sharedActions.ScreenSharingState({
-        state: SCREEN_SHARE_STATES.PENDING
-      }));
+    startScreenShare: function(options) {
+      // For browser sharing, we store the window Id so that we can avoid unnecessary
+      // re-triggers.
+      if (options.videoSource === "browser") {
+        this._windowId = options.constraints.browserWindow;
+      }
 
-      var config = this._getCopyPublisherConfig();
-      config.videoSource = actionData.type;
+      var config = _.extend(this._getCopyPublisherConfig(), options);
 
       this.screenshare = this.sdk.initPublisher(this.getScreenShareElementFunc(),
         config);
       this.screenshare.on("accessAllowed", this._onScreenShareGranted.bind(this));
       this.screenshare.on("accessDenied", this._onScreenShareDenied.bind(this));
+
+      this._noteSharingState(options.videoSource, true);
     },
 
     /**
-     * Ends an active screenshare session.
+     * Initiates switching the browser window that is being shared.
+     *
+     * @param {Integer} windowId  The windowId of the browser.
+     */
+    switchAcquiredWindow: function(windowId) {
+      if (windowId === this._windowId) {
+        return;
+      }
+
+      this._windowId = windowId;
+      this.screenshare._.switchAcquiredWindow(windowId);
+    },
+
+    /**
+     * Ends an active screenshare session. Return `true` when an active screen-
+     * sharing session was ended or `false` when no session is active.
+     *
+     * @type {Boolean}
      */
     endScreenShare: function() {
       if (!this.screenshare) {
-        return;
+        return false;
       }
 
       this.session.unpublish(this.screenshare);
       this.screenshare.off("accessAllowed accessDenied");
       this.screenshare.destroy();
       delete this.screenshare;
-      this.dispatcher.dispatch(new sharedActions.ScreenSharingState({
-        state: SCREEN_SHARE_STATES.INACTIVE
-      }));
+      this._noteSharingState(this._windowId ? "browser" : "window", false);
+      delete this._windowId;
+      return true;
     },
 
     /**
@@ -409,6 +479,22 @@ loop.OTSdkDriver = (function() {
       }));
     },
 
+    _onOTException: function(event) {
+      if (event.code === OT.ExceptionCodes.UNABLE_TO_PUBLISH &&
+          event.message === "GetUserMedia") {
+        // We free up the publisher here in case the store wants to try
+        // grabbing the media again.
+        if (this.publisher) {
+          this.publisher.off("accessAllowed accessDenied accessDialogOpened streamCreated");
+          this.publisher.destroy();
+          delete this.publisher;
+        }
+        this.dispatcher.dispatch(new sharedActions.ConnectionFailure({
+          reason: FAILURE_DETAILS.UNABLE_TO_PUBLISH_MEDIA
+        }));
+      }
+    },
+
     /**
      * Handles publishing of property changes to a stream.
      */
@@ -465,6 +551,31 @@ loop.OTSdkDriver = (function() {
       this.dispatcher.dispatch(new sharedActions.ScreenSharingState({
         state: SCREEN_SHARE_STATES.INACTIVE
       }));
+    },
+
+    /**
+     * Note the sharing state. If this.mozLoop is not defined, we're assumed to
+     * be running in the standalone client and return immediately.
+     *
+     * @param  {String}  type    Type of sharing that was flipped. May be 'window'
+     *                           or 'tab'.
+     * @param  {Boolean} enabled Flag that tells us if the feature was flipped on
+     *                           or off.
+     * @private
+     */
+    _noteSharingState: function(type, enabled) {
+      if (!this.mozLoop) {
+        return;
+      }
+
+      var bucket = this.mozLoop.SHARING_STATE_CHANGE[type.toUpperCase() + "_" +
+        (enabled ? "ENABLED" : "DISABLED")];
+      if (!bucket) {
+        console.error("No sharing state bucket found for '" + type + "'");
+        return;
+      }
+
+      this.mozLoop.telemetryAddKeyedValue("LOOP_SHARING_STATE_CHANGE", bucket);
     }
   };
 

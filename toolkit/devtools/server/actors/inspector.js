@@ -324,9 +324,15 @@ var NodeActor = exports.NodeActor = protocol.ActorClass({
    * Is the node's display computed style value other than "none"
    */
   get isDisplayed() {
+    // Consider all non-element nodes as displayed.
+    if (this.rawNode.nodeType !== Ci.nsIDOMNode.ELEMENT_NODE ||
+        this.isAfterPseudoElement ||
+        this.isBeforePseudoElement) {
+      return true;
+    }
+
     let style = this.computedStyle;
     if (!style) {
-      // Consider all non-element nodes as displayed
       return true;
     } else {
       return style.display !== "none";
@@ -1195,19 +1201,23 @@ var WalkerActor = protocol.ActorClass({
   },
 
   destroy: function() {
-    this._destroyed = true;
+    try {
+      this._destroyed = true;
 
-    this.clearPseudoClassLocks();
-    this._activePseudoClassLocks = null;
+      this.clearPseudoClassLocks();
+      this._activePseudoClassLocks = null;
 
-    this._hoveredNode = null;
-    this.rootDoc = null;
+      this._hoveredNode = null;
+      this.rootDoc = null;
 
-    this.reflowObserver.off("reflows", this._onReflows);
-    this.reflowObserver = null;
-    releaseLayoutChangesObserver(this.tabActor);
+      this.reflowObserver.off("reflows", this._onReflows);
+      this.reflowObserver = null;
+      releaseLayoutChangesObserver(this.tabActor);
 
-    events.emit(this, "destroyed");
+      events.emit(this, "destroyed");
+    } catch(e) {
+      console.error(e);
+    }
     protocol.Actor.prototype.destroy.call(this);
   },
 

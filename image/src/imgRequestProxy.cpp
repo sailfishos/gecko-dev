@@ -38,15 +38,15 @@ class RequestBehaviour : public ProxyBehaviour
  public:
   RequestBehaviour() : mOwner(nullptr), mOwnerHasImage(false) {}
 
-  virtual already_AddRefed<mozilla::image::Image> GetImage() const MOZ_OVERRIDE;
-  virtual bool HasImage() const MOZ_OVERRIDE;
-  virtual already_AddRefed<ProgressTracker> GetProgressTracker() const MOZ_OVERRIDE;
+  virtual already_AddRefed<mozilla::image::Image> GetImage() const override;
+  virtual bool HasImage() const override;
+  virtual already_AddRefed<ProgressTracker> GetProgressTracker() const override;
 
-  virtual imgRequest* GetOwner() const MOZ_OVERRIDE {
+  virtual imgRequest* GetOwner() const override {
     return mOwner;
   }
 
-  virtual void SetOwner(imgRequest* aOwner) MOZ_OVERRIDE {
+  virtual void SetOwner(imgRequest* aOwner) override {
     mOwner = aOwner;
 
     if (mOwner) {
@@ -496,8 +496,9 @@ NS_IMETHODIMP imgRequestProxy::GetImage(imgIContainer **aImage)
   nsCOMPtr<imgIContainer> imageToReturn;
   if (image)
     imageToReturn = do_QueryInterface(image);
-  if (!imageToReturn && GetOwner())
-    imageToReturn = GetOwner()->mImage;
+  if (!imageToReturn && GetOwner()) {
+    imageToReturn = GetOwner()->GetImage();
+  }
 
   if (!imageToReturn)
     return NS_ERROR_FAILURE;
@@ -1000,24 +1001,24 @@ public:
   explicit StaticBehaviour(mozilla::image::Image* aImage) : mImage(aImage) {}
 
   virtual already_AddRefed<mozilla::image::Image>
-  GetImage() const MOZ_OVERRIDE {
+  GetImage() const override {
     nsRefPtr<mozilla::image::Image> image = mImage;
     return image.forget();
   }
 
-  virtual bool HasImage() const MOZ_OVERRIDE {
+  virtual bool HasImage() const override {
     return mImage;
   }
 
-  virtual already_AddRefed<ProgressTracker> GetProgressTracker() const MOZ_OVERRIDE  {
+  virtual already_AddRefed<ProgressTracker> GetProgressTracker() const override  {
     return mImage->GetProgressTracker();
   }
 
-  virtual imgRequest* GetOwner() const MOZ_OVERRIDE {
+  virtual imgRequest* GetOwner() const override {
     return nullptr;
   }
 
-  virtual void SetOwner(imgRequest* aOwner) MOZ_OVERRIDE {
+  virtual void SetOwner(imgRequest* aOwner) override {
     MOZ_ASSERT(!aOwner, "We shouldn't be giving static requests a non-null owner.");
   }
 

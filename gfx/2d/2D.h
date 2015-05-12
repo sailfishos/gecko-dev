@@ -194,7 +194,7 @@ public:
     : mColor(aColor)
   {}
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::COLOR;
   }
@@ -222,7 +222,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::LINEAR_GRADIENT;
   }
@@ -262,7 +262,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::RADIAL_GRADIENT;
   }
@@ -295,7 +295,7 @@ public:
     , mSamplingRect(aSamplingRect)
   {}
 
-  virtual PatternType GetType() const MOZ_OVERRIDE
+  virtual PatternType GetType() const override
   {
     return PatternType::SURFACE;
   }
@@ -371,7 +371,7 @@ protected:
 class DataSourceSurface : public SourceSurface
 {
 public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DataSourceSurface, MOZ_OVERRIDE)
+  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DataSourceSurface, override)
   DataSourceSurface()
     : mIsMapped(false)
   {
@@ -395,7 +395,7 @@ public:
     READ_WRITE
   };
 
-  virtual SurfaceType GetType() const MOZ_OVERRIDE { return SurfaceType::DATA; }
+  virtual SurfaceType GetType() const override { return SurfaceType::DATA; }
   /** @deprecated
    * Get the raw bitmap data of the surface.
    * Can return null if there was OOM allocating surface data.
@@ -409,12 +409,15 @@ public:
    */
   virtual int32_t Stride() = 0;
 
+  /**
+   * The caller is responsible for ensuring aMappedSurface is not null.
+   */
   virtual bool Map(MapType, MappedSurface *aMappedSurface)
   {
     aMappedSurface->mData = GetData();
     aMappedSurface->mStride = Stride();
-    mIsMapped = true;
-    return true;
+    mIsMapped = !!aMappedSurface->mData;
+    return mIsMapped;
   }
 
   virtual void Unmap()
@@ -427,7 +430,7 @@ public:
    * Returns a DataSourceSurface with the same data as this one, but
    * guaranteed to have surface->GetType() == SurfaceType::DATA.
    */
-  virtual TemporaryRef<DataSourceSurface> GetDataSurface() MOZ_OVERRIDE;
+  virtual TemporaryRef<DataSourceSurface> GetDataSurface() override;
 
 protected:
   bool mIsMapped;
@@ -1165,6 +1168,8 @@ public:
 
   // This is a little hacky at the moment, but we want to have this data. Bug 1068613.
   static void SetLogForwarder(LogForwarder* aLogFwd);
+
+  static uint32_t GetMaxSurfaceSize(BackendType aType);
 
   static LogForwarder* GetLogForwarder() { return mLogForwarder; }
 

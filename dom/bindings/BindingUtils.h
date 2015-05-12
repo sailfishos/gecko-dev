@@ -2292,7 +2292,7 @@ public:
     eNullableArray
   };
 
-  virtual void trace(JSTracer *trc) MOZ_OVERRIDE
+  virtual void trace(JSTracer *trc) override
   {
     if (mSequenceType == eFallibleArray) {
       DoTraceSequence(trc, *mFallibleArray);
@@ -2342,7 +2342,7 @@ private:
     eNullableMozMap
   };
 
-  virtual void trace(JSTracer *trc) MOZ_OVERRIDE
+  virtual void trace(JSTracer *trc) override
   {
     if (mMozMapType == eMozMap) {
       TraceMozMap(trc, *mMozMap);
@@ -2373,7 +2373,7 @@ public:
   {
   }
 
-  virtual void trace(JSTracer *trc) MOZ_OVERRIDE
+  virtual void trace(JSTracer *trc) override
   {
     this->TraceUnion(trc);
   }
@@ -2390,7 +2390,7 @@ public:
   {
   }
 
-  virtual void trace(JSTracer *trc) MOZ_OVERRIDE
+  virtual void trace(JSTracer *trc) override
   {
     if (!this->IsNull()) {
       this->Value().TraceUnion(trc);
@@ -2848,14 +2848,24 @@ private:
   typename Conditional<IsRefcounted<T>::value, nsRefPtr<T>, OwnedNative>::Type mNative;
 };
 
-template<class T,
-         bool isISupports=IsBaseOf<nsISupports, T>::value>
-class DeferredFinalizer
+template<class T>
+struct DeferredFinalizerImpl
 {
-  typedef typename Conditional<IsRefcounted<T>::value,
-                               nsRefPtr<T>, nsAutoPtr<T>>::Type SmartPtr;
+  typedef typename Conditional<IsSame<T, nsISupports>::value,
+                               nsCOMPtr<T>,
+                               typename Conditional<IsRefcounted<T>::value,
+                                                    nsRefPtr<T>,
+                                                    nsAutoPtr<T>>::Type>::Type SmartPtr;
   typedef nsTArray<SmartPtr> SmartPtrArray;
 
+  static_assert(IsSame<T, nsISupports>::value || !IsBaseOf<nsISupports, T>::value,
+                "nsISupports classes should all use the nsISupports instantiation");
+
+  static inline void
+  AppendAndTake(nsTArray<nsCOMPtr<nsISupports>>& smartPtrArray, nsISupports* ptr)
+  {
+    smartPtrArray.AppendElement(dont_AddRef(ptr));
+  }
   template<class U>
   static inline void
   AppendAndTake(nsTArray<nsRefPtr<U>>& smartPtrArray, U* ptr)
@@ -2896,20 +2906,24 @@ class DeferredFinalizer
     }
     return false;
   }
+};
 
-public:
+template<class T,
+         bool isISupports=IsBaseOf<nsISupports, T>::value>
+struct DeferredFinalizer
+{
   static void
   AddForDeferredFinalization(T* aObject)
   {
-    cyclecollector::DeferredFinalize(AppendDeferredFinalizePointer,
-                                     DeferredFinalize, aObject);
+    typedef DeferredFinalizerImpl<T> Impl;
+    cyclecollector::DeferredFinalize(Impl::AppendDeferredFinalizePointer,
+                                     Impl::DeferredFinalize, aObject);
   }
 };
 
 template<class T>
-class DeferredFinalizer<T, true>
+struct DeferredFinalizer<T, true>
 {
-public:
   static void
   AddForDeferredFinalization(T* aObject)
   {

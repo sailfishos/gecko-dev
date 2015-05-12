@@ -5,8 +5,6 @@
 
 "use strict";
 
-XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
-
 let Reader = {
   // These values should match those defined in BrowserContract.java.
   STATUS_UNFETCHED: 0,
@@ -27,33 +25,18 @@ let Reader = {
         this._fetchContent(data.url, data.id);
         break;
       }
+
+      case "Reader:Added": {
+        let mm = window.getGroupMessageManager("browsers");
+        mm.broadcastAsyncMessage("Reader:Added", { url: aData });
+        break;
+      }
+
       case "Reader:Removed": {
-        let uri = Services.io.newURI(aData, null, null);
-        ReaderMode.removeArticleFromCache(uri).catch(e => Cu.reportError("Error removing article from cache: " + e));
+        ReaderMode.removeArticleFromCache(aData).catch(e => Cu.reportError("Error removing article from cache: " + e));
 
         let mm = window.getGroupMessageManager("browsers");
         mm.broadcastAsyncMessage("Reader:Removed", { url: aData });
-        break;
-      }
-      case "Gesture:DoubleTap": {
-        // Ideally, we would just do this all with web APIs in AboutReader.jsm (bug 1118487)
-        if (!BrowserApp.selectedBrowser.currentURI.spec.startsWith("about:reader")) {
-          return;
-        }
-
-        let win = BrowserApp.selectedBrowser.contentWindow;
-        let scrollBy;
-        // Arbitrary choice of innerHeight (50) to give some context after scroll.
-        if (JSON.parse(aData).y < (win.innerHeight / 2)) {
-          scrollBy = - win.innerHeight + 50;
-        } else {
-          scrollBy = win.innerHeight - 50;
-        }
-
-        let viewport = BrowserApp.selectedTab.getViewport();
-        let newY = Math.min(Math.max(viewport.cssY + scrollBy, viewport.cssPageTop), viewport.cssPageBottom);
-        let newRect = new Rect(viewport.cssX, newY, viewport.cssWidth, viewport.cssHeight);
-        ZoomHelper.zoomToRect(newRect, -1);
         break;
       }
     }
@@ -171,7 +154,7 @@ let Reader = {
     let browser = tab.browser;
     if (browser.currentURI.spec.startsWith("about:reader")) {
       this.pageAction.id = PageActions.add({
-        title: Strings.browser.GetStringFromName("readerView.exit"),
+        title: Strings.reader.GetStringFromName("readerView.close"),
         icon: "drawable://reader_active",
         clickCallback: () => this.pageAction.readerModeCallback(tab.id),
         important: true
@@ -188,7 +171,7 @@ let Reader = {
 
     if (browser.isArticle) {
       this.pageAction.id = PageActions.add({
-        title: Strings.browser.GetStringFromName("readerView.enter"),
+        title: Strings.reader.GetStringFromName("readerView.enter"),
         icon: "drawable://reader",
         clickCallback: () => this.pageAction.readerModeCallback(tab.id),
         longClickCallback: () => this.pageAction.readerModeActiveCallback(tab.id),
@@ -243,8 +226,8 @@ let Reader = {
       throw new Error("Can't add tab to reading list because no tab found for ID: " + tabID);
     }
 
-    let urlWithoutRef = tab.browser.currentURI.specIgnoringRef;
-    let article = yield this._getArticle(urlWithoutRef, tab.browser).catch(e => {
+    let url = tab.browser.currentURI.spec;
+    let article = yield this._getArticle(url, tab.browser).catch(e => {
       Cu.reportError("Error getting article for tab: " + e);
       return null;
     });
@@ -252,7 +235,7 @@ let Reader = {
       // If there was a problem getting the article, just store the
       // URL and title from the tab.
       article = {
-        url: urlWithoutRef,
+        url: url,
         title: tab.browser.contentDocument.title,
         length: 0,
         excerpt: "",
@@ -274,8 +257,6 @@ let Reader = {
       excerpt: article.excerpt,
       status: article.status,
     }).then((url) => {
-      let mm = window.getGroupMessageManager("browsers");
-      mm.broadcastAsyncMessage("Reader:Added", { url: url });
       ReaderMode.storeArticleInCache(article).catch(e => Cu.reportError("Error storing article in cache: " + e));
     }).catch(Cu.reportError);
   },
@@ -297,8 +278,7 @@ let Reader = {
     }
 
     // Next, try to find a parsed article in the cache.
-    let uri = Services.io.newURI(url, null, null);
-    article = yield ReaderMode.getArticleFromCache(uri);
+    article = yield ReaderMode.getArticleFromCache(url);
     if (article) {
       return article;
     }

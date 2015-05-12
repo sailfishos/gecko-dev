@@ -113,6 +113,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "Notifications",
 XPCOMUtils.defineLazyModuleGetter(this, "GMPInstallManager",
                                   "resource://gre/modules/GMPInstallManager.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode", "resource://gre/modules/ReaderMode.jsm");
+
 let lazilyLoadedBrowserScripts = [
   ["SelectHelper", "chrome://browser/content/SelectHelper.js"],
   ["InputWidgetHelper", "chrome://browser/content/InputWidgetHelper.js"],
@@ -146,7 +148,7 @@ let lazilyLoadedObserverScripts = [
   ["Feedback", ["Feedback:Show"], "chrome://browser/content/Feedback.js"],
   ["SelectionHandler", ["TextSelection:Get"], "chrome://browser/content/SelectionHandler.js"],
   ["EmbedRT", ["GeckoView:ImportScript"], "chrome://browser/content/EmbedRT.js"],
-  ["Reader", ["Reader:FetchContent", "Reader:Removed", "Gesture:DoubleTap"], "chrome://browser/content/Reader.js"],
+  ["Reader", ["Reader:FetchContent", "Reader:Added", "Reader:Removed"], "chrome://browser/content/Reader.js"],
 ];
 if (AppConstants.MOZ_WEBRTC) {
   lazilyLoadedObserverScripts.push(
@@ -323,6 +325,7 @@ let Strings = {
   init: function () {
     XPCOMUtils.defineLazyGetter(Strings, "brand", () => Services.strings.createBundle("chrome://branding/locale/brand.properties"));
     XPCOMUtils.defineLazyGetter(Strings, "browser", () => Services.strings.createBundle("chrome://browser/locale/browser.properties"));
+    XPCOMUtils.defineLazyGetter(Strings, "reader", () => Services.strings.createBundle("chrome://global/locale/aboutReader.properties"));
   },
 
   flush: function () {
@@ -624,6 +627,17 @@ var BrowserApp = {
             callback: () => { BrowserApp.selectTab(tab); },
           }
         });
+      });
+
+    NativeWindow.contextmenus.add(stringGetter("contextmenu.addToReadingList"),
+      NativeWindow.contextmenus.linkOpenableContext,
+      function(aTarget) {
+        let url = NativeWindow.contextmenus._getLinkURL(aTarget);
+        Messaging.sendRequestForResult({
+            type: "Reader:AddToList",
+            title: truncate(url, MAX_TITLE_LENGTH),
+            url: truncate(url, MAX_URI_LENGTH),
+        }).catch(Cu.reportError);
       });
 
     NativeWindow.contextmenus.add(stringGetter("contextmenu.copyLink"),
@@ -4495,16 +4509,7 @@ Tab.prototype = {
   },
 
   _stripAboutReaderURL: function (url) {
-    if (!url.startsWith("about:reader")) {
-      return url;
-    }
-
-    // From ReaderParent._getOriginalUrl (browser/modules/ReaderParent.jsm).
-    let searchParams = new URLSearchParams(url.substring("about:reader?".length));
-    if (!searchParams.has("url")) {
-        return url;
-    }
-    return decodeURIComponent(searchParams.get("url"));
+    return ReaderMode.getOriginalUrl(url) || url;
   },
 
   // Properties used to cache security state used to update the UI
@@ -6412,7 +6417,10 @@ var ViewportHandler = {
    * metadata is available for that document.
    */
   getMetadataForDocument: function getMetadataForDocument(aDocument) {
-    let metadata = this._metadata.get(aDocument, new ViewportMetadata());
+    let metadata = this._metadata.get(aDocument);
+    if (metadata === undefined) {
+      metadata = new ViewportMetadata();
+    }
     return metadata;
   },
 
@@ -7036,6 +7044,14 @@ var SearchEngines = {
     }
 
     let engineData = Services.search.getVisibleEngines({});
+
+    // Our Java UI assumes that the default engine is the first item in the array,
+    // so we need to make sure that's the case.
+    if (engineData[0] !== Services.search.defaultEngine) {
+      engineData = engineData.filter(engine => engine !== Services.search.defaultEngine);
+      engineData.unshift(Services.search.defaultEngine);
+    }
+
     let searchEngines = engineData.map(function (engine) {
       return {
         name: engine.name,

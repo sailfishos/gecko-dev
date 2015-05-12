@@ -51,10 +51,38 @@ CDMCaps::AutoLock::~AutoLock()
   mData.Unlock();
 }
 
+#ifdef PR_LOGGING
+static void
+TestCap(uint64_t aFlag,
+        uint64_t aCaps,
+        const nsACString& aCapName,
+        nsACString& aCapStr)
+{
+  if (!(aFlag & aCaps)) {
+    return;
+  }
+  if (!aCapStr.IsEmpty()) {
+    aCapStr.AppendLiteral(",");
+  }
+  aCapStr.Append(aCapName);
+}
+
+nsCString
+CapsToString(uint64_t aCaps)
+{
+  nsCString capsStr;
+  TestCap(GMP_EME_CAP_DECRYPT_AUDIO, aCaps, NS_LITERAL_CSTRING("DecryptAudio"), capsStr);
+  TestCap(GMP_EME_CAP_DECRYPT_VIDEO, aCaps, NS_LITERAL_CSTRING("DecryptVideo"), capsStr);
+  TestCap(GMP_EME_CAP_DECRYPT_AND_DECODE_AUDIO, aCaps, NS_LITERAL_CSTRING("DecryptAndDecodeAudio"), capsStr);
+  TestCap(GMP_EME_CAP_DECRYPT_AND_DECODE_VIDEO, aCaps, NS_LITERAL_CSTRING("DecryptAndDecodeVideo"), capsStr);
+  return capsStr;
+}
+#endif // PR_LOGGING
+
 void
 CDMCaps::AutoLock::SetCaps(uint64_t aCaps)
 {
-  EME_LOG("SetCaps()");
+  EME_LOG("SetCaps() %s", CapsToString(aCaps).get());
   mData.mMonitor.AssertCurrentThreadOwns();
   mData.mCaps = aCaps;
   for (size_t i = 0; i < mData.mWaitForCaps.Length(); i++) {
@@ -81,7 +109,11 @@ CDMCaps::AutoLock::IsKeyUsable(const CencKeyId& aKeyId)
   mData.mMonitor.AssertCurrentThreadOwns();
   const auto& keys = mData.mKeyStatuses;
   for (size_t i = 0; i < keys.Length(); i++) {
-    if (keys[i].mId == aKeyId && keys[i].mStatus == kGMPUsable) {
+    if (keys[i].mId != aKeyId) {
+      continue;
+    }
+    if (keys[i].mStatus == kGMPUsable ||
+        keys[i].mStatus == kGMPOutputDownscaled) {
       return true;
     }
   }
@@ -106,12 +138,20 @@ CDMCaps::AutoLock::SetKeyStatus(const CencKeyId& aKeyId,
     if (mData.mKeyStatuses[index].mStatus == aStatus) {
       return false;
     }
+    auto oldStatus = mData.mKeyStatuses[index].mStatus;
     mData.mKeyStatuses[index].mStatus = aStatus;
+    if (oldStatus == kGMPUsable || oldStatus == kGMPOutputDownscaled) {
+      return true;
+    }
   } else {
     mData.mKeyStatuses.AppendElement(key);
   }
 
-  if (aStatus != kGMPUsable) {
+  // Both kGMPUsable and kGMPOutputDownscaled are treated able to decrypt.
+  // We don't need to notify when transition happens between kGMPUsable and
+  // kGMPOutputDownscaled. Only call NotifyUsable() when we are going from
+  // ![kGMPUsable|kGMPOutputDownscaled] to [kGMPUsable|kGMPOutputDownscaled]
+  if (aStatus != kGMPUsable && aStatus != kGMPOutputDownscaled) {
     return true;
   }
 
@@ -178,6 +218,17 @@ CDMCaps::AutoLock::GetKeyStatusesForSession(const nsAString& aSessionId,
     const auto& key = mData.mKeyStatuses[i];
     if (key.mSessionId.Equals(aSessionId)) {
       aOutKeyStatuses.AppendElement(key);
+    }
+  }
+}
+
+void
+CDMCaps::AutoLock::GetSessionIdsForKeyId(const CencKeyId& aKeyId,
+                                         nsTArray<nsCString>& aOutSessionIds)
+{
+  for (const auto& keyStatus : mData.mKeyStatuses) {
+    if (keyStatus.mId == aKeyId) {
+      aOutSessionIds.AppendElement(NS_ConvertUTF16toUTF8(keyStatus.mSessionId));
     }
   }
 }

@@ -104,13 +104,13 @@ public:
 
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
                        HitTestState* aState,
-                       nsTArray<nsIFrame*> *aOutFrames) MOZ_OVERRIDE;
+                       nsTArray<nsIFrame*> *aOutFrames) override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
-                     nsRenderingContext* aCtx) MOZ_OVERRIDE;
-  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) MOZ_OVERRIDE;
+                     nsRenderingContext* aCtx) override;
+  virtual nsDisplayItemGeometry* AllocateGeometry(nsDisplayListBuilder* aBuilder) override;
   virtual void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
                                          const nsDisplayItemGeometry* aGeometry,
-                                         nsRegion *aInvalidRegion) MOZ_OVERRIDE;
+                                         nsRegion *aInvalidRegion) override;
   NS_DISPLAY_DECL_NAME("FieldSetBorderBackground", TYPE_FIELDSET_BORDER_BACKGROUND)
 };
 
@@ -598,7 +598,16 @@ nsFieldSetFrame::Reflow(nsPresContext*           aPresContext,
     LogicalRect actualLegendRect = mLegendRect;
     actualLegendRect.Deflate(wm, legendMargin);
     LogicalPoint actualLegendPos(actualLegendRect.Origin(wm));
-    legendReflowState->ApplyRelativePositioning(&actualLegendPos, containerWidth);
+
+    // Note that legend's writing mode may be different from the fieldset's,
+    // so we need to convert offsets before applying them to it (bug 1134534).
+    LogicalMargin offsets =
+      legendReflowState->ComputedLogicalOffsets().
+        ConvertTo(wm, legendReflowState->GetWritingMode());
+    nsHTMLReflowState::ApplyRelativePositioning(legend, wm, offsets,
+                                                &actualLegendPos,
+                                                containerWidth);
+
     legend->SetPosition(wm, actualLegendPos, containerWidth);
     nsContainerFrame::PositionFrameView(legend);
     nsContainerFrame::PositionChildViews(legend);

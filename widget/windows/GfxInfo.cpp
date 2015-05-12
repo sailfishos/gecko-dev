@@ -847,6 +847,8 @@ WindowsVersionToOperatingSystem(int32_t aWindowsVersion)
       return DRIVER_OS_WINDOWS_8;
     case kWindows8_1:
       return DRIVER_OS_WINDOWS_8_1;
+    case kWindows10:
+      return DRIVER_OS_WINDOWS_10;
     case kWindowsUnknown:
     default:
       return DRIVER_OS_UNKNOWN;
@@ -1044,6 +1046,14 @@ GfxInfo::GetGfxDriverInfo()
       nsIGfxInfo::FEATURE_DIRECT2D, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
       DRIVER_LESS_THAN_OR_EQUAL, V(8,15,10,2302) );
 
+    /* Disable D3D11 layers on Intel G41 express graphics and Intel GM965, Intel X3100, for causing device resets.
+     * See bug 1116812.
+     */
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
+        (nsAString&) GfxDriverInfo::GetDeviceVendor(VendorIntel), (GfxDeviceFamily*) GfxDriverInfo::GetDeviceFamily(Bug1116812),
+      nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+      DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions );
+
     /* Disable D2D on AMD Catalyst 14.4 until 14.6
      * See bug 984488
      */
@@ -1076,10 +1086,46 @@ GfxInfo::GetGfxDriverInfo()
       nsIGfxInfo::FEATURE_DIRECT2D, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
       DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions);
 
+    /* Bug 1151721: Black video on youtube, block DXVA for all older intel cards. */
     APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
       (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorATI), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(AMDRadeonHD5800),
       nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
       DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions);
+
+    /* Bug 1139503: DXVA crashes with ATI cards on windows 10. */
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_WINDOWS_10,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorATI), GfxDriverInfo::allDevices,
+      nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_EQUAL, V(15,200,1006,0));
+
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel), GfxDriverInfo::allDevices,
+      nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_LESS_THAN, V(8,15,10,2622));
+
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_WINDOWS_7,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Bug1155608),
+      nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_LESS_THAN_OR_EQUAL, V(8,15,10,2869));
+
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorNVIDIA), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Nvidia8800GTS),
+      nsIGfxInfo::FEATURE_DXVA, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_EQUAL, V(9,18,13,4052));
+
+    /* Bug 1137716: XXX this should really check for the matching Intel piece as well.
+     * Unfortunately, we don't have the infrastructure to do that */
+    APPEND_TO_DRIVER_BLOCKLIST_RANGE_GPU2(DRIVER_OS_WINDOWS_7,
+        (nsAString&) GfxDriverInfo::GetDeviceVendor(VendorNVIDIA), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(Bug1137716),
+      GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
+      DRIVER_BETWEEN_INCLUSIVE, V(8,17,12,5730), V(8,17,12,6901), "Nvidia driver > 8.17.12.6901");
+
+    /* Bug 1153381: WebGL issues with D3D11 ANGLE on Intel. These may be fixed by an ANGLE update. */
+    APPEND_TO_DRIVER_BLOCKLIST2(DRIVER_OS_ALL,
+      (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel), (GfxDeviceFamily*)GfxDriverInfo::GetDeviceFamily(IntelGMAX4500HD),
+      nsIGfxInfo::FEATURE_DIRECT3D_11_ANGLE, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+      DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions);
+
   }
   return *mDriverInfo;
 }

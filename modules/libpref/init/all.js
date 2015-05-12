@@ -174,7 +174,7 @@ pref("dom.undo_manager.enabled", false);
 
 // Whether URL,nsLocation,Link::GetHash should be percent encoded
 // in setter and percent decoded in getter (old behaviour = true)
-pref("dom.url.encode_decode_hash", false);
+pref("dom.url.encode_decode_hash", true);
 
 // Whether to run add-on code in different compartments from browser code. This
 // causes a separate compartment for each (addon, global) combination, which may
@@ -427,10 +427,10 @@ pref("media.getusermedia.screensharing.enabled", true);
 #endif
 
 #ifdef RELEASE_BUILD
-pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,*.room.co,room.co,beta.talky.io,talky.io,*.clearslide.com,appear.in,*.appear.in,tokbox.com,*.tokbox.com,example.com");
+pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,ciscospark.com,*.ciscospark.com,projectsquared.com,*.projectsquared.com,*.room.co,room.co,beta.talky.io,talky.io,*.clearslide.com,appear.in,*.appear.in,tokbox.com,*.tokbox.com,*.sso.francetelecom.fr,*.si.francetelecom.fr,*.sso.infra.ftgroup,*.multimedia-conference.orange-business.com,*.espacecollaboration.orange-business.com,free.gotomeeting.com,g2m.me,*.g2m.me,example.com");
 #else
  // temporary value, not intended for release - bug 1049087
-pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,collaborate.com,*.collaborate.com,projectsquared.com,*.projectsquared.com,*.room.co,room.co,beta.talky.io,talky.io,*.clearslide.com,appear.in,*.appear.in,tokbox.com,*.tokbox.com,example.com");
+pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,ciscospark.com,*.ciscospark.com,projectsquared.com,*.projectsquared.com,*.room.co,room.co,beta.talky.io,talky.io,*.clearslide.com,appear.in,*.appear.in,tokbox.com,*.tokbox.com,*.sso.francetelecom.fr,*.si.francetelecom.fr,*.sso.infra.ftgroup,*.multimedia-conference.orange-business.com,*.espacecollaboration.orange-business.com,free.gotomeeting.com,g2m.me,*.g2m.me,example.com");
 #endif
 // OS/X 10.6 and XP have screen/window sharing off by default due to various issues - Caveat emptor
 pref("media.getusermedia.screensharing.allow_on_old_platforms", false);
@@ -446,30 +446,20 @@ pref("media.track.enabled", false);
 // We want to enable on non-release  builds and on release windows and mac
 // but on release builds restrict to YouTube. We don't enable for other
 // configurations because code for those platforms isn't ready yet.
-#if defined(XP_WIN) || defined(XP_MACOSX) || !defined(RELEASE_BUILD)
+#if defined(XP_WIN) || defined(XP_MACOSX)
 pref("media.mediasource.enabled", true);
 #else
 pref("media.mediasource.enabled", false);
 #endif
 
 #ifdef RELEASE_BUILD
-pref("media.mediasource.youtubeonly", true);
+pref("media.mediasource.whitelist", true);
 #else
-pref("media.mediasource.youtubeonly", false);
+pref("media.mediasource.whitelist", false);
 #endif // RELEASE_BUILD
 
-#ifdef MOZ_WIDGET_GONK
-pref("media.mediasource.mp4.enabled", false);
-pref("media.mediasource.webm.enabled", false);
-#else
-#if defined(XP_WIN) || defined(XP_MACOSX)
 pref("media.mediasource.mp4.enabled", true);
 pref("media.mediasource.webm.enabled", false);
-#else
-pref("media.mediasource.mp4.enabled", false);
-pref("media.mediasource.webm.enabled", true);
-#endif
-#endif
 
 #ifdef MOZ_WEBSPEECH
 pref("media.webspeech.recognition.enable", false);
@@ -1337,8 +1327,10 @@ pref("network.http.spdy.default-concurrent", 100);
 
 // alt-svc allows separation of transport routing from
 // the origin host without using a proxy.
-pref("network.http.altsvc.enabled", true);
-pref("network.http.altsvc.oe", true);
+pref("network.http.atsvc.enabled", false);
+pref("network.http.atsvc.oe", false);
+pref("network.http.altsvc.enabled", false);
+pref("network.http.altsvc.oe", false);
 
 pref("network.http.diagnostics", false);
 
@@ -1574,7 +1566,7 @@ pref("network.dnsCacheEntries", 400);
 pref("network.dnsCacheExpiration", 60);
 
 // Get TTL; not supported on all platforms; nop on the unsupported ones.
-pref("network.dns.get-ttl", true);
+pref("network.dns.get-ttl", false);
 
 // The grace period allows the DNS cache to use expired entries, while kicking off
 // a revalidation in the background.
@@ -4528,21 +4520,22 @@ pref("media.gmp-manager.certs.1.issuerName", "CN=DigiCert Secure Server CA,O=Dig
 pref("media.gmp-manager.certs.1.commonName", "aus4.mozilla.org");
 pref("media.gmp-manager.certs.2.issuerName", "CN=Thawte SSL CA,O=\"Thawte, Inc.\",C=US");
 pref("media.gmp-manager.certs.2.commonName", "aus4.mozilla.org");
-
-// Adobe EME is currently pref'd off by default and hidden in the addon manager.
-pref("media.gmp-eme-adobe.hidden", true);
 #endif
 
 // Whether or not to perform reader mode article parsing on page load.
 // If this pref is disabled, we will never show a reader mode icon in the toolbar.
 pref("reader.parse-on-load.enabled", true);
 
+// After what size document we don't bother running Readability on it
+// because it'd slow things down too much
+pref("reader.parse-node-limit", 3000);
+
 // Force-enables reader mode parsing, even on low-memory platforms, where it
 // is disabled by default.
 pref("reader.parse-on-load.force-enabled", false);
 
-// The default relative font size in reader mode (1-5)
-pref("reader.font_size", 3);
+// The default relative font size in reader mode (1-9)
+pref("reader.font_size", 5);
 
 // The default color scheme in reader mode (light, dark, sepia, auto)
 // auto = color automatically adjusts according to ambient light level

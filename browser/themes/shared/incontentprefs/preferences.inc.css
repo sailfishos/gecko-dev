@@ -191,6 +191,20 @@ treecol {
   -moz-margin-end: 8px !important;
 }
 
+/* Collapse the non-active vboxes in decks to use only the height the
+   active vbox needs */
+#historyPane:not([selectedIndex="1"]) > #historyDontRememberPane,
+#historyPane:not([selectedIndex="2"]) > #historyCustomPane,
+#weavePrefsDeck:not([selectedIndex="1"]) > #hasAccount,
+#weavePrefsDeck:not([selectedIndex="2"]) > #needsUpdate,
+#weavePrefsDeck:not([selectedIndex="3"]) > #fxaDeterminingStatus,
+#weavePrefsDeck:not([selectedIndex="4"]) > #noFxaAccount,
+#weavePrefsDeck:not([selectedIndex="5"]) > #hasFxaAccount,
+#fxaLoginStatus:not([selectedIndex="1"]) > #fxaLoginUnverified,
+#fxaLoginStatus:not([selectedIndex="2"]) > #fxaLoginRejected {
+  visibility: collapse;
+}
+
 /* XXX This style is for bug 740213 and should be removed once that
    bug has a solution. */
 description > html|a {
@@ -218,13 +232,12 @@ description > html|a {
   -moz-margin-end: 4px; /* add the 4px end-margin of other elements */
 }
 
-#encryptionPanel {
-  margin-top: 15px;
-}
-
 #telemetryLearnMore,
 #FHRLearnMore,
 #crashReporterLearnMore {
+  /* provide some margin between the links and the label text */
+  /* !important is needed to override the rules defined in common.css */
+  -moz-margin-start: 20px !important;
   /* center the links */
   margin-top: 8px;
   margin-bottom: 8px;
@@ -244,6 +257,10 @@ description > html|a {
   #trackingProtectionImage {
     list-style-image: url(chrome://browser/skin/bad-content-blocked-16@2x.png);
   }
+}
+
+#showUpdateHistory {
+  -moz-margin-start: 0;
 }
 
 /**
@@ -316,6 +333,17 @@ description > html|a {
 /**
  * End Dialog
  */
+
+/**
+ * Font dialog menulist fixes
+ */
+
+#defaultFontType,
+#serif,
+#sans-serif,
+#monospace {
+  min-width: 30ch;
+}
 
 /**
  * Sync migration

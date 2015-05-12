@@ -18,6 +18,7 @@
 #include "mozilla/WindowsVersion.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
+#include "mozilla/Telemetry.h"
 
 #include "nsIWindowsRegKey.h"
 #include "nsIFile.h"
@@ -119,7 +120,7 @@ static const int kSupportedFeatureLevels[] =
   { D3D10_FEATURE_LEVEL_10_1, D3D10_FEATURE_LEVEL_10_0,
     D3D10_FEATURE_LEVEL_9_3 };
 
-class GfxD2DSurfaceReporter MOZ_FINAL : public nsIMemoryReporter
+class GfxD2DSurfaceReporter final : public nsIMemoryReporter
 {
     ~GfxD2DSurfaceReporter() {}
 
@@ -153,7 +154,7 @@ NS_IMPL_ISUPPORTS(GfxD2DSurfaceReporter, nsIMemoryReporter)
 
 #endif
 
-class GfxD2DVramReporter MOZ_FINAL : public nsIMemoryReporter
+class GfxD2DVramReporter final : public nsIMemoryReporter
 {
     ~GfxD2DVramReporter() {}
 
@@ -193,7 +194,7 @@ NS_IMPL_ISUPPORTS(GfxD2DVramReporter, nsIMemoryReporter)
 #define GFX_CLEARTYPE_PARAMS_STRUCTURE "gfx.font_rendering.cleartype_params.pixel_structure"
 #define GFX_CLEARTYPE_PARAMS_MODE      "gfx.font_rendering.cleartype_params.rendering_mode"
 
-class GPUAdapterReporter MOZ_FINAL : public nsIMemoryReporter
+class GPUAdapterReporter final : public nsIMemoryReporter
 {
     // Callers must Release the DXGIAdapter after use or risk mem-leak
     static bool GetDXGIAdapter(IDXGIAdapter **DXGIAdapter)
@@ -330,7 +331,7 @@ NS_IMPL_ISUPPORTS(GPUAdapterReporter, nsIMemoryReporter)
 
 Atomic<size_t> gfxWindowsPlatform::sD3D11MemoryUsed;
 
-class D3D11TextureReporter MOZ_FINAL : public nsIMemoryReporter
+class D3D11TextureReporter final : public nsIMemoryReporter
 {
   ~D3D11TextureReporter() {}
 
@@ -338,7 +339,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback *aHandleReport,
-                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
+                            nsISupports* aData, bool aAnonymize) override
   {
       return MOZ_COLLECT_REPORT("d3d11-shared-textures", KIND_OTHER, UNITS_BYTES,
                                 gfxWindowsPlatform::sD3D11MemoryUsed,
@@ -350,7 +351,7 @@ NS_IMPL_ISUPPORTS(D3D11TextureReporter, nsIMemoryReporter)
 
 Atomic<size_t> gfxWindowsPlatform::sD3D9MemoryUsed;
 
-class D3D9TextureReporter MOZ_FINAL : public nsIMemoryReporter
+class D3D9TextureReporter final : public nsIMemoryReporter
 {
   ~D3D9TextureReporter() {}
 
@@ -358,7 +359,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback *aHandleReport,
-                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
+                            nsISupports* aData, bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT("d3d9-shared-textures", KIND_OTHER, UNITS_BYTES,
                               gfxWindowsPlatform::sD3D9MemoryUsed,
@@ -370,7 +371,7 @@ NS_IMPL_ISUPPORTS(D3D9TextureReporter, nsIMemoryReporter)
 
 Atomic<size_t> gfxWindowsPlatform::sD3D9SurfaceImageUsed;
 
-class D3D9SurfaceImageReporter MOZ_FINAL : public nsIMemoryReporter
+class D3D9SurfaceImageReporter final : public nsIMemoryReporter
 {
   ~D3D9SurfaceImageReporter() {}
 
@@ -378,7 +379,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback *aHandleReport,
-                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
+                            nsISupports* aData, bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT("d3d9-surface-image", KIND_OTHER, UNITS_BYTES,
                               gfxWindowsPlatform::sD3D9SurfaceImageUsed,
@@ -390,7 +391,7 @@ NS_IMPL_ISUPPORTS(D3D9SurfaceImageReporter, nsIMemoryReporter)
 
 Atomic<size_t> gfxWindowsPlatform::sD3D9SharedTextureUsed;
 
-class D3D9SharedTextureReporter MOZ_FINAL : public nsIMemoryReporter
+class D3D9SharedTextureReporter final : public nsIMemoryReporter
 {
   ~D3D9SharedTextureReporter() {}
 
@@ -398,7 +399,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback *aHandleReport,
-                            nsISupports* aData, bool aAnonymize) MOZ_OVERRIDE
+                            nsISupports* aData, bool aAnonymize) override
   {
     return MOZ_COLLECT_REPORT("d3d9-shared-texture", KIND_OTHER, UNITS_BYTES,
                               gfxWindowsPlatform::sD3D9SharedTextureUsed,
@@ -474,7 +475,9 @@ gfxWindowsPlatform::UpdateRenderMode()
  * desktop.
  */
     bool didReset = false;
-    if (DidRenderingDeviceReset()) {
+    DeviceResetReason resetReason = DeviceResetReason::OK;
+    if (DidRenderingDeviceReset(&resetReason)) {
+      Telemetry::Accumulate(Telemetry::DEVICE_RESET_REASON, uint32_t(resetReason));
       mD3D11DeviceInitialized = false;
       mD3D11Device = nullptr;
       mD3D11ContentDevice = nullptr;
@@ -1140,10 +1143,35 @@ gfxWindowsPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlag
 }
 
 bool
-gfxWindowsPlatform::DidRenderingDeviceReset()
+gfxWindowsPlatform::DidRenderingDeviceReset(DeviceResetReason* aResetReason)
 {
+  if (aResetReason) {
+    *aResetReason = DeviceResetReason::OK;
+  }
+
   if (mD3D11Device) {
-    if (mD3D11Device->GetDeviceRemovedReason() != S_OK) {
+    HRESULT hr = mD3D11Device->GetDeviceRemovedReason();
+    if (hr != S_OK) {
+      if (aResetReason) {
+        switch (hr) {
+        case DXGI_ERROR_DEVICE_HUNG:
+          *aResetReason = DeviceResetReason::HUNG;
+          break;
+        case DXGI_ERROR_DEVICE_REMOVED:
+          *aResetReason = DeviceResetReason::REMOVED;
+          break;
+        case DXGI_ERROR_DEVICE_RESET:
+          *aResetReason = DeviceResetReason::RESET;
+          break;
+        case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
+          *aResetReason = DeviceResetReason::DRIVER_ERROR;
+          break;
+        case DXGI_ERROR_INVALID_CALL:
+          *aResetReason = DeviceResetReason::INVALID_CALL;
+        default:
+          MOZ_ASSERT(false);
+        }
+      }
       return true;
     }
   }
@@ -1778,10 +1806,19 @@ gfxWindowsPlatform::InitD3D11Devices()
 
   mD3D11DeviceInitialized = true;
 
-  MOZ_ASSERT(!mD3D11Device);
+  MOZ_ASSERT(!mD3D11Device); 
+
+  bool safeMode = false;
+  nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
+  if (xr) {
+    xr->GetInSafeMode(&safeMode);
+  }
+
+  if (safeMode) {
+    return;
+  }
 
   bool useWARP = false;
-  ScopedGfxFeatureReporter reporterWARP("D3D11-WARP", gfxPrefs::LayersD3D11ForceWARP());
 
   nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
   if (gfxInfo) {
@@ -1789,7 +1826,8 @@ gfxWindowsPlatform::InitD3D11Devices()
     if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS, &status))) {
       if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
 
-        if (gfxPrefs::LayersD3D11DisableWARP()) {
+        // It seems like nvdxgiwrapper makes a mess of WARP. See bug 1154703 for more.
+        if (gfxPrefs::LayersD3D11DisableWARP() || GetModuleHandleA("nvdxgiwrapper.dll")) {
           return;
         }
 
@@ -1868,22 +1906,29 @@ gfxWindowsPlatform::InitD3D11Devices()
     MOZ_ASSERT(!mD3D11Device);
     MOZ_ASSERT(!adapter);
 
-    hr = d3d11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
-                           // Use
-                           // D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS
-                           // to prevent bug 1092260. IE 11 also uses this flag.
-                           D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                           featureLevels.Elements(), featureLevels.Length(),
-                           D3D11_SDK_VERSION, byRef(mD3D11Device), nullptr, nullptr);
+    ScopedGfxFeatureReporter reporterWARP("D3D11-WARP", gfxPrefs::LayersD3D11ForceWARP());
 
-    if (FAILED(hr)) {
-      // This should always succeed... in theory.
-      gfxCriticalError() << "Failed to initialize WARP D3D11 device!" << hr;
-      MOZ_CRASH();
+    MOZ_SEH_TRY {
+      hr = d3d11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
+                             // Use
+                             // D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS
+                             // to prevent bug 1092260. IE 11 also uses this flag.
+                             D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                             featureLevels.Elements(), featureLevels.Length(),
+                             D3D11_SDK_VERSION, byRef(mD3D11Device), nullptr, nullptr);
+
+      if (FAILED(hr)) {
+        // This should always succeed... in theory.
+        gfxCriticalError() << "Failed to initialize WARP D3D11 device!" << hr;
+        return;
+      }
+
+      mIsWARP = true;
+      reporterWARP.SetSuccessful();
+    } MOZ_SEH_EXCEPT (EXCEPTION_EXECUTE_HANDLER) {
+      gfxCriticalError() << "Exception occurred initializing WARP D3D11 device!";
+      return;
     }
-
-    mIsWARP = true;
-    reporterWARP.SetSuccessful();
   }
 
   mD3D11Device->SetExceptionMode(0);
@@ -1928,11 +1973,11 @@ DwmCompositionEnabled()
   return dwmEnabled;
 }
 
-class D3DVsyncSource MOZ_FINAL : public VsyncSource
+class D3DVsyncSource final : public VsyncSource
 {
 public:
 
-  class D3DVsyncDisplay MOZ_FINAL : public VsyncSource::Display
+  class D3DVsyncDisplay final : public VsyncSource::Display
   {
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(D3DVsyncDisplay)
     public:
@@ -1952,7 +1997,7 @@ public:
         delete mVsyncThread;
       }
 
-      virtual void EnableVsync() MOZ_OVERRIDE
+      virtual void EnableVsync() override
       {
         MOZ_ASSERT(NS_IsMainThread());
         { // scope lock
@@ -1969,7 +2014,7 @@ public:
         mVsyncThread->message_loop()->PostTask(FROM_HERE, vsyncStart);
       }
 
-      virtual void DisableVsync() MOZ_OVERRIDE
+      virtual void DisableVsync() override
       {
         MOZ_ASSERT(NS_IsMainThread());
         { // scope lock
@@ -1983,7 +2028,7 @@ public:
         mVsyncThread->Stop();
       }
 
-      virtual bool IsVsyncEnabled() MOZ_OVERRIDE
+      virtual bool IsVsyncEnabled() override
       {
         MOZ_ASSERT(NS_IsMainThread());
         MonitorAutoLock lock(mVsyncEnabledLock);
@@ -2070,7 +2115,7 @@ public:
     mPrimaryDisplay = new D3DVsyncDisplay();
   }
 
-  virtual Display& GetGlobalDisplay() MOZ_OVERRIDE
+  virtual Display& GetGlobalDisplay() override
   {
     return *mPrimaryDisplay;
   }

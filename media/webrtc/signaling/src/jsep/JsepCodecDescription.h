@@ -7,12 +7,14 @@
 
 #include <iostream>
 #include <string>
+#include <string.h>
 #include "signaling/src/sdp/SdpMediaSection.h"
+#include "nsCRT.h"
 
 namespace mozilla {
 
 #define JSEP_CODEC_CLONE(T)                                                    \
-  virtual JsepCodecDescription* Clone() const MOZ_OVERRIDE                     \
+  virtual JsepCodecDescription* Clone() const override                     \
   {                                                                            \
     return new T(*this);                                                       \
   }
@@ -77,7 +79,7 @@ struct JsepCodecDescription {
     const SdpRtpmapAttributeList::Rtpmap& entry = rtpmap.GetEntry(fmt);
 
     if (mType == remoteMsection.GetMediaType()
-        && (mName == entry.name)
+        && !nsCRT::strcasecmp(mName.c_str(), entry.name.c_str())
         && (mClock == entry.clock)
         && (mChannels == entry.channels)) {
       return ParametersMatch(FindParameters(entry.pt, remoteMsection));
@@ -223,26 +225,26 @@ struct JsepAudioCodecDescription : public JsepCodecDescription {
   }
 
   virtual void
-  AddFmtps(SdpFmtpAttributeList& fmtp) const MOZ_OVERRIDE
+  AddFmtps(SdpFmtpAttributeList& fmtp) const override
   {
     // TODO
   }
 
   virtual void
-  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const MOZ_OVERRIDE
+  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const override
   {
     // TODO: Do we want to add anything?
   }
 
   virtual bool
-  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) MOZ_OVERRIDE
+  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) override
   {
     // TODO
     return true;
   }
 
   virtual bool
-  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) MOZ_OVERRIDE
+  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) override
   {
     // Nothing to do
     return true;
@@ -272,7 +274,7 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   virtual void
-  AddFmtps(SdpFmtpAttributeList& fmtp) const MOZ_OVERRIDE
+  AddFmtps(SdpFmtpAttributeList& fmtp) const override
   {
     if (mName == "H264") {
       UniquePtr<SdpFmtpAttributeList::H264Parameters> params =
@@ -302,7 +304,7 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   virtual void
-  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const MOZ_OVERRIDE
+  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const override
   {
     // Just hard code for now
     rtcpfb.PushEntry(mDefaultPt, SdpRtcpFbAttributeList::kNack);
@@ -313,7 +315,7 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   virtual bool
-  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) MOZ_OVERRIDE
+  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) override
   {
     switch (params.codec_type) {
       case SdpRtpmapAttributeList::kH264:
@@ -336,7 +338,7 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
   }
 
   virtual bool
-  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) MOZ_OVERRIDE
+  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) override
   {
     switch (feedback.type) {
       case SdpRtcpFbAttributeList::kAck:
@@ -481,7 +483,7 @@ struct JsepVideoCodecDescription : public JsepCodecDescription {
 
   virtual bool
   ParametersMatch(const SdpFmtpAttributeList::Parameters* fmtp) const
-      MOZ_OVERRIDE
+      override
   {
     if (mName == "H264") {
       if (!fmtp) {
@@ -564,26 +566,26 @@ struct JsepApplicationCodecDescription : public JsepCodecDescription {
   }
 
   virtual void
-  AddFmtps(SdpFmtpAttributeList& fmtp) const MOZ_OVERRIDE
+  AddFmtps(SdpFmtpAttributeList& fmtp) const override
   {
     // TODO: Is there anything to do here?
   }
 
   virtual void
-  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const MOZ_OVERRIDE
+  AddRtcpFbs(SdpRtcpFbAttributeList& rtcpfb) const override
   {
     // Nothing to do here.
   }
 
   virtual bool
-  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) MOZ_OVERRIDE
+  LoadFmtps(const SdpFmtpAttributeList::Parameters& params) override
   {
     // TODO: Is there anything to do here?
     return true;
   }
 
   virtual bool
-  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) MOZ_OVERRIDE
+  LoadRtcpFbs(const SdpRtcpFbAttributeList::Feedback& feedback) override
   {
     // Nothing to do
     return true;
@@ -594,7 +596,7 @@ struct JsepApplicationCodecDescription : public JsepCodecDescription {
   // Override, uses sctpmap instead of rtpmap
   virtual bool
   Matches(const std::string& fmt,
-          const SdpMediaSection& remoteMsection) const MOZ_OVERRIDE
+          const SdpMediaSection& remoteMsection) const override
   {
     auto& attrs = remoteMsection.GetAttributeList();
     if (!attrs.HasAttribute(SdpAttribute::kSctpmapAttribute)) {
@@ -608,7 +610,8 @@ struct JsepApplicationCodecDescription : public JsepCodecDescription {
 
     const SdpSctpmapAttributeList::Sctpmap& entry = sctpmap.GetEntry(fmt);
 
-    if (mType == remoteMsection.GetMediaType() && (mName == entry.name)) {
+    if (mType == remoteMsection.GetMediaType() &&
+        !nsCRT::strcasecmp(mName.c_str(), entry.name.c_str())) {
       return true;
     }
     return false;

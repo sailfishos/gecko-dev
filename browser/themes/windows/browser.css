@@ -1576,26 +1576,23 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   -moz-image-region: rect(0, 48px, 16px, 32px);
 }
 
+%include ../shared/readinglist/readinglist.inc.css
+
 /* Reader mode button */
 
 #reader-mode-button {
-  -moz-appearance: none;
-  padding: 0;
-  list-style-image: url("chrome://browser/skin/reader-mode-16.png");
+  list-style-image: url("chrome://browser/skin/readerMode.svg");
   -moz-image-region: rect(0, 16px, 16px, 0);
 }
 
-#reader-mode-button > .toolbarbutton-icon {
-  width: 16px;
-}
-
-#reader-mode-button:focus {
-  outline: 1px dotted;
+#reader-mode-button:hover,
+#reader-mode-button[readeractive]:hover {
+  -moz-image-region: rect(0, 32px, 16px, 16px);
 }
 
 #reader-mode-button:hover:active,
 #reader-mode-button[readeractive] {
-   -moz-image-region: rect(0, 32px, 16px, 16px);
+  -moz-image-region: rect(0, 48px, 16px, 32px);
 }
 
 /* social share panel */
@@ -2505,6 +2502,19 @@ notification[value="translation"] {
   -moz-appearance: none;
 }
 
+/* Loop/ Hello browser styles */
+
+notification[value="loop-sharing-notification"] .button-menubutton-button {
+  -moz-appearance: none;
+  min-width: 0;
+  border: 0;
+  margin: 0;
+}
+
+notification[value="loop-sharing-notification"] .messageImage {
+  list-style-image: url(chrome://browser/skin/webRTC-shareScreen-16.png);
+}
+
 /* Bookmarks roots menu-items */
 #subscribeToPageMenuitem:not([disabled]),
 #subscribeToPageMenupopup,
@@ -2524,6 +2534,18 @@ notification[value="translation"] {
 #panelMenu_unsortedBookmarks {
   list-style-image: url("chrome://browser/skin/places/unsortedBookmarks.png");
   -moz-image-region: auto;
+}
+
+#menu_readingList,
+#BMB_readingList {
+  list-style-image: url("chrome://browser/skin/readinglist/readinglist-icon.svg");
+  -moz-image-region: auto;
+}
+
+#panelMenu_pocket,
+#menu_pocket,
+#BMB_pocket {
+  list-style-image: url("chrome://browser/content/pocket/panels/img/pocketmenuitem16.png");
 }
 
 /* ::::: Keyboard UI Panel ::::: */
@@ -2826,6 +2848,17 @@ chatbox {
 
 #eme-notification-icon:hover:active {
   list-style-image: url("chrome://browser/skin/drm-icon.svg#chains-pressed");
+}
+
+#eme-notification-icon[firstplay=true] {
+  animation: emeTeachingMoment 0.2s linear 0s 5 normal;
+}
+
+@keyframes emeTeachingMoment {
+  0% {transform: translateX(0); }
+  25% {transform: translateX(3px) }
+  75% {transform: translateX(-3px) }
+  100% { transform: translateX(0); }
 }
 
 /* Customization mode */

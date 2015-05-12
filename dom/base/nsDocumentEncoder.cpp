@@ -1369,6 +1369,10 @@ nsHTMLCopyEncoder::SetSelection(nsISelection* aSelection)
     return NS_ERROR_NULL_POINTER;
   range->GetCommonAncestorContainer(getter_AddRefs(commonParent));
 
+  // Thunderbird's msg compose code abuses the HTML copy encoder and gets
+  // confused if mIsTextWidget ends up becoming true, so for now we skip
+  // this logic in Thunderbird.
+#ifndef MOZ_THUNDERBIRD
   for (nsCOMPtr<nsIContent> selContent(do_QueryInterface(commonParent));
        selContent;
        selContent = selContent->GetParent())
@@ -1381,21 +1385,8 @@ nsHTMLCopyEncoder::SetSelection(nsISelection* aSelection)
       mIsTextWidget = true;
       break;
     }
-    else if (selContent->IsElement()) {
-      nsRefPtr<nsStyleContext> styleContext =
-        nsComputedDOMStyle::GetStyleContextForElementNoFlush(selContent->AsElement(),
-                                                             nullptr, nullptr);
-      if (styleContext) {
-        const nsStyleText* textStyle = styleContext->StyleText();
-        if (textStyle->WhiteSpaceOrNewlineIsSignificant()) {
-          // Copy as plaintext for all preformatted elements
-          mIsTextWidget = true;
-        }
-        break;
-      }
-    }
   }
-  
+
   // normalize selection if we are not in a widget
   if (mIsTextWidget) 
   {
@@ -1403,6 +1394,7 @@ nsHTMLCopyEncoder::SetSelection(nsISelection* aSelection)
     mMimeType.AssignLiteral("text/plain");
     return NS_OK;
   }
+#endif
 
   // also consider ourselves in a text widget if we can't find an html document
   nsCOMPtr<nsIHTMLDocument> htmlDoc = do_QueryInterface(mDocument);

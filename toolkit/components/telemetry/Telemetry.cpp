@@ -634,7 +634,7 @@ ClearIOReporting()
 
 class KeyedHistogram;
 
-class TelemetryImpl MOZ_FINAL
+class TelemetryImpl final
   : public nsITelemetry
   , public nsIMemoryReporter
 {
@@ -806,9 +806,6 @@ private:
   const uint32_t mMax;
   const uint32_t mBucketCount;
 };
-
-// A initializer to initialize histogram collection
-StatisticsRecorder gStatisticsRecorder;
 
 // Hardcoded probes
 struct TelemetryHistogram {
@@ -1652,11 +1649,23 @@ mFailedLockCount(0)
 {
   // A whitelist to prevent Telemetry reporting on Addon & Thunderbird DBs
   const char *trackedDBs[] = {
-    "addons.sqlite", "content-prefs.sqlite", "cookies.sqlite",
-    "downloads.sqlite", "extensions.sqlite", "formhistory.sqlite",
-    "index.sqlite", "healthreport.sqlite", "netpredictions.sqlite",
-    "permissions.sqlite", "places.sqlite", "search.sqlite", "signons.sqlite",
-    "urlclassifier3.sqlite", "webappsstore.sqlite"
+    "818200132aebmoouht.sqlite", // IndexedDB for about:home, see aboutHome.js
+    "addons.sqlite",
+    "content-prefs.sqlite",
+    "cookies.sqlite",
+    "downloads.sqlite",
+    "extensions.sqlite",
+    "formhistory.sqlite",
+    "healthreport.sqlite",
+    "index.sqlite",
+    "netpredictions.sqlite",
+    "permissions.sqlite",
+    "places.sqlite",
+    "reading-list.sqlite",
+    "search.sqlite",
+    "signons.sqlite",
+    "urlclassifier3.sqlite",
+    "webappsstore.sqlite"
   };
 
   for (size_t i = 0; i < ArrayLength(trackedDBs); i++)
@@ -2718,21 +2727,20 @@ TelemetryImpl::GetThreadHangStats(JSContext* cx, JS::MutableHandle<JS::Value> re
   }
   size_t threadIndex = 0;
 
-#ifdef MOZ_ENABLE_BACKGROUND_HANG_MONITOR
-  /* First add active threads; we need to hold |iter| (and its lock)
-     throughout this method to avoid a race condition where a thread can
-     be recorded twice if the thread is destroyed while this method is
-     running */
-  BackgroundHangMonitor::ThreadHangStatsIterator iter;
-  for (Telemetry::ThreadHangStats* histogram = iter.GetNext();
-       histogram; histogram = iter.GetNext()) {
-    JS::RootedObject obj(cx,
-      CreateJSThreadHangStats(cx, *histogram));
-    if (!JS_SetElement(cx, retObj, threadIndex++, obj)) {
-      return NS_ERROR_FAILURE;
+  if (!BackgroundHangMonitor::IsDisabled()) {
+    /* First add active threads; we need to hold |iter| (and its lock)
+       throughout this method to avoid a race condition where a thread can
+       be recorded twice if the thread is destroyed while this method is
+       running */
+    BackgroundHangMonitor::ThreadHangStatsIterator iter;
+    for (Telemetry::ThreadHangStats* histogram = iter.GetNext();
+         histogram; histogram = iter.GetNext()) {
+      JS::RootedObject obj(cx, CreateJSThreadHangStats(cx, *histogram));
+      if (!JS_SetElement(cx, retObj, threadIndex++, obj)) {
+        return NS_ERROR_FAILURE;
+      }
     }
   }
-#endif
 
   // Add saved threads next
   MutexAutoLock autoLock(mThreadHangStatsMutex);

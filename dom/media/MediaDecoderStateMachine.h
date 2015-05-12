@@ -90,6 +90,7 @@ hardware (via AudioStream).
 #include "MediaDecoderOwner.h"
 #include "MediaMetadataManager.h"
 #include "MediaDecoderStateMachineScheduler.h"
+#include "mozilla/RollingMean.h"
 
 class nsITimer;
 
@@ -444,7 +445,7 @@ protected:
   public:
     explicit WakeDecoderRunnable(MediaDecoderStateMachine* aSM)
       : mMutex("WakeDecoderRunnable"), mStateMachine(aSM) {}
-    NS_IMETHOD Run() MOZ_OVERRIDE
+    NS_IMETHOD Run() override
     {
       nsRefPtr<MediaDecoderStateMachine> stateMachine;
       {
@@ -496,10 +497,7 @@ protected:
   // May not be invoked when mReader->UseBufferingHeuristics() is false.
   bool HasLowDecodedData(int64_t aAudioUsecs);
 
-  bool OutOfDecodedAudio()
-  {
-    return IsAudioDecoding() && !AudioQueue().IsFinished() && AudioQueue().GetSize() == 0;
-  }
+  bool OutOfDecodedAudio();
 
   bool OutOfDecodedVideo()
   {
@@ -1141,6 +1139,10 @@ protected:
   mozilla::MediaMetadataManager mMetadataManager;
 
   MediaDecoderOwner::NextFrameStatus mLastFrameStatus;
+
+  mozilla::RollingMean<uint32_t, uint32_t> mCorruptFrames;
+
+  bool mDisabledHardwareAcceleration;
 
   // mDecodingFrozenAtStateDecoding: turn on/off at
   //                                 SetDormant/Seek,Play.

@@ -298,11 +298,6 @@ pref("chrome.override_package.passwordmgr", "browser");
 // enable xul error pages
 pref("browser.xul.error_pages.enabled", true);
 
-pref("browser.history.grouping", "day");
-pref("browser.history.showSessions", false);
-pref("browser.sessionhistory.max_entries", 50);
-pref("browser.history_expire_sites", 40000);
-
 // disable color management
 pref("gfx.color_management.mode", 0);
 
@@ -859,7 +854,10 @@ pref("media.gmp-provider.enabled", true);
 pref("reader.color_scheme", "auto");
 
 // Color scheme values available in reader mode UI.
-pref("reader.color_scheme.values", "[\"light\",\"dark\",\"auto\"]");
+pref("reader.color_scheme.values", "[\"dark\",\"auto\",\"light\"]");
 
 // Whether to use a vertical or horizontal toolbar.
 pref("reader.toolbar.vertical", false);
+
+// Whether or not to display buttons related to reading list in reader view.
+pref("browser.readinglist.enabled", true);

@@ -27,9 +27,9 @@
               type="bool"/>
 </preferences>
 
-<script type="application/javascript" 
+<script type="application/javascript"
         src="chrome://mozapps/content/preferences/fontbuilder.js"/>
-<script type="application/javascript" 
+<script type="application/javascript"
         src="chrome://browser/content/preferences/in-content/content.js"/>
 
 <hbox id="header-content"

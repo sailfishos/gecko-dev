@@ -567,14 +567,10 @@ public:
                          MediaEngineSource* aAudioSource,
                          MediaEngineSource* aVideoSource)
   {
-    DOMMediaStream::TrackTypeHints hints =
-      (aAudioSource ? DOMMediaStream::HINT_CONTENTS_AUDIO : 0) |
-      (aVideoSource ? DOMMediaStream::HINT_CONTENTS_VIDEO : 0);
-
     nsRefPtr<nsDOMUserMediaStream> stream = new nsDOMUserMediaStream(aListener,
                                                                      aAudioSource,
                                                                      aVideoSource);
-    stream->InitTrackUnionStream(aWindow, hints);
+    stream->InitTrackUnionStream(aWindow);
     return stream.forget();
   }
 
@@ -611,7 +607,7 @@ public:
     }
   }
 
-  virtual void Stop() MOZ_OVERRIDE
+  virtual void Stop() override
   {
     if (mSourceStream) {
       mSourceStream->EndAllTrackAndFinish();
@@ -622,7 +618,7 @@ public:
   // single-source trackunion like we have here, the TrackUnion will assign trackids
   // that match the source's trackids, so we can avoid needing a mapping function.
   // XXX This will not handle more complex cases well.
-  virtual void StopTrack(TrackID aTrackID) MOZ_OVERRIDE
+  virtual void StopTrack(TrackID aTrackID) override
   {
     if (mSourceStream) {
       mSourceStream->EndTrack(aTrackID);
@@ -653,7 +649,7 @@ public:
 #endif
 
   // Allow getUserMedia to pass input data directly to PeerConnection/MediaPipeline
-  virtual bool AddDirectListener(MediaStreamDirectListener *aListener) MOZ_OVERRIDE
+  virtual bool AddDirectListener(MediaStreamDirectListener *aListener) override
   {
     if (mSourceStream) {
       mSourceStream->AddDirectListener(aListener);
@@ -677,7 +673,7 @@ public:
     mPlayoutDelay = aPlayoutDelay;
   }
 
-  virtual void RemoveDirectListener(MediaStreamDirectListener *aListener) MOZ_OVERRIDE
+  virtual void RemoveDirectListener(MediaStreamDirectListener *aListener) override
   {
     if (mSourceStream) {
       mSourceStream->RemoveDirectListener(aListener);
@@ -685,7 +681,7 @@ public:
   }
 
   // let us intervene for direct listeners when someone does track.enabled = false
-  virtual void SetTrackEnabled(TrackID aID, bool aEnabled) MOZ_OVERRIDE
+  virtual void SetTrackEnabled(TrackID aID, bool aEnabled) override
   {
     // We encapsulate the SourceMediaStream and TrackUnion into one entity, so
     // we can handle the disabling at the SourceMediaStream
@@ -695,12 +691,12 @@ public:
     GetStream()->AsProcessedStream()->ForwardTrackEnabled(aID, aEnabled);
   }
 
-  virtual DOMLocalMediaStream* AsDOMLocalMediaStream() MOZ_OVERRIDE
+  virtual DOMLocalMediaStream* AsDOMLocalMediaStream() override
   {
     return this;
   }
 
-  virtual MediaEngineSource* GetMediaEngine(TrackID aTrackID) MOZ_OVERRIDE
+  virtual MediaEngineSource* GetMediaEngine(TrackID aTrackID) override
   {
     // MediaEngine supports only one video and on video track now and TrackID is
     // fixed in MediaEngine.
@@ -777,7 +773,7 @@ public:
                             DOMMediaStream* aStream)
       : mWindowID(aWindowID), mOnSuccess(aSuccess), mManager(aManager),
         mStream(aStream) {}
-    virtual void NotifyTracksAvailable(DOMMediaStream* aStream) MOZ_OVERRIDE
+    virtual void NotifyTracksAvailable(DOMMediaStream* aStream) override
     {
       // We're in the main thread, so no worries here.
       if (!(mManager->IsWindowStillActive(mWindowID))) {
@@ -1102,6 +1098,8 @@ public:
     MOZ_ASSERT(!mOnFailure);
 
     NS_DispatchToMainThread(runnable);
+    // Do after ErrorCallbackRunnable Run()s, as it checks active window list
+    NS_DispatchToMainThread(new GetUserMediaListenerRemove(mWindowID, mListener));
   }
 
   void
@@ -1158,11 +1156,8 @@ public:
       manager->RemoveFromWindowList(mWindowID, mListener);
     } else {
       // This will re-check the window being alive on main-thread
-      // Note: we must remove the listener on MainThread as well
+      // and remove the listener on MainThread as well
       Fail(aName, aMessage);
-
-      // MUST happen after ErrorCallbackRunnable Run()s, as it checks the active window list
-      NS_DispatchToMainThread(new GetUserMediaListenerRemove(mWindowID, mListener));
     }
 
     MOZ_ASSERT(!mOnSuccess);
@@ -1670,6 +1665,8 @@ MediaManager::GetUserMedia(
                                 false) ||
 #if defined(XP_MACOSX) || defined(XP_WIN)
           (
+            // Allow tab sharing for all platforms including XP and OSX 10.6
+            (src != dom::MediaSourceEnum::Browser) &&
             !Preferences::GetBool("media.getusermedia.screensharing.allow_on_old_platforms",
                                   false) &&
 #if defined(XP_MACOSX)
@@ -2172,6 +2169,7 @@ struct CaptureWindowStateData {
   bool *mScreenShare;
   bool *mWindowShare;
   bool *mAppShare;
+  bool *mBrowserShare;
 };
 
 static void
@@ -2202,6 +2200,9 @@ CaptureWindowStateCallback(MediaManager *aThis,
       if (listener->CapturingApplication()) {
         *data->mAppShare = true;
       }
+      if (listener->CapturingBrowser()) {
+        *data->mBrowserShare = true;
+      }
     }
   }
 }
@@ -2210,7 +2211,8 @@ CaptureWindowStateCallback(MediaManager *aThis,
 NS_IMETHODIMP
 MediaManager::MediaCaptureWindowState(nsIDOMWindow* aWindow, bool* aVideo,
                                       bool* aAudio, bool *aScreenShare,
-                                      bool* aWindowShare, bool *aAppShare)
+                                      bool* aWindowShare, bool *aAppShare,
+                                      bool *aBrowserShare)
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   struct CaptureWindowStateData data;
@@ -2219,22 +2221,24 @@ MediaManager::MediaCaptureWindowState(nsIDOMWindow* aWindow, bool* aVideo,
   data.mScreenShare = aScreenShare;
   data.mWindowShare = aWindowShare;
   data.mAppShare = aAppShare;
+  data.mBrowserShare = aBrowserShare;
 
   *aVideo = false;
   *aAudio = false;
   *aScreenShare = false;
   *aWindowShare = false;
   *aAppShare = false;
+  *aBrowserShare = false;
 
   nsCOMPtr<nsPIDOMWindow> piWin = do_QueryInterface(aWindow);
   if (piWin) {
     IterateWindowListeners(piWin, CaptureWindowStateCallback, &data);
   }
 #ifdef DEBUG
-  LOG(("%s: window %lld capturing %s %s %s %s %s", __FUNCTION__, piWin ? piWin->WindowID() : -1,
+  LOG(("%s: window %lld capturing %s %s %s %s %s %s", __FUNCTION__, piWin ? piWin->WindowID() : -1,
        *aVideo ? "video" : "", *aAudio ? "audio" : "",
        *aScreenShare ? "screenshare" : "",  *aWindowShare ? "windowshare" : "",
-       *aAppShare ? "appshare" : ""));
+       *aAppShare ? "appshare" : "", *aBrowserShare ? "browsershare" : ""));
 #endif
   return NS_OK;
 }

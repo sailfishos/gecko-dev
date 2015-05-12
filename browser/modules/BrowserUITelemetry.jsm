@@ -49,6 +49,7 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
       "urlbar-container",
       "search-container",
       "bookmarks-menu-button",
+      "pocket-button",
       "downloads-button",
       "home-button",
       "social-share-button",
@@ -287,9 +288,11 @@ this.BrowserUITelemetry = {
     });
 
     Services.search.init(rv => {
-      // If there are no such windows, we're out of luck. :(
-      this._firstWindowMeasurements = win ? this._getWindowMeasurements(win, rv)
-                                          : {};
+      // If there are no such windows (or we've just about found one
+      // but it's closed already), we're out of luck. :(
+      let hasWindow = win && !win.closed;
+      this._firstWindowMeasurements = hasWindow ? this._getWindowMeasurements(win, rv)
+                                                : {};
     });
   },
 
@@ -663,7 +666,7 @@ this.BrowserUITelemetry = {
     "copyvideourl", "copyaudiourl", "saveimage", "shareimage", "sendimage",
     "setDesktopBackground", "viewimageinfo", "viewimagedesc", "savevideo",
     "sharevideo", "saveaudio", "video-saveimage", "sendvideo", "sendaudio",
-    "ctp-play", "ctp-hide", "sharepage", "savepage", "markpageMenu",
+    "ctp-play", "ctp-hide", "sharepage", "savepage", "pocket", "markpageMenu",
     "viewbgimage", "undo", "cut", "copy", "paste", "delete", "selectall",
     "keywordfield", "searchselect", "shareselect", "frame", "showonlythisframe",
     "openframeintab", "openframe", "reloadframe", "bookmarkframe", "saveframe",

@@ -2773,12 +2773,40 @@ nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-static void
-PaintTreeBody(nsIFrame* aFrame, nsRenderingContext* aCtx,
-              const nsRect& aDirtyRect, nsPoint aPt)
-{
-  static_cast<nsTreeBodyFrame*>(aFrame)->PaintTreeBody(*aCtx, aDirtyRect, aPt);
-}
+class nsDisplayTreeBody final : public nsDisplayItem {
+public:
+  nsDisplayTreeBody(nsDisplayListBuilder* aBuilder, nsFrame* aFrame) :
+    nsDisplayItem(aBuilder, aFrame),
+    mDisableSubpixelAA(false) {
+    MOZ_COUNT_CTOR(nsDisplayTreeBody);
+  }
+#ifdef NS_BUILD_REFCNT_LOGGING
+  virtual ~nsDisplayTreeBody() {
+    MOZ_COUNT_DTOR(nsDisplayTreeBody);
+  }
+#endif
+
+  virtual void Paint(nsDisplayListBuilder* aBuilder,
+                     nsRenderingContext* aCtx) override
+  {
+    gfxContext* ctx = aCtx->ThebesContext();
+    gfxContextAutoDisableSubpixelAntialiasing disable(ctx, mDisableSubpixelAA);
+    static_cast<nsTreeBodyFrame*>(mFrame)->
+      PaintTreeBody(*aCtx, mVisibleRect, ToReferenceFrame());
+  }
+  NS_DISPLAY_DECL_NAME("XULTreeBody", TYPE_XUL_TREE_BODY)
+
+  virtual nsRect GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder) override
+  {
+    bool snap;
+    return GetBounds(aBuilder, &snap);
+  }
+  virtual void DisableComponentAlpha() override {
+    mDisableSubpixelAA = true;
+  }
+
+  bool mDisableSubpixelAA;
+};
 
 // Painting routines
 void
@@ -2799,8 +2827,7 @@ nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     return;
 
   aLists.Content()->AppendNewToTop(new (aBuilder)
-    nsDisplayGeneric(aBuilder, this, ::PaintTreeBody, "XULTreeBody",
-                     nsDisplayItem::TYPE_XUL_TREE_BODY));
+    nsDisplayTreeBody(aBuilder, this));
 }
 
 void
@@ -4694,7 +4721,7 @@ class nsOverflowChecker : public nsRunnable
 {
 public:
   explicit nsOverflowChecker(nsTreeBodyFrame* aFrame) : mFrame(aFrame) {}
-  NS_IMETHOD Run() MOZ_OVERRIDE
+  NS_IMETHOD Run() override
   {
     if (mFrame.IsAlive()) {
       nsTreeBodyFrame* tree = static_cast<nsTreeBodyFrame*>(mFrame.GetFrame());

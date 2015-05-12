@@ -416,7 +416,7 @@ class MochitestServer(object):
             time.sleep(1)
             i += 1
         else:
-            self._log.error(
+            self._log.info(
                 "TEST-UNEXPECTED-FAIL | runtests.py | Timed out while waiting for server startup.")
             self.stop()
             sys.exit(1)
@@ -581,9 +581,7 @@ class MochitestUtilsMixin(object):
         if options.logFile:
             options.logFile = self.getLogFilePath(options.logFile)
 
-        # Note that all tests under options.subsuite need to be browser chrome
-        # tests.
-        if options.browserChrome or options.chrome or options.subsuite or \
+        if options.browserChrome or options.chrome or \
            options.a11y or options.webapprtChrome or options.jetpackPackage or \
            options.jetpackAddon:
             self.makeTestConfig(options)
@@ -938,7 +936,7 @@ toolbar#nav-bar {
 
         # Call installChromeJar().
         if not os.path.isdir(os.path.join(SCRIPT_DIR, self.jarDir)):
-            self.log.error(
+            self.log.info(
                 "TEST-UNEXPECTED-FAIL | invalid setup: missing mochikit extension")
             return None
 
@@ -1429,7 +1427,7 @@ class Mochitest(MochitestUtilsMixin):
         # TODO: this should really be upstreamed somewhere, maybe mozprofile
         certificateStatus = self.fillCertificateDB(options)
         if certificateStatus:
-            self.log.error(
+            self.log.info(
                 "TEST-UNEXPECTED-FAIL | runtests.py | Certificate integration failed")
             return None
 
@@ -1449,6 +1447,7 @@ class Mochitest(MochitestUtilsMixin):
 
         gmp_subdirs = [
             os.path.join('gmp-fake', '1.0'),
+            os.path.join('gmp-fakeopenh264', '1.0'),
             os.path.join('gmp-clearkey', '0.1'),
         ]
 
@@ -1621,7 +1620,7 @@ class Mochitest(MochitestUtilsMixin):
                 processPID)
             if isPidAlive(processPID):
                 foundZombie = True
-                self.log.error(
+                self.log.info(
                     "TEST-UNEXPECTED-FAIL | zombiecheck | child process %d still alive after shutdown" %
                     processPID)
                 self.killAndGetStack(
@@ -1810,7 +1809,7 @@ class Mochitest(MochitestUtilsMixin):
             # record post-test information
             if status:
                 self.message_logger.dump_buffered()
-                self.log.error(
+                self.log.info(
                     "TEST-UNEXPECTED-FAIL | %s | application terminated with exit code %s" %
                     (self.lastTestSeen, status))
             else:
@@ -2231,7 +2230,7 @@ class Mochitest(MochitestUtilsMixin):
 
         self.message_logger.dump_buffered()
         self.message_logger.buffering = False
-        self.log.error(error_message)
+        self.log.info(error_message)
 
         browserProcessId = browserProcessId or proc.pid
         self.killAndGetStack(

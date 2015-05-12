@@ -189,6 +189,7 @@ function MarionetteServerConnection(aPrefix, aTransport, aServer)
 
   this.observing = null;
   this._browserIds = new WeakMap();
+  this.quitFlags = null;
 }
 
 MarionetteServerConnection.prototype = {
@@ -222,6 +223,12 @@ MarionetteServerConnection.prototype = {
   onClosed: function MSC_onClosed(aStatus) {
     this.server._connectionClosed(this);
     this.sessionTearDown();
+
+    if (this.quitFlags !== null) {
+      let flags = this.quitFlags;
+      this.quitFlags = null;
+      Services.startup.quit(flags);
+    }
   },
 
   /**
@@ -2178,9 +2185,21 @@ MarionetteServerConnection.prototype = {
    */
   getElementValueOfCssProperty: function MDA_getElementValueOfCssProperty(aRequest){
     let command_id = this.command_id = this.getCommandId();
-    this.sendAsync("getElementValueOfCssProperty",
-                   {id: aRequest.parameters.id, propertyName: aRequest.parameters.propertyName},
-                   command_id);
+    let curWin = this.getCurrentWindow();
+    if (this.context == "chrome") {
+      try {
+        let el = this.curBrowser.elementManager.getKnownElement(aRequest.parameters.id, curWin);
+        this.sendResponse(curWin.document.defaultView.getComputedStyle(el, null).getPropertyValue(
+          aRequest.parameters.propertyName), command_id);
+      } catch (e) {
+        this.sendError(e.message, e.code, e.stack, command_id);
+      }
+    }
+    else {
+      this.sendAsync("getElementValueOfCssProperty",
+                     {id: aRequest.parameters.id, propertyName: aRequest.parameters.propertyName},
+                     command_id);
+    }
   },
 
   /**
@@ -2601,6 +2620,31 @@ MarionetteServerConnection.prototype = {
       this.sendError("Could not delete session", 500, e.name + ": " + e.message, command_id);
       return;
     }
+    this.sendOk(command_id);
+  },
+
+  /**
+   * Quits the application with the provided flags and tears down the
+   * current session.
+   */
+  quitApplication: function MDA_quitApplication (aRequest) {
+    let command_id = this.command_id = this.getCommandId();
+    if (appName != "Firefox") {
+      this.sendError("In app initiated quit only supported on Firefox", 500, null, command_id);
+    }
+
+    let flagsArray = aRequest.parameters.flags;
+    let flags = Ci.nsIAppStartup.eAttemptQuit;
+    for (let k of flagsArray) {
+      flags |= Ci.nsIAppStartup[k];
+    }
+
+    // Close the listener so we can't re-connect until after the restart.
+    this.server.closeListener();
+    this.quitFlags = flags;
+
+    // This notifies the client it's safe to begin attempting to reconnect.
+    // The actual quit will happen when the current socket connection is closed.
     this.sendOk(command_id);
   },
 
@@ -3286,6 +3330,7 @@ MarionetteServerConnection.prototype.requestTypes = {
   "switchToFrame": MarionetteServerConnection.prototype.switchToFrame,
   "switchToWindow": MarionetteServerConnection.prototype.switchToWindow,
   "deleteSession": MarionetteServerConnection.prototype.deleteSession,
+  "quitApplication": MarionetteServerConnection.prototype.quitApplication,
   "emulatorCmdResult": MarionetteServerConnection.prototype.emulatorCmdResult,
   "importScript": MarionetteServerConnection.prototype.importScript,
   "clearImportedScripts": MarionetteServerConnection.prototype.clearImportedScripts,

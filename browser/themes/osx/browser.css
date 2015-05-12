@@ -563,6 +563,29 @@ toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-p
   }
 }
 
+/* #menu_readingList, svg icons don't work in the mac native menubar */
+#BMB_readingList {
+  list-style-image: url("chrome://browser/skin/readinglist/readinglist-icon.svg");
+}
+
+#panelMenu_pocket,
+#menu_pocket,
+#BMB_pocket {
+  list-style-image: url("chrome://browser/content/pocket/panels/img/pocketmenuitem16.png");
+}
+
+@media (min-resolution: 2dppx) {
+  #panelMenu_pocket,
+  #menu_pocket,
+  #BMB_pocket {
+    list-style-image: url("chrome://browser/content/pocket/panels/img/pocketmenuitem16@2x.png");
+  }
+
+  #panelMenu_pocket > .toolbarbutton-icon {
+    width: 16px;
+  }
+}
+
 /* ----- PRIMARY TOOLBAR BUTTONS ----- */
 
 toolbar .toolbarbutton-1:not([type="menu-button"]),
@@ -779,6 +802,10 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
 
   #webide-button@toolbarButtonPressed@ {
     -moz-image-region: rect(18px, 738px, 36px, 720px);
+  }
+
+  #pocket-button@toolbarButtonPressed@ {
+    -moz-image-region: rect(18px, 774px, 36px, 756px);
   }
 
   #new-tab-button@toolbarButtonPressed@ {
@@ -1034,6 +1061,18 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
 
   #webide-button[cui-areatype="toolbar"]:hover:active:not([disabled="true"]) {
     -moz-image-region: rect(36px, 1476px, 72px, 1440px);
+  }
+
+  #pocket-button[cui-areatype="toolbar"] {
+    -moz-image-region: rect(0, 1548px, 36px, 1512px);
+  }
+
+  #pocket-button[cui-areatype="toolbar"]:hover:active:not([disabled="true"]) {
+    -moz-image-region: rect(36px, 1548px, 72px, 1512px);
+  }
+
+  #pocket-button[cui-areatype="toolbar"][open] {
+    -moz-image-region: rect(72px, 1548px, 108px, 1512px);
   }
 
   #new-tab-button[cui-areatype="toolbar"] {
@@ -1308,6 +1347,15 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
   #webide-button[cui-areatype="menu-panel"],
   toolbarpaletteitem[place="palette"] > #webide-button {
     -moz-image-region: rect(0px, 1920px, 64px, 1856px);
+  }
+
+  #pocket-button[cui-areatype="menu-panel"],
+  toolbarpaletteitem[place="palette"] > #pocket-button {
+    -moz-image-region: rect(0px, 1984px, 64px, 1920px);
+  }
+
+  #pocket-button[cui-areatype="menu-panel"][panel-multiview-anchor=true] {
+    -moz-image-region: rect(64px, 1984px, 128px, 1920px);
   }
 
   #new-tab-button[cui-areatype="menu-panel"],
@@ -2518,40 +2566,22 @@ richlistitem[type~="action"][actiontype="switchtab"][selected="true"] > .ac-url-
   }
 }
 
+%include ../shared/readinglist/readinglist.inc.css
+
 /* Reader mode button */
 
 #reader-mode-button {
-  -moz-appearance: none;
-  padding: 0;
-  list-style-image: url("chrome://browser/skin/reader-mode-16.png");
+  list-style-image: url("chrome://browser/skin/readerMode.svg");
   -moz-image-region: rect(0, 16px, 16px, 0);
 }
 
-#reader-mode-button > .toolbarbutton-icon {
-  width: 16px;
+#reader-mode-button:hover:active {
+  -moz-image-region: rect(0, 32px, 16px, 16px);
 }
 
-#reader-mode-button:focus {
-  @hudButtonFocused@
-}
-
-#reader-mode-button:hover:active,
 #reader-mode-button[readeractive] {
-   -moz-image-region: rect(0, 32px, 16px, 16px);
+  -moz-image-region: rect(0, 48px, 16px, 32px);
 }
-
-@media (min-resolution: 2dppx) {
-  #reader-mode-button {
-    list-style-image: url("chrome://browser/skin/reader-mode-16@2x.png");
-    -moz-image-region: rect(0, 32px, 32px, 0);
-  }
-
-  #reader-mode-button:hover:active,
-  #reader-mode-button[readeractive] {
-    -moz-image-region: rect(0, 64px, 32px, 32px);
-  }
-}
-
 
 /* social share panel */
 .social-share-frame {
@@ -4111,6 +4141,27 @@ menulist.translate-infobar-element > .menulist-dropmarker {
   }
 }
 
+/* Loop/ Hello browser styles */
+
+notification[value="loop-sharing-notification"] .notification-button {
+  padding: 1px 5px;
+}
+
+notification[value="loop-sharing-notification"] .button-menubutton-button {
+  -moz-appearance: none;
+  min-width: 0;
+  margin: 0;
+}
+
+notification[value="loop-sharing-notification"] .messageImage {
+  list-style-image: url(chrome://browser/skin/webRTC-sharingScreen-menubar.png);
+}
+@media (min-resolution: 2dppx) {
+  notification[value="loop-sharing-notification"] .messageImage {
+    list-style-image: url(chrome://browser/skin/webRTC-sharingScreen-menubar@2x.png);
+  }
+}
+
 
 .popup-notification-icon {
   width: 64px;
@@ -4630,6 +4681,17 @@ window > chatbox {
 
 #eme-notification-icon:hover:active {
   list-style-image: url("chrome://browser/skin/drm-icon.svg#chains-pressed");
+}
+
+#eme-notification-icon[firstplay=true] {
+  animation: emeTeachingMoment 0.2s linear 0s 5 normal;
+}
+
+@keyframes emeTeachingMoment {
+  0% {transform: translateX(0); }
+  25% {transform: translateX(3px) }
+  75% {transform: translateX(-3px) }
+  100% { transform: translateX(0); }
 }
 
 /* Customization mode */

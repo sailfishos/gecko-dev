@@ -241,14 +241,14 @@ pref("lightweightThemes.update.enabled", true);
 pref("lightweightThemes.getMoreURL", "https://addons.mozilla.org/%LOCALE%/firefox/themes");
 pref("lightweightThemes.recommendedThemes", "[{\"id\":\"recommended-1\",\"homepageURL\":\"https://addons.mozilla.org/firefox/addon/a-web-browser-renaissance/\",\"headerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/1.header.jpg\",\"footerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/1.footer.jpg\",\"textcolor\":\"#000000\",\"accentcolor\":\"#f2d9b1\",\"iconURL\":\"resource:///chrome/browser/content/browser/defaultthemes/1.icon.jpg\",\"previewURL\":\"resource:///chrome/browser/content/browser/defaultthemes/1.preview.jpg\",\"author\":\"Sean.Martell\",\"version\":\"0\"},{\"id\":\"recommended-2\",\"homepageURL\":\"https://addons.mozilla.org/firefox/addon/space-fantasy/\",\"headerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/2.header.jpg\",\"footerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/2.footer.jpg\",\"textcolor\":\"#ffffff\",\"accentcolor\":\"#d9d9d9\",\"iconURL\":\"resource:///chrome/browser/content/browser/defaultthemes/2.icon.jpg\",\"previewURL\":\"resource:///chrome/browser/content/browser/defaultthemes/2.preview.jpg\",\"author\":\"fx5800p\",\"version\":\"1.0\"},{\"id\":\"recommended-3\",\"homepageURL\":\"https://addons.mozilla.org/firefox/addon/linen-light/\",\"headerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/3.header.png\",\"footerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/3.footer.png\",\"textcolor\":\"#None\",\"accentcolor\":\"#ada8a8\",\"iconURL\":\"resource:///chrome/browser/content/browser/defaultthemes/3.icon.png\",\"previewURL\":\"resource:///chrome/browser/content/browser/defaultthemes/3.preview.png\",\"author\":\"DVemer\",\"version\":\"1.0\"},{\"id\":\"recommended-4\",\"homepageURL\":\"https://addons.mozilla.org/firefox/addon/pastel-gradient/\",\"headerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/4.header.png\",\"footerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/4.footer.png\",\"textcolor\":\"#000000\",\"accentcolor\":\"#000000\",\"iconURL\":\"resource:///chrome/browser/content/browser/defaultthemes/4.icon.png\",\"previewURL\":\"resource:///chrome/browser/content/browser/defaultthemes/4.preview.png\",\"author\":\"darrinhenein\",\"version\":\"1.0\"},{\"id\":\"recommended-5\",\"homepageURL\":\"https://addons.mozilla.org/firefox/addon/carbon-light/\",\"headerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/5.header.png\",\"footerURL\":\"resource:///chrome/browser/content/browser/defaultthemes/5.footer.png\",\"textcolor\":\"#3b3b3b\",\"accentcolor\":\"#2e2e2e\",\"iconURL\":\"resource:///chrome/browser/content/browser/defaultthemes/5.icon.jpg\",\"previewURL\":\"resource:///chrome/browser/content/browser/defaultthemes/5.preview.jpg\",\"author\":\"Jaxivo\",\"version\":\"1.0\"}]");
 
-pref("browser.eme.ui.enabled", false);
-
 // UI tour experience.
 pref("browser.uitour.enabled", true);
 pref("browser.uitour.loglevel", "Error");
 pref("browser.uitour.requireSecure", true);
 pref("browser.uitour.themeOrigin", "https://addons.mozilla.org/%LOCALE%/firefox/themes/");
 pref("browser.uitour.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tour/");
+// This is used as a regexp match against the page's URL.
+pref("browser.uitour.readerViewTrigger", "^https:\/\/www\.mozilla\.org\/[^\/]+\/firefox\/reading\/start");
 
 pref("browser.customizemode.tip0.shown", false);
 pref("browser.customizemode.tip0.learnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/customize");
@@ -285,6 +285,7 @@ pref("browser.slowStartup.maxSamples", 5);
 pref("browser.aboutHomeSnippets.updateUrl", "https://snippets.cdn.mozilla.net/%STARTPAGE_VERSION%/%NAME%/%VERSION%/%APPBUILDID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/");
 
 pref("browser.enable_automatic_image_resizing", true);
+pref("browser.casting.enabled", false);
 pref("browser.chrome.site_icons", true);
 pref("browser.chrome.favicons", true);
 // browser.warnOnQuit == false will override all other possible prompts when quitting or restarting
@@ -967,7 +968,7 @@ pref("browser.safebrowsing.enabled", true);
 pref("browser.safebrowsing.malware.enabled", true);
 pref("browser.safebrowsing.downloads.enabled", true);
 // Remote lookups are only enabled for Windows in Nightly and Aurora
-#if defined(XP_WIN) && !defined(RELEASE_BUILD)
+#if defined(XP_WIN)
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 #else
 pref("browser.safebrowsing.downloads.remote.enabled", false);
@@ -1028,7 +1029,7 @@ pref("browser.rights.3.shown", false);
 pref("browser.rights.override", true);
 #endif
 
-pref("browser.selfsupport.url", "http://self-repair.mozilla.org/%LOCALE%/repair");
+pref("browser.selfsupport.url", "https://self-repair.mozilla.org/%LOCALE%/repair");
 
 pref("browser.sessionstore.resume_from_crash", true);
 pref("browser.sessionstore.resume_session_once", false);
@@ -1163,11 +1164,10 @@ pref("toolbar.customization.usesheet", true);
 pref("toolbar.customization.usesheet", false);
 #endif
 
-// Disable Flash protected mode to reduce hang/crash rates.
-pref("dom.ipc.plugins.flash.disable-protected-mode", true);
+pref("dom.ipc.plugins.flash.disable-protected-mode", false);
 
 // Feature-disable the protected-mode auto-flip
-pref("browser.flash-protected-mode-flip.enable", true);
+pref("browser.flash-protected-mode-flip.enable", false);
 
 // Whether we've already flipped protected mode automatically
 pref("browser.flash-protected-mode-flip.done", false);
@@ -1201,7 +1201,6 @@ pref("security.sandbox.windows.log", false);
 // 3 - the strongest settings we seem to be able to use without breaking
 //     everything, but will definitely cause some functionality restrictions
 pref("dom.ipc.plugins.sandbox-level.default", 0);
-pref("dom.ipc.plugins.sandbox-level.flash", 1);
 
 #if defined(MOZ_CONTENT_SANDBOX)
 // This controls whether the Windows content process sandbox is using a more
@@ -1336,7 +1335,7 @@ pref("browser.devedition.theme.showCustomizeButton", false);
 
 // Developer edition promo preferences
 pref("devtools.devedition.promo.shown", false);
-pref("devtools.devedition.promo.url", "https://mozilla.org/firefox/developer");
+pref("devtools.devedition.promo.url", "https://www.mozilla.org/firefox/developer/?utm_source=firefox-dev-tools&utm_medium=firefox-browser&utm_content=betadoorhanger");
 
 // Only potentially show in beta release
 #if MOZ_UPDATE_CHANNEL == beta
@@ -1513,6 +1512,9 @@ pref("devtools.canvasdebugger.enabled", false);
 // Enable the Web Audio Editor
 pref("devtools.webaudioeditor.enabled", false);
 
+// Web Audio Editor Inspector Width should be a preference
+pref("devtools.webaudioeditor.inspectorWidth", 300);
+
 // Default theme ("dark" or "light")
 #ifdef MOZ_DEV_EDITION
 pref("devtools.theme", "dark");
@@ -1686,6 +1688,7 @@ pref("shumway.swf.whitelist", "http://g-ecx.images-amazon.com/*/AiryBasicRendere
 pref("image.mem.max_decoded_image_kb", 256000);
 
 pref("loop.enabled", true);
+pref("loop.screenshare.enabled", true);
 pref("loop.server", "https://loop.services.mozilla.com/v0");
 pref("loop.seenToS", "unseen");
 pref("loop.showPartnerLogo", true);
@@ -1708,15 +1711,18 @@ pref("loop.debug.dispatcher", false);
 pref("loop.debug.websocket", false);
 pref("loop.debug.sdk", false);
 #ifdef DEBUG
-pref("loop.CSP", "default-src 'self' about: file: chrome: http://localhost:*; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net http://localhost:* ws://localhost:*; media-src blob:");
+pref("loop.CSP", "default-src 'self' about: file: chrome: http://localhost:*; img-src 'self' data: https://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net http://localhost:* ws://localhost:*; media-src blob:");
 #else
-pref("loop.CSP", "default-src 'self' about: file: chrome:; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net; media-src blob:");
+pref("loop.CSP", "default-src 'self' about: file: chrome:; img-src 'self' data: https://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net; media-src blob:");
 #endif
 pref("loop.oauth.google.redirect_uri", "urn:ietf:wg:oauth:2.0:oob:auto");
 pref("loop.oauth.google.scope", "https://www.google.com/m8/feeds");
 pref("loop.fxa_oauth.tokendata", "");
 pref("loop.fxa_oauth.profile", "");
 pref("loop.support_url", "https://support.mozilla.org/kb/group-conversations-firefox-hello-webrtc");
+pref("loop.contacts.gravatars.show", false);
+pref("loop.contacts.gravatars.promo", true);
+pref("loop.browserSharing.showInfoBar", true);
 
 // serverURL to be assigned by services team
 pref("services.push.serverURL", "wss://push.services.mozilla.com/");
@@ -1748,11 +1754,18 @@ pref("plain_text.wrap_long_lines", true);
 pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // The request URL of the GeoLocation backend.
+#ifdef RELEASE_BUILD
+pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+#else
 pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+#endif
 
-// On Mac, the default geo provider is corelocation.
 #ifdef XP_MACOSX
+#ifdef RELEASE_BUILD
+pref("geo.provider.use_corelocation", false);
+#else
 pref("geo.provider.use_corelocation", true);
+#endif
 #endif
 
 // Necko IPC security checks only needed for app isolation for cookies/cache/etc:
@@ -1800,13 +1813,21 @@ pref("ui.key.menuAccessKeyFocuses", true);
 #endif
 
 // Encrypted media extensions.
-#ifdef RELEASE_BUILD
-pref("media.eme.enabled", false);
-pref("media.eme.apiVisible", false);
-#else
+pref("browser.eme.ui.enabled", false);
+
+#if !defined(MOZ_UPDATE_CHANNEL) || MOZ_UPDATE_CHANNEL != esr
 pref("media.eme.enabled", true);
 pref("media.eme.apiVisible", true);
+
+#ifdef XP_WIN
+pref("media.gmp-eme-adobe.enabled", true);
+pref("browser.eme.ui.enabled", true);
 #endif
+
+#else // MOZ_UPDATE_CHANNEL == esr
+pref("media.eme.enabled", false);
+pref("media.eme.apiVisible", false);
+#endif // MOZ_UPDATE_CHANNEL
 
 // Play with different values of the decay time and get telemetry,
 // 0 means to randomize (and persist) the experiment value in users' profiles,
@@ -1870,8 +1891,18 @@ pref("dom.ipc.reportProcessHangs", false);
 pref("dom.ipc.reportProcessHangs", true);
 #endif
 
-// Disable reader mode by default.
-pref("reader.parse-on-load.enabled", false);
-
-// Disable ReadingList by default.
 pref("browser.readinglist.enabled", false);
+pref("browser.readinglist.sidebarEverOpened", false);
+pref("readinglist.scheduler.enabled", false);
+pref("readinglist.server", "https://readinglist.services.mozilla.com/v1");
+
+pref("browser.reader.detectedFirstArticle", false);
+// Don't limit how many nodes we care about on desktop:
+pref("reader.parse-node-limit", 0);
+
+pref("browser.pocket.enabled", true);
+pref("browser.pocket.api", "api.getpocket.com");
+pref("browser.pocket.site", "getpocket.com");
+pref("browser.pocket.oAuthConsumerKey", "40249-e88c401e1b1f2242d9e441c4");
+pref("browser.pocket.useLocaleList", true);
+pref("browser.pocket.enabledLocales", "en-US de es-ES ja ru");

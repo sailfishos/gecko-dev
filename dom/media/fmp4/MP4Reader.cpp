@@ -20,6 +20,7 @@
 #include "mp4_demuxer/AnnexB.h"
 #include "mp4_demuxer/H264.h"
 #include "SharedDecoderManager.h"
+#include <algorithm>
 
 #ifdef MOZ_EME
 #include "mozilla/CDMProxy.h"
@@ -37,8 +38,8 @@ PRLogModuleInfo* GetDemuxerLog() {
   }
   return log;
 }
-#define LOG(...) PR_LOG(GetDemuxerLog(), PR_LOG_DEBUG, (__VA_ARGS__))
-#define VLOG(...) PR_LOG(GetDemuxerLog(), PR_LOG_DEBUG+1, (__VA_ARGS__))
+#define LOG(arg, ...) PR_LOG(GetDemuxerLog(), PR_LOG_DEBUG, ("MP4Reader(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+#define VLOG(arg, ...) PR_LOG(GetDemuxerLog(), PR_LOG_DEBUG, ("MP4Reader(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
 #else
 #define LOG(...)
 #define VLOG(...)
@@ -71,8 +72,16 @@ bool
 AccumulateSPSTelemetry(const ByteBuffer* aExtradata)
 {
   SPSData spsdata;
-  if (H264::DecodeSPSFromExtraData(aExtradata, spsdata) &&
-      spsdata.profile_idc && spsdata.level_idc) {
+  if (H264::DecodeSPSFromExtraData(aExtradata, spsdata)) {
+   uint8_t constraints = (spsdata.constraint_set0_flag ? (1 << 0) : 0) |
+                         (spsdata.constraint_set1_flag ? (1 << 1) : 0) |
+                         (spsdata.constraint_set2_flag ? (1 << 2) : 0) |
+                         (spsdata.constraint_set3_flag ? (1 << 3) : 0) |
+                         (spsdata.constraint_set4_flag ? (1 << 4) : 0) |
+                         (spsdata.constraint_set5_flag ? (1 << 5) : 0);
+    Telemetry::Accumulate(Telemetry::VIDEO_DECODED_H264_SPS_CONSTRAINT_SET_FLAG,
+                          constraints);
+
     // Collect profile_idc values up to 244, otherwise 0 for unknown.
     Telemetry::Accumulate(Telemetry::VIDEO_DECODED_H264_SPS_PROFILE,
                           spsdata.profile_idc <= 244 ? spsdata.profile_idc : 0);
@@ -82,6 +91,11 @@ AccumulateSPSTelemetry(const ByteBuffer* aExtradata)
     Telemetry::Accumulate(Telemetry::VIDEO_DECODED_H264_SPS_LEVEL,
                           (spsdata.level_idc >= 10 && spsdata.level_idc <= 52) ?
                           spsdata.level_idc : 0);
+
+    // max_num_ref_frames should be between 0 and 16, anything larger will
+    // be treated as invalid.
+    Telemetry::Accumulate(Telemetry::VIDEO_H264_SPS_MAX_NUM_REF_FRAMES,
+                          std::min(spsdata.max_num_ref_frames, 17u));
 
     return true;
   }
@@ -142,8 +156,9 @@ MP4Reader::MP4Reader(AbstractMediaDecoder* aDecoder)
   , mFoundSPSForTelemetry(false)
   , mIsEncrypted(false)
   , mIndexReady(false)
+  , mLastSeenEnd(-1)
   , mDemuxerMonitor("MP4 Demuxer")
-#if defined(XP_WIN)
+#if defined(MP4_READER_DORMANT_HEURISTIC)
   , mDormantEnabled(Preferences::GetBool("media.decoder.heuristic.dormant.enabled", false))
 #endif
 {
@@ -189,10 +204,7 @@ MP4Reader::Shutdown()
   // Dispose of the queued sample before shutting down the demuxer
   mQueuedVideoSample = nullptr;
 
-  if (mPlatform) {
-    mPlatform->Shutdown();
-    mPlatform = nullptr;
-  }
+  mPlatform = nullptr;
 
   return MediaDecoderReader::Shutdown();
 }
@@ -280,18 +292,13 @@ private:
 #endif
 
 void MP4Reader::RequestCodecResource() {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
   if (mVideo.mDecoder) {
     mVideo.mDecoder->AllocateMediaResources();
   }
-#endif
 }
 
 bool MP4Reader::IsWaitingOnCodecResource() {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
   return mVideo.mDecoder && mVideo.mDecoder->IsWaitingMediaResources();
-#endif
-  return false;
 }
 
 bool MP4Reader::IsWaitingOnCDMResource() {
@@ -312,7 +319,7 @@ bool MP4Reader::IsWaitingOnCDMResource() {
   // We'll keep waiting if the CDM hasn't informed Gecko of its capabilities.
   {
     CDMCaps::AutoLock caps(proxy->Capabilites());
-    LOG("MP4Reader::IsWaitingMediaResources() capsKnown=%d", caps.AreCapsKnown());
+    LOG("capsKnown=%d", caps.AreCapsKnown());
     return !caps.AreCapsKnown();
   }
 #else
@@ -340,19 +347,19 @@ MP4Reader::ExtractCryptoInitData(nsTArray<uint8_t>& aInitData)
 }
 
 bool
-MP4Reader::IsSupportedAudioMimeType(const char* aMimeType)
+MP4Reader::IsSupportedAudioMimeType(const nsACString& aMimeType)
 {
-  return (!strcmp(aMimeType, "audio/mpeg") ||
-          !strcmp(aMimeType, "audio/mp4a-latm")) &&
+  return (aMimeType.EqualsLiteral("audio/mpeg") ||
+          aMimeType.EqualsLiteral("audio/mp4a-latm")) &&
          mPlatform->SupportsAudioMimeType(aMimeType);
 }
 
 bool
-MP4Reader::IsSupportedVideoMimeType(const char* aMimeType)
+MP4Reader::IsSupportedVideoMimeType(const nsACString& aMimeType)
 {
-  return (!strcmp(aMimeType, "video/mp4") ||
-          !strcmp(aMimeType, "video/avc") ||
-          !strcmp(aMimeType, "video/x-vnd.on2.vp6")) &&
+  return (aMimeType.EqualsLiteral("video/mp4") ||
+          aMimeType.EqualsLiteral("video/avc") ||
+          aMimeType.EqualsLiteral("video/x-vnd.on2.vp6")) &&
          mPlatform->SupportsVideoMimeType(aMimeType);
 }
 
@@ -469,7 +476,7 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
     mInfo.mVideo.mDisplay =
       nsIntSize(video.display_width, video.display_height);
     mVideo.mCallback = new DecoderCallback(this, kVideo);
-    if (mSharedDecoderManager) {
+    if (mSharedDecoderManager && mPlatform->SupportsSharedDecoders(video)) {
       mVideo.mDecoder =
         mSharedDecoderManager->CreateVideoDecoder(mPlatform,
                                                   video,
@@ -559,6 +566,26 @@ MP4Reader::GetNextKeyframeTime()
   return mDemuxer->GetNextKeyframeTime();
 }
 
+void
+MP4Reader::DisableHardwareAcceleration()
+{
+  if (HasVideo() && mSharedDecoderManager) {
+    mSharedDecoderManager->DisableHardwareAcceleration();
+
+    const VideoDecoderConfig& video = mDemuxer->VideoConfig();
+    if (!mSharedDecoderManager->Recreate(video, mLayersBackendType, mDecoder->GetImageContainer())) {
+      MonitorAutoLock mon(mVideo.mMonitor);
+      mVideo.mError = true;
+      if (mVideo.HasPromise()) {
+        mVideo.RejectPromise(DECODE_ERROR, __func__);
+      }
+    } else {
+      MonitorAutoLock lock(mVideo.mMonitor);
+      ScheduleUpdate(kVideo);
+    }
+  }
+}
+
 bool
 MP4Reader::ShouldSkip(bool aSkipToNextKeyframe, int64_t aTimeThreshold)
 {
@@ -580,7 +607,7 @@ MP4Reader::RequestVideoData(bool aSkipToNextKeyframe,
                             int64_t aTimeThreshold)
 {
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
-  VLOG("RequestVideoData skip=%d time=%lld", aSkipToNextKeyframe, aTimeThreshold);
+  VLOG("skip=%d time=%lld", aSkipToNextKeyframe, aTimeThreshold);
 
   if (mShutdown) {
     NS_WARNING("RequestVideoData on shutdown MP4Reader!");
@@ -596,12 +623,14 @@ MP4Reader::RequestVideoData(bool aSkipToNextKeyframe,
     if (!eos && NS_FAILED(mVideo.mDecoder->Flush())) {
       NS_WARNING("Failed to skip/flush video when skipping-to-next-keyframe.");
     }
-    mDecoder->NotifyDecodedFrames(parsed, 0);
+    mDecoder->NotifyDecodedFrames(parsed, 0, parsed);
   }
 
   MonitorAutoLock lock(mVideo.mMonitor);
   nsRefPtr<VideoDataPromise> p = mVideo.mPromise.Ensure(__func__);
-  if (eos) {
+  if (mVideo.mError) {
+    mVideo.mPromise.Reject(DECODE_ERROR, __func__);
+  } else if (eos) {
     mVideo.mPromise.Reject(END_OF_STREAM, __func__);
   } else {
     ScheduleUpdate(kVideo);
@@ -614,7 +643,7 @@ nsRefPtr<MediaDecoderReader::AudioDataPromise>
 MP4Reader::RequestAudioData()
 {
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
-  VLOG("RequestAudioData");
+  VLOG("");
   if (mShutdown) {
     NS_WARNING("RequestAudioData on shutdown MP4Reader!");
     return AudioDataPromise::CreateAndReject(CANCELED, __func__);
@@ -670,8 +699,7 @@ MP4Reader::Update(TrackType aTrack)
 
   // Record number of frames decoded and parsed. Automatically update the
   // stats counters using the AutoNotifyDecoded stack-based class.
-  uint32_t parsed = 0, decoded = 0;
-  AbstractMediaDecoder::AutoNotifyDecoded autoNotify(mDecoder, parsed, decoded);
+  AbstractMediaDecoder::AutoNotifyDecoded a(mDecoder);
 
   bool needInput = false;
   bool needOutput = false;
@@ -686,7 +714,7 @@ MP4Reader::Update(TrackType aTrack)
     }
     if (aTrack == kVideo) {
       uint64_t delta = decoder.mNumSamplesOutput - mLastReportedNumDecodedFrames;
-      decoded = static_cast<uint32_t>(delta);
+      a.mDecoded = static_cast<uint32_t>(delta);
       mLastReportedNumDecodedFrames = decoder.mNumSamplesOutput;
     }
     if (decoder.HasPromise()) {
@@ -712,7 +740,7 @@ MP4Reader::Update(TrackType aTrack)
     MP4Sample* sample = PopSample(aTrack);
 
     // Collect telemetry from h264 Annex B SPS.
-    if (sample && !mFoundSPSForTelemetry && AnnexB::HasSPS(sample)) {
+    if (!mFoundSPSForTelemetry && sample && AnnexB::HasSPS(sample)) {
       nsRefPtr<ByteBuffer> extradata = AnnexB::ExtractExtraData(sample);
       mFoundSPSForTelemetry = AccumulateSPSTelemetry(extradata);
     }
@@ -720,7 +748,7 @@ MP4Reader::Update(TrackType aTrack)
     if (sample) {
       decoder.mDecoder->Input(sample);
       if (aTrack == kVideo) {
-        parsed++;
+        a.mParsed++;
       }
     } else {
       {
@@ -750,7 +778,7 @@ MP4Reader::ReturnOutput(MediaData* aData, TrackType aTrack)
 
     if (audioData->mChannels != mInfo.mAudio.mChannels ||
         audioData->mRate != mInfo.mAudio.mRate) {
-      LOG("MP4Reader::ReturnOutput change of sampling rate:%d->%d",
+      LOG("change of sampling rate:%d->%d",
           mInfo.mAudio.mRate, audioData->mRate);
       mInfo.mAudio.mRate = audioData->mRate;
       mInfo.mAudio.mChannels = audioData->mChannels;
@@ -960,7 +988,7 @@ MP4Reader::SkipVideoDemuxToNextKeyFrame(int64_t aTimeThreshold, uint32_t& parsed
 nsRefPtr<MediaDecoderReader::SeekPromise>
 MP4Reader::Seek(int64_t aTime, int64_t aEndTime)
 {
-  LOG("MP4Reader::Seek(%lld)", aTime);
+  LOG("aTime=(%lld)", aTime);
   MOZ_ASSERT(GetTaskQueue()->IsCurrentThreadIn());
   MonitorAutoLock mon(mDemuxerMonitor);
   if (!mDecoder->GetResource()->IsTransportSeekable() || !mDemuxer->CanSeek()) {
@@ -980,7 +1008,7 @@ MP4Reader::Seek(int64_t aTime, int64_t aEndTime)
   if (mDemuxer->HasValidAudio()) {
     mDemuxer->SeekAudio(seekTime);
   }
-  LOG("MP4Reader::Seek(%lld) exit", aTime);
+  LOG("aTime=%lld exit", aTime);
   return SeekPromise::CreateAndResolve(seekTime, __func__);
 }
 
@@ -1037,9 +1065,9 @@ MP4Reader::GetBuffered(dom::TimeRanges* aBuffered)
 
 bool MP4Reader::IsDormantNeeded()
 {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
+#if defined(MP4_READER_DORMANT)
   return
-#if defined(XP_WIN)
+#if defined(MP4_READER_DORMANT_HEURISTIC)
         mDormantEnabled &&
 #endif
         mVideo.mDecoder &&
@@ -1050,7 +1078,6 @@ bool MP4Reader::IsDormantNeeded()
 
 void MP4Reader::ReleaseMediaResources()
 {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
   // Before freeing a video codec, all video buffers needed to be released
   // even from graphics pipeline.
   VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
@@ -1060,16 +1087,13 @@ void MP4Reader::ReleaseMediaResources()
   if (mVideo.mDecoder) {
     mVideo.mDecoder->ReleaseMediaResources();
   }
-#endif
 }
 
 void MP4Reader::NotifyResourcesStatusChanged()
 {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
   if (mDecoder) {
     mDecoder->NotifyWaitingForResourcesStatusChanged();
   }
-#endif
 }
 
 void
@@ -1084,9 +1108,44 @@ MP4Reader::SetIdle()
 void
 MP4Reader::SetSharedDecoderManager(SharedDecoderManager* aManager)
 {
-#if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN)
+#if !defined(MOZ_WIDGET_ANDROID)
   mSharedDecoderManager = aManager;
 #endif
+}
+
+void
+MP4Reader::NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mShutdown) {
+    return;
+  }
+
+  if (mLastSeenEnd < 0) {
+    MonitorAutoLock mon(mDemuxerMonitor);
+    mLastSeenEnd = mDecoder->GetResource()->GetLength();
+    if (mLastSeenEnd < 0) {
+      // We dont have a length. Demuxer would have been blocking already.
+      return;
+    }
+  }
+  int64_t end = aOffset + aLength;
+  if (end <= mLastSeenEnd) {
+    return;
+  }
+  mLastSeenEnd = end;
+
+  if (HasVideo()) {
+    auto& decoder = GetDecoderData(kVideo);
+    MonitorAutoLock lock(decoder.mMonitor);
+    decoder.mDemuxEOS = false;
+  }
+  if (HasAudio()) {
+    auto& decoder = GetDecoderData(kAudio);
+    MonitorAutoLock lock(decoder.mMonitor);
+    decoder.mDemuxEOS = false;
+  }
 }
 
 } // namespace mozilla

@@ -269,25 +269,25 @@ public:
   }
 
   NS_DECL_THREADSAFE_ISUPPORTS
-  NS_IMETHOD OnCreateOfferSuccess(const char* offer, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnCreateOfferError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnCreateAnswerSuccess(const char* answer, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnCreateAnswerError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnSetLocalDescriptionSuccess(ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnSetRemoteDescriptionSuccess(ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnSetLocalDescriptionError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnSetRemoteDescriptionError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD NotifyDataChannel(nsIDOMDataChannel *channel, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnStateChange(PCObserverStateType state_type, ER&, void*) MOZ_OVERRIDE;
-  NS_IMETHOD OnAddStream(DOMMediaStream &stream, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnRemoveStream(DOMMediaStream &stream, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnAddTrack(MediaStreamTrack &track, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnRemoveTrack(MediaStreamTrack &track, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnReplaceTrackSuccess(ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnReplaceTrackError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnAddIceCandidateSuccess(ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnAddIceCandidateError(uint32_t code, const char *msg, ER&) MOZ_OVERRIDE;
-  NS_IMETHOD OnIceCandidate(uint16_t level, const char *mid, const char *cand, ER&) MOZ_OVERRIDE;
+  NS_IMETHOD OnCreateOfferSuccess(const char* offer, ER&) override;
+  NS_IMETHOD OnCreateOfferError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD OnCreateAnswerSuccess(const char* answer, ER&) override;
+  NS_IMETHOD OnCreateAnswerError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD OnSetLocalDescriptionSuccess(ER&) override;
+  NS_IMETHOD OnSetRemoteDescriptionSuccess(ER&) override;
+  NS_IMETHOD OnSetLocalDescriptionError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD OnSetRemoteDescriptionError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD NotifyDataChannel(nsIDOMDataChannel *channel, ER&) override;
+  NS_IMETHOD OnStateChange(PCObserverStateType state_type, ER&, void*) override;
+  NS_IMETHOD OnAddStream(DOMMediaStream &stream, ER&) override;
+  NS_IMETHOD OnRemoveStream(DOMMediaStream &stream, ER&) override;
+  NS_IMETHOD OnAddTrack(MediaStreamTrack &track, ER&) override;
+  NS_IMETHOD OnRemoveTrack(MediaStreamTrack &track, ER&) override;
+  NS_IMETHOD OnReplaceTrackSuccess(ER&) override;
+  NS_IMETHOD OnReplaceTrackError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD OnAddIceCandidateSuccess(ER&) override;
+  NS_IMETHOD OnAddIceCandidateError(uint32_t code, const char *msg, ER&) override;
+  NS_IMETHOD OnIceCandidate(uint16_t level, const char *mid, const char *cand, ER&) override;
   NS_IMETHODIMP OnNegotiationNeeded(ER&);
 
   // Hack because add_ice_candidates can happen asynchronously with respect
@@ -2417,128 +2417,6 @@ TEST_P(SignalingTest, OfferAnswerVideoInactive)
   //ASSERT_GE(a2_->GetPacketsSent(0), 40);
   //ASSERT_GE(a1_->GetPacketsReceived(0), 40);
   ASSERT_GE(a2_->GetPacketsReceived(0), 40);
-}
-
-TEST_P(SignalingTest, OfferAnswerBothInactive)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_NONE,
-              SHOULD_RECV_AUDIO | SHOULD_RECV_VIDEO,
-              SHOULD_INACTIVE_AUDIO | SHOULD_INACTIVE_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest, DISABLED_OfferAnswerDontAddAudioStreamOnOffer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 0);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_VIDEO | ANSWER_AV,
-              SHOULD_OMIT_AUDIO | SHOULD_SENDRECV_VIDEO,
-              SHOULD_OMIT_AUDIO | SHOULD_SENDRECV_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest, DISABLED_OfferAnswerDontAddVideoStreamOnOfferRecvVideo)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_AUDIO | ANSWER_AV,
-              SHOULD_SENDRECV_AUDIO | SHOULD_RECV_VIDEO,
-              SHOULD_SENDRECV_AUDIO | SHOULD_SEND_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest, DISABLED_OfferAnswerDontAddVideoStreamOnOffer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 0);
-  OfferAnswer(options, OFFER_AUDIO | ANSWER_AV,
-              SHOULD_SENDRECV_AUDIO | SHOULD_OMIT_VIDEO,
-              SHOULD_SENDRECV_AUDIO | SHOULD_OMIT_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest, DISABLED_OfferAnswerDontAddAudioStreamOnAnswer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_AV | ANSWER_VIDEO,
-              SHOULD_SENDRECV_AV,
-              SHOULD_RECV_AUDIO | SHOULD_SENDRECV_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest, DISABLED_OfferAnswerDontAddVideoStreamOnAnswer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_AV | ANSWER_AUDIO,
-              SHOULD_SENDRECV_AV,
-              SHOULD_SENDRECV_AUDIO | SHOULD_RECV_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest,
-       DISABLED_OfferAnswerDontAddVideoStreamOnAnswerDontReceiveVideoOnAnswer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_AV | ANSWER_AUDIO,
-              SHOULD_SENDRECV_AV, SHOULD_SENDRECV_AUDIO );
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest,
-       DISABLED_OfferAnswerDontAddAudioStreamOnAnswerDontReceiveAudioOnAnswer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_AV | ANSWER_VIDEO,
-              SHOULD_SENDRECV_AV,
-              SHOULD_REJECT_AUDIO | SHOULD_SENDRECV_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest,
-       DISABLED_OfferAnswerDontAddAudioStreamOnOfferDontReceiveAudioOnOffer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 0);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_VIDEO | ANSWER_AV,
-              SHOULD_SENDRECV_VIDEO, SHOULD_SENDRECV_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest,
-       DISABLED_OfferAnswerDontAddVideoStreamOnOfferDontReceiveVideoOnOffer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 1);
-  options.setInt32Option("OfferToReceiveVideo", 0);
-  OfferAnswer(options, OFFER_AUDIO | ANSWER_AV,
-              SHOULD_SENDRECV_AUDIO | SHOULD_OMIT_VIDEO,
-              SHOULD_SENDRECV_AUDIO | SHOULD_OMIT_VIDEO);
-}
-
-// XXX reject streams has changed. Re-enable when we can stop() received stream
-TEST_P(SignalingTest,
-  DISABLED_OfferAnswerDontReceiveAudioNoAudioStreamOnOfferDontReceiveVideoOnAnswer)
-{
-  OfferOptions options;
-  options.setInt32Option("OfferToReceiveAudio", 0);
-  options.setInt32Option("OfferToReceiveVideo", 1);
-  OfferAnswer(options, OFFER_VIDEO | ANSWER_AV,
-              SHOULD_SENDRECV_VIDEO, SHOULD_SEND_VIDEO);
 }
 
 TEST_P(SignalingTest, CreateOfferAddCandidate)

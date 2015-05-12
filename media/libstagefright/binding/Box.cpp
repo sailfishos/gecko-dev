@@ -7,6 +7,7 @@
 #include "mp4_demuxer/Box.h"
 #include "mp4_demuxer/mp4_demuxer.h"
 #include "mozilla/Endian.h"
+#include <algorithm>
 
 using namespace mozilla;
 
@@ -90,6 +91,7 @@ Box::Box(BoxContext* aContext, uint64_t aOffset, const Box* aParent)
       !byteRange->Contains(boxRange)) {
     return;
   }
+
   mRange = boxRange;
 }
 
@@ -114,10 +116,24 @@ Box::FirstChild() const
   return Box(mContext, mChildOffset, this);
 }
 
-void
+bool
 Box::Read(nsTArray<uint8_t>* aDest)
 {
-  aDest->SetLength(mRange.mEnd - mChildOffset);
+  return Read(aDest, mRange);
+}
+
+bool
+Box::Read(nsTArray<uint8_t>* aDest, const MediaByteRange& aRange)
+{
+  int64_t length;
+  if (!mContext->mSource->Length(&length)) {
+    // The HTTP server didn't give us a length to work with.
+    // Limit the read to 32MiB max.
+    length = std::min(aRange.mEnd - mChildOffset, uint64_t(32 * 1024 * 1024));
+  } else {
+    length = aRange.mEnd - mChildOffset;
+  }
+  aDest->SetLength(length);
   size_t bytes;
   if (!mContext->mSource->CachedReadAt(mChildOffset, aDest->Elements(),
                                        aDest->Length(), &bytes) ||
@@ -125,6 +141,8 @@ Box::Read(nsTArray<uint8_t>* aDest)
     // Byte ranges are being reported incorrectly
     NS_WARNING("Read failed in mp4_demuxer::Box::Read()");
     aDest->Clear();
+    return false;
   }
+  return true;
 }
 }

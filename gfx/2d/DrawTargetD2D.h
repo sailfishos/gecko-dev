@@ -43,7 +43,7 @@ public:
   DrawTargetD2D();
   virtual ~DrawTargetD2D();
 
-  virtual DrawTargetType GetType() const MOZ_OVERRIDE { return DrawTargetType::HARDWARE_RASTER; }
+  virtual DrawTargetType GetType() const override { return DrawTargetType::HARDWARE_RASTER; }
   virtual BackendType GetBackendType() const { return BackendType::DIRECT2D; }
   virtual TemporaryRef<SourceSurface> Snapshot();
   virtual IntSize GetSize() { return mSize; }
@@ -144,6 +144,10 @@ public:
   static void CleanupD2D();
   static IDWriteFactory *GetDWriteFactory();
   ID2D1RenderTarget *GetRT() { return mRT; }
+
+  static uint32_t GetMaxSurfaceSize() {
+    return D3D10_REQ_TEXTURE2D_U_OR_V_DIMENSION;
+  }
 
   operator std::string() const {
     std::stringstream stream;

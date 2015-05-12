@@ -126,12 +126,9 @@ public:
                         const std::string& aId)
      : SourceStreamInfo(aMediaStream, aParent, aId) {}
 
-  // XXX NOTE: does not change mMediaStream, even if it replaces the last track
-  // in a LocalSourceStreamInfo.  Revise when we have support for multiple tracks
-  // of a type.
-  nsresult ReplaceTrack(const std::string& oldTrackId,
-                        DOMMediaStream* aNewStream,
-                        const std::string& aNewTrack);
+  nsresult TakePipelineFrom(RefPtr<LocalSourceStreamInfo>& info,
+                            const std::string& oldTrackId,
+                            const std::string& newTrackId);
 
 #ifdef MOZILLA_INTERNAL_API
   void UpdateSinkIdentity_m(nsIPrincipal* aPrincipal,
@@ -139,6 +136,10 @@ public:
 #endif
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(LocalSourceStreamInfo)
+
+private:
+  TemporaryRef<MediaPipeline> ForgetPipelineByTrackId_m(
+      const std::string& trackId);
 };
 
 class RemoteSourceStreamInfo : public SourceStreamInfo {
@@ -147,7 +148,8 @@ class RemoteSourceStreamInfo : public SourceStreamInfo {
   RemoteSourceStreamInfo(already_AddRefed<DOMMediaStream> aMediaStream,
                          PeerConnectionMedia *aParent,
                          const std::string& aId)
-    : SourceStreamInfo(aMediaStream, aParent, aId)
+    : SourceStreamInfo(aMediaStream, aParent, aId),
+      mReceiving(false)
   {
   }
 
@@ -159,7 +161,7 @@ class RemoteSourceStreamInfo : public SourceStreamInfo {
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RemoteSourceStreamInfo)
 
-  virtual void AddTrack(const std::string& track) MOZ_OVERRIDE
+  virtual void AddTrack(const std::string& track) override
   {
     mTrackIdMap.push_back(track);
     SourceStreamInfo::AddTrack(track);
@@ -186,6 +188,17 @@ class RemoteSourceStreamInfo : public SourceStreamInfo {
     return NS_OK;
   }
 
+  void StartReceiving();
+
+  /**
+   * Returns true if a |MediaPipeline| should be queueing its track instead of
+   * adding it to the |SourceMediaStream| directly.
+   */
+  bool ShouldQueueTracks() const
+  {
+    return !mReceiving;
+  }
+
  private:
   // For remote streams, the MediaStreamGraph API forces us to select a
   // numeric track id before creation of the MediaStreamTrack, and does not
@@ -195,6 +208,10 @@ class RemoteSourceStreamInfo : public SourceStreamInfo {
   // and have the numeric track id selected for us, in which case this variable
   // and its dependencies can go away.
   std::vector<std::string> mTrackIdMap;
+
+  // True iff SetPullEnabled(true) has been called on the DOMMediaStream. This
+  // happens when offer/answer concludes.
+  bool mReceiving;
 };
 
 class PeerConnectionMedia : public sigslot::has_slots<> {
@@ -273,6 +290,12 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
 
   // Add a remote stream.
   nsresult AddRemoteStream(nsRefPtr<RemoteSourceStreamInfo> aInfo);
+
+  nsresult ReplaceTrack(const std::string& oldStreamId,
+                        const std::string& oldTrackId,
+                        DOMMediaStream* aNewStream,
+                        const std::string& newStreamId,
+                        const std::string& aNewTrack);
 
 #ifdef MOZILLA_INTERNAL_API
   // In cases where the peer isn't yet identified, we disable the pipeline (not
@@ -372,7 +395,7 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
     NS_IMETHODIMP OnProxyAvailable(nsICancelable *request,
                                    nsIChannel *aChannel,
                                    nsIProxyInfo *proxyinfo,
-                                   nsresult result) MOZ_OVERRIDE;
+                                   nsresult result) override;
     NS_DECL_ISUPPORTS
 
    private:

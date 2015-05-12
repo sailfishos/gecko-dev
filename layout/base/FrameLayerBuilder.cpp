@@ -4319,9 +4319,8 @@ FrameLayerBuilder::PaintItems(nsTArray<ClippedDisplayItem>& aItems,
                               float aXScale, float aYScale,
                               int32_t aCommonClipCount)
 {
-#ifdef MOZ_DUMP_PAINTING
   DrawTarget& aDrawTarget = *aRC->GetDrawTarget();
-#endif
+
   int32_t appUnitsPerDevPixel = aPresContext->AppUnitsPerDevPixel();
   nsRect boundRect = aRect.ToAppUnits(appUnitsPerDevPixel);
   boundRect.MoveBy(NSIntPixelsToAppUnits(aOffset.x, appUnitsPerDevPixel),
@@ -4371,7 +4370,9 @@ FrameLayerBuilder::PaintItems(nsTArray<ClippedDisplayItem>& aItems,
     }
 
     if (cdi->mInactiveLayerManager) {
+      bool saved = aDrawTarget.GetPermitSubpixelAA();
       PaintInactiveLayer(aBuilder, cdi->mInactiveLayerManager, cdi->mItem, aContext, aRC);
+      aDrawTarget.SetPermitSubpixelAA(saved);
     } else {
       nsIFrame* frame = cdi->mItem->Frame();
       frame->AddStateBits(NS_FRAME_PAINTED_THEBES);
@@ -4435,7 +4436,7 @@ public:
   {
   }
 
-  virtual void AddLayerRectangles(mozilla::dom::Sequence<mozilla::dom::ProfileTimelineLayerRect>& aRectangles) MOZ_OVERRIDE
+  virtual void AddLayerRectangles(mozilla::dom::Sequence<mozilla::dom::ProfileTimelineLayerRect>& aRectangles) override
   {
     nsIntRegionRectIterator it(mRegion);
     while (const nsIntRect* iterRect = it.Next()) {

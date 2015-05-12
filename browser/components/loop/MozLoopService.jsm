@@ -15,6 +15,19 @@ const LOOP_SESSION_TYPE = {
   FXA: 2,
 };
 
+/**
+ * Buckets that we segment sharing state change telemetry probes into.
+ *
+ * @type {{WINDOW_ENABLED: String, WINDOW_DISABLED: String,
+ *   BROWSER_ENABLED: String, BROWSER_DISABLED: String}}
+ */
+const SHARING_STATE_CHANGE = {
+  WINDOW_ENABLED: "WINDOW_ENABLED",
+  WINDOW_DISABLED: "WINDOW_DISABLED",
+  BROWSER_ENABLED: "BROWSER_ENABLED",
+  BROWSER_DISABLED: "BROWSER_DISABLED"
+};
+
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "loop.debug.loglevel";
 
@@ -28,7 +41,7 @@ Cu.import("resource://gre/modules/FxAccountsOAuthClient.jsm");
 
 Cu.importGlobalProperties(["URL"]);
 
-this.EXPORTED_SYMBOLS = ["MozLoopService", "LOOP_SESSION_TYPE"];
+this.EXPORTED_SYMBOLS = ["MozLoopService", "LOOP_SESSION_TYPE", "SHARING_STATE_CHANGE"];
 
 XPCOMUtils.defineLazyModuleGetter(this, "injectLoopAPI",
   "resource:///modules/loop/MozLoopAPI.jsm");
@@ -826,7 +839,8 @@ let MozLoopServiceInternal = {
    *
    * @param {Object} conversationWindowData The data to be obtained by the
    *                                        window when it opens.
-   * @returns {Number} The id of the window.
+   * @returns {Number} The id of the window, null if a window could not
+   *                   be opened.
    */
   openChatWindow: function(conversationWindowData) {
     // So I guess the origin is the loop server!?
@@ -912,7 +926,9 @@ let MozLoopServiceInternal = {
       }.bind(this), true);
     };
 
-    Chat.open(null, origin, "", url, undefined, undefined, callback);
+    if (!Chat.open(null, origin, "", url, undefined, undefined, callback)) {
+      return null;
+    }
     return windowId;
   },
 
@@ -1121,7 +1137,8 @@ this.MozLoopService = {
       if (window) {
         window.LoopUI.showNotification({
           sound: "room-joined",
-          title: room.roomName,
+          // Fallback to the brand short name if the roomName isn't available.
+          title: room.roomName || MozLoopServiceInternal.localizedStrings.get("clientShortname2"),
           message: MozLoopServiceInternal.localizedStrings.get("rooms_room_joined_label"),
           selectTab: "rooms"
         });
@@ -1613,6 +1630,16 @@ this.MozLoopService = {
       log.error("Error opening Getting Started tour", ex);
     }
   }),
+
+  /**
+   * Opens a URL in a new tab in the browser.
+   *
+   * @param {String} url The new url to open
+   */
+  openURL: function(url) {
+    let win = Services.wm.getMostRecentWindow("navigator:browser");
+    win.openUILinkIn(url, "tab");
+  },
 
   /**
    * Performs a hawk based request to the loop server.

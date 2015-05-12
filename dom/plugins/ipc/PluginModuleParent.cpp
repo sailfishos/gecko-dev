@@ -1434,11 +1434,7 @@ PluginModuleParent::NPP_DestroyStream(NPP instance,
                                       NPStream* stream,
                                       NPReason reason)
 {
-    PluginInstanceParent* i = PluginInstanceParent::Cast(instance);
-    if (!i)
-        return NPERR_GENERIC_ERROR;
-
-    return i->NPP_DestroyStream(stream, reason);
+    RESOLVE_AND_CALL(instance, NPP_DestroyStream(stream, reason));
 }
 
 int32_t
@@ -1665,7 +1661,7 @@ PluginModuleParent::OnInitFailure()
     }
 }
 
-class OfflineObserver MOZ_FINAL : public nsIObserver
+class OfflineObserver final : public nsIObserver
 {
 public:
     NS_DECL_ISUPPORTS
@@ -2638,7 +2634,7 @@ PluginModuleChromeParent::OnCrash(DWORD processID)
 #endif // MOZ_CRASHREPORTER_INJECTOR
 
 #ifdef MOZ_ENABLE_PROFILER_SPS
-class PluginProfilerObserver MOZ_FINAL : public nsIObserver,
+class PluginProfilerObserver final : public nsIObserver,
                                          public nsSupportsWeakReference
 {
 public:

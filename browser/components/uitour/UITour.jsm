@@ -27,10 +27,13 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
   "resource:///modules/BrowserUITelemetry.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Metrics",
   "resource://gre/modules/Metrics.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
+  "resource://gre/modules/ReaderMode.jsm");
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL      = "browser.uitour.loglevel";
 const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
+const PREF_READERVIEW_TRIGGER = "browser.uitour.readerViewTrigger";
 
 const BACKGROUND_PAGE_ACTIONS_ALLOWED = new Set([
   "endUrlbarCapture",
@@ -185,8 +188,10 @@ this.UITour = {
         return loopBrowser.contentDocument.querySelector(".signin-link");
       },
     }],
+    ["pocket", {query: "#pocket-button"}],
     ["privateWindow",  {query: "#privatebrowsing-button"}],
     ["quit",        {query: "#PanelUI-quit"}],
+    ["readerMode-urlBar", {query: "#reader-mode-button"}],
     ["search",      {
       infoPanelOffsetX: 18,
       infoPanelPosition: "after_start",
@@ -341,6 +346,22 @@ this.UITour = {
                                JSON.stringify([...this.seenPageIDs]));
   },
 
+  get _readerViewTriggerRegEx() {
+    delete this._readerViewTriggerRegEx;
+    let readerViewUITourTrigger = Services.prefs.getCharPref(PREF_READERVIEW_TRIGGER);
+    return this._readerViewTriggerRegEx = new RegExp(readerViewUITourTrigger, "i");
+  },
+
+  onLocationChange: function(aLocation) {
+    // The ReadingList/ReaderView tour page is expected to run in Reader View,
+    // which disables JavaScript on the page. To get around that, we
+    // automatically start a pre-defined tour on page load.
+    let originalUrl = ReaderMode.getOriginalUrl(aLocation);
+    if (this._readerViewTriggerRegEx.test(originalUrl)) {
+      this.startSubTour("readinglist");
+    }
+  },
+
   onPageEvent: function(aMessage, aEvent) {
     let browser = aMessage.target;
     let window = browser.ownerDocument.defaultView;
@@ -432,8 +453,7 @@ this.UITour = {
         }
 
         // Finally show the Heartbeat UI.
-        this.showHeartbeat(window, messageManager, data.message, data.thankyouMessage, data.flowId,
-                           data.engagementURL);
+        this.showHeartbeat(window, messageManager, data);
         break;
       }
 
@@ -677,6 +697,13 @@ this.UITour = {
         if (typeof data.callbackID == "string")
           this.sendPageCallback(messageManager, data.callbackID);
         break;
+      }
+
+      case "toggleReaderMode": {
+        let targetPromise = this.getTarget(window, "readerMode-urlBar");
+        targetPromise.then(target => {
+          ReaderParent.toggleReaderMode({target: target.node});
+        });
       }
     }
 
@@ -1021,36 +1048,41 @@ this.UITour = {
   /**
    * Show the Heartbeat UI to request user feedback. This function reports back to the
    * caller using |notify|. The notification event name reflects the current status the UI
-   * is in (either "Heartbeat:NotificationOffered", "Heartbeat:NotificationClosed" or
-   * "Heartbeat:Voted"). When a "Heartbeat:Voted" event is notified the data payload contains
-   * a |score| field which holds the rating picked by the user.
+   * is in (either "Heartbeat:NotificationOffered", "Heartbeat:NotificationClosed",
+   * "Heartbeat:LearnMore" or "Heartbeat:Voted"). When a "Heartbeat:Voted" event is notified
+   * the data payload contains a |score| field which holds the rating picked by the user.
    * Please note that input parameters are already validated by the caller.
    *
    * @param aChromeWindow
    *        The chrome window that the heartbeat notification is displayed in.
    * @param aMessageManager
    *        The message manager to communicate with the API caller.
-   * @param aMessage
+   * @param {Object} aOptions Options object.
+   * @param {String} aOptions.message
    *        The message, or question, to display on the notification.
-   * @param aThankyouMessage
+   * @param {String} aOptions.thankyouMessage
    *        The thank you message to display after user votes.
-   * @param aFlowId
+   * @param {String} aOptions.flowId
    *        An identifier for this rating flow. Please note that this is only used to
    *        identify the notification box.
-   * @param [aEngagementURL]
+   * @param {String} [aOptions.engagementURL=null]
    *        The engagement URL to open in a new tab once user has voted. If this is null
    *        or invalid, no new tab is opened.
+   * @param {String} [aOptions.learnMoreLabel=null]
+   *        The label of the learn more link. No link will be shown if this is null.
+   * @param {String} [aOptions.learnMoreURL=null]
+   *        The learn more URL to open when clicking on the learn more link. No learn more
+   *        will be shown if this is an invalid URL.
    */
-  showHeartbeat: function(aChromeWindow, aMessageManager, aMessage, aThankyouMessage, aFlowId,
-                          aEngagementURL = null) {
+  showHeartbeat: function(aChromeWindow, aMessageManager, aOptions) {
     let nb = aChromeWindow.document.getElementById("high-priority-global-notificationbox");
 
     // Create the notification. Prefix its ID to decrease the chances of collisions.
-    let notice = nb.appendNotification(aMessage, "heartbeat-" + aFlowId,
-      "chrome://branding/content/icon64.png", nb.PRIORITY_INFO_HIGH, null, function() {
+    let notice = nb.appendNotification(aOptions.message, "heartbeat-" + aOptions.flowId,
+      "chrome://browser/skin/heartbeat-icon.svg", nb.PRIORITY_INFO_HIGH, null, function() {
         // Let the consumer know the notification bar was closed. This also happens
         // after voting.
-        this.notify("Heartbeat:NotificationClosed", { flowId: aFlowId, timestamp: Date.now() });
+        this.notify("Heartbeat:NotificationClosed", { flowId: aOptions.flowId, timestamp: Date.now() });
     }.bind(this));
 
     // Get the elements we need to style.
@@ -1082,11 +1114,10 @@ this.UITour = {
         let rating = Number(evt.target.getAttribute("data-score"), 10);
 
         // Let the consumer know user voted.
-        this.notify("Heartbeat:Voted", { flowId: aFlowId, score: rating, timestamp: Date.now() });
+        this.notify("Heartbeat:Voted", { flowId: aOptions.flowId, score: rating, timestamp: Date.now() });
 
-        // Display the Heart and make it pulse twice.
-        notice.image = "chrome://browser/skin/heartbeat-icon.svg";
-        notice.label = aThankyouMessage;
+        // Make the heartbeat icon pulse twice.
+        notice.label = aOptions.thankyouMessage;
         messageImage.classList.remove("pulse-onshow");
         messageImage.classList.add("pulse-twice");
 
@@ -1099,7 +1130,7 @@ this.UITour = {
         // Make sure that we have a valid URL. If we haven't, do not open the engagement page.
         let engagementURL = null;
         try {
-          engagementURL = new URL(aEngagementURL);
+          engagementURL = new URL(aOptions.engagementURL);
         } catch (error) {
           log.error("showHeartbeat: Invalid URL specified.");
         }
@@ -1109,7 +1140,7 @@ this.UITour = {
           // Append the score data to the engagement URL.
           engagementURL.searchParams.append("type", "stars");
           engagementURL.searchParams.append("score", rating);
-          engagementURL.searchParams.append("flowid", aFlowId);
+          engagementURL.searchParams.append("flowid", aOptions.flowId);
 
           // Open the engagement URL in a new tab.
           aChromeWindow.gBrowser.selectedTab =
@@ -1136,8 +1167,28 @@ this.UITour = {
     rightSpacer.flex = 20;
     frag.appendChild(rightSpacer);
 
+    messageText.flex = 0; // Collapse the space before the stars.
     let leftSpacer = messageText.nextSibling;
     leftSpacer.flex = 0;
+
+    // Make sure that we have a valid learn more URL.
+    let learnMoreURL = null;
+    try {
+      learnMoreURL = new URL(aOptions.learnMoreURL);
+    } catch (error) {
+      log.error("showHeartbeat: Invalid learnMore URL specified.");
+    }
+
+    // Add the learn more link.
+    if (aOptions.learnMoreLabel && learnMoreURL) {
+      let learnMore = aChromeWindow.document.createElement("label");
+      learnMore.className = "text-link";
+      learnMore.href = learnMoreURL.toString();
+      learnMore.setAttribute("value", aOptions.learnMoreLabel);
+      learnMore.addEventListener("click", () => this.notify("Heartbeat:LearnMore",
+        { flowId: aOptions.flowId, timestamp: Date.now() }));
+      frag.appendChild(learnMore);
+    }
 
     // Append the fragment and apply the styling.
     notice.appendChild(frag);
@@ -1146,7 +1197,7 @@ this.UITour = {
     messageText.classList.add("heartbeat");
 
     // Let the consumer know the notification was shown.
-    this.notify("Heartbeat:NotificationOffered", { flowId: aFlowId, timestamp: Date.now() });
+    this.notify("Heartbeat:NotificationOffered", { flowId: aOptions.flowId, timestamp: Date.now() });
   },
 
   /**
@@ -1408,6 +1459,12 @@ this.UITour = {
     this._setAppMenuStateForAnnotation(aChromeWindow, "info",
                                        this.targetIsInAppMenu(aAnchor),
                                        showInfoPanel.bind(this, this._correctAnchor(aAnchor.node)));
+  },
+
+  isInfoOnTarget(aChromeWindow, aTargetName) {
+    let document = aChromeWindow.document;
+    let tooltip = document.getElementById("UITourTooltip");
+    return tooltip.getAttribute("targetName") == aTargetName && tooltip.state != "closed";
   },
 
   hideInfo: function(aWindow) {
@@ -1687,6 +1744,20 @@ this.UITour = {
         targets: [],
       });
     });
+  },
+
+  startSubTour: function (aFeature) {
+    if (aFeature != "string") {
+      log.error("startSubTour: No feature option specified");
+      return;
+    }
+
+    if (aFeature == "readinglist") {
+      ReaderParent.showReaderModeInfoPanel(browser);
+    } else {
+      log.error("startSubTour: Unknown feature option specified");
+      return;
+    }
   },
 
   addNavBarWidget: function (aTarget, aMessageManager, aCallbackID) {

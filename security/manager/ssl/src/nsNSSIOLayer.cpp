@@ -1244,7 +1244,7 @@ retryDueToTLSIntolerance(PRErrorCode err, nsNSSSocketInfo* socketInfo)
 
   if ((err == SSL_ERROR_NO_CYPHER_OVERLAP || err == PR_END_OF_FILE_ERROR ||
        err == PR_CONNECT_RESET_ERROR) &&
-      !fallbackLimitReached &&
+      (!fallbackLimitReached || helpers.mUnrestrictedRC4Fallback) &&
       nsNSSComponent::AreAnyWeakCiphersEnabled()) {
     if (helpers.rememberStrongCiphersFailed(socketInfo->GetHostName(),
                                             socketInfo->GetPort(), err)) {
@@ -1471,6 +1471,7 @@ nsSSLIOLayerHelpers::nsSSLIOLayerHelpers()
   , mTLSIntoleranceInfo()
   , mFalseStartRequireNPN(false)
   , mUseStaticFallbackList(true)
+  , mUnrestrictedRC4Fallback(true)
   , mVersionFallbackLimit(SSL_LIBRARY_VERSION_TLS_1_0)
   , mutex("nsSSLIOLayerHelpers.mutex")
 {
@@ -1697,6 +1698,9 @@ PrefObserver::Observe(nsISupports* aSubject, const char* aTopic,
     } else if (prefName.EqualsLiteral("security.tls.insecure_fallback_hosts.use_static_list")) {
       mOwner->mUseStaticFallbackList =
         Preferences::GetBool("security.tls.insecure_fallback_hosts.use_static_list", true);
+    } else if (prefName.EqualsLiteral("security.tls.unrestricted_rc4_fallback")) {
+      mOwner->mUnrestrictedRC4Fallback =
+        Preferences::GetBool("security.tls.unrestricted_rc4_fallback", true);
     }
   }
   return NS_OK;
@@ -1735,6 +1739,8 @@ nsSSLIOLayerHelpers::~nsSSLIOLayerHelpers()
         "security.tls.version.fallback-limit");
     Preferences::RemoveObserver(mPrefObserver,
         "security.tls.insecure_fallback_hosts");
+    Preferences::RemoveObserver(mPrefObserver,
+        "security.tls.unrestricted_rc4_fallback");
   }
 }
 
@@ -1800,6 +1806,8 @@ nsSSLIOLayerHelpers::Init()
   setInsecureFallbackSites(insecureFallbackHosts);
   mUseStaticFallbackList =
     Preferences::GetBool("security.tls.insecure_fallback_hosts.use_static_list", true);
+  mUnrestrictedRC4Fallback =
+    Preferences::GetBool("security.tls.unrestricted_rc4_fallback", true);
 
   mPrefObserver = new PrefObserver(this);
   Preferences::AddStrongObserver(mPrefObserver,
@@ -1812,6 +1820,8 @@ nsSSLIOLayerHelpers::Init()
                                  "security.tls.version.fallback-limit");
   Preferences::AddStrongObserver(mPrefObserver,
                                  "security.tls.insecure_fallback_hosts");
+  Preferences::AddStrongObserver(mPrefObserver,
+                                 "security.tls.unrestricted_rc4_fallback");
   return NS_OK;
 }
 
@@ -1872,16 +1882,33 @@ private:
   const char* mTarget;
 };
 
+static const char* const kFallbackWildcardList[] =
+{
+  ".kuronekoyamato.co.jp", // bug 1128366
+  ".userstorage.mega.co.nz", // bug 1133496
+  ".wildcard.test",
+};
+
 bool
 nsSSLIOLayerHelpers::isInsecureFallbackSite(const nsACString& hostname)
 {
   size_t match;
-  if (mUseStaticFallbackList &&
-      BinarySearchIf(kIntolerantFallbackList, 0,
-        ArrayLength(kIntolerantFallbackList),
-        FallbackListComparator(PromiseFlatCString(hostname).get()),
-        &match)) {
-    return true;
+  if (mUseStaticFallbackList) {
+    const char* host = PromiseFlatCString(hostname).get();
+    if (BinarySearchIf(kIntolerantFallbackList, 0,
+          ArrayLength(kIntolerantFallbackList),
+          FallbackListComparator(host), &match)) {
+      return true;
+    }
+    for (size_t i = 0; i < ArrayLength(kFallbackWildcardList); ++i) {
+      size_t hostLen = hostname.Length();
+      const char* target = kFallbackWildcardList[i];
+      size_t targetLen = strlen(target);
+      if (hostLen > targetLen &&
+          !memcmp(host + hostLen - targetLen, target, targetLen)) {
+        return true;
+      }
+    }
   }
   MutexAutoLock lock(mutex);
   return mInsecureFallbackSites.Contains(hostname);

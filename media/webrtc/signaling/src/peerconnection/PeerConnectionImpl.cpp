@@ -182,15 +182,12 @@ public:
                           size_t numNewVideoTracks,
                           const std::string& pcHandle,
                           nsRefPtr<PeerConnectionObserver> aObserver)
-  : DOMMediaStream::OnTracksAvailableCallback(
-      // Once DOMMediaStream can handle more than one of each, this will change.
-      (numNewAudioTracks ? DOMMediaStream::HINT_CONTENTS_AUDIO : 0) |
-      (numNewVideoTracks ? DOMMediaStream::HINT_CONTENTS_VIDEO : 0))
+  : DOMMediaStream::OnTracksAvailableCallback()
   , mObserver(aObserver)
   , mPcHandle(pcHandle)
   {}
 
-  virtual void NotifyTracksAvailable(DOMMediaStream* aStream) MOZ_OVERRIDE
+  virtual void NotifyTracksAvailable(DOMMediaStream* aStream) override
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -326,7 +323,8 @@ namespace mozilla {
 #ifdef MOZILLA_INTERNAL_API
 RTCStatsQuery::RTCStatsQuery(bool internal) :
   failed(false),
-  internalStats(internal) {
+  internalStats(internal),
+  grabAllLevels(false) {
 }
 
 RTCStatsQuery::~RTCStatsQuery() {
@@ -450,10 +448,10 @@ PeerConnectionImpl::~PeerConnectionImpl()
 }
 
 already_AddRefed<DOMMediaStream>
-PeerConnectionImpl::MakeMediaStream(uint32_t aHint)
+PeerConnectionImpl::MakeMediaStream()
 {
   nsRefPtr<DOMMediaStream> stream =
-    DOMMediaStream::CreateSourceStream(GetWindow(), aHint);
+    DOMMediaStream::CreateSourceStream(GetWindow());
 
 #ifdef MOZILLA_INTERNAL_API
   // Make the stream data (audio/video samples) accessible to the receiving page.
@@ -486,16 +484,10 @@ PeerConnectionImpl::CreateRemoteSourceStreamInfo(nsRefPtr<RemoteSourceStreamInfo
   MOZ_ASSERT(aInfo);
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
 
-  // We need to pass a dummy hint here because FakeMediaStream currently
-  // needs to actually propagate a hint for local streams.
-  // TODO(ekr@rtfm.com): Clean up when we have explicit track lists.
-  // See bug 834835.
-  nsRefPtr<DOMMediaStream> stream = MakeMediaStream(0);
+  nsRefPtr<DOMMediaStream> stream = MakeMediaStream();
   if (!stream) {
     return NS_ERROR_FAILURE;
   }
-
-  static_cast<SourceMediaStream*>(stream->GetStream())->SetPullEnabled(true);
 
   nsRefPtr<RemoteSourceStreamInfo> remote;
   remote = new RemoteSourceStreamInfo(stream.forget(), mMedia, aStreamID);
@@ -2086,74 +2078,85 @@ PeerConnectionImpl::RemoveTrack(MediaStreamTrack& aTrack) {
 
 NS_IMETHODIMP
 PeerConnectionImpl::ReplaceTrack(MediaStreamTrack& aThisTrack,
-                                 MediaStreamTrack& aWithTrack,
-                                 DOMMediaStream& aStream) {
+                                 MediaStreamTrack& aWithTrack) {
   PC_AUTO_ENTER_API_CALL(true);
 
-  JSErrorResult jrv;
   nsRefPtr<PeerConnectionObserver> pco = do_QueryObjectReferent(mPCObserver);
   if (!pco) {
     return NS_ERROR_UNEXPECTED;
   }
+  JSErrorResult jrv;
 
+#ifdef MOZILLA_INTERNAL_API
+  if (&aThisTrack == &aWithTrack) {
+    pco->OnReplaceTrackSuccess(jrv);
+    if (jrv.Failed()) {
+      CSFLogError(logTag, "Error firing replaceTrack success callback");
+      return NS_ERROR_UNEXPECTED;
+    }
+    return NS_OK;
+  }
+
+  nsString thisKind;
+  aThisTrack.GetKind(thisKind);
+  nsString withKind;
+  aWithTrack.GetKind(withKind);
+
+  if (thisKind != withKind) {
+    pco->OnReplaceTrackError(kIncompatibleMediaStreamTrack,
+                             ObString(mJsepSession->GetLastError().c_str()),
+                             jrv);
+    if (jrv.Failed()) {
+      CSFLogError(logTag, "Error firing replaceTrack success callback");
+      return NS_ERROR_UNEXPECTED;
+    }
+    return NS_OK;
+  }
+#endif
   std::string origTrackId = PeerConnectionImpl::GetTrackId(aThisTrack);
   std::string newTrackId = PeerConnectionImpl::GetTrackId(aWithTrack);
 
-  // TODO: Do an aStream.HasTrack() check on both track args someday.
-  //
-  // The proposed API will be that both tracks must already be in the same
-  // stream. However, since our MediaStreams currently are limited to one
-  // track per type, we allow replacement with an outside track not already
-  // in the same stream. This works because sync happens receiver-side and
-  // timestamps are tied to capture.
+  std::string origStreamId =
+    PeerConnectionImpl::GetStreamId(*aThisTrack.GetStream());
+  std::string newStreamId =
+    PeerConnectionImpl::GetStreamId(*aWithTrack.GetStream());
 
-  if (!aStream.HasTrack(aThisTrack)) {
-    CSFLogError(logTag, "Track to replace (%s) is not in stream",
-                        origTrackId.c_str());
-    pco->OnReplaceTrackError(kInvalidMediastreamTrack,
-                             ObString("Track to replace is not in stream"),
-                             jrv);
-    return NS_OK;
-  }
-
-  // XXX This MUST be addressed when we add multiple tracks of a type!!
-  // This is needed because the track IDs used by MSG are from TrackUnion
-  // (for getUserMedia streams) and aren't the same as the values the source tracks
-  // have.  Solution is to have JsepSession read track ids and use those.
-
-  // Because DirectListeners see the SourceMediaStream's TrackID's, and not the
-  // TrackUnionStream's TrackID's, this value won't currently match what is used in
-  // MediaPipelineTransmit.  Bug 1056652
-  //  TrackID thisID = aThisTrack.GetTrackID();
-  //
-
-  std::string streamId = PeerConnectionImpl::GetStreamId(aStream);
-  nsRefPtr<LocalSourceStreamInfo> info = media()->GetLocalStreamById(streamId);
-
-  if (!info || !info->HasTrack(origTrackId)) {
-    CSFLogError(logTag, "Track to replace (%s) was never added",
-                        origTrackId.c_str());
-    pco->OnReplaceTrackError(kInvalidMediastreamTrack,
-                             ObString("Track to replace was never added"),
-                             jrv);
-    return NS_OK;
-  }
-
-  nsresult rv =
-    info->ReplaceTrack(origTrackId, aWithTrack.GetStream(), newTrackId);
+  nsresult rv = mJsepSession->ReplaceTrack(origStreamId,
+                                           origTrackId,
+                                           newStreamId,
+                                           newTrackId);
   if (NS_FAILED(rv)) {
-    CSFLogError(logTag, "Failed to replace track (%s)",
-                        origTrackId.c_str());
-    pco->OnReplaceTrackError(kInternalError,
+    pco->OnReplaceTrackError(kInvalidMediastreamTrack,
+                             ObString(mJsepSession->GetLastError().c_str()),
+                             jrv);
+    if (jrv.Failed()) {
+      CSFLogError(logTag, "Error firing replaceTrack error callback");
+      return NS_ERROR_UNEXPECTED;
+    }
+    return NS_OK;
+  }
+
+  rv = media()->ReplaceTrack(origStreamId,
+                             origTrackId,
+                             aWithTrack.GetStream(),
+                             newStreamId,
+                             newTrackId);
+
+  if (NS_FAILED(rv)) {
+    CSFLogError(logTag, "Unexpected error in ReplaceTrack: %d",
+                        static_cast<int>(rv));
+    pco->OnReplaceTrackError(kInvalidMediastreamTrack,
                              ObString("Failed to replace track"),
                              jrv);
+    if (jrv.Failed()) {
+      CSFLogError(logTag, "Error firing replaceTrack error callback");
+      return NS_ERROR_UNEXPECTED;
+    }
     return NS_OK;
   }
-
   pco->OnReplaceTrackSuccess(jrv);
-
   if (jrv.Failed()) {
-    CSFLogError(logTag, "Error firing replaceTrack callback");
+    CSFLogError(logTag, "Error firing replaceTrack success callback");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -2795,20 +2798,28 @@ PeerConnectionImpl::BuildStatsQuery_m(
     RTCStatsQuery *query) {
 
   if (!HasMedia()) {
-    return NS_OK;
+    return NS_ERROR_UNEXPECTED;
   }
 
-  if (!mMedia->ice_ctx() || !mThread) {
-    CSFLogError(logTag, "Could not build stats query, critical components of "
-                        "PeerConnectionImpl not set.");
+  if (!mThread) {
+    CSFLogError(logTag, "Could not build stats query, no MainThread");
     return NS_ERROR_UNEXPECTED;
   }
 
   nsresult rv = GetTimeSinceEpoch(&(query->now));
-
   if (NS_FAILED(rv)) {
     CSFLogError(logTag, "Could not build stats query, could not get timestamp");
     return rv;
+  }
+
+  // Note: mMedia->ice_ctx() is deleted on STS thread; so make sure we grab and hold
+  // a ref instead of making multiple calls.  NrIceCtx uses threadsafe refcounting.
+  // NOTE: Do this after all other failure tests, to ensure we don't
+  // accidentally release the Ctx on Mainthread.
+  query->iceCtx = mMedia->ice_ctx();
+  if (!query->iceCtx) {
+    CSFLogError(logTag, "Could not build stats query, no ice_ctx");
+    return NS_ERROR_UNEXPECTED;
   }
 
   // We do not use the pcHandle here, since that's risky to expose to content.
@@ -2872,33 +2883,8 @@ PeerConnectionImpl::BuildStatsQuery_m(
     }
   }
 
-  query->iceCtx = mMedia->ice_ctx();
-
-  // From the list of MediaPipelines, determine the set of NrIceMediaStreams
-  // we are interested in.
-  std::set<size_t> levelsToGrab;
-  if (aSelector) {
-    for (size_t p = 0; p < query->pipelines.Length(); ++p) {
-      size_t level = query->pipelines[p]->level();
-      levelsToGrab.insert(level);
-    }
-  } else {
-    // We want to grab all streams, so ignore the pipelines (this also ends up
-    // grabbing DataChannel streams, which is what we want)
-    for (size_t s = 0; s < mMedia->num_ice_media_streams(); ++s) {
-      levelsToGrab.insert(s);
-    }
-  }
-
-  for (auto s = levelsToGrab.begin(); s != levelsToGrab.end(); ++s) {
-    // TODO(bcampen@mozilla.com): I may need to revisit this for bundle.
-    // (Bug 786234)
-    RefPtr<NrIceMediaStream> temp(mMedia->ice_media_stream(*s));
-    RefPtr<TransportFlow> flow(mMedia->GetTransportFlow(*s, false));
-    // flow can be null for unused levels, such as unused DataChannels
-    if (temp && flow) {
-      query->streams.AppendElement(temp);
-    }
+  if (!aSelector) {
+    query->grabAllLevels = true;
   }
 
   return rv;
@@ -3173,20 +3159,32 @@ PeerConnectionImpl::ExecuteStatsQuery_s(RTCStatsQuery *query) {
         break;
       }
     }
+
+    if (!query->grabAllLevels) {
+      // If we're grabbing all levels, that means we want datachannels too,
+      // which don't have pipelines.
+      if (query->iceCtx->GetStream(p)) {
+        RecordIceStats_s(*query->iceCtx->GetStream(p),
+                         query->internalStats,
+                         query->now,
+                         query->report);
+      }
+    }
   }
 
-  // Gather stats from ICE
-  for (size_t s = 0; s != query->streams.Length(); ++s) {
-    RecordIceStats_s(*query->streams[s],
-                     query->internalStats,
-                     query->now,
-                     query->report);
+  if (query->grabAllLevels) {
+    for (size_t i = 0; i < query->iceCtx->GetStreamCount(); ++i) {
+      if (query->iceCtx->GetStream(i)) {
+        RecordIceStats_s(*query->iceCtx->GetStream(i),
+                         query->internalStats,
+                         query->now,
+                         query->report);
+      }
+    }
   }
 
-  // NrIceCtx and NrIceMediaStream must be destroyed on STS, so it is not safe
-  // to dispatch them back to main.
-  // We clear streams first to maintain destruction order
-  query->streams.Clear();
+  // NrIceCtx must be destroyed on STS, so it is not safe
+  // to dispatch it back to main.
   query->iceCtx = nullptr;
   return NS_OK;
 }

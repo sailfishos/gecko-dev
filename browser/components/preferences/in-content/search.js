@@ -7,19 +7,21 @@ Components.utils.import("resource://gre/modules/PlacesUtils.jsm");
 
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
 
+document.addEventListener("Initialized", () => {
+  if (Services.prefs.getBoolPref("browser.search.showOneOffButtons"))
+    return;
+
+  document.getElementById("category-search").hidden = true;
+  if (document.location.hash == "#search")
+    document.location.hash = "";
+});
+
 var gEngineView = null;
 
 var gSearchPane = {
 
   init: function ()
   {
-    if (!Services.prefs.getBoolPref("browser.search.showOneOffButtons")) {
-      document.getElementById("category-search").hidden = true;
-      if (document.location.hash == "#search")
-        document.location.hash = "";
-      return;
-    }
-
     gEngineView = new EngineView(new EngineStore());
     document.getElementById("engineList").view = gEngineView;
     this.buildDefaultEngineDropDown();
@@ -29,6 +31,7 @@ var gSearchPane = {
     window.addEventListener("dragstart", this, false);
     window.addEventListener("keypress", this, false);
     window.addEventListener("select", this, false);
+    window.addEventListener("blur", this, true);
 
     Services.obs.addObserver(this, "browser-search-engine-modified", false);
     window.addEventListener("unload", () => {
@@ -109,6 +112,12 @@ var gSearchPane = {
           gSearchPane.onTreeSelect();
         }
         break;
+      case "blur":
+        if (aEvent.target.id == "engineList" &&
+            aEvent.target.inputField == document.getBindingParent(aEvent.originalTarget)) {
+          gSearchPane.onInputBlur();
+        }
+        break;
     }
   },
 
@@ -132,6 +141,11 @@ var gSearchPane = {
         break;
       }
     }
+  },
+
+  onInputBlur: function() {
+    let tree = document.getElementById("engineList");
+    tree.stopEditing(false);
   },
 
   onTreeSelect: function() {

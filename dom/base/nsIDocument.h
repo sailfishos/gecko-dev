@@ -182,7 +182,7 @@ class nsIDocument : public nsINode
 {
   typedef mozilla::dom::GlobalObject GlobalObject;
 public:
-  typedef mozilla::net::ReferrerPolicy ReferrerPolicy;
+  typedef mozilla::net::ReferrerPolicy ReferrerPolicyEnum;
   typedef mozilla::dom::Element Element;
 
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_IDOCUMENT_IID)
@@ -289,9 +289,17 @@ public:
    * Return the referrer policy of the document. Return "default" if there's no
    * valid meta referrer tag found in the document.
    */
-  ReferrerPolicy GetReferrerPolicy() const
+  ReferrerPolicyEnum GetReferrerPolicy() const
   {
     return mReferrerPolicy;
+  }
+
+  /**
+   * GetReferrerPolicy() for Document.webidl.
+   */
+  uint32_t ReferrerPolicy() const
+  {
+    return GetReferrerPolicy();
   }
 
   /**
@@ -321,7 +329,7 @@ public:
     }
     return mDocumentBaseURI ? mDocumentBaseURI : mDocumentURI;
   }
-  virtual already_AddRefed<nsIURI> GetBaseURI(bool aTryUseXHRDocBaseURI = false) const MOZ_OVERRIDE;
+  virtual already_AddRefed<nsIURI> GetBaseURI(bool aTryUseXHRDocBaseURI = false) const override;
 
   virtual nsresult SetBaseURI(nsIURI* aURI) = 0;
 
@@ -774,7 +782,7 @@ private:
   class SelectorCacheKeyDeleter;
 
 public:
-  class SelectorCache MOZ_FINAL
+  class SelectorCache final
     : public nsExpirationTracker<SelectorCacheKey, 4>
   {
     public:
@@ -783,7 +791,7 @@ public:
       // CacheList takes ownership of aSelectorList.
       void CacheList(const nsAString& aSelector, nsCSSSelectorList* aSelectorList);
 
-      virtual void NotifyExpired(SelectorCacheKey* aSelector) MOZ_OVERRIDE;
+      virtual void NotifyExpired(SelectorCacheKey* aSelector) override;
 
       // We do not call MarkUsed because it would just slow down lookups and
       // because we're OK expiring things after a few seconds even if they're
@@ -1966,7 +1974,7 @@ public:
    */
   virtual void MaybePreLoadImage(nsIURI* uri,
                                  const nsAString& aCrossOriginAttr,
-                                 ReferrerPolicy aReferrerPolicy) = 0;
+                                 ReferrerPolicyEnum aReferrerPolicy) = 0;
 
   /**
    * Called by images to forget an image preload when they start doing
@@ -1981,7 +1989,7 @@ public:
    */
   virtual void PreloadStyle(nsIURI* aURI, const nsAString& aCharset,
                             const nsAString& aCrossOriginAttr,
-                            ReferrerPolicy aReferrerPolicy) = 0;
+                            ReferrerPolicyEnum aReferrerPolicy) = 0;
 
   /**
    * Called by the chrome registry to load style sheets.  Can be put
@@ -2542,7 +2550,7 @@ protected:
   virtual void MutationEventDispatched(nsINode* aTarget) = 0;
   friend class mozAutoSubtreeModified;
 
-  virtual Element* GetNameSpaceElement() MOZ_OVERRIDE
+  virtual Element* GetNameSpaceElement() override
   {
     return GetRootElement();
   }
@@ -2568,7 +2576,7 @@ protected:
   nsWeakPtr mDocumentLoadGroup;
 
   bool mReferrerPolicySet;
-  ReferrerPolicy mReferrerPolicy;
+  ReferrerPolicyEnum mReferrerPolicy;
 
   mozilla::WeakPtr<nsDocShell> mDocumentContainer;
 

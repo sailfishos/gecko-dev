@@ -122,13 +122,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "UpdateChannel",
                                   "resource://gre/modules/UpdateChannel.jsm");
 #endif
 
-
-#if defined(MOZ_UPDATE_CHANNEL) && MOZ_UPDATE_CHANNEL != release
-#define MOZ_DEBUG_UA // Shorthand define for subsequent conditional sections.
-XPCOMUtils.defineLazyModuleGetter(this, "UserAgentOverrides",
-                                  "resource://gre/modules/UserAgentOverrides.jsm");
-#endif
-
 XPCOMUtils.defineLazyGetter(this, "ShellService", function() {
   try {
     return Cc["@mozilla.org/browser/shell-service;1"].
@@ -430,12 +423,13 @@ BrowserGlue.prototype = {
         // an engine, and that newly added engines are visible.
         if (data == "engine-added" || data == "engine-removed") {
           let engineName = subject.QueryInterface(Ci.nsISearchEngine).name;
-          let hiddenPref =
-            Services.prefs.getCharPref("browser.search.hiddenOneOffs");
-          let hiddenEngines = hiddenPref ? hiddenPref.split(",") : [];
-          hiddenEngines = hiddenEngines.filter(x => x !== engineName);
-          Services.prefs.setCharPref("browser.search.hiddenOneOffs",
-                                     hiddenEngines.join(","));
+          let Preferences =
+            Cu.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
+          let pref = Preferences.get("browser.search.hiddenOneOffs");
+          let hiddenList = pref ? pref.split(",") : [];
+          hiddenList = hiddenList.filter(x => x !== engineName);
+          Preferences.set("browser.search.hiddenOneOffs",
+                          hiddenList.join(","));
         }
 
         if (data != "engine-default" && data != "engine-current") {
@@ -634,11 +628,6 @@ BrowserGlue.prototype = {
 
 #ifdef NIGHTLY_BUILD
     Services.prefs.addObserver(POLARIS_ENABLED, this, false);
-#endif
-
-#ifdef MOZ_DEBUG_UA
-    UserAgentOverrides.init();
-    DebugUserAgent.init();
 #endif
 
     Services.obs.notifyObservers(null, "browser-ui-startup-complete", "");
@@ -902,14 +891,14 @@ BrowserGlue.prototype = {
       SignInToWebsiteUX.uninit();
     }
 #endif
-#ifdef MOZ_DEBUG_UA
-    UserAgentOverrides.uninit();
-#endif
     webrtcUI.uninit();
     FormValidationHandler.uninit();
   },
 
   _initServiceDiscovery: function () {
+    if (!Services.prefs.getBoolPref("browser.casting.enabled")) {
+      return;
+    }
     var rokuDevice = {
       id: "roku:ecp",
       target: "roku:ecp",
@@ -2865,36 +2854,3 @@ let globalMM = Cc["@mozilla.org/globalmessagemanager;1"].getService(Ci.nsIMessag
 globalMM.addMessageListener("UITour:onPageEvent", function(aMessage) {
   UITour.onPageEvent(aMessage, aMessage.data);
 });
-
-#ifdef MOZ_DEBUG_UA
-// Modify the user agent string for specific domains
-// to route debug information through their logging.
-var DebugUserAgent = {
-  DEBUG_UA: null,
-  DOMAINS: [
-    'youtube.com',
-    'www.youtube.com',
-    'youtube-nocookie.com',
-    'www.youtube-nocookie.com',
-  ],
-
-  init: function() {
-    // Only run if the MediaSource Extension API is available.
-    if (!Services.prefs.getBoolPref("media.mediasource.enabled")) {
-      return;
-    }
-    // Install our override filter.
-    UserAgentOverrides.addComplexOverride(this.onRequest.bind(this));
-    let ua = Cc["@mozilla.org/network/protocol;1?name=http"]
-                .getService(Ci.nsIHttpProtocolHandler).userAgent;
-    this.DEBUG_UA = ua + " Build/" + Services.appinfo.appBuildID;
-  },
-
-  onRequest: function(channel, defaultUA) {
-    if (this.DOMAINS.indexOf(channel.URI.host) != -1) {
-      return this.DEBUG_UA;
-    }
-    return null;
-  },
-};
-#endif // MOZ_DEBUG_UA

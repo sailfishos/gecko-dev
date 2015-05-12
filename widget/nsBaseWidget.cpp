@@ -181,21 +181,24 @@ nsBaseWidget::Shutdown()
   mShutdownObserver = nullptr;
 }
 
-static void DeferredDestroyCompositor(CompositorParent* aCompositorParent,
-                              CompositorChild* aCompositorChild)
+static void DeferredDestroyCompositor(nsRefPtr<CompositorParent> aCompositorParent,
+                                      nsRefPtr<CompositorChild> aCompositorChild)
 {
     // Bug 848949 needs to be fixed before
     // we can close the channel properly
     //aCompositorChild->Close();
-    aCompositorParent->Release();
-    aCompositorChild->Release();
 }
 
 void nsBaseWidget::DestroyCompositor()
 {
   if (mCompositorChild) {
-    mCompositorChild->SendWillStop();
-    mCompositorChild->Destroy();
+    nsRefPtr<CompositorChild> compositorChild = mCompositorChild.forget();
+    nsRefPtr<CompositorParent> compositorParent = mCompositorParent.forget();
+
+    compositorChild->SendWillStop();
+    // New LayerManager, CompositorParent and CompositorChild might be created
+    // as a result of internal GetLayerManager() call.
+    compositorChild->Destroy();
 
     // The call just made to SendWillStop can result in IPC from the
     // CompositorParent to the CompositorChild (e.g. caused by the destruction
@@ -204,13 +207,12 @@ void nsBaseWidget::DestroyCompositor()
     // events already in the MessageLoop get processed before the
     // CompositorChild is destroyed, so we add a task to the MessageLoop to
     // handle compositor desctruction.
+
+    // The DefferedDestroyCompositor task takes ownership of compositorParent and
+    // will release them when it runs.
     MessageLoop::current()->PostTask(FROM_HERE,
-               NewRunnableFunction(DeferredDestroyCompositor, mCompositorParent,
-                                   mCompositorChild));
-    // The DestroyCompositor task we just added to the MessageLoop will handle
-    // releasing mCompositorParent and mCompositorChild.
-    unused << mCompositorParent.forget();
-    unused << mCompositorChild.forget();
+               NewRunnableFunction(DeferredDestroyCompositor, compositorParent,
+                                   compositorChild));
   }
 }
 
@@ -922,7 +924,7 @@ public:
     : mTreeManager(aTreeManager)
   {}
 
-  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const MOZ_OVERRIDE {
+  void Run(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid>& aTargets) const override {
     MOZ_ASSERT(NS_IsMainThread());
     // need a local var to disambiguate between the SetTargetAPZC overloads.
     void (APZCTreeManager::*setTargetApzcFunc)(uint64_t, const nsTArray<ScrollableLayerGuid>&)
@@ -941,7 +943,7 @@ public:
     : mTreeManager(aTreeManager)
   {}
 
-  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const MOZ_OVERRIDE {
+  void Run(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault) const override {
     MOZ_ASSERT(NS_IsMainThread());
     APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
         mTreeManager.get(), &APZCTreeManager::ContentReceivedInputBlock,
@@ -1059,6 +1061,9 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
 
   MOZ_ASSERT(gfxPlatform::UsesOffMainThreadCompositing(),
              "This function assumes OMTC");
+
+  MOZ_ASSERT(!mCompositorParent,
+    "Should have properly cleaned up the previous CompositorParent beforehand");
 
   // Recreating this is tricky, as we may still have an old and we need
   // to make sure it's properly destroyed by calling DestroyCompositor!
@@ -1359,28 +1364,6 @@ bool
 nsBaseWidget::ShowsResizeIndicator(nsIntRect* aResizerRect)
 {
   return false;
-}
-
-NS_IMETHODIMP
-nsBaseWidget::SetLayersAcceleration(bool aEnabled)
-{
-  if (mUseLayersAcceleration == aEnabled) {
-    return NS_OK;
-  }
-
-  bool usedAcceleration = mUseLayersAcceleration;
-
-  mUseLayersAcceleration = ComputeShouldAccelerate(aEnabled);
-  // ComputeShouldAccelerate may have set mUseLayersAcceleration to a value
-  // different from aEnabled.
-  if (usedAcceleration == mUseLayersAcceleration) {
-    return NS_OK;
-  }
-  if (mLayerManager) {
-    mLayerManager->Destroy();
-  }
-  mLayerManager = nullptr;
-  return NS_OK;
 }
 
 NS_METHOD nsBaseWidget::RegisterTouchWindow()
@@ -1994,7 +1977,7 @@ static void debug_SetCachedBoolPref(const char * aPrefName,bool aValue)
 }
 
 //////////////////////////////////////////////////////////////
-class Debug_PrefObserver MOZ_FINAL : public nsIObserver {
+class Debug_PrefObserver final : public nsIObserver {
     ~Debug_PrefObserver() {}
 
   public:

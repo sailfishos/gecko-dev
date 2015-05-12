@@ -85,6 +85,8 @@
 #include "mozilla/scache/StartupCache.h"
 #include "nsIGfxInfo.h"
 
+#include "base/histogram.h"
+
 #include "mozilla/unused.h"
 
 #ifdef XP_WIN
@@ -1422,7 +1424,7 @@ ScopedXPCOMStartup::Initialize()
  * This is a little factory class that serves as a singleton-service-factory
  * for the nativeappsupport object.
  */
-class nsSingletonFactory MOZ_FINAL : public nsIFactory
+class nsSingletonFactory final : public nsIFactory
 {
 public:
   NS_DECL_ISUPPORTS
@@ -1626,6 +1628,66 @@ DumpVersion()
 }
 
 #ifdef MOZ_ENABLE_XREMOTE
+// use int here instead of a PR type since it will be returned
+// from main - just to keep types consistent
+static int
+HandleRemoteArgument(const char* remote, const char* aDesktopStartupID)
+{
+  nsresult rv;
+  ArgResult ar;
+
+  const char *profile = 0;
+  nsAutoCString program(gAppData->name);
+  ToLowerCase(program);
+  const char *username = getenv("LOGNAME");
+
+  ar = CheckArg("p", false, &profile);
+  if (ar == ARG_BAD) {
+    PR_fprintf(PR_STDERR, "Error: argument -p requires a profile name\n");
+    return 1;
+  }
+
+  const char *temp = nullptr;
+  ar = CheckArg("a", false, &temp);
+  if (ar == ARG_BAD) {
+    PR_fprintf(PR_STDERR, "Error: argument -a requires an application name\n");
+    return 1;
+  } else if (ar == ARG_FOUND) {
+    program.Assign(temp);
+  }
+
+  ar = CheckArg("u", false, &username);
+  if (ar == ARG_BAD) {
+    PR_fprintf(PR_STDERR, "Error: argument -u requires a username\n");
+    return 1;
+  }
+
+  XRemoteClient client;
+  rv = client.Init();
+  if (NS_FAILED(rv)) {
+    PR_fprintf(PR_STDERR, "Error: Failed to connect to X server.\n");
+    return 1;
+  }
+
+  nsXPIDLCString response;
+  bool success = false;
+  rv = client.SendCommand(program.get(), username, profile, remote,
+                          aDesktopStartupID, getter_Copies(response), &success);
+  // did the command fail?
+  if (NS_FAILED(rv)) {
+    PR_fprintf(PR_STDERR, "Error: Failed to send command: %s\n",
+               response ? response.get() : "No response included");
+    return 1;
+  }
+
+  if (!success) {
+    PR_fprintf(PR_STDERR, "Error: No running window found\n");
+    return 2;
+  }
+
+  return 0;
+}
+
 static RemoteResult
 RemoteCommandLine(const char* aDesktopStartupID)
 {
@@ -2930,9 +2992,7 @@ class XREMain
 {
 public:
   XREMain() :
-    mScopedXPCOM(nullptr)
-    , mAppData(nullptr)
-    , mStartOffline(false)
+    mStartOffline(false)
     , mShuttingDown(false)
 #ifdef MOZ_ENABLE_XREMOTE
     , mDisableRemote(false)
@@ -2943,13 +3003,9 @@ public:
   {};
 
   ~XREMain() {
-    if (mAppData) {
-      delete mAppData;
-    }
-    if (mScopedXPCOM) {
-      NS_WARNING("Scoped xpcom should have been deleted!");
-      delete mScopedXPCOM;
-    }
+    mScopedXPCOM = nullptr;
+    mStatisticsRecorder = nullptr;
+    mAppData = nullptr;
   }
 
   int XRE_main(int argc, char* argv[], const nsXREAppData* aAppData);
@@ -2966,8 +3022,10 @@ public:
   nsCOMPtr<nsIRemoteService> mRemoteService;
 #endif
 
-  ScopedXPCOMStartup* mScopedXPCOM;
-  ScopedAppData* mAppData;
+  UniquePtr<ScopedXPCOMStartup> mScopedXPCOM;
+  UniquePtr<base::StatisticsRecorder> mStatisticsRecorder;
+  nsAutoPtr<mozilla::ScopedAppData> mAppData;
+
   nsXREDirProvider mDirProvider;
   nsAutoCString mProfileName;
   nsAutoCString mDesktopStartupID;
@@ -3086,7 +3144,7 @@ XREMain::XRE_mainInit(bool* aExitFlag)
       return 1;
     }
 
-    rv = XRE_ParseAppData(overrideLF, mAppData);
+    rv = XRE_ParseAppData(overrideLF, mAppData.get());
     if (NS_FAILED(rv)) {
       Output(true, "Couldn't read override.ini");
       return 1;
@@ -3615,11 +3673,21 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
     }
   }
 
+  const char* xremotearg;
+  ArgResult ar = CheckArg("remote", true, &xremotearg);
+  if (ar == ARG_BAD) {
+    PR_fprintf(PR_STDERR, "Error: -remote requires an argument\n");
+    return 1;
+  }
+  const char* desktopStartupIDPtr =
+    mDesktopStartupID.IsEmpty() ? nullptr : mDesktopStartupID.get();
+  if (ar) {
+    *aExitFlag = true;
+    return HandleRemoteArgument(xremotearg, desktopStartupIDPtr);
+  }
+
   if (!newInstance) {
     // Try to remote the entire command line. If this fails, start up normally.
-    const char* desktopStartupIDPtr =
-      mDesktopStartupID.IsEmpty() ? nullptr : mDesktopStartupID.get();
-
     RemoteResult rr = RemoteCommandLine(desktopStartupIDPtr);
     if (rr == REMOTE_FOUND) {
       *aExitFlag = true;
@@ -4188,6 +4256,10 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 
   NS_ENSURE_TRUE(aAppData, 2);
 
+  // A initializer to initialize histogram collection, a chromium
+  // thing used by Telemetry.
+  mStatisticsRecorder = MakeUnique<base::StatisticsRecorder>();
+
   mAppData = new ScopedAppData(aAppData);
   if (!mAppData)
     return 1;
@@ -4225,7 +4297,7 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   bool appInitiatedRestart = false;
 
   // Start the real application
-  mScopedXPCOM = new ScopedXPCOMStartup();
+  mScopedXPCOM = MakeUnique<ScopedXPCOMStartup>();
   if (!mScopedXPCOM)
     return 1;
 
@@ -4260,8 +4332,8 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 #endif /* MOZ_ENABLE_XREMOTE */
   }
 
-  delete mScopedXPCOM;
   mScopedXPCOM = nullptr;
+  mStatisticsRecorder = nullptr;
 
   // unlock the profile after ScopedXPCOMStartup object (xpcom) 
   // has gone out of scope.  see bug #386739 for more details
@@ -4339,7 +4411,7 @@ XRE_metroStartup(bool runXREMain)
     return NS_ERROR_FAILURE;
 
   // Start the real application
-  xreMainPtr->mScopedXPCOM = new ScopedXPCOMStartup();
+  xreMainPtr->mScopedXPCOM = MakeUnique<ScopedXPCOMStartup>();
   if (!xreMainPtr->mScopedXPCOM)
     return NS_ERROR_FAILURE;
 
@@ -4356,7 +4428,6 @@ XRE_metroStartup(bool runXREMain)
 void
 XRE_metroShutdown()
 {
-  delete xreMainPtr->mScopedXPCOM;
   xreMainPtr->mScopedXPCOM = nullptr;
 
 #ifdef MOZ_INSTRUMENT_EVENT_LOOP

@@ -4,6 +4,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 let gEMEHandler = {
+  get uiEnabled() {
+    let emeUIEnabled = Services.prefs.getBoolPref("browser.eme.ui.enabled");
+    // Force-disable on WinXP:
+    if (navigator.platform.toLowerCase().startsWith("win")) {
+      emeUIEnabled = emeUIEnabled && parseFloat(Services.sysinfo.get("version")) >= 6;
+    }
+    return emeUIEnabled;
+  },
   ensureEMEEnabled: function(browser, keySystem) {
     Services.prefs.setBoolPref("media.eme.enabled", true);
     if (keySystem) {
@@ -45,7 +53,7 @@ let gEMEHandler = {
     }
     let {status: status, keySystem: keySystem} = parsedData;
     // Don't need to show if disabled
-    if (!Services.prefs.getBoolPref("browser.eme.ui.enabled")) {
+    if (!this.uiEnabled) {
       return;
     }
 
@@ -89,9 +97,9 @@ let gEMEHandler = {
         return;
     }
 
-    this.showNotificationBar(browser, notificationId, params, buttonCallback);
+    this.showNotificationBar(browser, notificationId, keySystem, params, buttonCallback);
   },
-  showNotificationBar: function(browser, notificationId, labelParams, callback) {
+  showNotificationBar: function(browser, notificationId, keySystem, labelParams, callback) {
     let box = gBrowser.getNotificationBox(browser);
     if (box.getNotificationWithValue(notificationId)) {
       return;
@@ -107,6 +115,18 @@ let gEMEHandler = {
     let msgPrefix = "emeNotifications." + notificationId + ".";
     let msgId = msgPrefix + "message";
 
+    // Specialcase Adobe's CDM on unsupported platforms to be more informative:
+    if (notificationId == "drmContentCDMNotSupported" &&
+        keySystem.startsWith("com.adobe")) {
+      let os = Services.appinfo.OS.toLowerCase();
+      if (os.startsWith("win") && Services.appinfo.XPCOMABI.startsWith("x86_64")) {
+        msgId = msgPrefix + "64bit.message";
+      } else if (os.startsWith("linux") || os.startsWith("darwin")) {
+        msgId = msgPrefix + "unsupportedOS.message";
+        labelParams.splice(1, 0, os.startsWith("linux") ? "Linux" : "Mac OS X");
+      }
+    }
+
     let message = labelParams.length ?
                   gNavigatorBundle.getFormattedString(msgId, labelParams) :
                   gNavigatorBundle.getString(msgId);
@@ -117,14 +137,14 @@ let gEMEHandler = {
       let btnAccessKeyId = msgPrefix + "button.accesskey";
       buttons.push({
         label: gNavigatorBundle.getString(btnLabelId),
-        accesskey: gNavigatorBundle.getString(btnAccessKeyId),
+        accessKey: gNavigatorBundle.getString(btnAccessKeyId),
         callback: callback
       });
 
       let optionsId = "emeNotifications.optionsButton";
       buttons.push({
         label: gNavigatorBundle.getString(optionsId + ".label"),
-        accesskey: gNavigatorBundle.getString(optionsId + ".accesskey"),
+        accessKey: gNavigatorBundle.getString(optionsId + ".accesskey"),
         popup: "emeNotificationsPopup"
       });
     }
@@ -143,6 +163,18 @@ let gEMEHandler = {
                            buttons);
   },
   showPopupNotificationForSuccess: function(browser, keySystem) {
+    // We're playing EME content! Remove any "we can't play because..." messages.
+    var box = gBrowser.getNotificationBox(browser);
+    ["drmContentDisabled",
+     "drmContentCDMNotSupported",
+     "drmContentCDMInsufficientVersion",
+     "drmContentCDMInstalling"
+     ].forEach(function (value) {
+        var notification = box.getNotificationWithValue(value);
+        if (notification)
+          box.removeNotification(notification);
+      });
+
     // Don't bother creating it if it's already there:
     if (PopupNotifications.getNotification("drmContentPlaying", browser)) {
       return;
@@ -155,6 +187,15 @@ let gEMEHandler = {
 
     let message = gNavigatorBundle.getFormattedString(msgId, [this._brandShortName]);
     let anchorId = "eme-notification-icon";
+    let firstPlayPref = "browser.eme.ui.firstContentShown";
+    if (!Services.prefs.getPrefType(firstPlayPref) ||
+        !Services.prefs.getBoolPref(firstPlayPref)) {
+      document.getElementById(anchorId).setAttribute("firstplay", "true");
+      Services.prefs.setBoolPref(firstPlayPref, true);
+    } else {
+      document.getElementById(anchorId).removeAttribute("firstplay");
+    }
+
 
     let mainAction = {
       label: gNavigatorBundle.getString(btnLabelId),
@@ -165,6 +206,7 @@ let gEMEHandler = {
     let options = {
       dismissed: true,
       eventCallback: aTopic => aTopic == "swapping",
+      learnMoreURL: Services.urlFormatter.formatURLPref("app.support.baseURL") + "drm-content",
     };
     PopupNotifications.show(browser, "drmContentPlaying", message, anchorId, mainAction, null, options);
   },

@@ -53,7 +53,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD Observe(nsISupports *subject, const char *aTopic,
-                     const char16_t *aData) MOZ_OVERRIDE
+                     const char16_t *aData) override
   {
     MOZ_ASSERT(strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0);
 
@@ -125,6 +125,9 @@ GetPrefNameForFeature(int32_t aFeature)
       break;
     case nsIGfxInfo::FEATURE_DXVA:
       name = BLACKLIST_PREF_BRANCH "dxva";
+      break;
+    case nsIGfxInfo::FEATURE_DIRECT3D_11_ANGLE:
+      name = BLACKLIST_PREF_BRANCH "direct3d11angle";
       break;
     case nsIGfxInfo::FEATURE_OPENGL_LAYERS:
       name = BLACKLIST_PREF_BRANCH "layers.opengl";
@@ -290,6 +293,8 @@ BlacklistFeatureToGfxFeature(const nsAString& aFeature)
     return nsIGfxInfo::FEATURE_DIRECT3D_10_1_LAYERS;
   else if (aFeature.EqualsLiteral("DIRECT3D_11_LAYERS"))
     return nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS;
+  else if (aFeature.EqualsLiteral("DIRECT3D_11_ANGLE"))
+    return nsIGfxInfo::FEATURE_DIRECT3D_11_ANGLE;
   else if (aFeature.EqualsLiteral("DXVA"))
     return nsIGfxInfo::FEATURE_DXVA;
   else if (aFeature.EqualsLiteral("OPENGL_LAYERS"))
@@ -606,23 +611,34 @@ GfxInfoBase::FindBlocklistedDeviceInList(const nsTArray<GfxDriverInfo>& info,
 {
   int32_t status = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
 
-  nsAutoString adapterVendorID;
-  nsAutoString adapterDeviceID;
-  nsAutoString adapterDriverVersionString;
-  if (NS_FAILED(GetAdapterVendorID(adapterVendorID)) ||
-      NS_FAILED(GetAdapterDeviceID(adapterDeviceID)) ||
-      NS_FAILED(GetAdapterDriverVersion(adapterDriverVersionString)))
-  {
-    return 0;
-  }
-
-#if defined(XP_WIN) || defined(ANDROID)
-  uint64_t driverVersion;
-  ParseDriverVersion(adapterDriverVersionString, &driverVersion);
-#endif
-
   uint32_t i = 0;
   for (; i < info.Length(); i++) {
+    // XXX: it would be better not to do this everytime round the loop
+    nsAutoString adapterVendorID;
+    nsAutoString adapterDeviceID;
+    nsAutoString adapterDriverVersionString;
+    if (info[i].mGpu2) {
+      if (NS_FAILED(GetAdapterVendorID2(adapterVendorID)) ||
+          NS_FAILED(GetAdapterDeviceID2(adapterDeviceID)) ||
+          NS_FAILED(GetAdapterDriverVersion2(adapterDriverVersionString)))
+      {
+        return 0;
+      }
+    } else {
+      if (NS_FAILED(GetAdapterVendorID(adapterVendorID)) ||
+          NS_FAILED(GetAdapterDeviceID(adapterDeviceID)) ||
+          NS_FAILED(GetAdapterDriverVersion(adapterDriverVersionString)))
+      {
+        return 0;
+      }
+    }
+
+#if defined(XP_WIN) || defined(ANDROID)
+    uint64_t driverVersion;
+    ParseDriverVersion(adapterDriverVersionString, &driverVersion);
+#endif
+
+
     if (info[i].mOperatingSystem != DRIVER_OS_ALL &&
         info[i].mOperatingSystem != os)
     {
@@ -847,6 +863,7 @@ GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
     nsIGfxInfo::FEATURE_DIRECT3D_10_LAYERS,
     nsIGfxInfo::FEATURE_DIRECT3D_10_1_LAYERS,
     nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS,
+    nsIGfxInfo::FEATURE_DIRECT3D_11_ANGLE,
     nsIGfxInfo::FEATURE_DXVA,
     nsIGfxInfo::FEATURE_OPENGL_LAYERS,
     nsIGfxInfo::FEATURE_WEBGL_OPENGL,

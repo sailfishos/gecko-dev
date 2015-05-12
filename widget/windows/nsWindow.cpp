@@ -675,6 +675,7 @@ NS_METHOD nsWindow::Destroy()
     mLayerManager->Destroy();
   }
   mLayerManager = nullptr;
+  DestroyCompositor();
 
   /* We should clear our cached resources now and not wait for the GC to
    * delete the nsWindow. */
@@ -3329,6 +3330,10 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
     mLayerManager = CreateBasicLayerManager();
   }
 
+  // If we don't have a layer manager at this point we shouldn't have a
+  // PCompositor actor pair either.
+  MOZ_ASSERT(mLayerManager || (!mCompositorParent && !mCompositorChild));
+
   NS_ASSERTION(mLayerManager, "Couldn't provide a valid layer manager.");
 
   return mLayerManager;
@@ -4692,7 +4697,9 @@ nsWindow::ProcessMessage(UINT msg, WPARAM& wParam, LPARAM& lParam,
         break;
 
       // let the dwm handle nc painting on glass
-      if(nsUXThemeData::CheckForCompositor())
+      // Never allow native painting if we are on fullscreen
+      if(mSizeMode != nsSizeMode_Fullscreen &&
+         nsUXThemeData::CheckForCompositor())
         break;
 
       if (wParam == TRUE) {
@@ -6541,6 +6548,12 @@ bool nsWindow::AutoErase(HDC dc)
 }
 
 bool
+nsWindow::IsPopup()
+{
+  return mWindowType == eWindowType_popup;
+}
+
+bool
 nsWindow::ShouldUseOffMainThreadCompositing()
 {
   // We don't currently support using an accelerated layer manager with
@@ -6563,7 +6576,11 @@ nsWindow::GetPreferredCompositorBackends(nsTArray<LayersBackend>& aHints)
   // transparent windows so don't even try. I'm also not sure if we even
   // want to support this case. See bug 593471
   if (!(prefs.mDisableAcceleration ||
-        mTransparencyMode == eTransparencyTransparent)) {
+        mTransparencyMode == eTransparencyTransparent ||
+        (IsPopup() && gfxWindowsPlatform::GetPlatform()->IsWARP()))) {
+    // See bug 1150376, D3D11 composition can cause issues on some devices
+    // on windows 7 where presentation fails randomly for windows with drop
+    // shadows.
     if (prefs.mPreferOpenGL) {
       aHints.AppendElement(LayersBackend::LAYERS_OPENGL);
     }

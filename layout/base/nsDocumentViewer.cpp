@@ -213,7 +213,7 @@ private:
 
 
 //-------------------------------------------------------------
-class nsDocumentViewer MOZ_FINAL : public nsIContentViewer,
+class nsDocumentViewer final : public nsIContentViewer,
                                    public nsIContentViewerEdit,
                                    public nsIContentViewerFile,
                                    public nsIDocumentViewerPrint
@@ -441,7 +441,7 @@ public:
   explicit nsDocumentShownDispatcher(nsCOMPtr<nsIDocument> aDocument)
   : mDocument(aDocument) {}
 
-  NS_IMETHOD Run() MOZ_OVERRIDE;
+  NS_IMETHOD Run() override;
 
 private:
   nsCOMPtr<nsIDocument> mDocument;
@@ -1785,6 +1785,13 @@ nsDocumentViewer::SetDocumentInternal(nsIDocument* aDocument,
   aDocument->SetContainer(mContainer);
 
   if (mDocument != aDocument) {
+    if (aForceReuseInnerWindow) {
+      // Transfer the navigation timing information to the new document, since
+      // we're keeping the same inner and hence should really have the same
+      // timing information.
+      aDocument->SetNavigationTiming(mDocument->GetNavigationTiming());
+    }
+
     if (mDocument->IsStaticDocument()) {
       mDocument->SetScriptGlobalObject(nullptr);
       mDocument->Destroy();
@@ -1930,13 +1937,14 @@ nsDocumentViewer::SetBounds(const nsIntRect& aBounds)
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
 
   mBounds = aBounds;
-
-  if (mWindow && !mAttachedToParent) {
-    // Resize the widget, but don't trigger repaint. Layout will generate
-    // repaint requests during reflow.
-    mWindow->Resize(aBounds.x, aBounds.y,
-                    aBounds.width, aBounds.height,
-                    false);
+  if (mWindow) {
+    if (!mAttachedToParent) {
+      // Don't have the widget repaint. Layout will generate repaint requests
+      // during reflow.
+      mWindow->Resize(aBounds.x, aBounds.y,
+                      aBounds.width, aBounds.height,
+                      false);
+    }
   } else if (mPresContext && mViewManager) {
     int32_t p2a = mPresContext->AppUnitsPerDevPixel();
     mViewManager->SetWindowDimensions(NSIntPixelsToAppUnits(mBounds.width, p2a),

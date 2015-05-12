@@ -730,9 +730,9 @@
              fullscreentoolbar="true" mode="icons" customizable="true"
              iconsize="small"
 #ifdef MOZ_DEV_EDITION
-             defaultset="urlbar-container,search-container,developer-button,bookmarks-menu-button,downloads-button,home-button,loop-button"
+             defaultset="urlbar-container,search-container,developer-button,bookmarks-menu-button,pocket-button,downloads-button,home-button,loop-button"
 #else
-             defaultset="urlbar-container,search-container,bookmarks-menu-button,downloads-button,home-button,loop-button"
+             defaultset="urlbar-container,search-container,bookmarks-menu-button,pocket-button,downloads-button,home-button,loop-button"
 #endif
              customizationtarget="nav-bar-customization-target"
              overflowable="true"
@@ -827,11 +827,14 @@
                        hidden="true"
                        tooltiptext="&pageReportIcon.tooltip;"
                        onclick="gPopupBlockerObserver.onReportButtonClick(event);"/>
-                <toolbarbutton id="reader-mode-button"
-                               class="tabbable"
-                               hidden="true"
-                               onclick="ReaderParent.handleReaderButtonEvent(event);"
-                               onkeypress="ReaderParent.handleReaderButtonEvent(event);"/>
+                <image id="readinglist-addremove-button"
+                       class="urlbar-icon"
+                       hidden="true"
+                       onclick="ReadingListUI.togglePageByBrowser(gBrowser.selectedBrowser);"/>
+                <image id="reader-mode-button"
+                       class="urlbar-icon"
+                       hidden="true"
+                       onclick="ReaderParent.buttonClick(event);"/>
               </hbox>
               <toolbarbutton id="urlbar-go-button"
                              class="chromeclass-toolbar-additional"
@@ -879,6 +882,7 @@
                      oncommand="BookmarksEventHandler.onCommand(event, this.parentNode._placesView);"
                      onclick="BookmarksEventHandler.onClick(event, this.parentNode._placesView);"
                      onpopupshowing="BookmarkingUI.onPopupShowing(event);
+                                     BookmarkingUI.updatePocketItemVisibility('BMB_');
                                      BookmarkingUI.attachPlacesView(event, this);"
                      tooltip="bhTooltip" popupsinherittooltip="true">
             <menuitem id="BMB_viewBookmarksSidebar"
@@ -895,6 +899,11 @@
                       command="Browser:ShowAllBookmarks"
                       key="manBookmarkKb"/>
             <menuseparator/>
+            <menuitem id="BMB_pocket"
+                      class="menuitem-iconic bookmark-item subviewbutton"
+                      label="&pocketMenuitem.label;"
+                      oncommand="openUILink(Pocket.listURL, event);"/>
+            <menuseparator id="BMB_pocketSeparator"/>
             <menuitem id="BMB_subscribeToPageMenuitem"
 #ifndef XP_MACOSX
                       class="menuitem-iconic subviewbutton"
@@ -949,6 +958,22 @@
                          onpopupshowing="if (!this.parentNode._placesView)
                                            new PlacesMenu(event, 'place:folder=UNFILED_BOOKMARKS',
                                                           PlacesUIUtils.getViewForNode(this.parentNode.parentNode).options);"/>
+            </menu>
+            <menuseparator>
+              <observes element="readingListSidebar" attribute="hidden"/>
+            </menuseparator>
+            <menu id="BMB_readingList"
+                  class="menu-iconic bookmark-item subviewbutton"
+                  label="&readingList.label;"
+                  container="true">
+              <observes element="readingListSidebar" attribute="hidden"/>
+              <menupopup id="BMB_readingListPopup"
+                         placespopup="true"
+                         onpopupshowing="ReadingListUI.onReadingListPopupShowing(this);">
+                <menuitem id="BMB_viewReadingListSidebar" class="subviewbutton"
+                          oncommand="SidebarUI.show('readingListSidebar');"
+                          label="&readingList.showSidebar.label;"/>
+              </menupopup>
             </menu>
             <menuseparator/>
             <!-- Bookmarks menu items will go here -->
@@ -1279,5 +1304,8 @@
 #     Introducing the iframe dynamically, as needed, was found to be better than
 #     starting with an empty iframe here in browser.xul from a Ts standpoint.
 </deck>
+
+<script type="application/javascript" src="chrome://browser/content/pocket/pktApi.js"/>
+<script type="application/javascript" src="chrome://browser/content/pocket/main.js"/>
 
 </window>

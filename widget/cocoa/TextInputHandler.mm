@@ -21,6 +21,7 @@
 #include "nsCocoaUtils.h"
 #include "WidgetUtils.h"
 #include "nsPrintfCString.h"
+#include "ComplexTextInputPanel.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;
@@ -3364,6 +3365,10 @@ IMEInputHandler::OnDestroyWidget(nsChildView* aDestroyingWidget)
   // created by another widget/nsChildView.
   if (sFocusedIMEHandler && sFocusedIMEHandler != this) {
     sFocusedIMEHandler->OnDestroyWidget(aDestroyingWidget);
+  }
+
+  if (!TextInputHandlerBase::OnDestroyWidget(aDestroyingWidget)) {
+    return false;
   }
 
   if (IsIMEComposing()) {

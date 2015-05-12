@@ -166,11 +166,13 @@ loop.roomViews = (function(mozL10n) {
       ActiveRoomStoreMixin,
       sharedMixins.DocumentTitleMixin,
       sharedMixins.MediaSetupMixin,
-      sharedMixins.RoomsAudioMixin
+      sharedMixins.RoomsAudioMixin,
+      sharedMixins.WindowCloseMixin
     ],
 
     propTypes: {
-      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
+      mozLoop: React.PropTypes.object.isRequired
     },
 
     _renderInvitationOverlay: function() {
@@ -204,14 +206,11 @@ loop.roomViews = (function(mozL10n) {
      * User clicked on the "Leave" button.
      */
     leaveRoom: function() {
-      this.props.dispatcher.dispatch(new sharedActions.LeaveRoom());
-    },
-
-    /**
-     * Closes the window if the cancel button is pressed in the generic failure view.
-     */
-    closeWindow: function() {
-      window.close();
+      if (this.state.used) {
+        this.props.dispatcher.dispatch(new sharedActions.LeaveRoom());
+      } else {
+        this.closeWindow();
+      }
     },
 
     /**
@@ -242,7 +241,7 @@ loop.roomViews = (function(mozL10n) {
 
       var screenShareData = {
         state: this.state.screenSharingState,
-        visible: true
+        visible: this.props.mozLoop.getLoopPref("screenshare.enabled")
       };
 
       switch(this.state.roomState) {
@@ -255,15 +254,9 @@ loop.roomViews = (function(mozL10n) {
           );
         }
         case ROOM_STATES.ENDED: {
-          if (this.state.used)
-            return React.createElement(sharedViews.FeedbackView, {
-              onAfterFeedbackReceived: this.closeWindow}
-            );
-
-          // In case the room was not used (no one was here), we
-          // bypass the feedback form.
-          this.closeWindow();
-          return null;
+          return React.createElement(sharedViews.FeedbackView, {
+            onAfterFeedbackReceived: this.closeWindow}
+          );
         }
         default: {
           return (

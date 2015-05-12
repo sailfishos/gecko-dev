@@ -42,7 +42,8 @@ loop.conversation = (function(mozL10n) {
       conversationStore: React.PropTypes.instanceOf(loop.store.ConversationStore)
                               .isRequired,
       dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
-      roomStore: React.PropTypes.instanceOf(loop.store.RoomStore)
+      roomStore: React.PropTypes.instanceOf(loop.store.RoomStore),
+      mozLoop: React.PropTypes.object.isRequired
     },
 
     getInitialState: function() {
@@ -66,6 +67,7 @@ loop.conversation = (function(mozL10n) {
             client: this.props.client, 
             conversation: this.props.conversation, 
             sdk: this.props.sdk, 
+            isDesktop: true, 
             conversationAppStore: this.props.conversationAppStore}
           ));
         }
@@ -78,6 +80,7 @@ loop.conversation = (function(mozL10n) {
         case "room": {
           return (React.createElement(DesktopRoomConversationView, {
             dispatcher: this.props.dispatcher, 
+            mozLoop: this.props.mozLoop, 
             roomStore: this.props.roomStore}
           ));
         }
@@ -118,8 +121,10 @@ loop.conversation = (function(mozL10n) {
     var dispatcher = new loop.Dispatcher();
     var client = new loop.Client();
     var sdkDriver = new loop.OTSdkDriver({
+      isDesktop: true,
       dispatcher: dispatcher,
-      sdk: OT
+      sdk: OT,
+      mozLoop: navigator.mozLoop
     });
     var appVersionInfo = navigator.mozLoop.appVersionInfo;
     var feedbackClient = new loop.FeedbackAPIClient(
@@ -137,10 +142,12 @@ loop.conversation = (function(mozL10n) {
     });
     var conversationStore = new loop.store.ConversationStore(dispatcher, {
       client: client,
+      isDesktop: true,
       mozLoop: navigator.mozLoop,
       sdkDriver: sdkDriver
     });
     var activeRoomStore = new loop.store.ActiveRoomStore(dispatcher, {
+      isDesktop: true,
       mozLoop: navigator.mozLoop,
       sdkDriver: sdkDriver
     });
@@ -188,7 +195,8 @@ loop.conversation = (function(mozL10n) {
       client: client, 
       conversation: conversation, 
       dispatcher: dispatcher, 
-      sdk: window.OT}
+      sdk: window.OT, 
+      mozLoop: navigator.mozLoop}
     ), document.querySelector('#main'));
 
     dispatcher.dispatch(new sharedActions.GetWindowData({

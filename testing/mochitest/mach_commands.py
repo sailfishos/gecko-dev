@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 
 import argparse
 import logging
-import mozpack.path
+import mozpack.path as mozpath
 import os
 import sys
 import warnings
@@ -164,12 +164,12 @@ class MochitestRunner(MozbuildObject):
 
         if test_path:
             if chrome:
-                test_root_file = mozpack.path.join(
+                test_root_file = mozpath.join(
                     self.mochitest_dir,
                     'chrome',
                     test_path)
             else:
-                test_root_file = mozpack.path.join(
+                test_root_file = mozpath.join(
                     self.mochitest_dir,
                     'tests',
                     test_path)
@@ -448,15 +448,14 @@ class MochitestRunner(MozbuildObject):
                 # Need to fix the location of gmp_fake which might not be
                 # shipped in the binary
                 bin_path = self.get_binary_path()
-                options.gmp_path = os.path.join(
-                    os.path.dirname(bin_path),
-                    'gmp-fake',
-                    '1.0')
-                options.gmp_path += os.pathsep
-                options.gmp_path += os.path.join(
-                    os.path.dirname(bin_path),
-                    'gmp-clearkey',
-                    '0.1')
+                gmp_modules = (
+                    ('gmp-fake', '1.0'),
+                    ('gmp-clearkey', '0.1'),
+                    ('gmp-fakeopenh264', '1.0')
+                )
+                options.gmp_path = os.pathsep.join(
+                    os.path.join(os.path.dirname(bin_path), *p)
+                    for p in gmp_modules)
 
         logger_options = {
             key: value for key,

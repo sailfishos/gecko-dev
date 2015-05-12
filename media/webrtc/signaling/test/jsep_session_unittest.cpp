@@ -1333,12 +1333,13 @@ TEST_P(JsepSessionTest, RenegotiationBothRemoveTrack)
   ASSERT_TRUE(msection->IsReceiving());
   ASSERT_FALSE(msection->IsSending());
 
-  // First m-section should be inactive
+  // First m-section should be inactive, and rejected
   auto answer = GetParsedLocalDescription(mSessionAns);
   msection = GetMsection(*answer, types.front(), 0);
   ASSERT_TRUE(msection);
   ASSERT_FALSE(msection->IsReceiving());
   ASSERT_FALSE(msection->IsSending());
+  ASSERT_FALSE(msection->GetPort());
 
   auto newOffererPairs = GetTrackPairsByLevel(mSessionOff);
   auto newAnswererPairs = GetTrackPairsByLevel(mSessionAns);
@@ -1346,13 +1347,91 @@ TEST_P(JsepSessionTest, RenegotiationBothRemoveTrack)
   ASSERT_EQ(offererPairs.size(), newOffererPairs.size() + 1);
 
   for (size_t i = 0; i < newOffererPairs.size(); ++i) {
-    ASSERT_TRUE(Equals(offererPairs[i + 1], newOffererPairs[i]));
+    JsepTrackPair oldPair(offererPairs[i + 1]);
+    JsepTrackPair newPair(newOffererPairs[i]);
+    ASSERT_EQ(oldPair.mLevel, newPair.mLevel);
+    ASSERT_EQ(oldPair.mSending.get(), newPair.mSending.get());
+    ASSERT_EQ(oldPair.mReceiving.get(), newPair.mReceiving.get());
+    ASSERT_TRUE(oldPair.mBundleLevel.isSome());
+    ASSERT_TRUE(newPair.mBundleLevel.isSome());
+    ASSERT_EQ(0U, *oldPair.mBundleLevel);
+    ASSERT_EQ(1U, *newPair.mBundleLevel);
   }
 
   ASSERT_EQ(answererPairs.size(), newAnswererPairs.size() + 1);
 
   for (size_t i = 0; i < newAnswererPairs.size(); ++i) {
-    ASSERT_TRUE(Equals(answererPairs[i + 1], newAnswererPairs[i]));
+    JsepTrackPair oldPair(answererPairs[i + 1]);
+    JsepTrackPair newPair(newAnswererPairs[i]);
+    ASSERT_EQ(oldPair.mLevel, newPair.mLevel);
+    ASSERT_EQ(oldPair.mSending.get(), newPair.mSending.get());
+    ASSERT_EQ(oldPair.mReceiving.get(), newPair.mReceiving.get());
+    ASSERT_TRUE(oldPair.mBundleLevel.isSome());
+    ASSERT_TRUE(newPair.mBundleLevel.isSome());
+    ASSERT_EQ(0U, *oldPair.mBundleLevel);
+    ASSERT_EQ(1U, *newPair.mBundleLevel);
+  }
+}
+
+TEST_P(JsepSessionTest, RenegotiationBothRemoveThenAddTrack)
+{
+  AddTracks(mSessionOff);
+  AddTracks(mSessionAns);
+  if (types.front() == SdpMediaSection::kApplication) {
+    return;
+  }
+
+  SdpMediaSection::MediaType removedType = types.front();
+
+  OfferAnswer();
+
+  RefPtr<JsepTrack> removedTrackAnswer = GetTrackAns(0, removedType);
+  ASSERT_TRUE(removedTrackAnswer);
+  ASSERT_EQ(NS_OK, mSessionAns.RemoveTrack(removedTrackAnswer->GetStreamId(),
+                                           removedTrackAnswer->GetTrackId()));
+
+  RefPtr<JsepTrack> removedTrackOffer = GetTrackOff(0, removedType);
+  ASSERT_TRUE(removedTrackOffer);
+  ASSERT_EQ(NS_OK, mSessionOff.RemoveTrack(removedTrackOffer->GetStreamId(),
+                                           removedTrackOffer->GetTrackId()));
+
+  OfferAnswer(CHECK_SUCCESS);
+
+  auto offererPairs = GetTrackPairsByLevel(mSessionOff);
+  auto answererPairs = GetTrackPairsByLevel(mSessionAns);
+
+  std::vector<SdpMediaSection::MediaType> extraTypes;
+  extraTypes.push_back(removedType);
+  AddTracks(mSessionAns, extraTypes);
+  AddTracks(mSessionOff, extraTypes);
+  types.insert(types.end(), extraTypes.begin(), extraTypes.end());
+
+  OfferAnswer(CHECK_SUCCESS);
+
+  auto added = mSessionAns.GetRemoteTracksAdded();
+  auto removed = mSessionAns.GetRemoteTracksRemoved();
+  ASSERT_EQ(1U, added.size());
+  ASSERT_EQ(0U, removed.size());
+  ASSERT_EQ(removedType, added[0]->GetMediaType());
+
+  added = mSessionOff.GetRemoteTracksAdded();
+  removed = mSessionOff.GetRemoteTracksRemoved();
+  ASSERT_EQ(1U, added.size());
+  ASSERT_EQ(0U, removed.size());
+  ASSERT_EQ(removedType, added[0]->GetMediaType());
+
+  auto newOffererPairs = GetTrackPairsByLevel(mSessionOff);
+  auto newAnswererPairs = GetTrackPairsByLevel(mSessionAns);
+
+  ASSERT_EQ(offererPairs.size() + 1, newOffererPairs.size());
+  ASSERT_EQ(answererPairs.size() + 1, newAnswererPairs.size());
+
+  // Ensure that the m-section was re-used; no gaps
+  for (size_t i = 0; i < newOffererPairs.size(); ++i) {
+    ASSERT_EQ(i, newOffererPairs[i].mLevel);
+  }
+  for (size_t i = 0; i < newAnswererPairs.size(); ++i) {
+    ASSERT_EQ(i, newAnswererPairs[i].mLevel);
   }
 }
 
@@ -2296,6 +2375,25 @@ TEST_F(JsepSessionTest, ValidateAnsweredCodecParams)
 #endif
 }
 
+static void
+Replace(const std::string& toReplace,
+        const std::string& with,
+        std::string* in)
+{
+  size_t pos = in->find(toReplace);
+  ASSERT_NE(std::string::npos, pos);
+  in->replace(pos, toReplace.size(), with);
+}
+
+static void ReplaceAll(const std::string& toReplace,
+                       const std::string& with,
+                       std::string* in)
+{
+  while (in->find(toReplace) != std::string::npos) {
+    Replace(toReplace, with, in);
+  }
+}
+
 TEST_P(JsepSessionTest, TestRejectMline)
 {
   AddTracks(mSessionOff);
@@ -2542,6 +2640,20 @@ TEST_F(JsepSessionTest, TestUniquePayloadTypes)
   ASSERT_NE(0U,
       answerPairs[2].mReceiving->GetNegotiatedDetails()->
       GetUniquePayloadTypes().size());
+}
+
+TEST_F(JsepSessionTest, UnknownFingerprintAlgorithm)
+{
+  types.push_back(SdpMediaSection::kAudio);
+  AddTracks(mSessionOff, "audio");
+  AddTracks(mSessionAns, "audio");
+
+  std::string offer(CreateOffer());
+  SetLocalOffer(offer);
+  ReplaceAll("fingerprint:sha", "fingerprint:foo", &offer);
+  nsresult rv = mSessionAns.SetRemoteDescription(kJsepSdpOffer, offer);
+  ASSERT_NE(NS_OK, rv);
+  ASSERT_NE("", mSessionAns.GetLastError());
 }
 
 } // namespace mozilla

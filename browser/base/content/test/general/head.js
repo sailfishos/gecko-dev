@@ -379,19 +379,35 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser=gBrowser.selectedBrowser
     let progressListener = {
       onStateChange: function (webProgress, req, flags, status) {
         dump("waitForDocLoadAndStopIt: onStateChange " + flags.toString(16) + ": " + req.name + "\n");
-        let docStart = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT |
-                       Ci.nsIWebProgressListener.STATE_START;
-        if (((flags & docStart) == docStart) && webProgress.isTopLevel) {
-          dump("waitForDocLoadAndStopIt: Document start: " +
-               req.QueryInterface(Ci.nsIChannel).URI.spec + "\n");
-          req.cancel(Components.results.NS_ERROR_FAILURE);
+
+        if (webProgress.isTopLevel &&
+            flags & Ci.nsIWebProgressListener.STATE_START) {
           wp.removeProgressListener(progressListener);
-          sendAsyncMessage("Test:WaitForDocLoadAndStopIt", { uri: req.originalURI.spec });
+
+          let chan = req.QueryInterface(Ci.nsIChannel);
+          dump(`waitForDocLoadAndStopIt: Document start: ${chan.URI.spec}\n`);
+
+          /* Hammer time. */
+          content.stop();
+
+          /* Let the parent know we're done. */
+          sendAsyncMessage("Test:WaitForDocLoadAndStopIt", { uri: chan.originalURI.spec });
         }
       },
       QueryInterface: XPCOMUtils.generateQI(["nsISupportsWeakReference"])
     };
-    wp.addProgressListener(progressListener, wp.NOTIFY_ALL);
+    wp.addProgressListener(progressListener, wp.NOTIFY_STATE_WINDOW);
+
+    /**
+     * As |this| is undefined and we can't extend |docShell|, adding an unload
+     * event handler is the easiest way to ensure the weakly referenced
+     * progress listener is kept alive as long as necessary.
+     */
+    addEventListener("unload", function () {
+      try {
+        wp.removeProgressListener(progressListener);
+      } catch (e) { /* Will most likely fail. */ }
+    });
   }
 
   return new Promise((resolve, reject) => {
@@ -409,33 +425,43 @@ function waitForDocLoadAndStopIt(aExpectedURL, aBrowser=gBrowser.selectedBrowser
 }
 
 /**
- * Waits for the next load to complete in the current browser.
+ * Waits for the next load to complete in any browser or the given browser.
+ * If a <tabbrowser> is given it waits for a load in any of its browsers.
  *
  * @return promise
  */
 function waitForDocLoadComplete(aBrowser=gBrowser) {
-  let deferred = Promise.defer();
-  let progressListener = {
-    onStateChange: function (webProgress, req, flags, status) {
-      let docStop = Ci.nsIWebProgressListener.STATE_IS_NETWORK |
-                    Ci.nsIWebProgressListener.STATE_STOP;
-      info("Saw state " + flags.toString(16) + " and status " + status.toString(16));
+  return new Promise(resolve => {
+    let listener = {
+      onStateChange: function (webProgress, req, flags, status) {
+        let docStop = Ci.nsIWebProgressListener.STATE_IS_NETWORK |
+                      Ci.nsIWebProgressListener.STATE_STOP;
+        info("Saw state " + flags.toString(16) + " and status " + status.toString(16));
 
-      // When a load needs to be retargetted to a new process it is cancelled
-      // with NS_BINDING_ABORTED so ignore that case
-      if ((flags & docStop) == docStop && status != Cr.NS_BINDING_ABORTED) {
-        aBrowser.removeProgressListener(progressListener);
-        info("Browser loaded " + aBrowser.contentWindow.location);
-        deferred.resolve();
-      }
-    },
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
-                                           Ci.nsISupportsWeakReference])
-  };
-  aBrowser.addProgressListener(progressListener);
-  info("Waiting for browser load");
-  return deferred.promise;
+        // When a load needs to be retargetted to a new process it is cancelled
+        // with NS_BINDING_ABORTED so ignore that case
+        if ((flags & docStop) == docStop && status != Cr.NS_BINDING_ABORTED) {
+          aBrowser.removeProgressListener(this);
+          waitForDocLoadComplete.listeners.delete(this);
+
+          let chan = req.QueryInterface(Ci.nsIChannel);
+          info("Browser loaded " + chan.originalURI.spec);
+          resolve();
+        }
+      },
+      QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebProgressListener,
+                                             Ci.nsISupportsWeakReference])
+    };
+    aBrowser.addProgressListener(listener);
+    waitForDocLoadComplete.listeners.add(listener);
+    info("Waiting for browser load");
+  });
 }
+
+// Keep a set of progress listeners for waitForDocLoadComplete() to make sure
+// they're not GC'ed before we saw the page load.
+waitForDocLoadComplete.listeners = new Set();
+registerCleanupFunction(() => waitForDocLoadComplete.listeners.clear());
 
 let FullZoomHelper = {
 
@@ -604,10 +630,40 @@ function waitForNewTabEvent(aTabBrowser) {
   return promiseWaitForEvent(aTabBrowser.tabContainer, "TabOpen");
 }
 
+/**
+ * Waits for a window with the given URL to exist.
+ *
+ * @param url
+ *        The url of the window.
+ * @return {Promise} resolved when the window exists.
+ * @resolves to the window
+ */
+function promiseWindow(url) {
+  info("waiting for a " + url + " window");
+  return new Promise(resolve => {
+    Services.obs.addObserver(function obs(win) {
+      win.QueryInterface(Ci.nsIDOMWindow);
+      if (win.location.href !== url) {
+        info("ignoring a window with this url: " + win.location.href);
+        return;
+      }
+
+      Services.obs.removeObserver(obs, "domwindowopened");
+      resolve(win);
+    }, "domwindowopened", false);
+  });
+}
+
 function assertWebRTCIndicatorStatus(expected) {
   let ui = Cu.import("resource:///modules/webrtcUI.jsm", {}).webrtcUI;
   let expectedState = expected ? "visible" : "hidden";
   let msg = "WebRTC indicator " + expectedState;
+  if (!expected && ui.showGlobalIndicator) {
+    // It seems the global indicator is not always removed synchronously
+    // in some cases.
+    info("waiting for the global indicator to be hidden");
+    yield promiseWaitForCondition(() => !ui.showGlobalIndicator);
+  }
   is(ui.showGlobalIndicator, !!expected, msg);
 
   let expectVideo = false, expectAudio = false, expectScreen = false;
@@ -644,6 +700,9 @@ function assertWebRTCIndicatorStatus(expected) {
         });
       }
     }
+    if (expected &&
+        !Services.wm.getMostRecentWindow("Browser:WebRTCGlobalIndicator"))
+      yield promiseWindow("chrome://browser/content/webrtcIndicator.xul");
     let indicator = Services.wm.getEnumerator("Browser:WebRTCGlobalIndicator");
     let hasWindow = indicator.hasMoreElements();
     is(hasWindow, !!expected, "popup " + msg);
@@ -799,4 +858,3 @@ function promiseTopicObserved(aTopic)
       }, aTopic, false);
   });
 }
-

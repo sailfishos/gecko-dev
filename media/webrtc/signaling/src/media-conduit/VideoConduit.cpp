@@ -982,11 +982,14 @@ WebrtcVideoConduit::SelectSendFrameRate(unsigned int framerate)
 
     cur_fs = mb_width * mb_height;
     max_fps = mCurSendCodecConfig->mMaxMBPS/cur_fs;
-    if (max_fps < mSendingFramerate)
+    if (max_fps < mSendingFramerate) {
       mSendingFramerate = max_fps;
+    }
 
-    if (mCurSendCodecConfig->mMaxFrameRate < mSendingFramerate)
+    if (mCurSendCodecConfig->mMaxFrameRate != 0 &&
+      mCurSendCodecConfig->mMaxFrameRate < mSendingFramerate) {
       mSendingFramerate = mCurSendCodecConfig->mMaxFrameRate;
+    }
   }
   if (mSendingFramerate != framerate)
   {
@@ -1107,7 +1110,8 @@ WebrtcVideoConduit::SendVideoFrame(unsigned char* video_frame,
 MediaConduitErrorCode
 WebrtcVideoConduit::ReceivedRTPPacket(const void *data, int len)
 {
-  CSFLogDebug(logTag, "%s: Channel %d, Len %d ", __FUNCTION__, mChannel, len);
+  CSFLogDebug(logTag, "%s: seq# %u, Channel %d, Len %d ", __FUNCTION__,
+              (uint16_t) ntohs(((uint16_t*) data)[1]), mChannel, len);
 
   // Media Engine should be receiving already.
   if(mEngineReceiving)
@@ -1267,7 +1271,7 @@ int WebrtcVideoConduit::SendRTCPPacket(int channel, const void* data, int len)
     CSFLogDebug(logTag, "%s Sent RTCP Packet ", __FUNCTION__);
     return len;
   } else if(mTransmitterTransport &&
-            (mTransmitterTransport->SendRtpPacket(data, len) == NS_OK)) {
+            (mTransmitterTransport->SendRtcpPacket(data, len) == NS_OK)) {
       CSFLogDebug(logTag, "%s Sent RTCP Packet (sender report) ", __FUNCTION__);
       return len;
   } else {

@@ -673,7 +673,7 @@ CN(const ByteString& value, uint8_t encodingTag)
 }
 
 ByteString
-OU(const ByteString& value)
+OU(const ByteString& value, uint8_t encodingTag)
 {
   // id-at OBJECT IDENTIFIER ::= { joint-iso-ccitt(2) ds(5) 4 }
   // id-at-organizationalUnitName AttributeType ::= { id-at 11 }
@@ -682,7 +682,19 @@ OU(const ByteString& value)
     0x06, 0x03, 0x55, 0x04, 0x0b
   };
 
-  return AVA(tlv_id_at_organizationalUnitName, der::UTF8String, value);
+  return AVA(tlv_id_at_organizationalUnitName, encodingTag, value);
+}
+
+ByteString
+emailAddress(const ByteString& value)
+{
+  // id-emailAddress AttributeType ::= { pkcs-9 1 }
+  // python DottedOIDToCode.py --tlv id-emailAddress 1.2.840.113549.1.9.1
+  static const uint8_t tlv_id_emailAddress[] = {
+    0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x01
+  };
+
+  return AVA(tlv_id_emailAddress, der::IA5String, value);
 }
 
 // RelativeDistinguishedName ::=

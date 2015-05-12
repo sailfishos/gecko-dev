@@ -971,7 +971,7 @@ fails == 413027-3.html 413027-3-ref.html
 == 413286-5.html 413286-5-ref.html
 == 413286-6.html 413286-6-ref.html
 skip-if(cocoaWidget) == 413292-1.html 413292-1-ref.html # disabling due to failure loading on some mac tinderboxes. See bug 432954
-fuzzy-if(B2G||Android,11,15) == 413361-1.html 413361-1-ref.html # bug 1128229
+fuzzy-if(B2G||Android,11,17) == 413361-1.html 413361-1-ref.html # bug 1128229
 == 413840-background-unchanged.html 413840-background-unchanged-ref.html
 == 413840-ltr-offsets.html 413840-ltr-offsets-ref.html
 == 413840-rtl-offsets.html 413840-rtl-offsets-ref.html
@@ -1821,6 +1821,7 @@ pref(layout.css.overflow-clip-box.enabled,true) == 992447.html 992447-ref.html
 == 1003425-1.html 1003425-1-ref.html
 == 1003425-2.html 1003425-2-ref.html
 pref(layout.css.sticky.enabled,true) == 1005405-1.html 1005405-1-ref.html
+== 1012640-1.html 1012640-1-ref.html
 fuzzy-if(/^Windows\x20NT\x205\.1/.test(http.oscpu),255,1) == 1013054-1.html 1013054-1-ref.html
 pref(layout.css.will-change.enabled,true) == 1018522-1.html 1018522-1-ref.html
 == 1021564-1.html 1021564-ref.html
@@ -1865,5 +1866,6 @@ fuzzy-if(d2d,36,304) HTTP(..) == 1116480-1-fakeitalic-overflow.html 1116480-1-fa
 == 1127107-1b-pre.html 1127107-1-ref.html
 == 1127107-2-capitalize.html 1127107-2-capitalize-ref.html
 == 1127679-1a-inline-flex-relpos.html 1127679-1b-inline-flex-relpos.html
+== 1128354-1.html 1128354-1-ref.html
 == 1130231-1-button-padding-rtl.html 1130231-1-button-padding-rtl-ref.html
 == 1130231-2-button-padding-rtl.html 1130231-2-button-padding-rtl-ref.html
