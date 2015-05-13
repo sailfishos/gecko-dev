@@ -635,9 +635,12 @@ void CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
     aClipRectOut->SetRect(0, 0, width, height);
   }
 
-  mGLContext->fClearColor(mClearColor.r, mClearColor.g, mClearColor.b,
-                          mClearColor.a);
-  mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
+  // If clearing if done DrawWindowUnderlay respect the preference.
+  if (gfxPrefs::ClearCompoisitorContext()) {
+    mGLContext->fClearColor(mClearColor.r, mClearColor.g, mClearColor.b,
+                            mClearColor.a);
+    mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
+  }
 }
 
 void CompositorOGL::CreateFBOWithTexture(const gfx::IntRect& aRect,
