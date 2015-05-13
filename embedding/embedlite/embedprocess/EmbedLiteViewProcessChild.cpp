@@ -57,7 +57,7 @@ EmbedLiteViewProcessChild::OnGeckoWindowInitialized()
   ShadowLayerForwarder* lf =
     WebWidget()->GetLayerManager(shadowManager, textureFactoryIdentifier.mParentBackend)->AsShadowForwarder();
 
-  NS_ABORT_IF_FALSE(lf && lf->HasShadowManager(),
+  NS_ASSERTION(lf && lf->HasShadowManager(),
                     "PuppetWidget should have shadow manager");
   lf->IdentifyTextureHost(textureFactoryIdentifier);
   ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
