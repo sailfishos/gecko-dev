@@ -304,7 +304,7 @@ TabChildHelper::WebWidget()
 }
 
 bool
-TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
+TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
   if (!InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal
