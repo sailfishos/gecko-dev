@@ -51,7 +51,7 @@ namespace mozilla {
 namespace embedlite {
 
 // Temporary manager which allows to call InitLog
-class EmbedLiteAppProcessParentManager MOZ_FINAL : public mozilla::layers::LayerManager
+class EmbedLiteAppProcessParentManager final : public mozilla::layers::LayerManager
 {
 public:
   explicit EmbedLiteAppProcessParentManager()
