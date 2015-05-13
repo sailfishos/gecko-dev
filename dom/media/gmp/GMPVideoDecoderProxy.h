@@ -12,6 +12,7 @@
 #include "gmp-video-frame-encoded.h"
 
 #include "GMPCallbackBase.h"
+#include "GMPUtils.h"
 #include "mozilla/UniquePtr.h"
 
 class nsCString;
