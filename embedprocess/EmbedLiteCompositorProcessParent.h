@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteCompositorProcessParent MOZ_FINAL : public PCompositorParent,
-                                                   public ShadowLayersManager
+class EmbedLiteCompositorProcessParent final : public PCompositorParent,
+                                               public ShadowLayersManager
 {
   friend class CompositorParent;
 
@@ -66,6 +66,7 @@ public:
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
                                    const uint64_t& aTransactionId,
                                    const TargetConfig& aTargetConfig,
+                                   const InfallibleTArray<PluginWindowData>& aPlugins,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
