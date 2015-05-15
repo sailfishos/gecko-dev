@@ -72,6 +72,8 @@ Summary: Misc files for xulrunner
 %description misc
 Tests and misc files for xulrunner
 
+%global __provides_exclude_from ^%{_libdir}//xulrunner-qt5.*/.*\\.so$
+
 %prep
 %setup -q -n %{name}-%{version}
 %patch1 -p1
