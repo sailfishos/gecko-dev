@@ -23,7 +23,7 @@ index f35de78..168ff1f 100644
      mFrameMetrics.mViewport = aLayerMetrics.mViewport;
    }
 
-+  if (aLayerMetrics.mCompositionBounds.height <= mFrameMetrics.mCompositionBounds.height) {
++  if (aLayerMetrics.mCompositionBounds.height < mFrameMetrics.mCompositionBounds.height) {
 +    needSendScrollEvent = true;
 +  }
 +
