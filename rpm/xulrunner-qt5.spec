@@ -1,4 +1,5 @@
 %define greversion 31.7.0
+%global __provides_exclude_from %{_libdir}/%{name}-%{greversion}/.*\.so
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
