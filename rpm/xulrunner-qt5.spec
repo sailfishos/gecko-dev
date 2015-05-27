@@ -52,6 +52,7 @@ BuildRequires:  yasm
 BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
+Requires: gstreamer1.0-plugins-good
 
 %description
 Mozilla XUL runner
