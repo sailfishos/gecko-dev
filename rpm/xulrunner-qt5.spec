@@ -141,7 +141,10 @@ export SBOX_REDIRECT_FORCE=/usr/bin/python
 
 export MOZCONFIG=$PWD/mozconfig
 %{__make} -f client.mk install DESTDIR=%{buildroot}
-rm -r ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/*.so
+for i in $(cd ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/; ls *.so); do
+    rm -r ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/$i
+    ln -s  /%{_libdir}/%{name}-%{greversion}/$i ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/$i
+done
 %fdupes -s %{buildroot}%{_includedir}
 %fdupes -s %{buildroot}%{_libdir}
 %{__chmod} +x %{buildroot}%{_libdir}/%{name}-%{greversion}/*.so
