@@ -175,7 +175,6 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %files devel
 %defattr(-,root,root,-)
 %{_datadir}/*
-%{_libdir}/%{name}-devel-%{greversion}
 %{_libdir}/pkgconfig
 %{_includedir}/*
 
