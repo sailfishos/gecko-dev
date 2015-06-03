@@ -141,10 +141,13 @@ export SBOX_REDIRECT_FORCE=/usr/bin/python
 
 export MOZCONFIG=$PWD/mozconfig
 %{__make} -f client.mk install DESTDIR=%{buildroot}
-%{__chmod} +x %{buildroot}%{_libdir}/%{name}-%{greversion}/*.so
+for i in $(cd ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/; ls *.so); do
+    rm ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/$i
+    ln -s  /%{_libdir}/%{name}-%{greversion}/$i ${RPM_BUILD_ROOT}%{_libdir}/%{name}-devel-%{greversion}/sdk/lib/$i
+done
 %fdupes -s %{buildroot}%{_includedir}
 %fdupes -s %{buildroot}%{_libdir}
-chmod +x %{buildroot}%{_libdir}/%{name}-%{greversion}/*.so
+%{__chmod} +x %{buildroot}%{_libdir}/%{name}-%{greversion}/*.so
 # Use the system hunspell dictionaries
 %{__rm} -rf ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/dictionaries
 ln -s %{_datadir}/myspell ${RPM_BUILD_ROOT}%{_libdir}/%{name}-%{greversion}/dictionaries
