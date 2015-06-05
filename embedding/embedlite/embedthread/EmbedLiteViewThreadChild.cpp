@@ -935,7 +935,21 @@ EmbedLiteViewThreadChild::OnLoadFinished()
 NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnWindowCloseRequested()
 {
-  return SendOnWindowCloseRequested() ? NS_OK : NS_ERROR_FAILURE;
+  if (SendOnWindowCloseRequested()) {
+    // The event listeners can indirectly hold a reference to nsWebBrowser.
+    // Since the listener removal process is not synchronous we have to make
+    // sure that we start the process before ::RecvDestroy is called. Otherwise
+    // NULLing mWebBrowser in the function won't actually remove it and the current
+    // implementation relies on that. The nsWebBrowser object needs to be removed in
+    // order for all EmbedLitePuppetWidgets we created to also be released. The puppet
+    // widget implementation holds a pointer to EmbedLiteViewThreadParent in mEmbed
+    // variable and can use it during shutdown process. This means puppet widgets
+    // have to be removed before the view.
+    if (mChrome)
+      mChrome->RemoveEventHandler();
+    return NS_OK;
+  }
+  return NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
