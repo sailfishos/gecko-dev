@@ -797,7 +797,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {
       nsAutoString contentDescription;
       content->Describe(contentDescription);
-      metrics.SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription).get());
+      metrics.SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription));
     }
   }
 

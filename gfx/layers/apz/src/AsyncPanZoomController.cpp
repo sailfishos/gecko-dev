@@ -10,6 +10,7 @@
 #include <algorithm>                    // for max, min
 #include "AnimationCommon.h"            // for ComputedTimingFunction
 #include "AsyncPanZoomController.h"     // for AsyncPanZoomController, etc
+#include "Compositor.h"                 // for Compositor
 #include "CompositorParent.h"           // for CompositorParent
 #include "FrameMetrics.h"               // for FrameMetrics, etc
 #include "GestureEventListener.h"       // for GestureEventListener
@@ -157,6 +158,20 @@ typedef GeckoContentController::APZStateChange APZStateChange;
  *
  * "apz.cross_slide_enabled"
  * Pref that enables integration with the Metro "cross-slide" gesture.
+ *
+ * "apz.danger_zone_x"
+ * "apz.danger_zone_y"
+ * When drawing high-res tiles, we drop down to drawing low-res tiles
+ * when we know we can't keep up with the scrolling. The way we determine
+ * this is by checking if we are entering the "danger zone", which is the
+ * boundary of the painted content. For example, if the painted content
+ * goes from y=0...1000 and the visible portion is y=250...750 then
+ * we're far from checkerboarding. If we get to y=490...990 though then we're
+ * only 10 pixels away from showing checkerboarding so we are probably in
+ * a state where we can't keep up with scrolling. The danger zone prefs specify
+ * how wide this margin is; in the above example a y-axis danger zone of 10
+ * pixels would make us drop to low-res at y=490...990.
+ * This value is in layer pixels.
  *
  * "apz.enlarge_displayport_when_clipped"
  * Pref that enables enlarging of the displayport along one axis when the
@@ -316,6 +331,7 @@ static inline void LogRendertraceRect(const ScrollableLayerGuid& aGuid, const ch
 }
 
 static TimeStamp sFrameTime;
+static bool sThreadAssertionsEnabled = true;
 
 // Counter used to give each APZC a unique id
 static uint32_t sAsyncPanZoomControllerCount = 0;
@@ -382,6 +398,16 @@ AsyncPanZoomController::SetFrameTime(const TimeStamp& aTime) {
   sFrameTime = aTime;
 }
 
+void
+AsyncPanZoomController::SetThreadAssertionsEnabled(bool aEnabled) {
+  sThreadAssertionsEnabled = aEnabled;
+}
+
+bool
+AsyncPanZoomController::GetThreadAssertionsEnabled() {
+  return sThreadAssertionsEnabled;
+}
+
 /*static*/ void
 AsyncPanZoomController::InitializeGlobalState()
 {
@@ -403,10 +429,10 @@ AsyncPanZoomController::AsyncPanZoomController(uint64_t aLayersId,
                                                GeckoContentController* aGeckoContentController,
                                                GestureBehavior aGestures)
   :  mLayersId(aLayersId),
-     mCrossProcessCompositorParent(nullptr),
      mPaintThrottler(GetFrameTime()),
      mGeckoContentController(aGeckoContentController),
      mRefPtrMonitor("RefPtrMonitor"),
+     mSharingFrameMetricsAcrossProcesses(false),
      mMonitor("AsyncPanZoomController"),
      mTouchActionPropertyEnabled(gfxPrefs::TouchActionEnabled()),
      mContentResponseTimeoutTask(nullptr),
@@ -435,19 +461,22 @@ AsyncPanZoomController::AsyncPanZoomController(uint64_t aLayersId,
 }
 
 AsyncPanZoomController::~AsyncPanZoomController() {
+  MOZ_COUNT_DTOR(AsyncPanZoomController);
+}
 
-  PCompositorParent* compositor =
-    (mCrossProcessCompositorParent ? mCrossProcessCompositorParent : mCompositorParent.get());
-
-  // Only send the release message if the SharedFrameMetrics has been created.
-  if (compositor && mSharedFrameMetricsBuffer) {
-    unused << compositor->SendReleaseSharedCompositorFrameMetrics(mFrameMetrics.GetScrollId(), mAPZCId);
+PCompositorParent*
+AsyncPanZoomController::GetSharedFrameMetricsCompositor()
+{
+  if (GetThreadAssertionsEnabled()) {
+    Compositor::AssertOnCompositorThread();
   }
 
-  delete mSharedFrameMetricsBuffer;
-  delete mSharedLock;
-
-  MOZ_COUNT_DTOR(AsyncPanZoomController);
+  if (mSharingFrameMetricsAcrossProcesses) {
+    const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mLayersId);
+    // |state| may be null here if the CrossProcessCompositorParent has already been destroyed.
+    return state ? state->mCrossProcessParent : nullptr;
+  }
+  return mCompositorParent.get();
 }
 
 already_AddRefed<GeckoContentController>
@@ -476,6 +505,20 @@ AsyncPanZoomController::Destroy()
   mLastChild = nullptr;
   mParent = nullptr;
   mTreeManager = nullptr;
+
+  PCompositorParent* compositor = GetSharedFrameMetricsCompositor();
+  // Only send the release message if the SharedFrameMetrics has been created.
+  if (compositor && mSharedFrameMetricsBuffer) {
+    unused << compositor->SendReleaseSharedCompositorFrameMetrics(mFrameMetrics.GetScrollId(), mAPZCId);
+  }
+
+  { // scope the lock
+    ReentrantMonitorAutoEnter lock(mMonitor);
+    delete mSharedFrameMetricsBuffer;
+    mSharedFrameMetricsBuffer = nullptr;
+    delete mSharedLock;
+    mSharedLock = nullptr;
+  }
 }
 
 bool
@@ -1337,8 +1380,8 @@ void AsyncPanZoomController::SetCompositorParent(CompositorParent* aCompositorPa
   mCompositorParent = aCompositorParent;
 }
 
-void AsyncPanZoomController::SetCrossProcessCompositorParent(PCompositorParent* aCrossProcessCompositorParent) {
-  mCrossProcessCompositorParent = aCrossProcessCompositorParent;
+void AsyncPanZoomController::ShareFrameMetricsAcrossProcesses() {
+  mSharingFrameMetricsAcrossProcesses = true;
 }
 
 void AsyncPanZoomController::ScrollBy(const CSSPoint& aOffset) {
@@ -1403,11 +1446,7 @@ const LayerMargin AsyncPanZoomController::CalculatePendingDisplayPort(
   const ScreenPoint& aVelocity,
   double aEstimatedPaintDuration)
 {
-  CSSSize compositionBounds = aFrameMetrics.CalculateCompositedSizeInCssPixels();
-  CSSSize compositionSize = aFrameMetrics.GetRootCompositionSize();
-  compositionSize =
-    CSSSize(std::min(compositionBounds.width, compositionSize.width),
-            std::min(compositionBounds.height, compositionSize.height));
+  CSSSize compositionSize = aFrameMetrics.CalculateBoundedCompositedSizeInCssPixels();
   CSSPoint velocity = aVelocity / aFrameMetrics.GetZoom();
   CSSPoint scrollOffset = aFrameMetrics.GetScrollOffset();
   CSSRect scrollableRect = aFrameMetrics.GetExpandedScrollableRect();
@@ -1513,10 +1552,7 @@ GetDisplayPortRect(const FrameMetrics& aFrameMetrics)
   // This computation is based on what happens in CalculatePendingDisplayPort. If that
   // changes then this might need to change too
   CSSRect baseRect(aFrameMetrics.GetScrollOffset(),
-                   CSSSize(std::min(aFrameMetrics.CalculateCompositedSizeInCssPixels().width,
-                                    aFrameMetrics.GetRootCompositionSize().width),
-                           std::min(aFrameMetrics.CalculateCompositedSizeInCssPixels().height,
-                                    aFrameMetrics.GetRootCompositionSize().height)));
+                   aFrameMetrics.CalculateBoundedCompositedSizeInCssPixels());
   baseRect.Inflate(aFrameMetrics.GetDisplayPortMargins() / aFrameMetrics.LayersPixelsPerCSSPixel());
   return baseRect;
 }
@@ -2141,15 +2177,14 @@ void AsyncPanZoomController::UpdateSharedCompositorFrameMetrics()
 
   if (frame && mSharedLock && gfxPrefs::UseProgressiveTilePainting()) {
     mSharedLock->Lock();
-    *frame = mFrameMetrics;
+    *frame = mFrameMetrics.MakePODObject();
     mSharedLock->Unlock();
   }
 }
 
 void AsyncPanZoomController::ShareCompositorFrameMetrics() {
 
-  PCompositorParent* compositor =
-    (mCrossProcessCompositorParent ? mCrossProcessCompositorParent : mCompositorParent.get());
+  PCompositorParent* compositor = GetSharedFrameMetricsCompositor();
 
   // Only create the shared memory buffer if it hasn't already been created,
   // we are using progressive tile painting, and we have a

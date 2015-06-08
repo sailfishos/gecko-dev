@@ -7,12 +7,12 @@
 #define GFX_FRAMEMETRICS_H
 
 #include <stdint.h>                     // for uint32_t, uint64_t
-#include <string>                       // for std::string
 #include "Units.h"                      // for CSSRect, CSSPixel, etc
 #include "mozilla/gfx/BasePoint.h"      // for BasePoint
 #include "mozilla/gfx/Rect.h"           // for RoundedIn
 #include "mozilla/gfx/ScaleFactor.h"    // for ScaleFactor
 #include "mozilla/gfx/Logging.h"        // for Log
+#include "nsStringGlue.h"
 
 namespace IPC {
 template <typename T> struct ParamTraits;
@@ -205,6 +205,14 @@ public:
     return mCompositionBounds / GetZoomToParent();
   }
 
+  CSSSize CalculateBoundedCompositedSizeInCssPixels() const
+  {
+    CSSSize size = CalculateCompositedSizeInCssPixels();
+    size.width = std::min(size.width, mRootCompositionSize.width);
+    size.height = std::min(size.height, mRootCompositionSize.height);
+    return size;
+  }
+
   void ScrollBy(const CSSPoint& aPoint)
   {
     mScrollOffset += aPoint;
@@ -219,6 +227,16 @@ public:
   {
     mScrollOffset = aOther.mScrollOffset;
     mScrollGeneration = aOther.mScrollGeneration;
+  }
+
+  // Make a copy of this FrameMetrics object which does not have any pointers
+  // to heap-allocated memory (i.e. is Plain Old Data, or 'POD'), and is
+  // therefore safe to be placed into shared memory.
+  FrameMetrics MakePODObject() const
+  {
+    FrameMetrics copy = *this;
+    copy.mContentDescription.Truncate();
+    return copy;
   }
 
   // ---------------------------------------------------------------------------
@@ -374,12 +392,12 @@ public:
     return mScrollGeneration;
   }
 
-  const std::string& GetContentDescription() const
+  const nsCString& GetContentDescription() const
   {
     return mContentDescription;
   }
 
-  void SetContentDescription(const std::string& aContentDescription)
+  void SetContentDescription(const nsCString& aContentDescription)
   {
     mContentDescription = aContentDescription;
   }
@@ -476,8 +494,9 @@ private:
   uint32_t mScrollGeneration;
 
   // A description of the content element corresponding to this frame.
-  // This is empty unless the apz.printtree pref is turned on.
-  std::string mContentDescription;
+  // This is empty unless this is a scrollable layer and the
+  // apz.printtree pref is turned on.
+  nsCString mContentDescription;
 
   // The size of the root scrollable's composition bounds, but in local CSS pixels.
   CSSSize mRootCompositionSize;

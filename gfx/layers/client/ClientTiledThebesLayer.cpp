@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Uncomment this to enable the TILING_PRLOG stuff in this file
+// for release builds. To get the output you need to have
+// NSPR_LOG_MODULES=tiling:5 in your environment at runtime.
+// #define FORCE_PR_LOG
+
 #include "ClientTiledThebesLayer.h"
 #include "FrameMetrics.h"               // for FrameMetrics
 #include "Units.h"                      // for ScreenIntRect, CSSPoint, etc
@@ -18,6 +23,7 @@
 #include "mozilla/mozalloc.h"           // for operator delete, etc
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsRect.h"                     // for nsIntRect
+#include "LayersLogging.h"
 
 namespace mozilla {
 namespace layers {
@@ -52,10 +58,55 @@ ClientTiledThebesLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs)
   aAttrs = ThebesLayerAttributes(GetValidRegion());
 }
 
-static LayoutDeviceRect
-ApplyParentLayerToLayoutTransform(const gfx3DMatrix& aTransform, const ParentLayerRect& aParentLayerRect)
+static LayerRect
+ApplyParentLayerToLayerTransform(const gfx3DMatrix& aTransform, const ParentLayerRect& aParentLayerRect)
 {
-  return TransformTo<LayoutDevicePixel>(aTransform, aParentLayerRect);
+  return TransformTo<LayerPixel>(aTransform, aParentLayerRect);
+}
+
+static gfx3DMatrix
+GetTransformToAncestorsParentLayer(Layer* aStart, Layer* aAncestor)
+{
+  gfx::Matrix4x4 transform;
+  Layer* ancestorParent = aAncestor->GetParent();
+  for (Layer* iter = aStart; iter != ancestorParent; iter = iter->GetParent()) {
+    if (iter->AsContainerLayer()) {
+      // If the layer has a non-transient async transform then we need to apply it here
+      // because it will get applied by the APZ in the compositor as well
+      const FrameMetrics& metrics = iter->AsContainerLayer()->GetFrameMetrics();
+      transform = transform * gfx::Matrix4x4().Scale(metrics.mResolution.scale, metrics.mResolution.scale, 1.f);
+    }
+    transform = transform * iter->GetTransform();
+  }
+  gfx3DMatrix ret;
+  gfx::To3DMatrix(transform, ret);
+  return ret;
+}
+
+void
+ClientTiledThebesLayer::GetAncestorLayers(ContainerLayer** aOutScrollAncestor,
+                                          ContainerLayer** aOutDisplayPortAncestor)
+{
+  ContainerLayer* scrollAncestor = nullptr;
+  ContainerLayer* displayPortAncestor = nullptr;
+  for (ContainerLayer* ancestor = GetParent(); ancestor; ancestor = ancestor->GetParent()) {
+    const FrameMetrics& metrics = ancestor->GetFrameMetrics();
+    if (!scrollAncestor && metrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID) {
+      scrollAncestor = ancestor;
+    }
+    if (!metrics.mDisplayPort.IsEmpty()) {
+      displayPortAncestor = ancestor;
+      // Any layer that has a displayport must be scrollable, so we can break
+      // here.
+      break;
+    }
+  }
+  if (aOutScrollAncestor) {
+    *aOutScrollAncestor = scrollAncestor;
+  }
+  if (aOutDisplayPortAncestor) {
+    *aOutDisplayPortAncestor = displayPortAncestor;
+  }
 }
 
 void
@@ -114,85 +165,72 @@ ClientTiledThebesLayer::BeginPaint()
 
   // Get the metrics of the nearest scrollable layer and the nearest layer
   // with a displayport.
-  ContainerLayer* displayPortParent = nullptr;
-  ContainerLayer* scrollParent = nullptr;
-  for (ContainerLayer* parent = GetParent(); parent; parent = parent->GetParent()) {
-    const FrameMetrics& metrics = parent->GetFrameMetrics();
-    if (!scrollParent && metrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID) {
-      scrollParent = parent;
-    }
-    if (!metrics.mDisplayPort.IsEmpty()) {
-      displayPortParent = parent;
-      // Any layer that has a displayport must be scrollable, so we can break
-      // here.
-      break;
-    }
-  }
+  ContainerLayer* scrollAncestor = nullptr;
+  ContainerLayer* displayPortAncestor = nullptr;
+  GetAncestorLayers(&scrollAncestor, &displayPortAncestor);
 
-  if (!displayPortParent || !scrollParent) {
-    // No displayport or scroll parent, so we can't do progressive rendering.
-    // Just set the composition bounds to empty and return.
+  if (!displayPortAncestor || !scrollAncestor) {
+    // No displayport or scroll ancestor, so we can't do progressive rendering.
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_B2G)
     // Both Android and b2g are guaranteed to have a displayport set, so this
     // should never happen.
-    NS_WARNING("Tiled Thebes layer with no scrollable container parent");
+    NS_WARNING("Tiled Thebes layer with no scrollable container ancestor");
 #endif
     return;
   }
 
-  // Note, not handling transformed layers lets us assume that LayoutDevice
-  // space of the scroll parent layer is the same as LayoutDevice space of
-  // this layer.
-  const FrameMetrics& scrollMetrics = scrollParent->GetFrameMetrics();
-  const FrameMetrics& displayportMetrics = displayPortParent->GetFrameMetrics();
+  TILING_PRLOG(("TILING 0x%p: Found scrollAncestor 0x%p and displayPortAncestor 0x%p\n", this,
+    scrollAncestor, displayPortAncestor));
+
+  const FrameMetrics& scrollMetrics = scrollAncestor->GetFrameMetrics();
+  const FrameMetrics& displayportMetrics = displayPortAncestor->GetFrameMetrics();
 
   // Calculate the transform required to convert ParentLayer space of our
-  // display port parent to LayoutDevice space of this layer.
-  gfx::Matrix4x4 transform = scrollParent->GetTransform();
-  ContainerLayer* displayPortParentParent = displayPortParent->GetParent() ?
-    displayPortParent->GetParent()->GetParent() : nullptr;
-  for (ContainerLayer* parent = scrollParent->GetParent();
-       parent != displayPortParentParent;
-       parent = parent->GetParent()) {
-    transform = transform * parent->GetTransform();
-  }
-  gfx3DMatrix layoutDeviceToScrollParentLayer;
-  gfx::To3DMatrix(transform, layoutDeviceToScrollParentLayer);
-  layoutDeviceToScrollParentLayer.ScalePost(scrollMetrics.mCumulativeResolution.scale,
-                                            scrollMetrics.mCumulativeResolution.scale,
-                                            1.f);
+  // display port ancestor to the Layer space of this layer.
+  gfx3DMatrix transformToDisplayPort =
+    GetTransformToAncestorsParentLayer(this, displayPortAncestor);
 
-  mPaintData.mTransformParentLayerToLayoutDevice = layoutDeviceToScrollParentLayer.Inverse();
+  mPaintData.mTransformDisplayPortToLayer = transformToDisplayPort.Inverse();
 
-  // Compute the critical display port of the display port layer in
+  // Note that below we use GetZoomToParent() in a number of places. Because this
+  // code runs on the client side, the mTransformScale field of the FrameMetrics
+  // will not have been set. This can result in incorrect values being returned
+  // by GetZoomToParent() when we have CSS transforms set on some of these layers.
+  // This code should be audited and updated as part of fixing bug 993525.
+
+  // Compute the critical display port that applies to this layer in the
   // LayoutDevice space of this layer.
   ParentLayerRect criticalDisplayPort =
-    (displayportMetrics.mCriticalDisplayPort + displayportMetrics.GetScrollOffset()) *
-    displayportMetrics.GetZoomToParent();
-  mPaintData.mCriticalDisplayPort = LayoutDeviceIntRect::ToUntyped(RoundedOut(
-    ApplyParentLayerToLayoutTransform(mPaintData.mTransformParentLayerToLayoutDevice,
-                                      criticalDisplayPort)));
+    (displayportMetrics.mCriticalDisplayPort * displayportMetrics.GetZoomToParent())
+    + displayportMetrics.mCompositionBounds.TopLeft();
+  mPaintData.mCriticalDisplayPort = RoundedOut(
+    ApplyParentLayerToLayerTransform(mPaintData.mTransformDisplayPortToLayer, criticalDisplayPort));
+  TILING_PRLOG_OBJ(("TILING 0x%p: Critical displayport %s\n", this, tmpstr.get()), mPaintData.mCriticalDisplayPort);
 
-  // Compute the viewport of the display port layer in LayoutDevice space of
-  // this layer.
+  // Compute the viewport that applies to this layer in the LayoutDevice
+  // space of this layer.
   ParentLayerRect viewport =
-    (displayportMetrics.mViewport + displayportMetrics.GetScrollOffset()) *
-    displayportMetrics.GetZoomToParent();
-  mPaintData.mViewport = ApplyParentLayerToLayoutTransform(
-    mPaintData.mTransformParentLayerToLayoutDevice, viewport);
+    (displayportMetrics.mViewport * displayportMetrics.GetZoomToParent())
+    + displayportMetrics.mCompositionBounds.TopLeft();
+  mPaintData.mViewport = ApplyParentLayerToLayerTransform(
+    mPaintData.mTransformDisplayPortToLayer, viewport);
+  TILING_PRLOG_OBJ(("TILING 0x%p: Viewport %s\n", this, tmpstr.get()), mPaintData.mViewport);
 
-  // Store the scroll parent resolution. Because this is Gecko-side, before any
-  // async transforms have occurred, we can use the zoom for this.
+  // Store the resolution from the displayport ancestor layer. Because this is Gecko-side,
+  // before any async transforms have occurred, we can use the zoom for this.
   mPaintData.mResolution = displayportMetrics.GetZoomToParent();
+  TILING_PRLOG(("TILING 0x%p: Resolution %f\n", this, mPaintData.mResolution.scale));
 
-  // Store the parent composition bounds in LayoutDevice units.
-  // This is actually in LayoutDevice units of the scrollParent's parent layer,
-  // but because there is no transform, we can assume that these are the same.
-  mPaintData.mCompositionBounds =
-    scrollMetrics.mCompositionBounds / scrollMetrics.GetParentResolution();
+  // Store the applicable composition bounds in this layer's Layer units.
+  mPaintData.mTransformToCompBounds =
+    GetTransformToAncestorsParentLayer(this, scrollAncestor);
+  mPaintData.mCompositionBounds = ApplyParentLayerToLayerTransform(
+    mPaintData.mTransformToCompBounds.Inverse(), ParentLayerRect(scrollMetrics.mCompositionBounds));
+  TILING_PRLOG_OBJ(("TILING 0x%p: Composition bounds %s\n", this, tmpstr.get()), mPaintData.mCompositionBounds);
 
   // Calculate the scroll offset since the last transaction
   mPaintData.mScrollOffset = displayportMetrics.GetScrollOffset() * displayportMetrics.GetZoomToParent();
+  TILING_PRLOG_OBJ(("TILING 0x%p: Scroll offset %s\n", this, tmpstr.get()), mPaintData.mScrollOffset);
 }
 
 void
@@ -205,6 +243,7 @@ ClientTiledThebesLayer::EndPaint(bool aFinish)
   mPaintData.mLastScrollOffset = mPaintData.mScrollOffset;
   mPaintData.mPaintFinished = true;
   mPaintData.mFirstPaint = false;
+  TILING_PRLOG(("TILING 0x%p: Paint finished\n", this));
 }
 
 void
@@ -229,6 +268,9 @@ ClientTiledThebesLayer::RenderLayer()
   if (mContentClient->mTiledBuffer.HasFormatChanged()) {
     mValidRegion = nsIntRegion();
   }
+
+  TILING_PRLOG_OBJ(("TILING 0x%p: Initial visible region %s\n", this, tmpstr.get()), mVisibleRegion);
+  TILING_PRLOG_OBJ(("TILING 0x%p: Initial valid region %s\n", this, tmpstr.get()), mValidRegion);
 
   nsIntRegion invalidRegion = mVisibleRegion;
   invalidRegion.Sub(invalidRegion, mValidRegion);
@@ -272,6 +314,9 @@ ClientTiledThebesLayer::RenderLayer()
     return;
   }
 
+  TILING_PRLOG_OBJ(("TILING 0x%p: Valid region %s\n", this, tmpstr.get()), mValidRegion);
+  TILING_PRLOG_OBJ(("TILING 0x%p: Visible region %s\n", this, tmpstr.get()), mVisibleRegion);
+
   // Make sure that tiles that fall outside of the visible region are
   // discarded on the first update.
   if (!ClientManager()->IsRepeatTransaction()) {
@@ -279,7 +324,7 @@ ClientTiledThebesLayer::RenderLayer()
     if (!mPaintData.mCriticalDisplayPort.IsEmpty()) {
       // Make sure that tiles that fall outside of the critical displayport are
       // discarded on the first update.
-      mValidRegion.And(mValidRegion, mPaintData.mCriticalDisplayPort);
+      mValidRegion.And(mValidRegion, LayerIntRect::ToUntyped(mPaintData.mCriticalDisplayPort));
     }
   }
 
@@ -295,12 +340,14 @@ ClientTiledThebesLayer::RenderLayer()
     }
 
     // Clip the invalid region to the critical display-port
-    invalidRegion.And(invalidRegion, mPaintData.mCriticalDisplayPort);
+    invalidRegion.And(invalidRegion, LayerIntRect::ToUntyped(mPaintData.mCriticalDisplayPort));
     if (invalidRegion.IsEmpty() && lowPrecisionInvalidRegion.IsEmpty()) {
       EndPaint(true);
       return;
     }
   }
+
+  TILING_PRLOG_OBJ(("TILING 0x%p: Invalid region %s\n", this, tmpstr.get()), invalidRegion);
 
   if (!invalidRegion.IsEmpty() && mPaintData.mLowPrecisionPaintCount == 0) {
     bool updatedBuffer = false;
@@ -314,8 +361,10 @@ ClientTiledThebesLayer::RenderLayer()
       nsIntRegion oldValidRegion = mContentClient->mTiledBuffer.GetValidRegion();
       oldValidRegion.And(oldValidRegion, mVisibleRegion);
       if (!mPaintData.mCriticalDisplayPort.IsEmpty()) {
-        oldValidRegion.And(oldValidRegion, mPaintData.mCriticalDisplayPort);
+        oldValidRegion.And(oldValidRegion, LayerIntRect::ToUntyped(mPaintData.mCriticalDisplayPort));
       }
+
+      TILING_PRLOG_OBJ(("TILING 0x%p: Progressive update with old valid region %s\n", this, tmpstr.get()), oldValidRegion);
 
       updatedBuffer =
         mContentClient->mTiledBuffer.ProgressiveUpdate(mValidRegion, invalidRegion,
@@ -325,8 +374,12 @@ ClientTiledThebesLayer::RenderLayer()
       updatedBuffer = true;
       mValidRegion = mVisibleRegion;
       if (!mPaintData.mCriticalDisplayPort.IsEmpty()) {
-        mValidRegion.And(mValidRegion, mPaintData.mCriticalDisplayPort);
+        mValidRegion.And(mValidRegion, LayerIntRect::ToUntyped(mPaintData.mCriticalDisplayPort));
       }
+
+      TILING_PRLOG_OBJ(("TILING 0x%p: Painting: valid region %s\n", this, tmpstr.get()), mValidRegion);
+      TILING_PRLOG_OBJ(("TILING 0x%p: and invalid region %s\n", this, tmpstr.get()), invalidRegion);
+
       mContentClient->mTiledBuffer.SetFrameResolution(mPaintData.mResolution);
       mContentClient->mTiledBuffer.PaintThebes(mValidRegion, invalidRegion,
                                                callback, data);
@@ -351,11 +404,14 @@ ClientTiledThebesLayer::RenderLayer()
     }
   }
 
+  TILING_PRLOG_OBJ(("TILING 0x%p: Low-precision valid region is %s\n", this, tmpstr.get()), mLowPrecisionValidRegion);
+  TILING_PRLOG_OBJ(("TILING 0x%p: Low-precision invalid region is %s\n", this, tmpstr.get()), lowPrecisionInvalidRegion);
+
   // Render the low precision buffer, if there's area to invalidate and the
   // visible region is larger than the critical display port.
   bool updatedLowPrecision = false;
   if (!lowPrecisionInvalidRegion.IsEmpty() &&
-      !nsIntRegion(mPaintData.mCriticalDisplayPort).Contains(mVisibleRegion)) {
+      !nsIntRegion(LayerIntRect::ToUntyped(mPaintData.mCriticalDisplayPort)).Contains(mVisibleRegion)) {
     nsIntRegion oldValidRegion =
       mContentClient->mLowPrecisionTiledBuffer.GetValidRegion();
     oldValidRegion.And(oldValidRegion, mVisibleRegion);
