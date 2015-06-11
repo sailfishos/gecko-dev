@@ -308,29 +308,13 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 void
 EmbedLiteCompositorParent::SuspendRendering()
 {
-  if (!CompositorParent::IsInCompositorThread()) {
-    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::SuspendRendering);
-    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
-    return;
-  }
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, );
-  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Pause();
+  CompositorParent::SchedulePauseOnCompositorThread();
 }
 
 void
 EmbedLiteCompositorParent::ResumeRendering()
 {
-  if (!CompositorParent::IsInCompositorThread()) {
-    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::ResumeRendering);
-    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
-    return;
-  }
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, );
-  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Resume();
+  CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width, mLastViewSize.height);
 }
 
 bool EmbedLiteCompositorParent::RequestGLContext()
