@@ -217,6 +217,7 @@ protected:
     bool mContentDocumentIsDisplayed;
     nsRefPtr<TabChildGlobal> mTabChildGlobal;
     ScreenIntSize mInnerSize;
+    bool mHasValidInnerSize;
     mozilla::layers::FrameMetrics mLastRootMetrics;
     mozilla::layout::ScrollingBehavior mScrolling;
 };

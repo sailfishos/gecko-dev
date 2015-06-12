@@ -115,6 +115,7 @@ TabChildBase::TabChildBase()
   , mContentDocumentIsDisplayed(false)
   , mTabChildGlobal(nullptr)
   , mInnerSize(0, 0)
+  , mHasValidInnerSize(false)
 {
 }
 
@@ -151,7 +152,7 @@ TabChildBase::InitializeRootMetrics()
 bool
 TabChildBase::HasValidInnerSize()
 {
-  return (mInnerSize.width != 0) && (mInnerSize.height != 0);
+  return mHasValidInnerSize;
 }
 
 void
@@ -1614,6 +1615,9 @@ TabChild::RecvUpdateDimensions(const nsRect& rect, const nsIntSize& size, const 
 
     bool initialSizing = !HasValidInnerSize()
                       && (size.width != 0 && size.height != 0);
+    if (initialSizing) {
+      mHasValidInnerSize = true;
+    }
 
     mOrientation = orientation;
     mInnerSize = ScreenIntSize::FromUnknownSize(
