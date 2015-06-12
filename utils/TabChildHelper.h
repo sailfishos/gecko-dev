@@ -70,7 +70,6 @@ protected:
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
   void CancelTapTracking();
-  bool HasValidInnerSize();
 
 private:
   bool InitTabChildGlobal();
@@ -82,8 +81,6 @@ private:
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewBaseChild;
   EmbedLiteViewChildIface* mView;
-  mozilla::layers::FrameMetrics mLastSubFrameMetrics;
-  bool mHasValidInnerSize;
 };
 
 }
