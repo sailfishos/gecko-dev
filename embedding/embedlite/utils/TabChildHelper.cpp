@@ -249,7 +249,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
 
           utils->SetResolution(mLastRootMetrics.mResolution.scale,
                                mLastRootMetrics.mResolution.scale);
-          HandlePossibleViewportChange();
+          HandlePossibleViewportChange(mInnerSize);
           // Relay frame metrics to subscribed listeners
           mView->RelayFrameMetrics(mLastRootMetrics);
         }
@@ -276,7 +276,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
   if (eventType.EqualsLiteral("DOMMetaAdded")) {
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
-    HandlePossibleViewportChange();
+    HandlePossibleViewportChange(mInnerSize);
     // Relay frame metrics to subscribed listeners
     mView->RelayFrameMetrics(mLastRootMetrics);
   }
@@ -507,5 +507,8 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  HandlePossibleViewportChange();
+  ScreenIntSize oldScreenSize(mInnerSize);
+  mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
+
+  HandlePossibleViewportChange(oldScreenSize);
 }
