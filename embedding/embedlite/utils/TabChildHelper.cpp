@@ -51,7 +51,6 @@ static bool sPostAZPCAsJsonViewport(false);
 
 TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
-  , mHasValidInnerSize(false)
 {
   LOGT();
 
@@ -199,12 +198,6 @@ TabChildHelper::InitTabChildGlobal()
   chromeHandler->AddEventListener(NS_LITERAL_STRING("scroll"), this, false);
 
   return true;
-}
-
-bool
-TabChildHelper::HasValidInnerSize()
-{
-  return mHasValidInnerSize;
 }
 
 NS_IMETHODIMP
