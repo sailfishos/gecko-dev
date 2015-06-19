@@ -1,0 +1,63 @@
+From 7b49b91c505e48f2af42aae6eddc9bd1eeb53408 Mon Sep 17 00:00:00 2001
+From: Piotr Tworek <piotr.tworek@jollamobile.com>
+Date: Fri, 19 Jun 2015 17:12:58 +0200
+Subject: [PATCH 17/17] Add Intel Bay Trail GL specific workarounds. JB#29670
+
+1. Disable support for EXT_draw_instanced and EXT_draw_range_elements ES3
+   extensions. For some reason they break WebGL rendering completely. The
+   same gecko configuration works fine with both extensions enabled when
+   using Mesa ES3 implementation. Looks like a driver bug.
+2. Disable support for EXT_framebuffer_multisample extension. Intel Bay
+   Trail GPU is known to have terrible multisampling performance. See:
+   http://crbug.com/443517
+---
+ gfx/gl/GLContext.cpp | 13 ++++++++++++-
+ gfx/gl/GLContext.h   |  1 +
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
+index 21b46e1..7453bd0 100644
+--- a/gfx/gl/GLContext.cpp
++++ b/gfx/gl/GLContext.cpp
+@@ -571,7 +571,8 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
+                 "PowerVR SGX 540",
+                 "NVIDIA Tegra",
+                 "Android Emulator",
+-                "Gallium 0.4 on llvmpipe"
++                "Gallium 0.4 on llvmpipe",
++                "Intel(R) HD Graphics for BayTrail"
+         };
+ 
+         mRenderer = GLRenderer::Other;
+@@ -640,6 +641,16 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
+                 MarkExtensionUnsupported(OES_EGL_sync);
+             }
+ 
++            if (Renderer() == GLRenderer::IntelHDBayTrail) {
++                // Bug JB#29670
++                MarkUnsupported(GLFeature::draw_instanced);
++                MarkUnsupported(GLFeature::draw_range_elements);
++
++                // Intel BayTrail has horrible multisampling performance:
++                // http://crbug.com/443517
++                MarkUnsupported(GLFeature::framebuffer_multisample);
++            }
++
+ #ifdef XP_MACOSX
+             // The Mac Nvidia driver, for versions up to and including 10.8, don't seem
+             // to properly support this.  See 814839
+diff --git a/gfx/gl/GLContext.h b/gfx/gl/GLContext.h
+index 555f6fe..589315f 100644
+--- a/gfx/gl/GLContext.h
++++ b/gfx/gl/GLContext.h
+@@ -148,6 +148,7 @@ MOZ_BEGIN_ENUM_CLASS(GLRenderer)
+     Tegra,
+     AndroidEmulator,
+     GalliumLlvmpipe,
++    IntelHDBayTrail,
+     Other
+ MOZ_END_ENUM_CLASS(GLRenderer)
+ 
+-- 
+2.3.6
+

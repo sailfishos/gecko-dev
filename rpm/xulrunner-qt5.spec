@@ -25,6 +25,7 @@ Patch13:    0013-Disallow-image-locking-no-matter-what.patch
 Patch14:    0014-Notify-UI-about-change-in-composition-bounds.-jb1799.patch
 Patch15:    0015-limit-surface-area-rather-than-width-and-height.patch
 Patch16:    0016-Enable-external-window-usage.patch
+Patch17:    0017-Add-Intel-Bay-Trail-GL-specific-workarounds.-JB-2967.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -92,6 +93,7 @@ Tests and misc files for xulrunner
 %patch14 -p1
 %patch15 -p1
 %patch16 -p1
+%patch17 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
