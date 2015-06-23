@@ -1,14 +1,14 @@
-From 0dcf163d37e0576b611545218d47dd7b206dd8eb Mon Sep 17 00:00:00 2001
+From 5b134026da5ab17ed12277e20d3469871a20379c Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 15:27:51 +0300
-Subject: [PATCH 1/3] Enable external window usage
+Subject: [PATCH 16/17] Enable external window usage
 
 ---
  gfx/gl/GLContextProviderEGL.cpp     | 15 ++++++++++-
- gfx/layers/opengl/CompositorOGL.cpp | 52 ++++++++++++++++++++++++++++++++++---
+ gfx/layers/opengl/CompositorOGL.cpp | 51 ++++++++++++++++++++++++++++++++++---
  gfx/layers/opengl/CompositorOGL.h   |  2 ++
  gfx/thebes/gfxPrefs.h               |  1 +
- 4 files changed, 66 insertions(+), 4 deletions(-)
+ 4 files changed, 65 insertions(+), 4 deletions(-)
 
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
 index e6d89bf..7975a3b 100644
@@ -51,7 +51,7 @@ index e6d89bf..7975a3b 100644
          SurfaceCaps caps = SurfaceCaps::Any();
          EGLConfig config = EGL_NO_CONFIG;
 diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
-index c12d381..fd30aa1 100644
+index 2c5f79f..62216c7 100644
 --- a/gfx/layers/opengl/CompositorOGL.cpp
 +++ b/gfx/layers/opengl/CompositorOGL.cpp
 @@ -161,6 +161,7 @@ CompositorOGL::CompositorOGL(nsIWidget *aWidget, int aSurfaceWidth,
@@ -80,7 +80,7 @@ index c12d381..fd30aa1 100644
    // Allow to create offscreen GL context for main Layer Manager
    if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
      SurfaceCaps caps = SurfaceCaps::ForRGB();
-@@ -1392,28 +1404,62 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfx::Matrix& aTransform)
+@@ -1404,28 +1416,61 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfx::Matrix& aTransform)
  void
  CompositorOGL::Pause()
  {
@@ -113,17 +113,16 @@ index c12d381..fd30aa1 100644
    if (!gl() || gl()->IsDestroyed())
      return false;
  
-+  if (gfxPrefs::UseExternalWindow()) {
-+    realGLboolean scissorTestEnabled;
-+    gl()->fGetBooleanv(LOCAL_GL_SCISSOR_TEST, &scissorTestEnabled);
-+    if (scissorTestEnabled) {
-+      // Reset scissor box that might have been left behind by previous
-+      // compositor instance operating on the same window surface. Take into
-+      // account cached scissor box stored inside GLContext::mScissorRect may
-+      // actually be of mWidgetSize which would make the call a noop.
-+      gl()->fScissor(0, 0, mWidgetSize.width - 1, mWidgetSize.height - 1);
-+      gl()->fScissor(0, 0, mWidgetSize.width, mWidgetSize.height);
-+    }
++  realGLboolean scissorTestEnabled;
++  gl()->MakeCurrent();
++  gl()->fGetBooleanv(LOCAL_GL_SCISSOR_TEST, &scissorTestEnabled);
++  if (scissorTestEnabled) {
++    // Reset scissor box that might have been left behind by previous
++    // compositor instance operating on the same window surface. Take into
++    // account cached scissor box stored inside GLContext::mScissorRect may
++    // actually be of mWidgetSize which would make the call a noop.
++    gl()->fScissor(0, 0, mWidgetSize.width - 1, mWidgetSize.height - 1);
++    gl()->fScissor(0, 0, mWidgetSize.width, mWidgetSize.height);
 +  }
 +
 +  mPaused = false;
