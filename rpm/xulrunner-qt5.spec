@@ -119,7 +119,6 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
 echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
-echo "ac_add_options --enable-system-sqlite" >> mozconfig
 echo "ac_add_options --enable-libproxy" >> mozconfig
 echo "ac_add_options --enable-jemalloc" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
