@@ -16,6 +16,9 @@
 
 namespace mozilla {
 
+namespace gl {
+class GLContext;
+}
 namespace layers {
 class LayerManagerComposite;
 }
@@ -36,13 +39,13 @@ public:
   void SetScreenRotation(const mozilla::ScreenRotation& rotation);
   void SetClipping(const gfxRect& aClipRect);
   void* GetPlatformImage(int* width, int* height);
-  virtual void SuspendRendering();
-  virtual void ResumeRendering();
-
-  virtual bool RequestGLContext();
+  void SuspendRendering();
+  void ResumeRendering();
+  bool RequestGLContext();
 
   void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
   void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
+  void ClearCompositorSurface(nscolor);
 
 protected:
   virtual ~EmbedLiteCompositorParent();
@@ -57,6 +60,8 @@ private:
   void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
+
+  static void ClearCompositorSurfaceImpl(mozilla::gl::GLContext*, nscolor);
 
   uint32_t mId;
   gfx::Matrix mWorldTransform;
