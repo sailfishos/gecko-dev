@@ -277,6 +277,7 @@ public:
 
   virtual void Pause() override;
   virtual bool Resume() override;
+  virtual bool Ready() override;
 
   virtual nsIWidget* GetWidget() const override { return mWidget; }
 
@@ -435,6 +436,7 @@ private:
   ContextStateTrackerOGL mContextStateTracker;
 
   bool mDestroyed;
+  bool mPaused;
 
   /**
    * Height of the OpenGL context's primary framebuffer in pixels. Used by

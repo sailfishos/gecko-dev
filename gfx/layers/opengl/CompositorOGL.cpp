@@ -87,6 +87,7 @@ CompositorOGL::CompositorOGL(nsIWidget *aWidget, int aSurfaceWidth,
   , mUseExternalSurfaceSize(aUseExternalSurfaceSize)
   , mFrameInProgress(false)
   , mDestroyed(false)
+  , mPaused(false)
   , mHeight(0)
   , mCurrentProgram(nullptr)
 {
@@ -1390,10 +1391,21 @@ CompositorOGL::CopyToTarget(DrawTarget* aTarget, const nsIntPoint& aTopLeft, con
 void
 CompositorOGL::Pause()
 {
-#ifdef MOZ_WIDGET_ANDROID
-  if (!gl() || gl()->IsDestroyed())
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_QT)
+  if (!gl() || gl()->IsDestroyed() || !gfxPrefs::UseExternalWindow())
     return;
 
+  if (mFrameInProgress) {
+    // The browser may request compositor pause when actual compositing is
+    // in progress. Make sure we abort this process.
+    mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
+    mFrameInProgress = false;
+    mCurrentRenderTarget = nullptr;
+
+    if (mTexturePool) {
+      mTexturePool->EndFrame();
+    }
+  }
   // ReleaseSurface internally calls MakeCurrent.
   gl()->ReleaseSurface();
 #else
@@ -1403,14 +1415,21 @@ CompositorOGL::Pause()
   // TODO: call Layers->SetCompositor(nullptr);
   CleanupResources();
 #endif
+
+  mPaused = true;
 }
 
 bool
 CompositorOGL::Resume()
 {
-#ifdef MOZ_WIDGET_ANDROID
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_QT)
+  if (!gfxPrefs::UseExternalWindow())
+    return true;
+
   if (!gl() || gl()->IsDestroyed())
     return false;
+
+  mPaused = false;
 
   // RenewSurface internally calls MakeCurrent.
   return gl()->RenewSurface();
@@ -1422,6 +1441,15 @@ CompositorOGL::Resume()
   // TODO: call Layers->SetCompositor(thisOD);
 #endif
   return true;
+}
+
+bool
+CompositorOGL::Ready()
+{
+  if (gfxPrefs::UseExternalWindow() && mPaused) {
+    return false;
+  }
+  return Compositor::Ready();
 }
 
 TemporaryRef<DataTextureSource>

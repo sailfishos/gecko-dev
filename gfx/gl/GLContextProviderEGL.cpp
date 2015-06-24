@@ -100,6 +100,7 @@ public:
 #include "gfxFailure.h"
 #include "gfxASurface.h"
 #include "gfxPlatform.h"
+#include "gfxPrefs.h"
 #include "GLContextProvider.h"
 #include "GLLibraryEGL.h"
 #include "TextureImageEGL.h"
@@ -421,7 +422,13 @@ GLContextEGL::IsCurrent() {
 bool
 GLContextEGL::RenewSurface() {
     if (!mOwnsContext) {
-        return false;
+        if (gfxPrefs::UseExternalWindow()) {
+            mSurface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+            MOZ_ASSERT(mSurface != EGL_NO_SURFACE);
+            return MakeCurrent(true);
+        } else {
+            return false;
+        }
     }
 #ifndef MOZ_WIDGET_ANDROID
     MOZ_CRASH("unimplemented");
