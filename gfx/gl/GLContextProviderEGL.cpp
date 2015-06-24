@@ -87,6 +87,7 @@
 #include "gfxUtils.h"
 #include "GLBlitHelper.h"
 #include "GLContextEGL.h"
+#include "gfxPrefs.h"
 #include "GLContextProvider.h"
 #include "GLLibraryEGL.h"
 #include "mozilla/ArrayUtils.h"
@@ -378,7 +379,13 @@ GLContextEGL::IsCurrent() {
 bool
 GLContextEGL::RenewSurface(nsIWidget* aWidget) {
     if (!mOwnsContext) {
-        return false;
+        if (gfxPrefs::UseExternalWindow()) {
+            mSurface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+            MOZ_ASSERT(mSurface != EGL_NO_SURFACE);
+            return MakeCurrent(true);
+        } else {
+            return false;
+        }
     }
     // unconditionally release the surface and create a new one. Don't try to optimize this away.
     // If we get here, then by definition we know that we want to get a new surface.
