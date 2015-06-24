@@ -317,12 +317,6 @@ EmbedLiteCompositorParent::ResumeRendering()
   CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width, mLastViewSize.height);
 }
 
-bool EmbedLiteCompositorParent::RequestGLContext()
-{
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  return view ? view->GetListener()->RequestCurrentGLContext() : false;
-}
-
 void EmbedLiteCompositorParent::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
