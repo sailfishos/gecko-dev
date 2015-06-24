@@ -41,7 +41,6 @@ public:
   void* GetPlatformImage(int* width, int* height);
   void SuspendRendering();
   void ResumeRendering();
-  bool RequestGLContext();
 
   void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
   void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
