@@ -20,7 +20,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
-
+#include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
 #include "nsIDocument.h"
@@ -379,6 +379,14 @@ EmbedLiteViewThreadChild::RecvSetIsFocused(const bool& aIsFocused)
     fm->ClearFocus(mDOMWindow);
     LOGT("Clear browser focus");
   }
+  return true;
+}
+
+bool
+EmbedLiteViewThreadChild::RecvSetThrottlePainting(const bool& aThrottle)
+{
+  LOGT("aThrottle:%d", aThrottle);
+  mHelper->GetPresContext()->RefreshDriver()->SetThrottled(aThrottle);
   return true;
 }
 

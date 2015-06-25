@@ -73,6 +73,7 @@ protected:
 
   virtual bool RecvSetIsActive(const bool&) MOZ_OVERRIDE;
   virtual bool RecvSetIsFocused(const bool&) MOZ_OVERRIDE;
+  virtual bool RecvSetThrottlePainting(const bool&) MOZ_OVERRIDE;
   virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
   virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
   virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
