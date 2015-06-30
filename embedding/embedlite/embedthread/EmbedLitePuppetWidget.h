@@ -24,6 +24,11 @@
 #include "EmbedLiteViewThreadChild.h"
 
 namespace mozilla {
+
+namespace gl {
+class GLContext;
+}
+
 namespace embedlite {
 
 class EmbedLitePuppetWidget : public nsBaseWidget,
@@ -148,7 +153,6 @@ public:
   virtual void CreateCompositor(int aWidth, int aHeight);
   virtual void CreateCompositor();
   virtual nsIntRect GetNaturalBounds();
-  virtual bool HasGLContext();
 
   /**
    * Called before the LayerManager draws the layer tree.
@@ -176,6 +180,8 @@ protected:
 private:
   nsresult Paint();
   bool ViewIsValid();
+  mozilla::gl::GLContext* GetGLContext() const;
+  static void CreateGLContextEarly(uint32_t aViewId);
 
   EmbedLitePuppetWidget* TopWindow();
   bool IsTopLevel();

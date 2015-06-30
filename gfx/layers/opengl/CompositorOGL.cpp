@@ -178,6 +178,13 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
+  // Used by mock widget to create an offscreen context
+  void* widgetOpenGLContext = mWidget->GetNativeData(NS_NATIVE_OPENGL_CONTEXT);
+  if (widgetOpenGLContext) {
+    GLContext* alreadyRefed = reinterpret_cast<GLContext*>(widgetOpenGLContext);
+    return already_AddRefed<GLContext>(alreadyRefed);
+  }
+
 #ifdef XP_WIN
   if (PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
     printf_stderr("Trying GL layers...\n");
