@@ -21,7 +21,7 @@ Patch9:     0009-Workaround-for-late-access-message-loop.-jb10381.patch
 Patch10:    0010-Define-HAS_NEMO_RESOURCE-in-config.patch
 Patch11:    0011-Disable-destructible.patch
 Patch12:    0012-Don-t-zoom-video-when-in-full-screen.patch
-Patch13:    0013-Disallow-image-locking-no-matter-what.patch
+Patch13:    0013-Don-t-decode-all-images-on-shell-activation-if-decod.patch
 Patch14:    0014-Notify-UI-about-change-in-composition-bounds.-jb1799.patch
 Patch15:    0015-limit-surface-area-rather-than-width-and-height.patch
 Patch16:    0016-Implement-support-for-Pausing-Resuming-OpenGL-compos.patch
