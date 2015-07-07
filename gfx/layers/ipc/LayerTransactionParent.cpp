@@ -29,6 +29,7 @@
 #include "mozilla/layers/PLayerParent.h"  // for PLayerParent
 #include "mozilla/layers/ThebesLayerComposite.h"
 #include "mozilla/mozalloc.h"           // for operator delete, etc
+#include "mozilla/unused.h"
 #include "nsCoord.h"                    // for NSAppUnitsToFloatPixels
 #include "nsDebug.h"                    // for NS_RUNTIMEABORT
 #include "nsDeviceContext.h"            // for AppUnitsPerCSSPixel
@@ -805,9 +806,40 @@ LayerTransactionParent::DeallocPTextureParent(PTextureParent* actor)
   return TextureHost::DestroyIPDLActor(actor);
 }
 
+bool
+LayerTransactionParent::RecvChildAsyncMessages(const InfallibleTArray<AsyncChildMessageData>& aMessages)
+{
+  for (AsyncChildMessageArray::index_type i = 0; i < aMessages.Length(); ++i) {
+    const AsyncChildMessageData& message = aMessages[i];
+
+    switch (message.type()) {
+      case AsyncChildMessageData::TOpReplyDeliverFence: {
+        const OpReplyDeliverFence& op = message.get_OpReplyDeliverFence();
+        TransactionCompleteted(op.transactionId());
+        break;
+      }
+      default:
+        NS_ERROR("unknown AsyncChildMessageData type");
+        return false;
+    }
+  }
+  return true;
+}
+
 bool LayerTransactionParent::IsSameProcess() const
 {
   return OtherProcess() == ipc::kInvalidProcessHandle;
+}
+
+void
+LayerTransactionParent::SendFenceHandle(AsyncTransactionTracker* aTracker,
+                                        PTextureParent* aTexture,
+                                        const FenceHandle& aFence)
+{
+  HoldUntilComplete(aTracker);
+  mozilla::unused << SendParentAsyncMessage(OpDeliverFence(aTracker->GetId(),
+                                        aTexture, nullptr,
+                                        aFence));
 }
 
 } // namespace layers
