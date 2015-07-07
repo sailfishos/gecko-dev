@@ -37,6 +37,52 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace layers {
 
+void
+ClientLayerManager::MemoryPressureObserver::Destroy()
+{
+  UnregisterMemoryPressureEvent();
+  mClientLayerManager = nullptr;
+}
+
+NS_IMETHODIMP
+ClientLayerManager::MemoryPressureObserver::Observe(nsISupports* aSubject,
+                                                    const char* aTopic,
+                                                    const char16_t* aSomeData)
+{
+  if (!mClientLayerManager || strcmp(aTopic, "memory-pressure")) {
+    return NS_OK;
+  }
+
+  mClientLayerManager->HandleMemoryPressure();
+  return NS_OK;
+}
+
+void
+ClientLayerManager::MemoryPressureObserver::RegisterMemoryPressureEvent()
+{
+  nsCOMPtr<nsIObserverService> observerService =
+    mozilla::services::GetObserverService();
+
+  MOZ_ASSERT(observerService);
+
+  if (observerService) {
+    observerService->AddObserver(this, "memory-pressure", false);
+  }
+}
+
+void
+ClientLayerManager::MemoryPressureObserver::UnregisterMemoryPressureEvent()
+{
+  nsCOMPtr<nsIObserverService> observerService =
+      mozilla::services::GetObserverService();
+
+  if (observerService) {
+      observerService->RemoveObserver(this, "memory-pressure");
+  }
+}
+
+NS_IMPL_ISUPPORTS(ClientLayerManager::MemoryPressureObserver, nsIObserver)
+
 ClientLayerManager::ClientLayerManager(nsIWidget* aWidget)
   : mPhase(PHASE_NONE)
   , mWidget(aWidget) 
@@ -49,11 +95,14 @@ ClientLayerManager::ClientLayerManager(nsIWidget* aWidget)
   , mForwarder(new ShadowLayerForwarder)
 {
   MOZ_COUNT_CTOR(ClientLayerManager);
+  mMemoryPressureObserver = new MemoryPressureObserver(this);
 }
 
 ClientLayerManager::~ClientLayerManager()
 {
   mRoot = nullptr;
+
+  mMemoryPressureObserver->Destroy();
 
   MOZ_COUNT_DTOR(ClientLayerManager);
 }
@@ -508,6 +557,14 @@ ClientLayerManager::ClearCachedResources(Layer* aSubtree)
   }
   for (size_t i = 0; i < mTexturePools.Length(); i++) {
     mTexturePools[i]->Clear();
+  }
+}
+
+void
+ClientLayerManager::HandleMemoryPressure()
+{
+  for (size_t i = 0; i < mTexturePools.Length(); i++) {
+    mTexturePools[i]->ShrinkToMinimumSize();
   }
 }
 
