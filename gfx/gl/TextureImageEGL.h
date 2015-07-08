@@ -49,7 +49,7 @@ class TextureImageEGL final : public TextureImage {
  protected:
   typedef gfxImageFormat ImageFormat;
 
-  GLContext* mGLContext;
+  RefPtr<GLContext> mGLContext;
 
   gfx::SurfaceFormat mUpdateFormat;
   EGLImage mEGLImage;
