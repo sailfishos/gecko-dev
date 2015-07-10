@@ -267,6 +267,7 @@ ClientTiledThebesLayer::RenderLayer()
 
   if (mContentClient->mTiledBuffer.HasFormatChanged()) {
     mValidRegion = nsIntRegion();
+    mContentClient->mTiledBuffer.ResetPaintedAndValidState();
   }
 
   TILING_PRLOG_OBJ(("TILING 0x%p: Initial visible region %s\n", this, tmpstr.get()), mVisibleRegion);
@@ -424,6 +425,7 @@ ClientTiledThebesLayer::RenderLayer()
       }
       oldValidRegion.SetEmpty();
       mLowPrecisionValidRegion.SetEmpty();
+      mContentClient->mLowPrecisionTiledBuffer.ResetPaintedAndValidState();
       mContentClient->mLowPrecisionTiledBuffer.SetFrameResolution(mPaintData.mResolution);
       lowPrecisionInvalidRegion = mVisibleRegion;
     }
