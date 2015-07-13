@@ -1,0 +1,26 @@
+From 7f4e21c7ed4e165293caa78b376e22c819a790c6 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jollamobile.com>
+Date: Mon, 13 Jul 2015 11:55:21 +0300
+Subject: [PATCH 19/19] Limit maximum scale to 4x. Fixes JB#25377
+
+The default zoom contraints now matches to the EmbedContentController.
+---
+ gfx/layers/apz/src/AsyncPanZoomController.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 7e7be30..d931069 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -288,7 +288,7 @@ StaticAutoPtr<ComputedTimingFunction> gComputedTimingFunction;
+ /**
+  * Maximum zoom amount, always used, even if a page asks for higher.
+  */
+-static const CSSToScreenScale MAX_ZOOM(8.0f);
++static const CSSToScreenScale MAX_ZOOM(4.0f);
+ 
+ /**
+  * Minimum zoom amount, always used, even if a page asks for lower.
+-- 
+1.9.1
+
