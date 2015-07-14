@@ -20,13 +20,17 @@ struct ParamTraits<mozilla::InputData>
   {
     WriteParam(aMsg, (uint8_t)aParam.mInputType);
     WriteParam(aMsg, aParam.mTime);
+    WriteParam(aMsg, aParam.mTimeStamp);
+    WriteParam(aMsg, aParam.modifiers);
   }
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
   {
     uint8_t inputType = 0;
     bool ret = ReadParam(aMsg, aIter, &inputType) &&
-               ReadParam(aMsg, aIter, &aResult->mTime);
+               ReadParam(aMsg, aIter, &aResult->mTime) &&
+               ReadParam(aMsg, aIter, &aResult->mTimeStamp) &&
+               ReadParam(aMsg, aIter, &aResult->modifiers);
     aResult->mInputType = static_cast<mozilla::InputType>(inputType);
     return ret;
   }
@@ -46,10 +50,9 @@ struct ParamTraits<mozilla::MultiTouchInput>
     for (uint32_t i = 0; i < aParam.mTouches.Length(); ++i) {
       const mozilla::SingleTouchData& data = aParam.mTouches[i];
       WriteParam(aMsg, data.mIdentifier);
-      WriteParam(aMsg, data.mScreenPoint.x);
-      WriteParam(aMsg, data.mScreenPoint.y);
-      WriteParam(aMsg, data.mRadius.width);
-      WriteParam(aMsg, data.mRadius.height);
+      WriteParam(aMsg, data.mScreenPoint);
+      WriteParam(aMsg, data.mLocalScreenPoint);
+      WriteParam(aMsg, data.mRadius);
       WriteParam(aMsg, data.mRotationAngle);
       WriteParam(aMsg, data.mForce);
     }
@@ -58,7 +61,7 @@ struct ParamTraits<mozilla::MultiTouchInput>
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
   {
     uint8_t inputType = 0;
-    uint32_t numTouches = 0;
+    nsTArray<mozilla::SingleTouchData>::size_type numTouches = 0;
     if (!ReadParam(aMsg, aIter, static_cast<mozilla::InputData*>(aResult)) ||
         !ReadParam(aMsg, aIter, &inputType) ||
         !ReadParam(aMsg, aIter, &numTouches)) {
@@ -66,26 +69,16 @@ struct ParamTraits<mozilla::MultiTouchInput>
     }
     aResult->mType = static_cast<mozilla::MultiTouchInput::MultiTouchType>(inputType);
     for (uint32_t i = 0; i < numTouches; ++i) {
-      int32_t identifier;
-      mozilla::ScreenIntPoint refPoint;
-      mozilla::ScreenSize radius;
-      float rotationAngle;
-      float force;
-      if (!ReadParam(aMsg, aIter, &identifier) ||
-          !ReadParam(aMsg, aIter, &refPoint.x) ||
-          !ReadParam(aMsg, aIter, &refPoint.y) ||
-          !ReadParam(aMsg, aIter, &radius.width) ||
-          !ReadParam(aMsg, aIter, &radius.height) ||
-          !ReadParam(aMsg, aIter, &rotationAngle) ||
-          !ReadParam(aMsg, aIter, &force)) {
+      mozilla::SingleTouchData touchData;
+      if (!ReadParam(aMsg, aIter, &touchData.mIdentifier) ||
+          !ReadParam(aMsg, aIter, &touchData.mScreenPoint) ||
+          !ReadParam(aMsg, aIter, &touchData.mLocalScreenPoint) ||
+          !ReadParam(aMsg, aIter, &touchData.mRadius) ||
+          !ReadParam(aMsg, aIter, &touchData.mRotationAngle) ||
+          !ReadParam(aMsg, aIter, &touchData.mForce)) {
         return false;
       }
-      aResult->mTouches.AppendElement(
-        mozilla::SingleTouchData(identifier,
-                                 refPoint,
-                                 radius,
-                                 rotationAngle,
-                                 force));
+      aResult->mTouches.AppendElement(touchData);
     }
 
     return true;
