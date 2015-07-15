@@ -164,6 +164,8 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
         NewRunnableFunction(&CreateGLContextEarly, mId));
   }
 
+  gfxPlatform::GetPlatform()->ComputeTileSize();
+
   return NS_OK;
 }
 
