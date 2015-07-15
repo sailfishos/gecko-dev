@@ -460,17 +460,10 @@ EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
     mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, &outInputBlockId);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
-      MultiTouchInput translatedEvent(multiTouchInput.mType, multiTouchInput.mTime, TimeStamp(), multiTouchInput.modifiers);
-      for (uint32_t i = 0; i < multiTouchInput.mTouches.Length(); ++i) {
-        const SingleTouchData& data = multiTouchInput.mTouches[i];
-        SingleTouchData newData = multiTouchInput.mTouches[i];
-        newData.mScreenPoint = data.mScreenPoint;
-        translatedEvent.mTouches.AppendElement(newData);
-      }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, translatedEvent, outInputBlockId);
+        unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
       } else {
-        unused << SendInputDataTouchEvent(guid, translatedEvent, outInputBlockId);
+        unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
       }
     }
   }
