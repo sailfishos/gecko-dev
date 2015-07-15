@@ -1,4 +1,5 @@
 pref("dom.w3c_touch_events.enabled", 1);
+pref("dom.meta-viewport.enabled", true);
 pref("plugins.force.wmode", "opaque");
 pref("browser.xul.error_pages.enabled", true);
 pref("nglayout.debug.paint_flashing", false);
