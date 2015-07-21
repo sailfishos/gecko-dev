@@ -55,12 +55,14 @@ pref("layers.max-active", 20);
 // APZC preferences.
 
 pref("apz.asyncscroll.throttle", 15);
-pref("apz.y_skate_size_multiplier", "4.5f");
-pref("apz.y_stationary_size_multiplier", "4.5f");
+pref("apz.x_skate_size_multiplier", "1.25f");
+pref("apz.x_stationary_size_multiplier", "1.5f");
+pref("apz.y_skate_size_multiplier", "1.5f");
+pref("apz.y_stationary_size_multiplier", "1.8f");
 pref("apz.max_event_acceleration", "12.0f");
 pref("apz.acceleration_multiplier", "1.125f");
 pref("apz.fling_friction", "0.00345f");
-pref("apz.min_skate_speed", "10.0f");
+pref("apz.min_skate_speed", "1.0f");
 pref("apz.axis_lock_mode", 2);
 pref("ui.dragThresholdX", 25);
 pref("ui.dragThresholdY", 25);
