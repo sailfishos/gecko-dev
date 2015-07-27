@@ -14,6 +14,7 @@
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 
+#include "Layers.h"
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
 #include "mozilla/dom/Element.h"
@@ -35,6 +36,7 @@ static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
 static const char BROWSER_ZOOM_TO_RECT[] = "browser-zoom-to-rect";
 static const char DETECT_SCROLLABLE_SUBFRAME[] = "detect-scrollable-subframe";
+static const char MEMORY_PRESSURE[] = "memory-pressure";
 static bool sDisableViewportHandler = getenv("NO_VIEWPORT") != 0;
 
 using namespace mozilla;
@@ -77,6 +79,9 @@ TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
                                  false);
     observerService->AddObserver(this,
                                  DETECT_SCROLLABLE_SUBFRAME,
+                                 false);
+    observerService->AddObserver(this,
+                                 MEMORY_PRESSURE,
                                  false);
   }
   if (!InitTabChildGlobal()) {
@@ -154,6 +159,7 @@ TabChildHelper::Unload()
   observerService->RemoveObserver(this, CANCEL_DEFAULT_PAN_ZOOM);
   observerService->RemoveObserver(this, BROWSER_ZOOM_TO_RECT);
   observerService->RemoveObserver(this, DETECT_SCROLLABLE_SUBFRAME);
+  observerService->RemoveObserver(this, MEMORY_PRESSURE);
 }
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildHelper)
@@ -254,6 +260,11 @@ TabChildHelper::Observe(nsISupports* aSubject,
       if (observerService) {
         observerService->NotifyObservers(aSubject, "embedlite-before-first-paint", nullptr);
       }
+    }
+  } else if (!strcmp(aTopic, MEMORY_PRESSURE)) {
+    LayerManager* manager = WebWidget()->GetLayerManager();
+    if (manager) {
+      manager->ClearCachedResources();
     }
   }
 
