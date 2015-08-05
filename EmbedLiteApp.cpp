@@ -22,6 +22,7 @@
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteView.h"
+#include "EmbedLiteWindow.h"
 #include "nsXULAppAPI.h"
 #include "EmbedLiteMessagePump.h"
 
@@ -55,7 +56,6 @@ EmbedLiteApp::EmbedLiteApp()
   , mAppParent(NULL)
   , mAppChild(NULL)
   , mEmbedType(EMBED_INVALID)
-  , mViewCreateID(0)
   , mState(STOPPED)
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
@@ -432,16 +432,34 @@ void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
 }
 
 EmbedLiteView*
-EmbedLiteApp::CreateView(uint32_t aParent, bool aIsPrivateWindow)
+EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPrivateWindow)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
-  mViewCreateID++;
+  static uint32_t sViewCreateID = 0;
+  sViewCreateID++;
 
-  PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(mAppParent->SendPEmbedLiteViewConstructor(mViewCreateID, aParent, aIsPrivateWindow));
-  EmbedLiteView* view = new EmbedLiteView(this, viewParent, mViewCreateID);
-  mViews[mViewCreateID] = view;
+  PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(
+      mAppParent->SendPEmbedLiteViewConstructor(aWindow->GetUniqueID(), sViewCreateID,
+	                                        aParent, aIsPrivateWindow));
+  EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
+  mViews[sViewCreateID] = view;
   return view;
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateWindow()
+{
+  LOGT();
+  NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
+  static uint32_t sWindowCreateID = 0;
+  sWindowCreateID++;
+
+  PEmbedLiteWindowParent* windowParent = static_cast<PEmbedLiteWindowParent*>(
+      mAppParent->SendPEmbedLiteWindowConstructor(sWindowCreateID));
+  EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
+  mWindows[sWindowCreateID] = window;
+  return window;
 }
 
 EmbedLiteView* EmbedLiteApp::GetViewByID(uint32_t id)
@@ -449,6 +467,16 @@ EmbedLiteView* EmbedLiteApp::GetViewByID(uint32_t id)
   std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
   if (it == mViews.end()) {
     NS_ERROR("View not found");
+    return nullptr;
+  }
+  return it->second;
+}
+
+EmbedLiteWindow* EmbedLiteApp::GetWindowByID(uint32_t id)
+{
+  std::map<uint32_t, EmbedLiteWindow*>::iterator it = mWindows.find(id);
+  if (it == mWindows.end()) {
+    NS_ERROR("Window not found!");
     return nullptr;
   }
   return it->second;
@@ -508,9 +536,27 @@ void EmbedLiteApp::DestroyView(EmbedLiteView* aView)
       delete view;
       it->second = nullptr;
       mViews.erase(it);
-      break;
+      return;
     }
   }
+  MOZ_ASSERT(false, "Invalid EmbedLiteView pointer!");
+}
+
+void EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
+{
+  LOGT();
+  NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
+  std::map<uint32_t, EmbedLiteWindow*>::iterator it;
+  for (it = mWindows.begin(); it != mWindows.end(); it++) {
+    if (it->second == aWindow) {
+      EmbedLiteWindow* window = it->second;
+      delete window;
+      it->second = nullptr;
+      mWindows.erase(it);
+      return;
+    }
+  }
+  MOZ_ASSERT(false, "Invalid EmbedLiteWindow pointer!");
 }
 
 void

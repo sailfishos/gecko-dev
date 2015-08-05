@@ -5,19 +5,15 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteViewBaseParent.h"
 #include "EmbedLiteApp.h"
 #include "EmbedLiteView.h"
-#include "gfxImageSurface.h"
-#include "gfxContext.h"
+#include "EmbedLiteViewBaseParent.h"
+#include "EmbedLiteWindowBaseParent.h"
 
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
-
-using namespace mozilla::gfx;
-using namespace mozilla::gl;
 
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -25,32 +21,33 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
   : mId(id)
   , mViewAPIDestroyed(false)
+  , mWindow(*EmbedLiteWindowBaseParent::From(windowId))
   , mCompositor(nullptr)
-  , mRotation(ROTATION_0)
-  , mPendingRotation(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
   , mController(new EmbedContentController(this, mUILoop))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewBaseParent);
+
+  /// XXX: Fix this
+  if (mWindow.GetCompositor()) {
+    SetCompositor(mWindow.GetCompositor());
+  }
+
+  mWindow.AddObserver(this);
 }
 
 EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
 {
   MOZ_COUNT_DTOR(EmbedLiteViewBaseParent);
   LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
-  bool mHadCompositor = mCompositor.get() != nullptr;
   mController = nullptr;
-
-  // If we haven't had compositor created, then noone will notify app that view destroyed
-  // Let's do it here
-  if (!mHadCompositor) {
-    EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
-  }
+  mWindow.RemoveObserver(this);
+  EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
 }
 
 void
@@ -66,31 +63,20 @@ EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   LOGT();
   mCompositor = aCompositor;
   UpdateScrollController();
-  if (mCompositor) {
-    if (mPendingRotation) {
-      mCompositor->SetScreenRotation(mRotation);
-      mPendingRotation = false;
-    }
-    mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
-  }
 }
 
-NS_IMETHODIMP
+void
 EmbedLiteViewBaseParent::UpdateScrollController()
 {
-  if (mViewAPIDestroyed) {
-    return NS_OK;
+  if (mViewAPIDestroyed || !mView) {
+    return;
   }
-
-  NS_ENSURE_TRUE(mView, NS_OK);
 
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
-
-  return NS_OK;
 }
 
 // Child notification
@@ -348,107 +334,11 @@ EmbedLiteViewBaseParent::RecvRpcMessage(const nsString& aMessage,
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }
 
-static inline gfx::SurfaceFormat
-_depth_to_gfxformat(int depth)
+void
+EmbedLiteViewBaseParent::CompositorCreated()
 {
-  switch (depth) {
-    case 32:
-      return SurfaceFormat::R8G8B8A8;
-    case 24:
-      return SurfaceFormat::R8G8B8X8;
-    case 16:
-      return SurfaceFormat::R5G6B5;
-    default:
-      return SurfaceFormat::UNKNOWN;
-  }
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
-{
-  LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
-  if (mCompositor) {
-    RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(aData, IntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
-    {
-      return mCompositor->RenderToContext(target) ? NS_OK : NS_ERROR_FAILURE;
-    }
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetViewSize(int width, int height)
-{
-  LOGT("sz[%i,%i]", width, height);
-  mViewSize = ScreenIntSize(width, height);
-  if (mGLViewPortSize.width == 0 && mGLViewPortSize.height == 0) {
-    mGLViewPortSize = gfxSize(width, height);
-  }
-  unused << SendSetViewSize(gfxSize(width, height));
-
-  return NS_OK;
-}
-
-bool
-EmbedLiteViewBaseParent::RecvGetGLViewSize(gfxSize* aSize)
-{
-  *aSize = mGLViewPortSize;
-  return true;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetGLViewPortSize(int width, int height)
-{
-  mGLViewPortSize = gfxSize(width, height);
-  if (mCompositor) {
-    mCompositor->SetSurfaceSize(width, height);
-  }
-  unused << SendSetGLViewSize(mGLViewPortSize);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetScreenRotation(const mozilla::ScreenRotation& rotation)
-{
-  mRotation = rotation;
-
-  if (mCompositor) {
-    mCompositor->SetScreenRotation(rotation);
-  } else {
-    mPendingRotation = true;
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::ScheduleUpdate()
-{
-  if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::ResumeRendering()
-{
-  if (mCompositor) {
-    mCompositor->ResumeRendering();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SuspendRendering()
-{
-  if (mCompositor) {
-    mCompositor->SuspendRendering();
-  }
-
-  return NS_OK;
+  // XXX: Move compositor handling entirely to EmbedLiteWindowBaseParent
+  SetCompositor(mWindow.GetCompositor());
 }
 
 NS_IMETHODIMP
@@ -610,14 +500,6 @@ EmbedLiteViewBaseParent::GetUniqueID(uint32_t *aId)
 {
   *aId = mId;
 
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::GetPlatformImage(void* *aImage, int* width, int* height)
-{
-  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-  *aImage = mCompositor->GetPlatformImage(width, height);
   return NS_OK;
 }
 

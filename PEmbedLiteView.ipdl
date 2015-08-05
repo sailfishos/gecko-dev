@@ -36,8 +36,6 @@ child:
     StopLoad();
     Reload(bool hardReload);
     LoadFrameScript(nsString uri);
-    SetViewSize(gfxSize aSize);
-    SetGLViewSize(gfxSize aSize);
     SetIsActive(bool aIsActive);
     SetIsFocused(bool aIsFocused);
     SetThrottlePainting(bool aThrottle);
@@ -99,8 +97,6 @@ parent:
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     SetBackgroundColor(nscolor color);
     ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
-    sync GetGLViewSize()
-      returns (gfxSize aSize);
 
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
