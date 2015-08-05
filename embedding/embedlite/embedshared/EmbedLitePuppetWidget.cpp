@@ -21,13 +21,11 @@
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteView.h"
 #include "nsIWidgetListener.h"
-
 #include "Layers.h"
 #include "BasicLayers.h"
 #include "ClientLayerManager.h"
 #include "GLContextProvider.h"
 #include "GLContext.h"
-#include "GLLibraryEGL.h"
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteApp.h"
@@ -62,42 +60,8 @@ IsPopup(const nsWidgetInitData* aInitData)
   return aInitData && aInitData->mWindowType == eWindowType_popup;
 }
 
-static void
-InvalidateRegion(nsIWidget* aWidget, const nsIntRegion& aRegion)
+static void InitPrefs()
 {
-  nsIntRegionRectIterator it(aRegion);
-  while(const nsIntRect* r = it.Next()) {
-    aWidget->Invalidate(*r);
-  }
-}
-
-EmbedLitePuppetWidget*
-EmbedLitePuppetWidget::TopWindow()
-{
-  if (!gTopLevelWindows.IsEmpty()) {
-    return gTopLevelWindows[0];
-  }
-  return nullptr;
-}
-
-bool
-EmbedLitePuppetWidget::IsTopLevel()
-{
-  return mWindowType == eWindowType_toplevel ||
-         mWindowType == eWindowType_dialog ||
-         mWindowType == eWindowType_invisible;
-}
-
-EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, uint32_t& aId)
-  : mEmbed(aEmbed)
-  , mVisible(false)
-  , mEnabled(false)
-  , mIMEComposing(false)
-  , mParent(nullptr)
-  , mId(aId)
-{
-  MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
-  LOGT("this:%p", this);
   static bool prefsInitialized = false;
   if (!prefsInitialized) {
     Preferences::AddBoolVarCache(&sUseExternalGLContext,
@@ -108,18 +72,74 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, ui
   }
 }
 
+bool
+EmbedLitePuppetWidget::IsTopLevel()
+{
+  return mWindowType == eWindowType_toplevel ||
+         mWindowType == eWindowType_dialog ||
+         mWindowType == eWindowType_invisible;
+}
+
+EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
+                                             EmbedLiteViewChildIface* view)
+  : mWindow(window)
+  , mView(view)
+  , mVisible(false)
+  , mEnabled(false)
+  , mHasCompositor(false)
+  , mIMEComposing(false)
+  , mParent(nullptr)
+  , mRotation(ROTATION_0)
+{
+  MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
+  LOGT("this:%p", this);
+  InitPrefs();
+}
+
+EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window)
+  : EmbedLitePuppetWidget(window, nullptr)
+{
+  if (sUseExternalGLContext && sRequestGLContextEarly) {
+    // GetPlatform() should create compositor loop if it doesn't exist, yet.
+    gfxPlatform::GetPlatform();
+    CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
+        NewRunnableFunction(&CreateGLContextEarly, window->GetUniqueID()));
+  }
+}
+
+EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* view)
+  : EmbedLitePuppetWidget(nullptr, view)
+{
+}
+
 EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
 {
   MOZ_COUNT_DTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
-  gTopLevelWindows.RemoveElement(this);
+
+  if (IsTopLevel()) {
+    gTopLevelWindows.RemoveElement(this);
+  }
 }
 
 NS_IMETHODIMP
 EmbedLitePuppetWidget::SetParent(nsIWidget* aParent)
 {
   LOGT();
-  mParent = aParent;
+  if (mParent == static_cast<EmbedLitePuppetWidget*>(aParent)) {
+    return NS_OK;
+  }
+
+  if (mParent) {
+    mParent->mChildren.RemoveElement(this);
+  }
+
+  mParent = static_cast<EmbedLitePuppetWidget*>(aParent);
+
+  if (mParent) {
+    mParent->mChildren.AppendElement(this);
+  }
+
   return NS_OK;
 }
 
@@ -129,42 +149,61 @@ EmbedLitePuppetWidget::GetParent(void)
   return mParent;
 }
 
+void
+EmbedLitePuppetWidget::SetRotation(mozilla::ScreenRotation rotation)
+{
+  mRotation = rotation;
+
+  for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
+    mObservers[i]->WidgetRotationChanged(mRotation);
+  }
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->SetRotation(rotation);
+  }
+
+#ifdef DEBUG
+  if (IsTopLevel()) {
+    DumpWidgetTree();
+  }
+#endif
+}
+
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
-                              nsNativeWidget   aNativeParent,
+                              nsNativeWidget    aNativeParent,
                               const nsIntRect&  aRect,
                               nsWidgetInitData* aInitData)
 {
   LOGT();
   NS_ASSERTION(!aNativeParent, "got a non-Puppet native parent");
 
-  mParent = aParent;
-  BaseCreate(aParent, aRect, aInitData);
+  mParent = static_cast<EmbedLitePuppetWidget*>(aParent);
 
-  mBounds = aRect;
   mEnabled = true;
-  mVisible = true;
+  mVisible = mParent ? mParent->mVisible : true;
 
   EmbedLitePuppetWidget* parent = static_cast<EmbedLitePuppetWidget*>(aParent);
   if (parent) {
-    parent->mChild = this;
-  } else {
-    Resize(mBounds.x, mBounds.y, mBounds.width, mBounds.height, false);
+    parent->mChildren.AppendElement(this);
   }
+  mRotation = parent ? parent->mRotation : mRotation;
+  mBounds = parent ? parent->mBounds : aRect;
+  mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
+
+  BaseCreate(aParent, aRect, aInitData);
 
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);
     gTopLevelWindows.AppendElement(this);
   }
 
-  if (sUseExternalGLContext && sRequestGLContextEarly) {
-    // GetPlatform() should create compositor loop if it doesn't exist, yet.
-    gfxPlatform::GetPlatform();
-    CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
-        NewRunnableFunction(&CreateGLContextEarly, mId));
-  }
-
+  // XXX: Move to EmbedLiteWindow?
   gfxPlatform::GetPlatform()->ComputeTileSize();
+
+#if DEBUG
+  DumpWidgetTree();
+#endif
 
   return NS_OK;
 }
@@ -176,11 +215,9 @@ EmbedLitePuppetWidget::CreateChild(const nsIntRect&  aRect,
 {
   LOGT();
   bool isPopup = IsPopup(aInitData);
-  nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(mEmbed, mId);
-  return ((widget &&
-           NS_SUCCEEDED(widget->Create(isPopup ? nullptr: this, nullptr, aRect,
-                                       aInitData))) ?
-          widget.forget() : nullptr);
+  nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(nullptr, nullptr);
+  nsresult rv = widget->Create(isPopup ? nullptr : this, nullptr, aRect, aInitData);
+  return NS_FAILED(rv) ? nullptr : widget.forget();
 }
 
 NS_IMETHODIMP
@@ -201,11 +238,26 @@ EmbedLitePuppetWidget::Destroy()
 
   Base::OnDestroy();
   Base::Destroy();
-  mParent = nullptr;
-  mEmbed = nullptr;
-  mChild = nullptr;
 
+  while (mChildren.Length()) {
+    mChildren[0]->SetParent(nullptr);
+  }
+  mChildren.Clear();
+
+  if (mParent) {
+    mParent->mChildren.RemoveElement(this);
+  }
+
+  mParent = nullptr;
+  mWindow = nullptr;
+  mView = nullptr;
+
+  // DestroyCompositor does noting in case the widget does not have one.
   DestroyCompositor();
+
+#if DEBUG
+  DumpWidgetTree();
+#endif
 
   return NS_OK;
 }
@@ -213,16 +265,17 @@ EmbedLitePuppetWidget::Destroy()
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Show(bool aState)
 {
-  LOGT("t:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
   NS_ASSERTION(mEnabled,
                "does it make sense to Show()/Hide() a disabled widget?");
 
+  if (mVisible == aState) {
+    return NS_OK;
+  }
+
+  LOGT("this:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
+
   bool wasVisible = mVisible;
   mVisible = aState;
-
-  if (mChild) {
-    mChild->mVisible = aState;
-  }
 
   nsIWidget* topWidget = GetTopLevelWidget();
   if (!mVisible && mLayerManager && topWidget == this) {
@@ -230,41 +283,58 @@ EmbedLitePuppetWidget::Show(bool aState)
   }
 
   if (!wasVisible && mVisible) {
-    Resize(mBounds.width, mBounds.height, false);
+    Resize(mNaturalBounds.width, mNaturalBounds.height, false);
     Invalidate(mBounds);
+  }
+
+  // Only propagate visibility changes for widgets backing EmbedLiteView.
+  if (mView) {
+    for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+      mChildren[i]->Show(aState);
+    }
+#if DEBUG
+    // No point for dumping the tree for both show and hide calls.
+    if (aState) {
+      DumpWidgetTree();
+    }
+#endif
   }
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
-EmbedLitePuppetWidget::Resize(double aWidth,
-                              double aHeight,
-                              bool    aRepaint)
+EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
 {
   nsIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
-  mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget)
-    static_cast<EmbedLitePuppetWidget*>(topWidget)->mBounds = mBounds;
 
-  if (mChild) {
-    return mChild->Resize(aWidth, aHeight, aRepaint);
+  mNaturalBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+  if (mRotation == ROTATION_0 || mRotation == ROTATION_180) {
+    mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+  } else {
+    mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
   }
 
-  // XXX: roc says that |aRepaint| dictates whether or not to
-  // invalidate the expanded area
-  if (oldBounds.Size() < mBounds.Size() && aRepaint) {
-    nsIntRegion dirty(mBounds);
-    dirty.Sub(dirty,  oldBounds);
-    InvalidateRegion(this, dirty);
+  for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
+    mObservers[i]->WidgetBoundsChanged(mBounds);
   }
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->Resize(aWidth, aHeight, aRepaint);
+  }
+
+  Invalidate(mBounds);
 
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (!oldBounds.IsEqualEdges(mBounds) && listener) {
     listener->WindowResized(this, mBounds.width, mBounds.height);
+  }
+
+  if (mCompositorParent) {
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->
+        SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
 
   return NS_OK;
@@ -274,6 +344,29 @@ NS_IMETHODIMP
 EmbedLitePuppetWidget::SetFocus(bool aRaise)
 {
   LOGT();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLitePuppetWidget::Invalidate(const nsIntRect& aRect)
+{
+  nsIWidgetListener* listener = GetWidgetListener();
+  if (listener) {
+    listener->WillPaintWindow(this);
+  }
+
+  LayerManager* lm = nsIWidget::GetLayerManager();
+  if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
+    // No need to do anything, the compositor will handle drawing
+  } else {
+    NS_RUNTIMEABORT("Unexpected layer manager type");
+  }
+
+  listener = GetWidgetListener();
+  if (listener) {
+    listener->DidPaintWindow();
+  }
+
   return NS_OK;
 }
 
@@ -309,9 +402,6 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
-  NS_ASSERTION(!mChild || mChild->mWindowType == eWindowType_popup,
-                    "Unexpected event dispatch!");
-
   aStatus = nsEventStatus_eIgnore;
 
   nsIWidgetListener* listener =
@@ -344,15 +434,6 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
   return NS_OK;
 }
 
-NS_IMETHODIMP
-EmbedLitePuppetWidget::ResetInputState()
-{
-  LOGT();
-  RemoveIMEComposition();
-  return NS_OK;
-}
-
-
 NS_IMETHODIMP_(void)
 EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
                                        const InputContextAction& aAction)
@@ -373,18 +454,17 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
     return;
   }
 
-  if (!mEmbed) {
-    return;
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->SetInputContext(
+      static_cast<int32_t>(aContext.mIMEState.mEnabled),
+      static_cast<int32_t>(aContext.mIMEState.mOpen),
+      aContext.mHTMLInputType,
+      aContext.mHTMLInputInputmode,
+      aContext.mActionHint,
+      static_cast<int32_t>(aAction.mCause),
+      static_cast<int32_t>(aAction.mFocusChange));
   }
-
-  mEmbed->SetInputContext(
-    static_cast<int32_t>(aContext.mIMEState.mEnabled),
-    static_cast<int32_t>(aContext.mIMEState.mOpen),
-    aContext.mHTMLInputType,
-    aContext.mHTMLInputInputmode,
-    aContext.mActionHint,
-    static_cast<int32_t>(aAction.mCause),
-    static_cast<int32_t>(aAction.mFocusChange));
 }
 
 NS_IMETHODIMP_(InputContext)
@@ -392,26 +472,16 @@ EmbedLitePuppetWidget::GetInputContext()
 {
   mInputContext.mIMEState.mOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
   mInputContext.mNativeIMEContext = nullptr;
-  if (mEmbed) {
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
     int32_t enabled, open;
     intptr_t nativeIMEContext;
-    mEmbed->GetInputContext(&enabled, &open, &nativeIMEContext);
+    view->GetInputContext(&enabled, &open, &nativeIMEContext);
     mInputContext.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
     mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
     mInputContext.mNativeIMEContext = reinterpret_cast<void*>(nativeIMEContext);
   }
   return mInputContext;
-}
-
-NS_IMETHODIMP EmbedLitePuppetWidget::OnIMEFocusChange(bool aFocus)
-{
-  LOGT("aFocus:%i", aFocus);
-  if (!aFocus) {
-    mIMEComposing = false;
-    mIMEComposingText.Truncate();
-  }
-
-  return NS_OK;
 }
 
 void
@@ -422,8 +492,9 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
     return;
   }
 
-  if (mEmbed) {
-    mEmbed->ResetInputState();
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->ResetInputState();
   }
 
   nsRefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
@@ -439,27 +510,19 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
   DispatchEvent(&event, status);
 }
 
-bool
-EmbedLitePuppetWidget::ViewIsValid()
-{
-  return EmbedLiteApp::GetInstance()->GetViewByID(mId) != nullptr;
-}
-
 GLContext*
 EmbedLitePuppetWidget::GetGLContext() const
 {
   LOGT("this:%p, UseExternalContext:%d", this, sUseExternalGLContext);
   if (sUseExternalGLContext) {
-    if (!sEGLLibrary.EnsureInitialized()) {
-      return nullptr;
-    }
-
-    EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-    if (view && view->GetListener()->RequestCurrentGLContext()) {
-      void* surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
-      void* context = sEGLLibrary.fGetCurrentContext();
+    EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+    void* context = nullptr;
+    void* surface = nullptr;
+    if (window && window->GetListener()->RequestGLContext(context, surface)) {
+      MOZ_ASSERT(context && surface);
       nsRefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface);
-      if (!mozContext->Init()) {
+      if (!mozContext || !mozContext->Init()) {
+        NS_ERROR("Failed to initialize external GL context!");
         return nullptr;
       }
       return mozContext.forget().take();
@@ -471,17 +534,33 @@ EmbedLitePuppetWidget::GetGLContext() const
 }
 
 void
-EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aViewId)
+EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aWindowId)
 {
-  LOGT("ViewId:%u", aViewId);
-  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
-  MOZ_ASSERT(sRequestGLContextEarly);
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(aViewId);
-  if (view) {
-    view->GetListener()->RequestCurrentGLContext();
+  LOGT("WindowID:%u", aWindowId);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(aWindowId);
+  if (window) {
+    void* context = nullptr;
+    void* surface = nullptr;
+    window->GetListener()->RequestGLContext(context, surface);
+    MOZ_ASSERT(context && surface);
   } else {
-    NS_WARNING("Trying to early create GL context for non existing view!");
+    NS_WARNING("Trying to early create GL context for non existing window!");
   }
+}
+
+nsIntRect EmbedLitePuppetWidget::GetNaturalBounds()
+{
+  return mNaturalBounds;
+}
+
+bool
+EmbedLitePuppetWidget::NeedsPaint()
+{
+  // Widgets representing EmbedLite view and window don't need to paint anything.
+  if (mWindow || mView) {
+    return false;
+  }
+  return nsIWidget::NeedsPaint();
 }
 
 LayerManager*
@@ -499,8 +578,15 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     return nullptr;
   }
 
-
   if (mLayerManager) {
+    // This layer manager might be used for painting outside of DoDraw(), so we need
+    // to set the correct rotation on it.
+    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+        ClientLayerManager* manager =
+            static_cast<ClientLayerManager*>(mLayerManager.get());
+        manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
+                                               mRotation);
+    }
     return mLayerManager;
   }
 
@@ -522,35 +608,14 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     if (!lf->HasShadowManager() && aShadowManager) {
       lf->SetShadowManager(aShadowManager);
     }
-
-    return mLayerManager;
-  }
-
-  if (!ViewIsValid()) {
-    printf("Embed View has been destroyed early\n");
-    mLayerManager = CreateBasicLayerManager();
-    return mLayerManager;
-  }
-
-  EmbedLitePuppetWidget* topWindow = TopWindow();
-  if (!topWindow) {
-    printf_stderr(" -- no topwindow\n");
-    mLayerManager = CreateBasicLayerManager();
     return mLayerManager;
   }
 
   mUseLayersAcceleration = ComputeShouldAccelerate(mUseLayersAcceleration);
 
-  bool useCompositor = ShouldUseOffMainThreadCompositing();
-
-  if (useCompositor) {
+  if (ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
     if (mLayerManager) {
-      return mLayerManager;
-    }
-    if (!ViewIsValid()) {
-      printf(" -- Failed create compositor due to quick View destroy\n");
-      mLayerManager = CreateBasicLayerManager();
       return mLayerManager;
     }
     // If we get here, then off main thread compositing failed to initialize.
@@ -567,15 +632,18 @@ CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
   LOGT();
-  gfxPlatform::GetPlatform();
-  return new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
+  mHasCompositor = true;
+  return new EmbedLiteCompositorParent(this, mWindow->GetUniqueID(), true,
+                                       aSurfaceWidth, aSurfaceHeight);
 }
 
 void EmbedLitePuppetWidget::CreateCompositor()
 {
   LOGT();
-  gfxSize glSize = mEmbed->GetGLViewSize();
-  CreateCompositor(glSize.width, glSize.height);
+  // Compositor should be created only for top level widgets, aka windows.
+  MOZ_ASSERT(mWindow);
+  gfxSize size = mWindow->GetSize();
+  CreateCompositor(size.width, size.height);
 }
 
 static void
@@ -594,6 +662,10 @@ CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
 void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
   LOGT();
+
+  // This makes sure that gfxPlatforms gets initialized if it hasn't by now.
+  gfxPlatform::GetPlatform();
+
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
   nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
@@ -629,34 +701,94 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
     mLayerManager = lm.forget();
   } else {
     // We don't currently want to support not having a LayersChild
-    if (ViewIsValid()) {
-      NS_RUNTIMEABORT("failed to construct LayersChild, and View still here");
-    }
     lm = nullptr;
     mCompositorChild = nullptr;
   }
 }
 
-nsIntRect
-EmbedLitePuppetWidget::GetNaturalBounds()
-{
-  return nsIntRect();
-}
-
 void
 EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  parent->DrawWindowUnderlay(aManager, aRect);
+  MOZ_ASSERT(mWindow);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+  if (window) {
+    window->GetListener()->DrawUnderlay();
+  }
 }
 
 void
 EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  parent->DrawWindowOverlay(aManager, aRect);
+  MOZ_ASSERT(mWindow);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+  if (window) {
+    window->GetListener()->DrawOverlay(aRect);
+  }
+}
+
+void
+EmbedLitePuppetWidget::PostRender(LayerManagerComposite* aManager)
+{
+  MOZ_ASSERT(mWindow);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+  if (window) {
+    window->GetListener()->CompositingFinished();
+  }
+}
+
+void
+EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver* obs)
+{
+  mObservers.AppendElement(obs);
+}
+
+void
+EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver* obs)
+{
+  mObservers.RemoveElement(obs);
+}
+
+void
+EmbedLitePuppetWidget::DumpWidgetTree()
+{
+  printf_stderr("EmbedLite Puppet Widget Tree:\n");
+  DumpWidgetTree(gTopLevelWindows);
+}
+
+void
+EmbedLitePuppetWidget::DumpWidgetTree(const nsTArray<EmbedLitePuppetWidget*>& widgets, int indent)
+{
+  for (uint32_t i = 0; i < widgets.Length(); ++i) {
+    EmbedLitePuppetWidget *w = widgets[i];
+    LogWidget(w, i, indent);
+    DumpWidgetTree(w->mChildren, indent + 2);
+  }
+}
+
+void
+EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int indent)
+{
+  char spaces[] = "                    ";
+  spaces[indent < 20 ? indent : 20] = 0;
+  printf_stderr("%s [% 2d] [%p] size: [(%d, %d), (%3d, %3d)], "
+                "visible: %d, type: %d, rotation: %d, observers: %zu\n",
+                spaces, index, widget,
+                widget->mBounds.x, widget->mBounds.y,
+                widget->mBounds.width, widget->mBounds.height,
+                widget->mVisible, widget->mWindowType,
+                widget->mRotation * 90, widget->mObservers.Length());
+}
+
+EmbedLiteViewChildIface*
+EmbedLitePuppetWidget::GetEmbedLiteChildView() const
+{
+  if (mView) {
+    return mView;
+  }
+  if (mParent) {
+    return mParent->GetEmbedLiteChildView();
+  }
+  return nullptr;
 }
 
 }  // namespace widget

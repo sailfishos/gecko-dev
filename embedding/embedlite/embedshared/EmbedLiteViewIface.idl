@@ -31,11 +31,6 @@ class nsString;
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
 interface EmbedLiteViewIface
 {
-    void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
-    void SetViewSize(in int32_t aWidth, in int32_t aHeight);
-    void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
-    void SetScreenRotation([const] in ScreenRotation rotation);
-    void ScheduleUpdate();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
@@ -43,11 +38,7 @@ interface EmbedLiteViewIface
     void MousePress(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
     void MouseRelease(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
     void MouseMove(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
-    void UpdateScrollController();
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
-    void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
-    void SuspendRendering();
-    void ResumeRendering();
     void SetEmbedAPIView(in EmbedLiteView aView);
 };

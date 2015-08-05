@@ -21,6 +21,7 @@ namespace embedlite {
 class EmbedLiteViewThreadParent;
 class PEmbedLiteViewParent;
 class EmbedLiteView;
+class EmbedLiteWindow;
 
 class EmbedLiteViewListener
 {
@@ -47,12 +48,6 @@ public:
   virtual void SetBackgroundColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {}
   virtual void OnWindowCloseRequested(void) {}
 
-  // Compositor Interface
-  //   Notification about compositor allocation, will be different thread call if compositor created in separate thread
-  virtual void CompositorCreated() { }
-  //   Invalidate notification
-  virtual bool Invalidate() { return false; }
-  virtual void CompositingFinished() { }
   virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
   virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen, intptr_t* aNativeIMEContext) {}
 
@@ -64,23 +59,13 @@ public:
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
-
-  // Will be always called from the compositor thread.
-  virtual void DrawUnderlay() {}
-
-  // Will be always called from the compositor thread.
-  virtual void DrawOverlay(const nsIntRect& aRect) {}
-
-  // Some GL Context implementations require Platform GL context to be active and valid
-  virtual bool RequestCurrentGLContext() { return false; }
 };
 
 class EmbedLiteApp;
 class EmbedLiteView
 {
 public:
-  EmbedLiteView(EmbedLiteApp* aApp, PEmbedLiteViewParent* aViewImpl, uint32_t aViewId);
-  virtual ~EmbedLiteView();
+  EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow, PEmbedLiteViewParent* aViewImpl, uint32_t aViewId);
 
   // Listener setup, call this with null pointer if listener destroyed before EmbedLiteView
   virtual void SetListener(EmbedLiteViewListener* aListener);
@@ -113,21 +98,21 @@ public:
   virtual void PinchEnd(int x, int y, float scale);
 
   // Setup renderable view size
-  virtual void SetViewSize(int width, int height);
+  virtual void SetViewSize(int width, int height); // XXX: Remove, EmbedLiteViews always cover the whole window
 
   // Compositor Interface
   //   PNG Decoded data
-  virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1);
+  virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1); // XXX: Remove
 
   // Render content into custom rgb image (SW Rendering)
-  virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
+  virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth); // XXX: Remove
 
   //   Setup renderable GL/EGL window surface size
-  virtual void SetGLViewPortSize(int width, int height);
+  virtual void SetGLViewPortSize(int width, int height) {}; // XXX: Remove
 
   // Set screen rotation (orientation change).
-  virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
-  virtual void ScheduleUpdate();
+  virtual void SetScreenRotation(mozilla::ScreenRotation rotation); // TODO: Remove
+  virtual void ScheduleUpdate(); // TODO: Remove
 
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
@@ -144,17 +129,22 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
-  virtual void* GetPlatformImage(int* width, int* height);
 
-  virtual void SuspendRendering();
-  virtual void ResumeRendering();
+  virtual void* GetPlatformImage(int* width, int* height); // XXX: Remove
+  virtual void SuspendRendering() {} // XXX: Remove
+  virtual void ResumeRendering() {} // XXX: Remove
 
 private:
   friend class EmbedLiteViewThreadParent;
-  friend class EmbedLiteCompositorParent;
+  friend class EmbedLiteApp; // Needs to destroy the view.
+
+  // EmbedLiteViews are supposed to be destroyed through EmbedLiteApp::DestroyView.
+  virtual ~EmbedLiteView();
+
   EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
+  EmbedLiteWindow* mWindow;
   EmbedLiteViewListener* mListener;
   EmbedLiteViewIface* mViewImpl;
   PEmbedLiteViewParent* mViewParent;

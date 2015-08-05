@@ -25,8 +25,9 @@ namespace embedlite {
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
-EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, PEmbedLiteViewParent* aViewImpl, uint32_t aViewId)
+EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmbedLiteViewParent* aViewImpl, uint32_t aViewId)
   : mApp(aApp)
+  , mWindow(aWindow)
   , mListener(NULL)
   , mViewImpl(dynamic_cast<EmbedLiteViewIface*>(aViewImpl))
   , mViewParent(aViewImpl)
@@ -39,7 +40,7 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, PEmbedLiteViewParent* aViewImpl
 EmbedLiteView::~EmbedLiteView()
 {
   LOGT("impl:%p", mViewImpl);
-  if (mViewImpl) {
+  if (mViewParent) {
     unused << mViewParent->SendDestroy();
   } else {
     LOGNI();
@@ -192,136 +193,34 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 
 // Render interface
 
-bool
-EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
-{
-  LOGF("data:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return NS_SUCCEEDED(mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth));
-}
-
 char*
 EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
 {
-  // copy from gfxASurface::WriteAsPNG_internal
-  NS_ENSURE_TRUE(mViewImpl, nullptr);
-  nsRefPtr<gfxImageSurface> img =
-    new gfxImageSurface(gfxIntSize(aWidth, aHeight), gfxImageFormat::RGB24);
-  mViewImpl->RenderToImage(img->Data(), img->Width(), img->Height(), img->Stride(), 24);
-  nsCOMPtr<imgIEncoder> encoder =
-    do_CreateInstance("@mozilla.org/image/encoder;2?type=image/png");
-  NS_ENSURE_TRUE(encoder, nullptr);
-  gfxIntSize size = img->GetSize();
-  nsresult rv = encoder->InitFromData(img->Data(),
-                                      size.width * size.height * 4,
-                                      size.width,
-                                      size.height,
-                                      img->Stride(),
-                                      imgIEncoder::INPUT_FORMAT_HOSTARGB,
-                                      NS_LITERAL_STRING(""));
-  if (NS_FAILED(rv)) {
-    return nullptr;
-  }
-  nsCOMPtr<nsIInputStream> imgStream;
-  CallQueryInterface(encoder.get(), getter_AddRefs(imgStream));
+  return mWindow->GetImageAsURL(aWidth, aHeight);
+}
 
-  if (!imgStream) {
-    return nullptr;
-  }
-
-  uint64_t bufSize64;
-  rv = imgStream->Available(&bufSize64);
-  if (NS_FAILED(rv)) {
-    return nullptr;
-  }
-
-  if (bufSize64 > UINT32_MAX - 16) {
-    return nullptr;
-  }
-
-  uint32_t bufSize = (uint32_t)bufSize64;
-
-  // ...leave a little extra room so we can call read again and make sure we
-  // got everything. 16 bytes for better padding (maybe)
-  bufSize += 16;
-  uint32_t imgSize = 0;
-  char* imgData = (char*)moz_malloc(bufSize);
-  if (!imgData) {
-    return nullptr;
-  }
-  uint32_t numReadThisTime = 0;
-  while ((rv = imgStream->Read(&imgData[imgSize],
-                               bufSize - imgSize,
-                               &numReadThisTime)) == NS_OK && numReadThisTime > 0) {
-    imgSize += numReadThisTime;
-    if (imgSize == bufSize) {
-      // need a bigger buffer, just double
-      bufSize *= 2;
-      char* newImgData = (char*)moz_realloc(imgData, bufSize);
-      if (!newImgData) {
-        moz_free(imgData);
-        return nullptr;
-      }
-      imgData = newImgData;
-    }
-  }
-
-  // base 64, result will be NULL terminated
-  nsCString encodedImg;
-  rv = Base64Encode(Substring(imgData, imgSize), encodedImg);
-  moz_free(imgData);
-  if (NS_FAILED(rv)) { // not sure why this would fail
-    return nullptr;
-  }
-
-  nsCString string("data:image/png;base64,");
-  string.Append(encodedImg);
-
-  return ToNewCString(string);
+bool
+EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
+{
+  return mWindow->RenderToImage(aData, imgW, imgH, stride, depth);
 }
 
 void
 EmbedLiteView::SetViewSize(int width, int height)
 {
-  LOGNI("sz[%i,%i]", width, height);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewSize(width, height);
-}
-
-void
-EmbedLiteView::SetGLViewPortSize(int width, int height)
-{
-  LOGNI("sz[%i,%i]", width, height);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetGLViewPortSize(width, height);
+  mWindow->SetSize(width, height);
 }
 
 void
 EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetScreenRotation(rotation);
+  mWindow->SetContentOrientation(rotation);
 }
 
 void
 EmbedLiteView::ScheduleUpdate()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ScheduleUpdate();
-}
-
-void
-EmbedLiteView::SuspendRendering()
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SuspendRendering();
-}
-
-void
-EmbedLiteView::ResumeRendering()
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ResumeRendering();
+  mWindow->ScheduleUpdate();
 }
 
 void
@@ -398,19 +297,14 @@ EmbedLiteView::GetUniqueID()
   NS_ENSURE_TRUE(mViewImpl, 0);
   uint32_t id;
   mViewImpl->GetUniqueID(&id);
-  if (id != mUniqueID) {
-    NS_ERROR("Something went wrong");
-  }
+  MOZ_ASSERT(id == mUniqueID);
   return mUniqueID;
 }
 
 void*
 EmbedLiteView::GetPlatformImage(int* width, int* height)
 {
-  NS_ENSURE_TRUE(mViewImpl, nullptr);
-  void* aImage = 0;
-  mViewImpl->GetPlatformImage(&aImage, width, height);
-  return aImage;
+  return mWindow->GetPlatformImage(width, height);
 }
 
 } // namespace embedlite

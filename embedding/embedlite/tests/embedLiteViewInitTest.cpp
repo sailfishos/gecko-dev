@@ -51,9 +51,11 @@ class MyViewListener : public EmbedLiteViewListener
 public:
   MyViewListener(MyListener* appListener)
     : mAppListener(appListener)
-    , mView(NULL)
+    , mWindow(nullptr)
+    , mView(nullptr)
   {
-    mView = mAppListener->App()->CreateView();
+    mWindow = mAppListener->App()->CreateWindow();
+    mView = mAppListener->App()->CreateView(mWindow);
     mView->SetListener(this);
     mView->SetViewSize(800, 600);
   }
@@ -116,6 +118,7 @@ public:
 
 private:
   MyListener* mAppListener;
+  EmbedLiteWindow* mWindow;
   EmbedLiteView* mView;
 };
 
