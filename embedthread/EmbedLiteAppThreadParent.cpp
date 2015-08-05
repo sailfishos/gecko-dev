@@ -6,6 +6,7 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteViewThreadParent.h"
+#include "EmbedLiteWindowThreadParent.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteApp.h"
 #include "mozilla/layers/PCompositorParent.h"
@@ -81,10 +82,10 @@ EmbedLiteAppThreadParent::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parent:%u", id, parentId);
-  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(id, parentId, isPrivateWindow);
+  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(windowId, id, parentId, isPrivateWindow);
   p->AddRef();
   return p;
 }
@@ -94,6 +95,24 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* acto
 {
   LOGT();
   EmbedLiteViewThreadParent* p = static_cast<EmbedLiteViewThreadParent *>(actor);
+  p->Release();
+  return true;
+}
+
+PEmbedLiteWindowParent*
+EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(const uint32_t& id)
+{
+  LOGT("id:%u", id);
+  EmbedLiteWindowThreadParent* p = new EmbedLiteWindowThreadParent(id);
+  p->AddRef();
+  return p;
+}
+
+bool
+EmbedLiteAppThreadParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* aActor)
+{
+  LOGT();
+  EmbedLiteWindowThreadParent* p = static_cast<EmbedLiteWindowThreadParent *>(aActor);
   p->Release();
   return true;
 }

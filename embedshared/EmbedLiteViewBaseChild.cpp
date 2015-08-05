@@ -76,24 +76,30 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aId, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const uint32_t& aId,
+                                               const uint32_t& aParentId, const bool& isPrivateWindow)
   : mId(aId)
   , mOuterId(0)
-  , mViewSize(0, 0)
+  , mWindow(nullptr)
   , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
 {
-  LOGT("id:%u, parentID:%u", aId, parentId);
+  LOGT("id:%u, parentID:%u", aId, aParentId);
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
     sPrefInitialized = true;
     ReadAZPCPrefs();
   }
-  mInitWindowTask = NewRunnableMethod(this,
-                                      &EmbedLiteViewBaseChild::InitGeckoWindow, parentId, isPrivateWindow);
+
+  mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
+  MOZ_ASSERT(mWindow != nullptr);
+  mViewSize = mWindow->GetSize();
+
+  mInitWindowTask = NewRunnableMethod(this, &EmbedLiteViewBaseChild::InitGeckoWindow,
+                                      aParentId, isPrivateWindow);
   MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
 }
 
@@ -126,7 +132,8 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
     mHelper->Unload();
   if (mChrome)
     mChrome->RemoveEventHandler();
-  mWidget = nullptr;
+  if (mWidget)
+    mWidget->Destroy();
   mWebBrowser = nullptr;
   mChrome = nullptr;
   mDOMWindow = nullptr;
@@ -155,19 +162,16 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     return;
   }
 
-  mWidget = new EmbedLitePuppetWidget(this, mId);
-
+  mWidget = new EmbedLitePuppetWidget(this);
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
-  widgetInit.mWindowType = eWindowType_toplevel;
-  mWidget->Create(
-    nullptr, 0,              // no parents
-    nsIntRect(nsIntPoint(0, 0), nsIntSize(mGLViewSize.width, mGLViewSize.height)),
-    &widgetInit              // HandleWidgetEvent
-  );
-
-  if (!mWidget) {
-    NS_ERROR("couldn't create fake widget");
+  widgetInit.clipSiblings = true;
+  widgetInit.mWindowType = eWindowType_child;
+  rv = mWidget->Create(mWindow->GetWidget(), 0,
+                       nsIntRect(0, 0, mViewSize.width, mViewSize.height),
+                       &widgetInit);
+  if (NS_FAILED(rv)) {
+    NS_ERROR("Failed to create widget for EmbedLiteView");
     return;
   }
 
@@ -192,20 +196,20 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
                       nsIWebBrowserChrome::CHROME_OPENAS_DIALOG)) {
     nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
     docShellItem->SetItemType(nsIDocShellTreeItem::typeChromeWrapper);
-    LOGT("Chrome window created\n");
+    LOGT("Chrome window created.");
   }
 
   if (NS_FAILED(baseWindow->Create())) {
-    NS_ERROR("Creation of basewindow failed.\n");
+    NS_ERROR("Creation of basewindow failed!");
   }
 
   if (NS_FAILED(mWebBrowser->GetContentDOMWindow(getter_AddRefs(domWindow)))) {
-    NS_ERROR("Failed to get the content DOM window.\n");
+    NS_ERROR("Failed to get the content DOM window!");
   }
 
   mDOMWindow = do_QueryInterface(domWindow);
   if (!mDOMWindow) {
-    NS_ERROR("Got stuck with DOMWindow1!");
+    NS_ERROR("Got stuck with DOMWindow!");
   }
 
   mozilla::dom::AutoNoJSAPI nojsapi;
@@ -243,7 +247,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
 
   rv = baseWindow->SetVisibility(true);
   if (NS_FAILED(rv)) {
-    NS_ERROR("SetVisibility failed.\n");
+    NS_ERROR("SetVisibility failed!");
   }
 
   mHelper = new TabChildHelper(this);
@@ -482,6 +486,8 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
     LOGT("Deactivate browser");
   }
   mWebBrowser->SetIsActive(aIsActive);
+  mWidget->Show(aIsActive);
+
   return true;
 }
 

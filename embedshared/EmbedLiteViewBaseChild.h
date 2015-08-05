@@ -29,7 +29,8 @@ class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
 public:
-  EmbedLiteViewBaseChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
+		         const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -165,6 +166,7 @@ private:
 
   uint32_t mId;
   uint64_t mOuterId;
+  EmbedLiteWindowBaseChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   nsRefPtr<WebBrowserChrome> mChrome;

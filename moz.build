@@ -32,6 +32,7 @@ EXPORTS.mozilla.embedlite += [
     'EmbedLiteContentController.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
+    'EmbedLiteWindow.h',
     'embedprocess/EmbedLiteAppProcessChild.h',
     'embedprocess/EmbedLiteAppProcessParent.h',
     'embedshared/EmbedLiteAppBaseChild.h',
@@ -48,6 +49,7 @@ UNIFIED_SOURCES += [
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
     'EmbedLiteView.cpp',
+    'EmbedLiteWindow.cpp',
     'embedprocess/EmbedLiteAppProcessChild.cpp',
     'embedprocess/EmbedLiteAppProcessParent.cpp',
     'embedprocess/EmbedLiteCompositorProcessParent.cpp',
@@ -58,10 +60,13 @@ UNIFIED_SOURCES += [
     'embedshared/EmbedLitePuppetWidget.cpp',
     'embedshared/EmbedLiteViewBaseChild.cpp',
     'embedshared/EmbedLiteViewBaseParent.cpp',
+    'embedshared/EmbedLiteWindowBaseChild.cpp',
+    'embedshared/EmbedLiteWindowBaseParent.cpp',
     'embedthread/EmbedContentController.cpp',
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',
     'embedthread/EmbedLiteViewThreadChild.cpp',
+    'embedthread/EmbedLiteWindowThreadChild.cpp',
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
     'utils/DirProvider.cpp',
@@ -76,11 +81,13 @@ UNIFIED_SOURCES += [
 SOURCES += [
     'embedthread/EmbedLiteCompositorParent.cpp',
     'embedthread/EmbedLiteViewThreadParent.cpp',
+    'embedthread/EmbedLiteWindowThreadParent.cpp',
 ]
 
 IPDL_SOURCES += [
     'PEmbedLiteApp.ipdl',
-    'PEmbedLiteView.ipdl'
+    'PEmbedLiteView.ipdl',
+    'PEmbedLiteWindow.ipdl',
 ]
 
 LOCAL_INCLUDES += [

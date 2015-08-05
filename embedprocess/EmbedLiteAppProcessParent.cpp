@@ -228,7 +228,7 @@ EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& d
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT();
 
@@ -245,7 +245,7 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& id, const u
     }
   }
 
-  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(id, parentId, isPrivateWindow);
+  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, isPrivateWindow);
   p->AddRef();
   return p;
 }
@@ -256,6 +256,22 @@ EmbedLiteAppProcessParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aAc
   LOGT();
   EmbedLiteViewProcessParent* p = static_cast<EmbedLiteViewProcessParent*>(aActor);
   p->Release();
+  return true;
+}
+
+PEmbedLiteWindowParent*
+EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(const uint32_t& id)
+{
+  LOGNI();
+
+  return nullptr;
+}
+
+bool
+EmbedLiteAppProcessParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* aActor)
+{
+  LOGNI();
+
   return true;
 }
 
