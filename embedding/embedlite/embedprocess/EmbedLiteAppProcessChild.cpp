@@ -147,7 +147,8 @@ EmbedLiteAppProcessChild::QuickExit()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
+		                                   const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;
@@ -155,9 +156,16 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uin
     gfxPlatform::GetPlatform()->ComputeTileSize();
     sViewInitializeOnce = true;
   }
-  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(id, parentId, isPrivateWindow);
+  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId, isPrivateWindow);
   view->AddRef();
   return view;
+}
+
+PEmbedLiteWindowChild*
+EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint32_t& id)
+{
+  LOGNI();
+  return nullptr;
 }
 
 PCompositorChild*

@@ -7,9 +7,9 @@
 
 #include "EmbedLiteCompositorParent.h"
 #include "BasicLayers.h"
-#include "EmbedLiteViewThreadParent.h"
 #include "EmbedLiteApp.h"
-#include "EmbedLiteView.h"
+#include "EmbedLiteWindow.h"
+#include "EmbedLiteWindowBaseParent.h"
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
@@ -35,24 +35,21 @@ namespace embedlite {
 
 static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
-EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
+EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
+		                                     uint32_t windowId,
                                                      bool aRenderToEGLSurface,
                                                      int aSurfaceWidth,
-                                                     int aSurfaceHeight,
-                                                     uint32_t id)
-  : CompositorParent(aWidget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
-  , mId(id)
+                                                     int aSurfaceHeight)
+  : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
+  , mWindowId(windowId)
   , mRotation(ROTATION_0)
   , mUseScreenRotation(false)
   , mCurrentCompositeTask(nullptr)
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
-  , mInitialPaintCount(0)
 {
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  LOGT("this:%p, view:%p, sz[%i,%i]", this, view, aSurfaceWidth, aSurfaceHeight);
-  MOZ_ASSERT(view, "Something went wrong, Compositor not suspended on destroy?");
-  EmbedLiteViewThreadParent* pview = static_cast<EmbedLiteViewThreadParent*>(view->GetImpl());
-  pview->SetCompositor(this);
+  EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
+  LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
+  parentWindow->SetCompositor(this);
   // Workaround for MOZ_ASSERT(!aOther.IsNull(), "Cannot compute with aOther null value");
   mLastCompose = TimeStamp::Now();
 }
@@ -60,7 +57,6 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
 EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
 {
   LOGT();
-  EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
 }
 
 PLayerTransactionParent*
@@ -83,10 +79,9 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
 void
 EmbedLiteCompositorParent::PrepareOffscreen()
 {
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  EmbedLiteViewListener* listener = view ? view->GetListener() : nullptr;
-  if (listener) {
-    listener->CompositorCreated();
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win) {
+    win->GetListener()->CompositorCreated();
   }
 
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
@@ -154,19 +149,10 @@ EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 bool
 EmbedLiteCompositorParent::Invalidate()
 {
-  LOGF();
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  if (!view) {
-    LOGE("view not available.. forgot SuspendComposition call?");
-    return true;
-  }
-
   UpdateTransformState();
 
-  if (view->GetListener() && !view->GetListener()->Invalidate()) {
-    // Replace CompositorParent::CompositeCallback with EmbedLiteCompositorParent::RenderGL
-    // in mCurrentCompositeTask (NB: actually EmbedLiteCompositorParent::mCurrentCompositorParent
-    // overshadows CompositorParent::mCurrentCompositorTask. Beware!).
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win && !win->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
@@ -224,16 +210,11 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
       NS_ERROR("Failed to publish context frame");
       return false;
     }
-    // Temporary hack, we need two extra paints in order to get initial picture
-    if (mInitialPaintCount < 2) {
-      ScheduleRenderOnCompositorThread();
-      mInitialPaintCount++;
-    }
   }
 
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  if (view) {
-    view->GetListener()->CompositingFinished();
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win) {
+    win->GetListener()->CompositingFinished();
   }
 
   return false;
@@ -315,22 +296,6 @@ void
 EmbedLiteCompositorParent::ResumeRendering()
 {
   CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width, mLastViewSize.height);
-}
-
-void EmbedLiteCompositorParent::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
-{
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  if (view) {
-    view->GetListener()->DrawUnderlay();
-  }
-}
-
-void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
-{
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  if (view) {
-    view->GetListener()->DrawOverlay(aRect);
-  }
 }
 
 } // namespace embedlite

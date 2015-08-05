@@ -23,6 +23,7 @@
 #include "gfxPlatform.h"
 
 #include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteWindowThreadChild.h"
 #include "mozilla/unused.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
@@ -170,6 +171,22 @@ EmbedLiteAppBaseChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
   return true;
 }
 
+bool
+EmbedLiteAppBaseChild::DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild* aActor)
+{
+  LOGT();
+  std::map<uint32_t, EmbedLiteWindowBaseChild*>::iterator it;
+  for (it = mWeakWindowMap.begin(); it != mWeakWindowMap.end(); ++it) {
+    if (aActor == it->second) {
+      mWeakWindowMap.erase(it);
+      break;
+    }
+  }
+  EmbedLiteWindowBaseChild* w = static_cast<EmbedLiteWindowBaseChild*>(aActor);
+  w->Release();
+  return true;
+}
+
 bool EmbedLiteAppBaseChild::CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
 {
   return SendCreateWindow(parentId, uri, chromeFlags, contextFlags, createdID, cancel);
@@ -190,6 +207,18 @@ EmbedLiteAppBaseChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
     if (aParent == it->second->mChrome.get()) {
       return it->second;
     }
+  }
+  return nullptr;
+}
+
+EmbedLiteWindowBaseChild*
+EmbedLiteAppBaseChild::GetWindowByID(uint32_t aWindowID)
+{
+  LOGT("mWeakWindowMap:%i", mWeakWindowMap.size());
+  std::map<uint32_t, EmbedLiteWindowBaseChild*>::const_iterator it;
+  it = mWeakWindowMap.find(aWindowID);
+  if (it != mWeakWindowMap.end()) {
+    return it->second;
   }
   return nullptr;
 }
