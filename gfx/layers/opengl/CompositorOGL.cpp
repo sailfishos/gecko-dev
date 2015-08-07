@@ -600,8 +600,10 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
 
   // We can't draw anything to something with no area
   // so just return
-  if (width == 0 || height == 0)
+  if (width == 0 || height == 0) {
+    mFrameInProgress = false;
     return;
+  }
 
   // If the widget size changed, we have to force a MakeCurrent
   // to make sure that GL sees the updated widget size.
