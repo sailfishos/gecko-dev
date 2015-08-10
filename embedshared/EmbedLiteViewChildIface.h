@@ -29,7 +29,6 @@ public:
                   int32_t* IMEOpen,
                   intptr_t* NativeIMEContext) = 0;
   virtual void ResetInputState() = 0;
-  virtual gfxSize GetGLViewSize() = 0;
 
 /*-------------TabChild-------------------*/
 

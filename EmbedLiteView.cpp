@@ -208,24 +208,13 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
 void
 EmbedLiteView::SetViewSize(int width, int height)
 {
-  LOGNI("sz[%i,%i]", width, height);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewSize(width, height);
-}
-
-void
-EmbedLiteView::SetGLViewPortSize(int width, int height)
-{
-  LOGNI("sz[%i,%i]", width, height);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetGLViewPortSize(width, height);
+  mWindow->SetSize(width, height);
 }
 
 void
 EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetScreenRotation(rotation);
+  mWindow->SetContentOrientation(rotation);
 }
 
 void
@@ -308,9 +297,7 @@ EmbedLiteView::GetUniqueID()
   NS_ENSURE_TRUE(mViewImpl, 0);
   uint32_t id;
   mViewImpl->GetUniqueID(&id);
-  if (id != mUniqueID) {
-    NS_ERROR("Something went wrong");
-  }
+  MOZ_ASSERT(id == mUniqueID);
   return mUniqueID;
 }
 

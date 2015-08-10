@@ -111,7 +111,6 @@ protected:
                                    const nsString& aActionHint,
                                    const int32_t& aCause,
                                    const int32_t& aFocusChange) override;
-  virtual bool RecvGetGLViewSize(gfxSize* aSize) override;
 
   // EmbedLiteWindowParentObserver:
   void CompositorCreated() override;
@@ -130,13 +129,6 @@ private:
   bool mViewAPIDestroyed;
   EmbedLiteWindowBaseParent& mWindow;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
-
-  ScreenIntSize mViewSize;
-  gfxSize mGLViewPortSize;
-
-  // Cache initial values.
-  mozilla::ScreenRotation mRotation;
-  bool mPendingRotation;
 
   MessageLoop* mUILoop;
   int mLastIMEState;

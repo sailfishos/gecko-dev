@@ -98,7 +98,7 @@ public:
   virtual void PinchEnd(int x, int y, float scale);
 
   // Setup renderable view size
-  virtual void SetViewSize(int width, int height);
+  virtual void SetViewSize(int width, int height); // XXX: Remove, EmbedLiteViews always cover the whole window
 
   // Compositor Interface
   //   PNG Decoded data
@@ -108,10 +108,10 @@ public:
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth); // XXX: Remove
 
   //   Setup renderable GL/EGL window surface size
-  virtual void SetGLViewPortSize(int width, int height);
+  virtual void SetGLViewPortSize(int width, int height) {}; // XXX: Remove
 
   // Set screen rotation (orientation change).
-  virtual void SetScreenRotation(mozilla::ScreenRotation rotation);
+  virtual void SetScreenRotation(mozilla::ScreenRotation rotation); // TODO: Remove
   virtual void ScheduleUpdate(); // TODO: Remove
 
   // Scripting Interface, allow to extend embedding API by creating

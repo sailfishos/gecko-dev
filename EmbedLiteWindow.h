@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "nsRect.h"
+#include "mozilla/WidgetUtils.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -73,6 +74,7 @@ public:
 
   virtual uint32_t GetUniqueID() const;
 
+  virtual void SetContentOrientation(mozilla::ScreenRotation);
   virtual void ScheduleUpdate();
   virtual void SuspendRendering();
   virtual void ResumeRendering();

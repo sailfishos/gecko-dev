@@ -42,10 +42,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
                                                      int aSurfaceHeight)
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
-  , mRotation(ROTATION_0)
-  , mUseScreenRotation(false)
   , mCurrentCompositeTask(nullptr)
-  , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
@@ -123,14 +120,9 @@ EmbedLiteCompositorParent::UpdateTransformState()
   GLContext* context = compositor->gl();
   NS_ENSURE_TRUE(context, );
 
-  if (mUseScreenRotation) {
-    LOGNI("SetScreenRotation is not fully implemented");
-    // compositor->SetScreenRotation(mRotation);
-    // state->mLayerManager->SetWorldTransform(mWorldTransform);
-  }
-
-  if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
-    context->ResizeOffscreen(mLastViewSize);
+  gfx::IntSize eglSize(mEGLSurfaceSize.width, mEGLSurfaceSize.height);
+  if (context->IsOffscreen() && context->OffscreenSize() != eglSize) {
+    context->ResizeOffscreen(eglSize);
     ScheduleRenderOnCompositorThread();
   }
 }
@@ -212,49 +204,13 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
     }
   }
 
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositingFinished();
-  }
-
   return false;
 }
 
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
-  mLastViewSize.SizeTo(width, height);
-  SetEGLSurfaceSize(width, height);
-}
-
-void EmbedLiteCompositorParent::SetScreenRotation(const mozilla::ScreenRotation &rotation)
-{
-  if (mRotation != rotation) {
-    gfx::Matrix rotationMartix;
-    switch (rotation) {
-    case mozilla::ROTATION_90:
-        // Pi / 2
-        rotationMartix.PreRotate(M_PI_2l);
-        rotationMartix.PreTranslate(0.0, -mLastViewSize.height);
-        break;
-    case mozilla::ROTATION_270:
-        // 3 / 2 * Pi
-        rotationMartix.PreRotate(M_PI_2l * 3);
-        rotationMartix.PreTranslate(-mLastViewSize.width, 0.0);
-        break;
-    case mozilla::ROTATION_180:
-        // Pi
-        rotationMartix.PreRotate(M_PIl);
-        rotationMartix.PreTranslate(-mLastViewSize.width, -mLastViewSize.height);
-        break;
-    default:
-        break;
-    }
-
-    mWorldTransform = rotationMartix;
-    mRotation = rotation;
-    mUseScreenRotation = true;
-    CancelCurrentCompositeTask();
-    ScheduleRenderOnCompositorThread();
+  if (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height) {
+    SetEGLSurfaceSize(width, height);
   }
 }
 
@@ -295,7 +251,8 @@ EmbedLiteCompositorParent::SuspendRendering()
 void
 EmbedLiteCompositorParent::ResumeRendering()
 {
-  CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width, mLastViewSize.height);
+  CompositorParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
+                                                     mEGLSurfaceSize.height);
 }
 
 } // namespace embedlite

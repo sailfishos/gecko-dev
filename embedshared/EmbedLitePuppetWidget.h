@@ -17,12 +17,11 @@
 
 #include "EmbedLog.h"
 
-#include "nsBaseWidget.h"
-#include "nsThreadUtils.h"
-#include "nsWeakReference.h"
-#include "nsCOMArray.h"
-#include "mozilla/Attributes.h"
 #include "EmbedLiteViewChildIface.h"
+#include "mozilla/Attributes.h"
+#include "nsBaseWidget.h"
+#include "nsCOMArray.h"
+#include "nsRect.h"
 
 namespace mozilla {
 
@@ -31,6 +30,13 @@ class GLContext;
 }
 
 namespace embedlite {
+
+class EmbedLitePuppetWidgetObserver
+{
+public:
+  virtual void WidgetBoundsChanged(const nsIntRect&) {};
+  virtual void WidgetRotationChanged(const mozilla::ScreenRotation&) {};
+};
 
 class EmbedLiteWindowBaseChild;
 
@@ -105,10 +111,7 @@ public:
     LOGNI();
     return NS_OK;
   }
-  NS_IMETHOD Invalidate(const nsIntRect& aRect) override {
-    return NS_OK;
-  }
-  // PuppetWidgets don't have native data, as they're purely nonnative.
+  NS_IMETHOD Invalidate(const nsIntRect& aRect) override;
   virtual void* GetNativeData(uint32_t aDataType) override;
   // PuppetWidgets don't have any concept of titles..
   NS_IMETHOD SetTitle(const nsAString& aTitle) override {
@@ -134,6 +137,8 @@ public:
     LOGNI();
     return NS_ERROR_UNEXPECTED;
   }
+
+  virtual nsIntRect GetNaturalBounds() override;
   virtual bool NeedsPaint() override;
 
   virtual LayerManager*
@@ -144,9 +149,8 @@ public:
 
   virtual mozilla::layers::CompositorParent* NewCompositorParent(int aSurfaceWidth,
                                                                  int aSurfaceHeight) override;
-  virtual void CreateCompositor();
+  virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
-  virtual nsIntRect GetNaturalBounds();
 
   /**
    * Called before the LayerManager draws the layer tree.
@@ -163,9 +167,15 @@ public:
    * forward to the EmbedLiteCompositorParent.
    */
   virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
+  virtual void PostRender(LayerManagerComposite* aManager) override;
 
   NS_IMETHOD         SetParent(nsIWidget* aNewParent) override;
   virtual nsIWidget* GetParent(void) override;
+
+  void SetRotation(mozilla::ScreenRotation);
+
+  void AddObserver(EmbedLitePuppetWidgetObserver*);
+  void RemoveObserver(EmbedLitePuppetWidgetObserver*);
 
   static void DumpWidgetTree();
   static void DumpWidgetTree(const nsTArray<EmbedLitePuppetWidget*>&, int indent = 0);
@@ -177,6 +187,7 @@ protected:
 
 private:
   typedef nsTArray<EmbedLitePuppetWidget*> ChildrenArray;
+  typedef nsTArray<EmbedLitePuppetWidgetObserver*> ObserverArray;
 
   mozilla::gl::GLContext* GetGLContext() const;
   static void CreateGLContextEarly(uint32_t aWindowId);
@@ -193,9 +204,13 @@ private:
   bool mHasCompositor;
   InputContext mInputContext;
   bool mIMEComposing;
+  nsIntRect mRotatedBounds;
   nsString mIMEComposingText;
   ChildrenArray mChildren;
   EmbedLitePuppetWidget* mParent;
+  mozilla::ScreenRotation mRotation;
+  nsIntRect mNaturalBounds;
+  ObserverArray mObservers;
 };
 
 }  // namespace widget

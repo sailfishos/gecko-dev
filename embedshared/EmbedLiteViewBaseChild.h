@@ -15,6 +15,7 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
+#include "EmbedLitePuppetWidget.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -25,12 +26,13 @@ class EmbedLiteAppThreadChild;
 
 class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
                                public nsIEmbedBrowserChromeListener,
-                               public EmbedLiteViewChildIface
+                               public EmbedLiteViewChildIface,
+                               public EmbedLitePuppetWidgetObserver
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
 public:
   EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
-		         const uint32_t& parentId, const bool& isPrivateWindow);
+                         const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -86,7 +88,6 @@ public:
 /*---------WidgetIface---------------*/
 
   virtual void ResetInputState() override;
-  virtual gfxSize GetGLViewSize() override;
 
   virtual bool
   SetInputContext(const int32_t& IMEEnabled,
@@ -123,7 +124,6 @@ protected:
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;
-  virtual bool RecvSetViewSize(const gfxSize&) override;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
                                        const gfxSize& scrollSize) override;
 
@@ -150,10 +150,12 @@ protected:
   virtual bool RecvAddMessageListener(const nsCString&) override;
   virtual bool RecvRemoveMessageListener(const nsCString&) override;
   virtual void RecvAsyncMessage(const nsAString& aMessage, const nsAString& aData) /* FIXME: override */;
-  virtual bool RecvSetGLViewSize(const gfxSize&) override;
   virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual void OnGeckoWindowInitialized() {}
+
+  // EmbedLitePuppetWidgetObserver
+  virtual void WidgetBoundsChanged(const nsIntRect&) override;
 
 private:
   friend class TabChildHelper;
@@ -172,9 +174,8 @@ private:
   nsRefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
-  gfxSize mViewSize;
   bool mViewResized;
-  gfxSize mGLViewSize;
+  bool mWindowObserverRegistered;
 
   nsRefPtr<TabChildHelper> mHelper;
   bool mDispatchSynthMouseEvents;

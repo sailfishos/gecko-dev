@@ -21,7 +21,6 @@
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteView.h"
 #include "nsIWidgetListener.h"
-
 #include "Layers.h"
 #include "BasicLayers.h"
 #include "ClientLayerManager.h"
@@ -61,15 +60,6 @@ IsPopup(const nsWidgetInitData* aInitData)
   return aInitData && aInitData->mWindowType == eWindowType_popup;
 }
 
-static void
-InvalidateRegion(nsIWidget* aWidget, const nsIntRegion& aRegion)
-{
-  nsIntRegionRectIterator it(aRegion);
-  while(const nsIntRect* r = it.Next()) {
-    aWidget->Invalidate(*r);
-  }
-}
-
 static void InitPrefs()
 {
   static bool prefsInitialized = false;
@@ -99,6 +89,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mHasCompositor(false)
   , mIMEComposing(false)
   , mParent(nullptr)
+  , mRotation(ROTATION_0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
@@ -158,6 +149,26 @@ EmbedLitePuppetWidget::GetParent(void)
   return mParent;
 }
 
+void
+EmbedLitePuppetWidget::SetRotation(mozilla::ScreenRotation rotation)
+{
+  mRotation = rotation;
+
+  for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
+    mObservers[i]->WidgetRotationChanged(mRotation);
+  }
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->SetRotation(rotation);
+  }
+
+#ifdef DEBUG
+  if (IsTopLevel()) {
+    DumpWidgetTree();
+  }
+#endif
+}
+
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
                               nsNativeWidget    aNativeParent,
@@ -169,7 +180,6 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
 
   mParent = static_cast<EmbedLitePuppetWidget*>(aParent);
 
-  mBounds = aRect;
   mEnabled = true;
   mVisible = mParent ? mParent->mVisible : true;
 
@@ -177,7 +187,9 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   if (parent) {
     parent->mChildren.AppendElement(this);
   }
-  Resize(mBounds.x, mBounds.y, mBounds.width, mBounds.height, false);
+  mRotation = parent ? parent->mRotation : ROTATION_0;
+  mBounds = parent ? parent->mBounds : aRect;
+  mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
 
   BaseCreate(aParent, aRect, aInitData);
 
@@ -271,7 +283,7 @@ EmbedLitePuppetWidget::Show(bool aState)
   }
 
   if (!wasVisible && mVisible) {
-    Resize(mBounds.width, mBounds.height, false);
+    Resize(mNaturalBounds.width, mNaturalBounds.height, false);
     Invalidate(mBounds);
   }
 
@@ -292,33 +304,37 @@ EmbedLitePuppetWidget::Show(bool aState)
 }
 
 NS_IMETHODIMP
-EmbedLitePuppetWidget::Resize(double aWidth,
-                              double aHeight,
-                              bool   aRepaint)
+EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
 {
   nsIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
-  mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget)
-    static_cast<EmbedLitePuppetWidget*>(topWidget)->mBounds = mBounds;
+
+  mNaturalBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+  if (mRotation == ROTATION_0 || mRotation == ROTATION_180) {
+    mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+  } else {
+    mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
+  }
+
+  for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
+    mObservers[i]->WidgetBoundsChanged(mBounds);
+  }
 
   for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
     mChildren[i]->Resize(aWidth, aHeight, aRepaint);
   }
 
-  // XXX: roc says that |aRepaint| dictates whether or not to
-  // invalidate the expanded area
-  if (oldBounds.Size() < mBounds.Size() && aRepaint) {
-    nsIntRegion dirty(mBounds);
-    dirty.Sub(dirty,  oldBounds);
-    InvalidateRegion(this, dirty);
-  }
+  Invalidate(mBounds);
 
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (!oldBounds.IsEqualEdges(mBounds) && listener) {
     listener->WindowResized(this, mBounds.width, mBounds.height);
+  }
+
+  if (mCompositorParent) {
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->
+        SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
 
   return NS_OK;
@@ -328,6 +344,29 @@ NS_IMETHODIMP
 EmbedLitePuppetWidget::SetFocus(bool aRaise)
 {
   LOGT();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLitePuppetWidget::Invalidate(const nsIntRect& aRect)
+{
+  nsIWidgetListener* listener = GetWidgetListener();
+  if (listener) {
+    listener->WillPaintWindow(this);
+  }
+
+  LayerManager* lm = nsIWidget::GetLayerManager();
+  if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
+    // No need to do anything, the compositor will handle drawing
+  } else {
+    NS_RUNTIMEABORT("Unexpected layer manager type");
+  }
+
+  listener = GetWidgetListener();
+  if (listener) {
+    listener->DidPaintWindow();
+  }
+
   return NS_OK;
 }
 
@@ -508,6 +547,11 @@ EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aWindowId)
   }
 }
 
+nsIntRect EmbedLitePuppetWidget::GetNaturalBounds()
+{
+  return mNaturalBounds;
+}
+
 bool
 EmbedLitePuppetWidget::NeedsPaint()
 {
@@ -534,6 +578,14 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
   }
 
   if (mLayerManager) {
+    // This layer manager might be used for painting outside of DoDraw(), so we need
+    // to set the correct rotation on it.
+    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+        ClientLayerManager* manager =
+            static_cast<ClientLayerManager*>(mLayerManager.get());
+        manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
+                                               mRotation);
+    }
     return mLayerManager;
   }
 
@@ -555,7 +607,6 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     if (!lf->HasShadowManager() && aShadowManager) {
       lf->SetShadowManager(aShadowManager);
     }
-
     return mLayerManager;
   }
 
@@ -654,16 +705,10 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   }
 }
 
-nsIntRect
-EmbedLitePuppetWidget::GetNaturalBounds()
-{
-  return nsIntRect();
-}
-
 void
 EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
-  MOZ_ASSERT(mWindow); // The widget actually needs to be a window for this to be invoked.
+  MOZ_ASSERT(mWindow);
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->DrawUnderlay();
@@ -673,11 +718,33 @@ EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, nsInt
 void
 EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntRect aRect)
 {
-  MOZ_ASSERT(mWindow); // The widget actually needs to be a window for this to be invoked.
+  MOZ_ASSERT(mWindow);
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->DrawOverlay(aRect);
   }
+}
+
+void
+EmbedLitePuppetWidget::PostRender(LayerManagerComposite* aManager)
+{
+  MOZ_ASSERT(mWindow);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+  if (window) {
+    window->GetListener()->CompositingFinished();
+  }
+}
+
+void
+EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver* obs)
+{
+  mObservers.AppendElement(obs);
+}
+
+void
+EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver* obs)
+{
+  mObservers.RemoveElement(obs);
 }
 
 void
@@ -703,12 +770,12 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
   char spaces[] = "                    ";
   spaces[indent < 20 ? indent : 20] = 0;
   printf_stderr("%s [% 2d] [%p] size: [(%d, %d), (%3d, %3d)], "
-                "visible: %d, type: %d, hasCompositor: %d\n",
+                "visible: %d, type: %d, rotation: %d, observers: %zu\n",
                 spaces, index, widget,
                 widget->mBounds.x, widget->mBounds.y,
                 widget->mBounds.width, widget->mBounds.height,
                 widget->mVisible, widget->mWindowType,
-                widget->mHasCompositor);
+                widget->mRotation * 90, widget->mObservers.Length());
 }
 
 }  // namespace widget

@@ -30,12 +30,13 @@ public:
 
   bool RenderToContext(gfx::DrawTarget* aTarget);
   void SetSurfaceSize(int width, int height);
-  void SetScreenRotation(const mozilla::ScreenRotation& rotation);
   void* GetPlatformImage(int* width, int* height);
   void SuspendRendering();
   void ResumeRendering();
 
 protected:
+  friend class EmbedLitePuppetWidget;
+
   virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
@@ -51,11 +52,7 @@ private:
   bool RenderGL(TimeStamp aScheduleTime);
 
   uint32_t mWindowId;
-  gfx::Matrix mWorldTransform;
-  mozilla::ScreenRotation mRotation;
-  bool mUseScreenRotation;
   CancelableTask* mCurrentCompositeTask;
-  gfx::IntSize mLastViewSize;
 };
 
 } // embedlite

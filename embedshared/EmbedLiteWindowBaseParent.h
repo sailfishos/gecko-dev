@@ -7,6 +7,7 @@
 #define MOZ_WINDOW_EMBED_BASE_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
+#include "mozilla/WidgetUtils.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -34,6 +35,8 @@ public:
   // XXX: Remove once not needed.
   EmbedLiteCompositorParent* GetCompositor() const { return mCompositor.get(); }
 
+  void SetSize(int width, int height);
+  void SetContentOrientation(mozilla::ScreenRotation);
   bool ScheduleUpdate();
   void SuspendRendering();
   void ResumeRendering();
@@ -59,6 +62,9 @@ private:
   EmbedLiteWindow* mWindow;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
+
+  gfxSize mSize;
+  mozilla::ScreenRotation mRotation;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseParent);
 };

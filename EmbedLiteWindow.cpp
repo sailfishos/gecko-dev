@@ -60,6 +60,11 @@ uint32_t EmbedLiteWindow::GetUniqueID() const
   return mUniqueID;
 }
 
+void EmbedLiteWindow::SetContentOrientation(mozilla::ScreenRotation rotation)
+{
+  unused << mWindowParent->SendSetContentOrientation(rotation);
+}
+
 void EmbedLiteWindow::ScheduleUpdate()
 {
   mWindowParent->ScheduleUpdate();
