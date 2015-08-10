@@ -42,6 +42,8 @@ static inline gfx::SurfaceFormat _depth_to_gfxformat(int depth)
 EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint32_t& id)
   : mId(id)
   , mWindow(nullptr)
+  , mCompositor(nullptr)
+  , mRotation(ROTATION_0)
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   sWindowMap[id] = this;
@@ -71,6 +73,11 @@ EmbedLiteWindowBaseParent* EmbedLiteWindowBaseParent::From(const uint32_t id)
 void EmbedLiteWindowBaseParent::AddObserver(EmbedLiteWindowParentObserver* obs)
 {
   mObservers.AppendElement(obs);
+}
+
+void EmbedLiteWindowBaseParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
+{
+  mObservers.RemoveElement(obs);
 }
 
 bool EmbedLiteWindowBaseParent::ScheduleUpdate()
@@ -104,11 +111,6 @@ void* EmbedLiteWindowBaseParent::GetPlatformImage(int* width, int* height)
   return nullptr;
 }
 
-void EmbedLiteWindowBaseParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
-{
-  mObservers.RemoveElement(obs);
-}
-
 void EmbedLiteWindowBaseParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 {
   mWindow = window;
@@ -129,6 +131,8 @@ bool EmbedLiteWindowBaseParent::RecvInitialized()
 void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 {
   LOGT("compositor:%p, observers:%d", aCompositor, mObservers.Length());
+  MOZ_ASSERT(!mCompositor);
+
   mCompositor = aCompositor;
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {

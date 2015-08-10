@@ -82,6 +82,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mOuterId(0)
   , mWindow(nullptr)
   , mViewResized(false)
+  , mWindowObserverRegistered(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
@@ -96,7 +97,6 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
 
   mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
-  mViewSize = mWindow->GetSize();
 
   mInitWindowTask = NewRunnableMethod(this, &EmbedLiteViewBaseChild::InitGeckoWindow,
                                       aParentId, isPrivateWindow);
@@ -110,6 +110,10 @@ EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
   if (mInitWindowTask) {
     mInitWindowTask->Cancel();
   }
+  if (mWindowObserverRegistered) {
+    mWindow->GetWidget()->RemoveObserver(this);
+  }
+  mWindow = nullptr;
   mInitWindowTask = nullptr;
 }
 
@@ -151,6 +155,11 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   mInitWindowTask = nullptr;
   LOGT("parentID: %u", parentId);
   nsresult rv;
+
+  MOZ_ASSERT(mWindow->GetWidget());
+  mWindow->GetWidget()->AddObserver(this);
+  mWindowObserverRegistered = true;
+
   mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
   if (NS_FAILED(rv)) {
     return;
@@ -167,15 +176,16 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
   widgetInit.mWindowType = eWindowType_child;
-  rv = mWidget->Create(mWindow->GetWidget(), 0,
-                       nsIntRect(0, 0, mViewSize.width, mViewSize.height),
-                       &widgetInit);
+  nsIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
+  rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
     return;
   }
 
-  rv = baseWindow->InitWindow(0, mWidget, 0, 0, mViewSize.width, mViewSize.height);
+  nsIntRect bounds;
+  mWindow->GetWidget()->GetBounds(bounds);
+  rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -251,6 +261,8 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   mHelper = new TabChildHelper(this);
+  gfxSize size(bounds.width, bounds.height);
+  mHelper->ReportSizeUpdate(size);
 
   OnGeckoWindowInitialized();
 
@@ -302,15 +314,6 @@ EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
                                           intptr_t* NativeIMEContext)
 {
   return SendGetInputContext(IMEEnabled, IMEOpen, NativeIMEContext);
-}
-
-gfxSize
-EmbedLiteViewBaseChild::GetGLViewSize()
-{
-  if (mGLViewSize.IsEmpty()) {
-    SendGetGLViewSize(&mGLViewSize);
-  }
-  return mGLViewSize;
 }
 
 void EmbedLiteViewBaseChild::ResetInputState()
@@ -620,35 +623,6 @@ EmbedLiteViewBaseChild::RecvRemoveMessageListeners(InfallibleTArray<nsString>&& 
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Remove(messageNames[i]);
   }
-  return true;
-}
-
-bool
-EmbedLiteViewBaseChild::RecvSetViewSize(const gfxSize& aSize)
-{
-  mViewResized = aSize != mViewSize;
-  mViewSize = aSize;
-  LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
-
-  if (!mWebBrowser) {
-    return true;
-  }
-
-  mWidget->Resize(0, 0, aSize.width, aSize.height, true);
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
-  baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
-  baseWindow->SetVisibility(true);
-
-  mHelper->ReportSizeUpdate(aSize);
-
-  return true;
-}
-
-bool
-EmbedLiteViewBaseChild::RecvSetGLViewSize(const gfxSize& aSize)
-{
-  mGLViewSize = aSize;
-  LOGT("sz[%g,%g]", mGLViewSize.width, mGLViewSize.height);
   return true;
 }
 
@@ -1071,8 +1045,6 @@ EmbedLiteViewBaseChild::OnFirstPaint(int32_t aX, int32_t aY)
     unused << SendSetBackgroundColor(bgcolor);
   }
 
-  unused << RecvSetViewSize(mViewSize);
-
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1108,6 +1080,22 @@ EmbedLiteViewBaseChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla:
   mWebNavigation->GetDocument(getter_AddRefs(domDoc));
   nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
+}
+
+void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
+{
+  LOGT("sz[%g,%g]", aSize.width, aSize.height);
+  mViewResized = true;
+
+  if (!mWebBrowser) {
+    return;
+  }
+
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
+
+  gfxSize size(aSize.width, aSize.height);
+  mHelper->ReportSizeUpdate(size);
 }
 
 } // namespace embedlite

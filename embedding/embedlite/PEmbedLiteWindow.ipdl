@@ -5,6 +5,7 @@
 include protocol PEmbedLiteApp;
 
 using struct gfxSize from "gfxPoint.h";
+using mozilla::ScreenRotation from "mozilla/WidgetUtils.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -14,6 +15,7 @@ prio(normal upto urgent) sync protocol PEmbedLiteWindow {
 
 child:
   SetSize(gfxSize aSize);
+  SetContentOrientation(ScreenRotation aRotation);
   Destroy();
 
 parent:

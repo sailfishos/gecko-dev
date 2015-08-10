@@ -7,6 +7,7 @@
 #define MOZ_WINDOW_EMBED_BASE_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowChild.h"
+#include "mozilla/WidgetUtils.h"
 #include "nsIWidget.h"
 
 namespace mozilla {
@@ -20,7 +21,7 @@ public:
   EmbedLiteWindowBaseChild(const uint32_t& id);
 
   uint32_t GetUniqueID() const { return mId; }
-  nsCOMPtr<nsIWidget> GetWidget() const { return mWidget; }
+  EmbedLitePuppetWidget* GetWidget() const;
   gfxSize GetSize() const { return mSize; }
 
 protected:
@@ -28,6 +29,7 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual bool RecvDestroy() override;
   virtual bool RecvSetSize(const gfxSize& size) override;
+  virtual bool RecvSetContentOrientation(const mozilla::ScreenRotation&) override;
 
 private:
   void CreateWidget();
@@ -35,6 +37,7 @@ private:
   uint32_t mId;
   nsCOMPtr<nsIWidget> mWidget;
   gfxSize mSize;
+  mozilla::ScreenRotation mRotation;
   CancelableTask* mCreateWidgetTask;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseChild);

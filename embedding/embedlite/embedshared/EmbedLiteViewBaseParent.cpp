@@ -26,8 +26,6 @@ EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& windowId, const
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowBaseParent::From(windowId))
   , mCompositor(nullptr)
-  , mRotation(ROTATION_0)
-  , mPendingRotation(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
@@ -65,13 +63,6 @@ EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
   LOGT();
   mCompositor = aCompositor;
   UpdateScrollController();
-  if (mCompositor) {
-    if (mPendingRotation) {
-      mCompositor->SetScreenRotation(mRotation);
-      mPendingRotation = false;
-    }
-    mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
-  }
 }
 
 void
@@ -343,56 +334,11 @@ EmbedLiteViewBaseParent::RecvRpcMessage(const nsString& aMessage,
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }
 
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetViewSize(int width, int height)
-{
-  LOGT("sz[%i,%i]", width, height);
-  mViewSize = ScreenIntSize(width, height);
-  if (mGLViewPortSize.width == 0 && mGLViewPortSize.height == 0) {
-    mGLViewPortSize = gfxSize(width, height);
-  }
-  unused << SendSetViewSize(gfxSize(width, height));
-
-  return NS_OK;
-}
-
-bool
-EmbedLiteViewBaseParent::RecvGetGLViewSize(gfxSize* aSize)
-{
-  *aSize = mGLViewPortSize;
-  return true;
-}
-
 void
 EmbedLiteViewBaseParent::CompositorCreated()
 {
   // XXX: Move compositor handling entirely to EmbedLiteWindowBaseParent
   SetCompositor(mWindow.GetCompositor());
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetGLViewPortSize(int width, int height)
-{
-  mGLViewPortSize = gfxSize(width, height);
-  if (mCompositor) {
-    mCompositor->SetSurfaceSize(width, height);
-  }
-  unused << SendSetGLViewSize(mGLViewPortSize);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewBaseParent::SetScreenRotation(const mozilla::ScreenRotation& rotation)
-{
-  mRotation = rotation;
-
-  if (mCompositor) {
-    mCompositor->SetScreenRotation(rotation);
-  } else {
-    mPendingRotation = true;
-  }
-  return NS_OK;
 }
 
 NS_IMETHODIMP
