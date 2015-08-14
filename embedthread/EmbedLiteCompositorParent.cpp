@@ -47,8 +47,6 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
   parentWindow->SetCompositor(this);
-  // Workaround for MOZ_ASSERT(!aOther.IsNull(), "Cannot compute with aOther null value");
-  mLastCompose = TimeStamp::Now();
 }
 
 EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
