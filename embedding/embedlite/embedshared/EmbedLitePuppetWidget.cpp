@@ -206,7 +206,7 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   if (parent) {
     parent->mChildren.AppendElement(this);
   }
-  mRotation = parent ? parent->mRotation : ROTATION_0;
+  mRotation = parent ? parent->mRotation : mRotation;
   mBounds = parent ? parent->mBounds : aRect;
   mMargins = parent ? parent->mMargins : mMargins;
   mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
@@ -475,18 +475,17 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
     return;
   }
 
-  if (!mView) {
-    return;
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->SetInputContext(
+      static_cast<int32_t>(aContext.mIMEState.mEnabled),
+      static_cast<int32_t>(aContext.mIMEState.mOpen),
+      aContext.mHTMLInputType,
+      aContext.mHTMLInputInputmode,
+      aContext.mActionHint,
+      static_cast<int32_t>(aAction.mCause),
+      static_cast<int32_t>(aAction.mFocusChange));
   }
-
-  mView->SetInputContext(
-    static_cast<int32_t>(aContext.mIMEState.mEnabled),
-    static_cast<int32_t>(aContext.mIMEState.mOpen),
-    aContext.mHTMLInputType,
-    aContext.mHTMLInputInputmode,
-    aContext.mActionHint,
-    static_cast<int32_t>(aAction.mCause),
-    static_cast<int32_t>(aAction.mFocusChange));
 }
 
 NS_IMETHODIMP_(InputContext)
@@ -494,10 +493,11 @@ EmbedLitePuppetWidget::GetInputContext()
 {
   mInputContext.mIMEState.mOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
   mInputContext.mNativeIMEContext = nullptr;
-  if (mView) {
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
     int32_t enabled, open;
     intptr_t nativeIMEContext;
-    mView->GetInputContext(&enabled, &open, &nativeIMEContext);
+    view->GetInputContext(&enabled, &open, &nativeIMEContext);
     mInputContext.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
     mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
     mInputContext.mNativeIMEContext = reinterpret_cast<void*>(nativeIMEContext);
@@ -513,8 +513,9 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
     return;
   }
 
-  if (mView) {
-    mView->ResetInputState();
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->ResetInputState();
   }
 
   nsRefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
@@ -799,6 +800,18 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
                 widget->mMargins.bottom, widget->mMargins.left,
                 widget->mVisible, widget->mWindowType,
                 widget->mRotation * 90, widget->mObservers.Length());
+}
+
+EmbedLiteViewChildIface*
+EmbedLitePuppetWidget::GetEmbedLiteChildView() const
+{
+  if (mView) {
+    return mView;
+  }
+  if (mParent) {
+    return mParent->GetEmbedLiteChildView();
+  }
+  return nullptr;
 }
 
 }  // namespace widget

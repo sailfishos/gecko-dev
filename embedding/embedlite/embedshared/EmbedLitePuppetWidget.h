@@ -186,6 +186,7 @@ public:
 protected:
   EmbedLitePuppetWidget(EmbedLiteWindowBaseChild*, EmbedLiteViewChildIface*);
   virtual ~EmbedLitePuppetWidget() override;
+  EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
 private:
   typedef nsTArray<EmbedLitePuppetWidget*> ChildrenArray;
