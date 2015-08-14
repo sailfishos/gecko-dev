@@ -112,7 +112,8 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
     aScrollableSize.width, aScrollableSize.height);
   gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
   gfxSize size(aScrollableSize.width, aScrollableSize.height);
-  if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
+
+  if (mRenderFrame && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
     unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
   }
 }

@@ -39,6 +39,7 @@ child:
     SetIsActive(bool aIsActive);
     SetIsFocused(bool aIsFocused);
     SetThrottlePainting(bool aThrottle);
+    SetMargins(int top, int right, int bottom, int left);
     SuspendTimeouts();
     ResumeTimeouts();
     AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
