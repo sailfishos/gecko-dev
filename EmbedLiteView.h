@@ -97,6 +97,8 @@ public:
   virtual void PinchUpdate(int x, int y, float scale);
   virtual void PinchEnd(int x, int y, float scale);
 
+  virtual void SetMargins(int top, int right, int bottom, int left);
+
   // Setup renderable view size
   virtual void SetViewSize(int width, int height); // XXX: Remove, EmbedLiteViews always cover the whole window
 

@@ -121,6 +121,7 @@ protected:
   virtual bool RecvSetIsActive(const bool&) override;
   virtual bool RecvSetIsFocused(const bool&) override;
   virtual bool RecvSetThrottlePainting(const bool&) override;
+  virtual bool RecvSetMargins(const int&, const int&, const int&, const int&) override;
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;
@@ -155,7 +156,7 @@ protected:
   virtual void OnGeckoWindowInitialized() {}
 
   // EmbedLitePuppetWidgetObserver
-  virtual void WidgetBoundsChanged(const nsIntRect&) override;
+  void WidgetBoundsChanged(const nsIntRect&) override;
 
 private:
   friend class TabChildHelper;
@@ -176,6 +177,7 @@ private:
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mViewResized;
   bool mWindowObserverRegistered;
+  nsIntMargin mMargins;
 
   nsRefPtr<TabChildHelper> mHelper;
   bool mDispatchSynthMouseEvents;
