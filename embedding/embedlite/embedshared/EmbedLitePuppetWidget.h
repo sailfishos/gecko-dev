@@ -173,6 +173,8 @@ public:
   virtual nsIWidget* GetParent(void) override;
 
   void SetRotation(mozilla::ScreenRotation);
+  void SetMargins(const nsIntMargin& marins);
+  void UpdateSize();
 
   void AddObserver(EmbedLitePuppetWidgetObserver*);
   void RemoveObserver(EmbedLitePuppetWidgetObserver*);
@@ -211,6 +213,7 @@ private:
   EmbedLitePuppetWidget* mParent;
   mozilla::ScreenRotation mRotation;
   nsIntRect mNaturalBounds;
+  nsIntMargin mMargins;
   ObserverArray mObservers;
 };
 

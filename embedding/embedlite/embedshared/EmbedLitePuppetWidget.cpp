@@ -90,6 +90,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mIMEComposing(false)
   , mParent(nullptr)
   , mRotation(ROTATION_0)
+  , mMargins(0, 0, 0, 0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
@@ -169,6 +170,24 @@ EmbedLitePuppetWidget::SetRotation(mozilla::ScreenRotation rotation)
 #endif
 }
 
+void
+EmbedLitePuppetWidget::SetMargins(const nsIntMargin& margins)
+{
+  mMargins = margins;
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->SetMargins(margins);
+  }
+}
+
+void
+EmbedLitePuppetWidget::UpdateSize()
+{
+  Resize(mNaturalBounds.width, mNaturalBounds.height, true);
+#ifdef DEBUG
+  DumpWidgetTree();
+#endif
+}
+
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
                               nsNativeWidget    aNativeParent,
@@ -189,6 +208,7 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   }
   mRotation = parent ? parent->mRotation : mRotation;
   mBounds = parent ? parent->mBounds : aRect;
+  mMargins = parent ? parent->mMargins : mMargins;
   mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
 
   BaseCreate(aParent, aRect, aInitData);
@@ -315,6 +335,7 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
   } else {
     mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
   }
+  mBounds.Deflate(mMargins);
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
     mObservers[i]->WidgetBoundsChanged(mBounds);
@@ -770,11 +791,13 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
 {
   char spaces[] = "                    ";
   spaces[indent < 20 ? indent : 20] = 0;
-  printf_stderr("%s [% 2d] [%p] size: [(%d, %d), (%3d, %3d)], "
+  printf_stderr("%s [% 2d] [%p] size: [(%d, %d), (%3d, %3d)], margins: [%d, %d, %d, %d], "
                 "visible: %d, type: %d, rotation: %d, observers: %zu\n",
                 spaces, index, widget,
                 widget->mBounds.x, widget->mBounds.y,
                 widget->mBounds.width, widget->mBounds.height,
+                widget->mMargins.top, widget->mMargins.right,
+                widget->mMargins.bottom, widget->mMargins.left,
                 widget->mVisible, widget->mWindowType,
                 widget->mRotation * 90, widget->mObservers.Length());
 }

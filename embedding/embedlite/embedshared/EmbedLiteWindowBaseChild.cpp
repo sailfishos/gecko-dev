@@ -69,7 +69,7 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const mozilla::ScreenRo
   if (mWidget) {
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
     widget->SetRotation(aRotation);
-    widget->Resize(mSize.width, mSize.height, true);
+    widget->UpdateSize();
   }
   return true;
 }
