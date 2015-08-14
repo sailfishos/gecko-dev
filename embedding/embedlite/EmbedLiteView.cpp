@@ -206,6 +206,12 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
 }
 
 void
+EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
+{
+    unused << mViewParent->SendSetMargins(top, right, bottom, left);
+}
+
+void
 EmbedLiteView::SetViewSize(int width, int height)
 {
   mWindow->SetSize(width, height);

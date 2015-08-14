@@ -27,6 +27,7 @@
 #include "nsIDOMDocument.h"
 #include "nsIPresShell.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsISelectionController.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
@@ -83,6 +84,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindow(nullptr)
   , mViewResized(false)
   , mWindowObserverRegistered(false)
+  , mMargins(0, 0, 0, 0)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
@@ -109,12 +111,12 @@ EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
   NS_ASSERTION(mControllerListeners.IsEmpty(), "Controller listeners list is not empty...");
   if (mInitWindowTask) {
     mInitWindowTask->Cancel();
+    mInitWindowTask = nullptr;
   }
   if (mWindowObserverRegistered) {
     mWindow->GetWidget()->RemoveObserver(this);
   }
   mWindow = nullptr;
-  mInitWindowTask = nullptr;
 }
 
 void
@@ -136,8 +138,9 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
     mHelper->Unload();
   if (mChrome)
     mChrome->RemoveEventHandler();
-  if (mWidget)
+  if (mWidget) {
     mWidget->Destroy();
+  }
   mWebBrowser = nullptr;
   mChrome = nullptr;
   mDOMWindow = nullptr;
@@ -155,10 +158,6 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   mInitWindowTask = nullptr;
   LOGT("parentID: %u", parentId);
   nsresult rv;
-
-  MOZ_ASSERT(mWindow->GetWidget());
-  mWindow->GetWidget()->AddObserver(this);
-  mWindowObserverRegistered = true;
 
   mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
   if (NS_FAILED(rv)) {
@@ -180,6 +179,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
+    mWidget = nullptr;
     return;
   }
 
@@ -264,6 +264,16 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   gfxSize size(bounds.width, bounds.height);
   mHelper->ReportSizeUpdate(size);
 
+  MOZ_ASSERT(mWindow->GetWidget());
+  mWindow->GetWidget()->AddObserver(this);
+  mWindowObserverRegistered = true;
+
+  if (mMargins != nsIntMargin()) {
+    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+    widget->SetMargins(mMargins);
+    widget->UpdateSize();
+  }
+
   OnGeckoWindowInitialized();
 
   unused << SendInitialized();
@@ -339,9 +349,9 @@ EmbedLiteViewBaseChild::ZoomToRect(const uint32_t& aPresShellId,
 
 bool
 EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
-                                                const ViewID& aViewId,
-                                                const bool& aIsRoot,
-                                                const ZoomConstraints& aConstraints)
+                                              const ViewID& aViewId,
+                                              const bool& aIsRoot,
+                                              const ZoomConstraints& aConstraints)
 {
   return SendUpdateZoomConstraints(aPresShellId,
                                    aViewId,
@@ -525,6 +535,19 @@ EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bool& aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
   mHelper->GetPresContext()->RefreshDriver()->SetThrottled(aThrottle);
+  return true;
+}
+
+bool
+EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
+		                       const int& aBottom, const int& aLeft)
+{
+  mMargins = nsIntMargin(aTop, aRight, aBottom, aLeft);
+  if (mWidget) {
+    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+    widget->SetMargins(mMargins);
+    widget->UpdateSize();
+  }
   return true;
 }
 
@@ -1087,12 +1110,11 @@ void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
   LOGT("sz[%g,%g]", aSize.width, aSize.height);
   mViewResized = true;
 
-  if (!mWebBrowser) {
-    return;
-  }
+  MOZ_ASSERT(mHelper && mWebBrowser);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
+  baseWindow->SetVisibility(true);
 
   gfxSize size(aSize.width, aSize.height);
   mHelper->ReportSizeUpdate(size);
