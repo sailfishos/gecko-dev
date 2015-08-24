@@ -1,4 +1,4 @@
-%define greversion 31.7.0
+%define greversion 31.8.0
 %global __provides_exclude_from %{_libdir}/%{name}-%{greversion}/.*[^libmozalloc]\\.so
 
 Name:       xulrunner-qt5
