@@ -53,6 +53,8 @@ BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
 
+Obsoletes: %{name}-devel < %{version}
+
 %description
 Mozilla XUL runner
 
