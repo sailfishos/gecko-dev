@@ -129,9 +129,11 @@ protected:
                                        const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
-  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) override;
-  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) override;
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint,
+  virtual bool RecvHandleDoubleTap(const CSSPoint&, const int32_t& aModifiers,
+                                   const ScrollableLayerGuid& aGuid) override;
+  virtual bool RecvHandleSingleTap(const CSSPoint&, const int32_t& aModifiers,
+                                   const ScrollableLayerGuid& aGuid) override;
+  virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) override;
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) override;
@@ -154,6 +156,13 @@ protected:
   virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual void OnGeckoWindowInitialized() {}
+
+  // Get the pres shell resolution of the document in this tab.
+  float GetPresShellResolution() const;
+  // Get the Document for the top-level window in this tab.
+  already_AddRefed<nsIDocument> GetDocument() const;
+
+  void DispatchSynthesizedMouseEvent(const WidgetTouchEvent&);
 
   // EmbedLitePuppetWidgetObserver
   void WidgetBoundsChanged(const nsIntRect&) override;
@@ -180,7 +189,6 @@ private:
   nsIntMargin mMargins;
 
   nsRefPtr<TabChildHelper> mHelper;
-  bool mDispatchSynthMouseEvents;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
   CancelableTask* mInitWindowTask;

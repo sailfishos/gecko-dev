@@ -258,8 +258,8 @@ EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
 
 bool
 EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
-                                          const ViewID& aViewId,
-                                          const CSSRect& aRect)
+                                        const ViewID& aViewId,
+                                        const CSSRect& aRect)
 {
   if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);

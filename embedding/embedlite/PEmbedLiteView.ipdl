@@ -23,6 +23,7 @@ using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::CSSPoint from "Units.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -45,9 +46,9 @@ child:
     AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
-    HandleDoubleTap(nsIntPoint point);
-    HandleSingleTap(nsIntPoint point);
-    HandleLongTap(nsIntPoint point, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    HandleDoubleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleSingleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
