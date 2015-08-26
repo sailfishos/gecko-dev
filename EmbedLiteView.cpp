@@ -85,6 +85,11 @@ EmbedLiteView::SetIsActive(bool aIsActive)
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
   unused << mViewParent->SendSetIsActive(aIsActive);
+  // Make sure active view content controller is always registered with
+  // APZCTreeManager for the window.
+  if (aIsActive) {
+    static_cast<EmbedLiteViewBaseParent*>(mViewParent)->UpdateScrollController();
+  }
 }
 
 void

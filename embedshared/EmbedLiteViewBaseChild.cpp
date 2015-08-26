@@ -26,13 +26,14 @@
 #include "nsIDocument.h"
 #include "nsIDOMDocument.h"
 #include "nsIPresShell.h"
+#include "nsLayoutUtils.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsISelectionController.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
 #include "gfxPrefs.h"
-
+#include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 
@@ -85,7 +86,6 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mViewResized(false)
   , mWindowObserverRegistered(false)
   , mMargins(0, 0, 0, 0)
-  , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
 {
@@ -341,8 +341,8 @@ void EmbedLiteViewBaseChild::ResetInputState()
 
 bool
 EmbedLiteViewBaseChild::ZoomToRect(const uint32_t& aPresShellId,
-                                     const ViewID& aViewId,
-                                     const CSSRect& aRect)
+                                   const ViewID& aViewId,
+                                   const CSSRect& aRect)
 {
   return SendZoomToRect(aPresShellId, aViewId, aRect);
 }
@@ -540,7 +540,7 @@ EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bool& aThrottle)
 
 bool
 EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
-		                       const int& aBottom, const int& aLeft)
+                                       const int& aBottom, const int& aLeft)
 {
   mMargins = nsIntMargin(aTop, aRight, aBottom, aLeft);
   if (mWidget) {
@@ -663,7 +663,7 @@ EmbedLiteViewBaseChild::RemoveGeckoContentListener(EmbedLiteContentController* l
 
 bool
 EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                                  const gfxSize& scrollSize)
+                                                const gfxSize& scrollSize)
 {
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
@@ -700,7 +700,6 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 
   if (mViewResized &&
-      aFrameMetrics.GetIsRoot() &&
       mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
       mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
     mViewResized = false;
@@ -715,36 +714,12 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   return ret;
 }
-bool
-EmbedLiteViewBaseChild::RecvHandleDoubleTap(const nsIntPoint& aPoint)
-{
-  if (!mWebBrowser) {
-    return true;
-  }
-
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleDoubleTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0));
-  }
-
-  if (sPostAZPCAsJson.doubleTap) {
-    nsString data;
-    data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
-  }
-
-  return true;
-}
 
 bool
 EmbedLiteViewBaseChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
-                                                      const uint32_t& aScrollGeneration)
+                                                    const uint32_t& aScrollGeneration)
 {
-  if (!mWebBrowser) {
-    return true;
-  }
-
   APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
-
   return true;
 }
 
@@ -763,7 +738,30 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 }
 
 bool
-EmbedLiteViewBaseChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
+EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
+                                            const int32_t& aModifiers,
+                                            const ScrollableLayerGuid& aGuid)
+{
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
+      aPoint, aGuid, GetPresShellResolution());
+
+  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
+    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers, aGuid);
+  }
+
+  if (sPostAZPCAsJson.doubleTap) {
+    nsString data;
+    data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", cssPoint.x, cssPoint.y);
+    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
+  }
+
+  return true;
+}
+
+bool
+EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
+                                            const int32_t& aModifiers,
+                                            const ScrollableLayerGuid& aGuid)
 {
   if (mIMEComposing) {
     // If we are in the middle of compositing we must finish it, before it is too late.
@@ -776,41 +774,49 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
     mIMEComposing = false;
   }
 
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
+      aPoint, aGuid, GetPresShellResolution());
+
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleSingleTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0));
+    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers, aGuid);
   }
 
   if (sPostAZPCAsJson.singleTap) {
     nsString data;
-    data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
+    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
   }
 
+
   if (sHandleDefaultAZPC.singleTap) {
-    RecvMouseEvent(NS_LITERAL_STRING("mousemove"), aPoint.x, aPoint.y, 0, 1, 0, false);
-    RecvMouseEvent(NS_LITERAL_STRING("mousedown"), aPoint.x, aPoint.y, 0, 1, 0, false);
-    RecvMouseEvent(NS_LITERAL_STRING("mouseup"), aPoint.x, aPoint.y, 0, 1, 0, false);
+    LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
+    APZCCallbackHelper::FireSingleTapEvent(pt, mHelper->WebWidget());
   }
 
   return true;
 }
 
 bool
-EmbedLiteViewBaseChild::RecvHandleLongTap(const nsIntPoint& aPoint, const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId)
+EmbedLiteViewBaseChild::RecvHandleLongTap(const CSSPoint& aPoint,
+                                          const ScrollableLayerGuid& aGuid,
+                                          const uint64_t& aInputBlockId)
 {
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
+      aPoint, aGuid, GetPresShellResolution());
+
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(CSSIntPoint(aPoint.x, aPoint.y), 0, ScrollableLayerGuid(0, 0, 0), aInputBlockId);
+    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aGuid, aInputBlockId);
   }
 
   if (sPostAZPCAsJson.longTap) {
     nsString data;
-    data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
+    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:LongTap"), data);
   }
 
   bool eventHandled = false;
   if (sHandleDefaultAZPC.longTap) {
-    eventHandled = RecvMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint.x, aPoint.y,
+    eventHandled = RecvMouseEvent(NS_LITERAL_STRING("contextmenu"), cssPoint.x, cssPoint.y,
                    2 /* Right button */,
                    1 /* Click count */,
                    0 /* Modifiers */,
@@ -933,12 +939,12 @@ EmbedLiteViewBaseChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const i
 
 bool
 EmbedLiteViewBaseChild::RecvMouseEvent(const nsString& aType,
-                                         const float&    aX,
-                                         const float&    aY,
-                                         const int32_t&  aButton,
-                                         const int32_t&  aClickCount,
-                                         const int32_t&  aModifiers,
-                                         const bool&     aIgnoreRootScrollFrame)
+                                       const float&    aX,
+                                       const float&    aY,
+                                       const int32_t&  aButton,
+                                       const int32_t&  aClickCount,
+                                       const int32_t&  aModifiers,
+                                       const bool&     aIgnoreRootScrollFrame)
 {
   if (!mWebBrowser) {
     return false;
@@ -965,33 +971,32 @@ bool
 EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
   WidgetTouchEvent localEvent;
-  if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
-    nsEventStatus status =
-      APZCCallbackHelper::DispatchWidgetEvent(localEvent);
-    nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
-    nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
-    if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId, nsIPresShell::gPreventMouseEvents);
-    }
-    mPendingTouchPreventedBlockId = aInputBlockId;
-    static bool sDispatchMouseEvents;
-    static bool sDispatchMouseEventsCached = false;
-    if (!sDispatchMouseEventsCached) {
-      sDispatchMouseEventsCached = true;
-      Preferences::AddBoolVarCache(&sDispatchMouseEvents,
-                                   "embedlite.dispatch_mouse_events", false);
-    }
-    if (status != nsEventStatus_eConsumeNoDefault && mDispatchSynthMouseEvents && sDispatchMouseEvents) {
-      // Touch event not handled
-      status = APZCCallbackHelper::DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, localEvent.widget);
-      if (status != nsEventStatus_eConsumeNoDefault && status != nsEventStatus_eConsumeDoDefault) {
-        mDispatchSynthMouseEvents = false;
-      }
-    }
+  if (!mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
+    return true;
   }
-  if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
-    mDispatchSynthMouseEvents = true;
+
+  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid,
+      mWidget->GetDefaultScale(), GetPresShellResolution());
+  nsEventStatus status =
+      APZCCallbackHelper::DispatchWidgetEvent(localEvent);
+
+  nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
+  nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
+  if (innerWindow && innerWindow->HasTouchEventListeners()) {
+    SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId,
+                                  nsIPresShell::gPreventMouseEvents);
+  }
+  mPendingTouchPreventedBlockId = aInputBlockId;
+
+  static bool sDispatchMouseEvents;
+  static bool sDispatchMouseEventsCached = false;
+  if (!sDispatchMouseEventsCached) {
+    sDispatchMouseEventsCached = true;
+    Preferences::AddBoolVarCache(&sDispatchMouseEvents,
+                                 "embedlite.dispatch_mouse_events", false);
+  }
+  if (status != nsEventStatus_eConsumeNoDefault && sDispatchMouseEvents) {
+    DispatchSynthesizedMouseEvent(localEvent);
   }
   return true;
 }
@@ -1105,6 +1110,43 @@ EmbedLiteViewBaseChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla:
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
+float
+EmbedLiteViewBaseChild::GetPresShellResolution() const
+{
+  nsCOMPtr<nsIDocument> document(GetDocument());
+  nsIPresShell* shell = document->GetShell();
+  if (!shell) {
+    return 1.0f;
+  }
+  return shell->GetXResolution();
+}
+
+already_AddRefed<nsIDocument>
+EmbedLiteViewBaseChild::GetDocument() const
+{
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  return doc.forget();
+}
+
+void
+EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
+{
+  if (nsIPresShell::gPreventMouseEvents) {
+    return;
+  }
+
+  if (aEvent.message == NS_TOUCH_END) {
+    int64_t time = aEvent.time;
+    MOZ_ASSERT(aEvent.touches.Length() == 1);
+    LayoutDevicePoint pt = aEvent.touches[0]->mRefPoint;
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, pt, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, pt, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, pt, aEvent.widget);
+  }
+}
+
 void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
   LOGT("sz[%g,%g]", aSize.width, aSize.height);
@@ -1114,7 +1156,7 @@ void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
-  baseWindow->SetVisibility(true);
+  //baseWindow->SetVisibility(true);
 
   gfxSize size(aSize.width, aSize.height);
   mHelper->ReportSizeUpdate(size);
