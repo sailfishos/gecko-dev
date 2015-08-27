@@ -95,6 +95,7 @@ LOCAL_INCLUDES += [
     '/dom/ipc',
     '/gfx/layers',
     '/gfx/layers/apz/util',
+    '/hal',
     '/js/xpconnect/src',
     '/widget',
     '/xpcom/base',

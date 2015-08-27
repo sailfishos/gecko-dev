@@ -8,6 +8,12 @@
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteWindowBaseChild.h"
 #include "mozilla/unused.h"
+#include "Hal.h"
+#include "ScreenOrientation.h"
+#include "nsIScreen.h"
+#include "nsIScreenManager.h"
+
+using namespace mozilla::dom;
 
 namespace mozilla {
 namespace embedlite {
@@ -71,6 +77,45 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const mozilla::ScreenRo
     widget->SetRotation(aRotation);
     widget->UpdateSize();
   }
+
+  nsresult rv;
+  nsCOMPtr<nsIScreenManager> screenMgr =
+      do_GetService("@mozilla.org/gfx/screenmanager;1", &rv);
+  if (NS_FAILED(rv)) {
+    NS_ERROR("Can't find nsIScreenManager!");
+    return true;
+  }
+
+  nsIntRect rect;
+  int32_t colorDepth, pixelDepth;
+  nsCOMPtr<nsIScreen> screen;
+
+  screenMgr->GetPrimaryScreen(getter_AddRefs(screen));
+  screen->GetRect(&rect.x, &rect.y, &rect.width, &rect.height);
+  screen->GetColorDepth(&colorDepth);
+  screen->GetPixelDepth(&pixelDepth);
+
+  ScreenOrientation orientation = eScreenOrientation_Default;
+  switch (aRotation) {
+    case ROTATION_0:
+      orientation = eScreenOrientation_PortraitPrimary;
+      break;
+    case ROTATION_90:
+      orientation = eScreenOrientation_LandscapePrimary;
+      break;
+    case ROTATION_180:
+      orientation = eScreenOrientation_PortraitSecondary;
+      break;
+    case ROTATION_270:
+      orientation = eScreenOrientation_LandscapeSecondary;
+      break;
+    default:
+      break;
+  }
+
+  hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
+      rect, orientation, colorDepth, pixelDepth));
+
   return true;
 }
 
