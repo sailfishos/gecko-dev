@@ -79,11 +79,6 @@ public:
   virtual void SuspendRendering();
   virtual void ResumeRendering();
   virtual void* GetPlatformImage(int* width, int* height);
-  // Compositor Interface
-  //   PNG Decoded data
-  virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1);
-  // Render content into custom rgb image (SW Rendering)
-  virtual bool RenderToImage(unsigned char* aData, int aWidth, int aHeight, int aStride, int aDepth);
 
 private:
   friend class EmbedLiteApp; // Needs to destroy the window.
