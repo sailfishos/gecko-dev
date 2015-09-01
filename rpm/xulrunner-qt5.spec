@@ -1,5 +1,21 @@
 %define greversion 31.7.0
-%global __provides_exclude_from %{_libdir}/%{name}-%{greversion}/.*[^libmozalloc]\\.so
+
+# Private/bundled libs the final package should not provide or depend on.
+%global privlibs             libfreebl3
+%global privlibs %{privlibs}|libmozalloc
+%global privlibs %{privlibs}|libmozsqlite3
+%global privlibs %{privlibs}|libnspr4
+%global privlibs %{privlibs}|libnss3
+%global privlibs %{privlibs}|libnssdbm3
+%global privlibs %{privlibs}|libnssutil3
+%global privlibs %{privlibs}|libplc4
+%global privlibs %{privlibs}|libplds4
+%global privlibs %{privlibs}|libsmime3
+%global privlibs %{privlibs}|libsoftokn3
+%global privlibs %{privlibs}|libssl3
+
+%global __provides_exclude ^(%{privlibs})\\.so
+%global __requires_exclude ^(%{privlibs})\\.so
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
