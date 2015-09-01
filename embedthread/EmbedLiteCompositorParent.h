@@ -28,7 +28,6 @@ public:
 		            bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight);
 
-  bool RenderToContext(gfx::DrawTarget* aTarget);
   void SetSurfaceSize(int width, int height);
   void* GetPlatformImage(int* width, int* height);
   void SuspendRendering();
@@ -53,6 +52,7 @@ private:
 
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
+  gfx::IntSize mLastViewSize;
 };
 
 } // embedlite
