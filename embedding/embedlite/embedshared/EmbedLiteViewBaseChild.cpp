@@ -85,6 +85,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindow(nullptr)
   , mViewResized(false)
   , mWindowObserverRegistered(false)
+  , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
@@ -501,6 +502,9 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
   mWebBrowser->SetIsActive(aIsActive);
   mWidget->Show(aIsActive);
 
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  baseWindow->SetVisibility(aIsActive);
+
   return true;
 }
 
@@ -509,6 +513,10 @@ EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
 {
   if (!mWebBrowser || !mDOMWindow) {
     return false;
+  }
+
+  if (mIsFocused == aIsFocused) {
+    return true;
   }
 
   nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
@@ -527,6 +535,9 @@ EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
     fm->ClearFocus(mDOMWindow);
     LOGT("Clear browser focus");
   }
+
+  mIsFocused = aIsFocused;
+
   return true;
 }
 
@@ -688,7 +699,6 @@ EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
     data.AppendPrintf(" }}");
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("AZPC:ScrollDOMEvent"), data);
   }
-
   return true;
 }
 
@@ -1156,7 +1166,6 @@ void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
-  //baseWindow->SetVisibility(true);
 
   gfxSize size(aSize.width, aSize.height);
   mHelper->ReportSizeUpdate(size);

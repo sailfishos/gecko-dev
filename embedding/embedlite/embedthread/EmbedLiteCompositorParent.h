@@ -28,7 +28,6 @@ public:
 		            bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight);
 
-  bool RenderToContext(gfx::DrawTarget* aTarget);
   void SetSurfaceSize(int width, int height);
   void* GetPlatformImage(int* width, int* height);
   void SuspendRendering();
@@ -44,15 +43,19 @@ protected:
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
   virtual void ScheduleTask(CancelableTask*, int) override;
-  void PrepareOffscreen();
 
 private:
+  void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
   bool RenderGL(TimeStamp aScheduleTime);
 
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
+  gfx::IntSize mLastViewSize;
+  bool mUseExternalGLContext;
+
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorParent);
 };
 
 } // embedlite

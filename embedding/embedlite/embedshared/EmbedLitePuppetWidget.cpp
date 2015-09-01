@@ -202,14 +202,13 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   mEnabled = true;
   mVisible = mParent ? mParent->mVisible : true;
 
-  EmbedLitePuppetWidget* parent = static_cast<EmbedLitePuppetWidget*>(aParent);
-  if (parent) {
-    parent->mChildren.AppendElement(this);
+  if (mParent) {
+    mParent->mChildren.AppendElement(this);
   }
-  mRotation = parent ? parent->mRotation : mRotation;
-  mBounds = parent ? parent->mBounds : aRect;
-  mMargins = parent ? parent->mMargins : mMargins;
-  mNaturalBounds = parent ? parent->mNaturalBounds : aRect;
+  mRotation = mParent ? mParent->mRotation : mRotation;
+  mBounds = mParent ? mParent->mBounds : aRect;
+  mMargins = mParent ? mParent->mMargins : mMargins;
+  mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
 
   BaseCreate(aParent, aRect, aInitData);
 
@@ -345,7 +344,9 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
     mChildren[i]->Resize(aWidth, aHeight, aRepaint);
   }
 
-  Invalidate(mBounds);
+  if (aRepaint) {
+    Invalidate(mBounds);
+  }
 
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
@@ -594,11 +595,6 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
     *aAllowRetaining = true;
   }
 
-  if (Destroyed()) {
-    NS_ERROR("It seems attempt to render widget after destroy");
-    return nullptr;
-  }
-
   if (mLayerManager) {
     // This layer manager might be used for painting outside of DoDraw(), so we need
     // to set the correct rotation on it.
@@ -687,6 +683,12 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   // This makes sure that gfxPlatforms gets initialized if it hasn't by now.
   gfxPlatform::GetPlatform();
 
+  MOZ_ASSERT(gfxPlatform::UsesOffMainThreadCompositing(),
+             "This function assumes OMTC");
+
+  MOZ_ASSERT(!mCompositorParent,
+    "Should have properly cleaned up the previous CompositorParent beforehand");
+
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
   nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
@@ -720,11 +722,13 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
     WindowUsesOMTC();
 
     mLayerManager = lm.forget();
-  } else {
-    // We don't currently want to support not having a LayersChild
-    lm = nullptr;
-    mCompositorChild = nullptr;
+    return;
   }
+
+  NS_WARNING("Failed to create an OMT compositor.");
+  DestroyCompositor();
+  // Compositor child had the only reference to LayerManager and will have
+  // deallocated it when being freed.
 }
 
 void
@@ -744,16 +748,6 @@ EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntR
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->DrawOverlay(aRect);
-  }
-}
-
-void
-EmbedLitePuppetWidget::PostRender(LayerManagerComposite* aManager)
-{
-  MOZ_ASSERT(mWindow);
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    window->GetListener()->CompositingFinished();
   }
 }
 

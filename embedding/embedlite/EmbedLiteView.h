@@ -99,23 +99,6 @@ public:
 
   virtual void SetMargins(int top, int right, int bottom, int left);
 
-  // Setup renderable view size
-  virtual void SetViewSize(int width, int height); // XXX: Remove, EmbedLiteViews always cover the whole window
-
-  // Compositor Interface
-  //   PNG Decoded data
-  virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1); // XXX: Remove
-
-  // Render content into custom rgb image (SW Rendering)
-  virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth); // XXX: Remove
-
-  //   Setup renderable GL/EGL window surface size
-  virtual void SetGLViewPortSize(int width, int height) {}; // XXX: Remove
-
-  // Set screen rotation (orientation change).
-  virtual void SetScreenRotation(mozilla::ScreenRotation rotation); // TODO: Remove
-  virtual void ScheduleUpdate(); // TODO: Remove
-
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
   // and do communication between UI and Content child via json messages.
@@ -131,10 +114,6 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
-
-  virtual void* GetPlatformImage(int* width, int* height); // XXX: Remove
-  virtual void SuspendRendering() {} // XXX: Remove
-  virtual void ResumeRendering() {} // XXX: Remove
 
 private:
   friend class EmbedLiteViewThreadParent;

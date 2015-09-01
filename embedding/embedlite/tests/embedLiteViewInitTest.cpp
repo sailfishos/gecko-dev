@@ -6,6 +6,7 @@
 #include "mozilla/embedlite/EmbedInitGlue.h"
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "mozilla/embedlite/EmbedLiteView.h"
+#include "mozilla/embedlite/EmbedLiteWindow.h"
 #include "qmessagepump.h"
 #include <list>
 
@@ -55,9 +56,9 @@ public:
     , mView(nullptr)
   {
     mWindow = mAppListener->App()->CreateWindow();
+    mWindow->SetSize(800, 600);
     mView = mAppListener->App()->CreateView(mWindow);
     mView->SetListener(this);
-    mView->SetViewSize(800, 600);
   }
   virtual ~MyViewListener() {
     printf("~MyViewListener\n");

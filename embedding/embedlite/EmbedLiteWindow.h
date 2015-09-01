@@ -36,14 +36,6 @@ public:
   // This function is called directly from gecko compositor thread.
   virtual void CompositingFinished() {}
 
-  // Called when gecko compositor is about to invalidate the view. Returning true
-  // from this function means the embedder withes to handle this invalidation request.
-  // In case false is returned normal gecko compositor invalidation process will
-  // take place.
-  //
-  // This function is called from gecko compositor thread.
-  virtual bool Invalidate() { return false; }
-
   // Will be always called from the compositor thread.
   virtual void DrawUnderlay() {}
 
@@ -79,11 +71,6 @@ public:
   virtual void SuspendRendering();
   virtual void ResumeRendering();
   virtual void* GetPlatformImage(int* width, int* height);
-  // Compositor Interface
-  //   PNG Decoded data
-  virtual char* GetImageAsURL(int aWidth = -1, int aHeight = -1);
-  // Render content into custom rgb image (SW Rendering)
-  virtual bool RenderToImage(unsigned char* aData, int aWidth, int aHeight, int aStride, int aDepth);
 
 private:
   friend class EmbedLiteApp; // Needs to destroy the window.
