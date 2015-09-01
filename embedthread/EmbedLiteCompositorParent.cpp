@@ -14,6 +14,7 @@
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
+#include "mozilla/Preferences.h"
 #include "gfxUtils.h"
 #include "nsRefreshDriver.h"
 
@@ -43,9 +44,12 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
+  , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
+  Preferences::AddBoolVarCache(&mUseExternalGLContext,
+		               "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
 }
 
@@ -66,18 +70,21 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
                                                    aTextureFactoryIdentifier,
                                                    aSuccess);
 
-  // Prepare Offscreen rendering context
-  PrepareOffscreen();
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win) {
+    win->GetListener()->CompositorCreated();
+  }
+
+  if (!mUseExternalGLContext) {
+    // Prepare Offscreen rendering context
+    PrepareOffscreen();
+  }
   return p;
 }
 
 void
 EmbedLiteCompositorParent::PrepareOffscreen()
 {
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositorCreated();
-  }
 
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -111,16 +118,14 @@ EmbedLiteCompositorParent::UpdateTransformState()
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-
   CompositorOGL *compositor = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor());
   NS_ENSURE_TRUE(compositor, );
 
   GLContext* context = compositor->gl();
   NS_ENSURE_TRUE(context, );
 
-  gfx::IntSize eglSize(mEGLSurfaceSize.width, mEGLSurfaceSize.height);
-  if (context->IsOffscreen() && context->OffscreenSize() != eglSize) {
-    context->ResizeOffscreen(eglSize);
+  if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
+    context->ResizeOffscreen(mLastViewSize);
     ScheduleRenderOnCompositorThread();
   }
 }
@@ -139,32 +144,14 @@ EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 bool
 EmbedLiteCompositorParent::Invalidate()
 {
-  UpdateTransformState();
-
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win && !win->GetListener()->Invalidate()) {
+  if (!mUseExternalGLContext) {
+    UpdateTransformState();
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
   }
 
   return false;
-}
-
-bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
-{
-  LOGF();
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-
-  NS_ENSURE_TRUE(state->mLayerManager, false);
-  if (!state->mLayerManager->GetRoot()) {
-    // Nothing to paint yet, just return silently
-    return false;
-  }
-  IntSize size(aTarget->GetSize());
-  nsIntRect boundRect(0, 0, size.width, size.height);
-  CompositeToTarget(aTarget, &boundRect);
-  return true;
 }
 
 bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
@@ -200,6 +187,17 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
       NS_ERROR("Failed to publish context frame");
       return false;
     }
+    // Temporary hack, we need two extra paints in order to get initial picture
+    static int sInitialPaintCount = 0;
+    if (sInitialPaintCount < 2) {
+      ScheduleRenderOnCompositorThread();
+      sInitialPaintCount++;
+    }
+  }
+
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win) {
+    win->GetListener()->CompositingFinished();
   }
 
   return false;
@@ -209,6 +207,7 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   if (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height) {
     SetEGLSurfaceSize(width, height);
+    mLastViewSize = gfx::IntSize(width, height);
   }
 }
 
@@ -249,8 +248,10 @@ EmbedLiteCompositorParent::SuspendRendering()
 void
 EmbedLiteCompositorParent::ResumeRendering()
 {
-  CompositorParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
-                                                     mEGLSurfaceSize.height);
+  if (mLastViewSize.width > 0 && mLastViewSize.height > 0) {
+    CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width,
+                                                       mLastViewSize.height);
+  }
 }
 
 } // namespace embedlite

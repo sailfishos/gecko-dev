@@ -167,7 +167,6 @@ public:
    * forward to the EmbedLiteCompositorParent.
    */
   virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
-  virtual void PostRender(LayerManagerComposite* aManager) override;
 
   NS_IMETHOD         SetParent(nsIWidget* aNewParent) override;
   virtual nsIWidget* GetParent(void) override;
@@ -207,7 +206,6 @@ private:
   bool mHasCompositor;
   InputContext mInputContext;
   bool mIMEComposing;
-  nsIntRect mRotatedBounds;
   nsString mIMEComposingText;
   ChildrenArray mChildren;
   EmbedLitePuppetWidget* mParent;

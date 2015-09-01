@@ -198,40 +198,10 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 
 // Render interface
 
-char*
-EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
-{
-  return mWindow->GetImageAsURL(aWidth, aHeight);
-}
-
-bool
-EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
-{
-  return mWindow->RenderToImage(aData, imgW, imgH, stride, depth);
-}
-
 void
 EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 {
     unused << mViewParent->SendSetMargins(top, right, bottom, left);
-}
-
-void
-EmbedLiteView::SetViewSize(int width, int height)
-{
-  mWindow->SetSize(width, height);
-}
-
-void
-EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
-{
-  mWindow->SetContentOrientation(rotation);
-}
-
-void
-EmbedLiteView::ScheduleUpdate()
-{
-  mWindow->ScheduleUpdate();
 }
 
 void
@@ -310,12 +280,6 @@ EmbedLiteView::GetUniqueID()
   mViewImpl->GetUniqueID(&id);
   MOZ_ASSERT(id == mUniqueID);
   return mUniqueID;
-}
-
-void*
-EmbedLiteView::GetPlatformImage(int* width, int* height)
-{
-  return mWindow->GetPlatformImage(width, height);
 }
 
 } // namespace embedlite

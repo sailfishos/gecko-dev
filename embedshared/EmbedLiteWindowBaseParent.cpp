@@ -140,17 +140,5 @@ void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompos
   }
 }
 
-bool EmbedLiteWindowBaseParent::RenderToImage(unsigned char* aData, int aWidth,
-		                              int aHeight, int aStride, int aDepth)
-{
-  LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, aWidth, aHeight, aStride, aDepth);
-  if (mCompositor) {
-    RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(
-        aData, IntSize(aWidth, aHeight), aStride, _depth_to_gfxformat(aDepth));
-    return mCompositor->RenderToContext(target);
-  }
-  return false;
-}
-
 } // namespace embedlite
 } // namespace mozilla

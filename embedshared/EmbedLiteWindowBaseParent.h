@@ -32,7 +32,6 @@ public:
   void AddObserver(EmbedLiteWindowParentObserver*);
   void RemoveObserver(EmbedLiteWindowParentObserver*);
 
-  // XXX: Remove once not needed.
   EmbedLiteCompositorParent* GetCompositor() const { return mCompositor.get(); }
 
   void SetSize(int width, int height);
@@ -41,7 +40,6 @@ public:
   void SuspendRendering();
   void ResumeRendering();
   void* GetPlatformImage(int* width, int* height);
-  bool RenderToImage(unsigned char* aData, int aWidth, int aHeight, int aStride, int aDepth);
 
 protected:
   friend class EmbedLiteCompositorParent;
