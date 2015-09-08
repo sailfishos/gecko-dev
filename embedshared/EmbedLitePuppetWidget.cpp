@@ -751,6 +751,17 @@ EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, nsIntR
   }
 }
 
+bool
+EmbedLitePuppetWidget::PreRender(LayerManagerComposite *aManager)
+{
+  MOZ_ASSERT(mWindow);
+  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
+  if (window) {
+    return window->GetListener()->PreRender();
+  }
+  return true;
+}
+
 void
 EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver* obs)
 {

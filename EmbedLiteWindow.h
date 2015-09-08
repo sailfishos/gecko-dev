@@ -42,6 +42,9 @@ public:
   // Will be always called from the compositor thread.
   virtual void DrawOverlay(const nsIntRect& aRect) {}
 
+  // Will be always called from the compositor thread.
+  virtual bool PreRender() { return true; }
+
   // Request GL implementation specific surface and context objects from the
   // platform. This can be EGLSurface / EGLContext in case of EGL, or
   // GLXContext / GLXDrawable in case of GLX.
