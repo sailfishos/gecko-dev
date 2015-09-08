@@ -75,6 +75,7 @@ public:
 
   // Will be always called from the compositor thread.
   virtual void DrawUnderlay() {}
+  virtual bool PreRender() { return true; }
 
   // Will be always called from the compositor thread.
   virtual void DrawOverlay(const nsIntRect& aRect) {}
