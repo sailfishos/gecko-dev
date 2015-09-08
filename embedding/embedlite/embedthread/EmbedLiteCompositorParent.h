@@ -44,6 +44,7 @@ public:
 
   void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
   void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
+  bool PreRender(layers::LayerManagerComposite* aManager);
   void ClearCompositorSurface(nscolor);
 
 protected:

@@ -326,6 +326,15 @@ void EmbedLiteCompositorParent::DrawWindowOverlay(LayerManagerComposite *aManage
   }
 }
 
+bool EmbedLiteCompositorParent::PreRender(LayerManagerComposite* aManager)
+{
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (view) {
+    return view->GetListener()->PreRender();
+  }
+  return true;
+}
+
 void EmbedLiteCompositorParent::ClearCompositorSurface(nscolor aColor)
 {
   CancelCurrentCompositeTask();

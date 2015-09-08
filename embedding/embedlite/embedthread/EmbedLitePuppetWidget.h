@@ -171,6 +171,8 @@ public:
    */
   virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect);
 
+  virtual bool PreRender(LayerManagerComposite* aManager) override;
+
   NS_IMETHOD         SetParent(nsIWidget* aNewParent);
   virtual nsIWidget *GetParent(void);
 
