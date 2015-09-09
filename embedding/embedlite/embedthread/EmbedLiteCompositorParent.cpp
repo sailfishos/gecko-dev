@@ -195,11 +195,6 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
     }
   }
 
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositingFinished();
-  }
-
   return false;
 }
 
