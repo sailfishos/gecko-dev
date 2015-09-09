@@ -139,6 +139,7 @@ void EmbedLiteWindowBaseChild::CreateWidget()
     nsIntRect(nsIntPoint(0, 0), nsIntSize(mSize.width, mSize.height)),
     &widgetInit              // HandleWidgetEvent
   );
+  static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();
 
   unused << SendInitialized();
 }
