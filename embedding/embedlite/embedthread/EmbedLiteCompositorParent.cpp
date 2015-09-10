@@ -14,6 +14,7 @@
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
+#include "mozilla/Preferences.h"
 #include "gfxUtils.h"
 #include "nsRefreshDriver.h"
 
@@ -47,6 +48,8 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
+  Preferences::AddBoolVarCache(&mUseExternalGLContext,
+		               "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
 }
 
@@ -67,18 +70,21 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
                                                    aTextureFactoryIdentifier,
                                                    aSuccess);
 
-  // Prepare Offscreen rendering context
-  PrepareOffscreen();
+  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+  if (win) {
+    win->GetListener()->CompositorCreated();
+  }
+
+  if (!mUseExternalGLContext) {
+    // Prepare Offscreen rendering context
+    PrepareOffscreen();
+  }
   return p;
 }
 
 void
 EmbedLiteCompositorParent::PrepareOffscreen()
 {
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositorCreated();
-  }
 
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -140,8 +146,7 @@ EmbedLiteCompositorParent::Invalidate()
 {
   UpdateTransformState();
 
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win && !win->GetListener()->Invalidate()) {
+  if (!mUseExternalGLContext) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
