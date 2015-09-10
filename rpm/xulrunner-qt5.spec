@@ -21,7 +21,7 @@
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
-Version:    %{greversion}
+Version:    %{greversion}.1
 Release:    1
 Group:      Applications/Internet
 License:    Mozilla License
