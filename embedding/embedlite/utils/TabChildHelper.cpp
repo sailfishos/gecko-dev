@@ -288,12 +288,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 bool
 TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
-  nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-  if (APZCCallbackHelper::HasValidPresShellId(utils, aFrameMetrics)) {
-    mLastRootMetrics = ProcessUpdateFrame(aFrameMetrics);
-    return true;
-  }
-  return true;
+  return TabChildBase::UpdateFrameHandler(aFrameMetrics);
 }
 
 nsIWebNavigation*

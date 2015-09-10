@@ -501,6 +501,9 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
   mWebBrowser->SetIsActive(aIsActive);
   mWidget->Show(aIsActive);
 
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  baseWindow->SetVisibility(aIsActive);
+
   return true;
 }
 
@@ -1156,7 +1159,6 @@ void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
-  //baseWindow->SetVisibility(true);
 
   gfxSize size(aSize.width, aSize.height);
   mHelper->ReportSizeUpdate(size);
