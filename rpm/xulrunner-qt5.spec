@@ -1,11 +1,26 @@
 %define greversion    38.0.5
+%define sf_extra_ver  3
+
+%define embedlite_config merqtxulrunner
+
+%define system_sqlite     0
+%define system_ffi        1
+%define system_hunspell   1
+%define system_jpeg       1
+%define system_png        1
+%define system_icu        0
+%define system_zlib       1
+%define system_bz2        1
+
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
 
 # Private/bundled libs the final package should not provide or depend on.
 %global privlibs             libfreebl3
 %global privlibs %{privlibs}|libmozalloc
+%if %{system_sqlite}
 %global privlibs %{privlibs}|libmozsqlite3
+%endif
 %global privlibs %{privlibs}|libnspr4
 %global privlibs %{privlibs}|libnss3
 %global privlibs %{privlibs}|libnssdbm3
@@ -21,7 +36,7 @@
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
-Version:    %{greversion}.1
+Version:    %{greversion}.%{sf_extra_ver}
 Release:    1
 Group:      Applications/Internet
 License:    Mozilla License
@@ -31,7 +46,9 @@ BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
+%if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3)
+%endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
 BuildRequires:  pkgconfig(gstreamer-1.0)
@@ -46,8 +63,24 @@ BuildRequires:  python
 BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
+%if %{system_icu}
+BuildRequires:  libicu52-devel
+%endif
+%if %{system_hunspell}
 BuildRequires:  hunspell-devel
+%endif
+%if %{system_bz2}
+BuildRequires:  bzip2-devel
+%endif
+%if %{system_zlib}
+BuildRequires:  zlib
+%endif
+%if %{system_png}
+BuildRequires:  libpng
+%endif
+%if %{system_jpeg}
 BuildRequires:  libjpeg-turbo-devel
+%endif
 %ifarch i586 i486 i386 x86_64
 BuildRequires:  yasm
 %endif
@@ -55,6 +88,9 @@ BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
 Requires: gstreamer1.0-plugins-good
+%if %{system_ffi}
+BuildRequires:  libffi-devel
+%endif
 
 %description
 Mozilla XUL runner
@@ -79,7 +115,7 @@ Tests and misc files for xulrunner.
 # Build output directory.
 %define BUILD_DIR "$PWD"/obj-build-mer-qt-xr
 # EmbedLite config used to configure the engine.
-%define BASE_CONFIG "$PWD"/embedding/embedlite/config/mozconfig.merqtxulrunner
+%define BASE_CONFIG "$PWD"/embedding/embedlite/config/mozconfig.%{embedlite_config}
 
 %prep
 %setup -q -n %{name}-%{version}
@@ -125,12 +161,40 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 #echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
 #echo "export LD=ld.gold" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
-echo "ac_add_options --enable-system-hunspell" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
-echo "ac_add_options --disable-mochitest" >> "$MOZCONFIG"
-echo "ac_add_options --disable-installer" >> "$MOZCONFIG"
-echo "ac_add_options --disable-javaxpcom" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
+
+%if %{system_hunspell}
+  echo "ac_add_options --enable-system-hunspell" >> "$MOZCONFIG"
+%endif
+
+%if %{system_sqlite}
+  echo "ac_add_options --enable-system-sqlite" >> "$MOZCONFIG"
+%endif
+
+%if %{system_ffi}
+  echo "ac_add_options --enable-system-ffi" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_icu}
+  echo "ac_add_options --with-system-icu" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_png}
+  echo "ac_add_options --with-system-png" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_jpeg}
+  echo "ac_add_options --with-system-jpeg" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_zlib}
+  echo "ac_add_options --with-system-zlib" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_bz2}
+  echo "ac_add_options --with-system-bz2" >> "${MOZCONFIG}"
+%endif
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
