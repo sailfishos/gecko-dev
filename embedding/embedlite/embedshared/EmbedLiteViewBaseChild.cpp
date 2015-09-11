@@ -703,6 +703,7 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 
   if (mViewResized &&
+      aFrameMetrics.GetIsRoot() &&
       mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
       mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
     mViewResized = false;
@@ -710,12 +711,11 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   RelayFrameMetrics(aFrameMetrics);
 
-  bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
-    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
+    return mHelper->RecvUpdateFrame(aFrameMetrics);
   }
 
-  return ret;
+  return true;
 }
 
 bool
