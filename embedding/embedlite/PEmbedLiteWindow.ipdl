@@ -20,6 +20,7 @@ child:
 
 parent:
   Initialized();
+  Destroyed();
   __delete__();
 };
 

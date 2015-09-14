@@ -101,8 +101,6 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window)
   : EmbedLitePuppetWidget(window, nullptr)
 {
   if (sUseExternalGLContext && sRequestGLContextEarly) {
-    // GetPlatform() should create compositor loop if it doesn't exist, yet.
-    gfxPlatform::GetPlatform();
     CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
         NewRunnableFunction(&CreateGLContextEarly, window->GetUniqueID()));
   }

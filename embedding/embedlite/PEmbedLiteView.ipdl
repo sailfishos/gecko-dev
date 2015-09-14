@@ -70,6 +70,7 @@ child:
 
 parent:
     Initialized();
+    Destroyed();
      __delete__();
 
     OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);

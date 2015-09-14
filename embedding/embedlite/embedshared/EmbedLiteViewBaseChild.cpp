@@ -145,6 +145,7 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
   mChrome = nullptr;
   mDOMWindow = nullptr;
   mWebNavigation = nullptr;
+  unused << SendDestroyed();
   PEmbedLiteViewChild::Send__delete__(this);
   return true;
 }

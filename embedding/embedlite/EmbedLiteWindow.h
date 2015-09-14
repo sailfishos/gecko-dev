@@ -75,11 +75,21 @@ public:
   virtual void ResumeRendering();
   virtual void* GetPlatformImage(int* width, int* height);
 
+protected:
+  friend class EmbedLiteApp;
+
+  virtual ~EmbedLiteWindow();
+  // Request the window to be destroyed. Once this async process is done
+  // EmbedLiteWindowListener::WindowDestroyed will be called. This interface
+  // should only be used by EmbedLiteApp. EmbedLite users should destroy
+  // EmbedLiteWindowss by calling EmbedLiteApp::DestroyWindow.
+  void Destroy();
+
 private:
-  friend class EmbedLiteApp; // Needs to destroy the window.
+  friend class EmbedLiteWindowBaseParent;
 
   // EmbedLiteWindowss are supposed to be destroyed through EmbedLiteApp::DestroyWindow.
-  virtual ~EmbedLiteWindow();
+  void Destroyed();
 
   EmbedLiteApp* mApp;
   EmbedLiteWindowListener* mListener;

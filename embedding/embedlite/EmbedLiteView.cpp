@@ -40,18 +40,25 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmb
 EmbedLiteView::~EmbedLiteView()
 {
   LOGT("impl:%p", mViewImpl);
-  if (mViewParent) {
-    unused << mViewParent->SendDestroy();
-  } else {
-    LOGNI();
-  }
   if (mViewImpl) {
     mViewImpl->ViewAPIDestroyed();
   }
-  mViewImpl = NULL;
+}
+
+void
+EmbedLiteView::Destroy()
+{
+  MOZ_ASSERT(mViewParent);
+  unused << mViewParent->SendDestroy();
+}
+
+void
+EmbedLiteView::Destroyed()
+{
   if (mListener) {
     mListener->ViewDestroyed();
   }
+  EmbedLiteApp::GetInstance()->ViewDestroyed(mUniqueID);
 }
 
 void
