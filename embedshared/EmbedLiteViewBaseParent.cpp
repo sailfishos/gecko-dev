@@ -5,7 +5,6 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteApp.h"
 #include "EmbedLiteView.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "EmbedLiteWindowBaseParent.h"
@@ -47,7 +46,6 @@ EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
   LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
   mController = nullptr;
   mWindow.RemoveObserver(this);
-  EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
 }
 
 void
@@ -90,6 +88,18 @@ EmbedLiteViewBaseParent::RecvInitialized()
 
   NS_ENSURE_TRUE(mView, false);
   mView->GetListener()->ViewInitialized();
+  return true;
+}
+
+bool
+EmbedLiteViewBaseParent::RecvDestroyed()
+{
+  if (mViewAPIDestroyed) {
+    return true;
+  }
+
+  NS_ENSURE_TRUE(mView, false);
+  mView->Destroyed();
   return true;
 }
 

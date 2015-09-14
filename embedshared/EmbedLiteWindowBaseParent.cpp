@@ -128,6 +128,13 @@ bool EmbedLiteWindowBaseParent::RecvInitialized()
   return true;
 }
 
+bool EmbedLiteWindowBaseParent::RecvDestroyed()
+{
+  MOZ_ASSERT(mWindow);
+  mWindow->Destroyed();
+  return true;
+}
+
 void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 {
   LOGT("compositor:%p, observers:%d", aCompositor, mObservers.Length());

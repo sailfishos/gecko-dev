@@ -49,6 +49,7 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   virtual bool RecvInitialized() override;
+  virtual bool RecvDestroyed() override;
 
   void SetEmbedAPIWindow(EmbedLiteWindow* window);
   void SetCompositor(EmbedLiteCompositorParent* aCompositor);

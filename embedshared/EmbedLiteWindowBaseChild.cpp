@@ -12,11 +12,18 @@
 #include "ScreenOrientation.h"
 #include "nsIScreen.h"
 #include "nsIScreenManager.h"
+#include "gfxPlatform.h"
 
 using namespace mozilla::dom;
 
 namespace mozilla {
+
+namespace layers {
+void ShutdownTileCache();
+}
 namespace embedlite {
+
+static int sWindowCount = 0;
 
 EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint32_t& aId)
   : mId(aId)
@@ -28,6 +35,10 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint32_t& aId)
 
   mCreateWidgetTask = NewRunnableMethod(this, &EmbedLiteWindowBaseChild::CreateWidget);
   MessageLoop::current()->PostTask(FROM_HERE, mCreateWidgetTask);
+  sWindowCount++;
+
+  // Make sure gfx platform is initialized and ready to go.
+  gfxPlatform::GetPlatform();
 }
 
 EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
@@ -37,6 +48,11 @@ EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
   if (mCreateWidgetTask) {
     mCreateWidgetTask->Cancel();
     mCreateWidgetTask = nullptr;
+  }
+
+  sWindowCount--;
+  if (sWindowCount == 0) {
+    mozilla::layers::ShutdownTileCache();
   }
 }
 
@@ -54,6 +70,7 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 {
   LOGT("destroy");
   mWidget = nullptr;
+  unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
   return true;
 }
