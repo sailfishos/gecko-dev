@@ -51,6 +51,8 @@ public:
                                             const char* uri,
                                             const uint32_t& contextFlags,
                                             EmbedLiteView* aParentView) { return 0; }
+  virtual void LastViewDestroyed() {};
+  virtual void LastWindowDestroyed() {};
 };
 
 class EmbedLiteApp
@@ -175,13 +177,13 @@ private:
   friend class EmbedLiteAppThreadParent;
   friend class EmbedLiteCompositorParent;
   friend class EmbedLitePuppetWidget;
-  friend class EmbedLiteViewBaseChild;
-  friend class EmbedLiteViewBaseParent;
-  friend class EmbedLiteViewThreadParent;
+  friend class EmbedLiteView;
+  friend class EmbedLiteWindow;
 
   EmbedLiteView* GetViewByID(uint32_t id);
   EmbedLiteWindow* GetWindowByID(uint32_t id);
   void ViewDestroyed(uint32_t id);
+  void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
   uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();

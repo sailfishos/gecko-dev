@@ -314,16 +314,15 @@ EmbedLiteApp::Stop()
   NS_ASSERTION(mState == STARTING || mState == INITIALIZED, "Wrong timing");
 
   if (mState == INITIALIZED) {
-    if (mViews.empty()) {
+    if (mViews.empty() && mWindows.empty()) {
       mUILoop->PostTask(FROM_HERE,
                         NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
     } else {
-      std::map<uint32_t, EmbedLiteView*>::iterator it;
-      for (it = mViews.begin(); it != mViews.end(); it++) {
-        EmbedLiteView* view = it->second;
-        delete view;
-        it->second = nullptr;
-        // NOTE: we still keep dangling keys here. They are supposed to be erased in ViewDestroyed().
+      for (auto viewPair : mViews) {
+        viewPair.second->Destroy();
+      }
+      for (auto winPair: mWindows) {
+        winPair.second->Destroy();
       }
     }
   }
@@ -441,7 +440,7 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPri
 
   PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(
       mAppParent->SendPEmbedLiteViewConstructor(aWindow->GetUniqueID(), sViewCreateID,
-	                                        aParent, aIsPrivateWindow));
+                                                aParent, aIsPrivateWindow));
   EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
   mViews[sViewCreateID] = view;
   return view;
@@ -517,11 +516,35 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
   LOGT("id:%i", id);
   std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
   if (it != mViews.end()) {
+    EmbedLiteView* view = it->second;
     mViews.erase(it);
+    delete view;
   }
-  if (mState == DESTROYING && mViews.empty()) {
-    mUILoop->PostTask(FROM_HERE,
-                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+  if (mViews.empty()) {
+    if (mListener) {
+      mListener->LastViewDestroyed();
+    }
+    if (mState == DESTROYING) {
+      mUILoop->PostTask(FROM_HERE,
+                        NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+    }
+  }
+}
+
+void
+EmbedLiteApp::WindowDestroyed(uint32_t id)
+{
+  LOGT("id:%i", id);
+  std::map<uint32_t, EmbedLiteWindow*>::iterator it = mWindows.find(id);
+  if (it != mWindows.end()) {
+    EmbedLiteWindow* win = it->second;
+    mWindows.erase(it);
+    delete win;
+  }
+  if (mWindows.empty()) {
+    if (mListener) {
+      mListener->LastWindowDestroyed();
+    }
   }
 }
 
@@ -529,13 +552,9 @@ void EmbedLiteApp::DestroyView(EmbedLiteView* aView)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  std::map<uint32_t, EmbedLiteView*>::iterator it;
-  for (it = mViews.begin(); it != mViews.end(); it++) {
-    if (it->second == aView) {
-      EmbedLiteView* view = it->second;
-      delete view;
-      it->second = nullptr;
-      mViews.erase(it);
+  for (auto elm : mViews) {
+    if (aView == elm.second) {
+      elm.second->Destroy();
       return;
     }
   }
@@ -546,13 +565,9 @@ void EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  std::map<uint32_t, EmbedLiteWindow*>::iterator it;
-  for (it = mWindows.begin(); it != mWindows.end(); it++) {
-    if (it->second == aWindow) {
-      EmbedLiteWindow* window = it->second;
-      delete window;
-      it->second = nullptr;
-      mWindows.erase(it);
+  for (auto elm : mWindows) {
+    if (aWindow == elm.second) {
+      elm.second->Destroy();
       return;
     }
   }

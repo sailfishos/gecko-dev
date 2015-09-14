@@ -115,12 +115,21 @@ public:
 
   virtual uint32_t GetUniqueID();
 
-private:
-  friend class EmbedLiteViewThreadParent;
+protected:
   friend class EmbedLiteApp; // Needs to destroy the view.
 
-  // EmbedLiteViews are supposed to be destroyed through EmbedLiteApp::DestroyView.
   virtual ~EmbedLiteView();
+  // Request the view to be destroyed. Once this async process is done
+  // EmbedLiteViewListener::ViewDestroyed will be called. This interface
+  // should only be used by EmbedLiteApp. EmbedLite users should destroy
+  // EmbedLiteViews by calling EmbedLiteApp::DestroyView.
+  void Destroy();
+
+private:
+  friend class EmbedLiteViewBaseParent;
+  friend class EmbedLiteViewThreadParent;
+
+  void Destroyed();
 
   EmbedLiteViewIface* GetImpl();
 
