@@ -39,6 +39,9 @@ protected:
   RecvInitialized() override;
 
   virtual bool
+  RecvDestroyed() override;
+
+  virtual bool
   RecvOnLocationChanged(const nsCString& aLocation, const bool& aCanGoBack, const bool& aCanGoForward) override;
 
   virtual bool

@@ -32,13 +32,21 @@ EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent* pare
 EmbedLiteWindow::~EmbedLiteWindow()
 {
   MOZ_COUNT_DTOR(EmbedLiteWindow);
-  unused << mWindowParent->SendDestroy();
   mWindowParent->SetEmbedAPIWindow(nullptr);
+}
+
+void EmbedLiteWindow::Destroy()
+{
+  unused << mWindowParent->SendDestroy();
+}
+
+void EmbedLiteWindow::Destroyed()
+{
   if (mListener) {
     mListener->WindowDestroyed();
   }
+  EmbedLiteApp::GetInstance()->WindowDestroyed(mUniqueID);
 }
-
 
 void EmbedLiteWindow::SetListener(EmbedLiteWindowListener* aListener)
 {
