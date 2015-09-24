@@ -138,6 +138,21 @@ FuzzyEquals(float a, float b) {
   return (fabsf(a - b) < 1e-6);
 }
 
+static ViewTransform
+ComputeViewTransform(const FrameMetrics& aContentMetrics, const FrameMetrics& aCompositorMetrics)
+{
+  // This is basically the same code as AsyncPanZoomController::GetCurrentAsyncTransform
+  // but with aContentMetrics used in place of mLastContentPaintMetrics, because they
+  // should be equivalent, modulo race conditions while transactions are inflight.
+
+  LayerPoint translation = (aCompositorMetrics.GetScrollOffset() - aContentMetrics.GetScrollOffset())
+                         * aContentMetrics.LayersPixelsPerCSSPixel();
+  return ViewTransform(-translation,
+                       aCompositorMetrics.GetZoom()
+                     / aContentMetrics.mDevPixelsPerCSSPixel
+                     / aCompositorMetrics.GetParentResolution());
+}
+
 bool
 SharedFrameMetricsHelper::UpdateFromCompositorFrameMetrics(
     ContainerLayer* aLayer,
@@ -212,22 +227,6 @@ SharedFrameMetricsHelper::UpdateFromCompositorFrameMetrics(
   }
 
   return false;
-}
-
-ViewTransform
-SharedFrameMetricsHelper::ComputeViewTransform(const FrameMetrics& aContentMetrics,
-                                               const FrameMetrics& aCompositorMetrics)
-{
-  // This is basically the same code as AsyncPanZoomController::GetCurrentAsyncTransform
-  // but with aContentMetrics used in place of mLastContentPaintMetrics, because they
-  // should be equivalent, modulo race conditions while transactions are inflight.
-
-  LayerPoint translation = (aCompositorMetrics.GetScrollOffset() - aContentMetrics.GetScrollOffset())
-                         * aContentMetrics.LayersPixelsPerCSSPixel();
-  return ViewTransform(-translation,
-                       aCompositorMetrics.GetZoom()
-                     / aContentMetrics.mDevPixelsPerCSSPixel
-                     / aCompositorMetrics.GetParentResolution());
 }
 
 bool
@@ -1006,9 +1005,17 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
   // caused by there being an incoming, more relevant paint.
   ViewTransform viewTransform;
 #if defined(MOZ_WIDGET_ANDROID)
-  bool abortPaint = mManager->ProgressiveUpdateCallback(!staleRegion.Contains(aInvalidRegion),
-                                                        viewTransform,
-                                                        !drawingLowPrecision);
+  FrameMetrics compositorMetrics = scrollAncestor->GetFrameMetrics();
+  bool abortPaint = false;
+  // On Android, only the primary scrollable layer is async-scrolled, and the only one
+  // that the Java-side code can provide details about. If we're tiling some other layer
+  // then we already have all the information we need about it.
+  if (scrollAncestor == mManager->GetPrimaryScrollableLayer()) {
+    abortPaint = mManager->ProgressiveUpdateCallback(!staleRegion.Contains(aInvalidRegion),
+                                                     compositorMetrics,
+                                                     !drawingLowPrecision);
+    viewTransform = ComputeViewTransform(scrollAncestor->GetFrameMetrics(), compositorMetrics);
+  }
 #else
   MOZ_ASSERT(mSharedFrameMetricsHelper);
 
@@ -1038,23 +1045,28 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
                                        aPaintData->mTransformToCompBounds,
                                        viewTransform);
 
-  // Paint tiles that have stale content or that intersected with the screen
-  // at the time of issuing the draw command in a single transaction first.
-  // This is to avoid rendering glitches on animated page content, and when
-  // layers change size/shape.
-  LayerRect typedCoherentUpdateRect =
-    transformedCompositionBounds.Intersect(aPaintData->mCompositionBounds);
+  TILING_PRLOG_OBJ(("TILING 0x%p: Progressive update transformed compositor bounds %s\n", mThebesLayer, tmpstr.get()), transformedCompositionBounds);
 
-  // Offset by the viewport origin, as the composition bounds are stored in
-  // Layer space and not LayoutDevice space.
-  // TODO(kats): does this make sense?
-  typedCoherentUpdateRect.MoveBy(aPaintData->mViewport.TopLeft());
+  // Compute a "coherent update rect" that we should paint all at once in a
+  // single transaction. This is to avoid rendering glitches on animated
+  // page content, and when layers change size/shape.
+  // On Fennec uploads are more expensive because we're not using gralloc, so
+  // we use a coherent update rect that is intersected with the screen at the
+  // time of issuing the draw command. This will paint faster but also potentially
+  // make the progressive paint more visible to the user while scrolling.
+  // On B2G uploads are cheaper and we value coherency more, especially outside
+  // the browser, so we always use the entire user-visible area.
+  nsIntRect coherentUpdateRect(LayerIntRect::ToUntyped(RoundedOut(
+#ifdef MOZ_WIDGET_ANDROID
+    transformedCompositionBounds.Intersect(aPaintData->mCompositionBounds)
+#else
+    transformedCompositionBounds
+#endif
+  )));
 
-  // Convert to untyped to intersect with the invalid region.
-  nsIntRect untypedCoherentUpdateRect(LayerIntRect::ToUntyped(
-    RoundedOut(typedCoherentUpdateRect)));
+  TILING_PRLOG_OBJ(("TILING 0x%p: Progressive update final coherency rect %s\n", mThebesLayer, tmpstr.get()), coherentUpdateRect);
 
-  aRegionToPaint.And(aInvalidRegion, untypedCoherentUpdateRect);
+  aRegionToPaint.And(aInvalidRegion, coherentUpdateRect);
   aRegionToPaint.Or(aRegionToPaint, staleRegion);
   bool drawingStale = !aRegionToPaint.IsEmpty();
   if (!drawingStale) {
@@ -1063,8 +1075,8 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
 
   // Prioritise tiles that are currently visible on the screen.
   bool paintVisible = false;
-  if (aRegionToPaint.Intersects(untypedCoherentUpdateRect)) {
-    aRegionToPaint.And(aRegionToPaint, untypedCoherentUpdateRect);
+  if (aRegionToPaint.Intersects(coherentUpdateRect)) {
+    aRegionToPaint.And(aRegionToPaint, coherentUpdateRect);
     paintVisible = true;
   }
 
