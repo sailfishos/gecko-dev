@@ -99,6 +99,9 @@ public:
 
   virtual void SetMargins(int top, int right, int bottom, int left);
 
+  // Set DPI for the view (views placed on different screens may get different DPI).
+  virtual void SetDPI(const float& dpi);
+
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
   // and do communication between UI and Content child via json messages.

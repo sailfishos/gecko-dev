@@ -212,6 +212,13 @@ EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 }
 
 void
+EmbedLiteView::SetDPI(const float& dpi)
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->SetDPI(dpi);
+}
+
+void
 EmbedLiteView::ReceiveInputEvent(const InputData& aEvent)
 {
   NS_ENSURE_TRUE(mViewImpl,);
