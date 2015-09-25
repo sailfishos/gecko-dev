@@ -91,6 +91,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mParent(nullptr)
   , mRotation(ROTATION_0)
   , mMargins(0, 0, 0, 0)
+  , mDPI(-1.0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
@@ -642,6 +643,21 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
 
   return mLayerManager;
 }
+
+float
+EmbedLitePuppetWidget::GetDPI()
+{
+  if (mDPI < 0) {
+    if (mView) {
+      mView->GetDPI(&mDPI);
+    } else {
+      mDPI = nsBaseWidget::GetDPI();
+    }
+  }
+
+  return mDPI;
+}
+
 
 CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)

@@ -31,6 +31,7 @@ class nsString;
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
 interface EmbedLiteViewIface
 {
+    void SetDPI(in float dpi);
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
