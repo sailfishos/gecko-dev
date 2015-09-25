@@ -31,10 +31,14 @@
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
 #include "gfxPrefs.h"
+#include "nsIScreenManager.h"
+#include "ScreenOrientation.h"
+#include "Hal.h"
 
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 
+using namespace mozilla::dom;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -81,6 +85,8 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   , mOuterId(0)
   , mViewSize(0, 0)
   , mViewResized(false)
+  , mSizeReflowInProgress(false)
+  , mRotation(ROTATION_0)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
 {
@@ -161,6 +167,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId, const bool& 
   }
 
   mWidget = new EmbedLitePuppetWidget(this, mId);
+  static_cast<EmbedLitePuppetWidget*>(mWidget.get())->SetRotation(mRotation);
 
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
@@ -253,6 +260,9 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId, const bool& 
   }
 
   mHelper = new TabChildHelper(this);
+
+  UpdateDOMOrientation(mRotation);
+
   unused << SendInitialized();
 }
 
@@ -352,6 +362,7 @@ EmbedLiteViewThreadChild::RecvSetIsActive(const bool& aIsActive)
     fm->WindowLowered(mDOMWindow);
     LOGT("Deactivate browser");
   }
+  static_cast<EmbedLitePuppetWidget*>(mWidget.get())->SetReflowInProgress(false);
   mWebBrowser->SetIsActive(aIsActive);
   return true;
 }
@@ -527,24 +538,93 @@ EmbedLiteViewThreadChild::RecvRemoveMessageListeners(const InfallibleTArray<nsSt
 }
 
 bool
-EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
+EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize,
+                                          const mozilla::ScreenRotation& aRotation)
 {
+  LOGT("sz[%g,%g], rot:%d", aSize.width, aSize.height, aRotation);
+
+  bool rotationChanged = (aRotation != mRotation);
   mViewResized = aSize != mViewSize;
   mViewSize = aSize;
-  LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
+  mRotation = aRotation;
 
-  if (!mWebBrowser) {
+  if (!mWebBrowser || !mWidget) {
+    unused << SendAckSetViewSize(aSize, aRotation);
     return true;
   }
 
-  mWidget->Resize(0, 0, aSize.width, aSize.height, true);
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
-  baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
-  baseWindow->SetVisibility(true);
+  EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
 
-  mHelper->ReportSizeUpdate(aSize);
+  if (rotationChanged) {
+    widget->SetRotation(aRotation);
+    widget->SetReflowInProgress(true);
+    UpdateDOMOrientation(mRotation);
+  }
+
+  mWidget->Resize(0, 0, mViewSize.width, mViewSize.height, false);
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, false);
+
+  // ReportSizeUpdate calls TabChild::HandlePossibleViewport change which
+  // can be an expensive operation. This function can block for longer
+  // periods of time.
+  bool viewportWidthChanged = mHelper->ReportSizeUpdate(mViewSize);
+
+  if (viewportWidthChanged) {
+    mSizeReflowInProgress = true;
+    widget->SetReflowInProgress(true);
+    unused << SendSizeChangeReflowStarted();
+  } else {
+    widget->SetReflowInProgress(false);
+  }
+
+  mWidget->Invalidate(nsIntRect());
+
+  unused << SendAckSetViewSize(aSize, aRotation);
 
   return true;
+}
+
+void
+EmbedLiteViewThreadChild::UpdateDOMOrientation(const mozilla::ScreenRotation aRotation)
+{
+  nsresult rv;
+  nsCOMPtr<nsIScreenManager> screenMgr =
+      do_GetService("@mozilla.org/gfx/screenmanager;1", &rv);
+  if (NS_FAILED(rv)) {
+    NS_ERROR("Can't find nsIScreenManager!");
+    return;
+  }
+
+  nsIntRect rect;
+  int32_t colorDepth, pixelDepth;
+  nsCOMPtr<nsIScreen> screen;
+
+  screenMgr->GetPrimaryScreen(getter_AddRefs(screen));
+  screen->GetRect(&rect.x, &rect.y, &rect.width, &rect.height);
+  screen->GetColorDepth(&colorDepth);
+  screen->GetPixelDepth(&pixelDepth);
+
+  ScreenOrientation orientation = eScreenOrientation_Default;
+  switch (aRotation) {
+    case ROTATION_0:
+      orientation = eScreenOrientation_PortraitPrimary;
+      break;
+    case ROTATION_90:
+      orientation = eScreenOrientation_LandscapePrimary;
+      break;
+    case ROTATION_180:
+      orientation = eScreenOrientation_PortraitSecondary;
+      break;
+    case ROTATION_270:
+      orientation = eScreenOrientation_LandscapeSecondary;
+      break;
+    default:
+      break;
+  }
+
+  hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
+      rect, orientation, colorDepth, pixelDepth));
 }
 
 gfxSize
@@ -561,6 +641,10 @@ EmbedLiteViewThreadChild::RecvSetGLViewSize(const gfxSize& aSize)
 {
   mGLViewSize = aSize;
   LOGT("sz[%g,%g]", mGLViewSize.width, mGLViewSize.height);
+  if (mWidget) {
+    static_cast<EmbedLitePuppetWidget*>(mWidget.get())->
+        SetNaturalBounds(nsIntRect(0, 0, (int)aSize.width, (int)aSize.height));
+  }
   return true;
 }
 
@@ -626,6 +710,11 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
     ret = mHelper->RecvUpdateFrame(aFrameMetrics);
+  }
+
+  if (mSizeReflowInProgress) {
+    static_cast<EmbedLitePuppetWidget*>(mWidget.get())->SetReflowInProgress(false);
+    unused << SendSizeChangeReflowFinished();
   }
 
   return ret;
@@ -794,8 +883,7 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
     inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
-    nsresult rv =
-      ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
+    unused << ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
   }
 
   if (EndComposite) {
@@ -997,8 +1085,6 @@ EmbedLiteViewThreadChild::OnFirstPaint(int32_t aX, int32_t aY)
     nscolor bgcolor = presShell->GetCanvasBackground();
     unused << SendSetBackgroundColor(bgcolor);
   }
-
-  unused << RecvSetViewSize(mViewSize);
 
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;
 }

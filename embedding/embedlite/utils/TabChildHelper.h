@@ -60,7 +60,7 @@ public:
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const bool& aIsRoot,
                                        const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
-  void ReportSizeUpdate(const gfxSize& aSize);
+  bool ReportSizeUpdate(const gfxSize& aSize);
 
 protected:
   virtual ~TabChildHelper();

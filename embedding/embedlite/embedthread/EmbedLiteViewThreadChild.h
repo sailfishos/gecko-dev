@@ -77,7 +77,7 @@ protected:
   virtual bool RecvSuspendTimeouts() MOZ_OVERRIDE;
   virtual bool RecvResumeTimeouts() MOZ_OVERRIDE;
   virtual bool RecvLoadFrameScript(const nsString&) MOZ_OVERRIDE;
-  virtual bool RecvSetViewSize(const gfxSize&) MOZ_OVERRIDE;
+  virtual bool RecvSetViewSize(const gfxSize&, const mozilla::ScreenRotation&) MOZ_OVERRIDE;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
                                        const gfxSize& scrollSize) MOZ_OVERRIDE;
 
@@ -125,6 +125,7 @@ private:
   void InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
+  void UpdateDOMOrientation(const mozilla::ScreenRotation);
 
   uint32_t mId;
   uint64_t mOuterId;
@@ -135,7 +136,9 @@ private:
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   gfxSize mViewSize;
   bool mViewResized;
+  bool mSizeReflowInProgress;
   gfxSize mGLViewSize;
+  mozilla::ScreenRotation mRotation;
 
   nsRefPtr<TabChildHelper> mHelper;
   bool mDispatchSynthMouseEvents;

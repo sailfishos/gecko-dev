@@ -4,6 +4,7 @@
 
 include protocol PEmbedLiteApp;
 
+include "gfxipc/ShadowLayerUtils.h";
 include "ipc/nsGUIEventIPC.h";
 include "ipc/InputDataIPC.h";
 include "mozilla/GfxMessageUtils.h";
@@ -23,6 +24,7 @@ using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::ScreenRotation from "mozilla/WidgetUtils.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -36,7 +38,7 @@ child:
     StopLoad();
     Reload(bool hardReload);
     LoadFrameScript(nsString uri);
-    SetViewSize(gfxSize aSize);
+    SetViewSize(gfxSize aSize, ScreenRotation aRotation);
     SetGLViewSize(gfxSize aSize);
     SetIsActive(bool aIsActive);
     SetIsFocused(bool aIsFocused);
@@ -83,6 +85,10 @@ parent:
     OnScrollChanged(int32_t offSetX, int32_t offSetY);
     OnTitleChanged(nsString aTitle);
     OnWindowCloseRequested();
+
+    AckSetViewSize(gfxSize aSize, ScreenRotation aRotation);
+    SizeChangeReflowStarted();
+    SizeChangeReflowFinished();
 
     /**
      * Updates the zoom constraints for a scrollable frame in this tab.

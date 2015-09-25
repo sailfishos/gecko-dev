@@ -6,6 +6,7 @@
 #include "mozilla/embedlite/EmbedInitGlue.h"
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "mozilla/embedlite/EmbedLiteView.h"
+#include "mozilla/WidgetUtils.h"
 #include "qmessagepump.h"
 #include <list>
 
@@ -63,7 +64,7 @@ public:
     printf("Embedding has created view:%p, Yay\n", mView);
     // FIXME if resize is not called,
     // then Widget/View not initialized properly and prevent destroy process
-    mView->SetViewSize(800, 600);
+    mView->SetViewSize(800, 600, mozilla::ROTATION_0);
     mView->LoadURL("data:text/html,<body bgcolor=red>TestApp</body>");
   }
   virtual void ViewDestroyed() {

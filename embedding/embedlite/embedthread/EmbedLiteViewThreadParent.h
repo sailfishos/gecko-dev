@@ -107,6 +107,9 @@ protected:
                                    const int32_t& aCause,
                                    const int32_t& aFocusChange) MOZ_OVERRIDE;
   virtual bool RecvGetGLViewSize(gfxSize* aSize) MOZ_OVERRIDE;
+  virtual bool RecvAckSetViewSize(const gfxSize&, const mozilla::ScreenRotation&) MOZ_OVERRIDE;
+  virtual bool RecvSizeChangeReflowStarted();
+  virtual bool RecvSizeChangeReflowFinished();
 
   virtual bool RecvGetDPI(float* aValue) MOZ_OVERRIDE;
 
@@ -121,13 +124,15 @@ private:
   bool mViewAPIDestroyed;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
 
-  ScreenIntSize mViewSize;
+  gfxSize mViewSize;
   gfxSize mGLViewPortSize;
   float mDPI;
 
   // Cache initial values.
   mozilla::ScreenRotation mRotation;
-  bool mPendingRotation;
+  bool mViewSizeChangeScheduled;
+  bool mRotationChangedRecently;
+  bool mRotationStartedEventSent;
 
   MessageLoop* mUILoop;
   int mLastIMEState;

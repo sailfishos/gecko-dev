@@ -491,7 +491,7 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                           aConstraints);
 }
 
-void
+bool
 TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
 {
   bool initialSizing = !HasValidInnerSize()
@@ -500,8 +500,12 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
+  float oldViewportWidth = mLastRootMetrics.GetViewport().width;
+
   ScreenIntSize oldScreenSize(mInnerSize);
   mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
 
   HandlePossibleViewportChange(oldScreenSize);
+
+  return oldViewportWidth != mLastRootMetrics.GetViewport().width;
 }

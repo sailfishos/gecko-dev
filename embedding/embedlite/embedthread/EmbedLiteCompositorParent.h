@@ -36,8 +36,6 @@ public:
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
-  void SetScreenRotation(const mozilla::ScreenRotation& rotation);
-  void SetClipping(const gfxRect& aClipRect);
   void* GetPlatformImage(int* width, int* height);
   void SuspendRendering();
   void ResumeRendering();
@@ -64,10 +62,6 @@ private:
   static void ClearCompositorSurfaceImpl(mozilla::gl::GLContext*, nscolor);
 
   uint32_t mId;
-  gfx::Matrix mWorldTransform;
-  mozilla::ScreenRotation mRotation;
-  bool mUseScreenRotation;
-  nsIntRect mActiveClipping;
   CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
   short mInitialPaintCount;

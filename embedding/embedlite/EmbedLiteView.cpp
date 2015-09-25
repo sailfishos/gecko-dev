@@ -281,11 +281,11 @@ EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
 }
 
 void
-EmbedLiteView::SetViewSize(int width, int height)
+EmbedLiteView::SetViewSize(int width, int height, mozilla::ScreenRotation aRotation)
 {
-  LOGNI("sz[%i,%i]", width, height);
+  LOGT("sz[%i,%i], rot:%d", width, height, aRotation);
   NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewSize(width, height);
+  mViewImpl->SetViewSize(width, height, aRotation);
 }
 
 void
@@ -302,14 +302,6 @@ EmbedLiteView::SetGLViewPortSize(int width, int height)
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->SetGLViewPortSize(width, height);
 }
-
-void
-EmbedLiteView::SetScreenRotation(mozilla::ScreenRotation rotation)
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetScreenRotation(rotation);
-}
-
 
 void
 EmbedLiteView::ScheduleUpdate()
