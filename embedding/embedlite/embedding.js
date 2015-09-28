@@ -64,6 +64,7 @@ pref("apz.acceleration_multiplier", "1.125f");
 pref("apz.fling_friction", "0.00345f");
 pref("apz.min_skate_speed", "1.0f");
 pref("apz.axis_lock_mode", 2);
+pref("apz.touch_start_tolerance", "0.027777f");
 pref("ui.dragThresholdX", 25);
 pref("ui.dragThresholdY", 25);
 pref("embedlite.dispatch_mouse_events", false); // Will dispatch mouse events if page using them

@@ -28,6 +28,7 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   : mId(id)
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
+  , mDPI(-1.0)
   , mRotation(ROTATION_0)
   , mPendingRotation(false)
   , mUILoop(MessageLoop::current())
@@ -85,6 +86,9 @@ EmbedLiteViewThreadParent::UpdateScrollController()
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
+    if (mDPI > 0) {
+      mController->GetManager()->SetDPI(mDPI);
+    }
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
 
@@ -385,10 +389,32 @@ EmbedLiteViewThreadParent::SetViewSize(int width, int height)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SetDPI(float dpi)
+{
+  mDPI = dpi;
+
+  if (mController->GetManager()) {
+    mController->GetManager()->SetDPI(mDPI);
+  }
+
+  return NS_OK;
+}
+
 bool
 EmbedLiteViewThreadParent::RecvGetGLViewSize(gfxSize* aSize)
 {
   *aSize = mGLViewPortSize;
+  return true;
+}
+
+bool
+EmbedLiteViewThreadParent::RecvGetDPI(float* aValue)
+{
+  NS_ABORT_IF_FALSE(mDPI > 0,
+                    "Must not ask for DPI before View is properly initialized!");
+
+  *aValue = mDPI;
   return true;
 }
 

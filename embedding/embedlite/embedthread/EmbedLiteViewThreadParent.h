@@ -108,6 +108,8 @@ protected:
                                    const int32_t& aFocusChange) MOZ_OVERRIDE;
   virtual bool RecvGetGLViewSize(gfxSize* aSize) MOZ_OVERRIDE;
 
+  virtual bool RecvGetDPI(float* aValue) MOZ_OVERRIDE;
+
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorParent;
@@ -121,6 +123,7 @@ private:
 
   ScreenIntSize mViewSize;
   gfxSize mGLViewPortSize;
+  float mDPI;
 
   // Cache initial values.
   mozilla::ScreenRotation mRotation;

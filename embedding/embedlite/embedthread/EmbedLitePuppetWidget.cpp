@@ -94,6 +94,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, u
   , mIMEComposing(false)
   , mParent(nullptr)
   , mId(aId)
+  , mDPI(-1.0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
@@ -466,6 +467,20 @@ EmbedLitePuppetWidget::GetGLContext() const
     }
   }
   return nullptr;
+}
+
+float
+EmbedLitePuppetWidget::GetDPI()
+{
+  if (mDPI < 0) {
+    if (mEmbed) {
+      mEmbed->SendGetDPI(&mDPI);
+    } else {
+      mDPI = nsBaseWidget::GetDPI();
+    }
+  }
+
+  return mDPI;
 }
 
 void
