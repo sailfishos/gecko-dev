@@ -413,6 +413,8 @@ EmbedLiteViewThreadParent::RecvGetDPI(float* aValue)
 {
   NS_ABORT_IF_FALSE(mDPI > 0,
                     "Must not ask for DPI before View is properly initialized!");
+  NS_ABORT_IF_FALSE(!!aValue,
+                    "Can't dereference null pointer!");
 
   *aValue = mDPI;
   return true;
