@@ -1045,7 +1045,9 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
                                        aPaintData->mTransformToCompBounds,
                                        viewTransform);
 
-  TILING_PRLOG_OBJ(("TILING 0x%p: Progressive update transformed compositor bounds %s\n", mThebesLayer, tmpstr.get()), transformedCompositionBounds);
+  TILING_PRLOG(("TILING %p: Progressive update transformed compositor bounds %f,%f,%f,%f\n",
+                mThebesLayer, transformedCompositionBounds.x, transformedCompositionBounds.y,
+                transformedCompositionBounds.width, transformedCompositionBounds.height));
 
   // Compute a "coherent update rect" that we should paint all at once in a
   // single transaction. This is to avoid rendering glitches on animated
@@ -1064,7 +1066,9 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
 #endif
   )));
 
-  TILING_PRLOG_OBJ(("TILING 0x%p: Progressive update final coherency rect %s\n", mThebesLayer, tmpstr.get()), coherentUpdateRect);
+  TILING_PRLOG(("TILING %p: Progressive update final coherency rect %d,%d,%d,%d\n",
+                mThebesLayer, coherentUpdateRect.x, coherentUpdateRect.y,
+                coherentUpdateRect.width, coherentUpdateRect.height));
 
   aRegionToPaint.And(aInvalidRegion, coherentUpdateRect);
   aRegionToPaint.Or(aRegionToPaint, staleRegion);
