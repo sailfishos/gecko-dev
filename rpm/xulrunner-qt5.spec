@@ -3,7 +3,7 @@
 
 %define embedlite_config merqtxulrunner
 
-%define system_sqlite     0
+%define system_sqlite     1
 %define system_ffi        1
 %define system_hunspell   1
 %define system_jpeg       1
