@@ -15,8 +15,11 @@ namespace embedlite {
 class EmbedLiteViewProcessParent : public EmbedLiteViewBaseParent
 {
 public:
-    MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& id, const uint32_t& parentId, const bool&);
-    virtual ~EmbedLiteViewProcessParent();
+    MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& windowId,
+		                            const uint32_t& id,
+		                            const uint32_t& parentId,
+					    const bool&);
+    virtual ~EmbedLiteViewProcessParent() override;
 
 private:
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewProcessParent);

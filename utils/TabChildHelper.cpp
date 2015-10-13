@@ -300,7 +300,8 @@ TabChildHelper::WebNavigation() const
 nsIWidget*
 TabChildHelper::WebWidget()
 {
-  return mView->WebWidget();
+  nsCOMPtr<nsIDocument> document = GetDocument();
+  return nsContentUtils::WidgetForDocument(document);
 }
 
 bool
@@ -396,50 +397,12 @@ bool
 TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                              WidgetTouchEvent& aEvent)
 {
-  uint32_t msg = NS_USER_DEFINED_EVENT;
-  switch (aData.mType) {
-    case MultiTouchInput::MULTITOUCH_START: {
-      msg = NS_TOUCH_START;
-      break;
-    }
-    case MultiTouchInput::MULTITOUCH_MOVE: {
-      msg = NS_TOUCH_MOVE;
-      break;
-    }
-    case MultiTouchInput::MULTITOUCH_END: {
-      msg = NS_TOUCH_END;
-      break;
-    }
-    case MultiTouchInput::MULTITOUCH_CANCEL: {
-      msg = NS_TOUCH_CANCEL;
-      break;
-    }
-    default:
-      return false;
-  }
-  // get the widget to send the event to
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = GetWidget(&offset);
   if (!widget) {
     return false;
   }
-
-  aEvent.widget = widget;
-  aEvent.mFlags.mIsTrusted = true;
-  aEvent.message = msg;
-  aEvent.mClass = eTouchEventClass;
-  aEvent.time = aData.mTime;
-
-  nsPresContext* presContext = GetPresContext();
-  if (!presContext) {
-    return false;
-  }
-
-  aEvent.touches.SetCapacity(aData.mTouches.Length());
-  for (uint32_t i = 0; i < aData.mTouches.Length(); ++i) {
-    aEvent.touches.AppendElement(aData.mTouches[i].ToNewDOMTouch());
-  }
-
+  aEvent = aData.ToWidgetTouchEvent(widget);
   return true;
 }
 
@@ -454,7 +417,7 @@ TabChildHelper::GetWidget(nsPoint* aOffset)
   NS_ENSURE_TRUE(presShell, nullptr);
   nsIFrame* frame = presShell->GetRootFrame();
   if (frame) {
-    return frame->GetView()->GetNearestWidget(aOffset);
+    return frame->GetView()->GetWidget();
   }
 
   return nullptr;

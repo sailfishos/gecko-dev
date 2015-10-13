@@ -23,6 +23,7 @@ using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::CSSPoint from "Units.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -36,19 +37,18 @@ child:
     StopLoad();
     Reload(bool hardReload);
     LoadFrameScript(nsString uri);
-    SetViewSize(gfxSize aSize);
-    SetGLViewSize(gfxSize aSize);
     SetIsActive(bool aIsActive);
     SetIsFocused(bool aIsFocused);
     SetThrottlePainting(bool aThrottle);
+    SetMargins(int top, int right, int bottom, int left);
     SuspendTimeouts();
     ResumeTimeouts();
     AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
-    HandleDoubleTap(nsIntPoint point);
-    HandleSingleTap(nsIntPoint point);
-    HandleLongTap(nsIntPoint point, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    HandleDoubleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleSingleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
@@ -70,6 +70,7 @@ child:
 
 parent:
     Initialized();
+    Destroyed();
      __delete__();
 
     OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
@@ -99,8 +100,6 @@ parent:
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     SetBackgroundColor(nscolor color);
     ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
-    sync GetGLViewSize()
-      returns (gfxSize aSize);
 
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);

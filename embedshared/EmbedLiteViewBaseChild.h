@@ -15,6 +15,7 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
+#include "EmbedLitePuppetWidget.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -25,11 +26,13 @@ class EmbedLiteAppThreadChild;
 
 class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
                                public nsIEmbedBrowserChromeListener,
-                               public EmbedLiteViewChildIface
+                               public EmbedLiteViewChildIface,
+                               public EmbedLitePuppetWidgetObserver
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
 public:
-  EmbedLiteViewBaseChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
+                         const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
 
@@ -85,7 +88,6 @@ public:
 /*---------WidgetIface---------------*/
 
   virtual void ResetInputState() override;
-  virtual gfxSize GetGLViewSize() override;
 
   virtual bool
   SetInputContext(const int32_t& IMEEnabled,
@@ -119,17 +121,19 @@ protected:
   virtual bool RecvSetIsActive(const bool&) override;
   virtual bool RecvSetIsFocused(const bool&) override;
   virtual bool RecvSetThrottlePainting(const bool&) override;
+  virtual bool RecvSetMargins(const int&, const int&, const int&, const int&) override;
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;
-  virtual bool RecvSetViewSize(const gfxSize&) override;
   virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
                                        const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
-  virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint) override;
-  virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint) override;
-  virtual bool RecvHandleLongTap(const nsIntPoint& aPoint,
+  virtual bool RecvHandleDoubleTap(const CSSPoint&, const int32_t& aModifiers,
+                                   const ScrollableLayerGuid& aGuid) override;
+  virtual bool RecvHandleSingleTap(const CSSPoint&, const int32_t& aModifiers,
+                                   const ScrollableLayerGuid& aGuid) override;
+  virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) override;
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) override;
@@ -149,10 +153,19 @@ protected:
   virtual bool RecvAddMessageListener(const nsCString&) override;
   virtual bool RecvRemoveMessageListener(const nsCString&) override;
   virtual void RecvAsyncMessage(const nsAString& aMessage, const nsAString& aData) /* FIXME: override */;
-  virtual bool RecvSetGLViewSize(const gfxSize&) override;
   virtual bool RecvAddMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual bool RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
   virtual void OnGeckoWindowInitialized() {}
+
+  // Get the pres shell resolution of the document in this tab.
+  float GetPresShellResolution() const;
+  // Get the Document for the top-level window in this tab.
+  already_AddRefed<nsIDocument> GetDocument() const;
+
+  void DispatchSynthesizedMouseEvent(const WidgetTouchEvent&);
+
+  // EmbedLitePuppetWidgetObserver
+  void WidgetBoundsChanged(const nsIntRect&) override;
 
 private:
   friend class TabChildHelper;
@@ -165,17 +178,18 @@ private:
 
   uint32_t mId;
   uint64_t mOuterId;
+  EmbedLiteWindowBaseChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   nsRefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
-  gfxSize mViewSize;
   bool mViewResized;
-  gfxSize mGLViewSize;
+  bool mWindowObserverRegistered;
+  bool mIsFocused;
+  nsIntMargin mMargins;
 
   nsRefPtr<TabChildHelper> mHelper;
-  bool mDispatchSynthMouseEvents;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
   CancelableTask* mInitWindowTask;

@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PEmbedLiteApp;
+
+using struct gfxSize from "gfxPoint.h";
+using mozilla::ScreenRotation from "mozilla/WidgetUtils.h";
+
+namespace mozilla {
+namespace embedlite {
+
+prio(normal upto urgent) sync protocol PEmbedLiteWindow {
+  manager PEmbedLiteApp;
+
+child:
+  SetSize(gfxSize aSize);
+  SetContentOrientation(ScreenRotation aRotation);
+  Destroy();
+
+parent:
+  Initialized();
+  Destroyed();
+  __delete__();
+};
+
+} // namespace embedlite
+} // namespace mozilla

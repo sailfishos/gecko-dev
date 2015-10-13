@@ -6,6 +6,7 @@
 #include "EmbedLog.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteWindowThreadChild.h"
 #include "mozilla/layers/PCompositorChild.h"
 
 namespace mozilla {
@@ -33,13 +34,23 @@ EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId, isPrivateWindow);
+  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId, isPrivateWindow);
   mWeakViewMap[id] = view;
   view->AddRef();
   return view;
+}
+
+PEmbedLiteWindowChild*
+EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint32_t& id)
+{
+  LOGT("id:%u", id);
+  EmbedLiteWindowThreadChild* window = new EmbedLiteWindowThreadChild(id);
+  mWeakWindowMap[id] = window;
+  window->AddRef();
+  return window;
 }
 
 mozilla::layers::PCompositorChild*

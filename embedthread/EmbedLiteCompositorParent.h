@@ -8,11 +8,10 @@
 
 #define COMPOSITOR_PERFORMANCE_WARNING
 
-#include "mozilla/WidgetUtils.h"
-#include "mozilla/layers/CompositorParent.h"
-#include "mozilla/layers/CompositorChild.h"
 #include "Layers.h"
-#include "EmbedLiteViewThreadParent.h"
+#include "mozilla/WidgetUtils.h"
+#include "mozilla/layers/CompositorChild.h"
+#include "mozilla/layers/CompositorParent.h"
 
 namespace mozilla {
 
@@ -25,22 +24,18 @@ namespace embedlite {
 class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
 {
 public:
-  EmbedLiteCompositorParent(nsIWidget* aWidget,
-                            bool aRenderToEGLSurface,
-                            int aSurfaceWidth, int aSurfaceHeight,
-                            uint32_t id);
+  EmbedLiteCompositorParent(nsIWidget* widget, uint32_t windowId,
+		            bool aRenderToEGLSurface,
+                            int aSurfaceWidth, int aSurfaceHeight);
 
-  bool RenderToContext(gfx::DrawTarget* aTarget);
   void SetSurfaceSize(int width, int height);
-  void SetScreenRotation(const mozilla::ScreenRotation& rotation);
   void* GetPlatformImage(int* width, int* height);
-  virtual void SuspendRendering();
-  virtual void ResumeRendering();
-
-  void DrawWindowUnderlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
-  void DrawWindowOverlay(mozilla::layers::LayerManagerComposite *aManager, nsIntRect aRect);
+  void SuspendRendering();
+  void ResumeRendering();
 
 protected:
+  friend class EmbedLitePuppetWidget;
+
   virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
@@ -48,20 +43,19 @@ protected:
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
   virtual void ScheduleTask(CancelableTask*, int) override;
-  void PrepareOffscreen();
 
 private:
+  void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
   bool RenderGL(TimeStamp aScheduleTime);
 
-  uint32_t mId;
-  gfx::Matrix mWorldTransform;
-  mozilla::ScreenRotation mRotation;
-  bool mUseScreenRotation;
+  uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
-  short mInitialPaintCount;
+  bool mUseExternalGLContext;
+
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorParent);
 };
 
 } // embedlite
