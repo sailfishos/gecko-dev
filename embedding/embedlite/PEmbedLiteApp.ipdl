@@ -4,6 +4,7 @@
 
 include protocol PCompositor;
 include protocol PEmbedLiteView;
+include protocol PEmbedLiteWindow;
 
 include DOMTypes;
 
@@ -13,6 +14,7 @@ namespace embedlite {
 prio(normal upto urgent) sync protocol PEmbedLiteApp {
   parent opens PCompositor;
   manages PEmbedLiteView;
+  manages PEmbedLiteWindow;
 parent:
   Initialized();
   ReadyToShutdown();
@@ -21,7 +23,8 @@ parent:
   PrefsArrayInitialized(PrefSetting[] prefs);
 
 child:
-  PEmbedLiteView(uint32_t id, uint32_t parentId, bool isPrivateWindow);
+  PEmbedLiteView(uint32_t windowId, uint32_t id, uint32_t parentId, bool isPrivateWindow);
+  PEmbedLiteWindow(uint32_t id);
   PreDestroy();
   SetBoolPref(nsCString name, bool value);
   SetCharPref(nsCString name, nsCString value);

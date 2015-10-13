@@ -364,3 +364,6 @@ pref("full-screen-api.content-only", true);
 // the window, the window size doesn't change. This pref has no effect when
 // running in actual Metro mode, as the widget will already be fullscreen then.
 pref("full-screen-api.ignore-widgets", true);
+
+// Match defaults for android and b2g, see: modules/libpref/init/all.js
+pref("layout.scroll.root-frame-containers", true);

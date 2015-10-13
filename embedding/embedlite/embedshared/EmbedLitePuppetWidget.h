@@ -17,14 +17,28 @@
 
 #include "EmbedLog.h"
 
-#include "nsBaseWidget.h"
-#include "nsThreadUtils.h"
-#include "nsWeakReference.h"
-#include "mozilla/Attributes.h"
 #include "EmbedLiteViewChildIface.h"
+#include "mozilla/Attributes.h"
+#include "nsBaseWidget.h"
+#include "nsCOMArray.h"
+#include "nsRect.h"
 
 namespace mozilla {
+
+namespace gl {
+class GLContext;
+}
+
 namespace embedlite {
+
+class EmbedLitePuppetWidgetObserver
+{
+public:
+  virtual void WidgetBoundsChanged(const nsIntRect&) {};
+  virtual void WidgetRotationChanged(const mozilla::ScreenRotation&) {};
+};
+
+class EmbedLiteWindowBaseChild;
 
 class EmbedLitePuppetWidget : public nsBaseWidget
 {
@@ -34,117 +48,109 @@ class EmbedLitePuppetWidget : public nsBaseWidget
   static const size_t kMaxDimension;
 
 public:
-  EmbedLitePuppetWidget(EmbedLiteViewChildIface* aEmbed, uint32_t& aId);
+  EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window);
+  EmbedLitePuppetWidget(EmbedLiteViewChildIface* view);
 
   NS_DECL_ISUPPORTS_INHERITED
 
   NS_IMETHOD Create(nsIWidget*        aParent,
                     nsNativeWidget    aNativeParent,
                     const nsIntRect&  aRect,
-                    nsWidgetInitData* aInitData = nullptr);
+                    nsWidgetInitData* aInitData = nullptr) override;
 
   virtual already_AddRefed<nsIWidget>
   CreateChild(const nsIntRect&  aRect,
               nsWidgetInitData* aInitData = nullptr,
-              bool             aForceUseIWidgetParent = false);
+              bool              aForceUseIWidgetParent = false) override;
 
   NS_IMETHOD Destroy();
 
-  NS_IMETHOD Show(bool aState);
-  virtual bool IsVisible() const {
+  NS_IMETHOD Show(bool aState) override;
+  virtual bool IsVisible() const override {
     return mVisible;
   }
   NS_IMETHOD ConstrainPosition(bool     /*ignored aAllowSlop*/,
                                int32_t* aX,
-                               int32_t* aY) {
+                               int32_t* aY) override {
     *aX = kMaxDimension;
     *aY = kMaxDimension;
     LOGNI();
     return NS_OK;
   }
   // We're always at <0, 0>, and so ignore move requests.
-  NS_IMETHOD Move(double aX, double aY) {
+  NS_IMETHOD Move(double aX, double aY) override {
     LOGNI();
     return NS_OK;
   }
   NS_IMETHOD Resize(double aWidth,
                     double aHeight,
-                    bool    aRepaint);
+                    bool   aRepaint) override;
   NS_IMETHOD Resize(double aX,
                     double aY,
                     double aWidth,
                     double aHeight,
-                    bool    aRepaint)
+                    bool   aRepaint) override
   // (we're always at <0, 0>)
   {
     return Resize(aWidth, aHeight, aRepaint);
   }
   // XXX/cjones: copying gtk behavior here; unclear what disabling a
   // widget is supposed to entail
-  NS_IMETHOD Enable(bool aState) {
+  NS_IMETHOD Enable(bool aState) override {
     LOGNI();
     mEnabled = aState;
     return NS_OK;
   }
-  virtual bool IsEnabled() const {
+  virtual bool IsEnabled() const override {
     LOGNI();
     return mEnabled;
   }
-  NS_IMETHOD SetFocus(bool aRaise = false);
+  NS_IMETHOD SetFocus(bool aRaise = false) override ;
   // PuppetWidgets don't care about children.
-  virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) {
+  virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override {
     LOGNI();
     return NS_OK;
   }
-  NS_IMETHOD Invalidate(const nsIntRect& aRect) {
-    return NS_OK;
-  }
-  // PuppetWidgets don't have native data, as they're purely nonnative.
-  virtual void* GetNativeData(uint32_t aDataType);
+  NS_IMETHOD Invalidate(const nsIntRect& aRect) override;
+  virtual void* GetNativeData(uint32_t aDataType) override;
   // PuppetWidgets don't have any concept of titles..
-  NS_IMETHOD SetTitle(const nsAString& aTitle) {
+  NS_IMETHOD SetTitle(const nsAString& aTitle) override {
     LOGNI();
     return NS_ERROR_UNEXPECTED;
   }
   // PuppetWidgets are always at <0, 0>.
-  virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() {
+  virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override {
     LOGF();
     return LayoutDeviceIntPoint(0, 0);
   }
-  NS_IMETHOD DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus);
+  NS_IMETHOD DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus) override;
   NS_IMETHOD CaptureRollupEvents(nsIRollupListener* aListener,
-                                 bool aDoCapture) {
+                                 bool aDoCapture) override {
     LOGNI();
     return NS_ERROR_UNEXPECTED;
   }
-  NS_IMETHOD ResetInputState();
   NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
-                                    const InputContextAction& aAction);
-  NS_IMETHOD_(InputContext) GetInputContext();
+                                    const InputContextAction& aAction) override;
+  NS_IMETHOD_(InputContext) GetInputContext() override;
 
-  NS_IMETHOD OnIMEFocusChange(bool aFocus);
-
-  // This API is going away, steer clear.
-  virtual void Scroll(const nsIntPoint& aDelta,
-                      const nsTArray<nsIntRect>& aDestRects,
-                      const nsTArray<Configuration>& aReconfigureChildren) {
-    /* dead man walking */
-  }
-  NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent) {
+  NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent) override {
     LOGNI();
     return NS_ERROR_UNEXPECTED;
   }
+
+  virtual nsIntRect GetNaturalBounds() override;
+  virtual bool NeedsPaint() override;
 
   virtual LayerManager*
   GetLayerManager(PLayerTransactionChild* aShadowManager,
                   LayersBackend aBackendHint,
                   LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
-                  bool* aAllowRetaining = nullptr);
+                  bool* aAllowRetaining = nullptr) override;
 
-  virtual mozilla::layers::CompositorParent* NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight) override;
-  virtual void CreateCompositor(int aWidth, int aHeight);
-  virtual void CreateCompositor();
-  virtual nsIntRect GetNaturalBounds();
+  virtual mozilla::layers::CompositorParent* NewCompositorParent(int aSurfaceWidth,
+                                                                 int aSurfaceHeight) override;
+  virtual void CreateCompositor() override;
+  virtual void CreateCompositor(int aWidth, int aHeight) override;
 
   /**
    * Called before the LayerManager draws the layer tree.
@@ -152,7 +158,7 @@ public:
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorParent.
    */
-  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect);
+  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
 
   /**
    * Called after the LayerManager draws the layer tree
@@ -160,35 +166,56 @@ public:
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorParent.
    */
-  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect);
+  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
 
-  NS_IMETHOD         SetParent(nsIWidget* aNewParent);
-  virtual nsIWidget *GetParent(void);
+  virtual bool PreRender(LayerManagerComposite* aManager) override;
+  virtual void PostRender(LayerManagerComposite* aManager) override;
+
+  NS_IMETHOD         SetParent(nsIWidget* aNewParent) override;
+  virtual nsIWidget* GetParent(void) override;
+
+  void SetRotation(mozilla::ScreenRotation);
+  void SetMargins(const nsIntMargin& marins);
+  void UpdateSize();
+
+  void AddObserver(EmbedLitePuppetWidgetObserver*);
+  void RemoveObserver(EmbedLitePuppetWidgetObserver*);
+
+  static void DumpWidgetTree();
+  static void DumpWidgetTree(const nsTArray<EmbedLitePuppetWidget*>&, int indent = 0);
+  static void LogWidget(EmbedLitePuppetWidget *widget, int index, int indent);
 
 protected:
-  virtual ~EmbedLitePuppetWidget();
+  EmbedLitePuppetWidget(EmbedLiteWindowBaseChild*, EmbedLiteViewChildIface*);
+  virtual ~EmbedLitePuppetWidget() override;
+  EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
 private:
-  nsresult Paint();
-  bool ViewIsValid();
+  typedef nsTArray<EmbedLitePuppetWidget*> ChildrenArray;
+  typedef nsTArray<EmbedLitePuppetWidgetObserver*> ObserverArray;
+
   mozilla::gl::GLContext* GetGLContext() const;
-  static void CreateGLContextEarly(uint32_t aViewId);
+  static void CreateGLContextEarly(uint32_t aWindowId);
 
   EmbedLitePuppetWidget* TopWindow();
   bool IsTopLevel();
   void RemoveIMEComposition();
 
-  EmbedLiteViewChildIface* mEmbed;
+  EmbedLiteWindowBaseChild* mWindow; // Not owned, can be null.
+  EmbedLiteViewChildIface* mView; // Not owned, can be null.
 
   bool mVisible;
   bool mEnabled;
+  bool mHasCompositor;
   InputContext mInputContext;
   bool mIMEComposing;
   nsString mIMEComposingText;
-  nsRefPtr<EmbedLitePuppetWidget> mChild;
-  nsCOMPtr<nsIWidget> mParent;
-
-  uint32_t mId;
+  ChildrenArray mChildren;
+  EmbedLitePuppetWidget* mParent;
+  mozilla::ScreenRotation mRotation;
+  nsIntRect mNaturalBounds;
+  nsIntMargin mMargins;
+  ObserverArray mObservers;
 };
 
 }  // namespace widget

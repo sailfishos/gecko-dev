@@ -9,24 +9,27 @@
 #include "mozilla/embedlite/PEmbedLiteViewParent.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteViewIface.h"
+#include "EmbedLiteWindowBaseParent.h"
 #include "GLDefs.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteView;
-class EmbedLiteCompositorParent;
 class EmbedContentController;
+class EmbedLiteCompositorParent;
+class EmbedLiteView;
+
 class EmbedLiteViewBaseParent : public PEmbedLiteViewParent,
-                                public EmbedLiteViewIface
+                                public EmbedLiteViewIface,
+				public EmbedLiteWindowParentObserver
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewBaseParent)
 public:
-  EmbedLiteViewBaseParent(const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewBaseParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_EMBEDLITEVIEWIFACE
 
-  EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); };
+  EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); }; // XXX: Remove
 
 protected:
   virtual ~EmbedLiteViewBaseParent();
@@ -34,6 +37,9 @@ protected:
 
   virtual bool
   RecvInitialized() override;
+
+  virtual bool
+  RecvDestroyed() override;
 
   virtual bool
   RecvOnLocationChanged(const nsCString& aLocation, const bool& aCanGoBack, const bool& aCanGoForward) override;
@@ -108,25 +114,24 @@ protected:
                                    const nsString& aActionHint,
                                    const int32_t& aCause,
                                    const int32_t& aFocusChange) override;
-  virtual bool RecvGetGLViewSize(gfxSize* aSize) override;
+
+  // EmbedLiteWindowParentObserver:
+  void CompositorCreated() override;
 
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorParent;
   // The sole purpose of this friendliness is to set mView which is used only as a proxy to view's Listener
   friend class EmbedLiteView;
-  void SetCompositor(EmbedLiteCompositorParent* aCompositor);
+
+  void SetCompositor(EmbedLiteCompositorParent* aCompositor); // XXX: Remove
+  void UpdateScrollController();
+
   uint32_t mId;
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
+  EmbedLiteWindowBaseParent& mWindow;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
-
-  ScreenIntSize mViewSize;
-  gfxSize mGLViewPortSize;
-
-  // Cache initial values.
-  mozilla::ScreenRotation mRotation;
-  bool mPendingRotation;
 
   MessageLoop* mUILoop;
   int mLastIMEState;

@@ -27,6 +27,7 @@ class EmbedLiteSubThread;
 class EmbedLiteSubProcess;
 class EmbedLiteAppProcessParent;
 class EmbedLiteView;
+class EmbedLiteWindow;
 class PEmbedLiteAppParent;
 class EmbedLiteAppListener
 {
@@ -50,6 +51,8 @@ public:
                                             const char* uri,
                                             const uint32_t& contextFlags,
                                             EmbedLiteView* aParentView) { return 0; }
+  virtual void LastViewDestroyed() {};
+  virtual void LastWindowDestroyed() {};
 };
 
 class EmbedLiteApp
@@ -107,8 +110,10 @@ public:
   // Must be called from same thread as StartChildThread, and before Stop()
   virtual bool StopChildThread();
 
-  virtual EmbedLiteView* CreateView(uint32_t aParent = 0, bool aIsPrivateWindow = false);
+  virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow, uint32_t aParent = 0, bool aIsPrivateWindow = false);
+  virtual EmbedLiteWindow* CreateWindow();
   virtual void DestroyView(EmbedLiteView* aView);
+  virtual void DestroyWindow(EmbedLiteWindow* aWindow);
 
   virtual void SetIsAccelerated(bool aIsAccelerated);
   virtual bool IsAccelerated() {
@@ -168,15 +173,17 @@ private:
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();
 
-  friend class EmbedLiteAppThreadParent;
-  friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteAppProcessParent;
-  friend class EmbedLiteViewBaseParent;
+  friend class EmbedLiteAppThreadParent;
   friend class EmbedLiteCompositorParent;
   friend class EmbedLitePuppetWidget;
+  friend class EmbedLiteView;
+  friend class EmbedLiteWindow;
 
   EmbedLiteView* GetViewByID(uint32_t id);
+  EmbedLiteWindow* GetWindowByID(uint32_t id);
   void ViewDestroyed(uint32_t id);
+  void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
   uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
@@ -193,7 +200,7 @@ private:
 
   EmbedType mEmbedType;
   std::map<uint32_t, EmbedLiteView*> mViews;
-  uint32_t mViewCreateID;
+  std::map<uint32_t, EmbedLiteWindow*> mWindows;
   State mState;
   RenderType mRenderType;
   char* mProfilePath;

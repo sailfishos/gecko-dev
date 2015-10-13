@@ -40,7 +40,9 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
     NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
-void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
+                                             int32_t aModifiers,
+                                             const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -51,11 +53,13 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aMo
     return;
   }
   if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y));
+    unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
 
-void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
+                                             int32_t aModifiers,
+                                             const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -66,11 +70,14 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aMo
     return;
   }
   if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleSingleTap(nsIntPoint(aPoint.x, aPoint.y));
+    unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId)
+void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
+                                           int32_t aModifiers,
+                                           const ScrollableLayerGuid& aGuid,
+                                           uint64_t aInputBlockId)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -81,11 +88,13 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModi
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y), aGuid, aInputBlockId);
+    unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid)
+void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint,
+                                             int32_t aModifiers,
+                                             const ScrollableLayerGuid& aGuid)
 {
 }
 
@@ -112,14 +121,15 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
     aScrollableSize.width, aScrollableSize.height);
   gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
   gfxSize size(aScrollableSize.width, aScrollableSize.height);
-  if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
+
+  if (mRenderFrame && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
     unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
   }
 }
 
 void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
- if (MessageLoop::current() != mUILoop) {
+  if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
