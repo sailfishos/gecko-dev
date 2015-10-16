@@ -1,0 +1,35 @@
+From be9de584dc5e41896556468fb5b1ccf143bcadf9 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Mon, 11 May 2015 13:13:03 +0300
+Subject: [PATCH 2/4] Define HAS_NEMO_RESOURCE in config
+
+See bugs 10947, 30305, and 30517
+---
+ configure.in | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/configure.in b/configure.in
+index dd3b78c..c0177567 100644
+--- a/configure.in
++++ b/configure.in
+@@ -5717,6 +5717,9 @@ if test -n "$MOZ_GSTREAMER"; then
+         AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer])
+     fi
+ 
++    HAS_NEMO_RESOURCE=1
++    AC_DEFINE(HAS_NEMO_RESOURCE)
++
+     _SAVE_LDFLAGS=$LDFLAGS
+     LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
+     AC_TRY_LINK(,[return 0;],_HAVE_LIBGSTVIDEO=1,_HAVE_LIBGSTVIDEO=)
+@@ -5729,6 +5732,7 @@ if test -n "$MOZ_GSTREAMER"; then
+ fi
+ 
+ AC_SUBST(MOZ_GSTREAMER)
++AC_SUBST(HAS_NEMO_RESOURCE)
+ AC_SUBST(GST_API_VERSION)
+ 
+ if test -n "$MOZ_GSTREAMER"; then
+-- 
+2.1.4
+

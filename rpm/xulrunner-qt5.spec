@@ -42,6 +42,10 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
+Patch1:     0001-Configure-system-sqlite-to-use-jemalloc.patch
+Patch2:     0002-Define-HAS_NEMO_RESOURCE-in-config.patch
+Patch3:     0003-Limit-surface-area-rather-than-width-and-height.patch
+Patch4:     0004-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -119,6 +123,10 @@ Tests and misc files for xulrunner.
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch1 -p1
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig

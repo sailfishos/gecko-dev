@@ -1,0 +1,97 @@
+From 46b9ab1170c9a34ab2208c1a9fd8b44ebc5922a1 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 12 Oct 2015 16:18:14 +0300
+Subject: [PATCH 1/4] Configure system sqlite to use jemalloc
+
+See bug 25229
+---
+ embedding/embedlite/EmbedLiteApp.cpp | 66 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 66 insertions(+)
+
+diff --git a/embedding/embedlite/EmbedLiteApp.cpp b/embedding/embedlite/EmbedLiteApp.cpp
+index 8879908..1ebd419 100644
+--- a/embedding/embedlite/EmbedLiteApp.cpp
++++ b/embedding/embedlite/EmbedLiteApp.cpp
+@@ -29,6 +29,68 @@
+ #include "EmbedLiteCompositorParent.h"
+ #include "EmbedLiteAppProcessParent.h"
+ 
++#include "sqlite3.h"
++#include "mozmemory.h"
++#include "mozilla/mozalloc.h"
++
++// This anonymous namespace is a copy-paste from mozStorageService.cpp
++// used to configure sqlite to use jemalloc.
++namespace {
++
++static void *sqliteMemMalloc(int n)
++{
++  void* p = ::moz_malloc(n);
++  return p;
++}
++
++static void sqliteMemFree(void *p)
++{
++  ::moz_free(p);
++}
++
++static void *sqliteMemRealloc(void *p, int n)
++{
++  return ::moz_realloc(p, n);
++}
++
++static int sqliteMemSize(void *p)
++{
++  return ::moz_malloc_usable_size(p);
++}
++
++static int sqliteMemRoundup(int n)
++{
++  n = malloc_good_size(n);
++
++  // jemalloc can return blocks of size 2 and 4, but SQLite requires that all
++  // allocations be 8-aligned.  So we round up sub-8 requests to 8.  This
++  // wastes a small amount of memory but is obviously safe.
++  return n <= 8 ? 8 : n;
++}
++
++static int sqliteMemInit(void *p)
++{
++  return 0;
++}
++
++static void sqliteMemShutdown(void *p)
++{
++}
++
++const sqlite3_mem_methods memMethods = {
++  &sqliteMemMalloc,
++  &sqliteMemFree,
++  &sqliteMemRealloc,
++  &sqliteMemSize,
++  &sqliteMemRoundup,
++  &sqliteMemInit,
++  &sqliteMemShutdown,
++  nullptr
++};
++
++} // anonymous namespace
++
++
+ namespace mozilla {
+ namespace startup {
+ extern bool sIsEmbedlite;
+@@ -43,6 +105,10 @@ EmbedLiteApp*
+ EmbedLiteApp::GetInstance()
+ {
+   if (!sSingleton) {
++    // configure sqlite3
++    int rc = ::sqlite3_config(SQLITE_CONFIG_MALLOC, &memMethods);
++    NS_ASSERTION(rc == SQLITE_OK, "Can't configure sqlite!");
++
+     sSingleton = new EmbedLiteApp();
+     NS_ASSERTION(sSingleton, "not initialized");
+   }
+-- 
+2.1.4
+
