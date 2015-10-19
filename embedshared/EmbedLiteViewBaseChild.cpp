@@ -551,7 +551,15 @@ EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
     widget->SetMargins(mMargins);
     widget->UpdateSize();
+
+    // Report update for the tab child helper. This triggers update for the viewport.
+    nsIntRect bounds;
+    mWindow->GetWidget()->GetBounds(bounds);
+    bounds.Deflate(mMargins);
+    gfxSize size(bounds.width, bounds.height);
+    mHelper->ReportSizeUpdate(size);
   }
+
   return true;
 }
 
