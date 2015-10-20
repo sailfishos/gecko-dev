@@ -43,9 +43,9 @@ protected:
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
   virtual void ScheduleTask(CancelableTask*, int) override;
-  void PrepareOffscreen();
 
 private:
+  void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
   bool RenderGL(TimeStamp aScheduleTime);

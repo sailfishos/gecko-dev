@@ -144,9 +144,8 @@ EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 bool
 EmbedLiteCompositorParent::Invalidate()
 {
-  UpdateTransformState();
-
   if (!mUseExternalGLContext) {
+    UpdateTransformState();
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
