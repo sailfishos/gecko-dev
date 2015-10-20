@@ -44,9 +44,6 @@ public:
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
   virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
-  void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
-                                  LayoutDeviceIntPoint* aRefPointOut);
-  void ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId, bool aPreventDefault);
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
                                   mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
                                   uint64_t* aInputBlockId);
