@@ -209,7 +209,6 @@ private:
   bool mHasCompositor;
   InputContext mInputContext;
   bool mIMEComposing;
-  nsIntRect mRotatedBounds;
   nsString mIMEComposingText;
   ChildrenArray mChildren;
   EmbedLitePuppetWidget* mParent;
