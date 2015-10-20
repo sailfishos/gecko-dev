@@ -118,6 +118,8 @@ protected:
   // EmbedLiteWindowParentObserver:
   void CompositorCreated() override;
 
+  virtual bool RecvGetDPI(float* aValue) override;
+
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorParent;
@@ -132,6 +134,8 @@ private:
   bool mViewAPIDestroyed;
   EmbedLiteWindowBaseParent& mWindow;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
+
+  float mDPI;
 
   MessageLoop* mUILoop;
   int mLastIMEState;
