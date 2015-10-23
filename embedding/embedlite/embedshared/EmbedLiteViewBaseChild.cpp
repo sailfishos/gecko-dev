@@ -85,6 +85,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindow(nullptr)
   , mViewResized(false)
   , mWindowObserverRegistered(false)
+  , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
@@ -515,6 +516,10 @@ EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
     return false;
   }
 
+  if (mIsFocused == aIsFocused) {
+    return true;
+  }
+
   nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
   NS_ENSURE_TRUE(fm, false);
   nsIWidgetListener* listener = mWidget->GetWidgetListener();
@@ -531,6 +536,9 @@ EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
     fm->ClearFocus(mDOMWindow);
     LOGT("Clear browser focus");
   }
+
+  mIsFocused = aIsFocused;
+
   return true;
 }
 
@@ -551,7 +559,15 @@ EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
     widget->SetMargins(mMargins);
     widget->UpdateSize();
+
+    // Report update for the tab child helper. This triggers update for the viewport.
+    nsIntRect bounds;
+    mWindow->GetWidget()->GetBounds(bounds);
+    bounds.Deflate(mMargins);
+    gfxSize size(bounds.width, bounds.height);
+    mHelper->ReportSizeUpdate(size);
   }
+
   return true;
 }
 
@@ -692,7 +708,6 @@ EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
     data.AppendPrintf(" }}");
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("AZPC:ScrollDOMEvent"), data);
   }
-
   return true;
 }
 

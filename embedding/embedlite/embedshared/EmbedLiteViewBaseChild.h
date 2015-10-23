@@ -186,6 +186,7 @@ private:
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mViewResized;
   bool mWindowObserverRegistered;
+  bool mIsFocused;
   nsIntMargin mMargins;
 
   nsRefPtr<TabChildHelper> mHelper;
