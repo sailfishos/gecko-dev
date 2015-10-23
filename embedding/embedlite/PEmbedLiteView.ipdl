@@ -101,6 +101,11 @@ parent:
     SetBackgroundColor(nscolor color);
     ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
 
+    /*
+     * Gets the DPI of the screen corresponding to this view.
+     */
+    sync GetDPI() returns (float value);
+
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 

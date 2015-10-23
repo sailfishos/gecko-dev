@@ -25,6 +25,7 @@ EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& windowId, const
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowBaseParent::From(windowId))
   , mCompositor(nullptr)
+  , mDPI(-1.0)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
@@ -73,6 +74,9 @@ EmbedLiteViewBaseParent::UpdateScrollController()
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
+    if (mDPI > 0) {
+      mController->GetManager()->SetDPI(mDPI);
+    }
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
 }
@@ -342,6 +346,28 @@ EmbedLiteViewBaseParent::RecvRpcMessage(const nsString& aMessage,
                                           InfallibleTArray<nsString>* aJSONRetVal)
 {
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
+}
+
+
+NS_IMETHODIMP
+EmbedLiteViewBaseParent::SetDPI(float dpi)
+{
+  mDPI = dpi;
+
+  if (mController->GetManager()) {
+    mController->GetManager()->SetDPI(mDPI);
+  }
+
+  return NS_OK;
+}
+
+bool
+EmbedLiteViewBaseParent::RecvGetDPI(float* aValue)
+{
+  NS_ENSURE_TRUE((mDPI > 0), false);
+
+  *aValue = mDPI;
+  return true;
 }
 
 void
