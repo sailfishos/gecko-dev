@@ -1,9 +1,11 @@
-From 2cb4aad1cd477946b64d864b639d0da958d0b299 Mon Sep 17 00:00:00 2001
+From db87bacb1153026d9333a3e36c5bf4246118a127 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:17:36 +0300
-Subject: [PATCH 3/4] Limit surface area rather than width and height
+Subject: [PATCH 08/11] Limit surface area rather than width and height
 
-See bug 26935
+See bug JB26935
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  gfx/cairo/cairo/src/cairo-image-surface.c | 5 +++--
  1 file changed, 3 insertions(+), 2 deletions(-)
