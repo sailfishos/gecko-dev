@@ -160,6 +160,7 @@ TabChildHelper::Unload()
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
+  NS_INTERFACE_MAP_ENTRY(nsITabChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
 NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
@@ -461,3 +462,52 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
 
   HandlePossibleViewportChange(oldScreenSize);
 }
+// -- nsITabChild --------------
+
+NS_IMETHODIMP
+TabChildHelper::GetMessageManager(nsIContentFrameMessageManager** aResult)
+{
+  if (mTabChildGlobal) {
+    NS_ADDREF(*aResult = mTabChildGlobal);
+    return NS_OK;
+  }
+  *aResult = nullptr;
+  return NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+TabChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
+{
+  NS_IF_ADDREF(*aWebBrowserChrome = mWebBrowserChrome);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
+{
+  mWebBrowserChrome = aWebBrowserChrome;
+  return NS_OK;
+}
+
+void
+TabChildHelper::SendRequestFocus(bool aCanFocus)
+{
+  LOGNI();
+}
+
+void
+TabChildHelper::EnableDisableCommands(const nsAString& aAction,
+                                      nsTArray<nsCString>& aEnabledCommands,
+                                      nsTArray<nsCString>& aDisabledCommands)
+{
+  LOGNI();
+}
+
+NS_IMETHODIMP
+TabChildHelper::GetTabId(uint64_t* aId)
+{
+  *aId = mView->GetID();
+  return NS_OK;
+}
+
+// -- end of nsITabChild -------
