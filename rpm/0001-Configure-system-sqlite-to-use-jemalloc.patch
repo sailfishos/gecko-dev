@@ -1,9 +1,11 @@
-From 46b9ab1170c9a34ab2208c1a9fd8b44ebc5922a1 Mon Sep 17 00:00:00 2001
+From bf75995e539b769481b3f27242b3790419522674 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 12 Oct 2015 16:18:14 +0300
-Subject: [PATCH 1/4] Configure system sqlite to use jemalloc
+Subject: [PATCH 01/11] Configure system sqlite to use jemalloc
 
-See bug 25229
+See bug JB25229
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  embedding/embedlite/EmbedLiteApp.cpp | 66 ++++++++++++++++++++++++++++++++++++
  1 file changed, 66 insertions(+)

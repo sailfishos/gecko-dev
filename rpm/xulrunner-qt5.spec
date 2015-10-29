@@ -43,9 +43,16 @@ License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-Configure-system-sqlite-to-use-jemalloc.patch
-Patch2:     0002-Define-HAS_NEMO_RESOURCE-in-config.patch
-Patch3:     0003-Limit-surface-area-rather-than-width-and-height.patch
-Patch4:     0004-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
+Patch2:     0002-Workaround-for-bug-977015.patch
+Patch3:     0003-Workaround-wrong-viewport-in-wikipedia.patch
+Patch4:     0004-Supply-source-uri-to-gstreamer-pipeline.patch
+Patch5:     0005-Workaround-for-late-access-message-loop.patch
+Patch6:     0006-Define-HAS_NEMO_RESOURCE-in-config.patch
+Patch7:     0007-Don-t-decode-all-images-on-shell-activation-if-decod.patch
+Patch8:     0008-Limit-surface-area-rather-than-width-and-height.patch
+Patch9:     0009-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
+Patch10:    0010-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
+Patch11:    0011-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -127,6 +134,13 @@ Tests and misc files for xulrunner.
 %patch2 -p1
 %patch3 -p1
 %patch4 -p1
+%patch5 -p1
+%patch6 -p1
+%patch7 -p1
+%patch8 -p1
+%patch9 -p1
+%patch10 -p1
+%patch11 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
