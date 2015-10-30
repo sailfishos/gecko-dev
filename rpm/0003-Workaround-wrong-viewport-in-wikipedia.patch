@@ -1,7 +1,7 @@
-From b898ddef0a6b7e3149e8a2f7f0f0d92a7e232822 Mon Sep 17 00:00:00 2001
+From d468c5a7b7416895911a82e88fb8e31deeb1f5a5 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:03:43 +0300
-Subject: [PATCH 03/11] Workaround wrong viewport in wikipedia
+Subject: [PATCH 03/12] Workaround wrong viewport in wikipedia
 
 See bug JB11251
 

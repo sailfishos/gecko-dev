@@ -263,6 +263,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   mHelper = new TabChildHelper(this);
+  mChrome->SetTabChildHelper(mHelper.get());
   gfxSize size(bounds.width, bounds.height);
   mHelper->ReportSizeUpdate(size);
 

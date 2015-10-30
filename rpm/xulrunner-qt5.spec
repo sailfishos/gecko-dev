@@ -53,6 +53,7 @@ Patch8:     0008-Limit-surface-area-rather-than-width-and-height.patch
 Patch9:     0009-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
 Patch10:    0010-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
 Patch11:    0011-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
+Patch12:    0012-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -141,6 +142,7 @@ Tests and misc files for xulrunner.
 %patch9 -p1
 %patch10 -p1
 %patch11 -p1
+%patch12 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig

@@ -31,6 +31,7 @@
 #include "nsLayoutUtils.h"
 #include "nsIDocumentInlines.h"
 #include "APZCCallbackHelper.h"
+#include "EmbedFrame.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
@@ -160,6 +161,7 @@ TabChildHelper::Unload()
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
+  NS_INTERFACE_MAP_ENTRY(nsITabChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
 NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
@@ -362,6 +364,22 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                    JS::Handle<JSObject *> aCpows,
                                    nsIPrincipal* aPrincipal)
 {
+  nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
+      do_GetService("@mozilla.org/globalmessagemanager;1");
+  nsRefPtr<nsFrameMessageManager> globalMessageManager =
+      static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
+  nsRefPtr<nsFrameMessageManager> contentFrameMessageManager =
+      static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
+
+  nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
+  nsRefPtr<EmbedFrame> embedFrame = new EmbedFrame();
+  embedFrame->mWindow = window;
+  embedFrame->mMessageManager = mTabChildGlobal;
+  SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
+  globalMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+  contentFrameMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
     return true;
@@ -461,3 +479,52 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
 
   HandlePossibleViewportChange(oldScreenSize);
 }
+// -- nsITabChild --------------
+
+NS_IMETHODIMP
+TabChildHelper::GetMessageManager(nsIContentFrameMessageManager** aResult)
+{
+  if (mTabChildGlobal) {
+    NS_ADDREF(*aResult = mTabChildGlobal);
+    return NS_OK;
+  }
+  *aResult = nullptr;
+  return NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+TabChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
+{
+  NS_IF_ADDREF(*aWebBrowserChrome = mWebBrowserChrome);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
+{
+  mWebBrowserChrome = aWebBrowserChrome;
+  return NS_OK;
+}
+
+void
+TabChildHelper::SendRequestFocus(bool aCanFocus)
+{
+  LOGNI();
+}
+
+void
+TabChildHelper::EnableDisableCommands(const nsAString& aAction,
+                                      nsTArray<nsCString>& aEnabledCommands,
+                                      nsTArray<nsCString>& aDisabledCommands)
+{
+  LOGNI();
+}
+
+NS_IMETHODIMP
+TabChildHelper::GetTabId(uint64_t* aId)
+{
+  *aId = mView->GetID();
+  return NS_OK;
+}
+
+// -- end of nsITabChild -------
