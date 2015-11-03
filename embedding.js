@@ -290,6 +290,9 @@ pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 10);
 pref("javascript.options.mem.gc_low_frequency_heap_growth", 105);
 pref("javascript.options.mem.high_water_mark", 16);
 pref("javascript.options.mem.gc_allocation_threshold_mb", 3);
+pref("javascript.options.mem.gc_decommit_threshold_mb", 1);
+pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
+pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
 
 pref("font.size.inflation.minTwips", 120);
 
