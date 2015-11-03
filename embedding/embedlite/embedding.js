@@ -344,6 +344,7 @@ pref("media.video-queue.default-size", 3);
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
 pref("image.mem.allow_locking_in_content_processes", false);
+pref("image.mem.min_discard_timeout_ms", 10000);
 pref("image.onload.decode.limit", 24); /* don't decode more than 24 images eagerly */
 
 // SimplePush
