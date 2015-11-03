@@ -173,6 +173,7 @@ pref("browser.display.history.maxresults", 100);
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
 pref("browser.sessionhistory.max_entries", 50);
+pref("browser.sessionhistory.contentViewerTimeout", 360);
 
 /* these should help performance */
 pref("mozilla.widget.force-24bpp", true);
