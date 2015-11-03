@@ -400,4 +400,6 @@ pref("full-screen-api.content-only", true);
 pref("full-screen-api.ignore-widgets", true);
 
 // Match defaults for android and b2g, see: modules/libpref/init/all.js
+// Remove and test once mozilla bug #1158392 is fixed.
+// Test cases are mentioned in https://bugzilla.mozilla.org/show_bug.cgi?id=1158392#c3
 pref("layout.scroll.root-frame-containers", true);
