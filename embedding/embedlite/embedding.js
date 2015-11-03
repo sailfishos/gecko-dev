@@ -4,10 +4,7 @@ pref("plugins.force.wmode", "opaque");
 pref("browser.xul.error_pages.enabled", true);
 pref("nglayout.debug.paint_flashing", false);
 pref("nglayout.debug.widget_update_flashing", false);
-// Perf trick, speedup motion handlers
-pref("layout.reflow.synthMouseMove", false);
-// Disable Native themeing because it is usually broken
-pref("mozilla.widget.disable-native-theme", true);
+
 // Override some named colors to avoid inverse OS themes
 pref("ui.-moz-dialog", "#efebe7");
 pref("ui.-moz-dialogtext", "#101010");
@@ -178,8 +175,15 @@ pref("browser.sessionhistory.max_total_viewers", 1);
 pref("browser.sessionhistory.max_entries", 50);
 
 /* these should help performance */
+pref("mozilla.widget.force-24bpp", true);
 pref("mozilla.widget.use-buffer-pixmap", true);
 pref("layout.css.report_errors", false);
+pref("layout.reflow.synthMouseMove", false);
+pref("mozilla.widget.disable-native-theme", true);
+pref("layers.enable-tiles", true);
+pref("layers.low-precision-buffer", true);
+pref("layers.low-precision-opacity", "0.5");
+pref("layers.progressive-paint", true);
 
 /* password manager */
 pref("signon.rememberSignons", true);
