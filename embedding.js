@@ -119,6 +119,11 @@ pref("dom.experimental_forms", true);
 pref("extensions.getAddons.cache.enabled", true);
 pref("toolkit.browser.contentViewExpire", 3000);
 
+pref("browser.viewport.desktopWidth", 980);
+// The default fallback zoom level to render pages at. Set to -1 to fit page; otherwise
+// the value is divided by 1000 and clamped to hard-coded min/max scale values.
+pref("browser.viewport.defaultZoom", -1);
+
 /* cache prefs */
 pref("browser.cache.disk.enable", true);
 pref("browser.cache.disk.capacity", 20480); // kilobytes
