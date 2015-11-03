@@ -4,10 +4,7 @@ pref("plugins.force.wmode", "opaque");
 pref("browser.xul.error_pages.enabled", true);
 pref("nglayout.debug.paint_flashing", false);
 pref("nglayout.debug.widget_update_flashing", false);
-// Perf trick, speedup motion handlers
-pref("layout.reflow.synthMouseMove", false);
-// Disable Native themeing because it is usually broken
-pref("mozilla.widget.disable-native-theme", true);
+
 // Override some named colors to avoid inverse OS themes
 pref("ui.-moz-dialog", "#efebe7");
 pref("ui.-moz-dialogtext", "#101010");
@@ -56,13 +53,8 @@ pref("layers.max-active", 20);
 // APZC preferences.
 
 pref("apz.asyncscroll.throttle", 15);
-pref("apz.y_skate_size_multiplier", "4.5f");
-pref("apz.y_stationary_size_multiplier", "4.5f");
-pref("apz.max_event_acceleration", "12.0f");
-pref("apz.acceleration_multiplier", "1.125f");
-pref("apz.fling_friction", "0.00345f");
-pref("apz.min_skate_speed", "10.0f");
-pref("apz.axis_lock_mode", 2);
+pref("apz.fling_accel_base_mult", "1.125f");
+pref("apz.min_skate_speed", "1.0f");
 
 // Gaia relies heavily on scroll events for now, so lets fire them
 // more often than the default value (100).
@@ -127,6 +119,11 @@ pref("dom.experimental_forms", true);
 pref("extensions.getAddons.cache.enabled", true);
 pref("toolkit.browser.contentViewExpire", 3000);
 
+pref("browser.viewport.desktopWidth", 980);
+// The default fallback zoom level to render pages at. Set to -1 to fit page; otherwise
+// the value is divided by 1000 and clamped to hard-coded min/max scale values.
+pref("browser.viewport.defaultZoom", -1);
+
 /* cache prefs */
 pref("browser.cache.disk.enable", true);
 pref("browser.cache.disk.capacity", 20480); // kilobytes
@@ -161,7 +158,7 @@ pref("network.http.pipelining", true);
 pref("network.http.pipelining.ssl", true);
 pref("network.http.proxy.pipelining", true);
 pref("network.http.pipelining.maxrequests" , 6);
-pref("network.http.keep-alive.timeout", 600);
+pref("network.http.keep-alive.timeout", 109);
 pref("network.http.max-connections", 20);
 pref("network.http.max-persistent-connections-per-server", 6);
 pref("network.http.max-persistent-connections-per-proxy", 20);
@@ -176,10 +173,18 @@ pref("browser.display.history.maxresults", 100);
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
 pref("browser.sessionhistory.max_entries", 50);
+pref("browser.sessionhistory.contentViewerTimeout", 360);
 
 /* these should help performance */
+pref("mozilla.widget.force-24bpp", true);
 pref("mozilla.widget.use-buffer-pixmap", true);
 pref("layout.css.report_errors", false);
+pref("layout.reflow.synthMouseMove", false);
+pref("mozilla.widget.disable-native-theme", true);
+pref("layers.enable-tiles", true);
+pref("layers.low-precision-buffer", true);
+pref("layers.low-precision-opacity", "0.5");
+pref("layers.progressive-paint", true);
 
 /* password manager */
 pref("signon.rememberSignons", true);
@@ -285,11 +290,24 @@ pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 10);
 pref("javascript.options.mem.gc_low_frequency_heap_growth", 105);
 pref("javascript.options.mem.high_water_mark", 16);
 pref("javascript.options.mem.gc_allocation_threshold_mb", 3);
+pref("javascript.options.mem.gc_decommit_threshold_mb", 1);
+pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
+pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
 
 pref("font.size.inflation.minTwips", 120);
 
 // When true, zooming will be enabled on all sites, even ones that declare user-scalable=no.
 pref("browser.ui.zoom.force-user-scalable", false);
+
+// Maximum scripts runtime before showing an alert
+// Disable the watchdog thread for B2G. See bug 870043 comment 31.
+pref("dom.use_watchdog", false);
+
+// The slow script dialog can be triggered from inside the JS engine as well,
+// ensure that those calls don't accidentally trigger the dialog.
+pref("dom.max_script_run_time", 0);
+pref("dom.max_chrome_script_run_time", 0);
+pref("dom.max_child_script_run_time", 0);
 
 // plugins
 pref("plugin.disable", true);
@@ -309,10 +327,24 @@ pref("dom.indexedDB.warningQuota", 5);
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
+pref("media.cache_size", 32768);    // 32MB media cache
+// Try to save battery by not resuming reading from a connection until we fall
+// below 10s of buffered data.
+pref("media.cache_resume_threshold", 10);
+pref("media.cache_readahead_limit", 30);
+
+// Number of video frames we buffer while decoding video.
+// On Android this is decided by a similar value which varies for
+// each OMX decoder |OMX_PARAM_PORTDEFINITIONTYPE::nBufferCountMin|. This
+// number must be less than the OMX equivalent or gecko will think it is
+// chronically starved of video frames. All decoders seen so far have a value
+// of at least 4.
+pref("media.video-queue.default-size", 3);
 
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
 pref("image.mem.allow_locking_in_content_processes", false);
+pref("image.mem.min_discard_timeout_ms", 10000);
 pref("image.onload.decode.limit", 24); /* don't decode more than 24 images eagerly */
 
 // SimplePush
@@ -368,4 +400,6 @@ pref("full-screen-api.content-only", true);
 pref("full-screen-api.ignore-widgets", true);
 
 // Match defaults for android and b2g, see: modules/libpref/init/all.js
+// Remove and test once mozilla bug #1158392 is fixed.
+// Test cases are mentioned in https://bugzilla.mozilla.org/show_bug.cgi?id=1158392#c3
 pref("layout.scroll.root-frame-containers", true);
