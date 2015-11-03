@@ -317,6 +317,19 @@ pref("dom.indexedDB.warningQuota", 5);
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
+pref("media.cache_size", 32768);    // 32MB media cache
+// Try to save battery by not resuming reading from a connection until we fall
+// below 10s of buffered data.
+pref("media.cache_resume_threshold", 10);
+pref("media.cache_readahead_limit", 30);
+
+// Number of video frames we buffer while decoding video.
+// On Android this is decided by a similar value which varies for
+// each OMX decoder |OMX_PARAM_PORTDEFINITIONTYPE::nBufferCountMin|. This
+// number must be less than the OMX equivalent or gecko will think it is
+// chronically starved of video frames. All decoders seen so far have a value
+// of at least 4.
+pref("media.video-queue.default-size", 3);
 
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
