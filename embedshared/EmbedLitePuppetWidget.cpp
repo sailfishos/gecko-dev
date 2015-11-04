@@ -86,6 +86,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mView(view)
   , mVisible(false)
   , mEnabled(false)
+  , mActive(false)
   , mHasCompositor(false)
   , mIMEComposing(false)
   , mParent(nullptr)
@@ -185,6 +186,11 @@ EmbedLitePuppetWidget::UpdateSize()
 #ifdef DEBUG
   DumpWidgetTree();
 #endif
+}
+
+void EmbedLitePuppetWidget::SetActive(bool active)
+{
+  mActive = active;
 }
 
 NS_IMETHODIMP
@@ -769,6 +775,10 @@ bool
 EmbedLitePuppetWidget::PreRender(LayerManagerComposite *aManager)
 {
   MOZ_ASSERT(mWindow);
+  if (!IsVisible() || !mActive) {
+    return false;
+  }
+
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     return window->GetListener()->PreRender();
