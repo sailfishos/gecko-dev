@@ -179,6 +179,7 @@ public:
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const nsIntMargin& marins);
   void UpdateSize();
+  void SetActive(bool active);
 
   void AddObserver(EmbedLitePuppetWidgetObserver*);
   void RemoveObserver(EmbedLitePuppetWidgetObserver*);
@@ -208,6 +209,7 @@ private:
 
   bool mVisible;
   bool mEnabled;
+  bool mActive;
   bool mHasCompositor;
   InputContext mInputContext;
   bool mIMEComposing;

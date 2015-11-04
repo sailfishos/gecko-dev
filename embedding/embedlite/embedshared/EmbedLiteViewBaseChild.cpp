@@ -277,6 +277,13 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     widget->UpdateSize();
   }
 
+  static bool firstViewCreated = false;
+  EmbedLiteWindowBaseChild *windowBase = static_cast<EmbedLiteWindowBaseChild*>(mWindow);
+  if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
+    windowBase->GetWidget()->SetActive(true);
+    firstViewCreated = true;
+  }
+
   OnGeckoWindowInitialized();
 
   unused << SendInitialized();
@@ -507,6 +514,12 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
     fm->WindowLowered(mDOMWindow);
     LOGT("Deactivate browser");
   }
+
+  EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+  if (widget) {
+    widget->SetActive(aIsActive);
+  }
+
   mWebBrowser->SetIsActive(aIsActive);
   mWidget->Show(aIsActive);
 
