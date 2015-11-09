@@ -1,7 +1,7 @@
-From 9b24dbcf40439382602f88ac94e8e94781df6113 Mon Sep 17 00:00:00 2001
+From d2379e312103766ae9adac25f82761fadb3105dc Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:01:34 +0300
-Subject: [PATCH 02/13] Workaround for bug 977015
+Subject: [PATCH 02/14] Workaround for bug 977015
 
 See bug JB16252
 
