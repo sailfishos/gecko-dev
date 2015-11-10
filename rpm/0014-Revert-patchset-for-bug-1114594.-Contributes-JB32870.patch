@@ -1,7 +1,7 @@
-From ed6e0c20cd907e474826d0526912e8a0dc7bae7f Mon Sep 17 00:00:00 2001
+From f61b773e51ecf16909d018ad1e5af527ba92153d Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Thu, 5 Nov 2015 17:28:02 +0200
-Subject: [PATCH 14/14] Revert patchset for bug 1114594. Contributes JB32870
+Subject: [PATCH 14/15] Revert patchset for bug 1114594. Contributes JB32870
 
 WIP drop nsHelperAppDlg.js
 ---

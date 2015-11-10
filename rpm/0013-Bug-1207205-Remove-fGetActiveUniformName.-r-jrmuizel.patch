@@ -1,7 +1,7 @@
-From 5de0d09b244fe0ca95da684c2335f4759f6acb1d Mon Sep 17 00:00:00 2001
+From 317ba8b98e828a994f23ecba1fbddf4ff6a403ce Mon Sep 17 00:00:00 2001
 From: Dan Glastonbury <dglastonbury@mozilla.com>
 Date: Wed, 30 Sep 2015 14:04:17 +1300
-Subject: [PATCH 13/14] Bug 1207205 - Remove fGetActiveUniformName. r=jrmuizel
+Subject: [PATCH 13/15] Bug 1207205 - Remove fGetActiveUniformName. r=jrmuizel
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---

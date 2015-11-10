@@ -1,7 +1,7 @@
-From 01bc5cc98194796afb4e88b535414188ac28ce15 Mon Sep 17 00:00:00 2001
+From f7aa36252cc5e7995981abcc7ed93729eccf6bf2 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:17:36 +0300
-Subject: [PATCH 08/14] Limit surface area rather than width and height
+Subject: [PATCH 08/15] Limit surface area rather than width and height
 
 See bug JB26935
 

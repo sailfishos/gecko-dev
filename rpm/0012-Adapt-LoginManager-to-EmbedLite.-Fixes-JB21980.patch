@@ -1,7 +1,7 @@
-From f383941e546ecbac49ba7a6b3217f4044c1a1b3c Mon Sep 17 00:00:00 2001
+From 49607e9a03df9a2063ccbbfb9c4190b12e75fb55 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
-Subject: [PATCH 12/14] Adapt LoginManager to EmbedLite. Fixes JB21980
+Subject: [PATCH 12/15] Adapt LoginManager to EmbedLite. Fixes JB21980
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 ---

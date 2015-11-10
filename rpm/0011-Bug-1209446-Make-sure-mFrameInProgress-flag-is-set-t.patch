@@ -1,7 +1,7 @@
-From 6776211a3cb46214c1f634bac4147f16436494e2 Mon Sep 17 00:00:00 2001
+From 3d41c93556ece1dcadabde6c7c40f5691bb127e7 Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <tworaz666@gmail.com>
 Date: Tue, 29 Sep 2015 08:18:00 +0200
-Subject: [PATCH 11/14] Bug 1209446 - Make sure mFrameInProgress flag is set to
+Subject: [PATCH 11/15] Bug 1209446 - Make sure mFrameInProgress flag is set to
  true only when we actually begin drawing new frame. r=nical
 
 --HG--
