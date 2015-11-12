@@ -1,7 +1,7 @@
-From 26f60c514fafa02f6c1da15f777f81d70a373f46 Mon Sep 17 00:00:00 2001
+From ced18180febf8e307727b55bf0c44c67ab42f3a6 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:10:46 +0300
-Subject: [PATCH 04/14] Supply source uri to gstreamer pipeline
+Subject: [PATCH 04/15] Supply source uri to gstreamer pipeline
 
 See bug JB19511
 
@@ -212,7 +212,7 @@ index 3c92e53..c07fa15 100644
    GstCaps *caps =
      GStreamerFormatHelper::ConvertFormatsToCaps(mDecoder->GetResource()->GetContentType().get(),
 diff --git a/dom/media/gstreamer/GStreamerReader.h b/dom/media/gstreamer/GStreamerReader.h
-index d455954..8746198 100644
+index d455954..8746198c 100644
 --- a/dom/media/gstreamer/GStreamerReader.h
 +++ b/dom/media/gstreamer/GStreamerReader.h
 @@ -118,6 +118,15 @@ private:

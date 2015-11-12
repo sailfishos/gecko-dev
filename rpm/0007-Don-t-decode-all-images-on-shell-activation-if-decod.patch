@@ -1,7 +1,7 @@
-From ea34db8dc26f0e80c01e8ac98dc5296c77938ad9 Mon Sep 17 00:00:00 2001
+From 99e5da5d69b1dfbd8ae728e8dd40af416c59d094 Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <piotr.tworek@jollamobile.com>
 Date: Fri, 3 Jul 2015 14:12:32 +0200
-Subject: [PATCH 07/14] Don't decode all images on shell activation if
+Subject: [PATCH 07/15] Don't decode all images on shell activation if
  decodeondraw is enabled. Fixes JB#25287
 
 Currently if the page contains a lot images in nsDocument::mImageTracker
