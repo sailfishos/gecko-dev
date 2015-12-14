@@ -39,8 +39,8 @@ Summary:    XUL runner
 Version:    %{greversion}.%{sf_extra_ver}
 Release:    1
 Group:      Applications/Internet
-License:    Mozilla License
-URL:        http://hg.mozilla.org/mozilla-central
+License:    MPLv2
+URL:        https://github.com/tmeshkova/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-Configure-system-sqlite-to-use-jemalloc.patch
 Patch2:     0002-Workaround-for-bug-977015.patch
@@ -112,7 +112,6 @@ BuildRequires:  libffi-devel
 Mozilla XUL runner
 
 %package devel
-Group: Applications/Internet
 Requires: %{name} = %{version}-%{release}
 Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
@@ -121,7 +120,6 @@ Summary: Headers for xulrunner
 Development files for xulrunner.
 
 %package misc
-Group: Applications/Internet
 Requires: %{name} = %{version}-%{release}
 Summary: Misc files for xulrunner
 
