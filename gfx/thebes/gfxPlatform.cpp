@@ -142,6 +142,8 @@ static void ShutdownCMS();
 #include "mozilla/gfx/SourceSurfaceCairo.h"
 using namespace mozilla::gfx;
 
+void InitLayersAccelerationPrefs();
+
 /* Class to listen for pref changes so that chrome code can dynamically
    force sRGB as an output profile. See Bug #452125. */
 class SRGBOverrideObserver final : public nsIObserver,
@@ -457,13 +459,18 @@ gfxPlatform::Init()
     }
     gEverInitialized = true;
 
-    CrashStatsLogForwarder* logForwarder = new CrashStatsLogForwarder("GraphicsCriticalError");
-    mozilla::gfx::Factory::SetLogForwarder(logForwarder);
-
     // Initialize the preferences by creating the singleton.
     gfxPrefs::GetSingleton();
 
-    logForwarder->SetCircularBufferSize(gfxPrefs::GfxLoggingCrashLength());
+    auto fwd = new CrashStatsLogForwarder("GraphicsCriticalError");
+    fwd->SetCircularBufferSize(gfxPrefs::GfxLoggingCrashLength());
+
+    mozilla::gfx::Config cfg;
+    cfg.mLogForwarder = fwd;
+    cfg.mMaxTextureSize = gfxPrefs::MaxTextureSize();
+    cfg.mMaxAllocSize = gfxPrefs::MaxAllocSize();
+
+    gfx::Factory::Init(cfg);
 
     gGfxPlatformPrefsLock = new Mutex("gfxPlatform::gGfxPlatformPrefsLock");
 
@@ -496,6 +503,7 @@ gfxPlatform::Init()
     mozilla::gl::GLContext::StaticInit();
 #endif
 
+    InitLayersAccelerationPrefs();
     InitLayersIPC();
 
     mozilla::gl::GLContext::PlatformStartup();
@@ -644,6 +652,8 @@ gfxPlatform::Shutdown()
     // delete it.
     delete mozilla::gfx::Factory::GetLogForwarder();
     mozilla::gfx::Factory::SetLogForwarder(nullptr);
+
+    gfx::Factory::ShutDown();
 
     delete gGfxPlatformPrefsLock;
 

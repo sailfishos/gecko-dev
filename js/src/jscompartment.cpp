@@ -143,18 +143,10 @@ JSRuntime::createJitRuntime(JSContext* cx)
     jitRuntime_ = jrt;
 
     if (!jitRuntime_->initialize(cx)) {
-        js_ReportOutOfMemory(cx);
-
-        js_delete(jitRuntime_);
-        jitRuntime_ = nullptr;
-
-        JSCompartment* comp = cx->runtime()->atomsCompartment();
-        if (comp->jitCompartment_) {
-            js_delete(comp->jitCompartment_);
-            comp->jitCompartment_ = nullptr;
-        }
-
-        return nullptr;
+        // Handling OOM here is complicated: if we delete jitRuntime_ now, we
+        // will destroy the ExecutableAllocator, even though there may still be
+        // JitCode instances holding references to ExecutablePools.
+        CrashAtUnhandlableOOM("OOM in createJitRuntime");
     }
 
     return jitRuntime_;
@@ -734,16 +726,25 @@ CreateLazyScriptsForCompartment(JSContext* cx)
     // clones. See bug 1105306.
     for (gc::ZoneCellIter i(cx->zone(), JSFunction::FinalizeKind); !i.done(); i.next()) {
         JSObject* obj = i.get<JSObject>();
-        if (obj->compartment() == cx->compartment() && obj->is<JSFunction>()) {
-            JSFunction* fun = &obj->as<JSFunction>();
-            if (fun->isInterpretedLazy()) {
-                LazyScript* lazy = fun->lazyScriptOrNull();
-                if (lazy && lazy->sourceObject() && !lazy->maybeScript() &&
-                    !lazy->hasUncompiledEnclosingScript())
-                {
-                    if (!lazyFunctions.append(fun))
-                        return false;
-                }
+
+        // Sweeping is incremental; take care to not delazify functions that
+        // are about to be finalized. GC things referenced by objects that are
+        // about to be finalized (e.g., in slots) may already be freed.
+        if (gc::IsObjectAboutToBeFinalized(&obj) ||
+            obj->compartment() != cx->compartment() ||
+            !obj->is<JSFunction>())
+        {
+            continue;
+        }
+
+        JSFunction* fun = &obj->as<JSFunction>();
+        if (fun->isInterpretedLazy()) {
+            LazyScript* lazy = fun->lazyScriptOrNull();
+            if (lazy && lazy->sourceObject() && !lazy->maybeScript() &&
+                !lazy->hasUncompiledEnclosingScript())
+            {
+                if (!lazyFunctions.append(fun))
+                    return false;
             }
         }
     }

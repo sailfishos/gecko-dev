@@ -25,7 +25,6 @@
 
 #include "webrtc/voice_engine/include/voe_errors.h"
 #include "webrtc/system_wrappers/interface/clock.h"
-#include "browser_logging/WebRtcLog.h"
 
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidJNIWrapper.h"
@@ -69,7 +68,6 @@ WebrtcAudioConduit::~WebrtcAudioConduit()
   {
     delete mRecvCodecList[i];
   }
-  delete mCurSendCodecConfig;
 
   // The first one of a pair to be deleted shuts down media for both
   if(mPtrVoEXmedia)
@@ -218,8 +216,6 @@ MediaConduitErrorCode WebrtcAudioConduit::Init()
     return kMediaConduitSessionNotInited;
   }
 
-  EnableWebRtcLog();
-
   if(!(mPtrVoEBase = VoEBase::GetInterface(mVoiceEngine)))
   {
     CSFLogError(logTag, "%s Unable to initialize VoEBase", __FUNCTION__);
@@ -336,10 +332,12 @@ WebrtcAudioConduit::ConfigureSendMediaCodec(const AudioCodecConfig* codecConfig)
   int error = 0;//webrtc engine errors
   webrtc::CodecInst cinst;
 
-  //validate codec param
-  if((condError = ValidateCodecConfig(codecConfig, true)) != kMediaConduitNoError)
   {
-    return condError;
+    //validate codec param
+    if((condError = ValidateCodecConfig(codecConfig, true)) != kMediaConduitNoError)
+    {
+      return condError;
+    }
   }
 
   condError = StopTransmitting();
@@ -387,16 +385,17 @@ WebrtcAudioConduit::ConfigureSendMediaCodec(const AudioCodecConfig* codecConfig)
     return condError;
   }
 
-  //Copy the applied config for future reference.
-  delete mCurSendCodecConfig;
+  {
+    MutexAutoLock lock(mCodecMutex);
 
-  mCurSendCodecConfig = new AudioCodecConfig(codecConfig->mType,
-                                              codecConfig->mName,
-                                              codecConfig->mFreq,
-                                              codecConfig->mPacSize,
-                                              codecConfig->mChannels,
-                                              codecConfig->mRate);
-
+    //Copy the applied config for future reference.
+    mCurSendCodecConfig = new AudioCodecConfig(codecConfig->mType,
+                                               codecConfig->mName,
+                                               codecConfig->mFreq,
+                                               codecConfig->mPacSize,
+                                               codecConfig->mChannels,
+                                               codecConfig->mRate);
+  }
   return kMediaConduitNoError;
 }
 
@@ -994,7 +993,7 @@ WebrtcAudioConduit::CheckCodecForMatch(const AudioCodecConfig* codecInfo) const
  */
 MediaConduitErrorCode
 WebrtcAudioConduit::ValidateCodecConfig(const AudioCodecConfig* codecInfo,
-                                        bool send) const
+                                        bool send)
 {
   bool codecAppliedAlready = false;
 
@@ -1021,6 +1020,8 @@ WebrtcAudioConduit::ValidateCodecConfig(const AudioCodecConfig* codecInfo,
   //check if we have the same codec already applied
   if(send)
   {
+    MutexAutoLock lock(mCodecMutex);
+
     codecAppliedAlready = CheckCodecsForMatch(mCurSendCodecConfig,codecInfo);
   } else {
     codecAppliedAlready = CheckCodecForMatch(codecInfo);

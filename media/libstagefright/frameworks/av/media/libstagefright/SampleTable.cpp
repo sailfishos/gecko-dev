@@ -580,7 +580,9 @@ SampleTable::setSampleAuxiliaryInformationOffsetParams(
     }
     data_offset += 4;
 
-    mCencOffsets.setCapacity(cencOffsetCount);
+    if (mCencOffsets.setCapacity(cencOffsetCount) < 0) {
+        return ERROR_MALFORMED;
+    }
     if (!version) {
         for (uint32_t i = 0; i < cencOffsetCount; i++) {
             uint32_t tmp;
@@ -615,8 +617,8 @@ SampleTable::parseSampleCencInfo() {
         return OK;
     }
 
-    if (!mCencSizes.isEmpty() && mCencOffsets.size() > 1 &&
-        mCencSizes.size() != mCencOffsets.size()) {
+    if ((mCencOffsets.size() > 1 && mCencOffsets.size() < mCencInfoCount) ||
+        (!mCencDefaultSize && mCencSizes.size() < mCencInfoCount)) {
         return ERROR_MALFORMED;
     }
 
@@ -1104,8 +1106,12 @@ SampleTable::getSampleCencInfo(
     }
 
     auto& info = mCencInfo[sample_index];
-    clear_sizes.setCapacity(info.mSubsampleCount);
-    cipher_sizes.setCapacity(info.mSubsampleCount);
+    if (clear_sizes.setCapacity(info.mSubsampleCount) < 0) {
+        return ERROR_MALFORMED;
+    }
+    if (cipher_sizes.setCapacity(info.mSubsampleCount) < 0) {
+        return ERROR_MALFORMED;
+    }
 
     for (uint32_t i = 0; i < info.mSubsampleCount; i++) {
         clear_sizes.push(info.mSubsamples[i].mClearBytes);

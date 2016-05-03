@@ -116,7 +116,10 @@ Bindings::initWithTemporaryStorage(ExclusiveContext* cx, InternalBindingsHandle 
     // any time, such accesses are mediated by DebugScopeProxy (see
     // DebugScopeProxy::handleUnaliasedAccess).
     uint32_t nslots = CallObject::RESERVED_SLOTS;
-    uint32_t aliasedBodyLevelLexicalBegin = UINT16_MAX;
+
+    // Unless there are aliased body-level lexical bindings at all, set the
+    // begin index to an impossible slot number.
+    uint32_t aliasedBodyLevelLexicalBegin = LOCALNO_LIMIT;
     for (BindingIter bi(self); bi; bi++) {
         if (bi->aliased()) {
             // Per ES6, lexical bindings cannot be accessed until
@@ -3851,7 +3854,7 @@ LazyScript::hasUncompiledEnclosingScript() const
         return false;
 
     JSFunction& fun = enclosingScope()->as<JSFunction>();
-    return fun.isInterpreted() && (!fun.mutableScript() || !fun.nonLazyScript()->code());
+    return !fun.hasScript() || fun.hasUncompiledScript() || !fun.nonLazyScript()->code();
 }
 
 uint32_t
@@ -3897,6 +3900,12 @@ JSScript::hasLoops()
             return true;
     }
     return false;
+}
+
+bool
+JSScript::mayReadFrameArgsDirectly()
+{
+    return argumentsHasVarBinding() || (function_ && function_->hasRest());
 }
 
 static inline void

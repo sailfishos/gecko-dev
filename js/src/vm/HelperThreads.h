@@ -227,6 +227,9 @@ class GlobalHelperThreadState
     }
 
     JSScript* finishParseTask(JSContext* maybecx, JSRuntime* rt, void* token);
+    void mergeParseTaskCompartment(JSRuntime* rt, ParseTask* parseTask,
+                                   Handle<GlobalObject*> global,
+                                   JSCompartment* dest);
     bool compressionInProgress(SourceCompressionTask* task);
     SourceCompressionTask* compressionTaskForSource(ScriptSource* ss);
 
@@ -474,7 +477,7 @@ struct ParseTask
     // Holds the final script between the invocation of the callback and the
     // point where FinishOffThreadScript is called, which will destroy the
     // ParseTask.
-    JSScript* script;
+    PersistentRootedScript script;
 
     // Any errors or warnings produced during compilation. These are reported
     // when finishing the script.

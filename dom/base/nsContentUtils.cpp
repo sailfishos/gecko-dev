@@ -146,6 +146,7 @@
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsIStreamConverterService.h"
 #include "nsIStringBundle.h"
 #include "nsIURI.h"
 #include "nsIURL.h"
@@ -6405,6 +6406,19 @@ nsContentUtils::AllowXULXBLForPrincipal(nsIPrincipal* aPrincipal)
           IsSitePermAllow(aPrincipal, "allowXULXBL"));
 }
 
+bool
+nsContentUtils::IsPDFJSEnabled()
+{
+   nsCOMPtr<nsIStreamConverterService> convServ =
+     do_GetService("@mozilla.org/streamConverters;1");
+   nsresult rv = NS_ERROR_FAILURE;
+   bool canConvert = false;
+   if (convServ) {
+     rv = convServ->CanConvert("application/pdf", "text/html", &canConvert);
+   }
+   return NS_SUCCEEDED(rv) && canConvert;
+}
+
 already_AddRefed<nsIDocumentLoaderFactory>
 nsContentUtils::FindInternalContentViewer(const char* aType,
                                           ContentViewerType* aLoaderType)
@@ -6987,7 +7001,7 @@ nsContentUtils::IsAllowedNonCorsContentType(const nsACString& aHeaderValue)
   nsAutoCString contentType;
   nsAutoCString unused;
 
-  nsresult rv = NS_ParseContentType(aHeaderValue, contentType, unused);
+  nsresult rv = NS_ParseRequestContentType(aHeaderValue, contentType, unused);
   if (NS_FAILED(rv)) {
     return false;
   }

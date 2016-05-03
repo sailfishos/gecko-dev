@@ -1049,7 +1049,7 @@ nsHTMLDocument::SetBody(nsIDOMHTMLElement* aBody)
 void
 nsHTMLDocument::SetBody(nsGenericHTMLElement* newBody, ErrorResult& rv)
 {
-  Element* root = GetRootElement();
+  nsCOMPtr<Element> root = GetRootElement();
 
   // The body element must be either a body tag or a frameset tag. And we must
   // have a html root tag, otherwise GetBody will not return the newly set
@@ -1422,7 +1422,7 @@ nsHTMLDocument::Open(JSContext* cx,
   nsAutoString type;
   nsContentUtils::ASCIIToLower(aType, type);
   nsAutoCString actualType, dummy;
-  NS_ParseContentType(NS_ConvertUTF16toUTF8(type), actualType, dummy);
+  NS_ParseRequestContentType(NS_ConvertUTF16toUTF8(type), actualType, dummy);
   if (!actualType.EqualsLiteral("text/html") &&
       !type.EqualsLiteral("replace")) {
     contentType.AssignLiteral("text/plain");

@@ -1579,8 +1579,9 @@ CreateThisForFunctionWithGroup(JSContext* cx, HandleObjectGroup group, HandleObj
         if (!res)
             return nullptr;
 
-        if (newKind != SingletonObject)
-            newScript->registerNewObject(res);
+        // Make sure group->newScript is still there.
+        if (newKind != SingletonObject && group->newScript())
+            group->newScript()->registerNewObject(res);
 
         return res;
     }
@@ -2707,8 +2708,8 @@ js::GetBuiltinPrototype(ExclusiveContext* cx, JSProtoKey key, MutableHandleObjec
     return true;
 }
 
-static bool
-IsStandardPrototype(JSObject* obj, JSProtoKey key)
+bool
+js::IsStandardPrototype(JSObject* obj, JSProtoKey key)
 {
     GlobalObject& global = obj->global();
     Value v = global.getPrototype(key);

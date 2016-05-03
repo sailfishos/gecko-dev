@@ -85,8 +85,8 @@ function download() {
     throw "ERROR: could not decode data as base64 from '" + SOURCE + "': " + e;
   }
 
-  // we have to filter out '//' comments
-  var result = resultDecoded.replace(/\/\/[^\n]*\n/g, "");
+  // we have to filter out '//' comments, while not mangling the json
+  var result = resultDecoded.replace(/^(\s*)?\/\/[^\n]*\n/mg, "");
   var data = null;
   try {
     data = JSON.parse(result);
@@ -104,9 +104,12 @@ function getHosts(rawdata) {
     throw "ERROR: source data not formatted correctly: 'entries' not found";
   }
 
-  for (entry of rawdata.entries) {
+  for (let entry of rawdata.entries) {
     if (entry.mode && entry.mode == "force-https") {
       if (entry.name) {
+        // We trim the entry name here to avoid malformed URI exceptions when we
+        // later try to connect to the domain.
+        entry.name = entry.name.trim();
         entry.retries = MAX_RETRIES;
         entry.originalIncludeSubdomains = entry.include_subdomains;
         hosts.push(entry);

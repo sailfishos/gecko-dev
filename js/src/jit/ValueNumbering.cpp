@@ -438,6 +438,7 @@ ValueNumberer::fixupOSROnlyLoop(MBasicBlock* block, MBasicBlock* backedge)
     graph_.insertBlockBefore(block, fake);
     fake->setImmediateDominator(fake);
     fake->addNumDominated(1);
+    fake->setDomIndex(fake->id());
 
     // Create zero-input phis to use as inputs for any phis in |block|.
     // Again, this is a little odd, but it's the least-odd thing we can do
@@ -725,6 +726,12 @@ ValueNumberer::visitDefinition(MDefinition* def)
 
         return true;
     }
+
+    // Skip optimizations on instructions which are recovered on bailout, to
+    // avoid mixing instructions which are recovered on bailouts with
+    // instructions which are not.
+    if (def->isRecoveredOnBailout())
+        return true;
 
     // If this instruction has a dependency() into an unreachable block, we'll
     // need to update AliasAnalysis.

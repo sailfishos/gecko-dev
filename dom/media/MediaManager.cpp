@@ -2008,6 +2008,9 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       mBackend = nullptr;
     }
 
+#ifdef MOZ_WEBRTC
+    StopWebRtcLog();
+#endif
     return NS_OK;
 
   } else if (!strcmp(aTopic, "getUserMedia:response:allow")) {

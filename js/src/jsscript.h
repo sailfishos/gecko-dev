@@ -206,8 +206,8 @@ class Bindings
     uint16_t numArgs_;
     uint16_t numBlockScoped_;
     uint16_t numBodyLevelLexicals_;
-    uint16_t aliasedBodyLevelLexicalBegin_;
     uint16_t numUnaliasedBodyLevelLexicals_;
+    uint32_t aliasedBodyLevelLexicalBegin_;
     uint32_t numVars_;
     uint32_t numUnaliasedVars_;
 
@@ -1401,6 +1401,10 @@ class JSScript : public js::gc::TenuredCell
      * that expects the function to be non-lazy.
      */
     inline void ensureNonLazyCanonicalFunction(JSContext* cx);
+
+    // Returns true if the script may read formal arguments on the stack
+    // directly, via lazy arguments or a rest parameter.
+    bool mayReadFrameArgsDirectly();
 
     JSFlatString* sourceData(JSContext* cx);
 
