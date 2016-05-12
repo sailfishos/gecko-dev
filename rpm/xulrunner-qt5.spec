@@ -57,6 +57,7 @@ Patch12:    0012-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
 Patch13:    0013-Bug-1207205-Remove-fGetActiveUniformName.-r-jrmuizel.patch
 Patch14:    0014-Revert-patchset-for-bug-1114594.-Contributes-JB32870.patch
 Patch15:    0015-Add-transition-from-pinching-to-panning.patch
+Patch16:    0016-rpm-Update-build-version.-Contributes-to-JB-35001.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -148,6 +149,7 @@ Tests and misc files for xulrunner.
 %patch13 -p1
 %patch14 -p1
 %patch15 -p1
+%patch16 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
