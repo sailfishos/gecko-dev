@@ -3,6 +3,8 @@
 
 %define embedlite_config merqtxulrunner
 
+%define system_nspr       1
+%define system_nss        1
 %define system_sqlite     1
 %define system_ffi        1
 %define system_hunspell   1
@@ -18,15 +20,13 @@
 # Private/bundled libs the final package should not provide or depend on.
 %global privlibs             libfreebl3
 %global privlibs %{privlibs}|libmozalloc
-%if %{system_sqlite}
 %global privlibs %{privlibs}|libmozsqlite3
-%endif
 %global privlibs %{privlibs}|libnspr4
+%global privlibs %{privlibs}|libplc4
+%global privlibs %{privlibs}|libplds4
 %global privlibs %{privlibs}|libnss3
 %global privlibs %{privlibs}|libnssdbm3
 %global privlibs %{privlibs}|libnssutil3
-%global privlibs %{privlibs}|libplc4
-%global privlibs %{privlibs}|libplds4
 %global privlibs %{privlibs}|libsmime3
 %global privlibs %{privlibs}|libsoftokn3
 %global privlibs %{privlibs}|libssl3
@@ -62,6 +62,12 @@ BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
+%if %{system_nspr}
+BuildRequires:  pkgconfig(nspr) >= 4.10.8
+%endif
+%if %{system_nss}
+BuildRequires:  pkgconfig(nss) >= 3.18.1
+%endif
 %if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
 Requires:  sqlite >= 3.8.9
@@ -248,11 +254,13 @@ done
 ln -s %{_datadir}/myspell ${RPM_BUILD_ROOT}%{mozappdir}/dictionaries
 mkdir ${RPM_BUILD_ROOT}%{mozappdir}/defaults
 
+%if !%{system_nss}
 # symlink to the system libnssckbi.so (CA trust library). It is replaced by
 # the p11-kit-nss-ckbi package to use p11-kit's trust store.
 # There is a strong binary compatibility guarantee.
 rm ${RPM_BUILD_ROOT}%{mozappdir}/libnssckbi.so
 ln -s %{_libdir}/libnssckbi.so ${RPM_BUILD_ROOT}%{mozappdir}/libnssckbi.so
+%endif
 
 # Fix some of the RPM lint errors.
 find "%{buildroot}%{_includedir}" -type f -name '*.h' -exec chmod 0644 {} +;
