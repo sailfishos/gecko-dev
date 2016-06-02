@@ -21,7 +21,7 @@ protected:
   virtual ~EmbedLiteAppThreadChild();
 
   virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) override;
-  virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint32_t&) override;
+  virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t&) override;
   virtual PCompositorChild* AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess);
 
 private:

@@ -447,7 +447,7 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPri
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateWindow()
+EmbedLiteApp::CreateWindow(int width, int height)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
@@ -455,7 +455,7 @@ EmbedLiteApp::CreateWindow()
   sWindowCreateID++;
 
   PEmbedLiteWindowParent* windowParent = static_cast<PEmbedLiteWindowParent*>(
-      mAppParent->SendPEmbedLiteWindowConstructor(sWindowCreateID));
+      mAppParent->SendPEmbedLiteWindowConstructor(width, height, sWindowCreateID));
   EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
   mWindows[sWindowCreateID] = window;
   return window;

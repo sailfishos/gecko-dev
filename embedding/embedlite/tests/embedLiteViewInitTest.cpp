@@ -55,8 +55,7 @@ public:
     , mWindow(nullptr)
     , mView(nullptr)
   {
-    mWindow = mAppListener->App()->CreateWindow();
-    mWindow->SetSize(800, 600);
+    mWindow = mAppListener->App()->CreateWindow(800, 600);
     mView = mAppListener->App()->CreateView(mWindow);
     mView->SetListener(this);
   }

@@ -25,10 +25,10 @@ namespace embedlite {
 
 static int sWindowCount = 0;
 
-EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint32_t& aId)
+EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
   : mId(aId)
   , mWidget(nullptr)
-  , mSize(0, 0)
+  , mSize(width, height)
   , mRotation(ROTATION_0)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
@@ -77,8 +77,8 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 
 bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
 {
-  LOGT("this:%p", this);
   mSize = aSize;
+  LOGT("this:%p width: %f, height: %f", this, aSize.width, aSize.height);
   if (mWidget) {
     mWidget->Resize(aSize.width, aSize.height, true);
   }
@@ -151,6 +151,9 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   widgetInit.clipChildren = true;
   widgetInit.mWindowType = eWindowType_toplevel;
   widgetInit.mRequireOffMainThreadCompositing = true;
+
+  // EmbedLitePuppetWidget::CreateCompositor() reads back Size
+  // when it creates the compositor.
   mWidget->Create(
     nullptr, 0,              // no parents
     nsIntRect(nsIntPoint(0, 0), nsIntSize(mSize.width, mSize.height)),

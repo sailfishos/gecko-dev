@@ -260,7 +260,7 @@ EmbedLiteAppProcessParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aAc
 }
 
 PEmbedLiteWindowParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(const uint32_t& id)
+EmbedLiteAppProcessParent::AllocPEmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
 {
   LOGNI();
 
