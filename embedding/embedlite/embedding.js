@@ -104,6 +104,9 @@ pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
 pref("browser.cache.memory.capacity", 1024);
 
+// Enable new cache backend even thou still a bit experimental.
+pref("browser.cache.use_new_backend", 1);
+
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
 pref("image.high_quality_downscaling.enabled", false);
