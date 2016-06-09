@@ -37,19 +37,18 @@ namespace embedlite {
 static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
 EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
-		                                     uint32_t windowId,
+                                                     uint32_t windowId,
                                                      bool aRenderToEGLSurface,
                                                      int aSurfaceWidth,
                                                      int aSurfaceHeight)
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
-  , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
   Preferences::AddBoolVarCache(&mUseExternalGLContext,
-		               "embedlite.compositor.external_gl_context", false);
+                               "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
 }
 
@@ -124,8 +123,8 @@ EmbedLiteCompositorParent::UpdateTransformState()
   GLContext* context = compositor->gl();
   NS_ENSURE_TRUE(context, );
 
-  if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
-    context->ResizeOffscreen(mLastViewSize);
+  gfx::IntSize eglSize(mEGLSurfaceSize.width, mEGLSurfaceSize.height);
+  if (context->IsOffscreen() && context->OffscreenSize() != eglSize && context->ResizeOffscreen(eglSize)) {
     ScheduleRenderOnCompositorThread();
   }
 }
@@ -183,6 +182,7 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
   if (context->IsOffscreen()) {
     GLScreenBuffer* screen = context->Screen();
     MOZ_ASSERT(screen);
+
     if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
       NS_ERROR("Failed to publish context frame");
       return false;
@@ -200,9 +200,8 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
 
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
-  if (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height) {
+  if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
-    mLastViewSize = gfx::IntSize(width, height);
   }
 }
 
@@ -243,9 +242,9 @@ EmbedLiteCompositorParent::SuspendRendering()
 void
 EmbedLiteCompositorParent::ResumeRendering()
 {
-  if (mLastViewSize.width > 0 && mLastViewSize.height > 0) {
-    CompositorParent::ScheduleResumeOnCompositorThread(mLastViewSize.width,
-                                                       mLastViewSize.height);
+  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
+    CompositorParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
+                                                       mEGLSurfaceSize.height);
     CompositorParent::ScheduleRenderOnCompositorThread();
   }
 }

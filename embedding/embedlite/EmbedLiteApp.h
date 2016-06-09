@@ -111,7 +111,7 @@ public:
   virtual bool StopChildThread();
 
   virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow, uint32_t aParent = 0, bool aIsPrivateWindow = false);
-  virtual EmbedLiteWindow* CreateWindow();
+  virtual EmbedLiteWindow* CreateWindow(int width, int height);
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
 

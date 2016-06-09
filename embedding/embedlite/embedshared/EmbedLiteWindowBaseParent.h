@@ -25,7 +25,7 @@ class EmbedLiteWindowBaseParent : public PEmbedLiteWindowParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowBaseParent)
 public:
-  EmbedLiteWindowBaseParent(const uint32_t& id);
+  EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
 
   static EmbedLiteWindowBaseParent* From(const uint32_t id);
 

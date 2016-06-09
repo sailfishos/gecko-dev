@@ -44,10 +44,10 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, cons
 }
 
 PEmbedLiteWindowChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint32_t& id)
+EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t& id)
 {
   LOGT("id:%u", id);
-  EmbedLiteWindowThreadChild* window = new EmbedLiteWindowThreadChild(id);
+  EmbedLiteWindowThreadChild* window = new EmbedLiteWindowThreadChild(width, height, id);
   mWeakWindowMap[id] = window;
   window->AddRef();
   return window;
