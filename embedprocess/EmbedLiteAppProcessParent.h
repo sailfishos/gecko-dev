@@ -60,7 +60,7 @@ protected:
   DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aActor);
 
   virtual PEmbedLiteWindowParent*
-  AllocPEmbedLiteWindowParent(const uint32_t& id) override;
+  AllocPEmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id) override;
 
   virtual bool
   DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* aActor) override;

@@ -52,7 +52,6 @@ private:
 
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
-  gfx::IntSize mLastViewSize;
   bool mUseExternalGLContext;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorParent);

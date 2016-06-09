@@ -39,10 +39,11 @@ static inline gfx::SurfaceFormat _depth_to_gfxformat(int depth)
 
 } // namespace
 
-EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint32_t& id)
+EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
   : mId(id)
   , mWindow(nullptr)
   , mCompositor(nullptr)
+  , mSize(width, height)
   , mRotation(ROTATION_0)
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
