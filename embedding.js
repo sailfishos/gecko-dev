@@ -250,6 +250,10 @@ pref("gfx.displayport.strategy", 1);
 // (see bug 700023, bug 846832, bug 847344)
 pref("gfx.font_rendering.graphite.enabled", false);
 
+// Enable hardware-accelerated Skia canvas
+pref("gfx.canvas.azure.backends", "skia");
+pref("gfx.canvas.azure.accelerated", true);
+
 // don't allow JS to move and resize existing windows
 pref("dom.disable_window_move_resize", true);
 
