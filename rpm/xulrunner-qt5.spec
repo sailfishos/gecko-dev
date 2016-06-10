@@ -177,13 +177,14 @@ echo "export PYTHONPATH=$PYTHONPATH" >> "%BUILD_DIR"/rpm-shared.env
 echo "export SBOX_REDIRECT_FORCE=/usr/bin/python" >> "%BUILD_DIR"/rpm-shared.env
 %endif
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
+echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
-printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
+echo "## Added by xulrunner-qt.spec:" >> "$MOZCONFIG"
 %ifarch %arm
 echo "ac_add_options --with-arm-kuser" >> "$MOZCONFIG"
 echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
@@ -233,8 +234,11 @@ echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
   echo "ac_add_options --with-system-bz2" >> "${MOZCONFIG}"
 %endif
 
+%ifarch %ix86
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+%endif
+echo "ac_add_options --enable-chrome-format=omni" >> "$MOZCONFIG"
 
 %{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
 
