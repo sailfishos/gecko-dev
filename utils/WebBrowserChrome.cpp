@@ -32,8 +32,10 @@
 #include "ScriptSettings.h" // for AutoNoJSAPI
 #include "TabChildHelper.h"
 
-#define MOZ_AFTER_PAINT_LITERAL "MozAfterPaint"
+// Duplicated from EventNameList.h
+#define MOZ_MozAfterPaint "MozAfterPaint"
 #define MOZ_scroll "scroll"
+#define MOZ_pagehide "pagehide"
 #define MOZ_MozScrolledAreaChanged "MozScrolledAreaChanged"
 
 
@@ -333,7 +335,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsCOMPtr<nsPIDOMWindow> pidomWindow = do_QueryInterface(docWin);
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_AFTER_PAINT_LITERAL), this, PR_FALSE);
+  target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 
   return NS_OK;
 }
@@ -436,13 +438,13 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     mListener->OnScrolledAreaChanged(width, height);
 
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
-    target->AddEventListener(NS_LITERAL_STRING(MOZ_AFTER_PAINT_LITERAL), this,  PR_FALSE);
-  } else if (type.EqualsLiteral("pagehide")) {
+    target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
+  } else if (type.EqualsLiteral(MOZ_pagehide)) {
     mScrollOffset = nsIntPoint();
-  } else if (type.EqualsLiteral(MOZ_AFTER_PAINT_LITERAL)) {
+  } else if (type.EqualsLiteral(MOZ_MozAfterPaint)) {
     nsCOMPtr<nsPIDOMWindow> pidomWindow = do_QueryInterface(docWin);
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
-    target->RemoveEventListener(NS_LITERAL_STRING(MOZ_AFTER_PAINT_LITERAL), this,  PR_FALSE);
+    target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
     if (mFirstPaint) {
       mListener->OnUpdateDisplayPort();
       return NS_OK;
@@ -652,9 +654,9 @@ void WebBrowserChrome::SetEventHandler()
   NS_ENSURE_TRUE(pidomWindow, );
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this,  PR_FALSE);
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_scroll), this,  PR_FALSE);
-  target->AddEventListener(NS_LITERAL_STRING("pagehide"), this,  PR_FALSE);
+  target->AddEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
+  target->AddEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
+  target->AddEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
 }
 
 void WebBrowserChrome::RemoveEventHandler()
@@ -670,10 +672,10 @@ void WebBrowserChrome::RemoveEventHandler()
   NS_ENSURE_TRUE(pidomWindow, );
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this,  PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING("pagehide"), this,  PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_scroll), this,  PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_AFTER_PAINT_LITERAL), this,  PR_FALSE);
+  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
+  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
+  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
+  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 }
 
 void WebBrowserChrome::SetTabChildHelper(TabChildHelper* aHelper)
