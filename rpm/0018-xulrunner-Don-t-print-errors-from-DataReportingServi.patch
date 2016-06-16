@@ -1,0 +1,30 @@
+From 76085a5c66b2027adc61a6a47d8a6efe254f72d8 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 16 Jun 2016 17:35:58 +0300
+Subject: [PATCH 18/18] [xulrunner] Don't print errors from
+ DataReportingService
+
+Will be removed in Gecko 46. See bug:
+https://bugzilla.mozilla.org/show_bug.cgi?id=1234522
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ services/datareporting/DataReportingService.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/services/datareporting/DataReportingService.js b/services/datareporting/DataReportingService.js
+index 826a28c..c882334 100644
+--- a/services/datareporting/DataReportingService.js
++++ b/services/datareporting/DataReportingService.js
+@@ -226,7 +226,7 @@ DataReportingService.prototype = Object.freeze({
+    * The obtained instance may not be fully initialized.
+    */
+   get healthReporter() {
+-    if (!this._prefs.get("service.enabled", true)) {
++    if (!this._prefs || !this._prefs.get("service.enabled", true)) {
+       return null;
+     }
+ 
+-- 
+2.7.4
+
