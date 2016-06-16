@@ -635,7 +635,10 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
 
   mUseLayersAcceleration = ComputeShouldAccelerate(mUseLayersAcceleration);
 
-  if (ShouldUseOffMainThreadCompositing()) {
+  // TODO : We should really split this into Android/Gonk like nsWindow and separate PuppetWidget
+  // Only Widget hosting window can create compositor.
+  // Bug: https://bugs.merproject.org/show_bug.cgi?id=1603
+  if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
     if (mLayerManager) {
       return mLayerManager;
