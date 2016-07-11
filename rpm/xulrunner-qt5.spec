@@ -60,6 +60,7 @@ Patch15:    0015-Add-transition-from-pinching-to-panning.patch
 Patch16:    0016-rpm-Update-build-version.-Contributes-to-JB-35001.patch
 Patch17:    0017-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
 Patch18:    0018-xulrunner-Don-t-print-errors-from-DataReportingServi.patch
+Patch19:    0019-xulrunner-Don-t-try-to-access-undefined-app-list-of-.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -160,6 +161,7 @@ Tests and misc files for xulrunner.
 %patch16 -p1
 %patch17 -p1
 %patch18 -p1
+%patch19 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
