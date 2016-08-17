@@ -288,9 +288,7 @@ ln -s %{_libdir}/libnssckbi.so ${RPM_BUILD_ROOT}%{mozappdir}/libnssckbi.so
 find "%{buildroot}%{_includedir}" -type f -name '*.h' -exec chmod 0644 {} +;
 
 %post
-# >> post
 touch /var/lib/_MOZEMBED_CACHE_CLEAN_
-# << post
 
 %files
 %defattr(-,root,root,-)
