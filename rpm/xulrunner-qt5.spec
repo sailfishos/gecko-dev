@@ -13,6 +13,8 @@
 %define system_icu        0
 %define system_zlib       1
 %define system_bz2        1
+%define system_pixman     1
+%define system_cairo      1
 
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
@@ -116,6 +118,12 @@ Requires: nss-ckbi >= 3.16.6
 Requires: gstreamer1.0-plugins-good
 %if %{system_ffi}
 BuildRequires:  libffi-devel
+%endif
+%if %{system_pixman}
+BuildRequires:  pkgconfig(pixman-1)
+%endif
+%if %{system_cairo}
+BuildRequires:  pkgconfig(cairo)
 %endif
 
 %description
@@ -237,6 +245,14 @@ echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
 
 %if %{system_bz2}
   echo "ac_add_options --with-system-bz2" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_pixman}
+  echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_cairo}
+  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
 %endif
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
