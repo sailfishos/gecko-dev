@@ -1,7 +1,7 @@
-From 99e5da5d69b1dfbd8ae728e8dd40af416c59d094 Mon Sep 17 00:00:00 2001
+From 2834a9bdc71916c69f5dd50e22576741ad826699 Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <piotr.tworek@jollamobile.com>
 Date: Fri, 3 Jul 2015 14:12:32 +0200
-Subject: [PATCH 07/15] Don't decode all images on shell activation if
+Subject: [PATCH 06/18] Don't decode all images on shell activation if
  decodeondraw is enabled. Fixes JB#25287
 
 Currently if the page contains a lot images in nsDocument::mImageTracker
@@ -21,10 +21,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/dom/base/nsDocument.cpp b/dom/base/nsDocument.cpp
-index 47f611e..c45d949 100644
+index edbed48..6466153 100644
 --- a/dom/base/nsDocument.cpp
 +++ b/dom/base/nsDocument.cpp
-@@ -10580,7 +10580,9 @@ PLDHashOperator LockEnumerator(imgIRequest* aKey,
+@@ -10568,7 +10568,9 @@ PLDHashOperator LockEnumerator(imgIRequest* aKey,
                                 void*    userArg)
  {
    aKey->LockImage();
@@ -36,5 +36,5 @@ index 47f611e..c45d949 100644
  }
  
 -- 
-2.1.4
+2.7.4
 

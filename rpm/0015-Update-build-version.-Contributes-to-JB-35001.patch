@@ -1,7 +1,7 @@
-From d87c24a18f16edef11c88d83af6bd42b75bb462f Mon Sep 17 00:00:00 2001
+From 4bd22dddfcf651bdce9d4a2e4391637af0a66b5f Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 12 May 2016 15:30:33 +0300
-Subject: [PATCH 16/16] [rpm] Update build version. Contributes to JB#35001
+Subject: [PATCH 15/18] Update build version. Contributes to JB#35001
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---

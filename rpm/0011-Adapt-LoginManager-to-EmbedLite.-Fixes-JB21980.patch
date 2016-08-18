@@ -1,9 +1,10 @@
-From 49607e9a03df9a2063ccbbfb9c4190b12e75fb55 Mon Sep 17 00:00:00 2001
+From 4f0aa94662c721686ef7b0f24bc319a20e96ca35 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
-Subject: [PATCH 12/15] Adapt LoginManager to EmbedLite. Fixes JB21980
+Subject: [PATCH 11/18] Adapt LoginManager to EmbedLite. Fixes JB21980
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  dom/ipc/TabChild.h                                     | 7 +++++--
  toolkit/components/passwordmgr/LoginManagerContent.jsm | 3 +--
@@ -80,5 +81,5 @@ index 1d3d3c3..873426b 100644
 \ No newline at end of file
 +category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
 -- 
-2.1.4
+2.7.4
 

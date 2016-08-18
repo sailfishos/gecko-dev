@@ -1,7 +1,7 @@
-From 3d41c93556ece1dcadabde6c7c40f5691bb127e7 Mon Sep 17 00:00:00 2001
+From 9268dadafef323fc22ff2257a1675b9243ba6bc1 Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <tworaz666@gmail.com>
 Date: Tue, 29 Sep 2015 08:18:00 +0200
-Subject: [PATCH 11/15] Bug 1209446 - Make sure mFrameInProgress flag is set to
+Subject: [PATCH 10/18] Bug 1209446 - Make sure mFrameInProgress flag is set to
  true only when we actually begin drawing new frame. r=nical
 
 --HG--
@@ -35,5 +35,5 @@ index b6e6cef..b4b42cd 100644
    // to make sure that GL sees the updated widget size.
    if (mWidgetSize.width != width ||
 -- 
-2.1.4
+2.7.4
 

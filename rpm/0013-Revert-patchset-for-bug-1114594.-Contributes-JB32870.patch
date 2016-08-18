@@ -1,9 +1,11 @@
-From f61b773e51ecf16909d018ad1e5af527ba92153d Mon Sep 17 00:00:00 2001
+From 8be38a1c253c0333a1d31a3a27133d5ecadfdd3e Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Thu, 5 Nov 2015 17:28:02 +0200
-Subject: [PATCH 14/15] Revert patchset for bug 1114594. Contributes JB32870
+Subject: [PATCH 13/18] Revert patchset for bug 1114594. Contributes JB32870
 
 WIP drop nsHelperAppDlg.js
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  b2g/components/HelperAppDialog.js                  |  8 +++++++
  browser/metro/components/HelperAppDialog.js        |  4 ++++
@@ -84,10 +86,10 @@ index 7bef411..a24622a 100644
  
  
 diff --git a/toolkit/components/jsdownloads/test/unit/head.js b/toolkit/components/jsdownloads/test/unit/head.js
-index c959d43..111b0ff 100644
+index b4e5b2f..071a47c 100644
 --- a/toolkit/components/jsdownloads/test/unit/head.js
 +++ b/toolkit/components/jsdownloads/test/unit/head.js
-@@ -802,6 +802,15 @@ add_task(function test_common_initialize()
+@@ -813,6 +813,15 @@ add_task(function test_common_initialize()
      createInstance: function (aOuter, aIid) {
        return {
          QueryInterface: XPCOMUtils.generateQI([Ci.nsIHelperAppLauncherDialog]),
@@ -250,5 +252,5 @@ index a46c899..ea6a981 100644
  
  // Stolen from XPCOMUtils, since this handy function is not public there
 -- 
-2.1.4
+2.7.4
 
