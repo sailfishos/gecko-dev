@@ -9,6 +9,7 @@
 #define COMPOSITOR_PERFORMANCE_WARNING
 
 #include "Layers.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/CompositorParent.h"
@@ -53,6 +54,7 @@ private:
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
   bool mUseExternalGLContext;
+  Mutex mRenderMutex;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorParent);
 };
