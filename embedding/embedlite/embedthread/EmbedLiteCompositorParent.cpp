@@ -44,6 +44,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
+  , mRenderMutex("EmbedLiteCompositorParent render mutex")
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
@@ -180,6 +181,11 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
   }
 
   if (context->IsOffscreen()) {
+    // RenderGL is called always from Gecko compositor thread.
+    // GLScreenBuffer::PublishFrame does swap buffers and that
+    // cannot happen while reading previous frame on EmbedLiteCompositorParent::GetPlatformImage
+    // (potentially from another thread).
+    MutexAutoLock lock(mRenderMutex);
     GLScreenBuffer* screen = context->Screen();
     MOZ_ASSERT(screen);
 
@@ -208,6 +214,7 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 void*
 EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 {
+  MutexAutoLock lock(mRenderMutex);
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
 
