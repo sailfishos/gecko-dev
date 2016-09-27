@@ -1,8 +1,7 @@
-From 76085a5c66b2027adc61a6a47d8a6efe254f72d8 Mon Sep 17 00:00:00 2001
+From 7e30ddf032f254840f85e2959d20ccef5496102e Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 16 Jun 2016 17:35:58 +0300
-Subject: [PATCH 18/18] [xulrunner] Don't print errors from
- DataReportingService
+Subject: [PATCH 17/18] Don't print errors from DataReportingService
 
 Will be removed in Gecko 46. See bug:
 https://bugzilla.mozilla.org/show_bug.cgi?id=1234522

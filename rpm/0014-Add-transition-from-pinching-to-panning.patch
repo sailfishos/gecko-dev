@@ -1,8 +1,9 @@
-From ca6654640087304e9d6bfe776807457a573d907a Mon Sep 17 00:00:00 2001
+From 51a886873930afe8a2cc145e547f2e90ca6f50e9 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Tue, 10 Nov 2015 14:36:10 +0200
-Subject: [PATCH 15/15] Add transition from pinching to panning
+Subject: [PATCH 14/18] Add transition from pinching to panning
 
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  gfx/layers/apz/src/AsyncPanZoomController.cpp | 13 +++++++++++++
  gfx/layers/apz/src/GestureEventListener.cpp   | 15 ++++++++++++++-
@@ -69,5 +70,5 @@ index 76a8b5d..d63da0e 100644
                                     1.0f,
                                     mLastTouchInput.modifiers);
 -- 
-2.1.4
+2.7.4
 

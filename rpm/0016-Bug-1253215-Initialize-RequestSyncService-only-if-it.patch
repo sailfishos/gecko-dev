@@ -1,7 +1,7 @@
-From d580110f44f0d24b6af62baabc44849cf63a8180 Mon Sep 17 00:00:00 2001
+From d4ccd11fc7f959fa35205768d5916991bde1f37e Mon Sep 17 00:00:00 2001
 From: Andrea Marchesini <amarchesini@mozilla.com>
 Date: Thu, 3 Mar 2016 18:30:16 +0100
-Subject: [PATCH 17/17] Bug 1253215 - Initialize RequestSyncService only if its
+Subject: [PATCH 16/18] Bug 1253215 - Initialize RequestSyncService only if its
  pref is enabled, r=ehsan
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>

@@ -44,25 +44,24 @@ Group:      Applications/Internet
 License:    MPLv2
 URL:        https://github.com/tmeshkova/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-Configure-system-sqlite-to-use-jemalloc.patch
-Patch2:     0002-Workaround-for-bug-977015.patch
-Patch3:     0003-Workaround-wrong-viewport-in-wikipedia.patch
-Patch4:     0004-Supply-source-uri-to-gstreamer-pipeline.patch
-Patch5:     0005-Workaround-for-late-access-message-loop.patch
-Patch6:     0006-Define-HAS_NEMO_RESOURCE-in-config.patch
-Patch7:     0007-Don-t-decode-all-images-on-shell-activation-if-decod.patch
-Patch8:     0008-Limit-surface-area-rather-than-width-and-height.patch
-Patch9:     0009-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
-Patch10:    0010-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
-Patch11:    0011-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
-Patch12:    0012-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
-Patch13:    0013-Bug-1207205-Remove-fGetActiveUniformName.-r-jrmuizel.patch
-Patch14:    0014-Revert-patchset-for-bug-1114594.-Contributes-JB32870.patch
-Patch15:    0015-Add-transition-from-pinching-to-panning.patch
-Patch16:    0016-rpm-Update-build-version.-Contributes-to-JB-35001.patch
-Patch17:    0017-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
-Patch18:    0018-xulrunner-Don-t-print-errors-from-DataReportingServi.patch
-Patch19:    0019-xulrunner-Don-t-try-to-access-undefined-app-list-of-.patch
+Patch1:     0001-Workaround-for-bug-977015.patch
+Patch2:     0002-Workaround-wrong-viewport-in-wikipedia.patch
+Patch3:     0003-Supply-source-uri-to-gstreamer-pipeline.patch
+Patch4:     0004-Workaround-for-late-access-message-loop.patch
+Patch5:     0005-Define-HAS_NEMO_RESOURCE-in-config.patch
+Patch6:     0006-Don-t-decode-all-images-on-shell-activation-if-decod.patch
+Patch7:     0007-Limit-surface-area-rather-than-width-and-height.patch
+Patch8:     0008-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
+Patch9:     0009-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
+Patch10:    0010-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
+Patch11:    0011-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
+Patch12:    0012-Bug-1207205-Remove-fGetActiveUniformName.-r-jrmuizel.patch
+Patch13:    0013-Revert-patchset-for-bug-1114594.-Contributes-JB32870.patch
+Patch14:    0014-Add-transition-from-pinching-to-panning.patch
+Patch15:    0015-Update-build-version.-Contributes-to-JB-35001.patch
+Patch16:    0016-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
+Patch17:    0017-Don-t-print-errors-from-DataReportingService.patch
+Patch18:    0018-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -169,7 +168,6 @@ Tests and misc files for xulrunner.
 %patch16 -p1
 %patch17 -p1
 %patch18 -p1
-%patch19 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig

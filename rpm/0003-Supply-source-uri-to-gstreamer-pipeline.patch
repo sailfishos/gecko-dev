@@ -1,7 +1,7 @@
-From ced18180febf8e307727b55bf0c44c67ab42f3a6 Mon Sep 17 00:00:00 2001
+From 648ae6d7ff8557b7973d30e679085ae64fa8d584 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:10:46 +0300
-Subject: [PATCH 04/15] Supply source uri to gstreamer pipeline
+Subject: [PATCH 03/18] Supply source uri to gstreamer pipeline
 
 See bug JB19511
 
@@ -130,7 +130,7 @@ index 8182f68..796a993 100644
  
    for (size_t i = 0; i < sizeof(handles) / sizeof(handles[0]); i++) {
 diff --git a/dom/media/gstreamer/GStreamerReader.cpp b/dom/media/gstreamer/GStreamerReader.cpp
-index 3c92e53..c07fa15 100644
+index 8940032..707427a 100644
 --- a/dom/media/gstreamer/GStreamerReader.cpp
 +++ b/dom/media/gstreamer/GStreamerReader.cpp
 @@ -135,6 +135,11 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
@@ -145,7 +145,7 @@ index 3c92e53..c07fa15 100644
  }
  
  GStreamerReader::~GStreamerReader()
-@@ -308,6 +313,51 @@ void GStreamerReader::PlayBinSourceSetupCb(GstElement* aPlayBin,
+@@ -312,6 +317,51 @@ void GStreamerReader::PlayBinSourceSetupCb(GstElement* aPlayBin,
    g_object_get(aPlayBin, "source", &source, nullptr);
    reader->PlayBinSourceSetup(GST_APP_SRC(source));
  }
@@ -197,7 +197,7 @@ index 3c92e53..c07fa15 100644
  
  void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
  {
-@@ -340,6 +390,13 @@ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
+@@ -344,6 +394,13 @@ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
      gst_app_src_set_stream_type(mSource, GST_APP_STREAM_TYPE_SEEKABLE);
    }
  
@@ -268,5 +268,5 @@ index fc45831..25818c2 100644
  
  static bool MatchesMP4orISOBrand(const uint8_t aData[4])
 -- 
-2.1.4
+2.7.4
 
