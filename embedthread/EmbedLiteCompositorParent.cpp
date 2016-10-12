@@ -208,6 +208,7 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
+    mEGLSurfaceSize.SizeTo(width, height);
   }
 }
 
