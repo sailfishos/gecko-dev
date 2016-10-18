@@ -53,6 +53,7 @@ private:
 
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
+  gfx::IntSize mSurfaceSize;
   bool mUseExternalGLContext;
   Mutex mRenderMutex;
 
