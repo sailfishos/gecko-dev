@@ -44,6 +44,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
+  , mSurfaceSize(aSurfaceWidth, aSurfaceHeight)
   , mRenderMutex("EmbedLiteCompositorParent render mutex")
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
@@ -124,8 +125,7 @@ EmbedLiteCompositorParent::UpdateTransformState()
   GLContext* context = compositor->gl();
   NS_ENSURE_TRUE(context, );
 
-  gfx::IntSize eglSize(mEGLSurfaceSize.width, mEGLSurfaceSize.height);
-  if (context->IsOffscreen() && context->OffscreenSize() != eglSize && context->ResizeOffscreen(eglSize)) {
+  if (context->IsOffscreen() && context->OffscreenSize() != mSurfaceSize && context->ResizeOffscreen(mSurfaceSize)) {
     ScheduleRenderOnCompositorThread();
   }
 }
@@ -206,9 +206,9 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
 
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
-  if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height)) {
+  if (width > 0 && height > 0 && (mSurfaceSize.width != width || mSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
-    mEGLSurfaceSize.SizeTo(width, height);
+    mSurfaceSize = gfx::IntSize(width, height);
   }
 }
 
@@ -250,9 +250,9 @@ EmbedLiteCompositorParent::SuspendRendering()
 void
 EmbedLiteCompositorParent::ResumeRendering()
 {
-  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
-    CompositorParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
-                                                       mEGLSurfaceSize.height);
+  if (mSurfaceSize.width > 0 && mSurfaceSize.height > 0) {
+    CompositorParent::ScheduleResumeOnCompositorThread(mSurfaceSize.width,
+                                                       mSurfaceSize.height);
     CompositorParent::ScheduleRenderOnCompositorThread();
   }
 }
