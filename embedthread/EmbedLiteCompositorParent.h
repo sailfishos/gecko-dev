@@ -26,7 +26,7 @@ class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
 {
 public:
   EmbedLiteCompositorParent(nsIWidget* widget, uint32_t windowId,
-		            bool aRenderToEGLSurface,
+                            bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight);
 
   void SetSurfaceSize(int width, int height);
