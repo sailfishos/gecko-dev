@@ -157,6 +157,20 @@ void EmbedLiteView::Reload(bool hard)
   unused << mViewParent->SendReload(hard);
 }
 
+void EmbedLiteView::ScrollTo(int x, int y)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendScrollTo(x, y);
+}
+
+void EmbedLiteView::ScrollBy(int x, int y)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendScrollBy(x, y);
+}
+
 void
 EmbedLiteView::LoadFrameScript(const char* aURI)
 {
