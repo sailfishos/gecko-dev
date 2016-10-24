@@ -83,6 +83,13 @@ public:
   virtual void StopLoad();
   virtual void Reload(bool hard);
 
+  // Scrolling methods see nsIDomWindow.idl
+  // Scrolls this view to an absolute pixel offset.
+  virtual void ScrollTo(int x, int y);
+  // Scrolls this view to a pixel offset relative to
+  // the current scroll position.
+  virtual void ScrollBy(int x, int y);
+
   // Input Interface
   virtual void SendTextEvent(const char* composite, const char* preEdit);
   virtual void SendKeyPress(int domKeyCode, int gmodifiers, int charCode);
