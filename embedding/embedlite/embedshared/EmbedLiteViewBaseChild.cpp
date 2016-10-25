@@ -498,6 +498,25 @@ EmbedLiteViewBaseChild::RecvReload(const bool& aHardReload)
   return true;
 }
 
+bool EmbedLiteViewBaseChild::RecvScrollTo(const int &x, const int &y)
+{
+  if (!mDOMWindow) {
+    return false;
+  }
+  mDOMWindow->ScrollTo(x, y);
+  return true;
+}
+
+bool EmbedLiteViewBaseChild::RecvScrollBy(const int &x, const int &y)
+{
+  if (!mDOMWindow) {
+    return false;
+  }
+
+  mDOMWindow->ScrollBy(x, y);
+  return true;
+}
+
 bool
 EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
 {

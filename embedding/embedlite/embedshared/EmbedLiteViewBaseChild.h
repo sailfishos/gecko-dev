@@ -119,6 +119,9 @@ protected:
   virtual bool RecvStopLoad() override;
   virtual bool RecvReload(const bool&) override;
 
+  virtual bool RecvScrollTo(const int &x, const int &y) override;
+  virtual bool RecvScrollBy(const int &x, const int &y) override;
+
   virtual bool RecvSetIsActive(const bool&) override;
   virtual bool RecvSetIsFocused(const bool&) override;
   virtual bool RecvSetThrottlePainting(const bool&) override;
