@@ -164,5 +164,22 @@ struct IPCDataTransfer
   IPCDataTransferItem[] items;
 };
 
+union PrefValue {
+  nsCString;
+  int32_t;
+  bool;
+};
+
+union MaybePrefValue {
+  PrefValue;
+  null_t;
+};
+
+struct PrefSetting {
+  nsCString name;
+  MaybePrefValue defaultValue;
+  MaybePrefValue userValue;
+};
+
 } // namespace dom
 } // namespace mozilla
