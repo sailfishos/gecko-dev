@@ -12,8 +12,6 @@ JS_PREFERENCE_FILES += [
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['tests/gtest']
 
-FAIL_ON_WARNINGS = True
-
 FINAL_LIBRARY = 'xul'
 
 XPIDL_SOURCES += [
