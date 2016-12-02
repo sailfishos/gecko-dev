@@ -671,7 +671,7 @@ nsDocumentViewer::InitPresentationStuff(bool aDoInitialReflow)
   if (aDoInitialReflow) {
     nsCOMPtr<nsIPresShell> shellGrip = mPresShell;
     // Initial reflow
-    mPresShell->Initialize(width, height);
+    shellGrip->Initialize(width, height);
   } else {
     // Store the visible area so it's available for other callers of
     // Initialize, like nsContentSink::StartLayout.
@@ -1026,7 +1026,7 @@ nsDocumentViewer::LoadComplete(nsresult aStatus)
     // to unsuppress painting.
     if (mPresShell) {
       nsCOMPtr<nsIPresShell> shellDeathGrip(mPresShell);
-      mPresShell->UnsuppressPainting();
+      shellDeathGrip->UnsuppressPainting();
       // mPresShell could have been removed now, see bug 378682/421432
       if (mPresShell) {
         mPresShell->LoadComplete();
@@ -1697,7 +1697,7 @@ nsDocumentViewer::Stop(void)
   if (!mLoaded && mPresShell) {
     // Well, we might as well paint what we have so far.
     nsCOMPtr<nsIPresShell> shellDeathGrip(mPresShell); // bug 378682
-    mPresShell->UnsuppressPainting();
+    shellDeathGrip->UnsuppressPainting();
   }
 
   return NS_OK;
@@ -1897,7 +1897,7 @@ nsDocumentViewer::SetPreviousViewer(nsIContentViewer* aViewer)
 }
 
 NS_IMETHODIMP
-nsDocumentViewer::SetBounds(const nsIntRect& aBounds)
+nsDocumentViewer::SetBoundsWithFlags(const nsIntRect& aBounds, uint32_t aFlags)
 {
   NS_ENSURE_TRUE(mDocument, NS_ERROR_NOT_AVAILABLE);
 
@@ -1912,7 +1912,8 @@ nsDocumentViewer::SetBounds(const nsIntRect& aBounds)
   } else if (mPresContext && mViewManager) {
     int32_t p2a = mPresContext->AppUnitsPerDevPixel();
     mViewManager->SetWindowDimensions(NSIntPixelsToAppUnits(mBounds.width, p2a),
-                                      NSIntPixelsToAppUnits(mBounds.height, p2a));
+                                      NSIntPixelsToAppUnits(mBounds.height, p2a),
+                                      !!(aFlags & nsIContentViewer::eDelayResize));
   }
 
   // If there's a previous viewer, it's the one that's actually showing,
@@ -1928,6 +1929,12 @@ nsDocumentViewer::SetBounds(const nsIntRect& aBounds)
   }
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocumentViewer::SetBounds(const nsIntRect& aBounds)
+{
+  return SetBoundsWithFlags(aBounds, 0);
 }
 
 NS_IMETHODIMP
@@ -2045,7 +2052,7 @@ nsDocumentViewer::Show(void)
 
     if (mPresShell) {
       nsCOMPtr<nsIPresShell> shellDeathGrip(mPresShell); // bug 378682
-      mPresShell->UnsuppressPainting();
+      shellDeathGrip->UnsuppressPainting();
     }
   }
 

@@ -1680,7 +1680,7 @@ nsDocShell::FirePageHideNotification(bool aIsUnload)
       mTiming->NotifyUnloadEventStart();
     }
 
-    mContentViewer->PageHide(aIsUnload);
+    kungFuDeathGrip->PageHide(aIsUnload);
 
     if (mTiming) {
       mTiming->NotifyUnloadEventEnd();
@@ -5557,7 +5557,7 @@ nsDocShell::InitWindow(nativeWindow aParentNativeWindow,
                        int32_t aWidth, int32_t aHeight)
 {
   SetParentWidget(aParentWidget);
-  SetPositionAndSize(aX, aY, aWidth, aHeight, false);
+  SetPositionAndSize(aX, aY, aWidth, aHeight, 0);
 
   return NS_OK;
 }
@@ -5769,7 +5769,8 @@ nsDocShell::SetSize(int32_t aWidth, int32_t aHeight, bool aRepaint)
 {
   int32_t x = 0, y = 0;
   GetPosition(&x, &y);
-  return SetPositionAndSize(x, y, aWidth, aHeight, aRepaint);
+  return SetPositionAndSize(x, y, aWidth, aHeight,
+                            aRepaint ? nsIBaseWindow::eRepaint : 0);
 }
 
 NS_IMETHODIMP
@@ -5780,7 +5781,7 @@ nsDocShell::GetSize(int32_t* aWidth, int32_t* aHeight)
 
 NS_IMETHODIMP
 nsDocShell::SetPositionAndSize(int32_t aX, int32_t aY, int32_t aWidth,
-                               int32_t aHeight, bool aFRepaint)
+                               int32_t aHeight, uint32_t aFlags)
 {
   mBounds.x = aX;
   mBounds.y = aY;
@@ -5790,8 +5791,11 @@ nsDocShell::SetPositionAndSize(int32_t aX, int32_t aY, int32_t aWidth,
   // Hold strong ref, since SetBounds can make us null out mContentViewer
   nsCOMPtr<nsIContentViewer> viewer = mContentViewer;
   if (viewer) {
+    uint32_t cvflags = (aFlags & nsIBaseWindow::eDelayResize) ?
+                           nsIContentViewer::eDelayResize : 0;
     // XXX Border figured in here or is that handled elsewhere?
-    NS_ENSURE_SUCCESS(viewer->SetBounds(mBounds), NS_ERROR_FAILURE);
+    nsresult rv = viewer->SetBoundsWithFlags(mBounds, cvflags);
+    NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
   }
 
   return NS_OK;
@@ -5805,7 +5809,7 @@ nsDocShell::GetPositionAndSize(int32_t* aX, int32_t* aY, int32_t* aWidth,
     // ensure size is up-to-date if window has changed resolution
     LayoutDeviceIntRect r;
     mParentWidget->GetClientBounds(r);
-    SetPositionAndSize(mBounds.x, mBounds.y, r.width, r.height, false);
+    SetPositionAndSize(mBounds.x, mBounds.y, r.width, r.height, 0);
   }
 
   // We should really consider just getting this information from
@@ -7426,6 +7430,7 @@ nsDocShell::EndPageLoad(nsIWebProgress* aProgress,
   // nsDocShell::EndPageLoad will clear mLSHE, but we may need this history
   // entry further down in this method.
   nsCOMPtr<nsISHEntry> loadingSHE = mLSHE;
+  mozilla::Unused << loadingSHE;
 
   //
   // one of many safeguards that prevent death and destruction if
@@ -8723,6 +8728,8 @@ nsDocShell::RestoreFromHistory()
     nsSubDocumentFrame* subDocFrame =
       do_QueryFrame(container->GetPrimaryFrame());
     rootViewParent = subDocFrame ? subDocFrame->EnsureInnerView() : nullptr;
+  } else {
+    rootViewParent = nullptr;
   }
   if (sibling &&
       sibling->GetShell() &&
@@ -9134,22 +9141,22 @@ nsDocShell::SetupNewViewer(nsIContentViewer* aNewViewer)
   nscolor bgcolor = NS_RGBA(0, 0, 0, 0);
   // Ensure that the content viewer is destroyed *after* the GC - bug 71515
   nsCOMPtr<nsIContentViewer> kungfuDeathGrip = mContentViewer;
-  if (mContentViewer) {
+  if (kungfuDeathGrip) {
     // Stop any activity that may be happening in the old document before
     // releasing it...
-    mContentViewer->Stop();
+    kungfuDeathGrip->Stop();
 
     // Try to extract the canvas background color from the old
     // presentation shell, so we can use it for the next document.
     nsCOMPtr<nsIPresShell> shell;
-    mContentViewer->GetPresShell(getter_AddRefs(shell));
+    kungfuDeathGrip->GetPresShell(getter_AddRefs(shell));
 
     if (shell) {
       bgcolor = shell->GetCanvasBackground();
     }
 
-    mContentViewer->Close(mSavingOldViewer ? mOSHE.get() : nullptr);
-    aNewViewer->SetPreviousViewer(mContentViewer);
+    kungfuDeathGrip->Close(mSavingOldViewer ? mOSHE.get() : nullptr);
+    aNewViewer->SetPreviousViewer(kungfuDeathGrip);
   }
   if (mOSHE && (!mContentViewer || !mSavingOldViewer)) {
     // We don't plan to save a viewer in mOSHE; tell it to drop
@@ -9629,7 +9636,7 @@ nsDocShell::InternalLoad2(nsIURI* aURI,
 
   nsISupports* context = requestingElement;
   if (!context) {
-    context = ToSupports(mScriptGlobal);
+    context = ToSupports(MMADeathGrip);
   }
 
   // XXXbz would be nice to know the loading principal here... but we don't
@@ -10110,8 +10117,8 @@ nsDocShell::InternalLoad2(nsIURI* aURI,
       // applies to aURI.
       CopyFavicon(currentURI, aURI, doc->NodePrincipal(), mInPrivateBrowsing);
 
-      RefPtr<nsGlobalWindow> win = mScriptGlobal ?
-        mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+      RefPtr<nsGlobalWindow> win = MMADeathGrip ?
+        MMADeathGrip->GetCurrentInnerWindowInternal() : nullptr;
 
       // ScrollToAnchor doesn't necessarily cause us to scroll the window;
       // the function decides whether a scroll is appropriate based on the

@@ -4670,8 +4670,10 @@ nsDocument::SetScriptHandlingObject(nsIScriptGlobalObject* aScriptObject)
   NS_ASSERTION(!mScriptGlobalObject ||
                mScriptGlobalObject == aScriptObject,
                "Wrong script object!");
+#ifdef DEBUG
   nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(aScriptObject);
   NS_ASSERTION(!win || win->IsInnerWindow(), "Should have inner window here!");
+#endif
   if (aScriptObject) {
     mScopeObject = do_GetWeakReference(aScriptObject);
     mHasHadScriptHandlingObject = true;
@@ -4713,8 +4715,8 @@ nsDocument::GetWindowInternal() const
   if (mRemovedFromDocShell) {
     // The docshell returns the outer window we are done.
     nsCOMPtr<nsIDocShell> kungfuDeathGrip(mDocumentContainer);
-    if (mDocumentContainer) {
-      win = mDocumentContainer->GetWindow();
+    if (kungfuDeathGrip) {
+      win = kungfuDeathGrip->GetWindow();
     }
   } else {
     win = do_QueryInterface(mScriptGlobalObject);
@@ -8627,11 +8629,18 @@ nsDocument::EnumerateSubDocuments(nsSubDocEnumFunc aCallback, void *aData)
     return;
   }
 
+  // PLDHashTable::Iterator can't handle modifications while iterating so we
+  // copy all entries to an array first before calling any callbacks.
+  nsAutoTArray<nsCOMPtr<nsIDocument>, 8> subdocs;
   for (auto iter = mSubDocuments->Iter(); !iter.Done(); iter.Next()) {
     auto entry = static_cast<SubDocMapEntry*>(iter.Get());
     nsIDocument* subdoc = entry->mSubDocument;
-    bool next = subdoc ? aCallback(subdoc, aData) : true;
-    if (!next) {
+    if (subdoc) {
+      subdocs.AppendElement(subdoc);
+    }
+  }
+  for (auto subdoc : subdocs) {
+    if (!aCallback(subdoc, aData)) {
       break;
     }
   }

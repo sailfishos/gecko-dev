@@ -963,11 +963,11 @@ nsFrameLoader::SwapWithOtherRemoteLoader(nsFrameLoader* aOther,
   RefPtr<nsFrameMessageManager> ourMessageManager = mMessageManager;
   RefPtr<nsFrameMessageManager> otherMessageManager = aOther->mMessageManager;
   // Swap and setup things in parent message managers.
-  if (mMessageManager) {
-    mMessageManager->SetCallback(aOther);
+  if (ourMessageManager) {
+    ourMessageManager->SetCallback(aOther);
   }
-  if (aOther->mMessageManager) {
-    aOther->mMessageManager->SetCallback(this);
+  if (otherMessageManager) {
+    otherMessageManager->SetCallback(this);
   }
   mMessageManager.swap(aOther->mMessageManager);
 
@@ -2126,7 +2126,8 @@ nsFrameLoader::UpdateBaseWindowPositionAndSize(nsSubDocumentFrame *aIFrame)
 
     ScreenIntSize size = aIFrame->GetSubdocumentSize();
 
-    baseWindow->SetPositionAndSize(x, y, size.width, size.height, false);
+    baseWindow->SetPositionAndSize(x, y, size.width, size.height,
+                                   nsIBaseWindow::eDelayResize);
   }
 }
 
@@ -2414,6 +2415,7 @@ nsFrameLoader::CreateStaticClone(nsIFrameLoader* aDest)
   NS_ENSURE_STATE(dest->mDocShell);
 
   nsCOMPtr<nsIDocument> dummy = dest->mDocShell->GetDocument();
+  Unused << dummy;
   nsCOMPtr<nsIContentViewer> viewer;
   dest->mDocShell->GetContentViewer(getter_AddRefs(viewer));
   NS_ENSURE_STATE(viewer);
