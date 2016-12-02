@@ -86,7 +86,7 @@ BytesPerPixel(SurfaceFormat aFormat)
   switch (aFormat) {
   case SurfaceFormat::A8:
     return 1;
-  case SurfaceFormat::R5G6B5:
+  case SurfaceFormat::R5G6B5_UINT16:
     return 2;
   default:
     return 4;
@@ -134,14 +134,14 @@ struct AlignedArray
     }
 #endif
 
-    delete [] mStorage;
+    free(mStorage);
     mStorage = nullptr;
     mPtr = nullptr;
   }
 
   MOZ_ALWAYS_INLINE void Realloc(size_t aCount, bool aZero = false)
   {
-    delete [] mStorage;
+    free(mStorage);
     CheckedInt32 storageByteCount =
       CheckedInt32(sizeof(T)) * aCount + (alignment - 1);
     if (!storageByteCount.isValid()) {
@@ -153,9 +153,11 @@ struct AlignedArray
     // We don't create an array of T here, since we don't want ctors to be
     // invoked at the wrong places if we realign below.
     if (aZero) {
+      // calloc can be more efficient than new[] for large chunks,
+      // so we use calloc/malloc/free for everything.
       mStorage = static_cast<uint8_t *>(calloc(1, storageByteCount.value()));
     } else {
-      mStorage = new (std::nothrow) uint8_t[storageByteCount.value()];
+      mStorage = static_cast<uint8_t *>(malloc(storageByteCount.value()));
     }
     if (!mStorage) {
       mStorage = nullptr;
@@ -213,7 +215,7 @@ int32_t GetAlignedStride(int32_t aStride)
   return (aStride + mask) & ~mask;
 }
 
-}
-}
+} // namespace gfx
+} // namespace mozilla
 
 #endif /* MOZILLA_GFX_TOOLS_H_ */

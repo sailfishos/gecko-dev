@@ -19,6 +19,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         'updatehelper.cpp',
         'updatehelper.h',
     ]
+    if CONFIG['MOZ_MAINTENANCE_SERVICE']:
+        EXPORTS += [
+            'certificatecheck.h',
+            'registrycertificates.h',
+        ]
 
 Library('updatecommon')
 

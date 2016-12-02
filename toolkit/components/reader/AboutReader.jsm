@@ -4,7 +4,7 @@
 
 "use strict";
 
-let Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
+var Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
 
 this.EXPORTED_SYMBOLS = [ "AboutReader" ];
 
@@ -18,12 +18,15 @@ XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry", "resource://gre/modules/U
 
 const READINGLIST_COMMAND_ID = "readingListSidebar";
 
-let gStrings = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
+var gStrings = Services.strings.createBundle("chrome://global/locale/aboutReader.properties");
 
-let AboutReader = function(mm, win, articlePromise) {
+var AboutReader = function(mm, win, articlePromise) {
   let url = this._getOriginalUrl(win);
   if (!(url.startsWith("http://") || url.startsWith("https://"))) {
-    Cu.reportError("Only http:// and https:// URLs can be loaded in about:reader");
+    let errorMsg = "Only http:// and https:// URLs can be loaded in about:reader.";
+    if (Services.prefs.getBoolPref("reader.errors.includeURLs"))
+      errorMsg += " Tried to load: " + url + ".";
+    Cu.reportError(errorMsg);
     win.location.href = "about:blank";
     return;
   }
@@ -35,6 +38,7 @@ let AboutReader = function(mm, win, articlePromise) {
   this._mm.addMessageListener("Reader:Removed", this);
   this._mm.addMessageListener("Sidebar:VisibilityChange", this);
   this._mm.addMessageListener("ReadingList:VisibilityStatus", this);
+  this._mm.addMessageListener("Reader:CloseDropdown", this);
 
   this._docRef = Cu.getWeakReference(doc);
   this._winRef = Cu.getWeakReference(win);
@@ -68,11 +72,7 @@ let AboutReader = function(mm, win, articlePromise) {
   this._setupButton("share-button", this._onShare.bind(this), "aboutReader.toolbar.share");
 
   try {
-#ifdef MOZ_FENNEC
     if (Services.prefs.getBoolPref("browser.readinglist.enabled")) {
-#else
-    if (false) {
-#endif
       this._setupButton("toggle-button", this._onReaderToggle.bind(this, "button"), "aboutReader.toolbar.addToReadingList");
       this._setupButton("list-button", this._onList.bind(this), "aboutReader.toolbar.openReadingList");
       this._setupButton("remove-button", this._onReaderToggle.bind(this, "footer"),
@@ -179,6 +179,15 @@ AboutReader.prototype = {
     return this._toolbarVertical = Services.prefs.getBoolPref("reader.toolbar.vertical");
   },
 
+  // Provides unique view Id.
+  get viewId() {
+    let _viewId = Cc["@mozilla.org/uuid-generator;1"].
+      getService(Ci.nsIUUIDGenerator).generateUUID().toString();
+    Object.defineProperty(this, "viewId", { value: _viewId });
+
+    return _viewId;
+  },
+
   receiveMessage: function (message) {
     switch (message.name) {
       case "Reader:Added": {
@@ -191,6 +200,14 @@ AboutReader.prototype = {
         }
         break;
       }
+
+      // Triggered by Android user pressing BACK while the banner font-dropdown is open.
+      case "Reader:CloseDropdown": {
+        // Just close it.
+        this._closeDropdown();
+        break;
+      }
+
       case "Reader:Removed": {
         if (message.data.url == this._article.url) {
           if (this._isReadingListItem != 0) {
@@ -217,7 +234,7 @@ AboutReader.prototype = {
     }
   },
 
-  handleEvent: function Reader_handleEvent(aEvent) {
+  handleEvent: function(aEvent) {
     if (!aEvent.isTrusted)
       return;
 
@@ -247,16 +264,20 @@ AboutReader.prototype = {
         break;
 
       case "unload":
+        // Close the Banners Font-dropdown, cleanup Android BackPressListener.
+        this._closeDropdown();
+
         this._mm.removeMessageListener("Reader:Added", this);
         this._mm.removeMessageListener("Reader:Removed", this);
         this._mm.removeMessageListener("Sidebar:VisibilityChange", this);
         this._mm.removeMessageListener("ReadingList:VisibilityStatus", this);
+        this._mm.removeMessageListener("Reader:CloseDropdown", this);
         this._windowUnloaded = true;
         break;
     }
   },
 
-  _updateToggleButton: function Reader_updateToggleButton() {
+  _updateToggleButton: function() {
     let button = this._doc.getElementById("toggle-button");
 
     if (this._isReadingListItem == 1) {
@@ -269,7 +290,7 @@ AboutReader.prototype = {
     this._updateFooter();
   },
 
-  _requestReadingListStatus: function Reader_requestReadingListStatus() {
+  _requestReadingListStatus: function() {
     let handleListStatusData = (message) => {
       this._mm.removeMessageListener("Reader:ListStatusData", handleListStatusData);
 
@@ -297,11 +318,11 @@ AboutReader.prototype = {
     this._mm.sendAsyncMessage("Reader:ListStatusRequest", { url: this._article.url });
   },
 
-  _onReaderClose: function Reader_onToggle() {
+  _onReaderClose: function() {
     this._win.location.href = this._getOriginalUrl();
   },
 
-  _onReaderToggle: function Reader_onToggle(aMethod) {
+  _onReaderToggle: function(aMethod) {
     if (!this._article)
       return;
 
@@ -314,7 +335,7 @@ AboutReader.prototype = {
     }
   },
 
-  _onPocketToggle: function Reader_onPocketToggle(aMethod) {
+  _onPocketToggle: function(aMethod) {
     if (!this._article)
       return;
 
@@ -322,7 +343,7 @@ AboutReader.prototype = {
     UITelemetry.addEvent("pocket.1", aMethod, null, "reader");
   },
 
-  _onShare: function Reader_onShare() {
+  _onShare: function() {
     if (!this._article)
       return;
 
@@ -330,7 +351,7 @@ AboutReader.prototype = {
       url: this._article.url,
       title: this._article.title
     });
-    UITelemetry.addEvent("share.1", "list", null);
+    UITelemetry.addEvent("share.1", "list", null, "reader");
   },
 
   /**
@@ -377,7 +398,7 @@ AboutReader.prototype = {
     }
   },
 
-  _setFontSize: function Reader_setFontSize(newFontSize) {
+  _setFontSize: function(newFontSize) {
     let containerClasses = this._doc.getElementById("container").classList;
 
     if (this._fontSize > 0)
@@ -453,7 +474,7 @@ AboutReader.prototype = {
     }, true);
   },
 
-  _updateFooter: function RupdateFooter() {
+  _updateFooter: function() {
     let footer = this._doc.getElementById("reader-footer");
     if (!this._article || this._isReadingListItem == 0 ||
         footer.getAttribute("readinglist-enabled") != "true") {
@@ -463,7 +484,7 @@ AboutReader.prototype = {
     footer.style.display = null;
   },
 
-  _handleDeviceLight: function Reader_handleDeviceLight(newLux) {
+  _handleDeviceLight: function(newLux) {
     // Desired size of the this._luxValues array.
     let luxValuesSize = 10;
     // Add new lux value at the front of the array.
@@ -489,7 +510,7 @@ AboutReader.prototype = {
     this._totalLux -= oldLux;
   },
 
-  _handleVisibilityChange: function Reader_handleVisibilityChange() {
+  _handleVisibilityChange: function() {
     // ReadingList / Sidebar state might change while we're not the selected tab.
     if (this._doc.visibilityState === "visible") {
       this._updateListButton();
@@ -505,7 +526,7 @@ AboutReader.prototype = {
   },
 
   // Setup or teardown the ambient light tracking system.
-  _enableAmbientLighting: function Reader_enableAmbientLighting(enable) {
+  _enableAmbientLighting: function(enable) {
     if (enable) {
       this._win.addEventListener("devicelight", this, false);
       this._luxValues = [];
@@ -517,7 +538,7 @@ AboutReader.prototype = {
     }
   },
 
-  _updateColorScheme: function Reader_updateColorScheme(luxValue) {
+  _updateColorScheme: function(luxValue) {
     // Upper bound value for "dark" color scheme beyond which it changes to "light".
     let upperBoundDark = 50;
     // Lower bound value for "light" color scheme beyond which it changes to "dark".
@@ -536,7 +557,7 @@ AboutReader.prototype = {
       this._setColorScheme("light");
   },
 
-  _setColorScheme: function Reader_setColorScheme(newColorScheme) {
+  _setColorScheme: function(newColorScheme) {
     // "auto" is not a real color scheme
     if (this._colorScheme === newColorScheme || newColorScheme === "auto")
       return;
@@ -552,7 +573,7 @@ AboutReader.prototype = {
 
   // Pref values include "dark", "light", and "auto", which automatically switches
   // between light and dark color schemes based on the ambient light level.
-  _setColorSchemePref: function Reader_setColorSchemePref(colorSchemePref) {
+  _setColorSchemePref: function(colorSchemePref) {
     this._enableAmbientLighting(colorSchemePref === "auto");
     this._setColorScheme(colorSchemePref);
 
@@ -562,7 +583,7 @@ AboutReader.prototype = {
     });
   },
 
-  _setFontType: function Reader_setFontType(newFontType) {
+  _setFontType: function(newFontType) {
     if (this._fontType === newFontType)
       return;
 
@@ -580,13 +601,12 @@ AboutReader.prototype = {
     });
   },
 
-  _getToolbarVisibility: function Reader_getToolbarVisibility() {
+  _getToolbarVisibility: function() {
     return this._toolbarElement.hasAttribute("visible");
   },
 
-  _setToolbarVisibility: function Reader_setToolbarVisibility(visible) {
-    let dropdown = this._doc.getElementById("style-dropdown");
-    dropdown.classList.remove("open");
+  _setToolbarVisibility: function(visible) {
+    this._closeDropdown();
 
     if (this._getToolbarVisibility() === visible) {
       return;
@@ -605,11 +625,11 @@ AboutReader.prototype = {
     this._updateFooter();
   },
 
-  _toggleToolbarVisibility: function Reader_toggleToolbarVisibility() {
+  _toggleToolbarVisibility: function() {
     this._setToolbarVisibility(!this._getToolbarVisibility());
   },
 
-  _setSystemUIVisibility: function Reader_setSystemUIVisibility(visible) {
+  _setSystemUIVisibility: function(visible) {
     this._mm.sendAsyncMessage("Reader:SystemUIVisibility", { visible: visible });
   },
 
@@ -669,7 +689,7 @@ AboutReader.prototype = {
     });
   },
 
-  _requestFavicon: function Reader_requestFavicon() {
+  _requestFavicon: function() {
     let handleFaviconReturn = (message) => {
       this._mm.removeMessageListener("Reader:FaviconReturn", handleFaviconReturn);
       this._loadFavicon(message.data.url, message.data.faviconUrl);
@@ -679,7 +699,7 @@ AboutReader.prototype = {
     this._mm.sendAsyncMessage("Reader:FaviconRequest", { url: this._article.url });
   },
 
-  _loadFavicon: function Reader_loadFavicon(url, faviconUrl) {
+  _loadFavicon: function(url, faviconUrl) {
     if (this._article.url !== url)
       return;
 
@@ -692,7 +712,7 @@ AboutReader.prototype = {
     doc.getElementsByTagName('head')[0].appendChild(link);
   },
 
-  _updateImageMargins: function Reader_updateImageMargins() {
+  _updateImageMargins: function() {
     let windowWidth = this._win.innerWidth;
     let bodyWidth = this._doc.body.clientWidth;
 
@@ -749,7 +769,7 @@ AboutReader.prototype = {
   },
 
   // This function is the JS version of Java's StringUtils.stripCommonSubdomains.
-  _stripHost: function Reader_stripHost(host) {
+  _stripHost: function(host) {
     if (!host)
       return host;
 
@@ -765,7 +785,7 @@ AboutReader.prototype = {
     return host.substring(start);
   },
 
-  _showContent: function Reader_showContent(article) {
+  _showContent: function(article) {
     this._messageElement.style.display = "none";
 
     this._article = article;
@@ -795,14 +815,16 @@ AboutReader.prototype = {
     this._showListIntro();
     this._requestFavicon();
     this._doc.body.classList.add("loaded");
+
+    Services.obs.notifyObservers(null, "AboutReader:Ready", "");
   },
 
-  _hideContent: function Reader_hideContent() {
+  _hideContent: function() {
     this._headerElement.style.display = "none";
     this._contentElement.style.display = "none";
   },
 
-  _showProgressDelayed: function Reader_showProgressDelayed() {
+  _showProgressDelayed: function() {
     this._win.setTimeout(function() {
       // No need to show progress if the article has been loaded,
       // if the window has been unloaded, or if there was an error
@@ -827,7 +849,7 @@ AboutReader.prototype = {
     return ReaderMode.getOriginalUrl(url) || url;
   },
 
-  _setupSegmentedButton: function Reader_setupSegmentedButton(id, options, initialValue, callback) {
+  _setupSegmentedButton: function(id, options, initialValue, callback) {
     let doc = this._doc;
     let segmentedButton = doc.getElementById(id);
 
@@ -907,7 +929,7 @@ AboutReader.prototype = {
     button.setAttribute("title", gStrings.GetStringFromName(titleEntity));
   },
 
-  _setupStyleDropdown: function Reader_setupStyleDropdown() {
+  _setupStyleDropdown: function() {
     let doc = this._doc;
     let win = this._win;
 
@@ -942,13 +964,41 @@ AboutReader.prototype = {
       event.stopPropagation();
 
       if (dropdown.classList.contains("open")) {
-        dropdown.classList.remove("open");
+        this._closeDropdown();
       } else {
-        dropdown.classList.add("open");
+        this._openDropdown();
         if (this._isToolbarVertical) {
           updatePopupPosition();
         }
       }
     }, true);
+  },
+
+  /*
+   * If the ReaderView banner font-dropdown is closed, open it.
+   */
+  _openDropdown: function() {
+    let dropdown = this._doc.getElementById("style-dropdown");
+    if (dropdown.classList.contains("open")) {
+      return;
+    }
+
+    // Trigger BackPressListener initialization in Android.
+    dropdown.classList.add("open");
+    this._mm.sendAsyncMessage("Reader:DropdownOpened", this.viewId);
+  },
+
+  /*
+   * If the ReaderView banner font-dropdown is opened, close it.
+   */
+  _closeDropdown: function() {
+    let dropdown = this._doc.getElementById("style-dropdown");
+    if (!dropdown.classList.contains("open")) {
+      return;
+    }
+
+    // Trigger BackPressListener cleanup in Android.
+    dropdown.classList.remove("open");
+    this._mm.sendAsyncMessage("Reader:DropdownClosed", this.viewId);
   },
 };

@@ -12,7 +12,6 @@ var PKT_SAVED_OVERLAY = function (options)
     this.savedItemId = 0;
     this.savedUrl = '';
     this.premiumStatus = false;
-    this.panelId = 0;
     this.preventCloseTimerCancel = false;
     this.closeValid = true;
     this.mouseInside = false;
@@ -59,7 +58,7 @@ var PKT_SAVED_OVERLAY = function (options)
 
         thePKT_SAVED.sendMessage("getSuggestedTags",
         {
-            url: myself.savedUrl || window.location.toString()
+            url: myself.savedUrl
         }, function(resp) 
         {
             $('.pkt_ext_suggestedtag_detail').removeClass('pkt_ext_suggestedtag_detail_loading');
@@ -78,7 +77,7 @@ var PKT_SAVED_OVERLAY = function (options)
             }
             else if (resp.status == 'error') {
                 var msg = $('<p class="suggestedtag_msg">');
-                msg.text(resp.error);
+                msg.text(resp.error.message);
                 $('.pkt_ext_suggestedtag_detail').append(msg);
                 this.suggestedTagsLoaded = true;
                 if (!myself.mouseInside) {
@@ -314,8 +313,8 @@ var PKT_SAVED_OVERLAY = function (options)
 
             thePKT_SAVED.sendMessage("addTags",
             {
-                url: myself.savedUrl || window.location.toString(),
-                tags: originaltags   
+                url: myself.savedUrl,
+                tags: originaltags
             }, function(resp)
             {
                 if (resp.status == 'success') 
@@ -324,7 +323,7 @@ var PKT_SAVED_OVERLAY = function (options)
                 }
                 else if (resp.status == 'error') 
                 {
-                    $('.pkt_ext_edit_msg').addClass('pkt_ext_edit_msg_error pkt_ext_edit_msg_active').text(resp.error);
+                    $('.pkt_ext_edit_msg').addClass('pkt_ext_edit_msg_error pkt_ext_edit_msg_active').text(resp.error.message);
                 }
             });
         });
@@ -348,7 +347,7 @@ var PKT_SAVED_OVERLAY = function (options)
                         myself.showStateFinalMsg(myself.dictJSON.pageremoved);
                     }
                     else if (resp.status == 'error') {
-                        $('.pkt_ext_edit_msg').addClass('pkt_ext_edit_msg_error pkt_ext_edit_msg_active').text(resp.error);
+                        $('.pkt_ext_edit_msg').addClass('pkt_ext_edit_msg_error pkt_ext_edit_msg_active').text(resp.error.message);
                     }
                 });
             }
@@ -411,7 +410,7 @@ var PKT_SAVED_OVERLAY = function (options)
         if (typeof initobj.item == 'object')
         {
             this.savedItemId = initobj.item.item_id;
-            this.savedUrl = initobj.item.resolved_url;
+            this.savedUrl = initobj.item.given_url;
         }
         $('.pkt_ext_containersaved').addClass('pkt_ext_container_detailactive').removeClass('pkt_ext_container_finalstate');
 
@@ -461,89 +460,7 @@ var PKT_SAVED_OVERLAY = function (options)
     }
     this.getTranslations = function()
     {
-        var language = this.locale || '';
-        this.dictJSON = {};
-
-        var dictsuffix = 'en-US';
-
-        if (language.indexOf('en') == 0)
-        {
-            dictsuffix = 'en';
-        }
-        else if (language.indexOf('it') == 0)
-        {
-            dictsuffix = 'it';
-        }
-        else if (language.indexOf('fr-ca') == 0)
-        {
-            dictsuffix = 'fr';
-        }
-        else if (language.indexOf('fr') == 0)
-        {
-            dictsuffix = 'fr';
-        }
-        else if (language.indexOf('de') == 0)
-        {
-            dictsuffix = 'de';
-        }
-        else if (language.indexOf('es-es') == 0)
-        {
-            dictsuffix = 'es';
-        }
-        else if (language.indexOf('es-419') == 0)
-        {
-            dictsuffix = 'es_419';
-        }
-        else if (language.indexOf('es') == 0)
-        {
-            dictsuffix = 'es';
-        }
-        else if (language.indexOf('ja') == 0)
-        {
-            dictsuffix = 'ja';
-        }
-        else if (language.indexOf('nl') == 0)
-        {
-            dictsuffix = 'nl';
-        }
-        else if (language.indexOf('pt-pt') == 0)
-        {
-            dictsuffix = 'pt_PT';
-        }
-        else if (language.indexOf('pt') == 0)
-        {
-            dictsuffix = 'pt_BR';
-        }
-        else if (language.indexOf('ru') == 0)
-        {
-            dictsuffix = 'ru';
-        }
-        else if (language.indexOf('zh-tw') == 0)
-        {
-            dictsuffix = 'zh_TW';
-        }
-        else if (language.indexOf('zh') == 0)
-        {
-            dictsuffix = 'zh_CN';
-        }
-        else if (language.indexOf('ko') == 0)
-        {
-            dictsuffix = 'ko';
-        }
-        else if (language.indexOf('pl') == 0)
-        {
-            dictsuffix = 'pl';
-        }
-
-        this.dictJSON = Translations[dictsuffix];
-        if (typeof this.dictJSON !== 'object')
-        {
-            this.dictJSON = Translations['en'];
-        }
-        if (typeof this.dictJSON !== 'object')
-        {
-            this.dictJSON = {};
-        }
+        this.dictJSON = window.pocketStrings;
     };
 };
 
@@ -607,17 +524,18 @@ PKT_SAVED.prototype = {
         if (this.inited) {
             return;
         }
+        this.panelId = pktPanelMessaging.panelIdFromURL(window.location.href);
         this.overlay = new PKT_SAVED_OVERLAY();
 
         this.inited = true;
     },
 
     addMessageListener: function(messageId, callback) {
-    	pktPanelMessaging.addMessageListener(this.overlay.panelId, messageId, callback);
+    	pktPanelMessaging.addMessageListener(this.panelId, messageId, callback);
     },
 
     sendMessage: function(messageId, payload, callback) {
-    	pktPanelMessaging.sendMessage(this.overlay.panelId, messageId, payload, callback);
+    	pktPanelMessaging.sendMessage(this.panelId, messageId, payload, callback);
     },
 
     create: function() {
@@ -642,8 +560,6 @@ PKT_SAVED.prototype = {
         {
             myself.overlay.locale = locale[1].toLowerCase();
         }
-
-        myself.overlay.panelId = pktPanelMessaging.panelIdFromURL(window.location.href);
 
         myself.overlay.create();
 
@@ -686,6 +602,10 @@ $(function()
         thePKT_SAVED.init();
     }
 
-    window.thePKT_SAVED.create();
+    // send an async message to get string data
+    thePKT_SAVED.sendMessage("initL10N", {}, function(resp) {
+        window.pocketStrings = resp.strings;
+        window.thePKT_SAVED.create();
+    });
 });
 

@@ -4,6 +4,7 @@
 #define TH_UNICODE
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <assert.h>
 #include <stdint.h>
 #include "th_char.h"
