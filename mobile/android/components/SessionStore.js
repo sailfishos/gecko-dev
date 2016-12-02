@@ -825,7 +825,7 @@ SessionStore.prototype = {
   },
 
   _deserializeHistoryEntry: function _deserializeHistoryEntry(aEntry, aIdMap, aDocIdentMap) {
-    let shEntry = Cc["@mozilla.org/browser/session-history-entry;1"].createInstance(Ci.nsISHEntry_ESR38);
+    let shEntry = Cc["@mozilla.org/browser/session-history-entry;1"].createInstance(Ci.nsISHEntry);
 
     shEntry.setURI(Services.io.newURI(aEntry.url, null, null));
     shEntry.setTitle(aEntry.title || aEntry.url);

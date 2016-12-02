@@ -429,9 +429,6 @@ ssl3_HandleServerNameXtn(sslSocket * ss, PRUint16 ex_type, SECItem *data)
         (void)ssl3_DecodeError(ss);
         return SECFailure;
     }
-    if (listLenBytes == 0) {
-        return SECSuccess; /* ignore an empty extension */
-    }
     ldata = *data;
     /* Calculate the size of the array.*/
     while (listLenBytes > 0) {

@@ -476,7 +476,7 @@ XPCOMUtils.defineLazyGetter(this, "gCanStageUpdatesSession",
 
   LOG("gCanStageUpdatesSession - able to stage updates");
   return true;
-}
+});
 
 /**
  * Whether or not the application can stage an update.

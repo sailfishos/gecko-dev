@@ -2321,12 +2321,6 @@ CodeGenerator::visitKeepAliveObject(LKeepAliveObject* lir)
 }
 
 void
-CodeGenerator::visitKeepAliveObject(LKeepAliveObject* lir)
-{
-    // No-op.
-}
-
-void
 CodeGenerator::visitSlots(LSlots* lir)
 {
     Address slots(ToRegister(lir->object()), NativeObject::offsetOfSlots());

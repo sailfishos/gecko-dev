@@ -73,7 +73,6 @@ class TlsConnectTestBase : public ::testing::Test {
   void ExpectExtendedMasterSecret(bool expected);
 
  protected:
-
   Mode mode_;
   TlsAgent* client_;
   TlsAgent* server_;

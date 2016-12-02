@@ -230,9 +230,6 @@ bool
 CurrentThreadCanSkipPostBarrier(bool inNursery);
 #endif
 
-bool
-SymbolIsWellKnown(JS::Symbol* sym);
-
 namespace gc {
 
 // Marking.h depends on these barrier definitions, so we need a separate

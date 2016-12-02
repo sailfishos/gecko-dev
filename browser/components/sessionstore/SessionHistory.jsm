@@ -297,7 +297,7 @@ var SessionHistoryInternal = {
   deserializeEntry: function (entry, idMap, docIdentMap) {
 
     var shEntry = Cc["@mozilla.org/browser/session-history-entry;1"].
-                  createInstance(Ci.nsISHEntry_ESR38);
+                  createInstance(Ci.nsISHEntry);
 
     shEntry.setURI(Utils.makeURI(entry.url, entry.charset));
     shEntry.setTitle(entry.title || entry.url);

@@ -29,32 +29,6 @@ function removeNotificationOnEnd(notification, installs) {
   }
 }
 
-// Removes a doorhanger notification if all of the installs it was notifying
-// about have ended in some way.
-function removeNotificationOnEnd(notification, installs) {
-  let count = installs.length;
-
-  function maybeRemove(install) {
-    install.removeListener(this);
-
-    if (--count == 0) {
-      // Check that the notification is still showing
-      let current = PopupNotifications.getNotification(notification.id, notification.browser);
-      if (current === notification)
-        notification.remove();
-    }
-  }
-
-  for (let install of installs) {
-    install.addListener({
-      onDownloadCancelled: maybeRemove,
-      onDownloadFailed: maybeRemove,
-      onInstallFailed: maybeRemove,
-      onInstallEnded: maybeRemove
-    });
-  }
-}
-
 const gXPInstallObserver = {
   _findChildShell: function (aDocShell, aSoughtShell)
   {

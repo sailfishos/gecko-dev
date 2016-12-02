@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
-#include <stdint.h>
 #include "th_char.h"
 #define th_isalpha(c)   (((c)>='a'&&(c)<='z')||((c)>='A'&&(c)<='Z'))
 #define th_isspace(c)   ((c)==' '||(c)=='\t')
@@ -278,7 +277,7 @@ const twb_t  _TwbType[0x100-0xa0] = {
 /* 90  */	T,
 /* 91-9f */	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 #endif
-/* a0   */	0,
+/* a0   */	0,
 /* a1 ¡ */	CS,
 /* a2 ¢ */	CS | CHE,
 /* a3 £ */	CC | CHE,

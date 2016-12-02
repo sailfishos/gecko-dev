@@ -478,9 +478,6 @@ HandleExceptionIon(JSContext* cx, const InlineFrameIterator& frame, ResumeFromEx
     for (TryNoteIterIon tni(cx, frame); !tni.done(); ++tni) {
         JSTryNote* tn = *tni;
 
-        if (tn->stackDepth > stackDepth)
-            continue;
-
         switch (tn->kind) {
           case JSTRY_FOR_IN: {
             MOZ_ASSERT(JSOp(*(script->main() + tn->start + tn->length)) == JSOP_ENDITER);

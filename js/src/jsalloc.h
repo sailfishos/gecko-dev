@@ -79,14 +79,6 @@ class TempAllocPolicy
         return static_cast<T*>(onOutOfMemory(allocFunc, bytes, reallocPtr));
     }
 
-    template <typename T>
-    T* onOutOfMemoryTyped(void* p, size_t numElems) {
-        size_t bytes;
-        if (MOZ_UNLIKELY(!CalculateAllocSize<T>(numElems, &bytes)))
-            return nullptr;
-        return static_cast<T*>(onOutOfMemory(p, bytes));
-    }
-
   public:
     MOZ_IMPLICIT TempAllocPolicy(JSContext* cx) : cx_((ContextFriendFields*) cx) {} // :(
     MOZ_IMPLICIT TempAllocPolicy(ContextFriendFields* cx) : cx_(cx) {}

@@ -2728,7 +2728,7 @@ nsTArray<MediaSource::Indice> MPEG4Source::exportIndex()
       }
   }
 
-  return nsTArray<MediaSource::Indice>(Move(index));
+  return index;
 }
 
 }  // namespace stagefright

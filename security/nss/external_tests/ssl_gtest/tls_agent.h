@@ -110,12 +110,6 @@ class TlsAgent : public PollTarget {
     return info_.protocolVersion;
   }
 
-  uint16_t version() const {
-    EXPECT_EQ(CONNECTED, state_);
-
-    return info_.protocolVersion;
-  }
-
   bool cipher_suite(int16_t* cipher_suite) const {
     if (state_ != STATE_CONNECTED) return false;
 

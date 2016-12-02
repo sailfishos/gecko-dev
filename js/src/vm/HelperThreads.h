@@ -483,7 +483,7 @@ struct ParseTask
     // Holds the final script between the invocation of the callback and the
     // point where FinishOffThreadScript is called, which will destroy the
     // ParseTask.
-    PersistentRootedScript script;
+    JSScript* script;
 
     // Holds the ScriptSourceObject generated for the script compilation.
     ScriptSourceObject* sourceObject;

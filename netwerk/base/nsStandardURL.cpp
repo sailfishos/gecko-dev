@@ -1716,10 +1716,6 @@ nsStandardURL::SetHost(const nsACString &input)
         return NS_ERROR_MALFORMED_URI;
     }
 
-    if (!ValidIPv6orHostname(host, len)) {
-        return NS_ERROR_MALFORMED_URI;
-    }
-
     if (mHost.mLen < 0) {
         int port_length = 0;
         if (mPort != -1) {

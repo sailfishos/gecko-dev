@@ -609,13 +609,6 @@ class MochitestArguments(ArgumentContainer):
             parser.error(
                 "can only use one of --chunk-by-dir or --chunk-by-runtime")
 
-
-        if options.chunkByRuntime:
-            # --chunk-by-runtime not supported on this branch; revert
-            # to --chunk-by-dir
-            options.chunkByRuntime = False
-            options.chunkByDir = 5
-
         if options.xrePath is None:
             # default xrePath to the app path if not provided
             # but only if an app path was explicitly provided

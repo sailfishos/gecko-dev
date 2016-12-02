@@ -31,8 +31,7 @@ TimerThread::TimerThread() :
   mShutdown(false),
   mWaiting(false),
   mNotified(false),
-  mSleeping(false),
-  mLastTimerEventLoopRun(TimeStamp::Now())
+  mSleeping(false)
 {
 }
 
@@ -457,7 +456,6 @@ TimerThread::Run()
     } else {
       waitFor = PR_INTERVAL_NO_TIMEOUT;
       TimeStamp now = TimeStamp::Now();
-      mLastTimerEventLoopRun = now;
       nsTimerImpl* timer = nullptr;
 
       if (!mTimers.IsEmpty()) {

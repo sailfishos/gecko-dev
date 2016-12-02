@@ -9511,34 +9511,6 @@ nsDocShell::InternalLoad(nsIURI* aURI,
                          nsIDocShell** aDocShell,
                          nsIRequest** aRequest)
 {
-  return InternalLoad2(aURI, nullptr, false, aReferrer, aReferrerPolicy, aOwner,
-                       aFlags, aWindowTarget, aTypeHint, aFileName, aPostData,
-                       aHeadersData, aLoadType, aSHEntry, aFirstParty, aSrcdoc,
-                       aSourceDocShell, aBaseURI, aDocShell, aRequest);
-}
-
-NS_IMETHODIMP
-nsDocShell::InternalLoad2(nsIURI* aURI,
-                          nsIURI* aOriginalURI,
-                          bool aLoadReplace,
-                          nsIURI* aReferrer,
-                          uint32_t aReferrerPolicy,
-                          nsISupports* aOwner,
-                          uint32_t aFlags,
-                          const char16_t* aWindowTarget,
-                          const char* aTypeHint,
-                          const nsAString& aFileName,
-                          nsIInputStream* aPostData,
-                          nsIInputStream* aHeadersData,
-                          uint32_t aLoadType,
-                          nsISHEntry* aSHEntry,
-                          bool aFirstParty,
-                          const nsAString& aSrcdoc,
-                          nsIDocShell* aSourceDocShell,
-                          nsIURI* aBaseURI,
-                          nsIDocShell** aDocShell,
-                          nsIRequest** aRequest)
-{
   nsresult rv = NS_OK;
   mOriginalUriString.Truncate();
 

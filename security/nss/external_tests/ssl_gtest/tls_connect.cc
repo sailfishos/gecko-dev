@@ -137,7 +137,6 @@ void TlsConnectTestBase::Handshake() {
   ASSERT_TRUE_WAIT((client_->state() != TlsAgent::STATE_CONNECTING) &&
                    (server_->state() != TlsAgent::STATE_CONNECTING),
                    5000);
-
 }
 
 void TlsConnectTestBase::EnableExtendedMasterSecret() {

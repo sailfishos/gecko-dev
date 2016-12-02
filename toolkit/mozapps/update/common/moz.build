@@ -12,9 +12,7 @@ EXPORTS += [
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     EXPORTS += [
-        'certificatecheck.h',
         'pathhash.h',
-        'registrycertificates.h',
         'uachelper.h',
         'updatehelper.cpp',
         'updatehelper.h',

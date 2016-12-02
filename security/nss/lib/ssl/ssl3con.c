@@ -7894,21 +7894,6 @@ ssl3_HandleClientHello(sslSocket *ss, SSL3Opaque *b, PRUint32 length)
         goto alert_loser;
     }
 
-    if (!ss->sec.isServer ||
-        (ss->ssl3.hs.ws != wait_client_hello &&
-         ss->ssl3.hs.ws != idle_handshake)) {
-        desc = unexpected_message;
-        errCode = SSL_ERROR_RX_UNEXPECTED_CLIENT_HELLO;
-        goto alert_loser;
-    }
-    if (ss->ssl3.hs.ws == idle_handshake &&
-        ss->opt.enableRenegotiation == SSL_RENEGOTIATE_NEVER) {
-        desc = no_renegotiation;
-        level = alert_warning;
-        errCode = SSL_ERROR_RENEGOTIATION_NOT_ALLOWED;
-        goto alert_loser;
-    }
-
     /* Get peer name of client */
     rv = ssl_GetPeerInfo(ss);
     if (rv != SECSuccess) {

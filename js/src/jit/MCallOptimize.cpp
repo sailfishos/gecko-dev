@@ -2148,19 +2148,6 @@ IonBuilder::inlineIsTypedArrayHelper(CallInfo& callInfo, WrappingBehavior wrappi
     return InliningStatus_Inlined;
 }
 
-static bool
-IsTypedArrayObject(CompilerConstraintList* constraints, MDefinition* def)
-{
-    MOZ_ASSERT(def->type() == MIRType_Object);
-
-    TemporaryTypeSet* types = def->resultTypeSet();
-    if (!types)
-        return false;
-
-    return types->forAllClasses(constraints, IsTypedArrayClass) ==
-           TemporaryTypeSet::ForAllResult::ALL_TRUE;
-}
-
 IonBuilder::InliningStatus
 IonBuilder::inlineIsTypedArray(CallInfo& callInfo)
 {
