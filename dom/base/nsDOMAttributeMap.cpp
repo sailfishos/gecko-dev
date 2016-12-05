@@ -336,16 +336,9 @@ nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr, ErrorResult& aError)
   if (oldNi) {
     RefPtr<Attr> oldAttr = GetAttribute(oldNi, true);
 
-    // get node-info of old attribute
-    ni = mContent->GetExistingAttrNameFromQName(name);
-    if (ni) {
-      attr = RemoveAttribute(ni);
+    if (oldAttr == &aAttr) {
+      return oldAttr.forget();
     }
-    else {
-      if (mContent->IsInHTMLDocument() &&
-          mContent->IsHTML()) {
-        nsContentUtils::ASCIIToLower(name);
-      }
 
     if (oldAttr) {
       attr = RemoveNamedItem(oldNi, aError);
@@ -428,11 +421,7 @@ nsDOMAttributeMap::RemoveNamedItem(const nsAString& aName, ErrorResult& aError)
     return nullptr;
   }
 
-  nsRefPtr<Attr> attribute = GetAttribute(ni, true);
-
-  // This removes the attribute node from the attribute map.
-  aError = mContent->UnsetAttr(ni->NamespaceID(), ni->NameAtom(), true);
-  return attribute.forget();
+  return RemoveNamedItem(ni, aError);
 }
 
 
@@ -530,6 +519,7 @@ nsDOMAttributeMap::GetAttrNodeInfo(const nsAString& aNamespaceURI,
     int32_t attrNS = name->NamespaceID();
     nsIAtom* nameAtom = name->LocalName();
 
+    // we're purposefully ignoring the prefix.
     if (nameSpaceID == attrNS &&
         nameAtom->Equals(aLocalName)) {
       RefPtr<mozilla::dom::NodeInfo> ni;
@@ -566,11 +556,7 @@ nsDOMAttributeMap::RemoveNamedItemNS(const nsAString& aNamespaceURI,
     return nullptr;
   }
 
-  nsRefPtr<Attr> attr = RemoveAttribute(ni);
-  mozilla::dom::NodeInfo* attrNi = attr->NodeInfo();
-  mContent->UnsetAttr(attrNi->NamespaceID(), attrNi->NameAtom(), true);
-
-  return attr.forget();
+  return RemoveNamedItem(ni, aError);
 }
 
 uint32_t

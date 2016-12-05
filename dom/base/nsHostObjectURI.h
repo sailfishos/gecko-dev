@@ -40,8 +40,6 @@ public:
 
   NS_IMETHOD SetScheme(const nsACString &aProtocol) override;
 
-  NS_IMETHOD SetScheme(const nsACString &aProtocol) override;
-
   // Override CloneInternal() and EqualsInternal()
   virtual nsresult CloneInternal(RefHandlingEnum aRefHandlingMode,
                                  nsIURI** aClone) override;

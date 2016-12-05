@@ -185,7 +185,6 @@ nsJSUtils::EvaluateString(JSContext* aCx,
   // aCompileOptions.noScriptRval set to true.
   aRetValue.setUndefined();
 
-  nsAutoMicroTask mt;
   nsresult rv = NS_OK;
 
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
