@@ -182,8 +182,8 @@ protected:
   virtual ~CompositorUpdateObserver() {}
 };
 
-class CompositorParent final : public PCompositorParent,
-                               public ShadowLayersManager
+class CompositorParent : public PCompositorParent,
+                         public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorParent)
   friend class CompositorVsyncScheduler;
