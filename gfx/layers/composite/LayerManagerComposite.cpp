@@ -753,6 +753,8 @@ LayerManagerComposite::Render(const nsIntRegion& aInvalidRegion)
   RefPtr<Composer2D> composer2D;
   composer2D = mCompositor->GetWidget()->GetComposer2D();
 
+  bool hasWidget = mCompositor->GetWidget() != nullptr;
+
   // We can't use composert2D if we have layer effects
   if (!mTarget && !haveLayerEffects &&
       gfxPrefs::Composer2DCompositionEnabled() &&
