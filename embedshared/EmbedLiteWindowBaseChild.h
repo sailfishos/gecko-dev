@@ -29,7 +29,7 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual bool RecvDestroy() override;
   virtual bool RecvSetSize(const gfxSize& size) override;
-  virtual bool RecvSetContentOrientation(const mozilla::ScreenRotation&) override;
+  virtual bool RecvSetContentOrientation(const uint32_t &) override;
 
 private:
   void CreateWidget();
