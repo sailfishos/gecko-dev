@@ -7,24 +7,21 @@
 #define MOZ_EMBED_LOG_H
 
 #include <stdio.h>
-
-#define PR_LOGGING 1
+#include "Logging.h"
 
 #ifdef PR_LOGGING
 
 #ifdef EMBED_LITE_INTERNAL
 
-#include "prlog.h"
+extern mozilla::LogModule* GetEmbedCommonLog(const char* aModule);
 
-extern PRLogModuleInfo* GetEmbedCommonLog(const char* aModule);
+#define LOGF(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Error, ("FUNC::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGT(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Debug, ("TRACE::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGW(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Info, ("WARN: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGE(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Warning, ("ERROR: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGNI(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Error, ("NON_IMPL: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
 
-#define LOGF(FMT, ...) PR_LOG(GetEmbedCommonLog("EmbedLite"), PR_LOG_ALWAYS, ("FUNC::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-#define LOGT(FMT, ...) PR_LOG(GetEmbedCommonLog("EmbedLite"), PR_LOG_DEBUG, ("TRACE::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-#define LOGW(FMT, ...) PR_LOG(GetEmbedCommonLog("EmbedLite"), PR_LOG_WARNING, ("WARN: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-#define LOGE(FMT, ...) PR_LOG(GetEmbedCommonLog("EmbedLite"), PR_LOG_ERROR, ("ERROR: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-#define LOGNI(FMT, ...) PR_LOG(GetEmbedCommonLog("EmbedLite"), PR_LOG_ALWAYS, ("NON_IMPL: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-
-#define LOGC(CUSTOMNAME, FMT, ...) PR_LOG(GetEmbedCommonLog(CUSTOMNAME), PR_LOG_WARNING, (CUSTOMNAME "::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGC(CUSTOMNAME, FMT, ...) MOZ_LOG(GetEmbedCommonLog(CUSTOMNAME), mozilla::LogLevel::Info, (CUSTOMNAME "::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
 
 #else // EMBED_LITE_INTERNAL
 
@@ -39,6 +36,7 @@ extern PRLogModuleInfo* GetEmbedCommonLog(const char* aModule);
 #define LOGT(...) do {} while (0)
 #define LOGW(...) do {} while (0)
 #define LOGE(...) do {} while (0)
+#define LOGNI(...) do {} while (0)
 #define LOGC(...) do {} while (0)
 
 #endif // PR_LOGGING

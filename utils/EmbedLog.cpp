@@ -9,15 +9,15 @@
 
 #ifdef PR_LOGGING
 
-PRLogModuleInfo*
+LogModule*
 GetEmbedCommonLog(const char* aModule)
 {
-  static std::map<std::string, PRLogModuleInfo*> sLogMap;
-  std::map<std::string, PRLogModuleInfo*>::iterator it = sLogMap.find(aModule);
-  PRLogModuleInfo* retVal;
+  static std::map<std::string, LogModule*> sLogMap;
+  std::map<std::string, LogModule*>::iterator it = sLogMap.find(aModule);
+  LogModule* retVal;
   if (sLogMap.end() == it) {
     printf("Created LOG for %s\n", aModule);
-    sLogMap[aModule] = retVal = PR_NewLogModule(aModule);
+    sLogMap[aModule] = retVal = LazyLogModule(aModule);
   } else {
     retVal = it->second;
   }

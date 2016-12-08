@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLog.h"
+#include "mozilla/Logging.h"
 
 #include "EmbedLiteApp.h"
 #include "nsISupports.h"
@@ -43,6 +44,7 @@ EmbedLiteApp*
 EmbedLiteApp::GetInstance()
 {
   if (!sSingleton) {
+    mozilla::LogModule::Init();
     sSingleton = new EmbedLiteApp();
     NS_ASSERTION(sSingleton, "not initialized");
   }
