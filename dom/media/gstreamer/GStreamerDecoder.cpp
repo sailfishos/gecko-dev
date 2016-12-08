@@ -25,21 +25,21 @@ GStreamerDecoder::CanHandleMediaType(const nsACString& aMIMEType,
     GStreamerFormatHelper::Instance()->CanHandleMediaType(aMIMEType, aCodecs);
 }
 
-void
-GStreamerDecoder::Suspend()
-{
-  if (mLastReader) {
-    mLastReader->Suspend();
-  }
-}
+//void
+//GStreamerDecoder::Suspend()
+//{
+//  if (mLastReader) {
+//    mLastReader->Suspend();
+//  }
+//}
 
-void GStreamerDecoder::NotifyPlaybackStopped()
-{
-  if (mLastReader) {
-    mLastReader->Suspend();
-  }
-  MediaDecoder::NotifyPlaybackStopped();
-}
+//void GStreamerDecoder::NotifyPlaybackStopped()
+//{
+//  if (mLastReader) {
+//    mLastReader->Suspend();
+//  }
+//  MediaDecoder::NotifyPlaybackStopped();
+//}
 
 } // namespace mozilla
 

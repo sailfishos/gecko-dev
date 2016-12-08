@@ -20,9 +20,10 @@ public:
   virtual MediaDecoder* Clone(MediaDecoderOwner* aOwner) {
     return new GStreamerDecoder(aOwner);
   }
+//  virtual void Suspend() override;
   virtual MediaDecoderStateMachine* CreateStateMachine();
   static bool CanHandleMediaType(const nsACString& aMIMEType, const nsAString* aCodecs);
-  virtual void NotifyPlaybackStopped() override;
+//  virtual void NotifyPlaybackStopped() override;
 
 private:
   GStreamerReader* mLastReader;

@@ -140,10 +140,10 @@ GStreamerReader::~GStreamerReader()
   ResetIfCurrentDecoderActive(this);
 }
 
-void GStreamerReader::Suspend()
-{
-  ResetIfCurrentDecoderActive(this);
-}
+//void GStreamerReader::Suspend()
+//{
+//  ResetIfCurrentDecoderActive(this);
+//}
 
 nsresult GStreamerReader::Init()
 {
