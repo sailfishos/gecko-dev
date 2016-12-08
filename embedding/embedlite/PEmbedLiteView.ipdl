@@ -11,9 +11,6 @@ using struct gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
 using CSSRect from "Units.h";
 using CSSSize from "Units.h";
-using struct nsIntSize from "nsSize.h";
-using struct gfxPoint from "gfxPoint.h";
-using struct nsIntPoint from "nsPoint.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
 using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
 using FrameMetrics::ViewID from "FrameMetrics.h";
@@ -24,6 +21,7 @@ using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
 using mozilla::CSSPoint from "Units.h";
+using mozilla::Modifiers from "mozilla/EventForwards.h";
 
 namespace mozilla {
 namespace embedlite {
