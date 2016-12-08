@@ -7,7 +7,6 @@
 
 class QtHapticFeedback : public nsIHapticFeedback
 {
-  virtual ~QtHapticFeedback() {}
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIHAPTICFEEDBACK

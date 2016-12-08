@@ -31,7 +31,7 @@ void nsScreenManagerQt::init()
     nScreens = QGuiApplication::screens().size();
     screens = new nsCOMPtr<nsIScreen>[nScreens];
 
-    for (int i = 0; i < nScreens; ++i)
+    for (uint32_t i = 0; i < nScreens; ++i)
         screens[i] = new nsScreenQt(i);
     mInitialized = true;
 }
@@ -55,7 +55,7 @@ nsScreenManagerQt::ScreenForRect(int32_t inLeft, int32_t inTop,
     QRect r(inLeft, inTop, inWidth, inHeight);
     int best = 0;
     int area = 0;
-    for (int i = 0; i < nScreens; ++i) {
+    for (uint32_t i = 0; i < nScreens; ++i) {
         const QRect& rect = QGuiApplication::screens()[i]->geometry();
         QRect intersection = r&rect;
         int a = intersection.width()*intersection.height();

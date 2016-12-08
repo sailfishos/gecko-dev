@@ -466,8 +466,8 @@ nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
     // synthesize a resize event if this isn't a toplevel
     if (mIsTopLevel || mListenForResizes) {
         nsEventStatus status;
-        DispatchResizeEvent(LayoutDeviceIntRect::FromUnknownRect(mBounds),
-                            status);
+        LayoutDeviceIntRect rect = LayoutDeviceIntRect::FromUnknownRect(mBounds);
+        DispatchResizeEvent(rect, status);
     }
 
     NotifyRollupGeometryChange();
@@ -530,8 +530,8 @@ nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
     if (mIsTopLevel || mListenForResizes) {
         // synthesize a resize event
         nsEventStatus status;
-        DispatchResizeEvent(LayoutDeviceIntRect::FromUnknownRect(mBounds),
-                            status);
+        LayoutDeviceIntRect rect = LayoutDeviceIntRect::FromUnknownRect(mBounds);
+        DispatchResizeEvent(rect, status);
     }
 
     if (aRepaint) {
@@ -599,7 +599,7 @@ nsWindow::ConfigureChildren(const nsTArray<nsIWidget::Configuration>& aConfigura
     for (uint32_t i = 0; i < aConfigurations.Length(); ++i) {
         const Configuration& configuration = aConfigurations[i];
 
-        nsWindow* w = static_cast<nsWindow*>(configuration.mChild);
+        nsWindow* w = static_cast<nsWindow*>(configuration.mChild.get());
         NS_ASSERTION(w->GetParent() == this,
                      "Configured widget is not a child");
 
@@ -878,11 +878,6 @@ nsWindow::OnPaint()
 
     listener->WillPaintWindow(this);
 
-    nsIWidgetListener* listener = GetPaintListener();
-    if (!listener) {
-        return;
-    }
-
     switch (GetLayerManager()->GetBackendType()) {
         case mozilla::layers::LayersBackend::LAYERS_CLIENT: {
             LayoutDeviceIntRegion region(
@@ -892,11 +887,6 @@ nsWindow::OnPaint()
         }
         default:
             NS_ERROR("Invalid layer manager");
-    }
-
-    nsIWidgetListener* listener = GetPaintListener();
-    if (!listener) {
-        return;
     }
 
     listener->DidPaintWindow();
@@ -1279,8 +1269,8 @@ nsEventStatus
 nsWindow::wheelEvent(QWheelEvent* aEvent)
 {
     // check to see if we should rollup
-    WidgetWheelEvent wheelEvent(true, eWheel, this);
-    wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
+    WidgetWheelEvent wEvent(true, eWheel, this);
+    wEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
 
     // negative values for aEvent->delta indicate downward scrolling;
     // this is opposite Gecko usage.
@@ -1291,26 +1281,26 @@ nsWindow::wheelEvent(QWheelEvent* aEvent)
 
     switch (aEvent->orientation()) {
     case Qt::Vertical:
-        wheelEvent.deltaY = wheelEvent.lineOrPageDeltaY = delta;
+        wEvent.deltaY = wEvent.lineOrPageDeltaY = delta;
         break;
     case Qt::Horizontal:
-        wheelEvent.deltaX = wheelEvent.lineOrPageDeltaX = delta;
+        wEvent.deltaX = wEvent.lineOrPageDeltaX = delta;
         break;
     default:
         Q_ASSERT(0);
         break;
     }
 
-    wheelEvent.refPoint.x = nscoord(aEvent->pos().x());
-    wheelEvent.refPoint.y = nscoord(aEvent->pos().y());
+    wEvent.refPoint.x = nscoord(aEvent->pos().x());
+    wEvent.refPoint.y = nscoord(aEvent->pos().y());
 
-    wheelEvent.InitBasicModifiers(aEvent->modifiers() & Qt::ControlModifier,
+    wEvent.InitBasicModifiers(aEvent->modifiers() & Qt::ControlModifier,
                                   aEvent->modifiers() & Qt::AltModifier,
                                   aEvent->modifiers() & Qt::ShiftModifier,
                                   aEvent->modifiers() & Qt::MetaModifier);
-    wheelEvent.time = 0;
+    wEvent.time = 0;
 
-    return DispatchEvent(&wheelEvent);
+    return DispatchEvent(&wEvent);
 }
 
 nsEventStatus

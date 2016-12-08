@@ -163,9 +163,9 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
                 static const char* const imageMimeTypes[] = {
                     kNativeImageMime, kPNGImageMime, kJPEGImageMime, kJPGImageMime, kGIFImageMime };
                 nsCOMPtr<nsISupportsInterfacePointer> ptrPrimitive;
-                for (uint32_t i = 0; !ptrPrimitive && i < ArrayLength(imageMimeTypes); i++)
+                for (uint32_t j = 0; !ptrPrimitive && j < ArrayLength(imageMimeTypes); j++)
                 {
-                    aTransferable->GetTransferData(imageMimeTypes[i], getter_AddRefs(clip), &len);
+                    aTransferable->GetTransferData(imageMimeTypes[j], getter_AddRefs(clip), &len);
                     ptrPrimitive = do_QueryInterface(clip);
                 }
 

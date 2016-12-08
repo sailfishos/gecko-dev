@@ -50,21 +50,21 @@ void MozQWidget::renderNow()
     mReceiver->OnPaint();
 }
 
-bool MozQWidget::event(QEvent* event)
+bool MozQWidget::event(QEvent* e)
 {
-    switch (event->type()) {
+    switch (e->type()) {
     case QEvent::UpdateRequest:
         mUpdatePending = false;
         renderNow();
         return true;
     default:
-        return QWindow::event(event);
+        return QWindow::event(e);
     }
 }
 
-void MozQWidget::exposeEvent(QExposeEvent* event)
+void MozQWidget::exposeEvent(QExposeEvent* e)
 {
-    Q_UNUSED(event);
+    Q_UNUSED(e);
     if (!isExposed() || eWindowType_child != mWindowType || !isVisible()) {
         return;
     }
@@ -73,144 +73,144 @@ void MozQWidget::exposeEvent(QExposeEvent* event)
 
 }
 
-void MozQWidget::resizeEvent(QResizeEvent* event)
+void MozQWidget::resizeEvent(QResizeEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->resizeEvent(event);
-    QWindow::resizeEvent(event);
+    mReceiver->resizeEvent(e);
+    QWindow::resizeEvent(e);
 }
 
-void MozQWidget::focusInEvent(QFocusEvent* event)
+void MozQWidget::focusInEvent(QFocusEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->focusInEvent(event);
-    QWindow::focusInEvent(event);
+    mReceiver->focusInEvent(e);
+    QWindow::focusInEvent(e);
 }
 
-void MozQWidget::focusOutEvent(QFocusEvent* event)
+void MozQWidget::focusOutEvent(QFocusEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->focusOutEvent(event);
-    QWindow::focusOutEvent(event);
+    mReceiver->focusOutEvent(e);
+    QWindow::focusOutEvent(e);
 }
 
-void MozQWidget::hideEvent(QHideEvent* event)
+void MozQWidget::hideEvent(QHideEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->hideEvent(event);
-    QWindow::hideEvent(event);
+    mReceiver->hideEvent(e);
+    QWindow::hideEvent(e);
 }
 
-void MozQWidget::keyPressEvent(QKeyEvent* event)
+void MozQWidget::keyPressEvent(QKeyEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->keyPressEvent(event);
-    QWindow::keyPressEvent(event);
+    mReceiver->keyPressEvent(e);
+    QWindow::keyPressEvent(e);
 }
 
-void MozQWidget::keyReleaseEvent(QKeyEvent* event)
+void MozQWidget::keyReleaseEvent(QKeyEvent *e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->keyReleaseEvent(event);
-    QWindow::keyReleaseEvent(event);
+    mReceiver->keyReleaseEvent(e);
+    QWindow::keyReleaseEvent(e);
 }
 
-void MozQWidget::mouseDoubleClickEvent(QMouseEvent* event)
+void MozQWidget::mouseDoubleClickEvent(QMouseEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->mouseDoubleClickEvent(event);
-    QWindow::mouseDoubleClickEvent(event);
+    mReceiver->mouseDoubleClickEvent(e);
+    QWindow::mouseDoubleClickEvent(e);
 }
 
-void MozQWidget::mouseMoveEvent(QMouseEvent* event)
+void MozQWidget::mouseMoveEvent(QMouseEvent* e)
 {
-    mReceiver->mouseMoveEvent(event);
-    QWindow::mouseMoveEvent(event);
+    mReceiver->mouseMoveEvent(e);
+    QWindow::mouseMoveEvent(e);
 }
 
-void MozQWidget::mousePressEvent(QMouseEvent* event)
-{
-    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->mousePressEvent(event);
-    QWindow::mousePressEvent(event);
-}
-
-void MozQWidget::mouseReleaseEvent(QMouseEvent* event)
+void MozQWidget::mousePressEvent(QMouseEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->mouseReleaseEvent(event);
-    QWindow::mouseReleaseEvent(event);
+    mReceiver->mousePressEvent(e);
+    QWindow::mousePressEvent(e);
 }
 
-void MozQWidget::moveEvent(QMoveEvent* event)
+void MozQWidget::mouseReleaseEvent(QMouseEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->moveEvent(event);
-    QWindow::moveEvent(event);
+    mReceiver->mouseReleaseEvent(e);
+    QWindow::mouseReleaseEvent(e);
 }
 
-void MozQWidget::showEvent(QShowEvent* event)
+void MozQWidget::moveEvent(QMoveEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->showEvent(event);
-    QWindow::showEvent(event);
+    mReceiver->moveEvent(e);
+    QWindow::moveEvent(e);
 }
 
-void MozQWidget::wheelEvent(QWheelEvent* event)
+void MozQWidget::showEvent(QShowEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    mReceiver->wheelEvent(event);
-    QWindow::wheelEvent(event);
+    mReceiver->showEvent(e);
+    QWindow::showEvent(e);
 }
 
-void MozQWidget::tabletEvent(QTabletEvent* event)
+void MozQWidget::wheelEvent(QWheelEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    QWindow::tabletEvent(event);
+    mReceiver->wheelEvent(e);
+    QWindow::wheelEvent(e);
 }
 
-void MozQWidget::touchEvent(QTouchEvent* event)
+void MozQWidget::tabletEvent(QTabletEvent* e)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    QWindow::touchEvent(event);
+    QWindow::tabletEvent(e);
+}
+
+void MozQWidget::touchEvent(QTouchEvent* e)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::touchEvent(e);
 }
 
 void MozQWidget::SetCursor(nsCursor aCursor)
 {
-    Qt::CursorShape cursor = Qt::ArrowCursor;
+    Qt::CursorShape c = Qt::ArrowCursor;
     switch(aCursor) {
     case eCursor_standard:
-        cursor = Qt::ArrowCursor;
+        c = Qt::ArrowCursor;
         break;
     case eCursor_wait:
-        cursor = Qt::WaitCursor;
+        c = Qt::WaitCursor;
         break;
     case eCursor_select:
-        cursor = Qt::IBeamCursor;
+        c = Qt::IBeamCursor;
         break;
     case eCursor_hyperlink:
-        cursor = Qt::PointingHandCursor;
+        c = Qt::PointingHandCursor;
         break;
     case eCursor_ew_resize:
-        cursor = Qt::SplitHCursor;
+        c = Qt::SplitHCursor;
         break;
     case eCursor_ns_resize:
-        cursor = Qt::SplitVCursor;
+        c = Qt::SplitVCursor;
         break;
     case eCursor_nw_resize:
     case eCursor_se_resize:
-        cursor = Qt::SizeBDiagCursor;
+        c = Qt::SizeBDiagCursor;
         break;
     case eCursor_ne_resize:
     case eCursor_sw_resize:
-        cursor = Qt::SizeFDiagCursor;
+        c = Qt::SizeFDiagCursor;
         break;
     case eCursor_crosshair:
     case eCursor_move:
-        cursor = Qt::SizeAllCursor;
+        c = Qt::SizeAllCursor;
         break;
     case eCursor_help:
-        cursor = Qt::WhatsThisCursor;
+        c = Qt::WhatsThisCursor;
         break;
     case eCursor_copy:
     case eCursor_alias:
@@ -227,5 +227,5 @@ void MozQWidget::SetCursor(nsCursor aCursor)
         break;
     }
 
-    setCursor(cursor);
+    setCursor(c);
 }

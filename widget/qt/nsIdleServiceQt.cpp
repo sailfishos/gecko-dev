@@ -27,7 +27,9 @@ static _XScreenSaverAllocInfo_fn _XSSAllocInfo = nullptr;
 static _XScreenSaverQueryInfo_fn _XSSQueryInfo = nullptr;
 #endif
 
+#if defined(MOZ_X11)
 static bool sInitialized = false;
+#endif
 
 NS_IMPL_ISUPPORTS_INHERITED0(nsIdleServiceQt, nsIdleService)
 
@@ -38,11 +40,10 @@ nsIdleServiceQt::nsIdleServiceQt()
 {
 }
 
+#if defined(MOZ_X11)
 static void Initialize()
 {
     sInitialized = true;
-
-#if defined(MOZ_X11)
     // This will leak - See comments in ~nsIdleServiceQt().
     PRLibrary* xsslib = PR_LoadLibrary("libXss.so.1");
     if (!xsslib) {
@@ -55,8 +56,8 @@ static void Initialize()
         PR_FindFunctionSymbol(xsslib, "XScreenSaverAllocInfo");
     _XSSQueryInfo = (_XScreenSaverQueryInfo_fn)
         PR_FindFunctionSymbol(xsslib, "XScreenSaverQueryInfo");
-#endif
 }
+#endif
 
 nsIdleServiceQt::~nsIdleServiceQt()
 {
