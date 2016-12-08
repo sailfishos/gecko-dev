@@ -390,9 +390,9 @@ EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
+        Unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
       } else {
-        unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
+        Unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
       }
     }
   }
@@ -405,7 +405,7 @@ EmbedLiteViewBaseParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
-    unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
+    Unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
                                   NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)));
   } else {
     NS_ERROR("Text event must not be sent while IME disabled");
@@ -430,7 +430,7 @@ NS_IMETHODIMP
 EmbedLiteViewBaseParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
+  Unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -439,7 +439,7 @@ NS_IMETHODIMP
 EmbedLiteViewBaseParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
+  Unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -455,7 +455,7 @@ EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int butto
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -472,7 +472,7 @@ EmbedLiteViewBaseParent::MouseRelease(int x, int y, int mstime, unsigned int but
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
 
@@ -490,7 +490,7 @@ EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int button
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
 

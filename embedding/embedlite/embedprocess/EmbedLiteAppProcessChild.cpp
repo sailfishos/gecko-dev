@@ -120,7 +120,7 @@ EmbedLiteAppProcessChild::InitXPCOM()
     observerService->NotifyObservers(nullptr, "embedliteInitialized", nullptr);
   }
 
-  unused << SendInitialized();
+  Unused << SendInitialized();
 
   InfallibleTArray<mozilla::dom::PrefSetting> prefs;
   Preferences::GetPreferences(&prefs);

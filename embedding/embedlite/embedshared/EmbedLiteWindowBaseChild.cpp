@@ -70,7 +70,7 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 {
   LOGT("destroy");
   mWidget = nullptr;
-  unused << SendDestroyed();
+  Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
   return true;
 }
@@ -166,7 +166,7 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   );
   static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();
 
-  unused << SendInitialized();
+  Unused << SendInitialized();
 }
 
 } // namespace embedlite

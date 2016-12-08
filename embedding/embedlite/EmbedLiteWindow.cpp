@@ -37,7 +37,7 @@ EmbedLiteWindow::~EmbedLiteWindow()
 
 void EmbedLiteWindow::Destroy()
 {
-  unused << mWindowParent->SendDestroy();
+  Unused << mWindowParent->SendDestroy();
 }
 
 void EmbedLiteWindow::Destroyed()
@@ -60,7 +60,7 @@ EmbedLiteWindowListener* const EmbedLiteWindow::GetListener() const
 
 void EmbedLiteWindow::SetSize(int width, int height)
 {
-  unused << mWindowParent->SendSetSize(gfxSize(width, height));
+  Unused << mWindowParent->SendSetSize(gfxSize(width, height));
 }
 
 uint32_t EmbedLiteWindow::GetUniqueID() const
@@ -70,7 +70,7 @@ uint32_t EmbedLiteWindow::GetUniqueID() const
 
 void EmbedLiteWindow::SetContentOrientation(mozilla::ScreenRotation rotation)
 {
-  unused << mWindowParent->SendSetContentOrientation(rotation);
+  Unused << mWindowParent->SendSetContentOrientation(rotation);
 }
 
 void EmbedLiteWindow::ScheduleUpdate()
