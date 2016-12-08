@@ -77,7 +77,7 @@ EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aT
 {
   LOGT();
   MOZ_ASSERT(NS_IsMainThread());
-  gfxPlatform::GetPlatform()->ComputeTileSize();
+  gfxPlatform::GetPlatform();
   mCompositorID = 0;
 }
 
