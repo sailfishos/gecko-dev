@@ -44,7 +44,7 @@ EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, cons
   , mWindow(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
-  , mRotation(ROTATION_0)
+  , mRotation(mozilla::ROTATION_0)
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   sWindowMap[id] = this;
