@@ -66,7 +66,7 @@ EmbedLiteAppBaseChild::Observe(nsISupports* aSubject,
                                  const char16_t* aData)
 {
   LOGF("topic:%s", aTopic);
-  unused << SendObserve(nsDependentCString(aTopic), aData ? nsDependentString(aData) : nsString());
+  Unused << SendObserve(nsDependentCString(aTopic), aData ? nsDependentString(aData) : nsString());
   return NS_OK;
 }
 

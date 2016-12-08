@@ -49,7 +49,7 @@ void
 EmbedLiteView::Destroy()
 {
   MOZ_ASSERT(mViewParent);
-  unused << mViewParent->SendDestroy();
+  Unused << mViewParent->SendDestroy();
 }
 
 void
@@ -83,7 +83,7 @@ void
 EmbedLiteView::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
-  unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
+  Unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
 }
 
 void
@@ -91,7 +91,7 @@ EmbedLiteView::SetIsActive(bool aIsActive)
 {
   LOGT("active: %d", aIsActive);
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendSetIsActive(aIsActive);
+  Unused << mViewParent->SendSetIsActive(aIsActive);
   // Make sure active view content controller is always registered with
   // APZCTreeManager for the window.
   if (aIsActive) {
@@ -104,7 +104,7 @@ EmbedLiteView::SetIsFocused(bool aIsFocused)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendSetIsFocused(aIsFocused);
+  Unused << mViewParent->SendSetIsFocused(aIsFocused);
 }
 
 void
@@ -112,7 +112,7 @@ EmbedLiteView::SetThrottlePainting(bool aThrottle)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendSetThrottlePainting(aThrottle);
+  Unused << mViewParent->SendSetThrottlePainting(aThrottle);
 }
 
 void
@@ -120,7 +120,7 @@ EmbedLiteView::SuspendTimeouts()
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendSuspendTimeouts();
+  Unused << mViewParent->SendSuspendTimeouts();
 }
 
 void
@@ -128,47 +128,47 @@ EmbedLiteView::ResumeTimeouts()
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendResumeTimeouts();
+  Unused << mViewParent->SendResumeTimeouts();
 }
 
 void EmbedLiteView::GoBack()
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendGoBack();
+  Unused << mViewParent->SendGoBack();
 
 }
 
 void EmbedLiteView::GoForward()
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendGoForward();
+  Unused << mViewParent->SendGoForward();
 }
 
 void EmbedLiteView::StopLoad()
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendStopLoad();
+  Unused << mViewParent->SendStopLoad();
 
 }
 
 void EmbedLiteView::Reload(bool hard)
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendReload(hard);
+  Unused << mViewParent->SendReload(hard);
 }
 
 void EmbedLiteView::ScrollTo(int x, int y)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendScrollTo(x, y);
+  Unused << mViewParent->SendScrollTo(x, y);
 }
 
 void EmbedLiteView::ScrollBy(int x, int y)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendScrollBy(x, y);
+  Unused << mViewParent->SendScrollBy(x, y);
 }
 
 void
@@ -176,7 +176,7 @@ EmbedLiteView::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s, mViewImpl:%p", aURI, mViewImpl);
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
+  Unused << mViewParent->SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
 }
 
 void
@@ -184,7 +184,7 @@ EmbedLiteView::AddMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendAddMessageListener(nsDependentCString(aName));
+  Unused << mViewParent->SendAddMessageListener(nsDependentCString(aName));
 }
 
 void
@@ -192,19 +192,19 @@ EmbedLiteView::RemoveMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendRemoveMessageListener(nsDependentCString(aName));
+  Unused << mViewParent->SendRemoveMessageListener(nsDependentCString(aName));
 }
 
 void EmbedLiteView::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendAddMessageListeners(aMessageNames);
+  Unused << mViewParent->SendAddMessageListeners(aMessageNames);
 }
 
 void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
   NS_ENSURE_TRUE(mViewParent, );
-  unused << mViewParent->SendRemoveMessageListeners(aMessageNames);
+  Unused << mViewParent->SendRemoveMessageListeners(aMessageNames);
 }
 
 void
@@ -214,7 +214,7 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 
   const nsDependentString msgname(aMessageName);
   const nsDependentString msg(aMessage);
-  unused << mViewParent->SendAsyncMessage(msgname, msg);
+  Unused << mViewParent->SendAsyncMessage(msgname, msg);
 }
 
 // Render interface
@@ -222,7 +222,7 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 void
 EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 {
-    unused << mViewParent->SendSetMargins(top, right, bottom, left);
+    Unused << mViewParent->SendSetMargins(top, right, bottom, left);
 }
 
 void

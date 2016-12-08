@@ -54,7 +54,7 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
 
@@ -71,7 +71,7 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
@@ -89,7 +89,7 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
+    Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
 }
 
@@ -124,7 +124,7 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
   gfxSize size(aScrollableSize.width, aScrollableSize.height);
 
   if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
-    unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
+    Unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
   }
 }
 
@@ -139,7 +139,7 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
     return;
   }
   if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
-    unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+    Unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   }
 }
 
@@ -186,7 +186,7 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
+    Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }
 

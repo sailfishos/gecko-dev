@@ -146,7 +146,7 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
   mChrome = nullptr;
   mDOMWindow = nullptr;
   mWebNavigation = nullptr;
-  unused << SendDestroyed();
+  Unused << SendDestroyed();
   PEmbedLiteViewChild::Send__delete__(this);
   return true;
 }
@@ -286,7 +286,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
 
   OnGeckoWindowInitialized();
 
-  unused << SendInitialized();
+  Unused << SendInitialized();
 }
 
 nsresult
@@ -1143,7 +1143,7 @@ EmbedLiteViewBaseChild::OnFirstPaint(int32_t aX, int32_t aY)
   nsIPresShell* presShell = doc->GetShell();
   if (presShell) {
     nscolor bgcolor = presShell->GetCanvasBackground();
-    unused << SendSetBackgroundColor(bgcolor);
+    Unused << SendSetBackgroundColor(bgcolor);
   }
 
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;

@@ -239,7 +239,7 @@ void
 EmbedLiteApp::AddManifestLocation(const char* manifest)
 {
   if (mState == INITIALIZED) {
-    unused << mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
+    Unused << mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
   } else {
     sComponentDirs.AppendElement(nsCString(manifest));
   }
@@ -306,7 +306,7 @@ EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
     LOGE("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!app->mAppParent is null, wrong logic?");
     return;
   }
-  unused << app->mAppParent->SendPreDestroy();
+  Unused << app->mAppParent->SendPreDestroy();
 }
 
 void
@@ -371,21 +371,21 @@ EmbedLiteApp::SetBoolPref(const char* aName, bool aValue)
 {
   NS_ENSURE_TRUE(mState == INITIALIZED, );
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
+  Unused << mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
 }
 
 void
 EmbedLiteApp::SetCharPref(const char* aName, const char* aValue)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
+  Unused << mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
 }
 
 void
 EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
+  Unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
 }
 
 void
@@ -393,7 +393,7 @@ EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
+  Unused << mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
 }
 
 void
@@ -401,7 +401,7 @@ EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
   NS_ENSURE_TRUE(mState == INITIALIZED, );
-  unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
+  Unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
 void
@@ -409,7 +409,7 @@ EmbedLiteApp::AddObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendAddObserver(nsDependentCString(aMessageName));
+  Unused << mAppParent->SendAddObserver(nsDependentCString(aMessageName));
 }
 
 void
@@ -417,19 +417,19 @@ EmbedLiteApp::RemoveObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
+  Unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
 }
 
 void EmbedLiteApp::AddObservers(nsTArray<nsCString>& observersList)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendAddObservers(observersList);
+  Unused << mAppParent->SendAddObservers(observersList);
 }
 
 void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  unused << mAppParent->SendRemoveObservers(observersList);
+  Unused << mAppParent->SendRemoveObservers(observersList);
 }
 
 EmbedLiteView*
