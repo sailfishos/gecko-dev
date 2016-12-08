@@ -7,6 +7,7 @@
 #define MOZ_VIEW_EMBED_BASE_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteViewChild.h"
+#include "mozilla/EventForwards.h"      // for Modifiers
 
 #include "nsIWebBrowser.h"
 #include "nsIWidget.h"
@@ -16,6 +17,7 @@
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
+
 
 namespace mozilla {
 namespace embedlite {
@@ -133,9 +135,9 @@ protected:
                                        const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
-  virtual bool RecvHandleDoubleTap(const CSSPoint&, const int32_t& aModifiers,
+  virtual bool RecvHandleDoubleTap(const CSSPoint&, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
-  virtual bool RecvHandleSingleTap(const CSSPoint&, const int32_t& aModifiers,
+  virtual bool RecvHandleSingleTap(const CSSPoint&, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
   virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,

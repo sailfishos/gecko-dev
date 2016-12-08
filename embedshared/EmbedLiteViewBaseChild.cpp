@@ -797,7 +797,7 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 
 bool
 EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
-                                            const int32_t& aModifiers,
+                                            const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
   CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
@@ -818,7 +818,7 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
 
 bool
 EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
-                                            const int32_t& aModifiers,
+                                            const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
   if (mIMEComposing) {

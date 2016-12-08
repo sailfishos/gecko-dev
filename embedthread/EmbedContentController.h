@@ -32,13 +32,15 @@ public:
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
-  virtual void HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
-  virtual void HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
-  virtual void HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
-  virtual void HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                                const mozilla::CSSPoint& aDestination) override;
+
+  virtual void HandleDoubleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleSingleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleLongTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
-                                       const CSSSize& aScrollableSize) override;
+                                       const CSSSize& aScrollableSize);
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
@@ -47,6 +49,7 @@ public:
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
                                   mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
                                   uint64_t* aInputBlockId);
+  virtual void NotifyFlushComplete() override;
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 
