@@ -223,7 +223,7 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
   }
 
   // XXX: Move to EmbedLiteWindow?
-  gfxPlatform::GetPlatform()->ComputeTileSize();
+  gfxPlatform::GetPlatform();
 
 #if DEBUG
   DumpWidgetTree();

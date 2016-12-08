@@ -153,7 +153,7 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, con
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;
   if (!sViewInitializeOnce) {
-    gfxPlatform::GetPlatform()->ComputeTileSize();
+    gfxPlatform::GetPlatform();
     sViewInitializeOnce = true;
   }
   EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId, isPrivateWindow);

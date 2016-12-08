@@ -141,7 +141,7 @@ CompositorChild::Create(Transport* aTransport, ProcessId aOtherPid)
   sCompositor = child.forget().take();
 
   if (XRE_GetProcessType() == GeckoProcessType_Default) {
-    gfxPlatform::GetPlatform()->ComputeTileSize();
+    gfxPlatform::GetPlatform();
     return sCompositor;
   }
 
