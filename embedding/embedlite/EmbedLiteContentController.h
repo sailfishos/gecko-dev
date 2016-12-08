@@ -42,7 +42,7 @@ public:
    * to.
    */
   virtual void HandleDoubleTap(const CSSPoint& aPoint,
-                               int32_t aModifiers,
+                               Modifiers aModifiers,
                                const mozilla::layers::ScrollableLayerGuid& aGuid) = 0;
 
   /**
@@ -51,7 +51,7 @@ public:
    * button down, then mouse button up at |aPoint|.
    */
   virtual void HandleSingleTap(const CSSPoint& aPoint,
-                               int32_t aModifiers,
+                               Modifiers aModifiers,
                                const mozilla::layers::ScrollableLayerGuid& aGuid) = 0;
 
   /**
@@ -59,21 +59,9 @@ public:
    * current scroll offset.
    */
   virtual void HandleLongTap(const CSSPoint& aPoint,
-                             int32_t aModifiers,
+                             Modifiers aModifiers,
                              const mozilla::layers::ScrollableLayerGuid& aGuid,
                              uint64_t aInputBlockId) = 0;
-
-  /**
-   * Requests handling of releasing a long tap. |aPoint| is in CSS pixels,
-   * relative to the current scroll offset. HandleLongTapUp will always be
-   * preceeded by HandleLongTap. However not all calls to HandleLongTap will
-   * be followed by a HandleLongTapUp (for example, if the user drags
-   * around between the long-tap and lifting their finger, or if content
-   * notifies the APZ that the long-tap event was prevent-defaulted).
-   */
-  virtual void HandleLongTapUp(const CSSPoint& aPoint,
-                               int32_t aModifiers,
-                               const mozilla::layers::ScrollableLayerGuid& aGuid) = 0;
 
   /**
    * Requests sending a mozbrowserasyncscroll domevent to embedder.

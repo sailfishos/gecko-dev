@@ -38,11 +38,16 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   LOGT();
   mUILoop->PostTask(
     FROM_HERE,
-    NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
+              NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
+}
+
+void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
+{
+  LOGT();
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
+                                             Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -59,7 +64,7 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
 }
 
 void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
+                                             Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -76,7 +81,7 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
 }
 
 void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
-                                           int32_t aModifiers,
+                                           Modifiers aModifiers,
                                            const ScrollableLayerGuid& aGuid,
                                            uint64_t aInputBlockId)
 {
@@ -91,12 +96,6 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
     Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
-}
-
-void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
-                                             const ScrollableLayerGuid& aGuid)
-{
 }
 
 /**
@@ -203,6 +202,11 @@ EmbedContentController::ReceiveInputEvent(InputData& aEvent,
   }
 
   return mAPZC->ReceiveInputEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
+}
+
+void EmbedContentController::NotifyFlushComplete()
+{
+  printf("==================== notify flush complete\n");
 }
 
 void

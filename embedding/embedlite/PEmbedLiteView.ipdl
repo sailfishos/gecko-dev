@@ -44,8 +44,8 @@ child:
     AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
-    HandleDoubleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
-    HandleSingleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleDoubleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
+    HandleSingleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
