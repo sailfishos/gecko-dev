@@ -257,7 +257,7 @@ EmbedLiteApp::StartChildThread()
     nsCOMPtr<nsIFile> f;
     NS_NewNativeLocalFile(sComponentDirs[i], true,
                           getter_AddRefs(f));
-    XRE_AddManifestLocation(NS_COMPONENT_LOCATION, f);
+    XRE_AddManifestLocation(NS_APP_LOCATION, f);
   }
 
   GeckoLoader::InitEmbedding(mProfilePath);

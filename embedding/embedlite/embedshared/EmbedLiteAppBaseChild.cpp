@@ -300,7 +300,7 @@ bool EmbedLiteAppBaseChild::RecvLoadComponentManifest(const nsCString& manifest)
                         getter_AddRefs(f));
   if (f) {
     LOGT("Loading manifest: %s", manifest.get());
-    XRE_AddManifestLocation(NS_COMPONENT_LOCATION, f);
+    XRE_AddManifestLocation(NS_APP_LOCATION, f);
   } else {
     NS_ERROR("Failed to create nsIFile for manifest location");
   }

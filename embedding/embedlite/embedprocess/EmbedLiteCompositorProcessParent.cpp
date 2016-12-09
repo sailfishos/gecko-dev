@@ -15,6 +15,7 @@
 #include <map>                          // for _Rb_tree_iterator, etc
 #include <utility>                      // for pair
 
+#include "gfxPrefs.h"
 
 #include "mozilla/layers/APZCTreeManager.h"  // for APZCTreeManager
 #include "mozilla/layers/AsyncCompositionManager.h"
@@ -192,8 +193,7 @@ EmbedLiteCompositorProcessParent::RecvNotifyChildCreated(const uint64_t& child)
 }
 
 void
-EmbedLiteCompositorProcessParent::ShadowLayersUpdated(
-  LayerTransactionParent* aLayerTree,
+EmbedLiteCompositorProcessParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   const uint64_t& aTransactionId,
   const TargetConfig& aTargetConfig,
   const InfallibleTArray<PluginWindowData>& aPlugins,
@@ -212,7 +212,6 @@ EmbedLiteCompositorProcessParent::ShadowLayersUpdated(
   Unused << aPaintSequenceNumber;
   Unused << aIsRepeatTransaction;
   Unused << aPaintSyncId;
-
   uint64_t id = aLayerTree->GetId();
   MOZ_ASSERT(id != 0);
   Unused << id;
