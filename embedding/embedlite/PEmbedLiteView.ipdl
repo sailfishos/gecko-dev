@@ -92,8 +92,7 @@ parent:
      * The zoom controller code lives on the parent side and so this allows it to
      * have up-to-date zoom constraints.
      */
-    UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, bool aIsRoot,
-                          MaybeZoomConstraints aConstraints);
+    UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, MaybeZoomConstraints aConstraints);
 
     /**
      * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in

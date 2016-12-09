@@ -180,7 +180,7 @@ public:
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TabChildBase)
 
     virtual nsIWebNavigation* WebNavigation() const = 0;
-    virtual PuppetWidget* WebWidget() = 0;
+    virtual nsIWidget* WebWidget() = 0;
     nsIPrincipal* GetPrincipal() { return mPrincipal; }
     virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                          const mozilla::layers::FrameMetrics::ViewID& aViewId,
@@ -430,7 +430,7 @@ public:
                                        override;
 
     virtual nsIWebNavigation* WebNavigation() const override { return mWebNav; }
-    virtual PuppetWidget* WebWidget() override { return mPuppetWidget; }
+    virtual nsIWidget* WebWidget() override { return mPuppetWidget; }
 
     /** Return the DPI of the widget this TabChild draws to. */
     void GetDPI(float* aDPI);

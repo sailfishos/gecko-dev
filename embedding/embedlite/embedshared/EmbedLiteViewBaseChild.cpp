@@ -366,12 +366,10 @@ EmbedLiteViewBaseChild::GetDPI(float* aDPI)
 bool
 EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
                                               const ViewID& aViewId,
-                                              const bool& aIsRoot,
                                               const Maybe<ZoomConstraints> &aConstraints)
 {
   return SendUpdateZoomConstraints(aPresShellId,
                                    aViewId,
-                                   aIsRoot,
                                    aConstraints);
 }
 
@@ -757,12 +755,12 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     return true;
   }
 
-  if (mViewResized &&
-      aFrameMetrics.GetIsRoot() &&
-      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
-      mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
-    mViewResized = false;
-  }
+//  if (mViewResized &&
+//      aFrameMetrics.GetIsRoot() &&
+//      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
+//      mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
+//    mViewResized = false;
+//  }
 
   RelayFrameMetrics(aFrameMetrics);
 
@@ -1069,9 +1067,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& a
 NS_IMETHODIMP
 EmbedLiteViewBaseChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
-  if (!aIsSameDocument) {
-    mHelper->mContentDocumentIsDisplayed = false;
-  }
+  Unused << aIsSameDocument;
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
