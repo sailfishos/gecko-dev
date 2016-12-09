@@ -40,7 +40,6 @@ public:
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
                         const mozilla::layers::FrameMetrics::ViewID& aViewId,
-                        const bool& aIsRoot,
                         const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) = 0;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) = 0;

@@ -24,7 +24,6 @@
 #include "nsIDocShell.h"
 #include "nsViewportInfo.h"
 #include "nsPIWindowRoot.h"
-#include "StructuredCloneUtils.h"
 #include "mozilla/Preferences.h"
 #include "nsIFrame.h"
 #include "nsView.h"
@@ -56,7 +55,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
 {
   LOGT();
 
-  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
+//  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
 
   // Init default prefs
   static bool sPrefInitialized = false;
@@ -123,8 +122,7 @@ public:
 
   NS_IMETHOD Run() {
     LOGT();
-    nsCOMPtr<nsIDOMEvent> event;
-    NS_NewDOMEvent(getter_AddRefs(event), mTabChildGlobal, nullptr, nullptr);
+    RefPtr<Event> event = NS_NewDOMEvent(mTabChildGlobal, nullptr, nullptr);
     if (event) {
       event->InitEvent(NS_LITERAL_STRING("unload"), false, false);
       event->SetTrusted(true);
@@ -233,34 +231,38 @@ TabChildHelper::Observe(nsISupports* aSubject,
     if (SameCOMIdentity(subject, doc)) {
       mozilla::dom::AutoNoJSAPI nojsapi;
 
-      nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-
-      mContentDocumentIsDisplayed = true;
-
-      if (!sDisableViewportHandler) {
-        // Reset CSS viewport and zoom to default on new page, then
-        // calculate them properly using the actual metadata from the
-        // page.
-        SetCSSViewport(kDefaultViewportSize);
-
-        // In some cases before-first-paint gets called before
-        // RecvUpdateDimensions is called and therefore before we have an
-        // mInnerSize value set. In such cases defer initializing the viewport
-        // until we we get an inner size.
-        if (HasValidInnerSize()) {
-          InitializeRootMetrics();
-
-          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
-                               mLastRootMetrics.GetPresShellResolution());
-          HandlePossibleViewportChange(mInnerSize);
-          // Relay frame metrics to subscribed listeners
-          mView->RelayFrameMetrics(mLastRootMetrics);
-        }
+      nsCOMPtr<nsIPresShell> shell(doc->GetShell());
+      if (shell) {
+        shell->SetIsFirstPaint(true);
       }
+
+      APZCCallbackHelper::InitializeRootDisplayport(shell);
+
+//      if (!sDisableViewportHandler) {
+//        // Reset CSS viewport and zoom to default on new page, then
+//        // calculate them properly using the actual metadata from the
+//        // page.
+//        SetCSSViewport(kDefaultViewportSize);
+
+//        // In some cases before-first-paint gets called before
+//        // RecvUpdateDimensions is called and therefore before we have an
+//        // mInnerSize value set. In such cases defer initializing the viewport
+//        // until we we get an inner size.
+//        if (HasValidInnerSize()) {
+//          InitializeRootMetrics();
+
+//          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
+//                               mLastRootMetrics.GetPresShellResolution());
+////          HandlePossibleViewportChange(mInnerSize);
+//          // Relay frame metrics to subscribed listeners
+//          mView->RelayFrameMetrics(mLastRootMetrics);
+//        }
+//      }
+
+
 
       nsCOMPtr<nsIObserverService> observerService =
         do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-      utils->SetIsFirstPaint(true);
       if (observerService) {
         observerService->NotifyObservers(aSubject, "embedlite-before-first-paint", nullptr);
       }
@@ -279,9 +281,9 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
   if (eventType.EqualsLiteral("DOMMetaAdded")) {
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
-    HandlePossibleViewportChange(mInnerSize);
+//    HandlePossibleViewportChange(mInnerSize);
     // Relay frame metrics to subscribed listeners
-    mView->RelayFrameMetrics(mLastRootMetrics);
+//    mView->RelayFrameMetrics(mLastRootMetrics);
   }
 
   return NS_OK;
@@ -323,10 +325,10 @@ TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlo
 bool
 TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                       const nsAString& aMessage,
-                                      const StructuredCloneData& aData,
+                                      mozilla::dom::ipc::StructuredCloneData& aData,
                                       JS::Handle<JSObject *> aCpows,
                                       nsIPrincipal* aPrincipal,
-                                      InfallibleTArray<nsString>* aJSONRetVal,
+                                      nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
                                       bool aIsSync)
 {
   if (!mView->HasMessageListener(aMessage)) {
@@ -347,22 +349,24 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
+  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
+  // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
+  InfallibleTArray<nsString> jsonRetVal;
+
   if (aIsSync) {
-    return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+    return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
   }
 
-  return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+  return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
 }
 
-bool
-TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
-                                   const nsAString& aMessage,
-                                   const mozilla::dom::StructuredCloneData& aData,
-                                   JS::Handle<JSObject *> aCpows,
-                                   nsIPrincipal* aPrincipal)
+nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
+                                            const nsAString& aMessage,
+                                            mozilla::dom::ipc::StructuredCloneData& aData,
+                                            JS::Handle<JSObject *> aCpows,
+                                            nsIPrincipal* aPrincipal)
 {
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
@@ -382,7 +386,7 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return true;
+    return NS_OK;
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
@@ -391,17 +395,26 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.mDataLength &&
+  if (aData.DataLength() &&
       !ReadStructuredClone(cx, aData, &rval)) {
     JS_ClearPendingException(cx);
-    return false;
+    return NS_ERROR_UNEXPECTED;
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
-  NS_ENSURE_TRUE(!json.IsEmpty(), false);
+  // Check EmbedLiteJSON::JSONCreator and/or JS_Stringify from Android side
+  if (!JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json))  {
+    return NS_ERROR_UNEXPECTED;
+  }
 
-  return mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get());
+  if (json.IsEmpty()) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  return NS_OK;
 }
 
 bool
@@ -409,6 +422,12 @@ TabChildHelper::CheckPermission(const nsAString& aPermission)
 {
   LOGNI("perm: %s", NS_ConvertUTF16toUTF8(aPermission).get());
   return false;
+}
+
+ScreenIntSize
+TabChildHelper::GetInnerSize()
+{
+  return mInnerSize;
 }
 
 bool
@@ -456,12 +475,10 @@ TabChildHelper::GetPresContext()
 bool
 TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                         const ViewID& aViewId,
-                                        const bool& aIsRoot,
                                         const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
   return mView->UpdateZoomConstraints(aPresShellId,
                                       aViewId,
-                                      aIsRoot,
                                       aConstraints);
 }
 
@@ -474,11 +491,12 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  ScreenIntSize oldScreenSize(mInnerSize);
+//  ScreenIntSize oldScreenSize(mInnerSize);
   mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
 
-  HandlePossibleViewportChange(oldScreenSize);
+  //  HandlePossibleViewportChange(oldScreenSize);
 }
+
 // -- nsITabChild --------------
 
 NS_IMETHODIMP

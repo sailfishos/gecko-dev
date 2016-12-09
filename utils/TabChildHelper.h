@@ -48,21 +48,23 @@ public:
   virtual bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
                                      const nsAString& aMessage,
-                                     const mozilla::dom::StructuredCloneData& aData,
+                                     mozilla::dom::ipc::StructuredCloneData& aData,
                                      JS::Handle<JSObject *> aCpows,
                                      nsIPrincipal* aPrincipal,
-                                     InfallibleTArray<nsString>* aJSONRetVal,
+                                     nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal,
                                      bool aIsSync) override;
-  virtual bool DoSendAsyncMessage(JSContext* aCx,
-                                  const nsAString& aMessage,
-                                  const mozilla::dom::StructuredCloneData& aData,
-                                  JS::Handle<JSObject *> aCpows,
-                                  nsIPrincipal* aPrincipal) override;
+  virtual nsresult DoSendAsyncMessage(JSContext* aCx,
+                                      const nsAString& aMessage,
+                                      mozilla::dom::ipc::StructuredCloneData& aData,
+                                      JS::Handle<JSObject *> aCpows,
+                                      nsIPrincipal* aPrincipal) override;
   virtual bool CheckPermission(const nsAString& aPermission) override;
   virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
-                                       const bool& aIsRoot,
                                        const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) override;
+
+  virtual ScreenIntSize GetInnerSize() override;
+
   void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:
@@ -86,6 +88,7 @@ private:
   friend class EmbedLiteViewBaseChild;
   EmbedLiteViewChildIface* mView;
   bool mHasValidInnerSize;
+  ScreenIntSize mInnerSize;
 };
 
 }

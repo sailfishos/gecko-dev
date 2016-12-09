@@ -258,7 +258,6 @@ EmbedLiteViewBaseParent::RecvOnTitleChanged(const nsString& aTitle)
 bool
 EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                                                      const ViewID& aViewId,
-                                                     const bool& aIsRoot,
                                                      const Maybe<ZoomConstraints>& aConstraints)
 {
   if (mController->GetManager()) {
