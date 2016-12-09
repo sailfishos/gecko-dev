@@ -14,6 +14,7 @@
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
+#include "mozilla/layers/TextureClientSharedSurface.h" // for SharedSurfaceTextureClient
 #include "mozilla/Preferences.h"
 #include "gfxUtils.h"
 #include "nsRefreshDriver.h"
@@ -25,7 +26,6 @@
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
-#include "TextureClientSharedSurface.h" // for SharedSurfaceTextureClient
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 
 using namespace mozilla::layers;
@@ -98,23 +98,22 @@ EmbedLiteCompositorParent::PrepareOffscreen()
     GLScreenBuffer* screen = context->Screen();
     if (screen) {
       UniquePtr<SurfaceFactory> factory;
+
+      layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
+      if (!screen->mCaps.premultAlpha) {
+          flags |= layers::TextureFlags::NON_PREMULTIPLIED;
+      }
+
+      auto forwarder = state->mLayerManager->AsShadowForwarder();
+      printf("=============== caps.premultAlpha: %d ptr: %p\n", screen->mCaps.premultAlpha, forwarder);
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
-        auto forwarder = state->mLayerManager->AsShadowForwarder();
-
-        layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
-
-        printf("=============== caps.premultAlpha: %d ptr: %p\n", screen->mCaps.premultAlpha, forwarder);
-
-        if (!caps.premultAlpha) {
-            flags |= layers::TextureFlags::NON_PREMULTIPLIED;
-        }
         factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps, forwarder, flags);
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
         GLContext* nullConsGL = nullptr; // Bug 1050044.
-        factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullConsGL, screen->mCaps);
+        factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, forwarder, flags);
       }
       if (factory) {
         screen->Morph(Move(factory));
