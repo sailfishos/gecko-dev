@@ -142,7 +142,7 @@ private:
 
   uint64_t mRootLayerTreeId;
   GLuint mUploadTexture;
-  nsRefPtr<EmbedContentController> mController;
+  RefPtr<EmbedContentController> mController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseParent);
 };

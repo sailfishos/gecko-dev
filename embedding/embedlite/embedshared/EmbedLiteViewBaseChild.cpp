@@ -1191,7 +1191,7 @@ EmbedLiteViewBaseChild::GetPresShellResolution() const
   if (!shell) {
     return 1.0f;
   }
-  return shell->GetXResolution();
+  return shell->GetResolution();
 }
 
 already_AddRefed<nsIDocument>

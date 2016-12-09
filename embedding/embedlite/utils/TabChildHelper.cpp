@@ -136,7 +136,7 @@ public:
     return NS_OK;
   }
 
-  nsRefPtr<TabChildHelper> mTabChild;
+  RefPtr<TabChildHelper> mTabChild;
   TabChildGlobal* mTabChildGlobal;
 };
 
@@ -181,7 +181,7 @@ TabChildHelper::InitTabChildGlobal()
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  nsRefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
+  RefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
   NS_ENSURE_TRUE(scope, false);
 
   mTabChildGlobal = scope;
@@ -366,14 +366,14 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
 {
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
-  nsRefPtr<nsFrameMessageManager> globalMessageManager =
+  RefPtr<nsFrameMessageManager> globalMessageManager =
       static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
-  nsRefPtr<nsFrameMessageManager> contentFrameMessageManager =
+  RefPtr<nsFrameMessageManager> contentFrameMessageManager =
       static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
 
   nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  nsRefPtr<EmbedFrame> embedFrame = new EmbedFrame();
+  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mTabChildGlobal;
   SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
@@ -448,7 +448,7 @@ TabChildHelper::GetPresContext()
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
-  nsRefPtr<nsPresContext> presContext;
+  RefPtr<nsPresContext> presContext;
   docShell->GetPresContext(getter_AddRefs(presContext));
   return presContext;
 }

@@ -524,7 +524,7 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
     view->ResetInputState();
   }
 
-  nsRefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
+  RefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
 
   WidgetCompositionEvent textEvent(true, NS_COMPOSITION_CHANGE, this);
   textEvent.time = PR_Now() / 1000;
@@ -547,7 +547,7 @@ EmbedLitePuppetWidget::GetGLContext() const
     void* surface = nullptr;
     if (window && window->GetListener()->RequestGLContext(context, surface)) {
       MOZ_ASSERT(context && surface);
-      nsRefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface);
+      RefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface);
       if (!mozContext || !mozContext->Init()) {
         NS_ERROR("Failed to initialize external GL context!");
         return nullptr;
@@ -714,7 +714,7 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
-  nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
+  RefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
   MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
   mCompositorChild = new CompositorChild(lm);
   mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);

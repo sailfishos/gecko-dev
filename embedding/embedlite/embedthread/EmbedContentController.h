@@ -73,7 +73,7 @@ private:
 
 public:
   // todo: make this a member variable as prep for multiple views
-  nsRefPtr<mozilla::layers::APZCTreeManager> mAPZC;
+  RefPtr<mozilla::layers::APZCTreeManager> mAPZC;
 };
 
 }}

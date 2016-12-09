@@ -97,7 +97,7 @@ WebBrowserPersistDocumentParent::AllocPWebBrowserPersistResourcesParent()
 bool
 WebBrowserPersistDocumentParent::DeallocPWebBrowserPersistResourcesParent(PWebBrowserPersistResourcesParent* aActor)
 {
-    // Turn the ref held by IPC back into an nsRefPtr.
+    // Turn the ref held by IPC back into an RefPtr.
     RefPtr<WebBrowserPersistResourcesParent> actor =
         already_AddRefed<WebBrowserPersistResourcesParent>(
             static_cast<WebBrowserPersistResourcesParent*>(aActor));
