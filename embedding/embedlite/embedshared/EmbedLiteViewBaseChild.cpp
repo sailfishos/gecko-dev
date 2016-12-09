@@ -177,7 +177,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
   widgetInit.mWindowType = eWindowType_child;
-  nsIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
+  LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
   rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
@@ -185,7 +185,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     return;
   }
 
-  nsIntRect bounds;
+  LayoutDeviceIntRect bounds;
   mWindow->GetWidget()->GetBounds(bounds);
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
@@ -598,10 +598,11 @@ EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
     widget->UpdateSize();
 
     // Report update for the tab child helper. This triggers update for the viewport.
-    nsIntRect bounds;
+    LayoutDeviceIntRect bounds;
     mWindow->GetWidget()->GetBounds(bounds);
-    bounds.Deflate(mMargins);
-    gfxSize size(bounds.width, bounds.height);
+    nsIntRect b = bounds.ToUnknownRect();
+    b.Deflate(mMargins);
+    gfxSize size(b.width, b.height);
     mHelper->ReportSizeUpdate(size);
   }
 
