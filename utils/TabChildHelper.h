@@ -62,7 +62,7 @@ public:
   virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const bool& aIsRoot,
-                                       const mozilla::layers::ZoomConstraints& aConstraints) override;
+                                       const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) override;
   void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:

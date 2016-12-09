@@ -94,7 +94,7 @@ protected:
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,
                             const bool& aIsRoot,
-                            const ZoomConstraints& aConstraints) override;
+                            const Maybe<ZoomConstraints> &aConstraints) override;
   virtual bool RecvZoomToRect(const uint32_t& aPresShellId,
                               const ViewID& aViewId,
                               const CSSRect& aRect) override;

@@ -20,6 +20,7 @@ using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
 using mozilla::CSSPoint from "Units.h";
 using mozilla::Modifiers from "mozilla/EventForwards.h";
 
@@ -92,7 +93,7 @@ parent:
      * have up-to-date zoom constraints.
      */
     UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, bool aIsRoot,
-                          ZoomConstraints aConstraints);
+                          MaybeZoomConstraints aConstraints);
 
     /**
      * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in

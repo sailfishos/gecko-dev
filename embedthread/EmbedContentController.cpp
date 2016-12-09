@@ -21,7 +21,6 @@ class FakeListener : public EmbedLiteViewListener {};
 EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
-  , mHaveZoomConstraints(false)
 {
 }
 
@@ -147,25 +146,6 @@ void EmbedContentController::ClearRenderFrame()
   mRenderFrame = nullptr;
 }
 
-bool EmbedContentController::GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
-{
-  if (aOutConstraints) {
-    if (mHaveZoomConstraints) {
-      *aOutConstraints = mZoomConstraints;
-    } else {
-      NS_WARNING("Apply default zoom constraints");
-      // Until we support the meta-viewport tag properly allow zooming
-      // from 1/4 to 4x by default.
-      aOutConstraints->mAllowZoom = true;
-      aOutConstraints->mAllowDoubleTapZoom = false;
-      aOutConstraints->mMinZoom = CSSToParentLayerScale(0.25f);
-      aOutConstraints->mMaxZoom = CSSToParentLayerScale(4.0f);
-    }
-    return true;
-  }
-  return false;
-}
-
 /**
  * Schedules a runnable to run on the controller/UI thread at some time
  * in the future.
@@ -207,11 +187,4 @@ EmbedContentController::ReceiveInputEvent(InputData& aEvent,
 void EmbedContentController::NotifyFlushComplete()
 {
   printf("==================== notify flush complete\n");
-}
-
-void
-EmbedContentController::SaveZoomConstraints(const ZoomConstraints& aConstraints)
-{
-  mHaveZoomConstraints = true;
-  mZoomConstraints = aConstraints;
 }

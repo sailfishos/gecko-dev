@@ -49,7 +49,7 @@ public:
   UpdateZoomConstraints(const uint32_t& aPresShellId,
                         const ViewID& aViewId,
                         const bool& aIsRoot,
-                        const ZoomConstraints& aConstraints) override;
+                        const Maybe<ZoomConstraints>& aConstraints) override;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) override;
 
