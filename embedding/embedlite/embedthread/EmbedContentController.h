@@ -44,7 +44,6 @@ public:
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
-  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
                                   mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
@@ -53,10 +52,6 @@ public:
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
 
-  // Methods used by EmbedLiteViewBaseParent to set fields stored here.
-
-  void SaveZoomConstraints(const ZoomConstraints& aConstraints);
-
 private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
@@ -64,7 +59,6 @@ private:
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;
 
-  bool mHaveZoomConstraints;
   ZoomConstraints mZoomConstraints;
 
   // Extra

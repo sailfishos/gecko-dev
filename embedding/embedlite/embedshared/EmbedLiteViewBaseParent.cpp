@@ -259,14 +259,11 @@ bool
 EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                                                      const ViewID& aViewId,
                                                      const bool& aIsRoot,
-                                                     const ZoomConstraints& aConstraints)
+                                                     const Maybe<ZoomConstraints>& aConstraints)
 {
-  if (aIsRoot) {
-    mController->SaveZoomConstraints(aConstraints);
-  }
-
   if (mController->GetManager()) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aConstraints);
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId),
+                                                    aConstraints);
   }
   return true;
 }

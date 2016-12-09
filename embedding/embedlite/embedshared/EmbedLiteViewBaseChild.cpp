@@ -367,7 +367,7 @@ bool
 EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
                                               const ViewID& aViewId,
                                               const bool& aIsRoot,
-                                              const ZoomConstraints& aConstraints)
+                                              const Maybe<ZoomConstraints> &aConstraints)
 {
   return SendUpdateZoomConstraints(aPresShellId,
                                    aViewId,
