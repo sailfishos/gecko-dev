@@ -28,7 +28,7 @@ static int sWindowCount = 0;
 EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
   : mId(aId)
   , mWidget(nullptr)
-  , mSize(width, height)
+  , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
@@ -77,7 +77,7 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 
 bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
 {
-  mSize = aSize;
+  mBounds = LayoutDeviceIntRect(0, 0, aSize.width, aSize.height);
   LOGT("this:%p width: %f, height: %f", this, aSize.width, aSize.height);
   if (mWidget) {
     mWidget->Resize(aSize.width, aSize.height, true);
@@ -161,7 +161,7 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   // when it creates the compositor.
   mWidget->Create(
     nullptr, 0,              // no parents
-    nsIntRect(nsIntPoint(0, 0), nsIntSize(mSize.width, mSize.height)),
+    mBounds,
     &widgetInit              // HandleWidgetEvent
   );
   static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();

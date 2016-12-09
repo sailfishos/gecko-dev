@@ -55,11 +55,11 @@ public:
 
   NS_IMETHOD Create(nsIWidget*        aParent,
                     nsNativeWidget    aNativeParent,
-                    const nsIntRect&  aRect,
+                    const LayoutDeviceIntRect& aRect,
                     nsWidgetInitData* aInitData = nullptr) override;
 
   virtual already_AddRefed<nsIWidget>
-  CreateChild(const nsIntRect&  aRect,
+  CreateChild(const LayoutDeviceIntRect&  aRect,
               nsWidgetInitData* aInitData = nullptr,
               bool              aForceUseIWidgetParent = false) override;
 
@@ -111,7 +111,7 @@ public:
     LOGNI();
     return NS_OK;
   }
-  NS_IMETHOD Invalidate(const nsIntRect& aRect) override;
+  NS_IMETHOD Invalidate(const LayoutDeviceIntRect& aRect) override;
   virtual void* GetNativeData(uint32_t aDataType) override;
   // PuppetWidgets don't have any concept of titles..
   NS_IMETHOD SetTitle(const nsAString& aTitle) override {
@@ -138,7 +138,7 @@ public:
     return NS_ERROR_UNEXPECTED;
   }
 
-  virtual nsIntRect GetNaturalBounds() override;
+  virtual LayoutDeviceIntRect GetNaturalBounds() override;
   virtual bool NeedsPaint() override;
 
   virtual LayerManager*
@@ -154,13 +154,15 @@ public:
 
   virtual float GetDPI() override;
 
+  virtual bool AsyncPanZoomEnabled() const override;
+
   /**
    * Called before the LayerManager draws the layer tree.
    *
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorParent.
    */
-  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
+  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
 
   /**
    * Called after the LayerManager draws the layer tree
@@ -168,7 +170,7 @@ public:
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorParent.
    */
-  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect) override;
+  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
 
   virtual bool PreRender(LayerManagerComposite* aManager) override;
   virtual void PostRender(LayerManagerComposite* aManager) override;

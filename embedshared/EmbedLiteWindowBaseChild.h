@@ -22,7 +22,7 @@ public:
 
   uint32_t GetUniqueID() const { return mId; }
   EmbedLitePuppetWidget* GetWidget() const;
-  gfxSize GetSize() const { return mSize; }
+  LayoutDeviceIntRect GetSize() const { return mBounds; }
 
 protected:
   virtual ~EmbedLiteWindowBaseChild() override;
@@ -36,7 +36,7 @@ private:
 
   uint32_t mId;
   nsCOMPtr<nsIWidget> mWidget;
-  gfxSize mSize;
+  LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
   CancelableTask* mCreateWidgetTask;
 
