@@ -51,7 +51,7 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
   gfxPlatform::InitLayersIPC();
   gfxPrefs::GetSingleton();
 
-  nsRefPtr<EmbedLiteCompositorProcessParent> cpcp =
+  RefPtr<EmbedLiteCompositorProcessParent> cpcp =
     new EmbedLiteCompositorProcessParent(aTransport, aOtherProcess, aSurfaceWidth, aSurfaceHeight, id);
   ProcessHandle handle;
   if (!base::OpenProcessHandle(aOtherProcess, &handle)) {

@@ -290,7 +290,7 @@ struct DelayedDeleteContentParentTask : public nsRunnable
   // No-op
   NS_IMETHODIMP Run() { return NS_OK; }
 
-  nsRefPtr<EmbedLiteAppProcessParent> mObj;
+  RefPtr<EmbedLiteAppProcessParent> mObj;
 };
 
 }

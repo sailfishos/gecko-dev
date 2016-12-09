@@ -111,18 +111,18 @@ private:
   // There can be many CPCPs, and IPDL-generated code doesn't hold a
   // reference to top-level actors.  So we hold a reference to
   // ourself.  This is released (deferred) in ActorDestroy().
-  nsRefPtr<EmbedLiteCompositorProcessParent> mSelfRef;
+  RefPtr<EmbedLiteCompositorProcessParent> mSelfRef;
   Transport* mTransport;
   // Child side's process Id.
   base::ProcessId mChildProcessId;
 
-  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
+  RefPtr<CompositorThreadHolder> mCompositorThreadHolder;
   // If true, we should send a RemotePaintIsReady message when the layer transaction
   // is received
   bool mNotifyAfterRemotePaint;
 
-  nsRefPtr<LayerManagerComposite> mLayerManager;
-  nsRefPtr<Compositor> mCompositor;
+  RefPtr<LayerManagerComposite> mLayerManager;
+  RefPtr<Compositor> mCompositor;
   RefPtr<AsyncCompositionManager> mCompositionManager;
   uint64_t mCompositorID;
   nsIntSize mEGLSurfaceSize;

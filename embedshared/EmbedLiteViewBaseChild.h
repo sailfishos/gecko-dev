@@ -187,7 +187,7 @@ private:
   EmbedLiteWindowBaseChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
-  nsRefPtr<WebBrowserChrome> mChrome;
+  RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mViewResized;
@@ -195,7 +195,7 @@ private:
   bool mIsFocused;
   nsIntMargin mMargins;
 
-  nsRefPtr<TabChildHelper> mHelper;
+  RefPtr<TabChildHelper> mHelper;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
   CancelableTask* mInitWindowTask;

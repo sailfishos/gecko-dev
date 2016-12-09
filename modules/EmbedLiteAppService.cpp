@@ -47,7 +47,7 @@ namespace
   {
   protected:
     nsCString mName;
-    nsRefPtr<EmbedLiteAppService> mService;
+    RefPtr<EmbedLiteAppService> mService;
     nsCOMPtr<nsIEmbedMessageListener> mListener;
   public:
     AsyncArrayRemove(EmbedLiteAppService* service, const char* name, nsIEmbedMessageListener* aListener)

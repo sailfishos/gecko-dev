@@ -31,7 +31,7 @@ NS_IMPL_ISUPPORTS(EmbedLiteJSON, nsIEmbedLiteJSON)
 nsresult
 CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)
 {
-  nsRefPtr<nsHashPropertyBag> hpb = new nsHashPropertyBag();
+  RefPtr<nsHashPropertyBag> hpb = new nsHashPropertyBag();
   if (!hpb) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
