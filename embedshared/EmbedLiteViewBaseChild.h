@@ -164,8 +164,6 @@ protected:
 
   // Get the pres shell resolution of the document in this tab.
   float GetPresShellResolution() const;
-  // Get the Document for the top-level window in this tab.
-  already_AddRefed<nsIDocument> GetDocument() const;
 
   void DispatchSynthesizedMouseEvent(const WidgetTouchEvent&);
 
@@ -187,7 +185,7 @@ private:
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   RefPtr<WebBrowserChrome> mChrome;
-  nsCOMPtr<nsIDOMWindow> mDOMWindow;
+  nsCOMPtr<nsPIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mViewResized;
   bool mWindowObserverRegistered;
