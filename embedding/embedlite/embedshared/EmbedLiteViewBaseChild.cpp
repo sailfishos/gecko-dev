@@ -13,6 +13,7 @@
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
 #include "EmbedLitePuppetWidget.h"
+#include "nsGlobalWindow.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -83,6 +84,10 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
+  , mWebBrowser(nullptr)
+  , mChrome(nullptr)
+  , mDOMWindow(nullptr)
+  , mWebNavigation(nullptr)
   , mViewResized(false)
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
@@ -219,9 +224,14 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     NS_ERROR("Failed to get the content DOM window!");
   }
 
-  mDOMWindow = do_QueryInterface(domWindow);
-  if (!mDOMWindow) {
+  nsCOMPtr<nsPIDOMWindow> pWindow = do_QueryInterface(domWindow);
+  if(!pWindow) {
     NS_ERROR("Got stuck with DOMWindow!");
+  }
+
+  mDOMWindow = do_QueryInterface(pWindow->GetPrivateRoot());
+  if (!mDOMWindow) {
+    NS_ERROR("Got stuck with root DOMWindow!");
   }
 
   mozilla::dom::AutoNoJSAPI nojsapi;
@@ -501,7 +511,9 @@ bool EmbedLiteViewBaseChild::RecvScrollTo(const int &x, const int &y)
   if (!mDOMWindow) {
     return false;
   }
-  mDOMWindow->ScrollTo(x, y);
+
+  nsGlobalWindow* window = nsGlobalWindow::Cast(mDOMWindow);
+  window->ScrollTo(x, y);
   return true;
 }
 
@@ -511,7 +523,8 @@ bool EmbedLiteViewBaseChild::RecvScrollBy(const int &x, const int &y)
     return false;
   }
 
-  mDOMWindow->ScrollBy(x, y);
+  nsGlobalWindow* window = nsGlobalWindow::Cast(mDOMWindow);
+  window->ScrollBy(x, y);
   return true;
 }
 
@@ -537,7 +550,10 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
     widget->SetActive(aIsActive);
   }
 
+
   mWebBrowser->SetIsActive(aIsActive);
+  // Do same stuff that there is in nsPresShell.cpp:10670
+
   mWidget->Show(aIsActive);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
@@ -799,8 +815,7 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
                                             const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers, aGuid);
@@ -825,14 +840,13 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
     // this way we can get focus and actual compositing node working properly in future composition
     nsPoint offset;
     nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
-    WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
+    WidgetCompositionEvent event(true, eCompositionEnd, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
     mIMEComposing = false;
   }
 
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers, aGuid);
@@ -847,7 +861,8 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
 
   if (sHandleDefaultAZPC.singleTap) {
     LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
-    APZCCallbackHelper::FireSingleTapEvent(pt, mHelper->WebWidget());
+    Modifiers m;
+    APZCCallbackHelper::FireSingleTapEvent(pt, m, mHelper->WebWidget());
   }
 
   return true;
@@ -858,8 +873,7 @@ EmbedLiteViewBaseChild::RecvHandleLongTap(const CSSPoint& aPoint,
                                           const ScrollableLayerGuid& aGuid,
                                           const uint64_t& aInputBlockId)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleLongTap(cssPoint, 0, aGuid, aInputBlockId);
@@ -909,7 +923,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   }
 
   if (StartComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_START, widget);
+    WidgetCompositionEvent event(true, eCompositionStart, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
   }
@@ -917,7 +931,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   if (StartComposite || ChangeComposite || EndComposite) {
 
     {
-      WidgetCompositionEvent event(true, NS_COMPOSITION_CHANGE, widget);
+      WidgetCompositionEvent event(true, eCompositionChange, widget);
       InitEvent(event, nullptr);
       event.mData = pushStr;
 
@@ -941,7 +955,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
     nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
 
-    InternalEditorInputEvent inputEvent(true, NS_EDITOR_INPUT, widget);
+    InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
     inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
@@ -949,7 +963,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   }
 
   if (EndComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
+    WidgetCompositionEvent event(true, eCompositionEnd, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
   }
@@ -1029,24 +1043,24 @@ EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid
 {
   LOGT();
   WidgetTouchEvent localEvent;
+
   if (!mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
     return true;
   }
 
-  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid,
-      mWidget->GetDefaultScale(), GetPresShellResolution());
+  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid, mWidget->GetDefaultScale());
   nsEventStatus status =
       APZCCallbackHelper::DispatchWidgetEvent(localEvent);
 
   nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
   nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
-  if (innerWindow && innerWindow->HasTouchEventListeners()) {
+  if (innerWindow /*&& innerWindow->HasTouchEventListeners()*/ ) {
     SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId,
-                                  nsIPresShell::gPreventMouseEvents);
+                                  false /*nsIPresShell::gPreventMouseEvents*/);
   }
   mPendingTouchPreventedBlockId = aInputBlockId;
 
-  static bool sDispatchMouseEvents;
+  static bool sDispatchMouseEvents = false;
   static bool sDispatchMouseEventsCached = false;
   if (!sDispatchMouseEventsCached) {
     sDispatchMouseEventsCached = true;
@@ -1125,22 +1139,15 @@ EmbedLiteViewBaseChild::OnSecurityChanged(const char* aStatus, uint32_t aState)
 NS_IMETHODIMP
 EmbedLiteViewBaseChild::OnFirstPaint(int32_t aX, int32_t aY)
 {
-  nsresult rv = NS_OK;
-  nsCOMPtr <nsIDOMWindow> window;
-  rv = mWebBrowser->GetContentDOMWindow(getter_AddRefs(window));
-
-  nsCOMPtr<nsIDOMDocument> ddoc;
-  window->GetDocument(getter_AddRefs(ddoc));
-  NS_ENSURE_TRUE(ddoc, NS_OK);
-
-  nsCOMPtr<nsIDocument> doc;
-  doc = do_QueryInterface(ddoc, &rv);
-  NS_ENSURE_TRUE(doc, NS_OK);
-
-  nsIPresShell* presShell = doc->GetShell();
-  if (presShell) {
-    nscolor bgcolor = presShell->GetCanvasBackground();
-    Unused << SendSetBackgroundColor(bgcolor);
+  if (mDOMWindow) {
+    nsCOMPtr<nsIDocShell> docShell = mDOMWindow->GetDocShell();
+    if (docShell) {
+      nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell();
+      if (presShell) {
+        nscolor bgcolor = presShell->GetCanvasBackground();
+        Unused << SendSetBackgroundColor(bgcolor);
+      }
+    }
   }
 
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;
@@ -1174,16 +1181,14 @@ EmbedLiteViewBaseChild::OnUpdateDisplayPort()
 bool
 EmbedLiteViewBaseChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
 {
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  nsCOMPtr<nsIDocument> doc(mHelper->GetDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 float
 EmbedLiteViewBaseChild::GetPresShellResolution() const
 {
-  nsCOMPtr<nsIDocument> document(GetDocument());
+  nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
   nsIPresShell* shell = document->GetShell();
   if (!shell) {
     return 1.0f;
@@ -1191,29 +1196,22 @@ EmbedLiteViewBaseChild::GetPresShellResolution() const
   return shell->GetResolution();
 }
 
-already_AddRefed<nsIDocument>
-EmbedLiteViewBaseChild::GetDocument() const
-{
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  return doc.forget();
-}
-
 void
 EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
 {
-  if (nsIPresShell::gPreventMouseEvents) {
-    return;
-  }
+  // TODO : how should we handle now global mouse event prevent.
+//  if (nsIPresShell::gPreventMouseEvents) {
+//    return;
+//  }
 
-  if (aEvent.message == NS_TOUCH_END) {
+  if (aEvent.mMessage == eTouchEnd) {
     int64_t time = aEvent.time;
     MOZ_ASSERT(aEvent.touches.Length() == 1);
     LayoutDevicePoint pt = aEvent.touches[0]->mRefPoint;
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, pt, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, pt, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, pt, aEvent.widget);
+    Modifiers m;
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseMove, time, pt, m, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseDown, time, pt, m, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseUp, time, pt, m, aEvent.widget);
   }
 }
 
