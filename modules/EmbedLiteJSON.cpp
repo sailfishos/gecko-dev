@@ -31,12 +31,14 @@ NS_IMPL_ISUPPORTS(EmbedLiteJSON, nsIEmbedLiteJSON)
 nsresult
 CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)
 {
+#if 0
   RefPtr<nsHashPropertyBag> hpb = new nsHashPropertyBag();
   if (!hpb) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
   *aObject = hpb.forget().take();
+#endif
   return NS_OK;
 }
 
@@ -50,15 +52,18 @@ EmbedLiteJSON::CreateObject(nsIWritablePropertyBag2 * *aObject)
 bool
 EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 {
+#if 0
   nsAString* result = static_cast<nsAString*>(aData);
   result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
+#endif
   return true;
 }
 
 nsresult
 JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
 {
+#if 0
   if (propval.isBoolean()) {
     aVariant->SetAsBool(propval.toBoolean());
   } else if (propval.isInt32()) {
@@ -77,12 +82,14 @@ JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
     NS_ERROR("Value is not primitive");
     return NS_ERROR_FAILURE;
   }
+#endif
   return NS_OK;
 }
 
 nsresult
 ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 {
+#if 0
   JS::RootedObject modObj(cx, object);
   JS::AutoIdArray props(cx, JS_Enumerate(cx, modObj));
   for (size_t i = 0; !!props && i < props.length(); ++i) {
@@ -153,12 +160,14 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       }
     }
   }
+#endif
   return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
 {
+#if 0
   MOZ_ASSERT(NS_IsMainThread());
   AutoSafeJSContext cx;
   JS::Rooted<JS::Value> json(cx, JSVAL_NULL);
@@ -183,11 +192,13 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
   }
 
   *aRoot = contextProps.forget().take();
+#endif
   return NS_OK;
 }
 
 static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aObj)
 {
+#if 0
   JS::RootedValue rval(aCx);
   nsString name;
   nsCOMPtr<nsIVariant> aVariant;
@@ -204,12 +215,14 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
     NS_ERROR("Failed to set js object property");
     return false;
   }
+#endif
   return true;
 }
 
 NS_IMETHODIMP
 EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
 {
+#if 0
   AutoSafeJSContext cx;
   JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr));
   if (!obj) {
@@ -234,6 +247,6 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   JS::Rooted<JS::Value> vlt(cx, OBJECT_TO_JSVAL(obj));
   NS_ENSURE_TRUE(JS_Stringify(cx, &vlt, JS::NullPtr(), JS::NullHandleValue, JSONCreator, &outJson), NS_ERROR_FAILURE);
   NS_ENSURE_TRUE(!outJson.IsEmpty(), NS_ERROR_FAILURE);
-
+#endif
   return NS_OK;
 }
