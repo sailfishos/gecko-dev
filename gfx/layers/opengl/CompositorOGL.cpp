@@ -1573,7 +1573,10 @@ CompositorOGL::Pause()
 bool
 CompositorOGL::Resume()
 {
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT) || defined(MOZ_WIDGET_QT)
+  if (!gfxPrefs::UseExternalWindow())
+    return true;
+
   if (!gl() || gl()->IsDestroyed())
     return false;
 
@@ -1589,6 +1592,15 @@ CompositorOGL::Resume()
   // TODO: call Layers->SetCompositor(thisOD);
 #endif
   return true;
+}
+
+bool
+CompositorOGL::Ready()
+{
+  if (gfxPrefs::UseExternalWindow() && mPaused) {
+    return false;
+  }
+  return Compositor::Ready();
 }
 
 already_AddRefed<DataTextureSource>
