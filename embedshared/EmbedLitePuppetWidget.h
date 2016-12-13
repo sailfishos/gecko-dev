@@ -19,6 +19,7 @@
 
 #include "EmbedLiteViewChildIface.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/WidgetUtils.h"
 #include "nsBaseWidget.h"
 #include "nsCOMArray.h"
 #include "nsRect.h"
