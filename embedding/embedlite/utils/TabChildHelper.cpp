@@ -340,10 +340,12 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
+  return false;
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
+#if 0
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
   if (aData.mDataLength &&
-      !ReadStructuredClone(cx, aData, &rval)) {
+      !ReadStructuredClone(cx, aData, &rval)) { // JS_ReadStructuredClone
     JS_ClearPendingException(cx);
     return false;
   }
@@ -360,6 +362,7 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   }
 
   return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
+#endif
 }
 
 nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
@@ -368,6 +371,7 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                             JS::Handle<JSObject *> aCpows,
                                             nsIPrincipal* aPrincipal)
 {
+#if 0
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
@@ -414,6 +418,7 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
     return NS_ERROR_UNEXPECTED;
   }
+#endif
   return NS_OK;
 }
 
