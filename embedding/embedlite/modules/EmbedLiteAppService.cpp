@@ -122,7 +122,6 @@ NS_IMETHODIMP
 EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
 {
   dom::AutoJSAPI jsapiChromeGuard;
-  nsCOMPtr<nsIDOMWindow> window;
   nsCOMPtr<nsIWebNavigation> navNav(do_GetInterface(aWin));
   nsCOMPtr<nsIDocShellTreeItem> navItem(do_QueryInterface(navNav));
   NS_ENSURE_TRUE(navItem, NS_ERROR_FAILURE);
@@ -130,9 +129,11 @@ EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
   navItem->GetRootTreeItem(getter_AddRefs(rootItem));
   nsCOMPtr<nsIDOMWindow> rootWin(do_GetInterface(rootItem));
   NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
-  rootWin->GetTop(getter_AddRefs(window));
+
+  nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(rootWin));
+  nsCOMPtr<nsPIDOMWindow> outerWindow = pwindow->GetTop();
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
+  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(outerWindow);
   uint64_t OuterWindowID = 0;
   utils->GetOuterWindowID(&OuterWindowID);
   *aId = mIDMap[OuterWindowID];
@@ -232,7 +233,7 @@ NS_IMETHODIMP EmbedLiteAppService::EnterSecureJSContext()
     MOZ_CRASH();
   }
 
-  if (!xpc::PushJSContextNoScriptContext(nullptr)) {
+  if (!xpc::PushNullJSContext()) {
     MOZ_CRASH();
   }
 
@@ -247,8 +248,7 @@ NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
     return NS_ERROR_FAILURE;
   }
 
-  DebugOnly<JSContext*> stackTop;
-  xpc::PopJSContextNoScriptContext();
+  xpc::PopNullJSContext();
   mPushedSomething--;
   return NS_OK;
 }
