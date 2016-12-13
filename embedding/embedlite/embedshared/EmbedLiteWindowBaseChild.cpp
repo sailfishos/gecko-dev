@@ -155,7 +155,6 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.mWindowType = eWindowType_toplevel;
-  widgetInit.mRequireOffMainThreadCompositing = true;
 
   // EmbedLitePuppetWidget::CreateCompositor() reads back Size
   // when it creates the compositor.
