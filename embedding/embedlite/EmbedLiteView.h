@@ -7,7 +7,6 @@
 #define MOZ_VIEW_EMBED_H
 
 #include "mozilla/RefPtr.h"
-#include "mozilla/WidgetUtils.h"
 #include "nsStringGlue.h"
 #include "gfxMatrix.h"
 #include "nsRect.h"

@@ -19,7 +19,6 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "EmbedLitePuppetWidget.h"
-#include "EmbedLiteView.h"
 #include "nsIWidgetListener.h"
 #include "Layers.h"
 #include "BasicLayers.h"
@@ -90,7 +89,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mHasCompositor(false)
   , mIMEComposing(false)
   , mParent(nullptr)
-  , mRotation(ROTATION_0)
+  , mRotation(mozilla::ROTATION_0)
   , mMargins(0, 0, 0, 0)
   , mDPI(-1.0)
 {
@@ -334,7 +333,7 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
 
   mNaturalBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
-  if (mRotation == ROTATION_0 || mRotation == ROTATION_180) {
+  if (mRotation == mozilla::ROTATION_0 || mRotation == mozilla::ROTATION_180) {
     mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
   } else {
     mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
