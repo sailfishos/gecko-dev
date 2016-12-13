@@ -9,7 +9,7 @@
 #include "nsIProperty.h"
 #include "EmbedLiteAppService.h"
 #include "nsServiceManagerUtils.h"
-#include "jsapi.h"
+#include "js/Value.h"
 #include "xpcprivate.h"
 #include "nsJSUtils.h"
 #include "nsDOMJSUtils.h"
@@ -61,7 +61,7 @@ EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 }
 
 nsresult
-JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
+JSValToVariant(JSContext* cx, JS::Value& propval, nsIWritableVariant* aVariant)
 {
 #if 0
   if (propval.isBoolean()) {
