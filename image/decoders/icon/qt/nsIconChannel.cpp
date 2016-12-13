@@ -13,6 +13,9 @@
 #include "nsMimeTypes.h"
 #include "nsIMIMEService.h"
 
+#include "nsCOMPtr.h"
+#include "nsComponentManagerUtils.h"
+
 #include "nsIStringBundle.h"
 
 #include "nsNetUtil.h"
@@ -21,6 +24,8 @@
 
 #include "nsIconChannel.h"
 #include "nsGtkQtIconsConverter.h"
+
+#include "nsIStringStream.h"
 
 NS_IMPL_ISUPPORTS(nsIconChannel,
                   nsIRequest,
