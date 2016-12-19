@@ -1028,6 +1028,7 @@ bool EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid
 bool
 EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
+  LOGT();
   WidgetTouchEvent localEvent;
   if (!mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
     return true;
@@ -1221,7 +1222,7 @@ EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aE
 
 void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
-  LOGT("sz[%g,%g]", aSize.width, aSize.height);
+  LOGT("sz[%d,%d]", aSize.width, aSize.height);
   mViewResized = true;
 
   MOZ_ASSERT(mHelper && mWebBrowser);
