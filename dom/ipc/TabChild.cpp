@@ -752,7 +752,8 @@ TabChild::Init()
   }
 
   nsCOMPtr<nsIWidget> widget = nsIWidget::CreatePuppetWidget(this);
-  mPuppetWidget = static_cast<PuppetWidget*>(widget.get());
+//  mPuppetWidget = static_cast<PuppetWidget*>(widget.get());
+  mPuppetWidget = widget.get();
   if (!mPuppetWidget) {
     NS_ERROR("couldn't create fake widget");
     return NS_ERROR_FAILURE;
@@ -1969,7 +1970,8 @@ bool
 TabChild::RecvRealKeyEvent(const WidgetKeyboardEvent& event,
                            const MaybeNativeKeyBinding& aBindings)
 {
-  AutoCacheNativeKeyCommands autoCache(mPuppetWidget);
+  // static_Cast
+  AutoCacheNativeKeyCommands autoCache(static_cast<PuppetWidget*>(mPuppetWidget.get()));
 
   if (event.mMessage == eKeyPress) {
     // If content code called preventDefault() on a keydown event, then we don't
@@ -2428,7 +2430,7 @@ TabChild::InitRenderingState(const TextureFactoryIdentifier& aTextureFactoryIden
                              const uint64_t& aLayersId,
                              PRenderFrameChild* aRenderFrame)
 {
-    mPuppetWidget->InitIMEState();
+    static_cast<PuppetWidget*>(mPuppetWidget.get())->InitIMEState();
 
     RenderFrameChild* remoteFrame = static_cast<RenderFrameChild*>(aRenderFrame);
     if (!remoteFrame) {
