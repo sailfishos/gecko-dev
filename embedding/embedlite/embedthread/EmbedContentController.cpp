@@ -28,6 +28,7 @@ EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderF
 void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
 {
   mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
+  LOGT("APZCTreeManager: %p\n", mAPZC.get());
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
@@ -194,6 +195,9 @@ EmbedContentController::ReceiveInputEvent(InputData& aEvent,
                                           mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
                                           uint64_t* aOutInputBlockId)
 {
+
+  LOGT(" has mAPZC: %p\n", mAPZC.get());
+
   if (!mAPZC) {
     return nsEventStatus_eIgnore;
   }

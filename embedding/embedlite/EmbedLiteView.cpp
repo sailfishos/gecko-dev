@@ -89,7 +89,7 @@ EmbedLiteView::LoadURL(const char* aUrl)
 void
 EmbedLiteView::SetIsActive(bool aIsActive)
 {
-  LOGT();
+  LOGT("active: %d", aIsActive);
   NS_ENSURE_TRUE(mViewParent, );
   unused << mViewParent->SendSetIsActive(aIsActive);
   // Make sure active view content controller is always registered with
@@ -235,6 +235,7 @@ EmbedLiteView::SetDPI(const float& dpi)
 void
 EmbedLiteView::ReceiveInputEvent(const InputData& aEvent)
 {
+  LOGT();
   NS_ENSURE_TRUE(mViewImpl,);
   mViewImpl->ReceiveInputEvent(aEvent);
 }

@@ -59,14 +59,15 @@ EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 void
 EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 {
-  LOGT();
   mCompositor = aCompositor;
+  LOGT("compositor: %p", mCompositor.get());
   UpdateScrollController();
 }
 
 void
 EmbedLiteViewBaseParent::UpdateScrollController()
 {
+  LOGT("view api destroyed: %d mVIew: %p compositor: %p\n", mViewAPIDestroyed, mView, mCompositor.get());
   if (mViewAPIDestroyed || !mView) {
     return;
   }
@@ -284,6 +285,7 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
 bool
 EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
+  LOGT();
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
   }
@@ -380,6 +382,7 @@ EmbedLiteViewBaseParent::CompositorCreated()
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
+  LOGT("APZCTreeManager: %p\n", mController->GetManager());
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
     uint64_t outInputBlockId;

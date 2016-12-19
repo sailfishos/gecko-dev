@@ -16,7 +16,7 @@
 extern mozilla::LogModule* GetEmbedCommonLog(const char* aModule);
 
 #define LOGF(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Error, ("FUNC::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
-#define LOGT(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Debug, ("TRACE::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
+#define LOGT(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLiteTrace"), mozilla::LogLevel::Debug, ("TRACE::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
 #define LOGW(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Info, ("WARN: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
 #define LOGE(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Warning, ("ERROR: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
 #define LOGNI(FMT, ...) MOZ_LOG(GetEmbedCommonLog("EmbedLite"), mozilla::LogLevel::Error, ("NON_IMPL: EmbedLite::%s:%d " FMT , __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__))
