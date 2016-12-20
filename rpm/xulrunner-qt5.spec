@@ -1,10 +1,10 @@
-%define greversion    38.8.0
-%define sf_extra_ver  15
+%define greversion    45.5.2
+%define sf_extra_ver  1
 
 %define embedlite_config merqtxulrunner
 
 %define system_nspr       1
-%define system_nss        1
+%define system_nss        0
 %define system_sqlite     1
 %define system_ffi        1
 %define system_hunspell   1
