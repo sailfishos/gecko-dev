@@ -589,7 +589,7 @@ private:
 
     TextureFactoryIdentifier mTextureFactoryIdentifier;
     nsCOMPtr<nsIWebNavigation> mWebNav;
-    RefPtr<nsIWidget> mPuppetWidget;
+    RefPtr<PuppetWidget> mPuppetWidget;
     nsCOMPtr<nsIURI> mLastURI;
     RenderFrameChild* mRemoteFrame;
     RefPtr<nsIContentChild> mManager;
