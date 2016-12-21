@@ -1,7 +1,7 @@
-From a08fda432979d9b22198f8956c5e39ff81e86f17 Mon Sep 17 00:00:00 2001
+From b2af39090a503053c4135480d34142ee9b763270 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:17:36 +0300
-Subject: [PATCH 07/18] Limit surface area rather than width and height
+Subject: [PATCH 05/11] Limit surface area rather than width and height
 
 See bug JB26935
 
@@ -11,7 +11,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 3 insertions(+), 2 deletions(-)
 
 diff --git a/gfx/cairo/cairo/src/cairo-image-surface.c b/gfx/cairo/cairo/src/cairo-image-surface.c
-index a77f786..17c40a0 100644
+index 9104372..ba1d468 100644
 --- a/gfx/cairo/cairo/src/cairo-image-surface.c
 +++ b/gfx/cairo/cairo/src/cairo-image-surface.c
 @@ -91,8 +91,9 @@ _pixman_image_for_solid (const cairo_solid_pattern_t *pattern);

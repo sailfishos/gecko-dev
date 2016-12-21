@@ -1,7 +1,7 @@
-From 72e3832c802886a4d866340b6bf64561e08aa489 Mon Sep 17 00:00:00 2001
+From 042c537972e071b44136f6047b3917d0eaaef078 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 1 Jul 2016 10:39:47 +0300
-Subject: [PATCH 18/18] Don't try to access undefined app list of
+Subject: [PATCH 11/11] Don't try to access undefined app list of
  AppsServiceChild. Fixes MER#1609
 
 When accessing e.g. imgur.com for the first time list build up fails
@@ -11,31 +11,18 @@ This backout partically changes from upstream commit sha1 55152ad9d9a23874
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/apps/AppsServiceChild.jsm | 28 +++++++++++++---------------
- 1 file changed, 13 insertions(+), 15 deletions(-)
+ dom/apps/AppsServiceChild.jsm | 21 ++++++++++++---------
+ 1 file changed, 12 insertions(+), 9 deletions(-)
 
 diff --git a/dom/apps/AppsServiceChild.jsm b/dom/apps/AppsServiceChild.jsm
-index 8681622..1d9726c 100644
+index cc0675f..533d7dd 100644
 --- a/dom/apps/AppsServiceChild.jsm
 +++ b/dom/apps/AppsServiceChild.jsm
-@@ -103,28 +103,26 @@ this.DOMApplicationRegistry = {
-       this.cpmm.addMessageListener(aMsgName, this);
-     }).bind(this));
- 
--    this.resetList();
--
--    Services.obs.addObserver(this, "xpcom-shutdown", false);
--  },
--
--  resetList: function() {
-     this.cpmm.sendAsyncMessage("Webapps:RegisterForMessages", {
-       messages: APPS_IPC_MSG_NAMES
-     });
+@@ -109,16 +109,19 @@ this.DOMApplicationRegistry = {
  
      // We need to prime the cache with the list of apps.
      let list = this.cpmm.sendSyncMessage("Webapps:GetList", { })[0];
 -    this.webapps = list.webapps;
--
 -    // We need a fast mapping from localId -> app, so we add an index.
 -    // We also add the manifest to the app object.
 -    this.localIdIndex = { };
@@ -56,10 +43,10 @@ index 8681622..1d9726c 100644
 +    } catch (e) {
 +      debug("Error while building fast maps: " + e + "\n");
      }
-+    Services.obs.addObserver(this, "xpcom-shutdown", false);
+-
+     Services.obs.addObserver(this, "xpcom-shutdown", false);
    },
  
-   observe: function(aSubject, aTopic, aData) {
 -- 
 2.7.4
 

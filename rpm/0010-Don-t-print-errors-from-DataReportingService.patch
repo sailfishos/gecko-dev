@@ -1,7 +1,7 @@
-From 7e30ddf032f254840f85e2959d20ccef5496102e Mon Sep 17 00:00:00 2001
+From 67406246322069204e0258c880b2c2b836d92531 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 16 Jun 2016 17:35:58 +0300
-Subject: [PATCH 17/18] Don't print errors from DataReportingService
+Subject: [PATCH 10/11] Don't print errors from DataReportingService
 
 Will be removed in Gecko 46. See bug:
 https://bugzilla.mozilla.org/show_bug.cgi?id=1234522
@@ -12,10 +12,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/services/datareporting/DataReportingService.js b/services/datareporting/DataReportingService.js
-index 826a28c..c882334 100644
+index 4dd318f..624394c 100644
 --- a/services/datareporting/DataReportingService.js
 +++ b/services/datareporting/DataReportingService.js
-@@ -226,7 +226,7 @@ DataReportingService.prototype = Object.freeze({
+@@ -202,7 +202,7 @@ DataReportingService.prototype = Object.freeze({
     * The obtained instance may not be fully initialized.
     */
    get healthReporter() {

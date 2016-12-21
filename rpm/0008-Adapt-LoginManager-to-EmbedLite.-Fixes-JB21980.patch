@@ -1,7 +1,7 @@
-From 4f0aa94662c721686ef7b0f24bc319a20e96ca35 Mon Sep 17 00:00:00 2001
+From a12bb53e612dad36991bf1a3bcdebfd322bd0f3c Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
-Subject: [PATCH 11/18] Adapt LoginManager to EmbedLite. Fixes JB21980
+Subject: [PATCH 08/11] Adapt LoginManager to EmbedLite. Fixes JB21980
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
@@ -13,10 +13,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  4 files changed, 9 insertions(+), 7 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
-index 72fc447..00a9a89 100644
+index b79603b..340ec46 100644
 --- a/dom/ipc/TabChild.h
 +++ b/dom/ipc/TabChild.h
-@@ -456,8 +456,11 @@ public:
+@@ -473,8 +473,11 @@ public:
      static inline TabChild*
      GetFrom(nsIDocShell* aDocShell)
      {
@@ -31,10 +31,10 @@ index 72fc447..00a9a89 100644
  
      static TabChild* GetFrom(nsIPresShell* aPresShell);
 diff --git a/toolkit/components/passwordmgr/LoginManagerContent.jsm b/toolkit/components/passwordmgr/LoginManagerContent.jsm
-index 973b36a..ba26dfe 100644
+index 75fc97c..1dc6b09 100644
 --- a/toolkit/components/passwordmgr/LoginManagerContent.jsm
 +++ b/toolkit/components/passwordmgr/LoginManagerContent.jsm
-@@ -156,11 +156,10 @@ var LoginManagerContent = {
+@@ -163,11 +163,10 @@ var LoginManagerContent = {
      let requestId = this._getRandomId();
      messageData.requestId = requestId;
  
@@ -48,10 +48,10 @@ index 973b36a..ba26dfe 100644
    },
  
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-index 281dcc3..4bc2288 100644
+index c17f3b6..9cb1e82 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
 +++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-@@ -183,6 +183,8 @@ var LoginManagerParent = {
+@@ -172,6 +172,8 @@ var LoginManagerParent = {
    },
  
    receiveMessage: function (msg) {

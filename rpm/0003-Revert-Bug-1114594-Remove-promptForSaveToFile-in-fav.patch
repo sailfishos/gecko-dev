@@ -1,27 +1,26 @@
-From 8be38a1c253c0333a1d31a3a27133d5ecadfdd3e Mon Sep 17 00:00:00 2001
-From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
-Date: Thu, 5 Nov 2015 17:28:02 +0200
-Subject: [PATCH 13/18] Revert patchset for bug 1114594. Contributes JB32870
+From 645ed48af9e2a804e04246d25c848961cd058aac Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 21 Dec 2016 14:35:15 +0200
+Subject: [PATCH 03/11] Revert "Bug 1114594 - Remove promptForSaveToFile in
+ favor of promptForSaveToFileAsync. r=paolo"
 
-WIP drop nsHelperAppDlg.js
+This reverts commit f5fe5678d69887fd2ffce1729028d0a2e676be2f.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  b2g/components/HelperAppDialog.js                  |  8 +++++++
- browser/metro/components/HelperAppDialog.js        |  4 ++++
  mobile/android/components/HelperAppDialog.js       |  5 ++++
  .../downloads/test/unit/downloads_manifest.js      |  4 +++-
  toolkit/components/jsdownloads/test/unit/head.js   |  9 +++++++
  toolkit/mozapps/downloads/nsHelperAppDlg.js        | 16 +++++++++++++
- toolkit/mozapps/downloads/nsHelperAppDlg.manifest  |  2 --
  .../exthandler/nsExternalHelperAppService.cpp      | 24 ++++++++++++-------
  .../exthandler/nsIHelperAppLauncherDialog.idl      | 28 +++++++++++++++++++++-
  .../tests/mochitest/test_unsafeBidiChars.xhtml     |  3 +++
  .../exthandler/tests/unit_ipc/test_encoding.js     |  4 +++-
- 11 files changed, 94 insertions(+), 13 deletions(-)
+ 9 files changed, 90 insertions(+), 11 deletions(-)
 
 diff --git a/b2g/components/HelperAppDialog.js b/b2g/components/HelperAppDialog.js
-index 6a7bb79..cc5288a 100644
+index a155728..71d5423 100644
 --- a/b2g/components/HelperAppDialog.js
 +++ b/b2g/components/HelperAppDialog.js
 @@ -33,6 +33,14 @@ HelperAppLauncherDialog.prototype = {
@@ -39,26 +38,11 @@ index 6a7bb79..cc5288a 100644
    promptForSaveToFileAsync: function(aLauncher,
                                       aContext,
                                       aDefaultFile,
-diff --git a/browser/metro/components/HelperAppDialog.js b/browser/metro/components/HelperAppDialog.js
-index f189db0..257d156 100644
---- a/browser/metro/components/HelperAppDialog.js
-+++ b/browser/metro/components/HelperAppDialog.js
-@@ -138,6 +138,10 @@ HelperAppLauncherDialog.prototype = {
-     messageContainer.appendChild(fragment);
-   },
- 
-+  promptForSaveToFile: function hald_promptForSaveToFile(aLauncher, aContext, aDefaultFile, aSuggestedFileExt, aForcePrompt) {
-+    throw new Components.Exception("Async version must be used", Cr.NS_ERROR_NOT_AVAILABLE);
-+  },
-+
-   promptForSaveToFileAsync: function hald_promptForSaveToFileAsync(aLauncher, aContext, aDefaultFile, aSuggestedFileExt, aForcePrompt) {
-     let file = null;
-     let prefs = Services.prefs;
 diff --git a/mobile/android/components/HelperAppDialog.js b/mobile/android/components/HelperAppDialog.js
-index d2e2d10..97d4269 100644
+index 8706d73..f4047c4 100644
 --- a/mobile/android/components/HelperAppDialog.js
 +++ b/mobile/android/components/HelperAppDialog.js
-@@ -236,6 +236,11 @@ HelperAppLauncherDialog.prototype = {
+@@ -245,6 +245,11 @@ HelperAppLauncherDialog.prototype = {
        Services.prefs.clearUserPref(this._getPrefName(mime));
    },
  
@@ -86,27 +70,27 @@ index 7bef411..a24622a 100644
  
  
 diff --git a/toolkit/components/jsdownloads/test/unit/head.js b/toolkit/components/jsdownloads/test/unit/head.js
-index b4e5b2f..071a47c 100644
+index 64a330d..bfed5c7 100644
 --- a/toolkit/components/jsdownloads/test/unit/head.js
 +++ b/toolkit/components/jsdownloads/test/unit/head.js
-@@ -813,6 +813,15 @@ add_task(function test_common_initialize()
-     createInstance: function (aOuter, aIid) {
-       return {
-         QueryInterface: XPCOMUtils.generateQI([Ci.nsIHelperAppLauncherDialog]),
-+        promptForSaveToFile: function (aLauncher, aWindowContext,
-+                                       aDefaultFileName,
-+                                       aSuggestedFileExtension,
-+                                       aForcePrompt)
-+        {
-+          throw new Components.Exception(
-+                             "Synchronous promptForSaveToFile not implemented.",
-+                             Cr.NS_ERROR_NOT_AVAILABLE);
-+        },
-         promptForSaveToFileAsync: function (aLauncher, aWindowContext,
-                                             aDefaultFileName,
-                                             aSuggestedFileExtension,
+@@ -804,6 +804,15 @@ add_task(function test_common_initialize()
+   // saved to disk without asking for a destination interactively.
+   let mock = {
+     QueryInterface: XPCOMUtils.generateQI([Ci.nsIHelperAppLauncherDialog]),
++    promptForSaveToFile: function (aLauncher, aWindowContext,
++                                   aDefaultFileName,
++                                   aSuggestedFileExtension,
++                                   aForcePrompt)
++    {
++      throw new Components.Exception(
++                         "Synchronous promptForSaveToFile not implemented.",
++                         Cr.NS_ERROR_NOT_AVAILABLE);
++    },
+     promptForSaveToFileAsync(aLauncher,
+                              aWindowContext,
+                              aDefaultFileName,
 diff --git a/toolkit/mozapps/downloads/nsHelperAppDlg.js b/toolkit/mozapps/downloads/nsHelperAppDlg.js
-index 43653f9..a99b526 100644
+index 6e847f3..eb6c844 100644
 --- a/toolkit/mozapps/downloads/nsHelperAppDlg.js
 +++ b/toolkit/mozapps/downloads/nsHelperAppDlg.js
 @@ -204,6 +204,22 @@ nsUnknownContentTypeDialog.prototype = {
@@ -132,41 +116,34 @@ index 43653f9..a99b526 100644
    promptForSaveToFileAsync: function(aLauncher, aContext, aDefaultFile, aSuggestedFileExtension, aForcePrompt) {
      var result = null;
  
-diff --git a/toolkit/mozapps/downloads/nsHelperAppDlg.manifest b/toolkit/mozapps/downloads/nsHelperAppDlg.manifest
-index 8824b45..e69de29 100644
---- a/toolkit/mozapps/downloads/nsHelperAppDlg.manifest
-+++ b/toolkit/mozapps/downloads/nsHelperAppDlg.manifest
-@@ -1,2 +0,0 @@
--component {F68578EB-6EC2-4169-AE19-8C6243F0ABE1} nsHelperAppDlg.js
--contract @mozilla.org/helperapplauncherdialog;1 {F68578EB-6EC2-4169-AE19-8C6243F0ABE1}
 diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
-index 6f87a87..00a92cc 100644
+index fc2f2385..39f066a 100644
 --- a/uriloader/exthandler/nsExternalHelperAppService.cpp
 +++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
-@@ -2237,16 +2237,24 @@ void nsExternalAppHandler::RequestSaveDestination(const nsAFlatString &aDefaultF
+@@ -2300,16 +2300,24 @@ void nsExternalAppHandler::RequestSaveDestination(const nsAFlatString &aDefaultF
    // picker is up would cause Cancel() to be called, and the dialog would be
    // released, which would release this object too, which would crash.
    // See Bug 249143
 +  nsIFile* fileToUse;
-   nsRefPtr<nsExternalAppHandler> kungFuDeathGrip(this);
+   RefPtr<nsExternalAppHandler> kungFuDeathGrip(this);
    nsCOMPtr<nsIHelperAppLauncherDialog> dlg(mDialog);
 -
--  rv = mDialog->PromptForSaveToFileAsync(this,
--                                         GetDialogParent(),
--                                         aDefaultFile.get(),
--                                         aFileExtension.get(),
--                                         mForceSave);
+-  rv = dlg->PromptForSaveToFileAsync(this,
+-                                     GetDialogParent(),
+-                                     aDefaultFile.get(),
+-                                     aFileExtension.get(),
+-                                     mForceSave);
 -  if (NS_FAILED(rv)) {
 -    Cancel(NS_BINDING_ABORTED);
-+  rv = mDialog->PromptForSaveToFile(this,
-+                                    GetDialogParent(),
-+                                    aDefaultFile.get(),
-+                                    aFileExtension.get(),
-+                                    mForceSave, &fileToUse);
++  rv = dlg->PromptForSaveToFile(this,
++                                GetDialogParent(),
++                                aDefaultFile.get(),
++                                aFileExtension.get(),
++                                mForceSave, &fileToUse);
 +
 +  if (rv == NS_ERROR_NOT_AVAILABLE) {
 +    // we need to use the async version -> nsIHelperAppLauncherDialog.promptForSaveToFileAsync.
-+    rv = mDialog->PromptForSaveToFileAsync(this,
++    rv = mDialog->PromptForSaveToFileAsync(this, 
 +                                           GetDialogParent(),
 +                                           aDefaultFile.get(),
 +                                           aFileExtension.get(),
@@ -237,10 +214,10 @@ index 3e5fa41..6363e55 100644
        netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
        if (aIID.equals(SpecialPowers.Ci.nsISupports) ||
 diff --git a/uriloader/exthandler/tests/unit_ipc/test_encoding.js b/uriloader/exthandler/tests/unit_ipc/test_encoding.js
-index a46c899..ea6a981 100644
+index 35dcf5a..a4cad91 100644
 --- a/uriloader/exthandler/tests/unit_ipc/test_encoding.js
 +++ b/uriloader/exthandler/tests/unit_ipc/test_encoding.js
-@@ -61,7 +61,9 @@ HelperAppDlg.prototype = {
+@@ -38,7 +38,9 @@ HelperAppDlg.prototype = {
    show: function (launcher, ctx, reason, usePrivateUI) {
      launcher.MIMEInfo.preferredAction = Ci.nsIMIMEInfo.saveToFile;
      launcher.launchWithApplication(null, false);
@@ -250,7 +227,7 @@ index a46c899..ea6a981 100644
 +  promptForSaveToFile: function (launcher, ctx, defaultFile, suggestedExtension, forcePrompt) { }
  }
  
- // Stolen from XPCOMUtils, since this handy function is not public there
+ // Override the download-manager-ui to prevent anyone from trying to open
 -- 
 2.7.4
 

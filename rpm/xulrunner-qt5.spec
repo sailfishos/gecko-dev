@@ -44,24 +44,17 @@ Group:      Applications/Internet
 License:    MPLv2
 URL:        https://github.com/tmeshkova/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-Workaround-for-bug-977015.patch
-Patch2:     0002-Workaround-wrong-viewport-in-wikipedia.patch
-Patch3:     0003-Supply-source-uri-to-gstreamer-pipeline.patch
-Patch4:     0004-Workaround-for-late-access-message-loop.patch
-Patch5:     0005-Define-HAS_NEMO_RESOURCE-in-config.patch
-Patch6:     0006-Don-t-decode-all-images-on-shell-activation-if-decod.patch
-Patch7:     0007-Limit-surface-area-rather-than-width-and-height.patch
-Patch8:     0008-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
-Patch9:     0009-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
-Patch10:    0010-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
-Patch11:    0011-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
-Patch12:    0012-Bug-1207205-Remove-fGetActiveUniformName.-r-jrmuizel.patch
-Patch13:    0013-Revert-patchset-for-bug-1114594.-Contributes-JB32870.patch
-Patch14:    0014-Add-transition-from-pinching-to-panning.patch
-Patch15:    0015-Update-build-version.-Contributes-to-JB-35001.patch
-Patch16:    0016-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
-Patch17:    0017-Don-t-print-errors-from-DataReportingService.patch
-Patch18:    0018-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
+Patch1:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
+Patch2:     0002-Workaround-for-late-access-message-loop.patch
+Patch3:     0003-Revert-Bug-1114594-Remove-promptForSaveToFile-in-fav.patch
+Patch4:     0004-Define-HAS_NEMO_RESOURCE-in-config.patch
+Patch5:     0005-Limit-surface-area-rather-than-width-and-height.patch
+Patch6:     0006-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
+Patch7:     0007-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
+Patch8:     0008-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
+Patch9:     0009-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
+Patch10:    0010-Don-t-print-errors-from-DataReportingService.patch
+Patch11:    0011-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -161,13 +154,6 @@ Tests and misc files for xulrunner.
 %patch9 -p1
 %patch10 -p1
 %patch11 -p1
-%patch12 -p1
-%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
