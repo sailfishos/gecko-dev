@@ -339,7 +339,12 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
   } else {
     mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
   }
-  mBounds.Deflate(mMargins);
+
+  // Do not move bounds here. Just alter size based on margins.
+  mBounds.y = 0;
+  mBounds.x = 0;
+  mBounds.width = std::max(0, (mBounds.width - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
+  mBounds.height = std::max(0, (mBounds.height - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
     mObservers[i]->WidgetBoundsChanged(mBounds);
