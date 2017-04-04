@@ -7,7 +7,7 @@
 #define MOZ_EMBED_LOG_H
 
 #include <stdio.h>
-#include "Logging.h"
+#include "mozilla/Logging.h"
 
 #ifdef PR_LOGGING
 
