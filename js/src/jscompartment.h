@@ -602,6 +602,8 @@ struct JSCompartment
 
     void findOutgoingEdges(js::gc::ComponentFinder<JS::Zone>& finder);
 
+    MOZ_MUST_USE bool findDeadProxyZoneEdges(bool* foundAny);
+
     js::DtoaCache dtoaCache;
 
     // Random number generator for Math.random().
@@ -609,6 +611,14 @@ struct JSCompartment
 
     // Initialize randomNumberGenerator if needed.
     void ensureRandomNumberGenerator();
+
+  private:
+    mozilla::non_crypto::XorShift128PlusRNG randomKeyGenerator_;
+
+  public:
+    js::HashNumber randomHashCode();
+
+    mozilla::HashCodeScrambler randomHashCodeScrambler();
 
   private:
     JSCompartment* thisForCtor() { return this; }

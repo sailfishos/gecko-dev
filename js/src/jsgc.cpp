@@ -238,6 +238,7 @@ using namespace js;
 using namespace js::gc;
 
 using mozilla::ArrayLength;
+using mozilla::HashCodeScrambler;
 using mozilla::Maybe;
 using mozilla::Swap;
 
@@ -2333,8 +2334,9 @@ GCRuntime::relocateArenas(Zone* zone, JS::gcreason::Reason reason, ArenaHeader*&
 void
 MovingTracer::onObjectEdge(JSObject** objp)
 {
-    if (IsForwarded(*objp))
-        *objp = Forwarded(*objp);
+    JSObject* obj = *objp;
+    if (obj->runtimeFromAnyThread() == runtime() && IsForwarded(obj))
+        *objp = Forwarded(obj);
 }
 
 void
@@ -3794,9 +3796,11 @@ GCRuntime::purgeRuntime()
 
 bool
 GCRuntime::shouldPreserveJITCode(JSCompartment* comp, int64_t currentTime,
-                                 JS::gcreason::Reason reason)
+                                 JS::gcreason::Reason reason, bool canAllocateMoreCode)
 {
     if (cleanUpEverything)
+        return false;
+    if (!canAllocateMoreCode)
         return false;
 
     if (alwaysPreserveCode)
@@ -3944,15 +3948,19 @@ GCRuntime::beginMarkPhase(JS::gcreason::Reason reason)
         zone->setPreservingCode(false);
     }
 
+    // Discard JIT code more aggressively if the process is approaching its
+    // executable code limit.
+    bool canAllocateMoreCode = jit::CanLikelyAllocateMoreExecutableMemory();
+
     for (CompartmentsIter c(rt, WithAtoms); !c.done(); c.next()) {
         c->marked = false;
         c->scheduledForDestruction = false;
         c->maybeAlive = false;
-        if (shouldPreserveJITCode(c, currentTime, reason))
+        if (shouldPreserveJITCode(c, currentTime, reason, canAllocateMoreCode))
             c->zone()->setPreservingCode(true);
     }
 
-    if (!rt->gc.cleanUpEverything) {
+    if (!rt->gc.cleanUpEverything && canAllocateMoreCode) {
         if (JSCompartment* comp = jit::TopmostIonActivationCompartment(rt))
             comp->zone()->setPreservingCode(true);
     }
@@ -4310,7 +4318,7 @@ js::gc::MarkingValidator::nonIncrementalMark()
      * For saving, smush all of the keys into one big table and split them back
      * up into per-zone tables when restoring.
      */
-    gc::WeakKeyTable savedWeakKeys;
+    gc::WeakKeyTable savedWeakKeys(SystemAllocPolicy(), runtime->randomHashCodeScrambler());
     if (!savedWeakKeys.init())
         return;
 
@@ -4520,8 +4528,8 @@ DropStringWrappers(JSRuntime* rt)
  *
  * If compartment A has an edge to an unmarked object in compartment B, then we
  * must not sweep A in a later slice than we sweep B. That's because a write
- * barrier in A that could lead to the unmarked object in B becoming
- * marked. However, if we had already swept that object, we would be in trouble.
+ * barrier in A could lead to the unmarked object in B becoming marked.
+ * However, if we had already swept that object, we would be in trouble.
  *
  * If we consider these dependencies as a graph, then all the compartments in
  * any strongly-connected component of this graph must be swept in the same
@@ -4565,6 +4573,28 @@ JSCompartment::findOutgoingEdges(ComponentFinder<JS::Zone>& finder)
     }
 }
 
+bool
+JSCompartment::findDeadProxyZoneEdges(bool* foundAny)
+{
+    // As an optimization, return whether any dead proxy objects are found in
+    // this compartment so that if a zone has none, its cross compartment
+    // wrappers do not need to be scanned.
+    *foundAny = false;
+    for (js::WrapperMap::Enum e(crossCompartmentWrappers); !e.empty(); e.popFront()) {
+        Value value = e.front().value().get();
+        if (value.isObject()) {
+            if (IsDeadProxyObject(&value.toObject())) {
+                *foundAny = true;
+                Zone* wrappedZone = static_cast<JSObject*>(e.front().key().wrapped)->zone();
+                if (!wrappedZone->gcZoneGroupEdges.put(zone()))
+                    return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 void
 Zone::findOutgoingEdges(ComponentFinder<JS::Zone>& finder)
 {
@@ -4583,13 +4613,12 @@ Zone::findOutgoingEdges(ComponentFinder<JS::Zone>& finder)
         if (r.front()->isGCMarking())
             finder.addEdgeTo(r.front());
     }
-    gcZoneGroupEdges.clear();
 
     Debugger::findZoneEdges(this, finder);
 }
 
 bool
-GCRuntime::findZoneEdgesForWeakMaps()
+GCRuntime::findInterZoneEdges()
 {
     /*
      * Weakmaps which have keys with delegates in a different zone introduce the
@@ -4606,14 +4635,33 @@ GCRuntime::findZoneEdgesForWeakMaps()
             return false;
     }
 
+    for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
+        if (zone->hasDeadProxies) {
+            bool foundInZone = false;
+            for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next()) {
+                bool foundInCompartment = false;
+                if (!comp->findDeadProxyZoneEdges(&foundInCompartment))
+                    return false;
+                foundInZone = foundInZone || foundInCompartment;
+            }
+            if (!foundInZone)
+                zone->hasDeadProxies = false;
+        }
+    }
+
     return true;
 }
 
 void
 GCRuntime::findZoneGroups()
 {
+#ifdef DEBUG
+    for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next())
+        MOZ_ASSERT(zone->gcZoneGroupEdges.empty());
+#endif
+
     ComponentFinder<Zone> finder(rt->mainThread.nativeStackLimit[StackForSystemCode]);
-    if (!isIncremental || !findZoneEdgesForWeakMaps())
+    if (!isIncremental || !findInterZoneEdges())
         finder.useOneComponent();
 
     for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
@@ -4624,12 +4672,19 @@ GCRuntime::findZoneGroups()
     currentZoneGroup = zoneGroups;
     zoneGroupIndex = 0;
 
+    for (GCZonesIter zone(rt); !zone.done(); zone.next())
+        zone->gcZoneGroupEdges.clear();
+
+#ifdef DEBUG
     for (Zone* head = currentZoneGroup; head; head = head->nextGroup()) {
         for (Zone* zone = head; zone; zone = zone->nextNodeInGroup())
             MOZ_ASSERT(zone->isGCMarking());
     }
 
     MOZ_ASSERT_IF(!isIncremental, !currentZoneGroup->nextGroup());
+    for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next())
+        MOZ_ASSERT(zone->gcZoneGroupEdges.empty());
+#endif
 }
 
 static void
@@ -4799,11 +4854,11 @@ MarkIncomingCrossCompartmentPointers(JSRuntime* rt, const uint32_t color)
             MOZ_ASSERT(dst->compartment() == c);
 
             if (color == GRAY) {
-                if (IsMarkedUnbarriered(&src) && src->asTenured().isMarked(GRAY))
+                if (IsMarkedUnbarriered(rt, &src) && src->asTenured().isMarked(GRAY))
                     TraceManuallyBarrieredEdge(&rt->gc.marker, &dst,
                                                "cross-compartment gray pointer");
             } else {
-                if (IsMarkedUnbarriered(&src) && !src->asTenured().isMarked(GRAY))
+                if (IsMarkedUnbarriered(rt, &src) && !src->asTenured().isMarked(GRAY))
                     TraceManuallyBarrieredEdge(&rt->gc.marker, &dst,
                                                "cross-compartment black pointer");
             }
@@ -4867,6 +4922,8 @@ js::NotifyGCNukeWrapper(JSObject* obj)
      * remember to mark it.
      */
     RemoveFromGrayList(obj);
+
+    obj->zone()->hasDeadProxies = true;
 }
 
 enum {
@@ -7455,7 +7512,11 @@ JS::IsIncrementalGCInProgress(JSRuntime* rt)
 JS_PUBLIC_API(bool)
 JS::IsIncrementalBarrierNeeded(JSRuntime* rt)
 {
-    return rt->gc.state() == gc::MARK && !rt->isHeapBusy();
+    if (rt->isHeapBusy())
+        return false;
+
+    auto state = rt->gc.state();
+    return state != gc::NO_INCREMENTAL && state <= gc::SWEEP;
 }
 
 JS_PUBLIC_API(bool)

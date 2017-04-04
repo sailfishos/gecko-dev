@@ -145,7 +145,7 @@ GStreamerReader::~GStreamerReader()
 //  ResetIfCurrentDecoderActive(this);
 //}
 
-nsresult GStreamerReader::Init()
+nsresult GStreamerReader::InitInternal()
 {
   GStreamerFormatHelper::Instance();
 
