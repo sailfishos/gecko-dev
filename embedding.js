@@ -181,7 +181,7 @@ pref("layout.reflow.synthMouseMove", false);
 pref("mozilla.widget.disable-native-theme", true);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
-pref("layers.low-precision-opacity", "0.5");
+pref("layers.low-precision-opacity", "1.0");
 pref("layers.progressive-paint", true);
 
 /* password manager */
