@@ -1,5 +1,5 @@
 %define greversion    38.8.0
-%define sf_extra_ver  15
+%define sf_extra_ver  18
 
 %define embedlite_config merqtxulrunner
 
