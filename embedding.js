@@ -52,7 +52,6 @@ pref("layers.max-active", 20);
 
 // APZC preferences.
 
-pref("apz.asyncscroll.throttle", 15);
 pref("apz.fling_accel_base_mult", "1.125f");
 pref("apz.min_skate_speed", "1.0f");
 
