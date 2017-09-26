@@ -201,8 +201,8 @@ printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
 %ifarch %arm
 echo "ac_add_options --with-arm-kuser" >> "$MOZCONFIG"
 echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
-# No need for this, this should be managed by toolchain
-echo "ac_add_options --with-thumb=toolchain-default" >> "$MOZCONFIG"
+# Do not build as thumb since it breaks video decoding.
+echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
 %endif
 
 echo "mk_add_options MOZ_MAKE_FLAGS='%{?jobs:-j%jobs}'" >> "$MOZCONFIG"
