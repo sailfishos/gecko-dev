@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <qnamespace.h>
+#include <vector>
+
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/TextEvents.h"
 
@@ -20,7 +22,7 @@ struct nsKeyConverter
     int keysym; // Qt key code
 };
 
-static struct nsKeyConverter nsKeycodes[] =
+static const std::vector<nsKeyConverter> nsKeycodes =
 {
 //  { NS_VK_CANCEL,        Qt::Key_Cancel },
     { NS_VK_BACK,          Qt::Key_Backspace },
@@ -148,8 +150,6 @@ static struct nsKeyConverter nsKeycodes[] =
 int
 QtKeyCodeToDOMKeyCode(int aKeysym)
 {
-    unsigned int i;
-
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
     // the key list, so we will look through these first.
@@ -168,9 +168,9 @@ QtKeyCodeToDOMKeyCode(int aKeysym)
 //        return aKeysym - Qt::Key_KP_0 + NS_VK_NUMPAD0;
 
     // misc other things
-    for (i = 0; i < ArrayLength(nsKeycodes); i++) {
-        if (nsKeycodes[i].keysym == aKeysym)
-            return(nsKeycodes[i].vkCode);
+    for (const nsKeyConverter &keyConverter : nsKeycodes) {
+        if (keyConverter.keysym == aKeysym)
+            return(keyConverter.vkCode);
     }
 
     // function keys
@@ -183,8 +183,6 @@ QtKeyCodeToDOMKeyCode(int aKeysym)
 int
 DOMKeyCodeToQtKeyCode(int aKeysym)
 {
-    unsigned int i;
-
     // First, try to handle alphanumeric input, not listed in nsKeycodes:
     // most likely, more letters will be getting typed in than things in
     // the key list, so we will look through these first.
@@ -206,9 +204,9 @@ DOMKeyCodeToQtKeyCode(int aKeysym)
     }
 
     // misc other things
-    for (i = 0; i < ArrayLength(nsKeycodes); ++i) {
-      if (nsKeycodes[i].vkCode == aKeysym) {
-        return nsKeycodes[i].keysym;
+    for (const nsKeyConverter &keyConverter : nsKeycodes) {
+      if (keyConverter.vkCode == aKeysym) {
+        return keyConverter.keysym;
       }
     }
 
