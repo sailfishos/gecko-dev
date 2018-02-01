@@ -67,12 +67,6 @@ public:
    * on the compositor thread.
    */
   const TimeStamp& GetLastComposeTime() const;
-#ifdef COMPOSITOR_PERFORMANCE_WARNING
-  const TimeStamp& GetExpectedComposeStartTime()
-  {
-    return mExpectedComposeStartTime;
-  }
-#endif
 
 private:
   virtual ~CompositorVsyncScheduler();
@@ -100,10 +94,6 @@ private:
 
   CompositorVsyncSchedulerOwner* mVsyncSchedulerOwner;
   TimeStamp mLastCompose;
-
-#ifdef COMPOSITOR_PERFORMANCE_WARNING
-  TimeStamp mExpectedComposeStartTime;
-#endif
 
   bool mAsapScheduling;
   bool mIsObservingVsync;
