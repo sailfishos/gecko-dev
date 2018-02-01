@@ -344,5 +344,12 @@ CompositorVsyncScheduler::ComposeToTarget(gfx::DrawTarget* aTarget, const IntRec
   mVsyncSchedulerOwner->CompositeToTarget(aTarget, aRect);
 }
 
+const TimeStamp&
+CompositorVsyncScheduler::GetLastComposeTime() const
+{
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+  return mLastCompose;
+}
+
 } // namespace layers
 } // namespace mozilla
