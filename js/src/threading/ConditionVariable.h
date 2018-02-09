@@ -90,10 +90,8 @@ class ConditionVariable {
   // encounter substantially longer delays, depending on system load.
   CVStatus wait_for(UniqueLock<Mutex>& lock,
                     const mozilla::TimeDuration& rel_time) {
-    return impl_.wait_for(lock.lock, rel_time) ==
-                   mozilla::detail::CVStatus::Timeout
-               ? CVStatus::Timeout
-               : CVStatus::NoTimeout;
+    return impl_.wait_for(lock.lock, rel_time) == mozilla::CVStatus::Timeout
+      ? CVStatus::Timeout : CVStatus::NoTimeout;
   }
 
   // As with |wait_for|, block the current thread of execution until woken from

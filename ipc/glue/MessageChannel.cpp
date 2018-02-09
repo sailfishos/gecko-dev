@@ -2167,12 +2167,6 @@ void MessageChannel::EnqueuePendingMessages() {
   RepostAllMessages();
 }
 
-static inline bool IsTimeoutExpired(PRIntervalTime aStart,
-                                    PRIntervalTime aTimeout) {
-  return (aTimeout != PR_INTERVAL_NO_TIMEOUT) &&
-         (aTimeout <= (PR_IntervalNow() - aStart));
-}
-
 bool MessageChannel::WaitResponse(bool aWaitTimedOut) {
   if (aWaitTimedOut) {
     if (mInTimeoutSecondHalf) {
@@ -2198,17 +2192,14 @@ bool MessageChannel::WaitForSyncNotify(bool /* aHandleWindowsMessages */) {
   }
 #endif
 
-  PRIntervalTime timeout = (kNoTimeout == mTimeoutMs)
-                               ? PR_INTERVAL_NO_TIMEOUT
-                               : PR_MillisecondsToInterval(mTimeoutMs);
-  // XXX could optimize away this syscall for "no timeout" case if desired
-  PRIntervalTime waitStart = PR_IntervalNow();
-
-  mMonitor->Wait(timeout);
+  TimeDuration timeout = (kNoTimeout == mTimeoutMs) ?
+                         TimeDuration::Forever() :
+                         TimeDuration::FromMilliseconds(mTimeoutMs);
+  CVStatus status = mMonitor->Wait(timeout);
 
   // If the timeout didn't expire, we know we received an event. The
   // converse is not true.
-  return WaitResponse(IsTimeoutExpired(waitStart, timeout));
+  return WaitResponse(status == CVStatus::Timeout);
 }
 
 bool MessageChannel::WaitForInterruptNotify() {

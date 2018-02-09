@@ -309,7 +309,7 @@ TimeStamp OfflineClockDriver::GetCurrentTimeStamp() {
 void SystemClockDriver::WaitForNextIteration() {
   mGraphImpl->GetMonitor().AssertCurrentThreadOwns();
 
-  PRIntervalTime timeout = PR_INTERVAL_NO_TIMEOUT;
+  TimeDuration timeout = TimeDuration::Forever();
   TimeStamp now = TimeStamp::Now();
 
   // This lets us avoid hitting the Atomic twice when we know we won't sleep
@@ -328,7 +328,7 @@ void SystemClockDriver::WaitForNextIteration() {
     // Make sure timeoutMS doesn't overflow 32 bits by waking up at
     // least once a minute, if we need to wake up at all
     timeoutMS = std::max<int64_t>(0, std::min<int64_t>(timeoutMS, 60 * 1000));
-    timeout = PR_MillisecondsToInterval(uint32_t(timeoutMS));
+    timeout = TimeDuration::FromMilliseconds(timeoutMS);
     LOG(LogLevel::Verbose,
         ("Waiting for next iteration; at %f, timeout=%f",
          (now - mInitialTimeStamp).ToSeconds(), timeoutMS / 1000.0));
@@ -337,7 +337,7 @@ void SystemClockDriver::WaitForNextIteration() {
     }
     mWaitState = WAITSTATE_WAITING_FOR_NEXT_ITERATION;
   }
-  if (timeout > 0) {
+  if (!timeout.IsZero()) {
     mGraphImpl->GetMonitor().Wait(timeout);
     LOG(LogLevel::Verbose, ("Resuming after timeout; at %f, elapsed=%f",
                             (TimeStamp::Now() - mInitialTimeStamp).ToSeconds(),

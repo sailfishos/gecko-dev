@@ -31,9 +31,8 @@ class Monitor {
   void Lock() { mMutex.Lock(); }
   void Unlock() { mMutex.Unlock(); }
 
-  nsresult Wait(PRIntervalTime aInterval = PR_INTERVAL_NO_TIMEOUT) {
-    return mCondVar.Wait(aInterval);
-  }
+  void Wait() { mCondVar.Wait(); }
+  CVStatus Wait(TimeDuration aDuration) { return mCondVar.Wait(aDuration); }
 
   nsresult Notify() { return mCondVar.Notify(); }
   nsresult NotifyAll() { return mCondVar.NotifyAll(); }
@@ -68,9 +67,8 @@ class MOZ_STACK_CLASS MonitorAutoLock {
 
   ~MonitorAutoLock() { mMonitor->Unlock(); }
 
-  nsresult Wait(PRIntervalTime aInterval = PR_INTERVAL_NO_TIMEOUT) {
-    return mMonitor->Wait(aInterval);
-  }
+  void Wait() { mMonitor->Wait(); }
+  CVStatus Wait(TimeDuration aDuration) { return mMonitor->Wait(aDuration); }
 
   nsresult Notify() { return mMonitor->Notify(); }
   nsresult NotifyAll() { return mMonitor->NotifyAll(); }

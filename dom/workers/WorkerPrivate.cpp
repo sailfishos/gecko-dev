@@ -3296,7 +3296,7 @@ bool WorkerPrivate::InterruptCallback(JSContext* aCx) {
         break;
       }
 
-      WaitForWorkerEvents(PR_MillisecondsToInterval(UINT32_MAX));
+      WaitForWorkerEvents();
     }
   }
 
@@ -3405,12 +3405,12 @@ void WorkerPrivate::DisableMemoryReporter() {
   }
 }
 
-void WorkerPrivate::WaitForWorkerEvents(PRIntervalTime aInterval) {
+void WorkerPrivate::WaitForWorkerEvents() {
   AssertIsOnWorkerThread();
   mMutex.AssertCurrentThreadOwns();
 
   // Wait for a worker event.
-  mCondVar.Wait(aInterval);
+  mCondVar.Wait();
 }
 
 WorkerPrivate::ProcessAllControlRunnablesResult

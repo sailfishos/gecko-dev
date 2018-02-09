@@ -487,7 +487,7 @@ void CacheIOThread::ThreadFunc() {
         break;
       }
 
-      lock.Wait(PR_INTERVAL_NO_TIMEOUT);
+      lock.Wait();
 
     } while (true);
 

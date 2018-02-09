@@ -552,7 +552,7 @@ class ShutdownEvent : public Runnable {
         CacheIOThread::WRITE);  // When writes and closing of handles is done
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-    PRIntervalTime const waitTime = PR_MillisecondsToInterval(1000);
+    TimeDuration waitTime = TimeDuration::FromSeconds(1);
     while (!mNotified) {
       mon.Wait(waitTime);
       if (!mNotified) {

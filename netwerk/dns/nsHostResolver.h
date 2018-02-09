@@ -438,8 +438,8 @@ class nsHostResolver : public nsISupports, public AHostResolver {
   mozilla::LinkedList<RefPtr<nsHostRecord>> mEvictionQ;
   uint32_t mEvictionQSize;
   PRTime mCreationTime;
-  PRIntervalTime mLongIdleTimeout;
-  PRIntervalTime mShortIdleTimeout;
+  mozilla::TimeDuration mLongIdleTimeout;
+  mozilla::TimeDuration mShortIdleTimeout;
 
   mozilla::Atomic<bool> mShutdown;
   mozilla::Atomic<uint32_t> mNumIdleThreads;

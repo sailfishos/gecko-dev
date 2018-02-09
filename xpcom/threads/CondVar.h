@@ -46,25 +46,29 @@ class CondVar : BlockingResourceBase {
    **/
   ~CondVar() { MOZ_COUNT_DTOR(CondVar); }
 
-#ifndef DEBUG
   /**
    * Wait
    * @see prcvar.h
    **/
-  nsresult Wait(PRIntervalTime aInterval = PR_INTERVAL_NO_TIMEOUT) {
+#ifndef DEBUG
+  void Wait() {
 #ifdef MOZILLA_INTERNAL_API
     AUTO_PROFILER_THREAD_SLEEP;
-#endif  // MOZILLA_INTERNAL_API
-    if (aInterval == PR_INTERVAL_NO_TIMEOUT) {
-      mImpl.wait(*mLock);
-    } else {
-      mImpl.wait_for(*mLock, TimeDuration::FromMilliseconds(double(aInterval)));
-    }
-    return NS_OK;
+#endif //MOZILLA_INTERNAL_API
+    mImpl.wait(*mLock);
+  }
+
+  CVStatus Wait(TimeDuration aDuration) {
+#ifdef MOZILLA_INTERNAL_API
+    AUTO_PROFILER_THREAD_SLEEP;
+#endif //MOZILLA_INTERNAL_API
+    return mImpl.wait_for(*mLock, aDuration);
   }
 #else
-  nsresult Wait(PRIntervalTime aInterval = PR_INTERVAL_NO_TIMEOUT);
-#endif  // ifndef DEBUG
+  // NOTE: debug impl is in BlockingResourceBase.cpp
+  void Wait();
+  CVStatus Wait(TimeDuration aDuration);
+#endif
 
   /**
    * Notify

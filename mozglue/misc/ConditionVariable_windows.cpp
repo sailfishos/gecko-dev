@@ -52,7 +52,7 @@ void mozilla::detail::ConditionVariableImpl::wait(MutexImpl& lock) {
   MOZ_RELEASE_ASSERT(r);
 }
 
-mozilla::detail::CVStatus mozilla::detail::ConditionVariableImpl::wait_for(
+mozilla::CVStatus mozilla::detail::ConditionVariableImpl::wait_for(
     MutexImpl& lock, const mozilla::TimeDuration& rel_time) {
   SRWLOCK* srwlock = &lock.platformData()->lock;
 

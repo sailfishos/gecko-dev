@@ -10,6 +10,7 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Monitor.h"
+#include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
 #include "nsIObserverService.h"
 #include "nsIThreadPool.h"
@@ -51,15 +52,17 @@ class DecodePoolImpl {
   MOZ_DECLARE_REFCOUNTED_TYPENAME(DecodePoolImpl)
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(DecodePoolImpl)
 
-  DecodePoolImpl(uint8_t aMaxThreads, uint8_t aMaxIdleThreads,
-                 PRIntervalTime aIdleTimeout)
-      : mMonitor("DecodePoolImpl"),
-        mThreads(aMaxThreads),
-        mIdleTimeout(aIdleTimeout),
-        mMaxIdleThreads(aMaxIdleThreads),
-        mAvailableThreads(aMaxThreads),
-        mIdleThreads(0),
-        mShuttingDown(false) {
+  DecodePoolImpl(uint8_t aMaxThreads,
+                 uint8_t aMaxIdleThreads,
+                 TimeDuration aIdleTimeout)
+    : mMonitor("DecodePoolImpl")
+    , mThreads(aMaxThreads)
+    , mIdleTimeout(aIdleTimeout)
+    , mMaxIdleThreads(aMaxIdleThreads)
+    , mAvailableThreads(aMaxThreads)
+    , mIdleThreads(0)
+    , mShuttingDown(false)
+  {
     MonitorAutoLock lock(mMonitor);
     bool success = CreateThread();
     MOZ_RELEASE_ASSERT(success, "Must create first image decoder thread!");
@@ -159,12 +162,12 @@ class DecodePoolImpl {
     return PopWorkLocked(aShutdownIdle);
   }
 
- private:
+private:
   /// Pops a new work item, blocking if necessary.
   Work PopWorkLocked(bool aShutdownIdle) {
     mMonitor.AssertCurrentThreadOwns();
 
-    PRIntervalTime timeout = mIdleTimeout;
+    TimeDuration timeout = mIdleTimeout;
     do {
       if (!mHighPriorityQueue.IsEmpty()) {
         return PopWorkFromQueue(mHighPriorityQueue);
@@ -189,19 +192,19 @@ class DecodePoolImpl {
         // This thread should shutdown if it is idle. If we have waited longer
         // than the timeout period without having done any work, then we should
         // shutdown the thread.
-        if (timeout == 0) {
+        if (timeout.IsZero()) {
           return CreateShutdownWork();
         }
 
         ++mIdleThreads;
         MOZ_ASSERT(mIdleThreads <= mThreads.Capacity());
 
-        PRIntervalTime now = PR_IntervalNow();
+        TimeStamp now = TimeStamp::Now();
         mMonitor.Wait(timeout);
-        PRIntervalTime delta = PR_IntervalNow() - now;
+        TimeDuration delta = TimeStamp::Now() - now;
         if (delta > timeout) {
           timeout = 0;
-        } else {
+        } else if (timeout != TimeDuration::Forever()) {
           timeout -= delta;
         }
       }
@@ -237,7 +240,7 @@ class DecodePoolImpl {
   nsTArray<RefPtr<IDecodingTask>> mHighPriorityQueue;
   nsTArray<RefPtr<IDecodingTask>> mLowPriorityQueue;
   nsTArray<nsCOMPtr<nsIThread>> mThreads;
-  PRIntervalTime mIdleTimeout;
+  TimeDuration mIdleTimeout;
   uint8_t mMaxIdleThreads;    // Maximum number of workers when idle.
   uint8_t mAvailableThreads;  // How many new threads can be created.
   uint8_t mIdleThreads;       // How many created threads are waiting.
@@ -359,13 +362,12 @@ DecodePool::DecodePool() : mMutex("image::DecodePool") {
 
   // The timeout period before shutting down idle threads.
   int32_t prefIdleTimeout = gfxPrefs::ImageMTDecodingIdleTimeout();
-  PRIntervalTime idleTimeout;
+  TimeDuration idleTimeout;
   if (prefIdleTimeout <= 0) {
-    idleTimeout = PR_INTERVAL_NO_TIMEOUT;
+    idleTimeout = TimeDuration::Forever();
     idleLimit = limit;
   } else {
-    idleTimeout =
-        PR_MillisecondsToInterval(static_cast<uint32_t>(prefIdleTimeout));
+    idleTimeout = TimeDuration::FromMilliseconds(prefIdleTimeout);
     idleLimit = (limit + 1) / 2;
   }
 
