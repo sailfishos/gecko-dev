@@ -2481,19 +2481,12 @@ nsresult ReadResponse(mozIStorageConnection* aConn, EntryId aEntryId,
     }
 
 #ifdef DEBUG
-    nsCString scheme;
-    rv = url->GetScheme(scheme);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
+    nsDependentCSubstring scheme = url->Scheme();
     MOZ_ASSERT(scheme == "http" || scheme == "https" || scheme == "file");
 #endif
 
     nsCString origin;
-    rv = url->GetOrigin(origin);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
+    url->Origin(origin);
 
     aSavedResponseOut->mValue.principalInfo() =
         mozilla::ipc::ContentPrincipalInfo(attrs, origin, specNoSuffix);

@@ -55,11 +55,7 @@ nsresult GetOrigin(const nsACString& aURL, nsACString& aOrigin) {
     return rv;
   }
 
-  rv = url->GetOrigin(aOrigin);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
+  url->Origin(aOrigin);
   return NS_OK;
 }
 
