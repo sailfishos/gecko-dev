@@ -27,7 +27,7 @@
 #include "nsContentUtils.h"
 #include "prprf.h"
 #include "nsReadableUtils.h"
-#include "rust-url-capi/src/rust-url-capi.h"
+#include "mozilla/net/MozURL_ffi.h"
 
 //
 // setenv MOZ_LOG nsStandardURL:5
