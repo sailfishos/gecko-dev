@@ -194,14 +194,12 @@ nsObserverService::AddObserver(nsIObserver* aObserver, const char* aTopic,
   if (mozilla::net::IsNeckoChild() && !strncmp(aTopic, "http-on-", 8) &&
       strcmp(aTopic, "http-on-opening-request") &&
       strcmp(aTopic, "http-on-stop-request")) {
-    nsCOMPtr<nsIConsoleService> console(
-        do_GetService(NS_CONSOLESERVICE_CONTRACTID));
-    nsCOMPtr<nsIScriptError> error(
-        do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
-    error->Init(NS_LITERAL_STRING(
-                    "http-on-* observers only work in the parent process"),
-                EmptyString(), EmptyString(), 0, 0, nsIScriptError::warningFlag,
-                "chrome javascript");
+    nsCOMPtr<nsIConsoleService> console(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+    nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
+    error->Init(NS_LITERAL_STRING("http-on-* observers only work in the parent process"),
+                EmptyString(), EmptyString(), 0, 0,
+                nsIScriptError::warningFlag, "chrome javascript",
+                false /* from private window */);
     console->LogMessage(error);
 
     return NS_ERROR_NOT_IMPLEMENTED;

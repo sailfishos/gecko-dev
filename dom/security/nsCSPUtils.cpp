@@ -114,12 +114,16 @@ void CSP_LogStrMessage(const nsAString& aMsg) {
   console->LogStringMessage(msg.get());
 }
 
-void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
-                    const nsAString& aSourceLine, uint32_t aLineNumber,
-                    uint32_t aColumnNumber, uint32_t aFlags,
-                    const char* aCategory, uint64_t aInnerWindowID) {
-  nsCOMPtr<nsIConsoleService> console(
-      do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+void CSP_LogMessage(const nsAString& aMessage,
+               const nsAString& aSourceName,
+               const nsAString& aSourceLine,
+               uint32_t aLineNumber,
+               uint32_t aColumnNumber,
+               uint32_t aFlags,
+               const char *aCategory,
+               uint64_t aInnerWindowID,
+               bool aFromPrivateWindow) {
+  nsCOMPtr<nsIConsoleService> console(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
 
   nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
 
@@ -148,11 +152,16 @@ void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
   if (aInnerWindowID > 0) {
     nsCString catStr;
     catStr.AssignASCII(aCategory);
-    rv = error->InitWithWindowID(cspMsg, aSourceName, aSourceLine, aLineNumber,
-                                 aColumnNumber, aFlags, catStr, aInnerWindowID);
-  } else {
-    rv = error->Init(cspMsg, aSourceName, aSourceLine, aLineNumber,
-                     aColumnNumber, aFlags, aCategory);
+    rv = error->InitWithWindowID(cspMsg, aSourceName,
+                                 aSourceLine, aLineNumber,
+                                 aColumnNumber, aFlags,
+                                 catStr, aInnerWindowID);
+  }
+  else {
+    rv = error->Init(cspMsg, aSourceName,
+                     aSourceLine, aLineNumber,
+                     aColumnNumber, aFlags,
+                     aCategory, aFromPrivateWindow);
   }
   if (NS_FAILED(rv)) {
     return;
@@ -163,15 +172,22 @@ void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
 /**
  * Combines CSP_LogMessage and CSP_GetLocalizedStr into one call.
  */
-void CSP_LogLocalizedStr(const char* aName, const char16_t** aParams,
-                         uint32_t aLength, const nsAString& aSourceName,
-                         const nsAString& aSourceLine, uint32_t aLineNumber,
-                         uint32_t aColumnNumber, uint32_t aFlags,
-                         const char* aCategory, uint64_t aInnerWindowID) {
+void CSP_LogLocalizedStr(const char* aName,
+                    const char16_t** aParams,
+                    uint32_t aLength,
+                    const nsAString& aSourceName,
+                    const nsAString& aSourceLine,
+                    uint32_t aLineNumber,
+                    uint32_t aColumnNumber,
+                    uint32_t aFlags,
+                    const char* aCategory,
+                    uint64_t aInnerWindowID,
+                    bool aFromPrivateWindow) {
   nsAutoString logMsg;
   CSP_GetLocalizedStr(aName, aParams, aLength, logMsg);
-  CSP_LogMessage(logMsg, aSourceName, aSourceLine, aLineNumber, aColumnNumber,
-                 aFlags, aCategory, aInnerWindowID);
+  CSP_LogMessage(logMsg, aSourceName, aSourceLine,
+                 aLineNumber, aColumnNumber, aFlags,
+                 aCategory, aInnerWindowID, aFromPrivateWindow);
 }
 
 /* ===== Helpers ============================ */

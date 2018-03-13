@@ -5364,12 +5364,13 @@ void nsGlobalWindowOuter::PostMessageMozOuter(JSContext* aCx,
         }
 
         nsContentUtils::LogSimpleConsoleError(
-            NS_ConvertUTF8toUTF16(nsPrintfCString(
-                R"(Attempting to post a message to window with url "%s" and )"
-                R"(origin "%s" from a system principal scope with mismatched )"
-                R"(origin "%s".)",
-                targetURL.get(), targetOrigin.get(), sourceOrigin.get())),
-            "DOM");
+          NS_ConvertUTF8toUTF16(nsPrintfCString(
+            R"(Attempting to post a message to window with url "%s" and )"
+            R"(origin "%s" from a system principal scope with mismatched )"
+            R"(origin "%s".)",
+            targetURL.get(), targetOrigin.get(), sourceOrigin.get())),
+          "DOM",
+          !!principal->PrivateBrowsingId());
 
         attrs = principal->OriginAttributesRef();
       }

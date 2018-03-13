@@ -807,7 +807,8 @@ nsresult nsMixedContentBlocker::ShouldLoad(
                         0,              // aLineNumber
                         0,              // aColumnNumber
                         nsIScriptError::errorFlag, "CSP",
-                        document->InnerWindowID());
+                        document->InnerWindowID(),
+                        !!document->NodePrincipal()->OriginAttributesRef().mPrivateBrowsingId);
     *aDecision = REJECT_REQUEST;
     return NS_OK;
   }

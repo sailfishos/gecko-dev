@@ -80,8 +80,10 @@ void nsChromeRegistry::LogMessageWithContext(nsIURI* aURL, uint32_t aLineNumber,
   if (aURL) aURL->GetSpec(spec);
 
   rv = error->Init(NS_ConvertUTF8toUTF16(formatted.get()),
-                   NS_ConvertUTF8toUTF16(spec), EmptyString(), aLineNumber, 0,
-                   flags, "chrome registration");
+                   NS_ConvertUTF8toUTF16(spec),
+                   EmptyString(),
+                   aLineNumber, 0, flags, "chrome registration",
+                   false /* from private window */);
 
   if (NS_FAILED(rv)) return;
 

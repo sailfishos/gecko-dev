@@ -122,28 +122,25 @@ bool JavaScriptParent::allowMessage(JSContext* cx) {
           JS_ReportErrorASCII(cx, "CPOW usage forbidden in this add-on");
           return false;
         }
-
-        warn = true;
       }
     }
   }
 
-  if (!warn) return true;
+  if (!warn)
+      return true;
 
-  static bool disableUnsafeCPOWWarnings =
-      PR_GetEnv("DISABLE_UNSAFE_CPOW_WARNINGS");
+  static bool disableUnsafeCPOWWarnings = PR_GetEnv("DISABLE_UNSAFE_CPOW_WARNINGS");
   if (!disableUnsafeCPOWWarnings) {
-    nsCOMPtr<nsIConsoleService> console(
-        do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+    nsCOMPtr<nsIConsoleService> console(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
     if (console && cx) {
       nsAutoString filename;
       uint32_t lineno = 0, column = 0;
       nsJSUtils::GetCallingLocation(cx, filename, &lineno, &column);
-      nsCOMPtr<nsIScriptError> error(
-          do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
+      nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
       error->Init(NS_LITERAL_STRING("unsafe/forbidden CPOW usage"), filename,
-                  EmptyString(), lineno, column, nsIScriptError::warningFlag,
-                  "chrome javascript");
+                  EmptyString(), lineno, column,
+                  nsIScriptError::warningFlag, "chrome javascript",
+                  false /* from private window */);
       console->LogMessage(error);
     } else {
       NS_WARNING("Unsafe synchronous IPC message");

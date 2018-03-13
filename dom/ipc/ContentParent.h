@@ -959,34 +959,42 @@ class ContentParent final : public PContentParent,
       const IPC::Principal& aPrincipal, const bool& aHighAccuracy) override;
   virtual mozilla::ipc::IPCResult RecvRemoveGeolocationListener() override;
 
-  virtual mozilla::ipc::IPCResult RecvSetGeolocationHigherAccuracy(
-      const bool& aEnable) override;
+  virtual mozilla::ipc::IPCResult RecvSetGeolocationHigherAccuracy(const bool& aEnable) override;
 
-  virtual mozilla::ipc::IPCResult RecvConsoleMessage(
-      const nsString& aMessage) override;
+  virtual mozilla::ipc::IPCResult RecvConsoleMessage(const nsString& aMessage) override;
 
-  virtual mozilla::ipc::IPCResult RecvScriptError(
-      const nsString& aMessage, const nsString& aSourceName,
-      const nsString& aSourceLine, const uint32_t& aLineNumber,
-      const uint32_t& aColNumber, const uint32_t& aFlags,
-      const nsCString& aCategory) override;
+  virtual mozilla::ipc::IPCResult RecvScriptError(const nsString& aMessage,
+                                                  const nsString& aSourceName,
+                                                  const nsString& aSourceLine,
+                                                  const uint32_t& aLineNumber,
+                                                  const uint32_t& aColNumber,
+                                                  const uint32_t& aFlags,
+                                                  const nsCString& aCategory,
+                                                  const bool& aIsFromPrivateWindow) override;
 
-  virtual mozilla::ipc::IPCResult RecvScriptErrorWithStack(
-      const nsString& aMessage, const nsString& aSourceName,
-      const nsString& aSourceLine, const uint32_t& aLineNumber,
-      const uint32_t& aColNumber, const uint32_t& aFlags,
-      const nsCString& aCategory, const ClonedMessageData& aStack) override;
+  virtual mozilla::ipc::IPCResult RecvScriptErrorWithStack(const nsString& aMessage,
+                                                           const nsString& aSourceName,
+                                                           const nsString& aSourceLine,
+                                                           const uint32_t& aLineNumber,
+                                                           const uint32_t& aColNumber,
+                                                           const uint32_t& aFlags,
+                                                           const nsCString& aCategory,
+                                                           const bool& aIsFromPrivateWindow,
+                                                           const ClonedMessageData& aStack) override;
 
- private:
-  mozilla::ipc::IPCResult RecvScriptErrorInternal(
-      const nsString& aMessage, const nsString& aSourceName,
-      const nsString& aSourceLine, const uint32_t& aLineNumber,
-      const uint32_t& aColNumber, const uint32_t& aFlags,
-      const nsCString& aCategory, const ClonedMessageData* aStack = nullptr);
+private:
+  mozilla::ipc::IPCResult RecvScriptErrorInternal(const nsString& aMessage,
+                                                  const nsString& aSourceName,
+                                                  const nsString& aSourceLine,
+                                                  const uint32_t& aLineNumber,
+                                                  const uint32_t& aColNumber,
+                                                  const uint32_t& aFlags,
+                                                  const nsCString& aCategory,
+                                                  const bool& aIsFromPrivateWindow,
+                                                  const ClonedMessageData* aStack = nullptr);
 
- public:
-  virtual mozilla::ipc::IPCResult RecvPrivateDocShellsExist(
-      const bool& aExist) override;
+public:
+  virtual mozilla::ipc::IPCResult RecvPrivateDocShellsExist(const bool& aExist) override;
 
   virtual mozilla::ipc::IPCResult RecvFirstIdle() override;
 

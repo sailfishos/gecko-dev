@@ -107,10 +107,15 @@ class ScriptErrorRunnable final : public mozilla::Runnable {
           /* aSourceLine */ EmptyString(), aLineNumber, aColumnNumber,
           aSeverityFlag, category, aInnerWindowID));
     } else {
-      MOZ_ALWAYS_SUCCEEDS(scriptError->Init(aMessage, aFilename,
-                                            /* aSourceLine */ EmptyString(),
-                                            aLineNumber, aColumnNumber,
-                                            aSeverityFlag, category.get()));
+      MOZ_ALWAYS_SUCCEEDS(
+        scriptError->Init(aMessage,
+                          aFilename,
+                          /* aSourceLine */ EmptyString(),
+                          aLineNumber,
+                          aColumnNumber,
+                          aSeverityFlag,
+                          category.get(),
+                          /* IDB doesn't run on Private browsing mode */ false));
     }
 
     MOZ_ALWAYS_SUCCEEDS(consoleService->LogMessage(scriptError));

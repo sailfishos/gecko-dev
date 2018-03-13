@@ -184,8 +184,8 @@ already_AddRefed<XPCNativeInterface> XPCNativeInterface::GetISupports() {
 }
 
 // static
-already_AddRefed<XPCNativeInterface> XPCNativeInterface::NewInstance(
-    nsIInterfaceInfo* aInfo) {
+already_AddRefed<XPCNativeInterface>
+XPCNativeInterface::NewInstance(nsIInterfaceInfo* aInfo) {
   AutoJSContext cx;
   static const uint16_t MAX_LOCAL_MEMBER_COUNT = 16;
   XPCNativeMember local_members[MAX_LOCAL_MEMBER_COUNT];
@@ -210,28 +210,27 @@ already_AddRefed<XPCNativeInterface> XPCNativeInterface::NewInstance(
   // (or using) the members.
 
   bool canScript;
-  if (NS_FAILED(aInfo->IsScriptable(&canScript)) || !canScript) return nullptr;
+  if (NS_FAILED(aInfo->IsScriptable(&canScript)) || !canScript)
+    return nullptr;
 
   bool mainProcessScriptableOnly;
   if (NS_FAILED(aInfo->IsMainProcessScriptableOnly(&mainProcessScriptableOnly)))
     return nullptr;
   if (mainProcessScriptableOnly && !XRE_IsParentProcess()) {
-    nsCOMPtr<nsIConsoleService> console(
-        do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+    nsCOMPtr<nsIConsoleService> console(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
     if (console) {
       const char* intfNameChars;
       aInfo->GetNameShared(&intfNameChars);
-      nsPrintfCString errorMsg("Use of %s in content process is deprecated.",
-                               intfNameChars);
+      nsPrintfCString errorMsg("Use of %s in content process is deprecated.", intfNameChars);
 
       nsAutoString filename;
       uint32_t lineno = 0, column = 0;
       nsJSUtils::GetCallingLocation(cx, filename, &lineno, &column);
-      nsCOMPtr<nsIScriptError> error(
-          do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
-      error->Init(NS_ConvertUTF8toUTF16(errorMsg), filename, EmptyString(),
-                  lineno, column, nsIScriptError::warningFlag,
-                  "chrome javascript");
+      nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
+      error->Init(NS_ConvertUTF8toUTF16(errorMsg),
+                  filename, EmptyString(),
+                  lineno, column, nsIScriptError::warningFlag, "chrome javascript",
+                  false /* from private window */);
       console->LogMessage(error);
     }
   }

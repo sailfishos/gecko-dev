@@ -2667,15 +2667,16 @@ nsresult NS_ShouldSecureUpgrade(nsIURI *aURI, nsILoadInfo *aLoadInfo,
         if (aLoadInfo->GetUpgradeInsecureRequests()) {
           const char16_t *params[] = {reportSpec.get(), reportScheme.get()};
           uint32_t innerWindowId = aLoadInfo->GetInnerWindowID();
-          CSP_LogLocalizedStr(
-              "upgradeInsecureRequest", params, ArrayLength(params),
-              EmptyString(),  // aSourceFile
-              EmptyString(),  // aScriptSample
-              0,              // aLineNumber
-              0,              // aColumnNumber
-              nsIScriptError::warningFlag, "CSP", innerWindowId);
-          Telemetry::AccumulateCategorical(
-              Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::CSP);
+          CSP_LogLocalizedStr("upgradeInsecureRequest",
+                              params, ArrayLength(params),
+                              EmptyString(), // aSourceFile
+                              EmptyString(), // aScriptSample
+                              0, // aLineNumber
+                              0, // aColumnNumber
+                              nsIScriptError::warningFlag, "CSP",
+                              innerWindowId,
+                              !!aLoadInfo->GetOriginAttributes().mPrivateBrowsingId);
+          Telemetry::AccumulateCategorical(Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::CSP);
         } else {
           nsCOMPtr<nsIDocument> doc;
           nsINode *node = aLoadInfo->LoadingNode();

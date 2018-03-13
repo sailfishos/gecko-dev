@@ -168,28 +168,21 @@ nsScriptErrorBase::SetErrorMessageName(const nsAString& aErrorMessageName) {
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsScriptErrorBase::Init(const nsAString& message, const nsAString& sourceName,
-                        const nsAString& sourceLine, uint32_t lineNumber,
-                        uint32_t columnNumber, uint32_t flags,
-                        const char* category) {
-  return InitWithWindowID(
-      message, sourceName, sourceLine, lineNumber, columnNumber, flags,
-      category ? nsDependentCString(category) : EmptyCString(), 0);
-}
+static void AssignSourceNameHelper(nsString& aSourceNameDest, const nsAString& aSourceNameSrc) {
+    if (aSourceNameSrc.IsEmpty())
+        return;
 
-static void AssignSourceNameHelper(nsString& aSourceNameDest,
-                                   const nsAString& aSourceNameSrc) {
-  if (aSourceNameSrc.IsEmpty()) return;
+    aSourceNameDest.Assign(aSourceNameSrc);
 
-  aSourceNameDest.Assign(aSourceNameSrc);
+    nsCOMPtr<nsIURI> uri;
+    nsAutoCString pass;
+    if (NS_SUCCEEDED(NS_NewURI(getter_AddRefs(uri), aSourceNameSrc)) &&
+        NS_SUCCEEDED(uri->GetPassword(pass)) &&
+        !pass.IsEmpty())
+    {
+        NS_GetSanitizedURIStringFromURI(uri, aSourceNameDest);
+    }
 
-  nsCOMPtr<nsIURI> uri;
-  nsAutoCString pass;
-  if (NS_SUCCEEDED(NS_NewURI(getter_AddRefs(uri), aSourceNameSrc)) &&
-      NS_SUCCEEDED(uri->GetPassword(pass)) && !pass.IsEmpty()) {
-    NS_GetSanitizedURIStringFromURI(uri, aSourceNameDest);
-  }
 }
 
 static void AssignSourceNameHelper(nsIURI* aSourceURI,
@@ -201,18 +194,43 @@ static void AssignSourceNameHelper(nsIURI* aSourceURI,
   }
 }
 
-void nsScriptErrorBase::InitializationHelper(
-    const nsAString& message, const nsAString& sourceLine, uint32_t lineNumber,
-    uint32_t columnNumber, uint32_t flags, const nsACString& category,
-    uint64_t aInnerWindowID) {
-  mMessage.Assign(message);
-  mLineNumber = lineNumber;
-  mSourceLine.Assign(sourceLine);
-  mColumnNumber = columnNumber;
-  mFlags = flags;
-  mCategory = category;
-  mTimeStamp = JS_Now() / 1000;
-  mInnerWindowID = aInnerWindowID;
+NS_IMETHODIMP
+nsScriptErrorBase::Init(const nsAString& message,
+                        const nsAString& sourceName,
+                        const nsAString& sourceLine,
+                        uint32_t lineNumber,
+                        uint32_t columnNumber,
+                        uint32_t flags,
+                        const char* category,
+                        bool fromPrivateWindow)
+{
+    InitializationHelper(message, sourceLine, lineNumber, columnNumber, flags,
+                         category ? nsDependentCString(category)
+                                  : EmptyCString(),
+                         0 /* inner Window ID */);
+    AssignSourceNameHelper(mSourceName, sourceName);
+
+    mIsFromPrivateWindow = fromPrivateWindow;
+    return NS_OK;
+}
+
+void
+nsScriptErrorBase::InitializationHelper(const nsAString& message,
+                                        const nsAString& sourceLine,
+                                        uint32_t lineNumber,
+                                        uint32_t columnNumber,
+                                        uint32_t flags,
+                                        const nsACString& category,
+                                        uint64_t aInnerWindowID)
+{
+    mMessage.Assign(message);
+    mLineNumber = lineNumber;
+    mSourceLine.Assign(sourceLine);
+    mColumnNumber = columnNumber;
+    mFlags = flags;
+    mCategory = category;
+    mTimeStamp = JS_Now() / 1000;
+    mInnerWindowID = aInnerWindowID;
 }
 
 NS_IMETHODIMP

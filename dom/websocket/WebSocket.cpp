@@ -87,18 +87,19 @@ class WebSocketImpl final : public nsIInterfaceRequestor,
   NS_DECL_NSIEVENTTARGET_FULL
 
   explicit WebSocketImpl(WebSocket* aWebSocket)
-      : mWebSocket(aWebSocket),
-        mIsServerSide(false),
-        mSecure(false),
-        mOnCloseScheduled(false),
-        mFailed(false),
-        mDisconnectingOrDisconnected(false),
-        mCloseEventWasClean(false),
-        mCloseEventCode(nsIWebSocketChannel::CLOSE_ABNORMAL),
-        mScriptLine(0),
-        mScriptColumn(0),
-        mInnerWindowID(0),
-        mWorkerPrivate(nullptr)
+  : mWebSocket(aWebSocket)
+  , mIsServerSide(false)
+  , mSecure(false)
+  , mOnCloseScheduled(false)
+  , mFailed(false)
+  , mDisconnectingOrDisconnected(false)
+  , mCloseEventWasClean(false)
+  , mCloseEventCode(nsIWebSocketChannel::CLOSE_ABNORMAL)
+  , mScriptLine(0)
+  , mScriptColumn(0)
+  , mInnerWindowID(0)
+  , mPrivateBrowsing(false)
+  , mWorkerPrivate(nullptr)
 #ifdef DEBUG
         ,
         mHasWorkerHolderRegistered(false)
@@ -201,6 +202,7 @@ class WebSocketImpl final : public nsIInterfaceRequestor,
   uint32_t mScriptLine;
   uint32_t mScriptColumn;
   uint64_t mInnerWindowID;
+  bool mPrivateBrowsing;
 
   WorkerPrivate* mWorkerPrivate;
   nsAutoPtr<WorkerHolder> mWorkerHolder;
@@ -361,7 +363,8 @@ void WebSocketImpl::PrintErrorOnConsole(const char* aBundleURI,
   } else {
     rv = errorObject->Init(message, NS_ConvertUTF8toUTF16(mScriptFile),
                            EmptyString(), mScriptLine, mScriptColumn,
-                           nsIScriptError::errorFlag, "Web Socket");
+                           nsIScriptError::errorFlag, "Web Socket",
+                           mPrivateBrowsing);
   }
 
   NS_ENSURE_SUCCESS_VOID(rv);
@@ -1433,6 +1436,8 @@ nsresult WebSocketImpl::Init(JSContext* aCx, nsIPrincipal* aPrincipal,
     mInnerWindowID = nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(aCx);
   }
 
+  mPrivateBrowsing = !!aPrincipal->OriginAttributesRef().mPrivateBrowsingId;
+
   // parses the url
   rv = ParseURL(PromiseFlatString(aURL));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1494,13 +1499,16 @@ nsresult WebSocketImpl::Init(JSContext* aCx, nsIPrincipal* aPrincipal,
     }
     mSecure = true;
 
-    const char16_t* params[] = {reportSpec.get(), u"wss"};
-    CSP_LogLocalizedStr("upgradeInsecureRequest", params, ArrayLength(params),
-                        EmptyString(),  // aSourceFile
-                        EmptyString(),  // aScriptSample
-                        0,              // aLineNumber
-                        0,              // aColumnNumber
-                        nsIScriptError::warningFlag, "CSP", mInnerWindowID);
+    const char16_t* params[] = { reportSpec.get(), u"wss" };
+    CSP_LogLocalizedStr("upgradeInsecureRequest",
+                        params, ArrayLength(params),
+                        EmptyString(), // aSourceFile
+                        EmptyString(), // aScriptSample
+                        0, // aLineNumber
+                        0, // aColumnNumber
+                        nsIScriptError::warningFlag, "CSP",
+                        mInnerWindowID,
+                        mPrivateBrowsing);
   }
 
   // Don't allow https:// to open ws://

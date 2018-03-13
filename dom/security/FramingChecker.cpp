@@ -181,14 +181,18 @@ static bool ShouldIgnoreFrameOptions(nsIChannel* aChannel,
   // log warning to console that xfo is ignored because of CSP
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
   uint64_t innerWindowID = loadInfo ? loadInfo->GetInnerWindowID() : 0;
-  const char16_t* params[] = {u"x-frame-options", u"frame-ancestors"};
-  CSP_LogLocalizedStr("IgnoringSrcBecauseOfDirective", params,
-                      ArrayLength(params),
-                      EmptyString(),  // no sourcefile
-                      EmptyString(),  // no scriptsample
-                      0,              // no linenumber
-                      0,              // no columnnumber
-                      nsIScriptError::warningFlag, "CSP", innerWindowID);
+  bool privateWindow = loadInfo ?  !!loadInfo->GetOriginAttributes().mPrivateBrowsingId : false;
+  const char16_t* params[] = { u"x-frame-options",
+                               u"frame-ancestors" };
+  CSP_LogLocalizedStr("IgnoringSrcBecauseOfDirective",
+                      params, ArrayLength(params),
+                      EmptyString(), // no sourcefile
+                      EmptyString(), // no scriptsample
+                      0,             // no linenumber
+                      0,             // no columnnumber
+                      nsIScriptError::warningFlag,
+                      "CSP", innerWindowID,
+                      privateWindow);
 
   return true;
 }
