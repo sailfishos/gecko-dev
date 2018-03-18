@@ -233,6 +233,13 @@ class BackgroundHangThread : public LinkedListElement<BackgroundHangThread> {
     }
 
     Update();
+    if (mHanging) {
+      // We were hanging! We're done with that now, so let's report it.
+      // ReportHang() doesn't do much work on the current thread, and is
+      // safe to call from any thread as long as we're holding the lock.
+      ReportHang(mInterval - mHangStart);
+      mHanging = false;
+    }
     mWaiting = true;
   }
 
