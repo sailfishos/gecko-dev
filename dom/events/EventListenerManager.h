@@ -287,8 +287,10 @@ class EventListenerManager final : public EventListenerManagerBase {
   }
   void AddEventListenerByType(EventListenerHolder aListener,
                               const nsAString& type,
-                              const EventListenerFlags& aFlags);
-  void RemoveEventListenerByType(nsIDOMEventListener* aListener,
+                              const EventListenerFlags& aFlags,
+                              const dom::Optional<bool>& aPassive =
+                                dom::Optional<bool>());
+  void RemoveEventListenerByType(nsIDOMEventListener *aListener,
                                  const nsAString& type,
                                  const EventListenerFlags& aFlags) {
     RemoveEventListenerByType(EventListenerHolder(aListener), type, aFlags);

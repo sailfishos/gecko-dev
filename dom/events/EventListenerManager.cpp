@@ -645,15 +645,36 @@ bool EventListenerManager::ListenerCanHandle(const Listener* aListener,
   return aListener->mEventMessage == aEventMessage;
 }
 
-void EventListenerManager::AddEventListenerByType(
-    EventListenerHolder aListenerHolder, const nsAString& aType,
-    const EventListenerFlags& aFlags) {
+void
+EventListenerManager::AddEventListenerByType(
+                        EventListenerHolder aListenerHolder,
+                        const nsAString& aType,
+                        const EventListenerFlags& aFlags,
+                        const Optional<bool>& aPassive)
+{
   RefPtr<nsAtom> atom;
-  EventMessage message =
-      mIsMainThreadELM ? nsContentUtils::GetEventMessageAndAtomForListener(
-                             aType, getter_AddRefs(atom))
-                       : eUnidentifiedEvent;
-  AddEventListenerInternal(Move(aListenerHolder), message, atom, aType, aFlags);
+  EventMessage message = mIsMainThreadELM ?
+    nsContentUtils::GetEventMessageAndAtomForListener(aType,
+                                                      getter_AddRefs(atom)) :
+    eUnidentifiedEvent;
+
+  EventListenerFlags flags = aFlags;
+  if (aPassive.WasPassed()) {
+    flags.mPassive = aPassive.Value();
+  } else if (message == eTouchStart || message == eTouchMove) {
+    nsCOMPtr<nsINode> node;
+    nsCOMPtr<nsPIDOMWindowInner> win;
+    if ((win = GetTargetAsInnerWindow()) ||
+        ((node = do_QueryInterface(mTarget)) &&
+         (node == node->OwnerDoc() ||
+          node == node->OwnerDoc()->GetRootElement() ||
+          node == node->OwnerDoc()->GetBody()))) {
+      flags.mPassive = true;
+    }
+  }
+
+  AddEventListenerInternal(Move(aListenerHolder),
+                           message, atom, aType, flags);
 }
 
 void EventListenerManager::RemoveEventListenerByType(
@@ -1311,17 +1332,20 @@ void EventListenerManager::AddEventListener(
     const dom::AddEventListenerOptionsOrBoolean& aOptions,
     bool aWantsUntrusted) {
   EventListenerFlags flags;
+  Optional<bool> passive;
   if (aOptions.IsBoolean()) {
     flags.mCapture = aOptions.GetAsBoolean();
   } else {
     const auto& options = aOptions.GetAsAddEventListenerOptions();
     flags.mCapture = options.mCapture;
     flags.mInSystemGroup = options.mMozSystemGroup;
-    flags.mPassive = options.mPassive;
     flags.mOnce = options.mOnce;
+    if (options.mPassive.WasPassed()) {
+      passive.Construct(options.mPassive.Value());
+    }
   }
   flags.mAllowUntrustedEvents = aWantsUntrusted;
-  return AddEventListenerByType(Move(aListenerHolder), aType, flags);
+  return AddEventListenerByType(Move(aListenerHolder), aType, flags, passive);
 }
 
 void EventListenerManager::RemoveEventListener(
