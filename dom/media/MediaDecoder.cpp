@@ -29,6 +29,7 @@
 #include "mozilla/dom/VideoTrackList.h"
 #include "nsPrintfCString.h"
 #include "mozilla/Telemetry.h"
+#include "NemoResourceHandler.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::layers;
@@ -862,6 +863,8 @@ MediaDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!mShuttingDown);
 
+  NemoResourceHandler::MediaInfo(this, aInfo->HasAudio(), aInfo->HasVideo());
+
   DECODER_LOG("MetadataLoaded, channels=%u rate=%u hasAudio=%d hasVideo=%d",
               aInfo->mAudio.mChannels, aInfo->mAudio.mRate,
               aInfo->HasAudio(), aInfo->HasVideo());
@@ -1251,6 +1254,14 @@ void
 MediaDecoder::ChangeState(PlayState aState)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  if (mPlayState != aState) {
+    if (mPlayState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::ReleaseResources(this);
+    } else if (aState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::AquireResources(this);
+    }
+  }
 
   if (mNextState == aState) {
     mNextState = PLAY_STATE_PAUSED;
