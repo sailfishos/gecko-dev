@@ -39,6 +39,8 @@
 #include "AndroidBridge.h"
 #endif
 
+#include "NemoResourceHandler.h"
+
 using namespace mozilla::dom;
 using namespace mozilla::layers;
 using namespace mozilla::media;
@@ -824,6 +826,8 @@ MediaDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo,
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!IsShutdown());
 
+  NemoResourceHandler::MediaInfo(this, aInfo->HasAudio(), aInfo->HasVideo());
+
   DECODER_LOG("MetadataLoaded, channels=%u rate=%u hasAudio=%d hasVideo=%d",
               aInfo->mAudio.mChannels, aInfo->mAudio.mRate,
               aInfo->HasAudio(), aInfo->HasVideo());
@@ -1208,6 +1212,14 @@ MediaDecoder::ChangeState(PlayState aState)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!IsShutdown(), "SHUTDOWN is the final state.");
+
+  if (mPlayState != aState) {
+    if (mPlayState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::ReleaseResources(this);
+    } else if (aState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::AquireResources(this);
+    }
+  }
 
   if (mNextState == aState) {
     mNextState = PLAY_STATE_PAUSED;
