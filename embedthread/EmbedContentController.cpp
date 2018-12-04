@@ -98,31 +98,34 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
 }
 
 /**
- * Requests sending a mozbrowserasyncscroll domevent to embedder.
+ * Sends a scroll event to embedder.
+ * |aIsRootScrollFrame| is a root scroll frame
  * |aContentRect| is in CSS pixels, relative to the current cssPage.
  * |aScrollableSize| is the current content width/height in CSS pixels.
  */
-void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
-                                                     const CSSRect& aContentRect,
-                                                     const CSSSize& aScrollableSize)
+void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::SendAsyncScrollDOMEvent,
-                        aIsRoot, aContentRect, aScrollableSize));
+      NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
     return;
   }
-  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
-    aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height,
-    aScrollableSize.width, aScrollableSize.height);
-  gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
-  gfxSize size(aScrollableSize.width, aScrollableSize.height);
 
-  if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
-    Unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
+  CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
+  contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
+  CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
+
+  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+    contentRect.x, contentRect.y, contentRect.width, contentRect.height,
+    scrollableSize.width, scrollableSize.height);
+  gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
+  gfxSize size(scrollableSize.width, scrollableSize.height);
+
+  if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
+    Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
   }
 }
 
@@ -164,7 +167,12 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
+  LOGT("do request %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
+    LOGT("sending request");
+
+    DoSendScrollEvent(aFrameMetrics);
+
     Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }

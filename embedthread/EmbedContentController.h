@@ -38,9 +38,6 @@ public:
   virtual void HandleDoubleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
   virtual void HandleSingleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
   virtual void HandleLongTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
-  virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
-                                       const CSSRect& aContentRect,
-                                       const CSSSize& aScrollableSize);
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
@@ -55,6 +52,7 @@ public:
 private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
+  void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
 
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;
