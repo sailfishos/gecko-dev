@@ -177,6 +177,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   mWidget = new EmbedLitePuppetWidget(this);
+  LOGT("puppet widget: %p", static_cast<EmbedLitePuppetWidget*>(mWidget.get()));
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
@@ -347,6 +348,7 @@ EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
 
 void EmbedLiteViewBaseChild::ResetInputState()
 {
+  LOGT();
   if (!mIMEComposing) {
     return;
   }
@@ -377,6 +379,7 @@ EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
                                               const ViewID& aViewId,
                                               const Maybe<ZoomConstraints> &aConstraints)
 {
+  LOGT();
   return SendUpdateZoomConstraints(aPresShellId,
                                    aViewId,
                                    aConstraints);
@@ -385,6 +388,7 @@ EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
 void
 EmbedLiteViewBaseChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
 {
+  LOGT();
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
   }
@@ -768,6 +772,7 @@ EmbedLiteViewBaseChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
 bool
 EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
+  LOGT();
   if (!mWebBrowser) {
     return true;
   }

@@ -443,6 +443,7 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                         const ViewID& aViewId,
                                         const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
+  LOGT();
   return mView->UpdateZoomConstraints(aPresShellId,
                                       aViewId,
                                       aConstraints);

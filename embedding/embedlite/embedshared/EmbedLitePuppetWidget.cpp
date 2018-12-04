@@ -94,7 +94,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window,
   , mDPI(-1.0)
 {
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
-  LOGT("this:%p", this);
+  LOGT("Puppet: %p, view: %p, window: %p", this, mView, mWindow);
   InitPrefs();
 }
 
@@ -198,7 +198,8 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
                               const LayoutDeviceIntRect& aRect,
                               nsWidgetInitData* aInitData)
 {
-  LOGT();
+  LOGT("Puppet: %p, parent: %p", this, aParent);
+
   NS_ASSERTION(!aNativeParent, "got a non-Puppet native parent");
 
   mParent = static_cast<EmbedLitePuppetWidget*>(aParent);
@@ -429,6 +430,8 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
+  LOGT();
+
   aStatus = nsEventStatus_eIgnore;
 
   nsIWidgetListener* listener =
