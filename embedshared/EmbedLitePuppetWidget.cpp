@@ -859,6 +859,11 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
                 widget->mRotation * 90, widget->mObservers.Length());
 }
 
+EmbedLitePuppetWidget::EmbedLitePuppetWidget()
+  : EmbedLitePuppetWidget(nullptr, nullptr)
+{
+}
+
 EmbedLiteViewChildIface*
 EmbedLitePuppetWidget::GetEmbedLiteChildView() const
 {
