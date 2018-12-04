@@ -64,13 +64,14 @@ public:
                              uint64_t aInputBlockId) = 0;
 
   /**
-   * Requests sending a mozbrowserasyncscroll domevent to embedder.
+   * Requests handling a scroll event.
+   * |aIsRootScrollFrame| is root scroll frame
    * |aContentRect| is in CSS pixels, relative to the current cssPage.
    * |aScrollableSize| is the current content width/height in CSS pixels.
    */
-  virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
-                                       const CSSRect &aContentRect,
-                                       const CSSSize &aScrollableSize) = 0;
+  virtual void HandleScrollEvent(bool aIsRootScrollFrame,
+                                 const CSSRect &aContentRect,
+                                 const CSSSize &aScrollableSize) = 0;
 
   EmbedLiteContentController() {}
 

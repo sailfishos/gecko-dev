@@ -130,8 +130,8 @@ protected:
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;
-  virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                       const gfxSize& scrollSize) override;
+  virtual bool RecvHandleScrollEvent(const bool &isRootScrollFrame, const gfxRect& contentRect,
+                                     const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
   virtual bool RecvHandleDoubleTap(const CSSPoint&, const Modifiers& aModifiers,

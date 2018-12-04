@@ -735,13 +735,14 @@ EmbedLiteViewBaseChild::RemoveGeckoContentListener(EmbedLiteContentController* l
 }
 
 bool
-EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                                const gfxSize& scrollSize)
+EmbedLiteViewBaseChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
+                                              const gfxRect& contentRect,
+                                              const gfxSize& scrollSize)
 {
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->SendAsyncScrollDOMEvent(0, rect, size);
+    mControllerListeners[i]->HandleScrollEvent(isRootScrollFrame, rect, size);
   }
 
   if (sPostAZPCAsJson.scroll) {

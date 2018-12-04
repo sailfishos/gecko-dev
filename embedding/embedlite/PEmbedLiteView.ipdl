@@ -42,7 +42,7 @@ child:
     SetMargins(int top, int right, int bottom, int left);
     SuspendTimeouts();
     ResumeTimeouts();
-    AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
+    HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
     HandleDoubleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
