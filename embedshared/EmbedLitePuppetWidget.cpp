@@ -669,6 +669,17 @@ bool EmbedLitePuppetWidget::AsyncPanZoomEnabled() const
   return true;
 }
 
+void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const FrameMetrics::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
+{
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  LOGT("view: %p, mWindow: %p, child view: %p", mView, mWindow, view);
+  if (view) {
+    view->UpdateZoomConstraints(aPresShellId,
+                                aViewId,
+                                aConstraints);
+  }
+}
+
 CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
