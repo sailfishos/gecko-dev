@@ -197,13 +197,13 @@ protected:
   EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
 private:
+  EmbedLitePuppetWidget();
   typedef nsTArray<EmbedLitePuppetWidget*> ChildrenArray;
   typedef nsTArray<EmbedLitePuppetWidgetObserver*> ObserverArray;
 
   mozilla::gl::GLContext* GetGLContext() const;
   static void CreateGLContextEarly(uint32_t aWindowId);
 
-  EmbedLitePuppetWidget* TopWindow();
   bool IsTopLevel();
   void RemoveIMEComposition();
 
