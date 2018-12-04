@@ -157,6 +157,10 @@ public:
 
   virtual bool AsyncPanZoomEnabled() const override;
 
+  virtual void UpdateZoomConstraints(const uint32_t& aPresShellId,
+                             const FrameMetrics::ViewID& aViewId,
+                             const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
+
   /**
    * Called before the LayerManager draws the layer tree.
    *

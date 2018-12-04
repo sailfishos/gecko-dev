@@ -187,7 +187,6 @@ private:
   RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsPIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
-  bool mViewResized;
   bool mWindowObserverRegistered;
   bool mIsFocused;
   nsIntMargin mMargins;

@@ -51,7 +51,7 @@ pref("font.size.inflation.disabledInMasterProcess", true);
 pref("layers.max-active", 20);
 
 // APZC preferences.
-
+pref("apz.allow_zooming", true);
 pref("apz.asyncscroll.throttle", 15);
 pref("apz.fling_accel_base_mult", "1.125f");
 pref("apz.min_skate_speed", "1.0f");

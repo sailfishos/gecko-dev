@@ -195,9 +195,6 @@ TabChildHelper::InitTabChildGlobal()
   NS_ENSURE_TRUE(root,  false);
   root->SetParentTarget(scope);
 
-  chromeHandler->AddEventListener(NS_LITERAL_STRING("DOMMetaAdded"), this, false);
-  chromeHandler->AddEventListener(NS_LITERAL_STRING("scroll"), this, false);
-
   return true;
 }
 
@@ -229,8 +226,6 @@ TabChildHelper::Observe(nsISupports* aSubject,
     nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
-      mozilla::dom::AutoNoJSAPI nojsapi;
-
       nsCOMPtr<nsIPresShell> shell(doc->GetShell());
       if (shell) {
         shell->SetIsFirstPaint(true);
@@ -238,31 +233,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
 
       APZCCallbackHelper::InitializeRootDisplayport(shell);
 
-//      if (!sDisableViewportHandler) {
-//        // Reset CSS viewport and zoom to default on new page, then
-//        // calculate them properly using the actual metadata from the
-//        // page.
-//        SetCSSViewport(kDefaultViewportSize);
-
-//        // In some cases before-first-paint gets called before
-//        // RecvUpdateDimensions is called and therefore before we have an
-//        // mInnerSize value set. In such cases defer initializing the viewport
-//        // until we we get an inner size.
-//        if (HasValidInnerSize()) {
-//          InitializeRootMetrics();
-
-//          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
-//                               mLastRootMetrics.GetPresShellResolution());
-////          HandlePossibleViewportChange(mInnerSize);
-//          // Relay frame metrics to subscribed listeners
-//          mView->RelayFrameMetrics(mLastRootMetrics);
-//        }
-//      }
-
-
-
-      nsCOMPtr<nsIObserverService> observerService =
-        do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+      nsCOMPtr<nsIObserverService> observerService = do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
       if (observerService) {
         observerService->NotifyObservers(aSubject, "embedlite-before-first-paint", nullptr);
       }
@@ -275,17 +246,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
 NS_IMETHODIMP
 TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 {
-  nsAutoString eventType;
-  aEvent->GetType(eventType);
-  // Should this also handle "MozScrolledAreaChanged".
-  if (eventType.EqualsLiteral("DOMMetaAdded")) {
-    // This meta data may or may not have been a meta viewport tag. If it was,
-    // we should handle it immediately.
-//    HandlePossibleViewportChange(mInnerSize);
-    // Relay frame metrics to subscribed listeners
-//    mView->RelayFrameMetrics(mLastRootMetrics);
-  }
-
+  (void)(aEvent);
   return NS_OK;
 }
 
@@ -496,10 +457,7 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-//  ScreenIntSize oldScreenSize(mInnerSize);
   mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
-
-  //  HandlePossibleViewportChange(oldScreenSize);
 }
 
 // -- nsITabChild --------------

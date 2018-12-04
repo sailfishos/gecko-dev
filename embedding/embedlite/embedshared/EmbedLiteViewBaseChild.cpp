@@ -88,7 +88,6 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mChrome(nullptr)
   , mDOMWindow(nullptr)
   , mWebNavigation(nullptr)
-  , mViewResized(false)
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
@@ -772,13 +771,6 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     return true;
   }
 
-//  if (mViewResized &&
-//      aFrameMetrics.GetIsRoot() &&
-//      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
-//      mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
-//    mViewResized = false;
-//  }
-
   RelayFrameMetrics(aFrameMetrics);
 
   if (sHandleDefaultAZPC.viewport) {
@@ -1218,8 +1210,6 @@ EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aE
 void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
-  mViewResized = true;
-
   MOZ_ASSERT(mHelper && mWebBrowser);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
