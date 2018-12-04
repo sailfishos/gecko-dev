@@ -1,4 +1,4 @@
-%define greversion    45.5.2
+%define greversion    45.8.1
 %define sf_extra_ver  1
 
 %define embedlite_config merqtxulrunner
