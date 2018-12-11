@@ -340,10 +340,9 @@ EmbedLiteViewBaseChild::SetInputContext(const int32_t& IMEEnabled,
 
 bool
 EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
-                                          int32_t* IMEOpen,
-                                          intptr_t* NativeIMEContext)
+                                          int32_t* IMEOpen)
 {
-  return SendGetInputContext(IMEEnabled, IMEOpen, NativeIMEContext);
+  return SendGetInputContext(IMEEnabled, IMEOpen);
 }
 
 void EmbedLiteViewBaseChild::ResetInputState()

@@ -496,15 +496,17 @@ EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int button
 
 bool
 EmbedLiteViewBaseParent::RecvGetInputContext(int32_t* aIMEEnabled,
-                                               int32_t* aIMEOpen,
-                                               intptr_t* aNativeIMEContext)
+                                               int32_t* aIMEOpen)
 {
-  LOGT("mLastIMEState:%i", mLastIMEState);
+  LOGT("mLastIMEState:%i view: %p listener: %p", mLastIMEState, mView, (mView ? mView->GetListener() : 0));
+  NS_ASSERTION(aIMEEnabled, "Passing nullptr for aIMEEnabled. A bug in EmbedLitePuppetWidget.");
+  NS_ASSERTION(aIMEOpen, "Passing nullptr for aIMEOpen. A bug in EmbedLitePuppetWidget.");
+
   *aIMEEnabled = mLastIMEState;
   *aIMEOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
-  *aNativeIMEContext = 0;
-  if (mView) {
-    mView->GetListener()->GetIMEStatus(aIMEEnabled, aIMEOpen, aNativeIMEContext);
+
+  if (mView && mView->GetListener()) {
+    mView->GetListener()->GetIMEStatus(aIMEEnabled, aIMEOpen);
   }
   return true;
 }

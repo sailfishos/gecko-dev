@@ -27,6 +27,12 @@
 #include "GLContext.h"
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/Preferences.h"
+
+#ifdef DEBUG
+#include "mozilla/TextComposition.h"
+#include "mozilla/IMEStateManager.h"
+#endif
+
 #include "EmbedLiteApp.h"
 #include "LayerScope.h"
 #include "mozilla/unused.h"
@@ -419,6 +425,8 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
     case NS_NATIVE_WIDGET:
       LOGW("nsWindow::GetNativeData not implemented for this type");
       break;
+    case NS_RAW_NATIVE_IME_CONTEXT:
+      return NS_ONLY_ONE_NATIVE_IME_CONTEXT;
     default:
       NS_WARNING("nsWindow::GetNativeData called with bad value");
       break;
@@ -431,7 +439,6 @@ NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
   LOGT();
-
   aStatus = nsEventStatus_eIgnore;
 
   nsIWidgetListener* listener =
@@ -441,6 +448,22 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
 
   if (event->mClass == eKeyboardEventClass) {
     RemoveIMEComposition();
+  } else if (event->mClass == eCompositionEventClass) {
+    // Store the latest native IME context of parent process's widget or
+    // TextEventDispatcher if it's in this process.
+    WidgetCompositionEvent* compositionEvent = event->AsCompositionEvent();
+#ifdef DEBUG
+    if (mNativeIMEContext.IsValid() &&
+      mNativeIMEContext != compositionEvent->mNativeIMEContext) {
+      RefPtr<TextComposition> composition =
+      IMEStateManager::GetTextCompositionFor(this);
+      MOZ_ASSERT(!composition,
+        "When there is composition caused by old native IME context, "
+        "composition events caused by different native IME context are not "
+        "allowed");
+    }
+#endif // #ifdef DEBUG
+     mNativeIMEContext = compositionEvent->mNativeIMEContext;
   }
 
   aStatus = listener->HandleEvent(event, mUseAttachedEvents);
@@ -475,7 +498,10 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
        aContext.mIMEState.mEnabled, aContext.mIMEState.mOpen,
        aAction.mCause, aAction.mFocusChange);
 
-  mInputContext = aContext;
+  if (Destroyed()) {
+    LOGT("Trying to focus after puppet widget got destroyed.");
+    return;
+  }
 
   // Ensure that opening the virtual keyboard is allowed for this specific
   // InputContext depending on the content.ime.strict.policy pref
@@ -486,6 +512,18 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
       !aAction.UserMightRequestOpenVKB()) {
     return;
   }
+
+  IMEState::Enabled enabled = aContext.mIMEState.mEnabled;
+
+  // Only show the virtual keyboard for plugins if mOpen is set appropriately.
+  // This avoids showing it whenever a plugin is focused. Bug 747492
+  if (aContext.mIMEState.mEnabled == IMEState::PLUGIN &&
+      aContext.mIMEState.mOpen != IMEState::OPEN) {
+      enabled = IMEState::DISABLED;
+  }
+
+  mInputContext = aContext;
+  mInputContext.mIMEState.mEnabled = enabled;
 
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
   if (view) {
@@ -503,21 +541,58 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
 NS_IMETHODIMP_(InputContext)
 EmbedLitePuppetWidget::GetInputContext()
 {
-  mInputContext.mIMEState.mOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
+  LOGT();
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+
   if (view) {
-    int32_t enabled, open;
-    intptr_t nativeIMEContext;
-    view->GetInputContext(&enabled, &open, &nativeIMEContext);
+    int32_t enabled = IMEState::DISABLED;
+    int32_t open = IMEState::OPEN_STATE_NOT_SUPPORTED;
+
+    view->GetInputContext(&enabled, &open);
     mInputContext.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
     mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
   }
+
   return mInputContext;
+}
+
+NS_IMETHODIMP_(NativeIMEContext)
+EmbedLitePuppetWidget::GetNativeIMEContext()
+{
+  LOGT();
+  return mNativeIMEContext;
+}
+
+nsIMEUpdatePreference
+EmbedLitePuppetWidget::GetIMEUpdatePreference()
+{
+    LOGT();
+#ifdef MOZ_CROSS_PROCESS_IME
+  // e10s requires IME content cache in in the TabParent for handling query
+  // content event only with the parent process.  Therefore, this process
+  // needs to receive a lot of information from the focused editor to sent
+  // the latest content to the parent process.
+  if (mInputContext.mIMEState.mEnabled == IMEState::PLUGIN) {
+    // But if a plugin has focus, we cannot receive text nor selection change
+    // in the plugin.  Therefore, PuppetWidget needs to receive only position
+    // change event for updating the editor rect cache.
+    return nsIMEUpdatePreference(mIMEPreferenceOfParent.mWantUpdates |
+                                 nsIMEUpdatePreference::NOTIFY_POSITION_CHANGE);
+  }
+  return nsIMEUpdatePreference(mIMEPreferenceOfParent.mWantUpdates |
+                               nsIMEUpdatePreference::NOTIFY_SELECTION_CHANGE |
+                               nsIMEUpdatePreference::NOTIFY_TEXT_CHANGE |
+                               nsIMEUpdatePreference::NOTIFY_POSITION_CHANGE );
+#else
+  // B2G doesn't handle IME as widget-level.
+  return nsIMEUpdatePreference();
+#endif
 }
 
 void
 EmbedLitePuppetWidget::RemoveIMEComposition()
 {
+  LOGT();
   // Remove composition on Gecko side
   if (!mIMEComposing) {
     return;

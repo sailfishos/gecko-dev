@@ -133,6 +133,8 @@ public:
   NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
                                     const InputContextAction& aAction) override;
   NS_IMETHOD_(InputContext) GetInputContext() override;
+  NS_IMETHOD_(NativeIMEContext) GetNativeIMEContext() override;
+  virtual nsIMEUpdatePreference GetIMEUpdatePreference() override;
 
   NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent) override {
     LOGNI();
@@ -219,6 +221,8 @@ private:
   bool mActive;
   bool mHasCompositor;
   InputContext mInputContext;
+  NativeIMEContext mNativeIMEContext;
+
   bool mIMEComposing;
   nsString mIMEComposingText;
   ChildrenArray mChildren;
