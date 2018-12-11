@@ -7,7 +7,6 @@
 #ifndef mozilla_embedlite_EmbedLiteContentController_h
 #define mozilla_embedlite_EmbedLiteContentController_h
 
-#include "FrameMetrics.h"               // for FrameMetrics, etc
 #include "Units.h"                      // for CSSPoint, CSSRect, etc
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT_HELPER2
 #include "nsISupportsImpl.h"
@@ -21,38 +20,19 @@ public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteContentController)
 
   /**
-   * Requests a paint of the given FrameMetrics |aFrameMetrics| from Gecko.
-   * Implementations per-platform are responsible for actually handling this.
-   * This method will always be called on the Gecko main thread.
-   */
-  virtual void RequestContentRepaint(const mozilla::layers::FrameMetrics& aFrameMetrics) = 0;
-
-  /**
-   * Acknowledges the recipt of a scroll offset update for the scrollable
-   * frame with the given scroll id. This is used to maintain consistency
-   * between APZ and other sources of scroll changes.
-   */
-  virtual void AcknowledgeScrollUpdate(const mozilla::layers::FrameMetrics::ViewID& aScrollId,
-                                       const uint32_t& aScrollGeneration) = 0;
-
-  /**
    * Requests handling of a double tap. |aPoint| is in CSS pixels, relative to
    * the current scroll offset. This should eventually round-trip back to
    * AsyncPanZoomController::ZoomToRect with the dimensions that we want to zoom
    * to.
    */
-  virtual void HandleDoubleTap(const CSSPoint& aPoint,
-                               Modifiers aModifiers,
-                               const mozilla::layers::ScrollableLayerGuid& aGuid) = 0;
+  virtual void HandleDoubleTap(const CSSPoint& aPoint, Modifiers aModifiers) = 0;
 
   /**
    * Requests handling a single tap. |aPoint| is in CSS pixels, relative to the
    * current scroll offset. This should simulate and send to content a mouse
    * button down, then mouse button up at |aPoint|.
    */
-  virtual void HandleSingleTap(const CSSPoint& aPoint,
-                               Modifiers aModifiers,
-                               const mozilla::layers::ScrollableLayerGuid& aGuid) = 0;
+  virtual void HandleSingleTap(const CSSPoint& aPoint, Modifiers aModifiers) = 0;
 
   /**
    * Requests handling a long tap. |aPoint| is in CSS pixels, relative to the
@@ -60,7 +40,6 @@ public:
    */
   virtual void HandleLongTap(const CSSPoint& aPoint,
                              Modifiers aModifiers,
-                             const mozilla::layers::ScrollableLayerGuid& aGuid,
                              uint64_t aInputBlockId) = 0;
 
   /**

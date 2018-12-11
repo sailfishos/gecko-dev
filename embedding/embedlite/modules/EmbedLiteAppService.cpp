@@ -325,19 +325,6 @@ EmbedLiteAppService::GetContentWindowByID(uint32_t aId, nsIDOMWindow * *outWindo
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::GetCompositedRectInCSS(const mozilla::layers::FrameMetrics& aFrameMetrics,
-                                            float* aX, float* aY, float* aWidth, float* aHeight)
-{
-  mozilla::CSSRect cssCompositedRect(aFrameMetrics.CalculateCompositedRectInCssPixels());
-  *aX = cssCompositedRect.x;
-  *aY = cssCompositedRect.y;
-  *aWidth = cssCompositedRect.width;
-  *aHeight = cssCompositedRect.height;
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aId);

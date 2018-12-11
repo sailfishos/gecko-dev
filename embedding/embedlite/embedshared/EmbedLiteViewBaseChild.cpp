@@ -388,9 +388,6 @@ void
 EmbedLiteViewBaseChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
 {
   LOGT();
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
-  }
 }
 
 bool
@@ -815,7 +812,7 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
   CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers, aGuid);
+    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers);
   }
 
   if (sPostAZPCAsJson.doubleTap) {
@@ -846,7 +843,7 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
   CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers, aGuid);
+    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers);
   }
 
   if (sPostAZPCAsJson.singleTap) {
@@ -873,7 +870,7 @@ EmbedLiteViewBaseChild::RecvHandleLongTap(const CSSPoint& aPoint,
   CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aGuid, aInputBlockId);
+    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aInputBlockId);
   }
 
   if (sPostAZPCAsJson.longTap) {
