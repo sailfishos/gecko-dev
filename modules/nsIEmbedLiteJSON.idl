@@ -7,10 +7,6 @@
 #include "nsIPropertyBag2.idl"
 #include "nsIWritablePropertyBag2.idl"
 
-%{ C++
-#include "nsStringGlue.h" // needed for AString -> nsAString, unfortunately
-%}
-
 /**
  * An optional interface for embedding clients wishing to receive
  * notifications for when a tooltip should be displayed or removed.

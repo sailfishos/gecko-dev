@@ -20,12 +20,9 @@
  */
 
 %{C++
-#include "nsStringGlue.h" // needed for AString -> nsAString, unfortunately
 #include "mozilla/embedlite/EmbedLiteContentController.h"
-#include "FrameMetrics.h"
 %}
 
-[ref] native nsConstFrameMetrics(const mozilla::layers::FrameMetrics);
 [ptr] native EmbedLiteContentController(mozilla::embedlite::EmbedLiteContentController);
 
 [scriptable, uuid(99d60536-e1a7-11e2-b76e-ff454ce9029f)]
@@ -62,7 +59,6 @@ interface nsIEmbedAppService : nsISupports
     void sendAsyncMessageLocal(in uint32_t aId, in wstring messageName, in wstring message);
 
     // AZPC Interface
-    void getCompositedRectInCSS(in nsConstFrameMetrics aMetrics, out float aX, out float aY, out float aWidth, out float aHeight);
     void zoomToRect(in uint32_t aId, in float aX, in float aY, in float aWidth, in float aHeight);
     void contentReceivedInputBlock(in uint32_t aId, in boolean aPreventDefault);
     // Not sure how else to add event listener from js component without browser
