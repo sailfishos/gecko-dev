@@ -51,7 +51,7 @@ public:
                                  const gfxSize& aScrollableSize) { return false; }
 
   virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
-  virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen, intptr_t* aNativeIMEContext) {}
+  virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen) {}
 
   // AZPC Interface, return true in order to prevent default behavior
   virtual bool RequestContentRepaint() { return false; }

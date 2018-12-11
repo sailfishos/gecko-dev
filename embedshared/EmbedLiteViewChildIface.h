@@ -26,8 +26,7 @@ public:
 
   virtual bool
   GetInputContext(int32_t* IMEEnabled,
-                  int32_t* IMEOpen,
-                  intptr_t* NativeIMEContext) = 0;
+                  int32_t* IMEOpen) = 0;
   virtual void ResetInputState() = 0;
 
 /*-------------TabChild-------------------*/

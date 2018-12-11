@@ -102,8 +102,7 @@ public:
 
   virtual bool
   GetInputContext(int32_t* IMEEnabled,
-                  int32_t* IMEOpen,
-                  intptr_t* NativeIMEContext) override;
+                  int32_t* IMEOpen) override;
 
 /*---------WidgetIface---------------*/
 
