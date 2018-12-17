@@ -331,7 +331,7 @@ EmbedLiteViewBaseParent::RecvSyncMessage(const nsString& aMessage,
 
   NS_ENSURE_TRUE(mView, false);
   char* retval = mView->GetListener()->RecvSyncMessage(aMessage.get(), aJSON.get());
-  if (retval) {
+  if (retval && aJSONRetVal) {
     aJSONRetVal->AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(retval)));
     delete retval;
   }
