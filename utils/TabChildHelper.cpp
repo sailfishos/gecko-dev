@@ -15,6 +15,8 @@
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 
+#include "mozilla/dom/ipc/StructuredCloneData.h"
+
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
 #include "mozilla/dom/Element.h"
@@ -301,12 +303,12 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
-  return false;
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-#if 0
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.mDataLength &&
-      !ReadStructuredClone(cx, aData, &rval)) { // JS_ReadStructuredClone
+  if (aData.DataLength() > 0 &&
+            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
+                                    JS_STRUCTURED_CLONE_VERSION, &rval,
+                                    nullptr, nullptr)) {
     JS_ClearPendingException(cx);
     return false;
   }
@@ -318,12 +320,26 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
   InfallibleTArray<nsString> jsonRetVal;
 
+  bool retValue = false;
+
   if (aIsSync) {
-    return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
+    retValue = mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
+  } else {
+    retValue = mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
   }
 
-  return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
-#endif
+  if (retValue && aRetVal) {
+    for (uint32_t i = 0; i < jsonRetVal.Length(); i++) {
+      mozilla::dom::ipc::StructuredCloneData* cloneData = aRetVal->AppendElement();
+
+      NS_ConvertUTF16toUTF8 data(jsonRetVal[i]);
+      if (!cloneData->CopyExternalData(data.get(), data.Length())) {
+        return false;
+      }
+    }
+  }
+
+  return retValue;
 }
 
 nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
@@ -332,7 +348,6 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                             JS::Handle<JSObject *> aCpows,
                                             nsIPrincipal* aPrincipal)
 {
-#if 0
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
@@ -346,22 +361,28 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mTabChildGlobal;
   SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
-  globalMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
-  contentFrameMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+
+  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+  contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
     return NS_OK;
   }
 
-  NS_ENSURE_TRUE(InitTabChildGlobal(), false);
+  if (!InitTabChildGlobal()) {
+    return NS_ERROR_UNEXPECTED;
+  }
   JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.DataLength() &&
-      !ReadStructuredClone(cx, aData, &rval)) {
+
+  if (aData.DataLength() > 0 &&
+            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
+                                    JS_STRUCTURED_CLONE_VERSION, &rval,
+                                    nullptr, nullptr)) {
     JS_ClearPendingException(cx);
     return NS_ERROR_UNEXPECTED;
   }
@@ -379,7 +400,7 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
     return NS_ERROR_UNEXPECTED;
   }
-#endif
+
   return NS_OK;
 }
 

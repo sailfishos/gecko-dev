@@ -10,10 +10,12 @@
 #include "EmbedLiteAppService.h"
 #include "nsServiceManagerUtils.h"
 #include "js/Value.h"
+#include "jsapi.h"
 #include "xpcprivate.h"
 #include "nsJSUtils.h"
 #include "nsDOMJSUtils.h"
 #include "nsContentUtils.h"
+#include "nsISimpleEnumerator.h"
 #include "mozilla/dom/BindingUtils.h"
 
 using namespace mozilla;
@@ -31,14 +33,12 @@ NS_IMPL_ISUPPORTS(EmbedLiteJSON, nsIEmbedLiteJSON)
 nsresult
 CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)
 {
-#if 0
   RefPtr<nsHashPropertyBag> hpb = new nsHashPropertyBag();
   if (!hpb) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
   *aObject = hpb.forget().take();
-#endif
   return NS_OK;
 }
 
@@ -52,18 +52,15 @@ EmbedLiteJSON::CreateObject(nsIWritablePropertyBag2 * *aObject)
 bool
 EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 {
-#if 0
   nsAString* result = static_cast<nsAString*>(aData);
   result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
-#endif
   return true;
 }
 
 nsresult
 JSValToVariant(JSContext* cx, JS::Value& propval, nsIWritableVariant* aVariant)
 {
-#if 0
   if (propval.isBoolean()) {
     aVariant->SetAsBool(propval.toBoolean());
   } else if (propval.isInt32()) {
@@ -71,7 +68,7 @@ JSValToVariant(JSContext* cx, JS::Value& propval, nsIWritableVariant* aVariant)
   } else if (propval.isDouble()) {
     aVariant->SetAsDouble(propval.toDouble());
   } else if (propval.isString()) {
-    JS::Rooted<JS::Value> val(cx, propval);
+    JS::RootedValue val(cx, propval);
     JSString* propvalString = JS::ToString(cx, val);
     nsAutoJSString vstr;
     if (!propvalString || !vstr.init(cx, propvalString)) {
@@ -82,21 +79,21 @@ JSValToVariant(JSContext* cx, JS::Value& propval, nsIWritableVariant* aVariant)
     NS_ERROR("Value is not primitive");
     return NS_ERROR_FAILURE;
   }
-#endif
   return NS_OK;
 }
 
 nsresult
 ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 {
-#if 0
   JS::RootedObject modObj(cx, object);
-  JS::AutoIdArray props(cx, JS_Enumerate(cx, modObj));
-  for (size_t i = 0; !!props && i < props.length(); ++i) {
+
+  JS::Rooted<JS::IdVector> props(cx, JS::IdVector(cx));
+  bool hasProps = JS_Enumerate(cx, modObj, &props);
+  for (size_t i = 0; hasProps && i < props.length(); ++i) {
     jsid propid = props[i];
-    JS::Rooted<jsid> id(cx, props[i]);
+    JS::RootedId id(cx, props[i]);
     JS::RootedValue propname(cx);
-    JS::Rooted<JS::Value> propval(cx);
+    JS::RootedValue propval(cx);
 
     if (!JS_IdToValue(cx, propid, &propname) ||
         !JS_GetPropertyById(cx, modObj, id, &propval)) {
@@ -104,7 +101,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       return NS_ERROR_FAILURE;
     }
 
-    JS::Rooted<JS::Value> val(cx, propname);
+    JS::RootedValue val(cx, propname);
     JSString* propnameString = JS::ToString(cx, val);
     nsAutoJSString pstr;
     if (!propnameString || !pstr.init(cx, propnameString)) {
@@ -119,13 +116,15 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       bagSimple->SetProperty(pstr, value);
     } else {
       JS::RootedObject obj(cx, &propval.toObject());
-      if (JS_IsArrayObject(cx, obj)) {
+
+      bool isArray = false;
+      if (JS_IsArrayObject(cx, obj, &isArray) && isArray) {
         nsCOMPtr<nsIWritableVariant> childElements = do_CreateInstance("@mozilla.org/variant;1");
         uint32_t tmp;
         if (JS_GetArrayLength(cx, obj, &tmp)) {
           nsTArray<nsCOMPtr<nsIVariant>> childArray;
           for (uint32_t i = 0; i < tmp; i++) {
-            JS::Rooted<JS::Value> v(cx);
+            JS::RootedValue v(cx);
             if (!JS_GetElement(cx, obj, i, &v))
               continue;
             if (v.isPrimitive()) {
@@ -160,17 +159,15 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       }
     }
   }
-#endif
   return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
 {
-#if 0
   MOZ_ASSERT(NS_IsMainThread());
   AutoSafeJSContext cx;
-  JS::Rooted<JS::Value> json(cx, JSVAL_NULL);
+  JS::RootedValue json(cx, JS::NullValue());
   if (!JS_ParseJSON(cx,
                     static_cast<const char16_t*>(aJson.BeginReading()),
                     aJson.Length(),
@@ -192,13 +189,11 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
   }
 
   *aRoot = contextProps.forget().take();
-#endif
   return NS_OK;
 }
 
 static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aObj)
 {
-#if 0
   JS::RootedValue rval(aCx);
   nsString name;
   nsCOMPtr<nsIVariant> aVariant;
@@ -215,16 +210,14 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
     NS_ERROR("Failed to set js object property");
     return false;
   }
-#endif
   return true;
 }
 
 NS_IMETHODIMP
 EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
 {
-#if 0
   AutoSafeJSContext cx;
-  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr));
+  JS::RootedObject obj(cx, JS_NewObject(cx, nullptr));
   if (!obj) {
     return NS_ERROR_FAILURE;
   }
@@ -244,9 +237,8 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
     windowEnumerator->HasMoreElements(&more);
   }
   // Example from SaveProfileTask.cpp#74
-  JS::Rooted<JS::Value> vlt(cx, OBJECT_TO_JSVAL(obj));
-  NS_ENSURE_TRUE(JS_Stringify(cx, &vlt, JS::NullPtr(), JS::NullHandleValue, JSONCreator, &outJson), NS_ERROR_FAILURE);
+  JS::RootedValue value(cx, JS::ObjectValue(*obj));
+  NS_ENSURE_TRUE(JS_Stringify(cx, &value, nullptr, JS::NullHandleValue, JSONCreator, &outJson), NS_ERROR_FAILURE);
   NS_ENSURE_TRUE(!outJson.IsEmpty(), NS_ERROR_FAILURE);
-#endif
   return NS_OK;
 }
