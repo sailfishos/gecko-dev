@@ -157,23 +157,6 @@ Tests and misc files for xulrunner.
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
-
-%ifarch %ix86
-PYTHONPATH="$PWD"/python:"$PWD"/config:"$PWD"/build:"$PWD"/xpcom/typelib/xpt/tools
-PYTHONPATH+=:"$PWD"/dom/bindings:$PWD/dom/bindings/parser
-PYTHONPATH+=:"$PWD"/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib
-PYTHONPATH+=:"$PWD"/testing/taskcluster
-PYTHONPATH+=:"$PWD"/testing/web-platform
-PYTHONPATH+=:"$PWD"/testing/web-platform/harness
-PYTHONPATH+=:"$PWD"/layout/tools/reftest
-PYTHONPATH+=:"$PWD"/dom/bindings
-for i in $(find "$PWD"/python "$PWD"/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
-  PYTHONPATH+=:"$i:$i/lib"
-done
-echo "export DONT_POPULATE_VIRTUALENV=1" > "%BUILD_DIR"/rpm-shared.env
-echo "export PYTHONPATH=$PYTHONPATH" >> "%BUILD_DIR"/rpm-shared.env
-echo "export SBOX_REDIRECT_FORCE=/usr/bin/python" >> "%BUILD_DIR"/rpm-shared.env
-%endif
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
