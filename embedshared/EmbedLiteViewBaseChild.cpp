@@ -21,6 +21,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
+#include "nsIWebBrowserSetup.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -188,6 +189,12 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     NS_ERROR("Failed to create widget for EmbedLiteView");
     mWidget = nullptr;
     return;
+  }
+
+
+  nsCOMPtr<nsIWebBrowserSetup> webBrowserSetup = do_QueryInterface(baseWindow);
+  if (webBrowserSetup) {
+    webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
   }
 
   LayoutDeviceIntRect bounds;
