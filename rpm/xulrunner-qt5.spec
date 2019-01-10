@@ -55,6 +55,7 @@ Patch8:     0008-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
 Patch9:     0009-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
 Patch10:    0010-Don-t-print-errors-from-DataReportingService.patch
 Patch11:    0011-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
+Patch12:    0012-xulrunner-Make-fullscreen-enabling-work-as-used-to-w.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -154,6 +155,7 @@ Tests and misc files for xulrunner.
 %patch9 -p1
 %patch10 -p1
 %patch11 -p1
+%patch12 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
