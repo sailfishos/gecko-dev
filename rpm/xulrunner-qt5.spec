@@ -4,7 +4,7 @@
 %define embedlite_config merqtxulrunner
 
 %define system_nspr       1
-%define system_nss        0
+%define system_nss        1
 %define system_sqlite     1
 %define system_ffi        1
 %define system_hunspell   1
@@ -64,7 +64,7 @@ BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(nspr) >= 4.10.8
 %endif
 %if %{system_nss}
-BuildRequires:  pkgconfig(nss) >= 3.18.1
+BuildRequires:  pkgconfig(nss) >= 3.21.3
 %endif
 %if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
@@ -183,6 +183,10 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
+
+%if %{system_nss}
+  echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
+%endif
 
 %if %{system_hunspell}
   echo "ac_add_options --enable-system-hunspell" >> "$MOZCONFIG"
