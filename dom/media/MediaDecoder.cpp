@@ -261,7 +261,6 @@ void MediaDecoder::CancelDormantTimer()
 void MediaDecoder::Pause()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  NemoResourceHandler::ReleaseResources(this);
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
   if (mPlayState == PLAY_STATE_LOADING ||
       mPlayState == PLAY_STATE_SEEKING ||
@@ -779,7 +778,6 @@ nsresult MediaDecoder::Play()
   }
   nsresult res = ScheduleStateMachineThread();
   NS_ENSURE_SUCCESS(res,res);
-  NemoResourceHandler::AquireResources(this);
   if (IsEnded()) {
     return Seek(0, SeekTarget::PrevSyncPoint);
   } else if (mPlayState == PLAY_STATE_LOADING || mPlayState == PLAY_STATE_SEEKING) {
@@ -1331,6 +1329,14 @@ void MediaDecoder::ChangeState(PlayState aState)
     if (mDecodedStream->mHaveBlockedForPlayState != blockForPlayState) {
       mDecodedStream->mStream->ChangeExplicitBlockerCount(blockForPlayState ? 1 : -1);
       mDecodedStream->mHaveBlockedForPlayState = blockForPlayState;
+    }
+  }
+
+  if (mPlayState != aState) {
+    if (mPlayState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::ReleaseResources(this);
+    } else if (aState == PLAY_STATE_PLAYING) {
+      NemoResourceHandler::AquireResources(this);
     }
   }
 
