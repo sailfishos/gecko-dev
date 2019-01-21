@@ -39,6 +39,9 @@
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 
+#include "nsIFrame.h"                   // for nsIFrame
+#include "FrameLayerBuilder.h"          // for FrameLayerbuilder
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -556,15 +559,23 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
     widget->SetActive(aIsActive);
   }
 
-
+  // Update state via WebBrowser -> DocShell -> PresShell
   mWebBrowser->SetIsActive(aIsActive);
-  // Do same stuff that there is in nsPresShell.cpp:10670
 
   mWidget->Show(aIsActive);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetVisibility(aIsActive);
 
+  // Same that there is in nsPresShell.cpp:10670
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  if (ps && aIsActive) {
+    if (nsIFrame* root = ps->GetRootFrame()) {
+      FrameLayerBuilder::InvalidateAllLayersForFrame(
+        nsLayoutUtils::GetDisplayRootFrame(root));
+      root->SchedulePaint();
+    }
+  }
   return true;
 }
 
