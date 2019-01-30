@@ -439,6 +439,7 @@ NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
   LOGT();
+  MOZ_ASSERT(event);
   aStatus = nsEventStatus_eIgnore;
 
   nsIWidgetListener* listener =
@@ -466,7 +467,11 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
      mNativeIMEContext = compositionEvent->mNativeIMEContext;
   }
 
-  aStatus = listener->HandleEvent(event, mUseAttachedEvents);
+  if (listener) {
+    aStatus = listener->HandleEvent(event, mUseAttachedEvents);
+  } else {
+    aStatus = nsEventStatus_eIgnore;
+  }
 
   switch (event->mMessage) {
     case eCompositionStart:
