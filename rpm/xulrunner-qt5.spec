@@ -1,5 +1,4 @@
-%define greversion    45.8.1
-%define sf_extra_ver  1
+%define greversion    45.9.1
 
 %define embedlite_config merqtxulrunner
 
@@ -38,7 +37,7 @@
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
-Version:    %{greversion}.%{sf_extra_ver}
+Version:    %{greversion}
 Release:    1
 Group:      Applications/Internet
 License:    MPLv2
