@@ -75,7 +75,6 @@ BuildRequires:  pkgconfig(nss) >= 3.18.1
 %endif
 %if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
-Requires:  sqlite >= 3.8.9
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
