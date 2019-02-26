@@ -1,0 +1,63 @@
+From 7aab4545f513cd082c35005b8ec3392c44ab467b Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 29 Aug 2017 14:30:11 +0300
+Subject: [PATCH 19/19] [xulrunner] Disable SiteSpecificUserAgent.js from the
+ build. Contributes to JB#39252
+
+As both "general.useragent.override" and nsISiteSpecificUserAgent
+are used and EmbedLite Components provides a UserAgentOverrideHelper
+component that implements both complex UA override (register's handler)
+and nsISiteSpecificUserAgent that is loaded on startup, let it update
+also user agent string that is exposed via DOM's window.navigator.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/base/Navigator.cpp | 3 +++
+ dom/base/moz.build     | 5 ++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
+index 7288420..ab94e3c 100644
+--- a/dom/base/Navigator.cpp
++++ b/dom/base/Navigator.cpp
+@@ -2590,6 +2590,8 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+ {
+   MOZ_ASSERT(NS_IsMainThread());
+ 
++  // Pass call through to nsISiteSpecificUserAgent provided by EmbedLite Components.
++#if 0
+   if (!aIsCallerChrome) {
+     const nsAdoptingString& override =
+       mozilla::Preferences::GetString("general.useragent.override");
+@@ -2599,6 +2601,7 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+       return NS_OK;
+     }
+   }
++#endif
+ 
+   nsresult rv;
+   nsCOMPtr<nsIHttpProtocolHandler>
+diff --git a/dom/base/moz.build b/dom/base/moz.build
+index 27de87b..9629be7 100644
+--- a/dom/base/moz.build
++++ b/dom/base/moz.build
+@@ -375,14 +375,13 @@ EXTRA_COMPONENTS += [
+     'contentAreaDropListener.manifest',
+     'messageWakeupService.js',
+     'messageWakeupService.manifest',
+-    'SiteSpecificUserAgent.js',
+-    'SiteSpecificUserAgent.manifest',
+     'SlowScriptDebug.js',
+     'SlowScriptDebug.manifest',
+ ]
+ 
++# Disable SiteSpecificUserAgent.js
+ # Firefox for Android provides an alternate version of this component
+-if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
++if CONFIG['MOZ_BUILD_APP'] not in ['mobile/android', 'xulrunner']:
+     EXTRA_COMPONENTS += [
+         'SiteSpecificUserAgent.js',
+         'SiteSpecificUserAgent.manifest',
+-- 
+2.7.4
+

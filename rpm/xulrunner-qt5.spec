@@ -57,6 +57,7 @@ Patch11:    0011-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
 Patch12:    0012-xulrunner-Make-fullscreen-enabling-work-as-used-to-w.patch
 Patch13:    0013-Do-not-load-nsHelperAppDlg.js.-Fixes-JB-44322.patch
 Patch14:    0014-Embedlite-doesn-t-have-prompter-implementation.patch
+Patch15:    0015-xulrunner-Disable-SiteSpecificUserAgent.js-from-the-.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -70,7 +71,6 @@ BuildRequires:  pkgconfig(nss) >= 3.21.3
 %endif
 %if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
-Requires:  sqlite >= 3.8.9
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
@@ -160,6 +160,7 @@ Tests and misc files for xulrunner.
 %patch12 -p1
 %patch13 -p1
 %patch14 -p1
+%patch15 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
@@ -174,8 +175,8 @@ printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
 %ifarch %arm
 echo "ac_add_options --with-arm-kuser" >> "$MOZCONFIG"
 echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
-# No need for this, this should be managed by toolchain
-echo "ac_add_options --with-thumb=toolchain-default" >> "$MOZCONFIG"
+# Do not build as thumb since it breaks video decoding.
+echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
 %endif
 
 echo "mk_add_options MOZ_MAKE_FLAGS='%{?jobs:-j%jobs}'" >> "$MOZCONFIG"
