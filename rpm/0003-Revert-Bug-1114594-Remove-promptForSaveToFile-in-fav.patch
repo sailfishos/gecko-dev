@@ -1,26 +1,26 @@
-From 645ed48af9e2a804e04246d25c848961cd058aac Mon Sep 17 00:00:00 2001
+From baec7db68d02331e7b23fcfcfad8b3fc5ec7dbe4 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 21 Dec 2016 14:35:15 +0200
-Subject: [PATCH 03/11] Revert "Bug 1114594 - Remove promptForSaveToFile in
+Subject: [PATCH 03/15] Revert "Bug 1114594 - Remove promptForSaveToFile in
  favor of promptForSaveToFileAsync. r=paolo"
 
 This reverts commit f5fe5678d69887fd2ffce1729028d0a2e676be2f.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- b2g/components/HelperAppDialog.js                  |  8 +++++++
- mobile/android/components/HelperAppDialog.js       |  5 ++++
- .../downloads/test/unit/downloads_manifest.js      |  4 +++-
- toolkit/components/jsdownloads/test/unit/head.js   |  9 +++++++
- toolkit/mozapps/downloads/nsHelperAppDlg.js        | 16 +++++++++++++
- .../exthandler/nsExternalHelperAppService.cpp      | 24 ++++++++++++-------
- .../exthandler/nsIHelperAppLauncherDialog.idl      | 28 +++++++++++++++++++++-
- .../tests/mochitest/test_unsafeBidiChars.xhtml     |  3 +++
- .../exthandler/tests/unit_ipc/test_encoding.js     |  4 +++-
+ b2g/components/HelperAppDialog.js             |  8 ++++++
+ mobile/android/components/HelperAppDialog.js  |  5 ++++
+ .../downloads/test/unit/downloads_manifest.js |  4 ++-
+ .../components/jsdownloads/test/unit/head.js  |  9 ++++++
+ toolkit/mozapps/downloads/nsHelperAppDlg.js   | 16 +++++++++++
+ .../exthandler/nsExternalHelperAppService.cpp | 24 ++++++++++------
+ .../exthandler/nsIHelperAppLauncherDialog.idl | 28 ++++++++++++++++++-
+ .../mochitest/test_unsafeBidiChars.xhtml      |  3 ++
+ .../tests/unit_ipc/test_encoding.js           |  4 ++-
  9 files changed, 90 insertions(+), 11 deletions(-)
 
 diff --git a/b2g/components/HelperAppDialog.js b/b2g/components/HelperAppDialog.js
-index a155728..71d5423 100644
+index a15572820c15..71d5423e89b6 100644
 --- a/b2g/components/HelperAppDialog.js
 +++ b/b2g/components/HelperAppDialog.js
 @@ -33,6 +33,14 @@ HelperAppLauncherDialog.prototype = {
@@ -39,7 +39,7 @@ index a155728..71d5423 100644
                                       aContext,
                                       aDefaultFile,
 diff --git a/mobile/android/components/HelperAppDialog.js b/mobile/android/components/HelperAppDialog.js
-index 8706d73..f4047c4 100644
+index 8706d7343bfb..f4047c4b7dc7 100644
 --- a/mobile/android/components/HelperAppDialog.js
 +++ b/mobile/android/components/HelperAppDialog.js
 @@ -245,6 +245,11 @@ HelperAppLauncherDialog.prototype = {
@@ -55,7 +55,7 @@ index 8706d73..f4047c4 100644
                                        aSuggestedFileExt, aForcePrompt) {
      Task.spawn(function* () {
 diff --git a/toolkit/components/downloads/test/unit/downloads_manifest.js b/toolkit/components/downloads/test/unit/downloads_manifest.js
-index 7bef411..a24622a 100644
+index 7bef4117c14c..a24622a6d265 100644
 --- a/toolkit/components/downloads/test/unit/downloads_manifest.js
 +++ b/toolkit/components/downloads/test/unit/downloads_manifest.js
 @@ -15,7 +15,9 @@ HelperAppDlg.prototype = {
@@ -70,7 +70,7 @@ index 7bef411..a24622a 100644
  
  
 diff --git a/toolkit/components/jsdownloads/test/unit/head.js b/toolkit/components/jsdownloads/test/unit/head.js
-index 64a330d..bfed5c7 100644
+index 64a330db6e3f..bfed5c7fa358 100644
 --- a/toolkit/components/jsdownloads/test/unit/head.js
 +++ b/toolkit/components/jsdownloads/test/unit/head.js
 @@ -804,6 +804,15 @@ add_task(function test_common_initialize()
@@ -90,7 +90,7 @@ index 64a330d..bfed5c7 100644
                               aWindowContext,
                               aDefaultFileName,
 diff --git a/toolkit/mozapps/downloads/nsHelperAppDlg.js b/toolkit/mozapps/downloads/nsHelperAppDlg.js
-index 6e847f3..eb6c844 100644
+index 6e847f34ea18..eb6c8448ddc5 100644
 --- a/toolkit/mozapps/downloads/nsHelperAppDlg.js
 +++ b/toolkit/mozapps/downloads/nsHelperAppDlg.js
 @@ -204,6 +204,22 @@ nsUnknownContentTypeDialog.prototype = {
@@ -117,7 +117,7 @@ index 6e847f3..eb6c844 100644
      var result = null;
  
 diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
-index fc2f2385..39f066a 100644
+index fc2f2385643b..39f066aff0f3 100644
 --- a/uriloader/exthandler/nsExternalHelperAppService.cpp
 +++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
 @@ -2300,16 +2300,24 @@ void nsExternalAppHandler::RequestSaveDestination(const nsAFlatString &aDefaultF
@@ -154,7 +154,7 @@ index fc2f2385..39f066a 100644
  }
  
 diff --git a/uriloader/exthandler/nsIHelperAppLauncherDialog.idl b/uriloader/exthandler/nsIHelperAppLauncherDialog.idl
-index f8190e7..d15f133 100644
+index f8190e744bdf..d15f13321258 100644
 --- a/uriloader/exthandler/nsIHelperAppLauncherDialog.idl
 +++ b/uriloader/exthandler/nsIHelperAppLauncherDialog.idl
 @@ -21,7 +21,7 @@ interface nsIFile;
@@ -166,10 +166,11 @@ index f8190e7..d15f133 100644
  interface nsIHelperAppLauncherDialog : nsISupports {
    /**
     * This request is passed to the helper app dialog because Gecko can not
-@@ -58,6 +58,32 @@ interface nsIHelperAppLauncherDialog : nsISupports {
+@@ -57,6 +57,32 @@ interface nsIHelperAppLauncherDialog : nsISupports {
+             in nsISupports aWindowContext,
              in unsigned long aReason);
  
-   /**
++  /**
 +   * Invoke a save-to-file dialog instead of the full fledged helper app dialog.
 +   * Returns the a nsIFile for the file name/location selected.
 +   *
@@ -195,12 +196,11 @@ index f8190e7..d15f133 100644
 +                              in wstring aSuggestedFileExtension,
 +                              in boolean aForcePrompt);
 +
-+  /**
+   /**
     * Async invoke a save-to-file dialog instead of the full fledged helper app
     * dialog. When the file is chosen (or the dialog is closed), the callback
-    * in aLauncher (aLauncher.saveDestinationAvailable) is called with the
 diff --git a/uriloader/exthandler/tests/mochitest/test_unsafeBidiChars.xhtml b/uriloader/exthandler/tests/mochitest/test_unsafeBidiChars.xhtml
-index 3e5fa41..6363e55 100644
+index 3e5fa41c82e5..6363e5523de6 100644
 --- a/uriloader/exthandler/tests/mochitest/test_unsafeBidiChars.xhtml
 +++ b/uriloader/exthandler/tests/mochitest/test_unsafeBidiChars.xhtml
 @@ -84,6 +84,9 @@ function load() {
@@ -214,7 +214,7 @@ index 3e5fa41..6363e55 100644
        netscape.security.PrivilegeManager.enablePrivilege('UniversalXPConnect');
        if (aIID.equals(SpecialPowers.Ci.nsISupports) ||
 diff --git a/uriloader/exthandler/tests/unit_ipc/test_encoding.js b/uriloader/exthandler/tests/unit_ipc/test_encoding.js
-index 35dcf5a..a4cad91 100644
+index 35dcf5aaba99..a4cad9136ed2 100644
 --- a/uriloader/exthandler/tests/unit_ipc/test_encoding.js
 +++ b/uriloader/exthandler/tests/unit_ipc/test_encoding.js
 @@ -38,7 +38,9 @@ HelperAppDlg.prototype = {
@@ -229,5 +229,5 @@ index 35dcf5a..a4cad91 100644
  
  // Override the download-manager-ui to prevent anyone from trying to open
 -- 
-2.7.4
+2.20.1
 

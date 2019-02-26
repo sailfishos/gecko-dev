@@ -1,23 +1,26 @@
-From 18fcd34edd565be0a0b59e7191481e1c96d22471 Mon Sep 17 00:00:00 2001
+From ed7d627063ded032ea0efc1147d779b907c519b5 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:10:46 +0300
-Subject: [PATCH 01/11] Supply source uri to gstreamer pipeline
+Subject: [PATCH 01/15] Supply source uri to gstreamer pipeline
+
+Backported SHA1 aae344839920dd17bddfd0ef822cc5bc36ea2d9f
+from esr38.
 
 See bug JB19511
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/media/gstreamer/GStreamerFormatHelper.cpp      |  9 +++-
- dom/media/gstreamer/GStreamerFunctionList.h        |  8 +++
- dom/media/gstreamer/GStreamerLoader.cpp            |  6 ++-
- dom/media/gstreamer/GStreamerReader.cpp            | 57 ++++++++++++++++++++++
- dom/media/gstreamer/GStreamerReader.h              | 11 +++++
- netwerk/mime/nsMimeTypes.h                         |  1 +
- toolkit/components/mediasniffer/nsMediaSniffer.cpp |  4 +-
- 7 files changed, 92 insertions(+), 4 deletions(-)
+ dom/media/gstreamer/GStreamerFormatHelper.cpp |  9 ++-
+ dom/media/gstreamer/GStreamerFunctionList.h   |  8 +++
+ dom/media/gstreamer/GStreamerLoader.cpp       |  6 +-
+ dom/media/gstreamer/GStreamerReader.cpp       | 60 ++++++++++++++++++-
+ dom/media/gstreamer/GStreamerReader.h         | 11 ++++
+ netwerk/mime/nsMimeTypes.h                    |  1 +
+ .../mediasniffer/nsMediaSniffer.cpp           |  4 +-
+ 7 files changed, 94 insertions(+), 5 deletions(-)
 
 diff --git a/dom/media/gstreamer/GStreamerFormatHelper.cpp b/dom/media/gstreamer/GStreamerFormatHelper.cpp
-index fd545ac..64a097c 100644
+index fd545ac7ea96..64a097c8239c 100644
 --- a/dom/media/gstreamer/GStreamerFormatHelper.cpp
 +++ b/dom/media/gstreamer/GStreamerFormatHelper.cpp
 @@ -48,6 +48,10 @@ static char const *const sContainers[][2] = {
@@ -44,7 +47,7 @@ index fd545ac..64a097c 100644
  
  static char const * const sPluginBlockList[] = {
 diff --git a/dom/media/gstreamer/GStreamerFunctionList.h b/dom/media/gstreamer/GStreamerFunctionList.h
-index 75f352e..827e610 100644
+index 75f352ec0dec..827e61086e6f 100644
 --- a/dom/media/gstreamer/GStreamerFunctionList.h
 +++ b/dom/media/gstreamer/GStreamerFunctionList.h
 @@ -18,6 +18,7 @@ GST_FUNC(LIBGSTAPP, gst_app_src_set_callbacks)
@@ -96,7 +99,7 @@ index 75f352e..827e610 100644
  GST_FUNC(LIBGSTREAMER, gst_query_add_allocation_param)
  GST_FUNC(LIBGSTREAMER, gst_query_add_allocation_pool)
 diff --git a/dom/media/gstreamer/GStreamerLoader.cpp b/dom/media/gstreamer/GStreamerLoader.cpp
-index 8182f68..796a993 100644
+index 8182f689f406..796a99344370 100644
 --- a/dom/media/gstreamer/GStreamerLoader.cpp
 +++ b/dom/media/gstreamer/GStreamerLoader.cpp
 @@ -13,6 +13,7 @@
@@ -122,10 +125,18 @@ index 8182f68..796a993 100644
  
    for (size_t i = 0; i < sizeof(handles) / sizeof(handles[0]); i++) {
 diff --git a/dom/media/gstreamer/GStreamerReader.cpp b/dom/media/gstreamer/GStreamerReader.cpp
-index 45a14ae..cfb56a5 100644
+index 202f5a41ea20..f693cae077de 100644
 --- a/dom/media/gstreamer/GStreamerReader.cpp
 +++ b/dom/media/gstreamer/GStreamerReader.cpp
-@@ -131,6 +131,11 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
+@@ -124,6 +124,7 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
+   mSinkCallbacks.new_preroll = GStreamerReader::NewPrerollCb;
+ #if GST_VERSION_MAJOR >= 1
+   mSinkCallbacks.new_sample = GStreamerReader::NewBufferCb;
++  memset (&mVideoInfo, 0, sizeof (mVideoInfo));
+ #else
+   mSinkCallbacks.new_buffer = GStreamerReader::NewBufferCb;
+   mSinkCallbacks.new_buffer_list = nullptr;
+@@ -131,6 +132,11 @@ GStreamerReader::GStreamerReader(AbstractMediaDecoder* aDecoder)
  
    gst_segment_init(&mVideoSegment, GST_FORMAT_UNDEFINED);
    gst_segment_init(&mAudioSegment, GST_FORMAT_UNDEFINED);
@@ -137,7 +148,7 @@ index 45a14ae..cfb56a5 100644
  }
  
  GStreamerReader::~GStreamerReader()
-@@ -308,6 +313,51 @@ void GStreamerReader::PlayBinSourceSetupCb(GstElement* aPlayBin,
+@@ -308,6 +314,51 @@ void GStreamerReader::PlayBinSourceSetupCb(GstElement* aPlayBin,
    g_object_get(aPlayBin, "source", &source, nullptr);
    reader->PlayBinSourceSetup(GST_APP_SRC(source));
  }
@@ -189,7 +200,7 @@ index 45a14ae..cfb56a5 100644
  
  void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
  {
-@@ -339,6 +389,13 @@ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
+@@ -339,6 +390,13 @@ void GStreamerReader::PlayBinSourceSetup(GstAppSrc* aSource)
      gst_app_src_set_stream_type(mSource, GST_APP_STREAM_TYPE_SEEKABLE);
    }
  
@@ -203,8 +214,17 @@ index 45a14ae..cfb56a5 100644
    // Set the source MIME type to stop typefind trying every. single. format.
    GstCaps *caps =
      GStreamerFormatHelper::ConvertFormatsToCaps(mDecoder->GetResource()->GetContentType().get(),
+@@ -1491,7 +1549,7 @@ RefPtr<PlanarYCbCrImage> GStreamerReader::GetImageFromBuffer(GstBuffer* aBuffer)
+ {
+   RefPtr<PlanarYCbCrImage> image = nullptr;
+ 
+-  if (gst_buffer_n_memory(aBuffer) == 1) {
++  if (gst_buffer_n_memory(aBuffer) == 1 && mVideoInfo.finfo) {
+     GstMemory* mem = gst_buffer_peek_memory(aBuffer, 0);
+     if (GST_IS_MOZ_GFX_MEMORY_ALLOCATOR(mem->allocator)) {
+       image = moz_gfx_memory_get_image(mem);
 diff --git a/dom/media/gstreamer/GStreamerReader.h b/dom/media/gstreamer/GStreamerReader.h
-index 3738b57..5b78b82 100644
+index b5a87d97400c..2633c7bdc044 100644
 --- a/dom/media/gstreamer/GStreamerReader.h
 +++ b/dom/media/gstreamer/GStreamerReader.h
 @@ -105,6 +105,15 @@ private:
@@ -233,7 +253,7 @@ index 3738b57..5b78b82 100644
  
  } // namespace mozilla
 diff --git a/netwerk/mime/nsMimeTypes.h b/netwerk/mime/nsMimeTypes.h
-index c10f020..063fd48 100644
+index c10f02024ab2..063fd48257fc 100644
 --- a/netwerk/mime/nsMimeTypes.h
 +++ b/netwerk/mime/nsMimeTypes.h
 @@ -160,6 +160,7 @@
@@ -245,7 +265,7 @@ index c10f020..063fd48 100644
  
  /* x-uuencode-apple-single. QuickMail made me do this. */
 diff --git a/toolkit/components/mediasniffer/nsMediaSniffer.cpp b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
-index 9460c56..b63a761 100644
+index 9460c56ff437..b63a761b949d 100644
 --- a/toolkit/components/mediasniffer/nsMediaSniffer.cpp
 +++ b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
 @@ -35,7 +35,9 @@ nsMediaSnifferEntry nsMediaSniffer::sSnifferEntries[] = {
@@ -260,5 +280,5 @@ index 9460c56..b63a761 100644
  
  // For a complete list of file types, see http://www.ftyps.com/index.html
 -- 
-2.7.4
+2.20.1
 

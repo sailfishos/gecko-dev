@@ -1,7 +1,7 @@
-From 202a74031531c4d6dd895281302474869cdfb34c Mon Sep 17 00:00:00 2001
+From dc6bbb4d3a96d56a3950d0b75c379a4bb3489cf5 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:12:04 +0300
-Subject: [PATCH 02/11] Workaround for late access message loop.
+Subject: [PATCH 02/15] Workaround for late access message loop.
 
 See bug JB10381
 
@@ -11,7 +11,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 3 insertions(+)
 
 diff --git a/ipc/glue/MessagePump.cpp b/ipc/glue/MessagePump.cpp
-index 3079195..1f0b70a 100644
+index 30791953fb32..1f0b70a27430 100644
 --- a/ipc/glue/MessagePump.cpp
 +++ b/ipc/glue/MessagePump.cpp
 @@ -213,6 +213,9 @@ DoWorkRunnable::Run()
@@ -25,5 +25,5 @@ index 3079195..1f0b70a 100644
    bool nestableTasksAllowed = loop->NestableTasksAllowed();
  
 -- 
-2.7.4
+2.20.1
 
