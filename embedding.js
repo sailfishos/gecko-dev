@@ -52,7 +52,6 @@ pref("layers.max-active", 20);
 
 // APZC preferences.
 pref("apz.allow_zooming", true);
-pref("apz.asyncscroll.throttle", 15);
 pref("apz.fling_accel_base_mult", "1.125f");
 pref("apz.min_skate_speed", "1.0f");
 
@@ -67,7 +66,6 @@ pref("apz.fling_curve_function_y2", "1.0");
 pref("apz.fling_curve_threshold_inches_per_ms", "0.03");
 pref("apz.fling_friction", "0.003");
 pref("apz.max_velocity_inches_per_ms", "0.07");
-pref("apz.touch_start_tolerance", "0.027777f");
 
 // Tweak default displayport values to reduce the risk of running out of
 // memory when zooming in
@@ -181,7 +179,7 @@ pref("layout.reflow.synthMouseMove", false);
 pref("mozilla.widget.disable-native-theme", true);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
-pref("layers.low-precision-opacity", "0.5");
+pref("layers.low-precision-opacity", "1.0");
 pref("layers.progressive-paint", true);
 
 /* password manager */
