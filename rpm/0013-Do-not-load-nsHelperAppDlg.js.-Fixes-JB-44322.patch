@@ -1,0 +1,42 @@
+From 3009036bb7c86065ec974b67f5059a6bba2549ff Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 30 Jan 2019 14:26:31 +0200
+Subject: [PATCH 13/15] Do not load nsHelperAppDlg.js. Fixes JB#44322
+
+This removes nsHelperAppDlg.js and .manifest from to build (omni.ja).
+The nsHelperAppDlg.js is implemented in embedlite-components.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/mozapps/downloads/moz.build | 10 +---------
+ 1 file changed, 1 insertion(+), 9 deletions(-)
+
+diff --git a/toolkit/mozapps/downloads/moz.build b/toolkit/mozapps/downloads/moz.build
+index a0f5e77b61db..572ba87efd1a 100644
+--- a/toolkit/mozapps/downloads/moz.build
++++ b/toolkit/mozapps/downloads/moz.build
+@@ -6,14 +6,6 @@
+ 
+ TEST_DIRS += ['tests']
+ 
+-EXTRA_COMPONENTS += [
+-    'nsHelperAppDlg.manifest',
+-]
+-
+-EXTRA_PP_COMPONENTS += [
+-    'nsHelperAppDlg.js',
+-]
+-
+ EXTRA_JS_MODULES += [
+     'DownloadLastDir.jsm',
+     'DownloadPaths.jsm',
+@@ -21,4 +13,4 @@ EXTRA_JS_MODULES += [
+     'DownloadUtils.jsm',
+ ]
+ 
+-JAR_MANIFESTS += ['jar.mn']
+\ No newline at end of file
++JAR_MANIFESTS += ['jar.mn']
+-- 
+2.20.1
+

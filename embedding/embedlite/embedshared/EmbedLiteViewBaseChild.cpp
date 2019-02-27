@@ -13,6 +13,7 @@
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
 #include "EmbedLitePuppetWidget.h"
+#include "nsGlobalWindow.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -20,6 +21,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
+#include "nsIWebBrowserSetup.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -36,6 +38,9 @@
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
+
+#include "nsIFrame.h"                   // for nsIFrame
+#include "FrameLayerBuilder.h"          // for FrameLayerbuilder
 
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -83,7 +88,10 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
-  , mViewResized(false)
+  , mWebBrowser(nullptr)
+  , mChrome(nullptr)
+  , mDOMWindow(nullptr)
+  , mWebNavigation(nullptr)
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
@@ -146,7 +154,7 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
   mChrome = nullptr;
   mDOMWindow = nullptr;
   mWebNavigation = nullptr;
-  unused << SendDestroyed();
+  Unused << SendDestroyed();
   PEmbedLiteViewChild::Send__delete__(this);
   return true;
 }
@@ -173,11 +181,12 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   mWidget = new EmbedLitePuppetWidget(this);
+  LOGT("puppet widget: %p", static_cast<EmbedLitePuppetWidget*>(mWidget.get()));
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
   widgetInit.mWindowType = eWindowType_child;
-  nsIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
+  LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
   rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
@@ -185,7 +194,13 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     return;
   }
 
-  nsIntRect bounds;
+
+  nsCOMPtr<nsIWebBrowserSetup> webBrowserSetup = do_QueryInterface(baseWindow);
+  if (webBrowserSetup) {
+    webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
+  }
+
+  LayoutDeviceIntRect bounds;
   mWindow->GetWidget()->GetBounds(bounds);
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
@@ -219,9 +234,14 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     NS_ERROR("Failed to get the content DOM window!");
   }
 
-  mDOMWindow = do_QueryInterface(domWindow);
-  if (!mDOMWindow) {
+  nsCOMPtr<nsPIDOMWindow> pWindow = do_QueryInterface(domWindow);
+  if(!pWindow) {
     NS_ERROR("Got stuck with DOMWindow!");
+  }
+
+  mDOMWindow = do_QueryInterface(pWindow->GetPrivateRoot());
+  if (!mDOMWindow) {
+    NS_ERROR("Got stuck with root DOMWindow!");
   }
 
   mozilla::dom::AutoNoJSAPI nojsapi;
@@ -286,7 +306,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
 
   OnGeckoWindowInitialized();
 
-  unused << SendInitialized();
+  Unused << SendInitialized();
 }
 
 nsresult
@@ -330,14 +350,14 @@ EmbedLiteViewBaseChild::SetInputContext(const int32_t& IMEEnabled,
 
 bool
 EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
-                                          int32_t* IMEOpen,
-                                          intptr_t* NativeIMEContext)
+                                          int32_t* IMEOpen)
 {
-  return SendGetInputContext(IMEEnabled, IMEOpen, NativeIMEContext);
+  return SendGetInputContext(IMEEnabled, IMEOpen);
 }
 
 void EmbedLiteViewBaseChild::ResetInputState()
 {
+  LOGT();
   if (!mIMEComposing) {
     return;
   }
@@ -366,21 +386,18 @@ EmbedLiteViewBaseChild::GetDPI(float* aDPI)
 bool
 EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
                                               const ViewID& aViewId,
-                                              const bool& aIsRoot,
-                                              const ZoomConstraints& aConstraints)
+                                              const Maybe<ZoomConstraints> &aConstraints)
 {
+  LOGT();
   return SendUpdateZoomConstraints(aPresShellId,
                                    aViewId,
-                                   aIsRoot,
                                    aConstraints);
 }
 
 void
 EmbedLiteViewBaseChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
 {
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
-  }
+  LOGT();
 }
 
 bool
@@ -503,7 +520,9 @@ bool EmbedLiteViewBaseChild::RecvScrollTo(const int &x, const int &y)
   if (!mDOMWindow) {
     return false;
   }
-  mDOMWindow->ScrollTo(x, y);
+
+  nsGlobalWindow* window = nsGlobalWindow::Cast(mDOMWindow);
+  window->ScrollTo(x, y);
   return true;
 }
 
@@ -513,7 +532,8 @@ bool EmbedLiteViewBaseChild::RecvScrollBy(const int &x, const int &y)
     return false;
   }
 
-  mDOMWindow->ScrollBy(x, y);
+  nsGlobalWindow* window = nsGlobalWindow::Cast(mDOMWindow);
+  window->ScrollBy(x, y);
   return true;
 }
 
@@ -539,12 +559,23 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
     widget->SetActive(aIsActive);
   }
 
+  // Update state via WebBrowser -> DocShell -> PresShell
   mWebBrowser->SetIsActive(aIsActive);
+
   mWidget->Show(aIsActive);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetVisibility(aIsActive);
 
+  // Same that there is in nsPresShell.cpp:10670
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  if (ps && aIsActive) {
+    if (nsIFrame* root = ps->GetRootFrame()) {
+      FrameLayerBuilder::InvalidateAllLayersForFrame(
+        nsLayoutUtils::GetDisplayRootFrame(root));
+      root->SchedulePaint();
+    }
+  }
   return true;
 }
 
@@ -600,10 +631,11 @@ EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
     widget->UpdateSize();
 
     // Report update for the tab child helper. This triggers update for the viewport.
-    nsIntRect bounds;
+    LayoutDeviceIntRect bounds;
     mWindow->GetWidget()->GetBounds(bounds);
-    bounds.Deflate(mMargins);
-    gfxSize size(bounds.width, bounds.height);
+    nsIntRect b = bounds.ToUnknownRect();
+    b.Deflate(mMargins);
+    gfxSize size(b.width, b.height);
     mHelper->ReportSizeUpdate(size);
   }
 
@@ -721,13 +753,14 @@ EmbedLiteViewBaseChild::RemoveGeckoContentListener(EmbedLiteContentController* l
 }
 
 bool
-EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                                const gfxSize& scrollSize)
+EmbedLiteViewBaseChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
+                                              const gfxRect& contentRect,
+                                              const gfxSize& scrollSize)
 {
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->SendAsyncScrollDOMEvent(0, rect, size);
+    mControllerListeners[i]->HandleScrollEvent(isRootScrollFrame, rect, size);
   }
 
   if (sPostAZPCAsJson.scroll) {
@@ -753,15 +786,9 @@ EmbedLiteViewBaseChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
 bool
 EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
+  LOGT();
   if (!mWebBrowser) {
     return true;
-  }
-
-  if (mViewResized &&
-      aFrameMetrics.GetIsRoot() &&
-      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
-      mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
-    mViewResized = false;
   }
 
   RelayFrameMetrics(aFrameMetrics);
@@ -797,14 +824,13 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 
 bool
 EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
-                                            const int32_t& aModifiers,
+                                            const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers, aGuid);
+    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers);
   }
 
   if (sPostAZPCAsJson.doubleTap) {
@@ -818,7 +844,7 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
 
 bool
 EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
-                                            const int32_t& aModifiers,
+                                            const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
   if (mIMEComposing) {
@@ -826,17 +852,16 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
     // this way we can get focus and actual compositing node working properly in future composition
     nsPoint offset;
     nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
-    WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
+    WidgetCompositionEvent event(true, eCompositionEnd, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
     mIMEComposing = false;
   }
 
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers, aGuid);
+    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers);
   }
 
   if (sPostAZPCAsJson.singleTap) {
@@ -848,7 +873,8 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
 
   if (sHandleDefaultAZPC.singleTap) {
     LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
-    APZCCallbackHelper::FireSingleTapEvent(pt, mHelper->WebWidget());
+    Modifiers m;
+    APZCCallbackHelper::FireSingleTapEvent(pt, m, mHelper->WebWidget());
   }
 
   return true;
@@ -859,11 +885,10 @@ EmbedLiteViewBaseChild::RecvHandleLongTap(const CSSPoint& aPoint,
                                           const ScrollableLayerGuid& aGuid,
                                           const uint64_t& aInputBlockId)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(
-      aPoint, aGuid, GetPresShellResolution());
+  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aGuid, aInputBlockId);
+    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aInputBlockId);
   }
 
   if (sPostAZPCAsJson.longTap) {
@@ -910,7 +935,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   }
 
   if (StartComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_START, widget);
+    WidgetCompositionEvent event(true, eCompositionStart, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
   }
@@ -918,7 +943,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   if (StartComposite || ChangeComposite || EndComposite) {
 
     {
-      WidgetCompositionEvent event(true, NS_COMPOSITION_CHANGE, widget);
+      WidgetCompositionEvent event(true, eCompositionChange, widget);
       InitEvent(event, nullptr);
       event.mData = pushStr;
 
@@ -942,7 +967,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
     nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
 
-    InternalEditorInputEvent inputEvent(true, NS_EDITOR_INPUT, widget);
+    InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
     inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
@@ -950,7 +975,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   }
 
   if (EndComposite) {
-    WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
+    WidgetCompositionEvent event(true, eCompositionEnd, widget);
     InitEvent(event, nullptr);
     APZCCallbackHelper::DispatchWidgetEvent(event);
   }
@@ -1028,25 +1053,26 @@ bool EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid
 bool
 EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
 {
+  LOGT();
   WidgetTouchEvent localEvent;
+
   if (!mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
     return true;
   }
 
-  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid,
-      mWidget->GetDefaultScale(), GetPresShellResolution());
+  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid, mWidget->GetDefaultScale());
   nsEventStatus status =
       APZCCallbackHelper::DispatchWidgetEvent(localEvent);
 
   nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
   nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
-  if (innerWindow && innerWindow->HasTouchEventListeners()) {
+  if (innerWindow /*&& innerWindow->HasTouchEventListeners()*/ ) {
     SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId,
-                                  nsIPresShell::gPreventMouseEvents);
+                                  false /*nsIPresShell::gPreventMouseEvents*/);
   }
   mPendingTouchPreventedBlockId = aInputBlockId;
 
-  static bool sDispatchMouseEvents;
+  static bool sDispatchMouseEvents = false;
   static bool sDispatchMouseEventsCached = false;
   if (!sDispatchMouseEventsCached) {
     sDispatchMouseEventsCached = true;
@@ -1068,9 +1094,7 @@ EmbedLiteViewBaseChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& a
 NS_IMETHODIMP
 EmbedLiteViewBaseChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
-  if (!aIsSameDocument) {
-    mHelper->mContentDocumentIsDisplayed = false;
-  }
+  Unused << aIsSameDocument;
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1127,22 +1151,15 @@ EmbedLiteViewBaseChild::OnSecurityChanged(const char* aStatus, uint32_t aState)
 NS_IMETHODIMP
 EmbedLiteViewBaseChild::OnFirstPaint(int32_t aX, int32_t aY)
 {
-  nsresult rv = NS_OK;
-  nsCOMPtr <nsIDOMWindow> window;
-  rv = mWebBrowser->GetContentDOMWindow(getter_AddRefs(window));
-
-  nsCOMPtr<nsIDOMDocument> ddoc;
-  window->GetDocument(getter_AddRefs(ddoc));
-  NS_ENSURE_TRUE(ddoc, NS_OK);
-
-  nsCOMPtr<nsIDocument> doc;
-  doc = do_QueryInterface(ddoc, &rv);
-  NS_ENSURE_TRUE(doc, NS_OK);
-
-  nsIPresShell* presShell = doc->GetShell();
-  if (presShell) {
-    nscolor bgcolor = presShell->GetCanvasBackground();
-    unused << SendSetBackgroundColor(bgcolor);
+  if (mDOMWindow) {
+    nsCOMPtr<nsIDocShell> docShell = mDOMWindow->GetDocShell();
+    if (docShell) {
+      nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell();
+      if (presShell) {
+        nscolor bgcolor = presShell->GetCanvasBackground();
+        Unused << SendSetBackgroundColor(bgcolor);
+      }
+    }
   }
 
   return SendOnFirstPaint(aX, aY) ? NS_OK : NS_ERROR_FAILURE;
@@ -1176,54 +1193,43 @@ EmbedLiteViewBaseChild::OnUpdateDisplayPort()
 bool
 EmbedLiteViewBaseChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
 {
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  nsCOMPtr<nsIDocument> doc(mHelper->GetDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 float
 EmbedLiteViewBaseChild::GetPresShellResolution() const
 {
-  nsCOMPtr<nsIDocument> document(GetDocument());
+  nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
   nsIPresShell* shell = document->GetShell();
   if (!shell) {
     return 1.0f;
   }
-  return shell->GetXResolution();
-}
-
-already_AddRefed<nsIDocument>
-EmbedLiteViewBaseChild::GetDocument() const
-{
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  return doc.forget();
+  return shell->GetResolution();
 }
 
 void
 EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
 {
-  if (nsIPresShell::gPreventMouseEvents) {
-    return;
-  }
+  // TODO : how should we handle now global mouse event prevent.
+//  if (nsIPresShell::gPreventMouseEvents) {
+//    return;
+//  }
 
-  if (aEvent.message == NS_TOUCH_END) {
+  if (aEvent.mMessage == eTouchEnd) {
     int64_t time = aEvent.time;
     MOZ_ASSERT(aEvent.touches.Length() == 1);
     LayoutDevicePoint pt = aEvent.touches[0]->mRefPoint;
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, pt, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, pt, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, pt, aEvent.widget);
+    Modifiers m;
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseMove, time, pt, m, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseDown, time, pt, m, aEvent.widget);
+    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseUp, time, pt, m, aEvent.widget);
   }
 }
 
 void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
-  LOGT("sz[%g,%g]", aSize.width, aSize.height);
-  mViewResized = true;
-
+  LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);

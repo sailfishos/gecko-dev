@@ -15,6 +15,8 @@
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 
+#include "mozilla/dom/ipc/StructuredCloneData.h"
+
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
 #include "mozilla/dom/Element.h"
@@ -24,7 +26,6 @@
 #include "nsIDocShell.h"
 #include "nsViewportInfo.h"
 #include "nsPIWindowRoot.h"
-#include "StructuredCloneUtils.h"
 #include "mozilla/Preferences.h"
 #include "nsIFrame.h"
 #include "nsView.h"
@@ -56,7 +57,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
 {
   LOGT();
 
-  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
+//  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
 
   // Init default prefs
   static bool sPrefInitialized = false;
@@ -123,8 +124,7 @@ public:
 
   NS_IMETHOD Run() {
     LOGT();
-    nsCOMPtr<nsIDOMEvent> event;
-    NS_NewDOMEvent(getter_AddRefs(event), mTabChildGlobal, nullptr, nullptr);
+    RefPtr<Event> event = NS_NewDOMEvent(mTabChildGlobal, nullptr, nullptr);
     if (event) {
       event->InitEvent(NS_LITERAL_STRING("unload"), false, false);
       event->SetTrusted(true);
@@ -136,7 +136,7 @@ public:
     return NS_OK;
   }
 
-  nsRefPtr<TabChildHelper> mTabChild;
+  RefPtr<TabChildHelper> mTabChild;
   TabChildGlobal* mTabChildGlobal;
 };
 
@@ -181,7 +181,7 @@ TabChildHelper::InitTabChildGlobal()
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  nsRefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
+  RefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
   NS_ENSURE_TRUE(scope, false);
 
   mTabChildGlobal = scope;
@@ -196,9 +196,6 @@ TabChildHelper::InitTabChildGlobal()
   nsCOMPtr<nsPIWindowRoot> root = do_QueryInterface(chromeHandler);
   NS_ENSURE_TRUE(root,  false);
   root->SetParentTarget(scope);
-
-  chromeHandler->AddEventListener(NS_LITERAL_STRING("DOMMetaAdded"), this, false);
-  chromeHandler->AddEventListener(NS_LITERAL_STRING("scroll"), this, false);
 
   return true;
 }
@@ -231,36 +228,14 @@ TabChildHelper::Observe(nsISupports* aSubject,
     nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
-      mozilla::dom::AutoNoJSAPI nojsapi;
-
-      nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-
-      mContentDocumentIsDisplayed = true;
-
-      if (!sDisableViewportHandler) {
-        // Reset CSS viewport and zoom to default on new page, then
-        // calculate them properly using the actual metadata from the
-        // page.
-        SetCSSViewport(kDefaultViewportSize);
-
-        // In some cases before-first-paint gets called before
-        // RecvUpdateDimensions is called and therefore before we have an
-        // mInnerSize value set. In such cases defer initializing the viewport
-        // until we we get an inner size.
-        if (HasValidInnerSize()) {
-          InitializeRootMetrics();
-
-          utils->SetResolution(mLastRootMetrics.GetPresShellResolution(),
-                               mLastRootMetrics.GetPresShellResolution());
-          HandlePossibleViewportChange(mInnerSize);
-          // Relay frame metrics to subscribed listeners
-          mView->RelayFrameMetrics(mLastRootMetrics);
-        }
+      nsCOMPtr<nsIPresShell> shell(doc->GetShell());
+      if (shell) {
+        shell->SetIsFirstPaint(true);
       }
 
-      nsCOMPtr<nsIObserverService> observerService =
-        do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-      utils->SetIsFirstPaint(true);
+      APZCCallbackHelper::InitializeRootDisplayport(shell);
+
+      nsCOMPtr<nsIObserverService> observerService = do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
       if (observerService) {
         observerService->NotifyObservers(aSubject, "embedlite-before-first-paint", nullptr);
       }
@@ -273,17 +248,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
 NS_IMETHODIMP
 TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 {
-  nsAutoString eventType;
-  aEvent->GetType(eventType);
-  // Should this also handle "MozScrolledAreaChanged".
-  if (eventType.EqualsLiteral("DOMMetaAdded")) {
-    // This meta data may or may not have been a meta viewport tag. If it was,
-    // we should handle it immediately.
-    HandlePossibleViewportChange(mInnerSize);
-    // Relay frame metrics to subscribed listeners
-    mView->RelayFrameMetrics(mLastRootMetrics);
-  }
-
+  (void)(aEvent);
   return NS_OK;
 }
 
@@ -323,10 +288,10 @@ TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlo
 bool
 TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                       const nsAString& aMessage,
-                                      const StructuredCloneData& aData,
+                                      mozilla::dom::ipc::StructuredCloneData& aData,
                                       JS::Handle<JSObject *> aCpows,
                                       nsIPrincipal* aPrincipal,
-                                      InfallibleTArray<nsString>* aJSONRetVal,
+                                      nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
                                       bool aIsSync)
 {
   if (!mView->HasMessageListener(aMessage)) {
@@ -340,68 +305,103 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.mDataLength &&
-      !ReadStructuredClone(cx, aData, &rval)) {
+  if (aData.DataLength() > 0 &&
+            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
+                                    JS_STRUCTURED_CLONE_VERSION, &rval,
+                                    nullptr, nullptr)) {
     JS_ClearPendingException(cx);
     return false;
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
+  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
+  // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
+  InfallibleTArray<nsString> jsonRetVal;
+
+  bool retValue = false;
+
   if (aIsSync) {
-    return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+    retValue = mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
+  } else {
+    retValue = mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), &jsonRetVal);
   }
 
-  return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+  if (retValue && aRetVal) {
+    for (uint32_t i = 0; i < jsonRetVal.Length(); i++) {
+      mozilla::dom::ipc::StructuredCloneData* cloneData = aRetVal->AppendElement();
+
+      NS_ConvertUTF16toUTF8 data(jsonRetVal[i]);
+      if (!cloneData->CopyExternalData(data.get(), data.Length())) {
+        return false;
+      }
+    }
+  }
+
+  return retValue;
 }
 
-bool
-TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
-                                   const nsAString& aMessage,
-                                   const mozilla::dom::StructuredCloneData& aData,
-                                   JS::Handle<JSObject *> aCpows,
-                                   nsIPrincipal* aPrincipal)
+nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
+                                            const nsAString& aMessage,
+                                            mozilla::dom::ipc::StructuredCloneData& aData,
+                                            JS::Handle<JSObject *> aCpows,
+                                            nsIPrincipal* aPrincipal)
 {
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
-  nsRefPtr<nsFrameMessageManager> globalMessageManager =
+  RefPtr<nsFrameMessageManager> globalMessageManager =
       static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
-  nsRefPtr<nsFrameMessageManager> contentFrameMessageManager =
+  RefPtr<nsFrameMessageManager> contentFrameMessageManager =
       static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
 
   nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  nsRefPtr<EmbedFrame> embedFrame = new EmbedFrame();
+  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mTabChildGlobal;
   SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
-  globalMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
-  contentFrameMessageManager->ReceiveMessage(embedFrame, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+
+  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+  contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return true;
+    return NS_OK;
   }
 
-  NS_ENSURE_TRUE(InitTabChildGlobal(), false);
+  if (!InitTabChildGlobal()) {
+    return NS_ERROR_UNEXPECTED;
+  }
   JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.mDataLength &&
-      !ReadStructuredClone(cx, aData, &rval)) {
+
+  if (aData.DataLength() > 0 &&
+            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
+                                    JS_STRUCTURED_CLONE_VERSION, &rval,
+                                    nullptr, nullptr)) {
     JS_ClearPendingException(cx);
-    return false;
+    return NS_ERROR_UNEXPECTED;
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
-  NS_ENSURE_TRUE(!json.IsEmpty(), false);
+  // Check EmbedLiteJSON::JSONCreator and/or JS_Stringify from Android side
+  if (!JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json))  {
+    return NS_ERROR_UNEXPECTED;
+  }
 
-  return mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get());
+  if (json.IsEmpty()) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  if (!mView->DoSendAsyncMessage(nsString(aMessage).get(), json.get())) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  return NS_OK;
 }
 
 bool
@@ -409,6 +409,12 @@ TabChildHelper::CheckPermission(const nsAString& aPermission)
 {
   LOGNI("perm: %s", NS_ConvertUTF16toUTF8(aPermission).get());
   return false;
+}
+
+ScreenIntSize
+TabChildHelper::GetInnerSize()
+{
+  return mInnerSize;
 }
 
 bool
@@ -448,7 +454,7 @@ TabChildHelper::GetPresContext()
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
-  nsRefPtr<nsPresContext> presContext;
+  RefPtr<nsPresContext> presContext;
   docShell->GetPresContext(getter_AddRefs(presContext));
   return presContext;
 }
@@ -456,12 +462,11 @@ TabChildHelper::GetPresContext()
 bool
 TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                         const ViewID& aViewId,
-                                        const bool& aIsRoot,
-                                        const ZoomConstraints& aConstraints)
+                                        const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
+  LOGT();
   return mView->UpdateZoomConstraints(aPresShellId,
                                       aViewId,
-                                      aIsRoot,
                                       aConstraints);
 }
 
@@ -474,11 +479,9 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  ScreenIntSize oldScreenSize(mInnerSize);
   mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
-
-  HandlePossibleViewportChange(oldScreenSize);
 }
+
 // -- nsITabChild --------------
 
 NS_IMETHODIMP

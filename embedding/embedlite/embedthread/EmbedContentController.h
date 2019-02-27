@@ -32,36 +32,31 @@ public:
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
-  virtual void HandleDoubleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
-  virtual void HandleSingleTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
-  virtual void HandleLongTap(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
-  virtual void HandleLongTapUp(const CSSPoint& aPoint, int32_t aModifiers, const ScrollableLayerGuid& aGuid) override;
-  virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
-                                       const CSSRect& aContentRect,
-                                       const CSSSize& aScrollableSize) override;
+  virtual void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                                const mozilla::CSSPoint& aDestination) override;
+
+  virtual void HandleDoubleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleSingleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid) override;
+  virtual void HandleLongTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
-  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   nsEventStatus ReceiveInputEvent(InputData& aEvent,
                                   mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
                                   uint64_t* aInputBlockId);
+  virtual void NotifyFlushComplete() override;
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
-
-  // Methods used by EmbedLiteViewBaseParent to set fields stored here.
-
-  void SaveZoomConstraints(const ZoomConstraints& aConstraints);
 
 private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
+  void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
 
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;
 
-  bool mHaveZoomConstraints;
   ZoomConstraints mZoomConstraints;
 
   // Extra
@@ -70,7 +65,7 @@ private:
 
 public:
   // todo: make this a member variable as prep for multiple views
-  nsRefPtr<mozilla::layers::APZCTreeManager> mAPZC;
+  RefPtr<mozilla::layers::APZCTreeManager> mAPZC;
 };
 
 }}

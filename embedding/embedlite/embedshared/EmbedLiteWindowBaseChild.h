@@ -22,21 +22,21 @@ public:
 
   uint32_t GetUniqueID() const { return mId; }
   EmbedLitePuppetWidget* GetWidget() const;
-  gfxSize GetSize() const { return mSize; }
+  LayoutDeviceIntRect GetSize() const { return mBounds; }
 
 protected:
   virtual ~EmbedLiteWindowBaseChild() override;
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual bool RecvDestroy() override;
   virtual bool RecvSetSize(const gfxSize& size) override;
-  virtual bool RecvSetContentOrientation(const mozilla::ScreenRotation&) override;
+  virtual bool RecvSetContentOrientation(const uint32_t &) override;
 
 private:
   void CreateWidget();
 
   uint32_t mId;
   nsCOMPtr<nsIWidget> mWidget;
-  gfxSize mSize;
+  LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
   CancelableTask* mCreateWidgetTask;
 

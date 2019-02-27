@@ -31,9 +31,6 @@
 
 using namespace js::jit;
 
-size_t ExecutableAllocator::pageSize = 0;
-size_t ExecutableAllocator::largeAllocSize = 0;
-
 ExecutablePool::~ExecutablePool()
 {
     MOZ_ASSERT(m_ionCodeBytes == 0);
@@ -62,3 +59,16 @@ ExecutableAllocator::addSizeOfCode(JS::CodeSizes* sizes) const
     }
 }
 
+ExecutablePool::Allocation
+ExecutableAllocator::systemAlloc(size_t n)
+{
+    void* allocation = AllocateExecutableMemory(n, ProtectionSetting::Executable);
+    ExecutablePool::Allocation alloc = { reinterpret_cast<char*>(allocation), n };
+    return alloc;
+}
+
+void
+ExecutableAllocator::systemRelease(const ExecutablePool::Allocation& alloc)
+{
+    DeallocateExecutableMemory(alloc.pages, alloc.size);
+}

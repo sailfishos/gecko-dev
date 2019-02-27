@@ -40,23 +40,23 @@ public Q_SLOTS:
     void renderNow();
 
 protected:
-    virtual bool event(QEvent* event);
-    virtual void exposeEvent(QExposeEvent* event);
-    virtual void focusInEvent(QFocusEvent* event);
-    virtual void focusOutEvent(QFocusEvent* event);
-    virtual void hideEvent(QHideEvent* event);
-    virtual void keyPressEvent(QKeyEvent* event);
-    virtual void keyReleaseEvent(QKeyEvent* event);
-    virtual void mouseDoubleClickEvent(QMouseEvent* event);
-    virtual void mouseMoveEvent(QMouseEvent* event);
-    virtual void mousePressEvent(QMouseEvent* event);
-    virtual void mouseReleaseEvent(QMouseEvent* event);
-    virtual void moveEvent(QMoveEvent* event);
-    virtual void resizeEvent(QResizeEvent* event);
-    virtual void showEvent(QShowEvent* event);
-    virtual void tabletEvent(QTabletEvent* event);
-    virtual void touchEvent(QTouchEvent* event);
-    virtual void wheelEvent(QWheelEvent* event);
+    virtual bool event(QEvent *e) override;
+    virtual void exposeEvent(QExposeEvent *e) override;
+    virtual void focusInEvent(QFocusEvent *e) override;
+    virtual void focusOutEvent(QFocusEvent *e) override;
+    virtual void hideEvent(QHideEvent *e) override;
+    virtual void keyPressEvent(QKeyEvent *e) override;
+    virtual void keyReleaseEvent(QKeyEvent *e) override;
+    virtual void mouseDoubleClickEvent(QMouseEvent *e) override;
+    virtual void mouseMoveEvent(QMouseEvent *e) override;
+    virtual void mousePressEvent(QMouseEvent *e) override;
+    virtual void mouseReleaseEvent(QMouseEvent *e) override;
+    virtual void moveEvent(QMoveEvent *e) override;
+    virtual void resizeEvent(QResizeEvent *e) override;
+    virtual void showEvent(QShowEvent *e) override;
+    virtual void tabletEvent(QTabletEvent *e) override;
+    virtual void touchEvent(QTouchEvent *e) override;
+    virtual void wheelEvent(QWheelEvent *e) override;
 
 private:
     nsWindow* mReceiver;

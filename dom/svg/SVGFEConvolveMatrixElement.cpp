@@ -1,4 +1,5 @@
-/* a*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,9 +18,9 @@ namespace mozilla {
 namespace dom {
 
 JSObject*
-SVGFEConvolveMatrixElement::WrapNode(JSContext* aCx)
+SVGFEConvolveMatrixElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return SVGFEConvolveMatrixElementBinding::Wrap(aCx, this);
+  return SVGFEConvolveMatrixElementBinding::Wrap(aCx, this, aGivenProto);
 }
 
 nsSVGElement::NumberInfo SVGFEConvolveMatrixElement::sNumberInfo[2] =
@@ -228,6 +229,12 @@ SVGFEConvolveMatrixElement::GetPrimitiveDescription(nsSVGFilterInstance* aInstan
 
   Size kernelUnitLength =
     GetKernelUnitLength(aInstance, &mNumberPairAttributes[KERNEL_UNIT_LENGTH]);
+
+  if (kernelUnitLength.width <= 0 || kernelUnitLength.height <= 0) {
+    // According to spec, A negative or zero value is an error. See link below for details.
+    // https://www.w3.org/TR/SVG/filters.html#feConvolveMatrixElementKernelUnitLengthAttribute
+    return failureDescription;
+  }
 
   FilterPrimitiveDescription descr(PrimitiveType::ConvolveMatrix);
   AttributeMap& atts = descr.Attributes();

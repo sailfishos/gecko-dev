@@ -1,0 +1,29 @@
+From 930ef6935fdafe2146a844f8a57993393fb8be75 Mon Sep 17 00:00:00 2001
+From: Andrea Marchesini <amarchesini@mozilla.com>
+Date: Thu, 3 Mar 2016 18:30:16 +0100
+Subject: [PATCH 09/15] Bug 1253215 - Initialize RequestSyncService only if its
+ pref is enabled, r=ehsan
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/requestsync/RequestSyncService.jsm | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/dom/requestsync/RequestSyncService.jsm b/dom/requestsync/RequestSyncService.jsm
+index 835010922ab0..4b20868f9185 100644
+--- a/dom/requestsync/RequestSyncService.jsm
++++ b/dom/requestsync/RequestSyncService.jsm
+@@ -87,6 +87,10 @@ this.RequestSyncService = {
+   init: function() {
+     debug("init");
+ 
++    if (!Services.prefs.getBoolPref("dom.requestSync.enabled")) {
++      return;
++    }
++
+     this._messages.forEach((function(msgName) {
+       ppmm.addMessageListener(msgName, this);
+     }).bind(this));
+-- 
+2.20.1
+

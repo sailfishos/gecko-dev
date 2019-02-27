@@ -7,7 +7,6 @@
 
 %{C++
 #include "mozilla/gfx/Matrix.h"
-#include "mozilla/WidgetUtils.h"
 #include "gfxRect.h"
 #include "InputData.h"
 #include "EmbedLiteView.h"
@@ -19,7 +18,6 @@ class nsString;
 %}
 [ref] native nsStringTArrayRef(nsTArray<nsString>);
 [ref] native gfxMatrix(mozilla::gfx::Matrix);
-[ref] native ScreenRotation(mozilla::ScreenRotation);
 [ref] native gfxRect(gfxRect);
 [ref] native nsIntPoint(nsIntPoint);
 [ref] native nsIntRect(nsIntRect);

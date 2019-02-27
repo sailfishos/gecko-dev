@@ -1,0 +1,55 @@
+From 2b0fab2818c3474373d6c6c127e3b2541b27d96f Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 26 Feb 2019 11:58:41 +0200
+Subject: [PATCH 15/15] [xulrunner] Disable SiteSpecificUserAgent.js from the
+ build. Contributes to JB#39252
+
+As both "general.useragent.override" and nsISiteSpecificUserAgent
+are used and EmbedLite Components provides a UserAgentOverrideHelper
+component that implements both complex UA override (register's handler)
+and nsISiteSpecificUserAgent that is loaded on startup, let it update
+also user agent string that is exposed via DOM's window.navigator.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/base/Navigator.cpp | 3 +++
+ dom/base/moz.build     | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
+index 2bb4b157794b..250f9dbbd2c3 100644
+--- a/dom/base/Navigator.cpp
++++ b/dom/base/Navigator.cpp
+@@ -2749,6 +2749,8 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+ {
+   MOZ_ASSERT(NS_IsMainThread());
+ 
++  // Pass call through to nsISiteSpecificUserAgent provided by EmbedLite Components.
++#if 0
+   if (!aIsCallerChrome) {
+     const nsAdoptingString& override =
+       mozilla::Preferences::GetString("general.useragent.override");
+@@ -2758,6 +2760,7 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+       return NS_OK;
+     }
+   }
++#endif
+ 
+   nsresult rv;
+   nsCOMPtr<nsIHttpProtocolHandler>
+diff --git a/dom/base/moz.build b/dom/base/moz.build
+index 3c5ba1d8d7f0..2912ae138f23 100644
+--- a/dom/base/moz.build
++++ b/dom/base/moz.build
+@@ -405,7 +405,7 @@ EXTRA_COMPONENTS += [
+ ]
+ 
+ # Firefox for Android provides an alternate version of this component
+-if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
++if CONFIG['MOZ_BUILD_APP'] not in ['mobile/android', 'xulrunner']:
+     EXTRA_COMPONENTS += [
+         'SiteSpecificUserAgent.js',
+         'SiteSpecificUserAgent.manifest',
+-- 
+2.20.1
+

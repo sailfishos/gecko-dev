@@ -21,7 +21,6 @@
 class txAOutputHandlerFactory;
 class txAXMLEventHandler;
 class txInstruction;
-class txIOutputHandlerFactory;
 
 class txLoadedDocumentEntry : public nsStringHashKey
 {
@@ -95,6 +94,16 @@ public:
     // Stack functions
     nsresult pushEvalContext(txIEvalContext* aContext);
     txIEvalContext* popEvalContext();
+
+    void popAndDeleteEvalContext();
+
+    /**
+     * Helper that deletes all entries before |aContext| and then
+     * pops it off the stack. The caller must delete |aContext| if
+     * desired.
+     */
+    void popAndDeleteEvalContextUntil(txIEvalContext* aContext);
+
     nsresult pushBool(bool aBool);
     bool popBool();
     nsresult pushResultHandler(txAXMLEventHandler* aHandler);
@@ -140,7 +149,7 @@ public:
 
     nsAutoPtr<txVariableMap> mTemplateParams;
 
-    nsRefPtr<txStylesheet> mStylesheet;
+    RefPtr<txStylesheet> mStylesheet;
 
 private:
     txStack mReturnStack;
@@ -152,7 +161,7 @@ private:
     txInstruction* mNextInstruction;
     txVariableMap* mLocalVariables;
     txVariableMap mGlobalVariableValues;
-    nsRefPtr<txAExprResult> mGlobalVarPlaceholderValue;
+    RefPtr<txAExprResult> mGlobalVarPlaceholderValue;
     int32_t mRecursionDepth;
 
     AutoInfallibleTArray<TemplateRule, 10> mTemplateRules;
@@ -164,7 +173,7 @@ private:
 
     txLoadedDocumentsHash mLoadedDocuments;
     txKeyHash mKeyHash;
-    nsRefPtr<txResultRecycler> mRecycler;
+    RefPtr<txResultRecycler> mRecycler;
     bool mDisableLoads;
 
     static const int32_t kMaxRecursionDepth;

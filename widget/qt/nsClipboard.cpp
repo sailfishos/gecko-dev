@@ -62,7 +62,7 @@ _moz2dformat_to_qformat(SurfaceFormat aFormat)
         return QImage::Format_ARGB32_Premultiplied;
     case SurfaceFormat::B8G8R8X8:
         return QImage::Format_ARGB32;
-    case SurfaceFormat::R5G6B5:
+    case SurfaceFormat::R5G6B5_UINT16:
         return QImage::Format_RGB16;
     default:
         return QImage::Format_Invalid;
@@ -163,9 +163,9 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
                 static const char* const imageMimeTypes[] = {
                     kNativeImageMime, kPNGImageMime, kJPEGImageMime, kJPGImageMime, kGIFImageMime };
                 nsCOMPtr<nsISupportsInterfacePointer> ptrPrimitive;
-                for (uint32_t i = 0; !ptrPrimitive && i < ArrayLength(imageMimeTypes); i++)
+                for (uint32_t j = 0; !ptrPrimitive && j < ArrayLength(imageMimeTypes); j++)
                 {
-                    aTransferable->GetTransferData(imageMimeTypes[i], getter_AddRefs(clip), &len);
+                    aTransferable->GetTransferData(imageMimeTypes[j], getter_AddRefs(clip), &len);
                     ptrPrimitive = do_QueryInterface(clip);
                 }
 
@@ -223,7 +223,7 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
                     QByteArray data ((const char *)primitive_data, len);
                     // Add data to the mimeData
                     mimeData->setData(flavorStr.get(), data);
-                    nsMemory::Free(primitive_data);
+                    free(primitive_data);
                 }
             }
         }

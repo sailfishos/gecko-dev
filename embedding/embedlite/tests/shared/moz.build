@@ -6,15 +6,12 @@
 
 USE_STATIC_LIBS = True
 
-GENERATED_SOURCES += [
-    'moc_qmessagepump.cpp',
-]
-
 EXPORTS += [
     'qmessagepump.h',
 ]
 
 SOURCES += [
+    '!moc_qmessagepump.cpp',
     'qmessagepump.cpp',
 ]
 

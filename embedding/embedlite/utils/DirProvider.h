@@ -6,7 +6,7 @@
 #ifndef __DirProvider_h_
 #define __DirProvider_h_
 
-#include "nsProfileDirServiceProvider.h"
+#include "nsIDirectoryService.h"
 
 class DirProvider : public nsIDirectoryServiceProvider2
 {

@@ -82,7 +82,10 @@ txExecutionState::~txExecutionState()
 
     txStackIterator handlerIter(&mResultHandlerStack);
     while (handlerIter.hasNext()) {
-        delete (txAXMLEventHandler*)handlerIter.next();
+        txAXMLEventHandler* handler = (txAXMLEventHandler*)handlerIter.next();
+        if (handler != mObsoleteHandler) {
+          delete handler;
+        }
     }
 
     txStackIterator paramIter(&mParamStack);
@@ -103,8 +106,6 @@ txExecutionState::init(const txXPathNode& aNode,
 
     // Set up initial context
     mEvalContext = new txSingleNodeContext(aNode, this);
-    NS_ENSURE_TRUE(mEvalContext, NS_ERROR_OUT_OF_MEMORY);
-
     mInitialEvalContext = mEvalContext;
 
     // Set up output and result-handler
@@ -129,7 +130,6 @@ txExecutionState::init(const txXPathNode& aNode,
     // The actual value here doesn't really matter since noone should use this
     // value. But lets put something errorlike in just in case
     mGlobalVarPlaceholderValue = new StringResult(NS_LITERAL_STRING("Error"), nullptr);
-    NS_ENSURE_TRUE(mGlobalVarPlaceholderValue, NS_ERROR_OUT_OF_MEMORY);
 
     // Initiate first instruction. This has to be done last since findTemplate
     // might use us.
@@ -156,7 +156,27 @@ txExecutionState::end(nsresult aResult)
     return mOutputHandler->endDocument(aResult);
 }
 
+void
+txExecutionState::popAndDeleteEvalContext()
+{
+  if (!mEvalContextStack.isEmpty()) {
+    auto ctx = popEvalContext();
+    if (ctx != mInitialEvalContext) {
+      delete ctx;
+    }
+  }
+}
 
+void
+txExecutionState::popAndDeleteEvalContextUntil(txIEvalContext* aContext)
+{
+  auto ctx = popEvalContext();
+  while (ctx && ctx != aContext) {
+    MOZ_RELEASE_ASSERT(ctx != mInitialEvalContext);
+    delete ctx;
+    ctx = popEvalContext();
+  }
+}
 
 nsresult
 txExecutionState::getVariable(int32_t aNamespace, nsIAtom* aLName,
@@ -224,33 +244,47 @@ txExecutionState::getVariable(int32_t aNamespace, nsIAtom* aLName,
         rv = var->mExpr->evaluate(getEvalContext(), &aResult);
         mLocalVariables = oldVars;
 
-        NS_ENSURE_SUCCESS(rv, rv);
+        if (NS_FAILED(rv)) {
+          popAndDeleteEvalContextUntil(mInitialEvalContext);
+          return rv;
+        }
     }
     else {
         nsAutoPtr<txRtfHandler> rtfHandler(new txRtfHandler);
-        NS_ENSURE_TRUE(rtfHandler, NS_ERROR_OUT_OF_MEMORY);
 
         rv = pushResultHandler(rtfHandler);
-        NS_ENSURE_SUCCESS(rv, rv);
-        
+        if (NS_FAILED(rv)) {
+          popAndDeleteEvalContextUntil(mInitialEvalContext);
+          return rv;
+        }
+
         rtfHandler.forget();
 
         txInstruction* prevInstr = mNextInstruction;
         // set return to nullptr to stop execution
         mNextInstruction = nullptr;
         rv = runTemplate(var->mFirstInstruction);
-        NS_ENSURE_SUCCESS(rv, rv);
+        if (NS_FAILED(rv)) {
+          popAndDeleteEvalContextUntil(mInitialEvalContext);
+          return rv;
+        }
 
         pushTemplateRule(nullptr, txExpandedName(), nullptr);
         rv = txXSLTProcessor::execute(*this);
-        NS_ENSURE_SUCCESS(rv, rv);
+        if (NS_FAILED(rv)) {
+          popAndDeleteEvalContextUntil(mInitialEvalContext);
+          return rv;
+        }
 
         popTemplateRule();
 
         mNextInstruction = prevInstr;
         rtfHandler = (txRtfHandler*)popResultHandler();
         rv = rtfHandler->getAsRTF(&aResult);
-        NS_ENSURE_SUCCESS(rv, rv);
+        if (NS_FAILED(rv)) {
+          popAndDeleteEvalContextUntil(mInitialEvalContext);
+          return rv;
+        }
     }
     popEvalContext();
 
@@ -377,14 +411,14 @@ txExecutionState::getEvalContext()
 const txXPathNode*
 txExecutionState::retrieveDocument(const nsAString& aUri)
 {
-    NS_ASSERTION(aUri.FindChar(char16_t('#')) == kNotFound,
+    NS_ASSERTION(!aUri.Contains(char16_t('#')),
                  "Remove the fragment.");
 
     if (mDisableLoads) {
         return nullptr;
     }
 
-    PR_LOG(txLog::xslt, PR_LOG_DEBUG,
+    MOZ_LOG(txLog::xslt, LogLevel::Debug,
            ("Retrieve Document %s", NS_LossyConvertUTF16toASCII(aUri).get()));
 
     // try to get already loaded document
@@ -482,7 +516,6 @@ txExecutionState::bindVariable(const txExpandedName& aName,
 {
     if (!mLocalVariables) {
         mLocalVariables = new txVariableMap;
-        NS_ENSURE_TRUE(mLocalVariables, NS_ERROR_OUT_OF_MEMORY);
     }
     return mLocalVariables->bindVariable(aName, aValue);
 }

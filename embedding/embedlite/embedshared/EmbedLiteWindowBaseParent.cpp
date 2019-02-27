@@ -22,21 +22,6 @@ namespace {
 
 static std::map<uint32_t, EmbedLiteWindowBaseParent*> sWindowMap;
 
-static inline gfx::SurfaceFormat _depth_to_gfxformat(int depth)
-{
-  switch (depth) {
-    case 32:
-      return SurfaceFormat::R8G8B8A8;
-    case 24:
-      return SurfaceFormat::R8G8B8X8;
-    case 16:
-      return SurfaceFormat::R5G6B5;
-    default:
-      return SurfaceFormat::UNKNOWN;
-  }
-}
-
-
 } // namespace
 
 EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
@@ -44,7 +29,7 @@ EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, cons
   , mWindow(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
-  , mRotation(ROTATION_0)
+  , mRotation(mozilla::ROTATION_0)
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   sWindowMap[id] = this;

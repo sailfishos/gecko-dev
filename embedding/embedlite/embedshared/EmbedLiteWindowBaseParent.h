@@ -35,7 +35,7 @@ public:
   EmbedLiteCompositorParent* GetCompositor() const { return mCompositor.get(); }
 
   void SetSize(int width, int height);
-  void SetContentOrientation(mozilla::ScreenRotation);
+  void SetContentOrientation(const uint32_t &);
   bool ScheduleUpdate();
   void SuspendRendering();
   void ResumeRendering();

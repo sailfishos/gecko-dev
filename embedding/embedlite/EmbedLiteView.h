@@ -7,7 +7,6 @@
 #define MOZ_VIEW_EMBED_H
 
 #include "mozilla/RefPtr.h"
-#include "mozilla/WidgetUtils.h"
 #include "nsStringGlue.h"
 #include "gfxMatrix.h"
 #include "nsRect.h"
@@ -48,8 +47,11 @@ public:
   virtual void SetBackgroundColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {}
   virtual void OnWindowCloseRequested(void) {}
 
+  virtual bool HandleScrollEvent(bool aIsRootScrollFrame, const gfxRect& aContentRect,
+                                 const gfxSize& aScrollableSize) { return false; }
+
   virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
-  virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen, intptr_t* aNativeIMEContext) {}
+  virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen) {}
 
   // AZPC Interface, return true in order to prevent default behavior
   virtual bool RequestContentRepaint() { return false; }
@@ -57,8 +59,6 @@ public:
   virtual bool HandleSingleTap(const nsIntPoint& aPoint) { return false; }
   virtual bool HandleLongTap(const nsIntPoint& aPoint) { return false; }
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
-  virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
-                                       const gfxSize& aScrollableSize) { return false; }
 };
 
 class EmbedLiteApp;

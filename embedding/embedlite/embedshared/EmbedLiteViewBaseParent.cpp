@@ -59,14 +59,15 @@ EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 void
 EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 {
-  LOGT();
   mCompositor = aCompositor;
+  LOGT("compositor: %p", mCompositor.get());
   UpdateScrollController();
 }
 
 void
 EmbedLiteViewBaseParent::UpdateScrollController()
 {
+  LOGT("view api destroyed: %d mVIew: %p compositor: %p\n", mViewAPIDestroyed, mView, mCompositor.get());
   if (mViewAPIDestroyed || !mView) {
     return;
   }
@@ -257,15 +258,12 @@ EmbedLiteViewBaseParent::RecvOnTitleChanged(const nsString& aTitle)
 bool
 EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                                                      const ViewID& aViewId,
-                                                     const bool& aIsRoot,
-                                                     const ZoomConstraints& aConstraints)
+                                                     const Maybe<ZoomConstraints>& aConstraints)
 {
-  if (aIsRoot) {
-    mController->SaveZoomConstraints(aConstraints);
-  }
-
+  LOGT("manager: %p layer id: %d", mController->GetManager(), mRootLayerTreeId);
   if (mController->GetManager()) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aConstraints);
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId),
+                                                    aConstraints);
   }
   return true;
 }
@@ -284,6 +282,7 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
 bool
 EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
+  LOGT();
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
   }
@@ -332,7 +331,7 @@ EmbedLiteViewBaseParent::RecvSyncMessage(const nsString& aMessage,
 
   NS_ENSURE_TRUE(mView, false);
   char* retval = mView->GetListener()->RecvSyncMessage(aMessage.get(), aJSON.get());
-  if (retval) {
+  if (retval && aJSONRetVal) {
     aJSONRetVal->AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(retval)));
     delete retval;
   }
@@ -380,6 +379,7 @@ EmbedLiteViewBaseParent::CompositorCreated()
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
+  LOGT("APZCTreeManager: %p\n", mController->GetManager());
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
     uint64_t outInputBlockId;
@@ -387,9 +387,9 @@ EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
+        Unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
       } else {
-        unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
+        Unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
       }
     }
   }
@@ -402,7 +402,7 @@ EmbedLiteViewBaseParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
-    unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
+    Unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
                                   NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)));
   } else {
     NS_ERROR("Text event must not be sent while IME disabled");
@@ -427,7 +427,7 @@ NS_IMETHODIMP
 EmbedLiteViewBaseParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
+  Unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -436,7 +436,7 @@ NS_IMETHODIMP
 EmbedLiteViewBaseParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
-  unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
+  Unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
 
   return NS_OK;
 }
@@ -452,7 +452,7 @@ EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int butto
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -469,7 +469,7 @@ EmbedLiteViewBaseParent::MouseRelease(int x, int y, int mstime, unsigned int but
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
 
@@ -487,7 +487,7 @@ EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int button
                                                180.0f,
                                                1.0f));
   mController->ReceiveInputEvent(event, nullptr, nullptr);
-  unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
+  Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
 
@@ -496,15 +496,17 @@ EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int button
 
 bool
 EmbedLiteViewBaseParent::RecvGetInputContext(int32_t* aIMEEnabled,
-                                               int32_t* aIMEOpen,
-                                               intptr_t* aNativeIMEContext)
+                                               int32_t* aIMEOpen)
 {
-  LOGT("mLastIMEState:%i", mLastIMEState);
+  LOGT("mLastIMEState:%i view: %p listener: %p", mLastIMEState, mView, (mView ? mView->GetListener() : 0));
+  NS_ASSERTION(aIMEEnabled, "Passing nullptr for aIMEEnabled. A bug in EmbedLitePuppetWidget.");
+  NS_ASSERTION(aIMEOpen, "Passing nullptr for aIMEOpen. A bug in EmbedLitePuppetWidget.");
+
   *aIMEEnabled = mLastIMEState;
   *aIMEOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
-  *aNativeIMEContext = 0;
-  if (mView) {
-    mView->GetListener()->GetIMEStatus(aIMEEnabled, aIMEOpen, aNativeIMEContext);
+
+  if (mView && mView->GetListener()) {
+    mView->GetListener()->GetIMEStatus(aIMEEnabled, aIMEOpen);
   }
   return true;
 }

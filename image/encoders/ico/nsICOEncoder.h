@@ -2,17 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifndef mozilla_image_encoders_ico_nsICOEncoder_h
+#define mozilla_image_encoders_ico_nsICOEncoder_h
+
 #include "mozilla/Attributes.h"
 #include "mozilla/ReentrantMonitor.h"
 
 #include "imgIEncoder.h"
 
-#include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
 #include "ICOFileHeaders.h"
-
-class nsBMPEncoder;
-class nsPNGEncoder;
 
 #define NS_ICOENCODER_CID \
 { /*92AE3AB2-8968-41B1-8709-B6123BCEAF21 */          \
@@ -51,14 +50,14 @@ public:
 protected:
   ~nsICOEncoder();
 
-  nsresult ParseOptions(const nsAString& aOptions, uint32_t* bpp,
-                        bool* usePNG);
+  nsresult ParseOptions(const nsAString& aOptions, uint16_t& aBppOut,
+                        bool& aUsePNGOut);
   void NotifyListener();
 
   // Initializes the icon file header mICOFileHeader
   void InitFileHeader();
   // Initializes the icon directory info header mICODirEntry
-  void InitInfoHeader(uint32_t aBPP, uint8_t aWidth, uint8_t aHeight);
+  void InitInfoHeader(uint16_t aBPP, uint8_t aWidth, uint8_t aHeight);
   // Encodes the icon file header mICOFileHeader
   void EncodeFileHeader();
   // Encodes the icon directory info header mICODirEntry
@@ -96,3 +95,5 @@ protected:
   nsCOMPtr<nsIEventTarget> mCallbackTarget;
   uint32_t mNotifyThreshold;
 };
+
+#endif // mozilla_image_encoders_ico_nsICOEncoder_h

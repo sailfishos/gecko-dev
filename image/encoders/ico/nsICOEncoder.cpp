@@ -31,7 +31,7 @@ nsICOEncoder::nsICOEncoder() : mImageBufferStart(nullptr),
 nsICOEncoder::~nsICOEncoder()
 {
   if (mImageBufferStart) {
-    moz_free(mImageBufferStart);
+    free(mImageBufferStart);
     mImageBufferStart = nullptr;
     mImageBufferCurr = nullptr;
   }
@@ -120,7 +120,7 @@ nsICOEncoder::AddImageFrame(const uint8_t* aData,
     mContainedEncoder->GetImageBufferUsed(&PNGImageBufferSize);
     mImageBufferSize = ICONFILEHEADERSIZE + ICODIRENTRYSIZE +
                        PNGImageBufferSize;
-    mImageBufferStart = static_cast<uint8_t*>(moz_malloc(mImageBufferSize));
+    mImageBufferStart = static_cast<uint8_t*>(malloc(mImageBufferSize));
     if (!mImageBufferStart) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -154,7 +154,7 @@ nsICOEncoder::AddImageFrame(const uint8_t* aData,
     mContainedEncoder->GetImageBufferUsed(&BMPImageBufferSize);
     mImageBufferSize = ICONFILEHEADERSIZE + ICODIRENTRYSIZE +
                        BMPImageBufferSize + andMaskSize;
-    mImageBufferStart = static_cast<uint8_t*>(moz_malloc(mImageBufferSize));
+    mImageBufferStart = static_cast<uint8_t*>(malloc(mImageBufferSize));
     if (!mImageBufferStart) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -162,8 +162,10 @@ nsICOEncoder::AddImageFrame(const uint8_t* aData,
 
     // Icon files that wrap a BMP file must not include the BITMAPFILEHEADER
     // section at the beginning of the encoded BMP data, so we must skip over
-    // BFH_LENGTH bytes when adding the BMP content to the icon file.
-    mICODirEntry.mBytesInRes = BMPImageBufferSize - BFH_LENGTH + andMaskSize;
+    // bmp::FILE_HEADER_LENGTH bytes when adding the BMP content to the icon
+    // file.
+    mICODirEntry.mBytesInRes =
+      BMPImageBufferSize - bmp::FILE_HEADER_LENGTH + andMaskSize;
 
     // Encode the icon headers
     EncodeFileHeader();
@@ -172,14 +174,14 @@ nsICOEncoder::AddImageFrame(const uint8_t* aData,
     char* imageBuffer;
     rv = mContainedEncoder->GetImageBuffer(&imageBuffer);
     NS_ENSURE_SUCCESS(rv, rv);
-    memcpy(mImageBufferCurr, imageBuffer + BFH_LENGTH,
-           BMPImageBufferSize - BFH_LENGTH);
+    memcpy(mImageBufferCurr, imageBuffer + bmp::FILE_HEADER_LENGTH,
+           BMPImageBufferSize - bmp::FILE_HEADER_LENGTH);
     // We need to fix the BMP height to be *2 for the AND mask
     uint32_t fixedHeight = GetRealHeight() * 2;
     NativeEndian::swapToLittleEndianInPlace(&fixedHeight, 1);
     // The height is stored at an offset of 8 from the DIB header
     memcpy(mImageBufferCurr + 8, &fixedHeight, sizeof(fixedHeight));
-    mImageBufferCurr += BMPImageBufferSize - BFH_LENGTH;
+    mImageBufferCurr += BMPImageBufferSize - bmp::FILE_HEADER_LENGTH;
 
     // Calculate rowsize in DWORD's
     uint32_t rowSize = ((GetRealWidth() + 31) / 32) * 4; // + 31 to round up
@@ -227,10 +229,11 @@ nsICOEncoder::StartImageEncode(uint32_t aWidth,
   }
 
   // parse and check any provided output options
-  uint32_t bpp = 24;
+  uint16_t bpp = 24;
   bool usePNG = true;
-  nsresult rv = ParseOptions(aOutputOptions, &bpp, &usePNG);
+  nsresult rv = ParseOptions(aOutputOptions, bpp, usePNG);
   NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_ASSERT(bpp <= 32);
 
   mUsePNG = usePNG;
 
@@ -264,17 +267,13 @@ nsICOEncoder::EndImageEncode()
 // Parses the encoder options and sets the bits per pixel to use and PNG or BMP
 // See InitFromData for a description of the parse options
 nsresult
-nsICOEncoder::ParseOptions(const nsAString& aOptions, uint32_t* bpp,
-                           bool* usePNG)
+nsICOEncoder::ParseOptions(const nsAString& aOptions, uint16_t& aBppOut,
+                           bool& aUsePNGOut)
 {
   // If no parsing options just use the default of 24BPP and PNG yes
   if (aOptions.Length() == 0) {
-    if (usePNG) {
-      *usePNG = true;
-    }
-    if (bpp) {
-      *bpp = 24;
-    }
+    aUsePNGOut = true;
+    aBppOut = 24;
   }
 
   // Parse the input string into a set of name/value pairs.
@@ -302,11 +301,11 @@ nsICOEncoder::ParseOptions(const nsAString& aOptions, uint32_t* bpp,
                                 nsCaseInsensitiveCStringComparator())) {
       if (nameValuePair[1].Equals("png",
                                   nsCaseInsensitiveCStringComparator())) {
-        *usePNG = true;
+        aUsePNGOut = true;
       }
       else if (nameValuePair[1].Equals("bmp",
                                        nsCaseInsensitiveCStringComparator())) {
-        *usePNG = false;
+        aUsePNGOut = false;
       }
       else {
         return NS_ERROR_INVALID_ARG;
@@ -316,10 +315,10 @@ nsICOEncoder::ParseOptions(const nsAString& aOptions, uint32_t* bpp,
     // Parse the bpp portion of the string format=<png|bmp>;bpp=<bpp_value>
     if (nameValuePair[0].Equals("bpp", nsCaseInsensitiveCStringComparator())) {
       if (nameValuePair[1].EqualsLiteral("24")) {
-        *bpp = 24;
+        aBppOut = 24;
       }
       else if (nameValuePair[1].EqualsLiteral("32")) {
-        *bpp = 32;
+        aBppOut = 32;
       }
       else {
         return NS_ERROR_INVALID_ARG;
@@ -334,7 +333,7 @@ NS_IMETHODIMP
 nsICOEncoder::Close()
 {
   if (mImageBufferStart) {
-    moz_free(mImageBufferStart);
+    free(mImageBufferStart);
     mImageBufferStart = nullptr;
     mImageBufferSize = 0;
     mImageBufferReadPoint = 0;
@@ -472,7 +471,7 @@ nsICOEncoder::InitFileHeader()
 
 // Initializes the icon directory info header mICODirEntry
 void
-nsICOEncoder::InitInfoHeader(uint32_t aBPP, uint8_t aWidth, uint8_t aHeight)
+nsICOEncoder::InitInfoHeader(uint16_t aBPP, uint8_t aWidth, uint8_t aHeight)
 {
   memset(&mICODirEntry, 0, sizeof(mICODirEntry));
   mICODirEntry.mBitCount = aBPP;

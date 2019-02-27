@@ -33,22 +33,26 @@ public:
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
+  virtual bool RecvGetFrameUniformity(FrameUniformityData* aOutData) override { return true; }
   // FIXME/bug 774388: work out what shutdown protocol we need.
   virtual bool RecvRequestOverfill() override { return true; }
   virtual bool RecvWillStop() override { return true; }
   virtual bool RecvStop() override { return true; }
   virtual bool RecvPause() override { return true; }
   virtual bool RecvResume() override { return true; }
+  virtual bool RecvNotifyHidden(const uint64_t& id) override { return true; }
+  virtual bool RecvNotifyVisible(const uint64_t& id) override { return true; }
   virtual bool RecvNotifyChildCreated(const uint64_t& child) override;
   virtual bool RecvAdoptChild(const uint64_t& child) override { return false; }
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
-                                const nsIntRect& aRect)
-  { return true; }
+                                const nsIntRect& aRect) { return true; }
+  virtual bool RecvMakeWidgetSnapshot(const SurfaceDescriptor& aInSnapshot) override { return true; }
   virtual bool RecvFlushRendering() override { return true; }
+  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) override;
+
   virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) { return true; }
   virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) override { return true; }
   virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) override  { return true; }
-  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) override;
 
   /**
    * Tells this CompositorParent to send a message when the compositor has received the transaction.
@@ -70,15 +74,23 @@ public:
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
-                                   bool aIsRepeatTransaction) override;
+                                   bool aIsRepeatTransaction,
+                                   int32_t aPaintSyncId) override;
   virtual void ForceComposite(LayerTransactionParent* aLayerTree) override;
   virtual bool SetTestSampleTime(LayerTransactionParent* aLayerTree,
                                  const TimeStamp& aTime) override;
   virtual void LeaveTestMode(LayerTransactionParent* aLayerTree) override;
+  virtual void ApplyAsyncProperties(LayerTransactionParent* aLayerTree) override;
+  virtual void FlushApzRepaints(const LayerTransactionParent* aLayerTree) override;
   virtual void GetAPZTestData(const LayerTransactionParent* aLayerTree,
                               APZTestData* aOutData) override;
+  virtual void SetConfirmedTargetAPZC(const LayerTransactionParent* aLayerTree,
+                                      const uint64_t& aInputBlockId,
+                                      const nsTArray<ScrollableLayerGuid>& aTargets) override;
 
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
+
+  virtual bool RecvRemotePluginsReady() override { return false; }
 
   void DidComposite(uint64_t aId);
 
@@ -99,18 +111,18 @@ private:
   // There can be many CPCPs, and IPDL-generated code doesn't hold a
   // reference to top-level actors.  So we hold a reference to
   // ourself.  This is released (deferred) in ActorDestroy().
-  nsRefPtr<EmbedLiteCompositorProcessParent> mSelfRef;
+  RefPtr<EmbedLiteCompositorProcessParent> mSelfRef;
   Transport* mTransport;
   // Child side's process Id.
   base::ProcessId mChildProcessId;
 
-  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
+  RefPtr<CompositorThreadHolder> mCompositorThreadHolder;
   // If true, we should send a RemotePaintIsReady message when the layer transaction
   // is received
   bool mNotifyAfterRemotePaint;
 
-  nsRefPtr<LayerManagerComposite> mLayerManager;
-  nsRefPtr<Compositor> mCompositor;
+  RefPtr<LayerManagerComposite> mLayerManager;
+  RefPtr<Compositor> mCompositor;
   RefPtr<AsyncCompositionManager> mCompositionManager;
   uint64_t mCompositorID;
   nsIntSize mEGLSurfaceSize;

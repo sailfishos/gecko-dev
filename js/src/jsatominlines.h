@@ -26,6 +26,13 @@ js::AtomStateEntry::asPtr() const
     return atom;
 }
 
+inline JSAtom*
+js::AtomStateEntry::asPtrUnbarriered() const
+{
+    MOZ_ASSERT(bits != 0);
+    return reinterpret_cast<JSAtom*>(bits & NO_TAG_MASK);
+}
+
 namespace js {
 
 inline jsid
@@ -63,7 +70,7 @@ ValueToIdPure(const Value& v, jsid* id)
 
 template <AllowGC allowGC>
 inline bool
-ValueToId(JSContext* cx, typename MaybeRooted<Value, allowGC>::HandleType v,
+ValueToId(ExclusiveContext* cx, typename MaybeRooted<Value, allowGC>::HandleType v,
           typename MaybeRooted<jsid, allowGC>::MutableHandleType idp)
 {
     int32_t i;
@@ -149,12 +156,13 @@ inline
 AtomHasher::Lookup::Lookup(const JSAtom* atom)
   : isLatin1(atom->hasLatin1Chars()), length(atom->length()), atom(atom)
 {
+    hash = atom->hash();
     if (isLatin1) {
         latin1Chars = atom->latin1Chars(nogc);
-        hash = mozilla::HashString(latin1Chars, length);
+        MOZ_ASSERT(mozilla::HashString(latin1Chars, length) == hash);
     } else {
         twoByteChars = atom->twoByteChars(nogc);
-        hash = mozilla::HashString(twoByteChars, length);
+        MOZ_ASSERT(mozilla::HashString(twoByteChars, length) == hash);
     }
 }
 
@@ -164,7 +172,7 @@ AtomHasher::match(const AtomStateEntry& entry, const Lookup& lookup)
     JSAtom* key = entry.asPtr();
     if (lookup.atom)
         return lookup.atom == key;
-    if (key->length() != lookup.length)
+    if (key->length() != lookup.length || key->hash() != lookup.hash)
         return false;
 
     if (key->hasLatin1Chars()) {

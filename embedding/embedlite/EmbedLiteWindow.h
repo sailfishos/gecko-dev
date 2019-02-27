@@ -9,10 +9,19 @@
 #include <stdint.h>
 
 #include "nsRect.h"
-#include "mozilla/WidgetUtils.h"
 
 namespace mozilla {
 namespace embedlite {
+
+// NB: these must match up with pseudo-enum in nsIScreen.idl.
+enum ScreenRotation {
+  ROTATION_0 = 0,
+  ROTATION_90,
+  ROTATION_180,
+  ROTATION_270,
+
+  ROTATION_COUNT
+};
 
 class EmbedLiteApp;
 class PEmbedLiteWindowParent;
@@ -69,7 +78,7 @@ public:
 
   virtual uint32_t GetUniqueID() const;
 
-  virtual void SetContentOrientation(mozilla::ScreenRotation);
+  virtual void SetContentOrientation(mozilla::embedlite::ScreenRotation);
   virtual void ScheduleUpdate();
   virtual void SuspendRendering();
   virtual void ResumeRendering();

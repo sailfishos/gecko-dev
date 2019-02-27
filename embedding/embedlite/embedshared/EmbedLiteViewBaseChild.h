@@ -7,6 +7,7 @@
 #define MOZ_VIEW_EMBED_BASE_CHILD_H
 
 #include "mozilla/embedlite/PEmbedLiteViewChild.h"
+#include "mozilla/EventForwards.h"      // for Modifiers
 
 #include "nsIWebBrowser.h"
 #include "nsIWidget.h"
@@ -16,6 +17,7 @@
 #include "TabChildHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
+
 
 namespace mozilla {
 namespace embedlite {
@@ -46,8 +48,7 @@ public:
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
                         const ViewID& aViewId,
-                        const bool& aIsRoot,
-                        const ZoomConstraints& aConstraints) override;
+                        const Maybe<ZoomConstraints>& aConstraints) override;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) override;
 
@@ -101,8 +102,7 @@ public:
 
   virtual bool
   GetInputContext(int32_t* IMEEnabled,
-                  int32_t* IMEOpen,
-                  intptr_t* NativeIMEContext) override;
+                  int32_t* IMEOpen) override;
 
 /*---------WidgetIface---------------*/
 
@@ -129,13 +129,13 @@ protected:
   virtual bool RecvSuspendTimeouts() override;
   virtual bool RecvResumeTimeouts() override;
   virtual bool RecvLoadFrameScript(const nsString&) override;
-  virtual bool RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
-                                       const gfxSize& scrollSize) override;
+  virtual bool RecvHandleScrollEvent(const bool &isRootScrollFrame, const gfxRect& contentRect,
+                                     const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
-  virtual bool RecvHandleDoubleTap(const CSSPoint&, const int32_t& aModifiers,
+  virtual bool RecvHandleDoubleTap(const CSSPoint&, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
-  virtual bool RecvHandleSingleTap(const CSSPoint&, const int32_t& aModifiers,
+  virtual bool RecvHandleSingleTap(const CSSPoint&, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
   virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
@@ -163,8 +163,6 @@ protected:
 
   // Get the pres shell resolution of the document in this tab.
   float GetPresShellResolution() const;
-  // Get the Document for the top-level window in this tab.
-  already_AddRefed<nsIDocument> GetDocument() const;
 
   void DispatchSynthesizedMouseEvent(const WidgetTouchEvent&);
 
@@ -185,15 +183,14 @@ private:
   EmbedLiteWindowBaseChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
-  nsRefPtr<WebBrowserChrome> mChrome;
-  nsCOMPtr<nsIDOMWindow> mDOMWindow;
+  RefPtr<WebBrowserChrome> mChrome;
+  nsCOMPtr<nsPIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
-  bool mViewResized;
   bool mWindowObserverRegistered;
   bool mIsFocused;
   nsIntMargin mMargins;
 
-  nsRefPtr<TabChildHelper> mHelper;
+  RefPtr<TabChildHelper> mHelper;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
   CancelableTask* mInitWindowTask;

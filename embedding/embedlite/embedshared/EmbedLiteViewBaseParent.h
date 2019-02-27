@@ -93,8 +93,7 @@ protected:
   virtual bool
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,
-                            const bool& aIsRoot,
-                            const ZoomConstraints& aConstraints) override;
+                            const Maybe<ZoomConstraints> &aConstraints) override;
   virtual bool RecvZoomToRect(const uint32_t& aPresShellId,
                               const ViewID& aViewId,
                               const CSSRect& aRect) override;
@@ -105,8 +104,7 @@ protected:
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,
-                                   int32_t* aIMEOpen,
-                                   intptr_t* aNativeIMEContext) override;
+                                   int32_t* aIMEOpen) override;
   virtual bool RecvSetInputContext(const int32_t& aIMEEnabled,
                                    const int32_t& aIMEOpen,
                                    const nsString& aType,
@@ -142,7 +140,7 @@ private:
 
   uint64_t mRootLayerTreeId;
   GLuint mUploadTexture;
-  nsRefPtr<EmbedContentController> mController;
+  RefPtr<EmbedContentController> mController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseParent);
 };

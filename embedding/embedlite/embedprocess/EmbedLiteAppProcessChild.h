@@ -20,7 +20,7 @@ public:
   static EmbedLiteAppProcessChild* GetSingleton();
 
   bool Init(MessageLoop* aIOLoop,
-            base::ProcessHandle aParentHandle,
+            base::ProcessId aParentPid,
             IPC::Channel* aChannel);
   void InitXPCOM();
 

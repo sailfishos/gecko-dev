@@ -79,6 +79,7 @@ static inline bool IsLibXulInThePath(const char* path, std::string& xpcomPath)
 #endif
 }
 
+
 bool LoadEmbedLite(int argc = 0, char** argv = 0)
 {
   if (XRE_GetEmbedLite) {

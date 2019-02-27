@@ -15,9 +15,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderMode",
   "resource://gre/modules/ReaderMode.jsm");
 
-let Pocket = {
-  get site() Services.prefs.getCharPref("browser.pocket.site"),
-  get listURL() { return "https://" + Pocket.site; },
+var Pocket = {
+  get site() { return Services.prefs.getCharPref("browser.pocket.site"); },
+  get listURL() { return "https://" + Pocket.site + "/?src=ff_ext"; },
 
   /**
    * Functions related to the Pocket panel UI.
@@ -25,16 +25,23 @@ let Pocket = {
   onPanelViewShowing(event) {
     let document = event.target.ownerDocument;
     let window = document.defaultView;
-    let iframe = document.getElementById('pocket-panel-iframe');
+    let iframe = window.pktUI.getPanelFrame();
 
+    let urlToSave = Pocket._urlToSave;
+    let titleToSave = Pocket._titleToSave;
+    Pocket._urlToSave = null;
+    Pocket._titleToSave = null;
     // ViewShowing fires immediately before it creates the contents,
     // in lieu of an AfterViewShowing event, just spin the event loop.
     window.setTimeout(function() {
-      window.pktUI.pocketButtonOnCommand();
+      if (urlToSave) {
+        window.pktUI.tryToSaveUrl(urlToSave, titleToSave);
+      } else {
+        window.pktUI.pocketButtonOnCommand();
+      }
 
       if (iframe.contentDocument &&
-          iframe.contentDocument.readyState == "complete")
-      {
+          iframe.contentDocument.readyState == "complete") {
         window.pktUI.pocketPanelDidShow();
       } else {
         // iframe didn't load yet. This seems to always be the case when in
@@ -48,9 +55,9 @@ let Pocket = {
   onFrameLoaded(event) {
     let document = event.currentTarget.ownerDocument;
     let window = document.defaultView;
-    let iframe = document.getElementById('pocket-panel-iframe');
+    let iframe = window.pktUI.getPanelFrame();
 
-    iframe.removeEventListener("load", Pocket.onPanelLoaded, true);
+    iframe.removeEventListener("load", Pocket.onFrameLoaded, true);
     window.pktUI.pocketPanelDidShow();
   },
 
@@ -59,27 +66,25 @@ let Pocket = {
     window.pktUI.pocketPanelDidHide(event);
   },
 
-  // Called on tab/urlbar/location changes and after customization. Update
-  // anything that is tab specific.
-  onLocationChange(browser, locationURI) {
-    if (!locationURI) {
+  _urlToSave: null,
+  _titleToSave: null,
+  savePage(browser, url, title) {
+    let document = browser.ownerDocument;
+    let pocketWidget = document.getElementById("pocket-button");
+    let placement = CustomizableUI.getPlacementOfWidget("pocket-button");
+    if (!placement)
       return;
-    }
-    let widget = CustomizableUI.getWidget("pocket-button");
-    for (let instance of widget.instances) {
-      let node = instance.node;
-      if (!node ||
-          node.ownerDocument != browser.ownerDocument) {
-        continue;
-      }
-      if (node) {
-        let win = browser.ownerDocument.defaultView;
-        node.disabled = win.pktApi.isUserLoggedIn() &&
-                        !locationURI.schemeIs("http") &&
-                        !locationURI.schemeIs("https") &&
-                        !(locationURI.schemeIs("about") &&
-                          locationURI.spec.toLowerCase().startsWith("about:reader?url="));
-      }
+
+    this._urlToSave = url;
+    this._titleToSave = title;
+    if (placement.area == CustomizableUI.AREA_PANEL) {
+      let win = document.defaultView;
+      win.PanelUI.show().then(function() {
+        pocketWidget = document.getElementById("pocket-button");
+        pocketWidget.doCommand();
+      });
+    } else {
+      pocketWidget.doCommand();
     }
   },
 };

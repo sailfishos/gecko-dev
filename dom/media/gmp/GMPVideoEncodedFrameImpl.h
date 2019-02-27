@@ -37,9 +37,10 @@
 #include "gmp-decryption.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/ipc/Shmem.h"
-#include "mp4_demuxer/DecoderData.h"
 
 namespace mozilla {
+class CryptoSample;
+
 namespace gmp {
 
 class GMPVideoHostImpl;
@@ -54,7 +55,7 @@ public:
   GMPVideoEncodedFrameImpl(const GMPVideoEncodedFrameData& aFrameData, GMPVideoHostImpl* aHost);
   virtual ~GMPVideoEncodedFrameImpl();
 
-  void InitCrypto(const mp4_demuxer::CryptoSample& aCrypto);
+  void InitCrypto(const CryptoSample& aCrypto);
 
   // This is called during a normal destroy sequence, which is
   // when a consumer is finished or during XPCOM shutdown.

@@ -26,8 +26,7 @@ public:
 
   virtual bool
   GetInputContext(int32_t* IMEEnabled,
-                  int32_t* IMEOpen,
-                  intptr_t* NativeIMEContext) = 0;
+                  int32_t* IMEOpen) = 0;
   virtual void ResetInputState() = 0;
 
 /*-------------TabChild-------------------*/
@@ -40,8 +39,7 @@ public:
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
                         const mozilla::layers::FrameMetrics::ViewID& aViewId,
-                        const bool& aIsRoot,
-                        const mozilla::layers::ZoomConstraints& aConstraints) = 0;
+                        const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) = 0;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) = 0;
 

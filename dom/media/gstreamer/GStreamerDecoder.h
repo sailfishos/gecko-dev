@@ -16,11 +16,14 @@ class GStreamerReader;
 class GStreamerDecoder : public MediaDecoder
 {
 public:
-  virtual MediaDecoder* Clone() { return new GStreamerDecoder(); }
-  virtual void Suspend() override;
+  explicit GStreamerDecoder(MediaDecoderOwner* aOwner) : MediaDecoder(aOwner) {}
+  virtual MediaDecoder* Clone(MediaDecoderOwner* aOwner) {
+    return new GStreamerDecoder(aOwner);
+  }
+//  virtual void Suspend() override;
   virtual MediaDecoderStateMachine* CreateStateMachine();
   static bool CanHandleMediaType(const nsACString& aMIMEType, const nsAString* aCodecs);
-  virtual void NotifyPlaybackStopped() override;
+//  virtual void NotifyPlaybackStopped() override;
 
 private:
   GStreamerReader* mLastReader;

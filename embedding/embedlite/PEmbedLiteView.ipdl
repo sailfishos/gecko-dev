@@ -11,9 +11,6 @@ using struct gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
 using CSSRect from "Units.h";
 using CSSSize from "Units.h";
-using struct nsIntSize from "nsSize.h";
-using struct gfxPoint from "gfxPoint.h";
-using struct nsIntPoint from "nsPoint.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
 using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
 using FrameMetrics::ViewID from "FrameMetrics.h";
@@ -23,7 +20,9 @@ using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
 using MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
 using mozilla::CSSPoint from "Units.h";
+using mozilla::Modifiers from "mozilla/EventForwards.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -43,11 +42,11 @@ child:
     SetMargins(int top, int right, int bottom, int left);
     SuspendTimeouts();
     ResumeTimeouts();
-    AsyncScrollDOMEvent(gfxRect contentRect, gfxSize scrollSize);
+    HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
 
     UpdateFrame(FrameMetrics frame) compress;
-    HandleDoubleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
-    HandleSingleTap(CSSPoint aPoint, int32_t aModifiers, ScrollableLayerGuid aGuid);
+    HandleDoubleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
+    HandleSingleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
     HandleTextEvent(nsString commit, nsString preEdit);
@@ -93,8 +92,7 @@ parent:
      * The zoom controller code lives on the parent side and so this allows it to
      * have up-to-date zoom constraints.
      */
-    UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, bool aIsRoot,
-                          ZoomConstraints aConstraints);
+    UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, MaybeZoomConstraints aConstraints);
 
     /**
      * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in
@@ -116,8 +114,7 @@ parent:
       returns (nsString[] retval);
 
     // IME
-    sync GetInputContext() returns (int32_t IMEEnabled, int32_t IMEOpen,
-                                    intptr_t NativeIMEContext);
+    sync GetInputContext() returns (int32_t IMEEnabled, int32_t IMEOpen);
 
     SetInputContext(int32_t IMEEnabled,
                     int32_t IMEOpen,

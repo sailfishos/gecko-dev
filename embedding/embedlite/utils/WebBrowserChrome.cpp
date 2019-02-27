@@ -301,7 +301,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   }
 
   nsCOMPtr<nsIDOMDocument> ctDoc;
-  progWin->GetDocument(getter_AddRefs(ctDoc));
+  mHelper->WebNavigation()->GetDocument(getter_AddRefs(ctDoc));
   nsString charset;
   ctDoc->GetCharacterSet(charset);
 
@@ -456,9 +456,8 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     nsCOMPtr<nsIDOMEventTarget> target;
     aEvent->GetTarget(getter_AddRefs(target));
     nsCOMPtr<nsIDOMDocument> eventDoc = do_QueryInterface(target);
-    nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
     nsCOMPtr<nsIDOMDocument> ctDoc;
-    docWin->GetDocument(getter_AddRefs(ctDoc));
+    mHelper->WebNavigation()->GetDocument(getter_AddRefs(ctDoc));
     if (eventDoc != ctDoc) {
       return NS_OK;
     }
@@ -503,12 +502,12 @@ WebBrowserChrome::SetScrollOffsetForElement(nsIDOMElement* aElement, int32_t aLe
 {
   nsCOMPtr<nsIDOMDocument> ownerDoc;
   aElement->GetOwnerDocument(getter_AddRefs(ownerDoc));
-  nsCOMPtr<nsIDOMWindow> domWindow;
   nsCOMPtr<nsIDOMNode> parentNode;
   aElement->GetParentNode(getter_AddRefs(parentNode));
   if (parentNode == ownerDoc) {
-    ownerDoc->GetDefaultView(getter_AddRefs(domWindow));
-    domWindow->ScrollTo(aLeft, aTop);
+    nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(mWebBrowser);
+    nsGlobalWindow* window = nsGlobalWindow::Cast(pwindow);
+    window->ScrollTo(aLeft, aTop);
   } else {
     aElement->SetScrollLeft(aLeft);
     aElement->SetScrollTop(aTop);
@@ -615,13 +614,13 @@ NS_IMETHODIMP WebBrowserChrome::Blur()
 
 // ----- WebBrowser Chrome Focus
 
-NS_IMETHODIMP WebBrowserChrome::FocusNextElement()
+NS_IMETHODIMP WebBrowserChrome::FocusNextElement(bool aForDocumentNavigation)
 {
   LOGNI();
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::FocusPrevElement()
+NS_IMETHODIMP WebBrowserChrome::FocusPrevElement(bool aForDocumentNavigation)
 {
   LOGNI();
   return NS_OK;

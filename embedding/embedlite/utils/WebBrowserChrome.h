@@ -80,7 +80,7 @@ private:
   nsCOMPtr<nsIObserverService> mObserverService;
   nsIEmbedBrowserChromeListener* mListener;
   nsString mTitle;
-  nsRefPtr<mozilla::embedlite::TabChildHelper> mHelper;
+  RefPtr<mozilla::embedlite::TabChildHelper> mHelper;
 };
 
 #endif /* Header guard */

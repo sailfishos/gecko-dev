@@ -12,6 +12,7 @@
 
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/PluginLibrary.h"
+#include "mozilla/RefCounted.h"
 
 #if defined(XP_WIN)
 #define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (__stdcall * _name)
@@ -24,7 +25,9 @@ typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGININIT) (const NPNetscapeFuncs* 
 typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGINUNIXINIT) (const NPNetscapeFuncs* pCallbacks, NPPluginFuncs* fCallbacks);
 typedef NS_NPAPIPLUGIN_CALLBACK(NPError, NP_PLUGINSHUTDOWN) ();
 
-class nsNPAPIPlugin : public nsISupports
+// nsNPAPIPlugin is held alive both by active nsPluginTag instances and
+// by active nsNPAPIPluginInstance.
+class nsNPAPIPlugin final
 {
 private:
   typedef mozilla::PluginLibrary PluginLibrary;
@@ -32,7 +35,7 @@ private:
 public:
   nsNPAPIPlugin();
 
-  NS_DECL_ISUPPORTS
+  NS_INLINE_DECL_REFCOUNTING(nsNPAPIPlugin)
 
   // Constructs and initializes an nsNPAPIPlugin object. A nullptr file path
   // will prevent this from calling NP_Initialize.
@@ -52,15 +55,15 @@ public:
   // minidump was written.
   void PluginCrashed(const nsAString& pluginDumpID,
                      const nsAString& browserDumpID);
-  
+
   static bool RunPluginOOP(const nsPluginTag *aPluginTag);
 
   nsresult Shutdown();
 
   static nsresult RetainStream(NPStream *pstream, nsISupports **aRetainedPeer);
 
-protected:
-  virtual ~nsNPAPIPlugin();
+private:
+  ~nsNPAPIPlugin();
 
   NPPluginFuncs mPluginFuncs;
   PluginLibrary* mLibrary;
@@ -129,7 +132,7 @@ inline bool
 NPStringIdentifierIsPermanent(NPIdentifier id)
 {
   AutoSafeJSContext cx;
-  return JS_StringHasBeenInterned(cx, NPIdentifierToString(id));
+  return JS_StringHasBeenPinned(cx, NPIdentifierToString(id));
 }
 
 #define NPIdentifier_VOID (JSIdToNPIdentifier(JSID_VOID))
@@ -319,6 +322,15 @@ _getJavaPeer(NPP npp);
 
 void
 _urlredirectresponse(NPP instance, void* notifyData, NPBool allow);
+
+NPError
+_initasyncsurface(NPP instance, NPSize *size, NPImageFormat format, void *initData, NPAsyncSurface *surface);
+
+NPError
+_finalizeasyncsurface(NPP instance, NPAsyncSurface *surface);
+
+void
+_setcurrentasyncsurface(NPP instance, NPAsyncSurface *surface, NPRect *changed);
 
 } /* namespace parent */
 } /* namespace plugins */

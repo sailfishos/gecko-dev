@@ -1,5 +1,4 @@
-%define greversion    38.8.0
-%define sf_extra_ver  18
+%define greversion    45.9.1
 
 %define embedlite_config merqtxulrunner
 
@@ -38,40 +37,37 @@
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
-Version:    %{greversion}.%{sf_extra_ver}
+Version:    %{greversion}
 Release:    1
 Group:      Applications/Internet
 License:    MPLv2
 URL:        https://github.com/tmeshkova/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-Workaround-for-bug-977015.patch
-Patch2:     0002-Workaround-wrong-viewport-in-wikipedia.patch
-Patch3:     0003-Supply-source-uri-to-gstreamer-pipeline.patch
-Patch4:     0004-Workaround-for-late-access-message-loop.patch
-Patch5:     0005-Define-HAS_NEMO_RESOURCE-in-config.patch
-Patch6:     0006-Don-t-decode-all-images-on-shell-activation-if-decod.patch
-Patch7:     0007-Limit-surface-area-rather-than-width-and-height.patch
-Patch8:     0008-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
-Patch9:     0009-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
-Patch10:    0010-Bug-1209446-Make-sure-mFrameInProgress-flag-is-set-t.patch
-Patch11:    0011-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
-Patch12:    0012-Bug-1207205-Remove-fGetActiveUniformName.-r-jrmuizel.patch
-Patch13:    0013-Revert-patchset-for-bug-1114594.-Contributes-JB32870.patch
-Patch14:    0014-Add-transition-from-pinching-to-panning.patch
-Patch15:    0015-Update-build-version.-Contributes-to-JB-35001.patch
-Patch16:    0016-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
-Patch17:    0017-Don-t-print-errors-from-DataReportingService.patch
-Patch18:    0018-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
-Patch19:    0019-xulrunner-Disable-SiteSpecificUserAgent.js-from-the-.patch
+Patch1:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
+Patch2:     0002-Workaround-for-late-access-message-loop.patch
+Patch3:     0003-Revert-Bug-1114594-Remove-promptForSaveToFile-in-fav.patch
+Patch4:     0004-Define-HAS_NEMO_RESOURCE-in-config.patch
+Patch5:     0005-Limit-surface-area-rather-than-width-and-height.patch
+Patch6:     0006-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
+Patch7:     0007-Limit-maximum-scale-to-4x.-Fixes-JB-25377.patch
+Patch8:     0008-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
+Patch9:     0009-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
+Patch10:    0010-Don-t-print-errors-from-DataReportingService.patch
+Patch11:    0011-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
+Patch12:    0012-xulrunner-Make-fullscreen-enabling-work-as-used-to-w.patch
+Patch13:    0013-Do-not-load-nsHelperAppDlg.js.-Fixes-JB-44322.patch
+Patch14:    0014-Embedlite-doesn-t-have-prompter-implementation.patch
+Patch15:    0015-xulrunner-Disable-SiteSpecificUserAgent.js-from-the-.patch
+
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 %if %{system_nspr}
-BuildRequires:  pkgconfig(nspr) >= 4.10.8
+BuildRequires:  pkgconfig(nspr) >= 4.12.0
 %endif
 %if %{system_nss}
-BuildRequires:  pkgconfig(nss) >= 3.18.1
+BuildRequires:  pkgconfig(nss) >= 3.21.3
 %endif
 %if %{system_sqlite}
 BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
@@ -165,30 +161,9 @@ Tests and misc files for xulrunner.
 %patch13 -p1
 %patch14 -p1
 %patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
-%patch19 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
-
-%ifarch %ix86
-PYTHONPATH="$PWD"/python:"$PWD"/config:"$PWD"/build:"$PWD"/xpcom/typelib/xpt/tools
-PYTHONPATH+=:"$PWD"/dom/bindings:$PWD/dom/bindings/parser
-PYTHONPATH+=:"$PWD"/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib
-PYTHONPATH+=:"$PWD"/testing/taskcluster
-PYTHONPATH+=:"$PWD"/testing/web-platform
-PYTHONPATH+=:"$PWD"/testing/web-platform/harness
-PYTHONPATH+=:"$PWD"/layout/tools/reftest
-PYTHONPATH+=:"$PWD"/dom/bindings
-for i in $(find "$PWD"/python "$PWD"/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
-  PYTHONPATH+=:"$i:$i/lib"
-done
-echo "export DONT_POPULATE_VIRTUALENV=1" > "%BUILD_DIR"/rpm-shared.env
-echo "export PYTHONPATH=$PYTHONPATH" >> "%BUILD_DIR"/rpm-shared.env
-echo "export SBOX_REDIRECT_FORCE=/usr/bin/python" >> "%BUILD_DIR"/rpm-shared.env
-%endif
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
@@ -213,6 +188,10 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
+
+%if %{system_nss}
+  echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
+%endif
 
 %if %{system_hunspell}
   echo "ac_add_options --enable-system-hunspell" >> "$MOZCONFIG"

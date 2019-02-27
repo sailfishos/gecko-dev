@@ -99,3 +99,11 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome* aParent,
   bool cancel;
   return CreateChromeWindow2(aParent, aChromeFlags, 0, nullptr, nullptr, &cancel, _retval);
 }
+
+NS_IMETHODIMP
+WindowCreator::SetScreenId(uint32_t /*aScreenId*/)
+{
+  // Multi-screen not supported.
+  LOGNI();
+  return NS_OK;
+}

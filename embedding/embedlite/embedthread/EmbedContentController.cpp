@@ -21,13 +21,13 @@ class FakeListener : public EmbedLiteViewListener {};
 EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
-  , mHaveZoomConstraints(false)
 {
 }
 
 void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
 {
   mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
+  LOGT("APZCTreeManager: %p\n", mAPZC.get());
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
@@ -37,11 +37,16 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   LOGT();
   mUILoop->PostTask(
     FROM_HERE,
-    NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
+              NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
+}
+
+void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
+{
+  LOGT();
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
+                                             Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -53,12 +58,12 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
 
 void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
+                                             Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -70,12 +75,12 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
 void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
-                                           int32_t aModifiers,
+                                           Modifiers aModifiers,
                                            const ScrollableLayerGuid& aGuid,
                                            uint64_t aInputBlockId)
 {
@@ -88,42 +93,39 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-    unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
+    Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
 }
 
-void EmbedContentController::HandleLongTapUp(const CSSPoint& aPoint,
-                                             int32_t aModifiers,
-                                             const ScrollableLayerGuid& aGuid)
-{
-}
-
 /**
- * Requests sending a mozbrowserasyncscroll domevent to embedder.
+ * Sends a scroll event to embedder.
+ * |aIsRootScrollFrame| is a root scroll frame
  * |aContentRect| is in CSS pixels, relative to the current cssPage.
  * |aScrollableSize| is the current content width/height in CSS pixels.
  */
-void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
-                                                     const CSSRect& aContentRect,
-                                                     const CSSSize& aScrollableSize)
+void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
       FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::SendAsyncScrollDOMEvent,
-                        aIsRoot, aContentRect, aScrollableSize));
+      NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
     return;
   }
-  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
-    aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height,
-    aScrollableSize.width, aScrollableSize.height);
-  gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
-  gfxSize size(aScrollableSize.width, aScrollableSize.height);
 
-  if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
-    unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
+  CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
+  contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
+  CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
+
+  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+    contentRect.x, contentRect.y, contentRect.width, contentRect.height,
+    scrollableSize.width, scrollableSize.height);
+  gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
+  gfxSize size(scrollableSize.width, scrollableSize.height);
+
+  if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
+    Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
   }
 }
 
@@ -138,32 +140,13 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
     return;
   }
   if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
-    unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+    Unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   }
 }
 
 void EmbedContentController::ClearRenderFrame()
 {
   mRenderFrame = nullptr;
-}
-
-bool EmbedContentController::GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
-{
-  if (aOutConstraints) {
-    if (mHaveZoomConstraints) {
-      *aOutConstraints = mZoomConstraints;
-    } else {
-      NS_WARNING("Apply default zoom constraints");
-      // Until we support the meta-viewport tag properly allow zooming
-      // from 1/4 to 4x by default.
-      aOutConstraints->mAllowZoom = true;
-      aOutConstraints->mAllowDoubleTapZoom = false;
-      aOutConstraints->mMinZoom = CSSToParentLayerScale(0.25f);
-      aOutConstraints->mMaxZoom = CSSToParentLayerScale(4.0f);
-    }
-    return true;
-  }
-  return false;
 }
 
 /**
@@ -184,8 +167,13 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
+  LOGT("do request %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
+    LOGT("sending request");
+
+    DoSendScrollEvent(aFrameMetrics);
+
+    Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }
 
@@ -194,6 +182,9 @@ EmbedContentController::ReceiveInputEvent(InputData& aEvent,
                                           mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
                                           uint64_t* aOutInputBlockId)
 {
+
+  LOGT(" has mAPZC: %p\n", mAPZC.get());
+
   if (!mAPZC) {
     return nsEventStatus_eIgnore;
   }
@@ -201,9 +192,7 @@ EmbedContentController::ReceiveInputEvent(InputData& aEvent,
   return mAPZC->ReceiveInputEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
 }
 
-void
-EmbedContentController::SaveZoomConstraints(const ZoomConstraints& aConstraints)
+void EmbedContentController::NotifyFlushComplete()
 {
-  mHaveZoomConstraints = true;
-  mZoomConstraints = aConstraints;
+  printf("==================== notify flush complete\n");
 }

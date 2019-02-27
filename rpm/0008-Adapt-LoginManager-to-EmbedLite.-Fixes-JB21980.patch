@@ -1,0 +1,85 @@
+From 24eb4fc20a31b2e0617c01e6953dd010fe58639c Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Wed, 28 Oct 2015 16:07:36 +0200
+Subject: [PATCH 08/15] Adapt LoginManager to EmbedLite. Fixes JB21980
+
+Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/ipc/TabChild.h                                     | 7 +++++--
+ toolkit/components/passwordmgr/LoginManagerContent.jsm | 3 +--
+ toolkit/components/passwordmgr/LoginManagerParent.jsm  | 2 ++
+ toolkit/components/passwordmgr/passwordmgr.manifest    | 4 +---
+ 4 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
+index ef8d66a99257..85baf92e8a52 100644
+--- a/dom/ipc/TabChild.h
++++ b/dom/ipc/TabChild.h
+@@ -473,8 +473,11 @@ public:
+     static inline TabChild*
+     GetFrom(nsIDocShell* aDocShell)
+     {
+-      nsCOMPtr<nsITabChild> tc = do_GetInterface(aDocShell);
+-      return static_cast<TabChild*>(tc.get());
++      // Even though TabChild is not used in EmbedLite somehow the static cast
++      // below can return non-null pointer. Let's return nullptr explcitly.
++      return nullptr;
++      //nsCOMPtr<nsITabChild> tc = do_GetInterface(aDocShell);
++      //return static_cast<TabChild*>(tc.get());
+     }
+ 
+     static TabChild* GetFrom(nsIPresShell* aPresShell);
+diff --git a/toolkit/components/passwordmgr/LoginManagerContent.jsm b/toolkit/components/passwordmgr/LoginManagerContent.jsm
+index 75fc97cf6a39..1dc6b09ca66f 100644
+--- a/toolkit/components/passwordmgr/LoginManagerContent.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerContent.jsm
+@@ -163,11 +163,10 @@ var LoginManagerContent = {
+     let requestId = this._getRandomId();
+     messageData.requestId = requestId;
+ 
+-    messageManager.sendAsyncMessage(name, messageData);
+-
+     let deferred = Promise.defer();
+     requestData.promise = deferred;
+     this._requests.set(requestId, requestData);
++    messageManager.sendAsyncMessage(name, messageData);
+     return deferred.promise;
+   },
+ 
+diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+index c17f3b61981b..9cb1e82030d9 100644
+--- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+@@ -172,6 +172,8 @@ var LoginManagerParent = {
+   },
+ 
+   receiveMessage: function (msg) {
++    msg.target.QueryInterface(Ci.nsIEmbedFrame);
++    log("receiveMessage " + msg.name + " msg.target: " + msg.target);
+     let data = msg.data;
+     switch (msg.name) {
+       case "RemoteLogins:findLogins": {
+diff --git a/toolkit/components/passwordmgr/passwordmgr.manifest b/toolkit/components/passwordmgr/passwordmgr.manifest
+index 1d3d3c367a6e..873426b995aa 100644
+--- a/toolkit/components/passwordmgr/passwordmgr.manifest
++++ b/toolkit/components/passwordmgr/passwordmgr.manifest
+@@ -2,8 +2,6 @@ component {cb9e0de8-3598-4ed7-857b-827f011ad5d8} nsLoginManager.js
+ contract @mozilla.org/login-manager;1 {cb9e0de8-3598-4ed7-857b-827f011ad5d8}
+ component {749e62f4-60ae-4569-a8a2-de78b649660e} nsLoginManagerPrompter.js
+ contract @mozilla.org/passwordmanager/authpromptfactory;1 {749e62f4-60ae-4569-a8a2-de78b649660e}
+-component {8aa66d77-1bbb-45a6-991e-b8f47751c291} nsLoginManagerPrompter.js
+-contract @mozilla.org/login-manager/prompter;1 {8aa66d77-1bbb-45a6-991e-b8f47751c291}
+ component {0f2f347c-1e4f-40cc-8efd-792dea70a85e} nsLoginInfo.js
+ contract @mozilla.org/login-manager/loginInfo;1 {0f2f347c-1e4f-40cc-8efd-792dea70a85e}
+ #ifdef ANDROID
+@@ -15,4 +13,4 @@ contract @mozilla.org/login-manager/storage/json;1 {c00c432d-a0c9-46d7-bef6-9c45
+ #endif
+ component {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309} crypto-SDR.js
+ contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
+-category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
+\ No newline at end of file
++category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
+-- 
+2.20.1
+

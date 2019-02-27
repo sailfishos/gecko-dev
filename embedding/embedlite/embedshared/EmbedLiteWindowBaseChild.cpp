@@ -28,7 +28,7 @@ static int sWindowCount = 0;
 EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
   : mId(aId)
   , mWidget(nullptr)
-  , mSize(width, height)
+  , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
@@ -70,14 +70,14 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 {
   LOGT("destroy");
   mWidget = nullptr;
-  unused << SendDestroyed();
+  Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
   return true;
 }
 
 bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
 {
-  mSize = aSize;
+  mBounds = LayoutDeviceIntRect(0, 0, aSize.width, aSize.height);
   LOGT("this:%p width: %f, height: %f", this, aSize.width, aSize.height);
   if (mWidget) {
     mWidget->Resize(aSize.width, aSize.height, true);
@@ -85,13 +85,13 @@ bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
   return true;
 }
 
-bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const mozilla::ScreenRotation& aRotation)
+bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotation)
 {
   LOGT("this:%p", this);
-  mRotation = aRotation;
+  mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
   if (mWidget) {
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
-    widget->SetRotation(aRotation);
+    widget->SetRotation(mRotation);
     widget->UpdateSize();
   }
 
@@ -112,26 +112,31 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const mozilla::ScreenRo
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
 
-  ScreenOrientation orientation = eScreenOrientation_Default;
-  switch (aRotation) {
+  mozilla::dom::ScreenOrientationInternal orientation = eScreenOrientation_Default;
+  uint16_t angle = 0;
+  switch (mRotation) {
     case ROTATION_0:
-      orientation = eScreenOrientation_PortraitPrimary;
+      angle = 0;
+      orientation = mozilla::dom::eScreenOrientation_PortraitPrimary;
       break;
     case ROTATION_90:
-      orientation = eScreenOrientation_LandscapePrimary;
+      angle = 90;
+      orientation = mozilla::dom::eScreenOrientation_LandscapePrimary;
       break;
     case ROTATION_180:
-      orientation = eScreenOrientation_PortraitSecondary;
+      angle = 180;
+      orientation = mozilla::dom::eScreenOrientation_PortraitSecondary;
       break;
     case ROTATION_270:
-      orientation = eScreenOrientation_LandscapeSecondary;
+      angle = 270;
+      orientation = mozilla::dom::eScreenOrientation_LandscapeSecondary;
       break;
     default:
       break;
   }
 
   hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
-      rect, orientation, colorDepth, pixelDepth));
+      rect, orientation, angle, colorDepth, pixelDepth));
 
   return true;
 }
@@ -150,18 +155,17 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.mWindowType = eWindowType_toplevel;
-  widgetInit.mRequireOffMainThreadCompositing = true;
 
   // EmbedLitePuppetWidget::CreateCompositor() reads back Size
   // when it creates the compositor.
   mWidget->Create(
     nullptr, 0,              // no parents
-    nsIntRect(nsIntPoint(0, 0), nsIntSize(mSize.width, mSize.height)),
+    mBounds,
     &widgetInit              // HandleWidgetEvent
   );
   static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();
 
-  unused << SendInitialized();
+  Unused << SendInitialized();
 }
 
 } // namespace embedlite
