@@ -9,7 +9,7 @@
 %define system_hunspell   1
 %define system_jpeg       1
 %define system_png        1
-%define system_icu        0
+%define system_icu        1
 %define system_zlib       1
 %define system_bz2        1
 %define system_pixman     1
@@ -87,7 +87,7 @@ BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
 %if %{system_icu}
-BuildRequires:  libicu52-devel
+BuildRequires:  libicu-devel
 %endif
 %if %{system_hunspell}
 BuildRequires:  hunspell-devel
