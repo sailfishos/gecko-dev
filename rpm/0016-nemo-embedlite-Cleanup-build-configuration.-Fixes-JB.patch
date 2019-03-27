@@ -1,0 +1,102 @@
+From d626d6513e92b7f8318987252a4dbb2a74fbf066 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 26 Mar 2019 15:43:30 +0200
+Subject: [PATCH 16/16] [nemo][embedlite] Cleanup build configuration. Fixes
+ JB#44612
+
+[nemo][embedlite] Disable telemetry / health / sync services. Fixes JB#44612
+
+Updater also disabled with --disable-updater from
+embedding/embedlite/config/mozconfig.merqtxulrunner
+
+Also Marionette is now disabled
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ configure.in                                        |  2 +-
+ embedding/embedlite/config/mozconfig.merqtxulrunner |  3 ++-
+ embedding/embedlite/embedding.js                    |  7 +++++++
+ xulrunner/confvars.sh                               | 12 ++++++------
+ 4 files changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index 7f5ce1a0f369..c98b3171c25e 100644
+--- a/configure.in
++++ b/configure.in
+@@ -8433,7 +8433,7 @@ fi
+ dnl
+ dnl Always build Marionette if not Android or B2G
+ dnl
+-if test "$OS_TARGET" != Android -a x"$MOZ_WIDGET_TOOLKIT" != x"gonk"; then
++if test "$OS_TARGET" != Android -a x"$MOZ_WIDGET_TOOLKIT" != x"gonk" -a x"$MOZ_WIDGET_TOOLKIT" != x"qt"; then
+     AC_DEFINE(ENABLE_MARIONETTE)
+ fi
+ AC_SUBST(ENABLE_MARIONETTE)
+diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
+index b788c01d3f50..12bfae3e6c89 100644
+--- a/embedding/embedlite/config/mozconfig.merqtxulrunner
++++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
+@@ -12,7 +12,7 @@ ac_add_options --prefix=/usr
+ 
+ ac_add_options --with-system-jpeg
+ ac_add_options --with-system-nspr
+-# ac_add_options --with-system-nss
++ac_add_options --with-system-nss
+ ac_add_options --disable-ffmpeg
+ ac_add_options --enable-system-sqlite
+ 
+@@ -35,6 +35,7 @@ ac_add_options --disable-updater
+ ac_add_options --disable-gamepad
+ ac_add_options --disable-printing
+ ac_add_options --disable-crashreporter
++ac_add_options --with-crashreporter-enable-percent="00"
+ 
+ # Treat warnings as errors in directories with FAIL_ON_WARNINGS.
+ # ac_add_options --enable-warnings-as-errors
+diff --git a/embedding/embedlite/embedding.js b/embedding/embedlite/embedding.js
+index b01409778df9..1d66b184ef66 100644
+--- a/embedding/embedlite/embedding.js
++++ b/embedding/embedlite/embedding.js
+@@ -397,3 +397,10 @@ pref("full-screen-api.ignore-widgets", true);
+ // Remove and test once mozilla bug #1158392 is fixed.
+ // Test cases are mentioned in https://bugzilla.mozilla.org/show_bug.cgi?id=1158392#c3
+ pref("layout.scroll.root-frame-containers", true);
++
++// Disable healtreport / telemetry services explicitly.
++pref("toolkit.telemetry.unified", false);
++pref("toolkit.telemetry.enabled", false);
++pref("experiments.enabled", false);
++pref("experiments.supported", false);
++pref("datareporting.healthreport.service.enabled", false);
+diff --git a/xulrunner/confvars.sh b/xulrunner/confvars.sh
+index 4b2131d083bf..eca5c51dcacd 100755
+--- a/xulrunner/confvars.sh
++++ b/xulrunner/confvars.sh
+@@ -5,18 +5,18 @@
+ 
+ MOZ_APP_NAME=xulrunner
+ MOZ_APP_DISPLAYNAME=XULRunner
+-MOZ_UPDATER=1
++MOZ_UPDATER=
+ MOZ_XULRUNNER=1
+ MOZ_CHROME_FILE_FORMAT=omni
+ MOZ_APP_VERSION=$MOZILLA_VERSION
+ MOZ_EXTENSIONS_DEFAULT=" gio"
+ MOZ_URL_CLASSIFIER=1
+-MOZ_SERVICES_COMMON=1
+-MOZ_SERVICES_CRYPTO=1
+-MOZ_SERVICES_METRICS=1
+-MOZ_SERVICES_SYNC=1
++MOZ_SERVICES_COMMON=
++MOZ_SERVICES_CRYPTO=
++MOZ_SERVICES_METRICS=
++MOZ_SERVICES_SYNC=
+ MOZ_MEDIA_NAVIGATOR=1
+ MOZ_USE_NATIVE_POPUP_WINDOWS=1
+ MOZ_PLACES=
+-MOZ_SERVICES_HEALTHREPORT=1
++MOZ_SERVICES_HEALTHREPORT=
+ MOZ_DISABLE_EXPORT_JS=1
+-- 
+2.20.1
+
