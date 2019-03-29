@@ -105,6 +105,7 @@ public:
   virtual void PinchEnd(int x, int y, float scale);
 
   virtual void SetMargins(int top, int right, int bottom, int left);
+  virtual void ScheduleUpdate();
 
   // Set DPI for the view (views placed on different screens may get different DPI).
   virtual void SetDPI(const float& dpi);
