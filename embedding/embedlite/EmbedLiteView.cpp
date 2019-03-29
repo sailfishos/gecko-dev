@@ -226,6 +226,13 @@ EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 }
 
 void
+EmbedLiteView::ScheduleUpdate()
+{
+  NS_ENSURE_TRUE(mViewParent, );
+  Unused << mViewParent->SendScheduleUpdate();
+}
+
+void
 EmbedLiteView::SetDPI(const float& dpi)
 {
   NS_ENSURE_TRUE(mViewImpl, );
