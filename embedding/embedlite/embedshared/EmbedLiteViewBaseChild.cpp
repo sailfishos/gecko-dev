@@ -567,15 +567,7 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetVisibility(aIsActive);
 
-  // Same that there is in nsPresShell.cpp:10670
-  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
-  if (ps && aIsActive) {
-    if (nsIFrame* root = ps->GetRootFrame()) {
-      FrameLayerBuilder::InvalidateAllLayersForFrame(
-        nsLayoutUtils::GetDisplayRootFrame(root));
-      root->SchedulePaint();
-    }
-  }
+  RecvScheduleUpdate();
   return true;
 }
 
@@ -639,6 +631,19 @@ EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
     mHelper->ReportSizeUpdate(size);
   }
 
+  return true;
+}
+
+bool EmbedLiteViewBaseChild::RecvScheduleUpdate()
+{
+  // Same that there is in nsPresShell.cpp:10670
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  if (ps && mWidget->IsVisible()) {
+    if (nsIFrame* root = ps->GetRootFrame()) {
+      FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
+      root->SchedulePaint();
+    }
+  }
   return true;
 }
 

@@ -40,6 +40,7 @@ child:
     SetIsFocused(bool aIsFocused);
     SetThrottlePainting(bool aThrottle);
     SetMargins(int top, int right, int bottom, int left);
+    ScheduleUpdate();
     SuspendTimeouts();
     ResumeTimeouts();
     HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
