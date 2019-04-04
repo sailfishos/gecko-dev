@@ -42,6 +42,8 @@
 #include "nsIFrame.h"                   // for nsIFrame
 #include "FrameLayerBuilder.h"          // for FrameLayerbuilder
 
+#include <sys/syscall.h>
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -352,6 +354,7 @@ bool
 EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
                                           int32_t* IMEOpen)
 {
+  LOGT();
   return SendGetInputContext(IMEEnabled, IMEOpen);
 }
 
@@ -574,6 +577,7 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
 bool
 EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
 {
+  LOGT("child focus: %d thread %ld", aIsFocused, syscall(SYS_gettid));
   if (!mWebBrowser || !mDOMWindow) {
     return false;
   }
@@ -809,6 +813,7 @@ bool
 EmbedLiteViewBaseChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
                                                     const uint32_t& aScrollGeneration)
 {
+  LOGT("thread id: %ld", syscall(SYS_gettid));
   APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   return true;
 }

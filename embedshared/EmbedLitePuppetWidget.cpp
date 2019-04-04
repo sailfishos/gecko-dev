@@ -38,6 +38,8 @@
 #include "mozilla/unused.h"
 #include "mozilla/BasicEvents.h"
 
+#include <sys/syscall.h>
+
 using namespace mozilla::dom;
 using namespace mozilla::gl;
 using namespace mozilla::hal;
@@ -760,7 +762,7 @@ bool EmbedLitePuppetWidget::AsyncPanZoomEnabled() const
 void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const FrameMetrics::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
 {
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  LOGT("view: %p, mWindow: %p, child view: %p", mView, mWindow, view);
+  LOGT("view: %p", view, mWindow);
   if (view) {
     view->UpdateZoomConstraints(aPresShellId,
                                 aViewId,

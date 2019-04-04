@@ -19,6 +19,8 @@
 #include "imgIEncoder.h"
 #include "InputData.h"
 
+#include <sys/syscall.h>
+
 namespace mozilla {
 namespace embedlite {
 
@@ -89,7 +91,8 @@ EmbedLiteView::LoadURL(const char* aUrl)
 void
 EmbedLiteView::SetIsActive(bool aIsActive)
 {
-  LOGT("active: %d", aIsActive);
+  LOGT("active: %d thread %ld", aIsActive, syscall(SYS_gettid));
+
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendSetIsActive(aIsActive);
   // Make sure active view content controller is always registered with
@@ -102,7 +105,8 @@ EmbedLiteView::SetIsActive(bool aIsActive)
 void
 EmbedLiteView::SetIsFocused(bool aIsFocused)
 {
-  LOGT();
+  LOGT("focus: %d thread %ld", aIsFocused, syscall(SYS_gettid));
+
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendSetIsFocused(aIsFocused);
 }

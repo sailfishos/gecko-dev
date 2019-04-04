@@ -13,6 +13,7 @@
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
+#include <sys/syscall.h>
 
 using namespace mozilla::layers;
 using namespace mozilla::widget;
@@ -52,7 +53,7 @@ EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
 void
 EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 {
-  LOGT("reason:%i", aWhy);
+  LOGT("reason: %i layer id: %d", aWhy, mRootLayerTreeId);
   mController = nullptr;
 }
 
@@ -67,7 +68,7 @@ EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
 void
 EmbedLiteViewBaseParent::UpdateScrollController()
 {
-  LOGT("view api destroyed: %d mVIew: %p compositor: %p\n", mViewAPIDestroyed, mView, mCompositor.get());
+  LOGT("destroyed: %d mVIew: %p compositor: %p\n", mViewAPIDestroyed, mView, mCompositor.get());
   if (mViewAPIDestroyed || !mView) {
     return;
   }
@@ -99,6 +100,7 @@ EmbedLiteViewBaseParent::RecvInitialized()
 bool
 EmbedLiteViewBaseParent::RecvDestroyed()
 {
+  LOGT("view destroyed: %d", mViewAPIDestroyed);
   if (mViewAPIDestroyed) {
     return true;
   }
@@ -273,6 +275,7 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                         const ViewID& aViewId,
                                         const CSSRect& aRect)
 {
+  LOGT("thread id: %ld", syscall(SYS_gettid));
   if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
   }
