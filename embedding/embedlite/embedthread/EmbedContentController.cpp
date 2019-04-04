@@ -167,12 +167,9 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
-  LOGT("do request %p", mRenderFrame);
+  LOGT("render frame %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    LOGT("sending request");
-
     DoSendScrollEvent(aFrameMetrics);
-
     Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }
