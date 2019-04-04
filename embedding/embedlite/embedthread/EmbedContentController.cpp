@@ -41,6 +41,9 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
 void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
 {
   LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
@@ -124,6 +127,13 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
 
   if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
     Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
+  }
+}
+
+void EmbedContentController::DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendRequestFlingSnap(aScrollId, aDestination);
   }
 }
 

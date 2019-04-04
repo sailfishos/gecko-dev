@@ -53,6 +53,7 @@ child:
     HandleSingleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
+    RequestFlingSnap(ViewID aScrollId, CSSPoint aDestination);
     HandleTextEvent(nsString commit, nsString preEdit);
     HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
     HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);

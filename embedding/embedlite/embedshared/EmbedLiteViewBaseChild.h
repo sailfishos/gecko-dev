@@ -165,6 +165,7 @@ protected:
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) override;
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) override;
+  virtual bool RecvRequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const CSSPoint& aDestination) override;
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float& aX,
                               const float& aY,

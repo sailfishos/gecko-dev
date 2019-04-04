@@ -846,6 +846,15 @@ EmbedLiteViewBaseChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& 
   return true;
 }
 
+bool
+EmbedLiteViewBaseChild::RecvRequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                                             const CSSPoint& aDestination)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  APZCCallbackHelper::RequestFlingSnap(aScrollId, aDestination);
+  return true;
+}
+
 void
 EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 {
