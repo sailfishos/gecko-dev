@@ -56,13 +56,6 @@ private:
 
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;
-
-  ZoomConstraints mZoomConstraints;
-
-  // Extra
-  ScrollableLayerGuid mLastScrollLayerGuid;
-  CSSIntPoint mLastScrollOffset;
-
 public:
   // todo: make this a member variable as prep for multiple views
   RefPtr<mozilla::layers::APZCTreeManager> mAPZC;
