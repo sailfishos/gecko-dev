@@ -284,8 +284,7 @@ EmbedLitePuppetWidget::Destroy()
   mWindow = nullptr;
   mView = nullptr;
 
-  // DestroyCompositor does noting in case the widget does not have one.
-  DestroyCompositor();
+  Shutdown();
 
 #if DEBUG
   DumpWidgetTree();
