@@ -48,6 +48,7 @@ private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
   void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
+  void DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination);
   void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
   void DoNotifyFlushComplete();
 
