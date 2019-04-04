@@ -34,7 +34,7 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   // requests may get processed out of order.
   LOGT();
   mUILoop->PostTask(
-    FROM_HERE,
+              FROM_HERE,
               NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
@@ -54,8 +54,8 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -71,8 +71,8 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -89,8 +89,8 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -110,8 +110,8 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
     return;
   }
 
@@ -157,8 +157,8 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
     return;
   }
   if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
