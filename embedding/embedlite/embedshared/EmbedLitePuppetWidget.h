@@ -159,6 +159,9 @@ public:
 
   virtual bool AsyncPanZoomEnabled() const override;
 
+  virtual void SetConfirmedTargetAPZC(uint64_t aInputBlockId,
+                                      const nsTArray<ScrollableLayerGuid>& aTargets) const override;
+
   virtual void UpdateZoomConstraints(const uint32_t& aPresShellId,
                              const FrameMetrics::ViewID& aViewId,
                              const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
@@ -196,6 +199,12 @@ public:
   static void DumpWidgetTree();
   static void DumpWidgetTree(const nsTArray<EmbedLitePuppetWidget*>&, int indent = 0);
   static void LogWidget(EmbedLitePuppetWidget *widget, int index, int indent);
+
+  bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                       uint64_t aInputBlockId,
+                                       bool aPreventDefault);
+  bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
+                                     const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags);
 
 protected:
   EmbedLitePuppetWidget(EmbedLiteWindowBaseChild*, EmbedLiteViewChildIface*);

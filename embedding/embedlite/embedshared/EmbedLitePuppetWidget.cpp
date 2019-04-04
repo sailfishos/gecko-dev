@@ -759,6 +759,15 @@ bool EmbedLitePuppetWidget::AsyncPanZoomEnabled() const
   return true;
 }
 
+void EmbedLitePuppetWidget::SetConfirmedTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets) const
+{
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  LOGT("view: %p", view, mWindow);
+  if (view) {
+    view->SetTargetAPZC(aInputBlockId, aTargets);
+  }
+}
+
 void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const FrameMetrics::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
 {
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
@@ -958,6 +967,30 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
                 widget->mMargins.bottom, widget->mMargins.left,
                 widget->mVisible, widget->mWindowType,
                 widget->mRotation * 90, widget->mObservers.Length());
+}
+
+bool
+EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+    return true;
+  }
+  return false;
+}
+
+bool
+EmbedLitePuppetWidget::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    return view->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
+  }
+
+  return false;
 }
 
 EmbedLitePuppetWidget::EmbedLitePuppetWidget()

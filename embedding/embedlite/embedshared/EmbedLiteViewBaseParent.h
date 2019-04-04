@@ -12,6 +12,8 @@
 #include "EmbedLiteWindowBaseParent.h"
 #include "GLDefs.h"
 
+#include "mozilla/layers/APZCTreeManager.h"
+
 namespace mozilla {
 namespace embedlite {
 
@@ -90,6 +92,7 @@ protected:
   virtual bool RecvRpcMessage(const nsString& aMessage,
                               const nsString& aJSON,
                               InfallibleTArray<nsString>* aJSONRetVal) override;
+
   virtual bool
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,
@@ -101,6 +104,10 @@ protected:
   virtual bool RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid,
                                              const uint64_t& aInputBlockId,
                                              const bool& aPreventDefault) override;
+  virtual bool RecvSetTargetAPZC(const uint64_t& aInputBlockId,
+                                 nsTArray<ScrollableLayerGuid>&& aTargets) override;
+  virtual bool RecvSetAllowedTouchBehavior(const uint64_t& aInputBlockId,
+                                           nsTArray<mozilla::layers::TouchBehaviorFlags>&& aFlags) override;
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,
@@ -127,6 +134,8 @@ private:
   void SetCompositor(EmbedLiteCompositorParent* aCompositor); // XXX: Remove
   void UpdateScrollController();
 
+  mozilla::layers::APZCTreeManager *GetApzcTreeManager();
+
   uint32_t mId;
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
@@ -140,7 +149,9 @@ private:
 
   uint64_t mRootLayerTreeId;
   GLuint mUploadTexture;
-  RefPtr<EmbedContentController> mController;
+
+  RefPtr<mozilla::layers::APZCTreeManager> mApzcTreeManager;
+  RefPtr<EmbedContentController> mContentController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseParent);
 };

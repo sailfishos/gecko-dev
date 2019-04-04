@@ -13,6 +13,8 @@
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/APZThreadUtils.h"
+
 #include <sys/syscall.h>
 
 using namespace mozilla::layers;
@@ -29,10 +31,14 @@ EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& windowId, const
   , mDPI(-1.0)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
+  , mRootLayerTreeId(0)
   , mUploadTexture(0)
-  , mController(new EmbedContentController(this, mUILoop))
+  , mApzcTreeManager(nullptr)
+  , mContentController(new EmbedContentController(this, mUILoop))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewBaseParent);
+
+  APZThreadUtils::SetControllerThread(mUILoop);
 
   /// XXX: Fix this
   if (mWindow.GetCompositor()) {
@@ -46,7 +52,7 @@ EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
 {
   MOZ_COUNT_DTOR(EmbedLiteViewBaseParent);
   LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
-  mController = nullptr;
+  mContentController = nullptr;
   mWindow.RemoveObserver(this);
 }
 
@@ -54,7 +60,8 @@ void
 EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason: %i layer id: %d", aWhy, mRootLayerTreeId);
-  mController = nullptr;
+  mContentController = nullptr;
+  mRootLayerTreeId = 0;
 }
 
 void
@@ -75,12 +82,19 @@ EmbedLiteViewBaseParent::UpdateScrollController()
 
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
-    mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     if (mDPI > 0) {
-      mController->GetManager()->SetDPI(mDPI);
+      GetApzcTreeManager()->SetDPI(mDPI);
     }
-    CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
+    CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
   }
+}
+
+mozilla::layers::APZCTreeManager *EmbedLiteViewBaseParent::GetApzcTreeManager()
+{
+  if (!mApzcTreeManager) {
+    mApzcTreeManager = CompositorParent::GetAPZCTreeManager(mRootLayerTreeId);
+  }
+  return mApzcTreeManager.get();
 }
 
 // Child notification
@@ -262,10 +276,10 @@ EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                                                      const ViewID& aViewId,
                                                      const Maybe<ZoomConstraints>& aConstraints)
 {
-  LOGT("manager: %p layer id: %d", mController->GetManager(), mRootLayerTreeId);
-  if (mController->GetManager()) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId),
-                                                    aConstraints);
+  LOGT("manager: %p layer id: %d", GetApzcTreeManager(), mRootLayerTreeId);
+  if (GetApzcTreeManager()) {
+    GetApzcTreeManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId),
+                                                aConstraints);
   }
   return true;
 }
@@ -276,8 +290,8 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                         const CSSRect& aRect)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  if (mController->GetManager()) {
-    mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
+  if (GetApzcTreeManager()) {
+    GetApzcTreeManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
   }
   return true;
 }
@@ -285,10 +299,18 @@ EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t& aPresShellId,
 bool
 EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
-  LOGT();
-  if (mController->GetManager()) {
-    mController->GetManager()->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+  if (aGuid.mLayersId != mRootLayerTreeId) {
+    // Guard against bad data from hijacked child processes
+    NS_ERROR("Unexpected layers id in RecvContentReceivedInputBlock; dropping message...");
+    return true;
   }
+
+  if (GetApzcTreeManager()) {
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
+        GetApzcTreeManager(), &APZCTreeManager::ContentReceivedInputBlock,
+        aInputBlockId, aPreventDefault));
+  }
+
   return true;
 }
 
@@ -350,14 +372,56 @@ EmbedLiteViewBaseParent::RecvRpcMessage(const nsString& aMessage,
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }
 
+bool
+EmbedLiteViewBaseParent::RecvSetTargetAPZC(const uint64_t &aInputBlockId, nsTArray<ScrollableLayerGuid> &&aTargets)
+{
+  LOGT("view destoyed: %d", mViewAPIDestroyed);
+  if (mViewAPIDestroyed) {
+    return true;
+  }
+
+  for (size_t i = 0; i < aTargets.Length(); i++) {
+    if (aTargets[i].mLayersId != mRootLayerTreeId) {
+      // Guard against bad data from hijacked child processes
+      NS_ERROR("Unexpected layers id in SetTargetAPZC; dropping message...");
+      return true;
+    }
+  }
+
+  if (GetApzcTreeManager()) {
+    // need a local var to disambiguate between the SetTargetAPZC overloads.
+    void (APZCTreeManager::*setTargetApzcFunc)(uint64_t, const nsTArray<ScrollableLayerGuid>&)
+        = &APZCTreeManager::SetTargetAPZC;
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
+                                              GetApzcTreeManager(), setTargetApzcFunc,
+                                              aInputBlockId, aTargets));
+  }
+
+  return true;
+}
+
+bool EmbedLiteViewBaseParent::RecvSetAllowedTouchBehavior(const uint64_t &aInputBlockId, nsTArray<mozilla::layers::TouchBehaviorFlags> &&aFlags)
+{
+  LOGT("view destoyed: %d", mViewAPIDestroyed);
+  if (mViewAPIDestroyed) {
+    return true;
+  }
+
+  if (GetApzcTreeManager()) {
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
+                                              GetApzcTreeManager(), &APZCTreeManager::SetAllowedTouchBehavior,
+                                              aInputBlockId, aFlags));
+  }
+  return true;
+}
 
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::SetDPI(float dpi)
 {
   mDPI = dpi;
 
-  if (mController->GetManager()) {
-    mController->GetManager()->SetDPI(mDPI);
+  if (GetApzcTreeManager()) {
+    GetApzcTreeManager()->SetDPI(mDPI);
   }
 
   return NS_OK;
@@ -382,27 +446,43 @@ EmbedLiteViewBaseParent::CompositorCreated()
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
-  LOGT("APZCTreeManager: %p\n", mController->GetManager());
-  if (mController->GetManager()) {
-    ScrollableLayerGuid guid;
-    uint64_t outInputBlockId;
-    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid, &outInputBlockId);
-    if (aEvent.mInputType == MULTITOUCH_INPUT) {
-      const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
-      if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        Unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId);
-      } else {
-        Unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId);
-      }
-    }
+  LOGT("thread: %ld apz: %p", syscall(SYS_gettid), GetApzcTreeManager());
+  APZThreadUtils::AssertOnControllerThread();
+
+  if (!GetApzcTreeManager()) {
+    // In general mAPZC should not be null, but during initial setup
+    // it might be, so we handle that case by ignoring touch input there.
+    return NS_OK;
   }
 
+  ScrollableLayerGuid guid;
+  uint64_t outInputBlockId;
+
+  mozilla::MultiTouchInput& multiTouchInput = const_cast<mozilla::InputData&>(aEvent).AsMultiTouchInput();
+  nsEventStatus apzResult = GetApzcTreeManager()->ReceiveInputEvent(multiTouchInput, &guid, &outInputBlockId);
+
+  // If the APZ says to drop it, then we drop it
+  if (apzResult == nsEventStatus_eConsumeNoDefault) {
+    return NS_OK;
+  }
+
+  if (multiTouchInput.mInputType == MULTITOUCH_INPUT) {
+    if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
+      Unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId, apzResult);
+    } else {
+      Unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId, apzResult);
+    }
+  }
   return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::TextEvent(const char* composite, const char* preEdit)
 {
+  if (mViewAPIDestroyed) {
+    return NS_OK;
+  }
+
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
     Unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
@@ -417,8 +497,8 @@ EmbedLiteViewBaseParent::TextEvent(const char* composite, const char* preEdit)
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::ViewAPIDestroyed()
 {
-  if (mController) {
-    mController->ClearRenderFrame();
+  if (mContentController) {
+    mContentController->ClearRenderFrame();
   }
   mViewAPIDestroyed = true;
   mView = nullptr;
@@ -447,6 +527,10 @@ EmbedLiteViewBaseParent::SendKeyRelease(int domKeyCode, int gmodifiers, int char
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
+  if (mViewAPIDestroyed) {
+    return NS_OK;
+  }
+
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
@@ -454,7 +538,8 @@ EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int butto
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr, nullptr);
+
+  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -464,6 +549,10 @@ EmbedLiteViewBaseParent::MousePress(int x, int y, int mstime, unsigned int butto
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
+  if (mViewAPIDestroyed) {
+    return NS_OK;
+  }
+
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
@@ -471,17 +560,21 @@ EmbedLiteViewBaseParent::MouseRelease(int x, int y, int mstime, unsigned int but
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr, nullptr);
+
+  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
-
   return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
+  if (mViewAPIDestroyed) {
+    return NS_OK;
+  }
+
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
@@ -489,11 +582,11 @@ EmbedLiteViewBaseParent::MouseMove(int x, int y, int mstime, unsigned int button
                                                mozilla::ScreenSize(1, 1),
                                                180.0f,
                                                1.0f));
-  mController->ReceiveInputEvent(event, nullptr, nullptr);
+
+  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
-
   return NS_OK;
 }
 

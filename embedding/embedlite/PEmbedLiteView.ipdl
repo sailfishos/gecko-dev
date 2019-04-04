@@ -23,6 +23,9 @@ using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
 using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
 using mozilla::CSSPoint from "Units.h";
 using mozilla::Modifiers from "mozilla/EventForwards.h";
+using nsEventStatus from "mozilla/EventForwards.h";
+using mozilla::layers::TouchBehaviorFlags from "mozilla/layers/APZUtils.h";
+using mozilla::layers::GeckoContentController::APZStateChange from "mozilla/layers/GeckoContentController.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -56,14 +59,16 @@ child:
     MouseEvent(nsString aType, float aX, float aY,
                int32_t aButton, int32_t aClickCount,
                int32_t aModifiers, bool aIgnoreRootScrollFrame);
+    NotifyAPZStateChange(ViewID aViewId, APZStateChange aChange, int aArg);
+    NotifyFlushComplete();
 
     ScrollTo(int x, int y);
     ScrollBy(int x, int y);
 
-    InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId);
+    InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse);
     // We use a separate message for touchmove events only to apply
     // compression to them.
-    InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId) compress;
+    InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse) compress;
     AddMessageListener(nsCString name);
     RemoveMessageListener(nsCString name);
     AddMessageListeners(nsString [] messageNames);
@@ -102,6 +107,20 @@ parent:
     ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     SetBackgroundColor(nscolor color);
     ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
+
+    /**
+     * Notifies the APZ code of the results of the gecko hit-test for a
+     * particular input block. Each target corresponds to one touch point in the
+     * touch event.
+     */
+    SetTargetAPZC(uint64_t aInputBlockId, ScrollableLayerGuid[] aTargets);
+
+    /**
+     * Notifies the APZ code of the allowed touch-behaviours for a particular
+     * input block. Each item in the aFlags array corresponds to one touch point
+     * in the touch event.
+     */
+    SetAllowedTouchBehavior(uint64_t aInputBlockId, TouchBehaviorFlags[] aFlags);
 
     /*
      * Gets the DPI of the screen corresponding to this view.
