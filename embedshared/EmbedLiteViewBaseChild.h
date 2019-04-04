@@ -14,12 +14,18 @@
 #include "nsIWebNavigation.h"
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
+#include "nsIIdleServiceInternal.h"
 #include "TabChildHelper.h"
+#include "APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
 
-
 namespace mozilla {
+
+namespace layers {
+class APZEventState;
+} // namespace layers
+
 namespace embedlite {
 
 class EmbedLiteContentController;
@@ -32,6 +38,9 @@ class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
                                public EmbedLitePuppetWidgetObserver
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
+
+  typedef mozilla::layers::APZEventState APZEventState;
+
 public:
   EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
                          const uint32_t& parentId, const bool& isPrivateWindow);
@@ -44,6 +53,10 @@ public:
   ZoomToRect(const uint32_t& aPresShellId,
              const ViewID& aViewId,
              const CSSRect& aRect) override;
+
+  virtual bool
+  SetTargetAPZC(uint64_t aInputBlockId,
+                const nsTArray<ScrollableLayerGuid>& aTargets) override;
 
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
@@ -106,7 +119,16 @@ public:
 
 /*---------WidgetIface---------------*/
 
-  virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault);
+  virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                         const uint64_t& aInputBlockId,
+                                         const bool& aPreventDefault) override;
+
+  virtual bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                               uint64_t aInputBlockId,
+                                               bool aPreventDefault) override;
+
+  virtual bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
+                                             const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags) override;
 
 protected:
   virtual ~EmbedLiteViewBaseChild();
@@ -153,8 +175,13 @@ protected:
   virtual bool RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) override;
   virtual bool RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) override;
   virtual bool RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode) override;
-  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) override;
-  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId) override;
+  virtual bool RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId, const nsEventStatus &aApzResponse) override;
+  virtual bool RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput&, const uint64_t& aInputBlockId, const nsEventStatus &aApzResponse) override;
+
+  virtual bool RecvNotifyAPZStateChange(const ViewID& aViewId,
+                                        const APZStateChange& aChange,
+                                        const int& aArg) override;
+  virtual bool RecvNotifyFlushComplete() override;
 
   virtual bool RecvAddMessageListener(const nsCString&) override;
   virtual bool RecvRemoveMessageListener(const nsCString&) override;
@@ -171,6 +198,10 @@ protected:
   // EmbedLitePuppetWidgetObserver
   void WidgetBoundsChanged(const nsIntRect&) override;
 
+  // Call this function when the users activity is the direct cause of an
+  // event (like a keypress or mouse click).
+  void UserActivity();
+
 private:
   friend class TabChildHelper;
   friend class EmbedLiteAppService;
@@ -185,6 +216,7 @@ private:
   EmbedLiteWindowBaseChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
+  nsCOMPtr<nsIIdleServiceInternal> mIdleService;
   RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsPIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
@@ -199,6 +231,9 @@ private:
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
   nsTArray<EmbedLiteContentController*> mControllerListeners;
+
+  RefPtr<APZEventState> mAPZEventState;
+  mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseChild);
 };

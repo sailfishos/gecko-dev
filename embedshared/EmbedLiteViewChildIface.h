@@ -3,6 +3,8 @@
 #define __gen_EmbedLiteViewChildIface_h__
 
 #include "FrameMetrics.h"
+#include "mozilla/layers/APZUtils.h"    // for TouchBehaviorFlags
+#include "mozilla/TouchEvents.h"         // for WidgetTouchEvent
 
 class nsIWebNavigation;
 class nsIWidget;
@@ -35,6 +37,10 @@ public:
   ZoomToRect(const uint32_t& aPresShellId,
              const mozilla::layers::FrameMetrics::ViewID& aViewId,
              const CSSRect& aRect) = 0;
+
+  virtual bool
+  SetTargetAPZC(uint64_t aInputBlockId,
+                const nsTArray<mozilla::layers::ScrollableLayerGuid>& aTargets) = 0;
 
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
@@ -70,6 +76,12 @@ public:
   virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) = 0;
   virtual bool RecvAsyncMessage(const nsString& aMessage, const nsString& aData) = 0;
   virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault) = 0;
+
+  virtual bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                               uint64_t aInputBlockId,
+                                               bool aPreventDefault) = 0;
+
+  virtual bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags) = 0;
 };
 
 }}

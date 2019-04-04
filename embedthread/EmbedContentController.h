@@ -11,9 +11,6 @@
 #include "FrameMetrics.h"
 
 namespace mozilla {
-namespace layers {
-class APZCTreeManager;
-}
 namespace embedlite {
 class EmbedLiteViewListener;
 class EmbedLiteViewBaseParent;
@@ -22,13 +19,12 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
 {
   typedef mozilla::layers::FrameMetrics FrameMetrics;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
+  typedef mozilla::layers::TouchBehaviorFlags TouchBehaviorFlags;
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
   EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop);
-
-  // This method build APZCTreeManager for give layer tree
-  void SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId);
+  virtual ~EmbedContentController();
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
@@ -42,23 +38,21 @@ public:
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
-  nsEventStatus ReceiveInputEvent(InputData& aEvent,
-                                  mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
-                                  uint64_t* aInputBlockId);
-  virtual void NotifyFlushComplete() override;
 
-  mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
+  virtual void NotifyAPZStateChange(const ScrollableLayerGuid& aGuid,
+                                    APZStateChange aChange,
+                                    int aArg = 0) override;
+  virtual void NotifyFlushComplete() override;
 
 private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
   void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
+  void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
+  void DoNotifyFlushComplete();
 
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;
-public:
-  // todo: make this a member variable as prep for multiple views
-  RefPtr<mozilla::layers::APZCTreeManager> mAPZC;
 };
 
 }}

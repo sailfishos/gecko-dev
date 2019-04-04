@@ -9,7 +9,6 @@
 #include "mozilla/unused.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "mozilla/layers/CompositorParent.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "EmbedLiteCompositorParent.h"
 
 using namespace mozilla::embedlite;
@@ -24,10 +23,9 @@ EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderF
 {
 }
 
-void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
+EmbedContentController::~EmbedContentController()
 {
-  mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
-  LOGT("APZCTreeManager: %p\n", mAPZC.get());
+  LOGT();
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
@@ -129,6 +127,20 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
   }
 }
 
+void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange, aArg);
+  }
+}
+
+void EmbedContentController::DoNotifyFlushComplete()
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyFlushComplete();
+  }
+}
+
 void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -174,22 +186,18 @@ void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameM
   }
 }
 
-nsEventStatus
-EmbedContentController::ReceiveInputEvent(InputData& aEvent,
-                                          mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
-                                          uint64_t* aOutInputBlockId)
+void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
-
-  LOGT(" has mAPZC: %p\n", mAPZC.get());
-
-  if (!mAPZC) {
-    return nsEventStatus_eIgnore;
-  }
-
-  return mAPZC->ReceiveInputEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
+  LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoNotifyAPZStateChange, aGuid, aChange, aArg));
 }
 
 void EmbedContentController::NotifyFlushComplete()
 {
-  printf("==================== notify flush complete\n");
+  LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoNotifyFlushComplete));
 }
