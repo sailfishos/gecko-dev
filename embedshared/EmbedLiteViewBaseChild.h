@@ -194,8 +194,6 @@ protected:
   // Get the pres shell resolution of the document in this tab.
   float GetPresShellResolution() const;
 
-  void DispatchSynthesizedMouseEvent(const WidgetTouchEvent&);
-
   // EmbedLitePuppetWidgetObserver
   void WidgetBoundsChanged(const nsIntRect&) override;
 

@@ -1310,25 +1310,7 @@ EmbedLiteViewBaseChild::GetPresShellResolution() const
 }
 
 void
-EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
-{
-  // TODO : how should we handle now global mouse event prevent.
-//  if (nsIPresShell::gPreventMouseEvents) {
-//    return;
-//  }
-
-  if (aEvent.mMessage == eTouchEnd) {
-    int64_t time = aEvent.time;
-    MOZ_ASSERT(aEvent.touches.Length() == 1);
-    LayoutDevicePoint pt = aEvent.touches[0]->mRefPoint;
-    Modifiers m;
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseMove, time, pt, m, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseDown, time, pt, m, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseUp, time, pt, m, aEvent.widget);
-  }
-}
-
-void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
+EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
