@@ -211,6 +211,10 @@ protected:
   virtual ~EmbedLitePuppetWidget() override;
   EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
+  virtual void ConfigureAPZCTreeManager();
+  virtual void ConfigureAPZControllerThread();
+  virtual already_AddRefed<GeckoContentController> CreateRootContentController() override;
+
 private:
   EmbedLitePuppetWidget();
   typedef nsTArray<EmbedLitePuppetWidget*> ChildrenArray;
