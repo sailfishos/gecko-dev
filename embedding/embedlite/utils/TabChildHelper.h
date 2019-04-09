@@ -74,7 +74,6 @@ protected:
   // Sends a simulated mouse event from a touch event for compatibility.
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
-  void CancelTapTracking();
   bool HasValidInnerSize();
 
 private:

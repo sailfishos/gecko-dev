@@ -45,6 +45,7 @@ struct ParamTraits<mozilla::MultiTouchInput>
   {
     WriteParam(aMsg, static_cast<const mozilla::InputData&>(aParam));
     WriteParam(aMsg, (uint8_t)aParam.mType);
+    WriteParam(aMsg, aParam.mHandledByAPZ);
     WriteParam(aMsg, aParam.mTouches.Length());
 
     for (uint32_t i = 0; i < aParam.mTouches.Length(); ++i) {
@@ -64,6 +65,7 @@ struct ParamTraits<mozilla::MultiTouchInput>
     nsTArray<mozilla::SingleTouchData>::size_type numTouches = 0;
     if (!ReadParam(aMsg, aIter, static_cast<mozilla::InputData*>(aResult)) ||
         !ReadParam(aMsg, aIter, &inputType) ||
+        !ReadParam(aMsg, aIter, &aResult->mHandledByAPZ) ||
         !ReadParam(aMsg, aIter, &numTouches)) {
       return false;
     }

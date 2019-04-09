@@ -9,7 +9,6 @@
 #include "mozilla/unused.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "mozilla/layers/CompositorParent.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "EmbedLiteCompositorParent.h"
 
 using namespace mozilla::embedlite;
@@ -24,10 +23,9 @@ EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderF
 {
 }
 
-void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
+EmbedContentController::~EmbedContentController()
 {
-  mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
-  LOGT("APZCTreeManager: %p\n", mAPZC.get());
+  LOGT();
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
@@ -36,13 +34,16 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   // requests may get processed out of order.
   LOGT();
   mUILoop->PostTask(
-    FROM_HERE,
+              FROM_HERE,
               NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
 void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
 {
   LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
@@ -53,8 +54,8 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -70,8 +71,8 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -88,8 +89,8 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
     return;
   }
   if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
@@ -109,8 +110,8 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
     return;
   }
 
@@ -129,14 +130,35 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
   }
 }
 
+void EmbedContentController::DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendRequestFlingSnap(aScrollId, aDestination);
+  }
+}
+
+void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange, aArg);
+  }
+}
+
+void EmbedContentController::DoNotifyFlushComplete()
+{
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyFlushComplete();
+  }
+}
+
 void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
+                FROM_HERE,
+                NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
     return;
   }
   if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
@@ -167,32 +189,25 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
-  LOGT("do request %p", mRenderFrame);
+  LOGT("render frame %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    LOGT("sending request");
-
     DoSendScrollEvent(aFrameMetrics);
-
     Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }
 
-nsEventStatus
-EmbedContentController::ReceiveInputEvent(InputData& aEvent,
-                                          mozilla::layers::ScrollableLayerGuid* aOutTargetGuid,
-                                          uint64_t* aOutInputBlockId)
+void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
-
-  LOGT(" has mAPZC: %p\n", mAPZC.get());
-
-  if (!mAPZC) {
-    return nsEventStatus_eIgnore;
-  }
-
-  return mAPZC->ReceiveInputEvent(aEvent, aOutTargetGuid, aOutInputBlockId);
+  LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoNotifyAPZStateChange, aGuid, aChange, aArg));
 }
 
 void EmbedContentController::NotifyFlushComplete()
 {
-  printf("==================== notify flush complete\n");
+  LOGT();
+  mUILoop->PostTask(
+              FROM_HERE,
+              NewRunnableMethod(this, &EmbedContentController::DoNotifyFlushComplete));
 }

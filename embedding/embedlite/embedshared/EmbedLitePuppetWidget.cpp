@@ -38,6 +38,8 @@
 #include "mozilla/unused.h"
 #include "mozilla/BasicEvents.h"
 
+#include <sys/syscall.h>
+
 using namespace mozilla::dom;
 using namespace mozilla::gl;
 using namespace mozilla::hal;
@@ -282,8 +284,7 @@ EmbedLitePuppetWidget::Destroy()
   mWindow = nullptr;
   mView = nullptr;
 
-  // DestroyCompositor does noting in case the widget does not have one.
-  DestroyCompositor();
+  Shutdown();
 
 #if DEBUG
   DumpWidgetTree();
@@ -757,10 +758,19 @@ bool EmbedLitePuppetWidget::AsyncPanZoomEnabled() const
   return true;
 }
 
+void EmbedLitePuppetWidget::SetConfirmedTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets) const
+{
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  LOGT("view: %p", view, mWindow);
+  if (view) {
+    view->SetTargetAPZC(aInputBlockId, aTargets);
+  }
+}
+
 void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const FrameMetrics::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
 {
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
-  LOGT("view: %p, mWindow: %p, child view: %p", mView, mWindow, view);
+  LOGT("view: %p", view, mWindow);
   if (view) {
     view->UpdateZoomConstraints(aPresShellId,
                                 aViewId,
@@ -786,81 +796,10 @@ void EmbedLitePuppetWidget::CreateCompositor()
   CreateCompositor(size.width, size.height);
 }
 
-static void
-CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
-{
-  for (size_t i = 0; i < aHints.Length(); ++i) {
-    if (aHints[i] == LayersBackend::LAYERS_BASIC &&
-        !Preferences::GetBool("layers.offmainthreadcomposition.force-basic", false) &&
-        !Preferences::GetBool("browser.tabs.remote", false)) {
-      // basic compositor is not stable enough for regular use
-      aHints[i] = LayersBackend::LAYERS_NONE;
-    }
-  }
-}
-
 void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
   LOGT();
-
-  // This makes sure that gfxPlatforms gets initialized if it hasn't by now.
-  gfxPlatform::GetPlatform();
-
-  MOZ_ASSERT(gfxPlatform::UsesOffMainThreadCompositing(),
-             "This function assumes OMTC");
-
-  MOZ_ASSERT(!mCompositorParent,
-    "Should have properly cleaned up the previous CompositorParent beforehand");
-
-  CreateCompositorVsyncDispatcher();
-  mCompositorParent = NewCompositorParent(aWidth, aHeight);
-//  MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
-  RefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
-//  MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
-  mCompositorChild = new CompositorChild(lm);
-//  mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);
-  mCompositorChild->OpenSameProcess(mCompositorParent);
-
-  // Make sure the parent knows it is same process.
-  mCompositorParent->SetOtherProcessId(base::GetCurrentProcId());
-
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  PLayerTransactionChild* shadowManager = nullptr;
-
-  nsTArray<LayersBackend> backendHints;
-  gfxPlatform::GetPlatform()->GetCompositorBackends(ComputeShouldAccelerate(), backendHints);
-
-  CheckForBasicBackends(backendHints);
-
-  bool success = false;
-  if (!backendHints.IsEmpty()) {
-    shadowManager = mCompositorChild->SendPLayerTransactionConstructor(
-      backendHints, 0, &textureFactoryIdentifier, &success);
-  }
-
-  ShadowLayerForwarder* lf = lm->AsShadowForwarder();
-  if (!success || !lf) {
-    NS_WARNING("Failed to create an OMT compositor.");
-    DestroyCompositor();
-    mLayerManager = nullptr;
-    mCompositorChild = nullptr;
-    mCompositorParent = nullptr;
-    mCompositorVsyncDispatcher = nullptr;
-    return;
-  }
-
-  lf->SetShadowManager(shadowManager);
-  lf->IdentifyTextureHost(textureFactoryIdentifier);
-  ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
-  WindowUsesOMTC();
-
-  mLayerManager = lm.forget();
-
-  if (mWindowType == eWindowType_toplevel) {
-    // Only track compositors for top-level windows, since other window types
-    // may use the basic compositor.
-    gfxPlatform::GetPlatform()->NotifyCompositorCreated(mLayerManager->GetCompositorBackendType());
-  }
+  nsBaseWidget::CreateCompositor(aWidth, aHeight);
 }
 
 void
@@ -958,6 +897,30 @@ EmbedLitePuppetWidget::LogWidget(EmbedLitePuppetWidget *widget, int index, int i
                 widget->mRotation * 90, widget->mObservers.Length());
 }
 
+bool
+EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    view->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+    return true;
+  }
+  return false;
+}
+
+bool
+EmbedLitePuppetWidget::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
+  if (view) {
+    return view->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
+  }
+
+  return false;
+}
+
 EmbedLitePuppetWidget::EmbedLitePuppetWidget()
   : EmbedLitePuppetWidget(nullptr, nullptr)
 {
@@ -972,6 +935,22 @@ EmbedLitePuppetWidget::GetEmbedLiteChildView() const
   if (mParent) {
     return mParent->GetEmbedLiteChildView();
   }
+  return nullptr;
+}
+
+void EmbedLitePuppetWidget::ConfigureAPZCTreeManager()
+{
+  LOGT("Do nothing - APZEventState configured in EmbedLiteViewBaseChild");
+}
+
+void EmbedLitePuppetWidget::ConfigureAPZControllerThread()
+{
+  LOGT("Do nothing - APZController thread configured in EmbedLiteViewBaseParent");
+}
+
+already_AddRefed<GeckoContentController>
+EmbedLitePuppetWidget::CreateRootContentController()
+{
   return nullptr;
 }
 

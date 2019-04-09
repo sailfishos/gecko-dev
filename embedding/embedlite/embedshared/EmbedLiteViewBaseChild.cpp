@@ -42,6 +42,8 @@
 #include "nsIFrame.h"                   // for nsIFrame
 #include "FrameLayerBuilder.h"          // for FrameLayerbuilder
 
+#include <sys/syscall.h>
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -298,11 +300,32 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
   }
 
   static bool firstViewCreated = false;
-  EmbedLiteWindowBaseChild *windowBase = static_cast<EmbedLiteWindowBaseChild*>(mWindow);
+  EmbedLiteWindowBaseChild *windowBase = mWindow;
   if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
     windowBase->GetWidget()->SetActive(true);
     firstViewCreated = true;
   }
+
+  nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda
+  ContentReceivedInputBlockCallback callback(
+      [weakPtrThis](const ScrollableLayerGuid& aGuid,
+                    uint64_t aInputBlockId,
+                    bool aPreventDefault)
+      {
+        if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
+          EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
+          puppetWidget->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+        }
+      });
+  mAPZEventState = new APZEventState(mWidget, Move(callback));
+  mSetAllowedTouchBehaviorCallback = [weakPtrThis](uint64_t aInputBlockId,
+                                                   const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags)
+  {
+    if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
+      EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
+      puppetWidget->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
+    }
+  };
 
   OnGeckoWindowInitialized();
 
@@ -352,6 +375,7 @@ bool
 EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
                                           int32_t* IMEOpen)
 {
+  LOGT();
   return SendGetInputContext(IMEEnabled, IMEOpen);
 }
 
@@ -375,6 +399,13 @@ EmbedLiteViewBaseChild::ZoomToRect(const uint32_t& aPresShellId,
                                    const CSSRect& aRect)
 {
   return SendZoomToRect(aPresShellId, aViewId, aRect);
+}
+
+bool
+EmbedLiteViewBaseChild::SetTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+{
+  LOGT();
+  return SendSetTargetAPZC(aInputBlockId, aTargets);
 }
 
 bool
@@ -574,6 +605,7 @@ EmbedLiteViewBaseChild::RecvSetIsActive(const bool& aIsActive)
 bool
 EmbedLiteViewBaseChild::RecvSetIsFocused(const bool& aIsFocused)
 {
+  LOGT("child focus: %d thread %ld", aIsFocused, syscall(SYS_gettid));
   if (!mWebBrowser || !mDOMWindow) {
     return false;
   }
@@ -809,7 +841,17 @@ bool
 EmbedLiteViewBaseChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
                                                     const uint32_t& aScrollGeneration)
 {
+  LOGT("thread id: %ld", syscall(SYS_gettid));
   APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+  return true;
+}
+
+bool
+EmbedLiteViewBaseChild::RecvRequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
+                                             const CSSPoint& aDestination)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  APZCCallbackHelper::RequestFlingSnap(aScrollId, aDestination);
   return true;
 }
 
@@ -1050,50 +1092,104 @@ EmbedLiteViewBaseChild::RecvMouseEvent(const nsString& aType,
   return !ignored;
 }
 
-bool EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+bool
+EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  return DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+}
+
+bool
+EmbedLiteViewBaseChild::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
+{
+  LOGT("thread id: %ld", syscall(SYS_gettid));
   return SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
 }
 
 bool
-EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
+EmbedLiteViewBaseChild::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
 {
-  LOGT();
+  LOGT("thread id: %ld", syscall(SYS_gettid));
+  return SendSetAllowedTouchBehavior(aInputBlockId, aFlags);
+}
+
+bool
+EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid,
+                                                const mozilla::MultiTouchInput& aInput,
+                                                const uint64_t& aInputBlockId,
+                                                const nsEventStatus& aApzResponse)
+{
+  LOGT("thread: %ld", syscall(SYS_gettid));
+  MOZ_ASSERT(NS_IsMainThread());
+
   WidgetTouchEvent localEvent;
 
-  if (!mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
+  if (!mHelper->ConvertMutiTouchInputToEvent(aInput, localEvent)) {
     return true;
   }
 
+  UserActivity();
   APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid, mWidget->GetDefaultScale());
-  nsEventStatus status =
-      APZCCallbackHelper::DispatchWidgetEvent(localEvent);
 
-  nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
-  nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
-  if (innerWindow /*&& innerWindow->HasTouchEventListeners()*/ ) {
-    SendContentReceivedInputBlock(aGuid, mPendingTouchPreventedBlockId,
-                                  false /*nsIPresShell::gPreventMouseEvents*/);
+  if (localEvent.mMessage == eTouchStart) {
+    // CSS touch actions do not work yet. Thus, explicitly disabling in the code.
+#if 0
+    if (gfxPrefs::TouchActionEnabled()) {
+      APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(mWidget,
+          localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
+    }
+#endif
+    nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
+    APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
+        localEvent, aGuid, aInputBlockId);
   }
-  mPendingTouchPreventedBlockId = aInputBlockId;
 
-  static bool sDispatchMouseEvents = false;
-  static bool sDispatchMouseEventsCached = false;
-  if (!sDispatchMouseEventsCached) {
-    sDispatchMouseEventsCached = true;
-    Preferences::AddBoolVarCache(&sDispatchMouseEvents,
-                                 "embedlite.dispatch_mouse_events", false);
-  }
-  if (status != nsEventStatus_eConsumeNoDefault && sDispatchMouseEvents) {
-    DispatchSynthesizedMouseEvent(localEvent);
+  // Dispatch event to content (potentially a long-running operation)
+  nsEventStatus status = APZCCallbackHelper::DispatchWidgetEvent(localEvent);
+
+  // We shouldn't have any e10s platforms that have touch events enabled
+  // without APZ.
+  MOZ_ASSERT(mWidget->AsyncPanZoomEnabled());
+
+  mAPZEventState->ProcessTouchEvent(localEvent, aGuid, aInputBlockId,
+      aApzResponse, status);
+  return true;
+}
+
+
+
+bool
+EmbedLiteViewBaseChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid,
+                                                    const mozilla::MultiTouchInput& aData,
+                                                    const uint64_t& aInputBlockId,
+                                                    const nsEventStatus& aApzResponse)
+{
+  LOGT();
+  return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId, aApzResponse);
+}
+
+bool
+EmbedLiteViewBaseChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const APZStateChange &aChange, const int &aArg)
+{
+  LOGT("thread: %ld", syscall(SYS_gettid));
+  mAPZEventState->ProcessAPZStateChange(mHelper->GetDocument(), aViewId, aChange, aArg);
+  if (aChange == APZStateChange::TransformEnd) {
+    // This is used by tests to determine when the APZ is done doing whatever
+    // it's doing. XXX generify this as needed when writing additional tests.
+#if 0
+      DispatchMessageManagerMessage(
+      NS_LITERAL_STRING("APZ:TransformEnd"),
+      NS_LITERAL_STRING("{}"));
+#endif
   }
   return true;
 }
 
 bool
-EmbedLiteViewBaseChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData, const uint64_t& aInputBlockId)
+EmbedLiteViewBaseChild::RecvNotifyFlushComplete()
 {
-  return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId);
+  APZCCallbackHelper::NotifyFlushComplete();
+  return true;
 }
 
 NS_IMETHODIMP
@@ -1214,25 +1310,7 @@ EmbedLiteViewBaseChild::GetPresShellResolution() const
 }
 
 void
-EmbedLiteViewBaseChild::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
-{
-  // TODO : how should we handle now global mouse event prevent.
-//  if (nsIPresShell::gPreventMouseEvents) {
-//    return;
-//  }
-
-  if (aEvent.mMessage == eTouchEnd) {
-    int64_t time = aEvent.time;
-    MOZ_ASSERT(aEvent.touches.Length() == 1);
-    LayoutDevicePoint pt = aEvent.touches[0]->mRefPoint;
-    Modifiers m;
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseMove, time, pt, m, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseDown, time, pt, m, aEvent.widget);
-    APZCCallbackHelper::DispatchSynthesizedMouseEvent(eMouseUp, time, pt, m, aEvent.widget);
-  }
-}
-
-void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
+EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 {
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
@@ -1242,6 +1320,19 @@ void EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
 
   gfxSize size(aSize.width, aSize.height);
   mHelper->ReportSizeUpdate(size);
+}
+
+void
+EmbedLiteViewBaseChild::UserActivity()
+{
+  LOGT();
+  if (!mIdleService) {
+    mIdleService = do_GetService("@mozilla.org/widget/idleservice;1");
+  }
+
+  if (mIdleService) {
+    mIdleService->ResetIdleTimeOut(0);
+  }
 }
 
 } // namespace embedlite
