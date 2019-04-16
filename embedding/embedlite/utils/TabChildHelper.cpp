@@ -294,9 +294,29 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                       nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
                                       bool aIsSync)
 {
+  nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
+          do_GetService("@mozilla.org/globalmessagemanager;1");
+  RefPtr<nsFrameMessageManager> globalMessageManager =
+          static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
+  RefPtr<nsFrameMessageManager> contentFrameMessageManager =
+          static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
+
+  nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
+  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
+  embedFrame->mWindow = window;
+  embedFrame->mMessageManager = mTabChildGlobal;
+  SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
+
+  nsresult globalReceived = globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
+  nsresult contentFrameReceived = contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
+
+  bool globalOk = (globalReceived == NS_OK);
+  bool contentFrameReceivedOk = (contentFrameReceived == NS_OK);
+
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return false;
+    return (globalOk || contentFrameReceivedOk);
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
@@ -339,7 +359,7 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
     }
   }
 
-  return retValue;
+  return (globalOk || contentFrameReceivedOk || retValue);
 }
 
 nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
