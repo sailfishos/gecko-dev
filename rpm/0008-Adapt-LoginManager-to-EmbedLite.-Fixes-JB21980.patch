@@ -1,16 +1,15 @@
-From 24eb4fc20a31b2e0617c01e6953dd010fe58639c Mon Sep 17 00:00:00 2001
+From 4a1ff2734a8fe2c557245edb7fde7c48d836540a Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
-Subject: [PATCH 08/15] Adapt LoginManager to EmbedLite. Fixes JB21980
+Subject: [PATCH 08/17] Adapt LoginManager to EmbedLite. Fixes JB21980
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/ipc/TabChild.h                                     | 7 +++++--
- toolkit/components/passwordmgr/LoginManagerContent.jsm | 3 +--
- toolkit/components/passwordmgr/LoginManagerParent.jsm  | 2 ++
- toolkit/components/passwordmgr/passwordmgr.manifest    | 4 +---
- 4 files changed, 9 insertions(+), 7 deletions(-)
+ dom/ipc/TabChild.h                                    | 7 +++++--
+ toolkit/components/passwordmgr/LoginManagerParent.jsm | 2 ++
+ toolkit/components/passwordmgr/passwordmgr.manifest   | 4 +---
+ 3 files changed, 8 insertions(+), 5 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
 index ef8d66a99257..85baf92e8a52 100644
@@ -30,23 +29,6 @@ index ef8d66a99257..85baf92e8a52 100644
      }
  
      static TabChild* GetFrom(nsIPresShell* aPresShell);
-diff --git a/toolkit/components/passwordmgr/LoginManagerContent.jsm b/toolkit/components/passwordmgr/LoginManagerContent.jsm
-index 75fc97cf6a39..1dc6b09ca66f 100644
---- a/toolkit/components/passwordmgr/LoginManagerContent.jsm
-+++ b/toolkit/components/passwordmgr/LoginManagerContent.jsm
-@@ -163,11 +163,10 @@ var LoginManagerContent = {
-     let requestId = this._getRandomId();
-     messageData.requestId = requestId;
- 
--    messageManager.sendAsyncMessage(name, messageData);
--
-     let deferred = Promise.defer();
-     requestData.promise = deferred;
-     this._requests.set(requestId, requestData);
-+    messageManager.sendAsyncMessage(name, messageData);
-     return deferred.promise;
-   },
- 
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
 index c17f3b61981b..9cb1e82030d9 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
