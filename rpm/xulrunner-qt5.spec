@@ -40,8 +40,8 @@ Summary:    XUL runner
 Version:    %{greversion}
 Release:    1
 Group:      Applications/Internet
-License:    MPLv2
-URL:        https://github.com/tmeshkova/gecko-dev
+License:    MPLv2.0
+URL:        https://git.sailfishos.org/mer-core/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
 Patch2:     0002-Workaround-for-late-access-message-loop.patch
