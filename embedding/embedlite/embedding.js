@@ -34,6 +34,9 @@ pref("ui.threedshadow", "#aea194");
 pref("ui.window", "#efebe7");
 pref("ui.windowtext", "#101010");
 pref("ui.windowframe", "#efebe7");
+// WebGL prefs
+// Disable MSAA on mobile (similar to Android)
+pref("gl.msaa-level", 0);
 // Enable webgl by force
 pref("webgl.force-enabled", true);
 // Setup dumping enabled for development
