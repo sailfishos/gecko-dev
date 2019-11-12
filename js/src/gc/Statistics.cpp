@@ -494,21 +494,21 @@ Statistics::formatDetailedDescription()
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
     JS_snprintf(buffer, sizeof(buffer), format,
-                ExplainInvocationKind(gckind),
-                ExplainReason(slices[0].reason),
-                nonincrementalReason_ ? "no - " : "yes",
-                                                  nonincrementalReason_ ? nonincrementalReason_ : "",
-                zoneStats.collectedZoneCount, zoneStats.zoneCount, zoneStats.sweptZoneCount,
-                zoneStats.collectedCompartmentCount, zoneStats.compartmentCount,
-                zoneStats.sweptCompartmentCount,
-                counts[STAT_MINOR_GC],
-                counts[STAT_STOREBUFFER_OVERFLOW],
-                mmu20 * 100., mmu50 * 100.,
-                t(sccTotal), t(sccLongest),
-                double(preBytes) / bytesPerMiB,
-                counts[STAT_NEW_CHUNK] - counts[STAT_DESTROY_CHUNK], counts[STAT_NEW_CHUNK] +
-                                                                     counts[STAT_DESTROY_CHUNK],
-                double(ArenaSize * counts[STAT_ARENA_RELOCATED]) / bytesPerMiB);
+                   ExplainInvocationKind(gckind),
+                   ExplainReason(slices[0].reason),
+                   nonincremental() ? "no - " : "yes",
+                   "",
+                   zoneStats.collectedZoneCount, zoneStats.zoneCount, zoneStats.sweptZoneCount,
+                   zoneStats.collectedCompartmentCount, zoneStats.compartmentCount,
+                   zoneStats.sweptCompartmentCount,
+                   counts[STAT_MINOR_GC],
+                   counts[STAT_STOREBUFFER_OVERFLOW],
+                   mmu20 * 100., mmu50 * 100.,
+                   t(sccTotal), t(sccLongest),
+                   double(preBytes) / bytesPerMiB,
+                   counts[STAT_NEW_CHUNK] - counts[STAT_DESTROY_CHUNK],
+                   counts[STAT_NEW_CHUNK] + counts[STAT_DESTROY_CHUNK],
+                   double(ArenaSize * counts[STAT_ARENA_RELOCATED]) / bytesPerMiB);
     return make_string_copy(buffer);
 }
 
