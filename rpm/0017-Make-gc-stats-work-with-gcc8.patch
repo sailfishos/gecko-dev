@@ -1,0 +1,38 @@
+From 42c6e549164091d719d55721e73ecbf1af415b8e Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 19 Nov 2019 21:24:17 +0200
+Subject: [PATCH 17/17] Make gc stats work with gcc8
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ js/src/gc/Statistics.cpp | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/js/src/gc/Statistics.cpp b/js/src/gc/Statistics.cpp
+index ab8aae772a76..34df5babb2e6 100644
+--- a/js/src/gc/Statistics.cpp
++++ b/js/src/gc/Statistics.cpp
+@@ -496,8 +496,8 @@ Statistics::formatDetailedDescription()
+     JS_snprintf(buffer, sizeof(buffer), format,
+                    ExplainInvocationKind(gckind),
+                    ExplainReason(slices[0].reason),
+-                   nonincremental() ? "no - " : "yes",
+-                   "",
++                   nonincrementalReason_ ? "no - " : "yes",
++                   nonincrementalReason_ ? nonincrementalReason_ : "",
+                    zoneStats.collectedZoneCount, zoneStats.zoneCount, zoneStats.sweptZoneCount,
+                    zoneStats.collectedCompartmentCount, zoneStats.compartmentCount,
+                    zoneStats.sweptCompartmentCount,
+@@ -530,7 +530,8 @@ Statistics::formatDetailedSliceDescription(unsigned i, const SliceData& slice)
+     memset(buffer, 0, sizeof(buffer));
+     JS_snprintf(buffer, sizeof(buffer), format, i,
+                 ExplainReason(slice.reason),
+-                slice.resetReason ? "yes - " : "no", slice.resetReason ? slice.resetReason : "",
++                "",
++                "",
+                 uint64_t(slice.endFaults - slice.startFaults),
+                 t(slice.duration()), budgetDescription, t(slice.start - slices[0].start));
+     return make_string_copy(buffer);
+-- 
+2.23.0
+
