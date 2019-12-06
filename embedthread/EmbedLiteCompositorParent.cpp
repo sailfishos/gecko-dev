@@ -122,64 +122,24 @@ EmbedLiteCompositorParent::PrepareOffscreen()
   }
 }
 
-void
-EmbedLiteCompositorParent::UpdateTransformState()
+void EmbedLiteCompositorParent::CompositeToDefaultTarget()
 {
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-  CompositorOGL *compositor = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor());
-  NS_ENSURE_TRUE(compositor, );
-
-  GLContext* context = compositor->gl();
-  NS_ENSURE_TRUE(context, );
-
-  if (context->IsOffscreen() && context->OffscreenSize() != mSurfaceSize && context->ResizeOffscreen(mSurfaceSize)) {
-    ScheduleRenderOnCompositorThread();
-  }
-}
-
-void
-EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
-{
-  if (Invalidate()) {
-    task->Cancel();
-    CancelCurrentCompositeTask();
-  } else {
-    CompositorParent::ScheduleTask(task, time);
-  }
-}
-
-bool
-EmbedLiteCompositorParent::Invalidate()
-{
-  if (!mUseExternalGLContext) {
-    UpdateTransformState();
-    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
-    MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
-    return true;
-  }
-
-  return false;
-}
-
-bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
-{
-//  mLastCompose = aScheduleTime;
-  if (mCurrentCompositeTask) {
-    mCurrentCompositeTask->Cancel();
-    mCurrentCompositeTask = nullptr;
-  }
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, false);
-
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context, false);
+  NS_ENSURE_TRUE(context, );
   if (!context->IsCurrent()) {
     context->MakeCurrent(true);
   }
-  NS_ENSURE_TRUE(context->IsCurrent(), false);
+  NS_ENSURE_TRUE(context->IsCurrent(), );
+
+  if (context->IsOffscreen()) {
+    MutexAutoLock lock(mRenderMutex);
+    if (context->OffscreenSize() != mSurfaceSize && !context->ResizeOffscreen(mSurfaceSize)) {
+      return;
+    }
+  }
 
   {
     ScopedScissorRect autoScissor(context);
@@ -188,37 +148,62 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
     CompositeToTarget(nullptr);
     context->fActiveTexture(oldTexUnit);
   }
+}
 
-  if (context->IsOffscreen()) {
-    // RenderGL is called always from Gecko compositor thread.
-    // GLScreenBuffer::PublishFrame does swap buffers and that
-    // cannot happen while reading previous frame on EmbedLiteCompositorParent::GetPlatformImage
-    // (potentially from another thread).
-    MutexAutoLock lock(mRenderMutex);
-    GLScreenBuffer* screen = context->Screen();
-    MOZ_ASSERT(screen);
+void EmbedLiteCompositorParent::PresentOffscreenSurface()
+{
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-    if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
-      NS_ERROR("Failed to publish context frame");
-      return false;
-    }
-    // Temporary hack, we need two extra paints in order to get initial picture
-    static int sInitialPaintCount = 0;
-    if (sInitialPaintCount < 2) {
-      ScheduleRenderOnCompositorThread();
-      sInitialPaintCount++;
-    }
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context, );
+  NS_ENSURE_TRUE(context->IsOffscreen(), );
+
+  // RenderGL is called always from Gecko compositor thread.
+  // GLScreenBuffer::PublishFrame does swap buffers and that
+  // cannot happen while reading previous frame on EmbedLiteCompositorParent::GetPlatformImage
+  // (potentially from another thread).
+  MutexAutoLock lock(mRenderMutex);
+
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+
+  if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
+    NS_ERROR("Failed to publish context frame");
   }
-
-  return false;
 }
 
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   if (width > 0 && height > 0 && (mSurfaceSize.width != width || mSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
+
+    MutexAutoLock lock(mRenderMutex);
     mSurfaceSize = gfx::IntSize(width, height);
   }
+}
+
+void EmbedLiteCompositorParent::GetPlatformImage(const Function<void(void *image, int width, int height)> &callback)
+{
+    MutexAutoLock lock(mRenderMutex);
+    const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+    NS_ENSURE_TRUE(state && state->mLayerManager, );
+
+    GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+    NS_ENSURE_TRUE(context, );
+    NS_ENSURE_TRUE(context->IsOffscreen(), );
+
+    GLScreenBuffer* screen = context->Screen();
+    MOZ_ASSERT(screen);
+    NS_ENSURE_TRUE(screen->Front(),);
+    SharedSurface* sharedSurf = screen->Front()->Surf();
+    NS_ENSURE_TRUE(sharedSurf, );
+    sharedSurf->WaitSync();
+
+    if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
+      SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+      callback(eglImageSurf->mImage, sharedSurf->mSize.width, sharedSurf->mSize.height);
+    }
 }
 
 void*
