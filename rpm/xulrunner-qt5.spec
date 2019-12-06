@@ -60,6 +60,7 @@ Patch14:    0014-Embedlite-doesn-t-have-prompter-implementation.patch
 Patch15:    0015-xulrunner-Disable-SiteSpecificUserAgent.js-from-the-.patch
 Patch16:    0016-nemo-embedlite-Cleanup-build-configuration.-Fixes-JB.patch
 Patch17:    0017-Make-gc-stats-work-with-gcc8.patch
+Patch18:    0018-Allow-compositor-specializations-to-override-the-com.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -165,6 +166,7 @@ Tests and misc files for xulrunner.
 %patch15 -p1
 %patch16 -p1
 %patch17 -p1
+%patch18 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig

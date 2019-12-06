@@ -846,6 +846,11 @@ EmbedLitePuppetWidget::PostRender(LayerManagerComposite *aManager)
 {
   MOZ_ASSERT(mWindow);
   Unused << aManager;
+
+  if (mCompositorParent) {
+    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->PresentOffscreenSurface();
+  }
+
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->CompositingFinished();

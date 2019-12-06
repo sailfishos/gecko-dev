@@ -9,6 +9,7 @@
 #define COMPOSITOR_PERFORMANCE_WARNING
 
 #include "Layers.h"
+#include "mozilla/Function.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorChild.h"
@@ -22,6 +23,8 @@ class LayerManagerComposite;
 
 namespace embedlite {
 
+class EmbedLiteWindowListener;
+
 class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
 {
 public:
@@ -31,8 +34,11 @@ public:
 
   void SetSurfaceSize(int width, int height);
   void* GetPlatformImage(int* width, int* height);
+  void GetPlatformImage(const Function<void(void *image, int width, int height)> &callback);
   void SuspendRendering();
   void ResumeRendering();
+
+  void PresentOffscreenSurface();
 
 protected:
   friend class EmbedLitePuppetWidget;
@@ -43,13 +49,10 @@ protected:
                                const uint64_t& aId,
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
-  virtual void ScheduleTask(CancelableTask*, int) override;
+  virtual void CompositeToDefaultTarget() override;
 
 private:
   void PrepareOffscreen();
-  bool Invalidate();
-  void UpdateTransformState();
-  bool RenderGL(TimeStamp aScheduleTime);
 
   uint32_t mWindowId;
   CancelableTask* mCurrentCompositeTask;
