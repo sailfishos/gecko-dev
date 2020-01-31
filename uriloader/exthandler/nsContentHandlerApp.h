@@ -7,7 +7,7 @@
 #ifndef __nsContentHandlerAppImpl_h__
 #define __nsContentHandlerAppImpl_h__
 
-#include <contentaction/contentaction.h>
+#include <contentaction5/contentaction.h>
 #include "nsString.h"
 #include "nsIMIMEInfo.h"
 
@@ -18,9 +18,10 @@ class nsContentHandlerApp : public nsIHandlerApp {
 
   nsContentHandlerApp(nsString aName, nsCString aType,
                       ContentAction::Action& aAction);
+
+ private:
   virtual ~nsContentHandlerApp() {}
 
- protected:
   nsString mName;
   nsCString mType;
   nsString mDetailedDescription;
