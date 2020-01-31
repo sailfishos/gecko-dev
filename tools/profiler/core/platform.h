@@ -59,15 +59,12 @@
 #include <vector>
 #include "StackTop.h"
 
-// We need a definition of gettid(), but glibc doesn't provide a
+// We need a definition of gettid(), but old glibc versions don't provide a
 // wrapper for it.
-#if defined(__GLIBC__)
+#if 0
 #include <unistd.h>
 #include <sys/syscall.h>
-static inline pid_t gettid()
-{
-  return (pid_t) syscall(SYS_gettid);
-}
+#  define gettid() static_cast<pid_t>(syscall(SYS_gettid))
 #endif
 
 #ifdef XP_WIN
