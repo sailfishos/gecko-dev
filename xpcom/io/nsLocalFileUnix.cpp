@@ -69,6 +69,10 @@ static nsresult MacErrorMapper(OSErr inErr);
 #include <linux/magic.h>
 #endif
 
+#ifdef MOZ_ENABLE_CONTENTACTION
+#include <contentaction5/contentaction.h>
+#endif
+
 #include "nsNativeCharsetUtils.h"
 #include "nsTraceRefcnt.h"
 #include "nsHashKeys.h"

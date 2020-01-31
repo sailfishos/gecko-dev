@@ -5,8 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifdef MOZ_WIDGET_QT
-#if (MOZ_ENABLE_CONTENTACTION)
-#include <contentaction/contentaction.h>
+#if defined(MOZ_ENABLE_CONTENTACTION)
+#include <contentaction5/contentaction.h>
 #include "nsContentHandlerApp.h"
 #endif
 #endif
@@ -73,6 +73,17 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile *aFile) {
 
   nsAutoCString nativePath;
   aFile->GetNativePath(nativePath);
+
+#if defined(MOZ_ENABLE_CONTENTACTION)
+  QUrl localFileUri = QUrl::fromLocalFile(QString::fromUtf8(nativePath.get()));
+  ContentAction::Action action =
+    ContentAction::Action::defaultActionForFile(localFileUri, QString(mSchemeOrType.get()));
+  if (action.isValid()) {
+    action.trigger();
+    return NS_OK;
+  }
+  return NS_ERROR_FAILURE;
+#endif
 
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {
