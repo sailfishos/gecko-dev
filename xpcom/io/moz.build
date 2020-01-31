@@ -144,6 +144,8 @@ LOCAL_INCLUDES += [
     '../build',
 ]
 
+CXXFLAGS += CONFIG['TK_CFLAGS']
+
 if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
     # This is intended as a temporary hack to support building with VS2015.
     # '_snwprintf' : format string '%s' requires an argument of type 'wchar_t *',

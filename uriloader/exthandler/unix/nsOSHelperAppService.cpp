@@ -7,6 +7,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#if defined(MOZ_ENABLE_CONTENTACTION)
+#include <contentaction5/contentaction.h>
+#include <QString>
+#endif
+
 #include "nsOSHelperAppService.h"
 #include "nsMIMEInfoUnix.h"
 #ifdef MOZ_WIDGET_GTK
