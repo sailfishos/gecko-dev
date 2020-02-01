@@ -19,13 +19,10 @@
 
 #include <stdarg.h>
 
-#if defined(__GLIBC__)
+#if 0
 // glibc doesn't implement gettid(2).
 #include <sys/syscall.h>
-static pid_t gettid()
-{
-  return (pid_t) syscall(SYS_gettid);
-}
+#  define gettid() static_cast<pid_t>(syscall(SYS_gettid))
 #endif
 
 // NS_ENSURE_TRUE_VOID() without the warning on the debug build.
