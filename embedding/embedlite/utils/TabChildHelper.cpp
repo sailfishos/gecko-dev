@@ -33,6 +33,7 @@
 #include "nsIDocumentInlines.h"
 #include "APZCCallbackHelper.h"
 #include "EmbedFrame.h"
+#include "nsContentUtils.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
@@ -271,6 +272,23 @@ TabChildHelper::WebWidget()
   return nsContentUtils::WidgetForDocument(document);
 }
 
+class TabChildHelperAsyncScriptLoad : public nsRunnable
+{
+public:
+    TabChildHelperAsyncScriptLoad(TabChildHelper* aHelper, const nsAString& aURL,
+                      bool aRunInGlobalScope)
+      : mTabChild(aHelper), mURL(aURL), mRunInGlobalScope(aRunInGlobalScope) {}
+
+  NS_IMETHOD Run()
+  {
+    mTabChild->DoLoadMessageManagerScript(mURL, mRunInGlobalScope);
+    return NS_OK;
+  }
+  RefPtr<TabChildHelper> mTabChild;
+  nsString mURL;
+  bool mRunInGlobalScope;
+};
+
 bool
 TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
@@ -279,6 +297,11 @@ TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlo
     // error.
   {
     return false;
+  }
+
+  if (!nsContentUtils::IsSafeToRunScript()) {
+    nsContentUtils::AddScriptRunner(new TabChildHelperAsyncScriptLoad(this, aURL, aRunInGlobalScope));
+    return true;
   }
 
   LoadScriptInternal(aURL, aRunInGlobalScope);
