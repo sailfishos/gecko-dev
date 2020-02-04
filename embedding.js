@@ -400,3 +400,10 @@ pref("full-screen-api.ignore-widgets", true);
 // Remove and test once mozilla bug #1158392 is fixed.
 // Test cases are mentioned in https://bugzilla.mozilla.org/show_bug.cgi?id=1158392#c3
 pref("layout.scroll.root-frame-containers", true);
+
+// Disable health report / telemetry services explicitly.
+pref("toolkit.telemetry.unified", false);
+pref("toolkit.telemetry.enabled", false);
+pref("experiments.enabled", false);
+pref("experiments.supported", false);
+pref("datareporting.healthreport.service.enabled", false);
