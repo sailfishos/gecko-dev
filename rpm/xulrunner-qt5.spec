@@ -60,6 +60,7 @@ Patch14:    0014-Embedlite-doesn-t-have-prompter-implementation.patch
 Patch15:    0015-Disable-SiteSpecificUserAgent.js-from-the-build.-Con.patch
 Patch16:    0016-Cleanup-build-configuration.-Fixes-JB-44612.patch
 Patch17:    0017-Make-gc-stats-work-with-gcc8.patch
+Patch18:    0018-Use-libcontentaction-for-custom-schem.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -80,6 +81,7 @@ BuildRequires:  pkgconfig(gstreamer-1.0)
 BuildRequires:  pkgconfig(gstreamer-app-1.0)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0)
 BuildRequires:  pkgconfig(Qt5Positioning)
+BuildRequires:  pkgconfig(contentaction5)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
@@ -165,6 +167,7 @@ Tests and misc files for xulrunner.
 %patch15 -p1
 %patch16 -p1
 %patch17 -p1
+%patch18 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
