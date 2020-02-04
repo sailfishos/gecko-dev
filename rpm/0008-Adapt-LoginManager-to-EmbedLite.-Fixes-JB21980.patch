@@ -1,4 +1,4 @@
-From 4a1ff2734a8fe2c557245edb7fde7c48d836540a Mon Sep 17 00:00:00 2001
+From 6812cabf5325fb2f3fe77cf82250e7ec3bc8b6a5 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
 Subject: [PATCH 08/17] Adapt LoginManager to EmbedLite. Fixes JB21980
@@ -63,5 +63,5 @@ index 1d3d3c367a6e..873426b995aa 100644
 \ No newline at end of file
 +category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
 -- 
-2.20.1
+2.24.1
 

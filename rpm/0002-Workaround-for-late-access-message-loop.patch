@@ -1,7 +1,7 @@
-From dc6bbb4d3a96d56a3950d0b75c379a4bb3489cf5 Mon Sep 17 00:00:00 2001
+From 742457bea87cd7ed6d88c7bcf4817afff7ce5acd Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:12:04 +0300
-Subject: [PATCH 02/15] Workaround for late access message loop.
+Subject: [PATCH 02/17] Workaround for late access message loop.
 
 See bug JB10381
 
@@ -25,5 +25,5 @@ index 30791953fb32..1f0b70a27430 100644
    bool nestableTasksAllowed = loop->NestableTasksAllowed();
  
 -- 
-2.20.1
+2.24.1
 

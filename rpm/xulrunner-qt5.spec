@@ -54,11 +54,11 @@ Patch8:     0008-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
 Patch9:     0009-Bug-1253215-Initialize-RequestSyncService-only-if-it.patch
 Patch10:    0010-Don-t-print-errors-from-DataReportingService.patch
 Patch11:    0011-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
-Patch12:    0012-xulrunner-Make-fullscreen-enabling-work-as-used-to-w.patch
+Patch12:    0012-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
 Patch13:    0013-Do-not-load-nsHelperAppDlg.js.-Fixes-JB-44322.patch
 Patch14:    0014-Embedlite-doesn-t-have-prompter-implementation.patch
-Patch15:    0015-xulrunner-Disable-SiteSpecificUserAgent.js-from-the-.patch
-Patch16:    0016-nemo-embedlite-Cleanup-build-configuration.-Fixes-JB.patch
+Patch15:    0015-Disable-SiteSpecificUserAgent.js-from-the-build.-Con.patch
+Patch16:    0016-Cleanup-build-configuration.-Fixes-JB-44612.patch
 Patch17:    0017-Make-gc-stats-work-with-gcc8.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)

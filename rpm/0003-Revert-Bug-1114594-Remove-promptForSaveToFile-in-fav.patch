@@ -1,7 +1,7 @@
-From baec7db68d02331e7b23fcfcfad8b3fc5ec7dbe4 Mon Sep 17 00:00:00 2001
+From cf391f6b6d1cbcee0759ea4db2892fd04e2eca45 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 21 Dec 2016 14:35:15 +0200
-Subject: [PATCH 03/15] Revert "Bug 1114594 - Remove promptForSaveToFile in
+Subject: [PATCH 03/17] Revert "Bug 1114594 - Remove promptForSaveToFile in
  favor of promptForSaveToFileAsync. r=paolo"
 
 This reverts commit f5fe5678d69887fd2ffce1729028d0a2e676be2f.
@@ -229,5 +229,5 @@ index 35dcf5aaba99..a4cad9136ed2 100644
  
  // Override the download-manager-ui to prevent anyone from trying to open
 -- 
-2.20.1
+2.24.1
 
