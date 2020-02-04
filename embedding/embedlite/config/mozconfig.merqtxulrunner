@@ -12,7 +12,7 @@ ac_add_options --prefix=/usr
 
 ac_add_options --with-system-jpeg
 ac_add_options --with-system-nspr
-# ac_add_options --with-system-nss
+ac_add_options --with-system-nss
 ac_add_options --disable-ffmpeg
 ac_add_options --enable-system-sqlite
 
@@ -36,6 +36,7 @@ ac_add_options --disable-updater
 ac_add_options --disable-gamepad
 ac_add_options --disable-printing
 ac_add_options --disable-crashreporter
+ac_add_options --with-crashreporter-enable-percent="00"
 
 # Treat warnings as errors in directories with FAIL_ON_WARNINGS.
 # ac_add_options --enable-warnings-as-errors

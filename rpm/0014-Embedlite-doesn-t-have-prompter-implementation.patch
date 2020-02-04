@@ -1,7 +1,7 @@
-From 26305088c5584c1fb14a688cf66f00877a0caabe Mon Sep 17 00:00:00 2001
+From 0932705947eb5be8ef7608318e073897fbd982df Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 30 Jan 2019 15:42:27 +0200
-Subject: [PATCH 14/15] Embedlite doesn't have prompter implementation
+Subject: [PATCH 14/17] Embedlite doesn't have prompter implementation
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
@@ -22,5 +22,5 @@ index 29ec9e01303c..693e8007ef61 100644
      this._prompter = null;
    } else {
 -- 
-2.20.1
+2.24.1
 

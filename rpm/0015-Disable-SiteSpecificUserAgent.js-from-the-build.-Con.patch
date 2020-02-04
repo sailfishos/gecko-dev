@@ -1,8 +1,8 @@
-From 2b0fab2818c3474373d6c6c127e3b2541b27d96f Mon Sep 17 00:00:00 2001
+From 2fe684b346ef5bc1c9a912e6cfd4bc7c642cc28b Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 26 Feb 2019 11:58:41 +0200
-Subject: [PATCH 15/15] [xulrunner] Disable SiteSpecificUserAgent.js from the
- build. Contributes to JB#39252
+Subject: [PATCH 15/17] Disable SiteSpecificUserAgent.js from the build.
+ Contributes to JB#39252
 
 As both "general.useragent.override" and nsISiteSpecificUserAgent
 are used and EmbedLite Components provides a UserAgentOverrideHelper
@@ -51,5 +51,5 @@ index 3c5ba1d8d7f0..2912ae138f23 100644
          'SiteSpecificUserAgent.js',
          'SiteSpecificUserAgent.manifest',
 -- 
-2.20.1
+2.24.1
 

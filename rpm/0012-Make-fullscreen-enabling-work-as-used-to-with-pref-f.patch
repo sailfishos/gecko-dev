@@ -1,8 +1,8 @@
-From d291c69ef662fd7b77946f764f63474a86d9115c Mon Sep 17 00:00:00 2001
+From 1195ab1212ec4c94a2c54fa5e764688339d4c158 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 10 Jan 2019 15:21:24 +0200
-Subject: [PATCH 12/12] [xulrunner] Make fullscreen enabling work as used to
- with pref full-screen-api.content-only. Fixes JB#44129
+Subject: [PATCH 12/17] Make fullscreen enabling work as used to with pref
+ full-screen-api.content-only. Fixes JB#44129
 
 We don't have chrome from doc shell point of view. This commit
 sha1 3116f3bf53df offends fullscreen API to work without chrome
@@ -36,5 +36,5 @@ index 080b0302f021..c90f4271765f 100644
    // If we are already in full screen mode, just return.
    if (mFullScreen == aFullScreen)
 -- 
-2.20.1
+2.24.1
 
