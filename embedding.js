@@ -146,6 +146,14 @@ pref("offline-apps.quota.warn", 1024); // kilobytes
 // cache compression turned off for now - see bug #715198
 pref("browser.cache.compression_level", 0);
 
+// Default action for unlisted external protocol handlers
+pref("network.protocol-handler.external-default", true);      // OK to load
+pref("network.protocol-handler.warn-external-default", false); // Do not warn
+
+// This pref controls the default settings.  Per protocol settings can be used
+// to override this value.
+pref("network.protocol-handler.expose-all", true);
+
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);
 pref("network.protocol-handler.warn-external.sms", false);
