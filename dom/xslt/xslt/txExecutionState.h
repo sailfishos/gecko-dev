@@ -56,16 +56,15 @@ class txLoadedDocumentsHash : public nsTHashtable<txLoadedDocumentEntry>
 {
 public:
     txLoadedDocumentsHash()
-        : nsTHashtable<txLoadedDocumentEntry>(4),
-          mSourceDocument(nullptr)
+        : nsTHashtable<txLoadedDocumentEntry>(4)
     {
     }
     ~txLoadedDocumentsHash();
-    void init(txXPathNode* aSourceDocument);
+    MOZ_MUST_USE nsresult init(const txXPathNode& aSource);
 
 private:
     friend class txExecutionState;
-    txXPathNode* mSourceDocument;
+    nsAutoPtr<txXPathNode> mSourceDocument;
 };
 
 
@@ -164,7 +163,7 @@ private:
     RefPtr<txAExprResult> mGlobalVarPlaceholderValue;
     int32_t mRecursionDepth;
 
-    AutoInfallibleTArray<TemplateRule, 10> mTemplateRules;
+    AutoTArray<TemplateRule, 10> mTemplateRules;
 
     txIEvalContext* mEvalContext;
     txIEvalContext* mInitialEvalContext;

@@ -10,7 +10,7 @@
 #  error Should not compile this file when replace-malloc is disabled
 #endif
 
-#ifdef MOZ_NATIVE_JEMALLOC
+#ifdef MOZ_SYSTEM_JEMALLOC
 #  error Should not compile this file when we want to use native jemalloc
 #endif
 
@@ -433,9 +433,38 @@ zone_force_unlock(malloc_zone_t *zone)
 static malloc_zone_t zone;
 static struct malloc_introspection_t zone_introspect;
 
+static malloc_zone_t *get_default_zone()
+{
+  malloc_zone_t **zones = NULL;
+  unsigned int num_zones = 0;
+
+  /*
+   * On OSX 10.12, malloc_default_zone returns a special zone that is not
+   * present in the list of registered zones. That zone uses a "lite zone"
+   * if one is present (apparently enabled when malloc stack logging is
+   * enabled), or the first registered zone otherwise. In practice this
+   * means unless malloc stack logging is enabled, the first registered
+   * zone is the default.
+   * So get the list of zones to get the first one, instead of relying on
+   * malloc_default_zone.
+   */
+  if (KERN_SUCCESS != malloc_get_all_zones(0, NULL, (vm_address_t**) &zones,
+                                           &num_zones)) {
+    /* Reset the value in case the failure happened after it was set. */
+    num_zones = 0;
+  }
+  if (num_zones) {
+    return zones[0];
+  }
+  return malloc_default_zone();
+}
+
+
 __attribute__((constructor)) void
 register_zone(void)
 {
+  malloc_zone_t *default_zone = get_default_zone();
+
   zone.size = (void *)zone_size;
   zone.malloc = (void *)zone_malloc;
   zone.calloc = (void *)zone_calloc;
@@ -484,11 +513,16 @@ register_zone(void)
    */
   malloc_zone_t *purgeable_zone = malloc_default_purgeable_zone();
 
+  // There is a problem related to the above with the system nano zone, which
+  // is hard to work around from here, and that is instead worked around by
+  // disabling the nano zone through an environment variable
+  // (MallocNanoZone=0). In Firefox, we do that through
+  // browser/app/macbuild/Contents/Info.plist.in.
+
   /* Register the custom zone.  At this point it won't be the default. */
   malloc_zone_register(&zone);
 
   do {
-    malloc_zone_t *default_zone = malloc_default_zone();
     /*
      * Unregister and reregister the default zone.  On OSX >= 10.6,
      * unregistering takes the last registered zone and places it at the
@@ -512,6 +546,7 @@ register_zone(void)
      */
     malloc_zone_unregister(purgeable_zone);
     malloc_zone_register(purgeable_zone);
-  } while (malloc_default_zone() != &zone);
+    default_zone = get_default_zone();
+  } while (default_zone != &zone);
 }
 #endif

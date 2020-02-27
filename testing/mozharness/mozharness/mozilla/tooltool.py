@@ -4,9 +4,6 @@ import sys
 
 from mozharness.base.errors import PythonErrorList
 from mozharness.base.log import ERROR, FATAL
-from mozharness.mozilla.proxxy import Proxxy
-
-from mozharness.lib.python.authentication import get_credentials_path
 
 TooltoolErrorList = PythonErrorList + [{
     'substr': 'ERROR - ', 'level': ERROR
@@ -49,8 +46,14 @@ class TooltoolMixin(object):
     def tooltool_fetch(self, manifest,
                        output_dir=None, privileged=False, cache=None):
         """docstring for tooltool_fetch"""
-
-        if self.config.get("download_tooltool"):
+        # Use vendored tooltool.py if available.
+        if self.topsrcdir:
+            cmd = [
+                sys.executable,
+                os.path.join(self.topsrcdir, 'testing', 'docker', 'recipes',
+                                'tooltool.py')
+            ]
+        elif self.config.get("download_tooltool"):
             cmd = [sys.executable, self._fetch_tooltool_py()]
         else:
             cmd = self.query_exe('tooltool.py', return_type='list')
@@ -63,12 +66,8 @@ class TooltoolMixin(object):
             return url if url.endswith('/') else (url + '/')
         default_urls = [add_slash(u) for u in default_urls]
 
-        # proxxy-ify
-        proxxy = Proxxy(self.config, self.log_obj)
-        proxxy_urls = proxxy.get_proxies_and_urls(default_urls)
-
-        for proxyied_url in proxxy_urls:
-            cmd.extend(['--url', proxyied_url])
+        for url in default_urls:
+            cmd.extend(['--url', url])
 
         # handle authentication file, if given
         auth_file = self._get_auth_file()
@@ -80,12 +79,23 @@ class TooltoolMixin(object):
         if cache:
             cmd.extend(['-c', cache])
 
+        # when mock is enabled run tooltool in mock. We can't use
+        # run_command_m in all cases because it won't exist unless
+        # MockMixin is used on the parent class
+        if self.config.get('mock_target'):
+            cmd_runner = self.run_command_m
+        else:
+            cmd_runner = self.run_command
+
+        timeout = self.config.get('tooltool_timeout', 10 * 60)
+
         self.retry(
-            self.run_command,
+            cmd_runner,
             args=(cmd, ),
             kwargs={'cwd': output_dir,
                     'error_list': TooltoolErrorList,
                     'privileged': privileged,
+                    'output_timeout': timeout,
                     },
             good_statuses=(0, ),
             error_message="Tooltool %s fetch failed!" % manifest,

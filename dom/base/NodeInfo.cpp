@@ -25,8 +25,7 @@
 #include "nsCRT.h"
 #include "nsContentUtils.h"
 #include "nsReadableUtils.h"
-#include "nsAutoPtr.h"
-#include "prprf.h"
+#include "mozilla/Sprintf.h"
 #include "nsIDocument.h"
 #include "nsGkAtoms.h"
 #include "nsCCUncollectableMarker.h"
@@ -131,11 +130,11 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(NodeInfo)
     uint32_t nsid = tmp->NamespaceID();
     nsAtomCString localName(tmp->NameAtom());
     if (nsid < ArrayLength(kNodeInfoNSURIs)) {
-      PR_snprintf(name, sizeof(name), "NodeInfo%s %s", kNodeInfoNSURIs[nsid],
-                  localName.get());
+      SprintfLiteral(name, "NodeInfo%s %s", kNodeInfoNSURIs[nsid],
+                     localName.get());
     }
     else {
-      PR_snprintf(name, sizeof(name), "NodeInfo %s", localName.get());
+      SprintfLiteral(name, "NodeInfo %s", localName.get());
     }
 
     cb.DescribeRefCountedNode(tmp->mRefCnt.get(), name);
@@ -199,7 +198,8 @@ bool
 NodeInfo::NamespaceEquals(const nsAString& aNamespaceURI) const
 {
   int32_t nsid =
-    nsContentUtils::NameSpaceManager()->GetNameSpaceID(aNamespaceURI);
+    nsContentUtils::NameSpaceManager()->GetNameSpaceID(aNamespaceURI,
+      nsContentUtils::IsChromeDoc(mOwnerManager->GetDocument()));
 
   return mozilla::dom::NodeInfo::NamespaceEquals(nsid);
 }
@@ -208,7 +208,7 @@ void
 NodeInfo::DeleteCycleCollectable()
 {
   RefPtr<nsNodeInfoManager> kungFuDeathGrip = mOwnerManager;
-  Unused << kungFuDeathGrip;
+  mozilla::Unused << kungFuDeathGrip; // Just keeping value alive for longer than this
   delete this;
 }
 

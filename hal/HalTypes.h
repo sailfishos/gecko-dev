@@ -33,26 +33,6 @@ enum ShutdownMode {
   eHalShutdownMode_Count    = 3
 };
 
-class SwitchEvent;
-
-enum SwitchDevice {
-  SWITCH_DEVICE_UNKNOWN = -1,
-  SWITCH_HEADPHONES,
-  SWITCH_USB,
-  NUM_SWITCH_DEVICE
-};
-
-enum SwitchState {
-  SWITCH_STATE_UNKNOWN = -1,
-  SWITCH_STATE_ON,
-  SWITCH_STATE_OFF,
-  SWITCH_STATE_HEADSET,          // Headphone with microphone
-  SWITCH_STATE_HEADPHONE,        // without microphone
-  NUM_SWITCH_STATE
-};
-
-typedef Observer<SwitchEvent> SwitchObserver;
-
 // Note that we rely on the order of this enum's entries.  Higher priorities
 // should have larger int values.
 enum ProcessPriority {
@@ -114,85 +94,6 @@ enum WakeLockControl {
   NUM_WAKE_LOCK
 };
 
-class FMRadioOperationInformation;
-
-enum FMRadioOperation {
-  FM_RADIO_OPERATION_UNKNOWN = -1,
-  FM_RADIO_OPERATION_ENABLE,
-  FM_RADIO_OPERATION_DISABLE,
-  FM_RADIO_OPERATION_SEEK,
-  FM_RADIO_OPERATION_TUNE,
-  NUM_FM_RADIO_OPERATION
-};
-
-enum FMRadioOperationStatus {
-  FM_RADIO_OPERATION_STATUS_UNKNOWN = -1,
-  FM_RADIO_OPERATION_STATUS_SUCCESS,
-  FM_RADIO_OPERATION_STATUS_FAIL,
-  NUM_FM_RADIO_OPERATION_STATUS
-};
-
-enum FMRadioSeekDirection {
-  FM_RADIO_SEEK_DIRECTION_UNKNOWN = -1,
-  FM_RADIO_SEEK_DIRECTION_UP,
-  FM_RADIO_SEEK_DIRECTION_DOWN,
-  NUM_FM_RADIO_SEEK_DIRECTION
-};
-
-enum FMRadioCountry {
-  FM_RADIO_COUNTRY_UNKNOWN = -1,
-  FM_RADIO_COUNTRY_US,  //USA
-  FM_RADIO_COUNTRY_EU,
-  FM_RADIO_COUNTRY_JP_STANDARD,
-  FM_RADIO_COUNTRY_JP_WIDE,
-  FM_RADIO_COUNTRY_DE,  //Germany
-  FM_RADIO_COUNTRY_AW,  //Aruba
-  FM_RADIO_COUNTRY_AU,  //Australlia
-  FM_RADIO_COUNTRY_BS,  //Bahamas
-  FM_RADIO_COUNTRY_BD,  //Bangladesh
-  FM_RADIO_COUNTRY_CY,  //Cyprus
-  FM_RADIO_COUNTRY_VA,  //Vatican
-  FM_RADIO_COUNTRY_CO,  //Colombia
-  FM_RADIO_COUNTRY_KR,  //Korea
-  FM_RADIO_COUNTRY_DK,  //Denmark
-  FM_RADIO_COUNTRY_EC,  //Ecuador
-  FM_RADIO_COUNTRY_ES,  //Spain
-  FM_RADIO_COUNTRY_FI,  //Finland
-  FM_RADIO_COUNTRY_FR,  //France
-  FM_RADIO_COUNTRY_GM,  //Gambia
-  FM_RADIO_COUNTRY_HU,  //Hungary
-  FM_RADIO_COUNTRY_IN,  //India
-  FM_RADIO_COUNTRY_IR,  //Iran
-  FM_RADIO_COUNTRY_IT,  //Italy
-  FM_RADIO_COUNTRY_KW,  //Kuwait
-  FM_RADIO_COUNTRY_LT,  //Lithuania
-  FM_RADIO_COUNTRY_ML,  //Mali
-  FM_RADIO_COUNTRY_MA,  //Morocco
-  FM_RADIO_COUNTRY_NO,  //Norway
-  FM_RADIO_COUNTRY_NZ,  //New Zealand
-  FM_RADIO_COUNTRY_OM,  //Oman
-  FM_RADIO_COUNTRY_PG,  //Papua New Guinea
-  FM_RADIO_COUNTRY_NL,  //Netherlands
-  FM_RADIO_COUNTRY_QA,  //Qatar
-  FM_RADIO_COUNTRY_CZ,  //Czech Republic
-  FM_RADIO_COUNTRY_UK,  //United Kingdom of Great Britain and Northern Ireland
-  FM_RADIO_COUNTRY_RW,  //Rwandese Republic
-  FM_RADIO_COUNTRY_SN,  //Senegal
-  FM_RADIO_COUNTRY_SG,  //Singapore
-  FM_RADIO_COUNTRY_SI,  //Slovenia
-  FM_RADIO_COUNTRY_ZA,  //South Africa
-  FM_RADIO_COUNTRY_SE,  //Sweden
-  FM_RADIO_COUNTRY_CH,  //Switzerland
-  FM_RADIO_COUNTRY_TW,  //Taiwan
-  FM_RADIO_COUNTRY_TR,  //Turkey
-  FM_RADIO_COUNTRY_UA,  //Ukraine
-  FM_RADIO_COUNTRY_USER_DEFINED,
-  NUM_FM_RADIO_COUNTRY
-};
-
-class FMRadioRDSGroup;
-typedef Observer<FMRadioOperationInformation> FMRadioObserver;
-typedef Observer<FMRadioRDSGroup> FMRadioRDSObserver;
 } // namespace hal
 } // namespace mozilla
 
@@ -220,28 +121,6 @@ struct ParamTraits<mozilla::hal::WakeLockControl>
              mozilla::hal::NUM_WAKE_LOCK>
 {};
 
-/**
- * Serializer for SwitchState
- */
-template <>
-struct ParamTraits<mozilla::hal::SwitchState>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::SwitchState,
-           mozilla::hal::SWITCH_STATE_UNKNOWN,
-           mozilla::hal::NUM_SWITCH_STATE> {
-};
-
-/**
- * Serializer for SwitchDevice
- */
-template <>
-struct ParamTraits<mozilla::hal::SwitchDevice>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::SwitchDevice,
-           mozilla::hal::SWITCH_DEVICE_UNKNOWN,
-           mozilla::hal::NUM_SWITCH_DEVICE> {
-};
-
 template <>
 struct ParamTraits<mozilla::hal::ProcessPriority>:
   public ContiguousEnumSerializer<
@@ -250,49 +129,6 @@ struct ParamTraits<mozilla::hal::ProcessPriority>:
            mozilla::hal::NUM_PROCESS_PRIORITY> {
 };
 
-/**
- * Serializer for FMRadioOperation
- */
-template <>
-struct ParamTraits<mozilla::hal::FMRadioOperation>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::FMRadioOperation,
-           mozilla::hal::FM_RADIO_OPERATION_UNKNOWN,
-           mozilla::hal::NUM_FM_RADIO_OPERATION>
-{};
-
-/**
- * Serializer for FMRadioOperationStatus
- */
-template <>
-struct ParamTraits<mozilla::hal::FMRadioOperationStatus>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::FMRadioOperationStatus,
-           mozilla::hal::FM_RADIO_OPERATION_STATUS_UNKNOWN,
-           mozilla::hal::NUM_FM_RADIO_OPERATION_STATUS>
-{};
-
-/**
- * Serializer for FMRadioSeekDirection
- */
-template <>
-struct ParamTraits<mozilla::hal::FMRadioSeekDirection>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::FMRadioSeekDirection,
-           mozilla::hal::FM_RADIO_SEEK_DIRECTION_UNKNOWN,
-           mozilla::hal::NUM_FM_RADIO_SEEK_DIRECTION>
-{};
-
-/**
- * Serializer for FMRadioCountry
- **/
-template <>
-struct ParamTraits<mozilla::hal::FMRadioCountry>:
-  public ContiguousEnumSerializer<
-           mozilla::hal::FMRadioCountry,
-           mozilla::hal::FM_RADIO_COUNTRY_UNKNOWN,
-           mozilla::hal::NUM_FM_RADIO_COUNTRY>
-{};
 
 } // namespace IPC
 

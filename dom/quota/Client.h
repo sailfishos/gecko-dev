@@ -21,6 +21,7 @@ class nsIRunnable;
 
 BEGIN_QUOTA_NAMESPACE
 
+class QuotaManager;
 class UsageInfo;
 
 // An abstract interface for quota manager clients.
@@ -29,6 +30,8 @@ class UsageInfo;
 class Client
 {
 public:
+  typedef mozilla::Atomic<bool> AtomicBool;
+
   NS_IMETHOD_(MozExternalRefCountType)
   AddRef() = 0;
 
@@ -96,12 +99,14 @@ public:
   InitOrigin(PersistenceType aPersistenceType,
              const nsACString& aGroup,
              const nsACString& aOrigin,
+             const AtomicBool& aCanceled,
              UsageInfo* aUsageInfo) = 0;
 
   virtual nsresult
   GetUsageForOrigin(PersistenceType aPersistenceType,
                     const nsACString& aGroup,
                     const nsACString& aOrigin,
+                    const AtomicBool& aCanceled,
                     UsageInfo* aUsageInfo) = 0;
 
   virtual void
@@ -126,6 +131,15 @@ public:
 
   virtual void
   ShutdownWorkThreads() = 0;
+
+  // Methods which are called on the main thread.
+  virtual void
+  DidInitialize(QuotaManager* aQuotaManager)
+  { }
+
+  virtual void
+  WillShutdown()
+  { }
 
 protected:
   virtual ~Client()

@@ -10,7 +10,9 @@
 #include <ctime>
 #include "gfxPrefs.h"
 #include "image_operations.h"
+#include "mozilla/gfx/2D.h"
 #include "mozilla/SSE.h"
+#include "mozilla/mips.h"
 #include "convolver.h"
 #include "skia/include/core/SkTypes.h"
 
@@ -18,6 +20,9 @@ using std::max;
 using std::swap;
 
 namespace mozilla {
+
+using gfx::IntRect;
+
 namespace image {
 
 Downscaler::Downscaler(const nsIntSize& aTargetSize)
@@ -71,6 +76,13 @@ Downscaler::BeginFrame(const nsIntSize& aOriginalSize,
              "Created a downscaler, but height is larger");
   MOZ_ASSERT(aOriginalSize.width > 0 && aOriginalSize.height > 0,
              "Invalid original size");
+
+  // Only downscale from reasonable sizes to avoid using too much memory/cpu
+  // downscaling and decoding. 1 << 20 == 1,048,576 seems a reasonable limit.
+  if (aOriginalSize.width > (1 << 20) || aOriginalSize.height > (1 << 20)) {
+    NS_WARNING("Trying to downscale image frame that is too large");
+    return NS_ERROR_INVALID_ARG;
+  }
 
   mFrameRect = aFrameRect.valueOr(nsIntRect(nsIntPoint(), aOriginalSize));
   MOZ_ASSERT(mFrameRect.x >= 0 && mFrameRect.y >= 0 &&
@@ -195,9 +207,9 @@ GetFilterOffsetAndLength(UniquePtr<skia::ConvolutionFilter1D>& aFilter,
 }
 
 void
-Downscaler::ClearRow(uint32_t aStartingAtCol)
+Downscaler::ClearRestOfRow(uint32_t aStartingAtCol)
 {
-  MOZ_ASSERT(int64_t(mOriginalSize.width) > int64_t(aStartingAtCol));
+  MOZ_ASSERT(int64_t(aStartingAtCol) <= int64_t(mOriginalSize.width));
   uint32_t bytesToClear = (mOriginalSize.width - aStartingAtCol)
                         * sizeof(uint32_t);
   memset(mRowBuffer.get() + (aStartingAtCol * sizeof(uint32_t)),
@@ -219,15 +231,16 @@ Downscaler::CommitRow()
     int32_t inLineToRead = filterOffset + mLinesInBuffer;
     MOZ_ASSERT(mCurrentInLine <= inLineToRead, "Reading past end of input");
     if (mCurrentInLine == inLineToRead) {
+      MOZ_RELEASE_ASSERT(mLinesInBuffer < mWindowCapacity, "Need more rows than capacity!");
       skia::ConvolveHorizontally(mRowBuffer.get(), *mXFilter,
                                  mWindow[mLinesInBuffer++], mHasAlpha,
-                                 supports_sse2());
+                                 supports_sse2() || supports_mmi());
     }
 
     MOZ_ASSERT(mCurrentOutLine < mTargetSize.height,
                "Writing past end of output");
 
-    while (mLinesInBuffer == filterLength) {
+    while (mLinesInBuffer >= filterLength) {
       DownscaleInputLine();
 
       if (mCurrentOutLine == mTargetSize.height) {
@@ -309,7 +322,7 @@ Downscaler::DownscaleInputLine()
     &mOutputBuffer[currentOutLine * mTargetSize.width * sizeof(uint32_t)];
   skia::ConvolveVertically(static_cast<const FilterValue*>(filterValues),
                            filterLength, mWindow.get(), mXFilter->num_values(),
-                           outputLine, mHasAlpha, supports_sse2());
+                           outputLine, mHasAlpha, supports_sse2() || supports_mmi());
 
   mCurrentOutLine += 1;
 
@@ -328,9 +341,14 @@ Downscaler::DownscaleInputLine()
 
   // Shift the buffer. We're just moving pointers here, so this is cheap.
   mLinesInBuffer -= diff;
-  mLinesInBuffer = max(mLinesInBuffer, 0);
-  for (int32_t i = 0; i < mLinesInBuffer; ++i) {
-    swap(mWindow[i], mWindow[filterLength - mLinesInBuffer + i]);
+  mLinesInBuffer = min(max(mLinesInBuffer, 0), mWindowCapacity);
+
+  // If we already have enough rows to satisfy the filter, there is no need
+  // to swap as we won't be writing more before the next convolution.
+  if (filterLength > mLinesInBuffer) {
+    for (int32_t i = 0; i < mLinesInBuffer; ++i) {
+      swap(mWindow[i], mWindow[filterLength - mLinesInBuffer + i]);
+    }
   }
 }
 

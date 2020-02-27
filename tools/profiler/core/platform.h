@@ -53,18 +53,20 @@
 #endif
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "PlatformMacros.h"
 #include "v8-support.h"
 #include <vector>
 #include "StackTop.h"
 
-// We need a definition of gettid(), but old glibc versions don't provide a
-// wrapper for it.
-#if 0
+// We need a definition of gettid(), but Linux libc implementations don't
+// provide a wrapper for it (except for Bionic)
+#if defined(__linux__)
 #include <unistd.h>
+#if !defined(__BIONIC__)
 #include <sys/syscall.h>
 #  define gettid() static_cast<pid_t>(syscall(SYS_gettid))
+#endif
 #endif
 
 #ifdef XP_WIN

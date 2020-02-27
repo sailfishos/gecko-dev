@@ -7,6 +7,8 @@
 
 #include "SkMask.h"
 
+//#define TRACK_SKMASK_LIFETIME
+
 /** returns the product if it is positive and fits in 31 bits. Otherwise this
     returns 0.
  */
@@ -30,17 +32,34 @@ size_t SkMask::computeTotalImageSize() const {
     return size;
 }
 
+#ifdef TRACK_SKMASK_LIFETIME
+    static int gCounter;
+#endif
+
 /** We explicitly use this allocator for SkBimap pixels, so that we can
     freely assign memory allocated by one class to the other.
 */
 uint8_t* SkMask::AllocImage(size_t size) {
-    return (uint8_t*)sk_malloc_throw(SkAlign4(size));
+#ifdef TRACK_SKMASK_LIFETIME
+    SkDebugf("SkMask::AllocImage %d\n", gCounter++);
+#endif
+    size_t aligned_size = std::numeric_limits<size_t>::max();
+    size_t adjustment = 3;
+    if (size + adjustment > size) {
+        aligned_size = (size + adjustment) & ~adjustment;
+    }
+    return static_cast<uint8_t*>(sk_malloc_throw(aligned_size));
 }
 
 /** We explicitly use this allocator for SkBimap pixels, so that we can
     freely assign memory allocated by one class to the other.
 */
 void SkMask::FreeImage(void* image) {
+#ifdef TRACK_SKMASK_LIFETIME
+    if (image) {
+        SkDebugf("SkMask::FreeImage  %d\n", --gCounter);
+    }
+#endif
     sk_free(image);
 }
 
@@ -52,7 +71,6 @@ static const int gMaskFormatToShift[] = {
     0,  // 3D
     2,  // ARGB32
     1,  // LCD16
-    2   // LCD32
 };
 
 static int maskFormatToShift(SkMask::Format format) {

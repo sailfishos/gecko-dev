@@ -17,6 +17,8 @@
 #include "js/TypeDecls.h"
 #include "js/Utility.h"
 
+extern JS_PUBLIC_API(void) JS_ReportOutOfMemory(JSContext* cx);
+
 namespace js {
 
 enum class AllocFunction {
@@ -49,7 +51,7 @@ class SystemAllocPolicy
 };
 
 class ExclusiveContext;
-void ReportOutOfMemory(ExclusiveContext* cxArg);
+JS_FRIEND_API(void) ReportOutOfMemory(ExclusiveContext* cxArg);
 
 /*
  * Allocation policy that calls the system memory functions and reports errors

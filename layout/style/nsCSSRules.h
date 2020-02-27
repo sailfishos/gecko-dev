@@ -19,7 +19,7 @@
 #include "mozilla/css/GroupRule.h"
 #include "mozilla/dom/FontFace.h"
 #include "nsAutoPtr.h"
-#include "nsCSSProperty.h"
+#include "nsCSSPropertyID.h"
 #include "nsCSSValue.h"
 #include "nsDOMCSSDeclaration.h"
 #include "nsIDOMCSSConditionRule.h"
@@ -31,8 +31,8 @@
 #include "nsIDOMCSSMozDocumentRule.h"
 #include "nsIDOMCSSPageRule.h"
 #include "nsIDOMCSSSupportsRule.h"
-#include "nsIDOMMozCSSKeyframeRule.h"
-#include "nsIDOMMozCSSKeyframesRule.h"
+#include "nsIDOMCSSKeyframeRule.h"
+#include "nsIDOMCSSKeyframesRule.h"
 #include "nsTArray.h"
 
 class nsMediaList;
@@ -53,6 +53,7 @@ private:
   ~MediaRule();
 public:
 
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(MediaRule, GroupRule)
   NS_DECL_ISUPPORTS_INHERITED
 
   // Rule methods
@@ -355,8 +356,8 @@ public:
 
   NS_IMETHOD GetParentRule(nsIDOMCSSRule **aParent) override;
   void DropReference() { mRule = nullptr; }
-  virtual mozilla::css::Declaration* GetCSSDeclaration(Operation aOperation) override;
-  virtual nsresult SetCSSDeclaration(mozilla::css::Declaration* aDecl) override;
+  virtual mozilla::DeclarationBlock* GetCSSDeclaration(Operation aOperation) override;
+  virtual nsresult SetCSSDeclaration(mozilla::DeclarationBlock* aDecl) override;
   virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) override;
   virtual nsIDocument* DocToUpdate() override;
 
@@ -375,7 +376,7 @@ protected:
 };
 
 class nsCSSKeyframeRule final : public mozilla::css::Rule,
-                                public nsIDOMMozCSSKeyframeRule
+                                public nsIDOMCSSKeyframeRule
 {
 public:
   // Steals the contents of aKeys, and takes the reference in Declaration
@@ -406,8 +407,8 @@ public:
   // nsIDOMCSSRule interface
   NS_DECL_NSIDOMCSSRULE
 
-  // nsIDOMMozCSSKeyframeRule interface
-  NS_DECL_NSIDOMMOZCSSKEYFRAMERULE
+  // nsIDOMCSSKeyframeRule interface
+  NS_DECL_NSIDOMCSSKEYFRAMERULE
 
   const nsTArray<float>& GetKeys() const     { return mKeys; }
   mozilla::css::Declaration* Declaration()   { return mDeclaration; }
@@ -426,7 +427,7 @@ private:
 };
 
 class nsCSSKeyframesRule final : public mozilla::css::GroupRule,
-                                 public nsIDOMMozCSSKeyframesRule
+                                 public nsIDOMCSSKeyframesRule
 {
 public:
   nsCSSKeyframesRule(const nsSubstring& aName,
@@ -459,8 +460,8 @@ public:
   // nsIDOMCSSRule interface
   NS_DECL_NSIDOMCSSRULE
 
-  // nsIDOMMozCSSKeyframesRule interface
-  NS_DECL_NSIDOMMOZCSSKEYFRAMESRULE
+  // nsIDOMCSSKeyframesRule interface
+  NS_DECL_NSIDOMCSSKEYFRAMESRULE
 
   // rest of GroupRule
   virtual bool UseForPresentation(nsPresContext* aPresContext,
@@ -485,8 +486,8 @@ public:
 
   NS_IMETHOD GetParentRule(nsIDOMCSSRule **aParent) override;
   void DropReference() { mRule = nullptr; }
-  virtual mozilla::css::Declaration* GetCSSDeclaration(Operation aOperation) override;
-  virtual nsresult SetCSSDeclaration(mozilla::css::Declaration* aDecl) override;
+  virtual mozilla::DeclarationBlock* GetCSSDeclaration(Operation aOperation) override;
+  virtual nsresult SetCSSDeclaration(mozilla::DeclarationBlock* aDecl) override;
   virtual void GetCSSParsingEnvironment(CSSParsingEnvironment& aCSSParseEnv) override;
   virtual nsIDocument* DocToUpdate() override;
 

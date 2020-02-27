@@ -28,6 +28,8 @@ MacIOSurfaceTextureHostOGL::~MacIOSurfaceTextureHostOGL()
 GLTextureSource*
 MacIOSurfaceTextureHostOGL::CreateTextureSourceForPlane(size_t aPlane)
 {
+  MOZ_ASSERT(mSurface);
+
   GLuint textureHandle;
   gl::GLContext* gl = mCompositor->gl();
   gl->fGenTextures(1, &textureHandle);
@@ -48,7 +50,7 @@ MacIOSurfaceTextureHostOGL::CreateTextureSourceForPlane(size_t aPlane)
 bool
 MacIOSurfaceTextureHostOGL::Lock()
 {
-  if (!mCompositor || !mSurface) {
+  if (!gl() || !gl()->MakeCurrent() || !mSurface) {
     return false;
   }
 
@@ -68,16 +70,34 @@ MacIOSurfaceTextureHostOGL::Lock()
 void
 MacIOSurfaceTextureHostOGL::SetCompositor(Compositor* aCompositor)
 {
-  CompositorOGL* glCompositor = static_cast<CompositorOGL*>(aCompositor);
-  mCompositor = glCompositor;
-  if (mTextureSource) {
-    mTextureSource->SetCompositor(glCompositor);
+  CompositorOGL* glCompositor = AssertGLCompositor(aCompositor);
+  if (!glCompositor) {
+    mTextureSource = nullptr;
+    mCompositor = nullptr;
+    return;
   }
+
+  if (mCompositor != glCompositor) {
+    // Cannot share GL texture identifiers across compositors.
+    mTextureSource = nullptr;
+  }
+  mCompositor = glCompositor;
 }
 
 gfx::SurfaceFormat
 MacIOSurfaceTextureHostOGL::GetFormat() const {
+  if (!mSurface) {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
   return mSurface->GetFormat();
+}
+
+gfx::SurfaceFormat
+MacIOSurfaceTextureHostOGL::GetReadFormat() const {
+  if (!mSurface) {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
+  return mSurface->GetReadFormat();
 }
 
 gfx::IntSize
@@ -89,12 +109,19 @@ MacIOSurfaceTextureHostOGL::GetSize() const {
                       mSurface->GetDevicePixelHeight());
 }
 
+gl::GLContext*
+MacIOSurfaceTextureHostOGL::gl() const
+{
+  return mCompositor ? mCompositor->gl() : nullptr;
+}
+
 MacIOSurfaceTextureSourceOGL::MacIOSurfaceTextureSourceOGL(
                                 CompositorOGL* aCompositor,
                                 MacIOSurface* aSurface)
   : mCompositor(aCompositor)
   , mSurface(aSurface)
 {
+  MOZ_ASSERT(aCompositor);
   MOZ_COUNT_CTOR(MacIOSurfaceTextureSourceOGL);
 }
 
@@ -118,25 +145,27 @@ MacIOSurfaceTextureSourceOGL::GetFormat() const
 }
 
 void
-MacIOSurfaceTextureSourceOGL::BindTexture(GLenum aTextureUnit, gfx::Filter aFilter)
+MacIOSurfaceTextureSourceOGL::BindTexture(GLenum aTextureUnit,
+                                          gfx::SamplingFilter aSamplingFilter)
 {
-  if (!gl()) {
-    NS_WARNING("Trying to bind a texture without a GLContext");
+  gl::GLContext* gl = this->gl();
+  if (!gl || !gl->MakeCurrent()) {
+    NS_WARNING("Trying to bind a texture without a working GLContext");
     return;
   }
   GLuint tex = mCompositor->GetTemporaryTexture(GetTextureTarget(), aTextureUnit);
 
-  gl()->fActiveTexture(aTextureUnit);
-  gl()->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, tex);
-  mSurface->CGLTexImageIOSurface2D(gl::GLContextCGL::Cast(gl())->GetCGLContext());
-  ApplyFilterToBoundTexture(gl(), aFilter, LOCAL_GL_TEXTURE_RECTANGLE_ARB);
+  gl->fActiveTexture(aTextureUnit);
+  gl->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, tex);
+  mSurface->CGLTexImageIOSurface2D(gl::GLContextCGL::Cast(gl)->GetCGLContext());
+  ApplySamplingFilterToBoundTexture(gl, aSamplingFilter, LOCAL_GL_TEXTURE_RECTANGLE_ARB);
 }
 
 void
 MacIOSurfaceTextureSourceOGL::SetCompositor(Compositor* aCompositor)
 {
-  mCompositor = static_cast<CompositorOGL*>(aCompositor);
-  if (mNextSibling) {
+  mCompositor = AssertGLCompositor(aCompositor);
+  if (mCompositor && mNextSibling) {
     mNextSibling->SetCompositor(aCompositor);
   }
 }

@@ -7,7 +7,7 @@
 #include "mozilla/Logging.h"
 #include "GMPVideoi420FrameImpl.h"
 #include "GMPVideoEncodedFrameImpl.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "GMPMessageUtils.h"
 #include "nsAutoRef.h"
 #include "GMPContentParent.h"
@@ -268,6 +268,7 @@ GMPVideoEncoderParent::ActorDestroy(ActorDestroyReason aWhy)
     mPlugin = nullptr;
   }
   mVideoHost.ActorDestroyed(); // same as DoneWithAPI
+  MaybeDisconnect(aWhy == AbnormalShutdown);
 }
 
 static void

@@ -17,11 +17,21 @@ namespace jit {
 // alignment though.
 static const size_t ExecutableCodePageSize = 64 * 1024;
 
+// Limit on the number of bytes of executable memory to prevent JIT spraying
+// attacks.
+#if JS_BITS_PER_WORD == 32
+static const size_t MaxCodeBytesPerProcess = 128 * 1024 * 1024;
+#else
+static const size_t MaxCodeBytesPerProcess = 1 * 1024 * 1024 * 1024;
+#endif
+
 enum class ProtectionSetting {
     Protected, // Not readable, writable, or executable.
     Writable,
     Executable,
 };
+
+extern MOZ_MUST_USE bool ReprotectRegion(void* start, size_t size, ProtectionSetting protection);
 
 // Functions called at process start-up/shutdown to initialize/release the
 // executable memory region.

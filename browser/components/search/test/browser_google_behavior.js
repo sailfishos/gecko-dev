@@ -15,7 +15,8 @@ function test() {
   Services.search.currentEngine = engine;
   engine.alias = "g";
 
-  let base = "https://www.google.com/search?q=foo&ie=utf-8&oe=utf-8";
+  let base = "https://www.google.com/search?q=foo&ie=utf-8&oe=utf-8&client=firefox-b";
+  let keywordBase = base + "-ab";
 
   let url;
 
@@ -38,7 +39,7 @@ function test() {
     },
     {
       name: "keyword search",
-      searchURL: base,
+      searchURL: keywordBase,
       run: function () {
         gURLBar.value = "? foo";
         gURLBar.focus();
@@ -47,7 +48,7 @@ function test() {
     },
     {
       name: "keyword search",
-      searchURL: base,
+      searchURL: keywordBase,
       run: function () {
         gURLBar.value = "g foo";
         gURLBar.focus();
@@ -132,6 +133,9 @@ function test() {
       let docStart = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT |
                      Ci.nsIWebProgressListener.STATE_START;
       if (!(flags & docStart) || !webProgress.isTopLevel)
+        return;
+
+      if (req.originalURI.spec == "about:blank")
         return;
 
       info("received document start");

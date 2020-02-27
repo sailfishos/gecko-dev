@@ -8,9 +8,15 @@ Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
 const nsIQuotaManagerService = Components.interfaces.nsIQuotaManagerService;
 
 var gPermURI;
+var gPermPrincipal;
 var gUsageRequest;
 
-var gPermissions = SitePermissions.listPermissions();
+// Array of permissionIDs sorted alphabetically by label.
+var gPermissions = SitePermissions.listPermissions().sort((a, b) => {
+  let firstLabel = SitePermissions.getPermissionLabel(a);
+  let secondLabel = SitePermissions.getPermissionLabel(b);
+  return firstLabel.localeCompare(secondLabel);
+});
 gPermissions.push("plugins");
 
 var permissionObserver = {
@@ -28,11 +34,12 @@ var permissionObserver = {
   }
 };
 
-function onLoadPermission(uri)
+function onLoadPermission(uri, principal)
 {
   var permTab = document.getElementById("permTab");
   if (SitePermissions.isSupportedURI(uri)) {
     gPermURI = uri;
+    gPermPrincipal = principal;
     var hostText = document.getElementById("hostText");
     hostText.value = gPermURI.prePath;
 
@@ -176,7 +183,9 @@ function onRadioClick(aPartId)
 function setRadioState(aPartId, aValue)
 {
   var radio = document.getElementById(aPartId + "#" + aValue);
-  radio.radioGroup.selectedItem = radio;
+  if (radio) {
+    radio.radioGroup.selectedItem = radio;
+  }
 }
 
 function initIndexedDBRow()
@@ -189,11 +198,8 @@ function initIndexedDBRow()
   var quotaManagerService =
     Components.classes["@mozilla.org/dom/quota-manager-service;1"]
               .getService(nsIQuotaManagerService);
-  let principal = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                            .getService(Components.interfaces.nsIScriptSecurityManager)
-                            .createCodebasePrincipal(gPermURI, {});
   gUsageRequest =
-    quotaManagerService.getUsageForPrincipal(principal,
+    quotaManagerService.getUsageForPrincipal(gPermPrincipal,
                                              onIndexedDBUsageCallback);
 
   var status = document.getElementById("indexedDBStatus");
@@ -206,13 +212,9 @@ function initIndexedDBRow()
 
 function onIndexedDBClear()
 {
-  let principal = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-                            .getService(Components.interfaces.nsIScriptSecurityManager)
-                            .createCodebasePrincipal(gPermURI, {});
-
   Components.classes["@mozilla.org/dom/quota-manager-service;1"]
             .getService(nsIQuotaManagerService)
-            .clearStoragesForPrincipal(principal);
+            .clearStoragesForPrincipal(gPermPrincipal);
 
   Components.classes["@mozilla.org/serviceworkers/manager;1"]
             .getService(Components.interfaces.nsIServiceWorkerManager)
@@ -229,7 +231,8 @@ function onIndexedDBUsageCallback(request)
     throw new Error("Callback received for bad URI: " + uri);
   }
 
-  if (request.usage) {
+  let usage = request.result.usage;
+  if (usage) {
     if (!("DownloadUtils" in window)) {
       Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
     }
@@ -239,7 +242,7 @@ function onIndexedDBUsageCallback(request)
 
     status.value =
       gBundle.getFormattedString("indexedDBUsage",
-                                 DownloadUtils.convertByteUnits(request.usage));
+                                 DownloadUtils.convertByteUnits(usage));
     status.removeAttribute("hidden");
     button.removeAttribute("hidden");
   }
@@ -300,7 +303,7 @@ function initPluginsRow() {
   let entries = Array.from(permissionMap, item => ({ name: item[1], permission: item[0] }));
 
   entries.sort(function(a, b) {
-    return a.name < b.name ? -1 : (a.name == b.name ? 0 : 1);
+    return a.name.localeCompare(b.name);
   });
 
   let permissionEntries = entries.map(p => fillInPluginPermissionTemplate(p.name, p.permission));

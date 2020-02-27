@@ -45,10 +45,10 @@ BEGIN_TEST(testGCHeapPostBarriers)
 #endif /* JS_GC_ZEAL */
 
     /* Sanity check - objects start in the nursery and then become tenured. */
-    JS_GC(cx->runtime());
+    JS_GC(cx);
     JS::RootedObject obj(cx, CreateGCThing<JSObject>(cx));
     CHECK(js::gc::IsInsideNursery(obj.get()));
-    JS_GC(cx->runtime());
+    JS_GC(cx);
     CHECK(!js::gc::IsInsideNursery(obj.get()));
     JS::RootedObject tenuredObject(cx, obj);
 
@@ -59,11 +59,15 @@ BEGIN_TEST(testGCHeapPostBarriers)
     return true;
 }
 
-MOZ_NEVER_INLINE bool
-Passthrough(bool value)
+bool
+CanAccessObject(JSObject* obj)
 {
-    /* Work around a Win64 optimization bug in VS2010. (Bug 1033146) */
-    return value;
+    JS::RootedObject rootedObj(cx, obj);
+    JS::RootedValue value(cx);
+    CHECK(JS_GetProperty(cx, rootedObj, "x", &value));
+    CHECK(value.isInt32());
+    CHECK(value.toInt32() == 42);
+    return true;
 }
 
 bool
@@ -82,8 +86,8 @@ bool
 TestHeapPostBarriersForType()
 {
     CHECK((TestHeapPostBarriersForWrapper<T, JS::Heap<T*>>()));
+    CHECK((TestHeapPostBarriersForWrapper<T, js::GCPtr<T*>>()));
     CHECK((TestHeapPostBarriersForWrapper<T, js::HeapPtr<T*>>()));
-    CHECK((TestHeapPostBarriersForWrapper<T, js::RelocatablePtr<T*>>()));
     return true;
 }
 
@@ -115,9 +119,9 @@ TestHeapPostBarrierUpdate()
         CHECK(heapPtr);
 
         W& wrapper = *heapPtr;
-        CHECK(Passthrough(wrapper.get() == nullptr));
+        CHECK(wrapper.get() == nullptr);
         wrapper = initialObj;
-        CHECK(Passthrough(wrapper == initialObj));
+        CHECK(wrapper == initialObj);
 
         ptr = heapPtr.release();
     }
@@ -147,9 +151,9 @@ TestHeapPostBarrierInitFailure()
         CHECK(heapPtr);
 
         W& wrapper = *heapPtr;
-        CHECK(Passthrough(wrapper.get() == nullptr));
+        CHECK(wrapper.get() == nullptr);
         wrapper = initialObj;
-        CHECK(Passthrough(wrapper == initialObj));
+        CHECK(wrapper == initialObj);
     }
 
     cx->minorGC(JS::gcreason::API);

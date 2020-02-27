@@ -91,12 +91,19 @@ RequestBase::GetResultCode(nsresult* aResultCode)
   return NS_OK;
 }
 
+UsageRequest::UsageRequest(nsIQuotaUsageCallback* aCallback)
+  : mCallback(aCallback)
+  , mBackgroundActor(nullptr)
+  , mCanceled(false)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(aCallback);
+}
+
 UsageRequest::UsageRequest(nsIPrincipal* aPrincipal,
-	                         nsIQuotaUsageCallback* aCallback)
+                           nsIQuotaUsageCallback* aCallback)
   : RequestBase(aPrincipal)
   , mCallback(aCallback)
-  , mUsage(0)
-  , mFileUsage(0)
   , mBackgroundActor(nullptr)
   , mCanceled(false)
 {
@@ -125,13 +132,14 @@ UsageRequest::SetBackgroundActor(QuotaUsageRequestChild* aBackgroundActor)
 }
 
 void
-UsageRequest::SetResult(uint64_t aUsage, uint64_t aFileUsage)
+UsageRequest::SetResult(nsIVariant* aResult)
 {
   AssertIsOnOwningThread();
+  MOZ_ASSERT(aResult);
   MOZ_ASSERT(!mHaveResultOrErrorCode);
 
-  mUsage = aUsage;
-  mFileUsage = aFileUsage;
+  mResult = aResult;
+
   mHaveResultOrErrorCode = true;
 
   FireCallback();
@@ -147,29 +155,16 @@ NS_IMPL_ADDREF_INHERITED(UsageRequest, RequestBase)
 NS_IMPL_RELEASE_INHERITED(UsageRequest, RequestBase)
 
 NS_IMETHODIMP
-UsageRequest::GetUsage(uint64_t* aUsage)
+UsageRequest::GetResult(nsIVariant** aResult)
 {
   AssertIsOnOwningThread();
+  MOZ_ASSERT(aResult);
 
   if (!mHaveResultOrErrorCode) {
     return NS_ERROR_FAILURE;
   }
 
-  *aUsage = mUsage;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-UsageRequest::GetFileUsage(uint64_t* aFileUsage)
-{
-  AssertIsOnOwningThread();
-  MOZ_ASSERT(aFileUsage);
-
-  if (!mHaveResultOrErrorCode) {
-    return NS_ERROR_FAILURE;
-  }
-
-  *aFileUsage = mFileUsage;
+  NS_IF_ADDREF(*aResult = mResult);
   return NS_OK;
 }
 

@@ -49,8 +49,6 @@ class nsXMLContentSink : public nsContentSink,
 public:
   nsXMLContentSink();
 
-  NS_DECL_AND_IMPL_ZEROING_OPERATOR_NEW
-
   nsresult Init(nsIDocument* aDoc,
                 nsIURI* aURL,
                 nsISupports* aContainer,
@@ -82,7 +80,7 @@ public:
   NS_IMETHOD OnTransformDone(nsresult aResult, nsIDocument *aResultDocument) override;
 
   // nsICSSLoaderObserver
-  NS_IMETHOD StyleSheetLoaded(mozilla::CSSStyleSheet* aSheet,
+  NS_IMETHOD StyleSheetLoaded(mozilla::StyleSheet* aSheet,
                               bool aWasAlternate,
                               nsresult aStatus) override;
   static bool ParsePIData(const nsString &aData, nsString &aHref,
@@ -141,7 +139,7 @@ protected:
 
   void DidAddContent()
   {
-    if (IsTimeToNotify()) {
+    if (!mXSLTProcessor && IsTimeToNotify()) {
       FlushTags();	
     }
   }
@@ -191,6 +189,12 @@ protected:
   nsTArray<StackNode>              mContentStack;
 
   nsCOMPtr<nsIDocumentTransformer> mXSLTProcessor;
+
+  // Holds the children in the prolog until the root element is added, after which they're
+  // inserted in the document. However, if we're doing an XSLT transform this will
+  // actually hold all the children of the source document, until the transform is
+  // finished. After the transform is finished we'll just discard the children. 
+  nsTArray<nsCOMPtr<nsIContent>> mDocumentChildren;
 
   static const int NS_ACCUMULATION_BUFFER_SIZE = 4096;
   // Our currently accumulated text that we have not flushed to a textnode yet.

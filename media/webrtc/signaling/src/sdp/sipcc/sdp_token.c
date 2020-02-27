@@ -758,11 +758,9 @@ sdp_result_e sdp_parse_bandwidth (sdp_t *sdp_p, uint16_t level, const char *ptr)
     }
 
     if (bw_modifier == SDP_BW_MODIFIER_UNSUPPORTED) {
-        sdp_parse_error(sdp_p,
-            "%s Error: BW Modifier type unsupported (%s).",
-            sdp_p->debug_str, tmp);
-        sdp_p->conf_p->num_invalid_param++;
-        return (SDP_INVALID_PARAMETER);
+        /* We don't understand this parameter, so according to RFC4566 sec 5.8
+         * ignore it. */
+        return (SDP_SUCCESS);
     }
 
     /* Find the BW type value */
@@ -1164,15 +1162,11 @@ sdp_result_e sdp_parse_media (sdp_t *sdp_p, uint16_t level, const char *ptr)
     }
     port_ptr = port;
     for (i=0; i < SDP_MAX_PORT_PARAMS; i++) {
-        if (sdp_getchoosetok(port_ptr, &port_ptr, "/ \t", &result) == TRUE) {
-            num[i] = SDP_CHOOSE_PARAM;
-        } else {
-            num[i] = sdp_getnextnumtok(port_ptr, (const char **)&port_ptr,
-                                       "/ \t", &result);
-            if (result != SDP_SUCCESS) {
-                break;
-            }
-        }
+          num[i] = sdp_getnextnumtok(port_ptr, (const char **)&port_ptr,
+                                     "/ \t", &result);
+          if (result != SDP_SUCCESS) {
+              break;
+          }
         num_port_params++;
     }
 
@@ -1398,10 +1392,8 @@ sdp_result_e sdp_parse_media (sdp_t *sdp_p, uint16_t level, const char *ptr)
         }
         port_ptr = port;
 
-        if (sdp_getchoosetok(port_ptr, &port_ptr, "/ \t", &result)) {
-                sctp_port = SDP_CHOOSE_PARAM;
-        } else {
-                sctp_port = sdp_getnextnumtok(port_ptr, (const char **)&port_ptr,
+        {
+            sctp_port = sdp_getnextnumtok(port_ptr, (const char **)&port_ptr,
                                            "/ \t", &result);
             if (result != SDP_SUCCESS) {
                 sdp_parse_error(sdp_p,
