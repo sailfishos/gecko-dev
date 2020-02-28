@@ -34,7 +34,7 @@
 
 #include "mozilla/DebugOnly.h"
 
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
 #ifndef MOZ_ENABLE_FREETYPE
 #define MOZ_ENABLE_FREETYPE
 #endif
@@ -1523,7 +1523,7 @@ class GFX2D_API Factory {
       const NativeFont &aNativeFont, const RefPtr<UnscaledFont> &aUnscaledFont,
       Float aSize);
 
-#ifdef MOZ_WIDGET_GTK
+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   static already_AddRefed<ScaledFont> CreateScaledFontForFontconfigFont(
       cairo_scaled_font_t *aScaledFont, FcPattern *aPattern,
       const RefPtr<UnscaledFont> &aUnscaledFont, Float aSize);

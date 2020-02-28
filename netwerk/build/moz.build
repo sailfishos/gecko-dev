@@ -50,6 +50,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
         '/netwerk/system/mac',
     ]
 
+if CONFIG['MOZ_ENABLE_QTNETWORK']:
+    LOCAL_INCLUDES += [
+        '/netwerk/system/qt',
+    ]
+
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     LOCAL_INCLUDES += [
         '/netwerk/system/android',
