@@ -51,6 +51,8 @@
 #include "gfxQuartzSurface.h"
 #elif defined(MOZ_WIDGET_GTK)
 #include "gfxPlatformGtk.h"
+#elif defined(MOZ_WIDGET_QT)
+#include "gfxQtPlatform.h"
 #elif defined(ANDROID)
 #include "gfxAndroidPlatform.h"
 #endif
@@ -706,6 +708,8 @@ void gfxPlatform::Init() {
   gPlatform = new gfxPlatformMac;
 #elif defined(MOZ_WIDGET_GTK)
   gPlatform = new gfxPlatformGtk;
+#elif defined(MOZ_WIDGET_QT)
+  gPlatform = new gfxQtPlatform;
 #elif defined(ANDROID)
   gPlatform = new gfxAndroidPlatform;
 #else
@@ -742,10 +746,13 @@ void gfxPlatform::Init() {
   gPlatform->ComputeTileSize();
 
   nsresult rv;
+
+#if !defined(MOZ_WIDGET_QT)
   rv = gfxPlatformFontList::Init();
   if (NS_FAILED(rv)) {
     MOZ_CRASH("Could not initialize gfxPlatformFontList");
   }
+#endif
 
   gPlatform->mScreenReferenceSurface = gPlatform->CreateOffscreenSurface(
       IntSize(1, 1), SurfaceFormat::A8R8G8B8_UINT32);

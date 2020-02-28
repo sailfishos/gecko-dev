@@ -1261,7 +1261,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
       return NPERR_GENERIC_ERROR;
 #endif
 
-#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
     case NPNVnetscapeWindow: {
       if (!npp || !npp->ndata) return NPERR_INVALID_INSTANCE_ERROR;
 
@@ -1303,7 +1303,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
     }
 
     case NPNVToolkit: {
-#ifdef MOZ_WIDGET_GTK
+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
       *((NPNToolkitType *)result) = NPNVGtk2;
 #endif
 
@@ -1313,7 +1313,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void *result) {
     }
 
     case NPNVSupportsXEmbedBool: {
-#ifdef MOZ_WIDGET_GTK
+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
       *(NPBool *)result = true;
 #else
       *(NPBool *)result = false;

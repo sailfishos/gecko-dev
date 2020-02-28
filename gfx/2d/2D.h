@@ -34,7 +34,7 @@
 
 #include "mozilla/DebugOnly.h"
 
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
 #ifndef MOZ_ENABLE_FREETYPE
 #define MOZ_ENABLE_FREETYPE
 #endif

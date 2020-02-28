@@ -234,6 +234,9 @@ PluginInstanceParent::AnswerNPN_GetValue_NPNVnetscapeWindow(
 #elif defined(ANDROID)
   // TODO: Need Android impl
   int id;
+#elif defined(MOZ_WIDGET_QT)
+  // TODO: Need Qt non X impl
+  int id;
 #else
 #warning Implement me
 #endif
