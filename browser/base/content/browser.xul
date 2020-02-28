@@ -691,7 +691,6 @@
       <hbox class="titlebar-placeholder" type="post-tabs"
             ordinal="1000"
             skipintoolbarset="true"/>
-#endif
 
       <button class="accessibility-indicator" tooltiptext="&accessibilityIndicator.tooltip;"
               ordinal="1000"
