@@ -38,6 +38,11 @@ class ChildProfilerController;
 
 namespace plugins {
 
+#ifdef MOZ_WIDGET_QT
+class NestedLoopTimer;
+static const int kNestedLoopDetectorIntervalMs = 90;
+#endif
+
 class PluginInstanceChild;
 
 class PluginModuleChild : public PPluginModuleChild {
@@ -208,6 +213,10 @@ class PluginModuleChild : public PPluginModuleChild {
 
   virtual void EnteredCxxStack() override;
   virtual void ExitedCxxStack() override;
+#elif defined(MOZ_WIDGET_QT)
+
+  virtual void EnteredCxxStack() override;
+  virtual void ExitedCxxStack() override;
 #endif
 
   PRLibrary* mLibrary;
@@ -272,6 +281,8 @@ class PluginModuleChild : public PPluginModuleChild {
   // MessagePumpForUI.
   int mTopLoopDepth;
 #endif
+#elif defined (MOZ_WIDGET_QT)
+  NestedLoopTimer *mNestedLoopTimerObject;
 #endif
 
 #if defined(XP_WIN)

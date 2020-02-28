@@ -226,3 +226,6 @@ if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
 
 if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     CXXFLAGS += ['-Wno-error=shadow']
+
+if CONFIG['MOZ_ENABLE_QT']:
+    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']

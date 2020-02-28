@@ -2085,12 +2085,17 @@ gfxUserFontSet* nsPresContext::GetUserFontSet(bool aFlushUserFontSet) {
 void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
   if (!mShell) return;
 
+  bool usePlatformFontList = true;
+#if defined(MOZ_WIDGET_QT)
+  usePlatformFontList = false;
+#endif
+
   // Note: this method is called without a font when rules in the userfont set
   // are updated, which may occur during reflow as a result of the lazy
   // initialization of the userfont set. It would be better to avoid a full
   // restyle but until this method is only called outside of reflow, schedule a
   // full restyle in these cases.
-  if (!aUpdatedFont) {
+  if (!usePlatformFontList || !aUpdatedFont) {
     PostRebuildAllStyleDataEvent(NS_STYLE_HINT_REFLOW,
                                  eRestyle_ForceDescendants);
     return;
