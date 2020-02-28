@@ -67,6 +67,13 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
         'PluginInterposeOSX.h',
     ]
 
+if CONFIG['MOZ_ENABLE_QT']:
+    SOURCES += [
+        '!moc_NestedLoopTimer.cpp',
+        'NestedLoopTimer.cpp',
+        'PluginHelperQt.cpp',
+    ]
+
 UNIFIED_SOURCES += [
     'BrowserStreamChild.cpp',
     'BrowserStreamParent.cpp',
