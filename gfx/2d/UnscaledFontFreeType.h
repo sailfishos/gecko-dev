@@ -44,7 +44,7 @@ class UnscaledFontFreeType : public UnscaledFont {
   uint32_t mIndex;
 };
 
-#ifdef MOZ_WIDGET_GTK
+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
 class UnscaledFontFontconfig : public UnscaledFontFreeType {
  public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(UnscaledFontFontconfig, override)

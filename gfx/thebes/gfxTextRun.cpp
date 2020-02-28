@@ -1689,6 +1689,9 @@ gfxFontGroup::~gfxFontGroup() {
 }
 
 void gfxFontGroup::BuildFontList() {
+#if defined(MOZ_WIDGET_QT)
+  return;
+#endif
   // initialize fonts in the font family list
   AutoTArray<gfxFontFamily*, 10> fonts;
   gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
@@ -1740,6 +1743,10 @@ void gfxFontGroup::AddPlatformFont(const nsAString& aName,
       return;
     }
   }
+
+#if defined(MOZ_WIDGET_QT)
+  return;
+#endif
 
   // Not known in the user font set ==> check system fonts
   gfxPlatformFontList::PlatformFontList()->FindAndAddFamilies(

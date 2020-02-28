@@ -53,6 +53,9 @@ using namespace std;
 #include <gdk/gdk.h>
 #include "gtk2xtbin.h"
 
+#elif defined(MOZ_WIDGET_QT)
+#undef KeyPress
+#undef KeyRelease
 #elif defined(OS_WIN)
 
 #include <windows.h>
@@ -1194,6 +1197,8 @@ mozilla::ipc::IPCResult PluginInstanceChild::AnswerNPP_SetWindow(
 
 #elif defined(ANDROID)
   // TODO: Need Android impl
+#elif defined(MOZ_WIDGET_QT)
+  // Don't care
 #elif defined(MOZ_WIDGET_UIKIT)
   // Don't care
 #else

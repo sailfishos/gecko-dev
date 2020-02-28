@@ -8,6 +8,10 @@
 #include <gtk/gtk.h>
 #endif
 
+#ifdef MOZ_WIDGET_QT
+#include "nsQAppInstance.h"
+#endif
+
 #include "ContentChild.h"
 
 #include "GeckoProfiler.h"
@@ -593,6 +597,11 @@ bool ContentChild::Init(MessageLoop* aIOLoop, base::ProcessId aParentPid,
       gtk_init(nullptr, nullptr);
     }
   }
+#endif
+
+#ifdef MOZ_WIDGET_QT
+  // sigh, seriously
+  nsQAppInstance::AddRef();
 #endif
 
 #ifdef MOZ_X11

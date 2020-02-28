@@ -62,7 +62,7 @@ class gfxMathTable;
 // we use a platform-dependent value to harmonize with the platform's own APIs.
 #ifdef XP_WIN
 #define OBLIQUE_SKEW_FACTOR 0.3f
-#elif defined(MOZ_WIDGET_GTK)
+#elif defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
 #define OBLIQUE_SKEW_FACTOR 0.2f
 #else
 #define OBLIQUE_SKEW_FACTOR 0.25f

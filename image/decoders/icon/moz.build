@@ -19,6 +19,9 @@ platform = None
 if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
     platform = 'gtk'
 
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
+    platform = 'qt'
+
 if CONFIG['OS_ARCH'] == 'WINNT':
     platform = 'win'
 
