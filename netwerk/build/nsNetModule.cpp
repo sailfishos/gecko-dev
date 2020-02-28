@@ -418,6 +418,9 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsNotifyAddrListener, Init)
 #elif defined(MOZ_WIDGET_COCOA)
 #include "nsNetworkLinkService.h"
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsNetworkLinkService, Init)
+#elif defined(MOZ_ENABLE_QTNETWORK)
+#include "nsQtNetworkLinkService.h"
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsQtNetworkLinkService, Init)
 #elif defined(MOZ_WIDGET_ANDROID)
 #include "nsAndroidNetworkLinkService.h"
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAndroidNetworkLinkService)
@@ -852,6 +855,8 @@ NS_DEFINE_NAMED_CID(NS_RTSPPROTOCOLHANDLER_CID);
 NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
 #elif defined(MOZ_WIDGET_COCOA)
 NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
+#elif defined(MOZ_ENABLE_QTNETWORK)
+NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
 #elif defined(MOZ_WIDGET_ANDROID)
 NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
 #elif defined(XP_LINUX)
@@ -1003,6 +1008,8 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
     { &kNS_NETWORK_LINK_SERVICE_CID, false, nullptr, nsNotifyAddrListenerConstructor },
 #elif defined(MOZ_WIDGET_COCOA)
     { &kNS_NETWORK_LINK_SERVICE_CID, false, nullptr, nsNetworkLinkServiceConstructor },
+#elif defined(MOZ_ENABLE_QTNETWORK)
+    { &kNS_NETWORK_LINK_SERVICE_CID, false, nullptr, nsQtNetworkLinkServiceConstructor },
 #elif defined(MOZ_WIDGET_ANDROID)
     { &kNS_NETWORK_LINK_SERVICE_CID, false, nullptr, nsAndroidNetworkLinkServiceConstructor },
 #elif defined(XP_LINUX)
@@ -1157,6 +1164,8 @@ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
 #if defined(XP_WIN)
     { NS_NETWORK_LINK_SERVICE_CONTRACTID, &kNS_NETWORK_LINK_SERVICE_CID },
 #elif defined(MOZ_WIDGET_COCOA)
+    { NS_NETWORK_LINK_SERVICE_CONTRACTID, &kNS_NETWORK_LINK_SERVICE_CID },
+#elif defined(MOZ_ENABLE_QTNETWORK)
     { NS_NETWORK_LINK_SERVICE_CONTRACTID, &kNS_NETWORK_LINK_SERVICE_CID },
 #elif defined(MOZ_WIDGET_ANDROID)
     { NS_NETWORK_LINK_SERVICE_CONTRACTID, &kNS_NETWORK_LINK_SERVICE_CID },
