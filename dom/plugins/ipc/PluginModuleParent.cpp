@@ -4,6 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#ifdef MOZ_WIDGET_QT
+#include "PluginHelperQt.h"
+#endif
+
 #include "mozilla/plugins/PluginModuleParent.h"
 
 #include "base/process_util.h"
@@ -2321,7 +2325,13 @@ mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
   mozilla::plugins::PluginUtilsOSX::InvokeNativeEventLoop();
   return IPC_OK();
 }
-
+#elif defined(MOZ_WIDGET_QT)
+mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
+    PLUGIN_LOG_DEBUG(("Spinning mini nested loop ..."));
+    PluginHelperQt::AnswerProcessSomeEvents();
+    PLUGIN_LOG_DEBUG(("... quitting mini nested loop"));
+    return IPC_OK();
+}
 #elif !defined(MOZ_WIDGET_GTK)
 mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
   MOZ_CRASH("unreached");
