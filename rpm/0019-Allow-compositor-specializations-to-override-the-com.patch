@@ -1,0 +1,74 @@
+From f2e8fe315400e9df42d1e89a7d7bacf4fe6038c1 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date: Mon, 9 Dec 2019 01:29:16 +0000
+Subject: [PATCH] Allow compositor specializations to override the composite
+ command.
+
+---
+ gfx/layers/ipc/CompositorParent.cpp | 16 +++++++++++++---
+ gfx/layers/ipc/CompositorParent.h   |  1 +
+ 2 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/gfx/layers/ipc/CompositorParent.cpp b/gfx/layers/ipc/CompositorParent.cpp
+index be0f067..c3cc99b 100644
+--- a/gfx/layers/ipc/CompositorParent.cpp
++++ b/gfx/layers/ipc/CompositorParent.cpp
+@@ -437,7 +437,7 @@ CompositorVsyncScheduler::Composite(TimeStamp aVsyncTimestamp)
+   if (mNeedsComposite || mAsapScheduling) {
+     mNeedsComposite = 0;
+     mLastCompose = aVsyncTimestamp;
+-    ComposeToTarget(nullptr);
++    mCompositorParent->CompositeToDefaultTarget();
+     mVsyncNotificationsSkipped = 0;
+ 
+     TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncTimestamp;
+@@ -548,7 +548,7 @@ CompositorVsyncScheduler::ResumeComposition()
+ {
+   MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+   mLastCompose = TimeStamp::Now();
+-  ComposeToTarget(nullptr);
++  mCompositorParent->CompositeToDefaultTarget();
+ }
+ 
+ void
+@@ -556,7 +556,11 @@ CompositorVsyncScheduler::ComposeToTarget(gfx::DrawTarget* aTarget, const IntRec
+ {
+   MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+   MOZ_ASSERT(mCompositorParent);
+-  mCompositorParent->CompositeToTarget(aTarget, aRect);
++  if (aTarget) {
++    mCompositorParent->CompositeToTarget(aTarget, aRect);
++  } else {
++    mCompositorParent->CompositeToDefaultTarget();
++  }
+ }
+ 
+ CompositorParent::CompositorParent(nsIWidget* aWidget,
+@@ -1044,6 +1048,12 @@ CompositorParent::SetShadowProperties(Layer* aLayer)
+ }
+ 
+ void
++CompositorParent::CompositeToDefaultTarget()
++{
++    CompositeToTarget(nullptr);
++}
++
++void
+ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const gfx::IntRect* aRect)
+ {
+   profiler_tracing("Paint", "Composite", TRACING_INTERVAL_START);
+diff --git a/gfx/layers/ipc/CompositorParent.h b/gfx/layers/ipc/CompositorParent.h
+index bc9a319..7ca9053 100644
+--- a/gfx/layers/ipc/CompositorParent.h
++++ b/gfx/layers/ipc/CompositorParent.h
+@@ -422,6 +422,7 @@ protected:
+   virtual void ScheduleTask(CancelableTask*, int);
+   void CompositeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
+   void ForceComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
++  virtual void CompositeToDefaultTarget();
+ 
+   void SetEGLSurfaceSize(int width, int height);
+ 
+-- 
+1.8.3-rc3
+

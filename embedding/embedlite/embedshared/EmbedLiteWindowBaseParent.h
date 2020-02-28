@@ -7,6 +7,7 @@
 #define MOZ_WINDOW_EMBED_BASE_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
+#include "mozilla/Function.h"
 #include "mozilla/WidgetUtils.h"
 
 namespace mozilla {
@@ -40,6 +41,7 @@ public:
   void SuspendRendering();
   void ResumeRendering();
   void* GetPlatformImage(int* width, int* height);
+  void GetPlatformImage(const Function<void(void *image, int width, int height)> &callback);
 
 protected:
   friend class EmbedLiteCompositorParent;
