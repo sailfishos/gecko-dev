@@ -29,6 +29,10 @@
 
 class nsIPrincipal;
 
+#ifdef MOZ_ENABLE_QT5GEOPOSITION
+#include "QTMLocationProvider.h"
+#endif
+
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidLocationProvider.h"
 #endif
@@ -683,6 +687,10 @@ nsresult nsGeolocationService::Init()
   }
 
   obs->AddObserver(this, "xpcom-shutdown", false);
+
+#ifdef MOZ_ENABLE_QT5GEOPOSITION
+  mProvider = new QTMLocationProvider();
+#endif
 
 #ifdef MOZ_WIDGET_ANDROID
   mProvider = new AndroidLocationProvider();
