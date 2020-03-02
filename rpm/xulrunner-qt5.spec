@@ -196,6 +196,10 @@ echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
 
+# Encrypted Media Extension (EME) support requires Fragmented MP4 support
+echo "ac_add_options --disable-fmp4" >> "$MOZCONFIG"
+echo "ac_add_options --disable-eme" >> "$MOZCONFIG"
+
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
 %endif
