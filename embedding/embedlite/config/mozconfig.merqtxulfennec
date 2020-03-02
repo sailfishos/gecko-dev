@@ -12,7 +12,6 @@ export CXXFLAGS=" -DUSE_ANDROID_OMTC_HACKS=1 "
 
 ac_add_options --enable-application=mobile/xul
 ac_add_options --enable-update-channel=nightly
-ac_add_options --enable-update-packaging
 ac_add_options --enable-tests
 ac_add_options --enable-default-toolkit=cairo-qt
 ac_add_options --with-gl-provider=EGL
@@ -28,5 +27,4 @@ ac_add_options --with-branding=mobile/xul/branding/nightly
 
 ac_add_options --disable-webrtc
 ac_add_options --enable-profiling
-ac_add_options --enable-gstreamer
 

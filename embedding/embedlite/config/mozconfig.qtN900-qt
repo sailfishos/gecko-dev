@@ -1,7 +1,6 @@
 export ac_cv_have_usable_wchar_option_v2="no"
 ac_add_options --enable-application=xulrunner
 #ac_add_options --enable-update-channel=nightly
-#ac_add_options --enable-update-packaging
 ac_add_options --enable-logging
 ac_add_options --enable-default-toolkit=cairo-qt
 ac_add_options --enable-mobile-optimize
@@ -17,7 +16,6 @@ export CFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8"
 
 ac_add_options --enable-optimize="-O2 -Wno-psabi"
 ac_add_options --disable-jemalloc
-ac_add_options --enable-gstreamer
 
 mk_add_options MOZ_MAKE_FLAGS="-j4"
 mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/obj-build-n900-qt"
@@ -31,7 +29,6 @@ ac_add_options --disable-elf-hack
 
 ac_add_options --enable-libjpeg-turbo
 
-ac_add_options --enable-profile-guided-optimization
 #ac_add_options --enable-valgrind
 #ac_add_options --enable-profiling
 

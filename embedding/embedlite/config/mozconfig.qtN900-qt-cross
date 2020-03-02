@@ -51,7 +51,6 @@ ac_add_options --enable-optimize="-O2 -Wno-psabi"
 ac_add_options --disable-necko-wifi
 ac_add_options --disable-jemalloc
 ac_add_options --enable-webapp-runtime
-ac_add_options --enable-gstreamer
 ac_add_options --enable-skia
 ac_add_options --disable-dbus
 ac_add_options --disable-updater
