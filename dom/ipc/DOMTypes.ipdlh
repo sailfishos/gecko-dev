@@ -15,6 +15,9 @@ using struct mozilla::void_t
 using struct mozilla::SerializedStructuredCloneBuffer
   from "ipc/IPCMessageUtils.h";
 
+using struct mozilla::null_t
+  from "ipc/IPCMessageUtils.h";
+
 namespace mozilla {
 namespace dom {
 
