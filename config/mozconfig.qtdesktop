@@ -16,7 +16,6 @@ ac_add_options --enable-jemalloc
 ac_add_options --with-system-zlib
 ac_add_options --enable-dump-painting
 ac_add_options --enable-signmar
-ac_add_options --enable-gstreamer
 ac_add_options --enable-skia
 ac_add_options --enable-webrtc
 ac_add_options --disable-dbus
