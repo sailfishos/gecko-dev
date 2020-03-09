@@ -52,7 +52,6 @@
 #include "nsContentSecurityManager.h"
 
 #include "mozilla/ipc/URIUtils.h"
-#include "mozilla/unused.h"
 
 using mozilla::dom::AutoEntryScript;
 

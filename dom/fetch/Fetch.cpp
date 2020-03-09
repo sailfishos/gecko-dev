@@ -39,7 +39,6 @@
 #include "mozilla/dom/URLSearchParams.h"
 #include "mozilla/dom/workers/ServiceWorkerManager.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/unused.h"
 
 #include "InternalRequest.h"
 #include "InternalResponse.h"

@@ -54,8 +54,6 @@
 #include "nsISecureBrowserUI.h"
 #include "nsXULAppAPI.h"
 
-#include "mozilla/unused.h"
-
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;

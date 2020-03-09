@@ -41,7 +41,6 @@
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Services.h"
-#include "mozilla/unused.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -1539,7 +1538,6 @@ nsXULPopupManager::FirePopupHidingEvent(nsIContent* aPopup,
                                         bool aDeselectMenu,
                                         bool aIsCancel)
 {
-#ifndef MOZ_WIDGET_GTK
   nsCOMPtr<nsIPresShell> presShell = aPresContext->PresShell();
   mozilla::Unused << presShell; // This presShell may be keeping things alive on non GTK platforms
 

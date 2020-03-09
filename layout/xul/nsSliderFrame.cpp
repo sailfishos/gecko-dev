@@ -47,7 +47,6 @@
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/ScrollInputMethods.h"
 #include <algorithm>
-#include "mozilla/unused.h"
 
 using namespace mozilla;
 using mozilla::layers::APZCCallbackHelper;

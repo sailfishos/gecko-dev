@@ -28,7 +28,6 @@
 #include "mozilla/css/Loader.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/ProcessingInstruction.h"
-#include "mozilla/unused.h"
 
 using namespace mozilla::dom;
 

@@ -80,7 +80,6 @@
 #ifdef DEBUG
 #include "nsRange.h"
 #endif
-#include "mozilla/unused.h"
 
 #include "nsBindingManager.h"
 #include "nsXBLBinding.h"

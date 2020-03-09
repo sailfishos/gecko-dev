@@ -92,8 +92,6 @@ using mozilla::DefaultXDisplay;
 #include "mozilla/dom/TabChild.h"
 #include "ClientLayerManager.h"
 
-#include "mozilla/unused.h"
-
 #ifdef CreateEvent // Thank you MS.
 #undef CreateEvent
 #endif

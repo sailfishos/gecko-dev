@@ -24984,7 +24984,6 @@ CreateIndexOp::InsertDataFromObjectStoreInternal(
 
   DebugOnly<void*> storageConnection = aConnection->GetStorageConnection();
   MOZ_ASSERT(storageConnection);
-#endif
 
   DatabaseConnection::CachedStatement stmt;
   nsresult rv = aConnection->GetCachedStatement(NS_LITERAL_CSTRING(

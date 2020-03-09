@@ -13,7 +13,6 @@
 #include "nsHtml5AtomTable.h"
 #include "nsHtml5DependentUTF16Buffer.h"
 #include "nsNetUtil.h"
-#include "mozilla/unused.h"
 
 NS_INTERFACE_TABLE_HEAD(nsHtml5Parser)
   NS_INTERFACE_TABLE(nsHtml5Parser, nsIParser, nsISupportsWeakReference)

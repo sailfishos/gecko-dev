@@ -50,7 +50,6 @@
 #include "Classifier.h"
 #include "ProtocolParser.h"
 #include "nsContentUtils.h"
-#include "mozilla/unused.h"
 
 namespace mozilla {
 namespace safebrowsing {

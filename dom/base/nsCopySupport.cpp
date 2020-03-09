@@ -64,7 +64,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/IntegerRange.h"
-#include "mozilla/unused.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;

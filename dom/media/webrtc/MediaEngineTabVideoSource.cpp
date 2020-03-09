@@ -66,7 +66,7 @@ MediaEngineTabVideoSource::StopRunnable::Run()
     mVideoSource->mTimer = nullptr;
   }
   if (mVideoSource->mTabSource) {
-    mVideoSource->mTabSource->NotifyStreamStop(privateDOMWindow);
+    mVideoSource->mTabSource->NotifyStreamStop(mVideoSource->mWindow);
   }
   return NS_OK;
 }

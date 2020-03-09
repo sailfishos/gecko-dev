@@ -63,7 +63,6 @@
 #include "nsIWebSocketListener.h"
 #include "nsProxyRelease.h"
 #include "nsWeakReference.h"
-#include "mozilla/unused.h"
 
 using namespace mozilla::net;
 using namespace mozilla::dom::workers;
@@ -1311,12 +1310,12 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
   // We don't return an error if the connection just failed. Instead we dispatch
   // an event.
   if (connectionFailed) {
-    kungfuDeathGrip->FailConnection(nsIWebSocketChannel::CLOSE_ABNORMAL);
+    webSocket->mImpl->FailConnection(nsIWebSocketChannel::CLOSE_ABNORMAL);
   }
 
   // If we don't have a channel, the connection is failed and onerror() will be
   // called asynchrounsly.
-  if (!kungfuDeathGrip->mChannel) {
+  if (!webSocket->mImpl->mChannel) {
     return webSocket.forget();
   }
 
@@ -1346,11 +1345,11 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
     bool mDone;
   };
 
-  ClearWebSocket cws(kungfuDeathGrip);
+  ClearWebSocket cws(webSocket->mImpl);
 
   // This operation must be done on the correct thread. The rest must run on the
   // main-thread.
-  aRv = kungfuDeathGrip->mChannel->SetNotificationCallbacks(kungfuDeathGrip);
+  aRv = webSocket->mImpl->mChannel->SetNotificationCallbacks(webSocket->mImpl);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
@@ -1377,7 +1376,7 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
     MOZ_ASSERT(!aTransportProvider && aNegotiatedExtensions.IsEmpty(),
                "not yet implemented");
     RefPtr<AsyncOpenRunnable> runnable =
-      new AsyncOpenRunnable(kungfuDeathGrip, aRv);
+      new AsyncOpenRunnable(webSocket->mImpl, aRv);
     runnable->Dispatch(aRv);
   }
 
@@ -1393,10 +1392,10 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
   }
 
   // Let's inform devtools about this new active WebSocket.
-  kungfuDeathGrip->mService->WebSocketCreated(kungfuDeathGrip->mChannel->Serial(),
-                                              kungfuDeathGrip->mInnerWindowID,
-                                              webSocket->mURI,
-                                              kungfuDeathGrip->mRequestedProtocolList);
+  webSocket->mImpl->mService->WebSocketCreated(webSocket->mImpl->mChannel->Serial(),
+                                               webSocket->mImpl->mInnerWindowID,
+                                               webSocket->mURI,
+                                               webSocket->mImpl->mRequestedProtocolList);
 
   cws.Done();
   return webSocket.forget();

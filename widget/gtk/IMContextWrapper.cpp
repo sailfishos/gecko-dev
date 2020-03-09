@@ -17,7 +17,6 @@
 #include "mozilla/TextEventDispatcher.h"
 #include "mozilla/TextEvents.h"
 #include "WritingModes.h"
-#include "mozilla/unused.h"
 
 namespace mozilla {
 namespace widget {
@@ -1432,11 +1431,6 @@ IMContextWrapper::DispatchCompositionChangeEvent(
              this));
         return false;
     }
-
-    // This keeps mLastFocusedWindow alive during DispatchCompositionStart() as
-    // well as for the lifetime of the call. Make sure not to move it after the
-    // !IsComposing block.
-    RefPtr<nsWindow> lastFocusedWindow = mLastFocusedWindow;
 
     if (!IsComposing()) {
         MOZ_LOG(gGtkIMLog, LogLevel::Debug,

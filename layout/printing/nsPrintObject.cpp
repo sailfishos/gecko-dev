@@ -14,7 +14,6 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsIBaseWindow.h"
 #include "nsIDocument.h"
-#include "mozilla/unused.h"
 
 //---------------------------------------------------
 //-- nsPrintObject Class Impl
