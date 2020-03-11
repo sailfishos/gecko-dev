@@ -1,0 +1,42 @@
+From 2ec4c9eb195e400b4245b5ec38d77f5e20df2598 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 10 Mar 2020 15:06:39 +0200
+Subject: [PATCH 20/20] Handle temporary directory similarly as in MacOSX
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ uriloader/exthandler/nsExternalHelperAppService.cpp | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
+index 39f066aff0f3..f5a2445a0627 100644
+--- a/uriloader/exthandler/nsExternalHelperAppService.cpp
++++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
+@@ -284,7 +284,7 @@ static nsresult GetDownloadDirectory(nsIFile **_directory,
+                                      bool aSkipChecks = false)
+ {
+   nsCOMPtr<nsIFile> dir;
+-#ifdef XP_MACOSX
++#if defined(XP_MACOSX) || defined(XP_UNIX)
+   // On OS X, we first try to get the users download location, if it's set.
+   switch (Preferences::GetInt(NS_PREF_DOWNLOAD_FOLDERLIST, -1)) {
+     case NS_FOLDER_VALUE_DESKTOP:
+@@ -321,8 +321,14 @@ static nsresult GetDownloadDirectory(nsIFile **_directory,
+   }
+ 
+   if (!dir) {
++#if defined(XP_MACOSX)
++      const char* specialDirName = NS_OSX_DEFAULT_DOWNLOAD_DIR;
++#else
++      const char* specialDirName = NS_UNIX_DEFAULT_DOWNLOAD_DIR;
++#endif
++
+     // If not, we default to the OS X default download location.
+-    nsresult rv = NS_GetSpecialDirectory(NS_OSX_DEFAULT_DOWNLOAD_DIR,
++    nsresult rv = NS_GetSpecialDirectory(specialDirName,
+                                          getter_AddRefs(dir));
+     NS_ENSURE_SUCCESS(rv, rv);
+   }
+-- 
+2.24.1
+
