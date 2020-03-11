@@ -62,6 +62,7 @@ Patch16:    0016-Cleanup-build-configuration.-Fixes-JB-44612.patch
 Patch17:    0017-Make-gc-stats-work-with-gcc8.patch
 Patch18:    0018-Use-libcontentaction-for-custom-schem.patch
 Patch19:    0019-Allow-compositor-specializations-to-override-the-com.patch
+Patch20:    0020-Handle-temporary-directory-similarly-as-in-MacOSX.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -170,6 +171,7 @@ Tests and misc files for xulrunner.
 %patch17 -p1
 %patch18 -p1
 %patch19 -p1
+%patch20 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
