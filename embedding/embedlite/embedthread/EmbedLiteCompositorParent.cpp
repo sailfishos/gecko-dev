@@ -87,6 +87,7 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
 void
 EmbedLiteCompositorParent::PrepareOffscreen()
 {
+  fprintf(stderr, "=============== Preparing offscreen rendering context ===============\n");
 
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -105,7 +106,6 @@ EmbedLiteCompositorParent::PrepareOffscreen()
       }
 
       auto forwarder = state->mLayerManager->AsShadowForwarder();
-      printf("=============== caps.premultAlpha: %d ptr: %p\n", screen->mCaps.premultAlpha, forwarder);
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps, forwarder, flags);
