@@ -53,6 +53,9 @@ class MessagePumpForUI : public MessagePump {
   // HandleDispatch is called after the poll has completed.
   void HandleDispatch();
 
+ protected:
+  // This flag is set to false when Run should return.
+  bool keep_running_;
  private:
   // We may make recursive calls to Run, so we save state that needs to be
   // separate between them in this structure type.
