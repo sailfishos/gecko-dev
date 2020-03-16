@@ -9,7 +9,7 @@
 #include "EmbedLiteWindowThreadParent.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteApp.h"
-#include "mozilla/layers/PCompositorParent.h"
+#include "mozilla/layers/PCompositorBridgeParent.h"
 
 #include "mozilla/unused.h"
 
@@ -126,8 +126,8 @@ EmbedLiteAppThreadParent::RecvObserve(const nsCString& topic,
   return true;
 }
 
-PCompositorParent*
-EmbedLiteAppThreadParent::AllocPCompositorParent(Transport* aTransport,
+PCompositorBridgeParent*
+EmbedLiteAppThreadParent::AllocPCompositorBridgeParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
   LOGT();

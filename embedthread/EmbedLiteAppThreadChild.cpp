@@ -7,7 +7,7 @@
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteWindowThreadChild.h"
-#include "mozilla/layers/PCompositorChild.h"
+#include "mozilla/layers/PCompositorBridgeChild.h"
 
 namespace mozilla {
 namespace embedlite {

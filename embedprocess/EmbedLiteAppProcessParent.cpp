@@ -30,7 +30,7 @@
 #include "base/command_line.h"
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
-#include "mozilla/layers/CompositorParent.h"
+#include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
 
 #include "EmbedLiteViewProcessParent.h"
@@ -332,8 +332,8 @@ EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
   }
 }
 
-PCompositorParent*
-EmbedLiteAppProcessParent::AllocPCompositorParent(Transport* aTransport,
+PCompositorBridgeParent*
+EmbedLiteAppProcessParent::AllocPCompositorBridgeParent(Transport* aTransport,
                                                   ProcessId aOtherProcess)
 {
   LOGT();

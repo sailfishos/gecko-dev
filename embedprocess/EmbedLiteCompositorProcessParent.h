@@ -16,7 +16,7 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteCompositorProcessParent final : public PCompositorParent,
+class EmbedLiteCompositorProcessParent final : public PCompositorBridgeParent,
                                                public ShadowLayersManager
 {
   friend class CompositorParent;
@@ -98,7 +98,7 @@ public:
    * A new child process has been configured to push transactions
    * directly to us.  Transport is to its thread context.
    */
-  static PCompositorParent*
+  static PCompositorBridgeParent*
   Create(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id);
 
 private:

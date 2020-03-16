@@ -11,18 +11,18 @@ using struct gfxSize from "gfxPoint.h";
 namespace mozilla {
 namespace embedlite {
 
-prio(normal upto urgent) sync protocol PEmbedLiteWindow {
+nested(upto inside_cpow) sync protocol PEmbedLiteWindow {
   manager PEmbedLiteApp;
 
 child:
-  SetSize(gfxSize aSize);
-  SetContentOrientation(uint32_t aRotation);
-  Destroy();
+  async SetSize(gfxSize aSize);
+  async SetContentOrientation(uint32_t aRotation);
+  async Destroy();
 
 parent:
-  Initialized();
-  Destroyed();
-  __delete__();
+  async Initialized();
+  async Destroyed();
+  async __delete__();
 };
 
 } // namespace embedlite

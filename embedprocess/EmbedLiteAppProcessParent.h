@@ -68,8 +68,8 @@ protected:
   virtual void
   ActorDestroy(ActorDestroyReason aWhy);
 
-  virtual PCompositorParent*
-  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess);
+  virtual PCompositorBridgeParent*
+  AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess);
 
   virtual bool
   RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs);
