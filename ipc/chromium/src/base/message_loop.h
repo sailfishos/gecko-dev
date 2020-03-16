@@ -194,13 +194,15 @@ class MessageLoop : public base::MessagePump::Delegate {
     TYPE_MOZILLA_PARENT,
     TYPE_MOZILLA_NONMAINTHREAD,
     TYPE_MOZILLA_NONMAINUITHREAD,
-    TYPE_MOZILLA_ANDROID_UI
+    TYPE_MOZILLA_ANDROID_UI,
+    TYPE_EMBED
   };
 
   // Normally, it is not necessary to instantiate a MessageLoop.  Instead, it
   // is typical to make use of the current thread's MessageLoop instance.
   explicit MessageLoop(Type type = TYPE_DEFAULT,
                        nsIEventTarget* aEventTarget = nullptr);
+  explicit MessageLoop(base::MessagePump* messagePump);
   ~MessageLoop();
 
   // Returns the type passed to the constructor.
@@ -459,12 +461,15 @@ class MessageLoopForUI : public MessageLoop {
  public:
   explicit MessageLoopForUI(Type aType = TYPE_UI) : MessageLoop(aType) {}
 
+  MessageLoopForUI(base::MessagePump* messagePump) : MessageLoop(messagePump) {}
+
   // Returns the MessageLoopForUI of the current thread.
   static MessageLoopForUI* current() {
     MessageLoop* loop = MessageLoop::current();
     if (!loop) return NULL;
     Type type = loop->type();
     DCHECK(type == MessageLoop::TYPE_UI ||
+           type == MessageLoop::TYPE_EMBED ||
            type == MessageLoop::TYPE_MOZILLA_PARENT ||
            type == MessageLoop::TYPE_MOZILLA_CHILD);
     return static_cast<MessageLoopForUI*>(loop);

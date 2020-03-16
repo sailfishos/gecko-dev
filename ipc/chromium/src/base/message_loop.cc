@@ -25,6 +25,9 @@
 #if defined(MOZ_WIDGET_GTK)
 #include "base/message_pump_glib.h"
 #endif
+#ifdef MOZ_WIDGET_QT
+#include "base/message_pump_qt.h"
+#endif
 #endif
 #ifdef ANDROID
 #include "base/message_pump_android.h"
@@ -166,6 +169,30 @@ MessageLoop* MessageLoop::current() { return get_tls_ptr().Get(); }
 void MessageLoop::set_current(MessageLoop* loop) { get_tls_ptr().Set(loop); }
 
 static mozilla::Atomic<int32_t> message_loop_id_seq(0);
+
+MessageLoop::MessageLoop(base::MessagePump* messagePump)
+    : type_(TYPE_EMBED),
+      id_(++message_loop_id_seq),
+      nestable_tasks_allowed_(true),
+      exception_restoration_(false),
+      state_(NULL),
+      run_depth_base_(1),
+      shutting_down_(false),
+#ifdef OS_WIN
+      os_modal_loop_(false),
+#endif  // OS_WIN
+      transient_hang_timeout_(0),
+      permanent_hang_timeout_(0),
+      next_sequence_num_(0)
+{
+  DCHECK(!current()) << "should only have one message loop per thread";
+  get_tls_ptr().Set(this);
+
+  // Must initialize after current() is initialized.
+  mEventTarget = new EventTarget(this);
+
+  pump_ = messagePump;
+}
 
 MessageLoop::MessageLoop(Type type, nsIEventTarget* aEventTarget)
     : type_(type),
