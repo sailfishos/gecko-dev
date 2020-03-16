@@ -73,6 +73,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in {
     'gtk2',
     'gtk3',
     'uikit',
+    'qt',
   }:
     DEFINES['SK_FONTHOST_DOES_NOT_USE_FONTMGR'] = 1
 
@@ -140,11 +141,11 @@ if CONFIG['CLANG_CXX'] or CONFIG['CLANG_CL']:
         '-Wno-unused-private-field',
     ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'android'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'android', 'qt'):
     CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
     CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'qt'):
     CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
 """
 
@@ -459,6 +460,9 @@ def write_mozbuild(sources):
   write_sources(f, sources['mac'], 4)
 
   f.write("if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:\n")
+  write_sources(f, sources['linux'], 4)
+
+  f.write("if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':\n")
   write_sources(f, sources['linux'], 4)
 
   f.write("if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':\n")
