@@ -31,7 +31,7 @@
 #include "nsIFactory.h"
 #include "mozilla/GenericFactory.h"
 #include "mozilla/ModuleUtils.h"               // for NS_GENERIC_FACTORY_CONSTRUCTOR
-#include "mozilla/layers/PCompositorChild.h"
+#include "mozilla/layers/PCompositorBridgeChild.h"
 
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/PContent.h"

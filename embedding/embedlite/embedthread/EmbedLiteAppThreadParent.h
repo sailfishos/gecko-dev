@@ -11,7 +11,7 @@
 namespace mozilla {
 
 namespace layers {
-class PCompositorParent;
+class PCompositorBridgeParent;
 } // namespace layers
 
 namespace embedlite {
@@ -48,8 +48,8 @@ protected:
           uint32_t* createdID,
           bool* cancel) override;
 
-  virtual PCompositorParent*
-  AllocPCompositorParent(Transport* aTransport, ProcessId aOtherProcess) override;
+  virtual PCompositorBridgeParent*
+  AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess) override;
 
   virtual bool
   RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs) override;

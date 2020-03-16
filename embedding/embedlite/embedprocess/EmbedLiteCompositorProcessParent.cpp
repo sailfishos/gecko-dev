@@ -43,7 +43,7 @@ OpenCompositor(EmbedLiteCompositorProcessParent* aCompositor,
   MOZ_ASSERT(ok);
 }
 
-/*static*/ PCompositorParent*
+/*static*/ PCompositorBridgeParent*
 EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id)
 {
   LOGT();
