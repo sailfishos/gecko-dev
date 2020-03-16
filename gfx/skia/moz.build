@@ -553,6 +553,18 @@ if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
         'skia/src/ports/SkFontHost_cairo.cpp',
         'skia/src/ports/SkFontHost_FreeType_common.cpp',
     ]
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
+    UNIFIED_SOURCES += [
+        'skia/src/ports/SkDebug_stdio.cpp',
+        'skia/src/ports/SkOSFile_posix.cpp',
+        'skia/src/ports/SkOSLibrary_posix.cpp',
+        'skia/src/ports/SkTLS_pthread.cpp',
+        'skia/src/utils/SkThreadUtils_pthread.cpp',
+    ]
+    SOURCES += [
+        'skia/src/ports/SkFontHost_cairo.cpp',
+        'skia/src/ports/SkFontHost_FreeType_common.cpp',
+    ]
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     SOURCES += [
         'skia/src/ports/SkDebug_win.cpp',
@@ -683,6 +695,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in {
     'gtk2',
     'gtk3',
     'uikit',
+    'qt',
   }:
     DEFINES['SK_FONTHOST_DOES_NOT_USE_FONTMGR'] = 1
 
@@ -750,9 +763,9 @@ if CONFIG['CLANG_CXX'] or CONFIG['CLANG_CL']:
         '-Wno-unused-private-field',
     ]
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'android'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'android', 'qt'):
     CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
     CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3'):
+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'qt'):
     CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
