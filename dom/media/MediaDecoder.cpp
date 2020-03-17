@@ -39,6 +39,8 @@
 #include "AndroidBridge.h"
 #endif
 
+#include "NemoResourceHandler.h"
+
 using namespace mozilla::dom;
 using namespace mozilla::layers;
 using namespace mozilla::media;
