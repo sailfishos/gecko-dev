@@ -80,20 +80,19 @@ public:
 
     NS_DECL_ISUPPORTS_INHERITED
 
-    //
     // nsIWidget
-    //
-    NS_IMETHOD Create(nsIWidget* aParent,
-                      nsNativeWidget aNativeParent,
-                      const LayoutDeviceIntRect& aRect,
-                      nsWidgetInitData* aInitData);
-    NS_IMETHOD Destroy(void);
+    using nsBaseWidget::Create; // for Create signature not overridden here
+    virtual MOZ_MUST_USE nsresult Create(nsIWidget* aParent,
+                                         nsNativeWidget aNativeParent,
+                                         const LayoutDeviceIntRect& aRect,
+                                         nsWidgetInitData* aInitData) override;
+    virtual void Destroy() override;
 
     NS_IMETHOD Show(bool aState);
     virtual bool IsVisible() const;
-    NS_IMETHOD ConstrainPosition(bool aAllowSlop,
+    virtual void ConstrainPosition(bool aAllowSlop,
                                  int32_t *aX,
-                                 int32_t *aY);
+                                 int32_t *aY) override;
     NS_IMETHOD Move(double aX,
                     double aY);
     NS_IMETHOD Resize(double aWidth,
@@ -121,12 +120,14 @@ public:
     virtual LayoutDeviceIntPoint WidgetToScreenOffset();
     NS_IMETHOD DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
                              nsEventStatus& aStatus);
-    NS_IMETHOD CaptureRollupEvents(nsIRollupListener *aListener,
-                                   bool aDoCapture)
+    virtual void CaptureRollupEvents(nsIRollupListener *aListener,
+                                   bool aDoCapture) override
     {
-        return NS_ERROR_NOT_IMPLEMENTED;
+      (void)aListener;
+      (void)aDoCapture;
     }
-    NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent);
+
+    virtual void ReparentNativeWidget(nsIWidget* aNewParent) override;
 
     NS_IMETHOD MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen = nullptr);
     virtual mozilla::layers::LayerManager*
@@ -196,18 +197,18 @@ public:
     NS_IMETHOD         SetParent(nsIWidget* aNewParent);
     virtual nsIWidget *GetParent(void);
     virtual float      GetDPI();
-    NS_IMETHOD         SetModal(bool aModal);
-    NS_IMETHOD         PlaceBehind(nsTopLevelWidgetZPlacement  aPlacement,
+    virtual void       SetModal(bool aModal) override;
+    virtual void       PlaceBehind(nsTopLevelWidgetZPlacement  aPlacement,
                                    nsIWidget                  *aWidget,
-                                   bool                        aActivate);
-    NS_IMETHOD         SetSizeMode(nsSizeMode aMode);
-    NS_IMETHOD         GetScreenBounds(LayoutDeviceIntRect& aRect) override;
+                                   bool                        aActivate) override;
+    virtual void       SetSizeMode(nsSizeMode aMode) override;
+    virtual LayoutDeviceIntRect GetScreenBounds() override;
     NS_IMETHOD         SetHasTransparentBackground(bool aTransparent);
     NS_IMETHOD         GetHasTransparentBackground(bool& aTransparent);
     NS_IMETHOD         HideWindowChrome(bool aShouldHide);
     NS_IMETHOD         SetIcon(const nsAString& aIconSpec);
-    NS_IMETHOD         CaptureMouse(bool aCapture);
-    NS_IMETHOD         SetWindowClass(const nsAString& xulWinType);
+    virtual void       CaptureMouse(bool aCapture) override;
+    virtual void       SetWindowClass(const nsAString& xulWinType) override;
     NS_IMETHOD         GetAttention(int32_t aCycleCount);
     NS_IMETHOD_(bool)  HasGLContext();
 
@@ -216,7 +217,7 @@ public:
     //
     void               QWidgetDestroyed();
     // called when we are destroyed
-    void OnDestroy(void);
+    virtual void OnDestroy(void) override;
     // called to check and see if a widget's dimensions are sane
     bool AreBoundsSane(void);
 private:

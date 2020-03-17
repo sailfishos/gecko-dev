@@ -240,11 +240,11 @@ nsWindow::createQWidget(MozQWidget* parent,
     return widget;
 }
 
-NS_IMETHODIMP
-nsWindow::Destroy(void)
+void
+nsWindow::Destroy()
 {
     if (mIsDestroyed || !mWidget) {
-        return NS_OK;
+        return;
     }
 
     LOG(("nsWindow::Destroy [%p]\n", (void *)this));
@@ -297,8 +297,6 @@ nsWindow::Destroy(void)
     mWidget = nullptr;
 
     OnDestroy();
-
-    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -346,11 +344,11 @@ nsWindow::IsVisible() const
     return mIsShown;
 }
 
-NS_IMETHODIMP
+void
 nsWindow::ConstrainPosition(bool aAllowSlop, int32_t *aX, int32_t *aY)
 {
     if (!mWidget) {
-        return NS_ERROR_FAILURE;
+        return;
     }
 
     int32_t screenWidth  = qApp->primaryScreen()->size().width();
@@ -375,8 +373,6 @@ nsWindow::ConstrainPosition(bool aAllowSlop, int32_t *aX, int32_t *aY)
         if (*aY > (screenHeight - mBounds.height))
             *aY = screenHeight - mBounds.height;
     }
-
-    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -723,17 +719,18 @@ nsWindow::GetInputContext()
     return mInputContext;
 }
 
-NS_IMETHODIMP
+void
 nsWindow::ReparentNativeWidget(nsIWidget *aNewParent)
 {
     NS_PRECONDITION(aNewParent, "");
+    NS_ASSERTION(!mIsDestroyed, "");
+    NS_ASSERTION(!static_cast<nsWindow*>(aNewParent)->mIsDestroyed, "");
 
     MozQWidget* newParent = static_cast<MozQWidget*>(aNewParent->GetNativeData(NS_NATIVE_WINDOW));
     NS_ASSERTION(newParent, "Parent widget has a null native window handle");
     if (mWidget) {
         mWidget->setParent(newParent);
     }
-    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -877,11 +874,6 @@ nsWindow::OnPaint()
 
     listener->WillPaintWindow(this);
 
-    nsIWidgetListener* listener = GetPaintListener();
-    if (!listener) {
-        return;
-    }
-
     switch (GetLayerManager()->GetBackendType()) {
         case mozilla::layers::LayersBackend::LAYERS_CLIENT: {
             LayoutDeviceIntRegion region(
@@ -891,11 +883,6 @@ nsWindow::OnPaint()
         }
         default:
             NS_ERROR("Invalid layer manager");
-    }
-
-    nsIWidgetListener* listener = GetPaintListener();
-    if (!listener) {
-        return;
     }
 
     listener->DidPaintWindow();
@@ -924,10 +911,7 @@ nsWindow::moveEvent(QMoveEvent* aEvent)
 nsEventStatus
 nsWindow::resizeEvent(QResizeEvent* aEvent)
 {
-    LayoutDeviceIntRect rect;
-
-    // Generate XPFE resize event
-    GetBounds(rect);
+    LayoutDeviceIntRect rect = GetBounds();
 
     rect.width = aEvent->size().width();
     rect.height = aEvent->size().height();
@@ -1269,7 +1253,7 @@ nsWindow::keyReleaseEvent(QKeyEvent* aEvent)
     }
 
     // unset the key down flag
-    ClearKeyDownFlag(event.keyCode);
+    ClearKeyDownFlag(event.mKeyCode);
 
     return DispatchEvent(&event);
 }
@@ -1426,43 +1410,41 @@ nsWindow::SetParent(nsIWidget *aNewParent)
     return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 nsWindow::SetModal(bool aModal)
 {
     LOG(("nsWindow::SetModal [%p] %d, widget[%p]\n", (void *)this, aModal, mWidget));
     if (mWidget) {
         mWidget->setModality(aModal ? Qt::WindowModal : Qt::NonModal);
     }
-
-    return NS_OK;
 }
 
 
-NS_IMETHODIMP
+void
 nsWindow::PlaceBehind(nsTopLevelWidgetZPlacement  aPlacement,
                       nsIWidget                  *aWidget,
                       bool                        aActivate)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  (void)aPlacement;
+  (void)aWidget;
+  (void)aActivate;
 }
 
-NS_IMETHODIMP
+void
 nsWindow::SetSizeMode(nsSizeMode aMode)
 {
-    nsresult rv;
-
     LOG(("nsWindow::SetSizeMode [%p] %d\n", (void *)this, aMode));
     if (aMode != nsSizeMode_Minimized) {
         mWidget->requestActivate();
     }
 
     // Save the requested state.
-    rv = nsBaseWidget::SetSizeMode(aMode);
+    nsBaseWidget::SetSizeMode(aMode);
 
     // return if there's no shell or our current state is the same as
     // the mode we were just set to.
     if (!mWidget || mSizeState == mSizeMode) {
-        return rv;
+        return;
     }
 
     switch (aMode) {
@@ -1483,8 +1465,6 @@ nsWindow::SetSizeMode(nsSizeMode aMode)
     }
 
     mSizeState = mSizeMode;
-
-    return rv;
 }
 
 // Helper function to recursively find the first parent item that
@@ -1514,21 +1494,24 @@ void find_first_visible_parent(QWindow* aItem, QWindow*& aVisibleItem)
     }
 }
 
-NS_IMETHODIMP
-nsWindow::GetScreenBounds(LayoutDeviceIntRect& aRect)
+LayoutDeviceIntRect
+nsWindow::GetScreenBounds()
 {
-    aRect = LayoutDeviceIntRect(LayoutDeviceIntPoint(0, 0), mBounds.Size());
+    LayoutDeviceIntRect rect;
     if (mIsTopLevel) {
         QPoint pos = mWidget->position();
-        aRect.MoveTo(pos.x(), pos.y());
+        rect.MoveTo(pos.x(), pos.y());
     } else {
-        aRect.MoveTo(WidgetToScreenOffset());
+        rect.MoveTo(WidgetToScreenOffset());
     }
-    LOG(("GetScreenBounds %d %d | %d %d | %d %d\n",
-         aRect.x, aRect.y,
-         mBounds.width, mBounds.height,
-         aRect.width, aRect.height));
-    return NS_OK;
+    // mBounds.Size() is the window bounds, not the window-manager frame
+    // bounds (bug 581863).  gdk_window_get_frame_extents would give the
+    // frame bounds, but mBounds.Size() is returned here for consistency
+    // with Resize.
+    rect.SizeTo(mBounds.Size());
+    LOG(("GetScreenBounds %d,%d | %dx%d\n",
+         rect.x, rect.y, rect.width, rect.height));
+    return rect;
 }
 
 NS_IMETHODIMP
@@ -1570,17 +1553,15 @@ nsWindow::SetIcon(const nsAString& aIconSpec)
     return SetWindowIconList(iconList);
 }
 
-NS_IMETHODIMP
+void
 nsWindow::CaptureMouse(bool aCapture)
 {
     LOG(("CaptureMouse %p\n", (void *)this));
 
     if (!mWidget)
-        return NS_OK;
+        return;
 
     mWidget->setMouseGrabEnabled(aCapture);
-
-    return NS_OK;
 }
 
 bool
@@ -1604,7 +1585,7 @@ nsWindow::CheckForRollup(double aMouseX, double aMouseY,
         bool rollup = true;
         if (aIsWheel) {
             rollup = rollupListener->ShouldRollupOnMouseWheelEvent();
-            retVal = true;
+            retVal = rollupListener->ShouldConsumeOnMouseWheelEvent();
         }
         // if we're dealing with menus, we probably have submenus and
         // we don't want to rollup if the clickis in a parent menu of
@@ -1630,9 +1611,10 @@ nsWindow::CheckForRollup(double aMouseX, double aMouseY,
         } // if rollup listener knows about menus
 
         // if we've determined that we should still rollup, do it.
-        if (rollup) {
-            nsIntPoint pos(aMouseX, aMouseY);
-            retVal = rollupListener->Rollup(popupsToRollup, true, &pos, nullptr);
+        bool usePoint = !aIsWheel;
+        IntPoint point = IntPoint::Truncate(aMouseX, aMouseY);
+        if (rollup && rollupListener->Rollup(popupsToRollup, true, usePoint ? &point : nullptr, nullptr)) {
+            retVal = true;
         }
     }
 
@@ -1699,32 +1681,31 @@ static void
 GetBrandName(nsXPIDLString& brandName)
 {
     nsCOMPtr<nsIStringBundleService> bundleService =
-        mozilla::services::GetStringBundleService();
+        do_GetService(NS_STRINGBUNDLE_CONTRACTID);
 
     nsCOMPtr<nsIStringBundle> bundle;
-    if (bundleService) {
+    if (bundleService)
         bundleService->CreateBundle(
             "chrome://branding/locale/brand.properties",
             getter_AddRefs(bundle));
-    }
 
-    if (bundle) {
+    if (bundle)
         bundle->GetStringFromName(
-            MOZ_UTF16("brandShortName"),
+            u"brandShortName",
             getter_Copies(brandName));
-    }
 
-    if (brandName.IsEmpty()) {
-        brandName.AssignLiteral(MOZ_UTF16("Mozilla"));
-    }
+    if (brandName.IsEmpty())
+        brandName.AssignLiteral(u"Mozilla");
 }
 
-NS_IMETHODIMP
+void
 nsWindow::SetWindowClass(const nsAString &xulWinType)
 {
     if (!mWidget) {
-        return NS_ERROR_FAILURE;
+        return;
     }
+
+    (void)xulWinType;
 
     nsXPIDLString brandName;
     GetBrandName(brandName);
@@ -1774,8 +1755,6 @@ nsWindow::SetWindowClass(const nsAString &xulWinType)
     free(class_hint->res_name);
     XFree(class_hint);
 #endif
-
-    return NS_OK;
 }
 
 void
