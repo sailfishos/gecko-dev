@@ -11,6 +11,7 @@
 #include <QImageWriter>
 #include <QBuffer>
 
+#include "nsArrayUtils.h" // for do_QueryElementAt
 #include "gfxPlatform.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/gfx/2D.h"
@@ -83,10 +84,10 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
 
     // get flavor list that includes all flavors that can be written (including
     // ones obtained through conversion)
-    nsCOMPtr<nsISupportsArray> flavorList;
+    nsCOMPtr<nsIArray> flavorList;
     nsresult rv = aTransferable->FlavorsTransferableCanExport( getter_AddRefs(flavorList) );
 
-    if (NS_FAILED(rv))
+    if (!flavorList || NS_FAILED(rv))
     {
         NS_WARNING("nsClipboard::SetNativeClipboardData(): no FlavorsTransferable !");
         return NS_ERROR_FAILURE;
@@ -96,14 +97,12 @@ nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
     QMimeData *mimeData = new QMimeData;
 
     uint32_t flavorCount = 0;
-    flavorList->Count(&flavorCount);
+    flavorList->GetLength(&flavorCount);
     bool imageAdded = false;
 
     for (uint32_t i = 0; i < flavorCount; ++i)
     {
-        nsCOMPtr<nsISupports> genericFlavor;
-        flavorList->GetElementAt(i,getter_AddRefs(genericFlavor));
-        nsCOMPtr<nsISupportsCString> currentFlavor(do_QueryInterface(genericFlavor));
+        nsCOMPtr<nsISupportsCString> currentFlavor = do_QueryElementAt(flavorList, i);
         
         if (currentFlavor)
         {
@@ -252,11 +251,10 @@ nsClipboard::GetNativeClipboardData(nsITransferable *aTransferable,
 
     // get flavor list that includes all acceptable flavors (including
     // ones obtained through conversion)
-    nsCOMPtr<nsISupportsArray> flavorList;
-    nsresult errCode = aTransferable->FlavorsTransferableCanImport(
-        getter_AddRefs(flavorList));
+    nsCOMPtr<nsIArray> flavorList;
+    nsresult errCode = aTransferable->FlavorsTransferableCanImport(getter_AddRefs(flavorList));
 
-    if (NS_FAILED(errCode))
+    if (!flavorList || NS_FAILED(errCode))
     {
         NS_WARNING("nsClipboard::GetNativeClipboardData(): no FlavorsTransferable!");
         return NS_ERROR_FAILURE;
@@ -267,14 +265,12 @@ nsClipboard::GetNativeClipboardData(nsITransferable *aTransferable,
 
     // Walk through flavors and see which flavor matches the one being pasted
     uint32_t flavorCount;
-    flavorList->Count(&flavorCount);
+    flavorList->GetLength(&flavorCount);
     nsAutoCString foundFlavor;
 
     for (uint32_t i = 0; i < flavorCount; ++i)
     {
-        nsCOMPtr<nsISupports> genericFlavor;
-        flavorList->GetElementAt(i,getter_AddRefs(genericFlavor));
-        nsCOMPtr<nsISupportsCString> currentFlavor(do_QueryInterface( genericFlavor) );
+        nsCOMPtr<nsISupportsCString> currentFlavor = do_QueryElementAt(flavorList, i);
 
         if (currentFlavor)
         {

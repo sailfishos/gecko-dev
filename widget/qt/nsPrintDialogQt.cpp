@@ -28,7 +28,7 @@ nsPrintDialogServiceQt::Init()
 }
 
 NS_IMETHODIMP
-nsPrintDialogServiceQt::Show(nsIDOMWindow* aParent,
+nsPrintDialogServiceQt::Show(nsPIDOMWindowOuter *aParent,
                              nsIPrintSettings* aSettings,
                              nsIWebBrowserPrint* aWebBrowserPrint)
 {
@@ -36,7 +36,7 @@ nsPrintDialogServiceQt::Show(nsIDOMWindow* aParent,
 }
 
 NS_IMETHODIMP
-nsPrintDialogServiceQt::ShowPageSetup(nsIDOMWindow* aParent,
+nsPrintDialogServiceQt::ShowPageSetup(nsPIDOMWindowOuter* aParent,
                                       nsIPrintSettings* aNSSettings)
 {
     return NS_ERROR_NOT_IMPLEMENTED;

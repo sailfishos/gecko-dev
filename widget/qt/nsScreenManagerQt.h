@@ -27,7 +27,7 @@ private:
 
   nsCOMPtr<nsIScreen> *screens;
   QDesktopWidget *desktop;
-  int nScreens;
+  uint32_t nScreens;
   bool mInitialized;
 };
 
