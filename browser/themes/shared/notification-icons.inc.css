@@ -55,7 +55,7 @@
 .geo-icon {
 %ifdef XP_MACOSX
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-osx);
-%elif defined(MOZ_WIDGET_GTK)
+%elif defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-linux);
 %else
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-windows);
@@ -65,7 +65,7 @@
 .geo-icon.blocked-permission-icon {
 %ifdef XP_MACOSX
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-osx-blocked);
-%elif defined(MOZ_WIDGET_GTK)
+%elif defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-linux-blocked);
 %else
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-windows-blocked);
@@ -75,7 +75,7 @@
 .popup-notification-icon[popupid="geolocation"] {
 %ifdef XP_MACOSX
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-osx);
-%elif defined(MOZ_WIDGET_GTK)
+%elif defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-linux-detailed);
 %else
   list-style-image: url(chrome://browser/skin/notification-icons.svg#geo-windows-detailed);
