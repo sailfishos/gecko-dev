@@ -622,6 +622,7 @@ XRE_InitChildProcess(int aArgc,
 
           // If passed in grab the application path for xpcom init
           bool foundAppdir = false;
+          nsCString appDir;
 
 #if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
           // If passed in grab the profile path for sandboxing
@@ -634,7 +635,6 @@ XRE_InitChildProcess(int aArgc,
               if (foundAppdir) {
                   continue;
               }
-              nsCString appDir;
               appDir.Assign(nsDependentCString(aArgv[idx+1]));
               static_cast<ContentProcess*>(process.get())->SetAppDir(appDir);
               foundAppdir = true;
