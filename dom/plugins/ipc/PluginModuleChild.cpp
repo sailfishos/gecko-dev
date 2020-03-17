@@ -320,7 +320,6 @@ PluginModuleChild::InitForChrome(const std::string& aPluginFilename,
 }
 
 #if defined(MOZ_WIDGET_GTK)
-
 typedef void (*GObjectDisposeFn)(GObject*);
 typedef gboolean (*GtkWidgetScrollEventFn)(GtkWidget*, GdkEventScroll*);
 typedef void (*GtkPlugEmbeddedFn)(GtkPlug*);

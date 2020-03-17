@@ -157,6 +157,8 @@ this.AppConstants = Object.freeze({
   platform:
 #ifdef MOZ_WIDGET_GTK
   "linux",
+#elif MOZ_WIDGET_QT
+  "linux",
 #elif XP_WIN
   "win",
 #elif XP_MACOSX
