@@ -21,7 +21,7 @@ app = CONFIG['MOZ_BUILD_APP']
 
 if toolkit == 'cocoa':
     DIRS += ['osx']
-elif toolkit in ('gtk2', 'gtk3'):
+elif toolkit in ('gtk2', 'gtk3', 'qt'):
     DIRS += ['linux']
 elif app == 'mobile/android':
     DIRS += ['mobile']
