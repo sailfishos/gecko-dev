@@ -13,7 +13,9 @@
 #include "mozilla/TaskQueue.h"
 #include "mp4_demuxer/AnnexB.h"
 #include "mp4_demuxer/H264.h"
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
+#endif
 #include "nsAutoPtr.h"
 #include "nsRect.h"
 #include "PlatformDecoderModule.h"
@@ -33,12 +35,17 @@ public:
                         const CreateDecoderParams& aParams)
     : mCreator(aCreator)
     , mCallback(aParams.mCallback)
-    , mMaxRefFrames(aParams.mConfig.GetType() == TrackInfo::kVideoTrack &&
+    , mMaxRefFrames(
+#if defined(MOZ_FMP4)
+                    aParams.mConfig.GetType() == TrackInfo::kVideoTrack &&
                     MP4Decoder::IsH264(aParams.mConfig.mMimeType)
                     ? mp4_demuxer::AnnexB::HasSPS(aParams.VideoConfig().mExtraData)
                       ? mp4_demuxer::H264::ComputeMaxRefFrames(aParams.VideoConfig().mExtraData)
                       : 16
                     : 0)
+#else
+                    0)
+#endif
     , mType(aParams.mConfig.GetType())
   {
   }
@@ -260,11 +267,15 @@ public:
   ConversionRequired
   DecoderNeedsConversion(const TrackInfo& aConfig) const override
   {
+#if defined(MOZ_FMP4)
     if (aConfig.IsVideo() && MP4Decoder::IsH264(aConfig.mMimeType)) {
       return ConversionRequired::kNeedAVCC;
     } else {
       return ConversionRequired::kNeedNone;
     }
+#else
+    return ConversionRequired::kNeedNone;
+#endif
   }
 
 };

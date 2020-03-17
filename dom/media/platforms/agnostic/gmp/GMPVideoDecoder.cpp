@@ -160,6 +160,7 @@ GMPVideoDecoder::GMPVideoDecoder(const GMPVideoDecoderParams& aParams)
 void
 GMPVideoDecoder::InitTags(nsTArray<nsCString>& aTags)
 {
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(mConfig.mMimeType)) {
     aTags.AppendElement(NS_LITERAL_CSTRING("h264"));
     const Maybe<nsCString> gmp(
@@ -167,7 +168,9 @@ GMPVideoDecoder::InitTags(nsTArray<nsCString>& aTags)
     if (gmp.isSome()) {
       aTags.AppendElement(gmp.value());
     }
-  } else if (VPXDecoder::IsVP8(mConfig.mMimeType)) {
+  } else
+#endif
+  if (VPXDecoder::IsVP8(mConfig.mMimeType)) {
     aTags.AppendElement(NS_LITERAL_CSTRING("vp8"));
   } else if (VPXDecoder::IsVP9(mConfig.mMimeType)) {
     aTags.AppendElement(NS_LITERAL_CSTRING("vp9"));
@@ -254,12 +257,15 @@ GMPVideoDecoder::GMPInitDone(GMPVideoDecoderProxy* aGMP, GMPVideoHost* aHost)
 
   codec.mGMPApiVersion = kGMPVersion33;
   nsTArray<uint8_t> codecSpecific;
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(mConfig.mMimeType)) {
     codec.mCodecType = kGMPVideoCodecH264;
     codecSpecific.AppendElement(0); // mPacketizationMode.
     codecSpecific.AppendElements(mConfig.mExtraData->Elements(),
                                  mConfig.mExtraData->Length());
-  } else if (VPXDecoder::IsVP8(mConfig.mMimeType)) {
+  } else
+#endif
+  if (VPXDecoder::IsVP8(mConfig.mMimeType)) {
     codec.mCodecType = kGMPVideoCodecVP8;
   } else if (VPXDecoder::IsVP9(mConfig.mMimeType)) {
     codec.mCodecType = kGMPVideoCodecVP9;

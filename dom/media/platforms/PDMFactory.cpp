@@ -44,7 +44,9 @@
 
 #include "DecoderDoctorDiagnostics.h"
 
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
+#endif
 #include "mozilla/dom/RemoteVideoDecoder.h"
 
 #ifdef XP_WIN
@@ -122,6 +124,7 @@ public:
     RefPtr<MediaByteBuffer> extraData = aTrackConfig.GetAsVideoInfo()->mExtraData;
     AddToCheckList(
       [mimeType, extraData]() {
+#if defined(MOZ_FMP4)
         if (MP4Decoder::IsH264(mimeType)) {
           mp4_demuxer::SPSData spsdata;
           // WMF H.264 Video Decoder and Apple ATDecoder
@@ -139,6 +142,7 @@ public:
                               " with YUV444 chroma subsampling.")));
           }
         }
+#endif
         return CheckResult(SupportChecker::Reason::kSupported);
       });
     }
@@ -302,7 +306,7 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
 
   CreateDecoderParams params = aParams;
   params.mCallback = callback;
-
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(config.mMimeType) && !aParams.mUseBlankDecoder) {
     RefPtr<H264Converter> h = new H264Converter(aPDM, params);
     const nsresult rv = h->GetLastError();
@@ -312,7 +316,9 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
       // problem, for example WMF DLLs were missing.
       m = h.forget();
     }
-  } else {
+  } else
+#endif
+  {
     m = aPDM->CreateVideoDecoder(params);
   }
 

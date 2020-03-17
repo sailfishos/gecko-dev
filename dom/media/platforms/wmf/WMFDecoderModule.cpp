@@ -26,7 +26,9 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/WindowsVersion.h"
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
+#endif
 #include "VPXDecoder.h"
 
 namespace mozilla {
@@ -210,6 +212,7 @@ WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
        WMFDecoderModule::HasAAC()) {
     return true;
   }
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(aTrackInfo.mMimeType) && WMFDecoderModule::HasH264()) {
     const VideoInfo* videoInfo = aTrackInfo.GetAsVideoInfo();
     MOZ_ASSERT(videoInfo);
@@ -228,6 +231,7 @@ WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
     }
     return true;
   }
+#endif
   if (aTrackInfo.mMimeType.EqualsLiteral("audio/mpeg") &&
       CanCreateWMFDecoder<CLSID_CMP3DecMediaObject>()) {
     return true;
@@ -247,9 +251,12 @@ WMFDecoderModule::Supports(const TrackInfo& aTrackInfo,
 PlatformDecoderModule::ConversionRequired
 WMFDecoderModule::DecoderNeedsConversion(const TrackInfo& aConfig) const
 {
+#if defined(MOZ_FMP4)
   if (aConfig.IsVideo() && MP4Decoder::IsH264(aConfig.mMimeType)) {
     return ConversionRequired::kNeedAnnexB;
-  } else {
+  } else
+#endif
+  {
     return ConversionRequired::kNeedNone;
   }
 }
