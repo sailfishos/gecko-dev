@@ -4,8 +4,13 @@
 
 include protocol PEmbedLiteApp;
 
+// for embedding ipc
+include "ipc/EmbedIPCUtils.h";
+// for generic gui ipc
 include "ipc/nsGUIEventIPC.h";
-include "ipc/InputDataIPC.h";
+// for nsEventStatus serialization (ContiguousEnumSerializer)
+include "mozilla/dom/TabMessageUtils.h";
+
 include "mozilla/GfxMessageUtils.h";
 using struct gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";

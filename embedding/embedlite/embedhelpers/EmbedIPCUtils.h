@@ -3,13 +3,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef InputDataIPC_h__
-#define InputDataIPC_h__
+#ifndef EmbedIPCUtils_h__
+#define EmbedIPCUtils_h__
 
 #include "ipc/IPCMessageUtils.h"
 #include "InputData.h"
+#include "mozilla/EventForwards.h"
 
+#if 0
 namespace IPC {
+
 
 template<>
 struct ParamTraits<mozilla::InputData>
@@ -87,7 +90,10 @@ struct ParamTraits<mozilla::MultiTouchInput>
   }
 };
 
-} // namespace IPC
 
-#endif // InputDataIPC_h__
+} // namespace IPC
+#endif
+
+
+#endif // EmbedIPCUtils_h__
 
