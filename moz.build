@@ -40,7 +40,7 @@ EXPORTS.mozilla.embedlite += [
     'utils/EmbedLog.h',
 ]
 
-EXPORTS.ipc = ['embedhelpers/InputDataIPC.h']
+EXPORTS.ipc = ['embedhelpers/EmbedIPCUtils.h']
 
 UNIFIED_SOURCES += [
     'embedhelpers/EmbedLiteSubThread.cpp',
