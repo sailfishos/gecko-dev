@@ -2929,8 +2929,8 @@ MediaManager::Shutdown()
   RefPtr<ShutdownTask> shutdown = new ShutdownTask(this,
       media::NewRunnableFrom([this, that]() mutable {
     LOG(("MediaManager shutdown lambda running, releasing MediaManager singleton and thread"));
-    if (self->mMediaThread) {
-      self->mMediaThread->Stop();
+    if (mMediaThread) {
+      mMediaThread->Stop();
     }
 
     // Remove async shutdown blocker
@@ -2938,7 +2938,7 @@ MediaManager::Shutdown()
     nsCOMPtr<nsIAsyncShutdownClient> shutdownPhase = GetShutdownPhase();
     shutdownPhase->RemoveBlocker(sSingleton->mShutdownBlocker);
 
-    // we hold a ref to 'self' which is the same as sSingleton
+    // we hold a ref to 'that' which is the same as sSingleton
     sSingleton = nullptr;
 
     return NS_OK;
