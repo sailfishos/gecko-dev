@@ -18,7 +18,7 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedContentController;
-class EmbedLiteCompositorParent;
+class EmbedLiteCompositorBridgeParent;
 class EmbedLiteView;
 
 class EmbedLiteViewBaseParent : public PEmbedLiteViewParent,
@@ -31,7 +31,7 @@ public:
 
   NS_DECL_EMBEDLITEVIEWIFACE
 
-  EmbedLiteCompositorParent* GetCompositor() { return mCompositor.get(); }; // XXX: Remove
+  EmbedLiteCompositorBridgeParent* GetCompositor() { return mCompositor.get(); }; // XXX: Remove
 
 protected:
   virtual ~EmbedLiteViewBaseParent();
@@ -127,11 +127,11 @@ protected:
 
 private:
   friend class EmbedContentController;
-  friend class EmbedLiteCompositorParent;
+  friend class EmbedLiteCompositorBridgeParent;
   // The sole purpose of this friendliness is to set mView which is used only as a proxy to view's Listener
   friend class EmbedLiteView;
 
-  void SetCompositor(EmbedLiteCompositorParent* aCompositor); // XXX: Remove
+  void SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor); // XXX: Remove
   void UpdateScrollController();
 
   mozilla::layers::IAPZCTreeManager *GetApzcTreeManager();
@@ -140,7 +140,7 @@ private:
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
   EmbedLiteWindowBaseParent& mWindow;
-  RefPtr<EmbedLiteCompositorParent> mCompositor;
+  RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
 
   float mDPI;
 

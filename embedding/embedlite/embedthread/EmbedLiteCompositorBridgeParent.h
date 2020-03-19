@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_layers_EmbedLiteCompositorParent_h
-#define mozilla_layers_EmbedLiteCompositorParent_h
+#ifndef mozilla_layers_EmbedLiteCompositorBridgeParent_h
+#define mozilla_layers_EmbedLiteCompositorBridgeParent_h
 
 #define COMPOSITOR_PERFORMANCE_WARNING
 
@@ -22,10 +22,10 @@ class LayerManagerComposite;
 
 namespace embedlite {
 
-class EmbedLiteCompositorParent : public mozilla::layers::CompositorBridgeParent
+class EmbedLiteCompositorBridgeParent : public mozilla::layers::CompositorBridgeParent
 {
 public:
-  EmbedLiteCompositorParent(nsIWidget* widget, uint32_t windowId,
+  EmbedLiteCompositorBridgeParent(nsIWidget* widget, uint32_t windowId,
                             bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight);
 
@@ -37,7 +37,7 @@ public:
 protected:
   friend class EmbedLitePuppetWidget;
 
-  virtual ~EmbedLiteCompositorParent();
+  virtual ~EmbedLiteCompositorBridgeParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                const uint64_t& aId,
@@ -58,10 +58,10 @@ private:
   bool mUseExternalGLContext;
   Mutex mRenderMutex;
 
-  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorParent);
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorBridgeParent);
 };
 
 } // embedlite
 } // mozilla
 
-#endif // mozilla_layers_EmbedLiteCompositorParent_h
+#endif // mozilla_layers_EmbedLiteCompositorBridgeParent_h

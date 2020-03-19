@@ -5,7 +5,7 @@
 
 #include "EmbedLiteWindowBaseParent.h"
 
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteWindow.h"
 #include "EmbedLog.h"
 
@@ -121,7 +121,7 @@ bool EmbedLiteWindowBaseParent::RecvDestroyed()
   return true;
 }
 
-void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
+void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)
 {
   LOGT("compositor:%p, observers:%d", aCompositor, mObservers.Length());
   MOZ_ASSERT(!mCompositor);
