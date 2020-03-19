@@ -231,7 +231,7 @@ public:
                           uint32_t aApzcId) override;
 };
 
-class CompositorBridgeParent final : public CompositorBridgeParentBase
+class CompositorBridgeParent : public CompositorBridgeParentBase
                                    , public CompositorController
 {
   friend class CompositorVsyncScheduler;
