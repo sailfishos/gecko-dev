@@ -53,8 +53,8 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint16_t& width, const
   return window;
 }
 
-mozilla::layers::PCompositorChild*
-EmbedLiteAppThreadChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
+mozilla::layers::PCompositorBridgeChild*
+EmbedLiteAppThreadChild::AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess)
 {
   LOGNI();
   return 0;

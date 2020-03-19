@@ -12,7 +12,7 @@
 #include "EmbedLiteWindowBaseParent.h"
 #include "GLDefs.h"
 
-#include "mozilla/layers/APZCTreeManager.h"
+#include "mozilla/layers/IAPZCTreeManager.h" // public IAPZCTreeManager
 
 namespace mozilla {
 namespace embedlite {
@@ -134,7 +134,7 @@ private:
   void SetCompositor(EmbedLiteCompositorParent* aCompositor); // XXX: Remove
   void UpdateScrollController();
 
-  mozilla::layers::APZCTreeManager *GetApzcTreeManager();
+  mozilla::layers::IAPZCTreeManager *GetApzcTreeManager();
 
   uint32_t mId;
   EmbedLiteView* mView;
@@ -150,7 +150,7 @@ private:
   uint64_t mRootLayerTreeId;
   GLuint mUploadTexture;
 
-  RefPtr<mozilla::layers::APZCTreeManager> mApzcTreeManager;
+  RefPtr<mozilla::layers::IAPZCTreeManager> mApzcTreeManager;
   RefPtr<EmbedContentController> mContentController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseParent);

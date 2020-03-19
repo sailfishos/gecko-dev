@@ -150,7 +150,7 @@ public:
                   LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
                   bool* aAllowRetaining = nullptr) override;
 
-  virtual mozilla::layers::CompositorParent* NewCompositorParent(int aSurfaceWidth,
+  virtual mozilla::layers::CompositorBridgeParent* NewCompositorParent(int aSurfaceWidth,
                                                                  int aSurfaceHeight) override;
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;

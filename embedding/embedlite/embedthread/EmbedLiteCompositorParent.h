@@ -11,8 +11,8 @@
 #include "Layers.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
-#include "mozilla/layers/CompositorChild.h"
-#include "mozilla/layers/CompositorParent.h"
+#include "mozilla/layers/CompositorBridgeChild.h"
+#include "mozilla/layers/CompositorBridgeParent.h"
 
 namespace mozilla {
 
@@ -22,7 +22,7 @@ class LayerManagerComposite;
 
 namespace embedlite {
 
-class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
+class EmbedLiteCompositorParent : public mozilla::layers::CompositorBridgeParent
 {
 public:
   EmbedLiteCompositorParent(nsIWidget* widget, uint32_t windowId,
@@ -43,6 +43,7 @@ protected:
                                const uint64_t& aId,
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
+  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
   virtual void ScheduleTask(CancelableTask*, int) override;
 
 private:

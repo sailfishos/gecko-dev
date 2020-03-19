@@ -15,7 +15,8 @@
 # include "LayerManagerD3D10.h"
 #endif
 #include "mozilla/Hal.h"
-#include "mozilla/layers/CompositorChild.h"
+#include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
+#include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "EmbedLitePuppetWidget.h"
@@ -110,7 +111,7 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window)
   : EmbedLitePuppetWidget(window, nullptr)
 {
   if (sUseExternalGLContext && sRequestGLContextEarly) {
-    CompositorParent::CompositorLoop()->PostTask(FROM_HERE,
+    CompositorThreadHolder::Loop()->PostTask(FROM_HERE,
         NewRunnableFunction(&CreateGLContextEarly, window->GetUniqueID()));
   }
 }
@@ -371,10 +372,13 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
     listener->WindowResized(this, mBounds.width, mBounds.height);
   }
 
+  // Looks that we need CompositorSession
+#if 0
   if (mCompositorParent) {
     static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->
         SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
+#endif
 
   return NS_OK;
 }
@@ -778,9 +782,10 @@ void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, 
   }
 }
 
-CompositorParent*
+CompositorBridgeParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
+  // See nsBaseWidget::CreateCompositor and sha1 bb2cbc24f4cb9bee50a46ba7a520b9016d5207a5
   LOGT();
   mHasCompositor = true;
   return new EmbedLiteCompositorParent(this, mWindow->GetUniqueID(), true,

@@ -14,7 +14,7 @@
 #include "base/message_loop.h"               // for MessageLoop
 
 #include "mozilla/embedlite/EmbedLiteAPI.h"
-#include "mozilla/layers/CompositorParent.h"
+#include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
 
 #include "EmbedLiteUILoop.h"
 #include "EmbedLiteSubThread.h"
@@ -124,13 +124,13 @@ EmbedLiteApp::PostTask(EMBEDTaskCallback callback, void* userData, int timeout)
 void*
 EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback callback, void* userData, int timeout)
 {
-  if (!mozilla::layers::CompositorParent::CompositorLoop()) {
+  if (!mozilla::layers::CompositorThreadHolder::IsActive()) {
     // Can't post compositor task if gecko compositor thread has not been initialized, yet.
     return nullptr;
   }
 
-  CancelableTask* newTask = NewRunnableFunction(callback, userData);
-  MessageLoop* compositorLoop = mozilla::layers::CompositorParent::CompositorLoop();
+  RefPtr<CancelableRunnable> newTask = NewRunnableFunction(callback, userData);
+  MessageLoop* compositorLoop = mozilla::layers::CompositorThreadHolder::Loop();
   MOZ_ASSERT(compositorLoop);
 
   if (timeout) {

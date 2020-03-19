@@ -46,7 +46,7 @@ protected:
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height,
                                                             const uint32_t& id) override;
 
-  virtual PCompositorChild* AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess);
+  virtual PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
 
   // IPDL protocol impl
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
