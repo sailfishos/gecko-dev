@@ -198,7 +198,7 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
   RefPtr<CompositorManagerParent> mCompositorManager;
 };
 
-class CompositorBridgeParent final : public CompositorBridgeParentBase,
+class CompositorBridgeParent : public CompositorBridgeParentBase,
                                      public CompositorController,
                                      public CompositorVsyncSchedulerOwner {
   friend class CompositorThreadHolder;
