@@ -79,7 +79,7 @@ UNIFIED_SOURCES += [
 ]
 
 SOURCES += [
-    'embedthread/EmbedLiteCompositorParent.cpp',
+    'embedthread/EmbedLiteCompositorBridgeParent.cpp',
     'embedthread/EmbedLiteViewThreadParent.cpp',
     'embedthread/EmbedLiteWindowThreadParent.cpp',
 ]

@@ -26,7 +26,7 @@
 #include "ClientLayerManager.h"
 #include "GLContextProvider.h"
 #include "GLContext.h"
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 #include "mozilla/Preferences.h"
 
 #ifdef DEBUG
@@ -375,7 +375,7 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
   // Looks that we need CompositorSession
 #if 0
   if (mCompositorParent) {
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->
+    static_cast<EmbedLiteCompositorBridgeParent*>(mCompositorParent.get())->
         SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
 #endif
@@ -788,7 +788,7 @@ EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight
   // See nsBaseWidget::CreateCompositor and sha1 bb2cbc24f4cb9bee50a46ba7a520b9016d5207a5
   LOGT();
   mHasCompositor = true;
-  return new EmbedLiteCompositorParent(this, mWindow->GetUniqueID(), true,
+  return new EmbedLiteCompositorBridgeParent(this, mWindow->GetUniqueID(), true,
                                        aSurfaceWidth, aSurfaceHeight);
 }
 

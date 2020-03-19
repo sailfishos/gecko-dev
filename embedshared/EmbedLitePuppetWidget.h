@@ -170,7 +170,7 @@ public:
    * Called before the LayerManager draws the layer tree.
    *
    * Always called from the compositing thread. Puppet Widget passes the call
-   * forward to the EmbedLiteCompositorParent.
+   * forward to the EmbedLiteCompositorBridgeParent.
    */
   virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
 
@@ -178,7 +178,7 @@ public:
    * Called after the LayerManager draws the layer tree
    *
    * Always called from the compositing thread. Puppet Widget passes the call
-   * forward to the EmbedLiteCompositorParent.
+   * forward to the EmbedLiteCompositorBridgeParent.
    */
   virtual void DrawWindowOverlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
 

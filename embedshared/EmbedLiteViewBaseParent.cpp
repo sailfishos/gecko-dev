@@ -9,7 +9,7 @@
 #include "EmbedLiteViewBaseParent.h"
 #include "EmbedLiteWindowBaseParent.h"
 
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
@@ -65,7 +65,7 @@ EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 void
-EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
+EmbedLiteViewBaseParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)
 {
   mCompositor = aCompositor;
   LOGT("compositor: %p", mCompositor.get());

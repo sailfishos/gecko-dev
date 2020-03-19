@@ -9,7 +9,7 @@
 #include "mozilla/unused.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 
 using namespace mozilla::embedlite;
 using namespace mozilla::gfx;

@@ -5,7 +5,7 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 #include "BasicLayers.h"
 #include "EmbedLiteApp.h"
 #include "EmbedLiteWindow.h"
@@ -37,7 +37,7 @@ namespace embedlite {
 
 static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
-EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
+EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(nsIWidget* widget,
                                                      uint32_t windowId,
                                                      bool aRenderToEGLSurface,
                                                      int aSurfaceWidth,
@@ -47,7 +47,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
   , mSurfaceSize(aSurfaceWidth, aSurfaceHeight)
-  , mRenderMutex("EmbedLiteCompositorParent render mutex")
+  , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
@@ -59,13 +59,13 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
 {}
 #endif
 
-EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
+EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent()
 {
   LOGT();
 }
 
 PLayerTransactionParent*
-EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
+EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                                         const uint64_t& aId,
                                                         TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                                         bool* aSuccess)
@@ -88,7 +88,7 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
   return p;
 }
 
-bool EmbedLiteCompositorParent::DeallocPLayerTransactionParent(PLayerTransactionParent *aLayers)
+bool EmbedLiteCompositorBridgeParent::DeallocPLayerTransactionParent(PLayerTransactionParent *aLayers)
 {
     bool deallocated = CompositorBridgeParent::DeallocPLayerTransactionParent(aLayers);
     LOGT();
@@ -96,7 +96,7 @@ bool EmbedLiteCompositorParent::DeallocPLayerTransactionParent(PLayerTransaction
 }
 
 void
-EmbedLiteCompositorParent::PrepareOffscreen()
+EmbedLiteCompositorBridgeParent::PrepareOffscreen()
 {
 
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
@@ -134,7 +134,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
 }
 
 void
-EmbedLiteCompositorParent::UpdateTransformState()
+EmbedLiteCompositorBridgeParent::UpdateTransformState()
 {
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -151,7 +151,7 @@ EmbedLiteCompositorParent::UpdateTransformState()
 }
 
 void
-EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
+EmbedLiteCompositorBridgeParent::ScheduleTask(CancelableTask* task, int time)
 {
 #if 0
   if (Invalidate()) {
@@ -164,11 +164,11 @@ EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 }
 
 bool
-EmbedLiteCompositorParent::Invalidate()
+EmbedLiteCompositorBridgeParent::Invalidate()
 {
   if (!mUseExternalGLContext) {
     UpdateTransformState();
-    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL, TimeStamp::Now());
+    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorBridgeParent::RenderGL, TimeStamp::Now());
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
     return true;
   }
@@ -176,7 +176,7 @@ EmbedLiteCompositorParent::Invalidate()
   return false;
 }
 
-bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
+bool EmbedLiteCompositorBridgeParent::RenderGL(TimeStamp aScheduleTime)
 {
 //  mLastCompose = aScheduleTime;
   if (mCurrentCompositeTask) {
@@ -205,7 +205,7 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
   if (context->IsOffscreen()) {
     // RenderGL is called always from Gecko compositor thread.
     // GLScreenBuffer::PublishFrame does swap buffers and that
-    // cannot happen while reading previous frame on EmbedLiteCompositorParent::GetPlatformImage
+    // cannot happen while reading previous frame on EmbedLiteCompositorBridgeParent::GetPlatformImage
     // (potentially from another thread).
     MutexAutoLock lock(mRenderMutex);
     GLScreenBuffer* screen = context->Screen();
@@ -226,7 +226,7 @@ bool EmbedLiteCompositorParent::RenderGL(TimeStamp aScheduleTime)
   return false;
 }
 
-void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
+void EmbedLiteCompositorBridgeParent::SetSurfaceSize(int width, int height)
 {
   if (width > 0 && height > 0 && (mSurfaceSize.width != width || mSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
@@ -235,7 +235,7 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 }
 
 void*
-EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
+EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 {
   MutexAutoLock lock(mRenderMutex);
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
@@ -264,13 +264,13 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 }
 
 void
-EmbedLiteCompositorParent::SuspendRendering()
+EmbedLiteCompositorBridgeParent::SuspendRendering()
 {
   CompositorParent::SchedulePauseOnCompositorThread();
 }
 
 void
-EmbedLiteCompositorParent::ResumeRendering()
+EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
   if (mSurfaceSize.width > 0 && mSurfaceSize.height > 0) {
     CompositorParent::ScheduleResumeOnCompositorThread(mSurfaceSize.width,

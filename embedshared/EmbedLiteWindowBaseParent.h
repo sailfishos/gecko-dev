@@ -13,7 +13,7 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteWindow;
-class EmbedLiteCompositorParent;
+class EmbedLiteCompositorBridgeParent;
 
 class EmbedLiteWindowParentObserver
 {
@@ -32,7 +32,7 @@ public:
   void AddObserver(EmbedLiteWindowParentObserver*);
   void RemoveObserver(EmbedLiteWindowParentObserver*);
 
-  EmbedLiteCompositorParent* GetCompositor() const { return mCompositor.get(); }
+  EmbedLiteCompositorBridgeParent* GetCompositor() const { return mCompositor.get(); }
 
   void SetSize(int width, int height);
   void SetContentOrientation(const uint32_t &);
@@ -42,7 +42,7 @@ public:
   void* GetPlatformImage(int* width, int* height);
 
 protected:
-  friend class EmbedLiteCompositorParent;
+  friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLiteWindow;
 
   virtual ~EmbedLiteWindowBaseParent() override;
@@ -52,7 +52,7 @@ protected:
   virtual bool RecvDestroyed() override;
 
   void SetEmbedAPIWindow(EmbedLiteWindow* window);
-  void SetCompositor(EmbedLiteCompositorParent* aCompositor);
+  void SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor);
 
 private:
   typedef nsTArray<EmbedLiteWindowParentObserver*> ObserverArray;
@@ -60,7 +60,7 @@ private:
   uint32_t mId;
   EmbedLiteWindow* mWindow;
   ObserverArray mObservers;
-  RefPtr<EmbedLiteCompositorParent> mCompositor;
+  RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
 
   gfxSize mSize;
   mozilla::ScreenRotation mRotation;

@@ -27,7 +27,7 @@
 #include "nsXULAppAPI.h"
 #include "EmbedLiteMessagePump.h"
 
-#include "EmbedLiteCompositorParent.h"
+#include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteAppProcessParent.h"
 
 namespace mozilla {
