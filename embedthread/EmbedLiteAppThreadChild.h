@@ -22,7 +22,7 @@ protected:
 
   virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) override;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t&) override;
-  virtual PCompositorChild* AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess);
+  virtual mozilla::layers::PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
 
 private:
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppThreadChild);

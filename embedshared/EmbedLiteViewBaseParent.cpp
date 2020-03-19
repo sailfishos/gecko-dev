@@ -85,16 +85,20 @@ EmbedLiteViewBaseParent::UpdateScrollController()
     if (mDPI > 0) {
       GetApzcTreeManager()->SetDPI(mDPI);
     }
-    CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
+    CompositorBridgeParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
   }
 }
 
-mozilla::layers::APZCTreeManager *EmbedLiteViewBaseParent::GetApzcTreeManager()
+mozilla::layers::IAPZCTreeManager *EmbedLiteViewBaseParent::GetApzcTreeManager()
 {
+#if 0
   if (!mApzcTreeManager) {
-    mApzcTreeManager = CompositorParent::GetAPZCTreeManager(mRootLayerTreeId);
+    mApzcTreeManager = CompositorBridgeParent::GetApzcTreeManagerParentForRoot(mRootLayerTreeId);
   }
   return mApzcTreeManager.get();
+#else
+  return nullptr;
+#endif
 }
 
 // Child notification

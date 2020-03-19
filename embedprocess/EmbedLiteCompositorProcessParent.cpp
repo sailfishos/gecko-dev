@@ -6,7 +6,6 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteCompositorProcessParent.h"
-#include "mozilla/layers/CompositorParent.h" // for CompositorParent
 #include "mozilla/layers/LayerTransactionParent.h"     // for LayerTransactionParent
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/Compositor.h"  // for Compositor
@@ -20,6 +19,7 @@
 #include "mozilla/layers/APZCTreeManager.h"  // for APZCTreeManager
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/BasicCompositor.h"  // for BasicCompositor
+#include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
 #include "mozilla/layers/Compositor.h"  // for Compositor
 #include "mozilla/layers/CompositorOGL.h"  // for CompositorOGL
 
@@ -30,8 +30,6 @@ using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::gfx;
 using namespace std;
-
-static StaticRefPtr<CompositorThreadHolder> sCompositorThreadHolder;
 
 static void
 OpenCompositor(EmbedLiteCompositorProcessParent* aCompositor,
@@ -60,7 +58,7 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
   }
 
   cpcp->mSelfRef = cpcp;
-  CompositorParent::CompositorLoop()->PostTask(
+  CompositorThreadHolder::Loop()->PostTask(
     FROM_HERE,
     NewRunnableFunction(OpenCompositor, cpcp.get(),
                         aTransport, handle, XRE_GetIOMessageLoop()));
@@ -72,7 +70,6 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
 EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id)
   : mTransport(aTransport)
   , mChildProcessId(aOtherProcess)
-  , mCompositorThreadHolder(sCompositorThreadHolder)
   , mNotifyAfterRemotePaint(false)
   , mEGLSurfaceSize(aSurfaceWidth, aSurfaceHeight)
 {
@@ -302,7 +299,6 @@ void
 EmbedLiteCompositorProcessParent::DeferredDestroy()
 {
   LOGT();
-  mCompositorThreadHolder = nullptr;
   mSelfRef = nullptr;
 }
 

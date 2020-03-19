@@ -30,9 +30,9 @@ EmbedLiteViewProcessChild::OnGeckoWindowInitialized()
 
   // Pushing layers transactions directly to a separate
   // compositor context.
-  PCompositorChild* compositorChild = CompositorChild::Get();
+  CompositorBridgeChild* compositorChild = CompositorBridgeChild::Get();
   if (!compositorChild) {
-    NS_WARNING("failed to get CompositorChild instance");
+    NS_WARNING("failed to get CompositorBridgeChild instance");
     return;
   }
 

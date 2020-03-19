@@ -42,6 +42,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
                                                      bool aRenderToEGLSurface,
                                                      int aSurfaceWidth,
                                                      int aSurfaceHeight)
+#if 0
   : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
@@ -54,6 +55,9 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* widget,
                                "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
 }
+#else
+{}
+#endif
 
 EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
 {
@@ -67,7 +71,7 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
                                                         bool* aSuccess)
 {
   PLayerTransactionParent* p =
-    CompositorParent::AllocPLayerTransactionParent(aBackendHints,
+    CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints,
                                                    aId,
                                                    aTextureFactoryIdentifier,
                                                    aSuccess);
@@ -84,11 +88,18 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
   return p;
 }
 
+bool EmbedLiteCompositorParent::DeallocPLayerTransactionParent(PLayerTransactionParent *aLayers)
+{
+    bool deallocated = CompositorBridgeParent::DeallocPLayerTransactionParent(aLayers);
+    LOGT();
+    return deallocated;
+}
+
 void
 EmbedLiteCompositorParent::PrepareOffscreen()
 {
 
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -125,7 +136,7 @@ EmbedLiteCompositorParent::PrepareOffscreen()
 void
 EmbedLiteCompositorParent::UpdateTransformState()
 {
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
   CompositorOGL *compositor = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor());
@@ -142,12 +153,14 @@ EmbedLiteCompositorParent::UpdateTransformState()
 void
 EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
 {
+#if 0
   if (Invalidate()) {
     task->Cancel();
     CancelCurrentCompositeTask();
   } else {
     CompositorParent::ScheduleTask(task, time);
   }
+#endif
 }
 
 bool

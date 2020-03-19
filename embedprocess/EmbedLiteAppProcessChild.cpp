@@ -185,11 +185,12 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t& width, cons
   return nullptr;
 }
 
-PCompositorChild*
-EmbedLiteAppProcessChild::AllocPCompositorChild(Transport* aTransport, ProcessId aOtherProcess)
+PCompositorBridgeChild*
+EmbedLiteAppProcessChild::AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess)
 {
   LOGT();
-  return CompositorChild::Create(aTransport, aOtherProcess);
+  //return CompositorBridgeChild::Create(aTransport, aOtherProcess);
+  return nullptr;
 }
 
 } // namespace embedlite

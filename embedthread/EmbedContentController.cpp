@@ -8,7 +8,7 @@
 #include "EmbedLiteView.h"
 #include "mozilla/unused.h"
 #include "EmbedLiteViewBaseParent.h"
-#include "mozilla/layers/CompositorParent.h"
+#include "mozilla/layers/CompositorBridgeParent.h"
 #include "EmbedLiteCompositorParent.h"
 
 using namespace mozilla::embedlite;

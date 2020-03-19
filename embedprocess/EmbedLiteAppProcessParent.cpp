@@ -30,6 +30,7 @@
 #include "base/command_line.h"
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
+#include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
 
@@ -230,12 +231,9 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, c
   static bool sCompositorCreated = false;
   if (!sCompositorCreated) {
     sCompositorCreated = true;
-    mozilla::layers::CompositorParent::StartUp();
-    bool useOffMainThreadCompositing = !!CompositorParent::CompositorLoop();
-    LOGT("useOffMainThreadCompositing:%i", useOffMainThreadCompositing);
-    if (useOffMainThreadCompositing)
+    mozilla::layers::CompositorThreadHolder::Start();
     {
-      DebugOnly<bool> opened = PCompositor::Open(this);
+      DebugOnly<bool> opened = PCompositorBridge::Open(this);
       MOZ_ASSERT(opened);
     }
   }
@@ -338,7 +336,7 @@ EmbedLiteAppProcessParent::AllocPCompositorBridgeParent(Transport* aTransport,
 {
   LOGT();
   RefPtr<EmbedLiteAppProcessParentManager> mgr = new EmbedLiteAppProcessParentManager(); // Dummy manager in order to initialize layers log, fix me by creating proper manager for this process type
-//  return CompositorParent::Create(aTransport, aOtherProcess);
+//  return CompositorBridgeParent::Create(aTransport, aOtherProcess);
   return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess, 480, 800, 1);
 }
 

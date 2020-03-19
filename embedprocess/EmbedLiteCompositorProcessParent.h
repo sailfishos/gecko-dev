@@ -8,8 +8,8 @@
 
 #define COMPOSITOR_PERFORMANCE_WARNING
 
-#include "mozilla/layers/CompositorParent.h"
-#include "mozilla/layers/CompositorChild.h"
+#include "mozilla/layers/CompositorBridgeParent.h"
+#include "mozilla/layers/CompositorBridgeChild.h"
 #include "Layers.h"
 #include "EmbedLiteViewThreadParent.h"
 
@@ -19,7 +19,7 @@ namespace embedlite {
 class EmbedLiteCompositorProcessParent final : public PCompositorBridgeParent,
                                                public ShadowLayersManager
 {
-  friend class CompositorParent;
+  friend class CompositorBridgeParent;
 
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(EmbedLiteCompositorProcessParent)
 public:
@@ -55,7 +55,7 @@ public:
   virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) override  { return true; }
 
   /**
-   * Tells this CompositorParent to send a message when the compositor has received the transaction.
+   * Tells this CompositorBridgeParent to send a message when the compositor has received the transaction.
    */
   virtual bool RecvRequestNotifyAfterRemotePaint() override;
 
@@ -116,7 +116,6 @@ private:
   // Child side's process Id.
   base::ProcessId mChildProcessId;
 
-  RefPtr<CompositorThreadHolder> mCompositorThreadHolder;
   // If true, we should send a RemotePaintIsReady message when the layer transaction
   // is received
   bool mNotifyAfterRemotePaint;
