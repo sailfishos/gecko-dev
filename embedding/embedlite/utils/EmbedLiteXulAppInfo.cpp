@@ -45,7 +45,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(GRE_BUILDID);
+  aAppBuildID.Assign(MOZ_BUILDID);
   return NS_OK;
 }
 
@@ -75,7 +75,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersi
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(GRE_BUILDID);
+  aPlatformBuildID.Assign(MOZ_BUILDID);
   return NS_OK;
 }
 

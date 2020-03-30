@@ -5,6 +5,8 @@
 
 DIRS += ['tests']
 
+CONFIGURE_SUBST_FILES += ['installer/Makefile']
+
 JS_PREFERENCE_FILES += [
      'embedding.js',
 ]
