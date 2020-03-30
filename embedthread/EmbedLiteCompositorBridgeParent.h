@@ -9,6 +9,7 @@
 #define COMPOSITOR_PERFORMANCE_WARNING
 
 #include "Layers.h"
+#include "base/task.h" // for CancelableRunnable
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
@@ -44,7 +45,7 @@ protected:
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) override;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
-  virtual void ScheduleTask(CancelableTask*, int) override;
+  virtual void ScheduleTask(already_AddRefed<CancelableRunnable>, int) override;
 
 private:
   void PrepareOffscreen();
@@ -53,7 +54,7 @@ private:
   bool RenderGL(TimeStamp aScheduleTime);
 
   uint32_t mWindowId;
-  CancelableTask* mCurrentCompositeTask;
+  RefPtr<CancelableRunnable> mCurrentCompositeTask;
   gfx::IntSize mSurfaceSize;
   bool mUseExternalGLContext;
   Mutex mRenderMutex;
