@@ -27,6 +27,7 @@
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
+#include "VsyncSource.h"
 
 using namespace mozilla::layers;
 using namespace mozilla::gfx;
@@ -42,8 +43,10 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(nsIWidget* widg
                                                      bool aRenderToEGLSurface,
                                                      int aSurfaceWidth,
                                                      int aSurfaceHeight)
-#if 0
-  : CompositorParent(widget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
+#if 1
+  : CompositorBridgeParent(CSSToLayoutDeviceScale(1.0),
+                           gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
+                           aRenderToEGLSurface, gfx::IntSize(aSurfaceWidth, aSurfaceHeight))
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
   , mSurfaceSize(aSurfaceWidth, aSurfaceHeight)
@@ -54,6 +57,9 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(nsIWidget* widg
   Preferences::AddBoolVarCache(&mUseExternalGLContext,
                                "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
+
+  // Post open parent?
+  //
 }
 #else
 {}
@@ -115,7 +121,7 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
           flags |= layers::TextureFlags::NON_PREMULTIPLIED;
       }
 
-      auto forwarder = state->mLayerManager->AsShadowForwarder();
+      auto forwarder = state->mLayerManager->AsShadowForwarder()->GetTextureForwarder();
       printf("=============== caps.premultAlpha: %d ptr: %p\n", screen->mCaps.premultAlpha, forwarder);
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
@@ -124,6 +130,7 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
         GLContext* nullConsGL = nullptr; // Bug 1050044.
+        // iicpChannel = compositorConnection->GetTextureForwarder()
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, forwarder, flags);
       }
       if (factory) {
@@ -151,14 +158,14 @@ EmbedLiteCompositorBridgeParent::UpdateTransformState()
 }
 
 void
-EmbedLiteCompositorBridgeParent::ScheduleTask(CancelableTask* task, int time)
+EmbedLiteCompositorBridgeParent::ScheduleTask(already_AddRefed<CancelableRunnable> task, int time)
 {
 #if 0
   if (Invalidate()) {
     task->Cancel();
     CancelCurrentCompositeTask();
   } else {
-    CompositorParent::ScheduleTask(task, time);
+    CompositorBridgeParent::ScheduleTask(task, time);
   }
 #endif
 }
@@ -168,8 +175,11 @@ EmbedLiteCompositorBridgeParent::Invalidate()
 {
   if (!mUseExternalGLContext) {
     UpdateTransformState();
-    mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorBridgeParent::RenderGL, TimeStamp::Now());
-    MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, sDefaultPaintInterval);
+    mCurrentCompositeTask = NewCancelableRunnableMethod<mozilla::TimeStamp>(this,
+                                                                            &EmbedLiteCompositorBridgeParent::RenderGL,
+                                                                            TimeStamp::Now());
+    RefPtr<Runnable> addrefedTask = mCurrentCompositeTask;
+    MessageLoop::current()->PostDelayedTask(addrefedTask.forget(), sDefaultPaintInterval);
     return true;
   }
 
@@ -178,13 +188,12 @@ EmbedLiteCompositorBridgeParent::Invalidate()
 
 bool EmbedLiteCompositorBridgeParent::RenderGL(TimeStamp aScheduleTime)
 {
-//  mLastCompose = aScheduleTime;
   if (mCurrentCompositeTask) {
     mCurrentCompositeTask->Cancel();
     mCurrentCompositeTask = nullptr;
   }
 
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, false);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -238,7 +247,7 @@ void*
 EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 {
   MutexAutoLock lock(mRenderMutex);
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -250,7 +259,8 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
   NS_ENSURE_TRUE(screen->Front(), nullptr);
   SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
-  sharedSurf->WaitSync();
+  // sharedSurf->WaitSync();
+  // ProducerAcquire & ProducerRelease ?
 
   *width = sharedSurf->mSize.width;
   *height = sharedSurf->mSize.height;
@@ -266,16 +276,16 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 void
 EmbedLiteCompositorBridgeParent::SuspendRendering()
 {
-  CompositorParent::SchedulePauseOnCompositorThread();
+  CompositorBridgeParent::SchedulePauseOnCompositorThread();
 }
 
 void
 EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
   if (mSurfaceSize.width > 0 && mSurfaceSize.height > 0) {
-    CompositorParent::ScheduleResumeOnCompositorThread(mSurfaceSize.width,
+    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mSurfaceSize.width,
                                                        mSurfaceSize.height);
-    CompositorParent::ScheduleRenderOnCompositorThread();
+    CompositorBridgeParent::ScheduleRenderOnCompositorThread();
   }
 }
 
