@@ -10,7 +10,7 @@
 #include "EmbedLiteWindowBaseParent.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/APZThreadUtils.h"

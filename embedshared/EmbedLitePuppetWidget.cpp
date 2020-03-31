@@ -36,7 +36,7 @@
 
 #include "EmbedLiteApp.h"
 #include "LayerScope.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "mozilla/BasicEvents.h"
 
 #include <sys/syscall.h>

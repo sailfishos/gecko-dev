@@ -7,7 +7,7 @@
 
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteWindowBaseChild.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "Hal.h"
 #include "ScreenOrientation.h"
 #include "nsIScreen.h"

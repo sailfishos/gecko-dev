@@ -6,7 +6,7 @@
 #include "EmbedContentController.h"
 #include "EmbedLog.h"
 #include "EmbedLiteView.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "EmbedLiteCompositorBridgeParent.h"

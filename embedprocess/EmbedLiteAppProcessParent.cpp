@@ -10,7 +10,7 @@
 #if defined(ANDROID) || defined(LINUX)
 #include "nsSystemInfo.h"
 #endif
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #if defined(ANDROID) || defined(LINUX)
 #include <sys/time.h>
 #include <sys/resource.h>
