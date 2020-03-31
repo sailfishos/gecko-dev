@@ -164,8 +164,12 @@ protected:
   virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) override;
+#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
   virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration) override;
+#endif
+#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
   virtual bool RecvRequestFlingSnap(const FrameMetrics::ViewID& aScrollId, const CSSPoint& aDestination) override;
+#endif
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float& aX,
                               const float& aY,
