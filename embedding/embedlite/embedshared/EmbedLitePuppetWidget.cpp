@@ -111,8 +111,8 @@ EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteWindowBaseChild* window)
   : EmbedLitePuppetWidget(window, nullptr)
 {
   if (sUseExternalGLContext && sRequestGLContextEarly) {
-    CompositorThreadHolder::Loop()->PostTask(FROM_HERE,
-        NewRunnableFunction(&CreateGLContextEarly, window->GetUniqueID()));
+    CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(&CreateGLContextEarly,
+                                                                 window->GetUniqueID()));
   }
 }
 

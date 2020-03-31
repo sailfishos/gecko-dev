@@ -111,19 +111,14 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  mInitWindowTask = NewRunnableMethod(this, &EmbedLiteViewBaseChild::InitGeckoWindow,
-                                      aParentId, isPrivateWindow);
-  MessageLoop::current()->PostTask(FROM_HERE, mInitWindowTask);
+  MessageLoop::current()->PostTask(NewRunnableMethod(this, &EmbedLiteViewBaseChild::InitGeckoWindow,
+                                                     aParentId, isPrivateWindow));
 }
 
 EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
 {
   LOGT();
   NS_ASSERTION(mControllerListeners.IsEmpty(), "Controller listeners list is not empty...");
-  if (mInitWindowTask) {
-    mInitWindowTask->Cancel();
-    mInitWindowTask = nullptr;
-  }
   if (mWindowObserverRegistered) {
     mWindow->GetWidget()->RemoveObserver(this);
   }
@@ -164,10 +159,11 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
 void
 EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow)
 {
-  if (mInitWindowTask) {
-    mInitWindowTask->Cancel();
+  if (!mWindow) {
+    LOGT("Init called for already destroyed object");
+    return;
   }
-  mInitWindowTask = nullptr;
+
   LOGT("parentID: %u", parentId);
   nsresult rv;
 
