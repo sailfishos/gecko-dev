@@ -48,7 +48,6 @@ public:
   virtual void OnObserve(const char* aMessage, const char16_t* aData) {}
   // New Window request which is usually coming from WebPage new window request
   virtual uint32_t CreateNewWindowRequested(const uint32_t& chromeFlags,
-                                            const char* uri,
                                             const uint32_t& contextFlags,
                                             EmbedLiteView* aParentView) { return 0; }
   virtual void LastViewDestroyed() {};
@@ -185,7 +184,7 @@ private:
   void ViewDestroyed(uint32_t id);
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
-  uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId);
+  uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& contextFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
   static void PreDestroy(EmbedLiteApp*);

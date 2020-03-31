@@ -40,9 +40,7 @@ protected:
                            const nsString& data) override;
 
   virtual bool
-  RecvCreateWindow(
-          const uint32_t& parentId,
-          const nsCString& uri,
+  RecvCreateWindow(const uint32_t& parentId,
           const uint32_t& chromeFlags,
           const uint32_t& contextFlags,
           uint32_t* createdID,

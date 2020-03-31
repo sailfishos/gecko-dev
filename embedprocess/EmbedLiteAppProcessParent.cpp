@@ -204,14 +204,13 @@ EmbedLiteAppProcessParent::RecvReadyToShutdown()
 
 bool
 EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
-                                            const nsCString& uri,
                                             const uint32_t& chromeFlags,
                                             const uint32_t& contextFlags,
                                             uint32_t* createdID,
                                             bool* cancel)
 {
   LOGT();
-  *createdID = mApp->CreateWindowRequested(chromeFlags, uri.get(), contextFlags, parentId);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, contextFlags, parentId);
   *cancel = !*createdID;
   return true;
 }
