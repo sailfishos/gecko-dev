@@ -32,7 +32,7 @@ public:
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
   EmbedLiteWindowBaseChild* GetWindowByID(uint32_t aWindowID);
-  bool CreateWindow(const uint32_t& parentId, const nsCString& uri, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
+  bool CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
   static EmbedLiteAppBaseChild* GetInstance();
 
 protected:

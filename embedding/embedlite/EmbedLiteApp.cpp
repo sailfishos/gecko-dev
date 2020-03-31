@@ -497,7 +497,7 @@ EmbedLiteApp::ChildReadyToDestroy()
 }
 
 uint32_t
-EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const char* uri, const uint32_t& contextFlags, const uint32_t& parentId)
+EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& contextFlags, const uint32_t& parentId)
 {
   EmbedLiteView* view = nullptr;
   std::map<uint32_t, EmbedLiteView*>::iterator it;
@@ -508,7 +508,7 @@ EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const char* uri
       break;
     }
   }
-  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, uri, contextFlags, view) : 0;
+  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, contextFlags, view) : 0;
   return viewId;
 }
 

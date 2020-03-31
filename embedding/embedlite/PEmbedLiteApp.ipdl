@@ -18,7 +18,7 @@ nested(upto inside_cpow) sync protocol PEmbedLiteApp {
 parent:
   async Initialized();
   async ReadyToShutdown();
-  sync CreateWindow(uint32_t parentId, nsCString uri, uint32_t chromeFlags, uint32_t contextFlags)
+  sync CreateWindow(uint32_t parentId, uint32_t chromeFlags, uint32_t contextFlags)
     returns (uint32_t createdID, bool cancel);
   async PrefsArrayInitialized(PrefSetting[] prefs);
 

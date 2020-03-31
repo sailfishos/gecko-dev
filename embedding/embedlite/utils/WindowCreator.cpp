@@ -35,11 +35,14 @@ NS_IMETHODIMP
 WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
                                    uint32_t aChromeFlags,
                                    uint32_t aContextFlags,
-                                   nsIURI* aURI,
                                    nsITabParent* aOpeningTab,
+                                   mozIDOMWindowProxy *aOpener,
                                    bool* aCancel,
                                    nsIWebBrowserChrome* *_retval)
 {
+  // Unused variables
+  (void)aOpeningTab;
+  (void)aOpener;
   NS_ENSURE_ARG_POINTER(aCancel);
   NS_ENSURE_ARG_POINTER(_retval);
   *aCancel = false;
@@ -50,16 +53,12 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
       Desktop FF allow to create popup window if aChromeFlags == 1670, aContextFlags == 0
   */
 
-  nsCString spec;
-  if (aURI) {
-    aURI->GetSpec(spec);
-  }
-  LOGF("parent:%p, chrfl:%u, contfl:%u, spec:%s", aParent, aChromeFlags, aContextFlags, spec.get());
+  LOGF("parent: %p, chrome flags: %u, context flags: %u", aParent, aChromeFlags, aContextFlags);
 
   EmbedLiteViewChildIface* parent = mChild->GetViewByChromeParent(aParent);
   uint32_t createdID = 0;
   uint32_t parentID = parent ? parent->GetID() : 0;
-  mChild->CreateWindow(parentID, spec, aChromeFlags, aContextFlags, &createdID, aCancel);
+  mChild->CreateWindow(parentID, aChromeFlags, aContextFlags, &createdID, aCancel);
 
   if (*aCancel) {
     return NS_OK;
