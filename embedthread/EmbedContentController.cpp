@@ -180,7 +180,7 @@ void EmbedContentController::PostDelayedTask(Task* aTask, int aDelayMs)
   MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
 }
 
-EmbedLiteViewListener* const EmbedContentController::GetListener() const
+EmbedLiteViewListener *EmbedContentController::GetListener() const
 {
   static FakeListener sFakeListener;
   return mRenderFrame && mRenderFrame->mView ?

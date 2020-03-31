@@ -71,7 +71,7 @@ public:
   EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id);
 
   virtual void SetListener(EmbedLiteWindowListener* aListener);
-  virtual EmbedLiteWindowListener* const GetListener() const;
+  virtual EmbedLiteWindowListener *GetListener() const;
 
   // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
