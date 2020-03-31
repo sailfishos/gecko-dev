@@ -217,7 +217,7 @@ private:
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   nsCOMPtr<nsIIdleServiceInternal> mIdleService;
   RefPtr<WebBrowserChrome> mChrome;
-  nsCOMPtr<nsPIDOMWindow> mDOMWindow;
+  nsCOMPtr<nsPIDOMWindowOuter> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mWindowObserverRegistered;
   bool mIsFocused;

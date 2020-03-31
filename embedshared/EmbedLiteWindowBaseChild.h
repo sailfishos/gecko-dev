@@ -9,6 +9,7 @@
 #include "mozilla/embedlite/PEmbedLiteWindowChild.h"
 #include "mozilla/WidgetUtils.h"
 #include "nsIWidget.h"
+#include "base/task.h" // for CancelableRunnable
 
 namespace mozilla {
 namespace embedlite {
@@ -38,7 +39,7 @@ private:
   nsCOMPtr<nsIWidget> mWidget;
   LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
-  CancelableTask* mCreateWidgetTask;
+  RefPtr<CancelableRunnable> mCreateWidgetTask;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseChild);
 };
