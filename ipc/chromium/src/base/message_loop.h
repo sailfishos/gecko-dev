@@ -187,6 +187,7 @@ public:
   // Normally, it is not necessary to instantiate a MessageLoop.  Instead, it
   // is typical to make use of the current thread's MessageLoop instance.
   explicit MessageLoop(Type type = TYPE_DEFAULT, nsIThread* aThread = nullptr);
+  explicit MessageLoop(base::MessagePump* messagePump);
   ~MessageLoop();
 
   // Returns the type passed to the constructor.
@@ -449,6 +450,8 @@ public:
 class MessageLoopForUI : public MessageLoop {
  public:
   explicit MessageLoopForUI(Type aType=TYPE_UI) : MessageLoop(aType) {
+  }
+  MessageLoopForUI(base::MessagePump* messagePump) : MessageLoop(messagePump) {
   }
 
   // Returns the MessageLoopForUI of the current thread.
