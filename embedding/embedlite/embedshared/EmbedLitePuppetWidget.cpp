@@ -253,12 +253,11 @@ EmbedLitePuppetWidget::CreateChild(const LayoutDeviceIntRect &aRect,
   return NS_FAILED(rv) ? nullptr : widget.forget();
 }
 
-NS_IMETHODIMP
-EmbedLitePuppetWidget::Destroy()
+void EmbedLitePuppetWidget::Destroy()
 {
   LOGT();
   if (mOnDestroyCalled) {
-    return NS_OK;
+    return;
   }
 
   mOnDestroyCalled = true;
@@ -290,8 +289,6 @@ EmbedLitePuppetWidget::Destroy()
 #if DEBUG
   DumpWidgetTree();
 #endif
-
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -621,13 +618,13 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
   RefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
 
   WidgetCompositionEvent textEvent(true, eCompositionChange, this);
-  textEvent.time = PR_Now() / 1000;
+  textEvent.mTime = PR_Now() / 1000;
   textEvent.mData = mIMEComposingText;
   nsEventStatus status;
   DispatchEvent(&textEvent, status);
 
   WidgetCompositionEvent event(true, eCompositionEnd, this);
-  event.time = PR_Now() / 1000;
+  event.mTime = PR_Now() / 1000;
   DispatchEvent(&event, status);
 }
 
@@ -687,12 +684,16 @@ EmbedLitePuppetWidget::NeedsPaint()
 LayerManager*
 EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild* aShadowManager,
                                        LayersBackend aBackendHint,
-                                       LayerManagerPersistence aPersistence,
-                                       bool* aAllowRetaining)
+                                       LayerManagerPersistence aPersistence)
 {
-  if (aAllowRetaining) {
-    *aAllowRetaining = true;
+  if (!mLayerManager) {
+    if (!mShutdownObserver) {
+      // We are shutting down, do not try to re-create a LayerManager
+      return nullptr;
+    }
   }
+
+  // TODO: Check from nsBaseWidget.
 
   if (mLayerManager) {
     // This layer manager might be used for painting outside of DoDraw(), so we need
@@ -799,6 +800,8 @@ void EmbedLitePuppetWidget::CreateCompositor()
   MOZ_ASSERT(mWindow);
   LayoutDeviceIntRect size = mWindow->GetSize();
   CreateCompositor(size.width, size.height);
+
+  // See nsBaseWidget
 }
 
 void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
@@ -808,10 +811,10 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 }
 
 void
-EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, LayoutDeviceIntRect aRect)
+EmbedLitePuppetWidget::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aManager;
+  Unused << aContext;
   Unused << aRect;
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
@@ -820,10 +823,10 @@ EmbedLitePuppetWidget::DrawWindowUnderlay(LayerManagerComposite *aManager, Layou
 }
 
 void
-EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, LayoutDeviceIntRect aRect)
+EmbedLitePuppetWidget::DrawWindowOverlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aManager;
+  Unused << aContext;
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->DrawOverlay(aRect.ToUnknownRect());
@@ -831,10 +834,10 @@ EmbedLitePuppetWidget::DrawWindowOverlay(LayerManagerComposite *aManager, Layout
 }
 
 bool
-EmbedLitePuppetWidget::PreRender(LayerManagerComposite *aManager)
+EmbedLitePuppetWidget::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aManager;
+  Unused << aContext;
   if (!IsVisible() || !mActive) {
     return false;
   }
@@ -847,10 +850,10 @@ EmbedLitePuppetWidget::PreRender(LayerManagerComposite *aManager)
 }
 
 void
-EmbedLitePuppetWidget::PostRender(LayerManagerComposite *aManager)
+EmbedLitePuppetWidget::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
-  Unused << aManager;
+  Unused << aContext;
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->CompositingFinished();
