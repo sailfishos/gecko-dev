@@ -7,7 +7,7 @@
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "EmbedLiteWindowBaseParent.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 
 namespace mozilla {
 namespace embedlite {

@@ -8,7 +8,7 @@
 #include "EmbedLiteView.h"
 #include "EmbedLiteApp.h"
 
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "nsServiceManagerUtils.h"
 
 #include "EmbedLiteViewThreadParent.h"

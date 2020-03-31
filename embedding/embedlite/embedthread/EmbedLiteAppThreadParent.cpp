@@ -11,7 +11,7 @@
 #include "EmbedLiteApp.h"
 #include "mozilla/layers/PCompositorBridgeParent.h"
 
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 
 using namespace base;
 using namespace mozilla::ipc;

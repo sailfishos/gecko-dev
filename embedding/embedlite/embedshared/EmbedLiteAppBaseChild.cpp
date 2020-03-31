@@ -24,7 +24,7 @@
 
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteWindowThreadChild.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
 using namespace base;

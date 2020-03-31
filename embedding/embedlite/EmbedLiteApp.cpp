@@ -10,7 +10,7 @@
 #include "nsISupports.h"
 #include "nsIFile.h"
 #include "base/at_exit.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "base/message_loop.h"               // for MessageLoop
 
 #include "mozilla/embedlite/EmbedLiteAPI.h"

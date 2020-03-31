@@ -14,7 +14,7 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteAppProcessChild.h"
-#include "mozilla/unused.h"
+#include "mozilla/Unused.h"
 #include "nsThreadManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIConsoleService.h"
