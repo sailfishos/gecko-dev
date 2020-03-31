@@ -54,29 +54,29 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  NS_IMETHOD Create(nsIWidget*        aParent,
-                    nsNativeWidget    aNativeParent,
-                    const LayoutDeviceIntRect& aRect,
-                    nsWidgetInitData* aInitData = nullptr) override;
+  using nsBaseWidget::Create; // for Create signature not overridden here
+  virtual MOZ_MUST_USE nsresult Create(nsIWidget*        aParent,
+                                       nsNativeWidget    aNativeParent,
+                                       const LayoutDeviceIntRect& aRect,
+                                       nsWidgetInitData* aInitData = nullptr) override;
 
   virtual already_AddRefed<nsIWidget>
   CreateChild(const LayoutDeviceIntRect&  aRect,
               nsWidgetInitData* aInitData = nullptr,
               bool              aForceUseIWidgetParent = false) override;
 
-  NS_IMETHOD Destroy();
+  virtual void Destroy() override;
 
   NS_IMETHOD Show(bool aState) override;
   virtual bool IsVisible() const override {
     return mVisible;
   }
-  NS_IMETHOD ConstrainPosition(bool     /*ignored aAllowSlop*/,
-                               int32_t* aX,
-                               int32_t* aY) override {
+  virtual void ConstrainPosition(bool     /*ignored aAllowSlop*/,
+                                 int32_t* aX,
+                                 int32_t* aY) override {
     *aX = kMaxDimension;
     *aY = kMaxDimension;
     LOGNI();
-    return NS_OK;
   }
   // We're always at <0, 0>, and so ignore move requests.
   NS_IMETHOD Move(double aX, double aY) override {
@@ -125,10 +125,9 @@ public:
     return LayoutDeviceIntPoint(0, 0);
   }
   NS_IMETHOD DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus) override;
-  NS_IMETHOD CaptureRollupEvents(nsIRollupListener* aListener,
-                                 bool aDoCapture) override {
+  virtual void CaptureRollupEvents(nsIRollupListener* aListener,
+                                   bool aDoCapture) override {
     LOGNI();
-    return NS_ERROR_UNEXPECTED;
   }
   NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
                                     const InputContextAction& aAction) override;
@@ -136,22 +135,21 @@ public:
   NS_IMETHOD_(NativeIMEContext) GetNativeIMEContext() override;
   virtual nsIMEUpdatePreference GetIMEUpdatePreference() override;
 
-  NS_IMETHOD ReparentNativeWidget(nsIWidget* aNewParent) override {
+  virtual void ReparentNativeWidget(nsIWidget* aNewParent) override {
+    (void)aNewParent;
     LOGNI();
-    return NS_ERROR_UNEXPECTED;
   }
 
   virtual LayoutDeviceIntRect GetNaturalBounds() override;
   virtual bool NeedsPaint() override;
 
-  virtual LayerManager*
-  GetLayerManager(PLayerTransactionChild* aShadowManager,
-                  LayersBackend aBackendHint,
-                  LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
-                  bool* aAllowRetaining = nullptr) override;
+  virtual LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
+                                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
+                                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
+  // TODO: Re-write this
   virtual mozilla::layers::CompositorBridgeParent* NewCompositorParent(int aSurfaceWidth,
-                                                                 int aSurfaceHeight) override;
+                                                                       int aSurfaceHeight);
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
@@ -172,7 +170,7 @@ public:
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorBridgeParent.
    */
-  virtual void DrawWindowUnderlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
+  virtual void DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext* aContext, LayoutDeviceIntRect aRect) override;
 
   /**
    * Called after the LayerManager draws the layer tree
@@ -180,10 +178,10 @@ public:
    * Always called from the compositing thread. Puppet Widget passes the call
    * forward to the EmbedLiteCompositorBridgeParent.
    */
-  virtual void DrawWindowOverlay(LayerManagerComposite* aManager, LayoutDeviceIntRect aRect) override;
+  virtual void DrawWindowOverlay(mozilla::widget::WidgetRenderingContext* aContext, LayoutDeviceIntRect aRect) override;
 
-  virtual bool PreRender(LayerManagerComposite* aManager) override;
-  virtual void PostRender(LayerManagerComposite* aManager) override;
+  virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
+  virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;
 
   NS_IMETHOD         SetParent(nsIWidget* aNewParent) override;
   virtual nsIWidget* GetParent(void) override;
