@@ -69,7 +69,7 @@ public:
 
   // Listener setup, call this with null pointer if listener destroyed before EmbedLiteView
   virtual void SetListener(EmbedLiteViewListener* aListener);
-  virtual EmbedLiteViewListener* const GetListener() const;
+  virtual EmbedLiteViewListener *GetListener() const;
 
   // Embed Interface
   virtual void LoadURL(const char* aUrl);

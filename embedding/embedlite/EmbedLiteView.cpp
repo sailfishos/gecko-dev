@@ -69,8 +69,7 @@ EmbedLiteView::SetListener(EmbedLiteViewListener* aListener)
    mListener = aListener;
 }
 
-EmbedLiteViewListener* const
-EmbedLiteView::GetListener() const
+EmbedLiteViewListener *EmbedLiteView::GetListener() const
 {
   return mListener ? mListener : &sFakeListener;
 }

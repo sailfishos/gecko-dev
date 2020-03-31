@@ -53,7 +53,7 @@ void EmbedLiteWindow::SetListener(EmbedLiteWindowListener* aListener)
   mListener = aListener;
 }
 
-EmbedLiteWindowListener* const EmbedLiteWindow::GetListener() const
+EmbedLiteWindowListener *EmbedLiteWindow::GetListener() const
 {
   return mListener ? mListener : &sFakeWindowListener;
 }
