@@ -5,6 +5,8 @@
 
 #include "EmbedLog.h"
 
+#include <math.h>
+
 #include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteWindowBaseChild.h"
 #include "mozilla/Unused.h"
@@ -33,8 +35,8 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const 
 {
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
 
-  mCreateWidgetTask = NewRunnableMethod(this, &EmbedLiteWindowBaseChild::CreateWidget);
-  MessageLoop::current()->PostTask(FROM_HERE, mCreateWidgetTask);
+  mCreateWidgetTask = NewCancelableRunnableMethod(this, &EmbedLiteWindowBaseChild::CreateWidget);
+  MessageLoop::current()->PostTask(mCreateWidgetTask.forget());
   sWindowCount++;
 
   // Make sure gfx platform is initialized and ready to go.
@@ -77,8 +79,8 @@ bool EmbedLiteWindowBaseChild::RecvDestroy()
 
 bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
 {
-  mBounds = LayoutDeviceIntRect(0, 0, aSize.width, aSize.height);
-  LOGT("this:%p width: %f, height: %f", this, aSize.width, aSize.height);
+  mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
+  LOGT("this:%p width: %f, height: %f as int w: %d h: %h", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
     mWidget->Resize(aSize.width, aSize.height, true);
   }
@@ -158,11 +160,11 @@ void EmbedLiteWindowBaseChild::CreateWidget()
 
   // EmbedLitePuppetWidget::CreateCompositor() reads back Size
   // when it creates the compositor.
-  mWidget->Create(
-    nullptr, 0,              // no parents
-    mBounds,
-    &widgetInit              // HandleWidgetEvent
-  );
+  Unused << mWidget->Create(
+              nullptr, 0,              // no parents
+              mBounds,
+              &widgetInit              // HandleWidgetEvent
+              );
   static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();
 
   Unused << SendInitialized();
