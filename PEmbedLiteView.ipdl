@@ -61,8 +61,8 @@ child:
     async HandleDoubleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleSingleTap(CSSPoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleLongTap(CSSPoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
-    async AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
-    async RequestFlingSnap(ViewID aScrollId, CSSPoint aDestination);
+    // async AcknowledgeScrollUpdate(ViewID aScrollId, uint32_t aScrollGeneration);
+    // async RequestFlingSnap(ViewID aScrollId, CSSPoint aDestination);
     async HandleTextEvent(nsString commit, nsString preEdit);
     async HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
     async HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);

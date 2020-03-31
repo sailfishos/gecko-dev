@@ -14,6 +14,7 @@
 using namespace mozilla::embedlite;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
+using mozilla::layers::GeckoContentController;
 
 class FakeListener : public EmbedLiteViewListener {};
 
@@ -33,17 +34,40 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   // We always need to post requests into the "UI thread" otherwise the
   // requests may get processed out of order.
   LOGT();
-  mUILoop->PostTask(
-              FROM_HERE,
-              NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
+  // nsThreadUtils version
+  mUILoop->PostTask(NewRunnableMethod<const FrameMetrics&>(this,
+                                                           &EmbedContentController::DoRequestContentRepaint,
+                                                           aFrameMetrics));
 }
 
+#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
 void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
 {
   LOGT();
-  mUILoop->PostTask(
-              FROM_HERE,
-              NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
+  mUILoop->PostTask(NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
+}
+#endif
+
+void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
+{
+  CSSPoint cssPoint(aPoint.x, aPoint.y);
+  switch (aType) {
+    case GeckoContentController::TapType::eSingleTap:
+      HandleSingleTap(cssPoint, aModifiers, aGuid);
+      break;
+    case GeckoContentController::TapType::eDoubleTap:
+      HandleDoubleTap(cssPoint, aModifiers, aGuid);
+      break;
+    case GeckoContentController::TapType::eLongTap:
+      HandleLongTap(cssPoint, aModifiers, aGuid, aInputBlockId);
+      break;
+    case GeckoContentController::TapType::eSecondTap:
+    case GeckoContentController::TapType::eLongTapUp:
+    case GeckoContentController::TapType::eSentinel:
+      // What to do with these?
+      MOZ_FALLTHROUGH;
+      break;
+  }
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
@@ -53,12 +77,12 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(
-                FROM_HERE,
-                NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
-    return;
-  }
-  if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &>(this,
+                                                                                                  &EmbedContentController::HandleDoubleTap,
+                                                                                                  aPoint,
+                                                                                                  aModifiers,
+                                                                                                  aGuid));
+  } else if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
@@ -70,12 +94,12 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(
-                FROM_HERE,
-                NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
-    return;
-  }
-  if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &>(this,
+                                                                                                  &EmbedContentController::HandleSingleTap,
+                                                                                                  aPoint,
+                                                                                                  aModifiers,
+                                                                                                  aGuid));
+  } else if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
@@ -88,12 +112,13 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(
-                FROM_HERE,
-                NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid, aInputBlockId));
-    return;
-  }
-  if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &, uint64_t>(this,
+                                                                                                  &EmbedContentController::HandleLongTap,
+                                                                                                  aPoint,
+                                                                                                  aModifiers,
+                                                                                                  aGuid,
+                                                                                                  aInputBlockId));
+  } else if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
 }
@@ -109,33 +134,35 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(
-                FROM_HERE,
-                NewRunnableMethod(this, &EmbedContentController::DoSendScrollEvent, aFrameMetrics));
+    mUILoop->PostTask(NewRunnableMethod<const FrameMetrics &>(this,
+                                                              &EmbedContentController::DoSendScrollEvent,
+                                                              aFrameMetrics));
     return;
-  }
+  } else {
+    CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
+    contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
+    CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
 
-  CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
-  contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
-  CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
+    LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+          contentRect.x, contentRect.y, contentRect.width, contentRect.height,
+          scrollableSize.width, scrollableSize.height);
+    gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
+    gfxSize size(scrollableSize.width, scrollableSize.height);
 
-  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
-    contentRect.x, contentRect.y, contentRect.width, contentRect.height,
-    scrollableSize.width, scrollableSize.height);
-  gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
-  gfxSize size(scrollableSize.width, scrollableSize.height);
-
-  if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
-    Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
+    if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
+      Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
+    }
   }
 }
 
+#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
 void EmbedContentController::DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
 {
   if (mRenderFrame) {
     Unused << mRenderFrame->SendRequestFlingSnap(aScrollId, aDestination);
   }
 }
+#endif
 
 void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
@@ -151,6 +178,12 @@ void EmbedContentController::DoNotifyFlushComplete()
   }
 }
 
+nsIntPoint EmbedContentController::convertIntPoint(const CSSPoint &aPoint)
+{
+  return nsIntPoint((int)nearbyint(aPoint.x), (int)nearbyint(aPoint.y));
+}
+
+#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
 void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
   if (MessageLoop::current() != mUILoop) {
@@ -165,6 +198,7 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
     Unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   }
 }
+#endif
 
 void EmbedContentController::ClearRenderFrame()
 {
@@ -199,15 +233,15 @@ void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameM
 void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
   LOGT();
-  mUILoop->PostTask(
-              FROM_HERE,
-              NewRunnableMethod(this, &EmbedContentController::DoNotifyAPZStateChange, aGuid, aChange, aArg));
+  mUILoop->PostTask(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>(this,
+                                                                                                         &EmbedContentController::DoNotifyAPZStateChange,
+                                                                                                         aGuid,
+                                                                                                         aChange,
+                                                                                                         aArg));
 }
 
 void EmbedContentController::NotifyFlushComplete()
 {
   LOGT();
-  mUILoop->PostTask(
-              FROM_HERE,
-              NewRunnableMethod(this, &EmbedContentController::DoNotifyFlushComplete));
+  mUILoop->PostTask(NewRunnableMethod(this, &EmbedContentController::DoNotifyFlushComplete));
 }
