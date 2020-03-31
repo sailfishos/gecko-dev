@@ -26,6 +26,7 @@
 #include "nsIDocShell.h"
 #include "nsViewportInfo.h"
 #include "nsPIWindowRoot.h"
+#include "nsThreadUtils.h" // for mozilla::Runnable
 #include "mozilla/Preferences.h"
 #include "nsIFrame.h"
 #include "nsView.h"
@@ -115,7 +116,7 @@ TabChildHelper::Disconnect()
   }
 }
 
-class EmbedUnloadScriptEvent : public nsRunnable
+class EmbedUnloadScriptEvent : public mozilla::Runnable
 {
 public:
   EmbedUnloadScriptEvent(TabChildHelper* aTabChild, TabChildGlobal* aTabChildGlobal)

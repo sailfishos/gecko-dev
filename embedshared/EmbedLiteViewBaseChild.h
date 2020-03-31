@@ -226,7 +226,6 @@ private:
   RefPtr<TabChildHelper> mHelper;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
-  CancelableTask* mInitWindowTask;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
   nsTArray<EmbedLiteContentController*> mControllerListeners;

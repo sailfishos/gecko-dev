@@ -26,6 +26,7 @@
 #include "EmbedLiteAppProcessParent.h"
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "nsThreadManager.h"
+#include "nsThreadUtils.h" // for mozilla::Runnable
 #include "nsAutoPtr.h"
 #include "base/command_line.h"
 #include "nsDirectoryService.h"
@@ -280,7 +281,7 @@ DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
 // This runnable only exists to delegate ownership of the
 // EmbedLiteAppProcessParent to this runnable, until it's deleted by the event
 // system.
-struct DelayedDeleteContentParentTask : public nsRunnable
+struct DelayedDeleteContentParentTask : public mozilla::Runnable
 {
   explicit DelayedDeleteContentParentTask(EmbedLiteAppProcessParent* aObj) : mObj(aObj) { }
 

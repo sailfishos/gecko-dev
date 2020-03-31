@@ -15,6 +15,7 @@
 
 #include "mozilla/embedlite/EmbedLiteAPI.h"
 #include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
+#include "mozilla/dom/MessageChannel.h"       // for MessageChannel
 
 #include "EmbedLiteUILoop.h"
 #include "EmbedLiteSubThread.h"
@@ -52,11 +53,11 @@ EmbedLiteApp::GetInstance()
 }
 
 EmbedLiteApp::EmbedLiteApp()
-  : mListener(NULL)
-  , mUILoop(NULL)
-  , mSubThread(NULL)
-  , mAppParent(NULL)
-  , mAppChild(NULL)
+  : mListener(nullptr)
+  , mUILoop(nullptr)
+  , mSubThread(nullptr)
+  , mAppParent(nullptr)
+  , mAppChild(nullptr)
   , mEmbedType(EMBED_INVALID)
   , mState(STOPPED)
   , mRenderType(RENDER_AUTO)
@@ -111,11 +112,11 @@ EmbedLiteApp::GetUILoop() {
 void*
 EmbedLiteApp::PostTask(EMBEDTaskCallback callback, void* userData, int timeout)
 {
-  CancelableTask* newTask = NewRunnableFunction(callback, userData);
+  RefPtr<Runnable> newTask = NewRunnableFunction(callback, userData);
   if (timeout) {
-    mUILoop->PostDelayedTask(FROM_HERE, newTask, timeout);
+    mUILoop->PostDelayedTask(newTask.forget(), timeout);
   } else {
-    mUILoop->PostTask(FROM_HERE, newTask);
+    mUILoop->PostTask(newTask.forget());
   }
 
   return (void*)newTask;
@@ -129,14 +130,14 @@ EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback callback, void* userData, int
     return nullptr;
   }
 
-  RefPtr<CancelableRunnable> newTask = NewRunnableFunction(callback, userData);
+  RefPtr<Runnable> newTask = NewRunnableFunction(callback, userData);
   MessageLoop* compositorLoop = mozilla::layers::CompositorThreadHolder::Loop();
   MOZ_ASSERT(compositorLoop);
 
   if (timeout) {
-    compositorLoop->PostDelayedTask(FROM_HERE, newTask, timeout);
+    compositorLoop->PostDelayedTask(newTask.forget(), timeout);
   } else {
-    compositorLoop->PostTask(FROM_HERE, newTask);
+    compositorLoop->PostTask(newTask.forget());
   }
 
   return (void*)newTask;
@@ -146,7 +147,7 @@ void
 EmbedLiteApp::CancelTask(void* aTask)
 {
   if (aTask) {
-    static_cast<CancelableTask*>(aTask)->Cancel();
+    static_cast<CancelableRunnable*>(aTask)->Cancel();
   }
 }
 
@@ -195,8 +196,7 @@ EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aE
   SetState(STARTING);
   mEmbedType = aEmbedType;
   mUILoop = aEventLoop->GetMessageLoop();
-  mUILoop->PostTask(FROM_HERE,
-                    NewRunnableFunction(&EmbedLiteApp::StartChild, this));
+  mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::StartChild, this));
   mUILoop->StartLoop();
   mIsAsyncLoop = true;
   return true;
@@ -213,12 +213,11 @@ EmbedLiteApp::Start(EmbedType aEmbedType)
   mEmbedType = aEmbedType;
   base::AtExitManager exitManager;
   mUILoop = new EmbedLiteUILoop();
-  mUILoop->PostTask(FROM_HERE,
-                    NewRunnableFunction(&EmbedLiteApp::StartChild, this));
+  mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::StartChild, this));
   mUILoop->StartLoop();
   if (mSubThread) {
     mSubThread->Stop();
-    mSubThread = NULL;
+    mSubThread = nullptr;
   } else if (mListener) {
     NS_ASSERTION(mListener->StopChildThread(),
                       "StopChildThread must be implemented when ExecuteChildThread defined");
@@ -264,10 +263,9 @@ EmbedLiteApp::StartChildThread()
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  MessageLoop::current()->PostTask(FROM_HERE,
-                                   NewRunnableMethod(mAppChild.get(),
-                                                     &EmbedLiteAppThreadChild::Init,
-                                                     mAppParent->GetIPCChannel()));
+  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::MessageChannel*>(mAppChild.get(),
+                                                                                    &EmbedLiteAppThreadChild::Init,
+                                                                                    mAppParent->GetIPCChannel()));
 
   return true;
 }
@@ -317,8 +315,7 @@ EmbedLiteApp::Stop()
 
   if (mState == INITIALIZED) {
     if (mViews.empty() && mWindows.empty()) {
-      mUILoop->PostTask(FROM_HERE,
-                        NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+      mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
     } else {
       for (auto viewPair : mViews) {
         viewPair.second->Destroy();
@@ -342,7 +339,7 @@ EmbedLiteApp::Shutdown()
     if (mEmbedType == EMBED_THREAD) {
       if (mSubThread) {
         mSubThread->Stop();
-        mSubThread = NULL;
+        mSubThread = nullptr;
       } else if (mListener) {
         NS_ASSERTION(mListener->StopChildThread(),
             "StopChildThread must be implemented when ExecuteChildThread defined");
@@ -488,8 +485,7 @@ EmbedLiteApp::ChildReadyToDestroy()
 {
   LOGT();
   if (mState == DESTROYING) {
-    mUILoop->PostTask(FROM_HERE,
-                      NewRunnableFunction(&_FinalStop, this));
+    mUILoop->PostTask(NewRunnableFunction(&_FinalStop, this));
   }
   if (mEmbedType == EMBED_PROCESS) {
       mAppParent = nullptr;
@@ -527,8 +523,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
       mListener->LastViewDestroyed();
     }
     if (mState == DESTROYING) {
-      mUILoop->PostTask(FROM_HERE,
-                        NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+      mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
     }
   }
 }
@@ -596,8 +591,7 @@ EmbedLiteApp::Initialized()
   NS_ASSERTION(mState == STARTING || mState == DESTROYING, "Wrong timing");
 
   if (mState == DESTROYING) {
-    mUILoop->PostTask(FROM_HERE,
-                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+    mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
     return;
   }
 

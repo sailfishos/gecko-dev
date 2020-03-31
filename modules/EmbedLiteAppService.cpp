@@ -22,6 +22,7 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsComponentManagerUtils.h"
+#include "nsThreadUtils.h" // for mozilla::Runnable
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "nsIBaseWindow.h"
@@ -43,7 +44,7 @@ using namespace mozilla::widget;
 
 namespace
 {
-  class AsyncArrayRemove : public nsRunnable
+  class AsyncArrayRemove : public mozilla::Runnable
   {
   protected:
     nsCString mName;

@@ -18,7 +18,6 @@
 #include "nsIDocument.h"
 #include "TabChild.h"
 
-class CancelableTask;
 class nsPresContext;
 class nsIDOMWindowUtils;
 

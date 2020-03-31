@@ -175,9 +175,9 @@ void EmbedContentController::ClearRenderFrame()
  * Schedules a runnable to run on the controller/UI thread at some time
  * in the future.
  */
-void EmbedContentController::PostDelayedTask(Task* aTask, int aDelayMs)
+void EmbedContentController::PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs)
 {
-  MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
+  MessageLoop::current()->PostDelayedTask(Move(aTask), aDelayMs);
 }
 
 EmbedLiteViewListener *EmbedContentController::GetListener() const

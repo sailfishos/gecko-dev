@@ -36,7 +36,7 @@ public:
   virtual void HandleLongTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId) override;
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
   void ClearRenderFrame();
-  virtual void PostDelayedTask(Task* aTask, int aDelayMs) override;
+  virtual void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
 
   virtual void NotifyAPZStateChange(const ScrollableLayerGuid& aGuid,

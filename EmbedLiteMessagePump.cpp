@@ -142,11 +142,11 @@ EmbedLiteMessagePump::PostTask(EMBEDTaskCallback callback,
   if (!mEmbedPump->GetLoop()) {
     return nullptr;
   }
-  CancelableTask* newTask = NewRunnableFunction(callback, userData);
+  RefPtr<mozilla::Runnable> newTask = NewRunnableFunction(callback, userData);
   if (timeout) {
-    mEmbedPump->GetLoop()->PostDelayedTask(FROM_HERE, newTask, timeout);
+    mEmbedPump->GetLoop()->PostDelayedTask(newTask.forget(), timeout);
   } else {
-    mEmbedPump->GetLoop()->PostTask(FROM_HERE, newTask);
+    mEmbedPump->GetLoop()->PostTask(newTask.forget());
   }
 
   return (void*)newTask;
@@ -156,7 +156,7 @@ void
 EmbedLiteMessagePump::CancelTask(void* aTask)
 {
   if (aTask) {
-    static_cast<CancelableTask*>(aTask)->Cancel();
+    static_cast<CancelableRunnable*>(aTask)->Cancel();
   }
 }
 
