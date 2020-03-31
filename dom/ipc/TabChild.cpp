@@ -2426,7 +2426,7 @@ TabChild::RecvSetDocShellIsActive(const bool& aIsActive,
       // to paints as quickly as possible.
       APZCCallbackHelper::SuppressDisplayport(true, presShell);
       if (nsContentUtils::IsSafeToRunScript()) {
-        WebWidget()->PaintNowIfNeeded();
+        static_cast<PuppetWidget*>(WebWidget())->PaintNowIfNeeded();
       } else {
         RefPtr<nsViewManager> vm = presShell->GetViewManager();
         if (nsView* view = vm->GetRootView()) {
