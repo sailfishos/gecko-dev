@@ -29,7 +29,7 @@
 #include "nsIWebBrowser.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/embedlite/EmbedLog.h"
-#include "xpcprivate.h"
+// #include "xpcprivate.h"
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
 #include "FrameMetrics.h"
@@ -120,15 +120,15 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
+EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
 {
   dom::AutoJSAPI jsapiChromeGuard;
-  nsCOMPtr<nsIWebNavigation> navNav(do_GetInterface(aWin));
+  nsCOMPtr<nsIWebNavigation> navNav(do_GetInterface(aWindow));
   nsCOMPtr<nsIDocShellTreeItem> navItem(do_QueryInterface(navNav));
   NS_ENSURE_TRUE(navItem, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDocShellTreeItem> rootItem;
   navItem->GetRootTreeItem(getter_AddRefs(rootItem));
-  nsCOMPtr<nsIDOMWindow> rootWin(do_GetInterface(rootItem));
+  nsCOMPtr<mozIDOMWindowProxy> rootWin(do_GetInterface(rootItem));
   NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsPIDOMWindowOuter> pwindow(do_QueryInterface(rootWin));
@@ -227,16 +227,20 @@ EmbedLiteAppService::HandleAsyncMessage(const char* aMessage, const nsString& aD
 
 NS_IMETHODIMP EmbedLiteAppService::EnterSecureJSContext()
 {
-  nsIXPConnect *xpc = nsContentUtils::XPConnect();
-  if (!xpc) {
-    // If someone tries to push a cx when we don't have the relevant state,
-    // it's probably safest to just crash.
-    MOZ_CRASH();
-  }
+//  nsIXPConnect *xpc = nsContentUtils::XPConnect();
+//  if (!xpc) {
+//    // If someone tries to push a cx when we don't have the relevant state,
+//    // it's probably safest to just crash.
+//    MOZ_CRASH();
+//  }
 
-  if (!xpc::PushNullJSContext()) {
-    MOZ_CRASH();
-  }
+  // Maybe just nsContentUtils::IsSafeToRunScript(), need to analyze embedlite-components
+  // or nsContentUtils::AddScriptBlocker() and nsContentUtils::RemoveScriptBlocker
+  // or nsContentUtils::EnterMicroTask and nsContentUtils::LeaveMicroTask
+
+//  if (!xpc::PushNullJSContext()) {
+//    MOZ_CRASH();
+//  }
 
   mPushedSomething++;
   return NS_OK;
@@ -244,12 +248,12 @@ NS_IMETHODIMP EmbedLiteAppService::EnterSecureJSContext()
 
 NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
 {
-  MOZ_ASSERT(nsContentUtils::XPConnect());
-  if (!mPushedSomething) {
-    return NS_ERROR_FAILURE;
-  }
+//  MOZ_ASSERT(nsContentUtils::XPConnect());
+//  if (!mPushedSomething) {
+//    return NS_ERROR_FAILURE;
+//  }
 
-  xpc::PopNullJSContext();
+//  xpc::PopNullJSContext();
   mPushedSomething--;
   return NS_OK;
 }
@@ -311,7 +315,7 @@ EmbedLiteAppService::GetBrowserByID(uint32_t aId, nsIWebBrowser * *outWindow)
 
 
 NS_IMETHODIMP
-EmbedLiteAppService::GetContentWindowByID(uint32_t aId, nsIDOMWindow * *outWindow)
+EmbedLiteAppService::GetContentWindowByID(uint32_t aId, mozIDOMWindowProxy * *contentWindow)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -319,9 +323,13 @@ EmbedLiteAppService::GetContentWindowByID(uint32_t aId, nsIDOMWindow * *outWindo
   nsCOMPtr<nsIWebBrowser> br;
   rv = view->GetBrowser(getter_AddRefs(br));
   NS_ENSURE_TRUE(br, rv);
-  nsCOMPtr<nsIDOMWindow> domWindow;
+  nsCOMPtr<mozIDOMWindowProxy> domWindow;
   br->GetContentDOMWindow(getter_AddRefs(domWindow));
-  domWindow.forget(outWindow);
+  if (!domWindow) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  domWindow.forget(contentWindow);
   return rv;
 }
 
@@ -335,9 +343,9 @@ EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* message
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::ChromeEventHandler(nsIDOMWindow *aWin, nsIDOMEventTarget * *eventHandler)
+EmbedLiteAppService::ChromeEventHandler(mozIDOMWindowProxy *aWindow, nsIDOMEventTarget * *eventHandler)
 {
-  nsCOMPtr<nsPIDOMWindow> pidomWindow = do_GetInterface(aWin);
+  nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_GetInterface(aWindow);
   NS_ENSURE_TRUE(pidomWindow, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   *eventHandler = target.forget().take();
@@ -345,7 +353,7 @@ EmbedLiteAppService::ChromeEventHandler(nsIDOMWindow *aWin, nsIDOMEventTarget * 
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
+EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, mozIDOMWindowProxy * *embedWindow)
 {
   std::map<uint64_t, uint32_t>::iterator it;
   for (it = mIDMap.begin(); it != mIDMap.end(); ++it) {
@@ -356,9 +364,14 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
         nsCOMPtr<nsIWebBrowser> br;
         rv = view->GetBrowser(getter_AddRefs(br));
         NS_ENSURE_TRUE(br, rv);
-        nsCOMPtr<nsIDOMWindow> domWindow;
+        nsCOMPtr<mozIDOMWindowProxy> domWindow;
         br->GetContentDOMWindow(getter_AddRefs(domWindow));
-        *aWin = domWindow.forget().take();
+        if (!domWindow) {
+          return NS_ERROR_NOT_AVAILABLE;
+        }
+
+        nsCOMPtr<nsPIDOMWindowOuter> piWindow = nsPIDOMWindowOuter::From(domWindow);
+        piWindow.forget(embedWindow);
         return NS_OK;
       } else {
         nsresult rv;
@@ -368,9 +381,13 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
         bool isActive;
         br->GetIsActive(&isActive);
         if (isActive) {
-          nsCOMPtr<nsIDOMWindow> domWindow;
+          nsCOMPtr<mozIDOMWindowProxy> domWindow;
           br->GetContentDOMWindow(getter_AddRefs(domWindow));
-          *aWin = domWindow.forget().take();
+          if (!domWindow) {
+            return NS_ERROR_NOT_AVAILABLE;
+          }
+          nsCOMPtr<nsPIDOMWindowOuter> piWindow = nsPIDOMWindowOuter::From(domWindow);
+          piWindow.forget(embedWindow);
           return NS_OK;
         }
       }

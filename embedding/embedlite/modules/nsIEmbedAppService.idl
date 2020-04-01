@@ -35,7 +35,7 @@ interface nsIEmbedMessageListener : nsISupports
 interface nsIEmbedAppService : nsISupports
 {
     // Get Embed View ID by DOMWindow
-    void getIDByWindow(in nsIDOMWindow aWin, [retval] out uint32_t aId);
+    void getIDByWindow(in mozIDOMWindowProxy aWindow, [retval] out uint32_t aId);
     // Send JSON Message to Embed View with related View ID
     void sendAsyncMessage(in uint32_t aId, in wstring messageName, in wstring message);
     void sendSyncMessage(in uint32_t aId, in wstring messageName, in wstring message,
@@ -53,7 +53,7 @@ interface nsIEmbedAppService : nsISupports
     [noscript] void removeContentListener(in uint32_t aId, in EmbedLiteContentController listener);
     // Get EmbedLite nsIWebBrowser by unique ID C++ only
     void getBrowserByID(in uint32_t aId, out nsIWebBrowser outBrowser);
-    void getContentWindowByID(in uint32_t aId, [retval] out nsIDOMWindow outWindow);
+    void getContentWindowByID(in uint32_t aId, [retval] out mozIDOMWindowProxy contentWindow);
 
     // Simple interface which allow to send JSON message from XPCOM C++ components to related JS Frame script which handle this message
     void sendAsyncMessageLocal(in uint32_t aId, in wstring messageName, in wstring message);
@@ -62,6 +62,6 @@ interface nsIEmbedAppService : nsISupports
     void zoomToRect(in uint32_t aId, in float aX, in float aY, in float aWidth, in float aHeight);
     void contentReceivedInputBlock(in uint32_t aId, in boolean aPreventDefault);
     // Not sure how else to add event listener from js component without browser
-    void chromeEventHandler(in nsIDOMWindow aWin, [retval] out nsIDOMEventTarget eventHandler);
-    void getAnyEmbedWindow([optional] in boolean aActive, [retval] out nsIDOMWindow aWin);
+    void chromeEventHandler(in mozIDOMWindowProxy aWindow, [retval] out nsIDOMEventTarget eventHandler);
+    void getAnyEmbedWindow([optional] in boolean aActive, [retval] out mozIDOMWindowProxy embedWindow);
 };
