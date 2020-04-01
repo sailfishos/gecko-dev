@@ -7,6 +7,7 @@
 
 #include "GeckoLoader.h"
 #include "DirProvider.h"
+#include "mozilla/Unused.h"
 
 #include <stdio.h>
 #include "nscore.h"
@@ -180,7 +181,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     bool dirExists = true;
     rv = kDirectoryProvider.sProfileDir->Exists(&dirExists);
     if (!dirExists) {
-      kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+      Unused << kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     }
 
     // Lock profile directory
@@ -235,8 +236,8 @@ GeckoLoader::TermEmbedding()
 
   // make sure this is freed before shutting down xpcom
   NS_IF_RELEASE(kDirectoryProvider.sProfileLock);
-  kDirectoryProvider.sProfileDir = 0;
-  kDirectoryProvider.sGREDir = 0;
+  kDirectoryProvider.sProfileDir = nullptr;
+  kDirectoryProvider.sGREDir = nullptr;
 
   XRE_TermEmbedding();
 

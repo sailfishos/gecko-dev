@@ -155,16 +155,6 @@ EmbedLiteXulAppInfo::GetIsOfficial(bool* aResult)
   return NS_OK;
 }
 
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsReleaseBuild(bool* aResult)
-{
-#ifdef RELEASE_BUILD
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
-  return NS_OK;
-}
-
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
 {
 #ifdef MOZ_OFFICIAL_BRANDING

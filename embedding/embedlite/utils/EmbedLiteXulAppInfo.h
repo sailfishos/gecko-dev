@@ -22,6 +22,7 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIXULRUNTIME
   NS_DECL_NSIXULAPPINFO
+  NS_DECL_NSIPLATFORMINFO
 
 protected:
   virtual ~EmbedLiteXulAppInfo();
