@@ -60,7 +60,7 @@ protected:
   virtual ~WebBrowserChrome();
 
 private:
-  nsIntPoint GetScrollOffset(nsIDOMWindow* aWindow);
+  nsIntPoint GetScrollOffset(mozIDOMWindowProxy *aWindow);
   nsIntPoint GetScrollOffsetForElement(nsIDOMElement* aElement);
   void SetScrollOffsetForElement(nsIDOMElement* aElement, int32_t aLeft, int32_t aTop);
   void SendScroll();

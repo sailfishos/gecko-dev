@@ -85,7 +85,7 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
       return NS_ERROR_NOT_INITIALIZED;
     }
 
-    return mWebBrowser->GetContentDOMWindow((nsIDOMWindow**)aInstancePtr);
+    return mWebBrowser->GetContentDOMWindow((mozIDOMWindowProxy**)aInstancePtr);
   }
   return QueryInterface(aIID, aInstancePtr);
 }
@@ -193,7 +193,7 @@ WebBrowserChrome::OnProgressChange(nsIWebProgress* progress, nsIRequest* request
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
@@ -215,14 +215,14 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
                                 uint32_t progressStateFlags, nsresult status)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
-  nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
-  nsCOMPtr<nsIDOMWindow> progWin;
+  nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
+  nsCOMPtr<mozIDOMWindowProxy> progWin;
   progress->GetDOMWindow(getter_AddRefs(progWin));
   if (progWin != docWin) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
@@ -272,8 +272,8 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
                                    uint32_t aFlags)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
-  nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
-  nsCOMPtr<nsIDOMWindow> progWin;
+  nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
+  nsCOMPtr<mozIDOMWindowProxy> progWin;
   aWebProgress->GetDOMWindow(getter_AddRefs(progWin));
   if (progWin != docWin) {
     return NS_OK;
@@ -305,7 +305,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   nsString charset;
   ctDoc->GetCharacterSet(charset);
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
@@ -333,7 +333,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   mLastLocation = slocation;
   mFirstPaint = false;
 
-  nsCOMPtr<nsPIDOMWindow> pidomWindow = do_QueryInterface(docWin);
+  nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 
@@ -356,14 +356,14 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
                                    uint32_t state)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
-  nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
-  nsCOMPtr<nsIDOMWindow> progWin;
+  nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
+  nsCOMPtr<mozIDOMWindowProxy> progWin;
   aWebProgress->GetDOMWindow(getter_AddRefs(progWin));
   if (progWin != docWin) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
@@ -406,17 +406,16 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
 
   LOGT("Event:'%s'", NS_ConvertUTF16toUTF8(type).get());
 
-  nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     nsCOMPtr<nsIDOMEventTarget> origTarget;
     aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
     nsCOMPtr<nsIDOMDocument> ctDoc = do_QueryInterface(origTarget);
-    nsCOMPtr<nsIDOMWindow> targetWin;
+    nsCOMPtr<mozIDOMWindowProxy> targetWin;
     ctDoc->GetDefaultView(getter_AddRefs(targetWin));
-    nsCOMPtr<nsIDOMWindow> docWin = do_GetInterface(mWebBrowser);
     if (targetWin != docWin) {
       return NS_OK; // We are only interested in root scroll pane changes
     }
@@ -426,6 +425,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     // quadrants other than x > 0 && y > 0.
     nsIntPoint scrollOffset = GetScrollOffset(docWin);
     nsCOMPtr<nsIDOMScrollAreaEvent> scrollEvent = do_QueryInterface(aEvent);
+#if 0
     float evX, evY, evW, evH;
     scrollEvent->GetX(&evX);
     scrollEvent->GetY(&evY);
@@ -436,13 +436,14 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     uint32_t width = evW + (x < 0 ? x : 0);
     uint32_t height = evH + (y < 0 ? y : 0);
     mListener->OnScrolledAreaChanged(width, height);
+#endif
 
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
     target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
     mScrollOffset = nsIntPoint();
   } else if (type.EqualsLiteral(MOZ_MozAfterPaint)) {
-    nsCOMPtr<nsPIDOMWindow> pidomWindow = do_QueryInterface(docWin);
+    nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
     target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
     if (mFirstPaint) {
@@ -469,7 +470,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
 
 // TOOLS
 nsIntPoint
-WebBrowserChrome::GetScrollOffset(nsIDOMWindow* aWindow)
+WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
 {
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(aWindow);
@@ -483,7 +484,7 @@ WebBrowserChrome::GetScrollOffsetForElement(nsIDOMElement* aElement)
 {
   nsCOMPtr<nsIDOMDocument> ownerDoc;
   aElement->GetOwnerDocument(getter_AddRefs(ownerDoc));
-  nsCOMPtr<nsIDOMWindow> domWindow;
+  nsCOMPtr<mozIDOMWindowProxy> domWindow;
   nsCOMPtr<nsIDOMNode> parentNode;
   aElement->GetParentNode(getter_AddRefs(parentNode));
   if (parentNode == ownerDoc) {
@@ -505,7 +506,7 @@ WebBrowserChrome::SetScrollOffsetForElement(nsIDOMElement* aElement, int32_t aLe
   nsCOMPtr<nsIDOMNode> parentNode;
   aElement->GetParentNode(getter_AddRefs(parentNode));
   if (parentNode == ownerDoc) {
-    nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(mWebBrowser);
+    nsCOMPtr<mozIDOMWindowProxy> pwindow = do_GetInterface(mWebBrowser);
     nsGlobalWindow* window = nsGlobalWindow::Cast(pwindow);
     window->ScrollTo(aLeft, aTop);
   } else {
@@ -518,7 +519,7 @@ void
 WebBrowserChrome::SendScroll()
 {
   NS_ENSURE_TRUE(mListener, );
-  nsCOMPtr<nsIDOMWindow> window = do_GetInterface(mWebBrowser);
+  nsCOMPtr<mozIDOMWindowProxy> window = do_GetInterface(mWebBrowser);
   nsIntPoint offset = GetScrollOffset(window);
   if (mScrollOffset.x == offset.x && mScrollOffset.y == offset.y) {
     return;
@@ -649,7 +650,7 @@ void WebBrowserChrome::SetEventHandler()
                           nsIWebProgress::NOTIFY_STATE_DOCUMENT |
                           nsIWebProgress::NOTIFY_PROGRESS);
 
-  nsCOMPtr<nsPIDOMWindow> pidomWindow = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
@@ -667,7 +668,7 @@ void WebBrowserChrome::RemoveEventHandler()
 
   mListener = nullptr;
   mHandlerAdded = false;
-  nsCOMPtr<nsPIDOMWindow> pidomWindow = do_GetInterface(mWebBrowser);
+  nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
