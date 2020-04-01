@@ -11,10 +11,10 @@
 #include "nsXULAppAPI.h"
 
 
-nsIDirectoryServiceProvider* DirProvider::sAppFileLocProvider = 0;
-nsCOMPtr<nsIFile> DirProvider::sProfileDir = 0;
-nsCOMPtr<nsIFile> DirProvider::sGREDir = 0;
-nsISupports* DirProvider::sProfileLock = 0;
+nsIDirectoryServiceProvider* DirProvider::sAppFileLocProvider = nullptr;
+nsCOMPtr<nsIFile> DirProvider::sProfileDir = nullptr;
+nsCOMPtr<nsIFile> DirProvider::sGREDir = nullptr;
+nsISupports* DirProvider::sProfileLock = nullptr;
 
 NS_IMPL_QUERY_INTERFACE(DirProvider,
                         nsIDirectoryServiceProvider,
