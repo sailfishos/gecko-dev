@@ -14,7 +14,9 @@
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
+#include "mozilla/Unused.h"
 
+#include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
 
 #include "nsNetUtil.h"
@@ -176,7 +178,7 @@ TabChildHelper::InitTabChildGlobal()
     return true;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, false);
   nsCOMPtr<nsIDOMEventTarget> chromeHandler =
     do_QueryInterface(window->GetChromeEventHandler());
@@ -302,12 +304,12 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   RefPtr<nsFrameMessageManager> contentFrameMessageManager =
           static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
 
-  nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mTabChildGlobal;
-  SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
+  SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
   nsresult globalReceived = globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
   nsresult contentFrameReceived = contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
@@ -321,21 +323,21 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
-  JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
-  JSAutoRequest ar(cx);
+  JSAutoRequest ar(aCx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-  JS::Rooted<JS::Value> rval(cx, JS::NullValue());
-  if (aData.DataLength() > 0 &&
-            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
-                                    JS_STRUCTURED_CLONE_VERSION, &rval,
-                                    nullptr, nullptr)) {
-    JS_ClearPendingException(cx);
+  bool hasData = (aData.DataLength() > 0);
+  JS::Rooted<JS::Value> rval(aCx, JS::NullValue());
+  JSAutoStructuredCloneBuffer cloneBuffer(JS::StructuredCloneScope::Unassigned, nullptr, nullptr);
+  cloneBuffer.steal(&aData.Data());
+
+  if (hasData && !cloneBuffer.read(aCx, &rval)) {
+    JS_ClearPendingException(aCx);
     return false;
   }
 
   nsAutoString json;
-  NS_ENSURE_TRUE(JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
+  NS_ENSURE_TRUE(JS_Stringify(aCx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
   // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
@@ -376,12 +378,12 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   RefPtr<nsFrameMessageManager> contentFrameMessageManager =
       static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
 
-  nsCOMPtr<nsPIDOMWindow> pwindow = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mTabChildGlobal;
-  SameProcessCpowHolder cpows(js::GetRuntime(aCx), aCpows);
+  SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
   globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
   contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
@@ -394,23 +396,23 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   if (!InitTabChildGlobal()) {
     return NS_ERROR_UNEXPECTED;
   }
-  JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
-  JSAutoRequest ar(cx);
+
+  JSAutoRequest ar(aCx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-  JS::Rooted<JS::Value> rval(cx, JS::NullValue());
+  bool hasData = (aData.DataLength() > 0);
+  JS::Rooted<JS::Value> rval(aCx, JS::NullValue());
+  JSAutoStructuredCloneBuffer cloneBuffer(JS::StructuredCloneScope::Unassigned, nullptr, nullptr);
+  cloneBuffer.steal(&aData.Data());
 
-  if (aData.DataLength() > 0 &&
-            !JS_ReadStructuredClone(cx, aData.Data(), aData.DataLength(),
-                                    JS_STRUCTURED_CLONE_VERSION, &rval,
-                                    nullptr, nullptr)) {
-    JS_ClearPendingException(cx);
+  if (hasData && !cloneBuffer.read(aCx, &rval)) {
+    JS_ClearPendingException(aCx);
     return NS_ERROR_UNEXPECTED;
   }
 
   nsAutoString json;
   // Check EmbedLiteJSON::JSONCreator and/or JS_Stringify from Android side
-  if (!JS_Stringify(cx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json))  {
+  if (!JS_Stringify(aCx, &rval, nullptr, JS::NullHandleValue, EmbedLiteJSON::JSONCreator, &json))  {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -454,7 +456,7 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
 nsIWidget*
 TabChildHelper::GetWidget(nsPoint* aOffset)
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
@@ -471,7 +473,7 @@ TabChildHelper::GetWidget(nsPoint* aOffset)
 nsPresContext*
 TabChildHelper::GetPresContext()
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
@@ -500,7 +502,9 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  mInnerSize = ScreenIntSize::FromUnknownSize(gfx::IntSize(aSize.width, aSize.height));
+  LayoutDeviceIntSize innerSize =
+    RoundedToInt(CSSSize(aSize.width, aSize.height) * WebWidget()->GetDefaultScale());
+  mInnerSize = ViewAs<ScreenPixel>(innerSize, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 }
 
 // -- nsITabChild --------------
@@ -534,6 +538,28 @@ void
 TabChildHelper::SendRequestFocus(bool aCanFocus)
 {
   LOGNI();
+}
+
+void
+TabChildHelper::SendGetTabCount(uint32_t* tabCount)
+{
+  Unused << tabCount;
+  LOGNI();
+}
+
+NS_IMETHODIMP
+TabChildHelper::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
+                            int32_t aShellItemWidth, int32_t aShellItemHeight)
+{
+  LOGNI();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabChildHelper::RemoteDropLinks(uint32_t aLinksCount, nsIDroppedLinkItem** aLinks)
+{
+  LOGNI();
+  return NS_OK;
 }
 
 void
