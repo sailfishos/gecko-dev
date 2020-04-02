@@ -310,9 +310,11 @@ EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid
   }
 
   if (GetApzcTreeManager()) {
-    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
-        GetApzcTreeManager(), &APZCTreeManager::ContentReceivedInputBlock,
-        aInputBlockId, aPreventDefault));
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod<uint64_t, bool>
+                                          (GetApzcTreeManager(),
+                                           &IAPZCTreeManager::ContentReceivedInputBlock,
+                                           aInputBlockId,
+                                           aPreventDefault));
   }
 
   return true;
@@ -394,11 +396,15 @@ EmbedLiteViewBaseParent::RecvSetTargetAPZC(const uint64_t &aInputBlockId, nsTArr
 
   if (GetApzcTreeManager()) {
     // need a local var to disambiguate between the SetTargetAPZC overloads.
-    void (APZCTreeManager::*setTargetApzcFunc)(uint64_t, const nsTArray<ScrollableLayerGuid>&)
-        = &APZCTreeManager::SetTargetAPZC;
-    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
-                                              GetApzcTreeManager(), setTargetApzcFunc,
-                                              aInputBlockId, aTargets));
+    void (IAPZCTreeManager::*setTargetApzcFunc)(uint64_t, const nsTArray<ScrollableLayerGuid>&)
+        = &IAPZCTreeManager::SetTargetAPZC;
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod
+                                          <uint64_t,
+                                           StoreCopyPassByRRef<nsTArray<ScrollableLayerGuid>>>
+                                          (GetApzcTreeManager(),
+                                           setTargetApzcFunc,
+                                           aInputBlockId,
+                                           aTargets));
   }
 
   return true;
@@ -412,9 +418,12 @@ bool EmbedLiteViewBaseParent::RecvSetAllowedTouchBehavior(const uint64_t &aInput
   }
 
   if (GetApzcTreeManager()) {
-    APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
-                                              GetApzcTreeManager(), &APZCTreeManager::SetAllowedTouchBehavior,
-                                              aInputBlockId, aFlags));
+    APZThreadUtils::RunOnControllerThread(NewRunnableMethod<uint64_t,
+                                          StoreCopyPassByRRef<nsTArray<TouchBehaviorFlags>>>
+                                          (GetApzcTreeManager(),
+                                           &IAPZCTreeManager::SetAllowedTouchBehavior,
+                                           aInputBlockId,
+                                           Move(aFlags)));
   }
   return true;
 }
