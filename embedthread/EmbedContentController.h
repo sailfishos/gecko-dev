@@ -51,6 +51,15 @@ public:
                                     int aArg = 0) override;
   virtual void NotifyFlushComplete() override;
 
+  virtual void NotifyPinchGesture(PinchGestureInput::PinchGestureType aType,
+                                  const ScrollableLayerGuid& aGuid,
+                                  LayoutDeviceCoord aSpanChange,
+                                  Modifiers aModifiers) override;
+
+  virtual bool IsRepaintThread() override;
+
+  virtual void DispatchToRepaintThread(already_AddRefed<Runnable> aTask) override;
+
 private:
   EmbedLiteViewListener *GetListener() const;
 

@@ -189,9 +189,7 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(
-                FROM_HERE,
-                NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
+    mUILoop->PostTask(NewRunnableMethod<>(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
     return;
   }
   if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
@@ -244,4 +242,20 @@ void EmbedContentController::NotifyFlushComplete()
 {
   LOGT();
   mUILoop->PostTask(NewRunnableMethod(this, &EmbedContentController::DoNotifyFlushComplete));
+}
+
+void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureType aType, const EmbedContentController::ScrollableLayerGuid &aGuid, LayoutDeviceCoord aSpanChange, Modifiers aModifiers)
+{
+  LOGT("NOT YET IMPLEMENTED");
+}
+
+bool EmbedContentController::IsRepaintThread()
+{
+  LOGT("NOT YET IMPLEMENTED");
+  return true;
+}
+
+void EmbedContentController::DispatchToRepaintThread(already_AddRefed<Runnable> aTask)
+{
+  LOGT("NOT YET IMPLEMENTED");
 }
