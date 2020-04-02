@@ -111,8 +111,11 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod(this, &EmbedLiteViewBaseChild::InitGeckoWindow,
-                                                     aParentId, isPrivateWindow));
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t&, const bool &>
+                                   (this,
+                                    &EmbedLiteViewBaseChild::InitGeckoWindow,
+                                    aParentId,
+                                    isPrivateWindow));
 }
 
 EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
@@ -205,7 +208,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     return;
   }
 
-  nsCOMPtr<nsIDOMWindow> domWindow;
+  nsCOMPtr<mozIDOMWindowProxy> domWindow;
 
   mChrome = new WebBrowserChrome(this);
   uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
@@ -232,12 +235,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     NS_ERROR("Failed to get the content DOM window!");
   }
 
-  nsCOMPtr<nsPIDOMWindow> pWindow = do_QueryInterface(domWindow);
-  if(!pWindow) {
-    NS_ERROR("Got stuck with DOMWindow!");
-  }
-
-  mDOMWindow = do_QueryInterface(pWindow->GetPrivateRoot());
+  mDOMWindow = do_QueryInterface(domWindow);
   if (!mDOMWindow) {
     NS_ERROR("Got stuck with root DOMWindow!");
   }
@@ -683,13 +681,14 @@ EmbedLiteViewBaseChild::RecvSuspendTimeouts()
   }
 
   nsresult rv;
-  nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  nsCOMPtr<nsPIDOMWindowInner> pwindow(do_QueryInterface(mDOMWindow, &rv));
   NS_ENSURE_SUCCESS(rv, false);
-  if (!pwindow->TimeoutSuspendCount()) {
-    pwindow->SuspendTimeouts();
+  if (!pwindow->IsFrozen()) {
+    pwindow->Thaw();
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 bool
@@ -700,15 +699,15 @@ EmbedLiteViewBaseChild::RecvResumeTimeouts()
   }
 
   nsresult rv;
-  nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  nsCOMPtr<nsPIDOMWindowInner> pwindow(do_QueryInterface(mDOMWindow, &rv));
   NS_ENSURE_SUCCESS(rv, false);
 
-  if (pwindow->TimeoutSuspendCount()) {
-    rv = pwindow->ResumeTimeouts();
-    NS_ENSURE_SUCCESS(rv, false);
+  if (pwindow->IsFrozen()) {
+    pwindow->Freeze();
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 bool
@@ -859,14 +858,14 @@ void
 EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 {
   if (aPoint) {
-    event.refPoint.x = aPoint->x;
-    event.refPoint.y = aPoint->y;
+    event.mRefPoint.x = aPoint->x;
+    event.mRefPoint.y = aPoint->y;
   } else {
-    event.refPoint.x = 0;
-    event.refPoint.y = 0;
+    event.mRefPoint.x = 0;
+    event.mRefPoint.y = 0;
   }
 
-  event.time = PR_Now() / 1000;
+  event.mTime = PR_Now() / 1000;
 }
 
 bool
@@ -921,7 +920,7 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
   if (sHandleDefaultAZPC.singleTap) {
     LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
     Modifiers m;
-    APZCCallbackHelper::FireSingleTapEvent(pt, m, mHelper->WebWidget());
+    APZCCallbackHelper::FireSingleTapEvent(pt, m, 1, mHelper->WebWidget());
   }
 
   return true;
@@ -1000,7 +999,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
         TextRange range;
         range.mStartOffset = 0;
         range.mEndOffset = event.mData.Length();
-        range.mRangeType = NS_TEXTRANGE_RAWINPUT;
+        range.mRangeType = TextRangeType::eRawClause;
         event.mRanges = new TextRangeArray();
         event.mRanges->AppendElement(range);
       }
@@ -1015,7 +1014,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
     nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
 
     InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
-    inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
+    inputEvent.mTime = static_cast<uint64_t>(PR_Now() / 1000);
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
     ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
@@ -1033,7 +1032,7 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
 bool
 EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
@@ -1058,7 +1057,7 @@ EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int
 bool
 EmbedLiteViewBaseChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
@@ -1080,14 +1079,16 @@ EmbedLiteViewBaseChild::RecvMouseEvent(const nsString& aType,
     return false;
   }
 
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
 
   NS_ENSURE_TRUE(utils, true);
   bool ignored = false;
-  utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
-                        aIgnoreRootScrollFrame, 0, 0, false, 4, &ignored);
+  uint8_t argc = 6;
+  utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers, aIgnoreRootScrollFrame,
+                        0.0, nsIDOMMouseEvent::MOZ_SOURCE_TOUCH,
+                        false, false, 0, argc, &ignored);
 
   return !ignored;
 }
@@ -1172,8 +1173,8 @@ bool
 EmbedLiteViewBaseChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const APZStateChange &aChange, const int &aArg)
 {
   LOGT("thread: %ld", syscall(SYS_gettid));
-  mAPZEventState->ProcessAPZStateChange(mHelper->GetDocument(), aViewId, aChange, aArg);
-  if (aChange == APZStateChange::TransformEnd) {
+  mAPZEventState->ProcessAPZStateChange(aViewId, aChange, aArg);
+  if (aChange == APZStateChange::eTransformEnd) {
     // This is used by tests to determine when the APZ is done doing whatever
     // it's doing. XXX generify this as needed when writing additional tests.
 #if 0
@@ -1188,7 +1189,8 @@ EmbedLiteViewBaseChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const AP
 bool
 EmbedLiteViewBaseChild::RecvNotifyFlushComplete()
 {
-  APZCCallbackHelper::NotifyFlushComplete();
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  APZCCallbackHelper::NotifyFlushComplete(ps);
   return true;
 }
 
