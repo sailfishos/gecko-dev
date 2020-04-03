@@ -16,8 +16,7 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteCompositorProcessParent final : public PCompositorBridgeParent,
-                                               public ShadowLayersManager
+class EmbedLiteCompositorProcessParent final : public CompositorBridgeParent
 {
   friend class CompositorBridgeParent;
 
@@ -25,30 +24,18 @@ class EmbedLiteCompositorProcessParent final : public PCompositorBridgeParent,
 public:
   EmbedLiteCompositorProcessParent(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id);
 
-  // IToplevelProtocol::CloneToplevel()
-  virtual IToplevelProtocol*
-  CloneToplevel(const InfallibleTArray<mozilla::ipc::ProtocolFdMapping>& aFds,
-                base::ProcessHandle aPeerProcess,
-                mozilla::ipc::ProtocolCloneContext* aCtx) override;
-
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
   virtual bool RecvGetFrameUniformity(FrameUniformityData* aOutData) override { return true; }
   // FIXME/bug 774388: work out what shutdown protocol we need.
   virtual bool RecvRequestOverfill() override { return true; }
-  virtual bool RecvWillStop() override { return true; }
-  virtual bool RecvStop() override { return true; }
   virtual bool RecvPause() override { return true; }
   virtual bool RecvResume() override { return true; }
-  virtual bool RecvNotifyHidden(const uint64_t& id) override { return true; }
-  virtual bool RecvNotifyVisible(const uint64_t& id) override { return true; }
   virtual bool RecvNotifyChildCreated(const uint64_t& child) override;
   virtual bool RecvAdoptChild(const uint64_t& child) override { return false; }
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
                                 const nsIntRect& aRect) { return true; }
-  virtual bool RecvMakeWidgetSnapshot(const SurfaceDescriptor& aInSnapshot) override { return true; }
   virtual bool RecvFlushRendering() override { return true; }
-  virtual bool RecvGetTileSize(int32_t* aWidth, int32_t* aHeight) override;
 
   virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) { return true; }
   virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) override { return true; }
@@ -75,7 +62,8 @@ public:
                                    bool aScheduleComposite,
                                    uint32_t aPaintSequenceNumber,
                                    bool aIsRepeatTransaction,
-                                   int32_t aPaintSyncId) override;
+                                   int32_t aPaintSyncId,
+                                   bool aHitTestUpdate) override;
   virtual void ForceComposite(LayerTransactionParent* aLayerTree) override;
   virtual bool SetTestSampleTime(LayerTransactionParent* aLayerTree,
                                  const TimeStamp& aTime) override;
@@ -124,7 +112,6 @@ private:
   RefPtr<Compositor> mCompositor;
   RefPtr<AsyncCompositionManager> mCompositionManager;
   uint64_t mCompositorID;
-  nsIntSize mEGLSurfaceSize;
 };
 
 } // embedlite
