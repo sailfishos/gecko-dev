@@ -954,9 +954,6 @@ bool KernCollider::mergeSlot(Segment *seg, Slot *slot, const Position &currShift
     if (smin > smax)
         return false;
     bool collides = false;
-    float below = smin > 0 ? _edges[smin-1] * rtl : 1e38f;
-    float here = _edges[smin] * rtl;
-    float above = smin < (int)_edges.size() - 1 ? _edges[smin+1] * rtl : 1e38f;
 
     for (int i = smin; i <= smax; ++i)
     {
@@ -983,8 +980,6 @@ bool KernCollider::mergeSlot(Segment *seg, Slot *slot, const Position &currShift
             }
 #endif
         }
-        below = here; here = above;
-        above = i < (int)_edges.size() - 2 ? _edges[i+2] * rtl : 1e38f;
     }
     return collides;   // note that true is not a necessarily reliable value
     

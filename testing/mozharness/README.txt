@@ -28,4 +28,5 @@ tox -- -x                      # run all unit tests but stop after first failure
 tox -- test/test_base_log.py   # only run the base log unit test
 ```
 
-Happy contributing! :)
+Happy contributing! =)
+

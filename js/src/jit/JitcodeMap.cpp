@@ -14,8 +14,6 @@
 
 #include <algorithm>
 
-#include <algorithm>
-
 #include "jsprf.h"
 
 #include "gc/Marking.h"

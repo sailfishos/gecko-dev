@@ -70,17 +70,6 @@ CanAccessObject(JSObject* obj)
     return true;
 }
 
-bool
-CanAccessObject(JSObject* obj)
-{
-    JS::RootedObject rootedObj(cx, obj);
-    JS::RootedValue value(cx);
-    CHECK(JS_GetProperty(cx, rootedObj, "x", &value));
-    CHECK(value.isInt32());
-    CHECK(value.toInt32() == 42);
-    return true;
-}
-
 template <typename T>
 bool
 TestHeapPostBarriersForType()

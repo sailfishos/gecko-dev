@@ -924,7 +924,7 @@ gfxAlphaBoxBlur::GetInsetBlur(const mozilla::gfx::Rect aOuterRect,
                    aDestDrawTarget->GetBackendType(),
                    minInsetBlur);
   }
- 
+
   return minInsetBlur.forget();
 }
 

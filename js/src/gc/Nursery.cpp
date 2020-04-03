@@ -129,22 +129,6 @@ js::Nursery::Nursery(JSRuntime* rt)
 #endif
 {}
 
-struct js::Nursery::SweepAction
-{
-    SweepAction(SweepThunk thunk, void* data, SweepAction* next)
-      : thunk(thunk), data(data), next(next)
-    {}
-
-    SweepThunk thunk;
-    void* data;
-    SweepAction* next;
-
-#if JS_BITS_PER_WORD == 32
-  protected:
-    uint32_t padding;
-#endif
-};
-
 bool
 js::Nursery::init(uint32_t maxNurseryBytes, AutoLockGC& lock)
 {
@@ -1038,38 +1022,4 @@ js::Nursery::sweepDictionaryModeObjects()
             obj->sweepDictionaryListPointer();
     }
     dictionaryModeObjects_.clear();
-}
-
-void
-js::Nursery::queueSweepAction(SweepThunk thunk, void* data)
-{
-    static_assert(sizeof(SweepAction) % CellSize == 0,
-                  "SweepAction size must be a multiple of cell size");
-    MOZ_ASSERT(!runtime()->mainThread.suppressGC);
-
-    SweepAction* action = nullptr;
-    if (isEnabled() && !js::oom::ShouldFailWithOOM())
-        action = reinterpret_cast<SweepAction*>(allocate(sizeof(SweepAction)));
-
-    if (!action) {
-        runtime()->gc.evictNursery();
-        AutoSetThreadIsSweeping threadIsSweeping;
-        thunk(data);
-        return;
-    }
-
-    new (action) SweepAction(thunk, data, sweepActions_);
-    sweepActions_ = action;
-}
-
-void
-js::Nursery::runSweepActions()
-{
-    // The hazard analysis doesn't know whether the thunks can GC.
-    JS::AutoSuppressGCAnalysis nogc;
-
-    AutoSetThreadIsSweeping threadIsSweeping;
-    for (auto action = sweepActions_; action; action = action->next)
-        action->thunk(action->data);
-    sweepActions_ = nullptr;
 }

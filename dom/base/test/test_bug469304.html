@@ -42,8 +42,8 @@ function testGetAttribute() {
   is(document.body.getAttributeNode("aa"), document.body.getAttributeNode("AA"),
      "Wrong node!");
 
-  document.body.getAttributeNode("AA").nodeValue = "FOO";
-  is(document.body.getAttribute("AA"), "FOO", "Wrong value!");
+  document.body.getAttributeNodeNS("", "AA").nodeValue = "FOO";
+  is(document.body.getAttributeNS("", "AA"), "FOO", "Wrong value!");
 
   document.body.removeAttributeNode(document.body.getAttributeNodeNS("", "aa"));
   ok(!document.body.getAttributeNode("AA"), "Should not have attribute node! (1)");
@@ -54,10 +54,10 @@ function testGetAttribute() {
   is(a2.nodeValue, "UPPERCASE", "Wrong value!");
 
   document.body.setAttributeNode(a2);
-  is(document.body.getAttribute("AA"), "UPPERCASE", "wrong value!");
-  ok(document.body.getAttributeNode("AA"), "Should have attribute node!");
-  is(document.body.getAttribute("aa"), "UPPERCASE", "wrong value!");
-  ok(document.body.getAttributeNode("aa"), "Should have attribute node!");
+  is(document.body.getAttributeNS("", "AA"), "UPPERCASE", "Wrong value!");
+  ok(document.body.getAttributeNodeNS("", "AA"), "Should have attribute node!");
+  is(document.body.getAttributeNS("", "aa"), null, "No attribute has the localName aa.");
+  ok(!document.body.getAttributeNodeNS("", "aa"), "Should not have attribute node!");
 }
 testGetAttribute();
 
@@ -75,7 +75,7 @@ function testGetAttributeNodeMixedCase() {
   var a = div.ownerDocument.createAttributeNS("", "mixedCaseAttrib");
   a.nodeValue = "x";
   div.setAttributeNode(a);
-  return div.getAttribute("mixedCaseAttrib");
+  return div.getAttributeNS("", "mixedCaseAttrib");
 }
 is(testGetAttributeNodeMixedCase(), "x", "(2)");
 

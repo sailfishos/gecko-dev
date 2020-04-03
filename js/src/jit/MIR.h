@@ -1101,26 +1101,6 @@ class MRootList : public TempObject
     }
 };
 
-class MRootList : public TempObject
-{
-  private:
-    Vector<JSScript*, 0, JitAllocPolicy> roots_;
-
-    MRootList(const MRootList&) = delete;
-    void operator=(const MRootList&) = delete;
-
-  public:
-    explicit MRootList(TempAllocator& alloc);
-
-    void trace(JSTracer* trc);
-
-    MOZ_MUST_USE bool append(JSScript* script) {
-        if (script)
-            return roots_.append(script);
-        return true;
-    }
-};
-
 // An instruction is an SSA name that is inserted into a basic block's IR
 // stream.
 class MInstruction
@@ -7136,11 +7116,6 @@ class MDiv : public MBinaryArithInstruction
         const MDiv* other = ins->toDiv();
         MOZ_ASSERT(other->trapOnError() == trapOnError_);
         return unsigned_ == other->isUnsigned();
-    }
-
-    bool congruentTo(const MDefinition* ins) const override {
-        return MBinaryArithInstruction::congruentTo(ins) &&
-               unsigned_ == ins->toDiv()->isUnsigned();
     }
 
     ALLOW_CLONE(MDiv)

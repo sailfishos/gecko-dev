@@ -269,8 +269,6 @@ struct InternalBarrierMethods<T*>
     static void postBarrier(T** vp, T* prev, T* next) { T::writeBarrierPost(vp, prev, next); }
 
     static void readBarrier(T* v) { T::readBarrier(v); }
-
-    static bool isInsideNursery(T* v) { return IsInsideNursery(v); }
 };
 
 template <typename S> struct PreBarrierFunctor : public VoidDefaultAdaptor<S> {
@@ -315,10 +313,6 @@ struct InternalBarrierMethods<Value>
     static void readBarrier(const Value& v) {
         DispatchTyped(ReadBarrierFunctor<Value>(), v);
     }
-
-    static bool isInsideNursery(const Value& v) {
-        return v.isMarkable() && IsInsideNursery(v.toGCThing());
-    }
 };
 
 template <>
@@ -329,8 +323,6 @@ struct InternalBarrierMethods<jsid>
 
     static void preBarrier(jsid id) { DispatchTyped(PreBarrierFunctor<jsid>(), id); }
     static void postBarrier(jsid* idp, jsid prev, jsid next) {}
-
-    static bool isInsideNursery(jsid id) { return false; }
 };
 
 // Barrier classes can use Mixins to add methods to a set of barrier

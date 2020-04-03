@@ -1402,21 +1402,6 @@ EventListenerManager::AddEventListener(
 }
 
 void
-EventListenerManager::AddEventListener(
-                        const nsAString& aType,
-                        const EventListenerHolder& aListenerHolder,
-                        const dom::AddEventListenerOptionsOrBoolean& aOptions,
-                        bool aWantsUntrusted)
-{
-  EventListenerFlags flags;
-  flags.mCapture =
-    aOptions.IsBoolean() ? aOptions.GetAsBoolean()
-                         : aOptions.GetAsAddEventListenerOptions().mCapture;
-  flags.mAllowUntrustedEvents = aWantsUntrusted;
-  return AddEventListenerByType(aListenerHolder, aType, flags);
-}
-
-void
 EventListenerManager::RemoveEventListener(
                         const nsAString& aType,
                         EventListenerHolder aListenerHolder,
@@ -1442,19 +1427,6 @@ EventListenerManager::RemoveEventListener(
     flags.mInSystemGroup = options.mMozSystemGroup;
   }
   RemoveEventListenerByType(Move(aListenerHolder), aType, flags);
-}
-
-void
-EventListenerManager::RemoveEventListener(
-                        const nsAString& aType,
-                        const EventListenerHolder& aListenerHolder,
-                        const dom::EventListenerOptionsOrBoolean& aOptions)
-{
-  EventListenerFlags flags;
-  flags.mCapture =
-    aOptions.IsBoolean() ? aOptions.GetAsBoolean()
-                         : aOptions.GetAsEventListenerOptions().mCapture;
-  RemoveEventListenerByType(aListenerHolder, aType, flags);
 }
 
 void

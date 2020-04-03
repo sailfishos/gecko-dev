@@ -1130,18 +1130,6 @@ function getAppVersion() {
 }
 
 /**
- * Override the apply-to directory parameter to be passed to the updater.
- * This ought to cause the updater to fail when using any value that isn't the
- * default, automatically computed one.
- *
- * @param dir
- *        Complete string to use as the apply-to directory parameter.
- */
-function overrideApplyToDir(dir) {
-  gApplyToDirOverride = dir;
-}
-
-/**
  * Helper function for getting the relative path to the directory where the
  * application binary is located (e.g. <test_file_leafname>/dir.app/).
  *
@@ -1402,12 +1390,6 @@ function getMockUpdRootD() {
     return getMockUpdRootDMac();
   }
 
-  // The gonk updates directory is under /data/local but for the updater tests
-  // we use the following directory so the tests can run in parallel.
-  if (IS_TOOLKIT_GONK) {
-    return do_get_file(gTestID + "/", true);
-  }
-
   return getApplyDirFile(DIR_MACOS, true);
 }
 
@@ -1645,9 +1627,6 @@ function logUpdateLog(aLogLeafName) {
       logTestInfo("maintenance service log doesn't exist, path: " +
                   serviceLog.path);
     }
-    runUpdateUsingService(expectedStatus, aSwitchApp, aCheckSvcLog);
-  } else {
-    runUpdateUsingUpdater(aExpectedStatus, aSwitchApp, aExpectedExitValue);
   }
 }
 
@@ -2424,97 +2403,6 @@ function getLaunchBin() {
   return launchBin;
 }
 
-
-/**
- * Locks a Windows directory.
- *
- * @param   aDirPath
- *          The test file object that describes the file to make in use.
- */
-function lockDirectory(aDirPath) {
-  if (!IS_WIN) {
-    do_throw("Windows only function called by a different platform!");
-  }
-
-  debugDump("start - locking installation directory");
-  const LPCWSTR = ctypes.char16_t.ptr;
-  const DWORD = ctypes.uint32_t;
-  const LPVOID = ctypes.voidptr_t;
-  const GENERIC_READ = 0x80000000;
-  const FILE_SHARE_READ = 1;
-  const FILE_SHARE_WRITE = 2;
-  const OPEN_EXISTING = 3;
-  const FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
-  const INVALID_HANDLE_VALUE = LPVOID(0xffffffff);
-  let kernel32 = ctypes.open("kernel32");
-  let CreateFile = kernel32.declare("CreateFileW", ctypes.default_abi,
-                                    LPVOID, LPCWSTR, DWORD, DWORD,
-                                    LPVOID, DWORD, DWORD, LPVOID);
-  gHandle = CreateFile(aDirPath, GENERIC_READ,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE, LPVOID(0),
-                       OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, LPVOID(0));
-  Assert.notEqual(gHandle.toString(), INVALID_HANDLE_VALUE.toString(),
-                  "the handle should not equal INVALID_HANDLE_VALUE");
-  kernel32.close();
-  debugDump("finish - locking installation directory");
-}
-
-/**
- * Launches the test helper binary to make it in use for updater tests and then
- * calls waitForHelperSleep.
- *
- * @param   aTestFile
- *          The test file object that describes the file to make in use.
- */
-function runHelperFileInUse(aRelPath, aCopyTestHelper) {
-  logTestInfo("aRelPath: " + aRelPath);
-  // Launch an existing file so it is in use during the update.
-  let helperBin = getTestDirFile(FILE_HELPER_BIN);
-  let fileInUseBin = getApplyDirFile(aRelPath);
-  if (aCopyTestHelper) {
-    fileInUseBin.remove(false);
-    helperBin.copyTo(fileInUseBin.parent, fileInUseBin.leafName);
-  }
-  fileInUseBin.permissions = PERMS_DIRECTORY;
-  let args = [getApplyDirPath() + DIR_RESOURCES, "input", "output", "-s",
-              HELPER_SLEEP_TIMEOUT];
-  let fileInUseProcess = Cc["@mozilla.org/process/util;1"].
-                         createInstance(Ci.nsIProcess);
-  fileInUseProcess.init(fileInUseBin);
-  fileInUseProcess.run(false, args, args.length);
-
-  do_execute_soon(waitForHelperSleep);
-}
-
-/**
- * Launches the test helper binary and locks a file specified on the command
- * line for updater tests and then calls waitForHelperSleep.
- *
- * @param   aTestFile
- *          The test file object that describes the file to lock.
- */
-function runHelperLockFile(aTestFile) {
-  // Exclusively lock an existing file so it is in use during the update.
-  let helperBin = getTestDirFile(FILE_HELPER_BIN);
-  let helperDestDir = getApplyDirFile(DIR_RESOURCES);
-  helperBin.copyTo(helperDestDir, FILE_HELPER_BIN);
-  helperBin = getApplyDirFile(DIR_RESOURCES + FILE_HELPER_BIN);
-  // Strip off the first two directories so the path has to be from the helper's
-  // working directory.
-  let lockFileRelPath = aTestFile.relPathDir.split("/");
-  if (IS_MACOSX) {
-    lockFileRelPath = lockFileRelPath.slice(2);
-  }
-  lockFileRelPath = lockFileRelPath.join("/") + "/" + aTestFile.fileName;
-  let args = [getApplyDirPath() + DIR_RESOURCES, "input", "output", "-s",
-              HELPER_SLEEP_TIMEOUT, lockFileRelPath];
-  let helperProcess = Cc["@mozilla.org/process/util;1"].
-                        createInstance(Ci.nsIProcess);
-  helperProcess.init(helperBin);
-  helperProcess.run(false, args, args.length);
-
-  do_execute_soon(waitForHelperSleep);
-}
 
 /**
  * Locks a Windows directory.

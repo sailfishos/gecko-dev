@@ -1746,7 +1746,7 @@ struct GCManagedDeletePolicy
     }
 };
 
-} /* namespace JS */
+} /* namespace js */
 
 namespace JS {
 

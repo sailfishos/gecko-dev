@@ -2461,9 +2461,6 @@ IsCacheableSetPropCallScripted(HandleObject obj, HandleObject holder, HandleShap
     if (IsWindow(obj))
         return false;
 
-    if (IsWindow(obj))
-        return false;
-
     return shape->hasSetterValue() && shape->setterObject() &&
            shape->setterObject()->is<JSFunction>() &&
            shape->setterObject()->as<JSFunction>().hasJITCode();

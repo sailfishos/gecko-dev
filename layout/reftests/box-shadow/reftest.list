@@ -32,11 +32,6 @@ fuzzy(26,3610) == boxshadow-rotated.html boxshadow-rotated-ref.html # Bug 121126
 # fuzzy due to blur going inside, but as long as it's essentially black instead of a light gray its ok.
 fuzzy(12,9445) == boxshadow-inset-large-offset.html boxshadow-inset-large-offset-ref.html
 
-== boxshadow-inset-large-border-radius.html boxshadow-inset-large-border-radius-ref.html
-
-# fuzzy due to blur going inside, but as long as it's essentially black instead of a light gray its ok.
-fuzzy(12,9445) == boxshadow-inset-large-offset.html boxshadow-inset-large-offset-ref.html
-
 == overflow-not-scrollable-1.html overflow-not-scrollable-1-ref.html
 == overflow-not-scrollable-1.html overflow-not-scrollable-1-ref2.html
 == overflow-not-scrollable-2.html overflow-not-scrollable-2-ref.html

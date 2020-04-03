@@ -15,7 +15,6 @@ class nsIFile;
 class nsCString;
 class nsISimpleEnumerator;
 
-
 namespace mozilla {
 
 template<typename T>

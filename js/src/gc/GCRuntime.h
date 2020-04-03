@@ -868,11 +868,6 @@ class GCRuntime
         nursery.queueSweepAction(thunk, data);
     }
 
-    // Queue a thunk to run after the next minor GC.
-    void callAfterMinorGC(void (*thunk)(void* data), void* data) {
-        nursery.queueSweepAction(thunk, data);
-    }
-
     // Public here for ReleaseArenaLists and FinalizeTypedArenas.
     void releaseArena(Arena* arena, const AutoLockGC& lock);
 

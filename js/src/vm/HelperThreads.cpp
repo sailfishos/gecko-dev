@@ -341,18 +341,6 @@ ParseTask::~ParseTask()
     for (size_t i = 0; i < errors.length(); i++)
         js_delete(errors[i]);
 }
-void
-ParseTask::trace(JSTracer* trc)
-{
-    if (!cx->runtimeMatches(trc->runtime()))
-        return;
-
-    TraceManuallyBarrieredEdge(trc, &exclusiveContextGlobal, "ParseTask::exclusiveContextGlobal");
-    if (script)
-        TraceManuallyBarrieredEdge(trc, &script, "ParseTask::script");
-    if (sourceObject)
-        TraceManuallyBarrieredEdge(trc, &sourceObject, "ParseTask::sourceObject");
-}
 
 void
 ParseTask::trace(JSTracer* trc)
@@ -1252,9 +1240,6 @@ GlobalHelperThreadState::finishParseTask(JSContext* cx, ParseTaskKind kind, void
     mergeParseTaskCompartment(cx, parseTask, global, cx->compartment());
 
     RootedScript script(cx, parseTask->script);
-    releaseAssertSameCompartment(cx, script);
-
-    RootedScript script(rt, parseTask->script);
     releaseAssertSameCompartment(cx, script);
 
     if (!parseTask->finish(cx))

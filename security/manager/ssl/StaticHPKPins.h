@@ -135,10 +135,6 @@ static const char kFacebookBackupFingerprint[] =
 static const char kGOOGLE_PIN_COMODORSADomainValidationSecureServerCAFingerprint[] =
   "klO23nT2ehFDXCfx3eHTDRESMz3asj1muO+4aIdjiuY=";
 
-/* GOOGLE_PIN_COMODORSADomainValidationSecureServerCA */
-static const char kGOOGLE_PIN_COMODORSADomainValidationSecureServerCAFingerprint[] =
-  "klO23nT2ehFDXCfx3eHTDRESMz3asj1muO+4aIdjiuY=";
-
 /* GOOGLE_PIN_DigiCertECCSecureServerCA */
 static const char kGOOGLE_PIN_DigiCertECCSecureServerCAFingerprint[] =
   "PZXN3lRAy+8tBKk2Ox6F7jIlnzr2Yzmwqc3JnyfXoCw=";
@@ -701,54 +697,6 @@ static const StaticFingerprints kPinset_tumblr = {
   kPinset_tumblr_Data
 };
 
-static const char* kPinset_swehackCom_sha1_Data[] = {
-  kSwehackFingerprint,
-  kSwehackBackupFingerprint,
-};
-static const StaticFingerprints kPinset_swehackCom_sha1 = {
-  sizeof(kPinset_swehackCom_sha1_Data) / sizeof(const char*),
-  kPinset_swehackCom_sha1_Data
-};
-
-static const char* kPinset_swehackCom_sha256_Data[] = {
-  kDST_Root_CA_X3Fingerprint,
-  kGOOGLE_PIN_LetsEncryptAuthorityPrimary_X1_X3Fingerprint,
-  kGOOGLE_PIN_COMODORSADomainValidationSecureServerCAFingerprint,
-  kGOOGLE_PIN_LetsEncryptAuthorityBackup_X2_X4Fingerprint,
-};
-static const StaticFingerprints kPinset_swehackCom_sha256 = {
-  sizeof(kPinset_swehackCom_sha256_Data) / sizeof(const char*),
-  kPinset_swehackCom_sha256_Data
-};
-
-static const StaticPinset kPinset_swehackCom = {
-  &kPinset_swehackCom_sha1,
-  &kPinset_swehackCom_sha256
-};
-
-static const char* kPinset_ncsccs_sha256_Data[] = {
-  kCOMODO_Certification_AuthorityFingerprint,
-  kDigiCert_Assured_ID_Root_CAFingerprint,
-  kVeriSign_Class_3_Public_Primary_Certification_Authority___G5Fingerprint,
-  kVeriSign_Class_3_Public_Primary_Certification_Authority___G4Fingerprint,
-  kDigiCert_High_Assurance_EV_Root_CAFingerprint,
-  kBaltimore_CyberTrust_RootFingerprint,
-  kGOOGLE_PIN_LetsEncryptAuthorityPrimary_X1_X3Fingerprint,
-  kAddTrust_External_RootFingerprint,
-  kVeriSign_Universal_Root_Certification_AuthorityFingerprint,
-  kDigiCert_Global_Root_CAFingerprint,
-  kGOOGLE_PIN_LetsEncryptAuthorityBackup_X2_X4Fingerprint,
-};
-static const StaticFingerprints kPinset_ncsccs_sha256 = {
-  sizeof(kPinset_ncsccs_sha256_Data) / sizeof(const char*),
-  kPinset_ncsccs_sha256_Data
-};
-
-static const StaticPinset kPinset_ncsccs = {
-  nullptr,
-  &kPinset_ncsccs_sha256
-};
-
 /* Domainlist */
 struct TransportSecurityPreload {
   const char* mHost;
@@ -1171,7 +1119,6 @@ static const TransportSecurityPreload kPublicKeyPinningPreloadList[] = {
   { "script.google.com", true, false, false, -1, &kPinset_google_root_pems },
   { "se.search.yahoo.com", false, true, false, -1, &kPinset_yahoo },
   { "search.yahoo.com", false, true, false, -1, &kPinset_yahoo },
-  { "secretintelligence.0.me.uk", true, true, false, -1, &kPinset_ncsccs },
   { "secure.facebook.com", true, false, false, -1, &kPinset_facebook },
   { "security.google.com", true, false, false, -1, &kPinset_google_root_pems },
   { "services.mozilla.com", true, false, true, 6, &kPinset_mozilla_services },

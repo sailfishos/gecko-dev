@@ -318,31 +318,6 @@ HTMLTrackElement::LoadResource()
     }
   }
 
-  // According to https://www.w3.org/TR/html5/embedded-content-0.html#sourcing-out-of-band-text-tracks
-  //
-  // "8: If the track element's parent is a media element then let CORS mode
-  // be the state of the parent media element's crossorigin content attribute.
-  // Otherwise, let CORS mode be No CORS."
-  //
-  CORSMode corsMode = mMediaParent ? mMediaParent->GetCORSMode() : CORS_NONE;
-
-  // Determine the security flag based on corsMode.
-  nsSecurityFlags secFlags;
-  if (CORS_NONE == corsMode) {
-    // Same-origin is required for track element.
-    secFlags = nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS;
-  } else {
-    secFlags = nsILoadInfo::SEC_REQUIRE_CORS_DATA_INHERITS;
-    if (CORS_ANONYMOUS == corsMode) {
-      secFlags |= nsILoadInfo::SEC_COOKIES_SAME_ORIGIN;
-    } else if (CORS_USE_CREDENTIALS == corsMode) {
-      secFlags |= nsILoadInfo::SEC_COOKIES_INCLUDE;
-    } else {
-      NS_WARNING("Unknown CORS mode.");
-      secFlags = nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_INHERITS;
-    }
-  }
-
   nsCOMPtr<nsIChannel> channel;
   nsCOMPtr<nsILoadGroup> loadGroup = OwnerDoc()->GetDocumentLoadGroup();
   rv = NS_NewChannel(getter_AddRefs(channel),

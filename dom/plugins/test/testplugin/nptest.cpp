@@ -47,7 +47,6 @@
 #include <sstream>
 #include <list>
 #include <ctime>
-#include <stddef.h>
 
 #ifdef XP_WIN
 #include <process.h>

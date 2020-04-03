@@ -763,8 +763,6 @@ class OrderedHashMap
 
     HashNumber hash(const Key& key) const { return impl.prepareHash(key); }
 
-    HashNumber hash(const Key& key) const { return impl.prepareHash(key); }
-
     void rekeyOneEntry(const Key& current, const Key& newKey) {
         const Entry* e = get(current);
         if (!e)
@@ -814,8 +812,6 @@ class OrderedHashSet
     MOZ_MUST_USE bool put(const T& value)           { return impl.put(value); }
     bool remove(const T& value, bool* foundp)       { return impl.remove(value, foundp); }
     MOZ_MUST_USE bool clear()                       { return impl.clear(); }
-
-    HashNumber hash(const T& value) const { return impl.prepareHash(value); }
 
     HashNumber hash(const T& value) const { return impl.prepareHash(value); }
 

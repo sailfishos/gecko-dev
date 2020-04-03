@@ -1990,10 +1990,7 @@ js::array_sort(JSContext* cx, unsigned argc, Value* vp)
         }
 
         /* Here len == n + undefs + number_of_holes. */
-        bool defaultOrMatch;
         if (fval.isNull()) {
-            defaultOrMatch = true;
-
             /*
              * Sort using the default comparator converting all elements to
              * strings.

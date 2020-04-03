@@ -570,7 +570,6 @@ js::regexp_clone(JSContext* cx, unsigned argc, Value* vp)
     Rooted<RegExpObject*> regexp(cx, RegExpAlloc(cx));
     if (!regexp)
         return false;
-    regexp->zeroLastIndex(cx);
 
     regexp->initAndZeroLastIndex(sourceAtom, flags, cx);
 

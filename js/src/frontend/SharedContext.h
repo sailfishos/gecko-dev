@@ -531,10 +531,6 @@ class FunctionBox : public ObjectBox, public SharedContext
         return usesArguments && usesApply && usesThis && !usesReturn;
     }
 
-    bool isLikelyConstructorWrapper() const {
-        return usesArguments && usesApply && usesThis && !usesReturn;
-    }
-
     GeneratorKind generatorKind() const { return GeneratorKindFromBits(generatorKindBits_); }
     bool isGenerator() const { return generatorKind() != NotGenerator; }
     bool isLegacyGenerator() const { return generatorKind() == LegacyGenerator; }

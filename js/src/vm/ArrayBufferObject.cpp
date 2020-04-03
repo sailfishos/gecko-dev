@@ -1167,7 +1167,6 @@ ArrayBufferObject::externalizeContents(JSContext* cx, Handle<ArrayBufferObject*>
     MOZ_ASSERT(buffer->isPlain(), "Only support doing this on plain ABOs");
     MOZ_ASSERT(!buffer->isDetached(), "must have contents to externalize");
     MOZ_ASSERT_IF(hasStealableContents, buffer->hasStealableContents());
-    assertSameCompartment(cx, buffer);
 
     BufferContents contents(buffer->dataPointer(), buffer->bufferKind());
 
