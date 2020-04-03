@@ -179,7 +179,7 @@ EmbedLitePuppetWidget::SetRotation(mozilla::ScreenRotation rotation)
 }
 
 void
-EmbedLitePuppetWidget::SetMargins(const nsIntMargin& margins)
+EmbedLitePuppetWidget::SetMargins(const LayoutDeviceIntMargin &margins)
 {
   mMargins = margins;
   for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
@@ -220,11 +220,11 @@ EmbedLitePuppetWidget::Create(nsIWidget*        aParent,
     mParent->mChildren.AppendElement(this);
   }
   mRotation = mParent ? mParent->mRotation : mRotation;
-  mBounds = mParent ? mParent->mBounds : aRect.ToUnknownRect();
+  mBounds = mParent ? mParent->mBounds : aRect;
   mMargins = mParent ? mParent->mMargins : mMargins;
-  mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect.ToUnknownRect();;
+  mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
 
-  BaseCreate(aParent, LayoutDeviceIntRect::FromUnknownRect(mBounds), aInitData);
+  BaseCreate(aParent, aInitData);
 
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);
@@ -313,7 +313,7 @@ EmbedLitePuppetWidget::Show(bool aState)
 
   if (!wasVisible && mVisible) {
     Resize(mNaturalBounds.width, mNaturalBounds.height, false);
-    Invalidate(LayoutDeviceIntRect::FromUnknownRect(mBounds));
+    Invalidate(mBounds);
   }
 
   // Only propagate visibility changes for widgets backing EmbedLiteView.
@@ -335,14 +335,14 @@ EmbedLitePuppetWidget::Show(bool aState)
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
 {
-  nsIntRect oldBounds = mBounds;
+  LayoutDeviceIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
 
-  mNaturalBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+  mNaturalBounds.SizeTo(NSToIntRound(aWidth), NSToIntRound(aHeight));
   if (mRotation == mozilla::ROTATION_0 || mRotation == mozilla::ROTATION_180) {
-    mBounds.SizeTo(nsIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
+    mBounds.SizeTo(NSToIntRound(aWidth), NSToIntRound(aHeight));
   } else {
-    mBounds.SizeTo(nsIntSize(NSToIntRound(aHeight), NSToIntRound(aWidth)));
+    mBounds.SizeTo(NSToIntRound(aHeight), NSToIntRound(aWidth));
   }
 
   // Do not move bounds here. Just alter size based on margins.
@@ -360,7 +360,7 @@ EmbedLitePuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint)
   }
 
   if (aRepaint) {
-    Invalidate(LayoutDeviceIntRect::FromUnknownRect(mBounds));
+    Invalidate(mBounds);
   }
 
   nsIWidgetListener* listener =
@@ -668,7 +668,7 @@ EmbedLitePuppetWidget::CreateGLContextEarly(uint32_t aWindowId)
 
 LayoutDeviceIntRect EmbedLitePuppetWidget::GetNaturalBounds()
 {
-  return LayoutDeviceIntRect::FromUnknownRect(mNaturalBounds);
+  return mNaturalBounds;
 }
 
 bool
