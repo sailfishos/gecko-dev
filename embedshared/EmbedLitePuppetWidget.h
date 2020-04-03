@@ -35,7 +35,7 @@ namespace embedlite {
 class EmbedLitePuppetWidgetObserver
 {
 public:
-  virtual void WidgetBoundsChanged(const nsIntRect&) {};
+  virtual void WidgetBoundsChanged(const LayoutDeviceIntRect&) {};
   virtual void WidgetRotationChanged(const mozilla::ScreenRotation&) {};
 };
 
@@ -187,7 +187,7 @@ public:
   virtual nsIWidget* GetParent(void) override;
 
   void SetRotation(mozilla::ScreenRotation);
-  void SetMargins(const nsIntMargin& marins);
+  void SetMargins(const LayoutDeviceIntMargin& margins);
   void UpdateSize();
   void SetActive(bool active);
 
@@ -239,8 +239,8 @@ private:
   ChildrenArray mChildren;
   EmbedLitePuppetWidget* mParent;
   mozilla::ScreenRotation mRotation;
-  nsIntRect mNaturalBounds;
-  nsIntMargin mMargins;
+  LayoutDeviceIntRect mNaturalBounds;
+  LayoutDeviceIntMargin mMargins;
   ObserverArray mObservers;
   float mDPI;
 };

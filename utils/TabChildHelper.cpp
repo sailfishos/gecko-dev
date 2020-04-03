@@ -494,17 +494,21 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
 }
 
 void
-TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
+TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
 {
   bool initialSizing = !HasValidInnerSize()
-                    && (aSize.width != 0 && aSize.height != 0);
+                    && (aRect.width != 0 && aRect.height != 0);
   if (initialSizing) {
     mHasValidInnerSize = true;
   }
 
-  LayoutDeviceIntSize innerSize =
-    RoundedToInt(CSSSize(aSize.width, aSize.height) * WebWidget()->GetDefaultScale());
-  mInnerSize = ViewAs<ScreenPixel>(innerSize, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
+  LOGT("REMOVE THIS: w: %d, h: %d", aRect.width, aRect.height);
+
+  LayoutDeviceIntSize size = aRect.Size();
+
+//  LayoutDeviceIntSize innerSize =
+//    RoundedToInt(CSSSize(aSize.width, aSize.height) * WebWidget()->GetDefaultScale());
+  mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 }
 
 // -- nsITabChild --------------

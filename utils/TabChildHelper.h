@@ -64,7 +64,7 @@ public:
 
   virtual ScreenIntSize GetInnerSize() override;
 
-  void ReportSizeUpdate(const gfxSize& aSize);
+  void ReportSizeUpdate(const LayoutDeviceIntRect& aRect);
 
 protected:
   virtual ~TabChildHelper();

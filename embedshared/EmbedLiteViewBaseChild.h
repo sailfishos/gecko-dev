@@ -199,7 +199,7 @@ protected:
   float GetPresShellResolution() const;
 
   // EmbedLitePuppetWidgetObserver
-  void WidgetBoundsChanged(const nsIntRect&) override;
+  void WidgetBoundsChanged(const LayoutDeviceIntRect&) override;
 
   // Call this function when the users activity is the direct cause of an
   // event (like a keypress or mouse click).
@@ -225,7 +225,7 @@ private:
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
   bool mWindowObserverRegistered;
   bool mIsFocused;
-  nsIntMargin mMargins;
+  LayoutDeviceIntMargin mMargins;
 
   RefPtr<TabChildHelper> mHelper;
   bool mIMEComposing;

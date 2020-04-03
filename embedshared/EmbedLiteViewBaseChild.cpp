@@ -201,8 +201,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
     webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
   }
 
-  LayoutDeviceIntRect bounds;
-  mWindow->GetWidget()->GetBounds(bounds);
+  LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
     return;
@@ -280,14 +279,13 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& is
 
   mHelper = new TabChildHelper(this);
   mChrome->SetTabChildHelper(mHelper.get());
-  gfxSize size(bounds.width, bounds.height);
-  mHelper->ReportSizeUpdate(size);
+  mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
   mWindow->GetWidget()->AddObserver(this);
   mWindowObserverRegistered = true;
 
-  if (mMargins != nsIntMargin()) {
+  if (mMargins.LeftRight() > 0 || mMargins.TopBottom() > 0) {
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
     widget->SetMargins(mMargins);
     widget->UpdateSize();
@@ -642,19 +640,16 @@ bool
 EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
                                        const int& aBottom, const int& aLeft)
 {
-  mMargins = nsIntMargin(aTop, aRight, aBottom, aLeft);
+  mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
   if (mWidget) {
     EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
     widget->SetMargins(mMargins);
     widget->UpdateSize();
 
     // Report update for the tab child helper. This triggers update for the viewport.
-    LayoutDeviceIntRect bounds;
-    mWindow->GetWidget()->GetBounds(bounds);
-    nsIntRect b = bounds.ToUnknownRect();
-    b.Deflate(mMargins);
-    gfxSize size(b.width, b.height);
-    mHelper->ReportSizeUpdate(size);
+    LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
+    bounds.Deflate(mMargins);
+    mHelper->ReportSizeUpdate(bounds);
   }
 
   return true;
@@ -1312,7 +1307,7 @@ EmbedLiteViewBaseChild::GetPresShellResolution() const
 }
 
 void
-EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
+EmbedLiteViewBaseChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
 {
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
@@ -1320,8 +1315,7 @@ EmbedLiteViewBaseChild::WidgetBoundsChanged(const nsIntRect& aSize)
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
-  gfxSize size(aSize.width, aSize.height);
-  mHelper->ReportSizeUpdate(size);
+  mHelper->ReportSizeUpdate(aSize);
 }
 
 void
