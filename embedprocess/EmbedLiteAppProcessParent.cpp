@@ -34,6 +34,7 @@
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
+#include "mozilla/Unused.h"
 
 #include "EmbedLiteViewProcessParent.h"
 #include "EmbedLiteCompositorProcessParent.h"
@@ -61,19 +62,23 @@ public:
   }
 
 protected:
-  virtual void BeginTransaction() {}
-  virtual void BeginTransactionWithTarget(gfxContext*) {}
-  virtual bool EndEmptyTransaction(mozilla::layers::LayerManager::EndTransactionFlags) { return false; }
-  virtual void EndTransaction(mozilla::layers::LayerManager::DrawPaintedLayerCallback, void*, mozilla::layers::LayerManager::EndTransactionFlags) {}
-  virtual void SetRoot(mozilla::layers::Layer*) {}
-  virtual already_AddRefed<mozilla::layers::PaintedLayer> CreatePaintedLayer() { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ContainerLayer> CreateContainerLayer() { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ImageLayer> CreateImageLayer() { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ColorLayer> CreateColorLayer() { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::CanvasLayer> CreateCanvasLayer() { return nullptr; }
-  virtual mozilla::layers::LayersBackend GetBackendType() { return LayersBackend::LAYERS_OPENGL; }
-  virtual int32_t GetMaxTextureSize() const { return 0; }
-  virtual void GetBackendName(nsAString_internal&) {}
+  virtual bool BeginTransaction() override { return false; }
+  virtual bool BeginTransactionWithTarget(gfxContext*) override { return false; }
+  virtual bool EndEmptyTransaction(mozilla::layers::LayerManager::EndTransactionFlags) override { return false; }
+  virtual void EndTransaction(mozilla::layers::LayerManager::DrawPaintedLayerCallback,
+                              void *aCallbackData,
+                              mozilla::layers::LayerManager::EndTransactionFlags = mozilla::layers::LayerManager::END_DEFAULT) override {
+    Unused << aCallbackData;
+  }
+  virtual void SetRoot(mozilla::layers::Layer*) override {}
+  virtual already_AddRefed<mozilla::layers::PaintedLayer> CreatePaintedLayer() override { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ContainerLayer> CreateContainerLayer() override { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ImageLayer> CreateImageLayer() override { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::ColorLayer> CreateColorLayer() override { return nullptr; }
+  virtual already_AddRefed<mozilla::layers::CanvasLayer> CreateCanvasLayer() override { return nullptr; }
+  virtual mozilla::layers::LayersBackend GetBackendType() override { return LayersBackend::LAYERS_OPENGL; }
+  virtual int32_t GetMaxTextureSize() const override { return 0; }
+  virtual void GetBackendName(nsAString&) override {}
 };
 
 static EmbedLiteAppProcessParent* sAppProcessParent = nullptr;
@@ -89,10 +94,13 @@ EmbedLiteAppProcessParent::CreateEmbedLiteAppProcessParent()
 {
   LOGT();
   // Establish the main thread here.
+  NS_ASSERTION(false, "nsThreadManager::get()->Init()");
+#if 0
   if (NS_FAILED(nsThreadManager::get()->Init())) {
     NS_ERROR("Could not initialize thread manager");
     return nullptr;
   }
+#endif
 
   NS_SetMainThread();
 
@@ -123,7 +131,8 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
     sIOThread = ioThread.release();
   }
 
-  IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
+  NS_ASSERTION(false, "Fix IToplevelProtocol::SetTransport(mSubprocess->GetChannel())");
+  //IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
 
   // set gGREBinPath
   gGREBinPath = ToNewUnicode(nsDependentCString(getenv("GRE_HOME")));
@@ -197,8 +206,9 @@ bool
 EmbedLiteAppProcessParent::RecvReadyToShutdown()
 {
   LOGT();
-  MessageLoop::current()->PostTask(
-    FROM_HERE, NewRunnableMethod(this, &EmbedLiteAppProcessParent::ShutDownProcess, /* force */ false));
+  MessageLoop::current()->PostTask(NewRunnableMethod<bool>(this,
+                                                           &EmbedLiteAppProcessParent::ShutDownProcess,
+                                                           /* force */ false));
 
   return true;
 }
@@ -274,8 +284,8 @@ void
 DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
 {
   LOGT();
-  XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
-    new DeleteTask<GeckoChildProcessHost>(aSubprocess));
+  RefPtr<DeleteTask<GeckoChildProcessHost>> task = new DeleteTask<GeckoChildProcessHost>(aSubprocess);
+  XRE_GetIOMessageLoop()->PostTask(task.forget());
 }
 
 // This runnable only exists to delegate ownership of the
@@ -302,9 +312,7 @@ EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
     ShutDownProcess(true);
   }
 
-  MessageLoop::current()->
-    PostTask(FROM_HERE,
-             NewRunnableFunction(DelayedDeleteSubprocess, mSubprocess));
+  MessageLoop::current()->PostTask(NewRunnableFunction(DelayedDeleteSubprocess, mSubprocess));
   mSubprocess = nullptr;
 }
 

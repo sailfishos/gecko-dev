@@ -15,6 +15,7 @@
 #include <utility>                      // for pair
 
 #include "gfxPrefs.h"
+#include "VsyncSource.h"
 
 #include "mozilla/layers/APZCTreeManager.h"  // for APZCTreeManager
 #include "mozilla/layers/AsyncCompositionManager.h"
@@ -59,8 +60,7 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
 
   cpcp->mSelfRef = cpcp;
   CompositorThreadHolder::Loop()->PostTask(
-    FROM_HERE,
-    NewRunnableFunction(OpenCompositor, cpcp.get(),
+    NewRunnableFunction(&OpenCompositor, cpcp.get(),
                         aTransport, handle, XRE_GetIOMessageLoop()));
   // The return value is just compared to null for success checking,
   // we're not sharing a ref.
@@ -68,10 +68,13 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
 }
 
 EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id)
-  : mTransport(aTransport)
+  : CompositorBridgeParent(CSSToLayoutDeviceScale(1.0),
+                           gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
+                           true,
+                           IntSize(aSurfaceWidth, aSurfaceHeight))
+  , mTransport(aTransport)
   , mChildProcessId(aOtherProcess)
   , mNotifyAfterRemotePaint(false)
-  , mEGLSurfaceSize(aSurfaceWidth, aSurfaceHeight)
 {
   LOGT();
   MOZ_ASSERT(NS_IsMainThread());
@@ -92,8 +95,7 @@ EmbedLiteCompositorProcessParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT();
   MessageLoop::current()->PostTask(
-    FROM_HERE,
-    NewRunnableMethod(this, &EmbedLiteCompositorProcessParent::DeferredDestroy));
+        NewRunnableMethod(this, &EmbedLiteCompositorProcessParent::DeferredDestroy));
 }
 
 void
@@ -105,22 +107,23 @@ EmbedLiteCompositorProcessParent::InitializeLayerManager(const nsTArray<LayersBa
   for (size_t i = 0; i < aBackendHints.Length(); ++i) {
     RefPtr<Compositor> compositor;
     if (aBackendHints[i] == LayersBackend::LAYERS_OPENGL) {
-      compositor = new CompositorOGL(nullptr,
+      compositor = new CompositorOGL(this,
+                                     nullptr,
                                      mEGLSurfaceSize.width,
                                      mEGLSurfaceSize.height,
                                      true);
     } else if (aBackendHints[i] == LayersBackend::LAYERS_BASIC) {
 #ifdef MOZ_WIDGET_GTK
       if (gfxPlatformGtk::GetPlatform()->UseXRender()) {
-        compositor = new X11BasicCompositor(nullptr);
+        compositor = new X11BasicCompositor(this, nullptr);
       } else
 #endif
       {
-        compositor = new BasicCompositor(nullptr);
+        compositor = new BasicCompositor(this, nullptr);
       }
 #ifdef XP_WIN
     } else if (aBackendHints[i] == LayersBackend::LAYERS_D3D11) {
-      compositor = new CompositorD3D11(nullptr);
+      compositor = new CompositorD3D11(this, nullptr);
     } else if (aBackendHints[i] == LayersBackend::LAYERS_D3D9) {
       compositor = new CompositorD3D9(this, nullptr);
 #endif
@@ -135,12 +138,19 @@ EmbedLiteCompositorProcessParent::InitializeLayerManager(const nsTArray<LayersBa
     compositor->SetCompositorID(mCompositorID);
     RefPtr<LayerManagerComposite> layerManager = new LayerManagerComposite(compositor);
 
-    if (layerManager->Initialize()) {
+    nsCString failureReason;
+    if (compositor->Initialize(&failureReason)) {
+      if (failureReason.IsEmpty()){
+        failureReason = "SUCCESS";
+      }
       mLayerManager = layerManager;
       MOZ_ASSERT(compositor);
       mCompositor = compositor;
       return;
     }
+
+    gfxCriticalNote << "[OPENGL] Failed to init compositor with reason: "
+                    << failureReason.get();
   }
 }
 
@@ -198,7 +208,7 @@ EmbedLiteCompositorProcessParent::ShadowLayersUpdated(LayerTransactionParent* aL
   bool aScheduleComposite,
   uint32_t aPaintSequenceNumber,
   bool aIsRepeatTransaction,
-  int32_t aPaintSyncId)
+  int32_t aPaintSyncId, bool aHitTestUpdate)
 {
   LOGT("Implement me");
   Unused << aTransactionId;
@@ -209,6 +219,7 @@ EmbedLiteCompositorProcessParent::ShadowLayersUpdated(LayerTransactionParent* aL
   Unused << aPaintSequenceNumber;
   Unused << aIsRepeatTransaction;
   Unused << aPaintSyncId;
+  Unused << aHitTestUpdate;
   uint64_t id = aLayerTree->GetId();
   MOZ_ASSERT(id != 0);
   Unused << id;
@@ -307,25 +318,8 @@ EmbedLiteCompositorProcessParent::~EmbedLiteCompositorProcessParent()
   LOGT();
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(XRE_GetIOMessageLoop());
-  XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
-                                   new DeleteTask<Transport>(mTransport));
-}
-
-IToplevelProtocol*
-EmbedLiteCompositorProcessParent::CloneToplevel(const InfallibleTArray<mozilla::ipc::ProtocolFdMapping>& aFds,
-                                                base::ProcessHandle aPeerProcess,
-                                                mozilla::ipc::ProtocolCloneContext* aCtx)
-{
-  LOGT("Implement me");
-
-  return nullptr;
-}
-
-bool
-EmbedLiteCompositorProcessParent::RecvGetTileSize(int32_t* aWidth, int32_t* aHeight)
-{
-  MOZ_ASSERT(false);
-  return true;
+  RefPtr<DeleteTask<Transport>> task = new DeleteTask<Transport>(mTransport);
+  XRE_GetIOMessageLoop()->PostTask(task.forget());
 }
 
 } // namespace embedlite
