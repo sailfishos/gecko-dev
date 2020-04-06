@@ -1791,7 +1791,7 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     return NPERR_GENERIC_ERROR;
 #endif
 
-#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   case NPNVnetscapeWindow: {
     if (!npp || !npp->ndata)
       return NPERR_INVALID_INSTANCE_ERROR;
@@ -1840,6 +1840,10 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     *((NPNToolkitType*)result) = NPNVGtk2;
 #endif
 
+#ifdef MOZ_WIDGET_QT
+    /* Fake toolkit so flash plugin works */
+    *((NPNToolkitType*)result) = NPNVGtk2;
+#endif
     if (*(NPNToolkitType*)result)
         return NPERR_NO_ERROR;
 
@@ -1848,6 +1852,11 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 
   case NPNVSupportsXEmbedBool: {
 #ifdef MOZ_WIDGET_GTK
+    *(NPBool*)result = true;
+#elif defined(MOZ_WIDGET_QT)
+    // Desktop Flash fail to initialize if browser does not support NPNVSupportsXEmbedBool
+    // even when wmode!=windowed, lets return fake support
+    fprintf(stderr, "Fake support for XEmbed plugins in Qt port\n");
     *(NPBool*)result = true;
 #else
     *(NPBool*)result = false;
@@ -1869,7 +1878,7 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
 
   case NPNVSupportsWindowless: {
 #if defined(XP_WIN) || defined(XP_MACOSX) || \
-    (defined(MOZ_X11) && defined(MOZ_WIDGET_GTK))
+    (defined(MOZ_X11) && (defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)))
     *(NPBool*)result = true;
 #else
     *(NPBool*)result = false;
