@@ -745,7 +745,7 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
   }
 
   return NS_OK;
-#elif defined(MOZ_WIDGET_GTK) && defined(MOZ_X11)
+#elif (defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)) && defined(MOZ_X11)
   // X11 window managers want the toplevel window for WM_TRANSIENT_FOR.
   nsIWidget* win = mPluginFrame->GetNearestWidget();
   if (!win)
@@ -2615,6 +2615,8 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
         }
 #ifdef MOZ_WIDGET_GTK
         Window root = GDK_ROOT_WINDOW();
+#elif defined(MOZ_WIDGET_QT)
+        Window root = RootWindowOfScreen(DefaultScreenOfDisplay(mozilla::DefaultXDisplay()));
 #else
         Window root = X11None; // Could XQueryTree, but this is not important.
 #endif
