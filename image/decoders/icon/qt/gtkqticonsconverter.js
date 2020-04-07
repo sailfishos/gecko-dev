@@ -8,6 +8,10 @@ Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 function GtkQtIconsConverter()
 { };
+
+#ifdef 0
+#endif
+
 GtkQtIconsConverter.prototype =
 {
   classID:          Components.ID("{c0783c34-a831-40c6-8c03-98c9f74cca45}"),
