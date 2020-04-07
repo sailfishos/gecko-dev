@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "EmbedLog.h"
+
 #include "EmbedLiteXulAppInfo.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIComponentRegistrar.h"
@@ -14,6 +16,8 @@
 #include "nsXULAppAPI.h"
 #include "nsStringGlue.h"
 #include "EmbedLiteAppThreadChild.h"
+
+#include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
 #include "nsAccessibilityService.h"
@@ -155,6 +159,24 @@ EmbedLiteXulAppInfo::GetIsOfficial(bool* aResult)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetWindowsDLLBlocklistStatus(bool* aResult)
+{
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetIsReleaseOrBeta(bool* aResult)
+{
+#ifdef RELEASE_OR_BETA
+  *aResult = true;
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
 {
 #ifdef MOZ_OFFICIAL_BRANDING
@@ -189,9 +211,24 @@ EmbedLiteXulAppInfo::GetProcessID(uint32_t* aResult)
 }
 
 NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetUniqueProcessID(uint64_t* aResult)
+{
+  *aResult = 0;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 {
   *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetMultiprocessBlockPolicy(uint32_t* aResult)
+{
+  LOGNI();
+  *aResult = 0;
   return NS_OK;
 }
 
