@@ -64,6 +64,8 @@ Patch18:    0018-Use-libcontentaction-for-custom-schem.patch
 Patch19:    0019-Allow-compositor-specializations-to-override-the-com.patch
 Patch20:    0020-Handle-temporary-directory-similarly-as-in-MacOSX.patch
 Patch21:    0021-Disable-loading-extensions-and-assume-memory-constra.patch
+Patch22:    0022-Enable-gstreamer-pipeline-debug-graph-generati.patch
+Patch23:    0023-media-Require-interleaved-audio-layout-Fixes-JB49532.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -152,28 +154,7 @@ Tests and misc files for xulrunner.
 %define BASE_CONFIG "$PWD"/embedding/embedlite/config/mozconfig.%{embedlite_config}
 
 %prep
-%setup -q -n %{name}-%{version}
-%patch1 -p1
-%patch2 -p1
-%patch3 -p1
-%patch4 -p1
-%patch5 -p1
-%patch6 -p1
-%patch7 -p1
-%patch8 -p1
-%patch9 -p1
-%patch10 -p1
-%patch11 -p1
-%patch12 -p1
-%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
-%patch19 -p1
-%patch20 -p1
-%patch21 -p1
+%autosetup -p1 -n %{name}-%{version}
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
