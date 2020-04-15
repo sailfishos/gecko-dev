@@ -34,7 +34,6 @@
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
-#include "mozilla/Unused.h"
 
 #include "EmbedLiteViewProcessParent.h"
 #include "EmbedLiteCompositorProcessParent.h"
