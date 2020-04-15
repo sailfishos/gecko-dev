@@ -357,7 +357,8 @@ nsWindow::CreateRootContentController()
   return nullptr;
 }
 
-const char *nsWindow::Type() const
+const char *
+nsWindow::Type() const
 {
   return "nsWindow";
 }
