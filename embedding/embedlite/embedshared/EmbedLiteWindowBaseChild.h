@@ -14,6 +14,8 @@
 namespace mozilla {
 namespace embedlite {
 
+class nsWindow;
+
 class EmbedLiteWindowBaseChild : public PEmbedLiteWindowChild
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteWindowBaseChild)
@@ -22,7 +24,7 @@ public:
   EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& id);
 
   uint32_t GetUniqueID() const { return mId; }
-  EmbedLitePuppetWidget* GetWidget() const;
+  nsWindow *GetWidget() const;
   LayoutDeviceIntRect GetSize() const { return mBounds; }
 
 protected:

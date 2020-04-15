@@ -7,7 +7,7 @@
 
 #include <math.h>
 
-#include "EmbedLitePuppetWidget.h"
+#include "nsWindow.h"
 #include "EmbedLiteWindowBaseChild.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
@@ -58,9 +58,9 @@ EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
   }
 }
 
-EmbedLitePuppetWidget* EmbedLiteWindowBaseChild::GetWidget() const
+nsWindow *EmbedLiteWindowBaseChild::GetWidget() const
 {
-  return static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+  return static_cast<nsWindow*>(mWidget.get());
 }
 
 void EmbedLiteWindowBaseChild::ActorDestroy(ActorDestroyReason aWhy)
@@ -92,7 +92,7 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotati
   LOGT("this:%p", this);
   mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
   if (mWidget) {
-    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+    nsWindow* widget = static_cast<nsWindow*>(mWidget.get());
     widget->SetRotation(mRotation);
     widget->UpdateSize();
   }
@@ -151,21 +151,21 @@ void EmbedLiteWindowBaseChild::CreateWidget()
     mCreateWidgetTask = nullptr;
   }
 
-  mWidget = new EmbedLitePuppetWidget(this);
-  static_cast<EmbedLitePuppetWidget*>(mWidget.get())->SetRotation(mRotation);
+  mWidget = new nsWindow(this);
+  static_cast<nsWindow*>(mWidget.get())->SetRotation(mRotation);
 
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.mWindowType = eWindowType_toplevel;
 
-  // EmbedLitePuppetWidget::CreateCompositor() reads back Size
+  // nsWindow::CreateCompositor() reads back Size
   // when it creates the compositor.
   Unused << mWidget->Create(
               nullptr, 0,              // no parents
               mBounds,
               &widgetInit              // HandleWidgetEvent
               );
-  static_cast<EmbedLitePuppetWidget*>(mWidget.get())->UpdateSize();
+  static_cast<nsWindow*>(mWidget.get())->UpdateSize();
 
   Unused << SendInitialized();
 }
