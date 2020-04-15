@@ -7,6 +7,7 @@
 
 #include "EmbedLiteViewBaseChild.h"
 #include "EmbedLiteAppThreadChild.h"
+#include "nsWindow.h"
 
 #include "mozilla/Unused.h"
 

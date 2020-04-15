@@ -11,6 +11,7 @@
 #include "TabChild.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteJSON.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
@@ -21,6 +22,7 @@
 
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
+#include "nsContentUtils.h"
 #include "mozilla/dom/Element.h"
 #include "nsIDOMHTMLBodyElement.h"
 #include "mozilla/dom/HTMLBodyElement.h"
