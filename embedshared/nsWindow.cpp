@@ -311,6 +311,11 @@ nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
   Unused << aContext;
+
+  if (GetCompositorBridgeParent()) {
+    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->PresentOffscreenSurface();
+  }
+
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->CompositingFinished();

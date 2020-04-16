@@ -97,6 +97,13 @@ void* EmbedLiteWindowBaseParent::GetPlatformImage(int* width, int* height)
   return nullptr;
 }
 
+void EmbedLiteWindowBaseParent::GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback)
+{
+    if (mCompositor) {
+        mCompositor->GetPlatformImage(callback);
+    }
+}
+
 void EmbedLiteWindowBaseParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 {
   mWindow = window;
