@@ -388,7 +388,7 @@ pref("media.peerconnection.enabled", false);
 pref("media.useAudioChannelService", true);
 
 pref("extensions.blocklist.enabled", false);
-pref("extensions.logging.enabled", true);
+pref("extensions.logging.enabled", false);
 pref("extensions.strictCompatibility", false);
 pref("extensions.minCompatibleAppVersion", "11.0");
 

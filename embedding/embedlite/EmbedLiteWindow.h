@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "nsRect.h"
+#include "mozilla/Function.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -83,6 +84,7 @@ public:
   virtual void SuspendRendering();
   virtual void ResumeRendering();
   virtual void* GetPlatformImage(int* width, int* height);
+  virtual void GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback);
 
 protected:
   friend class EmbedLiteApp;
