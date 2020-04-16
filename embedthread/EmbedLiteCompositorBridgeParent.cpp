@@ -104,6 +104,7 @@ bool EmbedLiteCompositorBridgeParent::DeallocPLayerTransactionParent(PLayerTrans
 void
 EmbedLiteCompositorBridgeParent::PrepareOffscreen()
 {
+  fprintf(stderr, "=============== Preparing offscreen rendering context ===============\n");
 
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -122,7 +123,6 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
       }
 
       auto forwarder = state->mLayerManager->AsShadowForwarder()->GetTextureForwarder();
-      printf("=============== caps.premultAlpha: %d ptr: %p\n", screen->mCaps.premultAlpha, forwarder);
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps, forwarder, flags);
@@ -130,7 +130,6 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
         GLContext* nullConsGL = nullptr; // Bug 1050044.
-        // iicpChannel = compositorConnection->GetTextureForwarder()
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, forwarder, flags);
       }
       if (factory) {
@@ -141,67 +140,24 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
 }
 
 void
-EmbedLiteCompositorBridgeParent::UpdateTransformState()
+EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget()
 {
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-  CompositorOGL *compositor = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor());
-  NS_ENSURE_TRUE(compositor, );
-
-  GLContext* context = compositor->gl();
-  NS_ENSURE_TRUE(context, );
-
-  if (context->IsOffscreen() && context->OffscreenSize() != mSurfaceSize && context->ResizeOffscreen(mSurfaceSize)) {
-    ScheduleRenderOnCompositorThread();
-  }
-}
-
-void
-EmbedLiteCompositorBridgeParent::ScheduleTask(already_AddRefed<CancelableRunnable> task, int time)
-{
-#if 0
-  if (Invalidate()) {
-    task->Cancel();
-    CancelCurrentCompositeTask();
-  } else {
-    CompositorBridgeParent::ScheduleTask(task, time);
-  }
-#endif
-}
-
-bool
-EmbedLiteCompositorBridgeParent::Invalidate()
-{
-  if (!mUseExternalGLContext) {
-    UpdateTransformState();
-    mCurrentCompositeTask = NewCancelableRunnableMethod<mozilla::TimeStamp>(this,
-                                                                            &EmbedLiteCompositorBridgeParent::RenderGL,
-                                                                            TimeStamp::Now());
-    RefPtr<Runnable> addrefedTask = mCurrentCompositeTask;
-    MessageLoop::current()->PostDelayedTask(addrefedTask.forget(), sDefaultPaintInterval);
-    return true;
-  }
-
-  return false;
-}
-
-bool EmbedLiteCompositorBridgeParent::RenderGL(TimeStamp aScheduleTime)
-{
-  if (mCurrentCompositeTask) {
-    mCurrentCompositeTask->Cancel();
-    mCurrentCompositeTask = nullptr;
-  }
-
-  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, false);
-
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context, false);
+  NS_ENSURE_TRUE(context, );
   if (!context->IsCurrent()) {
     context->MakeCurrent(true);
   }
-  NS_ENSURE_TRUE(context->IsCurrent(), false);
+  NS_ENSURE_TRUE(context->IsCurrent(), );
+
+  if (context->IsOffscreen()) {
+    MutexAutoLock lock(mRenderMutex);
+    if (context->OffscreenSize() != mSurfaceSize && !context->ResizeOffscreen(mSurfaceSize)) {
+      return;
+    }
+  }
 
   {
     ScopedScissorRect autoScissor(context);
@@ -210,36 +166,65 @@ bool EmbedLiteCompositorBridgeParent::RenderGL(TimeStamp aScheduleTime)
     CompositeToTarget(nullptr);
     context->fActiveTexture(oldTexUnit);
   }
+}
 
-  if (context->IsOffscreen()) {
-    // RenderGL is called always from Gecko compositor thread.
-    // GLScreenBuffer::PublishFrame does swap buffers and that
-    // cannot happen while reading previous frame on EmbedLiteCompositorBridgeParent::GetPlatformImage
-    // (potentially from another thread).
-    MutexAutoLock lock(mRenderMutex);
-    GLScreenBuffer* screen = context->Screen();
-    MOZ_ASSERT(screen);
+void
+EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
+{
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
 
-    if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
-      NS_ERROR("Failed to publish context frame");
-      return false;
-    }
-    // Temporary hack, we need two extra paints in order to get initial picture
-    static int sInitialPaintCount = 0;
-    if (sInitialPaintCount < 2) {
-      ScheduleRenderOnCompositorThread();
-      sInitialPaintCount++;
-    }
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context, );
+  NS_ENSURE_TRUE(context->IsOffscreen(), );
+
+  // RenderGL is called always from Gecko compositor thread.
+  // GLScreenBuffer::PublishFrame does swap buffers and that
+  // cannot happen while reading previous frame on EmbedLiteCompositorBridgeParent::GetPlatformImage
+  // (potentially from another thread).
+  MutexAutoLock lock(mRenderMutex);
+
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+
+  if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
+    NS_ERROR("Failed to publish context frame");
   }
-
-  return false;
 }
 
 void EmbedLiteCompositorBridgeParent::SetSurfaceSize(int width, int height)
 {
   if (width > 0 && height > 0 && (mSurfaceSize.width != width || mSurfaceSize.height != height)) {
     SetEGLSurfaceSize(width, height);
+
+    MutexAutoLock lock(mRenderMutex);
     mSurfaceSize = gfx::IntSize(width, height);
+  }
+}
+
+void
+EmbedLiteCompositorBridgeParent::GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback)
+{
+  MutexAutoLock lock(mRenderMutex);
+  const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context, );
+  NS_ENSURE_TRUE(context->IsOffscreen(), );
+
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  NS_ENSURE_TRUE(screen->Front(),);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
+  NS_ENSURE_TRUE(sharedSurf, );
+  // sharedSurf->WaitSync();
+  // See ProducerAcquireImpl() & ProducerReleaseImpl()
+  // See sha1 b66e705f3998791c137f8fce908ec0835b84afbe from gecko-mirror
+
+  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
+    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+    callback(eglImageSurf->mImage, sharedSurf->mSize.width, sharedSurf->mSize.height);
   }
 }
 
@@ -260,7 +245,7 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
   SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
   // sharedSurf->WaitSync();
-  // ProducerAcquire & ProducerRelease ?
+  // ProducerAcquireImpl & ProducerReleaseImpl ?
 
   *width = sharedSurf->mSize.width;
   *height = sharedSurf->mSize.height;

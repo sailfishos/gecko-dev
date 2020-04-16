@@ -93,6 +93,11 @@ void* EmbedLiteWindow::GetPlatformImage(int* width, int* height)
   return mWindowParent->GetPlatformImage(width, height);
 }
 
+void EmbedLiteWindow::GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback)
+{
+    mWindowParent->GetPlatformImage(callback);
+}
+
 } // nemsapace embedlite
 } // namespace mozilla
 
