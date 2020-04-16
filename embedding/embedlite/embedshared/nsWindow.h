@@ -96,6 +96,8 @@ protected:
 
   const char *Type() const override;
 
+  CompositorBridgeParent* GetCompositorBridgeParent() const;
+
 private:
   nsWindow();
   mozilla::gl::GLContext* GetGLContext() const;

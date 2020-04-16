@@ -26,6 +26,7 @@
 #include "mozilla/Hal.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/ImageBridgeChild.h"
+#include "mozilla/layers/CompositorSession.h"
 #include "mozilla/ipc/MessageChannel.h"
 
 using namespace mozilla::gl;
@@ -354,6 +355,12 @@ nsWindow::CreateRootContentController()
 const char *nsWindow::Type() const
 {
   return "nsWindow";
+}
+
+CompositorBridgeParent *
+nsWindow::GetCompositorBridgeParent() const
+{
+  return mCompositorSession ? mCompositorSession->GetInProcessBridge() : nullptr;
 }
 
 // Private
