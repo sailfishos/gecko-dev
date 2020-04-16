@@ -63,6 +63,8 @@ UNIFIED_SOURCES += [
     'embedshared/EmbedLiteViewBaseParent.cpp',
     'embedshared/EmbedLiteWindowBaseChild.cpp',
     'embedshared/EmbedLiteWindowBaseParent.cpp',
+    'embedshared/nsWindow.cpp',
+    'embedshared/PuppetWidgetBase.cpp',
     'embedthread/EmbedContentController.cpp',
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',

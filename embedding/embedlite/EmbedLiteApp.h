@@ -176,6 +176,7 @@ private:
   friend class EmbedLiteAppThreadParent;
   friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLitePuppetWidget;
+  friend class nsWindow;
   friend class EmbedLiteView;
   friend class EmbedLiteWindow;
 
