@@ -53,9 +53,6 @@ public:
 
   virtual LayoutDeviceIntRect GetNaturalBounds() override;
 
-  // TODO: Re-write this
-  virtual mozilla::layers::CompositorBridgeParent* NewCompositorParent(int aSurfaceWidth,
-                                                                       int aSurfaceHeight);
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
@@ -87,12 +84,16 @@ public:
   void AddObserver(EmbedLitePuppetWidgetObserver* aObserver);
   void RemoveObserver(EmbedLitePuppetWidgetObserver* aObserver);
 
+  uint32_t GetUniqueID() const;
+
 protected:
   virtual ~nsWindow() override;
 
   virtual void ConfigureAPZCTreeManager();
   virtual void ConfigureAPZControllerThread();
   virtual already_AddRefed<GeckoContentController> CreateRootContentController() override;
+
+  virtual bool UseExternalCompositingSurface() const override;
 
   const char *Type() const override;
 
@@ -107,8 +108,6 @@ private:
 
   EmbedLiteWindowBaseChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
-
-  bool mHasCompositor;
 };
 
 }  // namespace embedlite
