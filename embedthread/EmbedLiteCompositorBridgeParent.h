@@ -29,9 +29,11 @@ class EmbedLiteWindowListener;
 class EmbedLiteCompositorBridgeParent : public mozilla::layers::CompositorBridgeParent
 {
 public:
-  EmbedLiteCompositorBridgeParent(nsIWidget* widget, uint32_t windowId,
-                            bool aRenderToEGLSurface,
-                            int aSurfaceWidth, int aSurfaceHeight);
+  EmbedLiteCompositorBridgeParent(uint32_t windowId,
+                                  CSSToLayoutDeviceScale aScale,
+                                  const TimeDuration& aVsyncRate,
+                                  bool aRenderToEGLSurface,
+                                  const gfx::IntSize& aSurfaceSize);
 
   void SetSurfaceSize(int width, int height);
   void* GetPlatformImage(int* width, int* height);
