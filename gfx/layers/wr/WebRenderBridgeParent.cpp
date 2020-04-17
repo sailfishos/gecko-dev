@@ -1427,5 +1427,9 @@ void WebRenderBridgeParent::ExtractImageCompositeNotifications(
   mAsyncImageManager->FlushImageNotifications(aNotifications);
 }
 
+void mozilla::layers::WebRenderBridgeParent::CompositeToDefaultTarget() {
+  CompositeToTarget(nullptr);
+}
+
 }  // namespace layers
 }  // namespace mozilla

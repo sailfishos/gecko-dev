@@ -831,6 +831,10 @@ void CompositorBridgeParent::ScheduleComposition() {
   });
 }
 
+void CompositorBridgeParent::CompositeToDefaultTarget() {
+  CompositeToTarget(nullptr);
+}
+
 void CompositorBridgeParent::CompositeToTarget(DrawTarget* aTarget,
                                                const gfx::IntRect* aRect) {
   AUTO_PROFILER_TRACING("Paint", "Composite");
