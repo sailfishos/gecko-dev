@@ -1,74 +1,77 @@
-From f2e8fe315400e9df42d1e89a7d7bacf4fe6038c1 Mon Sep 17 00:00:00 2001
-From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
-Date: Mon, 9 Dec 2019 01:29:16 +0000
+From 284d0ae4d3dccff021dea5286f1c988d57f98158 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 17 Apr 2020 12:44:15 +0300
 Subject: [PATCH] Allow compositor specializations to override the composite
- command.
 
+Original author: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+SHA1: ba21a8694e261769fa53e54a846eeaa651826769
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- gfx/layers/ipc/CompositorParent.cpp | 16 +++++++++++++---
- gfx/layers/ipc/CompositorParent.h   |  1 +
+ gfx/layers/ipc/CompositorBridgeParent.cpp | 16 +++++++++++++---
+ gfx/layers/ipc/CompositorBridgeParent.h   |  1 +
  2 files changed, 14 insertions(+), 3 deletions(-)
 
-diff --git a/gfx/layers/ipc/CompositorParent.cpp b/gfx/layers/ipc/CompositorParent.cpp
-index be0f067..c3cc99b 100644
---- a/gfx/layers/ipc/CompositorParent.cpp
-+++ b/gfx/layers/ipc/CompositorParent.cpp
-@@ -437,7 +437,7 @@ CompositorVsyncScheduler::Composite(TimeStamp aVsyncTimestamp)
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
+index 6728e8841a9a..9583bf621392 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.cpp
++++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
+@@ -483,7 +483,7 @@ CompositorVsyncScheduler::Composite(TimeStamp aVsyncTimestamp)
    if (mNeedsComposite || mAsapScheduling) {
      mNeedsComposite = 0;
      mLastCompose = aVsyncTimestamp;
 -    ComposeToTarget(nullptr);
-+    mCompositorParent->CompositeToDefaultTarget();
++    mCompositorBridgeParent->CompositeToDefaultTarget();
      mVsyncNotificationsSkipped = 0;
  
      TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncTimestamp;
-@@ -548,7 +548,7 @@ CompositorVsyncScheduler::ResumeComposition()
+@@ -571,7 +571,7 @@ CompositorVsyncScheduler::ResumeComposition()
  {
-   MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
    mLastCompose = TimeStamp::Now();
 -  ComposeToTarget(nullptr);
-+  mCompositorParent->CompositeToDefaultTarget();
++  mCompositorBridgeParent->CompositeToDefaultTarget();
  }
  
  void
-@@ -556,7 +556,11 @@ CompositorVsyncScheduler::ComposeToTarget(gfx::DrawTarget* aTarget, const IntRec
+@@ -579,7 +579,11 @@ CompositorVsyncScheduler::ComposeToTarget(gfx::DrawTarget* aTarget, const IntRec
  {
-   MOZ_ASSERT(CompositorParent::IsInCompositorThread());
-   MOZ_ASSERT(mCompositorParent);
--  mCompositorParent->CompositeToTarget(aTarget, aRect);
+   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+   MOZ_ASSERT(mCompositorBridgeParent);
+-  mCompositorBridgeParent->CompositeToTarget(aTarget, aRect);
 +  if (aTarget) {
-+    mCompositorParent->CompositeToTarget(aTarget, aRect);
++    mCompositorBridgeParent->CompositeToTarget(aTarget, aRect);
 +  } else {
-+    mCompositorParent->CompositeToDefaultTarget();
++    mCompositorBridgeParent->CompositeToDefaultTarget();
 +  }
  }
  
- CompositorParent::CompositorParent(nsIWidget* aWidget,
-@@ -1044,6 +1048,12 @@ CompositorParent::SetShadowProperties(Layer* aLayer)
+ static inline MessageLoop*
+@@ -1165,6 +1169,12 @@ CompositorBridgeParent::SetShadowProperties(Layer* aLayer)
+     );
  }
  
- void
-+CompositorParent::CompositeToDefaultTarget()
++void
++CompositorBridgeParent::CompositeToDefaultTarget()
 +{
-+    CompositeToTarget(nullptr);
++  CompositeToTarget(nullptr);
 +}
 +
-+void
- CompositorParent::CompositeToTarget(DrawTarget* aTarget, const gfx::IntRect* aRect)
+ void
+ CompositorBridgeParent::CompositeToTarget(DrawTarget* aTarget, const gfx::IntRect* aRect)
  {
-   profiler_tracing("Paint", "Composite", TRACING_INTERVAL_START);
-diff --git a/gfx/layers/ipc/CompositorParent.h b/gfx/layers/ipc/CompositorParent.h
-index bc9a319..7ca9053 100644
---- a/gfx/layers/ipc/CompositorParent.h
-+++ b/gfx/layers/ipc/CompositorParent.h
-@@ -422,6 +422,7 @@ protected:
-   virtual void ScheduleTask(CancelableTask*, int);
-   void CompositeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
+index cd4f5fafb0c2..97c5050d2260 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.h
++++ b/gfx/layers/ipc/CompositorBridgeParent.h
+@@ -518,6 +518,7 @@ public:
+   widget::CompositorWidget* GetWidget() { return mWidget; }
+ 
    void ForceComposeToTarget(gfx::DrawTarget* aTarget, const gfx::IntRect* aRect = nullptr);
 +  virtual void CompositeToDefaultTarget();
  
-   void SetEGLSurfaceSize(int width, int height);
- 
+   PAPZCTreeManagerParent* AllocPAPZCTreeManagerParent(const uint64_t& aLayersId) override;
+   bool DeallocPAPZCTreeManagerParent(PAPZCTreeManagerParent* aActor) override;
 -- 
-1.8.3-rc3
+2.25.2
 
