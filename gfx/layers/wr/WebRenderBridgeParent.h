@@ -160,6 +160,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
   void FinishPendingComposite() override {}
   void CompositeToTarget(gfx::DrawTarget* aTarget,
                          const gfx::IntRect* aRect = nullptr) override;
+  virtual void CompositeToDefaultTarget() override;
 
   // CompositableParentManager
   bool IsSameProcess() const override;
