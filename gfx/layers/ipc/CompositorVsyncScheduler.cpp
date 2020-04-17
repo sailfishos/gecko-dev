@@ -217,8 +217,7 @@ void CompositorVsyncScheduler::Composite(TimeStamp aVsyncTimestamp) {
     mLastCompose = aVsyncTimestamp;
 
     // Tell the owner to do a composite
-    mVsyncSchedulerOwner->CompositeToTarget(nullptr, nullptr);
-
+    mVsyncSchedulerOwner->CompositeToDefaultTarget();
     mVsyncNotificationsSkipped = 0;
 
     TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncTimestamp;
@@ -254,7 +253,11 @@ void CompositorVsyncScheduler::ForceComposeToTarget(gfx::DrawTarget* aTarget,
 
   mLastCompose = TimeStamp::Now();
   MOZ_ASSERT(mVsyncSchedulerOwner);
-  mVsyncSchedulerOwner->CompositeToTarget(aTarget, aRect);
+  if (aTarget) {
+      mVsyncSchedulerOwner->CompositeToTarget(aTarget, aRect);
+  } else {
+      mVsyncSchedulerOwner->CompositeToDefaultTarget();
+  }
 }
 
 bool CompositorVsyncScheduler::NeedsComposite() {
