@@ -78,7 +78,7 @@ static gc::AllocKind GetProxyGCObjectKind(const Class* clasp,
     MOZ_ASSERT(priv.isNull() ||
                (priv.isGCThing() && priv.toGCThing()->isTenured()));
     newKind = SingletonObject;
-  } else if ((priv.isGCThing() && priv.toGCThing()->isTenured()) ||
+  } else if ((priv.isGCThing() && priv.toGCThing() && priv.toGCThing()->isTenured()) ||
              !handler->canNurseryAllocate()) {
     newKind = TenuredObject;
   }
