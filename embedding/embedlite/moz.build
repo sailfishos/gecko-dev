@@ -39,6 +39,9 @@ EXPORTS.mozilla.embedlite += [
     'embedshared/EmbedLiteAppBaseChild.h',
     'embedshared/EmbedLiteAppChildIface.h',
     'embedshared/EmbedLiteViewChildIface.h',
+    'embedshared/nsWindow.h',
+    'embedshared/PuppetWidgetBase.h',
+    'embedthread/EmbedLiteCompositorBridgeParent.h',
     'utils/EmbedLog.h',
 ]
 
