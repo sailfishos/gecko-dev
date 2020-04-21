@@ -38,22 +38,18 @@ namespace embedlite {
 
 static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
-EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(nsIWidget* widget,
-                                                     uint32_t windowId,
-                                                     bool aRenderToEGLSurface,
-                                                     int aSurfaceWidth,
-                                                     int aSurfaceHeight)
-#if 1
-  : CompositorBridgeParent(CSSToLayoutDeviceScale(1.0),
-                           gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
-                           aRenderToEGLSurface, gfx::IntSize(aSurfaceWidth, aSurfaceHeight))
+EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t windowId,
+                                                                 CSSToLayoutDeviceScale aScale,
+                                                                 const TimeDuration &aVsyncRate,
+                                                                 bool aRenderToEGLSurface,
+                                                                 const gfx::IntSize &aSurfaceSize)
+  : CompositorBridgeParent(aScale, aVsyncRate, aRenderToEGLSurface, aSurfaceSize)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
-  , mSurfaceSize(aSurfaceWidth, aSurfaceHeight)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
   EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
-  LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceWidth, aSurfaceHeight);
+  LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
   Preferences::AddBoolVarCache(&mUseExternalGLContext,
                                "embedlite.compositor.external_gl_context", false);
   parentWindow->SetCompositor(this);
@@ -61,9 +57,6 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(nsIWidget* widg
   // Post open parent?
   //
 }
-#else
-{}
-#endif
 
 EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent()
 {
@@ -154,7 +147,7 @@ EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget()
 
   if (context->IsOffscreen()) {
     MutexAutoLock lock(mRenderMutex);
-    if (context->OffscreenSize() != mSurfaceSize && !context->ResizeOffscreen(mSurfaceSize)) {
+    if (context->OffscreenSize() != mEGLSurfaceSize && !context->ResizeOffscreen(mEGLSurfaceSize)) {
       return;
     }
   }
@@ -194,11 +187,9 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
 
 void EmbedLiteCompositorBridgeParent::SetSurfaceSize(int width, int height)
 {
-  if (width > 0 && height > 0 && (mSurfaceSize.width != width || mSurfaceSize.height != height)) {
-    SetEGLSurfaceSize(width, height);
-
+  if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height)) {
     MutexAutoLock lock(mRenderMutex);
-    mSurfaceSize = gfx::IntSize(width, height);
+    SetEGLSurfaceSize(width, height);
   }
 }
 
@@ -267,9 +258,9 @@ EmbedLiteCompositorBridgeParent::SuspendRendering()
 void
 EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
-  if (mSurfaceSize.width > 0 && mSurfaceSize.height > 0) {
-    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mSurfaceSize.width,
-                                                       mSurfaceSize.height);
+  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
+    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
+                                                             mEGLSurfaceSize.height);
     CompositorBridgeParent::ScheduleRenderOnCompositorThread();
   }
 }

@@ -59,7 +59,6 @@ static void InitPrefs()
 nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
   : PuppetWidgetBase()
   , mWindow(window)
-  , mHasCompositor(false)
 {
   LOGT("nsWindow: %p window: %p", this, mWindow);
   InitPrefs();
@@ -146,16 +145,6 @@ nsWindow::GetNaturalBounds()
   return mNaturalBounds;
 }
 
-mozilla::layers::CompositorBridgeParent *
-nsWindow::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
-{
-  // See nsBaseWidget::CreateCompositor and sha1 bb2cbc24f4cb9bee50a46ba7a520b9016d5207a5
-  LOGT();
-  mHasCompositor = true;
-  return new EmbedLiteCompositorBridgeParent(this, mWindow->GetUniqueID(), true,
-                                             aSurfaceWidth, aSurfaceHeight);
-}
-
 void
 nsWindow::CreateCompositor()
 {
@@ -164,8 +153,6 @@ nsWindow::CreateCompositor()
   MOZ_ASSERT(mWindow);
   LayoutDeviceIntRect size = mWindow->GetSize();
   CreateCompositor(size.width, size.height);
-
-  // See nsBaseWidget
 }
 
 void
@@ -334,6 +321,12 @@ nsWindow::RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver)
   mObservers.RemoveElement(aObserver);
 }
 
+uint32_t nsWindow::GetUniqueID() const
+{
+  MOZ_ASSERT(mWindow);
+  return mWindow->GetUniqueID();
+}
+
 nsWindow::~nsWindow()
 {
   LOGT("this: %p", this);
@@ -357,7 +350,13 @@ nsWindow::CreateRootContentController()
   return nullptr;
 }
 
-const char *nsWindow::Type() const
+bool nsWindow::UseExternalCompositingSurface() const
+{
+  return true;
+}
+
+const char *
+nsWindow::Type() const
 {
   return "nsWindow";
 }
