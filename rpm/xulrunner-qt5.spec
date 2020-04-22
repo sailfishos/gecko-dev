@@ -68,6 +68,7 @@ Patch22:    0022-Enable-gstreamer-pipeline-debug-graph-generati.patch
 Patch23:    0023-media-Require-interleaved-audio-layout-Fixes-JB49532.patch
 Patch24:    0024-gecko-Use-MOZ_EMBEDLITE-for-embedlite-integration.patch
 Patch25:    0025-gecko-Create-EmbedLiteCompositorBridgeParent-in-Comp.patch
+Patch26:    0026-gecko-Configuration-option.-JB-49613.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
