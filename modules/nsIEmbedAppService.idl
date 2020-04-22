@@ -44,10 +44,6 @@ interface nsIEmbedAppService : nsISupports
     void addMessageListener(in string name, in nsIEmbedMessageListener listener);
     // Un Subscribe from specific JSON Message which EmbedView posting to content from UI
     void removeMessageListener(in string name, in nsIEmbedMessageListener listener);
-    // Push Native secure JSContext into stuck in order to avoid security restrictions
-    // in case if XPCOM api was executed from non priveledged script, like prompt calls
-    void enterSecureJSContext();
-    void leaveSecureJSContext();
     // Add listener for AZPC Gecko notifications (single/long/double tap..)
     [noscript] void addContentListener(in uint32_t aId, in EmbedLiteContentController listener);
     [noscript] void removeContentListener(in uint32_t aId, in EmbedLiteContentController listener);
