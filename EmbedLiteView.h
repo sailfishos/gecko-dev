@@ -14,9 +14,9 @@
 class EmbedLiteViewIface;
 
 namespace mozilla {
-class InputData;
 namespace embedlite {
 
+class EmbedTouchInput;
 class EmbedLiteViewThreadParent;
 class PEmbedLiteViewParent;
 class EmbedLiteView;
@@ -97,7 +97,7 @@ public:
   virtual void SendKeyPress(int domKeyCode, int gmodifiers, int charCode);
   virtual void SendKeyRelease(int domKeyCode, int gmodifiers, int charCode);
 
-  virtual void ReceiveInputEvent(const mozilla::InputData& aEvent);
+  virtual void ReceiveInputEvent(const EmbedTouchInput& aEvent);
   virtual void MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
