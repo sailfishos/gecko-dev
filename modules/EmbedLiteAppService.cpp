@@ -66,8 +66,7 @@ namespace
 }
 
 EmbedLiteAppService::EmbedLiteAppService()
-  : mPushedSomething(0)
-  , mHandlingMessages(false)
+  : mHandlingMessages(false)
 {
 }
 
@@ -223,39 +222,6 @@ EmbedLiteAppService::HandleAsyncMessage(const char* aMessage, const nsString& aD
     nsCOMPtr<nsIEmbedMessageListener>& listener = array->ElementAt(i);
     listener->OnMessageReceived(aMessage, aData.get());
   }
-}
-
-NS_IMETHODIMP EmbedLiteAppService::EnterSecureJSContext()
-{
-//  nsIXPConnect *xpc = nsContentUtils::XPConnect();
-//  if (!xpc) {
-//    // If someone tries to push a cx when we don't have the relevant state,
-//    // it's probably safest to just crash.
-//    MOZ_CRASH();
-//  }
-
-  // Maybe just nsContentUtils::IsSafeToRunScript(), need to analyze embedlite-components
-  // or nsContentUtils::AddScriptBlocker() and nsContentUtils::RemoveScriptBlocker
-  // or nsContentUtils::EnterMicroTask and nsContentUtils::LeaveMicroTask
-
-//  if (!xpc::PushNullJSContext()) {
-//    MOZ_CRASH();
-//  }
-
-  mPushedSomething++;
-  return NS_OK;
-}
-
-NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
-{
-//  MOZ_ASSERT(nsContentUtils::XPConnect());
-//  if (!mPushedSomething) {
-//    return NS_ERROR_FAILURE;
-//  }
-
-//  xpc::PopNullJSContext();
-  mPushedSomething--;
-  return NS_OK;
 }
 
 NS_IMETHODIMP

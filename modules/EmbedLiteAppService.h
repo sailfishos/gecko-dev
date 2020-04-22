@@ -39,7 +39,6 @@ private:
   std::map<uint64_t, uint32_t> mIDMap;
   typedef nsClassHashtable<nsCStringHashKey, nsTArray<nsCOMPtr<nsIEmbedMessageListener> > > MsgListenersArray;
   MsgListenersArray mMessageListeners;
-  int mPushedSomething;
   bool mHandlingMessages;
 };
 
