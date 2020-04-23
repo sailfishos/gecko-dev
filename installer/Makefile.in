@@ -14,28 +14,66 @@ NO_PKG_FILES = \
 ifndef STAGE_SDK
 NO_PKG_FILES += \
 	xpcshell* \
-	run-mozilla* \
-	install_app.py \
 	$(NULL)
-endif
-
-# If we're on mac, we don't want an end-user-facing DMG, we want a .tar.bz2
-# which developers then use to package their application.
-
-ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
-MOZ_PKG_FORMAT = BZ2
-_APPNAME = XUL.framework
-_BINPATH = /$(_APPNAME)/Versions/Current
-_RESPATH := $(_BINPATH)
 endif
 
 include $(topsrcdir)/config/rules.mk
 MOZ_PKG_DUPEFLAGS = -f $(srcdir)/allowed-dupes.mn
 
+DEFINES += \
+  -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+  -DPREF_DIR=$(PREF_DIR) \
+  -DJAREXT= \
+  -DMOZ_CHILD_PROCESS_NAME=$(MOZ_CHILD_PROCESS_NAME) \
+  $(NULL)
+
+ifdef MOZ_DEBUG
+DEFINES += -DMOZ_DEBUG=1
+endif
+
+ifdef ENABLE_MARIONETTE
+DEFINES += -DENABLE_MARIONETTE=1
+endif
+
+MOZ_PACKAGER_MINIFY=1
+
+ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
+ifndef _APPNAME
+_APPNAME = $(MOZ_MACBUNDLE_NAME)
+endif
+ifndef _BINPATH
+_BINPATH = /$(_APPNAME)/Contents/MacOS
+endif
+ifndef _RESPATH
+_RESPATH = /$(_APPNAME)/Contents/Resources
+endif
+endif
+
 INSTALL_SDK = 1
 
 include $(topsrcdir)/toolkit/mozapps/installer/signing.mk
 include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
+
+# Note that JS_BINARY can be defined in packager.mk, so this test must come
+# after including that file. MOZ_PACKAGER_MINIFY_JS is used in packager.mk, but
+# since recipe evaluation is deferred, we can set it here after the inclusion.
+ifneq (,$(JS_BINARY))
+ifndef MOZ_DEBUG
+MOZ_PACKAGER_MINIFY_JS=1
+endif
+endif
+
+ifeq (bundle, $(MOZ_FS_LAYOUT))
+BINPATH = $(_BINPATH)
+RESPATH = $(_RESPATH)
+DEFINES += -DAPPNAME=$(_APPNAME)
+else
+# Every other platform just winds up in dist/bin
+BINPATH = bin
+RESPATH = bin
+endif
+DEFINES += -DBINPATH=$(BINPATH)
+DEFINES += -DRESPATH=$(RESPATH)
 
 # Add pkg-config files to the install:: target
 
@@ -147,8 +185,3 @@ deb: package debian/changelog debian/xulrunner.service debian/xulrunner.links
 	dh_link; fakeroot dh_fixperms; fakeroot dh_installdeb; fakeroot dh_shlibdeps; fakeroot dh_gencontrol; fakeroot dh_md5sums; fakeroot dh_builddeb;
 endif
 
-DEB_BUILD_ARCH = $(shell dpkg-architecture -qDEB_BUILD_ARCH)
-# package name comes from xulrunner/installer/debian/changelog.in
-DEB_PKG_NAME  = $(MOZ_PKG_APPNAME)_$(GRE_MILESTONE)-$(MOZ_BUILDID)_$(DEB_BUILD_ARCH).deb
-# relative to $(DIST)
-UPLOAD_EXTRA_FILES += ../xulrunner/$(DEB_PKG_NAME)
