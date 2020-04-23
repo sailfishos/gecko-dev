@@ -6,6 +6,7 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteView.h"
+#include "EmbedInputData.h"
 #include "EmbedLiteApp.h"
 
 #include "mozilla/Unused.h"
@@ -243,11 +244,28 @@ EmbedLiteView::SetDPI(const float& dpi)
 }
 
 void
-EmbedLiteView::ReceiveInputEvent(const InputData& aEvent)
+EmbedLiteView::ReceiveInputEvent(const EmbedTouchInput &aEvent)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewImpl,);
-  mViewImpl->ReceiveInputEvent(aEvent);
+
+  mozilla::MultiTouchInput multiTouchInput(static_cast<mozilla::MultiTouchInput::MultiTouchType>(aEvent.type),
+                                           aEvent.timeStamp, TimeStamp(), 0);
+
+  for (const mozilla::embedlite::TouchData &touchData : aEvent.touches) {
+    nsIntPoint point = nsIntPoint(int32_t(floorf(touchData.touchPoint.x)),
+                                  int32_t(floorf(touchData.touchPoint.y)));
+
+    mozilla::ScreenIntPoint screenPoint = mozilla::ScreenIntPoint::FromUnknownPoint(point);
+
+    multiTouchInput.mTouches.AppendElement(mozilla::SingleTouchData(touchData.identifier,
+                                                                    screenPoint,
+                                                                    mozilla::ScreenSize(1, 1),
+                                                                    180.0f,
+                                                                    touchData.pressure));
+  }
+
+  mViewImpl->ReceiveInputEvent(multiTouchInput);
 }
 
 void
