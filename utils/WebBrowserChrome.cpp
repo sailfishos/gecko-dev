@@ -31,6 +31,7 @@
 #include "nsIBaseWindow.h"
 #include "ScriptSettings.h" // for AutoNoJSAPI
 #include "TabChildHelper.h"
+#include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 
 // Duplicated from EventNameList.h
 #define MOZ_MozAfterPaint "MozAfterPaint"
@@ -424,20 +425,19 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     // ignore changes to width and height contributed by growth in page
     // quadrants other than x > 0 && y > 0.
     nsIntPoint scrollOffset = GetScrollOffset(docWin);
-    nsCOMPtr<nsIDOMScrollAreaEvent> scrollEvent = do_QueryInterface(aEvent);
-#if 0
-    float evX, evY, evW, evH;
-    scrollEvent->GetX(&evX);
-    scrollEvent->GetY(&evY);
-    scrollEvent->GetWidth(&evW);
-    scrollEvent->GetHeight(&evH);
-    float x = evX + scrollOffset.x;
-    float y = evY + scrollOffset.y;
-    uint32_t width = evW + (x < 0 ? x : 0);
-    uint32_t height = evH + (y < 0 ? y : 0);
-    mListener->OnScrolledAreaChanged(width, height);
-#endif
 
+    if (aEvent) {
+      InternalScrollAreaEvent *internalEvent = aEvent->WidgetEventPtr()->AsScrollAreaEvent();
+      RefPtr<DOMRect> mClientArea = new DOMRect(nullptr);
+      mClientArea->SetLayoutRect(internalEvent->mArea);
+
+      const float x = mClientArea->Left() + scrollOffset.x;
+      const float y = mClientArea->Top() + scrollOffset.y;
+      const uint32_t width = mClientArea->Width() + (x < 0 ? x : 0);
+      const uint32_t height = mClientArea->Height() + (y < 0 ? y : 0);
+      mListener->OnScrolledAreaChanged(width, height);
+    }
+    
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
     target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
