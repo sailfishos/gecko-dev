@@ -3,9 +3,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-DIRS += ['tests']
-
 CONFIGURE_SUBST_FILES += ['installer/Makefile']
+
+DIRS += ['tests']
 
 JS_PREFERENCE_FILES += [
      'embedding.js',
@@ -125,3 +125,6 @@ if CONFIG['TARGET_XPCOM_ABI']:
                                             CONFIG['TARGET_XPCOM_ABI'])
 
 include('/ipc/chromium/chromium-config.mozbuild')
+
+with Files('**'):
+    BUG_COMPONENT = ('Embedlite', 'Build Config')
