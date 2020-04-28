@@ -437,7 +437,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
       const uint32_t height = mClientArea->Height() + (y < 0 ? y : 0);
       mListener->OnScrolledAreaChanged(width, height);
     }
-    
+
     nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
     target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
