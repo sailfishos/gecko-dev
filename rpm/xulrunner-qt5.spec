@@ -238,12 +238,12 @@ echo "ac_add_options --disable-eme" >> "$MOZCONFIG"
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 
 %{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
+%{__make} -C %{BUILD_DIR}/faster FASTER_RECURSIVE_MAKE=1 %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
 
 %{__make} -f client.mk install DESTDIR=%{buildroot}
-%{__make} -C %{BUILD_DIR}/embedding/embedlite/installer install DESTDIR=%{buildroot}
 
 for i in $(cd ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/; ls *.so); do
     rm ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/$i
