@@ -125,13 +125,10 @@ NS_IMETHODIMP
 nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
 {
   Unused << PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
-  // Looks that we need CompositorSession
-#if 0
-  if (mCompositorParent) {
-    static_cast<EmbedLiteCompositorBridgeParent*>(mCompositorParent.get())->
+  if (GetCompositorBridgeParent()) {
+    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
         SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
-#endif
 
   return NS_OK;
 }
