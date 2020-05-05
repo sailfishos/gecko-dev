@@ -13,6 +13,7 @@
 
 #include "EmbedLitePuppetWidget.h"
 #include "nsIWidgetListener.h"
+#include "ClientLayerManager.h"
 #include "BasicLayers.h"
 
 #include "mozilla/Preferences.h"
@@ -368,6 +369,52 @@ void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, 
                                 aViewId,
                                 aConstraints);
   }
+}
+
+void EmbedLitePuppetWidget::CreateCompositor()
+{
+  MOZ_ASSERT(false, "nsWindow will create compositor");
+}
+
+void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
+{
+  (void)aWidth;
+  (void)aHeight;
+  MOZ_ASSERT(false, "nsWindow will create compositor with size");
+
+}
+
+LayerManager *
+EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
+{
+  LOGT();
+
+  if (!mLayerManager) {
+    if (!mShutdownObserver) {
+      // We are shutting down, do not try to re-create a LayerManager
+      return nullptr;
+    }
+  }
+
+  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  if (lm) {
+    mLayerManager = lm;
+    return mLayerManager;
+  }
+
+  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
+    LOGT("Create Layer Manager for Process View");
+
+    mLayerManager = new ClientLayerManager(this);
+    ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
+    if (!lf->HasShadowManager() && aShadowManager) {
+      lf->SetShadowManager(aShadowManager);
+    }
+    return mLayerManager;
+  }
+
+  mLayerManager = new ClientLayerManager(this);
+  return mLayerManager;
 }
 
 bool

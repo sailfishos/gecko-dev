@@ -60,8 +60,8 @@ nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
   : PuppetWidgetBase()
   , mWindow(window)
 {
-  LOGT("nsWindow: %p window: %p", this, mWindow);
   InitPrefs();
+  LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow, sUseExternalGLContext, sRequestGLContextEarly);
 
   if (sUseExternalGLContext && sRequestGLContextEarly) {
     CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(&CreateGLContextEarly,
@@ -118,7 +118,6 @@ NS_IMETHODIMP
 nsWindow::Show(bool aState)
 {
   LOGT();
-
   return PuppetWidgetBase::Show(aState);
 }
 
@@ -126,13 +125,10 @@ NS_IMETHODIMP
 nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
 {
   Unused << PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
-  // Looks that we need CompositorSession
-#if 0
-  if (mCompositorParent) {
-    static_cast<EmbedLiteCompositorBridgeParent*>(mCompositorParent.get())->
+  if (GetCompositorBridgeParent()) {
+    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
         SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
-#endif
 
   return NS_OK;
 }
@@ -201,44 +197,12 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
     }
   }
 
-  // TODO: Check from nsBaseWidget.
-
-  if (mLayerManager) {
-    // This layer manager might be used for painting outside of DoDraw(), so we need
-    // to set the correct rotation on it.
-    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
-        ClientLayerManager* manager =
-            static_cast<ClientLayerManager*>(mLayerManager.get());
-        manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
-                                               mRotation);
-    }
+  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  if (lm) {
+    mLayerManager = lm;
     return mLayerManager;
   }
 
-  LOGT();
-
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget != this) {
-    mLayerManager = topWidget->GetLayerManager();
-  }
-
-  if (mLayerManager) {
-    return mLayerManager;
-  }
-
-  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
-    printf("Create Layer Manager for Process View\n");
-    mLayerManager = new ClientLayerManager(this);
-    ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
-    if (!lf->HasShadowManager() && aShadowManager) {
-      lf->SetShadowManager(aShadowManager);
-    }
-    return mLayerManager;
-  }
-
-  // TODO : We should really split this into Android/Gonk like nsWindow and separate PuppetWidget
-  // Only Widget hosting window can create compositor.
-  // Bug: https://bugs.merproject.org/show_bug.cgi?id=1603
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
     if (mLayerManager) {
@@ -409,8 +373,8 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 void
 nsWindow::CreateGLContextEarly(uint32_t aWindowId)
 {
-  LOGT("WindowID:%u", aWindowId);
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(aWindowId);
+  LOGT("WindowID :%u, window: %p", aWindowId, window);
   if (window) {
     void* context = nullptr;
     void* surface = nullptr;
