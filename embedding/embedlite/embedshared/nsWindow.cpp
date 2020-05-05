@@ -60,8 +60,8 @@ nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
   : PuppetWidgetBase()
   , mWindow(window)
 {
-  LOGT("nsWindow: %p window: %p", this, mWindow);
   InitPrefs();
+  LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow, sUseExternalGLContext, sRequestGLContextEarly);
 
   if (sUseExternalGLContext && sRequestGLContextEarly) {
     CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(&CreateGLContextEarly,
@@ -118,7 +118,6 @@ NS_IMETHODIMP
 nsWindow::Show(bool aState)
 {
   LOGT();
-
   return PuppetWidgetBase::Show(aState);
 }
 
@@ -377,8 +376,8 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 void
 nsWindow::CreateGLContextEarly(uint32_t aWindowId)
 {
-  LOGT("WindowID:%u", aWindowId);
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(aWindowId);
+  LOGT("WindowID :%u, window: %p", aWindowId, window);
   if (window) {
     void* context = nullptr;
     void* surface = nullptr;
