@@ -201,44 +201,12 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
     }
   }
 
-  // TODO: Check from nsBaseWidget.
-
-  if (mLayerManager) {
-    // This layer manager might be used for painting outside of DoDraw(), so we need
-    // to set the correct rotation on it.
-    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
-        ClientLayerManager* manager =
-            static_cast<ClientLayerManager*>(mLayerManager.get());
-        manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
-                                               mRotation);
-    }
+  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  if (lm) {
+    mLayerManager = lm;
     return mLayerManager;
   }
 
-  LOGT();
-
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget != this) {
-    mLayerManager = topWidget->GetLayerManager();
-  }
-
-  if (mLayerManager) {
-    return mLayerManager;
-  }
-
-  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
-    printf("Create Layer Manager for Process View\n");
-    mLayerManager = new ClientLayerManager(this);
-    ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
-    if (!lf->HasShadowManager() && aShadowManager) {
-      lf->SetShadowManager(aShadowManager);
-    }
-    return mLayerManager;
-  }
-
-  // TODO : We should really split this into Android/Gonk like nsWindow and separate PuppetWidget
-  // Only Widget hosting window can create compositor.
-  // Bug: https://bugs.merproject.org/show_bug.cgi?id=1603
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
     if (mLayerManager) {

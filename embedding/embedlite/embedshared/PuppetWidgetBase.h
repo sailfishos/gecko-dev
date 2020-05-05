@@ -12,6 +12,10 @@
 
 namespace mozilla {
 
+namespace layers {
+class LayerManager;
+}
+
 namespace gl {
 class GLContext;
 }
@@ -88,6 +92,10 @@ public:
   void SetMargins(const LayoutDeviceIntMargin& margins);
   void UpdateSize();
   void SetActive(bool active);
+
+  virtual mozilla::layers::LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
+                                                         LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
+                                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
   static void DumpWidgetTree();
   static void DumpWidgetTree(const nsTArray<PuppetWidgetBase *> &widgets, int indent = 0);

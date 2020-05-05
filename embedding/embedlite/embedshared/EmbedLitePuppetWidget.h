@@ -69,6 +69,13 @@ public:
                              const FrameMetrics::ViewID& aViewId,
                              const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
 
+  virtual void CreateCompositor() override;
+  virtual void CreateCompositor(int aWidth, int aHeight) override;
+
+  virtual LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
+                                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
+                                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+
   bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
                                        uint64_t aInputBlockId,
                                        bool aPreventDefault);

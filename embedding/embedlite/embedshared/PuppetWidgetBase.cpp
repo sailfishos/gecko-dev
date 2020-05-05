@@ -10,6 +10,11 @@
 
 #include "mozilla/Unused.h"
 
+#include "Layers.h"                // for LayerManager
+#include "ClientLayerManager.h"    // for ClientLayerManager
+
+using namespace mozilla::layers;
+
 namespace mozilla {
 namespace embedlite {
 
@@ -363,6 +368,34 @@ void
 PuppetWidgetBase::SetActive(bool active)
 {
   mActive = active;
+}
+
+LayerManager *
+PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
+                                                LayersBackend aBackendHint,
+                                                LayerManagerPersistence aPersistence)
+{
+  if (mLayerManager) {
+    // This layer manager might be used for painting outside of DoDraw(), so we need
+    // to set the correct rotation on it.
+    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+      ClientLayerManager* manager =
+          static_cast<ClientLayerManager*>(mLayerManager.get());
+      manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
+                                             mRotation);
+    }
+    return mLayerManager;
+  }
+
+  LOGT();
+
+  nsIWidget* topWidget = GetTopLevelWidget();
+  if (topWidget != this) {
+    mLayerManager = topWidget->GetLayerManager();
+  }
+
+  // Layer manager can be null here. Sub-class shall handle this.
+  return mLayerManager;
 }
 
 void PuppetWidgetBase::DumpWidgetTree()
