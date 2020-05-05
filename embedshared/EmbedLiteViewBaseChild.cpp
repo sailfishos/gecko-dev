@@ -673,7 +673,8 @@ bool
 EmbedLiteViewBaseChild::RecvSuspendTimeouts()
 {
   if (!mDOMWindow) {
-    return false;
+    LOGT("Nothing to suspend, no dom window");
+    return true;
   }
 
   nsresult rv;
@@ -681,17 +682,17 @@ EmbedLiteViewBaseChild::RecvSuspendTimeouts()
   NS_ENSURE_SUCCESS(rv, false);
   if (!pwindow->IsFrozen()) {
     pwindow->Thaw();
-    return true;
   }
 
-  return false;
+  return true;
 }
 
 bool
 EmbedLiteViewBaseChild::RecvResumeTimeouts()
 {
   if (!mDOMWindow) {
-    return false;
+    LOGT("Nothing to suspend, no dom window");
+    return true;
   }
 
   nsresult rv;
@@ -700,10 +701,9 @@ EmbedLiteViewBaseChild::RecvResumeTimeouts()
 
   if (pwindow->IsFrozen()) {
     pwindow->Freeze();
-    return true;
   }
 
-  return false;
+  return true;
 }
 
 bool
