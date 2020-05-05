@@ -12,7 +12,6 @@
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "mozilla/Unused.h"
 #include "EmbedContentController.h"
-#include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/APZThreadUtils.h"
 
 #include <sys/syscall.h>
@@ -91,14 +90,10 @@ EmbedLiteViewBaseParent::UpdateScrollController()
 
 mozilla::layers::IAPZCTreeManager *EmbedLiteViewBaseParent::GetApzcTreeManager()
 {
-#if 0
-  if (!mApzcTreeManager) {
-    mApzcTreeManager = CompositorBridgeParent::GetApzcTreeManagerParentForRoot(mRootLayerTreeId);
+  if (!mApzcTreeManager && mCompositor) {
+    mApzcTreeManager = mCompositor->GetAPZCTreeManager();
   }
   return mApzcTreeManager.get();
-#else
-  return nullptr;
-#endif
 }
 
 // Child notification
