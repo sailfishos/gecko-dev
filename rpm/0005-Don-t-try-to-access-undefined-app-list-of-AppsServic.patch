@@ -1,8 +1,8 @@
-From 2f2986b69647da4f698e38a9a6264e173f41dc2b Mon Sep 17 00:00:00 2001
+From 9c777a73b5fb5da6a155ba13a58389122287b07f Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 1 Jul 2016 10:39:47 +0300
-Subject: [PATCH 11/17] Don't try to access undefined app list of
- AppsServiceChild. Fixes MER#1609
+Subject: [PATCH] Don't try to access undefined app list of AppsServiceChild.
+ Fixes MER#1609
 
 When accessing e.g. imgur.com for the first time list build up fails
 (.mozilla/mozembed is still clean). Subsequental access are ok.
@@ -15,14 +15,14 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 12 insertions(+), 9 deletions(-)
 
 diff --git a/dom/apps/AppsServiceChild.jsm b/dom/apps/AppsServiceChild.jsm
-index cc0675fd8abc..533d7ddba701 100644
+index 4aca938af4dd..f8cfd87ad0ae 100644
 --- a/dom/apps/AppsServiceChild.jsm
 +++ b/dom/apps/AppsServiceChild.jsm
-@@ -109,16 +109,19 @@ this.DOMApplicationRegistry = {
+@@ -103,16 +103,19 @@ this.DOMApplicationRegistry = {
+       this.cpmm.addMessageListener(aMsgName, this);
+     }).bind(this));
  
-     // We need to prime the cache with the list of apps.
-     let list = this.cpmm.sendSyncMessage("Webapps:GetList", { })[0];
--    this.webapps = list.webapps;
+-    this.webapps = { };
 -    // We need a fast mapping from localId -> app, so we add an index.
 -    // We also add the manifest to the app object.
 -    this.localIdIndex = { };
@@ -31,7 +31,7 @@ index cc0675fd8abc..533d7ddba701 100644
 -      this.localIdIndex[app.localId] = app;
 -      app.manifest = list.manifests[id];
 +    try {
-+      this.webapps = list.webapps;
++      this.webapps = { };
 +      // We need a fast mapping from localId -> app, so we add an index.
 +      // We also add the manifest to the app object.
 +      this.localIdIndex = { };
@@ -48,5 +48,5 @@ index cc0675fd8abc..533d7ddba701 100644
    },
  
 -- 
-2.24.1
+2.17.1
 

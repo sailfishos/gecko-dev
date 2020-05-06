@@ -1,8 +1,8 @@
-From 2fe684b346ef5bc1c9a912e6cfd4bc7c642cc28b Mon Sep 17 00:00:00 2001
+From 02b4698deb992876a7fa48f5d46f59d07dde5539 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 26 Feb 2019 11:58:41 +0200
-Subject: [PATCH 15/17] Disable SiteSpecificUserAgent.js from the build.
- Contributes to JB#39252
+Subject: [PATCH] Disable SiteSpecificUserAgent.js from the build. Contributes
+ to JB#39252
 
 As both "general.useragent.override" and nsISiteSpecificUserAgent
 are used and EmbedLite Components provides a UserAgentOverrideHelper
@@ -17,10 +17,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  2 files changed, 4 insertions(+), 1 deletion(-)
 
 diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
-index 2bb4b157794b..250f9dbbd2c3 100644
+index 290af152b29a..978a98195413 100644
 --- a/dom/base/Navigator.cpp
 +++ b/dom/base/Navigator.cpp
-@@ -2749,6 +2749,8 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+@@ -1854,6 +1854,8 @@ Navigator::GetUserAgent(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
  {
    MOZ_ASSERT(NS_IsMainThread());
  
@@ -29,7 +29,7 @@ index 2bb4b157794b..250f9dbbd2c3 100644
    if (!aIsCallerChrome) {
      const nsAdoptingString& override =
        mozilla::Preferences::GetString("general.useragent.override");
-@@ -2758,6 +2760,7 @@ Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+@@ -1863,6 +1865,7 @@ Navigator::GetUserAgent(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
        return NS_OK;
      }
    }
@@ -38,18 +38,18 @@ index 2bb4b157794b..250f9dbbd2c3 100644
    nsresult rv;
    nsCOMPtr<nsIHttpProtocolHandler>
 diff --git a/dom/base/moz.build b/dom/base/moz.build
-index 3c5ba1d8d7f0..2912ae138f23 100644
+index 4a4ad7d9349b..3837865fee87 100755
 --- a/dom/base/moz.build
 +++ b/dom/base/moz.build
-@@ -405,7 +405,7 @@ EXTRA_COMPONENTS += [
+@@ -413,7 +413,7 @@ EXTRA_COMPONENTS += [
  ]
  
  # Firefox for Android provides an alternate version of this component
 -if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
-+if CONFIG['MOZ_BUILD_APP'] not in ['mobile/android', 'xulrunner']:
++if CONFIG['MOZ_BUILD_APP'] not in ['mobile/android', 'embedding/embedlite']:
      EXTRA_COMPONENTS += [
          'SiteSpecificUserAgent.js',
          'SiteSpecificUserAgent.manifest',
 -- 
-2.24.1
+2.17.1
 
