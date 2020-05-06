@@ -66,6 +66,7 @@ Patch20:    0020-Handle-temporary-directory-similarly-as-in-MacOSX.patch
 Patch21:    0021-Disable-loading-extensions-and-assume-memory-constra.patch
 Patch22:    0022-Enable-gstreamer-pipeline-debug-graph-generati.patch
 Patch23:    0023-media-Require-interleaved-audio-layout-Fixes-JB49532.patch
+Patch24:    0024-Bug-1233121-Refactor-ObjectBox-tracing-r-terrence.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)

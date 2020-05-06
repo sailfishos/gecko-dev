@@ -1,0 +1,117 @@
+From 17c6a48f5a88ee41946bc920c24a51d3c797d0b1 Mon Sep 17 00:00:00 2001
+From: Jon Coppeard <jcoppeard@mozilla.com>
+Date: Fri, 18 Dec 2015 12:10:42 +0000
+Subject: [PATCH] Bug 1233121 - Refactor ObjectBox tracing r=terrence
+
+---
+ js/src/frontend/ParseNode.cpp   | 40 ++++++++++++++++++++-------------
+ js/src/frontend/ParseNode.h     |  4 +++-
+ js/src/frontend/Parser.cpp      |  2 +-
+ js/src/frontend/SharedContext.h |  4 ++++
+ 4 files changed, 33 insertions(+), 17 deletions(-)
+
+diff --git a/js/src/frontend/ParseNode.cpp b/js/src/frontend/ParseNode.cpp
+index 245831c077f1..3a87e2db7fd9 100644
+--- a/js/src/frontend/ParseNode.cpp
++++ b/js/src/frontend/ParseNode.cpp
+@@ -1162,22 +1162,32 @@ ObjectBox::asModuleBox()
+     return static_cast<ModuleBox*>(this);
+ }
+ 
++/* static */ void
++ObjectBox::TraceList(JSTracer* trc, ObjectBox* listHead)
++{
++    for (ObjectBox* box = listHead; box; box = box->traceLink)
++        box->trace(trc);
++}
++
+ void
+ ObjectBox::trace(JSTracer* trc)
+ {
+-    ObjectBox* box = this;
+-    while (box) {
+-        TraceRoot(trc, &box->object, "parser.object");
+-        if (box->isFunctionBox()) {
+-            FunctionBox* funbox = box->asFunctionBox();
+-            funbox->bindings.trace(trc);
+-            if (funbox->enclosingStaticScope_)
+-                TraceRoot(trc, &funbox->enclosingStaticScope_, "funbox-enclosingStaticScope");
+-        } else if (box->isModuleBox()) {
+-            ModuleBox* modulebox = box->asModuleBox();
+-            modulebox->bindings.trace(trc);
+-            modulebox->exportNames.trace(trc);
+-        }
+-        box = box->traceLink;
+-    }
++    TraceRoot(trc, &object, "parser.object");
++}
++
++void
++FunctionBox::trace(JSTracer* trc)
++{
++    ObjectBox::trace(trc);
++    bindings.trace(trc);
++    if (enclosingStaticScope_)
++        TraceRoot(trc, &enclosingStaticScope_, "funbox-enclosingStaticScope");
++}
++
++void
++ModuleBox::trace(JSTracer* trc)
++{
++    ObjectBox::trace(trc);
++    bindings.trace(trc);
++    exportNames.trace(trc);
+ }
+diff --git a/js/src/frontend/ParseNode.h b/js/src/frontend/ParseNode.h
+index d70a0689295c..471af411a8fc 100644
+--- a/js/src/frontend/ParseNode.h
++++ b/js/src/frontend/ParseNode.h
+@@ -1713,7 +1713,9 @@ class ObjectBox
+     FunctionBox* asFunctionBox();
+     bool isModuleBox() { return object->is<ModuleObject>(); }
+     ModuleBox* asModuleBox();
+-    void trace(JSTracer* trc);
++    virtual void trace(JSTracer* trc);
++
++    static void TraceList(JSTracer* trc, ObjectBox* listHead);
+ 
+   protected:
+     friend struct CGObjectList;
+diff --git a/js/src/frontend/Parser.cpp b/js/src/frontend/Parser.cpp
+index e5d20dbfb1cf..4c18b8567a2d 100644
+--- a/js/src/frontend/Parser.cpp
++++ b/js/src/frontend/Parser.cpp
+@@ -856,7 +856,7 @@ template <typename ParseHandler>
+ void
+ Parser<ParseHandler>::trace(JSTracer* trc)
+ {
+-    traceListHead->trace(trc);
++    ObjectBox::TraceList(trc, traceListHead);
+ }
+ 
+ void
+diff --git a/js/src/frontend/SharedContext.h b/js/src/frontend/SharedContext.h
+index 80c533f2a774..992cee6740eb 100644
+--- a/js/src/frontend/SharedContext.h
++++ b/js/src/frontend/SharedContext.h
+@@ -433,6 +433,8 @@ class FunctionBox : public ObjectBox, public SharedContext
+                isDerivedClassConstructor() ||
+                isGenerator();
+     }
++
++    void trace(JSTracer* trc) override;
+ };
+ 
+ class ModuleBox : public ObjectBox, public SharedContext
+@@ -448,6 +450,8 @@ class ModuleBox : public ObjectBox, public SharedContext
+     ObjectBox* toObjectBox() override { return this; }
+     ModuleObject* module() const { return &object->as<ModuleObject>(); }
+     JSObject* staticScope() const override { return module(); }
++
++    void trace(JSTracer* trc) override;
+ };
+ 
+ inline FunctionBox*
+-- 
+2.25.0
+
