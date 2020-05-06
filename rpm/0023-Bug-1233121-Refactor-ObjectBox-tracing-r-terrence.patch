@@ -1,4 +1,4 @@
-From 17c6a48f5a88ee41946bc920c24a51d3c797d0b1 Mon Sep 17 00:00:00 2001
+From 67e58207af4dfa5f4ae9ff959bcab0ccc897136d Mon Sep 17 00:00:00 2001
 From: Jon Coppeard <jcoppeard@mozilla.com>
 Date: Fri, 18 Dec 2015 12:10:42 +0000
 Subject: [PATCH] Bug 1233121 - Refactor ObjectBox tracing r=terrence
@@ -113,5 +113,5 @@ index 80c533f2a774..992cee6740eb 100644
  
  inline FunctionBox*
 -- 
-2.25.0
+2.26.2
 

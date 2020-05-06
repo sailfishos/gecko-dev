@@ -1,8 +1,7 @@
-From bbfe07e55e96b302c01842552d275853614ef9ad Mon Sep 17 00:00:00 2001
+From fc364326c1610202df5d3718b036324736b7a608 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 31 Jan 2020 11:09:02 +0000
-Subject: [PATCH 18/18] [nemo][xulrunner] Use libcontentaction for custom
- scheme uri handling. JB#47892
+Subject: [PATCH] Use libcontentaction for custom scheme uri handling. JB#47892
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
@@ -12,7 +11,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  uriloader/exthandler/unix/nsOSHelperAppService.cpp | 2 +-
  xpcom/io/moz.build                                 | 2 ++
  xpcom/io/nsLocalFileUnix.cpp                       | 2 +-
- 8 files changed, 16 insertions(+), 11 deletions(-)
+ 6 files changed, 16 insertions(+), 11 deletions(-)
 
 diff --git a/configure.in b/configure.in
 index c98b3171c25e..872b5b2cb347 100644
@@ -124,5 +123,5 @@ index 74c5bf072b71..d88ede495b7a 100644
  
  #include "nsNativeCharsetUtils.h"
 -- 
-2.24.1
+2.26.2
 
