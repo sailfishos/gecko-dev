@@ -62,6 +62,7 @@ Patch16:    0016-Cleanup-build-configuration.-Fixes-JB-44612.patch
 Patch17:    0017-Make-gc-stats-work-with-gcc8.patch
 Patch18:    0018-Use-libcontentaction-for-custom-schem.patch
 Patch23:    0023-media-Require-interleaved-audio-layout-Fixes-JB49532.patch
+Patch24:    0024-Bug-1233121-Refactor-ObjectBox-tracing-r-terrence.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
