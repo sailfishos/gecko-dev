@@ -1,7 +1,7 @@
-From 0932705947eb5be8ef7608318e073897fbd982df Mon Sep 17 00:00:00 2001
+From 46c4b7e01a8e04d2c943521bc925d1072cd2c074 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 30 Jan 2019 15:42:27 +0200
-Subject: [PATCH 14/17] Embedlite doesn't have prompter implementation
+Subject: [PATCH] Embedlite doesn't have prompter implementation
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
@@ -9,10 +9,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/toolkit/components/jsdownloads/src/DownloadUIHelper.jsm b/toolkit/components/jsdownloads/src/DownloadUIHelper.jsm
-index 29ec9e01303c..693e8007ef61 100644
+index f5102b4a897d..808b174dad15 100644
 --- a/toolkit/components/jsdownloads/src/DownloadUIHelper.jsm
 +++ b/toolkit/components/jsdownloads/src/DownloadUIHelper.jsm
-@@ -109,7 +109,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function () {
+@@ -106,7 +106,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function () {
   */
  this.DownloadPrompter = function (aParent)
  {
@@ -22,5 +22,5 @@ index 29ec9e01303c..693e8007ef61 100644
      this._prompter = null;
    } else {
 -- 
-2.24.1
+2.17.1
 

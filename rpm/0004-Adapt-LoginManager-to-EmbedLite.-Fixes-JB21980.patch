@@ -1,39 +1,47 @@
-From 6812cabf5325fb2f3fe77cf82250e7ec3bc8b6a5 Mon Sep 17 00:00:00 2001
+From eca37275119ccc1fad1b53ca8ea8766078f0d2ad Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
-Subject: [PATCH 08/17] Adapt LoginManager to EmbedLite. Fixes JB21980
+Subject: [PATCH] Adapt LoginManager to EmbedLite. Fixes JB21980
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/ipc/TabChild.h                                    | 7 +++++--
- toolkit/components/passwordmgr/LoginManagerParent.jsm | 2 ++
- toolkit/components/passwordmgr/passwordmgr.manifest   | 4 +---
- 3 files changed, 8 insertions(+), 5 deletions(-)
+ dom/ipc/TabChild.h                                 | 14 +++++++++-----
+ .../components/passwordmgr/LoginManagerParent.jsm  |  2 ++
+ .../components/passwordmgr/passwordmgr.manifest    |  2 --
+ 3 files changed, 11 insertions(+), 7 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
-index ef8d66a99257..85baf92e8a52 100644
+index 716460878175..3fe484ef4d39 100644
 --- a/dom/ipc/TabChild.h
 +++ b/dom/ipc/TabChild.h
-@@ -473,8 +473,11 @@ public:
-     static inline TabChild*
-     GetFrom(nsIDocShell* aDocShell)
-     {
--      nsCOMPtr<nsITabChild> tc = do_GetInterface(aDocShell);
--      return static_cast<TabChild*>(tc.get());
-+      // Even though TabChild is not used in EmbedLite somehow the static cast
-+      // below can return non-null pointer. Let's return nullptr explcitly.
-+      return nullptr;
-+      //nsCOMPtr<nsITabChild> tc = do_GetInterface(aDocShell);
-+      //return static_cast<TabChild*>(tc.get());
-     }
+@@ -507,12 +507,16 @@ public:
+   static inline TabChild*
+   GetFrom(nsIDocShell* aDocShell)
+   {
+-    if (!aDocShell) {
+-      return nullptr;
+-    }
++    // Even though TabChild is not used in EmbedLite somehow the static cast
++    // below can return non-null pointer. Let's return nullptr explcitly.
++    return nullptr;
  
-     static TabChild* GetFrom(nsIPresShell* aPresShell);
+-    nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
+-    return static_cast<TabChild*>(tc.get());
++    //if (!aDocShell) {
++    //  return nullptr;
++    //}
++
++    //nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
++    //return static_cast<TabChild*>(tc.get());
+   }
+ 
+   static inline TabChild*
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-index c17f3b61981b..9cb1e82030d9 100644
+index e472fb61c70d..86ac329d5743 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
 +++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-@@ -172,6 +172,8 @@ var LoginManagerParent = {
+@@ -89,6 +89,8 @@ var LoginManagerParent = {
    },
  
    receiveMessage: function (msg) {
@@ -43,7 +51,7 @@ index c17f3b61981b..9cb1e82030d9 100644
      switch (msg.name) {
        case "RemoteLogins:findLogins": {
 diff --git a/toolkit/components/passwordmgr/passwordmgr.manifest b/toolkit/components/passwordmgr/passwordmgr.manifest
-index 1d3d3c367a6e..873426b995aa 100644
+index 72e9ccffb883..07f51017fec7 100644
 --- a/toolkit/components/passwordmgr/passwordmgr.manifest
 +++ b/toolkit/components/passwordmgr/passwordmgr.manifest
 @@ -2,8 +2,6 @@ component {cb9e0de8-3598-4ed7-857b-827f011ad5d8} nsLoginManager.js
@@ -55,13 +63,6 @@ index 1d3d3c367a6e..873426b995aa 100644
  component {0f2f347c-1e4f-40cc-8efd-792dea70a85e} nsLoginInfo.js
  contract @mozilla.org/login-manager/loginInfo;1 {0f2f347c-1e4f-40cc-8efd-792dea70a85e}
  #ifdef ANDROID
-@@ -15,4 +13,4 @@ contract @mozilla.org/login-manager/storage/json;1 {c00c432d-a0c9-46d7-bef6-9c45
- #endif
- component {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309} crypto-SDR.js
- contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
--category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
-\ No newline at end of file
-+category healthreport-js-provider-default PasswordsMetricsProvider resource://gre/modules/LoginManagerParent.jsm
 -- 
-2.24.1
+2.17.1
 

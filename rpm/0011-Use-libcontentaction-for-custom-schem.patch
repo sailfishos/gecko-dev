@@ -1,24 +1,23 @@
-From bbfe07e55e96b302c01842552d275853614ef9ad Mon Sep 17 00:00:00 2001
+From 48b72a6017f259e71b7118909497c1fb8376d431 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 31 Jan 2020 11:09:02 +0000
-Subject: [PATCH 18/18] [nemo][xulrunner] Use libcontentaction for custom
- scheme uri handling. JB#47892
+Subject: [PATCH] Use libcontentaction for custom scheme uri handling. JB#47892
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- configure.in                                       | 8 +++++---
+ old-configure.in                                   | 8 +++++---
  uriloader/exthandler/nsContentHandlerApp.h         | 5 +++--
  uriloader/exthandler/unix/nsMIMEInfoUnix.cpp       | 8 ++++----
  uriloader/exthandler/unix/nsOSHelperAppService.cpp | 2 +-
  xpcom/io/moz.build                                 | 2 ++
  xpcom/io/nsLocalFileUnix.cpp                       | 2 +-
- 8 files changed, 16 insertions(+), 11 deletions(-)
+ 6 files changed, 16 insertions(+), 11 deletions(-)
 
-diff --git a/configure.in b/configure.in
-index c98b3171c25e..872b5b2cb347 100644
---- a/configure.in
-+++ b/configure.in
-@@ -4518,11 +4518,13 @@ then
+diff --git a/old-configure.in b/old-configure.in
+index 8a1de8f42692..ccdb15943d04 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -2730,11 +2730,13 @@ then
      fi
  
      MOZ_ENABLE_CONTENTACTION=
@@ -101,20 +100,23 @@ index 84e1cf5b040b..3fda2378ee55 100644
  #endif
  
 diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
-index 45732e4cbf2f..c6cc71ee793e 100644
+index fdefa841b504..cc03a82787fe 100644
 --- a/xpcom/io/moz.build
 +++ b/xpcom/io/moz.build
-@@ -135,3 +135,5 @@ if CONFIG['OS_ARCH'] == 'Linux' and 'lib64' in CONFIG['libdir']:
-     DEFINES['HAVE_USR_LIB64_DIR'] = True
+@@ -138,6 +138,8 @@ if CONFIG['OS_ARCH'] == 'Linux' and 'lib64' in CONFIG['libdir']:
  
  LOCAL_INCLUDES += ['!..']
-+
+ 
 +CXXFLAGS += CONFIG['TK_CFLAGS']
++
+ if CONFIG['_MSC_VER']:
+     # This is intended as a temporary hack to support building with VS2015.
+     # '_snwprintf' : format string '%s' requires an argument of type 'wchar_t *',
 diff --git a/xpcom/io/nsLocalFileUnix.cpp b/xpcom/io/nsLocalFileUnix.cpp
-index 74c5bf072b71..d88ede495b7a 100644
+index 194e5835e7d0..14e127d40bba 100644
 --- a/xpcom/io/nsLocalFileUnix.cpp
 +++ b/xpcom/io/nsLocalFileUnix.cpp
-@@ -71,7 +71,7 @@ static nsresult MacErrorMapper(OSErr inErr);
+@@ -69,7 +69,7 @@ static nsresult MacErrorMapper(OSErr inErr);
  #endif
  
  #ifdef MOZ_ENABLE_CONTENTACTION
@@ -124,5 +126,5 @@ index 74c5bf072b71..d88ede495b7a 100644
  
  #include "nsNativeCharsetUtils.h"
 -- 
-2.24.1
+2.17.1
 

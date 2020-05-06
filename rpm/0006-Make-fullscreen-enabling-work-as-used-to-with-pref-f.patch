@@ -1,7 +1,7 @@
-From 1195ab1212ec4c94a2c54fa5e764688339d4c158 Mon Sep 17 00:00:00 2001
+From 2c20281487f68001f4db8f0e3d6316b0df414daf Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 10 Jan 2019 15:21:24 +0200
-Subject: [PATCH 12/17] Make fullscreen enabling work as used to with pref
+Subject: [PATCH] Make fullscreen enabling work as used to with pref
  full-screen-api.content-only. Fixes JB#44129
 
 We don't have chrome from doc shell point of view. This commit
@@ -15,12 +15,12 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 6 insertions(+)
 
 diff --git a/dom/base/nsGlobalWindow.cpp b/dom/base/nsGlobalWindow.cpp
-index 080b0302f021..c90f4271765f 100644
+index 8ff4b84ce375..2a330a788b0a 100644
 --- a/dom/base/nsGlobalWindow.cpp
 +++ b/dom/base/nsGlobalWindow.cpp
-@@ -6032,10 +6032,16 @@ nsGlobalWindow::SetFullscreenInternal(FullscreenReason aReason,
+@@ -6745,10 +6745,16 @@ nsGlobalWindow::SetFullscreenInternal(FullscreenReason aReason,
    if (rootItem != mDocShell)
-     return window->SetFullscreenInternal(aReason, aFullScreen, aHMD);
+     return window->SetFullscreenInternal(aReason, aFullScreen);
  
 +  // We don't have chrome from doc shell point of view. This commit
 +  // sha1 3116f3bf53df offends fullscreen API to work without chrome
@@ -36,5 +36,5 @@ index 080b0302f021..c90f4271765f 100644
    // If we are already in full screen mode, just return.
    if (mFullScreen == aFullScreen)
 -- 
-2.24.1
+2.17.1
 
