@@ -1,7 +1,7 @@
-From 8c87b6aed048fbd6f8776fcfd58b24f5972e7b23 Mon Sep 17 00:00:00 2001
+From c0122434922f59b5a8268c53b9ba83707a443cd7 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 26 Mar 2019 15:43:30 +0200
-Subject: [PATCH 16/17] Cleanup build configuration. Fixes JB#44612
+Subject: [PATCH] Cleanup build configuration. Fixes JB#44612
 
 [nemo][embedlite] Disable telemetry / health / sync services. Fixes JB#44612
 
@@ -14,10 +14,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  2 files changed, 7 insertions(+), 7 deletions(-)
 
 diff --git a/configure.in b/configure.in
-index a3ba8b2f6ae2..872b5b2cb347 100644
+index 7f5ce1a0f369..c98b3171c25e 100644
 --- a/configure.in
 +++ b/configure.in
-@@ -8435,7 +8435,7 @@ fi
+@@ -8433,7 +8433,7 @@ fi
  dnl
  dnl Always build Marionette if not Android or B2G
  dnl
@@ -56,5 +56,5 @@ index 4b2131d083bf..eca5c51dcacd 100755
 +MOZ_SERVICES_HEALTHREPORT=
  MOZ_DISABLE_EXPORT_JS=1
 -- 
-2.24.1
+2.26.2
 

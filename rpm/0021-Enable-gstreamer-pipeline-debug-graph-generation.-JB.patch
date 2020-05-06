@@ -1,13 +1,18 @@
-From 0679595a70ff9f5f96c6f68f990b32fd17a905ff Tue, 7 Apr 2020 15:08:48 +0200
+From 228c626a25055e80edb7e35e218c084cc499cf03 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
 Date: Tue, 7 Apr 2020 00:02:45 +0200
-Subject: [PATCH] [debug] Enable gstreamer pipeline debug graph generation. JB#49532
+Subject: [PATCH] Enable gstreamer pipeline debug graph generation. JB#49532
+
+---
+ dom/media/gstreamer/GStreamerFunctionList.h | 1 +
+ dom/media/gstreamer/GStreamerReader.cpp     | 3 +++
+ 2 files changed, 4 insertions(+)
 
 diff --git a/dom/media/gstreamer/GStreamerFunctionList.h b/dom/media/gstreamer/GStreamerFunctionList.h
-index 75f352e..80d7819 100644
+index 827e61086e6f..ac6d66a6aaa7 100644
 --- a/dom/media/gstreamer/GStreamerFunctionList.h
 +++ b/dom/media/gstreamer/GStreamerFunctionList.h
-@@ -35,6 +35,7 @@
+@@ -36,6 +36,7 @@ GST_FUNC(LIBGSTREAMER, gst_caps_new_empty)
  GST_FUNC(LIBGSTREAMER, gst_caps_new_full)
  GST_FUNC(LIBGSTREAMER, gst_caps_new_simple)
  GST_FUNC(LIBGSTREAMER, gst_caps_set_simple)
@@ -16,10 +21,10 @@ index 75f352e..80d7819 100644
  GST_FUNC(LIBGSTREAMER, gst_element_factory_get_type)
  GST_FUNC(LIBGSTREAMER, gst_element_factory_make)
 diff --git a/dom/media/gstreamer/GStreamerReader.cpp b/dom/media/gstreamer/GStreamerReader.cpp
-index 202f5a4..4183389 100644
+index f693cae077de..62dc770cd645 100644
 --- a/dom/media/gstreamer/GStreamerReader.cpp
 +++ b/dom/media/gstreamer/GStreamerReader.cpp
-@@ -554,6 +554,9 @@
+@@ -612,6 +612,9 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
     * the appsinks */
    if (UpdateCurrentAsActiveIfNotBusy(this)) {
      gst_element_set_state(mPlayBin, GST_STATE_PLAYING);
@@ -29,3 +34,6 @@ index 202f5a4..4183389 100644
    }
  
    return NS_OK;
+-- 
+2.26.2
+

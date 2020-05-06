@@ -1,7 +1,7 @@
-From 50e1a70f0ae776309e61e06b1cd5a052131a8871 Mon Sep 17 00:00:00 2001
+From 2c2446097e41e8fbb2ca9ef2a2bd5dbe943107b5 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 30 Jan 2019 14:26:31 +0200
-Subject: [PATCH 13/17] Do not load nsHelperAppDlg.js. Fixes JB#44322
+Subject: [PATCH] Do not load nsHelperAppDlg.js. Fixes JB#44322
 
 This removes nsHelperAppDlg.js and .manifest from to build (omni.ja).
 The nsHelperAppDlg.js is implemented in embedlite-components.
@@ -38,5 +38,5 @@ index a0f5e77b61db..572ba87efd1a 100644
 \ No newline at end of file
 +JAR_MANIFESTS += ['jar.mn']
 -- 
-2.24.1
+2.26.2
 

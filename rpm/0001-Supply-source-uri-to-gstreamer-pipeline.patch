@@ -1,7 +1,7 @@
-From f6511020aa5c133a007a4fbadf018837a6629621 Mon Sep 17 00:00:00 2001
+From 4a70148a7b46f7525a313769f880a2a2c9cd0e50 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:10:46 +0300
-Subject: [PATCH 01/17] Supply source uri to gstreamer pipeline
+Subject: [PATCH] Supply source uri to gstreamer pipeline
 
 Backported SHA1 aae344839920dd17bddfd0ef822cc5bc36ea2d9f
 from esr38.
@@ -280,5 +280,5 @@ index 9460c56ff437..b63a761b949d 100644
  
  // For a complete list of file types, see http://www.ftyps.com/index.html
 -- 
-2.24.1
+2.26.2
 

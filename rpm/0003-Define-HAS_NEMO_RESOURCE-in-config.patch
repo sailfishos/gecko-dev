@@ -1,7 +1,7 @@
-From e4aae3c0f47aee0bc2e083639d6172d53c841554 Mon Sep 17 00:00:00 2001
+From 9d41a37a2f5edb09bb7c9fb0f6a0c228e4ec161d Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:13:03 +0300
-Subject: [PATCH 04/17] Define HAS_NEMO_RESOURCE in config
+Subject: [PATCH] Define HAS_NEMO_RESOURCE in config
 
 See bugs JB10947, JB30305, and JB30517
 
@@ -11,10 +11,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 4 insertions(+)
 
 diff --git a/configure.in b/configure.in
-index 3538538bac39..a3ba8b2f6ae2 100644
+index 82cd65a00559..7f5ce1a0f369 100644
 --- a/configure.in
 +++ b/configure.in
-@@ -5661,6 +5661,9 @@ if test -n "$MOZ_GSTREAMER"; then
+@@ -5659,6 +5659,9 @@ if test -n "$MOZ_GSTREAMER"; then
          AC_MSG_ERROR([gstreamer and gstreamer-plugins-base development packages are needed to build gstreamer backend. Install them or disable gstreamer support with --disable-gstreamer])
      fi
  
@@ -24,7 +24,7 @@ index 3538538bac39..a3ba8b2f6ae2 100644
      _SAVE_LDFLAGS=$LDFLAGS
      LDFLAGS="$LDFLAGS $GSTREAMER_LIBS -lgstvideo-$GST_API_VERSION"
      AC_TRY_LINK(,[return 0;],_HAVE_LIBGSTVIDEO=1,_HAVE_LIBGSTVIDEO=)
-@@ -5673,6 +5676,7 @@ if test -n "$MOZ_GSTREAMER"; then
+@@ -5671,6 +5674,7 @@ if test -n "$MOZ_GSTREAMER"; then
  fi
  
  AC_SUBST(MOZ_GSTREAMER)
@@ -33,5 +33,5 @@ index 3538538bac39..a3ba8b2f6ae2 100644
  
  if test -n "$MOZ_GSTREAMER"; then
 -- 
-2.24.1
+2.26.2
 

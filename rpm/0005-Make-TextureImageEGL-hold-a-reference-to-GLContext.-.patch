@@ -1,8 +1,8 @@
-From ef04eb022fcfcd473f58a3fda98e28d68dcd5348 Mon Sep 17 00:00:00 2001
+From a6b0db8624bf9a86b16518fdfccac36cc8795510 Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <piotr.tworek@jollamobile.com>
 Date: Wed, 8 Jul 2015 16:13:11 +0200
-Subject: [PATCH 06/17] Make TextureImageEGL hold a reference to GLContext.
- Fixes JB#30109.
+Subject: [PATCH] Make TextureImageEGL hold a reference to GLContext. Fixes
+ JB#30109.
 
 Due to rather non standard view shutdown procedure of EmbedLite port
 objets like TextureImageEGL often end up being destroyed after the
@@ -38,5 +38,5 @@ index 472718e2efd2..61d873a79a90 100644
      gfx::IntRect mUpdateRect;
      gfx::SurfaceFormat mUpdateFormat;
 -- 
-2.24.1
+2.26.2
 

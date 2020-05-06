@@ -1,7 +1,7 @@
-From 2ec4c9eb195e400b4245b5ec38d77f5e20df2598 Mon Sep 17 00:00:00 2001
+From 4da6b85348aa63cb3ddbfb98b4608f1ab2c3fbce Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 10 Mar 2020 15:06:39 +0200
-Subject: [PATCH 20/20] Handle temporary directory similarly as in MacOSX
+Subject: [PATCH] Handle temporary directory similarly as in MacOSX
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
@@ -9,7 +9,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
-index 39f066aff0f3..f5a2445a0627 100644
+index fc2f2385643b..8c982e59e071 100644
 --- a/uriloader/exthandler/nsExternalHelperAppService.cpp
 +++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
 @@ -284,7 +284,7 @@ static nsresult GetDownloadDirectory(nsIFile **_directory,
@@ -38,5 +38,5 @@ index 39f066aff0f3..f5a2445a0627 100644
      NS_ENSURE_SUCCESS(rv, rv);
    }
 -- 
-2.24.1
+2.26.2
 
