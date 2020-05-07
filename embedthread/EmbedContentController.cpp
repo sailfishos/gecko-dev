@@ -50,16 +50,15 @@ void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrol
 
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
 {
-  CSSPoint cssPoint(aPoint.x, aPoint.y);
   switch (aType) {
     case GeckoContentController::TapType::eSingleTap:
-      HandleSingleTap(cssPoint, aModifiers, aGuid);
+      HandleSingleTap(aPoint, aModifiers, aGuid);
       break;
     case GeckoContentController::TapType::eDoubleTap:
-      HandleDoubleTap(cssPoint, aModifiers, aGuid);
+      HandleDoubleTap(aPoint, aModifiers, aGuid);
       break;
     case GeckoContentController::TapType::eLongTap:
-      HandleLongTap(cssPoint, aModifiers, aGuid, aInputBlockId);
+      HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eSecondTap:
     case GeckoContentController::TapType::eLongTapUp:
@@ -70,14 +69,14 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
   }
 }
 
-void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
+void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint& aPoint,
                                              Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &>(this,
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &>(this,
                                                                                                   &EmbedContentController::HandleDoubleTap,
                                                                                                   aPoint,
                                                                                                   aModifiers,
@@ -87,24 +86,24 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint,
   }
 }
 
-void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint,
+void EmbedContentController::HandleSingleTap(const LayoutDevicePoint& aPoint,
                                              Modifiers aModifiers,
                                              const ScrollableLayerGuid& aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &>(this,
-                                                                                                  &EmbedContentController::HandleSingleTap,
-                                                                                                  aPoint,
-                                                                                                  aModifiers,
-                                                                                                  aGuid));
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &>(this,
+                                                                                                           &EmbedContentController::HandleSingleTap,
+                                                                                                           aPoint,
+                                                                                                           aModifiers,
+                                                                                                           aGuid));
   } else if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
-void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
+void EmbedContentController::HandleLongTap(const LayoutDevicePoint &aPoint,
                                            Modifiers aModifiers,
                                            const ScrollableLayerGuid& aGuid,
                                            uint64_t aInputBlockId)
@@ -112,12 +111,12 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint,
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const CSSPoint &, Modifiers, const ScrollableLayerGuid &, uint64_t>(this,
-                                                                                                  &EmbedContentController::HandleLongTap,
-                                                                                                  aPoint,
-                                                                                                  aModifiers,
-                                                                                                  aGuid,
-                                                                                                  aInputBlockId));
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &, uint64_t>(this,
+                                                                                                                     &EmbedContentController::HandleLongTap,
+                                                                                                                     aPoint,
+                                                                                                                     aModifiers,
+                                                                                                                     aGuid,
+                                                                                                                     aInputBlockId));
   } else if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
@@ -178,7 +177,7 @@ void EmbedContentController::DoNotifyFlushComplete()
   }
 }
 
-nsIntPoint EmbedContentController::convertIntPoint(const CSSPoint &aPoint)
+nsIntPoint EmbedContentController::convertIntPoint(const LayoutDevicePoint &aPoint)
 {
   return nsIntPoint((int)nearbyint(aPoint.x), (int)nearbyint(aPoint.y));
 }
