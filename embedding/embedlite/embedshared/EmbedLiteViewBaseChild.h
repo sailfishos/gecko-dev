@@ -157,11 +157,11 @@ protected:
                                      const gfxSize& scrollSize) override;
 
   virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
-  virtual bool RecvHandleDoubleTap(const CSSPoint&, const Modifiers& aModifiers,
+  virtual bool RecvHandleDoubleTap(const LayoutDevicePoint &, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
-  virtual bool RecvHandleSingleTap(const CSSPoint&, const Modifiers& aModifiers,
+  virtual bool RecvHandleSingleTap(const LayoutDevicePoint &, const Modifiers& aModifiers,
                                    const ScrollableLayerGuid& aGuid) override;
-  virtual bool RecvHandleLongTap(const CSSPoint& aPoint,
+  virtual bool RecvHandleLongTap(const LayoutDevicePoint &aPoint,
                                  const mozilla::layers::ScrollableLayerGuid& aGuid,
                                  const uint64_t& aInputBlockId) override;
 #if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf

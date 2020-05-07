@@ -513,6 +513,35 @@ TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
   mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 }
 
+mozilla::CSSPoint
+TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
+                                    const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                    bool *ok)
+{
+  nsCOMPtr<nsIPresShell> presShell = GetPresContext()->GetPresShell();
+  if (!presShell) {
+    if (ok)
+      *ok = false;
+
+    LOGT("Failed to transform layout device point -- no nsIPresShell");
+    return mozilla::CSSPoint(0.0f, 0.0f);
+  }
+
+  if (!presShell->GetPresContext()) {
+    if (ok)
+      *ok = false;
+
+    LOGT("Failed to transform layout device point -- no nsPresContext");
+    return mozilla::CSSPoint(0.0f, 0.0f);
+  }
+
+  if (ok)
+    *ok = true;
+
+  mozilla::CSSToLayoutDeviceScale scale = presShell->GetPresContext()->CSSToDevPixelScale();
+  return APZCCallbackHelper::ApplyCallbackTransform(aPoint / scale, aGuid);
+}
+
 // -- nsITabChild --------------
 
 NS_IMETHODIMP

@@ -22,6 +22,11 @@ class nsPresContext;
 class nsIDOMWindowUtils;
 
 namespace mozilla {
+
+namespace layers {
+struct ScrollableLayerGuid;
+}
+
 namespace embedlite {
 
 class EmbedLiteViewChildIface;
@@ -65,6 +70,10 @@ public:
   virtual ScreenIntSize GetInnerSize() override;
 
   void ReportSizeUpdate(const LayoutDeviceIntRect& aRect);
+
+  mozilla::CSSPoint ApplyPointTransform(const LayoutDevicePoint& aPoint,
+                                        const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                        bool *ok);
 
 protected:
   virtual ~TabChildHelper();

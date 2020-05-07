@@ -865,11 +865,15 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 }
 
 bool
-EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
+EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint& aPoint,
                                             const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
+  bool ok = false;
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
+  if (!ok) {
+    return true;
+  }
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers);
@@ -885,7 +889,7 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const CSSPoint& aPoint,
 }
 
 bool
-EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
+EmbedLiteViewBaseChild::RecvHandleSingleTap(const LayoutDevicePoint& aPoint,
                                             const Modifiers &aModifiers,
                                             const ScrollableLayerGuid& aGuid)
 {
@@ -900,7 +904,11 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
     mIMEComposing = false;
   }
 
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
+  bool ok = false;
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
+  if (!ok) {
+    return true;
+  }
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers);
@@ -923,11 +931,15 @@ EmbedLiteViewBaseChild::RecvHandleSingleTap(const CSSPoint& aPoint,
 }
 
 bool
-EmbedLiteViewBaseChild::RecvHandleLongTap(const CSSPoint& aPoint,
+EmbedLiteViewBaseChild::RecvHandleLongTap(const LayoutDevicePoint& aPoint,
                                           const ScrollableLayerGuid& aGuid,
                                           const uint64_t& aInputBlockId)
 {
-  CSSPoint cssPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
+  bool ok = false;
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
+  if (!ok) {
+    return true;
+  }
 
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
     mControllerListeners[i]->HandleLongTap(cssPoint, 0, aInputBlockId);
