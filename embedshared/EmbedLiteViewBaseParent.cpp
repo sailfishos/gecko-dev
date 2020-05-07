@@ -466,7 +466,7 @@ EmbedLiteViewBaseParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
   ScrollableLayerGuid guid;
   uint64_t outInputBlockId;
 
-  mozilla::MultiTouchInput& multiTouchInput = const_cast<mozilla::InputData&>(aEvent).AsMultiTouchInput();
+  mozilla::MultiTouchInput multiTouchInput = aEvent.AsMultiTouchInput();
   nsEventStatus apzResult = GetApzcTreeManager()->ReceiveInputEvent(multiTouchInput, &guid, &outInputBlockId);
 
   // If the APZ says to drop it, then we drop it
