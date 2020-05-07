@@ -504,12 +504,7 @@ TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
     mHasValidInnerSize = true;
   }
 
-  LOGT("REMOVE THIS: w: %d, h: %d", aRect.width, aRect.height);
-
   LayoutDeviceIntSize size = aRect.Size();
-
-//  LayoutDeviceIntSize innerSize =
-//    RoundedToInt(CSSSize(aSize.width, aSize.height) * WebWidget()->GetDefaultScale());
   mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 }
 
