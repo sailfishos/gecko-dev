@@ -63,9 +63,9 @@ public:
 private:
   EmbedLiteViewListener *GetListener() const;
 
-  void HandleDoubleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
-  void HandleSingleTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
-  void HandleLongTap(const CSSPoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId);
+  void HandleDoubleTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
+  void HandleSingleTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
+  void HandleLongTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId);
 
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
   void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
@@ -75,7 +75,7 @@ private:
   void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
   void DoNotifyFlushComplete();
 
-  nsIntPoint convertIntPoint(const CSSPoint &aPoint);
+  nsIntPoint convertIntPoint(const LayoutDevicePoint &aPoint);
 
   MessageLoop* mUILoop;
   EmbedLiteViewBaseParent* mRenderFrame;

@@ -504,13 +504,37 @@ TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
     mHasValidInnerSize = true;
   }
 
-  LOGT("REMOVE THIS: w: %d, h: %d", aRect.width, aRect.height);
-
   LayoutDeviceIntSize size = aRect.Size();
-
-//  LayoutDeviceIntSize innerSize =
-//    RoundedToInt(CSSSize(aSize.width, aSize.height) * WebWidget()->GetDefaultScale());
   mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
+}
+
+mozilla::CSSPoint
+TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
+                                    const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                    bool *ok)
+{
+  nsCOMPtr<nsIPresShell> presShell = GetPresContext()->GetPresShell();
+  if (!presShell) {
+    if (ok)
+      *ok = false;
+
+    LOGT("Failed to transform layout device point -- no nsIPresShell");
+    return mozilla::CSSPoint(0.0f, 0.0f);
+  }
+
+  if (!presShell->GetPresContext()) {
+    if (ok)
+      *ok = false;
+
+    LOGT("Failed to transform layout device point -- no nsPresContext");
+    return mozilla::CSSPoint(0.0f, 0.0f);
+  }
+
+  if (ok)
+    *ok = true;
+
+  mozilla::CSSToLayoutDeviceScale scale = presShell->GetPresContext()->CSSToDevPixelScale();
+  return APZCCallbackHelper::ApplyCallbackTransform(aPoint / scale, aGuid);
 }
 
 // -- nsITabChild --------------
