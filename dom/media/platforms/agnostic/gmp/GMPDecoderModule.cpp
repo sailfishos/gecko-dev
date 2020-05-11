@@ -17,7 +17,7 @@
 #include "mozilla/StaticMutex.h"
 #include "gmp-audio-decode.h"
 #include "gmp-video-decode.h"
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
 #endif
 #include "VPXDecoder.h"
@@ -53,7 +53,7 @@ CreateDecoderWrapper(MediaDataDecoderCallback* aCallback)
 already_AddRefed<MediaDataDecoder>
 GMPDecoderModule::CreateVideoDecoder(const CreateDecoderParams& aParams)
 {
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (!MP4Decoder::IsH264(aParams.mConfig.mMimeType) &&
       !VPXDecoder::IsVP8(aParams.mConfig.mMimeType) &&
       !VPXDecoder::IsVP9(aParams.mConfig.mMimeType)) {
@@ -103,7 +103,7 @@ PlatformDecoderModule::ConversionRequired
 GMPDecoderModule::DecoderNeedsConversion(const TrackInfo& aConfig) const
 {
   // GMPVideoCodecType::kGMPVideoCodecH264 specifies that encoded frames must be in AVCC format.
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (aConfig.IsVideo() && MP4Decoder::IsH264(aConfig.mMimeType)) {
     return ConversionRequired::kNeedAVCC;
   } else
@@ -126,7 +126,7 @@ GMPDecoderModule::PreferredGMP(const nsACString& aMimeType)
     }
   }
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(aMimeType)) {
     switch (MediaPrefs::GMPH264Preferred()) {
       case 1: rv.emplace(kEMEKeySystemClearkey); break;
@@ -148,7 +148,7 @@ GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
     return false;
   }
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(aMimeType)) {
     return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
                       { NS_LITERAL_CSTRING("h264"), aGMP.value()});
@@ -165,7 +165,7 @@ GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
                       { NS_LITERAL_CSTRING("vp8"), aGMP.value()});
   }
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsAAC(aMimeType)) {
     return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_AUDIO_DECODER),
                       { NS_LITERAL_CSTRING("aac"), aGMP.value()});

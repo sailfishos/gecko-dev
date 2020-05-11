@@ -76,9 +76,12 @@ BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
-BuildRequires:  pkgconfig(gstreamer-1.0)
-BuildRequires:  pkgconfig(gstreamer-app-1.0)
-BuildRequires:  pkgconfig(gstreamer-plugins-base-1.0)
+BuildRequires:  pkgconfig(libavcodec)
+BuildRequires:  pkgconfig(libavfilter)
+BuildRequires:  pkgconfig(libavformat)
+BuildRequires:  pkgconfig(libavutil)
+BuildRequires:  pkgconfig(libswresample)
+BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  pkgconfig(contentaction5)
 BuildRequires:  qt5-qttools
@@ -176,10 +179,6 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
-
-# Encrypted Media Extension (EME) support requires Fragmented MP4 support
-echo "ac_add_options --disable-fmp4" >> "$MOZCONFIG"
-echo "ac_add_options --disable-eme" >> "$MOZCONFIG"
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"

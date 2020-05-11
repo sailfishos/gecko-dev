@@ -29,7 +29,7 @@
 #include "nsPrintfCString.h"
 #include "MediaTelemetryConstants.h"
 #include "GMPUtils.h" // For SplitAt. TODO: Move SplitAt to a central place.
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
 #endif
 #include "VPXDecoder.h"
@@ -100,7 +100,7 @@ WMFVideoMFTManager::WMFVideoMFTManager(
 {
   MOZ_COUNT_CTOR(WMFVideoMFTManager);
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   // Need additional checks/params to check vp8/vp9
   if (MP4Decoder::IsH264(aConfig.mMimeType)) {
     mStreamType = H264;

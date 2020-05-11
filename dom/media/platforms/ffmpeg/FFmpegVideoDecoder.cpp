@@ -11,7 +11,7 @@
 
 #include "MediaInfo.h"
 #include "VPXDecoder.h"
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
 #endif
 
@@ -369,7 +369,7 @@ FFmpegVideoDecoder<LIBAV_VER>::~FFmpegVideoDecoder()
 AVCodecID
 FFmpegVideoDecoder<LIBAV_VER>::GetCodecId(const nsACString& aMimeType)
 {
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(aMimeType)) {
     return AV_CODEC_ID_H264;
   }
