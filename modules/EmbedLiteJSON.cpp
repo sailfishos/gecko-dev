@@ -53,8 +53,7 @@ bool
 EmbedLiteJSON::JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const char16_t*>(aBuf),
-                 static_cast<uint32_t>(aLen));
+  result->Append(aBuf, aLen);
   return true;
 }
 
