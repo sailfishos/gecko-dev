@@ -328,12 +328,14 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   JSAutoRequest ar(aCx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-  bool hasData = (aData.DataLength() > 0);
-  JS::Rooted<JS::Value> rval(aCx, JS::NullValue());
-  JSAutoStructuredCloneBuffer cloneBuffer(JS::StructuredCloneScope::Unassigned, nullptr, nullptr);
-  cloneBuffer.steal(&aData.Data());
+  JS::RootedValue rval(aCx);
+  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
 
-  if (hasData && !cloneBuffer.read(aCx, &rval)) {
+  if (aData.DataLength() > 0 && !JS_ReadStructuredClone(aCx, aData.Data(),
+                                                        JS_STRUCTURED_CLONE_VERSION,
+                                                        scope,
+                                                        &rval,
+                                                        nullptr, nullptr)) {
     JS_ClearPendingException(aCx);
     return false;
   }
@@ -400,14 +402,14 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   }
 
   JSAutoRequest ar(aCx);
+  JS::RootedValue rval(aCx);
+  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
 
-  // FIXME: Need callback interface for simple JSON to avoid useless conversion here
-  bool hasData = (aData.DataLength() > 0);
-  JS::Rooted<JS::Value> rval(aCx, JS::NullValue());
-  JSAutoStructuredCloneBuffer cloneBuffer(JS::StructuredCloneScope::Unassigned, nullptr, nullptr);
-  cloneBuffer.steal(&aData.Data());
-
-  if (hasData && !cloneBuffer.read(aCx, &rval)) {
+  if (aData.DataLength() > 0 && !JS_ReadStructuredClone(aCx, aData.Data(),
+                                                        JS_STRUCTURED_CLONE_VERSION,
+                                                        scope,
+                                                        &rval,
+                                                        nullptr, nullptr)) {
     JS_ClearPendingException(aCx);
     return NS_ERROR_UNEXPECTED;
   }
