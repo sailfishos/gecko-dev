@@ -60,6 +60,7 @@ Patch14:    0014-Disable-loading-extensions-and-assume-memory-constra.patch
 Patch15:    0015-gecko-Use-MOZ_EMBEDLITE-for-embedlite-integration.patch
 Patch16:    0016-gecko-Create-EmbedLiteCompositorBridgeParent-in-Comp.patch
 Patch17:    0017-gecko-Configuration-option.-JB-49613.patch
+Patch18:    0018-ffmpeg4.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
