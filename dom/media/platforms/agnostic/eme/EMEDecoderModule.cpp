@@ -17,7 +17,7 @@
 #include "nsClassHashtable.h"
 #include "GMPDecoderModule.h"
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
 #endif
 
@@ -291,7 +291,7 @@ EMEDecoderModule::CreateAudioDecoder(const CreateDecoderParams& aParams)
 PlatformDecoderModule::ConversionRequired
 EMEDecoderModule::DecoderNeedsConversion(const TrackInfo& aConfig) const
 {
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (aConfig.IsVideo() && MP4Decoder::IsH264(aConfig.mMimeType)) {
     return ConversionRequired::kNeedAVCC;
   } else

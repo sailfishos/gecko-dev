@@ -44,7 +44,7 @@
 
 #include "DecoderDoctorDiagnostics.h"
 
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
 #include "MP4Decoder.h"
 #endif
 #include "mozilla/dom/RemoteVideoDecoder.h"
@@ -124,7 +124,7 @@ public:
     RefPtr<MediaByteBuffer> extraData = aTrackConfig.GetAsVideoInfo()->mExtraData;
     AddToCheckList(
       [mimeType, extraData]() {
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
         if (MP4Decoder::IsH264(mimeType)) {
           mp4_demuxer::SPSData spsdata;
           // WMF H.264 Video Decoder and Apple ATDecoder
@@ -306,7 +306,7 @@ PDMFactory::CreateDecoderWithPDM(PlatformDecoderModule* aPDM,
 
   CreateDecoderParams params = aParams;
   params.mCallback = callback;
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(config.mMimeType) && !aParams.mUseBlankDecoder) {
     RefPtr<H264Converter> h = new H264Converter(aPDM, params);
     const nsresult rv = h->GetLastError();

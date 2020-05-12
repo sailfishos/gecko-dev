@@ -160,7 +160,7 @@ GMPVideoDecoder::GMPVideoDecoder(const GMPVideoDecoderParams& aParams)
 void
 GMPVideoDecoder::InitTags(nsTArray<nsCString>& aTags)
 {
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(mConfig.mMimeType)) {
     aTags.AppendElement(NS_LITERAL_CSTRING("h264"));
     const Maybe<nsCString> gmp(
@@ -257,7 +257,7 @@ GMPVideoDecoder::GMPInitDone(GMPVideoDecoderProxy* aGMP, GMPVideoHost* aHost)
 
   codec.mGMPApiVersion = kGMPVersion33;
   nsTArray<uint8_t> codecSpecific;
-#if defined(MP4DECODER)
+#if defined(MOZ_FMP4)
   if (MP4Decoder::IsH264(mConfig.mMimeType)) {
     codec.mCodecType = kGMPVideoCodecH264;
     codecSpecific.AppendElement(0); // mPacketizationMode.
