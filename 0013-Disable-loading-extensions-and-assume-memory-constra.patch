@@ -1,26 +1,36 @@
-From ce2381e1116079792a6f0239609d1a51f5df897d Mon Sep 17 00:00:00 2001
-From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
-Date: Wed, 25 Mar 2020 06:15:06 +0000
-Subject: [PATCH] Disable loading extensions and assume memory constraints.
+From f513e057bbaf0645d243c46c34802a4b08c841c4 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 14 May 2020 13:42:59 +0200
+Subject: [PATCH] Disable loading heavier extensions and assume memory
+ constraints.
 
 ---
- toolkit/mozapps/extensions/extensions.manifest | 2 +-
+ toolkit/mozapps/extensions/extensions.manifest | 4 ++--
  tools/profiler/public/GeckoProfilerImpl.h      | 2 +-
- 2 files changed, 2 insertions(+), 2 deletions(-)
+ 2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/toolkit/mozapps/extensions/extensions.manifest b/toolkit/mozapps/extensions/extensions.manifest
-index c7d2ee386ffa..ce99fbd0c7bf 100644
+index c7d2ee386ffa..70d9ba2e85b7 100644
 --- a/toolkit/mozapps/extensions/extensions.manifest
 +++ b/toolkit/mozapps/extensions/extensions.manifest
-@@ -5,7 +5,7 @@ component {e0a106ed-6ad4-47a4-b6af-2f1c8aa4712d} nsBlocklistServiceContent.js pr
- contract @mozilla.org/extensions/blocklist;1 {e0a106ed-6ad4-47a4-b6af-2f1c8aa4712d} process=content
- 
- category update-timer nsBlocklistService @mozilla.org/extensions/blocklist;1,getService,blocklist-background-update-timer,extensions.blocklist.interval,86400
--#ifndef MOZ_WIDGET_GONK
-+#if !defined(MOZ_WIDGET_GONK) && !defined(MOZ_WIDGET_QT)
+@@ -8,7 +8,7 @@ category update-timer nsBlocklistService @mozilla.org/extensions/blocklist;1,get
+ #ifndef MOZ_WIDGET_GONK
  component {4399533d-08d1-458c-a87a-235f74451cfa} addonManager.js
  contract @mozilla.org/addons/integration;1 {4399533d-08d1-458c-a87a-235f74451cfa}
- #ifndef MOZ_WIDGET_ANDROID
+-#ifndef MOZ_WIDGET_ANDROID
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_WIDGET_QT)
+ category update-timer addonManager @mozilla.org/addons/integration;1,getService,addon-background-update-timer,extensions.update.interval,86400
+ #endif
+ component {7beb3ba8-6ec3-41b4-b67c-da89b8518922} amContentHandler.js
+@@ -18,7 +18,7 @@ contract @mozilla.org/addons/web-install-listener;1 {0f38e086-89a3-40a5-8ffc-9b6
+ component {9df8ef2b-94da-45c9-ab9f-132eb55fddf1} amInstallTrigger.js
+ contract @mozilla.org/addons/installtrigger;1 {9df8ef2b-94da-45c9-ab9f-132eb55fddf1}
+ category JavaScript-global-property InstallTrigger @mozilla.org/addons/installtrigger;1
+-#ifndef MOZ_WIDGET_ANDROID
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_WIDGET_QT)
+ category addon-provider-module PluginProvider resource://gre/modules/addons/PluginProvider.jsm
+ #endif
+ category addon-provider-module GMPProvider resource://gre/modules/addons/GMPProvider.jsm
 diff --git a/tools/profiler/public/GeckoProfilerImpl.h b/tools/profiler/public/GeckoProfilerImpl.h
 index ee8112ffa194..22821e1639b7 100644
 --- a/tools/profiler/public/GeckoProfilerImpl.h
