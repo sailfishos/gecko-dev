@@ -87,7 +87,7 @@ EmbedLiteViewBaseParent::UpdateScrollController()
 
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
-    if (mDPI > 0) {
+    if ((mDPI > 0) && GetApzcTreeManager()) {
       GetApzcTreeManager()->SetDPI(mDPI);
     }
     CompositorBridgeParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
