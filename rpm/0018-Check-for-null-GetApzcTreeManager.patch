@@ -1,0 +1,29 @@
+From ebfdcbad208fa904a6f16e10a33dfb515bb34d3e Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Thu, 14 May 2020 15:03:00 +0300
+Subject: [PATCH] [embedlite] Check for null GetApzcTreeManager(). Contributes
+ to JB#49875
+
+This causes a crash with jolla-email unless the null pointer is checked
+and filtered out. Every other instance of GetApzcTreeManager() seems to
+be checked already, so it seems like a sensible precaution.
+---
+ embedding/embedlite/embedshared/EmbedLiteViewBaseParent.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/embedding/embedlite/embedshared/EmbedLiteViewBaseParent.cpp b/embedding/embedlite/embedshared/EmbedLiteViewBaseParent.cpp
+index e5939be5c0d1..2f1982b77e90 100644
+--- a/embedding/embedlite/embedshared/EmbedLiteViewBaseParent.cpp
++++ b/embedding/embedlite/embedshared/EmbedLiteViewBaseParent.cpp
+@@ -81,7 +81,7 @@ EmbedLiteViewBaseParent::UpdateScrollController()
+ 
+   if (mCompositor) {
+     mRootLayerTreeId = mCompositor->RootLayerTreeId();
+-    if (mDPI > 0) {
++    if ((mDPI > 0) && GetApzcTreeManager()) {
+       GetApzcTreeManager()->SetDPI(mDPI);
+     }
+     CompositorBridgeParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
+-- 
+2.17.1
+
