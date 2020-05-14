@@ -1,10 +1,7 @@
-
-# HG changeset patch
-# User Jean-Yves Avenard <jyavenard@mozilla.com>
-# Date 1524125955 -7200
-# Node ID 1547a149ebafd3a67881dd33af7dfce78e81f749
-# Parent  0e45c13b34e815cb42a9f08bb44142d1a81e186e
-Bug 1435212 - Add support for FFmpeg 4.0. r?bryce
+From abe6e049cdd3fb968be73d53b878697f1842a898 Mon Sep 17 00:00:00 2001
+From: Jean-Yves Avenard <jyavenard@mozilla.com>
+Date: Thu, 19 Apr 2018 10:19:15 +0200
+Subject: [PATCH] Bug 1435212 - Add support for FFmpeg 4.0. r=bryce
 
 MozReview-Commit-ID: JlDFSUyGQu
 
@@ -12,7 +9,7 @@ MozReview-Commit-ID: JlDFSUyGQu
 diff --git a/dom/media/platforms/ffmpeg/FFmpegDataDecoder.cpp b/dom/media/platforms/ffmpeg/FFmpegDataDecoder.cpp
 --- a/dom/media/platforms/ffmpeg/FFmpegDataDecoder.cpp
 +++ b/dom/media/platforms/ffmpeg/FFmpegDataDecoder.cpp
-@@ -72,25 +72,31 @@ FFmpegDataDecoder<LIBAV_VER>::InitDecode
+@@ -72,25 +72,31 @@ FFmpegDataDecoder<LIBAV_VER>::InitDecoder()
    mCodecContext->opaque = this;
  
    InitCodecContext();
@@ -116,12 +113,10 @@ diff --git a/dom/media/platforms/ffmpeg/FFmpegLibWrapper.cpp b/dom/media/platfor
  #ifdef DEBUG
    av_log_set_level(AV_LOG_DEBUG);
  #endif
-diff --git a/dom/media/platforms/ffmpeg/FFmpegLibs.h b/dom/media/platforms/ffmpeg/FFmpegLibs.h
---- a/dom/media/platforms/ffmpeg/FFmpegLibs.h
 diff --git a/dom/media/platforms/ffmpeg/FFmpegRuntimeLinker.cpp b/dom/media/platforms/ffmpeg/FFmpegRuntimeLinker.cpp
 --- a/dom/media/platforms/ffmpeg/FFmpegRuntimeLinker.cpp
 +++ b/dom/media/platforms/ffmpeg/FFmpegRuntimeLinker.cpp
-@@ -21,22 +21,25 @@ template <int V> class FFmpegDecoderModu
+@@ -21,22 +21,25 @@ template <int V> class FFmpegDecoderModule
  public:
    static already_AddRefed<PlatformDecoderModule> Create(FFmpegLibWrapper*);
  };
@@ -147,7 +142,7 @@ diff --git a/dom/media/platforms/ffmpeg/FFmpegRuntimeLinker.cpp b/dom/media/plat
    "libavcodec.so.54",
    "libavcodec.so.53",
  #endif
-@@ -129,16 +132,17 @@ FFmpegRuntimeLinker::CreateDecoderModule
+@@ -129,16 +132,17 @@ FFmpegRuntimeLinker::CreateDecoderModule()
    }
    RefPtr<PlatformDecoderModule> module;
    switch (sLibAV.mVersion) {
@@ -13651,5 +13646,6 @@ diff --git a/dom/media/platforms/ffmpeg/moz.build b/dom/media/platforms/ffmpeg/m
  ]
  
  FINAL_LIBRARY = 'xul'
-
+-- 
+2.26.2
 
