@@ -112,7 +112,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t&, const bool &>
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool>
                                    (this,
                                     &EmbedLiteViewBaseChild::InitGeckoWindow,
                                     aParentId,
@@ -161,7 +161,7 @@ bool EmbedLiteViewBaseChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
