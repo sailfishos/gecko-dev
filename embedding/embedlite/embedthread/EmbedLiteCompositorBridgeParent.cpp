@@ -115,15 +115,14 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
           flags |= layers::TextureFlags::NON_PREMULTIPLIED;
       }
 
-      auto forwarder = state->mLayerManager->AsShadowForwarder()->GetTextureForwarder();
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps, forwarder, flags);
+        factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps, nullptr, flags);
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
         GLContext* nullConsGL = nullptr; // Bug 1050044.
-        factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, forwarder, flags);
+        factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, nullptr, flags);
       }
       if (factory) {
         screen->Morph(Move(factory));
