@@ -211,7 +211,7 @@ private:
   friend class EmbedLiteAppThreadChild;
   friend class EmbedLiteAppBaseChild;
 
-  void InitGeckoWindow(const uint32_t& parentId, const bool& isPrivateWindow);
+  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
 
   uint32_t mId;
