@@ -61,6 +61,7 @@ Patch15:    0015-gecko-Create-EmbedLiteCompositorBridgeParent-in-Comp.patch
 Patch16:    0016-gecko-Configuration-option.-JB-49613.patch
 Patch17:    0017-ffmpeg4.patch
 Patch18:    0018-Check-for-null-GetApzcTreeManager.patch
+Patch19:    0019-gecko-Fix-format-specifiers-for-event-logging-in-IME.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
