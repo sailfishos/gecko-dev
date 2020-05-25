@@ -80,10 +80,8 @@ PuppetWidgetBase::Destroy()
 
   mOnDestroyCalled = true;
 
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (mLayerManager && topWidget == this) {
-    mLayerManager->Destroy();
-  }
+  LOGC("EmbedLiteLayerManager", "Destroy %s this: %p", Type(), this);
+
   mLayerManager = nullptr;
 
   Base::OnDestroy();
@@ -264,6 +262,14 @@ NS_IMETHODIMP
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
   Unused << aRect;
+
+  LOGC("EmbedLiteLayerManager", "destroyed: %d type: %s LayerManager %p this: %p",
+       mOnDestroyCalled, Type(), mLayerManager, this);
+
+  if (mOnDestroyCalled) {
+    NS_OK;
+  }
+
   nsIWidgetListener* listener = GetWidgetListener();
   if (listener) {
     listener->WillPaintWindow(this);
@@ -375,6 +381,8 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
                                                 LayersBackend aBackendHint,
                                                 LayerManagerPersistence aPersistence)
 {
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+
   if (mLayerManager) {
     // This layer manager might be used for painting outside of DoDraw(), so we need
     // to set the correct rotation on it.
@@ -387,12 +395,7 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
     return mLayerManager;
   }
 
-  LOGT();
-
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget != this) {
-    mLayerManager = topWidget->GetLayerManager();
-  }
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
 
   // Layer manager can be null here. Sub-class shall handle this.
   return mLayerManager;
