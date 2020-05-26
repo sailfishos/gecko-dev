@@ -348,7 +348,7 @@ EmbedLiteAppProcessParent::AllocPCompositorBridgeParent(Transport* aTransport,
 }
 
 bool
-EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs)
+EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs)
 {
   LOGT();
   mPrefs = prefs;
@@ -356,7 +356,7 @@ EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref
 }
 
 void
-EmbedLiteAppProcessParent::GetPrefs(InfallibleTArray<PrefSetting>* prefs)
+EmbedLiteAppProcessParent::GetPrefs(InfallibleTArray<mozilla::dom::Pref> *prefs)
 {
   prefs = &mPrefs;
 }

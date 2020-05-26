@@ -82,6 +82,8 @@
 #include "plstr.h"
 #include "prlink.h"
 
+#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
+
 #ifdef XP_WIN
 #include "windows.h"
 #endif
@@ -2779,6 +2781,11 @@ Preferences::~Preferences() {
   gPrefNameArena.Clear();
 }
 
+static mozilla::embedlite::EmbedLiteAppProcessParent* GetEmbedLiteParent()
+{
+  return mozilla::embedlite::EmbedLiteAppProcessParent::GetInstance();
+}
+
 NS_IMPL_ISUPPORTS(Preferences, nsIPrefService, nsIObserver, nsIPrefBranch,
                   nsISupportsWeakReference)
 
@@ -3663,7 +3670,9 @@ static nsresult pref_ReadPrefFromJar(nsZipArchive* aJarReader,
 /* static */ nsresult Preferences::GetBool(const char* aPrefName, bool* aResult,
                                            PrefValueKind aKind) {
   MOZ_ASSERT(aResult);
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
 
   Pref* pref = pref_HashTableLookup(aPrefName);
   return pref ? pref->GetBoolValue(aKind, aResult) : NS_ERROR_UNEXPECTED;
@@ -3673,7 +3682,9 @@ static nsresult pref_ReadPrefFromJar(nsZipArchive* aJarReader,
                                           int32_t* aResult,
                                           PrefValueKind aKind) {
   MOZ_ASSERT(aResult);
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
 
   Pref* pref = pref_HashTableLookup(aPrefName);
   return pref ? pref->GetIntValue(aKind, aResult) : NS_ERROR_UNEXPECTED;
@@ -3683,7 +3694,6 @@ static nsresult pref_ReadPrefFromJar(nsZipArchive* aJarReader,
                                             float* aResult,
                                             PrefValueKind aKind) {
   MOZ_ASSERT(aResult);
-
   nsAutoCString result;
   nsresult rv = Preferences::GetCString(aPrefName, result, aKind);
   if (NS_SUCCEEDED(rv)) {
@@ -3695,7 +3705,10 @@ static nsresult pref_ReadPrefFromJar(nsZipArchive* aJarReader,
 /* static */ nsresult Preferences::GetCString(const char* aPrefName,
                                               nsACString& aResult,
                                               PrefValueKind aKind) {
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
 
   aResult.SetIsVoid(true);
 
@@ -4091,6 +4104,9 @@ static void BoolVarChanged(const char* aPref, void* aClosure) {
   AssertNotAlreadyCached("bool", aPref, aCache);
 #endif
   *aCache = GetBool(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueBool = aDefault;
@@ -4164,6 +4180,9 @@ template <MemoryOrdering Order>
   AssertNotAlreadyCached("int", aPref, aCache);
 #endif
   *aCache = Preferences::GetInt(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueUint = aDefault;
@@ -4188,6 +4207,9 @@ static void UintVarChanged(const char* aPref, void* aClosure) {
   AssertNotAlreadyCached("uint", aPref, aCache);
 #endif
   *aCache = Preferences::GetUint(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueUint = aDefault;
@@ -4258,6 +4280,9 @@ static void FloatVarChanged(const char* aPref, void* aClosure) {
   AssertNotAlreadyCached("float", aPref, aCache);
 #endif
   *aCache = Preferences::GetFloat(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->mCacheLocation = aCache;
   data->mDefaultValueFloat = aDefault;

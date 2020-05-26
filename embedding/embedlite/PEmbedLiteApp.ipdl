@@ -20,7 +20,7 @@ parent:
   async ReadyToShutdown();
   sync CreateWindow(uint32_t parentId, uint32_t chromeFlags, uint32_t contextFlags)
     returns (uint32_t createdID, bool cancel);
-  async PrefsArrayInitialized(PrefSetting[] prefs);
+  async PrefsArrayInitialized(Pref[] prefs);
 
 child:
   async PEmbedLiteView(uint32_t windowId, uint32_t id, uint32_t parentId, bool isPrivateWindow);

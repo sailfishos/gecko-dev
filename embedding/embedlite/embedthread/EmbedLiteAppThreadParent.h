@@ -50,7 +50,7 @@ protected:
   AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess) override;
 
   virtual bool
-  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs) override;
+  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs) override;
 
 private:
   virtual ~EmbedLiteAppThreadParent();
