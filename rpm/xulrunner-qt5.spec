@@ -171,6 +171,7 @@ Tests and misc files for xulrunner.
 %patch17 -p1
 %patch18 -p1
 %patch23 -p1
+%patch24 -p1
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
