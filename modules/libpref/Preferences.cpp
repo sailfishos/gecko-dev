@@ -51,6 +51,7 @@
 #include "nsRefPtrHashtable.h"
 #include "nsIMemoryReporter.h"
 #include "nsThreadUtils.h"
+#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
 
 #ifdef DEBUG
 #define ENSURE_MAIN_PROCESS(message, pref) do {                                \
@@ -541,6 +542,10 @@ NS_INTERFACE_MAP_BEGIN(Preferences)
     NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END
 
+static mozilla::embedlite::EmbedLiteAppProcessParent* GetEmbedLiteParent()
+{
+  return mozilla::embedlite::EmbedLiteAppProcessParent::GetInstance();
+}
 
 /*
  * nsIPrefService Implementation
@@ -560,9 +565,20 @@ Preferences::Init()
   using mozilla::dom::ContentChild;
   if (XRE_IsContentProcess()) {
     InfallibleTArray<PrefSetting> prefs;
-    ContentChild::GetSingleton()->SendReadPrefsArray(&prefs);
+    if (ContentChild::GetSingleton()) {
+      ContentChild::GetSingleton()->SendReadPrefsArray(&prefs);
+    }
 
     // Store the array
+    for (uint32_t i = 0; i < prefs.Length(); ++i) {
+      pref_SetPref(prefs[i]);
+    }
+    return NS_OK;
+  }
+  mozilla::embedlite::EmbedLiteAppProcessParent* parent = GetEmbedLiteParent();
+  if (parent != nullptr) {
+    InfallibleTArray<PrefSetting> prefs;
+    parent->GetPrefs(&prefs);
     for (uint32_t i = 0; i < prefs.Length(); ++i) {
       pref_SetPref(prefs[i]);
     }
@@ -1388,7 +1404,10 @@ nsresult
 Preferences::GetBool(const char* aPref, bool* aResult)
 {
   NS_PRECONDITION(aResult, "aResult must not be NULL");
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
+
   return PREF_GetBoolPref(aPref, aResult, false);
 }
 
@@ -1397,7 +1416,10 @@ nsresult
 Preferences::GetInt(const char* aPref, int32_t* aResult)
 {
   NS_PRECONDITION(aResult, "aResult must not be NULL");
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
+
   return PREF_GetIntPref(aPref, aResult, false);
 }
 
@@ -1406,7 +1428,9 @@ nsresult
 Preferences::GetFloat(const char* aPref, float* aResult)
 {
   NS_PRECONDITION(aResult, "aResult must not be NULL");
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
   nsAutoCString result;
   nsresult rv = PREF_CopyCharPref(aPref, getter_Copies(result), false);
   if (NS_SUCCEEDED(rv)) {
@@ -1439,7 +1463,9 @@ nsresult
 Preferences::GetCString(const char* aPref, nsACString* aResult)
 {
   NS_PRECONDITION(aResult, "aResult must not be NULL");
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
   nsAutoCString result;
   nsresult rv = PREF_CopyCharPref(aPref, getter_Copies(result), false);
   if (NS_SUCCEEDED(rv)) {
@@ -1453,7 +1479,9 @@ nsresult
 Preferences::GetString(const char* aPref, nsAString* aResult)
 {
   NS_PRECONDITION(aResult, "aResult must not be NULL");
-  NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  if (!GetEmbedLiteParent()) {
+    NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
+  }
   nsAutoCString result;
   nsresult rv = PREF_CopyCharPref(aPref, getter_Copies(result), false);
   if (NS_SUCCEEDED(rv)) {
@@ -1620,6 +1648,10 @@ nsresult
 Preferences::AddStrongObserver(nsIObserver* aObserver,
                                const char* aPref)
 {
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
+
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
   return sRootBranch->AddObserver(aPref, aObserver, false);
 }
@@ -1629,6 +1661,10 @@ nsresult
 Preferences::AddWeakObserver(nsIObserver* aObserver,
                              const char* aPref)
 {
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
+
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
   return sRootBranch->AddObserver(aPref, aObserver, true);
 }
@@ -1693,6 +1729,10 @@ Preferences::RegisterCallback(PrefChangedFunc aCallback,
                               void* aClosure,
                               MatchKind aMatchKind)
 {
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
+
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   ValueObserverHashKey hashKey(aPref, aCallback, aMatchKind);
@@ -1770,6 +1810,9 @@ Preferences::AddBoolVarCache(bool* aCache,
   AssertNotAlreadyCached("bool", aPref, aCache);
 #endif
   *aCache = GetBool(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
   data->defaultValueBool = aDefault;
@@ -1795,6 +1838,9 @@ Preferences::AddIntVarCache(int32_t* aCache,
   AssertNotAlreadyCached("int", aPref, aCache);
 #endif
   *aCache = Preferences::GetInt(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
   data->defaultValueInt = aDefault;
@@ -1820,6 +1866,9 @@ Preferences::AddUintVarCache(uint32_t* aCache,
   AssertNotAlreadyCached("uint", aPref, aCache);
 #endif
   *aCache = Preferences::GetUint(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
   data->defaultValueUint = aDefault;
@@ -1879,6 +1928,9 @@ Preferences::AddFloatVarCache(float* aCache,
   AssertNotAlreadyCached("float", aPref, aCache);
 #endif
   *aCache = Preferences::GetFloat(aPref, aDefault);
+  if (GetEmbedLiteParent()) {
+    return NS_OK;
+  }
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
   data->defaultValueFloat = aDefault;

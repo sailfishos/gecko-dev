@@ -18,6 +18,10 @@
 
 namespace mozilla {
 
+namespace embedlite {
+class EmbedLiteCompositorProcessParent;
+}
+
 namespace ipc {
 class Shmem;
 } // namespace ipc
@@ -189,6 +193,7 @@ protected:
   friend class CompositorBridgeParent;
   friend class CrossProcessCompositorBridgeParent;
   friend class layout::RenderFrameParent;
+  friend class mozilla::embedlite::EmbedLiteCompositorProcessParent;
 
 private:
   RefPtr<LayerManagerComposite> mLayerManager;
