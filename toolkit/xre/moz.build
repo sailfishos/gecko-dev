@@ -151,6 +151,7 @@ LOCAL_INCLUDES += [
     '/config',
     '/dom/base',
     '/dom/ipc',
+    '/embedding/embedlite/embedprocess',
     '/testing/gtest/mozilla',
     '/toolkit/crashreporter',
     '/xpcom/build',

@@ -66,6 +66,7 @@
 #include "mozilla/dom/ContentProcess.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
+#include "EmbedLiteContentProcess.h"
 
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
@@ -224,6 +225,7 @@ XRE_ChildProcessTypeToString(GeckoProcessType aProcessType)
 namespace mozilla {
 namespace startup {
 GeckoProcessType sChildProcessType = GeckoProcessType_Default;
+bool sIsEmbedlite = false;
 } // namespace startup
 } // namespace mozilla
 
@@ -611,9 +613,16 @@ XRE_InitChildProcess(int aArgc,
         break;
 
       case GeckoProcessType_Content: {
-          process = new ContentProcess(parentPID);
+          for (int idx = aArgc; idx > 0; idx--) {
+            if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
+              startup::sIsEmbedlite = true;
+              break;
+            }
+          }
+
           // If passed in grab the application path for xpcom init
           bool foundAppdir = false;
+          nsCString appDir;
 
 #if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
           // If passed in grab the profile path for sandboxing
@@ -626,7 +635,6 @@ XRE_InitChildProcess(int aArgc,
               if (foundAppdir) {
                   continue;
               }
-              nsCString appDir;
               appDir.Assign(nsDependentCString(aArgv[idx+1]));
               static_cast<ContentProcess*>(process.get())->SetAppDir(appDir);
               foundAppdir = true;
@@ -648,6 +656,16 @@ XRE_InitChildProcess(int aArgc,
               foundProfile = true;
             }
 #endif /* XP_MACOSX && MOZ_CONTENT_SANDBOX */
+          }
+
+          if (startup::sIsEmbedlite) {
+            // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
+            sChildProcessType = GeckoProcessType_Default;
+            process = new mozilla::embedlite::EmbedLiteContentProcess(parentPID);
+            static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(process.get())->SetAppDir(appDir);
+          } else {
+            process = new ContentProcess(parentPID);
+            static_cast<ContentProcess*>(process.get())->SetAppDir(appDir);
           }
         }
         break;

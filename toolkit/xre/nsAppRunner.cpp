@@ -1476,6 +1476,7 @@ ScopedXPCOMStartup::Initialize()
     NS_ERROR("Couldn't start xpcom!");
     mServiceManager = nullptr;
   }
+#ifdef DEBUG
   else {
 #ifdef DEBUG
     nsCOMPtr<nsIComponentRegistrar> reg =
@@ -1483,6 +1484,7 @@ ScopedXPCOMStartup::Initialize()
     NS_ASSERTION(reg, "Service Manager doesn't QI to Registrar.");
 #endif
   }
+#endif
 
   return rv;
 }
