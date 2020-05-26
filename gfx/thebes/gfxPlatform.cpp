@@ -88,6 +88,7 @@
 #include "qcms.h"
 
 #include "imgITools.h"
+#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
 
 #include "plstr.h"
 #include "nsCRT.h"
@@ -809,7 +810,7 @@ void gfxPlatform::Init() {
   // Request the imgITools service, implicitly initializing ImageLib.
   nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
   if (!imgTools) {
-    MOZ_CRASH("Could not initialize ImageLib");
+//    MOZ_CRASH("Could not initialize ImageLib");
   }
 
   RegisterStrongMemoryReporter(new GfxMemoryImageReporter());

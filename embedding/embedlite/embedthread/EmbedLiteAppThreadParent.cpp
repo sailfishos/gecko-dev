@@ -134,7 +134,7 @@ EmbedLiteAppThreadParent::AllocPCompositorBridgeParent(Transport* aTransport,
 }
 
 bool
-EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(nsTArray<PrefSetting>&& prefs)
+EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs)
 {
   LOGT();
   return false;
