@@ -445,8 +445,6 @@
 @RESPATH@/components/nsHandlerService.js
 @RESPATH@/components/nsINIProcessor.manifest
 @RESPATH@/components/nsINIProcessor.js
-@RESPATH@/components/nsPrompter.manifest
-@RESPATH@/components/nsPrompter.js
 
 #if defined(ENABLE_TESTS) && defined(MOZ_DEBUG)
 @RESPATH@/components/TestInterfaceJS.js
