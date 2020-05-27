@@ -1,0 +1,39 @@
+From ce2381e1116079792a6f0239609d1a51f5df897d Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date: Wed, 25 Mar 2020 06:15:06 +0000
+Subject: [PATCH] Disable loading extensions and assume memory constraints.
+
+---
+ toolkit/mozapps/extensions/extensions.manifest | 2 +-
+ tools/profiler/public/GeckoProfilerImpl.h      | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/toolkit/mozapps/extensions/extensions.manifest b/toolkit/mozapps/extensions/extensions.manifest
+index c7d2ee386ffa..ce99fbd0c7bf 100644
+--- a/toolkit/mozapps/extensions/extensions.manifest
++++ b/toolkit/mozapps/extensions/extensions.manifest
+@@ -5,7 +5,7 @@ component {e0a106ed-6ad4-47a4-b6af-2f1c8aa4712d} nsBlocklistServiceContent.js pr
+ contract @mozilla.org/extensions/blocklist;1 {e0a106ed-6ad4-47a4-b6af-2f1c8aa4712d} process=content
+ 
+ category update-timer nsBlocklistService @mozilla.org/extensions/blocklist;1,getService,blocklist-background-update-timer,extensions.blocklist.interval,86400
+-#ifndef MOZ_WIDGET_GONK
++#if !defined(MOZ_WIDGET_GONK) && !defined(MOZ_WIDGET_QT)
+ component {4399533d-08d1-458c-a87a-235f74451cfa} addonManager.js
+ contract @mozilla.org/addons/integration;1 {4399533d-08d1-458c-a87a-235f74451cfa}
+ #ifndef MOZ_WIDGET_ANDROID
+diff --git a/tools/profiler/public/GeckoProfilerImpl.h b/tools/profiler/public/GeckoProfilerImpl.h
+index ee8112ffa194..22821e1639b7 100644
+--- a/tools/profiler/public/GeckoProfilerImpl.h
++++ b/tools/profiler/public/GeckoProfilerImpl.h
+@@ -356,7 +356,7 @@ static inline void profiler_tracing(const char* aCategory, const char* aInfo,
+ /* FIXME/bug 789667: memory constraints wouldn't much of a problem for
+  * this small a sample buffer size, except that serializing the
+  * profile data is extremely, unnecessarily memory intensive. */
+-#ifdef MOZ_WIDGET_GONK
++#if defined(MOZ_WIDGET_GONK) || defined(MOZ_WIDGET_QT)
+ # define PLATFORM_LIKELY_MEMORY_CONSTRAINED
+ #endif
+ 
+-- 
+2.17.1
+
