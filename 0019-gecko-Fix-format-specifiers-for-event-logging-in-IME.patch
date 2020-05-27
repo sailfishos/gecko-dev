@@ -1,0 +1,57 @@
+From e9ea33e6a9fad31ab146fc334112cb5f957c3597 Mon Sep 17 00:00:00 2001
+From: "p.tumakaev" <p.tumakaev@omprussia.ru>
+Date: Fri, 22 May 2020 19:40:06 +0300
+Subject: [PATCH] [gecko] Fix format specifiers for event logging in
+ IMEStateManager. Fixes JB#44136
+
+This is a partial backport of SHA1 5f8f36082349d3b56d19cad106a01415ba337d7b
+(Gecko 54). See bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1060419
+---
+ dom/events/IMEStateManager.cpp | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/dom/events/IMEStateManager.cpp b/dom/events/IMEStateManager.cpp
+index 1c8ed63f042a..0b0d7d3b4276 100644
+--- a/dom/events/IMEStateManager.cpp
++++ b/dom/events/IMEStateManager.cpp
+@@ -15,6 +15,7 @@
+ #include "mozilla/MouseEvents.h"
+ #include "mozilla/Preferences.h"
+ #include "mozilla/Services.h"
++#include "mozilla/SizePrintfMacros.h"
+ #include "mozilla/TextComposition.h"
+ #include "mozilla/TextEvents.h"
+ #include "mozilla/Unused.h"
+@@ -1221,10 +1222,10 @@ IMEStateManager::DispatchCompositionEvent(
+   MOZ_LOG(sISMLog, LogLevel::Info,
+     ("DispatchCompositionEvent(aNode=0x%p, "
+      "aPresContext=0x%p, aCompositionEvent={ mMessage=%s, "
+-     "mNativeIMEContext={ mRawNativeIMEContext=0x%X, "
+-     "mOriginProcessID=0x%X }, mWidget(0x%p)={ "
+-     "GetNativeIMEContext()={ mRawNativeIMEContext=0x%X, "
+-     "mOriginProcessID=0x%X }, Destroyed()=%s }, "
++     "mNativeIMEContext={ mRawNativeIMEContext=0x%" PRIXPTR ", "
++     "mOriginProcessID=0x%" PRIX64 " }, mWidget(0x%p)={ "
++     "GetNativeIMEContext()={ mRawNativeIMEContext=0x%" PRIXPTR ", "
++     "mOriginProcessID=0x%" PRIX64 " }, Destroyed()=%s }, "
+      "mFlags={ mIsTrusted=%s, mPropagationStopped=%s } }, "
+      "aIsSynthesized=%s), tabParent=%p",
+      aEventTargetNode, aPresContext,
+@@ -1371,10 +1372,10 @@ IMEStateManager::OnCompositionEventDiscarded(
+ 
+   MOZ_LOG(sISMLog, LogLevel::Info,
+     ("OnCompositionEventDiscarded(aCompositionEvent={ "
+-     "mMessage=%s, mNativeIMEContext={ mRawNativeIMEContext=0x%X, "
+-     "mOriginProcessID=0x%X }, mWidget(0x%p)={ "
+-     "GetNativeIMEContext()={ mRawNativeIMEContext=0x%X, "
+-     "mOriginProcessID=0x%X }, Destroyed()=%s }, "
++     "mMessage=%s, mNativeIMEContext={ mRawNativeIMEContext=0x%" PRIXPTR ", "
++     "mOriginProcessID=0x%" PRIX64 " }, mWidget(0x%p)={ "
++     "GetNativeIMEContext()={ mRawNativeIMEContext=0x%" PRIXPTR ", "
++     "mOriginProcessID=0x%" PRIX64 " }, Destroyed()=%s }, "
+      "mFlags={ mIsTrusted=%s } })",
+      ToChar(aCompositionEvent->mMessage),
+      aCompositionEvent->mNativeIMEContext.mRawNativeIMEContext,
+-- 
+2.17.1
+

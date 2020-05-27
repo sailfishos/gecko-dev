@@ -1,0 +1,29 @@
+From 80d8888754e71f54383816ecb8378743462ab048 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 17 Apr 2020 20:58:40 +0300
+Subject: [PATCH 1/2] [gecko] Use MOZ_EMBEDLITE for embedlite integration
+
+All random integration points should be part of this patch.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/thebes/gfxPlatform.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
+index a8d1f2c01ecb..be7108df312a 100644
+--- a/gfx/thebes/gfxPlatform.cpp
++++ b/gfx/thebes/gfxPlatform.cpp
+@@ -83,7 +83,9 @@
+ #include "qcms.h"
+ 
+ #include "imgITools.h"
++#if defined(MOZ_EMBEDLITE)
+ #include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
++#endif
+ 
+ #include "plstr.h"
+ #include "nsCRT.h"
+-- 
+2.25.2
+
