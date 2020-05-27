@@ -86,8 +86,12 @@ nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutD
 void
 nsWindow::Destroy()
 {
-  PuppetWidgetBase::Destroy();
+  if (mLayerManager) {
+    mLayerManager->Destroy();
+  }
   mWindow = nullptr;
+
+  PuppetWidgetBase::Destroy();
 
   Shutdown();
 #if DEBUG
@@ -190,6 +194,8 @@ nsWindow::GetNativeData(uint32_t aDataType)
 LayerManager *
 nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
 {
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+
   if (!mLayerManager) {
     if (!mShutdownObserver) {
       // We are shutting down, do not try to re-create a LayerManager
@@ -198,6 +204,8 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   }
 
   LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  LOGC("EmbedLiteLayerManager", "lm: %p this: %p", lm, this);
+
   if (lm) {
     mLayerManager = lm;
     return mLayerManager;
@@ -205,6 +213,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
 
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
+    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager);
     if (mLayerManager) {
       return mLayerManager;
     }
@@ -213,6 +222,8 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   }
 
   mLayerManager = new ClientLayerManager(this);
+  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager);
+
   return mLayerManager;
 }
 
