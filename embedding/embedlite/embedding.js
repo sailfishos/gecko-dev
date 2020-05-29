@@ -97,7 +97,6 @@ pref("media.prefer-gstreamer", true);
 pref("media.gstreamer.enable-blacklist", false);
 // Disable X backend on GTK
 pref("gfx.xrender.enabled", false);
-pref("gfx.qt.rgb16.force", true);
 pref("embedlite.azpc.handle.viewport", true);
 pref("embedlite.azpc.handle.singletap", true);
 pref("embedlite.azpc.handle.longtap", true);
