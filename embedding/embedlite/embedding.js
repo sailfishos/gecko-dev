@@ -46,6 +46,8 @@ pref("layers.use-deprecated-textures", false);
 pref("layers.enable-tiles", true);
 pref("layers.async-pan-zoom.enabled", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
+// Disable DEAA antialiasing for transformed layers in the compositor
+pref("layers.deaa.enabled", false);
 // We want to limit layers for two reasons:
 // 1) We can't scroll smoothly if we have to many draw calls
 // 2) Pages that have too many layers consume too much memory and crash.
