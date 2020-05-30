@@ -250,11 +250,10 @@ void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureT
 
 bool EmbedContentController::IsRepaintThread()
 {
-  LOGT("NOT YET IMPLEMENTED");
-  return true;
+  return MessageLoop::current() == mUILoop;
 }
 
 void EmbedContentController::DispatchToRepaintThread(already_AddRefed<Runnable> aTask)
 {
-  LOGT("NOT YET IMPLEMENTED");
+  mUILoop->PostTask(Move(aTask));
 }
