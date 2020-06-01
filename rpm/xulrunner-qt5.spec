@@ -46,7 +46,7 @@ Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-Workaround-for-late-access-message-loop.patch
 Patch2:     0002-Limit-surface-area-rather-than-width-and-height.patch
 Patch3:     0003-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
-Patch4:     0004-Adapt-LoginManager-to-EmbedLite.-Fixes-JB21980.patch
+Patch4:     0004-Adapt-LoginManager-to-EmbedLite.-Fixes-JB-21980.patch
 Patch5:     0005-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
 Patch6:     0006-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
 Patch7:     0007-Embedlite-doesn-t-have-prompter-implementation.patch
