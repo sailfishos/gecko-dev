@@ -828,13 +828,14 @@ class Matrix4x4Typed {
     // Iterate through each clipping plane and clip the polygon.
     // In each pass, we double buffer, alternating between points[0] and
     // points[1].
+    Point4DTyped<UnknownUnits, F>* dstPointStart = points[0];
     for (int plane = 0; plane < 4; plane++) {
       planeNormals[plane].Normalize();
       Point4DTyped<UnknownUnits, F>* srcPoint = points[plane & 1];
       Point4DTyped<UnknownUnits, F>* srcPointEnd = dstPoint;
 
       dstPoint = points[~plane & 1];
-      Point4DTyped<UnknownUnits, F>* dstPointStart = dstPoint;
+      dstPointStart = dstPoint;
 
       Point4DTyped<UnknownUnits, F>* prevPoint = srcPointEnd - 1;
       F prevDot = planeNormals[plane].DotProduct(*prevPoint);
@@ -865,9 +866,8 @@ class Matrix4x4Typed {
     }
 
     size_t dstPointCount = 0;
-    size_t srcPointCount = dstPoint - points[0];
-    for (Point4DTyped<UnknownUnits, F>* srcPoint = points[0];
-         srcPoint < points[0] + srcPointCount; srcPoint++) {
+    for (Point4DTyped<UnknownUnits, F>* srcPoint = dstPointStart;
+         srcPoint < dstPoint; srcPoint++) {
       PointTyped<TargetUnits, F> p;
       if (srcPoint->w == 0.0) {
         // If a point lies on the intersection of the clipping planes at
