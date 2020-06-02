@@ -63,6 +63,7 @@ Patch17:    0017-ffmpeg4.patch
 Patch18:    0018-Check-for-null-GetApzcTreeManager.patch
 Patch19:    0019-gecko-Fix-format-specifiers-for-event-logging-in-IME.patch
 Patch20:    0020-Add-support-for-S16-decoded-output.patch
+Patch21:    0021-sailfishos-build-Fix-build-error-with-newer-glibc.-J.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
