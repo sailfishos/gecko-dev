@@ -88,6 +88,32 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
 
     return mWebBrowser->GetContentDOMWindow((mozIDOMWindowProxy**)aInstancePtr);
   }
+
+  if (aIID.Equals(NS_GET_IID(nsIDocShellTreeItem))) {
+    if (!mWebBrowser) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    nsresult rv;
+    nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    nsCOMPtr<nsIWebNavigation> webNavigation = do_QueryInterface(baseWindow, &rv);
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(webNavigation, &rv);
+    if (NS_FAILED(rv)) {
+      return NS_ERROR_NOT_INITIALIZED;
+    }
+
+    NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = docShell)));
+    return NS_OK;
+  }
+
   return QueryInterface(aIID, aInstancePtr);
 }
 
