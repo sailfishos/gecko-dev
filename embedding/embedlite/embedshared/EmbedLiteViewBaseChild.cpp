@@ -39,9 +39,11 @@
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
+#include "nsIDocument.h"
 
-#include "nsIFrame.h"                   // for nsIFrame
-#include "FrameLayerBuilder.h"          // for FrameLayerbuilder
+#include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
+#include "nsIFrame.h"                       // for nsIFrame
+#include "FrameLayerBuilder.h"              // for FrameLayerbuilder
 
 #include <sys/syscall.h>
 
@@ -870,8 +872,29 @@ EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint& aPoint,
     return true;
   }
 
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleDoubleTap(cssPoint, aModifiers);
+  nsIContent* content = nsLayoutUtils::FindContentFor(aGuid.mScrollId);
+  if (!content) {
+    return true;
+  }
+  nsIPresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
+  if (!presShell) {
+    return true;
+  }
+
+  nsCOMPtr<nsIDocument> document = presShell->GetDocument();
+  if (!document) {
+    return true;
+  }
+  if (document->Fullscreen()) {
+    return true;
+  }
+  CSSRect zoomToRect = CalculateRectToZoomTo(document, cssPoint);
+
+  uint32_t presShellId;
+  ViewID viewId;
+  if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
+      document->GetDocumentElement(), &presShellId, &viewId)) {
+    ZoomToRect(presShellId, viewId, zoomToRect);
   }
 
   if (sPostAZPCAsJson.doubleTap) {
