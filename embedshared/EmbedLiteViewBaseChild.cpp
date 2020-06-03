@@ -211,21 +211,16 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
   nsCOMPtr<mozIDOMWindowProxy> domWindow;
 
   mChrome = new WebBrowserChrome(this);
-  uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
+  uint32_t chromeFlags = 0; // View()->GetWindowFlags();
 
   if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
-    aChromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
+    chromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
   }
 
   mWebBrowser->SetContainerWindow(mChrome);
-
-  mChrome->SetChromeFlags(aChromeFlags);
-  if (aChromeFlags & (nsIWebBrowserChrome::CHROME_OPENAS_CHROME |
-                      nsIWebBrowserChrome::CHROME_OPENAS_DIALOG)) {
-    nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
-    docShellItem->SetItemType(nsIDocShellTreeItem::typeChromeWrapper);
-    LOGT("Chrome window created.");
-  }
+  mChrome->SetChromeFlags(chromeFlags);
+  nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
+  docShellItem->SetItemType(nsIDocShellTreeItem::typeContentWrapper);
 
   if (NS_FAILED(baseWindow->Create())) {
     NS_ERROR("Creation of basewindow failed!");
@@ -257,14 +252,14 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
     NS_ERROR("Failed to get the web navigation interface.");
   }
 
-  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
+  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
     nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
     MOZ_ASSERT(docShell);
 
     docShell->SetAffectPrivateSessionLifetime(true);
   }
 
-  if (aChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
+  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
     nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWebNavigation);
     MOZ_ASSERT(loadContext);
 
