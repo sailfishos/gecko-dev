@@ -161,6 +161,7 @@ Tests and misc files for xulrunner.
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
+echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
