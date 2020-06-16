@@ -56,12 +56,13 @@ public:
 private:
   EmbedLiteViewListener *GetListener() const;
 
-  void HandleDoubleTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
-  void HandleSingleTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid);
-  void HandleLongTap(const LayoutDevicePoint& aPoint, Modifiers aModifiers, const ScrollableLayerGuid& aGuid, uint64_t aInputBlockId);
+  void HandleDoubleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid);
+  void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid);
+  void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
 
-  void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
-  void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
+  void DoRequestContentRepaint(const FrameMetrics aFrameMetrics);
+  void DoSendScrollEvent(const FrameMetrics aFrameMetrics);
+
   void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
   void DoNotifyFlushComplete();
 
