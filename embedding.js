@@ -54,6 +54,8 @@ pref("layers.deaa.enabled", false);
 // By limiting the number of layers on mobile we're making the main thread
 // work harder keep scrolling smooth and memory low.
 pref("layers.max-active", 20);
+// Avoid stalling the render thread if frames are missed
+pref("gfx.vsync.compositor.unobserve-count", 40);
 
 // APZC preferences.
 pref("apz.allow_zooming", true);
@@ -294,17 +296,8 @@ pref("privacy.item.syncAccount", true);
 // browser (bug 669346).
 pref("javascript.options.gc_on_memory_pressure", false);
 
-// low memory devices
-pref("javascript.options.mem.gc_high_frequency_heap_growth_max", 120);
-pref("javascript.options.mem.gc_high_frequency_heap_growth_min", 101);
-pref("javascript.options.mem.gc_high_frequency_high_limit_mb", 40);
-pref("javascript.options.mem.gc_high_frequency_low_limit_mb", 10);
-pref("javascript.options.mem.gc_low_frequency_heap_growth", 105);
-pref("javascript.options.mem.high_water_mark", 16);
-pref("javascript.options.mem.gc_allocation_threshold_mb", 3);
-pref("javascript.options.mem.gc_decommit_threshold_mb", 1);
-pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
-pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
+// Garbage collection configuration, slightly tweaked for low memory devices
+pref("javascript.options.mem.high_water_mark", 64);
 
 pref("font.size.inflation.minTwips", 120);
 
