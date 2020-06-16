@@ -70,6 +70,10 @@ EmbedLitePuppetWidget::CreateChild(const LayoutDeviceIntRect &aRect,
                                    nsWidgetInitData* aInitData,
                                    bool              aForceUseIWidgetParent)
 {
+  if (Destroyed()) {
+    return nullptr;
+  }
+
   LOGT();
   bool isPopup = IsPopup(aInitData);
   nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(nullptr);
@@ -86,7 +90,7 @@ void EmbedLitePuppetWidget::Destroy()
 NS_IMETHODIMP
 EmbedLitePuppetWidget::Show(bool aState)
 {
-  if (!WillShow(aState)) {
+  if (Destroyed() || !WillShow(aState)) {
     return NS_OK;
   }
 
@@ -105,6 +109,10 @@ EmbedLitePuppetWidget::Show(bool aState)
 void*
 EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 {
+  if (Destroyed()) {
+    return nullptr;
+  }
+
   LOGT("t: %p, DataType: %i", this, aDataType);
   switch (aDataType) {
     case NS_NATIVE_SHAREABLE_WINDOW: {
@@ -133,6 +141,10 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
+  if (Destroyed()) {
+    return NS_OK;
+  }
+
   LOGT();
   MOZ_ASSERT(event);
   aStatus = nsEventStatus_eIgnore;
@@ -194,14 +206,14 @@ NS_IMETHODIMP_(void)
 EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
                                        const InputContextAction& aAction)
 {
-  LOGT("IME: SetInputContext: s=0x%X, 0x%X, action=0x%X, 0x%X",
-       aContext.mIMEState.mEnabled, aContext.mIMEState.mOpen,
-       aAction.mCause, aAction.mFocusChange);
-
   if (Destroyed()) {
     LOGT("Trying to focus after puppet widget got destroyed.");
     return;
   }
+
+  LOGT("IME: SetInputContext: s=0x%X, 0x%X, action=0x%X, 0x%X",
+       aContext.mIMEState.mEnabled, aContext.mIMEState.mOpen,
+       aAction.mCause, aAction.mFocusChange);
 
   // Ensure that opening the virtual keyboard is allowed for this specific
   // InputContext depending on the content.ime.strict.policy pref
@@ -294,7 +306,7 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
 {
   LOGT();
   // Remove composition on Gecko side
-  if (!mIMEComposing) {
+  if (Destroyed() || !mIMEComposing) {
     return;
   }
 
@@ -326,7 +338,7 @@ bool
 EmbedLitePuppetWidget::NeedsPaint()
 {
   // Widgets representing EmbedLite view and window don't need to paint anything.
-  if (mView) {
+  if (Destroyed() || mView) {
     return false;
   }
   return nsIWidget::NeedsPaint();
@@ -390,7 +402,7 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
   LOGC("EmbedLiteLayerManager", "layer manager %p is shutdown %p this: %p", mLayerManager, mShutdownObserver, this);
 
   if (!mLayerManager) {
-    if (!mShutdownObserver || mOnDestroyCalled) {
+    if (!mShutdownObserver || Destroyed()) {
       // We are shutting down, do not try to re-create a LayerManager
       LOGC("EmbedLiteLayerManager", "Shutting down or puppet destroyed.");
       return nullptr;
@@ -424,6 +436,10 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
 bool
 EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
 {
+  if (Destroyed()) {
+    return false;
+  }
+
   LOGT("thread id: %ld", syscall(SYS_gettid));
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
   if (view) {
@@ -436,6 +452,10 @@ EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::Sc
 bool
 EmbedLitePuppetWidget::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
 {
+  if (Destroyed()) {
+    return false;
+  }
+
   LOGT("thread id: %ld", syscall(SYS_gettid));
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
   if (view) {
