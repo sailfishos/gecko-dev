@@ -1181,11 +1181,8 @@ EmbedLiteViewBaseChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const AP
   if (aChange == APZStateChange::eTransformEnd) {
     // This is used by tests to determine when the APZ is done doing whatever
     // it's doing. XXX generify this as needed when writing additional tests.
-#if 0
-      DispatchMessageManagerMessage(
-      NS_LITERAL_STRING("APZ:TransformEnd"),
-      NS_LITERAL_STRING("{}"));
-#endif
+    nsCOMPtr<nsIObserverService> observerService = mozilla::services::GetObserverService();
+    observerService->NotifyObservers(nullptr, "APZ:TransformEnd", nullptr);
   }
   return true;
 }
