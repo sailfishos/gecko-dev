@@ -35,18 +35,10 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
   // requests may get processed out of order.
   LOGT();
   // nsThreadUtils version
-  mUILoop->PostTask(NewRunnableMethod<const FrameMetrics&>(this,
-                                                           &EmbedContentController::DoRequestContentRepaint,
-                                                           aFrameMetrics));
+  mUILoop->PostTask(NewRunnableMethod<const FrameMetrics>(this,
+                                                          &EmbedContentController::DoRequestContentRepaint,
+                                                          aFrameMetrics));
 }
-
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
-{
-  LOGT();
-  mUILoop->PostTask(NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
-}
-#endif
 
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
 {
@@ -69,54 +61,54 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
   }
 }
 
-void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint& aPoint,
+void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                              Modifiers aModifiers,
-                                             const ScrollableLayerGuid& aGuid)
+                                             const ScrollableLayerGuid aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &>(this,
-                                                                                                  &EmbedContentController::HandleDoubleTap,
-                                                                                                  aPoint,
-                                                                                                  aModifiers,
-                                                                                                  aGuid));
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid>(this,
+                                                                                                       &EmbedContentController::HandleDoubleTap,
+                                                                                                       aPoint,
+                                                                                                       aModifiers,
+                                                                                                       aGuid));
   } else if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
 
-void EmbedContentController::HandleSingleTap(const LayoutDevicePoint& aPoint,
+void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
                                              Modifiers aModifiers,
-                                             const ScrollableLayerGuid& aGuid)
+                                             const ScrollableLayerGuid aGuid)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &>(this,
-                                                                                                           &EmbedContentController::HandleSingleTap,
-                                                                                                           aPoint,
-                                                                                                           aModifiers,
-                                                                                                           aGuid));
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid>(this,
+                                                                                                       &EmbedContentController::HandleSingleTap,
+                                                                                                       aPoint,
+                                                                                                       aModifiers,
+                                                                                                       aGuid));
   } else if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
-void EmbedContentController::HandleLongTap(const LayoutDevicePoint &aPoint,
+void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
                                            Modifiers aModifiers,
-                                           const ScrollableLayerGuid& aGuid,
+                                           const ScrollableLayerGuid aGuid,
                                            uint64_t aInputBlockId)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint &, Modifiers, const ScrollableLayerGuid &, uint64_t>(this,
-                                                                                                                     &EmbedContentController::HandleLongTap,
-                                                                                                                     aPoint,
-                                                                                                                     aModifiers,
-                                                                                                                     aGuid,
-                                                                                                                     aInputBlockId));
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid, uint64_t>(this,
+                                                                                                                 &EmbedContentController::HandleLongTap,
+                                                                                                                 aPoint,
+                                                                                                                 aModifiers,
+                                                                                                                 aGuid,
+                                                                                                                 aInputBlockId));
   } else if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
@@ -128,14 +120,14 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint &aPoint,
  * |aContentRect| is in CSS pixels, relative to the current cssPage.
  * |aScrollableSize| is the current content width/height in CSS pixels.
  */
-void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics)
+void EmbedContentController::DoSendScrollEvent(const FrameMetrics aFrameMetrics)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const FrameMetrics &>(this,
-                                                              &EmbedContentController::DoSendScrollEvent,
-                                                              aFrameMetrics));
+    mUILoop->PostTask(NewRunnableMethod<const FrameMetrics>(this,
+                                                            &EmbedContentController::DoSendScrollEvent,
+                                                            aFrameMetrics));
     return;
   } else {
     CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
@@ -153,15 +145,6 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
     }
   }
 }
-
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-void EmbedContentController::DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
-{
-  if (mRenderFrame) {
-    Unused << mRenderFrame->SendRequestFlingSnap(aScrollId, aDestination);
-  }
-}
-#endif
 
 void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
@@ -181,21 +164,6 @@ nsIntPoint EmbedContentController::convertIntPoint(const LayoutDevicePoint &aPoi
 {
   return nsIntPoint((int)nearbyint(aPoint.x), (int)nearbyint(aPoint.y));
 }
-
-#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
-void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
-{
-  if (MessageLoop::current() != mUILoop) {
-    // We have to send this message from the "UI thread" (main
-    // thread).
-    mUILoop->PostTask(NewRunnableMethod<>(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
-    return;
-  }
-  if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
-    Unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
-  }
-}
-#endif
 
 void EmbedContentController::ClearRenderFrame()
 {
@@ -218,7 +186,7 @@ EmbedLiteViewListener *EmbedContentController::GetListener() const
          mRenderFrame->mView->GetListener() : &sFakeListener;
 }
 
-void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
+void EmbedContentController::DoRequestContentRepaint(const FrameMetrics aFrameMetrics)
 {
   LOGT("render frame %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
