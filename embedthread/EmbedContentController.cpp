@@ -40,14 +40,6 @@ void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMet
                                                            aFrameMetrics));
 }
 
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-void EmbedContentController::RequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
-{
-  LOGT();
-  mUILoop->PostTask(NewRunnableMethod(this, &EmbedContentController::DoRequestFlingSnap, aScrollId, aDestination));
-}
-#endif
-
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
 {
   switch (aType) {
@@ -154,15 +146,6 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics &aFrameMetrics
   }
 }
 
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-void EmbedContentController::DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination)
-{
-  if (mRenderFrame) {
-    Unused << mRenderFrame->SendRequestFlingSnap(aScrollId, aDestination);
-  }
-}
-#endif
-
 void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
   if (mRenderFrame) {
@@ -181,21 +164,6 @@ nsIntPoint EmbedContentController::convertIntPoint(const LayoutDevicePoint &aPoi
 {
   return nsIntPoint((int)nearbyint(aPoint.x), (int)nearbyint(aPoint.y));
 }
-
-#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
-void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
-{
-  if (MessageLoop::current() != mUILoop) {
-    // We have to send this message from the "UI thread" (main
-    // thread).
-    mUILoop->PostTask(NewRunnableMethod<>(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
-    return;
-  }
-  if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
-    Unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
-  }
-}
-#endif
 
 void EmbedContentController::ClearRenderFrame()
 {

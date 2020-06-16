@@ -58,9 +58,6 @@ public:
   virtual bool HandleDoubleTap(const nsIntPoint& aPoint) { return false; }
   virtual bool HandleSingleTap(const nsIntPoint& aPoint) { return false; }
   virtual bool HandleLongTap(const nsIntPoint& aPoint) { return false; }
-#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf3e427ccf
-  virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
-#endif
 };
 
 class EmbedLiteApp;
