@@ -825,28 +825,6 @@ EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   return true;
 }
 
-#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
-bool
-EmbedLiteViewBaseChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
-                                                    const uint32_t& aScrollGeneration)
-{
-  LOGT("thread id: %ld", syscall(SYS_gettid));
-  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
-  return true;
-}
-#endif
-
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-bool
-EmbedLiteViewBaseChild::RecvRequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
-                                             const CSSPoint& aDestination)
-{
-  LOGT("thread id: %ld", syscall(SYS_gettid));
-  APZCCallbackHelper::RequestFlingSnap(aScrollId, aDestination);
-  return true;
-}
-#endif
-
 void
 EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 {

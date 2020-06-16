@@ -28,10 +28,6 @@ public:
 
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-  virtual void RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
-                                const mozilla::CSSPoint& aDestination) override;
-#endif
 
   virtual void HandleTap(TapType aType,
                          const LayoutDevicePoint& aPoint,
@@ -39,9 +35,6 @@ public:
                          const ScrollableLayerGuid& aGuid,
                          uint64_t aInputBlockId) override;
 
-#if 0 // sha1 6afa98a3ea0ba814b77f7aeb162624433e427ccf
-  virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) override;
-#endif
   void ClearRenderFrame();
   virtual void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs) override;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
@@ -69,9 +62,6 @@ private:
 
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
   void DoSendScrollEvent(const FrameMetrics& aFrameMetrics);
-#if 0 // sha1 5753e3da8314bb0522bdbf92819beb6d89faeb06
-  void DoRequestFlingSnap(const FrameMetrics::ViewID &aScrollId, const mozilla::CSSPoint &aDestination);
-#endif
   void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
   void DoNotifyFlushComplete();
 
