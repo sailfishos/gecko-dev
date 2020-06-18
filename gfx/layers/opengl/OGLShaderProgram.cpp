@@ -16,6 +16,9 @@
 #include "nsString.h"  // for nsAutoCString
 #include "Layers.h"
 #include "GLContext.h"
+#ifdef COMPOSITOR_LOAD_SHADERS_FROM_FILE
+#include <fstream>
+#endif // #ifdef COMPOSITOR_LOAD_SHADERS_FROM_FILE
 
 namespace mozilla {
 namespace layers {
@@ -566,6 +569,38 @@ void ShaderConfigOGL::SetDynamicGeometry(bool aEnabled) {
   }
   fs << "  gl_FragColor = color;" << endl;
   fs << "}" << endl;
+
+#ifdef COMPOSITOR_LOAD_SHADERS_FROM_FILE
+  ostringstream vertexFile;
+  vertexFile << "~/shaders/" << std::hex << aConfig.mFeatures << ".vs";
+  printf_stderr("OGL: Attempting to read vertex shader: %s\n", vertexFile.str().c_str());
+
+  std::ifstream vertexStream(vertexFile.str());
+  if (vertexStream.is_open()) {
+      printf_stderr("OGL: Tweaked vertex shader found\n");
+      vs.str("");
+      vs.clear();
+      vs << vertexStream.rdbuf();
+  }
+  else {
+      printf_stderr("OGL: No vertex shader found, using default\n");
+  }
+
+  ostringstream fragmentFile;
+  fragmentFile << "~/shaders/" << std::hex << aConfig.mFeatures << ".fs";
+  printf_stderr("OGL: Attempting to read fragment shader: %s\n", fragmentFile.str().c_str());
+
+  std::ifstream fragmentStream(fragmentFile.str());
+  if (fragmentStream.is_open()) {
+      printf_stderr("OGL: Tweaked fragment shader found\n");
+      fs.str("");
+      fs.clear();
+      fs << fragmentStream.rdbuf();
+  }
+  else {
+      printf_stderr("OGL: No fragment shader found, using default\n");
+  }
+#endif // #ifdef COMPOSITOR_LOAD_SHADERS_FROM_FILE
 
   result.mVertexShaderString = vs.str();
   result.mFragmentShaderString = fs.str();
