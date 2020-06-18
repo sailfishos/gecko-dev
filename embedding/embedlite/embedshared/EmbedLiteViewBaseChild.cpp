@@ -433,7 +433,9 @@ EmbedLiteViewBaseChild::HasMessageListener(const nsAString& aMessageName)
 bool
 EmbedLiteViewBaseChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+#endif
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     return SendAsyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage));
   }
@@ -443,7 +445,9 @@ EmbedLiteViewBaseChild::DoSendAsyncMessage(const char16_t* aMessageName, const c
 bool
 EmbedLiteViewBaseChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+#endif
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     return SendSyncMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
   }
@@ -453,7 +457,9 @@ EmbedLiteViewBaseChild::DoSendSyncMessage(const char16_t* aMessageName, const ch
 bool
 EmbedLiteViewBaseChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+#endif
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
     SendRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
   }
@@ -716,7 +722,9 @@ bool
 EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString& aMessage,
                                            const nsString& aData)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
+#endif
   EmbedLiteAppService::AppService()->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aMessage).get(), aData);
   mHelper->DispatchMessageManagerMessage(aMessage, aData);
   return true;
@@ -727,7 +735,9 @@ void
 EmbedLiteViewBaseChild::RecvAsyncMessage(const nsAString& aMessage,
                                            const nsAString& aData)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
+#endif
   mHelper->DispatchMessageManagerMessage(aMessage, aData);
 }
 
@@ -968,7 +978,9 @@ EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsStri
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   const InputContext& ctx = mWidget->GetInputContext();
 
+#if EMBEDLITE_LOG_SENSITIVE
   LOGF("ctx.mIMEState.mEnabled:%i, com:%s, pre:%s\n", ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get());
+#endif
   if (!widget || !ctx.mIMEState.mEnabled) {
     return false;
   }

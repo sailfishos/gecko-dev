@@ -337,7 +337,9 @@ EmbedLiteViewBaseParent::RecvAsyncMessage(const nsString& aMessage,
     return true;
   }
 
+#if EMBEDLITE_LOG_SENSITIVE
   LOGF("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
+#endif
 
   NS_ENSURE_TRUE(mView, false);
   mView->GetListener()->RecvAsyncMessage(aMessage.get(), aData.get());
@@ -350,7 +352,9 @@ EmbedLiteViewBaseParent::RecvSyncMessage(const nsString& aMessage,
                                            const nsString& aJSON,
                                            InfallibleTArray<nsString>* aJSONRetVal)
 {
+#if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aJSON).get());
+#endif
   if (mViewAPIDestroyed) {
     return true;
   }
