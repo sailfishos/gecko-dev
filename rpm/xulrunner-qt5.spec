@@ -65,6 +65,7 @@ Patch19:    0019-gecko-Fix-format-specifiers-for-event-logging-in-IME.patch
 Patch20:    0020-Add-support-for-S16-decoded-output.patch
 Patch21:    0021-sailfishos-build-Fix-build-error-with-newer-glibc.-J.patch
 Patch22:    0022-Revert-UserAgentOverride-changes-that-brea.patch
+Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
