@@ -32,6 +32,8 @@ const GMP_CHECK_DELAY        = 10 * 1000; // milliseconds
 const NS_GRE_DIR             = "GreD";
 const CLEARKEY_PLUGIN_ID     = "gmp-clearkey";
 const CLEARKEY_VERSION       = "0.1";
+const DROID_PLUGIN_ID        = "gmp-droid";
+const DROID_VERSION          = "0.1";
 
 const GMP_LICENSE_INFO       = "gmp_license_info";
 const GMP_PRIVACY_INFO       = "gmp_privacy_info";
@@ -572,6 +574,19 @@ var GMPProvider = {
       gmpService.addPluginDirectory(clearkeyPath);
     } catch (e) {
       this._log.warn("startup - adding clearkey CDM failed", e);
+    }
+
+    try {
+      let greDir = Services.dirsvc.get(NS_GRE_DIR,
+                                       Ci.nsILocalFile);
+      let droidPath = OS.Path.join(greDir.path,
+                                      DROID_PLUGIN_ID,
+                                      DROID_VERSION);
+      this._log.info("startup - adding droidmedia GMP directory " +
+                     droidPath);
+      gmpService.addPluginDirectory(droidPath);
+    } catch (e) {
+      this._log.warn("startup - adding droidmedia GMP failed", e);
     }
   },
 

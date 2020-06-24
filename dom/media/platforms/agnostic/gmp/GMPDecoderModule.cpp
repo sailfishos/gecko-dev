@@ -88,6 +88,22 @@ bool GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
 
 bool GMPDecoderModule::SupportsMimeType(
     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
+#if defined(MOZ_FMP4)
+  if (MP4Decoder::IsH264(aMimeType)) {
+    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
+                      { NS_LITERAL_CSTRING("h264") });
+  }
+#endif
+
+  if (VPXDecoder::IsVP9(aMimeType)) {
+    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
+                      { NS_LITERAL_CSTRING("vp9") });
+  }
+
+  if (VPXDecoder::IsVP8(aMimeType)) {
+    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
+                      { NS_LITERAL_CSTRING("vp8") });
+  }
   return false;
 }
 
