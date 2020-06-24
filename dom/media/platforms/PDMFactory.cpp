@@ -316,6 +316,12 @@ void PDMFactory::CreatePDMs() {
     return;
   }
 
+  if (MediaPrefs::PDMGMPEnabled()) {
+    m = new GMPDecoderModule();
+    mGMPPDMFailedToStartup = !StartupPDM(m);
+  } else {
+    mGMPPDMFailedToStartup = false;
+  }
 #ifdef XP_WIN
   if (MediaPrefs::PDMWMFEnabled() && !IsWin7AndPre2000Compatible()) {
     m = new WMFDecoderModule();
@@ -354,12 +360,7 @@ void PDMFactory::CreatePDMs() {
   m = new AgnosticDecoderModule();
   StartupPDM(m);
 
-  if (MediaPrefs::PDMGMPEnabled()) {
-    m = new GMPDecoderModule();
-    mGMPPDMFailedToStartup = !StartupPDM(m);
-  } else {
-    mGMPPDMFailedToStartup = false;
-  }
+
 }
 
 void PDMFactory::CreateNullPDM() {
