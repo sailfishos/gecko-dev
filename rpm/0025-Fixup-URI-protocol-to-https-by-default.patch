@@ -1,0 +1,30 @@
+From 8f3a2c96cf564a8f5216b0185ddc9f3a91776d18 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 25 Jun 2020 16:29:46 +0300
+Subject: [PATCH] Fixup URI protocol to https by default
+
+[sailfishos][docshell] Fixup URI protocol to https by default. Fixes JB#50124
+
+Unsecure pages work still if url is entered like "http://www.domain.com"
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ docshell/base/nsDefaultURIFixup.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docshell/base/nsDefaultURIFixup.cpp b/docshell/base/nsDefaultURIFixup.cpp
+index e519720ab78b..140fbce16805 100644
+--- a/docshell/base/nsDefaultURIFixup.cpp
++++ b/docshell/base/nsDefaultURIFixup.cpp
+@@ -737,7 +737,7 @@ nsDefaultURIFixup::FixupURIProtocol(const nsACString& aURIString,
+     uriString.Left(hostSpec, hostPos);
+ 
+     // insert url spec corresponding to host name
+-    uriString.InsertLiteral("http://", 0);
++    uriString.InsertLiteral("https://", 0);
+     aFixupInfo->mFixupChangedProtocol = true;
+   } // end if checkprotocol
+ 
+-- 
+2.26.2
+
