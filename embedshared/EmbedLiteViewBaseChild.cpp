@@ -497,9 +497,10 @@ EmbedLiteViewBaseChild::RecvLoadURL(const nsString& url)
     flags |= nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
+  flags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
   mWebNavigation->LoadURI(url.get(),
                           flags,
-                          0, 0, 0);
+                          nullptr, nullptr, nullptr);
 
   return true;
 }
