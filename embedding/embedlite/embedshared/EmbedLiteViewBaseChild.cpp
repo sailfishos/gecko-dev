@@ -495,6 +495,7 @@ EmbedLiteViewBaseChild::RecvLoadURL(const nsString& url)
   uint32_t flags = 0;
   if (sAllowKeyWordURL) {
     flags |= nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
+    flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
   mWebNavigation->LoadURI(url.get(),
                           flags,
