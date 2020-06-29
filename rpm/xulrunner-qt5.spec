@@ -76,6 +76,7 @@ Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
 Patch32:    0032-sailfishos-gecko-Remove-android-define-from-logging.patch
 Patch33:    0033-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
+Patch34:    0034-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
