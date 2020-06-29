@@ -1280,7 +1280,7 @@ nsresult Geolocation::WatchPosition(GeoPositionCallback aCallback,
 
 NS_IMETHODIMP
 Geolocation::ClearWatch(int32_t aWatchId) {
-  if (aWatchId < 0) {
+  if (aWatchId < 0 || aWatchId >= mLastWatchId) {
     return NS_OK;
   }
 
