@@ -72,6 +72,7 @@ Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
 Patch26:    0026-Delete-startupCache-if-it-s-stale.patch
 Patch27:    0027-Remove-android-define-from-logging.patch
 Patch28:    0028-Fix-build-of-nsPrintSettingsQt-and-nsDeviceContextSp.patch
+Patch29:    0029-Skip-invalid-WatchId-in-geolocation.clearWatch.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
