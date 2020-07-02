@@ -67,6 +67,7 @@ Patch21:    0021-sailfishos-build-Fix-build-error-with-newer-glibc.-J.patch
 Patch22:    0022-Revert-UserAgentOverride-changes-that-brea.patch
 Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
 Patch24:    0024-Allow-render-shaders-to-be-loaded-from-file.patch
+Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
