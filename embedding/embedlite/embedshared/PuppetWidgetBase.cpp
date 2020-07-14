@@ -103,14 +103,14 @@ PuppetWidgetBase::Destroy()
 #endif
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Show(bool aState)
 {
   NS_ASSERTION(mEnabled,
                "does it make sense to Show()/Hide() a disabled widget?");
 
   if (!WillShow(aState)) {
-    return NS_OK;
+    return;
   }
 
   LOGT("this:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
@@ -134,8 +134,6 @@ PuppetWidgetBase::Show(bool aState)
       DumpWidgetTree();
     }
 #endif
-
-  return NS_OK;
 }
 
 bool
@@ -153,17 +151,16 @@ PuppetWidgetBase::ConstrainPosition(bool, int32_t *aX, int32_t *aY)
 }
 
 // We're always at <0, 0>, and so ignore move requests.
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Move(double aX, double aY)
 {
   (void)aX;
   (void)aY;
 
   LOGNI();
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
 {
   LayoutDeviceIntRect oldBounds = mBounds;
@@ -199,24 +196,21 @@ PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
   if (!oldBounds.IsEqualEdges(mBounds) && listener) {
     listener->WindowResized(this, mBounds.width, mBounds.height);
   }
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Resize(double aX, double aY, double aWidth, double aHeight, bool aRepaint)
 {
   (void)aX;
   (void)aY;
-  return Resize(aWidth, aHeight, aRepaint);
+  Resize(aWidth, aHeight, aRepaint);
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Enable(bool aState)
 {
   LOGNI();
   mEnabled = aState;
-  return NS_OK;
 }
 
 bool
@@ -226,7 +220,7 @@ PuppetWidgetBase::IsEnabled() const
   return mEnabled;
 }
 
-NS_IMETHODIMP
+nsresult
 PuppetWidgetBase::SetFocus(bool aRaise)
 {
   Unused << aRaise;
@@ -234,7 +228,7 @@ PuppetWidgetBase::SetFocus(bool aRaise)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsresult
 PuppetWidgetBase::SetTitle(const nsAString &aTitle)
 {
   LOGNI();
@@ -258,7 +252,7 @@ PuppetWidgetBase::WidgetToScreenOffset()
   return LayoutDeviceIntPoint(0, 0);
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
   Unused << aRect;
@@ -267,7 +261,7 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
        mOnDestroyCalled, Type(), mLayerManager, this);
 
   if (mOnDestroyCalled) {
-    NS_OK;
+    return;
   }
 
   nsIWidgetListener* listener = GetWidgetListener();
@@ -279,23 +273,21 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
   if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
     // No need to do anything, the compositor will handle drawing
   } else {
-    NS_RUNTIMEABORT("Unexpected layer manager type");
+    MOZ_CRASH("Unexpected layer manager type");
   }
 
   listener = GetWidgetListener();
   if (listener) {
     listener->DidPaintWindow();
   }
-
-  return NS_OK;
 }
 
-NS_IMETHODIMP
+void
 PuppetWidgetBase::SetParent(nsIWidget *aNewParent)
 {
   LOGT();
   if (mParent == static_cast<PuppetWidgetBase*>(aNewParent)) {
-    return NS_OK;
+    return;
   }
 
   if (mParent) {
@@ -307,8 +299,6 @@ PuppetWidgetBase::SetParent(nsIWidget *aNewParent)
   if (mParent) {
     mParent->mChildren.AppendElement(this);
   }
-
-  return NS_OK;
 }
 
 nsIWidget*

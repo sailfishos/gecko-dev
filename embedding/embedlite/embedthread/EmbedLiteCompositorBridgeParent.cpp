@@ -39,11 +39,13 @@ namespace embedlite {
 static const int sDefaultPaintInterval = nsRefreshDriver::DefaultInterval();
 
 EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t windowId,
+                                                                 CompositorManagerParent* aManager,
                                                                  CSSToLayoutDeviceScale aScale,
                                                                  const TimeDuration &aVsyncRate,
+                                                                 const CompositorOptions &aOptions,
                                                                  bool aRenderToEGLSurface,
                                                                  const gfx::IntSize &aSurfaceSize)
-  : CompositorBridgeParent(aScale, aVsyncRate, aRenderToEGLSurface, aSurfaceSize)
+  : CompositorBridgeParent(aManager, aScale, aVsyncRate, aOptions, aRenderToEGLSurface, aSurfaceSize)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
@@ -65,15 +67,10 @@ EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent()
 
 PLayerTransactionParent*
 EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                                        const uint64_t& aId,
-                                                        TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                                        bool* aSuccess)
+                                                              const uint64_t& aId)
 {
   PLayerTransactionParent* p =
-    CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints,
-                                                   aId,
-                                                   aTextureFactoryIdentifier,
-                                                   aSuccess);
+    CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);
 
   EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
   if (win) {
@@ -193,7 +190,7 @@ void EmbedLiteCompositorBridgeParent::SetSurfaceSize(int width, int height)
 }
 
 void
-EmbedLiteCompositorBridgeParent::GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback)
+EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
 {
   MutexAutoLock lock(mRenderMutex);
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());

@@ -12,6 +12,13 @@ FINAL_LIBRARY = 'xul'
 
 CXXFLAGS += CONFIG['TK_CFLAGS']
 
+CFLAGS += CONFIG['GLIB_CFLAGS']
+CXXFLAGS += CONFIG['GLIB_CFLAGS']
+OS_LIBS += CONFIG['GLIB_LIBS']
+OS_LIBS += [
+    '-lgio-2.0',
+]
+
 with Files('**'):
     BUG_COMPONENT = ('Core', 'Widget: Gtk')
 

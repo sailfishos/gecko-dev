@@ -37,19 +37,17 @@ public:
                                        nsWidgetInitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
+  virtual void Show(bool aState) override;
+  virtual void Resize(double aWidth,
+                      double aHeight,
+                      bool aRepaint) override;
 
-  NS_IMETHOD Show(bool aState) override;
+  virtual nsresult  DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
+                                  nsEventStatus& aStatus) override;
 
-  NS_IMETHOD Resize(double aWidth,
-                    double aHeight,
-                    bool   aRepaint) override;
-
-  NS_IMETHOD DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
-                           nsEventStatus& aStatus) override;
-
-  NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
-                                    const InputContextAction& aAction) override;
-  NS_IMETHOD_(InputContext) GetInputContext() override;
+  virtual void SetInputContext(const InputContext& aContext,
+                               const InputContextAction& aAction) override;
+  virtual InputContext GetInputContext() override;
 
   virtual LayoutDeviceIntRect GetNaturalBounds() override;
 

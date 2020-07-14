@@ -12,13 +12,12 @@ namespace mozilla {
 namespace embedlite {
 
 nested(upto inside_cpow) sync protocol PEmbedLiteApp {
-  parent opens PCompositorBridge;
   manages PEmbedLiteView;
   manages PEmbedLiteWindow;
 parent:
   async Initialized();
   async ReadyToShutdown();
-  sync CreateWindow(uint32_t parentId, uint32_t chromeFlags, uint32_t contextFlags)
+  sync CreateWindow(uint32_t parentId, uint32_t chromeFlags)
     returns (uint32_t createdID, bool cancel);
   async PrefsArrayInitialized(Pref[] prefs);
 

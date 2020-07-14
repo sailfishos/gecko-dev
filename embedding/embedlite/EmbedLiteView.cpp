@@ -199,16 +199,27 @@ EmbedLiteView::RemoveMessageListener(const char* aName)
   Unused << mViewParent->SendRemoveMessageListener(nsDependentCString(aName));
 }
 
-void EmbedLiteView::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
+void EmbedLiteView::AddMessageListeners(std::vector<std::string> &aMessageNames)
 {
   NS_ENSURE_TRUE(mViewParent, );
-  Unused << mViewParent->SendAddMessageListeners(aMessageNames);
+
+  nsTArray<nsString> messages;
+  for (const auto &message : aMessageNames) {
+      messages.AppendElement((char16_t *)message.c_str());
+  }
+
+  Unused << mViewParent->SendAddMessageListeners(messages);
 }
 
-void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
+void EmbedLiteView::RemoveMessageListeners(std::vector<std::string> &aMessageNames)
 {
   NS_ENSURE_TRUE(mViewParent, );
-  Unused << mViewParent->SendRemoveMessageListeners(aMessageNames);
+  nsTArray<nsString> messages;
+  for (const auto &message : aMessageNames) {
+      messages.AppendElement((char16_t *)message.c_str());
+  }
+
+  Unused << mViewParent->SendRemoveMessageListeners(messages);
 }
 
 void

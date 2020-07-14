@@ -49,7 +49,7 @@ public:
 
   virtual void Destroy() override;
 
-  NS_IMETHOD Show(bool aState) override;
+  virtual void Show(bool aState) override;
 
   virtual bool IsVisible() const override;
 
@@ -57,30 +57,24 @@ public:
                                  int32_t* aX,
                                  int32_t* aY) override;
 
-  NS_IMETHOD Move(double aX, double aY) override;
+  virtual void Move(double aX, double aY) override;
 
-  NS_IMETHOD Resize(double aWidth,
-                    double aHeight,
-                    bool   aRepaint) override;
-  NS_IMETHOD Resize(double aX,
-                    double aY,
-                    double aWidth,
-                    double aHeight,
-                    bool   aRepaint) override;
+  virtual void Resize(double aWidth, double aHeight, bool aRepaint) override;
+  virtual void Resize(double aX, double aY, double aWidth, double aHeight,
+                      bool aRepaint) override;
 
-  NS_IMETHOD Enable(bool aState) override;
+  virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
 
-  NS_IMETHOD SetFocus(bool aRaise = false) override;
-
-  NS_IMETHOD SetTitle(const nsAString& aTitle) override;
+  virtual nsresult SetFocus(bool aRaise = false) override;
+  virtual nsresult SetTitle(const nsAString& aTitle) override;
 
   virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override;
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
 
-  NS_IMETHOD Invalidate(const LayoutDeviceIntRect& aRect) override;
+  virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 
-  NS_IMETHOD         SetParent(nsIWidget* aNewParent) override;
+  virtual void SetParent(nsIWidget* aNewParent) override;
   virtual nsIWidget* GetParent(void) override;
 
   virtual void CaptureRollupEvents(nsIRollupListener* aListener,

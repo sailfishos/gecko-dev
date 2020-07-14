@@ -14,14 +14,18 @@
 #include "mozilla/ModuleUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsXULAppAPI.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "EmbedLiteAppThreadChild.h"
 
+#include "buildid.h"
 #include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
 #include "nsAccessibilityService.h"
 #endif
+
+#define xstr(s) str(s)
+#define str(s) #s
 
 using namespace mozilla::embedlite;
 
@@ -49,7 +53,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(MOZ_BUILDID);
+  aAppBuildID.Assign(xstr(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -79,7 +83,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersi
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(MOZ_BUILDID);
+  aPlatformBuildID.Assign(xstr(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -143,22 +147,6 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetReplacedLockTime(PRTime* aReplacedLockTime
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetLastRunCrashID(nsAString& aLastRunCrashID)
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetIsOfficial(bool* aResult)
-{
-#ifdef MOZILLA_OFFICIAL
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
-  return NS_OK;
-}
-
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetWindowsDLLBlocklistStatus(bool* aResult)
 {
@@ -218,6 +206,13 @@ EmbedLiteXulAppInfo::GetUniqueProcessID(uint64_t* aResult)
 }
 
 NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetRemoteType(nsAString& aRemoteType) {
+  SetDOMStringToNull(aRemoteType);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 {
   *aResult = false;
@@ -225,10 +220,8 @@ EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetMultiprocessBlockPolicy(uint32_t* aResult)
-{
-  LOGNI();
-  *aResult = 0;
+EmbedLiteXulAppInfo::GetMaxWebProcessCount(uint32_t* aResult) {
+  *aResult = mozilla::GetMaxWebProcessCount();
   return NS_OK;
 }
 
@@ -239,6 +232,51 @@ EmbedLiteXulAppInfo::GetAccessibilityEnabled(bool* aResult)
   *aResult = GetAccService() != nullptr;
 #else
   *aResult = false;
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetAccessibleHandlerUsed(bool* aResult) {
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+  *aResult = Preferences::GetBool("accessibility.handler.enabled", false) &&
+             a11y::IsHandlerRegistered();
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+  if (!GetAccService()) {
+    aInstantiator = NS_LITERAL_STRING("");
+    return NS_OK;
+  }
+  nsAutoString ipClientInfo;
+  a11y::Compatibility::GetHumanReadableConsumersStr(ipClientInfo);
+  aInstantiator.Append(ipClientInfo);
+  aInstantiator.AppendLiteral("|");
+
+  nsCOMPtr<nsIFile> oopClientExe;
+  if (a11y::GetInstantiator(getter_AddRefs(oopClientExe))) {
+    nsAutoString oopClientInfo;
+    if (NS_SUCCEEDED(oopClientExe->GetPath(oopClientInfo))) {
+      aInstantiator.Append(oopClientInfo);
+    }
+  }
+#else
+  aInstantiator = NS_LITERAL_STRING("");
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetShouldBlockIncompatJaws(bool* aResult) {
+  *aResult = false;
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+  *aResult = mozilla::a11y::Compatibility::IsOldJAWS();
 #endif
   return NS_OK;
 }

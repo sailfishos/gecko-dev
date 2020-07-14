@@ -87,14 +87,14 @@ void EmbedLitePuppetWidget::Destroy()
   mView = nullptr;
 }
 
-NS_IMETHODIMP
+void
 EmbedLitePuppetWidget::Show(bool aState)
 {
   if (Destroyed() || !WillShow(aState)) {
-    return NS_OK;
+    return;
   }
 
-  Unused << PuppetWidgetBase::Show(aState);
+  PuppetWidgetBase::Show(aState);
 
   // Only propagate visibility changes for widgets backing EmbedLiteView.
   if (mView) {
@@ -102,8 +102,6 @@ EmbedLitePuppetWidget::Show(bool aState)
       mChildren[i]->Show(aState);
     }
   }
-
-  return NS_OK;
 }
 
 void*
@@ -138,7 +136,7 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
   return nullptr;
 }
 
-NS_IMETHODIMP
+nsresult
 EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
 {
   if (Destroyed()) {
@@ -202,7 +200,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
   return NS_OK;
 }
 
-NS_IMETHODIMP_(void)
+void
 EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
                                        const InputContextAction& aAction)
 {
@@ -250,7 +248,7 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
   }
 }
 
-NS_IMETHODIMP_(InputContext)
+InputContext
 EmbedLitePuppetWidget::GetInputContext()
 {
   LOGT();
@@ -268,37 +266,11 @@ EmbedLitePuppetWidget::GetInputContext()
   return mInputContext;
 }
 
-NS_IMETHODIMP_(NativeIMEContext)
+NativeIMEContext
 EmbedLitePuppetWidget::GetNativeIMEContext()
 {
   LOGT();
   return mNativeIMEContext;
-}
-
-nsIMEUpdatePreference
-EmbedLitePuppetWidget::GetIMEUpdatePreference()
-{
-    LOGT();
-#ifdef MOZ_CROSS_PROCESS_IME
-  // e10s requires IME content cache in in the TabParent for handling query
-  // content event only with the parent process.  Therefore, this process
-  // needs to receive a lot of information from the focused editor to sent
-  // the latest content to the parent process.
-  if (mInputContext.mIMEState.mEnabled == IMEState::PLUGIN) {
-    // But if a plugin has focus, we cannot receive text nor selection change
-    // in the plugin.  Therefore, PuppetWidget needs to receive only position
-    // change event for updating the editor rect cache.
-    return nsIMEUpdatePreference(mIMEPreferenceOfParent.mWantUpdates |
-                                 nsIMEUpdatePreference::NOTIFY_POSITION_CHANGE);
-  }
-  return nsIMEUpdatePreference(mIMEPreferenceOfParent.mWantUpdates |
-                               nsIMEUpdatePreference::NOTIFY_SELECTION_CHANGE |
-                               nsIMEUpdatePreference::NOTIFY_TEXT_CHANGE |
-                               nsIMEUpdatePreference::NOTIFY_POSITION_CHANGE );
-#else
-  // B2G doesn't handle IME as widget-level.
-  return nsIMEUpdatePreference();
-#endif
 }
 
 void

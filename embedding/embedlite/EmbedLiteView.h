@@ -7,9 +7,13 @@
 #define MOZ_VIEW_EMBED_H
 
 #include "mozilla/RefPtr.h"
-#include "nsStringGlue.h"
 #include "gfxMatrix.h"
+#include "gfxRect.h"  // gfxRect
+#include "gfxPoint.h" // gfxSize
 #include "nsRect.h"
+
+#include <vector>
+#include <string>
 
 class EmbedLiteViewIface;
 
@@ -119,8 +123,8 @@ public:
 
   virtual void AddMessageListener(const char* aMessageName);
   virtual void RemoveMessageListener(const char* aMessageName);
-  virtual void AddMessageListeners(const nsTArray<nsString>& aMessageNames);
-  virtual void RemoveMessageListeners(const nsTArray<nsString>& aMessageNames);
+  virtual void AddMessageListeners(std::vector<std::string> &aMessageNames);
+  virtual void RemoveMessageListeners(std::vector<std::string> &aMessageNames);
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();

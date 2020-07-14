@@ -42,7 +42,6 @@ static BrowserProcessSubThread* sIOThread;
 
 using namespace mozilla::dom;
 using namespace base;
-using base::ChildPrivileges;
 using base::KillProcess;
 using namespace mozilla::dom::indexedDB;
 using namespace mozilla::ipc;
@@ -113,7 +112,7 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   MOZ_COUNT_CTOR(EmbedLiteAppProcessParent);
   sAppProcessParent = this;
 
-  mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, base::PRIVILEGES_DEFAULT);
+  mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content);
 
   PR_SetEnv("NECKO_SEPARATE_STACKS=1");
   if (!BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
@@ -192,44 +191,44 @@ EmbedLiteAppProcessParent::OnChannelConnected(int32_t pid)
 }
 
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvInitialized()
 {
   LOGT();
   PR_SetEnv("MOZ_LAYERS_PREFER_OFFSCREEN=1");
   mApp->Initialized();
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvReadyToShutdown()
 {
   LOGT();
-  MessageLoop::current()->PostTask(NewRunnableMethod<bool>(this,
+  MessageLoop::current()->PostTask(NewRunnableMethod<bool>("mozilla::embedlite::EmbedLiteAppProcessParent::ShutDownProcess",
+                                                           this,
                                                            &EmbedLiteAppProcessParent::ShutDownProcess,
                                                            /* force */ false));
 
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
                                             const uint32_t& chromeFlags,
-                                            const uint32_t& contextFlags,
                                             uint32_t* createdID,
                                             bool* cancel)
 {
   LOGT();
-  *createdID = mApp->CreateWindowRequested(chromeFlags, contextFlags, parentId);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, parentId);
   *cancel = !*createdID;
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& data)
 {
   LOGT();
-  return false;
+  return IPC_OK();
 }
 
 PEmbedLiteViewParent*
@@ -241,10 +240,6 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, c
   if (!sCompositorCreated) {
     sCompositorCreated = true;
     mozilla::layers::CompositorThreadHolder::Start();
-    {
-      DebugOnly<bool> opened = PCompositorBridge::Open(this);
-      MOZ_ASSERT(opened);
-    }
   }
 
   EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, isPrivateWindow);
@@ -292,10 +287,13 @@ DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
 // system.
 struct DelayedDeleteContentParentTask : public mozilla::Runnable
 {
-  explicit DelayedDeleteContentParentTask(EmbedLiteAppProcessParent* aObj) : mObj(aObj) { }
+ public:
+  explicit DelayedDeleteContentParentTask(EmbedLiteAppProcessParent* aObj)
+        : mozilla::Runnable("DelayedDeleteContentParentTask")
+        , mObj(aObj) { }
 
   // No-op
-  NS_IMETHODIMP Run() { return NS_OK; }
+  NS_IMETHODIMP Run() override { return NS_OK; }
 
   RefPtr<EmbedLiteAppProcessParent> mObj;
 };
@@ -311,7 +309,7 @@ EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
     ShutDownProcess(true);
   }
 
-  MessageLoop::current()->PostTask(NewRunnableFunction(DelayedDeleteSubprocess, mSubprocess));
+  MessageLoop::current()->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteAppProcessParent::DelayedDeleteSubprocess", DelayedDeleteSubprocess, mSubprocess));
   mSubprocess = nullptr;
 }
 
@@ -337,22 +335,12 @@ EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
   }
 }
 
-PCompositorBridgeParent*
-EmbedLiteAppProcessParent::AllocPCompositorBridgeParent(Transport* aTransport,
-                                                  ProcessId aOtherProcess)
-{
-  LOGT();
-  RefPtr<EmbedLiteAppProcessParentManager> mgr = new EmbedLiteAppProcessParentManager(); // Dummy manager in order to initialize layers log, fix me by creating proper manager for this process type
-//  return CompositorBridgeParent::Create(aTransport, aOtherProcess);
-  return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess, 480, 800, 1);
-}
-
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs)
 {
   LOGT();
   mPrefs = prefs;
-  return true;
+  return IPC_OK();
 }
 
 void

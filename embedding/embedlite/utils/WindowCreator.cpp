@@ -8,7 +8,7 @@
 #include "nsIWebBrowserChrome.h"
 #include "nsIURI.h"
 #include "WindowCreator.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include <stdio.h>
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteAppChildIface.h"
@@ -34,15 +34,16 @@ NS_IMPL_ISUPPORTS(WindowCreator, nsIWindowCreator, nsIWindowCreator2)
 NS_IMETHODIMP
 WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
                                    uint32_t aChromeFlags,
-                                   uint32_t aContextFlags,
                                    nsITabParent* aOpeningTab,
                                    mozIDOMWindowProxy *aOpener,
+                                   uint64_t aNextTabParentId,
                                    bool* aCancel,
                                    nsIWebBrowserChrome* *_retval)
 {
   // Unused variables
   (void)aOpeningTab;
   (void)aOpener;
+  (void)aNextTabParentId;
   NS_ENSURE_ARG_POINTER(aCancel);
   NS_ENSURE_ARG_POINTER(_retval);
   *aCancel = false;
@@ -58,7 +59,7 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
   EmbedLiteViewChildIface* parent = mChild->GetViewByChromeParent(aParent);
   uint32_t createdID = 0;
   uint32_t parentID = parent ? parent->GetID() : 0;
-  mChild->CreateWindow(parentID, aChromeFlags, aContextFlags, &createdID, aCancel);
+  mChild->CreateWindow(parentID, aChromeFlags, &createdID, aCancel);
 
   if (*aCancel) {
     return NS_OK;
@@ -96,7 +97,7 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome* aParent,
 {
   LOGNI();
   bool cancel;
-  return CreateChromeWindow2(aParent, aChromeFlags, 0, nullptr, nullptr, &cancel, _retval);
+  return CreateChromeWindow2(aParent, aChromeFlags, nullptr, nullptr, 0, &cancel, _retval);
 }
 
 NS_IMETHODIMP

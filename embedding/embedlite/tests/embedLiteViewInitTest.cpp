@@ -3,18 +3,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/embedlite/EmbedInitGlue.h"
+// TODO : Fix EmbedInitGlue to use Bootstrapping for loading functions
+// or use GeckoLoader directly.
+// #include "mozilla/embedlite/EmbedInitGlue.h"
+// See JB#50787 && JB#50788
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "mozilla/embedlite/EmbedLiteView.h"
 #include "mozilla/embedlite/EmbedLiteWindow.h"
 #include "qmessagepump.h"
 #include <list>
+#include <unistd.h>
 
 #ifdef MOZ_WIDGET_QT
 #include <QGuiApplication>
 #endif
 
 using namespace mozilla::embedlite;
+
+// See JB#50787 && JB#50788
+bool LoadEmbedLite(int argc = 0, char** argv = 0)
+{
+  return false;
+}
+
+// See JB#50787 && JB#50788
+EmbedLiteApp *XRE_GetEmbedLite()
+{
+  return nullptr;
+}
 
 class MyViewListener;
 class MyListener : public EmbedLiteAppListener
@@ -112,7 +128,8 @@ public:
     printf("OnScrollChanged: scroll:%i,%i\n", offSetX, offSetY);
   }
   virtual void OnObserve(const char* aTopic, const char16_t* aData) {
-    printf("OnObserve: top:%s, data:%s\n", aTopic, NS_ConvertUTF16toUTF8(aData).get());
+    (void)aData;
+    printf("OnObserve: top:%s\n", aTopic);
   }
   EmbedLiteView* View() { return mView; }
 

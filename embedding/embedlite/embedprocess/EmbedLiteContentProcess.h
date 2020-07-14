@@ -28,8 +28,8 @@ public:
     EmbedLiteContentProcess(ProcessId aParentHandle);
     ~EmbedLiteContentProcess();
 
-    virtual bool Init();
-    virtual void CleanUp();
+    virtual bool Init(int aArgc, char* aArgv[]) override;
+    virtual void CleanUp() override;
 
     void SetAppDir(const nsACString& aPath);
 

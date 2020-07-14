@@ -4,13 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsXPCOMGlue.h"
 #include "EmbedLiteAppService.h"
 
 #include "nsNetCID.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIObserverService.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsIChannel.h"
 #include "nsContentUtils.h"
 
@@ -51,8 +50,9 @@ namespace
     RefPtr<EmbedLiteAppService> mService;
     nsCOMPtr<nsIEmbedMessageListener> mListener;
   public:
-    AsyncArrayRemove(EmbedLiteAppService* service, const char* name, nsIEmbedMessageListener* aListener)
-      : mName(name)
+    explicit AsyncArrayRemove(EmbedLiteAppService* service, const char* name, nsIEmbedMessageListener* aListener)
+      : mozilla::Runnable("EmbedLiteAppService::AsyncArrayRemove")
+      , mName(name)
       , mService(service)
       , mListener(aListener)
     {

@@ -16,8 +16,6 @@
 #include <iostream>
 
 // XPCOMGlueStartup
-#include "nsXPCOMGlue.h"
-
 // XRE_ Functions
 #include "nsXULAppAPI.h"
 

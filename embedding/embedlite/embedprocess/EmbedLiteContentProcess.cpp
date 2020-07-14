@@ -32,8 +32,11 @@ EmbedLiteContentProcess::SetAppDir(const nsACString& aPath)
 }
 
 bool
-EmbedLiteContentProcess::Init()
+EmbedLiteContentProcess::Init(int aArgc, char* aArgv[])
 {
+  (void)aArgc;
+  (void)aArgv;
+
   LOGT();
   mContent->Init(IOThreadChild::message_loop(),
                  ParentPid(),

@@ -33,45 +33,22 @@ public:
 protected:
   void OnChannelConnected(int32_t pid) override;
 
-  virtual bool
-  RecvInitialized();
+  virtual mozilla::ipc::IPCResult RecvInitialized() override;
+  virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
+  virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
+                                                   const uint32_t &chromeFlags,
+                                                   uint32_t *createdID,
+                                                   bool *cancel) override;
+  virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
+                                              const nsString &data) override;
 
-  virtual bool
-  RecvReadyToShutdown();
+  virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId, const uint32_t &id, const uint32_t &parentId, const bool&);
 
-  virtual bool
-  RecvCreateWindow(
-          const uint32_t& parentId,
-          const uint32_t& chromeFlags,
-          const uint32_t& contextFlags,
-          uint32_t* createdID,
-          bool* cancel);
-
-  virtual bool
-  RecvObserve(
-          const nsCString& topic,
-          const nsString& data);
-
-  virtual PEmbedLiteViewParent*
-  AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool&);
-
-  virtual bool
-  DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* aActor);
-
-  virtual PEmbedLiteWindowParent*
-  AllocPEmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id) override;
-
-  virtual bool
-  DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* aActor) override;
-
-  virtual void
-  ActorDestroy(ActorDestroyReason aWhy);
-
-  virtual PCompositorBridgeParent*
-  AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess);
-
-  virtual bool
-  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs);
+  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor);
+  virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id) override;
+  virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent *aActor) override;
+  virtual void ActorDestroy(ActorDestroyReason aWhy);
+  virtual mozilla::ipc::IPCResult RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs) override;
 
 private:
   virtual ~EmbedLiteAppProcessParent();
