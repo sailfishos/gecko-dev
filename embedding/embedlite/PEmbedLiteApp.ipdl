@@ -12,7 +12,6 @@ namespace mozilla {
 namespace embedlite {
 
 nested(upto inside_cpow) sync protocol PEmbedLiteApp {
-  parent opens PCompositorBridge;
   manages PEmbedLiteView;
   manages PEmbedLiteWindow;
 parent:

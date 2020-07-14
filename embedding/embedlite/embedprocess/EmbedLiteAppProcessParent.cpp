@@ -192,16 +192,16 @@ EmbedLiteAppProcessParent::OnChannelConnected(int32_t pid)
 }
 
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvInitialized()
 {
   LOGT();
   PR_SetEnv("MOZ_LAYERS_PREFER_OFFSCREEN=1");
   mApp->Initialized();
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvReadyToShutdown()
 {
   LOGT();
@@ -209,10 +209,10 @@ EmbedLiteAppProcessParent::RecvReadyToShutdown()
                                                            &EmbedLiteAppProcessParent::ShutDownProcess,
                                                            /* force */ false));
 
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
                                             const uint32_t& chromeFlags,
                                             const uint32_t& contextFlags,
@@ -222,14 +222,14 @@ EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
   LOGT();
   *createdID = mApp->CreateWindowRequested(chromeFlags, contextFlags, parentId);
   *cancel = !*createdID;
-  return true;
+  return IPC_OK();
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& data)
 {
   LOGT();
-  return false;
+  return IPC_OK();
 }
 
 PEmbedLiteViewParent*
@@ -347,12 +347,12 @@ EmbedLiteAppProcessParent::AllocPCompositorBridgeParent(Transport* aTransport,
   return EmbedLiteCompositorProcessParent::Create(aTransport, aOtherProcess, 480, 800, 1);
 }
 
-bool
+mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs)
 {
   LOGT();
   mPrefs = prefs;
-  return true;
+  return IPC_OK();
 }
 
 void

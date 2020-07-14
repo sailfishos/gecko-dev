@@ -27,7 +27,7 @@ class nsString;
 [ptr] native EmbedLiteView(mozilla::embedlite::EmbedLiteView);
 
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
-interface EmbedLiteViewIface
+interface EmbedLiteViewIface : nsISupports
 {
     void SetDPI(in float dpi);
     void ReceiveInputEvent([const] in InputData aEvent);
