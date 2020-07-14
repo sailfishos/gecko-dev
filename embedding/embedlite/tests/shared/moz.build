@@ -18,7 +18,7 @@ SOURCES += [
 Library('qmessagepump')
 
 DEFINES['XPCOM_GLUE'] = True
-DISABLE_STL_WRAPPING = True
+DisableStlWrapping()
 
 USE_LIBS += [
     'xpcomglue',

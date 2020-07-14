@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "nsCOMPtr.h"
 #include "nsIProcess.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsIServiceManager.h"
 #include "nsIFile.h"
 #include "nsDirectoryServiceDefs.h"

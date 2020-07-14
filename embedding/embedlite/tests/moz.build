@@ -11,7 +11,7 @@ GeckoSimplePrograms([
 ], linkage='standalone')
 
 DEFINES['XPCOM_GLUE'] = True
-DISABLE_STL_WRAPPING = True
+DisableStlWrapping()
 
 USE_LIBS += [
     'qmessagepump',
