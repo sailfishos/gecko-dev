@@ -407,3 +407,13 @@ pref("toolkit.telemetry.enabled", false);
 pref("experiments.enabled", false);
 pref("experiments.supported", false);
 pref("datareporting.healthreport.service.enabled", false);
+
+// Align security prefs from Android FF
+// Name of alternate about: page for certificate errors (when undefined, defaults to about:neterror)
+pref("security.alternate_certificate_error_page", "certerror");
+// Block insecure active content on https pages
+pref("security.mixed_content.block_active_content", true);
+// Enable pinning
+pref("security.cert_pinning.enforcement_level", 1);
+// Only fetch OCSP for EV certificates
+pref("security.OCSP.enabled", 2);
