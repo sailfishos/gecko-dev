@@ -124,7 +124,6 @@ BuildRequires:  yasm
 BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
-Requires: gstreamer1.0-plugins-good
 %if %{system_ffi}
 BuildRequires:  libffi-devel
 %endif
@@ -278,6 +277,7 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %{mozappdir}/omni.ja
 %{mozappdir}/dependentlibs.list
 %{mozappdir}/dictionaries
+%{mozappdir}/plugin-container
 
 %files devel
 %defattr(-,root,root,-)
