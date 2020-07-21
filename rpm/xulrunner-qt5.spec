@@ -100,6 +100,7 @@ BuildRequires:  python
 BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
+BuildRequires:  patchelf
 %if %{system_icu}
 BuildRequires:  libicu-devel
 %endif
@@ -265,6 +266,16 @@ ln -s %{_libdir}/libnssckbi.so ${RPM_BUILD_ROOT}%{mozappdir}/libnssckbi.so
 
 # Fix some of the RPM lint errors.
 find "%{buildroot}%{_includedir}" -type f -name '*.h' -exec chmod 0644 {} +;
+
+%check
+# Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
+# but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
+# Patchelf can insert this into the ELF RPATH instead. libxul also links to liblgpllibs.so 
+# in the same directory, so this also needs patching.
+# Strip breaks the binaries if done after this, which is why it's in %check
+
+patchelf --set-rpath "%{mozappdir}" ${RPM_BUILD_ROOT}%{mozappdir}/plugin-container
+patchelf --set-rpath "%{mozappdir}" ${RPM_BUILD_ROOT}%{mozappdir}/libxul.so
 
 %post
 touch /var/lib/_MOZEMBED_CACHE_CLEAN_
