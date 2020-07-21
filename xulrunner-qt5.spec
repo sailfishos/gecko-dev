@@ -283,6 +283,7 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %files
 %defattr(-,root,root,-)
 %attr(755,-,-) %{_bindir}/*
+%dir %{mozappdir}
 %dir %{mozappdir}/defaults
 %{mozappdir}/*.so
 %{mozappdir}/omni.ja
