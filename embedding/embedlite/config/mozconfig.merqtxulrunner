@@ -36,6 +36,7 @@ ac_add_options --disable-updater
 ac_add_options --disable-gamepad
 ac_add_options --disable-printing
 ac_add_options --disable-crashreporter
+ac_add_options --disable-jemalloc
 ac_add_options --with-crashreporter-enable-percent="00"
 
 # Treat warnings as errors in directories with FAIL_ON_WARNINGS.
