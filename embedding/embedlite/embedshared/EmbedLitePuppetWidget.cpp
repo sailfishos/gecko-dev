@@ -371,12 +371,9 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 LayerManager *
 EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "layer manager %p is shutdown %p this: %p", mLayerManager.get(), mShutdownObserver, this);
-
   if (!mLayerManager) {
     if (!mShutdownObserver || Destroyed()) {
       // We are shutting down, do not try to re-create a LayerManager
-      LOGC("EmbedLiteLayerManager", "Shutting down or puppet destroyed.");
       return nullptr;
     }
   }
@@ -384,7 +381,6 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
   LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
   if (lm) {
     mLayerManager = lm;
-    LOGC("EmbedLiteLayerManager", "base layer manager: %p this: %p", mLayerManager.get(), this);
     return mLayerManager;
   }
 
@@ -400,9 +396,13 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
   }
 
   nsIWidget* topWidget = GetTopLevelWidget();
-  mLayerManager = topWidget->GetLayerManager(aShadowManager, aBackendHint, aPersistence);
-  LOGC("EmbedLiteLayerManager", "Get layer manager from top: %p this: %p", mLayerManager.get(), this);
-  return mLayerManager;
+  if (topWidget && topWidget != this) {
+      mLayerManager = topWidget->GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+      return mLayerManager;
+  }
+  else {
+      return nullptr;
+  }
 }
 
 bool
