@@ -79,9 +79,6 @@ PuppetWidgetBase::Destroy()
   }
 
   mOnDestroyCalled = true;
-
-  LOGC("EmbedLiteLayerManager", "Destroy %s this: %p", Type(), this);
-
   mLayerManager = nullptr;
 
   Base::OnDestroy();
@@ -109,7 +106,7 @@ PuppetWidgetBase::Show(bool aState)
   NS_ASSERTION(mEnabled,
                "does it make sense to Show()/Hide() a disabled widget?");
 
-  if (!WillShow(aState)) {
+  if (Destroyed() || !WillShow(aState)) {
     return NS_OK;
   }
 
@@ -121,6 +118,10 @@ PuppetWidgetBase::Show(bool aState)
   nsIWidget* topWidget = GetTopLevelWidget();
   if (!mVisible && mLayerManager && topWidget == this) {
     mLayerManager->ClearCachedResources();
+  }
+
+  if (Destroyed()) {
+    return NS_OK;
   }
 
   if (!wasVisible && mVisible) {
@@ -166,6 +167,10 @@ PuppetWidgetBase::Move(double aX, double aY)
 NS_IMETHODIMP
 PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
 {
+  if (Destroyed()) {
+    return NS_OK;
+  }
+
   LayoutDeviceIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
 
@@ -263,11 +268,8 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
   Unused << aRect;
 
-  LOGC("EmbedLiteLayerManager", "destroyed: %d type: %s LayerManager %p this: %p",
-       mOnDestroyCalled, Type(), mLayerManager, this);
-
-  if (mOnDestroyCalled) {
-    NS_OK;
+  if (Destroyed()) {
+    return NS_OK;
   }
 
   nsIWidgetListener* listener = GetWidgetListener();
@@ -381,7 +383,9 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
                                                 LayersBackend aBackendHint,
                                                 LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  if (Destroyed()) {
+    return nullptr;
+  }
 
   if (mLayerManager) {
     // This layer manager might be used for painting outside of DoDraw(), so we need
@@ -394,8 +398,6 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
     }
     return mLayerManager;
   }
-
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
 
   // Layer manager can be null here. Sub-class shall handle this.
   return mLayerManager;
