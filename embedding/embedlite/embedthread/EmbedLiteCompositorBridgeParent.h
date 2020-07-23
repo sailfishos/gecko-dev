@@ -6,8 +6,6 @@
 #ifndef mozilla_layers_EmbedLiteCompositorBridgeParent_h
 #define mozilla_layers_EmbedLiteCompositorBridgeParent_h
 
-#define COMPOSITOR_PERFORMANCE_WARNING
-
 #include "Layers.h"
 #include "mozilla/Function.h"
 #include "base/task.h" // for CancelableRunnable
