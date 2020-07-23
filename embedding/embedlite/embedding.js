@@ -344,6 +344,9 @@ pref("media.cache_readahead_limit", 30);
 // of at least 4.
 pref("media.video-queue.default-size", 3);
 
+// Enable GMP plugins for media decoding to use gmp-droid
+pref("media.gmp.decoder.enabled", true);
+
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
 pref("image.mem.allow_locking_in_content_processes", false);
