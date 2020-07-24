@@ -1,0 +1,95 @@
+From 040936324c6cc2129c5c4a5382fe2a708bd2d623 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 31 Jan 2020 12:43:20 +0200
+Subject: [PATCH] [sailfishos][build] Fix build error with newer glibc.
+ JB#49874
+
+This fix is insprired by https://bugzilla.mozilla.org/show_bug.cgi?id=1533969
+
+--------------------------------------------------------------------------
+Bug 1533969 - Fix build error with newer glibc. r=nbp
+
+New glibc versions provide a wrapper for gettid, which means that our stuff
+fails to build with:
+
+```
+/home/emilio/src/moz/gecko/js/src/util/NativeStack.cpp:28:14: error: static declaration of 'gettid' follows non-static declaration
+static pid_t gettid() { return syscall(__NR_gettid); }
+             ^
+/usr/include/bits/unistd_ext.h:34:16: note: previous declaration is here
+extern __pid_t gettid (void) __THROW;
+```
+
+Differential Revision: https://phabricator.services.mozilla.com/D22829
+
+--HG--
+extra : moz-landing-system : lando
+--------------------------------------------------------------------------
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ tools/profiler/core/platform.h                | 11 ++++------
+ tools/profiler/tasktracer/GeckoTaskTracer.cpp | 21 +++----------------
+ 2 files changed, 7 insertions(+), 25 deletions(-)
+
+diff --git a/tools/profiler/core/platform.h b/tools/profiler/core/platform.h
+index 2e736d97cb0b..b80c557e8fd7 100644
+--- a/tools/profiler/core/platform.h
++++ b/tools/profiler/core/platform.h
+@@ -59,16 +59,13 @@
+ #include <vector>
+ #include "StackTop.h"
+ 
+-// We need a definition of gettid(), but Linux libc implementations don't
+-// provide a wrapper for it (except for Bionic)
+-#if defined(__linux__)
++// We need a definition of gettid(), but old glibc versions don't provide a
++// wrapper for it.
++#if 0
+ #include <unistd.h>
+ #if !defined(__BIONIC__)
+ #include <sys/syscall.h>
+-static inline pid_t gettid()
+-{
+-  return (pid_t) syscall(SYS_gettid);
+-}
++#  define gettid() static_cast<pid_t>(syscall(SYS_gettid))
+ #endif
+ #endif
+ 
+diff --git a/tools/profiler/tasktracer/GeckoTaskTracer.cpp b/tools/profiler/tasktracer/GeckoTaskTracer.cpp
+index ada6956148dc..eaecc58af5c2 100644
+--- a/tools/profiler/tasktracer/GeckoTaskTracer.cpp
++++ b/tools/profiler/tasktracer/GeckoTaskTracer.cpp
+@@ -20,25 +20,10 @@
+ 
+ #include <stdarg.h>
+ 
+-// We need a definition of gettid(), but glibc doesn't provide a
+-// wrapper for it.
+-#if defined(__GLIBC__)
+-#include <unistd.h>
++#if 0
++// glibc doesn't implement gettid(2).
+ #include <sys/syscall.h>
+-static inline pid_t gettid()
+-{
+-  return (pid_t) syscall(SYS_gettid);
+-}
+-#elif defined(XP_MACOSX)
+-#include <unistd.h>
+-#include <sys/syscall.h>
+-static inline pid_t gettid()
+-{
+-  return (pid_t) syscall(SYS_thread_selfid);
+-}
+-#elif defined(LINUX)
+-#include <sys/types.h>
+-pid_t gettid();
++#  define gettid() static_cast<pid_t>(syscall(SYS_gettid))
+ #endif
+ 
+ // NS_ENSURE_TRUE_VOID() without the warning on the debug build.
+-- 
+2.26.2
+
