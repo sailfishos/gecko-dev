@@ -1,0 +1,28 @@
+From fcfc8a82eacc2c8edb25547cea329bc78ac72501 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 26 Mar 2019 15:43:30 +0200
+Subject: [PATCH] Cleanup build configuration. Fixes JB#44612
+
+Marionette is now disabled
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ old-configure.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/old-configure.in b/old-configure.in
+index d69442aebca4..8a1de8f42692 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -5413,7 +5413,7 @@ fi
+ dnl
+ dnl Always build Marionette if not Android or B2G
+ dnl
+-if test "$OS_TARGET" != Android -a x"$MOZ_WIDGET_TOOLKIT" != x"gonk"; then
++if test "$OS_TARGET" != Android -a x"$MOZ_WIDGET_TOOLKIT" != x"gonk" -a x"$MOZ_WIDGET_TOOLKIT" != x"qt"; then
+     AC_DEFINE(ENABLE_MARIONETTE)
+ fi
+ AC_SUBST(ENABLE_MARIONETTE)
+-- 
+2.17.1
+

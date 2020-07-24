@@ -1,0 +1,85 @@
+From bf2f304dd52156dba371e9e600e7b75747b2cefa Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Wed, 28 Oct 2015 16:07:36 +0200
+Subject: [PATCH] Adapt LoginManager to EmbedLite. Fixes JB#21980
+
+[sailfishos][embedlite] Drop nsLoginManagerPrompter. JB#50052
+
+Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+
+diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
+index 716460878175..3fe484ef4d39 100644
+--- a/dom/ipc/TabChild.h
++++ b/dom/ipc/TabChild.h
+@@ -507,12 +507,16 @@ public:
+   static inline TabChild*
+   GetFrom(nsIDocShell* aDocShell)
+   {
+-    if (!aDocShell) {
+-      return nullptr;
+-    }
++    // Even though TabChild is not used in EmbedLite somehow the static cast
++    // below can return non-null pointer. Let's return nullptr explcitly.
++    return nullptr;
+ 
+-    nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
+-    return static_cast<TabChild*>(tc.get());
++    //if (!aDocShell) {
++    //  return nullptr;
++    //}
++
++    //nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
++    //return static_cast<TabChild*>(tc.get());
+   }
+ 
+   static inline TabChild*
+diff --git a/embedding/embedlite/installer/package-manifest.in b/embedding/embedlite/installer/package-manifest.in
+index 9bd22c12055e..6f959140b975 100644
+--- a/embedding/embedlite/installer/package-manifest.in
++++ b/embedding/embedlite/installer/package-manifest.in
+@@ -469,7 +469,6 @@
+ @RESPATH@/components/passwordmgr.manifest
+ @RESPATH@/components/nsLoginInfo.js
+ @RESPATH@/components/nsLoginManager.js
+-@RESPATH@/components/nsLoginManagerPrompter.js
+ @RESPATH@/components/storage-json.js
+ @RESPATH@/components/crypto-SDR.js
+ @RESPATH@/components/pluginGlue.manifest
+diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+index e472fb61c70d..86ac329d5743 100644
+--- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+@@ -89,6 +89,8 @@ var LoginManagerParent = {
+   },
+ 
+   receiveMessage: function (msg) {
++    msg.target.QueryInterface(Ci.nsIEmbedFrame);
++    log("receiveMessage " + msg.name + " msg.target: " + msg.target);
+     let data = msg.data;
+     switch (msg.name) {
+       case "RemoteLogins:findLogins": {
+diff --git a/toolkit/components/passwordmgr/passwordmgr.manifest b/toolkit/components/passwordmgr/passwordmgr.manifest
+index 72e9ccffb883..59476fc09007 100644
+--- a/toolkit/components/passwordmgr/passwordmgr.manifest
++++ b/toolkit/components/passwordmgr/passwordmgr.manifest
+@@ -1,9 +1,5 @@
+ component {cb9e0de8-3598-4ed7-857b-827f011ad5d8} nsLoginManager.js
+ contract @mozilla.org/login-manager;1 {cb9e0de8-3598-4ed7-857b-827f011ad5d8}
+-component {749e62f4-60ae-4569-a8a2-de78b649660e} nsLoginManagerPrompter.js
+-contract @mozilla.org/passwordmanager/authpromptfactory;1 {749e62f4-60ae-4569-a8a2-de78b649660e}
+-component {8aa66d77-1bbb-45a6-991e-b8f47751c291} nsLoginManagerPrompter.js
+-contract @mozilla.org/login-manager/prompter;1 {8aa66d77-1bbb-45a6-991e-b8f47751c291}
+ component {0f2f347c-1e4f-40cc-8efd-792dea70a85e} nsLoginInfo.js
+ contract @mozilla.org/login-manager/loginInfo;1 {0f2f347c-1e4f-40cc-8efd-792dea70a85e}
+ #ifdef ANDROID
+@@ -14,4 +10,4 @@ component {c00c432d-a0c9-46d7-bef6-9c45b4d07341} storage-json.js
+ contract @mozilla.org/login-manager/storage/json;1 {c00c432d-a0c9-46d7-bef6-9c45b4d07341}
+ #endif
+ component {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309} crypto-SDR.js
+-contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
+\ No newline at end of file
++contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
+-- 
+2.26.2
+

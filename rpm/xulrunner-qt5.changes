@@ -1,0 +1,190 @@
+* Wed May 06 2020 flypig <david@flypig.co.uk> - 45.9.1+git22
+- [nemo][xulrunner-qt5] Remove patch added promptForSaveToFile() support. JB#49723
+
+* Wed May 06 2020 Andrew den Exter <andrew.den.exter@jollamobile.com> - 45.9.1+git21
+- [xulrunner-qt5] Fix a crash during garbage collection. Contributes to JB#48786
+
+* Wed Apr 08 2020 Andrew Branson <andrew.branson@jollamobile.com> - 45.9.1+git20
+- [nemo][media] Fix mp3 audio playback and add debug graph generation. Fixes JB#49532
+
+* Thu Mar 26 2020 Andrew den Exter <andrew.den.exter@jollamobile.com> - 45.9.1+git19
+- [nemo][embedlite] Better logging when preparing offscreen rendering. JB#48440
+- [xulrunner-qt5] Reduce memory pressure during application startup. Contributes to JB#48786
+
+* Wed Mar 11 2020 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git18
+- [nemo][gecko] Handle temporary directory similarly as in MacOSX. JB#49155
+
+* Fri Feb 28 2020 Andrew den Exter <andrew.den.exter@jollamobile.com> - 45.9.1+git17
+- [xulrunner] Fix embeded offscreen surfaces not being painted. Contributes to JB#48494
+
+* Tue Feb 04 2020 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git16
+- [nemo][xulrunner] Use libcontentaction for uri scheme handling. JB#47892
+
+* Sat Feb 01 2020 Matti Kosola <matti.kosola@jollamobile.com> - 45.9.1+git15
+- [xulrunner] Fix build error with newer glibc. JB#48719
+
+* Tue Dec 10 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git14
+- [nemo][embedlite] Explicitly enable libproxy for Gecko build. JB#46345
+
+* Wed Nov 20 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git13
+- [nemo][xulrunner] Fix build with GCC 8. JB#47985
+
+* Thu Aug 22 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git12
+- [nemo][embedlite] Disable MSAA on mobile. Fixes JB#44402
+
+* Wed May 22 2019 MikeSalmela <mike.salmela@jollamobile.com> - 45.9.1+git11
+- [gecko-dev] Fix licence, update URL. Contributes to JB#45486
+- [nemo][gecko-dev] Fix licence, update URL. Contributes to JB#45486
+
+* Tue Apr 30 2019 pvuorela <pekka.vuorela@jolla.com> - 45.9.1+git10
+- [gecko-dev] Fix linking with newer ld. Contributes to JB#45154
+- [xulrunner] Fix linking with newer ld. Contributes to JB#45154
+
+* Mon Apr 29 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git9
+- [nemo][embedlite] Cherry-pick sysmacros fix after glibc update. Contributes to JB#45154
+
+* Tue Apr 16 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git8
+- [nemo][embedlite] Fix sync message handler call both global and frame message handlers. Fixes JB#45429
+
+* Tue Apr 09 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git7
+- [nemo][embedlite] Switch to use APZEventState (async pan&zoom) for input handling. Fixes JB#44361
+
+* Tue Apr 02 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git6
+- [nemo][embedlite] Schedule update for a view. Contributes to JB#44721
+
+* Wed Mar 27 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git5
+- [nemo][embedlite] Cleanup build configuration. Fixes JB#44612
+
+* Tue Mar 19 2019 pvuorela <pekka.vuorela@jolla.com> - 45.9.1+git4
+- [xulrunner] Enable system ICU. Contributes to JB#36010
+
+* Wed Feb 27 2019 Raine Makelainen <raine.makelainen@gmail.com> - 45.9.1+git3
+- [nemo][xulrunner] Update to gecko esr45.9. Contributes to JB#44806
+
+* Tue Feb 26 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.9.1+git2
+- [nemo][embedlite] Align EmbedLiteViewBaseChild's RecvSetIsActive to nsPresShell::SetIsActive. Fixes JB#44342
+- [nemo][xulrunner] Do not load nsHelperAppDlg.js. Fixes JB#44322
+- [nemo][xulrunner] Embedlite doesn't have prompter implementation. Fixes JB#44322
+- [nemo][xulrunner] Merge latest esr45 (45.9.1)
+
+* Thu Jan 31 2019 Tomi Leppänen <tomi.leppanen@jolla.com> - 38.8.0.25
+- [gecko] nemo : Backport upstream fix for bug 1321066. Fixes JB#37118
+- [nemo][xulrunner] Build xulrunner with ARM instruction set instead of THUMB. Fixes JB#33431
+- [packaging] Remove explicit dependency to sqlite. Contributes to JB#44455
+
+* Wed Jan 30 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.9.1+git1
+- [nemo][xulrunner] Merge latest esr45 (45.9.1)
+
+* Wed Jan 30 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git7
+- [nemo][xulrunner] Embedlite doesn't have prompter implementation. Fixes JB#44322
+
+* Wed Jan 30 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git6
+- [nemo][xulrunner] Do not load nsHelperAppDlg.js. Fixes JB#44322
+
+* Mon Jan 21 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git5
+- [nemo][embedlite] Align EmbedLiteViewBaseChild's RecvSetIsActive to nsPresShell::SetIsActive. Fixes JB#44342
+
+* Mon Jan 21 2019 Andrew den Exter <andrew.den.exter@qinetic.com.au> - 45.8.1.1+git4
+- [xulrunner] Update media resource state when the playing state changes for any reason. Fixes JB#42900
+
+* Fri Jan 18 2019 Andrew den Exter <andrew.den.exter@jollamobile.com> - 38.8.0.24
+- [gecko] nemo : Backport upstream fix for bug 1321066. Fixes JB#37118
+- [nemo][xulrunner] Build xulrunner with ARM instruction set instead of THUMB. Fixes JB#33431
+- [nemo][xulrunner] Update media resource state when the playing state changes for any reason. Fixes JB#42900
+
+* Thu Jan 17 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git3
+- [rpm] Update system nspr version and configuration flag. Contributes to JB#37917
+
+* Thu Jan 17 2019 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.22
+- [gecko] nemo : Backport upstream fix for bug 1321066. Fixes JB#37118
+- [nemo][xulrunner] Build xulrunner with ARM instruction set instead of THUMB. Fixes JB#33431
+- [nemo][xulrunner] Fix tls loading error with newer NSS. Contributes to JB#36180
+
+* Thu Jan 10 2019 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git2
+- [xulrunner] Make fullscreen enabling work as used to with pref full-screen-api.content-only. Fixes JB#44129
+
+* Tue Dec 18 2018 Raine Makelainen <raine.makelainen@jolla.com> - 45.8.1.1+git1
+- [rpm] Cleanup spec. Contributes to JB#44176
+
+* Mon Dec 17 2018 Raine Makelainen <raine.makelainen@gmail.com> - 45.8.1.1
+- [embedlite] Fix (de)serialization of JSON messages. Fixes JB#37190
+
+* Tue Sep 26 2017 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.21
+- [nemo][xulrunner] Build xulrunner with ARM instruction set instead of THUMB. Fixes JB#33431
+- [xulrunner] Build xulrunner with ARM instruction set instead of THUMB. JB#33431
+
+* Wed Sep 13 2017 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.20
+- [nemo][xulrunner] Add webrtc 64 bit support to build config. Contributes to JB#39691
+- [xulrunner] Add webrtc 64 bit support to build config. Contributes to JB#39691
+
+* Tue Sep 05 2017 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.19
+- [nemo][embedlite] Drop touch start tolerance default value. Contributes to JB#39581
+- [nemo][embedlite] Use default value for "apz.asyncscroll.throttle". Contributes to JB#39581
+
+* Wed Aug 30 2017 Raine Makelainen <raine.makelainen@jolla.com> - 38.8.0.18
+- [rpm] Bump up version. Contributes to JB#39557
+
+* Thu Dec 22 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.17
+- [embedlite] Update width and height based on margins. Contributes to JB#36749
+
+* Fri Dec 02 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.16
+- [gecko] Backport upstream fix for bug 1321066. Fixes JB#37118
+- [gecko] nemo : Backport upstream fix for bug 1321066. Fixes JB#37118
+- [rpm] Avoid crash in gst_video_frame_map_id. Fixes JB#37116
+
+* Tue Oct 25 2016 Raine Makelainen <raine.makelainen@jolla.com> - 38.8.0.15
+- [embedlite] Add ScrollBy and ScrollTo methods. Contributes to JB#36705
+- [rpm] Increment version
+
+* Tue Oct 18 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.14
+- [embedlite] Fix browser crash upon exit. Fixes JB#36633
+
+* Thu Oct 13 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.13
+- [embedlite] Set egl surface size. Contributes to JB#36509
+
+* Tue Sep 27 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.12
+- [rpm] Remove sqlite3 jemalloc patch
+
+* Mon Sep 12 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.11
+- [embedlite] Guard swaping while reading platform image. Contributes to JB#36158
+
+* Fri Aug 19 2016 pvuorela <pekka.vuorela@jolla.com> - 38.8.0.10
+- [xulrunner] Use system Cairo and Pixman. Contributes to JB#36010
+
+* Mon Jul 11 2016 chriadam <chris.adams@jollamobile.com> - 38.8.0.8
+- [1]
+- [xulrunner] Don't try to access undefined app list of AppsServiceChild. Fixes MER#1609
+
+* Mon Jun 20 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.6
+- [embedlite] Only widget hosting window can create compositor. Fixes JB#35134
+
+* Thu Jun 09 2016 Raine Makelainen <raine.makelainen@jolla.com> - 38.8.0.4
+- [rpm] Increment package version
+
+* Thu Jun 09 2016 Raine Makelainen <raine.makelainen@gmail.com> - 38.8.0.3
+- [embedlite] Enable new cache backend. Fixes JB#35436
+
+* Fri May 27 2016 Raine Makelainen <raine.makelainen@jolla.com> - 38.8.0.2
+- [embedlite] Use system nspr and nss
+
+* Tue May 03 2016 Raine Makelainen <raine.makelainen@jolla.com> - 38.8.0.0
+- [rpm] Update to latest esr38 version (38.8.0.0)
+
+* Mon Dec 14 2015 jpetrell <joona.petrell@jollamobile.com> - 38.0.5.10
+- [license] Unify open source licenses. Contributes to JB#33648
+
+* Thu Nov 12 2015 rozhkov <dmitry.rojkov@gmail.com> - 38.0.5.9
+- [rpm] Add patch with pinching to panning transition. Fixes JB#33061
+
+* Mon Nov 09 2015 rozhkov <dmitry.rojkov@gmail.com> - 38.0.5.8
+- [rpm] Add patch reverting bug 1114594. Contributes to JB#32870
+
+* Thu Nov 05 2015 Raine Makelainen <raine.makelainen@jollamobile.com> - 38.0.5.7
+- [embedlite] Guard PreRender with visibility and active state. Fixes JB#32879
+
+* Fri Oct 30 2015 Dmitry Rozhkov <dmitry.rozhkov@jolla.com> - 38.0.5.5
+- [embedlite] Fix LoginManager isues. Fixes JB#21980
+
+* Mon Oct 26 2015 Raine Makelainen <raine.makelainen@jollamobile.com> - 38.0.5.3
+- [rpm] Use system sqlite
+

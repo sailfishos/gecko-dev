@@ -1,0 +1,49 @@
+From 556e354e8baeed99dd834f67a2803966779c63e7 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Tue, 2 Jun 2020 11:47:10 +0000
+Subject: [PATCH] Avoid rogue origin points when clipping rects
+
+In Matrix4x4Typed::TransformAndClipRect it was possible for the returned
+aVerts array to include entries from the initialised but unset
+points[][] buffer. As a result, points set to (0, 0) could creep in,
+resulting in the distance-to-edge anti-aliasing incorrectly rendering
+triangle artefacts.
+
+This change prevents the overrun of the unset points.
+---
+ gfx/2d/Matrix.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/gfx/2d/Matrix.h b/gfx/2d/Matrix.h
+index 22a01ca1031c..bc56902237bc 100644
+--- a/gfx/2d/Matrix.h
++++ b/gfx/2d/Matrix.h
+@@ -752,13 +752,14 @@ public:
+     // Iterate through each clipping plane and clip the polygon.
+     // In each pass, we double buffer, alternating between points[0] and
+     // points[1].
++    Point4DTyped<UnknownUnits, F>* dstPointStart = points[0];
+     for (int plane=0; plane < 4; plane++) {
+       planeNormals[plane].Normalize();
+       Point4DTyped<UnknownUnits, F>* srcPoint = points[plane & 1];
+       Point4DTyped<UnknownUnits, F>* srcPointEnd = dstPoint;
+ 
+       dstPoint = points[~plane & 1];
+-      Point4DTyped<UnknownUnits, F>* dstPointStart = dstPoint;
++      dstPointStart = dstPoint;
+ 
+       Point4DTyped<UnknownUnits, F>* prevPoint = srcPointEnd - 1;
+       F prevDot = planeNormals[plane].DotProduct(*prevPoint);
+@@ -788,8 +789,7 @@ public:
+     }
+ 
+     size_t dstPointCount = 0;
+-    size_t srcPointCount = dstPoint - points[0];
+-    for (Point4DTyped<UnknownUnits, F>* srcPoint = points[0]; srcPoint < points[0] + srcPointCount; srcPoint++) {
++    for (Point4DTyped<UnknownUnits, F>* srcPoint = dstPointStart; srcPoint < dstPoint; srcPoint++) {
+ 
+       PointTyped<TargetUnits, F> p;
+       if (srcPoint->w == 0.0) {
+-- 
+2.17.1
+
