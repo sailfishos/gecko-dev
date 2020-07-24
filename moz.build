@@ -1,0 +1,130 @@
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+CONFIGURE_SUBST_FILES += ['installer/Makefile']
+
+DIRS += ['tests']
+
+JS_PREFERENCE_FILES += [
+     'embedding.js',
+]
+
+if CONFIG['ENABLE_TESTS']:
+    DIRS += ['tests/gtest']
+
+FINAL_LIBRARY = 'xul'
+
+XPIDL_SOURCES += [
+    'embedshared/EmbedLiteViewIface.idl',
+    'modules/nsIEmbedAppService.idl',
+    'modules/nsIEmbedFrame.idl',
+    'modules/nsIEmbedLiteJSON.idl',
+    'utils/nsIEmbedBrowserChromeListener.idl',
+]
+
+XPIDL_MODULE = 'embedLite'
+
+EXPORTS.mozilla.embedlite += [
+    'EmbedInitGlue.h',
+    'EmbedInputData.h',
+    'EmbedLiteAPI.h',
+    'EmbedLiteApp.h',
+    'EmbedLiteContentController.h',
+    'EmbedLiteMessagePump.h',
+    'EmbedLiteView.h',
+    'EmbedLiteWindow.h',
+    'embedprocess/EmbedLiteAppProcessChild.h',
+    'embedprocess/EmbedLiteAppProcessParent.h',
+    'embedshared/EmbedLiteAppBaseChild.h',
+    'embedshared/EmbedLiteAppChildIface.h',
+    'embedshared/EmbedLiteViewChildIface.h',
+    'embedshared/nsWindow.h',
+    'embedshared/PuppetWidgetBase.h',
+    'embedthread/EmbedLiteCompositorBridgeParent.h',
+    'utils/EmbedLog.h',
+]
+
+EXPORTS.ipc = ['embedhelpers/EmbedIPCUtils.h']
+
+UNIFIED_SOURCES += [
+    'embedhelpers/EmbedLiteSubThread.cpp',
+    'embedhelpers/EmbedLiteUILoop.cpp',
+    'EmbedLiteApp.cpp',
+    'EmbedLiteMessagePump.cpp',
+    'EmbedLiteView.cpp',
+    'EmbedLiteWindow.cpp',
+    'embedprocess/EmbedLiteAppProcessChild.cpp',
+    'embedprocess/EmbedLiteAppProcessParent.cpp',
+    'embedprocess/EmbedLiteCompositorProcessParent.cpp',
+    'embedprocess/EmbedLiteContentProcess.cpp',
+    'embedprocess/EmbedLiteViewProcessChild.cpp',
+    'embedprocess/EmbedLiteViewProcessParent.cpp',
+    'embedshared/EmbedLiteAppBaseChild.cpp',
+    'embedshared/EmbedLitePuppetWidget.cpp',
+    'embedshared/EmbedLiteViewBaseChild.cpp',
+    'embedshared/EmbedLiteViewBaseParent.cpp',
+    'embedshared/EmbedLiteWindowBaseChild.cpp',
+    'embedshared/EmbedLiteWindowBaseParent.cpp',
+    'embedshared/nsWindow.cpp',
+    'embedshared/PuppetWidgetBase.cpp',
+    'embedthread/EmbedContentController.cpp',
+    'embedthread/EmbedLiteAppThreadChild.cpp',
+    'embedthread/EmbedLiteAppThreadParent.cpp',
+    'embedthread/EmbedLiteViewThreadChild.cpp',
+    'embedthread/EmbedLiteWindowThreadChild.cpp',
+    'modules/EmbedFrame.cpp',
+    'modules/EmbedLiteAppService.cpp',
+    'modules/EmbedLiteJSON.cpp',
+    'utils/DirProvider.cpp',
+    'utils/EmbedLiteXulAppInfo.cpp',
+    'utils/EmbedLog.cpp',
+    'utils/GeckoLoader.cpp',
+    'utils/TabChildHelper.cpp',
+    'utils/WebBrowserChrome.cpp',
+    'utils/WindowCreator.cpp',
+]
+
+SOURCES += [
+    'embedthread/EmbedLiteCompositorBridgeParent.cpp',
+    'embedthread/EmbedLiteViewThreadParent.cpp',
+    'embedthread/EmbedLiteWindowThreadParent.cpp',
+]
+
+IPDL_SOURCES += [
+    'PEmbedLiteApp.ipdl',
+    'PEmbedLiteView.ipdl',
+    'PEmbedLiteWindow.ipdl',
+]
+
+LOCAL_INCLUDES += [
+    '/dom/base',
+    '/dom/ipc',
+    '/gfx/layers',
+    '/gfx/layers/apz/util',
+    '/hal',
+    '/js/xpconnect/src',
+    '/widget',
+    '/xpcom/base',
+    '/xpcom/build',
+    '/xpcom/threads',
+    'embedhelpers',
+    'embedprocess',
+    'embedshared',
+    'embedthread',
+    'modules',
+    'utils',
+]
+
+DEFINES['EMBED_LITE_INTERNAL'] = True
+DEFINES['OS_TARGET'] = '"%s"' % (CONFIG['OS_TARGET'])
+DEFINES['MOZ_WIDGET_TOOLKIT'] = '"%s"' % (CONFIG['MOZ_WIDGET_TOOLKIT'])
+if CONFIG['TARGET_XPCOM_ABI']:
+    DEFINES['TARGET_OS_ABI'] = '"%s_%s"' % (CONFIG['OS_TARGET'],
+                                            CONFIG['TARGET_XPCOM_ABI'])
+
+include('/ipc/chromium/chromium-config.mozbuild')
+
+with Files('**'):
+    BUG_COMPONENT = ('Embedlite', 'Build Config')
