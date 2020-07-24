@@ -8,8 +8,8 @@ project_flag('MOZ_WIDGET_QT',
              help='Qt widget support',
              default=True)
 
-imply_option('MOZ_SOCIAL', False)
 imply_option('MOZ_SERVICES_HEALTHREPORT', False)
+imply_option('MOZ_PLACES', True)
 
 include('../../toolkit/moz.configure')
 

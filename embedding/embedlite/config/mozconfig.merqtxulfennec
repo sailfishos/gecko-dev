@@ -20,7 +20,7 @@ ac_add_options --enable-mobile-optimize
 ac_add_options --enable-profile-guided-optimization
 ac_add_options --enable-debug-symbols="-gdwarf-2"
 ac_add_options --enable-cpp-rtti
-ac_add_options --with-arm-kuser
+
 ac_add_options --with-thumb=toolchain-default
 ac_add_options --with-float-abi=toolchain-default
 ac_add_options --with-branding=mobile/xul/branding/nightly
