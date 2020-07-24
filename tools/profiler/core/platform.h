@@ -47,7 +47,7 @@
 #if defined(__GLIBC__)
 #include <unistd.h>
 #include <sys/syscall.h>
-static inline pid_t gettid() { return (pid_t)syscall(SYS_gettid); }
+#define gettid() static_cast<pid_t>(syscall(SYS_gettid))
 #elif defined(GP_OS_darwin)
 #include <unistd.h>
 #include <sys/syscall.h>
