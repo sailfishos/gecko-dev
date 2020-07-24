@@ -1,0 +1,188 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+STANDALONE_MAKEFILE := 1
+
+NO_PKG_FILES = \
+	xulrunner-config \
+	regchrome* \
+	regxpcom* \
+	$(NULL)
+
+# We want xpcshell, run-mozilla and install_app.py in the SDK but not in the binary package.
+ifndef STAGE_SDK
+NO_PKG_FILES += \
+	xpcshell* \
+	$(NULL)
+endif
+
+include $(topsrcdir)/config/rules.mk
+MOZ_PKG_DUPEFLAGS = -f $(srcdir)/allowed-dupes.mn
+MOZ_PKG_MANIFEST = $(srcdir)/package-manifest.in
+
+DEFINES += \
+  -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+  -DPREF_DIR=$(PREF_DIR) \
+  -DJAREXT= \
+  -DMOZ_CHILD_PROCESS_NAME=$(MOZ_CHILD_PROCESS_NAME) \
+  $(NULL)
+
+ifdef MOZ_DEBUG
+DEFINES += -DMOZ_DEBUG=1
+endif
+
+ifdef ENABLE_MARIONETTE
+DEFINES += -DENABLE_MARIONETTE=1
+endif
+
+MOZ_PACKAGER_MINIFY=1
+
+ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
+ifndef _APPNAME
+_APPNAME = $(MOZ_MACBUNDLE_NAME)
+endif
+ifndef _BINPATH
+_BINPATH = /$(_APPNAME)/Contents/MacOS
+endif
+ifndef _RESPATH
+_RESPATH = /$(_APPNAME)/Contents/Resources
+endif
+endif
+
+INSTALL_SDK = 1
+
+include $(topsrcdir)/toolkit/mozapps/installer/signing.mk
+include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
+
+# Note that JS_BINARY can be defined in packager.mk, so this test must come
+# after including that file. MOZ_PACKAGER_MINIFY_JS is used in packager.mk, but
+# since recipe evaluation is deferred, we can set it here after the inclusion.
+ifneq (,$(JS_BINARY))
+ifndef MOZ_DEBUG
+MOZ_PACKAGER_MINIFY_JS=1
+endif
+endif
+
+ifeq (bundle, $(MOZ_FS_LAYOUT))
+BINPATH = $(_BINPATH)
+RESPATH = $(_RESPATH)
+DEFINES += -DAPPNAME=$(_APPNAME)
+else
+# Every other platform just winds up in dist/bin
+BINPATH = bin
+RESPATH = bin
+endif
+DEFINES += -DBINPATH=$(BINPATH)
+DEFINES += -DRESPATH=$(RESPATH)
+
+# Add pkg-config files to the install:: target
+
+pkg_config_files = \
+	libxul.pc \
+	libxul-embedding.pc \
+	mozilla-js.pc \
+	mozilla-plugin.pc \
+	$(NULL)
+
+ifdef MOZ_SYSTEM_NSPR
+DEFINES += -DMOZ_SYSTEM_NSPR=1
+NSPR_NAME=nspr
+NSPR_VERSION=$(shell $(NSPR_CONFIG) --version)
+else
+pkg_config_files += mozilla-nspr.pc
+NSPR_NAME=mozilla-nspr
+FULL_NSPR_CFLAGS=-I\$${includedir}
+FULL_NSPR_LIBS=$(subst $(prefix),\$${sdkdir},$(shell $(DEPTH)/nsprpub/config/nspr-config --libs))
+NSPR_VERSION=$(shell $(DEPTH)/nsprpub/config/nspr-config --version)
+endif
+
+MOZ_XUL_LINK = -lxpcomglue_s -lxul
+ifdef JS_SHARED_LIBRARY
+MOZ_JS_LINK = -lmozjs
+else
+MOZ_JS_LINK = $(MOZ_XUL_LINK)
+endif
+
+$(warning FULL_NSPR_CFLAGS=$(FULL_NSPR_CFLAGS))
+
+ifndef MOZ_SYSTEM_NSS
+pkg_config_files += mozilla-nss.pc
+else
+DEFINES += -DMOZ_SYSTEM_NSS=1
+endif
+
+%.pc: $(srcdir)/%.pc.in $(GLOBAL_DEPS)
+	cat $< | sed \
+	-e "s|%prefix%|$(prefix)|" \
+	-e "s|%includedir%|$(includedir)|" \
+	-e "s|%idldir%|$(idldir)|" \
+	-e "s|%sdkdir%|$(sdkdir)|" \
+	-e "s|%MOZ_APP_NAME%|$(MOZ_APP_NAME)|" \
+	-e "s|%MOZILLA_VERSION%|$(MOZ_APP_VERSION)|" \
+	-e "s|%WCHAR_CFLAGS%|$(WCHAR_CFLAGS)|" \
+	-e "s|%FULL_NSPR_LIBS%|$(FULL_NSPR_LIBS)|" \
+	-e "s|%FULL_NSPR_CFLAGS%|$(FULL_NSPR_CFLAGS)|" \
+	-e "s|%NSPR_NAME%|$(NSPR_NAME)|" \
+	-e "s|%NSPR_VERSION%|$(NSPR_VERSION)|" \
+	-e "s|%MOZ_XUL_LINK%|$(MOZ_XUL_LINK)|" \
+	-e "s|%MOZ_JS_LINK%|$(MOZ_JS_LINK)|" > $@
+	chmod 644 $@
+
+install:: $(pkg_config_files)
+	@echo pkg_config_file: $(pkg_config_files)
+	$(SYSINSTALL) $(IFLAGS1) $^ $(DESTDIR)$(libdir)/pkgconfig
+
+GARBAGE += $(pkg_config_files)
+
+GARBAGE += debian/changelog
+
+DEBDESTDIR=debian/$(MOZ_BUILD_APP)
+
+MOZ_BUILDID := $(shell awk '{print $$3}' $(DEPTH)/buildid.h)
+DEFINES += -DMOZ_BUILDID=\"$(MOZ_BUILDID)\"
+
+MOZ_DEB_TIMESTAMP = "$(shell date  +"%a, %d  %b %Y %T %z" )"
+
+DEFINES += \
+	-DGRE_MILESTONE=$(GRE_MILESTONE) \
+	-DMOZ_BUILDID=$(MOZ_BUILDID) \
+	-DMOZ_DEB_TIMESTAMP=$(MOZ_DEB_TIMESTAMP) \
+	-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+	-Dinstalldir=$(installdir) \
+	$(NULL)
+
+ifeq ($(OS_TARGET),Linux)
+debian/changelog: $(srcdir)/debian/changelog.in  $(DIST)/bin/platform.ini
+	$(call py_action,preprocessor, \
+        $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $^ -o $@)
+
+debian/xulrunner.links: $(srcdir)/debian/xulrunner.links.in
+	$(call py_action,preprocessor, \
+        $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $^ -o $@)
+
+debian/xulrunner.service: $(srcdir)/debian/xulrunner.service.in
+	$(call py_action,preprocessor, \
+        $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $^ -o $@)
+
+debian/prerm: $(srcdir)/debian/prerm.in
+	$(call py_action,preprocessor, \
+        $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $^ -o $@)
+
+debian/postinst: $(srcdir)/debian/postinst.in
+	$(call py_action,preprocessor, \
+        $(AUTOMATION_PPARGS) $(DEFINES) $(ACDEFINES) $^ -o $@)
+
+package:
+	$(MAKE) package -C $(DEPTH)
+
+deb: package debian/changelog debian/xulrunner.service debian/xulrunner.links
+	$(NSINSTALL)  $(topsrcdir)/$(MOZ_BUILD_APP)/installer/debian .
+	rm -fr $(DEBDESTDIR)
+	$(NSINSTALL) -D $(DEBDESTDIR)/$(installdir)
+	cp -pRL $(DEPTH)/dist/$(MOZ_BUILD_APP)/* $(DEBDESTDIR)/$(installdir)
+	$(NSINSTALL) -D $(DEBDESTDIR)/usr/share/dbus-1/services/
+	cp debian/$(MOZ_BUILD_APP).service $(DEBDESTDIR)/usr/share/dbus-1/services/org.mozilla.$(MOZ_BUILD_APP).service
+	dh_link; fakeroot dh_fixperms; fakeroot dh_installdeb; fakeroot dh_shlibdeps; fakeroot dh_gencontrol; fakeroot dh_md5sums; fakeroot dh_builddeb;
+endif
+

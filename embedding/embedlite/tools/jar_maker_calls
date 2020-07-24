@@ -1,0 +1,3 @@
+#!/bin/bash
+TOOLS_DIR=$(dirname "$0")
+grep  "mozbuild[.]action[.]jar_maker.*jar.mn" $1 | grep -v "processing" | xargs $TOOLS_DIR/jar_command_args | cut -d'/' -f8- | sort

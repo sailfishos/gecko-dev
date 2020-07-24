@@ -1,0 +1,159 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PEmbedLiteApp;
+
+// for embedding ipc
+include "ipc/EmbedIPCUtils.h";
+// for generic gui ipc
+include "ipc/nsGUIEventIPC.h";
+// for nsEventStatus serialization (ContiguousEnumSerializer)
+include "mozilla/dom/TabMessageUtils.h";
+
+include "mozilla/GfxMessageUtils.h";
+using struct gfxSize from "gfxPoint.h";
+using gfxRect from "mozilla/GfxMessageUtils.h";
+using CSSRect from "Units.h";
+using CSSSize from "Units.h";
+using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
+using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
+using FrameMetrics::ViewID from "FrameMetrics.h";
+using nscolor from "nsColor.h";
+using class mozilla::WidgetKeyboardEvent from "ipc/nsGUIEventIPC.h";
+using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
+using MultiTouchInput from "InputData.h";
+using mozilla::CSSIntPoint from "Units.h";
+using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
+using mozilla::layers::MaybeZoomConstraints from "FrameMetrics.h";
+using mozilla::LayoutDevicePoint from "Units.h";
+using mozilla::Modifiers from "mozilla/EventForwards.h";
+using nsEventStatus from "mozilla/EventForwards.h";
+using mozilla::layers::TouchBehaviorFlags from "mozilla/layers/APZUtils.h";
+using mozilla::layers::GeckoContentController::APZStateChange from "mozilla/layers/GeckoContentController.h";
+
+namespace mozilla {
+namespace embedlite {
+
+// Or inside_cpow
+// nested(upto inside_sync) 
+nested(upto inside_sync) sync protocol PEmbedLiteView
+{
+    manager PEmbedLiteApp;
+
+child:
+    async LoadURL(nsString url);
+    async GoBack();
+    async GoForward();
+    async StopLoad();
+    async Reload(bool hardReload);
+    async LoadFrameScript(nsString uri);
+    async SetIsActive(bool aIsActive);
+    async SetIsFocused(bool aIsFocused);
+    async SetThrottlePainting(bool aThrottle);
+    async SetMargins(int top, int right, int bottom, int left);
+    async ScheduleUpdate();
+    async SuspendTimeouts();
+    async ResumeTimeouts();
+    async HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
+
+    async UpdateFrame(FrameMetrics frame) compress;
+    async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
+    async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
+    async HandleLongTap(LayoutDevicePoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    async HandleTextEvent(nsString commit, nsString preEdit);
+    async HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
+    async HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);
+    async MouseEvent(nsString aType, float aX, float aY,
+                     int32_t aButton, int32_t aClickCount,
+                     int32_t aModifiers, bool aIgnoreRootScrollFrame);
+    async NotifyAPZStateChange(ViewID aViewId, APZStateChange aChange, int aArg);
+    async NotifyFlushComplete();
+
+    async ScrollTo(int x, int y);
+    async ScrollBy(int x, int y);
+
+    async InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse);
+    // We use a separate message for touchmove events only to apply
+    // compression to them.
+    async InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse) compress;
+    async AddMessageListener(nsCString name);
+    async RemoveMessageListener(nsCString name);
+    async AddMessageListeners(nsString [] messageNames);
+    async RemoveMessageListeners(nsString [] messageNames);
+
+    async Destroy();
+
+parent:
+    async Initialized();
+    async Destroyed();
+    async __delete__();
+
+    async OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
+    async OnLoadStarted(nsCString aLocation);
+    async OnLoadFinished();
+    async OnLoadRedirect();
+    async OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal);
+    async OnSecurityChanged(nsCString aStatus, uint32_t aState);
+    async OnFirstPaint(int32_t aX, int32_t aY);
+    async OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
+    async OnScrollChanged(int32_t offSetX, int32_t offSetY);
+    async OnTitleChanged(nsString aTitle);
+    async OnWindowCloseRequested();
+
+    /**
+     * Updates the zoom constraints for a scrollable frame in this tab.
+     * The zoom controller code lives on the parent side and so this allows it to
+     * have up-to-date zoom constraints.
+     */
+    async UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, MaybeZoomConstraints aConstraints);
+
+    /**
+     * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in
+     * CSS pixels. This rect is relative to the document.
+     */
+    async ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
+    async SetBackgroundColor(nscolor color);
+    async ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
+
+    /**
+     * Notifies the APZ code of the results of the gecko hit-test for a
+     * particular input block. Each target corresponds to one touch point in the
+     * touch event.
+     */
+    async SetTargetAPZC(uint64_t aInputBlockId, ScrollableLayerGuid[] aTargets);
+
+    /**
+     * Notifies the APZ code of the allowed touch-behaviours for a particular
+     * input block. Each item in the aFlags array corresponds to one touch point
+     * in the touch event.
+     */
+    async SetAllowedTouchBehavior(uint64_t aInputBlockId, TouchBehaviorFlags[] aFlags);
+
+    /*
+     * Gets the DPI of the screen corresponding to this view.
+     */
+    sync GetDPI() returns (float value);
+
+    sync SyncMessage(nsString aMessage, nsString aJSON)
+      returns (nsString[] retval);
+
+    nested(inside_sync) sync RpcMessage(nsString aMessage, nsString aJSON)
+      returns (nsString[] retval);
+
+    // IME
+    sync GetInputContext() returns (int32_t IMEEnabled, int32_t IMEOpen);
+
+    async SetInputContext(int32_t IMEEnabled,
+                          int32_t IMEOpen,
+                          nsString type,
+                          nsString inputmode,
+                          nsString actionHint,
+                          int32_t cause,
+                          int32_t focusChange);
+
+both:
+    async AsyncMessage(nsString aMessage, nsString aData);
+};
+
+}}

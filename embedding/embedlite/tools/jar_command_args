@@ -1,0 +1,9 @@
+#!/usr/bin/perl -w
+
+foreach my $index (0 .. $#ARGV) {
+    my $jar = $ARGV[$index];
+    if ($jar =~ /jar[.]mn/) {
+        print "$jar\n";
+   }
+}
+
