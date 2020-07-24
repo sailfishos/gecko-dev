@@ -45,13 +45,13 @@ ac_add_options --with-gl-provider=EGL
 mk_add_options MOZ_MAKE_FLAGS="-j4"
 mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/objdir-arm-rasppi-qt"
 
-ac_add_options --with-arm-kuser
+
 ac_add_options --with-thumb=toolchain-default
 ac_add_options --with-arch=armv6
 ac_add_options --with-float-abi=hard
 ac_add_options --with-thumb=no
 ac_add_options --with-fpu=vfp
-ac_add_options --with-arm-kuser
+
 ac_add_options --without-x
 
 #ac_add_options --with-qtdir=/opt/qt5

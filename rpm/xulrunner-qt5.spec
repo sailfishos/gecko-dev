@@ -176,7 +176,6 @@ ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
 printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
 %ifarch %arm
-echo "ac_add_options --with-arm-kuser" >> "$MOZCONFIG"
 echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
 # Do not build as thumb since it breaks video decoding.
 echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
@@ -238,9 +237,9 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
   echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
 %endif
 
-%if %{system_cairo}
-  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
-%endif
+# %if %{system_cairo}
+#  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
+#%endif
 
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
