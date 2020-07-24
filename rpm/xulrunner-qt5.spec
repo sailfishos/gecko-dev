@@ -173,7 +173,6 @@ ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
 printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
 %ifarch %arm
-echo "ac_add_options --with-arm-kuser" >> "$MOZCONFIG"
 echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
 # Do not build as thumb since it breaks video decoding.
 echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
@@ -229,9 +228,9 @@ echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
   echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
 %endif
 
-%if %{system_cairo}
-  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
-%endif
+# %if %{system_cairo}
+#  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
+#%endif
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"

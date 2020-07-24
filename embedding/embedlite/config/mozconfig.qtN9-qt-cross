@@ -71,7 +71,7 @@ mk_add_options MOZ_MAKE_FLAGS="-j4"
 mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/obj-build-n9-qt"
 
 ac_add_options --target=arm-none-linux-gnueabi
-ac_add_options --with-arm-kuser
+
 ac_add_options --with-thumb=no
 ac_add_options --with-arch=armv7-a
 ac_add_options --with-float-abi=hard
