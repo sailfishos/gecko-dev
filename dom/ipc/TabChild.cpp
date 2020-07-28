@@ -361,6 +361,7 @@ TabChild::TabChild(nsIContentChild* aManager, const TabId& aTabId,
                    uint32_t aChromeFlags)
     : TabContext(aContext),
       mTabGroup(aTabGroup),
+      mPuppetWidget(nullptr),
       mRemoteFrame(nullptr),
       mManager(aManager),
       mChromeFlags(aChromeFlags),
@@ -2402,7 +2403,7 @@ mozilla::ipc::IPCResult TabChild::RecvRenderLayers(
       // switching to paints as quickly as possible.
       APZCCallbackHelper::SuppressDisplayport(true, presShell);
       if (nsContentUtils::IsSafeToRunScript()) {
-        WebWidget()->PaintNowIfNeeded();
+        static_cast<PuppetWidget*>(WebWidget())->PaintNowIfNeeded();
       } else {
         RefPtr<nsViewManager> vm = presShell->GetViewManager();
         if (nsView* view = vm->GetRootView()) {
