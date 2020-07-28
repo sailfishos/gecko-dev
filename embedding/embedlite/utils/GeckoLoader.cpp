@@ -97,17 +97,10 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
   // get rid of the bogus TLS warnings
   NS_LogInit();
-
-  // create nsIFile pointing to xpcomDir
-  const char* greHome = getenv("GRE_HOME");
-  if (!greHome) {
-    LOGE("GRE_HOME is not defined\n");
-    return false;
-  }
   nsCOMPtr<nsIFile> xuldir;
-  rv = XRE_GetBinaryPath(greHome, getter_AddRefs(xuldir));
+  rv = XRE_GetBinaryPath(getter_AddRefs(xuldir));
   if (NS_FAILED(rv)) {
-    LOGE("Unable to create nsIFile for xuldir: %s\n", greHome);
+    LOGE("Unable to create nsIFile for xuldir\n");
     return false;
   }
 
@@ -137,7 +130,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   }
 
   nsCOMPtr<nsIFile> appdir;
-  rv = XRE_GetBinaryPath(selfPath.c_str(), getter_AddRefs(appdir));
+  rv = XRE_GetFileFromPath(selfPath.c_str(), getter_AddRefs(appdir));
   if (NS_FAILED(rv)) {
     LOGE("Unable to create nsIFile for appdir: %s", selfPath.c_str());
     return false;
