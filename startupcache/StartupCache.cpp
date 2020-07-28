@@ -16,6 +16,7 @@
 #include "nsDirectoryServiceUtils.h"
 #include "nsIClassInfo.h"
 #include "nsIFile.h"
+#include "nsISimpleEnumerator.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsIOutputStream.h"
@@ -50,6 +51,10 @@
 
 namespace mozilla {
 namespace scache {
+
+#include "mozilla/Logging.h"
+
+static LazyLogModule gStartupCachePRLog("StartupCache");
 
 MOZ_DEFINE_MALLOC_SIZE_OF(StartupCacheMallocSizeOf)
 
@@ -130,12 +135,104 @@ StartupCache::~StartupCache() {
   UnregisterWeakMemoryReporter(this);
 }
 
+// Checks the modified date of the startupCache and deletes it if the embedlite-components-qt5
+// install is newer (determined using the modified time of /var/lib/_MOZEMBED_CACHE_CLEAN_).
+static nsresult clearStartupCacheIfNeeded() {
+  nsresult rv;
+  bool exists = false;
+  nsCOMPtr<nsIFile> systemStamp;
+
+  systemStamp = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
+  systemStamp->InitWithPath(NS_LITERAL_STRING("/var/lib/_MOZEMBED_CACHE_CLEAN_"));
+  rv = systemStamp->Exists(&exists);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!exists) {
+    return NS_OK;
+  }
+
+  nsAutoCString path;
+  PRTime lastModifiedTimeClean = 0;
+  PRTime lastModifiedTimeCache = 0;
+  nsCOMPtr<nsIFile> file;
+  rv = systemStamp->GetLastModifiedTime(&lastModifiedTimeClean);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // See StartupCache::Init() for cache location conditions
+  char *env = PR_GetEnv("MOZ_STARTUP_CACHE");
+  if (env) {
+    rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(env), false, getter_AddRefs(file));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = file->GetLastModifiedTime(&lastModifiedTimeCache);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    if (lastModifiedTimeCache < lastModifiedTimeClean) {
+      rv = file->GetNativePath(path);
+      NS_ENSURE_SUCCESS(rv, rv);
+      MOZ_LOG(gStartupCachePRLog, LogLevel::Debug, ("Removing stale startupCache at %s", path.get()));
+
+      // Remove the cache
+      rv = file->Remove(true);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+  } else {
+    bool directory;
+    nsCOMPtr<nsIFile> cacheDir;
+
+    rv = NS_GetSpecialDirectory("ProfLDS", getter_AddRefs(cacheDir));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = cacheDir->AppendNative(NS_LITERAL_CSTRING("startupCache"));
+    NS_ENSURE_SUCCESS(rv, NS_OK);
+
+    rv = cacheDir->IsDirectory(&directory);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    if (!directory) {
+      return NS_OK;
+    }
+
+    nsCOMPtr<nsISimpleEnumerator> dirIterator;
+    rv = cacheDir->GetDirectoryEntries(getter_AddRefs(dirIterator));
+    NS_ENSURE_SUCCESS(rv, NS_OK);
+
+    bool hasMoreElements;
+    rv = dirIterator->HasMoreElements(&hasMoreElements);
+    if (NS_SUCCEEDED(rv) && hasMoreElements) {
+      nsCOMPtr<nsISupports> supports;
+      rv = dirIterator->GetNext(getter_AddRefs(supports));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      file = do_QueryInterface(supports);
+
+      rv = file->GetLastModifiedTime(&lastModifiedTimeCache);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      if (lastModifiedTimeCache < lastModifiedTimeClean) {
+        rv = cacheDir->GetNativePath(path);
+        NS_ENSURE_SUCCESS(rv, rv);
+        MOZ_LOG(gStartupCachePRLog, LogLevel::Debug, ("Removing stale startupCache at %s", path.get()));
+
+        // Remove the cache recursively (in boolean recursive)
+        rv = cacheDir->Remove(true);
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+    }
+  }
+
+  return NS_OK;
+}
+
 nsresult StartupCache::Init() {
   // workaround for bug 653936
   nsCOMPtr<nsIProtocolHandler> jarInitializer(
       do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "jar"));
 
   nsresult rv;
+
+  // Clear the startup cache if it's old
+  clearStartupCacheIfNeeded();
 
   // This allows to override the startup cache filename
   // which is useful from xpcshell, when there is no ProfLDS directory to keep
