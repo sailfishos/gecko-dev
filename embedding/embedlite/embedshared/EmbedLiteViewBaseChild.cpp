@@ -1005,6 +1005,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const in
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, IPC_OK());
 
+#if 0 // JB#50611
   bool handled = false;
   // If the key isn't autorepeat, we need to send the initial down event
   utils->SendKeyEvent(NS_LITERAL_STRING("keydown"), domKeyCode, 0, gmodifiers, 0, &handled);
@@ -1020,6 +1021,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const in
   {
     utils->SendKeyEvent(NS_LITERAL_STRING("keypress"), domKeyCode, charCode, gmodifiers, 0, &handled);
   }
+#endif
   return IPC_OK();
 }
 
@@ -1032,8 +1034,10 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyReleaseEvent(const 
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, IPC_OK());
 
+#if 0 // JB#50611
   bool handled = false;
   utils->SendKeyEvent(NS_LITERAL_STRING("keyup"), domKeyCode, 0, gmodifiers, 0, &handled);
+#endif
   return IPC_OK();
 }
 
