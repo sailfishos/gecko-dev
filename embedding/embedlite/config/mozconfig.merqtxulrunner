@@ -34,7 +34,6 @@ ac_add_options --enable-skia
 ac_add_options --disable-dbus
 ac_add_options --disable-updater
 ac_add_options --disable-gamepad
-ac_add_options --disable-printing
 ac_add_options --disable-crashreporter
 ac_add_options --disable-jemalloc
 ac_add_options --with-crashreporter-enable-percent="00"
