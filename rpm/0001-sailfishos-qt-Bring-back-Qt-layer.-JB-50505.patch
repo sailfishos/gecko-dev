@@ -1,4 +1,4 @@
-From cd3231820263fdfa9c25b46e8eb7c4e210310faf Mon Sep 17 00:00:00 2001
+From 677a6d6d52a7cde4cf907b99d0c02ff3d0b51fd9 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 28 Feb 2020 11:38:58 +0200
 Subject: [PATCH] [sailfishos][qt] Bring back Qt layer. JB#50505
@@ -25,6 +25,19 @@ This reverts commit 16ca3223d9d6f1bd8c4dba5ce1d9fbb986895b41.
 [sailfishos][gecko] Add define to the iconconverter for preprocessor
 [sailfishos][qt] Fix platform font list configuration. JB#50967
 
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+
+[sailfishos][qt] Enable print-to-PDF support. Contributes to JB#50680
+
+Fix build of nsPrintSettingsQt and nsDeviceContextSpecQt with printing enabled
+
+- Fixed build errors
+- QPrinter and QPrinterInfo are removed since QtPrintSupport module
+requires QtWidgets;
+- GetPrinterNameList now returns an empty list, since getting the list of
+available printers is implemented through QPrinterInfo.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  browser/base/content/browser-menubar.inc      |    2 +-
@@ -131,16 +144,16 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsBidiKeyboard.h                    |   25 +
  widget/qt/nsClipboard.cpp                     |  563 ++++++
  widget/qt/nsClipboard.h                       |   41 +
- widget/qt/nsDeviceContextSpecQt.cpp           |  257 +++
- widget/qt/nsDeviceContextSpecQt.h             |   59 +
+ widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
+ widget/qt/nsDeviceContextSpecQt.h             |   60 +
  widget/qt/nsIdleServiceQt.cpp                 |  123 ++
  widget/qt/nsIdleServiceQt.h                   |   56 +
  widget/qt/nsLookAndFeel.cpp                   |  459 +++++
  widget/qt/nsLookAndFeel.h                     |   42 +
  widget/qt/nsPrintDialogQt.cpp                 |   43 +
  widget/qt/nsPrintDialogQt.h                   |   32 +
- widget/qt/nsPrintSettingsQt.cpp               |  573 ++++++
- widget/qt/nsPrintSettingsQt.h                 |   88 +
+ widget/qt/nsPrintSettingsQt.cpp               |  411 ++++
+ widget/qt/nsPrintSettingsQt.h                 |   93 +
  widget/qt/nsQtKeyUtils.cpp                    |  480 +++++
  widget/qt/nsQtKeyUtils.h                      |   19 +
  widget/qt/nsScreenManagerQt.cpp               |   86 +
@@ -150,7 +163,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsWidgetFactory.cpp                 |  159 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 123 files changed, 8501 insertions(+), 56 deletions(-)
+ 123 files changed, 8316 insertions(+), 56 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -6345,10 +6358,10 @@ index 000000000000..d348c4b551af
 +#endif // nsClipboard_h__
 diff --git a/widget/qt/nsDeviceContextSpecQt.cpp b/widget/qt/nsDeviceContextSpecQt.cpp
 new file mode 100644
-index 000000000000..26eb870a90fd
+index 000000000000..aa24ffc1d6b8
 --- /dev/null
 +++ b/widget/qt/nsDeviceContextSpecQt.cpp
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,228 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6356,11 +6369,6 @@ index 000000000000..26eb870a90fd
 +
 +
 +#include <QTemporaryFile>
-+
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+#include <QPrinterInfo>
-+#endif
 +
 +#define SET_PRINTER_FEATURES_VIA_PREFS 1
 +#define PRINTERFEATURES_PREF "print.tmp.printerfeatures"
@@ -6561,39 +6569,15 @@ index 000000000000..26eb870a90fd
 +    NS_ENSURE_ARG_POINTER(aPrinterNameList);
 +    *aPrinterNameList = nullptr;
 +
-+    return NS_ERROR_NOT_AVAILABLE;
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QList<QPrinterInfo> qprinters = QPrinterInfo::availablePrinters();
-+    if (qprinters.size() == 0)
-+        return NS_ERROR_NOT_AVAILABLE;
-+
 +    nsTArray<nsString>* printers =
-+        new nsTArray<nsString>(qprinters.size()); 
-+
-+    for (int32_t i = 0; i < qprinters.size(); ++i) {
-+        printers->AppendElement(
-+                nsDependentString(
-+                    (const char16_t*)qprinters[i].printerName().constData()));
-+    }
++        new nsTArray<nsString>(0);
 +
 +    return NS_NewAdoptingStringEnumerator(aPrinterNameList, printers);
-+#endif
 +}
 +
 +NS_IMETHODIMP nsPrinterEnumeratorQt::GetDefaultPrinterName(nsAString &aDefaultPrinterName)
 +{
 +    DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::GetDefaultPrinterName()\n"));
-+
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QString defprinter = QPrinterInfo::defaultPrinter().printerName();
-+    *aDefaultPrinterName = ToNewUnicode(nsDependentString(
-+        (const char16_t*)defprinter.constData()));
-+
-+    DO_PR_DEBUG_LOG(("GetDefaultPrinterName(): default printer='%s'.\n",
-+        NS_ConvertUTF16toUTF8(*aDefaultPrinterName).get()));
-+#endif
 +    return NS_OK;
 +}
 +
@@ -6608,10 +6592,10 @@ index 000000000000..26eb870a90fd
 +}
 diff --git a/widget/qt/nsDeviceContextSpecQt.h b/widget/qt/nsDeviceContextSpecQt.h
 new file mode 100644
-index 000000000000..5f5a64d98bb5
+index 000000000000..20b928ee03c6
 --- /dev/null
 +++ b/widget/qt/nsDeviceContextSpecQt.h
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,60 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6622,6 +6606,7 @@ index 000000000000..5f5a64d98bb5
 +#define nsDeviceContextSpecQt_h___
 +
 +#include "nsIDeviceContextSpec.h"
++#include "nsIPrintSettings.h"
 +#include "nsIPrinterEnumerator.h"
 +#include "nsCOMPtr.h"
 +
@@ -7464,20 +7449,18 @@ index 000000000000..9c35fa2683fa
 +#endif
 diff --git a/widget/qt/nsPrintSettingsQt.cpp b/widget/qt/nsPrintSettingsQt.cpp
 new file mode 100644
-index 000000000000..df1ec5db3ec4
+index 000000000000..f67dccbac458
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.cpp
-@@ -0,0 +1,573 @@
+@@ -0,0 +1,411 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+#include <QPrinter>
-+#endif
++#include <QPageLayout>
++#include <QRectF>
 +#include <QDebug>
 +#include "nsPrintSettingsQt.h"
 +#include "nsIFile.h"
@@ -7487,11 +7470,8 @@ index 000000000000..df1ec5db3ec4
 +                            nsPrintSettings,
 +                            nsPrintSettingsQt)
 +
-+nsPrintSettingsQt::nsPrintSettingsQt()
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    : mQPrinter(new QPrinter())
-+#endif
++nsPrintSettingsQt::nsPrintSettingsQt():
++    mPageLayout(new QPageLayout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF()))
 +{
 +}
 +
@@ -7500,11 +7480,16 @@ index 000000000000..df1ec5db3ec4
 +    //smart pointer should take care of cleanup
 +}
 +
-+nsPrintSettingsQt::nsPrintSettingsQt(const nsPrintSettingsQt& aPS)
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    : mQPrinter(aPS.mQPrinter)
-+#endif
++nsPrintSettingsQt::nsPrintSettingsQt(const nsPrintSettingsQt& aPS):
++    mPageLayout(aPS.mPageLayout),
++    mFilename(aPS.mFilename),
++    mPrinterName(aPS.mPrinterName),
++    mNumCopies(aPS.mNumCopies),
++    mStartPageRange(aPS.mStartPageRange),
++    mEndPageRange(aPS.mEndPageRange),
++    mPrintRange(aPS.mPrintRange),
++    mPrintInColor(aPS.mPrintInColor),
++    mPrintReversed(aPS.mPrintReversed)
 +{
 +}
 +
@@ -7516,10 +7501,15 @@ index 000000000000..df1ec5db3ec4
 +    }
 +
 +    nsPrintSettings::operator=(rhs);
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    mQPrinter = rhs.mQPrinter;
-+#endif
++    mPageLayout = rhs.mPageLayout;
++    mFilename = rhs.mFilename;
++    mPrinterName = rhs.mPrinterName;
++    mNumCopies = rhs.mNumCopies;
++    mStartPageRange = rhs.mStartPageRange;
++    mEndPageRange = rhs.mEndPageRange;
++    mPrintRange = rhs.mPrintRange;
++    mPrintInColor = rhs.mPrintInColor;
++    mPrintReversed = rhs.mPrintReversed;
 +    return *this;
 +}
 +
@@ -7547,279 +7537,159 @@ index 000000000000..df1ec5db3ec4
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPrintRange(int16_t* aPrintRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aPrintRange);
-+
-+    QPrinter::PrintRange range = mQPrinter->printRange();
-+    if (range == QPrinter::PageRange) {
-+        *aPrintRange = kRangeSpecifiedPageRange;
-+    } else if (range == QPrinter::Selection) {
-+        *aPrintRange = kRangeSelection;
-+    } else {
-+        *aPrintRange = kRangeAllPages;
-+    }
-+
++    *aPrintRange = mPrintRange;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP 
 +nsPrintSettingsQt::SetPrintRange(int16_t aPrintRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    if (aPrintRange == kRangeSelection) {
-+        mQPrinter->setPrintRange(QPrinter::Selection);
-+    } else if (aPrintRange == kRangeSpecifiedPageRange) {
-+        mQPrinter->setPrintRange(QPrinter::PageRange);
-+    } else {
-+        mQPrinter->setPrintRange(QPrinter::AllPages);
-+    }
++    mPrintRange = aPrintRange;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetStartPageRange(int32_t* aStartPageRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aStartPageRange);
-+    int32_t start = mQPrinter->fromPage();
-+    *aStartPageRange = start;
++    *aStartPageRange = mStartPageRange;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetStartPageRange(int32_t aStartPageRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    int32_t endRange = mQPrinter->toPage();
-+    mQPrinter->setFromTo(aStartPageRange, endRange);
++    mStartPageRange = aStartPageRange;
++    if (mStartPageRange > mEndPageRange) {
++        qWarning() << "nsPrintSettingsQt::SetStartPageRange: 'StartPageRange' must be less than or equal to 'EndPageRange'";
++        mEndPageRange = mStartPageRange;
++    }
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetEndPageRange(int32_t* aEndPageRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aEndPageRange);
-+    int32_t end = mQPrinter->toPage();
-+    *aEndPageRange = end;
++    *aEndPageRange = mEndPageRange;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetEndPageRange(int32_t aEndPageRange)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    int32_t startRange = mQPrinter->fromPage();
-+    mQPrinter->setFromTo(startRange, aEndPageRange);
++    mEndPageRange = aEndPageRange;
++    if (mStartPageRange > mEndPageRange) {
++        qWarning() << "nsPrintSettingsQt::SetEndPageRange: 'EndPageRange' must be more than or equal to 'mStartPageRange'";
++        mStartPageRange = mEndPageRange;
++    }
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPrintReversed(bool* aPrintReversed)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aPrintReversed);
-+    if (mQPrinter->pageOrder() == QPrinter::LastPageFirst) {
-+        *aPrintReversed = true;
-+    } else {
-+        *aPrintReversed = false;
-+    }
++    *aPrintReversed = mPrintReversed;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPrintReversed(bool aPrintReversed)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    if (aPrintReversed) {
-+        mQPrinter->setPageOrder(QPrinter::LastPageFirst);
-+    } else {
-+        mQPrinter->setPageOrder(QPrinter::FirstPageFirst);
-+    }
++    mPrintReversed = aPrintReversed;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPrintInColor(bool* aPrintInColor)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aPrintInColor);
-+    if (mQPrinter->colorMode() == QPrinter::Color) {
-+        *aPrintInColor = true;
-+    } else {
-+        *aPrintInColor = false;
-+    }
++    *aPrintInColor = mPrintInColor;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPrintInColor(bool aPrintInColor)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    if (aPrintInColor) {
-+        mQPrinter->setColorMode(QPrinter::Color);
-+    } else {
-+        mQPrinter->setColorMode(QPrinter::GrayScale);
-+    }
++    mPrintInColor = aPrintInColor;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetOrientation(int32_t* aOrientation)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aOrientation);
-+    QPrinter::Orientation orientation = mQPrinter->orientation();
-+    if (orientation == QPrinter::Landscape) {
-+        *aOrientation = kLandscapeOrientation;
-+    } else {
-+        *aOrientation = kPortraitOrientation;
-+    }
++    *aOrientation = (mPageLayout->orientation() == QPageLayout::Landscape) ?
++                kLandscapeOrientation :
++                kPortraitOrientation;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetOrientation(int32_t aOrientation)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    if (aOrientation == kLandscapeOrientation) {
-+        mQPrinter->setOrientation(QPrinter::Landscape);
++        mPageLayout->setOrientation(QPageLayout::Landscape);
 +    } else {
-+        mQPrinter->setOrientation(QPrinter::Portrait);
++        mPageLayout->setOrientation(QPageLayout::Portrait);
 +    }
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetToFileName(nsAString &aToFileName)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QString filename;
-+    filename = mQPrinter->outputFileName();
-+    *aToFileName = ToNewUnicode(
-+            nsDependentString((char16_t*)filename.data()));
++    aToFileName = nsDependentString((char16_t*)mFilename.data());
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    nsCOMPtr<nsIFile> file;
 +    nsresult rv = NS_NewLocalFile(aToFileName, true,
 +                                getter_AddRefs(file));
 +    NS_ENSURE_SUCCESS(rv, rv);
 +
-+    QString filename((const QChar*)aToFileName, NS_strlen(aToFileName));
-+    mQPrinter->setOutputFileName(filename);
++    NS_ConvertUTF16toUTF8 fileNameCStr(aToFileName);
++    mFilename = QString((const QChar*)fileNameCStr.get());
++
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPrinterName(nsAString &aPrinter)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    NS_ENSURE_ARG_POINTER(aPrinter);
-+    *aPrinter = ToNewUnicode(nsDependentString(
-+                (const char16_t*)mQPrinter->printerName().constData()));
++    aPrinter = nsDependentString((const char16_t*)mPrinterName.constData());
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPrinterName(const nsAString &aPrinter)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QString printername((const QChar*)aPrinter, NS_strlen(aPrinter));
-+    mQPrinter->setPrinterName(printername);
++    NS_ConvertUTF16toUTF8 printer(aPrinter);
++    mPrinterName = QString((const QChar*)printer.get());
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetNumCopies(int32_t* aNumCopies)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aNumCopies);
-+    *aNumCopies = mQPrinter->numCopies();
++    *aNumCopies = mNumCopies;
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetNumCopies(int32_t aNumCopies)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    mQPrinter->setNumCopies(aNumCopies);
++    mNumCopies = aNumCopies;
++    if (mNumCopies < 1) {
++        qWarning() << "nsPrintSettingsQt::SetNumCopies: 'NumCopies' must be greater than 0";
++        mNumCopies = 1;
++    }
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
@@ -7847,77 +7717,57 @@ index 000000000000..df1ec5db3ec4
 +  "C5E", "Comm10E", "DLE", "Folio", "Ledger", "Tabloid"
 +};
 +
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+static const QPrinter::PageSize indexToQtPaperEnum[] =
++static const QPageSize::PageSizeId indexToQtPaperEnum[] =
 +{
-+    QPrinter::A4, QPrinter::B5, QPrinter::Letter, QPrinter::Legal,
-+    QPrinter::Executive, QPrinter::A0, QPrinter::A1, QPrinter::A2, QPrinter::A3,
-+    QPrinter::A5, QPrinter::A6, QPrinter::A7, QPrinter::A8, QPrinter::A9,
-+    QPrinter::B0, QPrinter::B1, QPrinter::B10, QPrinter::B2, QPrinter::B3,
-+    QPrinter::B4, QPrinter::B6, QPrinter::B7, QPrinter::B8, QPrinter::B9,
-+    QPrinter::C5E, QPrinter::Comm10E, QPrinter::DLE, QPrinter::Folio,
-+    QPrinter::Ledger, QPrinter::Tabloid
++    QPageSize::A4, QPageSize::B5, QPageSize::Letter, QPageSize::Legal,
++    QPageSize::Executive, QPageSize::A0, QPageSize::A1, QPageSize::A2, QPageSize::A3,
++    QPageSize::A5, QPageSize::A6, QPageSize::A7, QPageSize::A8, QPageSize::A9,
++    QPageSize::B0, QPageSize::B1, QPageSize::B10, QPageSize::B2, QPageSize::B3,
++    QPageSize::B4, QPageSize::B6, QPageSize::B7, QPageSize::B8, QPageSize::B9,
++    QPageSize::C5E, QPageSize::Comm10E, QPageSize::DLE, QPageSize::Folio,
++    QPageSize::Ledger, QPageSize::Tabloid
 +};
-+#endif
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPaperName(nsAString &aPaperName)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QPrinter::PaperSize size = mQPrinter->paperSize();
++    QPageSize::PageSizeId size = mPageLayout->pageSize().id();
 +    QString name(indexToPaperName[size]);
-+    *aPaperName = ToNewUnicode(nsDependentString((const char16_t*)name.constData()));
++    aPaperName = nsDependentString((const char16_t*)name.constData());
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QString ref((QChar*)aPaperName, NS_strlen(aPaperName));
++    NS_ConvertUTF16toUTF8 paperName(aPaperName);
++    QString ref((QChar*)paperName.get());
 +    for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
 +    {
 +        if (ref == QString(indexToPaperName[i])) {
-+            mQPrinter->setPageSize(indexToQtPaperEnum[i]);
++            mPageLayout->setPageSize(QPageSize(indexToQtPaperEnum[i]));
 +            return NS_OK;
 +        }
 +    }
 +    return NS_ERROR_FAILURE;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+QPrinter::Unit GetQtUnit(int16_t aGeckoUnit)
++QPageLayout::Unit GetQtUnit(int16_t aGeckoUnit)
 +{
 +    if (aGeckoUnit == nsIPrintSettings::kPaperSizeMillimeters) {
-+        return QPrinter::Millimeter;
++        return QPageLayout::Millimeter;
 +    } else {
-+        return QPrinter::Inch;
++        return QPageLayout::Inch;
 +    }
 +}
-+#endif
 +
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +#define SETUNWRITEABLEMARGIN\
-+    mQPrinter->setPageMargins(\
++    mPageLayout->setUnits(QPageLayout::Inch);\
++    mPageLayout->setMargins(QMarginsF(\
 +            NS_TWIPS_TO_INCHES(mUnwriteableMargin.left),\
 +            NS_TWIPS_TO_INCHES(mUnwriteableMargin.top),\
 +            NS_TWIPS_TO_INCHES(mUnwriteableMargin.right),\
-+            NS_TWIPS_TO_INCHES(mUnwriteableMargin.bottom),\
-+            QPrinter::Inch);
-+#else
-+#define SETUNWRITEABLEMARGIN
-+#endif
++            NS_TWIPS_TO_INCHES(mUnwriteableMargin.bottom)));
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin)
@@ -7962,57 +7812,35 @@ index 000000000000..df1ec5db3ec4
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPaperWidth(double* aPaperWidth)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aPaperWidth);
-+    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
-+    *aPaperWidth = papersize.width();
++    *aPaperWidth = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).width();
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPaperWidth(double aPaperWidth)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
++    QSizeF papersize = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).size();
 +    papersize.setWidth(aPaperWidth);
-+    mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
++    mPageLayout->setPageSize(QPageSize(papersize, (QPageSize::Unit)GetQtUnit(mPaperSizeUnit)));
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetPaperHeight(double* aPaperHeight)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
 +    NS_ENSURE_ARG_POINTER(aPaperHeight);
-+    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
-+    *aPaperHeight = papersize.height();
++    *aPaperHeight = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).height();
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
 +nsPrintSettingsQt::SetPaperHeight(double aPaperHeight)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
++    QSizeF papersize = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).size();
 +    papersize.setHeight(aPaperHeight);
-+    mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
++    mPageLayout->setPageSize(QPageSize(papersize, (QPageSize::Unit)GetQtUnit(mPaperSizeUnit)));
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 +NS_IMETHODIMP
@@ -8025,10 +7853,8 @@ index 000000000000..df1ec5db3ec4
 +NS_IMETHODIMP
 +nsPrintSettingsQt::GetEffectivePageSize(double* aWidth, double* aHeight)
 +{
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QSizeF papersize = mQPrinter->paperSize(QPrinter::Inch);
-+    if (mQPrinter->orientation() == QPrinter::Landscape) {
++    QSizeF papersize = mPageLayout->fullRect(QPageLayout::Inch).size();
++    if (mPageLayout->orientation() == QPageLayout::Landscape) {
 +        *aWidth  = NS_INCHES_TO_INT_TWIPS(papersize.height());
 +        *aHeight = NS_INCHES_TO_INT_TWIPS(papersize.width());
 +    } else {
@@ -8036,17 +7862,14 @@ index 000000000000..df1ec5db3ec4
 +        *aHeight = NS_INCHES_TO_INT_TWIPS(papersize.height());
 +    }
 +    return NS_OK;
-+#else
-+    return NS_ERROR_NOT_IMPLEMENTED;
-+#endif
 +}
 +
 diff --git a/widget/qt/nsPrintSettingsQt.h b/widget/qt/nsPrintSettingsQt.h
 new file mode 100644
-index 000000000000..b043af2525d9
+index 000000000000..bc6c6791b1a3
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.h
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,93 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
@@ -8061,7 +7884,7 @@ index 000000000000..b043af2525d9
 +#define NS_PRINTSETTINGSQT_IID \
 +{0x5bc4c746, 0x8970, 0x43a3, {0xbf, 0xb1, 0x5d, 0xe1, 0x74, 0xaf, 0x7c, 0xea}}
 +
-+class QPrinter;
++class QPageLayout;
 +class nsPrintSettingsQt : public nsPrintSettings
 +{
 +public:
@@ -8127,10 +7950,15 @@ index 000000000000..b043af2525d9
 +    virtual nsresult _Clone(nsIPrintSettings** _retval) override;
 +    virtual nsresult _Assign(nsIPrintSettings* aPS) override;
 +
-+// This will pull in Qt Widgets and we don't want those
-+#if 0
-+    QSharedPointer<QPrinter> mQPrinter;
-+#endif
++    QSharedPointer<QPageLayout> mPageLayout;
++    QString mFilename;
++    QString mPrinterName;
++    int32_t mNumCopies = 1;
++    int32_t mStartPageRange = 0;
++    int32_t mEndPageRange = 0;
++    int16_t mPrintRange = 0;
++    bool mPrintInColor = true;
++    bool mPrintReversed = false;
 +};
 +
 +NS_DEFINE_STATIC_IID_ACCESSOR(nsPrintSettingsQt, NS_PRINTSETTINGSQT_IID)
