@@ -4,7 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <QPrinter>
+#include <QPageLayout>
+#include <QRectF>
 #include <QDebug>
 #include "nsPrintSettingsQt.h"
 #include "nsIFile.h"
@@ -15,7 +16,7 @@ NS_IMPL_ISUPPORTS_INHERITED(nsPrintSettingsQt,
                             nsPrintSettingsQt)
 
 nsPrintSettingsQt::nsPrintSettingsQt():
-    mQPrinter(new QPrinter())
+    mPageLayout(new QPageLayout(QPageSize(QPageSize::A4), QPageLayout::Portrait, QMarginsF()))
 {
 }
 
@@ -25,7 +26,15 @@ nsPrintSettingsQt::~nsPrintSettingsQt()
 }
 
 nsPrintSettingsQt::nsPrintSettingsQt(const nsPrintSettingsQt& aPS):
-    mQPrinter(aPS.mQPrinter)
+    mPageLayout(aPS.mPageLayout),
+    mFilename(aPS.mFilename),
+    mPrinterName(aPS.mPrinterName),
+    mNumCopies(aPS.mNumCopies),
+    mStartPageRange(aPS.mStartPageRange),
+    mEndPageRange(aPS.mEndPageRange),
+    mPrintRange(aPS.mPrintRange),
+    mPrintInColor(aPS.mPrintInColor),
+    mPrintReversed(aPS.mPrintReversed)
 {
 }
 
@@ -37,7 +46,15 @@ nsPrintSettingsQt::operator=(const nsPrintSettingsQt& rhs)
     }
 
     nsPrintSettings::operator=(rhs);
-    mQPrinter = rhs.mQPrinter;
+    mPageLayout = rhs.mPageLayout;
+    mFilename = rhs.mFilename;
+    mPrinterName = rhs.mPrinterName;
+    mNumCopies = rhs.mNumCopies;
+    mStartPageRange = rhs.mStartPageRange;
+    mEndPageRange = rhs.mEndPageRange;
+    mPrintRange = rhs.mPrintRange;
+    mPrintInColor = rhs.mPrintInColor;
+    mPrintReversed = rhs.mPrintReversed;
     return *this;
 }
 
@@ -66,29 +83,14 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintRange(int16_t* aPrintRange)
 {
     NS_ENSURE_ARG_POINTER(aPrintRange);
-
-    QPrinter::PrintRange range = mQPrinter->printRange();
-    if (range == QPrinter::PageRange) {
-        *aPrintRange = kRangeSpecifiedPageRange;
-    } else if (range == QPrinter::Selection) {
-        *aPrintRange = kRangeSelection;
-    } else {
-        *aPrintRange = kRangeAllPages;
-    }
-
+    *aPrintRange = mPrintRange;
     return NS_OK;
 }
 
 NS_IMETHODIMP 
 nsPrintSettingsQt::SetPrintRange(int16_t aPrintRange)
 {
-    if (aPrintRange == kRangeSelection) {
-        mQPrinter->setPrintRange(QPrinter::Selection);
-    } else if (aPrintRange == kRangeSpecifiedPageRange) {
-        mQPrinter->setPrintRange(QPrinter::PageRange);
-    } else {
-        mQPrinter->setPrintRange(QPrinter::AllPages);
-    }
+    mPrintRange = aPrintRange;
     return NS_OK;
 }
 
@@ -96,16 +98,18 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetStartPageRange(int32_t* aStartPageRange)
 {
     NS_ENSURE_ARG_POINTER(aStartPageRange);
-    int32_t start = mQPrinter->fromPage();
-    *aStartPageRange = start;
+    *aStartPageRange = mStartPageRange;
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetStartPageRange(int32_t aStartPageRange)
 {
-    int32_t endRange = mQPrinter->toPage();
-    mQPrinter->setFromTo(aStartPageRange, endRange);
+    mStartPageRange = aStartPageRange;
+    if (mStartPageRange > mEndPageRange) {
+        qWarning() << "nsPrintSettingsQt::SetStartPageRange: 'StartPageRange' must be less than or equal to 'EndPageRange'";
+        mEndPageRange = mStartPageRange;
+    }
     return NS_OK;
 }
 
@@ -113,16 +117,18 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetEndPageRange(int32_t* aEndPageRange)
 {
     NS_ENSURE_ARG_POINTER(aEndPageRange);
-    int32_t end = mQPrinter->toPage();
-    *aEndPageRange = end;
+    *aEndPageRange = mEndPageRange;
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetEndPageRange(int32_t aEndPageRange)
 {
-    int32_t startRange = mQPrinter->fromPage();
-    mQPrinter->setFromTo(startRange, aEndPageRange);
+    mEndPageRange = aEndPageRange;
+    if (mStartPageRange > mEndPageRange) {
+        qWarning() << "nsPrintSettingsQt::SetEndPageRange: 'EndPageRange' must be more than or equal to 'mStartPageRange'";
+        mStartPageRange = mEndPageRange;
+    }
     return NS_OK;
 }
 
@@ -130,22 +136,14 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintReversed(bool* aPrintReversed)
 {
     NS_ENSURE_ARG_POINTER(aPrintReversed);
-    if (mQPrinter->pageOrder() == QPrinter::LastPageFirst) {
-        *aPrintReversed = true;
-    } else {
-        *aPrintReversed = false;
-    }
+    *aPrintReversed = mPrintReversed;
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrintReversed(bool aPrintReversed)
 {
-    if (aPrintReversed) {
-        mQPrinter->setPageOrder(QPrinter::LastPageFirst);
-    } else {
-        mQPrinter->setPageOrder(QPrinter::FirstPageFirst);
-    }
+    mPrintReversed = aPrintReversed;
     return NS_OK;
 }
 
@@ -153,21 +151,13 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintInColor(bool* aPrintInColor)
 {
     NS_ENSURE_ARG_POINTER(aPrintInColor);
-    if (mQPrinter->colorMode() == QPrinter::Color) {
-        *aPrintInColor = true;
-    } else {
-        *aPrintInColor = false;
-    }
+    *aPrintInColor = mPrintInColor;
     return NS_OK;
 }
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrintInColor(bool aPrintInColor)
 {
-    if (aPrintInColor) {
-        mQPrinter->setColorMode(QPrinter::Color);
-    } else {
-        mQPrinter->setColorMode(QPrinter::GrayScale);
-    }
+    mPrintInColor = aPrintInColor;
     return NS_OK;
 }
 
@@ -175,12 +165,9 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetOrientation(int32_t* aOrientation)
 {
     NS_ENSURE_ARG_POINTER(aOrientation);
-    QPrinter::Orientation orientation = mQPrinter->orientation();
-    if (orientation == QPrinter::Landscape) {
-        *aOrientation = kLandscapeOrientation;
-    } else {
-        *aOrientation = kPortraitOrientation;
-    }
+    *aOrientation = (mPageLayout->orientation() == QPageLayout::Landscape) ?
+                kLandscapeOrientation :
+                kPortraitOrientation;
     return NS_OK;
 }
 
@@ -188,9 +175,9 @@ NS_IMETHODIMP
 nsPrintSettingsQt::SetOrientation(int32_t aOrientation)
 {
     if (aOrientation == kLandscapeOrientation) {
-        mQPrinter->setOrientation(QPrinter::Landscape);
+        mPageLayout->setOrientation(QPageLayout::Landscape);
     } else {
-        mQPrinter->setOrientation(QPrinter::Portrait);
+        mPageLayout->setOrientation(QPageLayout::Portrait);
     }
     return NS_OK;
 }
@@ -198,10 +185,7 @@ nsPrintSettingsQt::SetOrientation(int32_t aOrientation)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetToFileName(nsAString &aToFileName)
 {
-    QString filename;
-    filename = mQPrinter->outputFileName();
-    *aToFileName = ToNewUnicode(
-            nsDependentString((char16_t*)filename.data()));
+    aToFileName = nsDependentString((char16_t*)mFilename.data());
     return NS_OK;
 }
 
@@ -213,8 +197,9 @@ nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
                                 getter_AddRefs(file));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    QString filename((const QChar*)aToFileName, NS_strlen(aToFileName));
-    mQPrinter->setOutputFileName(filename);
+    QString filename((const QChar*)aToFileName.get(), aToFileName.Length());
+    mFilename = filename;
+
     return NS_OK;
 }
 
@@ -222,16 +207,16 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPrinterName(nsAString &aPrinter)
 {
     NS_ENSURE_ARG_POINTER(aPrinter);
-    *aPrinter = ToNewUnicode(nsDependentString(
-                (const char16_t*)mQPrinter->printerName().constData()));
+    aPrinter = nsDependentString((const char16_t*)mPrinterName.constData());
+
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrinterName(const nsAString &aPrinter)
 {
-    QString printername((const QChar*)aPrinter, NS_strlen(aPrinter));
-    mQPrinter->setPrinterName(printername);
+    QString printername((const QChar*)aPrinter.get(), aPrinter.Length());
+    mPrinterName = printername;
     return NS_OK;
 }
 
@@ -239,14 +224,18 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetNumCopies(int32_t* aNumCopies)
 {
     NS_ENSURE_ARG_POINTER(aNumCopies);
-    *aNumCopies = mQPrinter->numCopies();
+    *aNumCopies = mNumCopies;
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetNumCopies(int32_t aNumCopies)
 {
-    mQPrinter->setNumCopies(aNumCopies);
+    mNumCopies = aNumCopies;
+    if (mNumCopies < 1) {
+        qWarning() << "nsPrintSettingsQt::SetNumCopies: 'NumCopies' must be greater than 0";
+        mNumCopies = 1;
+    }
     return NS_OK;
 }
 
@@ -275,23 +264,23 @@ static const char* const indexToPaperName[] =
   "C5E", "Comm10E", "DLE", "Folio", "Ledger", "Tabloid"
 };
 
-static const QPrinter::PageSize indexToQtPaperEnum[] =
+static const QPageSize::PageSizeId indexToQtPaperEnum[] =
 {
-    QPrinter::A4, QPrinter::B5, QPrinter::Letter, QPrinter::Legal,
-    QPrinter::Executive, QPrinter::A0, QPrinter::A1, QPrinter::A2, QPrinter::A3,
-    QPrinter::A5, QPrinter::A6, QPrinter::A7, QPrinter::A8, QPrinter::A9,
-    QPrinter::B0, QPrinter::B1, QPrinter::B10, QPrinter::B2, QPrinter::B3,
-    QPrinter::B4, QPrinter::B6, QPrinter::B7, QPrinter::B8, QPrinter::B9,
-    QPrinter::C5E, QPrinter::Comm10E, QPrinter::DLE, QPrinter::Folio,
-    QPrinter::Ledger, QPrinter::Tabloid
+    QPageSize::A4, QPageSize::B5, QPageSize::Letter, QPageSize::Legal,
+    QPageSize::Executive, QPageSize::A0, QPageSize::A1, QPageSize::A2, QPageSize::A3,
+    QPageSize::A5, QPageSize::A6, QPageSize::A7, QPageSize::A8, QPageSize::A9,
+    QPageSize::B0, QPageSize::B1, QPageSize::B10, QPageSize::B2, QPageSize::B3,
+    QPageSize::B4, QPageSize::B6, QPageSize::B7, QPageSize::B8, QPageSize::B9,
+    QPageSize::C5E, QPageSize::Comm10E, QPageSize::DLE, QPageSize::Folio,
+    QPageSize::Ledger, QPageSize::Tabloid
 };
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperName(nsAString &aPaperName)
 {
-    QPrinter::PaperSize size = mQPrinter->paperSize();
+    QPageSize::PageSizeId size = mPageLayout->pageSize().id();
     QString name(indexToPaperName[size]);
-    *aPaperName = ToNewUnicode(nsDependentString((const char16_t*)name.constData()));
+    aPaperName = nsDependentString((const char16_t*)name.constData());
     return NS_OK;
 }
 
@@ -302,30 +291,29 @@ nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
     for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
     {
         if (ref == QString(indexToPaperName[i])) {
-            mQPrinter->setPageSize(indexToQtPaperEnum[i]);
+            mPageLayout->setPageSize(QPageSize(indexToQtPaperEnum[i]));
             return NS_OK;
         }
     }
     return NS_ERROR_FAILURE;
 }
 
-QPrinter::Unit GetQtUnit(int16_t aGeckoUnit)
+QPageLayout::Unit GetQtUnit(int16_t aGeckoUnit)
 {
     if (aGeckoUnit == nsIPrintSettings::kPaperSizeMillimeters) {
-        return QPrinter::Millimeter;
+        return QPageLayout::Millimeter;
     } else {
-        return QPrinter::Inch;
+        return QPageLayout::Inch;
     }
 }
 
 #define SETUNWRITEABLEMARGIN\
-    mQPrinter->setPageMargins(\
+    mPageLayout->setUnits(QPageLayout::Inch);\
+    mPageLayout->setMargins(QMarginsF(\
             NS_TWIPS_TO_INCHES(mUnwriteableMargin.left),\
             NS_TWIPS_TO_INCHES(mUnwriteableMargin.top),\
             NS_TWIPS_TO_INCHES(mUnwriteableMargin.right),\
-            NS_TWIPS_TO_INCHES(mUnwriteableMargin.bottom),\
-            QPrinter::Inch);
-#else
+            NS_TWIPS_TO_INCHES(mUnwriteableMargin.bottom)));
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin)
@@ -371,17 +359,16 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperWidth(double* aPaperWidth)
 {
     NS_ENSURE_ARG_POINTER(aPaperWidth);
-    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
-    *aPaperWidth = papersize.width();
+    *aPaperWidth = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).width();
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperWidth(double aPaperWidth)
 {
-    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
+    QSizeF papersize = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).size();
     papersize.setWidth(aPaperWidth);
-    mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
+    mPageLayout->setPageSize(QPageSize(papersize, (QPageSize::Unit)GetQtUnit(mPaperSizeUnit)));
     return NS_OK;
 }
 
@@ -389,17 +376,16 @@ NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperHeight(double* aPaperHeight)
 {
     NS_ENSURE_ARG_POINTER(aPaperHeight);
-    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
-    *aPaperHeight = papersize.height();
+    *aPaperHeight = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).height();
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperHeight(double aPaperHeight)
 {
-    QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
+    QSizeF papersize = mPageLayout->fullRect(GetQtUnit(mPaperSizeUnit)).size();
     papersize.setHeight(aPaperHeight);
-    mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
+    mPageLayout->setPageSize(QPageSize(papersize, (QPageSize::Unit)GetQtUnit(mPaperSizeUnit)));
     return NS_OK;
 }
 
@@ -413,8 +399,8 @@ nsPrintSettingsQt::SetPaperSizeUnit(int16_t aPaperSizeUnit)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetEffectivePageSize(double* aWidth, double* aHeight)
 {
-    QSizeF papersize = mQPrinter->paperSize(QPrinter::Inch);
-    if (mQPrinter->orientation() == QPrinter::Landscape) {
+    QSizeF papersize = mPageLayout->fullRect(QPageLayout::Inch).size();
+    if (mPageLayout->orientation() == QPageLayout::Landscape) {
         *aWidth  = NS_INCHES_TO_INT_TWIPS(papersize.height());
         *aHeight = NS_INCHES_TO_INT_TWIPS(papersize.width());
     } else {

@@ -6,8 +6,6 @@
 
 #include <QTemporaryFile>
 
-#include <QPrinterInfo>
-
 #define SET_PRINTER_FEATURES_VIA_PREFS 1
 #define PRINTERFEATURES_PREF "print.tmp.printerfeatures"
 
@@ -207,19 +205,8 @@ NS_IMETHODIMP nsPrinterEnumeratorQt::GetPrinterNameList(
     NS_ENSURE_ARG_POINTER(aPrinterNameList);
     *aPrinterNameList = nullptr;
 
-    return NS_ERROR_NOT_AVAILABLE;
-    QList<QPrinterInfo> qprinters = QPrinterInfo::availablePrinters();
-    if (qprinters.size() == 0)
-        return NS_ERROR_NOT_AVAILABLE;
-
     nsTArray<nsString>* printers =
-        new nsTArray<nsString>(qprinters.size()); 
-
-    for (int32_t i = 0; i < qprinters.size(); ++i) {
-        printers->AppendElement(
-                nsDependentString(
-                    (const char16_t*)qprinters[i].printerName().constData()));
-    }
+        new nsTArray<nsString>(0);
 
     return NS_NewAdoptingStringEnumerator(aPrinterNameList, printers);
 }
@@ -228,7 +215,7 @@ NS_IMETHODIMP nsPrinterEnumeratorQt::GetDefaultPrinterName(nsAString &aDefaultPr
 {
     DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::GetDefaultPrinterName()\n"));
 
-    QString defprinter = QPrinterInfo::defaultPrinter().printerName();
+    QString defprinter;
     *aDefaultPrinterName = ToNewUnicode(nsDependentString(
         (const char16_t*)defprinter.constData()));
 

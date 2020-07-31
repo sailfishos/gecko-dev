@@ -12,7 +12,7 @@
 #define NS_PRINTSETTINGSQT_IID \
 {0x5bc4c746, 0x8970, 0x43a3, {0xbf, 0xb1, 0x5d, 0xe1, 0x74, 0xaf, 0x7c, 0xea}}
 
-class QPrinter;
+class QPageLayout;
 class nsPrintSettingsQt : public nsPrintSettings
 {
 public:
@@ -78,7 +78,15 @@ protected:
     virtual nsresult _Clone(nsIPrintSettings** _retval) override;
     virtual nsresult _Assign(nsIPrintSettings* aPS) override;
 
-    QSharedPointer<QPrinter> mQPrinter;
+    QSharedPointer<QPageLayout> mPageLayout;
+    QString mFilename;
+    QString mPrinterName;
+    int32_t mNumCopies = 1;
+    int32_t mStartPageRange = 0;
+    int32_t mEndPageRange = 0;
+    int16_t mPrintRange = 0;
+    bool mPrintInColor = true;
+    bool mPrintReversed = false;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPrintSettingsQt, NS_PRINTSETTINGSQT_IID)

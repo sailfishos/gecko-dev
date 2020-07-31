@@ -8,6 +8,7 @@
 #define nsDeviceContextSpecQt_h___
 
 #include "nsIDeviceContextSpec.h"
+#include "nsIPrintSettings.h"
 #include "nsIPrinterEnumerator.h"
 #include "nsCOMPtr.h"
 
