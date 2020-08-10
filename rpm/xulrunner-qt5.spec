@@ -68,6 +68,7 @@ Patch22:    0022-Revert-UserAgentOverride-changes-that-brea.patch
 Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
 Patch24:    0024-Allow-render-shaders-to-be-loaded-from-file.patch
 Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
+Patch26:    0026-Delete-startupCache-if-it-s-stale.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -100,6 +101,7 @@ BuildRequires:  python
 BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
+BuildRequires:  qt5-plugin-platform-minimal
 %if %{system_icu}
 BuildRequires:  libicu-devel
 %endif
@@ -164,6 +166,7 @@ mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
+echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
@@ -232,8 +235,9 @@ echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
   echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
 %endif
 
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
+%ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+%endif
 
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
