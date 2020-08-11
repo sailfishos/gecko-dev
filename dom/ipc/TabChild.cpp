@@ -263,10 +263,12 @@ void TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
 
 NS_IMETHODIMP
 ContentListener::HandleEvent(nsIDOMEvent* aEvent) {
+#if 0
   RemoteDOMEvent remoteEvent;
   remoteEvent.mEvent = do_QueryInterface(aEvent);
   NS_ENSURE_STATE(remoteEvent.mEvent);
   mTabChild->SendEvent(remoteEvent);
+#endif
   return NS_OK;
 }
 
@@ -3152,7 +3154,7 @@ void TabChild::BeforeUnloadRemoved() {
 
 mozilla::dom::TabGroup* TabChild::TabGroup() { return mTabGroup; }
 
-TabChildGlobal::TabChildGlobal(TabChild* aTabChild) : mTabChild(aTabChild) {
+TabChildGlobal::TabChildGlobal(TabChildBase *aTabChild) : mTabChild(aTabChild) {
   SetIsNotDOMBinding();
 }
 
@@ -3247,23 +3249,29 @@ JSObject* TabChildGlobal::GetGlobalJSObject() {
 
 nsresult TabChildGlobal::Dispatch(TaskCategory aCategory,
                                   already_AddRefed<nsIRunnable>&& aRunnable) {
+#if 0
   if (mTabChild && mTabChild->TabGroup()) {
     return mTabChild->TabGroup()->Dispatch(aCategory, Move(aRunnable));
   }
+#endif
   return DispatcherTrait::Dispatch(aCategory, Move(aRunnable));
 }
 
 nsISerialEventTarget* TabChildGlobal::EventTargetFor(
     TaskCategory aCategory) const {
+#if 0
   if (mTabChild && mTabChild->TabGroup()) {
     return mTabChild->TabGroup()->EventTargetFor(aCategory);
   }
+#endif
   return DispatcherTrait::EventTargetFor(aCategory);
 }
 
 AbstractThread* TabChildGlobal::AbstractMainThreadFor(TaskCategory aCategory) {
+#if 0
   if (mTabChild && mTabChild->TabGroup()) {
     return mTabChild->TabGroup()->AbstractMainThreadFor(aCategory);
   }
+#endif
   return DispatcherTrait::AbstractMainThreadFor(aCategory);
 }
