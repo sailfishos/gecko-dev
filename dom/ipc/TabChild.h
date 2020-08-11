@@ -79,6 +79,7 @@ class TabGroup;
 class ClonedMessageData;
 class CoalescedMouseData;
 class CoalescedWheelData;
+class TabChildBase;
 
 class TabChildGlobal : public DOMEventTargetHelper,
                        public nsIContentFrameMessageManager,
@@ -86,7 +87,7 @@ class TabChildGlobal : public DOMEventTargetHelper,
                        public nsIGlobalObject,
                        public nsSupportsWeakReference {
  public:
-  explicit TabChildGlobal(TabChild* aTabChild);
+  explicit TabChildGlobal(TabChildBase* aTabChild);
   void Init();
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, DOMEventTargetHelper)
@@ -158,7 +159,7 @@ class TabChildGlobal : public DOMEventTargetHelper,
       mozilla::TaskCategory aCategory) override;
 
   nsCOMPtr<nsIContentFrameMessageManager> mMessageManager;
-  RefPtr<TabChild> mTabChild;
+  RefPtr<TabChildBase> mTabChild;
 
  protected:
   ~TabChildGlobal();
@@ -166,12 +167,12 @@ class TabChildGlobal : public DOMEventTargetHelper,
 
 class ContentListener final : public nsIDOMEventListener {
  public:
-  explicit ContentListener(TabChild* aTabChild) : mTabChild(aTabChild) {}
+  explicit ContentListener(TabChildBase* aTabChild) : mTabChild(aTabChild) {}
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
  protected:
   ~ContentListener() {}
-  TabChild* mTabChild;
+  TabChildBase* mTabChild;
 };
 
 // This is base clase which helps to share Viewport and touch related
