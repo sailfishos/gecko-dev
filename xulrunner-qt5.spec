@@ -69,6 +69,7 @@ Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
 Patch24:    0024-Allow-render-shaders-to-be-loaded-from-file.patch
 Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
 Patch26:    0026-Delete-startupCache-if-it-s-stale.patch
+Patch27:    0027-Remove-android-define-from-logging.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -190,6 +191,12 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
+
+# Reduce logging from release build
+%if "%{?qa_stage_name}" == testing || "%{?qa_stage_name}" == release
+echo "export CFLAGS=\"\$CFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+%endif
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
