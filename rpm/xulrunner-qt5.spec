@@ -1,4 +1,4 @@
-%define greversion    52.9.1
+%define greversion    60.9.1
 
 %define embedlite_config merqtxulrunner
 
@@ -13,7 +13,6 @@
 %define system_zlib       1
 %define system_bz2        1
 %define system_pixman     1
-%define system_cairo      1
 
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
@@ -133,9 +132,6 @@ BuildRequires:  libffi-devel
 %if %{system_pixman}
 BuildRequires:  pkgconfig(pixman-1)
 %endif
-%if %{system_cairo}
-BuildRequires:  pkgconfig(cairo)
-%endif
 
 %description
 Mozilla XUL runner
@@ -168,6 +164,7 @@ cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
 echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
+echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
@@ -175,13 +172,7 @@ source "%BUILD_DIR"/rpm-shared.env
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
 printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
-%ifarch %arm
-echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
-# Do not build as thumb since it breaks video decoding.
-echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
-%endif
 
-echo "mk_add_options MOZ_MAKE_FLAGS='%{?jobs:-j%jobs}'" >> "$MOZCONFIG"
 echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 # XXX: gold crashes when building gecko for both i486 and x86_64
 #echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
@@ -210,7 +201,7 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 %endif
 
 %if %{system_ffi}
-  echo "ac_add_options --enable-system-ffi" >> "${MOZCONFIG}"
+  echo "ac_add_options --with-system-ffi" >> "${MOZCONFIG}"
 %endif
 
 %if %{system_icu}
@@ -237,10 +228,6 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
   echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
 %endif
 
-# %if %{system_cairo}
-#  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
-#%endif
-
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 %endif
@@ -254,13 +241,16 @@ echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
  echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
-%{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
-%{__make} -C %{BUILD_DIR}/faster FASTER_RECURSIVE_MAKE=1 %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
+./mach build
+# This might be unnecessary but previously some files
+# were only behind FASTER_RECURSIVE_MAKE but only adds few
+# minutes for the build.
+./mach build faster FASTER_RECURSIVE_MAKE=1
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
 
-%{__make} -f client.mk install DESTDIR=%{buildroot}
+%{__make} -C %BUILD_DIR/embedding/embedlite/installer install DESTDIR=%{buildroot}
 
 for i in $(cd ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/; ls *.so); do
     rm ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/$i
@@ -298,6 +288,12 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %{mozappdir}/dependentlibs.list
 %{mozappdir}/dictionaries
 %{mozappdir}/plugin-container
+%{mozappdir}/platform.ini
+%exclude %{mozappdir}/gmp-fake
+%exclude %{mozappdir}/gmp-clearkey
+%exclude %{mozappdir}/gmp-fakeopenh264
+%exclude %{mozappdir}/run-mozilla.sh
+%exclude %{mozappdir}/chrome.manifest
 
 %files devel
 %defattr(-,root,root,-)
