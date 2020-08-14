@@ -1,7 +1,8 @@
-From 556e354e8baeed99dd834f67a2803966779c63e7 Mon Sep 17 00:00:00 2001
+From 6b44a3f6ef3bbd3dee04d15305a3e96e2aba373a Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Tue, 2 Jun 2020 11:47:10 +0000
-Subject: [PATCH] Avoid rogue origin points when clipping rects
+Subject: [PATCH] [sailfishos][gecko] Avoid rogue origin points when clipping
+ rects
 
 In Matrix4x4Typed::TransformAndClipRect it was possible for the returned
 aVerts array to include entries from the initialised but unset
@@ -10,20 +11,22 @@ resulting in the distance-to-edge anti-aliasing incorrectly rendering
 triangle artefacts.
 
 This change prevents the overrun of the unset points.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- gfx/2d/Matrix.h | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
+ gfx/2d/Matrix.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/gfx/2d/Matrix.h b/gfx/2d/Matrix.h
-index 22a01ca1031c..bc56902237bc 100644
+index 85d3519a218f..2f92d3c88931 100644
 --- a/gfx/2d/Matrix.h
 +++ b/gfx/2d/Matrix.h
-@@ -752,13 +752,14 @@ public:
+@@ -828,13 +828,14 @@ class Matrix4x4Typed {
      // Iterate through each clipping plane and clip the polygon.
      // In each pass, we double buffer, alternating between points[0] and
      // points[1].
 +    Point4DTyped<UnknownUnits, F>* dstPointStart = points[0];
-     for (int plane=0; plane < 4; plane++) {
+     for (int plane = 0; plane < 4; plane++) {
        planeNormals[plane].Normalize();
        Point4DTyped<UnknownUnits, F>* srcPoint = points[plane & 1];
        Point4DTyped<UnknownUnits, F>* srcPointEnd = dstPoint;
@@ -34,16 +37,18 @@ index 22a01ca1031c..bc56902237bc 100644
  
        Point4DTyped<UnknownUnits, F>* prevPoint = srcPointEnd - 1;
        F prevDot = planeNormals[plane].DotProduct(*prevPoint);
-@@ -788,8 +789,7 @@ public:
+@@ -865,9 +866,8 @@ class Matrix4x4Typed {
      }
  
      size_t dstPointCount = 0;
 -    size_t srcPointCount = dstPoint - points[0];
--    for (Point4DTyped<UnknownUnits, F>* srcPoint = points[0]; srcPoint < points[0] + srcPointCount; srcPoint++) {
-+    for (Point4DTyped<UnknownUnits, F>* srcPoint = dstPointStart; srcPoint < dstPoint; srcPoint++) {
- 
+-    for (Point4DTyped<UnknownUnits, F>* srcPoint = points[0];
+-         srcPoint < points[0] + srcPointCount; srcPoint++) {
++    for (Point4DTyped<UnknownUnits, F>* srcPoint = dstPointStart;
++         srcPoint < dstPoint; srcPoint++) {
        PointTyped<TargetUnits, F> p;
        if (srcPoint->w == 0.0) {
+         // If a point lies on the intersection of the clipping planes at
 -- 
-2.17.1
+2.26.2
 

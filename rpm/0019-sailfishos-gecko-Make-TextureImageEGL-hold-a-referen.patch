@@ -1,8 +1,8 @@
-From 31a4e217286fb1267cf6cedc04ae7d8bb658fa24 Mon Sep 17 00:00:00 2001
+From 6044554adeaa4b1447d61a6039c18548d944a25f Mon Sep 17 00:00:00 2001
 From: Piotr Tworek <piotr.tworek@jollamobile.com>
 Date: Wed, 8 Jul 2015 16:13:11 +0200
-Subject: [PATCH] Make TextureImageEGL hold a reference to GLContext. Fixes
- JB#30109.
+Subject: [PATCH] [sailfishos][gecko] Make TextureImageEGL hold a reference to
+ GLContext. Fixes JB#30109
 
 Due to rather non standard view shutdown procedure of EmbedLite port
 objets like TextureImageEGL often end up being destroyed after the
@@ -25,18 +25,18 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/gl/TextureImageEGL.h b/gfx/gl/TextureImageEGL.h
-index fa7075064ac9..54b78206ca98 100644
+index 31e9170452f2..3643a1d984e1 100644
 --- a/gfx/gl/TextureImageEGL.h
 +++ b/gfx/gl/TextureImageEGL.h
-@@ -55,7 +55,7 @@ public:
- protected:
-     typedef gfxImageFormat ImageFormat;
+@@ -49,7 +49,7 @@ class TextureImageEGL final : public TextureImage {
+  protected:
+   typedef gfxImageFormat ImageFormat;
  
--    GLContext* mGLContext;
-+    RefPtr<GLContext> mGLContext;
+-  GLContext* mGLContext;
++  RefPtr<GLContext> mGLContext;
  
-     gfx::SurfaceFormat mUpdateFormat;
-     EGLImage mEGLImage;
+   gfx::SurfaceFormat mUpdateFormat;
+   EGLImage mEGLImage;
 -- 
-2.17.1
+2.26.2
 

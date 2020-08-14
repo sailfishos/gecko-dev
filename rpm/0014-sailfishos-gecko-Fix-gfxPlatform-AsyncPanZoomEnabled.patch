@@ -1,0 +1,29 @@
+From 652e65fa61120ecf66d19bafc4171ecddc5b09ea Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 9 Dec 2016 15:01:12 +0200
+Subject: [PATCH] [sailfishos][gecko] Fix gfxPlatform::AsyncPanZoomEnabled for
+ embedlite. JB#50863
+
+sailfishos-esr52 sha1: 017d7e40194c059a2bc8b24ff3aef25f96faf6a3
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/thebes/gfxPlatform.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
+index d67613ec4493..a503d5c1f64e 100644
+--- a/gfx/thebes/gfxPlatform.cpp
++++ b/gfx/thebes/gfxPlatform.cpp
+@@ -2600,7 +2600,7 @@ void gfxPlatform::GetTilesSupportInfo(mozilla::widget::InfoObject& aObj) {
+ }
+ 
+ /*static*/ bool gfxPlatform::AsyncPanZoomEnabled() {
+-#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_WIDGET_UIKIT)
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_WIDGET_UIKIT) && !defined(MOZ_WIDGET_QT)
+   // For XUL applications (everything but Firefox on Android)
+   // we only want to use APZ when E10S is enabled. If
+   // we ever get input events off the main thread we can consider relaxing
+-- 
+2.26.2
+

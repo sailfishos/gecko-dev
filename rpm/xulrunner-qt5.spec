@@ -1,4 +1,4 @@
-%define greversion    52.9.1
+%define greversion    60.9.1
 
 %define embedlite_config merqtxulrunner
 
@@ -13,7 +13,6 @@
 %define system_zlib       1
 %define system_bz2        1
 %define system_pixman     1
-%define system_cairo      1
 
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
@@ -43,33 +42,42 @@ Group:      Applications/Internet
 License:    MPLv2.0
 URL:        https://git.sailfishos.org/mer-core/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-Workaround-for-late-access-message-loop.patch
-Patch2:     0002-Limit-surface-area-rather-than-width-and-height.patch
-Patch3:     0003-Make-TextureImageEGL-hold-a-reference-to-GLContext.-.patch
-Patch4:     0004-Adapt-LoginManager-to-EmbedLite.-Fixes-JB-21980.patch
-Patch5:     0005-Don-t-try-to-access-undefined-app-list-of-AppsServic.patch
-Patch6:     0006-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
-Patch7:     0007-Embedlite-doesn-t-have-prompter-implementation.patch
-Patch8:     0008-Disable-SiteSpecificUserAgent.js-from-the-build.-Con.patch
-Patch9:     0009-Cleanup-build-configuration.-Fixes-JB-44612.patch
-Patch10:    0010-Use-libcontentaction-for-custom-schem.patch
-Patch11:    0011-Allow-compositor-specializations-to-override-the-com.patch
-Patch12:    0012-Handle-temporary-directory-similarly-as-in-MacOSX.patch
-Patch13:    0013-Disable-loading-extensions-and-assume-memory-constra.patch
-Patch14:    0014-gecko-Use-MOZ_EMBEDLITE-for-embedlite-integration.patch
-Patch15:    0015-gecko-Create-EmbedLiteCompositorBridgeParent-in-Comp.patch
-Patch16:    0016-gecko-Configuration-option.-JB-49613.patch
-Patch17:    0017-ffmpeg4.patch
-Patch18:    0018-Check-for-null-GetApzcTreeManager.patch
-Patch19:    0019-gecko-Fix-format-specifiers-for-event-logging-in-IME.patch
-Patch20:    0020-Add-support-for-S16-decoded-output.patch
-Patch21:    0021-sailfishos-build-Fix-build-error-with-newer-glibc.-J.patch
-Patch22:    0022-Revert-UserAgentOverride-changes-that-brea.patch
-Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
-Patch24:    0024-Allow-render-shaders-to-be-loaded-from-file.patch
-Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
-Patch26:    0026-Delete-startupCache-if-it-s-stale.patch
-Patch27:    0027-Remove-android-define-from-logging.patch
+Patch1:     0001-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
+Patch2:     0002-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
+Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
+Patch4:     0004-sailfishos-gecko-Hack-message_pump_qt-s-moc-generati.patch
+Patch5:     0005-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
+Patch6:     0006-sailfishos-compositor-Fix-GLContextProvider-defines.patch
+Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
+Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
+Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
+Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
+Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
+Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
+Patch13:    0013-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
+Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
+Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
+Patch16:    0016-sailfishos-compositor-Respect-gfxPrefs-ClearCompoisi.patch
+Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
+Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
+Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
+Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
+Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
+Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
+Patch23:    0023-sailfishos-gecko-Disable-Marionette.patch
+Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
+Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
+Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
+Patch27:    0027-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
+Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
+Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
+Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
+Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
+Patch32:    0032-sailfishos-gecko-Remove-android-define-from-logging.patch
+
+BuildRequires:  rust
+BuildRequires:  rust-std-static
+BuildRequires:  cargo
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -133,9 +141,6 @@ BuildRequires:  libffi-devel
 %if %{system_pixman}
 BuildRequires:  pkgconfig(pixman-1)
 %endif
-%if %{system_cairo}
-BuildRequires:  pkgconfig(cairo)
-%endif
 
 %description
 Mozilla XUL runner
@@ -168,6 +173,7 @@ cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
 echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
+echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
@@ -175,13 +181,7 @@ source "%BUILD_DIR"/rpm-shared.env
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
 printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
-%ifarch %arm
-echo "ac_add_options --with-float-abi=toolchain-default" >> "$MOZCONFIG"
-# Do not build as thumb since it breaks video decoding.
-echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
-%endif
 
-echo "mk_add_options MOZ_MAKE_FLAGS='%{?jobs:-j%jobs}'" >> "$MOZCONFIG"
 echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 # XXX: gold crashes when building gecko for both i486 and x86_64
 #echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
@@ -210,7 +210,7 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 %endif
 
 %if %{system_ffi}
-  echo "ac_add_options --enable-system-ffi" >> "${MOZCONFIG}"
+  echo "ac_add_options --with-system-ffi" >> "${MOZCONFIG}"
 %endif
 
 %if %{system_icu}
@@ -237,10 +237,6 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
   echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
 %endif
 
-# %if %{system_cairo}
-#  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
-#%endif
-
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 %endif
@@ -254,13 +250,16 @@ echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
  echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
-%{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
-%{__make} -C %{BUILD_DIR}/faster FASTER_RECURSIVE_MAKE=1 %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
+./mach build
+# This might be unnecessary but previously some files
+# were only behind FASTER_RECURSIVE_MAKE but only adds few
+# minutes for the build.
+./mach build faster FASTER_RECURSIVE_MAKE=1
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
 
-%{__make} -f client.mk install DESTDIR=%{buildroot}
+%{__make} -C %BUILD_DIR/embedding/embedlite/installer install DESTDIR=%{buildroot}
 
 for i in $(cd ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/; ls *.so); do
     rm ${RPM_BUILD_ROOT}%{mozappdirdev}/sdk/lib/$i
@@ -298,6 +297,12 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %{mozappdir}/dependentlibs.list
 %{mozappdir}/dictionaries
 %{mozappdir}/plugin-container
+%{mozappdir}/platform.ini
+%exclude %{mozappdir}/gmp-fake
+%exclude %{mozappdir}/gmp-clearkey
+%exclude %{mozappdir}/gmp-fakeopenh264
+%exclude %{mozappdir}/run-mozilla.sh
+%exclude %{mozappdir}/chrome.manifest
 
 %files devel
 %defattr(-,root,root,-)

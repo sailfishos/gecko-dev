@@ -1,29 +1,36 @@
-From e5986ef318fc2e8ef6054d0dfffb5c06fb6aac45 Thu, 25 Jun 2020 00:23:07 +0200
+From 906bef5d54b7bfac8d86632b1741076bd152932a Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
 Date: Wed, 24 Jun 2020 07:56:50 +0200
-Subject: [PATCH] Prioritize GMP plugins over all others, and support decoding video for h264, vp8 & vp9.
+Subject: [PATCH] [sailfishos][gecko] Prioritize GMP plugins over all others,
+ and support decoding video for h264, vp8 & vp9.
 
 Automatically load gmp-droid at startup
 
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/media/platforms/PDMFactory.cpp               | 13 +++++++------
+ .../platforms/agnostic/gmp/GMPDecoderModule.cpp  | 16 ++++++++++++++++
+ .../mozapps/extensions/internal/GMPProvider.jsm  | 15 +++++++++++++++
+ 3 files changed, 38 insertions(+), 6 deletions(-)
+
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
-index d486966..3f9e529 100644
+index c8e7df236d1b..d47ec17b42af 100644
 --- a/dom/media/platforms/PDMFactory.cpp
 +++ b/dom/media/platforms/PDMFactory.cpp
-@@ -364,7 +364,12 @@
-     // can stop creating more PDM from this point.
+@@ -316,6 +316,12 @@ void PDMFactory::CreatePDMs() {
      return;
    }
--
+ 
 +  if (MediaPrefs::PDMGMPEnabled()) {
 +    m = new GMPDecoderModule();
 +    mGMPPDMFailedToStartup = !StartupPDM(m);
 +  } else {
 +    mGMPPDMFailedToStartup = false;
 +  }
- #ifdef MOZ_WIDGET_ANDROID
-   if(MediaPrefs::PDMAndroidMediaCodecPreferred() &&
-      MediaPrefs::PDMAndroidMediaCodecEnabled()) {
-@@ -425,12 +430,7 @@
+ #ifdef XP_WIN
+   if (MediaPrefs::PDMWMFEnabled() && !IsWin7AndPre2000Compatible()) {
+     m = new WMFDecoderModule();
+@@ -354,12 +360,7 @@ void PDMFactory::CreatePDMs() {
    m = new AgnosticDecoderModule();
    StartupPDM(m);
  
@@ -36,25 +43,20 @@ index d486966..3f9e529 100644
 +
  }
  
- void
+ void PDMFactory::CreateNullPDM() {
 diff --git a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
-index 77baef0..c16d4fd 100644
+index 7f7fb437ee0a..291f0334767c 100644
 --- a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
 +++ b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
-@@ -179,12 +179,23 @@
- GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
-                                    DecoderDoctorDiagnostics* aDiagnostics) const
- {
--  const Maybe<nsCString> preferredGMP = PreferredGMP(aMimeType);
--  bool rv = SupportsMimeType(aMimeType, preferredGMP);
--  if (rv && aDiagnostics && preferredGMP.isSome()) {
--    aDiagnostics->SetGMP(preferredGMP.value());
+@@ -88,6 +88,22 @@ bool GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
+ 
+ bool GMPDecoderModule::SupportsMimeType(
+     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
 +#if defined(MOZ_FMP4)
 +  if (MP4Decoder::IsH264(aMimeType)) {
 +    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
 +                      { NS_LITERAL_CSTRING("h264") });
-   }
--  return rv;
++  }
 +#endif
 +
 +  if (VPXDecoder::IsVP9(aMimeType)) {
@@ -66,15 +68,14 @@ index 77baef0..c16d4fd 100644
 +    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
 +                      { NS_LITERAL_CSTRING("vp8") });
 +  }
-+  return false;
+   return false;
  }
  
- } // namespace mozilla
 diff --git a/toolkit/mozapps/extensions/internal/GMPProvider.jsm b/toolkit/mozapps/extensions/internal/GMPProvider.jsm
-index 9bb34a7..65ea8eb 100644
+index 4331b11da9c2..0b58a5e96319 100644
 --- a/toolkit/mozapps/extensions/internal/GMPProvider.jsm
 +++ b/toolkit/mozapps/extensions/internal/GMPProvider.jsm
-@@ -39,6 +39,8 @@
+@@ -32,6 +32,8 @@ const GMP_CHECK_DELAY        = 10 * 1000; // milliseconds
  const NS_GRE_DIR             = "GreD";
  const CLEARKEY_PLUGIN_ID     = "gmp-clearkey";
  const CLEARKEY_VERSION       = "0.1";
@@ -83,7 +84,7 @@ index 9bb34a7..65ea8eb 100644
  
  const GMP_LICENSE_INFO       = "gmp_license_info";
  const GMP_PRIVACY_INFO       = "gmp_privacy_info";
-@@ -588,6 +590,19 @@
+@@ -573,6 +575,19 @@ var GMPProvider = {
      } catch (e) {
        this._log.warn("startup - adding clearkey CDM failed", e);
      }
@@ -102,5 +103,7 @@ index 9bb34a7..65ea8eb 100644
 +    }
    },
  
-   shutdown: function() {
- 
+   shutdown() {
+-- 
+2.26.2
+

@@ -1,0 +1,27 @@
+From 4f3df0209bee5e5b37ceb824e15070b7f3f91a9f Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 19 Aug 2020 14:42:43 +0300
+Subject: [PATCH] [sailfishos][gecko] Disable Marionette
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/moz.configure | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index cd0cd1bb07aa..726765010e0d 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -1081,8 +1081,7 @@ set_config('MOZ_MORTAR', True, when='--enable-mortar')
+ @depends(target)
+ def marionette(target):
+     """Enable Marionette by default, except on Android."""
+-    if target.os != 'Android':
+-        return True
++    return True
+ 
+ imply_option('--enable-marionette', marionette, reason='Not Android')
+ 
+-- 
+2.26.2
+

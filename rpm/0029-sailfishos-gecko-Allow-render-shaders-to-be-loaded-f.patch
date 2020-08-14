@@ -1,7 +1,8 @@
-From 2fa87cb253994f9a2a9bd5211efca05f97da9127 Mon Sep 17 00:00:00 2001
+From 2e39acab82824cfb8d149d10ce99cd4ecbe321a8 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Thu, 18 Jun 2020 11:19:57 +0000
-Subject: [PATCH] Allow render shaders to be loaded from file
+Subject: [PATCH] [sailfishos][gecko] Allow render shaders to be loaded from
+ file
 
 This change is turned off by default. Set
 COMPOSITOR_LOAD_SHADERS_FROM_FILE to enable it (see below).
@@ -21,16 +22,18 @@ xulrunner-qt5.spec to enable it.
 
 echo "export CXXFLAGS=\"\$CXXFLAGS \
   -DCOMPOSITOR_LOAD_SHADERS_FROM_FILE \"" >> "$MOZCONFIG"
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  gfx/layers/opengl/OGLShaderProgram.cpp | 35 ++++++++++++++++++++++++++
  1 file changed, 35 insertions(+)
 
 diff --git a/gfx/layers/opengl/OGLShaderProgram.cpp b/gfx/layers/opengl/OGLShaderProgram.cpp
-index c06dc52ddd45..e732f1026152 100644
+index 9b44284cdd80..ec269dc4b735 100644
 --- a/gfx/layers/opengl/OGLShaderProgram.cpp
 +++ b/gfx/layers/opengl/OGLShaderProgram.cpp
-@@ -14,6 +14,9 @@
- #include "nsString.h"                   // for nsAutoCString
+@@ -16,6 +16,9 @@
+ #include "nsString.h"  // for nsAutoCString
  #include "Layers.h"
  #include "GLContext.h"
 +#ifdef COMPOSITOR_LOAD_SHADERS_FROM_FILE
@@ -39,7 +42,7 @@ index c06dc52ddd45..e732f1026152 100644
  
  namespace mozilla {
  namespace layers {
-@@ -536,6 +539,38 @@ ProgramProfileOGL::GetProfileFor(ShaderConfigOGL aConfig)
+@@ -567,6 +570,38 @@ void ShaderConfigOGL::SetDynamicGeometry(bool aEnabled) {
    fs << "  gl_FragColor = color;" << endl;
    fs << "}" << endl;
  
