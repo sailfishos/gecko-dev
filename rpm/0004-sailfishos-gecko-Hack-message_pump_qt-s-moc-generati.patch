@@ -1,0 +1,61 @@
+From df623397931ac1a1c135bfd5208287bb4fdc1021 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 20 Dec 2016 16:01:15 +0200
+Subject: [PATCH] [sailfishos][gecko] Hack message_pump_qt's moc generation to
+ work
+
+Move message_pump_qt.h to ipc/chromium folder where moz.build exists
+and rename message_pump_qt.cc to message_pump_qt.cpp.
+
+config/rules.mk contains moc generation rules to which we should
+be able to pass values through well-defined variables that we would define
+in moz.build [1]. As I could not make moc include paths to work via
+LOCAL_INCLUDES. Thus, making this hack.
+
+Looks that this part of build has been failing for sometime.
+Likely MOZ_ENABLE_QT code path has not been tested much on upstream either.
+
+[1]
+https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions/How_Mozilla_s_build_system_works
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ ipc/chromium/message_pump_qt.h                              | 1 +
+ ipc/chromium/moz.build                                      | 6 ++++--
+ .../src/base/{message_pump_qt.cc => message_pump_qt.cpp}    | 0
+ 3 files changed, 5 insertions(+), 2 deletions(-)
+ create mode 120000 ipc/chromium/message_pump_qt.h
+ rename ipc/chromium/src/base/{message_pump_qt.cc => message_pump_qt.cpp} (100%)
+
+diff --git a/ipc/chromium/message_pump_qt.h b/ipc/chromium/message_pump_qt.h
+new file mode 120000
+index 000000000000..64ca4b77c6d7
+--- /dev/null
++++ b/ipc/chromium/message_pump_qt.h
+@@ -0,0 +1 @@
++src/base/message_pump_qt.h
+\ No newline at end of file
+diff --git a/ipc/chromium/moz.build b/ipc/chromium/moz.build
+index 516deeec0d48..01100eadcdae 100644
+--- a/ipc/chromium/moz.build
++++ b/ipc/chromium/moz.build
+@@ -127,8 +127,10 @@ if os_bsd or os_linux:
+         ]
+     if CONFIG['MOZ_ENABLE_QT']:
+         SOURCES += [
+-            '!moc_message_pump_qt.cc',
+-            'src/base/message_pump_qt.cc',
++            'src/base/message_pump_qt.cpp',
++        ]
++        SOURCES += [
++            '!moc_message_pump_qt.cpp',
+         ]
+ 
+ if os_solaris:
+diff --git a/ipc/chromium/src/base/message_pump_qt.cc b/ipc/chromium/src/base/message_pump_qt.cpp
+similarity index 100%
+rename from ipc/chromium/src/base/message_pump_qt.cc
+rename to ipc/chromium/src/base/message_pump_qt.cpp
+-- 
+2.26.2
+

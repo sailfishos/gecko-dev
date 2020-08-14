@@ -1,0 +1,27 @@
+From a65b06335ac8ce2facd7c999dfaab33a5bf99a47 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 17 Mar 2020 11:06:27 +0200
+Subject: [PATCH] [sailfishos][gecko] Enable Pango for the build. JB#50863
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/moz.configure | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 729b39ab1c8e..cd0cd1bb07aa 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -284,8 +284,7 @@ add_old_configure_assignment('USE_FC_FREETYPE', fc_freetype)
+ # Pango
+ # ==============================================================
+ pkg_check_modules('MOZ_PANGO',
+-                  'pango >= 1.22.0 pangoft2 >= 1.22.0 pangocairo >= 1.22.0',
+-                  when=toolkit_gtk)
++                  'pango >= 1.22.0 pangoft2 >= 1.22.0 pangocairo >= 1.22.0')
+ 
+ # Fontconfig
+ # ==============================================================
+-- 
+2.26.2
+

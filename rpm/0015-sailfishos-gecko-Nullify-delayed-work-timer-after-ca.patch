@@ -1,0 +1,28 @@
+From 4487ba3b9e80a7dc79344b84ea7e787cc74e8b76 Mon Sep 17 00:00:00 2001
+From: Oleg <romaxa@gmail.com>
+Date: Sat, 25 Oct 2014 13:53:23 -0700
+Subject: [PATCH] [sailfishos][gecko] Nullify delayed work timer after
+ cancelling. JB#50863
+
+sailfishos-esr52 sha1: 8bbc37ff71851675dea424bb4dc4f234b621ef24
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ ipc/glue/MessagePump.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/ipc/glue/MessagePump.cpp b/ipc/glue/MessagePump.cpp
+index da739788bb8c..dd1ed08d8c05 100644
+--- a/ipc/glue/MessagePump.cpp
++++ b/ipc/glue/MessagePump.cpp
+@@ -111,6 +111,7 @@ void MessagePump::Run(MessagePump::Delegate* aDelegate) {
+   }
+ 
+   mDelayedWorkTimer->Cancel();
++  mDelayedWorkTimer = nullptr;
+ 
+   keep_running_ = true;
+ }
+-- 
+2.26.2
+

@@ -1,7 +1,7 @@
-From 4eebc26c55145395f8b1e0d785109472b1b8b077 Mon Sep 17 00:00:00 2001
+From 6d4c376111c2ca5ff011ea4cad1f68f5f1f3fe98 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:12:04 +0300
-Subject: [PATCH] Workaround for late access message loop.
+Subject: [PATCH] [sailfishos][gecko] Workaround for late access message loop.
 
 See bug JB10381
 
@@ -11,11 +11,11 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 3 insertions(+)
 
 diff --git a/ipc/glue/MessagePump.cpp b/ipc/glue/MessagePump.cpp
-index d03c7935e87f..6d117afdb36e 100644
+index dd1ed08d8c05..baedc11ed175 100644
 --- a/ipc/glue/MessagePump.cpp
 +++ b/ipc/glue/MessagePump.cpp
-@@ -216,6 +216,9 @@ DoWorkRunnable::Run()
- {
+@@ -190,6 +190,9 @@ NS_IMETHODIMP
+ DoWorkRunnable::Run() {
    MessageLoop* loop = MessageLoop::current();
    MOZ_ASSERT(loop);
 +  if (!loop) {
@@ -25,5 +25,5 @@ index d03c7935e87f..6d117afdb36e 100644
    bool nestableTasksAllowed = loop->NestableTasksAllowed();
  
 -- 
-2.17.1
+2.26.2
 

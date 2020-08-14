@@ -1,0 +1,115 @@
+From 23f47b23decd60bd19bfd8048da0e8136cba90bd Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 11 Aug 2020 17:09:44 +0300
+Subject: [PATCH] [sailfishos][gecko] Make TabChild to work with TabChildHelper
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/ipc/TabChild.cpp | 10 +++++++++-
+ dom/ipc/TabChild.h   |  9 +++++----
+ 2 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
+index 626742777c06..9a72374c12a3 100644
+--- a/dom/ipc/TabChild.cpp
++++ b/dom/ipc/TabChild.cpp
+@@ -263,10 +263,12 @@ void TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
+ 
+ NS_IMETHODIMP
+ ContentListener::HandleEvent(nsIDOMEvent* aEvent) {
++#if 0
+   RemoteDOMEvent remoteEvent;
+   remoteEvent.mEvent = do_QueryInterface(aEvent);
+   NS_ENSURE_STATE(remoteEvent.mEvent);
+   mTabChild->SendEvent(remoteEvent);
++#endif
+   return NS_OK;
+ }
+ 
+@@ -3152,7 +3154,7 @@ void TabChild::BeforeUnloadRemoved() {
+ 
+ mozilla::dom::TabGroup* TabChild::TabGroup() { return mTabGroup; }
+ 
+-TabChildGlobal::TabChildGlobal(TabChild* aTabChild) : mTabChild(aTabChild) {
++TabChildGlobal::TabChildGlobal(TabChildBase *aTabChild) : mTabChild(aTabChild) {
+   SetIsNotDOMBinding();
+ }
+ 
+@@ -3247,23 +3249,29 @@ JSObject* TabChildGlobal::GetGlobalJSObject() {
+ 
+ nsresult TabChildGlobal::Dispatch(TaskCategory aCategory,
+                                   already_AddRefed<nsIRunnable>&& aRunnable) {
++#if 0
+   if (mTabChild && mTabChild->TabGroup()) {
+     return mTabChild->TabGroup()->Dispatch(aCategory, Move(aRunnable));
+   }
++#endif
+   return DispatcherTrait::Dispatch(aCategory, Move(aRunnable));
+ }
+ 
+ nsISerialEventTarget* TabChildGlobal::EventTargetFor(
+     TaskCategory aCategory) const {
++#if 0
+   if (mTabChild && mTabChild->TabGroup()) {
+     return mTabChild->TabGroup()->EventTargetFor(aCategory);
+   }
++#endif
+   return DispatcherTrait::EventTargetFor(aCategory);
+ }
+ 
+ AbstractThread* TabChildGlobal::AbstractMainThreadFor(TaskCategory aCategory) {
++#if 0
+   if (mTabChild && mTabChild->TabGroup()) {
+     return mTabChild->TabGroup()->AbstractMainThreadFor(aCategory);
+   }
++#endif
+   return DispatcherTrait::AbstractMainThreadFor(aCategory);
+ }
+diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
+index ece19ffd175d..2ec960923e0e 100644
+--- a/dom/ipc/TabChild.h
++++ b/dom/ipc/TabChild.h
+@@ -79,6 +79,7 @@ class TabGroup;
+ class ClonedMessageData;
+ class CoalescedMouseData;
+ class CoalescedWheelData;
++class TabChildBase;
+ 
+ class TabChildGlobal : public DOMEventTargetHelper,
+                        public nsIContentFrameMessageManager,
+@@ -86,7 +87,7 @@ class TabChildGlobal : public DOMEventTargetHelper,
+                        public nsIGlobalObject,
+                        public nsSupportsWeakReference {
+  public:
+-  explicit TabChildGlobal(TabChild* aTabChild);
++  explicit TabChildGlobal(TabChildBase* aTabChild);
+   void Init();
+   NS_DECL_ISUPPORTS_INHERITED
+   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, DOMEventTargetHelper)
+@@ -158,7 +159,7 @@ class TabChildGlobal : public DOMEventTargetHelper,
+       mozilla::TaskCategory aCategory) override;
+ 
+   nsCOMPtr<nsIContentFrameMessageManager> mMessageManager;
+-  RefPtr<TabChild> mTabChild;
++  RefPtr<TabChildBase> mTabChild;
+ 
+  protected:
+   ~TabChildGlobal();
+@@ -166,12 +167,12 @@ class TabChildGlobal : public DOMEventTargetHelper,
+ 
+ class ContentListener final : public nsIDOMEventListener {
+  public:
+-  explicit ContentListener(TabChild* aTabChild) : mTabChild(aTabChild) {}
++  explicit ContentListener(TabChildBase* aTabChild) : mTabChild(aTabChild) {}
+   NS_DECL_ISUPPORTS
+   NS_DECL_NSIDOMEVENTLISTENER
+  protected:
+   ~ContentListener() {}
+-  TabChild* mTabChild;
++  TabChildBase* mTabChild;
+ };
+ 
+ // This is base clase which helps to share Viewport and touch related
+-- 
+2.26.2
+

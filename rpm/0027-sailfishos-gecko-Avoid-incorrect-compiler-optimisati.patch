@@ -1,7 +1,8 @@
-From d4bf2ae67180f4f85b4498bdf49e3cf2a4af0767 Mon Sep 17 00:00:00 2001
+From 3e9131de94383b846ccfc933f603eea9ea600cad Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 21 Apr 2020 23:14:14 +0300
-Subject: [PATCH] [gecko] Avoid incorrect compiler optimisation. JB#49864
+Subject: [PATCH] [sailfishos][gecko] Avoid incorrect compiler optimisation.
+ JB#49864
 
 When building using gcc 8.3 and -O3, the null check on
 IsInsideNursery() from js/public/HeapAPI.h gets dropped when used inside
@@ -35,10 +36,10 @@ Signed-off-by: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
  2 files changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/js/src/old-configure.in b/js/src/old-configure.in
-index 1c5c9e2145f6..3105458994a9 100644
+index 3d53ee1c3c81..286643091d8c 100644
 --- a/js/src/old-configure.in
 +++ b/js/src/old-configure.in
-@@ -660,7 +660,7 @@ case "$target" in
+@@ -620,7 +620,7 @@ case "$target" in
  *-*linux*)
      if test "$GNU_CC" -o "$GNU_CXX"; then
          MOZ_PGO_OPTIMIZE_FLAGS="-O3"
@@ -48,18 +49,18 @@ index 1c5c9e2145f6..3105458994a9 100644
             MOZ_OPTIMIZE_FLAGS="-freorder-blocks $MOZ_OPTIMIZE_FLAGS"
          fi
 diff --git a/js/src/vm/ProxyObject.cpp b/js/src/vm/ProxyObject.cpp
-index 49ed5a624129..46147062bf6c 100644
+index 13b52fd6077f..c6166ad61f43 100644
 --- a/js/src/vm/ProxyObject.cpp
 +++ b/js/src/vm/ProxyObject.cpp
-@@ -47,7 +47,7 @@ ProxyObject::New(JSContext* cx, const BaseProxyHandler* handler, HandleValue pri
-     if (options.singleton()) {
-         MOZ_ASSERT(priv.isGCThing() && priv.toGCThing()->isTenured());
-         newKind = SingletonObject;
--    } else if ((priv.isGCThing() && priv.toGCThing()->isTenured()) ||
-+    } else if ((priv.isGCThing() && priv.toGCThing() && priv.toGCThing()->isTenured()) ||
-                !handler->canNurseryAllocate() ||
-                !handler->finalizeInBackground(priv))
-     {
+@@ -78,7 +78,7 @@ static gc::AllocKind GetProxyGCObjectKind(const Class* clasp,
+     MOZ_ASSERT(priv.isNull() ||
+                (priv.isGCThing() && priv.toGCThing()->isTenured()));
+     newKind = SingletonObject;
+-  } else if ((priv.isGCThing() && priv.toGCThing()->isTenured()) ||
++  } else if ((priv.isGCThing() && priv.toGCThing() && priv.toGCThing()->isTenured()) ||
+              !handler->canNurseryAllocate()) {
+     newKind = TenuredObject;
+   }
 -- 
-2.17.1
+2.26.2
 

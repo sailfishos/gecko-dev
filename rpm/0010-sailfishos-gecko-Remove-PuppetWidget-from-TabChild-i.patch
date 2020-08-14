@@ -1,0 +1,58 @@
+From 1b556bcd5a04125ef0fb6b5a306de5c3965e81c0 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 28 Jul 2020 11:57:37 +0300
+Subject: [PATCH] [sailfishos][gecko] Remove PuppetWidget from TabChild
+ interface. JB#50505
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/ipc/TabChild.cpp | 3 ++-
+ dom/ipc/TabChild.h   | 4 ++--
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
+index fdb1db09fdad..626742777c06 100644
+--- a/dom/ipc/TabChild.cpp
++++ b/dom/ipc/TabChild.cpp
+@@ -361,6 +361,7 @@ TabChild::TabChild(nsIContentChild* aManager, const TabId& aTabId,
+                    uint32_t aChromeFlags)
+     : TabContext(aContext),
+       mTabGroup(aTabGroup),
++      mPuppetWidget(nullptr),
+       mRemoteFrame(nullptr),
+       mManager(aManager),
+       mChromeFlags(aChromeFlags),
+@@ -2402,7 +2403,7 @@ mozilla::ipc::IPCResult TabChild::RecvRenderLayers(
+       // switching to paints as quickly as possible.
+       APZCCallbackHelper::SuppressDisplayport(true, presShell);
+       if (nsContentUtils::IsSafeToRunScript()) {
+-        WebWidget()->PaintNowIfNeeded();
++        static_cast<PuppetWidget*>(WebWidget())->PaintNowIfNeeded();
+       } else {
+         RefPtr<nsViewManager> vm = presShell->GetViewManager();
+         if (nsView* view = vm->GetRootView()) {
+diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
+index bfe029b51dcd..ece19ffd175d 100644
+--- a/dom/ipc/TabChild.h
++++ b/dom/ipc/TabChild.h
+@@ -191,7 +191,7 @@ class TabChildBase : public nsISupports,
+   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(TabChildBase)
+ 
+   virtual nsIWebNavigation* WebNavigation() const = 0;
+-  virtual PuppetWidget* WebWidget() = 0;
++  virtual nsIWidget* WebWidget() = 0;
+   nsIPrincipal* GetPrincipal() { return mPrincipal; }
+   virtual bool DoUpdateZoomConstraints(
+       const uint32_t& aPresShellId,
+@@ -461,7 +461,7 @@ class TabChild final : public TabChildBase,
+ 
+   virtual nsIWebNavigation* WebNavigation() const override { return mWebNav; }
+ 
+-  virtual PuppetWidget* WebWidget() override { return mPuppetWidget; }
++  virtual nsIWidget* WebWidget() override { return mPuppetWidget; }
+ 
+   bool IsTransparent() const { return mIsTransparent; }
+ 
+-- 
+2.26.2
+
