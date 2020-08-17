@@ -91,6 +91,12 @@ pref("apz.overscroll.spring_friction", "0.015");
 pref("apz.overscroll.stop_distance_threshold", "5.0");
 pref("apz.overscroll.stop_velocity_threshold", "0.01");
 
+// Improves the responsiveness of content actions, see bug #1247280
+pref("apz.content_response_timeout", 600);
+// Turning off touch-action gives more responsive touch panning
+// counteracting the effect of the increased response timeout
+pref("layout.css.touch_action.enabled", false);
+
 pref("ui.dragThresholdX", 25);
 pref("ui.dragThresholdY", 25);
 pref("embedlite.dispatch_mouse_events", false); // Will dispatch mouse events if page using them
