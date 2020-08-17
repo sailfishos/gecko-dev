@@ -68,6 +68,8 @@ Patch22:    0022-Revert-UserAgentOverride-changes-that-brea.patch
 Patch23:    0023-Avoid-rogue-origin-points-when-clipping-rects.patch
 Patch24:    0024-Allow-render-shaders-to-be-loaded-from-file.patch
 Patch25:    0025-Prioritize-GMP-plugins-over-all-others-and-support-d.patch
+Patch26:    0026-Delete-startupCache-if-it-s-stale.patch
+Patch27:    0027-Remove-android-define-from-logging.patch
 
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -100,7 +102,7 @@ BuildRequires:  python
 BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
-BuildRequires:  patchelf
+BuildRequires:  qt5-plugin-platform-minimal
 %if %{system_icu}
 BuildRequires:  libicu-devel
 %endif
@@ -165,6 +167,7 @@ mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
+echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
@@ -187,6 +190,12 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
+
+# Reduce logging from release build
+%if "%{?qa_stage_name}" == testing || "%{?qa_stage_name}" == release
+echo "export CFLAGS=\"\$CFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+%endif
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
@@ -232,8 +241,18 @@ echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
 #  echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
 #%endif
 
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1002002
+%ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+%endif
+
+# Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
+# but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
+# Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
+ echo 'FIX_LDFLAGS="-Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+ echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+ echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+ echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+ echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
 %{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
 %{__make} -C %{BUILD_DIR}/faster FASTER_RECURSIVE_MAKE=1 %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
@@ -265,16 +284,6 @@ ln -s %{_libdir}/libnssckbi.so ${RPM_BUILD_ROOT}%{mozappdir}/libnssckbi.so
 
 # Fix some of the RPM lint errors.
 find "%{buildroot}%{_includedir}" -type f -name '*.h' -exec chmod 0644 {} +;
-
-%check
-# Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
-# but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
-# Patchelf can insert this into the ELF RPATH instead. libxul also links to liblgpllibs.so 
-# in the same directory, so this also needs patching.
-# Strip breaks the binaries if done after this, which is why it's in %check
-
-patchelf --set-rpath "%{mozappdir}" ${RPM_BUILD_ROOT}%{mozappdir}/plugin-container
-patchelf --set-rpath "%{mozappdir}" ${RPM_BUILD_ROOT}%{mozappdir}/libxul.so
 
 %post
 touch /var/lib/_MOZEMBED_CACHE_CLEAN_
