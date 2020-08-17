@@ -25,4 +25,6 @@ UNIFIED_SOURCES += [
     'nsUnicodeProperties.cpp',
 ]
 
+SDK_LIBRARY = True
+
 FINAL_LIBRARY = 'xul'

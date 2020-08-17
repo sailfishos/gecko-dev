@@ -62,6 +62,7 @@ from .data import (
     HostRustLibrary,
     RustProgram,
     RustTest,
+    SdkFiles,
     SharedLibrary,
     SimpleProgram,
     Sources,
@@ -720,6 +721,14 @@ class TreeMetadataEmitter(LoggingMixin):
                         'SONAME requires FORCE_SHARED_LIB', context)
                 shared_args['soname'] = soname
 
+            # If both a shared and a static library are created, only the
+            # shared library is meant to be a SDK library.
+            if context.get('SDK_LIBRARY'):
+                if shared_lib:
+                    shared_args['is_sdk'] = True
+                elif static_lib:
+                    static_args['is_sdk'] = True
+
             if context.get('NO_EXPAND_LIBS'):
                 if not static_lib:
                     raise SandboxValidationError(
@@ -1154,6 +1163,7 @@ class TreeMetadataEmitter(LoggingMixin):
             ('LOCALIZED_PP_FILES', LocalizedPreprocessedFiles),
             ('OBJDIR_FILES', ObjdirFiles),
             ('OBJDIR_PP_FILES', ObjdirPreprocessedFiles),
+            ('SDK_FILES', SdkFiles),
             ('TEST_HARNESS_FILES', TestHarnessFiles),
         ):
             all_files = context.get(var)

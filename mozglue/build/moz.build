@@ -14,6 +14,8 @@ elif CONFIG['OS_TARGET'] in ('WINNT', 'Darwin', 'Android'):
 else:
     Library('mozglue')
 
+SDK_LIBRARY = True
+
 if CONFIG['OS_TARGET'] == 'Android':
     SOURCES += [
         'BionicGlue.cpp',
