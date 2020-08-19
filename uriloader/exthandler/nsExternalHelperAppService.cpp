@@ -272,7 +272,7 @@ static bool GetFilenameAndExtensionFromChannel(nsIChannel* aChannel,
 static nsresult GetDownloadDirectory(nsIFile** _directory,
                                      bool aSkipChecks = false) {
   nsCOMPtr<nsIFile> dir;
-#ifdef XP_MACOSX
+#if defined(XP_MACOSX) || defined(XP_UNIX)
   // On OS X, we first try to get the users download location, if it's set.
   switch (Preferences::GetInt(NS_PREF_DOWNLOAD_FOLDERLIST, -1)) {
     case NS_FOLDER_VALUE_DESKTOP:
@@ -306,8 +306,14 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
   }
 
   if (!dir) {
+#if defined(XP_MACOSX)
+    const char* specialDirName = NS_OSX_DEFAULT_DOWNLOAD_DIR;
+#else
+    const char* specialDirName = NS_UNIX_DEFAULT_DOWNLOAD_DIR;
+#endif
+
     // If not, we default to the OS X default download location.
-    nsresult rv = NS_GetSpecialDirectory(NS_OSX_DEFAULT_DOWNLOAD_DIR,
+    nsresult rv = NS_GetSpecialDirectory(specialDirName,
                                          getter_AddRefs(dir));
     NS_ENSURE_SUCCESS(rv, rv);
   }
