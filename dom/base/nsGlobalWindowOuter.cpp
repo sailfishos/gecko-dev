@@ -3927,10 +3927,16 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
   if (rootItem != mDocShell)
     return window->SetFullscreenInternal(aReason, aFullScreen);
 
+  // We don't have chrome from doc shell point of view. This commit
+  // sha1 3116f3bf53df offends fullscreen API to work without chrome
+  // and shall not make root docShell act as chrome. We previously had
+  // "full-screen-api.content-only" pref set to "true".
+#if 0
   // make sure we don't try to set full screen on a non-chrome window,
   // which might happen in embedding world
   if (mDocShell->ItemType() != nsIDocShellTreeItem::typeChrome)
     return NS_ERROR_FAILURE;
+#endif
 
   // If we are already in full screen mode, just return.
   if (mFullScreen == aFullScreen) return NS_OK;
