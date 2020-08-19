@@ -144,24 +144,6 @@ union SystemFontListEntry {
     FontPatternListEntry;
 };
 
-union PrefValue {
-  nsCString;
-  int32_t;
-  bool;
-};
-
-union MaybePrefValue {
-  PrefValue;
-  null_t;
-};
-
-struct Pref {
-  nsCString name;
-  bool isLocked;
-  MaybePrefValue defaultValue;
-  MaybePrefValue userValue;
-};
-
 struct DataStorageItem {
   nsCString key;
   nsCString value;
