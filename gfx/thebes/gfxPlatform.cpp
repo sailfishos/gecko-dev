@@ -88,6 +88,9 @@
 #include "qcms.h"
 
 #include "imgITools.h"
+#if defined(MOZ_EMBEDLITE)
+#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
+#endif
 
 #include "plstr.h"
 #include "nsCRT.h"
