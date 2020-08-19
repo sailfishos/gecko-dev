@@ -74,6 +74,7 @@
 #include "mozilla/dom/ContentProcess.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
+#include "EmbedLiteContentProcess.h"
 
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
@@ -226,6 +227,7 @@ const char* XRE_ChildProcessTypeToString(GeckoProcessType aProcessType) {
 namespace mozilla {
 namespace startup {
 GeckoProcessType sChildProcessType = GeckoProcessType_Default;
+bool sIsEmbedlite = false;
 }  // namespace startup
 }  // namespace mozilla
 
@@ -647,9 +649,37 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
           process = new PluginProcessChild(parentPID);
           break;
 
-        case GeckoProcessType_Content:
-          process = new ContentProcess(parentPID);
-          break;
+        case GeckoProcessType_Content: {
+          // If passed in grab the application path for xpcom init
+          bool foundAppdir = false;
+          nsCString appDir;
+
+          for (int idx = aArgc; idx > 0; idx--) {
+            if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
+              startup::sIsEmbedlite = true;
+              continue;
+            }
+
+            if (aArgv[idx] && !strcmp(aArgv[idx], "-appdir")) {
+              MOZ_ASSERT(!foundAppdir);
+              if (foundAppdir) {
+                continue;
+              }
+              appDir.Assign(nsDependentCString(aArgv[idx+1]));
+              foundAppdir = true;
+            }
+          }
+
+          if (startup::sIsEmbedlite) {
+            // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
+            sChildProcessType = GeckoProcessType_Default;
+            process = new mozilla::embedlite::EmbedLiteContentProcess(parentPID);
+            static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(process.get())->SetAppDir(appDir);
+          } else {
+            process = new ContentProcess(parentPID);
+          }
+        }
+        break;
 
         case GeckoProcessType_IPDLUnitTest:
 #ifdef MOZ_IPDL_TESTS
