@@ -469,7 +469,6 @@
 @RESPATH@/components/passwordmgr.manifest
 @RESPATH@/components/nsLoginInfo.js
 @RESPATH@/components/nsLoginManager.js
-@RESPATH@/components/nsLoginManagerPrompter.js
 @RESPATH@/components/storage-json.js
 @RESPATH@/components/crypto-SDR.js
 @RESPATH@/components/pluginGlue.manifest
