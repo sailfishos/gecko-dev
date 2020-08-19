@@ -1081,8 +1081,7 @@ set_config('MOZ_MORTAR', True, when='--enable-mortar')
 @depends(target)
 def marionette(target):
     """Enable Marionette by default, except on Android."""
-    if target.os != 'Android':
-        return True
+    return True
 
 imply_option('--enable-marionette', marionette, reason='Not Android')
 
