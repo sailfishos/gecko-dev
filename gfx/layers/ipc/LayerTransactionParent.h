@@ -18,6 +18,10 @@
 
 namespace mozilla {
 
+namespace embedlite {
+class EmbedLiteCompositorProcessParent;
+}
+
 namespace ipc {
 class Shmem;
 }  // namespace ipc
@@ -175,6 +179,7 @@ class LayerTransactionParent final : public PLayerTransactionParent,
   friend class CompositorBridgeParent;
   friend class CrossProcessCompositorBridgeParent;
   friend class layout::RenderFrameParent;
+  friend class mozilla::embedlite::EmbedLiteCompositorProcessParent;
 
  private:
   // This is a function so we can log or breakpoint on why hit
