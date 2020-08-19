@@ -496,12 +496,16 @@ class TabChild final : public TabChildBase,
   nsIContentChild* Manager() const { return mManager; }
 
   static inline TabChild* GetFrom(nsIDocShell* aDocShell) {
-    if (!aDocShell) {
-      return nullptr;
-    }
+    // Even though TabChild is not used in EmbedLite somehow the static cast
+    // below can return non-null pointer. Let's return nullptr explcitly.
+    return nullptr;
 
-    nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
-    return static_cast<TabChild*>(tc.get());
+    //if (!aDocShell) {
+    //  return nullptr;
+    //}
+
+    //nsCOMPtr<nsITabChild> tc = aDocShell->GetTabChild();
+    //return static_cast<TabChild*>(tc.get());
   }
 
   static inline TabChild* GetFrom(mozIDOMWindow* aWindow) {
