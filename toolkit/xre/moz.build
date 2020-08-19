@@ -191,6 +191,7 @@ LOCAL_INCLUDES += [
     '/dom/commandhandler',
     '/dom/ipc',
     '/dom/webbrowserpersist',
+    '/embedding/embedlite/embedprocess',
     '/testing/gtest/mozilla',
     '/toolkit/crashreporter',
     '/xpcom/build',
