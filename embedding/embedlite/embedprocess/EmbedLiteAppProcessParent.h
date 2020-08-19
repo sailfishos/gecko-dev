@@ -13,7 +13,7 @@ namespace ipc {
 class GeckoChildProcessHost;
 }
 namespace dom {
-class PrefSetting;
+class Pref;
 }
 namespace embedlite {
 
@@ -28,7 +28,7 @@ public:
 
   static EmbedLiteAppProcessParent* GetInstance();
 
-  void GetPrefs(InfallibleTArray<PrefSetting>* prefs);
+  void GetPrefs(InfallibleTArray<mozilla::dom::Pref>* prefs);
 
 protected:
   void OnChannelConnected(int32_t pid) override;
@@ -71,7 +71,7 @@ protected:
   AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess);
 
   virtual bool
-  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::PrefSetting>&& prefs);
+  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs);
 
 private:
   virtual ~EmbedLiteAppProcessParent();
@@ -79,7 +79,7 @@ private:
 
   EmbedLiteApp* mApp;
   mozilla::ipc::GeckoChildProcessHost* mSubprocess;
-  InfallibleTArray<PrefSetting> mPrefs;
+  InfallibleTArray<mozilla::dom::Pref> mPrefs;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessParent);
 };
