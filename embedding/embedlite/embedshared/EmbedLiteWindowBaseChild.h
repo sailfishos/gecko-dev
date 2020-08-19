@@ -30,9 +30,9 @@ public:
 protected:
   virtual ~EmbedLiteWindowBaseChild() override;
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-  virtual bool RecvDestroy() override;
-  virtual bool RecvSetSize(const gfxSize& size) override;
-  virtual bool RecvSetContentOrientation(const uint32_t &) override;
+  virtual mozilla::ipc::IPCResult RecvDestroy() override;
+  virtual mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size) override;
+  virtual mozilla::ipc::IPCResult RecvSetContentOrientation(const uint32_t &) override;
 
 private:
   void CreateWidget();

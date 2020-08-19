@@ -15,7 +15,7 @@
 #include "nsIInterfaceRequestor.h"
 #include "nsIDOMEventListener.h"
 #include "nsIObserver.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsIObserverService.h"
 #include "nsWeakReference.h"
 
@@ -61,8 +61,9 @@ protected:
 
 private:
   nsIntPoint GetScrollOffset(mozIDOMWindowProxy *aWindow);
-  nsIntPoint GetScrollOffsetForElement(nsIDOMElement* aElement);
-  void SetScrollOffsetForElement(nsIDOMElement* aElement, int32_t aLeft, int32_t aTop);
+  nsresult GetDocShellPtr(nsIDocShell **aDocShell);
+  nsresult GetDocumentPtr(nsIDocument **aDocument);
+
   void SendScroll();
 
   /* additional members */

@@ -64,8 +64,10 @@ nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
   LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow, sUseExternalGLContext, sRequestGLContextEarly);
 
   if (sUseExternalGLContext && sRequestGLContextEarly) {
-    CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(&CreateGLContextEarly,
-                                                                 window->GetUniqueID()));
+    CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+                                                 "mozilla::embedlite::nsWindow::CreateGLContextEarly",
+                                                 &CreateGLContextEarly,
+                                                 window->GetUniqueID()));
   }
 }
 
@@ -106,35 +108,33 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent, nsEventStatus &aStatus)
   return NS_OK;
 }
 
-NS_IMETHODIMP_(void)
+void
 nsWindow::SetInputContext(const InputContext &aContext, const InputContextAction &aAction)
 {
   mInputContext = aContext;
 }
 
-NS_IMETHODIMP_(InputContext)
+InputContext
 nsWindow::GetInputContext()
 {
   return mInputContext;
 }
 
-NS_IMETHODIMP
+void
 nsWindow::Show(bool aState)
 {
   LOGT();
-  return PuppetWidgetBase::Show(aState);
+  PuppetWidgetBase::Show(aState);
 }
 
-NS_IMETHODIMP
+void
 nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
 {
-  Unused << PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
+  PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
   if (GetCompositorBridgeParent()) {
     static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
         SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
   }
-
-  return NS_OK;
 }
 
 LayoutDeviceIntRect
@@ -194,7 +194,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
 LayerManager *
 nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   if (!mLayerManager) {
     if (!mShutdownObserver) {
@@ -213,7 +213,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
 
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
-    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager);
+    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager.get());
     if (mLayerManager) {
       return mLayerManager;
     }
@@ -222,7 +222,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   }
 
   mLayerManager = new ClientLayerManager(this);
-  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager.get());
 
   return mLayerManager;
 }

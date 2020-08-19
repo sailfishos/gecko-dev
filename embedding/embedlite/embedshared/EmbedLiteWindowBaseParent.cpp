@@ -97,7 +97,7 @@ void* EmbedLiteWindowBaseParent::GetPlatformImage(int* width, int* height)
   return nullptr;
 }
 
-void EmbedLiteWindowBaseParent::GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback)
+void EmbedLiteWindowBaseParent::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
 {
     if (mCompositor) {
         mCompositor->GetPlatformImage(callback);
@@ -114,18 +114,18 @@ void EmbedLiteWindowBaseParent::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
 }
 
-bool EmbedLiteWindowBaseParent::RecvInitialized()
+mozilla::ipc::IPCResult EmbedLiteWindowBaseParent::RecvInitialized()
 {
   MOZ_ASSERT(mWindow);
   mWindow->GetListener()->WindowInitialized();
-  return true;
+  return IPC_OK();
 }
 
-bool EmbedLiteWindowBaseParent::RecvDestroyed()
+mozilla::ipc::IPCResult EmbedLiteWindowBaseParent::RecvDestroyed()
 {
   MOZ_ASSERT(mWindow);
   mWindow->Destroyed();
-  return true;
+  return IPC_OK();
 }
 
 void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)

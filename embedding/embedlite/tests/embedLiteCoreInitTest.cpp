@@ -3,7 +3,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/embedlite/EmbedInitGlue.h"
+// TODO : Fix EmbedInitGlue to use Bootstrapping for loading functions
+// or use GeckoLoader directly.
+// See JB#50787 && JB#50788
+// #include "mozilla/embedlite/EmbedInitGlue.h"
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "qmessagepump.h"
 
@@ -12,6 +15,19 @@
 #endif
 
 using namespace mozilla::embedlite;
+
+// See JB#50787 && JB#50788
+bool LoadEmbedLite(int argc = 0, char** argv = 0)
+{
+  return false;
+}
+
+// See JB#50787 && JB#50788
+EmbedLiteApp *XRE_GetEmbedLite()
+{
+  return nullptr;
+}
+
 
 class MyListener : public EmbedLiteAppListener
 {

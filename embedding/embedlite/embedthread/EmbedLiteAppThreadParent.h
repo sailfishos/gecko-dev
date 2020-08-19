@@ -30,27 +30,15 @@ protected:
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*) override;
 
   // IPDL interface
-  virtual bool
-  RecvInitialized() override;
-
-  virtual bool
-  RecvReadyToShutdown() override;
-
-  virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data) override;
-
-  virtual bool
-  RecvCreateWindow(const uint32_t& parentId,
-          const uint32_t& chromeFlags,
-          const uint32_t& contextFlags,
-          uint32_t* createdID,
-          bool* cancel) override;
-
-  virtual PCompositorBridgeParent*
-  AllocPCompositorBridgeParent(Transport* aTransport, ProcessId aOtherProcess) override;
-
-  virtual bool
-  RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs) override;
+  virtual mozilla::ipc::IPCResult RecvInitialized() override;
+  virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
+  virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
+                                              const nsString &data) override;
+  virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
+                                                   const uint32_t &chromeFlags,
+                                                   uint32_t *createdID,
+                                                   bool *cancel) override;
+  virtual mozilla::ipc::IPCResult RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs) override;
 
 private:
   virtual ~EmbedLiteAppThreadParent();

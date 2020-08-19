@@ -6,7 +6,7 @@ include protocol PEmbedLiteApp;
 
 include "mozilla/GfxMessageUtils.h";
 
-using struct gfxSize from "gfxPoint.h";
+using gfxSize from "gfxPoint.h";
 
 namespace mozilla {
 namespace embedlite {

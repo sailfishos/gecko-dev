@@ -35,7 +35,9 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const 
 {
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
 
-  mCreateWidgetTask = NewCancelableRunnableMethod(this, &EmbedLiteWindowBaseChild::CreateWidget);
+  mCreateWidgetTask = NewCancelableRunnableMethod("EmbedLiteWindowBaseChild::CreateWidget",
+                                                  this,
+                                                  &EmbedLiteWindowBaseChild::CreateWidget);
   MessageLoop::current()->PostTask(mCreateWidgetTask.forget());
   sWindowCount++;
 
@@ -68,26 +70,26 @@ void EmbedLiteWindowBaseChild::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
 }
 
-bool EmbedLiteWindowBaseChild::RecvDestroy()
+mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvDestroy()
 {
   LOGT("destroy");
   mWidget = nullptr;
   Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
-  return true;
+  return IPC_OK();
 }
 
-bool EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize& aSize)
+mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize &aSize)
 {
   mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   LOGT("this:%p width: %f, height: %f as int w: %d h: %h", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
     mWidget->Resize(aSize.width, aSize.height, true);
   }
-  return true;
+  return IPC_OK();
 }
 
-bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotation)
+mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotation)
 {
   LOGT("this:%p", this);
   mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
@@ -100,10 +102,7 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotati
   nsresult rv;
   nsCOMPtr<nsIScreenManager> screenMgr =
       do_GetService("@mozilla.org/gfx/screenmanager;1", &rv);
-  if (NS_FAILED(rv)) {
-    NS_ERROR("Can't find nsIScreenManager!");
-    return true;
-  }
+  NS_ENSURE_TRUE(screenMgr, IPC_OK());
 
   nsIntRect rect;
   int32_t colorDepth, pixelDepth;
@@ -140,7 +139,7 @@ bool EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotati
   hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
       rect, orientation, angle, colorDepth, pixelDepth));
 
-  return true;
+  return IPC_OK();
 }
 
 void EmbedLiteWindowBaseChild::CreateWidget()

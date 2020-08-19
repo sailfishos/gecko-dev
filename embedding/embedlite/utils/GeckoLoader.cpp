@@ -142,7 +142,10 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     LOGE("Unable to create nsIFile for appdir: %s", selfPath.c_str());
     return false;
   }
-  printf("Loaded xulDir:%s, appDir:%s\n", greHome, selfPath.c_str());
+  nsAutoString xuldirPath;
+  xuldir->GetPath(xuldirPath);
+
+  printf("Loaded xulDir:%ls, appDir:%s\n", xuldirPath.get(), selfPath.c_str());
 
   // setup profile dir
   if (aProfilePath) {
@@ -181,7 +184,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     bool dirExists = true;
     rv = kDirectoryProvider.sProfileDir->Exists(&dirExists);
     if (!dirExists) {
-      Unused << kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+      mozilla::Unused << kDirectoryProvider.sProfileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     }
 
     // Lock profile directory
@@ -219,6 +222,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
   NS_LogTerm();
 
+  LOGF("InitEmbedding successfully");
   return true;
 }
 

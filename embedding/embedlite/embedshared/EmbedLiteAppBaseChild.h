@@ -32,29 +32,29 @@ public:
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
   EmbedLiteWindowBaseChild* GetWindowByID(uint32_t aWindowID);
-  bool CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel);
+  bool CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, uint32_t* createdID, bool* cancel);
   static EmbedLiteAppBaseChild* GetInstance();
 
 protected:
   virtual ~EmbedLiteAppBaseChild();
 
   // Embed API ipdl interface
-  virtual bool RecvSetBoolPref(const nsCString&, const bool&) override;
-  virtual bool RecvSetCharPref(const nsCString&, const nsCString&) override;
-  virtual bool RecvSetIntPref(const nsCString&, const int&) override;
-  virtual bool RecvLoadGlobalStyleSheet(const nsCString&, const bool&) override;
-  virtual bool RecvLoadComponentManifest(const nsCString&) override;
+  virtual mozilla::ipc::IPCResult RecvSetBoolPref(const nsCString &, const bool &) override;
+  virtual mozilla::ipc::IPCResult RecvSetCharPref(const nsCString &, const nsCString &) override;
+  virtual mozilla::ipc::IPCResult RecvSetIntPref(const nsCString &, const int &) override;
+  virtual mozilla::ipc::IPCResult RecvLoadGlobalStyleSheet(const nsCString &, const bool &) override;
+  virtual mozilla::ipc::IPCResult RecvLoadComponentManifest(const nsCString &) override;
 
   // IPDL protocol impl
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual bool RecvPreDestroy() override;
-  virtual bool RecvObserve(const nsCString& topic,
-                           const nsString& data) override;
-  virtual bool RecvAddObserver(const nsCString&) override;
-  virtual bool RecvRemoveObserver(const nsCString&) override;
-  virtual bool RecvAddObservers(InfallibleTArray<nsCString>&& observers) override;
-  virtual bool RecvRemoveObservers(InfallibleTArray<nsCString>&& observers) override;
+  virtual mozilla::ipc::IPCResult RecvPreDestroy() override;
+  virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
+                                              const nsString &data) override;
+  virtual mozilla::ipc::IPCResult RecvAddObserver(const nsCString &) override;
+  virtual mozilla::ipc::IPCResult RecvRemoveObserver(const nsCString &) override;
+  virtual mozilla::ipc::IPCResult RecvAddObservers(InfallibleTArray<nsCString> &&observers) override;
+  virtual mozilla::ipc::IPCResult RecvRemoveObservers(InfallibleTArray<nsCString> &&observers) override;
   virtual bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*) override;
   virtual bool DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild*) override;
 

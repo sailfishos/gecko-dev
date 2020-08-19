@@ -142,7 +142,8 @@ EmbedLiteMessagePump::PostTask(EMBEDTaskCallback callback,
   if (!mEmbedPump->GetLoop()) {
     return nullptr;
   }
-  RefPtr<mozilla::Runnable> newTask = NewRunnableFunction(callback, userData);
+  RefPtr<mozilla::Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteMessagePump::EMBEDTaskCallback",
+                                                          callback, userData);
   if (timeout) {
     mEmbedPump->GetLoop()->PostDelayedTask(newTask.forget(), timeout);
   } else {

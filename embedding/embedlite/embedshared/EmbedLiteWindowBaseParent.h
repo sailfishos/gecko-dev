@@ -7,7 +7,6 @@
 #define MOZ_WINDOW_EMBED_BASE_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
-#include "mozilla/Function.h"
 #include "mozilla/WidgetUtils.h"
 
 namespace mozilla {
@@ -41,7 +40,7 @@ public:
   void SuspendRendering();
   void ResumeRendering();
   void* GetPlatformImage(int* width, int* height);
-  void GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback);
+  void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;
@@ -50,8 +49,8 @@ protected:
   virtual ~EmbedLiteWindowBaseParent() override;
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual bool RecvInitialized() override;
-  virtual bool RecvDestroyed() override;
+  virtual mozilla::ipc::IPCResult RecvInitialized() override;
+  virtual mozilla::ipc::IPCResult RecvDestroyed() override;
 
   void SetEmbedAPIWindow(EmbedLiteWindow* window);
   void SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor);

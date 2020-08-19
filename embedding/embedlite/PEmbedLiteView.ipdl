@@ -12,7 +12,7 @@ include "ipc/nsGUIEventIPC.h";
 include "mozilla/dom/TabMessageUtils.h";
 
 include "mozilla/GfxMessageUtils.h";
-using struct gfxSize from "gfxPoint.h";
+using gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
 using CSSRect from "Units.h";
 using CSSSize from "Units.h";

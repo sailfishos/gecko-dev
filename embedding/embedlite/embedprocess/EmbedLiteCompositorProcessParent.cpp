@@ -17,7 +17,6 @@
 #include "gfxPrefs.h"
 #include "VsyncSource.h"
 
-#include "mozilla/layers/APZCTreeManager.h"  // for APZCTreeManager
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/BasicCompositor.h"  // for BasicCompositor
 #include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
@@ -38,8 +37,6 @@ OpenCompositor(EmbedLiteCompositorProcessParent* aCompositor,
                MessageLoop* aIOLoop)
 {
   LOGT();
-  DebugOnly<bool> ok = aCompositor->Open(aTransport, aHandle, aIOLoop);
-  MOZ_ASSERT(ok);
 }
 
 /*static*/ PCompositorBridgeParent*
@@ -60,7 +57,8 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
 
   cpcp->mSelfRef = cpcp;
   CompositorThreadHolder::Loop()->PostTask(
-    NewRunnableFunction(&OpenCompositor, cpcp.get(),
+    NewRunnableFunction("mozilla::embedlite::EmbedLiteAppProcessParent::OpenCompositor",
+                        &OpenCompositor, cpcp.get(),
                         aTransport, handle, XRE_GetIOMessageLoop()));
   // The return value is just compared to null for success checking,
   // we're not sharing a ref.
@@ -68,8 +66,10 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
 }
 
 EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id)
-  : CompositorBridgeParent(CSSToLayoutDeviceScale(1.0),
+  : CompositorBridgeParent(nullptr,
+                           CSSToLayoutDeviceScale(1.0),
                            gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
+                           CompositorOptions(true, false),
                            true,
                            IntSize(aSurfaceWidth, aSurfaceHeight))
   , mTransport(aTransport)
@@ -79,15 +79,13 @@ EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aT
   LOGT();
   MOZ_ASSERT(NS_IsMainThread());
   gfxPlatform::GetPlatform();
-  mCompositorID = 0;
 }
 
-bool
-EmbedLiteCompositorProcessParent::RecvRequestNotifyAfterRemotePaint()
+mozilla::ipc::IPCResult EmbedLiteCompositorProcessParent::RecvRequestNotifyAfterRemotePaint()
 {
   LOGT("Implement me");
   mNotifyAfterRemotePaint = true;
-  return true;
+  return IPC_OK();
 }
 
 void
@@ -95,7 +93,8 @@ EmbedLiteCompositorProcessParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT();
   MessageLoop::current()->PostTask(
-        NewRunnableMethod(this, &EmbedLiteCompositorProcessParent::DeferredDestroy));
+        NewRunnableMethod("mozilla::embedlite::EmbedLiteCompositorProcessParent::DeferredDestroy",
+                          this, &EmbedLiteCompositorProcessParent::DeferredDestroy));
 }
 
 void
@@ -135,7 +134,6 @@ EmbedLiteCompositorProcessParent::InitializeLayerManager(const nsTArray<LayersBa
       continue;
     }
 
-    compositor->SetCompositorID(mCompositorID);
     RefPtr<LayerManagerComposite> layerManager = new LayerManagerComposite(compositor);
 
     nsCString failureReason;
@@ -156,9 +154,7 @@ EmbedLiteCompositorProcessParent::InitializeLayerManager(const nsTArray<LayersBa
 
 PLayerTransactionParent*
 EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                                               const uint64_t& aId,
-                                                               TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                                               bool *aSuccess)
+                                                               const uint64_t& aId)
 {
   LOGT();
   MOZ_ASSERT(aId != 0);
@@ -170,16 +166,14 @@ EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<La
 
     // XXX: should be false, but that causes us to fail some tests on Mac w/ OMTC.
     // Bug 900745. change *aSuccess to false to see test failures.
-    *aSuccess = true;
-    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, aId);
+    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, nullptr, aId);
     p->AddIPDLReference();
     return p;
   }
 
-  mCompositionManager = new AsyncCompositionManager(mLayerManager);
-  *aSuccess = true;
-  *aTextureFactoryIdentifier = mCompositor->GetTextureFactoryIdentifier();
-  LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, aId);
+  // Check state etc from CompositorBridgeParent sIndirectLayerTrees
+  // mCompositionManager = new AsyncCompositionManager(mLayerManager);
+  LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, nullptr, aId);
   p->AddIPDLReference();
   return p;
 }
@@ -192,71 +186,27 @@ EmbedLiteCompositorProcessParent::DeallocPLayerTransactionParent(PLayerTransacti
   return true;
 }
 
-bool
-EmbedLiteCompositorProcessParent::RecvNotifyChildCreated(const uint64_t& child)
+mozilla::ipc::IPCResult
+EmbedLiteCompositorProcessParent::RecvNotifyChildCreated(const uint64_t& child, CompositorOptions *aOptions)
 {
   LOGT("Implement me");
+  return IPC_OK();
+}
+
+bool
+EmbedLiteCompositorProcessParent::SetTestSampleTime(const uint64_t &aId, const TimeStamp& aTime)
+{
+  LOGT("Implement me");
+  Unused << aId;
+  Unused << aTime;
   return false;
 }
 
 void
-EmbedLiteCompositorProcessParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
-  const uint64_t& aTransactionId,
-  const TargetConfig& aTargetConfig,
-  const InfallibleTArray<PluginWindowData>& aPlugins,
-  bool aIsFirstPaint,
-  bool aScheduleComposite,
-  uint32_t aPaintSequenceNumber,
-  bool aIsRepeatTransaction,
-  int32_t aPaintSyncId, bool aHitTestUpdate)
+EmbedLiteCompositorProcessParent::LeaveTestMode(const uint64_t &aId)
 {
   LOGT("Implement me");
-  Unused << aTransactionId;
-  Unused << aTargetConfig;
-  Unused << aPlugins;
-  Unused << aIsFirstPaint;
-  Unused << aScheduleComposite;
-  Unused << aPaintSequenceNumber;
-  Unused << aIsRepeatTransaction;
-  Unused << aPaintSyncId;
-  Unused << aHitTestUpdate;
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
-}
-
-void
-EmbedLiteCompositorProcessParent::DidComposite(uint64_t aId)
-{
-  LOGT("Implement me");
-}
-
-void
-EmbedLiteCompositorProcessParent::ForceComposite(LayerTransactionParent* aLayerTree)
-{
-  LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
-}
-
-bool
-EmbedLiteCompositorProcessParent::SetTestSampleTime(LayerTransactionParent* aLayerTree, const TimeStamp& aTime)
-{
-  LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
-  return false;
-}
-
-void
-EmbedLiteCompositorProcessParent::LeaveTestMode(LayerTransactionParent* aLayerTree)
-{
-  LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
+  Unused << aId;
 }
 
 void
@@ -269,31 +219,28 @@ EmbedLiteCompositorProcessParent::ApplyAsyncProperties(LayerTransactionParent *a
 }
 
 void
-EmbedLiteCompositorProcessParent::FlushApzRepaints(const LayerTransactionParent *aLayerTree)
+EmbedLiteCompositorProcessParent::FlushApzRepaints(const uint64_t &aLayersId)
 {
   LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
+  Unused << aLayersId;
 }
 
 void
-EmbedLiteCompositorProcessParent::GetAPZTestData(const LayerTransactionParent* aLayerTree,
+EmbedLiteCompositorProcessParent::GetAPZTestData(const uint64_t &aLayersId,
                                                  APZTestData* aOutData)
 {
   LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
+  Unused << aLayersId;
+  Unused << aOutData;
 }
 
 void
-EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayerTransactionParent *aLayerTree, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const uint64_t &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
 {
   LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
-  MOZ_ASSERT(id != 0);
-  Unused << id;
+  Unused << aLayersId;
+  Unused << aInputBlockId;
+  Unused << aTargets;
 }
 
 AsyncCompositionManager*
@@ -304,6 +251,13 @@ EmbedLiteCompositorProcessParent::GetCompositionManager(LayerTransactionParent* 
   MOZ_ASSERT(id != 0);
   Unused << id;
   return nullptr;
+}
+
+void EmbedLiteCompositorProcessParent::DidComposite(TimeStamp &aCompositeStart, TimeStamp &aCompositeEnd)
+{
+  LOGT("Implement me");
+  Unused << aCompositeStart;
+  Unused << aCompositeEnd;
 }
 
 void

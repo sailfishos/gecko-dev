@@ -44,7 +44,7 @@ public:
   NS_DECL_NSITABCHILD
   NS_DECL_NSIOBSERVER
 
-  bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+  bool UpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
   virtual nsIWebNavigation* WebNavigation() const override;
   virtual nsIWidget* WebWidget() override;
@@ -62,7 +62,6 @@ public:
                                       mozilla::dom::ipc::StructuredCloneData& aData,
                                       JS::Handle<JSObject *> aCpows,
                                       nsIPrincipal* aPrincipal) override;
-  virtual bool CheckPermission(const nsAString& aPermission) override;
   virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) override;
@@ -74,6 +73,8 @@ public:
   mozilla::CSSPoint ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         const mozilla::layers::ScrollableLayerGuid& aGuid,
                                         bool *ok);
+
+  void OpenIPC() { mIPCOpen = true; }
 
 protected:
   virtual ~TabChildHelper();
@@ -88,6 +89,7 @@ private:
   bool InitTabChildGlobal();
   void Disconnect();
   void Unload();
+  bool IPCOpen() const { return mIPCOpen; }
 
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
@@ -95,6 +97,7 @@ private:
   friend class EmbedLiteViewBaseChild;
   EmbedLiteViewChildIface* mView;
   bool mHasValidInnerSize;
+  bool mIPCOpen;
   ScreenIntSize mInnerSize;
 };
 
