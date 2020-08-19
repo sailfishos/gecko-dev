@@ -17,6 +17,9 @@ using struct mozilla::void_t
 using struct mozilla::SerializedStructuredCloneBuffer
   from "ipc/IPCMessageUtils.h";
 
+using struct mozilla::null_t
+  from "ipc/IPCMessageUtils.h";
+
 using LayoutDeviceIntRect from "Units.h";
 using DesktopIntRect from "Units.h";
 using DesktopToLayoutDeviceScale from "Units.h";
@@ -122,6 +125,24 @@ struct CreatedWindowInfo
   CompositorOptions compositorOptions;
   uint32_t maxTouchPoints;
   DimensionInfo dimensions;
+};
+
+union PrefValue {
+  nsCString;
+  int32_t;
+  bool;
+};
+
+union MaybePrefValue {
+  PrefValue;
+  null_t;
+};
+
+struct Pref {
+  nsCString name;
+  bool isLocked;
+  MaybePrefValue defaultValue;
+  MaybePrefValue userValue;
 };
 
 } // namespace dom
