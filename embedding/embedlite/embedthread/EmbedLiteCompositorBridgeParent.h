@@ -7,12 +7,14 @@
 #define mozilla_layers_EmbedLiteCompositorBridgeParent_h
 
 #include "Layers.h"
-#include "mozilla/Function.h"
 #include "base/task.h" // for CancelableRunnable
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
+#include "mozilla/layers/CompositorManagerParent.h"
+
+#include <functional>
 
 namespace mozilla {
 
@@ -28,14 +30,16 @@ class EmbedLiteCompositorBridgeParent : public mozilla::layers::CompositorBridge
 {
 public:
   EmbedLiteCompositorBridgeParent(uint32_t windowId,
+                                  mozilla::layers::CompositorManagerParent *aManager,
                                   CSSToLayoutDeviceScale aScale,
-                                  const TimeDuration& aVsyncRate,
+                                  const TimeDuration &aVsyncRate,
+                                  const CompositorOptions &aOptions,
                                   bool aRenderToEGLSurface,
-                                  const gfx::IntSize& aSurfaceSize);
+                                  const gfx::IntSize &aSurfaceSize);
 
   void SetSurfaceSize(int width, int height);
   void* GetPlatformImage(int* width, int* height);
-  void GetPlatformImage(const mozilla::function<void(void *image, int width, int height)> &callback);
+  void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
   void SuspendRendering();
   void ResumeRendering();
 
@@ -47,9 +51,7 @@ protected:
   virtual ~EmbedLiteCompositorBridgeParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                               const uint64_t& aId,
-                               TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                               bool* aSuccess) override;
+                               const uint64_t& aId) override;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
   virtual void CompositeToDefaultTarget() override;
 

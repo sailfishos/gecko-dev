@@ -51,6 +51,10 @@ public:
 
   virtual bool IsRepaintThread() override;
 
+  virtual void NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID &aViewId) override;
+  virtual void NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID &aViewId) override;
+  virtual void CancelAutoscroll(const ScrollableLayerGuid& aGuid) override;
+
   virtual void DispatchToRepaintThread(already_AddRefed<Runnable> aTask) override;
 
 private:

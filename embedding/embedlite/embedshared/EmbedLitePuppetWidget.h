@@ -44,17 +44,16 @@ public:
 
   virtual void Destroy() override;
 
-  NS_IMETHOD Show(bool aState) override;
+  virtual void Show(bool aState) override;
 
   virtual void* GetNativeData(uint32_t aDataType) override;
 
-  NS_IMETHOD DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus) override;
+  virtual nsresult DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus) override;
 
-  NS_IMETHOD_(void) SetInputContext(const InputContext& aContext,
-                                    const InputContextAction& aAction) override;
-  NS_IMETHOD_(InputContext) GetInputContext() override;
-  NS_IMETHOD_(NativeIMEContext) GetNativeIMEContext() override;
-  virtual nsIMEUpdatePreference GetIMEUpdatePreference() override;
+  virtual void SetInputContext(const InputContext& aContext,
+                               const InputContextAction& aAction) override;
+  virtual InputContext GetInputContext() override;
+  virtual NativeIMEContext GetNativeIMEContext() override;
 
   virtual bool NeedsPaint() override;
 

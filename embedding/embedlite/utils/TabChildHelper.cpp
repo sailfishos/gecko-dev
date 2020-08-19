@@ -24,7 +24,6 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/Element.h"
-#include "nsIDOMHTMLBodyElement.h"
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocShell.h"
@@ -59,6 +58,7 @@ static bool sPostAZPCAsJsonViewport(false);
 TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
   , mHasValidInnerSize(false)
+  , mIPCOpen(false)
 {
   LOGT();
 
@@ -111,6 +111,7 @@ void
 TabChildHelper::Disconnect()
 {
   LOGT();
+  mIPCOpen = false;
   if (mTabChildGlobal) {
     // The messageManager relays messages via the TabChild which
     // no longer exists.
@@ -123,8 +124,10 @@ TabChildHelper::Disconnect()
 class EmbedUnloadScriptEvent : public mozilla::Runnable
 {
 public:
-  EmbedUnloadScriptEvent(TabChildHelper* aTabChild, TabChildGlobal* aTabChildGlobal)
-    : mTabChild(aTabChild), mTabChildGlobal(aTabChildGlobal)
+  explicit EmbedUnloadScriptEvent(TabChildHelper* aTabChild, TabChildGlobal* aTabChildGlobal)
+    : mozilla::Runnable("TabChildHelper::EmbedUnloadScriptEvent")
+    , mTabChild(aTabChild)
+    , mTabChildGlobal(aTabChildGlobal)
   { }
 
   NS_IMETHOD Run() {
@@ -164,7 +167,7 @@ TabChildHelper::Unload()
   observerService->RemoveObserver(this, DETECT_SCROLLABLE_SUBFRAME);
 }
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TabChildHelper)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TabChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsITabChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
@@ -257,8 +260,17 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
   return NS_OK;
 }
 
+
+void TabChildHelper::BeforeUnloadAdded() {
+  LOGT();
+}
+
+void TabChildHelper::BeforeUnloadRemoved() {
+  LOGT();
+}
+
 bool
-TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+TabChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   return TabChildBase::UpdateFrameHandler(aFrameMetrics);
 }
@@ -429,13 +441,6 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   }
 
   return NS_OK;
-}
-
-bool
-TabChildHelper::CheckPermission(const nsAString& aPermission)
-{
-  LOGNI("perm: %s", NS_ConvertUTF16toUTF8(aPermission).get());
-  return false;
 }
 
 ScreenIntSize

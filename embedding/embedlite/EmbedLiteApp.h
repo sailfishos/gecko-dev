@@ -7,7 +7,8 @@
 #define EMBED_LITE_APP_H
 
 #include "mozilla/RefPtr.h"
-#include "nsStringGlue.h"
+#include <string>
+#include <vector>
 #include <stdint.h>
 #include <map>
 
@@ -48,7 +49,6 @@ public:
   virtual void OnObserve(const char* aMessage, const char16_t* aData) {}
   // New Window request which is usually coming from WebPage new window request
   virtual uint32_t CreateNewWindowRequested(const uint32_t& chromeFlags,
-                                            const uint32_t& contextFlags,
                                             EmbedLiteView* aParentView) { return 0; }
   virtual void LastViewDestroyed() {};
   virtual void LastWindowDestroyed() {};
@@ -133,8 +133,8 @@ public:
   virtual void SendObserve(const char* aMessageName, const char16_t* aMessage);
   virtual void AddObserver(const char* aMessageName);
   virtual void RemoveObserver(const char* aMessageName);
-  virtual void AddObservers(nsTArray<nsCString>& observersList);
-  virtual void RemoveObservers(nsTArray<nsCString>& observersList);
+  virtual void AddObservers(const std::vector<std::string> &observersList);
+  virtual void RemoveObservers(const std::vector<std::string> &observersList);
 
   // Only one EmbedHelper object allowed
   static EmbedLiteApp* GetInstance();
@@ -185,7 +185,7 @@ private:
   void ViewDestroyed(uint32_t id);
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
-  uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& contextFlags, const uint32_t& parentId);
+  uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& parentId);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
   static void PreDestroy(EmbedLiteApp*);

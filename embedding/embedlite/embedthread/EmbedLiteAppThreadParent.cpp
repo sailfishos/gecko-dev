@@ -38,8 +38,7 @@ EmbedLiteAppThreadParent::~EmbedLiteAppThreadParent()
   sAppThreadParent = nullptr;
 }
 
-bool
-EmbedLiteAppThreadParent::RecvInitialized()
+mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvInitialized()
 {
   LOGT();
   PR_SetEnv("MOZ_USE_OMTC=1");
@@ -51,27 +50,24 @@ EmbedLiteAppThreadParent::RecvInitialized()
   mApp->SetBoolPref("layers.acceleration.force-enabled", accel);
   mApp->SetBoolPref("layers.async-video.enabled", accel);
   mApp->SetBoolPref("layers.offmainthreadcomposition.force-basic", !accel);
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppThreadParent::RecvReadyToShutdown()
+mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvReadyToShutdown()
 {
   LOGT();
   mApp->ChildReadyToDestroy();
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppThreadParent::RecvCreateWindow(const uint32_t& parentId,
+mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvCreateWindow(const uint32_t& parentId,
                                            const uint32_t& chromeFlags,
-                                           const uint32_t& contextFlags,
                                            uint32_t* createdID,
                                            bool* cancel)
 {
-  *createdID = mApp->CreateWindowRequested(chromeFlags, contextFlags, parentId);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, parentId);
   *cancel = !*createdID;
-  return true;
+  return IPC_OK();
 }
 
 void
@@ -116,28 +112,19 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* 
   return true;
 }
 
-bool
-EmbedLiteAppThreadParent::RecvObserve(const nsCString& topic,
-                                      const nsString& data)
+mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvObserve(const nsCString &topic,
+                                                              const nsString &data)
 {
   LOGT("topic:%s", topic.get());
   mApp->GetListener()->OnObserve(topic.get(), data.get());
-  return true;
+  return IPC_OK();
 }
 
-PCompositorBridgeParent*
-EmbedLiteAppThreadParent::AllocPCompositorBridgeParent(Transport* aTransport,
-                                                  ProcessId aOtherProcess)
+mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(
+        nsTArray<mozilla::dom::Pref> &&prefs)
 {
   LOGT();
-  return 0;
-}
-
-bool
-EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs)
-{
-  LOGT();
-  return false;
+  return IPC_OK();
 }
 
 } // namespace embedlite

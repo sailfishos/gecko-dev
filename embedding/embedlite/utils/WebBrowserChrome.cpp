@@ -22,14 +22,13 @@
 #include "nsISerializationHelper.h"
 #include "nsISSLStatus.h"
 #include "nsIDOMEvent.h"
-#include "nsIDOMHTMLLinkElement.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
 #include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
-#include "ScriptSettings.h" // for AutoNoJSAPI
+#include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "TabChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 
@@ -90,27 +89,23 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
   }
 
   if (aIID.Equals(NS_GET_IID(nsIDocShellTreeItem))) {
-    if (!mWebBrowser) {
-      return NS_ERROR_NOT_INITIALIZED;
-    }
-
-    nsresult rv;
-    nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+    nsIDocShell *docShellPtr;
+    nsresult rv = GetDocShellPtr(&docShellPtr);
     if (NS_FAILED(rv)) {
       return NS_ERROR_NOT_INITIALIZED;
     }
+    nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem = docShellPtr;
+    NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = docShellTreeItem)));
+  }
 
-    nsCOMPtr<nsIWebNavigation> webNavigation = do_QueryInterface(baseWindow, &rv);
+  if (aIID.Equals(NS_GET_IID(nsIDocument))) {
+    nsIDocument *documentPtr;
+    nsresult rv = GetDocumentPtr(&documentPtr);
     if (NS_FAILED(rv)) {
       return NS_ERROR_NOT_INITIALIZED;
     }
-
-    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(webNavigation, &rv);
-    if (NS_FAILED(rv)) {
-      return NS_ERROR_NOT_INITIALIZED;
-    }
-
-    NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = docShell)));
+    nsCOMPtr<nsIDocument> doc = documentPtr;
+    NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = doc)));
     return NS_OK;
   }
 
@@ -327,8 +322,13 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
     slocation.SetLength(i);
   }
 
-  nsCOMPtr<nsIDOMDocument> ctDoc;
-  mHelper->WebNavigation()->GetDocument(getter_AddRefs(ctDoc));
+  nsresult rv;
+  nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(mWebBrowser, &rv);
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Cannot get Document via GetInterface of WebBrowserChrome");
+    return NS_OK;
+  }
+
   nsString charset;
   ctDoc->GetCharacterSet(charset);
 
@@ -440,10 +440,9 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     nsCOMPtr<nsIDOMEventTarget> origTarget;
     aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
-    nsCOMPtr<nsIDOMDocument> ctDoc = do_QueryInterface(origTarget);
-    nsCOMPtr<mozIDOMWindowProxy> targetWin;
-    ctDoc->GetDefaultView(getter_AddRefs(targetWin));
-    if (targetWin != docWin) {
+    nsCOMPtr<nsIDocument> ctDoc = do_QueryInterface(origTarget);
+    nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
+    if (targetWin != window) {
       return NS_OK; // We are only interested in root scroll pane changes
     }
 
@@ -482,9 +481,8 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   } else if (type.EqualsLiteral(MOZ_scroll)) {
     nsCOMPtr<nsIDOMEventTarget> target;
     aEvent->GetTarget(getter_AddRefs(target));
-    nsCOMPtr<nsIDOMDocument> eventDoc = do_QueryInterface(target);
-    nsCOMPtr<nsIDOMDocument> ctDoc;
-    mHelper->WebNavigation()->GetDocument(getter_AddRefs(ctDoc));
+    nsCOMPtr<nsIDocument> eventDoc = do_QueryInterface(target);
+    nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(mWebBrowser);
     if (eventDoc != ctDoc) {
       return NS_OK;
     }
@@ -505,40 +503,48 @@ WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
   return scrollOffset;
 }
 
-nsIntPoint
-WebBrowserChrome::GetScrollOffsetForElement(nsIDOMElement* aElement)
+nsresult WebBrowserChrome::GetDocShellPtr(nsIDocShell **aDocShell)
 {
-  nsCOMPtr<nsIDOMDocument> ownerDoc;
-  aElement->GetOwnerDocument(getter_AddRefs(ownerDoc));
-  nsCOMPtr<mozIDOMWindowProxy> domWindow;
-  nsCOMPtr<nsIDOMNode> parentNode;
-  aElement->GetParentNode(getter_AddRefs(parentNode));
-  if (parentNode == ownerDoc) {
-    ownerDoc->GetDefaultView(getter_AddRefs(domWindow));
-    return GetScrollOffset(domWindow);
+  if (!mWebBrowser) {
+    return NS_ERROR_NOT_INITIALIZED;
   }
 
-  nsIntPoint scrollOffset;
-  aElement->GetScrollLeft(&scrollOffset.x);
-  aElement->GetScrollTop(&scrollOffset.y);
-  return scrollOffset;
+  nsresult rv;
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  nsCOMPtr<nsIWebNavigation> webNavigation = do_QueryInterface(baseWindow, &rv);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(webNavigation, &rv);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  docShell.forget(aDocShell);
+  return NS_OK;
 }
 
-void
-WebBrowserChrome::SetScrollOffsetForElement(nsIDOMElement* aElement, int32_t aLeft, int32_t aTop)
+nsresult WebBrowserChrome::GetDocumentPtr(nsIDocument **aDocument)
 {
-  nsCOMPtr<nsIDOMDocument> ownerDoc;
-  aElement->GetOwnerDocument(getter_AddRefs(ownerDoc));
-  nsCOMPtr<nsIDOMNode> parentNode;
-  aElement->GetParentNode(getter_AddRefs(parentNode));
-  if (parentNode == ownerDoc) {
-    nsCOMPtr<mozIDOMWindowProxy> pwindow = do_GetInterface(mWebBrowser);
-    nsGlobalWindow* window = nsGlobalWindow::Cast(pwindow);
-    window->ScrollTo(aLeft, aTop);
-  } else {
-    aElement->SetScrollLeft(aLeft);
-    aElement->SetScrollTop(aTop);
+  nsIDocShell *docShellPtr;
+  nsresult rv = GetDocShellPtr(&docShellPtr);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_NOT_INITIALIZED;
   }
+
+  nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem = docShellPtr;
+  nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(docShellTreeItem, &rv);
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  ctDoc.forget(aDocument);
+  return NS_OK;
 }
 
 void
@@ -608,17 +614,17 @@ NS_IMETHODIMP WebBrowserChrome::SetVisibility(bool aVisibility)
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::GetTitle(char16_t** aTitle)
+NS_IMETHODIMP WebBrowserChrome::GetTitle(nsAString &aTitle)
 {
-  NS_ENSURE_ARG_POINTER(aTitle);
-  *aTitle = ToNewUnicode(mTitle);
+  aTitle = mTitle;
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetTitle(const char16_t* aTitle)
+NS_IMETHODIMP WebBrowserChrome::SetTitle(const nsAString &aTitle)
 {
   // Store local title
-  mTitle.Assign(nsDependentString(aTitle));
+  mTitle.Assign(aTitle);
+  mTitle.StripCRLF();
   if (mListener) {
       mListener->OnTitleChanged(mTitle.get());
   }

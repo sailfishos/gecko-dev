@@ -187,9 +187,9 @@ EmbedLiteAppBaseChild::DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild* aActo
   return true;
 }
 
-bool EmbedLiteAppBaseChild::CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, const uint32_t& contextFlags, uint32_t* createdID, bool* cancel)
+bool EmbedLiteAppBaseChild::CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, uint32_t* createdID, bool* cancel)
 {
-  return SendCreateWindow(parentId, chromeFlags, contextFlags, createdID, cancel);
+  return SendCreateWindow(parentId, chromeFlags, createdID, cancel);
 }
 
 EmbedLiteViewChildIface*
@@ -223,77 +223,66 @@ EmbedLiteAppBaseChild::GetWindowByID(uint32_t aWindowID)
   return nullptr;
 }
 
-bool
-EmbedLiteAppBaseChild::RecvPreDestroy()
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvPreDestroy()
 {
   LOGT();
   ImageBridgeChild::ShutDown();
   SendReadyToShutdown();
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvSetBoolPref(const nsCString& aName, const bool& aValue)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvSetBoolPref(const nsCString &aName, const bool &aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
   nsresult rv;
   nsCOMPtr<nsIPrefBranch> pref(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    LOGE("Cannot get prefService");
-    return false;
-  }
-
+  NS_ENSURE_TRUE(pref, IPC_OK());
   pref->SetBoolPref(aName.get(), aValue);
-  return true;
+  return IPC_OK();
 }
 
-bool EmbedLiteAppBaseChild::RecvSetCharPref(const nsCString& aName, const nsCString& aValue)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvSetCharPref(const nsCString &aName, const nsCString &aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%s", aName.get(), aValue.get());
   nsresult rv;
   nsCOMPtr<nsIPrefBranch> pref(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    LOGE("Cannot get prefService");
-    return false;
-  }
+  NS_ENSURE_TRUE(pref, IPC_OK());
 
-  pref->SetCharPref(aName.get(), aValue.get());
-  return true;
+  pref->SetCharPref(aName.get(), aValue);
+  return IPC_OK();
 }
 
-bool EmbedLiteAppBaseChild::RecvSetIntPref(const nsCString& aName, const int& aValue)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvSetIntPref(const nsCString &aName, const int &aValue)
 {
   LOGC("EmbedPrefs", "n:%s, v:%i", aName.get(), aValue);
   nsresult rv;
   nsCOMPtr<nsIPrefBranch> pref(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    LOGE("Cannot get prefService");
-    return false;
-  }
-
+  NS_ENSURE_TRUE(pref, IPC_OK());
   pref->SetIntPref(aName.get(), aValue);
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvLoadGlobalStyleSheet(const nsCString& uri, const bool& aEnable)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvLoadGlobalStyleSheet(const nsCString &uri,
+                                                                        const bool &aEnable)
 {
   LOGT("uri:%s, enable:%i", uri.get(), aEnable);
   nsCOMPtr<nsIStyleSheetService> styleSheetService =
     do_GetService("@mozilla.org/content/style-sheet-service;1");
-  NS_ENSURE_TRUE(styleSheetService, false);
+  NS_ENSURE_TRUE(styleSheetService, IPC_OK());
+
   nsCOMPtr<nsIURI> nsuri;
   NS_NewURI(getter_AddRefs(nsuri), uri);
-  NS_ENSURE_TRUE(nsuri, false);
+  NS_ENSURE_TRUE(nsuri, IPC_OK());
+
   if (aEnable) {
     styleSheetService->LoadAndRegisterSheet(nsuri, nsIStyleSheetService::AGENT_SHEET);
   } else {
     styleSheetService->UnregisterSheet(nsuri, nsIStyleSheetService::AGENT_SHEET);
   }
-  return true;
+  return IPC_OK();
 }
 
-bool EmbedLiteAppBaseChild::RecvLoadComponentManifest(const nsCString& manifest)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvLoadComponentManifest(const nsCString &manifest)
 {
   nsCOMPtr<nsIFile> f;
   NS_NewNativeLocalFile(manifest, true,
@@ -304,12 +293,11 @@ bool EmbedLiteAppBaseChild::RecvLoadComponentManifest(const nsCString& manifest)
   } else {
     NS_ERROR("Failed to create nsIFile for manifest location");
   }
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvObserve(const nsCString& topic,
-                                     const nsString& data)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvObserve(const nsCString &topic,
+                                                           const nsString &data)
 {
   LOGT("topic:%s", topic.get());
   nsCOMPtr<nsIObserverService> observerService =
@@ -317,11 +305,10 @@ EmbedLiteAppBaseChild::RecvObserve(const nsCString& topic,
   if (observerService) {
     observerService->NotifyObservers(nullptr, topic.get(), data.get());
   }
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvAddObserver(const nsCString& topic)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvAddObserver(const nsCString &topic)
 {
   LOGT("topic:%s", topic.get());
   nsCOMPtr<nsIObserverService> observerService =
@@ -333,11 +320,10 @@ EmbedLiteAppBaseChild::RecvAddObserver(const nsCString& topic)
                                  false);
   }
 
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvRemoveObserver(const nsCString& topic)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvRemoveObserver(const nsCString &topic)
 {
   LOGT("topic:%s", topic.get());
   nsCOMPtr<nsIObserverService> observerService =
@@ -348,11 +334,10 @@ EmbedLiteAppBaseChild::RecvRemoveObserver(const nsCString& topic)
                                     topic.get());
   }
 
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvAddObservers(InfallibleTArray<nsCString>&& observers)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvAddObservers(InfallibleTArray<nsCString> &&observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -365,11 +350,10 @@ EmbedLiteAppBaseChild::RecvAddObservers(InfallibleTArray<nsCString>&& observers)
     }
   }
 
-  return true;
+  return IPC_OK();
 }
 
-bool
-EmbedLiteAppBaseChild::RecvRemoveObservers(InfallibleTArray<nsCString>&& observers)
+mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvRemoveObservers(InfallibleTArray<nsCString> &&observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -381,7 +365,7 @@ EmbedLiteAppBaseChild::RecvRemoveObservers(InfallibleTArray<nsCString>&& observe
     }
   }
 
-  return true;
+  return IPC_OK();
 }
 
 } // namespace embedlite

@@ -112,7 +112,8 @@ EmbedLiteApp::GetUILoop() {
 void*
 EmbedLiteApp::PostTask(EMBEDTaskCallback callback, void* userData, int timeout)
 {
-  RefPtr<Runnable> newTask = NewRunnableFunction(callback, userData);
+  RefPtr<Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::EMBEDTaskCallback",
+                                                 callback, userData);
   if (timeout) {
     mUILoop->PostDelayedTask(newTask.forget(), timeout);
   } else {
@@ -130,7 +131,8 @@ EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback callback, void* userData, int
     return nullptr;
   }
 
-  RefPtr<Runnable> newTask = NewRunnableFunction(callback, userData);
+  RefPtr<Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::EMBEDTaskCallback",
+                                                 callback, userData);
   MessageLoop* compositorLoop = mozilla::layers::CompositorThreadHolder::Loop();
   MOZ_ASSERT(compositorLoop);
 
@@ -196,7 +198,8 @@ EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aE
   SetState(STARTING);
   mEmbedType = aEmbedType;
   mUILoop = aEventLoop->GetMessageLoop();
-  mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::StartChild, this));
+  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp",
+                                        &EmbedLiteApp::StartChild, this));
   mUILoop->StartLoop();
   mIsAsyncLoop = true;
   return true;
@@ -213,7 +216,8 @@ EmbedLiteApp::Start(EmbedType aEmbedType)
   mEmbedType = aEmbedType;
   base::AtExitManager exitManager;
   mUILoop = new EmbedLiteUILoop();
-  mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::StartChild, this));
+  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::StartChild",
+                                        &EmbedLiteApp::StartChild, this));
   mUILoop->StartLoop();
   if (mSubThread) {
     mSubThread->Stop();
@@ -263,7 +267,8 @@ EmbedLiteApp::StartChildThread()
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::MessageChannel*>(mAppChild.get(),
+  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::MessageChannel*>("mozilla::embedlite::EmbedLiteAppThreadChild::Init",
+                                                                                    mAppChild.get(),
                                                                                     &EmbedLiteAppThreadChild::Init,
                                                                                     mAppParent->GetIPCChannel()));
 
@@ -315,7 +320,8 @@ EmbedLiteApp::Stop()
 
   if (mState == INITIALIZED) {
     if (mViews.empty() && mWindows.empty()) {
-      mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+      mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
+                                            &EmbedLiteApp::PreDestroy, this));
     } else {
       for (auto viewPair : mViews) {
         viewPair.second->Destroy();
@@ -417,16 +423,28 @@ EmbedLiteApp::RemoveObserver(const char* aMessageName)
   Unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
 }
 
-void EmbedLiteApp::AddObservers(nsTArray<nsCString>& observersList)
+void EmbedLiteApp::AddObservers(const std::vector<std::string> &observersList)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendAddObservers(observersList);
+
+  nsTArray<nsCString> list;
+  for (const auto &observer : observersList) {
+      list.AppendElement(nsDependentCString(observer.c_str()));
+  }
+
+  Unused << mAppParent->SendAddObservers(list);
 }
 
-void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
+void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList)
 {
   NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
-  Unused << mAppParent->SendRemoveObservers(observersList);
+
+  nsTArray<nsCString> list;
+  for (const auto &observer : observersList) {
+      list.AppendElement(nsDependentCString(observer.c_str()));
+  }
+
+  Unused << mAppParent->SendRemoveObservers(list);
 }
 
 EmbedLiteView*
@@ -485,7 +503,8 @@ EmbedLiteApp::ChildReadyToDestroy()
 {
   LOGT();
   if (mState == DESTROYING) {
-    mUILoop->PostTask(NewRunnableFunction(&_FinalStop, this));
+    mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::_FinalStop",
+                                          &_FinalStop, this));
   }
   if (mEmbedType == EMBED_PROCESS) {
       mAppParent = nullptr;
@@ -493,7 +512,7 @@ EmbedLiteApp::ChildReadyToDestroy()
 }
 
 uint32_t
-EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& contextFlags, const uint32_t& parentId)
+EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& parentId)
 {
   EmbedLiteView* view = nullptr;
   std::map<uint32_t, EmbedLiteView*>::iterator it;
@@ -504,7 +523,7 @@ EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t&
       break;
     }
   }
-  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, contextFlags, view) : 0;
+  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, view) : 0;
   return viewId;
 }
 
@@ -523,7 +542,8 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
       mListener->LastViewDestroyed();
     }
     if (mState == DESTROYING) {
-      mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+      mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
+                                            &EmbedLiteApp::PreDestroy, this));
     }
   }
 }
@@ -591,7 +611,8 @@ EmbedLiteApp::Initialized()
   NS_ASSERTION(mState == STARTING || mState == DESTROYING, "Wrong timing");
 
   if (mState == DESTROYING) {
-    mUILoop->PostTask(NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
+    mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
+                                          &EmbedLiteApp::PreDestroy, this));
     return;
   }
 
