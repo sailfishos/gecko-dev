@@ -67,6 +67,8 @@ var LoginManagerParent = {
   // Listeners are added in nsBrowserGlue.js on desktop
   // and in BrowserCLH.js on mobile.
   receiveMessage(msg) {
+    msg.target.QueryInterface(Ci.nsIEmbedFrame);
+    log("receiveMessage " + msg.name + " msg.target: " + msg.target);
     let data = msg.data;
     switch (msg.name) {
       case "RemoteLogins:findLogins": {
