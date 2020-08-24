@@ -14,6 +14,7 @@
 %define system_bz2        1
 %define system_pixman     1
 %define system_cairo      1
+%define system_libvpx     1
 
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
@@ -137,6 +138,9 @@ BuildRequires:  pkgconfig(pixman-1)
 %if %{system_cairo}
 BuildRequires:  pkgconfig(cairo)
 %endif
+%if %{system_libvpx}
+BuildRequires:  pkgconfig(vpx)
+%endif
 
 %description
 Mozilla XUL runner
@@ -241,6 +245,10 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 
 %if %{system_cairo}
   echo "ac_add_options --enable-system-cairo" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_libvpx}
+  echo "ac_add_options --with-system-libvpx" >> "${MOZCONFIG}"
 %endif
 
 %ifarch %ix86
