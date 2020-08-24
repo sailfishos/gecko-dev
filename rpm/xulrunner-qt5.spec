@@ -13,6 +13,7 @@
 %define system_zlib       1
 %define system_bz2        1
 %define system_pixman     1
+%define system_libvpx     1
 
 %global mozappdir     %{_libdir}/%{name}-%{greversion}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
@@ -142,6 +143,9 @@ BuildRequires:  libffi-devel
 %if %{system_pixman}
 BuildRequires:  pkgconfig(pixman-1)
 %endif
+%if %{system_libvpx}
+BuildRequires:  pkgconfig(vpx)
+%endif
 
 %description
 Mozilla XUL runner
@@ -236,6 +240,10 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 
 %if %{system_pixman}
   echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_libvpx}
+  echo "ac_add_options --with-system-libvpx" >> "${MOZCONFIG}"
 %endif
 
 %ifarch %ix86
