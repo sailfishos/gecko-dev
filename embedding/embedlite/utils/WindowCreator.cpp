@@ -54,7 +54,7 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
       Desktop FF allow to create popup window if aChromeFlags == 1670, aContextFlags == 0
   */
 
-  LOGF("parent: %p, chrome flags: %u, context flags: %u", aParent, aChromeFlags, aContextFlags);
+  LOGF("parent: %p, chrome flags: %u", aParent, aChromeFlags);
 
   EmbedLiteViewChildIface* parent = mChild->GetViewByChromeParent(aParent);
   uint32_t createdID = 0;
