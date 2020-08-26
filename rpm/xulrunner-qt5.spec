@@ -74,6 +74,7 @@ Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
 Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
 Patch32:    0032-sailfishos-gecko-Remove-android-define-from-logging.patch
+Patch33:    0033-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
