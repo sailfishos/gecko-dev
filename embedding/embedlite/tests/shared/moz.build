@@ -16,13 +16,7 @@ SOURCES += [
 ]
 
 Library('qmessagepump')
-
-DEFINES['XPCOM_GLUE'] = True
 DisableStlWrapping()
-
-USE_LIBS += [
-    'xpcomglue',
-]
 
 OS_LIBS += CONFIG['TK_LIBS']
 CXXFLAGS += CONFIG['TK_CFLAGS']
