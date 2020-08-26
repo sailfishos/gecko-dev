@@ -7,7 +7,7 @@
 #include <string>
 #include <map>
 
-#ifdef PR_LOGGING
+#ifdef MOZ_LOGGING
 
 LogModule*
 GetEmbedCommonLog(const char* aModule)
