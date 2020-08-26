@@ -27,7 +27,6 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'embedLite'
 
 EXPORTS.mozilla.embedlite += [
-    'EmbedInitGlue.h',
     'EmbedInputData.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
