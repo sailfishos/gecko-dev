@@ -10,11 +10,11 @@ GeckoSimplePrograms([
     'embedLiteViewInitTest',
 ], linkage='standalone')
 
-DEFINES['XPCOM_GLUE'] = True
-DisableStlWrapping()
+# linkage='standalone' defines XPCOM_GLUE=True and xpcomglue
 
 USE_LIBS += [
     'qmessagepump',
+    'xul'
 ]
 
 OS_LIBS += CONFIG['TK_LIBS']

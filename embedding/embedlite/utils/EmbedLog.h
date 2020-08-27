@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include "mozilla/Logging.h"
 
-#ifdef PR_LOGGING
+#ifdef MOZ_LOGGING
 
 #ifdef EMBED_LITE_INTERNAL
 
@@ -30,7 +30,7 @@ extern mozilla::LogModule* GetEmbedCommonLog(const char* aModule);
 
 #endif // EMBED_LITE_INTERNAL
 
-#else // PR_LOGGING
+#else // MOZ_LOGGING
 
 #define LOGF(...) do {} while (0)
 #define LOGT(...) do {} while (0)
@@ -39,6 +39,6 @@ extern mozilla::LogModule* GetEmbedCommonLog(const char* aModule);
 #define LOGNI(...) do {} while (0)
 #define LOGC(...) do {} while (0)
 
-#endif // PR_LOGGING
+#endif // MOZ_LOGGING
 
 #endif // MOZ_EMBED_LOG_H
