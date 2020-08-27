@@ -194,7 +194,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
 LayerManager *
 nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   if (!mLayerManager) {
     if (!mShutdownObserver) {
@@ -213,7 +213,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
 
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
-    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager);
+    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager.get());
     if (mLayerManager) {
       return mLayerManager;
     }
@@ -222,7 +222,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   }
 
   mLayerManager = new ClientLayerManager(this);
-  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager.get());
 
   return mLayerManager;
 }

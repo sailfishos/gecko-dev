@@ -258,7 +258,7 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
   Unused << aRect;
 
   LOGC("EmbedLiteLayerManager", "destroyed: %d type: %s LayerManager %p this: %p",
-       mOnDestroyCalled, Type(), mLayerManager, this);
+       mOnDestroyCalled, Type(), mLayerManager.get(), this);
 
   if (mOnDestroyCalled) {
     return;
@@ -371,7 +371,7 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
                                                 LayersBackend aBackendHint,
                                                 LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   if (mLayerManager) {
     // This layer manager might be used for painting outside of DoDraw(), so we need
@@ -385,7 +385,7 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
     return mLayerManager;
   }
 
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   // Layer manager can be null here. Sub-class shall handle this.
   return mLayerManager;
