@@ -25,7 +25,11 @@ void ShutdownTileCache();
 }
 namespace embedlite {
 
-static int sWindowCount = 0;
+namespace {
+
+static std::map<uint32_t, EmbedLiteWindowBaseChild*> sWindowChildMap;
+
+} // namespace
 
 EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
   : mId(aId)
@@ -33,20 +37,34 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const 
   , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
 {
+  MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
+  sWindowChildMap[aId] = this;
+
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
 
   mCreateWidgetTask = NewCancelableRunnableMethod("EmbedLiteWindowBaseChild::CreateWidget",
                                                   this,
                                                   &EmbedLiteWindowBaseChild::CreateWidget);
   MessageLoop::current()->PostTask(mCreateWidgetTask.forget());
-  sWindowCount++;
 
   // Make sure gfx platform is initialized and ready to go.
   gfxPlatform::GetPlatform();
 }
 
+EmbedLiteWindowBaseChild *EmbedLiteWindowBaseChild::From(const uint32_t id)
+{
+  std::map<uint32_t, EmbedLiteWindowBaseChild*>::const_iterator it = sWindowChildMap.find(id);
+  if (it != sWindowChildMap.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
 EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
 {
+  MOZ_ASSERT(sWindowChildMap.find(mId) != sWindowChildMap.end());
+  sWindowChildMap.erase(sWindowChildMap.find(mId));
+
   MOZ_COUNT_DTOR(EmbedLiteWindowBaseChild);
 
   if (mCreateWidgetTask) {
@@ -54,8 +72,7 @@ EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
     mCreateWidgetTask = nullptr;
   }
 
-  sWindowCount--;
-  if (sWindowCount == 0) {
+  if (sWindowChildMap.empty()) {
     mozilla::layers::ShutdownTileCache();
   }
 }
@@ -94,7 +111,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetContentOrientation(cons
   LOGT("this:%p", this);
   mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
   if (mWidget) {
-    nsWindow* widget = static_cast<nsWindow*>(mWidget.get());
+    nsWindow* widget = GetWidget();
     widget->SetRotation(mRotation);
     widget->UpdateSize();
   }
@@ -151,7 +168,7 @@ void EmbedLiteWindowBaseChild::CreateWidget()
   }
 
   mWidget = new nsWindow(this);
-  static_cast<nsWindow*>(mWidget.get())->SetRotation(mRotation);
+  GetWidget()->SetRotation(mRotation);
 
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
@@ -164,8 +181,7 @@ void EmbedLiteWindowBaseChild::CreateWidget()
               mBounds,
               &widgetInit              // HandleWidgetEvent
               );
-  static_cast<nsWindow*>(mWidget.get())->UpdateSize();
-
+  GetWidget()->UpdateSize();
   Unused << SendInitialized();
 }
 

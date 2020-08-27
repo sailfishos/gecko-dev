@@ -300,6 +300,27 @@ uint32_t nsWindow::GetUniqueID() const
   return mWindow->GetUniqueID();
 }
 
+int64_t nsWindow::GetRootLayerId() const
+{
+    return mCompositorSession ? mCompositorSession->RootLayerTreeId() : 0;
+}
+
+void nsWindow::SetContentController(mozilla::layers::GeckoContentController *aController)
+{
+  if (mCompositorSession) {
+    mCompositorSession->SetContentController(aController);
+  }
+}
+
+RefPtr<mozilla::layers::IAPZCTreeManager> nsWindow::GetAPZCTreeManager()
+{
+  if (mCompositorSession) {
+    return mAPZC;
+  }
+
+  return nullptr;
+}
+
 nsWindow::~nsWindow()
 {
   LOGT("this: %p", this);
