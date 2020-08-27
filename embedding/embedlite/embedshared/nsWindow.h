@@ -83,6 +83,10 @@ public:
   void RemoveObserver(EmbedLitePuppetWidgetObserver* aObserver);
 
   uint32_t GetUniqueID() const;
+  int64_t GetRootLayerId() const;
+
+  void SetContentController(mozilla::layers::GeckoContentController* aController);
+  RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
 
 protected:
   virtual ~nsWindow() override;

@@ -7,6 +7,7 @@
 #define __DirProvider_h_
 
 #include "nsIDirectoryService.h"
+#include "nsCOMPtr.h"
 
 class DirProvider : public nsIDirectoryServiceProvider2
 {

@@ -21,6 +21,7 @@ namespace embedlite {
 class EmbedContentController;
 class EmbedLiteCompositorBridgeParent;
 class EmbedLiteView;
+class nsWindow;
 
 class EmbedLiteViewBaseParent : public PEmbedLiteViewParent,
                                 public EmbedLiteViewIface,
@@ -108,6 +109,8 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvGetDPI(float *aValue) override;
 
+  mozilla::embedlite::nsWindow *GetWindowWidget() const;
+
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorBridgeParent;
@@ -119,6 +122,7 @@ private:
 
   mozilla::layers::IAPZCTreeManager *GetApzcTreeManager();
 
+  uint32_t mWindowId;
   uint32_t mId;
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
@@ -130,7 +134,6 @@ private:
   MessageLoop* mUILoop;
   int mLastIMEState;
 
-  uint64_t mRootLayerTreeId;
   GLuint mUploadTexture;
 
   RefPtr<mozilla::layers::IAPZCTreeManager> mApzcTreeManager;

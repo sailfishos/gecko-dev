@@ -23,6 +23,8 @@ class EmbedLiteWindowBaseChild : public PEmbedLiteWindowChild
 public:
   EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& id);
 
+  static EmbedLiteWindowBaseChild *From(const uint32_t id);
+
   uint32_t GetUniqueID() const { return mId; }
   nsWindow *GetWidget() const;
   LayoutDeviceIntRect GetSize() const { return mBounds; }

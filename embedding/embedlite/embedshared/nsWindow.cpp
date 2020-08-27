@@ -194,7 +194,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
 LayerManager *
 nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   if (!mLayerManager) {
     if (!mShutdownObserver) {
@@ -213,7 +213,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
 
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
-    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager);
+    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager.get());
     if (mLayerManager) {
       return mLayerManager;
     }
@@ -222,7 +222,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   }
 
   mLayerManager = new ClientLayerManager(this);
-  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager);
+  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager.get());
 
   return mLayerManager;
 }
@@ -298,6 +298,27 @@ uint32_t nsWindow::GetUniqueID() const
 {
   MOZ_ASSERT(mWindow);
   return mWindow->GetUniqueID();
+}
+
+int64_t nsWindow::GetRootLayerId() const
+{
+    return mCompositorSession ? mCompositorSession->RootLayerTreeId() : 0;
+}
+
+void nsWindow::SetContentController(mozilla::layers::GeckoContentController *aController)
+{
+  if (mCompositorSession) {
+    mCompositorSession->SetContentController(aController);
+  }
+}
+
+RefPtr<mozilla::layers::IAPZCTreeManager> nsWindow::GetAPZCTreeManager()
+{
+  if (mCompositorSession) {
+    return mAPZC;
+  }
+
+  return nullptr;
 }
 
 nsWindow::~nsWindow()
