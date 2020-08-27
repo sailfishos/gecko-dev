@@ -1,4 +1,4 @@
-From 73c1b39fc2d7abb5f60079b37ad2e7240c0829af Mon Sep 17 00:00:00 2001
+From cd3231820263fdfa9c25b46e8eb7c4e210310faf Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 28 Feb 2020 11:38:58 +0200
 Subject: [PATCH] [sailfishos][qt] Bring back Qt layer. JB#50505
@@ -23,6 +23,7 @@ Revert "Bug 1286317 - part 1 - remove Qt widget usage from gfx. r=jrmuizel"
 This reverts commit 16ca3223d9d6f1bd8c4dba5ce1d9fbb986895b41.
 
 [sailfishos][gecko] Add define to the iconconverter for preprocessor
+[sailfishos][qt] Fix platform font list configuration. JB#50967
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
@@ -55,8 +56,9 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  dom/xbl/builtin/moz.build                     |    2 +-
  .../embedlite/config/mozconfig.merqtxulrunner |    2 +-
  gfx/2d/2D.h                                   |    4 +-
+ gfx/2d/Factory.cpp                            |    4 +-
  gfx/2d/UnscaledFontFreeType.h                 |    2 +-
- gfx/2d/moz.build                              |    6 +-
+ gfx/2d/moz.build                              |    8 +-
  gfx/cairo/cairo/src/moz.build                 |   12 +
  gfx/gl/moz.build                              |    2 +
  gfx/skia/generate_mozbuild.py                 |    6 +-
@@ -66,13 +68,13 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  gfx/thebes/gfxFT2Fonts.cpp                    |    4 +
  gfx/thebes/gfxFcPlatformFontList.cpp          |    6 +
  gfx/thebes/gfxFont.h                          |    2 +-
- gfx/thebes/gfxPlatform.cpp                    |    7 +
+ gfx/thebes/gfxPlatform.cpp                    |    5 +
  gfx/thebes/gfxQtNativeRenderer.cpp            |   48 +
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
- gfx/thebes/gfxQtPlatform.cpp                  |  175 ++
- gfx/thebes/gfxQtPlatform.h                    |   89 +
+ gfx/thebes/gfxQtPlatform.cpp                  |  185 ++
+ gfx/thebes/gfxQtPlatform.h                    |   91 +
  gfx/thebes/gfxTextRun.cpp                     |    7 +
- gfx/thebes/moz.build                          |   32 +-
+ gfx/thebes/moz.build                          |   30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |    4 +-
  gfx/webrender_bindings/moz.build              |    2 +-
  image/decoders/icon/moz.build                 |    3 +
@@ -148,7 +150,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsWidgetFactory.cpp                 |  159 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 122 files changed, 8489 insertions(+), 54 deletions(-)
+ 123 files changed, 8501 insertions(+), 56 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1065,6 +1067,28 @@ index c2730cf7af28..cbb22c94b779 100644
    static already_AddRefed<ScaledFont> CreateScaledFontForFontconfigFont(
        cairo_scaled_font_t *aScaledFont, FcPattern *aPattern,
        const RefPtr<UnscaledFont> &aUnscaledFont, Float aSize);
+diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
+index 2ad3e765cf0f..b25662d0ea02 100644
+--- a/gfx/2d/Factory.cpp
++++ b/gfx/2d/Factory.cpp
+@@ -33,7 +33,7 @@
+ #include "NativeFontResourceMac.h"
+ #endif
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ #include "ScaledFontFontconfig.h"
+ #include "NativeFontResourceFontconfig.h"
+ #include "UnscaledFontFreeType.h"
+@@ -600,7 +600,7 @@ already_AddRefed<ScaledFont> Factory::CreateScaledFontWithCairo(
+ #endif
+ }
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ already_AddRefed<ScaledFont> Factory::CreateScaledFontForFontconfigFont(
+     cairo_scaled_font_t* aScaledFont, FcPattern* aPattern,
+     const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize) {
 diff --git a/gfx/2d/UnscaledFontFreeType.h b/gfx/2d/UnscaledFontFreeType.h
 index a74e246acc53..d294fee67d9e 100644
 --- a/gfx/2d/UnscaledFontFreeType.h
@@ -1079,7 +1103,7 @@ index a74e246acc53..d294fee67d9e 100644
   public:
    MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(UnscaledFontFontconfig, override)
 diff --git a/gfx/2d/moz.build b/gfx/2d/moz.build
-index 388d242bb6c1..fa89e34d3e9e 100644
+index 388d242bb6c1..5105ae194f7d 100644
 --- a/gfx/2d/moz.build
 +++ b/gfx/2d/moz.build
 @@ -101,7 +101,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'windows':
@@ -1091,6 +1115,15 @@ index 388d242bb6c1..fa89e34d3e9e 100644
      EXPORTS.mozilla.gfx += [
          'UnscaledFontFreeType.h',
      ]
+@@ -109,7 +109,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk3'):
+         'UnscaledFontFreeType.cpp',
+     ]
+ 
+-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
++if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk3', 'qt'):
+     SOURCES += [
+         'NativeFontResourceFontconfig.cpp',
+         'ScaledFontFontconfig.cpp',
 @@ -230,12 +230,12 @@ FINAL_LIBRARY = 'xul'
  for var in ('USE_CAIRO', 'MOZ2D_HAS_MOZ_CAIRO'):
      DEFINES[var] = True
@@ -1281,7 +1314,7 @@ index 8894daf58342..6d6742b60986 100644
  #else
  #define OBLIQUE_SKEW_FACTOR 0.25f
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index e4982686063a..8555c8794dc1 100644
+index e4982686063a..bdd887be5fd4 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -51,6 +51,8 @@
@@ -1302,20 +1335,14 @@ index e4982686063a..8555c8794dc1 100644
  #elif defined(ANDROID)
    gPlatform = new gfxAndroidPlatform;
  #else
-@@ -742,10 +746,13 @@ void gfxPlatform::Init() {
+@@ -742,6 +746,7 @@ void gfxPlatform::Init() {
    gPlatform->ComputeTileSize();
  
    nsresult rv;
 +
-+#if !defined(MOZ_WIDGET_QT)
    rv = gfxPlatformFontList::Init();
    if (NS_FAILED(rv)) {
      MOZ_CRASH("Could not initialize gfxPlatformFontList");
-   }
-+#endif
- 
-   gPlatform->mScreenReferenceSurface = gPlatform->CreateOffscreenSurface(
-       IntSize(1, 1), SurfaceFormat::A8R8G8B8_UINT32);
 diff --git a/gfx/thebes/gfxQtNativeRenderer.cpp b/gfx/thebes/gfxQtNativeRenderer.cpp
 new file mode 100644
 index 000000000000..f9ee28ead37d
@@ -1446,10 +1473,10 @@ index 000000000000..23c138e11fc0
 +#endif /*GFXQTNATIVERENDER_H_*/
 diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
 new file mode 100644
-index 000000000000..c779f095fafc
+index 000000000000..191fa494b903
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.cpp
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,185 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1536,6 +1563,16 @@ index 000000000000..c779f095fafc
 +{
 +    gfxPlatformFontList::PlatformFontList()->UpdateFontList();
 +    return NS_OK;
++}
++
++gfxPlatformFontList *gfxQtPlatform::CreatePlatformFontList()
++{
++  gfxPlatformFontList* list = new gfxFcPlatformFontList();
++  if (NS_SUCCEEDED(list->InitFontList())) {
++    return list;
++  }
++  gfxPlatformFontList::Shutdown();
++  return nullptr;
 +}
 +
 +nsresult
@@ -1627,10 +1664,10 @@ index 000000000000..c779f095fafc
 +}
 diff --git a/gfx/thebes/gfxQtPlatform.h b/gfx/thebes/gfxQtPlatform.h
 new file mode 100644
-index 000000000000..a3ff59a09079
+index 000000000000..928e9a33e123
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.h
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,91 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1667,6 +1704,8 @@ index 000000000000..a3ff59a09079
 +                                 nsTArray<nsString>& aListOfFonts) override;
 +
 +    virtual nsresult UpdateFontList() override;
++
++    virtual gfxPlatformFontList* CreatePlatformFontList() override;
 +
 +    virtual nsresult GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName) override;
 +
@@ -1746,7 +1785,7 @@ index 3757257b5f8e..db3c2a1e0ae8 100644
    gfxPlatformFontList::PlatformFontList()->FindAndAddFamilies(
        aName, &aFamilyList, gfxPlatformFontList::FindFamiliesFlags(0), &mStyle,
 diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
-index 3eaeeedb58f4..f09850385aef 100644
+index 3eaeeedb58f4..b4a48a231258 100644
 --- a/gfx/thebes/moz.build
 +++ b/gfx/thebes/moz.build
 @@ -129,6 +129,32 @@ elif 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
@@ -1791,12 +1830,8 @@ index 3eaeeedb58f4..f09850385aef 100644
      DEFINES['MOZ_ENABLE_FREETYPE'] = True
  
  if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
-@@ -264,10 +290,10 @@ CXXFLAGS += CONFIG['TK_CFLAGS']
- CFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
- CFLAGS += CONFIG['TK_CFLAGS']
- 
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android'):
-+if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'qt'):
+@@ -267,7 +293,7 @@ CFLAGS += CONFIG['TK_CFLAGS']
+ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android'):
      CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
  
 -if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
