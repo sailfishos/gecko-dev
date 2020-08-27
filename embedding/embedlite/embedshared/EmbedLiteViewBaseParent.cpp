@@ -8,6 +8,7 @@
 #include "EmbedLiteView.h"
 #include "EmbedLiteViewBaseParent.h"
 #include "EmbedLiteWindowBaseParent.h"
+#include "nsWindow.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "mozilla/Unused.h"
@@ -23,14 +24,14 @@ namespace mozilla {
 namespace embedlite {
 
 EmbedLiteViewBaseParent::EmbedLiteViewBaseParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
-  : mId(id)
+  : mWindowId(windowId)
+  , mId(id)
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowBaseParent::From(windowId))
   , mCompositor(nullptr)
   , mDPI(-1.0)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
-  , mRootLayerTreeId(0)
   , mUploadTexture(0)
   , mApzcTreeManager(nullptr)
   , mContentController(new EmbedContentController(this, mUILoop))
@@ -64,9 +65,8 @@ EmbedLiteViewBaseParent::~EmbedLiteViewBaseParent()
 void
 EmbedLiteViewBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 {
-  LOGT("reason: %i layer id: %d", aWhy, mRootLayerTreeId);
+  LOGT("reason: %i", aWhy);
   mContentController = nullptr;
-  mRootLayerTreeId = 0;
 }
 
 void
@@ -86,21 +86,24 @@ EmbedLiteViewBaseParent::UpdateScrollController()
   }
 
   if (mCompositor) {
-    mRootLayerTreeId = mCompositor->RootLayerTreeId();
     if ((mDPI > 0) && GetApzcTreeManager()) {
       GetApzcTreeManager()->SetDPI(mDPI);
     }
-    CompositorBridgeParent::SetControllerForLayerTree(mRootLayerTreeId, mContentController);
+
+    nsWindow *window = GetWindowWidget();
+    if (window) {
+      window->SetContentController(mContentController);
+    }
   }
 }
 
 mozilla::layers::IAPZCTreeManager *EmbedLiteViewBaseParent::GetApzcTreeManager()
 {
-#if 0
-  if (!mApzcTreeManager && mCompositor) {
-    mApzcTreeManager = CompositorBridgeParent::GetAPZCTreeManager(mRootLayerTreeId);
+  nsWindow *window = GetWindowWidget();
+
+  if (!mApzcTreeManager && mCompositor && window) {
+    mApzcTreeManager = window->GetAPZCTreeManager();
   }
-#endif
   return mApzcTreeManager.get();
 }
 
@@ -234,9 +237,12 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvUpdateZoomConstraints(const
                                                                            const ViewID &aViewId,
                                                                            const Maybe<ZoomConstraints> &aConstraints)
 {
-  LOGT("manager: %p layer id: %d", GetApzcTreeManager(), mRootLayerTreeId);
-  if (GetApzcTreeManager()) {
-    GetApzcTreeManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId),
+  LOGT("manager: %p", GetApzcTreeManager());
+  nsWindow *window = GetWindowWidget();
+  if (GetApzcTreeManager() && window) {
+    GetApzcTreeManager()->UpdateZoomConstraints(ScrollableLayerGuid(window->GetRootLayerId(),
+                                                                    aPresShellId,
+                                                                    aViewId),
                                                 aConstraints);
   }
   return IPC_OK();
@@ -247,8 +253,12 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvZoomToRect(const uint32_t &
                                                                 const CSSRect &aRect)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  if (GetApzcTreeManager()) {
-    GetApzcTreeManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
+  nsWindow *window = GetWindowWidget();
+  if (GetApzcTreeManager() && window) {
+    GetApzcTreeManager()->ZoomToRect(ScrollableLayerGuid(window->GetRootLayerId(),
+                                                         aPresShellId,
+                                                         aViewId),
+                                     aRect);
   }
   return IPC_OK();
 }
@@ -257,7 +267,8 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvContentReceivedInputBlock(c
                                                                                const uint64_t &aInputBlockId,
                                                                                const bool &aPreventDefault)
 {
-  if (aGuid.mLayersId != mRootLayerTreeId) {
+  nsWindow *window = GetWindowWidget();
+  if (window && (aGuid.mLayersId != window->GetRootLayerId())) {
     // Guard against bad data from hijacked child processes
     NS_ERROR("Unexpected layers id in RecvContentReceivedInputBlock; dropping message...");
     return IPC_OK();
@@ -329,8 +340,10 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvSetTargetAPZC(const uint64_
   LOGT("view destoyed: %d", mViewAPIDestroyed);
   NS_ENSURE_TRUE(!mViewAPIDestroyed, IPC_OK());
 
+  nsWindow *window = GetWindowWidget();
+
   for (size_t i = 0; i < aTargets.Length(); i++) {
-    if (aTargets[i].mLayersId != mRootLayerTreeId) {
+    if (window && (aTargets[i].mLayersId != window->GetRootLayerId())) {
       // Guard against bad data from hijacked child processes
       NS_ERROR("Unexpected layers id in SetTargetAPZC; dropping message...");
       return IPC_OK();
@@ -388,6 +401,13 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvGetDPI(float *aValue)
 {
   *aValue = mDPI;
   return IPC_OK();
+}
+
+mozilla::embedlite::nsWindow *EmbedLiteViewBaseParent::GetWindowWidget() const
+{
+  // Use this with care!! Only CompositorSession (and related bits)
+  // may be tampered via this.
+  return mozilla::embedlite::EmbedLiteWindowBaseChild::From(mWindowId)->GetWidget();
 }
 
 void
