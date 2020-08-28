@@ -2480,6 +2480,27 @@ then
 fi
 AC_SUBST(MOZ_ENABLE_DBUS)
 
+dnl ========================================================
+dnl dconf support
+dnl ========================================================
+
+if test "$MOZ_ENABLE_GTK" -o "$MOZ_ENABLE_QT"
+then
+    MOZ_ENABLE_DCONF=1
+    MOZ_ARG_DISABLE_BOOL(dconf,
+        [  --disable-dconf          Disable dconf support ],
+           MOZ_ENABLE_DCONF=,
+           MOZ_ENABLE_DCONF=1)
+    if test -n "$MOZ_ENABLE_DCONF"
+    then
+        PKG_CHECK_MODULES(MOZ_DCONF, dconf,
+            MOZ_ENABLE_DCONF=1,
+            MOZ_ENABLE_DCONF=)
+        AC_DEFINE(MOZ_ENABLE_DCONF)
+  fi
+fi
+AC_SUBST(MOZ_ENABLE_DCONF)
+
 dnl =========================================================
 dnl = Whether to exclude hyphenations files in the build
 dnl =========================================================

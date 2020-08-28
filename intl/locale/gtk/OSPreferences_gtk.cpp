@@ -5,6 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <locale.h>
+
+#if MOZ_ENABLE_DCONF
+/* FIXME: there just has to be better way to deal with the
+ *        build system defaulting to every function - including
+ *        ones from external libraries like libdconf - having
+ *        visibility=hidden type ...
+ */
+# pragma GCC visibility push(default)
+# include <dconf.h>
+# pragma GCC visibility pop
+#endif
+
 #include "OSPreferences.h"
 #include "dlfcn.h"
 #include "glib.h"
@@ -43,6 +55,29 @@ bool OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList) {
   return false;
 }
 
+#if MOZ_ENABLE_DCONF
+static int HourCycleSailfish() {
+  int returnValue = 0;
+  DConfClient *dconfClient;
+  if ((dconfClient = dconf_client_new())) {
+    static const char dconfKey[] = "/sailfish/i18n/lc_timeformat24h";
+    GVariant *valueVariant;
+    if ((valueVariant = dconf_client_read(dconfClient, dconfKey))) {
+      const gchar *stringValue;
+      if ((stringValue = g_variant_get_string(valueVariant, nullptr))) {
+        if (!strncmp(stringValue, "24", 2))
+          returnValue = 24;
+        else if (!strncmp(stringValue, "12", 2))
+          returnValue = 12;
+      }
+      g_variant_unref(valueVariant);
+    }
+    g_object_unref(dconfClient);
+  }
+  return returnValue;
+}
+#endif
+
 /*
  * This looks up into gtk settings for hourCycle format.
  *
@@ -62,6 +97,11 @@ static get_value_fn_t FindGetValueFunction() {
 
 static int HourCycle() {
   int rval = 0;
+
+#if MOZ_ENABLE_DCONF
+  if ((rval = HourCycleSailfish()))
+    return rval;
+#endif
 
   const char* schema;
   const char* key;

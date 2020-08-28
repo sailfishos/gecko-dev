@@ -177,6 +177,7 @@ def old_configure_options(*options):
     '--enable-cpp-rtti',
     '--enable-crashreporter',
     '--enable-dbus',
+    '--enable-dconf',
     '--enable-debug-js-modules',
     '--enable-directshow',
     '--enable-dtrace',
