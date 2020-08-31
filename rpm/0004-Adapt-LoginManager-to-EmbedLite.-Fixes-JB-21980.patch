@@ -1,12 +1,22 @@
-From bf2f304dd52156dba371e9e600e7b75747b2cefa Mon Sep 17 00:00:00 2001
+From 5699e5d662d13475a5602b04f8b2779a503ccf79 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Wed, 28 Oct 2015 16:07:36 +0200
 Subject: [PATCH] Adapt LoginManager to EmbedLite. Fixes JB#21980
 
 [sailfishos][embedlite] Drop nsLoginManagerPrompter. JB#50052
 
+[sailfishos][embedlite] Fix nsILoginManagerPrompter initialization. JB#50475
+This is a partial revert of SHA1 f1547c7e176986273993d58c85845b29631fe4f8
+
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ dom/ipc/TabChild.h                                 | 14 +++++++++-----
+ embedding/embedlite/installer/package-manifest.in  |  1 -
+ .../components/passwordmgr/LoginManagerParent.jsm  |  9 +++++++--
+ .../components/passwordmgr/passwordmgr.manifest    |  6 +-----
+ 4 files changed, 17 insertions(+), 13 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
 index 716460878175..3fe484ef4d39 100644
@@ -47,7 +57,7 @@ index 9bd22c12055e..6f959140b975 100644
  @RESPATH@/components/crypto-SDR.js
  @RESPATH@/components/pluginGlue.manifest
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-index e472fb61c70d..86ac329d5743 100644
+index e472fb61c70d..30df6922f4f4 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
 +++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
 @@ -89,6 +89,8 @@ var LoginManagerParent = {
@@ -59,6 +69,20 @@ index e472fb61c70d..86ac329d5743 100644
      let data = msg.data;
      switch (msg.name) {
        case "RemoteLogins:findLogins": {
+@@ -324,8 +326,11 @@ var LoginManagerParent = {
+     function getPrompter() {
+       var prompterSvc = Cc["@mozilla.org/login-manager/prompter;1"].
+                         createInstance(Ci.nsILoginManagerPrompter);
+-      prompterSvc.init(target.ownerDocument.defaultView);
+-      prompterSvc.browser = target;
++      prompterSvc.init(target.isRemoteBrowser ?
++                          target.ownerDocument.defaultView :
++                          target.contentWindow);
++      if (target.isRemoteBrowser)
++        prompterSvc.browser = target;
+       prompterSvc.opener = openerTopWindow;
+       return prompterSvc;
+     }
 diff --git a/toolkit/components/passwordmgr/passwordmgr.manifest b/toolkit/components/passwordmgr/passwordmgr.manifest
 index 72e9ccffb883..59476fc09007 100644
 --- a/toolkit/components/passwordmgr/passwordmgr.manifest
@@ -81,5 +105,5 @@ index 72e9ccffb883..59476fc09007 100644
 \ No newline at end of file
 +contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
 -- 
-2.26.2
+2.17.1
 
