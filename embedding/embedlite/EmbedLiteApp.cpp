@@ -31,6 +31,8 @@
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteAppProcessParent.h"
 
+#include "GeckoProfiler.h"
+
 namespace mozilla {
 namespace startup {
 extern bool sIsEmbedlite;
@@ -159,6 +161,9 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
   LOGT();
   NS_ASSERTION(aApp->mState == STARTING, "Wrong timing");
   if (aApp->mEmbedType == EMBED_THREAD) {
+    char aLocal;
+    profiler_init(&aLocal);
+
     if (!aApp->mListener ||
         !aApp->mListener->ExecuteChildThread()) {
       // If toolkit hasn't started a child thread we have to create the thread on our own
@@ -280,6 +285,7 @@ EmbedLiteApp::StopChildThread()
 {
   NS_ENSURE_TRUE(mEmbedType == EMBED_THREAD, false);
   LOGT("mUILoop:%p, current:%p", mUILoop, MessageLoop::current());
+  profiler_shutdown();
 
   if (!mUILoop || !MessageLoop::current() ||
       mUILoop == MessageLoop::current()) {
