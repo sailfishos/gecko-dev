@@ -4,10 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
 #include <QPrinter>
-#endif
 #include <QDebug>
 #include "nsPrintSettingsQt.h"
 #include "nsIFile.h"
@@ -17,11 +14,8 @@ NS_IMPL_ISUPPORTS_INHERITED(nsPrintSettingsQt,
                             nsPrintSettings,
                             nsPrintSettingsQt)
 
-nsPrintSettingsQt::nsPrintSettingsQt()
-// This will pull in Qt Widgets and we don't want those
-#if 0
-    : mQPrinter(new QPrinter())
-#endif
+nsPrintSettingsQt::nsPrintSettingsQt():
+    mQPrinter(new QPrinter())
 {
 }
 
@@ -30,11 +24,8 @@ nsPrintSettingsQt::~nsPrintSettingsQt()
     //smart pointer should take care of cleanup
 }
 
-nsPrintSettingsQt::nsPrintSettingsQt(const nsPrintSettingsQt& aPS)
-// This will pull in Qt Widgets and we don't want those
-#if 0
-    : mQPrinter(aPS.mQPrinter)
-#endif
+nsPrintSettingsQt::nsPrintSettingsQt(const nsPrintSettingsQt& aPS):
+    mQPrinter(aPS.mQPrinter)
 {
 }
 
@@ -46,10 +37,7 @@ nsPrintSettingsQt::operator=(const nsPrintSettingsQt& rhs)
     }
 
     nsPrintSettings::operator=(rhs);
-// This will pull in Qt Widgets and we don't want those
-#if 0
     mQPrinter = rhs.mQPrinter;
-#endif
     return *this;
 }
 
@@ -77,8 +65,6 @@ nsPrintSettingsQt::_Assign(nsIPrintSettings* aPS)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintRange(int16_t* aPrintRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPrintRange);
 
     QPrinter::PrintRange range = mQPrinter->printRange();
@@ -91,16 +77,11 @@ nsPrintSettingsQt::GetPrintRange(int16_t* aPrintRange)
     }
 
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP 
 nsPrintSettingsQt::SetPrintRange(int16_t aPrintRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     if (aPrintRange == kRangeSelection) {
         mQPrinter->setPrintRange(QPrinter::Selection);
     } else if (aPrintRange == kRangeSpecifiedPageRange) {
@@ -109,70 +90,45 @@ nsPrintSettingsQt::SetPrintRange(int16_t aPrintRange)
         mQPrinter->setPrintRange(QPrinter::AllPages);
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetStartPageRange(int32_t* aStartPageRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aStartPageRange);
     int32_t start = mQPrinter->fromPage();
     *aStartPageRange = start;
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetStartPageRange(int32_t aStartPageRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     int32_t endRange = mQPrinter->toPage();
     mQPrinter->setFromTo(aStartPageRange, endRange);
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetEndPageRange(int32_t* aEndPageRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aEndPageRange);
     int32_t end = mQPrinter->toPage();
     *aEndPageRange = end;
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetEndPageRange(int32_t aEndPageRange)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     int32_t startRange = mQPrinter->fromPage();
     mQPrinter->setFromTo(startRange, aEndPageRange);
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintReversed(bool* aPrintReversed)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPrintReversed);
     if (mQPrinter->pageOrder() == QPrinter::LastPageFirst) {
         *aPrintReversed = true;
@@ -180,32 +136,22 @@ nsPrintSettingsQt::GetPrintReversed(bool* aPrintReversed)
         *aPrintReversed = false;
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrintReversed(bool aPrintReversed)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     if (aPrintReversed) {
         mQPrinter->setPageOrder(QPrinter::LastPageFirst);
     } else {
         mQPrinter->setPageOrder(QPrinter::FirstPageFirst);
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPrintInColor(bool* aPrintInColor)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPrintInColor);
     if (mQPrinter->colorMode() == QPrinter::Color) {
         *aPrintInColor = true;
@@ -213,31 +159,21 @@ nsPrintSettingsQt::GetPrintInColor(bool* aPrintInColor)
         *aPrintInColor = false;
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrintInColor(bool aPrintInColor)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     if (aPrintInColor) {
         mQPrinter->setColorMode(QPrinter::Color);
     } else {
         mQPrinter->setColorMode(QPrinter::GrayScale);
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetOrientation(int32_t* aOrientation)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aOrientation);
     QPrinter::Orientation orientation = mQPrinter->orientation();
     if (orientation == QPrinter::Landscape) {
@@ -246,47 +182,32 @@ nsPrintSettingsQt::GetOrientation(int32_t* aOrientation)
         *aOrientation = kPortraitOrientation;
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetOrientation(int32_t aOrientation)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     if (aOrientation == kLandscapeOrientation) {
         mQPrinter->setOrientation(QPrinter::Landscape);
     } else {
         mQPrinter->setOrientation(QPrinter::Portrait);
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetToFileName(nsAString &aToFileName)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QString filename;
     filename = mQPrinter->outputFileName();
     *aToFileName = ToNewUnicode(
             nsDependentString((char16_t*)filename.data()));
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     nsCOMPtr<nsIFile> file;
     nsresult rv = NS_NewLocalFile(aToFileName, true,
                                 getter_AddRefs(file));
@@ -295,61 +216,38 @@ nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
     QString filename((const QChar*)aToFileName, NS_strlen(aToFileName));
     mQPrinter->setOutputFileName(filename);
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPrinterName(nsAString &aPrinter)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPrinter);
     *aPrinter = ToNewUnicode(nsDependentString(
                 (const char16_t*)mQPrinter->printerName().constData()));
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrinterName(const nsAString &aPrinter)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QString printername((const QChar*)aPrinter, NS_strlen(aPrinter));
     mQPrinter->setPrinterName(printername);
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetNumCopies(int32_t* aNumCopies)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aNumCopies);
     *aNumCopies = mQPrinter->numCopies();
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetNumCopies(int32_t aNumCopies)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     mQPrinter->setNumCopies(aNumCopies);
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
@@ -377,8 +275,6 @@ static const char* const indexToPaperName[] =
   "C5E", "Comm10E", "DLE", "Folio", "Ledger", "Tabloid"
 };
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
 static const QPrinter::PageSize indexToQtPaperEnum[] =
 {
     QPrinter::A4, QPrinter::B5, QPrinter::Letter, QPrinter::Legal,
@@ -389,27 +285,19 @@ static const QPrinter::PageSize indexToQtPaperEnum[] =
     QPrinter::C5E, QPrinter::Comm10E, QPrinter::DLE, QPrinter::Folio,
     QPrinter::Ledger, QPrinter::Tabloid
 };
-#endif
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperName(nsAString &aPaperName)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QPrinter::PaperSize size = mQPrinter->paperSize();
     QString name(indexToPaperName[size]);
     *aPaperName = ToNewUnicode(nsDependentString((const char16_t*)name.constData()));
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QString ref((QChar*)aPaperName, NS_strlen(aPaperName));
     for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
     {
@@ -419,13 +307,8 @@ nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
         }
     }
     return NS_ERROR_FAILURE;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
 QPrinter::Unit GetQtUnit(int16_t aGeckoUnit)
 {
     if (aGeckoUnit == nsIPrintSettings::kPaperSizeMillimeters) {
@@ -434,10 +317,7 @@ QPrinter::Unit GetQtUnit(int16_t aGeckoUnit)
         return QPrinter::Inch;
     }
 }
-#endif
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
 #define SETUNWRITEABLEMARGIN\
     mQPrinter->setPageMargins(\
             NS_TWIPS_TO_INCHES(mUnwriteableMargin.left),\
@@ -446,8 +326,6 @@ QPrinter::Unit GetQtUnit(int16_t aGeckoUnit)
             NS_TWIPS_TO_INCHES(mUnwriteableMargin.bottom),\
             QPrinter::Inch);
 #else
-#define SETUNWRITEABLEMARGIN
-#endif
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin)
@@ -492,57 +370,37 @@ nsPrintSettingsQt::SetUnwriteableMarginRight(double aUnwriteableMarginRight)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperWidth(double* aPaperWidth)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPaperWidth);
     QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
     *aPaperWidth = papersize.width();
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperWidth(double aPaperWidth)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
     papersize.setWidth(aPaperWidth);
     mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPaperHeight(double* aPaperHeight)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     NS_ENSURE_ARG_POINTER(aPaperHeight);
     QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
     *aPaperHeight = papersize.height();
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperHeight(double aPaperHeight)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QSizeF papersize = mQPrinter->paperSize(GetQtUnit(mPaperSizeUnit));
     papersize.setHeight(aPaperHeight);
     mQPrinter->setPaperSize(papersize, GetQtUnit(mPaperSizeUnit));
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 
 NS_IMETHODIMP
@@ -555,8 +413,6 @@ nsPrintSettingsQt::SetPaperSizeUnit(int16_t aPaperSizeUnit)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetEffectivePageSize(double* aWidth, double* aHeight)
 {
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QSizeF papersize = mQPrinter->paperSize(QPrinter::Inch);
     if (mQPrinter->orientation() == QPrinter::Landscape) {
         *aWidth  = NS_INCHES_TO_INT_TWIPS(papersize.height());
@@ -566,8 +422,5 @@ nsPrintSettingsQt::GetEffectivePageSize(double* aWidth, double* aHeight)
         *aHeight = NS_INCHES_TO_INT_TWIPS(papersize.height());
     }
     return NS_OK;
-#else
-    return NS_ERROR_NOT_IMPLEMENTED;
-#endif
 }
 

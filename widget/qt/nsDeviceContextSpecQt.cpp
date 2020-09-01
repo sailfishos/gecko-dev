@@ -6,10 +6,7 @@
 
 #include <QTemporaryFile>
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
 #include <QPrinterInfo>
-#endif
 
 #define SET_PRINTER_FEATURES_VIA_PREFS 1
 #define PRINTERFEATURES_PREF "print.tmp.printerfeatures"
@@ -211,8 +208,6 @@ NS_IMETHODIMP nsPrinterEnumeratorQt::GetPrinterNameList(
     *aPrinterNameList = nullptr;
 
     return NS_ERROR_NOT_AVAILABLE;
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QList<QPrinterInfo> qprinters = QPrinterInfo::availablePrinters();
     if (qprinters.size() == 0)
         return NS_ERROR_NOT_AVAILABLE;
@@ -227,22 +222,18 @@ NS_IMETHODIMP nsPrinterEnumeratorQt::GetPrinterNameList(
     }
 
     return NS_NewAdoptingStringEnumerator(aPrinterNameList, printers);
-#endif
 }
 
 NS_IMETHODIMP nsPrinterEnumeratorQt::GetDefaultPrinterName(nsAString &aDefaultPrinterName)
 {
     DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::GetDefaultPrinterName()\n"));
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QString defprinter = QPrinterInfo::defaultPrinter().printerName();
     *aDefaultPrinterName = ToNewUnicode(nsDependentString(
         (const char16_t*)defprinter.constData()));
 
     DO_PR_DEBUG_LOG(("GetDefaultPrinterName(): default printer='%s'.\n",
         NS_ConvertUTF16toUTF8(*aDefaultPrinterName).get()));
-#endif
     return NS_OK;
 }
 

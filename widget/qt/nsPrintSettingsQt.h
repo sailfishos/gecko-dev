@@ -78,10 +78,7 @@ protected:
     virtual nsresult _Clone(nsIPrintSettings** _retval) override;
     virtual nsresult _Assign(nsIPrintSettings* aPS) override;
 
-// This will pull in Qt Widgets and we don't want those
-#if 0
     QSharedPointer<QPrinter> mQPrinter;
-#endif
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPrintSettingsQt, NS_PRINTSETTINGSQT_IID)
