@@ -197,8 +197,8 @@ nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
                                 getter_AddRefs(file));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    QString filename((const QChar*)aToFileName.get(), aToFileName.Length());
-    mFilename = filename;
+    NS_ConvertUTF16toUTF8 fileNameCStr(aToFileName);
+    mFilename = QString((const QChar*)fileNameCStr.get());
 
     return NS_OK;
 }
@@ -206,17 +206,15 @@ nsPrintSettingsQt::SetToFileName(const nsAString &aToFileName)
 NS_IMETHODIMP
 nsPrintSettingsQt::GetPrinterName(nsAString &aPrinter)
 {
-    NS_ENSURE_ARG_POINTER(aPrinter);
     aPrinter = nsDependentString((const char16_t*)mPrinterName.constData());
-
     return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPrinterName(const nsAString &aPrinter)
 {
-    QString printername((const QChar*)aPrinter.get(), aPrinter.Length());
-    mPrinterName = printername;
+    NS_ConvertUTF16toUTF8 printer(aPrinter);
+    mPrinterName = QString((const QChar*)printer.get());
     return NS_OK;
 }
 
@@ -287,7 +285,8 @@ nsPrintSettingsQt::GetPaperName(nsAString &aPaperName)
 NS_IMETHODIMP
 nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
 {
-    QString ref((QChar*)aPaperName, NS_strlen(aPaperName));
+    NS_ConvertUTF16toUTF8 paperName(aPaperName);
+    QString ref((QChar*)paperName.get());
     for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
     {
         if (ref == QString(indexToPaperName[i])) {

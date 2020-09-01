@@ -214,13 +214,6 @@ NS_IMETHODIMP nsPrinterEnumeratorQt::GetPrinterNameList(
 NS_IMETHODIMP nsPrinterEnumeratorQt::GetDefaultPrinterName(nsAString &aDefaultPrinterName)
 {
     DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::GetDefaultPrinterName()\n"));
-
-    QString defprinter;
-    *aDefaultPrinterName = ToNewUnicode(nsDependentString(
-        (const char16_t*)defprinter.constData()));
-
-    DO_PR_DEBUG_LOG(("GetDefaultPrinterName(): default printer='%s'.\n",
-        NS_ConvertUTF16toUTF8(*aDefaultPrinterName).get()));
     return NS_OK;
 }
 
