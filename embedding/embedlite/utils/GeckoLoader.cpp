@@ -18,6 +18,7 @@
 
 // XRE_ Functions
 #include "nsXULAppAPI.h"
+#include "nsXREDirProvider.h"
 
 #if defined(XP_WIN)
 #include <windows.h>
@@ -207,6 +208,8 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     LOGE("XRE_InitEmbedding2 failed.");
     return false;
   }
+  // XRE_InitEmbedding2 creates and sets global nsXREDirProvider
+  nsXREDirProvider::GetSingleton()->InitializeUserPrefs();
 
   if (aProfilePath) {
     // initialize profile:
