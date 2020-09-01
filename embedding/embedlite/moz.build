@@ -104,6 +104,7 @@ LOCAL_INCLUDES += [
     '/gfx/layers/apz/util',
     '/hal',
     '/js/xpconnect/src',
+    '/toolkit/xre',
     '/widget',
     '/xpcom/base',
     '/xpcom/build',
