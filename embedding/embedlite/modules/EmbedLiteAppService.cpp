@@ -225,24 +225,6 @@ EmbedLiteAppService::HandleAsyncMessage(const char* aMessage, const nsString& aD
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::AddContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
-{
-  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->AddGeckoContentListener(listener);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppService::RemoveContentListener(uint32_t aWinId, EmbedLiteContentController* listener)
-{
-  EmbedLiteViewChildIface* view = sGetViewById(aWinId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->RemoveGeckoContentListener(listener);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidth, float aHeight)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aWinId);
