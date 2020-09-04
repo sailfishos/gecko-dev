@@ -12,7 +12,6 @@ class nsIWebBrowserChrome;
 class nsIWebBrowser;
 namespace mozilla {
 namespace embedlite {
-class EmbedLiteContentController;
 class EmbedLiteViewChildIface
 {
 public:
@@ -70,8 +69,6 @@ public:
   virtual nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome) = 0;
   virtual nsresult GetBrowser(nsIWebBrowser** outBrowser) = 0;
   virtual uint64_t GetOuterID() = 0;
-  virtual void AddGeckoContentListener(EmbedLiteContentController* listener) = 0;
-  virtual void RemoveGeckoContentListener(EmbedLiteContentController* listener) = 0;
 
   virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) = 0;
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString& aMessage, const nsString& aData) = 0;

@@ -30,7 +30,6 @@ EXPORTS.mozilla.embedlite += [
     'EmbedInputData.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
-    'EmbedLiteContentController.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'EmbedLiteWindow.h',
