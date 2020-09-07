@@ -8,7 +8,7 @@ XPIDL_SOURCES += [
     'nsIEmbedLiteHistory.idl',
 ]
 
-XPIDL_MODULE = 'browsercomps'
+XPIDL_MODULE = 'embedLite'
 
 SOURCES += [
     'EmbedHistoryListener.cpp',
