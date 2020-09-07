@@ -5,7 +5,7 @@
 
 CONFIGURE_SUBST_FILES += ['installer/Makefile']
 
-DIRS += ['tests']
+DIRS += ['components', 'tests']
 
 JS_PREFERENCE_FILES += [
      'embedding.js',
