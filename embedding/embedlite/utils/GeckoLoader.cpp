@@ -136,10 +136,6 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     LOGE("Unable to create nsIFile for appdir: %s", selfPath.c_str());
     return false;
   }
-  nsAutoString xuldirPath;
-  xuldir->GetPath(xuldirPath);
-
-  printf("Loaded xulDir:%ls, appDir:%s\n", xuldirPath.get(), selfPath.c_str());
 
   // setup profile dir
   if (aProfilePath) {
