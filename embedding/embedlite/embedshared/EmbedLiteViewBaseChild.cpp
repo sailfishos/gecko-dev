@@ -132,7 +132,6 @@ NS_IMETHODIMP EmbedLiteViewBaseChild::QueryInterface(REFNSIID aIID, void **aInst
 EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
 {
   LOGT();
-  NS_ASSERTION(mControllerListeners.IsEmpty(), "Controller listeners list is not empty...");
   if (mWindowObserverRegistered) {
     mWindow->GetWidget()->RemoveObserver(this);
   }
@@ -146,13 +145,11 @@ EmbedLiteViewBaseChild::ActorDestroy(ActorDestroyReason aWhy)
   if (mHelper) {
     mHelper->Disconnect();
   }
-  mControllerListeners.Clear();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvDestroy()
 {
   LOGT("destroy");
-  mControllerListeners.Clear();
   EmbedLiteAppService::AppService()->UnregisterView(mId);
   if (mHelper)
     mHelper->Unload();
@@ -750,27 +747,12 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvRemoveMessageListeners(Infal
   return IPC_OK();
 }
 
-void
-EmbedLiteViewBaseChild::AddGeckoContentListener(EmbedLiteContentController* listener)
-{
-  mControllerListeners.AppendElement(listener);
-}
-
-void
-EmbedLiteViewBaseChild::RemoveGeckoContentListener(EmbedLiteContentController* listener)
-{
-  mControllerListeners.RemoveElement(listener);
-}
-
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
                                                                       const gfxRect &contentRect,
                                                                       const gfxSize &scrollSize)
 {
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleScrollEvent(isRootScrollFrame, rect, size);
-  }
 
   if (sPostAZPCAsJson.scroll) {
     nsString data;
@@ -874,10 +856,6 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleSingleTap(const Layout
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleSingleTap(cssPoint, aModifiers);
-  }
-
   if (sPostAZPCAsJson.singleTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
@@ -901,10 +879,6 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleLongTap(const LayoutDe
   bool ok = false;
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
-
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->HandleLongTap(cssPoint, 0, aInputBlockId);
-  }
 
   if (sPostAZPCAsJson.longTap) {
     nsString data;

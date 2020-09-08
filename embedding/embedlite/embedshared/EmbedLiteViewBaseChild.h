@@ -28,7 +28,6 @@ class APZEventState;
 
 namespace embedlite {
 
-class EmbedLiteContentController;
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
@@ -86,9 +85,6 @@ public:
 /*---------TabChildIface---------------*/
 
   uint64_t GetOuterID() { return mOuterId; }
-
-  void AddGeckoContentListener(EmbedLiteContentController* listener);
-  void RemoveGeckoContentListener(EmbedLiteContentController* listener);
 
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
@@ -238,7 +234,6 @@ private:
   uint64_t mPendingTouchPreventedBlockId;
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
-  nsTArray<EmbedLiteContentController*> mControllerListeners;
 
   RefPtr<APZEventState> mAPZEventState;
   mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;

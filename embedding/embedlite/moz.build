@@ -5,7 +5,7 @@
 
 CONFIGURE_SUBST_FILES += ['installer/Makefile']
 
-DIRS += ['tests']
+DIRS += ['components', 'tests']
 
 JS_PREFERENCE_FILES += [
      'embedding.js',
@@ -30,7 +30,6 @@ EXPORTS.mozilla.embedlite += [
     'EmbedInputData.h',
     'EmbedLiteAPI.h',
     'EmbedLiteApp.h',
-    'EmbedLiteContentController.h',
     'EmbedLiteMessagePump.h',
     'EmbedLiteView.h',
     'EmbedLiteWindow.h',
