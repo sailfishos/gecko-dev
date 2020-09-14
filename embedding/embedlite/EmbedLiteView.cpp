@@ -205,7 +205,7 @@ void EmbedLiteView::AddMessageListeners(const std::vector<std::string> &aMessage
 
   nsTArray<nsString> messages;
   for (const auto &message : aMessageNames) {
-      messages.AppendElement((char16_t *)message.c_str());
+      messages.AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(message.c_str())));
   }
 
   Unused << mViewParent->SendAddMessageListeners(messages);
@@ -216,7 +216,7 @@ void EmbedLiteView::RemoveMessageListeners(const std::vector<std::string> &aMess
   NS_ENSURE_TRUE(mViewParent, );
   nsTArray<nsString> messages;
   for (const auto &message : aMessageNames) {
-      messages.AppendElement((char16_t *)message.c_str());
+      messages.AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(message.c_str())));
   }
 
   Unused << mViewParent->SendRemoveMessageListeners(messages);
