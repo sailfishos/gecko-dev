@@ -27,6 +27,7 @@
 #include "EmbedLiteWindow.h"
 #include "nsXULAppAPI.h"
 #include "EmbedLiteMessagePump.h"
+#include "EmbedLiteSecurity.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteAppProcessParent.h"
@@ -484,6 +485,15 @@ EmbedLiteApp::CreateWindow(int width, int height)
   return window;
 }
 
+EmbedLiteSecurity* EmbedLiteApp::CreateSecurity(const char *aStatus, unsigned int aState) const
+{
+    LOGT();
+    NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
+
+    EmbedLiteSecurity * embedSecurity = new EmbedLiteSecurity(aStatus, aState);
+    return embedSecurity;
+}
+
 EmbedLiteView* EmbedLiteApp::GetViewByID(uint32_t id)
 {
   std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
@@ -595,6 +605,14 @@ void EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
     }
   }
   MOZ_ASSERT(false, "Invalid EmbedLiteWindow pointer!");
+}
+
+void EmbedLiteApp::DestroySecurity(EmbedLiteSecurity* aSecurity) const
+{
+    LOGT();
+    NS_ASSERTION(mState == INITIALIZED, "Wrong timing");
+
+    delete aSecurity;
 }
 
 void
