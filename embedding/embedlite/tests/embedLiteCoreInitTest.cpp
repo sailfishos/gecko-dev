@@ -7,6 +7,25 @@
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "qmessagepump.h"
 
+// Test building with headers used by qtmozembed
+#include <mozilla/embedlite/EmbedLiteWindow.h>
+#include <mozilla/embedlite/EmbedInputData.h>
+#include <mozilla/gfx/Tools.h>
+#include <mozilla/TimeStamp.h>
+#include <mozilla/embedlite/EmbedLiteMessagePump.h>
+#include <mozilla/embedlite/EmbedLiteView.h>
+#include <mozilla-config.h>
+#include <nsPoint.h>
+#include <nsIWebProgressListener.h>
+#include <nsISerializationHelper.h>
+#include <nsServiceManagerUtils.h>
+#include <nsISSLStatus.h>
+#include <nsIX509Cert.h>
+#include <qmessagepump.h>
+#include <nsDebug.h>
+#include <nsIDOMWindowUtils.h>
+#include <nscore.h>
+
 #ifdef MOZ_WIDGET_QT
 #include <QGuiApplication>
 #endif
