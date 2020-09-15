@@ -54,6 +54,7 @@ child:
     async SetThrottlePainting(bool aThrottle);
     async SetVirtualKeyboardHeight(int aHeight);
     async SetMargins(int top, int right, int bottom, int left);
+    async SetDynamicToolbarHeight(int height);
     async ScheduleUpdate();
     async SetHttpUserAgent(nsString aHttpUserAgent);
     async SuspendTimeouts();
@@ -91,6 +92,7 @@ parent:
     async Initialized();
     async Destroyed();
     async MarginsChanged(int top, int right, int bottom, int left);
+    async DynamicToolbarHeightChanged(int height);
     async __delete__();
 
     async OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);

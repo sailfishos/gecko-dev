@@ -762,6 +762,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetDynamicToolbarHeight(const int &aHeight)
+{
+  mHelper->DynamicToolbarMaxHeightChanged(aHeight);
+  Unused << SendDynamicToolbarHeightChanged(aHeight);
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, const int& aRight,
                                                            const int& aBottom, const int& aLeft)
 {

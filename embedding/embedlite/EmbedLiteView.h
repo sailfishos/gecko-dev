@@ -48,6 +48,7 @@ public:
   virtual void OnScrolledAreaChanged(unsigned int aWidth, unsigned int aHeight) {}
   virtual void OnScrollChanged(int32_t offSetX, int32_t offSetY) {}
   virtual void OnTitleChanged(const char16_t* aTitle) {}
+  virtual void OnDynamicToolbarHeightChanged() {}
   virtual void SetBackgroundColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {}
   virtual void OnWindowCloseRequested(void) {}
   virtual void OnHttpUserAgentUsed(const char16_t* aHttpUserAgent) {}
@@ -111,6 +112,7 @@ public:
   virtual void PinchUpdate(int x, int y, float scale);
   virtual void PinchEnd(int x, int y, float scale);
 
+  virtual void SetDynamicToolbarHeight(int height);
   virtual void SetMargins(int top, int right, int bottom, int left);
   virtual void ScheduleUpdate();
 
@@ -149,6 +151,7 @@ private:
 
   void Destroyed();
   void MarginsChanged(int top, int right, int bottom, int left);
+  void DynamicToolbarHeightChanged(int height);
 
   EmbedLiteViewIface* GetImpl();
 
@@ -159,7 +162,9 @@ private:
   PEmbedLiteViewParent* mViewParent;
   const uint32_t mUniqueID;
   bool mMarginsChanging;
+  bool mDynamicToolbarHeightChanging;
   mozilla::gfx::IntMargin mMargins;
+  int mDynamicToolbarHeight;
 };
 
 } // namespace embedlite

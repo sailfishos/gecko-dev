@@ -145,6 +145,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetVirtualKeyboardHeight(const int &);
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetDynamicToolbarHeight(const int&);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
   virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent);
