@@ -759,6 +759,13 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetVirtualKeyboardHeight(con
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetDynamicToolbarHeight(const int &aHeight)
+{
+  mHelper->DynamicToolbarMaxHeightChanged(aHeight);
+  Unused << SendDynamicToolbarHeightChanged(aHeight);
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
                                                                const int& aBottom, const int& aLeft)
 {
