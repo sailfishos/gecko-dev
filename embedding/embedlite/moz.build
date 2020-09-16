@@ -41,6 +41,7 @@ EXPORTS.mozilla.embedlite += [
     'embedshared/nsWindow.h',
     'embedshared/PuppetWidgetBase.h',
     'embedthread/EmbedLiteCompositorBridgeParent.h',
+    'utils/EmbedLiteSecurity.h',
     'utils/EmbedLog.h',
 ]
 
@@ -76,6 +77,7 @@ UNIFIED_SOURCES += [
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
     'utils/DirProvider.cpp',
+    'utils/EmbedLiteSecurity.cpp',
     'utils/EmbedLiteXulAppInfo.cpp',
     'utils/EmbedLog.cpp',
     'utils/GeckoLoader.cpp',

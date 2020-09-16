@@ -30,6 +30,7 @@ class EmbedLiteAppProcessParent;
 class EmbedLiteView;
 class EmbedLiteWindow;
 class PEmbedLiteAppParent;
+class EmbedLiteSecurity;
 class EmbedLiteAppListener
 {
 public:
@@ -111,8 +112,10 @@ public:
 
   virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow, uint32_t aParent = 0, bool aIsPrivateWindow = false);
   virtual EmbedLiteWindow* CreateWindow(int width, int height);
+  virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
+  virtual void DestroySecurity(EmbedLiteSecurity* aSecurity) const;
 
   virtual void SetIsAccelerated(bool aIsAccelerated);
   virtual bool IsAccelerated() {

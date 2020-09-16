@@ -20,6 +20,9 @@
 #include "nsXULAppAPI.h"
 #include "nsXREDirProvider.h"
 
+// String
+#include "nsString.h"
+
 #if defined(XP_WIN)
 #include <windows.h>
 #include <stdlib.h>
