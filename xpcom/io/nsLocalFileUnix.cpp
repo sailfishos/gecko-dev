@@ -1962,6 +1962,17 @@ nsLocalFile::Launch() {
   }
 
   return giovfs->ShowURIForInput(mPath);
+#elif defined(MOZ_ENABLE_CONTENTACTION)
+  QUrl uri = QUrl::fromLocalFile(QString::fromUtf8(mPath.get()));
+  ContentAction::Action action =
+    ContentAction::Action::defaultActionForFile(uri);
+
+  if (action.isValid()) {
+    action.trigger();
+    return NS_OK;
+  }
+
+  return NS_ERROR_FAILURE;
 #elif defined(MOZ_WIDGET_ANDROID)
   // Try to get a mimetype, if this fails just use the file uri alone
   nsresult rv;
