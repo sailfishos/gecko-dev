@@ -106,6 +106,7 @@ BuildRequires:  pkgconfig(libswresample)
 BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  pkgconfig(contentaction5)
+BuildRequires:  pkgconfig(dconf)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
