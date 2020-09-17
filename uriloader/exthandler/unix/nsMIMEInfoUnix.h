@@ -19,6 +19,11 @@ class nsMIMEInfoUnix : public nsMIMEInfoImpl {
       : nsMIMEInfoImpl(aType, aClass) {}
   static bool HandlerExists(const char *aProtocolScheme);
 
+#if defined(MOZ_ENABLE_CONTENTACTION)
+  NS_IMETHOD GetPossibleApplicationHandlers(
+      nsIMutableArray **aPossibleAppHandlers) override;
+#endif
+
  protected:
   NS_IMETHOD GetHasDefaultHandler(bool *_retval) override;
 

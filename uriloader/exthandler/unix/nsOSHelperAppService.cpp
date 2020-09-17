@@ -1051,6 +1051,13 @@ nsresult nsOSHelperAppService::OSProtocolHandlerExists(
 #ifdef MOZ_WIDGET_GTK
     // Check the GNOME registry for a protocol handler
     *aHandlerExists = nsGNOMERegistry::HandlerExists(aProtocolScheme);
+#elif defined(MOZ_ENABLE_CONTENTACTION)
+    // libcontentaction requires character ':' after scheme
+    ContentAction::Action action =
+      ContentAction::Action::defaultActionForScheme(QString(aProtocolScheme) + ':');
+
+    if (action.isValid())
+      *aHandlerExists = true;
 #else
     *aHandlerExists = false;
 #endif
