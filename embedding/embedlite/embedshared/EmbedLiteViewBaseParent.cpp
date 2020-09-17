@@ -17,6 +17,10 @@
 
 #include <sys/syscall.h>
 
+#ifndef EMBEDLITE_LOG_SENSITIVE
+#define EMBEDLITE_LOG_SENSITIVE 1
+#endif
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -179,9 +183,11 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadRedirect()
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadProgress(const int32_t &aProgress, const int32_t &aCurTotal, const int32_t &aMaxTotal)
 {
   LOGNI("progress:%i", aProgress);
+#if 0
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLoadProgress(aProgress, aCurTotal, aMaxTotal);
+#endif
   return IPC_OK();
 }
 

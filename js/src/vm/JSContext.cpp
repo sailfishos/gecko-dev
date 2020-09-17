@@ -338,6 +338,8 @@ JS_FRIEND_API void js::ReportOutOfMemory(JSContext* cx) {
   if (JS::OutOfMemoryCallback oomCallback = cx->runtime()->oomCallback)
     oomCallback(cx, cx->runtime()->oomCallbackData);
 
+//  printf("============================= %s\n", __PRETTY_FUNCTION__);
+
   cx->setPendingException(StringValue(cx->names().outOfMemory));
 }
 
@@ -1288,6 +1290,9 @@ bool JSContext::getPendingException(MutableHandleValue rval) {
 }
 
 bool JSContext::isThrowingOutOfMemory() {
+//  printf("============================= %s\n", __PRETTY_FUNCTION__);
+
+
   return throwing && unwrappedException() == StringValue(names().outOfMemory);
 }
 

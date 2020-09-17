@@ -1377,6 +1377,8 @@ bool GlobalHelperThreadState::finishParseTask(JSContext* cx, ParseTaskKind kind,
 
   // Report out of memory errors eagerly, or errors could be malformed.
   if (parseTask->outOfMemory) {
+//    printf("============================= %s\n", __PRETTY_FUNCTION__);
+
     ReportOutOfMemory(cx);
     return false;
   }

@@ -12,6 +12,11 @@
 
 /* static */ bool nsGNOMERegistry::HandlerExists(const char* aProtocolScheme) {
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+
+
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
+
   if (!giovfs) {
     return false;
   }
@@ -25,6 +30,9 @@
 
 /* static */ nsresult nsGNOMERegistry::LoadURL(nsIURI* aURL) {
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
+
   if (!giovfs) {
     return NS_ERROR_FAILURE;
   }
@@ -35,6 +43,9 @@
 /* static */ void nsGNOMERegistry::GetAppDescForScheme(
     const nsACString& aScheme, nsAString& aDesc) {
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
+
   if (!giovfs) return;
 
   nsCOMPtr<nsIHandlerApp> app;
@@ -47,6 +58,9 @@
 /* static */ already_AddRefed<nsMIMEInfoBase> nsGNOMERegistry::GetFromExtension(
     const nsACString& aFileExt) {
   nsAutoCString mimeType;
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
+
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {
     return nullptr;
@@ -74,6 +88,8 @@
 
   nsAutoString name;
   nsAutoCString description;
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
 
   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
   if (!giovfs) {

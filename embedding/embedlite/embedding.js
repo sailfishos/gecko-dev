@@ -303,6 +303,10 @@ pref("javascript.options.gc_on_memory_pressure", false);
 // Garbage collection configuration, slightly tweaked for low memory devices
 pref("javascript.options.mem.high_water_mark", 64);
 
+#if CPU_ARCH == aarch64
+pref("javascript.options.native_regexp", false);
+#endif
+
 pref("font.size.inflation.minTwips", 120);
 
 // When true, zooming will be enabled on all sites, even ones that declare user-scalable=no.

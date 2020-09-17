@@ -27,6 +27,9 @@
 nsresult nsMIMEInfoUnix::LoadUriInternal(nsIURI *aURI) {
   nsresult rv = nsGNOMERegistry::LoadURL(aURI);
 
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
+
 #ifdef MOZ_WIDGET_QT
   if (NS_FAILED(rv)) {
     rv = nsMIMEInfoQt::LoadUriInternal(aURI);
@@ -41,6 +44,8 @@ nsMIMEInfoUnix::GetHasDefaultHandler(bool *_retval) {
   // if mDefaultApplication is set, it means the application has been set from
   // either /etc/mailcap or ${HOME}/.mailcap, in which case we don't want to
   // give the GNOME answer.
+
+  printf("========================= !!!!!!!!!!!!!!!! %s\n", __PRETTY_FUNCTION__);
   if (mDefaultApplication) return nsMIMEInfoImpl::GetHasDefaultHandler(_retval);
 
   *_retval = false;
@@ -78,6 +83,9 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile *aFile) {
   // if mDefaultApplication is set, it means the application has been set from
   // either /etc/mailcap or ${HOME}/.mailcap, in which case we don't want to
   // give the GNOME answer.
+
+  printf("====================== !!!!!!!!!! TERVE LAUNCH: %p\n", mDefaultApplication.get());
+
   if (mDefaultApplication) return nsMIMEInfoImpl::LaunchDefaultWithFile(aFile);
 
   nsAutoCString nativePath;
