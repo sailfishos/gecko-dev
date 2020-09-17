@@ -19,9 +19,8 @@ Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
  intl/locale/gtk/OSPreferences_gtk.cpp         | 40 +++++++++++++++++++
  intl/locale/gtk/moz.build                     |  1 +
  old-configure.in                              | 21 ++++++++++
- rpm/xulrunner-qt5.spec                        |  1 +
  toolkit/library/moz.build                     |  3 ++
- 7 files changed, 68 insertions(+)
+ 7 files changed, 67 insertions(+)
 
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
 index 403ebc479d18..e24df1e70dfe 100644
@@ -156,18 +155,6 @@ index f08d51c34942..5f0b6a1ecd6e 100644
  dnl =========================================================
  dnl = Whether to exclude hyphenations files in the build
  dnl =========================================================
-diff --git a/rpm/xulrunner-qt5.spec b/rpm/xulrunner-qt5.spec
-index b33c5a01a372..607c759707e6 100644
---- a/rpm/xulrunner-qt5.spec
-+++ b/rpm/xulrunner-qt5.spec
-@@ -105,6 +105,7 @@ BuildRequires:  pkgconfig(libswresample)
- BuildRequires:  pkgconfig(libswscale)
- BuildRequires:  pkgconfig(Qt5Positioning)
- BuildRequires:  pkgconfig(contentaction5)
-+BuildRequires:  pkgconfig(dconf)
- BuildRequires:  qt5-qttools
- BuildRequires:  qt5-default
- BuildRequires:  autoconf213
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
 index 2410081cb05c..74bc8676ea4d 100644
 --- a/toolkit/library/moz.build
