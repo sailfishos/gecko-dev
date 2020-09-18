@@ -78,6 +78,7 @@ Patch32:    0032-sailfishos-gecko-Remove-android-define-from-logging.patch
 Patch33:    0033-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
 Patch34:    0034-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 Patch35:    0035-sailfishos-locale-Get-12-24h-timeformat-settin.patch
+Patch36:    0036-sailfishos-contentaction-Fix-content-action-integrat.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
