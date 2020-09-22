@@ -1,4 +1,4 @@
-From d052ef08f004a581c6e79ef1374b2b3f49431a68 Mon Sep 17 00:00:00 2001
+From 0ee60d4ef44b7235656ebee303dd948665f89c1d Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 26 Aug 2020 15:24:00 +0300
 Subject: [PATCH] [sailfishos][mozglue] Introduce EmbedInitGlue to the mozglue.

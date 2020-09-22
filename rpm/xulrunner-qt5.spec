@@ -74,11 +74,10 @@ Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
 Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
 Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-Patch32:    0032-sailfishos-gecko-Remove-android-define-from-logging.patch
-Patch33:    0033-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
-Patch34:    0034-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
-Patch35:    0035-sailfishos-locale-Get-12-24h-timeformat-settin.patch
-Patch36:    0036-sailfishos-contentaction-Fix-content-action-integrat.patch
+Patch32:    0032-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
+Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
+Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
+Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
