@@ -1,7 +1,8 @@
-From d6e8149d6d7a38f1772c18562d7b7575f68b6c39 Mon Sep 17 00:00:00 2001
+From 8d1291b493e7ba32bccba49b4d6f6af0d0577565 Mon Sep 17 00:00:00 2001
 From: Simo Piiroinen <simo.piiroinen@jollamobile.com>
 Date: Fri, 28 Aug 2020 12:33:28 +0300
-Subject: [PATCH][sailfishos][locale] Get 12/24h timeformat setting from dconf. Fixes JB#50805
+Subject: [PATCH] [sailfishos][locale] Get 12/24h timeformat setting from
+ dconf. Fixes JB#50805
 
 Like many other Sailfishos DConf settings, selecting between 12h and
 24h timer formats involves key containing underscore in name. Such keys
@@ -13,6 +14,7 @@ via dconf API. Otherwise fall back to default behavior involving
 GSetting schemas.
 
 Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  build/moz.configure/old.configure             |  1 +
  .../embedlite/config/mozconfig.merqtxulrunner |  1 +
@@ -20,7 +22,7 @@ Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
  intl/locale/gtk/moz.build                     |  1 +
  old-configure.in                              | 21 ++++++++++
  toolkit/library/moz.build                     |  3 ++
- 7 files changed, 67 insertions(+)
+ 6 files changed, 67 insertions(+)
 
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
 index 403ebc479d18..e24df1e70dfe 100644
@@ -170,5 +172,5 @@ index 2410081cb05c..74bc8676ea4d 100644
      if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
          OS_LIBS += [l for l in CONFIG['TK_LIBS']
 -- 
-2.17.1
+2.26.2
 
