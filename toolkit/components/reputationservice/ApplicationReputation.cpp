@@ -1555,6 +1555,9 @@ ApplicationReputationService*
 
 already_AddRefed<ApplicationReputationService>
 ApplicationReputationService::GetSingleton() {
+
+  printf("========================== GET SINGLETON: %s\n", __PRETTY_FUNCTION__);
+
   if (!gApplicationReputationService) {
     // Note: This is cleared in the new ApplicationReputationService destructor.
     gApplicationReputationService = new ApplicationReputationService();

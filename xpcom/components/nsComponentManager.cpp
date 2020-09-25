@@ -250,6 +250,8 @@ MOZ_ASAN_BLACKLIST
            &NSMODULE_NAME(start_kPStaticModules) + 1;
        staticModules < &NSMODULE_NAME(end_kPStaticModules); ++staticModules)
     if (*staticModules) {  // ASAN adds padding
+
+
       sStaticModules->AppendElement(*staticModules);
     }
 }
@@ -272,9 +274,23 @@ nsresult nsComponentManagerImpl::Init() {
   nsCOMPtr<nsIFile> appDir =
       GetLocationFromDirectoryService(NS_XPCOM_CURRENT_PROCESS_DIR);
 
+
+  nsAutoString grePath;
+  greDir->GetPath(grePath);
+
+  NS_ConvertUTF16toUTF8 f1CStr(grePath);
+
+  nsAutoString appPath;
+  appDir->GetPath(appPath);
+
+  NS_ConvertUTF16toUTF8 f2CStr(appPath);
+
+
+  // printf("================ INIT: GRE DIR: %s app dir: %s\n", f1CStr.get(), f2CStr.get());
+
   InitializeStaticModules();
 
-  nsCategoryManager::GetSingleton()->SuppressNotifications(true);
+//  nsCategoryManager::GetSingleton()->SuppressNotifications(true);
 
   RegisterModule(&kXPCOMModule, nullptr);
 
@@ -286,6 +302,10 @@ nsresult nsComponentManagerImpl::Init() {
   }
 
   bool loadChromeManifests = (XRE_GetProcessType() != GeckoProcessType_GPU);
+
+  // printf("================ Load chome manifest %d\n", loadChromeManifests);
+
+
   if (loadChromeManifests) {
     // The overall order in which chrome.manifests are expected to be treated
     // is the following:
@@ -362,17 +382,34 @@ nsresult nsComponentManagerImpl::Init() {
 }
 
 static bool ProcessSelectorMatches(Module::ProcessSelector aSelector) {
+#if 1
   GeckoProcessType type = XRE_GetProcessType();
+
+
+
   if (type == GeckoProcessType_GPU) {
-    return !!(aSelector & Module::ALLOW_IN_GPU_PROCESS);
+
+    bool f = !!(aSelector & Module::ALLOW_IN_GPU_PROCESS);
+    // printf("=========== %s allow in gpu proces: %d\n", __PRETTY_FUNCTION__, f);
+    return f;
   }
 
   if (aSelector & Module::MAIN_PROCESS_ONLY) {
+
+    // printf("=========== %s main process only type: %d\n", __PRETTY_FUNCTION__, type);
+
+
     return type == GeckoProcessType_Default;
   }
   if (aSelector & Module::CONTENT_PROCESS_ONLY) {
+
+
+    // printf("=========== %s content process only type: %d\n", __PRETTY_FUNCTION__, type);
+
+
     return type == GeckoProcessType_Content;
   }
+#endif
   return true;
 }
 
@@ -424,9 +461,13 @@ void nsComponentManagerImpl::RegisterModule(const mozilla::Module* aModule,
 
   if (aModule->mCategoryEntries) {
     const mozilla::Module::CategoryEntry* entry;
-    for (entry = aModule->mCategoryEntries; entry->category; ++entry)
+    for (entry = aModule->mCategoryEntries; entry->category; ++entry) {
+
+      // printf("==============Category: %s entry: %s, value: %s\n", entry->category, entry->entry, entry->value);
+
       nsCategoryManager::GetSingleton()->AddCategoryEntry(
           entry->category, entry->entry, entry->value);
+    }
   }
 }
 
@@ -434,7 +475,11 @@ void nsComponentManagerImpl::RegisterCIDEntryLocked(
     const mozilla::Module::CIDEntry* aEntry, KnownModule* aModule) {
   mLock.AssertCurrentThreadOwns();
 
+  // printf("========== %s cid: %s\n", __PRETTY_FUNCTION__, nsIDToCString(*aEntry->cid).get());
   if (!ProcessSelectorMatches(aEntry->processSelector)) {
+
+    // printf("============================ FUCK THE RETURN!!\n");
+
     return;
   }
 
@@ -452,9 +497,9 @@ void nsComponentManagerImpl::RegisterCIDEntryLocked(
       existing = "<unknown module>";
     }
     SafeMutexAutoUnlock unlock(mLock);
-    LogMessage(
+    printf(
         "While registering XPCOM module %s, trying to re-register CID '%s' "
-        "already registered by %s.",
+        "already registered by %s.\n",
         aModule->Description().get(), idstr, existing.get());
   } else {
     entry.OrInsert(
@@ -466,7 +511,9 @@ void nsComponentManagerImpl::RegisterContractIDLocked(
     const mozilla::Module::ContractIDEntry* aEntry) {
   mLock.AssertCurrentThreadOwns();
 
+  // printf("========== %s contract: %s\n", __PRETTY_FUNCTION__, aEntry->contractid);
   if (!ProcessSelectorMatches(aEntry->processSelector)) {
+    // printf("============================ FUCK YOU TOO RETURN!!\n");
     return;
   }
 
@@ -478,9 +525,9 @@ void nsComponentManagerImpl::RegisterContractIDLocked(
     aEntry->cid->ToProvidedString(idstr);
 
     SafeMutexAutoUnlock unlock(mLock);
-    LogMessage(
+    printf(
         "Could not map contract ID '%s' to CID %s because no implementation of "
-        "the CID is registered.",
+        "the CID is registered.\n",
         aEntry->contractid, idstr);
 
     return;
@@ -536,14 +583,23 @@ static void DoRegisterXPT(FileLocation& aFile) {
   FileLocation::Data data;
   UniquePtr<char[]> buf;
   nsresult rv = aFile.GetData(data);
+
+  // printf("========== %s -- %d \n", __PRETTY_FUNCTION__, __LINE__);
+
   if (NS_SUCCEEDED(rv)) {
     rv = data.GetSize(&len);
   }
+
+
+
   if (NS_SUCCEEDED(rv)) {
     buf = MakeUnique<char[]>(len);
     rv = data.Copy(buf.get(), len);
   }
   if (NS_SUCCEEDED(rv)) {
+
+    // printf("========== %s -- %d \n", __PRETTY_FUNCTION__, __LINE__);
+
     XPTInterfaceInfoManager::GetSingleton()->RegisterBuffer(buf.get(), len);
   } else {
     nsCString uri;

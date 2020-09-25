@@ -13,6 +13,8 @@
 #include "mozilla/jsipc/CrossProcessObjectWrappers.h"
 #include "mozilla/StaticPtr.h"
 
+#include "nsID.h"
+
 using namespace mozilla::dom;
 using namespace JS;
 
@@ -489,6 +491,9 @@ NS_IMETHODIMP nsJSCID::Equals(nsIJSID* other, bool* _retval) {
 
 NS_IMETHODIMP
 nsJSCID::Initialize(const char* str) {
+  // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
+
   if (str[0] == '{') {
     NS_ENSURE_SUCCESS(mDetails->Initialize(str), NS_ERROR_FAILURE);
   } else {
@@ -497,7 +502,13 @@ nsJSCID::Initialize(const char* str) {
     NS_ENSURE_TRUE(registrar, NS_ERROR_FAILURE);
 
     nsCID* cid;
-    if (NS_FAILED(registrar->ContractIDToCID(str, &cid)))
+
+    nsresult rv = registrar->ContractIDToCID(str, &cid);
+
+    // printf("===================== FOO BAR: %s\n", str);
+
+
+    if (NS_FAILED(rv))
       return NS_ERROR_FAILURE;
     bool success = mDetails->InitWithName(*cid, str);
     free(cid);
@@ -557,7 +568,12 @@ nsJSCID::CreateInstance(HandleValue iidval, JSContext* cx, uint8_t optionalArgc,
 
   // If an IID was passed in then use it
   const nsID* iid = GetIIDArg(optionalArgc, iidval, cx);
-  if (!iid) return NS_ERROR_XPC_BAD_IID;
+  if (!iid) {
+
+
+    // printf("==================== %s\n", __PRETTY_FUNCTION__);
+    return NS_ERROR_XPC_BAD_IID;
+  }
 
   nsCOMPtr<nsIComponentManager> compMgr;
   nsresult rv = NS_GetComponentManager(getter_AddRefs(compMgr));
@@ -582,6 +598,9 @@ nsJSCID::CreateInstance(HandleValue iidval, JSContext* cx, uint8_t optionalArgc,
 NS_IMETHODIMP
 nsJSCID::GetService(HandleValue iidval, JSContext* cx, uint8_t optionalArgc,
                     MutableHandleValue retval) {
+
+  // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
   if (!mDetails->IsValid()) return NS_ERROR_XPC_BAD_CID;
 
   if (NS_FAILED(nsXPConnect::SecurityManager()->CanCreateInstance(
@@ -593,7 +612,11 @@ nsJSCID::GetService(HandleValue iidval, JSContext* cx, uint8_t optionalArgc,
 
   // If an IID was passed in then use it
   const nsID* iid = GetIIDArg(optionalArgc, iidval, cx);
-  if (!iid) return NS_ERROR_XPC_BAD_IID;
+  if (!iid) {
+    // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
+    return NS_ERROR_XPC_BAD_IID;
+  }
 
   nsCOMPtr<nsIServiceManager> svcMgr;
   nsresult rv = NS_GetServiceManager(getter_AddRefs(svcMgr));
@@ -622,6 +645,10 @@ nsJSCID::Construct(nsIXPConnectWrappedNative* wrapper, JSContext* cx,
                    JSObject* objArg, const CallArgs& args, bool* _retval) {
   RootedObject obj(cx, objArg);
   XPCJSRuntime* xpcrt = nsXPConnect::GetRuntimeInstance();
+
+  // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
+
   if (!xpcrt) return NS_ERROR_FAILURE;
 
   // 'push' a call context and call on it
@@ -638,6 +665,9 @@ nsJSCID::HasInstance(nsIXPConnectWrappedNative* wrapper, JSContext* cx,
                      JSObject* /* unused */, HandleValue val, bool* bp,
                      bool* _retval) {
   *bp = false;
+
+  // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
 
   if (!val.isObject()) return NS_OK;
 

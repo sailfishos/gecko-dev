@@ -115,6 +115,9 @@ nsXPCComponents_Interfaces::GetInterfaces(uint32_t* aCount, nsIID*** aArray) {
   nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
   *aArray = array;
 
+
+  // printf("======================== ROLLI PEIKKO %s!!!\n", __PRETTY_FUNCTION__);
+
   array[0] = NS_GET_IID(nsIXPCComponents_Interfaces).Clone();
   array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
   return NS_OK;
@@ -182,6 +185,10 @@ nsXPCComponents_Interfaces::NewEnumerate(nsIXPConnectWrappedNative* wrapper,
   // Lazily init the list of interfaces when someone tries to
   // enumerate them.
   if (mInterfaces.IsEmpty()) {
+
+
+    // printf("======================== ROLLI PEIKKO %s!!!\n", __PRETTY_FUNCTION__);
+
     XPTInterfaceInfoManager::GetSingleton()->GetScriptableInterfaces(
         mInterfaces);
   }
@@ -290,6 +297,9 @@ nsXPCComponents_InterfacesByID::GetInterfaces(uint32_t* aCount,
   *aCount = 2;
   nsIID** array = static_cast<nsIID**>(moz_xmalloc(2 * sizeof(nsIID*)));
   *aArray = array;
+
+
+  // printf("======================== ROLLI PEIKKO %s!!!\n", __PRETTY_FUNCTION__);
 
   array[0] = NS_GET_IID(nsIXPCComponents_InterfacesByID).Clone();
   array[1] = NS_GET_IID(nsIXPCScriptable).Clone();
@@ -1694,8 +1704,10 @@ nsresult nsXPCComponents_Constructor::CallOrConstruct(
   if (args.length() >= 3) {
     // args[2] is an initializer function or property name
     RootedString str(cx, ToString(cx, args[2]));
-    if (!str || !(cInitializer = cInitializerBytes.encodeLatin1(cx, str)))
+    if (!str || !(cInitializer = cInitializerBytes.encodeLatin1(cx, str))) {
+
       return ThrowAndFail(NS_ERROR_XPC_BAD_CONVERT_JS, cx, _retval);
+    }
   }
 
   if (args.length() >= 2) {
@@ -1723,8 +1735,14 @@ nsresult nsXPCComponents_Constructor::CallOrConstruct(
       return ThrowAndFail(NS_ERROR_XPC_BAD_CONVERT_JS, cx, _retval);
 
     RootedValue val(cx);
-    if (!JS_GetPropertyById(cx, ifacesObj, id, &val) || val.isPrimitive())
+    if (!JS_GetPropertyById(cx, ifacesObj, id, &val) || val.isPrimitive()) {
+
+
+      // printf("==================== %s\n", __PRETTY_FUNCTION__);
+
+
       return ThrowAndFail(NS_ERROR_XPC_BAD_IID, cx, _retval);
+    }
 
     nsCOMPtr<nsIXPConnectWrappedNative> wn;
     if (NS_FAILED(xpc->GetWrappedNativeOfJSObject(cx, &val.toObject(),

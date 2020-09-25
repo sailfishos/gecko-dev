@@ -113,6 +113,11 @@ void XPTInterfaceInfoManager::RegisterXPTHeader(const XPTHeader* aHeader) {
 void XPTInterfaceInfoManager::VerifyAndAddEntryIfNew(
     const XPTInterfaceDirectoryEntry* iface, uint16_t idx,
     xptiTypelibGuts* typelib) {
+
+
+  // printf("============ %s %s %s %d\n", __PRETTY_FUNCTION__, iface->mName, nsIDToCString(iface->mIID).get(), iface->mInterfaceDescriptor);
+
+
   if (!iface->mInterfaceDescriptor) return;
 
   // The number of maximum methods is not arbitrary. It is the same value as
@@ -202,6 +207,13 @@ void XPTInterfaceInfoManager::GetScriptableInterfaces(
   aInterfaces.SetCapacity(mWorkingSet.mNameTable.Count());
   for (auto iter = mWorkingSet.mNameTable.Iter(); !iter.Done(); iter.Next()) {
     xptiInterfaceEntry* entry = iter.UserData();
+
+
+
+
+    // printf("===================== xpti interface %s %s %d\n", nsIDToCString(entry->IID()).get(), entry->GetTheName(), entry->GetScriptableFlag());
+
+
     if (entry->GetScriptableFlag()) {
       nsCOMPtr<nsIInterfaceInfo> ii = entry->InterfaceInfo();
       aInterfaces.AppendElement(ii);
