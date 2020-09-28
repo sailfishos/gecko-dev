@@ -138,6 +138,12 @@ gfxQtPlatform::MakePlatformFont(const nsAString& aFontName,
                                  aLength);
 }
 
+FT_Library
+gfxQtPlatform::GetFTLibrary()
+{
+    return gfxFcPlatformFontList::GetFTLibrary();
+}
+
 void
 gfxQtPlatform::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 {

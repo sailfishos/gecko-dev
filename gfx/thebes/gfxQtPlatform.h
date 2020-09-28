@@ -66,6 +66,8 @@ public:
                                            const uint8_t* aFontData,
                                            uint32_t aLength) override;
 
+    FT_Library GetFTLibrary() override;
+
     static int32_t GetDPI();
 
     virtual gfxImageFormat GetOffscreenFormat() override;
