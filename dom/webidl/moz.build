@@ -1092,12 +1092,14 @@ if CONFIG['MOZ_WEBSPEECH']:
         'SpeechSynthesisEvent.webidl',
     ]
 
-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'xulrunner'] or CONFIG['MOZ_SUITE']:
+app = CONFIG['MOZ_BUILD_APP']
+
+if app in ['browser', 'xulrunner'] or CONFIG['MOZ_SUITE']:
     WEBIDL_FILES += [
         'BrowserFeedWriter.webidl',
     ]
 
-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
+if app in ['browser', 'xulrunner'] or app.startswith('mobile/'):
     WEBIDL_FILES += [
         'External.webidl',
     ]
