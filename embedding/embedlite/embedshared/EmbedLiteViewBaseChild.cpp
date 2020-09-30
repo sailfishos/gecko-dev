@@ -978,28 +978,36 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const in
                                                                         const int &gmodifiers,
                                                                         const int &charCode)
 {
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
-  mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  NS_ENSURE_TRUE(utils, IPC_OK());
-
-#if 0 // JB#50611
-  bool handled = false;
-  // If the key isn't autorepeat, we need to send the initial down event
-  utils->SendKeyEvent(NS_LITERAL_STRING("keydown"), domKeyCode, 0, gmodifiers, 0, &handled);
-  // Don't pass modifiers as NS_KEY_PRESS events.
-  // Instead of selectively excluding some keys from NS_KEY_PRESS events,
-  // we instead selectively include (as per MSDN spec
-  // ( http://msdn.microsoft.com/en-us/library/system.windows.forms.control.keypress%28VS.71%29.aspx );
-  // no official spec covers KeyPress events).
-  if (domKeyCode != nsIDOMKeyEvent::DOM_VK_SHIFT &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_META &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_CONTROL &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_ALT)
-  {
-    utils->SendKeyEvent(NS_LITERAL_STRING("keypress"), domKeyCode, charCode, gmodifiers, 0, &handled);
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
+  // Initial key down event
+  EventMessage msg = eKeyDown;
+  WidgetKeyboardEvent event(true, msg, widget);
+  event.mModifiers = Modifiers(gmodifiers);
+  event.mKeyCode = domKeyCode;
+  event.mCharCode = 0;
+  event.mLocation = eKeyLocationStandard;
+  event.mRefPoint = LayoutDeviceIntPoint(0, 0);
+  event.mTime = PR_IntervalNow();
+  nsEventStatus status;
+  nsresult rv = widget->DispatchEvent(&event, status);
+  NS_ENSURE_SUCCESS(rv, IPC_OK());
+  if (domKeyCode != dom::KeyboardEventBinding::DOM_VK_SHIFT &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_META &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_CONTROL &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_ALT) {
+        // Key press event
+        msg = eKeyPress;
+        WidgetKeyboardEvent event2(true, msg, widget);
+        event2.mModifiers = Modifiers(gmodifiers);
+        event2.mKeyCode = charCode ? 0 : domKeyCode;
+        event2.mCharCode = charCode;
+        event2.mLocation = eKeyLocationStandard;
+        event2.mRefPoint = LayoutDeviceIntPoint(0, 0);
+        event2.mTime = PR_IntervalNow();
+        rv = widget->DispatchEvent(&event2, status);
+        NS_ENSURE_SUCCESS(rv, IPC_OK());
   }
-#endif
   return IPC_OK();
 }
 
