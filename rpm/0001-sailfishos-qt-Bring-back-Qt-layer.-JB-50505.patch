@@ -1,4 +1,4 @@
-From 677a6d6d52a7cde4cf907b99d0c02ff3d0b51fd9 Mon Sep 17 00:00:00 2001
+From f46c252265a7dce27356f2b2cb6cfa93f497c6e7 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 28 Feb 2020 11:38:58 +0200
 Subject: [PATCH] [sailfishos][qt] Bring back Qt layer. JB#50505
@@ -36,6 +36,8 @@ Fix build of nsPrintSettingsQt and nsDeviceContextSpecQt with printing enabled
 requires QtWidgets;
 - GetPrinterNameList now returns an empty list, since getting the list of
 available printers is implemented through QPrinterInfo.
+
+[sailfishos][qt] Add nsIPrintSettingsService for Qt toolkit. Fixes JB#51349
 
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
@@ -135,7 +137,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/moz.build                              |    6 +-
  widget/qt/GfxInfo.cpp                         |  194 ++
  widget/qt/GfxInfo.h                           |   66 +
- widget/qt/moz.build                           |   65 +
+ widget/qt/moz.build                           |   66 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
@@ -152,6 +154,8 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsLookAndFeel.h                     |   42 +
  widget/qt/nsPrintDialogQt.cpp                 |   43 +
  widget/qt/nsPrintDialogQt.h                   |   32 +
+ widget/qt/nsPrintOptionsQt.cpp                |   23 +
+ widget/qt/nsPrintOptionsQt.h                  |   20 +
  widget/qt/nsPrintSettingsQt.cpp               |  411 ++++
  widget/qt/nsPrintSettingsQt.h                 |   93 +
  widget/qt/nsQtKeyUtils.cpp                    |  480 +++++
@@ -160,10 +164,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsScreenManagerQt.h                 |   34 +
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
- widget/qt/nsWidgetFactory.cpp                 |  159 ++
+ widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 123 files changed, 8316 insertions(+), 56 deletions(-)
+ 125 files changed, 8363 insertions(+), 56 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -213,6 +217,8 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  create mode 100644 widget/qt/nsLookAndFeel.h
  create mode 100644 widget/qt/nsPrintDialogQt.cpp
  create mode 100644 widget/qt/nsPrintDialogQt.h
+ create mode 100644 widget/qt/nsPrintOptionsQt.cpp
+ create mode 100644 widget/qt/nsPrintOptionsQt.h
  create mode 100644 widget/qt/nsPrintSettingsQt.cpp
  create mode 100644 widget/qt/nsPrintSettingsQt.h
  create mode 100644 widget/qt/nsQtKeyUtils.cpp
@@ -5144,10 +5150,10 @@ index 000000000000..362ce057a1dc
 +#endif /* __mozilla_widget_GfxInfo_h__ */
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..77eb14e6a124
+index 000000000000..8003864d9559
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,66 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5175,6 +5181,7 @@ index 000000000000..77eb14e6a124
 +    SOURCES += [
 +        'nsDeviceContextSpecQt.cpp',
 +        'nsPrintDialogQt.cpp',
++        'nsPrintOptionsQt.cpp',
 +        'nsPrintSettingsQt.cpp',
 +    ]
 +
@@ -7447,9 +7454,64 @@ index 000000000000..9c35fa2683fa
 +};
 +
 +#endif
+diff --git a/widget/qt/nsPrintOptionsQt.cpp b/widget/qt/nsPrintOptionsQt.cpp
+new file mode 100644
+index 000000000000..89673dd74d79
+--- /dev/null
++++ b/widget/qt/nsPrintOptionsQt.cpp
+@@ -0,0 +1,23 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++#include "nsPrintSettingsQt.h"
++#include "nsPrintOptionsQt.h"
++
++nsPrintOptionsQt::nsPrintOptionsQt()
++{
++}
++
++nsPrintOptionsQt::~nsPrintOptionsQt()
++{
++}
++
++nsresult nsPrintOptionsQt::_CreatePrintSettings(nsIPrintSettings** _retval)
++{
++    nsPrintSettingsQt* printSettings =
++        new nsPrintSettingsQt(); // does not initially ref count
++    NS_ADDREF(*_retval = printSettings); // ref count
++    return NS_OK;
++}
+diff --git a/widget/qt/nsPrintOptionsQt.h b/widget/qt/nsPrintOptionsQt.h
+new file mode 100644
+index 000000000000..72e189567039
+--- /dev/null
++++ b/widget/qt/nsPrintOptionsQt.h
+@@ -0,0 +1,20 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef nsPrintOptionsQt_h__
++#define nsPrintOptionsQt_h__
++
++#include "nsPrintSettingsService.h"
++
++class nsPrintOptionsQt : public nsPrintSettingsService
++{
++public:
++    nsPrintOptionsQt();
++    virtual ~nsPrintOptionsQt();
++    virtual nsresult _CreatePrintSettings(nsIPrintSettings** _retval);
++};
++
++#endif /* nsPrintOptionsQt_h__ */
 diff --git a/widget/qt/nsPrintSettingsQt.cpp b/widget/qt/nsPrintSettingsQt.cpp
 new file mode 100644
-index 000000000000..f67dccbac458
+index 000000000000..7ab665bb1f54
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.cpp
 @@ -0,0 +1,411 @@
@@ -7653,7 +7715,7 @@ index 000000000000..f67dccbac458
 +    NS_ENSURE_SUCCESS(rv, rv);
 +
 +    NS_ConvertUTF16toUTF8 fileNameCStr(aToFileName);
-+    mFilename = QString((const QChar*)fileNameCStr.get());
++    mFilename = QString(fileNameCStr.get());
 +
 +    return NS_OK;
 +}
@@ -7669,7 +7731,7 @@ index 000000000000..f67dccbac458
 +nsPrintSettingsQt::SetPrinterName(const nsAString &aPrinter)
 +{
 +    NS_ConvertUTF16toUTF8 printer(aPrinter);
-+    mPrinterName = QString((const QChar*)printer.get());
++    mPrinterName = QString(printer.get());
 +    return NS_OK;
 +}
 +
@@ -7741,7 +7803,7 @@ index 000000000000..f67dccbac458
 +nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
 +{
 +    NS_ConvertUTF16toUTF8 paperName(aPaperName);
-+    QString ref((QChar*)paperName.get());
++    QString ref(paperName.get());
 +    for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
 +    {
 +        if (ref == QString(indexToPaperName[i])) {
@@ -8723,10 +8785,10 @@ index 000000000000..ad3a0ef9af3b
 +#endif  // nsScreenQt_h___
 diff --git a/widget/qt/nsWidgetFactory.cpp b/widget/qt/nsWidgetFactory.cpp
 new file mode 100644
-index 000000000000..79ea1214b07f
+index 000000000000..87817a0b4a5f
 --- /dev/null
 +++ b/widget/qt/nsWidgetFactory.cpp
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,162 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -8766,6 +8828,7 @@ index 000000000000..79ea1214b07f
 +#ifdef NS_PRINTING
 +#include "nsDeviceContextSpecQt.h"
 +#include "nsPrintSession.h"
++#include "nsPrintOptionsQt.h"
 +#include "nsPrintDialogQt.h"
 +#endif
 +
@@ -8790,6 +8853,7 @@ index 000000000000..79ea1214b07f
 +NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboardHelper)
 +#ifdef NS_PRINTING
 +NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceContextSpecQt)
++NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintOptionsQt, Init)
 +NS_GENERIC_FACTORY_CONSTRUCTOR(nsPrinterEnumeratorQt)
 +NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSession, Init)
 +NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintDialogServiceQt, Init)
@@ -8839,6 +8903,7 @@ index 000000000000..79ea1214b07f
 +    { &kNS_PRINTDIALOGSERVICE_CID, false, nullptr, nsPrintDialogServiceQtConstructor },
 +    { &kNS_PRINTER_ENUMERATOR_CID, false, nullptr, nsPrinterEnumeratorQtConstructor },
 +    { &kNS_PRINTSESSION_CID, false, nullptr, nsPrintSessionConstructor },
++    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintOptionsQtConstructor },
 +#endif
 +    { nullptr }
 +};
@@ -10899,5 +10964,5 @@ index 000000000000..3bf6f80f3916
 +
 +#endif /* __nsWindow_h__ */
 -- 
-2.26.2
+2.17.1
 
