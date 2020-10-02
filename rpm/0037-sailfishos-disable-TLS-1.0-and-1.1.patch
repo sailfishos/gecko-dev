@@ -1,0 +1,46 @@
+From 8f7de933693fa346d9c8ee7b7bad33795f692579 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Fri, 2 Oct 2020 12:57:02 +0000
+Subject: [PATCH] [sailfishos][gecko] Disable TLS 1.0 and 1.1. Fixes JB#50522
+
+Increases the minimum supported TLS version from 1.0 to 1.2, independent
+of user preferences.
+
+This follows MB#1643229 introduced in FF78. See
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1643229
+https://phabricator.services.mozilla.com/D78215
+---
+ security/manager/ssl/nsNSSComponent.cpp | 2 +-
+ security/manager/ssl/security-prefs.js  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/security/manager/ssl/nsNSSComponent.cpp b/security/manager/ssl/nsNSSComponent.cpp
+index 4a59ccf58578..584eae674870 100644
+--- a/security/manager/ssl/nsNSSComponent.cpp
++++ b/security/manager/ssl/nsNSSComponent.cpp
+@@ -1688,7 +1688,7 @@ void nsNSSComponent::setValidationOptions(bool isInitialSetting) {
+ nsresult nsNSSComponent::setEnabledTLSVersions() {
+   // keep these values in sync with security-prefs.js
+   // 1 means TLS 1.0, 2 means TLS 1.1, etc.
+-  static const uint32_t PSM_DEFAULT_MIN_TLS_VERSION = 1;
++  static const uint32_t PSM_DEFAULT_MIN_TLS_VERSION = 3;
+   static const uint32_t PSM_DEFAULT_MAX_TLS_VERSION = 4;
+ 
+   uint32_t minFromPrefs = Preferences::GetUint("security.tls.version.min",
+diff --git a/security/manager/ssl/security-prefs.js b/security/manager/ssl/security-prefs.js
+index cf492478b279..a721e304fd9a 100644
+--- a/security/manager/ssl/security-prefs.js
++++ b/security/manager/ssl/security-prefs.js
+@@ -2,7 +2,7 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+-pref("security.tls.version.min", 1);
++pref("security.tls.version.min", 3);
+ pref("security.tls.version.max", 4);
+ pref("security.tls.version.fallback-limit", 3);
+ pref("security.tls.insecure_fallback_hosts", "");
+-- 
+2.26.2
+

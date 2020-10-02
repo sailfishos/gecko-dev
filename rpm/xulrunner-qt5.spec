@@ -79,6 +79,7 @@ Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
 Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
 Patch36:    0036-sailfishos-qt-Initialize-FreeType-library-properly.-.patch
+Patch37:    0037-sailfishos-disable-TLS-1.0-and-1.1.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
