@@ -107,7 +107,6 @@ Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 BuildRequires:  rust
 BuildRequires:  rust-std-static
 BuildRequires:  cargo
-
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -210,6 +209,25 @@ echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
 source "%BUILD_DIR"/rpm-shared.env
+
+# When cross-compiling under SB2 rust needs to know what arch to emit
+# when nothing is specified on the command line. That usually defaults
+# to "whatever rust was built as" but in SB2 rust is accelerated and
+# would produce x86 so this is how it knows differently. Not needed
+# for native x86 builds
+%ifarch %arm
+export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
+%endif
+%ifarch aarch64
+export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
+%endif
+# This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
+# during fork/exec. It has no effect outside sb2 so doesn't hurt
+# native builds.
+export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
+export SB2_RUST_USE_REAL_EXECVP=Yes
+export SB2_RUST_USE_REAL_FN=Yes
+
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
@@ -308,6 +326,16 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
+# See above for explanation of SB2_ variables (needed in both build/install phases)
+%ifarch %arm
+export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
+%endif
+%ifarch aarch64
+export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
+%endif
+export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
+export SB2_RUST_USE_REAL_EXECVP=Yes
+export SB2_RUST_USE_REAL_FN=Yes
 
 %{__make} -C %BUILD_DIR/embedding/embedlite/installer install DESTDIR=%{buildroot}
 
