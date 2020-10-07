@@ -9,7 +9,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Element.h"
-#ifdef ANDROID
+#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
 #include "mozilla/IHistory.h"
 #else
 #include "mozilla/places/History.h"
@@ -34,7 +34,7 @@
 namespace mozilla {
 namespace dom {
 
-#ifndef ANDROID
+#if !defined(ANDROID) && !defined(MOZ_EMBEDLITE)
 using places::History;
 #endif
 
@@ -363,7 +363,7 @@ EventStates Link::LinkState() const {
     // Make sure the href attribute has a valid link (bug 23209).
     // If we have a good href, register with History if available.
     if (mHistory && hrefURI) {
-#ifdef ANDROID
+#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
       nsCOMPtr<IHistory> history = services::GetHistoryService();
 #else
       History *history = History::GetService();
@@ -778,7 +778,7 @@ void Link::UnregisterFromHistory() {
 
   // And tell History to stop tracking us.
   if (mHistory && mCachedURI) {
-#ifdef ANDROID
+#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
     nsCOMPtr<IHistory> history = services::GetHistoryService();
 #else
     History *history = History::GetService();
