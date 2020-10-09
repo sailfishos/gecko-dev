@@ -96,6 +96,7 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
     }
     nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem = docShellPtr;
     NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = docShellTreeItem)));
+    return NS_OK;
   }
 
   if (aIID.Equals(NS_GET_IID(nsIDocument))) {
