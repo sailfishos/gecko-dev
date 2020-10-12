@@ -215,6 +215,7 @@ private:
 
   void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
+  nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
 
   uint32_t mId;
   uint64_t mOuterId;

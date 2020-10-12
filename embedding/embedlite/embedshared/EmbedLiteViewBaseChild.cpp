@@ -970,32 +970,37 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsStri
   return IPC_OK();
 }
 
+nsresult EmbedLiteViewBaseChild::DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode)
+{
+  NS_ENSURE_TRUE(widget, NS_ERROR_FAILURE);
+  EventMessage msg = message;
+  WidgetKeyboardEvent event(true, msg, widget);
+  event.mModifiers = Modifiers(gmodifiers);
+  event.mKeyCode = charCode ? 0 : domKeyCode;
+  event.mCharCode = charCode;
+  event.mLocation = eKeyLocationStandard;
+  event.mRefPoint = LayoutDeviceIntPoint(0, 0);
+  event.mTime = PR_IntervalNow();
+  nsEventStatus status;
+  return widget->DispatchEvent(&event, status);
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const int &domKeyCode,
                                                                         const int &gmodifiers,
                                                                         const int &charCode)
 {
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
-  mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  NS_ENSURE_TRUE(utils, IPC_OK());
-
-#if 0 // JB#50611
-  bool handled = false;
-  // If the key isn't autorepeat, we need to send the initial down event
-  utils->SendKeyEvent(NS_LITERAL_STRING("keydown"), domKeyCode, 0, gmodifiers, 0, &handled);
-  // Don't pass modifiers as NS_KEY_PRESS events.
-  // Instead of selectively excluding some keys from NS_KEY_PRESS events,
-  // we instead selectively include (as per MSDN spec
-  // ( http://msdn.microsoft.com/en-us/library/system.windows.forms.control.keypress%28VS.71%29.aspx );
-  // no official spec covers KeyPress events).
-  if (domKeyCode != nsIDOMKeyEvent::DOM_VK_SHIFT &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_META &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_CONTROL &&
-      domKeyCode != nsIDOMKeyEvent::DOM_VK_ALT)
-  {
-    utils->SendKeyEvent(NS_LITERAL_STRING("keypress"), domKeyCode, charCode, gmodifiers, 0, &handled);
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
+  NS_ENSURE_TRUE(widget, IPC_OK());
+  // Initial key down event
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
+  if (domKeyCode != dom::KeyboardEventBinding::DOM_VK_SHIFT &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_META &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_CONTROL &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_ALT) {
+          // Key press event
+          NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyPress, domKeyCode, gmodifiers, charCode), IPC_OK());
   }
-#endif
   return IPC_OK();
 }
 
@@ -1003,15 +1008,11 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyReleaseEvent(const 
                                                                           const int &gmodifiers,
                                                                           const int &charCode)
 {
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
-  mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  NS_ENSURE_TRUE(utils, IPC_OK());
-
-#if 0 // JB#50611
-  bool handled = false;
-  utils->SendKeyEvent(NS_LITERAL_STRING("keyup"), domKeyCode, 0, gmodifiers, 0, &handled);
-#endif
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
+  NS_ENSURE_TRUE(widget, IPC_OK());
+  // Key up event
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyUp, domKeyCode, gmodifiers, 0), IPC_OK());
   return IPC_OK();
 }
 
