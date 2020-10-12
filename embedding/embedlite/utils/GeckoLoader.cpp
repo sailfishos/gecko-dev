@@ -101,10 +101,16 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
   // get rid of the bogus TLS warnings
   NS_LogInit();
+  const char* greHome = getenv("GRE_HOME");
+    if (!greHome) {
+      LOGE("GRE_HOME is not defined\n");
+      return false;
+    }
+
   nsCOMPtr<nsIFile> xuldir;
-  rv = XRE_GetBinaryPath(getter_AddRefs(xuldir));
+  rv = XRE_GetFileFromPath(greHome, getter_AddRefs(xuldir));
   if (NS_FAILED(rv)) {
-    LOGE("Unable to create nsIFile for xuldir\n");
+    LOGE("Unable to create nsIFile for xuldir: %s\n", greHome);
     return false;
   }
 
