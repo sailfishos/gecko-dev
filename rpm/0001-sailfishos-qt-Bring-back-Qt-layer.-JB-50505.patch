@@ -1,4 +1,4 @@
-From f46c252265a7dce27356f2b2cb6cfa93f497c6e7 Mon Sep 17 00:00:00 2001
+From d33ee2b8341c5addcd2d02b8426f5a6ea66d4064 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 28 Feb 2020 11:38:58 +0200
 Subject: [PATCH] [sailfishos][qt] Bring back Qt layer. JB#50505
@@ -88,7 +88,6 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
  gfx/thebes/gfxQtPlatform.cpp                  |  185 ++
  gfx/thebes/gfxQtPlatform.h                    |   91 +
- gfx/thebes/gfxTextRun.cpp                     |    7 +
  gfx/thebes/moz.build                          |   30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |    4 +-
  gfx/webrender_bindings/moz.build              |    2 +-
@@ -167,7 +166,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 125 files changed, 8363 insertions(+), 56 deletions(-)
+ 124 files changed, 8356 insertions(+), 56 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1778,31 +1777,6 @@ index 000000000000..928e9a33e123
 +
 +#endif /* GFX_PLATFORM_QT_H */
 +
-diff --git a/gfx/thebes/gfxTextRun.cpp b/gfx/thebes/gfxTextRun.cpp
-index 3757257b5f8e..db3c2a1e0ae8 100644
---- a/gfx/thebes/gfxTextRun.cpp
-+++ b/gfx/thebes/gfxTextRun.cpp
-@@ -1689,6 +1689,9 @@ gfxFontGroup::~gfxFontGroup() {
- }
- 
- void gfxFontGroup::BuildFontList() {
-+#if defined(MOZ_WIDGET_QT)
-+  return;
-+#endif
-   // initialize fonts in the font family list
-   AutoTArray<gfxFontFamily*, 10> fonts;
-   gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-@@ -1741,6 +1744,10 @@ void gfxFontGroup::AddPlatformFont(const nsAString& aName,
-     }
-   }
- 
-+#if defined(MOZ_WIDGET_QT)
-+  return;
-+#endif
-+
-   // Not known in the user font set ==> check system fonts
-   gfxPlatformFontList::PlatformFontList()->FindAndAddFamilies(
-       aName, &aFamilyList, gfxPlatformFontList::FindFamiliesFlags(0), &mStyle,
 diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
 index 3eaeeedb58f4..b4a48a231258 100644
 --- a/gfx/thebes/moz.build
@@ -10964,5 +10938,5 @@ index 000000000000..3bf6f80f3916
 +
 +#endif /* __nsWindow_h__ */
 -- 
-2.17.1
+2.25.1
 
