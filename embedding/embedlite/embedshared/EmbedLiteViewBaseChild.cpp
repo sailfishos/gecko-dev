@@ -981,6 +981,10 @@ nsresult EmbedLiteViewBaseChild::DispatchKeyPressEvent(nsIWidget *widget, const 
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
+  if (domKeyCode == dom::KeyboardEventBinding::DOM_VK_RETURN) {
+    // Needed for multiline editing
+    event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
+  }
   nsEventStatus status;
   return widget->DispatchEvent(&event, status);
 }
