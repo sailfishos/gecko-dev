@@ -318,7 +318,7 @@ void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
 
 // Android still uses XUL media controls & hence needs this XUL-friendly
 // custom reflow code. This will go away in bug 1310907.
-#ifdef ANDROID
+#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
     } else if (child->GetContent() == mVideoControls) {
       // Reflow the video controls frame.
       nsBoxLayoutState boxState(PresContext(), aReflowInput.mRenderingContext);
@@ -327,7 +327,7 @@ void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
           nsRect(borderPadding.left, borderPadding.top,
                  aReflowInput.ComputedWidth(), aReflowInput.ComputedHeight()));
 
-#endif  // ANDROID
+#endif  // ANDROID || MOZ_EMBEDLITE
     } else if (child->GetContent() == mCaptionDiv ||
                child->GetContent() == mVideoControls) {
       // Reflow the caption and control bar frames.
@@ -566,13 +566,13 @@ LogicalSize nsVideoFrame::ComputeSize(
 // When in no video scenario, it should fall back to inherited method.
 // We keep old codepath here since Android still uses XUL media controls.
 // This will go away in bug 1310907.
-#ifndef ANDROID
+#if !defined(ANDROID) && !defined(MOZ_EMBEDLITE)
   if (!HasVideoElement()) {
     return nsContainerFrame::ComputeSize(aRenderingContext, aWM, aCBSize,
                                          aAvailableISize, aMargin, aBorder,
                                          aPadding, aFlags);
   }
-#endif  // ANDROID
+#endif  // !ANDROID && !MOZ_EMBEDLITE
 
   nsSize size = GetVideoIntrinsicSize(aRenderingContext);
 
@@ -670,7 +670,7 @@ nsSize nsVideoFrame::GetVideoIntrinsicSize(gfxContext* aRenderingContext) {
 
 // All media controls have been converted to HTML except Android. Hence
 // we keep this codepath for Android until removal in bug 1310907.
-#ifdef ANDROID
+#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
   if (!HasVideoElement()) {
     if (!mFrames.FirstChild()) {
       return nsSize(0, 0);
@@ -681,7 +681,7 @@ nsSize nsVideoFrame::GetVideoIntrinsicSize(gfxContext* aRenderingContext) {
     nscoord prefHeight = mFrames.LastChild()->GetXULPrefSize(boxState).height;
     return nsSize(nsPresContext::CSSPixelsToAppUnits(size.width), prefHeight);
   }
-#endif  // ANDROID
+#endif  // ANDROID || MOZ_EMBEDLITE
 
   HTMLVideoElement* element = static_cast<HTMLVideoElement*>(GetContent());
   if (NS_FAILED(element->GetVideoSize(&size)) && ShouldDisplayPoster()) {
