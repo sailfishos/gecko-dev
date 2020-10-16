@@ -236,14 +236,19 @@
         this.setFullscreenButtonState();
 
         if (!this.isTopLevelSyntheticDocument) {
-          return;
+          if (this._isAudioOnly) {
+            this.video.style.height = this.controlBarMinHeight + "px";
+            this.video.style.width = "100%";
+          }
         }
-        if (this._isAudioOnly) {
-          this.video.style.height = this.controlBarMinHeight + "px";
-          this.video.style.width = "66%";
-        } else {
-          this.video.style.removeProperty("height");
-          this.video.style.removeProperty("width");
+        else {
+          if (this._isAudioOnly) {
+            this.video.style.height = this.controlBarMinHeight + "px";
+            this.video.style.width = "100%";
+          } else {
+            this.video.style.removeProperty("height");
+            this.video.style.removeProperty("width");
+          }
         }
       },
 
@@ -1649,7 +1654,7 @@
         return doc.mozSyntheticDocument && win === win.top;
       },
 
-      controlBarMinHeight: 40,
+      controlBarMinHeight: 48,
       controlBarMinVisibleHeight: 28,
       adjustControlSize() {
         if (this.videocontrols.isTouchControls) {
