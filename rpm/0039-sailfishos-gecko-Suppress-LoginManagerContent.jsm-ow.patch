@@ -1,0 +1,30 @@
+From abbb96148870a8ed442b10aff08008a80884e77b Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 19 Oct 2020 11:44:03 +0300
+Subject: [PATCH] [sailfishos][gecko] Suppress LoginManagerContent.jsm
+ ownerDocument errors. Fixes JB#51426
+
+Bale out early if event.target or owner document of the event.taget is
+undefined.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/components/passwordmgr/LoginManagerContent.jsm | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/toolkit/components/passwordmgr/LoginManagerContent.jsm b/toolkit/components/passwordmgr/LoginManagerContent.jsm
+index 23b3a092ac84..8f6544cf5471 100644
+--- a/toolkit/components/passwordmgr/LoginManagerContent.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerContent.jsm
+@@ -618,7 +618,7 @@ var LoginManagerContent = {
+     var acInputField = event.target;
+ 
+     // This is probably a bit over-conservatative.
+-    if (ChromeUtils.getClassName(acInputField.ownerDocument) != "HTMLDocument")
++    if (!acInputField || !acInputField.ownerDocument || ChromeUtils.getClassName(acInputField.ownerDocument) != "HTMLDocument")
+       return;
+ 
+     if (!LoginHelper.isUsernameFieldType(acInputField))
+-- 
+2.26.2
+
