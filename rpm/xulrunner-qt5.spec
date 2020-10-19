@@ -262,7 +262,8 @@ echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
- echo 'FIX_LDFLAGS="-Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+# Additionally we limit the memory usage during linking
+ echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
  echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
