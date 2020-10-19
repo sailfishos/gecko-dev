@@ -157,7 +157,9 @@ SPHINX_PYTHON_PACKAGE_DIRS += ['mozwebidlcodegen']
 with Files('mozwebidlcodegen/**.py'):
     SCHEDULES.inclusive += ['docs']
 
-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
+app = CONFIG['MOZ_BUILD_APP']
+
+if app in ['browser', 'xulrunner'] or app.startswith('mobile/'):
     # This is needed for Window.webidl
     DEFINES['HAVE_SIDEBAR'] = True
 

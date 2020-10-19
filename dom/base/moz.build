@@ -468,7 +468,9 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
+app = CONFIG['MOZ_BUILD_APP']
+
+if app in ['browser', 'xulrunner'] or app.startswith('mobile/'):
     DEFINES['HAVE_SIDEBAR'] = True
 
 if CONFIG['MOZ_X11']:
