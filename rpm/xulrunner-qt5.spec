@@ -81,6 +81,7 @@ Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
 Patch36:    0036-sailfishos-qt-Initialize-FreeType-library-properly.-.patch
 Patch37:    0037-sailfishos-disable-TLS-1.0-and-1.1.patch
 Patch38:    0038-sailfishos-gecko-Use-registered-IHistory-service-imp.patch
+Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
