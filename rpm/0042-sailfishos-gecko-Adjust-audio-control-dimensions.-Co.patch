@@ -1,0 +1,61 @@
+From 6ce21fa982e37044bcd32c7b4cd4ee236cbd813c Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Fri, 16 Oct 2020 19:14:36 +0300
+Subject: [PATCH] [sailfishos][gecko] Adjust audio control dimensions.
+ Contributes to JB#51471
+
+This change has two consequences:
+
+1. Ensures the focus box around the audio controls is large enough to
+accommodate the controls. Without this the audio-on/mute control becomes
+unusable.
+
+2. Allows the audio controls to extend across the full width of their
+containing box.
+---
+ toolkit/content/widgets/videocontrols.xml | 21 +++++++++++++--------
+ 1 file changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/toolkit/content/widgets/videocontrols.xml b/toolkit/content/widgets/videocontrols.xml
+index f48106d440de..14041b63d666 100644
+--- a/toolkit/content/widgets/videocontrols.xml
++++ b/toolkit/content/widgets/videocontrols.xml
+@@ -236,14 +236,19 @@
+         this.setFullscreenButtonState();
+ 
+         if (!this.isTopLevelSyntheticDocument) {
+-          return;
++          if (this._isAudioOnly) {
++            this.video.style.height = this.controlBarMinHeight + "px";
++            this.video.style.width = "100%";
++          }
+         }
+-        if (this._isAudioOnly) {
+-          this.video.style.height = this.controlBarMinHeight + "px";
+-          this.video.style.width = "66%";
+-        } else {
+-          this.video.style.removeProperty("height");
+-          this.video.style.removeProperty("width");
++        else {
++          if (this._isAudioOnly) {
++            this.video.style.height = this.controlBarMinHeight + "px";
++            this.video.style.width = "100%";
++          } else {
++            this.video.style.removeProperty("height");
++            this.video.style.removeProperty("width");
++          }
+         }
+       },
+ 
+@@ -1649,7 +1654,7 @@
+         return doc.mozSyntheticDocument && win === win.top;
+       },
+ 
+-      controlBarMinHeight: 40,
++      controlBarMinHeight: 48,
+       controlBarMinVisibleHeight: 28,
+       adjustControlSize() {
+         if (this.videocontrols.isTouchControls) {
+-- 
+2.25.1
+
