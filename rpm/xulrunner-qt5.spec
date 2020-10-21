@@ -191,6 +191,14 @@ echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 
 %build
+
+mkdir -p "%BUILD_DIR"
+cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
+echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
+echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
+echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
+echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
+
 source "%BUILD_DIR"/rpm-shared.env
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
