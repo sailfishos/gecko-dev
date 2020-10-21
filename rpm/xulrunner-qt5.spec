@@ -311,7 +311,6 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 
 %files
 %defattr(-,root,root,-)
-%attr(755,-,-) %{_bindir}/*
 %dir %{mozappdir}
 %dir %{mozappdir}/defaults
 %{mozappdir}/*.so
@@ -320,11 +319,6 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %{mozappdir}/dictionaries
 %{mozappdir}/plugin-container
 %{mozappdir}/platform.ini
-%exclude %{mozappdir}/gmp-fake
-%exclude %{mozappdir}/gmp-clearkey
-%exclude %{mozappdir}/gmp-fakeopenh264
-%exclude %{mozappdir}/run-mozilla.sh
-%exclude %{mozappdir}/chrome.manifest
 
 %files devel
 %defattr(-,root,root,-)
@@ -335,7 +329,12 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 
 %files misc
 %defattr(-,root,root,-)
+%{_bindir}/*
 %{mozappdir}/*
+%exclude %dir %{mozappdir}/defaults
 %exclude %{mozappdir}/*.so
 %exclude %{mozappdir}/omni.ja
 %exclude %{mozappdir}/dependentlibs.list
+%exclude %{mozappdir}/dictionaries
+%exclude %{mozappdir}/plugin-container
+%exclude %{mozappdir}/platform.ini
