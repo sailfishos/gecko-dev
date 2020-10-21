@@ -971,8 +971,8 @@ void GLContext::LoadMoreSymbols(const char* prefix, bool trygl) {
   if (IsSupported(GLFeature::robustness)) {
     const SymLoadStruct symbols[] = {
         {(PRFuncPtr*)&mSymbols.fGetGraphicsResetStatus,
-         {"GetGraphicsResetStatus", "GetGraphicsResetStatusARB",
-          "GetGraphicsResetStatusKHR", "GetGraphicsResetStatusEXT", nullptr}},
+         {"GetGraphicsResetStatusEXT", "GetGraphicsResetStatusARB",
+          "GetGraphicsResetStatusKHR", "GetGraphicsResetStatus", nullptr}},
         END_SYMBOLS};
     if (fnLoadForFeature(symbols, GLFeature::robustness)) {
       const auto status = mSymbols.fGetGraphicsResetStatus();
