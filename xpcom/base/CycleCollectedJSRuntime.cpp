@@ -456,6 +456,9 @@ static void JSObjectsTenuredCb(JSContext* aContext, void* aData) {
 
 bool mozilla::GetBuildId(JS::BuildIdCharVector* aBuildID) {
   nsCOMPtr<nsIPlatformInfo> info = do_GetService("@mozilla.org/xre/app-info;1");
+
+  printf("============= TERVE: %p\n", info.get());
+
   if (!info) {
     return false;
   }

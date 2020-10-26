@@ -199,11 +199,9 @@ function DO_LOG(aText) {
  */
 var LOG = function() {};
 
-if (AppConstants.DEBUG) {
+if (true) {
   LOG = function(aText) {
-    if (getBoolPref(BROWSER_SEARCH_PREF + "log", false)) {
       DO_LOG(aText);
-    }
   };
 }
 
