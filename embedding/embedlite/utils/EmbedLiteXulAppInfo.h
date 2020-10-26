@@ -39,7 +39,6 @@ protected:
   { 0xbf, 0xb2, 0x9f, 0x3b, 0x52, 0x95, 0x6e }}
 
 
-#define NS_EMBED_LITE_XULAPPINFO_CONTRACTID "@mozilla.org/xre/app-info;1"
 #define NS_EMBED_LITE_XULAPPINFO_SERVICE_CLASSNAME "EmbedLite Xul App Info Component"
 #define NS_EMBED_LITE_XULAPPINFO_SERVICE_CID NS_IEMBEDLITEXULAPPINFO_IID
 

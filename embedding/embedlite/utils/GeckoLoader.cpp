@@ -39,6 +39,7 @@
 #include "nsXULAppAPI.h"
 #include "EmbedLiteXulAppInfo.h"
 #include "mozilla/ModuleUtils.h"
+#include "nsXPCOMCIDInternal.h"
 
 #ifdef XP_MACOSX
 #include "MacQuirks.h"
@@ -72,7 +73,8 @@ static const mozilla::Module::CIDEntry kLocalCIDs[] = {
 };
 
 static const mozilla::Module::ContractIDEntry kLocalContracts[] = {
-    { NS_EMBED_LITE_XULAPPINFO_CONTRACTID, &kNS_EMBED_LITE_XULAPPINFO_SERVICE_CID },
+    { XULAPPINFO_SERVICE_CONTRACTID, &kNS_EMBED_LITE_XULAPPINFO_SERVICE_CID },
+    { XULRUNTIME_SERVICE_CONTRACTID, &kNS_EMBED_LITE_XULAPPINFO_SERVICE_CID },
     { NULL }
 };
 

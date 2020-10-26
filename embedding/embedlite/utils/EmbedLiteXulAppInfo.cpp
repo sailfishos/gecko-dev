@@ -24,9 +24,6 @@
 #include "nsAccessibilityService.h"
 #endif
 
-#define xstr(s) str(s)
-#define str(s) #s
-
 using namespace mozilla::embedlite;
 
 EmbedLiteXulAppInfo::EmbedLiteXulAppInfo()
@@ -37,7 +34,7 @@ EmbedLiteXulAppInfo::~EmbedLiteXulAppInfo()
 {
 }
 
-NS_IMPL_ISUPPORTS(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo)
+NS_IMPL_ISUPPORTS(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo, nsIPlatformInfo)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 {
@@ -53,7 +50,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(xstr(MOZ_BUILDID));
+  aAppBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -83,7 +80,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersi
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(xstr(MOZ_BUILDID));
+  aPlatformBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
