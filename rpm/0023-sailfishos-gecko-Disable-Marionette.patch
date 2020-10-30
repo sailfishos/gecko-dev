@@ -18,7 +18,7 @@ index cd0cd1bb07aa..726765010e0d 100644
      """Enable Marionette by default, except on Android."""
 -    if target.os != 'Android':
 -        return True
-+    return True
++    return False
  
  imply_option('--enable-marionette', marionette, reason='Not Android')
  
