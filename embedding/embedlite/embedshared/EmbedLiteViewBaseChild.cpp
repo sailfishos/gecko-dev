@@ -665,8 +665,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSuspendTimeouts()
 {
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
-  nsresult rv;
-  nsCOMPtr<nsPIDOMWindowInner> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
   if (pwindow && !pwindow->IsFrozen()) {
     pwindow->Freeze();
   }
@@ -678,8 +677,8 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvResumeTimeouts()
 {
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
-  nsresult rv;
-  nsCOMPtr<nsPIDOMWindowInner> pwindow(do_QueryInterface(mDOMWindow, &rv));
+  nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
+
   if (pwindow && pwindow->IsFrozen()) {
     pwindow->Thaw();
   }
