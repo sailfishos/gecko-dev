@@ -138,7 +138,10 @@ pref("browser.cache.disk.capacity", 20480); // kilobytes
 pref("browser.cache.disk.max_entry_size", 4096); // kilobytes
 pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
-pref("browser.cache.memory.capacity", 1024);
+
+pref("browser.cache.memory.enable", true);
+pref("browser.cache.memory.capacity", 1024); // kilobytes
+pref("browser.cache.memory_limit", 5120); // 5 MB
 
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
@@ -172,10 +175,22 @@ pref("network.http.max-connections", 20);
 pref("network.http.max-persistent-connections-per-server", 6);
 pref("network.http.max-persistent-connections-per-proxy", 20);
 
+// spdy
+pref("network.http.spdy.push-allowance", 32768);
+pref("network.http.spdy.default-hpack-buffer", 4096); // 4k
+
+// Racing the cache with the network should be disabled to prevent accidental
+// data usage.
+pref("network.http.rcwn.enabled", false);
+
 // See bug 545869 for details on why these are set the way they are
 pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
+// predictive actions
+pref("network.predictor.enabled", true);
+pref("network.predictor.max-db-size", 2097152); // bytes
+pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
