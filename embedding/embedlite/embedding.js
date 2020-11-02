@@ -149,6 +149,8 @@ pref("browser.cache.offline.enable", true);
 pref("browser.cache.offline.capacity", 5120); // kilobytes
 pref("offline-apps.quota.warn", 1024); // kilobytes
 
+// Automatically shrink-to-fit image documents.
+pref("browser.enable_automatic_image_resizing", true);
 
 // Default action for unlisted external protocol handlers
 pref("network.protocol-handler.external-default", true);      // OK to load
@@ -344,8 +346,6 @@ pref("media.video-queue.default-size", 3);
 // Enable GMP plugins for media decoding to use gmp-droid
 pref("media.gmp.decoder.enabled", true);
 
-// optimize images memory usage
-pref("image.mem.allow_locking_in_content_processes", false);
 // SimplePush
 pref("services.push.enabled", false);
 
