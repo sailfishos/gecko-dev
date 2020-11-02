@@ -429,6 +429,9 @@ nsresult nsHttpChannel::OnBeforeConnect() {
   // At this point it is no longer possible to call
   // HttpBaseChannel::UpgradeToSecure.
   mUpgradableToSecure = false;
+
+  printf("================== nsHttpChannel is http: %d upgrade to secure: %d\n", isHttp, mUpgradeToSecure);
+
   if (isHttp) {
     bool shouldUpgrade = mUpgradeToSecure;
     if (!shouldUpgrade) {

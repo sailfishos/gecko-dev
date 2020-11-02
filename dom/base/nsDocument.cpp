@@ -2684,6 +2684,9 @@ void nsDocument::SendToConsole(
 
 void nsDocument::ApplySettingsFromCSP(bool aSpeculative) {
   nsresult rv = NS_OK;
+
+  printf("============ApplySettingsFromCSP: %d\n", aSpeculative);
+
   if (!aSpeculative) {
     // 1) apply settings from regular CSP
     nsCOMPtr<nsIContentSecurityPolicy> csp;

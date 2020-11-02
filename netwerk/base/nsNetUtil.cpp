@@ -2655,6 +2655,11 @@ nsresult NS_ShouldSecureUpgrade(nsIURI *aURI, nsILoadInfo *aLoadInfo,
       // the CSP directive 'upgrade-insecure-requests', then it's time to
       // fulfill the promise to CSP and mixed content blocking to upgrade the
       // channel from http to https.
+
+        printf("========== nsNetUtil %d %d\n",
+               aLoadInfo->GetUpgradeInsecureRequests(),
+               aLoadInfo->GetBrowserUpgradeInsecureRequests());
+
       if (aLoadInfo->GetUpgradeInsecureRequests() ||
           aLoadInfo->GetBrowserUpgradeInsecureRequests()) {
         // let's log a message to the console that we are upgrading a request
@@ -2703,6 +2708,8 @@ nsresult NS_ShouldSecureUpgrade(nsIURI *aURI, nsILoadInfo *aLoadInfo,
         }
 
         aShouldUpgrade = true;
+
+
         return NS_OK;
       }
     }

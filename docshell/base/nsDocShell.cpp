@@ -10366,6 +10366,9 @@ nsresult nsDocShell::DoURILoad(
   if (csp) {
     bool upgradeInsecureRequests = false;
     csp->GetUpgradeInsecureRequests(&upgradeInsecureRequests);
+
+    printf("=========== upgradeInsecureRequests: %d\n", upgradeInsecureRequests);
+
     if (upgradeInsecureRequests) {
       // only upgrade if the navigation is same origin
       nsCOMPtr<nsIPrincipal> resultPrincipal;
@@ -10373,6 +10376,9 @@ nsresult nsDocShell::DoURILoad(
           channel, getter_AddRefs(resultPrincipal));
       NS_ENSURE_SUCCESS(rv, rv);
       if (IsConsideredSameOriginForUIR(aTriggeringPrincipal, resultPrincipal)) {
+
+          printf("=========== IsConsideredSameOriginForUIR\n");
+
         static_cast<mozilla::LoadInfo*>(loadInfo.get())
             ->SetUpgradeInsecureRequests();
       }

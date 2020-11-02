@@ -25,6 +25,7 @@ var gOverrides = new Map;
 var gUpdatedOverrides;
 var gOverrideForHostCache = new Map;
 var gInitialized = false;
+var gFooBar = 1;
 var gOverrideFunctions = [
   function (aHttpChannel) { return UserAgentOverrides.getOverrideForURI(aHttpChannel.URI); }
 ];
@@ -32,6 +33,10 @@ var gBuiltUAs = new Map;
 
 var UserAgentOverrides = {
   init: function uao_init() {
+
+    dump("============= UserAgentOverrides init " + gFooBar + " initialized: " + gInitialized + "\n");
+    ++gFooBar;
+
     if (gInitialized)
       return;
 
@@ -49,9 +54,15 @@ var UserAgentOverrides = {
     try {
       UserAgentUpdates.init(function(overrides) {
         gOverrideForHostCache.clear();
+
+        dump("=========== Overrides " + overrides + "\n");
+
         if (overrides) {
           for (let domain in overrides) {
+
+
             overrides[domain] = getUserAgentFromOverride(overrides[domain]);
+            dump("=========== Override domain " + domain + " = " + overrides[domain] + "\n");
           }
           overrides.get = function(key) { return this[key]; };
         }
@@ -127,14 +138,23 @@ var UserAgentOverrides = {
 function getUserAgentFromOverride(override)
 {
   let userAgent = gBuiltUAs.get(override);
+
+  dump("============= getUserAgentFromOverride: " + override + " = " + userAgent + "\n");
+
   if (userAgent !== undefined) {
     return userAgent;
   }
   let [search, replace] = override.split("#", 2);
   if (search && replace) {
     userAgent = DEFAULT_UA.replace(new RegExp(search, "g"), replace);
+
+    dump("============= replace: " + search + " = " + replace + "\n");
+
   } else {
     userAgent = override;
+
+    dump("============= agent: " + userAgent + " = " + override + "\n");
+
   }
   gBuiltUAs.set(override, userAgent);
   return userAgent;
@@ -163,8 +183,13 @@ function buildOverrides() {
 function HTTP_on_useragent_request(aSubject, aTopic, aData) {
   let channel = aSubject.QueryInterface(Ci.nsIHttpChannel);
 
+  dump("============= HTTP_on_useragent_request: " + gOverrideFunctions + "\n");
+
   for (let callback of gOverrideFunctions) {
+
+
     let modifiedUA = callback(channel, DEFAULT_UA);
+    dump("============= callback: " + DEFAULT_UA + " = " + modifiedUA + "\n");
     if (modifiedUA) {
       channel.setRequestHeader("User-Agent", modifiedUA, false);
       return;
