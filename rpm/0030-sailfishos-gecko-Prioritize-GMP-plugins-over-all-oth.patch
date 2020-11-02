@@ -10,8 +10,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
  dom/media/platforms/PDMFactory.cpp               | 13 +++++++------
  .../platforms/agnostic/gmp/GMPDecoderModule.cpp  | 16 ++++++++++++++++
- .../mozapps/extensions/internal/GMPProvider.jsm  | 15 +++++++++++++++
- 3 files changed, 38 insertions(+), 6 deletions(-)
+ 2 files changed, 23 insertions(+), 6 deletions(-)
 
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
 index c8e7df236d1b..d47ec17b42af 100644
@@ -71,39 +70,6 @@ index 7f7fb437ee0a..291f0334767c 100644
    return false;
  }
  
-diff --git a/toolkit/mozapps/extensions/internal/GMPProvider.jsm b/toolkit/mozapps/extensions/internal/GMPProvider.jsm
-index 4331b11da9c2..0b58a5e96319 100644
---- a/toolkit/mozapps/extensions/internal/GMPProvider.jsm
-+++ b/toolkit/mozapps/extensions/internal/GMPProvider.jsm
-@@ -32,6 +32,8 @@ const GMP_CHECK_DELAY        = 10 * 1000; // milliseconds
- const NS_GRE_DIR             = "GreD";
- const CLEARKEY_PLUGIN_ID     = "gmp-clearkey";
- const CLEARKEY_VERSION       = "0.1";
-+const DROID_PLUGIN_ID        = "gmp-droid";
-+const DROID_VERSION          = "0.1";
- 
- const GMP_LICENSE_INFO       = "gmp_license_info";
- const GMP_PRIVACY_INFO       = "gmp_privacy_info";
-@@ -573,6 +575,19 @@ var GMPProvider = {
-     } catch (e) {
-       this._log.warn("startup - adding clearkey CDM failed", e);
-     }
-+
-+    try {
-+      let greDir = Services.dirsvc.get(NS_GRE_DIR,
-+                                       Ci.nsILocalFile);
-+      let droidPath = OS.Path.join(greDir.path,
-+                                      DROID_PLUGIN_ID,
-+                                      DROID_VERSION);
-+      this._log.info("startup - adding droidmedia GMP directory " +
-+                     droidPath);
-+      gmpService.addPluginDirectory(droidPath);
-+    } catch (e) {
-+      this._log.warn("startup - adding droidmedia GMP failed", e);
-+    }
-   },
- 
-   shutdown() {
 -- 
 2.26.2
 
