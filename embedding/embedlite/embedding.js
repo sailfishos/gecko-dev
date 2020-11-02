@@ -133,16 +133,16 @@ pref("browser.viewport.desktopWidth", 980);
 pref("browser.viewport.defaultZoom", -1);
 
 /* cache prefs */
-pref("browser.cache.disk.enable", true);
 pref("browser.cache.disk.capacity", 20480); // kilobytes
 pref("browser.cache.disk.max_entry_size", 4096); // kilobytes
 pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.first_run", true);
-pref("browser.cache.memory.capacity", 1024);
+
+pref("browser.cache.memory.capacity", 1024); // kilobytes
+pref("browser.cache.memory_limit", 5120); // 5 MB
 
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
-pref("image.high_quality_downscaling.enabled", false);
 
 /* offline cache prefs */
 pref("browser.offline-apps.notify", true);
@@ -150,8 +150,8 @@ pref("browser.cache.offline.enable", true);
 pref("browser.cache.offline.capacity", 5120); // kilobytes
 pref("offline-apps.quota.warn", 1024); // kilobytes
 
-// cache compression turned off for now - see bug #715198
-pref("browser.cache.compression_level", 0);
+// Automatically shrink-to-fit image documents.
+pref("browser.enable_automatic_image_resizing", true);
 
 // Default action for unlisted external protocol handlers
 pref("network.protocol-handler.external-default", true);      // OK to load
@@ -168,21 +168,27 @@ pref("network.protocol-handler.warn-external.mailto", false);
 pref("network.protocol-handler.warn-external.vnd.youtube", false);
 
 /* http prefs */
-pref("network.http.pipelining", true);
-pref("network.http.pipelining.ssl", true);
-pref("network.http.proxy.pipelining", true);
-pref("network.http.pipelining.maxrequests" , 6);
 pref("network.http.keep-alive.timeout", 109);
 pref("network.http.max-connections", 20);
 pref("network.http.max-persistent-connections-per-server", 6);
 pref("network.http.max-persistent-connections-per-proxy", 20);
 
+// spdy
+pref("network.http.spdy.push-allowance", 32768);
+pref("network.http.spdy.default-hpack-buffer", 4096); // 4k
+
+// Racing the cache with the network should be disabled to prevent accidental
+// data usage.
+pref("network.http.rcwn.enabled", false);
+
 // See bug 545869 for details on why these are set the way they are
 pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
-/* history max results display */
-pref("browser.display.history.maxresults", 100);
+// predictive actions
+pref("network.predictor.enabled", true);
+pref("network.predictor.max-db-size", 2097152); // bytes
+pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
@@ -353,10 +359,6 @@ pref("media.video-queue.default-size", 3);
 // Enable GMP plugins for media decoding to use gmp-droid
 pref("media.gmp.decoder.enabled", true);
 
-// optimize images memory usage
-pref("image.mem.allow_locking_in_content_processes", false);
-pref("image.onload.decode.limit", 24); /* don't decode more than 24 images eagerly */
-
 // SimplePush
 pref("services.push.enabled", false);
 
@@ -373,8 +375,6 @@ pref("dom.event.touch.coalescing.enabled", false);
 // On memory pressure, release dirty but unused pages held by jemalloc
 // back to the system.
 pref("memory.free_dirty_pages", true);
-
-pref("layout.imagevisibility.enabled", true);
 
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);
