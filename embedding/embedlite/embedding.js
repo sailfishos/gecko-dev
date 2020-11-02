@@ -142,7 +142,6 @@ pref("browser.cache.memory.capacity", 1024);
 
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
-pref("image.high_quality_downscaling.enabled", false);
 
 /* offline cache prefs */
 pref("browser.offline-apps.notify", true);
@@ -150,8 +149,6 @@ pref("browser.cache.offline.enable", true);
 pref("browser.cache.offline.capacity", 5120); // kilobytes
 pref("offline-apps.quota.warn", 1024); // kilobytes
 
-// cache compression turned off for now - see bug #715198
-pref("browser.cache.compression_level", 0);
 
 // Default action for unlisted external protocol handlers
 pref("network.protocol-handler.external-default", true);      // OK to load
@@ -168,10 +165,6 @@ pref("network.protocol-handler.warn-external.mailto", false);
 pref("network.protocol-handler.warn-external.vnd.youtube", false);
 
 /* http prefs */
-pref("network.http.pipelining", true);
-pref("network.http.pipelining.ssl", true);
-pref("network.http.proxy.pipelining", true);
-pref("network.http.pipelining.maxrequests" , 6);
 pref("network.http.keep-alive.timeout", 109);
 pref("network.http.max-connections", 20);
 pref("network.http.max-persistent-connections-per-server", 6);
@@ -181,8 +174,6 @@ pref("network.http.max-persistent-connections-per-proxy", 20);
 pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
-/* history max results display */
-pref("browser.display.history.maxresults", 100);
 
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
@@ -355,8 +346,6 @@ pref("media.gmp.decoder.enabled", true);
 
 // optimize images memory usage
 pref("image.mem.allow_locking_in_content_processes", false);
-pref("image.onload.decode.limit", 24); /* don't decode more than 24 images eagerly */
-
 // SimplePush
 pref("services.push.enabled", false);
 
@@ -373,8 +362,6 @@ pref("dom.event.touch.coalescing.enabled", false);
 // On memory pressure, release dirty but unused pages held by jemalloc
 // back to the system.
 pref("memory.free_dirty_pages", true);
-
-pref("layout.imagevisibility.enabled", true);
 
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);
