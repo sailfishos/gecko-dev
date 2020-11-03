@@ -86,6 +86,7 @@ Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
 Patch41:    0041-sailfishos-gecko-Include-XUL-videocontrols-reflow-co.patch
 Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
 Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
+Patch44:    0044-sailfishos-gecko-Apply-UA-override-for-window.naviga.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static

@@ -1,0 +1,32 @@
+From 84c0d5ff96ec89ce5b5a4b9aa56a6d89b65df781 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 3 Nov 2020 09:49:46 +0200
+Subject: [PATCH] [sailfishos][gecko] Apply UA override for window.navigator.
+ Fixes JB#51824
+
+Do not return just the "general.useragent.override" rather let the
+http protocol handler to resolve possible override.
+
+To be noted that with this change "privacy.resistFingerprinting"
+will keep working if used.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/base/Navigator.cpp | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
+index 1e1398e5ee73..b70cd008abf6 100644
+--- a/dom/base/Navigator.cpp
++++ b/dom/base/Navigator.cpp
+@@ -1599,7 +1599,6 @@ nsresult Navigator::GetUserAgent(nsPIDOMWindowInner* aWindow,
+ 
+     if (NS_SUCCEEDED(rv)) {
+       aUserAgent = override;
+-      return NS_OK;
+     }
+   }
+ 
+-- 
+2.28.0
+
