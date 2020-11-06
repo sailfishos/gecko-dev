@@ -88,6 +88,7 @@ Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
 Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 Patch44:    0044-sailfishos-gecko-Apply-UA-override-for-window.naviga.patch
 Patch45:    0045-sailfishos-media-Ensure-audio-continues-when-screen-.patch
+Patch46:    0046-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
@@ -198,7 +199,10 @@ source "%BUILD_DIR"/rpm-shared.env
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
-printf "#\n# Added by xulrunner-qt.spec:\n#" >> "$MOZCONFIG"
+%ifarch %arm
+# Do not build as thumb since it breaks video decoding.
+echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
+%endif
 
 echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 # XXX: gold crashes when building gecko for both i486 and x86_64
