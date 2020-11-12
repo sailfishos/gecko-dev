@@ -89,6 +89,7 @@ Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 Patch44:    0044-sailfishos-gecko-Apply-UA-override-for-window.naviga.patch
 Patch45:    0045-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 Patch46:    0046-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
+Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
