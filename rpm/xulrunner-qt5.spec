@@ -272,6 +272,10 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 %endif
 
+%ifarch %ix86 %arm
+echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
+%endif
+
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
