@@ -491,10 +491,6 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvLoadURL(const nsString &url)
   LOGT("url:%s", NS_ConvertUTF16toUTF8(url).get());
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
-  nsCOMPtr<nsIIOService> ioService = do_GetService(NS_IOSERVICE_CONTRACTID);
-  NS_ENSURE_TRUE(ioService, IPC_OK());
-
-  ioService->SetOffline(false);
   uint32_t flags = 0;
   if (sAllowKeyWordURL) {
     flags |= nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
