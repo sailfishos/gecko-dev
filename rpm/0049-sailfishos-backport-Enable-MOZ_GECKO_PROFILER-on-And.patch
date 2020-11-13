@@ -1,0 +1,33 @@
+From 5e1f5eaca79b76e5e668f6a77fe389922967a241 Mon Sep 17 00:00:00 2001
+From: Nick Alexander <nalexander@mozilla.com>
+Date: Tue, 8 Jan 2019 21:43:48 +0000
+Subject: [PATCH] Bug 1518557 - Enable MOZ_GECKO_PROFILER on Android x86_64.
+ r=mstange
+
+Differential Revision: https://phabricator.services.mozilla.com/D15962
+
+--HG--
+extra : moz-landing-system : lando
+---
+ toolkit/moz.configure | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 5b84c5464bf5..6219cb710a28 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -25,9 +25,9 @@ imply_option('--enable-profiling', jprof)
+ @depends(target)
+ def gecko_profiler(target):
+     if target.os == 'Android':
+-        return target.cpu in ('aarch64', 'arm', 'x86')
++        return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64')
+     elif target.kernel == 'Linux':
+-        return target.cpu in ('x86', 'x86_64', 'mips64', 'arm')
++        return target.cpu in ('aarch64', 'arm', 'x86', 'x86_64', 'mips64')
+     return target.os in ('OSX', 'WINNT')
+ 
+ @depends(gecko_profiler)
+-- 
+2.25.1
+
