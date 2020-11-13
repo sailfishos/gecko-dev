@@ -358,6 +358,7 @@ pref("media.video-queue.default-size", 3);
 
 // Enable GMP plugins for media decoding to use gmp-droid
 pref("media.gmp.decoder.enabled", true);
+pref("media.decoder.recycle.enabled", true);
 
 // SimplePush
 pref("services.push.enabled", false);
