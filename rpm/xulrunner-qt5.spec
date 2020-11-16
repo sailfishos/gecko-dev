@@ -91,6 +91,8 @@ Patch45:    0045-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 Patch46:    0046-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
 Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
 Patch48:    0048-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+Patch49:    0049-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
+Patch50:    0050-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
@@ -268,6 +270,10 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
 
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+%endif
+
+%ifarch %ix86 %arm
+echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 %endif
 
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
