@@ -86,13 +86,12 @@ Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
 Patch41:    0041-sailfishos-gecko-Include-XUL-videocontrols-reflow-co.patch
 Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
 Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
-Patch44:    0044-sailfishos-gecko-Apply-UA-override-for-window.naviga.patch
-Patch45:    0045-sailfishos-media-Ensure-audio-continues-when-screen-.patch
-Patch46:    0046-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
-Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
-Patch48:    0048-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
-Patch49:    0049-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
-Patch50:    0050-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
+Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
+Patch45:    0045-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
+Patch46:    0046-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
+Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
+Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
