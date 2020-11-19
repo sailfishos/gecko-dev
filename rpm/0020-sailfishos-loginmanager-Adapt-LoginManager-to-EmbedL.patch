@@ -1,4 +1,4 @@
-From 9d1ab98541d1908e3a5255301fc165460f6a10ea Mon Sep 17 00:00:00 2001
+From 29620b5fa9082de957a5aaa67164e08d13e0ce1d Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 14:17:08 +0300
 Subject: [PATCH] [sailfishos][loginmanager] Adapt LoginManager to EmbedLite.
@@ -6,17 +6,18 @@ Subject: [PATCH] [sailfishos][loginmanager] Adapt LoginManager to EmbedLite.
 
 Signed-off-by: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  dom/ipc/TabChild.h                                 | 14 +++++++++-----
- .../components/passwordmgr/LoginManagerParent.jsm  |  2 ++
+ .../components/passwordmgr/LoginManagerParent.jsm  |  9 +++++++--
  .../components/passwordmgr/passwordmgr.manifest    |  6 +-----
- 3 files changed, 12 insertions(+), 10 deletions(-)
+ 3 files changed, 17 insertions(+), 12 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
-index 2ec960923e0e..d0d73a30797c 100644
+index bfe029b51dcd..e1cc194254f5 100644
 --- a/dom/ipc/TabChild.h
 +++ b/dom/ipc/TabChild.h
-@@ -496,12 +496,16 @@ class TabChild final : public TabChildBase,
+@@ -495,12 +495,16 @@ class TabChild final : public TabChildBase,
    nsIContentChild* Manager() const { return mManager; }
  
    static inline TabChild* GetFrom(nsIDocShell* aDocShell) {
@@ -39,7 +40,7 @@ index 2ec960923e0e..d0d73a30797c 100644
  
    static inline TabChild* GetFrom(mozIDOMWindow* aWindow) {
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
-index e07a0e99788a..e4edabf21c0c 100644
+index e07a0e99788a..21efd741cf2b 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
 +++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
 @@ -67,6 +67,8 @@ var LoginManagerParent = {
@@ -51,6 +52,20 @@ index e07a0e99788a..e4edabf21c0c 100644
      let data = msg.data;
      switch (msg.name) {
        case "RemoteLogins:findLogins": {
+@@ -292,8 +294,11 @@ var LoginManagerParent = {
+     function getPrompter() {
+       var prompterSvc = Cc["@mozilla.org/login-manager/prompter;1"].
+                         createInstance(Ci.nsILoginManagerPrompter);
+-      prompterSvc.init(target.ownerGlobal);
+-      prompterSvc.browser = target;
++      prompterSvc.init(target.isRemoteBrowser ?
++                          target.ownerDocument.defaultView :
++                          target.contentWindow);
++      if (target.isRemoteBrowser)
++        prompterSvc.browser = target;
+       prompterSvc.opener = openerTopWindow;
+       return prompterSvc;
+     }
 diff --git a/toolkit/components/passwordmgr/passwordmgr.manifest b/toolkit/components/passwordmgr/passwordmgr.manifest
 index 72e9ccffb883..59476fc09007 100644
 --- a/toolkit/components/passwordmgr/passwordmgr.manifest
@@ -73,5 +88,5 @@ index 72e9ccffb883..59476fc09007 100644
 \ No newline at end of file
 +contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
 -- 
-2.26.2
+2.25.1
 
