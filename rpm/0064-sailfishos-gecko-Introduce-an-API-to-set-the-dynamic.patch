@@ -1,0 +1,374 @@
+From 6cc7c95cf5b36c00c0cb8a1b4e1ec5f2edab0091 Mon Sep 17 00:00:00 2001
+From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Date: Tue, 24 Nov 2020 00:01:21 +0300
+Subject: [PATCH] [sailfishos][gecko] Introduce an API to set the dynamic
+ toolbar maximum height in GeckoView. Contributes to JB#51962
+
+This is a partial backport of SHA1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
+---
+ dom/interfaces/base/nsITabChild.idl |  2 +
+ dom/ipc/TabChild.cpp                |  4 ++
+ layout/base/nsLayoutUtils.cpp       | 26 +++++++++
+ layout/base/nsLayoutUtils.h         | 25 +++++++++
+ layout/base/nsPresContext.cpp       | 84 +++++++++++++++++++++++++++++
+ layout/base/nsPresContext.h         | 48 +++++++++++++----
+ layout/generic/nsGfxScrollFrame.cpp | 17 +++++-
+ 7 files changed, 195 insertions(+), 11 deletions(-)
+
+diff --git a/dom/interfaces/base/nsITabChild.idl b/dom/interfaces/base/nsITabChild.idl
+index 76bdedc4d05d..1a7018df1d8d 100644
+--- a/dom/interfaces/base/nsITabChild.idl
++++ b/dom/interfaces/base/nsITabChild.idl
+@@ -33,6 +33,8 @@ interface nsITabChild : nsISupports
+   [noscript] void remoteDropLinks(in unsigned long linksCount,
+                                   [array, size_is(linksCount)] in nsIDroppedLinkItem links);
+ 
++  [notxpcom] void getDynamicToolbarMaxHeight(out int32_t height);
++
+   readonly attribute uint64_t tabId;
+ 
+   [noscript, notxpcom] void beforeUnloadAdded();
+diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
+index fdb1db09fdad..11b250a3d8d5 100644
+--- a/dom/ipc/TabChild.cpp
++++ b/dom/ipc/TabChild.cpp
+@@ -2741,6 +2741,10 @@ void TabChild::SendGetTabCount(uint32_t* tabCount) {
+   PBrowserChild::SendGetTabCount(tabCount);
+ }
+ 
++void TabChild::GetDynamicToolbarMaxHeight(int32_t* height) {
++  *height = 0;
++}
++
+ void TabChild::EnableDisableCommands(const nsAString& aAction,
+                                      nsTArray<nsCString>& aEnabledCommands,
+                                      nsTArray<nsCString>& aDisabledCommands) {
+diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
+index b4b756b1ee56..3deeb9080a03 100644
+--- a/layout/base/nsLayoutUtils.cpp
++++ b/layout/base/nsLayoutUtils.cpp
+@@ -8215,6 +8215,19 @@ float nsLayoutUtils::FontSizeInflationFor(const nsIFrame* aFrame) {
+ 
+   nsIntRect bounds;
+   cv->GetBounds(bounds);
++
++  if (aPresContext->HasDynamicToolbar() && !bounds.IsEmpty()) {
++    MOZ_ASSERT(aPresContext->IsRootContentDocumentCrossProcess());
++    MOZ_ASSERT(bounds.height > aPresContext->GetDynamicToolbarMaxHeight());
++    bounds.height -= aPresContext->GetDynamicToolbarMaxHeight();
++    // Collapse the size in the case the dynamic toolbar max height is greater
++    // than the content bound height so that hopefully embedders of GeckoView
++    // may notice they set wrong dynamic toolbar max height.
++    if (bounds.height < 0) {
++      bounds.height = 0;
++    }
++  }
++
+   aOutSize = LayoutDeviceIntRect::FromUnknownRect(bounds).Size();
+   return true;
+ }
+@@ -8796,6 +8809,19 @@ static void MaybeReflowForInflationScreenSizeChange(
+     metadata.SetOverscrollBehavior(OverscrollBehaviorInfo::FromStyleConstants(
+         scrollbarStyles.mOverscrollBehaviorX,
+         scrollbarStyles.mOverscrollBehaviorY));
++
++    // Expand the layout viewport to the size including the area covered by
++    // the dynamic toolbar in the case where the dynamic toolbar is being
++    // used, otherwise when the dynamic toolbar transitions on the compositor,
++    // the layout viewport will be smaller than the visual viewport on the
++    // compositor, thus the layout viewport offset will be forced to be moved
++    // in FrameMetrics::KeepLayoutViewportEnclosingVisualViewport.
++    if (presContext->HasDynamicToolbar()) {
++      CSSRect viewport = metrics.GetViewport();
++      viewport.SizeTo(nsLayoutUtils::ExpandHeightForViewportUnits(
++          presContext, viewport.Size()));
++      metrics.SetViewport(viewport);
++    }
+   }
+ 
+   // If we have the scrollparent being the same as the scroll id, the
+diff --git a/layout/base/nsLayoutUtils.h b/layout/base/nsLayoutUtils.h
+index 1320ba0b0b5b..2a9d12a185b5 100644
+--- a/layout/base/nsLayoutUtils.h
++++ b/layout/base/nsLayoutUtils.h
+@@ -2996,6 +2996,15 @@ class nsLayoutUtils {
+ 
+   static uint32_t ParseFontLanguageOverride(const nsAString& aLangTag);
+ 
++  /**
++   * Expand the height of |aSize| to the size of `vh` units.
++   *
++   * With dynamic toolbar(s) the height for `vh` units is greater than the
++   * ICB height, we need to expand it in some places.
++   **/
++  template <typename SizeType>
++  static SizeType ExpandHeightForViewportUnits(nsPresContext* aPresContext,
++                                               const SizeType& aSize);
+  private:
+   static uint32_t sFontSizeInflationEmPerLine;
+   static uint32_t sFontSizeInflationMinTwips;
+@@ -3068,6 +3077,22 @@ template <typename PointType, typename RectType, typename CoordType>
+   return false;
+ }
+ 
++template <typename SizeType>
++/* static */ SizeType nsLayoutUtils::ExpandHeightForViewportUnits(
++    nsPresContext* aPresContext, const SizeType& aSize) {
++  nsSize sizeForViewportUnits = aPresContext->GetSizeForViewportUnits();
++  // |aSize| might be the size expanded to the minimum-scale size whereas the
++  // size for viewport units is not scaled so that we need to expand the |aSize|
++  // height with the aspect ratio of the size for viewport units instead of just
++  // expanding to the size for viewport units.
++  float ratio = (float)sizeForViewportUnits.height / sizeForViewportUnits.width;
++
++  MOZ_ASSERT(aSize.height <=
++             NSCoordSaturatingNonnegativeMultiply(aSize.width, ratio));
++  return SizeType(aSize.width,
++                  NSCoordSaturatingNonnegativeMultiply(aSize.width, ratio));
++}
++
+ namespace mozilla {
+ 
+ /**
+diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
+index afe67f005bf4..bf5a2da7ca4d 100644
+--- a/layout/base/nsPresContext.cpp
++++ b/layout/base/nsPresContext.cpp
+@@ -93,6 +93,7 @@
+ #include "mozilla/dom/Performance.h"
+ #include "mozilla/dom/PerformanceTiming.h"
+ #include "mozilla/layers/APZThreadUtils.h"
++#include "MobileViewportManager.h"
+ 
+ // Needed for Start/Stop of Image Animation
+ #include "imgIContainer.h"
+@@ -245,6 +246,7 @@ nsPresContext::nsPresContext(nsIDocument* aDocument, nsPresContextType aType)
+       mLastFontInflationScreenSize(gfxSize(-1.0, -1.0)),
+       mCurAppUnitsPerDevPixel(0),
+       mAutoQualityMinFontSizePixelsPref(0),
++      mDynamicToolbarMaxHeight(0),
+       // origin nscoord_MIN is impossible, so the first ResizeReflow always
+       // fires
+       mLastResizeEventVisibleArea(nsRect(nscoord_MIN, nscoord_MIN,
+@@ -688,6 +690,12 @@ void nsPresContext::AppUnitsPerDevPixelChanged() {
+                              MediaFeatureChangeReason::ResolutionChange});
+ 
+   mCurAppUnitsPerDevPixel = AppUnitsPerDevPixel();
++
++  // Recompute the size for vh units since it's changed by the dynamic toolbar
++  // max height which is stored in screen coord.
++  if (IsRootContentDocumentCrossProcess()) {
++    AdjustSizeForViewportUnits();
++  }
+ }
+ 
+ void nsPresContext::PreferenceChanged(const char* aPrefName) {
+@@ -931,6 +939,13 @@ nsresult nsPresContext::Init(nsDeviceContext* aDeviceContext) {
+ 
+   mEventManager->SetPresContext(this);
+ 
++  if (IsRootContentDocumentCrossProcess()) {
++    nsCOMPtr<nsITabChild> tc = mDocument->GetDocShell()->GetTabChild();
++    if (tc) {
++      tc->GetDynamicToolbarMaxHeight(&mDynamicToolbarMaxHeight.value);
++    }
++  }
++
+ #ifdef RESTYLE_LOGGING
+   mRestyleLoggingEnabled =
+       GeckoRestyleManager::RestyleLoggingInitiallyEnabled();
+@@ -2712,6 +2727,14 @@ bool nsPresContext::IsRootContentDocument() const {
+   return (f && f->PresContext()->IsChrome());
+ }
+ 
++bool nsPresContext::IsRootContentDocumentCrossProcess() const {
++  if (mDocument->IsResourceDoc()) {
++    return false;
++  }
++
++  return mDocument->IsTopLevelContentDocument();
++}
++
+ void nsPresContext::NotifyNonBlankPaint() {
+   MOZ_ASSERT(!mHadNonBlankPaint);
+   mHadNonBlankPaint = true;
+@@ -2799,6 +2822,67 @@ void nsPresContext::FlushFontFeatureValues() {
+   }
+ }
+ 
++void nsPresContext::SetVisibleArea(const nsRect& r) {
++  if (!r.IsEqualEdges(mVisibleArea)) {
++    mVisibleArea = r;
++    mSizeForViewportUnits = mVisibleArea.Size();
++    if (IsRootContentDocumentCrossProcess()) {
++      AdjustSizeForViewportUnits();
++    }
++    // Visible area does not affect media queries when paginated.
++    if (!IsPaginated()) {
++      MediaFeatureValuesChanged(
++          {mozilla::MediaFeatureChangeReason::ViewportChange});
++    }
++  }
++}
++
++void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
++  MOZ_ASSERT(IsRootContentDocumentCrossProcess());
++
++  if (mDynamicToolbarMaxHeight == aHeight) {
++    return;
++  }
++  mDynamicToolbarMaxHeight = aHeight;
++  AdjustSizeForViewportUnits();
++  nsIPresShell* presShell = GetPresShell();
++  if (presShell) {
++    // Changing the max height of the dynamic toolbar changes the ICB size, we
++    // need to kick a reflow with the current window dimensions since the max
++    // height change doesn't change the window dimensions but
++    // PresShell::ResizeReflow ends up subtracting the new dynamic toolbar
++    // height from the window dimensions and kick a reflow with the proper ICB
++    // size.
++    nscoord currentWidth, currentHeight;
++    presShell->GetViewManager()->GetWindowDimensions(&currentWidth,
++                                                     &currentHeight);
++    presShell->ResizeReflow(currentWidth, currentHeight,
++                            0/*ResizeReflowOptions::NoOption*/);
++  }
++}
++
++void nsPresContext::AdjustSizeForViewportUnits() {
++  MOZ_ASSERT(IsRootContentDocumentCrossProcess());
++  if (mVisibleArea.height == NS_UNCONSTRAINEDSIZE) {
++    // Ignore `NS_UNCONSTRAINEDSIZE` since it's a temporary state during a
++    // reflow. We will end up calling this function again with a proper size in
++    // the same reflow.
++    return;
++  }
++
++  if (MOZ_UNLIKELY(mVisibleArea.height +
++                       NSIntPixelsToAppUnits(mDynamicToolbarMaxHeight,
++                                             mCurAppUnitsPerDevPixel) >
++                   nscoord_MAX)) {
++    MOZ_ASSERT_UNREACHABLE("The dynamic toolbar max height is probably wrong");
++    return;
++  }
++
++  mSizeForViewportUnits.height =
++      mVisibleArea.height +
++      NSIntPixelsToAppUnits(mDynamicToolbarMaxHeight, mCurAppUnitsPerDevPixel);
++}
++
+ nsRootPresContext::nsRootPresContext(nsIDocument* aDocument,
+                                      nsPresContextType aType)
+     : nsPresContext(aDocument, aType) {}
+diff --git a/layout/base/nsPresContext.h b/layout/base/nsPresContext.h
+index 0c69680447bc..832f520a19e5 100644
+--- a/layout/base/nsPresContext.h
++++ b/layout/base/nsPresContext.h
+@@ -465,16 +465,9 @@ class nsPresContext : public nsISupports,
+    * Set the currently visible area. The units for r are standard
+    * nscoord units (as scaled by the device context).
+    */
+-  void SetVisibleArea(const nsRect& r) {
+-    if (!r.IsEqualEdges(mVisibleArea)) {
+-      mVisibleArea = r;
+-      // Visible area does not affect media queries when paginated.
+-      if (!IsPaginated()) {
+-        MediaFeatureValuesChanged(
+-            {mozilla::MediaFeatureChangeReason::ViewportChange});
+-      }
+-    }
+-  }
++  void SetVisibleArea(const nsRect& r);
++
++  nsSize GetSizeForViewportUnits() const { return mSizeForViewportUnits; }
+ 
+   bool ShouldFireResizeEvent() const {
+     return !mLastResizeEventVisibleArea.IsEqualEdges(mVisibleArea);
+@@ -482,6 +475,31 @@ class nsPresContext : public nsISupports,
+ 
+   void WillFireResizeEvent() { mLastResizeEventVisibleArea = mVisibleArea; }
+ 
++  /**
++   * Set the maximum height of the dynamic toolbar in nscoord units.
++   */
++  void SetDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight);
++
++  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const {
++    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
++    return mDynamicToolbarMaxHeight;
++  }
++
++  /**
++   * Returns true if we are using the dynamic toolbar.
++   */
++  bool HasDynamicToolbar() const {
++    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
++    return mDynamicToolbarMaxHeight > 0;
++  }
++
++  /**
++   * We are a root content document cross process if: we are not a resource doc,
++   * we are not chrome, and we either have no parent in any process or our
++   * parent is chrome.
++   */
++  bool IsRootContentDocumentCrossProcess() const;
++
+   /**
+    * Return true if this presentation context is a paginated
+    * context.
+@@ -1269,6 +1287,10 @@ class nsPresContext : public nsISupports,
+   };
+   TransactionInvalidations* GetInvalidations(uint64_t aTransactionId);
+ 
++  // This should be called only when we update mVisibleArea or
++  // mDynamicToolbarMaxHeight or `app units per device pixels` changes.
++  void AdjustSizeForViewportUnits();
++
+   // IMPORTANT: The ownership implicit in the following member variables
+   // has been explicitly checked.  If you add any members to this class,
+   // please make the ownership explicit (pinkerton, scc).
+@@ -1345,7 +1367,13 @@ class nsPresContext : public nsISupports,
+   nsAutoPtr<gfxMissingFontRecorder> mMissingFonts;
+ 
+   nsRect mVisibleArea;
++  // This value is used to resolve viewport units.
++  // On mobile this size is including the dynamic toolbar maximum height below.
++  // On desktops this size is pretty much the same as |mVisibleArea|.
++  nsSize mSizeForViewportUnits;
+   nsRect mLastResizeEventVisibleArea;
++  // The maximum height of the dynamic toolbar on mobile.
++  mozilla::ScreenIntCoord mDynamicToolbarMaxHeight;
+   nsSize mPageSize;
+   float mPageScale;
+   float mPPScale;
+diff --git a/layout/generic/nsGfxScrollFrame.cpp b/layout/generic/nsGfxScrollFrame.cpp
+index 5922ed776c92..972b149add9a 100644
+--- a/layout/generic/nsGfxScrollFrame.cpp
++++ b/layout/generic/nsGfxScrollFrame.cpp
+@@ -3363,7 +3363,22 @@ void ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder* aBuilder,
+             ? nsLayoutUtils::FindOrCreateIDFor(mScrolledFrame->GetContent())
+             : aBuilder->GetCurrentScrollParentId());
+ 
+-    nsRect clipRect = mScrollPort + aBuilder->ToReferenceFrame(mOuter);
++    bool isRootContent =
++        mIsRoot && mOuter->PresContext()->IsRootContentDocumentCrossProcess();
++
++    nsRect scrollPortClip = mScrollPort + aBuilder->ToReferenceFrame(mOuter);
++    // Expand the clip rect to the size including the area covered by dynamic
++    // toolbar in the case where the dynamic toolbar is being used since
++    // position:fixed elements attached to this root scroller might be taller than
++    // its scroll port (e.g 100vh). Even if the dynamic toolbar covers the taller
++    // area, it doesn't mean the area is clipped by the toolbar because the
++    // dynamic toolbar is laid out outside of our topmost window and it
++    // transitions without changing our topmost window size.
++    if (isRootContent && mOuter->PresContext()->HasDynamicToolbar()) {
++      scrollPortClip.SizeTo(nsLayoutUtils::ExpandHeightForViewportUnits(
++          mOuter->PresContext(), scrollPortClip.Size()));
++    }
++    nsRect clipRect = scrollPortClip;
+     // Our override of GetBorderRadii ensures we never have a radius at
+     // the corners where we have a scrollbar.
+     nscoord radii[8];
+-- 
+2.25.1
+
