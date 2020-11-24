@@ -93,6 +93,7 @@ Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
 Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
 Patch50:    0050-sailfishos-gecko-Buffer-when-the-video-decoder-lags-.patch
+Patch51:    0051-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
