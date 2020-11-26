@@ -112,6 +112,7 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
+  , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
 {
@@ -733,6 +734,19 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bo
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetVirtualKeyboardHeight(const int &aHeight)
+{
+  LOGT("aHeight:%i", aHeight);
+
+  mVirtualKeyboardHeight = aHeight;
+
+  if (mVirtualKeyboardHeight) {
+    mHelper->DynamicToolbarMaxHeightChanged(aHeight);
+    ScrollInputFieldIntoView();
+  }
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
                                                                const int& aBottom, const int& aLeft)
 {
@@ -902,6 +916,23 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   }
 
   event.mTime = PR_Now() / 1000;
+}
+
+void EmbedLiteViewBaseChild::ScrollInputFieldIntoView()
+{
+    nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
+    NS_ENSURE_TRUE(document, );
+
+    nsIPresShell *presShell = document->GetShell();
+    NS_ENSURE_TRUE(presShell, );
+
+    nsCOMPtr<nsISelectionController> selectionController = presShell->GetSelectionControllerForFocusedContent();
+    NS_ENSURE_TRUE(selectionController, );
+
+    selectionController->ScrollSelectionIntoView(
+                nsISelectionController::SELECTION_NORMAL,
+                nsISelectionController::SELECTION_FOCUS_REGION,
+                0);
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
@@ -1368,6 +1399,10 @@ EmbedLiteViewBaseChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
   mHelper->ReportSizeUpdate(aSize);
+
+  if (mVirtualKeyboardHeight) {
+    ScrollInputFieldIntoView();
+  }
 }
 
 void
