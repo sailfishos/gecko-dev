@@ -42,6 +42,10 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvInitialized() override;
   virtual mozilla::ipc::IPCResult RecvDestroyed() override;
+  virtual mozilla::ipc::IPCResult RecvMarginsChanged(const int &top,
+                                                     const int &right,
+                                                     const int &bottom,
+                                                     const int &left) override;
   virtual mozilla::ipc::IPCResult RecvOnLocationChanged(const nsCString &aLocation,
                                                         const bool &aCanGoBack,
                                                         const bool &aCanGoForward) override;

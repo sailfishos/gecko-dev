@@ -147,6 +147,7 @@ private:
   friend class EmbedLiteViewThreadParent;
 
   void Destroyed();
+  void MarginsChanged(int top, int right, int bottom, int left);
 
   EmbedLiteViewIface* GetImpl();
 
@@ -156,6 +157,8 @@ private:
   EmbedLiteViewIface* mViewImpl;
   PEmbedLiteViewParent* mViewParent;
   const uint32_t mUniqueID;
+  bool mMarginsChanging;
+  mozilla::gfx::IntMargin mMargins;
 };
 
 } // namespace embedlite
