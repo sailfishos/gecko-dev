@@ -46,6 +46,7 @@ public:
 
   bool UpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
+  void DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight);
   virtual nsIWebNavigation* WebNavigation() const override;
   virtual nsIWidget* WebWidget() override;
 
@@ -99,6 +100,7 @@ private:
   bool mHasValidInnerSize;
   bool mIPCOpen;
   ScreenIntSize mInnerSize;
+  ScreenIntCoord mDynamicToolbarMaxHeight;
 };
 
 }

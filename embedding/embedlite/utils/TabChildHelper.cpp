@@ -59,6 +59,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
+  , mDynamicToolbarMaxHeight(0)
 {
   LOGT();
 
@@ -273,6 +274,20 @@ bool
 TabChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   return TabChildBase::UpdateFrameHandler(aFrameMetrics);
+}
+
+void TabChildHelper::DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight)
+{
+  mDynamicToolbarMaxHeight = aHeight;
+
+  RefPtr<nsIDocument> document = GetDocument();
+  if (!document) {
+    return;
+  }
+
+  if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {
+    presContext->SetDynamicToolbarMaxHeight(aHeight);
+  }
 }
 
 nsIWebNavigation*
@@ -582,6 +597,11 @@ TabChildHelper::SendGetTabCount(uint32_t* tabCount)
 {
   Unused << tabCount;
   LOGNI();
+}
+
+void TabChildHelper::GetDynamicToolbarMaxHeight(int32_t *height)
+{
+  *height = mDynamicToolbarMaxHeight.value;
 }
 
 NS_IMETHODIMP

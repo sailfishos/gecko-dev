@@ -736,18 +736,10 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bo
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
                                                                const int& aBottom, const int& aLeft)
 {
-  mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
-  if (mWidget) {
-    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
-    widget->SetMargins(mMargins);
-    widget->UpdateSize();
-
-    // Report update for the tab child helper. This triggers update for the viewport.
-    LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
-    bounds.Deflate(mMargins);
-    mHelper->ReportSizeUpdate(bounds);
-  }
-
+  Unused << aTop;
+  Unused << aRight;
+  Unused << aLeft;
+  mHelper->DynamicToolbarMaxHeightChanged(aBottom);
   return IPC_OK();
 }
 
