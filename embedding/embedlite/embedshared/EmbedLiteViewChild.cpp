@@ -757,6 +757,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, cons
   Unused << aRight;
   Unused << aLeft;
   mHelper->DynamicToolbarMaxHeightChanged(aBottom);
+  Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
   return IPC_OK();
 }
 

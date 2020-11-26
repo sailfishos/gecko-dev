@@ -90,6 +90,7 @@ child:
 parent:
     async Initialized();
     async Destroyed();
+    async MarginsChanged(int top, int right, int bottom, int left);
     async __delete__();
 
     async OnLocationChanged(nsCString aLocation, bool aCanGoBack, bool aCanGoForward);
