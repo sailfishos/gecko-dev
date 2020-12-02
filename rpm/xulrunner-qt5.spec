@@ -94,6 +94,7 @@ Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
 Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
 Patch50:    0050-sailfishos-gecko-Buffer-when-the-video-decoder-lags-.patch
 Patch51:    0051-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
+Patch52:    0052-sailfishos-gecko-Remove-android-define-from-logging.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static

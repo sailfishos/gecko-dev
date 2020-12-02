@@ -1,0 +1,21 @@
+From 5b8349a7a351c80a075eaea17e9ebfd8992b009b Wed, 2 Dec 2020 12:15:39 +0100
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 2 Dec 2020 12:14:54 +0100
+Subject: [PATCH] [sailfishos][gecko] Always disable logging for RELEASE_OR_BETA.
+
+Upstream always enables logging except on Android when RELEASE_OR_BETA is defined.
+This patch removes the Android condition so our releases disable logging too.
+
+diff --git a/xpcom/base/Logging.h b/xpcom/base/Logging.h
+index a35318c..08e1876 100644
+--- a/xpcom/base/Logging.h
++++ b/xpcom/base/Logging.h
+@@ -24,7 +24,7 @@
+ // devices, we've chosen to leave logging enabled on desktop, but disabled on
+ // Android.  Given that logging can still be useful for development purposes,
+ // however, we leave logging enabled on Android developer builds.
+-#if !defined(ANDROID) || !defined(RELEASE_OR_BETA)
++#if !defined(RELEASE_OR_BETA)
+ #define MOZ_LOGGING_ENABLED 1
+ #else
+ #define MOZ_LOGGING_ENABLED 0
