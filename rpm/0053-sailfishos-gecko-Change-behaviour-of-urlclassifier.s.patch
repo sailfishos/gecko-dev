@@ -1,0 +1,75 @@
+From b441d2c6c167f8ee82a69bd7dda2627dceb359c6 Mon Sep 17 00:00:00 2001
+From: Marko Kenttala <marko.kenttala@jolla.com>
+Date: Wed, 2 Dec 2020 14:02:06 +0200
+Subject: [PATCH] [sailfishos][gecko] Change behaviour of
+ urlclassifier.skipHostnames preference to not just skip but allow through.
+ Needed to whitelist Google recaptcha servers.
+
+---
+ modules/libpref/init/all.js          | 2 ++
+ netwerk/base/nsChannelClassifier.cpp | 8 +++++---
+ netwerk/base/nsChannelClassifier.h   | 2 ++
+ 3 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
+index 776e10fa4978..b5865fc077c9 100644
+--- a/modules/libpref/init/all.js
++++ b/modules/libpref/init/all.js
+@@ -5524,6 +5524,8 @@ pref("urlclassifier.passwordAllowTable", "goog-passwordwhite-proto");
+ // Tables for tracking protection
+ pref("urlclassifier.trackingTable", "test-track-simple,base-track-digest256");
+ pref("urlclassifier.trackingWhitelistTable", "test-trackwhite-simple,mozstd-trackwhite-digest256");
++// Whitelisting needed for Google recaptcha
++pref("urlclassifier.skipHostnames", "google.com,www.google.com,gstatic.com,www.gstatic.com");
+ 
+ // These tables will never trigger a gethash call.
+ pref("urlclassifier.disallow_completions", "test-malware-simple,test-harmful-simple,test-phish-simple,test-unwanted-simple,test-track-simple,test-trackwhite-simple,test-block-simple,goog-downloadwhite-digest256,base-track-digest256,mozstd-trackwhite-digest256,content-track-digest256,mozplugin-block-digest256,mozplugin2-block-digest256,block-flash-digest256,except-flash-digest256,allow-flashallow-digest256,except-flashallow-digest256,block-flashsubdoc-digest256,except-flashsubdoc-digest256,except-flashinfobar-digest256,goog-passwordwhite-proto,ads-track-digest256,social-track-digest256,analytics-track-digest256");
+diff --git a/netwerk/base/nsChannelClassifier.cpp b/netwerk/base/nsChannelClassifier.cpp
+index f7c4db821f93..45099eb458b3 100644
+--- a/netwerk/base/nsChannelClassifier.cpp
++++ b/netwerk/base/nsChannelClassifier.cpp
+@@ -576,7 +576,9 @@ nsresult nsChannelClassifier::StartInternal() {
+     LOG(("nsChannelClassifier[%p]:StartInternal whitelisted hostnames = %s",
+          this, skipHostnames.get()));
+     if (IsHostnameWhitelisted(uri, skipHostnames)) {
+-      return NS_ERROR_UNEXPECTED;
++      LOG(("nsChannelClassifier[%p]:StartInternal whitelisting uri = %s",
++         this, uri->GetSpecOrDefault().get()));
++      mIsAllowListed = true;
+     }
+   }
+ 
+@@ -926,7 +928,7 @@ nsresult TrackingURICallback::OnBlacklistResult(nsresult aErrorCode) {
+   nsCOMPtr<nsIURI> whitelistURI = mChannelClassifier->CreateWhiteListURI();
+ 
+   // If IsTrackerWhitelisted has failed, it means the uri is not in whitelist.
+-  if (NS_FAILED(mChannelClassifier->IsTrackerWhitelisted(whitelistURI, this))) {
++  if (NS_FAILED(mChannelClassifier->IsTrackerWhitelisted(whitelistURI, this)) && !mChannelClassifier->IsAllowListed()) {
+     LOG(
+         ("TrackingURICallback[%p]:OnBlacklistResult "
+          "IsTrackerWhitelisted has failed.",
+@@ -945,7 +947,7 @@ nsresult TrackingURICallback::OnWhitelistResult(nsresult aErrorCode) {
+   LOG(("TrackingURICallback[%p]::OnWhitelistResult aErrorCode=0x%" PRIx32,
+        mChannelClassifier.get(), static_cast<uint32_t>(aErrorCode)));
+ 
+-  if (NS_SUCCEEDED(aErrorCode)) {
++  if (NS_SUCCEEDED(aErrorCode) || mChannelClassifier->IsAllowListed()) {
+     LOG(
+         ("TrackingURICallback[%p]::OnWhitelistResult tracker found "
+          "in whitelist so we won't block it",
+diff --git a/netwerk/base/nsChannelClassifier.h b/netwerk/base/nsChannelClassifier.h
+index 1d008fec1cab..5aaa51fe7479 100644
+--- a/netwerk/base/nsChannelClassifier.h
++++ b/netwerk/base/nsChannelClassifier.h
+@@ -58,6 +58,8 @@ class nsChannelClassifier final : public nsIURIClassifierCallback,
+ 
+   already_AddRefed<nsIChannel> GetChannel();
+ 
++  bool IsAllowListed() { return mIsAllowListed; }
++
+  private:
+   // True if the channel is on the allow list.
+   bool mIsAllowListed;
+-- 
+2.17.1
+
