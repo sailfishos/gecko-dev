@@ -458,7 +458,7 @@ void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList
 }
 
 EmbedLiteView*
-EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPrivateWindow)
+EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPrivateWindow, bool isDesktopMode)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
@@ -467,7 +467,7 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPri
 
   PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(
       mAppParent->SendPEmbedLiteViewConstructor(aWindow->GetUniqueID(), sViewCreateID,
-                                                aParent, aIsPrivateWindow));
+                                                aParent, aIsPrivateWindow, isDesktopMode));
   EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
   mViews[sViewCreateID] = view;
   return view;

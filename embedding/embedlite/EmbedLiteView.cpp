@@ -112,6 +112,14 @@ EmbedLiteView::SetIsFocused(bool aIsFocused)
 }
 
 void
+EmbedLiteView::SetDesktopMode(bool aDesktopMode)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  Unused << mViewParent->SendSetDesktopMode(aDesktopMode);
+}
+
+void
 EmbedLiteView::SetThrottlePainting(bool aThrottle)
 {
   LOGT();
