@@ -96,6 +96,7 @@ Patch50:    0050-sailfishos-gecko-Buffer-when-the-video-decoder-lags-.patch
 Patch51:    0051-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 Patch52:    0052-sailfishos-gecko-Remove-android-define-from-logging.patch
 Patch53:    0053-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
+Patch54:    0054-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
