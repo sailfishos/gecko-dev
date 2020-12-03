@@ -16,9 +16,10 @@ class EmbedLiteViewProcessParent : public EmbedLiteViewBaseParent
 {
 public:
     MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& windowId,
-		                            const uint32_t& id,
-		                            const uint32_t& parentId,
-					    const bool&);
+                                            const uint32_t& id,
+                                            const uint32_t& parentId,
+                                            const bool& isPrivateWindow,
+                                            const bool& isDesktopMode);
     virtual ~EmbedLiteViewProcessParent() override;
 
 private:

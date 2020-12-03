@@ -50,6 +50,7 @@ child:
     async LoadFrameScript(nsString uri);
     async SetIsActive(bool aIsActive);
     async SetIsFocused(bool aIsFocused);
+    async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
     async SetMargins(int top, int right, int bottom, int left);
     async ScheduleUpdate();
