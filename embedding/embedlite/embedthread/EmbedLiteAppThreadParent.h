@@ -24,7 +24,7 @@ class EmbedLiteAppThreadParent : public EmbedLiteAppParent
 protected:
   // IPDL implementation
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const uint32_t&, const bool&) override;
+  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const uint32_t&, const bool&, const bool&) override;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) override;
   virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t&, const uint16_t&, const uint32_t&) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*) override;

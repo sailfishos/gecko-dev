@@ -5,10 +5,11 @@
 
 #include "EmbedLog.h"
 
-#include "EmbedLiteViewChild.h"
+#include "EmbedLiteViewBaseChild.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "nsWindow.h"
 
+#include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
 
 #include "nsEmbedCID.h"
@@ -22,10 +23,13 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
-#include "nsWebBrowser.h"
+#include "nsIWebBrowserSetup.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
+#include "nsIDocument.h"
+#include "nsIDOMDocument.h"
+#include "nsIPresShell.h"
 #include "nsLayoutUtils.h"
 #include "nsILoadContext.h"
 #include "nsIScriptSecurityManager.h"
@@ -33,15 +37,13 @@
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
+#include "gfxPrefs.h"
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/Document.h"
-#include "mozilla/dom/LoadURIOptionsBinding.h"
-#include "mozilla/dom/MouseEventBinding.h"
-#include "mozilla/PresShell.h"
+#include "nsIDocument.h"
+
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
-#include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
 #include "nsIFrame.h"                       // for nsIFrame
 #include "FrameLayerBuilder.h"              // for FrameLayerbuilder
 
@@ -52,6 +54,15 @@ using namespace mozilla::widget;
 
 namespace mozilla {
 namespace embedlite {
+
+// This should be removed and used common StartsWith. But that's not available => simpler to copy for now.
+template <int N>
+static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
+  if (N - 1 > string.Length()) {
+    return false;
+  }
+  return memcmp(string.Data(), prefix, N - 1) == 0;
+}
 
 static struct {
     bool viewport;
@@ -88,9 +99,9 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t& aId,
-                                       const uint32_t& aParentId, const bool& isPrivateWindow,
-                                       const bool& isDesktopMode)
+EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const uint32_t& aId,
+                                               const uint32_t& aParentId, const bool& isPrivateWindow,
+                                               const bool& isDesktopMode)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -112,24 +123,25 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
     ReadAZPCPrefs();
   }
 
-  mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
+  mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool>
-                                   ("mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow",
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool, const bool>
+                                   ("mozilla::embedlite::EmbedLiteViewBaseChild::InitGeckoWindow",
                                     this,
-                                    &EmbedLiteViewChild::InitGeckoWindow,
+                                    &EmbedLiteViewBaseChild::InitGeckoWindow,
                                     aParentId,
-                                    isPrivateWindow));
+                                    isPrivateWindow,
+                                    isDesktopMode));
 }
 
-NS_IMETHODIMP EmbedLiteViewChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
+NS_IMETHODIMP EmbedLiteViewBaseChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
 {
   LOGT("Implement me");
   return NS_OK;
 }
 
-EmbedLiteViewChild::~EmbedLiteViewChild()
+EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
 {
   LOGT();
   if (mWindowObserverRegistered) {
@@ -139,7 +151,7 @@ EmbedLiteViewChild::~EmbedLiteViewChild()
 }
 
 void
-EmbedLiteViewChild::ActorDestroy(ActorDestroyReason aWhy)
+EmbedLiteViewBaseChild::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
   if (mHelper) {
@@ -147,9 +159,16 @@ EmbedLiteViewChild::ActorDestroy(ActorDestroyReason aWhy)
   }
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvDestroy()
 {
   LOGT("destroy");
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdestroyed", nullptr);
+  }
+
   EmbedLiteAppService::AppService()->UnregisterView(mId);
   if (mHelper)
     mHelper->Unload();
@@ -168,7 +187,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow)
+EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
@@ -178,7 +197,13 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   LOGT("parentID: %u", parentId);
   nsresult rv;
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(WebNavigation());
+  mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  gfxPrefs::GetSingleton();
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -197,6 +222,12 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     return;
   }
 
+
+  nsCOMPtr<nsIWebBrowserSetup> webBrowserSetup = do_QueryInterface(baseWindow);
+  if (webBrowserSetup) {
+    webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
+  }
+
   LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
@@ -206,14 +237,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   nsCOMPtr<mozIDOMWindowProxy> domWindow;
 
   mChrome = new WebBrowserChrome(this);
-
-  // FIXME - aBrowsingContext and aInitialWindowChild are not passed.
-  // Task to analyze/fix: 54382
-  mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, nullptr,
-                                     nullptr);
-  mWebBrowser->SetAllowDNSPrefetch(true);
-  nsIWebBrowser *webBrowser = mWebBrowser;
-
   uint32_t chromeFlags = 0; // View()->GetWindowFlags();
 
   if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
@@ -222,12 +245,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   mWebBrowser->SetContainerWindow(mChrome);
   mChrome->SetChromeFlags(chromeFlags);
-
-  // Task to analyze/fix: 54382
-#if 0
   nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
   docShellItem->SetItemType(nsIDocShellTreeItem::typeContentWrapper);
-#endif
 
   if (NS_FAILED(baseWindow->Create())) {
     NS_ERROR("Creation of basewindow failed!");
@@ -280,8 +299,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     NS_ERROR("SetVisibility failed!");
   }
 
-  mHelper = new BrowserChildHelper(this);
-  mChrome->SetBrowserChildHelper(mHelper.get());
+  mHelper = new TabChildHelper(this);
+  mChrome->SetTabChildHelper(mHelper.get());
   mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
@@ -295,7 +314,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   }
 
   static bool firstViewCreated = false;
-  EmbedLiteWindowChild *windowBase = mWindow;
+  EmbedLiteWindowBaseChild *windowBase = mWindow;
   if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
     windowBase->GetWidget()->SetActive(true);
     firstViewCreated = true;
@@ -303,14 +322,16 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda
   ContentReceivedInputBlockCallback callback(
-      [weakPtrThis](uint64_t aInputBlockId, bool aPreventDefault)
+      [weakPtrThis](const ScrollableLayerGuid& aGuid,
+                    uint64_t aInputBlockId,
+                    bool aPreventDefault)
       {
         if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
           EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
-          puppetWidget->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+          puppetWidget->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
         }
       });
-  mAPZEventState = new APZEventState(mWidget, std::move(callback));
+  mAPZEventState = new APZEventState(mWidget, Move(callback));
   mSetAllowedTouchBehaviorCallback = [weakPtrThis](uint64_t aInputBlockId,
                                                    const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags)
   {
@@ -320,6 +341,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     }
   };
 
+  SetDesktopMode(isDesktopMode);
+
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();
 
@@ -327,7 +350,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 }
 
 nsresult
-EmbedLiteViewChild::GetBrowser(nsIWebBrowser** outBrowser)
+EmbedLiteViewBaseChild::GetBrowser(nsIWebBrowser** outBrowser)
 {
   if (!mWebBrowser)
     return NS_ERROR_FAILURE;
@@ -336,7 +359,7 @@ EmbedLiteViewChild::GetBrowser(nsIWebBrowser** outBrowser)
 }
 
 nsresult
-EmbedLiteViewChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
+EmbedLiteViewBaseChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
 {
   if (!mChrome)
     return NS_ERROR_FAILURE;
@@ -348,13 +371,13 @@ EmbedLiteViewChild::GetBrowserChrome(nsIWebBrowserChrome** outChrome)
 /*----------------------------WidgetIface-----------------------------------------------------*/
 
 bool
-EmbedLiteViewChild::SetInputContext(const int32_t& IMEEnabled,
-                                    const int32_t& IMEOpen,
-                                    const nsString& type,
-                                    const nsString& inputmode,
-                                    const nsString& actionHint,
-                                    const int32_t& cause,
-                                    const int32_t& focusChange)
+EmbedLiteViewBaseChild::SetInputContext(const int32_t& IMEEnabled,
+                                          const int32_t& IMEOpen,
+                                          const nsString& type,
+                                          const nsString& inputmode,
+                                          const nsString& actionHint,
+                                          const int32_t& cause,
+                                          const int32_t& focusChange)
 {
   return SendSetInputContext(IMEEnabled,
                              IMEOpen,
@@ -366,14 +389,14 @@ EmbedLiteViewChild::SetInputContext(const int32_t& IMEEnabled,
 }
 
 bool
-EmbedLiteViewChild::GetInputContext(int32_t* IMEEnabled,
-                                    int32_t* IMEOpen)
+EmbedLiteViewBaseChild::GetInputContext(int32_t* IMEEnabled,
+                                          int32_t* IMEOpen)
 {
   LOGT();
   return SendGetInputContext(IMEEnabled, IMEOpen);
 }
 
-void EmbedLiteViewChild::ResetInputState()
+void EmbedLiteViewBaseChild::ResetInputState()
 {
   LOGT();
   if (!mIMEComposing) {
@@ -388,30 +411,30 @@ void EmbedLiteViewChild::ResetInputState()
 /*----------------------------TabChildIface-----------------------------------------------------*/
 
 bool
-EmbedLiteViewChild::ZoomToRect(const uint32_t& aPresShellId,
-                               const ViewID& aViewId,
-                               const CSSRect& aRect)
+EmbedLiteViewBaseChild::ZoomToRect(const uint32_t& aPresShellId,
+                                   const ViewID& aViewId,
+                                   const CSSRect& aRect)
 {
   return SendZoomToRect(aPresShellId, aViewId, aRect);
 }
 
 bool
-EmbedLiteViewChild::SetTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+EmbedLiteViewBaseChild::SetTargetAPZC(uint64_t aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
 {
   LOGT();
   return SendSetTargetAPZC(aInputBlockId, aTargets);
 }
 
 bool
-EmbedLiteViewChild::GetDPI(float* aDPI)
+EmbedLiteViewBaseChild::GetDPI(float* aDPI)
 {
   return SendGetDPI(aDPI);
 }
 
 bool
-EmbedLiteViewChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
-                                          const ViewID& aViewId,
-                                          const Maybe<ZoomConstraints> &aConstraints)
+EmbedLiteViewBaseChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
+                                              const ViewID& aViewId,
+                                              const Maybe<ZoomConstraints> &aConstraints)
 {
   LOGT();
   return SendUpdateZoomConstraints(aPresShellId,
@@ -420,13 +443,13 @@ EmbedLiteViewChild::UpdateZoomConstraints(const uint32_t& aPresShellId,
 }
 
 void
-EmbedLiteViewChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
+EmbedLiteViewBaseChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
 {
   LOGT();
 }
 
 bool
-EmbedLiteViewChild::HasMessageListener(const nsAString& aMessageName)
+EmbedLiteViewBaseChild::HasMessageListener(const nsAString& aMessageName)
 {
   if (mRegisteredMessages.Get(aMessageName)) {
     return true;
@@ -435,7 +458,7 @@ EmbedLiteViewChild::HasMessageListener(const nsAString& aMessageName)
 }
 
 bool
-EmbedLiteViewChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
+EmbedLiteViewBaseChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
@@ -447,7 +470,7 @@ EmbedLiteViewChild::DoSendAsyncMessage(const char16_t* aMessageName, const char1
 }
 
 bool
-EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, nsTArray<nsString>* aJSONRetVal)
+EmbedLiteViewBaseChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
@@ -459,7 +482,7 @@ EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16
 }
 
 bool
-EmbedLiteViewChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, nsTArray<nsString>* aJSONRetVal)
+EmbedLiteViewBaseChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
@@ -471,20 +494,20 @@ EmbedLiteViewChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_
 }
 
 nsIWebNavigation*
-EmbedLiteViewChild::WebNavigation()
+EmbedLiteViewBaseChild::WebNavigation()
 {
   return mWebNavigation;
 }
 
 nsIWidget*
-EmbedLiteViewChild::WebWidget()
+EmbedLiteViewBaseChild::WebWidget()
 {
   return mWidget;
 }
 
 /*----------------------------TabChildIface-----------------------------------------------------*/
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvLoadURL(const nsString &url)
 {
   LOGT("url:%s", NS_ConvertUTF16toUTF8(url).get());
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
@@ -495,16 +518,15 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
   flags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
-
-  LoadURIOptions loadURIOptions;
-  loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
-  loadURIOptions.mLoadFlags = flags;
-  mWebNavigation->LoadURI(url, loadURIOptions);
+  mWebNavigation->LoadURI(url.get(),
+                          flags,
+                          nullptr, nullptr,
+                          nullptr, nsContentUtils::GetSystemPrincipal());
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoBack()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvGoBack()
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
@@ -512,7 +534,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoBack()
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoForward()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvGoForward()
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
@@ -520,7 +542,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoForward()
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvStopLoad()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvStopLoad()
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
@@ -528,7 +550,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvStopLoad()
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvReload(const bool& aHardReload)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvReload(const bool& aHardReload)
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
@@ -540,7 +562,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvReload(const bool& aHardReload)
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollTo(const int &x, const int &y)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvScrollTo(const int &x, const int &y)
 {
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
@@ -549,7 +571,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollTo(const int &x, const int
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollBy(const int &x, const int &y)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvScrollBy(const int &x, const int &y)
 {
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
@@ -558,7 +580,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollBy(const int &x, const int
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActive)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsActive)
 {
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow, IPC_OK());
 
@@ -578,9 +600,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
     widget->SetActive(aIsActive);
   }
 
-  // Update state via DocShell -> PresShell
-  nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(mWebBrowser);
-  docShell->SetIsActive(aIsActive);
+  // Update state via WebBrowser -> DocShell -> PresShell
+  mWebBrowser->SetIsActive(aIsActive);
 
   mWidget->Show(aIsActive);
 
@@ -593,7 +614,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsFocused(const bool &aIsFocused)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsFocused(const bool &aIsFocused)
 {
   LOGT("child focus: %d thread %ld", aIsFocused, syscall(SYS_gettid));
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow && (mIsFocused != aIsFocused), IPC_OK());
@@ -621,15 +642,99 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsFocused(const bool &aIsFocu
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetDesktopMode(const bool &aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  SetDesktopMode(aDesktopMode);
+
+  return IPC_OK();
+}
+
+void EmbedLiteViewBaseChild::SetDesktopMode(const bool aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  if (!SetDesktopModeInternal(aDesktopMode)) {
+    return;
+  }
+
+  nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
+
+  nsIURI* currentURI = document->GetDocumentURI();
+
+  // Only reload the page for http/https schemes
+  bool isValidScheme =
+      (NS_SUCCEEDED(currentURI->SchemeIs("http", &isValidScheme)) &&
+       isValidScheme) ||
+      (NS_SUCCEEDED(currentURI->SchemeIs("https", &isValidScheme)) &&
+       isValidScheme);
+
+  if (!isValidScheme) {
+    return;
+  }
+
+  nsCOMPtr<nsIURI> clonedURI;
+  currentURI->Clone(getter_AddRefs(clonedURI));
+  NS_ENSURE_TRUE(clonedURI, );
+
+  nsAutoCString host;
+  nsresult rv = clonedURI->GetHost(host);
+
+  if (StartsWith(host, "www.")) {
+    host.Cut(0, 4);
+  } else if (StartsWith(host, "mobile.")) {
+    host.Cut(0, 7);
+  } else if (StartsWith(host, "m.")) {
+    host.Cut(0, 2);
+  }
+
+  rv = NS_MutateURI(clonedURI).SetHost(host).Finalize(clonedURI);
+  NS_ENSURE_SUCCESS(rv, );
+
+  nsAutoCString url;
+  clonedURI->GetSpec(url);
+
+  // We need LOAD_FLAGS_BYPASS_CACHE here since we're changing the User-Agent
+  // string, and servers typically don't use the Vary: User-Agent header, so
+  // not doing this means that we'd get some of the previously cached content.
+  uint32_t flags = nsIWebNavigation::LOAD_FLAGS_BYPASS_CACHE |
+                   nsIWebNavigation::LOAD_FLAGS_REPLACE_HISTORY;
+
+  NS_ENSURE_TRUE(mWebNavigation, );
+  mWebNavigation->LoadURI(NS_ConvertUTF8toUTF16(url).get(),
+                          flags,
+                          nullptr, nullptr,
+                          nullptr, nsContentUtils::GetSystemPrincipal());
+}
+
+bool EmbedLiteViewBaseChild::SetDesktopModeInternal(const bool aDesktopMode) {
+  NS_ENSURE_TRUE(mDOMWindow, false);
+
+  if (mDOMWindow->IsDesktopModeViewport() == aDesktopMode) {
+    return false;
+  }
+
+  mDOMWindow->SetDesktopModeViewport(aDesktopMode);
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdesktopmodechanged", mDOMWindow->IsDesktopModeViewport() ? u"true" :  u"false");
+    return true;
+  }
+  return false;
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bool &aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
   mHelper->GetPresContext()->RefreshDriver()->SetThrottled(aThrottle);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, const int& aRight,
-                                                           const int& aBottom, const int& aLeft)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
+                                                               const int& aBottom, const int& aLeft)
 {
   mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
   if (mWidget) {
@@ -646,10 +751,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, cons
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvScheduleUpdate()
 {
   // Same that there is in nsPresShell.cpp:10670
-  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
   if (ps && mWidget->IsVisible()) {
     if (nsIFrame* root = ps->GetRootFrame()) {
       FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
@@ -659,31 +764,20 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSuspendTimeouts()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSuspendTimeouts()
 {
-  LOGT("Implement me");
-  // FIXME - nsPIDOMWindowInner::Freeze has been removed.
-  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
-  // Task to analyze/fix: 54377
-#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
   nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
   if (pwindow && !pwindow->IsFrozen()) {
     pwindow->Freeze();
   }
-#endif
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvResumeTimeouts()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvResumeTimeouts()
 {
-  LOGT("Implement me");
-  // FIXME - nsPIDOMWindowInner::Thaw has been removed.
-  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
-  // Task to analyze/fix: 54377
-#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
   nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
@@ -691,12 +785,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvResumeTimeouts()
   if (pwindow && pwindow->IsFrozen()) {
     pwindow->Thaw();
   }
-#endif
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadFrameScript(const nsString &uri)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvLoadFrameScript(const nsString &uri)
 {
   if (mHelper) {
     mHelper->DoLoadMessageManagerScript(uri, true);
@@ -704,8 +797,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadFrameScript(const nsString &
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAsyncMessage(const nsString &aMessage,
-                                                             const nsString &aData)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvAsyncMessage(const nsString &aMessage,
+                                                                 const nsString &aData)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
@@ -716,8 +809,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAsyncMessage(const nsString &aMe
 }
 
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAsyncMessage(const nsAString &aMessage,
-                                                             const nsAString &aData)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvAsyncMessage(const nsAString &aMessage,
+                                                                 const nsAString &aData)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
@@ -726,21 +819,21 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAsyncMessage(const nsAString &aM
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListener(const nsCString &name)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvAddMessageListener(const nsCString &name)
 {
   LOGT("name:%s", name.get());
   mRegisteredMessages.Put(NS_ConvertUTF8toUTF16(name), 1);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListener(const nsCString &name)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvRemoveMessageListener(const nsCString &name)
 {
   LOGT("name:%s", name.get());
   mRegisteredMessages.Remove(NS_ConvertUTF8toUTF16(name));
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(nsTArray<nsString> &&messageNames)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvAddMessageListeners(InfallibleTArray<nsString> &&messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Put(messageNames[i], 1);
@@ -748,7 +841,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(nsTArray<nsS
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListeners(nsTArray<nsString> &&messageNames)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvRemoveMessageListeners(InfallibleTArray<nsString> &&messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Remove(messageNames[i]);
@@ -756,9 +849,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListeners(nsTArray<
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
-                                                                  const gfxRect &contentRect,
-                                                                  const gfxSize &scrollSize)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleScrollEvent(const bool &isRootScrollFrame,
+                                                                      const gfxRect &contentRect,
+                                                                      const gfxSize &scrollSize)
 {
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
@@ -783,20 +876,22 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const bool &is
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvUpdateFrame(const RepaintRequest &aRequest)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvUpdateFrame(const FrameMetrics &aFrameMetrics)
 {
   LOGT();
   NS_ENSURE_TRUE(mWebBrowser, IPC_OK());
 
+  RelayFrameMetrics(aFrameMetrics);
+
   if (sHandleDefaultAZPC.viewport) {
-    mHelper->UpdateFrame(aRequest);
+    mHelper->UpdateFrame(aFrameMetrics);
   }
 
   return IPC_OK();
 }
 
 void
-EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
+EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 {
   if (aPoint) {
     event.mRefPoint.x = aPoint->x;
@@ -809,22 +904,21 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   event.mTime = PR_Now() / 1000;
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
-                                                                const Modifiers &aModifiers,
-                                                                const ScrollableLayerGuid &aGuid,
-                                                                const uint64_t &aInputBlockId)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
+                                                                    const Modifiers &aModifiers,
+                                                                    const ScrollableLayerGuid &aGuid)
 {
   bool ok = false;
-  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
   nsIContent* content = nsLayoutUtils::FindContentFor(aGuid.mScrollId);
   NS_ENSURE_TRUE(content, IPC_OK());
 
-  PresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
+  nsIPresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
   NS_ENSURE_TRUE(presShell, IPC_OK());
 
-  RefPtr<Document> document = presShell->GetDocument();
+  nsCOMPtr<nsIDocument> document = presShell->GetDocument();
   NS_ENSURE_TRUE(document && !document->Fullscreen(), IPC_OK());
 
   CSSRect zoomToRect = CalculateRectToZoomTo(document, cssPoint);
@@ -845,10 +939,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevicePoint &aPoint,
-                                                                const Modifiers &aModifiers,
-                                                                const ScrollableLayerGuid &aGuid,
-                                                                const uint64_t &aInputBlockId)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleSingleTap(const LayoutDevicePoint &aPoint,
+                                                                    const Modifiers &aModifiers,
+                                                                    const ScrollableLayerGuid &aGuid)
 {
   if (mIMEComposing) {
     // If we are in the middle of compositing we must finish it, before it is too late.
@@ -862,7 +955,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
   }
 
   bool ok = false;
-  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
   if (sPostAZPCAsJson.singleTap) {
@@ -870,6 +963,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
   }
+
 
   if (sHandleDefaultAZPC.singleTap) {
     LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
@@ -880,12 +974,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevicePoint &aPoint,
-                                                              const ScrollableLayerGuid &aGuid,
-                                                              const uint64_t &aInputBlockId)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleLongTap(const LayoutDevicePoint &aPoint,
+                                                                  const ScrollableLayerGuid &aGuid,
+                                                                  const uint64_t &aInputBlockId)
 {
   bool ok = false;
-  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
+  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
   if (sPostAZPCAsJson.longTap) {
@@ -903,12 +997,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevice
                    false /* Ignore root scroll frame */);
   }
 
-  SendContentReceivedInputBlock(aInputBlockId, eventHandled);
+  SendContentReceivedInputBlock(aGuid, aInputBlockId, eventHandled);
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& commit, const nsString& preEdit)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsString& preEdit)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
@@ -956,11 +1050,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
       APZCCallbackHelper::DispatchWidgetEvent(event);
     }
 
-    RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+    nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
     NS_ENSURE_TRUE(ps, IPC_OK());
 
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
-    nsIContent *mTarget = DOMFocusManager->GetFocusedElement();
+    nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
 
     InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
     inputEvent.mTime = static_cast<uint64_t>(PR_Now() / 1000);
@@ -978,7 +1072,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
   return IPC_OK();
 }
 
-nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode)
+nsresult EmbedLiteViewBaseChild::DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode)
 {
   NS_ENSURE_TRUE(widget, NS_ERROR_FAILURE);
   EventMessage msg = message;
@@ -989,7 +1083,7 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
-  if (domKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
+  if (domKeyCode == dom::KeyboardEventBinding::DOM_VK_RETURN) {
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
   }
@@ -997,28 +1091,28 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
   return widget->DispatchEvent(&event, status);
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &domKeyCode,
-                                                                    const int &gmodifiers,
-                                                                    const int &charCode)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyPressEvent(const int &domKeyCode,
+                                                                        const int &gmodifiers,
+                                                                        const int &charCode)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Initial key down event
   NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
-  if (domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_SHIFT &&
-      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_META &&
-      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_CONTROL &&
-      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_ALT) {
+  if (domKeyCode != dom::KeyboardEventBinding::DOM_VK_SHIFT &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_META &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_CONTROL &&
+      domKeyCode != dom::KeyboardEventBinding::DOM_VK_ALT) {
           // Key press event
           NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyPress, domKeyCode, gmodifiers, charCode), IPC_OK());
   }
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyReleaseEvent(const int &domKeyCode,
-                                                                      const int &gmodifiers,
-                                                                      const int &charCode)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleKeyReleaseEvent(const int &domKeyCode,
+                                                                          const int &gmodifiers,
+                                                                          const int &charCode)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
@@ -1028,13 +1122,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyReleaseEvent(const int 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType,
-                                                           const float &aX,
-                                                           const float &aY,
-                                                           const int32_t &aButton,
-                                                           const int32_t &aClickCount,
-                                                           const int32_t &aModifiers,
-                                                           const bool &aIgnoreRootScrollFrame)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvMouseEvent(const nsString &aType,
+                                                               const float &aX,
+                                                               const float &aY,
+                                                               const int32_t &aButton,
+                                                               const int32_t &aClickCount,
+                                                               const int32_t &aModifiers,
+                                                               const bool &aIgnoreRootScrollFrame)
 {
   NS_ENSURE_TRUE(mWebBrowser, IPC_OK());
 
@@ -1047,55 +1141,49 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
   uint8_t argc = 6;
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
                         aIgnoreRootScrollFrame,
-                        0.0, MouseEvent_Binding::MOZ_SOURCE_TOUCH,
+                        0.0, nsIDOMMouseEvent::MOZ_SOURCE_TOUCH,
                         false, false, 0, 0, argc, &ignored);
 
   return IPC_OK();
 }
 
 bool
-EmbedLiteViewChild::ContentReceivedInputBlock(const uint64_t &aInputBlockId, const bool &aPreventDefault)
+EmbedLiteViewBaseChild::ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  return DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+  return DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
 }
 
 bool
-EmbedLiteViewChild::DoSendContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
+EmbedLiteViewBaseChild::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  return SendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+  return SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
 }
 
 bool
-EmbedLiteViewChild::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
+EmbedLiteViewBaseChild::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
   return SendSetAllowedTouchBehavior(aInputBlockId, aFlags);
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid,
-                                                                    const mozilla::MultiTouchInput& aInput,
-                                                                    const uint64_t& aInputBlockId,
-                                                                    const nsEventStatus& aApzResponse)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid,
+                                                                        const mozilla::MultiTouchInput& aInput,
+                                                                        const uint64_t& aInputBlockId,
+                                                                        const nsEventStatus& aApzResponse)
 {
   LOGT("thread: %ld", syscall(SYS_gettid));
   MOZ_ASSERT(NS_IsMainThread());
 
-  bool res = false;
-  WidgetTouchEvent localEvent = mHelper->ConvertMutiTouchInputToEvent(aInput, res);
+  WidgetTouchEvent localEvent;
 
-  if (!res) {
+  if (!mHelper->ConvertMutiTouchInputToEvent(aInput, localEvent)) {
     return IPC_OK();
   }
 
   UserActivity();
-
-  // Stash the guid in InputAPZContext so that when the visual-to-layout
-  // transform is applied to the event's coordinates, we use the right transform
-  // based on the scroll frame being targeted.
-  // The other values don't really matter.
-  InputAPZContext context(aGuid, aInputBlockId, aApzResponse);
+  APZCCallbackHelper::ApplyCallbackTransform(localEvent, aGuid, mWidget->GetDefaultScale());
 
   if (localEvent.mMessage == eTouchStart) {
     // CSS touch actions do not work yet. Thus, explicitly disabling in the code.
@@ -1105,9 +1193,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
           localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
     }
 #endif
-    nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
+    nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
-        localEvent, aGuid.mLayersId, aInputBlockId);
+        localEvent, aGuid, aInputBlockId);
   }
 
   // Dispatch event to content (potentially a long-running operation)
@@ -1124,16 +1212,16 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
 
 
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid,
-                                                                        const mozilla::MultiTouchInput& aData,
-                                                                        const uint64_t& aInputBlockId,
-                                                                        const nsEventStatus& aApzResponse)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid,
+                                                                            const mozilla::MultiTouchInput& aData,
+                                                                            const uint64_t& aInputBlockId,
+                                                                            const nsEventStatus& aApzResponse)
 {
   LOGT();
   return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId, aApzResponse);
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const APZStateChange &aChange, const int &aArg)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const APZStateChange &aChange, const int &aArg)
 {
   LOGT("thread: %ld", syscall(SYS_gettid));
   mAPZEventState->ProcessAPZStateChange(aViewId, aChange, aArg);
@@ -1146,34 +1234,34 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewI
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyFlushComplete()
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvNotifyFlushComplete()
 {
-  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
   APZCCallbackHelper::NotifyFlushComplete(ps);
   return IPC_OK();
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
+EmbedLiteViewBaseChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
   Unused << aIsSameDocument;
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnLoadStarted(const char* aLocation)
+EmbedLiteViewBaseChild::OnLoadStarted(const char* aLocation)
 {
   return SendOnLoadStarted(nsDependentCString(aLocation)) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnLoadFinished()
+EmbedLiteViewBaseChild::OnLoadFinished()
 {
   return SendOnLoadFinished() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnWindowCloseRequested()
+EmbedLiteViewBaseChild::OnWindowCloseRequested()
 {
   if (SendOnWindowCloseRequested()) {
     // The event listeners can indirectly hold a reference to nsWebBrowser.
@@ -1193,30 +1281,30 @@ EmbedLiteViewChild::OnWindowCloseRequested()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnLoadRedirect()
+EmbedLiteViewBaseChild::OnLoadRedirect()
 {
   return SendOnLoadRedirect() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal)
+EmbedLiteViewBaseChild::OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal)
 {
   return SendOnLoadProgress(aProgress, aCurTotal, aMaxTotal) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnSecurityChanged(const char* aStatus, uint32_t aState)
+EmbedLiteViewBaseChild::OnSecurityChanged(const char* aStatus, uint32_t aState)
 {
   return SendOnSecurityChanged(nsDependentCString(aStatus), aState) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnFirstPaint(int32_t aX, int32_t aY)
+EmbedLiteViewBaseChild::OnFirstPaint(int32_t aX, int32_t aY)
 {
   if (mDOMWindow) {
     nsCOMPtr<nsIDocShell> docShell = mDOMWindow->GetDocShell();
     if (docShell) {
-      RefPtr<PresShell> presShell = docShell->GetPresShell();
+      nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell();
       if (presShell) {
         nscolor bgcolor = presShell->GetCanvasBackground();
         Unused << SendSetBackgroundColor(bgcolor);
@@ -1228,50 +1316,50 @@ EmbedLiteViewChild::OnFirstPaint(int32_t aX, int32_t aY)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight)
+EmbedLiteViewBaseChild::OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight)
 {
   return SendOnScrolledAreaChanged(aWidth, aHeight) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
+EmbedLiteViewBaseChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
 {
   return SendOnScrollChanged(offSetX, offSetY) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnTitleChanged(const char16_t* aTitle)
+EmbedLiteViewBaseChild::OnTitleChanged(const char16_t* aTitle)
 {
   return SendOnTitleChanged(nsDependentString(aTitle)) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
-EmbedLiteViewChild::OnUpdateDisplayPort()
+EmbedLiteViewBaseChild::OnUpdateDisplayPort()
 {
   LOGNI();
   return NS_OK;
 }
 
 bool
-EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::ScrollableLayerGuid::ViewID *aViewIdOut)
+EmbedLiteViewBaseChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
 {
-  nsCOMPtr<Document> doc(mHelper->GetTopLevelDocument());
+  nsCOMPtr<nsIDocument> doc(mHelper->GetDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 float
-EmbedLiteViewChild::GetPresShellResolution() const
+EmbedLiteViewBaseChild::GetPresShellResolution() const
 {
-  nsCOMPtr<Document> document(mHelper->GetTopLevelDocument());
-  RefPtr<PresShell> presShell = document->GetPresShell();
-  if (!presShell) {
+  nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
+  nsIPresShell* shell = document->GetShell();
+  if (!shell) {
     return 1.0f;
   }
-  return presShell->GetResolution();
+  return shell->GetResolution();
 }
 
 void
-EmbedLiteViewChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
+EmbedLiteViewBaseChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
 {
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
@@ -1283,7 +1371,7 @@ EmbedLiteViewChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
 }
 
 void
-EmbedLiteViewChild::UserActivity()
+EmbedLiteViewBaseChild::UserActivity()
 {
   LOGT();
   if (!mIdleService) {

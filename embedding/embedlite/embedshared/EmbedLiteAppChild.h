@@ -41,7 +41,7 @@ protected:
   // IPDL protocol impl
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow) = 0;
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow, const bool& isDesktopMode) = 0;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t&) = 0;
 
 protected:
