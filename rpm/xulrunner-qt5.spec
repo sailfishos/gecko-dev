@@ -1,4 +1,5 @@
 %define greversion    60.9.1
+%define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner
 
@@ -15,8 +16,8 @@
 %define system_pixman     1
 %define system_libvpx     1
 
-%global mozappdir     %{_libdir}/%{name}-%{greversion}
-%global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
+%global mozappdir     %{_libdir}/%{name}-%{milestone}
+%global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
 
 # Private/bundled libs the final package should not provide or depend on.
 %global privlibs             libfreebl3
@@ -223,10 +224,14 @@ echo "ac_add_options --disable-install-strip" >> "$MOZCONFIG"
 echo "ac_add_options --with-app-name=%{name}" >> "$MOZCONFIG"
 
 # Reduce logging from release build
-%if "%{?qa_stage_name}" == testing || "%{?qa_stage_name}" == release
-echo "export CFLAGS=\"\$CFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
-echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
-%endif
+# Doesn't work so disabled for now. Should be made logging-specific.
+# %if "%{?qa_stage_name}" == testing || "%{?qa_stage_name}" == release
+#echo "export CFLAGS=\"\$CFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+#echo "export CXXFLAGS=\"\$CXXFLAGS -DRELEASE_OR_BETA=1\"" >> "$MOZCONFIG"
+#%endif
+
+# Override the milestone for building devel gecko when needed
+echo "%{milestone}" > "$PWD/config/milestone.txt"
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
