@@ -1,7 +1,7 @@
-From ed5c88a01b2c6d0ebc89094d49913cbf06ac34ee Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 19 Oct 2020 13:40:23 +0300
-Subject: [PATCH 40/40] [sailfishos][configuration] Configure application as
+Subject: [PATCH] [sailfishos][configuration] Configure application as
  mobile/sailfishos. JB#51366
 
 This doesn't fix yet the issue with msn.com but at least this
@@ -15,7 +15,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  embedding/embedlite/config/mozconfig.merqtxulrunner | 2 +-
  mobile/sailfishos                                   | 1 +
  toolkit/themes/moz.build                            | 4 ++--
- 7 files changed, 14 insertions(+), 7 deletions(-)
+ 6 files changed, 14 insertions(+), 7 deletions(-)
  create mode 120000 mobile/sailfishos
 
 diff --git a/dom/base/moz.build b/dom/base/moz.build
@@ -70,7 +70,7 @@ index afe307c9cd64..145a4712b074 100644
          'External.webidl',
      ]
 diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index 869234fc87b6..320788664dff 100644
+index b759f42eb111..03e648233993 100644
 --- a/embedding/embedlite/config/mozconfig.merqtxulrunner
 +++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
 @@ -21,7 +21,7 @@ ac_add_options --enable-system-sqlite

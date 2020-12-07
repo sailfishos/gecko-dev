@@ -1,4 +1,4 @@
-From ffc9ad6a335f92f6047177bae8f3b1e467b63c2e Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 17 Apr 2020 12:44:15 +0300
 Subject: [PATCH] [sailfishos][compositor] Allow compositor specializations to

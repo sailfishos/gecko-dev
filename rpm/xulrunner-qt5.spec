@@ -93,12 +93,11 @@ Patch46:    0046-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
 Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
 Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
-Patch50:    0050-sailfishos-gecko-Buffer-when-the-video-decoder-lags-.patch
-Patch51:    0051-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
-Patch52:    0052-sailfishos-gecko-Remove-android-define-from-logging.patch
-Patch53:    0053-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
-Patch54:    0054-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
-Patch55:    0055-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
+Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
+Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
+Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
+Patch53:    0053-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
+Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static

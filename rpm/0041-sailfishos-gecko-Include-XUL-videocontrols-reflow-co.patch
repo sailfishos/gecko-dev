@@ -1,7 +1,8 @@
-From fbf03ece514aa1fb54d88d407f58c4d0e10ef979 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Fri, 16 Oct 2020 14:41:10 +0300
-Subject: [PATCH] [sailfishos][gecko] Include XUL videocontrols reflow code on Sailfish OS
+Subject: [PATCH] [sailfishos][gecko] Include XUL videocontrols reflow code on
+ Sailfish OS
 
 The desktop browser videocontrol UI is implemented in HTML, whereas on
 Sailfish OS (and Android) XUL content is still needed. This change
@@ -74,5 +75,5 @@ index bc9c1a4678dc..071e8ad5a5b2 100644
    HTMLVideoElement* element = static_cast<HTMLVideoElement*>(GetContent());
    if (NS_FAILED(element->GetVideoSize(&size)) && ShouldDisplayPoster()) {
 -- 
-2.25.1
+2.26.2
 

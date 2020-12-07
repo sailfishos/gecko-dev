@@ -1,4 +1,4 @@
-From 5e1f5eaca79b76e5e668f6a77fe389922967a241 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Nick Alexander <nalexander@mozilla.com>
 Date: Tue, 8 Jan 2019 21:43:48 +0000
 Subject: [PATCH] Bug 1518557 - Enable MOZ_GECKO_PROFILER on Android x86_64.
@@ -13,7 +13,7 @@ extra : moz-landing-system : lando
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index 5b84c5464bf5..6219cb710a28 100644
+index 09423eb3c8d9..cf323f26775f 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
 @@ -25,9 +25,9 @@ imply_option('--enable-profiling', jprof)
@@ -29,5 +29,5 @@ index 5b84c5464bf5..6219cb710a28 100644
  
  @depends(gecko_profiler)
 -- 
-2.25.1
+2.26.2
 

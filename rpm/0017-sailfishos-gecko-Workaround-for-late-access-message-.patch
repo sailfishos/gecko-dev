@@ -1,4 +1,4 @@
-From 6d4c376111c2ca5ff011ea4cad1f68f5f1f3fe98 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:12:04 +0300
 Subject: [PATCH] [sailfishos][gecko] Workaround for late access message loop.

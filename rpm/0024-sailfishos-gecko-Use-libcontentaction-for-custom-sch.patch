@@ -1,4 +1,4 @@
-From a8a824f32356e14cd2e919f99620efaf55fab0d1 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 31 Jan 2020 11:09:02 +0000
 Subject: [PATCH] [sailfishos][gecko] Use libcontentaction for custom scheme

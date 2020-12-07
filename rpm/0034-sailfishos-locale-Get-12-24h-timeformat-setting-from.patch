@@ -1,4 +1,4 @@
-From 8d1291b493e7ba32bccba49b4d6f6af0d0577565 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Simo Piiroinen <simo.piiroinen@jollamobile.com>
 Date: Fri, 28 Aug 2020 12:33:28 +0300
 Subject: [PATCH] [sailfishos][locale] Get 12/24h timeformat setting from
@@ -37,7 +37,7 @@ index 403ebc479d18..e24df1e70dfe 100644
      '--enable-directshow',
      '--enable-dtrace',
 diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index 5752ac5e3531..869234fc87b6 100644
+index 06a016570bbc..b759f42eb111 100644
 --- a/embedding/embedlite/config/mozconfig.merqtxulrunner
 +++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
 @@ -31,6 +31,7 @@ ac_add_options --enable-mobile-optimize

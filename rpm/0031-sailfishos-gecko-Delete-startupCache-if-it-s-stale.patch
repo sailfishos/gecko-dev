@@ -1,4 +1,4 @@
-From 243dcc269d988bc53bb674158c7efc8571fe6875 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Tue, 28 Jul 2020 09:39:16 +0000
 Subject: [PATCH] [sailfishos][gecko] Delete startupCache if it's stale

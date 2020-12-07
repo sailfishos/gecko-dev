@@ -1,4 +1,4 @@
-From 6ce21fa982e37044bcd32c7b4cd4ee236cbd813c Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Fri, 16 Oct 2020 19:14:36 +0300
 Subject: [PATCH] [sailfishos][gecko] Adjust audio control dimensions.
@@ -57,5 +57,5 @@ index f48106d440de..14041b63d666 100644
        adjustControlSize() {
          if (this.videocontrols.isTouchControls) {
 -- 
-2.25.1
+2.26.2
 

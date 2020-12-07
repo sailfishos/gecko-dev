@@ -1,4 +1,4 @@
-From d33ee2b8341c5addcd2d02b8426f5a6ea66d4064 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 28 Feb 2020 11:38:58 +0200
 Subject: [PATCH] [sailfishos][qt] Bring back Qt layer. JB#50505
@@ -1051,7 +1051,7 @@ index deafd7ca0e1a..9dec5826cda1 100644
  else:
      DIRS += ['emacs']
 diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index 3f99e0b4ae55..5752ac5e3531 100644
+index 6044ac780a7a..06a016570bbc 100644
 --- a/embedding/embedlite/config/mozconfig.merqtxulrunner
 +++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
 @@ -42,7 +42,7 @@ ac_add_options --disable-stylo
@@ -10938,5 +10938,5 @@ index 000000000000..3bf6f80f3916
 +
 +#endif /* __nsWindow_h__ */
 -- 
-2.25.1
+2.26.2
 

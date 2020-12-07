@@ -1,4 +1,4 @@
-From e894c2f0f7c2db244041fb9ddf57d21e723a908c Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
 Date: Mon, 11 May 2015 13:17:36 +0300
 Subject: [PATCH] [sailfishos][gecko] Limit surface area rather than width and

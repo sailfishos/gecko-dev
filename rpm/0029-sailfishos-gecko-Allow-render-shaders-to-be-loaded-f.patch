@@ -1,4 +1,4 @@
-From 2e39acab82824cfb8d149d10ce99cd4ecbe321a8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
 Date: Thu, 18 Jun 2020 11:19:57 +0000
 Subject: [PATCH] [sailfishos][gecko] Allow render shaders to be loaded from

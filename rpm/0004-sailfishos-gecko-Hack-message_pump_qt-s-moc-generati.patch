@@ -1,4 +1,4 @@
-From df623397931ac1a1c135bfd5208287bb4fdc1021 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 20 Dec 2016 16:01:15 +0200
 Subject: [PATCH] [sailfishos][gecko] Hack message_pump_qt's moc generation to

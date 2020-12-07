@@ -1,4 +1,4 @@
-From 95db071bcf6a615798d4a59188cdef82f630db7b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 27 Jul 2020 13:50:15 +0300
 Subject: [PATCH] [sailfishos][gecko] Create EmbedLiteCompositorBridgeParent in

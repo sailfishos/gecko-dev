@@ -1,4 +1,4 @@
-From 9b8e3808f62f762009b0a74405218dd14d4b8946 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 09:36:29 +0300
 Subject: [PATCH] [sailfishos][gecko] Fix embedlite building. JB#50505
@@ -31,7 +31,7 @@ index 7192a02fc088..62f9d8da3fbf 100644
  CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']
 +OS_LIBS += CONFIG['GLIB_LIBS']
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 8555c8794dc1..36461f10722a 100644
+index bdd887be5fd4..4f560f80d0f7 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -88,6 +88,9 @@

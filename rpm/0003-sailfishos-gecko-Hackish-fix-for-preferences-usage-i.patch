@@ -1,4 +1,4 @@
-From e2b4b8d3edcec8e74b57c0d0108912eab6d2a871 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 09:17:05 +0300
 Subject: [PATCH] [sailfishos][gecko] Hackish fix for preferences usage in
@@ -127,10 +127,10 @@ index 7729150d7219..3596a6b98f70 100644
   private:
    // This is a function so we can log or breakpoint on why hit
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 36461f10722a..d67613ec4493 100644
+index 4f560f80d0f7..7db374964622 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -812,7 +812,7 @@ void gfxPlatform::Init() {
+@@ -810,7 +810,7 @@ void gfxPlatform::Init() {
    // Request the imgITools service, implicitly initializing ImageLib.
    nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
    if (!imgTools) {

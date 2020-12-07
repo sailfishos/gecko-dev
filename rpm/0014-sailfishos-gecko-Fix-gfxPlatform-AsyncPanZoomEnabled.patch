@@ -1,4 +1,4 @@
-From 652e65fa61120ecf66d19bafc4171ecddc5b09ea Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 9 Dec 2016 15:01:12 +0200
 Subject: [PATCH] [sailfishos][gecko] Fix gfxPlatform::AsyncPanZoomEnabled for
@@ -12,10 +12,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index d67613ec4493..a503d5c1f64e 100644
+index 7db374964622..14bebc2c568a 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -2600,7 +2600,7 @@ void gfxPlatform::GetTilesSupportInfo(mozilla::widget::InfoObject& aObj) {
+@@ -2598,7 +2598,7 @@ void gfxPlatform::GetTilesSupportInfo(mozilla::widget::InfoObject& aObj) {
  }
  
  /*static*/ bool gfxPlatform::AsyncPanZoomEnabled() {

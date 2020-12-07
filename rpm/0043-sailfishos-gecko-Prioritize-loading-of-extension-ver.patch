@@ -1,4 +1,4 @@
-From 1208cdad9ecee4bf0984c2c22c53eebc9c9d78f1 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 Date: Wed, 21 Oct 2020 19:59:31 +0300
 Subject: [PATCH] [sailfishos][gecko] Prioritize loading of extension versions
@@ -24,5 +24,5 @@ index 54ffeb0de021..3b4c30556b14 100644
      if (fnLoadForFeature(symbols, GLFeature::robustness)) {
        const auto status = mSymbols.fGetGraphicsResetStatus();
 -- 
-2.25.1
+2.26.2
 
