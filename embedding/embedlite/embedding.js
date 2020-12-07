@@ -200,7 +200,7 @@ pref("mozilla.widget.force-24bpp", true);
 pref("mozilla.widget.use-buffer-pixmap", true);
 pref("layout.css.report_errors", false);
 pref("layout.reflow.synthMouseMove", false);
-pref("mozilla.widget.disable-native-theme", true);
+pref("mozilla.widget.disable-native-theme", false);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
 pref("layers.low-precision-opacity", "1.0");
