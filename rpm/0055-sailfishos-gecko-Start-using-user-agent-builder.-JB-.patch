@@ -1,0 +1,53 @@
+From 9f61e8fe495e10fb21a794a6f1548dbfd633bcf6 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 4 Dec 2020 16:56:05 +0200
+Subject: [PATCH] [sailfishos][gecko] Start using user-agent builder. JB#52068
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ netwerk/protocol/http/nsHttpHandler.cpp | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
+index f9e6ff74fbb7..4d432b4bdfb8 100644
+--- a/netwerk/protocol/http/nsHttpHandler.cpp
++++ b/netwerk/protocol/http/nsHttpHandler.cpp
+@@ -501,7 +501,7 @@ nsresult nsHttpHandler::Init() {
+   mRequestContextService =
+       do_GetService("@mozilla.org/network/request-context-service;1");
+ 
+-#if defined(ANDROID) || defined(MOZ_MULET)
++#if defined(ANDROID) || defined(MOZ_MULET) || defined(MOZ_WIDGET_QT)
+   mProductSub.AssignLiteral(MOZILLA_UAVERSION);
+ #else
+   mProductSub.AssignLiteral(LEGACY_BUILD_ID);
+@@ -943,12 +943,12 @@ void nsHttpHandler::InitUserAgentComponents() {
+       // and there seems little a webpage can sensibly do
+       // based on it being something else, so use X11 for
+       // backwards compatibility in all cases.
+-      "X11"
++      "Sailfish 4.0"
+ #endif
+   );
+ #endif
+ 
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(MOZ_WIDGET_QT)
+   nsCOMPtr<nsIPropertyBag2> infoService =
+       do_GetService("@mozilla.org/system-info;1");
+   MOZ_ASSERT(infoService, "Could not find a system info service");
+@@ -987,9 +987,11 @@ void nsHttpHandler::InitUserAgentComponents() {
+     }
+   }
+ 
++#if defined(MOZ_WIDGET_ANDROID)
+   if (Preferences::GetBool(UA_PREF("use_device"), false)) {
+     mDeviceModelId = mozilla::net::GetDeviceModelId();
+   }
++#endif  // MOZ_WIDGET_ANDROID
+ #endif  // ANDROID
+ 
+ #ifdef MOZ_MULET
+-- 
+2.28.0
+

@@ -98,6 +98,7 @@ Patch51:    0051-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 Patch52:    0052-sailfishos-gecko-Remove-android-define-from-logging.patch
 Patch53:    0053-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
 Patch54:    0054-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
+Patch55:    0055-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
