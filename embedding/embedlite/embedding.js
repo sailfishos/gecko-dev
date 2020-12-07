@@ -123,7 +123,14 @@ pref("embedlite.compositor.request_external_gl_context_early", false);
 pref("extensions.update.enabled", false);
 pref("toolkit.storage.synchronous", 0);
 /* new html5 forms */
-pref("dom.experimental_forms", true);
+// Support for input type=color. By default, disabled.
+pref("dom.forms.color", false);
+// Support for input type=date and type=time. By default, disabled.
+pref("dom.forms.datetime", false);
+// Support for input type=month, type=week and type=datetime-local. By default,
+// disabled.
+pref("dom.forms.datetime.others", false);
+pref("dom.experimental_forms", false);
 pref("extensions.getAddons.cache.enabled", true);
 pref("toolkit.browser.contentViewExpire", 3000);
 
