@@ -1,4 +1,4 @@
-From ce79fb61f54a0465a6f1d5e6dc043513f5d065b0 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Thu, 8 Dec 2016 14:32:54 +0200
 Subject: [PATCH] [sailfishos][compositor] Fix GLContextProvider defines

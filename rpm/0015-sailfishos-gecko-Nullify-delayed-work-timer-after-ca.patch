@@ -1,4 +1,4 @@
-From 4487ba3b9e80a7dc79344b84ea7e787cc74e8b76 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Oleg <romaxa@gmail.com>
 Date: Sat, 25 Oct 2014 13:53:23 -0700
 Subject: [PATCH] [sailfishos][gecko] Nullify delayed work timer after

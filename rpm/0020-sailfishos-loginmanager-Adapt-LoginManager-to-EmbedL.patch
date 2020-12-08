@@ -1,4 +1,4 @@
-From 29620b5fa9082de957a5aaa67164e08d13e0ce1d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 14:17:08 +0300
 Subject: [PATCH] [sailfishos][loginmanager] Adapt LoginManager to EmbedLite.
@@ -14,10 +14,10 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  3 files changed, 17 insertions(+), 12 deletions(-)
 
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
-index bfe029b51dcd..e1cc194254f5 100644
+index 2ec960923e0e..d0d73a30797c 100644
 --- a/dom/ipc/TabChild.h
 +++ b/dom/ipc/TabChild.h
-@@ -495,12 +495,16 @@ class TabChild final : public TabChildBase,
+@@ -496,12 +496,16 @@ class TabChild final : public TabChildBase,
    nsIContentChild* Manager() const { return mManager; }
  
    static inline TabChild* GetFrom(nsIDocShell* aDocShell) {
@@ -88,5 +88,5 @@ index 72e9ccffb883..59476fc09007 100644
 \ No newline at end of file
 +contract @mozilla.org/login-manager/crypto/SDR;1 {dc6c2976-0f73-4f1f-b9ff-3d72b4e28309}
 -- 
-2.25.1
+2.26.2
 

@@ -1,4 +1,4 @@
-From 906bef5d54b7bfac8d86632b1741076bd152932a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
 Date: Wed, 24 Jun 2020 07:56:50 +0200
 Subject: [PATCH] [sailfishos][gecko] Prioritize GMP plugins over all others,

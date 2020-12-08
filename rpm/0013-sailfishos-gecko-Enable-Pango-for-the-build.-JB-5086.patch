@@ -1,4 +1,4 @@
-From a65b06335ac8ce2facd7c999dfaab33a5bf99a47 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 17 Mar 2020 11:06:27 +0200
 Subject: [PATCH] [sailfishos][gecko] Enable Pango for the build. JB#50863

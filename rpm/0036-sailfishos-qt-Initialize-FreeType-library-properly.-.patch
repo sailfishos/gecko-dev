@@ -1,4 +1,4 @@
-From fb6f9a127ef86fb5f5a77a39dd006b95cd3b7df7 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 28 Sep 2020 16:19:17 +0300
 Subject: [PATCH] [sailfishos][qt] Initialize FreeType library properly.

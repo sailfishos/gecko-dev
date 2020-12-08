@@ -1,4 +1,4 @@
-From abbb96148870a8ed442b10aff08008a80884e77b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 19 Oct 2020 11:44:03 +0300
 Subject: [PATCH] [sailfishos][gecko] Suppress LoginManagerContent.jsm

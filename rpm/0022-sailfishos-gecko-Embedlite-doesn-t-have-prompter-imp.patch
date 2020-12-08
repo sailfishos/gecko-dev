@@ -1,4 +1,4 @@
-From d299e8d02577209b0f579226753e1c7b4b63e07d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 30 Jan 2019 15:42:27 +0200
 Subject: [PATCH] [sailfishos][gecko] Embedlite doesn't have prompter

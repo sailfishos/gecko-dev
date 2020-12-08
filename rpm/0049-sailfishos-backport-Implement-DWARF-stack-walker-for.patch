@@ -1,4 +1,4 @@
-From 7f841de419bb025413672e91eb9de32328dbd331 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Makoto Kato <m_kato@ga2.so-net.ne.jp>
 Date: Thu, 12 Apr 2018 18:22:03 +0900
 Subject: [PATCH] Bug 1450185 - Implement DWARF stack walker for aarch64.
@@ -23,17 +23,17 @@ extra : rebase_source : abfe58624dabc2551deb03527db4be3b93490206
  tools/profiler/lul/LulDwarf.cpp               | 19 +++++
  tools/profiler/lul/LulDwarfExt.h              |  3 +
  tools/profiler/lul/LulDwarfSummariser.cpp     | 74 +++++++++++++++++++
- tools/profiler/lul/LulElf.cpp                 |  8 ++
- tools/profiler/lul/LulMain.cpp                | 61 +++++++++++++++
+ tools/profiler/lul/LulElf.cpp                 |  9 +++
+ tools/profiler/lul/LulMain.cpp                | 70 ++++++++++++++++++
  tools/profiler/lul/LulMain.h                  |  5 ++
- tools/profiler/lul/LulMainInt.h               | 12 +++
+ tools/profiler/lul/LulMainInt.h               | 14 ++++
  tools/profiler/moz.build                      |  2 +-
  tools/profiler/tests/gtest/LulTestDwarf.cpp   |  3 +
  tools/profiler/tests/gtest/moz.build          |  2 +-
- 13 files changed, 207 insertions(+), 8 deletions(-)
+ 13 files changed, 219 insertions(+), 8 deletions(-)
 
 diff --git a/tools/profiler/core/PlatformMacros.h b/tools/profiler/core/PlatformMacros.h
-index 0905801bb7ff..1028f6f0bb49 100644
+index 2024e2b5d957..5f205a918a47 100644
 --- a/tools/profiler/core/PlatformMacros.h
 +++ b/tools/profiler/core/PlatformMacros.h
 @@ -15,7 +15,7 @@
@@ -78,10 +78,10 @@ index 0905801bb7ff..1028f6f0bb49 100644
  #define GP_PLAT_mips64_linux 1
  #define GP_ARCH_mips64 1
 diff --git a/tools/profiler/core/platform-linux-android.cpp b/tools/profiler/core/platform-linux-android.cpp
-index 2bbf11419f3a..f46ef22ea626 100644
+index 09eb9437e568..5d9867c99a87 100644
 --- a/tools/profiler/core/platform-linux-android.cpp
 +++ b/tools/profiler/core/platform-linux-android.cpp
-@@ -93,7 +93,7 @@ PopulateRegsFromContext(Registers& aRegs, ucontext_t* aContext)
+@@ -93,7 +93,7 @@ static void PopulateRegsFromContext(Registers& aRegs, ucontext_t* aContext) {
    aRegs.mSP = reinterpret_cast<Address>(mcontext.arm_sp);
    aRegs.mFP = reinterpret_cast<Address>(mcontext.arm_fp);
    aRegs.mLR = reinterpret_cast<Address>(mcontext.arm_lr);
@@ -91,7 +91,7 @@ index 2bbf11419f3a..f46ef22ea626 100644
    aRegs.mSP = reinterpret_cast<Address>(mcontext.sp);
    aRegs.mFP = reinterpret_cast<Address>(mcontext.regs[29]);
 diff --git a/tools/profiler/core/platform.cpp b/tools/profiler/core/platform.cpp
-index 149189b32e0c..770bd86d4213 100644
+index adb66eb8a44d..4936beba8feb 100644
 --- a/tools/profiler/core/platform.cpp
 +++ b/tools/profiler/core/platform.cpp
 @@ -112,7 +112,8 @@
@@ -104,7 +104,7 @@ index 149189b32e0c..770bd86d4213 100644
  #define HAVE_NATIVE_UNWIND
  #define USE_LUL_STACKWALK
  #include "lul/LulMain.h"
-@@ -1194,6 +1195,11 @@ DoLULBacktrace(PSLockRef aLock, const RegisteredThread& aRegisteredThread,
+@@ -1194,6 +1195,11 @@ static void DoLULBacktrace(PSLockRef aLock,
    startRegs.r12 = lul::TaggedUWord(mc->arm_ip);
    startRegs.r11 = lul::TaggedUWord(mc->arm_fp);
    startRegs.r7 = lul::TaggedUWord(mc->arm_r7);
@@ -116,7 +116,7 @@ index 149189b32e0c..770bd86d4213 100644
  #elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
    startRegs.xip = lul::TaggedUWord(mc->gregs[REG_EIP]);
    startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_ESP]);
-@@ -1246,6 +1252,9 @@ DoLULBacktrace(PSLockRef aLock, const RegisteredThread& aRegisteredThread,
+@@ -1246,6 +1252,9 @@ static void DoLULBacktrace(PSLockRef aLock,
  #elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
      uintptr_t rEDZONE_SIZE = 0;
      uintptr_t start = startRegs.r13.Value() - rEDZONE_SIZE;
@@ -127,7 +127,7 @@ index 149189b32e0c..770bd86d4213 100644
      uintptr_t rEDZONE_SIZE = 0;
      uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
 diff --git a/tools/profiler/lul/LulDwarf.cpp b/tools/profiler/lul/LulDwarf.cpp
-index 94af7e0d2c7f..f9f95bbafa81 100644
+index de62af667639..8af1a99fcab4 100644
 --- a/tools/profiler/lul/LulDwarf.cpp
 +++ b/tools/profiler/lul/LulDwarf.cpp
 @@ -1888,6 +1888,25 @@ unsigned int DwarfCFIToModule::RegisterNames::ARM() {
@@ -157,10 +157,10 @@ index 94af7e0d2c7f..f9f95bbafa81 100644
    /*
     8 "$zero", "$at",  "$v0",  "$v1",  "$a0",   "$a1",  "$a2",  "$a3",
 diff --git a/tools/profiler/lul/LulDwarfExt.h b/tools/profiler/lul/LulDwarfExt.h
-index 3ccb9aef3c71..065d894ae73d 100644
+index 24247c49ed10..9055d1b0aef3 100644
 --- a/tools/profiler/lul/LulDwarfExt.h
 +++ b/tools/profiler/lul/LulDwarfExt.h
-@@ -1202,6 +1202,9 @@ class DwarfCFIToModule: public CallFrameInfo::Handler {
+@@ -1202,6 +1202,9 @@ class DwarfCFIToModule : public CallFrameInfo::Handler {
      // ARM.
      static unsigned int ARM();
  
@@ -171,10 +171,10 @@ index 3ccb9aef3c71..065d894ae73d 100644
      static unsigned int MIPS();
    };
 diff --git a/tools/profiler/lul/LulDwarfSummariser.cpp b/tools/profiler/lul/LulDwarfSummariser.cpp
-index 0768540fb2d5..efabc2856eef 100644
+index 106ee491e235..0d9a41c5b7e8 100644
 --- a/tools/profiler/lul/LulDwarfSummariser.cpp
 +++ b/tools/profiler/lul/LulDwarfSummariser.cpp
-@@ -243,6 +243,80 @@ Summariser::Rule(uintptr_t aAddress, int aNewReg,
+@@ -243,6 +243,80 @@ void Summariser::Rule(uintptr_t aAddress, int aNewReg, LExprHow how,
      mCurrRules.mR15expr = LExpr(NODEREF, DW_REG_ARM_R14, 0);
    }
  
@@ -256,7 +256,7 @@ index 0768540fb2d5..efabc2856eef 100644
  
    // ---------------- x64/x86 ---------------- //
 diff --git a/tools/profiler/lul/LulElf.cpp b/tools/profiler/lul/LulElf.cpp
-index f2ebf6156205..169b7d026e47 100644
+index c4cd7b8e16e5..c8876f3f79e6 100644
 --- a/tools/profiler/lul/LulElf.cpp
 +++ b/tools/profiler/lul/LulElf.cpp
 @@ -72,6 +72,11 @@
@@ -290,10 +290,10 @@ index f2ebf6156205..169b7d026e47 100644
        return "mips";
      case EM_PPC64:
 diff --git a/tools/profiler/lul/LulMain.cpp b/tools/profiler/lul/LulMain.cpp
-index 55e90a2ef29b..56d714193571 100644
+index ba6f97fd01e5..17a048e45489 100644
 --- a/tools/profiler/lul/LulMain.cpp
 +++ b/tools/profiler/lul/LulMain.cpp
-@@ -82,6 +82,13 @@ NameOf_DW_REG(int16_t aReg)
+@@ -82,6 +82,13 @@ static const char* NameOf_DW_REG(int16_t aReg) {
        return "r14";
      case DW_REG_ARM_R15:
        return "r15";
@@ -307,7 +307,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
      case DW_REG_MIPS_SP:
        return "sp";
-@@ -142,6 +149,10 @@ RuleSet::Print(void(*aLog)(const char*)) const
+@@ -142,6 +149,10 @@ void RuleSet::Print(void (*aLog)(const char*)) const {
    res += mR12expr.ShowRule(" R12");
    res += mR13expr.ShowRule(" R13");
    res += mR14expr.ShowRule(" R14");
@@ -318,7 +318,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
    res += mPCexpr.ShowRule(" PC");
    res += mSPexpr.ShowRule(" SP");
-@@ -176,6 +187,13 @@ RuleSet::ExprForRegno(DW_REG_NUMBER aRegno) {
+@@ -176,6 +187,13 @@ LExpr* RuleSet::ExprForRegno(DW_REG_NUMBER aRegno) {
        return &mR11expr;
      case DW_REG_ARM_R7:
        return &mR7expr;
@@ -332,7 +332,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
      case DW_REG_MIPS_SP:
        return &mSPexpr;
-@@ -896,6 +914,13 @@ TaggedUWord EvaluateReg(int16_t aReg, const UnwindRegs* aOldRegs,
+@@ -896,6 +914,13 @@ static TaggedUWord EvaluateReg(int16_t aReg, const UnwindRegs* aOldRegs,
        return aOldRegs->r14;
      case DW_REG_ARM_R15:
        return aOldRegs->r15;
@@ -346,7 +346,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
      case DW_REG_MIPS_SP:
        return aOldRegs->sp;
-@@ -1097,6 +1122,11 @@ void UseRuleSet(/*MOD*/UnwindRegs* aRegs,
+@@ -1097,6 +1122,11 @@ static void UseRuleSet(/*MOD*/ UnwindRegs* aRegs, const StackImage* aStackImg,
    aRegs->r13 = TaggedUWord();
    aRegs->r14 = TaggedUWord();
    aRegs->r15 = TaggedUWord();
@@ -358,7 +358,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
    aRegs->sp = TaggedUWord();
    aRegs->fp = TaggedUWord();
-@@ -1136,6 +1166,13 @@ void UseRuleSet(/*MOD*/UnwindRegs* aRegs,
+@@ -1136,6 +1166,13 @@ static void UseRuleSet(/*MOD*/ UnwindRegs* aRegs, const StackImage* aStackImg,
        aRS->mR14expr.EvaluateExpr(&old_regs, cfa, aStackImg, aPfxInstrs);
    aRegs->r15 =
        aRS->mR15expr.EvaluateExpr(&old_regs, cfa, aStackImg, aPfxInstrs);
@@ -372,7 +372,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
    aRegs->sp = aRS->mSPexpr.EvaluateExpr(&old_regs, cfa, aStackImg, aPfxInstrs);
    aRegs->fp = aRS->mFPexpr.EvaluateExpr(&old_regs, cfa, aStackImg, aPfxInstrs);
-@@ -1190,6 +1227,16 @@ LUL::Unwind(/*OUT*/uintptr_t* aFramePCs,
+@@ -1190,6 +1227,16 @@ void LUL::Unwind(/*OUT*/ uintptr_t* aFramePCs,
            (int)regs.r14.Valid(), (unsigned long long int)regs.r14.Value());
        buf[sizeof(buf) - 1] = 0;
        mLog(buf);
@@ -389,7 +389,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
        SprintfLiteral(
            buf, "LoopTop: pc %d/%llx  sp %d/%llx  fp %d/%llx\n",
-@@ -1209,6 +1256,9 @@ LUL::Unwind(/*OUT*/uintptr_t* aFramePCs,
+@@ -1209,6 +1256,9 @@ void LUL::Unwind(/*OUT*/ uintptr_t* aFramePCs,
  #elif defined(GP_ARCH_arm)
      TaggedUWord ia = (*aFramesUsed == 0 ? regs.r15 : regs.r14);
      TaggedUWord sp = regs.r13;
@@ -399,7 +399,7 @@ index 55e90a2ef29b..56d714193571 100644
  #elif defined(GP_ARCH_mips64)
      TaggedUWord ia = regs.pc;
      TaggedUWord sp = regs.sp;
-@@ -1521,6 +1571,26 @@ bool GetAndCheckStackTrace(LUL* aLUL, const char* dstring)
+@@ -1521,6 +1571,26 @@ static __attribute__((noinline)) bool GetAndCheckStackTrace(
    startRegs.r7 = TaggedUWord(block[5]);
    const uintptr_t REDZONE_SIZE = 0;
    uintptr_t start = block[1] - REDZONE_SIZE;
@@ -427,7 +427,7 @@ index 55e90a2ef29b..56d714193571 100644
    volatile uintptr_t block[3];
    MOZ_ASSERT(sizeof(block) == 24);
 diff --git a/tools/profiler/lul/LulMain.h b/tools/profiler/lul/LulMain.h
-index e87cf60cfcb5..4d4a923ad7e9 100644
+index b65b45fef709..c53e61a9a040 100644
 --- a/tools/profiler/lul/LulMain.h
 +++ b/tools/profiler/lul/LulMain.h
 @@ -139,6 +139,11 @@ struct UnwindRegs {
@@ -443,7 +443,7 @@ index e87cf60cfcb5..4d4a923ad7e9 100644
    TaggedUWord xbp;
    TaggedUWord xsp;
 diff --git a/tools/profiler/lul/LulMainInt.h b/tools/profiler/lul/LulMainInt.h
-index 6cb5461a1531..b6d9edc23381 100644
+index 92a9017bf29c..c597a5096fa4 100644
 --- a/tools/profiler/lul/LulMainInt.h
 +++ b/tools/profiler/lul/LulMainInt.h
 @@ -42,6 +42,11 @@ enum DW_REG_NUMBER {
@@ -458,7 +458,7 @@ index 6cb5461a1531..b6d9edc23381 100644
  #elif defined(GP_ARCH_amd64)
    // Because the X86 (32 bit) and AMD64 (64 bit) summarisers are
    // combined, a merged set of register constants is needed.
-@@ -271,6 +276,10 @@ public:
+@@ -271,6 +276,10 @@ class RuleSet {
    LExpr mR12expr;
    LExpr mR11expr;
    LExpr mR7expr;
@@ -522,5 +522,5 @@ index 3a2ff02528c1..230c951ade7a 100644
          'LulTest.cpp',
          'LulTestDwarf.cpp',
 -- 
-2.25.1
+2.26.2
 

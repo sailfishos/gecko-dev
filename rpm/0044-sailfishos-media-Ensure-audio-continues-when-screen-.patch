@@ -1,4 +1,4 @@
-From 234f3bce084b90dc233afd8bdc3e003135ed06ea Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Thu, 29 Oct 2020 15:20:18 +0200
 Subject: [PATCH] [sailfishos][media] Ensure audio continues when screen is

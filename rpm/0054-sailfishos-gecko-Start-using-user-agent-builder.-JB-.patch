@@ -1,4 +1,4 @@
-From 9f61e8fe495e10fb21a794a6f1548dbfd633bcf6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 4 Dec 2020 16:56:05 +0200
 Subject: [PATCH] [sailfishos][gecko] Start using user-agent builder. JB#52068
@@ -49,5 +49,5 @@ index f9e6ff74fbb7..4d432b4bdfb8 100644
  
  #ifdef MOZ_MULET
 -- 
-2.28.0
+2.26.2
 

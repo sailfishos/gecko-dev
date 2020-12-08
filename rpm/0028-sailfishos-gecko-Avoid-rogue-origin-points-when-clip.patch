@@ -1,4 +1,4 @@
-From 6b44a3f6ef3bbd3dee04d15305a3e96e2aba373a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Tue, 2 Jun 2020 11:47:10 +0000
 Subject: [PATCH] [sailfishos][gecko] Avoid rogue origin points when clipping

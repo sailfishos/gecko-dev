@@ -1,4 +1,4 @@
-From 1571fd2bcb4079916cfb01f52d74c4f865753147 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 16 Mar 2020 14:46:51 +0200
 Subject: [PATCH] [sailfishos][gecko] Backport Embed MessageLoop contructor

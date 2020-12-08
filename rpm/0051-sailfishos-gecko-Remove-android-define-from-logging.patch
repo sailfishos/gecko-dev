@@ -1,13 +1,17 @@
-From 5b8349a7a351c80a075eaea17e9ebfd8992b009b Wed, 2 Dec 2020 12:15:39 +0100
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
 Date: Wed, 2 Dec 2020 12:14:54 +0100
-Subject: [PATCH] [sailfishos][gecko] Always disable logging for RELEASE_OR_BETA.
+Subject: [PATCH] [sailfishos][gecko] Always disable logging for
+ RELEASE_OR_BETA.
 
 Upstream always enables logging except on Android when RELEASE_OR_BETA is defined.
 This patch removes the Android condition so our releases disable logging too.
+---
+ xpcom/base/Logging.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/xpcom/base/Logging.h b/xpcom/base/Logging.h
-index a35318c..08e1876 100644
+index a35318c23bb0..08e187637672 100644
 --- a/xpcom/base/Logging.h
 +++ b/xpcom/base/Logging.h
 @@ -24,7 +24,7 @@
@@ -19,3 +23,6 @@ index a35318c..08e1876 100644
  #define MOZ_LOGGING_ENABLED 1
  #else
  #define MOZ_LOGGING_ENABLED 0
+-- 
+2.26.2
+

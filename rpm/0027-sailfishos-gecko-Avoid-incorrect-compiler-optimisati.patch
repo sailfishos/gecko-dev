@@ -1,4 +1,4 @@
-From 3e9131de94383b846ccfc933f603eea9ea600cad Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 21 Apr 2020 23:14:14 +0300
 Subject: [PATCH] [sailfishos][gecko] Avoid incorrect compiler optimisation.

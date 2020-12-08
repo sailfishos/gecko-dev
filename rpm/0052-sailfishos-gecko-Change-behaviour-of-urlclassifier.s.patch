@@ -1,4 +1,4 @@
-From b441d2c6c167f8ee82a69bd7dda2627dceb359c6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Marko Kenttala <marko.kenttala@jolla.com>
 Date: Wed, 2 Dec 2020 14:02:06 +0200
 Subject: [PATCH] [sailfishos][gecko] Change behaviour of
@@ -71,5 +71,5 @@ index 1d008fec1cab..5aaa51fe7479 100644
    // True if the channel is on the allow list.
    bool mIsAllowListed;
 -- 
-2.17.1
+2.26.2
 

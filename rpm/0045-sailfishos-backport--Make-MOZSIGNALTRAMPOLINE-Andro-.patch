@@ -1,8 +1,8 @@
-From ef1f805ffd5ea30a7d33684e01f3a5ef0bc1f9fa Mon, 9 Nov 2020 11:58:19 +0100
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Mike Hommey <mh+mozilla@glandium.org>
 Date: Mon, 9 Nov 2020 11:56:48 +0100
-Subject: [PATCH] Bug 1434526 - Make MOZ_SIGNAL_TRAMPOLINE Android-only. r=gsvelto
-
+Subject: [PATCH] Bug 1434526 - Make MOZ_SIGNAL_TRAMPOLINE Android-only.
+ r=gsvelto
 
 Bug 1463035 exists to remove it entirely, because as mentioned in bug
 1238661 comment 4, we don't actually need this workaround anymore. But
@@ -12,9 +12,12 @@ real device using the same version of Android would use.
 
 Let's however fix the problems it causes with GCC on non-Android ARM
 Linux by making it Android-only, rather than removing it entirely.
+---
+ mfbt/LinuxSignal.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/mfbt/LinuxSignal.h b/mfbt/LinuxSignal.h
-index 112b6a1..7decd95 100644
+index 112b6a1b7e0d..7decd95560d9 100644
 --- a/mfbt/LinuxSignal.h
 +++ b/mfbt/LinuxSignal.h
 @@ -7,7 +7,7 @@
@@ -26,3 +29,6 @@ index 112b6a1..7decd95 100644
  
  // Some (old) Linux kernels on ARM have a bug where a signal handler
  // can be called without clearing the IT bits in CPSR first. The result
+-- 
+2.26.2
+

@@ -1,4 +1,4 @@
-From fe0a3a115c8f77190f75e6b4f5ab0e23bb4620bf Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 15:02:46 +0300
 Subject: [PATCH] [sailfishos][gecko] Handle temporary directory similarly as

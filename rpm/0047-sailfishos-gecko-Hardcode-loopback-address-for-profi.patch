@@ -1,4 +1,4 @@
-From cdc220c97fe1f02e950c113711f318e834c1120d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 13 Nov 2020 10:31:26 +0200
 Subject: [PATCH] [sailfishos][gecko] Hardcode loopback address for profile
@@ -38,5 +38,5 @@ index 3e6750f4250c..7fce74a80fa9 100644
    int symlink_rv, symlink_errno = 0, tries = 0;
  
 -- 
-2.28.0
+2.26.2
 
