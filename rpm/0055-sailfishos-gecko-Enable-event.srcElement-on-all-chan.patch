@@ -1,0 +1,75 @@
+From 729ce826b0f5b757324cbbc41e5ed766c76dad71 Mon Sep 17 00:00:00 2001
+From: Boris Zbarsky <bzbarsky@mit.edu>
+Date: Fri, 4 May 2018 14:27:31 -0400
+Subject: [PATCH] [sailfishos][gecko] Enable event.srcElement on all channels.
+ Fixes JB#52410
+
+Derived from the original gecko bugzilla patch.
+https://bug453968.bmoattachments.org/attachment.cgi?id=8973297
+https://bugzilla.mozilla.org/show_bug.cgi?id=453968
+
+This was introduced into mozilla 62, so should be removed afterwards.
+
+Bug 453968.  Enable event.srcElement on all channels.  r=smaug
+
+I could keep using BinaryName to make the IDL look more like the spec, but this
+is a bit more efficient...
+---
+ dom/events/Event.cpp    | 10 ----------
+ dom/events/Event.h      |  2 --
+ dom/webidl/Event.webidl |  4 +---
+ 3 files changed, 1 insertion(+), 15 deletions(-)
+
+diff --git a/dom/events/Event.cpp b/dom/events/Event.cpp
+index c24d9a241336..b3f3c749898c 100644
+--- a/dom/events/Event.cpp
++++ b/dom/events/Event.cpp
+@@ -235,16 +235,6 @@ Event::GetTarget(nsIDOMEventTarget** aTarget) {
+   return NS_OK;
+ }
+ 
+-bool Event::IsSrcElementEnabled(JSContext* /* unused */,
+-                                JSObject* /* unused */) {
+-// Not a pref, because that's a pain on workers.
+-#ifdef NIGHTLY_BUILD
+-  return true;
+-#else
+-  return false;
+-#endif
+-}
+-
+ EventTarget* Event::GetCurrentTarget() const {
+   return mEvent->GetCurrentDOMEventTarget();
+ }
+diff --git a/dom/events/Event.h b/dom/events/Event.h
+index aa83f0523655..6e93dbe12d18 100644
+--- a/dom/events/Event.h
++++ b/dom/events/Event.h
+@@ -146,8 +146,6 @@ class Event : public EventBase, public nsWrapperCache {
+   // void GetType(nsString& aRetval) {}
+ 
+   EventTarget* GetTarget() const;
+-  static bool IsSrcElementEnabled(JSContext* /* unused */,
+-                                  JSObject* /* unused */);
+   EventTarget* GetCurrentTarget() const;
+ 
+   void ComposedPath(nsTArray<RefPtr<EventTarget>>& aPath);
+diff --git a/dom/webidl/Event.webidl b/dom/webidl/Event.webidl
+index d3172c6f48df..23ba1f685ca8 100644
+--- a/dom/webidl/Event.webidl
++++ b/dom/webidl/Event.webidl
+@@ -15,10 +15,8 @@
+ interface Event {
+   [Pure]
+   readonly attribute DOMString type;
+-  [Pure]
++  [Pure, BindingAlias="srcElement"]
+   readonly attribute EventTarget? target;
+-  [Pure, BinaryName="target", Func="Event::IsSrcElementEnabled"]
+-  readonly attribute EventTarget? srcElement;
+   [Pure]
+   readonly attribute EventTarget? currentTarget;
+ 
+-- 
+2.25.1
+
