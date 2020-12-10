@@ -587,7 +587,9 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsA
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
   baseWindow->SetVisibility(aIsActive);
 
-  RecvScheduleUpdate();
+  if (aIsActive) {
+    RecvScheduleUpdate();
+  }
   return IPC_OK();
 }
 
