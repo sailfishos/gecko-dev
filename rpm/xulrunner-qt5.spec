@@ -99,6 +99,7 @@ Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
 Patch53:    0053-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
 Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
+Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
