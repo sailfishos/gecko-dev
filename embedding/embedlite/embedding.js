@@ -432,3 +432,6 @@ pref("security.mixed_content.block_active_content", true);
 pref("security.cert_pinning.enforcement_level", 1);
 // Only fetch OCSP for EV certificates
 pref("security.OCSP.enabled", 2);
+
+// The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
+user_pref("media.cubeb.backend", "pulse");
