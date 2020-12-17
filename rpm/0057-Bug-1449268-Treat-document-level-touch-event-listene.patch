@@ -1,0 +1,236 @@
+From 8c70a972066245c1ef603b06894ea8806a630372 Mon Sep 17 00:00:00 2001
+From: Olli Pettay <Olli.Pettay@helsinki.fi>
+Date: Wed, 4 Apr 2018 19:19:54 +0300
+Subject: [PATCH] Bug 1449268 - Treat document-level touch event listeners as
+ passive, r=kats
+
+--HG--
+extra : rebase_source : 0ea948a612dfbd46b80b52985f96685b012e0079
+---
+ dom/events/EventListenerManager.cpp           | 44 ++++++++---
+ dom/events/EventListenerManager.h             |  6 +-
+ dom/webidl/EventTarget.webidl                 |  2 +-
+ .../mochitest/helper_tap_default_passive.html | 73 +++++++++++++++++++
+ gfx/layers/apz/test/mochitest/mochitest.ini   |  1 +
+ .../mochitest/test_group_touchevents.html     |  5 +-
+ 6 files changed, 117 insertions(+), 14 deletions(-)
+ create mode 100644 gfx/layers/apz/test/mochitest/helper_tap_default_passive.html
+
+diff --git a/dom/events/EventListenerManager.cpp b/dom/events/EventListenerManager.cpp
+index 49a5d99601f0..bafb4e209ee2 100644
+--- a/dom/events/EventListenerManager.cpp
++++ b/dom/events/EventListenerManager.cpp
+@@ -645,15 +645,36 @@ bool EventListenerManager::ListenerCanHandle(const Listener* aListener,
+   return aListener->mEventMessage == aEventMessage;
+ }
+ 
+-void EventListenerManager::AddEventListenerByType(
+-    EventListenerHolder aListenerHolder, const nsAString& aType,
+-    const EventListenerFlags& aFlags) {
++void
++EventListenerManager::AddEventListenerByType(
++                        EventListenerHolder aListenerHolder,
++                        const nsAString& aType,
++                        const EventListenerFlags& aFlags,
++                        const Optional<bool>& aPassive)
++{
+   RefPtr<nsAtom> atom;
+-  EventMessage message =
+-      mIsMainThreadELM ? nsContentUtils::GetEventMessageAndAtomForListener(
+-                             aType, getter_AddRefs(atom))
+-                       : eUnidentifiedEvent;
+-  AddEventListenerInternal(Move(aListenerHolder), message, atom, aType, aFlags);
++  EventMessage message = mIsMainThreadELM ?
++    nsContentUtils::GetEventMessageAndAtomForListener(aType,
++                                                      getter_AddRefs(atom)) :
++    eUnidentifiedEvent;
++
++  EventListenerFlags flags = aFlags;
++  if (aPassive.WasPassed()) {
++    flags.mPassive = aPassive.Value();
++  } else if (message == eTouchStart || message == eTouchMove) {
++    nsCOMPtr<nsINode> node;
++    nsCOMPtr<nsPIDOMWindowInner> win;
++    if ((win = GetTargetAsInnerWindow()) ||
++        ((node = do_QueryInterface(mTarget)) &&
++         (node == node->OwnerDoc() ||
++          node == node->OwnerDoc()->GetRootElement() ||
++          node == node->OwnerDoc()->GetBody()))) {
++      flags.mPassive = true;
++    }
++  }
++
++  AddEventListenerInternal(Move(aListenerHolder),
++                           message, atom, aType, flags);
+ }
+ 
+ void EventListenerManager::RemoveEventListenerByType(
+@@ -1311,17 +1332,20 @@ void EventListenerManager::AddEventListener(
+     const dom::AddEventListenerOptionsOrBoolean& aOptions,
+     bool aWantsUntrusted) {
+   EventListenerFlags flags;
++  Optional<bool> passive;
+   if (aOptions.IsBoolean()) {
+     flags.mCapture = aOptions.GetAsBoolean();
+   } else {
+     const auto& options = aOptions.GetAsAddEventListenerOptions();
+     flags.mCapture = options.mCapture;
+     flags.mInSystemGroup = options.mMozSystemGroup;
+-    flags.mPassive = options.mPassive;
+     flags.mOnce = options.mOnce;
++    if (options.mPassive.WasPassed()) {
++      passive.Construct(options.mPassive.Value());
++    }
+   }
+   flags.mAllowUntrustedEvents = aWantsUntrusted;
+-  return AddEventListenerByType(Move(aListenerHolder), aType, flags);
++  return AddEventListenerByType(Move(aListenerHolder), aType, flags, passive);
+ }
+ 
+ void EventListenerManager::RemoveEventListener(
+diff --git a/dom/events/EventListenerManager.h b/dom/events/EventListenerManager.h
+index d065ef62c877..ee0bcdec06a0 100644
+--- a/dom/events/EventListenerManager.h
++++ b/dom/events/EventListenerManager.h
+@@ -287,8 +287,10 @@ class EventListenerManager final : public EventListenerManagerBase {
+   }
+   void AddEventListenerByType(EventListenerHolder aListener,
+                               const nsAString& type,
+-                              const EventListenerFlags& aFlags);
+-  void RemoveEventListenerByType(nsIDOMEventListener* aListener,
++                              const EventListenerFlags& aFlags,
++                              const dom::Optional<bool>& aPassive =
++                                dom::Optional<bool>());
++  void RemoveEventListenerByType(nsIDOMEventListener *aListener,
+                                  const nsAString& type,
+                                  const EventListenerFlags& aFlags) {
+     RemoveEventListenerByType(EventListenerHolder(aListener), type, aFlags);
+diff --git a/dom/webidl/EventTarget.webidl b/dom/webidl/EventTarget.webidl
+index d5eadf58dae9..2d4adcb65c91 100644
+--- a/dom/webidl/EventTarget.webidl
++++ b/dom/webidl/EventTarget.webidl
+@@ -19,7 +19,7 @@ dictionary EventListenerOptions {
+ };
+ 
+ dictionary AddEventListenerOptions : EventListenerOptions {
+-  boolean passive = false;
++  boolean passive;
+   boolean once = false;
+ };
+ 
+diff --git a/gfx/layers/apz/test/mochitest/helper_tap_default_passive.html b/gfx/layers/apz/test/mochitest/helper_tap_default_passive.html
+new file mode 100644
+index 000000000000..99c570065e7c
+--- /dev/null
++++ b/gfx/layers/apz/test/mochitest/helper_tap_default_passive.html
+@@ -0,0 +1,73 @@
++<!DOCTYPE HTML>
++<html>
++<head>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width; initial-scale=1.0">
++  <title>Ensure APZ doesn't wait for passive listeners</title>
++  <script type="application/javascript" src="apz_test_native_event_utils.js"></script>
++  <script type="application/javascript" src="apz_test_utils.js"></script>
++  <script type="application/javascript" src="/tests/SimpleTest/paint_listener.js"></script>
++  <script type="application/javascript">
++
++var touchdownTime;
++
++function longPressLink() {
++  synthesizeNativeTouch(document.getElementById('b'), 5, 5, SpecialPowers.DOMWindowUtils.TOUCH_CONTACT, function() {
++    dump("Finished synthesizing touch-start, waiting for events...\n");
++  });
++}
++
++var touchstartReceived = false;
++function recordEvent(e) {
++  if (!touchstartReceived) {
++    touchstartReceived = true;
++    is(e.type, 'touchstart', 'Got a touchstart');
++    e.preventDefault(); // should be a no-op because it's a passive listener
++    return;
++  }
++
++  // If APZ decides to wait for the content response on a particular input block,
++  // it needs to wait until both the touchstart and touchmove event are handled
++  // by the main thread. In this case there is no touchmove at all, so APZ would
++  // end up waiting indefinitely and time out the test. The fact that we get this
++  // contextmenu event (mouselongtap on Windows) at all means that APZ decided
++  // not to wait for the content response, which is the desired behaviour, since
++  // the touchstart listener was registered as a passive listener.
++  if (getPlatform() == "windows") {
++    is(e.type, 'mouselongtap', 'Got a mouselongtap');
++  } else {
++    is(e.type, 'contextmenu', 'Got a contextmenu');
++  }
++  e.preventDefault();
++
++  synthesizeNativeTouch(document.getElementById('b'), 5, 5, SpecialPowers.DOMWindowUtils.TOUCH_REMOVE, function() {
++    dump("Finished synthesizing touch-end to clear state; finishing test...\n");
++    subtestDone();
++  });
++}
++
++// Note, not passing 'passive'.
++window.addEventListener('touchstart', recordEvent, { capture: true });
++if (getPlatform() == "windows") {
++  SpecialPowers.addChromeEventListener('mouselongtap', recordEvent, true);
++} else {
++  window.addEventListener('contextmenu', recordEvent, true);
++}
++
++waitUntilApzStable()
++.then(longPressLink);
++
++  </script>
++</head>
++<body>
++  <a id="b" href="#">Link to nowhere</a>
++  <script>
++    function preventDefaultListener(e) {
++      e.preventDefault();
++    }
++    document.addEventListener("touchstart", preventDefaultListener, { capture: true });
++    document.documentElement.addEventListener("touchstart", preventDefaultListener, { capture: true });
++    document.body.addEventListener("touchstart", preventDefaultListener, { capture: true });
++  </script>
++</body>
++</html>
+diff --git a/gfx/layers/apz/test/mochitest/mochitest.ini b/gfx/layers/apz/test/mochitest/mochitest.ini
+index 1b99de370676..52321e0181f8 100644
+--- a/gfx/layers/apz/test/mochitest/mochitest.ini
++++ b/gfx/layers/apz/test/mochitest/mochitest.ini
+@@ -37,6 +37,7 @@
+     helper_subframe_style.css
+     helper_tall.html
+     helper_tap.html
++    helper_tap_default_passive.html
+     helper_tap_fullzoom.html
+     helper_tap_passive.html
+     helper_touch_action.html
+diff --git a/gfx/layers/apz/test/mochitest/test_group_touchevents.html b/gfx/layers/apz/test/mochitest/test_group_touchevents.html
+index 1a1a15bf1fd0..781a5afe20c4 100644
+--- a/gfx/layers/apz/test/mochitest/test_group_touchevents.html
++++ b/gfx/layers/apz/test/mochitest/test_group_touchevents.html
+@@ -68,13 +68,16 @@ var subtests = [
+   // instead.
+   {'file': 'helper_long_tap.html', 'prefs': [["apz.test.fails_with_native_injection", isWindows]]},
+ 
+-  // For the following test, we want to make sure APZ doesn't wait for a content
++  // For the following tests, we want to make sure APZ doesn't wait for a content
+   // response that is never going to arrive. To detect this we set the content response
+   // timeout to a day, so that the entire test times out and fails if APZ does
+   // end up waiting.
+   {'file': 'helper_tap_passive.html', 'prefs': [["apz.content_response_timeout", 24 * 60 * 60 * 1000],
+                                                 ["apz.test.fails_with_native_injection", isWindows]]},
+ 
++  {'file': 'helper_tap_default_passive.html', 'prefs': [["apz.content_response_timeout", 24 * 60 * 60 * 1000],
++                                                        ["apz.test.fails_with_native_injection", isWindows]]},
++
+   // Simple test to exercise touch-action CSS property
+   {'file': 'helper_touch_action.html', 'prefs': touch_action_prefs},
+   // More complex touch-action tests, with overlapping regions and such
+-- 
+2.17.1
+
