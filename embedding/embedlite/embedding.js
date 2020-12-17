@@ -435,3 +435,6 @@ pref("security.OCSP.enabled", 2);
 
 // The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
 pref("media.cubeb.backend", "pulse");
+
+// On ESR60 customelements is only enabled for nightly. Enable for us.
+pref("dom.webcomponents.customelements.enabled", true);
