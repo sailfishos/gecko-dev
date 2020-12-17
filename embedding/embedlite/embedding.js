@@ -434,4 +434,4 @@ pref("security.cert_pinning.enforcement_level", 1);
 pref("security.OCSP.enabled", 2);
 
 // The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
-user_pref("media.cubeb.backend", "pulse");
+pref("media.cubeb.backend", "pulse");
