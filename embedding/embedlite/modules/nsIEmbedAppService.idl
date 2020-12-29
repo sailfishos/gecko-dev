@@ -7,7 +7,7 @@
 #include "nsIDOMWindow.idl"
 #include "nsIBaseWindow.idl"
 #include "nsIWebBrowser.idl"
-#include "nsIDOMEventTarget.idl"
+webidl EventTarget;
 
 /**
  * An optional interface for embedding clients wishing to receive
@@ -50,6 +50,6 @@ interface nsIEmbedAppService : nsISupports
     void zoomToRect(in uint32_t aId, in float aX, in float aY, in float aWidth, in float aHeight);
     void contentReceivedInputBlock(in uint32_t aId, in boolean aPreventDefault);
     // Not sure how else to add event listener from js component without browser
-    void chromeEventHandler(in mozIDOMWindowProxy aWindow, [retval] out nsIDOMEventTarget eventHandler);
+    void chromeEventHandler(in mozIDOMWindowProxy aWindow, [retval] out EventTarget eventHandler);
     void getAnyEmbedWindow([optional] in boolean aActive, [retval] out mozIDOMWindowProxy embedWindow);
 };

@@ -33,6 +33,7 @@
 #include "mozilla/AutoRestore.h"
 #include "FrameMetrics.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/EventTarget.h"
 
 using namespace mozilla;
 using namespace mozilla::embedlite;
@@ -291,11 +292,11 @@ EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* message
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::ChromeEventHandler(mozIDOMWindowProxy *aWindow, nsIDOMEventTarget * *eventHandler)
+EmbedLiteAppService::ChromeEventHandler(mozIDOMWindowProxy *aWindow, EventTarget * *eventHandler)
 {
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_GetInterface(aWindow);
   NS_ENSURE_TRUE(pidomWindow, NS_ERROR_FAILURE);
-  nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   *eventHandler = target.forget().take();
   return NS_OK;
 }

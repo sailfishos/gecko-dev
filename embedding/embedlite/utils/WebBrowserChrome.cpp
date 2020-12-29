@@ -12,7 +12,6 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShell.h"
 #include "nsIWebProgress.h"
-#include "nsIDOMEventTarget.h"
 #include "nsPIDOMWindow.h"
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
@@ -29,6 +28,7 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
+#include "mozilla/dom/EventTarget.h"
 #include "TabChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 
@@ -362,7 +362,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   mFirstPaint = false;
 
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
-  nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 
   return NS_OK;
@@ -439,7 +439,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
-    nsCOMPtr<nsIDOMEventTarget> origTarget;
+    RefPtr<EventTarget> origTarget;
     aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
     nsCOMPtr<nsIDocument> ctDoc = do_QueryInterface(origTarget);
     nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
@@ -464,13 +464,13 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
       mListener->OnScrolledAreaChanged(width, height);
     }
 
-    nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
+    RefPtr<EventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
     target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
     mScrollOffset = nsIntPoint();
   } else if (type.EqualsLiteral(MOZ_MozAfterPaint)) {
     nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
-    nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+    RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
     target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
     if (mFirstPaint) {
       mListener->OnUpdateDisplayPort();
@@ -480,7 +480,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     nsIntPoint offset = GetScrollOffset(docWin);
     mListener->OnFirstPaint(offset.x, offset.y);
   } else if (type.EqualsLiteral(MOZ_scroll)) {
-    nsCOMPtr<nsIDOMEventTarget> target;
+    RefPtr<EventTarget> target;
     aEvent->GetTarget(getter_AddRefs(target));
     nsCOMPtr<nsIDocument> eventDoc = do_QueryInterface(target);
     nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(mWebBrowser);
@@ -685,7 +685,7 @@ void WebBrowserChrome::SetEventHandler()
 
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
-  nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
   target->AddEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
   target->AddEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
@@ -703,7 +703,7 @@ void WebBrowserChrome::RemoveEventHandler()
   mHandlerAdded = false;
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
-  nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
