@@ -8,6 +8,7 @@
 
 #include "nsIEmbedFrame.h"
 #include "nsCOMPtr.h"
+#include "mozilla/dom/ContentFrameMessageManager.h"
 
 class EmbedFrame : public nsIEmbedFrame
 {
@@ -18,7 +19,7 @@ public:
   EmbedFrame();
 
   nsCOMPtr<nsIDOMWindow> mWindow;
-  nsCOMPtr<nsIContentFrameMessageManager> mMessageManager;
+  RefPtr<ContentFrameMessageManager> mMessageManager;
 
 private:
   virtual ~EmbedFrame();
