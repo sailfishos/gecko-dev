@@ -101,6 +101,7 @@ Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
 Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
 Patch57:    0057-Bug-1449268-Treat-document-level-touch-event-listene.patch
+Patch58:    0058-sailfishos-gecko-Log-bad-tex-upload-calls-and-errors.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
