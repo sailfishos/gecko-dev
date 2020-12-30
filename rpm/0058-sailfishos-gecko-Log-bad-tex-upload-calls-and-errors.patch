@@ -1,0 +1,159 @@
+From 96dac0f46693f617025019536fa0237f0dcd47f4 Mon Sep 17 00:00:00 2001
+From: Jeff Gilbert <jgilbert@mozilla.com>
+Date: Wed, 20 Feb 2019 04:43:32 +0000
+Subject: [PATCH] [sailfishos][gecko] Log bad tex upload calls and errors.
+ Fixes JB#52618
+
+Derived from the original gecko bugzilla patch.
+https://phabricator.services.mozilla.com/D20429
+https://bugzilla.mozilla.org/show_bug.cgi?id=1290770
+
+This was introduced into mozilla 67, so should be removed afterwards.
+
+Bug 1290770 - Log bad tex upload calls and errors. r=lsalzman
+
+Differential Revision: https://phabricator.services.mozilla.com/D20429
+---
+ dom/canvas/WebGLTextureUpload.cpp | 69 +++++++++++++++++++++----------
+ 1 file changed, 47 insertions(+), 22 deletions(-)
+
+diff --git a/dom/canvas/WebGLTextureUpload.cpp b/dom/canvas/WebGLTextureUpload.cpp
+index f80fc1210266..404af88ac422 100644
+--- a/dom/canvas/WebGLTextureUpload.cpp
++++ b/dom/canvas/WebGLTextureUpload.cpp
+@@ -1152,9 +1152,13 @@ void WebGLTexture::TexStorage(const char* funcName, TexTarget target,
+     return;
+   }
+   if (error) {
+-    MOZ_RELEASE_ASSERT(false, "GFX: We should have caught all other errors.");
+     mContext->ErrorInvalidOperation(
+-        "%s: Unexpected error during texture allocation.", funcName);
++        "%s: Unexpected error from driver.", funcName);
++    const nsPrintfCString call(
++        "DoTexStorage(0x%04x, %i, 0x%04x, %i,%i,%i) -> 0x%04x", target.get(),
++        levels, sizedFormat, width, height, depth, error);
++    gfxCriticalError() << "Unexpected error from driver: "
++                       << call.BeginReading();
+     return;
+   }
+ 
+@@ -1474,7 +1478,7 @@ void WebGLTexture::CompressedTexImage(const char* funcName,
+                                mContext->mBoundPixelUnpackBuffer);
+ 
+   // Warning: Possibly shared memory.  See bug 1225033.
+-  GLenum error = DoCompressedTexImage(
++  const auto error = DoCompressedTexImage(
+       mContext->gl, target, level, internalFormat, blob->mWidth, blob->mHeight,
+       blob->mDepth, blob->mAvailBytes, blob->mPtr);
+   mContext->OnDataAllocCall();
+@@ -1485,12 +1489,14 @@ void WebGLTexture::CompressedTexImage(const char* funcName,
+     return;
+   }
+   if (error) {
+-    MOZ_RELEASE_ASSERT(false, "GFX: We should have caught all other errors.");
+-    mContext->GenerateWarning(
+-        "%s: Unexpected error during texture upload. Context"
+-        " lost.",
+-        funcName);
+-    mContext->ForceLoseContext();
++    mContext->ErrorInvalidOperation(
++        "%s: Unexpected error from driver.", funcName);
++    const nsPrintfCString call(
++        "DoCompressedTexImage(0x%04x, %i, 0x%04x, %u,%u,%u, %u) -> 0x%04x",
++        target.get(), level, internalFormat, blob->mWidth, blob->mHeight,
++        blob->mDepth, uint32_t(blob->mAvailBytes), error);
++    gfxCriticalError() << "Unexpected error from driver: "
++                       << call.BeginReading();
+     return;
+   }
+ 
+@@ -1629,7 +1635,7 @@ void WebGLTexture::CompressedTexSubImage(
+                                mContext->mBoundPixelUnpackBuffer);
+ 
+   // Warning: Possibly shared memory.  See bug 1225033.
+-  GLenum error = DoCompressedTexSubImage(
++  const auto error = DoCompressedTexSubImage(
+       mContext->gl, target, level, xOffset, yOffset, zOffset, blob->mWidth,
+       blob->mHeight, blob->mDepth, sizedUnpackFormat, blob->mAvailBytes,
+       blob->mPtr);
+@@ -1640,12 +1646,16 @@ void WebGLTexture::CompressedTexSubImage(
+     return;
+   }
+   if (error) {
+-    MOZ_RELEASE_ASSERT(false, "GFX: We should have caught all other errors.");
+-    mContext->GenerateWarning(
+-        "%s: Unexpected error during texture upload. Context"
+-        " lost.",
+-        funcName);
+-    mContext->ForceLoseContext();
++    mContext->ErrorInvalidOperation(
++        "%s: Unexpected error from driver.", funcName);
++    const nsPrintfCString call(
++        "DoCompressedTexSubImage(0x%04x, %i, %i,%i,%i, %u,%u,%u, 0x%04x, %u) "
++        "-> 0x%04x",
++        target.get(), level, xOffset, yOffset, zOffset, blob->mWidth,
++        blob->mHeight, blob->mDepth, sizedUnpackFormat,
++        uint32_t(blob->mAvailBytes), error);
++    gfxCriticalError() << "Unexpected error from driver: "
++                       << call.BeginReading();
+     return;
+   }
+ 
+@@ -2030,6 +2040,7 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, const char* funcName,
+   ////
+ 
+   GLenum error = 0;
++  nsCString errorText;
+   do {
+     const auto& idealUnpack = dstUsage->idealUnpack;
+     if (!isSubImage) {
+@@ -2056,7 +2067,15 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, const char* funcName,
+       gl->fPixelStorei(LOCAL_GL_UNPACK_ALIGNMENT, 1);
+       error = DoTexImage(gl, target, level, idealUnpack, dstWidth, dstHeight, 1,
+                          buffer.get());
+-      if (error) break;
++      if (error) {
++        errorText = nsPrintfCString(
++            "DoTexImage(0x%04x, %i, {0x%04x, 0x%04x, 0x%04x}, %u,%u,1) -> "
++            "0x%04x",
++            target.get(), level, idealUnpack->internalFormat,
++            idealUnpack->unpackFormat, idealUnpack->unpackType, dstWidth,
++            dstHeight, error);
++        break;
++      }
+     }
+ 
+     if (!rwWidth || !rwHeight) {
+@@ -2070,7 +2089,13 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, const char* funcName,
+ 
+     error = DoCopyTexSubImage(gl, target, level, writeX, writeY, zOffset, readX,
+                               readY, rwWidth, rwHeight);
+-    if (error) break;
++    if (error) {
++      errorText = nsPrintfCString(
++          "DoCopyTexSubImage(0x%04x, %i, %i,%i,%i, %i,%i, %u,%u) -> 0x%04x",
++          target.get(), level, writeX, writeY, zOffset, readX, readY, rwWidth,
++          rwHeight, error);
++      break;
++    }
+ 
+     return true;
+   } while (false);
+@@ -2090,10 +2115,10 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, const char* funcName,
+     return false;
+   }
+ 
+-  MOZ_RELEASE_ASSERT(false, "GFX: We should have caught all other errors.");
+-  webgl->GenerateWarning(
+-      "%s: Unexpected error during texture copy. Context lost.", funcName);
+-  webgl->ForceLoseContext();
++  webgl->ErrorInvalidOperation(
++      "%s: Unexpected error from driver.", funcName);
++  gfxCriticalError() << "Unexpected error from driver: "
++                     << errorText.BeginReading();
+   return false;
+ }
+ 
+-- 
+2.25.1
+
