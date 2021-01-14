@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 14 Jan 2021 12:27:09 +0200
+Subject: [PATCH] [sailfishos][gecko] Ignore safemode in gfxPlatform. Fixes
+ JB#52738
+
+This is needed in order make/keep rendering pipeline working on Sailfish OS
+when safemode is enabled.
+
+See EmbedLiteXulAppInfo::GetInSafeMode and related change.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/thebes/gfxPlatform.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
+index e4982686063a..6e4948544788 100644
+--- a/gfx/thebes/gfxPlatform.cpp
++++ b/gfx/thebes/gfxPlatform.cpp
+@@ -1760,7 +1760,7 @@ void gfxPlatform::InitBackendPrefs(uint32_t aCanvasBitmask,
+ }
+ 
+ bool gfxPlatform::InSafeMode() {
+-  static bool sSafeModeInitialized = false;
++  static bool sSafeModeInitialized = true;
+   static bool sInSafeMode = false;
+ 
+   if (!sSafeModeInitialized) {
+-- 
+2.29.2
+
