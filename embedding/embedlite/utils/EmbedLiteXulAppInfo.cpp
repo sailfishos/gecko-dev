@@ -114,7 +114,10 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetWidgetToolkit(nsACString& aWidgetToolkit)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
 {
-  *aInSafeMode = false;
+  static const char* embedSafeModeEnv = PR_GetEnv("EMBED_SAFEMODE");
+  static const bool embedSafeMode = embedSafeModeEnv && *embedSafeModeEnv == '1';
+
+  *aInSafeMode = embedSafeMode;
   return NS_OK;
 }
 
