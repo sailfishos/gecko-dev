@@ -12,10 +12,8 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  dom/base/moz.build                                  | 4 +++-
  dom/bindings/moz.build                              | 4 +++-
  dom/webidl/moz.build                                | 6 ++++--
- mobile/sailfishos                                   | 1 +
  toolkit/themes/moz.build                            | 4 ++--
  6 files changed, 14 insertions(+), 7 deletions(-)
- create mode 120000 mobile/sailfishos
 
 diff --git a/dom/base/moz.build b/dom/base/moz.build
 index f56ca8883a73..da1809171ac7 100644
@@ -68,14 +66,6 @@ index afe307c9cd64..145a4712b074 100644
      WEBIDL_FILES += [
          'External.webidl',
      ]
-diff --git a/mobile/sailfishos b/mobile/sailfishos
-new file mode 120000
-index 000000000000..f3fdb3e9df78
---- /dev/null
-+++ b/mobile/sailfishos
-@@ -0,0 +1 @@
-+../embedding/embedlite
-\ No newline at end of file
 diff --git a/toolkit/themes/moz.build b/toolkit/themes/moz.build
 index 468ea128786f..d0871da7c8f5 100644
 --- a/toolkit/themes/moz.build

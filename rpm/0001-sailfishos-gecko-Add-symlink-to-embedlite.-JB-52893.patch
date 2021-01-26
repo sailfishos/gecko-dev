@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 26 Jan 2021 14:13:31 +0200
+Subject: [PATCH] [sailfishos][gecko] Add symlink to embedlite. JB#52893
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ mobile/sailfishos | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 120000 mobile/sailfishos
+
+diff --git a/mobile/sailfishos b/mobile/sailfishos
+new file mode 120000
+index 000000000000..e5c6b32842fd
+--- /dev/null
++++ b/mobile/sailfishos
+@@ -0,0 +1 @@
++../../embedding/embedlite
+\ No newline at end of file
+-- 
+2.29.2
+
