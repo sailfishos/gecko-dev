@@ -12,7 +12,6 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  dom/base/moz.build                                  | 4 +++-
  dom/bindings/moz.build                              | 4 +++-
  dom/webidl/moz.build                                | 6 ++++--
- embedding/embedlite/config/mozconfig.merqtxulrunner | 2 +-
  mobile/sailfishos                                   | 1 +
  toolkit/themes/moz.build                            | 4 ++--
  6 files changed, 14 insertions(+), 7 deletions(-)
@@ -69,19 +68,6 @@ index afe307c9cd64..145a4712b074 100644
      WEBIDL_FILES += [
          'External.webidl',
      ]
-diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index b759f42eb111..03e648233993 100644
---- a/embedding/embedlite/config/mozconfig.merqtxulrunner
-+++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
-@@ -21,7 +21,7 @@ ac_add_options --enable-system-sqlite
- ac_add_options --without-x
- ac_add_options --with-gl-provider=EGL
- 
--ac_add_options --enable-application=embedding/embedlite
-+ac_add_options --enable-application=mobile/sailfishos
- ac_add_options --enable-update-channel=nightly
- ac_add_options --enable-tests
- ac_add_options --enable-default-toolkit=cairo-qt
 diff --git a/mobile/sailfishos b/mobile/sailfishos
 new file mode 120000
 index 000000000000..f3fdb3e9df78

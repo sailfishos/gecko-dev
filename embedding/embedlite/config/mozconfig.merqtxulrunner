@@ -21,7 +21,7 @@ ac_add_options --enable-system-sqlite
 ac_add_options --without-x
 ac_add_options --with-gl-provider=EGL
 
-ac_add_options --enable-application=embedding/embedlite
+ac_add_options --enable-application=mobile/sailfishos
 ac_add_options --enable-update-channel=nightly
 ac_add_options --enable-tests
 ac_add_options --enable-default-toolkit=cairo-qt
