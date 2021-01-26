@@ -1,8 +1,0 @@
----
-wpt:
-    description: web-platform-tests lint
-    include:
-        - testing/web-platform/tests
-    exclude: []
-    type: external
-    payload: wpt.wpt:lint

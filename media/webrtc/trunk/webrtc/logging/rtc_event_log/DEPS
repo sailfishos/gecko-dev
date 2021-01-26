@@ -1,6 +1,0 @@
-include_rules = [
-  "+webrtc/base",
-  "+webrtc/call",
-  "+webrtc/modules/rtp_rtcp",
-  "+webrtc/system_wrappers",
-]
