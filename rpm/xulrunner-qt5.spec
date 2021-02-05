@@ -1,4 +1,4 @@
-%define greversion    60.9.1
+%define greversion    78.8.0
 %define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner
@@ -44,65 +44,66 @@ Group:      Applications/Internet
 License:    MPLv2.0
 URL:        https://git.sailfishos.org/mer-core/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
-Patch2:     0002-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
-Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
-Patch4:     0004-sailfishos-gecko-Hack-message_pump_qt-s-moc-generati.patch
-Patch5:     0005-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
-Patch6:     0006-sailfishos-compositor-Fix-GLContextProvider-defines.patch
-Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
-Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
-Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
-Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
-Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
-Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
-Patch13:    0013-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
-Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
-Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
-Patch16:    0016-sailfishos-compositor-Respect-gfxPrefs-ClearCompoisi.patch
-Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
-Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
-Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
-Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
-Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
-Patch23:    0023-sailfishos-gecko-Disable-Marionette.patch
-Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
-Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
-Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
-Patch27:    0027-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
-Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
-Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
-Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
-Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-Patch32:    0032-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
-Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
-Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
-Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
-Patch36:    0036-sailfishos-qt-Initialize-FreeType-library-properly.-.patch
-Patch37:    0037-sailfishos-disable-TLS-1.0-and-1.1.patch
-Patch38:    0038-sailfishos-gecko-Use-registered-IHistory-service-imp.patch
-Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
-Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
-Patch41:    0041-sailfishos-gecko-Include-XUL-videocontrols-reflow-co.patch
-Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
-Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
-Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
-Patch45:    0045-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
-Patch46:    0046-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
-Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
-Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
-Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
-Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
-Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
-Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
-Patch53:    0053-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
-Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
-Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
-Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
-Patch57:    0057-Bug-1449268-Treat-document-level-touch-event-listene.patch
-Patch58:    0058-sailfishos-gecko-Log-bad-tex-upload-calls-and-errors.patch
-Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
+Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
+#Patch1:     0001-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
+#Patch2:     0002-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
+#Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
+#Patch4:     0004-sailfishos-gecko-Hack-message_pump_qt-s-moc-generati.patch
+#Patch5:     0005-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
+#Patch6:     0006-sailfishos-compositor-Fix-GLContextProvider-defines.patch
+#Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
+#Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
+#Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
+#Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
+#Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
+#Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
+#Patch13:    0013-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
+#Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
+#Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
+#Patch16:    0016-sailfishos-compositor-Respect-gfxPrefs-ClearCompoisi.patch
+#Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
+#Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
+#Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
+#Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
+#Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
+#Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
+#Patch23:    0023-sailfishos-gecko-Disable-Marionette.patch
+#Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
+#Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
+#Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
+#Patch27:    0027-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
+#Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
+#Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
+#Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
+#Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
+#Patch32:    0032-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
+#Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
+#Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
+#Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
+#Patch36:    0036-sailfishos-qt-Initialize-FreeType-library-properly.-.patch
+#Patch37:    0037-sailfishos-disable-TLS-1.0-and-1.1.patch
+#Patch38:    0038-sailfishos-gecko-Use-registered-IHistory-service-imp.patch
+#Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
+#Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
+#Patch41:    0041-sailfishos-gecko-Include-XUL-videocontrols-reflow-co.patch
+#Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
+#Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
+#Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
+#Patch45:    0045-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
+#Patch46:    0046-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
+#Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+#Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
+#Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
+#Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
+#Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
+#Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
+#Patch53:    0053-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
+#Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
+#Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
+#Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
+#Patch57:    0057-Bug-1449268-Treat-document-level-touch-event-listene.patch
+#Patch58:    0058-sailfishos-gecko-Log-bad-tex-upload-calls-and-errors.patch
+#Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
@@ -140,8 +141,10 @@ BuildRequires:  python-devel
 BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
+BuildRequires:  cbindgen
+
 %if %{system_icu}
-BuildRequires:  libicu-devel
+BuildRequires:  libicu-devel >= 67.1
 %endif
 %if %{system_hunspell}
 BuildRequires:  hunspell-devel
@@ -195,10 +198,10 @@ Tests and misc files for xulrunner.
 # Build output directory.
 %define BUILD_DIR "$PWD"/obj-build-mer-qt-xr
 # EmbedLite config used to configure the engine.
-%define BASE_CONFIG "$PWD"/embedding/embedlite/config/mozconfig.%{embedlite_config}
+%define BASE_CONFIG "$PWD"/../embedding/embedlite/config/mozconfig.%{embedlite_config}
 
 %prep
-%autosetup -p1 -n %{name}-%{version}
+%autosetup -p1 -n %{name}-%{version}/gecko-dev
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
@@ -260,14 +263,6 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
 %endif
 
-%if %{system_hunspell}
-  echo "ac_add_options --enable-system-hunspell" >> "$MOZCONFIG"
-%endif
-
-%if %{system_sqlite}
-  echo "ac_add_options --enable-system-sqlite" >> "$MOZCONFIG"
-%endif
-
 %if %{system_ffi}
   echo "ac_add_options --with-system-ffi" >> "${MOZCONFIG}"
 %endif
@@ -286,10 +281,6 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 
 %if %{system_zlib}
   echo "ac_add_options --with-system-zlib" >> "${MOZCONFIG}"
-%endif
-
-%if %{system_bz2}
-  echo "ac_add_options --with-system-bz2" >> "${MOZCONFIG}"
 %endif
 
 %if %{system_pixman}
