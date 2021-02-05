@@ -185,7 +185,7 @@ TabChildHelper::InitTabChildGlobal()
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, false);
-  nsCOMPtr<nsIDOMEventTarget> chromeHandler =
+  RefPtr<EventTarget> chromeHandler =
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
@@ -194,7 +194,7 @@ TabChildHelper::InitTabChildGlobal()
 
   mTabChildGlobal = scope;
 
-  nsISupports* scopeSupports = NS_ISUPPORTS_CAST(nsIDOMEventTarget*, scope);
+  nsISupports* scopeSupports = NS_ISUPPORTS_CAST(EventTarget*, scope);
 
   // Not sure if
   NS_ENSURE_TRUE(InitChildGlobalInternal(scopeSupports, nsCString("intProcessEmbedChildGlobal")), false);
