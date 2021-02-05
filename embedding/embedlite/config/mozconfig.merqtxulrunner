@@ -34,6 +34,7 @@ ac_add_options --disable-dbus
 ac_add_options --disable-updater
 ac_add_options --disable-crashreporter
 ac_add_options --disable-jemalloc
+ac_add_options --disable-nodejs
 
 # Treat warnings as errors in directories with FAIL_ON_WARNINGS.
 # ac_add_options --enable-warnings-as-errors
