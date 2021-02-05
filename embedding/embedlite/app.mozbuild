@@ -9,5 +9,5 @@ if CONFIG['MOZ_EXTENSIONS']:
     DIRS += ['/extensions']
 
 DIRS += [
-    '/embedding/embedlite',
+    '/mobile/sailfishos',
 ]
