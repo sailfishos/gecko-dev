@@ -1,0 +1,192 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Emilio=20Cobos=20=C3=81lvarez?= <emilio@crisal.io>
+Date: Fri, 8 Jun 2018 11:15:34 +0200
+Subject: [PATCH] Bug 1467722: Don't return null for getComputedStyle when
+ there's no pres shell. r=heycam
+
+We need to deal with this case regardless from getPropertyValue, and this causes
+pain and webcompat issues.
+
+MozReview-Commit-ID: Gbpzq0N4O2T
+
+Gecko mirror sha1: 9bed821e9086921da4decd35ac850bd76e36daee
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/base/AnonymousContent.cpp       |  8 ++++---
+ dom/base/nsDOMWindowUtils.cpp       |  5 +++-
+ dom/base/nsGlobalWindowOuter.cpp    | 36 ++++++-----------------------
+ editor/libeditor/CSSEditUtils.cpp   |  6 +----
+ layout/style/nsComputedDOMStyle.cpp | 12 +++++-----
+ layout/style/nsComputedDOMStyle.h   |  4 ++--
+ 6 files changed, 25 insertions(+), 46 deletions(-)
+
+diff --git a/dom/base/AnonymousContent.cpp b/dom/base/AnonymousContent.cpp
+index 47041a20e7f5..8d0c79578e8c 100644
+--- a/dom/base/AnonymousContent.cpp
++++ b/dom/base/AnonymousContent.cpp
+@@ -195,9 +195,11 @@ void AnonymousContent::GetComputedStylePropertyValue(
+     return;
+   }
+ 
+-  RefPtr<nsComputedDOMStyle> cs = new nsComputedDOMStyle(
+-      element, NS_LITERAL_STRING(""), shell, nsComputedDOMStyle::eAll);
+-  aRv = cs->GetPropertyValue(aPropertyName, aResult);
++  RefPtr<nsComputedDOMStyle> cs =
++    new nsComputedDOMStyle(element,
++                           NS_LITERAL_STRING(""),
++                           element->OwnerDoc(),
++                           nsComputedDOMStyle::eAll);
+ }
+ 
+ }  // namespace dom
+diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
+index e99459f6b770..fc5d4a8e3082 100644
+--- a/dom/base/nsDOMWindowUtils.cpp
++++ b/dom/base/nsDOMWindowUtils.cpp
+@@ -2580,8 +2580,11 @@ nsDOMWindowUtils::GetUnanimatedComputedStyle(nsIDOMElement* aElement,
+       (computedValue.GetCSSValueValue()->GetUnit() == eCSSUnit_Unset ||
+        computedValue.GetCSSValueValue()->GetUnit() == eCSSUnit_Initial ||
+        computedValue.GetCSSValueValue()->GetUnit() == eCSSUnit_Inherit)) {
++    nsIDocument* doc = element->GetComposedDoc();
++    NS_ENSURE_TRUE(doc, NS_OK);
++
+     RefPtr<nsComputedDOMStyle> computedStyle = NS_NewComputedDOMStyle(
+-        element, aPseudoElement, shell, nsComputedDOMStyle::StyleType::eAll,
++        element, aPseudoElement, doc, nsComputedDOMStyle::StyleType::eAll,
+         nsComputedDOMStyle::AnimationFlag::eWithoutAnimation);
+     computedStyle->GetPropertyValue(propertyID, aResult);
+     return NS_OK;
+diff --git a/dom/base/nsGlobalWindowOuter.cpp b/dom/base/nsGlobalWindowOuter.cpp
+index 2a839420a27f..4756d5428692 100644
+--- a/dom/base/nsGlobalWindowOuter.cpp
++++ b/dom/base/nsGlobalWindowOuter.cpp
+@@ -6298,38 +6298,16 @@ void nsGlobalWindowOuter::PageHidden() {
+ already_AddRefed<nsICSSDeclaration>
+ nsGlobalWindowOuter::GetComputedStyleHelperOuter(Element& aElt,
+                                                  const nsAString& aPseudoElt,
+-                                                 bool aDefaultStylesOnly) {
+-  if (!mDocShell) {
++                                                 bool aDefaultStylesOnly)
++{
++  if (!mDoc) {
+     return nullptr;
+   }
+ 
+-  nsCOMPtr<nsIPresShell> presShell = mDocShell->GetPresShell();
+-
+-  if (!presShell) {
+-    // Try flushing frames on our parent in case there's a pending
+-    // style change that will create the presshell.
+-    auto* parent = nsGlobalWindowOuter::Cast(GetPrivateParent());
+-    if (!parent) {
+-      return nullptr;
+-    }
+-
+-    parent->FlushPendingNotifications(FlushType::Frames);
+-
+-    // Might have killed mDocShell
+-    if (!mDocShell) {
+-      return nullptr;
+-    }
+-
+-    presShell = mDocShell->GetPresShell();
+-    if (!presShell) {
+-      return nullptr;
+-    }
+-  }
+-
+-  RefPtr<nsICSSDeclaration> compStyle = NS_NewComputedDOMStyle(
+-      &aElt, aPseudoElt, presShell,
+-      aDefaultStylesOnly ? nsComputedDOMStyle::eDefaultOnly
+-                         : nsComputedDOMStyle::eAll);
++  RefPtr<nsICSSDeclaration> compStyle =
++    NS_NewComputedDOMStyle(&aElt, aPseudoElt, mDoc,
++                           aDefaultStylesOnly ? nsComputedDOMStyle::eDefaultOnly :
++                                                nsComputedDOMStyle::eAll);
+ 
+   return compStyle.forget();
+ }
+diff --git a/editor/libeditor/CSSEditUtils.cpp b/editor/libeditor/CSSEditUtils.cpp
+index 5f602af53abd..1609b9a52295 100644
+--- a/editor/libeditor/CSSEditUtils.cpp
++++ b/editor/libeditor/CSSEditUtils.cpp
+@@ -488,12 +488,8 @@ already_AddRefed<nsComputedDOMStyle> CSSEditUtils::GetComputedStyle(
+   nsIDocument* doc = aElement->GetComposedDoc();
+   NS_ENSURE_TRUE(doc, nullptr);
+ 
+-  nsIPresShell* presShell = doc->GetShell();
+-  NS_ENSURE_TRUE(presShell, nullptr);
+-
+   RefPtr<nsComputedDOMStyle> style =
+-      NS_NewComputedDOMStyle(aElement, EmptyString(), presShell);
+-
++    NS_NewComputedDOMStyle(aElement, EmptyString(), doc);
+   return style.forget();
+ }
+ 
+diff --git a/layout/style/nsComputedDOMStyle.cpp b/layout/style/nsComputedDOMStyle.cpp
+index 6649d314197f..3235ef6d9434 100644
+--- a/layout/style/nsComputedDOMStyle.cpp
++++ b/layout/style/nsComputedDOMStyle.cpp
+@@ -72,10 +72,10 @@ using namespace mozilla::dom;
+ 
+ already_AddRefed<nsComputedDOMStyle> NS_NewComputedDOMStyle(
+     dom::Element* aElement, const nsAString& aPseudoElt,
+-    nsIPresShell* aPresShell, nsComputedDOMStyle::StyleType aStyleType,
++    nsIDocument* aDocument, nsComputedDOMStyle::StyleType aStyleType,
+     nsComputedDOMStyle::AnimationFlag aFlag) {
+   RefPtr<nsComputedDOMStyle> computedStyle;
+-  computedStyle = new nsComputedDOMStyle(aElement, aPseudoElt, aPresShell,
++  computedStyle = new nsComputedDOMStyle(aElement, aPseudoElt, aDocument,
+                                          aStyleType, aFlag);
+   return computedStyle.forget();
+ }
+@@ -341,7 +341,7 @@ void nsComputedStyleMap::Update() {
+ 
+ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
+                                        const nsAString& aPseudoElt,
+-                                       nsIPresShell* aPresShell,
++                                       nsIDocument* aDocument,
+                                        StyleType aStyleType,
+                                        AnimationFlag aFlag)
+     : mDocumentWeak(nullptr),
+@@ -353,10 +353,10 @@ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
+       mExposeVisitedStyle(false),
+       mResolvedStyleContext(false),
+       mAnimationFlag(aFlag) {
+-  MOZ_ASSERT(aElement && aPresShell);
+-  MOZ_ASSERT(aPresShell->GetPresContext());
++  MOZ_ASSERT(aElement);
++  MOZ_ASSERT(aDocument);
+ 
+-  mDocumentWeak = do_GetWeakReference(aPresShell->GetDocument());
++  mDocumentWeak = do_GetWeakReference(aDocument);
+   mContent = aElement;
+   mPseudo = nsCSSPseudoElements::GetPseudoAtom(aPseudoElt);
+ }
+diff --git a/layout/style/nsComputedDOMStyle.h b/layout/style/nsComputedDOMStyle.h
+index 7fdb904f5d9b..8bfed49137e4 100644
+--- a/layout/style/nsComputedDOMStyle.h
++++ b/layout/style/nsComputedDOMStyle.h
+@@ -85,7 +85,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
+   };
+ 
+   nsComputedDOMStyle(mozilla::dom::Element* aElement,
+-                     const nsAString& aPseudoElt, nsIPresShell* aPresShell,
++                     const nsAString& aPseudoElt, nsIDocument* aDocument,
+                      StyleType aStyleType,
+                      AnimationFlag aFlag = eWithAnimation);
+ 
+@@ -788,7 +788,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
+ 
+ already_AddRefed<nsComputedDOMStyle> NS_NewComputedDOMStyle(
+     mozilla::dom::Element* aElement, const nsAString& aPseudoElt,
+-    nsIPresShell* aPresShell,
++    nsIDocument* aDocument,
+     nsComputedDOMStyle::StyleType aStyleType = nsComputedDOMStyle::eAll,
+     nsComputedDOMStyle::AnimationFlag aFlag =
+         nsComputedDOMStyle::eWithAnimation);
+-- 
+2.29.2
+

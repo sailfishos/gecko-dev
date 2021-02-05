@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Emilio=20Cobos=20=C3=81lvarez?= <emilio@crisal.io>
+Date: Mon, 1 Feb 2021 12:27:03 +0200
+Subject: [PATCH] Bug 1467722: Do not throw when we don't have a style, but
+ just return an empty style. r=heycam
+
+We return '0' for the length, and "" for every declaration. This matches other
+browsers and the spec in the "no style" behavior.
+
+Of course we don't claim not to have a style for every case the spec says, but
+that will come later, given that's a much more risky change.
+
+This doesn't make any case where we returned something useful return something
+less useful, but stops null from getting returned, and returns the empty string
+which matches other browsers when they cannot return a style.
+
+MozReview-Commit-ID: 7Sc7HL5CgZU
+
+Gecko mirror sha1: cbef91ae3d88735e91e5f940fcfbeea43a2581b7
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ layout/style/nsComputedDOMStyle.cpp | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/layout/style/nsComputedDOMStyle.cpp b/layout/style/nsComputedDOMStyle.cpp
+index 79f2ecf7606a..0558314ce1dd 100644
+--- a/layout/style/nsComputedDOMStyle.cpp
++++ b/layout/style/nsComputedDOMStyle.cpp
+@@ -424,21 +424,22 @@ void nsComputedDOMStyle::SetCssText(const nsAString& aCssText,
+ }
+ 
+ uint32_t nsComputedDOMStyle::Length() {
+-  uint32_t length = GetComputedStyleMap()->Length();
+-
+   // Make sure we have up to date style so that we can include custom
+   // properties.
+   UpdateCurrentStyleSources(false);
+-  if (mStyleContext) {
+-    if (mStyleContext->IsServo()) {
+-      length += Servo_GetCustomPropertiesCount(mStyleContext->AsServo());
+-    } else {
++  if (!mStyleContext) {
++    return 0;
++  }
++
++  uint32_t length = GetComputedStyleMap()->Length();
++  if (mStyleContext->IsServo()) {
++    length += Servo_GetCustomPropertiesCount(mStyleContext->AsServo());
++  } else {
+ #ifdef MOZ_OLD_STYLE
+-      length += StyleVariables()->mVariables.Count();
++    length += StyleVariables()->mVariables.Count();
+ #else
+-      MOZ_CRASH("old style system disabled");
++    MOZ_CRASH("old style system disabled");
+ #endif
+-    }
+   }
+ 
+   ClearCurrentStyleSources();
+@@ -1108,7 +1109,6 @@ already_AddRefed<CSSValue> nsComputedDOMStyle::GetPropertyCSSValue(
+ 
+   UpdateCurrentStyleSources(needsLayoutFlush);
+   if (!mStyleContext) {
+-    aRv.Throw(NS_ERROR_NOT_AVAILABLE);
+     return nullptr;
+   }
+ 
+-- 
+2.29.2
+
