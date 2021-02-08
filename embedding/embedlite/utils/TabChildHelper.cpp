@@ -547,7 +547,7 @@ TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
 // -- nsITabChild --------------
 
 NS_IMETHODIMP
-TabChildHelper::GetMessageManager(nsIContentFrameMessageManager** aResult)
+TabChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
 {
   if (mTabChildGlobal) {
     NS_ADDREF(*aResult = mTabChildGlobal);

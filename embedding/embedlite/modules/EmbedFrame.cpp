@@ -24,9 +24,9 @@ EmbedFrame::GetContentWindow(nsIDOMWindow** aWindow)
 }
 
 NS_IMETHODIMP
-EmbedFrame::GetMessageManager(nsIContentFrameMessageManager** aMessageManager)
+EmbedFrame::GetMessageManager(ContentFrameMessageManager** aMessageManager)
 {
-  nsCOMPtr<nsIContentFrameMessageManager> mm = mMessageManager;
+  RefPtr<ContentFrameMessageManager> mm(mMessageManager);
   mm.forget(aMessageManager);
   return NS_OK;
 }
