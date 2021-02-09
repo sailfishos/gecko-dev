@@ -46,6 +46,7 @@ URL:        https://git.sailfishos.org/mer-core/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
 Patch2:     0002-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
+Patch3:     0003-sailfishos-ipc-Whitelist-sync-messages-of-EmbedLite..patch
 #Patch2:     0002-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch4:     0004-sailfishos-gecko-Hack-message_pump_qt-s-moc-generati.patch
