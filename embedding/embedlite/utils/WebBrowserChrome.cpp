@@ -41,7 +41,6 @@
 
 WebBrowserChrome::WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener)
   : mChromeFlags(0)
-  , mIsModal(false)
   , mIsVisible(false)
   , mHandlerAdded(false)
   , mTotalRequests(0)
@@ -61,7 +60,6 @@ WebBrowserChrome::~WebBrowserChrome()
 
 NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIWebBrowserChrome,
-                  nsIWebBrowserChrome2,
                   nsIWebBrowserChromeFocus,
                   nsIInterfaceRequestor,
                   nsIEmbeddingSiteWindow,
@@ -113,17 +111,7 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
   return QueryInterface(aIID, aInstancePtr);
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetStatus(uint32_t aStatusType, const char16_t* aStatus)
-{
-  return SetStatusWithContext(aStatusType,
-      aStatus ? static_cast<const nsString &>(nsDependentString(aStatus))
-              : EmptyString(),
-      nullptr);
-}
-
-NS_IMETHODIMP WebBrowserChrome::SetStatusWithContext(uint32_t aStatusType,
-                                                     const nsAString& aStatusText,
-                                                     nsISupports* aStatusContext)
+NS_IMETHODIMP WebBrowserChrome::SetLinkStatus(const nsAString& status)
 {
   LOGNI();
   return NS_OK;
@@ -156,25 +144,6 @@ NS_IMETHODIMP WebBrowserChrome::SetChromeFlags(uint32_t aChromeFlags)
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::DestroyBrowserWindow()
-{
-  LOGT();
-
-  if (mIsModal) {
-    ExitModalEventLoop(NS_OK);
-  }
-
-  mListener->OnWindowCloseRequested();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP WebBrowserChrome::SizeBrowserTo(int32_t aCX, int32_t aCY)
-{
-  LOGNI("sz[%i,%i]\n", aCX, aCY);
-  return NS_OK;
-}
-
 NS_IMETHODIMP WebBrowserChrome::ShowAsModal()
 {
   LOGNI();
@@ -184,13 +153,7 @@ NS_IMETHODIMP WebBrowserChrome::ShowAsModal()
 NS_IMETHODIMP WebBrowserChrome::IsWindowModal(bool* _retval)
 {
   NS_ENSURE_ARG_POINTER(_retval);
-  *_retval = mIsModal;
-  return NS_OK;
-}
-
-NS_IMETHODIMP WebBrowserChrome::ExitModalEventLoop(nsresult aStatus)
-{
-  LOGNI("status: %x", aStatus);
+  *_retval = false;
   return NS_OK;
 }
 

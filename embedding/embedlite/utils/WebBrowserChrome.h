@@ -8,7 +8,7 @@
 
 #include "nsCOMPtr.h"
 #include "nsIWebBrowser.h"
-#include "nsIWebBrowserChrome2.h"
+#include "nsIWebBrowserChrome.h"
 #include "nsIWebBrowserChromeFocus.h"
 #include "nsIWebProgressListener.h"
 #include "nsIEmbeddingSiteWindow.h"
@@ -30,7 +30,7 @@ namespace embedlite {
 }
 
 class nsIEmbedBrowserChromeListener;
-class WebBrowserChrome : public nsIWebBrowserChrome2,
+class WebBrowserChrome : public nsIWebBrowserChrome,
                          public nsIWebProgressListener,
                          public nsIWebBrowserChromeFocus,
                          public nsIEmbeddingSiteWindow,
@@ -41,7 +41,6 @@ class WebBrowserChrome : public nsIWebBrowserChrome2,
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWEBBROWSERCHROME
-  NS_DECL_NSIWEBBROWSERCHROME2
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBBROWSERCHROMEFOCUS
   NS_DECL_NSIEMBEDDINGSITEWINDOW
@@ -55,6 +54,8 @@ public:
   void RemoveEventHandler();
 
   void SetTabChildHelper(mozilla::embedlite::TabChildHelper* aHelper);
+  NS_IMETHODIMP GetWebBrowser(nsIWebBrowser * *aWebBrowser);
+  NS_IMETHODIMP SetWebBrowser(nsIWebBrowser* aWebBrowser);
 
 protected:
   virtual ~WebBrowserChrome();
@@ -69,7 +70,6 @@ private:
   /* additional members */
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   uint32_t mChromeFlags;
-  bool mIsModal;
   bool mIsVisible;
   bool mHandlerAdded;
   int mTotalRequests;
