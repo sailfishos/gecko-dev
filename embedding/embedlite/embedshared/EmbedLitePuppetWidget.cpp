@@ -457,7 +457,7 @@ EmbedLitePuppetWidget::GetEmbedLiteChildView() const
 
 void EmbedLitePuppetWidget::ConfigureAPZCTreeManager()
 {
-  LOGT("Do nothing - APZEventState configured in EmbedLiteViewBaseChild");
+  LOGT("Do nothing - APZEventState configured in EmbedLiteViewChild");
 }
 
 void EmbedLitePuppetWidget::ConfigureAPZControllerThread()

@@ -94,7 +94,7 @@ private:
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
   friend class EmbedLiteViewChildIface;
-  friend class EmbedLiteViewBaseChild;
+  friend class EmbedLiteViewChild;
   EmbedLiteViewChildIface* mView;
   bool mHasValidInnerSize;
   bool mIPCOpen;

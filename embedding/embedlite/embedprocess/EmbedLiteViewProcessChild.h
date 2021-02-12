@@ -6,12 +6,12 @@
 #ifndef MOZ_VIEW_EMBED_PROCESS_CHILD_H
 #define MOZ_VIEW_EMBED_PROCESS_CHILD_H
 
-#include "EmbedLiteViewBaseChild.h"
+#include "EmbedLiteViewChild.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewProcessChild : public EmbedLiteViewBaseChild
+class EmbedLiteViewProcessChild : public EmbedLiteViewChild
 {
 public:
   MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t& windowId,

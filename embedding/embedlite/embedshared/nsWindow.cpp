@@ -329,7 +329,7 @@ nsWindow::~nsWindow()
 void
 nsWindow::ConfigureAPZCTreeManager()
 {
-  LOGT("Do nothing - APZEventState configured in EmbedLiteViewBaseChild");
+  LOGT("Do nothing - APZEventState configured in EmbedLiteViewChild");
 }
 
 void

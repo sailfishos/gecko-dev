@@ -37,12 +37,16 @@ EXPORTS.mozilla.embedlite += [
     'embedprocess/EmbedLiteAppProcessParent.h',
     'embedshared/EmbedLiteAppBaseChild.h',
     'embedshared/EmbedLiteAppChildIface.h',
+    'embedshared/EmbedLitePuppetWidget.h',
+    'embedshared/EmbedLiteViewChild.h',
     'embedshared/EmbedLiteViewChildIface.h',
     'embedshared/nsWindow.h',
     'embedshared/PuppetWidgetBase.h',
     'embedthread/EmbedLiteCompositorBridgeParent.h',
     'utils/EmbedLiteSecurity.h',
     'utils/EmbedLog.h',
+    'utils/TabChildHelper.h',
+    'utils/WebBrowserChrome.h',
 ]
 
 EXPORTS.ipc = ['embedhelpers/EmbedIPCUtils.h']
@@ -62,8 +66,8 @@ UNIFIED_SOURCES += [
     'embedprocess/EmbedLiteViewProcessParent.cpp',
     'embedshared/EmbedLiteAppBaseChild.cpp',
     'embedshared/EmbedLitePuppetWidget.cpp',
-    'embedshared/EmbedLiteViewBaseChild.cpp',
     'embedshared/EmbedLiteViewBaseParent.cpp',
+    'embedshared/EmbedLiteViewChild.cpp',
     'embedshared/EmbedLiteWindowBaseChild.cpp',
     'embedshared/EmbedLiteWindowBaseParent.cpp',
     'embedshared/nsWindow.cpp',

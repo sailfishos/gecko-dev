@@ -16,7 +16,7 @@
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIIdleServiceInternal.h"
 #include "TabChildHelper.h"
-#include "APZCCallbackHelper.h"
+#include "mozilla/layers/APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
 
@@ -31,18 +31,18 @@ namespace embedlite {
 class EmbedLitePuppetWidget;
 class EmbedLiteAppThreadChild;
 
-class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
-                               public nsIEmbedBrowserChromeListener,
-                               public EmbedLiteViewChildIface,
-                               public EmbedLitePuppetWidgetObserver
+class EmbedLiteViewChild : public PEmbedLiteViewChild,
+                           public nsIEmbedBrowserChromeListener,
+                           public EmbedLiteViewChildIface,
+                           public EmbedLitePuppetWidgetObserver
 {
-  NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewBaseChild)
+  NS_INLINE_DECL_REFCOUNTING(EmbedLiteViewChild)
 
   typedef mozilla::layers::APZEventState APZEventState;
 
 public:
-  EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
-                         const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
+                     const uint32_t& parentId, const bool& isPrivateWindow);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -84,18 +84,18 @@ public:
 
 /*---------TabChildIface---------------*/
 
-  uint64_t GetOuterID() { return mOuterId; }
+  virtual uint64_t GetOuterID() override { return mOuterId; }
 
-  nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
-  nsresult GetBrowser(nsIWebBrowser** outBrowser);
-  uint32_t GetID() { return mId; }
+  virtual nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome) override;
+  virtual nsresult GetBrowser(nsIWebBrowser** outBrowser) override;
+  virtual uint32_t GetID() override { return mId; }
 
   /**
    * This method is used by EmbedLiteAppService::ZoomToRect() only.
    */
-  bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId);
+  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) override;
 
-  virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString &aMessage, const nsString &aData);
+  virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString &aMessage, const nsString &aData) override;
 
 /*---------WidgetIface---------------*/
 
@@ -128,73 +128,74 @@ public:
                                              const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags) override;
 
 protected:
-  virtual ~EmbedLiteViewBaseChild();
+  virtual ~EmbedLiteViewChild();
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-  virtual mozilla::ipc::IPCResult RecvDestroy() override;
-  virtual mozilla::ipc::IPCResult RecvLoadURL(const nsString &) override;
-  virtual mozilla::ipc::IPCResult RecvGoBack() override;
-  virtual mozilla::ipc::IPCResult RecvGoForward() override;
-  virtual mozilla::ipc::IPCResult RecvStopLoad() override;
-  virtual mozilla::ipc::IPCResult RecvReload(const bool &) override;
+  virtual mozilla::ipc::IPCResult RecvDestroy();
+  virtual mozilla::ipc::IPCResult RecvLoadURL(const nsString &);
+  virtual mozilla::ipc::IPCResult RecvGoBack();
+  virtual mozilla::ipc::IPCResult RecvGoForward();
+  virtual mozilla::ipc::IPCResult RecvStopLoad();
+  virtual mozilla::ipc::IPCResult RecvReload(const bool &);
 
-  virtual mozilla::ipc::IPCResult RecvScrollTo(const int &x, const int &y) override;
-  virtual mozilla::ipc::IPCResult RecvScrollBy(const int &x, const int &y) override;
+  virtual mozilla::ipc::IPCResult RecvScrollTo(const int &x, const int &y);
+  virtual mozilla::ipc::IPCResult RecvScrollBy(const int &x, const int &y);
 
-  virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &) override;
-  virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &) override;
-  virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &) override;
-  virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&) override;
+  virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
 
-  virtual mozilla::ipc::IPCResult RecvSuspendTimeouts() override;
-  virtual mozilla::ipc::IPCResult RecvResumeTimeouts() override;
-  virtual mozilla::ipc::IPCResult RecvLoadFrameScript(const nsString &) override;
+  virtual mozilla::ipc::IPCResult RecvSuspendTimeouts();
+  virtual mozilla::ipc::IPCResult RecvResumeTimeouts();
+  virtual mozilla::ipc::IPCResult RecvLoadFrameScript(const nsString &);
   virtual mozilla::ipc::IPCResult RecvHandleScrollEvent(const bool &isRootScrollFrame,
                                                         const gfxRect &contentRect,
-                                                        const gfxSize &scrollSize) override;
+                                                        const gfxSize &scrollSize);
 
-  virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::FrameMetrics &aFrameMetrics) override;
+  virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::FrameMetrics &aFrameMetrics);
   virtual mozilla::ipc::IPCResult RecvHandleDoubleTap(const LayoutDevicePoint &,
                                                       const Modifiers &aModifiers,
-                                                      const ScrollableLayerGuid &aGuid) override;
+                                                      const ScrollableLayerGuid &aGuid);
   virtual mozilla::ipc::IPCResult RecvHandleSingleTap(const LayoutDevicePoint &, const Modifiers &aModifiers,
-                                                      const ScrollableLayerGuid &aGuid) override;
+                                                      const ScrollableLayerGuid &aGuid);
   virtual mozilla::ipc::IPCResult RecvHandleLongTap(const LayoutDevicePoint &aPoint,
                                                     const mozilla::layers::ScrollableLayerGuid &aGuid,
-                                                    const uint64_t &aInputBlockId) override;
+                                                    const uint64_t &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvMouseEvent(const nsString& aType,
                                                  const float& aX,
                                                  const float& aY,
                                                  const int32_t& aButton,
                                                  const int32_t& aClickCount,
                                                  const int32_t& aModifiers,
-                                                 const bool& aIgnoreRootScrollFrame) override;
-  virtual mozilla::ipc::IPCResult RecvHandleTextEvent(const nsString& commit, const nsString& preEdit) override;
+                                                 const bool& aIgnoreRootScrollFrame);
+  virtual mozilla::ipc::IPCResult RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
   virtual mozilla::ipc::IPCResult RecvHandleKeyPressEvent(const int &domKeyCode,
                                                           const int &gmodifiers,
-                                                          const int &charCode) override;
+                                                          const int &charCode);
   virtual mozilla::ipc::IPCResult RecvHandleKeyReleaseEvent(const int &domKeyCode,
                                                             const int &gmodifiers,
-                                                            const int &charCode) override;
+                                                            const int &charCode);
   virtual mozilla::ipc::IPCResult RecvInputDataTouchEvent(const ScrollableLayerGuid &aGuid,
                                                           const mozilla::MultiTouchInput &,
                                                           const uint64_t &aInputBlockId,
-                                                          const nsEventStatus &aApzResponse) override;
+                                                          const nsEventStatus &aApzResponse);
   virtual mozilla::ipc::IPCResult RecvInputDataTouchMoveEvent(const ScrollableLayerGuid &aGuid,
                                                               const mozilla::MultiTouchInput &,
                                                               const uint64_t &aInputBlockId,
-                                                              const nsEventStatus &aApzResponse) override;
+                                                              const nsEventStatus &aApzResponse);
 
   virtual mozilla::ipc::IPCResult RecvNotifyAPZStateChange(const ViewID &aViewId,
                                                            const APZStateChange &aChange,
-                                                           const int &aArg) override;
-  virtual mozilla::ipc::IPCResult RecvNotifyFlushComplete() override;
-  virtual mozilla::ipc::IPCResult RecvAddMessageListener(const nsCString &) override;
-  virtual mozilla::ipc::IPCResult RecvRemoveMessageListener(const nsCString &) override;
-  virtual mozilla::ipc::IPCResult RecvAddMessageListeners(InfallibleTArray<nsString> &&messageNames) override;
-  virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames) override;
-  virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsAString &aMessage, const nsAString &aData) /* FIXME: override */;
+                                                           const int &aArg);
+  virtual mozilla::ipc::IPCResult RecvNotifyFlushComplete();
+  virtual mozilla::ipc::IPCResult RecvAddMessageListener(const nsCString &);
+  virtual mozilla::ipc::IPCResult RecvRemoveMessageListener(const nsCString &);
+  virtual mozilla::ipc::IPCResult RecvAddMessageListeners(InfallibleTArray<nsString> &&messageNames);
+  virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames);
+  virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsAString &aMessage, const nsAString &aData);
+
   virtual void OnGeckoWindowInitialized() {}
 
   // Get the pres shell resolution of the document in this tab.
@@ -211,7 +212,8 @@ private:
   friend class TabChildHelper;
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
-  friend class EmbedLiteAppBaseChild;
+  friend class EmbedLiteAppChild;
+  friend class PEmbedLiteViewChild;
 
   void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
@@ -239,7 +241,7 @@ private:
   RefPtr<APZEventState> mAPZEventState;
   mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
 
-  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseChild);
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewChild);
 };
 
 } // namespace embedlite
