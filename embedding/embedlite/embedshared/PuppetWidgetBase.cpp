@@ -225,12 +225,12 @@ PuppetWidgetBase::IsEnabled() const
   return mEnabled;
 }
 
-nsresult
-PuppetWidgetBase::SetFocus(bool aRaise)
+void
+PuppetWidgetBase::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType)
 {
   Unused << aRaise;
+  Unused << aCallerType;
   LOGT();
-  return NS_OK;
 }
 
 nsresult
