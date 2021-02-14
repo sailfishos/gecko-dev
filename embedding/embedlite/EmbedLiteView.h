@@ -140,7 +140,7 @@ protected:
   void Destroy();
 
 private:
-  friend class EmbedLiteViewBaseParent;
+  friend class EmbedLiteViewParent;
   friend class EmbedLiteViewThreadParent;
 
   void Destroyed();

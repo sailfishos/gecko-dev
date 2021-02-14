@@ -7,7 +7,7 @@
 #include "EmbedLog.h"
 #include "EmbedLiteView.h"
 #include "mozilla/Unused.h"
-#include "EmbedLiteViewBaseParent.h"
+#include "EmbedLiteViewParent.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "EmbedLiteCompositorBridgeParent.h"
 
@@ -18,7 +18,7 @@ using mozilla::layers::GeckoContentController;
 
 class FakeListener : public EmbedLiteViewListener {};
 
-EmbedContentController::EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop)
+EmbedContentController::EmbedContentController(EmbedLiteViewParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
 {

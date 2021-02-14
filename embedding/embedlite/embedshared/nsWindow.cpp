@@ -335,7 +335,7 @@ nsWindow::ConfigureAPZCTreeManager()
 void
 nsWindow::ConfigureAPZControllerThread()
 {
-  LOGT("Do nothing - APZController thread configured in EmbedLiteViewBaseParent");
+  LOGT("Do nothing - APZController thread configured in EmbedLiteViewParent");
 }
 
 already_AddRefed<GeckoContentController>

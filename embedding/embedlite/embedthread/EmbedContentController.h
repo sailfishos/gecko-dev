@@ -13,7 +13,7 @@
 namespace mozilla {
 namespace embedlite {
 class EmbedLiteViewListener;
-class EmbedLiteViewBaseParent;
+class EmbedLiteViewParent;
 
 class EmbedContentController : public mozilla::layers::GeckoContentController
 {
@@ -23,7 +23,7 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
-  EmbedContentController(EmbedLiteViewBaseParent* aRenderFrame, MessageLoop* aUILoop);
+  EmbedContentController(EmbedLiteViewParent* aRenderFrame, MessageLoop* aUILoop);
   virtual ~EmbedContentController();
 
   // GeckoContentController interface
@@ -73,7 +73,7 @@ private:
   nsIntPoint convertIntPoint(const LayoutDevicePoint &aPoint);
 
   MessageLoop* mUILoop;
-  EmbedLiteViewBaseParent* mRenderFrame;
+  EmbedLiteViewParent* mRenderFrame;
 };
 
 }}
