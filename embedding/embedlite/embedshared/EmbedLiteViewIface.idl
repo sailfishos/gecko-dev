@@ -7,9 +7,9 @@
 
 %{C++
 #include "mozilla/gfx/Matrix.h"
+#include "mozilla/embedlite/EmbedLiteView.h"
 #include "gfxRect.h"
 #include "InputData.h"
-#include "EmbedLiteView.h"
 #include "nsString.h"
 %}
 
