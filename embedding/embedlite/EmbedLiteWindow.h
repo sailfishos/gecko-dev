@@ -26,7 +26,7 @@ enum ScreenRotation {
 
 class EmbedLiteApp;
 class PEmbedLiteWindowParent;
-class EmbedLiteWindowBaseParent;
+class EmbedLiteWindowParent;
 
 class EmbedLiteWindowListener
 {
@@ -97,14 +97,14 @@ protected:
   void Destroy();
 
 private:
-  friend class EmbedLiteWindowBaseParent;
+  friend class EmbedLiteWindowParent;
 
   // EmbedLiteWindowss are supposed to be destroyed through EmbedLiteApp::DestroyWindow.
   void Destroyed();
 
   EmbedLiteApp* mApp;
   EmbedLiteWindowListener* mListener;
-  EmbedLiteWindowBaseParent* mWindowParent;
+  EmbedLiteWindowParent* mWindowParent;
   const uint32_t mUniqueID;
 };
 

@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "EmbedLiteWindowBaseParent.h"
+#include "EmbedLiteWindowParent.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteWindow.h"
@@ -20,11 +20,11 @@ namespace embedlite {
 
 namespace {
 
-static std::map<uint32_t, EmbedLiteWindowBaseParent*> sWindowMap;
+static std::map<uint32_t, EmbedLiteWindowParent*> sWindowMap;
 
 } // namespace
 
-EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
+EmbedLiteWindowParent::EmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
   : mId(id)
   , mWindow(nullptr)
   , mCompositor(nullptr)
@@ -34,39 +34,39 @@ EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, cons
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   sWindowMap[id] = this;
 
-  MOZ_COUNT_CTOR(EmbedLiteWindowBaseParent);
+  MOZ_COUNT_CTOR(EmbedLiteWindowParent);
 }
 
-EmbedLiteWindowBaseParent::~EmbedLiteWindowBaseParent()
+EmbedLiteWindowParent::~EmbedLiteWindowParent()
 {
   MOZ_ASSERT(sWindowMap.find(mId) != sWindowMap.end());
   sWindowMap.erase(sWindowMap.find(mId));
 
   MOZ_ASSERT(mObservers.IsEmpty());
 
-  MOZ_COUNT_DTOR(EmbedLiteWindowBaseParent);
+  MOZ_COUNT_DTOR(EmbedLiteWindowParent);
 }
 
-EmbedLiteWindowBaseParent* EmbedLiteWindowBaseParent::From(const uint32_t id)
+EmbedLiteWindowParent* EmbedLiteWindowParent::From(const uint32_t id)
 {
-  std::map<uint32_t, EmbedLiteWindowBaseParent*>::const_iterator it = sWindowMap.find(id);
+  std::map<uint32_t, EmbedLiteWindowParent*>::const_iterator it = sWindowMap.find(id);
   if (it != sWindowMap.end()) {
     return it->second;
   }
   return nullptr;
 }
 
-void EmbedLiteWindowBaseParent::AddObserver(EmbedLiteWindowParentObserver* obs)
+void EmbedLiteWindowParent::AddObserver(EmbedLiteWindowParentObserver* obs)
 {
   mObservers.AppendElement(obs);
 }
 
-void EmbedLiteWindowBaseParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
+void EmbedLiteWindowParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
 {
   mObservers.RemoveElement(obs);
 }
 
-bool EmbedLiteWindowBaseParent::ScheduleUpdate()
+bool EmbedLiteWindowParent::ScheduleUpdate()
 {
   if (mCompositor) {
     mCompositor->ScheduleRenderOnCompositorThread();
@@ -75,21 +75,21 @@ bool EmbedLiteWindowBaseParent::ScheduleUpdate()
   return false;
 }
 
-void EmbedLiteWindowBaseParent::SuspendRendering()
+void EmbedLiteWindowParent::SuspendRendering()
 {
   if (mCompositor) {
     mCompositor->SuspendRendering();
   }
 }
 
-void EmbedLiteWindowBaseParent::ResumeRendering()
+void EmbedLiteWindowParent::ResumeRendering()
 {
   if (mCompositor) {
     mCompositor->ResumeRendering();
   }
 }
 
-void* EmbedLiteWindowBaseParent::GetPlatformImage(int* width, int* height)
+void* EmbedLiteWindowParent::GetPlatformImage(int* width, int* height)
 {
   if (mCompositor) {
     return mCompositor->GetPlatformImage(width, height);
@@ -97,38 +97,38 @@ void* EmbedLiteWindowBaseParent::GetPlatformImage(int* width, int* height)
   return nullptr;
 }
 
-void EmbedLiteWindowBaseParent::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
+void EmbedLiteWindowParent::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
 {
     if (mCompositor) {
         mCompositor->GetPlatformImage(callback);
     }
 }
 
-void EmbedLiteWindowBaseParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
+void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 {
   mWindow = window;
 }
 
-void EmbedLiteWindowBaseParent::ActorDestroy(ActorDestroyReason aWhy)
+void EmbedLiteWindowParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowBaseParent::RecvInitialized()
+mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvInitialized()
 {
   MOZ_ASSERT(mWindow);
   mWindow->GetListener()->WindowInitialized();
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowBaseParent::RecvDestroyed()
+mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
 {
   MOZ_ASSERT(mWindow);
   mWindow->Destroyed();
   return IPC_OK();
 }
 
-void EmbedLiteWindowBaseParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)
+void EmbedLiteWindowParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)
 {
   LOGT("compositor:%p, observers:%d", aCompositor, mObservers.Length());
   MOZ_ASSERT(!mCompositor);
