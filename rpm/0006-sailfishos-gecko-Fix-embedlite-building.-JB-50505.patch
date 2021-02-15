@@ -13,6 +13,7 @@ Sha1:  367d2afdda4426652aa403d256fd4c17273dffe0
 Subject: Implemented XPCOM initialization in Process backend
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  dom/gamepad/moz.build            |  1 +
  gfx/thebes/gfxPlatform.cpp       |  3 +++
@@ -22,19 +23,19 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  5 files changed, 45 insertions(+), 3 deletions(-)
 
 diff --git a/dom/gamepad/moz.build b/dom/gamepad/moz.build
-index 7192a02fc088..62f9d8da3fbf 100644
+index 51b813f56ea7..70fbe92bc22c 100644
 --- a/dom/gamepad/moz.build
 +++ b/dom/gamepad/moz.build
-@@ -82,3 +82,4 @@ CFLAGS += CONFIG['GLIB_CFLAGS']
+@@ -89,3 +89,4 @@ CFLAGS += CONFIG['GLIB_CFLAGS']
  CFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']
  CXXFLAGS += CONFIG['GLIB_CFLAGS']
  CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']
 +OS_LIBS += CONFIG['GLIB_LIBS']
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index bdd887be5fd4..4f560f80d0f7 100644
+index 96b53c105961..f96dc5695286 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -88,6 +88,9 @@
+@@ -111,6 +111,9 @@
  #include "qcms.h"
  
  #include "imgITools.h"
@@ -45,10 +46,10 @@ index bdd887be5fd4..4f560f80d0f7 100644
  #include "plstr.h"
  #include "nsCRT.h"
 diff --git a/netwerk/protocol/gio/moz.build b/netwerk/protocol/gio/moz.build
-index 7a45898537ca..81d649f4d000 100644
+index b9d7e461b314..722c3fc4af78 100644
 --- a/netwerk/protocol/gio/moz.build
 +++ b/netwerk/protocol/gio/moz.build
-@@ -12,6 +12,13 @@ FINAL_LIBRARY = 'xul'
+@@ -20,6 +20,13 @@ FINAL_LIBRARY = 'xul'
  
  CXXFLAGS += CONFIG['TK_CFLAGS']
  
@@ -63,22 +64,22 @@ index 7a45898537ca..81d649f4d000 100644
      BUG_COMPONENT = ('Core', 'Widget: Gtk')
  
 diff --git a/toolkit/xre/moz.build b/toolkit/xre/moz.build
-index 6af0de70ef94..49c7c5b516cb 100644
+index 7ba3be2fe241..91fe13ba54f0 100644
 --- a/toolkit/xre/moz.build
 +++ b/toolkit/xre/moz.build
-@@ -191,6 +191,7 @@ LOCAL_INCLUDES += [
+@@ -226,6 +226,7 @@ LOCAL_INCLUDES += [
      '/dom/commandhandler',
      '/dom/ipc',
      '/dom/webbrowserpersist',
-+    '/embedding/embedlite/embedprocess',
++    '/mobile/sailfishos/embedprocess',
      '/testing/gtest/mozilla',
      '/toolkit/crashreporter',
      '/xpcom/build',
 diff --git a/toolkit/xre/nsEmbedFunctions.cpp b/toolkit/xre/nsEmbedFunctions.cpp
-index 950005c7bb70..bec682008f8a 100644
+index cd9e819f273d..da2cf64aa63d 100644
 --- a/toolkit/xre/nsEmbedFunctions.cpp
 +++ b/toolkit/xre/nsEmbedFunctions.cpp
-@@ -74,6 +74,7 @@
+@@ -75,6 +75,7 @@
  #include "mozilla/dom/ContentProcess.h"
  #include "mozilla/dom/ContentParent.h"
  #include "mozilla/dom/ContentChild.h"
@@ -86,20 +87,20 @@ index 950005c7bb70..bec682008f8a 100644
  
  #include "mozilla/ipc/TestShellParent.h"
  #include "mozilla/ipc/XPCShellEnvironment.h"
-@@ -226,6 +227,7 @@ const char* XRE_ChildProcessTypeToString(GeckoProcessType aProcessType) {
- namespace mozilla {
- namespace startup {
+@@ -247,6 +248,7 @@ const char* XRE_ChildProcessTypeToAnnotation(GeckoProcessType aProcessType) {
+ 
+ namespace mozilla::startup {
  GeckoProcessType sChildProcessType = GeckoProcessType_Default;
 +bool sIsEmbedlite = false;
- }  // namespace startup
- }  // namespace mozilla
+ }  // namespace mozilla::startup
  
-@@ -647,9 +649,37 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
-           process = new PluginProcessChild(parentPID);
+ #if defined(MOZ_WIDGET_ANDROID)
+@@ -659,9 +661,37 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
+           process = MakeUnique<PluginProcessChild>(parentPID);
            break;
  
 -        case GeckoProcessType_Content:
--          process = new ContentProcess(parentPID);
+-          process = MakeUnique<ContentProcess>(parentPID);
 -          break;
 +        case GeckoProcessType_Content: {
 +          // If passed in grab the application path for xpcom init
@@ -125,10 +126,10 @@ index 950005c7bb70..bec682008f8a 100644
 +          if (startup::sIsEmbedlite) {
 +            // Embedlite process does not have shared content parent process with Gecko stuff, so these child should behave as normal Gecko default process
 +            sChildProcessType = GeckoProcessType_Default;
-+            process = new mozilla::embedlite::EmbedLiteContentProcess(parentPID);
++            process = MakeUnique<mozilla::embedlite::EmbedLiteContentProcess>(parentPID);
 +            static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(process.get())->SetAppDir(appDir);
 +          } else {
-+            process = new ContentProcess(parentPID);
++            process = MakeUnique<ContentProcess>(parentPID);
 +          }
 +        }
 +        break;
@@ -136,5 +137,5 @@ index 950005c7bb70..bec682008f8a 100644
          case GeckoProcessType_IPDLUnitTest:
  #ifdef MOZ_IPDL_TESTS
 -- 
-2.26.2
+2.25.1
 
