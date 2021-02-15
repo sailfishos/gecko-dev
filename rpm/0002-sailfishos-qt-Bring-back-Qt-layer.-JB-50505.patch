@@ -98,6 +98,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  image/decoders/moz.build                      |    2 +
  intl/locale/moz.build                         |    5 +
  ipc/chromium/moz.build                        |    5 +
+ ipc/glue/GeckoChildProcessHost.cpp            |    2 +-
  layout/base/nsPresContext.cpp                 |    7 +-
  layout/generic/moz.build                      |    3 +
  netwerk/base/moz.build                        |    8 +
@@ -162,7 +163,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 120 files changed, 8343 insertions(+), 49 deletions(-)
+ 121 files changed, 8344 insertions(+), 50 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -2279,6 +2280,19 @@ index d29817b91f32..c76bb7ebbd6f 100644
  
  if os_solaris:
      SOURCES += [
+diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
+index 0624e5f7b3d6..fc833befa8c2 100644
+--- a/ipc/glue/GeckoChildProcessHost.cpp
++++ b/ipc/glue/GeckoChildProcessHost.cpp
+@@ -302,7 +302,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
+ // orthogonal IPC machinery there. Conversely, there are tier-3 non-Linux
+ // platforms (BSD and Solaris) where we want the "linux" IPC machinery. So
+ // we use MOZ_WIDGET_* to choose the platform backend.
+-#  elif defined(MOZ_WIDGET_GTK)
++#  elif defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ class LinuxProcessLauncher : public PosixProcessLauncher {
+  public:
+   LinuxProcessLauncher(GeckoChildProcessHost* aHost,
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
 index 864e66fb6744..6bcbe6e4d997 100644
 --- a/layout/base/nsPresContext.cpp
