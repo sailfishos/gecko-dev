@@ -53,6 +53,7 @@ Patch6:     0006-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
 Patch7:     0007-sailfishos-gecko-Disable-MOC-code-generation-for-mes.patch
 Patch8:     0008-sailfishos-qt-Add-Qt-headers-to-system-headers.-Fixe.patch
 Patch9:     0009-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
+Patch10:    0010-sailfishos-gecko-Add-including-of-nsRefPtrHashtable..patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch6:     0006-sailfishos-compositor-Fix-GLContextProvider-defines.patch
 #Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
