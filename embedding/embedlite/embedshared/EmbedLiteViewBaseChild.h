@@ -42,7 +42,7 @@ class EmbedLiteViewBaseChild : public PEmbedLiteViewChild,
 
 public:
   EmbedLiteViewBaseChild(const uint32_t& windowId, const uint32_t& id,
-                         const uint32_t& parentId, const bool& isPrivateWindow);
+                         const uint32_t& parentId, const bool& isPrivateWindow, const bool &isDesktopMode);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -143,6 +143,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &) override;
+  virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&) override;
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
@@ -213,9 +214,11 @@ private:
   friend class EmbedLiteAppThreadChild;
   friend class EmbedLiteAppBaseChild;
 
-  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
+  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
+  void SetDesktopMode(const bool aDesktopMode);
+  bool SetDesktopModeInternal(const bool aDesktopMode);
 
   uint32_t mId;
   uint64_t mOuterId;

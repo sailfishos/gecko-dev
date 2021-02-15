@@ -10,8 +10,9 @@
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
-  : EmbedLiteViewBaseParent(windowId, id, parentId, isPrivateWindow)
+EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow,
+                                                     const bool &isDesktopMode)
+  : EmbedLiteViewBaseParent(windowId, id, parentId, isPrivateWindow, isDesktopMode)
 {
 }
 

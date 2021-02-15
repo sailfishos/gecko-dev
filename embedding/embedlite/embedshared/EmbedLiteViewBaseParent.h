@@ -29,7 +29,7 @@ class EmbedLiteViewBaseParent : public PEmbedLiteViewParent,
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewBaseParent)
 public:
-  EmbedLiteViewBaseParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewBaseParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow, const bool &isDesktopMode);
 
   NS_DECL_EMBEDLITEVIEWIFACE
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;

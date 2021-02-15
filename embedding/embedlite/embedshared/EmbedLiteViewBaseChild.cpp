@@ -9,6 +9,7 @@
 #include "EmbedLiteAppThreadChild.h"
 #include "nsWindow.h"
 
+#include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
 
 #include "nsEmbedCID.h"
@@ -54,6 +55,15 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
+// This should be removed and used common StartsWith. But that's not available => simpler to copy for now.
+template <int N>
+static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
+  if (N - 1 > string.Length()) {
+    return false;
+  }
+  return memcmp(string.Data(), prefix, N - 1) == 0;
+}
+
 static struct {
     bool viewport;
     bool scroll;
@@ -90,7 +100,8 @@ static void ReadAZPCPrefs()
 }
 
 EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const uint32_t& aId,
-                                               const uint32_t& aParentId, const bool& isPrivateWindow)
+                                               const uint32_t& aParentId, const bool& isPrivateWindow,
+                                               const bool& isDesktopMode)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -115,12 +126,13 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   mWindow = EmbedLiteAppBaseChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool>
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool, const bool>
                                    ("mozilla::embedlite::EmbedLiteViewBaseChild::InitGeckoWindow",
                                     this,
                                     &EmbedLiteViewBaseChild::InitGeckoWindow,
                                     aParentId,
-                                    isPrivateWindow));
+                                    isPrivateWindow,
+                                    isDesktopMode));
 }
 
 NS_IMETHODIMP EmbedLiteViewBaseChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
@@ -150,6 +162,13 @@ EmbedLiteViewBaseChild::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvDestroy()
 {
   LOGT("destroy");
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdestroyed", nullptr);
+  }
+
   EmbedLiteAppService::AppService()->UnregisterView(mId);
   if (mHelper)
     mHelper->Unload();
@@ -168,7 +187,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow)
+EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
@@ -321,6 +340,8 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
       puppetWidget->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
     }
   };
+
+  SetDesktopMode(isDesktopMode);
 
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();
@@ -619,6 +640,90 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsFocused(const bool &aIs
   mIsFocused = aIsFocused;
 
   return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetDesktopMode(const bool &aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  SetDesktopMode(aDesktopMode);
+
+  return IPC_OK();
+}
+
+void EmbedLiteViewBaseChild::SetDesktopMode(const bool aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  if (!SetDesktopModeInternal(aDesktopMode)) {
+    return;
+  }
+
+  nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
+
+  nsIURI* currentURI = document->GetDocumentURI();
+
+  // Only reload the page for http/https schemes
+  bool isValidScheme =
+      (NS_SUCCEEDED(currentURI->SchemeIs("http", &isValidScheme)) &&
+       isValidScheme) ||
+      (NS_SUCCEEDED(currentURI->SchemeIs("https", &isValidScheme)) &&
+       isValidScheme);
+
+  if (!isValidScheme) {
+    return;
+  }
+
+  nsCOMPtr<nsIURI> clonedURI;
+  currentURI->Clone(getter_AddRefs(clonedURI));
+  NS_ENSURE_TRUE(clonedURI, );
+
+  nsAutoCString host;
+  nsresult rv = clonedURI->GetHost(host);
+
+  if (StartsWith(host, "www.")) {
+    host.Cut(0, 4);
+  } else if (StartsWith(host, "mobile.")) {
+    host.Cut(0, 7);
+  } else if (StartsWith(host, "m.")) {
+    host.Cut(0, 2);
+  }
+
+  rv = NS_MutateURI(clonedURI).SetHost(host).Finalize(clonedURI);
+  NS_ENSURE_SUCCESS(rv, );
+
+  nsAutoCString url;
+  clonedURI->GetSpec(url);
+
+  // We need LOAD_FLAGS_BYPASS_CACHE here since we're changing the User-Agent
+  // string, and servers typically don't use the Vary: User-Agent header, so
+  // not doing this means that we'd get some of the previously cached content.
+  uint32_t flags = nsIWebNavigation::LOAD_FLAGS_BYPASS_CACHE |
+                   nsIWebNavigation::LOAD_FLAGS_REPLACE_HISTORY;
+
+  NS_ENSURE_TRUE(mWebNavigation, );
+  mWebNavigation->LoadURI(NS_ConvertUTF8toUTF16(url).get(),
+                          flags,
+                          nullptr, nullptr,
+                          nullptr, nsContentUtils::GetSystemPrincipal());
+}
+
+bool EmbedLiteViewBaseChild::SetDesktopModeInternal(const bool aDesktopMode) {
+  NS_ENSURE_TRUE(mDOMWindow, false);
+
+  if (mDOMWindow->IsDesktopModeViewport() == aDesktopMode) {
+    return false;
+  }
+
+  mDOMWindow->SetDesktopModeViewport(aDesktopMode);
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdesktopmodechanged", mDOMWindow->IsDesktopModeViewport() ? u"true" :  u"false");
+    return true;
+  }
+  return false;
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bool &aThrottle)
