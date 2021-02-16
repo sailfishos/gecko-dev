@@ -21,7 +21,7 @@ EmbedLiteAppThreadChild::GetInstance()
 }
 
 EmbedLiteAppThreadChild::EmbedLiteAppThreadChild(MessageLoop* aParentLoop)
-  : EmbedLiteAppBaseChild(aParentLoop)
+  : EmbedLiteAppChild(aParentLoop)
 {
   LOGT();
   sAppThreadChild = this;

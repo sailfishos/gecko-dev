@@ -95,7 +95,7 @@ EmbedLiteAppService::Observe(nsISupports* aSubject,
 
 static EmbedLiteViewChildIface* sGetViewById(uint32_t aId)
 {
-  EmbedLiteAppBaseChild* app = EmbedLiteAppBaseChild::GetInstance();
+  EmbedLiteAppChild* app = EmbedLiteAppChild::GetInstance();
   NS_ENSURE_TRUE(app, nullptr);
   EmbedLiteViewChildIface* view = app->GetViewByID(aId);
   return view;

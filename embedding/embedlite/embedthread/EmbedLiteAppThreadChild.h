@@ -6,12 +6,12 @@
 #ifndef MOZ_APP_EMBED_THREAD_CHILD_H
 #define MOZ_APP_EMBED_THREAD_CHILD_H
 
-#include "EmbedLiteAppBaseChild.h"
+#include "EmbedLiteAppChild.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteAppThreadChild : public EmbedLiteAppBaseChild
+class EmbedLiteAppThreadChild : public EmbedLiteAppChild
 {
 public:
   EmbedLiteAppThreadChild(MessageLoop* aParentLoop);
