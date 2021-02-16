@@ -38,7 +38,7 @@ public:
   virtual mozilla::ipc::IPCResult RecvStartFrameTimeRecording(
           const int32_t& aBufferSize, uint32_t* aOutStartIndex) override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvStopFrameTimeRecording(
-          const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) override  { return IPC_OK(); }
+          const uint32_t& aStartIndex, nsTArray<float>* intervals) override { return IPC_OK(); }
 
   /**
    * Tells this CompositorBridgeParent to send a message when the compositor has received the transaction.

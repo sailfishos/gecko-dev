@@ -357,7 +357,7 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
   // FIXME : Return value should be written to nsTArray<StructuredCloneData> *aRetVal
-  InfallibleTArray<nsString> jsonRetVal;
+  nsTArray<nsString> jsonRetVal;
 
   bool retValue = false;
 

@@ -344,7 +344,7 @@ EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref
 }
 
 void
-EmbedLiteAppProcessParent::GetPrefs(InfallibleTArray<mozilla::dom::Pref> *prefs)
+EmbedLiteAppProcessParent::GetPrefs(nsTArray<mozilla::dom::Pref> *prefs)
 {
   prefs = &mPrefs;
 }

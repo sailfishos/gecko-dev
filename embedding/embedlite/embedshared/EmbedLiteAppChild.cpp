@@ -337,7 +337,7 @@ mozilla::ipc::IPCResult EmbedLiteAppChild::RecvRemoveObserver(const nsCString &t
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteAppChild::RecvAddObservers(InfallibleTArray<nsCString> &&observers)
+mozilla::ipc::IPCResult EmbedLiteAppChild::RecvAddObservers(nsTArray<nsCString> &&observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -353,7 +353,7 @@ mozilla::ipc::IPCResult EmbedLiteAppChild::RecvAddObservers(InfallibleTArray<nsC
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteAppChild::RecvRemoveObservers(InfallibleTArray<nsCString> &&observers)
+mozilla::ipc::IPCResult EmbedLiteAppChild::RecvRemoveObservers(nsTArray<nsCString> &&observers)
 {
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);

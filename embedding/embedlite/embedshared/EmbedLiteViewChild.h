@@ -68,10 +68,10 @@ public:
   virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) override;
   virtual bool DoSendSyncMessage(const char16_t* aMessageName,
                                  const char16_t* aMessage,
-                                 InfallibleTArray<nsString>* aJSONRetVal) override;
+                                 nsTArray<nsString>* aJSONRetVal) override;
   virtual bool DoCallRpcMessage(const char16_t* aMessageName,
                                 const char16_t* aMessage,
-                                InfallibleTArray<nsString>* aJSONRetVal) override;
+                                nsTArray<nsString>* aJSONRetVal) override;
 
   /**
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
@@ -192,8 +192,8 @@ protected:
   virtual mozilla::ipc::IPCResult RecvNotifyFlushComplete();
   virtual mozilla::ipc::IPCResult RecvAddMessageListener(const nsCString &);
   virtual mozilla::ipc::IPCResult RecvRemoveMessageListener(const nsCString &);
-  virtual mozilla::ipc::IPCResult RecvAddMessageListeners(InfallibleTArray<nsString> &&messageNames);
-  virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(InfallibleTArray<nsString>&& messageNames);
+  virtual mozilla::ipc::IPCResult RecvAddMessageListeners(nsTArray<nsString> &&messageNames);
+  virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(nsTArray<nsString>&& messageNames);
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsAString &aMessage, const nsAString &aData);
 
   virtual void OnGeckoWindowInitialized() {}
