@@ -39,6 +39,10 @@ available printers is implemented through QPrinterInfo.
 
 [sailfishos][qt] Add nsIPrintSettingsService for Qt toolkit. Fixes JB#51349
 
+[sailfishos][qt] Move NullPrincipal under mozilla namespace
+
+See upstream commit: a053cf1c15a3a17f1d5a2119991c82f1253b078a
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -2044,7 +2048,7 @@ index 000000000000..958ae3394f69
 +};
 diff --git a/image/decoders/icon/qt/nsIconChannel.cpp b/image/decoders/icon/qt/nsIconChannel.cpp
 new file mode 100644
-index 000000000000..eb29ef15797d
+index 000000000000..000bdf39ed71
 --- /dev/null
 +++ b/image/decoders/icon/qt/nsIconChannel.cpp
 @@ -0,0 +1,134 @@
@@ -2067,7 +2071,7 @@ index 000000000000..eb29ef15797d
 +#include "nsIStringBundle.h"
 +
 +#include "nsNetUtil.h"
-+#include "NullPrincipal.h"
++#include "mozilla/NullPrincipal.h"
 +#include "nsIURL.h"
 +
 +#include "nsIconChannel.h"
@@ -2138,7 +2142,7 @@ index 000000000000..eb29ef15797d
 +  // nsIconProtocolHandler::NewChannel2 will provide the correct loadInfo for
 +  // this iconChannel. Use the most restrictive security settings for the
 +  // temporary loadInfo to make sure the channel can not be openend.
-+  nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::Create();
++  nsCOMPtr<nsIPrincipal> nullPrincipal = mozilla::NullPrincipal::Create();
 +  return NS_NewInputStreamChannel(aChannel,
 +                                  aURI,
 +                                  stream.forget(),
@@ -2281,10 +2285,10 @@ index d29817b91f32..c76bb7ebbd6f 100644
  if os_solaris:
      SOURCES += [
 diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
-index 0624e5f7b3d6..fc833befa8c2 100644
+index 13a94fe183df..b40d89fc2135 100644
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
-@@ -302,7 +302,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
+@@ -320,7 +320,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
  // orthogonal IPC machinery there. Conversely, there are tier-3 non-Linux
  // platforms (BSD and Solaris) where we want the "linux" IPC machinery. So
  // we use MOZ_WIDGET_* to choose the platform backend.
