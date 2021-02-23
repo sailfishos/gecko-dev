@@ -51,6 +51,7 @@ Patch4:     0004-sailfishos-gecko-Remove-x11-dependency-declaration-f.patch
 Patch5:     0005-sailfishos-gecko-Disable-unaligned-FP-access-emulati.patch
 Patch6:     0006-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
 Patch7:     0007-sailfishos-gecko-Disable-MOC-code-generation-for-mes.patch
+Patch8:     0008-sailfishos-qt-Add-Qt-headers-to-system-headers.-Fixe.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch5:     0005-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
 #Patch6:     0006-sailfishos-compositor-Fix-GLContextProvider-defines.patch
