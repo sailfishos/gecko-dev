@@ -6,12 +6,12 @@
 #ifndef MOZ_VIEW_EMBED_THREAD_CHILD_H
 #define MOZ_VIEW_EMBED_THREAD_CHILD_H
 
-#include "EmbedLiteViewBaseChild.h"
+#include "EmbedLiteViewChild.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewThreadChild : public EmbedLiteViewBaseChild
+class EmbedLiteViewThreadChild : public EmbedLiteViewChild
 {
 public:
   EmbedLiteViewThreadChild(const uint32_t& windowId, const uint32_t& id,

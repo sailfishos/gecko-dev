@@ -14,7 +14,7 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& windowId,
                                                    const uint32_t& id,
                                                    const uint32_t& parentId,
                                                    const bool& isPrivateWindow)
-  : EmbedLiteViewBaseChild(windowId, id, parentId, isPrivateWindow)
+  : EmbedLiteViewChild(windowId, id, parentId, isPrivateWindow)
 {
   LOGT();
 }
