@@ -20,18 +20,25 @@
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
 
 # Private/bundled libs the final package should not provide or depend on.
-%global privlibs             libfreebl3
-%global privlibs %{privlibs}|libmozalloc
+
+%global privlibs libmozalloc
 %global privlibs %{privlibs}|libmozsqlite3
+
+%if 0%{?!system_nspr}
 %global privlibs %{privlibs}|libnspr4
 %global privlibs %{privlibs}|libplc4
 %global privlibs %{privlibs}|libplds4
+%endif
+
+%if 0%{?!system_nss}
+%global privlibs %{privlibs}|libfreebl3
 %global privlibs %{privlibs}|libnss3
 %global privlibs %{privlibs}|libnssdbm3
 %global privlibs %{privlibs}|libnssutil3
 %global privlibs %{privlibs}|libsmime3
 %global privlibs %{privlibs}|libsoftokn3
 %global privlibs %{privlibs}|libssl3
+%endif
 
 %global __provides_exclude ^(%{privlibs})\\.so
 %global __requires_exclude ^(%{privlibs})\\.so
