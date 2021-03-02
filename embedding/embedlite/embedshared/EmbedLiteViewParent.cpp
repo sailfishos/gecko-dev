@@ -434,7 +434,7 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
   uint64_t outInputBlockId;
 
   mozilla::MultiTouchInput multiTouchInput = aEvent.AsMultiTouchInput();
-  nsEventStatus apzResult = GetApzcTreeManager()->ReceiveInputEvent(multiTouchInput, &guid, &outInputBlockId);
+  nsEventStatus apzResult = GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(multiTouchInput, &guid, &outInputBlockId);
 
   // If the APZ says to drop it, then we drop it
   if (apzResult == nsEventStatus_eConsumeNoDefault) {
@@ -514,7 +514,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -536,7 +536,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -558,7 +558,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
