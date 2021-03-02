@@ -309,7 +309,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
           puppetWidget->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
         }
       });
-  mAPZEventState = new APZEventState(mWidget, Move(callback));
+  mAPZEventState = new APZEventState(mWidget, std::move(callback));
   mSetAllowedTouchBehaviorCallback = [weakPtrThis](uint64_t aInputBlockId,
                                                    const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags)
   {

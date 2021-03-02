@@ -179,7 +179,7 @@ void EmbedContentController::ClearRenderFrame()
  */
 void EmbedContentController::PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs)
 {
-  MessageLoop::current()->PostDelayedTask(Move(aTask), aDelayMs);
+  MessageLoop::current()->PostDelayedTask(std::move(aTask), aDelayMs);
 }
 
 EmbedLiteViewListener *EmbedContentController::GetListener() const
@@ -244,5 +244,5 @@ void EmbedContentController::CancelAutoscroll(const EmbedContentController::Scro
 
 void EmbedContentController::DispatchToRepaintThread(already_AddRefed<Runnable> aTask)
 {
-  mUILoop->PostTask(Move(aTask));
+  mUILoop->PostTask(std::move(aTask));
 }
