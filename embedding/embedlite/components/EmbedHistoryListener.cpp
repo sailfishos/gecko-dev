@@ -128,23 +128,23 @@ EmbedHistoryListener::EmbedHistoryListener()
   mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
 }
 
-NS_IMETHODIMP
+void
 EmbedHistoryListener::RegisterVisitedCallback(nsIURI *aURI, Link *aContent)
 {
   if (!aContent || !aURI)
-    return NS_OK;
+    return;
 
   // Silently return if URI is something we would never add to DB.
   bool canAdd;
   nsresult rv = CanAddURI(aURI, &canAdd);
-  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_SUCCESS(rv, );
   if (!canAdd) {
-    return NS_OK;
+    return;
   }
 
   nsAutoCString uri;
   rv = aURI->GetSpec(uri);
-  if (NS_FAILED(rv)) return rv;
+  if (NS_FAILED(rv)) return;
   NS_ConvertUTF8toUTF16 uriString(uri);
 
   nsTArray<Link*>* list = mListeners.Get(uriString);
@@ -158,30 +158,30 @@ EmbedHistoryListener::RegisterVisitedCallback(nsIURI *aURI, Link *aContent)
     // widget::GeckoAppShell::CheckURIVisited
     embed::GeckoAppShell::CheckURIVisited(uriString);
   }
-  return NS_OK;
+  return;
 }
 
-NS_IMETHODIMP
+void
 EmbedHistoryListener::UnregisterVisitedCallback(nsIURI *aURI, Link *aContent)
 {
   if (!aContent || !aURI)
-    return NS_OK;
+    return;
 
   nsAutoCString uri;
   nsresult rv = aURI->GetSpec(uri);
-  if (NS_FAILED(rv)) return rv;
+  if (NS_FAILED(rv)) return;
   NS_ConvertUTF8toUTF16 uriString(uri);
 
   nsTArray<Link*>* list = mListeners.Get(uriString);
   if (! list)
-    return NS_OK;
+    return;
 
   list->RemoveElement(aContent);
   if (list->IsEmpty()) {
     mListeners.Remove(uriString);
     delete list;
   }
-  return NS_OK;
+  return;
 }
 
 nsIEmbedAppService *EmbedHistoryListener::GetService()
@@ -308,7 +308,7 @@ EmbedHistoryListener::SaveVisitURI(nsIURI* aURI) {
 
 
 NS_IMETHODIMP
-EmbedHistoryListener::VisitURI(nsIURI *aURI, nsIURI *aLastVisitedURI, uint32_t aFlags)
+EmbedHistoryListener::VisitURI(nsIWidget *aWidget, nsIURI *aURI, nsIURI *aLastVisitedURI, uint32_t aFlags)
 {
   if (!aURI) {
     return NS_OK;
@@ -400,8 +400,8 @@ EmbedHistoryListener::Observe(nsISupports *aSubject,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-EmbedHistoryListener::NotifyVisited(nsIURI *aURI)
+void
+EmbedHistoryListener::NotifyVisited(nsIURI *aURI, VisitedStatus aStatus)
 {
   if (aURI && sHistory) {
     nsAutoCString spec;
@@ -409,7 +409,6 @@ EmbedHistoryListener::NotifyVisited(nsIURI *aURI)
     sHistory->mPendingLinkURIs.Push(NS_ConvertUTF8toUTF16(spec));
     NS_DispatchToMainThread(sHistory);
   }
-  return NS_OK;
 }
 
 NS_IMETHODIMP
