@@ -9,6 +9,8 @@
 
 #ifdef MOZ_LOGGING
 
+using namespace mozilla;
+
 LogModule*
 GetEmbedCommonLog(const char* aModule)
 {
