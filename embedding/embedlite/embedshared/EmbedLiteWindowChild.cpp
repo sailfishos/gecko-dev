@@ -11,7 +11,6 @@
 #include "EmbedLiteWindowChild.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
-#include "ScreenOrientation.h"
 #include "nsIScreen.h"
 #include "nsIScreenManager.h"
 #include "gfxPlatform.h"
@@ -130,24 +129,24 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
 
-  mozilla::dom::ScreenOrientationInternal orientation = eScreenOrientation_Default;
+  hal::ScreenOrientation orientation = hal::eScreenOrientation_Default;
   uint16_t angle = 0;
   switch (mRotation) {
     case ROTATION_0:
       angle = 0;
-      orientation = mozilla::dom::eScreenOrientation_PortraitPrimary;
+      orientation = hal::eScreenOrientation_PortraitPrimary;
       break;
     case ROTATION_90:
       angle = 90;
-      orientation = mozilla::dom::eScreenOrientation_LandscapePrimary;
+      orientation = hal::eScreenOrientation_LandscapePrimary;
       break;
     case ROTATION_180:
       angle = 180;
-      orientation = mozilla::dom::eScreenOrientation_PortraitSecondary;
+      orientation = hal::eScreenOrientation_PortraitSecondary;
       break;
     case ROTATION_270:
       angle = 270;
-      orientation = mozilla::dom::eScreenOrientation_LandscapeSecondary;
+      orientation = hal::eScreenOrientation_LandscapeSecondary;
       break;
     default:
       break;
