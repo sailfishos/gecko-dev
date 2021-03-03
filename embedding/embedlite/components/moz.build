@@ -10,12 +10,15 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'embedLite'
 
+EXPORTS += [
+    'EmbedHistoryListener.h',
+]
+
 SOURCES += [
     'EmbedHistoryListener.cpp',
     'EmbedliteGenericFactory.cpp',
     'EmbedWidgetFactoryRegister.cpp',
     'nsClipboard.cpp',
-    'nsEmbedHistoryModule.cpp',
     'nsEmbedWidgetFactoryModule.cpp'
 ]
 
@@ -23,6 +26,10 @@ LOCAL_INCLUDES += [
     '../utils',
     '/docshell/base',
     '/dom/base',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 FINAL_LIBRARY = 'xul'
