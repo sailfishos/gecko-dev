@@ -67,7 +67,7 @@ EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent()
 
 PLayerTransactionParent*
 EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                                              const uint64_t& aId)
+                                                              const LayersId& aId)
 {
   PLayerTransactionParent* p =
     CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);

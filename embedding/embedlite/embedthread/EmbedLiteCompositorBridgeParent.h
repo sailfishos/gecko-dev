@@ -51,7 +51,7 @@ protected:
   virtual ~EmbedLiteCompositorBridgeParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                               const uint64_t& aId) override;
+                               const LayersId& aId) override;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
   virtual void CompositeToDefaultTarget() override;
 
