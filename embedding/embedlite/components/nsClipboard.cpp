@@ -47,9 +47,7 @@ nsEmbedClipboard::SetData(nsITransferable* aTransferable, nsIClipboardOwner* anO
     return NS_ERROR_NOT_IMPLEMENTED;
 
   nsCOMPtr<nsISupports> tmp;
-  uint32_t len;
-  nsresult rv  = aTransferable->GetTransferData(kUnicodeMime, getter_AddRefs(tmp),
-                                                &len);
+  nsresult rv  = aTransferable->GetTransferData(kUnicodeMime, getter_AddRefs(tmp));
   NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsISupportsString> supportsString = do_QueryInterface(tmp);
   // No support for non-text data
@@ -57,8 +55,7 @@ nsEmbedClipboard::SetData(nsITransferable* aTransferable, nsIClipboardOwner* anO
   nsAutoString buffer;
   supportsString->GetData(buffer);
 
-  bool isPrivateData = false;
-  aTransferable->GetIsPrivateData(&isPrivateData);
+  bool isPrivateData = aTransferable->GetIsPrivateData();
   nsString message;
   // Just simple property bag support still
   nsCOMPtr<nsIEmbedLiteJSON> json = do_GetService("@mozilla.org/embedlite-json;1");
@@ -109,8 +106,7 @@ nsEmbedClipboard::GetData(nsITransferable* aTransferable, int32_t aWhichClipboar
 
     nsCOMPtr<nsISupports> nsisupportsDataWrapper =
       do_QueryInterface(dataWrapper);
-    rv = aTransferable->SetTransferData(kUnicodeMime, nsisupportsDataWrapper,
-                                        mBuffer.Length() * sizeof(char16_t));
+    rv = aTransferable->SetTransferData(kUnicodeMime, nsisupportsDataWrapper);
     NS_ENSURE_SUCCESS(rv, rv);
 
     mBuffer.Truncate();
