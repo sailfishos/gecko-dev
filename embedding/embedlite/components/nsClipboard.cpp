@@ -131,7 +131,7 @@ nsEmbedClipboard::Observe(nsISupports *aSubject, const char *aTopic, const char1
 }
 
 NS_IMETHODIMP
-nsEmbedClipboard::HasDataMatchingFlavors(const char* *aFlavorList, uint32_t aLength, int32_t aWhichClipboard, bool* aHasText)
+nsEmbedClipboard::HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard, bool* aHasText)
 {
   NS_ENSURE_ARG_POINTER(aHasText);
   *aHasText = true;
