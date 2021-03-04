@@ -48,6 +48,7 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   : CompositorBridgeParent(aManager, aScale, aVsyncRate, aOptions, aRenderToEGLSurface, aSurfaceSize)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
+  , mSurfaceOrigin(0, 0)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
@@ -181,11 +182,15 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
   }
 }
 
-void EmbedLiteCompositorBridgeParent::SetSurfaceSize(int width, int height)
+void EmbedLiteCompositorBridgeParent::SetSurfaceRect(int x, int y, int width, int height)
 {
-  if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width || mEGLSurfaceSize.height != height)) {
+  if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width ||
+                                  mEGLSurfaceSize.height != height ||
+                                  mSurfaceOrigin.x != x ||
+                                  mSurfaceOrigin.y != y)) {
     MutexAutoLock lock(mRenderMutex);
-    SetEGLSurfaceSize(width, height);
+    mSurfaceOrigin.MoveTo(x, y);
+    SetEGLSurfaceRect(x, y, width, height);
   }
 }
 
@@ -255,7 +260,9 @@ void
 EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
   if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
-    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mEGLSurfaceSize.width,
+    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mSurfaceOrigin.x,
+                                                             mSurfaceOrigin.y,
+                                                             mEGLSurfaceSize.width,
                                                              mEGLSurfaceSize.height);
     CompositorBridgeParent::ScheduleRenderOnCompositorThread();
   }
