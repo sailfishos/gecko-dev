@@ -140,13 +140,12 @@ EmbedLiteApp::PostCompositorTask(EMBEDTaskCallback callback, void* userData, int
 
   RefPtr<Runnable> newTask = NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::EMBEDTaskCallback",
                                                  callback, userData);
-  MessageLoop* compositorLoop = mozilla::layers::CompositorThreadHolder::Loop();
-  MOZ_ASSERT(compositorLoop);
+  MOZ_ASSERT(mozilla::layers::CompositorThread());
 
   if (timeout) {
-    compositorLoop->PostDelayedTask(newTask.forget(), timeout);
+    mozilla::layers::CompositorThread()->DelayedDispatch(newTask.forget(), timeout);
   } else {
-    compositorLoop->PostTask(newTask.forget());
+    mozilla::layers::CompositorThread()->Dispatch(newTask.forget());
   }
 
   return (void*)newTask;

@@ -64,7 +64,7 @@ nsWindow::nsWindow(EmbedLiteWindowChild *window)
   LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow, sUseExternalGLContext, sRequestGLContextEarly);
 
   if (sUseExternalGLContext && sRequestGLContextEarly) {
-    CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+    mozilla::layers::CompositorThread()->Dispatch(NewRunnableFunction(
                                                  "mozilla::embedlite::nsWindow::CreateGLContextEarly",
                                                  &CreateGLContextEarly,
                                                  window->GetUniqueID()));
