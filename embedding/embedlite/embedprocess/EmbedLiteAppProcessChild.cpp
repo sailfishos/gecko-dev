@@ -64,7 +64,7 @@ EmbedLiteAppProcessChild::~EmbedLiteAppProcessChild()
 bool
 EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
                                base::ProcessId aParentPid,
-                               IPC::Channel* aChannel)
+                               UniquePtr<IPC::Channel> aChannel)
 {
 #ifdef MOZ_WIDGET_GTK
   // We need to pass a display down to gtk_init because it's not going to
@@ -111,7 +111,7 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
     return false;
   }
 
-  if (!Open(aChannel, aParentPid, aIOLoop)) {
+  if (!Open(std::move(aChannel), aParentPid, aIOLoop)) {
     return false;
   }
 

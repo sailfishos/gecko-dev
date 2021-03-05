@@ -141,7 +141,7 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   std::vector<std::string> extraArgs;
   extraArgs.push_back("-embedlite");
   mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
-  Open(mSubprocess->GetChannel(), base::GetProcId(mSubprocess->GetChildProcessHandle()));
+  Open(mSubprocess->TakeChannel(), base::GetProcId(mSubprocess->GetChildProcessHandle()));
 }
 
 EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
