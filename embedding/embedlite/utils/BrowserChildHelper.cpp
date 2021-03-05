@@ -166,14 +166,45 @@ BrowserChildHelper::Unload()
   observerService->RemoveObserver(this, DETECT_SCROLLABLE_SUBFRAME);
 }
 
+already_AddRefed<Document>
+BrowserChildHelper::GetTopLevelDocument() const {
+  nsCOMPtr<Document> doc;
+  WebNavigation()->GetDocument(getter_AddRefs(doc));
+  return doc.forget();
+}
+
+nsIPresShell*
+BrowserChildHelper::GetTopLevelPresShell() const {
+  if (RefPtr<Document> doc = GetTopLevelDocument()) {
+    return doc->GetPresShell();
+  }
+  return nullptr;
+}
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(BrowserChildHelper)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(BrowserChildHelper)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowserChildMessageManager)
+  tmp->nsMessageManagerScriptExecutor::Unlink();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_WEAK_REFERENCE
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(BrowserChildHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowserChildMessageManager)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(BrowserChildHelper)
+  tmp->nsMessageManagerScriptExecutor::Trace(aCallbacks, aClosure);
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsIBrowserChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
-NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
+NS_INTERFACE_MAP_END
 
-NS_IMPL_ADDREF_INHERITED(BrowserChildHelper, TabChildBase);
-NS_IMPL_RELEASE_INHERITED(BrowserChildHelper, TabChildBase);
+NS_IMPL_CYCLE_COLLECTING_ADDREF(BrowserChildHelper)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(BrowserChildHelper)
 
 bool
 BrowserChildHelper::InitTabChildGlobal()
@@ -188,20 +219,16 @@ BrowserChildHelper::InitTabChildGlobal()
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  RefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
-  NS_ENSURE_TRUE(scope, false);
+  RefPtr<TabChildGlobal> scope = mTabChildGlobal =
+      new TabChildGlobal(this)
 
-  mTabChildGlobal = scope;
-
-  nsISupports* scopeSupports = NS_ISUPPORTS_CAST(EventTarget*, scope);
-
-  // Not sure if
-  NS_ENSURE_TRUE(InitChildGlobalInternal(scopeSupports, nsCString("intProcessEmbedChildGlobal")), false);
-
-  scope->Init();
+  MOZ_ALWAYS_TRUE(nsMessageManagerScriptExecutor::Init());
 
   nsCOMPtr<nsPIWindowRoot> root = do_QueryInterface(chromeHandler);
-  NS_ENSURE_TRUE(root,  false);
+  if (NS_WARN_IF(!root)) {
+    mTabChildGlobal = nullptr;
+    return false;
+  }
   root->SetParentTarget(scope);
 
   return true;
@@ -219,7 +246,7 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
                             const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
-    nsCOMPtr<Document> doc(GetDocument());
+    nsCOMPtr<Document> doc(GetTopLevelDocument());
     uint32_t presShellId;
     ViewID viewId;
     if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(),
@@ -232,15 +259,15 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
     }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<Document> subject(do_QueryInterface(aSubject));
-    nsCOMPtr<Document> doc(GetDocument());
+    nsCOMPtr<Document> doc(GetTopLevelDocument());
 
-    if (SameCOMIdentity(subject, doc)) {
-      nsCOMPtr<nsIPresShell> shell(doc->GetShell());
-      if (shell) {
-        shell->SetIsFirstPaint(true);
+    if (subject == doc && doc->IsTopLevelContentDocument()) {
+      RefPtr<PresShell> presShell = doc->GetPresShell();
+      if (presShell) {
+        presShell->SetIsFirstPaint(true);
       }
 
-      APZCCallbackHelper::InitializeRootDisplayport(shell);
+      APZCCallbackHelper::InitializeRootDisplayport(presShell);
 
       nsCOMPtr<nsIObserverService> observerService = do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
       if (observerService) {
@@ -259,19 +286,10 @@ BrowserChildHelper::HandleEvent(nsIDOMEvent* aEvent)
   return NS_OK;
 }
 
-
-void BrowserChildHelper::BeforeUnloadAdded() {
-  LOGT();
-}
-
-void BrowserChildHelper::BeforeUnloadRemoved() {
-  LOGT();
-}
-
 bool
 BrowserChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
-  return TabChildBase::UpdateFrameHandler(aFrameMetrics);
+  return UpdateFrameHandler(aFrameMetrics);
 }
 
 nsIWebNavigation*
@@ -283,7 +301,7 @@ BrowserChildHelper::WebNavigation() const
 nsIWidget*
 BrowserChildHelper::WebWidget()
 {
-  nsCOMPtr<Document> document = GetDocument();
+  nsCOMPtr<Document> document = GetTopLevelDocument();
   return nsContentUtils::WidgetForDocument(document);
 }
 
@@ -499,6 +517,39 @@ BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
   return mView->UpdateZoomConstraints(aPresShellId,
                                       aViewId,
                                       aConstraints);
+}
+
+bool
+BrowserChildHelper::UpdateFrameHandler(const FrameMetrics& aFrameMetrics) {
+  MOZ_ASSERT(aFrameMetrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID);
+
+  if (aFrameMetrics.IsRootContent()) {
+    if (nsCOMPtr<nsIPresShell> shell = GetTopLevelPresShell()) {
+      // Guard against stale updates (updates meant for a pres shell which
+      // has since been torn down and destroyed).
+      if (aFrameMetrics.GetPresShellId() == shell->GetPresShellId()) {
+        ProcessUpdateFrame(aFrameMetrics);
+        return true;
+      }
+    }
+  } else {
+    // aFrameMetrics.mIsRoot is false, so we are trying to update a subframe.
+    // This requires special handling.
+    FrameMetrics newSubFrameMetrics(aFrameMetrics);
+    APZCCallbackHelper::UpdateSubFrame(newSubFrameMetrics);
+    return true;
+  }
+  return true;
+}
+
+void
+BrowserChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
+  if (!mGlobal || !mTabChildGlobal) {
+    return;
+  }
+
+  FrameMetrics newMetrics = aFrameMetrics;
+  APZCCallbackHelper::UpdateRootFrame(newMetrics);
 }
 
 void

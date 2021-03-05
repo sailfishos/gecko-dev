@@ -9,9 +9,11 @@
 #include "nsIObserver.h"
 #include "FrameMetrics.h"
 #include "nsFrameMessageManager.h"
+#include "nsWeakReference.h"
 #include "nsIWebNavigation.h"
 #include "nsIBrowserChild.h"
 #include "nsIWidget.h"
+#include "nsIWebBrowserChrome3.h"
 #include "InputData.h"
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
@@ -30,8 +32,10 @@ struct ScrollableLayerGuid;
 namespace embedlite {
 
 class EmbedLiteViewChildIface;
-class BrowserChildHelper : public mozilla::dom::TabChildBase,
+class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
+                           public nsMessageManagerScriptExecutor,
                            public nsIDOMEventListener,
+                           public nsSupportsWeakReference,
                            public nsIBrowserChild,
                            public nsIObserver
 {
@@ -39,34 +43,40 @@ public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   BrowserChildHelper(EmbedLiteViewChildIface* aView);
 
-  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
   NS_DECL_NSIBROWSERCHILD
   NS_DECL_NSIOBSERVER
 
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(BrowserChildHelper,
+                                                         nsIBrowserChild)
+
   bool UpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
-  virtual nsIWebNavigation* WebNavigation() const override;
-  virtual nsIWidget* WebWidget() override;
+  nsIWebNavigation* WebNavigation() const;
+  nsIWidget* WebWidget();
 
-  virtual bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
-  virtual bool DoSendBlockingMessage(JSContext* aCx,
-                                     const nsAString& aMessage,
-                                     mozilla::dom::ipc::StructuredCloneData& aData,
-                                     JS::Handle<JSObject *> aCpows,
-                                     nsIPrincipal* aPrincipal,
-                                     nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal,
-                                     bool aIsSync) override;
-  virtual nsresult DoSendAsyncMessage(JSContext* aCx,
-                                      const nsAString& aMessage,
-                                      mozilla::dom::ipc::StructuredCloneData& aData,
-                                      JS::Handle<JSObject *> aCpows,
-                                      nsIPrincipal* aPrincipal) override;
-  virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
-                                       const mozilla::layers::FrameMetrics::ViewID& aViewId,
-                                       const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) override;
+  bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope);
+  bool DoSendBlockingMessage(JSContext* aCx,
+                             const nsAString& aMessage,
+                             mozilla::dom::ipc::StructuredCloneData& aData,
+                             JS::Handle<JSObject *> aCpows,
+                             nsIPrincipal* aPrincipal,
+                             nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal,
+                             bool aIsSync);
+  nsresult DoSendAsyncMessage(JSContext* aCx,
+                              const nsAString& aMessage,
+                              mozilla::dom::ipc::StructuredCloneData& aData,
+                              JS::Handle<JSObject *> aCpows,
+                              nsIPrincipal* aPrincipal);
+  bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                               const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                               const Maybe<mozilla::layers::ZoomConstraints>& aConstraints);
+  ScreenIntSize GetInnerSize();
 
-  virtual ScreenIntSize GetInnerSize() override;
+  void ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+
+  bool UpdateFrameHandler(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
   void ReportSizeUpdate(const LayoutDeviceIntRect& aRect);
 
@@ -85,11 +95,19 @@ protected:
                                     WidgetTouchEvent& aEvent);
   bool HasValidInnerSize();
 
+  nsCOMPtr<nsIWebBrowserChrome3> mWebBrowserChrome;
+
 private:
   bool InitTabChildGlobal();
   void Disconnect();
   void Unload();
   bool IPCOpen() const { return mIPCOpen; }
+
+  // Get the Document for the top-level window in this tab.
+  already_AddRefed<dom::Document> GetTopLevelDocument() const;
+
+  // Get the pres-shell of the document for the top-level window in this tab.
+  nsIPresShell* GetTopLevelPresShell() const;
 
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
