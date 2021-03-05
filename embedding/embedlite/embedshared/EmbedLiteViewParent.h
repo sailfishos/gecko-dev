@@ -132,7 +132,7 @@ private:
 
   float mDPI;
 
-  MessageLoop* mUILoop;
+  nsISerialEventTarget *mThread;
   int mLastIMEState;
 
   GLuint mUploadTexture;
