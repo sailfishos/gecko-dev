@@ -44,7 +44,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 {
-  aVersion.Assign(NS_STRINGIFY(FIREFOX_VERSION));
+  aVersion.Assign(NS_STRINGIFY(MOZ_APP_VERSION));
   return NS_OK;
 }
 
