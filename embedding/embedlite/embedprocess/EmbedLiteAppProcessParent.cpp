@@ -59,8 +59,8 @@ public:
   }
 
 protected:
-  virtual bool BeginTransaction() override { return false; }
-  virtual bool BeginTransactionWithTarget(gfxContext*) override { return false; }
+  virtual bool BeginTransaction(const nsCString &aURL = nsCString()) override { return false; }
+  virtual bool BeginTransactionWithTarget(gfxContext*, const nsCString &aURL = nsCString()) override { return false; }
   virtual bool EndEmptyTransaction(mozilla::layers::LayerManager::EndTransactionFlags) override { return false; }
   virtual void EndTransaction(mozilla::layers::LayerManager::DrawPaintedLayerCallback,
                               void *aCallbackData,
