@@ -44,13 +44,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 {
-  aVersion.Assign(NS_STRINGIFY(MOZ_APP_VERSION));
+  aVersion.Assign(MOZ_STRINGIFY(MOZ_APP_VERSION));
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
+  aAppBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -74,13 +74,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVendor(nsACString& aVendor)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersion)
 {
-  aPlatformVersion.Assign(NS_STRINGIFY(GRE_MILESTONE));
+  aPlatformVersion.Assign(MOZ_STRINGIFY(GRE_MILESTONE));
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
+  aPlatformBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -177,7 +177,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetDefaultUpdateChannel(nsACString& aResult)
 {
-  aResult.AssignLiteral(NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
+  aResult.AssignLiteral(MOZ_STRINGIFY(MOZ_UPDATE_CHANNEL));
   return NS_OK;
 }
 
