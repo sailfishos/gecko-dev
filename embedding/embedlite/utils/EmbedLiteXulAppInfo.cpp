@@ -24,6 +24,13 @@
 #include "nsAccessibilityService.h"
 #endif
 
+#ifdef XP_WIN
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
+
 using namespace mozilla::embedlite;
 
 EmbedLiteXulAppInfo::EmbedLiteXulAppInfo()
