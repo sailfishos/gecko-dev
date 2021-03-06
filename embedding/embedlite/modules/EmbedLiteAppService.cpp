@@ -126,7 +126,7 @@ EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
   nsCOMPtr<nsIDocShellTreeItem> navItem(do_QueryInterface(navNav));
   NS_ENSURE_TRUE(navItem, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDocShellTreeItem> rootItem;
-  navItem->GetRootTreeItem(getter_AddRefs(rootItem));
+  navItem->GetInProcessRootTreeItem(getter_AddRefs(rootItem));
   nsCOMPtr<mozIDOMWindowProxy> rootWin(do_GetInterface(rootItem));
   NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
 
