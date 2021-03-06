@@ -318,7 +318,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   mFirstPaint = false;
 
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
-  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 
   return NS_OK;
@@ -425,13 +425,13 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
       mListener->OnScrolledAreaChanged(width, height);
     }
 
-    RefPtr<EventTarget> target = do_QueryInterface(window->GetChromeEventHandler());
+    RefPtr<EventTarget> target(window->GetChromeEventHandler());
     target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
     mScrollOffset = nsIntPoint();
   } else if (type.EqualsLiteral(MOZ_MozAfterPaint)) {
     nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
-    RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+    RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
     target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
     if (mFirstPaint) {
       mListener->OnUpdateDisplayPort();
@@ -645,7 +645,7 @@ void WebBrowserChrome::SetEventHandler()
 
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
-  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
   target->AddEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
   target->AddEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
@@ -663,7 +663,7 @@ void WebBrowserChrome::RemoveEventHandler()
   mHandlerAdded = false;
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(mWebBrowser);
   NS_ENSURE_TRUE(pidomWindow, );
-  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
