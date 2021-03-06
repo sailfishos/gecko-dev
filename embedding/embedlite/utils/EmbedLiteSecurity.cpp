@@ -6,7 +6,7 @@
 
 #include "nsServiceManagerUtils.h"
 #include "nsISerializationHelper.h"
-#include "nsISSLStatus.h"
+#include "nsITransportSecurityInfo.h"
 #include "nsIX509Cert.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
@@ -89,30 +89,30 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
     }
 
     if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsISSLStatus> sslStatus = do_QueryInterface(infoObj);
+        nsCOMPtr<nsITransportSecurityInfo> securityInfo = do_QueryInterface(infoObj);
 
-        sslStatus->GetIsDomainMismatch(&booleanResult);
+        securityInfo->GetIsDomainMismatch(&booleanResult);
         d_ptr->mDomainMismatch = booleanResult;
 
         nsCString resultCString;
-        sslStatus->GetCipherName(resultCString);
+        securityInfo->GetCipherName(resultCString);
         std::string cipherName(resultCString.get());
         d_ptr->mCipherName = cipherName;
 
-        sslStatus->GetIsNotValidAtThisTime(&booleanResult);
+        securityInfo->GetIsNotValidAtThisTime(&booleanResult);
         d_ptr->mNotValidAtThisTime = booleanResult;
 
-        sslStatus->GetIsUntrusted(&booleanResult);
+        securityInfo->GetIsUntrusted(&booleanResult);
         d_ptr->mUntrusted = booleanResult;
 
-        sslStatus->GetIsExtendedValidation(&booleanResult);
+        securityInfo->GetIsExtendedValidation(&booleanResult);
         d_ptr->mExtendedValidation = booleanResult;
 
         nsIX509Cert * aServerCert;
-        sslStatus->GetServerCert(&aServerCert);
+        securityInfo->GetServerCert(&aServerCert);
 
         unsigned short protocolVersion;
-        sslStatus->GetProtocolVersion(&protocolVersion);
+        securityInfo->GetProtocolVersion(&protocolVersion);
         d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
 
         unsigned int length;
