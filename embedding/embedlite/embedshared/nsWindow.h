@@ -20,12 +20,12 @@ class GLContext;
 
 namespace embedlite {
 
-class EmbedLiteWindowBaseChild;
+class EmbedLiteWindowChild;
 
 class nsWindow : public PuppetWidgetBase
 {
 public:
-  nsWindow(EmbedLiteWindowBaseChild* window);
+  nsWindow(EmbedLiteWindowChild* window);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -108,7 +108,7 @@ private:
 
   static void CreateGLContextEarly(uint32_t aWindowId);
 
-  EmbedLiteWindowBaseChild* mWindow; // Not owned, can be null.
+  EmbedLiteWindowChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
 };
 

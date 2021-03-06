@@ -8,6 +8,7 @@
 #include "EmbedLiteView.h"
 #include "EmbedLiteViewParent.h"
 #include "EmbedLiteWindowParent.h"
+#include "EmbedLiteWindowChild.h"
 #include "nsWindow.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
@@ -407,7 +408,7 @@ mozilla::embedlite::nsWindow *EmbedLiteViewParent::GetWindowWidget() const
 {
   // Use this with care!! Only CompositorSession (and related bits)
   // may be tampered via this.
-  return mozilla::embedlite::EmbedLiteWindowBaseChild::From(mWindowId)->GetWidget();
+  return EmbedLiteWindowChild::From(mWindowId)->GetWidget();
 }
 
 void

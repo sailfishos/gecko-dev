@@ -11,7 +11,7 @@ namespace mozilla {
 namespace embedlite {
 
 EmbedLiteWindowThreadChild::EmbedLiteWindowThreadChild(const uint16_t& width, const uint16_t& height, const uint32_t& id)
-  : EmbedLiteWindowBaseChild(width, height, id)
+  : EmbedLiteWindowChild(width, height, id)
 {
   LOGT();
 }
