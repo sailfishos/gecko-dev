@@ -338,7 +338,7 @@ mozilla::ipc::IPCResult
 EmbedLiteAppProcessParent::RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref>&& prefs)
 {
   LOGT();
-  mPrefs = prefs;
+  mPrefs = std::move(prefs);
   return IPC_OK();
 }
 
