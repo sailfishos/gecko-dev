@@ -14,7 +14,6 @@
 #include <map>                          // for _Rb_tree_iterator, etc
 #include <utility>                      // for pair
 
-#include "gfxPrefs.h"
 #include "VsyncSource.h"
 
 #include "mozilla/layers/AsyncCompositionManager.h"
@@ -45,7 +44,6 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
   LOGT();
 
   gfxPlatform::InitLayersIPC();
-  gfxPrefs::GetSingleton();
 
   RefPtr<EmbedLiteCompositorProcessParent> cpcp =
     new EmbedLiteCompositorProcessParent(aTransport, aOtherProcess, aSurfaceWidth, aSurfaceHeight, id);
