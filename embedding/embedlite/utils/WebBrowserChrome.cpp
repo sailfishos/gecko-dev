@@ -18,7 +18,6 @@
 #include "nsISerializationHelper.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIFocusManager.h"
-#include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
 #include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
