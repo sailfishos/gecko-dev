@@ -22,7 +22,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
-#include "nsIWebBrowserSetup.h"
+#include "nsWebBrowser.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -175,12 +175,12 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   LOGT("parentID: %u", parentId);
   nsresult rv;
 
-  mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) {
-    return;
-  }
+  // Directly create our web browser object and store it, so we can start
+  // eliminating QIs.
+  mWebBrowser = new nsWebBrowser();
+  nsIWebBrowser* webBrowser = mWebBrowser;
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(WebNavigation());
   if (NS_FAILED(rv)) {
     return;
   }
@@ -199,11 +199,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     return;
   }
 
-
-  nsCOMPtr<nsIWebBrowserSetup> webBrowserSetup = do_QueryInterface(baseWindow);
-  if (webBrowserSetup) {
-    webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
-  }
+  mWebBrowser->SetAllowDNSPrefetch(true);
 
   LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
