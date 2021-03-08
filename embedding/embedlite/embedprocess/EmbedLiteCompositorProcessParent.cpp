@@ -164,14 +164,14 @@ EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<La
 
     // XXX: should be false, but that causes us to fail some tests on Mac w/ OMTC.
     // Bug 900745. change *aSuccess to false to see test failures.
-    LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, nullptr, aId);
+    LayerTransactionParent *p = new LayerTransactionParent(nullptr, this, nullptr, aId, mVsyncRate);
     p->AddIPDLReference();
     return p;
   }
 
   // Check state etc from CompositorBridgeParent sIndirectLayerTrees
   // mCompositionManager = new AsyncCompositionManager(mLayerManager);
-  LayerTransactionParent* p = new LayerTransactionParent(nullptr, this, nullptr, aId);
+  LayerTransactionParent *p = new LayerTransactionParent(nullptr, this, nullptr, aId, mVsyncRate);
   p->AddIPDLReference();
   return p;
 }
