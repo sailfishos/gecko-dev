@@ -41,7 +41,7 @@ EmbedLiteViewProcessChild::OnGeckoWindowInitialized()
   nsTArray<LayersBackend> backends;
   backends.AppendElement(LayersBackend::LAYERS_OPENGL);
 
-  shadowManager = compositorChild->SendPLayerTransactionConstructor(backends, 1);
+  shadowManager = compositorChild->SendPLayerTransactionConstructor(backends, LayersId{1});
   if (!shadowManager) {
     NS_WARNING("failed to construct LayersChild");
     // This results in |remoteFrame| being deleted.
