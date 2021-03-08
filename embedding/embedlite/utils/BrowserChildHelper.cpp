@@ -11,7 +11,6 @@
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteJSON.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
-#include "nsIDOMDocument.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/Unused.h"
 
