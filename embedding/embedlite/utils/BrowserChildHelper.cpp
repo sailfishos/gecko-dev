@@ -371,7 +371,7 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::RootedValue rval(aCx);
-  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
+  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcess;
 
   if (aData.DataLength() > 0 && !JS_ReadStructuredClone(aCx, aData.Data(),
                                                         JS_STRUCTURED_CLONE_VERSION,
@@ -454,7 +454,7 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
   }
 
   JS::RootedValue rval(aCx);
-  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
+  JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcess;
 
   if (aData.DataLength() > 0 && !JS_ReadStructuredClone(aCx, aData.Data(),
                                                         JS_STRUCTURED_CLONE_VERSION,
