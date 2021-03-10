@@ -368,7 +368,6 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
   }
 
   NS_ENSURE_TRUE(InitBrowserChildHelperMessageManager(), false);
-  JSAutoRequest ar(aCx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
   JS::RootedValue rval(aCx);
@@ -454,7 +453,6 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
     return NS_ERROR_UNEXPECTED;
   }
 
-  JSAutoRequest ar(aCx);
   JS::RootedValue rval(aCx);
   JS::StructuredCloneScope scope = JS::StructuredCloneScope::SameProcessSameThread;
 
