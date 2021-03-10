@@ -58,6 +58,8 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
+  , mShouldSendWebProgressEventsToParent(false)
+  , mHasSiblings(false)
 {
   LOGT();
 
@@ -650,15 +652,8 @@ BrowserChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
 }
 
 void
-BrowserChildHelper::SendRequestFocus(bool aCanFocus)
+BrowserChildHelper::SendRequestFocus(bool aCanFocus, CallerType aCallerType)
 {
-  LOGNI();
-}
-
-void
-BrowserChildHelper::SendGetTabCount(uint32_t* tabCount)
-{
-  Unused << tabCount;
   LOGNI();
 }
 
@@ -671,24 +666,37 @@ BrowserChildHelper::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
 }
 
 NS_IMETHODIMP
-BrowserChildHelper::RemoteDropLinks(uint32_t aLinksCount, nsIDroppedLinkItem** aLinks)
+BrowserChildHelper::RemoteDropLinks(
+    const nsTArray<RefPtr<nsIDroppedLinkItem>>& aLinks)
 {
   LOGNI();
   return NS_OK;
-}
-
-void
-BrowserChildHelper::EnableDisableCommands(const nsAString& aAction,
-                                          nsTArray<nsCString>& aEnabledCommands,
-                                          nsTArray<nsCString>& aDisabledCommands)
-{
-  LOGNI();
 }
 
 NS_IMETHODIMP
 BrowserChildHelper::GetTabId(uint64_t* aId)
 {
   *aId = mView->GetID();
+  return NS_OK;
+}
+
+NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
+  LOGT("NOT YET IMPLEMENTED");
+  return NS_OK;
+}
+
+NS_IMETHODIMP BrowserChildHelper::BeginSendingWebProgressEventsToParent() {
+  mShouldSendWebProgressEventsToParent = true;
+  return NS_OK;
+}
+
+nsresult BrowserChildHelper::GetHasSiblings(bool* aHasSiblings) {
+  *aHasSiblings = mHasSiblings;
+  return NS_OK;
+}
+
+nsresult BrowserChildHelper::SetHasSiblings(bool aHasSiblings) {
+  mHasSiblings = aHasSiblings;
   return NS_OK;
 }
 
