@@ -529,9 +529,7 @@ BrowserChildHelper::GetPresContext()
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
-  RefPtr<nsPresContext> presContext;
-  docShell->GetPresContext(getter_AddRefs(presContext));
-  return presContext;
+  return docShell->GetPresContext();
 }
 
 bool
