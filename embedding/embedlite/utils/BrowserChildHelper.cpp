@@ -377,6 +377,7 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                                         JS_STRUCTURED_CLONE_VERSION,
                                                         scope,
                                                         &rval,
+                                                        JS::CloneDataPolicy(),
                                                         nullptr, nullptr)) {
     JS_ClearPendingException(aCx);
     return false;
@@ -460,6 +461,7 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                                         JS_STRUCTURED_CLONE_VERSION,
                                                         scope,
                                                         &rval,
+                                                        JS::CloneDataPolicy(),
                                                         nullptr, nullptr)) {
     JS_ClearPendingException(aCx);
     return NS_ERROR_UNEXPECTED;
