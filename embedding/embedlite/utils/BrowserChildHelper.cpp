@@ -13,6 +13,7 @@
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/Unused.h"
+#include "mozilla/layers/InputAPZContext.h"
 
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/MessageManagerBinding.h"
@@ -607,6 +608,7 @@ BrowserChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
 mozilla::CSSPoint
 BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                        uint64_t aInputBlockId,
                                         bool *ok)
 {
   RefPtr<PresShell> presShell = GetPresContext()->GetPresShell();
@@ -630,7 +632,14 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
     *ok = true;
 
   mozilla::CSSToLayoutDeviceScale scale = presShell->GetPresContext()->CSSToDevPixelScale();
-  return APZCCallbackHelper::ApplyCallbackTransform(aPoint / scale, aGuid);
+
+  CSSPoint point = aPoint / scale;
+  // Stash the guid in InputAPZContext so that when the visual-to-layout
+  // transform is applied to the event's coordinates, we use the right transform
+  // based on the scroll frame being targeted.
+  // The other values don't really matter.
+  InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
+  return point;
 }
 
 uint64_t BrowserChildHelper::ChromeOuterWindowID() const {
