@@ -9,6 +9,7 @@
 #include "nsIDOMWindow.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShell.h"
+#include "nsIOService.h"
 #include "nsIWebProgress.h"
 #include "nsPIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -19,7 +20,6 @@
 #include "nsITransportSecurityInfo.h"
 #include "nsIFocusManager.h"
 #include "nsISerializable.h"
-#include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
@@ -266,15 +266,9 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsCString spec;
   if (location) {
-    nsCOMPtr<nsIURIFixup> fixup(do_GetService("@mozilla.org/docshell/urifixup;1"));
-    if (fixup) {
-        nsCOMPtr<nsIURI> tmpuri;
-        nsresult rv = fixup->CreateExposableURI(location, getter_AddRefs(tmpuri));
-        if (NS_SUCCEEDED(rv) && tmpuri) {
-            tmpuri->GetSpec(spec);
-        } else {
-            location->GetSpec(spec);
-        }
+    nsCOMPtr<nsIURI> tmpuri = net::nsIOService::CreateExposableURI(location);
+    if (tmpuri) {
+        tmpuri->GetSpec(spec);
     } else {
         location->GetSpec(spec);
     }
