@@ -317,7 +317,14 @@ BrowserChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunI
     return false;
   }
 
-  LoadScriptInternal(aURL, aRunInGlobalScope);
+  JS::Rooted<JSObject*> messageManager(RootingCx(),
+                                       mBrowserChildMessageManager->GetOrCreateWrapper());
+  if (!messageManager) {
+    // This can happen if we're half-destroyed. It's not a fatal error.
+    return true;
+  }
+
+  LoadScriptInternal(messageManager, aURL, !aRunInGlobalScope);
   return true;
 }
 
