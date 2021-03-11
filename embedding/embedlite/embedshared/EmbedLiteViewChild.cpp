@@ -980,7 +980,7 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
-  if (domKeyCode == dom::KeyboardEventBinding::DOM_VK_RETURN) {
+  if (domKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
   }
@@ -997,10 +997,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &d
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Initial key down event
   NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
-  if (domKeyCode != dom::KeyboardEventBinding::DOM_VK_SHIFT &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_META &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_CONTROL &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_ALT) {
+  if (domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_SHIFT &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_META &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_CONTROL &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_ALT) {
           // Key press event
           NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyPress, domKeyCode, gmodifiers, charCode), IPC_OK());
   }
