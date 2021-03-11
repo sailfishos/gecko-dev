@@ -37,6 +37,7 @@
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
@@ -1038,7 +1039,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
   uint8_t argc = 6;
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
                         aIgnoreRootScrollFrame,
-                        0.0, nsIDOMMouseEvent::MOZ_SOURCE_TOUCH,
+                        0.0, MouseEvent_Binding::MOZ_SOURCE_TOUCH,
                         false, false, 0, 0, argc, &ignored);
 
   return IPC_OK();
