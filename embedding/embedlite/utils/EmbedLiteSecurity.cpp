@@ -115,13 +115,14 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
         securityInfo->GetProtocolVersion(&protocolVersion);
         d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
 
-        unsigned int length;
-        char *data;
-        rv = aServerCert->GetRawDER(&length, reinterpret_cast<uint8_t **>(&data));
+        Maybe<nsTArray<uint8_t>> certArray;
+        rv = aServerCert->GetRawDER(*certArray);
+        unsigned int length = certArray->Length();
+        void *data = certArray->Elements();
 
         if (NS_SUCCEEDED(rv)) {
             if (data) {
-                d_ptr->mRawDER.assign(data, length);
+                d_ptr->mRawDER.assign((char*)data, length);
             }
             else {
                 d_ptr->mRawDER.clear();
