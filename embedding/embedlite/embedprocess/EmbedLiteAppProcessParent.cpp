@@ -273,14 +273,6 @@ EmbedLiteAppProcessParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*
 
 namespace {
 
-void
-DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
-{
-  LOGT();
-  RefPtr<DeleteTask<GeckoChildProcessHost>> task = new DeleteTask<GeckoChildProcessHost>(aSubprocess);
-  XRE_GetIOMessageLoop()->PostTask(task.forget());
-}
-
 // This runnable only exists to delegate ownership of the
 // EmbedLiteAppProcessParent to this runnable, until it's deleted by the event
 // system.
@@ -308,7 +300,7 @@ EmbedLiteAppProcessParent::ActorDestroy(ActorDestroyReason aWhy)
     ShutDownProcess(true);
   }
 
-  MessageLoop::current()->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteAppProcessParent::DelayedDeleteSubprocess", DelayedDeleteSubprocess, mSubprocess));
+  MessageLoop::current()->PostTask(NS_NewRunnableFunction("mozilla::embedlite::EmbedLiteAppProcessParent::DelayedDeleteSubprocess", [subprocess = mSubprocess] { subprocess->Destroy(); }));
   mSubprocess = nullptr;
 }
 
