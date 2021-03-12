@@ -959,7 +959,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
     NS_ENSURE_TRUE(ps, IPC_OK());
 
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
-    nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
+    nsIContent *mTarget = DOMFocusManager->GetFocusedElement();
 
     InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
     inputEvent.mTime = static_cast<uint64_t>(PR_Now() / 1000);
