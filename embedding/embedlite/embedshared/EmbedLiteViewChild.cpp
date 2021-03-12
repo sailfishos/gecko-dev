@@ -1106,7 +1106,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
 #endif
     nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
-        localEvent, aGuid, aInputBlockId);
+        localEvent, aGuid.mLayersId, aInputBlockId);
   }
 
   // Dispatch event to content (potentially a long-running operation)
