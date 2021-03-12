@@ -37,6 +37,7 @@
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
@@ -493,10 +494,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
   flags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
-  mWebNavigation->LoadURI(url.get(),
-                          flags,
-                          nullptr, nullptr,
-                          nullptr, nsContentUtils::GetSystemPrincipal());
+
+  LoadURIOptions loadURIOptions;
+  loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
+  loadURIOptions.mLoadFlags = flags;
+  mWebNavigation->LoadURI(url, loadURIOptions);
 
   return IPC_OK();
 }
