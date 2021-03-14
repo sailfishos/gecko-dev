@@ -152,6 +152,7 @@ BuildRequires:  llvm
 BuildRequires:  clang-devel
 
 %if %{system_icu}
+BuildRequires:  libicu >= 67.1
 BuildRequires:  libicu-devel >= 67.1
 %endif
 %if %{system_hunspell}
