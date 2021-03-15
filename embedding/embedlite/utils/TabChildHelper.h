@@ -15,8 +15,8 @@
 #include "InputData.h"
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
-#include "nsIDocument.h"
 #include "TabChild.h"
+#include "mozilla/dom/Document.h"
 
 class nsPresContext;
 class nsIDOMWindowUtils;

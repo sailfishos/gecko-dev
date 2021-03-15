@@ -19,6 +19,7 @@
 
 #include "mozilla/dom/MessagePort.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
+#include "mozilla/dom/DocumentInlines.h"
 
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
@@ -34,7 +35,6 @@
 #include "nsIFrame.h"
 #include "nsView.h"
 #include "nsLayoutUtils.h"
-#include "nsIDocumentInlines.h"
 #include "APZCCallbackHelper.h"
 #include "EmbedFrame.h"
 
@@ -220,7 +220,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
                         const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
-    nsCOMPtr<nsIDocument> doc(GetDocument());
+    nsCOMPtr<Document> doc(GetDocument());
     uint32_t presShellId;
     ViewID viewId;
     if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(),
@@ -232,8 +232,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
       mView->ZoomToRect(presShellId, viewId, rect);
     }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
-    nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
-    nsCOMPtr<nsIDocument> doc(GetDocument());
+    nsCOMPtr<Document> subject(do_QueryInterface(aSubject));
+    nsCOMPtr<Document> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
       nsCOMPtr<nsIPresShell> shell(doc->GetShell());
@@ -284,7 +284,7 @@ TabChildHelper::WebNavigation() const
 nsIWidget*
 TabChildHelper::WebWidget()
 {
-  nsCOMPtr<nsIDocument> document = GetDocument();
+  nsCOMPtr<Document> document = GetDocument();
   return nsContentUtils::WidgetForDocument(document);
 }
 

@@ -8,7 +8,6 @@
 #include "WebBrowserChrome.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMDocument.h"
-#include "nsIDocument.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShell.h"
 #include "nsIWebProgress.h"
@@ -31,6 +30,7 @@
 #include "mozilla/dom/EventTarget.h"
 #include "TabChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
+#include "mozilla/dom/Document.h"
 
 // Duplicated from EventNameList.h
 #define MOZ_MozAfterPaint "MozAfterPaint"
@@ -98,13 +98,13 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
     return NS_OK;
   }
 
-  if (aIID.Equals(NS_GET_IID(nsIDocument))) {
-    nsIDocument *documentPtr;
+  if (aIID.Equals(NS_GET_IID(Document))) {
+    Document *documentPtr;
     nsresult rv = GetDocumentPtr(&documentPtr);
     if (NS_FAILED(rv)) {
       return NS_ERROR_NOT_INITIALIZED;
     }
-    nsCOMPtr<nsIDocument> doc = documentPtr;
+    nsCOMPtr<Document> doc = documentPtr;
     NS_IF_ADDREF(((nsISupports *) (*aInstancePtr = doc)));
     return NS_OK;
   }
@@ -288,7 +288,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   }
 
   nsresult rv;
-  nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(mWebBrowser, &rv);
+  nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser, &rv);
   if (NS_FAILED(rv)) {
     NS_WARNING("Cannot get Document via GetInterface of WebBrowserChrome");
     return NS_OK;
@@ -405,7 +405,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     RefPtr<EventTarget> origTarget;
     aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
-    nsCOMPtr<nsIDocument> ctDoc = do_QueryInterface(origTarget);
+    nsCOMPtr<Document> ctDoc = do_QueryInterface(origTarget);
     nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
     if (targetWin != window) {
       return NS_OK; // We are only interested in root scroll pane changes
@@ -446,8 +446,8 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   } else if (type.EqualsLiteral(MOZ_scroll)) {
     RefPtr<EventTarget> target;
     aEvent->GetTarget(getter_AddRefs(target));
-    nsCOMPtr<nsIDocument> eventDoc = do_QueryInterface(target);
-    nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(mWebBrowser);
+    nsCOMPtr<Document> eventDoc = do_QueryInterface(target);
+    nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser);
     if (eventDoc != ctDoc) {
       return NS_OK;
     }
@@ -494,7 +494,7 @@ nsresult WebBrowserChrome::GetDocShellPtr(nsIDocShell **aDocShell)
   return NS_OK;
 }
 
-nsresult WebBrowserChrome::GetDocumentPtr(nsIDocument **aDocument)
+nsresult WebBrowserChrome::GetDocumentPtr(Document **aDocument)
 {
   nsIDocShell *docShellPtr;
   nsresult rv = GetDocShellPtr(&docShellPtr);
@@ -503,7 +503,7 @@ nsresult WebBrowserChrome::GetDocumentPtr(nsIDocument **aDocument)
   }
 
   nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem = docShellPtr;
-  nsCOMPtr<nsIDocument> ctDoc = do_GetInterface(docShellTreeItem, &rv);
+  nsCOMPtr<Document> ctDoc = do_GetInterface(docShellTreeItem, &rv);
   if (NS_FAILED(rv)) {
     return NS_ERROR_NOT_INITIALIZED;
   }

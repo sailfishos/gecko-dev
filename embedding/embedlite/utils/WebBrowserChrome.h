@@ -63,7 +63,7 @@ protected:
 private:
   nsIntPoint GetScrollOffset(mozIDOMWindowProxy *aWindow);
   nsresult GetDocShellPtr(nsIDocShell **aDocShell);
-  nsresult GetDocumentPtr(nsIDocument **aDocument);
+  nsresult GetDocumentPtr(mozilla::dom::Document **aDocument);
 
   void SendScroll();
 
