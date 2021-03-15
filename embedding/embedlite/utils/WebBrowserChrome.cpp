@@ -38,6 +38,7 @@
 #define MOZ_pagehide "pagehide"
 #define MOZ_MozScrolledAreaChanged "MozScrolledAreaChanged"
 
+using namespace mozilla::dom;
 
 WebBrowserChrome::WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener)
   : mChromeFlags(0)
@@ -180,7 +181,7 @@ WebBrowserChrome::OnProgressChange(nsIWebProgress* progress, nsIRequest* request
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
     NS_WARNING("window Utils are null");
@@ -209,7 +210,7 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
     NS_WARNING("window Utils are null");
@@ -297,7 +298,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   ctDoc->GetCharacterSet(charset);
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
     NS_WARNING("window Utils are null");
@@ -355,7 +356,7 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (!utils) {
     NS_WARNING("window Utils are null");
@@ -399,7 +400,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
 
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     RefPtr<EventTarget> origTarget;
@@ -460,7 +461,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
 nsIntPoint
 WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
 {
-  mozilla::dom::AutoNoJSAPI nojsapi;
+  AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(aWindow);
   nsIntPoint scrollOffset;
   utils->GetScrollXY(PR_FALSE, &scrollOffset.x, &scrollOffset.y);
