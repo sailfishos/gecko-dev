@@ -305,7 +305,7 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
 }
 
 NS_IMETHODIMP
-BrowserChildHelper::HandleEvent(nsIDOMEvent* aEvent)
+BrowserChildHelper::HandleEvent(Event *aEvent)
 {
   (void)(aEvent);
   return NS_OK;

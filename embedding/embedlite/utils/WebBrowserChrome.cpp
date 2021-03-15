@@ -17,7 +17,6 @@
 #include "nsISecureBrowserUI.h"
 #include "nsISerializationHelper.h"
 #include "nsITransportSecurityInfo.h"
-#include "nsIDOMEvent.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
@@ -29,6 +28,8 @@
 #include "BrowserChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/EventTarget.h"
 
 // Duplicated from EventNameList.h
 #define MOZ_MozAfterPaint "MozAfterPaint"
@@ -391,7 +392,7 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
 //*****************************************************************************
 
 NS_IMETHODIMP
-WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
+WebBrowserChrome::HandleEvent(Event *aEvent)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
 
@@ -407,8 +408,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
-    RefPtr<EventTarget> origTarget;
-    aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
+    EventTarget *origTarget = aEvent->GetOriginalTarget();
     nsCOMPtr<Document> ctDoc = do_QueryInterface(origTarget);
     nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
     if (targetWin != window) {
@@ -448,8 +448,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     nsIntPoint offset = GetScrollOffset(docWin);
     mListener->OnFirstPaint(offset.x, offset.y);
   } else if (type.EqualsLiteral(MOZ_scroll)) {
-    RefPtr<EventTarget> target;
-    aEvent->GetTarget(getter_AddRefs(target));
+    EventTarget *target = aEvent->GetTarget();
     nsCOMPtr<Document> eventDoc = do_QueryInterface(target);
     nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser);
     if (eventDoc != ctDoc) {
