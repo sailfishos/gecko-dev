@@ -403,7 +403,7 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     EventTarget *origTarget = aEvent->GetOriginalTarget();
     nsCOMPtr<Document> ctDoc = do_QueryInterface(origTarget);
-    nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
+    nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetWindow();
     if (targetWin != window) {
       return NS_OK; // We are only interested in root scroll pane changes
     }
