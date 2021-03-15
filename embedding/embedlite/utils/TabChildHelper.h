@@ -10,7 +10,7 @@
 #include "FrameMetrics.h"
 #include "nsFrameMessageManager.h"
 #include "nsIWebNavigation.h"
-#include "nsITabChild.h"
+#include "nsIBrowserChild.h"
 #include "nsIWidget.h"
 #include "InputData.h"
 #include "nsDataHashtable.h"
@@ -32,7 +32,7 @@ namespace embedlite {
 class EmbedLiteViewChildIface;
 class TabChildHelper : public mozilla::dom::TabChildBase,
                        public nsIDOMEventListener,
-                       public nsITabChild,
+                       public nsIBrowserChild,
                        public nsIObserver
 {
 public:
@@ -41,7 +41,7 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
-  NS_DECL_NSITABCHILD
+  NS_DECL_NSIBROWSERCHILD
   NS_DECL_NSIOBSERVER
 
   bool UpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);

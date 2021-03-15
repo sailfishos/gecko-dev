@@ -71,8 +71,8 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
 {
   NS_ENSURE_ARG_POINTER(aInstancePtr);
 
-  if (aIID.Equals(NS_GET_IID(nsITabChild))) {
-    nsCOMPtr<nsITabChild> tabChildHelper;
+  if (aIID.Equals(NS_GET_IID(nsIBrowserChild))) {
+    nsCOMPtr<nsIBrowserChild> tabChildHelper;
     tabChildHelper = mHelper;
     tabChildHelper.forget(aInstancePtr);
     return NS_OK;

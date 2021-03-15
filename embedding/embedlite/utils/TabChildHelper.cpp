@@ -169,7 +169,7 @@ TabChildHelper::Unload()
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TabChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
-  NS_INTERFACE_MAP_ENTRY(nsITabChild)
+  NS_INTERFACE_MAP_ENTRY(nsIBrowserChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
 NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
@@ -544,7 +544,7 @@ TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
   return APZCCallbackHelper::ApplyCallbackTransform(aPoint / scale, aGuid);
 }
 
-// -- nsITabChild --------------
+// -- nsIBrowserChild --------------
 
 NS_IMETHODIMP
 TabChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
@@ -614,4 +614,4 @@ TabChildHelper::GetTabId(uint64_t* aId)
   return NS_OK;
 }
 
-// -- end of nsITabChild -------
+// -- end of nsIBrowserChild -------
