@@ -29,21 +29,15 @@ WindowCreator::~WindowCreator()
   LOGT();
 }
 
-NS_IMPL_ISUPPORTS(WindowCreator, nsIWindowCreator, nsIWindowCreator2)
+NS_IMPL_ISUPPORTS(WindowCreator, nsIWindowCreator)
 
 NS_IMETHODIMP
-WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
-                                   uint32_t aChromeFlags,
-                                   nsITabParent* aOpeningTab,
-                                   mozIDOMWindowProxy *aOpener,
-                                   uint64_t aNextTabParentId,
-                                   bool* aCancel,
-                                   nsIWebBrowserChrome* *_retval)
+WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
+                                  uint32_t aChromeFlags,
+                                  nsIOpenWindowInfo *aOpenWindowInfo,
+                                  bool *aCancel,
+                                  nsIWebBrowserChrome **_retval)
 {
-  // Unused variables
-  (void)aOpeningTab;
-  (void)aOpener;
-  (void)aNextTabParentId;
   NS_ENSURE_ARG_POINTER(aCancel);
   NS_ENSURE_ARG_POINTER(_retval);
   *aCancel = false;
@@ -88,22 +82,4 @@ WindowCreator::CreateChromeWindow2(nsIWebBrowserChrome* aParent,
   }
 
   return NS_ERROR_UNEXPECTED;
-}
-
-NS_IMETHODIMP
-WindowCreator::CreateChromeWindow(nsIWebBrowserChrome* aParent,
-                                  uint32_t aChromeFlags,
-                                  nsIWebBrowserChrome* *_retval)
-{
-  LOGNI();
-  bool cancel;
-  return CreateChromeWindow2(aParent, aChromeFlags, nullptr, nullptr, 0, &cancel, _retval);
-}
-
-NS_IMETHODIMP
-WindowCreator::SetScreenId(uint32_t /*aScreenId*/)
-{
-  // Multi-screen not supported.
-  LOGNI();
-  return NS_OK;
 }
