@@ -119,7 +119,7 @@ BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 %if %{system_nspr}
-BuildRequires:  pkgconfig(nspr) >= 4.12.0
+BuildRequires:  pkgconfig(nspr) >= 4.25.0
 %endif
 %if %{system_nss}
 BuildRequires:  pkgconfig(nss) >= 3.21.3
