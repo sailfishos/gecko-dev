@@ -166,7 +166,7 @@ BuildRequires:  bzip2-devel
 BuildRequires:  zlib
 %endif
 %if %{system_png}
-BuildRequires:  libpng
+BuildRequires:  libpng >= 1.6.35
 %endif
 %if %{system_jpeg}
 BuildRequires:  libjpeg-turbo-devel
