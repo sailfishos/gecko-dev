@@ -299,3 +299,36 @@ EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetSourceURL(nsACString &aResult)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetUpdateURL(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
+{
+  // TODO: implement gRestartedByOS flag
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLauncherProcessState(uint32_t *aResult) {
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLastAppVersion(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLastAppBuildID(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
