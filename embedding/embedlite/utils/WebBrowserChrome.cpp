@@ -678,3 +678,9 @@ void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)
 
   mHelper = aHelper;
 }
+
+NS_IMETHODIMP WebBrowserChrome::OnContentBlockingEvent(nsIWebProgress *aWebProgress,
+                                                       nsIRequest *aRequest,
+                                                       uint32_t aEvent) {
+  return NS_OK;
+}
