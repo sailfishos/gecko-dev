@@ -151,6 +151,7 @@ BuildRequires:  cbindgen
 BuildRequires:  llvm
 BuildRequires:  clang-devel
 BuildRequires:  python3-sqlite
+BuildRequires:  libatomic
 
 %if %{system_icu}
 BuildRequires:  libicu >= 67.1
