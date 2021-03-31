@@ -64,7 +64,7 @@ public:
   //
   // This funtion will be called directly from gecko Compositor thread. The embedder
   // must ensure this function will be thread safe.
-  virtual bool RequestGLContext(void*& surface, void*& context) { return false; }
+  virtual bool RequestGLContext(void*& surface, void*& context, void*& display) { return false; }
 };
 
 class EmbedLiteWindow {
