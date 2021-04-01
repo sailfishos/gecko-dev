@@ -388,10 +388,6 @@ pref("memory.free_dirty_pages", true);
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);
 
-// This needs more tests and stability fixes first, as well as UI.
-pref("media.navigator.enabled", false);
-pref("media.peerconnection.enabled", false);
-
 // Make <audio> and <video> talk to the AudioChannelService.
 pref("media.useAudioChannelService", true);
 
@@ -439,3 +435,6 @@ pref("media.cubeb.backend", "pulse");
 
 // On ESR60 customelements is only enabled for nightly. Enable for us.
 pref("dom.webcomponents.customelements.enabled", true);
+
+// Disable WebRTC video until it is implemented
+pref("media.navigator.video.enabled", false);

@@ -14,7 +14,8 @@
 %define system_zlib       1
 %define system_bz2        1
 %define system_pixman     1
-%define system_libvpx     1
+# TODO: Adapt vp9 codec to the new libvpx API. For now, use the internal libvpx (v1.6.1).
+%define system_libvpx     0
 
 %global mozappdir     %{_libdir}/%{name}-%{milestone}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
@@ -116,6 +117,10 @@ Patch62:    0062-Bug-1467722-Do-not-throw-when-we-don-t-have-a-style-.patch
 Patch63:    0063-sailfishos-fix-mesa-egl-display.patch
 Patch64:    0064-sailfishos-gecko-Introduce-an-API-to-set-the-dynamic.patch
 Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
+Patch66:    0066-sailfishos-webrtc-Adapt-build-configuration-for-Sail.patch
+Patch67:    0067-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
+Patch68:    0068-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
+Patch69:    0069-sailfishos-webrtc-Disable-enumeration-of-video-devic.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
