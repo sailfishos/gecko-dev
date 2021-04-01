@@ -15,8 +15,10 @@
 %define system_zlib         1
 %define system_bz2          1
 %define system_pixman       1
-%define system_libvpx       1
+# TODO: Adapt vp9 codec to the new libvpx API. For now, use the internal libvpx (v1.6.1).
+%define system_libvpx       0
 %define system_libwebp      1
+
 
 %global mozappdir     %{_libdir}/%{name}-%{milestone}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
@@ -130,6 +132,11 @@ Patch74:    0074-Revert-Bug-1611658-Unship-libcubeb-s-C-PulseAudio-ba.patch
 Patch75:    0075-sailfishos-gfx-Use-scroll-frame-background-color-as-.patch
 Patch76:    0076-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 Patch77:    0077-sailfishos-browserchild-Add-parentIsActive-attribute.patch
+Patch78:    0078-sailfishos-webrtc-Adapt-build-configuration-for-Sail.patch
+Patch79:    0079-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
+Patch80:    0080-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
+Patch81:    0081-sailfishos-webrtc-Enable-GMP-for-encoding-decoding.-.patch
+Patch82:    0082-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
@@ -139,11 +146,6 @@ Patch77:    0077-sailfishos-browserchild-Add-parentIsActive-attribute.patch
 #Patch60 - Patch62 are not needed as issue was fixed in mozilla62 (https://bugzilla.mozilla.org/show_bug.cgi?id=1467722)
 #Patch64:    sha1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
 #Patch64:    Is not needed as the issue was fixed in mozilla72 (https://bugzilla.mozilla.org/show_bug.cgi?id=1586144)
-#Patch66:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
-#Patch67:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
-#Patch68:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
-#Patch69:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
-#Patch66 - Patch69 should be checked by Denis
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
@@ -172,6 +174,7 @@ BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  pkgconfig(contentaction5)
 BuildRequires:  pkgconfig(dconf)
+BuildRequires:  pkgconfig(geckocamera)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
@@ -437,7 +440,7 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 # Additionally we limit the memory usage during linking
 %ifarch %arm32 %arm64
 # Garbage collect on arm to reduce memory requirements, JB#55074
-echo 'FIX_LDFLAGS="-Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+echo 'FIX_LDFLAGS="-Wl,--strip-debug -Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
 %else
 echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
 %endif
