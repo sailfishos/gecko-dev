@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef __TabChildHelper_h_
-#define __TabChildHelper_h_
+#ifndef __BrowserChildHelper_h_
+#define __BrowserChildHelper_h_
 
 #include "nsIObserver.h"
 #include "FrameMetrics.h"
@@ -30,14 +30,14 @@ struct ScrollableLayerGuid;
 namespace embedlite {
 
 class EmbedLiteViewChildIface;
-class TabChildHelper : public mozilla::dom::TabChildBase,
-                       public nsIDOMEventListener,
-                       public nsIBrowserChild,
-                       public nsIObserver
+class BrowserChildHelper : public mozilla::dom::TabChildBase,
+                           public nsIDOMEventListener,
+                           public nsIBrowserChild,
+                           public nsIObserver
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
-  TabChildHelper(EmbedLiteViewChildIface* aView);
+  BrowserChildHelper(EmbedLiteViewChildIface* aView);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
@@ -77,7 +77,7 @@ public:
   void OpenIPC() { mIPCOpen = true; }
 
 protected:
-  virtual ~TabChildHelper();
+  virtual ~BrowserChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   // Sends a simulated mouse event from a touch event for compatibility.

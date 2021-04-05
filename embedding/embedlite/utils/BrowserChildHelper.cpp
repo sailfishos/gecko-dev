@@ -5,7 +5,6 @@
 
 #include "EmbedLog.h"
 
-#include "TabChildHelper.h"
 #include "nsIWidget.h"
 
 #include "TabChild.h"
@@ -55,7 +54,7 @@ static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
 
-TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
+BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
   : mView(aView)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
@@ -93,7 +92,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
   }
 }
 
-TabChildHelper::~TabChildHelper()
+BrowserChildHelper::~BrowserChildHelper()
 {
   LOGT();
   mGlobal = nullptr;
@@ -108,7 +107,7 @@ TabChildHelper::~TabChildHelper()
 }
 
 void
-TabChildHelper::Disconnect()
+BrowserChildHelper::Disconnect()
 {
   LOGT();
   mIPCOpen = false;
@@ -124,9 +123,9 @@ TabChildHelper::Disconnect()
 class EmbedUnloadScriptEvent : public mozilla::Runnable
 {
 public:
-  explicit EmbedUnloadScriptEvent(TabChildHelper* aTabChild, TabChildGlobal* aTabChildGlobal)
-    : mozilla::Runnable("TabChildHelper::EmbedUnloadScriptEvent")
-    , mTabChild(aTabChild)
+  explicit EmbedUnloadScriptEvent(BrowserChildHelper* aBrowserChild, TabChildGlobal* aTabChildGlobal)
+    : mozilla::Runnable("BrowserChildHelper::EmbedUnloadScriptEvent")
+    , mBrowserChild(aBrowserChild)
     , mTabChildGlobal(aTabChildGlobal)
   { }
 
@@ -144,12 +143,12 @@ public:
     return NS_OK;
   }
 
-  RefPtr<TabChildHelper> mTabChild;
+  RefPtr<BrowserChildHelper> mBrowserChild;
   TabChildGlobal* mTabChildGlobal;
 };
 
 void
-TabChildHelper::Unload()
+BrowserChildHelper::Unload()
 {
   LOGT();
   if (mTabChildGlobal) {
@@ -167,17 +166,17 @@ TabChildHelper::Unload()
   observerService->RemoveObserver(this, DETECT_SCROLLABLE_SUBFRAME);
 }
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TabChildHelper)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildHelper)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventListener)
   NS_INTERFACE_MAP_ENTRY(nsIBrowserChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
 NS_INTERFACE_MAP_END_INHERITING(TabChildBase)
 
-NS_IMPL_ADDREF_INHERITED(TabChildHelper, TabChildBase);
-NS_IMPL_RELEASE_INHERITED(TabChildHelper, TabChildBase);
+NS_IMPL_ADDREF_INHERITED(BrowserChildHelper, TabChildBase);
+NS_IMPL_RELEASE_INHERITED(BrowserChildHelper, TabChildBase);
 
 bool
-TabChildHelper::InitTabChildGlobal()
+BrowserChildHelper::InitTabChildGlobal()
 {
   if (mTabChildGlobal) {
     return true;
@@ -209,15 +208,15 @@ TabChildHelper::InitTabChildGlobal()
 }
 
 bool
-TabChildHelper::HasValidInnerSize()
+BrowserChildHelper::HasValidInnerSize()
 {
   return mHasValidInnerSize;
 }
 
 NS_IMETHODIMP
-TabChildHelper::Observe(nsISupports* aSubject,
-                        const char* aTopic,
-                        const char16_t* aData)
+BrowserChildHelper::Observe(nsISupports* aSubject,
+                            const char* aTopic,
+                            const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<Document> doc(GetDocument());
@@ -254,42 +253,42 @@ TabChildHelper::Observe(nsISupports* aSubject,
 }
 
 NS_IMETHODIMP
-TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
+BrowserChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 {
   (void)(aEvent);
   return NS_OK;
 }
 
 
-void TabChildHelper::BeforeUnloadAdded() {
+void BrowserChildHelper::BeforeUnloadAdded() {
   LOGT();
 }
 
-void TabChildHelper::BeforeUnloadRemoved() {
+void BrowserChildHelper::BeforeUnloadRemoved() {
   LOGT();
 }
 
 bool
-TabChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
+BrowserChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   return TabChildBase::UpdateFrameHandler(aFrameMetrics);
 }
 
 nsIWebNavigation*
-TabChildHelper::WebNavigation() const
+BrowserChildHelper::WebNavigation() const
 {
   return mView->WebNavigation();
 }
 
 nsIWidget*
-TabChildHelper::WebWidget()
+BrowserChildHelper::WebWidget()
 {
   nsCOMPtr<Document> document = GetDocument();
   return nsContentUtils::WidgetForDocument(document);
 }
 
 bool
-TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
+BrowserChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
   if (!InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal
@@ -303,13 +302,13 @@ TabChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlo
 }
 
 bool
-TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
-                                      const nsAString& aMessage,
-                                      mozilla::dom::ipc::StructuredCloneData& aData,
-                                      JS::Handle<JSObject *> aCpows,
-                                      nsIPrincipal* aPrincipal,
-                                      nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
-                                      bool aIsSync)
+BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
+                                          const nsAString& aMessage,
+                                          mozilla::dom::ipc::StructuredCloneData& aData,
+                                          JS::Handle<JSObject *> aCpows,
+                                          nsIPrincipal* aPrincipal,
+                                          nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
+                                          bool aIsSync)
 {
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
           do_GetService("@mozilla.org/globalmessagemanager;1");
@@ -381,11 +380,11 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
   return (globalOk || contentFrameReceivedOk || retValue);
 }
 
-nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
-                                            const nsAString& aMessage,
-                                            mozilla::dom::ipc::StructuredCloneData& aData,
-                                            JS::Handle<JSObject *> aCpows,
-                                            nsIPrincipal* aPrincipal)
+nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
+                                                const nsAString& aMessage,
+                                                mozilla::dom::ipc::StructuredCloneData& aData,
+                                                JS::Handle<JSObject *> aCpows,
+                                                nsIPrincipal* aPrincipal)
 {
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
@@ -444,14 +443,14 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
 }
 
 ScreenIntSize
-TabChildHelper::GetInnerSize()
+BrowserChildHelper::GetInnerSize()
 {
   return mInnerSize;
 }
 
 bool
-TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
-                                             WidgetTouchEvent& aEvent)
+BrowserChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
+                                                 WidgetTouchEvent& aEvent)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = GetWidget(&offset);
@@ -463,7 +462,7 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
 }
 
 nsIWidget*
-TabChildHelper::GetWidget(nsPoint* aOffset)
+BrowserChildHelper::GetWidget(nsPoint* aOffset)
 {
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
@@ -480,7 +479,7 @@ TabChildHelper::GetWidget(nsPoint* aOffset)
 }
 
 nsPresContext*
-TabChildHelper::GetPresContext()
+BrowserChildHelper::GetPresContext()
 {
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, nullptr);
@@ -492,9 +491,9 @@ TabChildHelper::GetPresContext()
 }
 
 bool
-TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
-                                        const ViewID& aViewId,
-                                        const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
+BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                            const ViewID& aViewId,
+                                            const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
   LOGT();
   return mView->UpdateZoomConstraints(aPresShellId,
@@ -503,7 +502,7 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
 }
 
 void
-TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
+BrowserChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
 {
   bool initialSizing = !HasValidInnerSize()
                     && (aRect.width != 0 && aRect.height != 0);
@@ -516,9 +515,9 @@ TabChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
 }
 
 mozilla::CSSPoint
-TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
-                                    const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                    bool *ok)
+BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
+                                        const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                        bool *ok)
 {
   nsCOMPtr<nsIPresShell> presShell = GetPresContext()->GetPresShell();
   if (!presShell) {
@@ -547,7 +546,7 @@ TabChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
 // -- nsIBrowserChild --------------
 
 NS_IMETHODIMP
-TabChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
+BrowserChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
 {
   if (mTabChildGlobal) {
     NS_ADDREF(*aResult = mTabChildGlobal);
@@ -558,57 +557,57 @@ TabChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
 }
 
 NS_IMETHODIMP
-TabChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
+BrowserChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
 {
   NS_IF_ADDREF(*aWebBrowserChrome = mWebBrowserChrome);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-TabChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
+BrowserChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
 {
   mWebBrowserChrome = aWebBrowserChrome;
   return NS_OK;
 }
 
 void
-TabChildHelper::SendRequestFocus(bool aCanFocus)
+BrowserChildHelper::SendRequestFocus(bool aCanFocus)
 {
   LOGNI();
 }
 
 void
-TabChildHelper::SendGetTabCount(uint32_t* tabCount)
+BrowserChildHelper::SendGetTabCount(uint32_t* tabCount)
 {
   Unused << tabCount;
   LOGNI();
 }
 
 NS_IMETHODIMP
-TabChildHelper::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
-                            int32_t aShellItemWidth, int32_t aShellItemHeight)
+BrowserChildHelper::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
+                                      int32_t aShellItemWidth, int32_t aShellItemHeight)
 {
   LOGNI();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-TabChildHelper::RemoteDropLinks(uint32_t aLinksCount, nsIDroppedLinkItem** aLinks)
+BrowserChildHelper::RemoteDropLinks(uint32_t aLinksCount, nsIDroppedLinkItem** aLinks)
 {
   LOGNI();
   return NS_OK;
 }
 
 void
-TabChildHelper::EnableDisableCommands(const nsAString& aAction,
-                                      nsTArray<nsCString>& aEnabledCommands,
-                                      nsTArray<nsCString>& aDisabledCommands)
+BrowserChildHelper::EnableDisableCommands(const nsAString& aAction,
+                                          nsTArray<nsCString>& aEnabledCommands,
+                                          nsTArray<nsCString>& aDisabledCommands)
 {
   LOGNI();
 }
 
 NS_IMETHODIMP
-TabChildHelper::GetTabId(uint64_t* aId)
+BrowserChildHelper::GetTabId(uint64_t* aId)
 {
   *aId = mView->GetID();
   return NS_OK;

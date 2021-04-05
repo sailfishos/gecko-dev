@@ -279,8 +279,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     NS_ERROR("SetVisibility failed!");
   }
 
-  mHelper = new TabChildHelper(this);
-  mChrome->SetTabChildHelper(mHelper.get());
+  mHelper = new BrowserChildHelper(this);
+  mChrome->SetBrowserChildHelper(mHelper.get());
   mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
