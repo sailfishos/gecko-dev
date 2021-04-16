@@ -147,6 +147,7 @@ BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
 BuildRequires:  cbindgen
+BuildRequires:  llvm
 
 %if %{system_icu}
 BuildRequires:  libicu-devel >= 67.1
@@ -298,6 +299,9 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
+# TODO: nasm upgrade needed for av1, will be done in task JB#53993
+echo "ac_add_options --disable-av1" >> "$MOZCONFIG"
 %endif
 
 %ifarch %ix86 %arm
@@ -314,11 +318,13 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
  echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
-./mach build
+RPM_BUILD_NCPUS=`nproc`
+
+./mach build -j$RPM_BUILD_NCPUS
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
-./mach build faster FASTER_RECURSIVE_MAKE=1
+./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
