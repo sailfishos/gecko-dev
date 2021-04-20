@@ -150,6 +150,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
+  virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent);
 
   virtual mozilla::ipc::IPCResult RecvSuspendTimeouts();
   virtual mozilla::ipc::IPCResult RecvResumeTimeouts();

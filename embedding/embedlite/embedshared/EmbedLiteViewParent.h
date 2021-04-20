@@ -103,6 +103,8 @@ protected:
                                                       const int32_t &aCause,
                                                       const int32_t &aFocusChange);
 
+  virtual mozilla::ipc::IPCResult RecvOnHttpUserAgentUsed(const nsString &aHttpUserAgent);
+
   // EmbedLiteWindowParentObserver:
   void CompositorCreated() override;
 
