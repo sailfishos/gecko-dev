@@ -28,6 +28,9 @@
 #include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
+#include "nsIMultiPartChannel.h"
+#include "nsIHttpProtocolHandler.h"
+#include "nsIObserver.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "TabChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
@@ -38,6 +41,31 @@
 #define MOZ_pagehide "pagehide"
 #define MOZ_MozScrolledAreaChanged "MozScrolledAreaChanged"
 
+static nsresult GetHttpChannelHelper(nsIChannel* aChannel,
+                                     nsIHttpChannel** aHttpChannel) {
+  nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
+  if (httpChannel) {
+    httpChannel.forget(aHttpChannel);
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIMultiPartChannel> multipart = do_QueryInterface(aChannel);
+  if (!multipart) {
+    *aHttpChannel = nullptr;
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIChannel> baseChannel;
+  nsresult rv = multipart->GetBaseChannel(getter_AddRefs(baseChannel));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  httpChannel = do_QueryInterface(baseChannel);
+  httpChannel.forget(aHttpChannel);
+
+  return NS_OK;
+}
 
 WebBrowserChrome::WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener)
   : mChromeFlags(0)
@@ -50,6 +78,7 @@ WebBrowserChrome::WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener)
   , mFirstPaint(false)
   , mScrollOffset(0,0)
   , mListener(aListener)
+  , mRequest(nullptr)
 {
   LOGT();
 }
@@ -66,7 +95,8 @@ NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIInterfaceRequestor,
                   nsIEmbeddingSiteWindow,
                   nsIWebProgressListener,
-                  nsISupportsWeakReference)
+                  nsISupportsWeakReference,
+                  nsIObserver)
 
 NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstancePtr)
 {
@@ -276,9 +306,11 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
   }
 
   if (progressStateFlags & nsIWebProgressListener::STATE_START && progressStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT) {
+    Unused << AddUserAgentObserver(request);
     mListener->OnLoadStarted(mLastLocation.get());
   }
   if (progressStateFlags & nsIWebProgressListener::STATE_STOP && progressStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT) {
+    Unused << RemoveUserAgentObserver(request);
     mListener->OnLoadFinished();
   }
   if (progressStateFlags & nsIWebProgressListener::STATE_REDIRECTING) {
@@ -718,3 +750,80 @@ void WebBrowserChrome::SetTabChildHelper(TabChildHelper* aHelper)
 
   mHelper = aHelper;
 }
+
+nsresult WebBrowserChrome::GetHttpUserAgent(nsIRequest* request, nsAString& aHttpUserAgent)
+{
+  nsCOMPtr<nsIChannel> channel = do_QueryInterface(request);
+  if (!channel) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
+  nsCOMPtr<nsIHttpChannel> httpChannel;
+  nsresult rv = GetHttpChannelHelper(channel, getter_AddRefs(httpChannel));
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  nsAutoCString tCspUserAgent;
+  if (httpChannel) {
+    Unused << httpChannel->GetRequestHeader(
+        NS_LITERAL_CSTRING("User-Agent"), tCspUserAgent);
+  }
+
+  aHttpUserAgent = NS_ConvertASCIItoUTF16(tCspUserAgent);
+
+  return NS_OK;
+}
+
+nsresult WebBrowserChrome::AddUserAgentObserver(nsIRequest* request)
+{
+  if (mRequest) {
+    return NS_OK;
+  }
+  mRequest = request;
+
+  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+  NS_ENSURE_STATE(os);
+
+  nsresult rv = os->AddObserver(this, NS_HTTP_ON_BEFORE_CONNECT_TOPIC, true);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
+nsresult WebBrowserChrome::RemoveUserAgentObserver(nsIRequest* request)
+{
+  if (!mRequest) {
+    return NS_OK;
+  }
+  mRequest = nullptr;
+  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+  if (os) {
+    os->RemoveObserver(this, NS_HTTP_ON_BEFORE_CONNECT_TOPIC);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+WebBrowserChrome::Observe(nsISupports* aSubject, const char* aTopic,
+                          const char16_t* aData) {
+
+  if (strcmp(aTopic, NS_HTTP_ON_BEFORE_CONNECT_TOPIC) == 0) {
+    nsCOMPtr<nsIRequest> request = do_QueryInterface(aSubject);
+    if (!request) {
+      return NS_OK;
+    }
+    if (mRequest != request) {
+      return NS_OK;
+    }
+    nsAutoString httpUserAgent;
+    nsresult rv = GetHttpUserAgent(request, httpUserAgent);
+    if (NS_FAILED(rv)) {
+      return NS_OK;
+    }
+    // Notify listeners about the user agent string in use
+    mListener->OnHttpUserAgentUsed(httpUserAgent.get());
+  }
+
+  return NS_OK;
+}
+

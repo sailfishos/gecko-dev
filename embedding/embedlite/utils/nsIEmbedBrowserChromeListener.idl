@@ -30,4 +30,5 @@ interface nsIEmbedBrowserChromeListener : nsISupports
     void onScrollChanged(in int32_t offSetX, in int32_t offSetY);
     void onTitleChanged(in wstring aTitle);
     void onUpdateDisplayPort();
+    void onHttpUserAgentUsed(in wstring aHttpUserAgent);
 };

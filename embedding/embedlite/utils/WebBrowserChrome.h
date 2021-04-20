@@ -36,7 +36,8 @@ class WebBrowserChrome : public nsIWebBrowserChrome2,
                          public nsIEmbeddingSiteWindow,
                          public nsIInterfaceRequestor,
                          public nsIDOMEventListener,
-                         public nsSupportsWeakReference
+                         public nsSupportsWeakReference,
+                         public nsIObserver
 {
 public:
   NS_DECL_ISUPPORTS
@@ -47,6 +48,7 @@ public:
   NS_DECL_NSIEMBEDDINGSITEWINDOW
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIDOMEVENTLISTENER
+  NS_DECL_NSIOBSERVER
 
   WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener);
 
@@ -63,6 +65,9 @@ private:
   nsIntPoint GetScrollOffset(mozIDOMWindowProxy *aWindow);
   nsresult GetDocShellPtr(nsIDocShell **aDocShell);
   nsresult GetDocumentPtr(nsIDocument **aDocument);
+  nsresult GetHttpUserAgent(nsIRequest* request, nsAString& aHttpUserAgent);
+  nsresult AddUserAgentObserver(nsIRequest* request);
+  nsresult RemoveUserAgentObserver(nsIRequest* request);
 
   void SendScroll();
 
@@ -82,6 +87,7 @@ private:
   nsIEmbedBrowserChromeListener* mListener;
   nsString mTitle;
   RefPtr<mozilla::embedlite::TabChildHelper> mHelper;
+  RefPtr<nsIRequest> mRequest;
 };
 
 #endif /* Header guard */
