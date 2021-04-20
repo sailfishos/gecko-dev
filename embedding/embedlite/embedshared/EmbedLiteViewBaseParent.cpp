@@ -168,6 +168,15 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnWindowCloseRequested()
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnHttpUserAgentUsed(const nsString& aHttpUserAgent)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
+
+  mView->GetListener()->OnHttpUserAgentUsed(aHttpUserAgent.get());
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadRedirect()
 {
   LOGNI();

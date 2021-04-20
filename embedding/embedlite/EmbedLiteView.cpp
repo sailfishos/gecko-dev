@@ -154,7 +154,6 @@ void EmbedLiteView::GoBack()
 {
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendGoBack();
-
 }
 
 void EmbedLiteView::GoForward()
@@ -174,6 +173,15 @@ void EmbedLiteView::Reload(bool hard)
 {
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendReload(hard);
+}
+
+void
+EmbedLiteView::SetHttpUserAgent(const char16_t* aHttpUserAgent)
+{
+    LOGT();
+    NS_ENSURE_TRUE(mViewParent, );
+    const nsDependentString httpUserAgent(aHttpUserAgent);
+    Unused << mViewParent->SendSetHttpUserAgent(httpUserAgent);
 }
 
 void EmbedLiteView::ScrollTo(int x, int y)

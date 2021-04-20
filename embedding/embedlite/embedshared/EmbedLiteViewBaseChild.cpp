@@ -778,6 +778,20 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvScheduleUpdate()
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetHttpUserAgent(const nsString& aHttpUserAgent)
+{
+    nsCOMPtr<nsIObserverService> observerService =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    if (observerService) {
+      LOGT("Setting user agent: %s", NS_ConvertUTF16toUTF8(aHttpUserAgent).get());
+      observerService->NotifyObservers(mDOMWindow,
+                                       "embedliteviewhttpuseragentchanged",
+                                       aHttpUserAgent.get());
+    }
+
+    return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSuspendTimeouts()
 {
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
@@ -1309,6 +1323,12 @@ EmbedLiteViewBaseChild::OnWindowCloseRequested()
     return NS_OK;
   }
   return NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewBaseChild::OnHttpUserAgentUsed(const char16_t* aHttpUserAgent)
+{
+  return SendOnHttpUserAgentUsed(nsDependentString(aHttpUserAgent)) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
