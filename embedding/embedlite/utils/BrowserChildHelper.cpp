@@ -7,7 +7,6 @@
 
 #include "nsIWidget.h"
 
-#include "TabChild.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteJSON.h"
@@ -17,6 +16,7 @@
 #include "mozilla/Unused.h"
 
 #include "mozilla/dom/MessagePort.h"
+#include "mozilla/dom/MessageManagerBinding.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "mozilla/dom/DocumentInlines.h"
 
@@ -87,7 +87,7 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
                                  DETECT_SCROLLABLE_SUBFRAME,
                                  false);
   }
-  if (!InitTabChildGlobal()) {
+  if (!InitBrowserChildHelperMessageManager()) {
     NS_WARNING("Failed to register child global ontext");
   }
 }
@@ -95,14 +95,13 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
 BrowserChildHelper::~BrowserChildHelper()
 {
   LOGT();
-  mGlobal = nullptr;
 
-  if (mTabChildGlobal) {
-    EventListenerManager* elm = mTabChildGlobal->GetExistingListenerManager();
+  if (mBrowserChildMessageManager) {
+    EventListenerManager* elm = mBrowserChildMessageManager->GetExistingListenerManager();
     if (elm) {
       elm->Disconnect();
     }
-    mTabChildGlobal->mTabChild = nullptr;
+    mBrowserChildMessageManager->mBrowserChildHelper = nullptr;
   }
 }
 
@@ -111,50 +110,53 @@ BrowserChildHelper::Disconnect()
 {
   LOGT();
   mIPCOpen = false;
-  if (mTabChildGlobal) {
-    // The messageManager relays messages via the TabChild which
-    // no longer exists.
-    static_cast<nsFrameMessageManager*>
-    (mTabChildGlobal->mMessageManager.get())->Disconnect();
-    mTabChildGlobal->mMessageManager = nullptr;
+  if (mBrowserChildMessageManager) {
+    // We should have a message manager if the global is alive, but it
+    // seems sometimes we don't.  Assert in aurora/nightly, but don't
+    // crash in release builds.
+    MOZ_DIAGNOSTIC_ASSERT(mBrowserChildMessageManager->GetMessageManager());
+    if (mBrowserChildMessageManager->GetMessageManager()) {
+      // The messageManager relays messages via the BrowserChild which
+      // no longer exists.
+      mBrowserChildMessageManager->DisconnectMessageManager();
+    }
   }
 }
 
 class EmbedUnloadScriptEvent : public mozilla::Runnable
 {
 public:
-  explicit EmbedUnloadScriptEvent(BrowserChildHelper* aBrowserChild, TabChildGlobal* aTabChildGlobal)
+  explicit EmbedUnloadScriptEvent(BrowserChildHelper* aBrowserChild, BrowserChildHelperMessageManager* aBrowserChildMessageManager)
     : mozilla::Runnable("BrowserChildHelper::EmbedUnloadScriptEvent")
     , mBrowserChild(aBrowserChild)
-    , mTabChildGlobal(aTabChildGlobal)
+    , mBrowserChildMessageManager(aBrowserChildMessageManager)
   { }
 
   NS_IMETHOD Run() {
     LOGT();
-    RefPtr<Event> event = NS_NewDOMEvent(mTabChildGlobal, nullptr, nullptr);
+    RefPtr<Event> event = NS_NewDOMEvent(mBrowserChildMessageManager, nullptr, nullptr);
     if (event) {
       event->InitEvent(NS_LITERAL_STRING("unload"), false, false);
       event->SetTrusted(true);
 
-      bool dummy;
-      mTabChildGlobal->DispatchEvent(event, &dummy);
+      mBrowserChildMessageManager->DispatchEvent(*event);
     }
 
     return NS_OK;
   }
 
   RefPtr<BrowserChildHelper> mBrowserChild;
-  TabChildGlobal* mTabChildGlobal;
+  BrowserChildHelperMessageManager* mBrowserChildMessageManager;
 };
 
 void
 BrowserChildHelper::Unload()
 {
   LOGT();
-  if (mTabChildGlobal) {
+  if (mBrowserChildMessageManager) {
     // Let the frame scripts know the child is being closed
     nsContentUtils::AddScriptRunner(
-      new EmbedUnloadScriptEvent(this, mTabChildGlobal)
+      new EmbedUnloadScriptEvent(this, mBrowserChildMessageManager)
     );
   }
   nsCOMPtr<nsIObserverService> observerService =
@@ -207,9 +209,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(BrowserChildHelper)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(BrowserChildHelper)
 
 bool
-BrowserChildHelper::InitTabChildGlobal()
+BrowserChildHelper::InitBrowserChildHelperMessageManager()
 {
-  if (mTabChildGlobal) {
+  if (mBrowserChildMessageManager) {
     return true;
   }
 
@@ -219,14 +221,14 @@ BrowserChildHelper::InitTabChildGlobal()
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  RefPtr<TabChildGlobal> scope = mTabChildGlobal =
-      new TabChildGlobal(this)
+  RefPtr<BrowserChildHelperMessageManager> scope = mBrowserChildMessageManager =
+      new BrowserChildHelperMessageManager(this);
 
   MOZ_ALWAYS_TRUE(nsMessageManagerScriptExecutor::Init());
 
   nsCOMPtr<nsPIWindowRoot> root = do_QueryInterface(chromeHandler);
   if (NS_WARN_IF(!root)) {
-    mTabChildGlobal = nullptr;
+    mBrowserChildMessageManager = nullptr;
     return false;
   }
   root->SetParentTarget(scope);
@@ -308,7 +310,7 @@ BrowserChildHelper::WebWidget()
 bool
 BrowserChildHelper::DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
-  if (!InitTabChildGlobal())
+  if (!InitBrowserChildHelperMessageManager())
     // This can happen if we're half-destroyed.  It's not a fatal
     // error.
   {
@@ -332,18 +334,27 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
           do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
           static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
-  RefPtr<nsFrameMessageManager> contentFrameMessageManager =
-          static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
+
+  RefPtr<nsFrameMessageManager> mm =
+      mBrowserChildMessageManager->GetMessageManager();
+
+  // We should have a message manager if the global is alive, but it
+  // seems sometimes we don't.  Assert in aurora/nightly, but don't
+  // crash in release builds.
+  MOZ_DIAGNOSTIC_ASSERT(mm);
+  if (!mm) {
+    return true;
+  }
 
   nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
-  embedFrame->mMessageManager = mTabChildGlobal;
+  embedFrame->mMessageManager = mBrowserChildMessageManager;
   SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
   nsresult globalReceived = globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
-  nsresult contentFrameReceived = contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
+  nsresult contentFrameReceived = mm->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
 
   bool globalOk = (globalReceived == NS_OK);
   bool contentFrameReceivedOk = (contentFrameReceived == NS_OK);
@@ -353,7 +364,7 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
     return (globalOk || contentFrameReceivedOk);
   }
 
-  NS_ENSURE_TRUE(InitTabChildGlobal(), false);
+  NS_ENSURE_TRUE(InitBrowserChildHelperMessageManager(), false);
   JSAutoRequest ar(aCx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
@@ -408,25 +419,34 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
       do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
       static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
-  RefPtr<nsFrameMessageManager> contentFrameMessageManager =
-      static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
+
+  RefPtr<nsFrameMessageManager> mm =
+      mBrowserChildMessageManager->GetMessageManager();
+
+  // We should have a message manager if the global is alive, but it
+  // seems sometimes we don't.  Assert in aurora/nightly, but don't
+  // crash in release builds.
+  MOZ_DIAGNOSTIC_ASSERT(mm);
+  if (!mm) {
+    return NS_OK;
+  }
 
   nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
-  embedFrame->mMessageManager = mTabChildGlobal;
+  embedFrame->mMessageManager = mBrowserChildMessageManager;
   SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
   globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
-  contentFrameMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+  mm->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
     return NS_OK;
   }
 
-  if (!InitTabChildGlobal()) {
+  if (!InitBrowserChildHelperMessageManager()) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -544,7 +564,7 @@ BrowserChildHelper::UpdateFrameHandler(const FrameMetrics& aFrameMetrics) {
 
 void
 BrowserChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
-  if (!mGlobal || !mTabChildGlobal) {
+  if (!mBrowserChildMessageManager) {
     return;
   }
 
@@ -594,13 +614,17 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
   return APZCCallbackHelper::ApplyCallbackTransform(aPoint / scale, aGuid);
 }
 
+uint64_t BrowserChildHelper::ChromeOuterWindowID() const {
+  return mView->GetOuterID();
+}
+
 // -- nsIBrowserChild --------------
 
 NS_IMETHODIMP
-BrowserChildHelper::GetMessageManager(ContentFrameMessageManager** aResult)
+BrowserChildHelper::GetMessageManager(dom::ContentFrameMessageManager** aResult)
 {
-  if (mTabChildGlobal) {
-    NS_ADDREF(*aResult = mTabChildGlobal);
+  if (mBrowserChildMessageManager) {
+    NS_ADDREF(*aResult = mBrowserChildMessageManager);
     return NS_OK;
   }
   *aResult = nullptr;
@@ -665,3 +689,98 @@ BrowserChildHelper::GetTabId(uint64_t* aId)
 }
 
 // -- end of nsIBrowserChild -------
+
+BrowserChildHelperMessageManager::BrowserChildHelperMessageManager(
+    BrowserChildHelper* aBrowserChildHelper)
+    : dom::ContentFrameMessageManager(new nsFrameMessageManager(aBrowserChildHelper)),
+      mBrowserChildHelper(aBrowserChildHelper) {}
+
+BrowserChildHelperMessageManager::~BrowserChildHelperMessageManager() = default;
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(BrowserChildHelperMessageManager)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(BrowserChildHelperMessageManager,
+                                                DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mMessageManager);
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowserChildHelper);
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_WEAK_REFERENCE
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(BrowserChildHelperMessageManager,
+                                                  DOMEventTargetHelper)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMessageManager)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowserChildHelper)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildHelperMessageManager)
+  NS_INTERFACE_MAP_ENTRY(nsIMessageSender)
+  NS_INTERFACE_MAP_ENTRY(dom::ContentFrameMessageManager)
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
+
+NS_IMPL_ADDREF_INHERITED(BrowserChildHelperMessageManager, DOMEventTargetHelper)
+NS_IMPL_RELEASE_INHERITED(BrowserChildHelperMessageManager, DOMEventTargetHelper)
+
+JSObject* BrowserChildHelperMessageManager::WrapObject(
+    JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
+  return ContentFrameMessageManager_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+void BrowserChildHelperMessageManager::MarkForCC() {
+  if (mBrowserChildHelper) {
+    mBrowserChildHelper->MarkScopesForCC();
+  }
+  EventListenerManager* elm = GetExistingListenerManager();
+  if (elm) {
+    elm->MarkForCC();
+  }
+  MessageManagerGlobal::MarkForCC();
+}
+
+dom::Nullable<dom::WindowProxyHolder> BrowserChildHelperMessageManager::GetContent(
+    ErrorResult& aError) {
+  nsCOMPtr<nsIDocShell> docShell = GetDocShell(aError);
+  if (!docShell) {
+    return nullptr;
+  }
+  return dom::WindowProxyHolder(docShell->GetBrowsingContext());
+}
+
+already_AddRefed<nsIDocShell> BrowserChildHelperMessageManager::GetDocShell(
+    ErrorResult& aError) {
+  if (!mBrowserChildHelper) {
+    aError.Throw(NS_ERROR_NULL_POINTER);
+    return nullptr;
+  }
+  nsCOMPtr<nsIDocShell> window =
+      do_GetInterface(mBrowserChildHelper->WebNavigation());
+  return window.forget();
+}
+
+already_AddRefed<nsIEventTarget>
+BrowserChildHelperMessageManager::GetTabEventTarget() {
+  nsCOMPtr<nsIEventTarget> target = EventTargetFor(TaskCategory::Other);
+  return target.forget();
+}
+
+uint64_t BrowserChildHelperMessageManager::ChromeOuterWindowID() {
+  if (!mBrowserChildHelper) {
+    return 0;
+  }
+  return mBrowserChildHelper->ChromeOuterWindowID();
+}
+
+nsresult BrowserChildHelperMessageManager::Dispatch(
+    TaskCategory aCategory, already_AddRefed<nsIRunnable>&& aRunnable) {
+  return dom::DispatcherTrait::Dispatch(aCategory, std::move(aRunnable));
+}
+
+nsISerialEventTarget* BrowserChildHelperMessageManager::EventTargetFor(
+    TaskCategory aCategory) const {
+  return dom::DispatcherTrait::EventTargetFor(aCategory);
+}
+
+AbstractThread* BrowserChildHelperMessageManager::AbstractMainThreadFor(
+    TaskCategory aCategory) {
+  return dom::DispatcherTrait::AbstractMainThreadFor(aCategory);
+}

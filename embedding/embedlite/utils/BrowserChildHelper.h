@@ -17,8 +17,9 @@
 #include "InputData.h"
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
-#include "TabChild.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/ContentFrameMessageManager.h"
+#include "mozilla/EventDispatcher.h"
 
 class nsPresContext;
 class nsIDOMWindowUtils;
@@ -30,6 +31,61 @@ struct ScrollableLayerGuid;
 }
 
 namespace embedlite {
+
+class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
+                                         public nsIMessageSender,
+                                         public dom::DispatcherTrait,
+                                         public nsSupportsWeakReference {
+ public:
+  explicit BrowserChildHelperMessageManager(BrowserChildHelper* aBrowserChild);
+
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(BrowserChildHelperMessageManager,
+                                           DOMEventTargetHelper)
+
+  void MarkForCC();
+
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
+
+  virtual dom::Nullable<dom::WindowProxyHolder> GetContent(ErrorResult& aError) override;
+  virtual already_AddRefed<nsIDocShell> GetDocShell(
+      ErrorResult& aError) override;
+  virtual already_AddRefed<nsIEventTarget> GetTabEventTarget() override;
+  virtual uint64_t ChromeOuterWindowID() override;
+
+  NS_FORWARD_SAFE_NSIMESSAGESENDER(mMessageManager)
+
+  void GetEventTargetParent(EventChainPreVisitor& aVisitor) override {
+    aVisitor.mForceContentDispatch = true;
+  }
+
+  // Dispatch a runnable related to the global.
+  virtual nsresult Dispatch(mozilla::TaskCategory aCategory,
+                            already_AddRefed<nsIRunnable>&& aRunnable) override;
+
+  virtual nsISerialEventTarget* EventTargetFor(
+      mozilla::TaskCategory aCategory) const override;
+
+  virtual AbstractThread* AbstractMainThreadFor(
+      mozilla::TaskCategory aCategory) override;
+
+  RefPtr<BrowserChildHelper> mBrowserChildHelper;
+
+ protected:
+  ~BrowserChildHelperMessageManager();
+};
+
+class ContentListener final : public nsIDOMEventListener {
+ public:
+  explicit ContentListener(BrowserChildHelper* aBrowserChildHelper)
+      : mBrowserChildHelper(aBrowserChildHelper) {}
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIDOMEVENTLISTENER
+ protected:
+  ~ContentListener() = default;
+  BrowserChildHelper* mBrowserChildHelper;
+};
 
 class EmbedLiteViewChildIface;
 class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
@@ -86,6 +142,8 @@ public:
 
   void OpenIPC() { mIPCOpen = true; }
 
+  uint64_t ChromeOuterWindowID() const;
+
 protected:
   virtual ~BrowserChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
@@ -96,9 +154,10 @@ protected:
   bool HasValidInnerSize();
 
   nsCOMPtr<nsIWebBrowserChrome3> mWebBrowserChrome;
+  RefPtr<BrowserChildHelperMessageManager> mBrowserChildMessageManager;
 
 private:
-  bool InitTabChildGlobal();
+  bool InitBrowserChildHelperMessageManager();
   void Disconnect();
   void Unload();
   bool IPCOpen() const { return mIPCOpen; }
