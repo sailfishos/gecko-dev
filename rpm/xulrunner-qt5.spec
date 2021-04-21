@@ -150,6 +150,7 @@ BuildRequires:  qt5-plugin-platform-minimal
 BuildRequires:  cbindgen
 BuildRequires:  llvm
 BuildRequires:  clang-devel
+BuildRequires:  python3-sqlite
 
 %if %{system_icu}
 BuildRequires:  libicu >= 67.1
