@@ -26,7 +26,6 @@
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDocument.h"
 #include "nsIDOMDocument.h"
 #include "nsIPresShell.h"
 #include "nsLayoutUtils.h"
@@ -40,7 +39,7 @@
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "nsIFrame.h"                       // for nsIFrame
@@ -813,7 +812,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
   nsIPresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
   NS_ENSURE_TRUE(presShell, IPC_OK());
 
-  nsCOMPtr<nsIDocument> document = presShell->GetDocument();
+  RefPtr<Document> document = presShell->GetDocument();
   NS_ENSURE_TRUE(document && !document->Fullscreen(), IPC_OK());
 
   CSSRect zoomToRect = CalculateRectToZoomTo(document, cssPoint);
@@ -1088,7 +1087,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
           localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
     }
 #endif
-    nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
+    nsCOMPtr<Document> document = mHelper->GetDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
         localEvent, aGuid, aInputBlockId);
   }
@@ -1238,14 +1237,14 @@ EmbedLiteViewChild::OnUpdateDisplayPort()
 bool
 EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
 {
-  nsCOMPtr<nsIDocument> doc(mHelper->GetDocument());
+  nsCOMPtr<Document> doc(mHelper->GetDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 float
 EmbedLiteViewChild::GetPresShellResolution() const
 {
-  nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
+  nsCOMPtr<Document> document(mHelper->GetDocument());
   nsIPresShell* shell = document->GetShell();
   if (!shell) {
     return 1.0f;
