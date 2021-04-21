@@ -6,7 +6,7 @@
 #ifndef MOZ_APP_EMBED_THREAD_PARENT_H
 #define MOZ_APP_EMBED_THREAD_PARENT_H
 
-#include "mozilla/embedlite/PEmbedLiteAppParent.h"
+#include "mozilla/embedlite/EmbedLiteAppParent.h"
 
 namespace mozilla {
 
@@ -17,7 +17,7 @@ class PCompositorBridgeParent;
 namespace embedlite {
 
 class EmbedLiteApp;
-class EmbedLiteAppThreadParent : public PEmbedLiteAppParent
+class EmbedLiteAppThreadParent : public EmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppThreadParent)
 

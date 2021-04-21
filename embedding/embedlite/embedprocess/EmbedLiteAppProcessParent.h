@@ -6,7 +6,7 @@
 #ifndef MOZ_APP_EMBED_PROCESS_PARENT_H
 #define MOZ_APP_EMBED_PROCESS_PARENT_H
 
-#include "mozilla/embedlite/PEmbedLiteAppParent.h"
+#include "mozilla/embedlite/EmbedLiteAppParent.h"
 
 namespace mozilla {
 namespace ipc {
@@ -18,7 +18,7 @@ class Pref;
 namespace embedlite {
 
 class EmbedLiteApp;
-class EmbedLiteAppProcessParent : public PEmbedLiteAppParent
+class EmbedLiteAppProcessParent : public EmbedLiteAppParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppProcessParent)
   EmbedLiteAppProcessParent();
@@ -42,12 +42,12 @@ protected:
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
                                               const nsString &data) override;
 
-  virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId, const uint32_t &id, const uint32_t &parentId, const bool&);
+  virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId, const uint32_t &id, const uint32_t &parentId, const bool&) override;
 
-  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor);
+  virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor) override;
   virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent *aActor) override;
-  virtual void ActorDestroy(ActorDestroyReason aWhy);
+  virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual mozilla::ipc::IPCResult RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs) override;
 
 private:
