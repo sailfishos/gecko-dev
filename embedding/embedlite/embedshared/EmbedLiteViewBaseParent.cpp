@@ -311,7 +311,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvAsyncMessage(const nsString
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvSyncMessage(const nsString &aMessage,
                                                                  const nsString &aJSON,
-                                                                 InfallibleTArray<nsString> *aJSONRetVal)
+                                                                 nsTArray<nsString> *aJSONRetVal)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aJSON).get());
@@ -329,7 +329,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvSyncMessage(const nsString 
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvRpcMessage(const nsString &aMessage,
                                                                 const nsString &aJSON,
-                                                                InfallibleTArray<nsString> *aJSONRetVal)
+                                                                nsTArray<nsString> *aJSONRetVal)
 {
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }

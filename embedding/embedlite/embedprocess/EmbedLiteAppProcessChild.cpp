@@ -139,7 +139,7 @@ EmbedLiteAppProcessChild::InitXPCOM()
 
   Unused << SendInitialized();
 
-  InfallibleTArray<mozilla::dom::Pref> prefs;
+  nsTArray<mozilla::dom::Pref> prefs;
   Preferences::GetPreferences(&prefs);
   SendPrefsArrayInitialized(prefs);
 }

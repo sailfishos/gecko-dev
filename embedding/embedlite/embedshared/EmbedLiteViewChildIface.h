@@ -51,10 +51,10 @@ public:
   virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) = 0;
   virtual bool DoSendSyncMessage(const char16_t* aMessageName,
                                  const char16_t* aMessage,
-                                 InfallibleTArray<nsString>* aJSONRetVal) = 0;
+                                 nsTArray<nsString>* aJSONRetVal) = 0;
   virtual bool DoCallRpcMessage(const char16_t* aMessageName,
                                 const char16_t* aMessage,
-                                InfallibleTArray<nsString>* aJSONRetVal) = 0;
+                                nsTArray<nsString>* aJSONRetVal) = 0;
   virtual bool GetDPI(float* aDPI) = 0;
 
   /**

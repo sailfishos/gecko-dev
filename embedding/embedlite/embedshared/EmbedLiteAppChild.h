@@ -72,8 +72,8 @@ private:
                                               const nsString &data);
   mozilla::ipc::IPCResult RecvAddObserver(const nsCString &);
   mozilla::ipc::IPCResult RecvRemoveObserver(const nsCString &);
-  mozilla::ipc::IPCResult RecvAddObservers(InfallibleTArray<nsCString> &&observers);
-  mozilla::ipc::IPCResult RecvRemoveObservers(InfallibleTArray<nsCString> &&observers);
+  mozilla::ipc::IPCResult RecvAddObservers(nsTArray<nsCString> &&observers);
+  mozilla::ipc::IPCResult RecvRemoveObservers(nsTArray<nsCString> &&observers);
 
   bool DeallocPEmbedLiteViewChild(PEmbedLiteViewChild*);
   bool DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild*);

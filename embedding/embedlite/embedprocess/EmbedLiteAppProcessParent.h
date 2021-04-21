@@ -28,7 +28,7 @@ public:
 
   static EmbedLiteAppProcessParent* GetInstance();
 
-  void GetPrefs(InfallibleTArray<mozilla::dom::Pref>* prefs);
+  void GetPrefs(nsTArray<mozilla::dom::Pref>* prefs);
 
 protected:
   void OnChannelConnected(int32_t pid) override;
@@ -56,7 +56,7 @@ private:
 
   EmbedLiteApp* mApp;
   mozilla::ipc::GeckoChildProcessHost* mSubprocess;
-  InfallibleTArray<mozilla::dom::Pref> mPrefs;
+  nsTArray<mozilla::dom::Pref> mPrefs;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessParent);
 };

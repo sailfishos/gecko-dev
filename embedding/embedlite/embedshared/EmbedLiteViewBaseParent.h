@@ -72,10 +72,10 @@ protected:
                                                    const nsString &aData) override;
   virtual mozilla::ipc::IPCResult RecvSyncMessage(const nsString &aMessage,
                                                   const nsString &aJSON,
-                                                  InfallibleTArray<nsString> *aJSONRetVal) override;
+                                                  nsTArray<nsString> *aJSONRetVal) override;
   virtual mozilla::ipc::IPCResult RecvRpcMessage(const nsString &aMessage,
                                                  const nsString &aJSON,
-                                                 InfallibleTArray<nsString> *aJSONRetVal) override;
+                                                 nsTArray<nsString> *aJSONRetVal) override;
 
   virtual mozilla::ipc::IPCResult RecvUpdateZoomConstraints(const uint32_t &aPresShellId,
                                                             const ViewID &aViewId,

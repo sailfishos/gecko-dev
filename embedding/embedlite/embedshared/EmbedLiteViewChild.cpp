@@ -448,7 +448,7 @@ EmbedLiteViewChild::DoSendAsyncMessage(const char16_t* aMessageName, const char1
 }
 
 bool
-EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, nsTArray<nsString>* aJSONRetVal)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
@@ -460,7 +460,7 @@ EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16
 }
 
 bool
-EmbedLiteViewChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+EmbedLiteViewChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, nsTArray<nsString>* aJSONRetVal)
 {
 #if EMBEDLITE_LOG_SENSITIVE
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
@@ -727,7 +727,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListener(const nsCS
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(InfallibleTArray<nsString> &&messageNames)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(nsTArray<nsString> &&messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Put(messageNames[i], 1);
@@ -735,7 +735,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(InfallibleTA
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListeners(InfallibleTArray<nsString> &&messageNames)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListeners(nsTArray<nsString> &&messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
     mRegisteredMessages.Remove(messageNames[i]);
