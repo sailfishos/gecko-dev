@@ -149,6 +149,7 @@ BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
 BuildRequires:  cbindgen
 BuildRequires:  llvm
+BuildRequires:  clang-devel
 
 %if %{system_icu}
 BuildRequires:  libicu-devel >= 67.1
