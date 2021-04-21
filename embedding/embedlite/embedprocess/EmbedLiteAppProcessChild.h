@@ -6,12 +6,12 @@
 #ifndef MOZ_APP_EMBED_PROCESS_CHILD_H
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
-#include "mozilla/embedlite/EmbedLiteAppBaseChild.h"
+#include "mozilla/embedlite/EmbedLiteAppChild.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteAppProcessChild : public EmbedLiteAppBaseChild
+class EmbedLiteAppProcessChild : public EmbedLiteAppChild
 {
 public:
   EmbedLiteAppProcessChild();

@@ -46,11 +46,11 @@ namespace embedlite {
 EmbedLiteAppProcessChild*
 EmbedLiteAppProcessChild::GetSingleton()
 {
-  return static_cast<EmbedLiteAppProcessChild*>(EmbedLiteAppBaseChild::GetInstance());
+  return static_cast<EmbedLiteAppProcessChild*>(EmbedLiteAppChild::GetInstance());
 }
 
 EmbedLiteAppProcessChild::EmbedLiteAppProcessChild()
-  : EmbedLiteAppBaseChild(nullptr)
+  : EmbedLiteAppChild(nullptr)
 {
   LOGT();
   nsDebugImpl::SetMultiprocessMode("Child");
