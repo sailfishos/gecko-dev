@@ -148,7 +148,7 @@ PuppetWidgetBase::ConstrainPosition(bool, int32_t *aX, int32_t *aY)
 {
   *aX = kMaxDimension;
   *aY = kMaxDimension;
-  LOGNI();
+  LOGT();
 }
 
 // We're always at <0, 0>, and so ignore move requests.
@@ -214,14 +214,14 @@ PuppetWidgetBase::Resize(double aX, double aY, double aWidth, double aHeight, bo
 void
 PuppetWidgetBase::Enable(bool aState)
 {
-  LOGNI();
+  LOGT();
   mEnabled = aState;
 }
 
 bool
 PuppetWidgetBase::IsEnabled() const
 {
-  LOGNI();
+  LOGT();
   return mEnabled;
 }
 
