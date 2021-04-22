@@ -113,6 +113,7 @@ Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 Patch60:    0060-Bug-1467722-Don-t-return-null-for-getComputedStyle-w.patch
 Patch61:    0061-Bug-1467722-Make-nsComputedDOMStyle-store-an-actual-.patch
 Patch62:    0062-Bug-1467722-Do-not-throw-when-we-don-t-have-a-style-.patch
+Patch63:    0063-sailfishos-fix-mesa-egl-display.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static

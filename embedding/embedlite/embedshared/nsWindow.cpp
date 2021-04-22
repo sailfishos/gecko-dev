@@ -376,9 +376,10 @@ nsWindow::GetGLContext() const
     EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
     void* context = nullptr;
     void* surface = nullptr;
-    if (window && window->GetListener()->RequestGLContext(context, surface)) {
+    void* display = nullptr;
+    if (window && window->GetListener()->RequestGLContext(context, surface, display)) {
       MOZ_ASSERT(context && surface);
-      RefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface);
+      RefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface, display);
       if (!mozContext || !mozContext->Init()) {
         NS_ERROR("Failed to initialize external GL context!");
         return nullptr;
@@ -410,7 +411,8 @@ nsWindow::CreateGLContextEarly(uint32_t aWindowId)
   if (window) {
     void* context = nullptr;
     void* surface = nullptr;
-    window->GetListener()->RequestGLContext(context, surface);
+    void* display = nullptr;
+    window->GetListener()->RequestGLContext(context, surface, display);
     MOZ_ASSERT(context && surface);
   } else {
     NS_WARNING("Trying to early create GL context for non existing window!");
