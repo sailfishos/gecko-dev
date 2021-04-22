@@ -134,7 +134,7 @@ EmbedLiteViewBaseParent::RecvOnLocationChanged(const nsCString& aLocation,
                                                  const bool& aCanGoBack,
                                                  const bool& aCanGoForward)
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLocationChanged(aLocation.get(), aCanGoBack, aCanGoForward);
@@ -143,7 +143,7 @@ EmbedLiteViewBaseParent::RecvOnLocationChanged(const nsCString& aLocation,
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadStarted(const nsCString& aLocation)
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLoadStarted(aLocation.get());
@@ -152,7 +152,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadStarted(const nsCStri
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadFinished()
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLoadFinished();
@@ -161,7 +161,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadFinished()
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnWindowCloseRequested()
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnWindowCloseRequested();
@@ -170,7 +170,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnWindowCloseRequested()
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadRedirect()
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLoadRedirect();
@@ -179,7 +179,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadRedirect()
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadProgress(const int32_t &aProgress, const int32_t &aCurTotal, const int32_t &aMaxTotal)
 {
-  LOGNI("progress:%i", aProgress);
+  LOGT("progress:%i", aProgress);
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnLoadProgress(aProgress, aCurTotal, aMaxTotal);
@@ -189,7 +189,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnLoadProgress(const int32_
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnSecurityChanged(const nsCString &aStatus,
                                                                        const uint32_t &aState)
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnSecurityChanged(aStatus.get(), aState);
@@ -199,7 +199,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnSecurityChanged(const nsC
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnFirstPaint(const int32_t &aX,
                                                                   const int32_t &aY)
 {
-  LOGNI();
+  LOGT();
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnFirstPaint(aX, aY);
@@ -209,7 +209,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnFirstPaint(const int32_t 
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnScrolledAreaChanged(const uint32_t &aWidth,
                                                                            const uint32_t &aHeight)
 {
-  LOGNI("area[%u,%u]", aWidth, aHeight);
+  LOGT("area[%u,%u]", aWidth, aHeight);
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnScrolledAreaChanged(aWidth, aHeight);
@@ -219,7 +219,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnScrolledAreaChanged(const
 mozilla::ipc::IPCResult EmbedLiteViewBaseParent::RecvOnScrollChanged(const int32_t& offSetX,
                                                const int32_t& offSetY)
 {
-  LOGNI("off[%i,%i]", offSetX, offSetY);
+  LOGT("off[%i,%i]", offSetX, offSetY);
   NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
 
   mView->GetListener()->OnScrollChanged(offSetX, offSetY);
