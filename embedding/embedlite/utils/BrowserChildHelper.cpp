@@ -351,17 +351,13 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mBrowserChildMessageManager;
-  SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
-  nsresult globalReceived = globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
-  nsresult contentFrameReceived = mm->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, &cpows, aPrincipal, aRetVal);
-
-  bool globalOk = (globalReceived == NS_OK);
-  bool contentFrameReceivedOk = (contentFrameReceived == NS_OK);
+  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, aRetVal, IgnoreErrors());
+  mm->ReceiveMessage(embedFrame, nullptr, aMessage, aIsSync, &aData, aRetVal, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
-    return (globalOk || contentFrameReceivedOk);
+    return true;
   }
 
   NS_ENSURE_TRUE(InitBrowserChildHelperMessageManager(), false);
@@ -406,7 +402,7 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
     }
   }
 
-  return (globalOk || contentFrameReceivedOk || retValue);
+  return true;
 }
 
 nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
@@ -436,10 +432,11 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
   RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
   embedFrame->mWindow = window;
   embedFrame->mMessageManager = mBrowserChildMessageManager;
-  SameProcessCpowHolder cpows(JS::RootingContext::get(aCx), aCpows);
 
-  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
-  mm->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, &cpows, aPrincipal, nullptr);
+  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
+
+  mm->ReceiveMessage(embedFrame,
+                     nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGW("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
