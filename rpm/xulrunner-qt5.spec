@@ -169,6 +169,7 @@ BuildRequires:  libjpeg-turbo-devel
 %endif
 %ifarch i586 i486 i386 x86_64
 BuildRequires:  yasm
+BuildRequires:  nasm >= 2.14
 %endif
 BuildRequires:  fdupes
 # See below on why the system version of this library is used
@@ -300,8 +301,6 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 %ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
-# TODO: nasm upgrade needed for av1, will be done in task JB#53993
-echo "ac_add_options --disable-av1" >> "$MOZCONFIG"
 %endif
 
 %ifarch %ix86 %arm
