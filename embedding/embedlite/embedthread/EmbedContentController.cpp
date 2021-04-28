@@ -137,7 +137,7 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics aFrameMetrics)
     contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
     CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
 
-    LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+    LOGT("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
           contentRect.x, contentRect.y, contentRect.width, contentRect.height,
           scrollableSize.width, scrollableSize.height);
     gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
