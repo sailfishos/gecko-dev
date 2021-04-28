@@ -66,7 +66,7 @@ public:
   virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
 
-  virtual nsresult SetFocus(bool aRaise = false) override;
+  virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
   virtual nsresult SetTitle(const nsAString& aTitle) override;
 
   virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override;
