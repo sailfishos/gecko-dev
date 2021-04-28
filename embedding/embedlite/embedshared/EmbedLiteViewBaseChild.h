@@ -147,6 +147,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&) override;
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
+  virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent) override;
 
   virtual mozilla::ipc::IPCResult RecvSuspendTimeouts() override;
   virtual mozilla::ipc::IPCResult RecvResumeTimeouts() override;
