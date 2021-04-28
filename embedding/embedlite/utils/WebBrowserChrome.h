@@ -25,7 +25,7 @@
 
 namespace mozilla {
 namespace embedlite {
-  class TabChildHelper;
+  class BrowserChildHelper;
 }
 }
 
@@ -53,7 +53,7 @@ public:
   void SetEventHandler();
   void RemoveEventHandler();
 
-  void SetTabChildHelper(mozilla::embedlite::TabChildHelper* aHelper);
+  void SetBrowserChildHelper(mozilla::embedlite::BrowserChildHelper* aHelper);
   NS_IMETHODIMP GetWebBrowser(nsIWebBrowser * *aWebBrowser);
   NS_IMETHODIMP SetWebBrowser(nsIWebBrowser* aWebBrowser);
 
@@ -81,7 +81,7 @@ private:
   nsCOMPtr<nsIObserverService> mObserverService;
   nsIEmbedBrowserChromeListener* mListener;
   nsString mTitle;
-  RefPtr<mozilla::embedlite::TabChildHelper> mHelper;
+  RefPtr<mozilla::embedlite::BrowserChildHelper> mHelper;
 };
 
 #endif /* Header guard */

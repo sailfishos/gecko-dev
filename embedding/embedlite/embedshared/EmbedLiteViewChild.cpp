@@ -279,8 +279,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     NS_ERROR("SetVisibility failed!");
   }
 
-  mHelper = new TabChildHelper(this);
-  mChrome->SetTabChildHelper(mHelper.get());
+  mHelper = new BrowserChildHelper(this);
+  mChrome->SetBrowserChildHelper(mHelper.get());
   mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
@@ -1087,7 +1087,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
           localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
     }
 #endif
-    nsCOMPtr<Document> document = mHelper->GetDocument();
+    nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
         localEvent, aGuid, aInputBlockId);
   }
@@ -1237,14 +1237,14 @@ EmbedLiteViewChild::OnUpdateDisplayPort()
 bool
 EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
 {
-  nsCOMPtr<Document> doc(mHelper->GetDocument());
+  nsCOMPtr<Document> doc(mHelper->GetTopLevelDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 float
 EmbedLiteViewChild::GetPresShellResolution() const
 {
-  nsCOMPtr<Document> document(mHelper->GetDocument());
+  nsCOMPtr<Document> document(mHelper->GetTopLevelDocument());
   nsIPresShell* shell = document->GetShell();
   if (!shell) {
     return 1.0f;

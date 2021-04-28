@@ -28,7 +28,7 @@
 #include "nsIBaseWindow.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "mozilla/dom/EventTarget.h"
-#include "TabChildHelper.h"
+#include "BrowserChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 #include "mozilla/dom/Document.h"
 
@@ -71,10 +71,10 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
 {
   NS_ENSURE_ARG_POINTER(aInstancePtr);
 
-  if (aIID.Equals(NS_GET_IID(nsITabChild))) {
-    nsCOMPtr<nsITabChild> tabChildHelper;
-    tabChildHelper = mHelper;
-    tabChildHelper.forget(aInstancePtr);
+  if (aIID.Equals(NS_GET_IID(nsIBrowserChild))) {
+    nsCOMPtr<nsIBrowserChild> browserChildHelper;
+    browserChildHelper = mHelper;
+    browserChildHelper.forget(aInstancePtr);
     return NS_OK;
   }
 
@@ -675,10 +675,10 @@ void WebBrowserChrome::RemoveEventHandler()
   target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
 }
 
-void WebBrowserChrome::SetTabChildHelper(TabChildHelper* aHelper)
+void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)
 {
-  NS_ASSERTION(aHelper, "TabChildHelper can't be unset");
-  NS_ASSERTION(!mHelper, "TabChildHelper can be set only once");
+  NS_ASSERTION(aHelper, "BrowserChildHelper can't be unset");
+  NS_ASSERTION(!mHelper, "BrowserChildHelper can be set only once");
 
   mHelper = aHelper;
 }

@@ -44,9 +44,9 @@ EXPORTS.mozilla.embedlite += [
     'embedshared/nsWindow.h',
     'embedshared/PuppetWidgetBase.h',
     'embedthread/EmbedLiteCompositorBridgeParent.h',
+    'utils/BrowserChildHelper.h',
     'utils/EmbedLiteSecurity.h',
     'utils/EmbedLog.h',
-    'utils/TabChildHelper.h',
     'utils/WebBrowserChrome.h',
 ]
 
@@ -82,12 +82,12 @@ UNIFIED_SOURCES += [
     'modules/EmbedFrame.cpp',
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
+    'utils/BrowserChildHelper.cpp',
     'utils/DirProvider.cpp',
     'utils/EmbedLiteSecurity.cpp',
     'utils/EmbedLiteXulAppInfo.cpp',
     'utils/EmbedLog.cpp',
     'utils/GeckoLoader.cpp',
-    'utils/TabChildHelper.cpp',
     'utils/WebBrowserChrome.cpp',
     'utils/WindowCreator.cpp',
 ]

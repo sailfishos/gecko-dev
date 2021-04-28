@@ -15,7 +15,7 @@
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIIdleServiceInternal.h"
-#include "TabChildHelper.h"
+#include "BrowserChildHelper.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
@@ -209,7 +209,7 @@ protected:
   void UserActivity();
 
 private:
-  friend class TabChildHelper;
+  friend class BrowserChildHelper;
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
   friend class EmbedLiteAppChild;
@@ -232,7 +232,7 @@ private:
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
 
-  RefPtr<TabChildHelper> mHelper;
+  RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
 
