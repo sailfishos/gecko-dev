@@ -3,8 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef MOZ_WINDOW_EMBED_BASE_PARENT_H
-#define MOZ_WINDOW_EMBED_BASE_PARENT_H
+#ifndef MOZ_WINDOW_EMBED_PARENT_H
+#define MOZ_WINDOW_EMBED_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/WidgetUtils.h"
@@ -21,13 +21,13 @@ public:
   virtual void CompositorCreated() = 0;
 };
 
-class EmbedLiteWindowBaseParent : public PEmbedLiteWindowParent
+class EmbedLiteWindowParent : public PEmbedLiteWindowParent
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowBaseParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
 public:
-  EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
+  EmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
 
-  static EmbedLiteWindowBaseParent* From(const uint32_t id);
+  static EmbedLiteWindowParent* From(const uint32_t id);
 
   void AddObserver(EmbedLiteWindowParentObserver*);
   void RemoveObserver(EmbedLiteWindowParentObserver*);
@@ -46,17 +46,18 @@ protected:
   friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLiteWindow;
 
-  virtual ~EmbedLiteWindowBaseParent() override;
+  virtual ~EmbedLiteWindowParent() override;
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-
-  virtual mozilla::ipc::IPCResult RecvInitialized() override;
-  virtual mozilla::ipc::IPCResult RecvDestroyed() override;
 
   void SetEmbedAPIWindow(EmbedLiteWindow* window);
   void SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor);
 
 private:
+  friend class PEmbedLiteWindowParent;
   typedef nsTArray<EmbedLiteWindowParentObserver*> ObserverArray;
+
+  mozilla::ipc::IPCResult RecvInitialized();
+  mozilla::ipc::IPCResult RecvDestroyed();
 
   uint32_t mId;
   EmbedLiteWindow* mWindow;
@@ -66,11 +67,11 @@ private:
   gfxSize mSize;
   mozilla::ScreenRotation mRotation;
 
-  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseParent);
+  DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowParent);
 };
 
 } // namespace embedlite
 } // namespace mozilla
 
-#endif // MOZ_WINDOW_EMBED_BASE_PARENT_H
+#endif // MOZ_WINDOW_EMBED_PARENT_H
 

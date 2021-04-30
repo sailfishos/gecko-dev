@@ -9,7 +9,7 @@
 #include "BasicLayers.h"
 #include "EmbedLiteApp.h"
 #include "EmbedLiteWindow.h"
-#include "EmbedLiteWindowBaseParent.h"
+#include "EmbedLiteWindowParent.h"
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
@@ -50,7 +50,7 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   , mCurrentCompositeTask(nullptr)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
-  EmbedLiteWindowBaseParent* parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
+  EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
   Preferences::AddBoolVarCache(&mUseExternalGLContext,
                                "embedlite.compositor.external_gl_context", false);

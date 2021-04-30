@@ -7,7 +7,7 @@
 
 #include "EmbedLiteView.h"
 #include "EmbedLiteViewParent.h"
-#include "EmbedLiteWindowBaseParent.h"
+#include "EmbedLiteWindowParent.h"
 #include "nsWindow.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
@@ -27,7 +27,7 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_
   : mWindowId(windowId)
   , mId(id)
   , mViewAPIDestroyed(false)
-  , mWindow(*EmbedLiteWindowBaseParent::From(windowId))
+  , mWindow(*EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)
   , mDPI(-1.0)
   , mUILoop(MessageLoop::current())
@@ -413,7 +413,7 @@ mozilla::embedlite::nsWindow *EmbedLiteViewParent::GetWindowWidget() const
 void
 EmbedLiteViewParent::CompositorCreated()
 {
-  // XXX: Move compositor handling entirely to EmbedLiteWindowBaseParent
+  // XXX: Move compositor handling entirely to EmbedLiteWindowParent
   SetCompositor(mWindow.GetCompositor());
 }
 

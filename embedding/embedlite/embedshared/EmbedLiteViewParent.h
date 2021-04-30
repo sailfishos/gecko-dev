@@ -7,7 +7,7 @@
 #define MOZ_VIEW_EMBED_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteViewParent.h"
-#include "mozilla/embedlite/EmbedLiteWindowBaseParent.h"
+#include "mozilla/embedlite/EmbedLiteWindowParent.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteViewIface.h"
 #include "GLDefs.h"
@@ -127,7 +127,7 @@ private:
   uint32_t mId;
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
-  EmbedLiteWindowBaseParent& mWindow;
+  EmbedLiteWindowParent& mWindow;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
 
   float mDPI;

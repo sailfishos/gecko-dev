@@ -6,12 +6,13 @@
 #ifndef MOZ_WINDOW_EMBED_THREAD_PARENT_H
 #define MOZ_WINDOW_EMBED_THREAD_PARENT_H
 
-#include "EmbedLiteWindowBaseParent.h"
+#include "EmbedLiteWindowParent.h"
+#include "mozilla/embedlite/EmbedLiteWindowParent.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteWindowThreadParent : public EmbedLiteWindowBaseParent
+class EmbedLiteWindowThreadParent : public EmbedLiteWindowParent
 {
 public:
   EmbedLiteWindowThreadParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);

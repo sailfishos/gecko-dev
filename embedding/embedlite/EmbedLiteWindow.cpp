@@ -6,7 +6,7 @@
 #include "EmbedLiteWindow.h"
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
-#include "EmbedLiteWindowBaseParent.h"
+#include "EmbedLiteWindowParent.h"
 #include "mozilla/Unused.h"
 
 namespace mozilla {
@@ -22,7 +22,7 @@ static FakeWindowListener sFakeWindowListener;
 EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent* parent, uint32_t id)
   : mApp(app)
   , mListener(nullptr)
-  , mWindowParent(static_cast<EmbedLiteWindowBaseParent*>(parent))
+  , mWindowParent(static_cast<EmbedLiteWindowParent*>(parent))
   , mUniqueID(id)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindow);
