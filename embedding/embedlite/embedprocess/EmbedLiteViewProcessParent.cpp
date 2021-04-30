@@ -6,10 +6,10 @@ namespace mozilla {
 namespace embedlite {
 
 MOZ_IMPLICIT EmbedLiteViewProcessParent::EmbedLiteViewProcessParent(const uint32_t& windowId,
-		                                                    const uint32_t& id,
-								    const uint32_t& parentId,
+                                                                    const uint32_t& id,
+                                                                    const uint32_t& parentId,
                                                                     const bool& isPrivateWindow)
-  : EmbedLiteViewBaseParent(windowId, id, parentId, isPrivateWindow)
+  : EmbedLiteViewParent(windowId, id, parentId, isPrivateWindow)
 {
     LOGT();
 }

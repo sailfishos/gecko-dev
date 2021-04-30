@@ -462,7 +462,7 @@ void EmbedLitePuppetWidget::ConfigureAPZCTreeManager()
 
 void EmbedLitePuppetWidget::ConfigureAPZControllerThread()
 {
-  LOGT("Do nothing - APZController thread configured in EmbedLiteViewBaseParent");
+  LOGT("Do nothing - APZController thread configured in EmbedLiteViewParent");
 }
 
 already_AddRefed<GeckoContentController>

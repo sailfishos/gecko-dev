@@ -7,18 +7,18 @@
 #define MOZ_VIEW_EMBED_PROCESS_PARENT_H
 
 
-#include "EmbedLiteViewBaseParent.h"
+#include "EmbedLiteViewParent.h"
 
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewProcessParent : public EmbedLiteViewBaseParent
+class EmbedLiteViewProcessParent : public EmbedLiteViewParent
 {
 public:
     MOZ_IMPLICIT EmbedLiteViewProcessParent(const uint32_t& windowId,
-		                            const uint32_t& id,
-		                            const uint32_t& parentId,
-					    const bool&);
+                                            const uint32_t& id,
+                                            const uint32_t& parentId,
+                                            const bool&);
     virtual ~EmbedLiteViewProcessParent() override;
 
 private:
