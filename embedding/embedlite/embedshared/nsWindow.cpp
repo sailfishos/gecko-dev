@@ -8,7 +8,7 @@
 #include "EmbedLog.h"
 
 #include "nsWindow.h"
-#include "EmbedLiteWindowBaseChild.h"
+#include "EmbedLiteWindowChild.h"
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteApp.h"
 
@@ -56,7 +56,7 @@ static void InitPrefs()
   }
 }
 
-nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
+nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
   , mWindow(window)
 {

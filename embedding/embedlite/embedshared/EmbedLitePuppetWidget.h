@@ -28,7 +28,7 @@ namespace mozilla {
 
 namespace embedlite {
 
-class EmbedLiteWindowBaseChild;
+class EmbedLiteWindowChild;
 
 class EmbedLitePuppetWidget : public PuppetWidgetBase
 {

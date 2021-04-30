@@ -221,7 +221,7 @@ private:
 
   uint32_t mId;
   uint64_t mOuterId;
-  EmbedLiteWindowBaseChild* mWindow; // Not owned
+  EmbedLiteWindowChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
   nsCOMPtr<nsIIdleServiceInternal> mIdleService;

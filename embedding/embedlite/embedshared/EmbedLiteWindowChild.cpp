@@ -8,7 +8,7 @@
 #include <math.h>
 
 #include "nsWindow.h"
-#include "EmbedLiteWindowBaseChild.h"
+#include "EmbedLiteWindowChild.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
 #include "ScreenOrientation.h"
@@ -27,11 +27,11 @@ namespace embedlite {
 
 namespace {
 
-static std::map<uint32_t, EmbedLiteWindowBaseChild*> sWindowChildMap;
+static std::map<uint32_t, EmbedLiteWindowChild*> sWindowChildMap;
 
 } // namespace
 
-EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
+EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
   : mId(aId)
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
@@ -40,32 +40,32 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const 
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
   sWindowChildMap[aId] = this;
 
-  MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);
+  MOZ_COUNT_CTOR(EmbedLiteWindowChild);
 
-  mCreateWidgetTask = NewCancelableRunnableMethod("EmbedLiteWindowBaseChild::CreateWidget",
+  mCreateWidgetTask = NewCancelableRunnableMethod("EmbedLiteWindowChild::CreateWidget",
                                                   this,
-                                                  &EmbedLiteWindowBaseChild::CreateWidget);
+                                                  &EmbedLiteWindowChild::CreateWidget);
   MessageLoop::current()->PostTask(mCreateWidgetTask.forget());
 
   // Make sure gfx platform is initialized and ready to go.
   gfxPlatform::GetPlatform();
 }
 
-EmbedLiteWindowBaseChild *EmbedLiteWindowBaseChild::From(const uint32_t id)
+EmbedLiteWindowChild *EmbedLiteWindowChild::From(const uint32_t id)
 {
-  std::map<uint32_t, EmbedLiteWindowBaseChild*>::const_iterator it = sWindowChildMap.find(id);
+  std::map<uint32_t, EmbedLiteWindowChild*>::const_iterator it = sWindowChildMap.find(id);
   if (it != sWindowChildMap.end()) {
     return it->second;
   }
   return nullptr;
 }
 
-EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
+EmbedLiteWindowChild::~EmbedLiteWindowChild()
 {
   MOZ_ASSERT(sWindowChildMap.find(mId) != sWindowChildMap.end());
   sWindowChildMap.erase(sWindowChildMap.find(mId));
 
-  MOZ_COUNT_DTOR(EmbedLiteWindowBaseChild);
+  MOZ_COUNT_DTOR(EmbedLiteWindowChild);
 
   if (mCreateWidgetTask) {
     mCreateWidgetTask->Cancel();
@@ -77,17 +77,17 @@ EmbedLiteWindowBaseChild::~EmbedLiteWindowBaseChild()
   }
 }
 
-nsWindow *EmbedLiteWindowBaseChild::GetWidget() const
+nsWindow *EmbedLiteWindowChild::GetWidget() const
 {
   return static_cast<nsWindow*>(mWidget.get());
 }
 
-void EmbedLiteWindowBaseChild::ActorDestroy(ActorDestroyReason aWhy)
+void EmbedLiteWindowChild::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvDestroy()
+mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
 {
   LOGT("destroy");
   mWidget = nullptr;
@@ -96,7 +96,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvDestroy()
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize &aSize)
+mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
 {
   mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   LOGT("this:%p width: %f, height: %f as int w: %d h: %h", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
@@ -106,7 +106,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetSize(const gfxSize &aSi
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetContentOrientation(const uint32_t &aRotation)
+mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const uint32_t &aRotation)
 {
   LOGT("this:%p", this);
   mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
@@ -159,7 +159,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvSetContentOrientation(cons
   return IPC_OK();
 }
 
-void EmbedLiteWindowBaseChild::CreateWidget()
+void EmbedLiteWindowChild::CreateWidget()
 {
   LOGT("this:%p", this);
   if (mCreateWidgetTask) {

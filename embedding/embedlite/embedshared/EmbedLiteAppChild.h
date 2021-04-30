@@ -17,7 +17,7 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteViewChild;
-class EmbedLiteWindowBaseChild;
+class EmbedLiteWindowChild;
 
 class EmbedLiteAppChild : public PEmbedLiteAppChild,
                           public nsIObserver,
@@ -31,7 +31,7 @@ public:
   void Init(MessageChannel* aParentChannel);
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId) override;
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent) override;
-  EmbedLiteWindowBaseChild* GetWindowByID(uint32_t aWindowID);
+  EmbedLiteWindowChild* GetWindowByID(uint32_t aWindowID);
   bool CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, uint32_t* createdID, bool* cancel) override;
   static EmbedLiteAppChild* GetInstance();
 
@@ -47,7 +47,7 @@ protected:
 protected:
   MessageLoop* mParentLoop;
   std::map<uint32_t, EmbedLiteViewChild*> mWeakViewMap;
-  std::map<uint32_t, EmbedLiteWindowBaseChild*> mWeakWindowMap;
+  std::map<uint32_t, EmbedLiteWindowChild*> mWeakWindowMap;
   void InitWindowWatcher();
   nsresult InitAppService();
 

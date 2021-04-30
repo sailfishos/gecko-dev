@@ -294,7 +294,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   }
 
   static bool firstViewCreated = false;
-  EmbedLiteWindowBaseChild *windowBase = mWindow;
+  EmbedLiteWindowChild *windowBase = mWindow;
   if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
     windowBase->GetWidget()->SetActive(true);
     firstViewCreated = true;

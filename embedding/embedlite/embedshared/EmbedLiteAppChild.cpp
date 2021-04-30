@@ -175,14 +175,14 @@ bool
 EmbedLiteAppChild::DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild* aActor)
 {
   LOGT();
-  std::map<uint32_t, EmbedLiteWindowBaseChild*>::iterator it;
+  std::map<uint32_t, EmbedLiteWindowChild*>::iterator it;
   for (it = mWeakWindowMap.begin(); it != mWeakWindowMap.end(); ++it) {
     if (aActor == it->second) {
       mWeakWindowMap.erase(it);
       break;
     }
   }
-  EmbedLiteWindowBaseChild* w = static_cast<EmbedLiteWindowBaseChild*>(aActor);
+  EmbedLiteWindowChild* w = static_cast<EmbedLiteWindowChild*>(aActor);
   w->Release();
   return true;
 }
@@ -211,11 +211,11 @@ EmbedLiteAppChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent)
   return nullptr;
 }
 
-EmbedLiteWindowBaseChild*
+EmbedLiteWindowChild*
 EmbedLiteAppChild::GetWindowByID(uint32_t aWindowID)
 {
   LOGT("mWeakWindowMap:%i", mWeakWindowMap.size());
-  std::map<uint32_t, EmbedLiteWindowBaseChild*>::const_iterator it;
+  std::map<uint32_t, EmbedLiteWindowChild*>::const_iterator it;
   it = mWeakWindowMap.find(aWindowID);
   if (it != mWeakWindowMap.end()) {
     return it->second;
