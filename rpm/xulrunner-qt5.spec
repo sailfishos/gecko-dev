@@ -74,7 +74,6 @@ Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
 #Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
-#Patch23:    0023-sailfishos-gecko-Disable-Marionette.patch
 #Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
 #Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
 #Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
@@ -253,7 +252,6 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 #echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
 #echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
 #echo "export LD=ld.gold" >> "$MOZCONFIG"
-echo "ac_add_options --disable-tests" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --disable-install-strip" >> "$MOZCONFIG"
 
