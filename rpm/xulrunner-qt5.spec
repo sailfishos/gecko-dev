@@ -203,7 +203,7 @@ Summary: Misc files for xulrunner
 Tests and misc files for xulrunner.
 
 # Build output directory.
-%define BUILD_DIR "$PWD"/obj-build-mer-qt-xr
+%define BUILD_DIR "$PWD"/../obj-build-mer-qt-xr
 # EmbedLite config used to configure the engine.
 %define BASE_CONFIG "$PWD"/../embedding/embedlite/config/mozconfig.%{embedlite_config}
 
