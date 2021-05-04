@@ -58,6 +58,7 @@ Patch11:    0011-sailfishos-compositor-Fix-GLContextProvider-defines.patch
 Patch12:    0012-sailfishos-gecko-Disable-Gecko-Rust-Feature-cubeb-re.patch
 Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
 Patch14:    0014-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
+Patch15:    0015-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
