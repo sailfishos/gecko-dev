@@ -57,6 +57,7 @@ Patch10:    0010-sailfishos-gecko-Add-including-of-nsRefPtrHashtable..patch
 Patch11:    0011-sailfishos-compositor-Fix-GLContextProvider-defines.patch
 Patch12:    0012-sailfishos-gecko-Disable-Gecko-Rust-Feature-cubeb-re.patch
 Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
+Patch14:    0014-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
@@ -64,7 +65,6 @@ Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
-#Patch13:    0013-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
 #Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
 #Patch16:    0016-sailfishos-compositor-Respect-gfxPrefs-ClearCompoisi.patch
