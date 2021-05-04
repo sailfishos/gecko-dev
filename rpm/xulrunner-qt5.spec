@@ -56,6 +56,7 @@ Patch9:     0009-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
 Patch10:    0010-sailfishos-gecko-Add-including-of-nsRefPtrHashtable..patch
 Patch11:    0011-sailfishos-compositor-Fix-GLContextProvider-defines.patch
 Patch12:    0012-sailfishos-gecko-Disable-Gecko-Rust-Feature-cubeb-re.patch
+Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
