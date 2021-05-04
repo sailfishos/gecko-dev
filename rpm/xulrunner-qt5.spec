@@ -255,10 +255,10 @@ export SB2_RUST_USE_REAL_FN=Yes
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
-%ifarch %arm
+# %ifarch %arm
 # Do not build as thumb since it breaks video decoding.
-echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
-%endif
+# echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
+# %endif
 
 echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 # XXX: gold crashes when building gecko for both i486 and x86_64
