@@ -149,6 +149,10 @@ See upstream commit: 1a7c5067caf90ea7affe81a88b47ed6564f64c45
 
 See upstream commit: 2f4b27a303e3bf1ae9e4dd68f2bc709308c5ac65
 
+[sailfishos][qt] Move `#include <qclipboard.h>` from nsClipboard.h to nsClipboard.cpp
+
+This fixes the build error: "'qclipboard.h' file not found".
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -250,8 +254,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsAppShell.h                        |   37 +
  widget/qt/nsBidiKeyboard.cpp                  |   47 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  563 ++++++
- widget/qt/nsClipboard.h                       |   41 +
+ widget/qt/nsClipboard.cpp                     |  564 ++++++
+ widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
  widget/qt/nsIdleServiceQt.cpp                 |  123 ++
@@ -273,7 +277,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8364 insertions(+), 52 deletions(-)
+ 121 files changed, 8358 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -5759,10 +5763,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..e8a631bb0bb3
+index 000000000000..e5a19a68178e
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,563 @@
+@@ -0,0 +1,564 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -5775,6 +5779,7 @@ index 000000000000..e8a631bb0bb3
 +#include <QImage>
 +#include <QImageWriter>
 +#include <QBuffer>
++#include <qclipboard.h>
 +
 +#include "nsArrayUtils.h" // for do_QueryElementAt
 +#include "gfxPlatform.h"
@@ -5834,15 +5839,15 @@ index 000000000000..e8a631bb0bb3
 +    }
 +}
 +
-+// nsClipboard::SetNativeClipboardData ie. Copy
++// SetNativeClipboardData ie. Copy
 +
-+NS_IMETHODIMP
-+nsClipboard::SetNativeClipboardData( nsITransferable *aTransferable,
-+                                     QClipboard::Mode clipboardMode )
++static NS_IMETHODIMP
++SetNativeClipboardData( nsITransferable *aTransferable,
++                        QClipboard::Mode clipboardMode )
 +{
 +    if (nullptr == aTransferable)
 +    {
-+        NS_WARNING("nsClipboard::SetNativeClipboardData(): no transferable!");
++        NS_WARNING("nsClipboard SetNativeClipboardData(): no transferable!");
 +        return NS_ERROR_FAILURE;
 +    }
 +
@@ -5853,7 +5858,7 @@ index 000000000000..e8a631bb0bb3
 +
 +    if (!flavorList || NS_FAILED(rv))
 +    {
-+        NS_WARNING("nsClipboard::SetNativeClipboardData(): no FlavorsTransferable !");
++        NS_WARNING("nsClipboard SetNativeClipboardData(): no FlavorsTransferable !");
 +        return NS_ERROR_FAILURE;
 +    }
 +
@@ -6001,15 +6006,15 @@ index 000000000000..e8a631bb0bb3
 +    return NS_OK;
 +}
 +
-+// nsClipboard::GetNativeClipboardData ie. Paste
++// GetNativeClipboardData ie. Paste
 +//
-+NS_IMETHODIMP
-+nsClipboard::GetNativeClipboardData(nsITransferable *aTransferable,
-+                                    QClipboard::Mode clipboardMode)
++static NS_IMETHODIMP
++GetNativeClipboardData(nsITransferable *aTransferable,
++                       QClipboard::Mode clipboardMode)
 +{
 +    if (nullptr == aTransferable)
 +    {
-+        NS_WARNING("GetNativeClipboardData: Transferable is null!");
++        NS_WARNING("nsClipboard GetNativeClipboardData: Transferable is null!");
 +        return NS_ERROR_FAILURE;
 +    }
 +
@@ -6020,7 +6025,7 @@ index 000000000000..e8a631bb0bb3
 +
 +    if (!flavorList || NS_FAILED(errCode))
 +    {
-+        NS_WARNING("nsClipboard::GetNativeClipboardData(): no FlavorsTransferable!");
++        NS_WARNING("nsClipboard GetNativeClipboardData(): no FlavorsTransferable!");
 +        return NS_ERROR_FAILURE;
 +    }
 +
@@ -6328,10 +6333,10 @@ index 000000000000..e8a631bb0bb3
 +}
 diff --git a/widget/qt/nsClipboard.h b/widget/qt/nsClipboard.h
 new file mode 100644
-index 000000000000..d348c4b551af
+index 000000000000..e84411741937
 --- /dev/null
 +++ b/widget/qt/nsClipboard.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,34 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6343,8 +6348,6 @@ index 000000000000..d348c4b551af
 +#include "nsITransferable.h"
 +#include "nsIClipboardOwner.h"
 +#include "nsCOMPtr.h"
-+
-+#include <qclipboard.h>
 +
 +/* Native Qt Clipboard wrapper */
 +class nsClipboard : public nsIClipboard
@@ -6360,11 +6363,6 @@ index 000000000000..d348c4b551af
 +
 +protected:
 +    virtual ~nsClipboard();
-+
-+    NS_IMETHOD SetNativeClipboardData(nsITransferable *aTransferable,
-+                                      QClipboard::Mode cbMode);
-+    NS_IMETHOD GetNativeClipboardData(nsITransferable *aTransferable,
-+                                      QClipboard::Mode cbMode);
 +
 +    nsCOMPtr<nsIClipboardOwner> mSelectionOwner;
 +    nsCOMPtr<nsIClipboardOwner> mGlobalOwner;
