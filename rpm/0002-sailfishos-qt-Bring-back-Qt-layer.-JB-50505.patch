@@ -57,6 +57,25 @@ See upstream commit: 0cc1972d140a1d41f3e45a981fa74d25bf7f8c40
 
 See upstream commit: 0acba278661e891d32a9c094c091b3f179296f22
 
+[sailfishos][qt] Adapt gfxQtPlatform to base class gfxPlatform
+
+Add implementation for gfxPlatform::CheckVariationFontSupport.
+See upstream commit: c66fb1e66057b6be975397e3da92f553fcf7919a
+
+gfxPlatform::GetStandardFamilyName can no longer be overridden.
+See upstream commit: 6f42f167fb18a4e46e822739fa7b335cf85e8938
+
+gfxPlatform::CreateFontGroup is now implemented in gfxPlatform.cpp.
+See upstream commit: c8c463d812d0c34825744b9d360431f770640be9
+
+gfxPlatform::LookupLocalFont and MakePlatformFont can no longer be
+overridden.
+See upstream commit: c57f185cd982842cadec603058c2c2048eb08c43
+
+gfxPlatform::GetPlatformCMSOutputProfile was renamed to
+gfxPlatform::GetPlatformCMSOutputProfileData.
+See upstream commit: 726cba0bb5a18210119ae9321070b688ef8d61e1
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -101,8 +120,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  gfx/thebes/gfxPlatform.cpp                    |    8 +-
  gfx/thebes/gfxQtNativeRenderer.cpp            |   48 +
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
- gfx/thebes/gfxQtPlatform.cpp                  |  182 ++
- gfx/thebes/gfxQtPlatform.h                    |   91 +
+ gfx/thebes/gfxQtPlatform.cpp                  |  144 ++
+ gfx/thebes/gfxQtPlatform.h                    |   62 +
  gfx/thebes/moz.build                          |   30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |    4 +-
  gfx/webrender_bindings/moz.build              |    2 +-
@@ -181,7 +200,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8346 insertions(+), 52 deletions(-)
+ 121 files changed, 8279 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1478,10 +1497,10 @@ index 000000000000..23c138e11fc0
 +#endif /*GFXQTNATIVERENDER_H_*/
 diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
 new file mode 100644
-index 000000000000..8fae6a4660a1
+index 000000000000..84aedc98b795
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.cpp
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,144 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1540,6 +1559,17 @@ index 000000000000..8fae6a4660a1
 +{
 +}
 +
++bool
++gfxQtPlatform::CheckVariationFontSupport()
++{
++  // Although there was some variation/multiple-master support in FreeType
++  // in older versions, it seems too incomplete/unstable for us to use
++  // until at least 2.7.1.
++  FT_Int major, minor, patch;
++  FT_Library_Version(Factory::GetFTLibrary(), &major, &minor, &patch);
++  return major * 1000000 + minor * 1000 + patch >= 2007001;
++}
++
 +already_AddRefed<gfxASurface>
 +gfxQtPlatform::CreateOffscreenSurface(const IntSize& aSize,
 +                                      gfxImageFormat aFormat)
@@ -1575,55 +1605,6 @@ index 000000000000..8fae6a4660a1
 +  }
 +  gfxPlatformFontList::Shutdown();
 +  return nullptr;
-+}
-+
-+nsresult
-+gfxQtPlatform::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName)
-+{
-+    gfxPlatformFontList::PlatformFontList()->GetStandardFamilyName(aFontName,
-+                                                                   aFamilyName);
-+    return NS_OK;
-+}
-+
-+gfxFontGroup *
-+gfxQtPlatform::CreateFontGroup(const FontFamilyList& aFontFamilyList,
-+                               const gfxFontStyle *aStyle,
-+                               gfxTextPerfMetrics* aTextPerf,
-+                               gfxUserFontSet* aUserFontSet,
-+                               gfxFloat aDevToCssSize)
-+{
-+    return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf, aUserFontSet,
-+                            aDevToCssSize);
-+}
-+
-+gfxFontEntry*
-+gfxQtPlatform::LookupLocalFont(const nsAString& aFontName,
-+                               uint16_t aWeight,
-+                               int16_t aStretch,
-+                               uint8_t aStyle)
-+{
-+    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-+    return pfl->LookupLocalFont(aFontName, aWeight, aStretch, aStyle);
-+}
-+
-+gfxFontEntry*
-+gfxQtPlatform::MakePlatformFont(const nsAString& aFontName,
-+                                uint16_t aWeight,
-+                                int16_t aStretch,
-+                                uint8_t aStyle,
-+                                const uint8_t* aFontData,
-+                                uint32_t aLength)
-+{
-+    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-+    return pfl->MakePlatformFont(aFontName, aWeight, aStretch, aStyle, aFontData,
-+                                 aLength);
-+}
-+
-+void
-+gfxQtPlatform::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
-+{
-+    mem = nullptr;
-+    size = 0;
 +}
 +
 +int32_t
@@ -1666,10 +1647,10 @@ index 000000000000..8fae6a4660a1
 +}
 diff --git a/gfx/thebes/gfxQtPlatform.h b/gfx/thebes/gfxQtPlatform.h
 new file mode 100644
-index 000000000000..928e9a33e123
+index 000000000000..0bf314ba4f8e
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.h
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,62 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1709,35 +1690,6 @@ index 000000000000..928e9a33e123
 +
 +    virtual gfxPlatformFontList* CreatePlatformFontList() override;
 +
-+    virtual nsresult GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName) override;
-+
-+    gfxFontGroup*
-+    CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
-+                    const gfxFontStyle *aStyle,
-+                    gfxTextPerfMetrics* aTextPerf,
-+                    gfxUserFontSet *aUserFontSet,
-+                    gfxFloat aDevToCssSize) override;
-+
-+    /**
-+     * Look up a local platform font using the full font face name (needed to
-+     * support @font-face src local() )
-+     */
-+    virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-+                                          uint16_t aWeight,
-+                                          int16_t aStretch,
-+                                          uint8_t aStyle) override;
-+
-+    /**
-+     * Activate a platform font (needed to support @font-face src url() )
-+     *
-+     */
-+    virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-+                                           uint16_t aWeight,
-+                                           int16_t aStretch,
-+                                           uint8_t aStyle,
-+                                           const uint8_t* aFontData,
-+                                           uint32_t aLength) override;
-+
 +    static int32_t GetDPI();
 +
 +    virtual gfxImageFormat GetOffscreenFormat() override;
@@ -1753,9 +1705,9 @@ index 000000000000..928e9a33e123
 +protected:
 +    int8_t mMaxGenericSubstitutions;
 +
-+private:
-+    virtual void GetPlatformCMSOutputProfile(void *&mem, size_t &size) override;
++    virtual bool CheckVariationFontSupport() override;
 +
++private:
 +    int mScreenDepth;
 +};
 +
