@@ -76,6 +76,10 @@ gfxPlatform::GetPlatformCMSOutputProfile was renamed to
 gfxPlatform::GetPlatformCMSOutputProfileData.
 See upstream commit: 726cba0bb5a18210119ae9321070b688ef8d61e1
 
+[sailfishos][qt] Replace nsGeolocation usage with Geolocation and nsGeoPosition with GeolocationPosition
+
+See upstream commit: bd713fe4ee6fd780c549498bec2a72c579431402
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -834,7 +838,7 @@ index 095a5f098bd2..92910886be20 100644
      DIRS += ['mac']
 diff --git a/dom/system/qt/QTMLocationProvider.cpp b/dom/system/qt/QTMLocationProvider.cpp
 new file mode 100644
-index 000000000000..58fcc2e50743
+index 000000000000..335b26632ff9
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.cpp
 @@ -0,0 +1,101 @@
@@ -844,7 +848,7 @@ index 000000000000..58fcc2e50743
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
 +#include "QTMLocationProvider.h"
-+#include "nsGeoPosition.h"
++#include "GeolocationPosition.h"
 +
 +using namespace mozilla;
 +
@@ -941,7 +945,7 @@ index 000000000000..58fcc2e50743
 +}
 diff --git a/dom/system/qt/QTMLocationProvider.h b/dom/system/qt/QTMLocationProvider.h
 new file mode 100644
-index 000000000000..07b34c846119
+index 000000000000..34a7163c6845
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.h
 @@ -0,0 +1,35 @@
@@ -953,7 +957,7 @@ index 000000000000..07b34c846119
 +#define QTMLocationProvider_h
 +
 +#include <QGeoPositionInfoSource>
-+#include "nsGeolocation.h"
++#include "Geolocation.h"
 +#include "nsIGeolocationProvider.h"
 +#include "nsCOMPtr.h"
 +
