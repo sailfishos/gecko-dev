@@ -53,6 +53,10 @@ See upstream commit: 449237fc51ae99909509042ca1c85b63aed98848
 
 See upstream commit: 0cc1972d140a1d41f3e45a981fa74d25bf7f8c40
 
+[sailfishos][qt] Allow Cairo as content/canvas backend for MOZ_WIDGET_QT
+
+See upstream commit: 0acba278661e891d32a9c094c091b3f179296f22
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -94,7 +98,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  gfx/thebes/gfxFT2Fonts.cpp                    |    4 +
  gfx/thebes/gfxFcPlatformFontList.cpp          |    6 +
  gfx/thebes/gfxFont.h                          |    2 +-
- gfx/thebes/gfxPlatform.cpp                    |    4 +
+ gfx/thebes/gfxPlatform.cpp                    |    8 +-
  gfx/thebes/gfxQtNativeRenderer.cpp            |   48 +
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
  gfx/thebes/gfxQtPlatform.cpp                  |  182 ++
@@ -177,7 +181,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8344 insertions(+), 50 deletions(-)
+ 121 files changed, 8346 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1305,7 +1309,7 @@ index f9f6cc6fa1e3..a82cb7cccd26 100644
  #else
  #  define OBLIQUE_SKEW_FACTOR 0.25f
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 96b53c105961..4f97fe330d79 100644
+index 96b53c105961..ca5ec522ff03 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -71,6 +71,8 @@
@@ -1326,6 +1330,24 @@ index 96b53c105961..4f97fe330d79 100644
  #elif defined(ANDROID)
    gPlatform = new gfxAndroidPlatform;
  #else
+@@ -1954,7 +1958,7 @@ BackendPrefsData gfxPlatform::GetBackendPrefs() const {
+   data.mCanvasBitmask = BackendTypeBit(BackendType::SKIA);
+   data.mContentBitmask = BackendTypeBit(BackendType::SKIA);
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   data.mCanvasBitmask |= BackendTypeBit(BackendType::CAIRO);
+   data.mContentBitmask |= BackendTypeBit(BackendType::CAIRO);
+ #endif
+@@ -1994,7 +1998,7 @@ void gfxPlatform::InitBackendPrefs(BackendPrefsData&& aPrefsData) {
+   }
+ 
+   uint32_t swBackendBits = BackendTypeBit(BackendType::SKIA);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   swBackendBits |= BackendTypeBit(BackendType::CAIRO);
+ #endif
+   mSoftwareBackend = GetContentBackendPref(swBackendBits);
 diff --git a/gfx/thebes/gfxQtNativeRenderer.cpp b/gfx/thebes/gfxQtNativeRenderer.cpp
 new file mode 100644
 index 000000000000..f9ee28ead37d
