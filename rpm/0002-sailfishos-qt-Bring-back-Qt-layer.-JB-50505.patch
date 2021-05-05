@@ -145,6 +145,10 @@ See upstream commit: 810916db161c0783361ffb88b894cc7c4e3e9ad0
 
 See upstream commit: 1a7c5067caf90ea7affe81a88b47ed6564f64c45
 
+[sailfishos][qt] Remove nsIWebBrowserPrint usage from nsPrintDialogQt
+
+See upstream commit: 2f4b27a303e3bf1ae9e4dd68f2bc709308c5ac65
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -254,8 +258,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsIdleServiceQt.h                   |   56 +
  widget/qt/nsLookAndFeel.cpp                   |  473 +++++
  widget/qt/nsLookAndFeel.h                     |   41 +
- widget/qt/nsPrintDialogQt.cpp                 |   43 +
- widget/qt/nsPrintDialogQt.h                   |   32 +
+ widget/qt/nsPrintDialogQt.cpp                 |   42 +
+ widget/qt/nsPrintDialogQt.h                   |   31 +
  widget/qt/nsPrintOptionsQt.cpp                |   23 +
  widget/qt/nsPrintOptionsQt.h                  |   20 +
  widget/qt/nsPrintSettingsQt.cpp               |  411 ++++
@@ -269,7 +273,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8366 insertions(+), 52 deletions(-)
+ 121 files changed, 8364 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -7388,10 +7392,10 @@ index 000000000000..e8a134b93f3f
 +#endif
 diff --git a/widget/qt/nsPrintDialogQt.cpp b/widget/qt/nsPrintDialogQt.cpp
 new file mode 100644
-index 000000000000..979c48c04862
+index 000000000000..825863f66ec7
 --- /dev/null
 +++ b/widget/qt/nsPrintDialogQt.cpp
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,42 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
@@ -7423,8 +7427,7 @@ index 000000000000..979c48c04862
 +
 +NS_IMETHODIMP
 +nsPrintDialogServiceQt::Show(nsPIDOMWindowOuter *aParent,
-+                             nsIPrintSettings* aSettings,
-+                             nsIWebBrowserPrint* aWebBrowserPrint)
++                             nsIPrintSettings* aSettings)
 +{
 +    return NS_ERROR_NOT_IMPLEMENTED;
 +}
@@ -7437,10 +7440,10 @@ index 000000000000..979c48c04862
 +}
 diff --git a/widget/qt/nsPrintDialogQt.h b/widget/qt/nsPrintDialogQt.h
 new file mode 100644
-index 000000000000..9c35fa2683fa
+index 000000000000..96b867c14225
 --- /dev/null
 +++ b/widget/qt/nsPrintDialogQt.h
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,31 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
@@ -7463,8 +7466,7 @@ index 000000000000..9c35fa2683fa
 +
 +    NS_IMETHODIMP Init() override;
 +    NS_IMETHODIMP Show(nsPIDOMWindowOuter* aParent,
-+                       nsIPrintSettings* aSettings,
-+                       nsIWebBrowserPrint* aWebBrowserPrint) override;
++                       nsIPrintSettings* aSettings) override;
 +    NS_IMETHODIMP ShowPageSetup(nsPIDOMWindowOuter *aParent,
 +                                nsIPrintSettings* aSettings) override;
 +
