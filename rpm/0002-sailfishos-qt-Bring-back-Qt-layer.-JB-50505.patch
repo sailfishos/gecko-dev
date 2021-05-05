@@ -141,6 +141,10 @@ See upstream commit: 323b5be77a649dfc2a2171e0bdfb95f69af50ad6
 System colors has been moved to values::specified::color.
 See upstream commit: 810916db161c0783361ffb88b894cc7c4e3e9ad0
 
+[sailfishos][qt] Replace nsIDOMWheelEvent usage with WheelEventBinding
+
+See upstream commit: 1a7c5067caf90ea7affe81a88b47ed6564f64c45
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -263,9 +267,9 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
- widget/qt/nsWindow.cpp                        | 1696 +++++++++++++++++
+ widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8367 insertions(+), 52 deletions(-)
+ 121 files changed, 8366 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -4766,23 +4770,23 @@ index c9c1623217b8..62b60c1bf23b 100644
 +#undef KEY_MAP_QT
  #undef KEY_MAP_ANDROID
 diff --git a/widget/headless/HeadlessWidget.h b/widget/headless/HeadlessWidget.h
-index c375629d4a95..622a2d4df884 100644
+index c375629d4a95..3153adb3b40d 100644
 --- a/widget/headless/HeadlessWidget.h
 +++ b/widget/headless/HeadlessWidget.h
-@@ -20,6 +20,13 @@
+@@ -18,6 +18,13 @@
+ #  define MOZ_HEADLESS_MOUSE_DOWN 4  // GDK_BUTTON_PRESS
+ #  define MOZ_HEADLESS_MOUSE_UP 7    // GDK_BUTTON_RELEASE
  #  define MOZ_HEADLESS_SCROLL_MULTIPLIER 3
- #  define MOZ_HEADLESS_SCROLL_DELTA_MODE \
-     mozilla::dom::WheelEvent_Binding::DOM_DELTA_LINE
++#  define MOZ_HEADLESS_SCROLL_DELTA_MODE \
++    mozilla::dom::WheelEvent_Binding::DOM_DELTA_LINE
 +#elif defined(MOZ_WIDGET_QT)
 +#  define MOZ_HEADLESS_MOUSE_MOVE 5  // QEvent::MouseMove
 +#  define MOZ_HEADLESS_MOUSE_DOWN 2  // QEvent::MouseButtonPress
 +#  define MOZ_HEADLESS_MOUSE_UP 3    // QEvent::MouseButtonRelease
-+#  define MOZ_HEADLESS_SCROLL_MULTIPLIER 1
-+#  define MOZ_HEADLESS_SCROLL_DELTA_MODE \
-+    nsIDOMWheelEvent::DOM_DELTA_LINE
++#  define MOZ_HEADLESS_SCROLL_MULTIPLIER 3
+ #  define MOZ_HEADLESS_SCROLL_DELTA_MODE \
+     mozilla::dom::WheelEvent_Binding::DOM_DELTA_LINE
  #elif defined(XP_WIN)
- #  define MOZ_HEADLESS_MOUSE_MOVE 1  // MOUSEEVENTF_MOVE
- #  define MOZ_HEADLESS_MOUSE_DOWN 2  // MOUSEEVENTF_LEFTDOWN
 diff --git a/widget/moz.build b/widget/moz.build
 index ab0081a77047..1a90f756af11 100644
 --- a/widget/moz.build
@@ -8968,10 +8972,10 @@ index 000000000000..87817a0b4a5f
 +NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
-index 000000000000..8a976a4ad102
+index 000000000000..68b0825244d3
 --- /dev/null
 +++ b/widget/qt/nsWindow.cpp
-@@ -0,0 +1,1696 @@
+@@ -0,0 +1,1695 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -9015,6 +9019,7 @@ index 000000000000..8a976a4ad102
 +#include "mozilla/Preferences.h"
 +#include "mozilla/Likely.h"
 +#include "mozilla/layers/LayersTypes.h"
++#include "mozilla/dom/WheelEventBinding.h"
 +#include "nsIWidgetListener.h"
 +#include "ClientLayerManager.h"
 +#include "BasicLayers.h"
@@ -9027,8 +9032,6 @@ index 000000000000..8a976a4ad102
 +#include "nsIInterfaceRequestorUtils.h"
 +
 +#include "gfxQtPlatform.h"
-+
-+#include "nsIDOMWheelEvent.h"
 +
 +#include "GLContext.h"
 +
@@ -10097,7 +10100,7 @@ index 000000000000..8a976a4ad102
 +nsEventStatus nsWindow::wheelEvent(QWheelEvent* aEvent) {
 +    // check to see if we should rollup
 +    WidgetWheelEvent wheelEvent(true, eWheel, this);
-+    wheelEvent.mDeltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
++    wheelEvent.mDeltaMode = dom::WheelEvent_Binding::DOM_DELTA_LINE;
 +
 +    // negative values for aEvent->delta indicate downward scrolling;
 +    // this is opposite Gecko usage.
