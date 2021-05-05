@@ -133,6 +133,14 @@ See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
 
 See upstream commit: 71422dcaa9e79f41c5a7be0b30d93ac5844d7fed
 
+[sailfishos][qt] Adapt nsLookAndFeel to LookAndFeel and nsXPLookAndFeel
+
+Signature of the nsXPLookAndFeel::GetFontImpl has been changed.
+See upstream commit: 323b5be77a649dfc2a2171e0bdfb95f69af50ad6
+
+System colors has been moved to values::specified::color.
+See upstream commit: 810916db161c0783361ffb88b894cc7c4e3e9ad0
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -240,8 +248,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
  widget/qt/nsIdleServiceQt.cpp                 |  123 ++
  widget/qt/nsIdleServiceQt.h                   |   56 +
- widget/qt/nsLookAndFeel.cpp                   |  459 +++++
- widget/qt/nsLookAndFeel.h                     |   42 +
+ widget/qt/nsLookAndFeel.cpp                   |  473 +++++
+ widget/qt/nsLookAndFeel.h                     |   41 +
  widget/qt/nsPrintDialogQt.cpp                 |   43 +
  widget/qt/nsPrintDialogQt.h                   |   32 +
  widget/qt/nsPrintOptionsQt.cpp                |   23 +
@@ -257,7 +265,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1696 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8354 insertions(+), 52 deletions(-)
+ 121 files changed, 8367 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -6850,10 +6858,10 @@ index 000000000000..f947b56e02e0
 +#endif // nsIdleServiceQt_h__
 diff --git a/widget/qt/nsLookAndFeel.cpp b/widget/qt/nsLookAndFeel.cpp
 new file mode 100644
-index 000000000000..e2f8ade5e6d8
+index 000000000000..1bab88760357
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.cpp
-@@ -0,0 +1,459 @@
+@@ -0,0 +1,473 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -6880,6 +6888,7 @@ index 000000000000..e2f8ade5e6d8
 +#include "gfxFont.h"
 +#include "gfxFontConstants.h"
 +#include "mozilla/gfx/2D.h"
++#include "mozilla/FontPropertyTypes.h"
 +
 +static const char16_t UNICODE_BULLET = 0x2022;
 +
@@ -6912,236 +6921,236 @@ index 000000000000..e2f8ade5e6d8
 +        // These colors don't seem to be used for anything anymore in Mozilla
 +        // (except here at least TextSelectBackground and TextSelectForeground)
 +        // The CSS2 colors below are used.
-+    case eColorID_WindowBackground:
++    case ColorID::WindowBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WindowForeground:
++    case ColorID::WindowForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_WidgetBackground:
++    case ColorID::WidgetBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WidgetForeground:
++    case ColorID::WidgetForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_WidgetSelectBackground:
++    case ColorID::WidgetSelectBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WidgetSelectForeground:
++    case ColorID::WidgetSelectForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_Widget3DHighlight:
++    case ColorID::Widget3DHighlight:
 +        aColor = NS_RGB(0xa0,0xa0,0xa0);
 +        break;
-+    case eColorID_Widget3DShadow:
++    case ColorID::Widget3DShadow:
 +        aColor = NS_RGB(0x40,0x40,0x40);
 +        break;
-+    case eColorID_TextBackground:
++    case ColorID::TextBackground:
 +        // not used?
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_TextForeground:
++    case ColorID::TextForeground:
 +        // not used?
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_TextSelectBackground:
-+    case eColorID_IMESelectedRawTextBackground:
-+    case eColorID_IMESelectedConvertedTextBackground:
++    case ColorID::TextSelectBackground:
++    case ColorID::IMESelectedRawTextBackground:
++    case ColorID::IMESelectedConvertedTextBackground:
 +        // still used
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID_TextSelectForeground:
-+    case eColorID_IMESelectedRawTextForeground:
-+    case eColorID_IMESelectedConvertedTextForeground:
++    case ColorID::TextSelectForeground:
++    case ColorID::IMESelectedRawTextForeground:
++    case ColorID::IMESelectedConvertedTextForeground:
 +        // still used
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID_IMERawInputBackground:
-+    case eColorID_IMEConvertedTextBackground:
++    case ColorID::IMERawInputBackground:
++    case ColorID::IMEConvertedTextBackground:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID_IMERawInputForeground:
-+    case eColorID_IMEConvertedTextForeground:
++    case ColorID::IMERawInputForeground:
++    case ColorID::IMEConvertedTextForeground:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID_IMERawInputUnderline:
-+    case eColorID_IMEConvertedTextUnderline:
++    case ColorID::IMERawInputUnderline:
++    case ColorID::IMEConvertedTextUnderline:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID_IMESelectedRawTextUnderline:
-+    case eColorID_IMESelectedConvertedTextUnderline:
++    case ColorID::IMESelectedRawTextUnderline:
++    case ColorID::IMESelectedConvertedTextUnderline:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID_SpellCheckerUnderline:
++    case ColorID::SpellCheckerUnderline:
 +        aColor = RED_COLOR;
 +        break;
 +
 +        // css2  http://www.w3.org/TR/REC-CSS2/ui.html#system-colors
-+    case eColorID_activeborder:
++    case ColorID::Activeborder:
 +        // active window border
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_activecaption:
++    case ColorID::Activecaption:
 +        // active window caption background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_appworkspace:
++    case ColorID::Appworkspace:
 +        // MDI background color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_background:
++    case ColorID::Background:
 +        // desktop background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_captiontext:
++    case ColorID::Captiontext:
 +        // text in active window caption, size box, and scrollbar arrow box (!)
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID_graytext:
++    case ColorID::Graytext:
 +        // disabled text in windows, menus, etc.
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
-+    case eColorID_highlight:
++    case ColorID::Highlight:
 +        // background of selected item
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID_highlighttext:
++    case ColorID::Highlighttext:
 +        // text of selected item
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID_inactiveborder:
++    case ColorID::Inactiveborder:
 +        // inactive window border
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
-+    case eColorID_inactivecaption:
++    case ColorID::Inactivecaption:
 +        // inactive window caption
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
-+    case eColorID_inactivecaptiontext:
++    case ColorID::Inactivecaptiontext:
 +        // text in inactive window caption
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
-+    case eColorID_infobackground:
++    case ColorID::Infobackground:
 +        // tooltip background color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipBase));
 +        break;
-+    case eColorID_infotext:
++    case ColorID::Infotext:
 +        // tooltip text color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipText));
 +        break;
-+    case eColorID_menu:
++    case ColorID::Menu:
 +        // menu background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_menutext:
++    case ColorID::Menutext:
 +        // menu text
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID_scrollbar:
++    case ColorID::Scrollbar:
 +        // scrollbar gray area
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Mid));
 +        break;
 +
-+    case eColorID_threedface:
-+    case eColorID_buttonface:
++    case ColorID::Threedface:
++    case ColorID::Buttonface:
 +        // 3-D face color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
 +
-+    case eColorID_buttontext:
++    case ColorID::Buttontext:
 +        // text on push buttons
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ButtonText));
 +        break;
 +
-+    case eColorID_buttonhighlight:
++    case ColorID::Buttonhighlight:
 +        // 3-D highlighted edge color
-+    case eColorID_threedhighlight:
++    case ColorID::Threedhighlight:
 +        // 3-D highlighted outer edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
-+    case eColorID_threedlightshadow:
++    case ColorID::Threedlightshadow:
 +        // 3-D highlighted inner edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Light));
 +        break;
 +
-+    case eColorID_buttonshadow:
++    case ColorID::Buttonshadow:
 +        // 3-D shadow edge color
-+    case eColorID_threedshadow:
++    case ColorID::Threedshadow:
 +        // 3-D shadow inner edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
-+    case eColorID_threeddarkshadow:
++    case ColorID::Threeddarkshadow:
 +        // 3-D shadow outer edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Shadow));
 +        break;
 +
-+    case eColorID_window:
-+    case eColorID_windowframe:
++    case ColorID::Window:
++    case ColorID::Windowframe:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +
-+    case eColorID_windowtext:
++    case ColorID::Windowtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +
-+    case eColorID__moz_eventreerow:
-+    case eColorID__moz_field:
++    case ColorID::MozEventreerow:
++    case ColorID::Field:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
-+    case eColorID__moz_fieldtext:
++    case ColorID::Fieldtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_dialog:
++    case ColorID::MozDialog:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID__moz_dialogtext:
++    case ColorID::MozDialogtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID__moz_dragtargetzone:
++    case ColorID::MozDragtargetzone:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID__moz_buttondefault:
++    case ColorID::MozButtondefault:
 +        // default button border color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
-+    case eColorID__moz_buttonhoverface:
++    case ColorID::MozButtonhoverface:
 +        aColor = BG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_buttonhovertext:
++    case ColorID::MozButtonhovertext:
 +        aColor = FG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_cellhighlight:
-+    case eColorID__moz_html_cellhighlight:
++    case ColorID::MozCellhighlight:
++    case ColorID::MozHtmlCellhighlight:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID__moz_cellhighlighttext:
-+    case eColorID__moz_html_cellhighlighttext:
++    case ColorID::MozCellhighlighttext:
++    case ColorID::MozHtmlCellhighlighttext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID__moz_menuhover:
++    case ColorID::MozMenuhover:
 +        aColor = BG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_menuhovertext:
++    case ColorID::MozMenuhovertext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_oddtreerow:
++    case ColorID::MozOddtreerow:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID__moz_nativehyperlinktext:
++    case ColorID::MozNativehyperlinktext:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID__moz_comboboxtext:
++    case ColorID::MozComboboxtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_combobox:
++    case ColorID::MozCombobox:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
-+    case eColorID__moz_menubartext:
++    case ColorID::MozMenubartext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_menubarhovertext:
++    case ColorID::MozMenubarhovertext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    default:
@@ -7231,7 +7240,7 @@ index 000000000000..e2f8ade5e6d8
 +        case eIntID_ScrollbarButtonAutoRepeatBehavior:
 +            aResult = 0;
 +            break;
-+        
++
 +        case eIntID_ContextMenuOffsetVertical:
 +        case eIntID_ContextMenuOffsetHorizontal:
 +            aResult = 2;
@@ -7270,8 +7279,7 @@ index 000000000000..e2f8ade5e6d8
 +/*virtual*/
 +bool
 +nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
-+                           gfxFontStyle& aFontStyle,
-+                           float aDevPixPerCSSPixel)
++                           gfxFontStyle& aFontStyle)
 +{
 +  QFont qFont = QGuiApplication::font();
 +
@@ -7280,9 +7288,23 @@ index 000000000000..e2f8ade5e6d8
 +  aFontName = quote + family + quote;
 +
 +  aFontStyle.systemFont = true;
-+  aFontStyle.style = qFont.style();
-+  aFontStyle.weight = qFont.weight();
-+  aFontStyle.stretch = qFont.stretch();
++  switch (qFont.style()) {
++      case QFont::StyleNormal:
++          aFontStyle.style = mozilla::FontSlantStyle::Normal();
++          break;
++      case QFont::StyleItalic:
++          aFontStyle.style = mozilla::FontSlantStyle::Italic();
++          break;
++      case QFont::StyleOblique:
++          aFontStyle.style = mozilla::FontSlantStyle::Oblique();
++          break;
++      default:
++          aFontStyle.style = mozilla::FontSlantStyle::Normal();
++          break;
++  }
++
++  aFontStyle.weight = mozilla::FontWeight::Normal();
++  aFontStyle.stretch = mozilla::FontStretch((float)qFont.stretch());
 +  // use pixel size directly if it is set, otherwise compute from point size
 +  if (qFont.pixelSize() != -1) {
 +    aFontStyle.size = qFont.pixelSize();
@@ -7315,10 +7337,10 @@ index 000000000000..e2f8ade5e6d8
 +}
 diff --git a/widget/qt/nsLookAndFeel.h b/widget/qt/nsLookAndFeel.h
 new file mode 100644
-index 000000000000..323addfe1942
+index 000000000000..e8a134b93f3f
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,41 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -7348,16 +7370,15 @@ index 000000000000..323addfe1942
 +
 +    void NativeInit() final;
 +
-+    virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle,
-+                             float aDevPixPerCSSPixel);
-+    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult);
-+    virtual nsresult GetFloatImpl(FloatID aID, float &aResult);
-+    virtual bool GetEchoPasswordImpl();
-+    virtual uint32_t GetPasswordMaskDelayImpl();
-+    virtual char16_t GetPasswordCharacterImpl();
++    virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle) override;
++    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult) override;
++    virtual nsresult GetFloatImpl(FloatID aID, float &aResult) override;
++    virtual bool GetEchoPasswordImpl() override;
++    virtual uint32_t GetPasswordMaskDelayImpl() override;
++    virtual char16_t GetPasswordCharacterImpl() override;
 +
 +protected:
-+    virtual nsresult NativeGetColor(ColorID aID, nscolor &aColor);
++    virtual nsresult NativeGetColor(ColorID aID, nscolor &aColor) override;
 +};
 +
 +#endif
