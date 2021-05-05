@@ -183,6 +183,21 @@ See upstream commit: 3a8e0049b7b3286e2a97841a4e0ba0cc3d6f326e
 
 See upstream commit: 0e903787dab6c6cb3a73bcc76a05e1fd827b1f2b
 
+[sailfishos][qt] Convert nsWidgetQtModule to static registration
+
+See upstream commits:
+    950b0fc87bee0cd453f63f4fa0b894bd8d37ec84
+    07aab2b391ee01e7a678ee51d8d66d3bc8b5a7c2
+
+XPCOM component registration for the native theme renderer has been removed.
+See upstream commit: 8d7c2999dc0d0b481326a7f23aa6a3ee05d14011
+
+XPCOM component registration for the bidi keyboard has been removed.
+See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
+
+XPCOM component registrations for window and child window has been removed.
+See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -277,7 +292,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/moz.build                              |    6 +-
  widget/qt/GfxInfo.cpp                         |  253 +++
  widget/qt/GfxInfo.h                           |   74 +
- widget/qt/moz.build                           |   66 +
+ widget/qt/components.conf                     |  110 ++
+ widget/qt/moz.build                           |   70 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
@@ -304,10 +320,11 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenManagerQt.h                 |   34 +
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
- widget/qt/nsWidgetFactory.cpp                 |  162 ++
+ widget/qt/nsWidgetFactory.cpp                 |   36 +
+ widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8334 insertions(+), 52 deletions(-)
+ 123 files changed, 8344 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -340,6 +357,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 uriloader/exthandler/unix/nsMIMEInfoQt.h
  create mode 100644 widget/qt/GfxInfo.cpp
  create mode 100644 widget/qt/GfxInfo.h
+ create mode 100644 widget/qt/components.conf
  create mode 100644 widget/qt/moz.build
  create mode 100644 widget/qt/mozqwidget.cpp
  create mode 100644 widget/qt/mozqwidget.h
@@ -368,6 +386,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 widget/qt/nsScreenQt.cpp
  create mode 100644 widget/qt/nsScreenQt.h
  create mode 100644 widget/qt/nsWidgetFactory.cpp
+ create mode 100644 widget/qt/nsWidgetFactory.h
  create mode 100644 widget/qt/nsWindow.cpp
  create mode 100644 widget/qt/nsWindow.h
 
@@ -5192,12 +5211,128 @@ index 000000000000..db0db72779da
 +} // namespace mozilla
 +
 +#endif /* __mozilla_widget_GfxInfo_h__ */
+diff --git a/widget/qt/components.conf b/widget/qt/components.conf
+new file mode 100644
+index 000000000000..38876244f0bf
+--- /dev/null
++++ b/widget/qt/components.conf
+@@ -0,0 +1,110 @@
++# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
++# vim: set filetype=python:
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++Headers = [
++    '/widget/qt/nsWidgetFactory.h',
++]
++
++InitFunc = 'nsWidgetQtModuleCtor'
++UnloadFunc = 'nsWidgetQtModuleDtor'
++
++Classes = [
++    {
++        'cid': '{2d96b3df-c051-11d1-a827-0040959a28c9}',
++        'contract_ids': ['@mozilla.org/widget/appshell/qt;1'],
++        'headers': ['/widget/qt/nsWidgetFactory.h'],
++        'legacy_constructor': 'nsAppShellConstructor',
++        'processes': ProcessSelector.ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS,
++    },
++    {
++        'cid': '{c401eb80-f9ea-11d3-bb6f-e732b73ebe7c}',
++        'contract_ids': ['@mozilla.org/gfx/screenmanager;1'],
++        'singleton': True,
++        'type': 'mozilla::widget::ScreenManager',
++        'constructor': 'mozilla::widget::ScreenManager::GetAddRefedSingleton',
++        'headers': ['/widget/ScreenManager.h'],
++        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++    },
++    {
++        'cid': '{948a0023-e3a7-11d2-96cf-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/htmlformatconverter;1'],
++        'type': 'nsHTMLFormatConverter',
++        'headers': ['/widget/nsHTMLFormatConverter.h'],
++    },
++    {
++        'cid': '{8b5314bc-db01-11d2-96ce-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/transferable;1'],
++        'type': 'nsTransferable',
++        'headers': ['/widget/nsTransferable.h'],
++    },
++    {
++        'cid': '{8b5314ba-db01-11d2-96ce-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/clipboard;1'],
++        'type': 'nsClipboard',
++        'headers': ['/widget/qt/nsClipboard.h'],
++        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++    },
++    {
++        'cid': '{77221d5a-1dd2-11b2-8c69-c710f15d2ed5}',
++        'contract_ids': ['@mozilla.org/widget/clipboardhelper;1'],
++        'type': 'nsClipboardHelper',
++        'headers': ['/widget/nsClipboardHelper.h'],
++    },
++    {
++        'cid': '{d755a760-9f27-11df-0800-200c9a664242}',
++        'contract_ids': ['@mozilla.org/gfx/info;1'],
++        'type': 'mozilla::widget::GfxInfo',
++        'headers': ['/widget/qt/GfxInfo.h'],
++        'init_method': 'Init',
++        'processes': ProcessSelector.ALLOW_IN_GPU_RDD_AND_SOCKET_PROCESS,
++    },
++    {
++        'cid': '{6987230e-0098-4e78-bc5f-1493ee7519fa}',
++        'contract_ids': ['@mozilla.org/widget/idleservice;1'],
++        'singleton': True,
++        'type': 'nsIdleServiceQt',
++        'constructor': 'nsIdleServiceQt::GetInstance',
++        'headers': ['/widget/qt/nsIdleServiceQt.h', 'nsIdleService.h'],
++    },
++]
++
++if defined('NS_PRINTING'):
++    Classes += [
++        {
++            'cid': '{d3f69889-e13a-4321-980c-a39332e21f34}',
++            'contract_ids': ['@mozilla.org/gfx/devicecontextspec;1'],
++            'type': 'nsDeviceContextSpecQt',
++            'headers': ['/widget/qt/nsDeviceContextSpecQt.h'],
++        },
++        {
++            'cid': '{06beec76-a183-4d9f-85dd-085f26da565a}',
++            'contract_ids': ['@mozilla.org/widget/printdialog-service;1'],
++            'type': 'nsPrintDialogServiceQt',
++            'headers': ['/widget/qt/nsPrintDialogQt.h'],
++            'init_method': 'Init',
++            'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++        },
++        {
++            'cid': '{2f977d53-5485-11d4-87e2-0010a4e75ef2}',
++            'contract_ids': ['@mozilla.org/gfx/printsession;1'],
++            'type': 'nsPrintSession',
++            'headers': ['/widget/nsPrintSession.h'],
++            'init_method': 'Init',
++        },
++        {
++            'cid': '{841387c8-72e6-484b-9296-bf6eea80d58a}',
++            'contract_ids': ['@mozilla.org/gfx/printsettings-service;1'],
++            'type': 'nsPrintOptionsQt',
++            'headers': ['/widget/qt/nsPrintOptionsQt.h'],
++            'init_method': 'Init',
++        },
++        {
++            'cid': '{a6cf9129-15b3-11d2-932e-00805f8add32}',
++            'contract_ids': ['@mozilla.org/gfx/printerenumerator;1'],
++            'type': 'nsPrinterEnumeratorQt',
++            'headers': ['/widget/qt/nsDeviceContextSpecQt.h'],
++        },
++    ]
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..8003864d9559
+index 000000000000..1c950b792c92
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,70 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5228,6 +5363,10 @@ index 000000000000..8003864d9559
 +        'nsPrintOptionsQt.cpp',
 +        'nsPrintSettingsQt.cpp',
 +    ]
++
++XPCOM_MANIFESTS += [
++    'components.conf',
++]
 +
 +include('/ipc/chromium/chromium-config.mozbuild')
 +
@@ -8810,10 +8949,10 @@ index 000000000000..ad3a0ef9af3b
 +#endif  // nsScreenQt_h___
 diff --git a/widget/qt/nsWidgetFactory.cpp b/widget/qt/nsWidgetFactory.cpp
 new file mode 100644
-index 000000000000..87817a0b4a5f
+index 000000000000..b5a1005d8c27
 --- /dev/null
 +++ b/widget/qt/nsWidgetFactory.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,36 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -8830,132 +8969,18 @@ index 000000000000..87817a0b4a5f
 + * limitations under the License.
 + */
 +
-+#include "base/basictypes.h"
-+
-+#include "mozilla/ModuleUtils.h"
-+#include "mozilla/WidgetUtils.h"
-+
-+#include "nsCOMPtr.h"
-+#include "nsWidgetsCID.h"
++#include "nsWidgetFactory.h"
 +#include "nsAppShell.h"
-+
-+#include "nsWindow.h"
-+#include "nsLookAndFeel.h"
 +#include "nsAppShellSingleton.h"
-+#include "nsScreenManagerQt.h"
-+#include "nsIdleServiceQt.h"
-+#include "nsTransferable.h"
-+#include "nsBidiKeyboard.h"
-+
-+#include "nsHTMLFormatConverter.h"
-+#include "nsXULAppAPI.h"
-+
-+#ifdef NS_PRINTING
-+#include "nsDeviceContextSpecQt.h"
-+#include "nsPrintSession.h"
-+#include "nsPrintOptionsQt.h"
-+#include "nsPrintDialogQt.h"
-+#endif
-+
-+#include "nsClipboard.h"
-+#include "nsClipboardHelper.h"
-+
-+#if defined(MOZ_X11)
-+#include "GfxInfoX11.h"
-+#else
-+#include "GfxInfo.h"
-+#endif
++#include "base/basictypes.h"
++#include "mozilla/WidgetUtils.h"
++#include "nsLookAndFeel.h"
 +
 +using namespace mozilla::widget;
 +
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsWindow)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsBidiKeyboard)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsScreenManagerQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsHTMLFormatConverter)
-+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsIdleServiceQt, nsIdleServiceQt::GetInstance)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsTransferable)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboard)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboardHelper)
-+#ifdef NS_PRINTING
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceContextSpecQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintOptionsQt, Init)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsPrinterEnumeratorQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSession, Init)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintDialogServiceQt, Init)
-+#endif
++nsresult nsWidgetQtModuleCtor() { return nsAppShellInit(); }
 +
-+namespace mozilla {
-+namespace widget {
-+// This constructor should really be shared with all platforms.
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(GfxInfo, Init)
-+}
-+}
-+
-+
-+NS_DEFINE_NAMED_CID(NS_APPSHELL_CID);
-+NS_DEFINE_NAMED_CID(NS_BIDIKEYBOARD_CID);
-+NS_DEFINE_NAMED_CID(NS_WINDOW_CID);
-+NS_DEFINE_NAMED_CID(NS_CHILD_CID);
-+NS_DEFINE_NAMED_CID(NS_SCREENMANAGER_CID);
-+NS_DEFINE_NAMED_CID(NS_HTMLFORMATCONVERTER_CID);
-+NS_DEFINE_NAMED_CID(NS_IDLE_SERVICE_CID);
-+NS_DEFINE_NAMED_CID(NS_TRANSFERABLE_CID);
-+NS_DEFINE_NAMED_CID(NS_CLIPBOARD_CID);
-+NS_DEFINE_NAMED_CID(NS_CLIPBOARDHELPER_CID);
-+NS_DEFINE_NAMED_CID(NS_GFXINFO_CID);
-+#ifdef NS_PRINTING
-+NS_DEFINE_NAMED_CID(NS_PRINTSETTINGSSERVICE_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTER_ENUMERATOR_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTSESSION_CID);
-+NS_DEFINE_NAMED_CID(NS_DEVICE_CONTEXT_SPEC_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTDIALOGSERVICE_CID);
-+#endif
-+
-+static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
-+    { &kNS_APPSHELL_CID, false, nullptr, nsAppShellConstructor },
-+    { &kNS_BIDIKEYBOARD_CID, false, nullptr, nsBidiKeyboardConstructor },
-+    { &kNS_CHILD_CID, false, nullptr, nsWindowConstructor },
-+    { &kNS_CLIPBOARD_CID, false, nullptr, nsClipboardConstructor },
-+    { &kNS_CLIPBOARDHELPER_CID, false, nullptr, nsClipboardHelperConstructor },
-+    { &kNS_HTMLFORMATCONVERTER_CID, false, nullptr, nsHTMLFormatConverterConstructor },
-+    { &kNS_IDLE_SERVICE_CID, false, nullptr, nsIdleServiceQtConstructor },
-+    { &kNS_SCREENMANAGER_CID, false, nullptr, nsScreenManagerQtConstructor },
-+    { &kNS_TRANSFERABLE_CID, false, nullptr, nsTransferableConstructor },
-+    { &kNS_WINDOW_CID, false, nullptr, nsWindowConstructor },
-+    { &kNS_GFXINFO_CID, false, nullptr, mozilla::widget::GfxInfoConstructor },
-+#ifdef NS_PRINTING
-+    { &kNS_DEVICE_CONTEXT_SPEC_CID, false, nullptr, nsDeviceContextSpecQtConstructor },
-+    { &kNS_PRINTDIALOGSERVICE_CID, false, nullptr, nsPrintDialogServiceQtConstructor },
-+    { &kNS_PRINTER_ENUMERATOR_CID, false, nullptr, nsPrinterEnumeratorQtConstructor },
-+    { &kNS_PRINTSESSION_CID, false, nullptr, nsPrintSessionConstructor },
-+    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintOptionsQtConstructor },
-+#endif
-+    { nullptr }
-+};
-+
-+static const mozilla::Module::ContractIDEntry kWidgetContracts[] = {
-+    { "@mozilla.org/gfx/screenmanager;1", &kNS_SCREENMANAGER_CID },
-+    { "@mozilla.org/widget/appshell/qt;1", &kNS_APPSHELL_CID },
-+    { "@mozilla.org/widget/bidikeyboard;1", &kNS_BIDIKEYBOARD_CID },
-+    { "@mozilla.org/widget/clipboard;1", &kNS_CLIPBOARD_CID },
-+    { "@mozilla.org/widget/clipboardhelper;1", &kNS_CLIPBOARDHELPER_CID },
-+    { "@mozilla.org/widget/htmlformatconverter;1", &kNS_HTMLFORMATCONVERTER_CID },
-+    { "@mozilla.org/widget/idleservice;1", &kNS_IDLE_SERVICE_CID },
-+    { "@mozilla.org/widgets/child_window/qt;1", &kNS_CHILD_CID },
-+    { "@mozilla.org/widgets/window/qt;1", &kNS_WINDOW_CID },
-+    { "@mozilla.org/widget/transferable;1", &kNS_TRANSFERABLE_CID },
-+    { "@mozilla.org/gfx/info;1", &kNS_GFXINFO_CID },
-+#ifdef NS_PRINTING
-+    { "@mozilla.org/gfx/devicecontextspec;1", &kNS_DEVICE_CONTEXT_SPEC_CID },
-+    { "@mozilla.org/gfx/printerenumerator;1", &kNS_PRINTER_ENUMERATOR_CID },
-+    { "@mozilla.org/gfx/printsession;1", &kNS_PRINTSESSION_CID },
-+    { "@mozilla.org/gfx/printsettings-service;1", &kNS_PRINTSETTINGSSERVICE_CID },
-+    { NS_PRINTDIALOGSERVICE_CONTRACTID, &kNS_PRINTDIALOGSERVICE_CID },
-+#endif
-+    { nullptr }
-+};
-+
-+static void
++void
 +nsWidgetQtModuleDtor()
 +{
 +    // Shutdown all XP level widget classes.
@@ -8964,18 +8989,34 @@ index 000000000000..87817a0b4a5f
 +    nsLookAndFeel::Shutdown();
 +    nsAppShellShutdown();
 +}
+diff --git a/widget/qt/nsWidgetFactory.h b/widget/qt/nsWidgetFactory.h
+new file mode 100644
+index 000000000000..2306c78d3eae
+--- /dev/null
++++ b/widget/qt/nsWidgetFactory.h
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* vim:expandtab:shiftwidth=4:tabstop=4:
++ */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+static const mozilla::Module kWidgetModule = {
-+    mozilla::Module::kVersion,
-+    kWidgetCIDs,
-+    kWidgetContracts,
-+    nullptr,
-+    nullptr,
-+    nsAppShellInit,
-+    nsWidgetQtModuleDtor
-+};
++#ifndef widget_qt_nsWidgetFactory_h
++#define widget_qt_nsWidgetFactory_h
 +
-+NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
++#include "nscore.h"
++#include "nsID.h"
++
++class nsISupports;
++
++nsresult nsAppShellConstructor(nsISupports *outer, const nsIID &iid,
++                               void **result);
++
++nsresult nsWidgetQtModuleCtor();
++void nsWidgetQtModuleDtor();
++
++#endif  // defined widget_qt_nsWidgetFactory_h
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
 index 000000000000..68b0825244d3
