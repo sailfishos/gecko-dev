@@ -129,6 +129,10 @@ Add implementation for nsIWidget::CreateTopLevelWindow and
 nsIWidget::CreateChildWindow.
 See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
 
+[sailfishos][qt] Replace non-asserting NS_PRECONDITIONs with MOZ_ASSERTs
+
+See upstream commit: 71422dcaa9e79f41c5a7be0b30d93ac5844d7fed
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -8943,7 +8947,7 @@ index 000000000000..87817a0b4a5f
 +NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
-index 000000000000..06a857fe8a65
+index 000000000000..8a976a4ad102
 --- /dev/null
 +++ b/widget/qt/nsWindow.cpp
 @@ -0,0 +1,1696 @@
@@ -9597,7 +9601,7 @@ index 000000000000..06a857fe8a65
 +}
 +
 +void nsWindow::ReparentNativeWidget(nsIWidget *aNewParent) {
-+    NS_PRECONDITION(aNewParent, "");
++    MOZ_ASSERT(aNewParent, "null widget");
 +    NS_ASSERTION(!mIsDestroyed, "");
 +    NS_ASSERTION(!static_cast<nsWindow*>(aNewParent)->mIsDestroyed, "");
 +
