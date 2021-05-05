@@ -198,6 +198,8 @@ See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
 XPCOM component registrations for window and child window has been removed.
 See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
 
+[sailfishos][qt] Sort the #include statements in nsQAppInstance.cpp
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -3541,7 +3543,7 @@ index 000000000000..b55db36a5dee
 +
 diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
 new file mode 100644
-index 000000000000..73a6d009adbb
+index 000000000000..79f0d79e1228
 --- /dev/null
 +++ b/toolkit/xre/nsQAppInstance.cpp
 @@ -0,0 +1,31 @@
@@ -3551,8 +3553,8 @@ index 000000000000..73a6d009adbb
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+#include "nsQAppInstance.h"
 +#include <QGuiApplication>
++#include "nsQAppInstance.h"
 +#include "prenv.h"
 +#include "nsXPCOMPrivate.h"
 +#include <stdlib.h>
