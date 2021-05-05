@@ -47,6 +47,8 @@ See upstream commit: a053cf1c15a3a17f1d5a2119991c82f1253b078a
 
 See upstream commit: 449237fc51ae99909509042ca1c85b63aed98848
 
+[sailfishos][qt] Add missing #include for do_CreateInstance
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -101,7 +103,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  .../icon/qt/gtkqticonsconverter.manifest      |    2 +
  image/decoders/icon/qt/moz.build              |   27 +
  .../icon/qt/nsGtkQtIconsConverter.idl         |   12 +
- image/decoders/icon/qt/nsIconChannel.cpp      |  135 ++
+ image/decoders/icon/qt/nsIconChannel.cpp      |  137 ++
  image/decoders/icon/qt/nsIconChannel.h        |   40 +
  image/decoders/moz.build                      |    2 +
  intl/locale/moz.build                         |    5 +
@@ -171,7 +173,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8345 insertions(+), 50 deletions(-)
+ 121 files changed, 8347 insertions(+), 50 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -2052,10 +2054,10 @@ index 000000000000..958ae3394f69
 +};
 diff --git a/image/decoders/icon/qt/nsIconChannel.cpp b/image/decoders/icon/qt/nsIconChannel.cpp
 new file mode 100644
-index 000000000000..b5a1dff0275c
+index 000000000000..e32c2dbe170f
 --- /dev/null
 +++ b/image/decoders/icon/qt/nsIconChannel.cpp
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,137 @@
 +/* vim:set ts=2 sw=2 sts=2 cin et: */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -2080,6 +2082,8 @@ index 000000000000..b5a1dff0275c
 +
 +#include "nsIconChannel.h"
 +#include "nsGtkQtIconsConverter.h"
++
++#include "nsComponentManagerUtils.h"  // do_CreateInstance
 +
 +NS_IMPL_ISUPPORTS(nsIconChannel,
 +                  nsIRequest,
