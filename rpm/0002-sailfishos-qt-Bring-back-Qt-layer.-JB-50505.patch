@@ -49,6 +49,10 @@ See upstream commit: 449237fc51ae99909509042ca1c85b63aed98848
 
 [sailfishos][qt] Add missing #include for do_CreateInstance
 
+[sailfishos][qt] Use gfxPlatform::GetBackendPrefs to pass prefs in InitBackendPrefs
+
+See upstream commit: 0cc1972d140a1d41f3e45a981fa74d25bf7f8c40
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -93,7 +97,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  gfx/thebes/gfxPlatform.cpp                    |    4 +
  gfx/thebes/gfxQtNativeRenderer.cpp            |   48 +
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
- gfx/thebes/gfxQtPlatform.cpp                  |  185 ++
+ gfx/thebes/gfxQtPlatform.cpp                  |  182 ++
  gfx/thebes/gfxQtPlatform.h                    |   91 +
  gfx/thebes/moz.build                          |   30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |    4 +-
@@ -173,7 +177,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8347 insertions(+), 50 deletions(-)
+ 121 files changed, 8344 insertions(+), 50 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1452,10 +1456,10 @@ index 000000000000..23c138e11fc0
 +#endif /*GFXQTNATIVERENDER_H_*/
 diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
 new file mode 100644
-index 000000000000..191fa494b903
+index 000000000000..8fae6a4660a1
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.cpp
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,182 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1507,10 +1511,7 @@ index 000000000000..191fa494b903
 +    if (depth == 16) {
 +        sOffscreenFormat = SurfaceFormat::R5G6B5_UINT16;
 +    }
-+    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
-+    uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
-+    InitBackendPrefs(canvasMask, BackendType::CAIRO,
-+                     contentMask, BackendType::CAIRO);
++    InitBackendPrefs(GetBackendPrefs());
 +}
 +
 +gfxQtPlatform::~gfxQtPlatform()
