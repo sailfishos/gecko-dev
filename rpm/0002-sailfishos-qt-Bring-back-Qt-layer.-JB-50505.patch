@@ -104,6 +104,31 @@ See upstream commit: 3bd0cbdc09480b4ad2aa5735fa05338c824bc90a
 Now 's' prefix is used for GfxInfo static variables.
 See upstream commit: 8c24450c7e611ab6ce01f5028d167427bb127e57
 
+[sailfishos][qt] Adapt nsWindow to nsIWidget
+
+Signature of the nsIWidget::SetFocus has been changed.
+See upstream commits:
+    21d5c25734837f340b6906b7bd92d45a688bacb2
+    70e1dba79ee6b292b948b6aa49bf606ae48a18d6
+
+Signature of the nsIWidget::SetCursor has been changed.
+See upstream commit: ef7d8198eb0561adc7f300cc71dc92a3135224da
+
+WidgetMouseEvent has been renamed to MouseButton. eLeftButton,
+eMiddleButton, eRightButton have been renamed to eLeft, eMiddle, eRight.
+See upstream commit: b44e48bff4011d1e9523f7e3178b576709f6f66f
+
+WidgetMouseEventBase::buttons has been renamed to
+WidgetMouseEventBase::mButtons.
+See upstream commit: 614949385a435542713da9674e205641918d249b
+
+New WidgetCommandEvent public constructor should be used.
+See upstream commit: 6da4b51b7bfe02280c921fa5eafc3706d3c60f82
+
+Add implementation for nsIWidget::CreateTopLevelWindow and
+nsIWidget::CreateChildWindow.
+See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -226,9 +251,9 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
- widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
- widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8346 insertions(+), 52 deletions(-)
+ widget/qt/nsWindow.cpp                        | 1696 +++++++++++++++++
+ widget/qt/nsWindow.h                          |  312 +++
+ 121 files changed, 8354 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -8918,10 +8943,10 @@ index 000000000000..87817a0b4a5f
 +NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
-index 000000000000..e1a4d6caf591
+index 000000000000..06a857fe8a65
 --- /dev/null
 +++ b/widget/qt/nsWindow.cpp
-@@ -0,0 +1,1684 @@
+@@ -0,0 +1,1696 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -9422,17 +9447,17 @@ index 000000000000..e1a4d6caf591
 +
 +bool nsWindow::IsEnabled() const { return mEnabled; }
 +
-+nsresult nsWindow::SetFocus(bool aRaise) {
++void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
 +    // Make sure that our owning widget has focus.  If it doesn't try to
 +    // grab it.  Note that we don't set our focus flag in this case.
 +    LOGFOCUS(("  SetFocus [%p]\n", (void *)this));
 +
 +    if (!mWidget) {
-+        return NS_ERROR_FAILURE;
++        return;
 +    }
 +
 +    if (mWidget->focusObject()) {
-+        return NS_OK;
++        return;
 +    }
 +
 +    // Because QGraphicsItem cannot get the focus if they are
@@ -9442,10 +9467,10 @@ index 000000000000..e1a4d6caf591
 +    find_first_visible_parent(mWidget, realFocusItem);
 +
 +    if (!realFocusItem || realFocusItem->focusObject()) {
-+        return NS_OK;
++        return;
 +    }
 +
-+    if (aRaise && mWidget) {
++    if (aRaise == Raise::Yes && mWidget) {
 +        // the raising has to happen on the view widget
 +        mWidget->raise();
 +    }
@@ -9453,8 +9478,6 @@ index 000000000000..e1a4d6caf591
 +    // XXXndeakin why is this here? It should dispatch only when the OS
 +    // notifies us.
 +    DispatchActivateEvent();
-+
-+    return NS_OK;
 +}
 +
 +nsresult nsWindow::ConfigureChildren(
@@ -9657,12 +9680,13 @@ index 000000000000..e1a4d6caf591
 +    return nullptr;
 +}
 +
-+void nsWindow::SetCursor(nsCursor aCursor) {
-+    if (mCursor == aCursor && !mUpdateCursor) {
++void nsWindow::SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursorImage,
++                         uint32_t aHotspotX, uint32_t aHotspotY) {
++    if (mCursor == aDefaultCursor && !mUpdateCursor) {
 +        return;
 +    }
 +    mUpdateCursor = false;
-+    mCursor = aCursor;
++    mCursor = aDefaultCursor;
 +    if (mWidget) {
 +        mWidget->SetCursor(mCursor);
 +    }
@@ -9759,13 +9783,13 @@ index 000000000000..e1a4d6caf591
 +
 +    switch (aEvent->button()) {
 +    case Qt::LeftButton:
-+        aMouseEvent.button = WidgetMouseEvent::eLeftButton;
++        aMouseEvent.mButton = MouseButton::eLeft;
 +        break;
 +    case Qt::RightButton:
-+        aMouseEvent.button = WidgetMouseEvent::eRightButton;
++        aMouseEvent.mButton = MouseButton::eRight;
 +        break;
 +    case Qt::MiddleButton:
-+        aMouseEvent.button = WidgetMouseEvent::eMiddleButton;
++        aMouseEvent.mButton = MouseButton::eMiddle;
 +        break;
 +    default:
 +        break;
@@ -9810,7 +9834,7 @@ index 000000000000..e1a4d6caf591
 +    nsEventStatus status = DispatchEvent(&event);
 +
 +    // Right click on linux should also pop up a context menu.
-+    if (event.button == WidgetMouseEvent::eRightButton &&
++    if (event.mButton == MouseButton::eRight &&
 +        MOZ_LIKELY(!mIsDestroyed)) {
 +        WidgetMouseEvent contextMenuEvent(true, eContextMenu, this,
 +                                          WidgetMouseEvent::eReal);
@@ -10380,7 +10404,7 @@ index 000000000000..e1a4d6caf591
 +}
 +
 +nsEventStatus nsWindow::DispatchCommandEvent(nsAtom *aCommand) {
-+    WidgetCommandEvent event(true, nsGkAtoms::onAppCommand, aCommand, this);
++    WidgetCommandEvent event(true, aCommand, this);
 +
 +    nsEventStatus status;
 +    DispatchEvent(&event, status);
@@ -10606,12 +10630,25 @@ index 000000000000..e1a4d6caf591
 +    }
 +}
 +
++already_AddRefed<nsIWidget>
++nsIWidget::CreateTopLevelWindow()
++{
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
++
++already_AddRefed<nsIWidget>
++nsIWidget::CreateChildWindow()
++{
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
 diff --git a/widget/qt/nsWindow.h b/widget/qt/nsWindow.h
 new file mode 100644
-index 000000000000..3bf6f80f3916
+index 000000000000..cc46495df180
 --- /dev/null
 +++ b/widget/qt/nsWindow.h
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,312 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -10703,7 +10740,7 @@ index 000000000000..3bf6f80f3916
 +    virtual void Destroy() override;
 +
 +    virtual void Show(bool aState) override;
-+    virtual bool IsVisible() const;
++    virtual bool IsVisible() const override;
 +    virtual void ConstrainPosition(bool aAllowSlop,
 +                                 int32_t *aX,
 +                                 int32_t *aY) override;
@@ -10716,19 +10753,15 @@ index 000000000000..3bf6f80f3916
 +    virtual void Enable(bool aState) override;
 +    // Some of the nsIWidget methods
 +    virtual bool IsEnabled() const override;
-+    virtual nsresult SetFocus(bool aRaise = false) override;
++    virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
 +    virtual nsresult ConfigureChildren(
 +        const nsTArray<nsIWidget::Configuration>&) override;
 +    virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 +    virtual void* GetNativeData(uint32_t aDataType) override;
 +    virtual nsresult SetTitle(const nsAString &aTitle) override;
-+    virtual void SetCursor(nsCursor aCursor) override;
-+    virtual nsresult SetCursor(imgIContainer* aCursor, uint32_t aHotspotX,
-+                               uint32_t aHotspotY) override
-+    {
-+        return NS_OK;
-+    }
-+    virtual LayoutDeviceIntPoint WidgetToScreenOffset();
++    virtual void SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursorImage,
++                           uint32_t aHotspotX, uint32_t aHotspotY) override;
++    virtual LayoutDeviceIntPoint WidgetToScreenOffset() override;
 +    virtual nsresult DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
 +                                   nsEventStatus& aStatus) override;
 +    virtual void CaptureRollupEvents(nsIRollupListener *aListener,
@@ -10745,7 +10778,7 @@ index 000000000000..3bf6f80f3916
 +    virtual mozilla::layers::LayerManager*
 +        GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
 +                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-+                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT);
++                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 +
 +    virtual void SetInputContext(const InputContext& aContext,
 +                                 const InputContextAction& aAction) override;
