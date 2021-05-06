@@ -185,6 +185,28 @@ BrowserChildHelper::GetTopLevelPresShell() const {
   return nullptr;
 }
 
+void BrowserChildHelper::DispatchMessageManagerMessage(const nsAString& aMessageName,
+                                                       const nsAString& aJSONData) {
+  AutoSafeJSContext cx;
+  JS::Rooted<JS::Value> json(cx, JS::NullValue());
+  dom::ipc::StructuredCloneData data;
+  if (JS_ParseJSON(cx, static_cast<const char16_t*>(aJSONData.BeginReading()),
+                   aJSONData.Length(), &json)) {
+    ErrorResult rv;
+    data.Write(cx, json, rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      rv.SuppressException();
+      return;
+    }
+  }
+
+  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
+      mBrowserChildMessageManager);
+  RefPtr<nsFrameMessageManager> mm = kungFuDeathGrip->GetMessageManager();
+  mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr,
+                     aMessageName, false, &data, nullptr, IgnoreErrors());
+}
+
 NS_IMPL_CYCLE_COLLECTION_CLASS(BrowserChildHelper)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(BrowserChildHelper)
