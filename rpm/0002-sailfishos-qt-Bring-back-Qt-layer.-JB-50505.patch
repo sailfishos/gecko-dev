@@ -39,6 +39,108 @@ available printers is implemented through QPrinterInfo.
 
 [sailfishos][qt] Add nsIPrintSettingsService for Qt toolkit. Fixes JB#51349
 
+[sailfishos][qt] Move NullPrincipal under mozilla namespace
+
+See upstream commit: a053cf1c15a3a17f1d5a2119991c82f1253b078a
+
+[sailfishos][qt] Replace NullPrincipal::Create usage with NullPrincipal::CreateWithoutOriginAttributes
+
+See upstream commit: 449237fc51ae99909509042ca1c85b63aed98848
+
+[sailfishos][qt] Add missing #include for do_CreateInstance
+
+[sailfishos][qt] Use gfxPlatform::GetBackendPrefs to pass prefs in InitBackendPrefs
+
+See upstream commit: 0cc1972d140a1d41f3e45a981fa74d25bf7f8c40
+
+[sailfishos][qt] Allow Cairo as content/canvas backend for MOZ_WIDGET_QT
+
+See upstream commit: 0acba278661e891d32a9c094c091b3f179296f22
+
+[sailfishos][qt] Adapt gfxQtPlatform to base class gfxPlatform
+
+Add implementation for gfxPlatform::CheckVariationFontSupport.
+See upstream commit: c66fb1e66057b6be975397e3da92f553fcf7919a
+
+gfxPlatform::GetStandardFamilyName can no longer be overridden.
+See upstream commit: 6f42f167fb18a4e46e822739fa7b335cf85e8938
+
+gfxPlatform::CreateFontGroup is now implemented in gfxPlatform.cpp.
+See upstream commit: c8c463d812d0c34825744b9d360431f770640be9
+
+gfxPlatform::LookupLocalFont and MakePlatformFont can no longer be
+overridden.
+See upstream commit: c57f185cd982842cadec603058c2c2048eb08c43
+
+gfxPlatform::GetPlatformCMSOutputProfile was renamed to
+gfxPlatform::GetPlatformCMSOutputProfileData.
+See upstream commit: 726cba0bb5a18210119ae9321070b688ef8d61e1
+
+[sailfishos][qt] Replace nsGeolocation usage with Geolocation and nsGeoPosition with GeolocationPosition
+
+See upstream commit: bd713fe4ee6fd780c549498bec2a72c579431402
+
+[sailfishos][qt] Adapt GfxInfo to nsIGfxInfo and GfxInfoBase
+
+nsIGfxInfo::hasBattery attribute has been added.
+See upstream commit: cbd1d387e2d56b965098cacceb6e7a5ee3d06a2b
+
+nsIGfxInfo::windowProtocol attribute has been added.
+See upstream commit: fd0fefd13a5dd5e18705602edf2a149dad334db9
+
+nsIGfxInfo::desktopEnvironment attribute has been added.
+See upstream commit: 215f13488a39bf8bd53143cb4f60b660faa3cff2
+
+nsIGfxInfo::adapterRAM and nsIGfxInfo::adapterRAM2 now return unsigned long.
+See upstream commit: 38b7d1873faa412a7e0b11a31e5baf2a9849b7f1
+
+nsIGfxInfo::adapterDriverVendor and nsIGfxInfo::adapterDriverVendor2
+attributes have been added.
+See upstream commit: 17c3cc5d39a648680ed9c28b6a8a2d90824762ac
+
+nsIGfxInfo::displayInfo attribute has been added.
+See upstream commit: 3bd0cbdc09480b4ad2aa5735fa05338c824bc90a
+
+Now 's' prefix is used for GfxInfo static variables.
+See upstream commit: 8c24450c7e611ab6ce01f5028d167427bb127e57
+
+[sailfishos][qt] Adapt nsWindow to nsIWidget
+
+Signature of the nsIWidget::SetFocus has been changed.
+See upstream commits:
+    21d5c25734837f340b6906b7bd92d45a688bacb2
+    70e1dba79ee6b292b948b6aa49bf606ae48a18d6
+
+Signature of the nsIWidget::SetCursor has been changed.
+See upstream commit: ef7d8198eb0561adc7f300cc71dc92a3135224da
+
+WidgetMouseEvent has been renamed to MouseButton. eLeftButton,
+eMiddleButton, eRightButton have been renamed to eLeft, eMiddle, eRight.
+See upstream commit: b44e48bff4011d1e9523f7e3178b576709f6f66f
+
+WidgetMouseEventBase::buttons has been renamed to
+WidgetMouseEventBase::mButtons.
+See upstream commit: 614949385a435542713da9674e205641918d249b
+
+New WidgetCommandEvent public constructor should be used.
+See upstream commit: 6da4b51b7bfe02280c921fa5eafc3706d3c60f82
+
+Add implementation for nsIWidget::CreateTopLevelWindow and
+nsIWidget::CreateChildWindow.
+See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
+
+[sailfishos][qt] Replace non-asserting NS_PRECONDITIONs with MOZ_ASSERTs
+
+See upstream commit: 71422dcaa9e79f41c5a7be0b30d93ac5844d7fed
+
+[sailfishos][qt] Adapt nsLookAndFeel to LookAndFeel and nsXPLookAndFeel
+
+Signature of the nsXPLookAndFeel::GetFontImpl has been changed.
+See upstream commit: 323b5be77a649dfc2a2171e0bdfb95f69af50ad6
+
+System colors has been moved to values::specified::color.
+See upstream commit: 810916db161c0783361ffb88b894cc7c4e3e9ad0
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -80,11 +182,11 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  gfx/thebes/gfxFT2Fonts.cpp                    |    4 +
  gfx/thebes/gfxFcPlatformFontList.cpp          |    6 +
  gfx/thebes/gfxFont.h                          |    2 +-
- gfx/thebes/gfxPlatform.cpp                    |    4 +
+ gfx/thebes/gfxPlatform.cpp                    |    8 +-
  gfx/thebes/gfxQtNativeRenderer.cpp            |   48 +
  gfx/thebes/gfxQtNativeRenderer.h              |   68 +
- gfx/thebes/gfxQtPlatform.cpp                  |  185 ++
- gfx/thebes/gfxQtPlatform.h                    |   91 +
+ gfx/thebes/gfxQtPlatform.cpp                  |  144 ++
+ gfx/thebes/gfxQtPlatform.h                    |   62 +
  gfx/thebes/moz.build                          |   30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |    4 +-
  gfx/webrender_bindings/moz.build              |    2 +-
@@ -93,7 +195,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  .../icon/qt/gtkqticonsconverter.manifest      |    2 +
  image/decoders/icon/qt/moz.build              |   27 +
  .../icon/qt/nsGtkQtIconsConverter.idl         |   12 +
- image/decoders/icon/qt/nsIconChannel.cpp      |  134 ++
+ image/decoders/icon/qt/nsIconChannel.cpp      |  137 ++
  image/decoders/icon/qt/nsIconChannel.h        |   40 +
  image/decoders/moz.build                      |    2 +
  intl/locale/moz.build                         |    5 +
@@ -131,8 +233,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/NativeKeyToDOMKeyName.h                |  207 ++
  widget/headless/HeadlessWidget.h              |    7 +
  widget/moz.build                              |    6 +-
- widget/qt/GfxInfo.cpp                         |  194 ++
- widget/qt/GfxInfo.h                           |   66 +
+ widget/qt/GfxInfo.cpp                         |  253 +++
+ widget/qt/GfxInfo.h                           |   74 +
  widget/qt/moz.build                           |   66 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
@@ -146,8 +248,8 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
  widget/qt/nsIdleServiceQt.cpp                 |  123 ++
  widget/qt/nsIdleServiceQt.h                   |   56 +
- widget/qt/nsLookAndFeel.cpp                   |  459 +++++
- widget/qt/nsLookAndFeel.h                     |   42 +
+ widget/qt/nsLookAndFeel.cpp                   |  473 +++++
+ widget/qt/nsLookAndFeel.h                     |   41 +
  widget/qt/nsPrintDialogQt.cpp                 |   43 +
  widget/qt/nsPrintDialogQt.h                   |   32 +
  widget/qt/nsPrintOptionsQt.cpp                |   23 +
@@ -161,9 +263,9 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
- widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
- widget/qt/nsWindow.h                          |  316 ++++
- 121 files changed, 8344 insertions(+), 50 deletions(-)
+ widget/qt/nsWindow.cpp                        | 1696 +++++++++++++++++
+ widget/qt/nsWindow.h                          |  312 +++
+ 121 files changed, 8367 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -797,7 +899,7 @@ index 095a5f098bd2..92910886be20 100644
      DIRS += ['mac']
 diff --git a/dom/system/qt/QTMLocationProvider.cpp b/dom/system/qt/QTMLocationProvider.cpp
 new file mode 100644
-index 000000000000..58fcc2e50743
+index 000000000000..335b26632ff9
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.cpp
 @@ -0,0 +1,101 @@
@@ -807,7 +909,7 @@ index 000000000000..58fcc2e50743
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
 +#include "QTMLocationProvider.h"
-+#include "nsGeoPosition.h"
++#include "GeolocationPosition.h"
 +
 +using namespace mozilla;
 +
@@ -904,7 +1006,7 @@ index 000000000000..58fcc2e50743
 +}
 diff --git a/dom/system/qt/QTMLocationProvider.h b/dom/system/qt/QTMLocationProvider.h
 new file mode 100644
-index 000000000000..07b34c846119
+index 000000000000..34a7163c6845
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.h
 @@ -0,0 +1,35 @@
@@ -916,7 +1018,7 @@ index 000000000000..07b34c846119
 +#define QTMLocationProvider_h
 +
 +#include <QGeoPositionInfoSource>
-+#include "nsGeolocation.h"
++#include "Geolocation.h"
 +#include "nsIGeolocationProvider.h"
 +#include "nsCOMPtr.h"
 +
@@ -1291,7 +1393,7 @@ index f9f6cc6fa1e3..a82cb7cccd26 100644
  #else
  #  define OBLIQUE_SKEW_FACTOR 0.25f
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 96b53c105961..4f97fe330d79 100644
+index 96b53c105961..ca5ec522ff03 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -71,6 +71,8 @@
@@ -1312,6 +1414,24 @@ index 96b53c105961..4f97fe330d79 100644
  #elif defined(ANDROID)
    gPlatform = new gfxAndroidPlatform;
  #else
+@@ -1954,7 +1958,7 @@ BackendPrefsData gfxPlatform::GetBackendPrefs() const {
+   data.mCanvasBitmask = BackendTypeBit(BackendType::SKIA);
+   data.mContentBitmask = BackendTypeBit(BackendType::SKIA);
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   data.mCanvasBitmask |= BackendTypeBit(BackendType::CAIRO);
+   data.mContentBitmask |= BackendTypeBit(BackendType::CAIRO);
+ #endif
+@@ -1994,7 +1998,7 @@ void gfxPlatform::InitBackendPrefs(BackendPrefsData&& aPrefsData) {
+   }
+ 
+   uint32_t swBackendBits = BackendTypeBit(BackendType::SKIA);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   swBackendBits |= BackendTypeBit(BackendType::CAIRO);
+ #endif
+   mSoftwareBackend = GetContentBackendPref(swBackendBits);
 diff --git a/gfx/thebes/gfxQtNativeRenderer.cpp b/gfx/thebes/gfxQtNativeRenderer.cpp
 new file mode 100644
 index 000000000000..f9ee28ead37d
@@ -1442,10 +1562,10 @@ index 000000000000..23c138e11fc0
 +#endif /*GFXQTNATIVERENDER_H_*/
 diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
 new file mode 100644
-index 000000000000..191fa494b903
+index 000000000000..84aedc98b795
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.cpp
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,144 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1497,14 +1617,22 @@ index 000000000000..191fa494b903
 +    if (depth == 16) {
 +        sOffscreenFormat = SurfaceFormat::R5G6B5_UINT16;
 +    }
-+    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
-+    uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
-+    InitBackendPrefs(canvasMask, BackendType::CAIRO,
-+                     contentMask, BackendType::CAIRO);
++    InitBackendPrefs(GetBackendPrefs());
 +}
 +
 +gfxQtPlatform::~gfxQtPlatform()
 +{
++}
++
++bool
++gfxQtPlatform::CheckVariationFontSupport()
++{
++  // Although there was some variation/multiple-master support in FreeType
++  // in older versions, it seems too incomplete/unstable for us to use
++  // until at least 2.7.1.
++  FT_Int major, minor, patch;
++  FT_Library_Version(Factory::GetFTLibrary(), &major, &minor, &patch);
++  return major * 1000000 + minor * 1000 + patch >= 2007001;
 +}
 +
 +already_AddRefed<gfxASurface>
@@ -1542,55 +1670,6 @@ index 000000000000..191fa494b903
 +  }
 +  gfxPlatformFontList::Shutdown();
 +  return nullptr;
-+}
-+
-+nsresult
-+gfxQtPlatform::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName)
-+{
-+    gfxPlatformFontList::PlatformFontList()->GetStandardFamilyName(aFontName,
-+                                                                   aFamilyName);
-+    return NS_OK;
-+}
-+
-+gfxFontGroup *
-+gfxQtPlatform::CreateFontGroup(const FontFamilyList& aFontFamilyList,
-+                               const gfxFontStyle *aStyle,
-+                               gfxTextPerfMetrics* aTextPerf,
-+                               gfxUserFontSet* aUserFontSet,
-+                               gfxFloat aDevToCssSize)
-+{
-+    return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf, aUserFontSet,
-+                            aDevToCssSize);
-+}
-+
-+gfxFontEntry*
-+gfxQtPlatform::LookupLocalFont(const nsAString& aFontName,
-+                               uint16_t aWeight,
-+                               int16_t aStretch,
-+                               uint8_t aStyle)
-+{
-+    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-+    return pfl->LookupLocalFont(aFontName, aWeight, aStretch, aStyle);
-+}
-+
-+gfxFontEntry*
-+gfxQtPlatform::MakePlatformFont(const nsAString& aFontName,
-+                                uint16_t aWeight,
-+                                int16_t aStretch,
-+                                uint8_t aStyle,
-+                                const uint8_t* aFontData,
-+                                uint32_t aLength)
-+{
-+    gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
-+    return pfl->MakePlatformFont(aFontName, aWeight, aStretch, aStyle, aFontData,
-+                                 aLength);
-+}
-+
-+void
-+gfxQtPlatform::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
-+{
-+    mem = nullptr;
-+    size = 0;
 +}
 +
 +int32_t
@@ -1633,10 +1712,10 @@ index 000000000000..191fa494b903
 +}
 diff --git a/gfx/thebes/gfxQtPlatform.h b/gfx/thebes/gfxQtPlatform.h
 new file mode 100644
-index 000000000000..928e9a33e123
+index 000000000000..0bf314ba4f8e
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.h
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,62 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1676,35 +1755,6 @@ index 000000000000..928e9a33e123
 +
 +    virtual gfxPlatformFontList* CreatePlatformFontList() override;
 +
-+    virtual nsresult GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName) override;
-+
-+    gfxFontGroup*
-+    CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
-+                    const gfxFontStyle *aStyle,
-+                    gfxTextPerfMetrics* aTextPerf,
-+                    gfxUserFontSet *aUserFontSet,
-+                    gfxFloat aDevToCssSize) override;
-+
-+    /**
-+     * Look up a local platform font using the full font face name (needed to
-+     * support @font-face src local() )
-+     */
-+    virtual gfxFontEntry* LookupLocalFont(const nsAString& aFontName,
-+                                          uint16_t aWeight,
-+                                          int16_t aStretch,
-+                                          uint8_t aStyle) override;
-+
-+    /**
-+     * Activate a platform font (needed to support @font-face src url() )
-+     *
-+     */
-+    virtual gfxFontEntry* MakePlatformFont(const nsAString& aFontName,
-+                                           uint16_t aWeight,
-+                                           int16_t aStretch,
-+                                           uint8_t aStyle,
-+                                           const uint8_t* aFontData,
-+                                           uint32_t aLength) override;
-+
 +    static int32_t GetDPI();
 +
 +    virtual gfxImageFormat GetOffscreenFormat() override;
@@ -1720,9 +1770,9 @@ index 000000000000..928e9a33e123
 +protected:
 +    int8_t mMaxGenericSubstitutions;
 +
-+private:
-+    virtual void GetPlatformCMSOutputProfile(void *&mem, size_t &size) override;
++    virtual bool CheckVariationFontSupport() override;
 +
++private:
 +    int mScreenDepth;
 +};
 +
@@ -2044,10 +2094,10 @@ index 000000000000..958ae3394f69
 +};
 diff --git a/image/decoders/icon/qt/nsIconChannel.cpp b/image/decoders/icon/qt/nsIconChannel.cpp
 new file mode 100644
-index 000000000000..eb29ef15797d
+index 000000000000..e32c2dbe170f
 --- /dev/null
 +++ b/image/decoders/icon/qt/nsIconChannel.cpp
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,137 @@
 +/* vim:set ts=2 sw=2 sts=2 cin et: */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -2067,11 +2117,13 @@ index 000000000000..eb29ef15797d
 +#include "nsIStringBundle.h"
 +
 +#include "nsNetUtil.h"
-+#include "NullPrincipal.h"
++#include "mozilla/NullPrincipal.h"
 +#include "nsIURL.h"
 +
 +#include "nsIconChannel.h"
 +#include "nsGtkQtIconsConverter.h"
++
++#include "nsComponentManagerUtils.h"  // do_CreateInstance
 +
 +NS_IMPL_ISUPPORTS(nsIconChannel,
 +                  nsIRequest,
@@ -2138,7 +2190,8 @@ index 000000000000..eb29ef15797d
 +  // nsIconProtocolHandler::NewChannel2 will provide the correct loadInfo for
 +  // this iconChannel. Use the most restrictive security settings for the
 +  // temporary loadInfo to make sure the channel can not be openend.
-+  nsCOMPtr<nsIPrincipal> nullPrincipal = NullPrincipal::Create();
++  nsCOMPtr<nsIPrincipal> nullPrincipal =
++      mozilla::NullPrincipal::CreateWithoutOriginAttributes();
 +  return NS_NewInputStreamChannel(aChannel,
 +                                  aURI,
 +                                  stream.forget(),
@@ -2281,10 +2334,10 @@ index d29817b91f32..c76bb7ebbd6f 100644
  if os_solaris:
      SOURCES += [
 diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
-index 0624e5f7b3d6..fc833befa8c2 100644
+index 13a94fe183df..b40d89fc2135 100644
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
-@@ -302,7 +302,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
+@@ -320,7 +320,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
  // orthogonal IPC machinery there. Conversely, there are tier-3 non-Linux
  // platforms (BSD and Solaris) where we want the "linux" IPC machinery. So
  // we use MOZ_WIDGET_* to choose the platform backend.
@@ -4760,14 +4813,17 @@ index ab0081a77047..1a90f756af11 100644
      ]
 diff --git a/widget/qt/GfxInfo.cpp b/widget/qt/GfxInfo.cpp
 new file mode 100644
-index 000000000000..64732917f2dc
+index 000000000000..eae087d2151a
 --- /dev/null
 +++ b/widget/qt/GfxInfo.cpp
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,253 @@
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include <QScreen>
++#include <QGuiApplication>
 +
 +#include "GfxInfo.h"
 +
@@ -4788,6 +4844,11 @@ index 000000000000..64732917f2dc
 +}
 +
 +NS_IMETHODIMP
++GfxInfo::GetHasBattery(bool* aHasBattery) {
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++NS_IMETHODIMP
 +GfxInfo::GetDWriteVersion(nsAString & aDwriteVersion)
 +{
 +  return NS_ERROR_FAILURE;
@@ -4797,6 +4858,16 @@ index 000000000000..64732917f2dc
 +GfxInfo::GetCleartypeParameters(nsAString & aCleartypeParams)
 +{
 +  return NS_ERROR_FAILURE;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetDesktopEnvironment(nsAString& aDesktopEnvironment) {
++  return NS_ERROR_NOT_IMPLEMENTED;
 +}
 +
 +NS_IMETHODIMP
@@ -4813,14 +4884,14 @@ index 000000000000..64732917f2dc
 +}
 +
 +NS_IMETHODIMP
-+GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
++GfxInfo::GetAdapterRAM(uint32_t* aAdapterRAM)
 +{
-+  aAdapterRAM.Truncate();
++  *aAdapterRAM = 0;
 +  return NS_OK;
 +}
 +
 +NS_IMETHODIMP
-+GfxInfo::GetAdapterRAM2(nsAString & aAdapterRAM)
++GfxInfo::GetAdapterRAM2(uint32_t* aAdapterRAM)
 +{
 +  return NS_ERROR_FAILURE;
 +}
@@ -4835,6 +4906,17 @@ index 000000000000..64732917f2dc
 +NS_IMETHODIMP
 +GfxInfo::GetAdapterDriver2(nsAString & aAdapterDriver)
 +{
++  return NS_ERROR_FAILURE;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetAdapterDriverVendor(nsAString& aAdapterDriverVendor) {
++  aAdapterDriverVendor.Truncate();
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetAdapterDriverVendor2(nsAString& aAdapterDriverVendor) {
 +  return NS_ERROR_FAILURE;
 +}
 +
@@ -4908,10 +4990,40 @@ index 000000000000..64732917f2dc
 +  return NS_ERROR_FAILURE;
 +}
 +
++NS_IMETHODIMP
++GfxInfo::GetDisplayInfo(nsTArray<nsString>& aDisplayInfo) {
++  for (QScreen *screen : QGuiApplication::screens()) {
++    nsString value;
++    value.AppendPrintf("%dx%d@%dHz",
++                       screen->size().width(),
++                       screen->size().height(),
++                       screen->refreshRate());
++
++    aDisplayInfo.AppendElement(value);
++  }
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetDisplayWidth(nsTArray<uint32_t>& aDisplayWidth) {
++  for (QScreen *screen : QGuiApplication::screens()) {
++    aDisplayWidth.AppendElement((uint32_t)screen->size().width());
++  }
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++GfxInfo::GetDisplayHeight(nsTArray<uint32_t>& aDisplayHeight) {
++  for (QScreen *screen : QGuiApplication::screens()) {
++    aDisplayHeight.AppendElement((uint32_t)screen->size().height());
++  }
++  return NS_OK;
++}
++
 +const nsTArray<GfxDriverInfo>&
 +GfxInfo::GetGfxDriverInfo()
 +{
-+  return *mDriverInfo;
++  return *sDriverInfo;
 +}
 +
 +uint32_t GfxInfo::OperatingSystemVersion()
@@ -4960,10 +5072,10 @@ index 000000000000..64732917f2dc
 +#endif
 diff --git a/widget/qt/GfxInfo.h b/widget/qt/GfxInfo.h
 new file mode 100644
-index 000000000000..362ce057a1dc
+index 000000000000..db0db72779da
 --- /dev/null
 +++ b/widget/qt/GfxInfo.h
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,74 @@
 +/* vim: se cin sw=2 ts=2 et : */
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
 + *
@@ -4990,13 +5102,17 @@ index 000000000000..362ce057a1dc
 +  NS_IMETHOD GetD2DEnabled(bool *aD2DEnabled) override;
 +  NS_IMETHOD GetDWriteEnabled(bool *aDWriteEnabled) override;
 +  NS_IMETHOD GetDWriteVersion(nsAString & aDwriteVersion) override;
++  NS_IMETHOD GetHasBattery(bool* aHasBattery) override;
 +  NS_IMETHOD GetCleartypeParameters(nsAString & aCleartypeParams) override;
++  NS_IMETHOD GetWindowProtocol(nsAString& aWindowProtocol) override;
++  NS_IMETHOD GetDesktopEnvironment(nsAString& aDesktopEnvironment) override;
 +  NS_IMETHOD GetAdapterDescription(nsAString & aAdapterDescription) override;
 +  NS_IMETHOD GetAdapterDriver(nsAString & aAdapterDriver) override;
 +  NS_IMETHOD GetAdapterVendorID(nsAString & aAdapterVendorID) override;
 +  NS_IMETHOD GetAdapterDeviceID(nsAString & aAdapterDeviceID) override;
 +  NS_IMETHOD GetAdapterSubsysID(nsAString & aAdapterSubsysID) override;
-+  NS_IMETHOD GetAdapterRAM(nsAString & aAdapterRAM) override;
++  NS_IMETHOD GetAdapterRAM(uint32_t* aAdapterRAM) override;
++  NS_IMETHOD GetAdapterDriverVendor(nsAString& aAdapterDriverVendor) override;
 +  NS_IMETHOD GetAdapterDriverVersion(nsAString & aAdapterDriverVersion) override;
 +  NS_IMETHOD GetAdapterDriverDate(nsAString & aAdapterDriverDate) override;
 +  NS_IMETHOD GetAdapterDescription2(nsAString & aAdapterDescription) override;
@@ -5004,10 +5120,14 @@ index 000000000000..362ce057a1dc
 +  NS_IMETHOD GetAdapterVendorID2(nsAString & aAdapterVendorID) override;
 +  NS_IMETHOD GetAdapterDeviceID2(nsAString & aAdapterDeviceID) override;
 +  NS_IMETHOD GetAdapterSubsysID2(nsAString & aAdapterSubsysID) override;
-+  NS_IMETHOD GetAdapterRAM2(nsAString & aAdapterRAM) override;
++  NS_IMETHOD GetAdapterRAM2(uint32_t* aAdapterRAM) override;
++  NS_IMETHOD GetAdapterDriverVendor2(nsAString& aAdapterDriverVendor) override;
 +  NS_IMETHOD GetAdapterDriverVersion2(nsAString & aAdapterDriverVersion) override;
 +  NS_IMETHOD GetAdapterDriverDate2(nsAString & aAdapterDriverDate) override;
 +  NS_IMETHOD GetIsGPU2Active(bool *aIsGPU2Active) override;
++  NS_IMETHOD GetDisplayInfo(nsTArray<nsString>& aDisplayInfo) override;
++  NS_IMETHOD GetDisplayWidth(nsTArray<uint32_t>& aDisplayWidth) override;
++  NS_IMETHOD GetDisplayHeight(nsTArray<uint32_t>& aDisplayHeight) override;
 +  using GfxInfoBase::GetFeatureStatus;
 +  using GfxInfoBase::GetFeatureSuggestedDriverVersion;
 +
@@ -6738,10 +6858,10 @@ index 000000000000..f947b56e02e0
 +#endif // nsIdleServiceQt_h__
 diff --git a/widget/qt/nsLookAndFeel.cpp b/widget/qt/nsLookAndFeel.cpp
 new file mode 100644
-index 000000000000..e2f8ade5e6d8
+index 000000000000..1bab88760357
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.cpp
-@@ -0,0 +1,459 @@
+@@ -0,0 +1,473 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -6768,6 +6888,7 @@ index 000000000000..e2f8ade5e6d8
 +#include "gfxFont.h"
 +#include "gfxFontConstants.h"
 +#include "mozilla/gfx/2D.h"
++#include "mozilla/FontPropertyTypes.h"
 +
 +static const char16_t UNICODE_BULLET = 0x2022;
 +
@@ -6800,236 +6921,236 @@ index 000000000000..e2f8ade5e6d8
 +        // These colors don't seem to be used for anything anymore in Mozilla
 +        // (except here at least TextSelectBackground and TextSelectForeground)
 +        // The CSS2 colors below are used.
-+    case eColorID_WindowBackground:
++    case ColorID::WindowBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WindowForeground:
++    case ColorID::WindowForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_WidgetBackground:
++    case ColorID::WidgetBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WidgetForeground:
++    case ColorID::WidgetForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_WidgetSelectBackground:
++    case ColorID::WidgetSelectBackground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_WidgetSelectForeground:
++    case ColorID::WidgetSelectForeground:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_Widget3DHighlight:
++    case ColorID::Widget3DHighlight:
 +        aColor = NS_RGB(0xa0,0xa0,0xa0);
 +        break;
-+    case eColorID_Widget3DShadow:
++    case ColorID::Widget3DShadow:
 +        aColor = NS_RGB(0x40,0x40,0x40);
 +        break;
-+    case eColorID_TextBackground:
++    case ColorID::TextBackground:
 +        // not used?
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_TextForeground:
++    case ColorID::TextForeground:
 +        // not used?
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID_TextSelectBackground:
-+    case eColorID_IMESelectedRawTextBackground:
-+    case eColorID_IMESelectedConvertedTextBackground:
++    case ColorID::TextSelectBackground:
++    case ColorID::IMESelectedRawTextBackground:
++    case ColorID::IMESelectedConvertedTextBackground:
 +        // still used
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID_TextSelectForeground:
-+    case eColorID_IMESelectedRawTextForeground:
-+    case eColorID_IMESelectedConvertedTextForeground:
++    case ColorID::TextSelectForeground:
++    case ColorID::IMESelectedRawTextForeground:
++    case ColorID::IMESelectedConvertedTextForeground:
 +        // still used
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID_IMERawInputBackground:
-+    case eColorID_IMEConvertedTextBackground:
++    case ColorID::IMERawInputBackground:
++    case ColorID::IMEConvertedTextBackground:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID_IMERawInputForeground:
-+    case eColorID_IMEConvertedTextForeground:
++    case ColorID::IMERawInputForeground:
++    case ColorID::IMEConvertedTextForeground:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID_IMERawInputUnderline:
-+    case eColorID_IMEConvertedTextUnderline:
++    case ColorID::IMERawInputUnderline:
++    case ColorID::IMEConvertedTextUnderline:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID_IMESelectedRawTextUnderline:
-+    case eColorID_IMESelectedConvertedTextUnderline:
++    case ColorID::IMESelectedRawTextUnderline:
++    case ColorID::IMESelectedConvertedTextUnderline:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID_SpellCheckerUnderline:
++    case ColorID::SpellCheckerUnderline:
 +        aColor = RED_COLOR;
 +        break;
 +
 +        // css2  http://www.w3.org/TR/REC-CSS2/ui.html#system-colors
-+    case eColorID_activeborder:
++    case ColorID::Activeborder:
 +        // active window border
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_activecaption:
++    case ColorID::Activecaption:
 +        // active window caption background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_appworkspace:
++    case ColorID::Appworkspace:
 +        // MDI background color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_background:
++    case ColorID::Background:
 +        // desktop background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_captiontext:
++    case ColorID::Captiontext:
 +        // text in active window caption, size box, and scrollbar arrow box (!)
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID_graytext:
++    case ColorID::Graytext:
 +        // disabled text in windows, menus, etc.
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
-+    case eColorID_highlight:
++    case ColorID::Highlight:
 +        // background of selected item
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID_highlighttext:
++    case ColorID::Highlighttext:
 +        // text of selected item
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID_inactiveborder:
++    case ColorID::Inactiveborder:
 +        // inactive window border
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
-+    case eColorID_inactivecaption:
++    case ColorID::Inactivecaption:
 +        // inactive window caption
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
-+    case eColorID_inactivecaptiontext:
++    case ColorID::Inactivecaptiontext:
 +        // text in inactive window caption
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
-+    case eColorID_infobackground:
++    case ColorID::Infobackground:
 +        // tooltip background color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipBase));
 +        break;
-+    case eColorID_infotext:
++    case ColorID::Infotext:
 +        // tooltip text color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipText));
 +        break;
-+    case eColorID_menu:
++    case ColorID::Menu:
 +        // menu background
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID_menutext:
++    case ColorID::Menutext:
 +        // menu text
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID_scrollbar:
++    case ColorID::Scrollbar:
 +        // scrollbar gray area
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Mid));
 +        break;
 +
-+    case eColorID_threedface:
-+    case eColorID_buttonface:
++    case ColorID::Threedface:
++    case ColorID::Buttonface:
 +        // 3-D face color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
 +
-+    case eColorID_buttontext:
++    case ColorID::Buttontext:
 +        // text on push buttons
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ButtonText));
 +        break;
 +
-+    case eColorID_buttonhighlight:
++    case ColorID::Buttonhighlight:
 +        // 3-D highlighted edge color
-+    case eColorID_threedhighlight:
++    case ColorID::Threedhighlight:
 +        // 3-D highlighted outer edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
-+    case eColorID_threedlightshadow:
++    case ColorID::Threedlightshadow:
 +        // 3-D highlighted inner edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Light));
 +        break;
 +
-+    case eColorID_buttonshadow:
++    case ColorID::Buttonshadow:
 +        // 3-D shadow edge color
-+    case eColorID_threedshadow:
++    case ColorID::Threedshadow:
 +        // 3-D shadow inner edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
-+    case eColorID_threeddarkshadow:
++    case ColorID::Threeddarkshadow:
 +        // 3-D shadow outer edge color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Shadow));
 +        break;
 +
-+    case eColorID_window:
-+    case eColorID_windowframe:
++    case ColorID::Window:
++    case ColorID::Windowframe:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +
-+    case eColorID_windowtext:
++    case ColorID::Windowtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +
-+    case eColorID__moz_eventreerow:
-+    case eColorID__moz_field:
++    case ColorID::MozEventreerow:
++    case ColorID::Field:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
-+    case eColorID__moz_fieldtext:
++    case ColorID::Fieldtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_dialog:
++    case ColorID::MozDialog:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID__moz_dialogtext:
++    case ColorID::MozDialogtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
-+    case eColorID__moz_dragtargetzone:
++    case ColorID::MozDragtargetzone:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
-+    case eColorID__moz_buttondefault:
++    case ColorID::MozButtondefault:
 +        // default button border color
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
-+    case eColorID__moz_buttonhoverface:
++    case ColorID::MozButtonhoverface:
 +        aColor = BG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_buttonhovertext:
++    case ColorID::MozButtonhovertext:
 +        aColor = FG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_cellhighlight:
-+    case eColorID__moz_html_cellhighlight:
++    case ColorID::MozCellhighlight:
++    case ColorID::MozHtmlCellhighlight:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
-+    case eColorID__moz_cellhighlighttext:
-+    case eColorID__moz_html_cellhighlighttext:
++    case ColorID::MozCellhighlighttext:
++    case ColorID::MozHtmlCellhighlighttext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
-+    case eColorID__moz_menuhover:
++    case ColorID::MozMenuhover:
 +        aColor = BG_PRELIGHT_COLOR;
 +        break;
-+    case eColorID__moz_menuhovertext:
++    case ColorID::MozMenuhovertext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_oddtreerow:
++    case ColorID::MozOddtreerow:
 +        aColor = NS_TRANSPARENT;
 +        break;
-+    case eColorID__moz_nativehyperlinktext:
++    case ColorID::MozNativehyperlinktext:
 +        aColor = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
-+    case eColorID__moz_comboboxtext:
++    case ColorID::MozComboboxtext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_combobox:
++    case ColorID::MozCombobox:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
-+    case eColorID__moz_menubartext:
++    case ColorID::MozMenubartext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
-+    case eColorID__moz_menubarhovertext:
++    case ColorID::MozMenubarhovertext:
 +        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    default:
@@ -7119,7 +7240,7 @@ index 000000000000..e2f8ade5e6d8
 +        case eIntID_ScrollbarButtonAutoRepeatBehavior:
 +            aResult = 0;
 +            break;
-+        
++
 +        case eIntID_ContextMenuOffsetVertical:
 +        case eIntID_ContextMenuOffsetHorizontal:
 +            aResult = 2;
@@ -7158,8 +7279,7 @@ index 000000000000..e2f8ade5e6d8
 +/*virtual*/
 +bool
 +nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
-+                           gfxFontStyle& aFontStyle,
-+                           float aDevPixPerCSSPixel)
++                           gfxFontStyle& aFontStyle)
 +{
 +  QFont qFont = QGuiApplication::font();
 +
@@ -7168,9 +7288,23 @@ index 000000000000..e2f8ade5e6d8
 +  aFontName = quote + family + quote;
 +
 +  aFontStyle.systemFont = true;
-+  aFontStyle.style = qFont.style();
-+  aFontStyle.weight = qFont.weight();
-+  aFontStyle.stretch = qFont.stretch();
++  switch (qFont.style()) {
++      case QFont::StyleNormal:
++          aFontStyle.style = mozilla::FontSlantStyle::Normal();
++          break;
++      case QFont::StyleItalic:
++          aFontStyle.style = mozilla::FontSlantStyle::Italic();
++          break;
++      case QFont::StyleOblique:
++          aFontStyle.style = mozilla::FontSlantStyle::Oblique();
++          break;
++      default:
++          aFontStyle.style = mozilla::FontSlantStyle::Normal();
++          break;
++  }
++
++  aFontStyle.weight = mozilla::FontWeight::Normal();
++  aFontStyle.stretch = mozilla::FontStretch((float)qFont.stretch());
 +  // use pixel size directly if it is set, otherwise compute from point size
 +  if (qFont.pixelSize() != -1) {
 +    aFontStyle.size = qFont.pixelSize();
@@ -7203,10 +7337,10 @@ index 000000000000..e2f8ade5e6d8
 +}
 diff --git a/widget/qt/nsLookAndFeel.h b/widget/qt/nsLookAndFeel.h
 new file mode 100644
-index 000000000000..323addfe1942
+index 000000000000..e8a134b93f3f
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,41 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -7236,16 +7370,15 @@ index 000000000000..323addfe1942
 +
 +    void NativeInit() final;
 +
-+    virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle,
-+                             float aDevPixPerCSSPixel);
-+    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult);
-+    virtual nsresult GetFloatImpl(FloatID aID, float &aResult);
-+    virtual bool GetEchoPasswordImpl();
-+    virtual uint32_t GetPasswordMaskDelayImpl();
-+    virtual char16_t GetPasswordCharacterImpl();
++    virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle) override;
++    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult) override;
++    virtual nsresult GetFloatImpl(FloatID aID, float &aResult) override;
++    virtual bool GetEchoPasswordImpl() override;
++    virtual uint32_t GetPasswordMaskDelayImpl() override;
++    virtual char16_t GetPasswordCharacterImpl() override;
 +
 +protected:
-+    virtual nsresult NativeGetColor(ColorID aID, nscolor &aColor);
++    virtual nsresult NativeGetColor(ColorID aID, nscolor &aColor) override;
 +};
 +
 +#endif
@@ -8835,10 +8968,10 @@ index 000000000000..87817a0b4a5f
 +NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
-index 000000000000..e1a4d6caf591
+index 000000000000..8a976a4ad102
 --- /dev/null
 +++ b/widget/qt/nsWindow.cpp
-@@ -0,0 +1,1684 @@
+@@ -0,0 +1,1696 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -9339,17 +9472,17 @@ index 000000000000..e1a4d6caf591
 +
 +bool nsWindow::IsEnabled() const { return mEnabled; }
 +
-+nsresult nsWindow::SetFocus(bool aRaise) {
++void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
 +    // Make sure that our owning widget has focus.  If it doesn't try to
 +    // grab it.  Note that we don't set our focus flag in this case.
 +    LOGFOCUS(("  SetFocus [%p]\n", (void *)this));
 +
 +    if (!mWidget) {
-+        return NS_ERROR_FAILURE;
++        return;
 +    }
 +
 +    if (mWidget->focusObject()) {
-+        return NS_OK;
++        return;
 +    }
 +
 +    // Because QGraphicsItem cannot get the focus if they are
@@ -9359,10 +9492,10 @@ index 000000000000..e1a4d6caf591
 +    find_first_visible_parent(mWidget, realFocusItem);
 +
 +    if (!realFocusItem || realFocusItem->focusObject()) {
-+        return NS_OK;
++        return;
 +    }
 +
-+    if (aRaise && mWidget) {
++    if (aRaise == Raise::Yes && mWidget) {
 +        // the raising has to happen on the view widget
 +        mWidget->raise();
 +    }
@@ -9370,8 +9503,6 @@ index 000000000000..e1a4d6caf591
 +    // XXXndeakin why is this here? It should dispatch only when the OS
 +    // notifies us.
 +    DispatchActivateEvent();
-+
-+    return NS_OK;
 +}
 +
 +nsresult nsWindow::ConfigureChildren(
@@ -9491,7 +9622,7 @@ index 000000000000..e1a4d6caf591
 +}
 +
 +void nsWindow::ReparentNativeWidget(nsIWidget *aNewParent) {
-+    NS_PRECONDITION(aNewParent, "");
++    MOZ_ASSERT(aNewParent, "null widget");
 +    NS_ASSERTION(!mIsDestroyed, "");
 +    NS_ASSERTION(!static_cast<nsWindow*>(aNewParent)->mIsDestroyed, "");
 +
@@ -9574,12 +9705,13 @@ index 000000000000..e1a4d6caf591
 +    return nullptr;
 +}
 +
-+void nsWindow::SetCursor(nsCursor aCursor) {
-+    if (mCursor == aCursor && !mUpdateCursor) {
++void nsWindow::SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursorImage,
++                         uint32_t aHotspotX, uint32_t aHotspotY) {
++    if (mCursor == aDefaultCursor && !mUpdateCursor) {
 +        return;
 +    }
 +    mUpdateCursor = false;
-+    mCursor = aCursor;
++    mCursor = aDefaultCursor;
 +    if (mWidget) {
 +        mWidget->SetCursor(mCursor);
 +    }
@@ -9676,13 +9808,13 @@ index 000000000000..e1a4d6caf591
 +
 +    switch (aEvent->button()) {
 +    case Qt::LeftButton:
-+        aMouseEvent.button = WidgetMouseEvent::eLeftButton;
++        aMouseEvent.mButton = MouseButton::eLeft;
 +        break;
 +    case Qt::RightButton:
-+        aMouseEvent.button = WidgetMouseEvent::eRightButton;
++        aMouseEvent.mButton = MouseButton::eRight;
 +        break;
 +    case Qt::MiddleButton:
-+        aMouseEvent.button = WidgetMouseEvent::eMiddleButton;
++        aMouseEvent.mButton = MouseButton::eMiddle;
 +        break;
 +    default:
 +        break;
@@ -9727,7 +9859,7 @@ index 000000000000..e1a4d6caf591
 +    nsEventStatus status = DispatchEvent(&event);
 +
 +    // Right click on linux should also pop up a context menu.
-+    if (event.button == WidgetMouseEvent::eRightButton &&
++    if (event.mButton == MouseButton::eRight &&
 +        MOZ_LIKELY(!mIsDestroyed)) {
 +        WidgetMouseEvent contextMenuEvent(true, eContextMenu, this,
 +                                          WidgetMouseEvent::eReal);
@@ -10297,7 +10429,7 @@ index 000000000000..e1a4d6caf591
 +}
 +
 +nsEventStatus nsWindow::DispatchCommandEvent(nsAtom *aCommand) {
-+    WidgetCommandEvent event(true, nsGkAtoms::onAppCommand, aCommand, this);
++    WidgetCommandEvent event(true, aCommand, this);
 +
 +    nsEventStatus status;
 +    DispatchEvent(&event, status);
@@ -10523,12 +10655,25 @@ index 000000000000..e1a4d6caf591
 +    }
 +}
 +
++already_AddRefed<nsIWidget>
++nsIWidget::CreateTopLevelWindow()
++{
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
++
++already_AddRefed<nsIWidget>
++nsIWidget::CreateChildWindow()
++{
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
 diff --git a/widget/qt/nsWindow.h b/widget/qt/nsWindow.h
 new file mode 100644
-index 000000000000..3bf6f80f3916
+index 000000000000..cc46495df180
 --- /dev/null
 +++ b/widget/qt/nsWindow.h
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,312 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -10620,7 +10765,7 @@ index 000000000000..3bf6f80f3916
 +    virtual void Destroy() override;
 +
 +    virtual void Show(bool aState) override;
-+    virtual bool IsVisible() const;
++    virtual bool IsVisible() const override;
 +    virtual void ConstrainPosition(bool aAllowSlop,
 +                                 int32_t *aX,
 +                                 int32_t *aY) override;
@@ -10633,19 +10778,15 @@ index 000000000000..3bf6f80f3916
 +    virtual void Enable(bool aState) override;
 +    // Some of the nsIWidget methods
 +    virtual bool IsEnabled() const override;
-+    virtual nsresult SetFocus(bool aRaise = false) override;
++    virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
 +    virtual nsresult ConfigureChildren(
 +        const nsTArray<nsIWidget::Configuration>&) override;
 +    virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 +    virtual void* GetNativeData(uint32_t aDataType) override;
 +    virtual nsresult SetTitle(const nsAString &aTitle) override;
-+    virtual void SetCursor(nsCursor aCursor) override;
-+    virtual nsresult SetCursor(imgIContainer* aCursor, uint32_t aHotspotX,
-+                               uint32_t aHotspotY) override
-+    {
-+        return NS_OK;
-+    }
-+    virtual LayoutDeviceIntPoint WidgetToScreenOffset();
++    virtual void SetCursor(nsCursor aDefaultCursor, imgIContainer* aCursorImage,
++                           uint32_t aHotspotX, uint32_t aHotspotY) override;
++    virtual LayoutDeviceIntPoint WidgetToScreenOffset() override;
 +    virtual nsresult DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
 +                                   nsEventStatus& aStatus) override;
 +    virtual void CaptureRollupEvents(nsIRollupListener *aListener,
@@ -10662,7 +10803,7 @@ index 000000000000..3bf6f80f3916
 +    virtual mozilla::layers::LayerManager*
 +        GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
 +                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-+                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT);
++                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 +
 +    virtual void SetInputContext(const InputContext& aContext,
 +                                 const InputContextAction& aAction) override;
