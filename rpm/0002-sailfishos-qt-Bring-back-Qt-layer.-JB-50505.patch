@@ -161,6 +161,11 @@ See upstream commit: 028ba5d31e12e9bdbb50d5a1320d464d6f9df1e4
 
 See upstream commit: 028ba5d31e12e9bdbb50d5a1320d464d6f9df1e4
 
+[sailfishos][qt] Switch aFlavorList parameter of the nsClipboard::HasDataMatchingFlavors to type nsTArray<nsCString>
+
+nsIClipboard::hasDataMatchingFlavors now accepts Array<ACString>.
+See upstream commit: 5eb248348f323ba809927cb7e53b6d6db2fed316
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -262,7 +267,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsAppShell.h                        |   37 +
  widget/qt/nsBidiKeyboard.cpp                  |   47 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  544 ++++++
+ widget/qt/nsClipboard.cpp                     |  539 ++++++
  widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
@@ -285,7 +290,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8338 insertions(+), 52 deletions(-)
+ 121 files changed, 8333 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -5771,10 +5776,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..ef7b06679a14
+index 000000000000..78af1aff1b52
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,539 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6159,7 +6164,7 @@ index 000000000000..ef7b06679a14
 +}
 +
 +NS_IMETHODIMP
-+nsClipboard::HasDataMatchingFlavors(const char** aFlavorList, uint32_t aLength,
++nsClipboard::HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
 +                                    int32_t aWhichClipboard, bool *_retval)
 +{
 +    *_retval = false;
@@ -6169,29 +6174,24 @@ index 000000000000..ef7b06679a14
 +    // Which kind of data in the clipboard
 +    QClipboard *cb = QGuiApplication::clipboard();
 +    const QMimeData *mimeData = cb->mimeData();
-+    const char *flavor=nullptr;
 +    QStringList formats = mimeData->formats();
-+    for (uint32_t i = 0; i < aLength; ++i)
++    for (const nsCString &flavor : aFlavorList)
 +    {
-+        flavor = aFlavorList[i];
-+        if (flavor)
++        QString qflavor(flavor.get());
++
++        if (strcmp(flavor.get(), kTextMime) == 0)
 +        {
-+            QString qflavor(flavor);
++            NS_WARNING("DO NOT USE THE text/plain DATA FLAVOR ANY MORE. USE text/unicode INSTEAD");
++        }
 +
-+            if (strcmp(flavor,kTextMime) == 0)
-+            {
-+                NS_WARNING("DO NOT USE THE text/plain DATA FLAVOR ANY MORE. USE text/unicode INSTEAD");
-+            }
-+
-+            // QClipboard says it has text/plain, mozilla wants to
-+            // know if the data is text/unicode -> interpret text/plain to text/unicode
-+            if (formats.contains(qflavor) ||
-+                strcmp(flavor, kUnicodeMime) == 0)
-+            {
-+                // A match has been found, return'
-+                *_retval = true;
-+                break;
-+            }
++        // QClipboard says it has text/plain, mozilla wants to
++        // know if the data is text/unicode -> interpret text/plain to text/unicode
++        if (formats.contains(qflavor) ||
++            strcmp(flavor.get(), kUnicodeMime) == 0)
++        {
++            // A match has been found, return'
++            *_retval = true;
++            break;
 +        }
 +    }
 +    return NS_OK;
