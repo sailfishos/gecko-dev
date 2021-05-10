@@ -157,6 +157,10 @@ This fixes the build error: "'qclipboard.h' file not found".
 
 See upstream commit: 028ba5d31e12e9bdbb50d5a1320d464d6f9df1e4
 
+[sailfishos][qt] Replace nsCOMPtr<nsIArray> with nsTArray<nsCString> in GetNativeClipboardData
+
+See upstream commit: 028ba5d31e12e9bdbb50d5a1320d464d6f9df1e4
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -258,7 +262,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsAppShell.h                        |   37 +
  widget/qt/nsBidiKeyboard.cpp                  |   47 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  554 ++++++
+ widget/qt/nsClipboard.cpp                     |  544 ++++++
  widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
@@ -281,7 +285,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8348 insertions(+), 52 deletions(-)
+ 121 files changed, 8338 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -5767,10 +5771,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..1831d0562ecf
+index 000000000000..ef7b06679a14
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,544 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6014,10 +6018,10 @@ index 000000000000..1831d0562ecf
 +
 +    // get flavor list that includes all acceptable flavors (including
 +    // ones obtained through conversion)
-+    nsCOMPtr<nsIArray> flavorList;
-+    nsresult errCode = aTransferable->FlavorsTransferableCanImport(getter_AddRefs(flavorList));
++    nsTArray<nsCString> flavors;
++    nsresult errCode = aTransferable->FlavorsTransferableCanImport(flavors);
 +
-+    if (!flavorList || NS_FAILED(errCode))
++    if (NS_FAILED(errCode))
 +    {
 +        NS_WARNING("nsClipboard GetNativeClipboardData(): no FlavorsTransferable!");
 +        return NS_ERROR_FAILURE;
@@ -6027,137 +6031,127 @@ index 000000000000..1831d0562ecf
 +    const QMimeData *mimeData = cb->mimeData(clipboardMode);
 +
 +    // Walk through flavors and see which flavor matches the one being pasted
-+    uint32_t flavorCount;
-+    flavorList->GetLength(&flavorCount);
 +    nsAutoCString foundFlavor;
 +
-+    for (uint32_t i = 0; i < flavorCount; ++i)
++    for (const nsCString &flavorStr : flavors)
 +    {
-+        nsCOMPtr<nsISupportsCString> currentFlavor = do_QueryElementAt(flavorList, i);
-+
-+        if (currentFlavor)
++        // Ok, so which flavor the data being pasted could be?
++        // Text?
++        if (!strcmp(flavorStr.get(), kUnicodeMime) && mimeData->hasText())
 +        {
-+            nsCString flavorStr;
-+            currentFlavor->ToString(getter_Copies(flavorStr));
++            // Clipboard has text and flavor accepts text, so lets
++            // handle the data as text
++            foundFlavor = nsAutoCString(flavorStr);
 +
-+            // Ok, so which flavor the data being pasted could be?
-+            // Text?
-+            if (!strcmp(flavorStr.get(), kUnicodeMime) && mimeData->hasText())
-+            {
-+                // Clipboard has text and flavor accepts text, so lets
-+                // handle the data as text
-+                foundFlavor = nsAutoCString(flavorStr);
++            // Get the text data from clipboard
++            QString text = mimeData->text();
++            const QChar *unicode = text.unicode();
++            // Is there a more correct way to get the size in UTF16?
++            uint32_t len = (uint32_t) 2*text.size();
 +
-+                // Get the text data from clipboard
-+                QString text = mimeData->text();
-+                const QChar *unicode = text.unicode();
-+                // Is there a more correct way to get the size in UTF16?
-+                uint32_t len = (uint32_t) 2*text.size();
++            // And then to genericDataWrapper
++            nsCOMPtr<nsISupports> genericDataWrapper;
++            nsPrimitiveHelpers::CreatePrimitiveForData(
++                    foundFlavor,
++                    (void*)unicode,
++                    len,
++                    getter_AddRefs(genericDataWrapper));
++            // Data is good, set it to the transferable
++            aTransferable->SetTransferData(foundFlavor.get(),
++                                           genericDataWrapper,len);
++            // And thats all
++            break;
++        }
 +
-+                // And then to genericDataWrapper
-+                nsCOMPtr<nsISupports> genericDataWrapper;
-+                nsPrimitiveHelpers::CreatePrimitiveForData(
-+                        foundFlavor,
-+                        (void*)unicode,
-+                        len,
-+                        getter_AddRefs(genericDataWrapper));
-+                // Data is good, set it to the transferable
-+                aTransferable->SetTransferData(foundFlavor.get(),
-+                                               genericDataWrapper,len);
-+                // And thats all
-+                break;
-+            }
++        // html?
++        if (!strcmp(flavorStr.get(), kHTMLMime) && mimeData->hasHtml())
++        {
++            // Clipboard has text/html and flavor accepts text/html, so lets
++            // handle the data as text/html
++            foundFlavor = nsAutoCString(flavorStr);
 +
-+            // html?
-+            if (!strcmp(flavorStr.get(), kHTMLMime) && mimeData->hasHtml())
-+            {
-+                // Clipboard has text/html and flavor accepts text/html, so lets
-+                // handle the data as text/html
-+                foundFlavor = nsAutoCString(flavorStr);
++            // Get the text data from clipboard
++            QString html = mimeData->html();
++            const QChar *unicode = html.unicode();
++            // Is there a more correct way to get the size in UTF16?
++            uint32_t len = (uint32_t) 2*html.size();
 +
-+                // Get the text data from clipboard
-+                QString html = mimeData->html();
-+                const QChar *unicode = html.unicode();
-+                // Is there a more correct way to get the size in UTF16?
-+                uint32_t len = (uint32_t) 2*html.size();
++            // And then to genericDataWrapper
++            nsCOMPtr<nsISupports> genericDataWrapper;
++            nsPrimitiveHelpers::CreatePrimitiveForData(
++                    foundFlavor,
++                    (void*)unicode,
++                    len,
++                    getter_AddRefs(genericDataWrapper));
++            // Data is good, set it to the transferable
++            aTransferable->SetTransferData(foundFlavor.get(),
++                                           genericDataWrapper,len);
++            // And thats all
++            break;
++        }
 +
-+                // And then to genericDataWrapper
-+                nsCOMPtr<nsISupports> genericDataWrapper;
-+                nsPrimitiveHelpers::CreatePrimitiveForData(
-+                        foundFlavor,
-+                        (void*)unicode,
-+                        len,
-+                        getter_AddRefs(genericDataWrapper));
-+                // Data is good, set it to the transferable
-+                aTransferable->SetTransferData(foundFlavor.get(),
-+                                               genericDataWrapper,len);
-+                // And thats all
-+                break;
-+            }
++        // Image?
++        if ((  !strcmp(flavorStr.get(), kJPEGImageMime)
++            || !strcmp(flavorStr.get(), kJPGImageMime)
++            || !strcmp(flavorStr.get(), kPNGImageMime)
++            || !strcmp(flavorStr.get(), kGIFImageMime))
++            && mimeData->hasImage())
++        {
++            // Try to retrieve an image from clipboard
++            QImage image = cb->image();
++            if(image.isNull())
++                continue;
 +
-+            // Image?
-+            if ((  !strcmp(flavorStr.get(), kJPEGImageMime)
-+                || !strcmp(flavorStr.get(), kJPGImageMime)
-+                || !strcmp(flavorStr.get(), kPNGImageMime)
-+                || !strcmp(flavorStr.get(), kGIFImageMime))
-+                && mimeData->hasImage())
-+            {
-+                // Try to retrieve an image from clipboard
-+                QImage image = cb->image();
-+                if(image.isNull())
-+                    continue;
++            // Lets set the image format
++            QByteArray imageFormat;
++            if (!strcmp(flavorStr.get(), kJPEGImageMime) || !strcmp(flavorStr.get(), kJPGImageMime))
++                imageFormat = "jpeg";
++            else if (!strcmp(flavorStr.get(), kPNGImageMime))
++                imageFormat = "png";
++            else if (!strcmp(flavorStr.get(), kGIFImageMime))
++                imageFormat = "gif";
++            else
++                continue;
 +
-+                // Lets set the image format
-+                QByteArray imageFormat;
-+                if (!strcmp(flavorStr.get(), kJPEGImageMime) || !strcmp(flavorStr.get(), kJPGImageMime))
-+                    imageFormat = "jpeg";
-+                else if (!strcmp(flavorStr.get(), kPNGImageMime))
-+                    imageFormat = "png";
-+                else if (!strcmp(flavorStr.get(), kGIFImageMime))
-+                    imageFormat = "gif";
-+                else
-+                    continue;
++            // Write image from clippboard to a QByteArrayBuffer
++            QByteArray imageData;
++            QBuffer imageBuffer(&imageData);
++            QImageWriter imageWriter(&imageBuffer, imageFormat);
++            if(!imageWriter.write(image))
++                continue;
 +
-+                // Write image from clippboard to a QByteArrayBuffer
-+                QByteArray imageData;
-+                QBuffer imageBuffer(&imageData);
-+                QImageWriter imageWriter(&imageBuffer, imageFormat);
-+                if(!imageWriter.write(image))
-+                    continue;
++            // Add the data to inputstream
++            nsCOMPtr<nsIInputStream> byteStream;
++            NS_NewByteInputStream(getter_AddRefs(byteStream), imageData.constData(),
++                                  imageData.size(), NS_ASSIGNMENT_COPY);
++            // Data is good, set it to the transferable
++            aTransferable->SetTransferData(flavorStr.get(), byteStream, sizeof(nsIInputStream*));
 +
-+                // Add the data to inputstream
-+                nsCOMPtr<nsIInputStream> byteStream;
-+                NS_NewByteInputStream(getter_AddRefs(byteStream), imageData.constData(),
-+                                      imageData.size(), NS_ASSIGNMENT_COPY);
-+                // Data is good, set it to the transferable
-+                aTransferable->SetTransferData(flavorStr.get(), byteStream, sizeof(nsIInputStream*));
++            imageBuffer.close();
 +
-+                imageBuffer.close();
++            // And thats all
++            break;
++        }
 +
-+                // And thats all
-+                break;
-+            }
++        // Other mimetype?
++        // Trying to forward the data "as is"
++        if(mimeData->hasFormat(flavorStr.get()))
++        {
++            // get the data from the clipboard
++            QByteArray clipboardData = mimeData->data(flavorStr.get());
++            // And add it to genericDataWrapper
++            nsCOMPtr<nsISupports> genericDataWrapper;
++            nsPrimitiveHelpers::CreatePrimitiveForData(
++                    foundFlavor,
++                    (void*) clipboardData.data(),
++                    clipboardData.size(),
++                    getter_AddRefs(genericDataWrapper));
 +
-+            // Other mimetype?
-+            // Trying to forward the data "as is"
-+            if(mimeData->hasFormat(flavorStr.get()))
-+            {
-+                // get the data from the clipboard
-+                QByteArray clipboardData = mimeData->data(flavorStr.get());
-+                // And add it to genericDataWrapper
-+                nsCOMPtr<nsISupports> genericDataWrapper;
-+                nsPrimitiveHelpers::CreatePrimitiveForData(
-+                        foundFlavor,
-+                        (void*) clipboardData.data(),
-+                        clipboardData.size(),
-+                        getter_AddRefs(genericDataWrapper));
-+
-+                // Data is good, set it to the transferable
-+                aTransferable->SetTransferData(foundFlavor.get(),
-+                                               genericDataWrapper,clipboardData.size());
-+                // And thats all
-+                break;
-+            }
++            // Data is good, set it to the transferable
++            aTransferable->SetTransferData(foundFlavor.get(),
++                                           genericDataWrapper,clipboardData.size());
++            // And thats all
++            break;
 +        }
 +    }
 +
