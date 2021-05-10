@@ -166,6 +166,14 @@ See upstream commit: 028ba5d31e12e9bdbb50d5a1320d464d6f9df1e4
 nsIClipboard::hasDataMatchingFlavors now accepts Array<ACString>.
 See upstream commit: 5eb248348f323ba809927cb7e53b6d6db2fed316
 
+[sailfishos][qt] Adapt nsClipboard to nsTransferable
+
+aDataLen parameter has been removed from nsITransferable::getTransferData.
+See upstream commit: 5a9d2a428c8e433594f6baaeda0643c77d916e27
+
+aDataLen parameter has been removed from nsITransferable::setTransferData.
+See upstream commit: 6296f48a85a73bd3320636bd08ec044d58c5d2e4
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -5776,7 +5784,7 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..78af1aff1b52
+index 000000000000..9ab42dc01464
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
 @@ -0,0 +1,539 @@
@@ -5891,7 +5899,7 @@ index 000000000000..78af1aff1b52
 +        // Unicode text?
 +        if (!strcmp(flavorStr.get(), kUnicodeMime))
 +        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip), &len);
++            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
 +            nsCOMPtr<nsISupportsString> wideString;
 +            wideString = do_QueryInterface(clip);
 +            if (!wideString || NS_FAILED(rv))
@@ -5908,7 +5916,7 @@ index 000000000000..78af1aff1b52
 +        // html?
 +        else if (!strcmp(flavorStr.get(), kHTMLMime))
 +        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip), &len);
++            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
 +            nsCOMPtr<nsISupportsString> wideString;
 +            wideString = do_QueryInterface(clip);
 +            if (!wideString || NS_FAILED(rv))
@@ -5937,7 +5945,7 @@ index 000000000000..78af1aff1b52
 +            nsCOMPtr<nsISupportsInterfacePointer> ptrPrimitive;
 +            for (uint32_t i = 0; !ptrPrimitive && i < ArrayLength(imageMimeTypes); i++)
 +            {
-+                aTransferable->GetTransferData(imageMimeTypes[i], getter_AddRefs(clip), &len);
++                aTransferable->GetTransferData(imageMimeTypes[i], getter_AddRefs(clip));
 +                ptrPrimitive = do_QueryInterface(clip);
 +            }
 +
@@ -5981,7 +5989,7 @@ index 000000000000..78af1aff1b52
 +        // Other flavors, adding data to clipboard "as is"
 +        else
 +        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip), &len);
++            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
 +            // nothing found?
 +            if (!clip || NS_FAILED(rv))
 +                continue;
@@ -6063,7 +6071,7 @@ index 000000000000..78af1aff1b52
 +                    getter_AddRefs(genericDataWrapper));
 +            // Data is good, set it to the transferable
 +            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper,len);
++                                           genericDataWrapper);
 +            // And thats all
 +            break;
 +        }
@@ -6090,7 +6098,7 @@ index 000000000000..78af1aff1b52
 +                    getter_AddRefs(genericDataWrapper));
 +            // Data is good, set it to the transferable
 +            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper,len);
++                                           genericDataWrapper);
 +            // And thats all
 +            break;
 +        }
@@ -6130,7 +6138,7 @@ index 000000000000..78af1aff1b52
 +            NS_NewByteInputStream(getter_AddRefs(byteStream), imageData.constData(),
 +                                  imageData.size(), NS_ASSIGNMENT_COPY);
 +            // Data is good, set it to the transferable
-+            aTransferable->SetTransferData(flavorStr.get(), byteStream, sizeof(nsIInputStream*));
++            aTransferable->SetTransferData(flavorStr.get(), byteStream);
 +
 +            imageBuffer.close();
 +
@@ -6154,7 +6162,7 @@ index 000000000000..78af1aff1b52
 +
 +            // Data is good, set it to the transferable
 +            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper,clipboardData.size());
++                                           genericDataWrapper);
 +            // And thats all
 +            break;
 +        }
