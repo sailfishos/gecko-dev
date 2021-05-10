@@ -179,6 +179,10 @@ See upstream commit: 6296f48a85a73bd3320636bd08ec044d58c5d2e4
 CreateDataFromPrimitive aDataLen has been changed to out parameter.
 See upstream commit: 3a8e0049b7b3286e2a97841a4e0ba0cc3d6f326e
 
+[sailfishos][qt] Use Span in constructing a byte input stream in nsClipboard
+
+See upstream commit: 0e903787dab6c6cb3a73bcc76a05e1fd827b1f2b
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -280,7 +284,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsAppShell.h                        |   37 +
  widget/qt/nsBidiKeyboard.cpp                  |   47 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  539 ++++++
+ widget/qt/nsClipboard.cpp                     |  540 ++++++
  widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
@@ -303,7 +307,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8333 insertions(+), 52 deletions(-)
+ 121 files changed, 8334 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -5789,10 +5793,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..58d67e01c6b1
+index 000000000000..01f057009f79
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,539 @@
+@@ -0,0 +1,540 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6140,8 +6144,9 @@ index 000000000000..58d67e01c6b1
 +
 +            // Add the data to inputstream
 +            nsCOMPtr<nsIInputStream> byteStream;
-+            NS_NewByteInputStream(getter_AddRefs(byteStream), imageData.constData(),
-+                                  imageData.size(), NS_ASSIGNMENT_COPY);
++            NS_NewByteInputStream(getter_AddRefs(byteStream),
++                                  mozilla::MakeSpan(imageData.constData(), imageData.size()),
++                                  NS_ASSIGNMENT_COPY);
 +            // Data is good, set it to the transferable
 +            aTransferable->SetTransferData(flavorStr.get(), byteStream);
 +
