@@ -208,6 +208,8 @@ See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
 
 See: `/netwerk/system/linux/nsNetworkLinkService.h`.
 
+[sailfishos][qt] Include LinuxProcessLauncher::DoSetup implementation for MOZ_WIDGET_QT
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -267,7 +269,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  image/decoders/moz.build                      |    2 +
  intl/locale/moz.build                         |    5 +
  ipc/chromium/moz.build                        |    5 +
- ipc/glue/GeckoChildProcessHost.cpp            |    2 +-
+ ipc/glue/GeckoChildProcessHost.cpp            |    4 +-
  layout/base/nsPresContext.cpp                 |    7 +-
  layout/generic/moz.build                      |    3 +
  netwerk/base/moz.build                        |    8 +
@@ -327,7 +329,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 116 files changed, 7979 insertions(+), 52 deletions(-)
+ 116 files changed, 7980 insertions(+), 53 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -2393,7 +2395,7 @@ index d29817b91f32..c76bb7ebbd6f 100644
  if os_solaris:
      SOURCES += [
 diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
-index 13a94fe183df..b40d89fc2135 100644
+index 13a94fe183df..8370495a2781 100644
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
 @@ -320,7 +320,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
@@ -2405,6 +2407,15 @@ index 13a94fe183df..b40d89fc2135 100644
  class LinuxProcessLauncher : public PosixProcessLauncher {
   public:
    LinuxProcessLauncher(GeckoChildProcessHost* aHost,
+@@ -1094,7 +1094,7 @@ void BaseProcessLauncher::MapChildLogging() {
+   }
+ }
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ bool LinuxProcessLauncher::DoSetup() {
+   if (!PosixProcessLauncher::DoSetup()) {
+     return false;
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
 index 864e66fb6744..6bcbe6e4d997 100644
 --- a/layout/base/nsPresContext.cpp
