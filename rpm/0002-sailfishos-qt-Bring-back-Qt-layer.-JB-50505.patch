@@ -215,6 +215,10 @@ See: `/netwerk/system/linux/nsNetworkLinkService.h`.
 ProcInfo.cpp was copied from gtk.
 See upstream commit: 2420a8ebb9ae00ae88cb328b9bb58b1bf9d634ea
 
+[sailfishos][qt] Introduce MediaKeysEventSourceFactory
+
+See upstream commit: a7c687ab305f41b3129191dc96682873d984c2ee
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -302,9 +306,10 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/moz.build                              |    6 +-
  widget/qt/GfxInfo.cpp                         |  253 +++
  widget/qt/GfxInfo.h                           |   74 +
+ widget/qt/MediaKeysEventSourceFactory.cpp     |   13 +
  widget/qt/ProcInfo.cpp                        |  285 +++
  widget/qt/components.conf                     |  110 ++
- widget/qt/moz.build                           |   71 +
+ widget/qt/moz.build                           |   72 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
@@ -335,7 +340,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 117 files changed, 8266 insertions(+), 53 deletions(-)
+ 118 files changed, 8280 insertions(+), 53 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -363,6 +368,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 uriloader/exthandler/unix/nsMIMEInfoQt.h
  create mode 100644 widget/qt/GfxInfo.cpp
  create mode 100644 widget/qt/GfxInfo.h
+ create mode 100644 widget/qt/MediaKeysEventSourceFactory.cpp
  create mode 100644 widget/qt/ProcInfo.cpp
  create mode 100644 widget/qt/components.conf
  create mode 100644 widget/qt/moz.build
@@ -4803,6 +4809,25 @@ index 000000000000..db0db72779da
 +} // namespace mozilla
 +
 +#endif /* __mozilla_widget_GfxInfo_h__ */
+diff --git a/widget/qt/MediaKeysEventSourceFactory.cpp b/widget/qt/MediaKeysEventSourceFactory.cpp
+new file mode 100644
+index 000000000000..3c85052b267f
+--- /dev/null
++++ b/widget/qt/MediaKeysEventSourceFactory.cpp
+@@ -0,0 +1,13 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "MediaKeysEventSourceFactory.h"
++
++namespace mozilla::widget {
++
++mozilla::dom::MediaControlKeysEventSource* CreateMediaControlKeysEventSource() {
++  return nullptr;
++}
++
++}  // namespace mozilla::widget
 diff --git a/widget/qt/ProcInfo.cpp b/widget/qt/ProcInfo.cpp
 new file mode 100644
 index 000000000000..1538b561b4c2
@@ -5212,10 +5237,10 @@ index 000000000000..38876244f0bf
 +    ]
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..07f1f0acd34a
+index 000000000000..3918fd4c9a31
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,72 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5225,6 +5250,7 @@ index 000000000000..07f1f0acd34a
 +SOURCES += [
 +    '!moc_mozqwidget.cpp',
 +    '!moc_nsAppShell.cpp',
++    'MediaKeysEventSourceFactory.cpp',
 +    'mozqwidget.cpp',
 +    'nsAppShell.cpp',
 +    'nsBidiKeyboard.cpp',
