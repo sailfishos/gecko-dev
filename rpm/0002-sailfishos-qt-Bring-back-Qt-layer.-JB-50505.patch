@@ -200,6 +200,10 @@ See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
 
 [sailfishos][qt] Sort the #include statements in nsQAppInstance.cpp
 
+[sailfishos][qt] Add nsIWidget::CreateBidiKeyboardInner implementation to nsBidiKeyboard
+
+See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -300,7 +304,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
  widget/qt/nsAppShell.h                        |   37 +
- widget/qt/nsBidiKeyboard.cpp                  |   47 +
+ widget/qt/nsBidiKeyboard.cpp                  |   54 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
  widget/qt/nsClipboard.cpp                     |  540 ++++++
  widget/qt/nsClipboard.h                       |   34 +
@@ -326,7 +330,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 123 files changed, 8344 insertions(+), 52 deletions(-)
+ 123 files changed, 8351 insertions(+), 52 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -5850,10 +5854,10 @@ index 000000000000..2d2f37d75864
 +
 diff --git a/widget/qt/nsBidiKeyboard.cpp b/widget/qt/nsBidiKeyboard.cpp
 new file mode 100644
-index 000000000000..92baf8eb39da
+index 000000000000..8dc57fd2f0bc
 --- /dev/null
 +++ b/widget/qt/nsBidiKeyboard.cpp
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,54 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -5863,8 +5867,8 @@ index 000000000000..92baf8eb39da
 +
 +#include <Qt>
 +#include <QGuiApplication>
-+
 +#include "nsBidiKeyboard.h"
++#include "nsIWidget.h"
 +
 +NS_IMPL_ISUPPORTS(nsBidiKeyboard, nsIBidiKeyboard)
 +
@@ -5900,6 +5904,13 @@ index 000000000000..92baf8eb39da
 +{
 +  // not implemented yet
 +  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++// static
++already_AddRefed<nsIBidiKeyboard>
++nsIWidget::CreateBidiKeyboardInner()
++{
++  return do_AddRef(new nsBidiKeyboard());
 +}
 diff --git a/widget/qt/nsBidiKeyboard.h b/widget/qt/nsBidiKeyboard.h
 new file mode 100644
