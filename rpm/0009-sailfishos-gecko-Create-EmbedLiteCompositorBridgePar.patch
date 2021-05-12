@@ -31,14 +31,15 @@ index e6e0dcbe362a..73cc32028e8f 100644
  namespace mozilla {
  namespace layers {
  
-@@ -101,9 +106,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+@@ -101,9 +106,17 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
                                 ->GetGlobalDisplay()
                                 .GetVsyncRate();
  
 +#ifdef MOZ_EMBEDLITE
 +  // auto window = static_cast<mozilla::embedlite::nsWindow *>(aWidget->RealWidget());
++  // Passing windowId = 0 to pick up the latest EmbedLiteWindowBaseParent instance
 +  RefPtr<CompositorBridgeParent> bridge =
-+          new mozilla::embedlite::EmbedLiteCompositorBridgeParent(1, sInstance, aScale, vsyncRate, aOptions,
++          new mozilla::embedlite::EmbedLiteCompositorBridgeParent(0, sInstance, aScale, vsyncRate, aOptions,
 +                                                                  aUseExternalSurfaceSize, aSurfaceSize);
 +#else
    RefPtr<CompositorBridgeParent> bridge =
