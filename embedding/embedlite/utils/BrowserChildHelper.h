@@ -168,6 +168,11 @@ private:
   // Get the pres-shell of the document for the top-level window in this tab.
   nsIPresShell* GetTopLevelPresShell() const;
 
+  // XXX/bug 780335: Do the work the browser chrome script does in C++ instead
+  // so we don't need things like this.
+  void DispatchMessageManagerMessage(const nsAString& aMessageName,
+                                     const nsAString& aJSONData);
+
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
   friend class EmbedLiteViewChildIface;
