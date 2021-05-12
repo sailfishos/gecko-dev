@@ -208,7 +208,7 @@ EmbedLiteCompositorProcessParent::LeaveTestMode(const LayersId &aId)
 }
 
 void
-EmbedLiteCompositorProcessParent::ApplyAsyncProperties(LayerTransactionParent *aLayerTree)
+EmbedLiteCompositorProcessParent::ApplyAsyncProperties(LayerTransactionParent *aLayerTree, TransformsToSkip aSkip)
 {
   LOGT("Implement me");
   LayersId id = aLayerTree->GetId();
@@ -249,13 +249,6 @@ EmbedLiteCompositorProcessParent::GetCompositionManager(LayerTransactionParent* 
   MOZ_ASSERT(id != 0);
   Unused << id;
   return nullptr;
-}
-
-void EmbedLiteCompositorProcessParent::DidComposite(TimeStamp &aCompositeStart, TimeStamp &aCompositeEnd)
-{
-  LOGT("Implement me");
-  Unused << aCompositeStart;
-  Unused << aCompositeEnd;
 }
 
 void
