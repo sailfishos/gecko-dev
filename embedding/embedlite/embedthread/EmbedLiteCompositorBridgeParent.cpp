@@ -51,6 +51,9 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   , mSurfaceOrigin(0, 0)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
+  if (mWindowId == 0) {
+    mWindowId = EmbedLiteWindowParent::Current();
+  }
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
   Preferences::AddBoolVarCache(&mUseExternalGLContext,

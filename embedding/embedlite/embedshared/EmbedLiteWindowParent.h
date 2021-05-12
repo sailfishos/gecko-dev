@@ -28,6 +28,7 @@ public:
   EmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
 
   static EmbedLiteWindowParent* From(const uint32_t id);
+  static uint32_t Current();
 
   void AddObserver(EmbedLiteWindowParentObserver*);
   void RemoveObserver(EmbedLiteWindowParentObserver*);
