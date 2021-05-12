@@ -114,7 +114,7 @@ parent:
      */
     async ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
     async SetBackgroundColor(nscolor color);
-    async ContentReceivedInputBlock(ScrollableLayerGuid aGuid, uint64_t aInputBlockId, bool aPreventDefault);
+    async ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault);
 
     /**
      * Notifies the APZ code of the results of the gecko hit-test for a

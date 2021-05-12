@@ -298,13 +298,11 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda
   ContentReceivedInputBlockCallback callback(
-      [weakPtrThis](const ScrollableLayerGuid& aGuid,
-                    uint64_t aInputBlockId,
-                    bool aPreventDefault)
+      [weakPtrThis](uint64_t aInputBlockId, bool aPreventDefault)
       {
         if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
           EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
-          puppetWidget->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+          puppetWidget->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
         }
       });
   mAPZEventState = new APZEventState(mWidget, std::move(callback));
@@ -885,7 +883,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevice
                    false /* Ignore root scroll frame */);
   }
 
-  SendContentReceivedInputBlock(aGuid, aInputBlockId, eventHandled);
+  SendContentReceivedInputBlock(aInputBlockId, eventHandled);
 
   return IPC_OK();
 }
@@ -1036,17 +1034,17 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
 }
 
 bool
-EmbedLiteViewChild::ContentReceivedInputBlock(const ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault)
+EmbedLiteViewChild::ContentReceivedInputBlock(const uint64_t &aInputBlockId, const bool &aPreventDefault)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  return DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+  return DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
 }
 
 bool
-EmbedLiteViewChild::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
+EmbedLiteViewChild::DoSendContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
-  return SendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+  return SendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
 }
 
 bool

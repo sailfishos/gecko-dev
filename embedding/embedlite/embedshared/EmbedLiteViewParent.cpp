@@ -264,17 +264,9 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvZoomToRect(const uint32_t &aPre
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewParent::RecvContentReceivedInputBlock(const ScrollableLayerGuid &aGuid,
-                                                                           const uint64_t &aInputBlockId,
+mozilla::ipc::IPCResult EmbedLiteViewParent::RecvContentReceivedInputBlock(const uint64_t &aInputBlockId,
                                                                            const bool &aPreventDefault)
 {
-  nsWindow *window = GetWindowWidget();
-  if (window && (aGuid.mLayersId != window->GetRootLayerId())) {
-    // Guard against bad data from hijacked child processes
-    NS_ERROR("Unexpected layers id in RecvContentReceivedInputBlock; dropping message...");
-    return IPC_OK();
-  }
-
   if (GetApzcTreeManager()) {
     APZThreadUtils::RunOnControllerThread(NewRunnableMethod<uint64_t, bool>
                                           ("IAPZCTreeManager::ContentReceivedInputBlock",
