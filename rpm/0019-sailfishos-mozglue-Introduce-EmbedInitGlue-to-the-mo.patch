@@ -5,6 +5,7 @@ Subject: [PATCH] [sailfishos][mozglue] Introduce EmbedInitGlue to the mozglue.
  JB#50788
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  mozglue/moz.build                    |  3 +
  mozglue/sailfishos/EmbedInitGlue.cpp | 95 ++++++++++++++++++++++++++++
@@ -16,19 +17,19 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  create mode 100644 mozglue/sailfishos/moz.build
 
 diff --git a/mozglue/moz.build b/mozglue/moz.build
-index 26bf38957276..43f00befe07c 100644
+index e990195da8f0..241c3b6efe7e 100644
 --- a/mozglue/moz.build
 +++ b/mozglue/moz.build
-@@ -13,6 +13,9 @@ if CONFIG['MOZ_LINKER']:
+@@ -13,6 +13,9 @@ if CONFIG['MOZ_LINKER'] or CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
  if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
      DIRS += ['android']
  
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    DIRS += ['sailfishos']
 +
- DIRS += [
-   'build',
-   'misc',
+ if CONFIG['OS_TARGET'] == 'WINNT':
+     DIRS += ['dllservices']
+ 
 diff --git a/mozglue/sailfishos/EmbedInitGlue.cpp b/mozglue/sailfishos/EmbedInitGlue.cpp
 new file mode 100644
 index 000000000000..6ef0048aafcc
@@ -194,5 +195,5 @@ index 000000000000..14c490fca4c2
 +    'xpcomglue',
 +]
 -- 
-2.26.2
+2.25.1
 
