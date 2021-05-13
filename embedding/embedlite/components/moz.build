@@ -12,6 +12,7 @@ XPIDL_MODULE = 'embedLite'
 
 EXPORTS += [
     'EmbedHistoryListener.h',
+    'EmbedWidgetFactoryRegister.h',
 ]
 
 SOURCES += [
@@ -19,7 +20,6 @@ SOURCES += [
     'EmbedliteGenericFactory.cpp',
     'EmbedWidgetFactoryRegister.cpp',
     'nsClipboard.cpp',
-    'nsEmbedWidgetFactoryModule.cpp'
 ]
 
 LOCAL_INCLUDES += [
