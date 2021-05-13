@@ -26,7 +26,6 @@
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
-#include "nsIPresShell.h"
 #include "nsLayoutUtils.h"
 #include "nsILoadContext.h"
 #include "nsIScriptSecurityManager.h"
@@ -39,7 +38,7 @@
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
-
+#include "mozilla/PresShell.h"
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "nsIFrame.h"                       // for nsIFrame
 #include "FrameLayerBuilder.h"              // for FrameLayerbuilder
@@ -647,7 +646,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, cons
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
 {
   // Same that there is in nsPresShell.cpp:10670
-  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
   if (ps && mWidget->IsVisible()) {
     if (nsIFrame* root = ps->GetRootFrame()) {
       FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
@@ -808,7 +807,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
   nsIContent* content = nsLayoutUtils::FindContentFor(aGuid.mScrollId);
   NS_ENSURE_TRUE(content, IPC_OK());
 
-  nsIPresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
+  PresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
   NS_ENSURE_TRUE(presShell, IPC_OK());
 
   RefPtr<Document> document = presShell->GetDocument();
@@ -943,7 +942,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
       APZCCallbackHelper::DispatchWidgetEvent(event);
     }
 
-    nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+    RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
     NS_ENSURE_TRUE(ps, IPC_OK());
 
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
@@ -1129,7 +1128,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewI
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyFlushComplete()
 {
-  nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
   APZCCallbackHelper::NotifyFlushComplete(ps);
   return IPC_OK();
 }
@@ -1197,7 +1196,7 @@ EmbedLiteViewChild::OnFirstPaint(int32_t aX, int32_t aY)
   if (mDOMWindow) {
     nsCOMPtr<nsIDocShell> docShell = mDOMWindow->GetDocShell();
     if (docShell) {
-      nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell();
+      RefPtr<PresShell> presShell = docShell->GetPresShell();
       if (presShell) {
         nscolor bgcolor = presShell->GetCanvasBackground();
         Unused << SendSetBackgroundColor(bgcolor);
@@ -1244,11 +1243,11 @@ float
 EmbedLiteViewChild::GetPresShellResolution() const
 {
   nsCOMPtr<Document> document(mHelper->GetTopLevelDocument());
-  nsIPresShell* shell = document->GetShell();
-  if (!shell) {
+  RefPtr<PresShell> presShell = document->GetPresShell();
+  if (!presShell) {
     return 1.0f;
   }
-  return shell->GetResolution();
+  return presShell->GetResolution();
 }
 
 void
