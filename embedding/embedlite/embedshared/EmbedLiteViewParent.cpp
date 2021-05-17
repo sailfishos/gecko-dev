@@ -381,7 +381,7 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSetAllowedTouchBehavior(const u
                                            GetApzcTreeManager(),
                                            &IAPZCTreeManager::SetAllowedTouchBehavior,
                                            aInputBlockId,
-                                           Move(aFlags)));
+                                           std::move(aFlags)));
   }
   return IPC_OK();
 }

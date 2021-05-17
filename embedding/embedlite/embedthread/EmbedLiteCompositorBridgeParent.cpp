@@ -122,7 +122,7 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, nullptr, flags);
       }
       if (factory) {
-        screen->Morph(Move(factory));
+        screen->Morph(std::move(factory));
       }
     }
   }
