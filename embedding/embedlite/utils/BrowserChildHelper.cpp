@@ -176,7 +176,7 @@ BrowserChildHelper::GetTopLevelDocument() const {
   return doc.forget();
 }
 
-nsIPresShell*
+PresShell*
 BrowserChildHelper::GetTopLevelPresShell() const {
   if (RefPtr<Document> doc = GetTopLevelDocument()) {
     return doc->GetPresShell();
@@ -533,7 +533,7 @@ BrowserChildHelper::GetWidget(nsPoint* aOffset)
   NS_ENSURE_TRUE(window, nullptr);
   nsIDocShell* docShell = window->GetDocShell();
   NS_ENSURE_TRUE(docShell, nullptr);
-  nsCOMPtr<nsIPresShell> presShell = docShell->GetPresShell();
+  RefPtr<PresShell> presShell = docShell->GetPresShell();
   NS_ENSURE_TRUE(presShell, nullptr);
   nsIFrame* frame = presShell->GetRootFrame();
   if (frame) {
@@ -569,10 +569,10 @@ BrowserChildHelper::UpdateFrameHandler(const FrameMetrics& aFrameMetrics) {
   MOZ_ASSERT(aFrameMetrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID);
 
   if (aFrameMetrics.IsRootContent()) {
-    if (nsCOMPtr<nsIPresShell> shell = GetTopLevelPresShell()) {
+    if (RefPtr<PresShell> presShell = GetTopLevelPresShell()) {
       // Guard against stale updates (updates meant for a pres shell which
       // has since been torn down and destroyed).
-      if (aFrameMetrics.GetPresShellId() == shell->GetPresShellId()) {
+      if (aFrameMetrics.GetPresShellId() == presShell->GetPresShellId()) {
         ProcessUpdateFrame(aFrameMetrics);
         return true;
       }
@@ -615,12 +615,12 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         const mozilla::layers::ScrollableLayerGuid& aGuid,
                                         bool *ok)
 {
-  nsCOMPtr<nsIPresShell> presShell = GetPresContext()->GetPresShell();
+  RefPtr<PresShell> presShell = GetPresContext()->GetPresShell();
   if (!presShell) {
     if (ok)
       *ok = false;
 
-    LOGT("Failed to transform layout device point -- no nsIPresShell");
+    LOGT("Failed to transform layout device point -- no PresShell");
     return mozilla::CSSPoint(0.0f, 0.0f);
   }
 
