@@ -35,10 +35,19 @@ class EmbedHistoryListener : public mozilla::IHistory
 {
 public:
   NS_DECL_ISUPPORTS
-  NS_DECL_IHISTORY
   NS_DECL_NSIRUNNABLE
   NS_DECL_NSIOBSERVER
   NS_DECL_NSITIMERCALLBACK
+
+  // IHistory
+  NS_IMETHOD VisitURI(nsIWidget*, nsIURI*, nsIURI* aLastVisitedURI,
+                      uint32_t aFlags) final;
+  NS_IMETHOD SetURITitle(nsIURI*, const nsAString&) final;
+
+  void RegisterVisitedCallback(nsIURI*, mozilla::dom::Link*) final;
+  void UnregisterVisitedCallback(nsIURI*, mozilla::dom::Link*) final;
+
+  void NotifyVisited(nsIURI*, VisitedStatus) final;
 
   nsresult Init() { return NS_OK; }
 
