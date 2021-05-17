@@ -21,6 +21,7 @@ namespace embedlite {
 namespace {
 
 static std::map<uint32_t, EmbedLiteWindowBaseParent*> sWindowMap;
+static uint32_t sCurrentWindowId;
 
 } // namespace
 
@@ -33,6 +34,7 @@ EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, cons
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   sWindowMap[id] = this;
+  sCurrentWindowId = id;
 
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseParent);
 }
@@ -41,6 +43,9 @@ EmbedLiteWindowBaseParent::~EmbedLiteWindowBaseParent()
 {
   MOZ_ASSERT(sWindowMap.find(mId) != sWindowMap.end());
   sWindowMap.erase(sWindowMap.find(mId));
+  if (mId == sCurrentWindowId) {
+      sCurrentWindowId = 0;
+  }
 
   MOZ_ASSERT(mObservers.IsEmpty());
 
@@ -54,6 +59,11 @@ EmbedLiteWindowBaseParent* EmbedLiteWindowBaseParent::From(const uint32_t id)
     return it->second;
   }
   return nullptr;
+}
+
+uint32_t EmbedLiteWindowBaseParent::Current()
+{
+    return sCurrentWindowId;
 }
 
 void EmbedLiteWindowBaseParent::AddObserver(EmbedLiteWindowParentObserver* obs)
