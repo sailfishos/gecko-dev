@@ -419,7 +419,7 @@ EmbedHistoryListener::Run()
     nsTArray<Link*>* list = sHistory->mListeners.Get(uriString);
     if (list) {
       for (unsigned int i = 0; i < list->Length(); i++) {
-        list->ElementAt(i)->SetLinkState(eLinkState_Visited);
+        list->ElementAt(i)->VisitedQueryFinished(true);
       }
       // as per the IHistory interface contract, remove the
       // Link pointers once they have been notified
