@@ -179,6 +179,46 @@ See upstream commit: 6296f48a85a73bd3320636bd08ec044d58c5d2e4
 CreateDataFromPrimitive aDataLen has been changed to out parameter.
 See upstream commit: 3a8e0049b7b3286e2a97841a4e0ba0cc3d6f326e
 
+[sailfishos][qt] Use Span in constructing a byte input stream in nsClipboard
+
+See upstream commit: 0e903787dab6c6cb3a73bcc76a05e1fd827b1f2b
+
+[sailfishos][qt] Convert nsWidgetQtModule to static registration
+
+See upstream commits:
+    950b0fc87bee0cd453f63f4fa0b894bd8d37ec84
+    07aab2b391ee01e7a678ee51d8d66d3bc8b5a7c2
+
+XPCOM component registration for the native theme renderer has been removed.
+See upstream commit: 8d7c2999dc0d0b481326a7f23aa6a3ee05d14011
+
+XPCOM component registration for the bidi keyboard has been removed.
+See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
+
+XPCOM component registrations for window and child window has been removed.
+See upstream commit: a07f6c3866d9f6325f8cb67ef1f4a27b9a4c6a4f
+
+[sailfishos][qt] Sort the #include statements in nsQAppInstance.cpp
+
+[sailfishos][qt] Add nsIWidget::CreateBidiKeyboardInner implementation to nsBidiKeyboard
+
+See upstream commit: 7c7f4d95f60c044834e995bc4190ed054cfb709e
+
+[sailfishos][qt] Drop nsQtNetworkLinkService in favor of linux common nsNetworkLinkService
+
+See: `/netwerk/system/linux/nsNetworkLinkService.h`.
+
+[sailfishos][qt] Include LinuxProcessLauncher::DoSetup implementation for MOZ_WIDGET_QT
+
+[sailfishos][qt] Introduce ProcInfo
+
+ProcInfo.cpp was copied from gtk.
+See upstream commit: 2420a8ebb9ae00ae88cb328b9bb58b1bf9d634ea
+
+[sailfishos][qt] Introduce MediaKeysEventSourceFactory
+
+See upstream commit: a7c687ab305f41b3129191dc96682873d984c2ee
+
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
@@ -238,18 +278,11 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  image/decoders/moz.build                      |    2 +
  intl/locale/moz.build                         |    5 +
  ipc/chromium/moz.build                        |    5 +
- ipc/glue/GeckoChildProcessHost.cpp            |    2 +-
+ ipc/glue/GeckoChildProcessHost.cpp            |    4 +-
  layout/base/nsPresContext.cpp                 |    7 +-
  layout/generic/moz.build                      |    3 +
  netwerk/base/moz.build                        |    8 +
- netwerk/build/components.conf                 |    6 +
  netwerk/protocol/moz.build                    |    2 +-
- netwerk/system/moz.build                      |    3 +
- netwerk/system/qt/moz.build                   |   18 +
- netwerk/system/qt/nsQtNetworkLinkService.cpp  |   98 +
- netwerk/system/qt/nsQtNetworkLinkService.h    |   29 +
- netwerk/system/qt/nsQtNetworkManager.cpp      |  162 ++
- netwerk/system/qt/nsQtNetworkManager.h        |   56 +
  old-configure.in                              |  182 +-
  toolkit/library/moz.build                     |   12 +-
  toolkit/modules/AppConstants.jsm              |    2 +
@@ -273,14 +306,17 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/moz.build                              |    6 +-
  widget/qt/GfxInfo.cpp                         |  253 +++
  widget/qt/GfxInfo.h                           |   74 +
- widget/qt/moz.build                           |   66 +
+ widget/qt/MediaKeysEventSourceFactory.cpp     |   13 +
+ widget/qt/ProcInfo.cpp                        |  285 +++
+ widget/qt/components.conf                     |  110 ++
+ widget/qt/moz.build                           |   72 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
  widget/qt/nsAppShell.h                        |   37 +
- widget/qt/nsBidiKeyboard.cpp                  |   47 +
+ widget/qt/nsBidiKeyboard.cpp                  |   54 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  539 ++++++
+ widget/qt/nsClipboard.cpp                     |  540 ++++++
  widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
@@ -300,10 +336,11 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenManagerQt.h                 |   34 +
  widget/qt/nsScreenQt.cpp                      |   74 +
  widget/qt/nsScreenQt.h                        |   29 +
- widget/qt/nsWidgetFactory.cpp                 |  162 ++
+ widget/qt/nsWidgetFactory.cpp                 |   36 +
+ widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 121 files changed, 8333 insertions(+), 52 deletions(-)
+ 118 files changed, 8280 insertions(+), 53 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -323,11 +360,6 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 image/decoders/icon/qt/nsGtkQtIconsConverter.idl
  create mode 100644 image/decoders/icon/qt/nsIconChannel.cpp
  create mode 100644 image/decoders/icon/qt/nsIconChannel.h
- create mode 100644 netwerk/system/qt/moz.build
- create mode 100644 netwerk/system/qt/nsQtNetworkLinkService.cpp
- create mode 100644 netwerk/system/qt/nsQtNetworkLinkService.h
- create mode 100644 netwerk/system/qt/nsQtNetworkManager.cpp
- create mode 100644 netwerk/system/qt/nsQtNetworkManager.h
  create mode 100644 toolkit/xre/nsNativeAppSupportQt.cpp
  create mode 100644 toolkit/xre/nsNativeAppSupportQt.h
  create mode 100644 toolkit/xre/nsQAppInstance.cpp
@@ -336,6 +368,9 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 uriloader/exthandler/unix/nsMIMEInfoQt.h
  create mode 100644 widget/qt/GfxInfo.cpp
  create mode 100644 widget/qt/GfxInfo.h
+ create mode 100644 widget/qt/MediaKeysEventSourceFactory.cpp
+ create mode 100644 widget/qt/ProcInfo.cpp
+ create mode 100644 widget/qt/components.conf
  create mode 100644 widget/qt/moz.build
  create mode 100644 widget/qt/mozqwidget.cpp
  create mode 100644 widget/qt/mozqwidget.h
@@ -364,6 +399,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 widget/qt/nsScreenQt.cpp
  create mode 100644 widget/qt/nsScreenQt.h
  create mode 100644 widget/qt/nsWidgetFactory.cpp
+ create mode 100644 widget/qt/nsWidgetFactory.h
  create mode 100644 widget/qt/nsWindow.cpp
  create mode 100644 widget/qt/nsWindow.h
 
@@ -2372,7 +2408,7 @@ index d29817b91f32..c76bb7ebbd6f 100644
  if os_solaris:
      SOURCES += [
 diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
-index 13a94fe183df..b40d89fc2135 100644
+index 13a94fe183df..8370495a2781 100644
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
 @@ -320,7 +320,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
@@ -2384,6 +2420,15 @@ index 13a94fe183df..b40d89fc2135 100644
  class LinuxProcessLauncher : public PosixProcessLauncher {
   public:
    LinuxProcessLauncher(GeckoChildProcessHost* aHost,
+@@ -1094,7 +1094,7 @@ void BaseProcessLauncher::MapChildLogging() {
+   }
+ }
+ 
+-#if defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ bool LinuxProcessLauncher::DoSetup() {
+   if (!PosixProcessLauncher::DoSetup()) {
+     return false;
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
 index 864e66fb6744..6bcbe6e4d997 100644
 --- a/layout/base/nsPresContext.cpp
@@ -2436,23 +2481,6 @@ index 2b4c95083886..a6724df06155 100644
 +
 +if CONFIG['MOZ_ENABLE_QTNETWORK']:
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
-diff --git a/netwerk/build/components.conf b/netwerk/build/components.conf
-index 85251b18de3d..97ad7c4e0b44 100644
---- a/netwerk/build/components.conf
-+++ b/netwerk/build/components.conf
-@@ -625,6 +625,12 @@ elif toolkit == 'cocoa':
-         'headers': ['/netwerk/system/mac/nsNetworkLinkService.h'],
-         'init_method': 'Init',
-     }
-+elif toolkit == 'qt':
-+    link_service = {
-+        'type': 'nsQtNetworkLinkService',
-+        'headers': ['/netwerk/system/qt/nsQtNetworkLinkService.h'],
-+        'init_method': 'Init',
-+    }
- elif toolkit == 'android':
-     link_service = {
-         'type': 'nsAndroidNetworkLinkService',
 diff --git a/netwerk/protocol/moz.build b/netwerk/protocol/moz.build
 index 187680f6e122..eb7464187f9b 100644
 --- a/netwerk/protocol/moz.build
@@ -2465,413 +2493,6 @@ index 187680f6e122..eb7464187f9b 100644
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
      DIRS += ['gio']
  DIRS += ['http', 'res', 'viewsource', 'websocket' ]
-diff --git a/netwerk/system/moz.build b/netwerk/system/moz.build
-index ab854d6c76dd..20397b16b7e6 100644
---- a/netwerk/system/moz.build
-+++ b/netwerk/system/moz.build
-@@ -10,6 +10,9 @@ if CONFIG['OS_ARCH'] == 'WINNT':
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
-     DIRS += ['mac']
- 
-+if CONFIG['MOZ_ENABLE_QTNETWORK']:
-+    DIRS += ['qt']
-+
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
-     DIRS += [
-         'android',
-diff --git a/netwerk/system/qt/moz.build b/netwerk/system/qt/moz.build
-new file mode 100644
-index 000000000000..cc8b5ef5fbc7
---- /dev/null
-+++ b/netwerk/system/qt/moz.build
-@@ -0,0 +1,18 @@
-+# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
-+# vim: set filetype=python:
-+# This Source Code Form is subject to the terms of the Mozilla Public
-+# License, v. 2.0. If a copy of the MPL was not distributed with this
-+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
-+
-+SOURCES += [
-+    '!moc_nsQtNetworkManager.cpp',
-+    'nsQtNetworkLinkService.cpp',
-+    'nsQtNetworkManager.cpp',
-+]
-+
-+FINAL_LIBRARY = 'xul'
-+LOCAL_INCLUDES += [
-+    '/netwerk/base',
-+]
-+
-+CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
-diff --git a/netwerk/system/qt/nsQtNetworkLinkService.cpp b/netwerk/system/qt/nsQtNetworkLinkService.cpp
-new file mode 100644
-index 000000000000..f08aabbd8ed6
---- /dev/null
-+++ b/netwerk/system/qt/nsQtNetworkLinkService.cpp
-@@ -0,0 +1,98 @@
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#include "nsQtNetworkManager.h"
-+#include "nsQtNetworkLinkService.h"
-+#include "nsCOMPtr.h"
-+#include "nsIObserverService.h"
-+#include "nsServiceManagerUtils.h"
-+#include "nsString.h"
-+#include "mozilla/Services.h"
-+#include "nsCRT.h"
-+
-+NS_IMPL_ISUPPORTS(nsQtNetworkLinkService,
-+                  nsINetworkLinkService,
-+                  nsIObserver)
-+
-+nsQtNetworkLinkService::nsQtNetworkLinkService()
-+{
-+}
-+
-+nsQtNetworkLinkService::~nsQtNetworkLinkService()
-+{
-+}
-+
-+NS_IMETHODIMP
-+nsQtNetworkLinkService::GetIsLinkUp(bool* aIsUp)
-+{
-+  *aIsUp = nsQtNetworkManager::get()->isOnline();
-+  return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsQtNetworkLinkService::GetLinkStatusKnown(bool* aIsKnown)
-+{
-+  *aIsKnown = nsQtNetworkManager::get()->isOnline();
-+  return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsQtNetworkLinkService::GetLinkType(uint32_t *aLinkType)
-+{
-+  NS_ENSURE_ARG_POINTER(aLinkType);
-+
-+  // XXX This function has not yet been implemented for this platform
-+  *aLinkType = nsINetworkLinkService::LINK_TYPE_UNKNOWN;
-+  return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsQtNetworkLinkService::Observe(nsISupports* aSubject,
-+                                const char* aTopic,
-+                                const char16_t* aData)
-+{
-+  if (!strcmp(aTopic, "xpcom-shutdown")) {
-+    Shutdown();
-+    nsQtNetworkManager::get()->destroy();
-+  }
-+
-+  if (!strcmp(aTopic, "browser-lastwindow-close-granted")) {
-+    Shutdown();
-+  }
-+
-+  return NS_OK;
-+}
-+
-+nsresult
-+nsQtNetworkLinkService::Init(void)
-+{
-+  nsCOMPtr<nsIObserverService> observerService =
-+    mozilla::services::GetObserverService();
-+  if (!observerService) {
-+    return NS_ERROR_FAILURE;
-+  }
-+
-+  nsQtNetworkManager::create();
-+  nsresult rv;
-+
-+  rv = observerService->AddObserver(this, "xpcom-shutdown", false);
-+  if (NS_FAILED(rv)) {
-+    return NS_ERROR_FAILURE;
-+  }
-+
-+  rv = observerService->AddObserver(this, "browser-lastwindow-close-granted", false);
-+  if (NS_FAILED(rv)) {
-+    return NS_ERROR_FAILURE;
-+  }
-+
-+
-+  return NS_OK;
-+}
-+
-+nsresult
-+nsQtNetworkLinkService::Shutdown()
-+{
-+  nsQtNetworkManager::get()->closeSession();
-+  return NS_OK;
-+}
-diff --git a/netwerk/system/qt/nsQtNetworkLinkService.h b/netwerk/system/qt/nsQtNetworkLinkService.h
-new file mode 100644
-index 000000000000..681d49e39bfb
---- /dev/null
-+++ b/netwerk/system/qt/nsQtNetworkLinkService.h
-@@ -0,0 +1,29 @@
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef NSQTNETWORKLINKSERVICE_H_
-+#define NSQTNETWORKLINKSERVICE_H_
-+
-+#include "nsINetworkLinkService.h"
-+#include "nsIObserver.h"
-+
-+class nsQtNetworkLinkService: public nsINetworkLinkService,
-+                              public nsIObserver
-+{
-+
-+public:
-+  NS_DECL_ISUPPORTS
-+  NS_DECL_NSINETWORKLINKSERVICE
-+  NS_DECL_NSIOBSERVER
-+
-+  nsQtNetworkLinkService();
-+
-+  nsresult Init();
-+  nsresult Shutdown();
-+
-+private:
-+  virtual ~nsQtNetworkLinkService();
-+};
-+
-+#endif /* NSQTNETWORKLINKSERVICE_H_ */
-diff --git a/netwerk/system/qt/nsQtNetworkManager.cpp b/netwerk/system/qt/nsQtNetworkManager.cpp
-new file mode 100644
-index 000000000000..c4be6faa7326
---- /dev/null
-+++ b/netwerk/system/qt/nsQtNetworkManager.cpp
-@@ -0,0 +1,162 @@
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#include "nsQtNetworkManager.h"
-+
-+#include "nsCOMPtr.h"
-+#include "nsThreadUtils.h"
-+#include "nsINetworkLinkService.h"
-+#include "nsIOService.h"
-+#include "nsIObserverService.h"
-+#include "nsIOService.h"
-+
-+#include <QHostInfo>
-+#include <QHostAddress>
-+#include <QTime>
-+
-+nsQtNetworkManager* nsQtNetworkManager::gQtNetworkManager = nullptr;
-+
-+void nsQtNetworkManager::create()
-+{
-+    if (!gQtNetworkManager) {
-+        gQtNetworkManager = new nsQtNetworkManager();
-+        connect(gQtNetworkManager, SIGNAL(openConnectionSignal()),
-+                gQtNetworkManager, SLOT(openSession()),
-+                Qt::BlockingQueuedConnection);
-+        connect(&gQtNetworkManager->networkConfigurationManager,
-+                SIGNAL(onlineStateChanged(bool)), gQtNetworkManager,
-+                SLOT(onlineStateChanged(bool)));
-+    }
-+}
-+
-+void nsQtNetworkManager::destroy()
-+{
-+    delete gQtNetworkManager;
-+    gQtNetworkManager = nullptr;
-+}
-+
-+nsQtNetworkManager::nsQtNetworkManager(QObject* parent)
-+  : QObject(parent), networkSession(0)
-+{
-+    mOnline = networkConfigurationManager.isOnline();
-+    NS_ASSERTION(NS_IsMainThread(), "nsQtNetworkManager can only initiated in Main Thread");
-+}
-+
-+nsQtNetworkManager::~nsQtNetworkManager()
-+{
-+    closeSession();
-+    networkSession->deleteLater();
-+}
-+
-+bool
-+nsQtNetworkManager::isOnline()
-+{
-+    static bool sForceOnlineUSB = getenv("MOZ_MEEGO_NET_ONLINE") != 0;
-+    return sForceOnlineUSB || mOnline;
-+}
-+
-+void
-+nsQtNetworkManager::onlineStateChanged(bool online)
-+{
-+    mOnline = online;
-+}
-+
-+/*
-+  This function is called from different threads, we need to make sure that
-+  the attempt to create a network connection is done in the mainthread
-+
-+  In case this function is called by another thread than the mainthread
-+  we emit a signal which is connected through "BlockingQueue"-Connection Type.
-+
-+  This cause that the current thread is blocked and waiting for the result.
-+
-+  Of course, in case this gets called from the mainthread we must not emit the signal,
-+  but call the slot directly.
-+*/
-+
-+bool
-+nsQtNetworkManager::openConnection(const QString& host)
-+{
-+    // we are already online -> return true.
-+    if (isOnline()) {
-+        return true;
-+    }
-+
-+    if (NS_IsMainThread()) {
-+        openSession();
-+    } else {
-+        // jump to mainthread and do the work there
-+        Q_EMIT openConnectionSignal();
-+    }
-+
-+    // if its claiming its online -> send one resolve request ahead.
-+    // this is important because on mobile the first request can take up to 10 seconds
-+    // sending here one will help to avoid trouble and timeouts later
-+    if (isOnline()) {
-+        QHostInfo::fromName(host);
-+    }
-+
-+    return isOnline();
-+}
-+
-+void
-+nsQtNetworkManager::openSession()
-+{
-+    if (mBlockTimer.isActive()) {
-+        // if openSession is called within 200 ms again, we forget this attempt since
-+        // its mostlike an automatic connection attempt which was not successful or canceled 200ms ago.
-+        // we reset the timer and start it again.
-+
-+        // As example: Go in firefox mobile into AwesomeView, see that the icons are not always cached and
-+        // get loaded on the fly. Not having the 200 ms rule here would mean that instantly
-+        // after the user dismissed the one connection dialog once another
-+        // would get opened. The user will never be able to close / leave the view until each such attempt is gone through.
-+
-+        // Basically 200 ms are working fine, its huge enough for automatic attempts to get covered and small enough to
-+        // still be able to react on direct user request.
-+
-+        mBlockTimer.stop();
-+        mBlockTimer.setSingleShot(true);
-+        mBlockTimer.start(200);
-+        return;
-+    }
-+
-+    if (isOnline()) {
-+        return;
-+    }
-+
-+    // this only means we did not shutdown before...
-+    // renew Session every time
-+    // fix/workaround for prestart bug
-+    if (networkSession) {
-+        networkSession->close();
-+        networkSession->deleteLater();
-+    }
-+
-+    // renew always to react on changed Configurations
-+    networkConfigurationManager.updateConfigurations();
-+    // go always with default configuration
-+    networkConfiguration = networkConfigurationManager.defaultConfiguration();
-+    networkSession = new QNetworkSession(networkConfiguration);
-+
-+    networkSession->open();
-+    QTime current;
-+    current.start();
-+    networkSession->waitForOpened(-1);
-+
-+    if (current.elapsed() < 1000) {
-+        NS_WARNING("Connection Creation was to fast, something is not right.");
-+    }
-+
-+    mBlockTimer.setSingleShot(true);
-+    mBlockTimer.start(200);
-+}
-+
-+void
-+nsQtNetworkManager::closeSession()
-+{
-+    if (networkSession) {
-+        networkSession->close();
-+    }
-+}
-diff --git a/netwerk/system/qt/nsQtNetworkManager.h b/netwerk/system/qt/nsQtNetworkManager.h
-new file mode 100644
-index 000000000000..314e3fc02873
---- /dev/null
-+++ b/netwerk/system/qt/nsQtNetworkManager.h
-@@ -0,0 +1,56 @@
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef NSQTNETWORKMANAGER_H_
-+#define NSQTNETWORKMANAGER_H_
-+
-+#include <QNetworkConfigurationManager>
-+#include <QObject>
-+#include <QTimer>
-+#include <QNetworkConfiguration>
-+#include <QNetworkSession>
-+#include "nscore.h"
-+
-+class nsQtNetworkManager;
-+
-+
-+
-+class nsQtNetworkManager : public QObject
-+{
-+  Q_OBJECT
-+  public:
-+    static void create();
-+    static void destroy();
-+    virtual ~nsQtNetworkManager();
-+
-+    static nsQtNetworkManager* get() { return gQtNetworkManager; }
-+
-+    static bool IsConnected();
-+    static bool GetLinkStatusKnown();
-+    static void enableInstance();
-+    bool openConnection(const QString&);
-+    bool isOnline();
-+  Q_SIGNALS:
-+    void openConnectionSignal();
-+
-+  public Q_SLOTS:
-+    void closeSession();
-+    void onlineStateChanged(bool);
-+
-+  private Q_SLOTS:
-+    void openSession();
-+
-+  private:
-+    explicit nsQtNetworkManager(QObject* parent = 0);
-+
-+    static nsQtNetworkManager* gQtNetworkManager;
-+    QNetworkSession* networkSession;
-+    QNetworkConfiguration networkConfiguration;
-+    QNetworkConfigurationManager networkConfigurationManager;
-+    QTimer mBlockTimer;
-+    bool mOnline;
-+};
-+
-+#endif /* NSQTNETWORKMANAGER_H_ */
-+
 diff --git a/old-configure.in b/old-configure.in
 index dfb072b19cfb..a50ed39886fb 100644
 --- a/old-configure.in
@@ -3518,7 +3139,7 @@ index 000000000000..b55db36a5dee
 +
 diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
 new file mode 100644
-index 000000000000..73a6d009adbb
+index 000000000000..79f0d79e1228
 --- /dev/null
 +++ b/toolkit/xre/nsQAppInstance.cpp
 @@ -0,0 +1,31 @@
@@ -3528,8 +3149,8 @@ index 000000000000..73a6d009adbb
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+#include "nsQAppInstance.h"
 +#include <QGuiApplication>
++#include "nsQAppInstance.h"
 +#include "prenv.h"
 +#include "nsXPCOMPrivate.h"
 +#include <stdlib.h>
@@ -5188,12 +4809,438 @@ index 000000000000..db0db72779da
 +} // namespace mozilla
 +
 +#endif /* __mozilla_widget_GfxInfo_h__ */
+diff --git a/widget/qt/MediaKeysEventSourceFactory.cpp b/widget/qt/MediaKeysEventSourceFactory.cpp
+new file mode 100644
+index 000000000000..3c85052b267f
+--- /dev/null
++++ b/widget/qt/MediaKeysEventSourceFactory.cpp
+@@ -0,0 +1,13 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "MediaKeysEventSourceFactory.h"
++
++namespace mozilla::widget {
++
++mozilla::dom::MediaControlKeysEventSource* CreateMediaControlKeysEventSource() {
++  return nullptr;
++}
++
++}  // namespace mozilla::widget
+diff --git a/widget/qt/ProcInfo.cpp b/widget/qt/ProcInfo.cpp
+new file mode 100644
+index 000000000000..1538b561b4c2
+--- /dev/null
++++ b/widget/qt/ProcInfo.cpp
+@@ -0,0 +1,285 @@
++/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* vim: set ts=8 sts=2 et sw=2 tw=80: */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "mozilla/ProcInfo.h"
++#include "mozilla/Sprintf.h"
++#include "mozilla/Logging.h"
++#include "mozilla/ipc/GeckoChildProcessHost.h"
++#include "nsAutoRef.h"
++#include "nsLocalFile.h"
++#include "nsNetCID.h"
++#include "nsWhitespaceTokenizer.h"
++
++#include <cstdio>
++#include <cstring>
++#include <unistd.h>
++#include <dirent.h>
++
++#define NANOPERSEC 1000000000.
++
++template <>
++class nsAutoRefTraits<DIR> : public nsPointerRefTraits<DIR> {
++ public:
++  static void Release(DIR* dirHandle) { closedir(dirHandle); }
++};
++
++namespace mozilla {
++
++// StatReader can parse and tokenize a POSIX stat file.
++// see http://man7.org/linux/man-pages/man5/proc.5.html
++//
++// Its usage is quite simple:
++//
++// StatReader reader(pid);
++// ProcInfo info;
++// rv = reader.ParseProc(info);
++// if (NS_FAILED(rv)) {
++//     // the reading of the file or its parsing failed.
++// }
++//
++class StatReader {
++ public:
++  explicit StatReader(const base::ProcessId aPid)
++      : mPid(aPid), mMaxIndex(53), mTicksPerSec(sysconf(_SC_CLK_TCK)) {
++    mFilepath.AppendPrintf("/proc/%u/stat", mPid);
++  }
++
++  nsresult ParseProc(ProcInfo& aInfo) {
++    nsAutoString fileContent;
++    nsresult rv = ReadFile(fileContent);
++    NS_ENSURE_SUCCESS(rv, rv);
++    // We first extract the filename
++    int32_t startPos = fileContent.RFindChar('(');
++    if (startPos == -1) {
++      return NS_ERROR_FAILURE;
++    }
++    int32_t endPos = fileContent.RFindChar(')');
++    if (endPos == -1) {
++      return NS_ERROR_FAILURE;
++    }
++    int32_t len = endPos - (startPos + 1);
++    aInfo.filename.Assign(Substring(fileContent, startPos + 1, len));
++
++    // now we can use the tokenizer for the rest of the file
++    nsWhitespaceTokenizer tokenizer(Substring(fileContent, endPos + 2));
++    int32_t index = 2;  // starting at third field
++    while (tokenizer.hasMoreTokens() && index < mMaxIndex) {
++      const nsAString& token = tokenizer.nextToken();
++      rv = UseToken(index, token, aInfo);
++      NS_ENSURE_SUCCESS(rv, rv);
++      index++;
++    }
++    return NS_OK;
++  }
++
++ protected:
++  // Called for each token found in the stat file.
++  nsresult UseToken(int32_t aIndex, const nsAString& aToken, ProcInfo& aInfo) {
++    // We're using a subset of what stat has to offer for now.
++    nsresult rv = NS_OK;
++    // see the proc documentation for fields index references.
++    switch (aIndex) {
++      case 13:
++        // Amount of time that this process has been scheduled
++        // in user mode, measured in clock ticks
++        aInfo.cpuUser = GetCPUTime(aToken, &rv);
++        NS_ENSURE_SUCCESS(rv, rv);
++        break;
++      case 14:
++        // Amount of time that this process has been scheduled
++        // in kernel mode, measured in clock ticks
++        aInfo.cpuKernel = GetCPUTime(aToken, &rv);
++        NS_ENSURE_SUCCESS(rv, rv);
++        break;
++      case 22:
++        // Virtual memory size in bytes.
++        aInfo.virtualMemorySize = Get64Value(aToken, &rv);
++        NS_ENSURE_SUCCESS(rv, rv);
++        break;
++      case 23:
++        // Resident Set Size: number of pages the process has
++        // in real memory.
++        uint64_t pageCount = Get64Value(aToken, &rv);
++        NS_ENSURE_SUCCESS(rv, rv);
++        uint64_t pageSize = sysconf(_SC_PAGESIZE);
++        aInfo.residentSetSize = pageCount * pageSize;
++        break;
++    }
++    return rv;
++  }
++
++  // Converts a token into a int64_t
++  uint64_t Get64Value(const nsAString& aToken, nsresult* aRv) {
++    // We can't use aToken.ToInteger64() since it returns a signed 64.
++    // and that can result into an overflow.
++    nsresult rv = NS_OK;
++    uint64_t out = 0;
++    if (sscanf(NS_ConvertUTF16toUTF8(aToken).get(), "%" PRIu64, &out) == 0) {
++      rv = NS_ERROR_FAILURE;
++    }
++    *aRv = rv;
++    return out;
++  }
++
++  // Converts a token into CPU time in nanoseconds.
++  uint64_t GetCPUTime(const nsAString& aToken, nsresult* aRv) {
++    nsresult rv;
++    uint64_t value = Get64Value(aToken, &rv);
++    *aRv = rv;
++    if (NS_FAILED(rv)) {
++      return 0;
++    }
++    if (value) {
++      value = (value * NANOPERSEC) / mTicksPerSec;
++    }
++    return value;
++  }
++
++  base::ProcessId mPid;
++  int32_t mMaxIndex;
++  nsCString mFilepath;
++  ProcInfo mProcInfo;
++
++ private:
++  // Reads the stat file and puts its content in a nsString.
++  nsresult ReadFile(nsAutoString& aFileContent) {
++    RefPtr<nsLocalFile> file = new nsLocalFile(mFilepath);
++    bool exists;
++    nsresult rv = file->Exists(&exists);
++    NS_ENSURE_SUCCESS(rv, rv);
++    if (!exists) {
++      return NS_ERROR_FAILURE;
++    }
++    // /proc is a virtual file system and all files are
++    // of size 0, so GetFileSize() and related functions will
++    // return 0 - so the way to read the file is to fill a buffer
++    // of an arbitrary big size and look for the end of line char.
++    FILE* fstat;
++    if (NS_FAILED(file->OpenANSIFileDesc("r", &fstat)) || !fstat) {
++      return NS_ERROR_FAILURE;
++    }
++    char buffer[2048];
++    char* end;
++    char* start = fgets(buffer, 2048, fstat);
++    fclose(fstat);
++    if (start == nullptr) {
++      return NS_ERROR_FAILURE;
++    }
++    // let's find the end
++    end = strchr(buffer, '\n');
++    if (!end) {
++      return NS_ERROR_FAILURE;
++    }
++    aFileContent.AssignASCII(buffer, size_t(end - start));
++    return NS_OK;
++  }
++
++  int64_t mTicksPerSec;
++};
++
++// Threads have the same stat file. The only difference is its path
++// and we're getting less info in the ThreadInfo structure.
++class ThreadInfoReader final : public StatReader {
++ public:
++  ThreadInfoReader(const base::ProcessId aPid, const base::ProcessId aTid)
++      : StatReader(aPid), mTid(aTid) {
++    // Adding the thread path
++    mFilepath.Truncate();
++    mFilepath.AppendPrintf("/proc/%u/task/%u/stat", aPid, mTid);
++    mMaxIndex = 17;
++  }
++
++  nsresult ParseThread(ThreadInfo& aInfo) {
++    ProcInfo info;
++    nsresult rv = StatReader::ParseProc(info);
++    NS_ENSURE_SUCCESS(rv, rv);
++
++    aInfo.tid = mTid;
++    // Copying over the data we got from StatReader::ParseProc()
++    aInfo.cpuKernel = info.cpuKernel;
++    aInfo.cpuUser = info.cpuUser;
++    aInfo.name.Assign(info.filename);
++    return NS_OK;
++  }
++
++ private:
++  base::ProcessId mTid;
++};
++
++RefPtr<ProcInfoPromise> GetProcInfo(base::ProcessId pid, int32_t childId,
++                                    const ProcType& type,
++                                    const nsAString& origin) {
++  auto holder = MakeUnique<MozPromiseHolder<ProcInfoPromise>>();
++  RefPtr<ProcInfoPromise> promise = holder->Ensure(__func__);
++  nsresult rv = NS_OK;
++  nsCOMPtr<nsIEventTarget> target =
++      do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID, &rv);
++  if (NS_FAILED(rv)) {
++    NS_WARNING("Failed to get stream transport service");
++    holder->Reject(rv, __func__);
++    return promise;
++  }
++
++  // Ensure that the string is still alive when the runnable is called.
++  nsString originCopy(origin);
++  RefPtr<nsIRunnable> r = NS_NewRunnableFunction(
++      __func__, [holder = std::move(holder), pid, type,
++                 originCopy = std::move(originCopy), childId]() {
++        // opening the stat file and reading its content
++        StatReader reader(pid);
++        ProcInfo info;
++        nsresult rv = reader.ParseProc(info);
++        if (NS_FAILED(rv)) {
++          holder->Reject(rv, __func__);
++          return;
++        }
++        // Extra info
++        info.pid = pid;
++        info.childId = childId;
++        info.type = type;
++        info.origin = originCopy;
++
++        // Let's look at the threads
++        nsCString taskPath;
++        taskPath.AppendPrintf("/proc/%u/task", pid);
++        nsAutoRef<DIR> dirHandle(opendir(taskPath.get()));
++        if (!dirHandle) {
++          // No threads ? Let's stop here and ignore the problem.
++          holder->Resolve(info, __func__);
++          return;
++        }
++
++        // If we can't read some thread info, we ignore that thread.
++        dirent* entry;
++        while ((entry = readdir(dirHandle)) != nullptr) {
++          if (entry->d_name[0] == '.') {
++            continue;
++          }
++          // Threads have a stat file, like processes.
++          nsAutoCString entryName(entry->d_name);
++          int32_t tid = entryName.ToInteger(&rv);
++          if (NS_FAILED(rv)) {
++            continue;
++          }
++          ThreadInfoReader reader(pid, tid);
++          ThreadInfo threadInfo;
++          rv = reader.ParseThread(threadInfo);
++          if (NS_FAILED(rv)) {
++            continue;
++          }
++          info.threads.AppendElement(threadInfo);
++        }
++        holder->Resolve(info, __func__);
++      });
++
++  rv = target->Dispatch(r.forget(), NS_DISPATCH_NORMAL);
++  if (NS_FAILED(rv)) {
++    NS_WARNING("Failed to dispatch the LoadDataRunnable.");
++  }
++  return promise;
++}
++
++}  // namespace mozilla
+diff --git a/widget/qt/components.conf b/widget/qt/components.conf
+new file mode 100644
+index 000000000000..38876244f0bf
+--- /dev/null
++++ b/widget/qt/components.conf
+@@ -0,0 +1,110 @@
++# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
++# vim: set filetype=python:
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++Headers = [
++    '/widget/qt/nsWidgetFactory.h',
++]
++
++InitFunc = 'nsWidgetQtModuleCtor'
++UnloadFunc = 'nsWidgetQtModuleDtor'
++
++Classes = [
++    {
++        'cid': '{2d96b3df-c051-11d1-a827-0040959a28c9}',
++        'contract_ids': ['@mozilla.org/widget/appshell/qt;1'],
++        'headers': ['/widget/qt/nsWidgetFactory.h'],
++        'legacy_constructor': 'nsAppShellConstructor',
++        'processes': ProcessSelector.ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS,
++    },
++    {
++        'cid': '{c401eb80-f9ea-11d3-bb6f-e732b73ebe7c}',
++        'contract_ids': ['@mozilla.org/gfx/screenmanager;1'],
++        'singleton': True,
++        'type': 'mozilla::widget::ScreenManager',
++        'constructor': 'mozilla::widget::ScreenManager::GetAddRefedSingleton',
++        'headers': ['/widget/ScreenManager.h'],
++        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++    },
++    {
++        'cid': '{948a0023-e3a7-11d2-96cf-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/htmlformatconverter;1'],
++        'type': 'nsHTMLFormatConverter',
++        'headers': ['/widget/nsHTMLFormatConverter.h'],
++    },
++    {
++        'cid': '{8b5314bc-db01-11d2-96ce-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/transferable;1'],
++        'type': 'nsTransferable',
++        'headers': ['/widget/nsTransferable.h'],
++    },
++    {
++        'cid': '{8b5314ba-db01-11d2-96ce-0060b0fb9956}',
++        'contract_ids': ['@mozilla.org/widget/clipboard;1'],
++        'type': 'nsClipboard',
++        'headers': ['/widget/qt/nsClipboard.h'],
++        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++    },
++    {
++        'cid': '{77221d5a-1dd2-11b2-8c69-c710f15d2ed5}',
++        'contract_ids': ['@mozilla.org/widget/clipboardhelper;1'],
++        'type': 'nsClipboardHelper',
++        'headers': ['/widget/nsClipboardHelper.h'],
++    },
++    {
++        'cid': '{d755a760-9f27-11df-0800-200c9a664242}',
++        'contract_ids': ['@mozilla.org/gfx/info;1'],
++        'type': 'mozilla::widget::GfxInfo',
++        'headers': ['/widget/qt/GfxInfo.h'],
++        'init_method': 'Init',
++        'processes': ProcessSelector.ALLOW_IN_GPU_RDD_AND_SOCKET_PROCESS,
++    },
++    {
++        'cid': '{6987230e-0098-4e78-bc5f-1493ee7519fa}',
++        'contract_ids': ['@mozilla.org/widget/idleservice;1'],
++        'singleton': True,
++        'type': 'nsIdleServiceQt',
++        'constructor': 'nsIdleServiceQt::GetInstance',
++        'headers': ['/widget/qt/nsIdleServiceQt.h', 'nsIdleService.h'],
++    },
++]
++
++if defined('NS_PRINTING'):
++    Classes += [
++        {
++            'cid': '{d3f69889-e13a-4321-980c-a39332e21f34}',
++            'contract_ids': ['@mozilla.org/gfx/devicecontextspec;1'],
++            'type': 'nsDeviceContextSpecQt',
++            'headers': ['/widget/qt/nsDeviceContextSpecQt.h'],
++        },
++        {
++            'cid': '{06beec76-a183-4d9f-85dd-085f26da565a}',
++            'contract_ids': ['@mozilla.org/widget/printdialog-service;1'],
++            'type': 'nsPrintDialogServiceQt',
++            'headers': ['/widget/qt/nsPrintDialogQt.h'],
++            'init_method': 'Init',
++            'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++        },
++        {
++            'cid': '{2f977d53-5485-11d4-87e2-0010a4e75ef2}',
++            'contract_ids': ['@mozilla.org/gfx/printsession;1'],
++            'type': 'nsPrintSession',
++            'headers': ['/widget/nsPrintSession.h'],
++            'init_method': 'Init',
++        },
++        {
++            'cid': '{841387c8-72e6-484b-9296-bf6eea80d58a}',
++            'contract_ids': ['@mozilla.org/gfx/printsettings-service;1'],
++            'type': 'nsPrintOptionsQt',
++            'headers': ['/widget/qt/nsPrintOptionsQt.h'],
++            'init_method': 'Init',
++        },
++        {
++            'cid': '{a6cf9129-15b3-11d2-932e-00805f8add32}',
++            'contract_ids': ['@mozilla.org/gfx/printerenumerator;1'],
++            'type': 'nsPrinterEnumeratorQt',
++            'headers': ['/widget/qt/nsDeviceContextSpecQt.h'],
++        },
++    ]
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..8003864d9559
+index 000000000000..3918fd4c9a31
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,72 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5203,6 +5250,7 @@ index 000000000000..8003864d9559
 +SOURCES += [
 +    '!moc_mozqwidget.cpp',
 +    '!moc_nsAppShell.cpp',
++    'MediaKeysEventSourceFactory.cpp',
 +    'mozqwidget.cpp',
 +    'nsAppShell.cpp',
 +    'nsBidiKeyboard.cpp',
@@ -5214,6 +5262,7 @@ index 000000000000..8003864d9559
 +    'nsScreenQt.cpp',
 +    'nsWidgetFactory.cpp',
 +    'nsWindow.cpp',
++    'ProcInfo.cpp',
 +]
 +
 +
@@ -5224,6 +5273,10 @@ index 000000000000..8003864d9559
 +        'nsPrintOptionsQt.cpp',
 +        'nsPrintSettingsQt.cpp',
 +    ]
++
++XPCOM_MANIFESTS += [
++    'components.conf',
++]
 +
 +include('/ipc/chromium/chromium-config.mozbuild')
 +
@@ -5705,10 +5758,10 @@ index 000000000000..2d2f37d75864
 +
 diff --git a/widget/qt/nsBidiKeyboard.cpp b/widget/qt/nsBidiKeyboard.cpp
 new file mode 100644
-index 000000000000..92baf8eb39da
+index 000000000000..8dc57fd2f0bc
 --- /dev/null
 +++ b/widget/qt/nsBidiKeyboard.cpp
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,54 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* vim:expandtab:shiftwidth=4:tabstop=4:
 + */
@@ -5718,8 +5771,8 @@ index 000000000000..92baf8eb39da
 +
 +#include <Qt>
 +#include <QGuiApplication>
-+
 +#include "nsBidiKeyboard.h"
++#include "nsIWidget.h"
 +
 +NS_IMPL_ISUPPORTS(nsBidiKeyboard, nsIBidiKeyboard)
 +
@@ -5756,6 +5809,13 @@ index 000000000000..92baf8eb39da
 +  // not implemented yet
 +  return NS_ERROR_NOT_IMPLEMENTED;
 +}
++
++// static
++already_AddRefed<nsIBidiKeyboard>
++nsIWidget::CreateBidiKeyboardInner()
++{
++  return do_AddRef(new nsBidiKeyboard());
++}
 diff --git a/widget/qt/nsBidiKeyboard.h b/widget/qt/nsBidiKeyboard.h
 new file mode 100644
 index 000000000000..c22bf4ab8c10
@@ -5789,10 +5849,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
 new file mode 100644
-index 000000000000..58d67e01c6b1
+index 000000000000..01f057009f79
 --- /dev/null
 +++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,539 @@
+@@ -0,0 +1,540 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -6140,8 +6200,9 @@ index 000000000000..58d67e01c6b1
 +
 +            // Add the data to inputstream
 +            nsCOMPtr<nsIInputStream> byteStream;
-+            NS_NewByteInputStream(getter_AddRefs(byteStream), imageData.constData(),
-+                                  imageData.size(), NS_ASSIGNMENT_COPY);
++            NS_NewByteInputStream(getter_AddRefs(byteStream),
++                                  mozilla::MakeSpan(imageData.constData(), imageData.size()),
++                                  NS_ASSIGNMENT_COPY);
 +            // Data is good, set it to the transferable
 +            aTransferable->SetTransferData(flavorStr.get(), byteStream);
 +
@@ -8805,10 +8866,10 @@ index 000000000000..ad3a0ef9af3b
 +#endif  // nsScreenQt_h___
 diff --git a/widget/qt/nsWidgetFactory.cpp b/widget/qt/nsWidgetFactory.cpp
 new file mode 100644
-index 000000000000..87817a0b4a5f
+index 000000000000..b5a1005d8c27
 --- /dev/null
 +++ b/widget/qt/nsWidgetFactory.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,36 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -8825,132 +8886,18 @@ index 000000000000..87817a0b4a5f
 + * limitations under the License.
 + */
 +
-+#include "base/basictypes.h"
-+
-+#include "mozilla/ModuleUtils.h"
-+#include "mozilla/WidgetUtils.h"
-+
-+#include "nsCOMPtr.h"
-+#include "nsWidgetsCID.h"
++#include "nsWidgetFactory.h"
 +#include "nsAppShell.h"
-+
-+#include "nsWindow.h"
-+#include "nsLookAndFeel.h"
 +#include "nsAppShellSingleton.h"
-+#include "nsScreenManagerQt.h"
-+#include "nsIdleServiceQt.h"
-+#include "nsTransferable.h"
-+#include "nsBidiKeyboard.h"
-+
-+#include "nsHTMLFormatConverter.h"
-+#include "nsXULAppAPI.h"
-+
-+#ifdef NS_PRINTING
-+#include "nsDeviceContextSpecQt.h"
-+#include "nsPrintSession.h"
-+#include "nsPrintOptionsQt.h"
-+#include "nsPrintDialogQt.h"
-+#endif
-+
-+#include "nsClipboard.h"
-+#include "nsClipboardHelper.h"
-+
-+#if defined(MOZ_X11)
-+#include "GfxInfoX11.h"
-+#else
-+#include "GfxInfo.h"
-+#endif
++#include "base/basictypes.h"
++#include "mozilla/WidgetUtils.h"
++#include "nsLookAndFeel.h"
 +
 +using namespace mozilla::widget;
 +
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsWindow)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsBidiKeyboard)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsScreenManagerQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsHTMLFormatConverter)
-+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsIdleServiceQt, nsIdleServiceQt::GetInstance)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsTransferable)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboard)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsClipboardHelper)
-+#ifdef NS_PRINTING
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceContextSpecQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintOptionsQt, Init)
-+NS_GENERIC_FACTORY_CONSTRUCTOR(nsPrinterEnumeratorQt)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSession, Init)
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintDialogServiceQt, Init)
-+#endif
++nsresult nsWidgetQtModuleCtor() { return nsAppShellInit(); }
 +
-+namespace mozilla {
-+namespace widget {
-+// This constructor should really be shared with all platforms.
-+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(GfxInfo, Init)
-+}
-+}
-+
-+
-+NS_DEFINE_NAMED_CID(NS_APPSHELL_CID);
-+NS_DEFINE_NAMED_CID(NS_BIDIKEYBOARD_CID);
-+NS_DEFINE_NAMED_CID(NS_WINDOW_CID);
-+NS_DEFINE_NAMED_CID(NS_CHILD_CID);
-+NS_DEFINE_NAMED_CID(NS_SCREENMANAGER_CID);
-+NS_DEFINE_NAMED_CID(NS_HTMLFORMATCONVERTER_CID);
-+NS_DEFINE_NAMED_CID(NS_IDLE_SERVICE_CID);
-+NS_DEFINE_NAMED_CID(NS_TRANSFERABLE_CID);
-+NS_DEFINE_NAMED_CID(NS_CLIPBOARD_CID);
-+NS_DEFINE_NAMED_CID(NS_CLIPBOARDHELPER_CID);
-+NS_DEFINE_NAMED_CID(NS_GFXINFO_CID);
-+#ifdef NS_PRINTING
-+NS_DEFINE_NAMED_CID(NS_PRINTSETTINGSSERVICE_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTER_ENUMERATOR_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTSESSION_CID);
-+NS_DEFINE_NAMED_CID(NS_DEVICE_CONTEXT_SPEC_CID);
-+NS_DEFINE_NAMED_CID(NS_PRINTDIALOGSERVICE_CID);
-+#endif
-+
-+static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
-+    { &kNS_APPSHELL_CID, false, nullptr, nsAppShellConstructor },
-+    { &kNS_BIDIKEYBOARD_CID, false, nullptr, nsBidiKeyboardConstructor },
-+    { &kNS_CHILD_CID, false, nullptr, nsWindowConstructor },
-+    { &kNS_CLIPBOARD_CID, false, nullptr, nsClipboardConstructor },
-+    { &kNS_CLIPBOARDHELPER_CID, false, nullptr, nsClipboardHelperConstructor },
-+    { &kNS_HTMLFORMATCONVERTER_CID, false, nullptr, nsHTMLFormatConverterConstructor },
-+    { &kNS_IDLE_SERVICE_CID, false, nullptr, nsIdleServiceQtConstructor },
-+    { &kNS_SCREENMANAGER_CID, false, nullptr, nsScreenManagerQtConstructor },
-+    { &kNS_TRANSFERABLE_CID, false, nullptr, nsTransferableConstructor },
-+    { &kNS_WINDOW_CID, false, nullptr, nsWindowConstructor },
-+    { &kNS_GFXINFO_CID, false, nullptr, mozilla::widget::GfxInfoConstructor },
-+#ifdef NS_PRINTING
-+    { &kNS_DEVICE_CONTEXT_SPEC_CID, false, nullptr, nsDeviceContextSpecQtConstructor },
-+    { &kNS_PRINTDIALOGSERVICE_CID, false, nullptr, nsPrintDialogServiceQtConstructor },
-+    { &kNS_PRINTER_ENUMERATOR_CID, false, nullptr, nsPrinterEnumeratorQtConstructor },
-+    { &kNS_PRINTSESSION_CID, false, nullptr, nsPrintSessionConstructor },
-+    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintOptionsQtConstructor },
-+#endif
-+    { nullptr }
-+};
-+
-+static const mozilla::Module::ContractIDEntry kWidgetContracts[] = {
-+    { "@mozilla.org/gfx/screenmanager;1", &kNS_SCREENMANAGER_CID },
-+    { "@mozilla.org/widget/appshell/qt;1", &kNS_APPSHELL_CID },
-+    { "@mozilla.org/widget/bidikeyboard;1", &kNS_BIDIKEYBOARD_CID },
-+    { "@mozilla.org/widget/clipboard;1", &kNS_CLIPBOARD_CID },
-+    { "@mozilla.org/widget/clipboardhelper;1", &kNS_CLIPBOARDHELPER_CID },
-+    { "@mozilla.org/widget/htmlformatconverter;1", &kNS_HTMLFORMATCONVERTER_CID },
-+    { "@mozilla.org/widget/idleservice;1", &kNS_IDLE_SERVICE_CID },
-+    { "@mozilla.org/widgets/child_window/qt;1", &kNS_CHILD_CID },
-+    { "@mozilla.org/widgets/window/qt;1", &kNS_WINDOW_CID },
-+    { "@mozilla.org/widget/transferable;1", &kNS_TRANSFERABLE_CID },
-+    { "@mozilla.org/gfx/info;1", &kNS_GFXINFO_CID },
-+#ifdef NS_PRINTING
-+    { "@mozilla.org/gfx/devicecontextspec;1", &kNS_DEVICE_CONTEXT_SPEC_CID },
-+    { "@mozilla.org/gfx/printerenumerator;1", &kNS_PRINTER_ENUMERATOR_CID },
-+    { "@mozilla.org/gfx/printsession;1", &kNS_PRINTSESSION_CID },
-+    { "@mozilla.org/gfx/printsettings-service;1", &kNS_PRINTSETTINGSSERVICE_CID },
-+    { NS_PRINTDIALOGSERVICE_CONTRACTID, &kNS_PRINTDIALOGSERVICE_CID },
-+#endif
-+    { nullptr }
-+};
-+
-+static void
++void
 +nsWidgetQtModuleDtor()
 +{
 +    // Shutdown all XP level widget classes.
@@ -8959,18 +8906,34 @@ index 000000000000..87817a0b4a5f
 +    nsLookAndFeel::Shutdown();
 +    nsAppShellShutdown();
 +}
+diff --git a/widget/qt/nsWidgetFactory.h b/widget/qt/nsWidgetFactory.h
+new file mode 100644
+index 000000000000..2306c78d3eae
+--- /dev/null
++++ b/widget/qt/nsWidgetFactory.h
+@@ -0,0 +1,22 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* vim:expandtab:shiftwidth=4:tabstop=4:
++ */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
-+static const mozilla::Module kWidgetModule = {
-+    mozilla::Module::kVersion,
-+    kWidgetCIDs,
-+    kWidgetContracts,
-+    nullptr,
-+    nullptr,
-+    nsAppShellInit,
-+    nsWidgetQtModuleDtor
-+};
++#ifndef widget_qt_nsWidgetFactory_h
++#define widget_qt_nsWidgetFactory_h
 +
-+NSMODULE_DEFN(nsWidgetQtModule) = &kWidgetModule;
++#include "nscore.h"
++#include "nsID.h"
++
++class nsISupports;
++
++nsresult nsAppShellConstructor(nsISupports *outer, const nsIID &iid,
++                               void **result);
++
++nsresult nsWidgetQtModuleCtor();
++void nsWidgetQtModuleDtor();
++
++#endif  // defined widget_qt_nsWidgetFactory_h
 diff --git a/widget/qt/nsWindow.cpp b/widget/qt/nsWindow.cpp
 new file mode 100644
 index 000000000000..68b0825244d3
