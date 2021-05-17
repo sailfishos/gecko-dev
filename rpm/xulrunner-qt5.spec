@@ -62,6 +62,7 @@ Patch15:    0015-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
 Patch16:    0016-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
 Patch17:    0017-sailfishos-gecko-Add-missing-include-for-nsIObserver.patch
 Patch18:    0018-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
+Patch19:    0019-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
@@ -85,7 +86,6 @@ Patch18:    0018-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
 #Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 #Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-#Patch32:    0032-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
 #Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 #Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
 #Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
