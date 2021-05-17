@@ -16,12 +16,6 @@
 #include "nsIURI.h"
 #include "nsITimer.h"
 
-#define NS_EMBEDLITEHISTORY_CID \
-{ 0xec7cf1e2, \
-  0x6e88, \
-  0x11e2, \
-  { 0xa7, 0x9a, 0xfb, 0x19, 0xfe, 0x29, 0x97 }}
-
 // Max size of History::mRecentlyVisitedURIs
 #define RECENTLY_VISITED_URI_SIZE 8
 
@@ -114,9 +108,5 @@ private:
 
   nsCOMPtr<nsIEmbedAppService> mService;
 };
-
-#define NS_EMBED_HISTORY_CONTRACTID "@mozilla.org/embed-history-component;1"
-#define NS_EMBED_HISTORY_SERVICE_CLASSNAME "Embed History Listener Component"
-#define NS_EMBED_HISTORY_SERVICE_CID NS_EMBEDLITEHISTORY_CID
 
 #endif /*EmbedHistoryListener_H_*/
