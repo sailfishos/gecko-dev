@@ -868,7 +868,7 @@ cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
 ifndef DEVELOPER_OPTIONS
 ifndef MOZ_DEBUG_RUST
 # Enable link-time optimization for release builds.
-cargo_rustc_flags += -C lto
+cargo_rustc_flags +=
 endif
 endif
 
