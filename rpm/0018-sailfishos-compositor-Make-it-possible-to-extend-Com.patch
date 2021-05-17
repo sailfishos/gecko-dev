@@ -1,21 +1,22 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
-Date: Thu, 19 Mar 2020 13:56:02 +0200
+Date: Tue, 26 Jan 2021 14:13:31 +0200
 Subject: [PATCH] [sailfishos][compositor] Make it possible to extend
  CompositorBridgeParent
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  gfx/layers/ipc/CompositorBridgeParent.h | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
-index 3547c1af8c32..25c8db6daea8 100644
+index ef13ce36af8f..460510c5bff8 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.h
 +++ b/gfx/layers/ipc/CompositorBridgeParent.h
-@@ -198,7 +198,7 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
-   RefPtr<CompositorManagerParent> mCompositorManager;
- };
+@@ -312,7 +312,7 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
+ MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(
+     CompositorBridgeParentBase::TransformsToSkip)
  
 -class CompositorBridgeParent final : public CompositorBridgeParentBase,
 +class CompositorBridgeParent : public CompositorBridgeParentBase,
@@ -23,5 +24,5 @@ index 3547c1af8c32..25c8db6daea8 100644
                                       public CompositorVsyncSchedulerOwner {
    friend class CompositorThreadHolder;
 -- 
-2.26.2
+2.25.1
 

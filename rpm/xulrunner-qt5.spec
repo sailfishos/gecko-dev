@@ -61,8 +61,8 @@ Patch14:    0014-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
 Patch15:    0015-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
 Patch16:    0016-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
 Patch17:    0017-sailfishos-gecko-Add-missing-include-for-nsIObserver.patch
+Patch18:    0018-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
-#Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
