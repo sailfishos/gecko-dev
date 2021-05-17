@@ -227,6 +227,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   return mLayerManager;
 }
 
+#if 0
 void
 nsWindow::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
 {
@@ -249,6 +250,7 @@ nsWindow::DrawWindowOverlay(mozilla::widget::WidgetRenderingContext *aContext, L
     window->GetListener()->DrawOverlay(aRect.ToUnknownRect());
   }
 }
+#endif
 
 bool
 nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)

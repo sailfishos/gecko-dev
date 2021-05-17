@@ -60,6 +60,7 @@ public:
                                         LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
+#if 0
   /**
    * Called before the LayerManager draws the layer tree.
    *
@@ -75,6 +76,7 @@ public:
    * forward to the EmbedLiteCompositorBridgeParent.
    */
   virtual void DrawWindowOverlay(mozilla::widget::WidgetRenderingContext* aContext, LayoutDeviceIntRect aRect) override;
+#endif
 
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;
