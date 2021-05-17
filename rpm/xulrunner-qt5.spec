@@ -59,6 +59,7 @@ Patch12:    0012-sailfishos-gecko-Disable-Gecko-Rust-Feature-cubeb-re.patch
 Patch13:    0013-Bug-1685883-building-with-disable-marionette-fails-w.patch
 Patch14:    0014-sailfishos-gecko-Enable-Pango-for-the-build.-JB-5086.patch
 Patch15:    0015-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
+Patch16:    0016-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
 #Patch3:     0003-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 #Patch7:     0007-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 #Patch8:     0008-sailfishos-compositor-Allow-compositor-specializatio.patch
@@ -104,7 +105,6 @@ Patch15:    0015-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
 #Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
-#Patch53:    0053-sailfishos-gecko-Provide-checkbox-radio-renderer-for.patch
 #Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 #Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
 #Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
