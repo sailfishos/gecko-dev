@@ -10,7 +10,6 @@
 
 #include "base/thread.h"
 #include "nsISupportsImpl.h"
-#include "nsAutoPtr.h"
 
 namespace mozilla {
 namespace embedlite {

@@ -27,7 +27,6 @@
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h" // for mozilla::Runnable
-#include "nsAutoPtr.h"
 #include "base/command_line.h"
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
