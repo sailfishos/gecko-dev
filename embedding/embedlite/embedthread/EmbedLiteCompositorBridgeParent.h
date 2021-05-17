@@ -53,7 +53,7 @@ protected:
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                const LayersId& aId) override;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
-  virtual void CompositeToDefaultTarget() override;
+  virtual void CompositeToDefaultTarget(VsyncId aId) override;
 
 private:
   void PrepareOffscreen();

@@ -129,7 +129,7 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
 }
 
 void
-EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget()
+EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId)
 {
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -152,7 +152,7 @@ EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget()
     ScopedScissorRect autoScissor(context);
     GLenum oldTexUnit;
     context->GetUIntegerv(LOCAL_GL_ACTIVE_TEXTURE, &oldTexUnit);
-    CompositeToTarget(nullptr);
+    CompositeToTarget(aId, nullptr);
     context->fActiveTexture(oldTexUnit);
   }
 }
