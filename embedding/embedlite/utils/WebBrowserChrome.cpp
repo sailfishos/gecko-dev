@@ -7,7 +7,6 @@
 
 #include "WebBrowserChrome.h"
 #include "nsIDOMWindow.h"
-#include "nsIDOMDocument.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShell.h"
 #include "nsIWebProgress.h"

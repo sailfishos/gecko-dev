@@ -26,7 +26,6 @@
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDOMDocument.h"
 #include "nsIPresShell.h"
 #include "nsLayoutUtils.h"
 #include "nsILoadContext.h"
