@@ -300,9 +300,9 @@ uint32_t nsWindow::GetUniqueID() const
   return mWindow->GetUniqueID();
 }
 
-int64_t nsWindow::GetRootLayerId() const
+layers::LayersId nsWindow::GetRootLayerId() const
 {
-    return mCompositorSession ? mCompositorSession->RootLayerTreeId() : 0;
+  return mCompositorSession ? mCompositorSession->RootLayerTreeId() : layers::LayersId{0};
 }
 
 void nsWindow::SetContentController(mozilla::layers::GeckoContentController *aController)

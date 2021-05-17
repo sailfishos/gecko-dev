@@ -28,8 +28,8 @@ public:
   // FIXME/bug 774388: work out what shutdown protocol we need.
   virtual mozilla::ipc::IPCResult RecvPause() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvResume() override { return IPC_OK(); }
-  virtual mozilla::ipc::IPCResult RecvNotifyChildCreated(const uint64_t& child, CompositorOptions* aOptions) override;
-  virtual mozilla::ipc::IPCResult RecvAdoptChild(const uint64_t& child) override { return IPC_OK(); }
+  virtual mozilla::ipc::IPCResult RecvNotifyChildCreated(const LayersId& child, CompositorOptions* aOptions) override;
+  virtual mozilla::ipc::IPCResult RecvAdoptChild(const LayersId& child) override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
                                                    const gfx::IntRect& aRect) { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvFlushRendering() override { return IPC_OK(); }
@@ -47,17 +47,17 @@ public:
 
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                 const uint64_t& aId) override;
+                                 const LayersId& aId) override;
 
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
-  virtual bool SetTestSampleTime(const uint64_t& aId,
+  virtual bool SetTestSampleTime(const LayersId& aId,
                                  const TimeStamp& aTime) override;
-  virtual void LeaveTestMode(const uint64_t& aId) override;
+  virtual void LeaveTestMode(const LayersId& aId) override;
   virtual void ApplyAsyncProperties(LayerTransactionParent* aLayerTree) override;
-  virtual void FlushApzRepaints(const uint64_t& aLayersId) override;
-  virtual void GetAPZTestData(const uint64_t& aLayersId,
+  virtual void FlushApzRepaints(const LayersId& aLayersId) override;
+  virtual void GetAPZTestData(const LayersId& aLayersId,
                               APZTestData* aOutData) override;
-  virtual void SetConfirmedTargetAPZC(const uint64_t& aLayersId,
+  virtual void SetConfirmedTargetAPZC(const LayersId& aLayersId,
                                       const uint64_t& aInputBlockId,
                                       const nsTArray<ScrollableLayerGuid>& aTargets) override;
 

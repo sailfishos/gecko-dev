@@ -245,7 +245,7 @@ EmbedLiteAppService::ContentReceivedInputBlock(uint32_t aWinId, bool aPreventDef
 {
   EmbedLiteViewChildIface* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->ContentReceivedInputBlock(ScrollableLayerGuid(0, 0, 0), aPreventDefault, 0);
+  view->ContentReceivedInputBlock(ScrollableLayerGuid(LayersId{0}, 0, 0), aPreventDefault, 0);
   return NS_OK;
 }
 

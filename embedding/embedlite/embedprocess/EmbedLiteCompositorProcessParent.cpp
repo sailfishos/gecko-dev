@@ -154,7 +154,7 @@ EmbedLiteCompositorProcessParent::InitializeLayerManager(const nsTArray<LayersBa
 
 PLayerTransactionParent*
 EmbedLiteCompositorProcessParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                                               const uint64_t& aId)
+                                                               const LayersId& aId)
 {
   LOGT();
   MOZ_ASSERT(aId != 0);
@@ -187,14 +187,14 @@ EmbedLiteCompositorProcessParent::DeallocPLayerTransactionParent(PLayerTransacti
 }
 
 mozilla::ipc::IPCResult
-EmbedLiteCompositorProcessParent::RecvNotifyChildCreated(const uint64_t& child, CompositorOptions *aOptions)
+EmbedLiteCompositorProcessParent::RecvNotifyChildCreated(const LayersId& child, CompositorOptions *aOptions)
 {
   LOGT("Implement me");
   return IPC_OK();
 }
 
 bool
-EmbedLiteCompositorProcessParent::SetTestSampleTime(const uint64_t &aId, const TimeStamp& aTime)
+EmbedLiteCompositorProcessParent::SetTestSampleTime(const LayersId &aId, const TimeStamp& aTime)
 {
   LOGT("Implement me");
   Unused << aId;
@@ -203,7 +203,7 @@ EmbedLiteCompositorProcessParent::SetTestSampleTime(const uint64_t &aId, const T
 }
 
 void
-EmbedLiteCompositorProcessParent::LeaveTestMode(const uint64_t &aId)
+EmbedLiteCompositorProcessParent::LeaveTestMode(const LayersId &aId)
 {
   LOGT("Implement me");
   Unused << aId;
@@ -213,20 +213,20 @@ void
 EmbedLiteCompositorProcessParent::ApplyAsyncProperties(LayerTransactionParent *aLayerTree)
 {
   LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
+  LayersId id = aLayerTree->GetId();
   MOZ_ASSERT(id != 0);
   Unused << id;
 }
 
 void
-EmbedLiteCompositorProcessParent::FlushApzRepaints(const uint64_t &aLayersId)
+EmbedLiteCompositorProcessParent::FlushApzRepaints(const LayersId &aLayersId)
 {
   LOGT("Implement me");
   Unused << aLayersId;
 }
 
 void
-EmbedLiteCompositorProcessParent::GetAPZTestData(const uint64_t &aLayersId,
+EmbedLiteCompositorProcessParent::GetAPZTestData(const LayersId &aLayersId,
                                                  APZTestData* aOutData)
 {
   LOGT("Implement me");
@@ -235,7 +235,7 @@ EmbedLiteCompositorProcessParent::GetAPZTestData(const uint64_t &aLayersId,
 }
 
 void
-EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const uint64_t &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
 {
   LOGT("Implement me");
   Unused << aLayersId;
@@ -247,7 +247,7 @@ AsyncCompositionManager*
 EmbedLiteCompositorProcessParent::GetCompositionManager(LayerTransactionParent* aLayerTree)
 {
   LOGT("Implement me");
-  uint64_t id = aLayerTree->GetId();
+  LayersId id = aLayerTree->GetId();
   MOZ_ASSERT(id != 0);
   Unused << id;
   return nullptr;
