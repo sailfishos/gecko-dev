@@ -29,16 +29,16 @@ EmbedContentController::~EmbedContentController()
   LOGT();
 }
 
-void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
+void EmbedContentController::RequestContentRepaint(const layers::RepaintRequest &aRequest)
 {
   // We always need to post requests into the "UI thread" otherwise the
   // requests may get processed out of order.
   LOGT();
   // nsThreadUtils version
-  mUILoop->PostTask(NewRunnableMethod<const FrameMetrics>("mozilla::embedlite::EmbedContentController::DoRequestContentRepaint",
-                                                          this,
-                                                          &EmbedContentController::DoRequestContentRepaint,
-                                                          aFrameMetrics));
+  mUILoop->PostTask(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoRequestContentRepaint",
+                                                                    this,
+                                                                    &EmbedContentController::DoRequestContentRepaint,
+                                                                    aRequest));
 }
 
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
@@ -122,20 +122,22 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
  * |aContentRect| is in CSS pixels, relative to the current cssPage.
  * |aScrollableSize| is the current content width/height in CSS pixels.
  */
-void EmbedContentController::DoSendScrollEvent(const FrameMetrics aFrameMetrics)
+void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aRequest)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUILoop->PostTask(NewRunnableMethod<const FrameMetrics>("mozilla::embedlite::EmbedContentController::DoSendScrollEvent",
-                                                            this,
-                                                            &EmbedContentController::DoSendScrollEvent,
-                                                            aFrameMetrics));
+    mUILoop->PostTask(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoSendScrollEvent",
+                                                                      this,
+                                                                      &EmbedContentController::DoSendScrollEvent,
+                                                                      aRequest));
     return;
   } else {
-    CSSRect contentRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
-    contentRect.MoveTo(aFrameMetrics.GetScrollOffset());
-    CSSSize scrollableSize = aFrameMetrics.GetScrollableRect().Size();
+    CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
+    contentRect.MoveTo(aRequest.GetScrollOffset());
+
+    // FIXME - RepaintRequest does not contain scrollable rect size.
+    CSSSize scrollableSize(0, 0);
 
     LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
           contentRect.x, contentRect.y, contentRect.width, contentRect.height,
@@ -143,8 +145,8 @@ void EmbedContentController::DoSendScrollEvent(const FrameMetrics aFrameMetrics)
     gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
     gfxSize size(scrollableSize.width, scrollableSize.height);
 
-    if (mRenderFrame && !GetListener()->HandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size)) {
-      Unused << mRenderFrame->SendHandleScrollEvent(aFrameMetrics.IsRootContent(), rect, size);
+    if (mRenderFrame && !GetListener()->HandleScrollEvent(aRequest.IsRootContent(), rect, size)) {
+      Unused << mRenderFrame->SendHandleScrollEvent(aRequest.IsRootContent(), rect, size);
     }
   }
 }
@@ -189,12 +191,12 @@ EmbedLiteViewListener *EmbedContentController::GetListener() const
          mRenderFrame->mView->GetListener() : &sFakeListener;
 }
 
-void EmbedContentController::DoRequestContentRepaint(const FrameMetrics aFrameMetrics)
+void EmbedContentController::DoRequestContentRepaint(const layers::RepaintRequest aRequest)
 {
   LOGT("render frame %p", mRenderFrame);
   if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    DoSendScrollEvent(aFrameMetrics);
-    Unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
+    DoSendScrollEvent(aRequest);
+    Unused << mRenderFrame->SendUpdateFrame(aRequest);
   }
 }
 

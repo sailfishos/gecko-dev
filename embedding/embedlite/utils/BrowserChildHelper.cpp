@@ -312,9 +312,9 @@ BrowserChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 }
 
 bool
-BrowserChildHelper::UpdateFrame(const FrameMetrics& aFrameMetrics)
+BrowserChildHelper::UpdateFrame(const RepaintRequest &aRequest)
 {
-  return UpdateFrameHandler(aFrameMetrics);
+  return UpdateFrameHandler(aRequest);
 }
 
 nsIWebNavigation*
@@ -565,36 +565,34 @@ BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
 }
 
 bool
-BrowserChildHelper::UpdateFrameHandler(const FrameMetrics& aFrameMetrics) {
-  MOZ_ASSERT(aFrameMetrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID);
+BrowserChildHelper::UpdateFrameHandler(const RepaintRequest &aRequest) {
+  MOZ_ASSERT(aRequest.GetScrollId() != FrameMetrics::NULL_SCROLL_ID);
 
-  if (aFrameMetrics.IsRootContent()) {
+  if (aRequest.IsRootContent()) {
     if (RefPtr<PresShell> presShell = GetTopLevelPresShell()) {
       // Guard against stale updates (updates meant for a pres shell which
       // has since been torn down and destroyed).
-      if (aFrameMetrics.GetPresShellId() == presShell->GetPresShellId()) {
-        ProcessUpdateFrame(aFrameMetrics);
+      if (aRequest.GetPresShellId() == presShell->GetPresShellId()) {
+        ProcessUpdateFrame(aRequest);
         return true;
       }
     }
   } else {
-    // aFrameMetrics.mIsRoot is false, so we are trying to update a subframe.
+    // aRequest.mIsRoot is false, so we are trying to update a subframe.
     // This requires special handling.
-    FrameMetrics newSubFrameMetrics(aFrameMetrics);
-    APZCCallbackHelper::UpdateSubFrame(newSubFrameMetrics);
+    APZCCallbackHelper::UpdateSubFrame(aRequest);
     return true;
   }
   return true;
 }
 
 void
-BrowserChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
+BrowserChildHelper::ProcessUpdateFrame(const RepaintRequest &aRequest) {
   if (!mBrowserChildMessageManager) {
     return;
   }
 
-  FrameMetrics newMetrics = aFrameMetrics;
-  APZCCallbackHelper::UpdateRootFrame(newMetrics);
+  APZCCallbackHelper::UpdateRootFrame(aRequest);
 }
 
 void

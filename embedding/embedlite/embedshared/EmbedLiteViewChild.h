@@ -154,7 +154,7 @@ protected:
                                                         const gfxRect &contentRect,
                                                         const gfxSize &scrollSize);
 
-  virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::FrameMetrics &aFrameMetrics);
+  virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::RepaintRequest &aRequest);
   virtual mozilla::ipc::IPCResult RecvHandleDoubleTap(const LayoutDevicePoint &,
                                                       const Modifiers &aModifiers,
                                                       const ScrollableLayerGuid &aGuid);
