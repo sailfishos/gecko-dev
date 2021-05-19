@@ -768,15 +768,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const bool &is
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvUpdateFrame(const FrameMetrics &aFrameMetrics)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvUpdateFrame(const RepaintRequest &aRequest)
 {
   LOGT();
   NS_ENSURE_TRUE(mWebBrowser, IPC_OK());
 
-  RelayFrameMetrics(aFrameMetrics);
-
   if (sHandleDefaultAZPC.viewport) {
-    mHelper->UpdateFrame(aFrameMetrics);
+    mHelper->UpdateFrame(aRequest);
   }
 
   return IPC_OK();
@@ -855,7 +853,6 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
   }
-
 
   if (sHandleDefaultAZPC.singleTap) {
     LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();

@@ -8,6 +8,7 @@
 
 #include "nsIObserver.h"
 #include "FrameMetrics.h"
+#include "mozilla/layers/RepaintRequest.h"
 #include "nsFrameMessageManager.h"
 #include "nsWeakReference.h"
 #include "nsIWebNavigation.h"
@@ -108,7 +109,7 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(BrowserChildHelper,
                                                          nsIBrowserChild)
 
-  bool UpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+  bool UpdateFrame(const mozilla::layers::RepaintRequest &aRequest);
 
   nsIWebNavigation* WebNavigation() const;
   nsIWidget* WebWidget();
@@ -131,9 +132,9 @@ public:
                                const Maybe<mozilla::layers::ZoomConstraints>& aConstraints);
   ScreenIntSize GetInnerSize();
 
-  void ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+  void ProcessUpdateFrame(const mozilla::layers::RepaintRequest &aRequest);
 
-  bool UpdateFrameHandler(const mozilla::layers::FrameMetrics& aFrameMetrics);
+  bool UpdateFrameHandler(const mozilla::layers::RepaintRequest &aRequest);
 
   void ReportSizeUpdate(const LayoutDeviceIntRect& aRect);
 

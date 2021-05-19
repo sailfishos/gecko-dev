@@ -30,6 +30,7 @@ using mozilla::LayoutDevicePoint from "Units.h";
 using mozilla::Modifiers from "mozilla/EventForwards.h";
 using nsEventStatus from "mozilla/EventForwards.h";
 using mozilla::layers::TouchBehaviorFlags from "mozilla/layers/APZUtils.h";
+using struct mozilla::layers::RepaintRequest from "mozilla/layers/RepaintRequest.h";
 using mozilla::layers::GeckoContentController::APZStateChange from "mozilla/layers/GeckoContentController.h";
 
 namespace mozilla {
@@ -57,7 +58,7 @@ child:
     async ResumeTimeouts();
     async HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
 
-    async UpdateFrame(FrameMetrics frame) compress;
+    async UpdateFrame(RepaintRequest request) compress;
     async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleLongTap(LayoutDevicePoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);

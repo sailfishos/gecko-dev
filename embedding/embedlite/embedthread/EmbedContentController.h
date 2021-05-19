@@ -8,6 +8,7 @@
 
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/layers/GeckoContentController.h"
+#include "mozilla/layers/RepaintRequest.h" // for RepaintRequest
 #include "FrameMetrics.h"
 
 namespace mozilla {
@@ -27,7 +28,7 @@ public:
   virtual ~EmbedContentController();
 
   // GeckoContentController interface
-  virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) override;
+  virtual void RequestContentRepaint(const layers::RepaintRequest &aRequest) override;
 
   virtual void HandleTap(TapType aType,
                          const LayoutDevicePoint& aPoint,
@@ -64,8 +65,8 @@ private:
   void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid);
   void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
 
-  void DoRequestContentRepaint(const FrameMetrics aFrameMetrics);
-  void DoSendScrollEvent(const FrameMetrics aFrameMetrics);
+  void DoRequestContentRepaint(const layers::RepaintRequest aRequest);
+  void DoSendScrollEvent(const layers::RepaintRequest aRequest);
 
   void DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg);
   void DoNotifyFlushComplete();
