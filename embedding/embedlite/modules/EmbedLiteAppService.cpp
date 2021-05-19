@@ -31,7 +31,6 @@
 // #include "xpcprivate.h"
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
-#include "FrameMetrics.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/EventTarget.h"
 
@@ -232,7 +231,7 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
 
   uint32_t presShellId;
-  mozilla::layers::FrameMetrics::ViewID viewId;
+  mozilla::layers::ScrollableLayerGuid::ViewID viewId;
   if (view->GetScrollIdentifiers(&presShellId, &viewId)) {
     view->ZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
   }

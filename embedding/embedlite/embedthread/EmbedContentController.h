@@ -9,7 +9,7 @@
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/layers/GeckoContentController.h"
 #include "mozilla/layers/RepaintRequest.h" // for RepaintRequest
-#include "FrameMetrics.h"
+#include "mozilla/layers/ScrollableLayerGuid.h" // for ScrollableLayerGuid, etc
 
 namespace mozilla {
 namespace embedlite {
@@ -18,7 +18,6 @@ class EmbedLiteViewParent;
 
 class EmbedContentController : public mozilla::layers::GeckoContentController
 {
-  typedef mozilla::layers::FrameMetrics FrameMetrics;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
   typedef mozilla::layers::TouchBehaviorFlags TouchBehaviorFlags;
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
@@ -52,8 +51,8 @@ public:
 
   virtual bool IsRepaintThread() override;
 
-  virtual void NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID &aViewId) override;
-  virtual void NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID &aViewId) override;
+  virtual void NotifyAsyncScrollbarDragRejected(const ScrollableLayerGuid::ViewID &aViewId) override;
+  virtual void NotifyAsyncAutoscrollRejected(const ScrollableLayerGuid::ViewID &aViewId) override;
   virtual void CancelAutoscroll(const ScrollableLayerGuid& aGuid) override;
 
   virtual void DispatchToRepaintThread(already_AddRefed<Runnable> aTask) override;

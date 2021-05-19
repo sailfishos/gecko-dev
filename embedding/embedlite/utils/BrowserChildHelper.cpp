@@ -566,7 +566,7 @@ BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
 
 bool
 BrowserChildHelper::UpdateFrameHandler(const RepaintRequest &aRequest) {
-  MOZ_ASSERT(aRequest.GetScrollId() != FrameMetrics::NULL_SCROLL_ID);
+  MOZ_ASSERT(aRequest.GetScrollId() != ScrollableLayerGuid::NULL_SCROLL_ID);
 
   if (aRequest.IsRootContent()) {
     if (RefPtr<PresShell> presShell = GetTopLevelPresShell()) {

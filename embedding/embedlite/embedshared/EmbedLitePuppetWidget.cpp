@@ -344,7 +344,7 @@ void EmbedLitePuppetWidget::SetConfirmedTargetAPZC(uint64_t aInputBlockId, const
   }
 }
 
-void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const FrameMetrics::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
+void EmbedLitePuppetWidget::UpdateZoomConstraints(const uint32_t &aPresShellId, const ScrollableLayerGuid::ViewID &aViewId, const mozilla::Maybe<ZoomConstraints> &aConstraints)
 {
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
   LOGT("view: %p", view);
