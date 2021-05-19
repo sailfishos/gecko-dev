@@ -133,7 +133,7 @@ nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
   PuppetWidgetBase::Resize(aWidth, aHeight, aRepaint);
   if (GetCompositorBridgeParent()) {
     static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
-        SetSurfaceSize(mNaturalBounds.width, mNaturalBounds.height);
+        SetSurfaceRect(mNaturalBounds.x, mNaturalBounds.y, mNaturalBounds.width, mNaturalBounds.height);
   }
 }
 

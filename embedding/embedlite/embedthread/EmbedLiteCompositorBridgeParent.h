@@ -37,7 +37,7 @@ public:
                                   bool aRenderToEGLSurface,
                                   const gfx::IntSize &aSurfaceSize);
 
-  void SetSurfaceSize(int width, int height);
+  void SetSurfaceRect(int x, int y, int width, int height);
   void* GetPlatformImage(int* width, int* height);
   void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
   void SuspendRendering();
@@ -60,7 +60,7 @@ private:
 
   uint32_t mWindowId;
   RefPtr<CancelableRunnable> mCurrentCompositeTask;
-  gfx::IntSize mSurfaceSize;
+  ScreenIntPoint mSurfaceOrigin;
   bool mUseExternalGLContext;
   Mutex mRenderMutex;
 
