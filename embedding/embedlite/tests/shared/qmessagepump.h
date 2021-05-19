@@ -9,7 +9,6 @@
 
 #include <QObject>
 #include <QTimer>
-#include <QVariant>
 #include <QStringList>
 #include "mozilla/embedlite/EmbedLiteMessagePump.h"
 
