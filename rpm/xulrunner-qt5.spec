@@ -72,7 +72,6 @@ Patch21:    0021-sailfishos-compositor-Allow-compositor-specializatio.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
 #Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
-#Patch16:    0016-sailfishos-compositor-Respect-gfxPrefs-ClearCompoisi.patch
 #Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
 #Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
 #Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
