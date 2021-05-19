@@ -14,10 +14,9 @@
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsIWebNavigation.h"
-#include "nsISSLStatusProvider.h"
 #include "nsISecureBrowserUI.h"
 #include "nsISerializationHelper.h"
-#include "nsISSLStatus.h"
+#include "nsITransportSecurityInfo.h"
 #include "nsIDOMEvent.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
@@ -364,16 +363,22 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
   uint64_t currentInnerWindowID = 0;
   utils->GetCurrentInnerWindowID(&currentInnerWindowID);
 
-  nsCString serSSLStatus;
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
-  nsCOMPtr<nsISecureBrowserUI> secureUI;
-  docShell->GetSecurityUI(getter_AddRefs(secureUI));
-  nsCOMPtr<nsISSLStatusProvider> sslProvider = do_QueryInterface(secureUI);
-  nsCOMPtr<nsISSLStatus> sslStatus;
-  sslProvider->GetSSLStatus(getter_AddRefs(sslStatus));
-  if (sslStatus) {
+
+  nsCOMPtr<nsIChannel> channel;
+  docShell->GetCurrentDocumentChannel(getter_AddRefs(channel));
+
+  nsCOMPtr<nsITransportSecurityInfo> securityInfo;
+  if (channel) {
+    nsCOMPtr<nsISupports> securityInfoSupports;
+    channel->GetSecurityInfo(getter_AddRefs(securityInfoSupports));
+    securityInfo = do_QueryInterface(securityInfoSupports);
+  }
+
+  nsCString serSSLStatus;
+  if (securityInfo) {
     nsCOMPtr<nsISerializationHelper> serialHelper = do_GetService("@mozilla.org/network/serialization-helper;1");
-    nsCOMPtr<nsISerializable> serializableStatus = do_QueryInterface(sslStatus);
+    nsCOMPtr<nsISerializable> serializableStatus = do_QueryInterface(securityInfo);
     serialHelper->SerializeToString(serializableStatus, serSSLStatus);
   }
   mListener->OnSecurityChanged(serSSLStatus.get(), state);
