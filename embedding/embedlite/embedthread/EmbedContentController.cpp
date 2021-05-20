@@ -41,6 +41,16 @@ void EmbedContentController::RequestContentRepaint(const layers::RepaintRequest 
                                                                     aRequest));
 }
 
+void EmbedContentController::NotifyLayerTransforms(const nsTArray<layers::MatrixMessage> &aTransforms)
+{
+  LOGT("NOT YET IMPLEMENTED");
+}
+
+void EmbedContentController::NotifyAsyncScrollbarDragInitiated(uint64_t aDragBlockId, const ScrollableLayerGuid::ViewID &aScrollId, layers::ScrollDirection aDirection)
+{
+  LOGT("NOT YET IMPLEMENTED");
+}
+
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
 {
   switch (aType) {

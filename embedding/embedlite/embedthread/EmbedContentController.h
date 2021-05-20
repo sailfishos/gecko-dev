@@ -29,6 +29,13 @@ public:
   // GeckoContentController interface
   virtual void RequestContentRepaint(const layers::RepaintRequest &aRequest) override;
 
+  virtual void NotifyLayerTransforms(
+      const nsTArray<layers::MatrixMessage> &aTransforms) override;
+
+  virtual void NotifyAsyncScrollbarDragInitiated(
+      uint64_t aDragBlockId, const ScrollableLayerGuid::ViewID &aScrollId,
+      layers::ScrollDirection aDirection) override;
+
   virtual void HandleTap(TapType aType,
                          const LayoutDevicePoint& aPoint,
                          Modifiers aModifiers,
