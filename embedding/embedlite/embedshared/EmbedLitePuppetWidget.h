@@ -65,7 +65,7 @@ public:
                                       const nsTArray<ScrollableLayerGuid>& aTargets) const override;
 
   virtual void UpdateZoomConstraints(const uint32_t& aPresShellId,
-                             const FrameMetrics::ViewID& aViewId,
+                             const ScrollableLayerGuid::ViewID &aViewId,
                              const mozilla::Maybe<ZoomConstraints>& aConstraints) override;
 
   virtual void CreateCompositor() override;

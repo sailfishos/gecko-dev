@@ -1230,7 +1230,7 @@ EmbedLiteViewChild::OnUpdateDisplayPort()
 }
 
 bool
-EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
+EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::ScrollableLayerGuid::ViewID *aViewIdOut)
 {
   nsCOMPtr<Document> doc(mHelper->GetTopLevelDocument());
   return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);

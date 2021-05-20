@@ -229,12 +229,12 @@ bool EmbedContentController::IsRepaintThread()
   return MessageLoop::current() == mUILoop;
 }
 
-void EmbedContentController::NotifyAsyncScrollbarDragRejected(const FrameMetrics::ViewID &aViewId)
+void EmbedContentController::NotifyAsyncScrollbarDragRejected(const ScrollableLayerGuid::ViewID &aViewId)
 {
   LOGT("NOT YET IMPLEMENTED");
 }
 
-void EmbedContentController::NotifyAsyncAutoscrollRejected(const FrameMetrics::ViewID &aViewId)
+void EmbedContentController::NotifyAsyncAutoscrollRejected(const ScrollableLayerGuid::ViewID &aViewId)
 {
   LOGT("NOT YET IMPLEMENTED");
 }

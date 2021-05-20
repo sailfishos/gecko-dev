@@ -2,7 +2,6 @@
 #ifndef __gen_EmbedLiteViewChildIface_h__
 #define __gen_EmbedLiteViewChildIface_h__
 
-#include "FrameMetrics.h"
 #include "mozilla/layers/APZUtils.h"    // for TouchBehaviorFlags
 #include "mozilla/TouchEvents.h"         // for WidgetTouchEvent
 
@@ -11,6 +10,11 @@ class nsIWidget;
 class nsIWebBrowserChrome;
 class nsIWebBrowser;
 namespace mozilla {
+
+namespace layers {
+struct FrameMetrics;
+} // namespace layers
+
 namespace embedlite {
 class EmbedLiteViewChildIface
 {
@@ -34,7 +38,7 @@ public:
 
   virtual bool
   ZoomToRect(const uint32_t& aPresShellId,
-             const mozilla::layers::FrameMetrics::ViewID& aViewId,
+             const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
              const CSSRect& aRect) = 0;
 
   virtual bool
@@ -43,7 +47,7 @@ public:
 
   virtual bool
   UpdateZoomConstraints(const uint32_t& aPresShellId,
-                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                        const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
                         const Maybe<mozilla::layers::ZoomConstraints>& aConstraints) = 0;
 
   virtual bool HasMessageListener(const nsAString& aMessageName) = 0;
@@ -70,7 +74,7 @@ public:
   virtual nsresult GetBrowser(nsIWebBrowser** outBrowser) = 0;
   virtual uint64_t GetOuterID() = 0;
 
-  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) = 0;
+  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::ScrollableLayerGuid::ViewID *aViewId) = 0;
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString& aMessage, const nsString& aData) = 0;
   virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault) = 0;
 

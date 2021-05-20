@@ -7,7 +7,6 @@
 #define __BrowserChildHelper_h_
 
 #include "nsIObserver.h"
-#include "FrameMetrics.h"
 #include "mozilla/layers/RepaintRequest.h"
 #include "nsFrameMessageManager.h"
 #include "nsWeakReference.h"
@@ -98,7 +97,7 @@ class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
                            public nsIObserver
 {
 public:
-  typedef mozilla::layers::FrameMetrics::ViewID ViewID;
+  typedef mozilla::layers::ScrollableLayerGuid::ViewID ViewID;
   BrowserChildHelper(EmbedLiteViewChildIface* aView);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -128,7 +127,7 @@ public:
                               JS::Handle<JSObject *> aCpows,
                               nsIPrincipal* aPrincipal);
   bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
-                               const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                               const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
                                const Maybe<mozilla::layers::ZoomConstraints>& aConstraints);
   ScreenIntSize GetInnerSize();
 

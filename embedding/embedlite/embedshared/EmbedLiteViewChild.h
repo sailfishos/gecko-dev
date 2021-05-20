@@ -23,6 +23,7 @@
 namespace mozilla {
 
 namespace layers {
+struct FrameMetrics;
 class APZEventState;
 } // namespace layers
 
@@ -93,7 +94,7 @@ public:
   /**
    * This method is used by EmbedLiteAppService::ZoomToRect() only.
    */
-  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId) override;
+  virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::ScrollableLayerGuid::ViewID *aViewId) override;
 
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString &aMessage, const nsString &aData) override;
 
