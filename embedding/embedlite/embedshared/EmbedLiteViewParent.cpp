@@ -430,22 +430,19 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
     return NS_OK;
   }
 
-  ScrollableLayerGuid guid;
-  uint64_t outInputBlockId;
-
   mozilla::MultiTouchInput multiTouchInput = aEvent.AsMultiTouchInput();
-  nsEventStatus apzResult = GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(multiTouchInput, &guid, &outInputBlockId);
+  mozilla::layers::APZEventResult apzResult = GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(multiTouchInput);
 
   // If the APZ says to drop it, then we drop it
-  if (apzResult == nsEventStatus_eConsumeNoDefault) {
+  if (apzResult.mStatus == nsEventStatus_eConsumeNoDefault) {
     return NS_OK;
   }
 
   if (multiTouchInput.mInputType == MULTITOUCH_INPUT) {
     if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-      Unused << SendInputDataTouchMoveEvent(guid, multiTouchInput, outInputBlockId, apzResult);
+      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
     } else {
-      Unused << SendInputDataTouchEvent(guid, multiTouchInput, outInputBlockId, apzResult);
+      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
     }
   }
   return NS_OK;
@@ -514,7 +511,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -536,7 +533,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
@@ -558,7 +555,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
                                                180.0f,
                                                1.0f));
 
-  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event, nullptr, nullptr);
+  GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
   Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
