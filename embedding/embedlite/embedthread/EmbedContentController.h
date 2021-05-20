@@ -23,7 +23,7 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
-  EmbedContentController(EmbedLiteViewParent* aRenderFrame, MessageLoop* aUILoop);
+  EmbedContentController(EmbedLiteViewParent *aRenderFrame, nsISerialEventTarget *aUIThread);
   virtual ~EmbedContentController();
 
   // GeckoContentController interface
@@ -79,7 +79,7 @@ private:
 
   nsIntPoint convertIntPoint(const LayoutDevicePoint &aPoint);
 
-  MessageLoop* mUILoop;
+  nsISerialEventTarget *mUIThread;
   EmbedLiteViewParent* mRenderFrame;
 };
 

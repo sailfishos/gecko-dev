@@ -31,15 +31,15 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_
   , mWindow(*EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)
   , mDPI(-1.0)
-  , mUILoop(MessageLoop::current())
+  , mThread(NS_GetCurrentThread())
   , mLastIMEState(0)
   , mUploadTexture(0)
   , mApzcTreeManager(nullptr)
-  , mContentController(new EmbedContentController(this, mUILoop))
+  , mContentController(new EmbedContentController(this, mThread))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewParent);
 
-  APZThreadUtils::SetControllerThread(mUILoop);
+  APZThreadUtils::SetControllerThread(mThread);
 
   /// XXX: Fix this
   if (mWindow.GetCompositor()) {
