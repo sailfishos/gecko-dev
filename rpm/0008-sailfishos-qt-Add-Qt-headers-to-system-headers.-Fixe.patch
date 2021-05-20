@@ -13,7 +13,7 @@ diff --git a/config/system-headers.mozbuild b/config/system-headers.mozbuild
 index 8942b6244e61..86cf508622c5 100644
 --- a/config/system-headers.mozbuild
 +++ b/config/system-headers.mozbuild
-@@ -704,12 +704,83 @@ system_headers = [
+@@ -704,12 +704,84 @@ system_headers = [
      'pulse/pulseaudio.h',
      'pwd.h',
      'Python.h',
@@ -94,6 +94,7 @@ index 8942b6244e61..86cf508622c5 100644
 +    'QUrl',
 +    'QWheelEvent',
 +    'QWindow',
++    'QVariant',
      'regex.h',
      'Region.h',
      'resolv.h',
