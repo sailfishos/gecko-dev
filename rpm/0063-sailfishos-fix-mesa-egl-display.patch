@@ -1,3 +1,8 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Adam Pigg <adam@piggz.co.uk>
+Date: Wed, 31 Mar 2021 17:18:45 +0100
+Subject: [PATCH] [sailfishos][embedlite][egl] Fix mesa egl display initialisation
+
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
 index d91d03aee6a9..7408070a37d1 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
