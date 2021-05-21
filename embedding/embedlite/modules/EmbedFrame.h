@@ -19,7 +19,7 @@ public:
   EmbedFrame();
 
   nsCOMPtr<nsIDOMWindow> mWindow;
-  RefPtr<ContentFrameMessageManager> mMessageManager;
+  RefPtr<mozilla::dom::ContentFrameMessageManager> mMessageManager;
 
 private:
   virtual ~EmbedFrame();
