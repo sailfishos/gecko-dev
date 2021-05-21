@@ -326,8 +326,9 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, mozIDOMWindowProxy * *embed
         nsCOMPtr<nsIWebBrowser> br;
         rv = view->GetBrowser(getter_AddRefs(br));
         NS_ENSURE_TRUE(br, rv);
+        nsCOMPtr<nsIDocShell> docShell = do_GetInterface(br);
         bool isActive;
-        br->GetIsActive(&isActive);
+        docShell->GetIsActive(&isActive);
         if (isActive) {
           nsCOMPtr<mozIDOMWindowProxy> domWindow;
           br->GetContentDOMWindow(getter_AddRefs(domWindow));
