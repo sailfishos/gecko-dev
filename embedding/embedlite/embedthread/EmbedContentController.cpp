@@ -64,8 +64,8 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
       HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eSecondTap:
+      [[fallthrough]];
     case GeckoContentController::TapType::eLongTapUp:
-      MOZ_FALLTHROUGH;
       break;
   }
 }
