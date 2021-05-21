@@ -48,7 +48,11 @@ EmbedLiteApp*
 EmbedLiteApp::GetInstance()
 {
   if (!sSingleton) {
-    mozilla::LogModule::Init();
+    // We don't have the arguments by hand here.  If logging has already been
+    // initialized by a previous call to LogModule::Init with the arguments
+    // passed, passing (0, nullptr) is alright here.
+    // Copied from xpcom/build/XPCOMInit.cpp
+    mozilla::LogModule::Init(0, nullptr);
     sSingleton = new EmbedLiteApp();
     NS_ASSERTION(sSingleton, "not initialized");
   }
