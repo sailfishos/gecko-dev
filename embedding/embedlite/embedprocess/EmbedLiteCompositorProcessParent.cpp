@@ -56,7 +56,7 @@ EmbedLiteCompositorProcessParent::Create(Transport* aTransport, ProcessId aOther
   }
 
   cpcp->mSelfRef = cpcp;
-  CompositorThreadHolder::Loop()->PostTask(
+  CompositorThread()->Dispatch(
     NewRunnableFunction("mozilla::embedlite::EmbedLiteAppProcessParent::OpenCompositor",
                         &OpenCompositor, cpcp.get(),
                         aTransport, handle, XRE_GetIOMessageLoop()));
