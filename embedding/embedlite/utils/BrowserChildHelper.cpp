@@ -305,7 +305,7 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
 }
 
 NS_IMETHODIMP
-BrowserChildHelper::HandleEvent(nsIDOMEvent* aEvent)
+BrowserChildHelper::HandleEvent(Event *aEvent)
 {
   (void)(aEvent);
   return NS_OK;
@@ -360,10 +360,8 @@ BrowserChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                           nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
                                           bool aIsSync)
 {
-  nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
-          do_GetService("@mozilla.org/globalmessagemanager;1");
-  RefPtr<nsFrameMessageManager> globalMessageManager =
-          static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
+  RefPtr<ChromeMessageBroadcaster> globalIMessageManager = nsFrameMessageManager::GetGlobalMessageManager();
+  RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
 
   RefPtr<nsFrameMessageManager> mm =
       mBrowserChildMessageManager->GetMessageManager();
@@ -441,10 +439,8 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                                 JS::Handle<JSObject *> aCpows,
                                                 nsIPrincipal* aPrincipal)
 {
-  nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
-      do_GetService("@mozilla.org/globalmessagemanager;1");
-  RefPtr<nsFrameMessageManager> globalMessageManager =
-      static_cast<nsFrameMessageManager*>(globalIMessageManager.get());
+  RefPtr<ChromeMessageBroadcaster> globalIMessageManager = nsFrameMessageManager::GetGlobalMessageManager();
+  RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
 
   RefPtr<nsFrameMessageManager> mm =
       mBrowserChildMessageManager->GetMessageManager();

@@ -216,7 +216,11 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     return false;
   }
   // XRE_InitEmbedding2 creates and sets global nsXREDirProvider
-  nsXREDirProvider::GetSingleton()->InitializeUserPrefs();
+  RefPtr<nsXREDirProvider> XREDirProvider(nsXREDirProvider::GetSingleton());
+  NS_WARN_IF(!XREDirProvider);
+  if (XREDirProvider) {
+    XREDirProvider->InitializeUserPrefs();
+  }
 
   if (aProfilePath) {
     // initialize profile:

@@ -9,10 +9,10 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Geometry.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "ppmm",
-   "@mozilla.org/parentprocessmessagemanager;1", "nsIMessageBroadcaster");
+   "@mozilla.org/parentprocessmessagemanager;1", "nsISupports");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gpmm",
-   "@mozilla.org/globalmessagemanager;1", "nsIMessageBroadcaster");
+   "@mozilla.org/globalmessagemanager;1", "nsISupports");
 
 dump("###################################### embedTestScript.js loaded\n");
 

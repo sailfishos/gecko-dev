@@ -9,6 +9,7 @@
 #include "nsIDOMWindow.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShell.h"
+#include "nsIOService.h"
 #include "nsIWebProgress.h"
 #include "nsPIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -17,11 +18,8 @@
 #include "nsISecureBrowserUI.h"
 #include "nsISerializationHelper.h"
 #include "nsITransportSecurityInfo.h"
-#include "nsIDOMEvent.h"
 #include "nsIFocusManager.h"
-#include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
-#include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
@@ -29,6 +27,8 @@
 #include "BrowserChildHelper.h"
 #include "mozilla/ContentEvents.h" // for InternalScrollAreaEvent
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/Event.h"
+#include "mozilla/dom/EventTarget.h"
 
 // Duplicated from EventNameList.h
 #define MOZ_MozAfterPaint "MozAfterPaint"
@@ -266,15 +266,9 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsCString spec;
   if (location) {
-    nsCOMPtr<nsIURIFixup> fixup(do_GetService("@mozilla.org/docshell/urifixup;1"));
-    if (fixup) {
-        nsCOMPtr<nsIURI> tmpuri;
-        nsresult rv = fixup->CreateExposableURI(location, getter_AddRefs(tmpuri));
-        if (NS_SUCCEEDED(rv) && tmpuri) {
-            tmpuri->GetSpec(spec);
-        } else {
-            location->GetSpec(spec);
-        }
+    nsCOMPtr<nsIURI> tmpuri = net::nsIOService::CreateExposableURI(location);
+    if (tmpuri) {
+        tmpuri->GetSpec(spec);
     } else {
         location->GetSpec(spec);
     }
@@ -391,7 +385,7 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
 //*****************************************************************************
 
 NS_IMETHODIMP
-WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
+WebBrowserChrome::HandleEvent(Event *aEvent)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
 
@@ -407,10 +401,9 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
   AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
-    RefPtr<EventTarget> origTarget;
-    aEvent->GetOriginalTarget(getter_AddRefs(origTarget));
+    EventTarget *origTarget = aEvent->GetOriginalTarget();
     nsCOMPtr<Document> ctDoc = do_QueryInterface(origTarget);
-    nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetDefaultView();
+    nsCOMPtr<nsPIDOMWindowOuter> targetWin = ctDoc->GetWindow();
     if (targetWin != window) {
       return NS_OK; // We are only interested in root scroll pane changes
     }
@@ -448,8 +441,7 @@ WebBrowserChrome::HandleEvent(nsIDOMEvent* aEvent)
     nsIntPoint offset = GetScrollOffset(docWin);
     mListener->OnFirstPaint(offset.x, offset.y);
   } else if (type.EqualsLiteral(MOZ_scroll)) {
-    RefPtr<EventTarget> target;
-    aEvent->GetTarget(getter_AddRefs(target));
+    EventTarget *target = aEvent->GetTarget();
     nsCOMPtr<Document> eventDoc = do_QueryInterface(target);
     nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser);
     if (eventDoc != ctDoc) {
@@ -685,4 +677,10 @@ void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)
   NS_ASSERTION(!mHelper, "BrowserChildHelper can be set only once");
 
   mHelper = aHelper;
+}
+
+NS_IMETHODIMP WebBrowserChrome::OnContentBlockingEvent(nsIWebProgress *aWebProgress,
+                                                       nsIRequest *aRequest,
+                                                       uint32_t aEvent) {
+  return NS_OK;
 }

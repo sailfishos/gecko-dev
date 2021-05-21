@@ -7,20 +7,18 @@
 #define __WindowCreator_h_
 
 #include "nsIWindowCreator.h"
-#include "nsIWindowCreator2.h"
 
 namespace mozilla {
 namespace embedlite {
 class EmbedLiteAppChildIface;
 }}
-class WindowCreator : public nsIWindowCreator2
+class WindowCreator : public nsIWindowCreator
 {
 public:
   WindowCreator(mozilla::embedlite::EmbedLiteAppChildIface* aChild);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWINDOWCREATOR
-  NS_DECL_NSIWINDOWCREATOR2
 
 protected:
   virtual ~WindowCreator();

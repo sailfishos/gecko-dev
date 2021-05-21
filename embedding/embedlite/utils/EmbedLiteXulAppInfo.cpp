@@ -24,6 +24,13 @@
 #include "nsAccessibilityService.h"
 #endif
 
+#ifdef XP_WIN
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
+
 using namespace mozilla::embedlite;
 
 EmbedLiteXulAppInfo::EmbedLiteXulAppInfo()
@@ -44,13 +51,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 {
-  aVersion.Assign(NS_STRINGIFY(FIREFOX_VERSION));
+  aVersion.Assign(MOZ_STRINGIFY(MOZ_APP_VERSION));
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
+  aAppBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -74,13 +81,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVendor(nsACString& aVendor)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersion)
 {
-  aPlatformVersion.Assign(NS_STRINGIFY(GRE_MILESTONE));
+  aPlatformVersion.Assign(MOZ_STRINGIFY(GRE_MILESTONE));
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(NS_STRINGIFY(MOZ_BUILDID));
+  aPlatformBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
   return NS_OK;
 }
 
@@ -177,7 +184,7 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetDefaultUpdateChannel(nsACString& aResult)
 {
-  aResult.AssignLiteral(NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
+  aResult.AssignLiteral(MOZ_STRINGIFY(MOZ_UPDATE_CHANNEL));
   return NS_OK;
 }
 
@@ -292,3 +299,36 @@ EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetSourceURL(nsACString &aResult)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetUpdateURL(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
+{
+  // TODO: implement gRestartedByOS flag
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLauncherProcessState(uint32_t *aResult) {
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLastAppVersion(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetLastAppBuildID(nsACString &aResult) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
