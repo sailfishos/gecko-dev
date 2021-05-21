@@ -21,7 +21,7 @@ public:
 
   bool Init(MessageLoop* aIOLoop,
             base::ProcessId aParentPid,
-            IPC::Channel* aChannel);
+            UniquePtr<IPC::Channel> aChannel);
   void InitXPCOM();
 
   struct AppInfo
