@@ -140,7 +140,15 @@ EmbedLiteAppProcessChild::InitXPCOM()
   Unused << SendInitialized();
 
   nsTArray<mozilla::dom::Pref> prefs;
+
+  // FIXME - Preferences::GetPreferences has been removed.
+  // See upstream commits:
+  //  6b81d0b99f2093a9cc2307c96a6f79b6ebe3c1e7
+  //  e9a980f931e63830c776cf87bfeecf1b12c7542a
+  // Task to analyze/fix: 54355
+#if 0
   Preferences::GetPreferences(&prefs);
+#endif
   SendPrefsArrayInitialized(prefs);
 }
 
