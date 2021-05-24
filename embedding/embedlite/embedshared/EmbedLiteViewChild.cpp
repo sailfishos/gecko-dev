@@ -33,7 +33,6 @@
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
-#include "gfxPrefs.h"
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
@@ -180,7 +179,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     return;
   }
 
-  gfxPrefs::GetSingleton();
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
   if (NS_FAILED(rv)) {
     return;
