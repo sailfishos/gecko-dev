@@ -85,9 +85,8 @@ protected:
                                                  const ViewID &aViewId,
                                                  const CSSRect &aRect);
   virtual mozilla::ipc::IPCResult RecvSetBackgroundColor(const nscolor &aColor);
-  virtual mozilla::ipc::IPCResult RecvContentReceivedInputBlock(const ScrollableLayerGuid &aGuid,
-                                             const uint64_t &aInputBlockId,
-                                             const bool &aPreventDefault);
+  virtual mozilla::ipc::IPCResult RecvContentReceivedInputBlock(const uint64_t &aInputBlockId,
+                                                                const bool &aPreventDefault);
   virtual mozilla::ipc::IPCResult RecvSetTargetAPZC(const uint64_t &aInputBlockId,
                                                     nsTArray<ScrollableLayerGuid> &&aTargets);
   virtual mozilla::ipc::IPCResult RecvSetAllowedTouchBehavior(const uint64_t &aInputBlockId,

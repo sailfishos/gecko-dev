@@ -117,12 +117,10 @@ public:
 
 /*---------WidgetIface---------------*/
 
-  virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                         const uint64_t& aInputBlockId,
+  virtual bool ContentReceivedInputBlock(const uint64_t &aInputBlockId,
                                          const bool& aPreventDefault) override;
 
-  virtual bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                               uint64_t aInputBlockId,
+  virtual bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
                                                bool aPreventDefault) override;
 
   virtual bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,

@@ -76,10 +76,9 @@ public:
 
   virtual bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::ScrollableLayerGuid::ViewID *aViewId) = 0;
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsString& aMessage, const nsString& aData) = 0;
-  virtual bool ContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid, const uint64_t& aInputBlockId, const bool& aPreventDefault) = 0;
+  virtual bool ContentReceivedInputBlock(const uint64_t &aInputBlockId, const bool &aPreventDefault) = 0;
 
-  virtual bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                               uint64_t aInputBlockId,
+  virtual bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
                                                bool aPreventDefault) = 0;
 
   virtual bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<mozilla::layers::TouchBehaviorFlags> &aFlags) = 0;

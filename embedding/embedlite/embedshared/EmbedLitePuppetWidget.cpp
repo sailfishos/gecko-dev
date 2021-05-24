@@ -406,7 +406,7 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
 }
 
 bool
-EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId, bool aPreventDefault)
+EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault)
 {
   if (Destroyed()) {
     return false;
@@ -415,7 +415,7 @@ EmbedLitePuppetWidget::DoSendContentReceivedInputBlock(const mozilla::layers::Sc
   LOGT("thread id: %ld", syscall(SYS_gettid));
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
   if (view) {
-    view->DoSendContentReceivedInputBlock(aGuid, aInputBlockId, aPreventDefault);
+    view->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
     return true;
   }
   return false;

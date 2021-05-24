@@ -75,8 +75,7 @@ public:
                                         LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
 
-  bool DoSendContentReceivedInputBlock(const mozilla::layers::ScrollableLayerGuid& aGuid,
-                                       uint64_t aInputBlockId,
+  bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
                                        bool aPreventDefault);
   bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
                                      const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags);
