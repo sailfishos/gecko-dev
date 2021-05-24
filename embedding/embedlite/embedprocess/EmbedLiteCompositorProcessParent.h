@@ -53,7 +53,8 @@ public:
   virtual bool SetTestSampleTime(const LayersId& aId,
                                  const TimeStamp& aTime) override;
   virtual void LeaveTestMode(const LayersId& aId) override;
-  virtual void ApplyAsyncProperties(LayerTransactionParent* aLayerTree) override;
+  virtual void ApplyAsyncProperties(LayerTransactionParent *aLayerTree,
+                                    TransformsToSkip aSkip) override;
   virtual void FlushApzRepaints(const LayersId& aLayersId) override;
   virtual void GetAPZTestData(const LayersId& aLayersId,
                               APZTestData* aOutData) override;
@@ -64,9 +65,6 @@ public:
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
 
   virtual mozilla::ipc::IPCResult RecvRemotePluginsReady() override { return IPC_OK(); }
-
-  using CompositorBridgeParentBase::DidComposite;
-  void DidComposite(TimeStamp& aCompositeStart, TimeStamp& aCompositeEnd);
 
   /**
    * A new child process has been configured to push transactions
