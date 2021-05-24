@@ -9,6 +9,7 @@
 #include "nsIProperty.h"
 #include "EmbedLiteAppService.h"
 #include "nsServiceManagerUtils.h"
+#include "js/JSON.h"
 #include "js/Value.h"
 #include "jsapi.h"
 #include "xpcprivate.h"
@@ -117,10 +118,10 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       JS::RootedObject obj(cx, &propval.toObject());
 
       bool isArray = false;
-      if (JS_IsArrayObject(cx, obj, &isArray) && isArray) {
+      if (JS::IsArrayObject(cx, obj, &isArray) && isArray) {
         nsCOMPtr<nsIWritableVariant> childElements = do_CreateInstance("@mozilla.org/variant;1");
         uint32_t tmp;
-        if (JS_GetArrayLength(cx, obj, &tmp)) {
+        if (JS::GetArrayLength(cx, obj, &tmp)) {
           nsTArray<nsCOMPtr<nsIVariant>> childArray;
           for (uint32_t i = 0; i < tmp; i++) {
             JS::RootedValue v(cx);
@@ -237,7 +238,7 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   }
   // Example from SaveProfileTask.cpp#74
   JS::RootedValue value(cx, JS::ObjectValue(*obj));
-  NS_ENSURE_TRUE(JS_Stringify(cx, &value, nullptr, JS::NullHandleValue, JSONCreator, &outJson), NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(nsContentUtils::StringifyJSON(cx, &value, outJson), NS_ERROR_FAILURE);
   NS_ENSURE_TRUE(!outJson.IsEmpty(), NS_ERROR_FAILURE);
   return NS_OK;
 }
