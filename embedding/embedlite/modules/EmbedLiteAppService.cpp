@@ -295,7 +295,7 @@ EmbedLiteAppService::ChromeEventHandler(mozIDOMWindowProxy *aWindow, EventTarget
 {
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_GetInterface(aWindow);
   NS_ENSURE_TRUE(pidomWindow, NS_ERROR_FAILURE);
-  RefPtr<EventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
+  RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   *eventHandler = target.forget().take();
   return NS_OK;
 }

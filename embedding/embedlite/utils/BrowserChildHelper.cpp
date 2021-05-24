@@ -240,8 +240,7 @@ BrowserChildHelper::InitBrowserChildHelperMessageManager()
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   NS_ENSURE_TRUE(window, false);
-  RefPtr<EventTarget> chromeHandler =
-    do_QueryInterface(window->GetChromeEventHandler());
+  RefPtr<EventTarget> chromeHandler(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
   RefPtr<BrowserChildHelperMessageManager> scope = mBrowserChildMessageManager =
