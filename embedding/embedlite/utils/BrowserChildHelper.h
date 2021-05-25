@@ -150,8 +150,8 @@ protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   // Sends a simulated mouse event from a touch event for compatibility.
-  bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
-                                    WidgetTouchEvent& aEvent);
+  WidgetTouchEvent ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput &aData,
+                                                bool &aRes);
   bool HasValidInnerSize();
 
   nsCOMPtr<nsIWebBrowserChrome3> mWebBrowserChrome;
