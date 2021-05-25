@@ -55,10 +55,10 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
 {
   switch (aType) {
     case GeckoContentController::TapType::eSingleTap:
-      HandleSingleTap(aPoint, aModifiers, aGuid);
+      HandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eDoubleTap:
-      HandleDoubleTap(aPoint, aModifiers, aGuid);
+      HandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eLongTap:
       HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
@@ -72,37 +72,47 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
 
 void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                              Modifiers aModifiers,
-                                             const ScrollableLayerGuid aGuid)
+                                             const ScrollableLayerGuid aGuid,
+                                             uint64_t aInputBlockId)
 {
   if (NS_GetCurrentThread() != mUIThread) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid>("mozilla::embedlite::EmbedContentController::HandleDoubleTap",
-                                                                                                       this,
-                                                                                                       &EmbedContentController::HandleDoubleTap,
-                                                                                                       aPoint,
-                                                                                                       aModifiers,
-                                                                                                       aGuid));
+    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
+                                          Modifiers,
+                                          const ScrollableLayerGuid,
+                                          uint64_t>("mozilla::embedlite::EmbedContentController::HandleDoubleTap",
+                                                    this,
+                                                    &EmbedContentController::HandleDoubleTap,
+                                                    aPoint,
+                                                    aModifiers,
+                                                    aGuid,
+                                                    aInputBlockId));
   } else if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
 
 void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
                                              Modifiers aModifiers,
-                                             const ScrollableLayerGuid aGuid)
+                                             const ScrollableLayerGuid aGuid,
+                                             uint64_t aInputBlockId)
 {
   if (NS_GetCurrentThread() != mUIThread) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid>("mozilla::embedlite::EmbedContentController::HandleSingleTap",
-                                                                                                       this,
-                                                                                                       &EmbedContentController::HandleSingleTap,
-                                                                                                       aPoint,
-                                                                                                       aModifiers,
-                                                                                                       aGuid));
+    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
+                                          Modifiers,
+                                          const ScrollableLayerGuid,
+                                          uint64_t>("mozilla::embedlite::EmbedContentController::HandleSingleTap",
+                                                    this,
+                                                    &EmbedContentController::HandleSingleTap,
+                                                    aPoint,
+                                                    aModifiers,
+                                                    aGuid,
+                                                    aInputBlockId));
   } else if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid);
+    Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
 

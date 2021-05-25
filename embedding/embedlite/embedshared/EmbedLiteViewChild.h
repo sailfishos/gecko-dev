@@ -156,9 +156,11 @@ protected:
   virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::RepaintRequest &aRequest);
   virtual mozilla::ipc::IPCResult RecvHandleDoubleTap(const LayoutDevicePoint &,
                                                       const Modifiers &aModifiers,
-                                                      const ScrollableLayerGuid &aGuid);
+                                                      const ScrollableLayerGuid &aGuid,
+                                                      const uint64_t &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvHandleSingleTap(const LayoutDevicePoint &, const Modifiers &aModifiers,
-                                                      const ScrollableLayerGuid &aGuid);
+                                                      const ScrollableLayerGuid &aGuid,
+                                                      const uint64_t &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvHandleLongTap(const LayoutDevicePoint &aPoint,
                                                     const mozilla::layers::ScrollableLayerGuid &aGuid,
                                                     const uint64_t &aInputBlockId);

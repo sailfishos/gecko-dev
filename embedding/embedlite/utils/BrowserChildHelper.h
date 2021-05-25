@@ -139,6 +139,7 @@ public:
 
   mozilla::CSSPoint ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         const mozilla::layers::ScrollableLayerGuid& aGuid,
+                                        uint64_t aInputBlockId,
                                         bool *ok);
 
   void OpenIPC() { mIPCOpen = true; }

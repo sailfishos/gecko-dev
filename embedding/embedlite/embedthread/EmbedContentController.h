@@ -67,8 +67,8 @@ public:
 private:
   EmbedLiteViewListener *GetListener() const;
 
-  void HandleDoubleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid);
-  void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid);
+  void HandleDoubleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+  void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
 
   void DoRequestContentRepaint(const layers::RepaintRequest aRequest);
