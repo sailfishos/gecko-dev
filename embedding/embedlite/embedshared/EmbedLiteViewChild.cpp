@@ -22,7 +22,7 @@
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIWebBrowserChrome.h"
-#include "nsIWebBrowserSetup.h"
+#include "nsWebBrowser.h"
 #include "nsRefreshDriver.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsPIDOMWindow.h"
@@ -37,6 +37,8 @@
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/LoadURIOptionsBinding.h"
+#include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
@@ -175,12 +177,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   LOGT("parentID: %u", parentId);
   nsresult rv;
 
-  mWebBrowser = do_CreateInstance(NS_WEBBROWSER_CONTRACTID, &rv);
-  if (NS_FAILED(rv)) {
-    return;
-  }
-
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(WebNavigation());
   if (NS_FAILED(rv)) {
     return;
   }
@@ -199,12 +196,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     return;
   }
 
-
-  nsCOMPtr<nsIWebBrowserSetup> webBrowserSetup = do_QueryInterface(baseWindow);
-  if (webBrowserSetup) {
-    webBrowserSetup->SetProperty(nsIWebBrowserSetup::SETUP_ALLOW_DNS_PREFETCH, true);
-  }
-
   LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
   rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
   if (NS_FAILED(rv)) {
@@ -214,6 +205,14 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   nsCOMPtr<mozIDOMWindowProxy> domWindow;
 
   mChrome = new WebBrowserChrome(this);
+
+  // FIXME - aBrowsingContext and aInitialWindowChild are not passed.
+  // Task to analyze/fix: 54382
+  mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, nullptr,
+                                     nullptr);
+  mWebBrowser->SetAllowDNSPrefetch(true);
+  nsIWebBrowser *webBrowser = mWebBrowser;
+
   uint32_t chromeFlags = 0; // View()->GetWindowFlags();
 
   if (isPrivateWindow || Preferences::GetBool("browser.privatebrowsing.autostart")) {
@@ -222,8 +221,12 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   mWebBrowser->SetContainerWindow(mChrome);
   mChrome->SetChromeFlags(chromeFlags);
+
+  // Task to analyze/fix: 54382
+#if 0
   nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
   docShellItem->SetItemType(nsIDocShellTreeItem::typeContentWrapper);
+#endif
 
   if (NS_FAILED(baseWindow->Create())) {
     NS_ERROR("Creation of basewindow failed!");
@@ -491,10 +494,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
   flags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
-  mWebNavigation->LoadURI(url.get(),
-                          flags,
-                          nullptr, nullptr,
-                          nullptr, nsContentUtils::GetSystemPrincipal());
+
+  LoadURIOptions loadURIOptions;
+  loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
+  loadURIOptions.mLoadFlags = flags;
+  mWebNavigation->LoadURI(url, loadURIOptions);
 
   return IPC_OK();
 }
@@ -656,18 +660,29 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSuspendTimeouts()
 {
+  LOGT("Implement me");
+  // FIXME - nsPIDOMWindowInner::Freeze has been removed.
+  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
+  // Task to analyze/fix: 54377
+#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
   nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
   if (pwindow && !pwindow->IsFrozen()) {
     pwindow->Freeze();
   }
+#endif
 
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvResumeTimeouts()
 {
+  LOGT("Implement me");
+  // FIXME - nsPIDOMWindowInner::Thaw has been removed.
+  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
+  // Task to analyze/fix: 54377
+#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
   nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
@@ -675,6 +690,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvResumeTimeouts()
   if (pwindow && pwindow->IsFrozen()) {
     pwindow->Thaw();
   }
+#endif
 
   return IPC_OK();
 }
@@ -943,7 +959,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
     NS_ENSURE_TRUE(ps, IPC_OK());
 
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
-    nsIContent* mTarget = DOMFocusManager->GetFocusedContent();
+    nsIContent *mTarget = DOMFocusManager->GetFocusedElement();
 
     InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
     inputEvent.mTime = static_cast<uint64_t>(PR_Now() / 1000);
@@ -972,7 +988,7 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
-  if (domKeyCode == dom::KeyboardEventBinding::DOM_VK_RETURN) {
+  if (domKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
   }
@@ -989,10 +1005,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &d
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Initial key down event
   NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
-  if (domKeyCode != dom::KeyboardEventBinding::DOM_VK_SHIFT &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_META &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_CONTROL &&
-      domKeyCode != dom::KeyboardEventBinding::DOM_VK_ALT) {
+  if (domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_SHIFT &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_META &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_CONTROL &&
+      domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_ALT) {
           // Key press event
           NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyPress, domKeyCode, gmodifiers, charCode), IPC_OK());
   }
@@ -1030,7 +1046,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
   uint8_t argc = 6;
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
                         aIgnoreRootScrollFrame,
-                        0.0, nsIDOMMouseEvent::MOZ_SOURCE_TOUCH,
+                        0.0, MouseEvent_Binding::MOZ_SOURCE_TOUCH,
                         false, false, 0, 0, argc, &ignored);
 
   return IPC_OK();
@@ -1090,7 +1106,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
 #endif
     nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
-        localEvent, aGuid, aInputBlockId);
+        localEvent, aGuid.mLayersId, aInputBlockId);
   }
 
   // Dispatch event to content (potentially a long-running operation)

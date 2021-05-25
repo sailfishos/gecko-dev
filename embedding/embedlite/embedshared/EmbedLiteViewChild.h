@@ -20,6 +20,8 @@
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
 
+class nsWebBrowser;
+
 namespace mozilla {
 
 namespace layers {
@@ -224,7 +226,7 @@ private:
   uint64_t mOuterId;
   EmbedLiteWindowChild* mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
-  nsCOMPtr<nsIWebBrowser> mWebBrowser;
+  RefPtr<nsWebBrowser> mWebBrowser;
   nsCOMPtr<nsIIdleServiceInternal> mIdleService;
   RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsPIDOMWindowOuter> mDOMWindow;

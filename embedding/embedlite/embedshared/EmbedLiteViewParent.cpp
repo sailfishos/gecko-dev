@@ -354,7 +354,7 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSetTargetAPZC(const uint64_t &a
                                            GetApzcTreeManager(),
                                            setTargetApzcFunc,
                                            aInputBlockId,
-                                           aTargets));
+                                           std::move(aTargets)));
   }
 
   return IPC_OK();
