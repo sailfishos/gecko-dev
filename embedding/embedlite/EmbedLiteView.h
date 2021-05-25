@@ -81,6 +81,7 @@ public:
   virtual void SetIsFocused(bool);
   virtual void SetDesktopMode(bool);
   virtual void SetThrottlePainting(bool);
+  virtual void SetVirtualKeyboardHeight(int);
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
   virtual void GoBack();

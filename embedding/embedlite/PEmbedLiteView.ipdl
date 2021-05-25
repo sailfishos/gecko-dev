@@ -52,6 +52,7 @@ child:
     async SetIsFocused(bool aIsFocused);
     async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
+    async SetVirtualKeyboardHeight(int aHeight);
     async SetMargins(int top, int right, int bottom, int left);
     async ScheduleUpdate();
     async SetHttpUserAgent(nsString aHttpUserAgent);
