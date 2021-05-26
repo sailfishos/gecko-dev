@@ -52,8 +52,7 @@ endif
 
 INSTALL_SDK = 1
 
-include $(topsrcdir)/toolkit/mozapps/installer/signing.mk
-include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
+include $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.mk
 
 # Note that JS_BINARY can be defined in packager.mk, so this test must come
 # after including that file. MOZ_PACKAGER_MINIFY_JS is used in packager.mk, but
