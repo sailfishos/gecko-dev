@@ -1,0 +1,30 @@
+From 8290f56f7cf45db4db36f4d6d2f87e57e78b5c7b Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date: Wed, 2 Jun 2021 12:58:12 +1000
+Subject: [PATCH] Fix flipped FBO textures when rendering to an offscreen
+ target.
+
+Only take whether the GL context is for an offscreen surface into
+account when rendering to the window surface. Internal FBO surfaces
+should behave the same irrespective of the final render target for the
+web page.
+---
+ gfx/layers/opengl/CompositorOGL.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
+index e5ba3edc24bb..8cfa64e7145c 100644
+--- a/gfx/layers/opengl/CompositorOGL.cpp
++++ b/gfx/layers/opengl/CompositorOGL.cpp
+@@ -442,7 +442,7 @@ void CompositorOGL::PrepareViewport(CompositingRenderTargetOGL* aRenderTarget) {
+     // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
+     // 2, 2) and flip the contents.
+     Matrix viewMatrix;
+-    if (mGLContext->IsOffscreen() && !gIsGtest) {
++    if (mGLContext->IsOffscreen() && aRenderTarget->IsWindow() && !gIsGtest) {
+       // In case of rendering via GL Offscreen context, disable Y-Flipping
+       viewMatrix.PreTranslate(-1.0, -1.0);
+       viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
+-- 
+2.27.0
+
