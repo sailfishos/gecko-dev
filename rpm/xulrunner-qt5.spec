@@ -115,6 +115,7 @@ Patch61:    0061-Bug-1467722-Make-nsComputedDOMStyle-store-an-actual-.patch
 Patch62:    0062-Bug-1467722-Do-not-throw-when-we-don-t-have-a-style-.patch
 Patch63:    0063-sailfishos-fix-mesa-egl-display.patch
 Patch64:    0064-sailfishos-gecko-Introduce-an-API-to-set-the-dynamic.patch
+Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
