@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Denis Grigorev <d.grigorev@omprussia.ru>
+Date: Fri, 16 Apr 2021 12:40:46 +0300
+Subject: [PATCH] [sailfishos][webrtc] Disable enumeration of video
+ devices. JB#53756
+
+Video capture is not yet implemented on SFOS. Do not report about
+/dev/video* devices as it will break audio calls on sites requesting
+video devices.
+
+Signed-off-by: Denis Grigorev <d.grigorev@omprussia.ru>
+---
+ .../modules/video_capture/linux/device_info_linux.cc     | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc b/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
+index d1bcdf2d3c33..cb8bb6fe6e50 100644
+--- a/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
++++ b/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
+@@ -241,6 +241,7 @@ uint32_t DeviceInfoLinux::NumberOfDevices()
+     WEBRTC_TRACE(webrtc::kTraceApiCall,
+                  webrtc::kTraceVideoCapture, 0, "%s", __FUNCTION__);
+ 
++#if !defined(MOZ_EMBEDLITE)
+     uint32_t count = 0;
+     char device[20];
+     int fd = -1;
+@@ -257,6 +258,14 @@ uint32_t DeviceInfoLinux::NumberOfDevices()
+     }
+ 
+     return count;
++#else
++    /*
++     * Video capture is not yet implemented on SFOS.
++     * Do not report about /dev/video* devices as it will break audio calls
++     * on sites requesting video devices.
++     */
++    return 0;
++#endif
+ }
+ 
+ int32_t DeviceInfoLinux::GetDeviceName(
+-- 
+2.17.1
+

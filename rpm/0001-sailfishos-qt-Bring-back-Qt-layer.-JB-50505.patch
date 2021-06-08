@@ -69,7 +69,6 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  dom/system/qt/QtHapticFeedback.h              |   15 +
  dom/system/qt/moz.build                       |   26 +
  dom/xbl/builtin/moz.build                     |    2 +-
- .../embedlite/config/mozconfig.merqtxulrunner |    2 +-
  gfx/2d/2D.h                                   |    4 +-
  gfx/2d/Factory.cpp                            |    4 +-
  gfx/2d/UnscaledFontFreeType.h                 |    2 +-
@@ -166,7 +165,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 124 files changed, 8356 insertions(+), 56 deletions(-)
+ 123 files changed, 8355 insertions(+), 55 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -1050,19 +1049,6 @@ index deafd7ca0e1a..9dec5826cda1 100644
      DIRS += ['unix']
  else:
      DIRS += ['emacs']
-diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index 6044ac780a7a..06a016570bbc 100644
---- a/embedding/embedlite/config/mozconfig.merqtxulrunner
-+++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
-@@ -42,7 +42,7 @@ ac_add_options --disable-stylo
- # ac_add_options --enable-warnings-as-errors
- 
- # disabling for now, since the build fails...
--ac_add_options --enable-webrtc
-+ac_add_options --disable-webrtc
- ac_add_options --enable-profiling
- ac_add_options --disable-dbus
- ac_add_options --disable-necko-wifi
 diff --git a/gfx/2d/2D.h b/gfx/2d/2D.h
 index c2730cf7af28..cbb22c94b779 100644
 --- a/gfx/2d/2D.h
