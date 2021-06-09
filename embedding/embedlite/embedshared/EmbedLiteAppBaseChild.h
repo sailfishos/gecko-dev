@@ -29,8 +29,8 @@ public:
 
   EmbedLiteAppBaseChild(MessageLoop* aParentLoop);
   void Init(MessageChannel* aParentChannel);
-  EmbedLiteViewChildIface* GetViewByID(uint32_t aId);
-  EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent);
+  EmbedLiteViewChildIface* GetViewByID(uint32_t aId) const override;
+  EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent) const override;
   EmbedLiteWindowBaseChild* GetWindowByID(uint32_t aWindowID);
   bool CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, uint32_t* createdID, bool* cancel);
   static EmbedLiteAppBaseChild* GetInstance();
