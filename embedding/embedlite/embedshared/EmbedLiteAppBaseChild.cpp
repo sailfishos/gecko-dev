@@ -195,7 +195,8 @@ bool EmbedLiteAppBaseChild::CreateWindow(const uint32_t& parentId, const uint32_
 EmbedLiteViewChildIface*
 EmbedLiteAppBaseChild::GetViewByID(uint32_t aId)
 {
-  return aId ? mWeakViewMap[aId] : nullptr;
+  const std::map<uint32_t, EmbedLiteViewBaseChild*>::const_iterator it = mWeakViewMap.find(aId);
+  return (it != mWeakViewMap.end()) ? it->second : nullptr;
 }
 
 EmbedLiteViewChildIface*
