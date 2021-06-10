@@ -266,12 +266,16 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
     return;
   }
 
+  LayerManager* lm = nsIWidget::GetLayerManager();
+  if (!lm) {
+    return;
+  }
+
   nsIWidgetListener* listener = GetWidgetListener();
   if (listener) {
     listener->WillPaintWindow(this);
   }
 
-  LayerManager* lm = nsIWidget::GetLayerManager();
   if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
     // No need to do anything, the compositor will handle drawing
   } else {
