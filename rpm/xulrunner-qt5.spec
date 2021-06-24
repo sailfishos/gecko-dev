@@ -142,6 +142,8 @@ Patch84:    0084-sailfishos-gecko-Fix-audio-underruns-for-fullduplex-.patch
 Patch85:    0085-sailfishos-gecko-dev-Fix-video-hardware-accelaration.patch
 Patch86:    0086-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
 Patch87:    0087-sailfishos-gecko-Fix-memory-reporting-of-wasm-memory.patch
+Patch88:    0088-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
+
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
