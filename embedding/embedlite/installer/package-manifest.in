@@ -40,9 +40,6 @@
 # This should be MOZ_CHILD_PROCESS_NAME, but that has a "lib/" prefix.
 @BINPATH@/@MOZ_CHILD_PROCESS_NAME@
 
-[sqlite]
-@BINPATH@/@DLL_PREFIX@mozsqlite3@DLL_SUFFIX@
-
 ; [Components]
 #ifdef MOZ_ARTIFACT_BUILDS
 @BINPATH@/components/interfaces.xpt
