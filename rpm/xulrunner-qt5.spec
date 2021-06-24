@@ -78,6 +78,7 @@ Patch29:    0029-sailfishos-configure-Disable-LTO-for-rust-1.52.1-wit.patch
 Patch30:    0030-sailfishos-gecko-Add-missing-GetTotalScreenPixels-fo.patch
 Patch31:    0031-sailfishos-fonts-Load-and-set-FTLibrary-for-the-Fact.patch
 Patch32:    0032-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
+Patch33:    0029-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
