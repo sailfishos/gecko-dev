@@ -63,8 +63,10 @@
 @BINPATH@/@DLL_PREFIX@softokn3.chk
 #endif
 
+#ifndef MOZ_SYSTEM_SQLITE
 #ifndef MOZ_FOLD_LIBS
 @BINPATH@/@DLL_PREFIX@mozsqlite3@DLL_SUFFIX@
+#endif
 #endif
 
 @BINPATH@/@DLL_PREFIX@mozglue@DLL_SUFFIX@
