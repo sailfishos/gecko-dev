@@ -87,6 +87,7 @@ Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
 Patch39:    0039-sailfishos-embedlite-egl-Fix-mesa-egl-display-initia.patch
 Patch40:    0040-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
+Patch42:    0042-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
