@@ -87,7 +87,7 @@ pkg_config_files = \
 ifdef MOZ_SYSTEM_NSPR
 DEFINES += -DMOZ_SYSTEM_NSPR=1
 NSPR_NAME=nspr
-NSPR_VERSION=$(shell $(NSPR_CONFIG) --version)
+NSPR_VERSION=$(shell /usr/bin/nspr-config --version)
 else
 pkg_config_files += mozilla-nspr.pc
 NSPR_NAME=mozilla-nspr
