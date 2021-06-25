@@ -1,0 +1,460 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Denis Grigorev <d.grigorev@omprussia.ru>
+Date: Fri, 30 Apr 2021 14:59:18 +0300
+Subject: [PATCH] [sailfishos][webrtc] Enable GMP for encoding. JB#53982
+
+---
+ dom/media/gmp/GMPSharedMemManager.cpp         |  34 +++--
+ dom/media/gmp/GMPSharedMemManager.h           |   8 +-
+ .../src/media-conduit/GmpVideoCodec.cpp       |   4 +-
+ .../src/media-conduit/GmpVideoCodec.h         |   2 +-
+ .../src/media-conduit/VideoConduit.cpp        |  31 ++++-
+ .../src/media-conduit/WebrtcGmpVideoCodec.cpp | 119 ++++++++++++++----
+ .../src/media-conduit/WebrtcGmpVideoCodec.h   |   6 +-
+ .../src/peerconnection/PeerConnectionImpl.cpp |   6 +-
+ 8 files changed, 161 insertions(+), 49 deletions(-)
+
+diff --git a/dom/media/gmp/GMPSharedMemManager.cpp b/dom/media/gmp/GMPSharedMemManager.cpp
+index a7f462ce7a7f..fa279bffb49e 100644
+--- a/dom/media/gmp/GMPSharedMemManager.cpp
++++ b/dom/media/gmp/GMPSharedMemManager.cpp
+@@ -24,13 +24,16 @@ bool GMPSharedMemManager::MgrAllocShmem(
+     ipc::Shmem::SharedMemory::SharedMemoryType aType, ipc::Shmem* aMem) {
+   mData->CheckThread();
+ 
+-  // first look to see if we have a free buffer large enough
+-  for (uint32_t i = 0; i < GetGmpFreelist(aClass).Length(); i++) {
+-    MOZ_ASSERT(GetGmpFreelist(aClass)[i].IsWritable());
+-    if (aSize <= GetGmpFreelist(aClass)[i].Size<uint8_t>()) {
+-      *aMem = GetGmpFreelist(aClass)[i];
+-      GetGmpFreelist(aClass).RemoveElementAt(i);
+-      return true;
++  {
++    // first look to see if we have a free buffer large enough
++    MutexAutoLock lock(mMutex);
++    for (uint32_t i = 0; i < GetGmpFreelist(aClass).Length(); i++) {
++      MOZ_ASSERT(GetGmpFreelist(aClass)[i].IsWritable());
++      if (aSize <= GetGmpFreelist(aClass)[i].Size<uint8_t>()) {
++        *aMem = GetGmpFreelist(aClass)[i];
++        GetGmpFreelist(aClass).RemoveElementAt(i);
++        return true;
++      }
+     }
+   }
+ 
+@@ -39,6 +42,7 @@ bool GMPSharedMemManager::MgrAllocShmem(
+   aSize = (aSize + (pagesize - 1)) & ~(pagesize - 1);  // round up to page size
+   bool retval = Alloc(aSize, aType, aMem);
+   if (retval) {
++    MutexAutoLock lock(mMutex);
+     // The allocator (or NeedsShmem call) should never return less than we ask
+     // for...
+     MOZ_ASSERT(aMem->Size<uint8_t>() >= aSize);
+@@ -68,11 +72,18 @@ bool GMPSharedMemManager::MgrDeallocShmem(GMPSharedMem::GMPMemoryClasses aClass,
+   // XXX This works; there are better pool algorithms.  We need to avoid
+   // "falling off a cliff" with too low a number
+   if (GetGmpFreelist(aClass).Length() > 10) {
+-    Dealloc(GetGmpFreelist(aClass)[0]);
+-    GetGmpFreelist(aClass).RemoveElementAt(0);
++    ipc::Shmem element;
++    {
++      MutexAutoLock lock(mMutex);
++      element = GetGmpFreelist(aClass)[0];
++      GetGmpFreelist(aClass).RemoveElementAt(0);
++      mData->mGmpAllocated[aClass]--;
++    }
++    Dealloc(element);
+     // The allocation numbers will be fubar on the Child!
+-    mData->mGmpAllocated[aClass]--;
+   }
++
++  MutexAutoLock lock(mMutex);
+   for (uint32_t i = 0; i < GetGmpFreelist(aClass).Length(); i++) {
+     MOZ_ASSERT(GetGmpFreelist(aClass)[i].IsWritable());
+     total += GetGmpFreelist(aClass)[i].Size<uint8_t>();
+@@ -86,7 +97,8 @@ bool GMPSharedMemManager::MgrDeallocShmem(GMPSharedMem::GMPMemoryClasses aClass,
+   return true;
+ }
+ 
+-uint32_t GMPSharedMemManager::NumInUse(GMPSharedMem::GMPMemoryClasses aClass) {
++int32_t GMPSharedMemManager::NumInUse(GMPSharedMem::GMPMemoryClasses aClass) {
++  MutexAutoLock lock(mMutex);
+   return mData->mGmpAllocated[aClass] - GetGmpFreelist(aClass).Length();
+ }
+ 
+diff --git a/dom/media/gmp/GMPSharedMemManager.h b/dom/media/gmp/GMPSharedMemManager.h
+index 738a4d114c2b..fc0b34b71f71 100644
+--- a/dom/media/gmp/GMPSharedMemManager.h
++++ b/dom/media/gmp/GMPSharedMemManager.h
+@@ -7,6 +7,7 @@
+ #define GMPSharedMemManager_h_
+ 
+ #include "mozilla/ipc/Shmem.h"
++#include "mozilla/Mutex.h"
+ #include "nsTArray.h"
+ 
+ namespace mozilla {
+@@ -27,7 +28,7 @@ class GMPSharedMem {
+   // returned to the parent pool (which is not included).  If more than
+   // this are needed, we presume the client has either crashed or hung
+   // (perhaps temporarily).
+-  static const uint32_t kGMPBufLimit = 20;
++  static const int32_t kGMPBufLimit = 32;
+ 
+   GMPSharedMem() {
+     for (size_t i = 0; i < sizeof(mGmpAllocated) / sizeof(mGmpAllocated[0]);
+@@ -49,7 +50,7 @@ class GMPSharedMem {
+ 
+ class GMPSharedMemManager {
+  public:
+-  explicit GMPSharedMemManager(GMPSharedMem* aData) : mData(aData) {}
++  explicit GMPSharedMemManager(GMPSharedMem* aData) : mMutex("GMPSharedMemManager::mMutex"), mData(aData) {}
+   virtual ~GMPSharedMemManager() {}
+ 
+   virtual bool MgrAllocShmem(GMPSharedMem::GMPMemoryClasses aClass,
+@@ -61,7 +62,7 @@ class GMPSharedMemManager {
+ 
+   // So we can know if data is "piling up" for the plugin - I.e. it's hung or
+   // crashed
+-  virtual uint32_t NumInUse(GMPSharedMem::GMPMemoryClasses aClass);
++  virtual int32_t NumInUse(GMPSharedMem::GMPMemoryClasses aClass);
+ 
+   // These have to be implemented using the AllocShmem/etc provided by the
+   // IPDL-generated interfaces, so have the Parent/Child implement them.
+@@ -75,6 +76,7 @@ class GMPSharedMemManager {
+     return mData->mGmpFreelist[aTypes];
+   }
+ 
++  Mutex mMutex;
+   GMPSharedMem* mData;
+ };
+ 
+diff --git a/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.cpp b/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.cpp
+index b5f39bc3b7d4..287ccf3a7862 100644
+--- a/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.cpp
++++ b/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.cpp
+@@ -11,8 +11,8 @@ WebrtcVideoEncoder* GmpVideoCodec::CreateEncoder() {
+   return new WebrtcVideoEncoderProxy();
+ }
+ 
+-WebrtcVideoDecoder* GmpVideoCodec::CreateDecoder() {
+-  return new WebrtcVideoDecoderProxy();
++WebrtcVideoDecoder* GmpVideoCodec::CreateDecoder(webrtc::VideoCodecType type) {
++  return new WebrtcVideoDecoderProxy(type);
+ }
+ 
+ }  // namespace mozilla
+diff --git a/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.h b/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.h
+index 318a891d0678..0fcaac43f364 100644
+--- a/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.h
++++ b/media/webrtc/signaling/src/media-conduit/GmpVideoCodec.h
+@@ -11,7 +11,7 @@ namespace mozilla {
+ class GmpVideoCodec {
+  public:
+   static WebrtcVideoEncoder* CreateEncoder();
+-  static WebrtcVideoDecoder* CreateDecoder();
++  static WebrtcVideoDecoder* CreateDecoder(webrtc::VideoCodecType type);
+ };
+ 
+ }  // namespace mozilla
+diff --git a/media/webrtc/signaling/src/media-conduit/VideoConduit.cpp b/media/webrtc/signaling/src/media-conduit/VideoConduit.cpp
+index c8dddccec26b..e74f1061ce28 100644
+--- a/media/webrtc/signaling/src/media-conduit/VideoConduit.cpp
++++ b/media/webrtc/signaling/src/media-conduit/VideoConduit.cpp
+@@ -1501,15 +1501,37 @@ webrtc::VideoDecoder* WebrtcVideoConduit::CreateDecoder(
+     return decoder;
+   }
+ 
+-  switch (aType) {
++  // Attempt to create a GMP decoder.
++  {
++    nsCString tag;
++
++    switch (aType) {
+     case webrtc::VideoCodecType::kVideoCodecH264:
+-      // get an external decoder
+-      decoder = GmpVideoCodec::CreateDecoder();
++      tag = NS_LITERAL_CSTRING("h264");
++      break;
++    case webrtc::VideoCodecType::kVideoCodecVP8:
++      tag = NS_LITERAL_CSTRING("vp8");
++      break;
++    case webrtc::VideoCodecType::kVideoCodecVP9:
++      tag = NS_LITERAL_CSTRING("vp9");
++      break;
++    default:
++      return nullptr;
++    }
++
++    if (HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER), { tag })) {
++      decoder = GmpVideoCodec::CreateDecoder(aType);
+       if (decoder) {
+         mRecvCodecPlugin = static_cast<WebrtcVideoDecoder*>(decoder);
+       }
+-      break;
++      return decoder;
++    }
++  }
+ 
++  switch (aType) {
++    case webrtc::VideoCodecType::kVideoCodecH264:
++      // No support for software h264.
++      return nullptr;
+     case webrtc::VideoCodecType::kVideoCodecVP8:
+ #ifdef MOZ_WEBRTC_MEDIACODEC
+       // attempt to get a decoder
+@@ -1545,7 +1567,6 @@ webrtc::VideoDecoder* WebrtcVideoConduit::CreateDecoder(
+       MOZ_ASSERT(webrtc::VP9Decoder::IsSupported());
+       decoder = webrtc::VP9Decoder::Create();
+       break;
+-
+     default:
+       break;
+   }
+diff --git a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
+index f7976636ec47..f92e33880637 100644
+--- a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
++++ b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
+@@ -153,15 +153,32 @@ int32_t WebrtcGmpVideoEncoder::InitEncode(
+ 
+   memset(&mCodecSpecificInfo.codecSpecific, 0,
+          sizeof(mCodecSpecificInfo.codecSpecific));
+-  mCodecSpecificInfo.codecType = webrtc::kVideoCodecH264;
+-  mCodecSpecificInfo.codecSpecific.H264.packetization_mode =
+-      aCodecSettings->H264().packetizationMode == 1
+-          ? webrtc::H264PacketizationMode::NonInterleaved
+-          : webrtc::H264PacketizationMode::SingleNalUnit;
++  mCodecSpecificInfo.codecType = aCodecSettings->codecType;
+ 
+-  if (mCodecSpecificInfo.codecSpecific.H264.packetization_mode ==
+-      webrtc::H264PacketizationMode::NonInterleaved) {
+-    mMaxPayloadSize = 0;  // No limit, use FUAs
++  switch (aCodecSettings->codecType) {
++  case webrtc::VideoCodecType::kVideoCodecH264: {
++    codecParams.mCodecType = kGMPVideoCodecH264;
++
++    mCodecSpecificInfo.codecSpecific.H264.packetization_mode =
++        aCodecSettings->H264().packetizationMode == 1
++            ? webrtc::H264PacketizationMode::NonInterleaved
++            : webrtc::H264PacketizationMode::SingleNalUnit;
++
++    if (mCodecSpecificInfo.codecSpecific.H264.packetization_mode ==
++        webrtc::H264PacketizationMode::NonInterleaved) {
++      mMaxPayloadSize = 0;  // No limit, use FUAs
++    }
++    break;
++  }
++  case webrtc::VideoCodecType::kVideoCodecVP8:
++    codecParams.mCodecType = kGMPVideoCodecVP8;
++    break;
++  case webrtc::VideoCodecType::kVideoCodecVP9:
++    codecParams.mCodecType = kGMPVideoCodecVP9;
++    break;
++  default:
++    // The requested codec is not supported.
++    return WEBRTC_VIDEO_CODEC_ERROR;
+   }
+ 
+   if (aCodecSettings->mode == webrtc::kScreensharing) {
+@@ -193,7 +210,18 @@ void WebrtcGmpVideoEncoder::InitEncode_g(
+     const GMPVideoCodec& aCodecParams, int32_t aNumberOfCores,
+     uint32_t aMaxPayloadSize, const RefPtr<GmpInitDoneRunnable>& aInitDone) {
+   nsTArray<nsCString> tags;
+-  tags.AppendElement(NS_LITERAL_CSTRING("h264"));
++  switch (aCodecParams.mCodecType) {
++  case kGMPVideoCodecVP8:
++    tags.AppendElement(NS_LITERAL_CSTRING("vp8"));
++    break;
++  case kGMPVideoCodecVP9:
++    tags.AppendElement(NS_LITERAL_CSTRING("vp9"));
++    break;
++  case kGMPVideoCodecH264:
++  default:
++    tags.AppendElement(NS_LITERAL_CSTRING("h264"));
++    break;
++  }
+   UniquePtr<GetGMPVideoEncoderCallback> callback(
+       new InitDoneCallback(aThis, aInitDone, aCodecParams, aMaxPayloadSize));
+   aThis->mInitting = true;
+@@ -607,14 +635,15 @@ void WebrtcGmpVideoEncoder::Encoded(
+ }
+ 
+ // Decoder.
+-WebrtcGmpVideoDecoder::WebrtcGmpVideoDecoder()
++WebrtcGmpVideoDecoder::WebrtcGmpVideoDecoder(webrtc::VideoCodecType aType)
+     : mGMP(nullptr),
+       mInitting(false),
+       mHost(nullptr),
+       mCallbackMutex("WebrtcGmpVideoDecoder decoded callback mutex"),
+       mCallback(nullptr),
+       mCachedPluginId(0),
+-      mDecoderStatus(GMPNoErr) {
++      mDecoderStatus(GMPNoErr),
++      mCodecType(aType) {
+   if (mPCHandle.empty()) {
+     mPCHandle = WebrtcGmpPCHandleSetter::GetCurrentHandle();
+   }
+@@ -653,7 +682,21 @@ int32_t WebrtcGmpVideoDecoder::InitDecode(
+     const webrtc::VideoCodec* aCodecSettings, int32_t aNumberOfCores,
+     const RefPtr<GmpInitDoneRunnable>& aInitDone) {
+   nsTArray<nsCString> tags;
+-  tags.AppendElement(NS_LITERAL_CSTRING("h264"));
++  switch (aCodecSettings->codecType) {
++  case webrtc::VideoCodecType::kVideoCodecVP8:
++    tags.AppendElement(NS_LITERAL_CSTRING("vp8"));
++    break;
++  case webrtc::VideoCodecType::kVideoCodecVP9:
++    tags.AppendElement(NS_LITERAL_CSTRING("vp9"));
++    break;
++  case webrtc::VideoCodecType::kVideoCodecH264:
++  default:
++    tags.AppendElement(NS_LITERAL_CSTRING("h264"));
++    break;
++  }
++
++  memcpy(&aThis->mCodecSettings, aCodecSettings, sizeof(aThis->mCodecSettings));
++
+   UniquePtr<GetGMPVideoDecoderCallback> callback(
+       new InitDoneCallback(aThis, aInitDone));
+   aThis->mInitting = true;
+@@ -695,11 +738,29 @@ int32_t WebrtcGmpVideoDecoder::GmpInitDone(GMPVideoDecoderProxy* aGMP,
+   GMPVideoCodec codec;
+   memset(&codec, 0, sizeof(codec));
+   codec.mGMPApiVersion = 33;
++  codec.mWidth = mCodecSettings.width;
++  codec.mHeight = mCodecSettings.height;
+ 
+-  // XXX this is currently a hack
+-  // GMPVideoCodecUnion codecSpecific;
+-  // memset(&codecSpecific, 0, sizeof(codecSpecific));
+   nsTArray<uint8_t> codecSpecific;
++
++  switch (mCodecSettings.codecType) {
++  case webrtc::VideoCodecType::kVideoCodecH264: {
++    // Currently gmp-droid does not support codec-specific data
++    // TODO: Check OpenH264 requirements
++    codec.mCodecType = kGMPVideoCodecH264;
++    break;
++  }
++  case webrtc::VideoCodecType::kVideoCodecVP8:
++    codec.mCodecType = kGMPVideoCodecVP8;
++    break;
++  case webrtc::VideoCodecType::kVideoCodecVP9:
++    codec.mCodecType = kGMPVideoCodecVP9;
++    break;
++  default:
++    // The requested codec is not supported.
++    return WEBRTC_VIDEO_CODEC_ERROR;
++  }
++
+   nsresult rv = mGMP->InitDecode(codec, codecSpecific, this, 1);
+   if (NS_FAILED(rv)) {
+     *aErrorOut = "GMP Decode: InitDecode failed";
+@@ -820,13 +881,9 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
+     return;
+   }
+ 
+-  // XXX At this point, we only will get mode1 data (a single length and a
+-  // buffer) Session_info.cc/etc code needs to change to support mode 0.
+-  *(reinterpret_cast<uint32_t*>(frame->Buffer())) = frame->Size();
+-
+-  // XXX It'd be wonderful not to have to memcpy the encoded data!
+-  memcpy(frame->Buffer() + 4, aDecodeData->mImage._buffer + 4,
+-         frame->Size() - 4);
++  // gmp-droid does not require conversion of NAL units for h264
++  // TODO: Check OpenH264 requirements
++  memcpy(frame->Buffer(), aDecodeData->mImage._buffer, frame->Size());
+ 
+   frame->SetEncodedWidth(aDecodeData->mImage._encodedWidth);
+   frame->SetEncodedHeight(aDecodeData->mImage._encodedHeight);
+@@ -845,11 +902,25 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
+     return;
+   }
+ 
++  frame->SetFrameType(ft);
++
+   // Bug XXXXXX: Set codecSpecific info
+   GMPCodecSpecificInfo info;
+   memset(&info, 0, sizeof(info));
+-  info.mCodecType = kGMPVideoCodecH264;
+-  info.mCodecSpecific.mH264.mSimulcastIdx = 0;
++  switch (aThis->mCodecType) {
++  case webrtc::VideoCodecType::kVideoCodecH264:
++    info.mCodecType = kGMPVideoCodecH264;
++    info.mCodecSpecific.mH264.mSimulcastIdx = 0;
++    break;
++  case webrtc::VideoCodecType::kVideoCodecVP8:
++    info.mCodecType = kGMPVideoCodecVP8;
++    break;
++  case webrtc::VideoCodecType::kVideoCodecVP9:
++    info.mCodecType = kGMPVideoCodecVP9;
++    break;
++  default:
++    break;
++  }
+   nsTArray<uint8_t> codecSpecificInfo;
+   codecSpecificInfo.AppendElements((uint8_t*)&info,
+                                    sizeof(GMPCodecSpecificInfo));
+diff --git a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.h b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.h
+index 920f7460d1a3..bba398eac38d 100644
+--- a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.h
++++ b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.h
+@@ -324,7 +324,7 @@ class WebrtcVideoEncoderProxy : public WebrtcVideoEncoder {
+ 
+ class WebrtcGmpVideoDecoder : public GMPVideoDecoderCallbackProxy {
+  public:
+-  WebrtcGmpVideoDecoder();
++  WebrtcGmpVideoDecoder(webrtc::VideoCodecType aType);
+   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WebrtcGmpVideoDecoder);
+ 
+   // Implement VideoEncoder interface, sort of.
+@@ -413,6 +413,8 @@ class WebrtcGmpVideoDecoder : public GMPVideoDecoderCallbackProxy {
+   Atomic<uint64_t> mCachedPluginId;
+   Atomic<GMPErr, ReleaseAcquire> mDecoderStatus;
+   std::string mPCHandle;
++  webrtc::VideoCodecType mCodecType;
++  webrtc::VideoCodec mCodecSettings;
+ };
+ 
+ // Basically a strong ref to a WebrtcGmpVideoDecoder, that also translates
+@@ -422,7 +424,7 @@ class WebrtcGmpVideoDecoder : public GMPVideoDecoderCallbackProxy {
+ // the "real" encoder.
+ class WebrtcVideoDecoderProxy : public WebrtcVideoDecoder {
+  public:
+-  WebrtcVideoDecoderProxy() : mDecoderImpl(new WebrtcGmpVideoDecoder) {}
++  WebrtcVideoDecoderProxy(webrtc::VideoCodecType aType) : mDecoderImpl(new WebrtcGmpVideoDecoder(aType)) {}
+ 
+   virtual ~WebrtcVideoDecoderProxy() {
+     RegisterDecodeCompleteCallback(nullptr);
+diff --git a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
+index 17ef17dd26d0..87995581f36f 100644
+--- a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
++++ b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
+@@ -782,7 +782,7 @@ class ConfigureCodec {
+         mUseAudioFec(false),
+         mRedUlpfecEnabled(false),
+         mDtmfEnabled(false) {
+-    mSoftwareH264Enabled = PeerConnectionCtx::GetInstance()->gmpHasH264();
++    mHardwareH264Supported = PeerConnectionCtx::GetInstance()->gmpHasH264();
+ 
+     mH264Enabled = mHardwareH264Supported || mSoftwareH264Enabled;
+ 
+@@ -851,11 +851,15 @@ class ConfigureCodec {
+           // Might disable it, but we set up other params anyway
+           videoCodec.mEnabled = mH264Enabled;
+ 
++          // FIXME: For some unknown reason the gecko reports packetization mode 0
++          // Skip this.
++#if 0
+           if (videoCodec.mPacketizationMode == 0 && !mSoftwareH264Enabled) {
+             // We're assuming packetization mode 0 is unsupported by
+             // hardware.
+             videoCodec.mEnabled = false;
+           }
++#endif
+ 
+           if (mHardwareH264Supported) {
+             videoCodec.mStronglyPreferred = true;
+-- 
+2.17.1
+
