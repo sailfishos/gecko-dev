@@ -6,7 +6,7 @@ export MOZILLA_OFFICIAL=1
 
 mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 
-export CXXFLAGS="$CXXFLAGS -DUSE_ANDROID_OMTC_HACKS=1 -DUSE_OZONE=1 -DMOZ_EMBEDLITE=1"
+export CXXFLAGS="$CXXFLAGS -DUSE_ANDROID_OMTC_HACKS=1 -DUSE_OZONE=1 -DMOZ_EMBEDLITE=1 -DBUILD_VERBOSE_LOG=1"
 
 ac_add_options --prefix=/usr
 ac_add_options --libdir="$LIBDIR"
