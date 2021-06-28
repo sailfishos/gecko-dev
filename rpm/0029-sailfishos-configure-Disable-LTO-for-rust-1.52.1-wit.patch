@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 28 Jun 2021 12:16:48 +0300
+Subject: [PATCH] [sailfishos][configure] Disable LTO for rust 1.52.1 with
+ ESR78. JB#53019 OMP#JOLLA-93
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ config/makefiles/rust.mk | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index f4475054f897..e9d558b8dc7a 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -61,12 +61,12 @@ ifndef MOZ_DEBUG_RUST
+ # Enable link-time optimization for release builds, but not when linking
+ # gkrust_gtest.
+ ifeq (,$(findstring gkrust_gtest,$(RUST_LIBRARY_FILE)))
+-cargo_rustc_flags += -Clto
++cargo_rustc_flags +=
+ endif
+ # Versions of rust >= 1.45 need -Cembed-bitcode=yes for all crates when
+ # using -Clto.
+ ifeq (,$(filter 1.38.% 1.39.% 1.40.% 1.41.% 1.42.% 1.43.% 1.44.%,$(RUSTC_VERSION)))
+-RUSTFLAGS += -Cembed-bitcode=yes
++RUSTFLAGS +=
+ endif
+ endif
+ endif
+-- 
+2.31.1
+
