@@ -208,7 +208,8 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
   NS_ENSURE_TRUE(screen->Front(),);
   SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, );
-  // sharedSurf->WaitSync();
+
+  sharedSurf->ProducerReadAcquire();
   // See ProducerAcquireImpl() & ProducerReleaseImpl()
   // See sha1 b66e705f3998791c137f8fce908ec0835b84afbe from gecko-mirror
 
@@ -216,6 +217,7 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
     callback(eglImageSurf->mImage, sharedSurf->mSize.width, sharedSurf->mSize.height);
   }
+  sharedSurf->ProducerReadRelease();
 }
 
 void*
