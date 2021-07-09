@@ -293,7 +293,8 @@ echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
 source "%BUILD_DIR"/rpm-shared.env
 
 #%ifarch %arm
-#echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
+echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
+echo "ac_add_options --target=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 #%endif
 
 # hack for when not using virtualenv
