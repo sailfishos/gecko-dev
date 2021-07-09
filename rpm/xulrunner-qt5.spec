@@ -255,11 +255,12 @@ echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
 echo "export SB2_RUST_TARGET_TRIPLE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RUST_HOST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 
+echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export HOST=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 
 %ifarch %arm
 # See config/makefiles/rust.mk
-echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
-#echo "export TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 #echo "export HOST=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 # This should be define...
 echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
