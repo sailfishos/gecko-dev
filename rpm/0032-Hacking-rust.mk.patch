@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 3 May 2021 18:57:32 +0300
+Subject: [PATCH] Hacking rust.mk
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ config/makefiles/rust.mk | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
+index f4475054f897..5afd97f13845 100644
+--- a/config/makefiles/rust.mk
++++ b/config/makefiles/rust.mk
+@@ -306,6 +306,7 @@ endif
+ # build.
+ force-cargo-library-build:
+ 	$(REPORT_BUILD)
++	$(info Build command "$(CARGO_BUILD) --lib $(cargo_target_flag) $(rust_features_flag) -- $(cargo_rustc_flags)")
+ 	$(call CARGO_BUILD) --lib $(cargo_target_flag) $(rust_features_flag) -- $(cargo_rustc_flags)
+ 
+ $(RUST_LIBRARY_FILE): force-cargo-library-build
+@@ -355,6 +356,7 @@ endif
+ 
+ force-cargo-host-library-build:
+ 	$(REPORT_BUILD)
++	$(info force-cargo-host-library-build)
+ 	$(call CARGO_BUILD) --lib $(cargo_host_flag) $(host_rust_features_flag)
+ 
+ $(HOST_RUST_LIBRARY_FILE): force-cargo-host-library-build
+@@ -372,6 +374,7 @@ GARBAGE_DIRS += $(RUST_TARGET)
+ 
+ force-cargo-program-build: $(RESFILE)
+ 	$(REPORT_BUILD)
++	$(info force-cargo-program-build)
+ 	$(call CARGO_BUILD) $(addprefix --bin ,$(RUST_CARGO_PROGRAMS)) $(cargo_target_flag) -- $(if $(RESFILE),-C link-arg=$(CURDIR)/$(RESFILE))
+ 
+ $(RUST_PROGRAMS): force-cargo-program-build
+@@ -388,6 +391,7 @@ GARBAGE_DIRS += $(RUST_HOST_TARGET)
+ 
+ force-cargo-host-program-build:
+ 	$(REPORT_BUILD)
++	$(info force-cargo-program-build)
+ 	$(call CARGO_BUILD) $(addprefix --bin ,$(HOST_RUST_CARGO_PROGRAMS)) $(cargo_host_flag)
+ 
+ $(HOST_RUST_PROGRAMS): force-cargo-host-program-build
+-- 
+2.31.1
+

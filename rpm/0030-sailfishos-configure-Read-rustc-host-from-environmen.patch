@@ -1,0 +1,184 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 28 Jun 2021 12:52:10 +0300
+Subject: [PATCH] [sailfishos][configure] Read rustc host from environment.
+ JB#53019 OMP#JOLLA-93
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/rust.configure       |  3 +-
+ third_party/rust/cc/.cargo-checksum.json |  2 +-
+ third_party/rust/cc/src/lib.rs           | 36 ++++++++++++++++--------
+ 3 files changed, 27 insertions(+), 14 deletions(-)
+
+diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
+index 3d8595178289..959878799600 100644
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -91,6 +91,7 @@ set_config('RUSTC', rustc)
+ 
+ @depends_if(rustc)
+ @checking('rustc version', lambda info: info.version)
++@imports('os')
+ def rustc_info(rustc):
+     if not rustc:
+         return
+@@ -99,7 +100,7 @@ def rustc_info(rustc):
+     return namespace(
+         version=Version(info.get('release', '0')),
+         commit=info.get('commit-hash', 'unknown'),
+-        host=info['host'],
++        host=os.environ.get('RUST_HOST_TARGET'),
+         llvm_version=Version(info.get('LLVM version', '0')),
+     )
+ 
+diff --git a/third_party/rust/cc/.cargo-checksum.json b/third_party/rust/cc/.cargo-checksum.json
+index 417fde7953fd..29a9b08f616b 100644
+--- a/third_party/rust/cc/.cargo-checksum.json
++++ b/third_party/rust/cc/.cargo-checksum.json
+@@ -1 +1 @@
+-{"files":{"Cargo.lock":"3aff5f8b0a7f4d72852b11b0526f0002e6bf55f19f1ebd6470d7f97fbd540e60","Cargo.toml":"6ab10d9b6a9c6f0909074e6698c90c6b6a7223661ec2e83174d2593117cbe7f2","LICENSE-APACHE":"a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2","LICENSE-MIT":"378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397","README.md":"7184fbdf375a057e673257348f6d7584c0dd11b66318d98f3647f69eb610b097","src/bin/gcc-shim.rs":"b77907875029494b6288841c3aed2e4939ed40708c7f597fca5c9e2570490ca6","src/com.rs":"bcdaf1c28b71e6ef889c6b08d1ce9d7c0761344a677f523bc4c3cd297957f804","src/lib.rs":"4753929dbb7b676c19d7cfa06d0a47e37003554b80c536cbf2b892d591ef61c2","src/registry.rs":"3cc1b5a50879fa751572878ae1d0afbfc960c11665258492754b2c8bccb0ff5d","src/setup_config.rs":"7014103587d3382eac599cb76f016e2609b8140970861b2237982d1db24af265","src/winapi.rs":"ea8b7edbb9ff87957254f465c2334e714c5d6b3b19a8d757c48ea7ca0881c50c","src/windows_registry.rs":"388e79dcf3e84078ae0b086c6cdee9cf9eb7e3ffafdcbf3e2df26163661f5856","tests/cc_env.rs":"e02b3b0824ad039b47e4462c5ef6dbe6c824c28e7953af94a0f28f7b5158042e","tests/cflags.rs":"57f06eb5ce1557e5b4a032d0c4673e18fbe6f8d26c1deb153126e368b96b41b3","tests/cxxflags.rs":"c2c6c6d8a0d7146616fa1caed26876ee7bc9fcfffd525eb4743593cade5f3371","tests/support/mod.rs":"71620b178583b6e6e5e0d4cac14e2cef6afc62fb6841e0c72ed1784543abf8ac","tests/test.rs":"1605640c9b94a77f48fc92e1dc0485bdf1960da5626e2e00279e4703691656bc"},"package":"aa87058dce70a3ff5621797f1506cb837edd02ac4c0ae642b4542dce802908b8"}
+\ No newline at end of file
++{"files":{"Cargo.lock":"3aff5f8b0a7f4d72852b11b0526f0002e6bf55f19f1ebd6470d7f97fbd540e60","Cargo.toml":"6ab10d9b6a9c6f0909074e6698c90c6b6a7223661ec2e83174d2593117cbe7f2","LICENSE-APACHE":"a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2","LICENSE-MIT":"378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397","README.md":"7184fbdf375a057e673257348f6d7584c0dd11b66318d98f3647f69eb610b097","src/bin/gcc-shim.rs":"b77907875029494b6288841c3aed2e4939ed40708c7f597fca5c9e2570490ca6","src/com.rs":"bcdaf1c28b71e6ef889c6b08d1ce9d7c0761344a677f523bc4c3cd297957f804","src/lib.rs":"dff2f917bc733c39e4b87cb195db36ed02f2e37487adeddf66d7164975e6e94e","src/registry.rs":"3cc1b5a50879fa751572878ae1d0afbfc960c11665258492754b2c8bccb0ff5d","src/setup_config.rs":"7014103587d3382eac599cb76f016e2609b8140970861b2237982d1db24af265","src/winapi.rs":"ea8b7edbb9ff87957254f465c2334e714c5d6b3b19a8d757c48ea7ca0881c50c","src/windows_registry.rs":"388e79dcf3e84078ae0b086c6cdee9cf9eb7e3ffafdcbf3e2df26163661f5856","tests/cc_env.rs":"e02b3b0824ad039b47e4462c5ef6dbe6c824c28e7953af94a0f28f7b5158042e","tests/cflags.rs":"57f06eb5ce1557e5b4a032d0c4673e18fbe6f8d26c1deb153126e368b96b41b3","tests/cxxflags.rs":"c2c6c6d8a0d7146616fa1caed26876ee7bc9fcfffd525eb4743593cade5f3371","tests/support/mod.rs":"71620b178583b6e6e5e0d4cac14e2cef6afc62fb6841e0c72ed1784543abf8ac","tests/test.rs":"1605640c9b94a77f48fc92e1dc0485bdf1960da5626e2e00279e4703691656bc"},"package":"aa87058dce70a3ff5621797f1506cb837edd02ac4c0ae642b4542dce802908b8"}
+diff --git a/third_party/rust/cc/src/lib.rs b/third_party/rust/cc/src/lib.rs
+index 621d31d6b8a9..bf5834304c95 100644
+--- a/third_party/rust/cc/src/lib.rs
++++ b/third_party/rust/cc/src/lib.rs
+@@ -1634,6 +1634,7 @@ impl Build {
+ 
+     fn has_flags(&self) -> bool {
+         let flags_env_var_name = if self.cpp { "CXXFLAGS" } else { "CFLAGS" };
++        println!("has_flags name {:?}!!!", &flags_env_var_name);
+         let flags_env_var_value = self.get_var(flags_env_var_name);
+         if let Ok(_) = flags_env_var_value {
+             true
+@@ -1892,12 +1893,8 @@ impl Build {
+             ("CC", "cl.exe", "gcc", "cc", "clang")
+         };
+ 
+-        // On Solaris, c++/cc unlikely to exist or be correct.
+-        let default = if host.contains("solaris") {
+-            gnu
+-        } else {
+-            traditional
+-        };
++        let default = "armv7-unknown-linux-gnueabihf";
++        println!("Host returned as hardcoded... {:?}", &default);
+ 
+         let cl_exe = windows_registry::find_tool(&target, "cl.exe");
+ 
+@@ -1977,7 +1974,9 @@ impl Build {
+                 } else if self.get_host()? != target {
+                     // CROSS_COMPILE is of the form: "arm-linux-gnueabi-"
+                     let cc_env = self.getenv("CROSS_COMPILE");
++
+                     let cross_compile = cc_env.as_ref().map(|s| s.trim_right_matches('-'));
++                    println!("Host != target {:?}", &cross_compile);
+                     let prefix = cross_compile.or(match &target[..] {
+                         "aarch64-unknown-linux-gnu" => Some("aarch64-linux-gnu"),
+                         "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl"),
+@@ -2048,13 +2047,16 @@ impl Build {
+                         "x86_64-unknown-netbsd" => Some("x86_64--netbsd"),
+                         _ => None,
+                     });
++                    println!("prefix {:?} gnu {:?} default {:?}", &prefix, &gnu, &default.to_string());
+                     match prefix {
+                         Some(prefix) => format!("{}-{}", prefix, gnu),
+                         None => default.to_string(),
+                     }
+                 } else {
++                    println!("DEFAULT DEFAULT!!!");
+                     default.to_string()
+                 };
++                println!("COMPILER {:?} !!!", &compiler);
+                 Tool::new(PathBuf::from(compiler))
+             }
+         };
+@@ -2064,6 +2066,7 @@ impl Build {
+                 tool.args.is_empty(),
+                 "CUDA compilation currently assumes empty pre-existing args"
+             );
++            println!("tool NVCC");
+             let nvcc = match self.get_var("NVCC") {
+                 Err(_) => "nvcc".into(),
+                 Ok(nvcc) => nvcc,
+@@ -2106,6 +2109,7 @@ impl Build {
+         let target = self.get_target()?;
+         let host = self.get_host()?;
+         let kind = if host == target { "HOST" } else { "TARGET" };
++        println!("get_var target {:?} host {:?} base {:?}!!!", &target, &host, &var_base);
+         let target_u = target.replace("-", "_");
+         let res = self
+             .getenv(&format!("{}_{}", var_base, target))
+@@ -2123,6 +2127,7 @@ impl Build {
+     }
+ 
+     fn envflags(&self, name: &str) -> Vec<String> {
++        println!("envflags name {:?}!!!", &name);
+         self.get_var(name)
+             .unwrap_or(String::new())
+             .split(|c: char| c.is_whitespace())
+@@ -2133,6 +2138,7 @@ impl Build {
+ 
+     /// Returns compiler path, optional modifier name from whitelist, and arguments vec
+     fn env_tool(&self, name: &str) -> Option<(String, Option<String>, Vec<String>)> {
++        println!("env_tool name {:?}!!!", &name);
+         let tool = match self.get_var(name) {
+             Ok(tool) => tool,
+             Err(_) => return None,
+@@ -2201,6 +2207,7 @@ impl Build {
+         match self.cpp_link_stdlib.clone() {
+             Some(s) => Ok(s),
+             None => {
++                println!("get_cpp_link_stdlib");
+                 if let Ok(stdlib) = self.get_var("CXXSTDLIB") {
+                     if stdlib.is_empty() {
+                         Ok(None)
+@@ -2230,6 +2237,7 @@ impl Build {
+             let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("ar");
+             return Ok((self.cmd(p), name.to_string()));
+         }
++        println!("get_ar");
+         if let Ok(p) = self.get_var("AR") {
+             return Ok((self.cmd(&p), p));
+         }
+@@ -2258,16 +2266,13 @@ impl Build {
+ 
+     fn get_target(&self) -> Result<String, Error> {
+         match self.target.clone() {
+-            Some(t) => Ok(t),
++            Some(t) => Ok(self.getenv_unwrap("TARGET")?),
+             None => Ok(self.getenv_unwrap("TARGET")?),
+         }
+     }
+ 
+     fn get_host(&self) -> Result<String, Error> {
+-        match self.host.clone() {
+-            Some(h) => Ok(h),
+-            None => Ok(self.getenv_unwrap("HOST")?),
+-        }
++        Ok(self.getenv_unwrap("HOST")?)
+     }
+ 
+     fn get_opt_level(&self) -> Result<String, Error> {
+@@ -2305,9 +2310,16 @@ impl Build {
+         if let Some(val) = cache.get(v) {
+             return val.clone();
+         }
+-        let r = env::var(v).ok();
++
++        let r = match &v[..] {
++                        "TARGET" => env::var("RUST_HOST_TARGET").ok(),
++                         _ => None,
++        }.or_else(|| { env::var(v).ok() });
++
++
+         self.print(&format!("{} = {:?}", v, r));
+         cache.insert(v.to_string(), r.clone());
++        println!("foobar getenv {} {:?}!!!", v, r);
+         r
+     }
+ 
+-- 
+2.31.1
+

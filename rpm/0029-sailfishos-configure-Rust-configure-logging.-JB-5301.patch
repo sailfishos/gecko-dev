@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 24 Jun 2021 09:37:08 +0300
+Subject: [PATCH] [sailfishos][configure] Rust configure logging. JB#53019
+ OMP#JOLLA-93
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/rust.configure | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
+index e5122d6b86e9..3d8595178289 100644
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -358,6 +358,9 @@ def rust_triple_alias(host_or_target, host_or_target_c_compiler):
+             die("Don't know how to translate {} for rustc".format(
+                 host_or_target.alias))
+ 
++
++        log.info('Host or target alias \'%s\' rustc_target \'%s\'', host_or_target.alias, rustc_target)
++
+         # Check to see whether our rustc has a reasonably functional stdlib
+         # for our chosen target.
+         target_arg = '--target=' + rustc_target
+@@ -397,17 +400,22 @@ def rust_triple_alias(host_or_target, host_or_target_c_compiler):
+             os.remove(out_path)
+ 
+         # This target is usable.
++        log.info('Target is usable \'%s\'', rustc_target)
+         return rustc_target
+ 
++    log.info('Target is \'%s\'', rust_target)
+     return rust_target
+ 
+ 
++log.info('Call rust_triple_alias with target \'%s\' and c_compiler \'%s\'', target, c_compiler)
+ rust_target_triple = rust_triple_alias(target, c_compiler)
++log.info('Call rust_triple_alias with host \'%s\' and host_c_compiler \'%s\'', host, host_c_compiler)
+ rust_host_triple = rust_triple_alias(host, host_c_compiler)
+ 
+ 
+ @depends(host, rust_host_triple, rustc_info.host)
+ def validate_rust_host_triple(host, rust_host, rustc_host):
++    log.info("validate_rust_host_triple args (%s) (%s) (%s)", host.alias, rust_host, rustc_host)
+     if rust_host != rustc_host:
+         if host.alias == rust_host:
+             configure_host = host.alias
+-- 
+2.31.1
+

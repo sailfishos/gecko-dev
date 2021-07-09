@@ -72,6 +72,10 @@ Patch25:    0025-Revert-Bug-1427455-Remove-unused-variables-from-base.patch
 Patch26:    0026-Revert-Bug-1333826-Remove-SDK_FILES-SDK_LIBRARY-and-.patch
 Patch27:    0027-Revert-Bug-1333826-Remove-the-make-sdk-build-target-.patch
 Patch28:    0028-Revert-Bug-1333826-Remove-a-few-references-from-.mk-.patch
+Patch29:    0029-sailfishos-configure-Rust-configure-logging.-JB-5301.patch
+Patch30:    0030-sailfishos-configure-Read-rustc-host-from-environmen.patch
+Patch31:    0031-sailfishos-configure-Drop-thumbv7neon-and-thumbv7a-p.patch
+Patch32:    0032-Hacking-rust.mk.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
@@ -231,26 +235,53 @@ echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
 
-%build
-source "%BUILD_DIR"/rpm-shared.env
-
 # When cross-compiling under SB2 rust needs to know what arch to emit
 # when nothing is specified on the command line. That usually defaults
 # to "whatever rust was built as" but in SB2 rust is accelerated and
 # would produce x86 so this is how it knows differently. Not needed
 # for native x86 builds
 %ifarch %arm
-export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
+echo "export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RUST_HOST_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+# See config/makefiles/rust.mk
+echo "export RUST_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+#echo "export TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+#echo "export HOST=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+# This should be define...
+echo "export CROSS_COMPILE=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+#echo "export CXXFLAGS=\"$CXXFLAGS -DCROSS_COMPILE=armv7-unknown-linux-gnueabihf\"" >> "%BUILD_DIR"/rpm-shared.env
+# See https://crates.io/crates/cc/ for more details.
+#echo "export CRATE_CC_NO_DEFAULTS=1" >> "%BUILD_DIR"/rpm-shared.env
 %endif
 %ifarch aarch64
-export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
+echo "export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu" >> "%BUILD_DIR"/rpm-shared.env
 %endif
+
+echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
+echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
+
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
 # native builds.
-export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
-export SB2_RUST_USE_REAL_EXECVP=Yes
-export SB2_RUST_USE_REAL_FN=Yes
+echo "export SB2_RUST_EXECVP_SHIM=\"/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_RUST_USE_REAL_EXECVP=Yes" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_RUST_USE_REAL_FN=Yes" >> "%BUILD_DIR"/rpm-shared.env
+
+echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_CFG_TARGET=arm" >> "%BUILD_DIR"/rpm-shared.env
+
+%build
+
+source "%BUILD_DIR"/rpm-shared.env
+
+#%ifarch %arm
+#echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
+#%endif
 
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
@@ -329,7 +360,7 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
  echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
  echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
-RPM_BUILD_NCPUS=`nproc`
+RPM_BUILD_NCPUS=4
 
 ./mach build -j$RPM_BUILD_NCPUS
 # This might be unnecessary but previously some files
@@ -339,16 +370,6 @@ RPM_BUILD_NCPUS=`nproc`
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
-# See above for explanation of SB2_ variables (needed in both build/install phases)
-%ifarch %arm
-export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
-%endif
-%ifarch aarch64
-export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
-%endif
-export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
-export SB2_RUST_USE_REAL_EXECVP=Yes
-export SB2_RUST_USE_REAL_FN=Yes
 
 %{__make} -C %BUILD_DIR/mobile/sailfishos/installer install DESTDIR=%{buildroot}
 
