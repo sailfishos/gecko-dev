@@ -227,6 +227,18 @@ Tests and misc files for xulrunner.
 %prep
 %autosetup -p1 -n %{name}-%{version}/gecko-dev
 
+%ifarch %arm
+%define SB2_TARGET armv7-unknown-linux-gnueabihf
+%endif
+%ifarch aarch64
+%define SB2_TARGET aarch64-unknown-linux-gnu
+%endif
+%ifarch %ix86
+%define SB2_TARGET i686-unknown-linux-gnu
+%endif
+
+echo "Target is %SB2_TARGET"
+
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
@@ -240,21 +252,20 @@ echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
 # to "whatever rust was built as" but in SB2 rust is accelerated and
 # would produce x86 so this is how it knows differently. Not needed
 # for native x86 builds
+echo "export SB2_RUST_TARGET_TRIPLE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RUST_HOST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+
 %ifarch %arm
-echo "export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
-echo "export RUST_HOST_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 # See config/makefiles/rust.mk
-echo "export RUST_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 #echo "export TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 #echo "export HOST=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 # This should be define...
-echo "export CROSS_COMPILE=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 #echo "export CXXFLAGS=\"$CXXFLAGS -DCROSS_COMPILE=armv7-unknown-linux-gnueabihf\"" >> "%BUILD_DIR"/rpm-shared.env
 # See https://crates.io/crates/cc/ for more details.
 #echo "export CRATE_CC_NO_DEFAULTS=1" >> "%BUILD_DIR"/rpm-shared.env
-%endif
-%ifarch aarch64
-echo "export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu" >> "%BUILD_DIR"/rpm-shared.env
 %endif
 
 echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
