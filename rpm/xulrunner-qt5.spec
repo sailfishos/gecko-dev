@@ -270,11 +270,11 @@ echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 #echo "export CRATE_CC_NO_DEFAULTS=1" >> "%BUILD_DIR"/rpm-shared.env
 %endif
 
-echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
-echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
-echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
-echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
-echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
+# echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
+# echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
+# echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
+# echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+# echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
