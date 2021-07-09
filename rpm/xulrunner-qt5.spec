@@ -78,6 +78,8 @@ Patch29:    0029-sailfishos-configure-Disable-LTO-for-rust-1.52.1-wit.patch
 Patch30:    0030-sailfishos-gecko-Add-missing-GetTotalScreenPixels-fo.patch
 Patch31:    0031-sailfishos-fonts-Load-and-set-FTLibrary-for-the-Fact.patch
 Patch32:    0032-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
+Patch33:    0033-sailfishos-configure-Read-rustc-host-from-environmen.patch
+Patch34:    0034-sailfishos-configure-Drop-thumbv7neon-and-thumbv7a-p.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
@@ -246,6 +248,18 @@ Tests and misc files for xulrunner.
 %prep
 %autosetup -p1 -n %{name}-%{version}/gecko-dev
 
+%ifarch %arm32
+%define SB2_TARGET armv7-unknown-linux-gnueabihf
+%endif
+%ifarch %arm64
+%define SB2_TARGET aarch64-unknown-linux-gnu
+%endif
+%ifarch %ix86
+%define SB2_TARGET i686-unknown-linux-gnu
+%endif
+
+echo "Target is %SB2_TARGET"
+
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
@@ -254,21 +268,22 @@ echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
 
-%build
-source "%BUILD_DIR"/rpm-shared.env
-
 # When cross-compiling under SB2 rust needs to know what arch to emit
 # when nothing is specified on the command line. That usually defaults
 # to "whatever rust was built as" but in SB2 rust is accelerated and
 # would produce x86 so this is how it knows differently. Not needed
 # for native x86 builds
-%ifarch %arm
-export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
-%endif
-%ifarch aarch64
-export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
-%endif
-%ifarch %arm aarch64
+echo "export SB2_RUST_TARGET_TRIPLE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RUST_HOST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export HOST=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+%ifarch %arm32 %arm64
+# This should be define...
+echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
 # native builds.
@@ -277,10 +292,32 @@ export SB2_RUST_USE_REAL_EXECVP=Yes
 export SB2_RUST_USE_REAL_FN=Yes
 %endif
 
+echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
+echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
+
+# This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
+# during fork/exec. It has no effect outside sb2 so doesn't hurt
+# native builds.
+echo "export SB2_RUST_EXECVP_SHIM=\"/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_RUST_USE_REAL_EXECVP=Yes" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_RUST_USE_REAL_FN=Yes" >> "%BUILD_DIR"/rpm-shared.env
+
+echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_CFG_TARGET=arm" >> "%BUILD_DIR"/rpm-shared.env
+
+%build
+
+source "%BUILD_DIR"/rpm-shared.env
+
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
-%ifarch %arm
+%ifarch %arm32 %arm64
 # Do not build as thumb since it breaks video decoding.
 echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
 %endif
@@ -348,7 +385,15 @@ echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
 %endif
 
-%ifarch %ix86 %arm
+%ifarch %arm32
+echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
+%endif
+
+%ifarch %arm64
+echo "ac_add_options --host=aarch64-unknown-linux-gnu" >> "$MOZCONFIG"
+%endif
+
+%ifarch %ix86 %arm32
 echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 %endif
 
@@ -356,11 +401,11 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
 # Additionally we limit the memory usage during linking
- echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
- echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
- echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
- echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
- echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
+echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
 RPM_BUILD_NCPUS=`nproc`
 
@@ -373,13 +418,13 @@ RPM_BUILD_NCPUS=`nproc`
 %install
 source "%BUILD_DIR"/rpm-shared.env
 # See above for explanation of SB2_ variables (needed in both build/install phases)
-%ifarch %arm
+%ifarch %arm32
 export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
 %endif
-%ifarch aarch64
+%ifarch %arm64
 export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
 %endif
-%ifarch %arm aarch64
+%ifarch %arm32 %arm64
 export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
 export SB2_RUST_USE_REAL_EXECVP=Yes
 export SB2_RUST_USE_REAL_FN=Yes
