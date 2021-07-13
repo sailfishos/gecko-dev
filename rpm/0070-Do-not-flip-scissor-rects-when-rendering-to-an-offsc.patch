@@ -1,0 +1,35 @@
+From 226a812e9795da4fd5e0845b51c51ada58f461ae Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jolla.com>
+Date: Tue, 13 Jul 2021 07:57:28 +0000
+Subject: [PATCH] Do not flip scissor rects when rendering to an offscreen
+ window.
+
+---
+ gfx/layers/opengl/CompositorOGL.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
+index e5ba3edc24bb..a69a262af823 100644
+--- a/gfx/layers/opengl/CompositorOGL.cpp
++++ b/gfx/layers/opengl/CompositorOGL.cpp
+@@ -557,7 +557,7 @@ static GLenum GetFrameBufferInternalFormat(
+ 
+ void CompositorOGL::ClearRect(const gfx::Rect& aRect) {
+   // Map aRect to OGL coordinates, origin:bottom-left
+-  GLint y = mViewportSize.height - aRect.YMost();
++  GLint y = mGLContext->IsOffscreen() && mCurrentRenderTarget->IsWindow() ? aRect.Y() : FlipY(aRect.YMost());
+ 
+   ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
+   ScopedScissorRect autoScissorRect(mGLContext, aRect.X(), y, aRect.Width(),
+@@ -995,7 +995,7 @@ void CompositorOGL::DrawGeometry(const Geometry& aGeometry,
+ 
+   ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
+   ScopedScissorRect autoScissorRect(mGLContext, clipRect.X(),
+-                                    FlipY(clipRect.Y() + clipRect.Height()),
++                                    mGLContext->IsOffscreen() && mCurrentRenderTarget->IsWindow() ? clipRect.Y() : FlipY(clipRect.YMost()),
+                                     clipRect.Width(), clipRect.Height());
+ 
+   MaskType maskType;
+-- 
+2.26.2
+
