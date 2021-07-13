@@ -232,6 +232,13 @@ echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
 echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
 
+# Force GCC build
+echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
+echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
+
 %build
 source "%BUILD_DIR"/rpm-shared.env
 
