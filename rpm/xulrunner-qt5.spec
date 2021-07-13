@@ -249,9 +249,11 @@ export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
 # native builds.
+%ifarch %arm aarch64
 export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
 export SB2_RUST_USE_REAL_EXECVP=Yes
 export SB2_RUST_USE_REAL_FN=Yes
+%endif
 
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
