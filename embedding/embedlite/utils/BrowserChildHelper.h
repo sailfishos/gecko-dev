@@ -110,6 +110,7 @@ public:
 
   bool UpdateFrame(const mozilla::layers::RepaintRequest &aRequest);
 
+  void DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight);
   nsIWebNavigation* WebNavigation() const;
   nsIWidget* WebWidget();
 
@@ -188,6 +189,7 @@ private:
   // This is one factor used when choosing to allow or deny a non-system
   // script's attempt to resize the window.
   bool mHasSiblings;
+  ScreenIntCoord mDynamicToolbarMaxHeight;
 };
 
 }

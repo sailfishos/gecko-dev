@@ -588,6 +588,15 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSetInputContext(const int32_t &
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewParent::RecvOnHttpUserAgentUsed(const nsString &aHttpUserAgent)
+{
+  LOGNI();
+  NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
+
+  mView->GetListener()->OnHttpUserAgentUsed(aHttpUserAgent.get());
+  return IPC_OK();
+}
+
 NS_IMETHODIMP
 EmbedLiteViewParent::GetUniqueID(uint32_t *aId)
 {
