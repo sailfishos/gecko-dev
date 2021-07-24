@@ -60,6 +60,8 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
   , mIPCOpen(false)
   , mShouldSendWebProgressEventsToParent(false)
   , mHasSiblings(false)
+  , mDynamicToolbarMaxHeight(0)
+
 {
   LOGT();
 
@@ -315,6 +317,20 @@ bool
 BrowserChildHelper::UpdateFrame(const RepaintRequest &aRequest)
 {
   return UpdateFrameHandler(aRequest);
+}
+
+void BrowserChildHelper::DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight)
+{
+  mDynamicToolbarMaxHeight = aHeight;
+
+  RefPtr<Document> document = GetTopLevelDocument();
+  if (!document) {
+    return;
+  }
+
+  if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {
+    presContext->SetDynamicToolbarMaxHeight(aHeight);
+  }
 }
 
 nsIWebNavigation*

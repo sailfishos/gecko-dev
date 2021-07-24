@@ -222,9 +222,12 @@ private:
   friend class EmbedLiteAppChild;
   friend class PEmbedLiteViewChild;
 
-  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
+  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
+  void ScrollInputFieldIntoView();
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
+  void SetDesktopMode(const bool aDesktopMode);
+  bool SetDesktopModeInternal(const bool aDesktopMode);
 
   uint32_t mId;
   uint64_t mOuterId;
@@ -238,6 +241,8 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
+
+  int mVirtualKeyboardHeight;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;
