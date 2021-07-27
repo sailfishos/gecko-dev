@@ -89,6 +89,7 @@ void EmbedLiteWindowChild::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
 {
   LOGT("destroy");
+  mWidget->Destroy();
   mWidget = nullptr;
   Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);

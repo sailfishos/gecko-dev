@@ -89,6 +89,8 @@ public:
 
   void SetContentController(mozilla::layers::GeckoContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
+  void SetFirstViewCreated() { mFirstViewCreated = true; }
+  bool IsFirstViewCreated() const { return mFirstViewCreated; }
 
 protected:
   virtual ~nsWindow() override;
@@ -110,6 +112,7 @@ private:
 
   static void CreateGLContextEarly(uint32_t aWindowId);
 
+  bool mFirstViewCreated;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
 };
