@@ -427,7 +427,8 @@ mozilla::embedlite::nsWindow *EmbedLiteViewBaseParent::GetWindowWidget() const
 {
   // Use this with care!! Only CompositorSession (and related bits)
   // may be tampered via this.
-  return mozilla::embedlite::EmbedLiteWindowBaseChild::From(mWindowId)->GetWidget();
+  EmbedLiteWindowBaseChild *window = EmbedLiteWindowBaseChild::From(mWindowId);
+  return window ? window->GetWidget() : nullptr;
 }
 
 void

@@ -314,11 +314,9 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
     widget->UpdateSize();
   }
 
-  static bool firstViewCreated = false;
-  EmbedLiteWindowBaseChild *windowBase = mWindow;
-  if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
-    windowBase->GetWidget()->SetActive(true);
-    firstViewCreated = true;
+  if (!mWindow->GetWidget()->IsFirstViewCreated()) {
+    mWindow->GetWidget()->SetActive(true);
+    mWindow->GetWidget()->SetFirstViewCreated();
   }
 
   nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda

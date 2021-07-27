@@ -58,6 +58,7 @@ static void InitPrefs()
 
 nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
   : PuppetWidgetBase()
+  , mFirstViewCreated(false)
   , mWindow(window)
 {
   InitPrefs();
