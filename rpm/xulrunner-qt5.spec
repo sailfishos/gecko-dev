@@ -121,6 +121,7 @@ Patch66:    0066-sailfishos-webrtc-Adapt-build-configuration-for-Sail.patch
 Patch67:    0067-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
 Patch68:    0068-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
 Patch69:    0069-sailfishos-webrtc-Disable-enumeration-of-video-devic.patch
+Patch70:    0070-Do-not-flip-scissor-rects-when-rendering-to-an-offsc.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
