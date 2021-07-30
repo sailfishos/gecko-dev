@@ -117,6 +117,8 @@ public:
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
   virtual void DestroySecurity(EmbedLiteSecurity* aSecurity) const;
 
+  virtual int GetNumberOfViews() const;
+  virtual int GetNumberOfWindows() const;
   virtual void SetIsAccelerated(bool aIsAccelerated);
   virtual bool IsAccelerated() {
     return mRenderType == RENDER_HW ? true : false ;
