@@ -607,6 +607,16 @@ void EmbedLiteApp::DestroyWindow(EmbedLiteWindow* aWindow)
   MOZ_ASSERT(false, "Invalid EmbedLiteWindow pointer!");
 }
 
+int EmbedLiteApp::GetNumberOfViews() const
+{
+    return mViews.size();
+}
+
+int EmbedLiteApp::GetNumberOfWindows() const
+{
+    return mWindows.size();
+}
+
 void EmbedLiteApp::DestroySecurity(EmbedLiteSecurity* aSecurity) const
 {
     LOGT();
