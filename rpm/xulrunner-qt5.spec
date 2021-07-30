@@ -77,6 +77,7 @@ Patch30:    0030-sailfishos-configure-Read-rustc-host-from-environmen.patch
 Patch31:    0031-sailfishos-configure-Drop-thumbv7neon-and-thumbv7a-p.patch
 Patch32:    0032-Hacking-rust.mk.patch
 Patch33:    0033-Get-target-and-host-from-environment.patch
+Patch34:    0034-sailfishos-gecko-Disable-link-time-optimization-for-.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
