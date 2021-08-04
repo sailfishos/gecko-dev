@@ -83,6 +83,7 @@ Patch34:    0034-sailfishos-configure-Drop-thumbv7neon-and-thumbv7a-p.patch
 Patch35:    0035-sailfishos-configure-Get-target-and-host-from-enviro.patch
 Patch36:    0036-sailfishos-configure-Patch-libloading-to-build-on-ar.patch
 Patch37:    0037-sailfishos-configure-Skip-min_libclang_version-test-.patch
+Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
