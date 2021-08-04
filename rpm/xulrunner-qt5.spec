@@ -80,6 +80,7 @@ Patch33:    0033-Get-target-and-host-from-environment.patch
 Patch34:    0034-sailfishos-gecko-Disable-link-time-optimization-for-.patch
 Patch35:    0035-sailfishos-gecko-Patch-libloading-to-build-on-arm.-J.patch
 Patch36:    0036-sailfishos-gecko-Skip-min_libclang_version-test-duri.patch
+Patch37:    0037-sailfishos-gecko-Patch-glslopt-to-build-on-arm.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
