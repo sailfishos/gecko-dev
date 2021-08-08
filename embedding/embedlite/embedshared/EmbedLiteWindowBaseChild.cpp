@@ -26,18 +26,18 @@ void ShutdownTileCache();
 namespace embedlite {
 
 namespace {
-
 static std::map<uint32_t, EmbedLiteWindowBaseChild*> sWindowChildMap;
-
 } // namespace
 
-EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& aId)
+EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t &width, const uint16_t &height, const uint32_t &aId, EmbedLiteWindowListener *aListener)
   : mId(aId)
+  , mListener(aListener)
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
+  MOZ_ASSERT(mListener);
   sWindowChildMap[aId] = this;
 
   MOZ_COUNT_CTOR(EmbedLiteWindowBaseChild);

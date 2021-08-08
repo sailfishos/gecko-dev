@@ -180,7 +180,7 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, con
 }
 
 PEmbedLiteWindowChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t& width, const uint16_t& height, const uint32_t& id)
+EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
 {
   LOGNI();
   return nullptr;

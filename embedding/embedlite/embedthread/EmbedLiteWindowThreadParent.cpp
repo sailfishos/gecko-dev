@@ -8,8 +8,8 @@
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteWindowThreadParent::EmbedLiteWindowThreadParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
-  : EmbedLiteWindowBaseParent(width, height, id)
+EmbedLiteWindowThreadParent::EmbedLiteWindowThreadParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener)
+  : EmbedLiteWindowBaseParent(width, height, id, aListener)
 {
 }
 

@@ -25,14 +25,16 @@ static uint32_t sCurrentWindowId;
 
 } // namespace
 
-EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t& width, const uint16_t& height, const uint32_t& id)
+EmbedLiteWindowBaseParent::EmbedLiteWindowBaseParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener)
   : mId(id)
+  , mListener(aListener)
   , mWindow(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
   , mRotation(mozilla::ROTATION_0)
 {
   MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
+  MOZ_ASSERT(mListener);
   sWindowMap[id] = this;
   sCurrentWindowId = id;
 
@@ -127,7 +129,7 @@ void EmbedLiteWindowBaseParent::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult EmbedLiteWindowBaseParent::RecvInitialized()
 {
   MOZ_ASSERT(mWindow);
-  mWindow->GetListener()->WindowInitialized();
+  mListener->WindowInitialized();
   return IPC_OK();
 }
 

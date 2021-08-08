@@ -31,6 +31,7 @@ class EmbedLiteView;
 class EmbedLiteWindow;
 class PEmbedLiteAppParent;
 class EmbedLiteSecurity;
+class EmbedLiteWindowListener;
 class EmbedLiteAppListener
 {
 public:
@@ -111,7 +112,7 @@ public:
   virtual bool StopChildThread();
 
   virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow, uint32_t aParent = 0, bool aIsPrivateWindow = false, bool isDesktopMode = false);
-  virtual EmbedLiteWindow* CreateWindow(int width, int height);
+  virtual EmbedLiteWindow* CreateWindow(int width, int height, EmbedLiteWindowListener *aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
@@ -185,8 +186,6 @@ private:
   friend class EmbedLiteView;
   friend class EmbedLiteWindow;
 
-  EmbedLiteView* GetViewByID(uint32_t id);
-  EmbedLiteWindow* GetWindowByID(uint32_t id);
   void ViewDestroyed(uint32_t id);
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();

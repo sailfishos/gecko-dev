@@ -96,10 +96,10 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* acto
 }
 
 PEmbedLiteWindowParent*
-EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t &id)
+EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
 {
   LOGT("id:%u", id);
-  EmbedLiteWindowThreadParent* p = new EmbedLiteWindowThreadParent(width, height, id);
+  EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener));
   p->AddRef();
   return p;
 }

@@ -68,7 +68,7 @@ nsWindow::nsWindow(EmbedLiteWindowBaseChild *window)
     CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
                                                  "mozilla::embedlite::nsWindow::CreateGLContextEarly",
                                                  &CreateGLContextEarly,
-                                                 window->GetUniqueID()));
+                                                 mWindow->GetListener()));
   }
 }
 
@@ -234,10 +234,7 @@ nsWindow::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, 
   MOZ_ASSERT(mWindow);
   Unused << aContext;
   Unused << aRect;
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    window->GetListener()->DrawUnderlay();
-  }
+  mWindow->GetListener()->DrawUnderlay();
 }
 
 void
@@ -245,10 +242,7 @@ nsWindow::DrawWindowOverlay(mozilla::widget::WidgetRenderingContext *aContext, L
 {
   MOZ_ASSERT(mWindow);
   Unused << aContext;
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    window->GetListener()->DrawOverlay(aRect.ToUnknownRect());
-  }
+  mWindow->GetListener()->DrawOverlay(aRect.ToUnknownRect());
 }
 
 bool
@@ -260,11 +254,7 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
     return false;
   }
 
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    return window->GetListener()->PreRender();
-  }
-  return true;
+  return mWindow->GetListener()->PreRender();
 }
 
 void
@@ -277,10 +267,7 @@ nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
     static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->PresentOffscreenSurface();
   }
 
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    window->GetListener()->CompositingFinished();
-  }
+  mWindow->GetListener()->CompositingFinished();
 }
 
 void
@@ -374,11 +361,10 @@ nsWindow::GetGLContext() const
 {
   LOGT("this:%p, UseExternalContext:%d", this, sUseExternalGLContext);
   if (sUseExternalGLContext) {
-    EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
     void* context = nullptr;
     void* surface = nullptr;
     void* display = nullptr;
-    if (window && window->GetListener()->RequestGLContext(context, surface, display)) {
+    if (mWindow && mWindow->GetListener()->RequestGLContext(context, surface, display)) {
       MOZ_ASSERT(context && surface);
       RefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface, display);
       if (!mozContext || !mozContext->Init()) {
@@ -405,19 +391,15 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 }
 
 void
-nsWindow::CreateGLContextEarly(uint32_t aWindowId)
+nsWindow::CreateGLContextEarly(EmbedLiteWindowListener *aListener)
 {
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(aWindowId);
-  LOGT("WindowID :%u, window: %p", aWindowId, window);
-  if (window) {
-    void* context = nullptr;
-    void* surface = nullptr;
-    void* display = nullptr;
-    window->GetListener()->RequestGLContext(context, surface, display);
-    MOZ_ASSERT(context && surface);
-  } else {
-    NS_WARNING("Trying to early create GL context for non existing window!");
-  }
+  LOGT("Listener: %p", aListener);
+
+  void* context = nullptr;
+  void* surface = nullptr;
+  void* display = nullptr;
+  aListener->RequestGLContext(context, surface, display);
+  MOZ_ASSERT(context && surface);
 }
 
 }  // namespace embedlite

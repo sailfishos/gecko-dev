@@ -41,6 +41,11 @@ extern GeckoProcessType sChildProcessType;
 }
 namespace embedlite {
 
+namespace {
+class FakeWindowListener : public EmbedLiteWindowListener {};
+static FakeWindowListener sFakeWindowListener;
+}
+
 EmbedLiteApp* EmbedLiteApp::sSingleton = nullptr;
 static nsTArray<nsCString> sComponentDirs;
 
@@ -471,15 +476,19 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPri
 }
 
 EmbedLiteWindow*
-EmbedLiteApp::CreateWindow(int width, int height)
+EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aListener)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   static uint32_t sWindowCreateID = 0;
   sWindowCreateID++;
 
+  if (!aListener) {
+      aListener = &sFakeWindowListener;
+  }
+
   PEmbedLiteWindowParent* windowParent = static_cast<PEmbedLiteWindowParent*>(
-      mAppParent->SendPEmbedLiteWindowConstructor(width, height, sWindowCreateID));
+      mAppParent->SendPEmbedLiteWindowConstructor(width, height, sWindowCreateID, reinterpret_cast<uintptr_t>(aListener)));
   EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
   mWindows[sWindowCreateID] = window;
   return window;
@@ -492,26 +501,6 @@ EmbedLiteSecurity* EmbedLiteApp::CreateSecurity(const char *aStatus, unsigned in
 
     EmbedLiteSecurity * embedSecurity = new EmbedLiteSecurity(aStatus, aState);
     return embedSecurity;
-}
-
-EmbedLiteView* EmbedLiteApp::GetViewByID(uint32_t id)
-{
-  std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
-  if (it == mViews.end()) {
-    NS_ERROR("View not found");
-    return nullptr;
-  }
-  return it->second;
-}
-
-EmbedLiteWindow* EmbedLiteApp::GetWindowByID(uint32_t id)
-{
-  std::map<uint32_t, EmbedLiteWindow*>::iterator it = mWindows.find(id);
-  if (it == mWindows.end()) {
-    NS_ERROR("Window not found!");
-    return nullptr;
-  }
-  return it->second;
 }
 
 void
