@@ -114,6 +114,8 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
   , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
+  , mInitialized(false)
+  , mDestroyAfterInit(false)
 {
   LOGT("id:%u, parentID:%u", aId, aParentId);
   // Init default prefs
@@ -161,6 +163,11 @@ EmbedLiteViewChild::ActorDestroy(ActorDestroyReason aWhy)
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 {
+  if (!mInitialized) {
+    mDestroyAfterInit = true;
+    return IPC_OK();
+  }
+
   LOGT("destroy");
 
   nsCOMPtr<nsIObserverService> observerService =
@@ -191,6 +198,11 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
+    return;
+  }
+
+  if (mDestroyAfterInit) {
+    Unused << RecvDestroy();
     return;
   }
 
@@ -337,6 +349,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();
+
+  mInitialized = true;
 
   Unused << SendInitialized();
 
