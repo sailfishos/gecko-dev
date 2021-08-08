@@ -71,9 +71,6 @@ class EmbedLiteWindow {
 public:
   EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id);
 
-  virtual void SetListener(EmbedLiteWindowListener* aListener);
-  virtual EmbedLiteWindowListener *GetListener() const;
-
   // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
 
@@ -103,7 +100,6 @@ private:
   void Destroyed();
 
   EmbedLiteApp* mApp;
-  EmbedLiteWindowListener* mListener;
   EmbedLiteWindowParent* mWindowParent;
   const uint32_t mUniqueID;
 };

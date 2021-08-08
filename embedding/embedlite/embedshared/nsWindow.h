@@ -21,6 +21,7 @@ class GLContext;
 namespace embedlite {
 
 class EmbedLiteWindowChild;
+class EmbedLiteWindowListener;
 
 class nsWindow : public PuppetWidgetBase
 {
@@ -110,7 +111,7 @@ private:
   mozilla::gl::GLContext* GetGLContext() const;
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
 
-  static void CreateGLContextEarly(uint32_t aWindowId);
+  static void CreateGLContextEarly(EmbedLiteWindowListener *aListener);
 
   bool mFirstViewCreated;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.

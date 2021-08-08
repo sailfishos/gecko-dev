@@ -13,6 +13,7 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteWindow;
+class EmbedLiteWindowListener;
 class EmbedLiteCompositorBridgeParent;
 
 class EmbedLiteWindowParentObserver
@@ -25,7 +26,7 @@ class EmbedLiteWindowParent : public PEmbedLiteWindowParent
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
 public:
-  EmbedLiteWindowParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
+  EmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
 
   static EmbedLiteWindowParent* From(const uint32_t id);
   static uint32_t Current();
@@ -42,6 +43,7 @@ public:
   void ResumeRendering();
   void* GetPlatformImage(int* width, int* height);
   void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  EmbedLiteWindowListener *GetListener() const { return mListener; }
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;
@@ -61,6 +63,7 @@ private:
   mozilla::ipc::IPCResult RecvDestroyed();
 
   uint32_t mId;
+  EmbedLiteWindowListener *const mListener;
   EmbedLiteWindow* mWindow;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
