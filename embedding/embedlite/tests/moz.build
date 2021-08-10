@@ -5,12 +5,10 @@
 
 DIRS += ['shared']
 
-# FIXME - disabled due multiple linker errors.
-# Task to analyze/fix: 54404
-#GeckoSimplePrograms([
-#    'embedLiteCoreInitTest',
-#    'embedLiteViewInitTest',
-#], linkage='standalone')
+GeckoSimplePrograms([
+    'embedLiteCoreInitTest',
+    'embedLiteViewInitTest',
+], linkage='standalone')
 
 # linkage='standalone' defines XPCOM_GLUE=True and xpcomglue
 
