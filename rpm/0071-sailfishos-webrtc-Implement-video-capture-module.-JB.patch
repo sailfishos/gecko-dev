@@ -1,13 +1,12 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a9bc03e8da340abcd5b7e2b617825f14bfe29083 Mon Sep 17 00:00:00 2001
 From: Denis Grigorev <d.grigorev@omprussia.ru>
 Date: Thu, 4 Feb 2021 21:14:28 +0300
-Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
+Subject: [PATCH] Implement video capture module. JB#53982
 
 ---
  dom/media/systemservices/VideoFrameUtils.cpp  |  92 ++++---
  dom/media/systemservices/moz.build            |   1 +
  .../webrtc/modules/video_capture/BUILD.gn     |  17 +-
- .../video_capture/linux/device_info_linux.cc  |   9 -
  .../video_capture/sfos/device_info_sfos.cc    | 141 ++++++++++
  .../video_capture/sfos/device_info_sfos.h     |  49 ++++
  .../video_capture/sfos/video_capture_sfos.cc  | 244 ++++++++++++++++++
@@ -15,7 +14,7 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  .../video_capture/video_capture_impl.cc       |  12 +
  .../video_capture/video_capture_impl.h        |   2 +
  .../video_capture_internal_impl_gn/moz.build  |  13 +-
- 11 files changed, 572 insertions(+), 63 deletions(-)
+ 10 files changed, 572 insertions(+), 54 deletions(-)
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
@@ -190,33 +189,6 @@ index e4984238bac3..c2f10a7a7e87 100644
  
        deps = [
          ":video_capture_internal_impl",
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc b/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
-index cb8bb6fe6e50..d1bcdf2d3c33 100644
---- a/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc
-@@ -241,7 +241,6 @@ uint32_t DeviceInfoLinux::NumberOfDevices()
-     WEBRTC_TRACE(webrtc::kTraceApiCall,
-                  webrtc::kTraceVideoCapture, 0, "%s", __FUNCTION__);
- 
--#if !defined(MOZ_EMBEDLITE)
-     uint32_t count = 0;
-     char device[20];
-     int fd = -1;
-@@ -258,14 +257,6 @@ uint32_t DeviceInfoLinux::NumberOfDevices()
-     }
- 
-     return count;
--#else
--    /*
--     * Video capture is not yet implemented on SFOS.
--     * Do not report about /dev/video* devices as it will break audio calls
--     * on sites requesting video devices.
--     */
--    return 0;
--#endif
- }
- 
- int32_t DeviceInfoLinux::GetDeviceName(
 diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
 new file mode 100644
 index 000000000000..f659c344fcf4
@@ -793,5 +765,5 @@ index 32d4302d2550..134120644c95 100644
  
      DEFINES["USE_X11"] = "1"
 -- 
-2.17.1
+2.30.2
 
