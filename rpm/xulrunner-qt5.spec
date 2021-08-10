@@ -72,6 +72,7 @@ Patch25:    0025-Revert-Bug-1427455-Remove-unused-variables-from-base.patch
 Patch26:    0026-Revert-Bug-1333826-Remove-SDK_FILES-SDK_LIBRARY-and-.patch
 Patch27:    0027-Revert-Bug-1333826-Remove-the-make-sdk-build-target-.patch
 Patch28:    0028-Revert-Bug-1333826-Remove-a-few-references-from-.mk-.patch
+Patch29:    0029-sailfishos-configure-Disable-LTO-for-rust-1.52.1-wit.patch
 #Patch9:     0009-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
