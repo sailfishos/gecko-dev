@@ -4,15 +4,23 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += ['shared']
+¨
+GeckoProgram('embedLiteCoreInitTest')
 
-GeckoSimplePrograms([
-    'embedLiteCoreInitTest',
-    'embedLiteViewInitTest',
-], linkage='standalone')
+# 'embedLiteViewInitTest',
 
 # linkage='standalone' defines XPCOM_GLUE=True and xpcomglue
 
+# DEFINES['XPCOM_GLUE'] = False
+# DEFINES['XPCOM_GLUE_USE_NSPR'] = True
+# DEFINES['MOZ_GLUE_IN_PROGRAM'] = True
+
 USE_LIBS += [
+    'xpcomglue',
+]
+
+USE_LIBS += [
+    'gkrust',
     'qmessagepump',
     'xul'
 ]

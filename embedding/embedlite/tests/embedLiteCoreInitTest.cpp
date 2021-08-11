@@ -17,8 +17,6 @@
 #include <mozilla-config.h>
 #include <nsPoint.h>
 #include <nsIWebProgressListener.h>
-#include <nsISerializationHelper.h>
-#include <nsServiceManagerUtils.h>
 #include <nsIX509Cert.h>
 #include <qmessagepump.h>
 #include <nsDebug.h>
