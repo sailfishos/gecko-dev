@@ -1,0 +1,26 @@
+From c5e22acf75a8e5626a9e42c732437dcf5a8b2b1e Mon Sep 17 00:00:00 2001
+From: Chris Adams <chris.adams@jolla.com>
+Date: Wed, 11 Aug 2021 11:48:05 +1000
+Subject: [PATCH] [sailfishos][gecko] Guard profiler registeredThread
+ dereference
+
+---
+ tools/profiler/core/platform.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/profiler/core/platform.cpp b/tools/profiler/core/platform.cpp
+index 9e4a3f4843fe..ea9bf7282564 100644
+--- a/tools/profiler/core/platform.cpp
++++ b/tools/profiler/core/platform.cpp
+@@ -3631,7 +3631,7 @@ void profiler_init_threadmanager() {
+   PSAutoLock lock(gPSMutex);
+   RegisteredThread* registeredThread =
+       TLSRegisteredThread::RegisteredThread(lock);
+-  if (!registeredThread->GetEventTarget()) {
++  if (registeredThread && !registeredThread->GetEventTarget()) {
+     registeredThread->ResetMainThread(NS_GetCurrentThreadNoCreate());
+   }
+ }
+-- 
+2.17.1
+

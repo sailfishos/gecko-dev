@@ -165,9 +165,6 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
   LOGT();
   NS_ASSERTION(aApp->mState == STARTING, "Wrong timing");
   if (aApp->mEmbedType == EMBED_THREAD) {
-    char aLocal;
-    profiler_init(&aLocal);
-
     if (!aApp->mListener ||
         !aApp->mListener->ExecuteChildThread()) {
       // If toolkit hasn't started a child thread we have to create the thread on our own
@@ -271,6 +268,9 @@ EmbedLiteApp::StartChildThread()
                           getter_AddRefs(f));
     XRE_AddManifestLocation(NS_APP_LOCATION, f);
   }
+
+  char aLocal;
+  profiler_init(&aLocal);
 
   GeckoLoader::InitEmbedding(mProfilePath);
 
