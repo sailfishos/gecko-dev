@@ -304,6 +304,11 @@ echo "ac_add_options --target=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
+# hack to circumvent std include_next bug JB#55058
+%ifarch %arm
+if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/8.3.0/ "%BUILD_DIR"/include; fi
+%endif
+
 # %ifarch %arm
 # Do not build as thumb since it breaks video decoding.
 # echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
