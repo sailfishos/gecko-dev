@@ -227,7 +227,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mChrome = new WebBrowserChrome(this);
 
   // FIXME - aBrowsingContext and aInitialWindowChild are not passed.
-  // Task to analyze/fix: 54382
+  // Task to analyze/fix: JB#54382
   mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, nullptr,
                                      nullptr);
   mWebBrowser->SetAllowDNSPrefetch(true);
