@@ -260,6 +260,7 @@ echo "export RUST_HOST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 echo "export TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 echo "export HOST=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 
 %ifarch %arm
 # See config/makefiles/rust.mk
