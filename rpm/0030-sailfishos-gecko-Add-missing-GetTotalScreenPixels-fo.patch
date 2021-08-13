@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 13 Aug 2021 08:38:10 +0300
+Subject: [PATCH] [sailfishos][gecko] Add missing GetTotalScreenPixels for
+ screen manager. Fixes JB#55145 OMP#JOLLA-277
+
+---
+ widget/qt/nsScreenManagerQt.cpp | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/widget/qt/nsScreenManagerQt.cpp b/widget/qt/nsScreenManagerQt.cpp
+index 25d2c510e1f1..aa2f711d4228 100644
+--- a/widget/qt/nsScreenManagerQt.cpp
++++ b/widget/qt/nsScreenManagerQt.cpp
+@@ -84,3 +84,18 @@ nsScreenManagerQt::GetPrimaryScreen(nsIScreen **aPrimaryScreen)
+     NS_IF_ADDREF(*aPrimaryScreen = screens[0]);
+     return NS_OK;
+ }
++
++
++NS_IMETHODIMP
++nsScreenManagerQt::GetTotalScreenPixels(int64_t* aTotalScreenPixels)
++{
++    QScreen *screen = QGuiApplication::primaryScreen();
++    if (!screen) {
++        *aTotalScreenPixels = 0;
++        return NS_OK;
++    }
++
++    QSize size = screen->availableSize();
++    *aTotalScreenPixels = size.width() * size.height();
++    return NS_OK;
++}
+-- 
+2.31.1
+
