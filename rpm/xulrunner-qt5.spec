@@ -305,9 +305,13 @@ echo "ac_add_options --target=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
-# hack to circumvent std include_next bug JB#55058
 %ifarch %arm
+# Make stdc++ headers avaiilable on a fresh path to work around include_next bug JB#55058
 if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/8.3.0/ "%BUILD_DIR"/include; fi
+# Expose the elf32-i386 libclang.so.10 for use inside the arm target, JB#55042
+mkdir -p "%BUILD_DIR"/lib
+SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.10 "%BUILD_DIR"/lib/libclang.so.10
+echo "ac_add_options --with-libclang-path='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 %endif
 
 # %ifarch %arm
