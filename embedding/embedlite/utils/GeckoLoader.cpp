@@ -248,8 +248,6 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     XRE_NotifyProfile();
   }
 
-  NS_LogTerm();
-
   LOGF("InitEmbedding successfully");
   return true;
 }
@@ -262,9 +260,6 @@ GeckoLoader::TermEmbedding()
     return false;
   }
   sInitialized = false;
-
-  // Get rid of the bogus TLS warnings
-  NS_LogInit();
 
   // make sure this is freed before shutting down xpcom
   NS_IF_RELEASE(kDirectoryProvider.sProfileLock);
