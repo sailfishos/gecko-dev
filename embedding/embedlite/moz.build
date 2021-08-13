@@ -115,6 +115,7 @@ LOCAL_INCLUDES += [
     '/hal',
     '/js/xpconnect/src',
     '/netwerk/base/',
+    '/toolkit/components/resistfingerprinting',
     '/toolkit/xre',
     '/widget',
     '/xpcom/base',

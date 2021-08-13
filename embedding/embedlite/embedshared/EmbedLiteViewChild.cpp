@@ -1123,17 +1123,58 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
   return IPC_OK();
 }
 
+static KeyNameIndex getKeyNameIndexByDomKeyCode(int domKeyCode)
+{
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier)
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode) \
+  if (domKeyCode == _keyCode) return KEY_NAME_INDEX_##keyNameIdx_;
+#include "KeyCodeConsensus_En_US.h"
+  return KEY_NAME_INDEX_USE_STRING;
+#undef CONTROL
+#undef KEY
+}
+
+static CodeNameIndex getCodeNameIndexByCharCode(int charCode)
+{
+  switch(charCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+  case key_[0]: return CODE_NAME_INDEX_##_codeNameIdx;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default: return CODE_NAME_INDEX_UNKNOWN;
+#undef CONTROL
+#undef KEY
+  }
+}
+
+static Modifiers getModifiersByCharCode(int charCode)
+{
+  switch(charCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+  case key_[0]: return _modifier;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default: return 0;
+#undef CONTROL
+#undef KEY
+  }
+}
+
 nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode)
 {
   NS_ENSURE_TRUE(widget, NS_ERROR_FAILURE);
   EventMessage msg = message;
   WidgetKeyboardEvent event(true, msg, widget);
-  event.mModifiers = Modifiers(gmodifiers);
+  event.mModifiers = Modifiers(gmodifiers) | getModifiersByCharCode(charCode);
   event.mKeyCode = charCode ? 0 : domKeyCode;
   event.mCharCode = charCode;
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
+  event.mKeyNameIndex = getKeyNameIndexByDomKeyCode(domKeyCode);
+  event.mKeyValue.Assign(charCode);
+  event.mCodeNameIndex = getCodeNameIndexByCharCode(charCode);
+
   if (domKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
@@ -1150,7 +1191,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &d
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Initial key down event
-  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, charCode), IPC_OK());
   if (domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_SHIFT &&
       domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_META &&
       domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_CONTROL &&
@@ -1169,7 +1210,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyReleaseEvent(const int 
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Key up event
-  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyUp, domKeyCode, gmodifiers, 0), IPC_OK());
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyUp, domKeyCode, gmodifiers, charCode), IPC_OK());
   return IPC_OK();
 }
 
