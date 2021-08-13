@@ -125,10 +125,10 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 #endif
 
   const char* greHome = getenv("GRE_HOME");
-    if (!greHome) {
-      LOGE("GRE_HOME is not defined\n");
-      return false;
-    }
+  if (!greHome) {
+    LOGE("GRE_HOME is not defined\n");
+    return false;
+  }
 
   nsCOMPtr<nsIFile> xuldir;
   rv = XRE_GetFileFromPath(greHome, getter_AddRefs(xuldir));
