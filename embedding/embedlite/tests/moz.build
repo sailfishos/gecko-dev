@@ -5,18 +5,14 @@
 
 DIRS += ['shared']
 
-# eckoProgram('embedLiteCoreInitTest')
-
-# 'embedLiteViewInitTest',
-
-# linkage='standalone' defines XPCOM_GLUE=True and xpcomglue
-
-# DEFINES['XPCOM_GLUE'] = False
-# DEFINES['XPCOM_GLUE_USE_NSPR'] = True
-# DEFINES['MOZ_GLUE_IN_PROGRAM'] = True
+GeckoSimplePrograms([
+    'embedLiteCoreInitTest',
+    'embedLiteViewInitTest',
+], linkage='standalone')
 
 USE_LIBS += [
     'xpcomglue',
+    'mozglue'
 ]
 
 USE_LIBS += [
