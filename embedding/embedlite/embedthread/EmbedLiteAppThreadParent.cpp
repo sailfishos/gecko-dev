@@ -77,10 +77,11 @@ EmbedLiteAppThreadParent::ActorDestroy(ActorDestroyReason aWhy)
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow,
+                                                    const bool& isDesktopMode)
 {
   LOGT("id:%u, parent:%u", id, parentId);
-  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(windowId, id, parentId, isPrivateWindow);
+  EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(windowId, id, parentId, isPrivateWindow, isDesktopMode);
   p->AddRef();
   return p;
 }

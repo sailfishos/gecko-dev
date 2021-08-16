@@ -14,7 +14,7 @@ namespace embedlite {
 class EmbedLiteViewThreadParent : public EmbedLiteViewParent
 {
 public:
-  EmbedLiteViewThreadParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewThreadParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow, const bool& isDesktopMode);
 
 protected:
   virtual ~EmbedLiteViewThreadParent();

@@ -112,11 +112,26 @@ EmbedLiteView::SetIsFocused(bool aIsFocused)
 }
 
 void
+EmbedLiteView::SetDesktopMode(bool aDesktopMode)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  Unused << mViewParent->SendSetDesktopMode(aDesktopMode);
+}
+
+void
 EmbedLiteView::SetThrottlePainting(bool aThrottle)
 {
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendSetThrottlePainting(aThrottle);
+}
+
+void EmbedLiteView::SetVirtualKeyboardHeight(int aHeight)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mViewParent, );
+  Unused << mViewParent->SendSetVirtualKeyboardHeight(aHeight);
 }
 
 void
@@ -139,7 +154,6 @@ void EmbedLiteView::GoBack()
 {
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendGoBack();
-
 }
 
 void EmbedLiteView::GoForward()
@@ -159,6 +173,15 @@ void EmbedLiteView::Reload(bool hard)
 {
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendReload(hard);
+}
+
+void
+EmbedLiteView::SetHttpUserAgent(const char16_t* aHttpUserAgent)
+{
+    LOGT();
+    NS_ENSURE_TRUE(mViewParent, );
+    const nsDependentString httpUserAgent(aHttpUserAgent);
+    Unused << mViewParent->SendSetHttpUserAgent(httpUserAgent);
 }
 
 void EmbedLiteView::ScrollTo(int x, int y)

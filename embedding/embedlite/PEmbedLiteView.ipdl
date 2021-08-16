@@ -50,9 +50,12 @@ child:
     async LoadFrameScript(nsString uri);
     async SetIsActive(bool aIsActive);
     async SetIsFocused(bool aIsFocused);
+    async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
+    async SetVirtualKeyboardHeight(int aHeight);
     async SetMargins(int top, int right, int bottom, int left);
     async ScheduleUpdate();
+    async SetHttpUserAgent(nsString aHttpUserAgent);
     async SuspendTimeouts();
     async ResumeTimeouts();
     async HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
@@ -100,6 +103,7 @@ parent:
     async OnScrollChanged(int32_t offSetX, int32_t offSetY);
     async OnTitleChanged(nsString aTitle);
     async OnWindowCloseRequested();
+    async OnHttpUserAgentUsed(nsString aHttpUserAgent);
 
     /**
      * Updates the zoom constraints for a scrollable frame in this tab.

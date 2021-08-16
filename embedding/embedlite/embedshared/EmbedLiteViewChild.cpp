@@ -9,6 +9,7 @@
 #include "EmbedLiteAppThreadChild.h"
 #include "nsWindow.h"
 
+#include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
 
 #include "nsEmbedCID.h"
@@ -53,6 +54,15 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
+// This should be removed and used common StartsWith. But that's not available => simpler to copy for now.
+template <int N>
+static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
+  if (N - 1 > string.Length()) {
+    return false;
+  }
+  return memcmp(string.Data(), prefix, N - 1) == 0;
+}
+
 static struct {
     bool viewport;
     bool scroll;
@@ -89,7 +99,8 @@ static void ReadAZPCPrefs()
 }
 
 EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t& aId,
-                                       const uint32_t& aParentId, const bool& isPrivateWindow)
+                                       const uint32_t& aParentId, const bool& isPrivateWindow,
+                                       const bool& isDesktopMode)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -100,6 +111,7 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
+  , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
 {
@@ -114,12 +126,13 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
   mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool>
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool, const bool>
                                    ("mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow",
                                     this,
                                     &EmbedLiteViewChild::InitGeckoWindow,
                                     aParentId,
-                                    isPrivateWindow));
+                                    isPrivateWindow,
+                                    isDesktopMode));
 }
 
 NS_IMETHODIMP EmbedLiteViewChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
@@ -149,6 +162,13 @@ EmbedLiteViewChild::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 {
   LOGT("destroy");
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdestroyed", nullptr);
+  }
+
   EmbedLiteAppService::AppService()->UnregisterView(mId);
   if (mHelper)
     mHelper->Unload();
@@ -167,7 +187,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow)
+EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
@@ -318,6 +338,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
       puppetWidget->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
     }
   };
+
+  SetDesktopMode(isDesktopMode);
 
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();
@@ -620,6 +642,102 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsFocused(const bool &aIsFocu
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetDesktopMode(const bool &aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  SetDesktopMode(aDesktopMode);
+
+  return IPC_OK();
+}
+
+void EmbedLiteViewChild::SetDesktopMode(const bool aDesktopMode)
+{
+  LOGT("aDesktopMode:%d", aDesktopMode);
+
+  if (!SetDesktopModeInternal(aDesktopMode)) {
+    return;
+  }
+
+  nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
+
+  nsIURI* currentURI = document->GetDocumentURI();
+
+  // Only reload the page for http/https schemes
+  bool isValidScheme =
+      (NS_SUCCEEDED(currentURI->SchemeIs("http", &isValidScheme)) &&
+       isValidScheme) ||
+      (NS_SUCCEEDED(currentURI->SchemeIs("https", &isValidScheme)) &&
+       isValidScheme);
+
+  if (!isValidScheme) {
+    return;
+  }
+
+  nsAutoCString host;
+  nsresult rv = currentURI->GetHost(host);
+
+  if (StartsWith(host, "www.")) {
+    host.Cut(0, 4);
+  } else if (StartsWith(host, "mobile.")) {
+    host.Cut(0, 7);
+  } else if (StartsWith(host, "m.")) {
+    host.Cut(0, 2);
+  }
+
+  // See https://slides.com/valentingosu/threadsafe-uri-austin-2017
+  nsCOMPtr<nsIURI> clonedURI;
+  rv = NS_MutateURI(currentURI).SetHost(host).Finalize(clonedURI);
+  NS_ENSURE_SUCCESS(rv, );
+
+  nsAutoCString url;
+  clonedURI->GetSpec(url);
+
+  LoadURIOptions loadURIOptions;
+  loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
+
+  // We need LOAD_FLAGS_BYPASS_CACHE here since we're changing the User-Agent
+  // string, and servers typically don't use the Vary: User-Agent header, so
+  // not doing this means that we'd get some of the previously cached content.
+  loadURIOptions.mLoadFlags = nsIWebNavigation::LOAD_FLAGS_BYPASS_CACHE |
+                              nsIWebNavigation::LOAD_FLAGS_REPLACE_HISTORY;
+
+  NS_ENSURE_TRUE(mWebNavigation, );
+
+  mWebNavigation->LoadURI(NS_ConvertUTF8toUTF16(url), loadURIOptions);
+}
+
+bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
+  NS_ENSURE_TRUE(mDOMWindow, false);
+
+  if (mDOMWindow->IsDesktopModeViewport() == aDesktopMode) {
+    return false;
+  }
+
+  mDOMWindow->SetDesktopModeViewport(aDesktopMode);
+
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdesktopmodechanged", mDOMWindow->IsDesktopModeViewport() ? u"true" :  u"false");
+    return true;
+  }
+  return false;
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetVirtualKeyboardHeight(const int &aHeight)
+{
+  LOGT("aHeight:%i", aHeight);
+
+  mVirtualKeyboardHeight = aHeight;
+
+  if (mVirtualKeyboardHeight) {
+    mHelper->DynamicToolbarMaxHeightChanged(aHeight);
+    ScrollInputFieldIntoView();
+  }
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
@@ -656,6 +774,20 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
     }
   }
   return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetHttpUserAgent(const nsString& aHttpUserAgent)
+{
+    nsCOMPtr<nsIObserverService> observerService =
+      do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+    if (observerService) {
+      LOGT("Setting user agent: %s", NS_ConvertUTF16toUTF8(aHttpUserAgent).get());
+      observerService->NotifyObservers(mDOMWindow,
+                                       "embedliteviewhttpuseragentchanged",
+                                       aHttpUserAgent.get());
+    }
+
+    return IPC_OK();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSuspendTimeouts()
@@ -806,6 +938,17 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   }
 
   event.mTime = PR_Now() / 1000;
+}
+
+void EmbedLiteViewChild::ScrollInputFieldIntoView()
+{
+    RefPtr<PresShell> presShell = mHelper->GetPresContext()->GetPresShell();
+    NS_ENSURE_TRUE(presShell, );
+
+    presShell->ScrollSelectionIntoView(
+                nsISelectionController::SELECTION_NORMAL,
+                nsISelectionController::SELECTION_FOCUS_REGION,
+                0);
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
@@ -1251,6 +1394,12 @@ EmbedLiteViewChild::OnUpdateDisplayPort()
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteViewChild::OnHttpUserAgentUsed(const char16_t* aHttpUserAgent)
+{
+  return SendOnHttpUserAgentUsed(nsDependentString(aHttpUserAgent)) ? NS_OK : NS_ERROR_FAILURE;
+}
+
 bool
 EmbedLiteViewChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::ScrollableLayerGuid::ViewID *aViewIdOut)
 {
@@ -1279,6 +1428,10 @@ EmbedLiteViewChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
   mHelper->ReportSizeUpdate(aSize);
+
+  if (mVirtualKeyboardHeight) {
+    ScrollInputFieldIntoView();
+  }
 }
 
 void

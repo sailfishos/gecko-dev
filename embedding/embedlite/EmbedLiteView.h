@@ -50,6 +50,7 @@ public:
   virtual void OnTitleChanged(const char16_t* aTitle) {}
   virtual void SetBackgroundColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {}
   virtual void OnWindowCloseRequested(void) {}
+  virtual void OnHttpUserAgentUsed(const char16_t* aHttpUserAgent) {}
 
   virtual bool HandleScrollEvent(bool aIsRootScrollFrame, const gfxRect& aContentRect,
                                  const gfxSize& aScrollableSize) { return false; }
@@ -78,13 +79,16 @@ public:
   virtual void LoadURL(const char* aUrl);
   virtual void SetIsActive(bool);
   virtual void SetIsFocused(bool);
+  virtual void SetDesktopMode(bool);
   virtual void SetThrottlePainting(bool);
+  virtual void SetVirtualKeyboardHeight(int);
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
   virtual void GoBack();
   virtual void GoForward();
   virtual void StopLoad();
   virtual void Reload(bool hard);
+  virtual void SetHttpUserAgent(const char16_t* aHttpUserAgent);
 
   // Scrolling methods see nsIDomWindow.idl
   // Scrolls this view to an absolute pixel offset.

@@ -24,7 +24,7 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow, const bool &isDesktopMode)
   : mWindowId(windowId)
   , mId(id)
   , mViewAPIDestroyed(false)
@@ -585,6 +585,15 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSetInputContext(const int32_t &
 
   mLastIMEState = aIMEEnabled;
   mView->GetListener()->IMENotification(aIMEEnabled, aIMEOpen, aCause, aFocusChange, aType.get(), aInputmode.get());
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewParent::RecvOnHttpUserAgentUsed(const nsString &aHttpUserAgent)
+{
+  LOGNI();
+  NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
+
+  mView->GetListener()->OnHttpUserAgentUsed(aHttpUserAgent.get());
   return IPC_OK();
 }
 

@@ -29,7 +29,7 @@ class EmbedLiteViewParent : public PEmbedLiteViewParent,
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteViewParent)
 public:
-  EmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow);
+  EmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow, const bool& isDesktopMode);
 
   NS_DECL_EMBEDLITEVIEWIFACE
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -102,6 +102,8 @@ protected:
                                                       const nsString &aActionHint,
                                                       const int32_t &aCause,
                                                       const int32_t &aFocusChange);
+
+  virtual mozilla::ipc::IPCResult RecvOnHttpUserAgentUsed(const nsString &aHttpUserAgent);
 
   // EmbedLiteWindowParentObserver:
   void CompositorCreated() override;

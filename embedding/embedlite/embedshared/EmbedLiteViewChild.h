@@ -45,7 +45,8 @@ class EmbedLiteViewChild : public PEmbedLiteViewChild,
 
 public:
   EmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
-                     const uint32_t& parentId, const bool& isPrivateWindow);
+                     const uint32_t& parentId, const bool& isPrivateWindow,
+                     const bool& isDesktopMode);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -144,9 +145,12 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &);
+  virtual mozilla::ipc::IPCResult RecvSetVirtualKeyboardHeight(const int &);
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
+  virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent);
 
   virtual mozilla::ipc::IPCResult RecvSuspendTimeouts();
   virtual mozilla::ipc::IPCResult RecvResumeTimeouts();
@@ -218,9 +222,12 @@ private:
   friend class EmbedLiteAppChild;
   friend class PEmbedLiteViewChild;
 
-  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow);
+  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
+  void ScrollInputFieldIntoView();
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
+  void SetDesktopMode(const bool aDesktopMode);
+  bool SetDesktopModeInternal(const bool aDesktopMode);
 
   uint32_t mId;
   uint64_t mOuterId;
@@ -234,6 +241,8 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
+
+  int mVirtualKeyboardHeight;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;

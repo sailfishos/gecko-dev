@@ -231,7 +231,11 @@ EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& d
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow)
+EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId,
+                                                     const uint32_t& id,
+                                                     const uint32_t& parentId,
+                                                     const bool& isPrivateWindow,
+                                                     const bool& isDesktopMode)
 {
   LOGT();
 
@@ -241,7 +245,7 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId, c
     mozilla::layers::CompositorThreadHolder::Start();
   }
 
-  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, isPrivateWindow);
+  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, isPrivateWindow, isDesktopMode);
   p->AddRef();
   return p;
 }
