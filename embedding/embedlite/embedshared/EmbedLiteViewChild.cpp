@@ -195,12 +195,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   }
 
   LOGT("parentID: %u", parentId);
-  nsresult rv;
-
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(WebNavigation());
-  if (NS_FAILED(rv)) {
-    return;
-  }
 
   mWidget = new EmbedLitePuppetWidget(this);
   LOGT("puppet widget: %p", static_cast<EmbedLitePuppetWidget*>(mWidget.get()));
@@ -208,30 +202,28 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
   widgetInit.mWindowType = eWindowType_child;
+
   LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
-  rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
+  nsresult rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
+
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
     mWidget = nullptr;
     return;
   }
 
-  LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
-  rv = baseWindow->InitWindow(0, mWidget, 0, 0, bounds.width, bounds.height);
-  if (NS_FAILED(rv)) {
-    return;
-  }
-
-  nsCOMPtr<mozIDOMWindowProxy> domWindow;
-
   mChrome = new WebBrowserChrome(this);
 
-  // FIXME - aBrowsingContext and aInitialWindowChild are not passed.
-  // Task to analyze/fix: JB#54382
-  mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, nullptr,
+  // Create a BrowsingContext for our windowless browser.
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateIndependent(
+              BrowsingContext::Type::Content);
+
+  // This will create nsDocShell, calls InitWindow for nsIBaseWindow,
+  // and finally class create for nsIBaseWindow. When create called with
+  // BrowsingContext typeContentWrapper type is passed to the nsWebBrowser.
+  mWebBrowser = nsWebBrowser::Create(mChrome, mWidget, browsingContext,
                                      nullptr);
   mWebBrowser->SetAllowDNSPrefetch(true);
-  nsIWebBrowser *webBrowser = mWebBrowser;
 
   uint32_t chromeFlags = 0; // View()->GetWindowFlags();
 
@@ -242,16 +234,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mWebBrowser->SetContainerWindow(mChrome);
   mChrome->SetChromeFlags(chromeFlags);
 
-  // Task to analyze/fix: 54382
-#if 0
-  nsCOMPtr<nsIDocShellTreeItem> docShellItem(do_QueryInterface(baseWindow));
-  docShellItem->SetItemType(nsIDocShellTreeItem::typeContentWrapper);
-#endif
-
-  if (NS_FAILED(baseWindow->Create())) {
-    NS_ERROR("Creation of basewindow failed!");
-  }
-
+  nsCOMPtr<mozIDOMWindowProxy> domWindow;
   if (NS_FAILED(mWebBrowser->GetContentDOMWindow(getter_AddRefs(domWindow)))) {
     NS_ERROR("Failed to get the content DOM window!");
   }
@@ -262,18 +245,13 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   }
 
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
+
+  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(mDOMWindow)->WindowUtils();
   utils->GetOuterWindowID(&mOuterId);
 
   EmbedLiteAppService::AppService()->RegisterView(mId);
 
-  nsCOMPtr<nsIObserverService> observerService =
-    do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
-  if (observerService) {
-    observerService->NotifyObservers(mDOMWindow, "embedliteviewcreated", nullptr);
-  }
-
-  mWebNavigation = do_QueryInterface(baseWindow);
+  mWebNavigation = do_QueryInterface(mWebBrowser);
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
@@ -293,15 +271,18 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   }
 
   mChrome->SetWebBrowser(mWebBrowser);
-
-  rv = baseWindow->SetVisibility(true);
+  rv = mWebBrowser->SetVisibility(true);
   if (NS_FAILED(rv)) {
     NS_ERROR("SetVisibility failed!");
   }
 
   mHelper = new BrowserChildHelper(this);
   mChrome->SetBrowserChildHelper(mHelper.get());
-  mHelper->ReportSizeUpdate(bounds);
+
+  // This will update also nsIBaseWindow size. nsWebBrowser:Create initializes
+  // nsIBaseWindow to empty size (w: 0, h: 0).
+  LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
+  WidgetBoundsChanged(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
   mWindow->GetWidget()->AddObserver(this);
@@ -345,6 +326,12 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mHelper->OpenIPC();
 
   Unused << SendInitialized();
+
+  nsCOMPtr<nsIObserverService> observerService =
+          do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
+  if (observerService) {
+      observerService->NotifyObservers(mDOMWindow, "embedliteviewcreated", nullptr);
+  }
 }
 
 nsresult
@@ -583,7 +570,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
 {
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow, IPC_OK());
 
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  //nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   NS_ENSURE_TRUE(fm, IPC_OK());
 
   if (aIsActive) {
@@ -600,17 +588,24 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   }
 
   // Update state via DocShell -> PresShell
-  nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(mWebBrowser);
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (NS_WARN_IF(!docShell)) {
+    return IPC_OK();
+  }
+
   docShell->SetIsActive(aIsActive);
 
   mWidget->Show(aIsActive);
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
-  baseWindow->SetVisibility(aIsActive);
+  //nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  mWebBrowser->SetVisibility(aIsActive);
 
+  // Fix schedule update upon activation JB#55281
+#if 0
   if (aIsActive) {
     RecvScheduleUpdate();
   }
+#endif
   return IPC_OK();
 }
 
@@ -1298,6 +1293,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyFlushComplete()
 NS_IMETHODIMP
 EmbedLiteViewChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward, bool aIsSameDocument)
 {
+        LOGT("");
   Unused << aIsSameDocument;
   return SendOnLocationChanged(nsDependentCString(aLocation), aCanGoBack, aCanGoForward) ? NS_OK : NS_ERROR_FAILURE;
 }
@@ -1305,12 +1301,14 @@ EmbedLiteViewChild::OnLocationChanged(const char* aLocation, bool aCanGoBack, bo
 NS_IMETHODIMP
 EmbedLiteViewChild::OnLoadStarted(const char* aLocation)
 {
+    LOGT("");
   return SendOnLoadStarted(nsDependentCString(aLocation)) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 EmbedLiteViewChild::OnLoadFinished()
 {
+        LOGT("");
   return SendOnLoadFinished() ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1343,6 +1341,7 @@ EmbedLiteViewChild::OnLoadRedirect()
 NS_IMETHODIMP
 EmbedLiteViewChild::OnLoadProgress(int32_t aProgress, int32_t aCurTotal, int32_t aMaxTotal)
 {
+        LOGT("progress: %d", aProgress);
   return SendOnLoadProgress(aProgress, aCurTotal, aMaxTotal) ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1417,6 +1416,7 @@ EmbedLiteViewChild::GetPresShellResolution() const
   }
   return presShell->GetResolution();
 }
+
 
 void
 EmbedLiteViewChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
