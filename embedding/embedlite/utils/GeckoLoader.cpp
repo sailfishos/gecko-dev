@@ -41,6 +41,9 @@
 #include "mozilla/ModuleUtils.h"
 #include "nsXPCOMCIDInternal.h"
 
+#include "GeckoProfiler.h"
+#include "IOInterposer.h"
+
 #ifdef XP_MACOSX
 #include "MacQuirks.h"
 #endif
@@ -101,13 +104,31 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     printf("Start XRE Init Embedding\n");
   }
 
-  // get rid of the bogus TLS warnings
+  // Get rid of the bogus TLS warnings
+  // This will set this thread as the main thread.
   NS_LogInit();
+
+  // This guard ensures that all threads that attempt to register themselves
+  // with the IOInterposer will be properly tracked.
+  // As TermEmbedding is called to stop embedding, let's do not use mozilla::IOInterposerInit
+  // helper class here.
+#if !defined(RELEASE_OR_BETA)
+  IOInterposer::Init();
+#endif
+
+  // Android FF is using baseprofiler, I'm not sure if we'd benefit of it.
+  // This call must happen before any other profiler calls and main thread
+  // must be set. See GeckoProfiler.h.
+#ifdef MOZ_GECKO_PROFILER
+  char aLocal;
+  profiler_init(&aLocal);
+#endif
+
   const char* greHome = getenv("GRE_HOME");
-    if (!greHome) {
-      LOGE("GRE_HOME is not defined\n");
-      return false;
-    }
+  if (!greHome) {
+    LOGE("GRE_HOME is not defined\n");
+    return false;
+  }
 
   nsCOMPtr<nsIFile> xuldir;
   rv = XRE_GetFileFromPath(greHome, getter_AddRefs(xuldir));
@@ -227,8 +248,6 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
     XRE_NotifyProfile();
   }
 
-  NS_LogTerm();
-
   LOGF("InitEmbedding successfully");
   return true;
 }
@@ -242,9 +261,6 @@ GeckoLoader::TermEmbedding()
   }
   sInitialized = false;
 
-  // get rid of the bogus TLS warnings
-  NS_LogInit();
-
   // make sure this is freed before shutting down xpcom
   NS_IF_RELEASE(kDirectoryProvider.sProfileLock);
   kDirectoryProvider.sProfileDir = nullptr;
@@ -252,7 +268,16 @@ GeckoLoader::TermEmbedding()
 
   XRE_TermEmbedding();
 
+#ifdef MOZ_GECKO_PROFILER
+  // This must precede NS_LogTerm().
+  profiler_shutdown();
+#endif
+
   NS_LogTerm();
+
+#if !defined(RELEASE_OR_BETA)
+  IOInterposer::Clear();
+#endif
 
   return true;
 }
