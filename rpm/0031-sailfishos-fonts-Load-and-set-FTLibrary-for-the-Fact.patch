@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 17 Aug 2021 19:26:12 +0300
+Subject: [PATCH] [sailfishos][fonts] Load and set FTLibrary for the Factory.
+ JB#55191 OMP#JOLLA-285
+
+The same old FTLibrary loading issue but another incarnation of it.
+The gfxFontGroup::GetDefaultFont of the gfxTextRun failed to
+FindOrMakeFont gfxFont and set it as default font. The gfxFontEntry::FindOrMakeFont
+itself failed to CreateFontInstance via gfxFontconfigFontEntry::GetFTFace
+which fails because FTLibrary was not loaded by the platform. See more details from the
+gfx/2d/Factory::NewSharedFTFace.
+
+This commit adds FreeType library loading and setting up the
+library for the Factory.
+---
+ gfx/thebes/gfxQtPlatform.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
+index 84aedc98b795..4e9eba2d57bf 100644
+--- a/gfx/thebes/gfxQtPlatform.cpp
++++ b/gfx/thebes/gfxQtPlatform.cpp
+@@ -37,6 +37,7 @@ using namespace mozilla::unicode;
+ using namespace mozilla::gfx;
+ 
+ static gfxImageFormat sOffscreenFormat = SurfaceFormat::X8R8G8B8_UINT32;
++static FT_Library gPlatformFTLibrary = nullptr;
+ 
+ #define GFX_PREF_MAX_GENERIC_SUBSTITUTIONS \
+   "gfx.font_rendering.fontconfig.max_generic_substitutions"
+@@ -50,10 +51,16 @@ gfxQtPlatform::gfxQtPlatform()
+         sOffscreenFormat = SurfaceFormat::R5G6B5_UINT16;
+     }
+     InitBackendPrefs(GetBackendPrefs());
++
++    gPlatformFTLibrary = Factory::NewFTLibrary();
++    MOZ_ASSERT(gPlatformFTLibrary);
++    Factory::SetFTLibrary(gPlatformFTLibrary);
+ }
+ 
+ gfxQtPlatform::~gfxQtPlatform()
+ {
++    Factory::ReleaseFTLibrary(gPlatformFTLibrary);
++    gPlatformFTLibrary = nullptr;
+ }
+ 
+ bool
+-- 
+2.31.1
+
