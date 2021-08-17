@@ -16,11 +16,11 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 12 insertions(+)
 
 diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
-index e6e0dcbe362a..73cc32028e8f 100644
+index 6ffaebc445f1..0b7fd7688746 100644
 --- a/gfx/layers/ipc/CompositorManagerParent.cpp
 +++ b/gfx/layers/ipc/CompositorManagerParent.cpp
-@@ -13,6 +13,11 @@
- #include "nsAutoPtr.h"
+@@ -15,6 +15,11 @@
+ #include "mozilla/Unused.h"
  #include "VsyncSource.h"
  
 +#if defined(MOZ_EMBEDLITE)
@@ -31,7 +31,7 @@ index e6e0dcbe362a..73cc32028e8f 100644
  namespace mozilla {
  namespace layers {
  
-@@ -101,9 +106,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+@@ -105,9 +110,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
                                 ->GetGlobalDisplay()
                                 .GetVsyncRate();
  
@@ -49,5 +49,5 @@ index e6e0dcbe362a..73cc32028e8f 100644
    sInstance->mPendingCompositorBridges.AppendElement(bridge);
    return bridge.forget();
 -- 
-2.26.2
+2.31.1
 
