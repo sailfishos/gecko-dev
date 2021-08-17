@@ -3,18 +3,19 @@
 
 %define embedlite_config merqtxulrunner
 
-%define system_nspr       1
-%define system_nss        1
-%define system_sqlite     1
-%define system_ffi        1
-%define system_hunspell   1
-%define system_jpeg       1
-%define system_png        1
-%define system_icu        1
-%define system_zlib       1
-%define system_bz2        1
-%define system_pixman     1
-%define system_libvpx     1
+%define compile_environment 1
+%define system_nspr         1
+%define system_nss          1
+%define system_sqlite       1
+%define system_ffi          1
+%define system_hunspell     1
+%define system_jpeg         1
+%define system_png          1
+%define system_icu          1
+%define system_zlib         1
+%define system_bz2          1
+%define system_pixman       1
+%define system_libvpx       1
 
 %global mozappdir     %{_libdir}/%{name}-%{milestone}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
@@ -279,6 +280,10 @@ echo "ac_add_options --disable-install-strip" >> "$MOZCONFIG"
 
 # Override the milestone for building devel gecko when needed
 echo "%{milestone}" > "$PWD/config/milestone.txt"
+
+%if %{compile_environment}
+  echo "ac_add_options --enable-compile-environment" >> "$MOZCONFIG"
+%endif
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
