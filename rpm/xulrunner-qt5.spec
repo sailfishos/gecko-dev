@@ -366,7 +366,7 @@ RPM_BUILD_NCPUS=`nproc`
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
-./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
+# ./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
