@@ -254,12 +254,14 @@ export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
 %ifarch aarch64
 export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
 %endif
+%ifarch %arm aarch64
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
 # native builds.
 export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
 export SB2_RUST_USE_REAL_EXECVP=Yes
 export SB2_RUST_USE_REAL_FN=Yes
+%endif
 
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
@@ -363,9 +365,11 @@ export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
 %ifarch aarch64
 export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
 %endif
+%ifarch %arm aarch64
 export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
 export SB2_RUST_USE_REAL_EXECVP=Yes
 export SB2_RUST_USE_REAL_FN=Yes
+%endif
 
 %{__make} -C %BUILD_DIR/mobile/sailfishos/installer install DESTDIR=%{buildroot}
 
