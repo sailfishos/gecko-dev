@@ -16,6 +16,7 @@
 %define system_bz2          1
 %define system_pixman       1
 %define system_libvpx       1
+%define system_libwebp      1
 
 %global mozappdir     %{_libdir}/%{name}-%{milestone}
 %global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
@@ -200,6 +201,10 @@ BuildRequires:  pkgconfig(pixman-1)
 %if %{system_libvpx}
 BuildRequires:  pkgconfig(vpx)
 %endif
+%if %{system_libwebp}
+BuildRequires:  pkgconfig(libwebp)
+BuildRequires:  pkgconfig(libwebpdemux)
+%endif
 
 %description
 Mozilla XUL runner
@@ -316,6 +321,10 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 
 %if %{system_libvpx}
   echo "ac_add_options --with-system-libvpx" >> "${MOZCONFIG}"
+%endif
+
+%if %{system_libwebp}
+  echo "ac_add_options --with-system-webp" >> "${MOZCONFIG}"
 %endif
 
 %ifarch %ix86
