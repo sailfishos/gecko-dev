@@ -60,7 +60,10 @@ PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const
   mMargins = mParent ? mParent->mMargins : mMargins;
   mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
 
+  LOGT("");
   BaseCreate(aParent, aInitData);
+
+  LOGT("");
 
   if (IsTopLevel()) {
     LOGT("Append this to toplevel windows:%p", this);

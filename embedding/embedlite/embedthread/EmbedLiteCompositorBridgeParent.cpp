@@ -74,6 +74,8 @@ EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<Lay
     CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);
 
   EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
+
+  LOGT("%p", win);
   if (win) {
     win->GetListener()->CompositorCreated();
   }
