@@ -7,27 +7,15 @@
 #include "mozilla/embedlite/EmbedLiteApp.h"
 #include "qmessagepump.h"
 
-// Test building with headers used by qtmozembed
-#include <mozilla/embedlite/EmbedLiteWindow.h>
-#include <mozilla/embedlite/EmbedInputData.h>
-#include <mozilla/gfx/Tools.h>
-#include <mozilla/TimeStamp.h>
-#include <mozilla/embedlite/EmbedLiteMessagePump.h>
-#include <mozilla/embedlite/EmbedLiteView.h>
-#include <mozilla-config.h>
-#include <nsPoint.h>
-#include <nsIWebProgressListener.h>
-#include <nsIX509Cert.h>
-#include <qmessagepump.h>
-#include <nsDebug.h>
-#include <nsIDOMWindowUtils.h>
-#include <nscore.h>
+#include "mozilla/Bootstrap.h"
 
 #ifdef MOZ_WIDGET_QT
 #include <QGuiApplication>
 #endif
 
 using namespace mozilla::embedlite;
+
+mozilla::Bootstrap::UniquePtr gfBootstrap;
 
 class MyListener : public EmbedLiteAppListener
 {
@@ -55,9 +43,15 @@ int main(int argc, char** argv)
   QGuiApplication app(argc, argv);
 #endif
 
-  printf("Load XUL Symbols\n");
-  if (LoadEmbedLite(argc, argv)) {
+  printf("Load foo XUL Symbols\n");
+
+  char* greHome = getenv("FOOBAR");
+  gfBootstrap = mozilla::GetBootstrap(greHome);
+
+//  if (LoadEmbedLite(argc, argv)) {
+  if (gfBootstrap) {
     printf("XUL Symbols loaded\n");
+#if 0
     EmbedLiteApp* mapp = XRE_GetEmbedLite();
     MyListener* listener = new MyListener(mapp);
     mapp->SetListener(listener);
@@ -71,6 +65,7 @@ int main(int argc, char** argv)
     printf("Listener destroyed\n");
     delete mapp;
     printf("App destroyed\n");
+#endif
   } else {
     printf("XUL Symbols failed to load\n");
   }

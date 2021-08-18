@@ -7,18 +7,20 @@ DIRS += ['shared']
 
 GeckoSimplePrograms([
     'embedLiteCoreInitTest',
-    'embedLiteViewInitTest',
-], linkage='standalone')
+], linkage=None)
 
-USE_LIBS += [
-    'xpcomglue',
-    'mozglue'
-]
+#     'embedLiteViewInitTest',
 
+#USE_LIBS += [
+#    'mozglue',
+#    'xpcomglue',
+#    'xul'
+#]
+
+DEFINES['XPCOM_GLUE'] = True
 USE_LIBS += [
-    'gkrust',
     'qmessagepump',
-    'xul'
+    'xpcomglue'
 ]
 
 OS_LIBS += CONFIG['TK_LIBS']
@@ -27,3 +29,12 @@ OS_LIBS += CONFIG['MOZ_GTHREAD_LIBS']
 JAR_MANIFESTS += ['jar.mn']
 
 CXXFLAGS += CONFIG['TK_CFLAGS']
+
+# DEFINES['XPCOM_GLUE'] = True
+# DEFINES['XPCOM_GLUE_USE_NSPR'] = True
+# DEFINES['MOZ_GLUE_IN_PROGRAM'] = True
+
+OS_LIBS +=  ['-L../../../dist/xulrunner-qt5/ -lxul']
+
+# OS_LIBS += ['-L../../../xpcom/glue/standalone/ -L../../../dist/xulrunner-qt5/ -L../../../mozglue/build/ -lxpcomglue -lxul -Wl,--whole-archive -lmozglue']
+

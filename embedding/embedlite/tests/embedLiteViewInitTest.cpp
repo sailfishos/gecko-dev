@@ -12,11 +12,14 @@
 #include <list>
 #include <unistd.h>
 
+#include "mozilla/Bootstrap.h"
+
 #ifdef MOZ_WIDGET_QT
 #include <QGuiApplication>
 #endif
 
 using namespace mozilla::embedlite;
+mozilla::Bootstrap::UniquePtr gBootstrap;
 
 class MyViewListener;
 class MyListener : public EmbedLiteAppListener
@@ -155,7 +158,11 @@ int main(int argc, char** argv)
 #endif
 
   printf("Load XUL Symbols\n");
-  if (LoadEmbedLite(argc, argv)) {
+
+  char* greHome = getenv("FOOBAR");
+  gBootstrap = mozilla::GetBootstrap(greHome);
+
+  if (gBootstrap) {
     sleep(3);
     printf("XUL Symbols loaded\n");
     EmbedLiteApp* mapp = XRE_GetEmbedLite();
