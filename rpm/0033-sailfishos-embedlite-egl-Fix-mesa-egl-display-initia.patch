@@ -1,0 +1,149 @@
+From f3b36254655489dfc2ccf4d0e4d7a9f988e3dcdb Mon Sep 17 00:00:00 2001
+From: Adam Pigg <adam@piggz.co.uk>
+Date: Wed, 31 Mar 2021 17:18:45 +0100
+Subject: [PATCH 1/4] [sailfishos][embedlite][egl] Fix mesa egl display
+ initialisation
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/gl/GLContextProviderEGL.cpp |  4 ++--
+ gfx/gl/GLContextProviderImpl.h  |  3 ++-
+ gfx/gl/GLLibraryEGL.cpp         | 25 +++++++++++++------------
+ gfx/gl/GLLibraryEGL.h           |  9 ++++++---
+ 4 files changed, 23 insertions(+), 18 deletions(-)
+
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index dc0714a84351..aac6f711d579 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -928,9 +928,9 @@ static bool CreateConfigScreen(GLLibraryEGL* const egl,
+ }
+ 
+ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
+-    void* aContext, void* aSurface) {
++    void* aContext, void* aSurface, void* aDisplay) {
+   nsCString discardFailureId;
+-  if (!GLLibraryEGL::EnsureInitialized(false, &discardFailureId)) {
++  if (!GLLibraryEGL::EnsureInitialized(false, &discardFailureId, aDisplay)) {
+     MOZ_CRASH("GFX: Failed to load EGL library 2!");
+     return nullptr;
+   }
+diff --git a/gfx/gl/GLContextProviderImpl.h b/gfx/gl/GLContextProviderImpl.h
+index d6bbb152ffeb..0ba17a38e636 100644
+--- a/gfx/gl/GLContextProviderImpl.h
++++ b/gfx/gl/GLContextProviderImpl.h
+@@ -82,7 +82,8 @@ class GL_CONTEXT_PROVIDER_NAME {
+    * @return Wrapping Context to use for rendering
+    */
+   static already_AddRefed<GLContext> CreateWrappingExisting(void* aContext,
+-                                                            void* aSurface);
++                                                            void* aSurface,
++                                                            void* aDisplay);
+ 
+ #if defined(MOZ_WIDGET_ANDROID)
+   static EGLSurface CreateEGLSurface(void* aWindow,
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index 6da0016f256b..13b69f2427c1 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -233,12 +233,12 @@ static bool IsAccelAngleSupported(const nsCOMPtr<nsIGfxInfo>& gfxInfo,
+   return (angleSupport == nsIGfxInfo::FEATURE_STATUS_OK);
+ }
+ 
+-static EGLDisplay GetAndInitDisplay(GLLibraryEGL& egl, void* displayType) {
+-  EGLDisplay display = egl.fGetDisplay(displayType);
+-  if (display == EGL_NO_DISPLAY) return EGL_NO_DISPLAY;
+-
+-  if (!egl.fInitialize(display, nullptr, nullptr)) return EGL_NO_DISPLAY;
+-
++static EGLDisplay GetAndInitDisplay(GLLibraryEGL& egl, void* displayType, EGLDisplay display = EGL_NO_DISPLAY) {
++  if (display == EGL_NO_DISPLAY) {
++      display = egl.fGetDisplay(displayType);
++      if (display == EGL_NO_DISPLAY) return EGL_NO_DISPLAY;
++      if (!egl.fInitialize(display, nullptr, nullptr)) return EGL_NO_DISPLAY;
++  }
+   return display;
+ }
+ 
+@@ -380,11 +380,11 @@ Maybe<SymbolLoader> GLLibraryEGL::GetSymbolLoader() const {
+ 
+ /* static */
+ bool GLLibraryEGL::EnsureInitialized(bool forceAccel,
+-                                     nsACString* const out_failureId) {
++                                     nsACString* const out_failureId, EGLDisplay aDisplay) {
+   if (!sEGLLibrary) {
+     sEGLLibrary = new GLLibraryEGL();
+   }
+-  return sEGLLibrary->DoEnsureInitialized(forceAccel, out_failureId);
++  return sEGLLibrary->DoEnsureInitialized(forceAccel, out_failureId, aDisplay);
+ }
+ 
+ bool GLLibraryEGL::DoEnsureInitialized() {
+@@ -393,7 +393,7 @@ bool GLLibraryEGL::DoEnsureInitialized() {
+ }
+ 
+ bool GLLibraryEGL::DoEnsureInitialized(bool forceAccel,
+-                                       nsACString* const out_failureId) {
++                                       nsACString* const out_failureId, EGLDisplay aDisplay) {
+   if (mInitialized && !mSymbols.fTerminate) {
+     *out_failureId = NS_LITERAL_CSTRING("FEATURE_FAILURE_EGL_DESTROYED");
+     MOZ_ASSERT(false);
+@@ -575,7 +575,7 @@ bool GLLibraryEGL::DoEnsureInitialized(bool forceAccel,
+     }
+   }
+ 
+-  mEGLDisplay = CreateDisplay(forceAccel, gfxInfo, out_failureId);
++  mEGLDisplay = CreateDisplay(forceAccel, gfxInfo, out_failureId, aDisplay);
+   if (!mEGLDisplay) {
+     return false;
+   }
+@@ -756,7 +756,8 @@ void GLLibraryEGL::Shutdown() {
+ 
+ EGLDisplay GLLibraryEGL::CreateDisplay(bool forceAccel,
+                                        const nsCOMPtr<nsIGfxInfo>& gfxInfo,
+-                                       nsACString* const out_failureId) {
++                                       nsACString* const out_failureId,
++                                       EGLDisplay aDisplay) {
+   MOZ_ASSERT(!mInitialized);
+ 
+   EGLDisplay chosenDisplay = nullptr;
+@@ -822,7 +823,7 @@ EGLDisplay GLLibraryEGL::CreateDisplay(bool forceAccel,
+       }
+     }
+ #endif
+-    chosenDisplay = GetAndInitDisplay(*this, nativeDisplay);
++    chosenDisplay = GetAndInitDisplay(*this, nativeDisplay, aDisplay);
+   }
+ 
+   if (!chosenDisplay) {
+diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
+index c653229d7d5d..11319f7aada7 100644
+--- a/gfx/gl/GLLibraryEGL.h
++++ b/gfx/gl/GLLibraryEGL.h
+@@ -408,7 +408,8 @@ class GLLibraryEGL final {
+   inline static GLLibraryEGL* Get() { return sEGLLibrary; }
+ 
+   static bool EnsureInitialized(bool forceAccel,
+-                                nsACString* const out_failureId);
++                                nsACString* const out_failureId,
++                                EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+   void Shutdown();
+ 
+@@ -541,9 +542,11 @@ class GLLibraryEGL final {
+ 
+  private:
+   bool DoEnsureInitialized();
+-  bool DoEnsureInitialized(bool forceAccel, nsACString* const out_failureId);
++  bool DoEnsureInitialized(bool forceAccel, nsACString* const out_failureId,
++                           EGLDisplay aDisplay = EGL_NO_DISPLAY);
+   EGLDisplay CreateDisplay(bool forceAccel, const nsCOMPtr<nsIGfxInfo>& gfxInfo,
+-                           nsACString* const out_failureId);
++                           nsACString* const out_failureId,
++                           EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+   bool mInitialized = false;
+   PRLibrary* mEGLLibrary = nullptr;
+-- 
+2.31.1
+
