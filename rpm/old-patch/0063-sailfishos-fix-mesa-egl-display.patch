@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Adam Pigg <adam@piggz.co.uk>
+Date: Wed, 31 Mar 2021 17:18:45 +0100
+Subject: [PATCH] [sailfishos][embedlite][egl] Fix mesa egl display initialisation
+
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index d91d03aee6a9..7408070a37d1 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -698,9 +698,9 @@ static bool CreateConfig(EGLConfig* aConfig, bool aEnableDepthBuffer) {
+ }
+ 
+ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
+-    void* aContext, void* aSurface) {
++    void* aContext, void* aSurface,void* aDisplay) {
+   nsCString discardFailureId;
+-  if (!sEGLLibrary.EnsureInitialized(false, &discardFailureId)) {
++  if (!sEGLLibrary.EnsureInitialized(false, &discardFailureId, aDisplay)) {
+     MOZ_CRASH("GFX: Failed to load EGL library 2!");
+     return nullptr;
+   }
+diff --git a/gfx/gl/GLContextProviderImpl.h b/gfx/gl/GLContextProviderImpl.h
+index a956af5c9466..82e1346fe8a1 100644
+--- a/gfx/gl/GLContextProviderImpl.h
++++ b/gfx/gl/GLContextProviderImpl.h
+@@ -109,7 +109,8 @@ class GL_CONTEXT_PROVIDER_NAME {
+    * @return Wrapping Context to use for rendering
+    */
+   static already_AddRefed<GLContext> CreateWrappingExisting(void* aContext,
+-                                                            void* aSurface);
++                                                            void* aSurface,
++                                                            void* aDisplay);
+ 
+ #if defined(MOZ_WIDGET_ANDROID)
+   static EGLSurface CreateEGLSurface(void* aWindow,
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index fe4bd9811949..57160168bc5d 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -210,12 +210,12 @@ static bool IsAccelAngleSupported(const nsCOMPtr<nsIGfxInfo>& gfxInfo,
+   return (angleSupport == nsIGfxInfo::FEATURE_STATUS_OK);
+ }
+ 
+-static EGLDisplay GetAndInitDisplay(GLLibraryEGL& egl, void* displayType) {
+-  EGLDisplay display = egl.fGetDisplay(displayType);
+-  if (display == EGL_NO_DISPLAY) return EGL_NO_DISPLAY;
+-
+-  if (!egl.fInitialize(display, nullptr, nullptr)) return EGL_NO_DISPLAY;
+-
++static EGLDisplay GetAndInitDisplay(GLLibraryEGL& egl, void* displayType, EGLDisplay display = EGL_NO_DISPLAY) {
++  if (display == EGL_NO_DISPLAY) {
++      display = egl.fGetDisplay(displayType);
++      if (display == EGL_NO_DISPLAY) return EGL_NO_DISPLAY;
++      if (!egl.fInitialize(display, nullptr, nullptr)) return EGL_NO_DISPLAY;
++  }
+   return display;
+ }
+ 
+@@ -336,7 +336,7 @@ bool GLLibraryEGL::ReadbackEGLImage(EGLImage image,
+ }
+ 
+ bool GLLibraryEGL::EnsureInitialized(bool forceAccel,
+-                                     nsACString* const out_failureId) {
++                                     nsACString* const out_failureId, EGLDisplay aDisplay) {
+   if (mInitialized) {
+     return true;
+   }
+@@ -553,7 +553,7 @@ bool GLLibraryEGL::EnsureInitialized(bool forceAccel,
+       mIsWARP = true;
+     }
+   } else {
+-    chosenDisplay = GetAndInitDisplay(*this, EGL_DEFAULT_DISPLAY);
++    chosenDisplay = GetAndInitDisplay(*this, EGL_DEFAULT_DISPLAY, aDisplay);
+   }
+ 
+   if (!chosenDisplay) {
+diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
+index 069a2f0908d7..fd245d188b99 100644
+--- a/gfx/gl/GLLibraryEGL.h
++++ b/gfx/gl/GLLibraryEGL.h
+@@ -407,7 +407,7 @@ class GLLibraryEGL {
+ 
+   bool ReadbackEGLImage(EGLImage image, gfx::DataSourceSurface* out_surface);
+ 
+-  bool EnsureInitialized(bool forceAccel, nsACString* const out_failureId);
++  bool EnsureInitialized(bool forceAccel, nsACString* const out_failureId, EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+   void DumpEGLConfig(EGLConfig cfg);
+   void DumpEGLConfigs();

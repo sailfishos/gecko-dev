@@ -123,6 +123,20 @@ Patch32:    0032-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 #Patch57:    0057-Bug-1449268-Treat-document-level-touch-event-listene.patch
 #Patch58:    0058-sailfishos-gecko-Log-bad-tex-upload-calls-and-errors.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
+#Patch60:    sha1: f7510599feade696486db448d1bfec613871adc2
+#Patch61:    sha1: f7510599feade696486db448d1bfec613871adc2
+#Patch62:    sha1: f7510599feade696486db448d1bfec613871adc2
+#Patch60 - Patch62 are not needed as issue was fixed in mozilla62 (https://bugzilla.mozilla.org/show_bug.cgi?id=1467722)
+#Patch63:    0063-sailfishos-fix-mesa-egl-display.patch
+#Patch64:    sha1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
+#Patch64:    Is not needed as the issue was fixed in mozilla72 (https://bugzilla.mozilla.org/show_bug.cgi?id=1586144)
+#Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
+#Patch66:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
+#Patch67:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
+#Patch68:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
+#Patch69:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
+#Patch66 - Patch69 should be checked by Denis
+#Patch70:    0070-Do-not-flip-scissor-rects-when-rendering-to-an-offsc.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
