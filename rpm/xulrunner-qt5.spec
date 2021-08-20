@@ -409,7 +409,12 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
 # Additionally we limit the memory usage during linking
+%ifarch %arm32 %arm64
+# Strip debug symbols and garbage collect on arm to link in 32 bit address space, JB#55074
+echo 'FIX_LDFLAGS="-Wl,--strip-debug -Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+%else
 echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+%endif
 echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
