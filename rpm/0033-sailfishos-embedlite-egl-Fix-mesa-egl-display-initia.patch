@@ -1,7 +1,7 @@
-From f3b36254655489dfc2ccf4d0e4d7a9f988e3dcdb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Adam Pigg <adam@piggz.co.uk>
 Date: Wed, 31 Mar 2021 17:18:45 +0100
-Subject: [PATCH 1/4] [sailfishos][embedlite][egl] Fix mesa egl display
+Subject: [PATCH] [sailfishos][embedlite][egl] Fix mesa egl display
  initialisation
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
