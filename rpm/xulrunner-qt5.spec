@@ -322,6 +322,9 @@ source "%BUILD_DIR"/rpm-shared.env
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 
 %ifarch %arm32 %arm64
+# Make stdc++ headers available on a fresh path to work around include_next bug JB#55058
+if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/8.3.0/ "%BUILD_DIR"/include; fi
+
 # Do not build as thumb since it breaks video decoding.
 echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
 %endif
