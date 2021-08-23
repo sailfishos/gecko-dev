@@ -257,7 +257,10 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
   Unused << aContext;
-  LOGT("visible: %d active: %d", IsVisible(), mActive);
+
+  LOGT("paivaa ... visible: %d active: %d", IsVisible(), mActive);
+  return true;
+#if 1
   if (!IsVisible() || !mActive) {
     return false;
   }
@@ -267,6 +270,7 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
     return window->GetListener()->PreRender();
   }
   return true;
+#endif
 }
 
 void
