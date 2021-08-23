@@ -257,6 +257,7 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
   Unused << aContext;
+  LOGT("visible: %d active: %d", IsVisible(), mActive);
   if (!IsVisible() || !mActive) {
     return false;
   }
@@ -273,6 +274,8 @@ nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
   MOZ_ASSERT(mWindow);
   Unused << aContext;
+
+  LOGT("");
 
   if (GetCompositorBridgeParent()) {
     static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->PresentOffscreenSurface();
