@@ -100,6 +100,8 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
 {
   NS_ENSURE_ARG_POINTER(aInstancePtr);
 
+  LOGT("");
+
   if (aIID.Equals(NS_GET_IID(nsIBrowserChild))) {
     nsCOMPtr<nsIBrowserChild> browserChildHelper;
     browserChildHelper = mHelper;
@@ -149,6 +151,8 @@ NS_IMETHODIMP WebBrowserChrome::SetLinkStatus(const nsAString& status)
 
 NS_IMETHODIMP WebBrowserChrome::GetWebBrowser(nsIWebBrowser * *aWebBrowser)
 {
+    LOGT("");
+
   NS_ENSURE_ARG_POINTER(aWebBrowser);
   *aWebBrowser = mWebBrowser;
   NS_IF_ADDREF(*aWebBrowser);
@@ -157,6 +161,9 @@ NS_IMETHODIMP WebBrowserChrome::GetWebBrowser(nsIWebBrowser * *aWebBrowser)
 
 NS_IMETHODIMP WebBrowserChrome::SetWebBrowser(nsIWebBrowser* aWebBrowser)
 {
+    LOGT("");
+
+
   mWebBrowser = aWebBrowser;
   SetEventHandler();
   return NS_OK;
@@ -182,6 +189,9 @@ NS_IMETHODIMP WebBrowserChrome::ShowAsModal()
 
 NS_IMETHODIMP WebBrowserChrome::IsWindowModal(bool* _retval)
 {
+    LOGT("");
+
+
   NS_ENSURE_ARG_POINTER(_retval);
   *_retval = false;
   return NS_OK;
@@ -198,6 +208,9 @@ WebBrowserChrome::OnProgressChange(nsIWebProgress* progress, nsIRequest* request
                                    int32_t curSelfProgress, int32_t maxSelfProgress,
                                    int32_t curTotalProgress, int32_t maxTotalProgress)
 {
+    LOGT("");
+
+
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
   // Filter optimization: Don't send garbage
   if (curTotalProgress > maxTotalProgress || maxTotalProgress <= 0) {
@@ -230,6 +243,9 @@ NS_IMETHODIMP
 WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
                                 uint32_t progressStateFlags, nsresult status)
 {
+    LOGT("");
+
+
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<mozIDOMWindowProxy> progWin;
@@ -289,6 +305,10 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
                                    nsIURI* location,
                                    uint32_t aFlags)
 {
+
+    LOGT("");
+
+
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<mozIDOMWindowProxy> progWin;
@@ -372,6 +392,9 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
                                    nsIRequest* aRequest,
                                    uint32_t state)
 {
+
+    LOGT("");
+
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<mozIDOMWindowProxy> progWin;
@@ -421,6 +444,9 @@ NS_IMETHODIMP
 WebBrowserChrome::HandleEvent(Event *aEvent)
 {
   NS_ENSURE_TRUE(mListener, NS_ERROR_FAILURE);
+
+  LOGT("");
+
 
   nsString type;
   if (aEvent) {
@@ -499,6 +525,9 @@ WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
 
 nsresult WebBrowserChrome::GetDocShellPtr(nsIDocShell **aDocShell)
 {
+    LOGT("");
+
+
   if (!mWebBrowser) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -525,6 +554,8 @@ nsresult WebBrowserChrome::GetDocShellPtr(nsIDocShell **aDocShell)
 
 nsresult WebBrowserChrome::GetDocumentPtr(Document **aDocument)
 {
+    LOGT("");
+
   nsIDocShell *docShellPtr;
   nsresult rv = GetDocShellPtr(&docShellPtr);
   if (NS_FAILED(rv)) {
