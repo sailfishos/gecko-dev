@@ -48,6 +48,10 @@
 
 #include <sys/syscall.h>
 
+#ifndef EMBEDLITE_LOG_SENSITIVE
+#define EMBEDLITE_LOG_SENSITIVE 1
+#endif
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 

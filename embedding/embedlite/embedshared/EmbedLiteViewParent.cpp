@@ -21,6 +21,10 @@
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
+#ifndef EMBEDLITE_LOG_SENSITIVE
+#define EMBEDLITE_LOG_SENSITIVE 1
+#endif
+
 namespace mozilla {
 namespace embedlite {
 
