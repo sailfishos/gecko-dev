@@ -79,10 +79,10 @@ Patch30:    0030-sailfishos-gecko-Add-missing-GetTotalScreenPixels-fo.patch
 Patch31:    0031-sailfishos-fonts-Load-and-set-FTLibrary-for-the-Fact.patch
 Patch32:    0032-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 Patch33:    0029-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
+Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
-#Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
 #Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
 #Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
