@@ -84,6 +84,8 @@ Patch35:    0035-sailfishos-configure-Get-target-and-host-from-enviro.patch
 Patch36:    0036-sailfishos-configure-Patch-libloading-to-build-on-ar.patch
 Patch37:    0037-sailfishos-configure-Skip-min_libclang_version-test-.patch
 Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
+Patch39:    0039-sailfishos-embedlite-egl-Fix-mesa-egl-display-initia.patch
+Patch40:    0040-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
@@ -133,7 +135,6 @@ Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
 #Patch61:    sha1: f7510599feade696486db448d1bfec613871adc2
 #Patch62:    sha1: f7510599feade696486db448d1bfec613871adc2
 #Patch60 - Patch62 are not needed as issue was fixed in mozilla62 (https://bugzilla.mozilla.org/show_bug.cgi?id=1467722)
-#Patch63:    0063-sailfishos-fix-mesa-egl-display.patch
 #Patch64:    sha1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
 #Patch64:    Is not needed as the issue was fixed in mozilla72 (https://bugzilla.mozilla.org/show_bug.cgi?id=1586144)
 #Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
