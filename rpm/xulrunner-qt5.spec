@@ -86,10 +86,10 @@ Patch37:    0037-sailfishos-configure-Skip-min_libclang_version-test-.patch
 Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
 Patch39:    0039-sailfishos-embedlite-egl-Fix-mesa-egl-display-initia.patch
 Patch40:    0040-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
+Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
-#Patch14:    0014-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
 #Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
 #Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
