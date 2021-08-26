@@ -583,7 +583,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
 {
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow, IPC_OK());
 
-  nsCOMPtr<nsIFocusManager> fm = do_GetService(FOCUSMANAGER_CONTRACTID);
+  nsFocusManager* fm = nsFocusManager::GetFocusManager();
   NS_ENSURE_TRUE(fm, IPC_OK());
 
   if (aIsActive) {
@@ -600,17 +600,22 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   }
 
   // Update state via DocShell -> PresShell
-  nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(mWebBrowser);
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  if (NS_WARN_IF(!docShell)) {
+    return IPC_OK();
+  }
+
   docShell->SetIsActive(aIsActive);
 
   mWidget->Show(aIsActive);
+  mWebBrowser->SetVisibility(aIsActive);
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
-  baseWindow->SetVisibility(aIsActive);
-
+  // Fix schedule update upon activation JB#55281
+#if 0
   if (aIsActive) {
     RecvScheduleUpdate();
   }
+#endif
   return IPC_OK();
 }
 
