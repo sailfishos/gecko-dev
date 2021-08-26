@@ -31,14 +31,23 @@ EmbedContentController::~EmbedContentController()
 
 void EmbedContentController::RequestContentRepaint(const layers::RepaintRequest &aRequest)
 {
+  LOGT();
+
   // We always need to post requests into the "UI thread" otherwise the
   // requests may get processed out of order.
-  LOGT();
-  // nsThreadUtils version
-  mUIThread->Dispatch(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoRequestContentRepaint",
-                                                                      this,
-                                                                      &EmbedContentController::DoRequestContentRepaint,
-                                                                      aRequest));
+  if (!mUIThread->IsOnCurrentThread()) {
+    mUIThread->Dispatch(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::RequestContentRepaint",
+                                                                        this,
+                                                                        &EmbedContentController::RequestContentRepaint,
+                                                                        aRequest));
+    return;
+  }
+
+  LOGT("render frame %p", mRenderFrame);
+  if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
+    DoSendScrollEvent(aRequest);
+    Unused << mRenderFrame->SendUpdateFrame(aRequest);
+  }
 }
 
 void EmbedContentController::NotifyLayerTransforms(const nsTArray<layers::MatrixMessage> &aTransforms)
@@ -75,7 +84,7 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                              const ScrollableLayerGuid aGuid,
                                              uint64_t aInputBlockId)
 {
-  if (NS_GetCurrentThread() != mUIThread) {
+  if (!mUIThread->IsOnCurrentThread()) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
@@ -88,7 +97,10 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                                     aModifiers,
                                                     aGuid,
                                                     aInputBlockId));
-  } else if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
+    return;
+  }
+
+  if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
@@ -98,7 +110,7 @@ void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
                                              const ScrollableLayerGuid aGuid,
                                              uint64_t aInputBlockId)
 {
-  if (NS_GetCurrentThread() != mUIThread) {
+  if (!mUIThread->IsOnCurrentThread()) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
@@ -111,7 +123,10 @@ void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
                                                     aModifiers,
                                                     aGuid,
                                                     aInputBlockId));
-  } else if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
+    return;
+  }
+
+  if (mRenderFrame && !GetListener()->HandleSingleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
@@ -121,7 +136,7 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
                                            const ScrollableLayerGuid aGuid,
                                            uint64_t aInputBlockId)
 {
-  if (NS_GetCurrentThread() != mUIThread) {
+  if (!mUIThread->IsOnCurrentThread()) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid, uint64_t>("mozilla::embedlite::EmbedContentController::HandleLongTap",
@@ -131,7 +146,10 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
                                                                                                                  aModifiers,
                                                                                                                  aGuid,
                                                                                                                  aInputBlockId));
-  } else if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
+    return;
+  }
+
+  if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
   }
 }
@@ -144,7 +162,7 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
  */
 void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aRequest)
 {
-  if (NS_GetCurrentThread() != mUIThread) {
+  if (!mUIThread->IsOnCurrentThread()) {
     // We have to send this message from the "UI thread" (main
     // thread).
     mUIThread->Dispatch(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoSendScrollEvent",
@@ -152,36 +170,22 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
                                                                         &EmbedContentController::DoSendScrollEvent,
                                                                         aRequest));
     return;
-  } else {
-    CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
-    contentRect.MoveTo(aRequest.GetScrollOffset());
-
-    // FIXME - RepaintRequest does not contain scrollable rect size.
-    CSSSize scrollableSize(0, 0);
-
-    LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
-          contentRect.x, contentRect.y, contentRect.width, contentRect.height,
-          scrollableSize.width, scrollableSize.height);
-    gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
-    gfxSize size(scrollableSize.width, scrollableSize.height);
-
-    if (mRenderFrame && !GetListener()->HandleScrollEvent(aRequest.IsRootContent(), rect, size)) {
-      Unused << mRenderFrame->SendHandleScrollEvent(aRequest.IsRootContent(), rect, size);
-    }
   }
-}
 
-void EmbedContentController::DoNotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
-{
-  if (mRenderFrame) {
-    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange, aArg);
-  }
-}
+  CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
+  contentRect.MoveTo(aRequest.GetScrollOffset());
 
-void EmbedContentController::DoNotifyFlushComplete()
-{
-  if (mRenderFrame) {
-    Unused << mRenderFrame->SendNotifyFlushComplete();
+  // FIXME - RepaintRequest does not contain scrollable rect size.
+  CSSSize scrollableSize(0, 0);
+
+  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+        contentRect.x, contentRect.y, contentRect.width, contentRect.height,
+        scrollableSize.width, scrollableSize.height);
+  gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
+  gfxSize size(scrollableSize.width, scrollableSize.height);
+
+  if (mRenderFrame && !GetListener()->HandleScrollEvent(aRequest.IsRootContent(), rect, size)) {
+    Unused << mRenderFrame->SendHandleScrollEvent(aRequest.IsRootContent(), rect, size);
   }
 }
 
@@ -211,32 +215,38 @@ EmbedLiteViewListener *EmbedContentController::GetListener() const
          mRenderFrame->mView->GetListener() : &sFakeListener;
 }
 
-void EmbedContentController::DoRequestContentRepaint(const layers::RepaintRequest aRequest)
-{
-  LOGT("render frame %p", mRenderFrame);
-  if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    DoSendScrollEvent(aRequest);
-    Unused << mRenderFrame->SendUpdateFrame(aRequest);
-  }
-}
-
 void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
   LOGT();
-  mUIThread->Dispatch(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>("mozilla::embedlite::EmbedContentController::DoNotifyAPZStateChange",
-                                                                                                         this,
-                                                                                                         &EmbedContentController::DoNotifyAPZStateChange,
-                                                                                                         aGuid,
-                                                                                                         aChange,
-                                                                                                         aArg));
+  if (!mUIThread->IsOnCurrentThread()) {
+    mUIThread->Dispatch(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>("mozilla::embedlite::EmbedContentController::NotifyAPZStateChange",
+                                                                                                             this,
+                                                                                                             &EmbedContentController::NotifyAPZStateChange,
+                                                                                                             aGuid,
+                                                                                                             aChange,
+                                                                                                             aArg));
+    return;
+  }
+
+  LOGT("render frame: %p", mRenderFrame);
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange, aArg);
+  }
 }
 
 void EmbedContentController::NotifyFlushComplete()
 {
   LOGT();
-  mUIThread->Dispatch(NewRunnableMethod("mozilla::embedlite::EmbedContentController::DoNotifyFlushComplete",
-                                      this,
-                                      &EmbedContentController::DoNotifyFlushComplete));
+  if (!mUIThread->IsOnCurrentThread()) {
+    mUIThread->Dispatch(NewRunnableMethod("mozilla::embedlite::EmbedContentController::NotifyFlushComplete",
+                                          this,
+                                          &EmbedContentController::NotifyFlushComplete));
+    return;
+  }
+
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendNotifyFlushComplete();
+  }
 }
 
 void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureType aType, const EmbedContentController::ScrollableLayerGuid &aGuid, LayoutDeviceCoord aSpanChange, Modifiers aModifiers)
