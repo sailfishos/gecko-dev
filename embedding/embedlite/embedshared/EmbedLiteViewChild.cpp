@@ -1238,15 +1238,14 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
   // The other values don't really matter.
   InputAPZContext context(aGuid, aInputBlockId, aApzResponse);
 
-  if (localEvent.mMessage == eTouchStart) {
-    // CSS touch actions do not work yet. Thus, explicitly disabling in the code.
-#if 0
-    if (gfxPrefs::TouchActionEnabled()) {
-      APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(mWidget,
-          localEvent, aInputBlockId, mSetAllowedTouchBehaviorCallback);
-    }
-#endif
+  if (localEvent.mMessage == eTouchStart && mWidget->AsyncPanZoomEnabled()) {
     nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
+    if (StaticPrefs::layout_css_touch_action_enabled()) {
+      APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(
+          mWidget, document, localEvent, aInputBlockId,
+          mSetAllowedTouchBehaviorCallback);
+    }
+
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
         localEvent, aGuid.mLayersId, aInputBlockId);
   }
