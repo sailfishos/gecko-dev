@@ -209,16 +209,6 @@ WebBrowserChrome::OnProgressChange(nsIWebProgress* progress, nsIRequest* request
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  if (!utils) {
-    NS_WARNING("window Utils are null");
-    return NS_OK;
-  }
-  uint64_t currentInnerWindowID = 0;
-  utils->GetCurrentInnerWindowID(&currentInnerWindowID);
-
   float progFrac = (float)maxTotalProgress / 100.0f;
   int sprogress = progFrac ? (float)curTotalProgress / progFrac : 0;
   mListener->OnLoadProgress(sprogress, curTotalProgress, maxTotalProgress);
@@ -237,16 +227,6 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
   if (progWin != docWin) {
     return NS_OK;
   }
-
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  if (!utils) {
-    NS_WARNING("window Utils are null");
-    return NS_OK;
-  }
-  uint64_t currentInnerWindowID = 0;
-  utils->GetCurrentInnerWindowID(&currentInnerWindowID);
 
   if (progressStateFlags & nsIWebProgressListener::STATE_START) {
     if (progressStateFlags & nsIWebProgressListener::STATE_IS_NETWORK) {
@@ -321,17 +301,6 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsString charset;
   ctDoc->GetCharacterSet(charset);
-
-  nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
-  AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  if (!utils) {
-    NS_WARNING("window Utils are null");
-    return NS_OK;
-  }
-
-  uint64_t currentInnerWindowID = 0;
-  utils->GetCurrentInnerWindowID(&currentInnerWindowID);
 
   nsString docURI;
   ctDoc->GetDocumentURI(docURI);
