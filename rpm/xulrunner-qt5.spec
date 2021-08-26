@@ -234,6 +234,10 @@ Mozilla XUL runner
 Requires: %{name} = %{version}-%{release}
 Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
+# Auto dependency is not picking this up.
+%if %{system_nss}
+Requires: pkgconfig(nss) >= 3.53.1
+%endif
 
 %description devel
 Development files for xulrunner.
