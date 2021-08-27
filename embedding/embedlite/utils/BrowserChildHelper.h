@@ -151,6 +151,8 @@ protected:
   virtual ~BrowserChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
+  mozilla::PresShell* GetPresShell();
+
   // Sends a simulated mouse event from a touch event for compatibility.
   WidgetTouchEvent ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput &aData,
                                                 bool &aRes);
