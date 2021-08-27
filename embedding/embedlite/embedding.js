@@ -436,5 +436,12 @@ pref("media.cubeb.backend", "pulse");
 // On ESR60 customelements is only enabled for nightly. Enable for us.
 pref("dom.webcomponents.customelements.enabled", true);
 
-// Disable WebRTC video until it is implemented
-pref("media.navigator.video.enabled", false);
+// No native handle support (yet) for video frames, so higher resolution degrade performance
+pref("media.navigator.video.default_width", 320);
+pref("media.navigator.video.default_height", 240);
+
+// Many browsers prefer VP9 over H264. If the sailfish-browser is the initiator of the session,
+// then the remote peer may override our preference and put VP9 in front of h264. Due to some bug,
+// the gecko skips the peer's preference and creates an h264 decoder. As a workaround, disable VP9
+// until the bug is fixed.
+pref("media.peerconnection.video.vp9_enabled", false);

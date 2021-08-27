@@ -2356,6 +2356,17 @@ if test -n "$MOZ_WEBRTC"; then
     if test -n "$MOZ_X11"; then
       MOZ_WEBRTC_X11_LIBS="-lXext -lXdamage -lXfixes -lXcomposite"
     fi
+
+    MOZ_ENABLE_WEBRTC_AMBERCAMERA=
+    PKG_CHECK_MODULES(LIBAMBERCAMERA, ambercamera,
+                      MOZ_ENABLE_WEBRTC_AMBERCAMERA=1,
+                      MOZ_ENABLE_WEBRTC_AMBERCAMERA=)
+    if test "$MOZ_ENABLE_WEBRTC_AMBERCAMERA"; then
+       MOZ_ENABLE_WEBRTC_AMBERCAMERA=1
+       AC_DEFINE(MOZ_ENABLE_WEBRTC_AMBERCAMERA)
+       AC_SUBST(MOZ_ENABLE_WEBRTC_AMBERCAMERA)
+    fi
+
 fi
 
 dnl ========================================================
