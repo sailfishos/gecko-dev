@@ -566,6 +566,15 @@ BrowserChildHelper::GetPresContext()
   return docShell->GetPresContext();
 }
 
+
+mozilla::PresShell*
+BrowserChildHelper::GetPresShell()
+{
+  nsPresContext* presContext = GetPresContext();
+  NS_ENSURE_TRUE(presContext, nullptr);
+  return presContext->GetPresShell();
+}
+
 bool
 BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                             const ViewID& aViewId,
@@ -627,7 +636,7 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         uint64_t aInputBlockId,
                                         bool *ok)
 {
-  RefPtr<PresShell> presShell = GetPresContext()->GetPresShell();
+  RefPtr<PresShell> presShell = GetPresShell();
   if (!presShell) {
     if (ok)
       *ok = false;
