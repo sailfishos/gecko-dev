@@ -133,7 +133,7 @@ EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
   nsCOMPtr<nsPIDOMWindowOuter> pwindow(do_QueryInterface(rootWin));
   nsCOMPtr<nsPIDOMWindowOuter> outerWindow = pwindow->GetInProcessTop();
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(outerWindow);
+  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(outerWindow)->WindowUtils();
   uint64_t OuterWindowID = 0;
   utils->GetOuterWindowID(&OuterWindowID);
   *aId = mIDMap[OuterWindowID];
