@@ -601,12 +601,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   mWidget->Show(aIsActive);
   mWebBrowser->SetVisibility(aIsActive);
 
-  // Fix schedule update upon activation JB#55281
-#if 0
   if (aIsActive) {
     RecvScheduleUpdate();
   }
-#endif
   return IPC_OK();
 }
 
@@ -737,7 +734,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetVirtualKeyboardHeight(const i
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
-  mHelper->GetPresContext()->RefreshDriver()->SetThrottled(aThrottle);
+  nsPresContext* presContext = mHelper->GetPresContext();
+  NS_ENSURE_TRUE(presContext, IPC_OK());
+  presContext->RefreshDriver()->SetThrottled(aThrottle);
   return IPC_OK();
 }
 
@@ -762,7 +761,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, cons
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
 {
   // Same that there is in nsPresShell.cpp:10670
-  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  RefPtr<PresShell> ps = mHelper->GetPresShell();
   if (ps && mWidget->IsVisible()) {
     if (nsIFrame* root = ps->GetRootFrame()) {
       FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
@@ -938,7 +937,7 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 
 void EmbedLiteViewChild::ScrollInputFieldIntoView()
 {
-    RefPtr<PresShell> presShell = mHelper->GetPresContext()->GetPresShell();
+    RefPtr<PresShell> presShell = mHelper->GetPresShell();
     NS_ENSURE_TRUE(presShell, );
 
     presShell->ScrollSelectionIntoView(
@@ -1094,7 +1093,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
       APZCCallbackHelper::DispatchWidgetEvent(event);
     }
 
-    RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+    RefPtr<PresShell> ps = mHelper->GetPresShell();
     NS_ENSURE_TRUE(ps, IPC_OK());
 
     nsFocusManager* DOMFocusManager = nsFocusManager::GetFocusManager();
@@ -1285,7 +1284,8 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewI
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyFlushComplete()
 {
-  RefPtr<PresShell> ps = mHelper->GetPresContext()->GetPresShell();
+  RefPtr<PresShell> ps = mHelper->GetPresShell();
+  NS_ENSURE_TRUE(ps, IPC_OK());
   APZCCallbackHelper::NotifyFlushComplete(ps);
   return IPC_OK();
 }
