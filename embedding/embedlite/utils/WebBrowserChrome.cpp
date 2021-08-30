@@ -351,14 +351,6 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  if (!utils) {
-    NS_WARNING("window Utils are null");
-    return NS_OK;
-  }
-  uint64_t currentInnerWindowID = 0;
-  utils->GetCurrentInnerWindowID(&currentInnerWindowID);
-
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
 
   nsCOMPtr<nsIChannel> channel;
@@ -401,7 +393,6 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
   AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   if (type.EqualsLiteral(MOZ_MozScrolledAreaChanged)) {
     EventTarget *origTarget = aEvent->GetOriginalTarget();
     nsCOMPtr<Document> ctDoc = do_QueryInterface(origTarget);
@@ -460,7 +451,7 @@ nsIntPoint
 WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
 {
   AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(aWindow);
+  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(aWindow)->WindowUtils();
   nsIntPoint scrollOffset;
   utils->GetScrollXY(PR_FALSE, &scrollOffset.x, &scrollOffset.y);
   return scrollOffset;
