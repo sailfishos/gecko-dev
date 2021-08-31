@@ -57,7 +57,7 @@ EmbedWidgetFactoryRegister::Init()
         if (!NS_FAILED(rv)) {
             rv = cr->UnregisterFactory(*cid, oldFactory.get());
             free(cid);
-            if (NS_FAILED(rv)) {
+            if (rv != NS_ERROR_FACTORY_NOT_REGISTERED && NS_FAILED(rv)) {
                 return NS_ERROR_FAILURE;
             }
         }
@@ -67,5 +67,5 @@ EmbedWidgetFactoryRegister::Init()
     rv = cr->RegisterFactory(clipboardCID, "EmbedLite ClipBoard",
                              clipBoardCONTRACTID, fp);
 
-    return NS_OK;
+    return rv;
 }
