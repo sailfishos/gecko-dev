@@ -1177,7 +1177,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvMouseEvent(const nsString &aType
 
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebNavigation);
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
+  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(window)->WindowUtils();
   NS_ENSURE_TRUE(utils, IPC_OK());
 
   bool ignored = false;
