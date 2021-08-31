@@ -35,6 +35,7 @@ ac_add_options --disable-updater
 ac_add_options --disable-crashreporter
 ac_add_options --disable-jemalloc
 ac_add_options --disable-nodejs
+ac_add_options --disable-sandbox
 ac_add_options --with-app-name=xulrunner-qt5
 
 # Treat warnings as errors in directories with FAIL_ON_WARNINGS.

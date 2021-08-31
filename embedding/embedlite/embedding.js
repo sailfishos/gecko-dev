@@ -212,9 +212,7 @@ pref("mozilla.widget.disable-native-theme", false);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
 pref("layers.low-precision-opacity", "1.0");
-// For time being this is disabled to avoid crash from CrossProcessMutex_posix.cpp
-// See also AsyncPanZoomController::ShareCompositorFrameMetrics JB#55278
-pref("layers.progressive-paint", false);
+pref("layers.progressive-paint", true);
 
 /* password manager */
 pref("signon.rememberSignons", true);
