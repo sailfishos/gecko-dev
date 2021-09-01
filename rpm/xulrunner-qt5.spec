@@ -337,7 +337,9 @@ SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.10 "%BUILD_DIR"/lib/libclang.so.1
 echo "ac_add_options --with-libclang-path='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 
 # Do not build as thumb since it breaks video decoding.
+%ifarch %arm32
 echo "ac_add_options --with-thumb=no" >> "$MOZCONFIG"
+%endif
 %endif
 
 echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
