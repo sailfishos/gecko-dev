@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 1 Sep 2021 19:20:49 +0300
+Subject: [PATCH] [sailfishos][docshell] Get ContentFrameMessageManager via
+ nsIDocShellTreeOwner. JB#55336 OMP#55336
+
+nsDocShellTreeOwner has a reference to WebBrowserChrome which in turn
+can return ContentFrameMessageManager from BrowserChildHelper.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ docshell/base/nsDocShell.cpp | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
+index d0aa79344605..bb7d65805667 100644
+--- a/docshell/base/nsDocShell.cpp
++++ b/docshell/base/nsDocShell.cpp
+@@ -3068,7 +3068,15 @@ nsDocShell::GetDomWindow(mozIDOMWindowProxy** aWindow) {
+ NS_IMETHODIMP
+ nsDocShell::GetMessageManager(ContentFrameMessageManager** aMessageManager) {
+   RefPtr<ContentFrameMessageManager> mm;
+-  if (RefPtr<BrowserChild> browserChild = BrowserChild::GetFrom(this)) {
++
++  nsCOMPtr<nsIBrowserChild> bc;
++  if (mTreeOwner) {
++    bc = do_GetInterface(mTreeOwner);
++  }
++
++  if (bc) {
++    bc->GetMessageManager(getter_AddRefs(mm));
++  } else if (RefPtr<BrowserChild> browserChild = BrowserChild::GetFrom(this)) {
+     mm = browserChild->GetMessageManager();
+   } else if (nsPIDOMWindowOuter* win = GetWindow()) {
+     mm = win->GetMessageManager();
+-- 
+2.31.1
+
