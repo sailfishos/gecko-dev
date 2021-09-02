@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 1 Sep 2021 19:20:06 +0300
+Subject: [PATCH] [sailfishos][gecko] Drop static casting from BrowserChild.
+ JB#55336 OMP#55336
+
+Partially handpick from
+sailfish-esr60 sha1 409d3a8e50829f9f4c35a4707fae53a45515ce5b
+
+Even though BrowserChild is not used directly by EmbedLite, BrowserChild::GetFrom
+is getting called elsewhere. Do not static_cast comprt pointer.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/ipc/BrowserChild.h | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
+index e06d69b6323f..b372ca91d52b 100644
+--- a/dom/ipc/BrowserChild.h
++++ b/dom/ipc/BrowserChild.h
+@@ -474,8 +474,12 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+       return nullptr;
+     }
+ 
+-    nsCOMPtr<nsIBrowserChild> tc = aDocShell->GetBrowserChild();
+-    return static_cast<BrowserChild*>(tc.get());
++    // Even though BrowserChild is not used in EmbedLite somehow the static cast
++    // below can return non-null pointer. Let's return nullptr explcitly.
++    return nullptr;
++
++//    nsCOMPtr<nsIBrowserChild> tc = aDocShell->GetBrowserChild();
++//    return static_cast<BrowserChild*>(tc.get());
+   }
+ 
+   static inline BrowserChild* GetFrom(mozIDOMWindow* aWindow) {
+-- 
+2.31.1
+
