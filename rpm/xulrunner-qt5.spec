@@ -87,6 +87,7 @@ Patch38:    0038-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
 Patch39:    0039-sailfishos-embedlite-egl-Fix-mesa-egl-display-initia.patch
 Patch40:    0040-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
+Patch42:    0042-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
@@ -100,7 +101,6 @@ Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 #Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
 #Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
 #Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
-#Patch27:    0027-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
 #Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
 #Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
 #Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
