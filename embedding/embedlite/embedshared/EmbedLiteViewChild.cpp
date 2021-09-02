@@ -787,37 +787,26 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetHttpUserAgent(const nsString&
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSuspendTimeouts()
 {
-  LOGT("Implement me");
-  // FIXME - nsPIDOMWindowInner::Freeze has been removed.
-  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
-  // Task to analyze/fix: 54377
-#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
-  nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
+  nsGlobalWindowInner *pwindow = nsGlobalWindowInner::Cast(mDOMWindow->GetCurrentInnerWindow());
+
   if (pwindow && !pwindow->IsFrozen()) {
     pwindow->Freeze();
   }
-#endif
 
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvResumeTimeouts()
 {
-  LOGT("Implement me");
-  // FIXME - nsPIDOMWindowInner::Thaw has been removed.
-  // See upstream commit: c70cb82b91e531c643d83b4da3a3cd39c80a8e34
-  // Task to analyze/fix: 54377
-#if 0
   NS_ENSURE_TRUE(mDOMWindow, IPC_OK());
 
-  nsCOMPtr<nsPIDOMWindowInner> pwindow(mDOMWindow->GetCurrentInnerWindow());
+  nsGlobalWindowInner *pwindow = nsGlobalWindowInner::Cast(mDOMWindow->GetCurrentInnerWindow());
 
   if (pwindow && pwindow->IsFrozen()) {
     pwindow->Thaw();
   }
-#endif
 
   return IPC_OK();
 }
