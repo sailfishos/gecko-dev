@@ -89,6 +89,7 @@ Patch40:    0040-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 Patch41:    0041-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 Patch42:    0042-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
 Patch43:    0043-sailfishos-gecko-Drop-static-casting-from-BrowserChi.patch
+Patch44:    0044-sailfishos-docshell-Get-ContentFrameMessageManager-v.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
