@@ -310,13 +310,6 @@ echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
-# This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
-# during fork/exec. It has no effect outside sb2 so doesn't hurt
-# native builds.
-echo "export SB2_RUST_EXECVP_SHIM=\"/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env\"" >> "%BUILD_DIR"/rpm-shared.env
-echo "export SB2_RUST_USE_REAL_EXECVP=Yes" >> "%BUILD_DIR"/rpm-shared.env
-echo "export SB2_RUST_USE_REAL_FN=Yes" >> "%BUILD_DIR"/rpm-shared.env
-
 echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
