@@ -36,10 +36,10 @@ Signed-off-by: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
  2 files changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/js/src/old-configure.in b/js/src/old-configure.in
-index 3d53ee1c3c81..286643091d8c 100644
+index 29d32873112c..e5a75ab568ad 100644
 --- a/js/src/old-configure.in
 +++ b/js/src/old-configure.in
-@@ -620,7 +620,7 @@ case "$target" in
+@@ -483,7 +483,7 @@ case "$target" in
  *-*linux*)
      if test "$GNU_CC" -o "$GNU_CXX"; then
          MOZ_PGO_OPTIMIZE_FLAGS="-O3"
@@ -49,18 +49,18 @@ index 3d53ee1c3c81..286643091d8c 100644
             MOZ_OPTIMIZE_FLAGS="-freorder-blocks $MOZ_OPTIMIZE_FLAGS"
          fi
 diff --git a/js/src/vm/ProxyObject.cpp b/js/src/vm/ProxyObject.cpp
-index 13b52fd6077f..c6166ad61f43 100644
+index 2b29dcdf8f8d..6964a24e200f 100644
 --- a/js/src/vm/ProxyObject.cpp
 +++ b/js/src/vm/ProxyObject.cpp
-@@ -78,7 +78,7 @@ static gc::AllocKind GetProxyGCObjectKind(const Class* clasp,
-     MOZ_ASSERT(priv.isNull() ||
-                (priv.isGCThing() && priv.toGCThing()->isTenured()));
-     newKind = SingletonObject;
--  } else if ((priv.isGCThing() && priv.toGCThing()->isTenured()) ||
-+  } else if ((priv.isGCThing() && priv.toGCThing() && priv.toGCThing()->isTenured()) ||
-              !handler->canNurseryAllocate()) {
-     newKind = TenuredObject;
-   }
+@@ -131,7 +131,7 @@ ProxyObject* ProxyObject::New(JSContext* cx, const BaseProxyHandler* handler,
+   {
+     AutoSweepObjectGroup sweep(group);
+     if (group->shouldPreTenure(sweep) ||
+-        (priv.isGCThing() && priv.toGCThing()->isTenured()) ||
++        (priv.isGCThing() && priv.toGCThing() && priv.toGCThing()->isTenured()) ||
+         !handler->canNurseryAllocate()) {
+       heap = gc::TenuredHeap;
+     } else {
 -- 
-2.26.2
+2.31.1
 
