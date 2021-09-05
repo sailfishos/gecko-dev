@@ -214,6 +214,13 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   mChrome = new WebBrowserChrome(this);
 
+  // nsIBrowserChild (BrowserChildHelper) implementation must be available for nsIWebBrowserChrome (WebBrowserChrome)
+  // when nsWebBrowser::Create is called so that nsDocShell::SetTreeOwner can read back nsIBrowserChild.
+  // nsWebBrowser::Create -> nsDocShell::SetTreeOwner ->
+  // nsDocShellTreeOwner::GetInterface (nsIInterfaceRequestor) -> WebBrowserChrome::GetInterface
+  mHelper = new BrowserChildHelper(this);
+  mChrome->SetBrowserChildHelper(mHelper.get());
+
   // Create a BrowsingContext for our windowless browser.
   RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateIndependent(
               BrowsingContext::Type::Content);
@@ -232,7 +239,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     chromeFlags = nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW|nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
   }
 
-  mWebBrowser->SetContainerWindow(mChrome);
   mChrome->SetChromeFlags(chromeFlags);
 
   nsCOMPtr<mozIDOMWindowProxy> domWindow;
@@ -276,9 +282,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   if (NS_FAILED(rv)) {
     NS_ERROR("SetVisibility failed!");
   }
-
-  mHelper = new BrowserChildHelper(this);
-  mChrome->SetBrowserChildHelper(mHelper.get());
 
   // This will update also nsIBaseWindow size. nsWebBrowser:Create initializes
   // nsIBaseWindow to empty size (w: 0, h: 0).
