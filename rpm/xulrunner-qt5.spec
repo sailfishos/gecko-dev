@@ -320,9 +320,11 @@ echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
 # If you want to have a fixed date, then uncomment the line below
 # echo "export MOZ_BUILD_DATE=20210831010100" >> "%BUILD_DIR"/rpm-shared.env
 for a in %{_sourcedir}/*.tar.bz2; do
-    TARBALL_DATE=`stat -c %Y $a`
-    BUILD_DATE=`date -d @${TARBALL_DATE} +"%Y%m%d%H%M%%S"`
-    echo "export MOZ_BUILD_DATE=${BUILD_DATE}" >> "%BUILD_DIR"/rpm-shared.env
+    if [ -f $a ]; then
+        TARBALL_DATE=`stat -c %Y $a`
+        BUILD_DATE=`date -d @${TARBALL_DATE} +"%Y%m%d%H%M%%S"`
+        echo "export MOZ_BUILD_DATE=${BUILD_DATE}" >> "%BUILD_DIR"/rpm-shared.env
+    fi
     break
 done
 
