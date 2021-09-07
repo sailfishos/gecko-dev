@@ -19,7 +19,8 @@ using mozilla::layers::GeckoContentController;
 class FakeListener : public EmbedLiteViewListener {};
 
 EmbedContentController::EmbedContentController(EmbedLiteViewParent *aRenderFrame, nsISerialEventTarget *aUIThread)
-  : mUIThread(aUIThread)
+  : mUILoop(MessageLoop::current())
+  , mUIThread(aUIThread)
   , mRenderFrame(aRenderFrame)
 {
 }
@@ -35,19 +36,10 @@ void EmbedContentController::RequestContentRepaint(const layers::RepaintRequest 
 
   // We always need to post requests into the "UI thread" otherwise the
   // requests may get processed out of order.
-  if (!mUIThread->IsOnCurrentThread()) {
-    mUIThread->Dispatch(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::RequestContentRepaint",
+  mUILoop->PostTask(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoRequestContentRepaint",
                                                                         this,
-                                                                        &EmbedContentController::RequestContentRepaint,
+                                                                        &EmbedContentController::DoRequestContentRepaint,
                                                                         aRequest));
-    return;
-  }
-
-  LOGT("render frame %p", mRenderFrame);
-  if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
-    DoSendScrollEvent(aRequest);
-    Unused << mRenderFrame->SendUpdateFrame(aRequest);
-  }
 }
 
 void EmbedContentController::NotifyLayerTransforms(const nsTArray<layers::MatrixMessage> &aTransforms)
@@ -60,7 +52,8 @@ void EmbedContentController::NotifyAsyncScrollbarDragInitiated(uint64_t aDragBlo
   LOGT("NOT YET IMPLEMENTED");
 }
 
-void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint, Modifiers aModifiers, const EmbedContentController::ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
+void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint,
+                                       Modifiers aModifiers, const ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
 {
   switch (aType) {
     case GeckoContentController::TapType::eSingleTap:
@@ -84,10 +77,10 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                              const ScrollableLayerGuid aGuid,
                                              uint64_t aInputBlockId)
 {
-  if (!mUIThread->IsOnCurrentThread()) {
+  if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint,
                                           Modifiers,
                                           const ScrollableLayerGuid,
                                           uint64_t>("mozilla::embedlite::EmbedContentController::HandleDoubleTap",
@@ -110,10 +103,10 @@ void EmbedContentController::HandleSingleTap(const LayoutDevicePoint aPoint,
                                              const ScrollableLayerGuid aGuid,
                                              uint64_t aInputBlockId)
 {
-  if (!mUIThread->IsOnCurrentThread()) {
+  if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint,
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint,
                                           Modifiers,
                                           const ScrollableLayerGuid,
                                           uint64_t>("mozilla::embedlite::EmbedContentController::HandleSingleTap",
@@ -136,10 +129,10 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
                                            const ScrollableLayerGuid aGuid,
                                            uint64_t aInputBlockId)
 {
-  if (!mUIThread->IsOnCurrentThread()) {
+  if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid, uint64_t>("mozilla::embedlite::EmbedContentController::HandleLongTap",
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint, Modifiers, const ScrollableLayerGuid, uint64_t>("mozilla::embedlite::EmbedContentController::HandleLongTap",
                                                                                                                  this,
                                                                                                                  &EmbedContentController::HandleLongTap,
                                                                                                                  aPoint,
@@ -162,10 +155,10 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
  */
 void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aRequest)
 {
-  if (!mUIThread->IsOnCurrentThread()) {
+  if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
-    mUIThread->Dispatch(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoSendScrollEvent",
+    mUILoop->PostTask(NewRunnableMethod<const layers::RepaintRequest>("mozilla::embedlite::EmbedContentController::DoSendScrollEvent",
                                                                         this,
                                                                         &EmbedContentController::DoSendScrollEvent,
                                                                         aRequest));
@@ -205,7 +198,8 @@ void EmbedContentController::ClearRenderFrame()
  */
 void EmbedContentController::PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs)
 {
-  NS_GetCurrentThread()->DelayedDispatch(std::move(aTask), aDelayMs);
+  LOGT();
+  MessageLoop::current()->PostDelayedTask(std::move(aTask), aDelayMs);
 }
 
 EmbedLiteViewListener *EmbedContentController::GetListener() const
@@ -215,11 +209,20 @@ EmbedLiteViewListener *EmbedContentController::GetListener() const
          mRenderFrame->mView->GetListener() : &sFakeListener;
 }
 
+void EmbedContentController::DoRequestContentRepaint(const layers::RepaintRequest aRequest)
+{
+  LOGT("render frame %p", mRenderFrame);
+  if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
+    DoSendScrollEvent(aRequest);
+    Unused << mRenderFrame->SendUpdateFrame(aRequest);
+  }
+}
+
 void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
 {
   LOGT();
-  if (!mUIThread->IsOnCurrentThread()) {
-    mUIThread->Dispatch(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>("mozilla::embedlite::EmbedContentController::NotifyAPZStateChange",
+  if (MessageLoop::current() != mUILoop) {
+    mUILoop->PostTask(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>("mozilla::embedlite::EmbedContentController::NotifyAPZStateChange",
                                                                                                              this,
                                                                                                              &EmbedContentController::NotifyAPZStateChange,
                                                                                                              aGuid,
@@ -237,8 +240,8 @@ void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::Scrolla
 void EmbedContentController::NotifyFlushComplete()
 {
   LOGT();
-  if (!mUIThread->IsOnCurrentThread()) {
-    mUIThread->Dispatch(NewRunnableMethod("mozilla::embedlite::EmbedContentController::NotifyFlushComplete",
+  if (MessageLoop::current() != mUILoop) {
+    mUILoop->PostTask(NewRunnableMethod("mozilla::embedlite::EmbedContentController::NotifyFlushComplete",
                                           this,
                                           &EmbedContentController::NotifyFlushComplete));
     return;
@@ -256,7 +259,7 @@ void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureT
 
 bool EmbedContentController::IsRepaintThread()
 {
-  return NS_GetCurrentThread() == mUIThread;
+  return MessageLoop::current() == mUILoop;
 }
 
 void EmbedContentController::NotifyAsyncScrollbarDragRejected(const ScrollableLayerGuid::ViewID &aViewId)
@@ -276,5 +279,5 @@ void EmbedContentController::CancelAutoscroll(const EmbedContentController::Scro
 
 void EmbedContentController::DispatchToRepaintThread(already_AddRefed<Runnable> aTask)
 {
-  mUIThread->Dispatch(std::move(aTask));
+  mUILoop->PostTask(std::move(aTask));
 }
