@@ -71,10 +71,12 @@ private:
   void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
 
+  void DoRequestContentRepaint(const layers::RepaintRequest aRequest);
   void DoSendScrollEvent(const layers::RepaintRequest aRequest);
 
   nsIntPoint convertIntPoint(const LayoutDevicePoint &aPoint);
 
+  MessageLoop* mUILoop;
   nsISerialEventTarget *mUIThread;
   EmbedLiteViewParent* mRenderFrame;
 };
