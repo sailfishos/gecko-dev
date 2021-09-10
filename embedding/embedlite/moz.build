@@ -105,6 +105,7 @@ LOCAL_INCLUDES += [
     '/gfx/layers/apz/util',
     '/hal',
     '/js/xpconnect/src',
+    '/toolkit/components/resistfingerprinting',
     '/toolkit/xre',
     '/widget',
     '/xpcom/base',
