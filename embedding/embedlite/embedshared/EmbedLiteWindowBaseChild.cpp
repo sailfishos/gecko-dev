@@ -35,6 +35,8 @@ EmbedLiteWindowBaseChild::EmbedLiteWindowBaseChild(const uint16_t &width, const 
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
+  , mInitialized(false)
+  , mDestroyAfterInit(false)
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
   MOZ_ASSERT(mListener);
@@ -89,9 +91,16 @@ void EmbedLiteWindowBaseChild::ActorDestroy(ActorDestroyReason aWhy)
 
 mozilla::ipc::IPCResult EmbedLiteWindowBaseChild::RecvDestroy()
 {
+  if (!mInitialized) {
+    mDestroyAfterInit = true;
+    return IPC_OK();
+  }
+
   LOGT("destroy");
-  mWidget->Destroy();
-  mWidget = nullptr;
+  if (mWidget) {
+    mWidget->Destroy();
+    mWidget = nullptr;
+  }
   Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
   return IPC_OK();
@@ -168,6 +177,11 @@ void EmbedLiteWindowBaseChild::CreateWidget()
     mCreateWidgetTask = nullptr;
   }
 
+  if (mDestroyAfterInit) {
+      RecvDestroy();
+      return;
+  }
+
   mWidget = new nsWindow(this);
   GetWidget()->SetRotation(mRotation);
 
@@ -183,6 +197,8 @@ void EmbedLiteWindowBaseChild::CreateWidget()
               &widgetInit              // HandleWidgetEvent
               );
   GetWidget()->UpdateSize();
+
+  mInitialized = true;
   Unused << SendInitialized();
 }
 

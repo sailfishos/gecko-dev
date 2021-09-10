@@ -48,6 +48,9 @@ private:
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;
 
+  bool mInitialized;
+  bool mDestroyAfterInit;
+
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseChild);
 };
 
