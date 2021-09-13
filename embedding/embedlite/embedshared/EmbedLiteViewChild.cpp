@@ -990,9 +990,24 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     mIMEComposing = false;
   }
 
+  // FIXME: either cssPoint or scale is off when content zoomed in: JB#55472 / JOLLA-365
   bool ok = false;
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
+
+  // IPDL doesn't hold a strong reference to protocols as they're not required
+  // to be refcounted. This function can run script, which may trigger a nested
+  // event loop, which may release this, so we hold a strong reference here.
+  RefPtr<EmbedLiteViewChild> kungFuDeathGrip(this);
+  RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
+  if (!presShell) {
+    return IPC_OK();
+  }
+  if (!presShell->GetPresContext()) {
+    return IPC_OK();
+  }
+
+  CSSToLayoutDeviceScale scale = mWidget->GetDefaultScale();
 
   if (sPostAZPCAsJson.singleTap) {
     nsString data;
@@ -1001,9 +1016,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
   }
 
   if (sHandleDefaultAZPC.singleTap) {
-    LayoutDevicePoint pt = cssPoint * mWidget->GetDefaultScale();
-    Modifiers m;
-    APZCCallbackHelper::FireSingleTapEvent(pt, m, 1, mHelper->WebWidget());
+    // ProcessSingleTap multiplies cssPoint by scale.
+    if (mHelper->mBrowserChildMessageManager) {
+      mAPZEventState->ProcessSingleTap(cssPoint, scale, aModifiers, 1);
+    }
   }
 
   return IPC_OK();
