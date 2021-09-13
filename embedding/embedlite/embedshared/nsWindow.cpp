@@ -255,6 +255,9 @@ nsWindow::DrawWindowOverlay(mozilla::widget::WidgetRenderingContext *aContext, L
 bool
 nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
+  LOGT("============ visible: %d active: %d", IsVisible(), mActive);
+  return true;
+#if 0
   MOZ_ASSERT(mWindow);
   Unused << aContext;
   if (!IsVisible() || !mActive) {
@@ -266,6 +269,7 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
     return window->GetListener()->PreRender();
   }
   return true;
+#endif
 }
 
 void
