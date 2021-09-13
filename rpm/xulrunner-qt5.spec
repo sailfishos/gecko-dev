@@ -330,6 +330,77 @@ done
 
 %build
 
+
+%ifarch %arm32
+%define SB2_TARGET armv7-unknown-linux-gnueabihf
+%endif
+%ifarch %arm64
+%define SB2_TARGET aarch64-unknown-linux-gnu
+%endif
+%ifarch %ix86
+%define SB2_TARGET i686-unknown-linux-gnu
+%endif
+
+echo "Target is %SB2_TARGET"
+
+mkdir -p "%BUILD_DIR"
+cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
+echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
+echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
+echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
+echo "export MOZ_OBJDIR=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_HOME=%BUILD_DIR/cargo" >> "%BUILD_DIR"/rpm-shared.env
+
+# When cross-compiling under SB2 rust needs to know what arch to emit
+# when nothing is specified on the command line. That usually defaults
+# to "whatever rust was built as" but in SB2 rust is accelerated and
+# would produce x86 so this is how it knows differently. Not needed
+# for native x86 builds
+echo "export SB2_RUST_TARGET_TRIPLE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RUST_HOST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+echo "export RUST_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export HOST=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+echo "export SB2_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+%ifarch %arm32 %arm64
+# This should be define...
+echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+
+# This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
+# during fork/exec. It has no effect outside sb2 so doesn't hurt
+# native builds.
+export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
+export SB2_RUST_USE_REAL_EXECVP=Yes
+export SB2_RUST_USE_REAL_FN=Yes
+%endif
+
+echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
+echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
+
+echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
+
+# Force MOZ_BUILD_DATE env var in order to have more reproducible builds
+# only when we're building from tarball (OBS)
+# If you want to have a fixed date, then uncomment the line below
+# echo "export MOZ_BUILD_DATE=20210831010100" >> "%BUILD_DIR"/rpm-shared.env
+for a in %{_sourcedir}/*.tar.bz2; do
+    if [ -f $a ]; then
+        TARBALL_DATE=`stat -c %Y $a`
+        BUILD_DATE=`date -d @${TARBALL_DATE} +"%Y%m%d%H%M%%S"`
+        echo "export MOZ_BUILD_DATE=${BUILD_DATE}" >> "%BUILD_DIR"/rpm-shared.env
+    fi
+    break
+done
+
+
 source "%BUILD_DIR"/rpm-shared.env
 
 # hack for when not using virtualenv
@@ -341,7 +412,7 @@ if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/8.3.0/ "%BUILD_DI
 
 # Expose the elf32-i386 libclang.so.10 for use inside the arm target, JB#55042
 mkdir -p "%BUILD_DIR"/lib
-SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.10 "%BUILD_DIR"/lib/libclang.so.10
+#SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.10 "%BUILD_DIR"/lib/libclang.so.10
 echo "ac_add_options --with-libclang-path='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 
 # Do not build as thumb since it breaks video decoding.
@@ -408,8 +479,9 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
   echo "ac_add_options --with-system-webp" >> "${MOZCONFIG}"
 %endif
 
-%ifarch %ix86
 echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
+
+%ifarch %ix86
 echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
 %endif
 
@@ -429,12 +501,8 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
 # Additionally we limit the memory usage during linking
-%ifarch %arm32 %arm64
-# Strip debug symbols and garbage collect on arm to link in 32 bit address space, JB#55074
-echo 'FIX_LDFLAGS="-Wl,--strip-debug -Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
-%else
 echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
-%endif
+
 echo 'export LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 echo 'LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 echo 'export WRAP_LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
@@ -446,7 +514,7 @@ RPM_BUILD_NCPUS=`nproc`
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
-./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
+#./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
