@@ -470,18 +470,6 @@ EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16
   return true;
 }
 
-bool
-EmbedLiteViewChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, nsTArray<nsString>* aJSONRetVal)
-{
-#if EMBEDLITE_LOG_SENSITIVE
-  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
-#endif
-  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
-    SendRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
-  }
-  return true;
-}
-
 nsIWebNavigation*
 EmbedLiteViewChild::WebNavigation()
 {

@@ -320,13 +320,6 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSyncMessage(const nsString &aMe
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewParent::RecvRpcMessage(const nsString &aMessage,
-                                                            const nsString &aJSON,
-                                                            nsTArray<nsString> *aJSONRetVal)
-{
-  return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
-}
-
 mozilla::ipc::IPCResult EmbedLiteViewParent::RecvSetTargetAPZC(const uint64_t &aInputBlockId,
                                                                nsTArray<ScrollableLayerGuid> &&aTargets)
 {

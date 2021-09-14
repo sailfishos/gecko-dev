@@ -24,8 +24,6 @@ index 88ad49d169e8..8686db5d9612 100644
 +description = EmbedLite
 +[PEmbedLiteView::SyncMessage]
 +description = EmbedLite
-+[PEmbedLiteView::RpcMessage]
-+description = EmbedLite
 +[PEmbedLiteView::GetInputContext]
 +description = EmbedLite
 +

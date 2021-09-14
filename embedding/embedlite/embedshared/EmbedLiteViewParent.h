@@ -73,9 +73,6 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSyncMessage(const nsString &aMessage,
                                                   const nsString &aJSON,
                                                   nsTArray<nsString> *aJSONRetVal);
-  virtual mozilla::ipc::IPCResult RecvRpcMessage(const nsString &aMessage,
-                                                 const nsString &aJSON,
-                                                 nsTArray<nsString> *aJSONRetVal);
 
   virtual mozilla::ipc::IPCResult RecvUpdateZoomConstraints(const uint32_t &aPresShellId,
                                                             const ViewID &aViewId,
