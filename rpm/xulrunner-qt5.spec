@@ -415,10 +415,12 @@ echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
 %endif
 
 %ifarch %arm32
+echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 %endif
 
 %ifarch %arm64
+echo "ac_add_options --disable-startupcache" >> "$MOZCONFIG"
 echo "ac_add_options --host=aarch64-unknown-linux-gnu" >> "$MOZCONFIG"
 %endif
 
