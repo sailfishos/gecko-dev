@@ -114,19 +114,17 @@ public:
   nsIWebNavigation* WebNavigation() const;
   nsIWidget* WebWidget();
 
-  bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope);
-  bool DoSendBlockingMessage(JSContext* aCx,
-                             const nsAString& aMessage,
+
+  /**
+   * MessageManagerCallback methods that we override.
+   */
+  bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
+  bool DoSendBlockingMessage(const nsAString& aMessage,
                              mozilla::dom::ipc::StructuredCloneData& aData,
-                             JS::Handle<JSObject *> aCpows,
-                             nsIPrincipal* aPrincipal,
-                             nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal,
-                             bool aIsSync);
-  nsresult DoSendAsyncMessage(JSContext* aCx,
-                              const nsAString& aMessage,
-                              mozilla::dom::ipc::StructuredCloneData& aData,
-                              JS::Handle<JSObject *> aCpows,
-                              nsIPrincipal* aPrincipal);
+                             nsTArray<mozilla::dom::ipc::StructuredCloneData>* aRetVal) override;
+  nsresult DoSendAsyncMessage(const nsAString& aMessage,
+                              mozilla::dom::ipc::StructuredCloneData& aData) override;
+
   bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
                                const Maybe<mozilla::layers::ZoomConstraints>& aConstraints);

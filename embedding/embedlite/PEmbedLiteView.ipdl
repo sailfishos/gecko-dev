@@ -142,9 +142,6 @@ parent:
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 
-    nested(inside_sync) sync RpcMessage(nsString aMessage, nsString aJSON)
-      returns (nsString[] retval);
-
     // IME
     sync GetInputContext() returns (int32_t IMEEnabled, int32_t IMEOpen);
 

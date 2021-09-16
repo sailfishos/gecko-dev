@@ -73,9 +73,6 @@ public:
   virtual bool DoSendSyncMessage(const char16_t* aMessageName,
                                  const char16_t* aMessage,
                                  nsTArray<nsString>* aJSONRetVal) override;
-  virtual bool DoCallRpcMessage(const char16_t* aMessageName,
-                                const char16_t* aMessage,
-                                nsTArray<nsString>* aJSONRetVal) override;
 
   /**
    * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
