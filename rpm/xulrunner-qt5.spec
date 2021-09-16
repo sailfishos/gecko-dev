@@ -38,6 +38,13 @@
 %global __provides_exclude ^(%{privlibs})\\.so
 %global __requires_exclude ^(%{privlibs})\\.so
 
+# Conditional for using a workaround which moves the .git away before build
+# in order to prevent cargo from updating git modules
+# This should only be needed for local builds on SDK as tar_git strips out
+# the .git directory already.
+%bcond_with git_workaround
+
+
 Name:       xulrunner-qt5
 Summary:    XUL runner
 Version:    %{greversion}
@@ -331,6 +338,12 @@ done
 
 %build
 
+# Move the .git directory out of the way as cargo gets confused and thinks it
+# needs to update our submodule.
+%if %{with git_workaround}
+%__mv %_builddir/.git %_builddir/.git-disabled ||:
+%endif
+
 source "%BUILD_DIR"/rpm-shared.env
 
 # hack for when not using virtualenv
@@ -448,6 +461,11 @@ RPM_BUILD_NCPUS=`nproc`
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
 ./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
+
+# Restore .git directory after build
+%if %{with git_workaround}
+%__mv %_builddir/.git-disabled %_builddir/.git ||:
+%endif
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
