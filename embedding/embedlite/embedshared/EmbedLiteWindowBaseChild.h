@@ -15,19 +15,21 @@ namespace mozilla {
 namespace embedlite {
 
 class nsWindow;
+class EmbedLiteWindowListener;
 
 class EmbedLiteWindowBaseChild : public PEmbedLiteWindowChild
 {
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteWindowBaseChild)
 
 public:
-  EmbedLiteWindowBaseChild(const uint16_t& width, const uint16_t& height, const uint32_t& id);
+  EmbedLiteWindowBaseChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
 
   static EmbedLiteWindowBaseChild *From(const uint32_t id);
 
   uint32_t GetUniqueID() const { return mId; }
   nsWindow *GetWidget() const;
   LayoutDeviceIntRect GetSize() const { return mBounds; }
+  EmbedLiteWindowListener* GetListener() const { return mListener; }
 
 protected:
   virtual ~EmbedLiteWindowBaseChild() override;
@@ -40,10 +42,14 @@ private:
   void CreateWidget();
 
   uint32_t mId;
+  EmbedLiteWindowListener *const mListener;
   nsCOMPtr<nsIWidget> mWidget;
   LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;
+
+  bool mInitialized;
+  bool mDestroyAfterInit;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowBaseChild);
 };

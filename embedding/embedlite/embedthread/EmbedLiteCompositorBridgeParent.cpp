@@ -75,9 +75,9 @@ EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<Lay
   PLayerTransactionParent* p =
     CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);
 
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositorCreated();
+  EmbedLiteWindowBaseParent *parentWindow = EmbedLiteWindowBaseParent::From(mWindowId);
+  if (parentWindow) {
+    parentWindow->GetListener()->CompositorCreated();
   }
 
   if (!mUseExternalGLContext) {

@@ -12,16 +12,8 @@
 namespace mozilla {
 namespace embedlite {
 
-namespace {
-
-class FakeWindowListener : public EmbedLiteWindowListener {};
-static FakeWindowListener sFakeWindowListener;
-
-} // namespace
-
 EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent* parent, uint32_t id)
   : mApp(app)
-  , mListener(nullptr)
   , mWindowParent(static_cast<EmbedLiteWindowBaseParent*>(parent))
   , mUniqueID(id)
 {
@@ -42,20 +34,10 @@ void EmbedLiteWindow::Destroy()
 
 void EmbedLiteWindow::Destroyed()
 {
-  if (mListener) {
-    mListener->WindowDestroyed();
+  if (mWindowParent) {
+    mWindowParent->GetListener()->WindowDestroyed();
   }
   EmbedLiteApp::GetInstance()->WindowDestroyed(mUniqueID);
-}
-
-void EmbedLiteWindow::SetListener(EmbedLiteWindowListener* aListener)
-{
-  mListener = aListener;
-}
-
-EmbedLiteWindowListener *EmbedLiteWindow::GetListener() const
-{
-  return mListener ? mListener : &sFakeWindowListener;
 }
 
 void EmbedLiteWindow::SetSize(int width, int height)

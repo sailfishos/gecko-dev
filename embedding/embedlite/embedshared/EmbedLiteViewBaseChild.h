@@ -247,6 +247,9 @@ private:
   RefPtr<APZEventState> mAPZEventState;
   mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
 
+  bool mInitialized;
+  bool mDestroyAfterInit;
+
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewBaseChild);
 };
 

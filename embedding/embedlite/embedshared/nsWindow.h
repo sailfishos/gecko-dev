@@ -21,6 +21,7 @@ class GLContext;
 namespace embedlite {
 
 class EmbedLiteWindowBaseChild;
+class EmbedLiteWindowListener;
 
 class nsWindow : public PuppetWidgetBase
 {
@@ -87,6 +88,8 @@ public:
 
   void SetContentController(mozilla::layers::GeckoContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
+  void SetFirstViewCreated() { mFirstViewCreated = true; }
+  bool IsFirstViewCreated() const { return mFirstViewCreated; }
 
 protected:
   virtual ~nsWindow() override;
@@ -106,8 +109,9 @@ private:
   mozilla::gl::GLContext* GetGLContext() const;
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
 
-  static void CreateGLContextEarly(uint32_t aWindowId);
+  static void CreateGLContextEarly(EmbedLiteWindowListener *aListener);
 
+  bool mFirstViewCreated;
   EmbedLiteWindowBaseChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
 };
