@@ -13,7 +13,7 @@ decoder recycling.
  1 file changed, 3 insertions(+)
 
 diff --git a/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h b/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
-index e9f08436fdc9..e1d15bdd9fd9 100644
+index 3619eed456d0..38ca7a9b8f7c 100644
 --- a/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
 +++ b/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
 @@ -42,6 +42,9 @@ class GMPVideoDecoder : public MediaDataDecoder,

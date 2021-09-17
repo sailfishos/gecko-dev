@@ -91,6 +91,8 @@ Patch42:    0042-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
 Patch43:    0043-sailfishos-gecko-Drop-static-casting-from-BrowserChi.patch
 Patch44:    0044-sailfishos-docshell-Get-ContentFrameMessageManager-v.patch
 Patch45:    0045-Revert-Bug-1445570-Remove-EnsureEventualAfterPaint-t.patch
+Patch46:    0046-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
+Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
@@ -106,7 +108,6 @@ Patch45:    0045-Revert-Bug-1445570-Remove-EnsureEventualAfterPaint-t.patch
 #Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
 #Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
 #Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
-#Patch30:    0030-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 #Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
 #Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 #Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
@@ -121,7 +122,6 @@ Patch45:    0045-Revert-Bug-1445570-Remove-EnsureEventualAfterPaint-t.patch
 #Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 #Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 #Patch45:    0045-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
-#Patch46:    0046-sailfishos-gecko-Force-recycling-of-gmpdroid-instanc.patch
 #Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 #Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
 #Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
