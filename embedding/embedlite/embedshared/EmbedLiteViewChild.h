@@ -174,7 +174,10 @@ protected:
                                                  const int32_t& aClickCount,
                                                  const int32_t& aModifiers,
                                                  const bool& aIgnoreRootScrollFrame);
-  virtual mozilla::ipc::IPCResult RecvHandleTextEvent(const nsString& commit, const nsString& preEdit);
+  virtual mozilla::ipc::IPCResult RecvHandleTextEvent(const nsString &commit,
+                                                      const nsString &preEdit,
+                                                      const int32_t &replacementStart,
+                                                      const int32_t &replacementLength);
   virtual mozilla::ipc::IPCResult RecvHandleKeyPressEvent(const int &domKeyCode,
                                                           const int &gmodifiers,
                                                           const int &charCode);

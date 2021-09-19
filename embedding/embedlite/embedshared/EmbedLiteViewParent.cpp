@@ -445,7 +445,7 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewParent::TextEvent(const char* composite, const char* preEdit)
+EmbedLiteViewParent::TextEvent(const char *composite, const char *preEdit, const int replacementStart, const int replacementLength)
 {
   if (mViewAPIDestroyed) {
     return NS_OK;
@@ -454,7 +454,9 @@ EmbedLiteViewParent::TextEvent(const char* composite, const char* preEdit)
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
   if (mLastIMEState) {
     Unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
-                                  NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)));
+                                  NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)),
+                                  replacementStart,
+                                  replacementLength);
   } else {
     NS_ERROR("Text event must not be sent while IME disabled");
   }

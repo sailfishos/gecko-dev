@@ -318,10 +318,10 @@ EmbedLiteView::ReceiveInputEvent(const EmbedTouchInput &aEvent)
 }
 
 void
-EmbedLiteView::SendTextEvent(const char* composite, const char* preEdit)
+EmbedLiteView::SendTextEvent(const char *composite, const char *preEdit, int replacementStart, int replacementLength)
 {
   NS_ENSURE_TRUE(mViewImpl,);
-  mViewImpl->TextEvent(composite, preEdit);
+  mViewImpl->TextEvent(composite, preEdit, replacementStart, replacementLength);
 }
 
 void EmbedLiteView::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
