@@ -123,6 +123,7 @@ Patch68:    0068-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
 Patch69:    0069-Do-not-flip-scissor-rects-when-rendering-to-an-offsc.patch
 Patch70:    0070-sailfishos-webrtc-Enable-GMP-for-encoding.-JB-53982.patch
 Patch71:    0071-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
+Patch72:    0072-sailfishos-gecko-Fix-audio-underruns-for-fullduplex-.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
