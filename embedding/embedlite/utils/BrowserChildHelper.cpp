@@ -25,6 +25,7 @@
 #include "nsContentUtils.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLBodyElement.h"
+#include "mozilla/ViewportUtils.h"
 #include "nsGlobalWindow.h"
 #include "nsIDocShell.h"
 #include "nsViewportInfo.h"
@@ -621,6 +622,11 @@ BrowserChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
   mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 }
 
+CSSPoint BrowserChildHelper::GetVisualToLayoutTransformedPoint(
+    const CSSPoint &aInput, const mozilla::layers::ScrollableLayerGuid::ViewID &aScrollId) {
+  return mozilla::ViewportUtils::GetVisualToLayoutTransform(aScrollId).TransformPoint(aInput);
+}
+
 mozilla::CSSPoint
 BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         const mozilla::layers::ScrollableLayerGuid& aGuid,
@@ -650,6 +656,9 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
   mozilla::CSSToLayoutDeviceScale scale = presShell->GetPresContext()->CSSToDevPixelScale();
 
   CSSPoint point = aPoint / scale;
+
+  point = GetVisualToLayoutTransformedPoint(point, aGuid.mScrollId);
+
   // Stash the guid in InputAPZContext so that when the visual-to-layout
   // transform is applied to the event's coordinates, we use the right transform
   // based on the scroll frame being targeted.
