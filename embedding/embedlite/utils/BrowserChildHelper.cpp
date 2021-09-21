@@ -633,7 +633,7 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
                                         uint64_t aInputBlockId,
                                         bool *ok)
 {
-  RefPtr<PresShell> presShell = GetPresShell();
+  RefPtr<PresShell> presShell = GetTopLevelPresShell();
   if (!presShell) {
     if (ok)
       *ok = false;
