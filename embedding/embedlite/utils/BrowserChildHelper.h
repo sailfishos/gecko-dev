@@ -176,6 +176,9 @@ private:
   void DispatchMessageManagerMessage(const nsAString& aMessageName,
                                      const nsAString& aJSONData);
 
+  CSSPoint GetVisualToLayoutTransformedPoint(const CSSPoint &aInput,
+                                             const mozilla::layers::ScrollableLayerGuid::ViewID &aScrollId);
+
   friend class EmbedLiteViewThreadChild;
   friend class EmbedLiteViewProcessChild;
   friend class EmbedLiteViewChildIface;
