@@ -8,46 +8,46 @@ Automatically load gmp-droid at startup
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/media/platforms/PDMFactory.cpp               | 13 +++++++------
+ dom/media/platforms/PDMFactory.cpp               | 13 ++++++-------
  .../platforms/agnostic/gmp/GMPDecoderModule.cpp  | 16 ++++++++++++++++
- 2 files changed, 23 insertions(+), 6 deletions(-)
+ 2 files changed, 22 insertions(+), 7 deletions(-)
 
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
-index c8e7df236d1b..d47ec17b42af 100644
+index 78ef3f8916fb..268b9f90b007 100644
 --- a/dom/media/platforms/PDMFactory.cpp
 +++ b/dom/media/platforms/PDMFactory.cpp
-@@ -316,6 +316,12 @@ void PDMFactory::CreatePDMs() {
-     return;
+@@ -349,6 +349,12 @@ void PDMFactory::CreatePDMs() {
+     StartupPDM(m);
    }
  
-+  if (MediaPrefs::PDMGMPEnabled()) {
++  if (StaticPrefs::media_gmp_decoder_enabled()) {
 +    m = new GMPDecoderModule();
 +    mGMPPDMFailedToStartup = !StartupPDM(m);
 +  } else {
 +    mGMPPDMFailedToStartup = false;
 +  }
  #ifdef XP_WIN
-   if (MediaPrefs::PDMWMFEnabled() && !IsWin7AndPre2000Compatible()) {
+   if (StaticPrefs::media_wmf_enabled() && !IsWin7AndPre2000Compatible()) {
      m = new WMFDecoderModule();
-@@ -354,12 +360,7 @@ void PDMFactory::CreatePDMs() {
+@@ -393,13 +399,6 @@ void PDMFactory::CreatePDMs() {
+ 
    m = new AgnosticDecoderModule();
    StartupPDM(m);
- 
--  if (MediaPrefs::PDMGMPEnabled()) {
+-
+-  if (StaticPrefs::media_gmp_decoder_enabled()) {
 -    m = new GMPDecoderModule();
 -    mGMPPDMFailedToStartup = !StartupPDM(m);
 -  } else {
 -    mGMPPDMFailedToStartup = false;
 -  }
-+
  }
  
  void PDMFactory::CreateNullPDM() {
 diff --git a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
-index 7f7fb437ee0a..291f0334767c 100644
+index f4c6e5719737..86b018f5745a 100644
 --- a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
 +++ b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
-@@ -88,6 +88,22 @@ bool GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
+@@ -86,6 +86,22 @@ bool GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
  
  bool GMPDecoderModule::SupportsMimeType(
      const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
