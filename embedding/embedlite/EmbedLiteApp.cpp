@@ -16,6 +16,7 @@
 #include "mozilla/embedlite/EmbedLiteAPI.h"
 #include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
 #include "mozilla/dom/MessageChannel.h"       // for MessageChannel
+#include "mozilla/Hal.h"
 
 #include "EmbedLiteUILoop.h"
 #include "EmbedLiteSubThread.h"
@@ -71,6 +72,8 @@ EmbedLiteApp::EmbedLiteApp()
 {
   LOGT();
   sSingleton = this;
+
+  hal::Init();
 }
 
 EmbedLiteApp::~EmbedLiteApp()
@@ -79,6 +82,9 @@ EmbedLiteApp::~EmbedLiteApp()
   NS_ASSERTION(!mUILoop, "Main Loop not stopped before destroy");
   NS_ASSERTION(!mSubThread, "Thread not stopped/destroyed before destroy");
   NS_ASSERTION(mState == STOPPED, "Pre-mature deletion of still running application");
+
+  hal::Shutdown();
+
   sSingleton = NULL;
   if (mProfilePath) {
     free(mProfilePath);
