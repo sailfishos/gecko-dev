@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 28 Sep 2021 09:42:30 +0300
+Subject: [PATCH] [sailfishos][egl] Drop swap_buffers_with_damage extension
+ support. Fixes JB#55571 OMP#JOLLA-396
+
+At least on "Adreno (TM) 508" swapping with damage triggered a hang on the
+compositor thread i.e. call never returns. Conceptually I think we should
+bind eglSwapBuffersWithDamage on hybris side to the eglSwapBuffers.
+
+Co-authored-by: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/gl/GLLibraryEGL.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index 13b69f2427c1..a07b8d983ab7 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -713,7 +713,7 @@ bool GLLibraryEGL::DoEnsureInitialized(bool forceAccel,
+         {(PRFuncPtr*)&mSymbols.fSwapBuffersWithDamage,
+          {{"eglSwapBuffersWithDamageEXT"}}},
+         END_OF_SYMBOLS};
+-    if (!fnLoadSymbols(symbols)) {
++    if (!fnLoadSymbols(symbols) || true) {
+       NS_ERROR(
+           "EGL supports EXT_swap_buffers_with_damage without exposing its "
+           "functions!");
+@@ -726,7 +726,7 @@ bool GLLibraryEGL::DoEnsureInitialized(bool forceAccel,
+         {(PRFuncPtr*)&mSymbols.fSwapBuffersWithDamage,
+          {{"eglSwapBuffersWithDamageKHR"}}},
+         END_OF_SYMBOLS};
+-    if (!fnLoadSymbols(symbols)) {
++    if (!fnLoadSymbols(symbols) || true) {
+       NS_ERROR(
+           "EGL supports KHR_swap_buffers_with_damage without exposing its "
+           "functions!");
+-- 
+2.31.1
+
