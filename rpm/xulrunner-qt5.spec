@@ -103,10 +103,10 @@ Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
 Patch48:    0048-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
 Patch49:    0049-Revert-Bug-1494175-Remove-unimplemented-nsIWebBrowse.patch
 Patch50:    0050-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
-#Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
-#Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
-#Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
-#Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
+Patch51:    0051-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
+Patch52:    0052-sailfishos-gecko-Workaround-for-late-access-message-.patch
+Patch53:    0053-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
+Patch54:    0054-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
 #Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
