@@ -11,20 +11,20 @@ canceled at the "Allow" stage.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/geolocation/nsGeolocation.cpp | 2 +-
+ dom/geolocation/Geolocation.cpp | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/dom/geolocation/nsGeolocation.cpp b/dom/geolocation/nsGeolocation.cpp
-index 55c41cd7ce71..66a0d6d9c20a 100644
---- a/dom/geolocation/nsGeolocation.cpp
-+++ b/dom/geolocation/nsGeolocation.cpp
-@@ -1280,7 +1280,7 @@ nsresult Geolocation::WatchPosition(GeoPositionCallback aCallback,
+diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
+index 2477e5189e0d..de4ccf68d9f8 100644
+--- a/dom/geolocation/Geolocation.cpp
++++ b/dom/geolocation/Geolocation.cpp
+@@ -1146,7 +1146,7 @@ int32_t Geolocation::WatchPosition(GeoPositionCallback aCallback,
+ }
  
- NS_IMETHODIMP
- Geolocation::ClearWatch(int32_t aWatchId) {
+ void Geolocation::ClearWatch(int32_t aWatchId) {
 -  if (aWatchId < 0) {
 +  if (aWatchId < 0 || aWatchId >= mLastWatchId) {
-     return NS_OK;
+     return;
    }
  
 -- 

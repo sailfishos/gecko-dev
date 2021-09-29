@@ -113,8 +113,8 @@ Patch57:    0057-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
 Patch58:    0058-sailfishos-gecko-Handle-temporary-directory-similarl.patch
 Patch59:    0059-sailfishos-gecko-Disable-loading-heavier-extensions.patch
 Patch60:    0060-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
+Patch61:    0061-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 #Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
 #Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
 #Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
