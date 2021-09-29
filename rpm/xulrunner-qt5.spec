@@ -93,6 +93,7 @@ Patch44:    0044-sailfishos-docshell-Get-ContentFrameMessageManager-v.patch
 Patch45:    0045-Revert-Bug-1445570-Remove-EnsureEventualAfterPaint-t.patch
 Patch46:    0046-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
 Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
+Patch48:    0048-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
 #Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
 #Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
 #Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
