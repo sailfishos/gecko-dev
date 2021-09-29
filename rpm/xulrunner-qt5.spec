@@ -111,8 +111,8 @@ Patch55:    0055-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
 Patch56:    0056-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
 Patch57:    0057-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
 Patch58:    0058-sailfishos-gecko-Handle-temporary-directory-similarl.patch
+Patch59:    0059-sailfishos-gecko-Disable-loading-heavier-extensions.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
 #Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
 #Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 #Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
