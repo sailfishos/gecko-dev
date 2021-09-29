@@ -16,18 +16,18 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 97 insertions(+)
 
 diff --git a/startupcache/StartupCache.cpp b/startupcache/StartupCache.cpp
-index 9d30fca7d4cb..e68f4f0c377d 100644
+index d95a96216541..751b86a2ed33 100644
 --- a/startupcache/StartupCache.cpp
 +++ b/startupcache/StartupCache.cpp
-@@ -16,6 +16,7 @@
+@@ -21,6 +21,7 @@
+ #include "nsCRT.h"
  #include "nsDirectoryServiceUtils.h"
  #include "nsIClassInfo.h"
++#include "nsIDirectoryEnumerator.h"
  #include "nsIFile.h"
-+#include "nsISimpleEnumerator.h"
  #include "nsIObserver.h"
- #include "nsIObserverService.h"
  #include "nsIOutputStream.h"
-@@ -51,6 +52,10 @@
+@@ -55,6 +56,10 @@ using namespace mozilla::Compression;
  namespace mozilla {
  namespace scache {
  
@@ -38,9 +38,9 @@ index 9d30fca7d4cb..e68f4f0c377d 100644
  MOZ_DEFINE_MALLOC_SIZE_OF(StartupCacheMallocSizeOf)
  
  NS_IMETHODIMP
-@@ -130,6 +135,95 @@ StartupCache::~StartupCache() {
-   UnregisterWeakMemoryReporter(this);
- }
+@@ -156,6 +161,95 @@ StartupCache::StartupCache()
+ 
+ StartupCache::~StartupCache() { UnregisterWeakMemoryReporter(this); }
  
 +// Checks the modified date of the startupCache and deletes it if the embedlite-components-qt5
 +// install is newer (determined using the modified time of /var/lib/_MOZEMBED_CACHE_CLEAN_).
@@ -100,7 +100,7 @@ index 9d30fca7d4cb..e68f4f0c377d 100644
 +      return NS_OK;
 +    }
 +
-+    nsCOMPtr<nsISimpleEnumerator> dirIterator;
++    nsCOMPtr<nsIDirectoryEnumerator> dirIterator;
 +    rv = cacheDir->GetDirectoryEntries(getter_AddRefs(dirIterator));
 +    NS_ENSURE_SUCCESS(rv, NS_OK);
 +
@@ -134,7 +134,7 @@ index 9d30fca7d4cb..e68f4f0c377d 100644
  nsresult StartupCache::Init() {
    // workaround for bug 653936
    nsCOMPtr<nsIProtocolHandler> jarInitializer(
-@@ -137,6 +231,9 @@ nsresult StartupCache::Init() {
+@@ -163,6 +257,9 @@ nsresult StartupCache::Init() {
  
    nsresult rv;
  
