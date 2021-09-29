@@ -222,9 +222,9 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mChrome->SetBrowserChildHelper(mHelper.get());
 
   // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateIndependent(
-              BrowsingContext::Type::Content);
-
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, nullptr, EmptyString(), BrowsingContext::Type::Content);
+  browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
+  browsingContext->EnsureAttached();
   // nsWebBrowser::Create creates nsDocShell, calls InitWindow for nsIBaseWindow,
   // and finally creates nsIBaseWindow. When browsingContext is passed to
   // nsWebBrowser::Create, typeContentWrapper type is passed to the nsWebBrowser
@@ -268,13 +268,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     MOZ_ASSERT(docShell);
 
     docShell->SetAffectPrivateSessionLifetime(true);
-  }
-
-  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW) {
-    nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(mWebNavigation);
-    MOZ_ASSERT(loadContext);
-
-    loadContext->SetPrivateBrowsing(true);
   }
 
   mChrome->SetWebBrowser(mWebBrowser);
