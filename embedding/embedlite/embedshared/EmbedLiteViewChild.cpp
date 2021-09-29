@@ -221,10 +221,28 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mHelper = new BrowserChildHelper(this);
   mChrome->SetBrowserChildHelper(mHelper.get());
 
+  // Dig out parent browsing context. If this is created with window.open(), we need
+  // to pass parent context as an argument for browsing context of this view.
+  // That's for making sure window.opener is set properly and window.close() can be
+  // called by the JS.
+  EmbedLiteViewChild *parentView = nullptr;
+  if (parentId > 0) {
+    EmbedLiteViewChildIface *childIface = EmbedLiteAppChild::GetInstance()->GetViewByID(parentId);
+    if (childIface) {
+      parentView = static_cast<EmbedLiteViewChild*>(childIface);
+    }
+  }
+
+  BrowsingContext *parentBrowsingContext = nullptr;
+  if (parentId > 0 && parentView) {
+    parentBrowsingContext = parentView->GetBrowsingContext();
+  }
+
   // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, nullptr, EmptyString(), BrowsingContext::Type::Content);
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, EmptyString(), BrowsingContext::Type::Content);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
+
   // nsWebBrowser::Create creates nsDocShell, calls InitWindow for nsIBaseWindow,
   // and finally creates nsIBaseWindow. When browsingContext is passed to
   // nsWebBrowser::Create, typeContentWrapper type is passed to the nsWebBrowser
@@ -700,6 +718,12 @@ bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
     return true;
   }
   return false;
+}
+
+mozilla::dom::BrowsingContext *EmbedLiteViewChild::GetBrowsingContext() const
+{
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
+  return docShell->GetBrowsingContext();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetVirtualKeyboardHeight(const int &aHeight)
