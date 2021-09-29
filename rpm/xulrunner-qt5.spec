@@ -108,8 +108,8 @@ Patch52:    0052-sailfishos-gecko-Workaround-for-late-access-message-.patch
 Patch53:    0053-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
 Patch54:    0054-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
 Patch55:    0055-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
+Patch56:    0056-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
 #Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
 #Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
 #Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch

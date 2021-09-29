@@ -10,10 +10,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/toolkit/components/downloads/DownloadUIHelper.jsm b/toolkit/components/downloads/DownloadUIHelper.jsm
-index 54334eb1473b..49a8f1f3d6e2 100644
+index 952d7ec99896..10c19c714396 100644
 --- a/toolkit/components/downloads/DownloadUIHelper.jsm
 +++ b/toolkit/components/downloads/DownloadUIHelper.jsm
-@@ -89,7 +89,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function() {
+@@ -165,7 +165,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function() {
   *        attach prompts to the most recently active window.
   */
  var DownloadPrompter = function(aParent) {
@@ -21,7 +21,7 @@ index 54334eb1473b..49a8f1f3d6e2 100644
 +  this._prompter = null;
  };
  
- this.DownloadPrompter.prototype = {
+ DownloadPrompter.prototype = {
 -- 
 2.26.2
 
