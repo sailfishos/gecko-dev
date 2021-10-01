@@ -115,8 +115,8 @@ Patch59:    0059-sailfishos-gecko-Disable-loading-heavier-extensions.patch
 Patch60:    0060-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
 Patch61:    0061-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 Patch62:    0062-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
+Patch63:    0063-sailfishos-contentaction-Fix-content-action-integrat.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
 #Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
 #Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
 #Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
