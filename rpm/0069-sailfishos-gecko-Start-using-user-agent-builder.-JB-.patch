@@ -9,34 +9,34 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 5 insertions(+), 3 deletions(-)
 
 diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
-index f9e6ff74fbb7..4d432b4bdfb8 100644
+index d5e2c61dbec9..5a6d80623a1e 100644
 --- a/netwerk/protocol/http/nsHttpHandler.cpp
 +++ b/netwerk/protocol/http/nsHttpHandler.cpp
-@@ -501,7 +501,7 @@ nsresult nsHttpHandler::Init() {
-   mRequestContextService =
-       do_GetService("@mozilla.org/network/request-context-service;1");
+@@ -495,7 +495,7 @@ nsresult nsHttpHandler::Init() {
  
--#if defined(ANDROID) || defined(MOZ_MULET)
-+#if defined(ANDROID) || defined(MOZ_MULET) || defined(MOZ_WIDGET_QT)
+   mRequestContextService = RequestContextService::GetOrCreate();
+ 
+-#if defined(ANDROID)
++#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
    mProductSub.AssignLiteral(MOZILLA_UAVERSION);
  #else
-   mProductSub.AssignLiteral(LEGACY_BUILD_ID);
-@@ -943,12 +943,12 @@ void nsHttpHandler::InitUserAgentComponents() {
+   mProductSub.AssignLiteral(LEGACY_UA_GECKO_TRAIL);
+@@ -945,12 +945,12 @@ void nsHttpHandler::InitUserAgentComponents() {
        // and there seems little a webpage can sensibly do
        // based on it being something else, so use X11 for
        // backwards compatibility in all cases.
 -      "X11"
 +      "Sailfish 4.0"
- #endif
+ #  endif
    );
  #endif
  
 -#ifdef ANDROID
-+#if defined(ANDROID) || defined(MOZ_WIDGET_QT)
++#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
    nsCOMPtr<nsIPropertyBag2> infoService =
        do_GetService("@mozilla.org/system-info;1");
    MOZ_ASSERT(infoService, "Could not find a system info service");
-@@ -987,9 +987,11 @@ void nsHttpHandler::InitUserAgentComponents() {
+@@ -990,9 +990,11 @@ void nsHttpHandler::InitUserAgentComponents() {
      }
    }
  
@@ -47,7 +47,7 @@ index f9e6ff74fbb7..4d432b4bdfb8 100644
 +#endif  // MOZ_WIDGET_ANDROID
  #endif  // ANDROID
  
- #ifdef MOZ_MULET
+ #ifndef MOZ_UA_OS_AGNOSTIC
 -- 
-2.26.2
+2.17.1
 

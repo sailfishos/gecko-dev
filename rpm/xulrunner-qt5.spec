@@ -121,10 +121,10 @@ Patch65:    0065-sailfishos-configuration-Configure-application-as-mo.patch
 Patch66:    0066-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 Patch67:    0067-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 Patch68:    0068-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+Patch69:    0069-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
-#Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 #Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 #Patch60:    sha1: f7510599feade696486db448d1bfec613871adc2
