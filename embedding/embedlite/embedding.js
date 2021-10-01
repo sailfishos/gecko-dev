@@ -122,6 +122,8 @@ pref("embedlite.compositor.external_gl_context", false);
 // this pref only makes sense when using external compositor gl context.
 pref("embedlite.compositor.request_external_gl_context_early", false);
 pref("extensions.update.enabled", false);
+pref("extensions.systemAddon.update.enabled", false);
+
 pref("toolkit.storage.synchronous", 0);
 /* new html5 forms */
 // Support for input type=color. By default, disabled.
