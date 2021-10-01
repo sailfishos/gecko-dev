@@ -123,6 +123,7 @@ Patch67:    0067-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 Patch68:    0068-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 Patch69:    0069-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 Patch70:    0070-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
+Patch71:    0071-sailfishos-gecko-Fix-flipped-FBO-textures-when-rende.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
@@ -133,7 +134,6 @@ Patch70:    0070-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
 #Patch60 - Patch62 are not needed as issue was fixed in mozilla62 (https://bugzilla.mozilla.org/show_bug.cgi?id=1467722)
 #Patch64:    sha1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
 #Patch64:    Is not needed as the issue was fixed in mozilla72 (https://bugzilla.mozilla.org/show_bug.cgi?id=1586144)
-#Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
 #Patch66:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch67:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch68:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
