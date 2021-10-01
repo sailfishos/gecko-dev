@@ -122,7 +122,6 @@ Patch66:    0066-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 Patch67:    0067-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 Patch68:    0068-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
 #Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
