@@ -35,38 +35,29 @@ Date:   Thu Nov 29 17:20:06 2018 +1000
     [sailfishos][media] Update media resource state when the playing
 state changes for any reason. Fixes JB#42900
 ---
- dom/html/HTMLMediaElement.cpp |  4 ++--
+ dom/html/HTMLMediaElement.cpp |  2 +-
  dom/media/MediaDecoder.cpp    | 27 +++++++++++++++++++++++++++
- 2 files changed, 29 insertions(+), 2 deletions(-)
+ 2 files changed, 28 insertions(+), 1 deletion(-)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index ce5decf5c073..a6dfb1eca5ac 100644
+index 3b718d5fa4a7..bb312c87bda7 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
-@@ -6046,7 +6046,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
-   }
- 
-   bool pauseElement = ShouldElementBePaused();
--  SuspendOrResumeElement(pauseElement, !IsActive());
-+  SuspendOrResumeElement(pauseElement, IsHidden());
+@@ -6569,7 +6569,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+   // We would suspend media when the document is inactive, or its docshell has
+   // been set to hidden and explicitly wants to suspend media. In those cases,
+   // the media would be not visible and we don't want them to continue playing.
+-  bool shouldSuspend = !IsActive() || ShouldBeSuspendedByInactiveDocShell();
++  bool shouldSuspend = IsHidden() || ShouldBeSuspendedByInactiveDocShell();
+   SuspendOrResumeElement(shouldSuspend);
  
    // If the owning document has become inactive we should shutdown the CDM.
-   if (!OwnerDoc()->IsCurrentActiveDocument() && mMediaKeys) {
-@@ -6869,7 +6869,7 @@ void HTMLMediaElement::NotifyAudioPlaybackChanged(
- 
- bool HTMLMediaElement::ShouldElementBePaused() {
-   // Bfcached page or inactive document.
--  if (!IsActive()) {
-+  if (IsHidden()) {
-     return true;
-   }
- 
 diff --git a/dom/media/MediaDecoder.cpp b/dom/media/MediaDecoder.cpp
-index 9cc84e1e371b..8b1c9603c1d8 100644
+index 581a402102b8..ac4576cd5fa2 100644
 --- a/dom/media/MediaDecoder.cpp
 +++ b/dom/media/MediaDecoder.cpp
-@@ -29,6 +29,10 @@
- #include "nsIObserver.h"
+@@ -33,6 +33,10 @@
+ #include "nsIMemoryReporter.h"
  #include "nsPrintfCString.h"
  #include "nsTArray.h"
 +#include "nsThreadUtils.h"
@@ -76,7 +67,7 @@ index 9cc84e1e371b..8b1c9603c1d8 100644
  #include <algorithm>
  #include <limits>
  
-@@ -77,6 +81,14 @@ static const char* ToPlayStateStr(MediaDecoder::PlayState aState) {
+@@ -74,6 +78,14 @@ static const char* ToPlayStateStr(MediaDecoder::PlayState aState) {
    return "UNKNOWN";
  }
  
@@ -91,7 +82,7 @@ index 9cc84e1e371b..8b1c9603c1d8 100644
  class MediaMemoryTracker : public nsIMemoryReporter {
    virtual ~MediaMemoryTracker();
  
-@@ -564,6 +576,11 @@ void MediaDecoder::MetadataLoaded(
+@@ -684,6 +696,11 @@ void MediaDecoder::MetadataLoaded(
        aInfo->mAudio.mChannels, aInfo->mAudio.mRate, aInfo->HasAudio(),
        aInfo->HasVideo());
  
@@ -103,9 +94,9 @@ index 9cc84e1e371b..8b1c9603c1d8 100644
    mMediaSeekable = aInfo->mMediaSeekable;
    mMediaSeekableOnlyInBufferedRanges =
        aInfo->mMediaSeekableOnlyInBufferedRanges;
-@@ -754,6 +771,16 @@ void MediaDecoder::ChangeState(PlayState aState) {
+@@ -863,6 +880,16 @@ void MediaDecoder::ChangeState(PlayState aState) {
+   MOZ_ASSERT(NS_IsMainThread());
    MOZ_ASSERT(!IsShutdown(), "SHUTDOWN is the final state.");
-   AbstractThread::AutoEnter context(AbstractMainThread());
  
 +  if (mPlayState != aState) {
 +    nsString data;
@@ -121,5 +112,5 @@ index 9cc84e1e371b..8b1c9603c1d8 100644
      mNextState = PLAY_STATE_PAUSED;
    }
 -- 
-2.26.2
+2.17.1
 
