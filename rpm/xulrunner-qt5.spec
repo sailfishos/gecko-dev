@@ -117,8 +117,8 @@ Patch61:    0061-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
 Patch62:    0062-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
 Patch63:    0063-sailfishos-contentaction-Fix-content-action-integrat.patch
 Patch64:    0064-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
+Patch65:    0065-sailfishos-configuration-Configure-application-as-mo.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
 #Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
 #Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
 #Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
