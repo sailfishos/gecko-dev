@@ -174,6 +174,13 @@ NS_IMETHODIMP WebBrowserChrome::SetChromeFlags(uint32_t aChromeFlags)
   return NS_OK;
 }
 
+NS_IMETHODIMP WebBrowserChrome::DestroyBrowserWindow()
+{
+  LOGT();
+  mListener->OnWindowCloseRequested();
+  return NS_OK;
+}
+
 NS_IMETHODIMP WebBrowserChrome::ShowAsModal()
 {
   LOGNI();
