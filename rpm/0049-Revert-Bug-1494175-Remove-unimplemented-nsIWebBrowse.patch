@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 1 Oct 2021 13:52:17 +0300
+Subject: [PATCH] Revert "Bug 1494175 - Remove unimplemented
+ nsIWebBrowserChrome methods. r=qdot"
+
+This partially reverts commit 578ac09f67274b520071a3ef0052405cde0ef9f0.
+
+Sailfish OS embedding requires destroyBrowserWindow to handle
+window.close (OnWindowCloseRequested).
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ docshell/base/nsDocShellTreeOwner.cpp              | 5 +----
+ dom/ipc/BrowserChild.cpp                           | 8 ++++++++
+ toolkit/components/browser/nsIWebBrowserChrome.idl | 6 ++++++
+ xpfe/appshell/nsAppShellService.cpp                | 7 +++++++
+ xpfe/appshell/nsContentTreeOwner.cpp               | 5 +++++
+ 5 files changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/docshell/base/nsDocShellTreeOwner.cpp b/docshell/base/nsDocShellTreeOwner.cpp
+index 0e6e11605b24..cfd4f035ff53 100644
+--- a/docshell/base/nsDocShellTreeOwner.cpp
++++ b/docshell/base/nsDocShellTreeOwner.cpp
+@@ -447,10 +447,7 @@ NS_IMETHODIMP
+ nsDocShellTreeOwner::Destroy() {
+   nsCOMPtr<nsIWebBrowserChrome> webBrowserChrome = GetWebBrowserChrome();
+   if (webBrowserChrome) {
+-    // XXX: this is weird, but we used to call a method here
+-    // (webBrowserChrome->DestroyBrowserWindow()) whose implementations all
+-    // failed like this, so...
+-    return NS_ERROR_NOT_IMPLEMENTED;
++    return webBrowserChrome->DestroyBrowserWindow();
+   }
+ 
+   return NS_ERROR_NULL_POINTER;
+diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
+index 2b17323d8a93..b1e658a2dc87 100644
+--- a/dom/ipc/BrowserChild.cpp
++++ b/dom/ipc/BrowserChild.cpp
+@@ -652,6 +652,14 @@ BrowserChild::SetChromeFlags(uint32_t aChromeFlags) {
+   return NS_ERROR_NOT_IMPLEMENTED;
+ }
+ 
++NS_IMETHODIMP
++BrowserChild::DestroyBrowserWindow()
++{
++  NS_WARNING("BrowserChild::DestroyBrowserWindow not supported in BrowserChild");
++
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
+ NS_IMETHODIMP
+ BrowserChild::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
+                                 int32_t aShellItemWidth,
+diff --git a/toolkit/components/browser/nsIWebBrowserChrome.idl b/toolkit/components/browser/nsIWebBrowserChrome.idl
+index 1e9bea1655af..b4cbfc32933d 100644
+--- a/toolkit/components/browser/nsIWebBrowserChrome.idl
++++ b/toolkit/components/browser/nsIWebBrowserChrome.idl
+@@ -98,6 +98,12 @@ interface nsIWebBrowserChrome : nsISupports
+      */
+     attribute unsigned long chromeFlags;
+ 
++    /**
++     * Asks the implementer to destroy the window associated with this
++     * WebBrowser object.
++     */
++    void destroyBrowserWindow();
++
+     /**
+      * Shows the window as a modal window.
+      */
+diff --git a/xpfe/appshell/nsAppShellService.cpp b/xpfe/appshell/nsAppShellService.cpp
+index 719684ceb072..cdfaba6b0528 100644
+--- a/xpfe/appshell/nsAppShellService.cpp
++++ b/xpfe/appshell/nsAppShellService.cpp
+@@ -230,6 +230,13 @@ WebBrowserChrome2Stub::SetChromeFlags(uint32_t aChromeFlags) {
+   return NS_ERROR_NOT_IMPLEMENTED;
+ }
+ 
++NS_IMETHODIMP
++WebBrowserChrome2Stub::DestroyBrowserWindow() {
++  MOZ_ASSERT_UNREACHABLE("WebBrowserChrome2Stub::DestroyBrowserWindow is "
++                         "not supported");
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
+ NS_IMETHODIMP
+ WebBrowserChrome2Stub::ShowAsModal() {
+   MOZ_ASSERT_UNREACHABLE("WebBrowserChrome2Stub::ShowAsModal is not supported");
+diff --git a/xpfe/appshell/nsContentTreeOwner.cpp b/xpfe/appshell/nsContentTreeOwner.cpp
+index ee829bec78e5..6e585212ddd6 100644
+--- a/xpfe/appshell/nsContentTreeOwner.cpp
++++ b/xpfe/appshell/nsContentTreeOwner.cpp
+@@ -456,6 +456,11 @@ NS_IMETHODIMP nsContentTreeOwner::IsWindowModal(bool* _retval) {
+   return NS_OK;
+ }
+ 
++NS_IMETHODIMP nsContentTreeOwner::DestroyBrowserWindow() {
++   NS_ERROR("Haven't Implemented this yet");
++   return NS_ERROR_FAILURE;
++}
++
+ //*****************************************************************************
+ // nsContentTreeOwner::nsIBaseWindow
+ //*****************************************************************************
+-- 
+2.31.1
+
