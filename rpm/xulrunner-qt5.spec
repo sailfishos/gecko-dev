@@ -124,6 +124,7 @@ Patch68:    0068-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
 Patch69:    0069-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 Patch70:    0070-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
 Patch71:    0071-sailfishos-gecko-Fix-flipped-FBO-textures-when-rende.patch
+Patch72:    0072-sailfishos-gecko-Do-not-flip-scissor-rects-when-rend.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
@@ -139,7 +140,6 @@ Patch71:    0071-sailfishos-gecko-Fix-flipped-FBO-textures-when-rende.patch
 #Patch68:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch69:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch66 - Patch69 should be checked by Denis
-#Patch70:    0070-Do-not-flip-scissor-rects-when-rendering-to-an-offsc.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
