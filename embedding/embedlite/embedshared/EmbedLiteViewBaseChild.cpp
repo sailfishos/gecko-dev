@@ -1052,16 +1052,43 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleLongTap(const LayoutDe
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString& commit, const nsString& preEdit)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleTextEvent(const nsString &commit,
+                                                                    const nsString &preEdit,
+                                                                    const int32_t &replacementStart,
+                                                                    const int32_t &replacementLength)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   const InputContext& ctx = mWidget->GetInputContext();
 
 #if EMBEDLITE_LOG_SENSITIVE
-  LOGF("ctx.mIMEState.mEnabled:%i, com:%s, pre:%s\n", ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get());
+  LOGF("ctx.mIMEState.mEnabled:%i, com:%s, pre:%s, replStart:%i, replLength:%i\n",
+       ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get(),
+       replacementStart, replacementLength);
 #endif
   NS_ENSURE_TRUE(widget && ctx.mIMEState.mEnabled, IPC_OK());
+
+  if (replacementLength > 0) {
+    nsEventStatus status;
+    WidgetQueryContentEvent selection(true, eQuerySelectedText, widget);
+    widget->DispatchEvent(&selection, status);
+
+    if (selection.mSucceeded) {
+      // Set selection to delete
+      WidgetSelectionEvent selectionEvent(true, eSetSelection, widget);
+      selectionEvent.mOffset = selection.mReply.mOffset + replacementStart;
+      selectionEvent.mLength = replacementLength;
+      selectionEvent.mReversed = false;
+      selectionEvent.mExpandToClusterBoundary = false;
+      widget->DispatchEvent(&selectionEvent, status);
+
+      if (selectionEvent.mSucceeded) {
+        // Delete the selection
+        WidgetContentCommandEvent deleteCommandEvent(true, eContentCommandDelete, widget);
+        widget->DispatchEvent(&deleteCommandEvent, status);
+      }
+    }
+  }
 
   // probably logic here is over engineered, but clean enough
   bool prevIsComposition = mIMEComposing;

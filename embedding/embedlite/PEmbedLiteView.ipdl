@@ -64,7 +64,7 @@ child:
     async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid);
     async HandleLongTap(LayoutDevicePoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
-    async HandleTextEvent(nsString commit, nsString preEdit);
+    async HandleTextEvent(nsString commit, nsString preEdit, int replacementStart, int replacementLength);
     async HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
     async HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);
     async MouseEvent(nsString aType, float aX, float aY,

@@ -31,7 +31,7 @@ interface EmbedLiteViewIface : nsISupports
 {
     void SetDPI(in float dpi);
     void ReceiveInputEvent([const] in InputData aEvent);
-    void TextEvent(in string aComposite, in string aPreEdit);
+    void TextEvent(in string aComposite, in string aPreEdit, in int32_t replacementStart, in int32_t replacementLength);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
     void SendKeyRelease(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
     void MousePress(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
