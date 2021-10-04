@@ -706,11 +706,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetVirtualKeyboardHeight(const i
 {
   LOGT("aHeight:%i", aHeight);
 
-  mVirtualKeyboardHeight = aHeight;
-
-  if (mVirtualKeyboardHeight) {
+  if (aHeight != mVirtualKeyboardHeight) {
+    mVirtualKeyboardHeight = aHeight;
     mHelper->DynamicToolbarMaxHeightChanged(aHeight);
-    ScrollInputFieldIntoView();
+
+    if (mVirtualKeyboardHeight) {
+      ScrollInputFieldIntoView();
+    }
   }
   return IPC_OK();
 }
