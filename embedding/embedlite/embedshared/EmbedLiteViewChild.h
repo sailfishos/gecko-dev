@@ -226,9 +226,11 @@ private:
   void SetDesktopMode(const bool aDesktopMode);
   bool SetDesktopModeInternal(const bool aDesktopMode);
 
+  mozilla::dom::BrowsingContext *GetBrowsingContext() const;
+
   uint32_t mId;
   uint64_t mOuterId;
-  EmbedLiteWindowChild* mWindow; // Not owned
+  EmbedLiteWindowChild *mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   RefPtr<nsWebBrowser> mWebBrowser;
   nsCOMPtr<nsIIdleServiceInternal> mIdleService;
