@@ -227,6 +227,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   return mLayerManager;
 }
 
+// JB#55708
 #if 0
 void
 nsWindow::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
@@ -237,17 +238,6 @@ nsWindow::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, 
   EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
   if (window) {
     window->GetListener()->DrawUnderlay();
-  }
-}
-
-void
-nsWindow::DrawWindowOverlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
-{
-  MOZ_ASSERT(mWindow);
-  Unused << aContext;
-  EmbedLiteWindow* window = EmbedLiteApp::GetInstance()->GetWindowByID(mWindow->GetUniqueID());
-  if (window) {
-    window->GetListener()->DrawOverlay(aRect.ToUnknownRect());
   }
 }
 #endif
