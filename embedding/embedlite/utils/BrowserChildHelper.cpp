@@ -19,6 +19,7 @@
 #include "mozilla/dom/MessageManagerBinding.h"
 #include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/JSActorService.h"
 
 #include "nsNetUtil.h"
 #include "nsIDOMWindowUtils.h"
@@ -260,6 +261,9 @@ BrowserChildHelper::InitBrowserChildHelperMessageManager()
     return false;
   }
   root->SetParentTarget(scope);
+
+  RefPtr<JSActorService> wasvc = JSActorService::GetSingleton();
+  wasvc->RegisterChromeEventTarget(scope);
 
   return true;
 }
