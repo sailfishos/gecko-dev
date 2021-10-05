@@ -103,46 +103,31 @@ Patch47:    0047-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
 Patch48:    0048-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
 Patch49:    0049-Revert-Bug-1494175-Remove-unimplemented-nsIWebBrowse.patch
 Patch50:    0050-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
-#Patch10:    0010-sailfishos-gecko-Remove-PuppetWidget-from-TabChild-i.patch
-#Patch11:    0011-sailfishos-gecko-Make-TabChild-to-work-with-TabChild.patch
-#Patch12:    0012-sailfishos-build-Fix-build-error-with-newer-glibc.patch
-#Patch15:    0015-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
-#Patch17:    0017-sailfishos-gecko-Workaround-for-late-access-message-.patch
-#Patch18:    0018-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
-#Patch19:    0019-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
+Patch51:    0051-sailfishos-gecko-Nullify-delayed-work-timer-after-ca.patch
+Patch52:    0052-sailfishos-gecko-Workaround-for-late-access-message-.patch
+Patch53:    0053-sailfishos-gecko-Limit-surface-area-rather-than-widt.patch
+Patch54:    0054-sailfishos-gecko-Make-TextureImageEGL-hold-a-referen.patch
+Patch55:    0055-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
+Patch56:    0056-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
+Patch57:    0057-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
+Patch58:    0058-sailfishos-gecko-Handle-temporary-directory-similarl.patch
+Patch59:    0059-sailfishos-gecko-Disable-loading-heavier-extensions.patch
+Patch60:    0060-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
+Patch61:    0061-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
+Patch62:    0062-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
+Patch63:    0063-sailfishos-contentaction-Fix-content-action-integrat.patch
+Patch64:    0064-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
+Patch65:    0065-sailfishos-configuration-Configure-application-as-mo.patch
+Patch66:    0066-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
+Patch67:    0067-sailfishos-media-Ensure-audio-continues-when-screen-.patch
+Patch68:    0068-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+Patch69:    0069-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
+Patch70:    0070-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
+Patch71:    0071-sailfishos-gecko-Fix-flipped-FBO-textures-when-rende.patch
+Patch72:    0072-sailfishos-gecko-Do-not-flip-scissor-rects-when-rend.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
-#Patch21:    0021-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
-#Patch22:    0022-sailfishos-gecko-Embedlite-doesn-t-have-prompter-imp.patch
-#Patch24:    0024-sailfishos-gecko-Use-libcontentaction-for-custom-sch.patch
-#Patch25:    0025-sailfishos-gecko-Handle-temporary-directory-similarl.patch
-#Patch26:    0026-sailfishos-gecko-Disable-loading-heavier-extensions.patch
-#Patch28:    0028-sailfishos-gecko-Avoid-rogue-origin-points-when-clip.patch
-#Patch29:    0029-sailfishos-gecko-Allow-render-shaders-to-be-loaded-f.patch
-#Patch31:    0031-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-#Patch33:    0033-sailfishos-gecko-Skip-invalid-WatchId-in-geolocation.patch
-#Patch34:    0034-sailfishos-locale-Get-12-24h-timeformat-setting-from.patch
-#Patch35:    0035-sailfishos-contentaction-Fix-content-action-integrat.patch
-#Patch36:    0036-sailfishos-qt-Initialize-FreeType-library-properly.-.patch
-#Patch37:    0037-sailfishos-disable-TLS-1.0-and-1.1.patch
-#Patch38:    0038-sailfishos-gecko-Use-registered-IHistory-service-imp.patch
-#Patch39:    0039-sailfishos-gecko-Suppress-LoginManagerContent.jsm-ow.patch
-#Patch40:    0040-sailfishos-configuration-Configure-application-as-mo.patch
-#Patch41:    0041-sailfishos-gecko-Include-XUL-videocontrols-reflow-co.patch
-#Patch42:    0042-sailfishos-gecko-Adjust-audio-control-dimensions.-Co.patch
-#Patch43:    0043-sailfishos-gecko-Prioritize-loading-of-extension-ver.patch
-#Patch44:    0044-sailfishos-media-Ensure-audio-continues-when-screen-.patch
-#Patch45:    0045-sailfishos-backport--Make-MOZSIGNALTRAMPOLINE-Andro-.patch
-#Patch47:    0047-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
-#Patch48:    0048-sailfishos-backport-Enable-MOZ_GECKO_PROFILER-on-And.patch
-#Patch49:    0049-sailfishos-backport-Implement-DWARF-stack-walker-for.patch
-#Patch50:    0050-sailfishos-gecko-Make-button-hit-testing-similar-to-.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch
-#Patch54:    0054-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
-#Patch55:    0055-sailfishos-gecko-Enable-event.srcElement-on-all-chan.patch
-#Patch56:    0056-sailfishos-gecko-Hide-accessible-carets-also-with-to.patch
-#Patch57:    0057-Bug-1449268-Treat-document-level-touch-event-listene.patch
-#Patch58:    0058-sailfishos-gecko-Log-bad-tex-upload-calls-and-errors.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
 #Patch60:    sha1: f7510599feade696486db448d1bfec613871adc2
 #Patch61:    sha1: f7510599feade696486db448d1bfec613871adc2
@@ -150,13 +135,11 @@ Patch50:    0050-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
 #Patch60 - Patch62 are not needed as issue was fixed in mozilla62 (https://bugzilla.mozilla.org/show_bug.cgi?id=1467722)
 #Patch64:    sha1: 2a51338a5a287eb0e505edb6ec59912ad7eccb33
 #Patch64:    Is not needed as the issue was fixed in mozilla72 (https://bugzilla.mozilla.org/show_bug.cgi?id=1586144)
-#Patch65:    0065-Fix-flipped-FBO-textures-when-rendering-to-an-offscr.patch
 #Patch66:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch67:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch68:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch69:    sha1: d5d87241408eec6071c0a21412d800b2b02c0554
 #Patch66 - Patch69 should be checked by Denis
-#Patch70:    0070-Do-not-flip-scissor-rects-when-rendering-to-an-offsc.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static

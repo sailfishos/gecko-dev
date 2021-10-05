@@ -14,10 +14,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 11 deletions(-)
 
 diff --git a/toolkit/profile/nsProfileLock.cpp b/toolkit/profile/nsProfileLock.cpp
-index 3e6750f4250c..7fce74a80fa9 100644
+index 25c4f5a79e56..d7f807ad3b32 100644
 --- a/toolkit/profile/nsProfileLock.cpp
 +++ b/toolkit/profile/nsProfileLock.cpp
-@@ -289,18 +289,8 @@ nsresult nsProfileLock::LockWithSymlink(nsIFile *aLockFile,
+@@ -292,18 +292,8 @@ nsresult nsProfileLock::LockWithSymlink(nsIFile* aLockFile,
    struct in_addr inaddr;
    inaddr.s_addr = htonl(INADDR_LOOPBACK);
  
@@ -34,9 +34,9 @@ index 3e6750f4250c..7fce74a80fa9 100644
 -      mozilla::Smprintf("%s:%s%lu", inet_ntoa(inaddr),
 -                        aHaveFcntlLock ? "+" : "", (unsigned long)getpid());
 +      mozilla::Smprintf("127.0.0.1:%s%lu", aHaveFcntlLock ? "+" : "", (unsigned long)getpid());
-   const char *fileName = lockFilePath.get();
+   const char* fileName = lockFilePath.get();
    int symlink_rv, symlink_errno = 0, tries = 0;
  
 -- 
-2.26.2
+2.17.1
 

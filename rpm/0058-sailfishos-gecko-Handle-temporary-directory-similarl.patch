@@ -10,10 +10,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
-index 653183bb10e7..afc7b9c62627 100644
+index 4ff7ed2e27cc..afddf82cc911 100644
 --- a/uriloader/exthandler/nsExternalHelperAppService.cpp
 +++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
-@@ -272,7 +272,7 @@ static bool GetFilenameAndExtensionFromChannel(nsIChannel* aChannel,
+@@ -266,7 +266,7 @@ static bool GetFilenameAndExtensionFromChannel(nsIChannel* aChannel,
  static nsresult GetDownloadDirectory(nsIFile** _directory,
                                       bool aSkipChecks = false) {
    nsCOMPtr<nsIFile> dir;
@@ -22,7 +22,7 @@ index 653183bb10e7..afc7b9c62627 100644
    // On OS X, we first try to get the users download location, if it's set.
    switch (Preferences::GetInt(NS_PREF_DOWNLOAD_FOLDERLIST, -1)) {
      case NS_FOLDER_VALUE_DESKTOP:
-@@ -306,8 +306,14 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
+@@ -300,8 +300,14 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
    }
  
    if (!dir) {

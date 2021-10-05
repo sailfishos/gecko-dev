@@ -125,9 +125,9 @@ index ab0cff86fafc..9c9dfd9ff23c 100644
  
 +SDK_LIBRARY = True
 +
- if CONFIG['OS_TARGET'] == 'Android':
-     LDFLAGS += ['-Wl,--version-script,%s/mozglue.ver' % SRCDIR]
-     SOURCES += [
+ FORCE_STATIC_LIB = True
+ STATIC_LIBRARY_NAME = 'mozglue'
+
 diff --git a/python/mozbuild/mozbuild/backend/recursivemake.py b/python/mozbuild/mozbuild/backend/recursivemake.py
 index e3fc8fe24239..817537e00178 100644
 --- a/python/mozbuild/mozbuild/backend/recursivemake.py
@@ -446,8 +446,8 @@ index 1c6c83d1b284..e7c590e40e5a 100644
  
 +SDK_LIBRARY = True
  FORCE_STATIC_LIB = True
- 
- if CONFIG['CC_TYPE'] == 'clang-cl':
+ STATIC_LIBRARY_NAME = 'xpcomglue'
+
 diff --git a/xpcom/idl-parser/xpidl/moz.build b/xpcom/idl-parser/xpidl/moz.build
 index afe0a9e53e2d..7a92241abe72 100644
 --- a/xpcom/idl-parser/xpidl/moz.build

@@ -9,20 +9,20 @@ Subject: [PATCH] [sailfishos][gecko] Prioritize loading of extension versions
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
-index 54ffeb0de021..3b4c30556b14 100644
+index efce908930a5..1fb02df40ece 100644
 --- a/gfx/gl/GLContext.cpp
 +++ b/gfx/gl/GLContext.cpp
-@@ -971,8 +971,8 @@ void GLContext::LoadMoreSymbols(const char* prefix, bool trygl) {
-   if (IsSupported(GLFeature::robustness)) {
+@@ -511,8 +511,8 @@ bool GLContext::InitImpl() {
+   {
      const SymLoadStruct symbols[] = {
          {(PRFuncPtr*)&mSymbols.fGetGraphicsResetStatus,
--         {"GetGraphicsResetStatus", "GetGraphicsResetStatusARB",
--          "GetGraphicsResetStatusKHR", "GetGraphicsResetStatusEXT", nullptr}},
-+         {"GetGraphicsResetStatusEXT", "GetGraphicsResetStatusARB",
-+          "GetGraphicsResetStatusKHR", "GetGraphicsResetStatus", nullptr}},
+-         {{"glGetGraphicsResetStatus", "glGetGraphicsResetStatusARB",
+-           "glGetGraphicsResetStatusKHR", "glGetGraphicsResetStatusEXT"}}},
++         {{"glGetGraphicsResetStatusEXT", "glGetGraphicsResetStatusARB",
++           "glGetGraphicsResetStatusKHR", "glGetGraphicsResetStatus"}}},
          END_SYMBOLS};
-     if (fnLoadForFeature(symbols, GLFeature::robustness)) {
-       const auto status = mSymbols.fGetGraphicsResetStatus();
+     (void)fnLoadSymbols(symbols, nullptr);
+ 
 -- 
-2.26.2
+2.17.1
 

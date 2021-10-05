@@ -9,17 +9,17 @@ aligns a bit the build system with Android FF.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/base/moz.build                                  | 4 +++-
- dom/bindings/moz.build                              | 4 +++-
- dom/webidl/moz.build                                | 6 ++++--
- toolkit/themes/moz.build                            | 4 ++--
- 6 files changed, 14 insertions(+), 7 deletions(-)
+ dom/base/moz.build       | 4 +++-
+ dom/bindings/moz.build   | 4 +++-
+ dom/webidl/moz.build     | 4 +++-
+ toolkit/themes/moz.build | 4 ++--
+ 4 files changed, 11 insertions(+), 5 deletions(-)
 
 diff --git a/dom/base/moz.build b/dom/base/moz.build
-index f56ca8883a73..da1809171ac7 100644
+index a9966c01a097..c4c61e41c0d5 100644
 --- a/dom/base/moz.build
 +++ b/dom/base/moz.build
-@@ -468,7 +468,9 @@ include('/ipc/chromium/chromium-config.mozbuild')
+@@ -543,7 +543,9 @@ include('/ipc/chromium/chromium-config.mozbuild')
  
  FINAL_LIBRARY = 'xul'
  
@@ -31,10 +31,10 @@ index f56ca8883a73..da1809171ac7 100644
  
  if CONFIG['MOZ_X11']:
 diff --git a/dom/bindings/moz.build b/dom/bindings/moz.build
-index dfe45219913b..cf9fbcee323d 100644
+index e4a8933fb97d..670bc1689dd2 100644
 --- a/dom/bindings/moz.build
 +++ b/dom/bindings/moz.build
-@@ -157,7 +157,9 @@ SPHINX_PYTHON_PACKAGE_DIRS += ['mozwebidlcodegen']
+@@ -160,7 +160,9 @@ SPHINX_PYTHON_PACKAGE_DIRS += ['mozwebidlcodegen']
  with Files('mozwebidlcodegen/**.py'):
      SCHEDULES.inclusive += ['docs']
  
@@ -46,36 +46,30 @@ index dfe45219913b..cf9fbcee323d 100644
      DEFINES['HAVE_SIDEBAR'] = True
  
 diff --git a/dom/webidl/moz.build b/dom/webidl/moz.build
-index afe307c9cd64..145a4712b074 100644
+index f3927a59a48f..ffeea05dee56 100644
 --- a/dom/webidl/moz.build
 +++ b/dom/webidl/moz.build
-@@ -1092,12 +1092,14 @@ if CONFIG['MOZ_WEBSPEECH']:
+@@ -1124,7 +1124,9 @@ if CONFIG['MOZ_WEBSPEECH']:
          'SpeechSynthesisEvent.webidl',
      ]
  
--if CONFIG['MOZ_BUILD_APP'] in ['browser', 'xulrunner'] or CONFIG['MOZ_SUITE']:
+-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'comm/mail', 'mobile/android', 'xulrunner']:
 +app = CONFIG['MOZ_BUILD_APP']
 +
-+if app in ['browser', 'xulrunner'] or CONFIG['MOZ_SUITE']:
-     WEBIDL_FILES += [
-         'BrowserFeedWriter.webidl',
-     ]
- 
--if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
-+if app in ['browser', 'xulrunner'] or app.startswith('mobile/'):
++if app in ['browser', 'comm/mail', 'xulrunner'] or app.startswith('mobile/'):
      WEBIDL_FILES += [
          'External.webidl',
      ]
 diff --git a/toolkit/themes/moz.build b/toolkit/themes/moz.build
-index 468ea128786f..d0871da7c8f5 100644
+index f492b154b211..b8f7e227404f 100644
 --- a/toolkit/themes/moz.build
 +++ b/toolkit/themes/moz.build
 @@ -20,9 +20,9 @@ app = CONFIG['MOZ_BUILD_APP']
  
  if toolkit == 'cocoa':
      DIRS += ['osx']
--elif toolkit in ('gtk3', 'qt'):
-+elif toolkit in ('gtk3'):
+-elif toolkit in ('gtk', 'qt'):
++elif toolkit in ('gtk'):
      DIRS += ['linux']
 -elif app == 'mobile/android':
 +elif app.startswith('mobile/'):
@@ -83,5 +77,5 @@ index 468ea128786f..d0871da7c8f5 100644
  else:
      DIRS += ['windows']
 -- 
-2.26.2
+2.17.1
 

@@ -25,10 +25,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/gl/TextureImageEGL.h b/gfx/gl/TextureImageEGL.h
-index 31e9170452f2..3643a1d984e1 100644
+index 977e110efafa..540f979b1303 100644
 --- a/gfx/gl/TextureImageEGL.h
 +++ b/gfx/gl/TextureImageEGL.h
-@@ -49,7 +49,7 @@ class TextureImageEGL final : public TextureImage {
+@@ -51,7 +51,7 @@ class TextureImageEGL final : public TextureImage {
   protected:
    typedef gfxImageFormat ImageFormat;
  

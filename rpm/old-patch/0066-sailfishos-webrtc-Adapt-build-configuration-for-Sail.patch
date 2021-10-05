@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Denis Grigorev <d.grigorev@omprussia.ru>
+Date: Fri, 21 May 2021 22:46:28 +0300
+Subject: [PATCH] [sailfishos][webrtc] Adapt build configuration for
+ SailfishOS. JB#53756
+
+Signed-off-by: Denis Grigorev <d.grigorev@omprussia.ru>
+---
+ .../webrtc/trunk/build/config/BUILDCONFIG.gn  | 19 +++++++++++++++++--
+ media/webrtc/trunk/build/config/ui.gni        |  2 +-
+ media/webrtc/trunk/webrtc/BUILD.gn            |  4 +++-
+ media/webrtc/trunk/webrtc/modules/BUILD.gn    |  3 ++-
+ .../system_wrappers/source/cpu_features.cc    |  2 +-
+ 5 files changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/media/webrtc/trunk/build/config/BUILDCONFIG.gn b/media/webrtc/trunk/build/config/BUILDCONFIG.gn
+index 38771eda5b53..b9b5e0333eae 100644
+--- a/media/webrtc/trunk/build/config/BUILDCONFIG.gn
++++ b/media/webrtc/trunk/build/config/BUILDCONFIG.gn
+@@ -127,6 +127,11 @@ declare_args() {
+   build_with_mozilla = true
+ }
+ 
++declare_args() {
++  # Enable special configuration for SFOS
++  is_sfos = true
++}
++
+ declare_args() {
+   # Set to enable the official build level of optimization. This has nothing
+   # to do with branding, but enables an additional level of optimization above
+@@ -136,7 +141,7 @@ declare_args() {
+   is_official_build = false
+ 
+   # Whether we're a traditional desktop unix.
+-  is_desktop_linux = current_os == "linux"
++  is_desktop_linux = (current_os == "linux") && !is_sfos
+ 
+   # Set to true when compiling with the Clang compiler. Typically this is used
+   # to configure warnings.
+@@ -144,7 +149,8 @@ declare_args() {
+       current_os == "mac" || current_os == "ios" || current_os == "chromeos" ||
+       current_os == "fuchsia" || current_os == "freebsd" || current_os == "openbsd" ||
+       (current_os == "linux" && current_cpu != "s390x" &&
+-       current_cpu != "s390" && current_cpu != "ppc64" && current_cpu != "ppc")
++       current_cpu != "s390" && current_cpu != "ppc64" && current_cpu != "ppc" &&
++       !is_sfos)
+ 
+   # Allows the path to a custom target toolchain to be injected as a single
+   # argument, and set as the default toolchain.
+@@ -301,6 +307,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = false
+   is_win = true
++  is_sfos = false
+ } else if (current_os == "mac") {
+   is_android = false
+   is_chromeos = false
+@@ -311,6 +318,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "android") {
+   is_android = true
+   is_chromeos = false
+@@ -321,6 +329,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "chromeos") {
+   is_android = false
+   is_chromeos = true
+@@ -331,6 +340,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "nacl") {
+   # current_os == "nacl" will be passed by the nacl toolchain definition.
+   # It is not set by default or on the command line. We treat is as a
+@@ -344,6 +354,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = true
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "fuchsia") {
+   is_android = false
+   is_chromeos = false
+@@ -354,6 +365,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "ios") {
+   is_android = false
+   is_chromeos = false
+@@ -364,6 +376,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ } else if (current_os == "linux") {
+   is_android = false
+   is_chromeos = false
+@@ -374,6 +387,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = true
+ } else {
+   # AIX, BSDs, Solaris, etc.
+   is_android = false
+@@ -385,6 +399,7 @@ if (current_os == "win" || current_os == "winrt_81" ||
+   is_nacl = false
+   is_posix = true
+   is_win = false
++  is_sfos = false
+ }
+ 
+ # A list of BSD systems maintained by community
+diff --git a/media/webrtc/trunk/build/config/ui.gni b/media/webrtc/trunk/build/config/ui.gni
+index f9e551549825..481149b48427 100644
+--- a/media/webrtc/trunk/build/config/ui.gni
++++ b/media/webrtc/trunk/build/config/ui.gni
+@@ -48,7 +48,7 @@ declare_args() {
+ # These variables depend on other variables and can't be set externally.
+ 
+ # Indicates if the UI toolkit depends on X11.
+-use_x11 = (is_linux || is_bsd) && !use_ozone
++use_x11 = (is_linux || is_bsd) && !use_ozone && !is_sfos
+ 
+ # Turn off glib if Ozone is enabled.
+ if (use_ozone) {
+diff --git a/media/webrtc/trunk/webrtc/BUILD.gn b/media/webrtc/trunk/webrtc/BUILD.gn
+index 567021cd5cc4..0d1a78ddf88f 100644
+--- a/media/webrtc/trunk/webrtc/BUILD.gn
++++ b/media/webrtc/trunk/webrtc/BUILD.gn
+@@ -231,7 +231,9 @@ config("common_config") {
+ }
+ 
+ config("common_objc") {
+-  libs = [ "Foundation.framework" ]
++  if (is_ios) {
++    libs = [ "Foundation.framework" ]
++  }
+ }
+ 
+ if (!build_with_chromium) {
+diff --git a/media/webrtc/trunk/webrtc/modules/BUILD.gn b/media/webrtc/trunk/webrtc/modules/BUILD.gn
+index eb6cecde1339..8bed6e63e53f 100644
+--- a/media/webrtc/trunk/webrtc/modules/BUILD.gn
++++ b/media/webrtc/trunk/webrtc/modules/BUILD.gn
+@@ -11,7 +11,8 @@ import("audio_coding/audio_coding.gni")
+ 
+ declare_args() {
+   # Desktop capturer is supported only on Windows, OSX and Linux.
+-  rtc_desktop_capture_supported = is_win || is_mac || is_linux || is_bsd
++  rtc_desktop_capture_supported = (is_win || is_mac || is_linux || is_bsd)
++                                  && !is_sfos
+ }
+ 
+ group("modules") {
+diff --git a/media/webrtc/trunk/webrtc/system_wrappers/source/cpu_features.cc b/media/webrtc/trunk/webrtc/system_wrappers/source/cpu_features.cc
+index 99736edfde49..ceb0bb5c7f2f 100644
+--- a/media/webrtc/trunk/webrtc/system_wrappers/source/cpu_features.cc
++++ b/media/webrtc/trunk/webrtc/system_wrappers/source/cpu_features.cc
+@@ -67,7 +67,7 @@ static int GetCPUInfo(CPUFeature feature) {
+   return 0;
+ }
+ 
+-#if !defined(ANDROID)
++#if !defined(ANDROID) && !defined(WEBRTC_LINUX)
+ #ifdef WEBRTC_ARCH_ARM_V7
+ uint64_t WebRtc_GetCPUFeaturesARM(void) {
+   return kCPUFeatureARMv7
+-- 
+2.17.1
+

@@ -16,40 +16,27 @@ GSetting schemas.
 Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- build/moz.configure/old.configure             |  1 +
- .../embedlite/config/mozconfig.merqtxulrunner |  1 +
- intl/locale/gtk/OSPreferences_gtk.cpp         | 40 +++++++++++++++++++
- intl/locale/gtk/moz.build                     |  1 +
- old-configure.in                              | 21 ++++++++++
- toolkit/library/moz.build                     |  3 ++
- 6 files changed, 67 insertions(+)
+ build/moz.configure/old.configure     |  1 +
+ intl/locale/gtk/OSPreferences_gtk.cpp | 40 +++++++++++++++++++++++++++
+ intl/locale/gtk/moz.build             |  1 +
+ old-configure.in                      | 21 ++++++++++++++
+ toolkit/library/moz.build             |  3 ++
+ 5 files changed, 66 insertions(+)
 
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
-index 403ebc479d18..e24df1e70dfe 100644
+index 1d254d89c40e..c8c0535fe253 100644
 --- a/build/moz.configure/old.configure
 +++ b/build/moz.configure/old.configure
-@@ -177,6 +177,7 @@ def old_configure_options(*options):
-     '--enable-cpp-rtti',
+@@ -212,6 +212,7 @@ def old_configure_options(*options):
+     '--datadir',
      '--enable-crashreporter',
      '--enable-dbus',
 +    '--enable-dconf',
      '--enable-debug-js-modules',
-     '--enable-directshow',
-     '--enable-dtrace',
-diff --git a/embedding/embedlite/config/mozconfig.merqtxulrunner b/embedding/embedlite/config/mozconfig.merqtxulrunner
-index 06a016570bbc..b759f42eb111 100644
---- a/embedding/embedlite/config/mozconfig.merqtxulrunner
-+++ b/embedding/embedlite/config/mozconfig.merqtxulrunner
-@@ -31,6 +31,7 @@ ac_add_options --enable-mobile-optimize
- ac_add_options --enable-debug-symbols="-gdwarf-4"
- ac_add_options --enable-cpp-rtti
- ac_add_options --enable-skia
-+ac_add_options --enable-dconf
- ac_add_options --disable-dbus
- ac_add_options --disable-updater
- ac_add_options --disable-gamepad
+     '--enable-dump-painting',
+     '--enable-extensions',
 diff --git a/intl/locale/gtk/OSPreferences_gtk.cpp b/intl/locale/gtk/OSPreferences_gtk.cpp
-index c1ee5b6476b1..64fb443079a9 100644
+index 0e841a7cd097..2198c6d73c11 100644
 --- a/intl/locale/gtk/OSPreferences_gtk.cpp
 +++ b/intl/locale/gtk/OSPreferences_gtk.cpp
 @@ -5,6 +5,18 @@
@@ -71,7 +58,7 @@ index c1ee5b6476b1..64fb443079a9 100644
  #include "OSPreferences.h"
  #include "dlfcn.h"
  #include "glib.h"
-@@ -43,6 +55,29 @@ bool OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList) {
+@@ -45,6 +57,29 @@ bool OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList) {
    return false;
  }
  
@@ -101,7 +88,7 @@ index c1ee5b6476b1..64fb443079a9 100644
  /*
   * This looks up into gtk settings for hourCycle format.
   *
-@@ -63,6 +98,11 @@ static get_value_fn_t FindGetValueFunction() {
+@@ -65,6 +100,11 @@ static get_value_fn_t FindGetValueFunction() {
  static int HourCycle() {
    int rval = 0;
  
@@ -126,10 +113,10 @@ index df590b3cd939..126e7910563f 100644
  FINAL_LIBRARY = 'xul'
  
 diff --git a/old-configure.in b/old-configure.in
-index f08d51c34942..5f0b6a1ecd6e 100644
+index a86a2ac62edb..514e49966909 100644
 --- a/old-configure.in
 +++ b/old-configure.in
-@@ -2480,6 +2480,27 @@ then
+@@ -1930,6 +1930,27 @@ then
  fi
  AC_SUBST(MOZ_ENABLE_DBUS)
  
@@ -158,19 +145,19 @@ index f08d51c34942..5f0b6a1ecd6e 100644
  dnl = Whether to exclude hyphenations files in the build
  dnl =========================================================
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index 2410081cb05c..74bc8676ea4d 100644
+index e711d799dfec..72c6e6b8ff82 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
-@@ -268,6 +268,9 @@ if CONFIG['OS_ARCH'] == 'OpenBSD':
+@@ -270,6 +270,9 @@ if CONFIG['OS_ARCH'] == 'OpenBSD':
  if CONFIG['MOZ_ENABLE_DBUS']:
      OS_LIBS += CONFIG['MOZ_DBUS_GLIB_LIBS']
  
 +if CONFIG['MOZ_ENABLE_DCONF']:
 +    OS_LIBS += CONFIG['MOZ_DCONF_LIBS']
 +
- if 'gtk' in CONFIG['MOZ_WIDGET_TOOLKIT']:
-     if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk3':
-         OS_LIBS += [l for l in CONFIG['TK_LIBS']
+ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+     OS_LIBS += [l for l in CONFIG['TK_LIBS']
+         if l not in ('-lgtk-3', '-lgdk-3')]
 -- 
 2.26.2
 

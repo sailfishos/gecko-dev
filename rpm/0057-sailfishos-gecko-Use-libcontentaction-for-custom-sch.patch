@@ -15,10 +15,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  6 files changed, 32 insertions(+), 7 deletions(-)
 
 diff --git a/old-configure.in b/old-configure.in
-index ae16f305943c..f08d51c34942 100644
+index 6731b2c0d525..a86a2ac62edb 100644
 --- a/old-configure.in
 +++ b/old-configure.in
-@@ -2320,11 +2320,13 @@ then
+@@ -1811,11 +1811,13 @@ then
      fi
  
      MOZ_ENABLE_CONTENTACTION=
@@ -61,7 +61,7 @@ index f372d8735e0a..fa35109fa37d 100644
    nsCString mType;
    nsString mDetailedDescription;
 diff --git a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
-index 807583a57d12..786b1f7b79a3 100644
+index c2031408b5c1..cdac3c7f397a 100644
 --- a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
 +++ b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
 @@ -5,8 +5,8 @@
@@ -75,7 +75,7 @@ index 807583a57d12..786b1f7b79a3 100644
  #include "nsContentHandlerApp.h"
  #endif
  #endif
-@@ -74,6 +74,17 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile *aFile) {
+@@ -73,6 +73,17 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile* aFile) {
    nsAutoCString nativePath;
    aFile->GetNativePath(nativePath);
  
@@ -94,7 +94,7 @@ index 807583a57d12..786b1f7b79a3 100644
    if (!giovfs) {
      return NS_ERROR_FAILURE;
 diff --git a/uriloader/exthandler/unix/nsOSHelperAppService.cpp b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
-index 65c95b8fe4c5..d5b318f12217 100644
+index 65ddc7d20237..ce10fa5f9a5e 100644
 --- a/uriloader/exthandler/unix/nsOSHelperAppService.cpp
 +++ b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
 @@ -7,6 +7,11 @@
@@ -110,28 +110,25 @@ index 65c95b8fe4c5..d5b318f12217 100644
  #include "nsMIMEInfoUnix.h"
  #ifdef MOZ_WIDGET_GTK
 diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
-index 7357ded22996..3eea8dafe77c 100644
+index a165b491bc56..d8f5bc6ea901 100644
 --- a/xpcom/io/moz.build
 +++ b/xpcom/io/moz.build
-@@ -144,6 +144,8 @@ LOCAL_INCLUDES += [
+@@ -151,3 +151,5 @@ LOCAL_INCLUDES += [
+     '!..',
      '../build',
  ]
- 
-+CXXFLAGS += CONFIG['TK_CFLAGS']
 +
- if CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
-     # This is intended as a temporary hack to support building with VS2015.
-     # '_snwprintf' : format string '%s' requires an argument of type 'wchar_t *',
++CXXFLAGS += CONFIG['TK_CFLAGS']
 diff --git a/xpcom/io/nsLocalFileUnix.cpp b/xpcom/io/nsLocalFileUnix.cpp
-index 17237c6422f4..d0fdfb14b33b 100644
+index 528c74ff4fdd..bf331def55e7 100644
 --- a/xpcom/io/nsLocalFileUnix.cpp
 +++ b/xpcom/io/nsLocalFileUnix.cpp
-@@ -69,6 +69,10 @@ static nsresult MacErrorMapper(OSErr inErr);
- #include <linux/magic.h>
+@@ -68,6 +68,10 @@ static nsresult MacErrorMapper(OSErr inErr);
+ #  include <linux/magic.h>
  #endif
  
 +#ifdef MOZ_ENABLE_CONTENTACTION
-+#include <contentaction5/contentaction.h>
++#  include <contentaction5/contentaction.h>
 +#endif
 +
  #include "nsNativeCharsetUtils.h"
