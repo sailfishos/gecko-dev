@@ -42,6 +42,7 @@ private:
   bool mHandlingMessages;
 };
 
+// 3960150c-6e89-11e2-90b3-631813f021
 #define NS_EMBED_LITE_APP_CONTRACTID "@mozilla.org/embedlite-app-service;1"
 #define NS_EMBED_LITE_APP_SERVICE_CLASSNAME "EmbedLiteApp Component"
 #define NS_EMBED_LITE_APP_SERVICE_CID \

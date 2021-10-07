@@ -36,6 +36,7 @@ private:
     bool mActive;
 };
 
+// b27ca13c-b6d5-11e2-b8c8-1b7d857709
 #define NS_EMBED_CLIPBOARD_SERVICE_CID \
 { 0xb27ca13c, \
   0xb6d5, \
