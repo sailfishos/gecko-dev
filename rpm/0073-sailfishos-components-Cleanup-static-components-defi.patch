@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Sun, 10 Oct 2021 17:45:35 +0300
+Subject: [PATCH] [sailfishos][components] Cleanup static components
+ definitions. JB#55835 OMP#JOLLA-433
+
+[sailfishos][components] Cleanup app-info from xre/components.conf. JB#55835 OMP#JOLLA-433
+---
+ toolkit/xre/components.conf | 10 ----------
+ 1 file changed, 10 deletions(-)
+
+diff --git a/toolkit/xre/components.conf b/toolkit/xre/components.conf
+index d189ba24f0b9..4f5b3ee20e75 100644
+--- a/toolkit/xre/components.conf
++++ b/toolkit/xre/components.conf
+@@ -10,16 +10,6 @@ else:
+     crash_reporter = []
+ 
+ Classes = [
+-    {
+-        'cid': '{95d89e3e-a169-41a3-8e56-719978e15b12}',
+-        'contract_ids': [
+-            '@mozilla.org/xre/app-info;1',
+-            '@mozilla.org/xre/runtime;1',
+-        ] + crash_reporter,
+-        'legacy_constructor': 'mozilla::AppInfoConstructor',
+-        'headers': ['nsAppRunner.h'],
+-        'processes': ProcessSelector.ALLOW_IN_SOCKET_PROCESS,
+-    },
+     {
+         'cid': '{471f4944-1dd2-11b2-87ac-90be0a51d609}',
+         'contract_ids': ['@mozilla.org/embedcomp/rangefind;1'],
+-- 
+2.31.1
+
