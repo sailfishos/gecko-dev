@@ -33,8 +33,21 @@
 
 using namespace mozilla::embedlite;
 
+EmbedLiteXulAppInfo* EmbedLiteXulAppInfo::sXulAppInfo = nullptr;
+
 EmbedLiteXulAppInfo::EmbedLiteXulAppInfo()
 {
+}
+
+already_AddRefed<EmbedLiteXulAppInfo> EmbedLiteXulAppInfo::GetSingleton()
+{
+  if (!sXulAppInfo) {
+    auto xulAppInfo = MakeRefPtr<EmbedLiteXulAppInfo>();
+    sXulAppInfo = xulAppInfo.get();
+    return xulAppInfo.forget();
+  }
+
+  return do_AddRef(sXulAppInfo);
 }
 
 EmbedLiteXulAppInfo::~EmbedLiteXulAppInfo()
