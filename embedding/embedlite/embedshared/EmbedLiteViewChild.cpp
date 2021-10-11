@@ -961,17 +961,6 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   event.mTime = PR_Now() / 1000;
 }
 
-void EmbedLiteViewChild::ScrollInputFieldIntoView()
-{
-    RefPtr<PresShell> presShell = mHelper->GetPresShell();
-    NS_ENSURE_TRUE(presShell, );
-
-    presShell->ScrollSelectionIntoView(
-                nsISelectionController::SELECTION_NORMAL,
-                nsISelectionController::SELECTION_FOCUS_REGION,
-                0);
-}
-
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
                                                                 const Modifiers &aModifiers,
                                                                 const ScrollableLayerGuid &aGuid,
