@@ -12,8 +12,8 @@ Subject: [PATCH] [sailfishos][webrtc] Enable GMP for encoding/decoding.
  .../src/media-conduit/VideoConduit.cpp        |  61 ++-
  .../src/media-conduit/WebrtcGmpVideoCodec.cpp | 351 ++++++++++++------
  .../src/media-conduit/WebrtcGmpVideoCodec.h   |  11 +-
- .../src/peerconnection/PeerConnectionImpl.cpp |   8 +-
- 8 files changed, 329 insertions(+), 156 deletions(-)
+ .../src/peerconnection/PeerConnectionImpl.cpp |   6 +-
+ 8 files changed, 330 insertions(+), 153 deletions(-)
 
 diff --git a/dom/media/gmp/GMPSharedMemManager.cpp b/dom/media/gmp/GMPSharedMemManager.cpp
 index a7f462ce7a7f..fa279bffb49e 100644
@@ -788,7 +788,7 @@ index 920f7460d1a3..af18ad43816b 100644
    virtual ~WebrtcVideoDecoderProxy() {
      RegisterDecodeCompleteCallback(nullptr);
 diff --git a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
-index 17ef17dd26d0..83cafc177361 100644
+index 17ef17dd26d0..106d6928360e 100644
 --- a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
 +++ b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
 @@ -782,7 +782,7 @@ class ConfigureCodec {
@@ -800,19 +800,17 @@ index 17ef17dd26d0..83cafc177361 100644
  
      mH264Enabled = mHardwareH264Supported || mSoftwareH264Enabled;
  
-@@ -851,12 +851,6 @@ class ConfigureCodec {
-           // Might disable it, but we set up other params anyway
-           videoCodec.mEnabled = mH264Enabled;
- 
--          if (videoCodec.mPacketizationMode == 0 && !mSoftwareH264Enabled) {
--            // We're assuming packetization mode 0 is unsupported by
--            // hardware.
--            videoCodec.mEnabled = false;
+@@ -855,9 +855,7 @@ class ConfigureCodec {
+             // We're assuming packetization mode 0 is unsupported by
+             // hardware.
+             videoCodec.mEnabled = false;
 -          }
 -
-           if (mHardwareH264Supported) {
+-          if (mHardwareH264Supported) {
++          } else if (mHardwareH264Supported) {
              videoCodec.mStronglyPreferred = true;
            }
+         } else if (videoCodec.mName == "red") {
 -- 
 2.17.1
 
