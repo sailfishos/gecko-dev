@@ -24,23 +24,20 @@ public:
   NS_DECL_NSIXULAPPINFO
   NS_DECL_NSIPLATFORMINFO
 
+  /**
+   * Obtains a pointer that has had AddRef called on it.
+   * See embedlite/components/components.conf
+   */
+  static already_AddRefed<EmbedLiteXulAppInfo> GetSingleton();
+
 protected:
   virtual ~EmbedLiteXulAppInfo();
+  static EmbedLiteXulAppInfo* sXulAppInfo;
 
 };
 
 
 }}
-
-#define NS_IEMBEDLITEXULAPPINFO_IID \
-{ 0xbb11767a, \
-  0x9c26, \
-  0x11e2, \
-  { 0xbf, 0xb2, 0x9f, 0x3b, 0x52, 0x95, 0x6e }}
-
-
-#define NS_EMBED_LITE_XULAPPINFO_SERVICE_CLASSNAME "EmbedLite Xul App Info Component"
-#define NS_EMBED_LITE_XULAPPINFO_SERVICE_CID NS_IEMBEDLITEXULAPPINFO_IID
 
 #endif /* EmbedLiteXulAppInfo_H_ */
 

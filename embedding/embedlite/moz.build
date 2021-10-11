@@ -49,6 +49,7 @@ EXPORTS.mozilla.embedlite += [
     'embedthread/EmbedLiteCompositorBridgeParent.h',
     'utils/BrowserChildHelper.h',
     'utils/EmbedLiteSecurity.h',
+    'utils/EmbedLiteXulAppInfo.h',
     'utils/EmbedLog.h',
     'utils/WebBrowserChrome.h',
 ]
