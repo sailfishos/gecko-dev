@@ -145,7 +145,6 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &);
-  virtual mozilla::ipc::IPCResult RecvSetVirtualKeyboardHeight(const int &);
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetDynamicToolbarHeight(const int&);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
@@ -246,8 +245,6 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
-
-  int mVirtualKeyboardHeight;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;
