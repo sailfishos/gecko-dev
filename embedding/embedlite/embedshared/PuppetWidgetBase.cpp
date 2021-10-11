@@ -125,7 +125,7 @@ PuppetWidgetBase::Show(bool aState)
   }
 
   if (!wasVisible && mVisible) {
-    Resize(mNaturalBounds.width, mNaturalBounds.height, false);
+    UpdateBounds(false);
     Invalidate(mBounds);
   }
 
@@ -171,18 +171,10 @@ PuppetWidgetBase::Resize(double aWidth, double aHeight, bool aRepaint)
   LayoutDeviceIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
 
-  mNaturalBounds.SizeTo(NSToIntRound(aWidth), NSToIntRound(aHeight));
-  if (mRotation == mozilla::ROTATION_0 || mRotation == mozilla::ROTATION_180) {
-    mBounds.SizeTo(NSToIntRound(aWidth), NSToIntRound(aHeight));
-  } else {
-    mBounds.SizeTo(NSToIntRound(aHeight), NSToIntRound(aWidth));
-  }
-
-  // Do not move bounds here. Just alter size based on margins.
   mBounds.y = 0;
   mBounds.x = 0;
-  mBounds.width = std::max(0, (mBounds.width - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
-  mBounds.height = std::max(0, (mBounds.height - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
+  mBounds.width = NSToIntRound(aWidth);
+  mBounds.height = NSToIntRound(aHeight);
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
     mObservers[i]->WidgetBoundsChanged(mBounds);
@@ -358,9 +350,57 @@ PuppetWidgetBase::SetMargins(const LayoutDeviceIntMargin &margins)
 }
 
 void
-PuppetWidgetBase::UpdateSize()
+PuppetWidgetBase::SetSize(double aWidth, double aHeight) {
+  LayoutDeviceIntRect oldBounds = mBounds;
+  LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
+
+  mNaturalBounds.SizeTo(NSToIntRound(aWidth), NSToIntRound(aHeight));
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->SetSize(aWidth, aHeight);
+  }
+}
+
+void
+PuppetWidgetBase::UpdateBounds(bool aRepaint)
 {
-  Resize(mNaturalBounds.width, mNaturalBounds.height, true);
+  int aWidth = 0;
+  int aHeight = 0;
+
+  if (mRotation == mozilla::ROTATION_0 || mRotation == mozilla::ROTATION_180) {
+    aWidth = std::max(0, (mNaturalBounds.width - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
+    aHeight = std::max(0, (mNaturalBounds.height - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
+  } else {
+    aWidth = std::max(0, (mNaturalBounds.height - std::max(0, mMargins.left) - std::max(0, mMargins.right)));
+    aHeight = std::max(0, (mNaturalBounds.width - std::max(0, mMargins.top) - std::max(0, mMargins.bottom)));
+  }
+
+  LayoutDeviceIntRect oldBounds = mBounds;
+  LOGT("sz[%i,%i]->[%i,%i]", oldBounds.width, oldBounds.height, aWidth, aHeight);
+
+  mBounds.y = 0;
+  mBounds.x = 0;
+  mBounds.width = aWidth;
+  mBounds.height = aHeight;
+
+  for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
+    mObservers[i]->WidgetBoundsChanged(mBounds);
+  }
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->UpdateBounds(aRepaint);
+  }
+
+  if (aRepaint) {
+    Invalidate(mBounds);
+  }
+
+  nsIWidgetListener* listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
+  if (!oldBounds.IsEqualEdges(mBounds) && listener) {
+    listener->WindowResized(this, mBounds.width, mBounds.height);
+  }
+
 #ifdef DEBUG
   DumpWidgetTree();
 #endif

@@ -148,9 +148,14 @@ EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
 {
   LOGT();
   if (mWindowObserverRegistered) {
-    mWindow->GetWidget()->RemoveObserver(this);
+    GetPuppetWidget()->RemoveObserver(this);
   }
   mWindow = nullptr;
+}
+
+EmbedLitePuppetWidget* EmbedLiteViewBaseChild::GetPuppetWidget() const
+{
+  return static_cast<EmbedLitePuppetWidget*>(mWidget.get());
 }
 
 void
@@ -222,7 +227,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
   }
 
   mWidget = new EmbedLitePuppetWidget(this);
-  LOGT("puppet widget: %p", static_cast<EmbedLitePuppetWidget*>(mWidget.get()));
+  LOGT("puppet widget: %p", GetPuppetWidget());
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
@@ -317,13 +322,13 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
   mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
-  mWindow->GetWidget()->AddObserver(this);
+  GetPuppetWidget()->AddObserver(this);
   mWindowObserverRegistered = true;
 
   if (mMargins.LeftRight() > 0 || mMargins.TopBottom() > 0) {
-    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+    EmbedLitePuppetWidget *widget = GetPuppetWidget();
     widget->SetMargins(mMargins);
-    widget->UpdateSize();
+    widget->UpdateBounds(true);
   }
 
   if (!mWindow->GetWidget()->IsFirstViewCreated()) {
@@ -608,7 +613,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsA
     LOGT("Deactivate browser");
   }
 
-  EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+  EmbedLitePuppetWidget *widget = GetPuppetWidget();
   if (widget) {
     widget->SetActive(aIsActive);
   }
@@ -766,13 +771,16 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetDynamicToolbarHeight(cons
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
-                                                               const int& aBottom, const int& aLeft)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int &aTop, const int &aRight,
+                                                               const int &aBottom, const int &aLeft)
 {
-  Unused << aTop;
-  Unused << aRight;
-  Unused << aLeft;
-  mHelper->DynamicToolbarMaxHeightChanged(aBottom);
+  mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
+  if (mWidget) {
+    EmbedLitePuppetWidget *widget = GetPuppetWidget();
+    widget->SetMargins(mMargins);
+    widget->UpdateBounds(true);
+  }
+
   Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
   return IPC_OK();
 }
