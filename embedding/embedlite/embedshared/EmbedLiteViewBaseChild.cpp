@@ -113,7 +113,6 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
-  , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
   , mInitialized(false)
@@ -749,19 +748,6 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bo
 {
   LOGT("aThrottle:%d", aThrottle);
   mHelper->GetPresContext()->RefreshDriver()->SetThrottled(aThrottle);
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetVirtualKeyboardHeight(const int &aHeight)
-{
-  LOGT("aHeight:%i", aHeight);
-
-  mVirtualKeyboardHeight = aHeight;
-
-  if (mVirtualKeyboardHeight) {
-    mHelper->DynamicToolbarMaxHeightChanged(aHeight);
-    ScrollInputFieldIntoView();
-  }
   return IPC_OK();
 }
 
@@ -1530,10 +1516,6 @@ EmbedLiteViewBaseChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
   mHelper->ReportSizeUpdate(aSize);
-
-  if (mVirtualKeyboardHeight) {
-    ScrollInputFieldIntoView();
-  }
 }
 
 void

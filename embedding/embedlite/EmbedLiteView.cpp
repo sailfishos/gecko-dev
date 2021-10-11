@@ -131,13 +131,6 @@ EmbedLiteView::SetThrottlePainting(bool aThrottle)
   Unused << mViewParent->SendSetThrottlePainting(aThrottle);
 }
 
-void EmbedLiteView::SetVirtualKeyboardHeight(int aHeight)
-{
-  LOGT();
-  NS_ENSURE_TRUE(mViewParent, );
-  Unused << mViewParent->SendSetVirtualKeyboardHeight(aHeight);
-}
-
 void
 EmbedLiteView::SuspendTimeouts()
 {
