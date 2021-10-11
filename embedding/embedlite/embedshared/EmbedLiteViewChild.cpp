@@ -11,6 +11,7 @@
 
 #include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
+#include "mozilla/TextControlElement.h"
 
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
@@ -782,6 +783,28 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
     EmbedLitePuppetWidget *widget = GetPuppetWidget();
     widget->SetMargins(mMargins);
     widget->UpdateBounds(true);
+
+    RefPtr<Document> document = mHelper->GetTopLevelDocument();
+
+    if (document) {
+      nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
+      nsCOMPtr<nsIContent> focusedContent = nsFocusManager::GetFocusedDescendant(
+            document->GetWindow(), nsFocusManager::eIncludeAllDescendants,
+            getter_AddRefs(focusedWindow));
+      if (focusedContent) {
+        RefPtr<TextControlElement> textControlElement = TextControlElement::FromNodeOrNull(focusedContent);
+        if (textControlElement) {
+          nsISelectionController *selectionController = textControlElement->GetSelectionController();
+          if (selectionController) {
+            selectionController->ScrollSelectionIntoView(
+                  nsISelectionController::SELECTION_NORMAL,
+                  nsISelectionController::SELECTION_WHOLE_SELECTION,
+                  nsISelectionController::SCROLL_CENTER_VERTICALLY
+                  );
+          }
+        }
+      }
+    }
   }
 
   Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
