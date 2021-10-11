@@ -961,23 +961,6 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   event.mTime = PR_Now() / 1000;
 }
 
-void EmbedLiteViewBaseChild::ScrollInputFieldIntoView()
-{
-    nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
-    NS_ENSURE_TRUE(document, );
-
-    nsIPresShell *presShell = document->GetShell();
-    NS_ENSURE_TRUE(presShell, );
-
-    nsCOMPtr<nsISelectionController> selectionController = presShell->GetSelectionControllerForFocusedContent();
-    NS_ENSURE_TRUE(selectionController, );
-
-    selectionController->ScrollSelectionIntoView(
-                nsISelectionController::SELECTION_NORMAL,
-                nsISelectionController::SELECTION_FOCUS_REGION,
-                0);
-}
-
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
                                                                     const Modifiers &aModifiers,
                                                                     const ScrollableLayerGuid &aGuid)
