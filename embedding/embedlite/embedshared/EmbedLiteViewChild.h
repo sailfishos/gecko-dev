@@ -51,6 +51,8 @@ public:
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
 
+  EmbedLitePuppetWidget* GetPuppetWidget() const;
+
 /*---------TabChildIface---------------*/
 
   virtual bool
