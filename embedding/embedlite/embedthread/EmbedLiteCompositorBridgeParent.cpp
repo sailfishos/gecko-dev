@@ -51,6 +51,9 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   , mSurfaceOrigin(0, 0)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
+  if (mWindowId == 0) {
+    mWindowId = EmbedLiteWindowParent::Current();
+  }
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
   Preferences::AddBoolVarCache(&mUseExternalGLContext,
@@ -73,9 +76,9 @@ EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<Lay
   PLayerTransactionParent* p =
     CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);
 
-  EmbedLiteWindow* win = EmbedLiteApp::GetInstance()->GetWindowByID(mWindowId);
-  if (win) {
-    win->GetListener()->CompositorCreated();
+  EmbedLiteWindowParent *parentWindow = EmbedLiteWindowParent::From(mWindowId);
+  if (parentWindow) {
+    parentWindow->GetListener()->CompositorCreated();
   }
 
   if (!mUseExternalGLContext) {
@@ -210,7 +213,8 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
   NS_ENSURE_TRUE(screen->Front(),);
   SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, );
-  // sharedSurf->WaitSync();
+
+  sharedSurf->ProducerReadAcquire();
   // See ProducerAcquireImpl() & ProducerReleaseImpl()
   // See sha1 b66e705f3998791c137f8fce908ec0835b84afbe from gecko-mirror
 
@@ -218,6 +222,7 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
     callback(eglImageSurf->mImage, sharedSurf->mSize.width, sharedSurf->mSize.height);
   }
+  sharedSurf->ProducerReadRelease();
 }
 
 void*

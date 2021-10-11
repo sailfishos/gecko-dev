@@ -15,7 +15,7 @@ namespace embedlite {
 class EmbedLiteWindowThreadParent : public EmbedLiteWindowParent
 {
 public:
-  EmbedLiteWindowThreadParent(const uint16_t& width, const uint16_t& height, const uint32_t& id);
+  EmbedLiteWindowThreadParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
 
 protected:
   virtual ~EmbedLiteWindowThreadParent() override;

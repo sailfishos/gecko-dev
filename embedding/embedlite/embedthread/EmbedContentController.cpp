@@ -171,7 +171,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   // FIXME - RepaintRequest does not contain scrollable rect size.
   CSSSize scrollableSize(0, 0);
 
-  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+  LOGT("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
         contentRect.x, contentRect.y, contentRect.width, contentRect.height,
         scrollableSize.width, scrollableSize.height);
   gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);

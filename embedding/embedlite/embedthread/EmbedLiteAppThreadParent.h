@@ -26,7 +26,7 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const uint32_t&, const bool&, const bool&) override;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) override;
-  virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t&, const uint16_t&, const uint32_t&) override;
+  virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*) override;
 
   // IPDL interface

@@ -114,6 +114,8 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
   , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
+  , mInitialized(false)
+  , mDestroyAfterInit(false)
 {
   LOGT("id:%u, parentID:%u", aId, aParentId);
   // Init default prefs
@@ -161,6 +163,11 @@ EmbedLiteViewChild::ActorDestroy(ActorDestroyReason aWhy)
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 {
+  if (!mInitialized) {
+    mDestroyAfterInit = true;
+    return IPC_OK();
+  }
+
   LOGT("destroy");
 
   nsCOMPtr<nsIObserverService> observerService =
@@ -191,6 +198,11 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
+    return;
+  }
+
+  if (mDestroyAfterInit) {
+    Unused << RecvDestroy();
     return;
   }
 
@@ -309,11 +321,9 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     widget->UpdateSize();
   }
 
-  static bool firstViewCreated = false;
-  EmbedLiteWindowChild *windowBase = mWindow;
-  if (!firstViewCreated && windowBase && windowBase->GetWidget()) {
-    windowBase->GetWidget()->SetActive(true);
-    firstViewCreated = true;
+  if (!mWindow->GetWidget()->IsFirstViewCreated()) {
+    mWindow->GetWidget()->SetActive(true);
+    mWindow->GetWidget()->SetFirstViewCreated();
   }
 
   nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda
@@ -339,6 +349,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
 
   OnGeckoWindowInitialized();
   mHelper->OpenIPC();
+
+  mInitialized = true;
 
   Unused << SendInitialized();
 
@@ -753,18 +765,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int& aTop, const int& aRight,
                                                            const int& aBottom, const int& aLeft)
 {
-  mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
-  if (mWidget) {
-    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
-    widget->SetMargins(mMargins);
-    widget->UpdateSize();
-
-    // Report update for the tab child helper. This triggers update for the viewport.
-    LayoutDeviceIntRect bounds = mWindow->GetWidget()->GetBounds();
-    bounds.Deflate(mMargins);
-    mHelper->ReportSizeUpdate(bounds);
-  }
-
+  Unused << aTop;
+  Unused << aRight;
+  Unused << aLeft;
+  mHelper->DynamicToolbarMaxHeightChanged(aBottom);
+  Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
   return IPC_OK();
 }
 
@@ -1060,16 +1065,43 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevice
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& commit, const nsString& preEdit)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &commit,
+                                                                const nsString &preEdit,
+                                                                const int32_t &replacementStart,
+                                                                const int32_t &replacementLength)
 {
   nsPoint offset;
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   const InputContext& ctx = mWidget->GetInputContext();
 
 #if EMBEDLITE_LOG_SENSITIVE
-  LOGF("ctx.mIMEState.mEnabled:%i, com:%s, pre:%s\n", ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get());
+  LOGF("ctx.mIMEState.mEnabled:%i, com:%s, pre:%s, replStart:%i, replLength:%i\n",
+       ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get(),
+       replacementStart, replacementLength);
 #endif
   NS_ENSURE_TRUE(widget && ctx.mIMEState.mEnabled, IPC_OK());
+
+  if (replacementLength > 0) {
+    nsEventStatus status;
+    WidgetQueryContentEvent selection(true, eQuerySelectedText, widget);
+    widget->DispatchEvent(&selection, status);
+
+    if (selection.mSucceeded) {
+      // Set selection to delete
+      WidgetSelectionEvent selectionEvent(true, eSetSelection, widget);
+      selectionEvent.mOffset = selection.mReply.mOffset + replacementStart;
+      selectionEvent.mLength = replacementLength;
+      selectionEvent.mReversed = false;
+      selectionEvent.mExpandToClusterBoundary = false;
+      widget->DispatchEvent(&selectionEvent, status);
+
+      if (selectionEvent.mSucceeded) {
+        // Delete the selection
+        WidgetContentCommandEvent deleteCommandEvent(true, eContentCommandDelete, widget);
+        widget->DispatchEvent(&deleteCommandEvent, status);
+      }
+    }
+  }
 
   // probably logic here is over engineered, but clean enough
   bool prevIsComposition = mIMEComposing;
@@ -1130,17 +1162,58 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString& 
   return IPC_OK();
 }
 
+static KeyNameIndex getKeyNameIndexByDomKeyCode(int domKeyCode)
+{
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier)
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode) \
+  if (domKeyCode == _keyCode) return KEY_NAME_INDEX_##keyNameIdx_;
+#include "KeyCodeConsensus_En_US.h"
+  return KEY_NAME_INDEX_USE_STRING;
+#undef CONTROL
+#undef KEY
+}
+
+static CodeNameIndex getCodeNameIndexByCharCode(int charCode)
+{
+  switch(charCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+  case key_[0]: return CODE_NAME_INDEX_##_codeNameIdx;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default: return CODE_NAME_INDEX_UNKNOWN;
+#undef CONTROL
+#undef KEY
+  }
+}
+
+static Modifiers getModifiersByCharCode(int charCode)
+{
+  switch(charCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+  case key_[0]: return _modifier;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default: return 0;
+#undef CONTROL
+#undef KEY
+  }
+}
+
 nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode)
 {
   NS_ENSURE_TRUE(widget, NS_ERROR_FAILURE);
   EventMessage msg = message;
   WidgetKeyboardEvent event(true, msg, widget);
-  event.mModifiers = Modifiers(gmodifiers);
+  event.mModifiers = Modifiers(gmodifiers) | getModifiersByCharCode(charCode);
   event.mKeyCode = charCode ? 0 : domKeyCode;
   event.mCharCode = charCode;
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   event.mTime = PR_IntervalNow();
+  event.mKeyNameIndex = getKeyNameIndexByDomKeyCode(domKeyCode);
+  event.mKeyValue.Assign(charCode);
+  event.mCodeNameIndex = getCodeNameIndexByCharCode(charCode);
+
   if (domKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
     // Needed for multiline editing
     event.mKeyNameIndex = KEY_NAME_INDEX_Enter;
@@ -1157,7 +1230,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyPressEvent(const int &d
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Initial key down event
-  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, 0), IPC_OK());
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyDown, domKeyCode, gmodifiers, charCode), IPC_OK());
   if (domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_SHIFT &&
       domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_META &&
       domKeyCode != dom::KeyboardEvent_Binding::DOM_VK_CONTROL &&
@@ -1176,7 +1249,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleKeyReleaseEvent(const int 
   nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
   NS_ENSURE_TRUE(widget, IPC_OK());
   // Key up event
-  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyUp, domKeyCode, gmodifiers, 0), IPC_OK());
+  NS_ENSURE_SUCCESS(DispatchKeyPressEvent(widget, eKeyUp, domKeyCode, gmodifiers, charCode), IPC_OK());
   return IPC_OK();
 }
 

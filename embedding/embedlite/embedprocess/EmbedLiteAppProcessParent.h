@@ -45,7 +45,7 @@ protected:
   virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId, const uint32_t &id, const uint32_t &parentId, const bool&, const bool&) override;
 
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor) override;
-  virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id) override;
+  virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent *aActor) override;
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual mozilla::ipc::IPCResult RecvPrefsArrayInitialized(nsTArray<mozilla::dom::Pref> &&prefs) override;

@@ -35,6 +35,8 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmb
   , mViewImpl(dynamic_cast<EmbedLiteViewIface*>(aViewImpl))
   , mViewParent(aViewImpl)
   , mUniqueID(aViewId)
+  , mMarginsChanging(false)
+  , mMargins(0, 0, 0, 0)
 {
   LOGT();
   dynamic_cast<EmbedLiteViewIface*>(aViewImpl)->SetEmbedAPIView(this);
@@ -257,10 +259,23 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 
 // Render interface
 
-void
-EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
+void EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 {
-    Unused << mViewParent->SendSetMargins(top, right, bottom, left);
+    mMargins.SizeTo(top, right, bottom, left);
+
+    if (!mMarginsChanging) {
+        mMarginsChanging = true;
+        Unused << mViewParent->SendSetMargins(top, right, bottom, left);
+    }
+}
+
+void EmbedLiteView::MarginsChanged(int top, int right, int bottom, int left)
+{
+    if (mMargins != mozilla::gfx::IntMargin(top, right, bottom, left)) {
+         Unused << mViewParent->SendSetMargins(mMargins.top, mMargins.right, mMargins.bottom, mMargins.left);
+    } else {
+        mMarginsChanging = false;
+    }
 }
 
 void
@@ -303,10 +318,10 @@ EmbedLiteView::ReceiveInputEvent(const EmbedTouchInput &aEvent)
 }
 
 void
-EmbedLiteView::SendTextEvent(const char* composite, const char* preEdit)
+EmbedLiteView::SendTextEvent(const char *composite, const char *preEdit, int replacementStart, int replacementLength)
 {
   NS_ENSURE_TRUE(mViewImpl,);
-  mViewImpl->TextEvent(composite, preEdit);
+  mViewImpl->TextEvent(composite, preEdit, replacementStart, replacementLength);
 }
 
 void EmbedLiteView::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
