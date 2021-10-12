@@ -308,16 +308,14 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/GfxInfo.h                           |   74 +
  widget/qt/MediaKeysEventSourceFactory.cpp     |   13 +
  widget/qt/ProcInfo.cpp                        |  285 +++
- widget/qt/components.conf                     |  110 ++
- widget/qt/moz.build                           |   72 +
+ widget/qt/components.conf                     |  103 +
+ widget/qt/moz.build                           |   71 +
  widget/qt/mozqwidget.cpp                      |  231 +++
  widget/qt/mozqwidget.h                        |   71 +
  widget/qt/nsAppShell.cpp                      |   80 +
  widget/qt/nsAppShell.h                        |   37 +
  widget/qt/nsBidiKeyboard.cpp                  |   54 +
  widget/qt/nsBidiKeyboard.h                    |   25 +
- widget/qt/nsClipboard.cpp                     |  540 ++++++
- widget/qt/nsClipboard.h                       |   34 +
  widget/qt/nsDeviceContextSpecQt.cpp           |  228 +++
  widget/qt/nsDeviceContextSpecQt.h             |   60 +
  widget/qt/nsIdleServiceQt.cpp                 |  123 ++
@@ -340,7 +338,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsWidgetFactory.h                   |   22 +
  widget/qt/nsWindow.cpp                        | 1695 +++++++++++++++++
  widget/qt/nsWindow.h                          |  312 +++
- 118 files changed, 8280 insertions(+), 53 deletions(-)
+ 116 files changed, 7698 insertions(+), 53 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -378,8 +376,6 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 widget/qt/nsAppShell.h
  create mode 100644 widget/qt/nsBidiKeyboard.cpp
  create mode 100644 widget/qt/nsBidiKeyboard.h
- create mode 100644 widget/qt/nsClipboard.cpp
- create mode 100644 widget/qt/nsClipboard.h
  create mode 100644 widget/qt/nsDeviceContextSpecQt.cpp
  create mode 100644 widget/qt/nsDeviceContextSpecQt.h
  create mode 100644 widget/qt/nsIdleServiceQt.cpp
@@ -5121,10 +5117,10 @@ index 000000000000..1538b561b4c2
 +}  // namespace mozilla
 diff --git a/widget/qt/components.conf b/widget/qt/components.conf
 new file mode 100644
-index 000000000000..38876244f0bf
+index 000000000000..687611a72c5a
 --- /dev/null
 +++ b/widget/qt/components.conf
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,103 @@
 +# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5166,13 +5162,6 @@ index 000000000000..38876244f0bf
 +        'contract_ids': ['@mozilla.org/widget/transferable;1'],
 +        'type': 'nsTransferable',
 +        'headers': ['/widget/nsTransferable.h'],
-+    },
-+    {
-+        'cid': '{8b5314ba-db01-11d2-96ce-0060b0fb9956}',
-+        'contract_ids': ['@mozilla.org/widget/clipboard;1'],
-+        'type': 'nsClipboard',
-+        'headers': ['/widget/qt/nsClipboard.h'],
-+        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
 +    },
 +    {
 +        'cid': '{77221d5a-1dd2-11b2-8c69-c710f15d2ed5}',
@@ -5237,10 +5226,10 @@ index 000000000000..38876244f0bf
 +    ]
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..3918fd4c9a31
+index 000000000000..231eee017e1b
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,71 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5254,7 +5243,6 @@ index 000000000000..3918fd4c9a31
 +    'mozqwidget.cpp',
 +    'nsAppShell.cpp',
 +    'nsBidiKeyboard.cpp',
-+    'nsClipboard.cpp',
 +    'nsIdleServiceQt.cpp',
 +    'nsLookAndFeel.cpp',
 +    'nsQtKeyUtils.cpp',
@@ -5847,592 +5835,6 @@ index 000000000000..c22bf4ab8c10
 +
 +
 +#endif // __nsBidiKeyboard
-diff --git a/widget/qt/nsClipboard.cpp b/widget/qt/nsClipboard.cpp
-new file mode 100644
-index 000000000000..01f057009f79
---- /dev/null
-+++ b/widget/qt/nsClipboard.cpp
-@@ -0,0 +1,540 @@
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#include <QGuiApplication>
-+#include <QMimeData>
-+#include <QString>
-+#include <QStringList>
-+#include <QByteArray>
-+#include <QImage>
-+#include <QImageWriter>
-+#include <QBuffer>
-+#include <qclipboard.h>
-+
-+#include "nsArrayUtils.h" // for do_QueryElementAt
-+#include "gfxPlatform.h"
-+#include "mozilla/ArrayUtils.h"
-+#include "mozilla/gfx/2D.h"
-+
-+#include "nsClipboard.h"
-+#include "nsISupportsPrimitives.h"
-+#include "nsPrimitiveHelpers.h"
-+#include "nsIInputStream.h"
-+#include "nsReadableUtils.h"
-+#include "nsStringStream.h"
-+#include "nsComponentManagerUtils.h"
-+
-+#include "imgIContainer.h"
-+
-+using namespace mozilla;
-+using namespace mozilla::gfx;
-+
-+NS_IMPL_ISUPPORTS(nsClipboard, nsIClipboard)
-+
-+//-------------------------------------------------------------------------
-+//
-+// nsClipboard constructor
-+//
-+//-------------------------------------------------------------------------
-+nsClipboard::nsClipboard() : nsIClipboard(),
-+                             mSelectionOwner(nullptr),
-+                             mGlobalOwner(nullptr),
-+                             mSelectionTransferable(nullptr),
-+                             mGlobalTransferable(nullptr)
-+{
-+    // No implementation needed
-+}
-+
-+//-------------------------------------------------------------------------
-+//
-+// nsClipboard destructor
-+//
-+//-------------------------------------------------------------------------
-+nsClipboard::~nsClipboard()
-+{
-+}
-+
-+static inline QImage::Format
-+_moz2dformat_to_qformat(SurfaceFormat aFormat)
-+{
-+    switch (aFormat) {
-+    case SurfaceFormat::B8G8R8A8:
-+        return QImage::Format_ARGB32_Premultiplied;
-+    case SurfaceFormat::B8G8R8X8:
-+        return QImage::Format_ARGB32;
-+    case SurfaceFormat::R5G6B5_UINT16:
-+        return QImage::Format_RGB16;
-+    default:
-+        return QImage::Format_Invalid;
-+    }
-+}
-+
-+// SetNativeClipboardData ie. Copy
-+
-+static NS_IMETHODIMP
-+SetNativeClipboardData( nsITransferable *aTransferable,
-+                        QClipboard::Mode clipboardMode )
-+{
-+    if (nullptr == aTransferable)
-+    {
-+        NS_WARNING("nsClipboard SetNativeClipboardData(): no transferable!");
-+        return NS_ERROR_FAILURE;
-+    }
-+
-+    // get flavor list that includes all flavors that can be written (including
-+    // ones obtained through conversion)
-+    nsTArray<nsCString> flavors;
-+    nsresult rv = aTransferable->FlavorsTransferableCanExport(flavors);
-+
-+    if (NS_FAILED(rv))
-+    {
-+        NS_WARNING("nsClipboard SetNativeClipboardData(): no FlavorsTransferable !");
-+        return NS_ERROR_FAILURE;
-+    }
-+
-+    QClipboard *cb = QGuiApplication::clipboard();
-+    QMimeData *mimeData = new QMimeData;
-+
-+    bool imageAdded = false;
-+
-+    // flavorStr is the mime type
-+    for (const nsCString &flavorStr : flavors)
-+    {
-+        // Clip is the data which will be sent to the clipboard
-+        nsCOMPtr<nsISupports> clip;
-+        // len is the length of the data
-+        uint32_t len;
-+
-+        // Unicode text?
-+        if (!strcmp(flavorStr.get(), kUnicodeMime))
-+        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
-+            nsCOMPtr<nsISupportsString> wideString;
-+            wideString = do_QueryInterface(clip);
-+            if (!wideString || NS_FAILED(rv))
-+                continue;
-+
-+            nsAutoString utf16string;
-+            wideString->GetData(utf16string);
-+            QString str = QString::fromUtf16((const ushort*)utf16string.get());
-+
-+            // Add text to the mimeData
-+            mimeData->setText(str);
-+        }
-+
-+        // html?
-+        else if (!strcmp(flavorStr.get(), kHTMLMime))
-+        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
-+            nsCOMPtr<nsISupportsString> wideString;
-+            wideString = do_QueryInterface(clip);
-+            if (!wideString || NS_FAILED(rv))
-+                continue;
-+
-+            nsAutoString utf16string;
-+            wideString->GetData(utf16string);
-+            QString str = QString::fromUtf16((const ushort*)utf16string.get());
-+
-+            // Add html to the mimeData
-+            mimeData->setHtml(str);
-+        }
-+
-+        // image?
-+        else if (!imageAdded // image is added only once to the clipboard
-+                 && (!strcmp(flavorStr.get(), kNativeImageMime)
-+                 ||  !strcmp(flavorStr.get(), kPNGImageMime)
-+                 ||  !strcmp(flavorStr.get(), kJPEGImageMime)
-+                 ||  !strcmp(flavorStr.get(), kJPGImageMime)
-+                 ||  !strcmp(flavorStr.get(), kGIFImageMime))
-+                )
-+        {
-+            // Look through our transfer data for the image
-+            static const char* const imageMimeTypes[] = {
-+                kNativeImageMime, kPNGImageMime, kJPEGImageMime, kJPGImageMime, kGIFImageMime };
-+            nsCOMPtr<nsISupportsInterfacePointer> ptrPrimitive;
-+            for (uint32_t i = 0; !ptrPrimitive && i < ArrayLength(imageMimeTypes); i++)
-+            {
-+                aTransferable->GetTransferData(imageMimeTypes[i], getter_AddRefs(clip));
-+                ptrPrimitive = do_QueryInterface(clip);
-+            }
-+
-+            if (!ptrPrimitive)
-+                continue;
-+
-+            nsCOMPtr<nsISupports> primitiveData;
-+            ptrPrimitive->GetData(getter_AddRefs(primitiveData));
-+            nsCOMPtr<imgIContainer> image(do_QueryInterface(primitiveData));
-+            if (!image)  // Not getting an image for an image mime type!?
-+               continue;
-+
-+            RefPtr<SourceSurface> surface =
-+              image->GetFrame(imgIContainer::FRAME_CURRENT,
-+                              imgIContainer::FLAG_SYNC_DECODE);
-+            if (!surface)
-+              continue;
-+
-+            RefPtr<DataSourceSurface> dataSurface =
-+              surface->GetDataSurface();
-+            if (!dataSurface)
-+              continue;
-+
-+            DataSourceSurface::MappedSurface map;
-+            if (!dataSurface->Map(DataSourceSurface::MapType::READ, &map))
-+              continue;
-+
-+            QImage qImage(map.mData,
-+                          dataSurface->GetSize().width,
-+                          dataSurface->GetSize().height,
-+                          map.mStride,
-+                          _moz2dformat_to_qformat(dataSurface->GetFormat()));
-+
-+            dataSurface->Unmap();
-+
-+            // Add image to the mimeData
-+            mimeData->setImageData(qImage);
-+            imageAdded = true;
-+        }
-+
-+        // Other flavors, adding data to clipboard "as is"
-+        else
-+        {
-+            rv = aTransferable->GetTransferData(flavorStr.get(), getter_AddRefs(clip));
-+            // nothing found?
-+            if (!clip || NS_FAILED(rv))
-+                continue;
-+
-+            void *primitive_data = nullptr;
-+            nsPrimitiveHelpers::CreateDataFromPrimitive(flavorStr, clip,
-+                                                        &primitive_data, &len);
-+
-+            if (primitive_data)
-+            {
-+                QByteArray data ((const char *)primitive_data, len);
-+                // Add data to the mimeData
-+                mimeData->setData(flavorStr.get(), data);
-+                free(primitive_data);
-+            }
-+        }
-+    }
-+
-+    // If we have some mime data, add it to the clipboard
-+    if(!mimeData->formats().isEmpty())
-+        cb->setMimeData(mimeData, clipboardMode);
-+    else
-+        delete mimeData;
-+
-+    return NS_OK;
-+}
-+
-+// GetNativeClipboardData ie. Paste
-+//
-+static NS_IMETHODIMP
-+GetNativeClipboardData(nsITransferable *aTransferable,
-+                       QClipboard::Mode clipboardMode)
-+{
-+    if (nullptr == aTransferable)
-+    {
-+        NS_WARNING("nsClipboard GetNativeClipboardData: Transferable is null!");
-+        return NS_ERROR_FAILURE;
-+    }
-+
-+    // get flavor list that includes all acceptable flavors (including
-+    // ones obtained through conversion)
-+    nsTArray<nsCString> flavors;
-+    nsresult errCode = aTransferable->FlavorsTransferableCanImport(flavors);
-+
-+    if (NS_FAILED(errCode))
-+    {
-+        NS_WARNING("nsClipboard GetNativeClipboardData(): no FlavorsTransferable!");
-+        return NS_ERROR_FAILURE;
-+    }
-+
-+    QClipboard *cb = QGuiApplication::clipboard();
-+    const QMimeData *mimeData = cb->mimeData(clipboardMode);
-+
-+    // Walk through flavors and see which flavor matches the one being pasted
-+    nsAutoCString foundFlavor;
-+
-+    for (const nsCString &flavorStr : flavors)
-+    {
-+        // Ok, so which flavor the data being pasted could be?
-+        // Text?
-+        if (!strcmp(flavorStr.get(), kUnicodeMime) && mimeData->hasText())
-+        {
-+            // Clipboard has text and flavor accepts text, so lets
-+            // handle the data as text
-+            foundFlavor = nsAutoCString(flavorStr);
-+
-+            // Get the text data from clipboard
-+            QString text = mimeData->text();
-+            const QChar *unicode = text.unicode();
-+            // Is there a more correct way to get the size in UTF16?
-+            uint32_t len = (uint32_t) 2*text.size();
-+
-+            // And then to genericDataWrapper
-+            nsCOMPtr<nsISupports> genericDataWrapper;
-+            nsPrimitiveHelpers::CreatePrimitiveForData(
-+                    foundFlavor,
-+                    (void*)unicode,
-+                    len,
-+                    getter_AddRefs(genericDataWrapper));
-+            // Data is good, set it to the transferable
-+            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper);
-+            // And thats all
-+            break;
-+        }
-+
-+        // html?
-+        if (!strcmp(flavorStr.get(), kHTMLMime) && mimeData->hasHtml())
-+        {
-+            // Clipboard has text/html and flavor accepts text/html, so lets
-+            // handle the data as text/html
-+            foundFlavor = nsAutoCString(flavorStr);
-+
-+            // Get the text data from clipboard
-+            QString html = mimeData->html();
-+            const QChar *unicode = html.unicode();
-+            // Is there a more correct way to get the size in UTF16?
-+            uint32_t len = (uint32_t) 2*html.size();
-+
-+            // And then to genericDataWrapper
-+            nsCOMPtr<nsISupports> genericDataWrapper;
-+            nsPrimitiveHelpers::CreatePrimitiveForData(
-+                    foundFlavor,
-+                    (void*)unicode,
-+                    len,
-+                    getter_AddRefs(genericDataWrapper));
-+            // Data is good, set it to the transferable
-+            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper);
-+            // And thats all
-+            break;
-+        }
-+
-+        // Image?
-+        if ((  !strcmp(flavorStr.get(), kJPEGImageMime)
-+            || !strcmp(flavorStr.get(), kJPGImageMime)
-+            || !strcmp(flavorStr.get(), kPNGImageMime)
-+            || !strcmp(flavorStr.get(), kGIFImageMime))
-+            && mimeData->hasImage())
-+        {
-+            // Try to retrieve an image from clipboard
-+            QImage image = cb->image();
-+            if(image.isNull())
-+                continue;
-+
-+            // Lets set the image format
-+            QByteArray imageFormat;
-+            if (!strcmp(flavorStr.get(), kJPEGImageMime) || !strcmp(flavorStr.get(), kJPGImageMime))
-+                imageFormat = "jpeg";
-+            else if (!strcmp(flavorStr.get(), kPNGImageMime))
-+                imageFormat = "png";
-+            else if (!strcmp(flavorStr.get(), kGIFImageMime))
-+                imageFormat = "gif";
-+            else
-+                continue;
-+
-+            // Write image from clippboard to a QByteArrayBuffer
-+            QByteArray imageData;
-+            QBuffer imageBuffer(&imageData);
-+            QImageWriter imageWriter(&imageBuffer, imageFormat);
-+            if(!imageWriter.write(image))
-+                continue;
-+
-+            // Add the data to inputstream
-+            nsCOMPtr<nsIInputStream> byteStream;
-+            NS_NewByteInputStream(getter_AddRefs(byteStream),
-+                                  mozilla::MakeSpan(imageData.constData(), imageData.size()),
-+                                  NS_ASSIGNMENT_COPY);
-+            // Data is good, set it to the transferable
-+            aTransferable->SetTransferData(flavorStr.get(), byteStream);
-+
-+            imageBuffer.close();
-+
-+            // And thats all
-+            break;
-+        }
-+
-+        // Other mimetype?
-+        // Trying to forward the data "as is"
-+        if(mimeData->hasFormat(flavorStr.get()))
-+        {
-+            // get the data from the clipboard
-+            QByteArray clipboardData = mimeData->data(flavorStr.get());
-+            // And add it to genericDataWrapper
-+            nsCOMPtr<nsISupports> genericDataWrapper;
-+            nsPrimitiveHelpers::CreatePrimitiveForData(
-+                    foundFlavor,
-+                    (void*) clipboardData.data(),
-+                    clipboardData.size(),
-+                    getter_AddRefs(genericDataWrapper));
-+
-+            // Data is good, set it to the transferable
-+            aTransferable->SetTransferData(foundFlavor.get(),
-+                                           genericDataWrapper);
-+            // And thats all
-+            break;
-+        }
-+    }
-+
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsClipboard::HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
-+                                    int32_t aWhichClipboard, bool *_retval)
-+{
-+    *_retval = false;
-+    if (aWhichClipboard != kGlobalClipboard)
-+        return NS_OK;
-+
-+    // Which kind of data in the clipboard
-+    QClipboard *cb = QGuiApplication::clipboard();
-+    const QMimeData *mimeData = cb->mimeData();
-+    QStringList formats = mimeData->formats();
-+    for (const nsCString &flavor : aFlavorList)
-+    {
-+        QString qflavor(flavor.get());
-+
-+        if (strcmp(flavor.get(), kTextMime) == 0)
-+        {
-+            NS_WARNING("DO NOT USE THE text/plain DATA FLAVOR ANY MORE. USE text/unicode INSTEAD");
-+        }
-+
-+        // QClipboard says it has text/plain, mozilla wants to
-+        // know if the data is text/unicode -> interpret text/plain to text/unicode
-+        if (formats.contains(qflavor) ||
-+            strcmp(flavor.get(), kUnicodeMime) == 0)
-+        {
-+            // A match has been found, return'
-+            *_retval = true;
-+            break;
-+        }
-+    }
-+    return NS_OK;
-+}
-+
-+/**
-+ * Sets the transferable object
-+ */
-+NS_IMETHODIMP
-+nsClipboard::SetData(nsITransferable *aTransferable,
-+                     nsIClipboardOwner *aOwner,
-+                     int32_t aWhichClipboard)
-+{
-+    // See if we can short cut
-+    if (
-+        (aWhichClipboard == kGlobalClipboard
-+           && aTransferable == mGlobalTransferable.get()
-+           && aOwner == mGlobalOwner.get()
-+        )
-+       ||
-+        (aWhichClipboard == kSelectionClipboard
-+         && aTransferable == mSelectionTransferable.get()
-+         && aOwner == mSelectionOwner.get()
-+        )
-+       )
-+    {
-+        return NS_OK;
-+    }
-+
-+    EmptyClipboard(aWhichClipboard);
-+
-+    QClipboard::Mode mode;
-+
-+    if (kGlobalClipboard == aWhichClipboard)
-+    {
-+        mGlobalOwner = aOwner;
-+        mGlobalTransferable = aTransferable;
-+
-+        mode = QClipboard::Clipboard;
-+    }
-+    else
-+    {
-+        mSelectionOwner = aOwner;
-+        mSelectionTransferable = aTransferable;
-+
-+        mode = QClipboard::Selection;
-+    }
-+    return SetNativeClipboardData( aTransferable, mode );
-+}
-+
-+/**
-+ * Gets the transferable object
-+ */
-+NS_IMETHODIMP
-+nsClipboard::GetData(nsITransferable *aTransferable, int32_t aWhichClipboard)
-+{
-+    if (nullptr != aTransferable)
-+    {
-+        QClipboard::Mode mode;
-+        if (kGlobalClipboard == aWhichClipboard)
-+        {
-+            mode = QClipboard::Clipboard;
-+        }
-+        else
-+        {
-+            mode = QClipboard::Selection;
-+        }
-+        return GetNativeClipboardData(aTransferable, mode);
-+    }
-+    else
-+    {
-+        NS_WARNING("nsClipboard::GetData(), aTransferable is NULL.");
-+    }
-+    return NS_ERROR_FAILURE;
-+}
-+
-+NS_IMETHODIMP
-+nsClipboard::EmptyClipboard(int32_t aWhichClipboard)
-+{
-+    if (aWhichClipboard == kSelectionClipboard)
-+    {
-+        if (mSelectionOwner)
-+        {
-+            mSelectionOwner->LosingOwnership(mSelectionTransferable);
-+            mSelectionOwner = nullptr;
-+        }
-+        mSelectionTransferable = nullptr;
-+    }
-+    else
-+    {
-+        if (mGlobalOwner)
-+        {
-+            mGlobalOwner->LosingOwnership(mGlobalTransferable);
-+            mGlobalOwner = nullptr;
-+        }
-+        mGlobalTransferable = nullptr;
-+    }
-+
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsClipboard::SupportsSelectionClipboard(bool *_retval)
-+{
-+    NS_ENSURE_ARG_POINTER(_retval);
-+
-+    QClipboard *cb = QGuiApplication::clipboard();
-+    if (cb->supportsSelection())
-+    {
-+        *_retval = true; // we support the selection clipboard 
-+    }
-+    else
-+    {
-+        *_retval = false;
-+    }
-+
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsClipboard::SupportsFindClipboard(bool* _retval)
-+{
-+  NS_ENSURE_ARG_POINTER(_retval);
-+
-+  *_retval = false;
-+  return NS_OK;
-+}
-diff --git a/widget/qt/nsClipboard.h b/widget/qt/nsClipboard.h
-new file mode 100644
-index 000000000000..e84411741937
---- /dev/null
-+++ b/widget/qt/nsClipboard.h
-@@ -0,0 +1,34 @@
-+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+#ifndef nsClipboard_h__
-+#define nsClipboard_h__
-+
-+#include "nsIClipboard.h"
-+#include "nsITransferable.h"
-+#include "nsIClipboardOwner.h"
-+#include "nsCOMPtr.h"
-+
-+/* Native Qt Clipboard wrapper */
-+class nsClipboard : public nsIClipboard
-+{
-+public:
-+    nsClipboard();
-+
-+    //nsISupports
-+    NS_DECL_ISUPPORTS
-+
-+    // nsIClipboard
-+    NS_DECL_NSICLIPBOARD
-+
-+protected:
-+    virtual ~nsClipboard();
-+
-+    nsCOMPtr<nsIClipboardOwner> mSelectionOwner;
-+    nsCOMPtr<nsIClipboardOwner> mGlobalOwner;
-+    nsCOMPtr<nsITransferable>   mSelectionTransferable;
-+    nsCOMPtr<nsITransferable>   mGlobalTransferable;
-+};
-+
-+#endif // nsClipboard_h__
 diff --git a/widget/qt/nsDeviceContextSpecQt.cpp b/widget/qt/nsDeviceContextSpecQt.cpp
 new file mode 100644
 index 000000000000..aa24ffc1d6b8
