@@ -7,7 +7,7 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  dom/media/systemservices/VideoFrameUtils.cpp  |  92 ++++---
  dom/media/systemservices/moz.build            |   1 +
  .../webrtc/modules/video_capture/BUILD.gn     |  26 +-
- .../video_capture/sfos/device_info_sfos.cc    | 139 ++++++++++
+ .../video_capture/sfos/device_info_sfos.cc    | 145 +++++++++++
  .../video_capture/sfos/device_info_sfos.h     |  49 ++++
  .../video_capture/sfos/video_capture_sfos.cc  | 244 ++++++++++++++++++
  .../video_capture/sfos/video_capture_sfos.h   |  55 ++++
@@ -15,7 +15,7 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  .../video_capture/video_capture_impl.h        |   2 +
  .../video_capture_internal_impl_gn/moz.build  |  13 +-
  old-configure.in                              |  11 +
- 11 files changed, 590 insertions(+), 54 deletions(-)
+ 11 files changed, 596 insertions(+), 54 deletions(-)
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
@@ -204,10 +204,10 @@ index e4984238bac3..a2656ca22525 100644
          ":video_capture_internal_impl",
 diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
 new file mode 100644
-index 000000000000..3754c560cf26
+index 000000000000..3dd0a10b4f70
 --- /dev/null
 +++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,145 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
 + * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -226,6 +226,8 @@ index 000000000000..3754c560cf26
 +#include "webrtc/modules/video_capture/sfos/device_info_sfos.h"
 +
 +#define EXPECTED_CAPTURE_DELAY_PREF "media.getusermedia.camera.expected_capture_delay"
++#define MAX_WIDTH_PREF "media.getusermedia.camera.max_width"
++#define MAX_HEIGHT_PREF "media.getusermedia.camera.max_height"
 +
 +namespace webrtc
 +{
@@ -328,19 +330,23 @@ index 000000000000..3754c560cf26
 +void DeviceInfoSFOS::FillCapabilities(const char *devName)
 +{
 +    std::vector<gecko::camera::CameraCapability> caps;
-+    unsigned captureDelay = mozilla::Preferences::GetUint(EXPECTED_CAPTURE_DELAY_PREF, 500);
++    unsigned int captureDelay = mozilla::Preferences::GetUint(EXPECTED_CAPTURE_DELAY_PREF, 500);
++    unsigned int maxWidth = mozilla::Preferences::GetUint(MAX_WIDTH_PREF, 640);
++    unsigned int maxHeight = mozilla::Preferences::GetUint(MAX_HEIGHT_PREF, 480);
 +
 +    _captureCapabilities.clear();
 +    if (cameraManager && cameraManager->queryCapabilities(devName, caps)) {
 +        for (auto cap : caps) {
-+            VideoCaptureCapability vcaps;
-+            vcaps.width = cap.width;
-+            vcaps.height = cap.height;
-+            vcaps.maxFPS = cap.fps;
-+            vcaps.expectedCaptureDelay = captureDelay;
-+            vcaps.rawType = kVideoI420;
-+            vcaps.codecType = kVideoCodecI420;
-+            _captureCapabilities.push_back(vcaps);
++            if (cap.width <= maxWidth && cap.height <= maxHeight) {
++                VideoCaptureCapability vcaps;
++                vcaps.width = cap.width;
++                vcaps.height = cap.height;
++                vcaps.maxFPS = cap.fps;
++                vcaps.expectedCaptureDelay = captureDelay;
++                vcaps.rawType = kVideoI420;
++                vcaps.codecType = kVideoCodecI420;
++                _captureCapabilities.push_back(vcaps);
++            }
 +        }
 +    }
 +}
