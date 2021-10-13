@@ -228,18 +228,6 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   return mLayerManager;
 }
 
-// JB#55708
-#if 0
-void
-nsWindow::DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext *aContext, LayoutDeviceIntRect aRect)
-{
-  MOZ_ASSERT(mWindow);
-  Unused << aContext;
-  Unused << aRect;
-  mWindow->GetListener()->DrawUnderlay();
-}
-#endif
-
 bool
 nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
 {
