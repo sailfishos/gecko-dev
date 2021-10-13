@@ -17,7 +17,7 @@
 #include "nsString.h"
 #include "EmbedLiteAppThreadChild.h"
 
-#include "buildid.h"
+#include "application.ini.h"
 #include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
@@ -64,13 +64,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetVersion(nsACString& aVersion)
 {
-  aVersion.Assign(MOZ_STRINGIFY(MOZ_APP_VERSION));
+  aVersion.Assign(sAppData.version);
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetAppBuildID(nsACString& aAppBuildID)
 {
-  aAppBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
+  aAppBuildID.Assign(sAppData.buildID);
   return NS_OK;
 }
 
@@ -94,13 +94,13 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetVendor(nsACString& aVendor)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformVersion(nsACString& aPlatformVersion)
 {
-  aPlatformVersion.Assign(MOZ_STRINGIFY(GRE_MILESTONE));
+  aPlatformVersion.Assign(sAppData.version);
   return NS_OK;
 }
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetPlatformBuildID(nsACString& aPlatformBuildID)
 {
-  aPlatformBuildID.Assign(MOZ_STRINGIFY(MOZ_BUILDID));
+  aPlatformBuildID.Assign(sAppData.buildID);
   return NS_OK;
 }
 
@@ -315,12 +315,12 @@ EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetSourceURL(nsACString &aResult)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetUpdateURL(nsACString &aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -338,10 +338,12 @@ EmbedLiteXulAppInfo::GetLauncherProcessState(uint32_t *aResult) {
 
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetLastAppVersion(nsACString &aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  aResult.Assign(sAppData.version);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetLastAppBuildID(nsACString &aResult) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  aResult.Assign(sAppData.buildID);
+  return NS_OK;
 }
