@@ -109,6 +109,7 @@ IPDL_SOURCES += [
 ]
 
 LOCAL_INCLUDES += [
+    '!/build',
     '/dom/base',
     '/dom/ipc',
     '/gfx/layers',
