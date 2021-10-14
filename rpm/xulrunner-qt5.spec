@@ -127,6 +127,7 @@ Patch71:    0071-sailfishos-gecko-Fix-flipped-FBO-textures-when-rende.patch
 Patch72:    0072-sailfishos-gecko-Do-not-flip-scissor-rects-when-rend.patch
 Patch73:    0073-sailfishos-components-Cleanup-static-components-defi.patch
 Patch74:    0074-Revert-Bug-1611658-Unship-libcubeb-s-C-PulseAudio-ba.patch
+Patch75:    0075-sailfishos-gfx-Use-scroll-frame-background-color-as-.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch52:    0052-sailfishos-gecko-Change-behaviour-of-urlclassifier.s.patch

@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 13 Oct 2021 15:21:46 +0300
+Subject: [PATCH] [sailfishos][gfx] Use scroll frame background color as clear
+ color. Fixes JB#55708 OMP#JOLLA-403
+
+---
+ gfx/layers/composite/LayerManagerComposite.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/layers/composite/LayerManagerComposite.cpp b/gfx/layers/composite/LayerManagerComposite.cpp
+index f973d9cf4395..b541537ca1be 100644
+--- a/gfx/layers/composite/LayerManagerComposite.cpp
++++ b/gfx/layers/composite/LayerManagerComposite.cpp
+@@ -1101,7 +1101,7 @@ bool LayerManagerComposite::Render(const nsIntRegion& aInvalidRegion,
+   CompositorBench(mCompositor, mRenderBounds);
+ 
+   MOZ_ASSERT(mRoot->GetOpacity() == 1);
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_EMBEDLITE)
+   LayerMetricsWrapper wrapper = GetRootContentLayer();
+   if (wrapper) {
+     mCompositor->SetClearColor(wrapper.Metadata().GetBackgroundColor());
+-- 
+2.31.1
+
