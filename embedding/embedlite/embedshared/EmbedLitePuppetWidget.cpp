@@ -437,6 +437,16 @@ EmbedLitePuppetWidget::DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId, con
   return false;
 }
 
+void EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver *aObserver)
+{
+  mObservers.AppendElement(aObserver);
+}
+
+void EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver)
+{
+  mObservers.RemoveElement(aObserver);
+}
+
 EmbedLitePuppetWidget::EmbedLitePuppetWidget()
   : EmbedLitePuppetWidget(nullptr)
 {

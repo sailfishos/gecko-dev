@@ -47,6 +47,8 @@ public:
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
 
+  EmbedLitePuppetWidget* GetPuppetWidget() const;
+
 /*---------TabChildIface---------------*/
 
   virtual bool
@@ -144,8 +146,8 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &) override;
   virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &) override;
-  virtual mozilla::ipc::IPCResult RecvSetVirtualKeyboardHeight(const int &) override;
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &) override;
+  virtual mozilla::ipc::IPCResult RecvSetDynamicToolbarHeight(const int&) override;
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&) override;
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
   virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent) override;
@@ -221,7 +223,6 @@ private:
 
   void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
-  void ScrollInputFieldIntoView();
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
   void SetDesktopMode(const bool aDesktopMode);
   bool SetDesktopModeInternal(const bool aDesktopMode);
@@ -238,9 +239,6 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
-
-  int mVirtualKeyboardHeight;
-
   RefPtr<TabChildHelper> mHelper;
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;

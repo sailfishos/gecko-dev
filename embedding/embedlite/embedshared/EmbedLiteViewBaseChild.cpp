@@ -11,6 +11,7 @@
 
 #include "nsIURIMutator.h"
 #include "mozilla/Unused.h"
+#include "nsITextControlElement.h"
 
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
@@ -112,7 +113,6 @@ EmbedLiteViewBaseChild::EmbedLiteViewBaseChild(const uint32_t& aWindowId, const 
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
-  , mVirtualKeyboardHeight(0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
   , mInitialized(false)
@@ -148,9 +148,14 @@ EmbedLiteViewBaseChild::~EmbedLiteViewBaseChild()
 {
   LOGT();
   if (mWindowObserverRegistered) {
-    mWindow->GetWidget()->RemoveObserver(this);
+    GetPuppetWidget()->RemoveObserver(this);
   }
   mWindow = nullptr;
+}
+
+EmbedLitePuppetWidget* EmbedLiteViewBaseChild::GetPuppetWidget() const
+{
+  return static_cast<EmbedLitePuppetWidget*>(mWidget.get());
 }
 
 void
@@ -222,7 +227,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
   }
 
   mWidget = new EmbedLitePuppetWidget(this);
-  LOGT("puppet widget: %p", static_cast<EmbedLitePuppetWidget*>(mWidget.get()));
+  LOGT("puppet widget: %p", GetPuppetWidget());
   nsWidgetInitData  widgetInit;
   widgetInit.clipChildren = true;
   widgetInit.clipSiblings = true;
@@ -317,13 +322,13 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
   mHelper->ReportSizeUpdate(bounds);
 
   MOZ_ASSERT(mWindow->GetWidget());
-  mWindow->GetWidget()->AddObserver(this);
+  GetPuppetWidget()->AddObserver(this);
   mWindowObserverRegistered = true;
 
   if (mMargins.LeftRight() > 0 || mMargins.TopBottom() > 0) {
-    EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+    EmbedLitePuppetWidget *widget = GetPuppetWidget();
     widget->SetMargins(mMargins);
-    widget->UpdateSize();
+    widget->UpdateBounds(true);
   }
 
   if (!mWindow->GetWidget()->IsFirstViewCreated()) {
@@ -608,7 +613,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsA
     LOGT("Deactivate browser");
   }
 
-  EmbedLitePuppetWidget* widget = static_cast<EmbedLitePuppetWidget*>(mWidget.get());
+  EmbedLitePuppetWidget *widget = GetPuppetWidget();
   if (widget) {
     widget->SetActive(aIsActive);
   }
@@ -746,26 +751,45 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetThrottlePainting(const bo
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetVirtualKeyboardHeight(const int &aHeight)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetDynamicToolbarHeight(const int &aHeight)
 {
-  LOGT("aHeight:%i", aHeight);
-
-  mVirtualKeyboardHeight = aHeight;
-
-  if (mVirtualKeyboardHeight) {
-    mHelper->DynamicToolbarMaxHeightChanged(aHeight);
-    ScrollInputFieldIntoView();
-  }
+  mHelper->DynamicToolbarMaxHeightChanged(aHeight);
+  Unused << SendDynamicToolbarHeightChanged(aHeight);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int& aTop, const int& aRight,
-                                                               const int& aBottom, const int& aLeft)
+mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetMargins(const int &aTop, const int &aRight,
+                                                               const int &aBottom, const int &aLeft)
 {
-  Unused << aTop;
-  Unused << aRight;
-  Unused << aLeft;
-  mHelper->DynamicToolbarMaxHeightChanged(aBottom);
+  mMargins = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
+  if (mWidget) {
+    EmbedLitePuppetWidget *widget = GetPuppetWidget();
+    widget->SetMargins(mMargins);
+    widget->UpdateBounds(true);
+
+    nsCOMPtr<nsIDocument> document = mHelper->GetDocument();
+
+    if (document) {
+      nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
+      nsCOMPtr<nsIContent> focusedContent = nsFocusManager::GetFocusedDescendant(
+                  document->GetWindow(), nsFocusManager::eIncludeAllDescendants,
+                  getter_AddRefs(focusedWindow));
+      if (focusedContent) {
+        nsCOMPtr<nsITextControlElement> textControlElement = focusedContent->GetAsTextControlElement();
+        if (textControlElement) {
+          nsISelectionController *selectionController = textControlElement->GetSelectionController();
+          if (selectionController) {
+              selectionController->ScrollSelectionIntoView(
+                            nsISelectionController::SELECTION_NORMAL,
+                            nsISelectionController::SELECTION_WHOLE_SELECTION,
+                            nsISelectionController::SCROLL_CENTER_VERTICALLY
+                          );
+          }
+        }
+      }
+    }
+  }
+
   Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
   return IPC_OK();
 }
@@ -935,23 +959,6 @@ EmbedLiteViewBaseChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   }
 
   event.mTime = PR_Now() / 1000;
-}
-
-void EmbedLiteViewBaseChild::ScrollInputFieldIntoView()
-{
-    nsCOMPtr<nsIDocument> document(mHelper->GetDocument());
-    NS_ENSURE_TRUE(document, );
-
-    nsIPresShell *presShell = document->GetShell();
-    NS_ENSURE_TRUE(presShell, );
-
-    nsCOMPtr<nsISelectionController> selectionController = presShell->GetSelectionControllerForFocusedContent();
-    NS_ENSURE_TRUE(selectionController, );
-
-    selectionController->ScrollSelectionIntoView(
-                nsISelectionController::SELECTION_NORMAL,
-                nsISelectionController::SELECTION_FOCUS_REGION,
-                0);
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
@@ -1492,10 +1499,6 @@ EmbedLiteViewBaseChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
   mHelper->ReportSizeUpdate(aSize);
-
-  if (mVirtualKeyboardHeight) {
-    ScrollInputFieldIntoView();
-  }
 }
 
 void
