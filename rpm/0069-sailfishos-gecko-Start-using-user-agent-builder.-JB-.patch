@@ -5,11 +5,11 @@ Subject: [PATCH] [sailfishos][gecko] Start using user-agent builder. JB#52068
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- netwerk/protocol/http/nsHttpHandler.cpp | 8 +++++---
- 1 file changed, 5 insertions(+), 3 deletions(-)
+ netwerk/protocol/http/nsHttpHandler.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
-index d5e2c61dbec9..5a6d80623a1e 100644
+index d5e2c61dbec9..58737ebd5420 100644
 --- a/netwerk/protocol/http/nsHttpHandler.cpp
 +++ b/netwerk/protocol/http/nsHttpHandler.cpp
 @@ -495,7 +495,7 @@ nsresult nsHttpHandler::Init() {
@@ -21,13 +21,7 @@ index d5e2c61dbec9..5a6d80623a1e 100644
    mProductSub.AssignLiteral(MOZILLA_UAVERSION);
  #else
    mProductSub.AssignLiteral(LEGACY_UA_GECKO_TRAIL);
-@@ -945,12 +945,12 @@ void nsHttpHandler::InitUserAgentComponents() {
-       // and there seems little a webpage can sensibly do
-       // based on it being something else, so use X11 for
-       // backwards compatibility in all cases.
--      "X11"
-+      "Sailfish 4.0"
- #  endif
+@@ -950,7 +950,7 @@ void nsHttpHandler::InitUserAgentComponents() {
    );
  #endif
  
@@ -49,5 +43,5 @@ index d5e2c61dbec9..5a6d80623a1e 100644
  
  #ifndef MOZ_UA_OS_AGNOSTIC
 -- 
-2.17.1
+2.31.1
 
