@@ -98,7 +98,7 @@ class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
 {
 public:
   typedef mozilla::layers::ScrollableLayerGuid::ViewID ViewID;
-  BrowserChildHelper(EmbedLiteViewChildIface* aView);
+  BrowserChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
@@ -184,6 +184,8 @@ private:
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewChild;
   EmbedLiteViewChildIface* mView;
+  nsCOMPtr<nsIWebNavigation> mWebNavigation;
+  const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
   ScreenIntSize mInnerSize;

@@ -235,7 +235,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   // when nsWebBrowser::Create is called so that nsDocShell::SetTreeOwner can read back nsIBrowserChild.
   // nsWebBrowser::Create -> nsDocShell::SetTreeOwner ->
   // nsDocShellTreeOwner::GetInterface (nsIInterfaceRequestor) -> WebBrowserChrome::GetInterface
-  mHelper = new BrowserChildHelper(this);
+  mHelper = new BrowserChildHelper(this, mWebNavigation, mId);
   mChrome->SetBrowserChildHelper(mHelper.get());
 
   // Dig out parent browsing context. If this is created with window.open(), we need
@@ -498,12 +498,6 @@ EmbedLiteViewChild::DoSendSyncMessage(const char16_t* aMessageName, const char16
   return true;
 }
 
-nsIWebNavigation*
-EmbedLiteViewChild::WebNavigation()
-{
-  return mWebNavigation;
-}
-
 nsIWidget*
 EmbedLiteViewChild::WebWidget()
 {
@@ -610,7 +604,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   }
 
   // Update state via DocShell -> PresShell
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(WebNavigation());
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
   if (NS_WARN_IF(!docShell)) {
     return IPC_OK();
   }

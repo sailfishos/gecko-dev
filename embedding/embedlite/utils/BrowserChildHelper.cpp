@@ -56,8 +56,10 @@ static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
 
-BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface* aView)
+BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId)
   : mView(aView)
+  , mWebNavigation(aWebNavigation)
+  , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
   , mShouldSendWebProgressEventsToParent(false)
@@ -165,6 +167,9 @@ BrowserChildHelper::Unload()
       new EmbedUnloadScriptEvent(this, mBrowserChildMessageManager)
     );
   }
+
+  mView = nullptr;
+
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
 
@@ -279,6 +284,10 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
                             const char* aTopic,
                             const char16_t* aData)
 {
+  if (!mView) {
+    return NS_ERROR_FAILURE;
+  }
+
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<Document> doc(GetTopLevelDocument());
     uint32_t presShellId;
@@ -344,7 +353,7 @@ void BrowserChildHelper::DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aH
 nsIWebNavigation*
 BrowserChildHelper::WebNavigation() const
 {
-  return mView->WebNavigation();
+  return mWebNavigation.get();
 }
 
 nsIWidget*
@@ -380,6 +389,10 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
                                           mozilla::dom::ipc::StructuredCloneData& aData,
                                           nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal)
 {
+  if (!mView) {
+    return false;
+  }
+
   NS_ENSURE_TRUE(InitBrowserChildHelperMessageManager(), false);
 
   RefPtr<ChromeMessageBroadcaster> globalIMessageManager = nsFrameMessageManager::GetGlobalMessageManager();
@@ -450,6 +463,10 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
 nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
                                                 mozilla::dom::ipc::StructuredCloneData& aData)
 {
+  if (!mView) {
+    return NS_ERROR_FAILURE;
+  }
+
   if (!InitBrowserChildHelperMessageManager()) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -578,9 +595,9 @@ BrowserChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                             const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
   LOGT();
-  return mView->UpdateZoomConstraints(aPresShellId,
-                                      aViewId,
-                                      aConstraints);
+  return mView && mView->UpdateZoomConstraints(aPresShellId,
+                                               aViewId,
+                                               aConstraints);
 }
 
 bool
@@ -728,7 +745,7 @@ BrowserChildHelper::RemoteDropLinks(
 NS_IMETHODIMP
 BrowserChildHelper::GetTabId(uint64_t* aId)
 {
-  *aId = mView->GetID();
+  *aId = mId;
   return NS_OK;
 }
 
