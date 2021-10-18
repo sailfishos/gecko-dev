@@ -62,7 +62,6 @@ public:
    */
   virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) = 0;
 
-  virtual nsIWebNavigation* WebNavigation() = 0;
   virtual nsIWidget* WebWidget() = 0;
 /*----------------------WindowCreator-------------------------*/
   virtual uint32_t GetID() = 0;

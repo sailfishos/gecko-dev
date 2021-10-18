@@ -37,7 +37,7 @@ class TabChildHelper : public mozilla::dom::TabChildBase,
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
-  TabChildHelper(EmbedLiteViewChildIface* aView);
+  TabChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
@@ -97,6 +97,8 @@ private:
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewBaseChild;
   EmbedLiteViewChildIface* mView;
+  nsCOMPtr<nsIWebNavigation> mWebNavigation;
+  const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
   ScreenIntSize mInnerSize;
