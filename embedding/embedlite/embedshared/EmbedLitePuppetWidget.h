@@ -80,6 +80,9 @@ public:
   bool DoSendSetAllowedTouchBehavior(uint64_t aInputBlockId,
                                      const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags);
 
+  void AddObserver(EmbedLitePuppetWidgetObserver *aObserver);
+  void RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver);
+
 protected:
   virtual ~EmbedLitePuppetWidget() override;
   EmbedLiteViewChildIface* GetEmbedLiteChildView() const;

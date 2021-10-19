@@ -36,7 +36,9 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmb
   , mViewParent(aViewImpl)
   , mUniqueID(aViewId)
   , mMarginsChanging(false)
+  , mDynamicToolbarHeightChanging(false)
   , mMargins(0, 0, 0, 0)
+  , mDynamicToolbarHeight(0)
 {
   LOGT();
   dynamic_cast<EmbedLiteViewIface*>(aViewImpl)->SetEmbedAPIView(this);
@@ -127,13 +129,6 @@ EmbedLiteView::SetThrottlePainting(bool aThrottle)
   LOGT();
   NS_ENSURE_TRUE(mViewParent, );
   Unused << mViewParent->SendSetThrottlePainting(aThrottle);
-}
-
-void EmbedLiteView::SetVirtualKeyboardHeight(int aHeight)
-{
-  LOGT();
-  NS_ENSURE_TRUE(mViewParent, );
-  Unused << mViewParent->SendSetVirtualKeyboardHeight(aHeight);
 }
 
 void
@@ -258,6 +253,26 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 }
 
 // Render interface
+
+void EmbedLiteView::SetDynamicToolbarHeight(int height)
+{
+    mDynamicToolbarHeight = height;
+
+    if (!mDynamicToolbarHeightChanging) {
+        mDynamicToolbarHeightChanging = true;
+        Unused << mViewParent->SendSetDynamicToolbarHeight(height);
+    }
+}
+
+void EmbedLiteView::DynamicToolbarHeightChanged(int height)
+{
+    if (mDynamicToolbarHeight != height) {
+        Unused << mViewParent->SendSetDynamicToolbarHeight(mDynamicToolbarHeight);
+    } else {
+        mDynamicToolbarHeightChanging = false;
+        mListener->OnDynamicToolbarHeightChanged();
+    }
+}
 
 void EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
 {

@@ -129,6 +129,15 @@ EmbedLiteViewParent::RecvDestroyed()
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewParent::RecvDynamicToolbarHeightChanged(const int &height)
+{
+  LOGT();
+  NS_ENSURE_TRUE(mView && !mViewAPIDestroyed, IPC_OK());
+
+  mView->DynamicToolbarHeightChanged(height);
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewParent::RecvMarginsChanged(const int &top, const int &right,
                                                                 const int &bottom, const int &left)
 {

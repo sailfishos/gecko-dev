@@ -42,6 +42,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvInitialized();
   virtual mozilla::ipc::IPCResult RecvDestroyed();
+  virtual mozilla::ipc::IPCResult RecvDynamicToolbarHeightChanged(const int &height);
   virtual mozilla::ipc::IPCResult RecvMarginsChanged(const int &top,
                                                      const int &right,
                                                      const int &bottom,

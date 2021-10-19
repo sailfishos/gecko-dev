@@ -110,7 +110,9 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
   mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   LOGT("this:%p width: %f, height: %f as int w: %d h: %h", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
-    mWidget->Resize(aSize.width, aSize.height, true);
+    nsWindow *widget = GetWidget();
+    widget->SetSize(aSize.width, aSize.height);
+    widget->UpdateBounds(true);
   }
   return IPC_OK();
 }
@@ -120,9 +122,9 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
   LOGT("this:%p", this);
   mRotation = static_cast<mozilla::ScreenRotation>(aRotation);
   if (mWidget) {
-    nsWindow* widget = GetWidget();
+    nsWindow *widget = GetWidget();
     widget->SetRotation(mRotation);
-    widget->UpdateSize();
+    widget->UpdateBounds(true);
   }
 
   nsresult rv;
@@ -195,7 +197,7 @@ void EmbedLiteWindowChild::CreateWidget()
               mBounds,
               &widgetInit              // HandleWidgetEvent
               );
-  GetWidget()->UpdateSize();
+  GetWidget()->UpdateBounds(true);
 
   mInitialized = true;
   Unused << SendInitialized();

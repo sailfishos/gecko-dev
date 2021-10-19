@@ -84,7 +84,8 @@ public:
 
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const LayoutDeviceIntMargin& margins);
-  void UpdateSize();
+  void UpdateBounds(bool aRepaint);
+  void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
 
   virtual mozilla::layers::LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
