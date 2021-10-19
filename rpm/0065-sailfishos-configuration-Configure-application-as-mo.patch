@@ -9,11 +9,13 @@ aligns a bit the build system with Android FF.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- dom/base/moz.build       | 4 +++-
- dom/bindings/moz.build   | 4 +++-
- dom/webidl/moz.build     | 4 +++-
- toolkit/themes/moz.build | 4 ++--
- 4 files changed, 11 insertions(+), 5 deletions(-)
+ dom/base/moz.build                        | 4 +++-
+ dom/bindings/moz.build                    | 4 +++-
+ dom/webidl/moz.build                      | 4 +++-
+ toolkit/components/search/components.conf | 3 ++-
+ toolkit/components/search/moz.build       | 4 +++-
+ toolkit/themes/moz.build                  | 4 ++--
+ 6 files changed, 16 insertions(+), 7 deletions(-)
 
 diff --git a/dom/base/moz.build b/dom/base/moz.build
 index a9966c01a097..c4c61e41c0d5 100644
@@ -60,6 +62,35 @@ index f3927a59a48f..ffeea05dee56 100644
      WEBIDL_FILES += [
          'External.webidl',
      ]
+diff --git a/toolkit/components/search/components.conf b/toolkit/components/search/components.conf
+index 8182d3661d23..89f503e736b9 100644
+--- a/toolkit/components/search/components.conf
++++ b/toolkit/components/search/components.conf
+@@ -4,7 +4,8 @@
+ # License, v. 2.0. If a copy of the MPL was not distributed with this
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+-HAVE_SIDEBAR = buildconfig.substs['MOZ_BUILD_APP'] in ('browser', 'mobile/android', 'xulrunner')
++app = buildconfig.substs['MOZ_BUILD_APP']
++HAVE_SIDEBAR = app in ('browser', 'xulrunner') or app.startswith('mobile/')
+ 
+ Classes = [
+     {
+diff --git a/toolkit/components/search/moz.build b/toolkit/components/search/moz.build
+index 32a13662ceab..a10e9a2ac54d 100644
+--- a/toolkit/components/search/moz.build
++++ b/toolkit/components/search/moz.build
+@@ -21,7 +21,9 @@ XPIDL_SOURCES += [
+ 
+ XPIDL_MODULE = 'toolkit_search'
+ 
+-if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
++app = CONFIG['MOZ_BUILD_APP']
++
++if app in ['browser', 'xulrunner'] or app.startswith('mobile/'):
+     EXTRA_JS_MODULES += [
+         'Sidebar.jsm',
+     ]
 diff --git a/toolkit/themes/moz.build b/toolkit/themes/moz.build
 index f492b154b211..b8f7e227404f 100644
 --- a/toolkit/themes/moz.build
@@ -77,5 +108,5 @@ index f492b154b211..b8f7e227404f 100644
  else:
      DIRS += ['windows']
 -- 
-2.17.1
+2.31.1
 
