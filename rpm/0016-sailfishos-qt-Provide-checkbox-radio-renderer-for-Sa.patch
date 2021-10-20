@@ -36,7 +36,7 @@ See upstream commit: 741c54ae79ad51e5f54436e4cfa7e2851cdc9e69
 
 MOZ_MUST_USE has been replaced with [[nodiscard]].
 See upstream commit: 162b8c84909ca0e17df98a6a18442da5ebaa55a2
-
+ 
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  layout/style/res/forms.css    |   4 +
@@ -101,18 +101,18 @@ index 000000000000..9fdcc95b24a6
 +
 +#endif  // mozilla_widget_QtColors_h
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
-index 3918fd4c9a31..2804f29b2f1d 100644
+index 231eee017e1b..760213273ced 100644
 --- a/widget/qt/moz.build
 +++ b/widget/qt/moz.build
-@@ -14,6 +14,7 @@ SOURCES += [
-     'nsClipboard.cpp',
+@@ -13,6 +13,7 @@ SOURCES += [
+     'nsBidiKeyboard.cpp',
      'nsIdleServiceQt.cpp',
      'nsLookAndFeel.cpp',
 +    'nsNativeThemeQt.cpp',
      'nsQtKeyUtils.cpp',
      'nsScreenManagerQt.cpp',
      'nsScreenQt.cpp',
-@@ -40,6 +41,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
+@@ -39,6 +40,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
  FINAL_LIBRARY = 'xul'
  
  LOCAL_INCLUDES += [
@@ -509,5 +509,5 @@ index 000000000000..94ac8c831771
 +
 +#endif  // nsNativeThemeQt_h_
 -- 
-2.25.1
+2.26.2
 
