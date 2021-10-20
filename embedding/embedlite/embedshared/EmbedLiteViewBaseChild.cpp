@@ -614,7 +614,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsA
 
   // Update state via WebBrowser -> DocShell -> PresShell
   mWebBrowser->SetIsActive(aIsActive);
-
+  mHelper->SetParentIsActive(aIsActive);
   mWidget->Show(aIsActive);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);

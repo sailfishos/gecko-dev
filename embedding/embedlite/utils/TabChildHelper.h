@@ -49,6 +49,7 @@ public:
   void DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight);
   virtual nsIWebNavigation* WebNavigation() const override;
   virtual nsIWidget* WebWidget() override;
+  virtual bool ParentIsActive() const override;
 
   virtual bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
@@ -76,6 +77,7 @@ public:
                                         bool *ok);
 
   void OpenIPC() { mIPCOpen = true; }
+  void SetParentIsActive(bool aParentIsActive) { mParentIsActive = aParentIsActive; }
 
 protected:
   virtual ~TabChildHelper();
@@ -101,6 +103,7 @@ private:
   const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
+  bool mParentIsActive;
   ScreenIntSize mInnerSize;
   ScreenIntCoord mDynamicToolbarMaxHeight;
 };

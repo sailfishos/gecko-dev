@@ -61,6 +61,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation 
   , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
+  , mParentIsActive(false)
   , mDynamicToolbarMaxHeight(0)
 {
   LOGT();
@@ -310,6 +311,11 @@ TabChildHelper::WebWidget()
 {
   nsCOMPtr<nsIDocument> document = GetDocument();
   return nsContentUtils::WidgetForDocument(document);
+}
+
+bool TabChildHelper::ParentIsActive() const
+{
+  return mView && mParentIsActive;
 }
 
 bool
