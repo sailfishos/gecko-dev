@@ -8,6 +8,8 @@
 #define EmbedHistoryListener_H_
 
 #include "mozilla/IHistory.h"
+#include "mozilla/BaseHistory.h"
+#include "mozIAsyncHistory.h"
 #include "nsDataHashtable.h"
 #include "nsTPriorityQueue.h"
 #include "nsIRunnable.h"
@@ -22,13 +24,19 @@
 // Max size of History::mEmbedURIs
 #define EMBED_URI_SIZE 128
 
-class EmbedHistoryListener : public mozilla::IHistory
+//class EmbedHistoryListener : public mozilla::IHistory
+//                           , public nsIRunnable
+//                           , public nsIObserver
+//                           , public nsITimerCallback
+class EmbedHistoryListener : public mozilla::IHistory // BaseHistory
+                           , public mozIAsyncHistory
                            , public nsIRunnable
                            , public nsIObserver
                            , public nsITimerCallback
 {
 public:
   NS_DECL_ISUPPORTS
+  NS_DECL_MOZIASYNCHISTORY
   NS_DECL_NSIRUNNABLE
   NS_DECL_NSIOBSERVER
   NS_DECL_NSITIMERCALLBACK
