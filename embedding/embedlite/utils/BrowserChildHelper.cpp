@@ -62,6 +62,7 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t 
   , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
+  , mParentIsActive(false)
   , mShouldSendWebProgressEventsToParent(false)
   , mHasSiblings(false)
   , mDynamicToolbarMaxHeight(0)
@@ -361,6 +362,16 @@ BrowserChildHelper::WebWidget()
 {
   nsCOMPtr<Document> document = GetTopLevelDocument();
   return nsContentUtils::WidgetForDocument(document);
+}
+
+nsresult BrowserChildHelper::GetParentIsActive(bool* aParentIsActive) {
+  *aParentIsActive = mView && mParentIsActive;
+  return NS_OK;
+}
+
+nsresult BrowserChildHelper::SetParentIsActive(bool aParentIsActive) {
+  mParentIsActive = aParentIsActive;
+  return NS_OK;
 }
 
 bool

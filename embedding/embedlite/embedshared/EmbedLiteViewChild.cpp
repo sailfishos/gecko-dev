@@ -614,6 +614,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
   docShell->SetIsActive(aIsActive);
 
   mWidget->Show(aIsActive);
+  mHelper->SetParentIsActive(aIsActive);
   mWebBrowser->SetVisibility(aIsActive);
 
   if (aIsActive) {
