@@ -15,10 +15,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index e4982686063a..6e4948544788 100644
+index c2fd5b3649c6..8de39356df84 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -1760,7 +1760,7 @@ void gfxPlatform::InitBackendPrefs(uint32_t aCanvasBitmask,
+@@ -2051,7 +2051,7 @@ BackendType gfxPlatform::GetBackendPref(const char* aBackendPrefName,
  }
  
  bool gfxPlatform::InSafeMode() {
@@ -28,5 +28,5 @@ index e4982686063a..6e4948544788 100644
  
    if (!sSafeModeInitialized) {
 -- 
-2.29.2
+2.31.1
 
