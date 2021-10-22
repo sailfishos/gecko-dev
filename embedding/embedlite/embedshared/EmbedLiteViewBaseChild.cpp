@@ -317,7 +317,7 @@ EmbedLiteViewBaseChild::InitGeckoWindow(const uint32_t parentId, const bool isPr
     NS_ERROR("SetVisibility failed!");
   }
 
-  mHelper = new TabChildHelper(this);
+  mHelper = new TabChildHelper(this, mWebNavigation, mId);
   mChrome->SetTabChildHelper(mHelper.get());
   mHelper->ReportSizeUpdate(bounds);
 
@@ -511,12 +511,6 @@ EmbedLiteViewBaseChild::DoCallRpcMessage(const char16_t* aMessageName, const cha
   return true;
 }
 
-nsIWebNavigation*
-EmbedLiteViewBaseChild::WebNavigation()
-{
-  return mWebNavigation;
-}
-
 nsIWidget*
 EmbedLiteViewBaseChild::WebWidget()
 {
@@ -620,7 +614,7 @@ mozilla::ipc::IPCResult EmbedLiteViewBaseChild::RecvSetIsActive(const bool &aIsA
 
   // Update state via WebBrowser -> DocShell -> PresShell
   mWebBrowser->SetIsActive(aIsActive);
-
+  mHelper->SetParentIsActive(aIsActive);
   mWidget->Show(aIsActive);
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);

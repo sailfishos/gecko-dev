@@ -55,10 +55,13 @@ static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
 
-TabChildHelper::TabChildHelper(EmbedLiteViewChildIface* aView)
+TabChildHelper::TabChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId)
   : mView(aView)
+  , mWebNavigation(aWebNavigation)
+  , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
+  , mParentIsActive(false)
   , mDynamicToolbarMaxHeight(0)
 {
   LOGT();
@@ -159,6 +162,9 @@ TabChildHelper::Unload()
       new EmbedUnloadScriptEvent(this, mTabChildGlobal)
     );
   }
+
+  mView = nullptr;
+
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
 
@@ -220,6 +226,10 @@ TabChildHelper::Observe(nsISupports* aSubject,
                         const char* aTopic,
                         const char16_t* aData)
 {
+  if (!mView) {
+    return NS_ERROR_FAILURE;
+  }
+
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<nsIDocument> doc(GetDocument());
     uint32_t presShellId;
@@ -293,7 +303,7 @@ void TabChildHelper::DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeigh
 nsIWebNavigation*
 TabChildHelper::WebNavigation() const
 {
-  return mView->WebNavigation();
+  return mWebNavigation.get();
 }
 
 nsIWidget*
@@ -301,6 +311,11 @@ TabChildHelper::WebWidget()
 {
   nsCOMPtr<nsIDocument> document = GetDocument();
   return nsContentUtils::WidgetForDocument(document);
+}
+
+bool TabChildHelper::ParentIsActive() const
+{
+  return mView && mParentIsActive;
 }
 
 bool
@@ -326,6 +341,10 @@ TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
                                       nsTArray<mozilla::dom::ipc::StructuredCloneData> *aRetVal,
                                       bool aIsSync)
 {
+  if (!mView) {
+    return false;
+  }
+
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
           do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
@@ -402,6 +421,10 @@ nsresult TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
                                             JS::Handle<JSObject *> aCpows,
                                             nsIPrincipal* aPrincipal)
 {
+  if (!mView) {
+    return NS_ERROR_FAILURE;
+  }
+
   nsCOMPtr<nsIMessageBroadcaster> globalIMessageManager =
       do_GetService("@mozilla.org/globalmessagemanager;1");
   RefPtr<nsFrameMessageManager> globalMessageManager =
@@ -512,9 +535,9 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                         const Maybe<mozilla::layers::ZoomConstraints> &aConstraints)
 {
   LOGT();
-  return mView->UpdateZoomConstraints(aPresShellId,
-                                      aViewId,
-                                      aConstraints);
+  return mView && mView->UpdateZoomConstraints(aPresShellId,
+                                               aViewId,
+                                               aConstraints);
 }
 
 void
@@ -630,7 +653,7 @@ TabChildHelper::EnableDisableCommands(const nsAString& aAction,
 NS_IMETHODIMP
 TabChildHelper::GetTabId(uint64_t* aId)
 {
-  *aId = mView->GetID();
+  *aId = mId;
   return NS_OK;
 }
 

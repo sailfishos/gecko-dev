@@ -4,13 +4,28 @@ Date: Tue, 11 Aug 2020 17:09:44 +0300
 Subject: [PATCH] [sailfishos][gecko] Make TabChild to work with TabChildHelper
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
- dom/ipc/TabChild.cpp | 10 +++++++++-
- dom/ipc/TabChild.h   |  9 +++++----
- 2 files changed, 14 insertions(+), 5 deletions(-)
+ dom/base/nsFocusManager.cpp |  2 +-
+ dom/ipc/TabChild.cpp        | 10 +++++++++-
+ dom/ipc/TabChild.h          | 11 +++++++----
+ 3 files changed, 17 insertions(+), 6 deletions(-)
 
+diff --git a/dom/base/nsFocusManager.cpp b/dom/base/nsFocusManager.cpp
+index 4d2f86dc1dc1..7b9f4c847b3a 100644
+--- a/dom/base/nsFocusManager.cpp
++++ b/dom/base/nsFocusManager.cpp
+@@ -857,7 +857,7 @@ nsFocusManager::WindowShown(mozIDOMWindowProxy* aWindow, bool aNeedsFocus) {
+ 
+   if (nsIDocShell* docShell = window->GetDocShell()) {
+     if (nsCOMPtr<nsITabChild> child = docShell->GetTabChild()) {
+-      bool active = static_cast<TabChild*>(child.get())->ParentIsActive();
++      bool active = dynamic_cast<TabChildBase*>(child.get())->ParentIsActive();
+       ActivateOrDeactivate(window, active);
+     }
+   }
 diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
-index 626742777c06..9a72374c12a3 100644
+index fdb1db09fdad..4738d894ea82 100644
 --- a/dom/ipc/TabChild.cpp
 +++ b/dom/ipc/TabChild.cpp
 @@ -263,10 +263,12 @@ void TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics) {
@@ -26,7 +41,7 @@ index 626742777c06..9a72374c12a3 100644
    return NS_OK;
  }
  
-@@ -3152,7 +3154,7 @@ void TabChild::BeforeUnloadRemoved() {
+@@ -3151,7 +3153,7 @@ void TabChild::BeforeUnloadRemoved() {
  
  mozilla::dom::TabGroup* TabChild::TabGroup() { return mTabGroup; }
  
@@ -35,7 +50,7 @@ index 626742777c06..9a72374c12a3 100644
    SetIsNotDOMBinding();
  }
  
-@@ -3247,23 +3249,29 @@ JSObject* TabChildGlobal::GetGlobalJSObject() {
+@@ -3246,23 +3248,29 @@ JSObject* TabChildGlobal::GetGlobalJSObject() {
  
  nsresult TabChildGlobal::Dispatch(TaskCategory aCategory,
                                    already_AddRefed<nsIRunnable>&& aRunnable) {
@@ -66,7 +81,7 @@ index 626742777c06..9a72374c12a3 100644
    return DispatcherTrait::AbstractMainThreadFor(aCategory);
  }
 diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
-index ece19ffd175d..2ec960923e0e 100644
+index bfe029b51dcd..c45d70a5db56 100644
 --- a/dom/ipc/TabChild.h
 +++ b/dom/ipc/TabChild.h
 @@ -79,6 +79,7 @@ class TabGroup;
@@ -110,6 +125,15 @@ index ece19ffd175d..2ec960923e0e 100644
  };
  
  // This is base clase which helps to share Viewport and touch related
+@@ -200,6 +201,8 @@ class TabChildBase : public nsISupports,
+ 
+   virtual ScreenIntSize GetInnerSize() = 0;
+ 
++  virtual bool ParentIsActive() const = 0;
++
+   // Get the Document for the top-level window in this tab.
+   already_AddRefed<nsIDocument> GetDocument() const;
+ 
 -- 
-2.26.2
+2.25.1
 

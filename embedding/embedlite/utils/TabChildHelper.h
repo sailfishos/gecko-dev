@@ -37,7 +37,7 @@ class TabChildHelper : public mozilla::dom::TabChildBase,
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
-  TabChildHelper(EmbedLiteViewChildIface* aView);
+  TabChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
@@ -49,6 +49,7 @@ public:
   void DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight);
   virtual nsIWebNavigation* WebNavigation() const override;
   virtual nsIWidget* WebWidget() override;
+  virtual bool ParentIsActive() const override;
 
   virtual bool DoLoadMessageManagerScript(const nsAString& aURL, bool aRunInGlobalScope) override;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
@@ -76,6 +77,7 @@ public:
                                         bool *ok);
 
   void OpenIPC() { mIPCOpen = true; }
+  void SetParentIsActive(bool aParentIsActive) { mParentIsActive = aParentIsActive; }
 
 protected:
   virtual ~TabChildHelper();
@@ -97,8 +99,11 @@ private:
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewBaseChild;
   EmbedLiteViewChildIface* mView;
+  nsCOMPtr<nsIWebNavigation> mWebNavigation;
+  const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
+  bool mParentIsActive;
   ScreenIntSize mInnerSize;
   ScreenIntCoord mDynamicToolbarMaxHeight;
 };
