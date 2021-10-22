@@ -337,6 +337,7 @@ void BrowserChildHelper::DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aH
 
   if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {
     presContext->SetDynamicToolbarMaxHeight(aHeight);
+    presContext->UpdateDynamicToolbarOffset(0);
   }
 }
 
