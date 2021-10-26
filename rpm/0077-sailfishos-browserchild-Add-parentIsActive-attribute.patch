@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 25 Oct 2021 12:53:33 +0300
+Subject: [PATCH] [sailfishos][browserchild] Add parentIsActive attribute to
+ the nsIBrowserChild. Fixes JB#56063 OMP#JOLLA-474
+
+Also make sure that nsDocShell has nsIBrowserChild available.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ docshell/base/nsDocShell.cpp            |  2 +-
+ dom/base/nsFocusManager.cpp             |  3 ++-
+ dom/interfaces/base/nsIBrowserChild.idl |  5 +++++
+ dom/ipc/BrowserChild.cpp                | 10 ++++++++++
+ 4 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
+index bb7d65805667..ae8b77a80cdc 100644
+--- a/docshell/base/nsDocShell.cpp
++++ b/docshell/base/nsDocShell.cpp
+@@ -2695,7 +2695,7 @@ nsDocShell::SetTreeOwner(nsIDocShellTreeOwner* aTreeOwner) {
+   // If we're in the content process and have had a TreeOwner set on us, extract
+   // our BrowserChild actor. If we've already had our BrowserChild set, assert
+   // that it hasn't changed.
+-  if (mTreeOwner && XRE_IsContentProcess()) {
++  if (mTreeOwner) {
+     nsCOMPtr<nsIBrowserChild> newBrowserChild = do_GetInterface(mTreeOwner);
+     MOZ_ASSERT(newBrowserChild,
+                "No BrowserChild actor for tree owner in Content!");
+diff --git a/dom/base/nsFocusManager.cpp b/dom/base/nsFocusManager.cpp
+index 7178d5a58a67..bda045d7ee16 100644
+--- a/dom/base/nsFocusManager.cpp
++++ b/dom/base/nsFocusManager.cpp
+@@ -909,7 +909,8 @@ nsFocusManager::WindowShown(mozIDOMWindowProxy* aWindow, bool aNeedsFocus) {
+ 
+   if (nsIDocShell* docShell = window->GetDocShell()) {
+     if (nsCOMPtr<nsIBrowserChild> child = docShell->GetBrowserChild()) {
+-      bool active = static_cast<BrowserChild*>(child.get())->ParentIsActive();
++      bool active = false;
++      (void)child->GetParentIsActive(&active);
+       ActivateOrDeactivate(window, active);
+     }
+   }
+diff --git a/dom/interfaces/base/nsIBrowserChild.idl b/dom/interfaces/base/nsIBrowserChild.idl
+index e145bc43e53c..6c90c653a000 100644
+--- a/dom/interfaces/base/nsIBrowserChild.idl
++++ b/dom/interfaces/base/nsIBrowserChild.idl
+@@ -36,6 +36,11 @@ interface nsIBrowserChild : nsISupports
+    */
+   attribute boolean hasSiblings;
+ 
++  /*
++   * Indicates whether parent is active.
++   */
++  attribute boolean parentIsActive;
++
+   /**
+    * Tell the nsIBrowserChild that it should begin sending its nsIWebProgress
+    * events to its nsIBrowserParent.
+diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
+index b1e658a2dc87..a4c647ebd219 100644
+--- a/dom/ipc/BrowserChild.cpp
++++ b/dom/ipc/BrowserChild.cpp
+@@ -3486,6 +3486,16 @@ NS_IMETHODIMP BrowserChild::BeginSendingWebProgressEventsToParent() {
+   return NS_OK;
+ }
+ 
++nsresult BrowserChild::GetParentIsActive(bool* aParentIsActive) {
++  *aParentIsActive = mParentIsActive;
++  return NS_OK;
++}
++
++nsresult BrowserChild::SetParentIsActive(bool aParentIsActive) {
++  mParentIsActive = aParentIsActive;
++  return NS_OK;
++}
++
+ nsresult BrowserChild::GetHasSiblings(bool* aHasSiblings) {
+   *aHasSiblings = mHasSiblings;
+   return NS_OK;
+-- 
+2.31.1
+
