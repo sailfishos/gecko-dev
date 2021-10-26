@@ -56,9 +56,9 @@ static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
 
-BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId)
+BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId)
   : mView(aView)
-  , mWebNavigation(aWebNavigation)
+  , mWebNavigation(nullptr)
   , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
@@ -687,6 +687,10 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
   // The other values don't really matter.
   InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
   return point;
+}
+
+void BrowserChildHelper::SetWebNavigation(nsIWebNavigation *aWebNavigation) {
+  mWebNavigation = aWebNavigation;
 }
 
 uint64_t BrowserChildHelper::ChromeOuterWindowID() const {

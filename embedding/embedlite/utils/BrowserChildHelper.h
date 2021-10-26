@@ -98,7 +98,7 @@ class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
 {
 public:
   typedef mozilla::layers::ScrollableLayerGuid::ViewID ViewID;
-  BrowserChildHelper(EmbedLiteViewChildIface *aView, nsIWebNavigation *aWebNavigation, uint32_t aId);
+  BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
@@ -141,6 +141,7 @@ public:
                                         uint64_t aInputBlockId,
                                         bool *ok);
 
+  void SetWebNavigation(nsIWebNavigation *aWebNavigation);
   void OpenIPC() { mIPCOpen = true; }
 
   uint64_t ChromeOuterWindowID() const;

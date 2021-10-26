@@ -235,7 +235,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   // when nsWebBrowser::Create is called so that nsDocShell::SetTreeOwner can read back nsIBrowserChild.
   // nsWebBrowser::Create -> nsDocShell::SetTreeOwner ->
   // nsDocShellTreeOwner::GetInterface (nsIInterfaceRequestor) -> WebBrowserChrome::GetInterface
-  mHelper = new BrowserChildHelper(this, mWebNavigation, mId);
+  mHelper = new BrowserChildHelper(this, mId);
   mChrome->SetBrowserChildHelper(mHelper.get());
 
   // Dig out parent browsing context. If this is created with window.open(), we need
@@ -297,6 +297,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
+
+  mHelper->SetWebNavigation(mWebNavigation);
 
   if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
     nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
