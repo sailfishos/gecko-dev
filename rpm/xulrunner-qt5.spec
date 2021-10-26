@@ -137,6 +137,7 @@ Patch79:    0079-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
 Patch80:    0080-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
 Patch81:    0081-sailfishos-webrtc-Enable-GMP-for-encoding-decoding.-.patch
 Patch82:    0082-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
+Patch83:    0083-sailfishos-gecko-Allow-LoginManagerPrompter-to-find-.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
