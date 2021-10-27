@@ -91,29 +91,36 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
     if (NS_SUCCEEDED(rv)) {
         nsCOMPtr<nsITransportSecurityInfo> securityInfo = do_QueryInterface(infoObj);
 
-        securityInfo->GetIsDomainMismatch(&booleanResult);
-        d_ptr->mDomainMismatch = booleanResult;
+        rv = securityInfo->GetIsDomainMismatch(&booleanResult);
+        if (NS_SUCCEEDED(rv))
+            d_ptr->mDomainMismatch = booleanResult;
 
         nsCString resultCString;
-        securityInfo->GetCipherName(resultCString);
-        std::string cipherName(resultCString.get());
-        d_ptr->mCipherName = cipherName;
+        rv = securityInfo->GetCipherName(resultCString);
+        if (NS_SUCCEEDED(rv)) {
+            std::string cipherName(resultCString.get());
+            d_ptr->mCipherName = cipherName;
+        }
 
-        securityInfo->GetIsNotValidAtThisTime(&booleanResult);
-        d_ptr->mNotValidAtThisTime = booleanResult;
+        rv = securityInfo->GetIsNotValidAtThisTime(&booleanResult);
+        if (NS_SUCCEEDED(rv))
+            d_ptr->mNotValidAtThisTime = booleanResult;
 
-        securityInfo->GetIsUntrusted(&booleanResult);
-        d_ptr->mUntrusted = booleanResult;
+        rv = securityInfo->GetIsUntrusted(&booleanResult);
+        if (NS_SUCCEEDED(rv))
+            d_ptr->mUntrusted = booleanResult;
 
-        securityInfo->GetIsExtendedValidation(&booleanResult);
-        d_ptr->mExtendedValidation = booleanResult;
+        rv = securityInfo->GetIsExtendedValidation(&booleanResult);
+        if (NS_SUCCEEDED(rv))
+            d_ptr->mExtendedValidation = booleanResult;
 
         nsIX509Cert * aServerCert;
         securityInfo->GetServerCert(&aServerCert);
 
         unsigned short protocolVersion;
-        securityInfo->GetProtocolVersion(&protocolVersion);
-        d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
+        rv = securityInfo->GetProtocolVersion(&protocolVersion);
+        if (NS_SUCCEEDED(rv))
+            d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
 
         Maybe<nsTArray<uint8_t>> certArray;
         rv = aServerCert->GetRawDER(*certArray);
@@ -123,12 +130,10 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
         if (NS_SUCCEEDED(rv)) {
             if (data) {
                 d_ptr->mRawDER.assign((char*)data, length);
-            }
-            else {
+            } else {
                 d_ptr->mRawDER.clear();
             }
-        }
-        else {
+        } else {
             LOGW("Certificate: deserialisation failed");
         }
     }
