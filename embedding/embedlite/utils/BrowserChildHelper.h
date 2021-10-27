@@ -98,7 +98,7 @@ class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
 {
 public:
   typedef mozilla::layers::ScrollableLayerGuid::ViewID ViewID;
-  BrowserChildHelper(EmbedLiteViewChildIface* aView);
+  BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
@@ -113,7 +113,6 @@ public:
   void DynamicToolbarMaxHeightChanged(const ScreenIntCoord &aHeight);
   nsIWebNavigation* WebNavigation() const;
   nsIWidget* WebWidget();
-
 
   /**
    * MessageManagerCallback methods that we override.
@@ -141,6 +140,7 @@ public:
                                         uint64_t aInputBlockId,
                                         bool *ok);
 
+  void SetWebNavigation(nsIWebNavigation *aWebNavigation);
   void OpenIPC() { mIPCOpen = true; }
 
   uint64_t ChromeOuterWindowID() const;
@@ -184,8 +184,11 @@ private:
   friend class EmbedLiteViewChildIface;
   friend class EmbedLiteViewChild;
   EmbedLiteViewChildIface* mView;
+  nsCOMPtr<nsIWebNavigation> mWebNavigation;
+  const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
+  bool mParentIsActive;
   ScreenIntSize mInnerSize;
   bool mShouldSendWebProgressEventsToParent;
   // Whether or not this tab has siblings (other tabs in the same window).

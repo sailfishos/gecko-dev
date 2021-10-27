@@ -81,7 +81,6 @@ public:
    */
   virtual void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics) override;
 
-  virtual nsIWebNavigation* WebNavigation() override;
   virtual nsIWidget* WebWidget() override;
   virtual bool GetDPI(float* aDPI) override;
 
@@ -232,7 +231,7 @@ private:
 
   mozilla::dom::BrowsingContext *GetBrowsingContext() const;
 
-  uint32_t mId;
+  const uint32_t mId;
   uint64_t mOuterId;
   EmbedLiteWindowChild *mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;

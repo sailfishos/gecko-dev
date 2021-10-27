@@ -129,6 +129,7 @@ Patch73:    0073-sailfishos-components-Cleanup-static-components-defi.patch
 Patch74:    0074-Revert-Bug-1611658-Unship-libcubeb-s-C-PulseAudio-ba.patch
 Patch75:    0075-sailfishos-gfx-Use-scroll-frame-background-color-as-.patch
 Patch76:    0076-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
+Patch77:    0077-sailfishos-browserchild-Add-parentIsActive-attribute.patch
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
 #Patch59:    0059-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
