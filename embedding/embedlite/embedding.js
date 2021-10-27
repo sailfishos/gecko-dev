@@ -442,3 +442,6 @@ pref("media.cubeb.backend", "pulse");
 
 // On ESR60 customelements is only enabled for nightly. Enable for us.
 pref("dom.webcomponents.customelements.enabled", true);
+
+// Enable serviceworkers
+pref("dom.serviceWorkers.enabled", true);
