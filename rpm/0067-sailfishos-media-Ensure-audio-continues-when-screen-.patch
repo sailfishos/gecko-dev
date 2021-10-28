@@ -35,23 +35,33 @@ Date:   Thu Nov 29 17:20:06 2018 +1000
     [sailfishos][media] Update media resource state when the playing
 state changes for any reason. Fixes JB#42900
 ---
- dom/html/HTMLMediaElement.cpp |  2 +-
+ dom/html/HTMLMediaElement.cpp |  7 ++++---
  dom/media/MediaDecoder.cpp    | 27 +++++++++++++++++++++++++++
- 2 files changed, 28 insertions(+), 1 deletion(-)
+ 2 files changed, 31 insertions(+), 3 deletions(-)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index 3b718d5fa4a7..bb312c87bda7 100644
+index 3b718d5fa4a7..7f5bf65a968a 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
-@@ -6569,7 +6569,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+@@ -6569,7 +6569,8 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
    // We would suspend media when the document is inactive, or its docshell has
    // been set to hidden and explicitly wants to suspend media. In those cases,
    // the media would be not visible and we don't want them to continue playing.
 -  bool shouldSuspend = !IsActive() || ShouldBeSuspendedByInactiveDocShell();
-+  bool shouldSuspend = IsHidden() || ShouldBeSuspendedByInactiveDocShell();
++  bool shouldSuspend = OwnerDoc()->Hidden() || ShouldBeSuspendedByInactiveDocShell();
++
    SuspendOrResumeElement(shouldSuspend);
  
    // If the owning document has become inactive we should shutdown the CDM.
+@@ -6597,7 +6598,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
+   // See the comment at the top of this file for the explanation of this
+   // boolean expression.
+   bool needSelfReference =
+-      !mShuttingDown && ownerDoc->IsActive() &&
++      !mShuttingDown && !ownerDoc->Hidden() &&
+       (mDelayingLoadEvent || (!mPaused && !Ended()) ||
+        (mDecoder && mDecoder->IsSeeking()) || CanActivateAutoplay() ||
+        (mMediaSource ? mProgressTimer : mNetworkState == NETWORK_LOADING));
 diff --git a/dom/media/MediaDecoder.cpp b/dom/media/MediaDecoder.cpp
 index 581a402102b8..ac4576cd5fa2 100644
 --- a/dom/media/MediaDecoder.cpp
@@ -112,5 +122,5 @@ index 581a402102b8..ac4576cd5fa2 100644
      mNextState = PLAY_STATE_PAUSED;
    }
 -- 
-2.17.1
+2.26.2
 
