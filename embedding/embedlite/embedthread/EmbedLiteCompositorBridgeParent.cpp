@@ -122,7 +122,6 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
-        GLContext* nullConsGL = nullptr; // Bug 1050044.
         factory = MakeUnique<SurfaceFactory_GLTexture>(context, screen->mCaps, nullptr, flags);
       }
       if (factory) {
