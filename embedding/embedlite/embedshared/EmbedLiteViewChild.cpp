@@ -1544,6 +1544,12 @@ EmbedLiteViewChild::UserActivity()
   }
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetScreenProperties(const int &aDepth, const float &aDensity, const float &aDpi)
+{
+  mWindow->SetScreenProperties(aDepth, aDensity, aDpi);
+  return IPC_OK();
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

@@ -264,6 +264,12 @@ void EmbedLiteView::SetDynamicToolbarHeight(int height)
     }
 }
 
+void EmbedLiteView::SetScreenProperties(const int &depth, const float &density, const float &dpi)
+{
+    SetDPI(dpi);
+    Unused << mViewParent->SendSetScreenProperties(depth, density, dpi);
+}
+
 void EmbedLiteView::DynamicToolbarHeightChanged(int height)
 {
     if (mDynamicToolbarHeight != height) {

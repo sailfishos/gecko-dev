@@ -30,6 +30,7 @@ public:
   nsWindow *GetWidget() const;
   LayoutDeviceIntRect GetSize() const { return mBounds; }
   EmbedLiteWindowListener* GetListener() const { return mListener; }
+  void SetScreenProperties(const int &depth, const float &density, const float &dpi);
 
 protected:
   virtual ~EmbedLiteWindowChild() override;
@@ -42,6 +43,7 @@ private:
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size);
   mozilla::ipc::IPCResult RecvSetContentOrientation(const uint32_t &);
+  void RefreshScreen();
 
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
@@ -52,6 +54,10 @@ private:
 
   bool mInitialized;
   bool mDestroyAfterInit;
+
+  int mDepth;
+  float mDensity;
+  float mDpi;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteWindowChild);
 };

@@ -203,6 +203,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvAddMessageListeners(nsTArray<nsString> &&messageNames);
   virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(nsTArray<nsString>&& messageNames);
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsAString &aMessage, const nsAString &aData);
+  virtual mozilla::ipc::IPCResult RecvSetScreenProperties(const int& aDepth, const float &aDensity, const float &aDpi);
 
   virtual void OnGeckoWindowInitialized() {}
 
