@@ -77,17 +77,6 @@ class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
   ~BrowserChildHelperMessageManager();
 };
 
-class ContentListener final : public nsIDOMEventListener {
- public:
-  explicit ContentListener(BrowserChildHelper* aBrowserChildHelper)
-      : mBrowserChildHelper(aBrowserChildHelper) {}
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSIDOMEVENTLISTENER
- protected:
-  ~ContentListener() = default;
-  BrowserChildHelper* mBrowserChildHelper;
-};
-
 class EmbedLiteViewChildIface;
 class BrowserChildHelper : public dom::ipc::MessageManagerCallback,
                            public nsMessageManagerScriptExecutor,
