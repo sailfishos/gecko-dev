@@ -122,10 +122,10 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
         if (NS_SUCCEEDED(rv))
             d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
 
-        Maybe<nsTArray<uint8_t>> certArray;
-        rv = aServerCert->GetRawDER(*certArray);
-        unsigned int length = certArray->Length();
-        void *data = certArray->Elements();
+        nsTArray<uint8_t> certArray;
+        rv = aServerCert->GetRawDER(certArray);
+        unsigned int length = certArray.Length();
+        void *data = certArray.Elements();
 
         if (NS_SUCCEEDED(rv)) {
             if (data) {
