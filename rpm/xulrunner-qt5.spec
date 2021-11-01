@@ -131,7 +131,7 @@ Patch73:    0073-sailfishos-components-Cleanup-static-components-defi.patch
 Patch74:    0074-Revert-Bug-1611658-Unship-libcubeb-s-C-PulseAudio-ba.patch
 Patch75:    0075-sailfishos-gfx-Use-scroll-frame-background-color-as-.patch
 Patch76:    0076-sailfishos-gecko-Ignore-safemode-in-gfxPlatform.-Fix.patch
-Patch77:    0077-sailfishos-browserchild-Add-parentIsActive-attribute.patch
+Patch77:    0077-sailfishos-docshell-Align-fix-parentprocess-checks.-.patch
 Patch78:    0078-sailfishos-webrtc-Adapt-build-configuration-for-Sail.patch
 Patch79:    0079-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
 Patch80:    0080-sailfishos-webrtc-Disable-desktop-sharing-feature-on.patch
