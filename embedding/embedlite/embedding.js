@@ -391,10 +391,6 @@ pref("memory.free_dirty_pages", true);
 // Enable Web Audio for Firefox for Android in Nightly and Aurora
 pref("media.webaudio.enabled", true);
 
-// This needs more tests and stability fixes first, as well as UI.
-pref("media.navigator.enabled", false);
-pref("media.peerconnection.enabled", false);
-
 // Make <audio> and <video> talk to the AudioChannelService.
 pref("media.useAudioChannelService", true);
 
@@ -445,3 +441,15 @@ pref("dom.webcomponents.customelements.enabled", true);
 
 // Enable serviceworkers
 pref("dom.serviceWorkers.enabled", true);
+
+// No native handle support (yet) for video frames, so higher resolution degrade performance
+pref("media.navigator.video.default_width", 320);
+pref("media.navigator.video.default_height", 240);
+
+pref("media.webrtc.hw.h264.enabled", true);
+
+// Many browsers prefer VP9 over H264. If the sailfish-browser is the initiator of the session,
+// then the remote peer may override our preference and put VP9 in front of h264. Due to some bug,
+// the gecko skips the peer's preference and creates an h264 decoder. As a workaround, disable VP9
+// until the bug is fixed.
+pref("media.peerconnection.video.vp9_enabled", false);
