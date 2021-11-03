@@ -37,6 +37,7 @@
 #include "nsIWidgetListener.h"
 #include "mozilla/layers/APZEventState.h"
 #include "APZCCallbackHelper.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
@@ -259,6 +260,15 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, EmptyString(), BrowsingContext::Type::Content);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
+
+  CanonicalBrowsingContext *canonicalBrowsingContext = browsingContext->Canonical();
+  nsISecureBrowserUI *secureBrowserUI = nullptr;
+
+  // Create instance of nsSecureBrowserUI.
+  if (canonicalBrowsingContext) {
+    secureBrowserUI = canonicalBrowsingContext->GetSecureBrowserUI();
+    Unused << secureBrowserUI;
+  }
 
   // nsWebBrowser::Create creates nsDocShell, calls InitWindow for nsIBaseWindow,
   // and finally creates nsIBaseWindow. When browsingContext is passed to

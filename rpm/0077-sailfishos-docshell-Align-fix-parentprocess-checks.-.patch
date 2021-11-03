@@ -1,21 +1,40 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 25 Oct 2021 12:53:33 +0300
-Subject: [PATCH] [sailfishos][browserchild] Add parentIsActive attribute to
- the nsIBrowserChild. Fixes JB#56063 OMP#JOLLA-474
+Subject: [PATCH] [sailfishos][docshell] Align / fix parentprocess checks.
+ JB#56074 OMP#JOLLA-482
+
+[sailfishos][docshell] Create CanonicalBrowsingContext. JB#56074 OMP#JOLLA-482
+
+[sailfishos][browserchild] Add parentIsActive attribute to the nsIBrowserChild. Fixes JB#56063 OMP#JOLLA-474
 
 Also make sure that nsDocShell has nsIBrowserChild available.
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- docshell/base/nsDocShell.cpp            |  2 +-
- dom/base/nsFocusManager.cpp             |  3 ++-
- dom/interfaces/base/nsIBrowserChild.idl |  5 +++++
- dom/ipc/BrowserChild.cpp                | 10 ++++++++++
- 4 files changed, 18 insertions(+), 2 deletions(-)
+ docshell/base/BrowsingContext.cpp          |  2 +-
+ docshell/base/nsDocShell.cpp               |  4 ++--
+ dom/base/nsFocusManager.cpp                |  3 ++-
+ dom/interfaces/base/nsIBrowserChild.idl    |  5 +++++
+ dom/ipc/BrowserChild.cpp                   | 10 ++++++++++
+ security/manager/ssl/nsSecureBrowserUI.cpp |  1 +
+ 6 files changed, 21 insertions(+), 4 deletions(-)
 
+diff --git a/docshell/base/BrowsingContext.cpp b/docshell/base/BrowsingContext.cpp
+index 96d26c98f288..9caf8672bf78 100644
+--- a/docshell/base/BrowsingContext.cpp
++++ b/docshell/base/BrowsingContext.cpp
+@@ -211,7 +211,7 @@ already_AddRefed<BrowsingContext> BrowsingContext::CreateDetached(
+           : BrowsingContextGroup::Select(parentWC, aOpener);
+ 
+   RefPtr<BrowsingContext> context;
+-  if (XRE_IsParentProcess()) {
++  if (true) {
+     context =
+         new CanonicalBrowsingContext(parentWC, group, id,
+                                      /* aOwnerProcessId */ 0,
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index bb7d65805667..ae8b77a80cdc 100644
+index bb7d65805667..b8b4ab4a5c54 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
 @@ -2695,7 +2695,7 @@ nsDocShell::SetTreeOwner(nsIDocShellTreeOwner* aTreeOwner) {
@@ -27,6 +46,15 @@ index bb7d65805667..ae8b77a80cdc 100644
      nsCOMPtr<nsIBrowserChild> newBrowserChild = do_GetInterface(mTreeOwner);
      MOZ_ASSERT(newBrowserChild,
                 "No BrowserChild actor for tree owner in Content!");
+@@ -5570,7 +5570,7 @@ nsDocShell::OnStateChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+ NS_IMETHODIMP
+ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+                              nsIURI* aURI, uint32_t aFlags) {
+-  if (XRE_IsParentProcess()) {
++  if (true) {
+     // Since we've now changed Documents, notify the BrowsingContext that we've
+     // changed. Ideally we'd just let the BrowsingContext do this when it
+     // changes the current window global, but that happens before this and we
 diff --git a/dom/base/nsFocusManager.cpp b/dom/base/nsFocusManager.cpp
 index 7178d5a58a67..bda045d7ee16 100644
 --- a/dom/base/nsFocusManager.cpp
@@ -78,6 +106,18 @@ index b1e658a2dc87..a4c647ebd219 100644
  nsresult BrowserChild::GetHasSiblings(bool* aHasSiblings) {
    *aHasSiblings = mHasSiblings;
    return NS_OK;
+diff --git a/security/manager/ssl/nsSecureBrowserUI.cpp b/security/manager/ssl/nsSecureBrowserUI.cpp
+index fd9a26d42b79..3d4b5c75fb29 100644
+--- a/security/manager/ssl/nsSecureBrowserUI.cpp
++++ b/security/manager/ssl/nsSecureBrowserUI.cpp
+@@ -58,6 +58,7 @@ static bool GetWebProgressListener(CanonicalBrowsingContext* aBrowsingContext,
+   MOZ_ASSERT(aOutBrowser);
+   MOZ_ASSERT(aOutManager);
+   MOZ_ASSERT(aOutListener);
++  return true;
+ 
+   nsCOMPtr<nsIBrowser> browser;
+   RefPtr<Element> currentElement = aBrowsingContext->GetEmbedderElement();
 -- 
 2.31.1
 
