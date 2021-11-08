@@ -133,6 +133,7 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
+  virtual void SetScreenProperties(const int &depth, const float &density, const float &dpi);
 
 protected:
   friend class EmbedLiteApp; // Needs to destroy the view.

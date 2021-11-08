@@ -11,9 +11,8 @@
 #include "EmbedLiteWindowChild.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
-#include "nsIScreen.h"
-#include "nsIScreenManager.h"
 #include "gfxPlatform.h"
+#include "mozilla/widget/ScreenManager.h"
 
 using namespace mozilla::dom;
 
@@ -36,6 +35,9 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t
   , mRotation(ROTATION_0)
   , mInitialized(false)
   , mDestroyAfterInit(false)
+  , mDepth(32)
+  , mDensity(250)
+  , mDpi(96)
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
   MOZ_ASSERT(mListener);
@@ -127,17 +129,10 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
     widget->UpdateBounds(true);
   }
 
-  nsresult rv;
-  nsCOMPtr<nsIScreenManager> screenMgr =
-      do_GetService("@mozilla.org/gfx/screenmanager;1", &rv);
-  NS_ENSURE_TRUE(screenMgr, IPC_OK());
-
-  nsIntRect rect;
   int32_t colorDepth, pixelDepth;
   nsCOMPtr<nsIScreen> screen;
 
-  screenMgr->GetPrimaryScreen(getter_AddRefs(screen));
-  screen->GetRect(&rect.x, &rect.y, &rect.width, &rect.height);
+  ScreenManager::GetSingleton().GetPrimaryScreen(getter_AddRefs(screen));
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
 
@@ -164,8 +159,11 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
       break;
   }
 
+  nsIntRect rect(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height());
   hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
       rect, orientation, angle, colorDepth, pixelDepth));
+
+  RefreshScreen();
 
   return IPC_OK();
 }
@@ -199,8 +197,48 @@ void EmbedLiteWindowChild::CreateWidget()
               );
   GetWidget()->UpdateBounds(true);
 
+  // Initialize ScreenManager
+  RefreshScreen();
+
   mInitialized = true;
   Unused << SendInitialized();
+}
+
+void EmbedLiteWindowChild::RefreshScreen()
+{
+  LayoutDeviceIntRect rect;
+  if (mRotation == ROTATION_0 || mRotation == ROTATION_180)
+    rect = mBounds;
+  else
+    rect = LayoutDeviceIntRect(0, 0, mBounds.Height(), mBounds.Width());
+
+  AutoTArray<RefPtr<Screen>, 1> screenList;
+  RefPtr<Screen> screen = new Screen(rect, rect, mDepth, mDepth, DesktopToLayoutDeviceScale(mDensity), CSSToLayoutDeviceScale(1.0f), mDpi);
+  screenList.AppendElement(screen.forget());
+  ScreenManager::GetSingleton().Refresh(std::move(screenList));
+}
+
+void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi)
+{
+  bool refresh = false;
+
+  if (depth != mDepth) {
+    mDepth = depth;
+    refresh = true;
+  }
+
+  if (density != mDensity) {
+    mDensity = density;
+    refresh = true;
+  }
+
+  if (dpi != mDpi) {
+    mDpi = dpi;
+    refresh = true;
+  }
+
+  if (refresh)
+    RefreshScreen();
 }
 
 } // namespace embedlite

@@ -86,6 +86,7 @@ child:
     async RemoveMessageListeners(nsString [] messageNames);
 
     async Destroy();
+    async SetScreenProperties(int depth, float density, float dpi);
 
 parent:
     async Initialized();
