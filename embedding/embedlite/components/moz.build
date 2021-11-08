@@ -11,12 +11,10 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'embedLite'
 
 EXPORTS += [
-    'EmbedHistoryListener.h',
     'EmbedWidgetFactoryRegister.h',
 ]
 
 SOURCES += [
-    'EmbedHistoryListener.cpp',
     'EmbedliteGenericFactory.cpp',
     'EmbedWidgetFactoryRegister.cpp',
     'nsClipboard.cpp',
