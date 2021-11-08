@@ -1,4 +1,4 @@
-From 8b5ccb6747c34ffb70b2350bfde75697c105c837 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Wed, 4 Aug 2021 20:43:40 +0000
 Subject: [PATCH] [sailfishos][configure] Patch glslopt to build on arm
@@ -675,5 +675,5 @@ index 0e3c759e8220..8cf2ec3df416 100644
 +    }
  }
 -- 
-2.26.2
+2.31.1
 

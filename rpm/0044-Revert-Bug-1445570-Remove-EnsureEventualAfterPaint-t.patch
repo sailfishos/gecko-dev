@@ -474,5 +474,5 @@ index 1bfef49aa998..5a0679bb53e8 100644
    result = await observeStyling(5);
    // FIXME: Bug 866411: SMIL animations sometimes skip restyles when the target
 -- 
-2.26.2
+2.31.1
 

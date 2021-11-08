@@ -74,10 +74,10 @@ index e4a4f7d3895d..5f12191a5a03 100644
   private:
    // This is a function so we can log or breakpoint on why hit
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index ca5ec522ff03..253b6433b44a 100644
+index d67becfbf47d..7c0bc617522a 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -1041,7 +1041,7 @@ void gfxPlatform::Init() {
+@@ -1044,7 +1044,7 @@ void gfxPlatform::Init() {
    // Request the imgITools service, implicitly initializing ImageLib.
    nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
    if (!imgTools) {
@@ -112,5 +112,5 @@ index 08b2c34f3100..d143f95a4298 100644
                    nsISupportsWeakReference)
  
 -- 
-2.25.1
+2.31.1
 

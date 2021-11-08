@@ -1,4 +1,4 @@
-From 60c8deb24486dad41b313780529dcdb1b7192630 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Fri, 9 Jul 2021 14:20:22 +0300
 Subject: [PATCH] [sailfishos][configure] Get target and host from environment
@@ -91,5 +91,5 @@ index b887153321ab..1ba990ed256e 100644
  
  @depends(host, target)
 -- 
-2.26.2
+2.31.1
 

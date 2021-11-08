@@ -35,12 +35,12 @@ Date:   Thu Nov 29 17:20:06 2018 +1000
     [sailfishos][media] Update media resource state when the playing
 state changes for any reason. Fixes JB#42900
 ---
- dom/html/HTMLMediaElement.cpp |  7 ++++---
+ dom/html/HTMLMediaElement.cpp |  5 +++--
  dom/media/MediaDecoder.cpp    | 27 +++++++++++++++++++++++++++
- 2 files changed, 31 insertions(+), 3 deletions(-)
+ 2 files changed, 30 insertions(+), 2 deletions(-)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index 3b718d5fa4a7..7f5bf65a968a 100644
+index 3b718d5fa4a7..e3d1e1f8c9f0 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
 @@ -6569,7 +6569,8 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
@@ -122,5 +122,5 @@ index 581a402102b8..ac4576cd5fa2 100644
      mNextState = PLAY_STATE_PAUSED;
    }
 -- 
-2.26.2
+2.31.1
 

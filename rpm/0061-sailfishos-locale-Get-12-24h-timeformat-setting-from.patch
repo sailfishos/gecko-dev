@@ -159,5 +159,5 @@ index e711d799dfec..72c6e6b8ff82 100644
      OS_LIBS += [l for l in CONFIG['TK_LIBS']
          if l not in ('-lgtk-3', '-lgdk-3')]
 -- 
-2.26.2
+2.31.1
 

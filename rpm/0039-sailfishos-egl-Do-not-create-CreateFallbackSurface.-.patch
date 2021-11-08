@@ -13,7 +13,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index dc0714a84351..8ad1338aa860 100644
+index aac6f711d579..d56ab4ffd2f7 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -361,7 +361,7 @@ GLContextEGL::GLContextEGL(GLLibraryEGL* const egl, CreateContextFlags flags,

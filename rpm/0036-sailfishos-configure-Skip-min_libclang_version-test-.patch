@@ -1,4 +1,4 @@
-From 205736182aac2196cf420cfbaadd01ad8926ad6f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Wed, 4 Aug 2021 20:07:37 +0000
 Subject: [PATCH] [sailfishos][configure] Skip min_libclang_version test during
@@ -25,5 +25,5 @@ index 9b45948ffc8f..f829619dfe10 100644
          lib = CDLL(libclang)
          # We want at least 4.0. The API we test below is enough for that.
 -- 
-2.26.2
+2.31.1
 

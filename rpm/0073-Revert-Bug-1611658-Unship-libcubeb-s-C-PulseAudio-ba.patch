@@ -2,7 +2,7 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Tue, 5 Oct 2021 10:58:27 +0300
 Subject: [PATCH] Revert "Bug 1611658 - Unship libcubeb's C PulseAudio backend
- in favour of Rust.  r=achronop"
+ in favour of Rust. r=achronop"
 
 This reverts commit a362a200e2e1bc270551edc9098549dd9c73a2e7.
 ---

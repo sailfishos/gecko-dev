@@ -37,10 +37,10 @@ index cf521545d64b..125b97df2f05 100644
                                                 const gfx::IntRect* aRect) {
    AUTO_PROFILER_TRACING_MARKER("Paint", "Composite", GRAPHICS);
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
-index ef13ce36af8f..f29d4b3163b2 100644
+index 460510c5bff8..81477af686a2 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.h
 +++ b/gfx/layers/ipc/CompositorBridgeParent.h
-@@ -767,6 +767,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
+@@ -767,6 +767,7 @@ class CompositorBridgeParent : public CompositorBridgeParentBase,
    void FinishPendingComposite() override;
    void CompositeToTarget(VsyncId aId, gfx::DrawTarget* aTarget,
                           const gfx::IntRect* aRect = nullptr) override;
@@ -114,5 +114,5 @@ index 7c93b561b7de..7cd11b9f77ba 100644
  
    // CompositableParentManager
 -- 
-2.25.1
+2.31.1
 

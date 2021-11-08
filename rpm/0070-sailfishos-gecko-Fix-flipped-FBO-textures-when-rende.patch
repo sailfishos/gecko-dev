@@ -36,5 +36,5 @@ index 8e95a9c43442..92adfb89aa01 100644
      MOZ_ASSERT(mCurrentRenderTarget, "No destination");
  
 -- 
-2.17.1
+2.31.1
 

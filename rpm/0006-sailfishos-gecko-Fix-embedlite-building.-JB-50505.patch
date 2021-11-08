@@ -32,10 +32,10 @@ index 51b813f56ea7..70fbe92bc22c 100644
  CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']
 +OS_LIBS += CONFIG['GLIB_LIBS']
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 96b53c105961..f96dc5695286 100644
+index ca5ec522ff03..d67becfbf47d 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -111,6 +111,9 @@
+@@ -113,6 +113,9 @@
  #include "qcms.h"
  
  #include "imgITools.h"
@@ -64,10 +64,10 @@ index b9d7e461b314..722c3fc4af78 100644
      BUG_COMPONENT = ('Core', 'Widget: Gtk')
  
 diff --git a/toolkit/xre/moz.build b/toolkit/xre/moz.build
-index 7ba3be2fe241..91fe13ba54f0 100644
+index e0b30f7bcb31..c41d98ee65ba 100644
 --- a/toolkit/xre/moz.build
 +++ b/toolkit/xre/moz.build
-@@ -226,6 +226,7 @@ LOCAL_INCLUDES += [
+@@ -233,6 +233,7 @@ LOCAL_INCLUDES += [
      '/dom/commandhandler',
      '/dom/ipc',
      '/dom/webbrowserpersist',
@@ -76,10 +76,10 @@ index 7ba3be2fe241..91fe13ba54f0 100644
      '/toolkit/crashreporter',
      '/xpcom/build',
 diff --git a/toolkit/xre/nsEmbedFunctions.cpp b/toolkit/xre/nsEmbedFunctions.cpp
-index cd9e819f273d..da2cf64aa63d 100644
+index e2e5f837e355..eddd7d17e72e 100644
 --- a/toolkit/xre/nsEmbedFunctions.cpp
 +++ b/toolkit/xre/nsEmbedFunctions.cpp
-@@ -75,6 +75,7 @@
+@@ -79,6 +79,7 @@
  #include "mozilla/dom/ContentProcess.h"
  #include "mozilla/dom/ContentParent.h"
  #include "mozilla/dom/ContentChild.h"
@@ -87,7 +87,7 @@ index cd9e819f273d..da2cf64aa63d 100644
  
  #include "mozilla/ipc/TestShellParent.h"
  #include "mozilla/ipc/XPCShellEnvironment.h"
-@@ -247,6 +248,7 @@ const char* XRE_ChildProcessTypeToAnnotation(GeckoProcessType aProcessType) {
+@@ -251,6 +252,7 @@ const char* XRE_ChildProcessTypeToAnnotation(GeckoProcessType aProcessType) {
  
  namespace mozilla::startup {
  GeckoProcessType sChildProcessType = GeckoProcessType_Default;
@@ -95,7 +95,7 @@ index cd9e819f273d..da2cf64aa63d 100644
  }  // namespace mozilla::startup
  
  #if defined(MOZ_WIDGET_ANDROID)
-@@ -659,9 +661,37 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
+@@ -667,9 +669,37 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
            process = MakeUnique<PluginProcessChild>(parentPID);
            break;
  
@@ -137,5 +137,5 @@ index cd9e819f273d..da2cf64aa63d 100644
          case GeckoProcessType_IPDLUnitTest:
  #ifdef MOZ_IPDL_TESTS
 -- 
-2.25.1
+2.31.1
 

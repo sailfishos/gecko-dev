@@ -21,7 +21,7 @@ object through to the nsILoginManagerAuthPrompter component.
  4 files changed, 6 insertions(+), 18 deletions(-)
 
 diff --git a/netwerk/protocol/http/ParentChannelListener.cpp b/netwerk/protocol/http/ParentChannelListener.cpp
-index 39f73f998e74..80a25d59628c 100644
+index 39f73f998e74..894e7231fd29 100644
 --- a/netwerk/protocol/http/ParentChannelListener.cpp
 +++ b/netwerk/protocol/http/ParentChannelListener.cpp
 @@ -401,7 +401,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
@@ -116,5 +116,5 @@ index 051edfb7473c..25739a6998a7 100644
            in nsILoginInfo aNewLogin);
  };
 -- 
-2.26.2
+2.31.1
 

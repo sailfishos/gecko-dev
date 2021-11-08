@@ -76,7 +76,7 @@ index d6b9e8f606b4..9ee9776224ae 100644
  #ifdef ENABLE_REMOTE_AGENT
    nsCOMPtr<nsIRemoteAgent> agent = do_GetService(NS_REMOTEAGENT_CONTRACTID);
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index ebc4dbdb2d3c..616a4f6656af 100644
+index 8ae672508dac..d4fc3dc6769e 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
 @@ -961,8 +961,8 @@ def marionette(value):
@@ -91,5 +91,5 @@ index ebc4dbdb2d3c..616a4f6656af 100644
  # geckodriver WebDriver implementation
  # ==============================================================
 -- 
-2.30.2
+2.31.1
 

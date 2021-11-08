@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Wed, 19 Aug 2020 14:27:21 +0300
-Subject: [sailfishos][gecko] Make fullscreen enabling work as used to with
- pref full-screen-api.content-only. Fixes JB#44129
+Subject: [PATCH] [sailfishos][gecko] Make fullscreen enabling work as used to
+ with pref full-screen-api.content-only. Fixes JB#44129
 
 We don't have chrome from doc shell point of view. This commit
 sha1 3116f3bf53df offends fullscreen API to work without chrome
@@ -36,5 +36,5 @@ index da9d56e843a2..1518302e1cad 100644
    // If we are already in full screen mode, just return.
    if (mFullscreen == aFullscreen) {
 -- 
-2.26.2
+2.31.1
 

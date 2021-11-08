@@ -1,4 +1,4 @@
-From 3d6867b31c05249a6920e25de10b132d54b96bb4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Fri, 30 Jul 2021 08:10:23 +0000
 Subject: [PATCH] [sailfishos][configure] Patch libloading to build on arm.
@@ -109,5 +109,5 @@ index fc380a7450a0..7ee0617c0108 100644
      }
  }
 -- 
-2.26.2
+2.31.1
 

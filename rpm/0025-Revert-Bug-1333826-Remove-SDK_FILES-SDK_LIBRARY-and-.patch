@@ -58,10 +58,10 @@ index fdac27e26a80..3d1172b5807e 100644
  defaults to the ``Library`` name or the ``SHARED_LIBRARY_NAME`` if set. When
  linking to a library with a ``SONAME``, the resulting library or program will
 diff --git a/config/rules.mk b/config/rules.mk
-index 3965c882f8f1..770d67d3e378 100644
+index 3b2a0a9ef5bb..a7413bf54e05 100644
 --- a/config/rules.mk
 +++ b/config/rules.mk
-@@ -216,6 +216,7 @@ SIMPLE_PROGRAMS :=
+@@ -218,6 +218,7 @@ SIMPLE_PROGRAMS :=
  HOST_SHARED_LIBRARY :=
  HOST_PROGRAM :=
  HOST_SIMPLE_PROGRAMS :=
@@ -69,7 +69,7 @@ index 3965c882f8f1..770d67d3e378 100644
  WASM_LIBRARY :=
  endif
  
-@@ -907,6 +908,18 @@ ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
+@@ -924,6 +925,18 @@ ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
  PREF_DIR = defaults/preferences
  endif
  
@@ -116,7 +116,7 @@ index 04e007c58dbe..8acbd770971c 100644
      'xpcshell.cpp',
  ]
 diff --git a/mozglue/build/moz.build b/mozglue/build/moz.build
-index ab0cff86fafc..9c9dfd9ff23c 100644
+index 855b7dfa1ea3..04ee4ab7614b 100644
 --- a/mozglue/build/moz.build
 +++ b/mozglue/build/moz.build
 @@ -14,6 +14,8 @@ elif CONFIG['OS_TARGET'] in ('WINNT', 'Darwin', 'Android'):
@@ -127,7 +127,7 @@ index ab0cff86fafc..9c9dfd9ff23c 100644
 +
  FORCE_STATIC_LIB = True
  STATIC_LIBRARY_NAME = 'mozglue'
-
+ 
 diff --git a/python/mozbuild/mozbuild/backend/recursivemake.py b/python/mozbuild/mozbuild/backend/recursivemake.py
 index e3fc8fe24239..817537e00178 100644
 --- a/python/mozbuild/mozbuild/backend/recursivemake.py
@@ -424,7 +424,7 @@ index dec6f3ef7e21..69c18703b38f 100644
          'nspr4',
          'nss3_static',
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index cdc0577443a9..cfa673f8d6a1 100644
+index 1ff7547f2dc7..e711d799dfec 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
 @@ -103,6 +103,8 @@ def Libxul(name, output_category=None):
@@ -437,7 +437,7 @@ index cdc0577443a9..cfa673f8d6a1 100644
  
  # Use a FINAL_LIBRARY for Libxul_defines to propagate from there. They wouldn't
 diff --git a/xpcom/glue/standalone/moz.build b/xpcom/glue/standalone/moz.build
-index 1c6c83d1b284..e7c590e40e5a 100644
+index 952b37cf65e0..190f3b9464af 100644
 --- a/xpcom/glue/standalone/moz.build
 +++ b/xpcom/glue/standalone/moz.build
 @@ -12,6 +12,7 @@ SOURCES += [
@@ -447,7 +447,7 @@ index 1c6c83d1b284..e7c590e40e5a 100644
 +SDK_LIBRARY = True
  FORCE_STATIC_LIB = True
  STATIC_LIBRARY_NAME = 'xpcomglue'
-
+ 
 diff --git a/xpcom/idl-parser/xpidl/moz.build b/xpcom/idl-parser/xpidl/moz.build
 index afe0a9e53e2d..7a92241abe72 100644
 --- a/xpcom/idl-parser/xpidl/moz.build
@@ -471,5 +471,5 @@ index afe0a9e53e2d..7a92241abe72 100644
 +#     '/other-licenses/ply/ply/yacc.py',
 +# ]
 -- 
-2.25.1
+2.31.1
 
