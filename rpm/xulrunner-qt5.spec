@@ -74,7 +74,6 @@ Patch16:    0016-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
 Patch17:    0017-sailfishos-gecko-Add-missing-include-for-nsIObserver.patch
 Patch18:    0018-sailfishos-compositor-Make-it-possible-to-extend-Com.patch
 Patch19:    0019-sailfishos-mozglue-Introduce-EmbedInitGlue-to-the-mo.patch
-Patch20:    0020-sailfishos-gecko-Remove-static-registration-of-the-m.patch
 Patch21:    0021-sailfishos-compositor-Allow-compositor-specializatio.patch
 Patch22:    0022-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
 Patch23:    0023-sailfishos-gecko-Force-to-build-mozglue-and-xpcomglu.patch
