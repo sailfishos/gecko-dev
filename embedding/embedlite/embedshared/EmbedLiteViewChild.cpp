@@ -183,6 +183,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
   }
 
   EmbedLiteAppService::AppService()->UnregisterView(mId);
+  if (mWebBrowser) {
+    mWebBrowser->Destroy();
+  }
   if (mHelper)
     mHelper->Unload();
   if (mChrome)
