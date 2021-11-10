@@ -109,9 +109,9 @@ index 231eee017e1b..760213273ced 100644
      'nsIdleServiceQt.cpp',
      'nsLookAndFeel.cpp',
 +    'nsNativeThemeQt.cpp',
-     'nsQtKeyUtils.cpp',
      'nsScreenManagerQt.cpp',
      'nsScreenQt.cpp',
+     'nsWidgetFactory.cpp',
 @@ -39,6 +40,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
  FINAL_LIBRARY = 'xul'
  

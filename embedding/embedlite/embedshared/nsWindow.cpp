@@ -387,3 +387,18 @@ nsWindow::CreateGLContextEarly(EmbedLiteWindowListener *aListener)
 
 }  // namespace embedlite
 }  // namespace mozilla
+
+already_AddRefed<nsIWidget>
+nsIWidget::CreateTopLevelWindow()
+{
+  nsCOMPtr<nsIWidget> window = new mozilla::embedlite::nsWindow();
+  return window.forget();
+}
+
+already_AddRefed<nsIWidget>
+nsIWidget::CreateChildWindow()
+{
+  nsCOMPtr<nsIWidget> window = new mozilla::embedlite::nsWindow();
+  return window.forget();
+}
+
