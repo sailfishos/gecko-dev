@@ -116,6 +116,9 @@ private:
   bool mFirstViewCreated;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
+
+  friend already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow();
+  friend already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow();
 };
 
 }  // namespace embedlite
