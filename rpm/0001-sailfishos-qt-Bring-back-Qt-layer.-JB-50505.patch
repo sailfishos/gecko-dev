@@ -63,7 +63,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  dom/plugins/ipc/PluginModuleParent.cpp        |   12 +-
  dom/plugins/ipc/moz.build                     |    7 +
  dom/system/moz.build                          |    4 +-
- dom/system/qt/QTMLocationProvider.cpp         |  101 +
+ dom/system/qt/QTMLocationProvider.cpp         |  103 +
  dom/system/qt/QTMLocationProvider.h           |   35 +
  dom/system/qt/QtHapticFeedback.cpp            |   20 +
  dom/system/qt/QtHapticFeedback.h              |   15 +
@@ -165,7 +165,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  widget/qt/nsWidgetFactory.cpp                 |  162 ++
  widget/qt/nsWindow.cpp                        | 1684 +++++++++++++++++
  widget/qt/nsWindow.h                          |  316 ++++
- 123 files changed, 8355 insertions(+), 55 deletions(-)
+ 123 files changed, 8357 insertions(+), 55 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -811,10 +811,10 @@ index a950df1572a0..a19d30377398 100644
      DIRS += ['mac']
 diff --git a/dom/system/qt/QTMLocationProvider.cpp b/dom/system/qt/QTMLocationProvider.cpp
 new file mode 100644
-index 000000000000..58fcc2e50743
+index 000000000000..8299a4b7b7a5
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.cpp
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,103 @@
 +/* -*- Mode: c++; c-basic-offset: 4; tab-width: 20; indent-tabs-mode: nil; -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -825,16 +825,21 @@ index 000000000000..58fcc2e50743
 +
 +using namespace mozilla;
 +
++Q_DECLARE_METATYPE(QGeoPositionInfo)
++
 +NS_IMPL_ISUPPORTS(QTMLocationProvider, nsIGeolocationProvider)
 +
 +QTMLocationProvider::QTMLocationProvider()
++    : mLocation(QGeoPositionInfoSource::createDefaultSource(this))
 +{
-+    if (QMetaType::type("QGeoPositionInfo") == QMetaType::UnknownType) {
-+        qRegisterMetaType<QGeoPositionInfo>("QGeoPositionInfo");
++    qRegisterMetaType<QGeoPositionInfo>();
++
++    if (mLocation) {
++        connect(mLocation, &QGeoPositionInfoSource::positionUpdated, this, &QTMLocationProvider::positionUpdated);
++        // Not all versions of qt5positioning set default prefered method
++        // thus this workaround initializing QGeoPositionSource explicitly
++        mLocation->setPreferredPositioningMethods(QGeoPositionInfoSource::AllPositioningMethods);
 +    }
-+    mLocation = QGeoPositionInfoSource::createDefaultSource(this);
-+    if (mLocation)
-+        connect(mLocation, SIGNAL(positionUpdated(QGeoPositionInfo)), this, SLOT(positionUpdated(QGeoPositionInfo)));
 +}
 +
 +QTMLocationProvider::~QTMLocationProvider()
@@ -865,7 +870,7 @@ index 000000000000..58fcc2e50743
 +        new nsGeoPosition(latitude, longitude,
 +                          altitude, accuracy,
 +                          altitudeAccuracy, heading,
-+                          speed, geoPosition.timestamp().toTime_t());
++                          speed, geoPosition.timestamp().toMSecsSinceEpoch());
 +    if (mCallback) {
 +        mCallback->Update(p);
 +    }
@@ -877,9 +882,6 @@ index 000000000000..58fcc2e50743
 +    if (!mLocation)
 +        return NS_ERROR_NOT_IMPLEMENTED;
 +
-+    // Not all versions of qt5positioning set default prefered method
-+    // thus this workaround initializing QGeoPositionSource explicitly
-+    SetHighAccuracy(false);
 +    mLocation->startUpdates();
 +
 +    return NS_OK;
@@ -10924,5 +10926,5 @@ index 000000000000..3bf6f80f3916
 +
 +#endif /* __nsWindow_h__ */
 -- 
-2.26.2
+2.25.1
 
