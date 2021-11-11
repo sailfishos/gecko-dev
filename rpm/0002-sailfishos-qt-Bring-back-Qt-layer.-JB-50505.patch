@@ -320,7 +320,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsDeviceContextSpecQt.h             |  60 +++
  widget/qt/nsIdleServiceQt.cpp                 | 123 +++++
  widget/qt/nsIdleServiceQt.h                   |  56 +++
- widget/qt/nsLookAndFeel.cpp                   | 473 ++++++++++++++++++
+ widget/qt/nsLookAndFeel.cpp                   |  476 ++
  widget/qt/nsLookAndFeel.h                     |  41 ++
  widget/qt/nsPrintDialogQt.cpp                 |  42 ++
  widget/qt/nsPrintDialogQt.h                   |  31 ++
@@ -6002,10 +6002,10 @@ index 000000000000..f947b56e02e0
 +#endif // nsIdleServiceQt_h__
 diff --git a/widget/qt/nsLookAndFeel.cpp b/widget/qt/nsLookAndFeel.cpp
 new file mode 100644
-index 000000000000..1bab88760357
+index 000000000000..6a0f91d1cd87
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.cpp
-@@ -0,0 +1,473 @@
+@@ -0,0 +1,476 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -6033,6 +6033,7 @@ index 000000000000..1bab88760357
 +#include "gfxFontConstants.h"
 +#include "mozilla/gfx/2D.h"
 +#include "mozilla/FontPropertyTypes.h"
++#include "mozilla/StaticPrefs_widget.h"
 +
 +static const char16_t UNICODE_BULLET = 0x2022;
 +
@@ -6449,11 +6450,13 @@ index 000000000000..1bab88760357
 +
 +  aFontStyle.weight = mozilla::FontWeight::Normal();
 +  aFontStyle.stretch = mozilla::FontStretch((float)qFont.stretch());
++  // Scaling to CSS pixels needed in esr78 (323b5be77a649)
++  float scaleFactor = mozilla::StaticPrefs::layout_css_devPixelsPerPx();
 +  // use pixel size directly if it is set, otherwise compute from point size
 +  if (qFont.pixelSize() != -1) {
-+    aFontStyle.size = qFont.pixelSize();
++    aFontStyle.size = qFont.pixelSize() / scaleFactor;
 +  } else {
-+    aFontStyle.size = qFont.pointSizeF() * qApp->primaryScreen()->logicalDotsPerInch() / 72.0f;
++    aFontStyle.size = qFont.pointSizeF() * qApp->primaryScreen()->logicalDotsPerInch() / 72.0f / scaleFactor;
 +  }
 +
 +  return true;
