@@ -4,12 +4,12 @@ Date: Fri, 3 Sep 2021 13:07:18 +0300
 Subject: [PATCH] [sailfishos][gecko] Fix audio underruns for fullduplex mode
 
 ---
- media/libcubeb/src/cubeb_pulse.c              | 421 +++++++++++++++++-
+ media/libcubeb/src/cubeb_pulse.c              | 437 +++++++++++++++++-
  .../src/peerconnection/PeerConnectionImpl.cpp |  12 +-
- 2 files changed, 407 insertions(+), 26 deletions(-)
+ 2 files changed, 423 insertions(+), 26 deletions(-)
 
 diff --git a/media/libcubeb/src/cubeb_pulse.c b/media/libcubeb/src/cubeb_pulse.c
-index 1cac5eadd45b..13a205e5383d 100644
+index 1cac5eadd45b..89afce055a4f 100644
 --- a/media/libcubeb/src/cubeb_pulse.c
 +++ b/media/libcubeb/src/cubeb_pulse.c
 @@ -15,6 +15,8 @@
@@ -150,7 +150,7 @@ index 1cac5eadd45b..13a205e5383d 100644
  struct cubeb_stream {
    /* Note: Must match cubeb_stream layout in cubeb.c. */
    cubeb * context;
-@@ -131,9 +255,237 @@ struct cubeb_stream {
+@@ -131,9 +255,253 @@ struct cubeb_stream {
    int shutdown;
    float volume;
    cubeb_state state;
@@ -164,7 +164,7 @@ index 1cac5eadd45b..13a205e5383d 100644
 +  pa_stream *s = stm->output_stream;
 +  size_t towrite = cubeb_fifo_size(&fdx->playback);
 +
-+  LOGV("playback: writing %zu bytes\n", towrite);
++  LOGV("playback: writing %zu bytes", towrite);
 +
 +  while (towrite) {
 +    size_t size = towrite;
@@ -174,11 +174,14 @@ index 1cac5eadd45b..13a205e5383d 100644
 +    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
 +
 +    r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
-+    assert(r == 0);
++    if (r) {
++      LOG("pa_stream_begin_write returned %d", r);
++      return -1;
++    }
 +
 +    size = cubeb_fifo_read(&fdx->playback, buffer, size);
 +
-+    LOGV("playback: wrote %zu bytes\n", size);
++    LOGV("playback: wrote %zu bytes", size);
 +
 +    // FIXME: Copied this from trigger_user_callback(). Do we need this?
 +    if (stm->volume != PULSE_NO_GAIN) {
@@ -199,7 +202,10 @@ index 1cac5eadd45b..13a205e5383d 100644
 +    }
 +
 +    r = WRAP(pa_stream_write)(s, buffer, size, NULL, 0, PA_SEEK_RELATIVE);
-+    assert(r == 0);
++    if (r) {
++      LOG("pa_stream_write returned %d", r);
++      return -1;
++    }
 +
 +    towrite -= size;
 +
@@ -239,6 +245,12 @@ index 1cac5eadd45b..13a205e5383d 100644
 +      record_len = MIN(record_len, playback_len);
 +
 +      got = stm->data_callback(stm, stm->user_ptr, record_buf, playback_buf, record_len);
++      if (got == CUBEB_ERROR) {
++        eos = true;
++        break;
++      }
++
++      // If the callback returned less data than we expected, consider that as EOS.
 +      eos = record_len > (size_t)got;
 +
 +      LOGV("rendered %ld samples", got);
@@ -250,15 +262,19 @@ index 1cac5eadd45b..13a205e5383d 100644
 +      cubeb_fifo_read_done(&fdx->record, record_len);
 +      cubeb_fifo_write_done(&fdx->playback, playback_len);
 +
-+      // Drop the chunk of data if the latency is higher than 300 ms to keep
-+      // audio and video in sync. Maybe we need a better algorithm here.
++      // Drop the half of the data if the latency is higher than 300 ms to keep
++      // audio and video in sync. It's important to keep feeding the sink input,
++      // otherwise the latency calculator will get stuck.
 +      r = WRAP(pa_stream_get_latency)(stm->output_stream, &latency, NULL);
-+      if (r == 0 && latency > 300 * PA_USEC_PER_MSEC) {
-+        cubeb_fifo_read_done(&fdx->playback, playback_len);
-+      } else {
-+        // Write playback data.
-+        cubeb_fullduplex_play(stm);
++      LOGV("Latency: %lld", latency);
++      if (r == 0 && latency > 300 * PA_USEC_PER_MSEC && got > 1) {
++        size_t drop_samples = got / 2;
++        LOG("Latency %lld is higher than 300ms, dropping %zu samples", latency, drop_samples);
++        cubeb_fifo_read_done(&fdx->playback, drop_samples * fdx->out_frame_size);
 +      }
++
++      // Write playback data.
++      cubeb_fullduplex_play(stm);
 +    }
 +
 +    if (eos) {
@@ -283,7 +299,7 @@ index 1cac5eadd45b..13a205e5383d 100644
 +
 +    sem_wait(&fdx->wait);
 +
-+    LOGV("%s woke up, need %d bytes%s", __func__, cubeb_fifo_size(&fdx->record), eos ? ", EOS" : "");
++    LOGV("%s woke up, need %d bytes", __func__, cubeb_fifo_size(&fdx->record));
 +  }
 +
 +  LOGV("%s stopped", __func__);
@@ -389,7 +405,7 @@ index 1cac5eadd45b..13a205e5383d 100644
  
  enum cork_state {
    UNCORK = 0,
-@@ -216,6 +568,10 @@ stream_state_change_callback(cubeb_stream * stm, cubeb_state s)
+@@ -216,6 +584,10 @@ stream_state_change_callback(cubeb_stream * stm, cubeb_state s)
  {
    stm->state = s;
    stm->state_callback(stm, stm->user_ptr, s);
@@ -400,7 +416,7 @@ index 1cac5eadd45b..13a205e5383d 100644
  }
  
  static void
-@@ -364,31 +720,37 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
+@@ -364,31 +736,37 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
    while (read_from_input(s, &read_data, &read_size) > 0) {
      /* read_data can be NULL in case of a hole. */
      if (read_data) {
@@ -459,7 +475,7 @@ index 1cac5eadd45b..13a205e5383d 100644
      }
    }
  }
-@@ -942,6 +1304,12 @@ pulse_stream_init(cubeb * context,
+@@ -942,6 +1320,12 @@ pulse_stream_init(cubeb * context,
      return CUBEB_ERROR;
    }
  
@@ -472,7 +488,7 @@ index 1cac5eadd45b..13a205e5383d 100644
    if (g_cubeb_log_level) {
      if (output_stream_params){
        const pa_buffer_attr * output_att;
-@@ -968,6 +1336,10 @@ pulse_stream_destroy(cubeb_stream * stm)
+@@ -968,6 +1352,10 @@ pulse_stream_destroy(cubeb_stream * stm)
  {
    stream_cork(stm, CORK);
  
@@ -483,7 +499,7 @@ index 1cac5eadd45b..13a205e5383d 100644
    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
    if (stm->output_stream) {
  
-@@ -1009,6 +1381,11 @@ static int
+@@ -1009,6 +1397,11 @@ static int
  pulse_stream_start(cubeb_stream * stm)
  {
    stm->shutdown = 0;
@@ -496,7 +512,7 @@ index 1cac5eadd45b..13a205e5383d 100644
  
    if (stm->output_stream && !stm->input_stream) {
 diff --git a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
-index 9068dfee5c35..c4b1095b23e5 100644
+index 106d6928360e..ad810b86174b 100644
 --- a/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
 +++ b/media/webrtc/signaling/src/peerconnection/PeerConnectionImpl.cpp
 @@ -2179,6 +2179,8 @@ static int GetDTMFToneCode(uint16_t c) {
