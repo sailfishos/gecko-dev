@@ -37,7 +37,6 @@
 #include "nsView.h"
 #include "nsLayoutUtils.h"
 #include "APZCCallbackHelper.h"
-#include "EmbedFrame.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
@@ -419,15 +418,10 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
   if (!mm) {
     return true;
   }
-
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
-  embedFrame->mWindow = window;
-  embedFrame->mMessageManager = mBrowserChildMessageManager;
-
-  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
-  mm->ReceiveMessage(embedFrame, nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
+      mBrowserChildMessageManager);
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+  mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
@@ -495,16 +489,13 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
   if (!mm) {
     return NS_OK;
   }
+  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
+      mBrowserChildMessageManager);
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr,
+                                       aMessage, false, &aData, nullptr,
+                                       IgnoreErrors());
 
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
-  embedFrame->mWindow = window;
-  embedFrame->mMessageManager = mBrowserChildMessageManager;
-
-  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
-
-  mm->ReceiveMessage(embedFrame,
+  mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip),
                      nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
@@ -713,12 +704,9 @@ uint64_t BrowserChildHelper::ChromeOuterWindowID() const {
 NS_IMETHODIMP
 BrowserChildHelper::GetMessageManager(dom::ContentFrameMessageManager** aResult)
 {
-  if (mBrowserChildMessageManager) {
-    NS_ADDREF(*aResult = mBrowserChildMessageManager);
-    return NS_OK;
-  }
-  *aResult = nullptr;
-  return NS_ERROR_FAILURE;
+    RefPtr<ContentFrameMessageManager> mm(mBrowserChildMessageManager);
+    mm.forget(aResult);
+    return *aResult ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
