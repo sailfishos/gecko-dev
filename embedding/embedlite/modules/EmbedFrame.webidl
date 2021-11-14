@@ -3,17 +3,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsISupports.idl"
-#include "nsIDOMWindow.idl"
-#include "nsIMessageManager.idl"
 
-interface nsIDOMWindow;
-interface nsIContentFrameMessageManager;
-webidl ContentFrameMessageManager;
-
-[scriptable, uuid(48738828-adbe-4106-a453-0d6e0965d6f8)]
-interface nsIEmbedFrame : nsISupports
-{
-  readonly attribute nsIDOMWindow contentWindow;
+[ChromeOnly, Exposed=(Window)]
+interface EmbedFrame : EventTarget {
+  readonly attribute WindowProxy? contentWindow;
   readonly attribute ContentFrameMessageManager messageManager;
 };

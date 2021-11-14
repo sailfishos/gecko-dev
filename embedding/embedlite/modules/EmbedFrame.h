@@ -6,23 +6,39 @@
 #ifndef EMBEDFRAME_H
 #define EMBEDFRAME_H
 
-#include "nsIEmbedFrame.h"
 #include "nsCOMPtr.h"
+#include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/ContentFrameMessageManager.h"
+#include "mozilla/dom/BrowsingContext.h"
 
-class EmbedFrame : public nsIEmbedFrame
+namespace mozilla {
+namespace dom {
+
+// This mocks a tiny subset of MozBrowser from browser-custom-element.js
+class EmbedFrame : public mozilla::DOMEventTargetHelper
 {
 public:
   NS_DECL_ISUPPORTS
-  NS_DECL_NSIEMBEDFRAME
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(EmbedFrame,
+                                           mozilla::DOMEventTargetHelper)
 
   EmbedFrame();
 
-  nsCOMPtr<nsIDOMWindow> mWindow;
+  Nullable<WindowProxyHolder> GetContentWindow();
+  already_AddRefed<mozilla::dom::ContentFrameMessageManager> MessageManager();
+
+  RefPtr<mozilla::dom::BrowsingContext> mWindow;
   RefPtr<mozilla::dom::ContentFrameMessageManager> mMessageManager;
+
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
+
 
 private:
   virtual ~EmbedFrame();
 };
+
+}
+}
 
 #endif

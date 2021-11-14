@@ -420,14 +420,16 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
     return true;
   }
 
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
-  embedFrame->mWindow = window;
-  embedFrame->mMessageManager = mBrowserChildMessageManager;
 
-  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
-  mm->ReceiveMessage(embedFrame, nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
+  embedFrame->mMessageManager = mBrowserChildMessageManager;
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    embedFrame->mWindow = window->GetBrowsingContext();
+  }
+
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
@@ -496,15 +498,16 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
     return NS_OK;
   }
 
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(WebNavigation());
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  RefPtr<EmbedFrame> embedFrame = new EmbedFrame();
-  embedFrame->mWindow = window;
+  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
   embedFrame->mMessageManager = mBrowserChildMessageManager;
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    embedFrame->mWindow = window->GetBrowsingContext();
+  }
 
-  globalMessageManager->ReceiveMessage(embedFrame, nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
 
-  mm->ReceiveMessage(embedFrame,
+  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame),
                      nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
