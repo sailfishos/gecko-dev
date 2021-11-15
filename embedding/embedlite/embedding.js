@@ -453,3 +453,6 @@ pref("media.webrtc.hw.h264.enabled", true);
 // the gecko skips the peer's preference and creates an h264 decoder. As a workaround, disable VP9
 // until the bug is fixed.
 pref("media.peerconnection.video.vp9_enabled", false);
+
+// Enable the Visual Viewport API
+pref("dom.visualviewport.enabled", true);
