@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jolla.com>
+Date: Thu, 11 Nov 2021 06:51:59 +0000
+Subject: [PATCH] [sailfishos][gecko-dev] Disallow page zooming if the meta
+ viewport scale is fixed. JB#56149 OMP#JOLLA-49
+
+---
+ layout/base/nsLayoutUtils.cpp | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
+index 2cd2903a8fc8..85e290c0d90f 100644
+--- a/layout/base/nsLayoutUtils.cpp
++++ b/layout/base/nsLayoutUtils.cpp
+@@ -694,13 +694,27 @@ bool nsLayoutUtils::AsyncPanZoomEnabled(nsIFrame* aFrame) {
+   return widget->AsyncPanZoomEnabled();
+ }
+ 
++
++static bool DocumentHasFixedUnityZoom(const mozilla::dom::Document* aDocument)
++{
++  if (!aDocument) {
++    return false;
++  }
++  nsresult rv;
++  ViewportMetaData metaData = aDocument->GetViewportMetaData();
++  return (!metaData.mMinimumScale.IsEmpty() && metaData.mMinimumScale == metaData.mMaximumScale) ||
++          metaData.mUserScalable.EqualsLiteral("0") ||
++          metaData.mUserScalable.EqualsLiteral("no") ||
++          metaData.mUserScalable.EqualsLiteral("false");
++}
++
+ bool nsLayoutUtils::AllowZoomingForDocument(
+     const mozilla::dom::Document* aDocument) {
+   // True if we allow zooming for all documents on this platform, or if we are
+   // in RDM and handling meta viewports, which force zoom under some
+   // circumstances.
+   BrowsingContext* bc = aDocument ? aDocument->GetBrowsingContext() : nullptr;
+-  return StaticPrefs::apz_allow_zooming() ||
++  return (StaticPrefs::apz_allow_zooming() && !DocumentHasFixedUnityZoom(aDocument)) ||
+          (bc && bc->InRDMPane() &&
+           nsLayoutUtils::ShouldHandleMetaViewport(aDocument));
+ }
+-- 
+2.26.2
+
