@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 17 Aug 2020 16:43:08 +0300
+Subject: [PATCH] Revert "Bug 1427455 - Remove unused variables from
+ baseconfig.mk. r=froydnj"
+
+This reverts commit 3d82836a72e2445bf4a8c1e80ea319e0a6ec11f7.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ config/baseconfig.mk | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/config/baseconfig.mk b/config/baseconfig.mk
+index 8825f0014b72..30ba3a241c02 100644
+--- a/config/baseconfig.mk
++++ b/config/baseconfig.mk
+@@ -2,7 +2,10 @@
+ # directly in python/mozbuild/mozbuild/base.py for gmake validation.
+ # We thus use INCLUDED_AUTOCONF_MK to enable/disable some parts depending
+ # whether a normal build is happening or whether the check is running.
++includedir := $(includedir)/$(MOZ_APP_NAME)-$(MOZ_APP_VERSION)
++idldir = $(datadir)/idl/$(MOZ_APP_NAME)-$(MOZ_APP_VERSION)
+ installdir = $(libdir)/$(MOZ_APP_NAME)-$(MOZ_APP_VERSION)
++sdkdir = $(libdir)/$(MOZ_APP_NAME)-devel-$(MOZ_APP_VERSION)
+ ifeq (.,$(DEPTH))
+ DIST = dist
+ else
+-- 
+2.31.1
+

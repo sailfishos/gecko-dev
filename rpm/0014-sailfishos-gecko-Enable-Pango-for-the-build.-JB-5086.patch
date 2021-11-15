@@ -10,7 +10,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  1 file changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index ebc4dbdb2d3c..dbb7463171f1 100644
+index d4fc3dc6769e..cdcc219cf10f 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
 @@ -377,8 +377,7 @@ add_old_configure_assignment('USE_FC_FREETYPE', fc_freetype)
@@ -24,5 +24,5 @@ index ebc4dbdb2d3c..dbb7463171f1 100644
  # Fontconfig
  # ==============================================================
 -- 
-2.25.1
+2.31.1
 

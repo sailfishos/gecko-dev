@@ -1,0 +1,251 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 17 Aug 2020 17:19:04 +0300
+Subject: [PATCH] Revert "Bug 1333826 - Remove the make-sdk build target, the
+ INSTALL_SDK variable, and all the supporting packager/upload machinery,
+ r=mshal"
+
+This reverts commit 4e6e8077298a31d44afdc4068a5709b69a25cf3a.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ browser/build.mk                          |  3 ++
+ browser/installer/Makefile.in             |  2 +
+ toolkit/mozapps/installer/packager.mk     | 65 +++++++++++++++++++++++
+ toolkit/mozapps/installer/upload-files.mk | 45 +++++++++++++++-
+ 4 files changed, 114 insertions(+), 1 deletion(-)
+
+diff --git a/browser/build.mk b/browser/build.mk
+index 43285c8584f8..b5b44b12fb9c 100644
+--- a/browser/build.mk
++++ b/browser/build.mk
+@@ -11,6 +11,9 @@ package-compare:
+ stage-package:
+ 	@$(MAKE) -C browser/installer stage-package
+ 
++sdk:
++	@$(MAKE) -C browser/installer make-sdk
++
+ install::
+ 	@$(MAKE) -C browser/installer install
+ 
+diff --git a/browser/installer/Makefile.in b/browser/installer/Makefile.in
+index b861ad214a64..6e8acef90a85 100644
+--- a/browser/installer/Makefile.in
++++ b/browser/installer/Makefile.in
+@@ -114,6 +114,8 @@ endif
+ # and Mac requires some extra care due to cross-compilation.
+ MOZ_PACKAGER_MINIFY=1
+ 
++INSTALL_SDK = 1
++
+ include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
+ 
+ ifeq (bundle, $(MOZ_FS_LAYOUT))
+diff --git a/toolkit/mozapps/installer/packager.mk b/toolkit/mozapps/installer/packager.mk
+index f04fc004aab9..c9ce3214e095 100644
+--- a/toolkit/mozapps/installer/packager.mk
++++ b/toolkit/mozapps/installer/packager.mk
+@@ -144,6 +144,12 @@ ifdef MOZ_INCLUDE_SOURCE_INFO
+ endif
+ 
+ # The install target will install the application to prefix/lib/appname-version
++# In addition if INSTALL_SDK is set, it will install the development headers,
++# libraries, and IDL files as follows:
++# dist/include -> prefix/include/appname-version
++# dist/idl -> prefix/share/idl/appname-version
++# dist/sdk/lib -> prefix/lib/appname-devel-version/lib
++# prefix/lib/appname-devel-version/* symlinks to the above directories
+ install:: prepare-package
+ ifeq ($(OS_ARCH),WINNT)
+ 	$(error "make install" is not supported on this platform. Use "make package" instead.)
+@@ -158,6 +164,65 @@ endif
+ 	$(RM) -f $(DESTDIR)$(bindir)/$(MOZ_APP_NAME)
+ 	ln -s $(installdir)/$(MOZ_APP_NAME) $(DESTDIR)$(bindir)
+ 
++ifdef INSTALL_SDK # Here comes the hard part
++	$(NSINSTALL) -D $(DESTDIR)$(includedir)
++	(cd $(DIST)/include && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DESTDIR)$(includedir) && tar -xf -)
++
++	$(NSINSTALL) -D $(DESTDIR)$(sdkdir)/sdk/lib
++	if test -f $(DIST)/include/xpcom-config.h; then \
++	  $(SYSINSTALL) $(IFLAGS1) $(DIST)/include/xpcom-config.h $(DESTDIR)$(sdkdir); \
++	fi
++	find $(DIST)/sdk -name '*.pyc' | xargs rm -f
++	(cd $(DIST)/sdk/lib && $(TAR) $(TAR_CREATE_FLAGS) - .) | (cd $(DESTDIR)$(sdkdir)/sdk/lib && tar -xf -)
++	$(RM) -f $(DESTDIR)$(sdkdir)/lib $(DESTDIR)$(sdkdir)/include $(DESTDIR)$(sdkdir)/include $(DESTDIR)$(sdkdir)/sdk/idl $(DESTDIR)$(sdkdir)/idl
++	ln -s $(sdkdir)/sdk/lib $(DESTDIR)$(sdkdir)/lib
++	ln -s $(includedir) $(DESTDIR)$(sdkdir)/include
++	ln -s $(idldir) $(DESTDIR)$(sdkdir)/idl
++endif # INSTALL_SDK
++
++make-sdk:
++ifndef SDK_UNIFY
++	$(MAKE) stage-package UNIVERSAL_BINARY= STAGE_SDK=1 MOZ_PKG_DIR=sdk-stage
++endif
++	@echo 'Packaging SDK...'
++	$(RM) -rf $(DIST)/$(MOZ_APP_NAME)-sdk
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/bin
++ifdef SDK_UNIFY
++	(cd $(UNIFY_DIST)/sdk-stage && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/bin && tar -xf -)
++else
++	(cd $(DIST)/sdk-stage && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/bin && tar -xf -)
++endif
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/host/bin
++	(cd $(DIST)/host/bin && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/host/bin && tar -xf -)
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/sdk
++	find $(DIST)/sdk -name '*.pyc' | xargs rm -f
++	(cd $(DIST)/sdk && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/sdk && tar -xf -)
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/include
++	(cd $(DIST)/include && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/include && tar -xf -)
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/idl
++	(cd $(DIST)/idl && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/idl && tar -xf -)
++	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/lib
++# sdk/lib is the same as sdk/sdk/lib
++	(cd $(DIST)/sdk/lib && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
++	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/lib && tar -xf -)
++	$(NSINSTALL) -D $(DIST)/$(SDK_PATH)
++ifndef PKG_SKIP_STRIP
++	USE_ELF_HACK= $(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/strip.py $(DIST)/$(MOZ_APP_NAME)-sdk
++endif
++	cd $(DIST) && $(MAKE_SDK)
++ifdef UNIFY_DIST
++ifndef SDK_UNIFY
++	$(MAKE) -C $(UNIFY_DIST)/.. sdk SDK_UNIFY=1
++endif
++endif
++
+ upload:
+ 	$(PYTHON3) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
+ 	mkdir -p `dirname $(CHECKSUM_FILE)`
+diff --git a/toolkit/mozapps/installer/upload-files.mk b/toolkit/mozapps/installer/upload-files.mk
+index ee08995ae92b..1984c8f658be 100644
+--- a/toolkit/mozapps/installer/upload-files.mk
++++ b/toolkit/mozapps/installer/upload-files.mk
+@@ -46,6 +46,14 @@ endif
+ PACKAGE_BASE_DIR = $(ABS_DIST)
+ PACKAGE       = $(PKG_PATH)$(PKG_BASENAME)$(PKG_SUFFIX)
+ 
++# By default, the SDK uses the same packaging type as the main bundle,
++# but on mac it is a .tar.bz2
++SDK_SUFFIX    = $(PKG_SUFFIX)
++SDK           = $(SDK_PATH)$(PKG_BASENAME).sdk$(SDK_SUFFIX)
++ifdef UNIVERSAL_BINARY
++SDK           = $(SDK_PATH)$(PKG_BASENAME)-$(TARGET_CPU).sdk$(SDK_SUFFIX)
++endif
++
+ # JavaScript Shell packaging
+ JSSHELL_BINS  = \
+   js$(BIN_SUFFIX) \
+@@ -114,12 +122,14 @@ ifeq ($(MOZ_PKG_FORMAT),TAR)
+   PKG_SUFFIX	= .tar
+   INNER_MAKE_PACKAGE 	= $(CREATE_FINAL_TAR) - $(MOZ_PKG_DIR) > $(PACKAGE)
+   INNER_UNMAKE_PACKAGE	= $(UNPACK_TAR) < $(UNPACKAGE)
++  MAKE_SDK = $(CREATE_FINAL_TAR) - $(MOZ_APP_NAME)-sdk > '$(SDK)'
+ endif
+ 
+ ifeq ($(MOZ_PKG_FORMAT),TGZ)
+   PKG_SUFFIX	= .tar.gz
+   INNER_MAKE_PACKAGE 	= $(CREATE_FINAL_TAR) - $(MOZ_PKG_DIR) | gzip -vf9 > $(PACKAGE)
+   INNER_UNMAKE_PACKAGE	= gunzip -c $(UNPACKAGE) | $(UNPACK_TAR)
++  MAKE_SDK = $(CREATE_FINAL_TAR) - $(MOZ_APP_NAME)-sdk | gzip -vf9 > '$(SDK)'
+ endif
+ 
+ ifeq ($(MOZ_PKG_FORMAT),BZ2)
+@@ -130,12 +140,14 @@ ifeq ($(MOZ_PKG_FORMAT),BZ2)
+     INNER_MAKE_PACKAGE 	= $(CREATE_FINAL_TAR) - $(MOZ_PKG_DIR) | bzip2 -vf > $(PACKAGE)
+   endif
+   INNER_UNMAKE_PACKAGE	= bunzip2 -c $(UNPACKAGE) | $(UNPACK_TAR)
++  MAKE_SDK = $(CREATE_FINAL_TAR) - $(MOZ_APP_NAME)-sdk | bzip2 -vf > '$(SDK)'
+ endif
+ 
+ ifeq ($(MOZ_PKG_FORMAT),ZIP)
+   PKG_SUFFIX	= .zip
+   INNER_MAKE_PACKAGE = $(call py_action,make_zip,'$(MOZ_PKG_DIR)' '$(PACKAGE)')
+   INNER_UNMAKE_PACKAGE = $(call py_action,make_unzip,$(UNPACKAGE))
++  MAKE_SDK = $(call py_action,zip,'$(SDK)' $(MOZ_APP_NAME)-sdk)
+ endif
+ 
+ ifeq ($(MOZ_PKG_FORMAT),SFX7Z)
+@@ -200,7 +212,15 @@ ifeq ($(MOZ_PKG_FORMAT),RPM)
+       --define '_testsinstalldir $(shell basename $(installdir))'
+   endif
+ 
+-  #For each of the main/tests rpms we want to make sure that
++  ifdef INSTALL_SDK
++    RPM_CMD += \
++      --define 'createdevel yes' \
++      --define '_idldir $(idldir)' \
++      --define '_sdkdir $(sdkdir)' \
++      --define '_includedir $(includedir)'
++  endif
++
++  #For each of the main, tests, sdk rpms we want to make sure that
+   #if they exist that they are in objdir/dist/ and that they get
+   #uploaded and that they are beside the other build artifacts
+   MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+@@ -213,6 +233,12 @@ ifeq ($(MOZ_PKG_FORMAT),RPM)
+     RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
+   endif
+ 
++  ifdef INSTALL_SDK
++    SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
++    UPLOAD_EXTRA_FILES += $(SDK_RPM)
++    RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
++  endif
++
+   INNER_MAKE_PACKAGE = $(RPM_CMD)
+   #Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
+   INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
+@@ -245,10 +271,18 @@ ifeq ($(MOZ_PKG_FORMAT),DMG)
+         $(if $(MOZ_PKG_MAC_ICON),--icon '$(MOZ_PKG_MAC_ICON)') \
+         $(UNPACKAGE) $(MOZ_PKG_DIR) \
+         )
++  # The plst and blkx resources are skipped because they belong to each
++  # individual dmg and are created by hdiutil.
++  SDK_SUFFIX = .tar.bz2
++  MAKE_SDK = $(CREATE_FINAL_TAR) - $(MOZ_APP_NAME)-sdk | bzip2 -vf > '$(SDK)'
+ endif
+ 
+ MAKE_PACKAGE = $(INNER_MAKE_PACKAGE)
+ 
++ifdef MOZ_SIGN_CMD
++  MAKE_SDK           += && $(MOZ_SIGN_CMD) -f gpg '$(SDK)'
++endif
++
+ NO_PKG_FILES += \
+ 	core \
+ 	bsdecho \
+@@ -373,6 +407,8 @@ UPLOAD_FILES= \
+   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZHARNESS_PACKAGE)) \
+   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(SYMBOL_ARCHIVE_BASENAME).zip) \
+   $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(GENERATED_SOURCE_FILE_PACKAGE)) \
++  $(call QUOTED_WILDCARD,$(DIST)/$(SDK)) \
++  $(call QUOTED_WILDCARD,$(DIST)/$(SDK).asc) \
+   $(call QUOTED_WILDCARD,$(MOZ_SOURCESTAMP_FILE)) \
+   $(call QUOTED_WILDCARD,$(MOZ_BUILDINFO_FILE)) \
+   $(call QUOTED_WILDCARD,$(MOZ_BUILDHUB_JSON)) \
+@@ -414,6 +450,13 @@ ifdef ENABLE_MOZSEARCH_PLUGIN
+   UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MOZSEARCH_INCLUDEMAP_BASENAME).map)
+ endif
+ 
++ifdef UNIFY_DIST
++  UNIFY_ARCH := $(notdir $(patsubst %/,%,$(dir $(UNIFY_DIST))))
++  UPLOAD_FILES += \
++    $(call QUOTED_WILDCARD,$(UNIFY_DIST)/$(SDK_PATH)$(PKG_BASENAME)-$(UNIFY_ARCH).sdk$(SDK_SUFFIX)) \
++    $(call QUOTED_WILDCARD,$(UNIFY_DIST)/$(SDK_PATH)$(PKG_BASENAME)-$(UNIFY_ARCH).sdk$(SDK_SUFFIX).asc)
++endif
++
+ ifeq (Darwin, $(OS_ARCH))
+   UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MACOS_CODESIGN_ARCHIVE_BASENAME).zip)
+ endif
+-- 
+2.31.1
+

@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Wed, 4 Aug 2021 20:07:37 +0000
+Subject: [PATCH] [sailfishos][configure] Skip min_libclang_version test during
+ configuration
+
+Removes the check for the correct libclang.so version, since on arm
+targets this requires an arm library, while with the build process
+running on the host architecture, libclang must match the host's
+processor architecture.
+---
+ build/moz.configure/bindgen.configure | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
+index 9b45948ffc8f..f829619dfe10 100644
+--- a/build/moz.configure/bindgen.configure
++++ b/build/moz.configure/bindgen.configure
+@@ -223,6 +223,7 @@ def bindgen_config_paths(clang, libclang, build_project):
+ @imports(_from='ctypes', _import='CDLL')
+ @imports(_from='textwrap', _import='dedent')
+ def min_libclang_version(libclang):
++    return True
+     try:
+         lib = CDLL(libclang)
+         # We want at least 4.0. The API we test below is enough for that.
+-- 
+2.31.1
+

@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Date: Sun, 25 Apr 2021 14:40:00 +0300
+Subject: [PATCH] [sailfishos][gecko] Force to build mozglue and xpcomglue
+ static libraries
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ config/rules.mk                 | 2 +-
+ mozglue/build/moz.build         | 5 +++++
+ xpcom/glue/standalone/moz.build | 3 +++
+ 3 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/config/rules.mk b/config/rules.mk
+index c2da8914841e..3b2a0a9ef5bb 100644
+--- a/config/rules.mk
++++ b/config/rules.mk
+@@ -471,7 +471,7 @@ ifdef MSMANIFEST_TOOL
+ 	fi
+ endif	# MSVC with manifest tool
+ else # !WINNT || GNU_CC
+-	$(call EXPAND_CC_OR_CXX,$@) -o $@ $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $($(notdir $@)_OBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(STATIC_LIBS) $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
++	$(call EXPAND_CC_OR_CXX,$@) -o $@ $(COMPUTED_CXX_LDFLAGS) $(PGO_CFLAGS) $($(notdir $@)_OBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) -Wl,--whole-archive $(STATIC_LIBS) -Wl,--no-whole-archive $(MOZ_PROGRAM_LDFLAGS) $(SHARED_LIBS) $(OS_LIBS)
+ 	$(call py_action,check_binary,--target $@)
+ endif # WINNT && !GNU_CC
+ 
+diff --git a/mozglue/build/moz.build b/mozglue/build/moz.build
+index ab0cff86fafc..855b7dfa1ea3 100644
+--- a/mozglue/build/moz.build
++++ b/mozglue/build/moz.build
+@@ -14,6 +14,9 @@ elif CONFIG['OS_TARGET'] in ('WINNT', 'Darwin', 'Android'):
+ else:
+     Library('mozglue')
+ 
++FORCE_STATIC_LIB = True
++STATIC_LIBRARY_NAME = 'mozglue'
++
+ if CONFIG['OS_TARGET'] == 'Android':
+     LDFLAGS += ['-Wl,--version-script,%s/mozglue.ver' % SRCDIR]
+     SOURCES += [
+@@ -115,4 +118,6 @@ if CONFIG['OS_TARGET'] == 'Darwin':
+ if CONFIG['MOZ_LINKER'] and CONFIG['CPU_ARCH'] == 'arm':
+     LDFLAGS += ['-Wl,-version-script,%s/arm-eabi-filter' % SRCDIR]
+ 
++NO_EXPAND_LIBS = True
++
+ DIST_INSTALL = True
+diff --git a/xpcom/glue/standalone/moz.build b/xpcom/glue/standalone/moz.build
+index 1c6c83d1b284..952b37cf65e0 100644
+--- a/xpcom/glue/standalone/moz.build
++++ b/xpcom/glue/standalone/moz.build
+@@ -13,6 +13,7 @@ SOURCES += [
+ Library('xpcomglue')
+ 
+ FORCE_STATIC_LIB = True
++STATIC_LIBRARY_NAME = 'xpcomglue'
+ 
+ if CONFIG['CC_TYPE'] == 'clang-cl':
+     DEFINES['_USE_ANSI_CPP'] = True
+@@ -30,6 +31,8 @@ LOCAL_INCLUDES += [
+ # Don't use STL wrappers here (i.e. wrapped <new>); they require mozalloc
+ DisableStlWrapping()
+ 
++NO_EXPAND_LIBS = True
++
+ DIST_INSTALL = True
+ 
+ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+-- 
+2.31.1
+

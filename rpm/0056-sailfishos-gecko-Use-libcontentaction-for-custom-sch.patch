@@ -1,0 +1,139 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 31 Jan 2020 11:09:02 +0000
+Subject: [PATCH] [sailfishos][gecko] Use libcontentaction for custom scheme
+ uri handling. JB#47892
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ old-configure.in                                  |  8 +++++---
+ uriloader/exthandler/nsContentHandlerApp.h        |  5 +++--
+ uriloader/exthandler/unix/nsMIMEInfoUnix.cpp      | 15 +++++++++++++--
+ .../exthandler/unix/nsOSHelperAppService.cpp      |  5 +++++
+ xpcom/io/moz.build                                |  2 ++
+ xpcom/io/nsLocalFileUnix.cpp                      |  4 ++++
+ 6 files changed, 32 insertions(+), 7 deletions(-)
+
+diff --git a/old-configure.in b/old-configure.in
+index 6731b2c0d525..a86a2ac62edb 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1811,11 +1811,13 @@ then
+     fi
+ 
+     MOZ_ENABLE_CONTENTACTION=
+-    PKG_CHECK_MODULES(LIBCONTENTACTION, contentaction-0.1, _LIB_FOUND=1, _LIB_FOUND=)
++    PKG_CHECK_MODULES(LIBCONTENTACTION, contentaction5,
++                      MOZ_ENABLE_CONTENTACTION=1,
++                      MOZ_ENABLE_CONTENTACTION=)
+     if test "$MOZ_ENABLE_CONTENTACTION"; then
+        MOZ_ENABLE_CONTENTACTION=1
+-       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_CONTENTACTION_CFLAGS"
+-       MOZ_QT_LIBS="$MOZ_QT_LIBS $_CONTENTACTION_LIBS"
++       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $LIBCONTENTACTION_CFLAGS"
++       MOZ_QT_LIBS="$MOZ_QT_LIBS $LIBCONTENTACTION_LIBS"
+        AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
+        AC_SUBST(MOZ_ENABLE_CONTENTACTION)
+     fi
+diff --git a/uriloader/exthandler/nsContentHandlerApp.h b/uriloader/exthandler/nsContentHandlerApp.h
+index f372d8735e0a..fa35109fa37d 100644
+--- a/uriloader/exthandler/nsContentHandlerApp.h
++++ b/uriloader/exthandler/nsContentHandlerApp.h
+@@ -7,7 +7,7 @@
+ #ifndef __nsContentHandlerAppImpl_h__
+ #define __nsContentHandlerAppImpl_h__
+ 
+-#include <contentaction/contentaction.h>
++#include <contentaction5/contentaction.h>
+ #include "nsString.h"
+ #include "nsIMIMEInfo.h"
+ 
+@@ -18,9 +18,10 @@ class nsContentHandlerApp : public nsIHandlerApp {
+ 
+   nsContentHandlerApp(nsString aName, nsCString aType,
+                       ContentAction::Action& aAction);
++
++ private:
+   virtual ~nsContentHandlerApp() {}
+ 
+- protected:
+   nsString mName;
+   nsCString mType;
+   nsString mDetailedDescription;
+diff --git a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+index c2031408b5c1..cdac3c7f397a 100644
+--- a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
++++ b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+@@ -5,8 +5,8 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #ifdef MOZ_WIDGET_QT
+-#if (MOZ_ENABLE_CONTENTACTION)
+-#include <contentaction/contentaction.h>
++#if defined(MOZ_ENABLE_CONTENTACTION)
++#include <contentaction5/contentaction.h>
+ #include "nsContentHandlerApp.h"
+ #endif
+ #endif
+@@ -73,6 +73,17 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile* aFile) {
+   nsAutoCString nativePath;
+   aFile->GetNativePath(nativePath);
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++  QUrl localFileUri = QUrl::fromLocalFile(QString::fromUtf8(nativePath.get()));
++  ContentAction::Action action =
++    ContentAction::Action::defaultActionForFile(localFileUri, QString(mSchemeOrType.get()));
++  if (action.isValid()) {
++    action.trigger();
++    return NS_OK;
++  }
++  return NS_ERROR_FAILURE;
++#endif
++
+   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+   if (!giovfs) {
+     return NS_ERROR_FAILURE;
+diff --git a/uriloader/exthandler/unix/nsOSHelperAppService.cpp b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+index 65ddc7d20237..ce10fa5f9a5e 100644
+--- a/uriloader/exthandler/unix/nsOSHelperAppService.cpp
++++ b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+@@ -7,6 +7,11 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++#include <contentaction5/contentaction.h>
++#include <QString>
++#endif
++
+ #include "nsOSHelperAppService.h"
+ #include "nsMIMEInfoUnix.h"
+ #ifdef MOZ_WIDGET_GTK
+diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
+index a165b491bc56..d8f5bc6ea901 100644
+--- a/xpcom/io/moz.build
++++ b/xpcom/io/moz.build
+@@ -151,3 +151,5 @@ LOCAL_INCLUDES += [
+     '!..',
+     '../build',
+ ]
++
++CXXFLAGS += CONFIG['TK_CFLAGS']
+diff --git a/xpcom/io/nsLocalFileUnix.cpp b/xpcom/io/nsLocalFileUnix.cpp
+index 528c74ff4fdd..bf331def55e7 100644
+--- a/xpcom/io/nsLocalFileUnix.cpp
++++ b/xpcom/io/nsLocalFileUnix.cpp
+@@ -68,6 +68,10 @@ static nsresult MacErrorMapper(OSErr inErr);
+ #  include <linux/magic.h>
+ #endif
+ 
++#ifdef MOZ_ENABLE_CONTENTACTION
++#  include <contentaction5/contentaction.h>
++#endif
++
+ #include "nsNativeCharsetUtils.h"
+ #include "nsTraceRefcnt.h"
+ #include "nsHashKeys.h"
+-- 
+2.31.1
+

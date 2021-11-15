@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 19 Aug 2021 17:27:01 +0300
+Subject: [PATCH] [sailfishos][egl] Do not create CreateFallbackSurface.
+ JB#55226 OMP#JOLLA-296
+
+Fallback surface creation was introduces in gecko mirror
+sha1 369ac65ffe5ef (https://bugzilla.mozilla.org/show_bug.cgi?id=1453501)
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/gl/GLContextProviderEGL.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index aac6f711d579..d56ab4ffd2f7 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -361,7 +361,7 @@ GLContextEGL::GLContextEGL(GLLibraryEGL* const egl, CreateContextFlags flags,
+       mConfig(config),
+       mContext(context),
+       mSurface(surface),
+-      mFallbackSurface(CreateFallbackSurface(mEgl, mConfig)) {
++      mFallbackSurface(EGL_NO_SURFACE) {
+ #ifdef DEBUG
+   printf_stderr("Initializing context %p surface %p on display %p\n", mContext,
+                 mSurface, mEgl->Display());
+-- 
+2.31.1
+

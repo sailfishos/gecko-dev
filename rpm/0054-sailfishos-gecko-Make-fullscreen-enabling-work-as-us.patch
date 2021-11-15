@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 19 Aug 2020 14:27:21 +0300
+Subject: [PATCH] [sailfishos][gecko] Make fullscreen enabling work as used to
+ with pref full-screen-api.content-only. Fixes JB#44129
+
+We don't have chrome from doc shell point of view. This commit
+sha1 3116f3bf53df offends fullscreen API to work without chrome
+and shall not make root docShell act as chrome. We previously had
+"full-screen-api.content-only" pref set to "true".
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/base/nsGlobalWindowOuter.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/dom/base/nsGlobalWindowOuter.cpp b/dom/base/nsGlobalWindowOuter.cpp
+index da9d56e843a2..1518302e1cad 100644
+--- a/dom/base/nsGlobalWindowOuter.cpp
++++ b/dom/base/nsGlobalWindowOuter.cpp
+@@ -4558,10 +4558,16 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
+   if (rootItem != mDocShell)
+     return window->SetFullscreenInternal(aReason, aFullscreen);
+ 
++  // We don't have chrome from doc shell point of view. This commit
++  // sha1 3116f3bf53df offends fullscreen API to work without chrome
++  // and shall not make root docShell act as chrome. We previously had
++  // "full-screen-api.content-only" pref set to "true".
++#if 0
+   // make sure we don't try to set full screen on a non-chrome window,
+   // which might happen in embedding world
+   if (mDocShell->ItemType() != nsIDocShellTreeItem::typeChrome)
+     return NS_ERROR_FAILURE;
++#endif
+ 
+   // If we are already in full screen mode, just return.
+   if (mFullscreen == aFullscreen) {
+-- 
+2.31.1
+

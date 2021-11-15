@@ -1,0 +1,478 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date: Mon, 6 Sep 2021 09:52:04 +0000
+Subject: [PATCH] Revert "Bug 1445570 - Remove EnsureEventualAfterPaint timer.
+ r=tnikkel"
+
+This reverts commit 1deccd7ac14706ad1849343cfb2b93df191a1c42.
+---
+ dom/base/nsDOMWindowUtils.cpp                 |   1 -
+ layout/base/nsDocumentViewer.cpp              |   8 ++
+ layout/base/nsPresContext.cpp                 | 132 ++++++++++--------
+ layout/base/nsPresContext.h                   |  32 ++++-
+ layout/base/nsRefreshDriver.cpp               |  43 ++----
+ layout/base/nsRefreshDriver.h                 |   7 +-
+ .../test/test_restyles_in_smil_animation.html |   4 +-
+ 7 files changed, 129 insertions(+), 98 deletions(-)
+
+diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
+index 8c9a038491cc..eb67dad4d753 100644
+--- a/dom/base/nsDOMWindowUtils.cpp
++++ b/dom/base/nsDOMWindowUtils.cpp
+@@ -356,7 +356,6 @@ nsDOMWindowUtils::UpdateLayerTree() {
+         ChangesToFlush(FlushType::Display, false /* flush animations */));
+     RefPtr<nsViewManager> vm = presShell->GetViewManager();
+     if (nsView* view = vm->GetRootView()) {
+-      nsAutoScriptBlocker scriptBlocker;
+       presShell->Paint(
+           view, view->GetBounds(),
+           PaintFlags::PaintLayers | PaintFlags::PaintSyncDecodeImages);
+diff --git a/layout/base/nsDocumentViewer.cpp b/layout/base/nsDocumentViewer.cpp
+index 5c688c7a08fb..e99b75a34b87 100644
+--- a/layout/base/nsDocumentViewer.cpp
++++ b/layout/base/nsDocumentViewer.cpp
+@@ -1617,6 +1617,10 @@ static void DetachContainerRecurse(nsIDocShell* aShell) {
+     if (Document* doc = viewer->GetDocument()) {
+       doc->SetContainer(nullptr);
+     }
++    RefPtr<nsPresContext> pc = viewer->GetPresContext();
++    if (pc) {
++      pc->Detach();
++    }
+     if (PresShell* presShell = viewer->GetPresShell()) {
+       auto weakShell = static_cast<nsDocShell*>(aShell);
+       presShell->SetForwardingContainer(weakShell);
+@@ -1759,6 +1763,9 @@ nsDocumentViewer::Destroy() {
+     if (mDocument) {
+       mDocument->SetContainer(nullptr);
+     }
++    if (mPresContext) {
++      mPresContext->Detach();
++    }
+     if (mPresShell) {
+       mPresShell->SetForwardingContainer(mContainer);
+     }
+@@ -3896,6 +3903,7 @@ void nsDocumentViewer::InvalidatePotentialSubDocDisplayItem() {
+ 
+ void nsDocumentViewer::DestroyPresContext() {
+   InvalidatePotentialSubDocDisplayItem();
++  mPresContext->Detach();
+   mPresContext = nullptr;
+ }
+ 
+diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
+index 6bcbe6e4d997..61b178fffdfa 100644
+--- a/layout/base/nsPresContext.cpp
++++ b/layout/base/nsPresContext.cpp
+@@ -311,6 +311,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsPresContext)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(nsPresContext, LastRelease())
+ 
+ void nsPresContext::LastRelease() {
++  if (IsRoot()) {
++    static_cast<nsRootPresContext*>(this)->CancelAllDidPaintTimers();
++  }
+   if (mMissingFonts) {
+     mMissingFonts->Clear();
+   }
+@@ -801,6 +804,9 @@ void nsPresContext::DetachPresShell() {
+     // Have to cancel our plugin geometry timer, because the
+     // callback for that depends on a non-null presshell.
+     thisRoot->CancelApplyPluginGeometryTimer();
++
++    // The did-paint timer also depends on a non-null pres shell.
++    thisRoot->CancelAllDidPaintTimers();
+   }
+ }
+ 
+@@ -1952,6 +1958,12 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
+       transaction->mTransactionId = aTransactionId;
+     }
+   }
++  if (!pc) {
++    nsRootPresContext* rpc = GetRootPresContext();
++    if (rpc) {
++      rpc->EnsureEventualDidPaintEvent(aTransactionId);
++    }
++  }
+ 
+   TransactionInvalidations* transaction = GetInvalidations(aTransactionId);
+   MOZ_ASSERT(transaction);
+@@ -2030,63 +2042,24 @@ class DelayedFireDOMPaintEvent : public Runnable {
+   nsTArray<nsRect> mList;
+ };
+ 
+-void nsPresContext::NotifyRevokingDidPaint(TransactionId aTransactionId) {
+-  if ((IsRoot() || !PresShell()->IsVisible()) && mTransactions.IsEmpty()) {
+-    return;
+-  }
+-
+-  TransactionInvalidations* transaction = nullptr;
+-  for (auto& t : mTransactions) {
+-    if (t.mTransactionId == aTransactionId) {
+-      transaction = &t;
+-      break;
+-    }
+-  }
+-  // If there are no transaction invalidations (which imply callers waiting
+-  // on the event) for this revoked id, then we don't need to fire a
+-  // MozAfterPaint.
+-  if (!transaction) {
+-    return;
+-  }
+-
+-  // If there are queued transactions with an earlier id, we can't send
+-  // our event now since it will arrive out of order. Set the waiting for
+-  // previous transaction flag to true, and we'll send the event when
+-  // the others are completed.
+-  // If this is the only transaction, then we can send it immediately.
+-  if (mTransactions.Length() == 1) {
+-    nsCOMPtr<nsIRunnable> ev = new DelayedFireDOMPaintEvent(
+-        this, &transaction->mInvalidations, transaction->mTransactionId,
+-        mozilla::TimeStamp());
+-    nsContentUtils::AddScriptRunner(ev);
+-    mTransactions.RemoveElementAt(0);
+-  } else {
+-    transaction->mIsWaitingForPreviousTransaction = true;
+-  }
+-
+-  auto recurse = [&aTransactionId](dom::Document& aSubDoc) {
+-    if (nsPresContext* pc = aSubDoc.GetPresContext()) {
+-      pc->NotifyRevokingDidPaint(aTransactionId);
+-    }
+-    return CallState::Continue;
+-  };
+-  mDocument->EnumerateSubDocuments(recurse);
+-}
+-
+ void nsPresContext::NotifyDidPaintForSubtree(
+     TransactionId aTransactionId, const mozilla::TimeStamp& aTimeStamp) {
+   if (mFirstContentfulPaintTransactionId && !mHadContentfulPaintComposite) {
+     if (aTransactionId >= *mFirstContentfulPaintTransactionId) {
+       mHadContentfulPaintComposite = true;
+       RefPtr<nsDOMNavigationTiming> timing = mDocument->GetNavigationTiming();
+-      if (timing) {
++      if (timing && !aTimeStamp.IsNull()) {
+         timing->NotifyContentfulPaintForRootContentDocument(aTimeStamp);
+       }
+     }
+   }
+ 
+-  if (IsRoot() && mTransactions.IsEmpty()) {
+-    return;
++  if (IsRoot()) {
++    static_cast<nsRootPresContext*>(this)->CancelDidPaintTimers(aTransactionId);
++
++    if (mTransactions.IsEmpty()) {
++      return;
++    }
+   }
+ 
+   if (!PresShell()->IsVisible() && mTransactions.IsEmpty()) {
+@@ -2112,17 +2085,6 @@ void nsPresContext::NotifyDidPaintForSubtree(
+       }
+       mTransactions.RemoveElementAt(i);
+     } else {
+-      // If there are transaction which is waiting for this transaction,
+-      // we should fire a MozAfterPaint immediately.
+-      if (sent && mTransactions[i].mIsWaitingForPreviousTransaction) {
+-        nsCOMPtr<nsIRunnable> ev = new DelayedFireDOMPaintEvent(
+-            this, &mTransactions[i].mInvalidations,
+-            mTransactions[i].mTransactionId, aTimeStamp);
+-        nsContentUtils::AddScriptRunner(ev);
+-        sent = true;
+-        mTransactions.RemoveElementAt(i);
+-        continue;
+-      }
+       i++;
+     }
+   }
+@@ -2604,9 +2566,16 @@ nsRootPresContext::nsRootPresContext(dom::Document* aDocument,
+ nsRootPresContext::~nsRootPresContext() {
+   NS_ASSERTION(mRegisteredPlugins.Count() == 0,
+                "All plugins should have been unregistered");
++  CancelAllDidPaintTimers();
+   CancelApplyPluginGeometryTimer();
+ }
+ 
++/* virtual */
++void nsRootPresContext::Detach() {
++  CancelAllDidPaintTimers();
++  nsPresContext::Detach();
++}
++
+ void nsRootPresContext::RegisterPluginForGeometryUpdates(nsIContent* aPlugin) {
+   mRegisteredPlugins.PutEntry(aPlugin);
+ }
+@@ -2839,6 +2808,55 @@ void nsRootPresContext::CollectPluginGeometryUpdates(
+ #endif  // #ifndef XP_MACOSX
+ }
+ 
++void
++nsRootPresContext::EnsureEventualDidPaintEvent(TransactionId aTransactionId)
++{
++  for (NotifyDidPaintTimer& t : mNotifyDidPaintTimers) {
++    if (t.mTransactionId == aTransactionId) {
++      return;
++    }
++  }
++
++  nsCOMPtr<nsITimer> timer;
++  RefPtr<nsRootPresContext> self = this;
++  nsresult rv = NS_NewTimerWithCallback(
++    getter_AddRefs(timer),
++    NewNamedTimerCallback([self, aTransactionId](){
++      nsAutoScriptBlocker blockScripts;
++      self->NotifyDidPaintForSubtree(aTransactionId);
++     }, "NotifyDidPaintForSubtree"), 100, nsITimer::TYPE_ONE_SHOT,
++    Document()->EventTargetFor(TaskCategory::Other));
++
++  if (NS_SUCCEEDED(rv)) {
++    NotifyDidPaintTimer* t = mNotifyDidPaintTimers.AppendElement();
++    t->mTransactionId = aTransactionId;
++    t->mTimer = timer;
++  }
++}
++
++void
++nsRootPresContext::CancelDidPaintTimers(TransactionId aTransactionId)
++{
++  uint32_t i = 0;
++  while (i < mNotifyDidPaintTimers.Length()) {
++    if (mNotifyDidPaintTimers[i].mTransactionId <= aTransactionId) {
++      mNotifyDidPaintTimers[i].mTimer->Cancel();
++      mNotifyDidPaintTimers.RemoveElementAt(i);
++    } else {
++      i++;
++    }
++  }
++}
++
++void
++nsRootPresContext::CancelAllDidPaintTimers()
++{
++  for (uint32_t i = 0; i < mNotifyDidPaintTimers.Length(); i++) {
++    mNotifyDidPaintTimers[i].mTimer->Cancel();
++  }
++  mNotifyDidPaintTimers.Clear();
++}
++
+ void nsRootPresContext::AddWillPaintObserver(nsIRunnable* aRunnable) {
+   if (!mWillPaintFallbackEvent.IsPending()) {
+     mWillPaintFallbackEvent = new RunWillPaintObservers(this);
+diff --git a/layout/base/nsPresContext.h b/layout/base/nsPresContext.h
+index 97657009f993..cc171331f1f9 100644
+--- a/layout/base/nsPresContext.h
++++ b/layout/base/nsPresContext.h
+@@ -360,6 +360,13 @@ class nsPresContext : public nsISupports,
+ 
+   nsDocShell* GetDocShell() const;
+ 
++  /**
++   * Detach this pres context - i.e. cancel relevant timers,
++   * SetLinkHandler(null), etc.
++   * Only to be used by the DocumentViewer.
++   */
++  virtual void Detach() {}
++
+   /**
+    * Get the visible area associated with this presentation context.
+    * This is the size of the visible area that is used for
+@@ -909,7 +916,6 @@ class nsPresContext : public nsISupports,
+   void NotifyDidPaintForSubtree(
+       TransactionId aTransactionId = TransactionId{0},
+       const mozilla::TimeStamp& aTimeStamp = mozilla::TimeStamp());
+-  void NotifyRevokingDidPaint(TransactionId aTransactionId);
+   void FireDOMPaintEvent(nsTArray<nsRect>* aList, TransactionId aTransactionId,
+                          mozilla::TimeStamp aTimeStamp = mozilla::TimeStamp());
+ 
+@@ -1357,6 +1363,24 @@ class nsRootPresContext final : public nsPresContext {
+  public:
+   nsRootPresContext(mozilla::dom::Document* aDocument, nsPresContextType aType);
+   virtual ~nsRootPresContext();
++  virtual void Detach() override;
++
++  /**
++   * Ensure that NotifyDidPaintForSubtree is eventually called on this
++   * object after a timeout.
++   */
++  void EnsureEventualDidPaintEvent(TransactionId aTransactionId);
++
++  /**
++   * Cancels any pending eventual did paint timer for transaction
++   * ids up to and including aTransactionId.
++   */
++  void CancelDidPaintTimers(TransactionId aTransactionId);
++
++  /**
++   * Cancel all pending eventual did paint timers.
++   */
++  void CancelAllDidPaintTimers();
+ 
+   /**
+    * Registers a plugin to receive geometry updates (position and clip
+@@ -1449,6 +1473,12 @@ class nsRootPresContext final : public nsPresContext {
+ 
+   friend class nsPresContext;
+ 
++  struct NotifyDidPaintTimer {
++    TransactionId mTransactionId;
++    nsCOMPtr<nsITimer> mTimer;
++  };
++  AutoTArray<NotifyDidPaintTimer, 4> mNotifyDidPaintTimers;
++
+   nsCOMPtr<nsITimer> mApplyPluginGeometryTimer;
+   nsTHashtable<nsRefPtrHashKey<nsIContent>> mRegisteredPlugins;
+   nsTArray<nsCOMPtr<nsIRunnable>> mWillPaintObservers;
+diff --git a/layout/base/nsRefreshDriver.cpp b/layout/base/nsRefreshDriver.cpp
+index 4bd685dbee58..e780ab68e00f 100644
+--- a/layout/base/nsRefreshDriver.cpp
++++ b/layout/base/nsRefreshDriver.cpp
+@@ -1166,9 +1166,7 @@ nsRefreshDriver::nsRefreshDriver(nsPresContext* aPresContext)
+       mOwnTimer(nullptr),
+       mPresContext(aPresContext),
+       mRootRefresh(nullptr),
+-      mNextTransactionId{0},
+-      mOutstandingTransactionId{0},
+-      mCompletedTransaction{0},
++      mPendingTransaction{0},
+       mFreezeCount(0),
+       mThrottledFrameRequestInterval(
+           TimeDuration::FromMilliseconds(GetThrottledTimerInterval())),
+@@ -1239,7 +1237,7 @@ void nsRefreshDriver::AdvanceTimeAndRefresh(int64_t aMilliseconds) {
+ void nsRefreshDriver::RestoreNormalRefresh() {
+   mTestControllingRefreshes = false;
+   EnsureTimerStarted(eAllowTimeToGoBackwards);
+-  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId;
++  mCompletedTransaction = mPendingTransaction;
+ }
+ 
+ TimeStamp nsRefreshDriver::MostRecentRefresh() const {
+@@ -2337,54 +2335,43 @@ void nsRefreshDriver::FinishedWaitingForTransaction() {
+ 
+ mozilla::layers::TransactionId nsRefreshDriver::GetTransactionId(
+     bool aThrottle) {
+-  mOutstandingTransactionId = mOutstandingTransactionId.Next();
+-  mNextTransactionId = mNextTransactionId.Next();
++  mPendingTransaction = mPendingTransaction.Next();
+ 
+-  if (aThrottle && mOutstandingTransactionId - mCompletedTransaction >= 2 &&
++  if (aThrottle && mPendingTransaction - mCompletedTransaction >= 2 &&
+       !mWaitingForTransaction && !mTestControllingRefreshes) {
+     mWaitingForTransaction = true;
+     mSkippedPaints = false;
+     mWarningThreshold = 1;
+   }
+ 
+-  return mNextTransactionId;
++  return mPendingTransaction;
+ }
+ 
+ mozilla::layers::TransactionId nsRefreshDriver::LastTransactionId() const {
+-  return mNextTransactionId;
++  return mPendingTransaction;
+ }
+ 
+ void nsRefreshDriver::RevokeTransactionId(
+     mozilla::layers::TransactionId aTransactionId) {
+-  MOZ_ASSERT(aTransactionId == mNextTransactionId);
+-  if (mOutstandingTransactionId - mCompletedTransaction == 2 &&
++  MOZ_ASSERT(aTransactionId == mPendingTransaction);
++  if (mPendingTransaction - mCompletedTransaction == 2 &&
+       mWaitingForTransaction) {
+     MOZ_ASSERT(!mSkippedPaints,
+                "How did we skip a paint when we're in the middle of one?");
+     FinishedWaitingForTransaction();
+   }
+ 
+-  // Notify the pres context so that it can deliver MozAfterPaint for this
+-  // id if any caller was expecting it.
+-  nsPresContext* pc = GetPresContext();
+-  if (pc) {
+-    pc->NotifyRevokingDidPaint(aTransactionId);
+-  }
+-  // Revert the outstanding transaction since we're no longer waiting on it to
+-  // be completed, but don't revert mNextTransactionId since we can't use the id
+-  // again.
+-  mOutstandingTransactionId = mOutstandingTransactionId.Prev();
++  mPendingTransaction = mPendingTransaction.Prev();
+ }
+ 
+ void nsRefreshDriver::ClearPendingTransactions() {
+-  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId;
++  mCompletedTransaction = mPendingTransaction;
+   mWaitingForTransaction = false;
+ }
+ 
+ void nsRefreshDriver::ResetInitialTransactionId(
+     mozilla::layers::TransactionId aTransactionId) {
+-  mCompletedTransaction = mOutstandingTransactionId = mNextTransactionId =
+-      aTransactionId;
++  mCompletedTransaction = mPendingTransaction = aTransactionId;
+ }
+ 
+ mozilla::TimeStamp nsRefreshDriver::GetTransactionStart() { return mTickStart; }
+@@ -2396,7 +2383,7 @@ mozilla::TimeStamp nsRefreshDriver::GetVsyncStart() { return mTickVsyncTime; }
+ void nsRefreshDriver::NotifyTransactionCompleted(
+     mozilla::layers::TransactionId aTransactionId) {
+   if (aTransactionId > mCompletedTransaction) {
+-    if (mOutstandingTransactionId - mCompletedTransaction > 1 &&
++    if (mPendingTransaction - mCompletedTransaction > 1 &&
+         mWaitingForTransaction) {
+       mCompletedTransaction = aTransactionId;
+       FinishedWaitingForTransaction();
+@@ -2404,12 +2391,6 @@ void nsRefreshDriver::NotifyTransactionCompleted(
+       mCompletedTransaction = aTransactionId;
+     }
+   }
+-
+-  // If completed transaction id get ahead of outstanding id, reset to distance
+-  // id.
+-  if (mCompletedTransaction > mOutstandingTransactionId) {
+-    mOutstandingTransactionId = mCompletedTransaction;
+-  }
+ }
+ 
+ void nsRefreshDriver::WillRefresh(mozilla::TimeStamp aTime) {
+diff --git a/layout/base/nsRefreshDriver.h b/layout/base/nsRefreshDriver.h
+index 07feab12e079..deec935f25f4 100644
+--- a/layout/base/nsRefreshDriver.h
++++ b/layout/base/nsRefreshDriver.h
+@@ -507,12 +507,7 @@ class nsRefreshDriver final : public mozilla::layers::TransactionIdAllocator,
+   RefPtr<nsRefreshDriver> mRootRefresh;
+ 
+   // The most recently allocated transaction id.
+-  TransactionId mNextTransactionId;
+-  // This number is mCompletedTransaction + (pending transaction count).
+-  // When we revoke a transaction id, we revert this number (since it's
+-  // no longer outstanding), but not mNextTransactionId (since we don't
+-  // want to reuse the number).
+-  TransactionId mOutstandingTransactionId;
++  TransactionId mPendingTransaction;
+   // The most recently completed transaction id.
+   TransactionId mCompletedTransaction;
+ 
+diff --git a/layout/style/test/test_restyles_in_smil_animation.html b/layout/style/test/test_restyles_in_smil_animation.html
+index 1bfef49aa998..5a0679bb53e8 100644
+--- a/layout/style/test/test_restyles_in_smil_animation.html
++++ b/layout/style/test/test_restyles_in_smil_animation.html
+@@ -108,7 +108,7 @@ add_task(async function smil_is_in_display_none_subtree() {
+   animate.setAttribute("repeatCount", "indefinite");
+   document.getElementById("svg-rect").appendChild(animate);
+ 
+-  await waitForAnimationFrames(2);
++  await waitForPaintFlushed();
+ 
+   let result = await observeStyling(5);
+   // FIXME: Bug 866411: SMIL animations sometimes skip restyles when the target
+@@ -129,7 +129,7 @@ add_task(async function smil_is_in_display_none_subtree() {
+ 
+   div.style.display = "";
+   getComputedStyle(div).display;
+-  await waitForAnimationFrames(2);
++  await waitForPaintFlushed();
+ 
+   result = await observeStyling(5);
+   // FIXME: Bug 866411: SMIL animations sometimes skip restyles when the target
+-- 
+2.31.1
+

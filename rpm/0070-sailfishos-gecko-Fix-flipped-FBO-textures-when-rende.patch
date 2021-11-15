@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date: Wed, 2 Jun 2021 12:58:12 +1000
+Subject: [PATCH] [sailfishos][gecko] Fix flipped FBO textures when rendering
+ to an offscreen target.
+
+Only take whether the GL context is for an offscreen surface into
+account when rendering to the window surface. Internal FBO surfaces
+should behave the same irrespective of the final render target for the
+web page.
+---
+ gfx/layers/opengl/CompositorOGL.cpp | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
+index 8e95a9c43442..92adfb89aa01 100644
+--- a/gfx/layers/opengl/CompositorOGL.cpp
++++ b/gfx/layers/opengl/CompositorOGL.cpp
+@@ -595,9 +595,15 @@ void CompositorOGL::PrepareViewport(CompositingRenderTargetOGL* aRenderTarget) {
+     // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
+     // 2, 2) and flip the contents.
+     Matrix viewMatrix;
+-    viewMatrix.PreTranslate(-1.0, 1.0);
+-    viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
+-    viewMatrix.PreScale(1.0f, -1.0f);
++    if (mGLContext->IsOffscreen() && aRenderTarget->IsWindow()) {
++      // In case of rendering via GL Offscreen context, disable Y-Flipping
++      viewMatrix.PreTranslate(-1.0, -1.0);
++      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
++    } else {
++      viewMatrix.PreTranslate(-1.0, 1.0);
++      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
++      viewMatrix.PreScale(1.0f, -1.0f);
++    }
+ 
+     MOZ_ASSERT(mCurrentRenderTarget, "No destination");
+ 
+-- 
+2.31.1
+

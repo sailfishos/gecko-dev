@@ -1,3 +1,2 @@
-binary-component libhistory.so
 binary-component libchromehelper.so
 binary-component libwidgetfactory.so

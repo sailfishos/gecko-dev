@@ -96,10 +96,10 @@ index bbfbac6f45d8..696f215e3be9 100644
             type == MessageLoop::TYPE_MOZILLA_CHILD);
      return static_cast<MessageLoopForUI*>(loop);
 diff --git a/ipc/chromium/src/base/message_pump_qt.h b/ipc/chromium/src/base/message_pump_qt.h
-index 248fd5ef9e1d..1b4031bffaea 100644
+index bb91a8cc155a..8cad420e48e4 100644
 --- a/ipc/chromium/src/base/message_pump_qt.h
 +++ b/ipc/chromium/src/base/message_pump_qt.h
-@@ -54,6 +54,9 @@ class MessagePumpForUI : public MessagePump {
+@@ -53,6 +53,9 @@ class MessagePumpForUI : public MessagePump {
    // HandleDispatch is called after the poll has completed.
    void HandleDispatch();
  
@@ -110,5 +110,5 @@ index 248fd5ef9e1d..1b4031bffaea 100644
    // We may make recursive calls to Run, so we save state that needs to be
    // separate between them in this structure type.
 -- 
-2.25.1
+2.31.1
 

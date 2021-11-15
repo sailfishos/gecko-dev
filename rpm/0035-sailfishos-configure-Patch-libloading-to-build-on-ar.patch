@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Fri, 30 Jul 2021 08:10:23 +0000
+Subject: [PATCH] [sailfishos][configure] Patch libloading to build on arm.
+ JB#54221
+
+This patch overrides the default build step using cc::Build to force the
+right tool to be used (host-gcc) and allow libloading to be compiled and
+linked against.
+---
+ .../rust/libloading/.cargo-checksum.json      |  2 +-
+ third_party/rust/libloading/build.rs          | 71 ++++++++++++++++++-
+ 2 files changed, 69 insertions(+), 4 deletions(-)
+
+diff --git a/third_party/rust/libloading/.cargo-checksum.json b/third_party/rust/libloading/.cargo-checksum.json
+index 6a7f51d63560..e3b509fd222b 100644
+--- a/third_party/rust/libloading/.cargo-checksum.json
++++ b/third_party/rust/libloading/.cargo-checksum.json
+@@ -1 +1 @@
+-{"files":{"Cargo.toml":"9110a58fe827a68e5df22f8d38e4beab38c259724942e868c5ae3debc2f0ebae","LICENSE":"b29f8b01452350c20dd1af16ef83b598fea3053578ccc1c7a0ef40e57be2620f","README.mkd":"b4cd83f110d01dc5aa8fcaf3da34bdbe1478efdba767d73abc14d4d87e4775fa","appveyor.yml":"8382c7f1769f6cf78029a221058c4d73f35a48308b5dfc38d875facabec1c139","build.rs":"d8f7fce1b459d117cd48d85ba3643124bd09657a0df9e0e90a1fd997decff741","src/changelog.rs":"e8a769578ebe2db81055b131ce12fa14c9ad0f21a79035748f244e5b347b2ada","src/lib.rs":"0cc0f6b42c98c14183dea2bc9deaf5aa574fabbe61081fe3339d74430f25fc12","src/os/mod.rs":"51d733e5522dacd6069642ad66aa6d7acf6c82950c934eb040e8dfd112e6d610","src/os/unix/global_static.c":"b1096dedf7d4aed5c28b658fc917f6603339ffd92390c84e25cb543bdc9460ac","src/os/unix/mod.rs":"9a84c15d0b9e5125a6ca086854a0e18884cb6c04cea54f47f1a44243e69335c2","src/os/windows/mod.rs":"c0ee0068a0564d64b7f3d3053d799492693c34571a935fc893a41a62a86fccdd","src/test_helpers.rs":"3a55052e8cd5231e97d9282b43398c2f144c57ced2d2df64bde7f482f5c778e7","src/util.rs":"5d1d3fcf7e5e9dc67df0dbf91332c5e3f5875e90c8f80ada5cfad0bc3c402d7e","tests/functions.rs":"4633f3673db6a5b3623ea8927b13314c25502c9fbb63bb17a5a35650ea489012","tests/markers.rs":"8e9c1b883404d9190e4f23ed39b3d6cbbccb3a07883f733b04aed4357b9c6aca","tests/nagisa32.dll":"5c69b2bd9c8a6ad04165c221075fc9fade1dd66ca697399ace528a5a62328e36","tests/nagisa64.dll":"e20b95e3036f3289421abd100760874d4f455afd33c3b5b64fec56b191f7d477","tests/windows.rs":"7711dfe19062d91356cd127546542b1b6e13aeef76ad3098f32c8a6ae319b66a"},"package":"f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"}
+\ No newline at end of file
++{"files":{"Cargo.toml":"9110a58fe827a68e5df22f8d38e4beab38c259724942e868c5ae3debc2f0ebae","LICENSE":"b29f8b01452350c20dd1af16ef83b598fea3053578ccc1c7a0ef40e57be2620f","README.mkd":"b4cd83f110d01dc5aa8fcaf3da34bdbe1478efdba767d73abc14d4d87e4775fa","appveyor.yml":"8382c7f1769f6cf78029a221058c4d73f35a48308b5dfc38d875facabec1c139","build.rs":"8bf389a87118c2662388acf4e769504c5c3b89e627ed869400536cfcdc5e0b33","src/changelog.rs":"e8a769578ebe2db81055b131ce12fa14c9ad0f21a79035748f244e5b347b2ada","src/lib.rs":"0cc0f6b42c98c14183dea2bc9deaf5aa574fabbe61081fe3339d74430f25fc12","src/os/mod.rs":"51d733e5522dacd6069642ad66aa6d7acf6c82950c934eb040e8dfd112e6d610","src/os/unix/global_static.c":"b1096dedf7d4aed5c28b658fc917f6603339ffd92390c84e25cb543bdc9460ac","src/os/unix/mod.rs":"9a84c15d0b9e5125a6ca086854a0e18884cb6c04cea54f47f1a44243e69335c2","src/os/windows/mod.rs":"c0ee0068a0564d64b7f3d3053d799492693c34571a935fc893a41a62a86fccdd","src/test_helpers.rs":"3a55052e8cd5231e97d9282b43398c2f144c57ced2d2df64bde7f482f5c778e7","src/util.rs":"5d1d3fcf7e5e9dc67df0dbf91332c5e3f5875e90c8f80ada5cfad0bc3c402d7e","tests/functions.rs":"4633f3673db6a5b3623ea8927b13314c25502c9fbb63bb17a5a35650ea489012","tests/markers.rs":"8e9c1b883404d9190e4f23ed39b3d6cbbccb3a07883f733b04aed4357b9c6aca","tests/nagisa32.dll":"5c69b2bd9c8a6ad04165c221075fc9fade1dd66ca697399ace528a5a62328e36","tests/nagisa64.dll":"e20b95e3036f3289421abd100760874d4f455afd33c3b5b64fec56b191f7d477","tests/windows.rs":"7711dfe19062d91356cd127546542b1b6e13aeef76ad3098f32c8a6ae319b66a"},"package":"f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"}
+diff --git a/third_party/rust/libloading/build.rs b/third_party/rust/libloading/build.rs
+index fc380a7450a0..7ee0617c0108 100644
+--- a/third_party/rust/libloading/build.rs
++++ b/third_party/rust/libloading/build.rs
+@@ -2,6 +2,26 @@ extern crate cc;
+ 
+ use std::io::Write;
+ use std::env;
++use std::process::Command;
++use std::path::Path;
++
++fn is_486_target() -> bool {
++    let mut is_486_target = false;
++    match env::var("TARGET") {
++        Ok(val) => is_486_target = val == "i686-unknown-linux-gnu",
++        Err(e) => {},
++    }
++    return is_486_target;
++}
++
++fn is_486_sb2() -> bool {
++    let mut is_486_sb2 = false;
++    match env::var("SB2_TARGET") {
++        Ok(val) => is_486_sb2 = val == "i686-unknown-linux-gnu",
++        Err(e) => {},
++    }
++    return is_486_sb2;
++}
+ 
+ fn main(){
+     let target_os = env::var("CARGO_CFG_TARGET_OS");
+@@ -25,8 +45,53 @@ fn main(){
+         }
+     }
+     if is_unix {
+-        cc::Build::new()
+-            .file("src/os/unix/global_static.c")
+-            .compile("global_static");
++        // Comment out to control the override behaviour
++        let override_compiler = is_486_target() && !is_486_sb2();
++        //let override_compiler = false
++        //let override_compiler = true;
++
++        if !override_compiler {
++            // The original standard cc command which we're overriding
++            // cc replaced with clang to avoid warnings (treated as errors)
++            // about -Qunused-arguments and -fexperimental-new-pass-manager
++            // being unrecognised
++            cc::Build::new()
++                .compiler("clang")
++                .file("src/os/unix/global_static.c")
++                .compile("global_static");
++        }
++        else {
++            // The following steps mimic the steps that cc::Build would perform otherwise
++            let out_dir = env::var("OUT_DIR").unwrap();
++
++            // Ensure we have an output directory
++            Command::new("mkdir")
++                .arg("-p")
++                .arg(&out_dir)
++                .status()
++                .unwrap();
++
++            // Compile global_static.c into global_static.o
++            Command::new("host-gcc")
++                .args(&["-O0", "-ffunction-sections", "-fdata-sections", "-fPIC", "-g", "-fno-omit-frame-pointer", "-m32", "-march=i686", "-Wall", "-Wextra", "-o"])
++                //.args(&["-O0", "-ffunction-sections", "-fdata-sections", "-fPIC", "-g", "-fno-omit-frame-pointer", "-m64", "-Wall", "-Wextra", "-o"])
++                .arg(&format!("{}/global_static.o", out_dir))
++                .args(&["-c", "src/os/unix/global_static.c"])
++                .status()
++                .unwrap();
++
++            // Package up the result into a library
++            Command::new("ar")
++                .args(&["crus", "libglobal_static.a", "global_static.o"])
++                .current_dir(&Path::new(&out_dir))
++                .status()
++                .unwrap();
++
++            // Ensure cargo knows where to find the results
++            println!("cargo:rustc-link-search=native={}", out_dir);
++            println!("cargo:rustc-link-lib=static=global_static");
++            // Ensure changes propagate
++            println!("cargo:rerun-if-changed=src/os/unix/global_static.c");
++        }
+     }
+ }
+-- 
+2.31.1
+

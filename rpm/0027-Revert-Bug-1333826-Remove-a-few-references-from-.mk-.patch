@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 18 Aug 2020 10:22:14 +0300
+Subject: [PATCH] Revert "Bug 1333826 - Remove a few references from .mk files,
+ r=mshal"
+
+This reverts commit beb6ea89256954a0efd254b1e74dc7f7e8baf98e.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ config/config.mk | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/config/config.mk b/config/config.mk
+index a3587eecc59a..290ff113939c 100644
+--- a/config/config.mk
++++ b/config/config.mk
+@@ -249,6 +249,9 @@ endif
+ #
+ # Override defaults
+ 
++SDK_LIB_DIR = $(DIST)/sdk/lib
++SDK_BIN_DIR = $(DIST)/sdk/bin
++
+ DEPENDENCIES	= .md
+ 
+ ifdef MACOSX_DEPLOYMENT_TARGET
+-- 
+2.31.1
+

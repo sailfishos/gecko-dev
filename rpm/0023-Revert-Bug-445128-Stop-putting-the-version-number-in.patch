@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 17 Aug 2020 16:42:50 +0300
+Subject: [PATCH] Revert "Bug 445128 - Stop putting the version number in the
+ target directory for make install. r=nalexander"
+
+This reverts commit bd1eb0ab94c687d09a9c49fa15cebb442f817b42.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ config/baseconfig.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/baseconfig.mk b/config/baseconfig.mk
+index f5bf42d56779..8825f0014b72 100644
+--- a/config/baseconfig.mk
++++ b/config/baseconfig.mk
+@@ -2,7 +2,7 @@
+ # directly in python/mozbuild/mozbuild/base.py for gmake validation.
+ # We thus use INCLUDED_AUTOCONF_MK to enable/disable some parts depending
+ # whether a normal build is happening or whether the check is running.
+-installdir = $(libdir)/$(MOZ_APP_NAME)
++installdir = $(libdir)/$(MOZ_APP_NAME)-$(MOZ_APP_VERSION)
+ ifeq (.,$(DEPTH))
+ DIST = dist
+ else
+-- 
+2.31.1
+

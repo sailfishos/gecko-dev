@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 12 Nov 2020 20:03:34 +0100
+Subject: [PATCH] [sailfishos][gecko] Force recycling of gmp-droid instances.
+ JB#51730
+
+Android codecs hog a lot of frames, so creating a new one during playback when
+the stream switches will cause lag and playback failure. These codecs are
+capable of switching streams internally, so flag gmp-droid as supporting
+decoder recycling.
+---
+ dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h b/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
+index 3619eed456d0..38ca7a9b8f7c 100644
+--- a/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
++++ b/dom/media/platforms/agnostic/gmp/GMPVideoDecoder.h
+@@ -42,6 +42,9 @@ class GMPVideoDecoder : public MediaDataDecoder,
+   nsCString GetDescriptionName() const override {
+     return NS_LITERAL_CSTRING("gmp video decoder");
+   }
++  bool SupportDecoderRecycling() const override {
++      return mGMP->GetDisplayName().EqualsLiteral("gmp-droid");
++  }
+   ConversionRequired NeedsConversion() const override {
+     return mConvertToAnnexB ? ConversionRequired::kNeedAnnexB
+                             : ConversionRequired::kNeedAVCC;
+-- 
+2.31.1
+

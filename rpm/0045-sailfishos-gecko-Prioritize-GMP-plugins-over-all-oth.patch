@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 24 Jun 2020 07:56:50 +0200
+Subject: [PATCH] [sailfishos][gecko] Prioritize GMP plugins over all others,
+ and support decoding video for h264, vp8 & vp9.
+
+Automatically load gmp-droid at startup
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/media/platforms/PDMFactory.cpp               | 13 ++++++-------
+ .../platforms/agnostic/gmp/GMPDecoderModule.cpp  | 16 ++++++++++++++++
+ 2 files changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
+index 78ef3f8916fb..268b9f90b007 100644
+--- a/dom/media/platforms/PDMFactory.cpp
++++ b/dom/media/platforms/PDMFactory.cpp
+@@ -349,6 +349,12 @@ void PDMFactory::CreatePDMs() {
+     StartupPDM(m);
+   }
+ 
++  if (StaticPrefs::media_gmp_decoder_enabled()) {
++    m = new GMPDecoderModule();
++    mGMPPDMFailedToStartup = !StartupPDM(m);
++  } else {
++    mGMPPDMFailedToStartup = false;
++  }
+ #ifdef XP_WIN
+   if (StaticPrefs::media_wmf_enabled() && !IsWin7AndPre2000Compatible()) {
+     m = new WMFDecoderModule();
+@@ -393,13 +399,6 @@ void PDMFactory::CreatePDMs() {
+ 
+   m = new AgnosticDecoderModule();
+   StartupPDM(m);
+-
+-  if (StaticPrefs::media_gmp_decoder_enabled()) {
+-    m = new GMPDecoderModule();
+-    mGMPPDMFailedToStartup = !StartupPDM(m);
+-  } else {
+-    mGMPPDMFailedToStartup = false;
+-  }
+ }
+ 
+ void PDMFactory::CreateNullPDM() {
+diff --git a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
+index f4c6e5719737..86b018f5745a 100644
+--- a/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
++++ b/dom/media/platforms/agnostic/gmp/GMPDecoderModule.cpp
+@@ -86,6 +86,22 @@ bool GMPDecoderModule::SupportsMimeType(const nsACString& aMimeType,
+ 
+ bool GMPDecoderModule::SupportsMimeType(
+     const nsACString& aMimeType, DecoderDoctorDiagnostics* aDiagnostics) const {
++#if defined(MOZ_FMP4)
++  if (MP4Decoder::IsH264(aMimeType)) {
++    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
++                      { NS_LITERAL_CSTRING("h264") });
++  }
++#endif
++
++  if (VPXDecoder::IsVP9(aMimeType)) {
++    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
++                      { NS_LITERAL_CSTRING("vp9") });
++  }
++
++  if (VPXDecoder::IsVP8(aMimeType)) {
++    return HaveGMPFor(NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER),
++                      { NS_LITERAL_CSTRING("vp8") });
++  }
+   return false;
+ }
+ 
+-- 
+2.31.1
+

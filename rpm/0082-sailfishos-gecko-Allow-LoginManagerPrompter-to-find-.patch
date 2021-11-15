@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Thu, 21 Oct 2021 12:35:53 +0000
+Subject: [PATCH] [sailfishos][gecko] Allow LoginManagerPrompter to find its
+ window. JB#55760, OMP#JOLLA-418
+
+This patch blocks loading of gecko's LoginManagerAuthPrompter.jsm so
+that the embedlite-components version can be used instead.
+
+It also patches the nsILoginManagerPrompter interface to allow a
+reference to the window to be passed through, to allow the embedlite
+component to understand its context.
+
+Finally it patches ParentChannelListener to pass the correct window
+object through to the nsILoginManagerAuthPrompter component.
+---
+ netwerk/protocol/http/ParentChannelListener.cpp      |  2 +-
+ .../components/passwordmgr/LoginManagerParent.jsm    |  4 ++--
+ toolkit/components/passwordmgr/components.conf       | 12 ------------
+ .../passwordmgr/nsILoginManagerPrompter.idl          |  6 +++---
+ 4 files changed, 6 insertions(+), 18 deletions(-)
+
+diff --git a/netwerk/protocol/http/ParentChannelListener.cpp b/netwerk/protocol/http/ParentChannelListener.cpp
+index 39f73f998e74..894e7231fd29 100644
+--- a/netwerk/protocol/http/ParentChannelListener.cpp
++++ b/netwerk/protocol/http/ParentChannelListener.cpp
+@@ -401,7 +401,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
+ 
+   nsCOMPtr<nsPIDOMWindowOuter> window;
+   RefPtr<dom::Element> frame = mBrowsingContext->Top()->GetEmbedderElement();
+-  if (frame) window = frame->OwnerDoc()->GetWindow();
++  window = frame ? frame->OwnerDoc()->GetWindow() : mBrowsingContext->GetDOMWindow();
+ 
+   // Get an auth prompter for our window so that the parenting
+   // of the dialogs works as it should when using tabs.
+diff --git a/toolkit/components/passwordmgr/LoginManagerParent.jsm b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+index ab4b36b6161a..b143758f878c 100644
+--- a/toolkit/components/passwordmgr/LoginManagerParent.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerParent.jsm
+@@ -804,7 +804,7 @@ class LoginManagerParent extends JSWindowActorParent {
+       }
+     }
+ 
+-    let promptBrowser = LoginHelper.getBrowserForPrompt(browser);
++    let promptBrowser = browsingContext.window;
+     let prompter = this._getPrompter(browser);
+ 
+     if (!canMatchExistingLogin) {
+@@ -1177,7 +1177,7 @@ class LoginManagerParent extends JSWindowActorParent {
+     }
+ 
+     let prompter = this._getPrompter(browser);
+-    let promptBrowser = LoginHelper.getBrowserForPrompt(browser);
++    let promptBrowser = browsingContext.window;
+ 
+     if (existingLogin) {
+       // Show a change doorhanger to allow modifying an already-saved login
+diff --git a/toolkit/components/passwordmgr/components.conf b/toolkit/components/passwordmgr/components.conf
+index 2c6b6b7ff143..1ef5b96bf879 100644
+--- a/toolkit/components/passwordmgr/components.conf
++++ b/toolkit/components/passwordmgr/components.conf
+@@ -11,24 +11,12 @@ Classes = [
+         'jsm': 'resource://gre/modules/LoginManager.jsm',
+         'constructor': 'LoginManager',
+     },
+-    {
+-        'cid': '{749e62f4-60ae-4569-a8a2-de78b649660e}',
+-        'contract_ids': ['@mozilla.org/passwordmanager/authpromptfactory;1'],
+-        'jsm': 'resource://gre/modules/LoginManagerAuthPrompter.jsm',
+-        'constructor': 'LoginManagerAuthPromptFactory',
+-    },
+     {
+         'cid': '{2bdac17c-53f1-4896-a521-682ccdeef3a8}',
+         'contract_ids': ['@mozilla.org/login-manager/autocompletesearch;1'],
+         'jsm': 'resource://gre/modules/LoginAutoComplete.jsm',
+         'constructor': 'LoginAutoComplete',
+     },
+-    {
+-        'cid': '{8aa66d77-1bbb-45a6-991e-b8f47751c291}',
+-        'contract_ids': ['@mozilla.org/login-manager/authprompter;1'],
+-        'jsm': 'resource://gre/modules/LoginManagerAuthPrompter.jsm',
+-        'constructor': 'LoginManagerAuthPrompter',
+-    },
+     {
+         'cid': '{0f2f347c-1e4f-40cc-8efd-792dea70a85e}',
+         'contract_ids': ['@mozilla.org/login-manager/loginInfo;1'],
+diff --git a/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl b/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
+index 051edfb7473c..25739a6998a7 100644
+--- a/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
++++ b/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
+@@ -29,7 +29,7 @@ interface nsILoginManagerPrompter : nsISupports {
+    * @param autoFilledLoginGuid
+    *        A string guid value for the login which was autofilled into the form
+    */
+-  void promptToSavePassword(in Element aBrowser,
++  void promptToSavePassword(in nsIDOMWindow aBrowser,
+                             in nsILoginInfo aLogin,
+                             [optional] in boolean dismissed,
+                             [optional] in boolean notifySaved,
+@@ -54,7 +54,7 @@ interface nsILoginManagerPrompter : nsISupports {
+    * @param autoFilledLoginGuid
+    *        A string guid value for the login which was autofilled into the form
+    */
+-  void promptToChangePassword(in Element aBrowser,
++  void promptToChangePassword(in nsIDOMWindow aBrowser,
+                               in nsILoginInfo aOldLogin,
+                               in nsILoginInfo aNewLogin,
+                               [optional] in boolean dismissed,
+@@ -81,7 +81,7 @@ interface nsILoginManagerPrompter : nsISupports {
+    *       is called.
+    */
+   void promptToChangePasswordWithUsernames(
+-          in Element aBrowser,
++          in nsIDOMWindow aBrowser,
+           in Array<nsILoginInfo> logins,
+           in nsILoginInfo aNewLogin);
+ };
+-- 
+2.31.1
+

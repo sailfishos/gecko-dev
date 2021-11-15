@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jolla.com>
+Date: Fri, 1 Oct 2021 06:57:53 +0000
+Subject: [PATCH] [sailfishos][gecko] Force use of mobile video controls.
+ JB#55484 OMP#JOLLA-371
+
+---
+ toolkit/content/widgets/videocontrols.js | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/toolkit/content/widgets/videocontrols.js b/toolkit/content/widgets/videocontrols.js
+index 0b41769f680c..ca4ac7203ba8 100644
+--- a/toolkit/content/widgets/videocontrols.js
++++ b/toolkit/content/widgets/videocontrols.js
+@@ -19,7 +19,7 @@ this.VideoControlsWidget = class {
+     this.document = this.element.ownerDocument;
+     this.window = this.document.defaultView;
+ 
+-    this.isMobile = this.window.navigator.appVersion.includes("Android");
++    this.isMobile = true;
+   }
+ 
+   /*
+@@ -2320,7 +2320,7 @@ this.VideoControlsImplWidget = class {
+           )[0];
+         }
+ 
+-        let isMobile = this.window.navigator.appVersion.includes("Android");
++        let isMobile = true
+         if (isMobile) {
+           this.controlsContainer.classList.add("mobile");
+         }
+@@ -2798,7 +2798,7 @@ this.NoControlsMobileImplWidget = class {
+           "controlsContainer"
+         );
+ 
+-        let isMobile = this.window.navigator.appVersion.includes("Android");
++        let isMobile = true;
+         if (isMobile) {
+           this.controlsContainer.classList.add("mobile");
+         }
+-- 
+2.31.1
+

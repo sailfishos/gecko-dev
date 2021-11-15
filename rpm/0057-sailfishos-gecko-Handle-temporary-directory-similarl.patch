@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 19 Aug 2020 15:02:46 +0300
+Subject: [PATCH] [sailfishos][gecko] Handle temporary directory similarly as
+ in MacOSX
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ uriloader/exthandler/nsExternalHelperAppService.cpp | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
+index 4ff7ed2e27cc..afddf82cc911 100644
+--- a/uriloader/exthandler/nsExternalHelperAppService.cpp
++++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
+@@ -266,7 +266,7 @@ static bool GetFilenameAndExtensionFromChannel(nsIChannel* aChannel,
+ static nsresult GetDownloadDirectory(nsIFile** _directory,
+                                      bool aSkipChecks = false) {
+   nsCOMPtr<nsIFile> dir;
+-#ifdef XP_MACOSX
++#if defined(XP_MACOSX) || defined(XP_UNIX)
+   // On OS X, we first try to get the users download location, if it's set.
+   switch (Preferences::GetInt(NS_PREF_DOWNLOAD_FOLDERLIST, -1)) {
+     case NS_FOLDER_VALUE_DESKTOP:
+@@ -300,8 +300,14 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
+   }
+ 
+   if (!dir) {
++#if defined(XP_MACOSX)
++    const char* specialDirName = NS_OSX_DEFAULT_DOWNLOAD_DIR;
++#else
++    const char* specialDirName = NS_UNIX_DEFAULT_DOWNLOAD_DIR;
++#endif
++
+     // If not, we default to the OS X default download location.
+-    nsresult rv = NS_GetSpecialDirectory(NS_OSX_DEFAULT_DOWNLOAD_DIR,
++    nsresult rv = NS_GetSpecialDirectory(specialDirName,
+                                          getter_AddRefs(dir));
+     NS_ENSURE_SUCCESS(rv, rv);
+   }
+-- 
+2.31.1
+

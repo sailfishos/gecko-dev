@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Piotr Tworek <piotr.tworek@jollamobile.com>
+Date: Wed, 8 Jul 2015 16:13:11 +0200
+Subject: [PATCH] [sailfishos][gecko] Make TextureImageEGL hold a reference to
+ GLContext. Fixes JB#30109
+
+Due to rather non standard view shutdown procedure of EmbedLite port
+objets like TextureImageEGL often end up being destroyed after the
+CompositorOGL. The problem arises if all objects keeping references
+to GLContext get destroyed before TextureImageEGL. In such case the
+TextureImageEGL::mGLContext pointer will contain a referene to already
+freed memrory. What is worse since the GLContext is used to access platform
+GL implementation we won't be able to remove GL textures allocated for the
+TextureImageEGL leading to GPU memory leak.
+
+This patch converts the TextureImageEGL::mGLContext pointer into
+nsRefPtr. This should ensure that the object will actually increase
+GLTexture reference count and keep it alive for as long as needed. With
+the patch in place the GPU memory leak is no longer observable and we
+should no longer end up accessing freed memory.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/gl/TextureImageEGL.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gfx/gl/TextureImageEGL.h b/gfx/gl/TextureImageEGL.h
+index 977e110efafa..540f979b1303 100644
+--- a/gfx/gl/TextureImageEGL.h
++++ b/gfx/gl/TextureImageEGL.h
+@@ -51,7 +51,7 @@ class TextureImageEGL final : public TextureImage {
+  protected:
+   typedef gfxImageFormat ImageFormat;
+ 
+-  GLContext* mGLContext;
++  RefPtr<GLContext> mGLContext;
+ 
+   gfx::SurfaceFormat mUpdateFormat;
+   EGLImage mEGLImage;
+-- 
+2.31.1
+

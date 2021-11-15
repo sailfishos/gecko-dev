@@ -1,0 +1,163 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Simo Piiroinen <simo.piiroinen@jollamobile.com>
+Date: Fri, 28 Aug 2020 12:33:28 +0300
+Subject: [PATCH] [sailfishos][locale] Get 12/24h timeformat setting from
+ dconf. Fixes JB#50805
+
+Like many other Sailfishos DConf settings, selecting between 12h and
+24h timer formats involves key containing underscore in name. Such keys
+can't be used in GSettings schemas and thus are incompatible with the
+already existing lookup logic.
+
+If sailfish setting for timeformat exists, access and use it directly
+via dconf API. Otherwise fall back to default behavior involving
+GSetting schemas.
+
+Signed-off-by: Simo Piiroinen <simo.piiroinen@jollamobile.com>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/old.configure     |  1 +
+ intl/locale/gtk/OSPreferences_gtk.cpp | 40 +++++++++++++++++++++++++++
+ intl/locale/gtk/moz.build             |  1 +
+ old-configure.in                      | 21 ++++++++++++++
+ toolkit/library/moz.build             |  3 ++
+ 5 files changed, 66 insertions(+)
+
+diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
+index 1d254d89c40e..c8c0535fe253 100644
+--- a/build/moz.configure/old.configure
++++ b/build/moz.configure/old.configure
+@@ -212,6 +212,7 @@ def old_configure_options(*options):
+     '--datadir',
+     '--enable-crashreporter',
+     '--enable-dbus',
++    '--enable-dconf',
+     '--enable-debug-js-modules',
+     '--enable-dump-painting',
+     '--enable-extensions',
+diff --git a/intl/locale/gtk/OSPreferences_gtk.cpp b/intl/locale/gtk/OSPreferences_gtk.cpp
+index 0e841a7cd097..2198c6d73c11 100644
+--- a/intl/locale/gtk/OSPreferences_gtk.cpp
++++ b/intl/locale/gtk/OSPreferences_gtk.cpp
+@@ -5,6 +5,18 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include <locale.h>
++
++#if MOZ_ENABLE_DCONF
++/* FIXME: there just has to be better way to deal with the
++ *        build system defaulting to every function - including
++ *        ones from external libraries like libdconf - having
++ *        visibility=hidden type ...
++ */
++# pragma GCC visibility push(default)
++# include <dconf.h>
++# pragma GCC visibility pop
++#endif
++
+ #include "OSPreferences.h"
+ #include "dlfcn.h"
+ #include "glib.h"
+@@ -45,6 +57,29 @@ bool OSPreferences::ReadRegionalPrefsLocales(nsTArray<nsCString>& aLocaleList) {
+   return false;
+ }
+ 
++#if MOZ_ENABLE_DCONF
++static int HourCycleSailfish() {
++  int returnValue = 0;
++  DConfClient *dconfClient;
++  if ((dconfClient = dconf_client_new())) {
++    static const char dconfKey[] = "/sailfish/i18n/lc_timeformat24h";
++    GVariant *valueVariant;
++    if ((valueVariant = dconf_client_read(dconfClient, dconfKey))) {
++      const gchar *stringValue;
++      if ((stringValue = g_variant_get_string(valueVariant, nullptr))) {
++        if (!strncmp(stringValue, "24", 2))
++          returnValue = 24;
++        else if (!strncmp(stringValue, "12", 2))
++          returnValue = 12;
++      }
++      g_variant_unref(valueVariant);
++    }
++    g_object_unref(dconfClient);
++  }
++  return returnValue;
++}
++#endif
++
+ /*
+  * This looks up into gtk settings for hourCycle format.
+  *
+@@ -65,6 +100,11 @@ static get_value_fn_t FindGetValueFunction() {
+ static int HourCycle() {
+   int rval = 0;
+ 
++#if MOZ_ENABLE_DCONF
++  if ((rval = HourCycleSailfish()))
++    return rval;
++#endif
++
+   const char* schema;
+   const char* key;
+   const char* env = getenv("XDG_CURRENT_DESKTOP");
+diff --git a/intl/locale/gtk/moz.build b/intl/locale/gtk/moz.build
+index df590b3cd939..126e7910563f 100644
+--- a/intl/locale/gtk/moz.build
++++ b/intl/locale/gtk/moz.build
+@@ -7,6 +7,7 @@
+ SOURCES += ['OSPreferences_gtk.cpp']
+ 
+ CXXFLAGS += CONFIG['GLIB_CFLAGS']
++CXXFLAGS += CONFIG['MOZ_DCONF_CFLAGS']
+ 
+ FINAL_LIBRARY = 'xul'
+ 
+diff --git a/old-configure.in b/old-configure.in
+index a86a2ac62edb..514e49966909 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1930,6 +1930,27 @@ then
+ fi
+ AC_SUBST(MOZ_ENABLE_DBUS)
+ 
++dnl ========================================================
++dnl dconf support
++dnl ========================================================
++
++if test "$MOZ_ENABLE_GTK" -o "$MOZ_ENABLE_QT"
++then
++    MOZ_ENABLE_DCONF=1
++    MOZ_ARG_DISABLE_BOOL(dconf,
++        [  --disable-dconf          Disable dconf support ],
++           MOZ_ENABLE_DCONF=,
++           MOZ_ENABLE_DCONF=1)
++    if test -n "$MOZ_ENABLE_DCONF"
++    then
++        PKG_CHECK_MODULES(MOZ_DCONF, dconf,
++            MOZ_ENABLE_DCONF=1,
++            MOZ_ENABLE_DCONF=)
++        AC_DEFINE(MOZ_ENABLE_DCONF)
++  fi
++fi
++AC_SUBST(MOZ_ENABLE_DCONF)
++
+ dnl =========================================================
+ dnl = Whether to exclude hyphenations files in the build
+ dnl =========================================================
+diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
+index e711d799dfec..72c6e6b8ff82 100644
+--- a/toolkit/library/moz.build
++++ b/toolkit/library/moz.build
+@@ -270,6 +270,9 @@ if CONFIG['OS_ARCH'] == 'OpenBSD':
+ if CONFIG['MOZ_ENABLE_DBUS']:
+     OS_LIBS += CONFIG['MOZ_DBUS_GLIB_LIBS']
+ 
++if CONFIG['MOZ_ENABLE_DCONF']:
++    OS_LIBS += CONFIG['MOZ_DCONF_LIBS']
++
+ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+     OS_LIBS += [l for l in CONFIG['TK_LIBS']
+         if l not in ('-lgtk-3', '-lgdk-3')]
+-- 
+2.31.1
+

@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 17 Apr 2020 12:44:15 +0300
+Subject: [PATCH] [sailfishos][compositor] Allow compositor specializations to
+ override the composite (part 2). JB#50505
+
+Original author: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+SHA1: ba21a8694e261769fa53e54a846eeaa651826769
+
+CompositeToTarget now accepts VsyncId as first parameter.
+See upstream commit: 011bd0697fc5c1a99e6c3c691aee9b13549d983b
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ gfx/layers/ipc/CompositorBridgeParent.cpp      | 4 ++++
+ gfx/layers/ipc/CompositorBridgeParent.h        | 1 +
+ gfx/layers/ipc/CompositorVsyncScheduler.cpp    | 9 ++++++---
+ gfx/layers/ipc/CompositorVsyncSchedulerOwner.h | 1 +
+ gfx/layers/wr/WebRenderBridgeParent.cpp        | 4 ++++
+ gfx/layers/wr/WebRenderBridgeParent.h          | 1 +
+ 6 files changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
+index cf521545d64b..125b97df2f05 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.cpp
++++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
+@@ -924,6 +924,10 @@ void CompositorBridgeParent::SetShadowProperties(Layer* aLayer) {
+   });
+ }
+ 
++void CompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId) {
++  CompositeToTarget(aId, nullptr);
++}
++
+ void CompositorBridgeParent::CompositeToTarget(VsyncId aId, DrawTarget* aTarget,
+                                                const gfx::IntRect* aRect) {
+   AUTO_PROFILER_TRACING_MARKER("Paint", "Composite", GRAPHICS);
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
+index 460510c5bff8..81477af686a2 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.h
++++ b/gfx/layers/ipc/CompositorBridgeParent.h
+@@ -767,6 +767,7 @@ class CompositorBridgeParent : public CompositorBridgeParentBase,
+   void FinishPendingComposite() override;
+   void CompositeToTarget(VsyncId aId, gfx::DrawTarget* aTarget,
+                          const gfx::IntRect* aRect = nullptr) override;
++  virtual void CompositeToDefaultTarget(VsyncId aId) override;
+ 
+   bool InitializeAdvancedLayers(const nsTArray<LayersBackend>& aBackendHints,
+                                 TextureFactoryIdentifier* aOutIdentifier);
+diff --git a/gfx/layers/ipc/CompositorVsyncScheduler.cpp b/gfx/layers/ipc/CompositorVsyncScheduler.cpp
+index d00a7fae73ea..1fbd3c450ea3 100644
+--- a/gfx/layers/ipc/CompositorVsyncScheduler.cpp
++++ b/gfx/layers/ipc/CompositorVsyncScheduler.cpp
+@@ -246,8 +246,7 @@ void CompositorVsyncScheduler::Composite(VsyncId aId,
+     mLastCompose = aVsyncTimestamp;
+ 
+     // Tell the owner to do a composite
+-    mVsyncSchedulerOwner->CompositeToTarget(aId, nullptr, nullptr);
+-
++    mVsyncSchedulerOwner->CompositeToDefaultTarget(aId);
+     mVsyncNotificationsSkipped = 0;
+ 
+     TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncTimestamp;
+@@ -282,7 +281,11 @@ void CompositorVsyncScheduler::ForceComposeToTarget(gfx::DrawTarget* aTarget,
+ 
+   mLastCompose = TimeStamp::Now();
+   MOZ_ASSERT(mVsyncSchedulerOwner);
+-  mVsyncSchedulerOwner->CompositeToTarget(VsyncId(), aTarget, aRect);
++  if (aTarget) {
++      mVsyncSchedulerOwner->CompositeToTarget(VsyncId(), aTarget, aRect);
++  } else {
++      mVsyncSchedulerOwner->CompositeToDefaultTarget(VsyncId());
++  }
+ }
+ 
+ bool CompositorVsyncScheduler::NeedsComposite() {
+diff --git a/gfx/layers/ipc/CompositorVsyncSchedulerOwner.h b/gfx/layers/ipc/CompositorVsyncSchedulerOwner.h
+index 1691f6535ae3..5df8fdc2902b 100644
+--- a/gfx/layers/ipc/CompositorVsyncSchedulerOwner.h
++++ b/gfx/layers/ipc/CompositorVsyncSchedulerOwner.h
+@@ -24,6 +24,7 @@ class CompositorVsyncSchedulerOwner {
+   virtual void CompositeToTarget(VsyncId aId, gfx::DrawTarget* aTarget,
+                                  const gfx::IntRect* aRect = nullptr) = 0;
+   virtual TimeDuration GetVsyncInterval() const = 0;
++  virtual void CompositeToDefaultTarget(VsyncId aId) = 0;
+ };
+ 
+ }  // namespace layers
+diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
+index 8dc3d2a970a3..b12d10e982af 100644
+--- a/gfx/layers/wr/WebRenderBridgeParent.cpp
++++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
+@@ -2487,5 +2487,9 @@ void WebRenderBridgeParent::ExtractImageCompositeNotifications(
+   mAsyncImageManager->FlushImageNotifications(aNotifications);
+ }
+ 
++void mozilla::layers::WebRenderBridgeParent::CompositeToDefaultTarget(VsyncId aId) {
++  CompositeToTarget(aId, nullptr);
++}
++
+ }  // namespace layers
+ }  // namespace mozilla
+diff --git a/gfx/layers/wr/WebRenderBridgeParent.h b/gfx/layers/wr/WebRenderBridgeParent.h
+index 7c93b561b7de..7cd11b9f77ba 100644
+--- a/gfx/layers/wr/WebRenderBridgeParent.h
++++ b/gfx/layers/wr/WebRenderBridgeParent.h
+@@ -205,6 +205,7 @@ class WebRenderBridgeParent final
+   void FinishPendingComposite() override {}
+   void CompositeToTarget(VsyncId aId, gfx::DrawTarget* aTarget,
+                          const gfx::IntRect* aRect = nullptr) override;
++  virtual void CompositeToDefaultTarget(VsyncId aId) override;
+   TimeDuration GetVsyncInterval() const override;
+ 
+   // CompositableParentManager
+-- 
+2.31.1
+

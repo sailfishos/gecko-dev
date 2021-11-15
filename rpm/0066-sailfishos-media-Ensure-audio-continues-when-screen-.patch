@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Thu, 29 Oct 2020 15:20:18 +0200
+Subject: [PATCH] [sailfishos][media] Ensure audio continues when screen is
+ locked. Contributes to JB#51747
+
+This rationalises two previous commits from sailfishos-esr52,
+integrating the functionality of the NemoResourceHandler class into
+MediaDecoder.
+
+This is needed so that the "media-decoder-info" notifications are sent
+out when certain types of media are started/stopped and to signal
+whether the media contains audio and/or video.
+
+An additional change ensures media is started/stopped with the
+Thaw/Freeze of docuemnts (switching the check from visible status to
+hidden status).
+
+The previous relevant commits:-
+
+commit 9e2dc6c89b83a623ad27ac14edc501585ef8ecd9
+Author: Oleg <romaxa@gmail.com>
+Date:   Thu Oct 30 23:54:05 2014 -0700
+
+    [sailfishos][media] Add NemoResourceHandler
+
+    Original SHA1: b318b3c9f723544c32895a8a4c49d7f44b6752be
+
+    Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+
+commit 50fc4fac5ed1433acb0dff6e23dc3055f76c3226
+Author: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+Date:   Thu Nov 29 17:20:06 2018 +1000
+
+    [sailfishos][media] Update media resource state when the playing
+state changes for any reason. Fixes JB#42900
+---
+ dom/html/HTMLMediaElement.cpp |  5 +++--
+ dom/media/MediaDecoder.cpp    | 27 +++++++++++++++++++++++++++
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
+index 3b718d5fa4a7..e3d1e1f8c9f0 100644
+--- a/dom/html/HTMLMediaElement.cpp
++++ b/dom/html/HTMLMediaElement.cpp
+@@ -6569,7 +6569,8 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+   // We would suspend media when the document is inactive, or its docshell has
+   // been set to hidden and explicitly wants to suspend media. In those cases,
+   // the media would be not visible and we don't want them to continue playing.
+-  bool shouldSuspend = !IsActive() || ShouldBeSuspendedByInactiveDocShell();
++  bool shouldSuspend = OwnerDoc()->Hidden() || ShouldBeSuspendedByInactiveDocShell();
++
+   SuspendOrResumeElement(shouldSuspend);
+ 
+   // If the owning document has become inactive we should shutdown the CDM.
+@@ -6597,7 +6598,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
+   // See the comment at the top of this file for the explanation of this
+   // boolean expression.
+   bool needSelfReference =
+-      !mShuttingDown && ownerDoc->IsActive() &&
++      !mShuttingDown && !ownerDoc->Hidden() &&
+       (mDelayingLoadEvent || (!mPaused && !Ended()) ||
+        (mDecoder && mDecoder->IsSeeking()) || CanActivateAutoplay() ||
+        (mMediaSource ? mProgressTimer : mNetworkState == NETWORK_LOADING));
+diff --git a/dom/media/MediaDecoder.cpp b/dom/media/MediaDecoder.cpp
+index 581a402102b8..ac4576cd5fa2 100644
+--- a/dom/media/MediaDecoder.cpp
++++ b/dom/media/MediaDecoder.cpp
+@@ -33,6 +33,10 @@
+ #include "nsIMemoryReporter.h"
+ #include "nsPrintfCString.h"
+ #include "nsTArray.h"
++#include "nsThreadUtils.h"
++#include "mozilla/Services.h"
++#include "nsIObserverService.h"
++#include "nsString.h"
+ #include <algorithm>
+ #include <limits>
+ 
+@@ -74,6 +78,14 @@ static const char* ToPlayStateStr(MediaDecoder::PlayState aState) {
+   return "UNKNOWN";
+ }
+ 
++static void SendMediaDecoderInfo(const nsString& aData) {
++  MOZ_ASSERT(NS_IsMainThread());
++  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
++  if (obs) {
++    obs->NotifyObservers(nullptr, "media-decoder-info", aData.get());
++  }
++}
++
+ class MediaMemoryTracker : public nsIMemoryReporter {
+   virtual ~MediaMemoryTracker();
+ 
+@@ -684,6 +696,11 @@ void MediaDecoder::MetadataLoaded(
+       aInfo->mAudio.mChannels, aInfo->mAudio.mRate, aInfo->HasAudio(),
+       aInfo->HasVideo());
+ 
++  nsString data;
++  data.AppendPrintf("{ \"owner\" : \"%p\", \"state\": \"meta\", \"a\" : %i, \"v\" : %i }",
++                    this, aInfo->HasAudio(), aInfo->HasVideo());
++  SendMediaDecoderInfo(data);
++
+   mMediaSeekable = aInfo->mMediaSeekable;
+   mMediaSeekableOnlyInBufferedRanges =
+       aInfo->mMediaSeekableOnlyInBufferedRanges;
+@@ -863,6 +880,16 @@ void MediaDecoder::ChangeState(PlayState aState) {
+   MOZ_ASSERT(NS_IsMainThread());
+   MOZ_ASSERT(!IsShutdown(), "SHUTDOWN is the final state.");
+ 
++  if (mPlayState != aState) {
++    nsString data;
++    if (aState == PLAY_STATE_PLAYING) {
++      data.AppendPrintf("{ \"owner\" : \"%p\", \"state\": \"play\" }", this);
++    } else {
++      data.AppendPrintf("{ \"owner\" : \"%p\", \"state\": \"pause\" }", this);
++    }
++    SendMediaDecoderInfo(data);
++  }
++
+   if (mNextState == aState) {
+     mNextState = PLAY_STATE_PAUSED;
+   }
+-- 
+2.31.1
+

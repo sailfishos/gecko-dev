@@ -25,5 +25,5 @@ index bafe5fd85ae3..b08eaa0a44de 100644
  [target.'cfg(windows)'.dependencies]
  gfx-backend-dx12 = { version = "0.5" }
 -- 
-2.25.1
+2.31.1
 

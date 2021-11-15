@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 14 May 2020 13:42:59 +0200
+Subject: [PATCH] [sailfishos][gecko] Disable loading heavier extensions
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/mozapps/extensions/extensions.manifest | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/toolkit/mozapps/extensions/extensions.manifest b/toolkit/mozapps/extensions/extensions.manifest
+index 1c165ce8e14b..39494a3b3b50 100644
+--- a/toolkit/mozapps/extensions/extensions.manifest
++++ b/toolkit/mozapps/extensions/extensions.manifest
+@@ -1,9 +1,9 @@
+-#ifndef MOZ_WIDGET_ANDROID
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_EMBEDLITE)
+ category update-timer addonManager @mozilla.org/addons/integration;1,getService,addon-background-update-timer,extensions.update.interval,86400
+ #endif
+ #ifndef MOZ_THUNDERBIRD
+-#ifndef MOZ_WIDGET_ANDROID
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(MOZ_EMBEDLITE)
+ category addon-provider-module PluginProvider resource://gre/modules/addons/PluginProvider.jsm
+-category addon-provider-module GMPProvider resource://gre/modules/addons/GMPProvider.jsm
+ #endif
++category addon-provider-module GMPProvider resource://gre/modules/addons/GMPProvider.jsm
+ #endif
+-- 
+2.31.1
+

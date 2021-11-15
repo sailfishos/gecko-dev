@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 19 Oct 2020 11:44:03 +0300
+Subject: [PATCH] [sailfishos][gecko] Suppress LoginManagerContent.jsm
+ ownerDocument errors. Fixes JB#51426
+
+Bale out early if event.target or owner document of the event.taget is
+undefined.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/components/passwordmgr/LoginManagerChild.jsm | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/toolkit/components/passwordmgr/LoginManagerChild.jsm b/toolkit/components/passwordmgr/LoginManagerChild.jsm
+index d7ccce093e17..f828d700dabd 100644
+--- a/toolkit/components/passwordmgr/LoginManagerChild.jsm
++++ b/toolkit/components/passwordmgr/LoginManagerChild.jsm
+@@ -1058,6 +1058,7 @@ this.LoginManagerChild = class LoginManagerChild extends JSWindowActorChild {
+ 
+     // This is probably a bit over-conservatative.
+     if (
++      !acInputField || !acInputField.ownerDocument ||
+       ChromeUtils.getClassName(acInputField.ownerDocument) != "HTMLDocument"
+     ) {
+       return;
+-- 
+2.31.1
+

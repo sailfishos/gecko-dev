@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 30 Jan 2019 15:42:27 +0200
+Subject: [PATCH] [sailfishos][gecko] Embedlite doesn't have prompter
+ implementation
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/components/downloads/DownloadUIHelper.jsm | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/toolkit/components/downloads/DownloadUIHelper.jsm b/toolkit/components/downloads/DownloadUIHelper.jsm
+index 952d7ec99896..10c19c714396 100644
+--- a/toolkit/components/downloads/DownloadUIHelper.jsm
++++ b/toolkit/components/downloads/DownloadUIHelper.jsm
+@@ -165,7 +165,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function() {
+  *        attach prompts to the most recently active window.
+  */
+ var DownloadPrompter = function(aParent) {
+-  this._prompter = Services.ww.getNewPrompter(aParent);
++  this._prompter = null;
+ };
+ 
+ DownloadPrompter.prototype = {
+-- 
+2.31.1
+

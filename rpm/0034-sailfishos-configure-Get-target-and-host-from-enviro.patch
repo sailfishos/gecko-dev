@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 9 Jul 2021 14:20:22 +0300
+Subject: [PATCH] [sailfishos][configure] Get target and host from environment
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/init.configure | 61 ++++--------------------------
+ 1 file changed, 7 insertions(+), 54 deletions(-)
+
+diff --git a/build/moz.configure/init.configure b/build/moz.configure/init.configure
+index b887153321ab..1ba990ed256e 100644
+--- a/build/moz.configure/init.configure
++++ b/build/moz.configure/init.configure
+@@ -825,70 +825,23 @@ def real_host(value, shell):
+         elif arch == 'x86':
+             return split_triplet('i686-pc-mingw32')
+ 
+-    if not value:
+-        config_guess = os.path.join(os.path.dirname(__file__), '..',
+-                                    'autoconf', 'config.guess')
+-        host = check_cmd_output(shell, config_guess).strip()
+-        try:
+-            return split_triplet(host)
+-        except ValueError:
+-            pass
+-    else:
+-        host = value[0]
+-
+-    host = config_sub(shell, host)
+-
+-    try:
+-        return split_triplet(host)
+-    except ValueError as e:
+-        die(e.message)
++    log.debug('Returning host from env `%s`:', os.environ.get('HOST'))
++    return split_triplet(os.environ.get('HOST'))
+ 
+ 
+-host = help_host_target | real_host
++host = real_host
+ 
+ 
+ @depends('--target', real_host, shell, '--enable-project', '--enable-application')
+ @checking('for target system type', lambda t: t.alias)
+ @imports(_from='__builtin__', _import='ValueError')
++@imports('os')
+ def real_target(value, host, shell, project, application):
+-    # Because --enable-project is implied by --enable-application, and
+-    # implied options are not currently handled during --help, which is
+-    # used get the build target in mozbuild.base, we manually check
+-    # whether --enable-application was given, and fall back to
+-    # --enable-project if not. Both can't be given contradictory values
+-    # under normal circumstances, so it's fine.
+-    if application:
+-        project = application[0]
+-    elif project:
+-        project = project[0]
+-    if not value:
+-        if project == 'mobile/android':
+-            return split_triplet('arm-unknown-linux-androideabi')
+-        return host
+-    # If --target was only given a cpu arch, expand it with the
+-    # non-cpu part of the host. For mobile/android, expand it with
+-    # unknown-linux-android.
+-    target = value[0]
+-    if '-' not in target:
+-        if project == 'mobile/android':
+-            rest = 'unknown-linux-android'
+-            if target.startswith('arm'):
+-                rest += 'eabi'
+-        else:
+-            cpu, rest = host.alias.split('-', 1)
+-        target = '-'.join((target, rest))
+-        try:
+-            return split_triplet(target)
+-        except ValueError:
+-            pass
+-
+-    try:
+-        return split_triplet(config_sub(shell, target))
+-    except ValueError as e:
+-        die(e.message)
++    log.debug('Returning real target from env `%s`:', os.environ.get('TARGET'))
++    return split_triplet(os.environ.get('TARGET'))
+ 
+ 
+-target = help_host_target | real_target
++target = real_target
+ 
+ 
+ @depends(host, target)
+-- 
+2.31.1
+

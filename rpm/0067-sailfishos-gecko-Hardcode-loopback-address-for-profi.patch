@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 13 Nov 2020 10:31:26 +0200
+Subject: [PATCH] [sailfishos][gecko] Hardcode loopback address for profile
+ lock filename. JB#45654
+
+When engine started without network PR_GetHostByName takes 20seconds
+when connman tries to resolve host name. As this is only used as part of the
+profile lock filename it can as well be like "127.0.0.1:+<pid>".
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ toolkit/profile/nsProfileLock.cpp | 12 +-----------
+ 1 file changed, 1 insertion(+), 11 deletions(-)
+
+diff --git a/toolkit/profile/nsProfileLock.cpp b/toolkit/profile/nsProfileLock.cpp
+index 25c4f5a79e56..d7f807ad3b32 100644
+--- a/toolkit/profile/nsProfileLock.cpp
++++ b/toolkit/profile/nsProfileLock.cpp
+@@ -292,18 +292,8 @@ nsresult nsProfileLock::LockWithSymlink(nsIFile* aLockFile,
+   struct in_addr inaddr;
+   inaddr.s_addr = htonl(INADDR_LOOPBACK);
+ 
+-  char hostname[256];
+-  PRStatus status = PR_GetSystemInfo(PR_SI_HOSTNAME, hostname, sizeof hostname);
+-  if (status == PR_SUCCESS) {
+-    char netdbbuf[PR_NETDB_BUF_SIZE];
+-    PRHostEnt hostent;
+-    status = PR_GetHostByName(hostname, netdbbuf, sizeof netdbbuf, &hostent);
+-    if (status == PR_SUCCESS) memcpy(&inaddr, hostent.h_addr, sizeof inaddr);
+-  }
+-
+   mozilla::SmprintfPointer signature =
+-      mozilla::Smprintf("%s:%s%lu", inet_ntoa(inaddr),
+-                        aHaveFcntlLock ? "+" : "", (unsigned long)getpid());
++      mozilla::Smprintf("127.0.0.1:%s%lu", aHaveFcntlLock ? "+" : "", (unsigned long)getpid());
+   const char* fileName = lockFilePath.get();
+   int symlink_rv, symlink_errno = 0, tries = 0;
+ 
+-- 
+2.31.1
+

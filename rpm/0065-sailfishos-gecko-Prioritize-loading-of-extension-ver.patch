@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Date: Wed, 21 Oct 2020 19:59:31 +0300
+Subject: [PATCH] [sailfishos][gecko] Prioritize loading of extension versions
+ of the GetGraphicsResetStatus function. Fixes JB#51664
+
+---
+ gfx/gl/GLContext.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
+index efce908930a5..1fb02df40ece 100644
+--- a/gfx/gl/GLContext.cpp
++++ b/gfx/gl/GLContext.cpp
+@@ -511,8 +511,8 @@ bool GLContext::InitImpl() {
+   {
+     const SymLoadStruct symbols[] = {
+         {(PRFuncPtr*)&mSymbols.fGetGraphicsResetStatus,
+-         {{"glGetGraphicsResetStatus", "glGetGraphicsResetStatusARB",
+-           "glGetGraphicsResetStatusKHR", "glGetGraphicsResetStatusEXT"}}},
++         {{"glGetGraphicsResetStatusEXT", "glGetGraphicsResetStatusARB",
++           "glGetGraphicsResetStatusKHR", "glGetGraphicsResetStatus"}}},
+         END_SYMBOLS};
+     (void)fnLoadSymbols(symbols, nullptr);
+ 
+-- 
+2.31.1
+

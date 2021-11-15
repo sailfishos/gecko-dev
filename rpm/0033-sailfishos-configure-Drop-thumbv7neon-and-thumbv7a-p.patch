@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 30 Jun 2021 09:23:41 +0300
+Subject: [PATCH] [sailfishos][configure] Drop thumbv7neon and thumbv7a
+ prefixing of armv7 target. JB#53019 OMP#JOLLA-93
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/rust.configure | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
+index 20a2058f30d8..c78e42720fcd 100644
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -288,10 +288,6 @@ def rust_triple_alias(host_or_target, host_or_target_c_compiler):
+             if host_or_target.cpu == 'arm' and host_or_target.endianness == 'little':
+                 prefixes = []
+                 if arm_target.arm_arch >= 7:
+-                    if arm_target.thumb2 and arm_target.fpu == 'neon':
+-                        prefixes.append('thumbv7neon')
+-                    if arm_target.thumb2:
+-                        prefixes.append('thumbv7a')
+                     prefixes.append('armv7')
+                 if arm_target.arm_arch >= 6:
+                     prefixes.append('armv6')
+-- 
+2.31.1
+

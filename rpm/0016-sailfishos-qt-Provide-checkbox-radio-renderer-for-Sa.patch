@@ -36,7 +36,7 @@ See upstream commit: 741c54ae79ad51e5f54436e4cfa7e2851cdc9e69
 
 MOZ_MUST_USE has been replaced with [[nodiscard]].
 See upstream commit: 162b8c84909ca0e17df98a6a18442da5ebaa55a2
- 
+
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
  layout/style/res/forms.css    |   4 +
@@ -509,5 +509,5 @@ index 000000000000..94ac8c831771
 +
 +#endif  // nsNativeThemeQt_h_
 -- 
-2.26.2
+2.31.1
 

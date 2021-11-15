@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Marko Kenttala <marko.kenttala@jolla.com>
+Date: Thu, 10 Dec 2020 17:04:02 +0200
+Subject: [PATCH] [sailfishos][gecko] Hide accessible carets also with touch
+ select all event
+
+---
+ layout/base/AccessibleCaretManager.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/layout/base/AccessibleCaretManager.cpp b/layout/base/AccessibleCaretManager.cpp
+index b75f2ea21446..8e7e889960e5 100644
+--- a/layout/base/AccessibleCaretManager.cpp
++++ b/layout/base/AccessibleCaretManager.cpp
+@@ -156,7 +156,8 @@ nsresult AccessibleCaretManager::OnSelectionChanged(Document* aDoc,
+   // When we want to hide the carets for mouse input, hide them for select
+   // all action fired by keyboard as well.
+   if (StaticPrefs::layout_accessiblecaret_hide_carets_for_mouse_input() &&
+-      mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_KEYBOARD &&
++      (mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_KEYBOARD ||
++      mLastInputSource == MouseEvent_Binding::MOZ_SOURCE_TOUCH) &&
+       (aReason & nsISelectionListener::SELECTALL_REASON)) {
+     HideCarets();
+     return NS_OK;
+-- 
+2.31.1
+
