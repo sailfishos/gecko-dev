@@ -291,7 +291,7 @@ mozilla::ipc::IPCResult EmbedLiteAppBaseChild::RecvLoadComponentManifest(const n
     LOGT("Loading manifest: %s", manifest.get());
     XRE_AddManifestLocation(NS_APP_LOCATION, f);
   } else {
-    NS_ERROR("Failed to create nsIFile for manifest location");
+    NS_ERROR(nsPrintfCString("Failed to create nsIFile for manifest location: %s", manifest.get()).get());
   }
   return IPC_OK();
 }
