@@ -168,7 +168,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
   contentRect.MoveTo(aRequest.GetScrollOffset());
 
-  // FIXME - RepaintRequest does not contain scrollable rect size.
+  // FIXME - RepaintRequest does not contain scrollable rect size. JB#56313 / OMP#JOLLA-531
   CSSSize scrollableSize(0, 0);
 
   LOGT("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
