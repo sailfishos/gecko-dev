@@ -276,7 +276,9 @@ void EmbedLiteView::DynamicToolbarHeightChanged(int height)
         Unused << mViewParent->SendSetDynamicToolbarHeight(mDynamicToolbarHeight);
     } else {
         mDynamicToolbarHeightChanging = false;
-        mListener->OnDynamicToolbarHeightChanged();
+        if (mListener) {
+            mListener->OnDynamicToolbarHeightChanged();
+        }
     }
 }
 
