@@ -271,7 +271,12 @@ EmbedLiteApp::StartChildThread()
     nsCOMPtr<nsIFile> f;
     NS_NewNativeLocalFile(sComponentDirs[i], true,
                           getter_AddRefs(f));
-    XRE_AddManifestLocation(NS_APP_LOCATION, f);
+    if (f) {
+      LOGT("Loading manifest: %s", sComponentDirs[i].get());
+      XRE_AddManifestLocation(NS_APP_LOCATION, f);
+    } else {
+      NS_ERROR(nsPrintfCString("Failed to create nsIFile for manifest location: %s", sComponentDirs[i].get()).get());
+    }
   }
 
   GeckoLoader::InitEmbedding(mProfilePath);
