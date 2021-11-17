@@ -1023,7 +1023,6 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     mIMEComposing = false;
   }
 
-  // FIXME: either cssPoint or scale is off when content zoomed in: JB#55472 / JOLLA-365
   bool ok = false;
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
