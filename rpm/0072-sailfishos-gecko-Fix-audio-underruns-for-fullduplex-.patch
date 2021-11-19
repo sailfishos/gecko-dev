@@ -184,7 +184,7 @@ index 1cac5eadd45b..89afce055a4f 100644
 +    LOGV("playback: wrote %zu bytes", size);
 +
 +    // FIXME: Copied this from trigger_user_callback(). Do we need this?
-+    if (stm->volume != PULSE_NO_GAIN) {
++    if (stm->volume != PULSE_NO_GAIN && stm->volume < 1.0) {
 +      uint32_t samples =  size * stm->output_sample_spec.channels / fdx->out_frame_size ;
 +
 +      if (stm->output_sample_spec.format == PA_SAMPLE_S16BE ||
@@ -333,7 +333,7 @@ index 1cac5eadd45b..89afce055a4f 100644
 +  if (fdx) {
 +    do {
 +      fdx->in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
-+      fdx->out_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
++      fdx->out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
 +
 +      if (sem_init(&fdx->wait, 0, 0) < 0) {
 +        break;
