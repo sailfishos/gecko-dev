@@ -1,0 +1,517 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Denis Grigorev <d.grigorev@omprussia.ru>
+Date: Thu, 18 Nov 2021 20:58:08 +0300
+Subject: [PATCH] [sailfishos][gecko] Fix audio underruns for fullduplex mode.
+ JB#55461
+
+---
+ media/libcubeb/src/cubeb_pulse.c | 438 +++++++++++++++++++++++++++++--
+ 1 file changed, 416 insertions(+), 22 deletions(-)
+
+diff --git a/media/libcubeb/src/cubeb_pulse.c b/media/libcubeb/src/cubeb_pulse.c
+index 94ead3a9c423..35dbdabdbe7e 100644
+--- a/media/libcubeb/src/cubeb_pulse.c
++++ b/media/libcubeb/src/cubeb_pulse.c
+@@ -15,6 +15,8 @@
+ #include "cubeb/cubeb.h"
+ #include "cubeb_mixer.h"
+ #include "cubeb_strings.h"
++#include <pthread.h>
++#include <semaphore.h>
+ 
+ #ifdef DISABLE_LIBPULSE_DLOPEN
+ #define WRAP(x) x
+@@ -119,6 +121,128 @@ struct cubeb {
+   cubeb_strings * device_ids;
+ };
+ 
++static const float PULSE_NO_GAIN = -1.0;
++
++struct cubeb_fifo {
++  uint8_t *buffer;
++  unsigned int size;
++  unsigned int wr;
++  unsigned int rd;
++};
++
++static inline
++int cubeb_fifo_init(struct cubeb_fifo *f, unsigned int size)
++{
++  f->buffer = malloc(size);
++  if (f->buffer) {
++    f->wr = f->rd = 0;
++    f->size = size;
++    return 0;
++  }
++  return -1;
++}
++
++static inline void cubeb_fifo_destroy(struct cubeb_fifo *f)
++{
++  if (f->buffer) {
++    free(f->buffer);
++  }
++}
++
++static inline
++unsigned int cubeb_fifo_size(struct cubeb_fifo *f)
++{
++  return (f->wr - f->rd) % f->size;
++}
++
++static inline unsigned int
++cubeb_fifo_avail(struct cubeb_fifo *f)
++{
++  return f->size - cubeb_fifo_size(f);
++}
++
++// Returns the pointer and size of contiguous memory with stored data.
++static inline unsigned int
++cubeb_fifo_contig_read(struct cubeb_fifo *f, uint8_t **buffer)
++{
++  unsigned int p = f->rd % f->size;
++
++  *buffer = f->buffer + p;
++  return MIN(f->size - p, cubeb_fifo_size(f));
++}
++
++// Returns the pointer and size of a contiguous available memory.
++static inline
++unsigned int cubeb_fifo_contig_write(struct cubeb_fifo *f, uint8_t **buffer)
++{
++  unsigned int p = f->wr % f->size;
++
++  *buffer = f->buffer + p;
++  return MIN(f->size - p, cubeb_fifo_avail(f));
++}
++
++// Anvance read pointer.
++static inline void
++cubeb_fifo_read_done(struct cubeb_fifo *f, unsigned int size)
++{
++  f->rd += size;
++}
++
++// Anvance write pointer.
++static inline void
++cubeb_fifo_write_done(struct cubeb_fifo *f, unsigned int size)
++{
++  f->wr += size;
++}
++
++#ifndef MIN
++#define MIN(a, b) ((a) < (b) ? (a) : (b))
++#endif
++
++static inline unsigned int
++cubeb_fifo_write(struct cubeb_fifo *f, const uint8_t *buffer, unsigned int size)
++{
++  unsigned int p = f->wr % f->size;
++  unsigned int l = f->size - p;
++
++  size = MIN(size, cubeb_fifo_avail(f));
++  l = MIN(l, size);
++
++  memcpy(f->buffer + p, buffer, l);
++  memcpy(f->buffer, buffer + l, size - l);
++
++  f->wr += size;
++
++  return size;
++}
++
++static inline unsigned int
++cubeb_fifo_read(struct cubeb_fifo *f, uint8_t *buffer, unsigned int size)
++{
++  unsigned int p = f->rd % f->size;
++  unsigned int l = f->size - p;
++
++  size = MIN(size, cubeb_fifo_size(f));
++  l = MIN(l, size);
++
++  memcpy(buffer, f->buffer + p, l);
++  memcpy(buffer + l, f->buffer, size - l);
++
++  f->rd += size;
++
++  return size;
++}
++
++struct cubeb_fullduplex {
++  struct cubeb_fifo record;
++  struct cubeb_fifo playback;
++  size_t in_frame_size;
++  size_t out_frame_size;
++  bool running;
++  sem_t wait;
++  pthread_t thread_id;
++};
++
+ struct cubeb_stream {
+   /* Note: Must match cubeb_stream layout in cubeb.c. */
+   cubeb * context;
+@@ -134,9 +258,254 @@ struct cubeb_stream {
+   int shutdown;
+   float volume;
+   cubeb_state state;
++  struct cubeb_fullduplex *fullduplex;
+ };
+ 
+-static const float PULSE_NO_GAIN = -1.0;
++static int cubeb_fullduplex_play(cubeb_stream *stm)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++  pa_stream *s = stm->output_stream;
++  size_t towrite = cubeb_fifo_size(&fdx->playback);
++
++  LOGV("playback: writing %zu bytes", towrite);
++
++  while (towrite) {
++    size_t size = towrite;
++    void *buffer;
++    int r;
++
++    WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
++
++    r = WRAP(pa_stream_begin_write)(s, &buffer, &size);
++    if (r) {
++      LOG("pa_stream_begin_write returned %d", r);
++      return -1;
++    }
++
++    size = cubeb_fifo_read(&fdx->playback, buffer, size);
++
++    LOGV("playback: wrote %zu bytes", size);
++
++    // FIXME: Copied this from trigger_user_callback(). Do we need this?
++    if (stm->volume != PULSE_NO_GAIN && stm->volume < 1.0) {
++      LOGV("adjusting volume to %f", stm->volume);
++      uint32_t samples =  size * stm->output_sample_spec.channels / fdx->out_frame_size ;
++
++      if (stm->output_sample_spec.format == PA_SAMPLE_S16BE ||
++          stm->output_sample_spec.format == PA_SAMPLE_S16LE) {
++        short * b = buffer;
++        for (uint32_t i = 0; i < samples; i++) {
++          b[i] *= stm->volume;
++        }
++      } else {
++        float * b = buffer;
++        for (uint32_t i = 0; i < samples; i++) {
++          b[i] *= stm->volume;
++        }
++      }
++    }
++
++    r = WRAP(pa_stream_write)(s, buffer, size, NULL, 0, PA_SEEK_RELATIVE);
++    if (r) {
++      LOG("pa_stream_write returned %d", r);
++      return -1;
++    }
++
++    towrite -= size;
++
++    WRAP(pa_threaded_mainloop_unlock)(stm->context->mainloop);
++  }
++  return 0;
++}
++
++static void
++stream_drain_callback(pa_mainloop_api * a, pa_time_event * e, struct timeval const * tv, void * u);
++
++static void *cubeb_fullduplex_thread(void *arg)
++{
++  cubeb_stream *stm = arg;
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++  bool eos = false;
++
++  LOGV("cubeb_fullduplex_thread started");
++
++  while (fdx->running) {
++    while (cubeb_fifo_size(&fdx->record) && !eos) {
++      uint8_t *record_buf, *playback_buf;
++      size_t record_len, playback_len;
++      long got;
++      pa_usec_t latency = 0;
++      int r;
++
++      // Get contiguous memory buffer for data_callback.
++      record_len = cubeb_fifo_contig_read(&fdx->record, &record_buf);
++      playback_len = cubeb_fifo_contig_write(&fdx->playback, &playback_buf);
++
++      record_len /= fdx->in_frame_size;
++      playback_len /= fdx->out_frame_size;
++
++      LOGV("record_len=%zu, playback_len=%zu", record_len, playback_len);
++
++      record_len = MIN(record_len, playback_len);
++
++      got = stm->data_callback(stm, stm->user_ptr, record_buf, playback_buf, record_len);
++      if (got == CUBEB_ERROR) {
++        eos = true;
++        break;
++      }
++
++      // If the callback returned less data than we expected, consider that as EOS.
++      eos = record_len > (size_t)got;
++
++      LOGV("rendered %ld samples", got);
++
++      record_len = got * fdx->in_frame_size;
++      playback_len = got * fdx->out_frame_size;
++
++      // The callback has filled the buffers.
++      cubeb_fifo_read_done(&fdx->record, record_len);
++      cubeb_fifo_write_done(&fdx->playback, playback_len);
++
++      // Drop the half of the data if the latency is higher than 300 ms to keep
++      // audio and video in sync. It's important to keep feeding the sink input,
++      // otherwise the latency calculator will get stuck.
++      r = WRAP(pa_stream_get_latency)(stm->output_stream, &latency, NULL);
++      LOGV("Latency: %lld", latency);
++      if (r == 0 && latency > 300 * PA_USEC_PER_MSEC && got > 1) {
++        size_t drop_samples = got / 2;
++        LOG("Latency %lld is higher than 300ms, dropping %zu samples", latency, drop_samples);
++        cubeb_fifo_read_done(&fdx->playback, drop_samples * fdx->out_frame_size);
++      }
++
++      // Write playback data.
++      cubeb_fullduplex_play(stm);
++    }
++
++    if (eos) {
++      pa_usec_t latency = 0;
++      int r;
++
++      LOGV("%s: draining", __func__);
++
++      r = WRAP(pa_stream_get_latency)(stm->output_stream, &latency, NULL);
++      if (r == -PA_ERR_NODATA) {
++        /* this needs a better guess. */
++        latency = 100 * PA_USEC_PER_MSEC;
++      }
++      assert(r == 0 || r == -PA_ERR_NODATA);
++      /* pa_stream_drain is useless, see PA bug# 866. this is a workaround. */
++      /* arbitrary safety margin: double the current latency. */
++      assert(!stm->drain_timer);
++      stm->drain_timer = WRAP(pa_context_rttime_new)(stm->context->context, WRAP(pa_rtclock_now)() + 2 * latency, stream_drain_callback, stm);
++      stm->shutdown = 1;
++      break;
++    }
++
++    sem_wait(&fdx->wait);
++
++    LOGV("%s woke up, need %d bytes", __func__, cubeb_fifo_size(&fdx->record));
++  }
++
++  LOGV("%s stopped", __func__);
++
++  return NULL;
++}
++
++static void cubeb_fullduplex_capture(cubeb_stream *stm, const uint8_t *in, size_t size)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++
++  if (fdx) {
++    LOGV("%s %zu bytes", __func__, size);
++
++    cubeb_fifo_write(&fdx->record, in, size);
++    sem_post(&fdx->wait);
++  }
++}
++
++static int cubeb_fullduplex_create(cubeb_stream *stm)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++  const size_t fifo_depth_samples = 65536;
++
++  if (fdx) {
++    LOGV("%s already created", __func__);
++    return CUBEB_ERROR;
++  }
++
++  fdx = calloc(1, sizeof(struct cubeb_fullduplex));
++  if (fdx) {
++    do {
++      fdx->in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
++      fdx->out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
++
++      if (sem_init(&fdx->wait, 0, 0) < 0) {
++        break;
++      }
++
++      if (cubeb_fifo_init(&fdx->record, fdx->in_frame_size * fifo_depth_samples)) {
++        sem_destroy(&fdx->wait);
++        break;
++      }
++
++      if (cubeb_fifo_init(&fdx->playback, fdx->out_frame_size * fifo_depth_samples)) {
++        cubeb_fifo_destroy(&fdx->record);
++        sem_destroy(&fdx->wait);
++        break;
++      }
++
++      stm->fullduplex = fdx;
++      return CUBEB_OK;
++    } while (0);
++
++    free(fdx);
++  }
++  return CUBEB_ERROR;
++}
++
++static int cubeb_fullduplex_start(cubeb_stream *stm)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++
++  if (fdx) {
++    LOGV("%s enter", __func__);
++
++    fdx->running = true;
++    if (0 == pthread_create(&fdx->thread_id, NULL, cubeb_fullduplex_thread, stm)) {
++      return CUBEB_OK;
++    }
++    fdx->running = false;
++  }
++  return CUBEB_OK;
++}
++
++static void cubeb_fullduplex_stop(cubeb_stream *stm)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++
++  if (fdx && fdx->running) {
++    LOGV("%s enter", __func__);
++
++    fdx->running = false;
++    sem_post(&fdx->wait);
++    pthread_join(fdx->thread_id, NULL);
++  }
++}
++
++static void cubeb_fullduplex_destroy(cubeb_stream *stm)
++{
++  struct cubeb_fullduplex *fdx = stm->fullduplex;
++
++  if (fdx) {
++    LOGV("%s enter", __func__);
++    cubeb_fullduplex_stop(stm);
++    stm->fullduplex = NULL;
++    sem_destroy(&fdx->wait);
++    cubeb_fifo_destroy(&fdx->record);
++    cubeb_fifo_destroy(&fdx->playback);
++    free(fdx);
++  }
++}
+ 
+ enum cork_state {
+   UNCORK = 0,
+@@ -219,6 +588,10 @@ stream_state_change_callback(cubeb_stream * stm, cubeb_state s)
+ {
+   stm->state = s;
+   stm->state_callback(stm, stm->user_ptr, s);
++
++  if (stm->fullduplex && s != CUBEB_STATE_STARTED) {
++    cubeb_fullduplex_stop(stm);
++  }
+ }
+ 
+ static void
+@@ -367,31 +740,37 @@ stream_read_callback(pa_stream * s, size_t nbytes, void * u)
+   while (read_from_input(s, &read_data, &read_size) > 0) {
+     /* read_data can be NULL in case of a hole. */
+     if (read_data) {
+-      size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
+-      size_t read_frames = read_size / in_frame_size;
+-
+-      if (stm->output_stream) {
+-        // input/capture + output/playback operation
+-        size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
+-        size_t write_size = read_frames * out_frame_size;
+-        // Offer full duplex data for writing
+-        trigger_user_callback(stm->output_stream, read_data, write_size, stm);
++      if (stm->fullduplex) {
++        // Capture samples will be dropped in case of ring buffer overflow.
++        // The playback data will be written in background.
++        cubeb_fullduplex_capture(stm, read_data, read_size);
+       } else {
+-        // input/capture only operation. Call callback directly
+-        long got = stm->data_callback(stm, stm->user_ptr, read_data, NULL, read_frames);
+-        if (got < 0 || (size_t) got != read_frames) {
+-          WRAP(pa_stream_cancel_write)(s);
+-          stm->shutdown = 1;
+-          break;
++        size_t in_frame_size = WRAP(pa_frame_size)(&stm->input_sample_spec);
++        size_t read_frames = read_size / in_frame_size;
++
++        if (stm->output_stream) {
++          // input/capture + output/playback operation
++          size_t out_frame_size = WRAP(pa_frame_size)(&stm->output_sample_spec);
++          size_t write_size = read_frames * out_frame_size;
++          // Offer full duplex data for writing
++          trigger_user_callback(stm->output_stream, read_data, write_size, stm);
++        } else {
++          // input/capture only operation. Call callback directly
++          long got = stm->data_callback(stm, stm->user_ptr, read_data, NULL, read_frames);
++          if (got < 0 || (size_t) got != read_frames) {
++            WRAP(pa_stream_cancel_write)(s);
++            stm->shutdown = 1;
++            break;
++          }
+         }
+       }
+-    }
+-    if (read_size > 0) {
+-      WRAP(pa_stream_drop)(s);
+-    }
++      if (read_size > 0) {
++        WRAP(pa_stream_drop)(s);
++      }
+ 
+-    if (stm->shutdown) {
+-      return;
++      if (stm->shutdown) {
++        return;
++      }
+     }
+   }
+ }
+@@ -977,6 +1356,12 @@ pulse_stream_init(cubeb * context,
+     return CUBEB_ERROR;
+   }
+ 
++  if (stm->output_stream && stm->input_stream &&
++      cubeb_fullduplex_create(stm) != CUBEB_OK) {
++    pulse_stream_destroy(stm);
++    return CUBEB_ERROR;
++  }
++
+   if (g_cubeb_log_level) {
+     if (output_stream_params){
+       const pa_buffer_attr * output_att;
+@@ -1004,6 +1389,10 @@ pulse_stream_destroy(cubeb_stream * stm)
+ {
+   stream_cork(stm, CORK);
+ 
++  if (stm->fullduplex) {
++    cubeb_fullduplex_destroy(stm);
++  }
++
+   WRAP(pa_threaded_mainloop_lock)(stm->context->mainloop);
+   if (stm->output_stream) {
+ 
+@@ -1046,6 +1435,11 @@ static int
+ pulse_stream_start(cubeb_stream * stm)
+ {
+   stm->shutdown = 0;
++
++  if (cubeb_fullduplex_start(stm) != CUBEB_OK) {
++    return CUBEB_ERROR;
++  }
++
+   stream_cork(stm, UNCORK | NOTIFY);
+ 
+   if (stm->output_stream && !stm->input_stream) {
+-- 
+2.17.1
+
