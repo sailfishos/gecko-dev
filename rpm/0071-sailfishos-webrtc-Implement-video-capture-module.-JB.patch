@@ -7,15 +7,15 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  dom/media/systemservices/VideoFrameUtils.cpp  |  92 ++++---
  dom/media/systemservices/moz.build            |   1 +
  .../webrtc/modules/video_capture/BUILD.gn     |  26 +-
- .../video_capture/sfos/device_info_sfos.cc    | 145 +++++++++++
+ .../video_capture/sfos/device_info_sfos.cc    | 145 ++++++++++
  .../video_capture/sfos/device_info_sfos.h     |  49 ++++
- .../video_capture/sfos/video_capture_sfos.cc  | 244 ++++++++++++++++++
+ .../video_capture/sfos/video_capture_sfos.cc  | 254 ++++++++++++++++++
  .../video_capture/sfos/video_capture_sfos.h   |  55 ++++
  .../video_capture/video_capture_impl.cc       |  12 +
  .../video_capture/video_capture_impl.h        |   2 +
  .../video_capture_internal_impl_gn/moz.build  |  13 +-
  old-configure.in                              |  11 +
- 11 files changed, 596 insertions(+), 54 deletions(-)
+ 11 files changed, 606 insertions(+), 54 deletions(-)
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
@@ -410,10 +410,10 @@ index 000000000000..7db696b5d176
 +#endif // WEBRTC_MODULES_VIDEO_CAPTURE_MAIN_SOURCE_SFOS_DEVICE_INFO_SFOS_H_
 diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
 new file mode 100644
-index 000000000000..97609572b21f
+index 000000000000..47f2c6b803a4
 --- /dev/null
 +++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,254 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
 + * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -557,6 +557,16 @@ index 000000000000..97609572b21f
 +int32_t VideoCaptureModuleSFOS::StartCapture(
 +    const VideoCaptureCapability& capability)
 +{
++    if (_camera->captureStarted()) {
++        if (capability.width == _requestedCapability.width
++                && capability.height == _requestedCapability.height
++                && capability.maxFPS == _requestedCapability.maxFPS) {
++            return 0;
++        } else {
++            _camera->stopCapture();
++        }
++    }
++
 +    _startNtpTimeMs = webrtc::Clock::GetRealTimeClock()->CurrentNtpInMilliseconds();
 +    UpdateCaptureRotation();
 +
