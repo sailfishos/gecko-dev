@@ -53,8 +53,10 @@ public:
   virtual void OnWindowCloseRequested(void) {}
   virtual void OnHttpUserAgentUsed(const char16_t* aHttpUserAgent) {}
 
-  virtual bool HandleScrollEvent(bool aIsRootScrollFrame, const gfxRect& aContentRect,
-                                 const gfxSize& aScrollableSize) { return false; }
+  virtual bool HandleScrollEvent(const gfxRect& aContentRect, const gfxSize& aScrollableSize)
+  {
+    return false;
+  }
 
   virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
   virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen) {}

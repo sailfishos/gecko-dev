@@ -58,7 +58,7 @@ child:
     async SetHttpUserAgent(nsString aHttpUserAgent);
     async SuspendTimeouts();
     async ResumeTimeouts();
-    async HandleScrollEvent(bool isRootScrollFrame, gfxRect contentRect, gfxSize scrollSize);
+    async HandleScrollEvent(gfxRect contentRect, gfxSize scrollSize);
 
     async UpdateFrame(RepaintRequest request) compress;
     async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
