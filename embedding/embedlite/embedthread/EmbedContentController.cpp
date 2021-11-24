@@ -168,14 +168,16 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
   contentRect.MoveTo(aRequest.GetScrollOffset());
 
-  // FIXME - RepaintRequest does not contain scrollable rect size. JB#56313 / OMP#JOLLA-531
-  CSSSize scrollableSize(0, 0);
+  CSSRect scrollableRect(0, 0, 0, 0);
+  if (!mRenderFrame || !mRenderFrame->GetScrollableRect(scrollableRect)) {
+    LOGW("Failed to read root scroll frame scrollable rect");
+  }
 
-  LOGT("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+  LOGT("contentR[%g, %g, %g, %g], scrSize[%g, %g, %g, %g]",
         contentRect.x, contentRect.y, contentRect.width, contentRect.height,
-        scrollableSize.width, scrollableSize.height);
+        scrollableRect.x, scrollableRect.y, scrollableRect.width, scrollableRect.height);
   gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
-  gfxSize size(scrollableSize.width, scrollableSize.height);
+  gfxSize size(scrollableRect.width, scrollableRect.height);
 
   if (mRenderFrame && !GetListener()->HandleScrollEvent(rect, size)) {
     Unused << mRenderFrame->SendHandleScrollEvent(rect, size);
