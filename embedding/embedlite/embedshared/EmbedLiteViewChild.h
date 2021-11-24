@@ -153,8 +153,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSuspendTimeouts();
   virtual mozilla::ipc::IPCResult RecvResumeTimeouts();
   virtual mozilla::ipc::IPCResult RecvLoadFrameScript(const nsString &);
-  virtual mozilla::ipc::IPCResult RecvHandleScrollEvent(const bool &isRootScrollFrame,
-                                                        const gfxRect &contentRect,
+  virtual mozilla::ipc::IPCResult RecvHandleScrollEvent(const gfxRect &contentRect,
                                                         const gfxSize &scrollSize);
 
   virtual mozilla::ipc::IPCResult RecvUpdateFrame(const mozilla::layers::RepaintRequest &aRequest);

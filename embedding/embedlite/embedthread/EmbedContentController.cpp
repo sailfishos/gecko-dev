@@ -177,8 +177,8 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   gfxRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   gfxSize size(scrollableSize.width, scrollableSize.height);
 
-  if (mRenderFrame && !GetListener()->HandleScrollEvent(aRequest.IsRootContent(), rect, size)) {
-    Unused << mRenderFrame->SendHandleScrollEvent(aRequest.IsRootContent(), rect, size);
+  if (mRenderFrame && !GetListener()->HandleScrollEvent(rect, size)) {
+    Unused << mRenderFrame->SendHandleScrollEvent(rect, size);
   }
 }
 
