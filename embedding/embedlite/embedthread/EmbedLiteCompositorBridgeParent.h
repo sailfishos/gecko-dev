@@ -45,6 +45,8 @@ public:
 
   void PresentOffscreenSurface();
 
+  bool GetScrollableRect(CSSRect &scrollableRect);
+
 protected:
   friend class EmbedLitePuppetWidget;
 

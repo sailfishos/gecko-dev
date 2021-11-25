@@ -11,6 +11,7 @@
 #include "EmbedLiteWindow.h"
 #include "EmbedLiteWindowParent.h"
 #include "mozilla/layers/LayerManagerComposite.h"
+#include "mozilla/layers/LayerMetricsWrapper.h"
 #include "mozilla/layers/AsyncCompositionManager.h"
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
@@ -182,6 +183,17 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
   if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
     NS_ERROR("Failed to publish context frame");
   }
+}
+
+bool EmbedLiteCompositorBridgeParent::GetScrollableRect(CSSRect &scrollableRect)
+{
+  const CompositorBridgeParent::LayerTreeState *state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, false);
+
+  mozilla::layers::LayerMetricsWrapper layerMetricsWrapper = state->mLayerManager->GetRootContentLayer();
+  const FrameMetrics &fm = layerMetricsWrapper.Metrics();
+  scrollableRect = fm.GetScrollableRect();
+  return true;
 }
 
 void EmbedLiteCompositorBridgeParent::SetSurfaceRect(int x, int y, int width, int height)

@@ -114,6 +114,8 @@ protected:
 
   mozilla::embedlite::nsWindow *GetWindowWidget() const;
 
+  bool GetScrollableRect(CSSRect &scrollableRect);
+
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorBridgeParent;

@@ -416,6 +416,12 @@ mozilla::embedlite::nsWindow *EmbedLiteViewParent::GetWindowWidget() const
   return window ? window->GetWidget() : nullptr;
 }
 
+bool EmbedLiteViewParent::GetScrollableRect(CSSRect &scrollableRect)
+{
+  NS_ENSURE_TRUE(mCompositor, false);
+  return mCompositor->GetScrollableRect(scrollableRect);
+}
+
 void
 EmbedLiteViewParent::CompositorCreated()
 {
