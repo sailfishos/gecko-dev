@@ -18,7 +18,6 @@
 #include "nsString.h"
 #include "nsIObserverService.h"
 #include "nsWeakReference.h"
-#include "mozilla/dom/Document.h"
 
 #include "nsPoint.h"
 

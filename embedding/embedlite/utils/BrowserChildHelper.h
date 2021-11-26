@@ -21,6 +21,7 @@
 #include "mozilla/dom/ContentFrameMessageManager.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/PresShell.h"
+#include "nsIEmbedFrame.h"
 
 class nsPresContext;
 class nsIDOMWindowUtils;
@@ -35,12 +36,14 @@ namespace embedlite {
 
 class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
                                          public nsIMessageSender,
+                                         public nsIEmbedFrame,
                                          public dom::DispatcherTrait,
                                          public nsSupportsWeakReference {
  public:
   explicit BrowserChildHelperMessageManager(BrowserChildHelper* aBrowserChild);
 
   NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_NSIEMBEDFRAME
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(BrowserChildHelperMessageManager,
                                            DOMEventTargetHelper)
 
