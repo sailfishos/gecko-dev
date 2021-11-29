@@ -19,12 +19,15 @@ FINAL_LIBRARY = 'xul'
 XPIDL_SOURCES += [
     'embedshared/EmbedLiteViewIface.idl',
     'modules/nsIEmbedAppService.idl',
-    'modules/nsIEmbedFrame.idl',
     'modules/nsIEmbedLiteJSON.idl',
     'utils/nsIEmbedBrowserChromeListener.idl',
 ]
 
 XPIDL_MODULE = 'embedLite'
+
+WEBIDL_FILES = [
+    'modules/nsIEmbedFrame.webidl',
+]
 
 EXPORTS.mozilla.embedlite += [
     'EmbedInputData.h',
@@ -52,6 +55,10 @@ EXPORTS.mozilla.embedlite += [
     'utils/EmbedLiteXulAppInfo.h',
     'utils/EmbedLog.h',
     'utils/WebBrowserChrome.h',
+]
+
+EXPORTS.mozilla.dom += [
+    'modules/EmbedFrame.h',
 ]
 
 EXPORTS.ipc = ['embedhelpers/EmbedIPCUtils.h']

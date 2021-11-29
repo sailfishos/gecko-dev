@@ -37,6 +37,7 @@
 #include "nsView.h"
 #include "nsLayoutUtils.h"
 #include "APZCCallbackHelper.h"
+#include "EmbedFrame.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
@@ -122,8 +123,8 @@ BrowserChildHelper::Disconnect()
     // We should have a message manager if the global is alive, but it
     // seems sometimes we don't.  Assert in aurora/nightly, but don't
     // crash in release builds.
-    MOZ_DIAGNOSTIC_ASSERT(static_cast<dom::ContentFrameMessageManager *>(mBrowserChildMessageManager)->GetMessageManager());
-    if (static_cast<dom::ContentFrameMessageManager *>(mBrowserChildMessageManager)->GetMessageManager()) {
+    MOZ_DIAGNOSTIC_ASSERT(mBrowserChildMessageManager->GetMessageManager());
+    if (mBrowserChildMessageManager->GetMessageManager()) {
       // The messageManager relays messages via the BrowserChild which
       // no longer exists.
       mBrowserChildMessageManager->DisconnectMessageManager();
@@ -211,7 +212,7 @@ void BrowserChildHelper::DispatchMessageManagerMessage(const nsAString& aMessage
 
   RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
       mBrowserChildMessageManager);
-  RefPtr<nsFrameMessageManager> mm = static_cast<dom::ContentFrameMessageManager *>(kungFuDeathGrip)->GetMessageManager();
+  RefPtr<nsFrameMessageManager> mm = kungFuDeathGrip->GetMessageManager();
   mm->ReceiveMessage(static_cast<EventTarget*>(kungFuDeathGrip), nullptr,
                      aMessageName, false, &data, nullptr, IgnoreErrors());
 }
@@ -409,7 +410,7 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
   RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
 
   RefPtr<nsFrameMessageManager> mm =
-      static_cast<dom::ContentFrameMessageManager *>(mBrowserChildMessageManager)->GetMessageManager();
+      mBrowserChildMessageManager->GetMessageManager();
 
   // We should have a message manager if the global is alive, but it
   // seems sometimes we don't.  Assert in aurora/nightly, but don't
@@ -419,10 +420,16 @@ BrowserChildHelper::DoSendBlockingMessage(const nsAString& aMessage,
     return true;
   }
 
-  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
-      mBrowserChildMessageManager);
-  globalMessageManager->ReceiveMessage(static_cast<dom::ContentFrameMessageManager*>(kungFuDeathGrip), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
-  mm->ReceiveMessage(static_cast<dom::ContentFrameMessageManager*>(kungFuDeathGrip), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+
+  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
+  embedFrame->mMessageManager = mBrowserChildMessageManager;
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    embedFrame->mWindow = window->GetBrowsingContext();
+  }
+
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
+  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, true, &aData, aRetVal, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
@@ -481,7 +488,7 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
   RefPtr<nsFrameMessageManager> globalMessageManager = globalIMessageManager;
 
   RefPtr<nsFrameMessageManager> mm =
-      static_cast<dom::ContentFrameMessageManager *>(mBrowserChildMessageManager)->GetMessageManager();
+      mBrowserChildMessageManager->GetMessageManager();
 
   // We should have a message manager if the global is alive, but it
   // seems sometimes we don't.  Assert in aurora/nightly, but don't
@@ -491,10 +498,16 @@ nsresult BrowserChildHelper::DoSendAsyncMessage(const nsAString& aMessage,
     return NS_OK;
   }
 
-  RefPtr<BrowserChildHelperMessageManager> kungFuDeathGrip(
-      mBrowserChildMessageManager);
-  globalMessageManager->ReceiveMessage(static_cast<dom::ContentFrameMessageManager*>(kungFuDeathGrip), nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
-  mm->ReceiveMessage(static_cast<dom::ContentFrameMessageManager*>(kungFuDeathGrip),
+  RefPtr<mozilla::dom::EmbedFrame> embedFrame = new mozilla::dom::EmbedFrame();
+  embedFrame->mMessageManager = mBrowserChildMessageManager;
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    embedFrame->mWindow = window->GetBrowsingContext();
+  }
+
+  globalMessageManager->ReceiveMessage(static_cast<EventTarget *>(embedFrame), nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
+
+  mm->ReceiveMessage(static_cast<EventTarget *>(embedFrame),
                      nullptr, aMessage, false, &aData, nullptr, IgnoreErrors());
 
   if (!mView->HasMessageListener(aMessage)) {
@@ -801,7 +814,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildHelperMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIMessageSender)
   NS_INTERFACE_MAP_ENTRY(dom::ContentFrameMessageManager)
-  NS_INTERFACE_MAP_ENTRY(nsIEmbedFrame)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
@@ -871,21 +883,3 @@ AbstractThread* BrowserChildHelperMessageManager::AbstractMainThreadFor(
     TaskCategory aCategory) {
   return dom::DispatcherTrait::AbstractMainThreadFor(aCategory);
 }
-
-NS_IMETHODIMP
-BrowserChildHelperMessageManager::GetContentWindow(nsIDOMWindow** aWindow)
-{
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow = do_GetInterface(mBrowserChildHelper->WebNavigation());
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(pwindow);
-  window.forget(aWindow);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-BrowserChildHelperMessageManager::GetMessageManager(ContentFrameMessageManager** aMessageManager)
-{
-  RefPtr<ContentFrameMessageManager> mm(this);
-  mm.forget(aMessageManager);
-  return NS_OK;
-}
-
