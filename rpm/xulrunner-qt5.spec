@@ -92,7 +92,7 @@ Patch34:    0034-sailfishos-configure-Get-target-and-host-from-enviro.patch
 Patch35:    0035-sailfishos-configure-Patch-libloading-to-build-on-ar.patch
 Patch36:    0036-sailfishos-configure-Skip-min_libclang_version-test-.patch
 Patch37:    0037-sailfishos-configure-Patch-glslopt-to-build-on-arm.patch
-Patch38:    0038-sailfishos-embedlite-egl-Fix-mesa-egl-display-initia.patch
+Patch38:    0038-sailfishos-embedlite-egl-Fix-mesa-egl-display-and-bu.patch
 Patch39:    0039-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 Patch40:    0040-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 Patch41:    0041-sailfishos-gecko-Avoid-incorrect-compiler-optimisati.patch
