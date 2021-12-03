@@ -22,7 +22,7 @@ Contributing authors:
  4 files changed, 225 insertions(+), 31 deletions(-)
 
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index dc0714a84351..3f1089e28bd5 100644
+index dc0714a84351..88f141eae912 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -77,6 +77,14 @@
@@ -70,7 +70,7 @@ index dc0714a84351..3f1089e28bd5 100644
 +#define WL_SURFACE_DESTROY 0
 +
 +// Used for lifetime management of the dynamically loaded wayland libraries
-+static bool wayloadFunctionsLoaded = false;
++static bool waylandFunctionsLoaded = false;
 +static void *waylandEglHandle = nullptr;
 +static void *waylandClientHandle = nullptr;
 +
@@ -103,7 +103,7 @@ index dc0714a84351..3f1089e28bd5 100644
 +}
 +
 +static bool LoadWaylandFunctions() {
-+  if (wayloadFunctionsLoaded) {
++  if (waylandFunctionsLoaded) {
 +    // We load everything or nothing
 +    return true;
 +  }
@@ -149,15 +149,15 @@ index dc0714a84351..3f1089e28bd5 100644
 +    return false;
 +  }
 +
-+  wayloadFunctionsLoaded = true;
++  waylandFunctionsLoaded = true;
 +  return true;
 +}
 +
-+static bool UnloadWaylandFunctions() {
-+  if (wayloadFunctionsLoaded) {
++static void UnloadWaylandFunctions() {
++  if (waylandFunctionsLoaded) {
 +    dlclose(waylandEglHandle);
 +    dlclose(waylandClientHandle);
-+    wayloadFunctionsLoaded = false;
++    waylandFunctionsLoaded = false;
 +  }
 +}
 +#endif
