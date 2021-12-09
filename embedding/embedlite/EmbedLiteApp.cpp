@@ -468,7 +468,7 @@ void EmbedLiteApp::RemoveObservers(const std::vector<std::string>& observersList
 }
 
 EmbedLiteView*
-EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPrivateWindow, bool isDesktopMode)
+EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t aParentBrowsingContext, bool aIsPrivateWindow, bool isDesktopMode)
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
@@ -477,7 +477,7 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, bool aIsPri
 
   PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(
       mAppParent->SendPEmbedLiteViewConstructor(aWindow->GetUniqueID(), sViewCreateID,
-                                                aParent, aIsPrivateWindow, isDesktopMode));
+                                                aParent, aParentBrowsingContext, aIsPrivateWindow, isDesktopMode));
   EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
   mViews[sViewCreateID] = view;
   return view;
@@ -526,7 +526,8 @@ EmbedLiteApp::ChildReadyToDestroy()
 
 uint32_t
 EmbedLiteApp::CreateWindowRequested(const uint32_t &chromeFlags,
-                                    const uint32_t &parentId)
+                                    const uint32_t &parentId,
+                                    const uintptr_t &parentBrowsingContext)
 {
   EmbedLiteView* view = nullptr;
   std::map<uint32_t, EmbedLiteView*>::iterator it;
@@ -537,7 +538,7 @@ EmbedLiteApp::CreateWindowRequested(const uint32_t &chromeFlags,
       break;
     }
   }
-  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, view) : 0;
+  uint32_t viewId = mListener ? mListener->CreateNewWindowRequested(chromeFlags, view, parentBrowsingContext) : 0;
   return viewId;
 }
 

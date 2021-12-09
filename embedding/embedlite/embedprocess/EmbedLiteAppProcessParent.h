@@ -36,6 +36,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvInitialized() override;
   virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
+                                                   const uintptr_t &parentBrowsingContext,
                                                    const uint32_t &chromeFlags,
                                                    uint32_t *createdID,
                                                    bool *cancel) override;
@@ -45,6 +46,7 @@ protected:
   virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                           const uint32_t &id,
                                                           const uint32_t &parentId,
+                                                          const uintptr_t &parentBrowsingContext,
                                                           const bool &isPrivateWindow,
                                                           const bool &isDesktopMode) override;
 

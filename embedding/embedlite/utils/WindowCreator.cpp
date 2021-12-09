@@ -13,8 +13,10 @@
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteAppChildIface.h"
 #include "nsCOMPtr.h"
+#include "nsIOpenWindowInfo.h"
 #include "nsIThread.h"
 #include "nsThreadUtils.h"           // for NS_GetCurrentThread
+#include <sys/syscall.h>
 
 using namespace mozilla::embedlite;
 
@@ -48,12 +50,16 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
       Desktop FF allow to create popup window if aChromeFlags == 1670, aContextFlags == 0
   */
 
-  LOGF("parent: %p, chrome flags: %u", aParent, aChromeFlags);
 
   EmbedLiteViewChildIface* parent = mChild->GetViewByChromeParent(aParent);
   uint32_t createdID = 0;
   uint32_t parentID = parent ? parent->GetID() : 0;
-  mChild->CreateWindow(parentID, aChromeFlags, &createdID, aCancel);
+
+  RefPtr<BrowsingContext> parentBrowsingContext = aOpenWindowInfo->GetParent();
+
+  LOGT("parent: %p, chrome flags: %u, thread id: %ld parent opener id: %" PRId64 "", aParent, aChromeFlags, syscall(SYS_gettid), parentBrowsingContext->Id());
+
+  mChild->CreateWindow(parentID, reinterpret_cast<uintptr_t>(parentBrowsingContext.get()), aChromeFlags, &createdID, aCancel);
 
   if (*aCancel) {
     return NS_OK;

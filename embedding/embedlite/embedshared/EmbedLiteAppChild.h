@@ -32,7 +32,11 @@ public:
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId) const override;
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent) const override;
   EmbedLiteWindowChild* GetWindowByID(uint32_t aWindowID);
-  bool CreateWindow(const uint32_t &parentId, const uint32_t &chromeFlags, uint32_t *createdID, bool *cancel) override;
+  bool CreateWindow(const uint32_t &parentId,
+                    const uintptr_t &parentBrowsingContext,
+                    const uint32_t &chromeFlags,
+                    uint32_t *createdID,
+                    bool *cancel) override;
   static EmbedLiteAppChild* GetInstance();
 
 protected:
@@ -44,6 +48,7 @@ protected:
   virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                         const uint32_t &id,
                                                         const uint32_t &parentId,
+                                                        const uintptr_t &parentBrowsingContext,
                                                         const bool &isPrivateWindow,
                                                         const bool &isDesktopMode) = 0;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) = 0;

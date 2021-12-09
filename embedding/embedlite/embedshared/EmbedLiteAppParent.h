@@ -32,6 +32,7 @@ protected:
   virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                           const uint32_t &id,
                                                           const uint32_t &parentId,
+                                                          const uintptr_t &parentBrowsingContext,
                                                           const bool &isPrivateWindow,
                                                           const bool &isDesktopMode)  = 0;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*)  = 0;
@@ -44,6 +45,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
                                               const nsString &data)  = 0;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
+                                                   const uintptr_t &parentBrowsingContext,
                                                    const uint32_t &chromeFlags,
                                                    uint32_t *createdID,
                                                    bool *cancel)  = 0;

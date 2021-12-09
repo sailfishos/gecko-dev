@@ -23,6 +23,9 @@
 class nsWebBrowser;
 
 namespace mozilla {
+namespace dom {
+class BrowsingContext;
+}
 
 namespace layers {
 struct FrameMetrics;
@@ -47,6 +50,7 @@ public:
   EmbedLiteViewChild(const uint32_t &windowId,
                      const uint32_t &id,
                      const uint32_t &parentId,
+                     mozilla::dom::BrowsingContext *parentBrowsingContext,
                      const bool &isPrivateWindow,
                      const bool &isDesktopMode);
 
@@ -225,13 +229,14 @@ private:
   friend class EmbedLiteAppChild;
   friend class PEmbedLiteViewChild;
 
-  void InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode);
+  void InitGeckoWindow(const uint32_t parentId,
+                       mozilla::dom::BrowsingContext *parentBrowsingContext,
+                       const bool isPrivateWindow,
+                       const bool isDesktopMode);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
   void SetDesktopMode(const bool aDesktopMode);
   bool SetDesktopModeInternal(const bool aDesktopMode);
-
-  mozilla::dom::BrowsingContext *GetBrowsingContext() const;
 
   const uint32_t mId;
   uint64_t mOuterId;
