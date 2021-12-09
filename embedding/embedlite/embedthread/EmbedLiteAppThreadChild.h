@@ -20,7 +20,10 @@ public:
 protected:
   virtual ~EmbedLiteAppThreadChild();
 
-  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t&, const uint32_t&, const uint32_t& parentId, const bool& isPrivateWindow,
+  virtual PEmbedLiteViewChild* AllocPEmbedLiteViewChild(const uint32_t &windowId,
+                                                        const uint32_t &id,
+                                                        const uint32_t &parentId,
+                                                        const bool &isPrivateWindow,
                                                         const bool &isDesktopMode) override;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
   virtual mozilla::layers::PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);

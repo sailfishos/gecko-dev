@@ -29,7 +29,11 @@ protected:
 
   // IPDL implementation
   virtual void ActorDestroy(ActorDestroyReason aWhy)  = 0;
-  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const uint32_t&, const bool&, const bool &)  = 0;
+  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t &windowId,
+                                                          const uint32_t &id,
+                                                          const uint32_t &parentId,
+                                                          const bool &isPrivateWindow,
+                                                          const bool &isDesktopMode)  = 0;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*)  = 0;
   virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)  = 0;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*)  = 0;

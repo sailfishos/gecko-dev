@@ -100,9 +100,11 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t& aId,
-                                       const uint32_t& aParentId, const bool& isPrivateWindow,
-                                       const bool& isDesktopMode)
+EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
+                                       const uint32_t &aId,
+                                       const uint32_t &aParentId,
+                                       const bool &isPrivateWindow,
+                                       const bool &isDesktopMode)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)

@@ -14,11 +14,11 @@ namespace embedlite {
 class EmbedLiteViewProcessChild : public EmbedLiteViewChild
 {
 public:
-  MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t& windowId,
-                                         const uint32_t& id,
-                                         const uint32_t& parentId,
-                                         const bool& isPrivateWindow,
-                                         const bool& isDesktopMode);
+  MOZ_IMPLICIT EmbedLiteViewProcessChild(const uint32_t &windowId,
+                                         const uint32_t &id,
+                                         const uint32_t &parentId,
+                                         const bool &isPrivateWindow,
+                                         const bool &isDesktopMode);
 
 protected:
   virtual void OnGeckoWindowInitialized();

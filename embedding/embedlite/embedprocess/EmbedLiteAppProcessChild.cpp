@@ -172,9 +172,11 @@ EmbedLiteAppProcessChild::QuickExit()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
-                                                   const uint32_t& parentId, const bool& isPrivateWindow,
-                                                   const bool& isDesktopMode)
+EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
+                                                   const uint32_t &id,
+                                                   const uint32_t &parentId,
+                                                   const bool &isPrivateWindow,
+                                                   const bool &isDesktopMode)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;

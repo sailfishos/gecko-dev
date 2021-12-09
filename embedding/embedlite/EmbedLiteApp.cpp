@@ -525,7 +525,8 @@ EmbedLiteApp::ChildReadyToDestroy()
 }
 
 uint32_t
-EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& parentId)
+EmbedLiteApp::CreateWindowRequested(const uint32_t &chromeFlags,
+                                    const uint32_t &parentId)
 {
   EmbedLiteView* view = nullptr;
   std::map<uint32_t, EmbedLiteView*>::iterator it;

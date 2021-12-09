@@ -212,10 +212,10 @@ EmbedLiteAppProcessParent::RecvReadyToShutdown()
 }
 
 mozilla::ipc::IPCResult
-EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
-                                            const uint32_t& chromeFlags,
-                                            uint32_t* createdID,
-                                            bool* cancel)
+EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t &parentId,
+                                            const uint32_t &chromeFlags,
+                                            uint32_t *createdID,
+                                            bool *cancel)
 {
   LOGT();
   *createdID = mApp->CreateWindowRequested(chromeFlags, parentId);
@@ -231,11 +231,11 @@ EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& d
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId,
-                                                     const uint32_t& id,
-                                                     const uint32_t& parentId,
-                                                     const bool& isPrivateWindow,
-                                                     const bool& isDesktopMode)
+EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t &windowId,
+                                                     const uint32_t &id,
+                                                     const uint32_t &parentId,
+                                                     const bool &isPrivateWindow,
+                                                     const bool &isDesktopMode)
 {
   LOGT();
 

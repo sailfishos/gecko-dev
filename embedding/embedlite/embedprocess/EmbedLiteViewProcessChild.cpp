@@ -9,11 +9,11 @@ namespace mozilla {
 namespace embedlite {
 
 MOZ_IMPLICIT
-EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t& windowId,
-                                                     const uint32_t& id,
-                                                     const uint32_t& parentId,
-                                                     const bool& isPrivateWindow,
-                                                     const bool& isDesktopMode)
+EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t &windowId,
+                                                     const uint32_t &id,
+                                                     const uint32_t &parentId,
+                                                     const bool &isPrivateWindow,
+                                                     const bool &isDesktopMode)
   : EmbedLiteViewChild(windowId, id, parentId, isPrivateWindow, isDesktopMode)
 {
   LOGT();

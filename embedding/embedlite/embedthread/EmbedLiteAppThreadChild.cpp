@@ -34,8 +34,11 @@ EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow,
-                                                  const bool& isDesktopMode)
+EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
+                                                  const uint32_t &id,
+                                                  const uint32_t &parentId,
+                                                  const bool &isPrivateWindow,
+                                                  const bool &isDesktopMode)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId, isPrivateWindow, isDesktopMode);

@@ -44,9 +44,11 @@ class EmbedLiteViewChild : public PEmbedLiteViewChild,
   typedef mozilla::layers::APZEventState APZEventState;
 
 public:
-  EmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
-                     const uint32_t& parentId, const bool& isPrivateWindow,
-                     const bool& isDesktopMode);
+  EmbedLiteViewChild(const uint32_t &windowId,
+                     const uint32_t &id,
+                     const uint32_t &parentId,
+                     const bool &isPrivateWindow,
+                     const bool &isDesktopMode);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;

@@ -42,7 +42,11 @@ protected:
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
                                               const nsString &data) override;
 
-  virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId, const uint32_t &id, const uint32_t &parentId, const bool&, const bool&) override;
+  virtual PEmbedLiteViewParent *AllocPEmbedLiteViewParent(const uint32_t &windowId,
+                                                          const uint32_t &id,
+                                                          const uint32_t &parentId,
+                                                          const bool &isPrivateWindow,
+                                                          const bool &isDesktopMode) override;
 
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor) override;
   virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
