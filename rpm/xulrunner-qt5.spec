@@ -181,15 +181,14 @@ BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
 BuildRequires:  automake
-BuildRequires:  python
-BuildRequires:  python-devel
+BuildRequires:  python3-base
+BuildRequires:  python3-sqlite
 BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
 BuildRequires:  cbindgen
 BuildRequires:  llvm
 BuildRequires:  clang-devel
-BuildRequires:  python3-sqlite
 BuildRequires:  libatomic
 
 %if %{system_icu}
