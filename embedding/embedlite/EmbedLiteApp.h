@@ -50,8 +50,9 @@ public:
   // Messaging interface, allow to receive json messages from content child scripts
   virtual void OnObserve(const char* aMessage, const char16_t* aData) {}
   // New Window request which is usually coming from WebPage new window request
-  virtual uint32_t CreateNewWindowRequested(const uint32_t& chromeFlags,
-                                            EmbedLiteView* aParentView) { return 0; }
+  virtual uint32_t CreateNewWindowRequested(const uint32_t &chromeFlags,
+                                            EmbedLiteView *aParentView,
+                                            const uintptr_t &parentBrowsingContext) { return 0; }
   virtual void LastViewDestroyed() {};
   virtual void LastWindowDestroyed() {};
 };
@@ -111,7 +112,11 @@ public:
   // Must be called from same thread as StartChildThread, and before Stop()
   virtual bool StopChildThread();
 
-  virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow, uint32_t aParent = 0, bool aIsPrivateWindow = false, bool isDesktopMode = false);
+  virtual EmbedLiteView* CreateView(EmbedLiteWindow* aWindow,
+                                    uint32_t aParent = 0,
+                                    uintptr_t parentBrowsingContext = 0,
+                                    bool aIsPrivateWindow = false,
+                                    bool isDesktopMode = false);
   virtual EmbedLiteWindow* CreateWindow(int width, int height, EmbedLiteWindowListener *aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
@@ -189,7 +194,9 @@ private:
   void ViewDestroyed(uint32_t id);
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
-  uint32_t CreateWindowRequested(const uint32_t& chromeFlags, const uint32_t& parentId);
+  uint32_t CreateWindowRequested(const uint32_t &chromeFlags,
+                                 const uint32_t &parentId,
+                                 const uintptr_t &parentBrowsingContext);
   EmbedLiteAppListener* GetListener();
   MessageLoop* GetUILoop();
   static void PreDestroy(EmbedLiteApp*);

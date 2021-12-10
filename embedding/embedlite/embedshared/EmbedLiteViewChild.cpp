@@ -100,9 +100,12 @@ static void ReadAZPCPrefs()
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
 }
 
-EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t& aId,
-                                       const uint32_t& aParentId, const bool& isPrivateWindow,
-                                       const bool& isDesktopMode)
+EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
+                                       const uint32_t &aId,
+                                       const uint32_t &aParentId,
+                                       mozilla::dom::BrowsingContext *parentBrowsingContext,
+                                       const bool &isPrivateWindow,
+                                       const bool &isDesktopMode)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -129,11 +132,12 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t& aWindowId, const uint32_t
   mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, const bool, const bool>
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, mozilla::dom::BrowsingContext*, const bool, const bool>
                                    ("mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow",
                                     this,
                                     &EmbedLiteViewChild::InitGeckoWindow,
                                     aParentId,
+                                    parentBrowsingContext,
                                     isPrivateWindow,
                                     isDesktopMode));
 }
@@ -203,7 +207,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvDestroy()
 }
 
 void
-EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivateWindow, const bool isDesktopMode)
+EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
+                                    mozilla::dom::BrowsingContext *parentBrowsingContext,
+                                    const bool isPrivateWindow,
+                                    const bool isDesktopMode)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
@@ -215,7 +222,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
     return;
   }
 
-  LOGT("parentID: %u", parentId);
+  LOGT("parentID: %u thread id: %ld", parentId, syscall(SYS_gettid));
+
 
   mWidget = new EmbedLitePuppetWidget(this);
   LOGT("puppet widget: %p", GetPuppetWidget());
@@ -242,23 +250,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   mHelper = new BrowserChildHelper(this, mId);
   mChrome->SetBrowserChildHelper(mHelper.get());
 
-  // Dig out parent browsing context. If this is created with window.open(), we need
-  // to pass parent context as an argument for browsing context of this view.
-  // That's for making sure window.opener is set properly and window.close() can be
-  // called by the JS.
-  EmbedLiteViewChild *parentView = nullptr;
-  if (parentId > 0) {
-    EmbedLiteViewChildIface *childIface = EmbedLiteAppChild::GetInstance()->GetViewByID(parentId);
-    if (childIface) {
-      parentView = static_cast<EmbedLiteViewChild*>(childIface);
-    }
-  }
-
-  BrowsingContext *parentBrowsingContext = nullptr;
-  if (parentId > 0 && parentView) {
-    parentBrowsingContext = parentView->GetBrowsingContext();
-  }
-
+  // If this is created with window.open() or otherwise via WindowCreator
+  // we'll receive parent BrowsingContext as an argument.
   // Create a BrowsingContext for our windowless browser.
   RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, EmptyString(), BrowsingContext::Type::Content);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
@@ -271,6 +264,10 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId, const bool isPrivat
   if (canonicalBrowsingContext) {
     secureBrowserUI = canonicalBrowsingContext->GetSecureBrowserUI();
     Unused << secureBrowserUI;
+  }
+
+  if (browsingContext) {
+      LOGT("Created browsing context id: %" PRId64 " opener id: %" PRId64 "", browsingContext->Id(), browsingContext->GetOpenerId());
   }
 
   // nsWebBrowser::Create creates nsDocShell, calls InitWindow for nsIBaseWindow,
@@ -745,12 +742,6 @@ bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
     return true;
   }
   return false;
-}
-
-mozilla::dom::BrowsingContext *EmbedLiteViewChild::GetBrowsingContext() const
-{
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
-  return docShell->GetBrowsingContext();
 }
 
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)

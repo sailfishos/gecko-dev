@@ -7,6 +7,7 @@
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteWindowThreadChild.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/layers/PCompositorBridgeChild.h"
 
 namespace mozilla {
@@ -34,11 +35,23 @@ EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow,
-                                                  const bool& isDesktopMode)
+EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
+                                                  const uint32_t &id,
+                                                  const uint32_t &parentId,
+                                                  const uintptr_t &parentBrowsingContext,
+                                                  const bool &isPrivateWindow,
+                                                  const bool &isDesktopMode)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
-  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId, isPrivateWindow, isDesktopMode);
+
+  mozilla::dom::BrowsingContext *parentBrowsingContextPtr = nullptr;
+  if (parentBrowsingContext) {
+    parentBrowsingContextPtr = reinterpret_cast<mozilla::dom::BrowsingContext*>(parentBrowsingContext);
+  }
+
+  EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId,
+                                                                parentBrowsingContextPtr,
+                                                                isPrivateWindow, isDesktopMode);
   mWeakViewMap[id] = view;
   view->AddRef();
   return view;

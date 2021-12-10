@@ -187,9 +187,13 @@ EmbedLiteAppChild::DeallocPEmbedLiteWindowChild(PEmbedLiteWindowChild* aActor)
   return true;
 }
 
-bool EmbedLiteAppChild::CreateWindow(const uint32_t& parentId, const uint32_t& chromeFlags, uint32_t* createdID, bool* cancel)
+bool EmbedLiteAppChild::CreateWindow(const uint32_t &parentId,
+                                     const uintptr_t &parentBrowsingContext,
+                                     const uint32_t &chromeFlags,
+                                     uint32_t *createdID,
+                                     bool *cancel)
 {
-  return SendCreateWindow(parentId, chromeFlags, createdID, cancel);
+  return SendCreateWindow(parentId, parentBrowsingContext, chromeFlags, createdID, cancel);
 }
 
 EmbedLiteViewChildIface*

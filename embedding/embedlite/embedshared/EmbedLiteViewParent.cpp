@@ -24,7 +24,12 @@ using namespace mozilla::widget;
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_t& id, const uint32_t& parentId, const bool& isPrivateWindow, const bool &isDesktopMode)
+EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
+                                         const uint32_t &id,
+                                         const uint32_t &parentId,
+                                         const uintptr_t &parentBrowsingContext,
+                                         const bool &isPrivateWindow,
+                                         const bool &isDesktopMode)
   : mWindowId(windowId)
   , mId(id)
   , mViewAPIDestroyed(false)
@@ -47,6 +52,9 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t& windowId, const uint32_
   }
 
   mWindow.AddObserver(this);
+
+  // This could be turned into MaybeDiscardedBrowsingContext
+  Unused << parentBrowsingContext;
 }
 
 NS_IMETHODIMP EmbedLiteViewParent::QueryInterface(REFNSIID aIID, void** aInstancePtr)

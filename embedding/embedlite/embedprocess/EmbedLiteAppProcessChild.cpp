@@ -34,6 +34,7 @@
 #include "mozilla/layers/PCompositorBridgeChild.h"
 
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/PContent.h"
 
 using namespace base;
@@ -172,9 +173,12 @@ EmbedLiteAppProcessChild::QuickExit()
 }
 
 PEmbedLiteViewChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, const uint32_t& id,
-                                                   const uint32_t& parentId, const bool& isPrivateWindow,
-                                                   const bool& isDesktopMode)
+EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
+                                                   const uint32_t &id,
+                                                   const uint32_t &parentId,
+                                                   const uintptr_t &parentBrowsingContext,
+                                                   const bool &isPrivateWindow,
+                                                   const bool &isDesktopMode)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;
@@ -182,7 +186,16 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t& windowId, con
     gfxPlatform::GetPlatform();
     sViewInitializeOnce = true;
   }
-  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId, isPrivateWindow, isDesktopMode);
+
+
+  mozilla::dom::BrowsingContext *parentBrowsingContextPtr = nullptr;
+  if (parentBrowsingContext) {
+    parentBrowsingContextPtr = reinterpret_cast<mozilla::dom::BrowsingContext*>(parentBrowsingContext);
+  }
+
+  EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId,
+                                                                  parentBrowsingContextPtr,
+                                                                  isPrivateWindow, isDesktopMode);
   view->AddRef();
   return view;
 }

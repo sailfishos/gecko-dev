@@ -212,13 +212,14 @@ EmbedLiteAppProcessParent::RecvReadyToShutdown()
 }
 
 mozilla::ipc::IPCResult
-EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t& parentId,
-                                            const uint32_t& chromeFlags,
-                                            uint32_t* createdID,
-                                            bool* cancel)
+EmbedLiteAppProcessParent::RecvCreateWindow(const uint32_t &parentId,
+                                            const uintptr_t &parentBrowsingContext,
+                                            const uint32_t &chromeFlags,
+                                            uint32_t *createdID,
+                                            bool *cancel)
 {
   LOGT();
-  *createdID = mApp->CreateWindowRequested(chromeFlags, parentId);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, parentId, parentBrowsingContext);
   *cancel = !*createdID;
   return IPC_OK();
 }
@@ -231,11 +232,12 @@ EmbedLiteAppProcessParent::RecvObserve(const nsCString& topic, const nsString& d
 }
 
 PEmbedLiteViewParent*
-EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId,
-                                                     const uint32_t& id,
-                                                     const uint32_t& parentId,
-                                                     const bool& isPrivateWindow,
-                                                     const bool& isDesktopMode)
+EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t &windowId,
+                                                     const uint32_t &id,
+                                                     const uint32_t &parentId,
+                                                     const uintptr_t &parentBrowsingContext,
+                                                     const bool &isPrivateWindow,
+                                                     const bool &isDesktopMode)
 {
   LOGT();
 
@@ -245,7 +247,7 @@ EmbedLiteAppProcessParent::AllocPEmbedLiteViewParent(const uint32_t& windowId,
     mozilla::layers::CompositorThreadHolder::Start();
   }
 
-  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, isPrivateWindow, isDesktopMode);
+  EmbedLiteViewProcessParent* p = new EmbedLiteViewProcessParent(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode);
   p->AddRef();
   return p;
 }

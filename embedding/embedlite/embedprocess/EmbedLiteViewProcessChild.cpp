@@ -1,5 +1,6 @@
 
 #include "EmbedLiteViewProcessChild.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/layers/ShadowLayers.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
@@ -9,12 +10,13 @@ namespace mozilla {
 namespace embedlite {
 
 MOZ_IMPLICIT
-EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t& windowId,
-                                                     const uint32_t& id,
-                                                     const uint32_t& parentId,
-                                                     const bool& isPrivateWindow,
-                                                     const bool& isDesktopMode)
-  : EmbedLiteViewChild(windowId, id, parentId, isPrivateWindow, isDesktopMode)
+EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t &windowId,
+                                                     const uint32_t &id,
+                                                     const uint32_t &parentId,
+                                                     mozilla::dom::BrowsingContext *parentBrowsingContext,
+                                                     const bool &isPrivateWindow,
+                                                     const bool &isDesktopMode)
+  : EmbedLiteViewChild(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode)
 {
   LOGT();
 }

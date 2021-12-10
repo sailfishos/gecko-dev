@@ -9,14 +9,21 @@
 #include "EmbedLiteViewChild.h"
 
 namespace mozilla {
+namespace dom {
+class BrowsingContext;
+}
+
 namespace embedlite {
 
 class EmbedLiteViewThreadChild : public EmbedLiteViewChild
 {
 public:
-  EmbedLiteViewThreadChild(const uint32_t& windowId, const uint32_t& id,
-                           const uint32_t& parentId, const bool& isPrivateWindow,
-                           const bool& isDesktopMode);
+  EmbedLiteViewThreadChild(const uint32_t &windowId,
+                           const uint32_t &id,
+                           const uint32_t &parentId,
+                           mozilla::dom::BrowsingContext *parentBrowsingContext,
+                           const bool &isPrivateWindow,
+                           const bool &isDesktopMode);
 protected:
   virtual ~EmbedLiteViewThreadChild() override;
 

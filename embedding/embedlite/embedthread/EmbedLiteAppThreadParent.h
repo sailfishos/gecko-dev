@@ -24,7 +24,12 @@ class EmbedLiteAppThreadParent : public EmbedLiteAppParent
 protected:
   // IPDL implementation
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
-  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t&, const uint32_t&, const uint32_t&, const bool&, const bool&) override;
+  virtual PEmbedLiteViewParent* AllocPEmbedLiteViewParent(const uint32_t &windowId,
+                                                          const uint32_t &id,
+                                                          const uint32_t &parentId,
+                                                          const uintptr_t &parentBrowsingContext,
+                                                          const bool &isPrivateWindow,
+                                                          const bool &isDesktopMode) override;
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent*) override;
   virtual PEmbedLiteWindowParent* AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
   virtual bool DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent*) override;
@@ -35,6 +40,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
                                               const nsString &data) override;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
+                                                   const uintptr_t &parentBrowsingContext,
                                                    const uint32_t &chromeFlags,
                                                    uint32_t *createdID,
                                                    bool *cancel) override;
