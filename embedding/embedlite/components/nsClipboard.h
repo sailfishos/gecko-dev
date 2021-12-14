@@ -13,6 +13,7 @@
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
 #include "nsString.h"
+#include "nsWidgetsCID.h"
 
 /* Native Qt Clipboard wrapper */
 class nsEmbedClipboard : public nsIClipboard, public nsIObserver
@@ -36,11 +37,7 @@ private:
     bool mActive;
 };
 
-// b27ca13c-b6d5-11e2-b8c8-1b7d85770900
-#define NS_EMBED_CLIPBOARD_SERVICE_CID \
-{ 0xb27ca13c, \
-  0xb6d5, \
-  0x11e2, \
-  { 0xb8, 0xc8, 0x1b, 0x7d, 0x85, 0x77, 0x09, 0x00 }}
+// {8B5314BA-DB01-11d2-96CE-0060B0FB9956}
+#define NS_EMBED_CLIPBOARD_SERVICE_CID NS_CLIPBOARD_CID
 
 #endif // nsEmbedClipboard_h__
