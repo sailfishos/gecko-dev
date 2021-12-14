@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jolla.com>
+Date: Tue, 14 Dec 2021 08:24:45 +0000
+Subject: [PATCH] [sailfishos][gecko-dev] Fix video hardware accelaration not
+ being used on first playback. JB#56630 OMP#JOLLA-568
+
+---
+ dom/media/gmp/GMPServiceParent.cpp | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/dom/media/gmp/GMPServiceParent.cpp b/dom/media/gmp/GMPServiceParent.cpp
+index 97fd3f8d0862..54868cdc639a 100644
+--- a/dom/media/gmp/GMPServiceParent.cpp
++++ b/dom/media/gmp/GMPServiceParent.cpp
+@@ -501,12 +501,14 @@ RefPtr<GenericPromise> GeckoMediaPluginServiceParent::LoadFromEnvironment() {
+     }
+   }
+ 
+-  mScannedPluginOnDisk = true;
+   return GenericPromise::All(thread, promises)
+       ->Then(
+           thread, __func__,
+-          []() { return GenericPromise::CreateAndResolve(true, __func__); },
+-          []() {
++          [this]() {
++            mScannedPluginOnDisk = true;
++            return GenericPromise::CreateAndResolve(true, __func__); },
++          [this]() {
++            mScannedPluginOnDisk = true;
+             return GenericPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
+           });
+ }
+@@ -686,9 +688,13 @@ nsresult GeckoMediaPluginServiceParent::EnsurePluginsOnDiskScanned() {
+     // cause an event to be dispatched to which scans for plugins. We
+     // dispatch a sync event to the GMP thread here in order to wait until
+     // after the GMP thread has scanned any paths in MOZ_GMP_PATH.
+-    nsresult rv = GMPDispatch(new mozilla::Runnable("GMPDummyRunnable"),
++    do {
++      nsresult rv = GMPDispatch(new mozilla::Runnable("GMPDummyRunnable"),
+                               NS_DISPATCH_SYNC);
+-    NS_ENSURE_SUCCESS(rv, rv);
++      NS_ENSURE_SUCCESS(rv, rv);
++      // The path scaning is broken down into multiple jobs so the blocking task
++      // may get inserted between them, keep polling until all jobs are complete.
++    } while (!mScannedPluginOnDisk);
+     MOZ_ASSERT(mScannedPluginOnDisk, "Should have scanned MOZ_GMP_PATH by now");
+   }
+ 
+-- 
+2.26.2
+
