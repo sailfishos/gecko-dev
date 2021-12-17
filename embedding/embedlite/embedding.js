@@ -107,15 +107,19 @@ pref("media.prefer-gstreamer", true);
 pref("media.gstreamer.enable-blacklist", false);
 // Disable X backend on GTK
 pref("gfx.xrender.enabled", false);
+
+// AZPC overrides, see EmbedLiteViewChild.cpp
 pref("embedlite.azpc.handle.viewport", true);
-pref("embedlite.azpc.handle.singletap", true);
-pref("embedlite.azpc.handle.longtap", true);
+pref("embedlite.azpc.handle.singletap", false);
+pref("embedlite.azpc.handle.doubletap", true);
+pref("embedlite.azpc.handle.longtap", false);
 pref("embedlite.azpc.handle.scroll", true);
-pref("embedlite.azpc.json.viewport", false);
-pref("embedlite.azpc.json.singletap", false);
-pref("embedlite.azpc.json.doubletap", false);
-pref("embedlite.azpc.json.longtap", false);
+pref("embedlite.azpc.json.viewport", true);
+pref("embedlite.azpc.json.singletap", true);
+pref("embedlite.azpc.json.doubletap", true);
+pref("embedlite.azpc.json.longtap", true);
 pref("embedlite.azpc.json.scroll", false);
+
 // Make gecko compositor use GL context/surface provided by the application.
 pref("embedlite.compositor.external_gl_context", false);
 // Request the application to create GLContext for the compositor as
