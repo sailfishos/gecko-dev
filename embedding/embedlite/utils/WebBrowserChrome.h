@@ -14,7 +14,6 @@
 #include "nsIEmbeddingSiteWindow.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIDOMEventListener.h"
-#include "nsIObserver.h"
 #include "nsString.h"
 #include "nsIObserverService.h"
 #include "nsWeakReference.h"
@@ -36,8 +35,7 @@ class WebBrowserChrome : public nsIWebBrowserChrome,
                          public nsIEmbeddingSiteWindow,
                          public nsIInterfaceRequestor,
                          public nsIDOMEventListener,
-                         public nsSupportsWeakReference,
-                         public nsIObserver
+                         public nsSupportsWeakReference
 {
 public:
   NS_DECL_ISUPPORTS
@@ -47,7 +45,6 @@ public:
   NS_DECL_NSIEMBEDDINGSITEWINDOW
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIDOMEVENTLISTENER
-  NS_DECL_NSIOBSERVER
 
   WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener);
 
@@ -67,8 +64,6 @@ private:
   nsresult GetDocShellPtr(nsIDocShell **aDocShell);
   nsresult GetDocumentPtr(mozilla::dom::Document **aDocument);
   nsresult GetHttpUserAgent(nsIRequest* request, nsAString& aHttpUserAgent);
-  nsresult AddUserAgentObserver(nsIRequest* request);
-  nsresult RemoveUserAgentObserver(nsIRequest* request);
 
   void SendScroll();
 
@@ -83,11 +78,9 @@ private:
   nsCString mLastLocation;
   bool mFirstPaint;
   nsIntPoint mScrollOffset;
-  nsCOMPtr<nsIObserverService> mObserverService;
   nsIEmbedBrowserChromeListener* mListener;
   nsString mTitle;
   RefPtr<mozilla::embedlite::BrowserChildHelper> mHelper;
-  RefPtr<nsIRequest> mRequest;
 };
 
 #endif /* Header guard */

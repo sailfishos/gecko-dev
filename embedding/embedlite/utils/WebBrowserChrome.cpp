@@ -24,7 +24,6 @@
 #include "nsIBaseWindow.h"
 #include "nsIMultiPartChannel.h"
 #include "nsIHttpProtocolHandler.h"
-#include "nsIObserver.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "mozilla/dom/EventTarget.h"
 #include "BrowserChildHelper.h"
@@ -77,7 +76,6 @@ WebBrowserChrome::WebBrowserChrome(nsIEmbedBrowserChromeListener* aListener)
   , mFirstPaint(false)
   , mScrollOffset(0,0)
   , mListener(aListener)
-  , mRequest(nullptr)
 {
   LOGT();
 }
@@ -93,8 +91,7 @@ NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIInterfaceRequestor,
                   nsIEmbeddingSiteWindow,
                   nsIWebProgressListener,
-                  nsISupportsWeakReference,
-                  nsIObserver)
+                  nsISupportsWeakReference)
 
 NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstancePtr)
 {
@@ -256,12 +253,16 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
   }
 
   if (progressStateFlags & nsIWebProgressListener::STATE_START && progressStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT) {
-    Unused << AddUserAgentObserver(request);
     mListener->OnLoadStarted(mLastLocation.get());
   }
   if (progressStateFlags & nsIWebProgressListener::STATE_STOP && progressStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT) {
-    Unused << RemoveUserAgentObserver(request);
     mListener->OnLoadFinished();
+    nsAutoString httpUserAgent;
+    nsresult rv = GetHttpUserAgent(request, httpUserAgent);
+    if (NS_SUCCEEDED(rv) && !httpUserAgent.IsEmpty()) {
+        // Notify listeners about the user agent string in use
+        mListener->OnHttpUserAgentUsed(httpUserAgent.get());
+    }
   }
   if (progressStateFlags & nsIWebProgressListener::STATE_REDIRECTING) {
     mListener->OnLoadRedirect();
@@ -708,56 +709,3 @@ nsresult WebBrowserChrome::GetHttpUserAgent(nsIRequest* request, nsAString& aHtt
 
   return NS_OK;
 }
-
-nsresult WebBrowserChrome::AddUserAgentObserver(nsIRequest* request)
-{
-  if (mRequest) {
-    return NS_OK;
-  }
-  mRequest = request;
-
-  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-  NS_ENSURE_STATE(os);
-
-  nsresult rv = os->AddObserver(this, NS_HTTP_ON_BEFORE_CONNECT_TOPIC, true);
-  NS_ENSURE_SUCCESS(rv, rv);
-  return NS_OK;
-}
-
-nsresult WebBrowserChrome::RemoveUserAgentObserver(nsIRequest* request)
-{
-  if (!mRequest) {
-    return NS_OK;
-  }
-  mRequest = nullptr;
-  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-  if (os) {
-    os->RemoveObserver(this, NS_HTTP_ON_BEFORE_CONNECT_TOPIC);
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-WebBrowserChrome::Observe(nsISupports* aSubject, const char* aTopic,
-                          const char16_t* aData) {
-
-  if (strcmp(aTopic, NS_HTTP_ON_BEFORE_CONNECT_TOPIC) == 0) {
-    nsCOMPtr<nsIRequest> request = do_QueryInterface(aSubject);
-    if (!request) {
-      return NS_OK;
-    }
-    if (mRequest != request) {
-      return NS_OK;
-    }
-    nsAutoString httpUserAgent;
-    nsresult rv = GetHttpUserAgent(request, httpUserAgent);
-    if (NS_FAILED(rv)) {
-      return NS_OK;
-    }
-    // Notify listeners about the user agent string in use
-    mListener->OnHttpUserAgentUsed(httpUserAgent.get());
-  }
-
-  return NS_OK;
-}
-
