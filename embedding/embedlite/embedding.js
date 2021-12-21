@@ -111,7 +111,6 @@ pref("gfx.xrender.enabled", false);
 // AZPC overrides, see EmbedLiteViewChild.cpp
 pref("embedlite.azpc.handle.viewport", true);
 pref("embedlite.azpc.handle.singletap", false);
-pref("embedlite.azpc.handle.doubletap", true);
 pref("embedlite.azpc.handle.longtap", false);
 pref("embedlite.azpc.handle.scroll", true);
 pref("embedlite.azpc.json.viewport", true);

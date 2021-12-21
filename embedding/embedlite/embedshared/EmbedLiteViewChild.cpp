@@ -70,7 +70,6 @@ static struct {
     bool viewport;
     bool scroll;
     bool singleTap;
-    bool doubleTap;
     bool longTap;
 } sHandleDefaultAZPC;
 static struct {
@@ -88,7 +87,6 @@ static void ReadAZPCPrefs()
   // Init default azpc notifications behavior
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", false);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.doubleTap, "embedlite.azpc.handle.doubletap", true);
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", false);
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
 
