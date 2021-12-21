@@ -169,8 +169,14 @@ pref("network.protocol-handler.external-default", true);      // OK to load
 pref("network.protocol-handler.warn-external-default", false); // Do not warn
 
 // This pref controls the default settings.  Per protocol settings can be used
-// to override this value.
+// to override this value. See nsDocShell::OnLinkClickSync and
+// nsExternalHelperAppService::IsExposedProtocol. Protocol preference
+// takes precedence.
 pref("network.protocol-handler.expose-all", true);
+pref("network.protocol-handler.expose.sms", false);
+pref("network.protocol-handler.expose.mailto", false);
+pref("network.protocol-handler.expose.tel", false);
+pref("network.protocol-handler.expose.geo", false);
 
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);
