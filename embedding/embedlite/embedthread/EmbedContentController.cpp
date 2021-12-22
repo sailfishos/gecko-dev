@@ -59,14 +59,14 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
     case GeckoContentController::TapType::eSingleTap:
       HandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
+    case GeckoContentController::TapType::eSecondTap:
+      [[fallthrough]];
     case GeckoContentController::TapType::eDoubleTap:
       HandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eLongTap:
       HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
-    case GeckoContentController::TapType::eSecondTap:
-      [[fallthrough]];
     case GeckoContentController::TapType::eLongTapUp:
       break;
   }

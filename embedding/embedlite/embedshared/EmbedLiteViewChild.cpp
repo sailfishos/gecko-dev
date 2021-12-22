@@ -47,6 +47,7 @@
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
 #include "nsIFrame.h"                       // for nsIFrame
 #include "FrameLayerBuilder.h"              // for FrameLayerbuilder
+#include "nsReadableUtils.h"
 
 #include <sys/syscall.h>
 
@@ -69,7 +70,6 @@ static struct {
     bool viewport;
     bool scroll;
     bool singleTap;
-    bool doubleTap;
     bool longTap;
 } sHandleDefaultAZPC;
 static struct {
@@ -86,15 +86,14 @@ static void ReadAZPCPrefs()
 {
   // Init default azpc notifications behavior
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", true);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.doubleTap, "embedlite.azpc.handle.doubletap", true);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", true);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", false);
+  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", false);
   Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
 
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", false);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", true);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", true);
   Preferences::AddBoolVarCache(&sPostAZPCAsJson.doubleTap, "embedlite.azpc.json.doubletap", false);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", false);
+  Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", true);
   Preferences::AddBoolVarCache(&sPostAZPCAsJson.scroll, "embedlite.azpc.json.scroll", false);
 
   Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
@@ -961,6 +960,31 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
   event.mTime = PR_Now() / 1000;
 }
 
+// Returns true if the element is interested in double click events
+static bool ElementSupportsDoubleClick(Element *element)
+{
+  nsAutoString attribute;
+  element->GetAttribute(NS_LITERAL_STRING("ondblclick"), attribute);
+  if (!attribute.IsEmpty()) {
+    // Element has a dblclick attribute
+    return true;
+  }
+
+  element->GetAttribute(NS_LITERAL_STRING("jsaction"), attribute);
+  if (!attribute.IsEmpty()) {
+    nsAutoString::const_iterator start, end;
+    attribute.BeginReading(start);
+    attribute.EndReading(end);
+    if (CaseInsensitiveFindInReadable(u"dblclick"_ns, start, end)) {
+      // Element has a jsaction double click handler
+      // See JB#56716 and https://github.com/google/jsaction
+      return true;
+    }
+  }
+
+  return false;
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
                                                                 const Modifiers &aModifiers,
                                                                 const ScrollableLayerGuid &aGuid,
@@ -979,16 +1003,44 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
   RefPtr<Document> document = presShell->GetDocument();
   NS_ENSURE_TRUE(document && !document->Fullscreen(), IPC_OK());
 
-  CSSRect zoomToRect = CalculateRectToZoomTo(document, cssPoint);
+  nsPoint offset;
+  nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
 
-  uint32_t presShellId;
-  ViewID viewId;
-  if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
-      document->GetDocumentElement(), &presShellId, &viewId)) {
-    ZoomToRect(presShellId, viewId, zoomToRect);
+  // Check whether the element is interested in double clicks
+  bool doubleclick = false;
+  if (sPostAZPCAsJson.doubleTap) {
+    WidgetMouseEvent hittest(true, eMouseHitTest, widget, WidgetMouseEvent::eReal);
+    hittest.mRefPoint = LayoutDeviceIntPoint::Truncate(aPoint);
+    hittest.mIgnoreRootScrollFrame = false;
+    hittest.mInputSource = MouseEvent_Binding::MOZ_SOURCE_TOUCH;
+    widget->DispatchInputEvent(&hittest);
+
+    if (EventTarget* target = hittest.GetDOMEventTarget()) {
+      if (nsCOMPtr<nsIContent> targetContent = do_QueryInterface(target)) {
+        // Check if the element or any parent element has a double click handler
+        for (Element* element = targetContent->GetAsElementOrParentElement();
+             element && !doubleclick; element = element->GetParentElement()) {
+          doubleclick = ElementSupportsDoubleClick(element);
+        }
+      }
+    }
   }
 
-  if (sPostAZPCAsJson.doubleTap) {
+  if (nsLayoutUtils::AllowZoomingForDocument(document) && !doubleclick) {
+    // Zoom in to/out from the double tapped element
+    CSSToLayoutDeviceScale scale(
+        presShell->GetPresContext()->CSSToDevPixelScale());
+    CSSPoint point = aPoint / scale;
+
+    CSSRect zoomToRect = CalculateRectToZoomTo(document, point);
+    uint32_t presShellId;
+    ViewID viewId;
+    if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
+        document->GetDocumentElement(), &presShellId, &viewId)) {
+      ZoomToRect(presShellId, viewId, zoomToRect);
+    }
+  } else {
+    // Pass the double tap on to the element
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
