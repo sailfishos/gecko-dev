@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 22 Dec 2021 21:25:52 +0200
+Subject: [PATCH] [sailfishos][gecko] Add preference to bypass CORS on
+ nsContentSecurityManager. Fixes JB#56479 OMP#JOLLA-556
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/security/nsContentSecurityManager.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/dom/security/nsContentSecurityManager.cpp b/dom/security/nsContentSecurityManager.cpp
+index 729ab6c82105..b9e1d6c8492f 100644
+--- a/dom/security/nsContentSecurityManager.cpp
++++ b/dom/security/nsContentSecurityManager.cpp
+@@ -348,8 +348,10 @@ static nsresult DoCORSChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo,
+   MOZ_RELEASE_ASSERT(aInAndOutListener,
+                      "can not perform CORS checks without a listener");
+ 
++  static bool disableCorsChecks = Preferences::GetBool("security.disable_cors_checks", false);
++
+   // No need to set up CORS if TriggeringPrincipal is the SystemPrincipal.
+-  if (aLoadInfo->TriggeringPrincipal()->IsSystemPrincipal()) {
++  if (aLoadInfo->TriggeringPrincipal()->IsSystemPrincipal() || disableCorsChecks) {
+     return NS_OK;
+   }
+ 
+-- 
+2.33.1
+
