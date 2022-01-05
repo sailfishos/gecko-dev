@@ -1,0 +1,279 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ryan Hunt <rhunt@eqrion.net>
+Date: Tue, 7 Sep 2021 21:03:48 +0000
+Subject: [PATCH] [sailfishos][gecko] Fix memory reporting of wasm memory.
+ Fixes JB#56908
+
+Backported from upstream gecko 94, bug 1615988.
+
+This commit makes several tweaks to memory reporting for wasm memory.
+  * Add a field for shared wasm memory and track it in SAB.
+    - Before this commit, shared wasm memory wouldn't report its guard pages but should.
+  * Track wasm guard pages in RuntimeSizes, not ClassInfo
+    - We want wasm guard pages to show as a top-level memory report item, similar to vmem,
+      and not under the owning array object. Displaying under the owning object bloats the
+      tree of memory usage with large amounts of memory that's only reserved and not
+      committed, which is confusing. Before this commit the class info reporter would
+      try to make this happen, but this approach was broken and the simplest fix is to
+      track this on RuntimeSizes and report the value from their.
+  * Only add wasm memory if the buffer is attached. Detached buffers may still be live
+    but no longer own the wasm heap and shouldn't report their old size.
+
+Differential Revision: https://phabricator.services.mozilla.com/D124390
+
+Upstream commit:
+https://github.com/sailfishos-mirror/gecko-dev/commit/c871f743159fbbf2e1b22d877ace761360d72c03
+---
+ js/public/MemoryMetrics.h         |  4 ++--
+ js/src/vm/ArrayBufferObject.cpp   | 14 ++++++++++----
+ js/src/vm/ArrayBufferObject.h     |  3 ++-
+ js/src/vm/JSObject.cpp            | 10 ++++++----
+ js/src/vm/JSObject.h              |  3 ++-
+ js/src/vm/MemoryMetrics.cpp       |  3 ++-
+ js/src/vm/SharedArrayObject.cpp   | 16 +++++++++++++---
+ js/src/vm/SharedArrayObject.h     |  3 ++-
+ js/xpconnect/src/XPCJSRuntime.cpp | 31 ++++++++++++++++++++-----------
+ 9 files changed, 59 insertions(+), 28 deletions(-)
+
+diff --git a/js/public/MemoryMetrics.h b/js/public/MemoryMetrics.h
+index fcdb82ca38fb..25800e8f7d36 100644
+--- a/js/public/MemoryMetrics.h
++++ b/js/public/MemoryMetrics.h
+@@ -180,6 +180,7 @@ struct ClassInfo {
+   MACRO(Objects, NonHeap, objectsNonHeapElementsNormal)       \
+   MACRO(Objects, NonHeap, objectsNonHeapElementsShared)       \
+   MACRO(Objects, NonHeap, objectsNonHeapElementsWasm)         \
++  MACRO(Objects, NonHeap, objectsNonHeapElementsWasmShared)   \
+   MACRO(Objects, NonHeap, objectsNonHeapCodeWasm)
+ 
+   ClassInfo() = default;
+@@ -213,8 +214,6 @@ struct ClassInfo {
+ 
+   FOR_EACH_SIZE(DECL_SIZE_ZERO);
+ 
+-  size_t wasmGuardPages = 0;
+-
+ #undef FOR_EACH_SIZE
+ };
+ 
+@@ -500,6 +499,7 @@ struct RuntimeSizes {
+   MACRO(_, MallocHeap, scriptData)                  \
+   MACRO(_, MallocHeap, tracelogger)                 \
+   MACRO(_, MallocHeap, wasmRuntime)                 \
++  MACRO(_, Ignore, wasmGuardPages)                  \
+   MACRO(_, MallocHeap, jitLazyLink)
+ 
+   RuntimeSizes() { allScriptSources.emplace(); }
+diff --git a/js/src/vm/ArrayBufferObject.cpp b/js/src/vm/ArrayBufferObject.cpp
+index e3f63dd32c0f..a044f1e78994 100644
+--- a/js/src/vm/ArrayBufferObject.cpp
++++ b/js/src/vm/ArrayBufferObject.cpp
+@@ -1433,7 +1433,8 @@ ArrayBufferObject::extractStructuredCloneContents(
+ 
+ /* static */
+ void ArrayBufferObject::addSizeOfExcludingThis(
+-    JSObject* obj, mozilla::MallocSizeOf mallocSizeOf, JS::ClassInfo* info) {
++    JSObject* obj, mozilla::MallocSizeOf mallocSizeOf, JS::ClassInfo* info,
++    JS::RuntimeSizes* runtimeSizes) {
+   ArrayBufferObject& buffer = AsArrayBuffer(obj);
+   switch (buffer.bufferKind()) {
+     case INLINE_DATA:
+@@ -1464,9 +1465,14 @@ void ArrayBufferObject::addSizeOfExcludingThis(
+       info->objectsNonHeapElementsNormal += buffer.byteLength();
+       break;
+     case WASM:
+-      info->objectsNonHeapElementsWasm += buffer.byteLength();
+-      MOZ_ASSERT(buffer.wasmMappedSize() >= buffer.byteLength());
+-      info->wasmGuardPages += buffer.wasmMappedSize() - buffer.byteLength();
++      if (!buffer.isDetached()) {
++        info->objectsNonHeapElementsWasm += buffer.byteLength();
++        if (runtimeSizes) {
++          MOZ_ASSERT(buffer.wasmMappedSize() >= buffer.byteLength());
++          runtimeSizes->wasmGuardPages +=
++              buffer.wasmMappedSize() - buffer.byteLength();
++        }
++      }
+       break;
+     case BAD1:
+       MOZ_CRASH("bad bufferKind()");
+diff --git a/js/src/vm/ArrayBufferObject.h b/js/src/vm/ArrayBufferObject.h
+index d8e43bc7db1e..ece05eca882d 100644
+--- a/js/src/vm/ArrayBufferObject.h
++++ b/js/src/vm/ArrayBufferObject.h
+@@ -362,7 +362,8 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared {
+ 
+   static void addSizeOfExcludingThis(JSObject* obj,
+                                      mozilla::MallocSizeOf mallocSizeOf,
+-                                     JS::ClassInfo* info);
++                                     JS::ClassInfo* info,
++                                     JS::RuntimeSizes* runtimeSizes);
+ 
+   // ArrayBufferObjects (strongly) store the first view added to them, while
+   // later views are (weakly) stored in the compartment's InnerViewTable
+diff --git a/js/src/vm/JSObject.cpp b/js/src/vm/JSObject.cpp
+index f7a35eaef4fc..13a0112e16a2 100644
+--- a/js/src/vm/JSObject.cpp
++++ b/js/src/vm/JSObject.cpp
+@@ -3776,7 +3776,8 @@ js::gc::AllocKind JSObject::allocKindForTenure(
+ }
+ 
+ void JSObject::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
+-                                      JS::ClassInfo* info) {
++                                      JS::ClassInfo* info,
++                                      JS::RuntimeSizes* runtimeSizes) {
+   if (is<NativeObject>() && as<NativeObject>().hasDynamicSlots()) {
+     info->objectsMallocHeapSlots += mallocSizeOf(as<NativeObject>().slots_);
+   }
+@@ -3818,9 +3819,10 @@ void JSObject::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
+     info->objectsMallocHeapMisc +=
+         as<PropertyIteratorObject>().sizeOfMisc(mallocSizeOf);
+   } else if (is<ArrayBufferObject>()) {
+-    ArrayBufferObject::addSizeOfExcludingThis(this, mallocSizeOf, info);
++    ArrayBufferObject::addSizeOfExcludingThis(this, mallocSizeOf, info,
++                                              runtimeSizes);
+   } else if (is<SharedArrayBufferObject>()) {
+-    SharedArrayBufferObject::addSizeOfExcludingThis(this, mallocSizeOf, info);
++    SharedArrayBufferObject::addSizeOfExcludingThis(this, mallocSizeOf, info, runtimeSizes);
+   } else if (is<WeakCollectionObject>()) {
+     info->objectsMallocHeapMisc +=
+         as<WeakCollectionObject>().sizeOfExcludingThis(mallocSizeOf);
+@@ -3872,7 +3874,7 @@ JS::ubi::Node::Size JS::ubi::Concrete<JSObject>::size(
+   }
+ 
+   JS::ClassInfo info;
+-  obj.addSizeOfExcludingThis(mallocSizeOf, &info);
++  obj.addSizeOfExcludingThis(mallocSizeOf, &info, nullptr);
+   return obj.tenuredSizeOfThis() + info.sizeOfAllThings();
+ }
+ 
+diff --git a/js/src/vm/JSObject.h b/js/src/vm/JSObject.h
+index 409a131c65c7..1dd24dce53c4 100644
+--- a/js/src/vm/JSObject.h
++++ b/js/src/vm/JSObject.h
+@@ -301,7 +301,8 @@ class JSObject : public js::gc::Cell {
+   }
+ 
+   void addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf,
+-                              JS::ClassInfo* info);
++                              JS::ClassInfo* info,
++                              JS::RuntimeSizes* runtimeSizes);
+ 
+   // We can only use addSizeOfExcludingThis on tenured objects: it assumes it
+   // can apply mallocSizeOf to bits and pieces of the object, whereas objects
+diff --git a/js/src/vm/MemoryMetrics.cpp b/js/src/vm/MemoryMetrics.cpp
+index dedb60fcffed..62276033ec37 100644
+--- a/js/src/vm/MemoryMetrics.cpp
++++ b/js/src/vm/MemoryMetrics.cpp
+@@ -341,7 +341,8 @@ static void StatsCellCallback(JSRuntime* rt, void* data, JS::GCCellPtr cellptr,
+         info.objectsGCHeap += Nursery::nurseryCellHeaderSize();
+       }
+ 
+-      obj->addSizeOfExcludingThis(rtStats->mallocSizeOf_, &info);
++      obj->addSizeOfExcludingThis(rtStats->mallocSizeOf_, &info,
++                                  &rtStats->runtime);
+ 
+       // These classes require special handling due to shared resources which
+       // we must be careful not to report twice.
+diff --git a/js/src/vm/SharedArrayObject.cpp b/js/src/vm/SharedArrayObject.cpp
+index 5a290c4112b7..869fe4ff86db 100644
+--- a/js/src/vm/SharedArrayObject.cpp
++++ b/js/src/vm/SharedArrayObject.cpp
+@@ -313,7 +313,8 @@ void SharedArrayBufferObject::Finalize(JSFreeOp* fop, JSObject* obj) {
+ 
+ /* static */
+ void SharedArrayBufferObject::addSizeOfExcludingThis(
+-    JSObject* obj, mozilla::MallocSizeOf mallocSizeOf, JS::ClassInfo* info) {
++    JSObject* obj, mozilla::MallocSizeOf mallocSizeOf, JS::ClassInfo* info,
++    JS::RuntimeSizes* runtimeSizes) {
+   // Divide the buffer size by the refcount to get the fraction of the buffer
+   // owned by this thread. It's conceivable that the refcount might change in
+   // the middle of memory reporting, in which case the amount reported for
+@@ -321,8 +322,17 @@ void SharedArrayBufferObject::addSizeOfExcludingThis(
+   // the refcount goes down). But that's unlikely and hard to avoid, so we
+   // just live with the risk.
+   const SharedArrayBufferObject& buf = obj->as<SharedArrayBufferObject>();
+-  info->objectsNonHeapElementsShared +=
+-      buf.byteLength() / buf.rawBufferObject()->refcount();
++  size_t owned = buf.byteLength() / buf.rawBufferObject()->refcount();
++  if (buf.isWasm()) {
++    info->objectsNonHeapElementsWasmShared += owned;
++    if (runtimeSizes) {
++      size_t ownedGuardPages = (buf.wasmMappedSize() - buf.byteLength()) /
++                               buf.rawBufferObject()->refcount();
++      runtimeSizes->wasmGuardPages += ownedGuardPages;
++    }
++  } else {
++    info->objectsNonHeapElementsShared += owned;
++  }
+ }
+ 
+ /* static */
+diff --git a/js/src/vm/SharedArrayObject.h b/js/src/vm/SharedArrayObject.h
+index c70fc097e29b..4f09af0c1a30 100644
+--- a/js/src/vm/SharedArrayObject.h
++++ b/js/src/vm/SharedArrayObject.h
+@@ -193,7 +193,8 @@ class SharedArrayBufferObject : public ArrayBufferObjectMaybeShared {
+ 
+   static void addSizeOfExcludingThis(JSObject* obj,
+                                      mozilla::MallocSizeOf mallocSizeOf,
+-                                     JS::ClassInfo* info);
++                                     JS::ClassInfo* info,
++                                     JS::RuntimeSizes* runtimeSizes);
+ 
+   static void copyData(Handle<SharedArrayBufferObject*> toBuffer,
+                        uint32_t toIndex,
+diff --git a/js/xpconnect/src/XPCJSRuntime.cpp b/js/xpconnect/src/XPCJSRuntime.cpp
+index d9a583a36fc1..f70c982f835e 100644
+--- a/js/xpconnect/src/XPCJSRuntime.cpp
++++ b/js/xpconnect/src/XPCJSRuntime.cpp
+@@ -1719,23 +1719,21 @@ static void ReportClassStats(const ClassInfo& classInfo, const nsACString& path,
+                  "wasm/asm.js array buffer elements allocated outside both the "
+                  "malloc heap and the GC heap.");
+   }
++  if (classInfo.objectsNonHeapElementsWasmShared > 0) {
++    REPORT_BYTES(
++        path + NS_LITERAL_CSTRING("objects/non-heap/elements/wasm-shared"),
++        KIND_NONHEAP, classInfo.objectsNonHeapElementsWasmShared,
++        "wasm/asm.js array buffer elements allocated outside both the "
++        "malloc heap and the GC heap. These elements are shared between "
++        "one or more runtimes; the reported size is divided by the "
++        "buffer's refcount.");
++  }
+ 
+   if (classInfo.objectsNonHeapCodeWasm > 0) {
+     REPORT_BYTES(path + NS_LITERAL_CSTRING("objects/non-heap/code/wasm"),
+                  KIND_NONHEAP, classInfo.objectsNonHeapCodeWasm,
+                  "AOT-compiled wasm/asm.js code.");
+   }
+-
+-  // Although wasm guard pages aren't committed in memory they can be very
+-  // large and contribute greatly to vsize and so are worth reporting.
+-  if (classInfo.wasmGuardPages > 0) {
+-    REPORT_BYTES(
+-        NS_LITERAL_CSTRING("wasm-guard-pages"), KIND_OTHER,
+-        classInfo.wasmGuardPages,
+-        "Guard pages mapped after the end of wasm memories, reserved for "
+-        "optimization tricks, but not committed and thus never contributing"
+-        " to RSS, only vsize.");
+-  }
+ }
+ 
+ static void ReportRealmStats(const JS::RealmStats& realmStats,
+@@ -2354,6 +2352,17 @@ void JSReporter::CollectReports(WindowPaths* windowPaths,
+                rtStats.runtime.wasmRuntime,
+                "The memory used for wasm runtime bookkeeping.");
+ 
++  // Although wasm guard pages aren't committed in memory they can be very
++  // large and contribute greatly to vsize and so are worth reporting.
++  if (rtStats.runtime.wasmGuardPages > 0) {
++    REPORT_BYTES(
++        NS_LITERAL_CSTRING("wasm-guard-pages"), KIND_OTHER,
++        rtStats.runtime.wasmGuardPages,
++        "Guard pages mapped after the end of wasm memories, reserved for "
++        "optimization tricks, but not committed and thus never contributing"
++        " to RSS, only vsize.");
++  }
++
+   // Report the numbers for memory outside of realms.
+ 
+   REPORT_BYTES(NS_LITERAL_CSTRING("js-main-runtime/gc-heap/unused-chunks"),
