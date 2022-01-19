@@ -465,3 +465,6 @@ pref("media.peerconnection.video.vp9_enabled", false);
 
 // Enable the Visual Viewport API
 pref("dom.visualviewport.enabled", true);
+
+// Use the platform decoder for VPX-encoded video during a WebRTC call
+pref("media.navigator.mediadatadecoder_vpx_enabled", true);
