@@ -7,15 +7,15 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  dom/media/systemservices/VideoFrameUtils.cpp  |  76 ++++--
  .../webrtc/api/video/video_frame_buffer.h     |   2 +-
  .../webrtc/modules/video_capture/BUILD.gn     |  25 +-
- .../video_capture/sfos/device_info_sfos.cc    | 142 ++++++++++
+ .../video_capture/sfos/device_info_sfos.cc    | 142 +++++++++++
  .../video_capture/sfos/device_info_sfos.h     |  49 ++++
- .../video_capture/sfos/video_capture_sfos.cc  | 244 ++++++++++++++++++
+ .../video_capture/sfos/video_capture_sfos.cc  | 239 ++++++++++++++++++
  .../video_capture/sfos/video_capture_sfos.h   |  55 ++++
  .../video_capture/video_capture_impl.cc       |  12 +
  .../video_capture/video_capture_impl.h        |   2 +
  .../video_capture_internal_impl_gn/moz.build  |  13 +-
  old-configure.in                              |  11 +
- 11 files changed, 597 insertions(+), 34 deletions(-)
+ 11 files changed, 592 insertions(+), 34 deletions(-)
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
  create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
@@ -402,10 +402,10 @@ index 000000000000..33aadc17f9c1
 +#endif // WEBRTC_MODULES_VIDEO_CAPTURE_MAIN_SOURCE_SFOS_DEVICE_INFO_SFOS_H_
 diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
 new file mode 100644
-index 000000000000..745a80d42085
+index 000000000000..94a457c7190d
 --- /dev/null
 +++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,239 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
 + * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -437,17 +437,15 @@ index 000000000000..745a80d42085
 +
 +class GeckoVideoBuffer : public I420BufferInterface {
 +public:
-+    static rtc::scoped_refptr<GeckoVideoBuffer> Create(std::shared_ptr<const gecko::camera::CameraFrame> frame, VideoCaptureCapability& cap) {
-+        return new rtc::RefCountedObject<GeckoVideoBuffer>(frame, cap);
++    static rtc::scoped_refptr<GeckoVideoBuffer> Create(std::shared_ptr<const gecko::camera::YCbCrFrame> frame) {
++        return new rtc::RefCountedObject<GeckoVideoBuffer>(frame);
 +    }
 +
-+    GeckoVideoBuffer(std::shared_ptr<const gecko::camera::CameraFrame> frame, VideoCaptureCapability& cap)
-+        : ycbcr(frame),
-+          _width(cap.width),
-+          _height(cap.height) {}
++    GeckoVideoBuffer(std::shared_ptr<const gecko::camera::YCbCrFrame> frame)
++        : ycbcr(frame) {}
 +
-+    int width () const { return _width; };
-+    int height() const { return _height; };
++    int width () const { return ycbcr->width; };
++    int height() const { return ycbcr->height; };
 +
 +    const uint8_t* DataY() const { return (const uint8_t*)ycbcr->y; };
 +    const uint8_t* DataU() const { return (const uint8_t*)ycbcr->cb; };
@@ -466,7 +464,7 @@ index 000000000000..745a80d42085
 +            return this;
 +        } else if (ycbcr->chromaStep == 2) {
 +            rtc::scoped_refptr<I420Buffer> buffer = I420Buffer::Create(
-+                    _width, _height);
++                    ycbcr->width, ycbcr->height);
 +
 +            libyuv::NV12ToI420(
 +                    (const uint8_t*)ycbcr->y, ycbcr->yStride,
@@ -474,22 +472,19 @@ index 000000000000..745a80d42085
 +                    buffer->MutableDataY(), buffer->StrideY(),
 +                    buffer->MutableDataU(), buffer->StrideU(),
 +                    buffer->MutableDataV(), buffer->StrideV(),
-+                    _width, _height);
++                    ycbcr->width, ycbcr->height);
 +            return buffer;
 +        } else {
 +            // Unsupported format
 +            rtc::scoped_refptr<I420Buffer> buffer = I420Buffer::Create(
-+                    _width, _height);
++                    ycbcr->width, ycbcr->height);
 +            I420Buffer::SetBlack(buffer.get());
 +            return buffer;
 +        }
-+
 +    }
 +
 +private:
-+    std::shared_ptr<const gecko::camera::CameraFrame> ycbcr;
-+    int _width;
-+    int _height;
++    std::shared_ptr<const gecko::camera::YCbCrFrame> ycbcr;
 +};
 +
 +rtc::scoped_refptr<VideoCaptureModule> VideoCaptureImpl::Create(
@@ -603,13 +598,13 @@ index 000000000000..745a80d42085
 +    }
 +}
 +
-+void VideoCaptureModuleSFOS::onCameraFrame(std::shared_ptr<const gecko::camera::CameraFrame> frame)
++void VideoCaptureModuleSFOS::onCameraFrame(std::shared_ptr<const gecko::camera::YCbCrFrame> frame)
 +{
-+    RTC_LOG(LS_VERBOSE) << "frame ts=" << (frame->timestampMs + _startNtpTimeMs);
++    uint64_t captureTime = frame->timestampUs / 1000 + _startNtpTimeMs;
++    RTC_LOG(LS_VERBOSE) << "frame ts=" << captureTime;
 +
-+    auto buffer = GeckoVideoBuffer::Create(frame, _requestedCapability);
-+
-+    IncomingVideoBuffer(buffer->ToI420(), frame->timestampMs + _startNtpTimeMs);
++    auto buffer = GeckoVideoBuffer::Create(frame);
++    IncomingVideoBuffer(buffer->ToI420(), captureTime);
 +}
 +
 +void VideoCaptureModuleSFOS::onCameraError(std::string errorDescription)
@@ -652,7 +647,7 @@ index 000000000000..745a80d42085
 +}  // namespace webrtc
 diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h
 new file mode 100644
-index 000000000000..ea55152504b8
+index 000000000000..f8b635ef17d0
 --- /dev/null
 +++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h
 @@ -0,0 +1,55 @@
@@ -692,7 +687,7 @@ index 000000000000..ea55152504b8
 +    virtual bool CaptureStarted();
 +    virtual int32_t CaptureSettings(VideoCaptureCapability& settings);
 +
-+    void onCameraFrame(std::shared_ptr<const gecko::camera::CameraFrame> frame);
++    void onCameraFrame(std::shared_ptr<const gecko::camera::YCbCrFrame> frame);
 +    void onCameraError(std::string errorDescription);
 +
 +    virtual void Notify(const mozilla::hal::ScreenConfiguration& aConfiguration) override;
