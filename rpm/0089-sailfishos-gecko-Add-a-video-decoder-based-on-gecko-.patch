@@ -7,12 +7,12 @@ Subject: [PATCH] [sailfishos][gecko] Add a video decoder based on gecko-camera. 
  dom/media/platforms/PDMFactory.cpp            |  13 +
  .../gecko-camera/GeckoCameraDecoderModule.cpp |  57 ++++
  .../gecko-camera/GeckoCameraDecoderModule.h   |  44 +++
- .../gecko-camera/GeckoCameraVideoDecoder.cpp  | 268 ++++++++++++++++++
- .../gecko-camera/GeckoCameraVideoDecoder.h    |  84 ++++++
+ .../gecko-camera/GeckoCameraVideoDecoder.cpp  | 299 ++++++++++++++++++
+ .../gecko-camera/GeckoCameraVideoDecoder.h    |  88 ++++++
  dom/media/platforms/moz.build                 |  11 +
  modules/libpref/init/StaticPrefList.yaml      |  13 +
  toolkit/moz.configure                         |   7 +
- 8 files changed, 497 insertions(+)
+ 8 files changed, 532 insertions(+)
  create mode 100644 dom/media/platforms/gecko-camera/GeckoCameraDecoderModule.cpp
  create mode 100644 dom/media/platforms/gecko-camera/GeckoCameraDecoderModule.h
  create mode 100644 dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
@@ -171,21 +171,24 @@ index 000000000000..cedfd3069668
 +#endif  // mozilla_GeckoCameraDecoderModule_h
 diff --git a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
 new file mode 100644
-index 000000000000..8dc4ca3f32b0
+index 000000000000..24fc6c421497
 --- /dev/null
 +++ b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
-@@ -0,0 +1,268 @@
+@@ -0,0 +1,299 @@
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* vim:set ts=2 sw=2 sts=2 et cindent: */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 +
++#include "mozilla/AbstractThread.h"
++
 +#include "GeckoCameraVideoDecoder.h"
 +#include "AnnexB.h"
 +#include "H264.h"
 +#include "MP4Decoder.h"
 +#include "VPXDecoder.h"
++#include "VideoUtils.h"
 +
 +#define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 +#define LOGEX(_this, ...) \
@@ -210,7 +213,9 @@ index 000000000000..8dc4ca3f32b0
 +                                  : 16
 +                            : 0),
 +      mIsShutDown(false),
-+      mError(false) {
++      mError(false),
++      mDecodeTimer(new MediaTimer()),
++      mCommandTaskQueue(CreateMediaDecodeTaskQueue("GeckoCameraVideoDecoder")) {
 +  MOZ_COUNT_CTOR(GeckoCameraVideoDecoder);
 +  LOG("GeckoCameraVideoDecoder - mMaxRefFrames=%d", mMaxRefFrames);
 +}
@@ -245,11 +250,23 @@ index 000000000000..8dc4ca3f32b0
 +  RefPtr<MediaRawData> sample = aSample;
 +  RefPtr<GeckoCameraVideoDecoder> self = this;
 +  return InvokeAsync(mTaskQueue, __func__, [self, this, sample] {
-+    RefPtr<DecodePromise> p;
-+    {
-+      p = mDecodePromise.Ensure(__func__);
-+    }
++    RefPtr<DecodePromise> p = mDecodePromise.Ensure(__func__);
++
++    // Throw an error if the decoder is blocked for more than a second.
++    const TimeDuration decodeTimeout = TimeDuration::FromMilliseconds(1000);
++    mDecodeTimer->WaitFor(decodeTimeout, __func__)
++        ->Then(
++            // To ublock decode(), drain the decoder on a separate thread from
++            // the decoder pool. gecko-camera must handle this without issue.
++            mCommandTaskQueue, __func__,
++            [self = RefPtr<GeckoCameraVideoDecoder>(this), this]() {
++              LOG("Decode is blocked for too long");
++              mError = true;
++              mDecoder->drain();
++            },
++            [] {});
 +    ProcessDecode(sample);
++    mDecodeTimer->Cancel();
 +    return p;
 +  });
 +}
@@ -277,6 +294,8 @@ index 000000000000..8dc4ca3f32b0
 +    MutexAutoLock lock(mMutex);
 +    mReorderQueue.Clear();
 +    mInputFrames.clear();
++    // Clear a decoder error that may occur during flushing.
++    mError = false;
 +    return FlushPromise::CreateAndResolve(true, __func__);
 +  });
 +}
@@ -287,8 +306,10 @@ index 000000000000..8dc4ca3f32b0
 +                 : ConversionRequired::kNeedNone;
 +}
 +
-+void GeckoCameraVideoDecoder::onDecodedFrame(gecko::camera::YCbCrFrame frame) {
-+  LOG("onDecodedFrame %llu", frame.timestampUs);
++void GeckoCameraVideoDecoder::onDecodedYCbCrFrame(const gecko::camera::YCbCrFrame *frame) {
++  MOZ_ASSERT(frame, "YCbCrFrame is null");
++
++  LOG("onDecodedFrame %llu", frame->timestampUs);
 +
 +  if (mIsShutDown) {
 +    LOG("Decoder shuts down");
@@ -298,9 +319,9 @@ index 000000000000..8dc4ca3f32b0
 +  RefPtr<MediaRawData> inputFrame;
 +  {
 +    MutexAutoLock lock(mMutex);
-+    auto iter = mInputFrames.find(frame.timestampUs);
++    auto iter = mInputFrames.find(frame->timestampUs);
 +    if (iter == mInputFrames.end()) {
-+      LOG("Couldn't find input frame with timestamp %llu", frame.timestampUs);
++      LOG("Couldn't find input frame with timestamp %llu", frame->timestampUs);
 +      return;
 +    }
 +    inputFrame = iter->second;
@@ -310,28 +331,28 @@ index 000000000000..8dc4ca3f32b0
 +
 +  VideoData::YCbCrBuffer buffer;
 +  // Y plane.
-+  buffer.mPlanes[0].mData = const_cast<uint8_t*>(frame.y);
-+  buffer.mPlanes[0].mStride = frame.yStride;
-+  buffer.mPlanes[0].mWidth = frame.width;
-+  buffer.mPlanes[0].mHeight = frame.height;
++  buffer.mPlanes[0].mData = const_cast<uint8_t*>(frame->y);
++  buffer.mPlanes[0].mStride = frame->yStride;
++  buffer.mPlanes[0].mWidth = frame->width;
++  buffer.mPlanes[0].mHeight = frame->height;
 +  buffer.mPlanes[0].mOffset = 0;
 +  buffer.mPlanes[0].mSkip = 0;
 +  // Cb plane.
-+  buffer.mPlanes[1].mData = const_cast<uint8_t*>(frame.cb);
-+  buffer.mPlanes[1].mStride = frame.cStride;
-+  buffer.mPlanes[1].mWidth = (frame.width + 1) / 2;
-+  buffer.mPlanes[1].mHeight = (frame.height + 1) / 2;
++  buffer.mPlanes[1].mData = const_cast<uint8_t*>(frame->cb);
++  buffer.mPlanes[1].mStride = frame->cStride;
++  buffer.mPlanes[1].mWidth = (frame->width + 1) / 2;
++  buffer.mPlanes[1].mHeight = (frame->height + 1) / 2;
 +  buffer.mPlanes[1].mOffset = 0;
-+  buffer.mPlanes[1].mSkip = frame.chromaStep - 1;
++  buffer.mPlanes[1].mSkip = frame->chromaStep - 1;
 +  // Cr plane.
-+  buffer.mPlanes[2].mData = const_cast<uint8_t*>(frame.cr);
-+  buffer.mPlanes[2].mStride = frame.cStride;
-+  buffer.mPlanes[2].mWidth = (frame.width + 1) / 2;
-+  buffer.mPlanes[2].mHeight = (frame.height + 1) / 2;
++  buffer.mPlanes[2].mData = const_cast<uint8_t*>(frame->cr);
++  buffer.mPlanes[2].mStride = frame->cStride;
++  buffer.mPlanes[2].mWidth = (frame->width + 1) / 2;
++  buffer.mPlanes[2].mHeight = (frame->height + 1) / 2;
 +  buffer.mPlanes[2].mOffset = 0;
-+  buffer.mPlanes[2].mSkip = frame.chromaStep - 1;
++  buffer.mPlanes[2].mSkip = frame->chromaStep - 1;
 +
-+  gfx::IntRect pictureRegion(0, 0, frame.width, frame.height);
++  gfx::IntRect pictureRegion(0, 0, frame->width, frame->height);
 +  RefPtr<MediaData> data = VideoData::CreateAndCopyData(
 +      mInfo, mImageContainer, inputFrame->mOffset,
 +      inputFrame->mTime, inputFrame->mDuration,
@@ -344,6 +365,16 @@ index 000000000000..8dc4ca3f32b0
 +
 +  MutexAutoLock lock(mMutex);
 +  mReorderQueue.Push(data);
++}
++
++void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(std::shared_ptr<gecko::camera::GraphicBuffer> buffer)
++{
++  std::shared_ptr<const gecko::camera::YCbCrFrame> frame = buffer->mapYCbCr();
++  if (frame) {
++    onDecodedYCbCrFrame(frame.get());
++  } else {
++    NS_ERROR("Couldn't map GraphicBuffer");
++  }
 +}
 +
 +void GeckoCameraVideoDecoder::onDecoderError(std::string errorDescription) {
@@ -445,10 +476,10 @@ index 000000000000..8dc4ca3f32b0
 +}  // namespace mozilla
 diff --git a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h
 new file mode 100644
-index 000000000000..3f0cce1237c0
+index 000000000000..17e26b24b705
 --- /dev/null
 +++ b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,88 @@
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* vim:set ts=2 sw=2 sts=2 et cindent: */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
@@ -465,6 +496,7 @@ index 000000000000..3f0cce1237c0
 +#include "mozilla/UniquePtr.h"
 +#include "PlatformDecoderModule.h"
 +#include "ReorderQueue.h"
++#include "MediaTimer.h"
 +
 +namespace mozilla {
 +
@@ -503,7 +535,8 @@ index 000000000000..3f0cce1237c0
 +  }
 +
 +  // VideoDecoderListener
-+  virtual void onDecodedFrame(gecko::camera::YCbCrFrame frame) override;
++  virtual void onDecodedYCbCrFrame(const gecko::camera::YCbCrFrame *frame) override;
++  virtual void onDecodedGraphicBuffer(std::shared_ptr<gecko::camera::GraphicBuffer> buffer) override;
 +  virtual void onDecoderError(std::string errorDescription) override;
 +  virtual void onDecoderEOS() override;
 +
@@ -525,6 +558,8 @@ index 000000000000..3f0cce1237c0
 +  MozPromiseHolder<DecodePromise> mDecodePromise;
 +  bool mIsShutDown;
 +  bool mError;
++  const RefPtr<MediaTimer> mDecodeTimer;
++  const RefPtr<TaskQueue> mCommandTaskQueue;
 +  std::string mErrorDescription;
 +  std::shared_ptr<gecko::codec::VideoDecoder> mDecoder;
 +  std::map<uint64_t,RefPtr<MediaRawData>> mInputFrames;
