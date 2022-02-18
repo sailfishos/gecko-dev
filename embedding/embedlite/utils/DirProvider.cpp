@@ -54,11 +54,22 @@ DirProvider::GetFile(const char* aKey, bool* aPersist,
 
   if (!strcmp(aKey, NS_USER_SEARCH_DIR_KEY)) {
     nsCOMPtr<nsIFile> file;
-    nsresult rv = NS_NewNativeLocalFile(nsDependentCString(PR_GetEnv("HOME")), true, getter_AddRefs(file));
-    if (NS_SUCCEEDED(rv)) {
-      rv = file->AppendRelativeNativePath(NS_LITERAL_CSTRING(".local/share/org.sailfishos/browser/searchEngines"));
-      if (file && NS_SUCCEEDED(rv))
-        file.forget(aResult);
+    nsresult rv;
+    if (sProfileDir) {
+      *aPersist = true;
+      rv = sProfileDir->Clone(getter_AddRefs(file));
+      if (NS_SUCCEEDED(rv)) {
+        rv = file->AppendNative(NS_LITERAL_CSTRING("searchEngines"));
+      }
+    } else {
+      rv = NS_NewNativeLocalFile(nsDependentCString(PR_GetEnv("HOME")), true, getter_AddRefs(file));
+      if (NS_SUCCEEDED(rv)) {
+        rv = file->AppendRelativeNativePath(NS_LITERAL_CSTRING(".local/share/org.sailfishos/browser/searchEngines"));
+      }
+
+    }
+    if (file && NS_SUCCEEDED(rv)) {
+      file.forget(aResult);
     }
     return rv;
   }
