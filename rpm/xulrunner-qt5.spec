@@ -20,8 +20,8 @@
 %define system_libwebp      1
 
 
-%global mozappdir     %{_libdir}/%{name}-%{milestone}
-%global mozappdirdev  %{_libdir}/%{name}-devel-%{milestone}
+%global mozappdir     %{_libdir}/%{name}-%{greversion}
+%global mozappdirdev  %{_libdir}/%{name}-devel-%{greversion}
 
 # Private/bundled libs the final package should not provide or depend on.
 %global privlibs             libfreebl3
@@ -144,6 +144,7 @@ Patch86:    0086-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
 Patch87:    0087-sailfishos-gecko-Fix-memory-reporting-of-wasm-memory.patch
 Patch88:    0088-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
 Patch89:    0089-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
+Patch90:    0090-sailfishos-gecko-Disable-debug-info-for-rust.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
@@ -449,7 +450,7 @@ echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 # Additionally we limit the memory usage during linking
 %ifarch %arm32 %arm64
 # Garbage collect on arm to reduce memory requirements, JB#55074
-echo 'FIX_LDFLAGS="-Wl,--strip-debug -Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
+echo 'FIX_LDFLAGS="-Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
 %else
 echo 'FIX_LDFLAGS="-Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
 %endif
