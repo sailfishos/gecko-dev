@@ -746,11 +746,11 @@ def main():
         # By default make does targets:
         #   artifact pre-export export compile misc libs tools check
         # For our purposes doing just "compile" suffices
-        actions.append("make -C obj-build-mer-qt-xr/toolkit/library compile")
+        actions.append("make -C obj-build-mer-qt-xr/toolkit/library/build compile")
 
     if stripping_wanted:
         log_notice("schedule libxul stripping")
-        actions.append("strip obj-build-mer-qt-xr/toolkit/library/libxul.so")
+        actions.append("strip obj-build-mer-qt-xr/toolkit/library/build/libxul.so")
 
     # Execute actions
     if not actions:
