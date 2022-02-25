@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: andrew-korolev-omp <a.korolev@omp.ru>
+Date: Fri, 25 Feb 2022 14:54:47 +0300
+Subject: [PATCH] removed setting special viewport in desktop mode
+
+---
+ dom/base/Document.cpp | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
+index 132c0ecbfdac..5ad2078ea506 100644
+--- a/dom/base/Document.cpp
++++ b/dom/base/Document.cpp
+@@ -9515,20 +9515,6 @@ nsViewportInfo Document::GetViewportInfo(const ScreenIntSize& aDisplaySize) {
+   CSSToScreenScale defaultScale =
+       layoutDeviceScale * LayoutDeviceToScreenScale(1.0);
+ 
+-  // Special behaviour for desktop mode, provided we are not on an about: page
+-  nsPIDOMWindowOuter* win = GetWindow();
+-  if (win && win->IsDesktopModeViewport() && !IsAboutPage()) {
+-    CSSCoord viewportWidth =
+-        StaticPrefs::browser_viewport_desktopWidth() / fullZoom;
+-    CSSToScreenScale scaleToFit(aDisplaySize.width / viewportWidth);
+-    float aspectRatio = (float)aDisplaySize.height / aDisplaySize.width;
+-    CSSSize viewportSize(viewportWidth, viewportWidth * aspectRatio);
+-    ScreenIntSize fakeDesktopSize = RoundedToInt(viewportSize * scaleToFit);
+-    return nsViewportInfo(fakeDesktopSize, scaleToFit,
+-                          nsViewportInfo::ZoomFlag::AllowZoom,
+-                          nsViewportInfo::ZoomBehaviour::Mobile);
+-  }
+-
+   if (!nsLayoutUtils::ShouldHandleMetaViewport(this)) {
+     return nsViewportInfo(aDisplaySize, defaultScale,
+                           nsLayoutUtils::AllowZoomingForDocument(this)
+-- 
+2.25.1
+
