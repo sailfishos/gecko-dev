@@ -1,0 +1,246 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Wed, 9 Mar 2022 22:16:56 +0000
+Subject: [PATCH] [sailfishos][gecko] Initialise
+ SVGGeometryProperty::ResolveAll parameters. JB#56892
+
+During SVG rendering HasValidDimensions() was sporadically returning
+false, causing some SVG elements not to render correctly.
+
+The problem appears to be an optimisation glitch. This change
+initialises the parameters passed by reference to
+SVGGeometryProperty::ResolveAll, so that the compiler doesn't determine
+that they may be undefined.
+---
+ dom/svg/SVGCircleElement.cpp           | 4 +++-
+ dom/svg/SVGEllipseElement.cpp          | 3 +++
+ dom/svg/SVGForeignObjectElement.cpp    | 2 ++
+ dom/svg/SVGImageElement.cpp            | 2 ++
+ dom/svg/SVGRectElement.cpp             | 5 +++++
+ layout/svg/nsSVGForeignObjectFrame.cpp | 4 ++++
+ layout/svg/nsSVGImageFrame.cpp         | 6 ++++++
+ 7 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/dom/svg/SVGCircleElement.cpp b/dom/svg/SVGCircleElement.cpp
+index 6fc8d29c2e7c..bba2a93b9a65 100644
+--- a/dom/svg/SVGCircleElement.cpp
++++ b/dom/svg/SVGCircleElement.cpp
+@@ -70,7 +70,7 @@ already_AddRefed<DOMSVGAnimatedLength> SVGCircleElement::R() {
+ 
+ /* virtual */
+ bool SVGCircleElement::HasValidDimensions() const {
+-  float r;
++  float r = 1.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::R>(this, &r);
+@@ -89,6 +89,7 @@ bool SVGCircleElement::GetGeometryBounds(
+     Rect* aBounds, const StrokeOptions& aStrokeOptions,
+     const Matrix& aToBoundsSpace, const Matrix* aToNonScalingStrokeSpace) {
+   float x, y, r;
++  x = y = r = 0.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Cx, SVGT::Cy, SVGT::R>(this, &x, &y,
+@@ -127,6 +128,7 @@ bool SVGCircleElement::GetGeometryBounds(
+ 
+ already_AddRefed<Path> SVGCircleElement::BuildPath(PathBuilder* aBuilder) {
+   float x, y, r;
++  x = y = r = 0.0f;
+   SVGGeometryProperty::ResolveAllAllowFallback<SVGT::Cx, SVGT::Cy, SVGT::R>(
+       this, &x, &y, &r);
+ 
+diff --git a/dom/svg/SVGEllipseElement.cpp b/dom/svg/SVGEllipseElement.cpp
+index f392327fe6c2..b974beef494a 100644
+--- a/dom/svg/SVGEllipseElement.cpp
++++ b/dom/svg/SVGEllipseElement.cpp
+@@ -80,6 +80,7 @@ already_AddRefed<DOMSVGAnimatedLength> SVGEllipseElement::Ry() {
+ /* virtual */
+ bool SVGEllipseElement::HasValidDimensions() const {
+   float rx, ry;
++  rx = ry = 1.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Rx, SVGT::Ry>(this, &rx, &ry);
+@@ -99,6 +100,7 @@ bool SVGEllipseElement::GetGeometryBounds(
+     Rect* aBounds, const StrokeOptions& aStrokeOptions,
+     const Matrix& aToBoundsSpace, const Matrix* aToNonScalingStrokeSpace) {
+   float x, y, rx, ry;
++  x = y = rx = ry = 0.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Cx, SVGT::Cy, SVGT::Rx, SVGT::Ry>(
+@@ -138,6 +140,7 @@ bool SVGEllipseElement::GetGeometryBounds(
+ 
+ already_AddRefed<Path> SVGEllipseElement::BuildPath(PathBuilder* aBuilder) {
+   float x, y, rx, ry;
++  x = y = rx = ry = 0.0f;
+ 
+   SVGGeometryProperty::ResolveAllAllowFallback<SVGT::Cx, SVGT::Cy, SVGT::Rx,
+                                                SVGT::Ry>(this, &x, &y, &rx,
+diff --git a/dom/svg/SVGForeignObjectElement.cpp b/dom/svg/SVGForeignObjectElement.cpp
+index cc9b800fb81c..c7ea5bc649dc 100644
+--- a/dom/svg/SVGForeignObjectElement.cpp
++++ b/dom/svg/SVGForeignObjectElement.cpp
+@@ -80,6 +80,7 @@ gfxMatrix SVGForeignObjectElement::PrependLocalTransformsTo(
+   }
+   // our 'x' and 'y' attributes:
+   float x, y;
++  x = y = 0.0f;
+ 
+   if (GetPrimaryFrame()) {
+     SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y>(this, &x, &y);
+@@ -101,6 +102,7 @@ gfxMatrix SVGForeignObjectElement::PrependLocalTransformsTo(
+ /* virtual */
+ bool SVGForeignObjectElement::HasValidDimensions() const {
+   float width, height;
++  width = height = 1.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Width, SVGT::Height>(
+diff --git a/dom/svg/SVGImageElement.cpp b/dom/svg/SVGImageElement.cpp
+index b63a3f1ac1d8..7adb6175a983 100644
+--- a/dom/svg/SVGImageElement.cpp
++++ b/dom/svg/SVGImageElement.cpp
+@@ -249,6 +249,7 @@ bool SVGImageElement::GetGeometryBounds(
+     Rect* aBounds, const StrokeOptions& aStrokeOptions,
+     const Matrix& aToBoundsSpace, const Matrix* aToNonScalingStrokeSpace) {
+   Rect rect;
++  rect.x = rect.y = rect.width = rect.height = 1.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+@@ -278,6 +279,7 @@ already_AddRefed<Path> SVGImageElement::BuildPath(PathBuilder* aBuilder) {
+ /* virtual */
+ bool SVGImageElement::HasValidDimensions() const {
+   float width, height;
++  width = height = 1.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Width, SVGT::Height>(this, &width,
+diff --git a/dom/svg/SVGRectElement.cpp b/dom/svg/SVGRectElement.cpp
+index da346c9c6785..b4679f1a8a37 100644
+--- a/dom/svg/SVGRectElement.cpp
++++ b/dom/svg/SVGRectElement.cpp
+@@ -94,6 +94,7 @@ already_AddRefed<DOMSVGAnimatedLength> SVGRectElement::Ry() {
+ /* virtual */
+ bool SVGRectElement::HasValidDimensions() const {
+   float width, height;
++  width = height = 0.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::Width, SVGT::Height>(this, &width,
+@@ -115,7 +116,9 @@ bool SVGRectElement::GetGeometryBounds(Rect* aBounds,
+                                        const Matrix& aToBoundsSpace,
+                                        const Matrix* aToNonScalingStrokeSpace) {
+   Rect rect;
++  rect.x = rect.y = rect.width = rect.height = 0.0f;
+   Float rx, ry;
++  rx = ry = 0.0f;
+ 
+   MOZ_ASSERT(GetPrimaryFrame());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height,
+@@ -169,6 +172,7 @@ bool SVGRectElement::GetGeometryBounds(Rect* aBounds,
+ 
+ void SVGRectElement::GetAsSimplePath(SimplePath* aSimplePath) {
+   float x, y, width, height, rx, ry;
++  x = y = width = height = rx = ry = 0.0f;
+ 
+   SVGGeometryProperty::ResolveAllAllowFallback<
+       SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height, SVGT::Rx, SVGT::Ry>(
+@@ -192,6 +196,7 @@ void SVGRectElement::GetAsSimplePath(SimplePath* aSimplePath) {
+ 
+ already_AddRefed<Path> SVGRectElement::BuildPath(PathBuilder* aBuilder) {
+   float x, y, width, height, rx, ry;
++  x = y = width = height = rx = ry = 0.0f;
+ 
+   SVGGeometryProperty::ResolveAllAllowFallback<
+       SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height, SVGT::Rx, SVGT::Ry>(
+diff --git a/layout/svg/nsSVGForeignObjectFrame.cpp b/layout/svg/nsSVGForeignObjectFrame.cpp
+index 31d034630595..ef3cfa2a2c64 100644
+--- a/layout/svg/nsSVGForeignObjectFrame.cpp
++++ b/layout/svg/nsSVGForeignObjectFrame.cpp
+@@ -244,6 +244,7 @@ void nsSVGForeignObjectFrame::PaintSVG(gfxContext& aContext,
+ 
+   if (StyleDisplay()->IsScrollableOverflow()) {
+     float x, y, width, height;
++    x = y = width = height = 0.0f;
+     SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width,
+                                     SVGT::Height>(
+         static_cast<SVGElement*>(GetContent()), &x, &y, &width, &height);
+@@ -294,6 +295,7 @@ nsIFrame* nsSVGForeignObjectFrame::GetFrameForPoint(const gfxPoint& aPoint) {
+   }
+ 
+   float x, y, width, height;
++  x = y = width = height = 0.0f;
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       static_cast<SVGElement*>(GetContent()), &x, &y, &width, &height);
+ 
+@@ -326,6 +328,7 @@ void nsSVGForeignObjectFrame::ReflowSVG() {
+   // correct dimensions:
+ 
+   float x, y, w, h;
++  x = y = w = h = 0.0f;
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       static_cast<SVGElement*>(GetContent()), &x, &y, &w, &h);
+ 
+@@ -442,6 +445,7 @@ SVGBBox nsSVGForeignObjectFrame::GetBBoxContribution(
+       static_cast<SVGForeignObjectElement*>(GetContent());
+ 
+   float x, y, w, h;
++  x = y = w = h = 0.0f;
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       content, &x, &y, &w, &h);
+ 
+diff --git a/layout/svg/nsSVGImageFrame.cpp b/layout/svg/nsSVGImageFrame.cpp
+index 3591144428a9..6a3832bb9d4b 100644
+--- a/layout/svg/nsSVGImageFrame.cpp
++++ b/layout/svg/nsSVGImageFrame.cpp
+@@ -191,6 +191,7 @@ void nsSVGImageFrame::OnVisibilityChange(
+ gfx::Matrix nsSVGImageFrame::GetRasterImageTransform(int32_t aNativeWidth,
+                                                      int32_t aNativeHeight) {
+   float x, y, width, height;
++  x = y = width = height = 0.0f;
+   SVGImageElement* element = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       element, &x, &y, &width, &height);
+@@ -204,6 +205,7 @@ gfx::Matrix nsSVGImageFrame::GetRasterImageTransform(int32_t aNativeWidth,
+ 
+ gfx::Matrix nsSVGImageFrame::GetVectorImageTransform() {
+   float x, y;
++  x = y = 0.0f;
+   SVGImageElement* element = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y>(element, &x, &y);
+ 
+@@ -281,6 +283,7 @@ void nsSVGImageFrame::PaintSVG(gfxContext& aContext,
+   }
+ 
+   float x, y, width, height;
++  x = y = width = height = 0.0f;
+   SVGImageElement* imgElem = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       imgElem, &x, &y, &width, &height);
+@@ -461,6 +464,7 @@ bool nsSVGImageFrame::CreateWebRenderCommands(
+   int32_t appUnitsPerCSSPixel = AppUnitsPerCSSPixel();
+ 
+   float x, y, width, height;
++  x = y = width = height = 0.0f;
+   SVGImageElement* imgElem = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       imgElem, &x, &y, &width, &height);
+@@ -636,6 +640,7 @@ nsIFrame* nsSVGImageFrame::GetFrameForPoint(const gfxPoint& aPoint) {
+   }
+ 
+   Rect rect;
++  rect.x = rect.y = rect.width = rect.height = 0.0f;
+   SVGImageElement* element = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       element, &rect.x, &rect.y, &rect.width, &rect.height);
+@@ -691,6 +696,7 @@ void nsSVGImageFrame::ReflowSVG() {
+   }
+ 
+   float x, y, width, height;
++  x = y = width = height = 0.0f;
+   SVGImageElement* element = static_cast<SVGImageElement*>(GetContent());
+   SVGGeometryProperty::ResolveAll<SVGT::X, SVGT::Y, SVGT::Width, SVGT::Height>(
+       element, &x, &y, &width, &height);
