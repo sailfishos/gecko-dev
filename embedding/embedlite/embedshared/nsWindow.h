@@ -11,6 +11,7 @@
 #include "PuppetWidgetBase.h"
 
 #include "mozilla/WidgetUtils.h"           // for InputContext
+#include <list>
 
 namespace mozilla {
 
@@ -22,6 +23,7 @@ namespace embedlite {
 
 class EmbedLiteWindowChild;
 class EmbedLiteWindowListener;
+class EmbedContentController;
 
 class nsWindow : public PuppetWidgetBase
 {
@@ -88,7 +90,8 @@ public:
   uint32_t GetUniqueID() const;
   layers::LayersId GetRootLayerId() const;
 
-  void SetContentController(mozilla::layers::GeckoContentController* aController);
+  void Activate(EmbedContentController* aController);
+  void Deactivate(EmbedContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
   void SetFirstViewCreated() { mFirstViewCreated = true; }
   bool IsFirstViewCreated() const { return mFirstViewCreated; }
@@ -116,6 +119,9 @@ private:
   bool mFirstViewCreated;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
   InputContext mInputContext;
+
+  typedef std::list<EmbedContentController *> ControllerList;
+  ControllerList mControllers;
 
   friend already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow();
   friend already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow();

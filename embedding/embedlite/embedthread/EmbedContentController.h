@@ -63,6 +63,7 @@ public:
   virtual void CancelAutoscroll(const ScrollableLayerGuid& aGuid) override;
 
   virtual void DispatchToRepaintThread(already_AddRefed<Runnable> aTask) override;
+  uint32_t GetUniqueID() const;
 
 private:
   EmbedLiteViewListener *GetListener() const;
