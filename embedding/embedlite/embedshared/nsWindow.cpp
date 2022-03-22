@@ -34,6 +34,15 @@ using namespace mozilla::layers;
 using namespace mozilla::widget;
 //using namespace mozilla::ipc;
 
+#ifdef MOZ_LOGGING
+#define LOG_CONTROLLER_STACK  \
+  if (MOZ_UNLIKELY(detail::log_test(GetEmbedCommonLog("EmbedLiteTrace"), LogLevel::Debug))) { \
+    LogControllerStack(mControllers); \
+  }
+#else // MOZ_LOGGING
+#define LOG_CONTROLLER_STACK  do {} while (0)
+#endif // MOZ_LOGGING
+
 namespace mozilla {
 namespace embedlite {
 
@@ -276,11 +285,65 @@ layers::LayersId nsWindow::GetRootLayerId() const
   return mCompositorSession ? mCompositorSession->RootLayerTreeId() : layers::LayersId{0};
 }
 
-void nsWindow::SetContentController(mozilla::layers::GeckoContentController *aController)
+#ifdef MOZ_LOGGING
+static void LogControllerStack(std::list<EmbedContentController *> &controllers)
+{
+  int pos = 0;
+  for (std::list<EmbedContentController *>::const_iterator it = controllers.begin(); it != controllers.end(); ++it) {
+    LOGT("Stack controller %d : %u", pos, (*it)->GetUniqueID());
+    ++pos;
+  }
+}
+#endif // MOZ_LOGGING
+
+inline static bool ControllersEqual(const EmbedContentController *aController1, const EmbedContentController *aController2)
+{
+  // Compare unique ids, but fallback to pointer comparison if id is zero
+  return (aController1->GetUniqueID() != 0 && (aController1->GetUniqueID() == aController2->GetUniqueID()))
+      || (aController1 == aController2);
+}
+
+void nsWindow::Activate(EmbedContentController *aController)
 {
   if (mCompositorSession) {
     mCompositorSession->SetContentController(aController);
   }
+
+  MOZ_ASSERT(aController);
+
+  // If the view is deactivated we need to reactivate the previous view's
+  // content controller, so we store the controllwers on a stack
+  if (mControllers.empty() || !ControllersEqual(aController, mControllers.back())) {
+    LOGT("Pushing content controller %u", aController->GetUniqueID());
+    mControllers.push_back(aController);
+    LOG_CONTROLLER_STACK;
+  }
+}
+
+void nsWindow::Deactivate(EmbedContentController *aController)
+{
+  if (!aController || mControllers.empty()) {
+    return;
+  }
+
+  if (ControllersEqual(aController, mControllers.back())) {
+    // The active view deactivated, so we need to restore the previous
+    // view's content controller
+    LOGT("Popping content controller %u", aController->GetUniqueID());
+    mControllers.pop_back();
+    if (mCompositorSession && !mControllers.empty()) {
+      mCompositorSession->SetContentController(mControllers.back());
+    }
+  } else {
+    // An inactive view deactivated, so we erase all instances of its
+    // content controllers from the stack
+    LOGT("Erasing content controller %u", aController->GetUniqueID());
+    mControllers.erase(std::remove_if(mControllers.begin(), mControllers.end(),
+                                      [aController](const EmbedContentController *aOther) {
+      return ControllersEqual(aController, aOther);
+    }), mControllers.end());
+  }
+  LOG_CONTROLLER_STACK;
 }
 
 RefPtr<mozilla::layers::IAPZCTreeManager> nsWindow::GetAPZCTreeManager()

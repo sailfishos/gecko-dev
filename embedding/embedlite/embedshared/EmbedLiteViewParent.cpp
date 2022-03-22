@@ -67,6 +67,10 @@ EmbedLiteViewParent::~EmbedLiteViewParent()
 {
   MOZ_COUNT_DTOR(EmbedLiteViewParent);
   LOGT("mView:%p, mCompositor:%p", mView, mCompositor.get());
+  nsWindow *window = GetWindowWidget();
+  if (window) {
+    window->Deactivate(mContentController);
+  }
   mContentController = nullptr;
   mWindow.RemoveObserver(this);
 }
@@ -75,6 +79,10 @@ void
 EmbedLiteViewParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason: %i", aWhy);
+  nsWindow *window = GetWindowWidget();
+  if (window) {
+    window->Deactivate(mContentController);
+  }
   mContentController = nullptr;
 }
 
@@ -101,7 +109,7 @@ EmbedLiteViewParent::UpdateScrollController()
 
     nsWindow *window = GetWindowWidget();
     if (window) {
-      window->SetContentController(mContentController);
+      window->Activate(mContentController);
     }
   }
 }
@@ -639,6 +647,24 @@ EmbedLiteViewParent::SetEmbedAPIView(EmbedLiteView *aView)
 {
   LOGT();
   mView = aView;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewParent::SetIsActive(bool aIsActive)
+{
+  nsWindow *window = GetWindowWidget();
+
+  if (window) {
+    if (aIsActive) {
+      if (mCompositor) {
+        window->Activate(mContentController);
+      }
+    } else {
+      window->Deactivate(mContentController);
+    }
+  }
+
   return NS_OK;
 }
 
