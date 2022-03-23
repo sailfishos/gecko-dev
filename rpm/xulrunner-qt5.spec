@@ -441,10 +441,6 @@ echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 echo "ac_add_options --host=aarch64-unknown-linux-gnu" >> "$MOZCONFIG"
 %endif
 
-%ifarch %ix86 %arm32
-echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
-%endif
-
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
