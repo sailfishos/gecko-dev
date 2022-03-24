@@ -145,6 +145,7 @@ Patch87:    0087-sailfishos-gecko-Fix-memory-reporting-of-wasm-memory.patch
 Patch88:    0088-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
 Patch89:    0089-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
 Patch90:    0090-sailfishos-gecko-Initialise-SVGGeometryProperty-Reso.patch
+Patch91:    0091-sailfishos-build-Add-support-for-aarch64-to-elfhack..patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch

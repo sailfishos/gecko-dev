@@ -1,0 +1,544 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
+Date: Wed, 29 Dec 2021 01:18:29 +0000
+Subject: [PATCH] [sailfishos][build] Add support for aarch64 to elfhack.
+ JB#57563
+
+Fixes elfhack to use 64 bit file positions, since otherwise the position
+variables overflow.
+
+Disables the elfhack tests during the build since these fail to execute
+correctly under quemu, although they run fine on real arm hardware. Note
+that the CROSS_COMPILE define isn't set because HOST is the same as
+TARGET when building using the Sailfish SDK.
+
+In addition, the following two upstream changes are applied.
+
+1. https://github.com/mozilla/gecko-dev/commit/8918f41faa3894d1872fc30be7134ff1f906dbde
+2. https://github.com/mozilla/gecko-dev/commit/523b1551b37204338f82510c9c5fdbf6730f2c16
+
+Details of these follow.
+
+commit 8918f41faa3894d1872fc30be7134ff1f906dbde
+Author: Mike Hommey <mh+mozilla@glandium.org>
+Date:   Wed Dec 29 01:18:29 2021 +0000
+
+Bug 1495733 - Use a 64-bits internal representation in elfhack. r=gsvelto
+
+Elfhack currently can't deal with files larger than 4GiB because it
+translates all ELF data structures to the 32-bits variant, even for
+64-bits ELF files. So if the original file has e.g. sections that start
+after the 4GiB boundary, they can't be represented in memory.
+
+Practically speaking, this is not causing problems, but has prevented a
+working elfhack for aarch64 because e.g. some relocation types don't fit
+in the 32-bits ELF representation.
+
+Differential Revision: https://phabricator.services.mozilla.com/D134745
+
+commit 523b1551b37204338f82510c9c5fdbf6730f2c16
+Author: Mike Hommey <mh+mozilla@glandium.org>
+Date:   Thu Dec 30 20:52:55 2021 +0000
+
+Bug 1747783 - Add support for aarch64 to elfhack. r=gsvelto
+
+Differential Revision: https://phabricator.services.mozilla.com/D134764
+---
+ build/unix/elfhack/Makefile.in |   2 +
+ build/unix/elfhack/elf.cpp     |  18 ++--
+ build/unix/elfhack/elfhack.cpp | 160 +++++++++++++++++++++++++--------
+ build/unix/elfhack/elfxx.h     |   6 +-
+ toolkit/moz.configure          |   2 +-
+ 5 files changed, 137 insertions(+), 51 deletions(-)
+
+diff --git a/build/unix/elfhack/Makefile.in b/build/unix/elfhack/Makefile.in
+index cd713093cae2..3258b5b4c982 100644
+--- a/build/unix/elfhack/Makefile.in
++++ b/build/unix/elfhack/Makefile.in
+@@ -30,6 +30,7 @@ test-ctors$(DLL_SUFFIX): DT_TYPE=INIT
+ 
+ GARBAGE += test-array$(DLL_SUFFIX) test-ctors$(DLL_SUFFIX) test-array$(DLL_SUFFIX).bak test-ctors$(DLL_SUFFIX).bak
+ 
++ifndef MOZ_EMBEDLITE
+ ifndef CROSS_COMPILE
+ ifdef COMPILE_ENVIRONMENT
+ libs:: test-array$(DLL_SUFFIX) test-ctors$(DLL_SUFFIX)
+@@ -45,3 +46,4 @@ libs:: dummy
+ GARBAGE += dummy
+ endif
+ endif
++endif
+diff --git a/build/unix/elfhack/elf.cpp b/build/unix/elfhack/elf.cpp
+index 78de2312c02b..9223d7f42ecb 100644
+--- a/build/unix/elfhack/elf.cpp
++++ b/build/unix/elfhack/elf.cpp
+@@ -94,10 +94,10 @@ void Elf_Rela_Traits::swap(T& t, R& r) {
+   r.r_addend = endian::swap(t.r_addend);
+ }
+ 
+-static const Elf32_Shdr null32_section = {0, SHT_NULL,  0, 0, 0,
++static const Elf64_Shdr null64_section = {0, SHT_NULL,  0, 0, 0,
+                                           0, SHN_UNDEF, 0, 0, 0};
+ 
+-Elf_Shdr null_section(null32_section);
++Elf_Shdr null_section(null64_section);
+ 
+ Elf_Ehdr::Elf_Ehdr(std::ifstream& file, char ei_class, char ei_data)
+     : serializable<Elf_Ehdr_Traits>(file, ei_class, ei_data),
+@@ -509,7 +509,7 @@ ElfSection::ElfSection(Elf_Shdr& s, std::ifstream* file, Elf* parent)
+     if (!data) {
+       throw std::runtime_error("Could not malloc ElfSection data");
+     }
+-    int pos = file->tellg();
++    int64_t pos = file->tellg();
+     file->seekg(shdr.sh_offset);
+     file->read(data, shdr.sh_size);
+     file->seekg(pos);
+@@ -534,7 +534,7 @@ ElfSection::ElfSection(Elf_Shdr& s, std::ifstream* file, Elf* parent)
+ }
+ 
+ unsigned int ElfSection::getAddr() {
+-  if (shdr.sh_addr != (Elf32_Word)-1) return shdr.sh_addr;
++  if (shdr.sh_addr != (Elf64_Addr)-1) return shdr.sh_addr;
+ 
+   // It should be safe to adjust sh_addr for all allocated sections that
+   // are neither SHT_NOBITS nor SHT_PROGBITS
+@@ -550,7 +550,7 @@ unsigned int ElfSection::getAddr() {
+ }
+ 
+ unsigned int ElfSection::getOffset() {
+-  if (shdr.sh_offset != (Elf32_Word)-1) return shdr.sh_offset;
++  if (shdr.sh_offset != (Elf64_Off)-1) return shdr.sh_offset;
+ 
+   if (previous == nullptr) return (shdr.sh_offset = 0);
+ 
+@@ -600,9 +600,9 @@ int ElfSection::getIndex() {
+ 
+ Elf_Shdr& ElfSection::getShdr() {
+   getOffset();
+-  if (shdr.sh_link == (Elf32_Word)-1)
++  if (shdr.sh_link == (Elf64_Word)-1)
+     shdr.sh_link = getLink() ? getLink()->getIndex() : 0;
+-  if (shdr.sh_info == (Elf32_Word)-1)
++  if (shdr.sh_info == (Elf64_Word)-1)
+     shdr.sh_info = ((getType() == SHT_REL) || (getType() == SHT_RELA))
+                        ? (getInfo().section ? getInfo().section->getIndex() : 0)
+                        : getInfo().index;
+@@ -722,7 +722,7 @@ bool ElfDynamic_Section::setValueForType(unsigned int tag, ElfValue* val) {
+ ElfDynamic_Section::ElfDynamic_Section(Elf_Shdr& s, std::ifstream* file,
+                                        Elf* parent)
+     : ElfSection(s, file, parent) {
+-  int pos = file->tellg();
++  int64_t pos = file->tellg();
+   dyns.resize(s.sh_size / s.sh_entsize);
+   file->seekg(shdr.sh_offset);
+   // Here we assume tags refer to only one section (e.g. DT_RELSZ accounts
+@@ -823,7 +823,7 @@ void ElfDynamic_Section::serialize(std::ofstream& file, char ei_class,
+ ElfSymtab_Section::ElfSymtab_Section(Elf_Shdr& s, std::ifstream* file,
+                                      Elf* parent)
+     : ElfSection(s, file, parent) {
+-  int pos = file->tellg();
++  int64_t pos = file->tellg();
+   syms.resize(s.sh_size / s.sh_entsize);
+   ElfStrtab_Section* strtab = (ElfStrtab_Section*)getLink();
+   file->seekg(shdr.sh_offset);
+diff --git a/build/unix/elfhack/elfhack.cpp b/build/unix/elfhack/elfhack.cpp
+index ec01e54674b2..807c97d3f5be 100644
+--- a/build/unix/elfhack/elfhack.cpp
++++ b/build/unix/elfhack/elfhack.cpp
+@@ -108,6 +108,9 @@ class ElfRelHackCode_Section : public ElfSection {
+       case EM_ARM:
+         file += "arm";
+         break;
++      case EM_AARCH64:
++        file += "aarch64";
++        break;
+       default:
+         throw std::runtime_error("unsupported architecture");
+     }
+@@ -262,23 +265,27 @@ class ElfRelHackCode_Section : public ElfSection {
+     ElfSymtab_Section* symtab = (ElfSymtab_Section*)rel->getLink();
+     for (auto r = rel->rels.begin(); r != rel->rels.end(); ++r) {
+       ElfSection* section =
+-          symtab->syms[ELF32_R_SYM(r->r_info)].value.getSection();
++          symtab->syms[ELF64_R_SYM(r->r_info)].value.getSection();
+       add_code_section(section);
+     }
+   }
+ 
++  // TODO: sort out which non-aarch64 relocation types should be using
++  //  `value` (even though in practice it's either 0 or the same as addend)
+   class pc32_relocation {
+    public:
+-    Elf32_Addr operator()(unsigned int base_addr, Elf32_Off offset,
+-                          Elf32_Word addend, unsigned int addr) {
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
+       return addr + addend - offset - base_addr;
+     }
+   };
+ 
+   class arm_plt32_relocation {
+    public:
+-    Elf32_Addr operator()(unsigned int base_addr, Elf32_Off offset,
+-                          Elf32_Word addend, unsigned int addr) {
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
+       // We don't care about sign_extend because the only case where this is
+       // going to be used only jumps forward.
+       Elf32_Addr tmp = (Elf32_Addr)(addr - offset - base_addr) >> 2;
+@@ -289,8 +296,9 @@ class ElfRelHackCode_Section : public ElfSection {
+ 
+   class arm_thm_jump24_relocation {
+    public:
+-    Elf32_Addr operator()(unsigned int base_addr, Elf32_Off offset,
+-                          Elf32_Word addend, unsigned int addr) {
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
+       /* Follows description of b.w and bl instructions as per
+          ARM Architecture Reference Manual ARM® v7-A and ARM® v7-R edition,
+          A8.6.16 We limit ourselves to Encoding T4 of b.w and Encoding T1 of bl.
+@@ -342,19 +350,67 @@ class ElfRelHackCode_Section : public ElfSection {
+ 
+   class gotoff_relocation {
+    public:
+-    Elf32_Addr operator()(unsigned int base_addr, Elf32_Off offset,
+-                          Elf32_Word addend, unsigned int addr) {
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
+       return addr + addend;
+     }
+   };
+ 
++  template <int start, int end>
++  class abs_lo12_nc_relocation {
++   public:
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
++      // Fill the bits [end:start] of the immediate value in an ADD, LDR or STR
++      // instruction, at bits [21:10].
++      // per ARM® Architecture Reference Manual ARMv8, for ARMv8-A architecture
++      // profile C5.6.4, C5.6.83 or C5.6.178 and ELF for the ARM® 64-bit
++      // Architecture (AArch64) 4.6.6, Table 4-9.
++      Elf64_Word mask = (1 << (end + 1)) - 1;
++      return value | (((((addr + addend) & mask) >> start) & 0xfff) << 10);
++    }
++  };
++
++  class adr_prel_pg_hi21_relocation {
++   public:
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
++      // Fill the bits [32:12] of the immediate value in a ADRP instruction,
++      // at bits [23:5]+[30:29].
++      // per ARM® Architecture Reference Manual ARMv8, for ARMv8-A architecture
++      // profile C5.6.10 and ELF for the ARM® 64-bit Architecture
++      // (AArch64) 4.6.6, Table 4-9.
++      Elf64_Word imm = ((addr + addend) >> 12) - ((base_addr + offset) >> 12);
++      Elf64_Word immLo = (imm & 0x3) << 29;
++      Elf64_Word immHi = (imm & 0x1ffffc) << 3;
++      return value & 0x9f00001f | immLo | immHi;
++    }
++  };
++
++  class call26_relocation {
++   public:
++    Elf32_Addr operator()(unsigned int base_addr, Elf64_Off offset,
++                          Elf64_Sxword addend, unsigned int addr,
++                          Elf64_Word value) {
++      // Fill the bits [27:2] of the immediate value in a BL instruction,
++      // at bits [25:0].
++      // per ARM® Architecture Reference Manual ARMv8, for ARMv8-A architecture
++      // profile C5.6.26 and ELF for the ARM® 64-bit Architecture
++      // (AArch64) 4.6.6, Table 4-10.
++      return value | (((addr + addend - offset - base_addr) & 0x0ffffffc) >> 2);
++    }
++  };
++
+   template <class relocation_type>
+   void apply_relocation(ElfSection* the_code, char* base, Elf_Rel* r,
+                         unsigned int addr) {
+     relocation_type relocation;
+     Elf32_Addr value;
+     memcpy(&value, base + r->r_offset, 4);
+-    value = relocation(the_code->getAddr(), r->r_offset, value, addr);
++    value = relocation(the_code->getAddr(), r->r_offset, value, addr, value);
+     memcpy(base + r->r_offset, &value, 4);
+   }
+ 
+@@ -362,9 +418,11 @@ class ElfRelHackCode_Section : public ElfSection {
+   void apply_relocation(ElfSection* the_code, char* base, Elf_Rela* r,
+                         unsigned int addr) {
+     relocation_type relocation;
+-    Elf32_Addr value =
+-        relocation(the_code->getAddr(), r->r_offset, r->r_addend, addr);
+-    memcpy(base + r->r_offset, &value, 4);
++    Elf64_Word value;
++    memcpy(&value, base + r->r_offset, 4);
++    Elf32_Addr new_value =
++        relocation(the_code->getAddr(), r->r_offset, r->r_addend, addr, value);
++    memcpy(base + r->r_offset, &new_value, 4);
+   }
+ 
+   template <typename Rel_Type>
+@@ -376,9 +434,9 @@ class ElfRelHackCode_Section : public ElfSection {
+     for (typename std::vector<Rel_Type>::iterator r = rel->rels.begin();
+          r != rel->rels.end(); ++r) {
+       // TODO: various checks on the symbol
+-      const char* name = symtab->syms[ELF32_R_SYM(r->r_info)].name;
++      const char* name = symtab->syms[ELF64_R_SYM(r->r_info)].name;
+       unsigned int addr;
+-      if (symtab->syms[ELF32_R_SYM(r->r_info)].value.getSection() == nullptr) {
++      if (symtab->syms[ELF64_R_SYM(r->r_info)].value.getSection() == nullptr) {
+         if (strcmp(name, "relhack") == 0) {
+           addr = relhack_section.getAddr();
+         } else if (strcmp(name, "elf_header") == 0) {
+@@ -413,20 +471,21 @@ class ElfRelHackCode_Section : public ElfSection {
+         }
+       } else {
+         ElfSection* section =
+-            symtab->syms[ELF32_R_SYM(r->r_info)].value.getSection();
++            symtab->syms[ELF64_R_SYM(r->r_info)].value.getSection();
+         assert((section->getType() == SHT_PROGBITS) &&
+                (section->getFlags() & SHF_EXECINSTR));
+-        addr = symtab->syms[ELF32_R_SYM(r->r_info)].value.getValue();
++        addr = symtab->syms[ELF64_R_SYM(r->r_info)].value.getValue();
+       }
+       // Do the relocation
+ #define REL(machine, type) (EM_##machine | (R_##machine##_##type << 8))
+-      switch (elf->getMachine() | (ELF32_R_TYPE(r->r_info) << 8)) {
++      switch (elf->getMachine() | (ELF64_R_TYPE(r->r_info) << 8)) {
+         case REL(X86_64, PC32):
+         case REL(X86_64, PLT32):
+         case REL(386, PC32):
+         case REL(386, GOTPC):
+         case REL(ARM, GOTPC):
+         case REL(ARM, REL32):
++        case REL(AARCH64, PREL32):
+           apply_relocation<pc32_relocation>(the_code, buf, &*r, addr);
+           break;
+         case REL(ARM, CALL):
+@@ -442,6 +501,25 @@ class ElfRelHackCode_Section : public ElfSection {
+         case REL(ARM, GOTOFF):
+           apply_relocation<gotoff_relocation>(the_code, buf, &*r, addr);
+           break;
++        case REL(AARCH64, ADD_ABS_LO12_NC):
++          apply_relocation<abs_lo12_nc_relocation<0, 11>>(the_code, buf, &*r,
++                                                          addr);
++          break;
++        case REL(AARCH64, ADR_PREL_PG_HI21):
++          apply_relocation<adr_prel_pg_hi21_relocation>(the_code, buf, &*r,
++                                                        addr);
++          break;
++        case REL(AARCH64, LDST32_ABS_LO12_NC):
++          apply_relocation<abs_lo12_nc_relocation<2, 11>>(the_code, buf, &*r,
++                                                          addr);
++          break;
++        case REL(AARCH64, LDST64_ABS_LO12_NC):
++          apply_relocation<abs_lo12_nc_relocation<3, 11>>(the_code, buf, &*r,
++                                                          addr);
++          break;
++        case REL(AARCH64, CALL26):
++          apply_relocation<call26_relocation>(the_code, buf, &*r, addr);
++          break;
+         case REL(ARM, V4BX):
+           // Ignore R_ARM_V4BX relocations
+           break;
+@@ -503,8 +581,8 @@ void maybe_split_segment(Elf* elf, ElfSegment* segment) {
+       phdr.p_paddr = phdr.p_vaddr + segment->getVPDiff();
+       phdr.p_flags = segment->getFlags();
+       phdr.p_align = segment->getAlign();
+-      phdr.p_filesz = (unsigned int)-1;
+-      phdr.p_memsz = (unsigned int)-1;
++      phdr.p_filesz = (Elf64_Xword)-1LL;
++      phdr.p_memsz = (Elf64_Xword)-1LL;
+       ElfSegment* newSegment = new ElfSegment(&phdr);
+       elf->insertSegmentAfter(segment, newSegment);
+       for (; it != segment->end(); ++it) {
+@@ -775,23 +853,23 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+   }
+   assert(section->getType() == Rel_Type::sh_type);
+ 
+-  Elf32_Shdr relhack32_section = {
++  Elf64_Shdr relhack64_section = {
+       0,
+       SHT_PROGBITS,
+       SHF_ALLOC,
+       0,
+-      (Elf32_Off)-1,
++      (Elf64_Off)-1LL,
+       0,
+       SHN_UNDEF,
+       0,
+       Elf_RelHack::size(elf->getClass()),
+       Elf_RelHack::size(elf->getClass())};  // TODO: sh_addralign should be an
+                                             // alignment, not size
+-  Elf32_Shdr relhackcode32_section = {0,
++  Elf64_Shdr relhackcode64_section = {0,
+                                       SHT_PROGBITS,
+                                       SHF_ALLOC | SHF_EXECINSTR,
+                                       0,
+-                                      (Elf32_Off)-1,
++                                      (Elf64_Off)-1LL,
+                                       0,
+                                       SHN_UNDEF,
+                                       0,
+@@ -823,8 +901,8 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+       init_array = dyn->getSectionForType(DT_INIT_ARRAY);
+   }
+ 
+-  Elf_Shdr relhack_section(relhack32_section);
+-  Elf_Shdr relhackcode_section(relhackcode32_section);
++  Elf_Shdr relhack_section(relhack64_section);
++  Elf_Shdr relhackcode_section(relhackcode64_section);
+   ElfRelHack_Section* relhack = new ElfRelHack_Section(relhack_section);
+ 
+   ElfSymtab_Section* symtab = (ElfSymtab_Section*)section->getLink();
+@@ -838,7 +916,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+   for (typename std::vector<Rel_Type>::iterator i = section->rels.begin();
+        i != section->rels.end(); ++i) {
+     // We don't need to keep R_*_NONE relocations
+-    if (!ELF32_R_TYPE(i->r_info)) continue;
++    if (!ELF64_R_TYPE(i->r_info)) continue;
+     ElfLocation loc(i->r_offset, elf);
+     // __cxa_pure_virtual is a function used in vtables to point at pure
+     // virtual methods. The __cxa_pure_virtual function usually abort()s.
+@@ -852,7 +930,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+         // If we are statically linked to libstdc++, the
+         // __cxa_pure_virtual symbol is defined in our lib, and we
+         // have relative relocations (rel_type) for it.
+-        if (ELF32_R_TYPE(i->r_info) == rel_type) {
++        if (ELF64_R_TYPE(i->r_info) == rel_type) {
+           Elf_Addr addr(loc.getBuffer(), entry_sz, elf->getClass(),
+                         elf->getData());
+           if (addr.value == sym->value.getValue()) {
+@@ -864,8 +942,8 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+         // If we are dynamically linked to libstdc++, the
+         // __cxa_pure_virtual symbol is undefined in our lib, and we
+         // have absolute relocations (rel_type2) for it.
+-        if ((ELF32_R_TYPE(i->r_info) == rel_type2) &&
+-            (sym == &symtab->syms[ELF32_R_SYM(i->r_info)])) {
++        if ((ELF64_R_TYPE(i->r_info) == rel_type2) &&
++            (sym == &symtab->syms[ELF64_R_SYM(i->r_info)])) {
+           memset((char*)loc.getBuffer(), 0, entry_sz);
+           continue;
+         }
+@@ -877,7 +955,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+       init_array_relocs.push_back(*i);
+       init_array_insert = new_rels.size();
+     } else if (!(loc.getSection()->getFlags() & SHF_WRITE) ||
+-               (ELF32_R_TYPE(i->r_info) != rel_type)) {
++               (ELF64_R_TYPE(i->r_info) != rel_type)) {
+       // Don't pack relocations happening in non writable sections.
+       // Our injected code is likely not to be allowed to write there.
+       new_rels.push_back(*i);
+@@ -943,7 +1021,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+         // We found a hole, move the preceding entries.
+         while (off) {
+           auto& p = init_array_relocs[--off];
+-          if (ELF32_R_TYPE(p.r_info) == rel_type) {
++          if (ELF64_R_TYPE(p.r_info) == rel_type) {
+             unsigned int addend = get_addend(&p, elf);
+             p.r_offset += length;
+             set_relative_reloc(&p, elf, addend);
+@@ -972,12 +1050,12 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+       // function to be called by the injected code.
+       auto& rel = init_array_relocs[0];
+       unsigned int addend = get_addend(&rel, elf);
+-      if (ELF32_R_TYPE(rel.r_info) == rel_type) {
++      if (ELF64_R_TYPE(rel.r_info) == rel_type) {
+         original_init = addend;
+-      } else if (ELF32_R_TYPE(rel.r_info) == rel_type2) {
++      } else if (ELF64_R_TYPE(rel.r_info) == rel_type2) {
+         ElfSymtab_Section* symtab = (ElfSymtab_Section*)section->getLink();
+         original_init =
+-            symtab->syms[ELF32_R_SYM(rel.r_info)].value.getValue() + addend;
++            symtab->syms[ELF64_R_SYM(rel.r_info)].value.getValue() + addend;
+       } else {
+         fprintf(stderr,
+                 "Unsupported relocation type for DT_INIT_ARRAY's first entry. "
+@@ -1014,7 +1092,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+         symtab->grow(symtab->syms.size() * symtab->getEntSize());
+         sym_value->name =
+             ((ElfStrtab_Section*)symtab->getLink())->getStr(symbol);
+-        sym_value->info = ELF32_ST_INFO(STB_GLOBAL, STT_FUNC);
++        sym_value->info = ELF64_ST_INFO(STB_GLOBAL, STT_FUNC);
+         sym_value->other = STV_DEFAULT;
+         new (&sym_value->value) ElfLocation(nullptr, 0, ElfLocation::ABSOLUTE);
+         sym_value->size = 0;
+@@ -1040,7 +1118,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+       new_rels.emplace_back();
+       Rel_Type& rel = new_rels.back();
+       memset(&rel, 0, sizeof(rel));
+-      rel.r_info = ELF32_R_INFO(
++      rel.r_info = ELF64_R_INFO(
+           std::distance(symtab->syms.begin(),
+                         std::vector<Elf_SymValue>::iterator(symbol)),
+           rel_type2);
+@@ -1174,7 +1252,7 @@ int do_relocation_section(Elf* elf, unsigned int rel_type,
+     // by transforming its relocation into a relative one pointing to the
+     // address of the injected code.
+     Rel_Type* rel = &section->rels[init_array_insert];
+-    rel->r_info = ELF32_R_INFO(0, rel_type);  // Set as a relative relocation
++    rel->r_info = ELF64_R_INFO(0, rel_type);  // Set as a relative relocation
+     set_relative_reloc(rel, elf, init->getValue());
+   } else if (!dyn->setValueForType(DT_INIT, init)) {
+     fprintf(stderr, "Can't grow .dynamic section to set DT_INIT. Skipping\n");
+@@ -1227,6 +1305,12 @@ void do_file(const char* name, bool backup = false, bool force = false) {
+       exit = do_relocation_section<Elf_Rel>(&elf, R_ARM_RELATIVE, R_ARM_ABS32,
+                                             force);
+       break;
++    case EM_AARCH64:
++      exit = do_relocation_section<Elf_Rela>(&elf, R_AARCH64_RELATIVE,
++                                             R_AARCH64_ABS64, force);
++      break;
++    default:
++      throw std::runtime_error("unsupported architecture");
+   }
+   if (exit == 0) {
+     if (!force && (elf.getSize() >= size)) {
+diff --git a/build/unix/elfhack/elfxx.h b/build/unix/elfhack/elfxx.h
+index 91e9bbfb837f..47114cfccf3a 100644
+--- a/build/unix/elfhack/elfxx.h
++++ b/build/unix/elfhack/elfxx.h
+@@ -175,10 +175,10 @@ class ElfEntSize : public ElfValue {
+ };
+ 
+ template <typename T>
+-class serializable : public T::Type32 {
++class serializable : public T::Type64 {
+  public:
+   serializable(){};
+-  serializable(const typename T::Type32& p) : T::Type32(p){};
++  serializable(const typename T::Type64& p) : T::Type64(p){};
+ 
+  private:
+   template <typename R>
+@@ -583,7 +583,7 @@ class ElfRel_Section : public ElfSection {
+  public:
+   ElfRel_Section(Elf_Shdr& s, std::ifstream* file, Elf* parent)
+       : ElfSection(s, file, parent) {
+-    int pos = file->tellg();
++    int64_t pos = file->tellg();
+     file->seekg(shdr.sh_offset);
+     for (unsigned int i = 0; i < s.sh_size / s.sh_entsize; i++) {
+       Rel r(*file, parent->getClass(), parent->getData());
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index d42ddd0d483c..7f3ea2319cc8 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -1079,7 +1079,7 @@ with only_when('--enable-compile-environment'):
+     @depends(host, target)
+     def has_elfhack(host, target):
+         return target.kernel == 'Linux' and host.kernel == 'Linux' and \
+-               target.cpu in ('arm', 'x86', 'x86_64')
++               target.cpu in ('arm', 'aarch64', 'x86', 'x86_64')
+ 
+     @depends('--enable-release')
+     def default_elfhack(release):
