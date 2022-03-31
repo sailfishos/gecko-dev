@@ -283,3 +283,12 @@ void EmbedContentController::DispatchToRepaintThread(already_AddRefed<Runnable> 
 {
   mUILoop->PostTask(std::move(aTask));
 }
+
+uint32_t EmbedContentController::GetUniqueID() const
+{
+  uint32_t id = 0;
+  if (mRenderFrame) {
+    mRenderFrame->GetUniqueID(& id);
+  }
+  return id;
+}

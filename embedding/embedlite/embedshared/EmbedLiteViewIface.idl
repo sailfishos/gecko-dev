@@ -40,4 +40,5 @@ interface EmbedLiteViewIface : nsISupports
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
     void SetEmbedAPIView(in EmbedLiteView aView);
+    void SetIsActive(in bool aIsActive);
 };
