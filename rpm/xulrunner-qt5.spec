@@ -146,6 +146,7 @@ Patch88:    0088-Revert-Bug-1611386-Drop-support-for-enable-system-sq.patch
 Patch89:    0089-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
 Patch90:    0090-sailfishos-gecko-Disable-debug-info-for-rust.patch
 Patch91:    0091-sailfishos-gecko-Initialise-SVGGeometryProperty-Reso.patch
+Patch92:    0092-sailfishos-build-Add-support-for-aarch64-to-elfhack..patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
@@ -439,10 +440,6 @@ echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
 
 %ifarch %arm64
 echo "ac_add_options --host=aarch64-unknown-linux-gnu" >> "$MOZCONFIG"
-%endif
-
-%ifarch %ix86 %arm32
-echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 %endif
 
 # Gecko tries to add the gre lib dir to LD_LIBRARY_PATH when loading plugin-container, 
