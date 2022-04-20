@@ -1026,7 +1026,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
     }
   }
 
-  if (nsLayoutUtils::AllowZoomingForDocument(document) && !doubleclick) {
+  /* if (nsLayoutUtils::AllowZoomingForDocument(document) && !doubleclick) {
     // Zoom in to/out from the double tapped element
     CSSToLayoutDeviceScale scale(
         presShell->GetPresContext()->CSSToDevPixelScale());
@@ -1039,12 +1039,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
         document->GetDocumentElement(), &presShellId, &viewId)) {
       ZoomToRect(presShellId, viewId, zoomToRect);
     }
-  } else {
-    // Pass the double tap on to the element
-    nsString data;
-    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
-  }
+  */
+  nsString data;
+  data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
+  mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
 
   return IPC_OK();
 }
