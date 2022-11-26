@@ -147,6 +147,7 @@ Patch89:    0089-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
 Patch90:    0090-sailfishos-gecko-Disable-debug-info-for-rust.patch
 Patch91:    0091-sailfishos-gecko-Initialise-SVGGeometryProperty-Reso.patch
 Patch92:    0092-sailfishos-build-Add-support-for-aarch64-to-elfhack..patch
+Patch93:    0093-sailfishos-gecko-Add-support-for-prefers-color-schem.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
