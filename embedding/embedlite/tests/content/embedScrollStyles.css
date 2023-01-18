@@ -110,7 +110,7 @@ textarea,
   border-style: solid;
   border-color: #7d7d7d;
   color: #414141;
-  background: initial;
+  background: white;
 }
 
 /* Selects are handled by the form helper, see bug 685197 */
@@ -128,15 +128,15 @@ button {
   border-style: solid;
   border-color: #7d7d7d;
   color: #414141;
-  background: initial;
+  background: white;
 }
 
 input[type="checkbox"] {
-  background: initial;
+  background: white;
 }
 
 input[type="radio"] {
-  background: initial;
+  background: white;
 }
 
 select {
@@ -202,7 +202,7 @@ input[type="file"]:focus > input[type="text"],
   outline: 0px !important;
   border-style: solid;
   border-color: rgb(94,128,153);
-  background: initial;
+  background: white;
 }
 
 select:not([size]):not([multiple]):focus,
@@ -215,7 +215,7 @@ button:focus {
   outline: 0px !important;
   border-style: solid;
   border-color: rgb(94,128,153);
-  background: initial;
+  background: white;
 }
 
 input[type="checkbox"]:focus,
@@ -224,7 +224,7 @@ input[type="radio"]:focus {
 }
 
 input[type="checkbox"]:focus {
-  background: initial;
+  background: white;
 }
 
 input[type="radio"]:focus {
