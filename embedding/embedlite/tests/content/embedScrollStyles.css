@@ -128,7 +128,7 @@ button {
   border-style: solid;
   border-color: #7d7d7d;
   color: #414141;
-  background: white;
+  background: #e9e9ed;
 }
 
 input[type="checkbox"] {
@@ -215,7 +215,7 @@ button:focus {
   outline: 0px !important;
   border-style: solid;
   border-color: rgb(94,128,153);
-  background: white;
+  background: #e9e9ed;
 }
 
 input[type="checkbox"]:focus,
