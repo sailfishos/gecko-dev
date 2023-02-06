@@ -357,9 +357,9 @@ ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 # Make stdc++ headers available on a fresh path to work around include_next bug JB#55058
 if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/8.3.0/ "%BUILD_DIR"/include; fi
 
-# Expose the elf32-i386 libclang.so.10 for use inside the arm target, JB#55042
+# Expose the elf32-i386 libclang.so.13 for use inside the arm target, JB#55042
 mkdir -p "%BUILD_DIR"/lib
-SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.10 "%BUILD_DIR"/lib/libclang.so.10
+SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.13 "%BUILD_DIR"/lib/
 echo "ac_add_options --with-libclang-path='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 
 # Do not build as thumb since it breaks video decoding.
@@ -373,6 +373,9 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 #echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
 #echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> "$MOZCONFIG"
 #echo "export LD=ld.gold" >> "$MOZCONFIG"
+# Silence repeating compiler warnings
+echo "export CFLAGS=\"\$CFLAGS -Wno-psabi -Wno-attributes \"" >> "$MOZCONFIG"
+echo "export CXXFLAGS=\"\$CXXFLAGS -Wno-psabi -Wno-attributes \"" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --disable-install-strip" >> "$MOZCONFIG"
 
