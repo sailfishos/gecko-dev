@@ -148,6 +148,11 @@ Patch90:    0090-sailfishos-gecko-Disable-debug-info-for-rust.patch
 Patch91:    0091-sailfishos-gecko-Initialise-SVGGeometryProperty-Reso.patch
 Patch92:    0092-sailfishos-build-Add-support-for-aarch64-to-elfhack..patch
 Patch93:    0093-sailfishos-gecko-Add-support-for-prefers-color-schem.patch
+Patch94:    0094-Bug-1750760-Create-ffmpeg59-module-for-ffmpeg5.0-r-a.patch
+Patch95:    0095-Bug-1750760-Open-libavcodec.so.59-library-and-bind-f.patch
+Patch96:    0096-Bug-1750760-Update-audio-and-video-decoders-to-ffmpe.patch
+Patch97:    0097-Bug-1761471-FFmpeg-5.0-Get-frame-color-range-and-col.patch
+Patch98:    0098-Bug-1758948-FFmpeg-Use-AVFrame-pts-instead-of-AVFram.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
