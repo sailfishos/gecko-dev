@@ -455,7 +455,7 @@ echo "ac_add_options --host=aarch64-unknown-linux-gnu" >> "$MOZCONFIG"
 # but as sailfish-browser has privileged EGID, glibc removes it for security reasons. 
 # Set ELF RPATH through LDFLAGS. Needed for plugin-container and libxul.so
 # Additionally we limit the memory usage during linking
-%ifarch %arm32 %arm64
+%ifarch %arm64
 # Garbage collect on arm to reduce memory requirements, JB#55074
 echo 'FIX_LDFLAGS="-Wl,--gc-sections -Wl,--reduce-memory-overheads -Wl,--no-keep-memory -Wl,-rpath=%{mozappdir}"' >> "${MOZCONFIG}"
 %else
