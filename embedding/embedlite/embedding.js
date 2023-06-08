@@ -468,3 +468,6 @@ pref("dom.visualviewport.enabled", true);
 
 // Use the platform decoder for VPX-encoded video during a WebRTC call
 pref("media.navigator.mediadatadecoder_vpx_enabled", true);
+
+// Support for the dialog element.
+pref("dom.dialog_element.enabled", true);
