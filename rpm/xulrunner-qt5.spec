@@ -152,6 +152,7 @@ Patch95:    0095-Bug-1750760-Open-libavcodec.so.59-library-and-bind-f.patch
 Patch96:    0096-Bug-1750760-Update-audio-and-video-decoders-to-ffmpe.patch
 Patch97:    0097-Bug-1761471-FFmpeg-5.0-Get-frame-color-range-and-col.patch
 Patch98:    0098-Bug-1758948-FFmpeg-Use-AVFrame-pts-instead-of-AVFram.patch
+Patch99:    0099-sailfishos-gecko-Add-support-for-sensors-in-Qt-layer.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
@@ -188,6 +189,7 @@ BuildRequires:  pkgconfig(libavutil)
 BuildRequires:  pkgconfig(libswresample)
 BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(Qt5Positioning)
+BuildRequires:  pkgconfig(Qt5Sensors)
 BuildRequires:  pkgconfig(contentaction5)
 BuildRequires:  pkgconfig(dconf)
 BuildRequires:  pkgconfig(geckocamera)

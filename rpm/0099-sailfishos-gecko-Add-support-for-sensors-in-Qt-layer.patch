@@ -1,0 +1,242 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matti=20Lehtim=C3=A4ki?= <matti.lehtimaki@jolla.com>
+Date: Sat, 29 Jul 2023 06:03:00 +0300
+Subject: [PATCH] [sailfishos][gecko] Add support for sensors in Qt layer.
+
+---
+ hal/moz.build        |  10 ++-
+ hal/qt/QtSensors.cpp | 178 +++++++++++++++++++++++++++++++++++++++++++
+ old-configure.in     |  12 +++
+ 3 files changed, 199 insertions(+), 1 deletion(-)
+ create mode 100644 hal/qt/QtSensors.cpp
+
+diff --git a/hal/moz.build b/hal/moz.build
+index 7ee2a9fbb81127a738b8293b05addc244fddda7d..3928e6aea89694d1327e96931f23eab6c8e53d90 100644
+--- a/hal/moz.build
++++ b/hal/moz.build
+@@ -51,9 +51,17 @@ elif CONFIG['OS_TARGET'] == 'Linux':
+     UNIFIED_SOURCES += [
+         'fallback/FallbackProcessPriority.cpp',
+         'fallback/FallbackScreenConfiguration.cpp',
+-        'fallback/FallbackSensor.cpp',
+         'fallback/FallbackVibration.cpp',
+     ]
++    if CONFIG['MOZ_ENABLE_QT5SENSORS']:
++        SOURCES += [
++            'qt/QtSensors.cpp',
++        ]
++        CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
++    else:
++        UNIFIED_SOURCES += [
++            'fallback/FallbackSensor.cpp',
++        ]
+     if CONFIG['MOZ_ENABLE_DBUS']:
+         UNIFIED_SOURCES += [
+             'linux/UPowerClient.cpp',
+diff --git a/hal/qt/QtSensors.cpp b/hal/qt/QtSensors.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..edeb00d5178f9e2f0bff5a2e36dcdf8c6e58dd4f
+--- /dev/null
++++ b/hal/qt/QtSensors.cpp
+@@ -0,0 +1,178 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "Hal.h"
++#include "HalLog.h"
++
++#include <QAccelerometer>
++#include <QGyroscope>
++#include <QLightSensor>
++#include <QProximitySensor>
++#include <QRotationSensor>
++#include <QSensor>
++
++#warning "Building QtSensors support"
++
++using namespace mozilla::hal;
++
++namespace mozilla {
++namespace hal_impl {
++
++class QSensorWrapper {
++public:
++    QSensorWrapper() : mSensor(nullptr), mCount(0) {}
++
++    ~QSensorWrapper() {
++        delete mSensor;
++    }
++
++    void AddRef() {
++        ++mCount;
++    }
++
++    void Release() {
++      unsigned long count = --mCount;
++      if (!count)
++          delete this;
++    }
++
++    QSensor *mSensor;
++
++private:
++    unsigned long mCount;
++};
++
++static QMap<int, RefPtr<QSensorWrapper>> sSensorMap;
++
++static void sensorReadingChanged(int type) {
++    QMap<int, RefPtr<QSensorWrapper>>::iterator it = sSensorMap.find(type);
++    if (it != sSensorMap.end() && it.value()) {
++        HAL_LOG("QtSensors: Found sensor (%i)", type);
++    }
++    QSensorReading *reading = it.value()->mSensor->reading();
++    nsTArray<float> values;
++
++    HAL_LOG("QtSensors: sensorReadingChanged(%i)", type);
++
++    switch ((SensorType)type) {
++    case hal::SENSOR_ACCELERATION:
++    {
++        QAccelerometerReading *accelReading = (QAccelerometerReading *)reading;
++        values.AppendElement(accelReading->x());
++        values.AppendElement(accelReading->y());
++        values.AppendElement(accelReading->z());
++        break;
++    }
++    case hal::SENSOR_GYROSCOPE:
++    {
++        QGyroscopeReading *gyroReading = (QGyroscopeReading *)reading;
++        values.AppendElement(gyroReading->x());
++        values.AppendElement(gyroReading->y());
++        values.AppendElement(gyroReading->z());
++        break;
++    }
++    case hal::SENSOR_LIGHT:
++    {
++        QLightReading *lightReading = (QLightReading *)reading;
++        values.AppendElement(lightReading->lux());
++        values.AppendElement(0.0f);
++        values.AppendElement(0.0f);
++        break;
++    }
++    case hal::SENSOR_ORIENTATION:
++    {
++        QRotationReading *rotationReading = (QRotationReading *)reading;
++        values.AppendElement(rotationReading->x());
++        values.AppendElement(rotationReading->y());
++        values.AppendElement(rotationReading->z());
++        break;
++    }
++    case hal::SENSOR_PROXIMITY:
++    {
++        QProximityReading *proximityReading = (QProximityReading *)reading;
++        values.AppendElement(proximityReading->close() ? 0.0f : 5.0f);
++        values.AppendElement(0.0f);
++        values.AppendElement(5.0f);
++        break;
++    }
++    default:
++        return;
++    }
++    //hal::SensorData sdata(type, reading->timestamp(), values);
++    hal::SensorData sdata((SensorType)type, PR_Now(), values);
++    hal::NotifySensorChange(sdata);
++}
++
++void initSensorMap() {
++    QList<QByteArray> sensorTypes = QSensor::sensorTypes();
++    for (int i = 0; i < sensorTypes.size(); ++i) {
++        QSensorWrapper *sensor = new QSensorWrapper;
++        int type = -1;
++        if (sensorTypes[i] == QAccelerometer::type) {
++            sensor->mSensor = new QAccelerometer();
++            type = (int)hal::SENSOR_ACCELERATION;
++            QObject::connect(sensor->mSensor, &QSensor::readingChanged,
++                             [=](){ sensorReadingChanged((int)hal::SENSOR_ACCELERATION); });
++        } else if (sensorTypes[i] == QGyroscope::type) {
++            sensor->mSensor = new QGyroscope();
++            type = (int)hal::SENSOR_GYROSCOPE;
++            QObject::connect(sensor->mSensor, &QSensor::readingChanged,
++                             [=](){ sensorReadingChanged((int)hal::SENSOR_GYROSCOPE); });
++        } else if (sensorTypes[i] == QLightSensor::type) {
++            sensor->mSensor = new QLightSensor();
++            type = (int)hal::SENSOR_LIGHT;
++            QObject::connect(sensor->mSensor, &QSensor::readingChanged,
++                             [=](){ sensorReadingChanged((int)hal::SENSOR_LIGHT); });
++        } else if (sensorTypes[i] == QProximitySensor::type) {
++            sensor->mSensor = new QProximitySensor();
++            type = (int)hal::SENSOR_PROXIMITY;
++            QObject::connect(sensor->mSensor, &QSensor::readingChanged,
++                             [=](){ sensorReadingChanged((int)hal::SENSOR_PROXIMITY); });
++        } else if (sensorTypes[i] == QRotationSensor::type) {
++            sensor->mSensor = new QRotationSensor();
++            type = (int)hal::SENSOR_ORIENTATION;
++            QObject::connect(sensor->mSensor, &QSensor::readingChanged,
++                             [=](){ sensorReadingChanged((int)hal::SENSOR_ORIENTATION); });
++        }
++        if (type >= 0) {
++            sensor->mSensor->connectToBackend();
++            sSensorMap.insert(type, sensor);
++            HAL_LOG("QtSensors: Sensor added (%s)", sensorTypes[i].constData());
++        } else {
++            HAL_LOG("QtSensors: Sensor not supported (%s)", sensorTypes[i].constData());
++            delete sensor;
++        }
++    }
++}
++
++void EnableSensorNotifications(SensorType aSensor) {
++    HAL_LOG("QtSensors: EnableSensorNotifications (%i)", (int)aSensor);
++    if (sSensorMap.isEmpty()) {
++        initSensorMap();
++    }
++    if (!sSensorMap.isEmpty()) {
++        HAL_LOG("QtSensors: EnableSensorNotifications with sensor map (%i)", (int)aSensor);
++        QMap<int, RefPtr<QSensorWrapper>>::iterator it = sSensorMap.find((int)aSensor);
++        if (it != sSensorMap.end() && it.value()) {
++            HAL_LOG("QtSensors: Start sensor (%i)", (int)aSensor);
++            it.value()->mSensor->setDataRate(60);
++            it.value()->mSensor->start();
++        }
++    }
++}
++
++void DisableSensorNotifications(SensorType aSensor) {
++    HAL_LOG("QtSensors: DisableSensorNotifications (%i)", (int)aSensor);
++    if (!sSensorMap.isEmpty()) {
++        HAL_LOG("QtSensors: DisableSensorNotifications with sensor map (%i)", (int)aSensor);
++        QMap<int, RefPtr<QSensorWrapper>>::iterator it = sSensorMap.find((int)aSensor);
++        if (it != sSensorMap.end() && it.value()) {
++            HAL_LOG("QtSensors: Stop sensor (%i)", (int)aSensor);
++            it.value()->mSensor->stop();
++        }
++    }
++}
++
++}  // namespace hal_impl
++}  // namespace mozilla
+diff --git a/old-configure.in b/old-configure.in
+index ee41a55275864b5cb2d2cfddcfd84f6ce9d9949f..e1e0dbf1ac701e6c3b325b3db6225f9364d2c8c7 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1806,6 +1806,18 @@ then
+        AC_SUBST(MOZ_ENABLE_QT5GEOPOSITION)
+     fi
+ 
++    MOZ_ENABLE_QT5SENSORS=
++    PKG_CHECK_MODULES(_QT5SENSORS, Qt5Sensors,
++                      MOZ_ENABLE_QT5SENSORS=1,
++                      MOZ_ENABLE_QT5SENSORS=)
++    if test "$MOZ_ENABLE_QT5SENSORS"; then
++       MOZ_ENABLE_QT5SENSORS=1
++       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_QT5SENSORS_CFLAGS"
++       MOZ_QT_LIBS="$MOZ_QT_LIBS $_QT5SENSORS_LIBS"
++       AC_DEFINE(MOZ_ENABLE_QT5SENSORS)
++       AC_SUBST(MOZ_ENABLE_QT5SENSORS)
++    fi
++
+     if test "$MOZ_ENABLE_CONTENTACTION"; then
+       MOZ_ENABLE_CONTENTACTION=1
+       AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
