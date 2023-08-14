@@ -60,7 +60,8 @@ child:
     async ResumeTimeouts();
     async HandleScrollEvent(gfxRect contentRect, gfxSize scrollSize);
 
-    async UpdateFrame(RepaintRequest request) compress;
+	[Compress]
+    async UpdateFrame(RepaintRequest request);
     async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleLongTap(LayoutDevicePoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
@@ -79,7 +80,8 @@ child:
     async InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse);
     // We use a separate message for touchmove events only to apply
     // compression to them.
-    async InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse) compress;
+	[Compress]
+    async InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event, uint64_t aInputBlockId, nsEventStatus aApzResponse);
     async AddMessageListener(nsCString name);
     async RemoveMessageListener(nsCString name);
     async AddMessageListeners(nsString [] messageNames);
