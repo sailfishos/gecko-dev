@@ -1580,7 +1580,7 @@ EmbedLiteViewChild::UserActivity()
 {
   LOGT();
   if (!mIdleService) {
-    mIdleService = do_GetService("@mozilla.org/widget/idleservice;1");
+    mIdleService = do_GetService("@mozilla.org/widget/useridleservice;1");
   }
 
   if (mIdleService) {
