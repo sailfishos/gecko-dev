@@ -14,7 +14,7 @@
 #include "nsIWebNavigation.h"
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
-#include "nsIIdleServiceInternal.h"
+#include "nsIUserIdleServiceInternal.h"
 #include "BrowserChildHelper.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
@@ -243,7 +243,7 @@ private:
   EmbedLiteWindowChild *mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   RefPtr<nsWebBrowser> mWebBrowser;
-  nsCOMPtr<nsIIdleServiceInternal> mIdleService;
+  nsCOMPtr<nsIUserIdleServiceInternal> mIdleService;
   RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsPIDOMWindowOuter> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
