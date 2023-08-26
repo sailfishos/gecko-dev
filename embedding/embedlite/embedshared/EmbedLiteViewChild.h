@@ -19,6 +19,7 @@
 #include "mozilla/layers/APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
+#include "nsTHashMap.h"
 
 class nsWebBrowser;
 
@@ -255,7 +256,7 @@ private:
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
 
-  nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
+  nsTHashMap<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
 
   RefPtr<APZEventState> mAPZEventState;
   mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
