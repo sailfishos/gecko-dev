@@ -541,7 +541,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
+  Unused << SendMouseEvent(u"mousedown"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -563,7 +563,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
+  Unused << SendMouseEvent(u"mouseup"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -585,7 +585,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
+  Unused << SendMouseEvent(u"mousemove"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;

@@ -178,7 +178,7 @@ EmbedLiteAppProcessParent::OnChannelConnected(int32_t pid)
   nsCOMPtr<nsIPropertyBag2> infoService = do_GetService(NS_SYSTEMINFO_CONTRACTID);
   if (infoService) {
     int32_t cpus;
-    nsresult rv = infoService->GetPropertyAsInt32(NS_LITERAL_STRING("cpucount"), &cpus);
+    nsresult rv = infoService->GetPropertyAsInt32(u"cpucount"_ns, &cpus);
     if (NS_FAILED(rv)) {
       cpus = 1;
     }
