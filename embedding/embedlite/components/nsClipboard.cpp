@@ -15,6 +15,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIEmbedLiteJSON.h"
 #include "nsIWritablePropertyBag2.h"
+#include "nsIThread.h"
 
 using namespace mozilla;
 
