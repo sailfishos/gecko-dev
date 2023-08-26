@@ -13,12 +13,11 @@
 #include "nsIWebNavigation.h"
 #include "nsIBrowserChild.h"
 #include "nsIWidget.h"
-#include "nsIWebBrowserChrome3.h"
 #include "InputData.h"
-#include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/ContentFrameMessageManager.h"
+#include "mozilla/dom/MessageManagerCallback.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/PresShell.h"
 
@@ -53,7 +52,6 @@ class BrowserChildHelperMessageManager : public dom::ContentFrameMessageManager,
   virtual already_AddRefed<nsIDocShell> GetDocShell(
       ErrorResult& aError) override;
   virtual already_AddRefed<nsIEventTarget> GetTabEventTarget() override;
-  virtual uint64_t ChromeOuterWindowID() override;
 
   NS_FORWARD_SAFE_NSIMESSAGESENDER(mMessageManager)
 
@@ -132,8 +130,6 @@ public:
   void SetWebNavigation(nsIWebNavigation *aWebNavigation);
   void OpenIPC() { mIPCOpen = true; }
 
-  uint64_t ChromeOuterWindowID() const;
-
 protected:
   virtual ~BrowserChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
@@ -145,7 +141,6 @@ protected:
                                                 bool &aRes);
   bool HasValidInnerSize();
 
-  nsCOMPtr<nsIWebBrowserChrome3> mWebBrowserChrome;
   RefPtr<BrowserChildHelperMessageManager> mBrowserChildMessageManager;
 
 private:
