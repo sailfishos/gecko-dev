@@ -929,7 +929,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const gfxRect 
     data.AppendPrintf(", \"height\" : ");
     data.AppendFloat(scrollSize.height);
     data.AppendPrintf(" }}");
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("AZPC:ScrollDOMEvent"), data);
+    mHelper->DispatchMessageManagerMessage(u"AZPC:ScrollDOMEvent"_ns, data);
   }
   return IPC_OK();
 }
@@ -964,13 +964,13 @@ EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 static bool ElementSupportsDoubleClick(Element *element)
 {
   nsAutoString attribute;
-  element->GetAttribute(NS_LITERAL_STRING("ondblclick"), attribute);
+  element->GetAttribute(u"ondblclick"_ns, attribute);
   if (!attribute.IsEmpty()) {
     // Element has a dblclick attribute
     return true;
   }
 
-  element->GetAttribute(NS_LITERAL_STRING("jsaction"), attribute);
+  element->GetAttribute(u"jsaction"_ns, attribute);
   if (!attribute.IsEmpty()) {
     nsAutoString::const_iterator start, end;
     attribute.BeginReading(start);
@@ -1043,7 +1043,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
     // Pass the double tap on to the element
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
+    mHelper->DispatchMessageManagerMessage(u"Gesture:DoubleTap"_ns, data);
   }
 
   return IPC_OK();
@@ -1086,7 +1086,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
   if (sPostAZPCAsJson.singleTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
+    mHelper->DispatchMessageManagerMessage(u"Gesture:SingleTap"_ns, data);
   }
 
   if (sHandleDefaultAZPC.singleTap) {
@@ -1110,12 +1110,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevice
   if (sPostAZPCAsJson.longTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:LongTap"), data);
+    mHelper->DispatchMessageManagerMessage(u"Gesture:LongTap"_ns, data);
   }
 
   bool eventHandled = false;
   if (sHandleDefaultAZPC.longTap) {
-    eventHandled = RecvMouseEvent(NS_LITERAL_STRING("contextmenu"), cssPoint.x, cssPoint.y,
+    eventHandled = RecvMouseEvent(u"contextmenu"_ns, cssPoint.x, cssPoint.y,
                    2 /* Right button */,
                    1 /* Click count */,
                    0 /* Modifiers */,

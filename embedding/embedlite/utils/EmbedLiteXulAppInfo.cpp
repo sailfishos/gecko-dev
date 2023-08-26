@@ -271,7 +271,7 @@ NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
 #if defined(ACCESSIBILITY) && defined(XP_WIN)
   if (!GetAccService()) {
-    aInstantiator = NS_LITERAL_STRING("");
+    aInstantiator = u""_ns;
     return NS_OK;
   }
   nsAutoString ipClientInfo;
@@ -287,7 +287,7 @@ EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
     }
   }
 #else
-  aInstantiator = NS_LITERAL_STRING("");
+  aInstantiator = u""_ns;
 #endif
   return NS_OK;
 }
