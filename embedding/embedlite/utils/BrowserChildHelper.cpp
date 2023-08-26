@@ -707,10 +707,6 @@ void BrowserChildHelper::SetWebNavigation(nsIWebNavigation *aWebNavigation) {
   mWebNavigation = aWebNavigation;
 }
 
-uint64_t BrowserChildHelper::ChromeOuterWindowID() const {
-  return mView->GetOuterID();
-}
-
 // -- nsIBrowserChild --------------
 
 NS_IMETHODIMP
@@ -722,20 +718,6 @@ BrowserChildHelper::GetMessageManager(dom::ContentFrameMessageManager** aResult)
   }
   *aResult = nullptr;
   return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-BrowserChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
-{
-  NS_IF_ADDREF(*aWebBrowserChrome = mWebBrowserChrome);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-BrowserChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
-{
-  mWebBrowserChrome = aWebBrowserChrome;
-  return NS_OK;
 }
 
 void
@@ -860,13 +842,6 @@ already_AddRefed<nsIEventTarget>
 BrowserChildHelperMessageManager::GetTabEventTarget() {
   nsCOMPtr<nsIEventTarget> target = EventTargetFor(TaskCategory::Other);
   return target.forget();
-}
-
-uint64_t BrowserChildHelperMessageManager::ChromeOuterWindowID() {
-  if (!mBrowserChildHelper) {
-    return 0;
-  }
-  return mBrowserChildHelper->ChromeOuterWindowID();
 }
 
 nsresult BrowserChildHelperMessageManager::Dispatch(
