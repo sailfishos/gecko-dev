@@ -57,8 +57,14 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   }
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
-  Preferences::AddBoolVarCache(&mUseExternalGLContext,
-                               "embedlite.compositor.external_gl_context", false);
+
+
+  // TODO: Switch this to use a static pref
+  // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
+  // Example: https://phabricator.services.mozilla.com/D40340
+  //Preferences::AddBoolVarCache(&mUseExternalGLContext,
+  //                             "embedlite.compositor.external_gl_context", false);
+  mUseExternalGLContext = false; // "embedlite.compositor.external_gl_context"
   parentWindow->SetCompositor(this);
 
   // Post open parent?

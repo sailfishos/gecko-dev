@@ -76,7 +76,12 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t 
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {
     sPrefInitialized = true;
-    Preferences::AddBoolVarCache(&sPostAZPCAsJsonViewport, "embedlite.azpc.json.viewport", false);
+
+    // TODO: Switch this to use a static pref
+    // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
+    // Example: https://phabricator.services.mozilla.com/D40340
+    //Preferences::AddBoolVarCache(&sPostAZPCAsJsonViewport, "embedlite.azpc.json.viewport", false);
+    sPostAZPCAsJsonViewport = false; // "embedlite.azpc.json.viewport"
   }
 
   nsCOMPtr<nsIObserverService> observerService =

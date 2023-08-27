@@ -57,10 +57,15 @@ static void InitPrefs()
 {
   static bool prefsInitialized = false;
   if (!prefsInitialized) {
-    Preferences::AddBoolVarCache(&sUseExternalGLContext,
-        "embedlite.compositor.external_gl_context", false);
-    Preferences::AddBoolVarCache(&sRequestGLContextEarly,
-        "embedlite.compositor.request_external_gl_context_early", false);
+    // TODO: Switch these to use static prefs
+    // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
+    // Example: https://phabricator.services.mozilla.com/D40340
+    //Preferences::AddBoolVarCache(&sUseExternalGLContext,
+    //    "embedlite.compositor.external_gl_context", false);
+    //Preferences::AddBoolVarCache(&sRequestGLContextEarly,
+    //    "embedlite.compositor.request_external_gl_context_early", false);
+    sUseExternalGLContext = false; // "embedlite.compositor.external_gl_context"
+    sRequestGLContextEarly = false; // "embedlite.compositor.request_external_gl_context_early"
     prefsInitialized = true;
   }
 }
