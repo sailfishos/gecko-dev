@@ -84,19 +84,36 @@ static bool sAllowKeyWordURL = false;
 
 static void ReadAZPCPrefs()
 {
+  // TODO: Switch these to use static prefs
+  // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
+  // Example: https://phabricator.services.mozilla.com/D40340
+
   // Init default azpc notifications behavior
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", false);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", false);
-  Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
+  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
+  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", false);
+  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", false);
+  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
 
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", true);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", true);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.doubleTap, "embedlite.azpc.json.doubletap", false);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", true);
-  Preferences::AddBoolVarCache(&sPostAZPCAsJson.scroll, "embedlite.azpc.json.scroll", false);
+  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", true);
+  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", true);
+  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.doubleTap, "embedlite.azpc.json.doubletap", false);
+  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", true);
+  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.scroll, "embedlite.azpc.json.scroll", false);
 
-  Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
+  //Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
+
+  sHandleDefaultAZPC.viewport = true; // "embedlite.azpc.handle.viewport"
+  sHandleDefaultAZPC.singleTap = false; // "embedlite.azpc.handle.singletap"
+  sHandleDefaultAZPC.longTap = false; // "embedlite.azpc.handle.longtap"
+  sHandleDefaultAZPC.scroll = true; // "embedlite.azpc.handle.scroll"
+
+  sPostAZPCAsJson.viewport = true; // "embedlite.azpc.json.viewport"
+  sPostAZPCAsJson.singleTap = true; // "embedlite.azpc.json.singletap"
+  sPostAZPCAsJson.doubleTap = false; // "embedlite.azpc.json.doubletap"
+  sPostAZPCAsJson.longTap = true; // "embedlite.azpc.json.longtap"
+  sPostAZPCAsJson.scroll = false; // "embedlite.azpc.json.scroll"
+
+  sAllowKeyWordURL = sAllowKeyWordURL; // "keyword.enabled" (intentionally retained for clarity)
 }
 
 EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
