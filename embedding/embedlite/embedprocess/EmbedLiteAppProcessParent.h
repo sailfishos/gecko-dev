@@ -31,8 +31,6 @@ public:
   void GetPrefs(nsTArray<mozilla::dom::Pref>* prefs);
 
 protected:
-  void OnChannelConnected(int32_t pid) override;
-
   virtual mozilla::ipc::IPCResult RecvInitialized() override;
   virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
