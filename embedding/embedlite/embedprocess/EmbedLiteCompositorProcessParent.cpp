@@ -67,7 +67,7 @@ EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aT
   : CompositorBridgeParent(nullptr,
                            CSSToLayoutDeviceScale(1.0),
                            gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
-                           CompositorOptions(true, false),
+                           CompositorOptions(true, false, false),
                            true,
                            IntSize(aSurfaceWidth, aSurfaceHeight))
   , mTransport(aTransport)
