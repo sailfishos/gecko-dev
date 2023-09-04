@@ -61,8 +61,7 @@ public:
                           FrameUniformityData* aOutData) override;
   virtual void SetConfirmedTargetAPZC(const LayersId& aLayersId,
                                       const uint64_t& aInputBlockId,
-                                      const nsTArray<ScrollableLayerGuid>& aTargets) override;
-
+                                      nsTArray<ScrollableLayerGuid>&& aTargets) override;
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
 
   virtual mozilla::ipc::IPCResult RecvRemotePluginsReady() override { return IPC_OK(); }

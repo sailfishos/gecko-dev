@@ -246,7 +246,7 @@ EmbedLiteCompositorProcessParent::GetFrameUniformity(const LayersId& aLayersId,
 }
 
 void
-EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId& aLayersId, const uint64_t& aInputBlockId, nsTArray<ScrollableLayerGuid>&& aTargets)
 {
   LOGT("Implement me");
   Unused << aLayersId;
