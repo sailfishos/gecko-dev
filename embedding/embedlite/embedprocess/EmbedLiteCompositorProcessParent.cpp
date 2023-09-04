@@ -233,6 +233,19 @@ EmbedLiteCompositorProcessParent::GetAPZTestData(const LayersId &aLayersId,
 }
 
 void
+EmbedLiteCompositorProcessParent::GetFrameUniformity(const LayersId& aLayersId,
+                                                  FrameUniformityData* aOutData) {
+  MOZ_ASSERT(aLayersId.IsValid());
+  const CompositorBridgeParent::LayerTreeState* state =
+      CompositorBridgeParent::GetIndirectShadowTree(aLayersId);
+  if (!state || !state->mParent) {
+    return;
+  }
+
+  state->mParent->GetFrameUniformity(aLayersId, aOutData);
+}
+
+void
 EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
 {
   LOGT("Implement me");

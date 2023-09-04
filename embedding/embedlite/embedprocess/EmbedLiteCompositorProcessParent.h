@@ -24,7 +24,6 @@ public:
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
-  virtual mozilla::ipc::IPCResult RecvGetFrameUniformity(FrameUniformityData* aOutData) override { return IPC_OK(); }
   // FIXME/bug 774388: work out what shutdown protocol we need.
   virtual mozilla::ipc::IPCResult RecvPause() override { return IPC_OK(); }
   virtual mozilla::ipc::IPCResult RecvResume() override { return IPC_OK(); }
@@ -58,6 +57,8 @@ public:
   virtual void FlushApzRepaints(const LayersId& aLayersId) override;
   virtual void GetAPZTestData(const LayersId& aLayersId,
                               APZTestData* aOutData) override;
+  virtual void GetFrameUniformity(const LayersId& aLayersId,
+                          FrameUniformityData* aOutData) override;
   virtual void SetConfirmedTargetAPZC(const LayersId& aLayersId,
                                       const uint64_t& aInputBlockId,
                                       const nsTArray<ScrollableLayerGuid>& aTargets) override;
