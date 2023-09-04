@@ -19,9 +19,8 @@ public:
 
   static EmbedLiteAppProcessChild* GetSingleton();
 
-  bool Init(MessageLoop* aIOLoop,
-            base::ProcessId aParentPid,
-            UniquePtr<IPC::Channel> aChannel);
+  bool Init(base::ProcessId aParentPid,
+            mozilla::ipc::ScopedPort aPort);
   void InitXPCOM();
 
   struct AppInfo

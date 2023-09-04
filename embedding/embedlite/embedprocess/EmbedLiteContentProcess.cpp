@@ -38,9 +38,8 @@ EmbedLiteContentProcess::Init(int aArgc, char* aArgv[])
   (void)aArgv;
 
   LOGT();
-  mContent->Init(IOThreadChild::message_loop(),
-                 ParentPid(),
-                 IOThreadChild::TakeChannel());
+  mContent->Init(ParentPid(),
+                 IOThreadChild::TakeInitialPort());
 
   mXREEmbed.Start();
   mContent->InitXPCOM();
