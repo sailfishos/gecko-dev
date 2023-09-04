@@ -18,7 +18,7 @@ class EmbedLiteCompositorProcessParent final : public CompositorBridgeParent
 {
   friend class CompositorBridgeParent;
 
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(EmbedLiteCompositorProcessParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_DELETE_ON_MAIN_THREAD(EmbedLiteCompositorProcessParent)
 public:
   EmbedLiteCompositorProcessParent(Transport* aTransport, ProcessId aOtherProcess, int aSurfaceWidth, int aSurfaceHeight, uint32_t id);
 
