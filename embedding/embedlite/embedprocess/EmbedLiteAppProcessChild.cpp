@@ -63,9 +63,8 @@ EmbedLiteAppProcessChild::~EmbedLiteAppProcessChild()
 }
 
 bool
-EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
-                               base::ProcessId aParentPid,
-                               UniquePtr<IPC::Channel> aChannel)
+EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
+                               mozilla::ipc::ScopedPort aPort)
 {
 #ifdef MOZ_WIDGET_GTK
   // We need to pass a display down to gtk_init because it's not going to
@@ -100,10 +99,6 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
   XRE_InstallX11ErrorHandler();
 #endif
 
-#ifdef MOZ_NUWA_PROCESS
-  SetTransport(aChannel);
-#endif
-
   // Once we start sending IPC messages, we need the thread manager to be
   // initialized so we can deal with the responses. Do that here before we
   // try to construct the crash reporter.
@@ -112,7 +107,7 @@ EmbedLiteAppProcessChild::Init(MessageLoop* aIOLoop,
     return false;
   }
 
-  if (!Open(std::move(aChannel), aParentPid, aIOLoop)) {
+  if (!Open(std::move(aPort), aParentPid)) {
     return false;
   }
 
