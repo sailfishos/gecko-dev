@@ -64,8 +64,6 @@ public:
                                       nsTArray<ScrollableLayerGuid>&& aTargets) override;
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) override;
 
-  virtual mozilla::ipc::IPCResult RecvRemotePluginsReady() override { return IPC_OK(); }
-
   /**
    * A new child process has been configured to push transactions
    * directly to us.  Transport is to its thread context.
