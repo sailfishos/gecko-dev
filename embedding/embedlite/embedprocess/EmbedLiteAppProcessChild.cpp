@@ -107,7 +107,7 @@ EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
     return false;
   }
 
-  if (!Open(aPort, aParentPid)) {
+  if (!Open(std::move(aPort), aParentPid)) {
     return false;
   }
 
