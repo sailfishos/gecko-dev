@@ -1158,7 +1158,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &
        ctx.mIMEState.mEnabled, NS_ConvertUTF16toUTF8(commit).get(), NS_ConvertUTF16toUTF8(preEdit).get(),
        replacementStart, replacementLength);
 #endif
-  NS_ENSURE_TRUE(widget && ctx.mIMEState.mEnabled, IPC_OK());
+  NS_ENSURE_TRUE(widget && (ctx.mIMEState.mEnabled != IMEEnabled::Disabled), IPC_OK());
 
   if (replacementLength > 0) {
     nsEventStatus status;
