@@ -233,7 +233,7 @@ EmbedLiteCompositorProcessParent::GetAPZTestData(const LayersId &aLayersId,
 }
 
 void
-ContentCompositorBridgeParent::GetFrameUniformity(const LayersId& aLayersId,
+EmbedLiteCompositorProcessParent::GetFrameUniformity(const LayersId& aLayersId,
                                                   FrameUniformityData* aOutData) {
   MOZ_ASSERT(aLayersId.IsValid());
   const CompositorBridgeParent::LayerTreeState* state =
