@@ -215,21 +215,19 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
 
   // Ensure that opening the virtual keyboard is allowed for this specific
   // InputContext depending on the content.ime.strict.policy pref
-  if (aContext.mIMEState.mEnabled != IMEState::DISABLED &&
-      aContext.mIMEState.mEnabled != IMEState::PLUGIN &&
+  if (aContext.mIMEState.mEnabled != IMEEnabled::Disabled &&
       Preferences::GetBool("content.ime.strict_policy", false) &&
       !aAction.ContentGotFocusByTrustedCause() &&
       !aAction.UserMightRequestOpenVKB()) {
     return;
   }
 
-  IMEState::Enabled enabled = aContext.mIMEState.mEnabled;
+  IMEEnabled enabled = aContext.mIMEState.mEnabled;
 
   // Only show the virtual keyboard for plugins if mOpen is set appropriately.
   // This avoids showing it whenever a plugin is focused. Bug 747492
-  if (aContext.mIMEState.mEnabled == IMEState::PLUGIN &&
-      aContext.mIMEState.mOpen != IMEState::OPEN) {
-      enabled = IMEState::DISABLED;
+  if (aContext.mIMEState.mOpen != IMEState::OPEN) {
+      enabled = IMEEnabled::Disabled;
   }
 
   mInputContext = aContext;
@@ -255,11 +253,11 @@ EmbedLitePuppetWidget::GetInputContext()
   EmbedLiteViewChildIface* view = GetEmbedLiteChildView();
 
   if (view) {
-    int32_t enabled = IMEState::DISABLED;
+    int32_t enabled = static_cast<int32_t>(IMEEnabled::Disabled);
     int32_t open = IMEState::OPEN_STATE_NOT_SUPPORTED;
 
     view->GetInputContext(&enabled, &open);
-    mInputContext.mIMEState.mEnabled = static_cast<IMEState::Enabled>(enabled);
+    mInputContext.mIMEState.mEnabled = static_cast<IMEEnabled>(enabled);
     mInputContext.mIMEState.mOpen = static_cast<IMEState::Open>(open);
   }
 
