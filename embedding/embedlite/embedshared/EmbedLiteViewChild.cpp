@@ -314,11 +314,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   mozilla::dom::AutoNoJSAPI nojsapi;
 
-  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(mDOMWindow)->WindowUtils();
-  utils->GetOuterWindowID(&mOuterId);
-
-  EmbedLiteAppService::AppService()->RegisterView(mId);
-
   mWebNavigation = do_QueryInterface(mWebBrowser);
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
@@ -326,10 +321,14 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   mHelper->SetWebNavigation(mWebNavigation);
 
-  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
-    nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
-    MOZ_ASSERT(docShell);
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
+  MOZ_ASSERT(docShell);
 
+  docShell->GetOuterWindowID(&mOuterId);
+
+  EmbedLiteAppService::AppService()->RegisterView(mId);
+
+  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
     docShell->SetAffectPrivateSessionLifetime(true);
   }
 
