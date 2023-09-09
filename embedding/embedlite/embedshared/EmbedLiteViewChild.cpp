@@ -328,10 +328,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   EmbedLiteAppService::AppService()->RegisterView(mId);
 
-  if (chromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME) {
-    docShell->SetAffectPrivateSessionLifetime(true);
-  }
-
   mChrome->SetWebBrowser(mWebBrowser);
   rv = mWebBrowser->SetVisibility(true);
   if (NS_FAILED(rv)) {
