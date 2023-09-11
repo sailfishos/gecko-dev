@@ -603,21 +603,21 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollBy(const int &x, const int
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActive)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActive, const uint64_t& aActionId)
 {
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow, IPC_OK());
+  RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
   if (aIsActive) {
     // Ensure that the PresShell exists, otherwise focusing
     // is definitely not going to work. GetPresShell should
     // create a PresShell if one doesn't exist yet.
-    RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
     NS_ASSERTION(presShell, "Need a PresShell to activate!");
     if (presShell) {
-      mWebBrowser->FocusActivate();
+      mWebBrowser->FocusActivate(aActionId);
       LOGT("Activate browser");
     }
   } else {
-    mWebBrowser->FocusDeactivate();
+    mWebBrowser->FocusDeactivate(aActionId);
     LOGT("Deactivate browser");
   }
 
@@ -632,10 +632,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
     return IPC_OK();
   }
 
-  docShell->SetIsActive(aIsActive);
-
   mWidget->Show(aIsActive);
-  mHelper->SetParentIsActive(aIsActive);
   mWebBrowser->SetVisibility(aIsActive);
 
   if (aIsActive) {
