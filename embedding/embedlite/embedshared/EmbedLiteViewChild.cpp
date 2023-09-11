@@ -549,19 +549,19 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoBack()
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoBack(const bool& aRequireUserInteraction, const bool& aUserActivation)
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
-  mWebNavigation->GoBack();
+  mWebNavigation->GoBack(aRequireUserInteraction, aUserActivation);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoForward()
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvGoForward(const bool& aRequireUserInteraction, const bool& aUserActivation)
 {
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
-  mWebNavigation->GoForward();
+  mWebNavigation->GoForward(aRequireUserInteraction, aUserActivation);
   return IPC_OK();
 }
 
