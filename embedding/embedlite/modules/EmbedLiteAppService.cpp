@@ -169,7 +169,7 @@ EmbedLiteAppService::AddMessageListener(const char* name, nsIEmbedMessageListene
   nsDependentCString cstrname(name);
   if (!mMessageListeners.Get(cstrname, &array)) {
     array = new nsTArray<nsCOMPtr<nsIEmbedMessageListener> >();
-    mMessageListeners.Put(cstrname, array);
+    mMessageListeners.InsertOrUpdate(cstrname, array);
   }
 
   array->AppendElement(listener);

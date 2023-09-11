@@ -890,7 +890,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAsyncMessage(const nsAString &aM
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListener(const nsCString &name)
 {
   LOGT("name:%s", name.get());
-  mRegisteredMessages.Put(NS_ConvertUTF8toUTF16(name), 1);
+  mRegisteredMessages.InsertOrUpdate(NS_ConvertUTF8toUTF16(name), 1);
   return IPC_OK();
 }
 
@@ -904,7 +904,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListener(const nsCS
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvAddMessageListeners(nsTArray<nsString> &&messageNames)
 {
   for (unsigned int i = 0; i < messageNames.Length(); i++) {
-    mRegisteredMessages.Put(messageNames[i], 1);
+    mRegisteredMessages.InsertOrUpdate(messageNames[i], 1);
   }
   return IPC_OK();
 }
