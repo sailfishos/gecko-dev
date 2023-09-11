@@ -86,8 +86,8 @@ public:
   virtual void SetThrottlePainting(bool);
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
-  virtual void GoBack();
-  virtual void GoForward();
+  virtual void GoBack(bool aRequireUserInteraction, bool aUserActivation);
+  virtual void GoForward(bool aRequireUserInteraction, bool aUserActivation);
   virtual void StopLoad();
   virtual void Reload(bool hard);
   virtual void SetHttpUserAgent(const char16_t* aHttpUserAgent);
