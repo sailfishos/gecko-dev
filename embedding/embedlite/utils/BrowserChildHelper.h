@@ -172,7 +172,6 @@ private:
   const uint32_t mId;
   bool mHasValidInnerSize;
   bool mIPCOpen;
-  bool mParentIsActive;
   ScreenIntSize mInnerSize;
   bool mShouldSendWebProgressEventsToParent;
   // Whether or not this tab has siblings (other tabs in the same window).
