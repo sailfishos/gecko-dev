@@ -165,14 +165,8 @@ EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, 
 NS_IMETHODIMP
 EmbedLiteAppService::AddMessageListener(const char* name, nsIEmbedMessageListener* listener)
 {
-  nsTArray<nsCOMPtr<nsIEmbedMessageListener> >* array;
   nsDependentCString cstrname(name);
-  if (!mMessageListeners.Get(cstrname, &array)) {
-    array = new nsTArray<nsCOMPtr<nsIEmbedMessageListener> >();
-    mMessageListeners.InsertOrUpdate(cstrname, array);
-  }
-
-  array->AppendElement(listener);
+  mMessageListeners.GetOrInsertNew(cstrname)->AppendElement(listener);
 
   return NS_OK;
 }
