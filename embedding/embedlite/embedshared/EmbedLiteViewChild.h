@@ -31,6 +31,7 @@ class BrowsingContext;
 namespace layers {
 struct FrameMetrics;
 class APZEventState;
+struct ZoomTarget;
 } // namespace layers
 
 namespace embedlite {
@@ -65,7 +66,7 @@ public:
   virtual bool
   ZoomToRect(const uint32_t& aPresShellId,
              const ViewID& aViewId,
-             const CSSRect& aRect) override;
+             const ZoomTarget& aRect) override;
 
   virtual bool
   SetTargetAPZC(uint64_t aInputBlockId,

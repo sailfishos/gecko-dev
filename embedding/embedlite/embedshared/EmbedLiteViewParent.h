@@ -90,7 +90,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvZoomToRect(const uint32_t &aPresShellId,
                                                  const ViewID &aViewId,
-                                                 const CSSRect &aRect);
+                                                 const ZoomTarget &aRect);
   virtual mozilla::ipc::IPCResult RecvSetBackgroundColor(const nscolor &aColor);
   virtual mozilla::ipc::IPCResult RecvContentReceivedInputBlock(const uint64_t &aInputBlockId,
                                                                 const bool &aPreventDefault);
