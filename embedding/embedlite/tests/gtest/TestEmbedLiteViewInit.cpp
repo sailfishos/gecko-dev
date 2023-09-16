@@ -26,7 +26,7 @@ TEST(EmbedLiteViewInitTest, EmbedLiteAppCreateView)
                    getter_AddRefs(appPath));
   EXPECT_TRUE(NS_SUCCEEDED(rv));
 
-  rv = appPath->AppendNative(NS_LITERAL_CSTRING("embedLiteViewInitTest"));
+  rv = appPath->AppendNative("embedLiteViewInitTest"_ns);
   EXPECT_TRUE(NS_SUCCEEDED(rv));
 
   rv = process->Init(appPath);
