@@ -453,7 +453,7 @@ void EmbedLiteViewChild::ResetInputState()
 bool
 EmbedLiteViewChild::ZoomToRect(const uint32_t& aPresShellId,
                                const ViewID& aViewId,
-                               const CSSRect& aRect)
+                               const ZoomTarget& aRect)
 {
   return SendZoomToRect(aPresShellId, aViewId, aRect);
 }
@@ -1041,12 +1041,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
         presShell->GetPresContext()->CSSToDevPixelScale());
     CSSPoint point = aPoint / scale;
 
-    CSSRect zoomToRect = CalculateRectToZoomTo(document, point);
+    ZoomTarget zoomTarget = CalculateRectToZoomTo(document, point);
     uint32_t presShellId;
     ViewID viewId;
     if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(
         document->GetDocumentElement(), &presShellId, &viewId)) {
-      ZoomToRect(presShellId, viewId, zoomToRect);
+      ZoomToRect(presShellId, viewId, zoomTarget);
     }
   } else {
     // Pass the double tap on to the element
