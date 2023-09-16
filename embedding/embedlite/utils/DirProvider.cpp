@@ -13,6 +13,7 @@
 
 #define NS_SYSTEM_SEARCH_DIR_KEY "SystemSearchDir"
 #define NS_USER_SEARCH_DIR_KEY "UserSearchDir"
+#define NS_APP_DISTRIBUTION_SEARCH_DIR_LIST "SrchPluginsDistDL"
 
 nsIDirectoryServiceProvider* DirProvider::sAppFileLocProvider = nullptr;
 nsCOMPtr<nsIFile> DirProvider::sProfileDir = nullptr;
