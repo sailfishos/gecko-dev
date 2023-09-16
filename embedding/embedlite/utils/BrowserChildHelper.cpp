@@ -251,6 +251,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(BrowserChildHelper)
 bool
 BrowserChildHelper::InitBrowserChildHelperMessageManager()
 {
+  mShouldSendWebProgressEventsToParent = true;
+
   if (mBrowserChildMessageManager) {
     return true;
   }
@@ -745,11 +747,6 @@ BrowserChildHelper::GetTabId(uint64_t* aId)
 
 NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
   LOGT("NOT YET IMPLEMENTED");
-  return NS_OK;
-}
-
-NS_IMETHODIMP BrowserChildHelper::BeginSendingWebProgressEventsToParent() {
-  mShouldSendWebProgressEventsToParent = true;
   return NS_OK;
 }
 
