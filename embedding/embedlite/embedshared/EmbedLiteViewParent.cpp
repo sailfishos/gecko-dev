@@ -461,15 +461,15 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
   mozilla::layers::APZEventResult apzResult = GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(multiTouchInput);
 
   // If the APZ says to drop it, then we drop it
-  if (apzResult.mStatus == nsEventStatus_eConsumeNoDefault) {
+  if (apzResult.GetStatus() == nsEventStatus_eConsumeNoDefault) {
     return NS_OK;
   }
 
   if (multiTouchInput.mInputType == MULTITOUCH_INPUT) {
     if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
+      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     } else {
-      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
+      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     }
   }
   return NS_OK;
