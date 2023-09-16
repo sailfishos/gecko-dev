@@ -149,7 +149,7 @@ public:
     LOGT();
     RefPtr<Event> event = NS_NewDOMEvent(mBrowserChildMessageManager, nullptr, nullptr);
     if (event) {
-      event->InitEvent(nsLiteralString("unload"), false, false);
+      event->InitEvent(nsLiteralString(u"unload"_ns), false, false);
       event->SetTrusted(true);
 
       mBrowserChildMessageManager->DispatchEvent(*event);
