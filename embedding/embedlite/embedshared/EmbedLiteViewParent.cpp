@@ -286,7 +286,7 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvUpdateZoomConstraints(const uin
 
 mozilla::ipc::IPCResult EmbedLiteViewParent::RecvZoomToRect(const uint32_t &aPresShellId,
                                                             const ViewID &aViewId,
-                                                            const CSSRect &aRect)
+                                                            const ZoomTarget &aRect)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
   nsWindow *window = GetWindowWidget();

@@ -14,8 +14,8 @@ include "mozilla/dom/TabMessageUtils.h";
 include "mozilla/GfxMessageUtils.h";
 using gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
-using CSSRect from "Units.h";
 using CSSSize from "Units.h";
+using struct mozilla::layers::ZoomTarget from "mozilla/layers/DoubleTapToZoom.h";
 using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
 using ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using nscolor from "nsColor.h";
@@ -121,7 +121,7 @@ parent:
      * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in
      * CSS pixels. This rect is relative to the document.
      */
-    async ZoomToRect(uint32_t aPresShellId, ViewID aViewId, CSSRect aRect);
+    async ZoomToRect(uint32_t aPresShellId, ViewID aViewId, ZoomTarget aRect);
     async SetBackgroundColor(nscolor color);
     async ContentReceivedInputBlock(uint64_t aInputBlockId, bool aPreventDefault);
 

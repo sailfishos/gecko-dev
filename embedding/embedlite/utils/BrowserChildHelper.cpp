@@ -303,7 +303,7 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
       sscanf(NS_ConvertUTF16toUTF8(aData).get(),
              "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
              &rect.x, &rect.y, &rect.width, &rect.height);
-      mView->ZoomToRect(presShellId, viewId, rect);
+      mView->ZoomToRect(presShellId, viewId, ZoomTarget{rect});
     }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<Document> subject(do_QueryInterface(aSubject));

@@ -233,7 +233,7 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
   uint32_t presShellId;
   mozilla::layers::ScrollableLayerGuid::ViewID viewId;
   if (view->GetScrollIdentifiers(&presShellId, &viewId)) {
-    view->ZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
+    view->ZoomToRect(presShellId, viewId, ZoomTarget{CSSRect(aX, aY, aWidth, aHeight)});
   }
 
   return NS_OK;
