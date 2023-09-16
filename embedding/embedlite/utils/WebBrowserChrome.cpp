@@ -702,7 +702,7 @@ nsresult WebBrowserChrome::GetHttpUserAgent(nsIRequest* request, nsAString& aHtt
   nsAutoCString tCspUserAgent;
   if (httpChannel) {
     Unused << httpChannel->GetRequestHeader(
-        NS_LITERAL_CSTRING("User-Agent"), tCspUserAgent);
+        "User-Agent"_ns, tCspUserAgent);
   }
 
   aHttpUserAgent = NS_ConvertASCIItoUTF16(tCspUserAgent);
