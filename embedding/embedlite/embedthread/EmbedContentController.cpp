@@ -42,7 +42,7 @@ void EmbedContentController::RequestContentRepaint(const layers::RepaintRequest 
                                                                         aRequest));
 }
 
-void EmbedContentController::NotifyLayerTransforms(const nsTArray<layers::MatrixMessage> &aTransforms)
+void EmbedContentController::NotifyLayerTransforms(nsTArray<layers::MatrixMessage>&& aTransforms)
 {
   LOGT("NOT YET IMPLEMENTED");
 }
@@ -166,7 +166,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
   }
 
   CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
-  contentRect.MoveTo(aRequest.GetScrollOffset());
+  contentRect.MoveTo(aRequest.GetVisualScrollOffset());
 
   CSSRect scrollableRect(0, 0, 0, 0);
   if (!mRenderFrame || !mRenderFrame->GetScrollableRect(scrollableRect)) {
@@ -254,7 +254,8 @@ void EmbedContentController::NotifyFlushComplete()
   }
 }
 
-void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureType aType, const EmbedContentController::ScrollableLayerGuid &aGuid, LayoutDeviceCoord aSpanChange, Modifiers aModifiers)
+
+void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureType aType, const EmbedContentController::ScrollableLayerGuid& aGuid, const LayoutDevicePoint &aFocusPoint, LayoutDeviceCoord aSpanChange, Modifiers aModifiers)
 {
   LOGT("NOT YET IMPLEMENTED");
 }

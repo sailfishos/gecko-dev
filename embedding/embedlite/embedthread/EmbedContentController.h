@@ -30,7 +30,7 @@ public:
   virtual void RequestContentRepaint(const layers::RepaintRequest &aRequest) override;
 
   virtual void NotifyLayerTransforms(
-      const nsTArray<layers::MatrixMessage> &aTransforms) override;
+      nsTArray<layers::MatrixMessage>&& aTransforms) override;
 
   virtual void NotifyAsyncScrollbarDragInitiated(
       uint64_t aDragBlockId, const ScrollableLayerGuid::ViewID &aScrollId,
@@ -53,6 +53,7 @@ public:
 
   virtual void NotifyPinchGesture(PinchGestureInput::PinchGestureType aType,
                                   const ScrollableLayerGuid& aGuid,
+                                  const LayoutDevicePoint& aFocusPoint,
                                   LayoutDeviceCoord aSpanChange,
                                   Modifiers aModifiers) override;
 

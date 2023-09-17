@@ -560,7 +560,7 @@ WidgetTouchEvent BrowserChildHelper::ConvertMutiTouchInputToEvent(const mozilla:
   }
 
   aRes = true;
-  return aData.ToWidgetTouchEvent(widget);
+  return aData.ToWidgetEvent(widget);
 }
 
 nsIWidget*

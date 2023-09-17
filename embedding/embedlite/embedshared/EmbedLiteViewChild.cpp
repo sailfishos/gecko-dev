@@ -1157,10 +1157,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &
     WidgetQueryContentEvent selection(true, eQuerySelectedText, widget);
     widget->DispatchEvent(&selection, status);
 
-    if (selection.mSucceeded) {
+    if (selection.Succeeded()) {
       // Set selection to delete
       WidgetSelectionEvent selectionEvent(true, eSetSelection, widget);
-      selectionEvent.mOffset = selection.mReply.mOffset + replacementStart;
+      selectionEvent.mOffset = selection.mReply->StartOffset() + replacementStart;
       selectionEvent.mLength = replacementLength;
       selectionEvent.mReversed = false;
       selectionEvent.mExpandToClusterBoundary = false;
