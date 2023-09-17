@@ -226,8 +226,8 @@ EmbedLiteXulAppInfo::GetUniqueProcessID(uint64_t* aResult)
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetRemoteType(nsAString& aRemoteType) {
-  SetDOMStringToNull(aRemoteType);
+EmbedLiteXulAppInfo::GetRemoteType(nsACString& aRemoteType) {
+  aRemoteType.SetIsVoid(true);
 
   return NS_OK;
 }
