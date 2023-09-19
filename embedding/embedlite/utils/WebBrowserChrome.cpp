@@ -24,6 +24,7 @@
 #include "nsIBaseWindow.h"
 #include "nsIMultiPartChannel.h"
 #include "nsIHttpProtocolHandler.h"
+#include "nsIHttpChannel.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "mozilla/dom/EventTarget.h"
 #include "BrowserChildHelper.h"
@@ -31,12 +32,13 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/DOMRect.h"
 
 // Duplicated from EventNameList.h
-#define MOZ_MozAfterPaint "MozAfterPaint"
-#define MOZ_scroll "scroll"
-#define MOZ_pagehide "pagehide"
-#define MOZ_MozScrolledAreaChanged "MozScrolledAreaChanged"
+#define MOZ_MozAfterPaint u"MozAfterPaint"
+#define MOZ_scroll u"scroll"
+#define MOZ_pagehide u"pagehide"
+#define MOZ_MozScrolledAreaChanged u"MozScrolledAreaChanged"
 
 using namespace mozilla::dom;
 
@@ -555,12 +557,6 @@ NS_IMETHODIMP WebBrowserChrome::GetDimensions(uint32_t aFlags,
   */
 
   return NS_OK;
-}
-
-NS_IMETHODIMP WebBrowserChrome::SetFocus()
-{
-  LOGNI();
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP WebBrowserChrome::GetVisibility(bool* aVisibility)
