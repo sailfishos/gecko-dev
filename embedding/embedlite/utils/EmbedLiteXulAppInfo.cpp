@@ -141,6 +141,42 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
   return NS_OK;
 }
 
+/* readonly attribute boolean fissionAutostart; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/* readonly attribute nsIXULRuntime_ExperimentStatus fissionExperimentStatus; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionExperimentStatus(nsIXULRuntime::ExperimentStatus *aFissionExperimentStatus)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/* readonly attribute nsIXULRuntime_FissionDecisionStatus fissionDecisionStatus; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatus(nsIXULRuntime::FissionDecisionStatus *aFissionDecisionStatus)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/* readonly attribute ACString fissionDecisionStatusString; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatusString(nsACString& aFissionDecisionStatusString)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/* readonly attribute boolean sessionHistoryInParent; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionHistoryInParent(bool *aSessionHistoryInParent)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+/* readonly attribute AString processStartupShortcut; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetProcessStartupShortcut(nsAString& aProcessStartupShortcut)
+{
+  return NS_ERROR_NOT_AVAILABLE;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetLogConsoleErrors(bool* aLogConsoleErrors)
 {
   *aLogConsoleErrors = true;
