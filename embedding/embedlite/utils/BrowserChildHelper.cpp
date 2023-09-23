@@ -745,6 +745,17 @@ BrowserChildHelper::GetTabId(uint64_t* aId)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+BrowserChildHelper::GetChromeOuterWindowID(uint64_t* aId) {
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    window->GetOuterWindowID(aId);
+    return NS_OK;
+  }
+
+  return NS_ERROR_FAILURE;
+}
+
 NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
   LOGT("NOT YET IMPLEMENTED");
   return NS_OK;
