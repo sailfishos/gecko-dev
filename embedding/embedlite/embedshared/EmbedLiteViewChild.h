@@ -149,7 +149,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvScrollTo(const int &x, const int &y);
   virtual mozilla::ipc::IPCResult RecvScrollBy(const int &x, const int &y);
 
-  virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &, const uint64_t& aActionId);
+  virtual mozilla::ipc::IPCResult RecvSetIsActive(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetIsFocused(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetDesktopMode(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);

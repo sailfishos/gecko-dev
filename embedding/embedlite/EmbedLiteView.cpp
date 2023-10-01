@@ -93,12 +93,12 @@ EmbedLiteView::LoadURL(const char* aUrl)
 }
 
 void
-EmbedLiteView::SetIsActive(bool aIsActive, uint64_t aActionId)
+EmbedLiteView::SetIsActive(bool aIsActive)
 {
   LOGT("active: %d thread %ld", aIsActive, syscall(SYS_gettid));
 
   NS_ENSURE_TRUE(mViewParent, );
-  Unused << mViewParent->SendSetIsActive(aIsActive, aActionId);
+  Unused << mViewParent->SendSetIsActive(aIsActive);
   // Make sure active view content controller is always registered with
   // APZCTreeManager for the window.
 
