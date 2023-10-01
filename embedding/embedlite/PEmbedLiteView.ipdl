@@ -48,7 +48,7 @@ child:
     async StopLoad();
     async Reload(bool hardReload);
     async LoadFrameScript(nsString uri);
-    async SetIsActive(bool aIsActive, uint64_t aActionId);
+    async SetIsActive(bool aIsActive);
     async SetIsFocused(bool aIsFocused);
     async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
