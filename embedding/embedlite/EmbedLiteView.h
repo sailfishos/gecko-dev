@@ -80,7 +80,7 @@ public:
 
   // Embed Interface
   virtual void LoadURL(const char* aUrl);
-  virtual void SetIsActive(bool, uint64_t aActionId);
+  virtual void SetIsActive(bool);
   virtual void SetIsFocused(bool);
   virtual void SetDesktopMode(bool);
   virtual void SetThrottlePainting(bool);

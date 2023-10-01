@@ -603,7 +603,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScrollBy(const int &x, const int
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActive, const uint64_t& aActionId)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActive)
 {
   NS_ENSURE_TRUE(mWebBrowser && mDOMWindow, IPC_OK());
   RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
@@ -613,11 +613,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
     // create a PresShell if one doesn't exist yet.
     NS_ASSERTION(presShell, "Need a PresShell to activate!");
     if (presShell) {
-      mWebBrowser->FocusActivate(aActionId);
+      mWebBrowser->FocusActivate(nsFocusManager::GenerateFocusActionId());
       LOGT("Activate browser");
     }
   } else {
-    mWebBrowser->FocusDeactivate(aActionId);
+    mWebBrowser->FocusDeactivate(nsFocusManager::GenerateFocusActionId());
     LOGT("Deactivate browser");
   }
 
