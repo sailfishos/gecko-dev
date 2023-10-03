@@ -470,11 +470,13 @@ echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 RPM_BUILD_NCPUS=`nproc`
 
 ./mach create-mach-environment
-./mach build -j$RPM_BUILD_NCPUS
+#./mach build -j$RPM_BUILD_NCPUS
+./mach build -j1
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
-./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
+#./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
+./mach build faster FASTER_RECURSIVE_MAKE=1 -j1
 
 # Restore .git directory after build
 %if %{with git_workaround}
