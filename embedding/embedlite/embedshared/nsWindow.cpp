@@ -64,8 +64,8 @@ static void InitPrefs()
     //    "embedlite.compositor.external_gl_context", false);
     //Preferences::AddBoolVarCache(&sRequestGLContextEarly,
     //    "embedlite.compositor.request_external_gl_context_early", false);
-    sUseExternalGLContext = false; // "embedlite.compositor.external_gl_context"
-    sRequestGLContextEarly = false; // "embedlite.compositor.request_external_gl_context_early"
+    sUseExternalGLContext = true; // "embedlite.compositor.external_gl_context"
+    sRequestGLContextEarly = true; // "embedlite.compositor.request_external_gl_context_early"
     prefsInitialized = true;
   }
 }

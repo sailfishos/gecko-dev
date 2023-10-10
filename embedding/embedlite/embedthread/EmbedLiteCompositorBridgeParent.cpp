@@ -65,7 +65,7 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   // Example: https://phabricator.services.mozilla.com/D40340
   //Preferences::AddBoolVarCache(&mUseExternalGLContext,
   //                             "embedlite.compositor.external_gl_context", false);
-  mUseExternalGLContext = false; // "embedlite.compositor.external_gl_context"
+  mUseExternalGLContext = true; // "embedlite.compositor.external_gl_context"
   parentWindow->SetCompositor(this);
 
   // Post open parent?
