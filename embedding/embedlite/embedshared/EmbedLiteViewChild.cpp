@@ -40,6 +40,7 @@
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
@@ -626,11 +627,21 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
     widget->SetActive(aIsActive);
   }
 
-  // Update state via DocShell -> PresShell
+  if (NS_WARN_IF(!presShell)) {
+    return IPC_OK();
+  }
+
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebNavigation);
   if (NS_WARN_IF(!docShell)) {
     return IPC_OK();
   }
+
+  Unused << docShell->GetBrowsingContext()->SetExplicitActive(
+    aIsActive ? dom::ExplicitActiveStatus::Active
+              : dom::ExplicitActiveStatus::Inactive
+  );
+
+  presShell->SetIsActive(aIsActive);
 
   mWidget->Show(aIsActive);
   mWebBrowser->SetVisibility(aIsActive);
