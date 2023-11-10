@@ -169,6 +169,7 @@ BuildRequires:  rust-std-static
 BuildRequires:  cargo
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
+BuildRequires:  pkgconfig(Qt5Widgets)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 %if %{system_nspr}
