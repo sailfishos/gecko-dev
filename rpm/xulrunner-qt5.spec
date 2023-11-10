@@ -470,7 +470,8 @@ echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
 RPM_BUILD_NCPUS=`nproc`
 
-./mach create-mach-environment
+export MACH_USE_SYSTEM_PYTHON=1
+
 #./mach build -j$RPM_BUILD_NCPUS
 ./mach build -j1
 # This might be unnecessary but previously some files
