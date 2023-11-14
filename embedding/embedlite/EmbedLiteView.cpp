@@ -326,7 +326,7 @@ EmbedLiteView::ReceiveInputEvent(const EmbedTouchInput &aEvent)
   NS_ENSURE_TRUE(mViewImpl,);
 
   mozilla::MultiTouchInput multiTouchInput(static_cast<mozilla::MultiTouchInput::MultiTouchType>(aEvent.type),
-                                           aEvent.timeStamp, TimeStamp(), 0);
+                                           aEvent.timeStamp, TimeStamp::Now(), 0);
 
   for (const mozilla::embedlite::TouchData &touchData : aEvent.touches) {
     nsIntPoint point = nsIntPoint(int32_t(floorf(touchData.touchPoint.x)),
