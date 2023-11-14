@@ -533,7 +533,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -555,7 +555,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -577,7 +577,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
