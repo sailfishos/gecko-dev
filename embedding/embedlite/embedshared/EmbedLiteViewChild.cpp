@@ -81,7 +81,7 @@ static struct {
     bool longTap;
 } sPostAZPCAsJson;
 
-static bool sAllowKeyWordURL = false;
+static bool sAllowKeyWordURL = true;
 
 static void ReadAZPCPrefs()
 {
