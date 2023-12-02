@@ -28,6 +28,7 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorSession.h"
 #include "mozilla/ipc/MessageChannel.h"
+#include "mozilla/StaticPrefs_embedlite.h"   // for StaticPrefs::embedlite_*()
 
 using namespace mozilla::gl;
 using namespace mozilla::layers;
@@ -50,35 +51,18 @@ NS_IMPL_ISUPPORTS_INHERITED(nsWindow, PuppetWidgetBase,
                             nsISupportsWeakReference)
 
 static bool sFailedToCreateGLContext = false;
-static bool sUseExternalGLContext = false;
-static bool sRequestGLContextEarly = false;
-
-static void InitPrefs()
-{
-  static bool prefsInitialized = false;
-  if (!prefsInitialized) {
-    // TODO: Switch these to use static prefs
-    // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
-    // Example: https://phabricator.services.mozilla.com/D40340
-    //Preferences::AddBoolVarCache(&sUseExternalGLContext,
-    //    "embedlite.compositor.external_gl_context", false);
-    //Preferences::AddBoolVarCache(&sRequestGLContextEarly,
-    //    "embedlite.compositor.request_external_gl_context_early", false);
-    sUseExternalGLContext = true; // "embedlite.compositor.external_gl_context"
-    sRequestGLContextEarly = true; // "embedlite.compositor.request_external_gl_context_early"
-    prefsInitialized = true;
-  }
-}
 
 nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
   , mFirstViewCreated(false)
   , mWindow(window)
 {
-  InitPrefs();
-  LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow, sUseExternalGLContext, sRequestGLContextEarly);
+  LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow,
+      StaticPrefs::embedlite_compositor_external_gl_context(),
+      StaticPrefs::embedlite_compositor_request_external_gl_context_early());
 
-  if (sUseExternalGLContext && sRequestGLContextEarly) {
+  if (StaticPrefs::embedlite_compositor_external_gl_context() &&
+      StaticPrefs::embedlite_compositor_request_external_gl_context_early()) {
     mozilla::layers::CompositorThread()->Dispatch(NewRunnableFunction(
                                                  "mozilla::embedlite::nsWindow::CreateGLContextEarly",
                                                  &CreateGLContextEarly,
@@ -410,8 +394,9 @@ nsWindow::nsWindow()
 GLContext*
 nsWindow::GetGLContext() const
 {
-  LOGT("this:%p, UseExternalContext:%d", this, sUseExternalGLContext);
-  if (sUseExternalGLContext) {
+  LOGT("this:%p, UseExternalContext:%d", this,
+      StaticPrefs::embedlite_compositor_external_gl_context());
+  if (StaticPrefs::embedlite_compositor_external_gl_context()) {
     void* context = nullptr;
     void* surface = nullptr;
     void* display = nullptr;
