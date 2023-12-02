@@ -54,8 +54,6 @@ using namespace mozilla::widget;
 
 static const CSSSize kDefaultViewportSize(980, 480);
 
-static bool sPostAZPCAsJsonViewport(false);
-
 BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId)
   : mView(aView)
   , mWebNavigation(nullptr)
@@ -68,20 +66,6 @@ BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t 
 
 {
   LOGT();
-
-//  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
-
-  // Init default prefs
-  static bool sPrefInitialized = false;
-  if (!sPrefInitialized) {
-    sPrefInitialized = true;
-
-    // TODO: Switch this to use a static pref
-    // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
-    // Example: https://phabricator.services.mozilla.com/D40340
-    //Preferences::AddBoolVarCache(&sPostAZPCAsJsonViewport, "embedlite.azpc.json.viewport", false);
-    sPostAZPCAsJsonViewport = false; // "embedlite.azpc.json.viewport"
-  }
 
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
