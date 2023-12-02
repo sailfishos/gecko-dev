@@ -16,6 +16,7 @@
 #include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
 #include "mozilla/layers/TextureClientSharedSurface.h" // for SharedSurfaceTextureClient
+#include "mozilla/StaticPrefs_embedlite.h"             // for StaticPrefs::embedlite_*()
 #include "mozilla/Preferences.h"
 #include "gfxUtils.h"
 #include "nsRefreshDriver.h"
@@ -59,13 +60,6 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   LOGT("this:%p, window:%p, sz[%i,%i]", this, parentWindow, aSurfaceSize.width, aSurfaceSize.height);
 
-
-  // TODO: Switch this to use a static pref
-  // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
-  // Example: https://phabricator.services.mozilla.com/D40340
-  //Preferences::AddBoolVarCache(&mUseExternalGLContext,
-  //                             "embedlite.compositor.external_gl_context", false);
-  mUseExternalGLContext = true; // "embedlite.compositor.external_gl_context"
   parentWindow->SetCompositor(this);
 
   // Post open parent?
@@ -89,7 +83,7 @@ EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<Lay
     parentWindow->GetListener()->CompositorCreated();
   }
 
-  if (!mUseExternalGLContext) {
+  if (!StaticPrefs::embedlite_compositor_external_gl_context()) {
     // Prepare Offscreen rendering context
     PrepareOffscreen();
   }

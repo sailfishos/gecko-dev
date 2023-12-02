@@ -44,6 +44,7 @@
 #include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_embedlite.h"  // for StaticPrefs::embedlite_azpc_*_*()
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
 #include "nsIFrame.h"                       // for nsIFrame
@@ -65,56 +66,6 @@ static bool StartsWith(const nsACString& string, const char (&prefix)[N]) {
     return false;
   }
   return memcmp(string.Data(), prefix, N - 1) == 0;
-}
-
-static struct {
-    bool viewport;
-    bool scroll;
-    bool singleTap;
-    bool longTap;
-} sHandleDefaultAZPC;
-static struct {
-    bool viewport;
-    bool scroll;
-    bool singleTap;
-    bool doubleTap;
-    bool longTap;
-} sPostAZPCAsJson;
-
-static bool sAllowKeyWordURL = true;
-
-static void ReadAZPCPrefs()
-{
-  // TODO: Switch these to use static prefs
-  // See https://firefox-source-docs.mozilla.org/modules/libpref/index.html#static-prefs
-  // Example: https://phabricator.services.mozilla.com/D40340
-
-  // Init default azpc notifications behavior
-  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.viewport, "embedlite.azpc.handle.viewport", true);
-  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.singleTap, "embedlite.azpc.handle.singletap", false);
-  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.longTap, "embedlite.azpc.handle.longtap", false);
-  //Preferences::AddBoolVarCache(&sHandleDefaultAZPC.scroll, "embedlite.azpc.handle.scroll", true);
-
-  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.viewport, "embedlite.azpc.json.viewport", true);
-  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.singleTap, "embedlite.azpc.json.singletap", true);
-  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.doubleTap, "embedlite.azpc.json.doubletap", false);
-  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.longTap, "embedlite.azpc.json.longtap", true);
-  //Preferences::AddBoolVarCache(&sPostAZPCAsJson.scroll, "embedlite.azpc.json.scroll", false);
-
-  //Preferences::AddBoolVarCache(&sAllowKeyWordURL, "keyword.enabled", sAllowKeyWordURL);
-
-  sHandleDefaultAZPC.viewport = true; // "embedlite.azpc.handle.viewport"
-  sHandleDefaultAZPC.singleTap = false; // "embedlite.azpc.handle.singletap"
-  sHandleDefaultAZPC.longTap = false; // "embedlite.azpc.handle.longtap"
-  sHandleDefaultAZPC.scroll = true; // "embedlite.azpc.handle.scroll"
-
-  sPostAZPCAsJson.viewport = true; // "embedlite.azpc.json.viewport"
-  sPostAZPCAsJson.singleTap = true; // "embedlite.azpc.json.singletap"
-  sPostAZPCAsJson.doubleTap = false; // "embedlite.azpc.json.doubletap"
-  sPostAZPCAsJson.longTap = true; // "embedlite.azpc.json.longtap"
-  sPostAZPCAsJson.scroll = false; // "embedlite.azpc.json.scroll"
-
-  sAllowKeyWordURL = sAllowKeyWordURL; // "keyword.enabled" (intentionally retained for clarity)
 }
 
 EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
@@ -139,12 +90,6 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
   , mDestroyAfterInit(false)
 {
   LOGT("id:%u, parentID:%u", aId, aParentId);
-  // Init default prefs
-  static bool sPrefInitialized = false;
-  if (!sPrefInitialized) {
-    sPrefInitialized = true;
-    ReadAZPCPrefs();
-  }
 
   mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
@@ -536,7 +481,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
 
   uint32_t flags = 0;
-  if (sAllowKeyWordURL) {
+  if (Preferences::GetBool("keyword.enabled", true)) {
     flags |= nsIWebNavigation::LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
@@ -934,7 +879,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const gfxRect 
   mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
   mozilla::CSSSize size(scrollSize.width, scrollSize.height);
 
-  if (sPostAZPCAsJson.scroll) {
+  if (StaticPrefs::embedlite_azpc_json_scroll()) {
     nsString data;
     data.AppendPrintf("{ \"contentRect\" : { \"x\" : ");
     data.AppendFloat(contentRect.x);
@@ -959,7 +904,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvUpdateFrame(const RepaintRequest
   LOGT();
   NS_ENSURE_TRUE(mWebBrowser, IPC_OK());
 
-  if (sHandleDefaultAZPC.viewport) {
+  if (StaticPrefs::embedlite_azpc_handle_viewport()) {
     mHelper->UpdateFrame(aRequest);
   }
 
@@ -1028,7 +973,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
 
   // Check whether the element is interested in double clicks
   bool doubleclick = false;
-  if (sPostAZPCAsJson.doubleTap) {
+  if (StaticPrefs::embedlite_azpc_json_doubletap()) {
     WidgetMouseEvent hittest(true, eMouseHitTest, widget, WidgetMouseEvent::eReal);
     hittest.mRefPoint = LayoutDeviceIntPoint::Truncate(aPoint);
     hittest.mIgnoreRootScrollFrame = false;
@@ -1103,13 +1048,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
 
   CSSToLayoutDeviceScale scale = mWidget->GetDefaultScale();
 
-  if (sPostAZPCAsJson.singleTap) {
+  if (StaticPrefs::embedlite_azpc_json_singletap()) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(u"Gesture:SingleTap"_ns, data);
   }
 
-  if (sHandleDefaultAZPC.singleTap) {
+  if (StaticPrefs::embedlite_azpc_handle_singletap()) {
     // ProcessSingleTap multiplies cssPoint by scale.
     if (mHelper->mBrowserChildMessageManager) {
       mAPZEventState->ProcessSingleTap(cssPoint, scale, aModifiers, 1);
@@ -1127,14 +1072,14 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevice
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
 
-  if (sPostAZPCAsJson.longTap) {
+  if (StaticPrefs::embedlite_azpc_json_longtap()) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
     mHelper->DispatchMessageManagerMessage(u"Gesture:LongTap"_ns, data);
   }
 
   bool eventHandled = false;
-  if (sHandleDefaultAZPC.longTap) {
+  if (StaticPrefs::embedlite_azpc_handle_longtap()) {
     eventHandled = RecvMouseEvent(u"contextmenu"_ns, cssPoint.x, cssPoint.y,
                    2 /* Right button */,
                    1 /* Click count */,
