@@ -29,12 +29,14 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
                                          const uint32_t &parentId,
                                          const uintptr_t &parentBrowsingContext,
                                          const bool &isPrivateWindow,
-                                         const bool &isDesktopMode)
+                                         const bool &isDesktopMode,
+                                         const bool &isHidden)
   : mWindowId(windowId)
   , mId(id)
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)
+  , mIsHidden(isHidden)
   , mDPI(-1.0)
   , mThread(NS_GetCurrentThread())
   , mLastIMEState(0)

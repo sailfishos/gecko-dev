@@ -23,7 +23,8 @@ public:
                            const uint32_t &parentId,
                            mozilla::dom::BrowsingContext *parentBrowsingContext,
                            const bool &isPrivateWindow,
-                           const bool &isDesktopMode);
+                           const bool &isDesktopMode,
+                           const bool &isHidden);
 protected:
   virtual ~EmbedLiteViewThreadChild() override;
 
