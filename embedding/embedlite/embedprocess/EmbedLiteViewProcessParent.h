@@ -20,7 +20,8 @@ public:
                                             const uint32_t &parentId,
                                             const uintptr_t &parentBrowsingContext,
                                             const bool &isPrivateWindow,
-                                            const bool &isDesktopMode);
+                                            const bool &isDesktopMode,
+                                            const bool &isHidden);
     virtual ~EmbedLiteViewProcessParent() override;
 
 private:

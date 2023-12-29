@@ -40,7 +40,8 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                   const uint32_t &parentId,
                                                   const uintptr_t &parentBrowsingContext,
                                                   const bool &isPrivateWindow,
-                                                  const bool &isDesktopMode)
+                                                  const bool &isDesktopMode,
+                                                  const bool &isHidden)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
 
@@ -51,7 +52,8 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
 
   EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(windowId, id, parentId,
                                                                 parentBrowsingContextPtr,
-                                                                isPrivateWindow, isDesktopMode);
+                                                                isPrivateWindow, isDesktopMode,
+                                                                isHidden);
   mWeakViewMap[id] = view;
   view->AddRef();
   return view;

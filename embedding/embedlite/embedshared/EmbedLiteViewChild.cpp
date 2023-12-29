@@ -73,7 +73,8 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
                                        const uint32_t &aParentId,
                                        mozilla::dom::BrowsingContext *parentBrowsingContext,
                                        const bool &isPrivateWindow,
-                                       const bool &isDesktopMode)
+                                       const bool &isDesktopMode,
+                                       const bool &isHidden)
   : mId(aId)
   , mOuterId(0)
   , mWindow(nullptr)
@@ -94,14 +95,15 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
   mWindow = EmbedLiteAppChild::GetInstance()->GetWindowByID(aWindowId);
   MOZ_ASSERT(mWindow != nullptr);
 
-  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, mozilla::dom::BrowsingContext*, const bool, const bool>
+  MessageLoop::current()->PostTask(NewRunnableMethod<const uint32_t, mozilla::dom::BrowsingContext*, const bool, const bool, const bool>
                                    ("mozilla::embedlite::EmbedLiteViewChild::InitGeckoWindow",
                                     this,
                                     &EmbedLiteViewChild::InitGeckoWindow,
                                     aParentId,
                                     parentBrowsingContext,
                                     isPrivateWindow,
-                                    isDesktopMode));
+                                    isDesktopMode,
+                                    isHidden));
 }
 
 NS_IMETHODIMP EmbedLiteViewChild::QueryInterface(REFNSIID aIID, void **aInstancePtr)
@@ -172,7 +174,8 @@ void
 EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
                                     mozilla::dom::BrowsingContext *parentBrowsingContext,
                                     const bool isPrivateWindow,
-                                    const bool isDesktopMode)
+                                    const bool isDesktopMode,
+                                    const bool isHidden)
 {
   if (!mWindow) {
     LOGT("Init called for already destroyed object");
