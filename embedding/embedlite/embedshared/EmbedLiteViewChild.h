@@ -54,7 +54,8 @@ public:
                      const uint32_t &parentId,
                      mozilla::dom::BrowsingContext *parentBrowsingContext,
                      const bool &isPrivateWindow,
-                     const bool &isDesktopMode);
+                     const bool &isDesktopMode,
+                     const bool &isHidden);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -234,7 +235,8 @@ private:
   void InitGeckoWindow(const uint32_t parentId,
                        mozilla::dom::BrowsingContext *parentBrowsingContext,
                        const bool isPrivateWindow,
-                       const bool isDesktopMode);
+                       const bool isDesktopMode,
+                       const bool isHidden);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
   void SetDesktopMode(const bool aDesktopMode);

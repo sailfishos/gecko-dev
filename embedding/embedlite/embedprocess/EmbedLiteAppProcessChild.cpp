@@ -173,7 +173,8 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
                                                    const uint32_t &parentId,
                                                    const uintptr_t &parentBrowsingContext,
                                                    const bool &isPrivateWindow,
-                                                   const bool &isDesktopMode)
+                                                   const bool &isDesktopMode,
+                                                   const bool &isHidden)
 {
   LOGT("id:%u, parentId:%u", id, parentId);
   static bool sViewInitializeOnce = false;
@@ -190,7 +191,8 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
 
   EmbedLiteViewProcessChild* view = new EmbedLiteViewProcessChild(windowId, id, parentId,
                                                                   parentBrowsingContextPtr,
-                                                                  isPrivateWindow, isDesktopMode);
+                                                                  isPrivateWindow, isDesktopMode,
+                                                                  isHidden);
   view->AddRef();
   return view;
 }

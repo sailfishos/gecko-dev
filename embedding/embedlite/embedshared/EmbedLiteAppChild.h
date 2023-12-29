@@ -35,6 +35,7 @@ public:
   bool CreateWindow(const uint32_t &parentId,
                     const uintptr_t &parentBrowsingContext,
                     const uint32_t &chromeFlags,
+                    const bool &hidden,
                     uint32_t *createdID,
                     bool *cancel) override;
   static EmbedLiteAppChild* GetInstance();
@@ -50,7 +51,8 @@ protected:
                                                         const uint32_t &parentId,
                                                         const uintptr_t &parentBrowsingContext,
                                                         const bool &isPrivateWindow,
-                                                        const bool &isDesktopMode) = 0;
+                                                        const bool &isDesktopMode,
+                                                        const bool &isHidden) = 0;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) = 0;
 
 protected:

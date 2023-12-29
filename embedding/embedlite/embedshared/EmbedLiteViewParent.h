@@ -34,7 +34,8 @@ public:
                       const uint32_t &parentId,
                       const uintptr_t &parentBrowsingContext,
                       const bool &isPrivateWindow,
-                      const bool &isDesktopMode);
+                      const bool &isDesktopMode,
+                      const bool &isHidden);
 
   NS_DECL_EMBEDLITEVIEWIFACE
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -139,6 +140,7 @@ private:
   bool mViewAPIDestroyed;
   EmbedLiteWindowParent& mWindow;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
+  bool mIsHidden;
 
   float mDPI;
 

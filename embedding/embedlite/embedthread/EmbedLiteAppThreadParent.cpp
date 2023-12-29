@@ -63,10 +63,11 @@ mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvReadyToShutdown()
 mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvCreateWindow(const uint32_t &parentId,
                                                                    const uintptr_t &parentBrowsingContext,
                                                                    const uint32_t &chromeFlags,
+                                                                   const bool &hidden,
                                                                    uint32_t *createdID,
                                                                    bool *cancel)
 {
-  *createdID = mApp->CreateWindowRequested(chromeFlags, parentId, parentBrowsingContext);
+  *createdID = mApp->CreateWindowRequested(chromeFlags, hidden, parentId, parentBrowsingContext);
   *cancel = !*createdID;
   return IPC_OK();
 }
@@ -83,12 +84,14 @@ EmbedLiteAppThreadParent::AllocPEmbedLiteViewParent(const uint32_t &windowId,
                                                     const uint32_t &parentId,
                                                     const uintptr_t &parentBrowsingContext,
                                                     const bool &isPrivateWindow,
-                                                    const bool &isDesktopMode)
+                                                    const bool &isDesktopMode,
+                                                    const bool &isHidden)
 {
   LOGT("id:%u, parent:%u", id, parentId);
   EmbedLiteViewThreadParent* p = new EmbedLiteViewThreadParent(windowId, id, parentId,
                                                                parentBrowsingContext,
-                                                               isPrivateWindow, isDesktopMode);
+                                                               isPrivateWindow, isDesktopMode,
+                                                               isHidden);
   p->AddRef();
   return p;
 }

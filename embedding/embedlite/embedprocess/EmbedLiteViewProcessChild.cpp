@@ -15,8 +15,9 @@ EmbedLiteViewProcessChild::EmbedLiteViewProcessChild(const uint32_t &windowId,
                                                      const uint32_t &parentId,
                                                      mozilla::dom::BrowsingContext *parentBrowsingContext,
                                                      const bool &isPrivateWindow,
-                                                     const bool &isDesktopMode)
-  : EmbedLiteViewChild(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode)
+                                                     const bool &isDesktopMode,
+                                                     const bool &isHidden)
+  : EmbedLiteViewChild(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode, isHidden)
 {
   LOGT();
 }
