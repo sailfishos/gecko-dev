@@ -155,6 +155,7 @@ Patch97:    0097-Bug-1761471-FFmpeg-5.0-Get-frame-color-range-and-col.patch
 Patch98:    0098-Bug-1758948-FFmpeg-Use-AVFrame-pts-instead-of-AVFram.patch
 Patch99:    0099-Bug-1716518-Upgrade-rental-to-v0.5.6.-r-emilio.patch
 Patch100:   0100-Bug-1661961-Upgrade-cstr-to-0.2.x.-r-emilio.patch
+Patch101:   0101-Bug-1716518-Upgrade-socket2-to-v0.3.19.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
