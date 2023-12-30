@@ -25,6 +25,3 @@ index 7c0bc617522a..c2fd5b3649c6 100644
    // For XUL applications (everything but Firefox on Android)
    // we only want to use APZ when E10S is enabled. If
    // we ever get input events off the main thread we can consider relaxing
--- 
-2.31.1
-

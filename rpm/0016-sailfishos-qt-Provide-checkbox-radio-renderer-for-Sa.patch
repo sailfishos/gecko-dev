@@ -101,10 +101,10 @@ index 000000000000..9fdcc95b24a6
 +
 +#endif  // mozilla_widget_QtColors_h
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
-index 231eee017e1b..760213273ced 100644
+index 4361105de1c8..36413dc59d0c 100644
 --- a/widget/qt/moz.build
 +++ b/widget/qt/moz.build
-@@ -13,6 +13,7 @@ SOURCES += [
+@@ -11,6 +11,7 @@ SOURCES += [
      'nsBidiKeyboard.cpp',
      'nsIdleServiceQt.cpp',
      'nsLookAndFeel.cpp',
@@ -112,7 +112,7 @@ index 231eee017e1b..760213273ced 100644
      'nsScreenManagerQt.cpp',
      'nsScreenQt.cpp',
      'nsWidgetFactory.cpp',
-@@ -39,6 +40,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
+@@ -35,6 +36,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
  FINAL_LIBRARY = 'xul'
  
  LOCAL_INCLUDES += [
@@ -508,6 +508,3 @@ index 000000000000..94ac8c831771
 +};
 +
 +#endif  // nsNativeThemeQt_h_
--- 
-2.31.1
-

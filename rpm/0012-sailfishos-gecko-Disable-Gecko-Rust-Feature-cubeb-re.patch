@@ -41,6 +41,3 @@ index 342f9307003e..19a8004929e6 100644
      gkrust_features += ['cubeb-remoting']
  
  if CONFIG['MOZ_MEMORY']:
--- 
-2.31.1
-

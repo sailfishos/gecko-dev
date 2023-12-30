@@ -121,6 +121,3 @@ index 581a402102b8..ac4576cd5fa2 100644
    if (mNextState == aState) {
      mNextState = PLAY_STATE_PAUSED;
    }
--- 
-2.31.1
-

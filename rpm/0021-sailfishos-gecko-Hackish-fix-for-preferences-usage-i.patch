@@ -87,7 +87,7 @@ index d67becfbf47d..7c0bc617522a 100644
  
    RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
 diff --git a/modules/libpref/Preferences.cpp b/modules/libpref/Preferences.cpp
-index 08b2c34f3100..d143f95a4298 100644
+index a73423fe61cc..dc635c87fab8 100644
 --- a/modules/libpref/Preferences.cpp
 +++ b/modules/libpref/Preferences.cpp
 @@ -89,6 +89,8 @@
@@ -99,7 +99,7 @@ index 08b2c34f3100..d143f95a4298 100644
  #ifdef DEBUG
  #  include <map>
  #endif
-@@ -3563,6 +3565,11 @@ Preferences::~Preferences() {
+@@ -3602,6 +3604,11 @@ Preferences::~Preferences() {
    gPrefNameArena.Clear();
  }
  
@@ -111,6 +111,3 @@ index 08b2c34f3100..d143f95a4298 100644
  NS_IMPL_ISUPPORTS(Preferences, nsIPrefService, nsIObserver, nsIPrefBranch,
                    nsISupportsWeakReference)
  
--- 
-2.31.1
-

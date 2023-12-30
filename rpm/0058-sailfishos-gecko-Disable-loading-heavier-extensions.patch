@@ -25,6 +25,3 @@ index 1c165ce8e14b..39494a3b3b50 100644
  #endif
 +category addon-provider-module GMPProvider resource://gre/modules/addons/GMPProvider.jsm
  #endif
--- 
-2.31.1
-

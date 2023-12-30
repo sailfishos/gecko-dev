@@ -37,6 +37,3 @@ index 25c4f5a79e56..d7f807ad3b32 100644
    const char* fileName = lockFilePath.get();
    int symlink_rv, symlink_errno = 0, tries = 0;
  
--- 
-2.31.1
-

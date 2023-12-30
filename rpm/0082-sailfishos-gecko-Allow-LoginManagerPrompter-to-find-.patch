@@ -115,6 +115,3 @@ index 051edfb7473c..25739a6998a7 100644
            in Array<nsILoginInfo> logins,
            in nsILoginInfo aNewLogin);
  };
--- 
-2.31.1
-

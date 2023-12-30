@@ -23,6 +23,3 @@ index ef13ce36af8f..460510c5bff8 100644
                                       public CompositorController,
                                       public CompositorVsyncSchedulerOwner {
    friend class CompositorThreadHolder;
--- 
-2.31.1
-

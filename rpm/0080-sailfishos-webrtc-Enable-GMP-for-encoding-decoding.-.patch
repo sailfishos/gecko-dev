@@ -252,7 +252,7 @@ index d8ed5ece451d..49dfa2b5bcbe 100644
      case webrtc::VideoCodecType::kVideoCodecVP8:
        encoder.reset(new webrtc::VP8EncoderSimulcastProxy(this));
 diff --git a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
-index 68e2c92d2ede..b983429306d0 100644
+index af214da2ea67..7ab8e2458da2 100644
 --- a/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
 +++ b/media/webrtc/signaling/src/media-conduit/WebrtcGmpVideoCodec.cpp
 @@ -53,14 +53,15 @@ WebrtcGmpPCHandleSetter::~WebrtcGmpPCHandleSetter() {
@@ -382,7 +382,7 @@ index 68e2c92d2ede..b983429306d0 100644
    nsTArray<uint8_t> codecSpecificInfo;
    codecSpecificInfo.AppendElements((uint8_t*)&info,
                                     sizeof(GMPCodecSpecificInfo));
-@@ -495,10 +554,6 @@ void WebrtcGmpVideoEncoder::Encoded(
+@@ -496,10 +555,6 @@ void WebrtcGmpVideoEncoder::Encoded(
                    aEncodedFrame->TimeStamp(), aEncodedFrame->BufferType(),
                    aEncodedFrame->Size());
  
@@ -393,7 +393,7 @@ index 68e2c92d2ede..b983429306d0 100644
      uint8_t* buffer = aEncodedFrame->Buffer();
  
      if (!buffer) {
-@@ -506,145 +561,166 @@ void WebrtcGmpVideoEncoder::Encoded(
+@@ -507,145 +562,166 @@ void WebrtcGmpVideoEncoder::Encoded(
        return;
      }
  
@@ -663,7 +663,7 @@ index 68e2c92d2ede..b983429306d0 100644
    if (mPCHandle.empty()) {
      mPCHandle = WebrtcGmpPCHandleSetter::GetCurrentHandle();
    }
-@@ -684,7 +760,21 @@ void WebrtcGmpVideoDecoder::InitDecode_g(
+@@ -685,7 +761,21 @@ void WebrtcGmpVideoDecoder::InitDecode_g(
      const webrtc::VideoCodec* aCodecSettings, int32_t aNumberOfCores,
      const RefPtr<GmpInitDoneRunnable>& aInitDone) {
    nsTArray<nsCString> tags;
@@ -686,7 +686,7 @@ index 68e2c92d2ede..b983429306d0 100644
    UniquePtr<GetGMPVideoDecoderCallback> callback(
        new InitDoneCallback(aThis, aInitDone));
    aThis->mInitting = true;
-@@ -726,11 +816,29 @@ int32_t WebrtcGmpVideoDecoder::GmpInitDone(GMPVideoDecoderProxy* aGMP,
+@@ -727,11 +817,29 @@ int32_t WebrtcGmpVideoDecoder::GmpInitDone(GMPVideoDecoderProxy* aGMP,
    GMPVideoCodec codec;
    memset(&codec, 0, sizeof(codec));
    codec.mGMPApiVersion = 33;
@@ -719,7 +719,7 @@ index 68e2c92d2ede..b983429306d0 100644
    nsresult rv = mGMP->InitDecode(codec, codecSpecific, this, 1);
    if (NS_FAILED(rv)) {
      *aErrorOut = "GMP Decode: InitDecode failed";
-@@ -847,13 +955,10 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
+@@ -848,13 +956,10 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
      return;
    }
  
@@ -737,7 +737,7 @@ index 68e2c92d2ede..b983429306d0 100644
  
    frame->SetEncodedWidth(aDecodeData->mImage._encodedWidth);
    frame->SetEncodedHeight(aDecodeData->mImage._encodedHeight);
-@@ -872,11 +977,26 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
+@@ -873,11 +978,26 @@ void WebrtcGmpVideoDecoder::Decode_g(const RefPtr<WebrtcGmpVideoDecoder>& aThis,
      return;
    }
  
@@ -852,6 +852,3 @@ index 42d9504e82ce..7f67b9f75b48 100644
              videoCodec.mStronglyPreferred = true;
            }
          } else if (videoCodec.mName == "red") {
--- 
-2.31.1
-

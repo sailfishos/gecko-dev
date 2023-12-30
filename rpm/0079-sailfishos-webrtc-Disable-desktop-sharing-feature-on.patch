@@ -47,6 +47,3 @@ index 08fd6c441132..9febd377f2b8 100644
            nullptr);
        mDeviceInfo.reset();
  #endif
--- 
-2.31.1
-

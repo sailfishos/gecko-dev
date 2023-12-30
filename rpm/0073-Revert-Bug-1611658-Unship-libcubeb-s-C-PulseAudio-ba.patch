@@ -1650,6 +1650,3 @@ index 23f001dc4501..d15d6305d7b0 100755
  cp $1/src/cubeb_resampler.cpp src
  cp $1/src/cubeb_resampler.h src
  cp $1/src/cubeb_resampler_internal.h src
--- 
-2.31.1
-

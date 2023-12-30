@@ -194,6 +194,3 @@ index 000000000000..14c490fca4c2
 +USE_LIBS += [
 +    'xpcomglue',
 +]
--- 
-2.31.1
-

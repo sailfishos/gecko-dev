@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Denis Grigorev <d.grigorev@omprussia.ru>
 Date: Thu, 16 Dec 2021 19:10:25 +0300
-Subject: [PATCH] [sailfishos][gecko] Add a video decoder based on gecko-camera. JB#56755
+Subject: [PATCH] [sailfishos][gecko] Add a video decoder based on
+ gecko-camera. JB#56755
 
 ---
  dom/media/platforms/PDMFactory.cpp            |  13 +
@@ -629,6 +630,3 @@ index cdcc219cf10f..d42ddd0d483c 100644
 +
 +set_config('MOZ_EMBEDLITE', True, when='--with-embedlite')
 +set_define('MOZ_EMBEDLITE', True, when='--with-embedlite')
--- 
-2.17.1
-

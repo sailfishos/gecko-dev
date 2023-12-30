@@ -222,6 +222,3 @@ index bf331def55e7..ade79354f214 100644
  #elif defined(MOZ_WIDGET_ANDROID)
    // Try to get a mimetype, if this fails just use the file uri alone
    nsresult rv;
--- 
-2.31.1
-

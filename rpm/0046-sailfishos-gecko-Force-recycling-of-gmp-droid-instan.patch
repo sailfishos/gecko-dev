@@ -26,6 +26,3 @@ index 3619eed456d0..38ca7a9b8f7c 100644
    ConversionRequired NeedsConversion() const override {
      return mConvertToAnnexB ? ConversionRequired::kNeedAnnexB
                              : ConversionRequired::kNeedAVCC;
--- 
-2.31.1
-

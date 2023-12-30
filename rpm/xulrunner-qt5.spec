@@ -153,6 +153,7 @@ Patch95:    0095-Bug-1750760-Open-libavcodec.so.59-library-and-bind-f.patch
 Patch96:    0096-Bug-1750760-Update-audio-and-video-decoders-to-ffmpe.patch
 Patch97:    0097-Bug-1761471-FFmpeg-5.0-Get-frame-color-range-and-col.patch
 Patch98:    0098-Bug-1758948-FFmpeg-Use-AVFrame-pts-instead-of-AVFram.patch
+Patch99:    0099-Bug-1716518-Upgrade-rental-to-v0.5.6.-r-emilio.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch

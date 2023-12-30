@@ -37,10 +37,10 @@ index e011b74cc4b4..f35dc7b8d70a 100644
  #ifdef MOZ_FFVPX
  @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
-index 136abbcafa69..2fe67a803edc 100644
+index c8c0535fe253..fa3f195f7993 100644
 --- a/build/moz.configure/old.configure
 +++ b/build/moz.configure/old.configure
-@@ -228,6 +228,7 @@ def old_configure_options(*options):
+@@ -229,6 +229,7 @@ def old_configure_options(*options):
      '--enable-system-cairo',
      '--enable-system-extension-dirs',
      '--enable-system-pixman',
@@ -82,7 +82,7 @@ index dc575ec0426d..1e4c6b0539f6 100644
 -    SYMBOLS_FILE = '/third_party/sqlite3/src/sqlite.symbols'
 +        SYMBOLS_FILE = '/third_party/sqlite3/src/sqlite.symbols'
 diff --git a/old-configure.in b/old-configure.in
-index dfb072b19cfb..14526650a580 100644
+index c5ad4849dc10..ee41a5527586 100644
 --- a/old-configure.in
 +++ b/old-configure.in
 @@ -59,6 +59,7 @@ GTK3_VERSION=3.4.0
@@ -93,7 +93,7 @@ index dfb072b19cfb..14526650a580 100644
  
  dnl Set various checks
  dnl ========================================================
-@@ -2039,11 +2040,35 @@ dnl =
+@@ -2249,11 +2250,35 @@ dnl =
  dnl ========================================================
  MOZ_ARG_HEADER(Individual module options)
  
@@ -274,6 +274,3 @@ index 88a7331ff008..9805ec1ab5bd 100644
  sqlite3_complete
  sqlite3_complete16
  sqlite3_config
--- 
-2.25.1
-

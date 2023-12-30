@@ -23,6 +23,3 @@ index efce908930a5..1fb02df40ece 100644
          END_SYMBOLS};
      (void)fnLoadSymbols(symbols, nullptr);
  
--- 
-2.31.1
-

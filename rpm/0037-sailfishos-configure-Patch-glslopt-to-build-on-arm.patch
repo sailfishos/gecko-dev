@@ -674,6 +674,3 @@ index 0e3c759e8220..8cf2ec3df416 100644
 +        println!("cargo:rustc-link-lib=stdc++");
 +    }
  }
--- 
-2.31.1
-

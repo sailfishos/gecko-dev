@@ -118,6 +118,3 @@ index fd9a26d42b79..3d4b5c75fb29 100644
  
    nsCOMPtr<nsIBrowser> browser;
    RefPtr<Element> currentElement = aBrowsingContext->GetEmbedderElement();
--- 
-2.31.1
-

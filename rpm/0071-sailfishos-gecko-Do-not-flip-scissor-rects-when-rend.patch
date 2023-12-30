@@ -30,6 +30,3 @@ index 92adfb89aa01..ef8f9b18b002 100644
                                      clipRect.Width(), clipRect.Height());
  
    MaskType maskType;
--- 
-2.31.1
-

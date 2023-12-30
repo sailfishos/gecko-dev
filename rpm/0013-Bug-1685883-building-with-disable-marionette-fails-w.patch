@@ -16,7 +16,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  3 files changed, 20 insertions(+), 4 deletions(-)
 
 diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
-index aa3fa6719f05..0fc1db890519 100644
+index ee338925f866..7406fd279e76 100644
 --- a/dom/base/Navigator.cpp
 +++ b/dom/base/Navigator.cpp
 @@ -70,6 +70,9 @@
@@ -90,6 +90,3 @@ index 8ae672508dac..d4fc3dc6769e 100644
  
  # geckodriver WebDriver implementation
  # ==============================================================
--- 
-2.31.1
-

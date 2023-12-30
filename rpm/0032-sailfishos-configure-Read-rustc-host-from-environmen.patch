@@ -1,4 +1,4 @@
-From 637a3be1123efa220a712de3f8d697b8c648d0d1 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Raine Makelainen <raine.makelainen@jolla.com>
 Date: Mon, 28 Jun 2021 12:52:10 +0300
 Subject: [PATCH] [gecko][configure] Read rustc host from environment. JB#53019
@@ -86,6 +86,3 @@ index 621d31d6b8a9..726f3296c487 100644
          self.print(&format!("{} = {:?}", v, r));
          cache.insert(v.to_string(), r.clone());
          r
--- 
-2.26.2
-

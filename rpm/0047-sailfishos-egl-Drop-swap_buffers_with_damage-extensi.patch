@@ -36,6 +36,3 @@ index 13b69f2427c1..a07b8d983ab7 100644
        NS_ERROR(
            "EGL supports KHR_swap_buffers_with_damage without exposing its "
            "functions!");
--- 
-2.31.1
-

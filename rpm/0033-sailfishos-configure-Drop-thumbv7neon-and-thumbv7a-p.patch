@@ -24,6 +24,3 @@ index 20a2058f30d8..c78e42720fcd 100644
                      prefixes.append('armv7')
                  if arm_target.arm_arch >= 6:
                      prefixes.append('armv6')
--- 
-2.31.1
-

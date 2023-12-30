@@ -31,6 +31,3 @@ index 88ad49d169e8..56af515e5396 100644
  # C++ unit tests
  [PTestBadActorSub::__delete__]
  description = Only used by C++ unit tests
--- 
-2.31.1
-

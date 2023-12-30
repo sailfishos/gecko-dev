@@ -320,7 +320,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsDeviceContextSpecQt.h             |  60 +++
  widget/qt/nsIdleServiceQt.cpp                 | 123 +++++
  widget/qt/nsIdleServiceQt.h                   |  56 +++
- widget/qt/nsLookAndFeel.cpp                   |  476 ++
+ widget/qt/nsLookAndFeel.cpp                   | 476 ++++++++++++++++++
  widget/qt/nsLookAndFeel.h                     |  41 ++
  widget/qt/nsPrintDialogQt.cpp                 |  42 ++
  widget/qt/nsPrintDialogQt.h                   |  31 ++
@@ -334,7 +334,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  widget/qt/nsScreenQt.h                        |  29 ++
  widget/qt/nsWidgetFactory.cpp                 |  36 ++
  widget/qt/nsWidgetFactory.h                   |  22 +
- 110 files changed, 4888 insertions(+), 53 deletions(-)
+ 110 files changed, 4891 insertions(+), 53 deletions(-)
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
  create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
  create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
@@ -471,7 +471,7 @@ index 3914dae497de..1371b093e282 100644
      LOCAL_INCLUDES += [
          '/dom/system/android',
 diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
-index a4e9f806742e..afa6193b82e9 100644
+index 346d55ec8ca7..1d800616f09d 100644
 --- a/dom/ipc/ContentChild.cpp
 +++ b/dom/ipc/ContentChild.cpp
 @@ -9,6 +9,10 @@
@@ -2852,7 +2852,7 @@ index 7ba3be2fe241..e0b30f7bcb31 100644
      UNIFIED_SOURCES += [
          'nsNativeAppSupportUnix.cpp',
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
-index ef72d1bf4fb2..acd02de3c55d 100644
+index 8b5bce27cdc4..42979affcb69 100644
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
 @@ -3,6 +3,12 @@
@@ -2868,7 +2868,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
  #include "mozilla/dom/ContentParent.h"
  #include "mozilla/dom/ContentChild.h"
  #include "mozilla/ipc/GeckoChildProcessHost.h"
-@@ -279,6 +285,11 @@ bool gIsGtest = false;
+@@ -274,6 +280,11 @@ bool gIsGtest = false;
  
  nsString gAbsoluteArgv0Path;
  
@@ -2880,7 +2880,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
  #if defined(MOZ_WIDGET_GTK)
  #  include <glib.h>
  #  if defined(DEBUG) || defined(NS_BUILD_REFCNT_LOGGING)
-@@ -1680,8 +1691,14 @@ nsresult LaunchChild(bool aBlankCommandLine) {
+@@ -1675,8 +1686,14 @@ nsresult LaunchChild(bool aBlankCommandLine) {
  #endif
  
    if (aBlankCommandLine) {
@@ -2895,7 +2895,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
    }
  
    SaveToEnv("MOZ_LAUNCHED_CHILD=1");
-@@ -3742,6 +3759,25 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
+@@ -3737,6 +3754,25 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
    }
  #endif
  
@@ -2921,7 +2921,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
  #if defined(MOZ_WIDGET_GTK)
    // setup for private colormap.  Ideally we'd like to do this
    // in nsAppShell::Create, but we need to get in before gtk
-@@ -4837,6 +4873,10 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
+@@ -4816,6 +4852,10 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
    mProfileLock->Unlock();
    gProfileLock = nullptr;
  
@@ -7502,6 +7502,3 @@ index 000000000000..2306c78d3eae
 +void nsWidgetQtModuleDtor();
 +
 +#endif  // defined widget_qt_nsWidgetFactory_h
--- 
-2.17.1
-

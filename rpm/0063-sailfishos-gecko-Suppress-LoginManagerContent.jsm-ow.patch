@@ -24,6 +24,3 @@ index d7ccce093e17..f828d700dabd 100644
        ChromeUtils.getClassName(acInputField.ownerDocument) != "HTMLDocument"
      ) {
        return;
--- 
-2.31.1
-

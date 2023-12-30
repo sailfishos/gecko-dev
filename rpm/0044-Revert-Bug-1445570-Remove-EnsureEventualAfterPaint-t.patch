@@ -16,10 +16,10 @@ This reverts commit 1deccd7ac14706ad1849343cfb2b93df191a1c42.
  7 files changed, 129 insertions(+), 98 deletions(-)
 
 diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
-index 8c9a038491cc..eb67dad4d753 100644
+index d07676d50159..769142084b3e 100644
 --- a/dom/base/nsDOMWindowUtils.cpp
 +++ b/dom/base/nsDOMWindowUtils.cpp
-@@ -356,7 +356,6 @@ nsDOMWindowUtils::UpdateLayerTree() {
+@@ -362,7 +362,6 @@ nsDOMWindowUtils::UpdateLayerTree() {
          ChangesToFlush(FlushType::Display, false /* flush animations */));
      RefPtr<nsViewManager> vm = presShell->GetViewManager();
      if (nsView* view = vm->GetRootView()) {
@@ -473,6 +473,3 @@ index 1bfef49aa998..5a0679bb53e8 100644
  
    result = await observeStyling(5);
    // FIXME: Bug 866411: SMIL animations sometimes skip restyles when the target
--- 
-2.31.1
-

@@ -22,7 +22,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  6 files changed, 17 insertions(+), 3 deletions(-)
 
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index cf521545d64b..125b97df2f05 100644
+index 9a226be748e9..97b8cf4fa38d 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
 @@ -924,6 +924,10 @@ void CompositorBridgeParent::SetShadowProperties(Layer* aLayer) {
@@ -113,6 +113,3 @@ index 7c93b561b7de..7cd11b9f77ba 100644
    TimeDuration GetVsyncInterval() const override;
  
    // CompositableParentManager
--- 
-2.31.1
-

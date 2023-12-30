@@ -36,6 +36,3 @@ index 2fa98581ba6e..d2868f6169da 100644
  #  define GL_CONTEXT_PROVIDER_DEFAULT MOZ_GL_PROVIDER
  #endif
  
--- 
-2.31.1
-

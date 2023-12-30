@@ -38,6 +38,3 @@ index 4ff7ed2e27cc..afddf82cc911 100644
                                           getter_AddRefs(dir));
      NS_ENSURE_SUCCESS(rv, rv);
    }
--- 
-2.31.1
-

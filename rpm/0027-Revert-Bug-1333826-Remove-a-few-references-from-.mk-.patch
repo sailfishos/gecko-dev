@@ -25,6 +25,3 @@ index a3587eecc59a..290ff113939c 100644
  DEPENDENCIES	= .md
  
  ifdef MACOSX_DEPLOYMENT_TARGET
--- 
-2.31.1
-

@@ -21,6 +21,3 @@ index f973d9cf4395..b541537ca1be 100644
    LayerMetricsWrapper wrapper = GetRootContentLayer();
    if (wrapper) {
      mCompositor->SetClearColor(wrapper.Metadata().GetBackgroundColor());
--- 
-2.31.1
-

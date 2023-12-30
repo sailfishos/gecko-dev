@@ -509,6 +509,3 @@ index c653229d7d5d..11319f7aada7 100644
  
    bool mInitialized = false;
    PRLibrary* mEGLLibrary = nullptr;
--- 
-2.26.2
-

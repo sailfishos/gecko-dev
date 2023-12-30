@@ -42,6 +42,3 @@ index d5e2c61dbec9..58737ebd5420 100644
  #endif  // ANDROID
  
  #ifndef MOZ_UA_OS_AGNOSTIC
--- 
-2.31.1
-

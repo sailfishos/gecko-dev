@@ -107,6 +107,3 @@ index f492b154b211..b8f7e227404f 100644
      DIRS += ['mobile']
  else:
      DIRS += ['windows']
--- 
-2.31.1
-

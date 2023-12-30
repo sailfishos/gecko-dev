@@ -61,6 +61,3 @@ index 2b29dcdf8f8d..6964a24e200f 100644
          !handler->canNurseryAllocate()) {
        heap = gc::TenuredHeap;
      } else {
--- 
-2.31.1
-

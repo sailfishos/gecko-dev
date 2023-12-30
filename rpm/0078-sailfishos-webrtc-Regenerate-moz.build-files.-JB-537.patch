@@ -69248,6 +69248,3 @@ index d68eb28b388a..405ddb99d552 100644
 +    DEFINES["_FORTIFY_SOURCE"] = "2"
  
  Library("webrtc_gn")
--- 
-2.31.1
-

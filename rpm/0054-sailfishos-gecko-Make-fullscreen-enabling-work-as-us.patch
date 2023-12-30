@@ -35,6 +35,3 @@ index da9d56e843a2..1518302e1cad 100644
  
    // If we are already in full screen mode, just return.
    if (mFullscreen == aFullscreen) {
--- 
-2.31.1
-

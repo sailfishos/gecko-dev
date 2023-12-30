@@ -160,6 +160,3 @@ index 619d8437cf67..da8e36b0022e 100644
      public_deps += [ "desktop_capture" ]
    }
  }
--- 
-2.31.1
-
