@@ -157,6 +157,12 @@ Patch99:    0099-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
 Patch100:   0100-Bug-1721326-Allow-dynamic-PTHREAD_STACK_MIN.-r-gland.patch
 Patch101:   0101-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 Patch102:   0102-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
+Patch103:   0103-Bug-1716518-Upgrade-rental-to-v0.5.6.-r-emilio.patch
+Patch104:   0104-Bug-1661961-Upgrade-cstr-to-0.2.x.-r-emilio.patch
+Patch105:   0105-Bug-1655929-run-cargo-update-and-mach-vendor-rust-fo.patch
+Patch106:   0106-Bug-1655929-bump-upstream-versions-of-rlbox-lucet-r-.patch
+Patch107:   0107-Add-cfg-if-1.0.0.patch
+Patch108:   0108-Bug-1716518-Upgrade-socket2-to-v0.3.19.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch
