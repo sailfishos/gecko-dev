@@ -13,6 +13,7 @@
 
 #define NS_SYSTEM_SEARCH_DIR_KEY "SystemSearchDir"
 #define NS_USER_SEARCH_DIR_KEY "UserSearchDir"
+#define NS_APP_DISTRIBUTION_SEARCH_DIR_LIST "SrchPluginsDistDL"
 
 nsIDirectoryServiceProvider* DirProvider::sAppFileLocProvider = nullptr;
 nsCOMPtr<nsIFile> DirProvider::sProfileDir = nullptr;
@@ -59,12 +60,12 @@ DirProvider::GetFile(const char* aKey, bool* aPersist,
       *aPersist = true;
       rv = sProfileDir->Clone(getter_AddRefs(file));
       if (NS_SUCCEEDED(rv)) {
-        rv = file->AppendNative(NS_LITERAL_CSTRING("searchEngines"));
+        rv = file->AppendNative("searchEngines"_ns);
       }
     } else {
       rv = NS_NewNativeLocalFile(nsDependentCString(PR_GetEnv("HOME")), true, getter_AddRefs(file));
       if (NS_SUCCEEDED(rv)) {
-        rv = file->AppendRelativeNativePath(NS_LITERAL_CSTRING(".local/share/org.sailfishos/browser/searchEngines"));
+        rv = file->AppendRelativeNativePath(".local/share/org.sailfishos/browser/searchEngines"_ns);
       }
 
     }
@@ -114,9 +115,9 @@ DirProvider::GetFile(const char* aKey, bool* aPersist,
     nsCOMPtr<nsIFile> file;
     nsresult rv = sGREDir->Clone(getter_AddRefs(file));
     if (NS_SUCCEEDED(rv)) {
-      rv = file->AppendNative(NS_LITERAL_CSTRING("defaults"));
+      rv = file->AppendNative("defaults"_ns);
       if (NS_SUCCEEDED(rv)) {
-        rv = file->AppendNative(NS_LITERAL_CSTRING("pref"));
+        rv = file->AppendNative("pref"_ns);
         NS_ADDREF(*aResult = file);
         return rv;
       }

@@ -10,8 +10,9 @@ MOZ_IMPLICIT EmbedLiteViewProcessParent::EmbedLiteViewProcessParent(const uint32
                                                                     const uint32_t &parentId,
                                                                     const uintptr_t &parentBrowsingContext,
                                                                     const bool &isPrivateWindow,
-                                                                    const bool &isDesktopMode)
-  : EmbedLiteViewParent(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode)
+                                                                    const bool &isDesktopMode,
+                                                                    const bool &isHIdden)
+  : EmbedLiteViewParent(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode, isHIdden)
 {
     LOGT();
 }

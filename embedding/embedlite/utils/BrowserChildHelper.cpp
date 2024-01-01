@@ -54,30 +54,18 @@ using namespace mozilla::widget;
 
 static const CSSSize kDefaultViewportSize(980, 480);
 
-static bool sPostAZPCAsJsonViewport(false);
-
 BrowserChildHelper::BrowserChildHelper(EmbedLiteViewChildIface *aView, uint32_t aId)
   : mView(aView)
   , mWebNavigation(nullptr)
   , mId(aId)
   , mHasValidInnerSize(false)
   , mIPCOpen(false)
-  , mParentIsActive(false)
   , mShouldSendWebProgressEventsToParent(false)
   , mHasSiblings(false)
   , mDynamicToolbarMaxHeight(0)
 
 {
   LOGT();
-
-//  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
-
-  // Init default prefs
-  static bool sPrefInitialized = false;
-  if (!sPrefInitialized) {
-    sPrefInitialized = true;
-    Preferences::AddBoolVarCache(&sPostAZPCAsJsonViewport, "embedlite.azpc.json.viewport", false);
-  }
 
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
@@ -145,7 +133,7 @@ public:
     LOGT();
     RefPtr<Event> event = NS_NewDOMEvent(mBrowserChildMessageManager, nullptr, nullptr);
     if (event) {
-      event->InitEvent(NS_LITERAL_STRING("unload"), false, false);
+      event->InitEvent(nsLiteralString(u"unload"_ns), false, false);
       event->SetTrusted(true);
 
       mBrowserChildMessageManager->DispatchEvent(*event);
@@ -247,6 +235,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(BrowserChildHelper)
 bool
 BrowserChildHelper::InitBrowserChildHelperMessageManager()
 {
+  mShouldSendWebProgressEventsToParent = true;
+
   if (mBrowserChildMessageManager) {
     return true;
   }
@@ -299,7 +289,7 @@ BrowserChildHelper::Observe(nsISupports* aSubject,
       sscanf(NS_ConvertUTF16toUTF8(aData).get(),
              "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
              &rect.x, &rect.y, &rect.width, &rect.height);
-      mView->ZoomToRect(presShellId, viewId, rect);
+      mView->ZoomToRect(presShellId, viewId, ZoomTarget{rect});
     }
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<Document> subject(do_QueryInterface(aSubject));
@@ -362,16 +352,6 @@ BrowserChildHelper::WebWidget()
 {
   nsCOMPtr<Document> document = GetTopLevelDocument();
   return nsContentUtils::WidgetForDocument(document);
-}
-
-nsresult BrowserChildHelper::GetParentIsActive(bool* aParentIsActive) {
-  *aParentIsActive = mView && mParentIsActive;
-  return NS_OK;
-}
-
-nsresult BrowserChildHelper::SetParentIsActive(bool aParentIsActive) {
-  mParentIsActive = aParentIsActive;
-  return NS_OK;
 }
 
 bool
@@ -564,7 +544,7 @@ WidgetTouchEvent BrowserChildHelper::ConvertMutiTouchInputToEvent(const mozilla:
   }
 
   aRes = true;
-  return aData.ToWidgetTouchEvent(widget);
+  return aData.ToWidgetEvent(widget);
 }
 
 nsIWidget*
@@ -707,10 +687,6 @@ void BrowserChildHelper::SetWebNavigation(nsIWebNavigation *aWebNavigation) {
   mWebNavigation = aWebNavigation;
 }
 
-uint64_t BrowserChildHelper::ChromeOuterWindowID() const {
-  return mView->GetOuterID();
-}
-
 // -- nsIBrowserChild --------------
 
 NS_IMETHODIMP
@@ -722,20 +698,6 @@ BrowserChildHelper::GetMessageManager(dom::ContentFrameMessageManager** aResult)
   }
   *aResult = nullptr;
   return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-BrowserChildHelper::GetWebBrowserChrome(nsIWebBrowserChrome3** aWebBrowserChrome)
-{
-  NS_IF_ADDREF(*aWebBrowserChrome = mWebBrowserChrome);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-BrowserChildHelper::SetWebBrowserChrome(nsIWebBrowserChrome3* aWebBrowserChrome)
-{
-  mWebBrowserChrome = aWebBrowserChrome;
-  return NS_OK;
 }
 
 void
@@ -767,13 +729,19 @@ BrowserChildHelper::GetTabId(uint64_t* aId)
   return NS_OK;
 }
 
-NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
-  LOGT("NOT YET IMPLEMENTED");
-  return NS_OK;
+NS_IMETHODIMP
+BrowserChildHelper::GetChromeOuterWindowID(uint64_t* aId) {
+  nsCOMPtr<nsIDocShell> window = do_GetInterface(WebNavigation());
+  if (window) {
+    window->GetOuterWindowID(aId);
+    return NS_OK;
+  }
+
+  return NS_ERROR_FAILURE;
 }
 
-NS_IMETHODIMP BrowserChildHelper::BeginSendingWebProgressEventsToParent() {
-  mShouldSendWebProgressEventsToParent = true;
+NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
+  LOGT("NOT YET IMPLEMENTED");
   return NS_OK;
 }
 
@@ -860,13 +828,6 @@ already_AddRefed<nsIEventTarget>
 BrowserChildHelperMessageManager::GetTabEventTarget() {
   nsCOMPtr<nsIEventTarget> target = EventTargetFor(TaskCategory::Other);
   return target.forget();
-}
-
-uint64_t BrowserChildHelperMessageManager::ChromeOuterWindowID() {
-  if (!mBrowserChildHelper) {
-    return 0;
-  }
-  return mBrowserChildHelper->ChromeOuterWindowID();
 }
 
 nsresult BrowserChildHelperMessageManager::Dispatch(

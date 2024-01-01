@@ -133,9 +133,9 @@ EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
   nsCOMPtr<nsPIDOMWindowOuter> pwindow(do_QueryInterface(rootWin));
   nsCOMPtr<nsPIDOMWindowOuter> outerWindow = pwindow->GetInProcessTop();
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(outerWindow)->WindowUtils();
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(navNav);
   uint64_t OuterWindowID = 0;
-  utils->GetOuterWindowID(&OuterWindowID);
+  docShell->GetOuterWindowID(&OuterWindowID);
   *aId = mIDMap[OuterWindowID];
   return NS_OK;
 }
@@ -165,14 +165,8 @@ EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, 
 NS_IMETHODIMP
 EmbedLiteAppService::AddMessageListener(const char* name, nsIEmbedMessageListener* listener)
 {
-  nsTArray<nsCOMPtr<nsIEmbedMessageListener> >* array;
   nsDependentCString cstrname(name);
-  if (!mMessageListeners.Get(cstrname, &array)) {
-    array = new nsTArray<nsCOMPtr<nsIEmbedMessageListener> >();
-    mMessageListeners.Put(cstrname, array);
-  }
-
-  array->AppendElement(listener);
+  mMessageListeners.GetOrInsertNew(cstrname)->AppendElement(listener);
 
   return NS_OK;
 }
@@ -233,7 +227,7 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
   uint32_t presShellId;
   mozilla::layers::ScrollableLayerGuid::ViewID viewId;
   if (view->GetScrollIdentifiers(&presShellId, &viewId)) {
-    view->ZoomToRect(presShellId, viewId, CSSRect(aX, aY, aWidth, aHeight));
+    view->ZoomToRect(presShellId, viewId, ZoomTarget{CSSRect(aX, aY, aWidth, aHeight)});
   }
 
   return NS_OK;
@@ -327,8 +321,7 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, mozIDOMWindowProxy * *embed
         rv = view->GetBrowser(getter_AddRefs(br));
         NS_ENSURE_TRUE(br, rv);
         nsCOMPtr<nsIDocShell> docShell = do_GetInterface(br);
-        bool isActive;
-        docShell->GetIsActive(&isActive);
+        bool isActive = docShell->GetBrowsingContext()->IsActive();
         if (isActive) {
           nsCOMPtr<mozIDOMWindowProxy> domWindow;
           br->GetContentDOMWindow(getter_AddRefs(domWindow));

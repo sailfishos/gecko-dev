@@ -50,7 +50,7 @@ index d95a96216541..751b86a2ed33 100644
 +  nsCOMPtr<nsIFile> systemStamp;
 +
 +  systemStamp = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
-+  systemStamp->InitWithPath(NS_LITERAL_STRING("/var/lib/_MOZEMBED_CACHE_CLEAN_"));
++  systemStamp->InitWithPath(u"/var/lib/_MOZEMBED_CACHE_CLEAN_"_ns);
 +  rv = systemStamp->Exists(&exists);
 +  NS_ENSURE_SUCCESS(rv, rv);
 +

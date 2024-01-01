@@ -167,7 +167,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
         LOGE("NS_NewNativeLocalFile failed.");
         return false;
       }
-      kDirectoryProvider.sProfileDir->AppendNative(NS_LITERAL_CSTRING(".mozilla"));
+      kDirectoryProvider.sProfileDir->AppendNative(".mozilla"_ns);
       kDirectoryProvider.sProfileDir->AppendNative(nsDependentCString(aProfilePath));
     } else {
       // for now use a subdir under appdir
@@ -179,7 +179,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
       }
 
       kDirectoryProvider.sProfileDir = do_QueryInterface(profFile);
-      kDirectoryProvider.sProfileDir->AppendNative(NS_LITERAL_CSTRING("mozembed"));
+      kDirectoryProvider.sProfileDir->AppendNative("mozembed"_ns);
     }
 
     // create dir if needed

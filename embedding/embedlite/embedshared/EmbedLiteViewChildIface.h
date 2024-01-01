@@ -13,6 +13,7 @@ namespace mozilla {
 
 namespace layers {
 struct FrameMetrics;
+struct ZoomTarget;
 } // namespace layers
 
 namespace embedlite {
@@ -39,7 +40,7 @@ public:
   virtual bool
   ZoomToRect(const uint32_t& aPresShellId,
              const mozilla::layers::ScrollableLayerGuid::ViewID &aViewId,
-             const CSSRect& aRect) = 0;
+             const mozilla::layers::ZoomTarget& aRect) = 0;
 
   virtual bool
   SetTargetAPZC(uint64_t aInputBlockId,

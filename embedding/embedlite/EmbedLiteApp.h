@@ -51,6 +51,7 @@ public:
   virtual void OnObserve(const char* aMessage, const char16_t* aData) {}
   // New Window request which is usually coming from WebPage new window request
   virtual uint32_t CreateNewWindowRequested(const uint32_t &chromeFlags,
+                                            const bool &hidden,
                                             EmbedLiteView *aParentView,
                                             const uintptr_t &parentBrowsingContext) { return 0; }
   virtual void LastViewDestroyed() {};
@@ -116,7 +117,8 @@ public:
                                     uint32_t aParent = 0,
                                     uintptr_t parentBrowsingContext = 0,
                                     bool aIsPrivateWindow = false,
-                                    bool isDesktopMode = false);
+                                    bool isDesktopMode = false,
+                                    bool isHidden = false);
   virtual EmbedLiteWindow* CreateWindow(int width, int height, EmbedLiteWindowListener *aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
@@ -195,6 +197,7 @@ private:
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
   uint32_t CreateWindowRequested(const uint32_t &chromeFlags,
+                                 const bool &hidden,
                                  const uint32_t &parentId,
                                  const uintptr_t &parentBrowsingContext);
   EmbedLiteAppListener* GetListener();

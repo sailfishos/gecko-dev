@@ -42,7 +42,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   using nsBaseWidget::Create; // for Create signature not overridden here
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget*        aParent,
+  [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
                                        nsNativeWidget    aNativeParent,
                                        const LayoutDeviceIntRect& aRect,
                                        nsWidgetInitData* aInitData = nullptr) override;

@@ -16,6 +16,7 @@ public:
   virtual bool CreateWindow(const uint32_t &parentId,
                             const uintptr_t &parentBrowsingContext,
                             const uint32_t &chromeFlags,
+                            const bool &hidden,
                             uint32_t *createdID,
                             bool *cancel) = 0;
 };

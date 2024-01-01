@@ -34,7 +34,8 @@ public:
                       const uint32_t &parentId,
                       const uintptr_t &parentBrowsingContext,
                       const bool &isPrivateWindow,
-                      const bool &isDesktopMode);
+                      const bool &isDesktopMode,
+                      const bool &isHidden);
 
   NS_DECL_EMBEDLITEVIEWIFACE
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -90,7 +91,7 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvZoomToRect(const uint32_t &aPresShellId,
                                                  const ViewID &aViewId,
-                                                 const CSSRect &aRect);
+                                                 const ZoomTarget &aRect);
   virtual mozilla::ipc::IPCResult RecvSetBackgroundColor(const nscolor &aColor);
   virtual mozilla::ipc::IPCResult RecvContentReceivedInputBlock(const uint64_t &aInputBlockId,
                                                                 const bool &aPreventDefault);
@@ -139,6 +140,7 @@ private:
   bool mViewAPIDestroyed;
   EmbedLiteWindowParent& mWindow;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
+  bool mIsHidden;
 
   float mDPI;
 

@@ -14,11 +14,12 @@
 #include "nsIWebNavigation.h"
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
-#include "nsIIdleServiceInternal.h"
+#include "nsIUserIdleServiceInternal.h"
 #include "BrowserChildHelper.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLitePuppetWidget.h"
+#include "nsTHashMap.h"
 
 class nsWebBrowser;
 
@@ -30,6 +31,7 @@ class BrowsingContext;
 namespace layers {
 struct FrameMetrics;
 class APZEventState;
+struct ZoomTarget;
 } // namespace layers
 
 namespace embedlite {
@@ -52,7 +54,8 @@ public:
                      const uint32_t &parentId,
                      mozilla::dom::BrowsingContext *parentBrowsingContext,
                      const bool &isPrivateWindow,
-                     const bool &isDesktopMode);
+                     const bool &isDesktopMode,
+                     const bool &isHidden);
 
   NS_DECL_NSIEMBEDBROWSERCHROMELISTENER
   NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
@@ -64,7 +67,7 @@ public:
   virtual bool
   ZoomToRect(const uint32_t& aPresShellId,
              const ViewID& aViewId,
-             const CSSRect& aRect) override;
+             const ZoomTarget& aRect) override;
 
   virtual bool
   SetTargetAPZC(uint64_t aInputBlockId,
@@ -139,8 +142,8 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual mozilla::ipc::IPCResult RecvDestroy();
   virtual mozilla::ipc::IPCResult RecvLoadURL(const nsString &);
-  virtual mozilla::ipc::IPCResult RecvGoBack();
-  virtual mozilla::ipc::IPCResult RecvGoForward();
+  virtual mozilla::ipc::IPCResult RecvGoBack(const bool& aRequireUserInteraction, const bool& aUserActivation);
+  virtual mozilla::ipc::IPCResult RecvGoForward(const bool& aRequireUserInteraction, const bool& aUserActivation);
   virtual mozilla::ipc::IPCResult RecvStopLoad();
   virtual mozilla::ipc::IPCResult RecvReload(const bool &);
 
@@ -232,7 +235,8 @@ private:
   void InitGeckoWindow(const uint32_t parentId,
                        mozilla::dom::BrowsingContext *parentBrowsingContext,
                        const bool isPrivateWindow,
-                       const bool isDesktopMode);
+                       const bool isDesktopMode,
+                       const bool isHidden);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
   void SetDesktopMode(const bool aDesktopMode);
@@ -243,7 +247,7 @@ private:
   EmbedLiteWindowChild *mWindow; // Not owned
   nsCOMPtr<nsIWidget> mWidget;
   RefPtr<nsWebBrowser> mWebBrowser;
-  nsCOMPtr<nsIIdleServiceInternal> mIdleService;
+  nsCOMPtr<nsIUserIdleServiceInternal> mIdleService;
   RefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsPIDOMWindowOuter> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
@@ -255,7 +259,7 @@ private:
   bool mIMEComposing;
   uint64_t mPendingTouchPreventedBlockId;
 
-  nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
+  nsTHashMap<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
 
   RefPtr<APZEventState> mAPZEventState;
   mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;

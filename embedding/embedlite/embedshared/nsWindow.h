@@ -34,10 +34,10 @@ public:
 
 
   using PuppetWidgetBase::Create; // for Create signature not overridden here
-  virtual MOZ_MUST_USE nsresult Create(nsIWidget*        aParent,
-                                       nsNativeWidget    aNativeParent,
-                                       const LayoutDeviceIntRect& aRect,
-                                       nsWidgetInitData* aInitData = nullptr) override;
+  [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
+                                        nsNativeWidget    aNativeParent,
+                                        const LayoutDeviceIntRect& aRect,
+                                        nsWidgetInitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
   virtual void Show(bool aState) override;

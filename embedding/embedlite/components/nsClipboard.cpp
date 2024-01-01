@@ -15,6 +15,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsIEmbedLiteJSON.h"
 #include "nsIWritablePropertyBag2.h"
+#include "nsIThread.h"
 
 using namespace mozilla;
 
@@ -61,8 +62,8 @@ nsEmbedClipboard::SetData(nsITransferable* aTransferable, nsIClipboardOwner* anO
   nsCOMPtr<nsIEmbedLiteJSON> json = do_GetService("@mozilla.org/embedlite-json;1");
   nsCOMPtr<nsIWritablePropertyBag2> root;
   json->CreateObject(getter_AddRefs(root));
-  root->SetPropertyAsAString(NS_LITERAL_STRING("data"), buffer);
-  root->SetPropertyAsBool(NS_LITERAL_STRING("private"), isPrivateData);
+  root->SetPropertyAsAString(u"data"_ns, buffer);
+  root->SetPropertyAsBool(u"private"_ns, isPrivateData);
 
   json->CreateJSON(root, message);
   // Possible we can avoid json stuff for this case and send uri directly

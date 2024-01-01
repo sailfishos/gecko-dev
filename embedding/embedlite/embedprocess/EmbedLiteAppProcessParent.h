@@ -31,13 +31,12 @@ public:
   void GetPrefs(nsTArray<mozilla::dom::Pref>* prefs);
 
 protected:
-  void OnChannelConnected(int32_t pid) override;
-
   virtual mozilla::ipc::IPCResult RecvInitialized() override;
   virtual mozilla::ipc::IPCResult RecvReadyToShutdown() override;
   virtual mozilla::ipc::IPCResult RecvCreateWindow(const uint32_t &parentId,
                                                    const uintptr_t &parentBrowsingContext,
                                                    const uint32_t &chromeFlags,
+                                                   const bool &hidden,
                                                    uint32_t *createdID,
                                                    bool *cancel) override;
   virtual mozilla::ipc::IPCResult RecvObserve(const nsCString &topic,
@@ -48,7 +47,8 @@ protected:
                                                           const uint32_t &parentId,
                                                           const uintptr_t &parentBrowsingContext,
                                                           const bool &isPrivateWindow,
-                                                          const bool &isDesktopMode) override;
+                                                          const bool &isDesktopMode,
+                                                          const bool &isHidden) override;
 
   virtual bool DeallocPEmbedLiteViewParent(PEmbedLiteViewParent *aActor) override;
   virtual PEmbedLiteWindowParent *AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;

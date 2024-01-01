@@ -67,7 +67,7 @@ EmbedLiteCompositorProcessParent::EmbedLiteCompositorProcessParent(Transport* aT
   : CompositorBridgeParent(nullptr,
                            CSSToLayoutDeviceScale(1.0),
                            gfxPlatform::GetPlatform()->GetHardwareVsync()->GetGlobalDisplay().GetVsyncRate(),
-                           CompositorOptions(true, false),
+                           CompositorOptions(true, false, false),
                            true,
                            IntSize(aSurfaceWidth, aSurfaceHeight))
   , mTransport(aTransport)
@@ -233,7 +233,20 @@ EmbedLiteCompositorProcessParent::GetAPZTestData(const LayersId &aLayersId,
 }
 
 void
-EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId &aLayersId, const uint64_t &aInputBlockId, const nsTArray<ScrollableLayerGuid> &aTargets)
+EmbedLiteCompositorProcessParent::GetFrameUniformity(const LayersId& aLayersId,
+                                                  FrameUniformityData* aOutData) {
+  MOZ_ASSERT(aLayersId.IsValid());
+  const CompositorBridgeParent::LayerTreeState* state =
+      CompositorBridgeParent::GetIndirectShadowTree(aLayersId);
+  if (!state || !state->mParent) {
+    return;
+  }
+
+  state->mParent->GetFrameUniformity(aLayersId, aOutData);
+}
+
+void
+EmbedLiteCompositorProcessParent::SetConfirmedTargetAPZC(const LayersId& aLayersId, const uint64_t& aInputBlockId, nsTArray<ScrollableLayerGuid>&& aTargets)
 {
   LOGT("Implement me");
   Unused << aLayersId;

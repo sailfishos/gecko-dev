@@ -59,7 +59,9 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
 
   LOGT("parent: %p, chrome flags: %u, thread id: %ld parent opener id: %" PRId64 "", aParent, aChromeFlags, syscall(SYS_gettid), parentBrowsingContext->Id());
 
-  mChild->CreateWindow(parentID, reinterpret_cast<uintptr_t>(parentBrowsingContext.get()), aChromeFlags, &createdID, aCancel);
+  const bool isForPrinting = aOpenWindowInfo->GetIsForPrinting();
+
+  mChild->CreateWindow(parentID, reinterpret_cast<uintptr_t>(parentBrowsingContext.get()), aChromeFlags, isForPrinting, &createdID, aCancel);
 
   if (*aCancel) {
     return NS_OK;

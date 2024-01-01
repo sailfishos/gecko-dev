@@ -15,8 +15,9 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t &windowId,
                                                      const uint32_t &parentId,
                                                      const uintptr_t &parentBrowsingContext,
                                                      const bool &isPrivateWindow,
-                                                     const bool &isDesktopMode)
-  : EmbedLiteViewParent(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode)
+                                                     const bool &isDesktopMode,
+                                                     const bool &isHidden)
+  : EmbedLiteViewParent(windowId, id, parentId, parentBrowsingContext, isPrivateWindow, isDesktopMode, isHidden)
 {
 }
 

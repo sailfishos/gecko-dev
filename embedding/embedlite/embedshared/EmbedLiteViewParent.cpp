@@ -29,12 +29,14 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
                                          const uint32_t &parentId,
                                          const uintptr_t &parentBrowsingContext,
                                          const bool &isPrivateWindow,
-                                         const bool &isDesktopMode)
+                                         const bool &isDesktopMode,
+                                         const bool &isHidden)
   : mWindowId(windowId)
   , mId(id)
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)
+  , mIsHidden(isHidden)
   , mDPI(-1.0)
   , mThread(NS_GetCurrentThread())
   , mLastIMEState(0)
@@ -286,7 +288,7 @@ mozilla::ipc::IPCResult EmbedLiteViewParent::RecvUpdateZoomConstraints(const uin
 
 mozilla::ipc::IPCResult EmbedLiteViewParent::RecvZoomToRect(const uint32_t &aPresShellId,
                                                             const ViewID &aViewId,
-                                                            const CSSRect &aRect)
+                                                            const ZoomTarget &aRect)
 {
   LOGT("thread id: %ld", syscall(SYS_gettid));
   nsWindow *window = GetWindowWidget();
@@ -461,15 +463,15 @@ EmbedLiteViewParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
   mozilla::layers::APZEventResult apzResult = GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(multiTouchInput);
 
   // If the APZ says to drop it, then we drop it
-  if (apzResult.mStatus == nsEventStatus_eConsumeNoDefault) {
+  if (apzResult.GetStatus() == nsEventStatus_eConsumeNoDefault) {
     return NS_OK;
   }
 
   if (multiTouchInput.mInputType == MULTITOUCH_INPUT) {
     if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
+      Unused << SendInputDataTouchMoveEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     } else {
-      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.mStatus);
+      Unused << SendInputDataTouchEvent(apzResult.mTargetGuid, multiTouchInput, apzResult.mInputBlockId, apzResult.GetStatus());
     }
   }
   return NS_OK;
@@ -533,7 +535,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -541,7 +543,7 @@ EmbedLiteViewParent::MousePress(int x, int y, int mstime, unsigned int buttons, 
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
+  Unused << SendMouseEvent(u"mousedown"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -555,7 +557,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -563,7 +565,7 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
+  Unused << SendMouseEvent(u"mouseup"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;
@@ -577,7 +579,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
   }
 
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp(), modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp::Now(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -585,7 +587,7 @@ EmbedLiteViewParent::MouseMove(int x, int y, int mstime, unsigned int buttons, u
                                                1.0f));
 
   GetApzcTreeManager()->InputBridge()->ReceiveInputEvent(event);
-  Unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
+  Unused << SendMouseEvent(u"mousemove"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
   return NS_OK;

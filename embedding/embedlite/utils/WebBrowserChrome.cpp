@@ -24,6 +24,7 @@
 #include "nsIBaseWindow.h"
 #include "nsIMultiPartChannel.h"
 #include "nsIHttpProtocolHandler.h"
+#include "nsIHttpChannel.h"
 #include "mozilla/dom/ScriptSettings.h" // for AutoNoJSAPI
 #include "mozilla/dom/EventTarget.h"
 #include "BrowserChildHelper.h"
@@ -31,12 +32,13 @@
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/DOMRect.h"
 
 // Duplicated from EventNameList.h
-#define MOZ_MozAfterPaint "MozAfterPaint"
-#define MOZ_scroll "scroll"
-#define MOZ_pagehide "pagehide"
-#define MOZ_MozScrolledAreaChanged "MozScrolledAreaChanged"
+#define MOZ_MozAfterPaint u"MozAfterPaint"
+#define MOZ_scroll u"scroll"
+#define MOZ_pagehide u"pagehide"
+#define MOZ_MozScrolledAreaChanged u"MozScrolledAreaChanged"
 
 using namespace mozilla::dom;
 
@@ -329,7 +331,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
   RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
 
   return NS_OK;
 }
@@ -427,13 +429,13 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
     }
 
     RefPtr<EventTarget> target(window->GetChromeEventHandler());
-    target->AddEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
+    target->AddEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
   } else if (type.EqualsLiteral(MOZ_pagehide)) {
     mScrollOffset = nsIntPoint();
   } else if (type.EqualsLiteral(MOZ_MozAfterPaint)) {
     nsCOMPtr<nsPIDOMWindowOuter> pidomWindow = do_QueryInterface(docWin);
     RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
-    target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
+    target->RemoveEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
     if (mFirstPaint) {
       mListener->OnUpdateDisplayPort();
       return NS_OK;
@@ -557,12 +559,6 @@ NS_IMETHODIMP WebBrowserChrome::GetDimensions(uint32_t aFlags,
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetFocus()
-{
-  LOGNI();
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
 NS_IMETHODIMP WebBrowserChrome::GetVisibility(bool* aVisibility)
 {
   *aVisibility = mIsVisible;
@@ -648,9 +644,9 @@ void WebBrowserChrome::SetEventHandler()
   NS_ENSURE_TRUE(pidomWindow, );
   RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
-  target->AddEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_pagehide), this, PR_FALSE);
 }
 
 void WebBrowserChrome::RemoveEventHandler()
@@ -666,10 +662,10 @@ void WebBrowserChrome::RemoveEventHandler()
   NS_ENSURE_TRUE(pidomWindow, );
   RefPtr<EventTarget> target(pidomWindow->GetChromeEventHandler());
   NS_ENSURE_TRUE(target, );
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_pagehide), this, PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_scroll), this, PR_FALSE);
-  target->RemoveEventListener(NS_LITERAL_STRING(MOZ_MozAfterPaint), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_pagehide), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
 }
 
 void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)
@@ -702,7 +698,7 @@ nsresult WebBrowserChrome::GetHttpUserAgent(nsIRequest* request, nsAString& aHtt
   nsAutoCString tCspUserAgent;
   if (httpChannel) {
     Unused << httpChannel->GetRequestHeader(
-        NS_LITERAL_CSTRING("User-Agent"), tCspUserAgent);
+        "User-Agent"_ns, tCspUserAgent);
   }
 
   aHttpUserAgent = NS_ConvertASCIItoUTF16(tCspUserAgent);
