@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexandre Lissy <lissyx@lissyx.dyndns.org>
+Date: Tue, 11 May 2021 13:06:30 +0000
+Subject: [PATCH] Bug 1710603 - Allow stat on / from socket process for glibc
+ 2.33 getaddrinfo() r=gcp
+
+Differential Revision: https://phabricator.services.mozilla.com/D114841
+---
+ security/sandbox/linux/broker/SandboxBrokerPolicyFactory.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/security/sandbox/linux/broker/SandboxBrokerPolicyFactory.cpp b/security/sandbox/linux/broker/SandboxBrokerPolicyFactory.cpp
+index 91e1b1cfc10a..24fed2dd0a0d 100644
+--- a/security/sandbox/linux/broker/SandboxBrokerPolicyFactory.cpp
++++ b/security/sandbox/linux/broker/SandboxBrokerPolicyFactory.cpp
+@@ -694,6 +694,11 @@ SandboxBrokerPolicyFactory::GetSocketProcessPolicy(int aPid) {
+   policy->AddDir(rdonly, "/usr/share");
+   policy->AddDir(rdonly, "/usr/local/share");
+ 
++  // glibc will try to stat64("/") while populating nsswitch database
++  // https://sourceware.org/git/?p=glibc.git;a=blob;f=nss/nss_database.c;h=cf0306adc47f12d9bc761ab1b013629f4482b7e6;hb=9826b03b747b841f5fc6de2054bf1ef3f5c4bdf3#l396
++  // denying will make getaddrinfo() return ENONAME
++  policy->AddDir(access, "/");
++
+   AddLdconfigPaths(policy.get());
+ 
+   // Socket process sandbox needs to allow shmem in order to support
