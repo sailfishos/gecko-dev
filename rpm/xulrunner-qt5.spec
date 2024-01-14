@@ -139,6 +139,9 @@ Patch81:    0081-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
 Patch82:    0082-sailfishos-gecko-Disallow-page-zooming-if-the-meta-v.patch
 Patch83:    0083-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
 Patch84:    0084-sailfishos-gecko-Get-12-24h-timeformat-setting-from-.patch
+Patch85:    0085-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
+Patch86:    0086-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
+Patch87:    0087-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
