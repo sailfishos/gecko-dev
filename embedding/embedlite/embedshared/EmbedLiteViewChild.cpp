@@ -478,7 +478,7 @@ EmbedLiteViewChild::WebWidget()
 
 /*----------------------------TabChildIface-----------------------------------------------------*/
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url, const bool &aFromExternal)
 {
   LOGT("url:%s", NS_ConvertUTF16toUTF8(url).get());
   NS_ENSURE_TRUE(mWebNavigation, IPC_OK());
@@ -489,6 +489,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url)
     flags |= nsIWebNavigation::LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
   }
   flags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
+
+  if (aFromExternal) {
+    flags |= nsIWebNavigation::LOAD_FLAGS_FROM_EXTERNAL;
+  }
 
   LoadURIOptions loadURIOptions;
   loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();

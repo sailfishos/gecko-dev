@@ -42,7 +42,7 @@ nested(upto inside_sync) sync protocol PEmbedLiteView
     manager PEmbedLiteApp;
 
 child:
-    async LoadURL(nsString url);
+    async LoadURL(nsString url, bool aFromExternal);
     async GoBack(bool aRequireUserInteraction, bool aUserActivation);
     async GoForward(bool aRequireUserInteraction, bool aUserActivation);
     async StopLoad();

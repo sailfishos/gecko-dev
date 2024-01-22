@@ -141,7 +141,7 @@ protected:
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
   virtual mozilla::ipc::IPCResult RecvDestroy();
-  virtual mozilla::ipc::IPCResult RecvLoadURL(const nsString &);
+  virtual mozilla::ipc::IPCResult RecvLoadURL(const nsString &, const bool& aFromExternal);
   virtual mozilla::ipc::IPCResult RecvGoBack(const bool& aRequireUserInteraction, const bool& aUserActivation);
   virtual mozilla::ipc::IPCResult RecvGoForward(const bool& aRequireUserInteraction, const bool& aUserActivation);
   virtual mozilla::ipc::IPCResult RecvStopLoad();

@@ -79,7 +79,7 @@ public:
   virtual EmbedLiteViewListener *GetListener() const;
 
   // Embed Interface
-  virtual void LoadURL(const char* aUrl);
+  virtual void LoadURL(const char* aUrl, bool aFromExternal);
   virtual void SetIsActive(bool);
   virtual void SetIsFocused(bool);
   virtual void SetDesktopMode(bool);
