@@ -86,10 +86,10 @@ EmbedLiteView::GetImpl()
 }
 
 void
-EmbedLiteView::LoadURL(const char* aUrl)
+EmbedLiteView::LoadURL(const char* aUrl, bool aFromExternal)
 {
   LOGT("url:%s", aUrl);
-  Unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
+  Unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)), aFromExternal);
 }
 
 void
