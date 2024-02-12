@@ -221,6 +221,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
+  browsingContext->InitSessionHistory();
 
   CanonicalBrowsingContext *canonicalBrowsingContext = browsingContext->Canonical();
   nsISecureBrowserUI *secureBrowserUI = nullptr;
