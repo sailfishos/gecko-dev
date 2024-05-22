@@ -108,6 +108,12 @@ pref("media.gstreamer.enable-blacklist", false);
 // Disable X backend on GTK
 pref("gfx.xrender.enabled", false);
 
+// Make gecko compositor use GL context/surface provided by the application.
+//pref("embedlite.compositor.external_gl_context", false);
+// Request the application to create GLContext for the compositor as
+// soon as the top level PuppetWidget is creted for the view. Setting
+// this pref only makes sense when using external compositor gl context.
+//pref("embedlite.compositor.request_external_gl_context_early", false);
 pref("extensions.update.enabled", false);
 pref("extensions.systemAddon.update.enabled", false);
 
