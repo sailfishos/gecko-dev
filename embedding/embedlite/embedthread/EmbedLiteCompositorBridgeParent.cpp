@@ -111,25 +111,22 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
   // TODO: The switch from GLSCreenBuffer to SwapChain needs completing
   // See: https://phabricator.services.mozilla.com/D75055
   if (context->IsOffscreen()) {
-    UniquePtr<SurfaceFactory> factory;
-    if (context->GetContextType() == GLContextType::EGL) {
-      // [Basic/OGL Layers, OMTC] WebGL layer init.
-      factory = SurfaceFactory_EGLImage::Create(*context);
-    } else {
-      // [Basic Layers, OMTC] WebGL layer init.
-      // Well, this *should* work...
-      factory = MakeUnique<SurfaceFactory_Basic>(*context);
-    }
+    GLScreenBuffer* screen = context->Screen();
+    if (screen) {
+      UniquePtr<SurfaceFactory> factory;
 
-    SwapChain* swapChain = context->GetSwapChain();
-    if (swapChain == nullptr) {
-      swapChain = new SwapChain();
-      new SwapChainPresenter(*swapChain);
-      context->mSwapChain.reset(swapChain);
-    }
+      layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
 
-    if (factory) {
-      swapChain->Morph(std::move(factory));
+      if (context->GetContextType() == GLContextType::EGL) {
+        // [Basic/OGL Layers, OMTC] WebGL layer init.
+        factory = SurfaceFactory_EGLImage::Create(context, nullptr, flags);
+      } else {
+        NS_ERROR("Only EGL context type is supported for offscreen rendering");
+      }
+
+      if (factory) {
+        screen->Morph(std::move(factory));
+      }
     }
   }
 }
@@ -149,8 +146,7 @@ EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId)
 
   if (context->IsOffscreen()) {
     MutexAutoLock lock(mRenderMutex);
-    if (context->GetSwapChain()->OffscreenSize() != mEGLSurfaceSize
-      && !context->GetSwapChain()->Resize(mEGLSurfaceSize)) {
+    if (context->Screen()->Size() != mEGLSurfaceSize && !context->ResizeScreenBuffer(mEGLSurfaceSize)) {
       return;
     }
   }
@@ -182,11 +178,10 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
 
   // TODO: The switch from GLSCreenBuffer to SwapChain needs completing
   // See: https://phabricator.services.mozilla.com/D75055
-  SwapChain* swapChain = context->GetSwapChain();
-  MOZ_ASSERT(swapChain);
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
 
-  const gfx::IntSize& size = swapChain->Size();
-  if (size.IsEmpty() || !swapChain->PublishFrame(size)) {
+  if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
     NS_ERROR("Failed to publish context frame");
   }
 }
@@ -227,9 +222,10 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
 
   // TODO: The switch from GLSCreenBuffer to SwapChain needs completing
   // See: https://phabricator.services.mozilla.com/D75055
-  SwapChain* swapChain = context->GetSwapChain();
-  MOZ_ASSERT(swapChain);
-  SharedSurface* sharedSurf = swapChain->FrontBuffer().get();
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  NS_ENSURE_TRUE(screen->Front(),);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, );
 
   sharedSurf->ProducerReadAcquire();
@@ -256,9 +252,10 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 
   // TODO: The switch from GLSCreenBuffer to SwapChain needs completing
   // See: https://phabricator.services.mozilla.com/D75055
-  SwapChain* swapChain = context->GetSwapChain();
-  MOZ_ASSERT(swapChain);
-  SharedSurface* sharedSurf = swapChain->FrontBuffer().get();
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  NS_ENSURE_TRUE(screen->Front(), nullptr);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
   // sharedSurf->WaitSync();
   // ProducerAcquireImpl & ProducerReleaseImpl ?
