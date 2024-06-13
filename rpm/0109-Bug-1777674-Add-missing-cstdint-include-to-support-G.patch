@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ahochheiden <ahochheiden@mozilla.com>
+Date: Mon, 11 Jul 2022 16:46:19 +0000
+Subject: [PATCH] Bug 1777674 - Add missing `<cstdint>` include to support `GCC
+ 13` (it no longer includes it implicitly)
+ r=firefox-build-system-reviewers,nalexander
+
+Differential Revision: https://phabricator.services.mozilla.com/D151411
+---
+ media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp b/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
+index 7e49670b1aec..87195b1aad77 100644
+--- a/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
++++ b/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
+@@ -4,6 +4,7 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+ #include <string>
++#include <cstdint>
+ 
+ #include "signaling/src/sdp/RsdparsaSdpInc.h"
+ #include "signaling/src/sdp/RsdparsaSdpGlue.h"
