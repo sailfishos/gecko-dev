@@ -7,18 +7,21 @@ Subject: [PATCH] Bug 1777674 - Add missing `<cstdint>` include to support `GCC
 
 Differential Revision: https://phabricator.services.mozilla.com/D151411
 ---
- media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp | 1 +
+ dom/media/webrtc/sdp/RsdparsaSdpGlue.cpp | 1 +
  1 file changed, 1 insertion(+)
 
-diff --git a/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp b/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
-index 7e49670b1aec..87195b1aad77 100644
---- a/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
-+++ b/media/webrtc/signaling/src/sdp/RsdparsaSdpGlue.cpp
+diff --git a/dom/media/webrtc/sdp/RsdparsaSdpGlue.cpp b/dom/media/webrtc/sdp/RsdparsaSdpGlue.cpp
+index 8c8a0369c3d9..01a1a1d81714 100644
+--- a/dom/media/webrtc/sdp/RsdparsaSdpGlue.cpp
++++ b/dom/media/webrtc/sdp/RsdparsaSdpGlue.cpp
 @@ -4,6 +4,7 @@
   * License, v. 2.0. If a copy of the MPL was not distributed with this file,
   * You can obtain one at http://mozilla.org/MPL/2.0/. */
  #include <string>
 +#include <cstdint>
  
- #include "signaling/src/sdp/RsdparsaSdpInc.h"
- #include "signaling/src/sdp/RsdparsaSdpGlue.h"
+ #include "sdp/RsdparsaSdpInc.h"
+ #include "sdp/RsdparsaSdpGlue.h"
+-- 
+2.45.2
+
