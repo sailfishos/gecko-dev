@@ -163,6 +163,8 @@ Patch105:   0105-Bug-1655929-run-cargo-update-and-mach-vendor-rust-fo.patch
 Patch106:   0106-Bug-1655929-bump-upstream-versions-of-rlbox-lucet-r-.patch
 Patch107:   0107-Add-cfg-if-1.0.0.patch
 Patch108:   0108-Bug-1716518-Upgrade-socket2-to-v0.3.19.patch
+Patch109:   0109-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
+Patch110:   0110-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
 
 #Patch20:    0020-sailfishos-loginmanager-Adapt-LoginManager-to-EmbedL.patch
 #Patch51:    0051-sailfishos-gecko-Remove-android-define-from-logging.patch

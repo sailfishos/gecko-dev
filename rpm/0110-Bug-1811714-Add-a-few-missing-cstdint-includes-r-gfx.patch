@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Arsen=20Arsenovi=C4=87?= <arsen@gentoo.org>
+Date: Tue, 7 Feb 2023 07:13:32 +0000
+Subject: [PATCH] Bug 1811714 - Add a few missing <cstdint> includes
+ r=gfx-reviewers,nical
+
+GCC 13s libstdc++ reduced its dependency on some headers like <cstdint>,
+so it's no longer transitively included through various headers.
+Include it explicitly.
+
+See also: https://gcc.gnu.org/gcc-13/porting_to.html#header-dep-changes
+
+  11:16.32 .../components/telemetry/pingsender/pingsender.cpp:30:7:
+                    error: unknown type name 'uint32_t'
+  11:16.33 const uint32_t kConnectionTimeoutMs = 30 * 1000;
+  11:16.33       ^
+  11:16.33 ... /components/telemetry/pingsender/pingsender.cpp:76:9:
+                    error: unknown type name 'uint32_t'
+  11:16.33   const uint32_t kBufferSize = 4 * 1024 - 1;
+  11:16.34         ^
+  11:16.44 2 errors generated.
+  (et al)
+
+Differential Revision: https://phabricator.services.mozilla.com/D167491
+---
+ gfx/2d/Rect.h                                          | 1 +
+ toolkit/components/telemetry/pingsender/pingsender.cpp | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/gfx/2d/Rect.h b/gfx/2d/Rect.h
+index 3fc753d2c4f3..cd437e93b5a2 100644
+--- a/gfx/2d/Rect.h
++++ b/gfx/2d/Rect.h
+@@ -15,6 +15,7 @@
+ #include "mozilla/Maybe.h"
+ 
+ #include <cmath>
++#include <cstdint>
+ 
+ namespace mozilla {
+ 
+diff --git a/toolkit/components/telemetry/pingsender/pingsender.cpp b/toolkit/components/telemetry/pingsender/pingsender.cpp
+index 01fdb63c298a..a61b9d36936c 100644
+--- a/toolkit/components/telemetry/pingsender/pingsender.cpp
++++ b/toolkit/components/telemetry/pingsender/pingsender.cpp
+@@ -4,6 +4,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include <cstdlib>
++#include <cstdint>
+ #include <cstring>
+ #include <ctime>
+ #include <fstream>
