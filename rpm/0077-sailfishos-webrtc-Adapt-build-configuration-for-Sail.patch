@@ -6,16 +6,16 @@ Subject: [PATCH] [sailfishos][webrtc] Adapt build configuration for
 
 Signed-off-by: Denis Grigorev <d.grigorev@omprussia.ru>
 ---
- media/webrtc/trunk/webrtc/BUILD.gn            |  4 +++-
+ third_party/libwebrtc/webrtc/BUILD.gn            |  4 +++-
  .../trunk/webrtc/build/config/BUILDCONFIG.gn  | 19 +++++++++++++++++--
- media/webrtc/trunk/webrtc/build/config/ui.gni |  2 +-
- media/webrtc/trunk/webrtc/modules/BUILD.gn    |  2 +-
+ third_party/libwebrtc/webrtc/build/config/ui.gni |  2 +-
+ third_party/libwebrtc/webrtc/modules/BUILD.gn    |  2 +-
  4 files changed, 22 insertions(+), 5 deletions(-)
 
-diff --git a/media/webrtc/trunk/webrtc/BUILD.gn b/media/webrtc/trunk/webrtc/BUILD.gn
+diff --git a/third_party/libwebrtc/webrtc/BUILD.gn b/third_party/libwebrtc/webrtc/BUILD.gn
 index 4f8f30be7e89..c7d85cabd9dc 100644
---- a/media/webrtc/trunk/webrtc/BUILD.gn
-+++ b/media/webrtc/trunk/webrtc/BUILD.gn
+--- a/third_party/libwebrtc/webrtc/BUILD.gn
++++ b/third_party/libwebrtc/webrtc/BUILD.gn
 @@ -262,7 +262,9 @@ config("common_config") {
  }
  
@@ -27,10 +27,10 @@ index 4f8f30be7e89..c7d85cabd9dc 100644
  }
  
  if (!build_with_chromium) {
-diff --git a/media/webrtc/trunk/webrtc/build/config/BUILDCONFIG.gn b/media/webrtc/trunk/webrtc/build/config/BUILDCONFIG.gn
+diff --git a/third_party/libwebrtc/webrtc/build/config/BUILDCONFIG.gn b/third_party/libwebrtc/webrtc/build/config/BUILDCONFIG.gn
 index 38771eda5b53..b9b5e0333eae 100644
---- a/media/webrtc/trunk/webrtc/build/config/BUILDCONFIG.gn
-+++ b/media/webrtc/trunk/webrtc/build/config/BUILDCONFIG.gn
+--- a/third_party/libwebrtc/webrtc/build/config/BUILDCONFIG.gn
++++ b/third_party/libwebrtc/webrtc/build/config/BUILDCONFIG.gn
 @@ -127,6 +127,11 @@ declare_args() {
    build_with_mozilla = true
  }
@@ -134,10 +134,10 @@ index 38771eda5b53..b9b5e0333eae 100644
  }
  
  # A list of BSD systems maintained by community
-diff --git a/media/webrtc/trunk/webrtc/build/config/ui.gni b/media/webrtc/trunk/webrtc/build/config/ui.gni
+diff --git a/third_party/libwebrtc/webrtc/build/config/ui.gni b/third_party/libwebrtc/webrtc/build/config/ui.gni
 index f9e551549825..481149b48427 100644
---- a/media/webrtc/trunk/webrtc/build/config/ui.gni
-+++ b/media/webrtc/trunk/webrtc/build/config/ui.gni
+--- a/third_party/libwebrtc/webrtc/build/config/ui.gni
++++ b/third_party/libwebrtc/webrtc/build/config/ui.gni
 @@ -48,7 +48,7 @@ declare_args() {
  # These variables depend on other variables and can't be set externally.
  
@@ -147,10 +147,10 @@ index f9e551549825..481149b48427 100644
  
  # Turn off glib if Ozone is enabled.
  if (use_ozone) {
-diff --git a/media/webrtc/trunk/webrtc/modules/BUILD.gn b/media/webrtc/trunk/webrtc/modules/BUILD.gn
+diff --git a/third_party/libwebrtc/webrtc/modules/BUILD.gn b/third_party/libwebrtc/webrtc/modules/BUILD.gn
 index 619d8437cf67..da8e36b0022e 100644
---- a/media/webrtc/trunk/webrtc/modules/BUILD.gn
-+++ b/media/webrtc/trunk/webrtc/modules/BUILD.gn
+--- a/third_party/libwebrtc/webrtc/modules/BUILD.gn
++++ b/third_party/libwebrtc/webrtc/modules/BUILD.gn
 @@ -26,7 +26,7 @@ group("modules") {
      "video_processing",
    ]

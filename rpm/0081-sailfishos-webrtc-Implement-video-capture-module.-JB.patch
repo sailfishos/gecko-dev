@@ -16,10 +16,10 @@ Subject: [PATCH] [sailfishos][webrtc] Implement video capture module. JB#53982
  .../video_capture_internal_impl_gn/moz.build  |  13 +-
  old-configure.in                              |  11 +
  11 files changed, 600 insertions(+), 34 deletions(-)
- create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
- create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
- create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
- create mode 100644 media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h
+ create mode 100644 third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.cc
+ create mode 100644 third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.h
+ create mode 100644 third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
+ create mode 100644 third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.h
 
 diff --git a/dom/media/systemservices/VideoFrameUtils.cpp b/dom/media/systemservices/VideoFrameUtils.cpp
 index 7593e2b5471c..d7b7776b9a7e 100644
@@ -135,10 +135,10 @@ index 7593e2b5471c..d7b7776b9a7e 100644
  }
  
  void VideoFrameUtils::CopyVideoFrameBuffers(
-diff --git a/media/webrtc/trunk/webrtc/api/video/video_frame_buffer.h b/media/webrtc/trunk/webrtc/api/video/video_frame_buffer.h
+diff --git a/third_party/libwebrtc/webrtc/api/video/video_frame_buffer.h b/third_party/libwebrtc/webrtc/api/video/video_frame_buffer.h
 index 2be7e0bb9f61..e586f0578191 100644
---- a/media/webrtc/trunk/webrtc/api/video/video_frame_buffer.h
-+++ b/media/webrtc/trunk/webrtc/api/video/video_frame_buffer.h
+--- a/third_party/libwebrtc/webrtc/api/video/video_frame_buffer.h
++++ b/third_party/libwebrtc/webrtc/api/video/video_frame_buffer.h
 @@ -106,7 +106,7 @@ class I420BufferInterface : public PlanarYuvBuffer {
    int ChromaWidth() const final;
    int ChromaHeight() const final;
@@ -148,10 +148,10 @@ index 2be7e0bb9f61..e586f0578191 100644
  
   protected:
    ~I420BufferInterface() override {}
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/BUILD.gn b/media/webrtc/trunk/webrtc/modules/video_capture/BUILD.gn
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/BUILD.gn b/third_party/libwebrtc/webrtc/modules/video_capture/BUILD.gn
 index 3712a4b83a47..ff2707b43dfa 100644
---- a/media/webrtc/trunk/webrtc/modules/video_capture/BUILD.gn
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/BUILD.gn
+--- a/third_party/libwebrtc/webrtc/modules/video_capture/BUILD.gn
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/BUILD.gn
 @@ -135,16 +135,26 @@ if (!build_with_chromium) {
  
      if (is_linux || is_bsd) {
@@ -197,11 +197,11 @@ index 3712a4b83a47..ff2707b43dfa 100644
  
        deps = [
          ":video_capture_internal_impl",
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.cc b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.cc
 new file mode 100644
 index 000000000000..6d23fe3bfc4f
 --- /dev/null
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.cc
 @@ -0,0 +1,142 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -345,11 +345,11 @@ index 000000000000..6d23fe3bfc4f
 +
 +}  // namespace videocapturemodule
 +}  // namespace webrtc
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.h b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.h
 new file mode 100644
 index 000000000000..33aadc17f9c1
 --- /dev/null
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.h
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.h
 @@ -0,0 +1,49 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -400,11 +400,11 @@ index 000000000000..33aadc17f9c1
 +}  // namespace videocapturemodule
 +}  // namespace webrtc
 +#endif // WEBRTC_MODULES_VIDEO_CAPTURE_MAIN_SOURCE_SFOS_DEVICE_INFO_SFOS_H_
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.cc b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
 new file mode 100644
 index 000000000000..c0f892985a08
 --- /dev/null
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.cc
 @@ -0,0 +1,247 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -653,11 +653,11 @@ index 000000000000..c0f892985a08
 +}
 +}  // namespace videocapturemodule
 +}  // namespace webrtc
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.h b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.h
 new file mode 100644
 index 000000000000..2e46449fdc3a
 --- /dev/null
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.h
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.h
 @@ -0,0 +1,55 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -714,10 +714,10 @@ index 000000000000..2e46449fdc3a
 +}  // namespace webrtc
 +
 +#endif // WEBRTC_MODULES_VIDEO_CAPTURE_MAIN_SOURCE_SFOS_VIDEO_CAPTURE_SFOS_H_
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.cc b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.cc
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.cc b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.cc
 index ffbcfac85c98..fd4dfc6c01e7 100644
---- a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.cc
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.cc
+--- a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.cc
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.cc
 @@ -281,5 +281,17 @@ uint32_t VideoCaptureImpl::CalculateFrameRate(int64_t now_ns) {
  
    return nrOfFrames;
@@ -736,10 +736,10 @@ index ffbcfac85c98..fd4dfc6c01e7 100644
 +}
  }  // namespace videocapturemodule
  }  // namespace webrtc
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.h b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.h
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.h b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.h
 index 32eca599f09f..bf36bb5f7a6f 100644
---- a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.h
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_impl.h
+--- a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.h
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_impl.h
 @@ -78,6 +78,8 @@ public:
                            const VideoCaptureCapability& frameInfo,
                            int64_t captureTime = 0) override;
@@ -749,10 +749,10 @@ index 32eca599f09f..bf36bb5f7a6f 100644
      // Platform dependent
      int32_t StartCapture(const VideoCaptureCapability& capability) override
      {
-diff --git a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
+diff --git a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
 index 8ef612c6df2f..414915697cff 100644
---- a/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
-+++ b/media/webrtc/trunk/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
+--- a/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
++++ b/third_party/libwebrtc/webrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
 @@ -60,11 +60,20 @@ if CONFIG["OS_TARGET"] == "Linux":
          "rt"
      ]
@@ -761,10 +761,10 @@ index 8ef612c6df2f..414915697cff 100644
 +    OS_LIBS += CONFIG["LIBGECKOCAMERA_LIBS"]
 +
      UNIFIED_SOURCES += [
--        "/media/webrtc/trunk/webrtc/modules/video_capture/linux/device_info_linux.cc",
--        "/media/webrtc/trunk/webrtc/modules/video_capture/linux/video_capture_linux.cc"
-+        "/media/webrtc/trunk/webrtc/modules/video_capture/sfos/device_info_sfos.cc",
-+        "/media/webrtc/trunk/webrtc/modules/video_capture/sfos/video_capture_sfos.cc"
+-        "/third_party/libwebrtc/webrtc/modules/video_capture/linux/device_info_linux.cc",
+-        "/third_party/libwebrtc/webrtc/modules/video_capture/linux/video_capture_linux.cc"
++        "/third_party/libwebrtc/webrtc/modules/video_capture/sfos/device_info_sfos.cc",
++        "/third_party/libwebrtc/webrtc/modules/video_capture/sfos/video_capture_sfos.cc"
      ]
  
 +    CXXFLAGS += CONFIG["LIBGECKOCAMERA_CFLAGS"]
