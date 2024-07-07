@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matti=20Lehtim=C3=A4ki?= <matti.lehtimaki@jolla.com>
+Date: Sat, 11 Nov 2023 19:47:08 +0200
+Subject: [PATCH] [sailfishos][gecko] Add patch to fix 32-bit builds
+
+Patch taken from comment of Mozilla bug 1729459.
+---
+ modules/fdlibm/src/math_private.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/modules/fdlibm/src/math_private.h b/modules/fdlibm/src/math_private.h
+index 51d79f9c2ec5..9682081c8af7 100644
+--- a/modules/fdlibm/src/math_private.h
++++ b/modules/fdlibm/src/math_private.h
+@@ -30,7 +30,11 @@
+  * Adapted from https://github.com/freebsd/freebsd-src/search?q=__double_t
+  */
+ 
++#if defined __FLT_EVAL_METHOD__ && (__FLT_EVAL_METHOD__ == 2)
++typedef long double __double_t;
++#else
+ typedef double      __double_t;
++#endif
+ typedef __double_t  double_t;
+ 
+ /*

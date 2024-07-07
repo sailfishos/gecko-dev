@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Tue, 29 Aug 2023 19:04:34 +0100
+Subject: [PATCH] [sailfishos][gecko] Revert "Bug 1676576 - Remove unused
+ functions of CompositorBridgeParent r=nical"
+
+This reverts commit 7120835c49546a56f2781378d6a5e497cb860953.
+---
+ gfx/layers/ipc/CompositorBridgeParent.cpp | 54 +++++++++++++++++++++++
+ gfx/layers/ipc/CompositorBridgeParent.h   |  8 ++++
+ 2 files changed, 62 insertions(+)
+
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
+index 1d3632ff15de..edff1589aef4 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.cpp
++++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
+@@ -701,6 +701,13 @@ void CompositorBridgeParent::ScheduleRenderOnCompositorThread() {
+                         this, &CompositorBridgeParent::ScheduleComposition));
+ }
+ 
++void CompositorBridgeParent::InvalidateOnCompositorThread() {
++  MOZ_ASSERT(CompositorThread());
++  CompositorThread()->Dispatch(
++      NewRunnableMethod("layers::CompositorBridgeParent::Invalidate", this,
++                        &CompositorBridgeParent::Invalidate));
++}
++
+ void CompositorBridgeParent::PauseComposition() {
+   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread(),
+              "PauseComposition() can only be called on the compositor thread");
+@@ -787,6 +794,53 @@ void CompositorBridgeParent::ResumeCompositionAndResize(int x, int y, int width,
+   ResumeComposition();
+ }
+ 
++/*
++ * This will execute a pause synchronously, waiting to make sure that the
++ * compositor really is paused.
++ */
++void CompositorBridgeParent::SchedulePauseOnCompositorThread() {
++  MonitorAutoLock lock(mPauseCompositionMonitor);
++
++  MOZ_ASSERT(CompositorThread());
++  CompositorThread()->Dispatch(
++      NewRunnableMethod("layers::CompositorBridgeParent::PauseComposition",
++                        this, &CompositorBridgeParent::PauseComposition));
++
++  // Wait until the pause has actually been processed by the compositor thread
++  lock.Wait();
++}
++
++bool CompositorBridgeParent::ScheduleResumeOnCompositorThread() {
++  MonitorAutoLock lock(mResumeCompositionMonitor);
++
++  MOZ_ASSERT(CompositorThread());
++  CompositorThread()->Dispatch(
++      NewRunnableMethod("layers::CompositorBridgeParent::ResumeComposition",
++                        this, &CompositorBridgeParent::ResumeComposition));
++
++  // Wait until the resume has actually been processed by the compositor thread
++  lock.Wait();
++
++  return !mPaused;
++}
++
++bool CompositorBridgeParent::ScheduleResumeOnCompositorThread(int x, int y,
++                                                              int width,
++                                                              int height) {
++  MonitorAutoLock lock(mResumeCompositionMonitor);
++
++  MOZ_ASSERT(CompositorThread());
++  CompositorThread()->Dispatch(NewRunnableMethod<int, int, int, int>(
++      "layers::CompositorBridgeParent::ResumeCompositionAndResize", this,
++      &CompositorBridgeParent::ResumeCompositionAndResize, x, y, width,
++      height));
++
++  // Wait until the resume has actually been processed by the compositor thread
++  lock.Wait();
++
++  return !mPaused;
++}
++
+ void CompositorBridgeParent::UpdatePaintTime(LayerTransactionParent* aLayerTree,
+                                              const TimeDuration& aPaintTime) {
+   // We get a lot of paint timings for things with empty transactions.
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
+index 55024160af29..dd4b2f442db8 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.h
++++ b/gfx/layers/ipc/CompositorBridgeParent.h
+@@ -476,6 +476,14 @@ class CompositorBridgeParent : public CompositorBridgeParentBase,
+ 
+   // Can be called from any thread
+   void ScheduleRenderOnCompositorThread() override;
++  void SchedulePauseOnCompositorThread();
++  void InvalidateOnCompositorThread();
++  /**
++   * Returns true if a surface was obtained and the resume succeeded; false
++   * otherwise.
++   */
++  bool ScheduleResumeOnCompositorThread();
++  bool ScheduleResumeOnCompositorThread(int x, int y, int width, int height);
+ 
+   void ScheduleComposition();
+ 

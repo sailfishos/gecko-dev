@@ -1,0 +1,208 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 26 Aug 2020 15:24:00 +0300
+Subject: [PATCH] [sailfishos][gecko] Introduce EmbedInitGlue to the mozglue.
+ JB#50788
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+
+[sailfishos][gecko] Update GetBoostrap return value
+
+The return value has changed from Bootstrap::UniquePtr to
+BootstrapResult in line with Rust Result values. See D104263:
+
+https://phabricator.services.mozilla.com/D104263#change-j67rRDJpo4Q7
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1690384
+
+Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
+---
+ mozglue/moz.build                    |  3 +
+ mozglue/sailfishos/EmbedInitGlue.cpp | 96 ++++++++++++++++++++++++++++
+ mozglue/sailfishos/EmbedInitGlue.h   | 17 +++++
+ mozglue/sailfishos/moz.build         | 34 ++++++++++
+ 4 files changed, 150 insertions(+)
+ create mode 100644 mozglue/sailfishos/EmbedInitGlue.cpp
+ create mode 100644 mozglue/sailfishos/EmbedInitGlue.h
+ create mode 100644 mozglue/sailfishos/moz.build
+
+diff --git a/mozglue/moz.build b/mozglue/moz.build
+index 29d675c87804..8cc223df7aa4 100644
+--- a/mozglue/moz.build
++++ b/mozglue/moz.build
+@@ -13,6 +13,9 @@ if CONFIG["MOZ_LINKER"] or CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+     DIRS += ["android"]
+ 
++if CONFIG["MOZ_WIDGET_TOOLKIT"] == "qt":
++    DIRS += ["sailfishos"]
++
+ if CONFIG["OS_TARGET"] == "WINNT" and not CONFIG["JS_STANDALONE"]:
+     DIRS += ["dllservices"]
+ 
+diff --git a/mozglue/sailfishos/EmbedInitGlue.cpp b/mozglue/sailfishos/EmbedInitGlue.cpp
+new file mode 100644
+index 000000000000..f56f0f33fe88
+--- /dev/null
++++ b/mozglue/sailfishos/EmbedInitGlue.cpp
+@@ -0,0 +1,96 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "EmbedInitGlue.h"
++
++#include "mozilla/Bootstrap.h"
++#include "application.ini.h"
++
++// getenv
++#include <stdlib.h>
++#include <iostream>
++#include <stdio.h>
++
++#include <sys/stat.h>
++#include <unistd.h>
++#include <string.h>
++#ifndef PATH_MAX
++#define PATH_MAX 1024
++#endif
++#define MAX_PATH PATH_MAX
++
++#define _NSR_TO_BOOL(_res) \
++  _res == NS_OK ? true : false;
++
++using namespace mozilla;
++
++mozilla::Bootstrap::UniquePtr gBootstrap;
++
++static bool IsLibXulInThePath(const char* path, std::string& xpcomPath) {
++  xpcomPath = path;
++  xpcomPath += "/libxul";
++  xpcomPath += MOZ_DLL_SUFFIX;
++  struct stat buf;
++  return !stat(xpcomPath.c_str(), &buf);
++}
++
++static std::string ResolveXPCOMPath(int argc, char** argv) {
++    // find xpcom shared lib (uses GRE_HOME env var if set, current DIR, or executable binary path)
++    std::string xpcomPath;
++    char temp[MAX_PATH];
++    char* greHome = getenv("GRE_HOME");
++
++    if (!greHome) {
++      greHome = getenv("PWD");
++      if (greHome) {
++        printf("greHome from PWD:%s\n", greHome);
++      }
++    } else {
++      printf("greHome from GRE_HOME:%s\n", greHome);
++    }
++    if (!greHome) {
++      printf("GRE_HOME is not defined\n");
++      return "";
++    }
++    if (!IsLibXulInThePath(greHome, xpcomPath)) {
++      if (argv && argc) {
++        printf("libxul.so not in gre home or PWD:%s, check in executable path\n", greHome);
++        char* lastslash = strrchr(argv[0], '/');
++        size_t path_size = &lastslash[0] - argv[0];
++        strncpy(temp, argv[0], path_size);
++        temp[path_size] = 0;
++        greHome = &temp[0];
++      }
++    }
++    if (!IsLibXulInThePath(greHome, xpcomPath)) {
++      printf("libxul.so is not found, in %s\n", xpcomPath.c_str());
++      greHome = getenv("BUILD_GRE_HOME");
++    }
++
++    if (!IsLibXulInThePath(greHome, xpcomPath)) {
++      printf("libxul.so is not found, in %s return fail\n", xpcomPath.c_str());
++      return "";
++    }
++
++    char* greHomeLeak = strdup(greHome);
++    setenv("GRE_HOME", greHomeLeak, 1);
++    setenv("MOZILLA_FIVE_HOME", greHomeLeak, 1);
++    setenv("XRE_LIBXPCOM_PATH", strdup(xpcomPath.c_str()), 1);
++
++    return xpcomPath;
++}
++
++bool LoadEmbedLite(int argc, char** argv)
++{
++  // start the glue, i.e. load and link against xpcom shared lib
++  std::string xpcomPath = ResolveXPCOMPath(argc, argv);
++  BootstrapResult bootstrapResult = mozilla::GetBootstrap(xpcomPath.c_str());
++  if (bootstrapResult.isErr()) {
++    printf("Couldn't load XPCOM from %s\n", xpcomPath.c_str());
++    return false;
++  }
++  gBootstrap = bootstrapResult.unwrap();
++  return true;
++}
+diff --git a/mozglue/sailfishos/EmbedInitGlue.h b/mozglue/sailfishos/EmbedInitGlue.h
+new file mode 100644
+index 000000000000..81812d2db7f5
+--- /dev/null
++++ b/mozglue/sailfishos/EmbedInitGlue.h
+@@ -0,0 +1,17 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef EMBED_INIT_GLUE_H
++#define EMBED_INIT_GLUE_H
++
++#include "mozilla/embedlite/EmbedLiteAPI.h"
++
++#ifndef EMBEDGLUE_EXPORT
++#define EMBEDGLUE_EXPORT __attribute__((visibility("default")))
++#endif
++
++EMBEDGLUE_EXPORT bool LoadEmbedLite(int argc = 0, char** argv = 0);
++
++#endif // EMBED_INIT_GLUE_H
+diff --git a/mozglue/sailfishos/moz.build b/mozglue/sailfishos/moz.build
+new file mode 100644
+index 000000000000..14c490fca4c2
+--- /dev/null
++++ b/mozglue/sailfishos/moz.build
+@@ -0,0 +1,34 @@
++# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
++# vim: set filetype=python:
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++EXPORTS.mozilla.embedlite += [
++    'EmbedInitGlue.h',
++]
++
++SOURCES += [
++    'EmbedInitGlue.cpp',
++]
++
++FINAL_LIBRARY = 'mozglue'
++
++LOCAL_INCLUDES += [
++    '!/build',
++    '../linker',
++    '/toolkit/components/startup',
++    '/xpcom/build',
++]
++
++DisableStlWrapping()
++
++if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
++    CXXFLAGS += ['-Wno-error=shadow']
++
++
++DEFINES['XPCOM_GLUE'] = True
++
++USE_LIBS += [
++    'xpcomglue',
++]

@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 17 Jul 2024 22:41:18 +0100
+Subject: [PATCH] [sailfishos][gecko] Convert panic into early return in
+ Hyphenator
+
+The Hyphenator::find_hyphen_values() method panics if the output buffer
+is smaller than the input text. The panic brings down the browser, so
+this change converts the assert that triggers the panic into a condition
+for an early return. This prevents a crash on some pages.
+---
+ third_party/rust/mapped_hyph/src/lib.rs | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/third_party/rust/mapped_hyph/src/lib.rs b/third_party/rust/mapped_hyph/src/lib.rs
+index 848c93d25790..a995ca0e4554 100644
+--- a/third_party/rust/mapped_hyph/src/lib.rs
++++ b/third_party/rust/mapped_hyph/src/lib.rs
+@@ -475,7 +475,9 @@ impl Hyphenator<'_> {
+     /// hyphenation dictionary, this function may panic with an overflow or
+     /// array bounds violation.
+     pub fn find_hyphen_values(&self, word: &str, values: &mut [u8]) -> isize {
+-        assert!(values.len() >= word.len());
++        if (values.len() < word.len()) {
++            return 0;
++        }
+         values.iter_mut().for_each(|x| *x = 0);
+         let top_level = self.level(0);
+         let (lh_min, rh_min, clh_min, crh_min) = top_level.word_boundary_mins();

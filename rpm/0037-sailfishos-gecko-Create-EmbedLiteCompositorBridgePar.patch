@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 27 Jul 2020 13:50:15 +0300
+Subject: [PATCH] [sailfishos][gecko] Create EmbedLiteCompositorBridgeParent in
+ CompositorManagerParent (part 2). JB#50505
+
+Compositor parent is created through following path:
+- nsWindow::CreateCompositor (is nsBaseWidget)
+- gfx::GPUProcessManager::CreateTopLevelCompositor
+- InProcessCompositorSession::Create
+- CompositorManagerParent::CreateSameProcessWidgetCompositorBridge
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ gfx/layers/ipc/CompositorManagerParent.cpp | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
+index 8b6ee3408095..c7ec3e0908bb 100644
+--- a/gfx/layers/ipc/CompositorManagerParent.cpp
++++ b/gfx/layers/ipc/CompositorManagerParent.cpp
+@@ -17,6 +17,11 @@
+ #include "gfxPlatform.h"
+ #include "VsyncSource.h"
+ 
++#if defined(MOZ_EMBEDLITE)
++#include "mozilla/embedlite/nsWindow.h"
++#include "mozilla/embedlite/EmbedLiteCompositorBridgeParent.h"
++#endif
++
+ namespace mozilla {
+ namespace layers {
+ 
+@@ -107,9 +112,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+                                ->GetGlobalDisplay()
+                                .GetVsyncRate();
+ 
++#ifdef MOZ_EMBEDLITE
++  // auto window = static_cast<mozilla::embedlite::nsWindow *>(aWidget->RealWidget());
++  RefPtr<CompositorBridgeParent> bridge =
++          new mozilla::embedlite::EmbedLiteCompositorBridgeParent(1, sInstance, aScale, vsyncRate, aOptions,
++                                                                  aUseExternalSurfaceSize, aSurfaceSize);
++#else
+   RefPtr<CompositorBridgeParent> bridge =
+       new CompositorBridgeParent(sInstance, aScale, vsyncRate, aOptions,
+                                  aUseExternalSurfaceSize, aSurfaceSize);
++#endif
+ 
+   sInstance->mPendingCompositorBridges.AppendElement(bridge);
+   return bridge.forget();

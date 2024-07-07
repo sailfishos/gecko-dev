@@ -221,28 +221,117 @@ See upstream commit: a7c687ab305f41b3129191dc96682873d984c2ee
 
 [sailfishos][qt] Remove nsWindow.h/cpp, mozqwidget.h/cpp. Contributes to JB#54190
 
-Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
-Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+[sailfishos][qt] Ensure PGIOChannel is correctly exposed
+
+Adds preprocessor conditions to ensure PGIOChannel is included
+correctly.
+
+[sailfishos][qt] Register GfxInfo service with components.conf
+
+As a consequence of Bugzilla bug 1686616, GfxInfo must be named
+explicitly. See:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1686616
+
+and the associated patch (which applies for Gtk; here we apply the same
+for Qt):
+
+https://phabricator.services.mozilla.com/D105521
+
+[sailfishos][qt] Ensure QWidget header can be found
+
+[sailfishos][qt] Use QRegion::united()
+
+The QRegion::united() call was switched to QRegion::unite() in Bugzilla
+bug 739096, but united() isn't part of the API. This switches it back to
+use united() again.
+
+References:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=739096
+
+https://phabricator.services.mozilla.com/D112558
+
+[sailfishos][qt] Fix font method signatures
+
+Various method signatures in the font code have changed due to Bugzilla
+bug 1676966:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1676966
+
+These changes update the code for the Qt code to allow compilation to
+continue.
+
+[sailfishos][qt] Build mSize into fontlist::Face::InitData
+
+Ensures the mSize variable is included in the fontlist::Face::InitData
+structure, since this is needed by the addPattern lambda function in
+gfxFcPlatformFontList.cpp.
+
+[sailfishos][gecko] Rename nsIdleService to nsUserIdleService
+
+Renames nsIdleService and friends to nsUserIdleService equivalents. This
+is to align with upstream changes from Bugzilla bug 1651165. See revision:
+
+https://phabricator.services.mozilla.com/D83413
+
+[sailfishos][gecko] Ensure PGIOChannel methods are included in Necko
+
+The PGIOChannel methods are now conditioned on MOZ_WIDGET_GTK. This
+change ensures that the condition includes MOZ_WIDGET_QT so that they
+are included in Necko for EmbedLite builds.
+
+[sailfishos][gecko] Remove nsPrinterEnumeratorQt
+
+The nsIPrinterEnumerator interface appears to have been removed. This
+removes it from the Qt EmbedLite code as well.
+
+[sailfishos][gecko] Rename MediaControlKeysEventSource to MediaControlKeySource
+
+Reflects the upstream change in Bugzilla bug 1640998:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1640998
+
+https://phabricator.services.mozilla.com/D78140
+
+[sailfishos][gecko] Update nsLookAndFeel
+
+Updates nsLookAndFeel to reflect upstream changes, most notably the
+switch from enums to class enums.
+
+[sailfishos][gecko] Update Qt implementaiton of nsPrintSettings
+
+The nsPrintSettings interface has changed upstream, so these changes
+updated the Qt implementation to match.
+
+[sailfishos][gecko] Add missing methos to GfxInfo
+
+There were a few unimplemented methods which made the class abstract.
+This change adds dummy implementations for them to allow the class to be
+instantiated.
+
+[sailfishos][gecko] Add missing GfxInfo methods
+
+Adds method implementations for the GfxInfo class which were missing.
+
+[sailfishos][gecko] Add Qt nsNativeBasicThemeQt class
+
+Adds a Qt version of the nsNativeBasicThemeQt class, which is now needed
+due to upstream changes.
+
+This reflects similar changes applied upstream for other toolkits (e.g.
+Gtk, Android).
+
+Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
 ---
  browser/base/content/browser-menubar.inc      |   2 +-
  browser/themes/moz.build                      |   2 +-
  build/moz.configure/old.configure             |   1 +
+ config/milestone.txt                          |  12 -
  dom/geolocation/Geolocation.cpp               |   8 +
  dom/geolocation/moz.build                     |   6 +
  dom/ipc/ContentChild.cpp                      |   9 +
  dom/ipc/moz.build                             |   2 +-
- dom/plugins/base/nsNPAPIPlugin.cpp            |   6 +-
- dom/plugins/ipc/NestedLoopTimer.cpp           |  48 ++
- dom/plugins/ipc/NestedLoopTimer.h             |  41 ++
- dom/plugins/ipc/PluginHelperQt.cpp            |  18 +
- dom/plugins/ipc/PluginHelperQt.h              |  16 +
- dom/plugins/ipc/PluginInstanceChild.cpp       |   5 +
- dom/plugins/ipc/PluginInstanceParent.cpp      |   3 +
- dom/plugins/ipc/PluginMessageUtils.h          |   2 +-
- dom/plugins/ipc/PluginModuleChild.cpp         |  60 ++-
- dom/plugins/ipc/PluginModuleChild.h           |  11 +
- dom/plugins/ipc/PluginModuleParent.cpp        |  12 +-
- dom/plugins/ipc/moz.build                     |   7 +
  dom/system/moz.build                          |   4 +-
  dom/system/qt/QTMLocationProvider.cpp         | 103 ++++
  dom/system/qt/QTMLocationProvider.h           |  35 ++
@@ -253,25 +342,28 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  gfx/2d/Factory.cpp                            |   4 +-
  gfx/2d/UnscaledFontFreeType.h                 |   2 +-
  gfx/2d/moz.build                              |   8 +-
+ gfx/cairo/cairo/src/cairo-qt-surface.cpp      |   4 +-
  gfx/cairo/cairo/src/moz.build                 |  12 +
  gfx/gl/moz.build                              |   2 +
  gfx/skia/generate_mozbuild.py                 |   6 +-
  gfx/skia/moz.build                            |   6 +-
  gfx/src/moz.build                             |   3 +
+ gfx/thebes/SharedFontList.cpp                 |  14 +-
+ gfx/thebes/SharedFontList.h                   |   6 +-
  gfx/thebes/gfxASurface.cpp                    |   2 +
  gfx/thebes/gfxFT2Fonts.cpp                    |   4 +
- gfx/thebes/gfxFcPlatformFontList.cpp          |   6 +
+ gfx/thebes/gfxFcPlatformFontList.cpp          |  10 +
  gfx/thebes/gfxFont.h                          |   2 +-
  gfx/thebes/gfxPlatform.cpp                    |   8 +-
  gfx/thebes/gfxQtNativeRenderer.cpp            |  48 ++
  gfx/thebes/gfxQtNativeRenderer.h              |  68 +++
- gfx/thebes/gfxQtPlatform.cpp                  | 144 ++++++
- gfx/thebes/gfxQtPlatform.h                    |  62 +++
+ gfx/thebes/gfxQtPlatform.cpp                  | 147 +++++
+ gfx/thebes/gfxQtPlatform.h                    |  61 ++
  gfx/thebes/moz.build                          |  30 +-
  gfx/webrender_bindings/Moz2DImageRenderer.cpp |   4 +-
  gfx/webrender_bindings/moz.build              |   2 +-
  image/decoders/icon/moz.build                 |   3 +
- image/decoders/icon/qt/gtkqticonsconverter.js | 145 ++++++
+ image/decoders/icon/qt/gtkqticonsconverter.js | 145 +++++
  .../icon/qt/gtkqticonsconverter.manifest      |   2 +
  image/decoders/icon/qt/moz.build              |  27 +
  .../icon/qt/nsGtkQtIconsConverter.idl         |  12 +
@@ -282,63 +374,66 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  ipc/chromium/moz.build                        |   5 +
  ipc/glue/GeckoChildProcessHost.cpp            |   4 +-
  layout/base/nsPresContext.cpp                 |   7 +-
- layout/generic/moz.build                      |   3 +
- netwerk/base/moz.build                        |   8 +
+ layout/generic/moz.build                      |   4 +
+ netwerk/base/moz.build                        |   9 +
+ netwerk/ipc/NeckoChild.cpp                    |   4 +-
+ netwerk/ipc/NeckoChild.h                      |   2 +-
+ netwerk/ipc/NeckoParent.cpp                   |   4 +-
+ netwerk/ipc/NeckoParent.h                     |   2 +-
+ netwerk/ipc/PNecko.ipdl                       |   6 +-
  netwerk/protocol/moz.build                    |   2 +-
- old-configure.in                              | 182 ++++++-
- toolkit/library/moz.build                     |  12 +-
+ old-configure.in                              | 182 +++++-
+ python/mozbuild/mozbuild/mach_commands.py     |  18 +-
+ toolkit/library/moz.build                     |  14 +-
  toolkit/modules/AppConstants.jsm              |   2 +
  toolkit/moz.build                             |   2 +-
- toolkit/moz.configure                         |   6 +-
+ toolkit/moz.configure                         |   8 +-
  toolkit/themes/moz.build                      |   2 +-
  toolkit/xre/moz.build                         |   7 +
  toolkit/xre/nsAppRunner.cpp                   |  40 ++
  toolkit/xre/nsEmbedFunctions.cpp              |   8 +
- toolkit/xre/nsNativeAppSupportQt.cpp          | 118 +++++
+ toolkit/xre/nsNativeAppSupportQt.cpp          | 118 ++++
  toolkit/xre/nsNativeAppSupportQt.h            |  37 ++
- toolkit/xre/nsQAppInstance.cpp                |  31 ++
- toolkit/xre/nsQAppInstance.h                  |  28 ++
+ toolkit/xre/nsQAppInstance.cpp                |  31 +
+ toolkit/xre/nsQAppInstance.h                  |  28 +
  uriloader/exthandler/moz.build                |  10 +-
- uriloader/exthandler/unix/nsMIMEInfoQt.cpp    |  30 ++
+ uriloader/exthandler/unix/nsMIMEInfoQt.cpp    |  30 +
  uriloader/exthandler/unix/nsMIMEInfoQt.h      |  20 +
  uriloader/exthandler/unix/nsMIMEInfoUnix.cpp  |  20 +-
  widget/NativeKeyToDOMCodeName.h               |   2 +-
- widget/NativeKeyToDOMKeyName.h                | 207 ++++++++
+ widget/NativeKeyToDOMKeyName.h                | 205 +++++++
  widget/headless/HeadlessWidget.h              |   7 +
  widget/moz.build                              |   6 +-
- widget/qt/GfxInfo.cpp                         | 253 ++++++++++
- widget/qt/GfxInfo.h                           |  74 +++
+ widget/qt/GfxInfo.cpp                         | 268 +++++++++
+ widget/qt/GfxInfo.h                           |  79 +++
  widget/qt/MediaKeysEventSourceFactory.cpp     |  13 +
- widget/qt/ProcInfo.cpp                        | 285 +++++++++++
- widget/qt/components.conf                     | 103 ++++
- widget/qt/moz.build                           |  67 +++
+ widget/qt/ProcInfo.cpp                        | 285 +++++++++
+ widget/qt/components.conf                     |  98 ++++
+ widget/qt/moz.build                           |  71 +++
  widget/qt/nsAppShell.cpp                      |  80 +++
- widget/qt/nsAppShell.h                        |  37 ++
  widget/qt/nsBidiKeyboard.cpp                  |  54 ++
  widget/qt/nsBidiKeyboard.h                    |  25 +
- widget/qt/nsDeviceContextSpecQt.cpp           | 228 +++++++++
- widget/qt/nsDeviceContextSpecQt.h             |  60 +++
- widget/qt/nsIdleServiceQt.cpp                 | 123 +++++
- widget/qt/nsIdleServiceQt.h                   |  56 +++
- widget/qt/nsLookAndFeel.cpp                   |  476 ++
- widget/qt/nsLookAndFeel.h                     |  41 ++
+ widget/qt/nsDeviceContextSpecQt.cpp           | 190 ++++++
+ widget/qt/nsDeviceContextSpecQt.h             |  48 ++
+ widget/qt/nsLookAndFeel.cpp                   | 550 ++++++++++++++++++
+ widget/qt/nsLookAndFeel.h                     |  44 ++
+ widget/qt/nsNativeBasicThemeQt.cpp            |  17 +
+ widget/qt/nsNativeBasicThemeQt.h              |  20 +
  widget/qt/nsPrintDialogQt.cpp                 |  42 ++
- widget/qt/nsPrintDialogQt.h                   |  31 ++
+ widget/qt/nsPrintDialogQt.h                   |  31 +
  widget/qt/nsPrintOptionsQt.cpp                |  23 +
  widget/qt/nsPrintOptionsQt.h                  |  20 +
- widget/qt/nsPrintSettingsQt.cpp               | 411 +++++++++++++++
- widget/qt/nsPrintSettingsQt.h                 |  93 ++++
- widget/qt/nsScreenManagerQt.cpp               |  86 ++++
+ widget/qt/nsPrintSettingsQt.cpp               | 414 +++++++++++++
+ widget/qt/nsPrintSettingsQt.h                 | 101 ++++
+ widget/qt/nsScreenManagerQt.cpp               | 101 ++++
  widget/qt/nsScreenManagerQt.h                 |  34 ++
  widget/qt/nsScreenQt.cpp                      |  74 +++
- widget/qt/nsScreenQt.h                        |  29 ++
+ widget/qt/nsScreenQt.h                        |  29 +
+ widget/qt/nsUserIdleServiceQt.cpp             | 123 ++++
+ widget/qt/nsUserIdleServiceQt.h               |  56 ++
  widget/qt/nsWidgetFactory.cpp                 |  36 ++
  widget/qt/nsWidgetFactory.h                   |  22 +
- 110 files changed, 4888 insertions(+), 53 deletions(-)
- create mode 100644 dom/plugins/ipc/NestedLoopTimer.cpp
- create mode 100644 dom/plugins/ipc/NestedLoopTimer.h
- create mode 100644 dom/plugins/ipc/PluginHelperQt.cpp
- create mode 100644 dom/plugins/ipc/PluginHelperQt.h
+ 109 files changed, 4780 insertions(+), 89 deletions(-)
  create mode 100644 dom/system/qt/QTMLocationProvider.cpp
  create mode 100644 dom/system/qt/QTMLocationProvider.h
  create mode 100644 dom/system/qt/QtHapticFeedback.cpp
@@ -367,15 +462,14 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 widget/qt/components.conf
  create mode 100644 widget/qt/moz.build
  create mode 100644 widget/qt/nsAppShell.cpp
- create mode 100644 widget/qt/nsAppShell.h
  create mode 100644 widget/qt/nsBidiKeyboard.cpp
  create mode 100644 widget/qt/nsBidiKeyboard.h
  create mode 100644 widget/qt/nsDeviceContextSpecQt.cpp
  create mode 100644 widget/qt/nsDeviceContextSpecQt.h
- create mode 100644 widget/qt/nsIdleServiceQt.cpp
- create mode 100644 widget/qt/nsIdleServiceQt.h
  create mode 100644 widget/qt/nsLookAndFeel.cpp
  create mode 100644 widget/qt/nsLookAndFeel.h
+ create mode 100644 widget/qt/nsNativeBasicThemeQt.cpp
+ create mode 100644 widget/qt/nsNativeBasicThemeQt.h
  create mode 100644 widget/qt/nsPrintDialogQt.cpp
  create mode 100644 widget/qt/nsPrintDialogQt.h
  create mode 100644 widget/qt/nsPrintOptionsQt.cpp
@@ -386,49 +480,69 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  create mode 100644 widget/qt/nsScreenManagerQt.h
  create mode 100644 widget/qt/nsScreenQt.cpp
  create mode 100644 widget/qt/nsScreenQt.h
+ create mode 100644 widget/qt/nsUserIdleServiceQt.cpp
+ create mode 100644 widget/qt/nsUserIdleServiceQt.h
  create mode 100644 widget/qt/nsWidgetFactory.cpp
  create mode 100644 widget/qt/nsWidgetFactory.h
 
 diff --git a/browser/base/content/browser-menubar.inc b/browser/base/content/browser-menubar.inc
-index 267ec91707ba..8c4015f99fbf 100644
+index cd348e8e7817..942d13f6e5e2 100644
 --- a/browser/base/content/browser-menubar.inc
 +++ b/browser/base/content/browser-menubar.inc
-@@ -56,7 +56,7 @@
+@@ -61,7 +61,7 @@
                  <menuitem id="menu_sendLink"
                            command="Browser:SendLink" data-l10n-id="menu-file-email-link"/>
                  <menuseparator/>
 -#if !defined(MOZ_WIDGET_GTK)
 +#if !defined(MOZ_WIDGET_GTK) && !defined(MOZ_WIDGET_QT)
                  <menuitem id="menu_printSetup"
-                           command="cmd_pageSetup" data-l10n-id="menu-file-print-setup"/>
+                           command="cmd_pageSetup" data-l10n-id="menu-file-print-setup" hidden="true"/>
  #endif
 diff --git a/browser/themes/moz.build b/browser/themes/moz.build
-index 96f5fabe71f1..6f700b340cf8 100644
+index 0e706766c502..5e4598923e91 100644
 --- a/browser/themes/moz.build
 +++ b/browser/themes/moz.build
-@@ -11,7 +11,7 @@ toolkit = CONFIG['MOZ_WIDGET_TOOLKIT']
+@@ -11,7 +11,7 @@ toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
  
- if toolkit == 'cocoa':
-     DIRS += ['osx']
--elif toolkit == 'gtk':
+ if toolkit == "cocoa":
+     DIRS += ["osx"]
+-elif toolkit == "gtk":
 +elif toolkit in ('gtk', 'qt'):
-     DIRS += ['linux']
+     DIRS += ["linux"]
  else:
-     DIRS += ['windows']
+     DIRS += ["windows"]
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
-index 136abbcafa69..1d254d89c40e 100644
+index 35ab75df3a14..5a06c5816e0d 100644
 --- a/build/moz.configure/old.configure
 +++ b/build/moz.configure/old.configure
-@@ -243,6 +243,7 @@ def old_configure_options(*options):
-     '--with-branding',
-     '--with-distribution-id',
-     '--with-macbundlename-prefix',
-+    '--with-qtdir',
-     '--with-system-libevent',
-     '--with-system-png',
-     '--with-user-appdir',
+@@ -114,6 +114,7 @@ def old_configure_options(*options):
+     "--with-branding",
+     "--with-distribution-id",
+     "--with-macbundlename-prefix",
++    "--with-qtdir",
+     "--with-system-libevent",
+     "--with-system-png",
+     "--with-user-appdir",
+diff --git a/config/milestone.txt b/config/milestone.txt
+index f14cd0f20b8b..17aca278ee1b 100644
+--- a/config/milestone.txt
++++ b/config/milestone.txt
+@@ -1,13 +1 @@
+-# Holds the current milestone.
+-# Should be in the format of
+-#
+-#    x.x.x
+-#    x.x.x.x
+-#    x.x.x+
+-#
+-# Referenced by build/moz.configure/init.configure.
+-# Hopefully I'll be able to automate replacement of *all*
+-# hardcoded milestones in the tree from these two files.
+-#--------------------------------------------------------
+-
+ 91.9.1
 diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
-index 51c04d2f40f5..2477e5189e0d 100644
+index 763192a50cf8..89cae0a42978 100644
 --- a/dom/geolocation/Geolocation.cpp
 +++ b/dom/geolocation/Geolocation.cpp
 @@ -35,6 +35,10 @@
@@ -442,7 +556,7 @@ index 51c04d2f40f5..2477e5189e0d 100644
  #ifdef MOZ_WIDGET_ANDROID
  #  include "AndroidLocationProvider.h"
  #endif
-@@ -521,6 +525,10 @@ nsresult nsGeolocationService::Init() {
+@@ -485,6 +489,10 @@ nsresult nsGeolocationService::Init() {
  
    obs->AddObserver(this, "xpcom-shutdown", false);
  
@@ -454,11 +568,11 @@ index 51c04d2f40f5..2477e5189e0d 100644
    mProvider = new AndroidLocationProvider();
  #endif
 diff --git a/dom/geolocation/moz.build b/dom/geolocation/moz.build
-index 3914dae497de..1371b093e282 100644
+index 5c7f7471818c..9341a89283d0 100644
 --- a/dom/geolocation/moz.build
 +++ b/dom/geolocation/moz.build
 @@ -37,6 +37,12 @@ LOCAL_INCLUDES += [
-     '/dom/ipc',
+     "/dom/ipc",
  ]
  
 +if CONFIG['MOZ_ENABLE_QT5GEOPOSITION']:
@@ -467,25 +581,25 @@ index 3914dae497de..1371b093e282 100644
 +    ]
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
 +
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
      LOCAL_INCLUDES += [
-         '/dom/system/android',
+         "/dom/system/android",
 diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
-index a4e9f806742e..afa6193b82e9 100644
+index 4f971ce8c5d3..0c67412a62f3 100644
 --- a/dom/ipc/ContentChild.cpp
 +++ b/dom/ipc/ContentChild.cpp
-@@ -9,6 +9,10 @@
- #  include <gdk/gdkx.h>
+@@ -8,6 +8,10 @@
+ #  include "AndroidDecoderModule.h"
  #endif
  
 +#ifdef MOZ_WIDGET_QT
 +#  include "nsQAppInstance.h"
 +#endif
 +
+ #include "BrowserChild.h"
+ #include "nsNSSComponent.h"
  #include "ContentChild.h"
- 
- #include "GeckoProfiler.h"
-@@ -672,6 +676,11 @@ bool ContentChild::Init(MessageLoop* aIOLoop, base::ProcessId aParentPid,
+@@ -746,6 +750,11 @@ bool ContentChild::Init(base::ProcessId aParentPid, const char* aParentBuildID,
    }
  #endif
  
@@ -498,465 +612,33 @@ index a4e9f806742e..afa6193b82e9 100644
    if (!gfxPlatform::IsHeadless()) {
      // Do this after initializing GDK, or GDK will install its own handler.
 diff --git a/dom/ipc/moz.build b/dom/ipc/moz.build
-index 21a2f68352fb..bc40afc304ea 100644
+index 87a07bdb1bca..a9a037cb4726 100644
 --- a/dom/ipc/moz.build
 +++ b/dom/ipc/moz.build
-@@ -231,7 +231,7 @@ DEFINES['BIN_SUFFIX'] = '"%s"' % CONFIG['BIN_SUFFIX']
+@@ -220,7 +220,7 @@ DEFINES["BIN_SUFFIX"] = '"%s"' % CONFIG["BIN_SUFFIX"]
  
- DEFINES['MOZ_APP_NAME'] = '"%s"' % CONFIG['MOZ_APP_NAME']
+ DEFINES["MOZ_APP_NAME"] = '"%s"' % CONFIG["MOZ_APP_NAME"]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'qt'):
-     DEFINES['MOZ_ENABLE_FREETYPE'] = True
+     DEFINES["MOZ_ENABLE_FREETYPE"] = True
  
- JAR_MANIFESTS += ['jar.mn']
-diff --git a/dom/plugins/base/nsNPAPIPlugin.cpp b/dom/plugins/base/nsNPAPIPlugin.cpp
-index dddfa33b15c1..740bdcd63463 100644
---- a/dom/plugins/base/nsNPAPIPlugin.cpp
-+++ b/dom/plugins/base/nsNPAPIPlugin.cpp
-@@ -1259,7 +1259,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void* result) {
-       return NPERR_GENERIC_ERROR;
- #endif
- 
--#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
-+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
-     case NPNVnetscapeWindow: {
-       if (!npp || !npp->ndata) return NPERR_INVALID_INSTANCE_ERROR;
- 
-@@ -1301,7 +1301,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void* result) {
-     }
- 
-     case NPNVToolkit: {
--#ifdef MOZ_WIDGET_GTK
-+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
-       *((NPNToolkitType*)result) = NPNVGtk2;
- #endif
- 
-@@ -1311,7 +1311,7 @@ NPError _getvalue(NPP npp, NPNVariable variable, void* result) {
-     }
- 
-     case NPNVSupportsXEmbedBool: {
--#ifdef MOZ_WIDGET_GTK
-+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
-       *(NPBool*)result = true;
- #else
-       *(NPBool*)result = false;
-diff --git a/dom/plugins/ipc/NestedLoopTimer.cpp b/dom/plugins/ipc/NestedLoopTimer.cpp
-new file mode 100644
-index 000000000000..5b20c7278117
---- /dev/null
-+++ b/dom/plugins/ipc/NestedLoopTimer.cpp
-@@ -0,0 +1,48 @@
-+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-+ * vim: sw=4 ts=4 et :
-+ * This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#include <QtCore/QTimer>
-+
-+#include "NestedLoopTimer.h"
-+#include "mozilla/plugins/PluginModuleChild.h"
-+
-+namespace mozilla {
-+namespace plugins {
-+
-+NestedLoopTimer::NestedLoopTimer(PluginModuleChild *pmc):
-+     QObject(), mModule(pmc), mQTimer(nullptr)
-+{
-+}
-+
-+NestedLoopTimer::~NestedLoopTimer()
-+{
-+    if (mQTimer) {
-+        mQTimer->stop();
-+        delete mQTimer;
-+        mQTimer = nullptr;
-+    }
-+}
-+
-+void NestedLoopTimer::timeOut()
-+{
-+    // just detected a nested loop; start a timer that will
-+    // periodically rpc-call back into the browser and process some
-+    // events
-+    mQTimer = new QTimer(this);
-+    QObject::connect(mQTimer, SIGNAL(timeout()), this,
-+                     SLOT(processSomeEvents()));
-+    mQTimer->setInterval(kNestedLoopDetectorIntervalMs);
-+    mQTimer->start();
-+}
-+
-+void NestedLoopTimer::processSomeEvents()
-+{
-+    if (mModule)
-+        mModule->CallProcessSomeEvents();
-+}
-+
-+} /* namespace plugins */
-+} /* namespace mozilla */
-diff --git a/dom/plugins/ipc/NestedLoopTimer.h b/dom/plugins/ipc/NestedLoopTimer.h
-new file mode 100644
-index 000000000000..06136badb556
---- /dev/null
-+++ b/dom/plugins/ipc/NestedLoopTimer.h
-@@ -0,0 +1,41 @@
-+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-+ * vim: sw=4 ts=4 et :
-+ * This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef NESTEDLOOPTIMER_H
-+#define NESTEDLOOPTIMER_H
-+
-+#include <QtCore/QObject>
-+
-+class QTimer;
-+
-+namespace mozilla {
-+namespace plugins {
-+
-+class PluginModuleChild;
-+
-+class NestedLoopTimer: public QObject
-+{
-+    Q_OBJECT
-+public:
-+    NestedLoopTimer(PluginModuleChild *pmc);
-+
-+    virtual ~NestedLoopTimer();
-+
-+public Q_SLOTS:
-+    virtual void timeOut();
-+    virtual void processSomeEvents();
-+   
-+private:
-+    PluginModuleChild *mModule;
-+    QTimer *mQTimer;
-+};
-+
-+} /* namespace plugins */
-+} /* namespace mozilla */
-+
-+#undef slots
-+
-+#endif
-diff --git a/dom/plugins/ipc/PluginHelperQt.cpp b/dom/plugins/ipc/PluginHelperQt.cpp
-new file mode 100644
-index 000000000000..19128edb517b
---- /dev/null
-+++ b/dom/plugins/ipc/PluginHelperQt.cpp
-@@ -0,0 +1,18 @@
-+/* -*- Mode: C++; tab-width: 3; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-+ *
-+ * This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#include "PluginHelperQt.h"
-+#include <QtCore/QCoreApplication>
-+#include <QtCore/QEventLoop>
-+
-+static const int kMaxtimeToProcessEvents = 30;
-+
-+bool
-+PluginHelperQt::AnswerProcessSomeEvents()
-+{
-+    QCoreApplication::processEvents(QEventLoop::AllEvents, kMaxtimeToProcessEvents);
-+    return true;
-+}
-diff --git a/dom/plugins/ipc/PluginHelperQt.h b/dom/plugins/ipc/PluginHelperQt.h
-new file mode 100644
-index 000000000000..b940431b7b54
---- /dev/null
-+++ b/dom/plugins/ipc/PluginHelperQt.h
-@@ -0,0 +1,16 @@
-+/* -*- Mode: C++; tab-width: 3; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-+ *
-+ * This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef PluginHelperQt_h_
-+#define PluginHelperQt_h_
-+
-+class PluginHelperQt
-+{
-+public:
-+  static bool AnswerProcessSomeEvents();
-+};
-+
-+#endif // PluginHelperQt_h_
-diff --git a/dom/plugins/ipc/PluginInstanceChild.cpp b/dom/plugins/ipc/PluginInstanceChild.cpp
-index 9e179b2dadf3..74dadd446c3a 100644
---- a/dom/plugins/ipc/PluginInstanceChild.cpp
-+++ b/dom/plugins/ipc/PluginInstanceChild.cpp
-@@ -50,6 +50,9 @@ using namespace mozilla::widget;
- #  include <gdk/gdkx.h>
- #  include <gdk/gdk.h>
- 
-+#elif defined(MOZ_WIDGET_QT)
-+#  undef KeyPress
-+#  undef KeyRelease
- #elif defined(OS_WIN)
- 
- #  include <windows.h>
-@@ -1247,6 +1250,8 @@ mozilla::ipc::IPCResult PluginInstanceChild::AnswerNPP_SetWindow(
- 
- #elif defined(ANDROID)
-   // TODO: Need Android impl
-+#elif defined(MOZ_WIDGET_QT)
-+  // Don't care
- #elif defined(MOZ_WIDGET_UIKIT)
-   // Don't care
- #else
-diff --git a/dom/plugins/ipc/PluginInstanceParent.cpp b/dom/plugins/ipc/PluginInstanceParent.cpp
-index 108c9b3a1f0a..3368cd3b6051 100644
---- a/dom/plugins/ipc/PluginInstanceParent.cpp
-+++ b/dom/plugins/ipc/PluginInstanceParent.cpp
-@@ -233,6 +233,9 @@ PluginInstanceParent::AnswerNPN_GetValue_NPNVnetscapeWindow(
- #elif defined(ANDROID)
-   // TODO: Need Android impl
-   int id;
-+#elif defined(MOZ_WIDGET_QT)
-+  // TODO: Need Qt non X impl
-+  int id;
- #else
- #  warning Implement me
- #endif
-diff --git a/dom/plugins/ipc/PluginMessageUtils.h b/dom/plugins/ipc/PluginMessageUtils.h
-index 87747b115b0b..152f99854025 100644
---- a/dom/plugins/ipc/PluginMessageUtils.h
-+++ b/dom/plugins/ipc/PluginMessageUtils.h
-@@ -115,7 +115,7 @@ struct NPAudioDeviceStateChangedIPC {
- typedef HWND NativeWindowHandle;
- #elif defined(MOZ_X11)
- typedef XID NativeWindowHandle;
--#elif defined(XP_DARWIN) || defined(ANDROID)
-+#elif defined(XP_DARWIN) || defined(ANDROID) || defined(MOZ_WIDGET_QT)
- typedef intptr_t NativeWindowHandle;  // never actually used, will always be 0
- #else
- #  error Need NativeWindowHandle for this platform
-diff --git a/dom/plugins/ipc/PluginModuleChild.cpp b/dom/plugins/ipc/PluginModuleChild.cpp
-index 58111414173e..0efbf35f8cdc 100644
---- a/dom/plugins/ipc/PluginModuleChild.cpp
-+++ b/dom/plugins/ipc/PluginModuleChild.cpp
-@@ -4,6 +4,12 @@
-  * License, v. 2.0. If a copy of the MPL was not distributed with this
-  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
- 
-+#ifdef MOZ_WIDGET_QT
-+#include <QtCore/QTimer>
-+#include "nsQAppInstance.h"
-+#include "NestedLoopTimer.h"
-+#endif
-+
- #include "mozilla/plugins/PluginModuleChild.h"
- 
- /* This must occur *after* plugins/PluginModuleChild.h to avoid typedefs
-@@ -77,6 +83,12 @@ namespace {
- PluginModuleChild* gChromeInstance = nullptr;
- }  // namespace
- 
-+#ifdef MOZ_WIDGET_QT
-+typedef void (*_gtk_init_fn)(int argc, char **argv);
-+static _gtk_init_fn s_gtk_init = nullptr;
-+static PRLibrary *sGtkLib = nullptr;
-+#endif
-+
- #ifdef XP_WIN
- // Used with fix for flash fullscreen window loosing focus.
- static bool gDelayFlashFocusReplyUntilEval = false;
-@@ -103,6 +115,9 @@ PluginModuleChild::PluginModuleChild(bool aIsChrome)
- #elif defined(MOZ_WIDGET_GTK)
-       ,
-       mNestedLoopTimerId(0)
-+#elif defined(MOZ_WIDGET_QT)
-+      ,
-+      mNestedLoopTimerObject(0)
- #endif
- #ifdef OS_WIN
-       ,
-@@ -331,7 +346,6 @@ bool PluginModuleChild::InitForChrome(const std::string& aPluginFilename,
- }
- 
- #if defined(MOZ_WIDGET_GTK)
--
- typedef void (*GObjectDisposeFn)(GObject*);
- typedef gboolean (*GtkWidgetScrollEventFn)(GtkWidget*, GdkEventScroll*);
- typedef void (*GtkPlugEmbeddedFn)(GtkPlug*);
-@@ -531,6 +545,26 @@ void PluginModuleChild::ExitedCxxStack() {
-   g_source_remove(mNestedLoopTimerId);
-   mNestedLoopTimerId = 0;
- }
-+#elif defined (MOZ_WIDGET_QT)
-+
-+void
-+PluginModuleChild::EnteredCxxStack()
-+{
-+    MOZ_ASSERT(mNestedLoopTimerObject == nullptr,
-+               "previous timer not descheduled");
-+    mNestedLoopTimerObject = new NestedLoopTimer(this);
-+    QTimer::singleShot(kNestedLoopDetectorIntervalMs,
-+                       mNestedLoopTimerObject, SLOT(timeOut()));
-+}
-+
-+void
-+PluginModuleChild::ExitedCxxStack()
-+{
-+    MOZ_ASSERT(mNestedLoopTimerObject != nullptr,
-+               "nested loop timeout not scheduled");
-+    delete mNestedLoopTimerObject;
-+    mNestedLoopTimerObject = nullptr;
-+}
- 
- #endif
- 
-@@ -585,6 +619,19 @@ bool PluginModuleChild::InitGraphics() {
-   real_gtk_plug_embedded = *embedded;
-   *embedded = wrap_gtk_plug_embedded;
- 
-+#elif defined(MOZ_WIDGET_QT)
-+    nsQAppInstance::AddRef();
-+    // Work around plugins that don't interact well without gtk initialized
-+    // see bug 566845
-+#if defined(MOZ_X11)
-+    if (!sGtkLib)
-+         sGtkLib = PR_LoadLibrary("libgtk-x11-2.0.so.0");
-+#endif
-+    if (sGtkLib) {
-+         s_gtk_init = (_gtk_init_fn)PR_FindFunctionSymbol(sGtkLib, "gtk_init");
-+         if (s_gtk_init)
-+             s_gtk_init(0, 0);
-+    }
- #else
-   // may not be necessary on all platforms
- #endif
-@@ -596,6 +643,15 @@ bool PluginModuleChild::InitGraphics() {
- }
- 
- void PluginModuleChild::DeinitGraphics() {
-+#ifdef MOZ_WIDGET_QT
-+    nsQAppInstance::Release();
-+    if (sGtkLib) {
-+        PR_UnloadLibrary(sGtkLib);
-+        sGtkLib = nullptr;
-+        s_gtk_init = nullptr;
-+    }
-+#endif
-+
- #if defined(MOZ_X11) && defined(NS_FREE_PERMANENT_DATA)
-   // We free some data off of XDisplay close hooks, ensure they're
-   // run.  Closing the display is pretty scary, so we only do it to
-@@ -1000,7 +1056,7 @@ NPError _getvalue(NPP aNPP, NPNVariable aVariable, void* aValue) {
-   switch (aVariable) {
-     // Copied from nsNPAPIPlugin.cpp
-     case NPNVToolkit:
--#if defined(MOZ_WIDGET_GTK)
-+#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
-       *static_cast<NPNToolkitType*>(aValue) = NPNVGtk2;
-       return NPERR_NO_ERROR;
- #endif
-diff --git a/dom/plugins/ipc/PluginModuleChild.h b/dom/plugins/ipc/PluginModuleChild.h
-index 84df35e5d8c1..437effb10af5 100644
---- a/dom/plugins/ipc/PluginModuleChild.h
-+++ b/dom/plugins/ipc/PluginModuleChild.h
-@@ -38,6 +38,11 @@ class ChildProfilerController;
- 
- namespace plugins {
- 
-+#ifdef MOZ_WIDGET_QT
-+class NestedLoopTimer;
-+static const int kNestedLoopDetectorIntervalMs = 90;
-+#endif
-+
- class PluginInstanceChild;
- 
- class PluginModuleChild : public PPluginModuleChild {
-@@ -210,6 +215,10 @@ class PluginModuleChild : public PPluginModuleChild {
-   static gboolean DetectNestedEventLoop(gpointer data);
-   static gboolean ProcessBrowserEvents(gpointer data);
- 
-+  virtual void EnteredCxxStack() override;
-+  virtual void ExitedCxxStack() override;
-+#elif defined(MOZ_WIDGET_QT)
-+
-   virtual void EnteredCxxStack() override;
-   virtual void ExitedCxxStack() override;
- #endif
-@@ -276,6 +285,8 @@ class PluginModuleChild : public PPluginModuleChild {
-   // MessagePumpForUI.
-   int mTopLoopDepth;
- #  endif
-+#elif defined (MOZ_WIDGET_QT)
-+  NestedLoopTimer *mNestedLoopTimerObject;
- #endif
- 
- #if defined(XP_WIN)
-diff --git a/dom/plugins/ipc/PluginModuleParent.cpp b/dom/plugins/ipc/PluginModuleParent.cpp
-index 5d207bdb3ee0..bdc2edd2a767 100644
---- a/dom/plugins/ipc/PluginModuleParent.cpp
-+++ b/dom/plugins/ipc/PluginModuleParent.cpp
-@@ -4,6 +4,10 @@
-  * License, v. 2.0. If a copy of the MPL was not distributed with this
-  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
- 
-+#ifdef MOZ_WIDGET_QT
-+#include "PluginHelperQt.h"
-+#endif
-+
- #include "mozilla/plugins/PluginModuleParent.h"
- 
- #include "base/process_util.h"
-@@ -2235,7 +2239,13 @@ mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
-   mozilla::plugins::PluginUtilsOSX::InvokeNativeEventLoop();
-   return IPC_OK();
- }
--
-+#elif defined(MOZ_WIDGET_QT)
-+mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
-+    PLUGIN_LOG_DEBUG(("Spinning mini nested loop ..."));
-+    PluginHelperQt::AnswerProcessSomeEvents();
-+    PLUGIN_LOG_DEBUG(("... quitting mini nested loop"));
-+    return IPC_OK();
-+}
- #elif !defined(MOZ_WIDGET_GTK)
- mozilla::ipc::IPCResult PluginModuleParent::AnswerProcessSomeEvents() {
-   MOZ_CRASH("unreached");
-diff --git a/dom/plugins/ipc/moz.build b/dom/plugins/ipc/moz.build
-index 49f1e2767081..859c83b975b6 100644
---- a/dom/plugins/ipc/moz.build
-+++ b/dom/plugins/ipc/moz.build
-@@ -62,6 +62,13 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
-         'PluginInterposeOSX.h',
-     ]
- 
-+if CONFIG['MOZ_ENABLE_QT']:
-+    SOURCES += [
-+        '!moc_NestedLoopTimer.cpp',
-+        'NestedLoopTimer.cpp',
-+        'PluginHelperQt.cpp',
-+    ]
-+
- UNIFIED_SOURCES += [
-     'BrowserStreamChild.cpp',
-     'BrowserStreamParent.cpp',
+ JAR_MANIFESTS += ["jar.mn"]
 diff --git a/dom/system/moz.build b/dom/system/moz.build
-index 095a5f098bd2..92910886be20 100644
+index 9ba8669ea0dd..e7b5e55f0551 100644
 --- a/dom/system/moz.build
 +++ b/dom/system/moz.build
 @@ -43,7 +43,9 @@ with Files("tests/*1197901*"):
  
- toolkit = CONFIG['MOZ_WIDGET_TOOLKIT']
+ toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
  
--if toolkit == 'windows':
+-if toolkit == "windows":
 +if toolkit == 'qt':
 +    DIRS += ['qt']
 +elif toolkit == 'windows':
-     DIRS += ['windows']
- elif toolkit == 'cocoa':
-     DIRS += ['mac']
+     DIRS += ["windows"]
+ elif toolkit == "cocoa":
+     DIRS += ["mac"]
 diff --git a/dom/system/qt/QTMLocationProvider.cpp b/dom/system/qt/QTMLocationProvider.cpp
 new file mode 100644
 index 000000000000..70b1c37dce94
@@ -1187,7 +869,7 @@ index 000000000000..6e418008b29a
 +
 +FINAL_LIBRARY = 'xul'
 diff --git a/gfx/2d/2D.h b/gfx/2d/2D.h
-index b572646b8131..d6ae9a78d6e0 100644
+index c49f6293e0a7..b0d63e9d36ac 100644
 --- a/gfx/2d/2D.h
 +++ b/gfx/2d/2D.h
 @@ -37,7 +37,7 @@
@@ -1199,7 +881,7 @@ index b572646b8131..d6ae9a78d6e0 100644
  #  ifndef MOZ_ENABLE_FREETYPE
  #    define MOZ_ENABLE_FREETYPE
  #  endif
-@@ -1805,7 +1805,7 @@ class GFX2D_API Factory {
+@@ -1819,7 +1819,7 @@ class GFX2D_API Factory {
        bool aUseFontSmoothing = true, bool aApplySyntheticBold = false);
  #endif
  
@@ -1209,7 +891,7 @@ index b572646b8131..d6ae9a78d6e0 100644
        const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
        RefPtr<SharedFTFace> aFace, FcPattern* aPattern);
 diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
-index 1dd46e048b8d..06fee4f950ff 100644
+index f865cd37d9f8..6fbd23ac26b3 100644
 --- a/gfx/2d/Factory.cpp
 +++ b/gfx/2d/Factory.cpp
 @@ -29,7 +29,7 @@
@@ -1221,7 +903,7 @@ index 1dd46e048b8d..06fee4f950ff 100644
  #  include "ScaledFontFontconfig.h"
  #  include "NativeFontResourceFreeType.h"
  #  include "UnscaledFontFreeType.h"
-@@ -637,7 +637,7 @@ already_AddRefed<ScaledFont> Factory::CreateScaledFontForMacFont(
+@@ -636,7 +636,7 @@ already_AddRefed<ScaledFont> Factory::CreateScaledFontForMacFont(
  }
  #endif
  
@@ -1244,47 +926,70 @@ index 14a59a0018f1..aca4ae9231ad 100644
   public:
    MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(UnscaledFontFontconfig, override)
 diff --git a/gfx/2d/moz.build b/gfx/2d/moz.build
-index 3650cf178962..54bb3a854140 100644
+index afae13227d29..1a5557f5d1c3 100644
 --- a/gfx/2d/moz.build
 +++ b/gfx/2d/moz.build
-@@ -93,7 +93,7 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+@@ -94,7 +94,7 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
      ]
-     DEFINES['WIN32'] = True
+     DEFINES["WIN32"] = True
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk', 'qt'):
      EXPORTS.mozilla.gfx += [
-         'UnscaledFontFreeType.h',
+         "UnscaledFontFreeType.h",
      ]
-@@ -102,7 +102,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
-         'UnscaledFontFreeType.cpp',
+@@ -103,7 +103,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
+         "UnscaledFontFreeType.cpp",
      ]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
      SOURCES += [
-         'ScaledFontFontconfig.cpp',
+         "ScaledFontFontconfig.cpp",
      ]
-@@ -233,12 +233,12 @@ FINAL_LIBRARY = 'xul'
- for var in ('USE_CAIRO', 'MOZ2D_HAS_MOZ_CAIRO'):
+@@ -235,13 +235,13 @@ FINAL_LIBRARY = "xul"
+ for var in ("USE_CAIRO", "MOZ2D_HAS_MOZ_CAIRO"):
      DEFINES[var] = True
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk', 'qt'):
-     DEFINES['MOZ_ENABLE_FREETYPE'] = True
+     DEFINES["MOZ_ENABLE_FREETYPE"] = True
  
- CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
+ CXXFLAGS += CONFIG["MOZ_CAIRO_CFLAGS"]
+ CXXFLAGS += ["-Werror=switch"]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk', 'qt'):
-     CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
+     CXXFLAGS += CONFIG["CAIRO_FT_CFLAGS"]
  
- LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
+ LOCAL_INCLUDES += CONFIG["SKIA_INCLUDES"]
+diff --git a/gfx/cairo/cairo/src/cairo-qt-surface.cpp b/gfx/cairo/cairo/src/cairo-qt-surface.cpp
+index d276f059e1fd..e35c4bb311c2 100644
+--- a/gfx/cairo/cairo/src/cairo-qt-surface.cpp
++++ b/gfx/cairo/cairo/src/cairo-qt-surface.cpp
+@@ -62,7 +62,7 @@
+ #include <QtGui/QPixmap>
+ #include <QtGui/QBrush>
+ #include <QtGui/QPen>
+-#include <QWidget>
++#include <QtWidgets/QWidget>
+ #include <QtCore/QVarLengthArray>
+ 
+ #if ((QT_VERSION >= QT_VERSION_CHECK(4, 7, 0)) || defined(QT_GLYPHS_API_BACKPORT)) && 0
+@@ -787,7 +787,7 @@ _cairo_qt_surface_set_clip_region (cairo_qt_surface_t *qs,
+ 	    cairo_region_get_rectangle (clip_region, i, &rect);
+ 
+ 	    QRect r(rect.x, rect.y, rect.width, rect.height);
+-	    qr = qr.unite(r);
++	    qr = qr.united(r);
+ 	}
+ 
+ 	qs->p->setClipRegion (qr, Qt::IntersectClip);
 diff --git a/gfx/cairo/cairo/src/moz.build b/gfx/cairo/cairo/src/moz.build
-index db6e4c7e45c5..75da089258dd 100755
+index edc3b6a7a2a0..7202e72a68e4 100755
 --- a/gfx/cairo/cairo/src/moz.build
 +++ b/gfx/cairo/cairo/src/moz.build
-@@ -77,6 +77,14 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+@@ -82,6 +82,14 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
      SOURCES += [
          'cairo-ps-surface.c',
      ]
@@ -1299,7 +1004,7 @@ index db6e4c7e45c5..75da089258dd 100755
  
  if CONFIG['MOZ_X11']:
      EXPORTS.cairo += [
-@@ -244,6 +252,10 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc') and CONFIG['OS_TARGET'] == 'Android' an
+@@ -286,6 +294,10 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc') and CONFIG['OS_TARGET'] == 'Android' an
      CFLAGS += ['-O2']
      CXXFLAGS += ['-O2']
  
@@ -1311,23 +1016,23 @@ index db6e4c7e45c5..75da089258dd 100755
      CFLAGS += CONFIG['XCFLAGS']
  
 diff --git a/gfx/gl/moz.build b/gfx/gl/moz.build
-index bf2c244d542d..93866f02abc7 100644
+index 24f7fcd6beab..162269dec493 100644
 --- a/gfx/gl/moz.build
 +++ b/gfx/gl/moz.build
-@@ -17,6 +17,8 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
-         gl_provider = 'EGL'
+@@ -17,6 +17,8 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         gl_provider = "EGL"
      else:
-         gl_provider = 'GLX'
+         gl_provider = "GLX"
 +elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    gl_provider = 'GLX'
- elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
-     gl_provider = 'EGL'
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+     gl_provider = "EGL"
  
 diff --git a/gfx/skia/generate_mozbuild.py b/gfx/skia/generate_mozbuild.py
-index d5c409b65753..733326d47f59 100755
+index e23ec37b1a3f..a6c0db4d9ee6 100755
 --- a/gfx/skia/generate_mozbuild.py
 +++ b/gfx/skia/generate_mozbuild.py
-@@ -98,11 +98,11 @@ if CONFIG['CC_TYPE'] in ('clang', 'clang-cl'):
+@@ -97,11 +97,11 @@ if CONFIG['CC_TYPE'] in ('clang', 'clang-cl'):
          '-Wno-unused-private-field',
      ]
  
@@ -1339,9 +1044,9 @@ index d5c409b65753..733326d47f59 100755
 -if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
      CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
+ """
  
- if CONFIG['MOZ_ENABLE_SKIA_PDF_SFNTLY']:
-@@ -385,7 +385,7 @@ def write_mozbuild(sources):
+@@ -381,7 +381,7 @@ def write_mozbuild(sources):
    f.write("if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('cocoa', 'uikit'):\n")
    write_sources(f, sources['mac'], 4)
  
@@ -1351,7 +1056,7 @@ index d5c409b65753..733326d47f59 100755
  
    f.write("if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':\n")
 diff --git a/gfx/skia/moz.build b/gfx/skia/moz.build
-index 66b21aec254e..76d43b845c15 100755
+index 7d5ad42f4822..3998fdb59f2c 100755
 --- a/gfx/skia/moz.build
 +++ b/gfx/skia/moz.build
 @@ -387,7 +387,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('cocoa', 'uikit'):
@@ -1363,7 +1068,7 @@ index 66b21aec254e..76d43b845c15 100755
      UNIFIED_SOURCES += [
          'skia/src/ports/SkDebug_stdio.cpp',
          'skia/src/ports/SkOSFile_posix.cpp',
-@@ -490,11 +490,11 @@ if CONFIG['CC_TYPE'] in ('clang', 'clang-cl'):
+@@ -489,9 +489,9 @@ if CONFIG['CC_TYPE'] in ('clang', 'clang-cl'):
          '-Wno-unused-private-field',
      ]
  
@@ -1375,21 +1080,116 @@ index 66b21aec254e..76d43b845c15 100755
 -if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
      CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
- 
- if CONFIG['MOZ_ENABLE_SKIA_PDF_SFNTLY']:
 diff --git a/gfx/src/moz.build b/gfx/src/moz.build
-index 36e05c77ff4d..f78796107b21 100644
+index 51058dd940a7..96b98aae1455 100644
 --- a/gfx/src/moz.build
 +++ b/gfx/src/moz.build
-@@ -94,3 +94,6 @@ CXXFLAGS += CONFIG['TK_CFLAGS']
+@@ -95,3 +95,6 @@ CXXFLAGS += CONFIG["TK_CFLAGS"]
  
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
-     CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     CXXFLAGS += CONFIG["MOZ_PANGO_CFLAGS"]
 +
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
+diff --git a/gfx/thebes/SharedFontList.cpp b/gfx/thebes/SharedFontList.cpp
+index 23f07416304b..f44f8e5092ba 100644
+--- a/gfx/thebes/SharedFontList.cpp
++++ b/gfx/thebes/SharedFontList.cpp
+@@ -256,7 +256,7 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+     Face* face = static_cast<Face*>(facePtrs[0].ToPtr(aList));
+     if (face && face->HasValidDescriptor()) {
+       aFaceList.AppendElement(face);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+       if (face->mSize) {
+         return true;
+       }
+@@ -287,7 +287,7 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+     Face* face = static_cast<Face*>(facePtrs[faceIndex].ToPtr(aList));
+     if (face && face->HasValidDescriptor()) {
+       aFaceList.AppendElement(face);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+       if (face->mSize) {
+         return true;
+       }
+@@ -312,7 +312,7 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+       face = static_cast<Face*>(facePtrs[order[trial]].ToPtr(aList));
+       if (face && face->HasValidDescriptor()) {
+         aFaceList.AppendElement(face);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+         if (face->mSize) {
+           return true;
+         }
+@@ -357,7 +357,7 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+       } else if (distance == minDistance) {
+         if (matched) {
+           aFaceList.AppendElement(matched);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+           if (matched->mSize) {
+             anyNonScalable = true;
+           }
+@@ -371,7 +371,7 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+   MOZ_ASSERT(matched, "didn't match a font within a family");
+   if (matched) {
+     aFaceList.AppendElement(matched);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+     if (matched->mSize) {
+       anyNonScalable = true;
+     }
+@@ -384,14 +384,14 @@ bool Family::FindAllFacesForStyleInternal(FontList* aList,
+ void Family::FindAllFacesForStyle(FontList* aList, const gfxFontStyle& aStyle,
+                                   nsTArray<Face*>& aFaceList,
+                                   bool aIgnoreSizeTolerance) const {
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   bool anyNonScalable =
+ #else
+   Unused <<
+ #endif
+       FindAllFacesForStyleInternal(aList, aStyle, aFaceList);
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   // aFaceList now contains whatever faces are the best style match for
+   // the requested style. If specifically-sized bitmap faces are supported,
+   // we need to additionally filter the list to choose the appropriate size.
+diff --git a/gfx/thebes/SharedFontList.h b/gfx/thebes/SharedFontList.h
+index 534dbeef6e1b..308c8d9b1874 100644
+--- a/gfx/thebes/SharedFontList.h
++++ b/gfx/thebes/SharedFontList.h
+@@ -157,7 +157,7 @@ struct Face {
+     nsCString mDescriptor;  // descriptor that can be used to instantiate a
+                             // platform font reference
+     uint16_t mIndex;        // an index used with descriptor (on some platforms)
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+     uint16_t mSize;  // pixel size if bitmap; zero indicates scalable
+ #endif
+     bool mFixedPitch;                  // is the face fixed-pitch (monospaced)?
+@@ -172,7 +172,7 @@ struct Face {
+   Face(FontList* aList, const InitData& aData)
+       : mDescriptor(aList, aData.mDescriptor),
+         mIndex(aData.mIndex),
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+         mSize(aData.mSize),
+ #endif
+         mFixedPitch(aData.mFixedPitch),
+@@ -190,7 +190,7 @@ struct Face {
+ 
+   String mDescriptor;
+   uint16_t mIndex;
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   uint16_t mSize;
+ #endif
+   bool mFixedPitch;
 diff --git a/gfx/thebes/gfxASurface.cpp b/gfx/thebes/gfxASurface.cpp
-index 702f684d1470..610581fbd642 100644
+index 3a04b1f9c214..169103f5868a 100644
 --- a/gfx/thebes/gfxASurface.cpp
 +++ b/gfx/thebes/gfxASurface.cpp
 @@ -140,6 +140,8 @@ already_AddRefed<gfxASurface> gfxASurface::Wrap(cairo_surface_t* csurf,
@@ -1402,7 +1202,7 @@ index 702f684d1470..610581fbd642 100644
      result = new gfxImageSurface(csurf);
    }
 diff --git a/gfx/thebes/gfxFT2Fonts.cpp b/gfx/thebes/gfxFT2Fonts.cpp
-index aad774d3b1fc..046149f47e28 100644
+index b4edd2edeeaf..bbfbbd46b4ba 100644
 --- a/gfx/thebes/gfxFT2Fonts.cpp
 +++ b/gfx/thebes/gfxFT2Fonts.cpp
 @@ -6,6 +6,10 @@
@@ -1417,35 +1217,56 @@ index aad774d3b1fc..046149f47e28 100644
  #  include "gfxWindowsPlatform.h"
  #  define gfxToolkitPlatform gfxWindowsPlatform
 diff --git a/gfx/thebes/gfxFcPlatformFontList.cpp b/gfx/thebes/gfxFcPlatformFontList.cpp
-index 0eb29428725a..7ed15b748105 100644
+index 1cd465119da1..d47f0f68b640 100644
 --- a/gfx/thebes/gfxFcPlatformFontList.cpp
 +++ b/gfx/thebes/gfxFcPlatformFontList.cpp
-@@ -37,6 +37,8 @@
- #ifdef MOZ_WIDGET_GTK
- #  include <gdk/gdk.h>
+@@ -40,6 +40,8 @@
+ #  include <gtk/gtk.h>
  #  include "gfxPlatformGtk.h"
+ #  include "mozilla/WidgetUtilsGtk.h"
 +#elif MOZ_WIDGET_QT
 +#  include "gfxQtPlatform.h"
  #endif
  
  #ifdef MOZ_X11
-@@ -2201,7 +2203,11 @@ gfxPlatformFontList::PrefFontList* gfxFcPlatformFontList::FindGenericFamilies(
+@@ -1440,7 +1442,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
+   mLocalNames.Clear();
+   mFcSubstituteCache.Clear();
  
-   // -- select the fonts to be used for the generic
-   prefFonts = new PrefFontList;  // can be empty but in practice won't happen
-+#if defined(MOZ_WIDGET_GTK)
-   uint32_t limit = gfxPlatformGtk::GetPlatform()->MaxGenericSubstitions();
-+#else
-+  uint32_t limit = gfxQtPlatform::GetPlatform()->MaxGenericSubstitions();
++#ifdef MOZ_WIDGET_GTK
+   ClearSystemFontOptions();
 +#endif
-   bool foundFontWithLang = false;
-   for (int i = 0; i < faces->nfont; i++) {
-     FcPattern* font = faces->fonts[i];
+ 
+   mAlwaysUseFontconfigGenerics = PrefFontListsUseOnlyGenerics();
+   mOtherFamilyNamesInitialized = true;
+@@ -1509,7 +1513,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
+     return NS_OK;
+   }
+ 
++#ifdef MOZ_WIDGET_GTK
+   UpdateSystemFontOptions();
++#endif
+ 
+   UniquePtr<SandboxPolicy> policy;
+ 
+@@ -2336,8 +2342,12 @@ gfxPlatformFontList::PrefFontList* gfxFcPlatformFontList::FindGenericFamilies(
+           // -- select the fonts to be used for the generic
+           auto prefFonts = MakeUnique<PrefFontList>();  // can be empty but in
+                                                         // practice won't happen
++#if defined(MOZ_WIDGET_GTK)
+           uint32_t limit =
+               gfxPlatformGtk::GetPlatform()->MaxGenericSubstitions();
++#else
++          uint32_t limit = gfxQtPlatform::GetPlatform()->MaxGenericSubstitions();
++#endif
+           bool foundFontWithLang = false;
+           for (int i = 0; i < faces->nfont; i++) {
+             FcPattern* font = faces->fonts[i];
 diff --git a/gfx/thebes/gfxFont.h b/gfx/thebes/gfxFont.h
-index f9f6cc6fa1e3..a82cb7cccd26 100644
+index 36d0d07e6b55..c029a5fd35e9 100644
 --- a/gfx/thebes/gfxFont.h
 +++ b/gfx/thebes/gfxFont.h
-@@ -63,7 +63,7 @@ class gfxMathTable;
+@@ -87,7 +87,7 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;
  // we use a platform-dependent value to harmonize with the platform's own APIs.
  #ifdef XP_WIN
  #  define OBLIQUE_SKEW_FACTOR 0.3f
@@ -1455,10 +1276,10 @@ index f9f6cc6fa1e3..a82cb7cccd26 100644
  #else
  #  define OBLIQUE_SKEW_FACTOR 0.25f
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 96b53c105961..ca5ec522ff03 100644
+index d620e75f6eaf..49a346d405fe 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -71,6 +71,8 @@
+@@ -73,6 +73,8 @@
  #  include "nsCocoaFeatures.h"
  #elif defined(MOZ_WIDGET_GTK)
  #  include "gfxPlatformGtk.h"
@@ -1467,7 +1288,7 @@ index 96b53c105961..ca5ec522ff03 100644
  #elif defined(ANDROID)
  #  include "gfxAndroidPlatform.h"
  #endif
-@@ -928,6 +930,8 @@ void gfxPlatform::Init() {
+@@ -917,6 +919,8 @@ void gfxPlatform::Init() {
    gPlatform = new gfxPlatformMac;
  #elif defined(MOZ_WIDGET_GTK)
    gPlatform = new gfxPlatformGtk;
@@ -1476,7 +1297,7 @@ index 96b53c105961..ca5ec522ff03 100644
  #elif defined(ANDROID)
    gPlatform = new gfxAndroidPlatform;
  #else
-@@ -1954,7 +1958,7 @@ BackendPrefsData gfxPlatform::GetBackendPrefs() const {
+@@ -1945,7 +1949,7 @@ BackendPrefsData gfxPlatform::GetBackendPrefs() const {
    data.mCanvasBitmask = BackendTypeBit(BackendType::SKIA);
    data.mContentBitmask = BackendTypeBit(BackendType::SKIA);
  
@@ -1485,7 +1306,7 @@ index 96b53c105961..ca5ec522ff03 100644
    data.mCanvasBitmask |= BackendTypeBit(BackendType::CAIRO);
    data.mContentBitmask |= BackendTypeBit(BackendType::CAIRO);
  #endif
-@@ -1994,7 +1998,7 @@ void gfxPlatform::InitBackendPrefs(BackendPrefsData&& aPrefsData) {
+@@ -1985,7 +1989,7 @@ void gfxPlatform::InitBackendPrefs(BackendPrefsData&& aPrefsData) {
    }
  
    uint32_t swBackendBits = BackendTypeBit(BackendType::SKIA);
@@ -1624,10 +1445,10 @@ index 000000000000..23c138e11fc0
 +#endif /*GFXQTNATIVERENDER_H_*/
 diff --git a/gfx/thebes/gfxQtPlatform.cpp b/gfx/thebes/gfxQtPlatform.cpp
 new file mode 100644
-index 000000000000..84aedc98b795
+index 000000000000..d837cc2c2ca9
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.cpp
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,147 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1667,6 +1488,7 @@ index 000000000000..84aedc98b795
 +using namespace mozilla::gfx;
 +
 +static gfxImageFormat sOffscreenFormat = SurfaceFormat::X8R8G8B8_UINT32;
++static FT_Library gPlatformFTLibrary = nullptr;
 +
 +#define GFX_PREF_MAX_GENERIC_SUBSTITUTIONS \
 +  "gfx.font_rendering.fontconfig.max_generic_substitutions"
@@ -1680,10 +1502,16 @@ index 000000000000..84aedc98b795
 +        sOffscreenFormat = SurfaceFormat::R5G6B5_UINT16;
 +    }
 +    InitBackendPrefs(GetBackendPrefs());
++
++    gPlatformFTLibrary = Factory::NewFTLibrary();
++    MOZ_ASSERT(gPlatformFTLibrary);
++    Factory::SetFTLibrary(gPlatformFTLibrary);
 +}
 +
 +gfxQtPlatform::~gfxQtPlatform()
 +{
++    Factory::ReleaseFTLibrary(gPlatformFTLibrary);
++    gPlatformFTLibrary = nullptr;
 +}
 +
 +bool
@@ -1718,20 +1546,16 @@ index 000000000000..84aedc98b795
 +}
 +
 +nsresult
-+gfxQtPlatform::UpdateFontList()
++gfxQtPlatform::UpdateFontList(bool aFullRebuild)
 +{
-+    gfxPlatformFontList::PlatformFontList()->UpdateFontList();
++    gfxPlatformFontList::PlatformFontList()->UpdateFontList(aFullRebuild);
 +    return NS_OK;
 +}
 +
-+gfxPlatformFontList *gfxQtPlatform::CreatePlatformFontList()
++bool
++gfxQtPlatform::CreatePlatformFontList()
 +{
-+  gfxPlatformFontList* list = new gfxFcPlatformFontList();
-+  if (NS_SUCCEEDED(list->InitFontList())) {
-+    return list;
-+  }
-+  gfxPlatformFontList::Shutdown();
-+  return nullptr;
++    return gfxPlatformFontList::Initialize(new gfxFcPlatformFontList);
 +}
 +
 +int32_t
@@ -1774,10 +1598,10 @@ index 000000000000..84aedc98b795
 +}
 diff --git a/gfx/thebes/gfxQtPlatform.h b/gfx/thebes/gfxQtPlatform.h
 new file mode 100644
-index 000000000000..0bf314ba4f8e
+index 000000000000..4369e16c7f5c
 --- /dev/null
 +++ b/gfx/thebes/gfxQtPlatform.h
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,61 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1788,7 +1612,6 @@ index 000000000000..0bf314ba4f8e
 +
 +#include "gfxPlatform.h"
 +#include "nsAutoRef.h"
-+#include "nsDataHashtable.h"
 +#include "nsTArray.h"
 +#ifdef MOZ_X11
 +#include "X11/Xlib.h"
@@ -1813,9 +1636,9 @@ index 000000000000..0bf314ba4f8e
 +                                 const nsACString& aGenericFamily,
 +                                 nsTArray<nsString>& aListOfFonts) override;
 +
-+    virtual nsresult UpdateFontList() override;
++    virtual nsresult UpdateFontList(bool aFullRebuild = true);
 +
-+    virtual gfxPlatformFontList* CreatePlatformFontList() override;
++    virtual bool CreatePlatformFontList() override;
 +
 +    static int32_t GetDPI();
 +
@@ -1841,11 +1664,11 @@ index 000000000000..0bf314ba4f8e
 +#endif /* GFX_PLATFORM_QT_H */
 +
 diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
-index 8e5bcf1aea6f..0c7a64f7d028 100644
+index baa7005a8f82..3ce66923a3a1 100644
 --- a/gfx/thebes/moz.build
 +++ b/gfx/thebes/moz.build
-@@ -143,6 +143,32 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
-             'gfxXlibSurface.cpp',
+@@ -144,6 +144,32 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+             "XlibDisplay.cpp",
          ]
  
 +elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
@@ -1874,29 +1697,29 @@ index 8e5bcf1aea6f..0c7a64f7d028 100644
 +            'gfxXlibSurface.cpp',
 +        ]
 +
- elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
      EXPORTS += [
-         'gfxDWriteFonts.h',
-@@ -265,7 +291,7 @@ LOCAL_INCLUDES += [
-     '/dom/xml',
+         "gfxDWriteFonts.h",
+@@ -267,7 +293,7 @@ LOCAL_INCLUDES += [
+     "/dom/xml",
  ]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk', 'qt'):
-     DEFINES['MOZ_ENABLE_FREETYPE'] = True
+     DEFINES["MOZ_ENABLE_FREETYPE"] = True
  
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
-@@ -281,7 +307,7 @@ CFLAGS += CONFIG['TK_CFLAGS']
- if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android'):
-     CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+@@ -283,7 +309,7 @@ CFLAGS += CONFIG["TK_CFLAGS"]
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android"):
+     CXXFLAGS += CONFIG["CAIRO_FT_CFLAGS"]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
-     CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
+     CXXFLAGS += CONFIG["MOZ_PANGO_CFLAGS"]
  
- if CONFIG['MOZ_WAYLAND']:
+ if CONFIG["MOZ_WAYLAND"]:
 diff --git a/gfx/webrender_bindings/Moz2DImageRenderer.cpp b/gfx/webrender_bindings/Moz2DImageRenderer.cpp
-index 40f25ecad6c7..5f2169428809 100644
+index c14d75667967..b6e4a06a3207 100644
 --- a/gfx/webrender_bindings/Moz2DImageRenderer.cpp
 +++ b/gfx/webrender_bindings/Moz2DImageRenderer.cpp
 @@ -179,7 +179,7 @@ void AddNativeFontHandle(WrFontKey aKey, void* aHandle, uint32_t aIndex) {
@@ -1918,31 +1741,31 @@ index 40f25ecad6c7..5f2169428809 100644
  #else
        FontType::FONTCONFIG;
 diff --git a/gfx/webrender_bindings/moz.build b/gfx/webrender_bindings/moz.build
-index a15575bfd769..b0817d9b6a52 100644
+index ecbea00c12d8..ea2368b2b683 100644
 --- a/gfx/webrender_bindings/moz.build
 +++ b/gfx/webrender_bindings/moz.build
-@@ -84,7 +84,7 @@ if CONFIG['MOZ_WAYLAND']:
-         'RenderWaylandDMABUFTextureHostOGL.cpp',
+@@ -98,7 +98,7 @@ if CONFIG["MOZ_WAYLAND"]:
+         "RenderDMABUFTextureHost.cpp",
      ]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk'):
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("android", "gtk"):
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk', 'qt'):
-     CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
-     CXXFLAGS += CONFIG['CAIRO_FT_CFLAGS']
+     CXXFLAGS += CONFIG["MOZ_CAIRO_CFLAGS"]
+     CXXFLAGS += CONFIG["CAIRO_FT_CFLAGS"]
  
 diff --git a/image/decoders/icon/moz.build b/image/decoders/icon/moz.build
-index c87163cb7f0a..ce0002f790d1 100644
+index 96cf951b3bc2..daefa92c2630 100644
 --- a/image/decoders/icon/moz.build
 +++ b/image/decoders/icon/moz.build
 @@ -26,6 +26,9 @@ platform = None
- if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
-     platform = 'gtk'
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     platform = "gtk"
  
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    platform = 'qt'
 +
- if CONFIG['OS_ARCH'] == 'WINNT':
-     platform = 'win'
+ if CONFIG["OS_ARCH"] == "WINNT":
+     platform = "win"
  
 diff --git a/image/decoders/icon/qt/gtkqticonsconverter.js b/image/decoders/icon/qt/gtkqticonsconverter.js
 new file mode 100644
@@ -2156,7 +1979,7 @@ index 000000000000..958ae3394f69
 +};
 diff --git a/image/decoders/icon/qt/nsIconChannel.cpp b/image/decoders/icon/qt/nsIconChannel.cpp
 new file mode 100644
-index 000000000000..e32c2dbe170f
+index 000000000000..edb6e86a9e7f
 --- /dev/null
 +++ b/image/decoders/icon/qt/nsIconChannel.cpp
 @@ -0,0 +1,137 @@
@@ -2260,7 +2083,7 @@ index 000000000000..e32c2dbe170f
 +                                  nullPrincipal,
 +                                  nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
 +                                  nsIContentPolicy::TYPE_INTERNAL_IMAGE,
-+                                  NS_LITERAL_CSTRING(IMAGE_ICON_MS));
++                                  nsLiteralCString(IMAGE_ICON_MS));
 +}
 +
 +nsresult
@@ -2344,48 +2167,48 @@ index 000000000000..059891a71fae
 +
 +#endif // mozilla_image_encoders_icon_qt_nsIconChannel_h
 diff --git a/image/decoders/moz.build b/image/decoders/moz.build
-index 9d239008bf36..d700d9a0f120 100644
+index 946f947bb8bc..8612d7c629a7 100644
 --- a/image/decoders/moz.build
 +++ b/image/decoders/moz.build
-@@ -10,6 +10,8 @@ toolkit = CONFIG['MOZ_WIDGET_TOOLKIT']
+@@ -10,6 +10,8 @@ toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
  # fix that another time.
- if toolkit == 'gtk':
-     DIRS += ['icon/gtk', 'icon']
+ if toolkit == "gtk":
+     DIRS += ["icon/gtk", "icon"]
 +elif toolkit == 'qt':
 +    DIRS += ['icon/qt', 'icon']
  
- if CONFIG['OS_ARCH'] == 'WINNT':
-     DIRS += ['icon/win', 'icon']
+ if CONFIG["OS_ARCH"] == "WINNT":
+     DIRS += ["icon/win", "icon"]
 diff --git a/intl/locale/moz.build b/intl/locale/moz.build
-index fa179aae5ee3..6c803ded7d15 100644
+index 28662541952f..27f0bdb07cb6 100644
 --- a/intl/locale/moz.build
 +++ b/intl/locale/moz.build
-@@ -14,6 +14,8 @@ elif toolkit == 'cocoa':
-     DIRS += ['mac']
- elif toolkit == 'gtk':
-     DIRS += ['gtk']
+@@ -14,6 +14,8 @@ elif toolkit == "cocoa":
+     DIRS += ["mac"]
+ elif toolkit == "gtk":
+     DIRS += ["gtk"]
 +elif 'qt' in toolkit:
 +    DIRS += ['gtk']
- elif toolkit == 'android':
-     DIRS += ['android']
+ elif toolkit == "android":
+     DIRS += ["android"]
  
-@@ -82,6 +84,9 @@ for prefix in prefixes:
- if CONFIG['ENABLE_TESTS']:
-     DIRS += ['tests/gtest']
+@@ -80,6 +82,9 @@ for prefix in prefixes:
+ if CONFIG["ENABLE_TESTS"]:
+     DIRS += ["tests/gtest"]
  
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
 +
- if CONFIG['COMPILE_ENVIRONMENT']:
-     GeneratedFile('fluent_langneg_ffi_generated.h',
-                   script='/build/RunCbindgen.py',
+ if CONFIG["COMPILE_ENVIRONMENT"]:
+     CbindgenHeader(
+         "fluent_langneg_ffi_generated.h",
 diff --git a/ipc/chromium/moz.build b/ipc/chromium/moz.build
-index d29817b91f32..c76bb7ebbd6f 100644
+index a401245c8543..383d656b751d 100644
 --- a/ipc/chromium/moz.build
 +++ b/ipc/chromium/moz.build
-@@ -109,6 +109,11 @@ if os_bsd or os_linux:
+@@ -117,6 +117,11 @@ if os_bsd or os_linux:
          SOURCES += [
-             'src/base/message_pump_glib.cc',
+             "src/base/message_pump_glib.cc",
          ]
 +    if CONFIG['MOZ_ENABLE_QT']:
 +        SOURCES += [
@@ -2396,10 +2219,10 @@ index d29817b91f32..c76bb7ebbd6f 100644
  if os_solaris:
      SOURCES += [
 diff --git a/ipc/glue/GeckoChildProcessHost.cpp b/ipc/glue/GeckoChildProcessHost.cpp
-index 13a94fe183df..8370495a2781 100644
+index fb0614add302..93d423c8b742 100644
 --- a/ipc/glue/GeckoChildProcessHost.cpp
 +++ b/ipc/glue/GeckoChildProcessHost.cpp
-@@ -320,7 +320,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
+@@ -327,7 +327,7 @@ typedef AndroidProcessLauncher ProcessLauncher;
  // orthogonal IPC machinery there. Conversely, there are tier-3 non-Linux
  // platforms (BSD and Solaris) where we want the "linux" IPC machinery. So
  // we use MOZ_WIDGET_* to choose the platform backend.
@@ -2408,7 +2231,7 @@ index 13a94fe183df..8370495a2781 100644
  class LinuxProcessLauncher : public PosixProcessLauncher {
   public:
    LinuxProcessLauncher(GeckoChildProcessHost* aHost,
-@@ -1094,7 +1094,7 @@ void BaseProcessLauncher::MapChildLogging() {
+@@ -1071,7 +1071,7 @@ void BaseProcessLauncher::MapChildLogging() {
    }
  }
  
@@ -2418,10 +2241,10 @@ index 13a94fe183df..8370495a2781 100644
    if (!PosixProcessLauncher::DoSetup()) {
      return false;
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index 864e66fb6744..6bcbe6e4d997 100644
+index f211e7a7576b..30be2fc985bf 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
-@@ -1694,6 +1694,11 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
+@@ -1760,6 +1760,11 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
      return;
    }
  
@@ -2433,7 +2256,7 @@ index 864e66fb6744..6bcbe6e4d997 100644
    // Note: this method is called without a font when rules in the userfont set
    // are updated.
    //
-@@ -1703,7 +1708,7 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
+@@ -1769,7 +1774,7 @@ void nsPresContext::UserFontSetUpdated(gfxUserFontEntry* aUpdatedFont) {
    //
    // TODO(emilio): We could be more granular if we knew which families have
    // potentially changed.
@@ -2443,24 +2266,25 @@ index 864e66fb6744..6bcbe6e4d997 100644
          UsesExChUnits() ? RestyleHint::RecascadeSubtree() : RestyleHint{0};
      PostRebuildAllStyleDataEvent(NS_STYLE_HINT_REFLOW, hint);
 diff --git a/layout/generic/moz.build b/layout/generic/moz.build
-index 997aeacb9830..6fa7b2181e88 100644
+index 54e42ddddb15..3a2af52efdd7 100644
 --- a/layout/generic/moz.build
 +++ b/layout/generic/moz.build
-@@ -275,3 +275,6 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+@@ -271,3 +271,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
  
- if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
-     CXXFLAGS += ['-Wno-error=shadow']
+ if CONFIG["CC_TYPE"] in ("clang", "gcc"):
+     CXXFLAGS += ["-Wno-error=shadow"]
 +
 +if CONFIG['MOZ_ENABLE_QT']:
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
++
 diff --git a/netwerk/base/moz.build b/netwerk/base/moz.build
-index 2b4c95083886..a6724df06155 100644
+index 64295118f10b..bdf78492bf99 100644
 --- a/netwerk/base/moz.build
 +++ b/netwerk/base/moz.build
-@@ -334,3 +334,11 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
+@@ -324,3 +324,12 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
  
- if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
-     CXXFLAGS += ['-Wno-error=shadow']
+ if CONFIG["CC_TYPE"] in ("clang", "gcc"):
+     CXXFLAGS += ["-Wno-error=shadow"]
 +
 +if CONFIG['MOZ_ENABLE_QTNETWORK']:
 +    LOCAL_INCLUDES += [
@@ -2469,23 +2293,125 @@ index 2b4c95083886..a6724df06155 100644
 +
 +if CONFIG['MOZ_ENABLE_QTNETWORK']:
 +    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
++
+diff --git a/netwerk/ipc/NeckoChild.cpp b/netwerk/ipc/NeckoChild.cpp
+index b6a91e713461..5b06f27d383e 100644
+--- a/netwerk/ipc/NeckoChild.cpp
++++ b/netwerk/ipc/NeckoChild.cpp
+@@ -12,7 +12,7 @@
+ #include "mozilla/net/HttpChannelChild.h"
+ #include "mozilla/net/CookieServiceChild.h"
+ #include "mozilla/net/DataChannelChild.h"
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ #  include "mozilla/net/GIOChannelChild.h"
+ #endif
+ #include "mozilla/net/FileChannelChild.h"
+@@ -127,7 +127,7 @@ bool NeckoChild::DeallocPAltDataOutputStreamChild(
+   return true;
+ }
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ PGIOChannelChild* NeckoChild::AllocPGIOChannelChild(
+     PBrowserChild* aBrowser, const SerializedLoadContext& aSerialized,
+     const GIOChannelCreationArgs& aOpenArgs) {
+diff --git a/netwerk/ipc/NeckoChild.h b/netwerk/ipc/NeckoChild.h
+index 3a1f187ccaa5..c884569ad888 100644
+--- a/netwerk/ipc/NeckoChild.h
++++ b/netwerk/ipc/NeckoChild.h
+@@ -38,7 +38,7 @@ class NeckoChild : public PNeckoChild {
+ 
+   PCookieServiceChild* AllocPCookieServiceChild();
+   bool DeallocPCookieServiceChild(PCookieServiceChild*);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   PGIOChannelChild* AllocPGIOChannelChild(
+       PBrowserChild* aBrowser, const SerializedLoadContext& aSerialized,
+       const GIOChannelCreationArgs& aOpenArgs);
+diff --git a/netwerk/ipc/NeckoParent.cpp b/netwerk/ipc/NeckoParent.cpp
+index 93551b1c3e9e..fa7612a9abb9 100644
+--- a/netwerk/ipc/NeckoParent.cpp
++++ b/netwerk/ipc/NeckoParent.cpp
+@@ -17,7 +17,7 @@
+ #include "mozilla/net/WebSocketChannelParent.h"
+ #include "mozilla/net/WebSocketEventListenerParent.h"
+ #include "mozilla/net/DataChannelParent.h"
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ #  include "mozilla/net/GIOChannelParent.h"
+ #endif
+ #include "mozilla/net/DocumentChannelParent.h"
+@@ -358,7 +358,7 @@ mozilla::ipc::IPCResult NeckoParent::RecvPDataChannelConstructor(
+   return IPC_OK();
+ }
+ 
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ static already_AddRefed<nsIPrincipal> GetRequestingPrincipal(
+     const GIOChannelCreationArgs& aArgs) {
+   if (aArgs.type() != GIOChannelCreationArgs::TGIOChannelOpenArgs) {
+diff --git a/netwerk/ipc/NeckoParent.h b/netwerk/ipc/NeckoParent.h
+index 0300f31091f8..ccf8f22469b5 100644
+--- a/netwerk/ipc/NeckoParent.h
++++ b/netwerk/ipc/NeckoParent.h
+@@ -138,7 +138,7 @@ class NeckoParent : public PNeckoParent {
+ 
+   virtual mozilla::ipc::IPCResult RecvPDataChannelConstructor(
+       PDataChannelParent* aActor, const uint32_t& channelId) override;
+-#  ifdef MOZ_WIDGET_GTK
++#  if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   PGIOChannelParent* AllocPGIOChannelParent(
+       PBrowserParent* aBrowser, const SerializedLoadContext& aSerialized,
+       const GIOChannelCreationArgs& aOpenArgs);
+diff --git a/netwerk/ipc/PNecko.ipdl b/netwerk/ipc/PNecko.ipdl
+index 2c5e87b93764..a1d242d0ed0e 100644
+--- a/netwerk/ipc/PNecko.ipdl
++++ b/netwerk/ipc/PNecko.ipdl
+@@ -9,7 +9,7 @@ include protocol PContent;
+ include protocol PHttpChannel;
+ include protocol PCookieService;
+ include protocol PBrowser;
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+ include protocol PGIOChannel;
+ #endif
+ include protocol PWebSocket;
+@@ -61,7 +61,7 @@ nested(upto inside_cpow) sync protocol PNecko
+   manages PUDPSocket;
+   manages PDNSRequest;
+   manages PDataChannel;
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   manages PGIOChannel;
+ #endif
+   manages PSimpleChannel;
+@@ -114,7 +114,7 @@ parent:
+    * the parent and the child when we're redirecting to a data: URI.
+    */
+   async PDataChannel(uint32_t channelId);
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
+   async PGIOChannel(nullable PBrowser browser, SerializedLoadContext loadContext, GIOChannelCreationArgs args);
+ #endif
+   async PSimpleChannel(uint32_t channelId);
 diff --git a/netwerk/protocol/moz.build b/netwerk/protocol/moz.build
-index 187680f6e122..eb7464187f9b 100644
+index e6f62c5fd089..a4be9fd86909 100644
 --- a/netwerk/protocol/moz.build
 +++ b/netwerk/protocol/moz.build
 @@ -5,6 +5,6 @@
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
- DIRS += ['about', 'data', 'file', 'ftp']
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+ DIRS += ["about", "data", "file"]
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
-     DIRS += ['gio']
- DIRS += ['http', 'res', 'viewsource', 'websocket' ]
+     DIRS += ["gio"]
+ DIRS += ["http", "res", "viewsource", "websocket"]
 diff --git a/old-configure.in b/old-configure.in
-index dfb072b19cfb..a50ed39886fb 100644
+index bf86baaa5313..34a8187e48a7 100644
 --- a/old-configure.in
 +++ b/old-configure.in
-@@ -1005,6 +1005,7 @@ if test -n "$MOZ_X11"; then
+@@ -997,6 +997,7 @@ if test -n "$MOZ_X11"; then
      AC_CHECK_LIB(Xext, XextAddDisplay, [XEXT_LIBS="-lXext"],
          [MISSING_X="$MISSING_X -lXext"], $XLIBS)
  
@@ -2493,7 +2419,7 @@ index dfb072b19cfb..a50ed39886fb 100644
      AC_CHECK_LIB(Xt, XtFree, [ XT_LIBS="-lXt"], [
          unset ac_cv_lib_Xt_XtFree
          AC_CHECK_LIB(ICE, IceFlush, [XT_LIBS="-lICE $XT_LIBS"],, $XT_LIBS $XLIBS)
-@@ -1012,6 +1013,7 @@ if test -n "$MOZ_X11"; then
+@@ -1004,6 +1005,7 @@ if test -n "$MOZ_X11"; then
          AC_CHECK_LIB(Xt, XtFree, [ XT_LIBS="-lXt $XT_LIBS"],
              [MISSING_X="$MISSING_X -lXt"], $X_PRE_LIBS $XT_LIBS $XLIBS)
          ])
@@ -2501,7 +2427,7 @@ index dfb072b19cfb..a50ed39886fb 100644
  
      dnl ========================================================
      dnl = Check for xcb
-@@ -1595,6 +1597,12 @@ dnl ========================================================
+@@ -1538,6 +1540,12 @@ dnl ========================================================
  
  case "$MOZ_WIDGET_TOOLKIT" in
  
@@ -2514,7 +2440,7 @@ index dfb072b19cfb..a50ed39886fb 100644
  cocoa)
      LDFLAGS="$LDFLAGS -framework Cocoa"
      # Use -Wl as a trick to avoid -framework and framework names from
-@@ -1656,9 +1664,174 @@ fi # COMPILE_ENVIRONMENT
+@@ -1592,9 +1600,174 @@ fi # COMPILE_ENVIRONMENT
  
  AC_SUBST(MOZ_FS_LAYOUT)
  
@@ -2689,7 +2615,7 @@ index dfb072b19cfb..a50ed39886fb 100644
  dnl ========================================================
  dnl =
  dnl = Components & Features
-@@ -1713,7 +1886,7 @@ dnl ========================================================
+@@ -1647,7 +1820,7 @@ dnl ========================================================
  dnl = libproxy support
  dnl ========================================================
  
@@ -2698,7 +2624,7 @@ index dfb072b19cfb..a50ed39886fb 100644
  then
      MOZ_ENABLE_LIBPROXY=
  
-@@ -1734,7 +1907,7 @@ dnl ========================================================
+@@ -1668,7 +1841,7 @@ dnl ========================================================
  dnl = dbus support
  dnl ========================================================
  
@@ -2707,7 +2633,7 @@ index dfb072b19cfb..a50ed39886fb 100644
  then
      MOZ_ENABLE_DBUS=1
  
-@@ -2344,7 +2517,7 @@ dnl ========================================================
+@@ -2226,7 +2399,7 @@ dnl ========================================================
  
  if test -z "$SKIP_PATH_CHECKS"; then
  if test -z "${GLIB_CFLAGS}" -o -z "${GLIB_LIBS}" ; then
@@ -2716,7 +2642,7 @@ index dfb072b19cfb..a50ed39886fb 100644
          PKG_CHECK_MODULES(GLIB, glib-2.0 >= 1.3.7 gobject-2.0)
      fi
  fi
-@@ -2454,6 +2627,9 @@ if test "$_HAVE_FREETYPE2"; then
+@@ -2336,6 +2509,9 @@ if test "$_HAVE_FREETYPE2"; then
  fi
  
  case "$MOZ_WIDGET_TOOLKIT" in
@@ -2726,21 +2652,52 @@ index dfb072b19cfb..a50ed39886fb 100644
    cocoa | uikit)
      QUARTZ_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_SURFACE 1"
      QUARTZ_IMAGE_SURFACE_FEATURE="#define CAIRO_HAS_QUARTZ_IMAGE_SURFACE 1"
+diff --git a/python/mozbuild/mozbuild/mach_commands.py b/python/mozbuild/mozbuild/mach_commands.py
+index a5d518d7dd80..e8d867fdb1c8 100644
+--- a/python/mozbuild/mozbuild/mach_commands.py
++++ b/python/mozbuild/mozbuild/mach_commands.py
+@@ -2358,15 +2358,15 @@ class CreateMachEnvironment(MachCommandBase):
+ 
+         # This can fail on some platforms. See
+         # https://bugzilla.mozilla.org/show_bug.cgi?id=1660120
+-        try:
+-            manager.install_pip_requirements(
+-                os.path.join(self.topsrcdir, "build", "glean_requirements.txt")
+-            )
+-        except subprocess.CalledProcessError:
+-            print(
+-                "Could not install glean_sdk, so telemetry will not be "
+-                "collected. Continuing."
+-            )
++#        try:
++#            manager.install_pip_requirements(
++#                os.path.join(self.topsrcdir, "build", "glean_requirements.txt")
++#            )
++#        except subprocess.CalledProcessError:
++#            print(
++#                "Could not install glean_sdk, so telemetry will not be "
++#                "collected. Continuing."
++#            )
+         print("Mach environment created.")
+ 
+ 
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index cdc0577443a9..1ff7547f2dc7 100644
+index bf771ca044bb..35bd9b8e9d79 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
-@@ -163,7 +163,7 @@ if CONFIG['MOZ_JPROF']:
-         'jprof',
+@@ -184,7 +184,9 @@ if CONFIG["MOZ_JPROF"]:
+         "jprof",
      ]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk' or \
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk" or CONFIG["MOZ_TREE_FREETYPE"]:
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk' or CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt' or \
-         CONFIG['MOZ_TREE_FREETYPE']:
++         CONFIG['MOZ_TREE_FREETYPE']:
++
      USE_LIBS += [
-         'freetype',
-@@ -280,6 +280,13 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
-         'gthread-2.0',
+         "freetype",
+     ]
+@@ -299,6 +301,13 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         "gthread-2.0",
      ]
  
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
@@ -2750,21 +2707,21 @@ index cdc0577443a9..1ff7547f2dc7 100644
 +    OS_LIBS += CONFIG['MOZ_QT_LIBS']
 +    OS_LIBS += CONFIG['MOZ_PANGO_LIBS']
 +
- if CONFIG['MOZ_ENABLE_LIBPROXY']:
-     OS_LIBS += CONFIG['MOZ_LIBPROXY_LIBS']
+ if CONFIG["MOZ_ENABLE_LIBPROXY"]:
+     OS_LIBS += CONFIG["MOZ_LIBPROXY_LIBS"]
  
-@@ -348,6 +355,9 @@ if CONFIG['OS_ARCH'] == 'WINNT':
-             'oleacc',
+@@ -358,6 +367,9 @@ if CONFIG["OS_ARCH"] == "WINNT":
+             "oleacc",
          ]
  
 +if CONFIG['MOZ_ENABLE_QT']:
 +    OS_LIBS += CONFIG['XEXT_LIBS']
 +
      # Prevent winapi-rs from statically linking
-     LIBRARY_DEFINES['WINAPI_NO_BUNDLED_LIBRARIES'] = True
+     LIBRARY_DEFINES["WINAPI_NO_BUNDLED_LIBRARIES"] = True
  
 diff --git a/toolkit/modules/AppConstants.jsm b/toolkit/modules/AppConstants.jsm
-index 9b035435aed6..075a72d64676 100644
+index 9b3acf6ecc30..3a667f2e9df8 100644
 --- a/toolkit/modules/AppConstants.jsm
 +++ b/toolkit/modules/AppConstants.jsm
 @@ -157,6 +157,8 @@ this.AppConstants = Object.freeze({
@@ -2777,69 +2734,71 @@ index 9b035435aed6..075a72d64676 100644
    "win",
  #elif XP_MACOSX
 diff --git a/toolkit/moz.build b/toolkit/moz.build
-index b6f792da7124..4b674bc2b8f7 100644
+index 14f4638b693e..310b0746b462 100644
 --- a/toolkit/moz.build
 +++ b/toolkit/moz.build
-@@ -50,7 +50,7 @@ DIRS += ['xre']
+@@ -42,7 +42,7 @@ DIRS += ["xre"]
  
- if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
-     DIRS += ['mozapps/handling']
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android":
+     DIRS += ["mozapps/handling"]
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
-     DIRS += ['system/unixproxy']
- elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
-     DIRS += ['system/osxproxy']
+     DIRS += ["system/unixproxy"]
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+     DIRS += ["system/osxproxy"]
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index ebc4dbdb2d3c..8ae672508dac 100644
+index 026e7fa7ba51..f99be3fe07b4 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
-@@ -233,7 +233,7 @@ def toolkit_choices(target):
-     elif target.os == 'Android':
-         return ('cairo-android',)
+@@ -265,8 +265,7 @@ def toolkit_choices(target):
+     elif target.os == "Android":
+         return ("cairo-android",)
      else:
--        return ('cairo-gtk3', 'cairo-gtk3-wayland')
+-        return ("cairo-gtk3", "cairo-gtk3-wayland")
+-
 +        return ('cairo-gtk3', 'cairo-gtk3-wayland', 'cairo-qt')
  
  @depends(toolkit_choices)
  def toolkit_default(choices):
-@@ -331,7 +331,7 @@ set_define(gl_provider_define, True)
+@@ -385,7 +384,7 @@ set_define(gl_provider_define, True)
  # ==============================================================
  @depends(toolkit)
  def pdf_printing(toolkit):
--    if toolkit in ('windows', 'gtk', 'android'):
+-    if toolkit in ("windows", "gtk", "android"):
 +    if toolkit in ('windows', 'gtk', 'android', 'qt'):
          return True
  
- @depends(pdf_printing)
-@@ -368,7 +368,7 @@ option(env='USE_FC_FREETYPE',
  
- @depends('USE_FC_FREETYPE', toolkit)
+@@ -426,7 +425,8 @@ option(env="USE_FC_FREETYPE", help="Force-enable the use of fontconfig freetype"
+ 
+ @depends("USE_FC_FREETYPE", toolkit)
  def fc_freetype(value, toolkit):
--    if value or (toolkit == 'gtk' and
+-    if value or (toolkit == "gtk" and value.origin == "default"):
 +    if value or (toolkit in ('gtk', 'qt') and
-                  value.origin == 'default'):
++                 value.origin == 'default'):
          return True
  
+ 
 diff --git a/toolkit/themes/moz.build b/toolkit/themes/moz.build
-index 750ff0eb3123..f492b154b211 100644
+index ac0a9798bb39..b534a0c5bdf9 100644
 --- a/toolkit/themes/moz.build
 +++ b/toolkit/themes/moz.build
-@@ -20,7 +20,7 @@ app = CONFIG['MOZ_BUILD_APP']
+@@ -20,7 +20,7 @@ app = CONFIG["MOZ_BUILD_APP"]
  
- if toolkit == 'cocoa':
-     DIRS += ['osx']
--elif toolkit == 'gtk':
+ if toolkit == "cocoa":
+     DIRS += ["osx"]
+-elif toolkit == "gtk":
 +elif toolkit in ('gtk', 'qt'):
-     DIRS += ['linux']
- elif app == 'mobile/android':
-     DIRS += ['mobile']
+     DIRS += ["linux"]
+ elif app == "mobile/android":
+     DIRS += ["mobile"]
 diff --git a/toolkit/xre/moz.build b/toolkit/xre/moz.build
-index 7ba3be2fe241..e0b30f7bcb31 100644
+index 90d06481ee9e..8bc8a0c5bc74 100644
 --- a/toolkit/xre/moz.build
 +++ b/toolkit/xre/moz.build
-@@ -92,6 +92,13 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'uikit':
-         'nsNativeAppSupportDefault.cpp',
-         'UIKitDirProvider.mm',
+@@ -97,6 +97,13 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
+         "nsNativeAppSupportDefault.cpp",
+         "UIKitDirProvider.mm",
      ]
 +elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    EXPORTS += ['nsQAppInstance.h']
@@ -2848,11 +2807,11 @@ index 7ba3be2fe241..e0b30f7bcb31 100644
 +        'nsNativeAppSupportQt.cpp',
 +        'nsQAppInstance.cpp',
 +    ]
- elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
      UNIFIED_SOURCES += [
-         'nsNativeAppSupportUnix.cpp',
+         "nsNativeAppSupportUnix.cpp",
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
-index ef72d1bf4fb2..acd02de3c55d 100644
+index d3bb8096ad02..345f85fed95a 100644
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
 @@ -3,6 +3,12 @@
@@ -2868,7 +2827,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
  #include "mozilla/dom/ContentParent.h"
  #include "mozilla/dom/ContentChild.h"
  #include "mozilla/ipc/GeckoChildProcessHost.h"
-@@ -279,6 +285,11 @@ bool gIsGtest = false;
+@@ -300,6 +306,11 @@ bool gIsGtest = false;
  
  nsString gAbsoluteArgv0Path;
  
@@ -2877,10 +2836,10 @@ index ef72d1bf4fb2..acd02de3c55d 100644
 +static char **gQtOnlyArgv;
 +#endif
 +
- #if defined(MOZ_WIDGET_GTK)
- #  include <glib.h>
- #  if defined(DEBUG) || defined(NS_BUILD_REFCNT_LOGGING)
-@@ -1680,8 +1691,14 @@ nsresult LaunchChild(bool aBlankCommandLine) {
+ #if defined(XP_WIN)
+ nsString gProcessStartupShortcut;
+ #endif
+@@ -2219,8 +2230,14 @@ nsresult LaunchChild(bool aBlankCommandLine, bool aTryExec) {
  #endif
  
    if (aBlankCommandLine) {
@@ -2895,9 +2854,9 @@ index ef72d1bf4fb2..acd02de3c55d 100644
    }
  
    SaveToEnv("MOZ_LAUNCHED_CHILD=1");
-@@ -3742,6 +3759,25 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
+@@ -4255,6 +4272,25 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
    }
- #endif
+ #endif /* XP_WIN */
  
 +#if defined(MOZ_WIDGET_QT)
 +  nsQAppInstance::AddRef(gArgc, gArgv, true);
@@ -2921,7 +2880,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
  #if defined(MOZ_WIDGET_GTK)
    // setup for private colormap.  Ideally we'd like to do this
    // in nsAppShell::Create, but we need to get in before gtk
-@@ -4837,6 +4873,10 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
+@@ -5459,6 +5495,10 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
    mProfileLock->Unlock();
    gProfileLock = nullptr;
  
@@ -2933,7 +2892,7 @@ index ef72d1bf4fb2..acd02de3c55d 100644
    gLastAppBuildID.Truncate();
  
 diff --git a/toolkit/xre/nsEmbedFunctions.cpp b/toolkit/xre/nsEmbedFunctions.cpp
-index cd9e819f273d..e2e5f837e355 100644
+index 82f5f640447e..32691e9967c8 100644
 --- a/toolkit/xre/nsEmbedFunctions.cpp
 +++ b/toolkit/xre/nsEmbedFunctions.cpp
 @@ -4,6 +4,10 @@
@@ -2944,10 +2903,10 @@ index cd9e819f273d..e2e5f837e355 100644
 +#include "nsQAppInstance.h"
 +#endif
 +
- #include "base/basictypes.h"
- 
  #include "nsXULAppAPI.h"
-@@ -545,6 +549,10 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
+ 
+ #include <stdlib.h>
+@@ -549,6 +553,10 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
    g_set_prgname(aArgv[0]);
  #endif
  
@@ -3197,12 +3156,12 @@ index 000000000000..52e6a8ce2fa9
 +
 +#endif /* nsQAppInstance_h */
 diff --git a/uriloader/exthandler/moz.build b/uriloader/exthandler/moz.build
-index e7f2c19db05a..b3eda0e4e1be 100644
+index a5f1382cef81..a4ba118b9cfa 100644
 --- a/uriloader/exthandler/moz.build
 +++ b/uriloader/exthandler/moz.build
-@@ -99,6 +99,14 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
-         'android/nsExternalURLHandlerService.cpp',
-         'android/nsMIMEInfoAndroid.cpp',
+@@ -92,6 +92,14 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+     UNIFIED_SOURCES += [
+         "android/nsMIMEInfoAndroid.cpp",
      ]
 +elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 +    SOURCES += [
@@ -3212,17 +3171,17 @@ index e7f2c19db05a..b3eda0e4e1be 100644
 +        'unix/nsGNOMERegistry.cpp',
 +        'unix/nsMIMEInfoUnix.cpp',
 +    ]
- elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
      UNIFIED_SOURCES += [
-         'win/nsMIMEInfoWin.cpp',
-@@ -146,6 +154,6 @@ if CONFIG['MOZ_ENABLE_DBUS']:
-     CXXFLAGS += CONFIG['TK_CFLAGS']
-     CXXFLAGS += CONFIG['MOZ_DBUS_CFLAGS']
+         "win/nsMIMEInfoWin.cpp",
+@@ -139,6 +147,6 @@ if CONFIG["MOZ_ENABLE_DBUS"]:
+     CXXFLAGS += CONFIG["TK_CFLAGS"]
+     CXXFLAGS += CONFIG["MOZ_DBUS_CFLAGS"]
  
--if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gtk':
+-if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
 +if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk', 'qt'):
-     CXXFLAGS += CONFIG['TK_CFLAGS']
-     CXXFLAGS += CONFIG['MOZ_DBUS_GLIB_CFLAGS']
+     CXXFLAGS += CONFIG["TK_CFLAGS"]
+     CXXFLAGS += CONFIG["MOZ_DBUS_GLIB_CFLAGS"]
 diff --git a/uriloader/exthandler/unix/nsMIMEInfoQt.cpp b/uriloader/exthandler/unix/nsMIMEInfoQt.cpp
 new file mode 100644
 index 000000000000..72020064660e
@@ -3339,7 +3298,7 @@ index 80f89d414b93..5a9871dfdcd1 100644
  // aNativeKey is hardware_keycode of GDKEvent or nativeScanCode of QKeyEvent.
  #  define CODE_MAP_X11(aCPPCodeName, aNativeKey)     \
 diff --git a/widget/NativeKeyToDOMKeyName.h b/widget/NativeKeyToDOMKeyName.h
-index c9c1623217b8..62b60c1bf23b 100644
+index c9c1623217b8..449895f61a33 100644
 --- a/widget/NativeKeyToDOMKeyName.h
 +++ b/widget/NativeKeyToDOMKeyName.h
 @@ -25,6 +25,8 @@
@@ -3498,7 +3457,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(Home, AKEYCODE_MOVE_HOME)
  
  // PageDown
-@@ -247,6 +276,7 @@ KEY_MAP_WIN(PageDown, VK_NEXT)
+@@ -247,12 +276,14 @@ KEY_MAP_WIN(PageDown, VK_NEXT)
  KEY_MAP_COCOA(PageDown, kVK_PageDown)
  KEY_MAP_GTK(PageDown, GDK_Page_Down /* same as GDK_Next */)
  KEY_MAP_GTK(PageDown, GDK_KP_Page_Down /* same as GDK_KP_Next */)
@@ -3506,14 +3465,13 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(PageDown, AKEYCODE_PAGE_DOWN)
  
  // PageUp
-@@ -254,6 +284,7 @@ KEY_MAP_WIN(PageUp, VK_PRIOR)
+ KEY_MAP_WIN(PageUp, VK_PRIOR)
  KEY_MAP_COCOA(PageUp, kVK_PageUp)
  KEY_MAP_GTK(PageUp, GDK_Page_Up /* same as GDK_Prior */)
- KEY_MAP_GTK(PageUp, GDK_KP_Page_Up /* same as GDK_KP_Prior */)
 +KEY_MAP_QT(PageUp, Qt::Key_PageUp)
+ KEY_MAP_GTK(PageUp, GDK_KP_Page_Up /* same as GDK_KP_Prior */)
  KEY_MAP_ANDROID(PageUp, AKEYCODE_PAGE_UP)
  
- /******************************************************************************
 @@ -263,6 +294,7 @@ KEY_MAP_ANDROID(PageUp, AKEYCODE_PAGE_UP)
  KEY_MAP_WIN(Backspace, VK_BACK)
  KEY_MAP_COCOA(Backspace, kVK_PC_Backspace)
@@ -3838,7 +3796,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(F3, AKEYCODE_F3)
  
  // F4
-@@ -624,143 +725,176 @@ KEY_MAP_WIN(F4, VK_F4)
+@@ -624,143 +725,175 @@ KEY_MAP_WIN(F4, VK_F4)
  KEY_MAP_COCOA(F4, kVK_F4)
  KEY_MAP_GTK(F4, GDK_F4)
  KEY_MAP_GTK(F4, GDK_KP_F4)
@@ -4007,7 +3965,6 @@ index c9c1623217b8..62b60c1bf23b 100644
  // F34
  KEY_MAP_GTK(F34, GDK_F34 /* same as GDK_R14 */)
 +KEY_MAP_QT(F34, Qt::Key_F34)
-+
  
  // F35
  KEY_MAP_GTK(F35, GDK_F35 /* same as GDK_R15 */)
@@ -4015,7 +3972,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  /******************************************************************************
   * Multimedia Keys
-@@ -778,65 +912,78 @@ KEY_MAP_ANDROID(ChannelUp, AKEYCODE_CHANNEL_UP)
+@@ -778,65 +911,78 @@ KEY_MAP_ANDROID(ChannelUp, AKEYCODE_CHANNEL_UP)
  //       or window.
  KEY_MAP_WIN_CMD(Close, APPCOMMAND_CLOSE)
  KEY_MAP_GTK(Close, GDK_Close)
@@ -4094,7 +4051,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(MediaTrackPrevious, AKEYCODE_MEDIA_PREVIOUS)
  
  // New
-@@ -849,29 +996,35 @@ KEY_MAP_GTK(Open, GDK_Open)
+@@ -849,29 +995,35 @@ KEY_MAP_GTK(Open, GDK_Open)
  
  // Print
  KEY_MAP_WIN_CMD(Print, APPCOMMAND_PRINT)
@@ -4130,7 +4087,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(AudioVolumeDown, AKEYCODE_VOLUME_DOWN)
  
  // AudioVolumeUp
-@@ -879,6 +1032,7 @@ KEY_MAP_WIN(AudioVolumeUp, VK_VOLUME_UP)
+@@ -879,6 +1031,7 @@ KEY_MAP_WIN(AudioVolumeUp, VK_VOLUME_UP)
  KEY_MAP_WIN_CMD(AudioVolumeUp, APPCOMMAND_VOLUME_UP)
  KEY_MAP_COCOA(AudioVolumeUp, kVK_VolumeUp)
  KEY_MAP_GTK(AudioVolumeUp, GDK_AudioRaiseVolume)
@@ -4138,7 +4095,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(AudioVolumeUp, AKEYCODE_VOLUME_UP)
  
  // AudioVolumeMute
-@@ -886,6 +1040,7 @@ KEY_MAP_WIN(AudioVolumeMute, VK_VOLUME_MUTE)
+@@ -886,6 +1039,7 @@ KEY_MAP_WIN(AudioVolumeMute, VK_VOLUME_MUTE)
  KEY_MAP_WIN_CMD(AudioVolumeMute, APPCOMMAND_VOLUME_MUTE)
  KEY_MAP_COCOA(AudioVolumeMute, kVK_Mute)
  KEY_MAP_GTK(AudioVolumeMute, GDK_AudioMute)
@@ -4146,7 +4103,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(AudioVolumeMute, AKEYCODE_VOLUME_MUTE)
  
  // MicrophoneVolumeMute
-@@ -896,10 +1051,12 @@ KEY_MAP_ANDROID(MicrophoneVolumeMute, AKEYCODE_MUTE)
+@@ -896,10 +1050,12 @@ KEY_MAP_ANDROID(MicrophoneVolumeMute, AKEYCODE_MUTE)
   ******************************************************************************/
  // LaunchCalculator
  KEY_MAP_GTK(LaunchCalculator, GDK_Calculator)
@@ -4159,7 +4116,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(LaunchCalendar, AKEYCODE_CALENDAR)
  
  // LaunchContacts
-@@ -909,6 +1066,7 @@ KEY_MAP_ANDROID(LaunchContacts, AKEYCODE_CONTACTS)
+@@ -909,6 +1065,7 @@ KEY_MAP_ANDROID(LaunchContacts, AKEYCODE_CONTACTS)
  KEY_MAP_WIN(LaunchMail, VK_LAUNCH_MAIL)
  KEY_MAP_WIN_CMD(LaunchMail, APPCOMMAND_LAUNCH_MAIL)
  KEY_MAP_GTK(LaunchMail, GDK_Mail)
@@ -4167,7 +4124,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(LaunchMail, AKEYCODE_ENVELOPE)
  
  // LaunchMediaPlayer
-@@ -919,86 +1077,114 @@ KEY_MAP_WIN_CMD(LaunchMediaPlayer, APPCOMMAND_LAUNCH_MEDIA_SELECT)
+@@ -919,86 +1076,114 @@ KEY_MAP_WIN_CMD(LaunchMediaPlayer, APPCOMMAND_LAUNCH_MEDIA_SELECT)
  KEY_MAP_GTK(LaunchMediaPlayer, GDK_CD)
  KEY_MAP_GTK(LaunchMediaPlayer, GDK_Video)
  KEY_MAP_GTK(LaunchMediaPlayer, GDK_AudioMedia)
@@ -4282,7 +4239,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  /******************************************************************************
   * Browser Keys
-@@ -1007,39 +1193,48 @@ KEY_MAP_GTK(LaunchApplication16, GDK_LaunchF)
+@@ -1007,39 +1192,47 @@ KEY_MAP_GTK(LaunchApplication16, GDK_LaunchF)
  KEY_MAP_WIN(BrowserBack, VK_BROWSER_BACK)
  KEY_MAP_WIN_CMD(BrowserBack, APPCOMMAND_BROWSER_BACKWARD)
  KEY_MAP_GTK(BrowserBack, GDK_Back)
@@ -4314,7 +4271,6 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_GTK(BrowserRefresh, GDK_Reload)
 +KEY_MAP_QT(BrowserRefresh, Qt::Key_Refresh)
 +KEY_MAP_QT(BrowserRefresh, Qt::Key_Reload)
-+
  
  // BrowserSearch
  KEY_MAP_WIN(BrowserSearch, VK_BROWSER_SEARCH)
@@ -4331,7 +4287,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  /******************************************************************************
   * Mobile Phone Keys
-@@ -1051,9 +1246,11 @@ KEY_MAP_ANDROID(AppSwitch, AKEYCODE_APP_SWITCH)
+@@ -1051,9 +1244,11 @@ KEY_MAP_ANDROID(AppSwitch, AKEYCODE_APP_SWITCH)
  KEY_MAP_ANDROID(Call, AKEYCODE_CALL)
  
  // Camera
@@ -4343,7 +4299,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(CameraFocus, AKEYCODE_FOCUS)
  
  // EndCall
-@@ -1176,18 +1373,22 @@ KEY_MAP_ANDROID(AVRPower, AKEYCODE_AVR_POWER)
+@@ -1176,18 +1371,22 @@ KEY_MAP_ANDROID(AVRPower, AKEYCODE_AVR_POWER)
  
  // ColorF0Red
  KEY_MAP_GTK(ColorF0Red, GDK_Red)
@@ -4366,7 +4322,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(ColorF3Blue, AKEYCODE_PROG_BLUE)
  
  // ClosedCaptionToggle
-@@ -1195,6 +1396,7 @@ KEY_MAP_ANDROID(ClosedCaptionToggle, AKEYCODE_CAPTIONS)
+@@ -1195,6 +1394,7 @@ KEY_MAP_ANDROID(ClosedCaptionToggle, AKEYCODE_CAPTIONS)
  
  // Dimmer
  KEY_MAP_GTK(Dimmer, GDK_BrightnessAdjust)
@@ -4374,7 +4330,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  // DVR
  KEY_MAP_ANDROID(DVR, AKEYCODE_DVR)
-@@ -1210,6 +1412,7 @@ KEY_MAP_ANDROID(MediaAudioTrack, AKEYCODE_MEDIA_AUDIO_TRACK)
+@@ -1210,6 +1410,7 @@ KEY_MAP_ANDROID(MediaAudioTrack, AKEYCODE_MEDIA_AUDIO_TRACK)
  
  // MediaLast
  KEY_MAP_ANDROID(MediaLast, AKEYCODE_LAST_CHANNEL)
@@ -4382,7 +4338,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  // MediaTopMenu
  KEY_MAP_ANDROID(MediaTopMenu, AKEYCODE_MEDIA_TOP_MENU)
-@@ -1246,6 +1449,7 @@ KEY_MAP_ANDROID(PinPToggle, AKEYCODE_WINDOW)
+@@ -1246,6 +1447,7 @@ KEY_MAP_ANDROID(PinPToggle, AKEYCODE_WINDOW)
  
  // RandomToggle
  KEY_MAP_GTK(RandomToggle, GDK_AudioRandomPlay)
@@ -4390,7 +4346,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  // Settings
  KEY_MAP_ANDROID(Settings, AKEYCODE_SETTINGS)
-@@ -1258,6 +1462,7 @@ KEY_MAP_ANDROID(STBPower, AKEYCODE_STB_POWER)
+@@ -1258,6 +1460,7 @@ KEY_MAP_ANDROID(STBPower, AKEYCODE_STB_POWER)
  
  // Subtitle
  KEY_MAP_GTK(Subtitle, GDK_Subtitle)
@@ -4398,7 +4354,7 @@ index c9c1623217b8..62b60c1bf23b 100644
  
  // Teletext
  KEY_MAP_ANDROID(Teletext, AKEYCODE_TV_TELETEXT)
-@@ -1267,6 +1472,7 @@ KEY_MAP_GTK(VideoModeNext, GDK_Next_VMode)
+@@ -1267,6 +1470,7 @@ KEY_MAP_GTK(VideoModeNext, GDK_Next_VMode)
  
  // ZoomToggle
  KEY_MAP_WIN(ZoomToggle, VK_ZOOM)
@@ -4406,19 +4362,19 @@ index c9c1623217b8..62b60c1bf23b 100644
  KEY_MAP_ANDROID(ZoomToggle, AKEYCODE_TV_ZOOM_MODE)
  
  /******************************************************************************
-@@ -1285,4 +1491,5 @@ KEY_MAP_ANDROID(SoftRight, AKEYCODE_SOFT_RIGHT)
+@@ -1285,4 +1489,5 @@ KEY_MAP_ANDROID(SoftRight, AKEYCODE_SOFT_RIGHT)
  #undef KEY_MAP_WIN_CMD
  #undef KEY_MAP_COCOA
  #undef KEY_MAP_GTK
 +#undef KEY_MAP_QT
  #undef KEY_MAP_ANDROID
 diff --git a/widget/headless/HeadlessWidget.h b/widget/headless/HeadlessWidget.h
-index c375629d4a95..3153adb3b40d 100644
+index 225f9636dd5c..9b6182e7bf32 100644
 --- a/widget/headless/HeadlessWidget.h
 +++ b/widget/headless/HeadlessWidget.h
-@@ -18,6 +18,13 @@
- #  define MOZ_HEADLESS_MOUSE_DOWN 4  // GDK_BUTTON_PRESS
- #  define MOZ_HEADLESS_MOUSE_UP 7    // GDK_BUTTON_RELEASE
+@@ -15,6 +15,13 @@
+ // in the platform specific widget code.
+ #if defined(MOZ_WIDGET_GTK)
  #  define MOZ_HEADLESS_SCROLL_MULTIPLIER 3
 +#  define MOZ_HEADLESS_SCROLL_DELTA_MODE \
 +    mozilla::dom::WheelEvent_Binding::DOM_DELTA_LINE
@@ -4431,39 +4387,39 @@ index c375629d4a95..3153adb3b40d 100644
      mozilla::dom::WheelEvent_Binding::DOM_DELTA_LINE
  #elif defined(XP_WIN)
 diff --git a/widget/moz.build b/widget/moz.build
-index ab0081a77047..1a90f756af11 100644
+index 07e6970e5621..e22cfcff292a 100644
 --- a/widget/moz.build
 +++ b/widget/moz.build
-@@ -36,7 +36,7 @@ with Files("*FontRange*"):
+@@ -33,7 +33,7 @@ with Files("*FontRange*"):
  
- toolkit = CONFIG['MOZ_WIDGET_TOOLKIT']
+ toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]
  
--if toolkit in ('cocoa', 'android', 'uikit'):
-+if toolkit in ('cocoa', 'qt', 'android', 'uikit'):
+-if toolkit in ("android", "cocoa", "gtk", "uikit", "windows"):
++if toolkit in ("android", "cocoa", "gtk", "qt", "uikit", "windows"):
      DIRS += [toolkit]
  
- if toolkit == 'windows':
-@@ -275,12 +275,12 @@ if toolkit in ('cocoa', 'windows'):
+ if toolkit == "cocoa":
+@@ -266,12 +266,12 @@ if toolkit in ("cocoa", "windows"):
+         "nsBaseClipboard.cpp",
      ]
  
- if toolkit in {'gtk', 'cocoa', 'windows',
--               'android', 'uikit'}:
-+               'android', 'uikit', 'qt'}:
+-if toolkit in {"gtk", "cocoa", "windows", "android", "uikit"}:
++if toolkit in {"gtk", "cocoa", "windows", "android", "uikit", "qt"}:
      UNIFIED_SOURCES += [
-         'nsBaseFilePicker.cpp',
+         "nsBaseFilePicker.cpp",
      ]
  
--if toolkit in ('gtk', 'windows', 'cocoa', 'android'):
-+if toolkit in ('gtk', 'windows', 'cocoa', 'android', 'qt'):
+-if toolkit in ("gtk", "windows", "cocoa", "android"):
++if toolkit in ("gtk", "windows", "cocoa", "android", "qt"):
      UNIFIED_SOURCES += [
-         'nsNativeTheme.cpp',
+         "nsNativeTheme.cpp",
      ]
 diff --git a/widget/qt/GfxInfo.cpp b/widget/qt/GfxInfo.cpp
 new file mode 100644
-index 000000000000..eae087d2151a
+index 000000000000..9cb59c59438a
 --- /dev/null
 +++ b/widget/qt/GfxInfo.cpp
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,268 @@
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -4692,6 +4648,21 @@ index 000000000000..eae087d2151a
 +  return NS_OK;
 +}
 +
++NS_IMETHODIMP GfxInfo::GetEmbeddedInFirefoxReality(bool *aEmbeddedInFirefoxReality)
++{
++  return NS_ERROR_FAILURE;
++}
++
++NS_IMETHODIMP GfxInfo::GetTestType(nsAString& aTestType)
++{
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++NS_IMETHODIMP GfxInfo::GetDrmRenderDevice(nsACString& aDrmRenderDevice)
++{
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
 +#ifdef DEBUG
 +
 +// Implement nsIGfxInfoDebug
@@ -4719,10 +4690,10 @@ index 000000000000..eae087d2151a
 +#endif
 diff --git a/widget/qt/GfxInfo.h b/widget/qt/GfxInfo.h
 new file mode 100644
-index 000000000000..db0db72779da
+index 000000000000..dcd6a39488fc
 --- /dev/null
 +++ b/widget/qt/GfxInfo.h
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,79 @@
 +/* vim: se cin sw=2 ts=2 et : */
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
 + *
@@ -4775,6 +4746,11 @@ index 000000000000..db0db72779da
 +  NS_IMETHOD GetDisplayInfo(nsTArray<nsString>& aDisplayInfo) override;
 +  NS_IMETHOD GetDisplayWidth(nsTArray<uint32_t>& aDisplayWidth) override;
 +  NS_IMETHOD GetDisplayHeight(nsTArray<uint32_t>& aDisplayHeight) override;
++
++  NS_IMETHOD GetEmbeddedInFirefoxReality(bool *aEmbeddedInFirefoxReality) override;
++  NS_IMETHOD GetTestType(nsAString& aTestType) override;
++  NS_IMETHOD GetDrmRenderDevice(nsACString& aDrmRenderDevice) override;
++
 +  using GfxInfoBase::GetFeatureStatus;
 +  using GfxInfoBase::GetFeatureSuggestedDriverVersion;
 +
@@ -4799,7 +4775,7 @@ index 000000000000..db0db72779da
 +#endif /* __mozilla_widget_GfxInfo_h__ */
 diff --git a/widget/qt/MediaKeysEventSourceFactory.cpp b/widget/qt/MediaKeysEventSourceFactory.cpp
 new file mode 100644
-index 000000000000..3c85052b267f
+index 000000000000..4fe66e717511
 --- /dev/null
 +++ b/widget/qt/MediaKeysEventSourceFactory.cpp
 @@ -0,0 +1,13 @@
@@ -4811,7 +4787,7 @@ index 000000000000..3c85052b267f
 +
 +namespace mozilla::widget {
 +
-+mozilla::dom::MediaControlKeysEventSource* CreateMediaControlKeysEventSource() {
++mozilla::dom::MediaControlKeySource* CreateMediaControlKeySource() {
 +  return nullptr;
 +}
 +
@@ -5109,10 +5085,10 @@ index 000000000000..1538b561b4c2
 +}  // namespace mozilla
 diff --git a/widget/qt/components.conf b/widget/qt/components.conf
 new file mode 100644
-index 000000000000..687611a72c5a
+index 000000000000..49f61dbd8a80
 --- /dev/null
 +++ b/widget/qt/components.conf
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,98 @@
 +# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5162,6 +5138,7 @@ index 000000000000..687611a72c5a
 +        'headers': ['/widget/nsClipboardHelper.h'],
 +    },
 +    {
++        'name': 'GfxInfo',
 +        'cid': '{d755a760-9f27-11df-0800-200c9a664242}',
 +        'contract_ids': ['@mozilla.org/gfx/info;1'],
 +        'type': 'mozilla::widget::GfxInfo',
@@ -5171,11 +5148,11 @@ index 000000000000..687611a72c5a
 +    },
 +    {
 +        'cid': '{6987230e-0098-4e78-bc5f-1493ee7519fa}',
-+        'contract_ids': ['@mozilla.org/widget/idleservice;1'],
++        'contract_ids': ['@mozilla.org/widget/useridleservice;1'],
 +        'singleton': True,
-+        'type': 'nsIdleServiceQt',
-+        'constructor': 'nsIdleServiceQt::GetInstance',
-+        'headers': ['/widget/qt/nsIdleServiceQt.h', 'nsIdleService.h'],
++        'type': 'nsUserIdleServiceQt',
++        'constructor': 'nsUserIdleServiceQt::GetInstance',
++        'headers': ['/widget/qt/nsUserIdleServiceQt.h', 'nsUserIdleService.h'],
 +    },
 +]
 +
@@ -5209,19 +5186,13 @@ index 000000000000..687611a72c5a
 +            'headers': ['/widget/qt/nsPrintOptionsQt.h'],
 +            'init_method': 'Init',
 +        },
-+        {
-+            'cid': '{a6cf9129-15b3-11d2-932e-00805f8add32}',
-+            'contract_ids': ['@mozilla.org/gfx/printerenumerator;1'],
-+            'type': 'nsPrinterEnumeratorQt',
-+            'headers': ['/widget/qt/nsDeviceContextSpecQt.h'],
-+        },
 +    ]
 diff --git a/widget/qt/moz.build b/widget/qt/moz.build
 new file mode 100644
-index 000000000000..4361105de1c8
+index 000000000000..5e4f4dcca23c
 --- /dev/null
 +++ b/widget/qt/moz.build
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,71 @@
 +# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 +# vim: set filetype=python:
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -5233,10 +5204,12 @@ index 000000000000..4361105de1c8
 +    'MediaKeysEventSourceFactory.cpp',
 +    'nsAppShell.cpp',
 +    'nsBidiKeyboard.cpp',
-+    'nsIdleServiceQt.cpp',
 +    'nsLookAndFeel.cpp',
++    'nsNativeBasicThemeQt.cpp',
++    'nsNativeThemeQt.cpp',
 +    'nsScreenManagerQt.cpp',
 +    'nsScreenQt.cpp',
++    'nsUserIdleServiceQt.cpp',
 +    'nsWidgetFactory.cpp',
 +    'ProcInfo.cpp',
 +]
@@ -5259,6 +5232,8 @@ index 000000000000..4361105de1c8
 +FINAL_LIBRARY = 'xul'
 +
 +LOCAL_INCLUDES += [
++    '/gfx/2d',
++    '/layout/painting',
 +    '/widget',
 +]
 +
@@ -5375,49 +5350,6 @@ index 000000000000..a7a06a4f528d
 +
 +    return false;
 +}
-diff --git a/widget/qt/nsAppShell.h b/widget/qt/nsAppShell.h
-new file mode 100644
-index 000000000000..2d2f37d75864
---- /dev/null
-+++ b/widget/qt/nsAppShell.h
-@@ -0,0 +1,37 @@
-+/* -*- Mode: c++; tab-width: 2; indent-tabs-mode: nil; -*- */
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef nsAppShell_h__
-+#define nsAppShell_h__
-+
-+#include <qsocketnotifier.h>
-+#include "nsBaseAppShell.h"
-+#include "nsCOMPtr.h"
-+
-+/**
-+ * Native QT Application shell wrapper
-+ */
-+
-+class nsAppShell : public QObject,
-+                   public nsBaseAppShell
-+{
-+  Q_OBJECT
-+
-+public:
-+  nsAppShell() { };
-+
-+  nsresult Init();
-+
-+  virtual bool event (QEvent *e);
-+
-+protected:
-+  virtual void ScheduleNativeEventCallback();
-+  virtual bool ProcessNextNativeEvent(bool mayWait);
-+  virtual ~nsAppShell();
-+};
-+
-+
-+#endif // nsAppShell_h__
-+
 diff --git a/widget/qt/nsBidiKeyboard.cpp b/widget/qt/nsBidiKeyboard.cpp
 new file mode 100644
 index 000000000000..8dc57fd2f0bc
@@ -5511,10 +5443,10 @@ index 000000000000..c22bf4ab8c10
 +#endif // __nsBidiKeyboard
 diff --git a/widget/qt/nsDeviceContextSpecQt.cpp b/widget/qt/nsDeviceContextSpecQt.cpp
 new file mode 100644
-index 000000000000..aa24ffc1d6b8
+index 000000000000..926f0af1cfee
 --- /dev/null
 +++ b/widget/qt/nsDeviceContextSpecQt.cpp
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,190 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -5705,50 +5637,12 @@ index 000000000000..aa24ffc1d6b8
 +    return NS_OK;
 +}
 +
-+//  Printer Enumerator
-+nsPrinterEnumeratorQt::nsPrinterEnumeratorQt()
-+{
-+}
-+
-+nsPrinterEnumeratorQt::~nsPrinterEnumeratorQt()
-+{
-+}
-+
-+NS_IMPL_ISUPPORTS(nsPrinterEnumeratorQt, nsIPrinterEnumerator)
-+
-+NS_IMETHODIMP nsPrinterEnumeratorQt::GetPrinterNameList(
-+        nsIStringEnumerator** aPrinterNameList)
-+{
-+    NS_ENSURE_ARG_POINTER(aPrinterNameList);
-+    *aPrinterNameList = nullptr;
-+
-+    nsTArray<nsString>* printers =
-+        new nsTArray<nsString>(0);
-+
-+    return NS_NewAdoptingStringEnumerator(aPrinterNameList, printers);
-+}
-+
-+NS_IMETHODIMP nsPrinterEnumeratorQt::GetDefaultPrinterName(nsAString &aDefaultPrinterName)
-+{
-+    DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::GetDefaultPrinterName()\n"));
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP nsPrinterEnumeratorQt::InitPrintSettingsFromPrinter(
-+        const nsAString &aPrinterName,
-+        nsIPrintSettings* aPrintSettings)
-+{
-+    DO_PR_DEBUG_LOG(("nsPrinterEnumeratorQt::InitPrintSettingsFromPrinter()"));
-+    // XXX Leave NS_OK for now
-+    // Probably should use NS_ERROR_NOT_IMPLEMENTED
-+    return NS_OK;
-+}
 diff --git a/widget/qt/nsDeviceContextSpecQt.h b/widget/qt/nsDeviceContextSpecQt.h
 new file mode 100644
-index 000000000000..20b928ee03c6
+index 000000000000..ed2be80b218a
 --- /dev/null
 +++ b/widget/qt/nsDeviceContextSpecQt.h
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,48 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -5760,7 +5654,6 @@ index 000000000000..20b928ee03c6
 +
 +#include "nsIDeviceContextSpec.h"
 +#include "nsIPrintSettings.h"
-+#include "nsIPrinterEnumerator.h"
 +#include "nsCOMPtr.h"
 +
 +#include "nsString.h"
@@ -5797,215 +5690,13 @@ index 000000000000..20b928ee03c6
 +    nsCOMPtr<nsIFile> mSpoolFile;
 +};
 +
-+class nsPrinterEnumeratorQt : public nsIPrinterEnumerator {
-+public:
-+    nsPrinterEnumeratorQt();
-+    NS_DECL_ISUPPORTS
-+    NS_DECL_NSIPRINTERENUMERATOR
-+
-+protected:
-+    virtual ~nsPrinterEnumeratorQt();
-+
-+};
-+
 +#endif /* !nsDeviceContextSpecQt_h___ */
-diff --git a/widget/qt/nsIdleServiceQt.cpp b/widget/qt/nsIdleServiceQt.cpp
-new file mode 100644
-index 000000000000..5bcc0ae2c27b
---- /dev/null
-+++ b/widget/qt/nsIdleServiceQt.cpp
-@@ -0,0 +1,123 @@
-+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-+/* vim:expandtab:shiftwidth=4:tabstop=4:
-+ */
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifdef MOZ_X11
-+#include "mozilla/X11Util.h"
-+#endif
-+#include "nsIdleServiceQt.h"
-+#include "nsIServiceManager.h"
-+#include "nsDebug.h"
-+#include "prlink.h"
-+
-+#if defined(MOZ_X11)
-+typedef bool (*_XScreenSaverQueryExtension_fn)(Display* dpy, int* event_base,
-+                                                 int* error_base);
-+
-+typedef XScreenSaverInfo* (*_XScreenSaverAllocInfo_fn)(void);
-+
-+typedef void (*_XScreenSaverQueryInfo_fn)(Display* dpy, Drawable drw,
-+                                          XScreenSaverInfo *info);
-+
-+static _XScreenSaverQueryExtension_fn _XSSQueryExtension = nullptr;
-+static _XScreenSaverAllocInfo_fn _XSSAllocInfo = nullptr;
-+static _XScreenSaverQueryInfo_fn _XSSQueryInfo = nullptr;
-+
-+static bool sInitialized = false;
-+#endif
-+
-+NS_IMPL_ISUPPORTS_INHERITED0(nsIdleServiceQt, nsIdleService)
-+
-+nsIdleServiceQt::nsIdleServiceQt()
-+#if defined(MOZ_X11)
-+    : mXssInfo(nullptr)
-+#endif
-+{
-+}
-+
-+#if defined(MOZ_X11)
-+static void Initialize()
-+{
-+    sInitialized = true;
-+
-+    // This will leak - See comments in ~nsIdleServiceQt().
-+    PRLibrary* xsslib = PR_LoadLibrary("libXss.so.1");
-+    if (!xsslib) {
-+        return;
-+    }
-+
-+    _XSSQueryExtension = (_XScreenSaverQueryExtension_fn)
-+        PR_FindFunctionSymbol(xsslib, "XScreenSaverQueryExtension");
-+    _XSSAllocInfo = (_XScreenSaverAllocInfo_fn)
-+        PR_FindFunctionSymbol(xsslib, "XScreenSaverAllocInfo");
-+    _XSSQueryInfo = (_XScreenSaverQueryInfo_fn)
-+        PR_FindFunctionSymbol(xsslib, "XScreenSaverQueryInfo");
-+}
-+#endif
-+
-+nsIdleServiceQt::~nsIdleServiceQt()
-+{
-+#if defined(MOZ_X11)
-+    if (mXssInfo)
-+        XFree(mXssInfo);
-+
-+// It is not safe to unload libXScrnSaver until each display is closed because
-+// the library registers callbacks through XESetCloseDisplay (Bug 397607).
-+// (Also the library and its functions are scoped for the file not the object.)
-+#if 0
-+    if (xsslib) {
-+        PR_UnloadLibrary(xsslib);
-+        xsslib = nullptr;
-+    }
-+#endif
-+#endif
-+}
-+
-+bool
-+nsIdleServiceQt::PollIdleTime(uint32_t *aIdleTime)
-+{
-+#if defined(MOZ_X11)
-+    // Ask xscreensaver about idle time:
-+    *aIdleTime = 0;
-+
-+    // We might not have a display (cf. in xpcshell)
-+    Display *dplay = mozilla::DefaultXDisplay();
-+    if (!dplay) {
-+        return false;
-+    }
-+
-+    if (!sInitialized) {
-+        Initialize();
-+    }
-+    if (!_XSSQueryExtension || !_XSSAllocInfo || !_XSSQueryInfo) {
-+        return false;
-+    }
-+
-+    int event_base, error_base;
-+    if (_XSSQueryExtension(dplay, &event_base, &error_base)) {
-+        if (!mXssInfo)
-+            mXssInfo = _XSSAllocInfo();
-+        if (!mXssInfo)
-+            return false;
-+
-+        _XSSQueryInfo(dplay, RootWindowOfScreen(DefaultScreenOfDisplay(mozilla::DefaultXDisplay())), mXssInfo);
-+        *aIdleTime = mXssInfo->idle;
-+        return true;
-+    }
-+#endif
-+
-+    return false;
-+}
-+
-+bool
-+nsIdleServiceQt::UsePollMode()
-+{
-+#if defined(MOZ_X11)
-+    return false;
-+#endif
-+    return true;
-+}
-+
-diff --git a/widget/qt/nsIdleServiceQt.h b/widget/qt/nsIdleServiceQt.h
-new file mode 100644
-index 000000000000..f947b56e02e0
---- /dev/null
-+++ b/widget/qt/nsIdleServiceQt.h
-@@ -0,0 +1,56 @@
-+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-+/* vim:expandtab:shiftwidth=4:tabstop=4:
-+ */
-+/* This Source Code Form is subject to the terms of the Mozilla Public
-+ * License, v. 2.0. If a copy of the MPL was not distributed with this
-+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-+
-+#ifndef nsIdleServiceQt_h__
-+#define nsIdleServiceQt_h__
-+
-+#include "nsIdleService.h"
-+
-+#if defined(MOZ_X11)
-+#include <X11/Xlib.h>
-+#include <X11/Xutil.h>
-+
-+typedef struct {
-+    Window window;              // Screen saver window
-+    int state;                  // ScreenSaver(Off,On,Disabled)
-+    int kind;                   // ScreenSaver(Blanked,Internal,External)
-+    unsigned long til_or_since; // milliseconds since/til screensaver kicks in
-+    unsigned long idle;         // milliseconds idle
-+    unsigned long event_mask;   // event stuff
-+} XScreenSaverInfo;
-+#endif
-+
-+class nsIdleServiceQt : public nsIdleService
-+{
-+public:
-+    NS_DECL_ISUPPORTS_INHERITED
-+
-+    bool PollIdleTime(uint32_t* aIdleTime);
-+
-+    static already_AddRefed<nsIdleServiceQt> GetInstance()
-+    {
-+        RefPtr<nsIdleServiceQt> idleService =
-+            nsIdleService::GetInstance().downcast<nsIdleServiceQt>();
-+        if (!idleService) {
-+            idleService = new nsIdleServiceQt();
-+        }
-+        
-+        return idleService.forget();
-+    }
-+
-+private:
-+#if defined(MOZ_X11)
-+    XScreenSaverInfo* mXssInfo;
-+#endif
-+
-+protected:
-+    nsIdleServiceQt();
-+    virtual ~nsIdleServiceQt();
-+    bool UsePollMode();
-+};
-+
-+#endif // nsIdleServiceQt_h__
 diff --git a/widget/qt/nsLookAndFeel.cpp b/widget/qt/nsLookAndFeel.cpp
 new file mode 100644
-index 000000000000..6a0f91d1cd87
+index 000000000000..fd2904370fb6
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.cpp
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,550 @@
 +/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -6034,6 +5725,33 @@ index 000000000000..6a0f91d1cd87
 +#include "mozilla/gfx/2D.h"
 +#include "mozilla/FontPropertyTypes.h"
 +#include "mozilla/StaticPrefs_widget.h"
++#include "mozilla/Services.h"
++#include "mozilla/Logging.h"
++#include "nsIObserver.h"
++
++using namespace mozilla;
++
++LazyLogModule sLookAndFeel("LookAndFeel");
++
++class nsLookAndFeel::Observer final : public nsIObserver
++{
++public:
++    NS_DECL_ISUPPORTS
++
++    explicit Observer() : mDarkAmbience(false) {}
++
++    NS_IMETHOD Observe(nsISupports*, const char* aTopic,
++                       const char16_t* aData) override;
++
++    bool GetDarkAmbience();
++private:
++    virtual ~Observer() = default;
++
++public:
++    bool mDarkAmbience;
++};
++
++NS_IMPL_ISUPPORTS(nsLookAndFeel::Observer, nsIObserver)
 +
 +static const char16_t UNICODE_BULLET = 0x2022;
 +
@@ -6043,16 +5761,52 @@ index 000000000000..6a0f91d1cd87
 +nsLookAndFeel::nsLookAndFeel()
 +    : nsXPLookAndFeel()
 +{
++    mObserver = new nsLookAndFeel::Observer();
++    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
++    if (os) {
++        os->AddObserver(mObserver, "ambience-theme-changed", false);
++    }
 +}
 +
 +nsLookAndFeel::~nsLookAndFeel()
 +{
++    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
++    if (os) {
++        os->RemoveObserver(mObserver, "ambience-theme-changed");
++    }
++    mObserver = nullptr;
 +}
++
++NS_IMETHODIMP nsLookAndFeel::Observer::Observe(nsISupports*, const char* aTopic, const char16_t* aData) {
++    MOZ_ASSERT(!strcmp(aTopic, "ambience-theme-changed"));
++
++    bool darkAmbience = false;
++    nsDependentString data(aData);
++    if (data.EqualsLiteral("dark")) {
++        darkAmbience = true;
++    }
++
++    if (mDarkAmbience != darkAmbience) {
++        mDarkAmbience = darkAmbience;
++        MOZ_LOG(sLookAndFeel, LogLevel::Info, ("Ambience set to %s", mDarkAmbience ? "dark" : "light"));
++        if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
++            NotifyChangedAllWindows(widget::ThemeChangeKind::StyleAndLayout);
++        }
++    }
++
++    return NS_OK;
++}
++
++bool nsLookAndFeel::Observer::GetDarkAmbience()
++{
++    return mDarkAmbience;
++}
++
 +
 +void nsLookAndFeel::NativeInit() { }
 +
 +nsresult
-+nsLookAndFeel::NativeGetColor(ColorID aID, nscolor &aColor)
++nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme, nscolor &aResult)
 +{
 +    nsresult rv = NS_OK;
 +
@@ -6067,240 +5821,240 @@ index 000000000000..6a0f91d1cd87
 +        // (except here at least TextSelectBackground and TextSelectForeground)
 +        // The CSS2 colors below are used.
 +    case ColorID::WindowBackground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::WindowForeground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
 +    case ColorID::WidgetBackground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::WidgetForeground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
 +    case ColorID::WidgetSelectBackground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::WidgetSelectForeground:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
 +    case ColorID::Widget3DHighlight:
-+        aColor = NS_RGB(0xa0,0xa0,0xa0);
++        aResult = NS_RGB(0xa0,0xa0,0xa0);
 +        break;
 +    case ColorID::Widget3DShadow:
-+        aColor = NS_RGB(0x40,0x40,0x40);
++        aResult = NS_RGB(0x40,0x40,0x40);
 +        break;
 +    case ColorID::TextBackground:
 +        // not used?
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::TextForeground:
 +        // not used?
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
 +    case ColorID::TextSelectBackground:
 +    case ColorID::IMESelectedRawTextBackground:
 +    case ColorID::IMESelectedConvertedTextBackground:
 +        // still used
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
 +    case ColorID::TextSelectForeground:
 +    case ColorID::IMESelectedRawTextForeground:
 +    case ColorID::IMESelectedConvertedTextForeground:
 +        // still used
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
 +    case ColorID::IMERawInputBackground:
 +    case ColorID::IMEConvertedTextBackground:
-+        aColor = NS_TRANSPARENT;
++        aResult = NS_TRANSPARENT;
 +        break;
 +    case ColorID::IMERawInputForeground:
 +    case ColorID::IMEConvertedTextForeground:
-+        aColor = NS_SAME_AS_FOREGROUND_COLOR;
++        aResult = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
 +    case ColorID::IMERawInputUnderline:
 +    case ColorID::IMEConvertedTextUnderline:
-+        aColor = NS_SAME_AS_FOREGROUND_COLOR;
++        aResult = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
 +    case ColorID::IMESelectedRawTextUnderline:
 +    case ColorID::IMESelectedConvertedTextUnderline:
-+        aColor = NS_TRANSPARENT;
++        aResult = NS_TRANSPARENT;
 +        break;
 +    case ColorID::SpellCheckerUnderline:
-+        aColor = RED_COLOR;
++        aResult = RED_COLOR;
 +        break;
 +
 +        // css2  http://www.w3.org/TR/REC-CSS2/ui.html#system-colors
 +    case ColorID::Activeborder:
 +        // active window border
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::Activecaption:
 +        // active window caption background
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::Appworkspace:
 +        // MDI background color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::Background:
 +        // desktop background
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::Captiontext:
 +        // text in active window caption, size box, and scrollbar arrow box (!)
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::Graytext:
 +        // disabled text in windows, menus, etc.
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
 +    case ColorID::Highlight:
 +        // background of selected item
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
 +    case ColorID::Highlighttext:
 +        // text of selected item
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
 +    case ColorID::Inactiveborder:
 +        // inactive window border
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
 +    case ColorID::Inactivecaption:
 +        // inactive window caption
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Window));
 +        break;
 +    case ColorID::Inactivecaptiontext:
 +        // text in inactive window caption
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Disabled, QPalette::Text));
 +        break;
 +    case ColorID::Infobackground:
 +        // tooltip background color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipBase));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipBase));
 +        break;
 +    case ColorID::Infotext:
 +        // tooltip text color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ToolTipText));
 +        break;
 +    case ColorID::Menu:
 +        // menu background
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::Menutext:
 +        // menu text
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::Scrollbar:
 +        // scrollbar gray area
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Mid));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Mid));
 +        break;
 +
 +    case ColorID::Threedface:
 +    case ColorID::Buttonface:
 +        // 3-D face color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
 +
 +    case ColorID::Buttontext:
 +        // text on push buttons
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ButtonText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::ButtonText));
 +        break;
 +
 +    case ColorID::Buttonhighlight:
 +        // 3-D highlighted edge color
 +    case ColorID::Threedhighlight:
 +        // 3-D highlighted outer edge color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
 +    case ColorID::Threedlightshadow:
 +        // 3-D highlighted inner edge color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Light));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Light));
 +        break;
 +
 +    case ColorID::Buttonshadow:
 +        // 3-D shadow edge color
 +    case ColorID::Threedshadow:
 +        // 3-D shadow inner edge color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Dark));
 +        break;
 +
 +    case ColorID::Threeddarkshadow:
 +        // 3-D shadow outer edge color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Shadow));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Shadow));
 +        break;
 +
 +    case ColorID::Window:
 +    case ColorID::Windowframe:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +
 +    case ColorID::Windowtext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +
 +    case ColorID::MozEventreerow:
 +    case ColorID::Field:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
 +    case ColorID::Fieldtext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::MozDialog:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::MozDialogtext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::WindowText));
 +        break;
 +    case ColorID::MozDragtargetzone:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Window));
 +        break;
 +    case ColorID::MozButtondefault:
 +        // default button border color
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Button));
 +        break;
 +    case ColorID::MozButtonhoverface:
-+        aColor = BG_PRELIGHT_COLOR;
++        aResult = BG_PRELIGHT_COLOR;
 +        break;
 +    case ColorID::MozButtonhovertext:
-+        aColor = FG_PRELIGHT_COLOR;
++        aResult = FG_PRELIGHT_COLOR;
 +        break;
 +    case ColorID::MozCellhighlight:
 +    case ColorID::MozHtmlCellhighlight:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Highlight));
 +        break;
 +    case ColorID::MozCellhighlighttext:
 +    case ColorID::MozHtmlCellhighlighttext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::HighlightedText));
 +        break;
 +    case ColorID::MozMenuhover:
-+        aColor = BG_PRELIGHT_COLOR;
++        aResult = BG_PRELIGHT_COLOR;
 +        break;
 +    case ColorID::MozMenuhovertext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::MozOddtreerow:
-+        aColor = NS_TRANSPARENT;
++        aResult = NS_TRANSPARENT;
 +        break;
 +    case ColorID::MozNativehyperlinktext:
-+        aColor = NS_SAME_AS_FOREGROUND_COLOR;
++        aResult = NS_SAME_AS_FOREGROUND_COLOR;
 +        break;
 +    case ColorID::MozComboboxtext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::MozCombobox:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Base));
 +        break;
 +    case ColorID::MozMenubartext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    case ColorID::MozMenubarhovertext:
-+        aColor = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
++        aResult = QCOLOR_TO_NS_RGB(palette.color(QPalette::Normal, QPalette::Text));
 +        break;
 +    default:
 +        /* default color is BLACK */
-+        aColor = 0;
++        aResult = 0;
 +        rv = NS_ERROR_FAILURE;
 +        break;
 +    }
@@ -6309,87 +6063,99 @@ index 000000000000..6a0f91d1cd87
 +}
 +
 +nsresult
-+nsLookAndFeel::GetIntImpl(IntID aID, int32_t &aResult)
++nsLookAndFeel::NativeGetInt(IntID aID, int32_t &aResult)
 +{
-+    nsresult rv = nsXPLookAndFeel::GetIntImpl(aID, aResult);
-+    if (NS_SUCCEEDED(rv))
-+        return rv;
-+
-+    rv = NS_OK;
++    nsresult rv = NS_OK;
 +
 +    switch (aID) {
-+        case eIntID_CaretBlinkTime:
++        case IntID::ScrollButtonLeftMouseButtonAction:
++          aResult = 0;
++          break;
++
++        case IntID::ScrollButtonMiddleMouseButtonAction:
++        case IntID::ScrollButtonRightMouseButtonAction:
++          aResult = 3;
++          break;
++
++        case IntID::CaretBlinkTime:
 +            aResult = 500;
 +            break;
 +
-+        case eIntID_CaretWidth:
++        case IntID::CaretWidth:
 +            aResult = 1;
 +            break;
 +
-+        case eIntID_ShowCaretDuringSelection:
++        case IntID::ShowCaretDuringSelection:
 +            aResult = 0;
 +            break;
 +
-+        case eIntID_SelectTextfieldsOnKeyFocus:
++        case IntID::SelectTextfieldsOnKeyFocus:
 +            // Select textfield content when focused by kbd
 +            // used by EventStateManager::sTextfieldSelectModel
 +            aResult = 1;
 +            break;
 +
-+        case eIntID_SubmenuDelay:
++        case IntID::SubmenuDelay:
 +            aResult = 200;
 +            break;
 +
-+        case eIntID_TooltipDelay:
++        case IntID::TooltipDelay:
 +            aResult = 500;
 +            break;
 +
-+        case eIntID_MenusCanOverlapOSBar:
++        case IntID::MenusCanOverlapOSBar:
 +            // we want XUL popups to be able to overlap the task bar.
 +            aResult = 1;
 +            break;
 +
-+        case eIntID_ScrollArrowStyle:
++        case IntID::ScrollArrowStyle:
 +            aResult = eScrollArrowStyle_Single;
 +            break;
 +
-+        case eIntID_ScrollSliderStyle:
++        case IntID::ScrollSliderStyle:
 +            aResult = eScrollThumbStyle_Proportional;
 +            break;
 +
-+        case eIntID_TouchEnabled:
-+            aResult = 1;
-+            break;
-+
-+        case eIntID_WindowsDefaultTheme:
-+        case eIntID_WindowsThemeIdentifier:
-+        case eIntID_OperatingSystemVersionIdentifier:
++        case IntID::WindowsDefaultTheme:
++        case IntID::WindowsThemeIdentifier:
++        case IntID::OperatingSystemVersionIdentifier:
 +            aResult = 0;
 +            rv = NS_ERROR_NOT_IMPLEMENTED;
 +            break;
 +
-+        case eIntID_IMERawInputUnderlineStyle:
-+        case eIntID_IMEConvertedTextUnderlineStyle:
++        case IntID::IMERawInputUnderlineStyle:
++        case IntID::IMEConvertedTextUnderlineStyle:
 +            aResult = NS_STYLE_TEXT_DECORATION_STYLE_SOLID;
 +            break;
 +
-+        case eIntID_IMESelectedRawTextUnderlineStyle:
-+        case eIntID_IMESelectedConvertedTextUnderline:
++        case IntID::IMESelectedRawTextUnderlineStyle:
++        case IntID::IMESelectedConvertedTextUnderline:
 +            aResult = NS_STYLE_TEXT_DECORATION_STYLE_NONE;
 +            break;
 +
-+        case eIntID_SpellCheckerUnderlineStyle:
++        case IntID::SpellCheckerUnderlineStyle:
 +            aResult = NS_STYLE_TEXT_DECORATION_STYLE_WAVY;
 +            break;
 +
-+        case eIntID_ScrollbarButtonAutoRepeatBehavior:
++        case IntID::ScrollbarButtonAutoRepeatBehavior:
 +            aResult = 0;
 +            break;
 +
-+        case eIntID_ContextMenuOffsetVertical:
-+        case eIntID_ContextMenuOffsetHorizontal:
++        case IntID::ContextMenuOffsetVertical:
++        case IntID::ContextMenuOffsetHorizontal:
 +            aResult = 2;
 +            break;
++
++        case IntID::SystemUsesDarkTheme:
++            // Choose theme based on ambience
++            aResult = mObserver->GetDarkAmbience() ? 1 : 0;
++            break;
++
++        case IntID::DragThresholdX:
++        case IntID::DragThresholdY:
++          // Threshold where a tap becomes a drag, in 1/240" reference pixels.
++          aResult = 25;
++          break;
 +
 +        default:
 +            aResult = 0;
@@ -6400,35 +6166,34 @@ index 000000000000..6a0f91d1cd87
 +}
 +
 +nsresult
-+nsLookAndFeel::GetFloatImpl(FloatID aID, float &aResult)
++nsLookAndFeel::NativeGetFloat(FloatID aID, float &aResult)
 +{
-+  nsresult res = nsXPLookAndFeel::GetFloatImpl(aID, aResult);
-+  if (NS_SUCCEEDED(res))
-+    return res;
-+  res = NS_OK;
++  nsresult res = NS_OK;
 +
 +  switch (aID) {
-+    case eFloatID_IMEUnderlineRelativeSize:
++    case FloatID::IMEUnderlineRelativeSize:
 +        aResult = 1.0f;
 +        break;
-+    case eFloatID_SpellCheckerUnderlineRelativeSize:
++
++    case FloatID::SpellCheckerUnderlineRelativeSize:
 +        aResult = 1.0f;
 +        break;
++
 +    default:
 +        aResult = -1.0;
 +        res = NS_ERROR_FAILURE;
-+    }
++  }
 +  return res;
 +}
 +
 +/*virtual*/
 +bool
-+nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
++nsLookAndFeel::NativeGetFont(FontID aID, nsString& aFontName,
 +                           gfxFontStyle& aFontStyle)
 +{
 +  QFont qFont = QGuiApplication::font();
 +
-+  NS_NAMED_LITERAL_STRING(quote, "\"");
++  constexpr auto quote = u"\""_ns;
 +  nsString family((char16_t*)qFont.family().data());
 +  aFontName = quote + family + quote;
 +
@@ -6484,10 +6249,10 @@ index 000000000000..6a0f91d1cd87
 +}
 diff --git a/widget/qt/nsLookAndFeel.h b/widget/qt/nsLookAndFeel.h
 new file mode 100644
-index 000000000000..e8a134b93f3f
+index 000000000000..ab40124f1609
 --- /dev/null
 +++ b/widget/qt/nsLookAndFeel.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,44 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 +/* Copyright 2012 Mozilla Foundation and Mozilla contributors
 + *
@@ -6511,21 +6276,73 @@ index 000000000000..e8a134b93f3f
 +
 +class nsLookAndFeel : public nsXPLookAndFeel
 +{
++    class Observer;
 +public:
 +    nsLookAndFeel();
 +    virtual ~nsLookAndFeel();
 +
 +    void NativeInit() final;
 +
-+    virtual bool GetFontImpl(FontID aID, nsString& aName, gfxFontStyle& aStyle) override;
-+    virtual nsresult GetIntImpl(IntID aID, int32_t &aResult) override;
-+    virtual nsresult GetFloatImpl(FloatID aID, float &aResult) override;
++    virtual nsresult NativeGetInt(IntID aID, int32_t& aResult) override;
++    virtual nsresult NativeGetFloat(FloatID aID, float& aResult) override;
++    virtual nsresult NativeGetColor(ColorID, ColorScheme, nscolor& aResult) override;
++    virtual bool NativeGetFont(FontID aID, nsString& aName, gfxFontStyle& aStyle) override;
++
 +    virtual bool GetEchoPasswordImpl() override;
 +    virtual uint32_t GetPasswordMaskDelayImpl() override;
 +    virtual char16_t GetPasswordCharacterImpl() override;
 +
-+protected:
-+    virtual nsresult NativeGetColor(ColorID aID, nscolor &aColor) override;
++private:
++    RefPtr<Observer> mObserver;
++};
++
++#endif
+diff --git a/widget/qt/nsNativeBasicThemeQt.cpp b/widget/qt/nsNativeBasicThemeQt.cpp
+new file mode 100644
+index 000000000000..36214624724f
+--- /dev/null
++++ b/widget/qt/nsNativeBasicThemeQt.cpp
+@@ -0,0 +1,17 @@
++/* -*- Mode: C++; tab-width: 40; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "nsNativeBasicThemeQt.h"
++
++#include "mozilla/ClearOnShutdown.h"
++
++already_AddRefed<nsITheme> do_GetBasicNativeThemeDoNotUseDirectly() {
++  static mozilla::StaticRefPtr<nsITheme> gInstance;
++  if (MOZ_UNLIKELY(!gInstance)) {
++    gInstance = new nsNativeBasicThemeQt();
++    ClearOnShutdown(&gInstance);
++  }
++  return do_AddRef(gInstance);
++}
+diff --git a/widget/qt/nsNativeBasicThemeQt.h b/widget/qt/nsNativeBasicThemeQt.h
+new file mode 100644
+index 000000000000..04e4f4925264
+--- /dev/null
++++ b/widget/qt/nsNativeBasicThemeQt.h
+@@ -0,0 +1,20 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ *
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef nsNativeBasicThemeQt_h
++#define nsNativeBasicThemeQt_h
++
++#include "nsNativeBasicTheme.h"
++
++class nsNativeBasicThemeQt : public nsNativeBasicTheme {
++ public:
++  nsNativeBasicThemeQt() = default;
++
++ protected:
++  virtual ~nsNativeBasicThemeQt() = default;
 +};
 +
 +#endif
@@ -6671,10 +6488,10 @@ index 000000000000..72e189567039
 +#endif /* nsPrintOptionsQt_h__ */
 diff --git a/widget/qt/nsPrintSettingsQt.cpp b/widget/qt/nsPrintSettingsQt.cpp
 new file mode 100644
-index 000000000000..7ab665bb1f54
+index 000000000000..f8393c7e78a9
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.cpp
-@@ -0,0 +1,411 @@
+@@ -0,0 +1,414 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
@@ -6707,11 +6524,12 @@ index 000000000000..7ab665bb1f54
 +    mFilename(aPS.mFilename),
 +    mPrinterName(aPS.mPrinterName),
 +    mNumCopies(aPS.mNumCopies),
-+    mStartPageRange(aPS.mStartPageRange),
-+    mEndPageRange(aPS.mEndPageRange),
-+    mPrintRange(aPS.mPrintRange),
 +    mPrintInColor(aPS.mPrintInColor),
-+    mPrintReversed(aPS.mPrintReversed)
++    mPrintReversed(aPS.mPrintReversed),
++    mPageRanges(aPS.mPageRanges.Clone()),
++    mResolution(aPS.mResolution),
++    mDuplex(aPS.mDuplex),
++    mOutputFormat(aPS.mOutputFormat)
 +{
 +}
 +
@@ -6727,11 +6545,13 @@ index 000000000000..7ab665bb1f54
 +    mFilename = rhs.mFilename;
 +    mPrinterName = rhs.mPrinterName;
 +    mNumCopies = rhs.mNumCopies;
-+    mStartPageRange = rhs.mStartPageRange;
-+    mEndPageRange = rhs.mEndPageRange;
-+    mPrintRange = rhs.mPrintRange;
 +    mPrintInColor = rhs.mPrintInColor;
 +    mPrintReversed = rhs.mPrintReversed;
++    mPageRanges = rhs.mPageRanges.Clone();
++    mResolution = rhs.mResolution;
++    mDuplex = rhs.mDuplex;
++    mOutputFormat = rhs.mOutputFormat;
++
 +    return *this;
 +}
 +
@@ -6757,55 +6577,20 @@ index 000000000000..7ab665bb1f54
 +}
 +
 +NS_IMETHODIMP
-+nsPrintSettingsQt::GetPrintRange(int16_t* aPrintRange)
++nsPrintSettingsQt::SetPageRanges(const nsTArray<int32_t>& aRanges)
 +{
-+    NS_ENSURE_ARG_POINTER(aPrintRange);
-+    *aPrintRange = mPrintRange;
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP 
-+nsPrintSettingsQt::SetPrintRange(int16_t aPrintRange)
-+{
-+    mPrintRange = aPrintRange;
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsPrintSettingsQt::GetStartPageRange(int32_t* aStartPageRange)
-+{
-+    NS_ENSURE_ARG_POINTER(aStartPageRange);
-+    *aStartPageRange = mStartPageRange;
-+    return NS_OK;
-+}
-+
-+NS_IMETHODIMP
-+nsPrintSettingsQt::SetStartPageRange(int32_t aStartPageRange)
-+{
-+    mStartPageRange = aStartPageRange;
-+    if (mStartPageRange > mEndPageRange) {
-+        qWarning() << "nsPrintSettingsQt::SetStartPageRange: 'StartPageRange' must be less than or equal to 'EndPageRange'";
-+        mEndPageRange = mStartPageRange;
++    if (aRanges.Length() % 2 != 0) {
++        return NS_ERROR_FAILURE;
 +    }
++    mPageRanges = aRanges.Clone();
 +    return NS_OK;
 +}
 +
-+NS_IMETHODIMP
-+nsPrintSettingsQt::GetEndPageRange(int32_t* aEndPageRange)
-+{
-+    NS_ENSURE_ARG_POINTER(aEndPageRange);
-+    *aEndPageRange = mEndPageRange;
-+    return NS_OK;
-+}
 +
 +NS_IMETHODIMP
-+nsPrintSettingsQt::SetEndPageRange(int32_t aEndPageRange)
++nsPrintSettingsQt::GetPageRanges(nsTArray<int32_t>& aRanges)
 +{
-+    mEndPageRange = aEndPageRange;
-+    if (mStartPageRange > mEndPageRange) {
-+        qWarning() << "nsPrintSettingsQt::SetEndPageRange: 'EndPageRange' must be more than or equal to 'mStartPageRange'";
-+        mStartPageRange = mEndPageRange;
-+    }
++    aRanges = mPageRanges.Clone();
 +    return NS_OK;
 +}
 +
@@ -6933,10 +6718,10 @@ index 000000000000..7ab665bb1f54
 +}
 +
 +static const char* const indexToPaperName[] =
-+{ "A4", "B5", "Letter", "Legal", "Executive",
-+  "A0", "A1", "A2", "A3", "A5", "A6", "A7", "A8", "A9",
-+  "B0", "B1", "B10", "B2", "B3", "B4", "B6", "B7", "B8", "B9",
-+  "C5E", "Comm10E", "DLE", "Folio", "Ledger", "Tabloid"
++{ "a4", "b5", "letter", "legal", "executive",
++  "a0", "a1", "a2", "a3", "a5", "a6", "a7", "a8", "a9",
++  "b0", "b1", "b10", "b2", "b3", "b4", "b6", "b7", "b8", "b9",
++  "c5e", "comm10e", "dle", "folio", "ledger", "tabloid"
 +};
 +
 +static const QPageSize::PageSizeId indexToQtPaperEnum[] =
@@ -6951,7 +6736,7 @@ index 000000000000..7ab665bb1f54
 +};
 +
 +NS_IMETHODIMP
-+nsPrintSettingsQt::GetPaperName(nsAString &aPaperName)
++nsPrintSettingsQt::GetPaperId(nsAString &aPaperName)
 +{
 +    QPageSize::PageSizeId size = mPageLayout->pageSize().id();
 +    QString name(indexToPaperName[size]);
@@ -6960,10 +6745,11 @@ index 000000000000..7ab665bb1f54
 +}
 +
 +NS_IMETHODIMP
-+nsPrintSettingsQt::SetPaperName(const nsAString &aPaperName)
++nsPrintSettingsQt::SetPaperId(const nsAString &aPaperName)
 +{
 +    NS_ConvertUTF16toUTF8 paperName(aPaperName);
 +    QString ref(paperName.get());
++    ref = ref.toLower();
 +    for (uint32_t i = 0; i < sizeof(indexToPaperName)/sizeof(char*); i++)
 +    {
 +        if (ref == QString(indexToPaperName[i])) {
@@ -7086,12 +6872,46 @@ index 000000000000..7ab665bb1f54
 +    return NS_OK;
 +}
 +
++NS_IMETHODIMP
++nsPrintSettingsQt::SetupSilentPrinting() {
++    return NS_OK;
++}
++
++NS_IMETHODIMP nsPrintSettingsQt::GetResolution(int32_t* aResolution) {
++    NS_ENSURE_ARG_POINTER(aResolution);
++    *aResolution = mResolution;
++    return NS_OK;
++}
++NS_IMETHODIMP nsPrintSettingsQt::SetResolution(const int32_t aResolution) {
++    mResolution = aResolution;
++    return NS_OK;
++}
++
++NS_IMETHODIMP nsPrintSettingsQt::GetDuplex(int32_t* aDuplex) {
++    NS_ENSURE_ARG_POINTER(aDuplex);
++    *aDuplex = mDuplex;
++    return NS_OK;
++}
++NS_IMETHODIMP nsPrintSettingsQt::SetDuplex(const int32_t aDuplex) {
++    mDuplex = aDuplex;
++    return NS_OK;
++}
++
++NS_IMETHODIMP nsPrintSettingsQt::GetOutputFormat(int16_t* aOutputFormat) {
++    NS_ENSURE_ARG_POINTER(aOutputFormat);
++    *aOutputFormat = mOutputFormat;
++    return NS_OK;
++}
++NS_IMETHODIMP nsPrintSettingsQt::SetOutputFormat(int16_t aOutputFormat) {
++    mOutputFormat = aOutputFormat;
++    return NS_OK;
++}
 diff --git a/widget/qt/nsPrintSettingsQt.h b/widget/qt/nsPrintSettingsQt.h
 new file mode 100644
-index 000000000000..bc6c6791b1a3
+index 000000000000..941896961837
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.h
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,101 @@
 +/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
 + *
 + * This Source Code Form is subject to the terms of the Mozilla Public
@@ -7115,14 +6935,6 @@ index 000000000000..bc6c6791b1a3
 +
 +    nsPrintSettingsQt();
 +
-+    NS_IMETHOD GetPrintRange(int16_t* aPrintRange) override;
-+    NS_IMETHOD SetPrintRange(int16_t aPrintRange) override;
-+
-+    NS_IMETHOD GetStartPageRange(int32_t* aStartPageRange) override;
-+    NS_IMETHOD SetStartPageRange(int32_t aStartPageRange) override;
-+    NS_IMETHOD GetEndPageRange(int32_t* aEndPageRange) override;
-+    NS_IMETHOD SetEndPageRange(int32_t aEndPageRange) override;
-+
 +    NS_IMETHOD GetPrintReversed(bool* aPrintReversed) override;
 +    NS_IMETHOD SetPrintReversed(bool aPrintReversed) override;
 +
@@ -7144,8 +6956,8 @@ index 000000000000..bc6c6791b1a3
 +    NS_IMETHOD GetScaling(double* aScaling) override;
 +    NS_IMETHOD SetScaling(double aScaling) override;
 +
-+    NS_IMETHOD GetPaperName(nsAString &aPaperName) override;
-+    NS_IMETHOD SetPaperName(const nsAString &aPaperName) override;
++    NS_IMETHOD GetPaperId(nsAString& aPaperId) override;
++    NS_IMETHOD SetPaperId(const nsAString& aPaperId) override;
 +
 +    NS_IMETHOD SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin) override;
 +    NS_IMETHOD SetUnwriteableMarginTop(double aUnwriteableMarginTop) override;
@@ -7163,6 +6975,21 @@ index 000000000000..bc6c6791b1a3
 +
 +    NS_IMETHOD GetEffectivePageSize(double* aWidth, double* aHeight) override;
 +
++    NS_IMETHOD SetupSilentPrinting() override;
++
++    NS_IMETHOD SetPageRanges(const nsTArray<int32_t>&) override;
++    NS_IMETHOD GetPageRanges(nsTArray<int32_t>&) override;
++
++    NS_IMETHOD GetResolution(int32_t* aResolution) override;
++    NS_IMETHOD SetResolution(int32_t aResolution) override;
++
++    NS_IMETHOD GetDuplex(int32_t* aDuplex) override;
++    NS_IMETHOD SetDuplex(int32_t aDuplex) override;
++
++    NS_IMETHOD GetOutputFormat(int16_t* aOutputFormat) override;
++    NS_IMETHODIMP SetOutputFormat(int16_t aOutputFormat) override;
++
++
 +protected:
 +    virtual ~nsPrintSettingsQt();
 +
@@ -7176,21 +7003,22 @@ index 000000000000..bc6c6791b1a3
 +    QString mFilename;
 +    QString mPrinterName;
 +    int32_t mNumCopies = 1;
-+    int32_t mStartPageRange = 0;
-+    int32_t mEndPageRange = 0;
-+    int16_t mPrintRange = 0;
 +    bool mPrintInColor = true;
 +    bool mPrintReversed = false;
++    nsTArray<int32_t> mPageRanges;
++    int32_t mResolution = 0;
++    int32_t mDuplex = 0;
++    int16_t mOutputFormat = kOutputFormatNative;
 +};
 +
 +NS_DEFINE_STATIC_IID_ACCESSOR(nsPrintSettingsQt, NS_PRINTSETTINGSQT_IID)
 +#endif // nsPrintSettingsQt_h_
 diff --git a/widget/qt/nsScreenManagerQt.cpp b/widget/qt/nsScreenManagerQt.cpp
 new file mode 100644
-index 000000000000..25d2c510e1f1
+index 000000000000..aa2f711d4228
 --- /dev/null
 +++ b/widget/qt/nsScreenManagerQt.cpp
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,101 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7275,6 +7103,21 @@ index 000000000000..25d2c510e1f1
 +        init();
 +
 +    NS_IF_ADDREF(*aPrimaryScreen = screens[0]);
++    return NS_OK;
++}
++
++
++NS_IMETHODIMP
++nsScreenManagerQt::GetTotalScreenPixels(int64_t* aTotalScreenPixels)
++{
++    QScreen *screen = QGuiApplication::primaryScreen();
++    if (!screen) {
++        *aTotalScreenPixels = 0;
++        return NS_OK;
++    }
++
++    QSize size = screen->availableSize();
++    *aTotalScreenPixels = size.width() * size.height();
 +    return NS_OK;
 +}
 diff --git a/widget/qt/nsScreenManagerQt.h b/widget/qt/nsScreenManagerQt.h
@@ -7432,6 +7275,197 @@ index 000000000000..ad3a0ef9af3b
 +};
 +
 +#endif  // nsScreenQt_h___
+diff --git a/widget/qt/nsUserIdleServiceQt.cpp b/widget/qt/nsUserIdleServiceQt.cpp
+new file mode 100644
+index 000000000000..8fcc6b01ccc6
+--- /dev/null
++++ b/widget/qt/nsUserIdleServiceQt.cpp
+@@ -0,0 +1,123 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/* vim:expandtab:shiftwidth=4:tabstop=4:
++ */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifdef MOZ_X11
++#include "mozilla/X11Util.h"
++#endif
++#include "nsUserIdleServiceQt.h"
++#include "nsIServiceManager.h"
++#include "nsDebug.h"
++#include "prlink.h"
++
++#if defined(MOZ_X11)
++typedef bool (*_XScreenSaverQueryExtension_fn)(Display* dpy, int* event_base,
++                                                 int* error_base);
++
++typedef XScreenSaverInfo* (*_XScreenSaverAllocInfo_fn)(void);
++
++typedef void (*_XScreenSaverQueryInfo_fn)(Display* dpy, Drawable drw,
++                                          XScreenSaverInfo *info);
++
++static _XScreenSaverQueryExtension_fn _XSSQueryExtension = nullptr;
++static _XScreenSaverAllocInfo_fn _XSSAllocInfo = nullptr;
++static _XScreenSaverQueryInfo_fn _XSSQueryInfo = nullptr;
++
++static bool sInitialized = false;
++#endif
++
++NS_IMPL_ISUPPORTS_INHERITED0(nsUserIdleServiceQt, nsUserIdleService)
++
++nsUserIdleServiceQt::nsUserIdleServiceQt()
++#if defined(MOZ_X11)
++    : mXssInfo(nullptr)
++#endif
++{
++}
++
++#if defined(MOZ_X11)
++static void Initialize()
++{
++    sInitialized = true;
++
++    // This will leak - See comments in ~nsUserIdleServiceQt().
++    PRLibrary* xsslib = PR_LoadLibrary("libXss.so.1");
++    if (!xsslib) {
++        return;
++    }
++
++    _XSSQueryExtension = (_XScreenSaverQueryExtension_fn)
++        PR_FindFunctionSymbol(xsslib, "XScreenSaverQueryExtension");
++    _XSSAllocInfo = (_XScreenSaverAllocInfo_fn)
++        PR_FindFunctionSymbol(xsslib, "XScreenSaverAllocInfo");
++    _XSSQueryInfo = (_XScreenSaverQueryInfo_fn)
++        PR_FindFunctionSymbol(xsslib, "XScreenSaverQueryInfo");
++}
++#endif
++
++nsUserIdleServiceQt::~nsUserIdleServiceQt()
++{
++#if defined(MOZ_X11)
++    if (mXssInfo)
++        XFree(mXssInfo);
++
++// It is not safe to unload libXScrnSaver until each display is closed because
++// the library registers callbacks through XESetCloseDisplay (Bug 397607).
++// (Also the library and its functions are scoped for the file not the object.)
++#if 0
++    if (xsslib) {
++        PR_UnloadLibrary(xsslib);
++        xsslib = nullptr;
++    }
++#endif
++#endif
++}
++
++bool
++nsUserIdleServiceQt::PollIdleTime(uint32_t *aIdleTime)
++{
++#if defined(MOZ_X11)
++    // Ask xscreensaver about idle time:
++    *aIdleTime = 0;
++
++    // We might not have a display (cf. in xpcshell)
++    Display *dplay = mozilla::DefaultXDisplay();
++    if (!dplay) {
++        return false;
++    }
++
++    if (!sInitialized) {
++        Initialize();
++    }
++    if (!_XSSQueryExtension || !_XSSAllocInfo || !_XSSQueryInfo) {
++        return false;
++    }
++
++    int event_base, error_base;
++    if (_XSSQueryExtension(dplay, &event_base, &error_base)) {
++        if (!mXssInfo)
++            mXssInfo = _XSSAllocInfo();
++        if (!mXssInfo)
++            return false;
++
++        _XSSQueryInfo(dplay, RootWindowOfScreen(DefaultScreenOfDisplay(mozilla::DefaultXDisplay())), mXssInfo);
++        *aIdleTime = mXssInfo->idle;
++        return true;
++    }
++#endif
++
++    return false;
++}
++
++bool
++nsUserIdleServiceQt::UsePollMode()
++{
++#if defined(MOZ_X11)
++    return false;
++#endif
++    return true;
++}
++
+diff --git a/widget/qt/nsUserIdleServiceQt.h b/widget/qt/nsUserIdleServiceQt.h
+new file mode 100644
+index 000000000000..5098b3d67d83
+--- /dev/null
++++ b/widget/qt/nsUserIdleServiceQt.h
+@@ -0,0 +1,56 @@
++/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/* vim:expandtab:shiftwidth=4:tabstop=4:
++ */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef nsUserIdleServiceQt_h__
++#define nsUserIdleServiceQt_h__
++
++#include "nsUserIdleService.h"
++
++#if defined(MOZ_X11)
++#include <X11/Xlib.h>
++#include <X11/Xutil.h>
++
++typedef struct {
++    Window window;              // Screen saver window
++    int state;                  // ScreenSaver(Off,On,Disabled)
++    int kind;                   // ScreenSaver(Blanked,Internal,External)
++    unsigned long til_or_since; // milliseconds since/til screensaver kicks in
++    unsigned long idle;         // milliseconds idle
++    unsigned long event_mask;   // event stuff
++} XScreenSaverInfo;
++#endif
++
++class nsUserIdleServiceQt : public nsUserIdleService
++{
++public:
++    NS_DECL_ISUPPORTS_INHERITED
++
++    bool PollIdleTime(uint32_t* aIdleTime);
++
++    static already_AddRefed<nsUserIdleServiceQt> GetInstance()
++    {
++        RefPtr<nsUserIdleServiceQt> idleService =
++            nsUserIdleService::GetInstance().downcast<nsUserIdleServiceQt>();
++        if (!idleService) {
++            idleService = new nsUserIdleServiceQt();
++        }
++        
++        return idleService.forget();
++    }
++
++private:
++#if defined(MOZ_X11)
++    XScreenSaverInfo* mXssInfo;
++#endif
++
++protected:
++    nsUserIdleServiceQt();
++    virtual ~nsUserIdleServiceQt();
++    bool UsePollMode();
++};
++
++#endif // nsUserIdleServiceQt_h__
 diff --git a/widget/qt/nsWidgetFactory.cpp b/widget/qt/nsWidgetFactory.cpp
 new file mode 100644
 index 000000000000..b5a1005d8c27
@@ -7502,6 +7536,3 @@ index 000000000000..2306c78d3eae
 +void nsWidgetQtModuleDtor();
 +
 +#endif  // defined widget_qt_nsWidgetFactory_h
--- 
-2.17.1
-

@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 23 Nov 2022 09:08:22 +0200
+Subject: [PATCH] [sailfishos][gecko] Add support for prefers-color-scheme
+ JB#58394
+
+Adds support to qt/nsLookAndFeel for the prefers-color-scheme media tag.
+The renderer already supports it by setting the ui.systemUsesDarkTheme
+preference to 0 or 1.
+
+This patch allows, in addition, for the colour scheme to be controlled
+by sending a "ambience-theme-changed" notification with a data payload
+of either "light" or "dark". If the ui.systemUsesDarkTheme preference is
+unset or set to something other than 0 or 1, the notification value will
+be used to control the theme instead.
+
+This functionality is used to update the colour scheme based on the
+ambience of the device.
+---
+ widget/nsXPLookAndFeel.cpp  | 6 ++++--
+ widget/qt/nsLookAndFeel.cpp | 1 +
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/widget/nsXPLookAndFeel.cpp b/widget/nsXPLookAndFeel.cpp
+index d305f71b5619..49763a1cb4f1 100644
+--- a/widget/nsXPLookAndFeel.cpp
++++ b/widget/nsXPLookAndFeel.cpp
+@@ -759,8 +759,10 @@ nsresult nsXPLookAndFeel::GetIntValue(IntID aID, int32_t& aResult) {
+   }
+ 
+   if (NS_SUCCEEDED(Preferences::GetInt(sIntPrefs[size_t(aID)], &aResult))) {
+-    sIntCache.Insert(aID, Some(aResult));
+-    return NS_OK;
++    if ((aID != IntID::SystemUsesDarkTheme) || (aResult != 2)) {
++      sIntCache.Insert(aID, Some(aResult));
++      return NS_OK;
++    }
+   }
+ 
+   if (NS_FAILED(NativeGetInt(aID, aResult))) {
+diff --git a/widget/qt/nsLookAndFeel.cpp b/widget/qt/nsLookAndFeel.cpp
+index fd2904370fb6..f14d5c828e7e 100644
+--- a/widget/qt/nsLookAndFeel.cpp
++++ b/widget/qt/nsLookAndFeel.cpp
+@@ -90,6 +90,7 @@ NS_IMETHODIMP nsLookAndFeel::Observer::Observe(nsISupports*, const char* aTopic,
+     if (mDarkAmbience != darkAmbience) {
+         mDarkAmbience = darkAmbience;
+         MOZ_LOG(sLookAndFeel, LogLevel::Info, ("Ambience set to %s", mDarkAmbience ? "dark" : "light"));
++        Refresh();
+         if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+             NotifyChangedAllWindows(widget::ThemeChangeKind::StyleAndLayout);
+         }

@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sun, 14 Jul 2024 23:03:42 +0100
+Subject: [PATCH] [sailfishos][gecko] Drop AudioPlayback messages if no
+ embedder element is defined
+
+The AudioPlayback Window Actor passes "audio-playback" messages on to
+the embedder element by calling it directly. If the embedder element is
+null this will result in a "browser is null" error being output. This
+doesn't do any real harm, but is unnecessary and could cause confusion.
+This change adds a null check so that an attempt to call methods off the
+browser only happen if it's defined.
+
+On Sailfish OS the embedder element is always null, so there's no need
+(or way) to pass these calls on anyway.
+---
+ toolkit/actors/AudioPlaybackParent.jsm | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/toolkit/actors/AudioPlaybackParent.jsm b/toolkit/actors/AudioPlaybackParent.jsm
+index 5c54058528c5..7cfc5134e886 100644
+--- a/toolkit/actors/AudioPlaybackParent.jsm
++++ b/toolkit/actors/AudioPlaybackParent.jsm
+@@ -14,6 +14,9 @@ class AudioPlaybackParent extends JSWindowActorParent {
+   }
+   receiveMessage(aMessage) {
+     const browser = this.browsingContext.top.embedderElement;
++    if (!browser) {
++      return;
++    }
+     switch (aMessage.name) {
+       case "AudioPlayback:Start":
+         this._hasAudioPlayback = true;

@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Mon, 16 Mar 2020 14:46:51 +0200
+Subject: [PATCH] [sailfishos][gecko] Backport Embed MessageLoop contructor
+ back (sha1 eb2dcea271970)
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ ipc/chromium/src/base/message_loop.cc   | 28 +++++++++++++++++++++++++
+ ipc/chromium/src/base/message_loop.h    |  7 ++++++-
+ ipc/chromium/src/base/message_pump_qt.h |  3 +++
+ 3 files changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/ipc/chromium/src/base/message_loop.cc b/ipc/chromium/src/base/message_loop.cc
+index 26f31db899e4..83ff1136238b 100644
+--- a/ipc/chromium/src/base/message_loop.cc
++++ b/ipc/chromium/src/base/message_loop.cc
+@@ -28,6 +28,9 @@
+ #  if defined(MOZ_WIDGET_GTK)
+ #    include "base/message_pump_glib.h"
+ #  endif
++#  if defined(MOZ_WIDGET_QT)
++#    include "base/message_pump_qt.h"
++#  endif
+ #endif
+ #ifdef ANDROID
+ #  include "base/message_pump_android.h"
+@@ -175,6 +178,31 @@ void MessageLoop::set_current(MessageLoop* loop) { get_tls_ptr().Set(loop); }
+ 
+ static mozilla::Atomic<int32_t> message_loop_id_seq(0);
+ 
++MessageLoop::MessageLoop(base::MessagePump* messagePump)
++    : type_(TYPE_EMBED),
++      id_(++message_loop_id_seq),
++      nestable_tasks_allowed_(true),
++      exception_restoration_(false),
++      incoming_queue_lock_("MessageLoop Incoming Queue Lock"),
++      state_(NULL),
++      run_depth_base_(1),
++      shutting_down_(false),
++#ifdef OS_WIN
++      os_modal_loop_(false),
++#endif  // OS_WIN
++      transient_hang_timeout_(0),
++      permanent_hang_timeout_(0),
++      next_sequence_num_(0)
++{
++  DCHECK(!current()) << "should only have one message loop per thread";
++  get_tls_ptr().Set(this);
++
++  // Must initialize after current() is initialized.
++  mEventTarget = new EventTarget(this);
++
++  pump_ = messagePump;
++}
++
+ MessageLoop::MessageLoop(Type type, nsIEventTarget* aEventTarget)
+     : type_(type),
+       id_(++message_loop_id_seq),
+diff --git a/ipc/chromium/src/base/message_loop.h b/ipc/chromium/src/base/message_loop.h
+index bbfbac6f45d8..696f215e3be9 100644
+--- a/ipc/chromium/src/base/message_loop.h
++++ b/ipc/chromium/src/base/message_loop.h
+@@ -194,13 +194,15 @@ class MessageLoop : public base::MessagePump::Delegate {
+     TYPE_MOZILLA_PARENT,
+     TYPE_MOZILLA_NONMAINTHREAD,
+     TYPE_MOZILLA_NONMAINUITHREAD,
+-    TYPE_MOZILLA_ANDROID_UI
++    TYPE_MOZILLA_ANDROID_UI,
++    TYPE_EMBED
+   };
+ 
+   // Normally, it is not necessary to instantiate a MessageLoop.  Instead, it
+   // is typical to make use of the current thread's MessageLoop instance.
+   explicit MessageLoop(Type type = TYPE_DEFAULT,
+                        nsIEventTarget* aEventTarget = nullptr);
++  explicit MessageLoop(base::MessagePump* messagePump);
+   ~MessageLoop();
+ 
+   // Returns the type passed to the constructor.
+@@ -459,12 +461,15 @@ class MessageLoopForUI : public MessageLoop {
+  public:
+   explicit MessageLoopForUI(Type aType = TYPE_UI) : MessageLoop(aType) {}
+ 
++  MessageLoopForUI(base::MessagePump* messagePump) : MessageLoop(messagePump) {}
++
+   // Returns the MessageLoopForUI of the current thread.
+   static MessageLoopForUI* current() {
+     MessageLoop* loop = MessageLoop::current();
+     if (!loop) return NULL;
+     Type type = loop->type();
+     DCHECK(type == MessageLoop::TYPE_UI ||
++           type == MessageLoop::TYPE_EMBED ||
+            type == MessageLoop::TYPE_MOZILLA_PARENT ||
+            type == MessageLoop::TYPE_MOZILLA_CHILD);
+     return static_cast<MessageLoopForUI*>(loop);
+diff --git a/ipc/chromium/src/base/message_pump_qt.h b/ipc/chromium/src/base/message_pump_qt.h
+index bb91a8cc155a..8cad420e48e4 100644
+--- a/ipc/chromium/src/base/message_pump_qt.h
++++ b/ipc/chromium/src/base/message_pump_qt.h
+@@ -53,6 +53,9 @@ class MessagePumpForUI : public MessagePump {
+   // HandleDispatch is called after the poll has completed.
+   void HandleDispatch();
+ 
++ protected:
++  // This flag is set to false when Run should return.
++  bool keep_running_;
+  private:
+   // We may make recursive calls to Run, so we save state that needs to be
+   // separate between them in this structure type.

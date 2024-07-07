@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 22 May 2024 08:43:39 +0100
+Subject: [PATCH] [sailfishos][gecko] Prevent errors from DownloadPrompter
+
+Removes an error in the log output from the DownloadPrompter.
+---
+ toolkit/components/downloads/DownloadUIHelper.jsm | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/toolkit/components/downloads/DownloadUIHelper.jsm b/toolkit/components/downloads/DownloadUIHelper.jsm
+index 952d7ec99896..10c19c714396 100644
+--- a/toolkit/components/downloads/DownloadUIHelper.jsm
++++ b/toolkit/components/downloads/DownloadUIHelper.jsm
+@@ -165,7 +165,7 @@ XPCOMUtils.defineLazyGetter(DownloadUIHelper, "strings", function() {
+  *        attach prompts to the most recently active window.
+  */
+ var DownloadPrompter = function(aParent) {
+-  this._prompter = Services.ww.getNewPrompter(aParent);
++  this._prompter = null;
+ };
+ 
+ DownloadPrompter.prototype = {

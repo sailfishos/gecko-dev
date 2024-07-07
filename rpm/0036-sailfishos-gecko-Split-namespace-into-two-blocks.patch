@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sun, 1 Oct 2023 14:34:49 +0100
+Subject: [PATCH] [sailfishos][gecko] Split namespace into two blocks
+
+The Qt 5.6.3 moc tool doesn't support combined namespaces from C++17
+like this:
+
+namespace mozilla::detail {
+}
+
+But rather requires them to be structured as nested blocks:
+
+namespace mozilla { namespace detail {
+}}
+
+This change therefore ensures we have the latter. The affected file
+needs to be parsed by the moc tool during the QtMozEmbed build.
+---
+ mfbt/MaybeStorageBase.h | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/mfbt/MaybeStorageBase.h b/mfbt/MaybeStorageBase.h
+index 2732d78d0539..6a091a972724 100644
+--- a/mfbt/MaybeStorageBase.h
++++ b/mfbt/MaybeStorageBase.h
+@@ -13,7 +13,8 @@
+ #include <type_traits>
+ #include <utility>
+ 
+-namespace mozilla::detail {
++namespace mozilla {
++namespace detail {
+ 
+ template <typename T>
+ constexpr bool IsTriviallyDestructibleAndCopyable =
+@@ -87,6 +88,7 @@ struct MaybeStorageBase<T, true> {
+   constexpr T* addr() { return &mStorage.val; }
+ };
+ 
+-}  // namespace mozilla::detail
++}  // namespace detail
++}  // namespace mozilla
+ 
+ #endif

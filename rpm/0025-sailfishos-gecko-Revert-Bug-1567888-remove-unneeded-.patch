@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Date: Fri, 19 Feb 2021 18:30:35 +0300
+Subject: [PATCH] [sailfishos][gecko] Revert "Bug 1567888 - remove unneeded
+ QT-related rules and configure bits; r=nalexander"
+
+This reverts commit c27638c4bd0418e4888effeee495f30cfa91a158.
+
+Adapt the commit to gecko esr78.
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ config/rules.mk  | 17 +++++++++++++++++
+ old-configure.in |  3 +++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/config/rules.mk b/config/rules.mk
+index 0f9b2ace9c6a..85a08df1f2ff 100644
+--- a/config/rules.mk
++++ b/config/rules.mk
+@@ -37,6 +37,8 @@ endif
+ 
+ endif
+ 
++REPORT_BUILD_VERBOSE_MOC = $(REPORT_BUILD)
++
+ EXEC			= exec
+ 
+ ################################################################################
+@@ -614,6 +616,21 @@ else
+ relativize = $1
+ endif
+ 
++# DEFINES and ACDEFINES are needed here to enable conditional compilation of Q_OBJECTs:
++# 'moc' only knows about #defines it gets on the command line (-D...), not in
++# included headers like mozilla-config.h
++$(filter moc_%.cpp,$(CPPSRCS)): moc_%.cpp: $(srcdir)/%.h
++	$(REPORT_BUILD_VERBOSE)
++	$(MOC) $(DEFINES) $(ACDEFINES) $< $(OUTOPTION)$@
++
++$(filter moc_%.cc,$(CPPSRCS)): moc_%.cc: $(srcdir)/%.cc
++	$(REPORT_BUILD_VERBOSE)
++	$(MOC) $(DEFINES) $(ACDEFINES) $(_VPATH_SRCS:.cc=.h) $(OUTOPTION)$@
++
++$(filter qrc_%.cpp,$(CPPSRCS)): qrc_%.cpp: $(srcdir)/%.qrc
++	$(REPORT_BUILD_VERBOSE)
++	$(RCC) -name $* $< $(OUTOPTION)$@
++
+ ifdef ASFILES
+ # The AS_DASH_C_FLAG is needed cause not all assemblers (Solaris) accept
+ # a '-c' flag.
+diff --git a/old-configure.in b/old-configure.in
+index fd5559155bfd..08e6276ff2f2 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1769,6 +1769,9 @@ AC_SUBST(MOZ_ENABLE_QMSYSTEM2)
+ AC_SUBST_LIST(MOZ_QT_CFLAGS)
+ AC_SUBST_LIST(MOZ_QT_LIBS)
+ 
++AC_SUBST(MOC)
++AC_SUBST(RCC)
++
+ dnl ========================================================
+ dnl =
+ dnl = Components & Features

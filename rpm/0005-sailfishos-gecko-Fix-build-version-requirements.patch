@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Thu, 10 Aug 2023 00:53:24 +0100
+Subject: [PATCH] [sailfishos][gecko] Fix build version requirements
+
+Updates version requirements and adds workarounds to avoid version
+checks failing for various subcomponents.
+
+Adjust NSPR version.
+
+Work around the version checks for the following:
+1. libclang >= 5.0
+2. icu-i18n >= 69.1
+---
+ build/moz.configure/bindgen.configure | 1 +
+ build/moz.configure/nspr.configure    | 2 +-
+ js/moz.configure                      | 2 +-
+ 3 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
+index 73e590a397ea..5d5098823762 100644
+--- a/build/moz.configure/bindgen.configure
++++ b/build/moz.configure/bindgen.configure
+@@ -278,6 +278,7 @@ def bindgen_config_paths(clang, libclang, build_project):
+ @imports(_from="ctypes", _import="CDLL")
+ @imports(_from="textwrap", _import="dedent")
+ def min_libclang_version(libclang):
++    return True
+     try:
+         lib = CDLL(libclang)
+         # We want at least 5.0. The API we test below is enough for that.
+diff --git a/build/moz.configure/nspr.configure b/build/moz.configure/nspr.configure
+index 3dcefd637260..8f905fbdabaf 100644
+--- a/build/moz.configure/nspr.configure
++++ b/build/moz.configure/nspr.configure
+@@ -50,7 +50,7 @@ set_define("JS_WITHOUT_NSPR", True, when=js_without_nspr)
+ def nspr_minver(js_standalone):
+     if js_standalone:
+         return "nspr >= 4.10"
+-    return "nspr >= 4.32"
++    return "nspr >= 4.29"
+ 
+ 
+ nspr_pkg = pkg_check_modules("NSPR", nspr_minver, when="--with-system-nspr")
+diff --git a/js/moz.configure b/js/moz.configure
+index 3c3d0d4359f0..f8e4c89e9c91 100644
+--- a/js/moz.configure
++++ b/js/moz.configure
+@@ -959,7 +959,7 @@ set_define(
+ # ======================================================
+ option("--with-system-icu", help="Use system ICU")
+ 
+-system_icu = pkg_check_modules("MOZ_ICU", "icu-i18n >= 69.1", when="--with-system-icu")
++system_icu = pkg_check_modules("MOZ_ICU", "icu-i18n >= 68.2", when="--with-system-icu")
+ 
+ set_config("MOZ_SYSTEM_ICU", True, when=system_icu)
+ set_define("MOZ_SYSTEM_ICU", True, when=system_icu)

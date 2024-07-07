@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sun, 26 Nov 2023 12:49:29 +0000
+Subject: [PATCH] [sailfishos][gecko] Supress URLQueryStrippingListService.jsm
+ error
+
+The URLQueryStrippingListService service is initialised by the
+"profile-after-change" event. The event also goes through to the
+observer, which is coded to generate an error when the event is received
+("unexpected event profile-after-change"). This change supressed the
+error as long as the event is received before the service has been
+initialised (i.e. it's the event that's caused the service to be
+initialised).
+
+It's not clear why this isn't an issue upstream.
+
+See the following for context:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1706608
+
+https://phabricator.services.mozilla.com/D117376
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1723981
+---
+ .../components/antitracking/URLQueryStrippingListService.jsm  | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/toolkit/components/antitracking/URLQueryStrippingListService.jsm b/toolkit/components/antitracking/URLQueryStrippingListService.jsm
+index 991fd0d11f0d..b8eb2c25c358 100644
+--- a/toolkit/components/antitracking/URLQueryStrippingListService.jsm
++++ b/toolkit/components/antitracking/URLQueryStrippingListService.jsm
+@@ -220,6 +220,10 @@ class URLQueryStrippingListService {
+         let prefValue = Services.prefs.getStringPref(data, "");
+         this._onPrefUpdate(data, prefValue);
+         break;
++      case "profile-after-change":
++        if (!!this.initialized) {
++          Cu.reportError(`Unexpected post-init event ${topic}`);
++        }
+       default:
+         Cu.reportError(`Unexpected event ${topic}`);
+     }

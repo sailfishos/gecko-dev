@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 21 Aug 2024 18:58:14 +0100
+Subject: [PATCH] [sailfishos][gecko] Fix build failure due to rust-lang/rust
+ PR 99413
+
+Allows building WGPU with our version of Rust.
+
+See:
+1. https://github.com/gfx-rs/wgpu/pull/2968
+2. https://github.com/gfx-rs/wgpu/pull/2968/commits/220e848720ae7ce736619e5781d7b128efe6d728
+
+Applies the following commit from upstream gfx-rs/wgpu project:
+
+commit 220e848720ae7ce736619e5781d7b128efe6d728
+Author: Frank Steffahn <fdsteffahn@gmail.com>
+Date:   Tue Aug 16 18:36:16 2022 +0200
+
+    Fix build failure due to rust-lang/rust PR 99413
+---
+ gfx/wgpu/wgpu-core/src/device/mod.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/gfx/wgpu/wgpu-core/src/device/mod.rs b/gfx/wgpu/wgpu-core/src/device/mod.rs
+index 8d1db631cd76..20f430eba20d 100644
+--- a/gfx/wgpu/wgpu-core/src/device/mod.rs
++++ b/gfx/wgpu/wgpu-core/src/device/mod.rs
+@@ -1486,6 +1486,7 @@ impl<B: GfxBackend> Device<B> {
+ 
+         // `BTreeMap` has ordered bindings as keys, which allows us to coalesce
+         // the descriptor writes into a single transaction.
++        let mut desc_set; // early declaration so it's dropped after write_map
+         let mut write_map = BTreeMap::new();
+         let mut used_buffer_ranges = Vec::new();
+         for entry in desc.entries.iter() {
+@@ -1779,7 +1780,7 @@ impl<B: GfxBackend> Device<B> {
+             self.desc_allocator
+                 .lock()
+                 .allocate(&self.raw, &layout.raw, &layout.desc_count, 1)?;
+-        let mut desc_set = desc_sets.pop().unwrap();
++        desc_set = desc_sets.pop().unwrap();
+ 
+         // Set the descriptor set's label for easier debugging.
+         if let Some(label) = desc.label.as_ref() {

@@ -1,0 +1,152 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sat, 2 Dec 2023 22:53:02 +0000
+Subject: [PATCH] [sailfishos][gecko] Add and adjust embedlite static prefs
+
+Adds the various embedlite static preferences to StaticPrefList.yaml so
+that these will be availble for use as static pref variables in the C++
+code.
+
+[sailfishos][gecko] Set security.external_protocol_requires_permission to default to false
+
+Upstream introduces the new user preference:
+
+security.external_protocol_requires_permission
+
+This defaults to true, but we need it to default to false so that
+external URL actions continue to work as intended. Here we change the
+default value of the preference from true to false so as to allow this.
+
+[sailfishos][gecko] Set embedlite.azpc.json.doubletap static pref to default to true
+
+When the preferences were moved to the StaticPrefList.yaml file the
+embedlite.azpc.json.doubletap was set to default to false, but it should
+have been set to true. If set to false, double-tap always zooms, even on
+items that support double-taps.
+
+[sailfishos][gecko] Set gfx.webrender.force-disabled to default to true
+
+Sailfish OS requires the Webrender pipeline to be disabled. Setting
+gfx.webrender.force-disabled on start-up in WebEngineSettings at the app
+level isn't enough, so it needs to be patched to default to true in all
+cases.
+---
+ modules/libpref/init/StaticPrefList.yaml      | 59 ++++++++++++++++++-
+ modules/libpref/init/all.js                   |  2 +-
+ modules/libpref/moz.build                     |  1 +
+ .../handling/ContentDispatchChooser.jsm       |  2 +-
+ 4 files changed, 61 insertions(+), 3 deletions(-)
+
+diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
+index 058df55a189d..615143df6b5e 100644
+--- a/modules/libpref/init/StaticPrefList.yaml
++++ b/modules/libpref/init/StaticPrefList.yaml
+@@ -3986,6 +3986,63 @@
+   value: false
+   mirror: always
+ 
++#ifdef MOZ_EMBEDLITE
++  #---------------------------------------------------------------------------
++  # Prefs starting with "embedlite."
++  #---------------------------------------------------------------------------
++
++# Default azpc notifications behavior
++-   name: embedlite.azpc.handle.viewport
++    type: bool
++    value: true
++    mirror: always
++
++-   name: embedlite.azpc.handle.singletap
++    type: bool
++    value: false
++    mirror: always
++
++-   name: embedlite.azpc.handle.longtap
++    type: bool
++    value: false
++    mirror: always
++
++-   name: embedlite.azpc.json.singletap
++    type: bool
++    value: true
++    mirror: always
++
++-   name: embedlite.azpc.json.doubletap
++    type: bool
++    value: true
++    mirror: always
++
++-   name: embedlite.azpc.json.longtap
++    type: bool
++    value: true
++    mirror: always
++
++-   name: embedlite.azpc.json.scroll
++    type: bool
++    value: false
++    mirror: always
++
++# Make gecko compositor use GL context/surface provided by the application
++-   name: embedlite.compositor.external_gl_context
++    type: bool
++    value: true
++    mirror: always
++
++# Request the application to create GLContext for the compositor as
++# soon as the top level PuppetWidget is creted for the view. Setting
++# this pref only makes sense when using an external compositor gl context
++-   name: embedlite.compositor.request_external_gl_context_early
++    type: bool
++    value: true
++    mirror: always
++
++#endif
++
+ #---------------------------------------------------------------------------
+ # Prefs starting with "extensions."
+ #---------------------------------------------------------------------------
+@@ -5010,7 +5067,7 @@
+ # channels.
+ - name: gfx.webrender.force-disabled
+   type: bool
+-  value: false
++  value: true
+   mirror: once
+ 
+ #ifdef MOZ_WIDGET_GTK
+diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
+index d3650a05b5dd..67346866cb69 100644
+--- a/modules/libpref/init/all.js
++++ b/modules/libpref/init/all.js
+@@ -4598,7 +4598,7 @@ pref("browser.privatebrowsing.autostart", false);
+ // Whether sites require the open-protocol-handler permission to open a
+ //preferred external application for a protocol. If a site doesn't have
+ // permission we will show a prompt.
+-pref("security.external_protocol_requires_permission", true);
++pref("security.external_protocol_requires_permission", false);
+ 
+ // Preferences for the form autofill toolkit component.
+ // The truthy values of "extensions.formautofill.available" are "on" and "detect",
+diff --git a/modules/libpref/moz.build b/modules/libpref/moz.build
+index 557c49fb1ff3..094780620872 100644
+--- a/modules/libpref/moz.build
++++ b/modules/libpref/moz.build
+@@ -42,6 +42,7 @@ pref_groups = [
+     "docshell",
+     "dom",
+     "editor",
++    "embedlite",
+     "extensions",
+     "findbar",
+     "fission",
+diff --git a/toolkit/mozapps/handling/ContentDispatchChooser.jsm b/toolkit/mozapps/handling/ContentDispatchChooser.jsm
+index 6b64f34a490d..4a2a98f094ff 100644
+--- a/toolkit/mozapps/handling/ContentDispatchChooser.jsm
++++ b/toolkit/mozapps/handling/ContentDispatchChooser.jsm
+@@ -625,5 +625,5 @@ XPCOMUtils.defineLazyPreferenceGetter(
+   nsContentDispatchChooser,
+   "isPermissionEnabled",
+   "security.external_protocol_requires_permission",
+-  true
++  false
+ );

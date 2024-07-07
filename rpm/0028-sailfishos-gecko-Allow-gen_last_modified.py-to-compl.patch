@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Tue, 26 Sep 2023 01:12:28 +0100
+Subject: [PATCH] [sailfishos][gecko] Allow gen_last_modified.py to complete
+
+Updates the MOZ_BUILD_APP check to allow for xulrunner and mobile/
+builds.
+---
+ services/settings/dumps/gen_last_modified.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/services/settings/dumps/gen_last_modified.py b/services/settings/dumps/gen_last_modified.py
+index 8a88400a0f7d..091439fe5c40 100644
+--- a/services/settings/dumps/gen_last_modified.py
++++ b/services/settings/dumps/gen_last_modified.py
+@@ -51,10 +51,10 @@ def main(output):
+     # SeaMonkey             https://searchfox.org/comm-central/rev/89f957706bbda77e5f34e64e117e7ce121bb5d83/suite/installer/package-manifest.in#307-309             # NOQA: E501
+     assert buildconfig.substs["MOZ_BUILD_APP"] in (
+         "browser",
+-        "mobile/android",
++        "xulrunner",
+         "comm/mail",
+         "comm/suite",
+-    )
++    ) or buildconfig.substs["MOZ_BUILD_APP"].startswith('mobile/')
+ 
+     remotesettings_dumps = {}
+ 

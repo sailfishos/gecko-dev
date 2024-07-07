@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Thu, 8 Dec 2016 14:32:54 +0200
+Subject: [PATCH] [sailfishos][compositor] Fix GLContextProvider defines
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ gfx/gl/GLContextProvider.h | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/gfx/gl/GLContextProvider.h b/gfx/gl/GLContextProvider.h
+index 12d1a497b960..16f9a35c8301 100644
+--- a/gfx/gl/GLContextProvider.h
++++ b/gfx/gl/GLContextProvider.h
+@@ -44,9 +44,11 @@ namespace gl {
+ #  define GL_CONTEXT_PROVIDER_DEFAULT GLContextProviderCGL
+ #endif
+ 
+-#define GL_CONTEXT_PROVIDER_NAME GLContextProviderEGL
+-#include "GLContextProviderImpl.h"
+-#undef GL_CONTEXT_PROVIDER_NAME
++#ifndef MOZ_GL_PROVIDER
++#  define GL_CONTEXT_PROVIDER_NAME GLContextProviderEGL
++#  include "GLContextProviderImpl.h"
++#  undef GL_CONTEXT_PROVIDER_NAME
++#endif
+ 
+ #if defined(MOZ_X11)
+ #  define GL_CONTEXT_PROVIDER_NAME GLContextProviderGLX
+@@ -66,8 +68,10 @@ namespace gl {
+ #  endif
+ #endif
+ 
+-#ifndef GL_CONTEXT_PROVIDER_DEFAULT
+-#  define GL_CONTEXT_PROVIDER_DEFAULT GLContextProviderEGL
++#ifndef MOZ_GL_PROVIDER
++#  ifndef GL_CONTEXT_PROVIDER_DEFAULT
++#    define GL_CONTEXT_PROVIDER_DEFAULT GLContextProviderEGL
++#  endif
+ #endif
+ 
+ #if defined(MOZ_WIDGET_UIKIT)
+@@ -83,6 +87,7 @@ namespace gl {
+ #  define GL_CONTEXT_PROVIDER_NAME MOZ_GL_PROVIDER
+ #  include "GLContextProviderImpl.h"
+ #  undef GL_CONTEXT_PROVIDER_NAME
++#  undef GL_CONTEXT_PROVIDER_DEFAULT
+ #  define GL_CONTEXT_PROVIDER_DEFAULT MOZ_GL_PROVIDER
+ #endif
+ 

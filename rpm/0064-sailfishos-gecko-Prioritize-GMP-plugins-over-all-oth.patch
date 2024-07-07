@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 24 Jun 2020 07:56:50 +0200
+Subject: [PATCH] [sailfishos][gecko] Prioritize GMP plugins over all others,
+ and support decoding video for h264, vp8 & vp9.
+
+Automatically load gmp-droid at startup
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ dom/media/platforms/PDMFactory.cpp | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
+index 6e84abde7074..c55cb0ebe0bb 100644
+--- a/dom/media/platforms/PDMFactory.cpp
++++ b/dom/media/platforms/PDMFactory.cpp
+@@ -553,6 +553,11 @@ void PDMFactory::CreateContentPDMs() {
+ }
+ 
+ void PDMFactory::CreateDefaultPDMs() {
++  if (StaticPrefs::media_gmp_decoder_enabled() &&
++      !CreateAndStartupPDM<GMPDecoderModule>()) {
++    mFailureFlags += DecoderDoctorDiagnostics::Flags::GMPPDMFailedToStartup;
++  }
++
+ #ifdef XP_WIN
+   if (StaticPrefs::media_wmf_enabled() && !IsWin7AndPre2000Compatible()) {
+     if (!CreateAndStartupPDM<WMFDecoderModule>()) {
+@@ -591,11 +596,6 @@ void PDMFactory::CreateDefaultPDMs() {
+ #endif
+ 
+   CreateAndStartupPDM<AgnosticDecoderModule>();
+-
+-  if (StaticPrefs::media_gmp_decoder_enabled() &&
+-      !CreateAndStartupPDM<GMPDecoderModule>()) {
+-    mFailureFlags += DecoderDoctorDiagnostics::Flags::GMPPDMFailedToStartup;
+-  }
+ }
+ 
+ void PDMFactory::CreateNullPDM() {

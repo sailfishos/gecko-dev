@@ -1,0 +1,350 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Tue, 28 May 2024 09:58:04 +0100
+Subject: [PATCH] [sailfishos][gecko] Restore NotifyDidPaint event and timers
+
+Reintroduces the NotifyDidPaint event with timers. Ultimately this
+ensures that the OnFirstPaint message is sent and received by
+EmbedLiteViewParent, so that QMozViewPrivate::OnFirstPaint is called.
+Without this, WebView rendering is never initialised on the Qt side.
+
+This is a replacement for the ESR 78 patch that reverts "Bug 1445570 -
+Remove EnsureEventualAfterPaint timer", which itself was based on the following
+commit:
+
+Revert "Bug 1445570 - Remove EnsureEventualAfterPaint timer. r=tnikkel"
+
+This reverted commit 1deccd7ac14706ad1849343cfb2b93df191a1c42 but the
+underlying code has changed significantly so a straightforward revert is
+no longer possible.
+
+Co-authored-by: Andrew den Exter <andrew.den.exter@qinetic.com.au>
+---
+ dom/base/nsDOMWindowUtils.cpp    |   1 -
+ layout/base/nsDocumentViewer.cpp |   8 ++
+ layout/base/nsPresContext.cpp    | 142 ++++++++++++++++++-------------
+ layout/base/nsPresContext.h      |  33 +++++++
+ layout/base/nsRefreshDriver.cpp  |   6 --
+ 5 files changed, 125 insertions(+), 65 deletions(-)
+
+diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
+index fbcb9cc1ae60..161028f86d8c 100644
+--- a/dom/base/nsDOMWindowUtils.cpp
++++ b/dom/base/nsDOMWindowUtils.cpp
+@@ -407,7 +407,6 @@ nsDOMWindowUtils::UpdateLayerTree() {
+         ChangesToFlush(FlushType::Display, false /* flush animations */));
+     RefPtr<nsViewManager> vm = presShell->GetViewManager();
+     if (nsView* view = vm->GetRootView()) {
+-      nsAutoScriptBlocker scriptBlocker;
+       presShell->Paint(
+           view, view->GetBounds(),
+           PaintFlags::PaintLayers | PaintFlags::PaintSyncDecodeImages);
+diff --git a/layout/base/nsDocumentViewer.cpp b/layout/base/nsDocumentViewer.cpp
+index e5b44d2c32b5..2cd369ae87f7 100644
+--- a/layout/base/nsDocumentViewer.cpp
++++ b/layout/base/nsDocumentViewer.cpp
+@@ -1573,6 +1573,10 @@ static void DetachContainerRecurse(nsIDocShell* aShell) {
+     if (Document* doc = viewer->GetDocument()) {
+       doc->SetContainer(nullptr);
+     }
++    RefPtr<nsPresContext> pc = viewer->GetPresContext();
++    if (pc) {
++      pc->Detach();
++    }
+     if (PresShell* presShell = viewer->GetPresShell()) {
+       auto weakShell = static_cast<nsDocShell*>(aShell);
+       presShell->SetForwardingContainer(weakShell);
+@@ -1714,6 +1718,9 @@ nsDocumentViewer::Destroy() {
+     if (mDocument) {
+       mDocument->SetContainer(nullptr);
+     }
++    if (mPresContext) {
++      mPresContext->Detach();
++    }
+     if (mPresShell) {
+       mPresShell->SetForwardingContainer(mContainer);
+     }
+@@ -3642,6 +3649,7 @@ void nsDocumentViewer::InvalidatePotentialSubDocDisplayItem() {
+ 
+ void nsDocumentViewer::DestroyPresContext() {
+   InvalidatePotentialSubDocDisplayItem();
++  mPresContext->Detach();
+   mPresContext = nullptr;
+ }
+ 
+diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
+index 30be2fc985bf..0b90a773b767 100644
+--- a/layout/base/nsPresContext.cpp
++++ b/layout/base/nsPresContext.cpp
+@@ -314,6 +314,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsPresContext)
+ NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE(nsPresContext, LastRelease())
+ 
+ void nsPresContext::LastRelease() {
++  if (IsRoot()) {
++    static_cast<nsRootPresContext*>(this)->CancelAllDidPaintTimers();
++  }
+   if (mMissingFonts) {
+     mMissingFonts->Clear();
+   }
+@@ -831,6 +834,13 @@ void nsPresContext::DetachPresShell() {
+     mRefreshDriver->Disconnect();
+     // Can't null out the refresh driver here.
+   }
++
++  if (IsRoot()) {
++    nsRootPresContext* thisRoot = static_cast<nsRootPresContext*>(this);
++
++    // The did-paint timer also depends on a non-null pres shell.
++    thisRoot->CancelAllDidPaintTimers();
++  }
+ }
+ 
+ void nsPresContext::DocumentCharSetChanged(NotNull<const Encoding*> aCharSet) {
+@@ -2018,6 +2028,12 @@ void nsPresContext::NotifyInvalidation(TransactionId aTransactionId,
+       transaction->mTransactionId = aTransactionId;
+     }
+   }
++  if (!pc) {
++    nsRootPresContext* rpc = GetRootPresContext();
++    if (rpc) {
++      rpc->EnsureEventualDidPaintEvent(aTransactionId);
++    }
++  }
+ 
+   TransactionInvalidations* transaction = GetInvalidations(aTransactionId);
+   MOZ_ASSERT(transaction);
+@@ -2096,63 +2112,24 @@ class DelayedFireDOMPaintEvent : public Runnable {
+   nsTArray<nsRect> mList;
+ };
+ 
+-void nsPresContext::NotifyRevokingDidPaint(TransactionId aTransactionId) {
+-  if ((IsRoot() || !PresShell()->IsVisible()) && mTransactions.IsEmpty()) {
+-    return;
+-  }
+-
+-  TransactionInvalidations* transaction = nullptr;
+-  for (auto& t : mTransactions) {
+-    if (t.mTransactionId == aTransactionId) {
+-      transaction = &t;
+-      break;
+-    }
+-  }
+-  // If there are no transaction invalidations (which imply callers waiting
+-  // on the event) for this revoked id, then we don't need to fire a
+-  // MozAfterPaint.
+-  if (!transaction) {
+-    return;
+-  }
+-
+-  // If there are queued transactions with an earlier id, we can't send
+-  // our event now since it will arrive out of order. Set the waiting for
+-  // previous transaction flag to true, and we'll send the event when
+-  // the others are completed.
+-  // If this is the only transaction, then we can send it immediately.
+-  if (mTransactions.Length() == 1) {
+-    nsCOMPtr<nsIRunnable> ev = new DelayedFireDOMPaintEvent(
+-        this, std::move(transaction->mInvalidations),
+-        transaction->mTransactionId, mozilla::TimeStamp());
+-    nsContentUtils::AddScriptRunner(ev);
+-    mTransactions.RemoveElementAt(0);
+-  } else {
+-    transaction->mIsWaitingForPreviousTransaction = true;
+-  }
+-
+-  auto recurse = [&aTransactionId](dom::Document& aSubDoc) {
+-    if (nsPresContext* pc = aSubDoc.GetPresContext()) {
+-      pc->NotifyRevokingDidPaint(aTransactionId);
+-    }
+-    return CallState::Continue;
+-  };
+-  mDocument->EnumerateSubDocuments(recurse);
+-}
+-
+ void nsPresContext::NotifyDidPaintForSubtree(
+     TransactionId aTransactionId, const mozilla::TimeStamp& aTimeStamp) {
+   if (mFirstContentfulPaintTransactionId && !mHadContentfulPaintComposite) {
+     if (aTransactionId >= *mFirstContentfulPaintTransactionId) {
+       mHadContentfulPaintComposite = true;
+       RefPtr<nsDOMNavigationTiming> timing = mDocument->GetNavigationTiming();
+-      if (timing && !IsPrintingOrPrintPreview()) {
++      if (timing && !IsPrintingOrPrintPreview() && !aTimeStamp.IsNull()) {
+         timing->NotifyContentfulPaintForRootContentDocument(aTimeStamp);
+       }
+     }
+   }
+ 
+-  if (IsRoot() && mTransactions.IsEmpty()) {
+-    return;
++  if (IsRoot()) {
++    static_cast<nsRootPresContext*>(this)->CancelDidPaintTimers(aTransactionId);
++
++    if (mTransactions.IsEmpty()) {
++      return;
++    }
+   }
+ 
+   if (!PresShell()->IsVisible() && mTransactions.IsEmpty()) {
+@@ -2179,18 +2156,6 @@ void nsPresContext::NotifyDidPaintForSubtree(
+       }
+       mTransactions.RemoveElementAt(i);
+     } else {
+-      // If there are transaction which is waiting for this transaction,
+-      // we should fire a MozAfterPaint immediately.
+-      if (sent && mTransactions[i].mIsWaitingForPreviousTransaction) {
+-        nsCOMPtr<nsIRunnable> ev = new DelayedFireDOMPaintEvent(
+-            this, std::move(mTransactions[i].mInvalidations),
+-            mTransactions[i].mTransactionId, aTimeStamp);
+-        NS_DispatchToCurrentThreadQueue(ev.forget(),
+-                                        EventQueuePriority::MediumHigh);
+-        sent = true;
+-        mTransactions.RemoveElementAt(i);
+-        continue;
+-      }
+       i++;
+     }
+   }
+@@ -2707,6 +2672,67 @@ nsRootPresContext::nsRootPresContext(dom::Document* aDocument,
+                                      nsPresContextType aType)
+     : nsPresContext(aDocument, aType) {}
+ 
++nsRootPresContext::~nsRootPresContext() {
++  NS_ASSERTION(mRegisteredPlugins.Count() == 0,
++               "All plugins should have been unregistered");
++  CancelAllDidPaintTimers();
++}
++
++/* virtual */
++void nsRootPresContext::Detach() {
++  CancelAllDidPaintTimers();
++  nsPresContext::Detach();
++}
++
++void
++nsRootPresContext::EnsureEventualDidPaintEvent(TransactionId aTransactionId)
++{
++  for (NotifyDidPaintTimer& t : mNotifyDidPaintTimers) {
++    if (t.mTransactionId == aTransactionId) {
++      return;
++    }
++  }
++
++  nsCOMPtr<nsITimer> timer;
++  RefPtr<nsRootPresContext> self = this;
++  nsresult rv = NS_NewTimerWithCallback(
++    getter_AddRefs(timer),
++    NewNamedTimerCallback([self, aTransactionId](){
++      nsAutoScriptBlocker blockScripts;
++      self->NotifyDidPaintForSubtree(aTransactionId);
++     }, "NotifyDidPaintForSubtree"), 100, nsITimer::TYPE_ONE_SHOT,
++    Document()->EventTargetFor(TaskCategory::Other));
++
++  if (NS_SUCCEEDED(rv)) {
++    NotifyDidPaintTimer* t = mNotifyDidPaintTimers.AppendElement();
++    t->mTransactionId = aTransactionId;
++    t->mTimer = timer;
++  }
++}
++
++void
++nsRootPresContext::CancelDidPaintTimers(TransactionId aTransactionId)
++{
++  uint32_t i = 0;
++  while (i < mNotifyDidPaintTimers.Length()) {
++    if (mNotifyDidPaintTimers[i].mTransactionId <= aTransactionId) {
++      mNotifyDidPaintTimers[i].mTimer->Cancel();
++      mNotifyDidPaintTimers.RemoveElementAt(i);
++    } else {
++      i++;
++    }
++  }
++}
++
++void
++nsRootPresContext::CancelAllDidPaintTimers()
++{
++  for (uint32_t i = 0; i < mNotifyDidPaintTimers.Length(); i++) {
++    mNotifyDidPaintTimers[i].mTimer->Cancel();
++  }
++  mNotifyDidPaintTimers.Clear();
++}
++
+ void nsRootPresContext::AddWillPaintObserver(nsIRunnable* aRunnable) {
+   if (!mWillPaintFallbackEvent.IsPending()) {
+     mWillPaintFallbackEvent = new RunWillPaintObservers(this);
+diff --git a/layout/base/nsPresContext.h b/layout/base/nsPresContext.h
+index fc86e2748210..c91720790ab5 100644
+--- a/layout/base/nsPresContext.h
++++ b/layout/base/nsPresContext.h
+@@ -355,6 +355,13 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
+ 
+   nsDocShell* GetDocShell() const;
+ 
++  /**
++   * Detach this pres context - i.e. cancel relevant timers,
++   * SetLinkHandler(null), etc.
++   * Only to be used by the DocumentViewer.
++   */
++  virtual void Detach() {}
++
+   /**
+    * Get the visible area associated with this presentation context.
+    * This is the size of the visible area that is used for
+@@ -1372,8 +1379,28 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
+ class nsRootPresContext final : public nsPresContext {
+  public:
+   nsRootPresContext(mozilla::dom::Document* aDocument, nsPresContextType aType);
++  virtual ~nsRootPresContext();
+   virtual bool IsRoot() override { return true; }
+ 
++  virtual void Detach() override;
++
++  /**
++   * Ensure that NotifyDidPaintForSubtree is eventually called on this
++   * object after a timeout.
++   */
++  void EnsureEventualDidPaintEvent(TransactionId aTransactionId);
++
++  /**
++   * Cancels any pending eventual did paint timer for transaction
++   * ids up to and including aTransactionId.
++   */
++  void CancelDidPaintTimers(TransactionId aTransactionId);
++
++  /**
++   * Cancel all pending eventual did paint timers.
++   */
++  void CancelAllDidPaintTimers();
++
+   /**
+    * Add a runnable that will get called before the next paint. They will get
+    * run eventually even if painting doesn't happen. They might run well before
+@@ -1408,6 +1435,12 @@ class nsRootPresContext final : public nsPresContext {
+ 
+   friend class nsPresContext;
+ 
++  struct NotifyDidPaintTimer {
++    TransactionId mTransactionId;
++    nsCOMPtr<nsITimer> mTimer;
++  };
++  AutoTArray<NotifyDidPaintTimer, 4> mNotifyDidPaintTimers;
++
+   nsTArray<nsCOMPtr<nsIRunnable>> mWillPaintObservers;
+   nsRevocableEventPtr<RunWillPaintObservers> mWillPaintFallbackEvent;
+ };
+diff --git a/layout/base/nsRefreshDriver.cpp b/layout/base/nsRefreshDriver.cpp
+index 7726971e63c9..34406f9cf2fe 100644
+--- a/layout/base/nsRefreshDriver.cpp
++++ b/layout/base/nsRefreshDriver.cpp
+@@ -2647,12 +2647,6 @@ void nsRefreshDriver::RevokeTransactionId(
+     FinishedWaitingForTransaction();
+   }
+ 
+-  // Notify the pres context so that it can deliver MozAfterPaint for this
+-  // id if any caller was expecting it.
+-  nsPresContext* pc = GetPresContext();
+-  if (pc) {
+-    pc->NotifyRevokingDidPaint(aTransactionId);
+-  }
+   // Remove aTransactionId from the set of outstanding transactions since we're
+   // no longer waiting on it to be completed, but don't revert
+   // mNextTransactionId since we can't use the id again.

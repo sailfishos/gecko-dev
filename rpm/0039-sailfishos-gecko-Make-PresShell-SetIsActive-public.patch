@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Thu, 2 Nov 2023 23:08:34 +0000
+Subject: [PATCH] [sailfishos][gecko] Make PresShell::SetIsActive() public
+
+---
+ layout/base/PresShell.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/layout/base/PresShell.h b/layout/base/PresShell.h
+index 7d9c12685596..86469a22e836 100644
+--- a/layout/base/PresShell.h
++++ b/layout/base/PresShell.h
+@@ -884,6 +884,7 @@ class PresShell final : public nsStubDocumentObserver,
+     return mObservesMutationsForPrint;
+   }
+ 
++  void SetIsActive(bool aIsActive);
+   void ActivenessMaybeChanged();
+   bool IsActive() const { return mIsActive; }
+ 
+@@ -1694,7 +1695,6 @@ class PresShell final : public nsStubDocumentObserver,
+  private:
+   ~PresShell();
+ 
+-  void SetIsActive(bool aIsActive);
+   bool ShouldBeActive() const;
+ 
+ 
