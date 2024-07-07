@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 4 Dec 2020 16:56:05 +0200
+Subject: [PATCH] [sailfishos][gecko] Start using user-agent builder. JB#52068
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ netwerk/protocol/http/nsHttpHandler.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
+index 0bb944164652..f8207a49d67c 100644
+--- a/netwerk/protocol/http/nsHttpHandler.cpp
++++ b/netwerk/protocol/http/nsHttpHandler.cpp
+@@ -374,7 +374,7 @@ nsresult nsHttpHandler::Init() {
+ 
+   mRequestContextService = RequestContextService::GetOrCreate();
+ 
+-#if defined(ANDROID)
++#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
+   mProductSub.AssignLiteral(MOZILLA_UAVERSION);
+ #else
+   mProductSub.AssignLiteral(LEGACY_UA_GECKO_TRAIL);
+@@ -803,7 +803,7 @@ void nsHttpHandler::InitUserAgentComponents() {
+ #endif
+   );
+ 
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(MOZ_EMBEDLITE)
+   nsCOMPtr<nsIPropertyBag2> infoService =
+       do_GetService("@mozilla.org/system-info;1");
+   MOZ_ASSERT(infoService, "Could not find a system info service");
+@@ -838,9 +838,11 @@ void nsHttpHandler::InitUserAgentComponents() {
+     }
+   }
+ 
++#if defined(MOZ_WIDGET_ANDROID)
+   if (Preferences::GetBool(UA_PREF("use_device"), false)) {
+     mDeviceModelId = mozilla::net::GetDeviceModelId();
+   }
++#endif  // MOZ_WIDGET_ANDROID
+ #endif  // ANDROID
+ 
+   // Gather OS/CPU.

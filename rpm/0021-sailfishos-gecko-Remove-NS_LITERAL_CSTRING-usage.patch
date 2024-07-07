@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sat, 16 Sep 2023 15:28:29 +0100
+Subject: [PATCH] [sailfishos][gecko] Remove NS_LITERAL_CSTRING usage
+
+The usage was wrapped in a preprocessor condition, which may be why it's
+not caused issues for non-EmbedLite builds.
+
+It might be worth submitting this change upstream if it still exists in
+more recent versions.
+---
+ storage/mozStorageConnection.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/storage/mozStorageConnection.cpp b/storage/mozStorageConnection.cpp
+index 5526d6f289ac..3bb8a3afdb50 100644
+--- a/storage/mozStorageConnection.cpp
++++ b/storage/mozStorageConnection.cpp
+@@ -878,7 +878,7 @@ nsresult Connection::initializeInternal() {
+   }
+ 
+ #if defined(MOZ_MEMORY_TEMP_STORE_PRAGMA)
+-  (void)ExecuteSimpleSQL(NS_LITERAL_CSTRING("PRAGMA temp_store = 2;"));
++  (void)ExecuteSimpleSQL("PRAGMA temp_store = 2;"_ns);
+ #endif
+ 
+   // Register our built-in SQL functions.

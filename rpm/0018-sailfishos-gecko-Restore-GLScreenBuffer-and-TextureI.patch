@@ -1,0 +1,2186 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Mon, 4 Sep 2023 08:52:00 +0100
+Subject: [PATCH] [sailfishos][gecko] Restore GLScreenBuffer and
+ TextureImageEGL
+
+TextureImageEGL was removed with Bug 1716559:
+
+https://phabricator.services.mozilla.com/D117904
+
+GLScreenBuffer was removed with Bug 1632249:
+
+https://phabricator.services.mozilla.com/D75055
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1632249
+
+Both are used as part of the Sailfish OS WebView offscreen render
+pipeline. This patch reintroduces these two classes and allows them to
+be made use of.
+
+[sailfishos][gecko] Restore GLContextProviderEGL::CreateWrappingExisting()
+
+Restores a method for creating a GLContexst for an existing EglDisplay.
+This is useful because on Sailfish OS the EglDisplay is created in
+QtMozEmbed and passed to xulrunner, rather than being created by
+xulrunner directly.
+
+[sailfishos][gecko] Create GLLibraryEGL as a singleton in GLContextProviderEGL
+
+Ensure that if GLLibraryEGL is creaetd through the GLContextProviderEGL
+interface then only one instance is ever created. This ensures that the
+internal display management works as expected and avoids a crash that
+can occur when a display is freed and the fTerminate method is called.
+---
+ gfx/gl/GLContext.cpp                          |  44 ++-
+ gfx/gl/GLContext.h                            |  21 +-
+ gfx/gl/GLContextProviderEGL.cpp               |  79 ++++-
+ gfx/gl/GLContextProviderImpl.h                |  35 ++
+ gfx/gl/GLLibraryEGL.cpp                       |  23 +-
+ gfx/gl/GLLibraryEGL.h                         |   7 +-
+ gfx/gl/GLScreenBuffer.cpp                     | 308 ++++++++++++++++++
+ gfx/gl/GLScreenBuffer.h                       | 143 +++++++-
+ gfx/gl/GLTextureImage.cpp                     |  10 +
+ gfx/gl/SharedSurface.cpp                      | 114 ++++++-
+ gfx/gl/SharedSurface.h                        | 105 +++++-
+ gfx/gl/SharedSurfaceEGL.cpp                   |  89 +++--
+ gfx/gl/SharedSurfaceEGL.h                     |  30 +-
+ gfx/gl/SharedSurfaceGL.cpp                    |  74 ++++-
+ gfx/gl/SharedSurfaceGL.h                      |  46 +++
+ gfx/gl/SurfaceTypes.h                         |   2 +
+ gfx/gl/TextureImageEGL.cpp                    | 221 +++++++++++++
+ gfx/gl/TextureImageEGL.h                      |  80 +++++
+ gfx/gl/moz.build                              |   1 +
+ .../client/TextureClientSharedSurface.cpp     |  49 +++
+ .../client/TextureClientSharedSurface.h       |  25 ++
+ gfx/layers/ipc/CompositorVsyncScheduler.cpp   |   1 -
+ gfx/layers/opengl/CompositorOGL.cpp           |  24 +-
+ 23 files changed, 1460 insertions(+), 71 deletions(-)
+ create mode 100644 gfx/gl/TextureImageEGL.cpp
+ create mode 100644 gfx/gl/TextureImageEGL.h
+
+diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
+index b5000b5f0c56..5185533a6501 100644
+--- a/gfx/gl/GLContext.cpp
++++ b/gfx/gl/GLContext.cpp
+@@ -949,6 +949,7 @@ bool GLContext::InitImpl() {
+ 
+   // We're ready for final setup.
+   fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, 0);
++
+   MOZ_GL_ASSERT(this, IsCurrent());
+ 
+   if (ShouldSpew() && IsExtensionSupported(KHR_debug)) {
+@@ -1874,6 +1875,8 @@ void GLContext::MarkDestroyed() {
+ 
+   // Null these before they're naturally nulled after dtor, as we want GLContext
+   // to still be alive in *their* dtors.
++  mScreen = nullptr;
++  mSwapChain = nullptr;
+   mBlitHelper = nullptr;
+   mReadTexImageHelper = nullptr;
+ 
+@@ -1881,6 +1884,11 @@ void GLContext::MarkDestroyed() {
+   mSymbols = {};
+ }
+ 
++bool GLContext::ResizeScreenBuffer(const gfx::IntSize& size) {
++  if (!IsOffscreenSizeAllowed(size)) return false;
++
++  return mScreen->Resize(size);
++}
+ // -
+ 
+ #ifdef MOZ_GL_DEBUG
+@@ -2140,6 +2148,33 @@ void SplitByChar(const nsACString& str, const char delim,
+   out->push_back(nsCString(substr));
+ }
+ 
++void GLContext::fBindFramebuffer(GLenum target, GLuint framebuffer) {
++  if (!mScreen) {
++    raw_fBindFramebuffer(target, framebuffer);
++    return;
++  }
++
++  switch (target) {
++    case LOCAL_GL_DRAW_FRAMEBUFFER_EXT:
++      mScreen->BindDrawFB(framebuffer);
++      return;
++
++    case LOCAL_GL_READ_FRAMEBUFFER_EXT:
++      mScreen->BindReadFB(framebuffer);
++      return;
++
++    case LOCAL_GL_FRAMEBUFFER:
++      mScreen->BindFB(framebuffer);
++      return;
++
++    default:
++      // Nothing we care about, likely an error.
++      break;
++  }
++
++  raw_fBindFramebuffer(target, framebuffer);
++}
++
+ void GLContext::fCopyTexImage2D(GLenum target, GLint level,
+                                 GLenum internalformat, GLint x, GLint y,
+                                 GLsizei width, GLsizei height, GLint border) {
+@@ -2288,12 +2323,13 @@ void GLContext::fTexImage2D(GLenum target, GLint level, GLint internalformat,
+                   type, pixels);
+ }
+ 
+-UniquePtr<Texture> CreateTexture(GLContext& gl, const gfx::IntSize& size) {
++GLuint CreateTexture(GLContext& gl, const gfx::IntSize& size) {
+   const GLenum target = LOCAL_GL_TEXTURE_2D;
+-  const GLenum format = LOCAL_GL_RGBA;
++  const GLenum format = LOCAL_GL_RGB;
+ 
+-  auto tex = MakeUnique<Texture>(gl);
+-  ScopedBindTexture autoTex(&gl, tex->name, target);
++  GLuint tex = 0;
++  gl.fGenTextures(1, &tex);
++  ScopedBindTexture autoTex(&gl, tex);
+ 
+   gl.fTexParameteri(target, LOCAL_GL_TEXTURE_MIN_FILTER, LOCAL_GL_LINEAR);
+   gl.fTexParameteri(target, LOCAL_GL_TEXTURE_MAG_FILTER, LOCAL_GL_LINEAR);
+diff --git a/gfx/gl/GLContext.h b/gfx/gl/GLContext.h
+index 9f4a93205c3a..0cf5cef204b4 100644
+--- a/gfx/gl/GLContext.h
++++ b/gfx/gl/GLContext.h
+@@ -58,6 +58,8 @@ class GLReadTexImageHelper;
+ class SharedSurface;
+ class SymbolLoader;
+ struct SymLoadStruct;
++class SwapChain;
++class GLScreenBuffer;
+ }  // namespace gl
+ 
+ namespace layers {
+@@ -2020,7 +2022,9 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+     AFTER_GL_CALL;
+   }
+ 
+-  void fBindFramebuffer(GLenum target, GLuint framebuffer) {
++  void fBindFramebuffer(GLenum target, GLuint framebuffer);
++
++  void raw_fBindFramebuffer(GLenum target, GLuint framebuffer) {
+     BEFORE_GL_CALL;
+     mSymbols.fBindFramebuffer(target, framebuffer);
+     AFTER_GL_CALL;
+@@ -3493,6 +3497,7 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+   GLBlitHelper* BlitHelper();
+   GLBlitTextureImageHelper* BlitTextureImageHelper();
+   GLReadTexImageHelper* ReadTexImageHelper();
++  UniquePtr<SwapChain> mSwapChain;
+ 
+   // Assumes shares are created by all sharing with the same global context.
+   bool SharesWith(const GLContext* other) const {
+@@ -3510,6 +3515,12 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+     return thisShared == otherShared;
+   }
+ 
++ protected:
++  friend class GLScreenBuffer;
++  friend class GLContextProviderEGL;
++  UniquePtr<GLScreenBuffer> mScreen;
++
++ public:
+   bool IsFramebufferComplete(GLuint fb, GLenum* status = nullptr);
+ 
+   // Does not check completeness.
+@@ -3537,10 +3548,16 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+ 
+   bool IsOffscreen() const { return mDesc.isOffscreen; }
+ 
++  GLScreenBuffer* Screen() const { return mScreen.get(); }
++
++  SwapChain* GetSwapChain() const { return mSwapChain.get(); }
++
+   bool WorkAroundDriverBugs() const { return mWorkAroundDriverBugs; }
+ 
+   bool IsOffscreenSizeAllowed(const gfx::IntSize& aSize) const;
+ 
++  bool ResizeScreenBuffer(const gfx::IntSize& size);
++
+   virtual bool Init();
+ 
+  private:
+@@ -3773,7 +3790,7 @@ class Texture final {
+  *
+  * See mozilla::gl::CreateTexture.
+  */
+-UniquePtr<Texture> CreateTexture(GLContext&, const gfx::IntSize& size);
++GLuint CreateTexture(GLContext& gl, const gfx::IntSize& aSize);
+ 
+ /**
+  * Helper function that calculates the number of bytes required per
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index 33e63b1bc453..d42a213aadf3 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -995,6 +995,44 @@ static bool CreateConfigScreen(EglDisplay& egl, EGLConfig* const aConfig,
+   return false;
+ }
+ 
++static StaticMutex sMutex;
++static StaticRefPtr<GLLibraryEGL> gDefaultEglLibrary;
++
++already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
++    void* aContext, void* aSurface, void* aDisplay) {
++  if (!aContext || !aSurface) return nullptr;
++
++  nsCString failureId;
++
++  if (!gDefaultEglLibrary) {
++    gDefaultEglLibrary = GLLibraryEGL::Create(&failureId, aDisplay);
++
++    if (!gDefaultEglLibrary) {
++      gfxCriticalNote << "Failed[3] to load EGL library";
++      return nullptr;
++    }
++  }
++  const std::shared_ptr<EglDisplay> egl = gDefaultEglLibrary.operator->()->DefaultDisplay(&failureId);
++
++  if (!egl) {
++    gfxCriticalNote << "Failed[3] to create EGL library  display: "
++                    << failureId.get();
++    return nullptr;
++  }
++
++  CreateContextFlags flags = CreateContextFlags::NONE;
++  const auto desc = GLContextDesc{{flags}, false};
++
++  EGLConfig config = EGL_NO_CONFIG;
++  RefPtr<GLContextEGL> gl =
++      new GLContextEGL(egl, desc, config,
++                       (EGLSurface)aSurface, (EGLContext)aContext);
++  gl->SetIsDoubleBuffered(true);
++  gl->mOwnsContext = false;
++
++  return gl.forget();
++}
++
+ already_AddRefed<GLContext> GLContextProviderEGL::CreateForCompositorWidget(
+     CompositorWidget* aCompositorWidget, bool aHardwareWebRender,
+     bool /*aForceAccelerated*/) {
+@@ -1147,6 +1185,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+     const mozilla::gfx::IntSize& size, const bool useGles,
+     nsACString* const out_failureId) {
+   const EGLConfig config = ChooseConfig(*egl, desc, useGles);
++
+   if (config == EGL_NO_CONFIG) {
+     *out_failureId = "FEATURE_FAILURE_EGL_NO_CONFIG"_ns;
+     NS_WARNING("Failed to find a compatible config.");
+@@ -1168,6 +1207,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+     surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
+         *egl, config, LOCAL_EGL_NONE, pbSize);
+   }
++
+   if (!surface) {
+     *out_failureId = "FEATURE_FAILURE_EGL_POT"_ns;
+     NS_WARNING("Failed to create PBuffer for context!");
+@@ -1216,6 +1256,40 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
+   return ret.forget();
+ }
+ 
++already_AddRefed<GLContext> GLContextProviderEGL::CreateOffscreen(
++    const mozilla::gfx::IntSize& size,
++    CreateContextFlags flags, nsACString* const out_failureId) {
++
++  RefPtr<GLContext> gl;
++
++  gl = CreateHeadless({CreateContextFlags::REQUIRE_COMPAT_PROFILE}, out_failureId);
++
++  // Init the offscreen with the updated offscreen caps.
++  if (!gl || !gl->IsOffscreenSizeAllowed(size)) {
++    return nullptr;
++  }
++
++  UniquePtr<GLScreenBuffer> newScreen = GLScreenBuffer::Create(gl, size);
++  if ((!newScreen) || (!newScreen->Resize(size))) {
++    return nullptr;
++  }
++
++  // This will rebind to 0 (Screen) if needed when
++  // it falls out of scope.
++  ScopedBindFramebuffer autoFB(gl);
++
++  gl->mScreen = std::move(newScreen);
++
++  if (!gl->MakeCurrent()) {
++    return nullptr;
++  }
++  gl->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, 0);
++  gl->fScissor(0, 0, size.width, size.height);
++  gl->fViewport(0, 0, size.width, size.height);
++
++  return gl.forget();
++}
++
+ // Don't want a global context on Android as 1) share groups across 2 threads
+ // fail on many Tegra drivers (bug 759225) and 2) some mobile devices have a
+ // very strict limit on global number of GL contexts (bug 754257) and 3) each
+@@ -1225,13 +1299,10 @@ GLContext* GLContextProviderEGL::GetGlobalContext() { return nullptr; }
+ 
+ // -
+ 
+-static StaticMutex sMutex;
+-static StaticRefPtr<GLLibraryEGL> gDefaultEglLibrary;
+-
+ RefPtr<GLLibraryEGL> DefaultEglLibrary(nsACString* const out_failureId) {
+   StaticMutexAutoLock lock(sMutex);
+   if (!gDefaultEglLibrary) {
+-    gDefaultEglLibrary = GLLibraryEGL::Create(out_failureId);
++    gDefaultEglLibrary = GLLibraryEGL::Create(out_failureId, EGL_NO_DISPLAY);
+     if (!gDefaultEglLibrary) {
+       NS_WARNING("GLLibraryEGL::Create failed");
+     }
+diff --git a/gfx/gl/GLContextProviderImpl.h b/gfx/gl/GLContextProviderImpl.h
+index e7aaeeaa62ba..3cc3cf379839 100644
+--- a/gfx/gl/GLContextProviderImpl.h
++++ b/gfx/gl/GLContextProviderImpl.h
+@@ -43,6 +43,41 @@ class GL_CONTEXT_PROVIDER_NAME {
+       mozilla::widget::CompositorWidget* aCompositorWidget,
+       bool aHardwareWebRender, bool aForceAccelerated);
+ 
++  /**
++   * Create wrapping Gecko GLContext for external gl context.
++   *
++   * @param aContext External context which will be wrapped by Gecko GLContext.
++   * @param aSurface External surface which is used for external context.
++   *
++   * @return Wrapping Context to use for rendering
++   */
++  static already_AddRefed<GLContext> CreateWrappingExisting(void* aContext,
++                                                            void* aSurface,
++                                                            void* aDisplay);
++
++  /**
++   * Create a context for offscreen rendering.  The target of this
++   * context should be treated as opaque -- it might be a FBO, or a
++   * pbuffer, or some other construct.  Users of this GLContext
++   * should bind framebuffer 0 directly to use this offscreen buffer.
++   *
++   * The offscreen context returned by this method will always have
++   * the ability to be rendered into a context created by a window.
++   * It might or might not share resources with the global context;
++   * query GetSharedContext() for a non-null result to check.  If
++   * resource sharing can be avoided on the target platform, it will
++   * be, in order to isolate the offscreen context.
++   *
++   * @param size    The initial size of this offscreen context.
++   * @param flags   The set of CreateContextFlags to be used for this
++   *                offscreen context.
++   *
++   * @return Context to use for offscreen rendering
++   */
++  static already_AddRefed<GLContext> CreateOffscreen(
++      const mozilla::gfx::IntSize& size,
++      CreateContextFlags flags, nsACString* const out_failureId);
++
+   /// Just create a context. We'll add offscreen stuff ourselves.
+   static already_AddRefed<GLContext> CreateHeadless(
+       const GLContextCreateDesc&, nsACString* const out_failureId);
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index 2636d2d9cb48..196004b4283b 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -145,8 +145,11 @@ static PRLibrary* LoadLibraryForEGLOnWindows(const nsAString& filename) {
+ #endif  // XP_WIN
+ 
+ static std::shared_ptr<EglDisplay> GetAndInitDisplay(GLLibraryEGL& egl,
+-                                                     void* displayType) {
+-  const auto display = egl.fGetDisplay(displayType);
++                                                     void* displayType,
++                                                     EGLDisplay display = EGL_NO_DISPLAY) {
++  if (display == EGL_NO_DISPLAY) {
++    display = egl.fGetDisplay(displayType);
++  }
+   if (!display) return nullptr;
+   return EglDisplay::Create(egl, display, false);
+ }
+@@ -337,15 +340,15 @@ Maybe<SymbolLoader> GLLibraryEGL::GetSymbolLoader() const {
+ // -
+ 
+ /* static */
+-RefPtr<GLLibraryEGL> GLLibraryEGL::Create(nsACString* const out_failureId) {
++RefPtr<GLLibraryEGL> GLLibraryEGL::Create(nsACString* const out_failureId, void* aDisplay) {
+   RefPtr<GLLibraryEGL> ret = new GLLibraryEGL;
+-  if (!ret->Init(out_failureId)) {
++  if (!ret->Init(false, out_failureId, aDisplay)) {
+     return nullptr;
+   }
+   return ret;
+ }
+ 
+-bool GLLibraryEGL::Init(nsACString* const out_failureId) {
++bool GLLibraryEGL::Init(bool forceAccel, nsACString* const out_failureId, EGLDisplay aDisplay) {
+   MOZ_RELEASE_ASSERT(!mSymbols.fTerminate);
+ 
+   mozilla::ScopedGfxFeatureReporter reporter("EGL");
+@@ -498,6 +501,11 @@ bool GLLibraryEGL::Init(nsACString* const out_failureId) {
+   }
+ 
+   // -
++  std::shared_ptr<EglDisplay> defaultDisplay = CreateDisplay(forceAccel, out_failureId, aDisplay);
++  if (!defaultDisplay) {
++    return false;
++  }
++  mDefaultDisplay = defaultDisplay;
+ 
+   InitLibExtensions();
+ 
+@@ -738,7 +746,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::DefaultDisplay(
+ }
+ 
+ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+-    const bool forceAccel, nsACString* const out_failureId) {
++    const bool forceAccel, nsACString* const out_failureId,
++    EGLDisplay aDisplay) {
+   std::shared_ptr<EglDisplay> ret;
+ 
+   if (IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_d3d)) {
+@@ -799,7 +808,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+       }
+     }
+ #endif
+-    ret = GetAndInitDisplay(*this, nativeDisplay);
++    ret = GetAndInitDisplay(*this, nativeDisplay, aDisplay);
+   }
+ 
+   if (!ret) {
+diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
+index fa73113f7955..fb019e980a93 100644
+--- a/gfx/gl/GLLibraryEGL.h
++++ b/gfx/gl/GLLibraryEGL.h
+@@ -125,19 +125,20 @@ class GLLibraryEGL final {
+   std::unordered_map<EGLDisplay, std::weak_ptr<EglDisplay>> mActiveDisplays;
+ 
+  public:
+-  static RefPtr<GLLibraryEGL> Create(nsACString* const out_failureId);
++  static RefPtr<GLLibraryEGL> Create(nsACString* const out_failureIdvoid, void* aDisplay);
++  bool Init(bool forceAccel, nsACString* const out_failureId, EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+  private:
+   ~GLLibraryEGL() = default;
+ 
+-  bool Init(nsACString* const out_failureId);
+   void InitLibExtensions();
+ 
+  public:
+   Maybe<SymbolLoader> GetSymbolLoader() const;
+ 
+   std::shared_ptr<EglDisplay> CreateDisplay(bool forceAccel,
+-                                            nsACString* const out_failureId);
++                                            nsACString* const out_failureId,
++                                            EGLDisplay aDisplay = EGL_NO_DISPLAY);
+   std::shared_ptr<EglDisplay> CreateDisplay(ID3D11Device*);
+   std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
+ 
+diff --git a/gfx/gl/GLScreenBuffer.cpp b/gfx/gl/GLScreenBuffer.cpp
+index 0398dd7dc6a2..afad772d1d45 100644
+--- a/gfx/gl/GLScreenBuffer.cpp
++++ b/gfx/gl/GLScreenBuffer.cpp
+@@ -11,6 +11,21 @@
+ #include "MozFramebuffer.h"
+ #include "SharedSurface.h"
+ 
++#include <cstring>
++#include "mozilla/StaticPrefs_webgl.h"
++#include "GLBlitHelper.h"
++#include "GLReadTexImageHelper.h"
++#include "SharedSurfaceEGL.h"
++#include "SharedSurfaceGL.h"
++#include "ScopedGLHelpers.h"
++#include "gfx2DGlue.h"
++#include "../layers/ipc/ShadowLayers.h"
++#include "mozilla/layers/TextureForwarder.h"
++#include "mozilla/layers/TextureClientSharedSurface.h"
++
++#include <unistd.h>
++#include <stdio.h>
++
+ namespace mozilla::gl {
+ 
+ // -
+@@ -116,4 +131,297 @@ SwapChain::~SwapChain() {
+   }
+ }
+ 
++void SwapChain::Morph(UniquePtr<SurfaceFactory> newFactory) {
++  MOZ_RELEASE_ASSERT(newFactory, "newFactory must not be null");
++  mFactory = std::move(newFactory);
++}
++
++const gfx::IntSize& SwapChain::Size() const {
++  return mFrontBuffer->mFb->mSize;
++}
++
++const gfx::IntSize& SwapChain::OffscreenSize() const {
++  return mPresenter->mBackBuffer->mFb->mSize;
++}
++
++bool SwapChain::Resize(const gfx::IntSize& size) {
++  UniquePtr<SharedSurface> newBack =
++      mFactory->CreateShared(size);
++  if (!newBack) return false;
++
++  if (mPresenter->mBackBuffer) mPresenter->mBackBuffer->ProducerRelease();
++
++  mPresenter->mBackBuffer.reset(newBack.release());
++
++  mPresenter->mBackBuffer->ProducerAcquire();
++
++  return true;
++}
++
++bool SwapChain::Swap(const gfx::IntSize& size) {
++  mFrontBuffer = mPresenter->SwapBackBuffer(mFrontBuffer);
++
++  return true;
++}
++
++////////////////////////////////////////////////////////////////////////
++// GLScreenBuffer
++
++UniquePtr<GLScreenBuffer> GLScreenBuffer::Create(GLContext* gl,
++                                                 const gfx::IntSize& size) {
++  UniquePtr<GLScreenBuffer> ret;
++
++  layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
++
++  UniquePtr<SurfaceFactory> factory =
++      MakeUnique<SurfaceFactory_GL>(*gl);
++
++  ret.reset(new GLScreenBuffer(gl, std::move(factory)));
++  return ret;
++}
++
++GLScreenBuffer::GLScreenBuffer(GLContext* gl, UniquePtr<SurfaceFactory> factory)
++    : mGL(gl),
++      mFactory(std::move(factory)),
++      mUserDrawFB(0),
++      mUserReadFB(0),
++      mInternalDrawFB(0),
++      mInternalReadFB(0)
++#ifdef DEBUG
++      ,
++      mInInternalMode_DrawFB(true),
++      mInInternalMode_ReadFB(true)
++#endif
++{
++}
++
++GLScreenBuffer::~GLScreenBuffer() {
++  mFactory = nullptr;
++  mRead = nullptr;
++
++  if (!mBack) return;
++
++  // Detach mBack cleanly.
++  mBack->Surf()->ProducerRelease();
++}
++
++void GLScreenBuffer::BindFB(GLuint fb) {
++  GLuint drawFB = DrawFB();
++  GLuint readFB = ReadFB();
++
++  mUserDrawFB = fb;
++  mUserReadFB = fb;
++  mInternalDrawFB = (fb == 0) ? drawFB : fb;
++  mInternalReadFB = (fb == 0) ? readFB : fb;
++
++  if (mInternalDrawFB == mInternalReadFB) {
++    mGL->raw_fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, mInternalDrawFB);
++  } else {
++    MOZ_ASSERT(mGL->IsSupported(GLFeature::split_framebuffer));
++    mGL->raw_fBindFramebuffer(LOCAL_GL_DRAW_FRAMEBUFFER_EXT, mInternalDrawFB);
++    mGL->raw_fBindFramebuffer(LOCAL_GL_READ_FRAMEBUFFER_EXT, mInternalReadFB);
++  }
++
++#ifdef DEBUG
++  mInInternalMode_DrawFB = false;
++  mInInternalMode_ReadFB = false;
++#endif
++}
++
++void GLScreenBuffer::BindDrawFB(GLuint fb) {
++  MOZ_ASSERT(mGL->IsSupported(GLFeature::split_framebuffer));
++
++  GLuint drawFB = DrawFB();
++  mUserDrawFB = fb;
++  mInternalDrawFB = (fb == 0) ? drawFB : fb;
++
++  mGL->raw_fBindFramebuffer(LOCAL_GL_DRAW_FRAMEBUFFER_EXT, mInternalDrawFB);
++
++#ifdef DEBUG
++  mInInternalMode_DrawFB = false;
++#endif
++}
++
++void GLScreenBuffer::BindReadFB(GLuint fb) {
++  MOZ_ASSERT(mGL->IsSupported(GLFeature::split_framebuffer));
++
++  GLuint readFB = ReadFB();
++  mUserReadFB = fb;
++  mInternalReadFB = (fb == 0) ? readFB : fb;
++
++  mGL->raw_fBindFramebuffer(LOCAL_GL_READ_FRAMEBUFFER_EXT, mInternalReadFB);
++
++#ifdef DEBUG
++  mInInternalMode_ReadFB = false;
++#endif
++}
++
++void GLScreenBuffer::DeletingFB(GLuint fb) {
++  if (fb == mInternalDrawFB) {
++    mInternalDrawFB = 0;
++    mUserDrawFB = 0;
++  }
++  if (fb == mInternalReadFB) {
++    mInternalReadFB = 0;
++    mUserReadFB = 0;
++  }
++}
++
++void GLScreenBuffer::Morph(UniquePtr<SurfaceFactory> newFactory) {
++  MOZ_RELEASE_ASSERT(newFactory, "newFactory must not be null");
++  mFactory = std::move(newFactory);
++}
++
++bool GLScreenBuffer::Attach(SharedSurface* surf, const gfx::IntSize& size) {
++  ScopedBindFramebuffer autoFB(mGL);
++
++  const bool readNeedsUnlock = (mRead && SharedSurf());
++  if (readNeedsUnlock) {
++    SharedSurf()->UnlockProd();
++  }
++
++  surf->LockProd();
++
++  if (mRead && size == Size()) {
++    // Same size, same type, ready for reuse!
++    mRead->Attach(surf);
++  } else {
++    UniquePtr<ReadBuffer> read = ReadBuffer::Create(mFactory->mDesc.gl, surf);
++
++    if (!read) {
++      surf->UnlockProd();
++      if (readNeedsUnlock) {
++        SharedSurf()->LockProd();
++      }
++      return false;
++    }
++
++    mRead = std::move(read);
++  }
++
++  // Check that we're all set up.
++  MOZ_ASSERT(SharedSurf() == surf);
++
++  return true;
++}
++
++bool GLScreenBuffer::Swap(const gfx::IntSize& size) {
++  RefPtr<layers::SharedSurfaceTextureClient> newBack =
++      mFactory->NewTexClient(size);
++  if (!newBack) return false;
++
++  // In the case of DXGL interop, the new surface needs to be acquired before
++  // it is attached so that the interop surface is locked, which populates
++  // the GL renderbuffer. This results in the renderbuffer being ready and
++  // attachment to framebuffer succeeds in Attach() call.
++  newBack->Surf()->ProducerAcquire();
++
++  if (!Attach(newBack->Surf(), size)) {
++    newBack->Surf()->ProducerRelease();
++    return false;
++  }
++  // Attach was successful.
++
++  mFront = mBack;
++  mBack = newBack;
++
++  // XXX: We would prefer to fence earlier on platforms that don't need
++  // the full ProducerAcquire/ProducerRelease semantics, so that the fence
++  // doesn't include the copy operation. Unfortunately, the current API
++  // doesn't expose a good way to do that.
++  if (mFront) {
++    mFront->Surf()->ProducerRelease();
++  }
++
++  return true;
++}
++
++bool GLScreenBuffer::Resize(const gfx::IntSize& size) {
++  RefPtr<layers::SharedSurfaceTextureClient> newBack =
++      mFactory->NewTexClient(size);
++  if (!newBack) return false;
++
++  if (!Attach(newBack->Surf(), size)) return false;
++
++  if (mBack) mBack->Surf()->ProducerRelease();
++
++  mBack = newBack;
++
++  mBack->Surf()->ProducerAcquire();
++
++  return true;
++}
++
++////////////////////////////////////////////////////////////////////////
++// ReadBuffer
++
++UniquePtr<ReadBuffer> ReadBuffer::Create(GLContext* gl, SharedSurface* surf) {
++  MOZ_ASSERT(surf);
++
++  GLContext::LocalErrorScope localError(*gl);
++
++  GLuint colorTex = 0;
++  GLenum target = 0;
++
++  colorTex = surf->ProdTexture();
++  target = surf->ProdTextureTarget();
++  MOZ_ASSERT(colorTex);
++
++  GLuint fb = 0;
++  gl->fGenFramebuffers(1, &fb);
++  gl->AttachBuffersToFB(colorTex, 0, 0, 0, fb, target);
++
++  UniquePtr<ReadBuffer> ret(new ReadBuffer(gl, fb, 0, 0, surf));
++
++  GLenum err = localError.GetError();
++  MOZ_ASSERT_IF(err != LOCAL_GL_NO_ERROR, err == LOCAL_GL_OUT_OF_MEMORY);
++  if (err) return nullptr;
++
++  const bool needsAcquire = !surf->IsProducerAcquired();
++  if (needsAcquire) {
++    surf->ProducerReadAcquire();
++  }
++  const bool isComplete = gl->IsFramebufferComplete(fb);
++  if (needsAcquire) {
++    surf->ProducerReadRelease();
++  }
++
++  if (!isComplete) return nullptr;
++
++  return ret;
++}
++
++ReadBuffer::~ReadBuffer() {
++  if (!mGL->MakeCurrent()) return;
++
++  GLuint fb = mFB;
++  GLuint rbs[] = {
++      mDepthRB,
++      (mStencilRB != mDepthRB) ? mStencilRB
++                               : 0,  // Don't double-delete DEPTH_STENCIL RBs.
++  };
++
++  mGL->fDeleteFramebuffers(1, &fb);
++  mGL->fDeleteRenderbuffers(2, rbs);
++}
++
++void ReadBuffer::Attach(SharedSurface* surf) {
++  MOZ_ASSERT(surf && mSurf);
++  MOZ_ASSERT(surf->mSize == mSurf->mSize);
++
++  // Nothing else is needed for AttachType Screen.
++  GLuint colorTex = 0;
++  GLenum target = 0;
++
++  colorTex = surf->ProdTexture();
++  target = surf->ProdTextureTarget();
++
++  mGL->AttachBuffersToFB(colorTex, 0, 0, 0, mFB, target);
++  MOZ_GL_ASSERT(mGL, mGL->IsFramebufferComplete(mFB));
++
++  mSurf = surf;
++}
++
++const gfx::IntSize& ReadBuffer::Size() const { return mSurf->mDesc.size; }
++
+ }  // namespace mozilla::gl
+diff --git a/gfx/gl/GLScreenBuffer.h b/gfx/gl/GLScreenBuffer.h
+index 17a4bd9c2f8c..593b8971ab07 100644
+--- a/gfx/gl/GLScreenBuffer.h
++++ b/gfx/gl/GLScreenBuffer.h
+@@ -15,16 +15,29 @@
+ #ifndef SCREEN_BUFFER_H_
+ #define SCREEN_BUFFER_H_
+ 
+-#include "GLTypes.h"
++#include "GLContextTypes.h"
++#include "GLDefs.h"
++#include "mozilla/gfx/2D.h"
+ #include "mozilla/gfx/Point.h"
+ #include "mozilla/UniquePtr.h"
++#include "SharedSurface.h"
++#include "SurfaceTypes.h"
+ 
+ #include <queue>
+ #include <memory>
+ 
+ namespace mozilla {
++namespace layers {
++class KnowsCompositor;
++class LayersIPCChannel;
++class SharedSurfaceTextureClient;
++enum class LayersBackend : int8_t;
++}  // namespace layers
++
+ namespace gl {
+ 
++class GLContext;
++class ShSurfHandle;
+ class SharedSurface;
+ class SurfaceFactory;
+ class SwapChain;
+@@ -52,6 +65,7 @@ class SwapChain final {
+ 
+  public:
+   UniquePtr<SurfaceFactory> mFactory;
++  bool mPreserve = false;
+ 
+  private:
+   std::queue<std::shared_ptr<SharedSurface>> mPool;
+@@ -70,6 +84,133 @@ class SwapChain final {
+   void ClearPool();
+   const auto& FrontBuffer() const { return mFrontBuffer; }
+   UniquePtr<SwapChainPresenter> Acquire(const gfx::IntSize&);
++
++  const gfx::IntSize& Size() const;
++  const gfx::IntSize& OffscreenSize() const;
++  bool Resize(const gfx::IntSize & size);
++  bool PublishFrame(const gfx::IntSize& size) { return Swap(size); }
++  void Morph(UniquePtr<SurfaceFactory> newFactory);
++
++private:
++  // Returns false on error or inability to resize.
++  bool Swap(const gfx::IntSize& size);
++};
++
++class ReadBuffer {
++ public:
++  // Infallible, always non-null.
++  static UniquePtr<ReadBuffer> Create(GLContext* gl, SharedSurface* surf);
++
++ protected:
++  GLContext* const mGL;
++
++ public:
++  const GLuint mFB;
++
++ protected:
++  // mFB has the following attachments:
++  const GLuint mDepthRB;
++  const GLuint mStencilRB;
++  // note no mColorRB here: this is provided by mSurf.
++  SharedSurface* mSurf;
++
++  ReadBuffer(GLContext* gl, GLuint fb, GLuint depthRB, GLuint stencilRB,
++             SharedSurface* surf)
++      : mGL(gl),
++        mFB(fb),
++        mDepthRB(depthRB),
++        mStencilRB(stencilRB),
++        mSurf(surf) {}
++
++ public:
++  virtual ~ReadBuffer();
++
++  // Cannot attach a surf of a different AttachType or Size than before.
++  void Attach(SharedSurface* surf);
++
++  const gfx::IntSize& Size() const;
++
++  SharedSurface* SharedSurf() const { return mSurf; }
++};
++
++class GLScreenBuffer final {
++ public:
++  // Infallible.
++  static UniquePtr<GLScreenBuffer> Create(GLContext* gl, const gfx::IntSize& size);
++
++ private:
++  GLContext* const mGL;  // Owns us.
++
++ private:
++  UniquePtr<SurfaceFactory> mFactory;
++
++  RefPtr<layers::SharedSurfaceTextureClient> mBack;
++  RefPtr<layers::SharedSurfaceTextureClient> mFront;
++
++  UniquePtr<ReadBuffer> mRead;
++
++  // Below are the parts that help us pretend to be framebuffer 0:
++  GLuint mUserDrawFB;
++  GLuint mUserReadFB;
++  GLuint mInternalDrawFB;
++  GLuint mInternalReadFB;
++
++#ifdef DEBUG
++  bool mInInternalMode_DrawFB;
++  bool mInInternalMode_ReadFB;
++#endif
++
++  GLScreenBuffer(GLContext* gl, UniquePtr<SurfaceFactory> factory);
++
++ public:
++  virtual ~GLScreenBuffer();
++
++  const auto& Factory() const { return mFactory; }
++  const auto& Front() const { return mFront; }
++
++  SharedSurface* SharedSurf() const {
++    MOZ_ASSERT(mRead);
++    return mRead->SharedSurf();
++  }
++
++ private:
++  GLuint DrawFB() const { return ReadFB(); }
++  GLuint ReadFB() const { return mRead->mFB; }
++
++ public:
++  void DeletingFB(GLuint fb);
++
++  const gfx::IntSize& Size() const {
++    MOZ_ASSERT(mRead);
++    return mRead->Size();
++  }
++
++  bool IsReadBufferReady() const { return mRead.get() != nullptr; }
++
++  // Morph changes the factory used to create surfaces.
++  void Morph(UniquePtr<SurfaceFactory> newFactory);
++
++ private:
++  // Returns false on error or inability to resize.
++  bool Swap(const gfx::IntSize& size);
++
++ public:
++  bool PublishFrame(const gfx::IntSize& size) { return Swap(size); }
++
++  bool Resize(const gfx::IntSize& size);
++
++ private:
++  bool Attach(SharedSurface* surf, const gfx::IntSize& size);
++
++ public:
++  /* `fb` in these functions is the framebuffer the GLContext is hoping to
++   * bind. When this is 0, we intercept the call and bind our own
++   * framebuffers. As a client of these functions, just bind 0 when you want
++   * to draw to the default framebuffer/'screen'.
++   */
++  void BindFB(GLuint fb);
++  void BindDrawFB(GLuint fb);
++  void BindReadFB(GLuint fb);
+ };
+ 
+ }  // namespace gl
+diff --git a/gfx/gl/GLTextureImage.cpp b/gfx/gl/GLTextureImage.cpp
+index 78ca04b7d2d6..ca7576fc1317 100644
+--- a/gfx/gl/GLTextureImage.cpp
++++ b/gfx/gl/GLTextureImage.cpp
+@@ -14,6 +14,8 @@
+ #include "GLUploadHelpers.h"
+ #include "GfxTexturesReporter.h"
+ 
++#include "TextureImageEGL.h"
++
+ using namespace mozilla::gfx;
+ 
+ namespace mozilla {
+@@ -40,6 +42,14 @@ static already_AddRefed<TextureImage> TileGenFunc(
+     TextureImage::Flags aFlags, TextureImage::ImageFormat aImageFormat) {
+   return CreateBasicTextureImage(gl, aSize, aContentType,
+                                  LOCAL_GL_CLAMP_TO_EDGE, aFlags);
++
++  switch (gl->GetContextType()) {
++    case GLContextType::EGL:
++      return TileGenFuncEGL(gl, aSize, aContentType, aFlags, aImageFormat);
++    default:
++      return CreateBasicTextureImage(gl, aSize, aContentType,
++                                     LOCAL_GL_CLAMP_TO_EDGE, aFlags);
++  }
+ }
+ 
+ already_AddRefed<TextureImage> TextureImage::Create(
+diff --git a/gfx/gl/SharedSurface.cpp b/gfx/gl/SharedSurface.cpp
+index 687d18b95893..10f5e8022e32 100644
+--- a/gfx/gl/SharedSurface.cpp
++++ b/gfx/gl/SharedSurface.cpp
+@@ -55,8 +55,21 @@ SharedSurface::SharedSurface(const SharedSurfaceDesc& desc,
+                              UniquePtr<MozFramebuffer> fb)
+     : mDesc(desc), mFb(std::move(fb)) {}
+ 
++SharedSurface::SharedSurface(SharedSurfaceType type,
++                             GLContext* gl, const gfx::IntSize& size,
++                             bool canRecycle)
++    : mDesc{gl, type, layers::TextureType(0), canRecycle, size},
++      mIsLocked(false),
++      mIsProducerAcquired(false)
++{
++}
++
+ SharedSurface::~SharedSurface() = default;
+ 
++layers::TextureFlags SharedSurface::GetTextureFlags() const {
++  return layers::TextureFlags::NO_FLAGS;
++}
++
+ void SharedSurface::LockProd() {
+   MOZ_ASSERT(!mIsLocked);
+ 
+@@ -149,10 +162,105 @@ UniquePtr<SurfaceFactory> SurfaceFactory::Create(
+   return nullptr;
+ }
+ 
+-SurfaceFactory::SurfaceFactory(const PartialSharedSurfaceDesc& partialDesc)
+-    : mDesc(partialDesc), mMutex("SurfaceFactor::mMutex") {}
++SurfaceFactory::SurfaceFactory(const PartialSharedSurfaceDesc& partialDesc,
++                               const RefPtr<layers::LayersIPCChannel>& allocator,
++                               const layers::TextureFlags& flags)
++    : mDesc(partialDesc),
++      mAllocator(allocator),
++      mFlags(flags),
++      mMutex("SurfaceFactor::mMutex")
++{
++}
++
++SurfaceFactory::~SurfaceFactory() {
++  while (!mRecycleTotalPool.empty()) {
++    RefPtr<layers::SharedSurfaceTextureClient> tex = *mRecycleTotalPool.begin();
++    StopRecycling(tex);
++  }
++
++  MOZ_RELEASE_ASSERT(mRecycleTotalPool.empty(),
++                     "GFX: Surface recycle pool not empty.");
++
++  // If we mRecycleFreePool.clear() before StopRecycling(), we may try to
++  // recycle it, fail, call StopRecycling(), then return here and call it again.
++  mRecycleFreePool.clear();
++}
++
++already_AddRefed<layers::SharedSurfaceTextureClient>
++SurfaceFactory::NewTexClient(const gfx::IntSize& size) {
++  while (!mRecycleFreePool.empty()) {
++    RefPtr<layers::SharedSurfaceTextureClient> cur = mRecycleFreePool.front();
++    mRecycleFreePool.pop();
++
++    if (cur->Surf()->mDesc.size == size) {
++      cur->Surf()->WaitForBufferOwnership();
++      return cur.forget();
++    }
++
++    StopRecycling(cur);
++  }
++
++  UniquePtr<SharedSurface> surf = CreateShared(size);
++  if (!surf) return nullptr;
++
++  RefPtr<layers::SharedSurfaceTextureClient> ret;
++  ret = layers::SharedSurfaceTextureClient::Create(std::move(surf), this,
++                                                   mAllocator, mFlags);
++
++  StartRecycling(ret);
++
++  return ret.forget();
++}
++
++void SurfaceFactory::StartRecycling(layers::SharedSurfaceTextureClient* tc) {
++  tc->SetRecycleCallback(&SurfaceFactory::RecycleCallback,
++                         static_cast<void*>(this));
++
++  bool didInsert = mRecycleTotalPool.insert(tc);
++  MOZ_RELEASE_ASSERT(
++      didInsert,
++      "GFX: Shared surface texture client was not inserted to recycle.");
++  mozilla::Unused << didInsert;
++}
++
++void SurfaceFactory::StopRecycling(layers::SharedSurfaceTextureClient* tc) {
++  MutexAutoLock autoLock(mMutex);
++  // Must clear before releasing ref.
++  tc->ClearRecycleCallback();
++
++  bool didErase = mRecycleTotalPool.erase(tc);
++  MOZ_RELEASE_ASSERT(didErase,
++                     "GFX: Shared texture surface client was not erased.");
++  mozilla::Unused << didErase;
++}
++
++/*static*/
++void SurfaceFactory::RecycleCallback(layers::TextureClient* rawTC,
++                                     void* rawFactory) {
++  RefPtr<layers::SharedSurfaceTextureClient> tc;
++  tc = static_cast<layers::SharedSurfaceTextureClient*>(rawTC);
++  SurfaceFactory* factory = static_cast<SurfaceFactory*>(rawFactory);
+ 
+-SurfaceFactory::~SurfaceFactory() = default;
++  if (tc->Surf()->mDesc.canRecycle) {
++    if (factory->Recycle(tc)) return;
++  }
++
++  // Did not recover the tex client. End the (re)cycle!
++  factory->StopRecycling(tc);
++}
++
++bool SurfaceFactory::Recycle(layers::SharedSurfaceTextureClient* texClient) {
++  MOZ_ASSERT(texClient);
++  MutexAutoLock autoLock(mMutex);
++
++  if (mRecycleFreePool.size() >= 2) {
++    return false;
++  }
++
++  RefPtr<layers::SharedSurfaceTextureClient> texClientRef = texClient;
++  mRecycleFreePool.push(texClientRef);
++  return true;
++}
+ 
+ }  // namespace gl
+ }  // namespace mozilla
+diff --git a/gfx/gl/SharedSurface.h b/gfx/gl/SharedSurface.h
+index 39efab333f0f..3bf6649f55b1 100644
+--- a/gfx/gl/SharedSurface.h
++++ b/gfx/gl/SharedSurface.h
+@@ -75,10 +75,17 @@ class SharedSurface {
+   bool mIsProducerAcquired = false;
+ 
+   SharedSurface(const SharedSurfaceDesc&, UniquePtr<MozFramebuffer>);
++  SharedSurface(SharedSurfaceType type,
++                GLContext* gl, const gfx::IntSize& size,
++                bool canRecycle);
+ 
+  public:
+   virtual ~SharedSurface();
+ 
++  // Specifies to the TextureClient any flags which
++  // are required by the SharedSurface backend.
++  virtual layers::TextureFlags GetTextureFlags() const;
++
+   bool IsLocked() const { return mIsLocked; }
+   bool IsProducerAcquired() const { return mIsProducerAcquired; }
+ 
+@@ -134,6 +141,15 @@ class SharedSurface {
+   // You can call WaitForBufferOwnership to wait for availability.
+   virtual bool IsBufferAvailable() const { return true; }
+ 
++  // For use when AttachType is correct.
++  virtual GLenum ProdTextureTarget() const {
++    return LOCAL_GL_TEXTURE_2D;
++  }
++
++  virtual GLuint ProdTexture() {
++    MOZ_CRASH("GFX: Did you forget to override this function?");
++  }
++
+   virtual bool NeedsIndirectReads() const { return false; }
+ 
+   virtual Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() = 0;
+@@ -141,30 +157,115 @@ class SharedSurface {
+ 
+ // -
+ 
++template <typename T>
++class RefSet {
++  std::set<T*> mSet;
++
++ public:
++  ~RefSet() { clear(); }
++
++  auto begin() -> decltype(mSet.begin()) { return mSet.begin(); }
++
++  void clear() {
++    for (auto itr = mSet.begin(); itr != mSet.end(); ++itr) {
++      (*itr)->Release();
++    }
++    mSet.clear();
++  }
++
++  bool empty() const { return mSet.empty(); }
++
++  bool insert(T* x) {
++    if (mSet.insert(x).second) {
++      x->AddRef();
++      return true;
++    }
++
++    return false;
++  }
++
++  bool erase(T* x) {
++    if (mSet.erase(x)) {
++      x->Release();
++      return true;
++    }
++
++    return false;
++  }
++};
++
++template <typename T>
++class RefQueue {
++  std::queue<T*> mQueue;
++
++ public:
++  ~RefQueue() { clear(); }
++
++  void clear() {
++    while (!empty()) {
++      pop();
++    }
++  }
++
++  bool empty() const { return mQueue.empty(); }
++
++  size_t size() const { return mQueue.size(); }
++
++  void push(T* x) {
++    mQueue.push(x);
++    x->AddRef();
++  }
++
++  T* front() const { return mQueue.front(); }
++
++  void pop() {
++    T* x = mQueue.front();
++    x->Release();
++    mQueue.pop();
++  }
++};
++
+ class SurfaceFactory {
+  public:
+   const PartialSharedSurfaceDesc mDesc;
++  const RefPtr<layers::LayersIPCChannel> mAllocator;
++  const layers::TextureFlags mFlags;
+ 
+  protected:
+   Mutex mMutex;
++  RefQueue<layers::SharedSurfaceTextureClient> mRecycleFreePool;
++  RefSet<layers::SharedSurfaceTextureClient> mRecycleTotalPool;
+ 
+  public:
+   static UniquePtr<SurfaceFactory> Create(GLContext*, layers::TextureType);
+ 
+  protected:
+-  explicit SurfaceFactory(const PartialSharedSurfaceDesc&);
++  explicit SurfaceFactory(const PartialSharedSurfaceDesc&,
++                          const RefPtr<layers::LayersIPCChannel>&,
++                          const layers::TextureFlags&);
+ 
+  public:
+   virtual ~SurfaceFactory();
+ 
+- protected:
++protected:
+   virtual UniquePtr<SharedSurface> CreateSharedImpl(
+       const SharedSurfaceDesc&) = 0;
+ 
++  void StartRecycling(layers::SharedSurfaceTextureClient* tc);
++  void SetRecycleCallback(layers::SharedSurfaceTextureClient* tc);
++  void StopRecycling(layers::SharedSurfaceTextureClient* tc);
++
+  public:
+   UniquePtr<SharedSurface> CreateShared(const gfx::IntSize& size) {
+     return CreateSharedImpl({mDesc, size});
+   }
++  already_AddRefed<layers::SharedSurfaceTextureClient> NewTexClient(
++      const gfx::IntSize& size);
++
++  static void RecycleCallback(layers::TextureClient* tc, void* /*closure*/);
++
++  // Auto-deletes surfs of the wrong type.
++  bool Recycle(layers::SharedSurfaceTextureClient* texClient);
+ };
+ 
+ template <typename T>
+diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
+index f4a67fcd3235..268b86c22325 100644
+--- a/gfx/gl/SharedSurfaceEGL.cpp
++++ b/gfx/gl/SharedSurfaceEGL.cpp
+@@ -33,43 +33,76 @@ static bool HasEglImageExtensions(const GLContextEGL& gl) {
+ 
+ /*static*/
+ UniquePtr<SurfaceFactory_EGLImage> SurfaceFactory_EGLImage::Create(
+-    GLContext& gl_) {
+-  auto& gl = *GLContextEGL::Cast(&gl_);
+-  if (!HasEglImageExtensions(gl)) return nullptr;
+-
+-  const auto partialDesc = PartialSharedSurfaceDesc{
+-      &gl, SharedSurfaceType::EGLImageShare, layers::TextureType::EGLImage,
+-      false,  // Can't recycle, as mSync changes never update TextureHost.
+-  };
+-  return AsUnique(new SurfaceFactory_EGLImage(partialDesc));
++    GLContext* prodGL,
++    const RefPtr<layers::LayersIPCChannel>& allocator,
++    const layers::TextureFlags& flags) {
++  const auto& gle = GLContextEGL::Cast(prodGL);
++  //const auto& egl = gle->mEgl;
++  const auto& context = gle->mContext;
++
++  typedef SurfaceFactory_EGLImage ptrT;
++  UniquePtr<ptrT> ret;
++
++  if (HasEglImageExtensions(*gle)) {
++    // The surface allocator that we want to create this
++    // for.  May be null.
++    RefPtr<layers::LayersIPCChannel> surfaceAllocator;
++
++
++    ret.reset(new ptrT({prodGL, SharedSurfaceType::Basic, layers::TextureType::Unknown, true}, allocator, flags, context));
++  }
++
++  return ret;
+ }
+ 
+ // -
+ 
+ /*static*/
+ UniquePtr<SharedSurface_EGLImage> SharedSurface_EGLImage::Create(
+-    const SharedSurfaceDesc& desc) {
+-  const auto& gle = GLContextEGL::Cast(desc.gl);
+-  const auto& context = gle->mContext;
+-  const auto& egl = *(gle->mEgl);
++    GLContext* prodGL, const gfx::IntSize& size, EGLContext context) {
++  const auto& gle = GLContextEGL::Cast(prodGL);
++  const auto& egl = gle->mEgl;
++  MOZ_ASSERT(egl);
++  MOZ_ASSERT(context);
++  nsCString out_failureId;
++
++  UniquePtr<SharedSurface_EGLImage> ret;
++
++  if (!HasEglImageExtensions(*gle)) {
++    return ret;
++  }
++
++  MOZ_ALWAYS_TRUE(prodGL->MakeCurrent());
++  GLuint prodTex = CreateTexture(*prodGL, size);
++  if (!prodTex) {
++    return ret;
++  }
+ 
+-  auto fb = MozFramebuffer::Create(desc.gl, desc.size, 0, false);
+-  if (!fb) return nullptr;
++  EGLClientBuffer buffer =
++      reinterpret_cast<EGLClientBuffer>(uintptr_t(prodTex));
++  EGLImage image = egl->fCreateImage(context,
++                                     LOCAL_EGL_GL_TEXTURE_2D, buffer, nullptr);
+ 
+-  const auto buffer = reinterpret_cast<EGLClientBuffer>(fb->ColorTex());
+-  const auto image =
+-      egl.fCreateImage(context, LOCAL_EGL_GL_TEXTURE_2D, buffer, nullptr);
+-  if (!image) return nullptr;
++  if (!image) {
++    prodGL->fDeleteTextures(1, &prodTex);
++    return ret;
++  }
+ 
+-  return AsUnique(new SharedSurface_EGLImage(desc, std::move(fb), image));
++  ret.reset(new SharedSurface_EGLImage(prodGL, size, prodTex, image));
++  return ret;
+ }
+ 
+-SharedSurface_EGLImage::SharedSurface_EGLImage(const SharedSurfaceDesc& desc,
+-                                               UniquePtr<MozFramebuffer>&& fb,
+-                                               const EGLImage image)
+-    : SharedSurface(desc, std::move(fb)),
++SharedSurface_EGLImage::SharedSurface_EGLImage(GLContext* gl,
++                                               const gfx::IntSize& size,
++                                               GLuint prodTex, EGLImage image)
++    : SharedSurface(
++          SharedSurfaceType::EGLImageShare, gl, size,
++          false)  // Can't recycle, as mSync changes never update TextureHost.
++      ,
+       mMutex("SharedSurface_EGLImage mutex"),
+-      mImage(image) {}
++      mSync(0),
++      mImage(image),
++      mProdTex(prodTex) {}
+ 
+ SharedSurface_EGLImage::~SharedSurface_EGLImage() {
+   const auto& gle = GLContextEGL::Cast(mDesc.gl);
+@@ -82,8 +115,14 @@ SharedSurface_EGLImage::~SharedSurface_EGLImage() {
+     egl->fDestroySync(mSync);
+     mSync = 0;
+   }
++
++  if (!mDesc.gl || !mDesc.gl->MakeCurrent()) return;
++
++  mDesc.gl->fDeleteTextures(1, &mProdTex);
++  mProdTex = 0;
+ }
+ 
++
+ void SharedSurface_EGLImage::ProducerReleaseImpl() {
+   const auto& gl = GLContextEGL::Cast(mDesc.gl);
+   const auto& egl = gl->mEgl;
+diff --git a/gfx/gl/SharedSurfaceEGL.h b/gfx/gl/SharedSurfaceEGL.h
+index a6325fd34036..68bbcce61037 100644
+--- a/gfx/gl/SharedSurfaceEGL.h
++++ b/gfx/gl/SharedSurfaceEGL.h
+@@ -31,11 +31,16 @@ class SharedSurface_EGLImage final : public SharedSurface {
+  public:
+   const EGLImage mImage;
+ 
+-  static UniquePtr<SharedSurface_EGLImage> Create(const SharedSurfaceDesc&);
++ protected:
++  GLuint mProdTex;
+ 
++ public:
++  static UniquePtr<SharedSurface_EGLImage> Create(GLContext* prodGL,
++                                                  const gfx::IntSize& size,
++                                                  EGLContext context);
+  protected:
+-  SharedSurface_EGLImage(const SharedSurfaceDesc&,
+-                         UniquePtr<MozFramebuffer>&& fb, EGLImage);
++  SharedSurface_EGLImage(GLContext* gl, const gfx::IntSize& size,
++                         GLuint prodTex, EGLImage image);
+ 
+   void UpdateProdTexture(const MutexAutoLock& curAutoLock);
+ 
+@@ -51,21 +56,32 @@ class SharedSurface_EGLImage final : public SharedSurface {
+   virtual void ProducerReadAcquireImpl() override;
+   virtual void ProducerReadReleaseImpl() override{};
+ 
++  virtual GLuint ProdTexture() override { return mProdTex; }
++
+   Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() override;
+ };
+ 
+ class SurfaceFactory_EGLImage final : public SurfaceFactory {
+  public:
+-  static UniquePtr<SurfaceFactory_EGLImage> Create(GLContext&);
++  static UniquePtr<SurfaceFactory_EGLImage> Create(
++      GLContext* prodGL,
++      const RefPtr<layers::LayersIPCChannel>& allocator,
++      const layers::TextureFlags& flags);
++
++ protected:
++  const EGLContext mContext;
+ 
+  private:
+-  explicit SurfaceFactory_EGLImage(const PartialSharedSurfaceDesc& desc)
+-      : SurfaceFactory(desc) {}
++  explicit SurfaceFactory_EGLImage(const PartialSharedSurfaceDesc& desc,
++                                   const RefPtr<layers::LayersIPCChannel>& allocator,
++                                   const layers::TextureFlags& flags, EGLContext context)
++      : SurfaceFactory(desc, allocator, flags),
++        mContext(context) {}
+ 
+  public:
+   virtual UniquePtr<SharedSurface> CreateSharedImpl(
+       const SharedSurfaceDesc& desc) override {
+-    return SharedSurface_EGLImage::Create(desc);
++    return SharedSurface_EGLImage::Create(mDesc.gl, desc.size, mContext);
+   }
+ };
+ 
+diff --git a/gfx/gl/SharedSurfaceGL.cpp b/gfx/gl/SharedSurfaceGL.cpp
+index 5b33088e2e1c..d4b9b259c55e 100644
+--- a/gfx/gl/SharedSurfaceGL.cpp
++++ b/gfx/gl/SharedSurfaceGL.cpp
+@@ -15,6 +15,8 @@
+ namespace mozilla {
+ namespace gl {
+ 
++using gfx::IntSize;
++
+ /*static*/
+ UniquePtr<SharedSurface_Basic> SharedSurface_Basic::Create(
+     const SharedSurfaceDesc& desc) {
+@@ -26,7 +28,12 @@ UniquePtr<SharedSurface_Basic> SharedSurface_Basic::Create(
+ 
+ SharedSurface_Basic::SharedSurface_Basic(const SharedSurfaceDesc& desc,
+                                          UniquePtr<MozFramebuffer>&& fb)
+-    : SharedSurface(desc, std::move(fb)) {}
++    : SharedSurface(desc, std::move(fb)),
++      mTex(0),
++      mOwnsTex(false),
++      mFB(0)
++{
++}
+ 
+ Maybe<layers::SurfaceDescriptor> SharedSurface_Basic::ToSurfaceDescriptor() {
+   return Nothing();
+@@ -36,7 +43,70 @@ Maybe<layers::SurfaceDescriptor> SharedSurface_Basic::ToSurfaceDescriptor() {
+ 
+ SurfaceFactory_Basic::SurfaceFactory_Basic(GLContext& gl)
+     : SurfaceFactory({&gl, SharedSurfaceType::Basic,
+-                      layers::TextureType::Unknown, true}) {}
++                      layers::TextureType::Unknown, true}, nullptr, layers::TextureFlags(0)) {}
++
++SurfaceFactory_Basic::SurfaceFactory_Basic(GLContext* gl,
++                                           const layers::TextureFlags& flags)
++    : SurfaceFactory({gl, SharedSurfaceType::Basic,
++                      layers::TextureType::Unknown, true}, nullptr, flags) {}
++
++SurfaceFactory_GL::SurfaceFactory_GL(GLContext& gl)
++    : SurfaceFactory({&gl, SharedSurfaceType::Basic,
++                      layers::TextureType::Unknown, true}, nullptr, layers::TextureFlags(0)) {}
++
++SurfaceFactory_GL::SurfaceFactory_GL(GLContext* gl,
++                                           const layers::TextureFlags& flags)
++    : SurfaceFactory({gl, SharedSurfaceType::Basic,
++                      layers::TextureType::Unknown, true}, nullptr, flags) {}
++
++////////////////////////////////////////////////////////////////////////
++
++/*static*/
++UniquePtr<SharedSurface_Basic> SharedSurface_Basic::Create(
++    GLContext* gl, const IntSize& size) {
++  UniquePtr<SharedSurface_Basic> ret;
++  gl->MakeCurrent();
++
++  GLContext::LocalErrorScope localError(*gl);
++  GLuint tex = CreateTexture(*gl, size);
++
++  GLenum err = localError.GetError();
++  MOZ_ASSERT_IF(err != LOCAL_GL_NO_ERROR, err == LOCAL_GL_OUT_OF_MEMORY);
++  if (err) {
++    gl->fDeleteTextures(1, &tex);
++    return ret;
++  }
++
++  bool ownsTex = true;
++  ret.reset(new SharedSurface_Basic(gl, size, tex, ownsTex));
++  return ret;
++}
++
++SharedSurface_Basic::SharedSurface_Basic(GLContext* gl, const IntSize& size,
++                                         GLuint tex,
++                                         bool ownsTex)
++    : SharedSurface(SharedSurfaceType::Basic, gl, size, true),
++      mTex(tex),
++      mOwnsTex(ownsTex),
++      mFB(0) {
++  gl->MakeCurrent();
++  gl->fGenFramebuffers(1, &mFB);
++
++  ScopedBindFramebuffer autoFB(gl, mFB);
++  gl->fFramebufferTexture2D(LOCAL_GL_FRAMEBUFFER, LOCAL_GL_COLOR_ATTACHMENT0,
++                             LOCAL_GL_TEXTURE_2D, mTex, 0);
++
++  DebugOnly<GLenum> status = gl->fCheckFramebufferStatus(LOCAL_GL_FRAMEBUFFER);
++  MOZ_ASSERT(status == LOCAL_GL_FRAMEBUFFER_COMPLETE);
++}
++
++SharedSurface_Basic::~SharedSurface_Basic() {
++  if (!mDesc.gl || !mDesc.gl->MakeCurrent()) return;
++
++  if (mFB) mDesc.gl->fDeleteFramebuffers(1, &mFB);
++
++  if (mOwnsTex) mDesc.gl->fDeleteTextures(1, &mTex);
++}
+ 
+ }  // namespace gl
+ }  // namespace mozilla
+diff --git a/gfx/gl/SharedSurfaceGL.h b/gfx/gl/SharedSurfaceGL.h
+index fef3d59fb025..0a110576f6ea 100644
+--- a/gfx/gl/SharedSurfaceGL.h
++++ b/gfx/gl/SharedSurfaceGL.h
+@@ -18,17 +18,47 @@ class SharedSurface_Basic final : public SharedSurface {
+  public:
+   static UniquePtr<SharedSurface_Basic> Create(const SharedSurfaceDesc&);
+ 
++  static UniquePtr<SharedSurface_Basic> Create(GLContext* gl,
++                                               const gfx::IntSize& size);
++
++  static SharedSurface_Basic* Cast(SharedSurface* surf) {
++    MOZ_ASSERT(surf->mType == SharedSurfaceType::Basic);
++
++    return (SharedSurface_Basic*)surf;
++  }
++
+  private:
+   SharedSurface_Basic(const SharedSurfaceDesc& desc,
+                       UniquePtr<MozFramebuffer>&& fb);
+ 
+  public:
+   Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() override;
++
++ protected:
++  const GLuint mTex;
++  const bool mOwnsTex;
++  GLuint mFB;
++
++  SharedSurface_Basic(GLContext* gl, const gfx::IntSize& size,
++                      GLuint tex, bool ownsTex);
++
++ public:
++  virtual ~SharedSurface_Basic();
++
++  virtual void LockProdImpl() override {}
++  virtual void UnlockProdImpl() override {}
++
++  virtual void ProducerAcquireImpl() override {}
++  virtual void ProducerReleaseImpl() override {}
++
++  virtual GLuint ProdTexture() override { return mTex; }
+ };
+ 
+ class SurfaceFactory_Basic final : public SurfaceFactory {
+  public:
+   explicit SurfaceFactory_Basic(GLContext& gl);
++  explicit SurfaceFactory_Basic(GLContext* gl,
++                                const layers::TextureFlags& flags);
+ 
+   virtual UniquePtr<SharedSurface> CreateSharedImpl(
+       const SharedSurfaceDesc& desc) override {
+@@ -36,6 +66,22 @@ class SurfaceFactory_Basic final : public SurfaceFactory {
+   }
+ };
+ 
++// We need to create SharedSurface_Basic instances differently depending
++// on whether we're using them for the WebView or WebGL rendering
++// SurfaceFactory_Basic creates the WebGL variant
++// SurfaceFactory_GL creates the WebView variant
++class SurfaceFactory_GL final : public SurfaceFactory {
++ public:
++  explicit SurfaceFactory_GL(GLContext& gl);
++  explicit SurfaceFactory_GL(GLContext* gl,
++                                const layers::TextureFlags& flags);
++
++  virtual UniquePtr<SharedSurface> CreateSharedImpl(
++      const SharedSurfaceDesc& desc) override {
++    return SharedSurface_Basic::Create(mDesc.gl, desc.size);
++  }
++};
++
+ }  // namespace gl
+ }  // namespace mozilla
+ 
+diff --git a/gfx/gl/SurfaceTypes.h b/gfx/gl/SurfaceTypes.h
+index 5967b6f7b4fe..ca88ae706863 100644
+--- a/gfx/gl/SurfaceTypes.h
++++ b/gfx/gl/SurfaceTypes.h
+@@ -6,6 +6,8 @@
+ #ifndef SURFACE_TYPES_H_
+ #define SURFACE_TYPES_H_
+ 
++#include "mozilla/RefPtr.h"
++#include "mozilla/Attributes.h"
+ #include <cstdint>
+ 
+ namespace mozilla {
+diff --git a/gfx/gl/TextureImageEGL.cpp b/gfx/gl/TextureImageEGL.cpp
+new file mode 100644
+index 000000000000..e6f82cb07dbc
+--- /dev/null
++++ b/gfx/gl/TextureImageEGL.cpp
+@@ -0,0 +1,221 @@
++/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "TextureImageEGL.h"
++#include "GLLibraryEGL.h"
++#include "GLContext.h"
++#include "GLContextEGL.h"
++#include "GLUploadHelpers.h"
++#include "gfxPlatform.h"
++#include "mozilla/gfx/Types.h"
++
++namespace mozilla {
++namespace gl {
++
++static GLenum GLFormatForImage(gfx::SurfaceFormat aFormat) {
++  switch (aFormat) {
++    case gfx::SurfaceFormat::B8G8R8A8:
++    case gfx::SurfaceFormat::B8G8R8X8:
++      return LOCAL_GL_RGBA;
++    case gfx::SurfaceFormat::R5G6B5_UINT16:
++      return LOCAL_GL_RGB;
++    case gfx::SurfaceFormat::A8:
++      return LOCAL_GL_LUMINANCE;
++    default:
++      NS_WARNING("Unknown GL format for Surface format");
++  }
++  return 0;
++}
++
++static GLenum GLTypeForImage(gfx::SurfaceFormat aFormat) {
++  switch (aFormat) {
++    case gfx::SurfaceFormat::B8G8R8A8:
++    case gfx::SurfaceFormat::B8G8R8X8:
++    case gfx::SurfaceFormat::A8:
++      return LOCAL_GL_UNSIGNED_BYTE;
++    case gfx::SurfaceFormat::R5G6B5_UINT16:
++      return LOCAL_GL_UNSIGNED_SHORT_5_6_5;
++    default:
++      NS_WARNING("Unknown GL format for Surface format");
++  }
++  return 0;
++}
++
++TextureImageEGL::TextureImageEGL(GLuint aTexture, const gfx::IntSize& aSize,
++                                 GLenum aWrapMode, ContentType aContentType,
++                                 GLContext* aContext, Flags aFlags,
++                                 TextureState aTextureState,
++                                 TextureImage::ImageFormat aImageFormat)
++    : TextureImage(aSize, aWrapMode, aContentType, aFlags),
++      mGLContext(aContext),
++      mUpdateFormat(gfx::ImageFormatToSurfaceFormat(aImageFormat)),
++      mEGLImage(nullptr),
++      mTexture(aTexture),
++      mSurface(nullptr),
++      mConfig(nullptr),
++      mTextureState(aTextureState),
++      mBound(false) {
++  if (mUpdateFormat == gfx::SurfaceFormat::UNKNOWN) {
++    mUpdateFormat =
++        gfxPlatform::GetPlatform()->Optimal2DFormatForContent(GetContentType());
++  }
++
++  if (mUpdateFormat == gfx::SurfaceFormat::R5G6B5_UINT16) {
++    mTextureFormat = gfx::SurfaceFormat::R8G8B8X8;
++  } else if (mUpdateFormat == gfx::SurfaceFormat::B8G8R8X8) {
++    mTextureFormat = gfx::SurfaceFormat::B8G8R8X8;
++  } else {
++    mTextureFormat = gfx::SurfaceFormat::B8G8R8A8;
++  }
++}
++
++TextureImageEGL::~TextureImageEGL() {
++  if (mGLContext->IsDestroyed() || !mGLContext->IsOwningThreadCurrent()) {
++    return;
++  }
++
++  // If we have a context, then we need to delete the texture;
++  // if we don't have a context (either real or shared),
++  // then they went away when the contex was deleted, because it
++  // was the only one that had access to it.
++  if (mGLContext->MakeCurrent()) {
++    mGLContext->fDeleteTextures(1, &mTexture);
++  }
++  ReleaseTexImage();
++  DestroyEGLSurface();
++}
++
++bool TextureImageEGL::DirectUpdate(
++    gfx::DataSourceSurface* aSurf, const nsIntRegion& aRegion,
++    const gfx::IntPoint& aSrcOffset /* = gfx::IntPoint(0, 0) */,
++    const gfx::IntPoint& aDstOffset /* = gfx::IntPoint(0, 0) */) {
++  gfx::IntRect bounds = aRegion.GetBounds();
++
++  nsIntRegion region;
++  if (mTextureState != Valid) {
++    bounds = gfx::IntRect(0, 0, mSize.width, mSize.height);
++    region = nsIntRegion(bounds);
++  } else {
++    region = aRegion;
++  }
++
++  bool needInit = mTextureState == Created;
++  size_t uploadSize = 0;
++  mTextureFormat = UploadSurfaceToTexture(mGLContext, aSurf, region, mTexture,
++                                          mSize, &uploadSize, needInit, aSrcOffset, aDstOffset);
++  if (mTextureFormat == gfx::SurfaceFormat::UNKNOWN) {
++    return false;
++  }
++
++  if (uploadSize > 0) {
++    UpdateUploadSize(uploadSize);
++  }
++
++  mTextureState = Valid;
++  return true;
++}
++
++void TextureImageEGL::BindTexture(GLenum aTextureUnit) {
++  // Ensure the texture is allocated before it is used.
++  if (mTextureState == Created) {
++    Resize(mSize);
++  }
++
++  mGLContext->fActiveTexture(aTextureUnit);
++  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, mTexture);
++  mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
++}
++
++void TextureImageEGL::Resize(const gfx::IntSize& aSize) {
++  if (mSize == aSize && mTextureState != Created) return;
++
++  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, mTexture);
++
++  mGLContext->fTexImage2D(LOCAL_GL_TEXTURE_2D, 0,
++                          GLFormatForImage(mUpdateFormat), aSize.width,
++                          aSize.height, 0, GLFormatForImage(mUpdateFormat),
++                          GLTypeForImage(mUpdateFormat), nullptr);
++
++  mTextureState = Allocated;
++  mSize = aSize;
++}
++
++bool TextureImageEGL::BindTexImage() {
++  if (mBound && !ReleaseTexImage()) return false;
++
++  const auto& gle = GLContextEGL::Cast(mGLContext);
++  const auto& egl = gle->mEgl;
++  EGLBoolean success = egl->fBindTexImage((EGLSurface)mSurface,
++                                          LOCAL_EGL_BACK_BUFFER);
++
++  if (success == LOCAL_EGL_FALSE) return false;
++
++  mBound = true;
++  return true;
++}
++
++bool TextureImageEGL::ReleaseTexImage() {
++  if (!mBound) return true;
++
++  const auto& gle = GLContextEGL::Cast(mGLContext);
++  const auto& egl = gle->mEgl;
++  EGLBoolean success = egl->fReleaseTexImage(
++      (EGLSurface)mSurface, LOCAL_EGL_BACK_BUFFER);
++
++  if (success == LOCAL_EGL_FALSE) return false;
++
++  mBound = false;
++  return true;
++}
++
++void TextureImageEGL::DestroyEGLSurface(void) {
++  if (!mSurface) return;
++
++  const auto& gle = GLContextEGL::Cast(mGLContext);
++  const auto& egl = gle->mEgl;
++  egl->fDestroySurface(mSurface);
++  mSurface = nullptr;
++}
++
++already_AddRefed<TextureImage> CreateTextureImageEGL(
++    GLContext* gl, const gfx::IntSize& aSize,
++    TextureImage::ContentType aContentType, GLenum aWrapMode,
++    TextureImage::Flags aFlags, TextureImage::ImageFormat aImageFormat) {
++  RefPtr<TextureImage> t =
++      new gl::TiledTextureImage(gl, aSize, aContentType, aFlags, aImageFormat);
++  return t.forget();
++}
++
++already_AddRefed<TextureImage> TileGenFuncEGL(
++    GLContext* gl, const gfx::IntSize& aSize,
++    TextureImage::ContentType aContentType, TextureImage::Flags aFlags,
++    TextureImage::ImageFormat aImageFormat) {
++  gl->MakeCurrent();
++
++  GLuint texture;
++  gl->fGenTextures(1, &texture);
++
++  RefPtr<TextureImageEGL> teximage =
++      new TextureImageEGL(texture, aSize, LOCAL_GL_CLAMP_TO_EDGE, aContentType,
++                          gl, aFlags, TextureImage::Created, aImageFormat);
++
++  teximage->BindTexture(LOCAL_GL_TEXTURE0);
++
++  GLint texfilter = aFlags & TextureImage::UseNearestFilter ? LOCAL_GL_NEAREST
++                                                            : LOCAL_GL_LINEAR;
++  gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_MIN_FILTER,
++                     texfilter);
++  gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_MAG_FILTER,
++                     texfilter);
++  gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_S,
++                     LOCAL_GL_CLAMP_TO_EDGE);
++  gl->fTexParameteri(LOCAL_GL_TEXTURE_2D, LOCAL_GL_TEXTURE_WRAP_T,
++                     LOCAL_GL_CLAMP_TO_EDGE);
++
++  return teximage.forget();
++}
++
++}  // namespace gl
++}  // namespace mozilla
+diff --git a/gfx/gl/TextureImageEGL.h b/gfx/gl/TextureImageEGL.h
+new file mode 100644
+index 000000000000..8c61de74f222
+--- /dev/null
++++ b/gfx/gl/TextureImageEGL.h
+@@ -0,0 +1,80 @@
++/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef TEXTUREIMAGEEGL_H_
++#define TEXTUREIMAGEEGL_H_
++
++#include "GLTextureImage.h"
++
++#include "mozilla/gfx/Types.h"
++
++namespace mozilla {
++namespace gl {
++
++class TextureImageEGL final : public TextureImage {
++ public:
++  TextureImageEGL(
++      GLuint aTexture, const gfx::IntSize& aSize, GLenum aWrapMode,
++      ContentType aContentType, GLContext* aContext,
++      Flags aFlags = TextureImage::NoFlags,
++      TextureState aTextureState = Created,
++      TextureImage::ImageFormat aImageFormat = gfx::SurfaceFormat::UNKNOWN);
++
++  virtual ~TextureImageEGL();
++
++  bool DirectUpdate(
++      gfx::DataSourceSurface* aSurf, const nsIntRegion& aRegion,
++      const gfx::IntPoint& aSrcOffset = gfx::IntPoint(0, 0),
++      const gfx::IntPoint& aDstOffset = gfx::IntPoint(0, 0)) override;
++
++  virtual void BindTexture(GLenum aTextureUnit) override;
++
++  virtual GLuint GetTextureID() override {
++    // Ensure the texture is allocated before it is used.
++    if (mTextureState == Created) {
++      Resize(mSize);
++    }
++    return mTexture;
++  };
++
++  virtual void Resize(const gfx::IntSize& aSize) override;
++
++  bool BindTexImage();
++
++  bool ReleaseTexImage();
++
++  virtual bool CreateEGLSurface(gfxASurface* aSurface) { return false; }
++
++  virtual void DestroyEGLSurface(void);
++
++ protected:
++  typedef gfxImageFormat ImageFormat;
++
++  RefPtr<GLContext> mGLContext;
++
++  gfx::SurfaceFormat mUpdateFormat;
++  EGLImage mEGLImage;
++  GLuint mTexture;
++  EGLSurface mSurface;
++  EGLConfig mConfig;
++  TextureState mTextureState;
++
++  bool mBound;
++};
++
++already_AddRefed<TextureImage> CreateTextureImageEGL(
++    GLContext* gl, const gfx::IntSize& aSize,
++    TextureImage::ContentType aContentType, GLenum aWrapMode,
++    TextureImage::Flags aFlags, TextureImage::ImageFormat aImageFormat);
++
++already_AddRefed<TextureImage> TileGenFuncEGL(
++    GLContext* gl, const gfx::IntSize& aSize,
++    TextureImage::ContentType aContentType, TextureImage::Flags aFlags,
++    TextureImage::ImageFormat aImageFormat);
++
++}  // namespace gl
++}  // namespace mozilla
++
++#endif  // TEXTUREIMAGEEGL_H_
+diff --git a/gfx/gl/moz.build b/gfx/gl/moz.build
+index 162269dec493..a73cecb06365 100644
+--- a/gfx/gl/moz.build
++++ b/gfx/gl/moz.build
+@@ -140,6 +140,7 @@ UNIFIED_SOURCES += [
+     "SharedSurface.cpp",
+     "SharedSurfaceEGL.cpp",
+     "SharedSurfaceGL.cpp",
++    'TextureImageEGL.cpp',
+ ]
+ SOURCES += [
+     "GLScreenBuffer.cpp",
+diff --git a/gfx/layers/client/TextureClientSharedSurface.cpp b/gfx/layers/client/TextureClientSharedSurface.cpp
+index 048151d30e12..f425eb80103f 100644
+--- a/gfx/layers/client/TextureClientSharedSurface.cpp
++++ b/gfx/layers/client/TextureClientSharedSurface.cpp
+@@ -36,6 +36,15 @@ SharedSurfaceTextureData::SharedSurfaceTextureData(
+     const gfx::IntSize size)
+     : mDesc(desc), mFormat(format), mSize(size) {}
+ 
++SharedSurfaceTextureData::SharedSurfaceTextureData(
++    UniquePtr<gl::SharedSurface> surf)
++    : mSurf(std::move(surf)),
++      mDesc(),
++      mFormat(),
++      mSize(mSurf->mDesc.size)
++{
++}
++
+ SharedSurfaceTextureData::~SharedSurfaceTextureData() = default;
+ 
+ void SharedSurfaceTextureData::Deallocate(LayersIPCChannel*) {}
+@@ -93,6 +102,46 @@ bool SharedSurfaceTextureData::Serialize(SurfaceDescriptor& aOutDescriptor) {
+ #endif
+ }
+ 
++SharedSurfaceTextureClient::SharedSurfaceTextureClient(
++    SharedSurfaceTextureData* aData, TextureFlags aFlags,
++    LayersIPCChannel* aAllocator)
++    : TextureClient(aData, aFlags, aAllocator) {
++}
++
++already_AddRefed<SharedSurfaceTextureClient> SharedSurfaceTextureClient::Create(
++    UniquePtr<gl::SharedSurface> surf, gl::SurfaceFactory* factory,
++    LayersIPCChannel* aAllocator, TextureFlags aFlags) {
++  if (!surf) {
++    return nullptr;
++  }
++  TextureFlags flags = aFlags | TextureFlags::RECYCLE | surf->GetTextureFlags();
++  SharedSurfaceTextureData* data =
++      new SharedSurfaceTextureData(std::move(surf));
++  return MakeAndAddRef<SharedSurfaceTextureClient>(data, flags, aAllocator);
++}
++
++SharedSurfaceTextureClient::~SharedSurfaceTextureClient() {
++  // XXX - Things break when using the proper destruction handshake with
++  // SharedSurfaceTextureData because the TextureData outlives its gl
++  // context. Having a strong reference to the gl context creates a cycle.
++  // This needs to be fixed in a better way, though, because deleting
++  // the TextureData here can race with the compositor and cause flashing.
++  TextureData* data = mData;
++  mData = nullptr;
++
++  Destroy();
++
++  if (data) {
++    // Destroy mData right away without doing the proper deallocation handshake,
++    // because SharedSurface depends on things that may not outlive the
++    // texture's destructor so we can't wait until we know the compositor isn't
++    // using the texture anymore. It goes without saying that this is really bad
++    // and we should fix the bugs that block doing the right thing such as bug
++    // 1224199 sooner rather than later.
++    delete data;
++  }
++}
++
+ TextureFlags SharedSurfaceTextureData::GetTextureFlags() const {
+   TextureFlags flags = TextureFlags::NO_FLAGS;
+ 
+diff --git a/gfx/layers/client/TextureClientSharedSurface.h b/gfx/layers/client/TextureClientSharedSurface.h
+index 913afed84857..612720e27de3 100644
+--- a/gfx/layers/client/TextureClientSharedSurface.h
++++ b/gfx/layers/client/TextureClientSharedSurface.h
+@@ -30,6 +30,9 @@ namespace layers {
+ class SharedSurfaceTextureClient;
+ 
+ class SharedSurfaceTextureData : public TextureData {
++ protected:
++  const UniquePtr<gl::SharedSurface> mSurf;
++
+   friend class SharedSurfaceTextureClient;
+ 
+  public:
+@@ -43,6 +46,9 @@ class SharedSurfaceTextureData : public TextureData {
+ 
+   SharedSurfaceTextureData(const SurfaceDescriptor&, gfx::SurfaceFormat,
+                            gfx::IntSize);
++
++  explicit SharedSurfaceTextureData(UniquePtr<gl::SharedSurface> surf);
++
+   virtual ~SharedSurfaceTextureData();
+ 
+   bool Lock(OpenMode) override { return false; }
+@@ -55,6 +61,8 @@ class SharedSurfaceTextureData : public TextureData {
+ 
+   void Deallocate(LayersIPCChannel*) override;
+ 
++  gl::SharedSurface* Surf() const { return mSurf.get(); }
++
+   TextureFlags GetTextureFlags() const override;
+ 
+   Maybe<uint64_t> GetBufferId() const override;
+@@ -62,6 +70,23 @@ class SharedSurfaceTextureData : public TextureData {
+   mozilla::ipc::FileDescriptor GetAcquireFence() override;
+ };
+ 
++class SharedSurfaceTextureClient : public TextureClient {
++ public:
++  SharedSurfaceTextureClient(SharedSurfaceTextureData* aData,
++                             TextureFlags aFlags, LayersIPCChannel* aAllocator);
++
++  ~SharedSurfaceTextureClient();
++
++  static already_AddRefed<SharedSurfaceTextureClient> Create(
++      UniquePtr<gl::SharedSurface> surf, gl::SurfaceFactory* factory,
++      LayersIPCChannel* aAllocator, TextureFlags aFlags);
++
++  gl::SharedSurface* Surf() const {
++    return static_cast<const SharedSurfaceTextureData*>(GetInternalData())
++        ->Surf();
++  }
++};
++
+ }  // namespace layers
+ }  // namespace mozilla
+ 
+diff --git a/gfx/layers/ipc/CompositorVsyncScheduler.cpp b/gfx/layers/ipc/CompositorVsyncScheduler.cpp
+index 2e8e58a2c46b..0b09b072074c 100644
+--- a/gfx/layers/ipc/CompositorVsyncScheduler.cpp
++++ b/gfx/layers/ipc/CompositorVsyncScheduler.cpp
+@@ -255,7 +255,6 @@ void CompositorVsyncScheduler::Composite(const VsyncEvent& aVsyncEvent) {
+     // Tell the owner to do a composite
+     mVsyncSchedulerOwner->CompositeToTarget(aVsyncEvent.mId, nullptr, nullptr);
+     mVsyncSchedulerOwner->CompositeToDefaultTarget(aVsyncEvent.mId);
+-
+     mVsyncNotificationsSkipped = 0;
+ 
+     TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncEvent.mTime;
+diff --git a/gfx/layers/opengl/CompositorOGL.cpp b/gfx/layers/opengl/CompositorOGL.cpp
+index 8a423b840dd5..122709eaf2de 100644
+--- a/gfx/layers/opengl/CompositorOGL.cpp
++++ b/gfx/layers/opengl/CompositorOGL.cpp
+@@ -247,11 +247,9 @@ already_AddRefed<mozilla::gl::GLContext> CompositorOGL::CreateContext() {
+   // Allow to create offscreen GL context for main Layer Manager
+   if (!context && gfxEnv::LayersPreferOffscreen()) {
+     nsCString discardFailureId;
+-    context = GLContextProvider::CreateHeadless(
+-        {CreateContextFlags::REQUIRE_COMPAT_PROFILE}, &discardFailureId);
+-    if (!context->CreateOffscreenDefaultFb(mSurfaceSize)) {
+-      context = nullptr;
+-    }
++    context = GLContextProvider::CreateOffscreen(
++        mSurfaceSize, CreateContextFlags::REQUIRE_COMPAT_PROFILE,
++        &discardFailureId);
+   }
+ 
+   if (!context) {
+@@ -615,9 +613,15 @@ void CompositorOGL::PrepareViewport(CompositingRenderTargetOGL* aRenderTarget) {
+     // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
+     // 2, 2) and flip the contents.
+     Matrix viewMatrix;
+-    viewMatrix.PreTranslate(-1.0, 1.0);
+-    viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
+-    viewMatrix.PreScale(1.0f, -1.0f);
++    if (mGLContext->IsOffscreen() && aRenderTarget->IsWindow()) {
++      // In case of rendering via GL Offscreen context, disable Y-Flipping
++      viewMatrix.PreTranslate(-1.0, -1.0);
++      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
++    } else {
++      viewMatrix.PreTranslate(-1.0, 1.0);
++      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
++      viewMatrix.PreScale(1.0f, -1.0f);
++    }
+ 
+     MOZ_ASSERT(mCurrentRenderTarget, "No destination");
+ 
+@@ -761,7 +765,7 @@ static GLenum GetFrameBufferInternalFormat(
+ 
+ void CompositorOGL::ClearRect(const gfx::Rect& aRect) {
+   // Map aRect to OGL coordinates, origin:bottom-left
+-  GLint y = mViewportSize.height - aRect.YMost();
++  GLint y = mGLContext->IsOffscreen() && mCurrentRenderTarget->IsWindow() ? aRect.Y() : FlipY(aRect.YMost());
+ 
+   ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
+   ScopedScissorRect autoScissorRect(mGLContext, aRect.X(), y, aRect.Width(),
+@@ -1483,7 +1487,7 @@ void CompositorOGL::DrawGeometry(const Geometry& aGeometry,
+ 
+   ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
+   ScopedScissorRect autoScissorRect(mGLContext, clipRect.X(),
+-                                    FlipY(clipRect.Y() + clipRect.Height()),
++                                    mGLContext->IsOffscreen() && mCurrentRenderTarget->IsWindow() ? clipRect.Y() : FlipY(clipRect.YMost()),
+                                     clipRect.Width(), clipRect.Height());
+ 
+   MaskType maskType;

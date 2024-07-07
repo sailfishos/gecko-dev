@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Tue, 22 Aug 2023 09:12:27 +0100
+Subject: [PATCH] [sailfishos][gecko] Reduce Rust build requirements
+
+Drop debuginfo for Rust components and reduce optimisation when building
+swgl.
+
+The style component fails to build on aarch64 when debuginfo is enabled.
+The build fails with memory errors and the following:
+
+fatal runtime error: Rust cannot catch foreign exceptions
+
+Disabling debuginfo while building this file allows it to go through.
+
+This change drops debuginfo for all Rust components, so it may be better
+to use a more targeted approach instead.
+
+Attempting to build swgl on aarch64 with -O2 level optimisation results
+in the error:
+
+internal compiler error: Segmentation fault
+
+Dropping to -O1 allows the build to go through. Updating the compiler
+may be a better fix.
+---
+ build/moz.configure/rust.configure | 4 ++--
+ gfx/wr/swgl/build.rs               | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/build/moz.configure/rust.configure b/build/moz.configure/rust.configure
+index ce496928c56e..ba8e527b817c 100644
+--- a/build/moz.configure/rust.configure
++++ b/build/moz.configure/rust.configure
+@@ -641,8 +641,8 @@ def rust_compile_flags(
+     if opt_level == "0" and not debug_rust:
+         debug_assertions = False
+ 
+-    if debug_symbols:
+-        debug_info = "2"
++    #if debug_symbols:
++    #    debug_info = "2"
+ 
+     opts = []
+ 
+diff --git a/gfx/wr/swgl/build.rs b/gfx/wr/swgl/build.rs
+index 8ace5615a281..34ebabbd7170 100644
+--- a/gfx/wr/swgl/build.rs
++++ b/gfx/wr/swgl/build.rs
+@@ -174,7 +174,7 @@ fn main() {
+         }
+         // SWGL relies heavily on inlining for performance so override -Oz with -O2
+         if tool.args().contains(&"-Oz".into()) {
+-            build.flag("-O2");
++            build.flag("-O1");
+         }
+ 
+         // Most GLSL compilers assume something like fast-math so we turn it on.

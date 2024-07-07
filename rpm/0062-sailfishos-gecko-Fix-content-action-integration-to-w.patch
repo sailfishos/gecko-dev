@@ -1,0 +1,337 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 31 Jan 2020 11:09:02 +0000
+Subject: [PATCH] [sailfishos][gecko] Fix content action integration to work.
+ Fixes JB#51235
+
+[sailfishos][gecko] Use libcontentaction for custom scheme uri handling. JB#47892
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ old-configure.in                              |  8 +-
+ uriloader/exthandler/moz.build                |  5 ++
+ uriloader/exthandler/nsContentHandlerApp.cpp  | 78 +++++++++++++++++++
+ uriloader/exthandler/nsContentHandlerApp.h    |  5 +-
+ uriloader/exthandler/unix/nsMIMEInfoUnix.cpp  | 51 +++++++++++-
+ uriloader/exthandler/unix/nsMIMEInfoUnix.h    |  5 ++
+ .../exthandler/unix/nsOSHelperAppService.cpp  | 12 +++
+ xpcom/io/moz.build                            |  2 +
+ xpcom/io/nsLocalFileUnix.cpp                  | 15 ++++
+ 9 files changed, 174 insertions(+), 7 deletions(-)
+ create mode 100644 uriloader/exthandler/nsContentHandlerApp.cpp
+
+diff --git a/old-configure.in b/old-configure.in
+index 3beeb6054e4d..8b15af74bd57 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1748,11 +1748,13 @@ then
+     fi
+ 
+     MOZ_ENABLE_CONTENTACTION=
+-    PKG_CHECK_MODULES(LIBCONTENTACTION, contentaction-0.1, _LIB_FOUND=1, _LIB_FOUND=)
++    PKG_CHECK_MODULES(LIBCONTENTACTION, contentaction5,
++                      MOZ_ENABLE_CONTENTACTION=1,
++                      MOZ_ENABLE_CONTENTACTION=)
+     if test "$MOZ_ENABLE_CONTENTACTION"; then
+        MOZ_ENABLE_CONTENTACTION=1
+-       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_CONTENTACTION_CFLAGS"
+-       MOZ_QT_LIBS="$MOZ_QT_LIBS $_CONTENTACTION_LIBS"
++       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $LIBCONTENTACTION_CFLAGS"
++       MOZ_QT_LIBS="$MOZ_QT_LIBS $LIBCONTENTACTION_LIBS"
+        AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
+        AC_SUBST(MOZ_ENABLE_CONTENTACTION)
+     fi
+diff --git a/uriloader/exthandler/moz.build b/uriloader/exthandler/moz.build
+index a4ba118b9cfa..99d9ead34956 100644
+--- a/uriloader/exthandler/moz.build
++++ b/uriloader/exthandler/moz.build
+@@ -113,6 +113,11 @@ if CONFIG["MOZ_ENABLE_DBUS"]:
+         "DBusHelpers.h",
+     ]
+ 
++if CONFIG['MOZ_ENABLE_CONTENTACTION']:
++    UNIFIED_SOURCES += [
++        'nsContentHandlerApp.cpp',
++    ]
++
+ EXTRA_COMPONENTS += [
+     "HandlerService.js",
+     "HandlerService.manifest",
+diff --git a/uriloader/exthandler/nsContentHandlerApp.cpp b/uriloader/exthandler/nsContentHandlerApp.cpp
+new file mode 100644
+index 000000000000..10b919c44259
+--- /dev/null
++++ b/uriloader/exthandler/nsContentHandlerApp.cpp
+@@ -0,0 +1,78 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ * vim:expandtab:shiftwidth=2:tabstop=2:cin:
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "nsContentHandlerApp.h"
++#include "nsIURI.h"
++#include "nsIClassInfoImpl.h"
++#include "nsCOMPtr.h"
++#include "nsString.h"
++
++#define NS_CONTENTHANDLER_CID \
++{ 0x43ec2c82, 0xb9db, 0x4835, {0x80, 0x3f, 0x64, 0xc9, 0x72, 0x5a, 0x70, 0x28 } }
++
++NS_IMPL_CLASSINFO(nsContentHandlerApp, nullptr, 0, NS_CONTENTHANDLER_CID)
++NS_IMPL_ISUPPORTS_CI(nsContentHandlerApp, nsIHandlerApp)
++
++nsContentHandlerApp::nsContentHandlerApp(nsString aName, nsCString aType,
++                                         ContentAction::Action& aAction) :
++  mName(aName),
++  mType(aType),
++  mAction(aAction)
++{
++}
++
++////////////////////////////////////////////////////////////////////////////////
++//// nsIHandlerInfo
++
++NS_IMETHODIMP nsContentHandlerApp::GetName(nsAString& aName)
++{
++  aName.Assign(mName);
++  return NS_OK;
++}
++
++NS_IMETHODIMP nsContentHandlerApp::SetName(const nsAString& aName)
++{
++  mName.Assign(aName);
++  return NS_OK;
++}
++
++NS_IMETHODIMP nsContentHandlerApp::Equals(nsIHandlerApp *aHandlerApp, bool *_retval)
++{
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++NS_IMETHODIMP nsContentHandlerApp::GetDetailedDescription(nsAString& aDetailedDescription)
++{
++  aDetailedDescription.Assign(mDetailedDescription);
++  return NS_OK;
++}
++
++NS_IMETHODIMP nsContentHandlerApp::SetDetailedDescription(const nsAString& aDetailedDescription)
++{
++  mDetailedDescription.Assign(aDetailedDescription);
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsContentHandlerApp::LaunchWithURI(nsIURI *aURI,
++                                   mozilla::dom::BrowsingContext *aWindowContext)
++{
++  nsAutoCString spec;
++  nsresult rv = aURI->GetAsciiSpec(spec);
++  NS_ENSURE_SUCCESS(rv,rv);
++  const char* url = spec.get();
++
++  QList<ContentAction::Action> actions =
++    ContentAction::Action::actionsForFile(QUrl(url), QString(mType.get()));
++  for (int i = 0; i < actions.size(); ++i) {
++    if (actions[i].name() == QString((QChar*)mName.get(), mName.Length())) {
++      actions[i].trigger();
++      break;
++    }
++  }
++
++  return NS_OK;
++}
+diff --git a/uriloader/exthandler/nsContentHandlerApp.h b/uriloader/exthandler/nsContentHandlerApp.h
+index f372d8735e0a..fa35109fa37d 100644
+--- a/uriloader/exthandler/nsContentHandlerApp.h
++++ b/uriloader/exthandler/nsContentHandlerApp.h
+@@ -7,7 +7,7 @@
+ #ifndef __nsContentHandlerAppImpl_h__
+ #define __nsContentHandlerAppImpl_h__
+ 
+-#include <contentaction/contentaction.h>
++#include <contentaction5/contentaction.h>
+ #include "nsString.h"
+ #include "nsIMIMEInfo.h"
+ 
+@@ -18,9 +18,10 @@ class nsContentHandlerApp : public nsIHandlerApp {
+ 
+   nsContentHandlerApp(nsString aName, nsCString aType,
+                       ContentAction::Action& aAction);
++
++ private:
+   virtual ~nsContentHandlerApp() {}
+ 
+- protected:
+   nsString mName;
+   nsCString mType;
+   nsString mDetailedDescription;
+diff --git a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+index c2031408b5c1..73cd46a33b68 100644
+--- a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
++++ b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+@@ -5,8 +5,8 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #ifdef MOZ_WIDGET_QT
+-#if (MOZ_ENABLE_CONTENTACTION)
+-#include <contentaction/contentaction.h>
++#if defined(MOZ_ENABLE_CONTENTACTION)
++#include <contentaction5/contentaction.h>
+ #include "nsContentHandlerApp.h"
+ #endif
+ #endif
+@@ -61,6 +61,15 @@ nsMIMEInfoUnix::GetHasDefaultHandler(bool* _retval) {
+ 
+   if (*_retval) return NS_OK;
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++  ContentAction::Action action =
++    ContentAction::Action::defaultActionForFile(QUrl(), QString(mSchemeOrType.get()));
++  if (action.isValid()) {
++    *_retval = true;
++    return NS_OK;
++  }
++#endif
++
+   return NS_OK;
+ }
+ 
+@@ -73,6 +82,17 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile* aFile) {
+   nsAutoCString nativePath;
+   aFile->GetNativePath(nativePath);
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++  QUrl localFileUri = QUrl::fromLocalFile(QString::fromUtf8(nativePath.get()));
++  ContentAction::Action action =
++    ContentAction::Action::defaultActionForFile(localFileUri, QString(mSchemeOrType.get()));
++  if (action.isValid()) {
++    action.trigger();
++    return NS_OK;
++  }
++  return NS_ERROR_FAILURE;
++#endif
++
+   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+   if (!giovfs) {
+     return NS_ERROR_FAILURE;
+@@ -96,3 +116,30 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile* aFile) {
+ 
+   return app->LaunchWithURI(uri, nullptr);
+ }
++
++#if defined(MOZ_ENABLE_CONTENTACTION)
++NS_IMETHODIMP
++nsMIMEInfoUnix::GetPossibleApplicationHandlers(nsIMutableArray ** aPossibleAppHandlers)
++{
++  if (!mPossibleApplications) {
++    mPossibleApplications = do_CreateInstance(NS_ARRAY_CONTRACTID);
++
++    if (!mPossibleApplications)
++      return NS_ERROR_OUT_OF_MEMORY;
++
++    QList<ContentAction::Action> actions =
++      ContentAction::Action::actionsForFile(QUrl(), QString(mSchemeOrType.get()));
++
++    for (int i = 0; i < actions.size(); ++i) {
++      nsContentHandlerApp* app =
++        new nsContentHandlerApp(nsString((char16_t*)actions[i].name().data()),
++                                mSchemeOrType, actions[i]);
++      mPossibleApplications->AppendElement(app);
++    }
++  }
++
++  *aPossibleAppHandlers = mPossibleApplications;
++  NS_ADDREF(*aPossibleAppHandlers);
++  return NS_OK;
++}
++#endif
+diff --git a/uriloader/exthandler/unix/nsMIMEInfoUnix.h b/uriloader/exthandler/unix/nsMIMEInfoUnix.h
+index 2e32be49157f..2f76c47ab4fb 100644
+--- a/uriloader/exthandler/unix/nsMIMEInfoUnix.h
++++ b/uriloader/exthandler/unix/nsMIMEInfoUnix.h
+@@ -19,6 +19,11 @@ class nsMIMEInfoUnix : public nsMIMEInfoImpl {
+       : nsMIMEInfoImpl(aType, aClass) {}
+   static bool HandlerExists(const char* aProtocolScheme);
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++  NS_IMETHOD GetPossibleApplicationHandlers(
++      nsIMutableArray **aPossibleAppHandlers) override;
++#endif
++
+  protected:
+   NS_IMETHOD GetHasDefaultHandler(bool* _retval) override;
+ 
+diff --git a/uriloader/exthandler/unix/nsOSHelperAppService.cpp b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+index c1479f2200f0..ce0602866d72 100644
+--- a/uriloader/exthandler/unix/nsOSHelperAppService.cpp
++++ b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+@@ -7,6 +7,11 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ 
++#if defined(MOZ_ENABLE_CONTENTACTION)
++#include <contentaction5/contentaction.h>
++#include <QString>
++#endif
++
+ #include "nsOSHelperAppService.h"
+ #include "nsMIMEInfoUnix.h"
+ #ifdef MOZ_WIDGET_GTK
+@@ -1030,6 +1035,13 @@ nsresult nsOSHelperAppService::OSProtocolHandlerExists(
+ #ifdef MOZ_WIDGET_GTK
+     // Check the GNOME registry for a protocol handler
+     *aHandlerExists = nsGNOMERegistry::HandlerExists(aProtocolScheme);
++#elif defined(MOZ_ENABLE_CONTENTACTION)
++    // libcontentaction requires character ':' after scheme
++    ContentAction::Action action =
++      ContentAction::Action::defaultActionForScheme(QString(aProtocolScheme) + ':');
++
++    if (action.isValid())
++      *aHandlerExists = true;
+ #else
+     *aHandlerExists = false;
+ #endif
+diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
+index d28c426e7bd7..fdd86ffad39d 100644
+--- a/xpcom/io/moz.build
++++ b/xpcom/io/moz.build
+@@ -153,3 +153,5 @@ LOCAL_INCLUDES += [
+     "!..",
+     "../build",
+ ]
++
++CXXFLAGS += CONFIG['TK_CFLAGS']
+diff --git a/xpcom/io/nsLocalFileUnix.cpp b/xpcom/io/nsLocalFileUnix.cpp
+index 174e7c78d810..ffe3dbea210a 100644
+--- a/xpcom/io/nsLocalFileUnix.cpp
++++ b/xpcom/io/nsLocalFileUnix.cpp
+@@ -75,6 +75,10 @@ static nsresult MacErrorMapper(OSErr inErr);
+ #  include <linux/magic.h>
+ #endif
+ 
++#ifdef MOZ_ENABLE_CONTENTACTION
++#  include <contentaction5/contentaction.h>
++#endif
++
+ #include "nsNativeCharsetUtils.h"
+ #include "nsTraceRefcnt.h"
+ #include "nsHashKeys.h"
+@@ -2082,6 +2086,17 @@ nsLocalFile::Launch() {
+   }
+ 
+   return giovfs->ShowURIForInput(mPath);
++#elif defined(MOZ_ENABLE_CONTENTACTION)
++  QUrl uri = QUrl::fromLocalFile(QString::fromUtf8(mPath.get()));
++  ContentAction::Action action =
++    ContentAction::Action::defaultActionForFile(uri);
++
++  if (action.isValid()) {
++    action.trigger();
++    return NS_OK;
++  }
++
++  return NS_ERROR_FAILURE;
+ #elif defined(MOZ_WIDGET_ANDROID)
+   // Not supported on GeckoView
+   return NS_ERROR_NOT_IMPLEMENTED;

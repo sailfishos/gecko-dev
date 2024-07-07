@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Sat, 26 Aug 2023 13:44:16 +0100
+Subject: [PATCH] [sailfishos][gecko] Work around upstream membarrier changes
+
+Upstream changes for Bugzilla bug 1661016 "aarch64: Invalidate icache
+when compiling on a background thread" introduce the use of membarrier.
+See:
+
+https://phabricator.services.mozilla.com/D88395
+
+However, Linux kernel headers 4.16 or more recent are required for the
+membarrier.h file and related syscalls to be present. Since our headers
+are being held back 3.18 we don't have access to these.
+
+https://github.com/sailfishos/kernel-headers
+
+This change drops the use of the header file and defines
+__NR_membarrier. It's not clear what the runtime consequences of this
+will be, but if this causes problems we should consider reverting
+changeset D88395 instead.
+
+The problems this fixes seem to only cause trouble in aarch64 simulation
+environments.
+
+For reference:
+
+https://man7.org/linux/man-pages/man2/membarrier.2.html
+---
+ js/src/jit/arm64/vixl/MozCpu-vixl.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/js/src/jit/arm64/vixl/MozCpu-vixl.cpp b/js/src/jit/arm64/vixl/MozCpu-vixl.cpp
+index fd5fc804f473..3e6536f295ea 100644
+--- a/js/src/jit/arm64/vixl/MozCpu-vixl.cpp
++++ b/js/src/jit/arm64/vixl/MozCpu-vixl.cpp
+@@ -35,7 +35,7 @@
+ 
+ #if defined(__aarch64__) && (defined(__linux__) || defined(__android__))
+ #   if defined(__linux__)
+-#    include <linux/membarrier.h>
++//#    include <linux/membarrier.h>
+ #    include <sys/syscall.h>
+ #    include <sys/utsname.h>
+ #    include <unistd.h>
+@@ -48,6 +48,9 @@
+ 
+ #  include "vm/JSContext.h" // TlsContext
+ 
++#define __NR_membarrier 283
++__SYSCALL(__NR_membarrier, sys_membarrier)
++
+ static int membarrier(int cmd, int flags) {
+     return syscall(__NR_membarrier, cmd, flags);
+ }

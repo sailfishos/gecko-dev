@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 24 Jan 2024 00:07:23 +0000
+Subject: [PATCH] [sailfishos][gecko] Disable SessionStore functionality
+
+Sailfish Browser performs the functionality in other ways.
+---
+ .../sessionstore/SessionStoreFunctions.jsm    | 37 ++-----------------
+ 1 file changed, 3 insertions(+), 34 deletions(-)
+
+diff --git a/toolkit/components/sessionstore/SessionStoreFunctions.jsm b/toolkit/components/sessionstore/SessionStoreFunctions.jsm
+index 910ee73da166..18d862ee6049 100644
+--- a/toolkit/components/sessionstore/SessionStoreFunctions.jsm
++++ b/toolkit/components/sessionstore/SessionStoreFunctions.jsm
+@@ -6,10 +6,6 @@ const { XPCOMUtils } = ChromeUtils.import(
+   "resource://gre/modules/XPCOMUtils.jsm"
+ );
+ 
+-XPCOMUtils.defineLazyModuleGetters(this, {
+-  SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
+-});
+-
+ function UpdateSessionStore(
+   aBrowser,
+   aBrowsingContext,
+@@ -75,24 +71,7 @@ var SessionStoreFuncInternal = {
+     aCollectSHistory,
+     aData
+   ) {
+-    let currentData = {};
+-    if (aData.docShellCaps != undefined) {
+-      currentData.disallow = aData.docShellCaps ? aData.docShellCaps : null;
+-    }
+-    if (aData.isPrivate != undefined) {
+-      currentData.isPrivate = aData.isPrivate;
+-    }
+-
+-    SessionStore.updateSessionStoreFromTablistener(
+-      aBrowser,
+-      aBrowsingContext,
+-      aPermanentKey,
+-      {
+-        data: currentData,
+-        epoch: aEpoch,
+-        sHistoryNeeded: aCollectSHistory,
+-      }
+-    );
++    // Not implemented
+   },
+ 
+   updateSessionStoreForWindow: function SSF_updateSessionStoreForWindow(
+@@ -102,12 +81,7 @@ var SessionStoreFuncInternal = {
+     aEpoch,
+     aData
+   ) {
+-    SessionStore.updateSessionStoreFromTablistener(
+-      aBrowser,
+-      aBrowsingContext,
+-      aPermanentKey,
+-      { data: { windowstatechange: aData }, epoch: aEpoch }
+-    );
++      // Not implemented
+   },
+ 
+   updateSessionStoreForStorage: function SSF_updateSessionStoreForWindow(
+@@ -117,11 +91,6 @@ var SessionStoreFuncInternal = {
+     aEpoch,
+     aData
+   ) {
+-    SessionStore.updateSessionStoreFromTablistener(
+-      aBrowser,
+-      aBrowsingContext,
+-      aPermanentKey,
+-      { data: { storage: aData }, epoch: aEpoch }
+-    );
++      // Not implemented
+   },
+ };

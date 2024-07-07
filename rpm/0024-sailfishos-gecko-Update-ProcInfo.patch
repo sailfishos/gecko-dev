@@ -1,0 +1,174 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Thu, 21 Sep 2023 08:48:14 +0100
+Subject: [PATCH] [sailfishos][gecko] Update ProcInfo
+
+The upstream ProcInfo has changed interface and structure. These changes
+update the EmbedLite ProcInfo to match.
+
+See Bugzilla bug 1659828:
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1659828
+
+https://phabricator.services.mozilla.com/D89013
+---
+ widget/qt/ProcInfo.cpp | 115 ++++++++++++++++++++++++-----------------
+ 1 file changed, 67 insertions(+), 48 deletions(-)
+
+diff --git a/widget/qt/ProcInfo.cpp b/widget/qt/ProcInfo.cpp
+index 1538b561b4c2..31f7f8070903 100644
+--- a/widget/qt/ProcInfo.cpp
++++ b/widget/qt/ProcInfo.cpp
+@@ -10,6 +10,7 @@
+ #include "mozilla/ipc/GeckoChildProcessHost.h"
+ #include "nsAutoRef.h"
+ #include "nsLocalFile.h"
++#include "nsMemoryReporterManager.h"
+ #include "nsNetCID.h"
+ #include "nsWhitespaceTokenizer.h"
+ 
+@@ -94,11 +95,6 @@ class StatReader {
+         aInfo.cpuKernel = GetCPUTime(aToken, &rv);
+         NS_ENSURE_SUCCESS(rv, rv);
+         break;
+-      case 22:
+-        // Virtual memory size in bytes.
+-        aInfo.virtualMemorySize = Get64Value(aToken, &rv);
+-        NS_ENSURE_SUCCESS(rv, rv);
+-        break;
+       case 23:
+         // Resident Set Size: number of pages the process has
+         // in real memory.
+@@ -209,9 +205,7 @@ class ThreadInfoReader final : public StatReader {
+   base::ProcessId mTid;
+ };
+ 
+-RefPtr<ProcInfoPromise> GetProcInfo(base::ProcessId pid, int32_t childId,
+-                                    const ProcType& type,
+-                                    const nsAString& origin) {
++RefPtr<ProcInfoPromise> GetProcInfo(nsTArray<ProcInfoRequest>&& aRequests) {
+   auto holder = MakeUnique<MozPromiseHolder<ProcInfoPromise>>();
+   RefPtr<ProcInfoPromise> promise = holder->Ensure(__func__);
+   nsresult rv = NS_OK;
+@@ -223,56 +217,81 @@ RefPtr<ProcInfoPromise> GetProcInfo(base::ProcessId pid, int32_t childId,
+     return promise;
+   }
+ 
+-  // Ensure that the string is still alive when the runnable is called.
+-  nsString originCopy(origin);
+   RefPtr<nsIRunnable> r = NS_NewRunnableFunction(
+-      __func__, [holder = std::move(holder), pid, type,
+-                 originCopy = std::move(originCopy), childId]() {
+-        // opening the stat file and reading its content
+-        StatReader reader(pid);
+-        ProcInfo info;
+-        nsresult rv = reader.ParseProc(info);
+-        if (NS_FAILED(rv)) {
+-          holder->Reject(rv, __func__);
++      __func__,
++      [holder = std::move(holder), requests = std::move(aRequests)]() {
++        HashMap<base::ProcessId, ProcInfo> gathered;
++        if (!gathered.reserve(requests.Length())) {
++          holder->Reject(NS_ERROR_OUT_OF_MEMORY, __func__);
+           return;
+         }
+-        // Extra info
+-        info.pid = pid;
+-        info.childId = childId;
+-        info.type = type;
+-        info.origin = originCopy;
++        for (const auto& request : requests) {
++          // opening the stat file and reading its content
++          StatReader reader(request.pid);
++          ProcInfo info;
++          nsresult rv = reader.ParseProc(info);
++          if (NS_FAILED(rv)) {
++            // Can't read data for this proc.
++            // Probably either a sandboxing issue or a race condition, e.g.
++            // the process has been just been killed. Regardless, skip process.
++            continue;
++          }
++          // Computing the resident unique size is somewhat tricky,
++          // so we use about:memory's implementation. This implementation
++          // reopens `/proc/[pid]`, so there is the risk of an additional
++          // race condition. In that case, the result is `0`.
++          info.residentUniqueSize =
++              nsMemoryReporterManager::ResidentUnique(request.pid);
+ 
+-        // Let's look at the threads
+-        nsCString taskPath;
+-        taskPath.AppendPrintf("/proc/%u/task", pid);
+-        nsAutoRef<DIR> dirHandle(opendir(taskPath.get()));
+-        if (!dirHandle) {
+-          // No threads ? Let's stop here and ignore the problem.
+-          holder->Resolve(info, __func__);
+-          return;
+-        }
++          // Extra info
++          info.pid = request.pid;
++          info.childId = request.childId;
++          info.type = request.processType;
++          info.origin = request.origin;
++          info.windows = std::move(request.windowInfo);
+ 
+-        // If we can't read some thread info, we ignore that thread.
+-        dirent* entry;
+-        while ((entry = readdir(dirHandle)) != nullptr) {
+-          if (entry->d_name[0] == '.') {
++          // Let's look at the threads
++          nsCString taskPath;
++          taskPath.AppendPrintf("/proc/%u/task", request.pid);
++          DIR* dirHandle = opendir(taskPath.get());
++          if (!dirHandle) {
++            // For some reason, we have no data on the threads for this process.
++            // Most likely reason is that we have just lost a race condition and
++            // the process is dead.
++            // Let's stop here and ignore the entire process.
+             continue;
+           }
+-          // Threads have a stat file, like processes.
+-          nsAutoCString entryName(entry->d_name);
+-          int32_t tid = entryName.ToInteger(&rv);
+-          if (NS_FAILED(rv)) {
+-            continue;
++          auto cleanup = mozilla::MakeScopeExit([&] { closedir(dirHandle); });
++
++          // If we can't read some thread info, we ignore that thread.
++          dirent* entry;
++          while ((entry = readdir(dirHandle)) != nullptr) {
++            if (entry->d_name[0] == '.') {
++              continue;
++            }
++            // Threads have a stat file, like processes.
++            nsAutoCString entryName(entry->d_name);
++            int32_t tid = entryName.ToInteger(&rv);
++            if (NS_FAILED(rv)) {
++              continue;
++            }
++            ThreadInfoReader reader(request.pid, tid);
++            ThreadInfo threadInfo;
++            rv = reader.ParseThread(threadInfo);
++            if (NS_FAILED(rv)) {
++              continue;
++            }
++            info.threads.AppendElement(threadInfo);
+           }
+-          ThreadInfoReader reader(pid, tid);
+-          ThreadInfo threadInfo;
+-          rv = reader.ParseThread(threadInfo);
+-          if (NS_FAILED(rv)) {
+-            continue;
++
++          if (!gathered.put(request.pid, std::move(info))) {
++            holder->Reject(NS_ERROR_OUT_OF_MEMORY, __func__);
++            return;
+           }
+-          info.threads.AppendElement(threadInfo);
+         }
+-        holder->Resolve(info, __func__);
++
++        // ... and we're done!
++        holder->Resolve(std::move(gathered), __func__);
+       });
+ 
+   rv = target->Dispatch(r.forget(), NS_DISPATCH_NORMAL);

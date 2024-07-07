@@ -1,0 +1,334 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Fri, 8 Sep 2023 09:09:10 +0100
+Subject: [PATCH] [sailfishos][gecko] Revert "Bug 1706051 - Remove some IPC
+ messages that are unused. r=smaug"
+
+This reverts commit a5f0e8f83c652413c089933a9d43223aad7fc6b0.
+---
+ dom/ipc/BrowserChild.cpp    |  9 +++++++-
+ dom/ipc/BrowserChild.h      |  8 +++++++
+ dom/ipc/BrowserParent.cpp   | 29 +++++++++++++++++++++++
+ dom/ipc/BrowserParent.h     |  3 +++
+ dom/ipc/PBrowser.ipdl       | 12 ++++++++++
+ widget/PuppetWidget.cpp     | 46 +++++++++++++++++++++++++++++++++++++
+ widget/PuppetWidget.h       |  5 +++-
+ widget/gtk/nsWindow.cpp     |  7 +++++-
+ widget/nsIWidget.h          |  5 ++++
+ widget/windows/nsWindow.cpp | 13 ++++++++++-
+ 10 files changed, 133 insertions(+), 4 deletions(-)
+
+diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
+index 9f1bccda2efe..6e5c1495c546 100644
+--- a/dom/ipc/BrowserChild.cpp
++++ b/dom/ipc/BrowserChild.cpp
+@@ -347,7 +347,8 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
+ #endif
+       mPendingLayersObserverEpoch{0},
+       mPendingDocShellBlockers(0),
+-      mCancelContentJSEpoch(0) {
++      mCancelContentJSEpoch(0),
++      mWidgetNativeData(0) {
+   mozilla::HoldJSObjects(this);
+ 
+   nsWeakPtr weakPtrThis(do_GetWeakReference(
+@@ -3371,6 +3372,12 @@ mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
+   return IPC_OK();
+ }
+ 
++mozilla::ipc::IPCResult BrowserChild::RecvSetWidgetNativeData(
++    const WindowsHandle& aWidgetNativeData) {
++  mWidgetNativeData = aWidgetNativeData;
++  return IPC_OK();
++}
++
+ mozilla::ipc::IPCResult BrowserChild::RecvReleaseAllPointerCapture() {
+   PointerEventHandler::ReleaseAllPointerCapture();
+   return IPC_OK();
+diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
+index 2f13bc5998c8..0d5826952a86 100644
+--- a/dom/ipc/BrowserChild.h
++++ b/dom/ipc/BrowserChild.h
+@@ -649,6 +649,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   }
+ #endif
+ 
++  // The HANDLE object for the widget this BrowserChild in.
++  WindowsHandle WidgetNativeData() { return mWidgetNativeData; }
++
+   // The transform from the coordinate space of this BrowserChild to the
+   // coordinate space of the native window its BrowserParent is in.
+   mozilla::LayoutDeviceToLayoutDeviceMatrix4x4
+@@ -733,6 +736,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+ 
+   mozilla::ipc::IPCResult RecvAllowScriptsToClose();
+ 
++  mozilla::ipc::IPCResult RecvSetWidgetNativeData(
++      const WindowsHandle& aWidgetNativeData);
++
+   mozilla::ipc::IPCResult RecvReleaseAllPointerCapture();
+ 
+  private:
+@@ -917,6 +923,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   uint32_t mPendingDocShellBlockers;
+   int32_t mCancelContentJSEpoch;
+ 
++  WindowsHandle mWidgetNativeData;
++
+   Maybe<LayoutDeviceToLayoutDeviceMatrix4x4> mChildToParentConversionMatrix;
+   // When mChildToParentConversionMatrix is Nothing() this value is invalid.
+   ScreenRect mTopLevelViewportVisibleRectInBrowserCoords;
+diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
+index 05d77937f986..9cb59f477093 100644
+--- a/dom/ipc/BrowserParent.cpp
++++ b/dom/ipc/BrowserParent.cpp
+@@ -156,6 +156,7 @@ using namespace mozilla::widget;
+ using namespace mozilla::gfx;
+ 
+ using mozilla::LazyLogModule;
++using mozilla::StaticAutoPtr;
+ using mozilla::Unused;
+ 
+ LazyLogModule gBrowserFocusLog("BrowserFocus");
+@@ -539,6 +540,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
+   AddWindowListeners();
+   TryCacheDPIAndScale();
+ 
++  // Try to send down WidgetNativeData, now that this BrowserParent is
++  // associated with a widget.
++  nsCOMPtr<nsIWidget> widget = GetTopLevelWidget();
++  if (widget) {
++    WindowsHandle widgetNativeData = reinterpret_cast<WindowsHandle>(
++        widget->GetNativeData(NS_NATIVE_SHAREABLE_WINDOW));
++    if (widgetNativeData) {
++      Unused << SendSetWidgetNativeData(widgetNativeData);
++    }
++  }
++
+   if (mRemoteLayerTreeOwner.IsInitialized()) {
+     mRemoteLayerTreeOwner.OwnerContentChanged();
+   }
+@@ -3204,6 +3216,23 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
+   return IPC_OK();
+ }
+ 
++mozilla::ipc::IPCResult BrowserParent::RecvSetNativeChildOfShareableWindow(
++    const uintptr_t& aChildWindow) {
++#if defined(XP_WIN)
++  nsCOMPtr<nsIWidget> widget = GetTopLevelWidget();
++  if (widget) {
++    // Note that this call will probably cause a sync native message to the
++    // process that owns the child window.
++    widget->SetNativeData(NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW, aChildWindow);
++  }
++  return IPC_OK();
++#else
++  MOZ_ASSERT_UNREACHABLE(
++      "BrowserParent::RecvSetNativeChildOfShareableWindow not implemented!");
++  return IPC_FAIL_NO_REASON(this);
++#endif
++}
++
+ mozilla::ipc::IPCResult BrowserParent::RecvDispatchFocusToTopLevelWindow() {
+   if (nsCOMPtr<nsIWidget> widget = GetTopLevelWidget()) {
+     widget->SetFocus(nsIWidget::Raise::No, CallerType::System);
+diff --git a/dom/ipc/BrowserParent.h b/dom/ipc/BrowserParent.h
+index 80e4d055e26c..ad893507bf5f 100644
+--- a/dom/ipc/BrowserParent.h
++++ b/dom/ipc/BrowserParent.h
+@@ -395,6 +395,9 @@ class BrowserParent final : public PBrowserParent,
+ 
+   mozilla::ipc::IPCResult RecvHideTooltip();
+ 
++  mozilla::ipc::IPCResult RecvSetNativeChildOfShareableWindow(
++      const uintptr_t& childWindow);
++
+   mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow();
+ 
+   mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
+diff --git a/dom/ipc/PBrowser.ipdl b/dom/ipc/PBrowser.ipdl
+index 9750219fa46a..0ae89e191bb9 100644
+--- a/dom/ipc/PBrowser.ipdl
++++ b/dom/ipc/PBrowser.ipdl
+@@ -216,6 +216,12 @@ parent:
+      */
+     async PVsync();
+ 
++    /**
++     * Sends an NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW to be adopted by the
++     * widget's shareable window on the chrome side. Only used on Windows.
++     */
++    async SetNativeChildOfShareableWindow(uintptr_t childWindow);
++
+     /**
+      * When content moves focus from a native plugin window that's a child
+      * of the native browser window we need to move native focus to the
+@@ -994,6 +1000,12 @@ child:
+      */
+     async AllowScriptsToClose();
+ 
++    /**
++     * Pass the current handle for the current native widget to the content
++     * process, so it can be used by PuppetWidget.
++     */
++    async SetWidgetNativeData(WindowsHandle aHandle);
++
+     async WillChangeProcess();
+ 
+ parent:
+diff --git a/widget/PuppetWidget.cpp b/widget/PuppetWidget.cpp
+index c36262392d7b..211fa3eedcc1 100644
+--- a/widget/PuppetWidget.cpp
++++ b/widget/PuppetWidget.cpp
+@@ -1033,6 +1033,52 @@ double PuppetWidget::GetDefaultScaleInternal() { return mDefaultScale; }
+ 
+ int32_t PuppetWidget::RoundsWidgetCoordinatesTo() { return mRounding; }
+ 
++void* PuppetWidget::GetNativeData(uint32_t aDataType) {
++  switch (aDataType) {
++    case NS_NATIVE_SHAREABLE_WINDOW: {
++      // NOTE: We can not have a tab child in some situations, such as when
++      // we're rendering to a fake widget for thumbnails.
++      if (!mBrowserChild) {
++        NS_WARNING("Need BrowserChild to get the nativeWindow from!");
++      }
++      mozilla::WindowsHandle nativeData = 0;
++      if (mBrowserChild) {
++        nativeData = mBrowserChild->WidgetNativeData();
++      }
++      return (void*)nativeData;
++    }
++    case NS_NATIVE_WINDOW:
++    case NS_NATIVE_WIDGET:
++    case NS_NATIVE_DISPLAY:
++      // These types are ignored (see bug 1183828, bug 1240891).
++      break;
++    case NS_RAW_NATIVE_IME_CONTEXT:
++      MOZ_CRASH("You need to call GetNativeIMEContext() instead");
++    case NS_NATIVE_PLUGIN_PORT:
++    case NS_NATIVE_GRAPHIC:
++    case NS_NATIVE_SHELLWIDGET:
++    default:
++      NS_WARNING("nsWindow::GetNativeData called with bad value");
++      break;
++  }
++  return nullptr;
++}
++
++#if defined(XP_WIN)
++void PuppetWidget::SetNativeData(uint32_t aDataType, uintptr_t aVal) {
++  switch (aDataType) {
++    case NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW:
++      MOZ_ASSERT(mBrowserChild, "Need BrowserChild to send the message.");
++      if (mBrowserChild) {
++        mBrowserChild->SendSetNativeChildOfShareableWindow(aVal);
++      }
++      break;
++    default:
++      NS_WARNING("SetNativeData called with unsupported data type.");
++  }
++}
++#endif
++
+ LayoutDeviceIntPoint PuppetWidget::GetChromeOffset() {
+   if (!GetOwningBrowserChild()) {
+     NS_WARNING("PuppetWidget without Tab does not have chrome information.");
+diff --git a/widget/PuppetWidget.h b/widget/PuppetWidget.h
+index 42fe6cc9537f..afbea5fe5df0 100644
+--- a/widget/PuppetWidget.h
++++ b/widget/PuppetWidget.h
+@@ -118,7 +118,10 @@ class PuppetWidget : public nsBaseWidget,
+   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
+ 
+   // PuppetWidgets don't have native data, as they're purely nonnative.
+-  virtual void* GetNativeData(uint32_t aDataType) override { return nullptr; }
++  virtual void* GetNativeData(uint32_t aDataType) override;
++#if defined(XP_WIN)
++  void SetNativeData(uint32_t aDataType, uintptr_t aVal) override;
++#endif
+ 
+   // PuppetWidgets don't have any concept of titles.
+   virtual nsresult SetTitle(const nsAString& aTitle) override {
+diff --git a/widget/gtk/nsWindow.cpp b/widget/gtk/nsWindow.cpp
+index 66f851855cfe..22d290b8a9b9 100644
+--- a/widget/gtk/nsWindow.cpp
++++ b/widget/gtk/nsWindow.cpp
+@@ -2951,6 +2951,8 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+   switch (aDataType) {
+     case NS_NATIVE_WINDOW:
+     case NS_NATIVE_WIDGET: {
++      if (!mGdkWindow) return nullptr;
++
+       return mGdkWindow;
+     }
+ 
+@@ -2969,11 +2971,14 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+       return GetToplevelWidget();
+ 
+     case NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID:
++    case NS_NATIVE_SHAREABLE_WINDOW:
+       if (GdkIsX11Display()) {
+         return (void*)GDK_WINDOW_XID(gdk_window_get_toplevel(mGdkWindow));
+       }
+       NS_WARNING(
+-          "nsWindow::GetNativeData(): NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID is not "
++          "nsWindow::GetNativeData(): "
++          "NS_NATIVE_SHAREABLE_WINDOW / NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID is "
++          "not "
+           "handled on Wayland!");
+       return nullptr;
+     case NS_RAW_NATIVE_IME_CONTEXT: {
+diff --git a/widget/nsIWidget.h b/widget/nsIWidget.h
+index 28c46fc18932..a16326b39777 100644
+--- a/widget/nsIWidget.h
++++ b/widget/nsIWidget.h
+@@ -132,6 +132,9 @@ typedef void* nsNativeWidget;
+ #define NS_NATIVE_SCREEN 9
+ // The toplevel GtkWidget containing this nsIWidget:
+ #define NS_NATIVE_SHELLWIDGET 10
++// Has to match to NPNVnetscapeWindow, and shareable across processes
++// HWND on Windows and XID on X11
++#define NS_NATIVE_SHAREABLE_WINDOW 11
+ #define NS_NATIVE_OPENGL_CONTEXT 12
+ // See RegisterPluginWindowForRemoteUpdates
+ #define NS_NATIVE_PLUGIN_ID 13
+@@ -152,6 +155,8 @@ typedef void* nsNativeWidget;
+ #  define NS_NATIVE_TSF_CATEGORY_MGR 101
+ #  define NS_NATIVE_TSF_DISPLAY_ATTR_MGR 102
+ #  define NS_NATIVE_ICOREWINDOW 103  // winrt specific
++#  define NS_NATIVE_CHILD_WINDOW 104
++#  define NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW 105
+ #endif
+ #if defined(MOZ_WIDGET_GTK)
+ // set/get nsPluginNativeWindowGtk, e10s specific
+diff --git a/widget/windows/nsWindow.cpp b/widget/windows/nsWindow.cpp
+index 48a6a2d53ec4..64e3583ace96 100644
+--- a/widget/windows/nsWindow.cpp
++++ b/widget/windows/nsWindow.cpp
+@@ -3802,6 +3802,8 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+     case NS_NATIVE_WINDOW:
+     case NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID:
+       return (void*)mWnd;
++    case NS_NATIVE_SHAREABLE_WINDOW:
++      return (void*)WinUtils::GetTopLevelHWND(mWnd);
+     case NS_NATIVE_GRAPHIC:
+       MOZ_ASSERT_UNREACHABLE("Not supported on Windows:");
+       return nullptr;
+@@ -3825,7 +3827,16 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+ }
+ 
+ void nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal) {
+-  NS_ERROR("SetNativeData called with unsupported data type.");
++  switch (aDataType) {
++    case NS_NATIVE_CHILD_WINDOW:
++    case NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW: {
++      MOZ_ASSERT_UNREACHABLE(
++          "SetNativeData window origin was not a plugin process.");
++      break;
++    }
++    default:
++      NS_ERROR("SetNativeData called with unsupported data type.");
++  }
+ }
+ 
+ // Free some native data according to aDataType

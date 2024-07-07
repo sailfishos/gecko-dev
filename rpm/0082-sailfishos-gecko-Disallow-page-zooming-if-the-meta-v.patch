@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jolla.com>
+Date: Thu, 11 Nov 2021 06:51:59 +0000
+Subject: [PATCH] [sailfishos][gecko] Disallow page zooming if the meta
+ viewport scale is fixed. JB#56149 OMP#JOLLA-49
+
+Zooming is always allowed if desktop mode is active. JB#56767
+OMP#JOLLA-609
+---
+ layout/base/nsLayoutUtils.cpp | 25 ++++++++++++++++++++++---
+ 1 file changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
+index cae4a2b9bd6e..3a846dd6396a 100644
+--- a/layout/base/nsLayoutUtils.cpp
++++ b/layout/base/nsLayoutUtils.cpp
+@@ -687,6 +687,24 @@ bool nsLayoutUtils::AsyncPanZoomEnabled(const nsIFrame* aFrame) {
+   return widget->AsyncPanZoomEnabled();
+ }
+ 
++static bool DocumentHasFixedUnityZoom(const mozilla::dom::Document* aDocument)
++{
++  if (!aDocument) {
++    return false;
++  }
++  nsresult rv;
++  ViewportMetaData metaData = aDocument->GetViewportMetaData();
++  return (!metaData.mMinimumScale.IsEmpty() && metaData.mMinimumScale == metaData.mMaximumScale) ||
++          metaData.mUserScalable.EqualsLiteral("0") ||
++          metaData.mUserScalable.EqualsLiteral("no") ||
++          metaData.mUserScalable.EqualsLiteral("false");
++}
++
++static bool IsDesktopView(const mozilla::dom::Document* aDocument) {
++  nsCOMPtr<nsPIDOMWindowOuter> window = aDocument ? aDocument->GetWindow() : nullptr;
++  return window ? window->IsDesktopModeViewport() : false;
++}
++
+ bool nsLayoutUtils::AllowZoomingForDocument(
+     const mozilla::dom::Document* aDocument) {
+   if (aDocument->GetPresShell() &&
+@@ -696,10 +714,11 @@ bool nsLayoutUtils::AllowZoomingForDocument(
+   // True if we allow zooming for all documents on this platform, or if we are
+   // in RDM and handling meta viewports, which force zoom under some
+   // circumstances.
++
+   BrowsingContext* bc = aDocument ? aDocument->GetBrowsingContext() : nullptr;
+-  return StaticPrefs::apz_allow_zooming() ||
+-         (bc && bc->InRDMPane() &&
+-          nsLayoutUtils::ShouldHandleMetaViewport(aDocument));
++  return (StaticPrefs::apz_allow_zooming() && !DocumentHasFixedUnityZoom(aDocument)) ||
++         (bc && bc->InRDMPane() && nsLayoutUtils::ShouldHandleMetaViewport(aDocument)) ||
++         IsDesktopView(aDocument);
+ }
+ 
+ float nsLayoutUtils::GetCurrentAPZResolutionScale(PresShell* aPresShell) {
