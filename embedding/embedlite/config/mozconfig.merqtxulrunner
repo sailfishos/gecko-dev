@@ -3,6 +3,7 @@ export CFLAGS="-O3 -I/usr/include/freetype2"
 export CXXFLAGS="-O3 -I/usr/include/freetype2"
 export MOZ_DEBUG_SYMBOLS=1
 export MOZILLA_OFFICIAL=1
+export MOZ_USE_NATIVE_POPUP_WINDOWS=1
 
 mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 
