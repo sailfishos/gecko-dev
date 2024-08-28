@@ -207,7 +207,7 @@ EmbedLiteAppChild::GetViewByID(uint32_t aId) const
 EmbedLiteViewChildIface*
 EmbedLiteAppChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent) const
 {
-  LOGT("mWeakViewMap:%i", mWeakViewMap.size());
+  LOGT("mWeakViewMap:%i", static_cast<int>(mWeakViewMap.size()));
   for (const std::pair<uint32_t, EmbedLiteViewChild*> &viewPair : mWeakViewMap) {
     if (aParent == viewPair.second->mChrome.get()) {
       return viewPair.second;
@@ -219,7 +219,7 @@ EmbedLiteAppChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent) const
 EmbedLiteWindowChild*
 EmbedLiteAppChild::GetWindowByID(uint32_t aWindowID)
 {
-  LOGT("mWeakWindowMap:%i", mWeakWindowMap.size());
+  LOGT("mWeakWindowMap:%i", static_cast<int>(mWeakWindowMap.size()));
   std::map<uint32_t, EmbedLiteWindowChild*>::const_iterator it;
   it = mWeakWindowMap.find(aWindowID);
   if (it != mWeakWindowMap.end()) {

@@ -110,7 +110,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
 {
   mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
-  LOGT("this:%p width: %f, height: %f as int w: %d h: %h", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
+  LOGT("this:%p width: %f, height: %f as int w: %d h: %d", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
     nsWindow *widget = GetWidget();
     widget->SetSize(aSize.width, aSize.height);
