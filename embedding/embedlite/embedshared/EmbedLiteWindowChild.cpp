@@ -18,9 +18,6 @@ using namespace mozilla::dom;
 
 namespace mozilla {
 
-namespace layers {
-void ShutdownTileCache();
-}
 namespace embedlite {
 
 namespace {
@@ -74,10 +71,6 @@ EmbedLiteWindowChild::~EmbedLiteWindowChild()
     mCreateWidgetTask->Cancel();
     mCreateWidgetTask = nullptr;
   }
-
-  if (sWindowChildMap.empty()) {
-    mozilla::layers::ShutdownTileCache();
-  }
 }
 
 nsWindow *EmbedLiteWindowChild::GetWidget() const
@@ -130,38 +123,37 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
   }
 
   int32_t colorDepth, pixelDepth;
-  nsCOMPtr<nsIScreen> screen;
 
-  ScreenManager::GetSingleton().GetPrimaryScreen(getter_AddRefs(screen));
+  RefPtr<widget::Screen> screen =
+      widget::ScreenManager::GetSingleton().GetPrimaryScreen();
+
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
 
-  hal::ScreenOrientation orientation = hal::eScreenOrientation_Default;
+  hal::ScreenOrientation orientation = hal::ScreenOrientation::Default;
   uint16_t angle = 0;
   switch (mRotation) {
     case ROTATION_0:
       angle = 0;
-      orientation = hal::eScreenOrientation_PortraitPrimary;
+      orientation = hal::ScreenOrientation::PortraitPrimary;
       break;
     case ROTATION_90:
       angle = 90;
-      orientation = hal::eScreenOrientation_LandscapePrimary;
+      orientation = hal::ScreenOrientation::LandscapePrimary;
       break;
     case ROTATION_180:
       angle = 180;
-      orientation = hal::eScreenOrientation_PortraitSecondary;
+      orientation = hal::ScreenOrientation::PortraitSecondary;
       break;
     case ROTATION_270:
       angle = 270;
-      orientation = hal::eScreenOrientation_LandscapeSecondary;
+      orientation = hal::ScreenOrientation::LandscapeSecondary;
       break;
     default:
       break;
   }
 
   nsIntRect rect(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height());
-  hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
-      rect, orientation, angle, colorDepth, pixelDepth));
 
   RefreshScreen();
 
@@ -212,10 +204,10 @@ void EmbedLiteWindowChild::RefreshScreen()
   else
     rect = LayoutDeviceIntRect(0, 0, mBounds.Height(), mBounds.Width());
 
-  AutoTArray<RefPtr<Screen>, 1> screenList;
-  RefPtr<Screen> screen = new Screen(rect, rect, mDepth, mDepth, DesktopToLayoutDeviceScale(mDensity), CSSToLayoutDeviceScale(1.0f), mDpi);
+  AutoTArray<RefPtr<widget::Screen>, 1> screenList;
+  auto screen = MakeRefPtr<widget::Screen>(rect, rect, mDepth, mDepth, 0, DesktopToLayoutDeviceScale(mDensity), CSSToLayoutDeviceScale(1.0f), mDpi, widget::Screen::IsPseudoDisplay::No);
   screenList.AppendElement(screen.forget());
-  ScreenManager::GetSingleton().Refresh(std::move(screenList));
+  widget::ScreenManager::Refresh(std::move(screenList));
 }
 
 void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi)

@@ -28,7 +28,7 @@ protected:
                                                         const bool &isDesktopMode,
                                                         const bool &isHidden) override;
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener) override;
-  virtual mozilla::layers::PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
+//  virtual mozilla::layers::PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
 
 private:
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppThreadChild);

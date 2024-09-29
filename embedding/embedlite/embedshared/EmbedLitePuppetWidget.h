@@ -71,9 +71,7 @@ public:
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
-  virtual LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-                                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+  virtual WindowRenderer* GetWindowRenderer() override;
 
   bool DoSendContentReceivedInputBlock(uint64_t aInputBlockId,
                                        bool aPreventDefault);

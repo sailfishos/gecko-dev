@@ -18,5 +18,5 @@ SOURCES += [
 Library('qmessagepump')
 DisableStlWrapping()
 
-OS_LIBS += CONFIG['TK_LIBS']
-CXXFLAGS += CONFIG['TK_CFLAGS']
+OS_LIBS += CONFIG['MOZ_QT_LIBS']
+CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']

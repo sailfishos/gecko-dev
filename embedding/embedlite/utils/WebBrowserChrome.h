@@ -7,6 +7,7 @@
 #define MOZEMBED_WEBBROWSERCHROME_H
 
 #include "nsCOMPtr.h"
+#include "nsIDocShell.h"
 #include "nsIWebBrowser.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsIWebBrowserChromeFocus.h"

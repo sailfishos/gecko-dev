@@ -72,7 +72,6 @@ UNIFIED_SOURCES += [
     'EmbedLiteWindow.cpp',
     'embedprocess/EmbedLiteAppProcessChild.cpp',
     'embedprocess/EmbedLiteAppProcessParent.cpp',
-    'embedprocess/EmbedLiteCompositorProcessParent.cpp',
     'embedprocess/EmbedLiteContentProcess.cpp',
     'embedprocess/EmbedLiteViewProcessChild.cpp',
     'embedprocess/EmbedLiteViewProcessParent.cpp',

@@ -18,10 +18,6 @@
 
 namespace mozilla {
 
-namespace layers {
-class LayerManagerComposite;
-}
-
 namespace embedlite {
 
 class EmbedLiteWindowListener;
@@ -35,7 +31,8 @@ public:
                                   const TimeDuration &aVsyncRate,
                                   const CompositorOptions &aOptions,
                                   bool aRenderToEGLSurface,
-                                  const gfx::IntSize &aSurfaceSize);
+                                  const gfx::IntSize &aSurfaceSize,
+                                  uint64_t aInnerWindowId);
 
   void SetSurfaceRect(int x, int y, int width, int height);
   void* GetPlatformImage(int* width, int* height);
@@ -51,11 +48,7 @@ protected:
   friend class EmbedLitePuppetWidget;
 
   virtual ~EmbedLiteCompositorBridgeParent();
-  virtual PLayerTransactionParent*
-  AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                               const LayersId& aId) override;
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
-  virtual void CompositeToDefaultTarget(VsyncId aId) override;
+  void CompositeToDefaultTarget(VsyncId aId, wr::RenderReasons aReasons);
 
 private:
   void PrepareOffscreen();

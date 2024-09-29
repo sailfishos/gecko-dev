@@ -81,7 +81,9 @@ void EmbedLiteWindowParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
 bool EmbedLiteWindowParent::ScheduleUpdate()
 {
   if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
+    LOGT("EmbedLiteWindowParent::ScheduleUpdate");
+//FIXME NONE ok?
+    mCompositor->ScheduleRenderOnCompositorThread(wr::RenderReasons::NONE);
     return true;
   }
   return false;

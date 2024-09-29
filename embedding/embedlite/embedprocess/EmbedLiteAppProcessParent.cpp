@@ -33,9 +33,10 @@
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/ImageBridgeParent.h"
+#include "WindowRenderer.h"
 
 #include "EmbedLiteViewProcessParent.h"
-#include "EmbedLiteCompositorProcessParent.h"
+//#include "EmbedLiteCompositorProcessParent.h"
 
 static BrowserProcessSubThread* sIOThread;
 
@@ -51,7 +52,7 @@ namespace mozilla {
 namespace embedlite {
 
 // Temporary manager which allows to call InitLog
-class EmbedLiteAppProcessParentManager final : public mozilla::layers::LayerManager
+class EmbedLiteAppProcessParentManager final : public WindowRenderer
 {
 public:
   explicit EmbedLiteAppProcessParentManager()
@@ -60,20 +61,9 @@ public:
 
 protected:
   virtual bool BeginTransaction(const nsCString &aURL = nsCString()) override { return false; }
-  virtual bool BeginTransactionWithTarget(gfxContext*, const nsCString &aURL = nsCString()) override { return false; }
-  virtual bool EndEmptyTransaction(mozilla::layers::LayerManager::EndTransactionFlags) override { return false; }
-  virtual void EndTransaction(mozilla::layers::LayerManager::DrawPaintedLayerCallback,
-                              void *aCallbackData,
-                              mozilla::layers::LayerManager::EndTransactionFlags = mozilla::layers::LayerManager::END_DEFAULT) override {
-    Unused << aCallbackData;
-  }
-  virtual void SetRoot(mozilla::layers::Layer*) override {}
-  virtual already_AddRefed<mozilla::layers::PaintedLayer> CreatePaintedLayer() override { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ContainerLayer> CreateContainerLayer() override { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ImageLayer> CreateImageLayer() override { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::ColorLayer> CreateColorLayer() override { return nullptr; }
-  virtual already_AddRefed<mozilla::layers::CanvasLayer> CreateCanvasLayer() override { return nullptr; }
-  virtual mozilla::layers::LayersBackend GetBackendType() override { return LayersBackend::LAYERS_OPENGL; }
+  virtual bool BeginTransactionWithTarget(gfxContext*, const nsCString &aURL = nsCString()) { return false; }
+  virtual bool EndEmptyTransaction(WindowRenderer::EndTransactionFlags) override { return false; }
+  virtual mozilla::layers::LayersBackend GetBackendType() override { return LayersBackend::LAYERS_WR; }
   virtual int32_t GetMaxTextureSize() const override { return 0; }
   virtual void GetBackendName(nsAString&) override {}
 };
@@ -150,10 +140,11 @@ EmbedLiteAppProcessParent::~EmbedLiteAppProcessParent()
   MOZ_COUNT_DTOR(EmbedLiteAppProcessParent);
 
   ProcessHandle otherProcessHandle;
-  if (base::OpenProcessHandle(OtherPid(), &otherProcessHandle)) {
+/* FIXME mOtherPid is private
+  if (base::OpenProcessHandle(mOtherPid, &otherProcessHandle)) {
     base::CloseProcessHandle(otherProcessHandle);
   }
-
+*/
   mApp->ChildReadyToDestroy();
 }
 

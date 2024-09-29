@@ -66,10 +66,12 @@ public:
   virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
 
+  virtual nsSizeMode SizeMode() override { return mSizeMode; }
+  virtual void SetSizeMode(nsSizeMode aMode) override { mSizeMode = aMode; }
+
   virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
   virtual nsresult SetTitle(const nsAString& aTitle) override;
 
-  virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override;
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
@@ -88,9 +90,7 @@ public:
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
 
-  virtual mozilla::layers::LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                                         LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-                                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+  virtual WindowRenderer* GetWindowRenderer() override;
 
   static void DumpWidgetTree();
   static void DumpWidgetTree(const nsTArray<PuppetWidgetBase *> &widgets, int indent = 0);
@@ -120,6 +120,7 @@ protected:
 
 private:
   bool IsTopLevel();
+  nsSizeMode mSizeMode;
 };
 
 }  // namespace embedlite

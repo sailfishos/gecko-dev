@@ -12,7 +12,7 @@ include PrefsTypes;
 namespace mozilla {
 namespace embedlite {
 
-nested(upto inside_cpow) sync protocol PEmbedLiteApp {
+[ManualDealloc, NestedUpTo=inside_cpow] sync protocol PEmbedLiteApp {
   manages PEmbedLiteView;
   manages PEmbedLiteWindow;
 parent:

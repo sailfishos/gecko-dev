@@ -28,7 +28,7 @@ public:
   NS_DECL_NSIOBSERVER
 
   EmbedLiteAppChild(MessageLoop* aParentLoop);
-  void Init(MessageChannel* aParentChannel);
+  void Init(IToplevelProtocol* aTarget);
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId) const override;
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent) const override;
   EmbedLiteWindowChild* GetWindowByID(uint32_t aWindowID);

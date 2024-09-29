@@ -1,7 +1,6 @@
 
 #include "EmbedLiteViewProcessChild.h"
 #include "mozilla/dom/BrowsingContext.h"
-#include "mozilla/layers/ShadowLayers.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 
 using namespace mozilla::layers;
@@ -41,23 +40,12 @@ EmbedLiteViewProcessChild::OnGeckoWindowInitialized()
   }
 
   TextureFactoryIdentifier textureFactoryIdentifier;
-  PLayerTransactionChild* shadowManager = nullptr;
   nsTArray<LayersBackend> backends;
-  backends.AppendElement(LayersBackend::LAYERS_OPENGL);
+  backends.AppendElement(LayersBackend::LAYERS_WR);
 
-  shadowManager = compositorChild->SendPLayerTransactionConstructor(backends, LayersId{1});
-  if (!shadowManager) {
-    NS_WARNING("failed to construct LayersChild");
-    // This results in |remoteFrame| being deleted.
-    return;
-  }
+  //FIXME
+  WebWidget()->GetWindowRenderer();
 
-  ShadowLayerForwarder* lf =
-    WebWidget()->GetLayerManager(shadowManager, textureFactoryIdentifier.mParentBackend)->AsShadowForwarder();
-
-  NS_ASSERTION(lf && lf->HasShadowManager(),
-                    "PuppetWidget should have shadow manager");
-  lf->IdentifyTextureHost(textureFactoryIdentifier);
   ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
 }
 

@@ -11,7 +11,7 @@
 #include "mozilla/Unused.h"
 
 #include "Layers.h"                // for LayerManager
-#include "ClientLayerManager.h"    // for ClientLayerManager
+#include "WindowRenderer.h"
 
 using namespace mozilla::layers;
 
@@ -79,7 +79,6 @@ PuppetWidgetBase::Destroy()
   }
 
   mOnDestroyCalled = true;
-  mLayerManager = nullptr;
 
   Base::OnDestroy();
   Base::Destroy();
@@ -110,15 +109,10 @@ PuppetWidgetBase::Show(bool aState)
     return;
   }
 
-  LOGT("this:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
+  LOGT("this:%p, state: %i", this, aState);
 
   bool wasVisible = mVisible;
   mVisible = aState;
-
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (!mVisible && mLayerManager && topWidget == this) {
-    mLayerManager->ClearCachedResources();
-  }
 
   if (Destroyed()) {
     return;
@@ -232,15 +226,6 @@ PuppetWidgetBase::SetTitle(const nsAString &aTitle)
   return NS_ERROR_UNEXPECTED;
 }
 
-// PuppetWidgets don't care about children.
-nsresult
-PuppetWidgetBase::ConfigureChildren(const nsTArray<Configuration> &aConfigurations)
-{
-  Unused << aConfigurations;
-  LOGNI();
-  return NS_OK;
-}
-
 // PuppetWidgets are always at <0, 0>.
 mozilla::LayoutDeviceIntPoint
 PuppetWidgetBase::WidgetToScreenOffset()
@@ -252,26 +237,19 @@ PuppetWidgetBase::WidgetToScreenOffset()
 void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
+// FIXME is this ok?
   Unused << aRect;
-
   if (Destroyed()) {
     return;
   }
-
-  LayerManager* lm = nsIWidget::GetLayerManager();
-  if (!lm) {
+  WindowRenderer* rendered = ((nsWindow *)this)->GetWindowRenderer();
+  if (!rendered) {
     return;
   }
 
   nsIWidgetListener* listener = GetWidgetListener();
   if (listener) {
     listener->WillPaintWindow(this);
-  }
-
-  if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
-    // No need to do anything, the compositor will handle drawing
-  } else {
-    MOZ_CRASH("Unexpected layer manager type");
   }
 
   listener = GetWidgetListener();
@@ -412,11 +390,28 @@ PuppetWidgetBase::SetActive(bool active)
   mActive = active;
 }
 
-LayerManager *
-PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
-                                                LayersBackend aBackendHint,
-                                                LayerManagerPersistence aPersistence)
+WindowRenderer *
+PuppetWidgetBase::GetWindowRenderer() 
 {
+// FIXME
+  LOGW("PuppetWidgetBase::GetWindowRenderer 1");
+  if (Destroyed()) {
+    LOGW("PuppetWidgetBase::GetWindowRenderer exit");
+    return nullptr;
+  }
+
+  LOGW("PuppetWidgetBase::GetWindowRenderer 2");
+  if (mWindowRenderer) {
+    LOGW("PuppetWidgetBase::GetWindowRenderer 3");
+// FIXME is this needed?
+//    FallbackRenderer* renderer = mWindowRenderer->AsFallback();
+//    renderer->SetTarget(nullptr, mozilla::layers::BufferMode::BUFFER_NONE);
+  }
+  LOGW("PuppetWidgetBase::GetWindowRenderer 4");
+  return mWindowRenderer;
+
+/*
+//old
   if (Destroyed()) {
     return nullptr;
   }
@@ -425,6 +420,7 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
     // This layer manager might be used for painting outside of DoDraw(), so we need
     // to set the correct rotation on it.
     if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+
       ClientLayerManager* manager =
           static_cast<ClientLayerManager*>(mLayerManager.get());
       manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
@@ -435,6 +431,7 @@ PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
 
   // Layer manager can be null here. Sub-class shall handle this.
   return mLayerManager;
+*/
 }
 
 void PuppetWidgetBase::DumpWidgetTree()

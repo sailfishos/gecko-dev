@@ -59,9 +59,7 @@ public:
 
   virtual void* GetNativeData(uint32_t aDataType) override;
 
-  virtual LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-                                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+  virtual WindowRenderer* GetWindowRenderer() override;
 
 #if 0
   /**

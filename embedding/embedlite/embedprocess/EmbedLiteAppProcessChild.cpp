@@ -204,6 +204,7 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t &width, cons
   return nullptr;
 }
 
+/*
 PCompositorBridgeChild*
 EmbedLiteAppProcessChild::AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess)
 {
@@ -211,7 +212,7 @@ EmbedLiteAppProcessChild::AllocPCompositorBridgeChild(Transport* aTransport, Pro
   //return CompositorBridgeChild::Create(aTransport, aOtherProcess);
   return nullptr;
 }
-
+*/
 } // namespace embedlite
 } // namespace mozilla
 

@@ -165,7 +165,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
     return;
   }
 
-  CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
+  CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale(0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
   contentRect.MoveTo(aRequest.GetVisualScrollOffset());
 
   CSSRect scrollableRect(0, 0, 0, 0);

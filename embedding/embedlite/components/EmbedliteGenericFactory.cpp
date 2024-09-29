@@ -12,17 +12,10 @@ namespace embedlite {
 NS_IMPL_ISUPPORTS(EmbedliteGenericFactory, nsIFactory)
 
 NS_IMETHODIMP
-EmbedliteGenericFactory::CreateInstance(nsISupports* aOuter, REFNSIID aIID,
+EmbedliteGenericFactory::CreateInstance(REFNSIID aIID,
                                void** aResult)
 {
-  return mCtor(aOuter, aIID, aResult);
-}
-
-NS_IMETHODIMP
-EmbedliteGenericFactory::LockFactory(bool aLock)
-{
-  NS_ERROR("Vestigial method, never called!");
-  return NS_ERROR_FAILURE;
+  return mCtor(aIID, aResult);
 }
 
 } // namespace embedlite

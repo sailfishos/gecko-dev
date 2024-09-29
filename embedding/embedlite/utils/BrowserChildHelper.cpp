@@ -723,6 +723,14 @@ BrowserChildHelper::RemoteDropLinks(
 }
 
 NS_IMETHODIMP
+BrowserChildHelper::ContentTransformsReceived(JSContext* aCx,
+                                              dom::Promise** aPromise)
+{
+  LOGNI();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 BrowserChildHelper::GetTabId(uint64_t* aId)
 {
   *aId = mId;

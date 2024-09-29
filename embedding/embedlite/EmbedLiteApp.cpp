@@ -24,6 +24,8 @@
 
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteAppThreadChild.h"
+#include "EmbedLiteViewParent.h"
+#include "EmbedLiteWindowParent.h"
 #include "EmbedLiteView.h"
 #include "EmbedLiteWindow.h"
 #include "nsXULAppAPI.h"
@@ -287,10 +289,10 @@ EmbedLiteApp::StartChildThread()
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::MessageChannel*>("mozilla::embedlite::EmbedLiteAppThreadChild::Init",
-                                                                                    mAppChild.get(),
-                                                                                    &EmbedLiteAppThreadChild::Init,
-                                                                                    mAppParent->GetIPCChannel()));
+  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::IToplevelProtocol*>("mozilla::embedlite::EmbedLiteAppThreadChild::Init",
+                                                                                       mAppChild.get(),
+                                                                                       &EmbedLiteAppThreadChild::Init,
+                                                                                       mAppParent));
 
   return true;
 }

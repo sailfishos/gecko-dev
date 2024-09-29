@@ -262,7 +262,6 @@ private:
   nsTHashMap<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
 
   RefPtr<APZEventState> mAPZEventState;
-  mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
 
   bool mInitialized;
   bool mDestroyAfterInit;

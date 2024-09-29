@@ -141,6 +141,27 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
   return NS_OK;
 }
 
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kExperimentStatus(
+    ExperimentStatus* aResult)
+{
+  *aResult = nsIXULRuntime::eExperimentStatusUnenrolled;
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kLiveStatusTestingOnly(
+    nsIXULRuntime::ContentWin32kLockdownState* aResult)
+{
+  *aResult = nsIXULRuntime::ContentWin32kLockdownState::OperatingSystemNotSupported;
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kSessionStatus(
+    nsIXULRuntime::ContentWin32kLockdownState* aResult)
+{
+  *aResult = nsIXULRuntime::ContentWin32kLockdownState::OperatingSystemNotSupported;
+  return NS_OK;
+}
+
 /* readonly attribute boolean fissionAutostart; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
 {
@@ -207,27 +228,6 @@ NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetWindowsDLLBlocklistStatus(bool* aResult)
 {
   *aResult = false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetIsReleaseOrBeta(bool* aResult)
-{
-#ifdef RELEASE_OR_BETA
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
-{
-#ifdef MOZ_OFFICIAL_BRANDING
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
   return NS_OK;
 }
 
@@ -364,6 +364,28 @@ EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
 {
   // TODO: implement gRestartedByOS flag
   *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetChromeColorSchemeIsDark(bool* aResult)
+{
+  *aResult = LookAndFeel::ColorSchemeForChrome() == ColorScheme::Dark;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetContentThemeDerivedColorSchemeIsDark(bool* aResult)
+{
+  *aResult =
+      LookAndFeel::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetDrawInTitlebar(bool* aResult)
+{
+  *aResult = LookAndFeel::DrawInTitlebar();
   return NS_OK;
 }
 

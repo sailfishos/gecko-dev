@@ -71,11 +71,11 @@ EmbedLiteAppChild::Observe(nsISupports* aSubject,
 }
 
 void
-EmbedLiteAppChild::Init(MessageChannel* aParentChannel)
+EmbedLiteAppChild::Init(IToplevelProtocol* aTarget)
 {
   LOGT();
   InitWindowWatcher();
-  Open(aParentChannel, mParentLoop->SerialEventTarget(), ipc::ChildSide);
+  Open(aTarget, mParentLoop->SerialEventTarget(), ipc::ChildSide);
   RecvSetBoolPref(nsDependentCString("layers.offmainthreadcomposition.enabled"), true);
 
   mozilla::DebugOnly<nsresult> rv = InitAppService();

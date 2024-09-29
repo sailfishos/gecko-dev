@@ -6,14 +6,9 @@
 #include "EmbedLog.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
-#include "BasicLayers.h"
 #include "EmbedLiteApp.h"
 #include "EmbedLiteWindow.h"
 #include "EmbedLiteWindowParent.h"
-#include "mozilla/layers/LayerManagerComposite.h"
-#include "mozilla/layers/LayerMetricsWrapper.h"
-#include "mozilla/layers/AsyncCompositionManager.h"
-#include "mozilla/layers/LayerTransactionParent.h"
 #include "mozilla/layers/CompositorOGL.h"
 #include "mozilla/layers/TextureClientSharedSurface.h" // for SharedSurfaceTextureClient
 #include "mozilla/StaticPrefs_embedlite.h"             // for StaticPrefs::embedlite_*()
@@ -29,7 +24,6 @@
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
-#include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "VsyncSource.h"
 
 using namespace mozilla::layers;
@@ -47,13 +41,15 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
                                                                  const TimeDuration &aVsyncRate,
                                                                  const CompositorOptions &aOptions,
                                                                  bool aRenderToEGLSurface,
-                                                                 const gfx::IntSize &aSurfaceSize)
-  : CompositorBridgeParent(aManager, aScale, aVsyncRate, aOptions, aRenderToEGLSurface, aSurfaceSize)
+                                                                 const gfx::IntSize &aSurfaceSize,
+                                                                 uint64_t aInnerWindowId)
+  : CompositorBridgeParent(aManager, aScale, aVsyncRate, aOptions, aRenderToEGLSurface, aSurfaceSize, aInnerWindowId)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
   , mSurfaceOrigin(0, 0)
   , mRenderMutex("EmbedLiteCompositorBridgeParent render mutex")
 {
+  LOGT("EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent");
   if (mWindowId == 0) {
     mWindowId = EmbedLiteWindowParent::Current();
   }
@@ -68,40 +64,16 @@ EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t window
 
 EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent()
 {
+  LOGT("EmbedLiteCompositorBridgeParent::~EmbedLiteCompositorBridgeParent");
   LOGT();
-}
-
-PLayerTransactionParent*
-EmbedLiteCompositorBridgeParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                                              const LayersId& aId)
-{
-  PLayerTransactionParent* p =
-    CompositorBridgeParent::AllocPLayerTransactionParent(aBackendHints, aId);
-
-  EmbedLiteWindowParent *parentWindow = EmbedLiteWindowParent::From(mWindowId);
-  if (parentWindow) {
-    parentWindow->GetListener()->CompositorCreated();
-  }
-
-  if (!StaticPrefs::embedlite_compositor_external_gl_context()) {
-    // Prepare Offscreen rendering context
-    PrepareOffscreen();
-  }
-  return p;
-}
-
-bool EmbedLiteCompositorBridgeParent::DeallocPLayerTransactionParent(PLayerTransactionParent *aLayers)
-{
-    bool deallocated = CompositorBridgeParent::DeallocPLayerTransactionParent(aLayers);
-    LOGT();
-    return deallocated;
 }
 
 void
 EmbedLiteCompositorBridgeParent::PrepareOffscreen()
 {
+  LOGT("EmbedLiteCompositorBridgeParent::PrepareOffscreen");
   fprintf(stderr, "=============== Preparing offscreen rendering context ===============\n");
-
+/*
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
@@ -129,11 +101,14 @@ EmbedLiteCompositorBridgeParent::PrepareOffscreen()
       }
     }
   }
+*/
 }
 
 void
-EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId)
+EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId, wr::RenderReasons aReasons)
 {
+  LOGT("EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget");
+/*
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
@@ -158,11 +133,14 @@ EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(VsyncId aId)
     CompositeToTarget(aId, nullptr);
     context->fActiveTexture(oldTexUnit);
   }
+*/
 }
 
 void
 EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
 {
+  LOGT("EmbedLiteCompositorBridgeParent::PresentOffscreenSurface");
+/*
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
@@ -184,21 +162,26 @@ EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
   if (screen->Size().IsEmpty() || !screen->PublishFrame(screen->Size())) {
     NS_ERROR("Failed to publish context frame");
   }
+*/
 }
 
 bool EmbedLiteCompositorBridgeParent::GetScrollableRect(CSSRect &scrollableRect)
 {
+  LOGT("EmbedLiteCompositorBridgeParent::GetScrollableRect");
   const CompositorBridgeParent::LayerTreeState *state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
+//FIXME
+/*
   NS_ENSURE_TRUE(state && state->mLayerManager, false);
-
   mozilla::layers::LayerMetricsWrapper layerMetricsWrapper = state->mLayerManager->GetRootContentLayer();
   const FrameMetrics &fm = layerMetricsWrapper.Metrics();
   scrollableRect = fm.GetScrollableRect();
+*/
   return true;
 }
 
 void EmbedLiteCompositorBridgeParent::SetSurfaceRect(int x, int y, int width, int height)
 {
+  LOGT("EmbedLiteCompositorBridgeParent::SetSurfaceRect");
   if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width ||
                                   mEGLSurfaceSize.height != height ||
                                   mSurfaceOrigin.x != x ||
@@ -212,6 +195,8 @@ void EmbedLiteCompositorBridgeParent::SetSurfaceRect(int x, int y, int width, in
 void
 EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
 {
+  LOGT("EmbedLiteCompositorBridgeParent::GetPlatformImage cb");
+/*
   MutexAutoLock lock(mRenderMutex);
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
@@ -237,11 +222,14 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
     callback(eglImageSurf->mImage, sharedSurf->mDesc.size.width, sharedSurf->mDesc.size.height);
   }
   sharedSurf->ProducerReadRelease();
+*/
 }
 
 void*
 EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 {
+  LOGT("EmbedLiteCompositorBridgeParent::GetPlatformImage w h");
+/*
   MutexAutoLock lock(mRenderMutex);
   const CompositorBridgeParent::LayerTreeState* state = CompositorBridgeParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
@@ -269,23 +257,27 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
   }
 
   return nullptr;
+*/
 }
 
 void
 EmbedLiteCompositorBridgeParent::SuspendRendering()
 {
+  LOGT("EmbedLiteCompositorBridgeParent::SuspendRendering");
   CompositorBridgeParent::SchedulePauseOnCompositorThread();
 }
 
 void
 EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
+  LOGT("EmbedLiteCompositorBridgeParent::ResumeRendering");
   if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
     CompositorBridgeParent::ScheduleResumeOnCompositorThread(mSurfaceOrigin.x,
                                                              mSurfaceOrigin.y,
                                                              mEGLSurfaceSize.width,
                                                              mEGLSurfaceSize.height);
-    CompositorBridgeParent::ScheduleRenderOnCompositorThread();
+//FIXME NONE ok?
+    CompositorBridgeParent::ScheduleRenderOnCompositorThread(wr::RenderReasons::NONE);
   }
 }
 

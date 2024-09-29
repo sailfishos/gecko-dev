@@ -41,7 +41,7 @@
 #include "mozilla/ModuleUtils.h"
 #include "nsXPCOMCIDInternal.h"
 
-#include "GeckoProfiler.h"
+#include "ProfilerControl.h"
 #include "IOInterposer.h"
 
 #ifdef XP_MACOSX

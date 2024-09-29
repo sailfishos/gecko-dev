@@ -13,8 +13,6 @@
 
 #include "EmbedLitePuppetWidget.h"
 #include "nsIWidgetListener.h"
-#include "ClientLayerManager.h"
-#include "BasicLayers.h"
 
 #include "mozilla/Preferences.h"
 
@@ -24,7 +22,6 @@
 #endif
 
 #include "EmbedLiteApp.h"
-#include "LayerScope.h"
 #include "mozilla/Unused.h"
 #include "mozilla/BasicEvents.h"
 
@@ -120,7 +117,6 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
     case NS_NATIVE_OPENGL_CONTEXT:
     case NS_NATIVE_WINDOW:
     case NS_NATIVE_DISPLAY:
-    case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_GRAPHIC:
     case NS_NATIVE_SHELLWIDGET:
     case NS_NATIVE_WIDGET:
@@ -366,17 +362,65 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 
 }
 
-LayerManager *
-EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
+WindowRenderer *
+EmbedLitePuppetWidget::GetWindowRenderer()
 {
-  if (!mLayerManager) {
+// FIXME
+  if (!mWindowRenderer) {
     if (!mShutdownObserver || Destroyed()) {
       // We are shutting down, do not try to re-create a LayerManager
       return nullptr;
     }
   }
 
-  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  WindowRenderer* windowRenderer = PuppetWidgetBase::GetWindowRenderer();
+  if (windowRenderer) {
+    mWindowRenderer = windowRenderer;
+    return mWindowRenderer;
+  }
+
+//  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
+//  LOGW("EmbedLitePuppetWidget::GetWindowRenderer EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID");
+  if (!mWindowRenderer) {
+/*
+    LOGT("Create Window Renderer for Process View");
+    if (XRE_IsParentProcess()) {
+      // On the parent process there is no CompositorBridgeChild which confuses
+      // some layers code, so we use basic layers instead. Note that we create
+      mWindowRenderer = new FallbackRenderer;
+      return mWindowRenderer;
+    }
+
+    // If we know for sure that the parent side of this BrowserChild is not
+    // connected to the compositor, we don't want to use a "remote" layer
+    // manager like WebRender or Client. Instead we use a Basic one which
+    // can do drawing in this process.
+//    MOZ_ASSERT(!mBrowserChild ||
+//               mBrowserChild->IsLayersConnected() != Some(true));
+    mWindowRenderer = CreateFallbackRenderer();
+*/
+  }
+/*
+  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
+    LOGT("Create Window Renderer for Process View");
+
+//    mWindowRenderer = new WindowRenderer();
+    return mWindowRenderer;
+  }
+*/
+  nsIWidget* topWidget = GetTopLevelWidget();
+  if (topWidget && topWidget != this) {
+      WindowRenderer* r = topWidget->GetWindowRenderer();
+      mWindowRenderer = r;
+      return mWindowRenderer;
+  }
+  else {
+      return nullptr;
+  }
+
+/*
+// old
+  LayerManager *lm = PuppetWidgetBase::GetWindowRenderer()->AsLayerManager();
   if (lm) {
     mLayerManager = lm;
     return mLayerManager;
@@ -395,12 +439,13 @@ EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, L
 
   nsIWidget* topWidget = GetTopLevelWidget();
   if (topWidget && topWidget != this) {
-      mLayerManager = topWidget->GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+      mLayerManager = topWidget->GetWindowRenderer()->AsLayerManager();
       return mLayerManager;
   }
   else {
       return nullptr;
   }
+*/
 }
 
 bool

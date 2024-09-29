@@ -48,7 +48,6 @@
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
 #include "nsIFrame.h"                       // for nsIFrame
-#include "FrameLayerBuilder.h"              // for FrameLayerbuilder
 #include "nsReadableUtils.h"
 
 #include <sys/syscall.h>
@@ -218,7 +217,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   // If this is created with window.open() or otherwise via WindowCreator
   // we'll receive parent BrowsingContext as an argument.
   // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content);
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content, false);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
   browsingContext->InitSessionHistory();
@@ -314,14 +313,6 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
         }
       });
   mAPZEventState = new APZEventState(mWidget, std::move(callback));
-  mSetAllowedTouchBehaviorCallback = [weakPtrThis](uint64_t aInputBlockId,
-                                                   const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags)
-  {
-    if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
-      EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
-      puppetWidget->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
-    }
-  };
 
   SetDesktopMode(isDesktopMode);
 
@@ -594,7 +585,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
               : dom::ExplicitActiveStatus::Inactive
   );
 
-  presShell->SetIsActive(aIsActive);
+// FIXME parameter count
+//  presShell->SetIsActive(aIsActive);
+  presShell->SetIsActive(aIsActive, true);
 
   mWidget->Show(aIsActive);
   mWebBrowser->SetVisibility(aIsActive);
@@ -719,9 +712,11 @@ bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
+/* FIXME
   nsPresContext* presContext = mHelper->GetPresContext();
   NS_ENSURE_TRUE(presContext, IPC_OK());
   presContext->RefreshDriver()->SetThrottled(aThrottle);
+*/
   return IPC_OK();
 }
 
@@ -774,7 +769,6 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
   RefPtr<PresShell> ps = mHelper->GetPresShell();
   if (ps && mWidget->IsVisible()) {
     if (nsIFrame* root = ps->GetRootFrame()) {
-      FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
       root->SchedulePaint();
     }
   }
@@ -1360,13 +1354,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
   nsTArray<TouchBehaviorFlags> allowedTouchBehaviors;
   if (localEvent.mMessage == eTouchStart && mWidget->AsyncPanZoomEnabled()) {
     nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
-    if (StaticPrefs::layout_css_touch_action_enabled()) {
-      allowedTouchBehaviors =
-          APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(
-              mWidget, document, localEvent, aInputBlockId,
-              mSetAllowedTouchBehaviorCallback);
-    }
-
+/* FIXME
+    allowedTouchBehaviors =
+        APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(
+            mWidget, document, localEvent, aInputBlockId,
+            mSetAllowedTouchBehaviorCallback);
+*/
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
         localEvent, aGuid.mLayersId, aInputBlockId);
   }

@@ -12,10 +12,11 @@
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteApp.h"
 
+#include "EmbedContentController.h"
+
 #include "GLContextProvider.h"
 #include "GLContext.h"                       // for GLContext
 
-#include "ClientLayerManager.h"              // for ClientLayerManager
 #include "Layers.h"                          // for LayerManager
 
 #include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
@@ -87,9 +88,6 @@ nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutD
 void
 nsWindow::Destroy()
 {
-  if (mLayerManager) {
-    mLayerManager->Destroy();
-  }
   mWindow = nullptr;
 
   PuppetWidgetBase::Destroy();
@@ -174,7 +172,6 @@ nsWindow::GetNativeData(uint32_t aDataType)
     }
     case NS_NATIVE_WINDOW:
     case NS_NATIVE_DISPLAY:
-    case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_GRAPHIC:
     case NS_NATIVE_SHELLWIDGET:
     case NS_NATIVE_WIDGET:
@@ -190,9 +187,40 @@ nsWindow::GetNativeData(uint32_t aDataType)
   return nullptr;
 }
 
-LayerManager *
-nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
+WindowRenderer *
+nsWindow::GetWindowRenderer()
 {
+//FIXME
+  LOGC("EmbedLiteLayerManager", "lm: %p", mWindowRenderer.get());
+
+  if (!mWindowRenderer) {
+    if (!mShutdownObserver) {
+      // We are shutting down, do not try to re-create a WindowRenderer
+      return nullptr;
+    }
+  }
+
+  WindowRenderer* windowRenderer = PuppetWidgetBase::GetWindowRenderer();
+  LOGC("EmbedLiteWindowRenderer", "lm: %p this: %p", windowRenderer, this);
+
+  if (windowRenderer) {
+    mWindowRenderer = windowRenderer;
+    return mWindowRenderer;
+  }
+
+  if (mWindow && ShouldUseOffMainThreadCompositing()) {
+    CreateCompositor();
+    LOGC("EmbedLiteWindowRenderer", "Created compositor, lm: %p", mWindowRenderer.get());
+    if (mWindowRenderer) {
+      return mWindowRenderer;
+    }
+    // If we get here, then off main thread compositing failed to initialize.
+    sFailedToCreateGLContext = true;
+  }
+  return mWindowRenderer;
+
+/*
+//old
   LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
 
   if (!mLayerManager) {
@@ -202,7 +230,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
     }
   }
 
-  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
+  LayerManager *lm = PuppetWidgetBase::GetWindowRenderer();
   LOGC("EmbedLiteLayerManager", "lm: %p this: %p", lm, this);
 
   if (lm) {
@@ -224,6 +252,7 @@ nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend 
   LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager.get());
 
   return mLayerManager;
+*/
 }
 
 bool
