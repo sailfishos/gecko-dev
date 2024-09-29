@@ -1,4 +1,4 @@
-%define greversion    91.13.1
+%define greversion    102.15.2
 %define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner
@@ -54,97 +54,97 @@ Release:    1
 License:    MPLv2.0
 URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
-Patch2:     0002-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
-Patch3:     0003-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
-Patch4:     0004-sailfishos-gecko-Revert-Bug-1611386-Drop-support-for.patch
-Patch5:     0005-sailfishos-gecko-Fix-build-version-requirements.patch
-Patch6:     0006-sailfishos-gecko-Read-rustc-host-from-environment.-J.patch
-Patch7:     0007-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
-Patch8:     0008-sailfishos-compositor-Fix-GLContextProvider-defines.patch
-Patch9:     0009-sailfishos-ipc-Whitelist-sync-messages-of-EmbedLite..patch
-Patch10:    0010-sailfishos-components-Cleanup-static-components-defi.patch
-Patch11:    0011-sailfishos-gecko-Reduce-Rust-build-requirements.patch
-Patch12:    0012-sailfishos-gecko-Patch-glslopt-to-build-on-arm.patch
-Patch13:    0013-sailfishos-gecko-Disable-MOC-code-generation-for-mes.patch
-Patch14:    0014-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
-Patch15:    0015-sailfishos-gecko-Work-around-upstream-membarrier-cha.patch
-Patch16:    0016-sailfishos-gecko-Allow-compositor-specializations-to.patch
-Patch17:    0017-sailfishos-gecko-Revert-Bug-1676576-Remove-unused-fu.patch
-Patch18:    0018-sailfishos-gecko-Restore-GLScreenBuffer-and-TextureI.patch
-Patch19:    0019-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
-Patch20:    0020-sailfishos-gecko-Revert-Bug-1706051-Remove-some-IPC-.patch
-Patch21:    0021-sailfishos-gecko-Remove-NS_LITERAL_CSTRING-usage.patch
-Patch22:    0022-sailfishos-gecko-Revert-Bug-1494175-Remove-unimpleme.patch
-Patch23:    0023-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
-Patch24:    0024-sailfishos-gecko-Update-ProcInfo.patch
-Patch25:    0025-sailfishos-gecko-Revert-Bug-1567888-remove-unneeded-.patch
-Patch26:    0026-sailfishos-gecko-Restore-nsAppShell.h.patch
-Patch27:    0027-sailfishos-gecko-Add-support-for-aarch64-to-elfhack..patch
-Patch28:    0028-sailfishos-gecko-Allow-gen_last_modified.py-to-compl.patch
-Patch29:    0029-sailfishos-gecko-Force-to-build-mozglue-and-xpcomglu.patch
-Patch30:    0030-sailfishos-gecko-Revert-Bug-445128-Stop-putting-the-.patch
-Patch31:    0031-sailfishos-gecko-Revert-Bug-1427455-Remove-unused-va.patch
-Patch32:    0032-sailfishos-gecko-Revert-Bug-1333826-Remove-SDK_FILES.patch
-Patch33:    0033-sailfishos-gecko-Revert-Bug-1333826-Remove-the-make-.patch
-Patch34:    0034-sailfishos-gecko-Revert-Bug-1333826-Remove-a-few-ref.patch
-Patch35:    0035-sailfishos-gecko-Introduce-EmbedInitGlue-to-the-mozg.patch
-Patch36:    0036-sailfishos-gecko-Split-namespace-into-two-blocks.patch
-Patch37:    0037-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
-Patch38:    0038-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
-Patch39:    0039-sailfishos-gecko-Make-PresShell-SetIsActive-public.patch
-Patch40:    0040-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
-Patch41:    0041-sailfishos-gecko-Add-patch-to-fix-32-bit-builds.patch
-Patch42:    0042-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
-Patch43:    0043-sailfishos-gecko-Supress-URLQueryStrippingListServic.patch
-Patch44:    0044-sailfishos-gecko-Allow-file-scheme-when-loading-Open.patch
-Patch45:    0045-sailfishos-gecko-Add-and-adjust-embedlite-static-pre.patch
-Patch46:    0046-sailfishos-gecko-Disable-SessionStore-functionality.patch
-Patch47:    0047-sailfishos-gecko-Enable-dconf.patch
-Patch48:    0048-sailfishos-gecko-Prevent-errors-from-DownloadPrompte.patch
-Patch49:    0049-sailfishos-gecko-Restore-NotifyDidPaint-event-and-ti.patch
-Patch50:    0050-sailfishos-gecko-Adapt-build-configuration-for-Sailf.patch
-Patch51:    0051-sailfishos-webrtc-Update-GN-build-files-for-WebRTC.-.patch
-Patch52:    0052-sailfishos-gecko-Disable-desktop-sharing-feature-on-.patch
-Patch53:    0053-sailfishos-gecko-Enable-GMP-for-encoding-decoding.-J.patch
-Patch54:    0054-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
-Patch55:    0055-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
-Patch56:    0056-sailfishos-gecko-Drop-AudioPlayback-messages-if-no-e.patch
-Patch57:    0057-sailfishos-gecko-Get-ContentFrameMessageManager-via-.patch
-Patch58:    0058-sailfishos-gecko-Convert-panic-into-early-return-in-.patch
-Patch59:    0059-sailfishos-gecko-Allow-LoginManagerPrompter-to-find-.patch
-Patch60:    0060-sailfishos-gecko-Add-support-for-prefers-color-schem.patch
-Patch61:    0061-sailfishos-gecko-Update-hash-for-mapped_hyph.patch
-Patch62:    0062-sailfishos-gecko-Fix-content-action-integration-to-w.patch
-Patch63:    0063-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
-Patch64:    0064-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
-Patch65:    0065-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
-Patch66:    0066-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
-Patch67:    0067-sailfishos-gecko-Fix-video-hardware-accelaration-not.patch
-Patch68:    0068-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
-Patch69:    0069-sailfishos-gecko-Fix-audio-underruns-for-fullduplex-.patch
-Patch70:    0070-sailfishos-gecko-Bug-1750760-Create-ffmpeg59-module-.patch
-Patch71:    0071-sailfishos-gecko-Bug-1750760-Open-libavcodec.so.59-l.patch
-Patch72:    0072-sailfishos-gecko-Bug-1750760-Update-audio-and-video-.patch
-Patch73:    0073-sailfishos-gecko-Bug-1761471-FFmpeg-5.0-Get-frame-co.patch
-Patch74:    0074-sailfishos-gecko-Bug-1758948-FFmpeg-Use-AVFrame-pts-.patch
-Patch75:    0075-sailfishos-gecko-Ensure-audio-continues-when-screen-.patch
-Patch76:    0076-sailfishos-gecko-Fix-build-failure-due-to-rust-lang-.patch
-Patch77:    0077-sailfishos-gecko-Fix-unstable-name-collisions-warnin.patch
-Patch78:    0078-sailfishos-embedlite-egl-Fix-mesa-egl-display-and-bu.patch
-Patch79:    0079-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-Patch80:    0080-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
-Patch81:    0081-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
-Patch82:    0082-sailfishos-gecko-Disallow-page-zooming-if-the-meta-v.patch
-Patch83:    0083-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
-Patch84:    0084-sailfishos-gecko-Get-12-24h-timeformat-setting-from-.patch
-Patch85:    0085-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
-Patch86:    0086-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
-Patch87:    0087-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
-Patch88:    0088-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
-Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
-Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
-Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
+#Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
+#Patch2:     0002-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
+#Patch3:     0003-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
+#Patch4:     0004-sailfishos-gecko-Revert-Bug-1611386-Drop-support-for.patch
+#Patch5:     0005-sailfishos-gecko-Fix-build-version-requirements.patch
+#Patch6:     0006-sailfishos-gecko-Read-rustc-host-from-environment.-J.patch
+#Patch7:     0007-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
+#Patch8:     0008-sailfishos-compositor-Fix-GLContextProvider-defines.patch
+#Patch9:     0009-sailfishos-ipc-Whitelist-sync-messages-of-EmbedLite..patch
+#Patch10:    0010-sailfishos-components-Cleanup-static-components-defi.patch
+#Patch11:    0011-sailfishos-gecko-Reduce-Rust-build-requirements.patch
+#Patch12:    0012-sailfishos-gecko-Patch-glslopt-to-build-on-arm.patch
+#Patch13:    0013-sailfishos-gecko-Disable-MOC-code-generation-for-mes.patch
+#Patch14:    0014-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
+#Patch15:    0015-sailfishos-gecko-Work-around-upstream-membarrier-cha.patch
+#Patch16:    0016-sailfishos-gecko-Allow-compositor-specializations-to.patch
+#Patch17:    0017-sailfishos-gecko-Revert-Bug-1676576-Remove-unused-fu.patch
+#Patch18:    0018-sailfishos-gecko-Restore-GLScreenBuffer-and-TextureI.patch
+#Patch19:    0019-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
+#Patch20:    0020-sailfishos-gecko-Revert-Bug-1706051-Remove-some-IPC-.patch
+#Patch21:    0021-sailfishos-gecko-Remove-NS_LITERAL_CSTRING-usage.patch
+#Patch22:    0022-sailfishos-gecko-Revert-Bug-1494175-Remove-unimpleme.patch
+#Patch23:    0023-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
+#Patch24:    0024-sailfishos-gecko-Update-ProcInfo.patch
+#Patch25:    0025-sailfishos-gecko-Revert-Bug-1567888-remove-unneeded-.patch
+#Patch26:    0026-sailfishos-gecko-Restore-nsAppShell.h.patch
+#Patch27:    0027-sailfishos-gecko-Add-support-for-aarch64-to-elfhack..patch
+#Patch28:    0028-sailfishos-gecko-Allow-gen_last_modified.py-to-compl.patch
+#Patch29:    0029-sailfishos-gecko-Force-to-build-mozglue-and-xpcomglu.patch
+#Patch30:    0030-sailfishos-gecko-Revert-Bug-445128-Stop-putting-the-.patch
+#Patch31:    0031-sailfishos-gecko-Revert-Bug-1427455-Remove-unused-va.patch
+#Patch32:    0032-sailfishos-gecko-Revert-Bug-1333826-Remove-SDK_FILES.patch
+#Patch33:    0033-sailfishos-gecko-Revert-Bug-1333826-Remove-the-make-.patch
+#Patch34:    0034-sailfishos-gecko-Revert-Bug-1333826-Remove-a-few-ref.patch
+#Patch35:    0035-sailfishos-gecko-Introduce-EmbedInitGlue-to-the-mozg.patch
+#Patch36:    0036-sailfishos-gecko-Split-namespace-into-two-blocks.patch
+#Patch37:    0037-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
+#Patch38:    0038-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
+#Patch39:    0039-sailfishos-gecko-Make-PresShell-SetIsActive-public.patch
+#Patch40:    0040-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
+#Patch41:    0041-sailfishos-gecko-Add-patch-to-fix-32-bit-builds.patch
+#Patch42:    0042-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
+#Patch43:    0043-sailfishos-gecko-Supress-URLQueryStrippingListServic.patch
+#Patch44:    0044-sailfishos-gecko-Allow-file-scheme-when-loading-Open.patch
+#Patch45:    0045-sailfishos-gecko-Add-and-adjust-embedlite-static-pre.patch
+#Patch46:    0046-sailfishos-gecko-Disable-SessionStore-functionality.patch
+#Patch47:    0047-sailfishos-gecko-Enable-dconf.patch
+#Patch48:    0048-sailfishos-gecko-Prevent-errors-from-DownloadPrompte.patch
+#Patch49:    0049-sailfishos-gecko-Restore-NotifyDidPaint-event-and-ti.patch
+#Patch50:    0050-sailfishos-gecko-Adapt-build-configuration-for-Sailf.patch
+#Patch51:    0051-sailfishos-webrtc-Update-GN-build-files-for-WebRTC.-.patch
+#Patch52:    0052-sailfishos-gecko-Disable-desktop-sharing-feature-on-.patch
+#Patch53:    0053-sailfishos-gecko-Enable-GMP-for-encoding-decoding.-J.patch
+#Patch54:    0054-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
+#Patch55:    0055-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
+#Patch56:    0056-sailfishos-gecko-Drop-AudioPlayback-messages-if-no-e.patch
+#Patch57:    0057-sailfishos-gecko-Get-ContentFrameMessageManager-via-.patch
+#Patch58:    0058-sailfishos-gecko-Convert-panic-into-early-return-in-.patch
+#Patch59:    0059-sailfishos-gecko-Allow-LoginManagerPrompter-to-find-.patch
+#Patch60:    0060-sailfishos-gecko-Add-support-for-prefers-color-schem.patch
+#Patch61:    0061-sailfishos-gecko-Update-hash-for-mapped_hyph.patch
+#Patch62:    0062-sailfishos-gecko-Fix-content-action-integration-to-w.patch
+#Patch63:    0063-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
+#Patch64:    0064-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
+#Patch65:    0065-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
+#Patch66:    0066-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
+#Patch67:    0067-sailfishos-gecko-Fix-video-hardware-accelaration-not.patch
+#Patch68:    0068-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
+#Patch69:    0069-sailfishos-gecko-Fix-audio-underruns-for-fullduplex-.patch
+#Patch70:    0070-sailfishos-gecko-Bug-1750760-Create-ffmpeg59-module-.patch
+#Patch71:    0071-sailfishos-gecko-Bug-1750760-Open-libavcodec.so.59-l.patch
+#Patch72:    0072-sailfishos-gecko-Bug-1750760-Update-audio-and-video-.patch
+#Patch73:    0073-sailfishos-gecko-Bug-1761471-FFmpeg-5.0-Get-frame-co.patch
+#Patch74:    0074-sailfishos-gecko-Bug-1758948-FFmpeg-Use-AVFrame-pts-.patch
+#Patch75:    0075-sailfishos-gecko-Ensure-audio-continues-when-screen-.patch
+#Patch76:    0076-sailfishos-gecko-Fix-build-failure-due-to-rust-lang-.patch
+#Patch77:    0077-sailfishos-gecko-Fix-unstable-name-collisions-warnin.patch
+#Patch78:    0078-sailfishos-embedlite-egl-Fix-mesa-egl-display-and-bu.patch
+#Patch79:    0079-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
+#Patch80:    0080-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
+#Patch81:    0081-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
+#Patch82:    0082-sailfishos-gecko-Disallow-page-zooming-if-the-meta-v.patch
+#Patch83:    0083-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
+#Patch84:    0084-sailfishos-gecko-Get-12-24h-timeformat-setting-from-.patch
+#Patch85:    0085-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
+#Patch86:    0086-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
+#Patch87:    0087-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
+#Patch88:    0088-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
+#Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
+#Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
+#Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
@@ -274,6 +274,7 @@ echo "Target is %SB2_TARGET"
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
+echo "export MOZBUILD_STATE_PATH=%BUILD_DIR" >> "%BUILD_DIR"/rpm-shared.env
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
 echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
@@ -452,7 +453,7 @@ echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
 RPM_BUILD_NCPUS=`nproc`
 
-export MACH_USE_SYSTEM_PYTHON=1
+export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=system
 
 ./mach build -j$RPM_BUILD_NCPUS
 # This might be unnecessary but previously some files
