@@ -21,15 +21,17 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1706608
 https://phabricator.services.mozilla.com/D117376
 
 https://bugzilla.mozilla.org/show_bug.cgi?id=1723981
+
+Co-authored-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- .../components/antitracking/URLQueryStrippingListService.jsm  | 4 ++++
- 1 file changed, 4 insertions(+)
+ .../components/antitracking/URLQueryStrippingListService.jsm | 5 +++++
+ 1 file changed, 5 insertions(+)
 
 diff --git a/toolkit/components/antitracking/URLQueryStrippingListService.jsm b/toolkit/components/antitracking/URLQueryStrippingListService.jsm
-index 991fd0d11f0d..b8eb2c25c358 100644
+index 991fd0d11f0d..cb5dd63f1742 100644
 --- a/toolkit/components/antitracking/URLQueryStrippingListService.jsm
 +++ b/toolkit/components/antitracking/URLQueryStrippingListService.jsm
-@@ -220,6 +220,10 @@ class URLQueryStrippingListService {
+@@ -220,6 +220,11 @@ class URLQueryStrippingListService {
          let prefValue = Services.prefs.getStringPref(data, "");
          this._onPrefUpdate(data, prefValue);
          break;
@@ -37,6 +39,7 @@ index 991fd0d11f0d..b8eb2c25c358 100644
 +        if (!!this.initialized) {
 +          Cu.reportError(`Unexpected post-init event ${topic}`);
 +        }
++        break;
        default:
          Cu.reportError(`Unexpected event ${topic}`);
      }
