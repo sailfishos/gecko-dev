@@ -455,7 +455,7 @@ RPM_BUILD_NCPUS=`nproc`
 
 export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=system
 
-./mach build -j$RPM_BUILD_NCPUS
+./mach build -j$RPM_BUILD_NCPUS -v
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
