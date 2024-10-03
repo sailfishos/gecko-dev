@@ -59,8 +59,8 @@ pref("gfx.vsync.compositor.unobserve-count", 40);
 
 // APZC preferences.
 pref("apz.allow_zooming", true);
-pref("apz.fling_accel_base_mult", "1.125f");
-pref("apz.min_skate_speed", "1.0f");
+pref("apz.fling_accel_base_mult", "1.125");
+pref("apz.min_skate_speed", "1.0");
 
 // Gaia relies heavily on scroll events for now, so lets fire them
 // more often than the default value (100).
