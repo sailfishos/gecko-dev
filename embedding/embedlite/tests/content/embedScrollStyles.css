@@ -5,6 +5,14 @@
 @namespace url("http://www.w3.org/1999/xhtml");
 @namespace xul url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
+html,
+body {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+    -moz-text-size-adjust: none;
+}
+
 /* Style the scrollbars */
 xul|window xul|scrollbar {
   display: none;
