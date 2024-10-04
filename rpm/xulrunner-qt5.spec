@@ -310,7 +310,7 @@ echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
-echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGOFLAGS=\" --offline -j1\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
@@ -453,13 +453,11 @@ RPM_BUILD_NCPUS=`nproc`
 
 export MACH_USE_SYSTEM_PYTHON=1
 
-#./mach build -j$RPM_BUILD_NCPUS
-./mach build -j1
+./mach build -j$RPM_BUILD_NCPUS
 # This might be unnecessary but previously some files
 # were only behind FASTER_RECURSIVE_MAKE but only adds few
 # minutes for the build.
-#./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
-./mach build faster FASTER_RECURSIVE_MAKE=1 -j1
+./mach build faster FASTER_RECURSIVE_MAKE=1 -j$RPM_BUILD_NCPUS
 
 # Restore .git directory after build
 %if %{with git_workaround}
