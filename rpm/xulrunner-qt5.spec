@@ -51,9 +51,8 @@ Name:       xulrunner-qt5
 Summary:    XUL runner
 Version:    %{greversion}
 Release:    1
-Group:      Applications/Internet
 License:    MPLv2.0
-URL:        https://git.sailfishos.org/mer-core/gecko-dev
+URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
 Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
 Patch2:     0002-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
@@ -507,7 +506,6 @@ find "%{buildroot}%{_includedir}" -type f -name '*.h' -exec chmod 0644 {} +;
 touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 
 %files
-%defattr(-,root,root,-)
 %dir %{mozappdir}
 %dir %{mozappdir}/defaults
 %{mozappdir}/*.so
@@ -518,13 +516,11 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %{mozappdir}/platform.ini
 
 %files devel
-%defattr(-,root,root,-)
 %{mozappdirdev}
 %{_libdir}/pkgconfig
 %{_includedir}/*
 
 %files misc
-%defattr(-,root,root,-)
 %{_bindir}/*
 %{mozappdir}/*
 %exclude %dir %{mozappdir}/defaults
