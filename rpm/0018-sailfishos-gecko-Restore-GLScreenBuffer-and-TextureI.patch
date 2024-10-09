@@ -38,7 +38,7 @@ can occur when a display is freed and the fTerminate method is called.
  gfx/gl/GLContextProviderImpl.h                |  35 ++
  gfx/gl/GLLibraryEGL.cpp                       |  23 +-
  gfx/gl/GLLibraryEGL.h                         |   7 +-
- gfx/gl/GLScreenBuffer.cpp                     | 308 ++++++++++++++++++
+ gfx/gl/GLScreenBuffer.cpp                     | 306 ++++++++++++++++++
  gfx/gl/GLScreenBuffer.h                       | 143 +++++++-
  gfx/gl/GLTextureImage.cpp                     |  10 +
  gfx/gl/SharedSurface.cpp                      | 114 ++++++-
@@ -55,7 +55,7 @@ can occur when a display is freed and the fTerminate method is called.
  .../client/TextureClientSharedSurface.h       |  25 ++
  gfx/layers/ipc/CompositorVsyncScheduler.cpp   |   1 -
  gfx/layers/opengl/CompositorOGL.cpp           |  24 +-
- 23 files changed, 1460 insertions(+), 71 deletions(-)
+ 23 files changed, 1458 insertions(+), 71 deletions(-)
  create mode 100644 gfx/gl/TextureImageEGL.cpp
  create mode 100644 gfx/gl/TextureImageEGL.h
 
@@ -479,7 +479,7 @@ index fa73113f7955..fb019e980a93 100644
    std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
  
 diff --git a/gfx/gl/GLScreenBuffer.cpp b/gfx/gl/GLScreenBuffer.cpp
-index 0398dd7dc6a2..afad772d1d45 100644
+index 0398dd7dc6a2..7b8a7ab9bca6 100644
 --- a/gfx/gl/GLScreenBuffer.cpp
 +++ b/gfx/gl/GLScreenBuffer.cpp
 @@ -11,6 +11,21 @@
@@ -504,7 +504,7 @@ index 0398dd7dc6a2..afad772d1d45 100644
  namespace mozilla::gl {
  
  // -
-@@ -116,4 +131,297 @@ SwapChain::~SwapChain() {
+@@ -116,4 +131,295 @@ SwapChain::~SwapChain() {
    }
  }
  
@@ -547,8 +547,6 @@ index 0398dd7dc6a2..afad772d1d45 100644
 +UniquePtr<GLScreenBuffer> GLScreenBuffer::Create(GLContext* gl,
 +                                                 const gfx::IntSize& size) {
 +  UniquePtr<GLScreenBuffer> ret;
-+
-+  layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
 +
 +  UniquePtr<SurfaceFactory> factory =
 +      MakeUnique<SurfaceFactory_GL>(*gl);
