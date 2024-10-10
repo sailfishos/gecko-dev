@@ -142,7 +142,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
 
 void EmbedLiteWindowParent::SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor)
 {
-  LOGT("compositor:%p, observers:%d", aCompositor, mObservers.Length());
+  LOGT("compositor:%p, observers:%d", aCompositor, static_cast<int>(mObservers.Length()));
   MOZ_ASSERT(!mCompositor);
 
   mCompositor = aCompositor;

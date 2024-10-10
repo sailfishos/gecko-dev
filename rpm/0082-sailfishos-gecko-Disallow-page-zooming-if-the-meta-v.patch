@@ -7,14 +7,14 @@ Subject: [PATCH] [sailfishos][gecko] Disallow page zooming if the meta
 Zooming is always allowed if desktop mode is active. JB#56767
 OMP#JOLLA-609
 ---
- layout/base/nsLayoutUtils.cpp | 25 ++++++++++++++++++++++---
- 1 file changed, 22 insertions(+), 3 deletions(-)
+ layout/base/nsLayoutUtils.cpp | 24 +++++++++++++++++++++---
+ 1 file changed, 21 insertions(+), 3 deletions(-)
 
 diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
-index cae4a2b9bd6e..3a846dd6396a 100644
+index cae4a2b9bd6e..add17df022dd 100644
 --- a/layout/base/nsLayoutUtils.cpp
 +++ b/layout/base/nsLayoutUtils.cpp
-@@ -687,6 +687,24 @@ bool nsLayoutUtils::AsyncPanZoomEnabled(const nsIFrame* aFrame) {
+@@ -687,6 +687,23 @@ bool nsLayoutUtils::AsyncPanZoomEnabled(const nsIFrame* aFrame) {
    return widget->AsyncPanZoomEnabled();
  }
  
@@ -23,7 +23,6 @@ index cae4a2b9bd6e..3a846dd6396a 100644
 +  if (!aDocument) {
 +    return false;
 +  }
-+  nsresult rv;
 +  ViewportMetaData metaData = aDocument->GetViewportMetaData();
 +  return (!metaData.mMinimumScale.IsEmpty() && metaData.mMinimumScale == metaData.mMaximumScale) ||
 +          metaData.mUserScalable.EqualsLiteral("0") ||
@@ -39,7 +38,7 @@ index cae4a2b9bd6e..3a846dd6396a 100644
  bool nsLayoutUtils::AllowZoomingForDocument(
      const mozilla::dom::Document* aDocument) {
    if (aDocument->GetPresShell() &&
-@@ -696,10 +714,11 @@ bool nsLayoutUtils::AllowZoomingForDocument(
+@@ -696,10 +713,11 @@ bool nsLayoutUtils::AllowZoomingForDocument(
    // True if we allow zooming for all documents on this platform, or if we are
    // in RDM and handling meta viewports, which force zoom under some
    // circumstances.

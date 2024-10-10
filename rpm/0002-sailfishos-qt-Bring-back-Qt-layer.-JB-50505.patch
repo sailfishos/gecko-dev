@@ -641,7 +641,7 @@ index 9ba8669ea0dd..e7b5e55f0551 100644
      DIRS += ["mac"]
 diff --git a/dom/system/qt/QTMLocationProvider.cpp b/dom/system/qt/QTMLocationProvider.cpp
 new file mode 100644
-index 000000000000..70b1c37dce94
+index 000000000000..d3e8351b74c7
 --- /dev/null
 +++ b/dom/system/qt/QTMLocationProvider.cpp
 @@ -0,0 +1,103 @@
@@ -693,7 +693,7 @@ index 000000000000..70b1c37dce94
 +    double altitudeAccuracy = geoPosition.attribute(QGeoPositionInfo::VerticalAccuracy);
 +    double heading = geoPosition.attribute(QGeoPositionInfo::Direction);
 +
-+    bool providesSpeed = geoPosition.hasAttribute(QGeoPositionInfo::GroundSpeed);
++    //bool providesSpeed = geoPosition.hasAttribute(QGeoPositionInfo::GroundSpeed);
 +    double speed = geoPosition.attribute(QGeoPositionInfo::GroundSpeed);
 +
 +    RefPtr<nsGeoPosition> p =
@@ -4416,7 +4416,7 @@ index 07e6970e5621..e22cfcff292a 100644
      ]
 diff --git a/widget/qt/GfxInfo.cpp b/widget/qt/GfxInfo.cpp
 new file mode 100644
-index 000000000000..9cb59c59438a
+index 000000000000..0bf94e804338
 --- /dev/null
 +++ b/widget/qt/GfxInfo.cpp
 @@ -0,0 +1,268 @@
@@ -4600,7 +4600,7 @@ index 000000000000..9cb59c59438a
 +    value.AppendPrintf("%dx%d@%dHz",
 +                       screen->size().width(),
 +                       screen->size().height(),
-+                       screen->refreshRate());
++                       qRound(screen->refreshRate()));
 +
 +    aDisplayInfo.AppendElement(value);
 +  }
@@ -4635,10 +4635,10 @@ index 000000000000..9cb59c59438a
 +}
 +
 +nsresult
-+GfxInfo::GetFeatureStatusImpl(int32_t /*aFeature*/, 
-+                              int32_t *aStatus, 
++GfxInfo::GetFeatureStatusImpl(int32_t /*aFeature*/,
++                              int32_t *aStatus,
 +                              nsAString & /*aSuggestedDriverVersion*/,
-+                              const nsTArray<GfxDriverInfo>& /*aDriverInfo*/, 
++                              const nsTArray<GfxDriverInfo>& /*aDriverInfo*/,
 +                              nsACString & /*aFailureId*/,
 +                              OperatingSystem* /*aOS*/ /* = nullptr */)
 +{
@@ -6488,7 +6488,7 @@ index 000000000000..72e189567039
 +#endif /* nsPrintOptionsQt_h__ */
 diff --git a/widget/qt/nsPrintSettingsQt.cpp b/widget/qt/nsPrintSettingsQt.cpp
 new file mode 100644
-index 000000000000..f8393c7e78a9
+index 000000000000..53b8622f15ea
 --- /dev/null
 +++ b/widget/qt/nsPrintSettingsQt.cpp
 @@ -0,0 +1,414 @@
@@ -6533,7 +6533,7 @@ index 000000000000..f8393c7e78a9
 +{
 +}
 +
-+nsPrintSettingsQt& 
++nsPrintSettingsQt&
 +nsPrintSettingsQt::operator=(const nsPrintSettingsQt& rhs)
 +{
 +    if (this == &rhs) {
@@ -6555,7 +6555,7 @@ index 000000000000..f8393c7e78a9
 +    return *this;
 +}
 +
-+nsresult 
++nsresult
 +nsPrintSettingsQt::_Clone(nsIPrintSettings** _retval)
 +{
 +    NS_ENSURE_ARG_POINTER(_retval);
