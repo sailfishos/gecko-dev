@@ -609,7 +609,7 @@ index 16ca8a9cbc01..bd7aabbed1e4 100644
  
  if CONFIG["CC_TYPE"] in ("clang", "gcc"):
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 615143df6b5e..96c924f00398 100644
+index 0a532802ca41..13059d44060c 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -8222,6 +8222,19 @@

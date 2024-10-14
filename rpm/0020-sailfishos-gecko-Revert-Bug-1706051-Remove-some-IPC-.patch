@@ -19,7 +19,7 @@ This reverts commit a5f0e8f83c652413c089933a9d43223aad7fc6b0.
  10 files changed, 133 insertions(+), 4 deletions(-)
 
 diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
-index 9f1bccda2efe..6e5c1495c546 100644
+index 32c397826906..a7dec29a7b29 100644
 --- a/dom/ipc/BrowserChild.cpp
 +++ b/dom/ipc/BrowserChild.cpp
 @@ -347,7 +347,8 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
@@ -32,7 +32,7 @@ index 9f1bccda2efe..6e5c1495c546 100644
    mozilla::HoldJSObjects(this);
  
    nsWeakPtr weakPtrThis(do_GetWeakReference(
-@@ -3371,6 +3372,12 @@ mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
+@@ -3381,6 +3382,12 @@ mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
    return IPC_OK();
  }
  
@@ -46,7 +46,7 @@ index 9f1bccda2efe..6e5c1495c546 100644
    PointerEventHandler::ReleaseAllPointerCapture();
    return IPC_OK();
 diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
-index 2f13bc5998c8..0d5826952a86 100644
+index 161488020fc1..514c38378404 100644
 --- a/dom/ipc/BrowserChild.h
 +++ b/dom/ipc/BrowserChild.h
 @@ -649,6 +649,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
@@ -79,10 +79,10 @@ index 2f13bc5998c8..0d5826952a86 100644
    // When mChildToParentConversionMatrix is Nothing() this value is invalid.
    ScreenRect mTopLevelViewportVisibleRectInBrowserCoords;
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index 05d77937f986..9cb59f477093 100644
+index 096a7cae418c..4cd64bb8ef72 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
-@@ -156,6 +156,7 @@ using namespace mozilla::widget;
+@@ -157,6 +157,7 @@ using namespace mozilla::widget;
  using namespace mozilla::gfx;
  
  using mozilla::LazyLogModule;
@@ -90,7 +90,7 @@ index 05d77937f986..9cb59f477093 100644
  using mozilla::Unused;
  
  LazyLogModule gBrowserFocusLog("BrowserFocus");
-@@ -539,6 +540,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
+@@ -540,6 +541,17 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
    AddWindowListeners();
    TryCacheDPIAndScale();
  
@@ -108,7 +108,7 @@ index 05d77937f986..9cb59f477093 100644
    if (mRemoteLayerTreeOwner.IsInitialized()) {
      mRemoteLayerTreeOwner.OwnerContentChanged();
    }
-@@ -3204,6 +3216,23 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
+@@ -3294,6 +3306,23 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
    return IPC_OK();
  }
  
@@ -133,10 +133,10 @@ index 05d77937f986..9cb59f477093 100644
    if (nsCOMPtr<nsIWidget> widget = GetTopLevelWidget()) {
      widget->SetFocus(nsIWidget::Raise::No, CallerType::System);
 diff --git a/dom/ipc/BrowserParent.h b/dom/ipc/BrowserParent.h
-index 80e4d055e26c..ad893507bf5f 100644
+index c05b4322b319..7553328b1925 100644
 --- a/dom/ipc/BrowserParent.h
 +++ b/dom/ipc/BrowserParent.h
-@@ -395,6 +395,9 @@ class BrowserParent final : public PBrowserParent,
+@@ -397,6 +397,9 @@ class BrowserParent final : public PBrowserParent,
  
    mozilla::ipc::IPCResult RecvHideTooltip();
  
@@ -147,10 +147,10 @@ index 80e4d055e26c..ad893507bf5f 100644
  
    mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
 diff --git a/dom/ipc/PBrowser.ipdl b/dom/ipc/PBrowser.ipdl
-index 9750219fa46a..0ae89e191bb9 100644
+index 4601d583bfcd..75f9fad7e1bc 100644
 --- a/dom/ipc/PBrowser.ipdl
 +++ b/dom/ipc/PBrowser.ipdl
-@@ -216,6 +216,12 @@ parent:
+@@ -217,6 +217,12 @@ parent:
       */
      async PVsync();
  
@@ -163,7 +163,7 @@ index 9750219fa46a..0ae89e191bb9 100644
      /**
       * When content moves focus from a native plugin window that's a child
       * of the native browser window we need to move native focus to the
-@@ -994,6 +1000,12 @@ child:
+@@ -1012,6 +1018,12 @@ child:
       */
      async AllowScriptsToClose();
  
@@ -250,10 +250,10 @@ index 42fe6cc9537f..afbea5fe5df0 100644
    // PuppetWidgets don't have any concept of titles.
    virtual nsresult SetTitle(const nsAString& aTitle) override {
 diff --git a/widget/gtk/nsWindow.cpp b/widget/gtk/nsWindow.cpp
-index 66f851855cfe..22d290b8a9b9 100644
+index 8ac97d414031..4c24d4d173c8 100644
 --- a/widget/gtk/nsWindow.cpp
 +++ b/widget/gtk/nsWindow.cpp
-@@ -2951,6 +2951,8 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+@@ -2962,6 +2962,8 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
    switch (aDataType) {
      case NS_NATIVE_WINDOW:
      case NS_NATIVE_WIDGET: {
@@ -262,7 +262,7 @@ index 66f851855cfe..22d290b8a9b9 100644
        return mGdkWindow;
      }
  
-@@ -2969,11 +2971,14 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
+@@ -2980,11 +2982,14 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
        return GetToplevelWidget();
  
      case NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID:
