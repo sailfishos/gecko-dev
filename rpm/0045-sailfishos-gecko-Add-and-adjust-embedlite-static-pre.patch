@@ -38,7 +38,7 @@ cases.
  4 files changed, 61 insertions(+), 3 deletions(-)
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 058df55a189d..615143df6b5e 100644
+index 24f736afef57..0a532802ca41 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -3986,6 +3986,63 @@
@@ -115,7 +115,7 @@ index 058df55a189d..615143df6b5e 100644
  
  #ifdef MOZ_WIDGET_GTK
 diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
-index d3650a05b5dd..67346866cb69 100644
+index 097ed3c82920..b90f30dcffd5 100644
 --- a/modules/libpref/init/all.js
 +++ b/modules/libpref/init/all.js
 @@ -4598,7 +4598,7 @@ pref("browser.privatebrowsing.autostart", false);

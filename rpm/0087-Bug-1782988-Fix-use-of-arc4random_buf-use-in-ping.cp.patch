@@ -26,6 +26,3 @@ index 4341df49ea70..959cddc16657 100644
  #else                               // Linux
    int fd = open("/dev/urandom", O_RDONLY);
  
--- 
-2.45.2
-

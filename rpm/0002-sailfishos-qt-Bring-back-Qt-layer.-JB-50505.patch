@@ -327,7 +327,6 @@ Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
  browser/base/content/browser-menubar.inc      |   2 +-
  browser/themes/moz.build                      |   2 +-
  build/moz.configure/old.configure             |   1 +
- config/milestone.txt                          |  12 -
  dom/geolocation/Geolocation.cpp               |   8 +
  dom/geolocation/moz.build                     |   6 +
  dom/ipc/ContentChild.cpp                      |   9 +
@@ -433,7 +432,7 @@ Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
  widget/qt/nsUserIdleServiceQt.h               |  56 ++
  widget/qt/nsWidgetFactory.cpp                 |  36 ++
  widget/qt/nsWidgetFactory.h                   |  22 +
- 109 files changed, 4780 insertions(+), 89 deletions(-)
+ 108 files changed, 4780 insertions(+), 77 deletions(-)
  create mode 100644 dom/system/qt/QTMLocationProvider.cpp
  create mode 100644 dom/system/qt/QTMLocationProvider.h
  create mode 100644 dom/system/qt/QtHapticFeedback.cpp
@@ -523,24 +522,6 @@ index 35ab75df3a14..5a06c5816e0d 100644
      "--with-system-libevent",
      "--with-system-png",
      "--with-user-appdir",
-diff --git a/config/milestone.txt b/config/milestone.txt
-index f14cd0f20b8b..17aca278ee1b 100644
---- a/config/milestone.txt
-+++ b/config/milestone.txt
-@@ -1,13 +1 @@
--# Holds the current milestone.
--# Should be in the format of
--#
--#    x.x.x
--#    x.x.x.x
--#    x.x.x+
--#
--# Referenced by build/moz.configure/init.configure.
--# Hopefully I'll be able to automate replacement of *all*
--# hardcoded milestones in the tree from these two files.
--#--------------------------------------------------------
--
- 91.9.1
 diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
 index 763192a50cf8..89cae0a42978 100644
 --- a/dom/geolocation/Geolocation.cpp

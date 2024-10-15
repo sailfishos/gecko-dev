@@ -35,7 +35,7 @@ index bc12966f3237..3b48b5befc68 100644
  
    return NS_ERROR_NULL_POINTER;
 diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
-index 6e5c1495c546..3aa2f391a909 100644
+index a7dec29a7b29..cfe2d162ca26 100644
 --- a/dom/ipc/BrowserChild.cpp
 +++ b/dom/ipc/BrowserChild.cpp
 @@ -619,6 +619,14 @@ BrowserChild::SetChromeFlags(uint32_t aChromeFlags) {
