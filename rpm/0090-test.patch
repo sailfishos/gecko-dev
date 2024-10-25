@@ -4,11 +4,11 @@ Date: Fri, 25 Oct 2024 01:58:26 +0300
 Subject: [PATCH] test
 
 ---
- gfx/gl/GLContextEGL.h           | 10 ++++++----
- gfx/gl/GLContextProviderEGL.cpp | 15 ++++++++-------
+ gfx/gl/GLContextEGL.h           | 10 +++++----
+ gfx/gl/GLContextProviderEGL.cpp | 40 +++++++++++++++------------------
  gfx/gl/GLLibraryEGL.cpp         |  5 +++--
  gfx/gl/GLLibraryEGL.h           |  3 ++-
- 4 files changed, 19 insertions(+), 14 deletions(-)
+ 4 files changed, 29 insertions(+), 29 deletions(-)
 
 diff --git a/gfx/gl/GLContextEGL.h b/gfx/gl/GLContextEGL.h
 index 46a1e78b50ab..924f4e0174e7 100644
@@ -37,7 +37,7 @@ index 46a1e78b50ab..924f4e0174e7 100644
  
  // -
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 1c26e3aeb744..a658b58b0363 100644
+index 1c26e3aeb744..c7c3e70cd44f 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -355,12 +355,12 @@ class GLContextEGLFactory {
@@ -64,16 +64,49 @@ index 1c26e3aeb744..a658b58b0363 100644
    if (!egl) {
      gfxCriticalNote << "Failed to load EGL library 6!";
      return EGL_NO_SURFACE;
-@@ -1183,7 +1183,7 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
-       return nullptr;
-     }
+@@ -1175,15 +1175,12 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
+ 
+   nsCString failureId;
+ 
+-  if (!gDefaultEglLibrary) {
+-    gDefaultEglLibrary = GLLibraryEGL::Create(&failureId, aDisplay);
+-
+-    if (!gDefaultEglLibrary) {
+-      gfxCriticalNote << "Failed[3] to load EGL library";
+-      return nullptr;
+-    }
++  const auto lib = gl::DefaultEglLibrary(&failureId, aDisplay);
++  if (!lib) {
++    gfxCriticalNote << "Failed[3] to load EGL library: " << failureId.get();
++    return nullptr;
    }
 -  const std::shared_ptr<EglDisplay> egl = gDefaultEglLibrary.operator->()->DefaultDisplay(&failureId);
-+  const std::shared_ptr<EglDisplay> egl = gDefaultEglLibrary.operator->()->DefaultDisplay(&failureId, aDisplay);
++  const auto egl = lib->DefaultDisplay(&failureId, aDisplay);
  
    if (!egl) {
      gfxCriticalNote << "Failed[3] to create EGL library  display: "
-@@ -1437,7 +1437,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContext(
+@@ -1389,14 +1386,12 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+   } else
+ #endif
+   {
+-    surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
+-        *egl, config, LOCAL_EGL_NONE, pbSize);
+-  }
+-  if (useWindow) {
+-    surface = CreateEmulatorBufferSurface(*egl, config, pbSize);
+-  } else {
+-    surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
+-        *egl, config, LOCAL_EGL_NONE, pbSize);
++    if (useWindow) {
++      surface = CreateEmulatorBufferSurface(*egl, config, pbSize);
++    } else {
++      surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
++          *egl, config, LOCAL_EGL_NONE, pbSize);
++    }
+   }
+ 
+   if (!surface) {
+@@ -1437,7 +1432,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContext(
  /*static*/
  already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
      const GLContextCreateDesc& desc, nsACString* const out_failureId) {
@@ -82,7 +115,7 @@ index 1c26e3aeb744..a658b58b0363 100644
    if (!display) {
      return nullptr;
    }
-@@ -1490,10 +1490,11 @@ GLContext* GLContextProviderEGL::GetGlobalContext() { return nullptr; }
+@@ -1490,10 +1485,11 @@ GLContext* GLContextProviderEGL::GetGlobalContext() { return nullptr; }
  
  // -
  
