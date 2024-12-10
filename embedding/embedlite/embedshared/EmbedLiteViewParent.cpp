@@ -33,6 +33,7 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
                                          const bool &isHidden)
   : mWindowId(windowId)
   , mId(id)
+  , mView(nullptr)
   , mViewAPIDestroyed(false)
   , mWindow(*EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)

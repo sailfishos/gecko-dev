@@ -3,6 +3,9 @@ From: Adam Pigg <adam@piggz.co.uk>
 Date: Mon, 26 Aug 2024 11:57:43 +0100
 Subject: [PATCH] [sailfishos][embedlite][egl] Fix mesa egl display and buffer
  initialisation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Ensure the same display is used for all initialisations to avoid creating
 multiple wayland connections.
@@ -13,12 +16,42 @@ This is needed on the emulator.
 Co-authored-by: Adam Pigg <adam@piggz.co.uk>
 Co-authored-by: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Co-authored-by: Frajo Haider <franz.haider@jolla.com>
+Co-authored-by: Matti Lehtimäki <matti.lehtimaki@jolla.com>
 ---
- gfx/gl/GLContextProviderEGL.cpp | 205 ++++++++++++++++++++++++++++++--
- 1 file changed, 198 insertions(+), 7 deletions(-)
+ gfx/gl/GLContextEGL.h           |  10 +-
+ gfx/gl/GLContextProviderEGL.cpp | 233 ++++++++++++++++++++++++++++----
+ gfx/gl/GLLibraryEGL.cpp         |  24 ++--
+ gfx/gl/GLLibraryEGL.h           |   5 +-
+ 4 files changed, 230 insertions(+), 42 deletions(-)
 
+diff --git a/gfx/gl/GLContextEGL.h b/gfx/gl/GLContextEGL.h
+index 46a1e78b50ab8e676054c1ab394cfbaafaf022e9..924f4e0174e70654f683bbb64d308818525ea248 100644
+--- a/gfx/gl/GLContextEGL.h
++++ b/gfx/gl/GLContextEGL.h
+@@ -22,15 +22,17 @@ class CompositorWidget;
+ }  // namespace widget
+ namespace gl {
+ 
+-RefPtr<GLLibraryEGL> DefaultEglLibrary(nsACString* const out_failureId);
++RefPtr<GLLibraryEGL> DefaultEglLibrary(nsACString* const out_failureId,
++                                       EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+ inline std::shared_ptr<EglDisplay> DefaultEglDisplay(
+-    nsACString* const out_failureId) {
+-  const auto lib = DefaultEglLibrary(out_failureId);
++    nsACString* const out_failureId,
++    EGLDisplay aDisplay = EGL_NO_DISPLAY) {
++  const auto lib = DefaultEglLibrary(out_failureId, aDisplay);
+   if (!lib) {
+     return nullptr;
+   }
+-  return lib->DefaultDisplay(out_failureId);
++  return lib->DefaultDisplay(out_failureId, aDisplay);
+ }
+ 
+ // -
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index ddc52924f684..1c26e3aeb744 100644
+index ddc52924f684d8158ba587dd67d16bfdf08e4b8b..c7c3e70cd44fdd8caef4b2e88b0039479de913b9 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -85,6 +85,14 @@
@@ -170,6 +203,30 @@ index ddc52924f684..1c26e3aeb744 100644
      DeleteWaylandGLSurface(oldSurface);
  #endif
    }
+@@ -238,12 +355,12 @@ class GLContextEGLFactory {
+ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
+     EGLNativeWindowType aWindow, bool aHardwareWebRender, bool aUseGles) {
+   nsCString failureId;
+-  const auto lib = gl::DefaultEglLibrary(&failureId);
++  const auto lib = gl::DefaultEglLibrary(&failureId, GetAppDisplay());
+   if (!lib) {
+     gfxCriticalNote << "Failed[3] to load EGL library: " << failureId.get();
+     return nullptr;
+   }
+-  const auto egl = lib->CreateDisplay(true, &failureId);
++  const auto egl = lib->CreateDisplay(true, &failureId, GetAppDisplay());
+   if (!egl) {
+     gfxCriticalNote << "Failed[3] to create EGL library  display: "
+                     << failureId.get();
+@@ -357,7 +474,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::Create(
+ EGLSurface GLContextEGL::CreateEGLSurfaceForCompositorWidget(
+     widget::CompositorWidget* aCompositorWidget, const EGLConfig aConfig) {
+   nsCString discardFailureId;
+-  const auto egl = DefaultEglDisplay(&discardFailureId);
++  const auto egl = DefaultEglDisplay(&discardFailureId, GetAppDisplay());
+   if (!egl) {
+     gfxCriticalNote << "Failed to load EGL library 6!";
+     return EGL_NO_SURFACE;
 @@ -412,6 +529,13 @@ GLContextEGL::~GLContextEGL() {
  
    mozilla::gl::DestroySurface(*mEgl, mSurface);
@@ -245,7 +302,28 @@ index ddc52924f684..1c26e3aeb744 100644
  static const EGLint kEGLConfigAttribsRGB16[] = {
      LOCAL_EGL_SURFACE_TYPE, LOCAL_EGL_WINDOW_BIT,
      LOCAL_EGL_RED_SIZE,     5,
-@@ -1072,7 +1243,7 @@ EGLSurface GLContextEGL::CreateCompatibleSurface(void* aWindow) const {
+@@ -1004,15 +1175,12 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateWrappingExisting(
+ 
+   nsCString failureId;
+ 
+-  if (!gDefaultEglLibrary) {
+-    gDefaultEglLibrary = GLLibraryEGL::Create(&failureId, aDisplay);
+-
+-    if (!gDefaultEglLibrary) {
+-      gfxCriticalNote << "Failed[3] to load EGL library";
+-      return nullptr;
+-    }
++  const auto lib = gl::DefaultEglLibrary(&failureId, aDisplay);
++  if (!lib) {
++    gfxCriticalNote << "Failed[3] to load EGL library: " << failureId.get();
++    return nullptr;
+   }
+-  const std::shared_ptr<EglDisplay> egl = gDefaultEglLibrary.operator->()->DefaultDisplay(&failureId);
++  const auto egl = lib->DefaultDisplay(&failureId, aDisplay);
+ 
+   if (!egl) {
+     gfxCriticalNote << "Failed[3] to create EGL library  display: "
+@@ -1072,7 +1240,7 @@ EGLSurface GLContextEGL::CreateCompatibleSurface(void* aWindow) const {
    return surface;
  }
  
@@ -254,7 +332,7 @@ index ddc52924f684..1c26e3aeb744 100644
    out->AppendElement(LOCAL_EGL_SURFACE_TYPE);
  #ifdef MOZ_GTK_WAYLAND
    if (GdkIsWaylandDisplay()) {
-@@ -1080,6 +1251,10 @@ static void FillContextAttribs(bool es3, bool useGles, nsTArray<EGLint>* out) {
+@@ -1080,6 +1248,10 @@ static void FillContextAttribs(bool es3, bool useGles, nsTArray<EGLint>* out) {
      // We create a dummy wl_egl_window instead.
      out->AppendElement(LOCAL_EGL_WINDOW_BIT);
    } else
@@ -265,7 +343,7 @@ index ddc52924f684..1c26e3aeb744 100644
  #endif
    {
      out->AppendElement(LOCAL_EGL_PBUFFER_BIT);
-@@ -1132,10 +1307,10 @@ static GLint GetAttrib(GLLibraryEGL* egl, EGLConfig config, EGLint attrib) {
+@@ -1132,10 +1304,10 @@ static GLint GetAttrib(GLLibraryEGL* egl, EGLConfig config, EGLint attrib) {
  */
  
  static EGLConfig ChooseConfig(EglDisplay& egl, const GLContextCreateDesc& desc,
@@ -278,7 +356,7 @@ index ddc52924f684..1c26e3aeb744 100644
  
    const EGLint* configAttribs = configAttribList.Elements();
  
-@@ -1184,7 +1359,17 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+@@ -1184,7 +1356,17 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
      const std::shared_ptr<EglDisplay> egl, const GLContextCreateDesc& desc,
      const mozilla::gfx::IntSize& size, const bool useGles,
      nsACString* const out_failureId) {
@@ -297,20 +375,22 @@ index ddc52924f684..1c26e3aeb744 100644
  
    if (config == EGL_NO_CONFIG) {
      *out_failureId = "FEATURE_FAILURE_EGL_NO_CONFIG"_ns;
-@@ -1207,6 +1392,12 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
-     surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
-         *egl, config, LOCAL_EGL_NONE, pbSize);
+@@ -1204,8 +1386,12 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+   } else
+ #endif
+   {
+-    surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
+-        *egl, config, LOCAL_EGL_NONE, pbSize);
++    if (useWindow) {
++      surface = CreateEmulatorBufferSurface(*egl, config, pbSize);
++    } else {
++      surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
++          *egl, config, LOCAL_EGL_NONE, pbSize);
++    }
    }
-+  if (useWindow) {
-+    surface = CreateEmulatorBufferSurface(*egl, config, pbSize);
-+  } else {
-+    surface = GLContextEGL::CreatePBufferSurfaceTryingPowerOfTwo(
-+        *egl, config, LOCAL_EGL_NONE, pbSize);
-+  }
  
    if (!surface) {
-     *out_failureId = "FEATURE_FAILURE_EGL_POT"_ns;
-@@ -1221,7 +1412,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
+@@ -1221,7 +1407,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContextImpl(
    if (!gl) {
      NS_WARNING("Failed to create GLContext from PBuffer");
      egl->fDestroySurface(surface);
@@ -319,3 +399,130 @@ index ddc52924f684..1c26e3aeb744 100644
      DeleteWaylandGLSurface(surface);
  #endif
      return nullptr;
+@@ -1246,7 +1432,7 @@ RefPtr<GLContextEGL> GLContextEGL::CreateEGLPBufferOffscreenContext(
+ /*static*/
+ already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
+     const GLContextCreateDesc& desc, nsACString* const out_failureId) {
+-  const auto display = DefaultEglDisplay(out_failureId);
++  const auto display = DefaultEglDisplay(out_failureId, GetAppDisplay());
+   if (!display) {
+     return nullptr;
+   }
+@@ -1299,10 +1485,11 @@ GLContext* GLContextProviderEGL::GetGlobalContext() { return nullptr; }
+ 
+ // -
+ 
+-RefPtr<GLLibraryEGL> DefaultEglLibrary(nsACString* const out_failureId) {
++RefPtr<GLLibraryEGL> DefaultEglLibrary(nsACString* const out_failureId,
++    EGLDisplay aDisplay) {
+   StaticMutexAutoLock lock(sMutex);
+   if (!gDefaultEglLibrary) {
+-    gDefaultEglLibrary = GLLibraryEGL::Create(out_failureId, EGL_NO_DISPLAY);
++    gDefaultEglLibrary = GLLibraryEGL::Create(out_failureId, aDisplay);
+     if (!gDefaultEglLibrary) {
+       NS_WARNING("GLLibraryEGL::Create failed");
+     }
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index 979ed19e6c87cefd8de723579d5f04afa855b2d9..c7ddf00c4a12e9703a684262bf618edc4591097f 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -149,9 +149,10 @@ static std::shared_ptr<EglDisplay> GetAndInitDisplay(GLLibraryEGL& egl,
+                                                      EGLDisplay display = EGL_NO_DISPLAY) {
+   if (display == EGL_NO_DISPLAY) {
+     display = egl.fGetDisplay(displayType);
++    if (!display) return nullptr;
++    return EglDisplay::Create(egl, display, false, true);
+   }
+-  if (!display) return nullptr;
+-  return EglDisplay::Create(egl, display, false);
++  return EglDisplay::Create(egl, display, false, false);
+ }
+ 
+ static std::shared_ptr<EglDisplay> GetAndInitWARPDisplay(GLLibraryEGL& egl,
+@@ -174,7 +175,7 @@ static std::shared_ptr<EglDisplay> GetAndInitWARPDisplay(GLLibraryEGL& egl,
+     return nullptr;
+   }
+ 
+-  return EglDisplay::Create(egl, display, true);
++  return EglDisplay::Create(egl, display, true, true);
+ }
+ 
+ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+@@ -206,7 +207,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+     return nullptr;
+   }
+ 
+-  const auto ret = EglDisplay::Create(*this, display, false);
++  const auto ret = EglDisplay::Create(*this, display, false, true);
+ 
+   if (!ret) {
+     const EGLint err = fGetError();
+@@ -501,11 +502,6 @@ bool GLLibraryEGL::Init(bool forceAccel, nsACString* const out_failureId, EGLDis
+   }
+ 
+   // -
+-  std::shared_ptr<EglDisplay> defaultDisplay = CreateDisplay(forceAccel, out_failureId, aDisplay);
+-  if (!defaultDisplay) {
+-    return false;
+-  }
+-  mDefaultDisplay = defaultDisplay;
+ 
+   InitLibExtensions();
+ 
+@@ -661,7 +657,8 @@ static void MarkExtensions(const char* rawExtString, bool shouldDumpExts,
+ // static
+ std::shared_ptr<EglDisplay> EglDisplay::Create(GLLibraryEGL& lib,
+                                                const EGLDisplay display,
+-                                               const bool isWarp) {
++                                               const bool isWarp,
++                                               const bool init) {
+   // Retrieve the EglDisplay if it already exists
+   {
+     const auto itr = lib.mActiveDisplays.find(display);
+@@ -673,7 +670,7 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(GLLibraryEGL& lib,
+     }
+   }
+ 
+-  if (!lib.fInitialize(display, nullptr, nullptr)) {
++  if (init && !lib.fInitialize(display, nullptr, nullptr)) {
+     return nullptr;
+   }
+ 
+@@ -738,11 +735,12 @@ EglDisplay::~EglDisplay() {
+ // -
+ 
+ std::shared_ptr<EglDisplay> GLLibraryEGL::DefaultDisplay(
+-    nsACString* const out_failureId) {
++    nsACString* const out_failureId,
++    EGLDisplay aDisplay) {
+   auto ret = mDefaultDisplay.lock();
+   if (ret) return ret;
+ 
+-  ret = CreateDisplay(false, out_failureId);
++  ret = CreateDisplay(false, out_failureId, aDisplay);
+   mDefaultDisplay = ret;
+   return ret;
+ }
+diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
+index fb019e980a9343b15f31c0021a6bc12d90334c40..443d62ba9a155263edb154ef987b79b56e9ee447 100644
+--- a/gfx/gl/GLLibraryEGL.h
++++ b/gfx/gl/GLLibraryEGL.h
+@@ -140,7 +140,8 @@ class GLLibraryEGL final {
+                                             nsACString* const out_failureId,
+                                             EGLDisplay aDisplay = EGL_NO_DISPLAY);
+   std::shared_ptr<EglDisplay> CreateDisplay(ID3D11Device*);
+-  std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
++  std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId,
++                                             EGLDisplay aDisplay = EGL_NO_DISPLAY);
+ 
+   bool IsExtensionSupported(EGLLibExtension aKnownExtension) const {
+     return mAvailableExtensions[UnderlyingValue(aKnownExtension)];
+@@ -601,7 +602,7 @@ class EglDisplay final {
+ 
+  public:
+   static std::shared_ptr<EglDisplay> Create(GLLibraryEGL&, EGLDisplay,
+-                                            bool isWarp);
++                                            bool isWarp, bool init);
+ 
+   // Only `public` for make_shared.
+   EglDisplay(const PrivateUseOnly&, GLLibraryEGL&, EGLDisplay, bool isWarp);
