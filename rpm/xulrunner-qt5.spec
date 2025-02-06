@@ -143,6 +143,7 @@ Patch86:    0086-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 Patch87:    0087-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
 Patch88:    0088-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
 Patch89:    0089-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
+Patch90:    0090-sailfishos-gecko-Update-content-signature-root-hash..patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
