@@ -310,7 +310,7 @@ echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
-echo "export CARGOFLAGS=\" --offline -j1\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
