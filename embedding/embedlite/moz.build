@@ -50,6 +50,7 @@ EXPORTS.mozilla.embedlite += [
     'embedshared/nsWindow.h',
     'embedshared/PuppetWidgetBase.h',
     'embedthread/EmbedLiteCompositorBridgeParent.h',
+    'embedthread/EmbedLiteWebRenderBridgeParent.h',
     'utils/BrowserChildHelper.h',
     'utils/EmbedLiteSecurity.h',
     'utils/EmbedLiteXulAppInfo.h',
@@ -105,6 +106,7 @@ UNIFIED_SOURCES += [
 SOURCES += [
     'embedthread/EmbedLiteCompositorBridgeParent.cpp',
     'embedthread/EmbedLiteViewThreadParent.cpp',
+    'embedthread/EmbedLiteWebRenderBridgeParent.cpp',
     'embedthread/EmbedLiteWindowThreadParent.cpp',
 ]
 

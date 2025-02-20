@@ -192,6 +192,7 @@ nsWindow::GetWindowRenderer()
 {
 //FIXME
   LOGC("EmbedLiteLayerManager", "lm: %p", mWindowRenderer.get());
+  LOGW("EmbedLiteLayerManager", "lm: %p", mWindowRenderer.get());
 
   if (!mWindowRenderer) {
     if (!mShutdownObserver) {
@@ -202,6 +203,7 @@ nsWindow::GetWindowRenderer()
 
   WindowRenderer* windowRenderer = PuppetWidgetBase::GetWindowRenderer();
   LOGC("EmbedLiteWindowRenderer", "lm: %p this: %p", windowRenderer, this);
+  LOGW("EmbedLiteWindowRenderer", "lm: %p this: %p", windowRenderer, this);
 
   if (windowRenderer) {
     mWindowRenderer = windowRenderer;
@@ -211,12 +213,16 @@ nsWindow::GetWindowRenderer()
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
     LOGC("EmbedLiteWindowRenderer", "Created compositor, lm: %p", mWindowRenderer.get());
+    LOGW("EmbedLiteWindowRenderer", "Created compositor, lm: %p", mWindowRenderer.get());
     if (mWindowRenderer) {
+      LOGW("EmbedLiteWindowRenderer CreateCompositor ok");
       return mWindowRenderer;
     }
+    LOGW("EmbedLiteWindowRenderer CreateCompositor failed");
     // If we get here, then off main thread compositing failed to initialize.
     sFailedToCreateGLContext = true;
   }
+  LOGW("EmbedLiteWindowRenderer end", "lm: %p this: %p", windowRenderer, this);
   return mWindowRenderer;
 
 /*
