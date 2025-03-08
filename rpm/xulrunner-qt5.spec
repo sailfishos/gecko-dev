@@ -139,11 +139,12 @@ Patch82:    0082-sailfishos-gecko-Disallow-page-zooming-if-the-meta-v.patch
 Patch83:    0083-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
 Patch84:    0084-sailfishos-gecko-Get-12-24h-timeformat-setting-from-.patch
 Patch85:    0085-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
-Patch86:    0086-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
-Patch87:    0087-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
-Patch88:    0088-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
-Patch89:    0089-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
-Patch90:    0090-sailfishos-gecko-Update-content-signature-root-hash..patch
+Patch86:    0086-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
+Patch87:    0087-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
+Patch88:    0088-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
+Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
+Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
+Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
