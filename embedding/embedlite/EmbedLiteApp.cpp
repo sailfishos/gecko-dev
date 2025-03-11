@@ -377,7 +377,7 @@ EmbedLiteApp::Shutdown()
 
   mUILoop->DoQuit();
 
-  if (mIsAsyncLoop) {
+  if (!mIsAsyncLoop) {
     delete mUILoop;
     mUILoop = nullptr;
   }
