@@ -98,6 +98,7 @@ private:
 EmbedLiteMessagePump::EmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListener)
   : mListener(aListener)
   , mEmbedPump(new MessagePumpEmbed(aListener))
+  , mOwnerLoop(nullptr)
 {
   if (aListener) {
     mOwnerLoop = new EmbedLiteUILoop(this);
@@ -108,6 +109,7 @@ EmbedLiteMessagePump::EmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListen
 
 EmbedLiteMessagePump::~EmbedLiteMessagePump()
 {
+  delete mOwnerLoop;
 }
 
 base::MessagePump*
