@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mike Hommey <mh@glandium.org>
+Date: Mon, 28 Nov 2022 22:39:50 +0000
+Subject: [PATCH] Bug 1773259 - Work around build failure with newer cbindgen.
+ r=ahochheiden, a=RyanVM
+
+Differential Revision: https://phabricator.services.mozilla.com/D162262
+---
+ build/moz.configure/bindgen.configure  | 9 +++++++++
+ gfx/webrender_bindings/webrender_ffi.h | 2 ++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
+index 5d50988237627afcf40e268a870c2e56e833042f..711e79144fad7c2448630ce2e7d3b9b409ded1b8 100644
+--- a/build/moz.configure/bindgen.configure
++++ b/build/moz.configure/bindgen.configure
+@@ -91,6 +91,15 @@ def cbindgen(cbindgen_override, bootstrap_search_path, rust_search_path):
+ 
+ set_config("CBINDGEN", cbindgen)
+ 
++set_define(
++    "CBINDGEN_0_24",
++    True,
++    when=depends_if(cbindgen)(
++        lambda c: Version(check_cmd_output(c, "--version").strip().split(" ")[1])
++        >= "0.24.0"
++    ),
++)
++
+ # Bindgen can use rustfmt to format Rust file, but it's not required.
+ option(env="RUSTFMT", nargs=1, help="Path to the rustfmt program")
+ 
+diff --git a/gfx/webrender_bindings/webrender_ffi.h b/gfx/webrender_bindings/webrender_ffi.h
+index b68b691b6e9eec0a8587cd74c0e49a7540401ec1..e8378244b51b6a763d15ddcc6f9e8da5c582a052 100644
+--- a/gfx/webrender_bindings/webrender_ffi.h
++++ b/gfx/webrender_bindings/webrender_ffi.h
+@@ -77,7 +77,9 @@ struct WrPipelineInfo;
+ struct WrPipelineIdAndEpoch;
+ using WrPipelineIdEpochs = nsTArray<WrPipelineIdAndEpoch>;
+ 
++#ifndef CBINDGEN_0_24
+ const uint64_t ROOT_CLIP_CHAIN = ~0;
++#endif
+ 
+ }  // namespace wr
+ }  // namespace mozilla

@@ -145,6 +145,7 @@ Patch88:    0088-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
 Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
 Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
 Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
+Patch92:    0092-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
