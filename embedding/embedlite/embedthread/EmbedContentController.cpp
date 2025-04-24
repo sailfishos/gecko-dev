@@ -155,6 +155,10 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
  */
 void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aRequest)
 {
+  if (!aRequest.IsRootContent()) {
+      return;
+  }
+
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
     // thread).
