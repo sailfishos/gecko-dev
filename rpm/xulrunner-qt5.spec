@@ -93,7 +93,6 @@ Patch36:    0036-sailfishos-gecko-Split-namespace-into-two-blocks.patch
 Patch37:    0037-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
 Patch38:    0038-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
 Patch39:    0039-sailfishos-gecko-Make-PresShell-SetIsActive-public.patch
-Patch40:    0040-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
 Patch41:    0041-sailfishos-gecko-Add-patch-to-fix-32-bit-builds.patch
 Patch42:    0042-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
 Patch43:    0043-sailfishos-gecko-Supress-URLQueryStrippingListServic.patch
