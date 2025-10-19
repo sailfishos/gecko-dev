@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew McCreight <continuation@gmail.com>
+Date: Thu, 10 Nov 2022 20:16:52 +0000
+Subject: [PATCH] Bug 1799982 - Remove uses of inline flags from XPIDL regexps.
+ r=xpcom-reviewers,kmag
+
+Apparently the use of these is being turned into an error in Python 3.11.
+Fortunately, our uses appears to be rather trivial.
+
+For t_multilinecomment and t_LCDATA, I dropped the (?s) flag and just
+replaced the one use of . with (\n|.). (?s) means DOTALL, which means
+that dot includes any character, including a newline. Otherwise it means
+dot includes any character except a newline.
+
+I took the new t_singlelinecomment from IPDL's parser.py, so I assume
+it is reasonable enough. t_multilinecomment is also now the same as
+in IPDL.
+
+Differential Revision: https://phabricator.services.mozilla.com/D161738
+---
+ xpcom/idl-parser/xpidl/xpidl.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/xpcom/idl-parser/xpidl/xpidl.py b/xpcom/idl-parser/xpidl/xpidl.py
+index c447569515cbefc6c2a4fc7ab4dfe73c21ffa40d..60afe6f8eab615fe813d64c2847e61b9233d0907 100755
+--- a/xpcom/idl-parser/xpidl/xpidl.py
++++ b/xpcom/idl-parser/xpidl/xpidl.py
+@@ -1563,13 +1563,13 @@ class IDLParser(object):
+     t_ignore = " \t"
+ 
+     def t_multilinecomment(self, t):
+-        r"/\*(?s).*?\*/"
++        r"/\*(\n|.)*?\*/"
+         t.lexer.lineno += t.value.count("\n")
+         if t.value.startswith("/**"):
+             self._doccomments.append(t.value)
+ 
+     def t_singlelinecomment(self, t):
+-        r"(?m)//.*?$"
++        r"//[^\n]*"
+ 
+     def t_IID(self, t):
+         return t
+@@ -1582,7 +1582,7 @@ class IDLParser(object):
+         return t
+ 
+     def t_LCDATA(self, t):
+-        r"(?s)%\{[ ]*C\+\+[ ]*\n(?P<cdata>.*?\n?)%\}[ ]*(C\+\+)?"
++        r"%\{[ ]*C\+\+[ ]*\n(?P<cdata>(\n|.)*?\n?)%\}[ ]*(C\+\+)?"
+         t.type = "CDATA"
+         t.value = t.lexer.lexmatch.group("cdata")
+         t.lexer.lineno += t.value.count("\n")
