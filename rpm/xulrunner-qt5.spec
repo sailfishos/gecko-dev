@@ -146,6 +146,8 @@ Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
 Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
 Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 Patch92:    0092-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
+Patch93:    0093-Bug-1769631-Remove-U-from-mode-parameters-for-variou.patch
+Patch94:    0094-Bug-1799982-Remove-uses-of-inline-flags-from-XPIDL-r.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
