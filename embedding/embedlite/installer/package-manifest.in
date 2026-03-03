@@ -63,9 +63,6 @@
 ; [Base Browser Files]
 @BINPATH@/application.ini
 @BINPATH@/platform.ini
-@BINPATH@/defaults/settings/blocklists/addons.json
-; TODO bug 1639050: addons-bloomfilters should be used instead of addons.json
-@BINPATH@/defaults/settings/security-state/onecrl.json
 
 ; [Components]
 ; JavaScript components
@@ -108,6 +105,8 @@
 @BINPATH@/greprefs.js
 @BINPATH@/defaults/autoconfig/prefcalls.js
 @BINPATH@/defaults/pref/embedding.js
+; Remote Settings JSON dumps
+@BINPATH@/defaults/settings
 
 ; [Layout Engine Resources]
 ; Style Sheets, Graphics and other Resources used by the layout engine.
