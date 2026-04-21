@@ -35,6 +35,8 @@ PuppetWidgetBase::PuppetWidgetBase()
   , mParent(nullptr)
   , mRotation(mozilla::ROTATION_0)
   , mMargins(0, 0, 0, 0)
+  , mScreenPosition(0, 0)
+  , mSafeAreaInsets(0, 0, 0, 0)
 
 {
 
@@ -59,6 +61,8 @@ PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const
   mBounds = mParent ? mParent->mBounds : aRect;
   mMargins = mParent ? mParent->mMargins : mMargins;
   mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
+  mScreenPosition = mParent ? mParent->mScreenPosition : aRect.TopLeft();
+  mSafeAreaInsets = mParent ? mParent->mSafeAreaInsets : mSafeAreaInsets;
 
   BaseCreate(aParent, aInitData);
 
@@ -246,7 +250,22 @@ mozilla::LayoutDeviceIntPoint
 PuppetWidgetBase::WidgetToScreenOffset()
 {
   LOGT();
-  return LayoutDeviceIntPoint(0, 0);
+  if (mParent) {
+    return mParent->WidgetToScreenOffset() + LayoutDeviceIntPoint(mBounds.x, mBounds.y);
+  }
+  return mScreenPosition + LayoutDeviceIntPoint(mBounds.x, mBounds.y);
+}
+
+mozilla::LayoutDeviceIntRect
+PuppetWidgetBase::GetScreenBounds()
+{
+  return LayoutDeviceIntRect(WidgetToScreenOffset(), mBounds.Size());
+}
+
+mozilla::ScreenIntMargin
+PuppetWidgetBase::GetSafeAreaInsets() const
+{
+  return mSafeAreaInsets;
 }
 
 void
@@ -350,6 +369,30 @@ PuppetWidgetBase::SetMargins(const LayoutDeviceIntMargin &margins)
 }
 
 void
+PuppetWidgetBase::SetScreenPosition(const LayoutDeviceIntPoint& aPosition)
+{
+  if (mScreenPosition == aPosition) {
+    return;
+  }
+
+  mScreenPosition = aPosition;
+  mNaturalBounds.MoveTo(aPosition.x, aPosition.y);
+  NotifyWindowMoved(aPosition.x, aPosition.y);
+  NotifySafeAreaInsetsChanged();
+}
+
+void
+PuppetWidgetBase::SetSafeAreaInsets(const mozilla::ScreenIntMargin& aSafeAreaInsets)
+{
+  if (mSafeAreaInsets == aSafeAreaInsets) {
+    return;
+  }
+
+  mSafeAreaInsets = aSafeAreaInsets;
+  NotifySafeAreaInsetsChanged();
+}
+
+void
 PuppetWidgetBase::SetSize(double aWidth, double aHeight) {
   LayoutDeviceIntRect oldBounds = mBounds;
   LOGT("sz[%i,%i]->[%g,%g]", oldBounds.width, oldBounds.height, aWidth, aHeight);
@@ -410,6 +453,22 @@ void
 PuppetWidgetBase::SetActive(bool active)
 {
   mActive = active;
+}
+
+void
+PuppetWidgetBase::NotifySafeAreaInsetsChanged()
+{
+  if (mWidgetListener) {
+    mWidgetListener->SafeAreaInsetsChanged(mSafeAreaInsets);
+  }
+
+  if (mAttachedWidgetListener) {
+    mAttachedWidgetListener->SafeAreaInsetsChanged(mSafeAreaInsets);
+  }
+
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->NotifySafeAreaInsetsChanged();
+  }
 }
 
 LayerManager *

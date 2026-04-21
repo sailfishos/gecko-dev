@@ -16,6 +16,7 @@ nested(upto inside_cpow) sync protocol PEmbedLiteWindow {
 
 child:
   async SetSize(gfxSize aSize);
+  async SetScreenPosition(int aX, int aY);
   async SetContentOrientation(uint32_t aRotation);
   async Destroy();
 

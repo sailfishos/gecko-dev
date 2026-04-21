@@ -53,6 +53,7 @@ child:
     async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
     async SetMargins(int top, int right, int bottom, int left);
+    async SetSafeAreaInsets(int top, int right, int bottom, int left);
     async SetDynamicToolbarHeight(int height);
     async ScheduleUpdate();
     async SetHttpUserAgent(nsString aHttpUserAgent);
@@ -88,7 +89,7 @@ child:
     async RemoveMessageListeners(nsString [] messageNames);
 
     async Destroy();
-    async SetScreenProperties(int depth, float density, float dpi);
+    async SetScreenProperties(int depth, float density, float dpi, int width, int height);
 
 parent:
     async Initialized();

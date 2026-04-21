@@ -10,6 +10,7 @@
 #include "gfxMatrix.h"
 #include "gfxRect.h"  // gfxRect
 #include "gfxPoint.h" // gfxSize
+#include "mozilla/WidgetUtils.h"
 #include "nsRect.h"
 
 #include <vector>
@@ -115,6 +116,7 @@ public:
 
   virtual void SetDynamicToolbarHeight(int height);
   virtual void SetMargins(int top, int right, int bottom, int left);
+  virtual void SetSafeAreaInsets(int top, int right, int bottom, int left);
   virtual void ScheduleUpdate();
 
   // Set DPI for the view (views placed on different screens may get different DPI).
@@ -135,7 +137,8 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
-  virtual void SetScreenProperties(const int &depth, const float &density, const float &dpi);
+  virtual void SetScreenProperties(const int &depth, const float &density, const float &dpi,
+                                   const int &width, const int &height);
 
 protected:
   friend class EmbedLiteApp; // Needs to destroy the view.
@@ -166,6 +169,7 @@ private:
   bool mMarginsChanging;
   bool mDynamicToolbarHeightChanging;
   mozilla::gfx::IntMargin mMargins;
+  mozilla::ScreenIntMargin mSafeAreaInsets;
   int mDynamicToolbarHeight;
 };
 

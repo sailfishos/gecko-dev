@@ -156,6 +156,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetDynamicToolbarHeight(const int&);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
+  virtual mozilla::ipc::IPCResult RecvSetSafeAreaInsets(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
   virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent);
 
@@ -211,7 +212,9 @@ protected:
   virtual mozilla::ipc::IPCResult RecvAddMessageListeners(nsTArray<nsString> &&messageNames);
   virtual mozilla::ipc::IPCResult RecvRemoveMessageListeners(nsTArray<nsString>&& messageNames);
   virtual mozilla::ipc::IPCResult RecvAsyncMessage(const nsAString &aMessage, const nsAString &aData);
-  virtual mozilla::ipc::IPCResult RecvSetScreenProperties(const int& aDepth, const float &aDensity, const float &aDpi);
+  virtual mozilla::ipc::IPCResult RecvSetScreenProperties(const int& aDepth, const float &aDensity,
+                                                          const float &aDpi, const int &aWidth,
+                                                          const int &aHeight);
 
   virtual void OnGeckoWindowInitialized() {}
 
@@ -254,6 +257,7 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
+  ScreenIntMargin mSafeAreaInsets;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;

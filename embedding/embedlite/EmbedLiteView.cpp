@@ -38,6 +38,7 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmb
   , mMarginsChanging(false)
   , mDynamicToolbarHeightChanging(false)
   , mMargins(0, 0, 0, 0)
+  , mSafeAreaInsets(0, 0, 0, 0)
   , mDynamicToolbarHeight(0)
 {
   LOGT();
@@ -268,10 +269,11 @@ void EmbedLiteView::SetDynamicToolbarHeight(int height)
     }
 }
 
-void EmbedLiteView::SetScreenProperties(const int &depth, const float &density, const float &dpi)
+void EmbedLiteView::SetScreenProperties(const int &depth, const float &density, const float &dpi,
+                                        const int &width, const int &height)
 {
     SetDPI(dpi);
-    Unused << mViewParent->SendSetScreenProperties(depth, density, dpi);
+    Unused << mViewParent->SendSetScreenProperties(depth, density, dpi, width, height);
 }
 
 void EmbedLiteView::DynamicToolbarHeightChanged(int height)
@@ -293,6 +295,15 @@ void EmbedLiteView::SetMargins(int top, int right, int bottom, int left)
     if (!mMarginsChanging) {
         mMarginsChanging = true;
         Unused << mViewParent->SendSetMargins(top, right, bottom, left);
+    }
+}
+
+void EmbedLiteView::SetSafeAreaInsets(int top, int right, int bottom, int left)
+{
+    mozilla::ScreenIntMargin safeAreaInsets(top, right, bottom, left);
+    if (mSafeAreaInsets != safeAreaInsets) {
+        mSafeAreaInsets = safeAreaInsets;
+        Unused << mViewParent->SendSetSafeAreaInsets(top, right, bottom, left);
     }
 }
 

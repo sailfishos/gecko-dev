@@ -71,6 +71,8 @@ public:
 
   virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override;
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
+  virtual mozilla::LayoutDeviceIntRect GetScreenBounds() override;
+  virtual mozilla::ScreenIntMargin GetSafeAreaInsets() const override;
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
 
@@ -84,6 +86,8 @@ public:
 
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const LayoutDeviceIntMargin& margins);
+  virtual void SetScreenPosition(const LayoutDeviceIntPoint& aPosition);
+  void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aSafeAreaInsets);
   void UpdateBounds(bool aRepaint);
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
@@ -117,9 +121,12 @@ protected:
   mozilla::ScreenRotation mRotation;
   LayoutDeviceIntRect mNaturalBounds;
   LayoutDeviceIntMargin mMargins;
+  LayoutDeviceIntPoint mScreenPosition;
+  mozilla::ScreenIntMargin mSafeAreaInsets;
 
 private:
   bool IsTopLevel();
+  void NotifySafeAreaInsetsChanged();
 };
 
 }  // namespace embedlite

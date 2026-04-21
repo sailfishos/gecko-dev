@@ -45,6 +45,11 @@ void EmbedLiteWindow::SetSize(int width, int height)
   Unused << mWindowParent->SendSetSize(gfxSize(width, height));
 }
 
+void EmbedLiteWindow::SetScreenPosition(int x, int y)
+{
+  Unused << mWindowParent->SendSetScreenPosition(x, y);
+}
+
 uint32_t EmbedLiteWindow::GetUniqueID() const
 {
   return mUniqueID;
@@ -82,4 +87,3 @@ void EmbedLiteWindow::GetPlatformImage(const std::function<void(void *image, int
 
 } // nemsapace embedlite
 } // namespace mozilla
-

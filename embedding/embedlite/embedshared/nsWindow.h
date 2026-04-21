@@ -44,6 +44,7 @@ public:
   virtual void Resize(double aWidth,
                       double aHeight,
                       bool aRepaint) override;
+  void SetScreenPosition(const LayoutDeviceIntPoint& aPosition) override;
 
   virtual nsresult  DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
                                   nsEventStatus& aStatus) override;

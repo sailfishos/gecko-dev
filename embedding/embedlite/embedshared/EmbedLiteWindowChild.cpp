@@ -25,6 +25,16 @@ namespace embedlite {
 
 namespace {
 static std::map<uint32_t, EmbedLiteWindowChild*> sWindowChildMap;
+
+static LayoutDeviceIntRect RotatedScreenRect(const LayoutDeviceIntSize& aScreenSize,
+                                             const mozilla::ScreenRotation& aRotation)
+{
+  if (aRotation == ROTATION_0 || aRotation == ROTATION_180) {
+    return LayoutDeviceIntRect(0, 0, aScreenSize.width, aScreenSize.height);
+  }
+
+  return LayoutDeviceIntRect(0, 0, aScreenSize.height, aScreenSize.width);
+}
 } // namespace
 
 EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &aId, EmbedLiteWindowListener *aListener)
@@ -32,6 +42,7 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t
   , mListener(aListener)
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
+  , mScreenSize(width, height)
   , mRotation(ROTATION_0)
   , mInitialized(false)
   , mDestroyAfterInit(false)
@@ -109,13 +120,23 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
 {
-  mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
+  mBounds.SizeTo((int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   LOGT("this:%p width: %f, height: %f as int w: %d h: %d", this, aSize.width, aSize.height, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));
   if (mWidget) {
     nsWindow *widget = GetWidget();
     widget->SetSize(aSize.width, aSize.height);
     widget->UpdateBounds(true);
   }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetScreenPosition(const int &aX, const int &aY)
+{
+  mBounds.MoveTo(aX, aY);
+  if (mWidget) {
+    GetWidget()->SetScreenPosition(LayoutDeviceIntPoint(aX, aY));
+  }
+  RefreshScreen();
   return IPC_OK();
 }
 
@@ -159,7 +180,8 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
       break;
   }
 
-  nsIntRect rect(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height());
+  LayoutDeviceIntRect screenRect = RotatedScreenRect(mScreenSize, mRotation);
+  nsIntRect rect(screenRect.X(), screenRect.Y(), screenRect.Width(), screenRect.Height());
   hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
       rect, orientation, angle, colorDepth, pixelDepth));
 
@@ -206,11 +228,7 @@ void EmbedLiteWindowChild::CreateWidget()
 
 void EmbedLiteWindowChild::RefreshScreen()
 {
-  LayoutDeviceIntRect rect;
-  if (mRotation == ROTATION_0 || mRotation == ROTATION_180)
-    rect = mBounds;
-  else
-    rect = LayoutDeviceIntRect(0, 0, mBounds.Height(), mBounds.Width());
+  LayoutDeviceIntRect rect = RotatedScreenRect(mScreenSize, mRotation);
 
   AutoTArray<RefPtr<Screen>, 1> screenList;
   RefPtr<Screen> screen = new Screen(rect, rect, mDepth, mDepth, DesktopToLayoutDeviceScale(mDensity), CSSToLayoutDeviceScale(1.0f), mDpi);
@@ -218,7 +236,8 @@ void EmbedLiteWindowChild::RefreshScreen()
   ScreenManager::GetSingleton().Refresh(std::move(screenList));
 }
 
-void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi)
+void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi,
+                                               const int &width, const int &height)
 {
   bool refresh = false;
 
@@ -234,6 +253,12 @@ void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &de
 
   if (dpi != mDpi) {
     mDpi = dpi;
+    refresh = true;
+  }
+
+  LayoutDeviceIntSize screenSize(width, height);
+  if (screenSize != mScreenSize) {
+    mScreenSize = screenSize;
     refresh = true;
   }
 

@@ -85,6 +85,7 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
+  , mSafeAreaInsets(0, 0, 0, 0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
   , mInitialized(false)
@@ -297,6 +298,10 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
     EmbedLitePuppetWidget *widget = GetPuppetWidget();
     widget->SetMargins(mMargins);
     widget->UpdateBounds(true);
+  }
+
+  if (mSafeAreaInsets != ScreenIntMargin()) {
+    GetPuppetWidget()->SetSafeAreaInsets(mSafeAreaInsets);
   }
 
   if (!mWindow->GetWidget()->IsFirstViewCreated()) {
@@ -765,6 +770,16 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
   }
 
   Unused << SendMarginsChanged(aTop, aRight, aBottom, aLeft);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetSafeAreaInsets(const int &aTop, const int &aRight,
+                                                                  const int &aBottom, const int &aLeft)
+{
+  mSafeAreaInsets = ScreenIntMargin(aTop, aRight, aBottom, aLeft);
+  if (mWidget) {
+    GetPuppetWidget()->SetSafeAreaInsets(mSafeAreaInsets);
+  }
   return IPC_OK();
 }
 
@@ -1564,12 +1579,13 @@ EmbedLiteViewChild::UserActivity()
   }
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetScreenProperties(const int &aDepth, const float &aDensity, const float &aDpi)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetScreenProperties(const int &aDepth, const float &aDensity,
+                                                                    const float &aDpi, const int &aWidth,
+                                                                    const int &aHeight)
 {
-  mWindow->SetScreenProperties(aDepth, aDensity, aDpi);
+  mWindow->SetScreenProperties(aDepth, aDensity, aDpi, aWidth, aHeight);
   return IPC_OK();
 }
 
 } // namespace embedlite
 } // namespace mozilla
-

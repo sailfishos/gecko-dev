@@ -70,6 +70,7 @@ public:
 
   // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
+  virtual void SetScreenPosition(int x, int y);
 
   virtual uint32_t GetUniqueID() const;
 

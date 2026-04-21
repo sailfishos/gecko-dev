@@ -30,7 +30,8 @@ public:
   nsWindow *GetWidget() const;
   LayoutDeviceIntRect GetSize() const { return mBounds; }
   EmbedLiteWindowListener* GetListener() const { return mListener; }
-  void SetScreenProperties(const int &depth, const float &density, const float &dpi);
+  void SetScreenProperties(const int &depth, const float &density, const float &dpi,
+                           const int &width, const int &height);
 
 protected:
   virtual ~EmbedLiteWindowChild() override;
@@ -42,6 +43,7 @@ private:
 
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size);
+  mozilla::ipc::IPCResult RecvSetScreenPosition(const int &aX, const int &aY);
   mozilla::ipc::IPCResult RecvSetContentOrientation(const uint32_t &);
   void RefreshScreen();
 
@@ -49,6 +51,7 @@ private:
   EmbedLiteWindowListener *const mListener;
   nsCOMPtr<nsIWidget> mWidget;
   LayoutDeviceIntRect mBounds;
+  LayoutDeviceIntSize mScreenSize;
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;
 

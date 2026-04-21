@@ -136,6 +136,16 @@ nsWindow::Resize(double aWidth, double aHeight, bool aRepaint)
   }
 }
 
+void
+nsWindow::SetScreenPosition(const LayoutDeviceIntPoint& aPosition)
+{
+  PuppetWidgetBase::SetScreenPosition(aPosition);
+  if (GetCompositorBridgeParent()) {
+    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->
+        SetSurfaceRect(mNaturalBounds.x, mNaturalBounds.y, mNaturalBounds.width, mNaturalBounds.height);
+  }
+}
+
 LayoutDeviceIntRect
 nsWindow::GetNaturalBounds()
 {
@@ -454,4 +464,3 @@ nsIWidget::CreateChildWindow()
   nsCOMPtr<nsIWidget> window = new mozilla::embedlite::nsWindow();
   return window.forget();
 }
-
