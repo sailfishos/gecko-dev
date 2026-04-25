@@ -432,6 +432,7 @@ echo "ac_add_options --host=i686-unknown-linux-gnu" >> "$MOZCONFIG"
 
 %ifarch %arm32
 echo "ac_add_options --host=armv7-unknown-linux-gnueabihf" >> "$MOZCONFIG"
+echo "ac_add_options --disable-debug-symbols" >> "$MOZCONFIG"
 %endif
 
 %ifarch %arm64
