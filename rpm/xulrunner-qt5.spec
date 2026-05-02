@@ -148,6 +148,11 @@ Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
 Patch92:    0092-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
 Patch93:    0093-Bug-1769631-Remove-U-from-mode-parameters-for-variou.patch
 Patch94:    0094-Bug-1799982-Remove-uses-of-inline-flags-from-XPIDL-r.patch
+Patch95:    0095-Bug-1880013-Update-glslopt-to-0.1.10-for-C-20-fix.-r.patch
+Patch96:    0096-Bug-1913645-Update-glslopt-to-0.1.11-to-fix-aarch64-.patch
+Patch97:    0097-Bug-1998927-Update-glslopt-to-explicitly-define-MOZI.patch
+Patch98:    0098-Bug-1999625-Update-glslopt-to-0.1.13.-r-gfx-reviewer.patch
+Patch99:    0099-Bug-2017954-Update-glslopt-to-0.1.14-r-jnicol-gfx-re.patch
 
 BuildRequires:  rust
 BuildRequires:  rust-std-static
