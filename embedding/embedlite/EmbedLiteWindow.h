@@ -51,17 +51,6 @@ public:
 
   // Will be always called from the compositor thread.
   virtual bool PreRender() { return true; }
-
-  // Request GL implementation specific surface and context objects from the
-  // platform. This can be EGLSurface / EGLContext in case of EGL, or
-  // GLXContext / GLXDrawable in case of GLX.
-  //
-  // This function will only be called when embedlite.compositor.external_gl_context
-  // preference is set to true.
-  //
-  // This funtion will be called directly from gecko Compositor thread. The embedder
-  // must ensure this function will be thread safe.
-  virtual bool RequestGLContext(void*& surface, void*& context, void*& display) { return false; }
 };
 
 class EmbedLiteWindow {
@@ -79,6 +68,7 @@ public:
   virtual void ResumeRendering();
   virtual void* GetPlatformImage(int* width, int* height);
   virtual void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  virtual void ClearPlatformImage();
 
 protected:
   friend class EmbedLiteApp;

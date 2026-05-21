@@ -5,7 +5,9 @@
 #ifndef nsEmbedClipboard_h__
 #define nsEmbedClipboard_h__
 
-#include "nsIClipboard.h"
+#include "mozilla/MozPromise.h"
+#include "mozilla/UniquePtr.h"
+#include "nsBaseClipboard.h"
 #include "nsITransferable.h"
 #include "nsIClipboardOwner.h"
 #include "nsCOMPtr.h"
@@ -13,31 +15,52 @@
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
 #include "nsString.h"
-#include "nsWidgetsCID.h"
 
 /* Native Qt Clipboard wrapper */
-class nsEmbedClipboard : public nsIClipboard, public nsIObserver
+class nsEmbedClipboard : public ClipboardSetDataHelper, public nsIObserver
 {
 public:
     nsEmbedClipboard();
     //nsISupports
-    NS_DECL_ISUPPORTS
+    NS_DECL_ISUPPORTS_INHERITED
     NS_DECL_NSIOBSERVER
 
     // nsIClipboard
-    NS_DECL_NSICLIPBOARD
+    NS_IMETHOD GetData(nsITransferable* aTransferable,
+                       int32_t aWhichClipboard) override;
+    NS_IMETHOD EmptyClipboard(int32_t aWhichClipboard) override;
+    NS_IMETHOD HasDataMatchingFlavors(const nsTArray<nsCString>& aFlavorList,
+                                      int32_t aWhichClipboard,
+                                      bool* _retval) override;
+    NS_IMETHOD IsClipboardTypeSupported(int32_t aWhichClipboard,
+                                        bool* _retval) override;
+    RefPtr<mozilla::GenericPromise> AsyncGetData(
+        nsITransferable* aTransferable, int32_t aWhichClipboard) override;
+    RefPtr<DataFlavorsPromise> AsyncHasDataMatchingFlavors(
+        const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard) override;
 
 private:
+    struct PendingAsyncGetData;
+
     virtual ~nsEmbedClipboard();
+
+    NS_IMETHOD SetNativeClipboardData(nsITransferable* aTransferable,
+                                      nsIClipboardOwner* anOwner,
+                                      int32_t aWhichClipboard) override;
+    nsresult RequestClipboardData();
+    void StopObservingClipboardData();
+    void CancelPendingAsyncGetData(nsresult aReason);
+    void CompletePendingAsyncGetData(const nsAString& aData);
+    nsresult SetTransferableText(nsITransferable* aTransferable,
+                                 const nsAString& aData);
 
     nsCOMPtr<nsIEmbedAppService> mService;
     nsCOMPtr<nsIObserverService> mObserverService;
+    mozilla::UniquePtr<PendingAsyncGetData> mPendingAsyncGetData;
     nsString mBuffer;
     int mModalDepth;
+    bool mWaitingForClipboardData;
     bool mActive;
 };
-
-// {8B5314BA-DB01-11d2-96CE-0060B0FB9956}
-#define NS_EMBED_CLIPBOARD_SERVICE_CID NS_CLIPBOARD_CID
 
 #endif // nsEmbedClipboard_h__

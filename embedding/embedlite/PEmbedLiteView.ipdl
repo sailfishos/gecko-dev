@@ -14,17 +14,16 @@ include "mozilla/dom/TabMessageUtils.h";
 include "mozilla/GfxMessageUtils.h";
 using gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
-using CSSSize from "Units.h";
+using mozilla::CSSSize from "Units.h";
 using struct mozilla::layers::ZoomTarget from "mozilla/layers/DoubleTapToZoom.h";
 using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
-using ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
+using mozilla::layers::ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using nscolor from "nsColor.h";
 using class mozilla::WidgetKeyboardEvent from "ipc/nsGUIEventIPC.h";
 using class mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
-using MultiTouchInput from "InputData.h";
+using class mozilla::MultiTouchInput from "InputData.h";
 using mozilla::CSSIntPoint from "Units.h";
 using struct mozilla::layers::ZoomConstraints from "mozilla/layers/ZoomConstraints.h";
-using mozilla::layers::MaybeZoomConstraints from "mozilla/layers/ZoomConstraints.h";
 using mozilla::LayoutDevicePoint from "Units.h";
 using mozilla::Modifiers from "mozilla/EventForwards.h";
 using nsEventStatus from "mozilla/EventForwards.h";
@@ -35,9 +34,8 @@ using mozilla::layers::GeckoContentController::APZStateChange from "mozilla/laye
 namespace mozilla {
 namespace embedlite {
 
-// Or inside_cpow
-// nested(upto inside_sync) 
-nested(upto inside_sync) sync protocol PEmbedLiteView
+// Or inside_cpow.
+[NestedUpTo=inside_sync] sync protocol PEmbedLiteView
 {
     manager PEmbedLiteApp;
 
@@ -53,6 +51,7 @@ child:
     async SetDesktopMode(bool aDesktopMode);
     async SetThrottlePainting(bool aThrottle);
     async SetMargins(int top, int right, int bottom, int left);
+    async SetSafeAreaInsets(int top, int right, int bottom, int left);
     async SetDynamicToolbarHeight(int height);
     async ScheduleUpdate();
     async SetHttpUserAgent(nsString aHttpUserAgent);
@@ -64,14 +63,15 @@ child:
     async UpdateFrame(RepaintRequest request);
     async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
-    async HandleLongTap(LayoutDevicePoint aPoint, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    async HandleSecondTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    async HandleLongTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleTextEvent(nsString commit, nsString preEdit, int replacementStart, int replacementLength);
     async HandleKeyPressEvent(int domKeyCode, int gmodifiers, int charCode);
     async HandleKeyReleaseEvent(int domKeyCode, int gmodifiers, int charCode);
     async MouseEvent(nsString aType, float aX, float aY,
                      int32_t aButton, int32_t aClickCount,
                      int32_t aModifiers, bool aIgnoreRootScrollFrame);
-    async NotifyAPZStateChange(ViewID aViewId, APZStateChange aChange, int aArg);
+    async NotifyAPZStateChange(ViewID aViewId, APZStateChange aChange, int aArg, uint64_t? aInputBlockId);
     async NotifyFlushComplete();
 
     async ScrollTo(int x, int y);
@@ -115,7 +115,7 @@ parent:
      * The zoom controller code lives on the parent side and so this allows it to
      * have up-to-date zoom constraints.
      */
-    async UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, MaybeZoomConstraints aConstraints);
+    async UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, ZoomConstraints? aConstraints);
 
     /**
      * Instructs the EmbedLiteViewThreadParent to forward a request to zoom to a rect given in

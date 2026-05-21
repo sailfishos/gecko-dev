@@ -81,7 +81,8 @@ void EmbedLiteWindowParent::RemoveObserver(EmbedLiteWindowParentObserver* obs)
 bool EmbedLiteWindowParent::ScheduleUpdate()
 {
   if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
+    LOGT("EmbedLiteWindowParent::ScheduleUpdate");
+    mCompositor->ScheduleForcedRenderOnCompositorThread(wr::RenderReasons::WIDGET);
     return true;
   }
   return false;
@@ -114,6 +115,13 @@ void EmbedLiteWindowParent::GetPlatformImage(const std::function<void(void *imag
     if (mCompositor) {
         mCompositor->GetPlatformImage(callback);
     }
+}
+
+void EmbedLiteWindowParent::ClearPlatformImage()
+{
+  if (mCompositor) {
+    mCompositor->ClearPlatformImage();
+  }
 }
 
 void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)

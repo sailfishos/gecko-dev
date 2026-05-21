@@ -21,9 +21,12 @@ SOURCES += [
 ]
 
 LOCAL_INCLUDES += [
+    '!/ipc/ipdl/_ipdlheaders',
     '../utils',
     '/docshell/base',
     '/dom/base',
+    '/ipc/chromium/src',
+    '/widget',
 ]
 
 XPCOM_MANIFESTS += [

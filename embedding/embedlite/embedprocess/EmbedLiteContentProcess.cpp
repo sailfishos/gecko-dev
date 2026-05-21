@@ -4,18 +4,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLog.h"
-#include "mozilla/ipc/IOThreadChild.h"
+#include "nsIFile.h"
+#include "nsXPCOM.h"
+#include "nsXULAppAPI.h"
 
 #include "EmbedLiteContentProcess.h"
 #include "EmbedLiteAppProcessChild.h"
 
-using mozilla::ipc::IOThreadChild;
-
 namespace mozilla {
 namespace embedlite {
 
-EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessId aParentHandle)
-  : ProcessChild(aParentHandle)
+EmbedLiteContentProcess::EmbedLiteContentProcess(ProcessId aParentHandle,
+                                                 const nsID& aMessageChannelId)
+  : ProcessChild(aParentHandle, aMessageChannelId)
 {
   mContent = new EmbedLiteAppProcessChild();
 }
@@ -28,7 +29,7 @@ EmbedLiteContentProcess::~EmbedLiteContentProcess()
 void
 EmbedLiteContentProcess::SetAppDir(const nsACString& aPath)
 {
-  mXREEmbed.SetAppDir(aPath);
+  mAppDir.Assign(aPath);
 }
 
 bool
@@ -38,10 +39,21 @@ EmbedLiteContentProcess::Init(int aArgc, char* aArgv[])
   (void)aArgv;
 
   LOGT();
-  mContent->Init(ParentPid(),
-                 IOThreadChild::TakeInitialPort());
+  mContent->Init(ParentPid(), TakeInitialEndpoint());
 
-  mXREEmbed.Start();
+  nsCOMPtr<nsIFile> appDir;
+  if (!mAppDir.IsEmpty()) {
+    nsresult rv = XRE_GetFileFromPath(mAppDir.get(), getter_AddRefs(appDir));
+    if (NS_FAILED(rv)) {
+      return false;
+    }
+  }
+
+  nsresult rv = NS_InitXPCOM(nullptr, appDir, nullptr);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
   mContent->InitXPCOM();
 
   return true;
@@ -51,7 +63,7 @@ void
 EmbedLiteContentProcess::CleanUp()
 {
   LOGT();
-  mXREEmbed.Stop();
+  NS_ShutdownXPCOM(nullptr);
 }
 
 } // namespace embedlite

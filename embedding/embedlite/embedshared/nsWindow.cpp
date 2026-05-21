@@ -12,14 +12,7 @@
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteApp.h"
 
-#include "GLContextProvider.h"
-#include "GLContext.h"                       // for GLContext
-
-#include "ClientLayerManager.h"              // for ClientLayerManager
-#include "Layers.h"                          // for LayerManager
-
-#include "mozilla/layers/CompositorThread.h" // for CompositorThreadHolder
-#include "mozilla/Preferences.h"             // for Preferences
+#include "EmbedContentController.h"
 
 #include "base/basictypes.h"
 
@@ -28,9 +21,8 @@
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorSession.h"
 #include "mozilla/ipc/MessageChannel.h"
-#include "mozilla/StaticPrefs_embedlite.h"   // for StaticPrefs::embedlite_*()
+#include "mozilla/PresShell.h"
 
-using namespace mozilla::gl;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 //using namespace mozilla::ipc;
@@ -50,28 +42,16 @@ namespace embedlite {
 NS_IMPL_ISUPPORTS_INHERITED(nsWindow, PuppetWidgetBase,
                             nsISupportsWeakReference)
 
-static bool sFailedToCreateGLContext = false;
-
 nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
   , mFirstViewCreated(false)
   , mWindow(window)
 {
-  LOGT("nsWindow: %p window: %p external: %d early: %d", this, mWindow,
-      StaticPrefs::embedlite_compositor_external_gl_context(),
-      StaticPrefs::embedlite_compositor_request_external_gl_context_early());
-
-  if (StaticPrefs::embedlite_compositor_external_gl_context() &&
-      StaticPrefs::embedlite_compositor_request_external_gl_context_early()) {
-    mozilla::layers::CompositorThread()->Dispatch(NewRunnableFunction(
-                                                 "mozilla::embedlite::nsWindow::CreateGLContextEarly",
-                                                 &CreateGLContextEarly,
-                                                 mWindow->GetListener()));
-  }
+  LOGT("nsWindow: %p window: %p", this, mWindow);
 }
 
 nsresult
-nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, nsWidgetInitData *aInitData)
+nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, widget::InitData *aInitData)
 {
   LOGT();
   Unused << PuppetWidgetBase::Create(aParent, aNativeParent, aRect, aInitData);
@@ -87,9 +67,6 @@ nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutD
 void
 nsWindow::Destroy()
 {
-  if (mLayerManager) {
-    mLayerManager->Destroy();
-  }
   mWindow = nullptr;
 
   PuppetWidgetBase::Destroy();
@@ -142,6 +119,29 @@ nsWindow::GetNaturalBounds()
   return mNaturalBounds;
 }
 
+float
+nsWindow::GetDPI()
+{
+  return mWindow ? mWindow->GetDPI() : PuppetWidgetBase::GetDPI();
+}
+
+double
+nsWindow::GetDefaultScaleInternal()
+{
+  return mWindow ? mWindow->GetDensity()
+                 : PuppetWidgetBase::GetDefaultScaleInternal();
+}
+
+void
+nsWindow::BackingScaleFactorChanged()
+{
+  if (mWidgetListener) {
+    if (PresShell* presShell = mWidgetListener->GetPresShell()) {
+      presShell->BackingScaleFactorChanged();
+    }
+  }
+}
+
 void
 nsWindow::CreateCompositor()
 {
@@ -168,13 +168,9 @@ nsWindow::GetNativeData(uint32_t aDataType)
       LOGW("aDataType:%i\n", aDataType);
       return (void*)nullptr;
     }
-    case NS_NATIVE_OPENGL_CONTEXT: {
-      MOZ_ASSERT(!GetParent());
-      return GetGLContext();
-    }
+    case NS_NATIVE_OPENGL_CONTEXT:
+      return nullptr;
     case NS_NATIVE_WINDOW:
-    case NS_NATIVE_DISPLAY:
-    case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_GRAPHIC:
     case NS_NATIVE_SHELLWIDGET:
     case NS_NATIVE_WIDGET:
@@ -190,40 +186,34 @@ nsWindow::GetNativeData(uint32_t aDataType)
   return nullptr;
 }
 
-LayerManager *
-nsWindow::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
+WindowRenderer *
+nsWindow::GetWindowRenderer()
 {
-  LOGC("EmbedLiteLayerManager", "lm: %p", mLayerManager.get());
+  LOGC("EmbedLiteLayerManager", "lm: %p", mWindowRenderer.get());
 
-  if (!mLayerManager) {
+  if (!mWindowRenderer) {
     if (!mShutdownObserver) {
-      // We are shutting down, do not try to re-create a LayerManager
+      // We are shutting down, do not try to re-create a WindowRenderer
       return nullptr;
     }
   }
 
-  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
-  LOGC("EmbedLiteLayerManager", "lm: %p this: %p", lm, this);
+  WindowRenderer* windowRenderer = PuppetWidgetBase::GetWindowRenderer();
+  LOGC("EmbedLiteWindowRenderer", "lm: %p this: %p", windowRenderer, this);
 
-  if (lm) {
-    mLayerManager = lm;
-    return mLayerManager;
+  if (windowRenderer) {
+    mWindowRenderer = windowRenderer;
+    return mWindowRenderer;
   }
 
   if (mWindow && ShouldUseOffMainThreadCompositing()) {
     CreateCompositor();
-    LOGC("EmbedLiteLayerManager", "Created compositor, lm: %p", mLayerManager.get());
-    if (mLayerManager) {
-      return mLayerManager;
+    LOGC("EmbedLiteWindowRenderer", "Created compositor, lm: %p", mWindowRenderer.get());
+    if (mWindowRenderer) {
+      return mWindowRenderer;
     }
-    // If we get here, then off main thread compositing failed to initialize.
-    sFailedToCreateGLContext = true;
   }
-
-  mLayerManager = new ClientLayerManager(this);
-  LOGC("EmbedLiteLayerManager", "New client layer manager: %p", mLayerManager.get());
-
-  return mLayerManager;
+  return mWindowRenderer;
 }
 
 bool
@@ -233,6 +223,10 @@ nsWindow::PreRender(mozilla::widget::WidgetRenderingContext *aContext)
   Unused << aContext;
   if (!IsVisible() || !mActive) {
     return false;
+  }
+
+  if (GetCompositorBridgeParent()) {
+    return true;
   }
 
   return mWindow->GetListener()->PreRender();
@@ -245,10 +239,10 @@ nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
   Unused << aContext;
 
   if (GetCompositorBridgeParent()) {
-    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->PresentOffscreenSurface();
+    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->WebRenderComposited();
+  } else if (mWindow) {
+    mWindow->GetListener()->CompositingFinished();
   }
-
-  mWindow->GetListener()->CompositingFinished();
 }
 
 void
@@ -390,31 +384,6 @@ nsWindow::nsWindow()
 
 }
 
-
-GLContext*
-nsWindow::GetGLContext() const
-{
-  LOGT("this:%p, UseExternalContext:%d", this,
-      StaticPrefs::embedlite_compositor_external_gl_context());
-  if (StaticPrefs::embedlite_compositor_external_gl_context()) {
-    void* context = nullptr;
-    void* surface = nullptr;
-    void* display = nullptr;
-    if (mWindow && mWindow->GetListener()->RequestGLContext(context, surface, display)) {
-      MOZ_ASSERT(context && surface);
-      RefPtr<GLContext> mozContext = GLContextProvider::CreateWrappingExisting(context, surface, display);
-      if (!mozContext || !mozContext->Init()) {
-        NS_ERROR("Failed to initialize external GL context!");
-        return nullptr;
-      }
-      return mozContext.forget().take();
-    } else {
-      NS_ERROR("Embedder wants to use external GL context without actually providing it!");
-    }
-  }
-  return nullptr;
-}
-
 nsEventStatus
 nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 {
@@ -424,18 +393,6 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
       return mWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
   }
   return nsEventStatus_eIgnore;
-}
-
-void
-nsWindow::CreateGLContextEarly(EmbedLiteWindowListener *aListener)
-{
-  LOGT("Listener: %p", aListener);
-
-  void* context = nullptr;
-  void* surface = nullptr;
-  void* display = nullptr;
-  aListener->RequestGLContext(context, surface, display);
-  MOZ_ASSERT(context && surface);
 }
 
 }  // namespace embedlite
@@ -454,4 +411,3 @@ nsIWidget::CreateChildWindow()
   nsCOMPtr<nsIWidget> window = new mozilla::embedlite::nsWindow();
   return window.forget();
 }
-

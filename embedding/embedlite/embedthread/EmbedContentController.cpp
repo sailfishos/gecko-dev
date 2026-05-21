@@ -60,7 +60,8 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
       HandleSingleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eSecondTap:
-      [[fallthrough]];
+      HandleSecondTap(aPoint, aModifiers, aGuid, aInputBlockId);
+      break;
     case GeckoContentController::TapType::eDoubleTap:
       HandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
@@ -95,6 +96,33 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
 
   if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
     Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
+  }
+}
+
+void EmbedContentController::HandleSecondTap(const LayoutDevicePoint aPoint,
+                                             Modifiers aModifiers,
+                                             const ScrollableLayerGuid aGuid,
+                                             uint64_t aInputBlockId)
+{
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint,
+                                          Modifiers,
+                                          const ScrollableLayerGuid,
+                                          uint64_t>("mozilla::embedlite::EmbedContentController::HandleSecondTap",
+                                                    this,
+                                                    &EmbedContentController::HandleSecondTap,
+                                                    aPoint,
+                                                    aModifiers,
+                                                    aGuid,
+                                                    aInputBlockId));
+    return;
+  }
+
+  if (mRenderFrame) {
+    Unused << mRenderFrame->SendHandleSecondTap(aPoint, aModifiers, aGuid,
+                                                aInputBlockId);
   }
 }
 
@@ -143,7 +171,8 @@ void EmbedContentController::HandleLongTap(const LayoutDevicePoint aPoint,
   }
 
   if (mRenderFrame && !GetListener()->HandleLongTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleLongTap(aPoint, aGuid, aInputBlockId);
+    Unused << mRenderFrame->SendHandleLongTap(aPoint, aModifiers, aGuid,
+                                              aInputBlockId);
   }
 }
 
@@ -165,7 +194,7 @@ void EmbedContentController::DoSendScrollEvent(const layers::RepaintRequest aReq
     return;
   }
 
-  CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale2D(0, 0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
+  CSSRect contentRect = (aRequest.GetZoom() == CSSToParentLayerScale(0)) ? CSSRect() : (aRequest.GetCompositionBounds() / aRequest.GetZoom());
   contentRect.MoveTo(aRequest.GetVisualScrollOffset());
 
   CSSRect scrollableRect(0, 0, 0, 0);
@@ -201,7 +230,7 @@ void EmbedContentController::ClearRenderFrame()
 void EmbedContentController::PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs)
 {
   LOGT();
-  MessageLoop::current()->PostDelayedTask(std::move(aTask), aDelayMs);
+  mUILoop->PostDelayedTask(std::move(aTask), aDelayMs);
 }
 
 EmbedLiteViewListener *EmbedContentController::GetListener() const
@@ -220,22 +249,24 @@ void EmbedContentController::DoRequestContentRepaint(const layers::RepaintReques
   }
 }
 
-void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg)
+void EmbedContentController::NotifyAPZStateChange(const mozilla::layers::ScrollableLayerGuid &aGuid, APZStateChange aChange, int aArg, Maybe<uint64_t> aInputBlockId)
 {
   LOGT();
   if (MessageLoop::current() != mUILoop) {
-    mUILoop->PostTask(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int>("mozilla::embedlite::EmbedContentController::NotifyAPZStateChange",
-                                                                                                             this,
-                                                                                                             &EmbedContentController::NotifyAPZStateChange,
-                                                                                                             aGuid,
-                                                                                                             aChange,
-                                                                                                             aArg));
+    mUILoop->PostTask(NewRunnableMethod<const mozilla::layers::ScrollableLayerGuid &, APZStateChange, int, Maybe<uint64_t>>("mozilla::embedlite::EmbedContentController::NotifyAPZStateChange",
+                                                                                                                           this,
+                                                                                                                           &EmbedContentController::NotifyAPZStateChange,
+                                                                                                                           aGuid,
+                                                                                                                           aChange,
+                                                                                                                           aArg,
+                                                                                                                           aInputBlockId));
     return;
   }
 
   LOGT("render frame: %p", mRenderFrame);
   if (mRenderFrame) {
-    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange, aArg);
+    Unused << mRenderFrame->SendNotifyAPZStateChange(aGuid.mScrollId, aChange,
+                                                     aArg, aInputBlockId);
   }
 }
 
@@ -256,6 +287,11 @@ void EmbedContentController::NotifyFlushComplete()
 
 
 void EmbedContentController::NotifyPinchGesture(PinchGestureInput::PinchGestureType aType, const EmbedContentController::ScrollableLayerGuid& aGuid, const LayoutDevicePoint &aFocusPoint, LayoutDeviceCoord aSpanChange, Modifiers aModifiers)
+{
+  LOGT("NOT YET IMPLEMENTED");
+}
+
+void EmbedContentController::NotifyScaleGestureComplete(const EmbedContentController::ScrollableLayerGuid& aGuid, float aScale)
 {
   LOGT("NOT YET IMPLEMENTED");
 }

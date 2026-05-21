@@ -6,21 +6,24 @@
 #ifndef mozilla_layers_EmbedLiteCompositorBridgeParent_h
 #define mozilla_layers_EmbedLiteCompositorBridgeParent_h
 
-#include "Layers.h"
 #include "base/task.h" // for CancelableRunnable
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
+#include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerParent.h"
+#include "Units.h"
 
 #include <functional>
+#include <memory>
 
 namespace mozilla {
 
-namespace layers {
-class LayerManagerComposite;
-}
+namespace gl {
+class GLContext;
+class SharedSurface;
+} // gl
 
 namespace embedlite {
 
@@ -35,15 +38,23 @@ public:
                                   const TimeDuration &aVsyncRate,
                                   const CompositorOptions &aOptions,
                                   bool aRenderToEGLSurface,
-                                  const gfx::IntSize &aSurfaceSize);
+                                  const gfx::IntSize &aSurfaceSize,
+                                  uint64_t aInnerWindowId);
 
+  void SetWebRenderGLContext(mozilla::gl::GLContext* aGL) override;
+  bool CompositeToDefaultTarget(mozilla::layers::WebRenderBridgeParent* aWrBridge,
+                                VsyncId aId,
+                                wr::RenderReasons aReasons) override;
   void SetSurfaceRect(int x, int y, int width, int height);
   void* GetPlatformImage(int* width, int* height);
   void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  void ClearPlatformImage();
   void SuspendRendering();
   void ResumeRendering();
+  void ScheduleForcedRenderOnCompositorThread(wr::RenderReasons aReasons);
 
-  void PresentOffscreenSurface();
+  bool PresentOffscreenSurface();
+  void WebRenderComposited();
 
   bool GetScrollableRect(CSSRect &scrollableRect);
 
@@ -51,19 +62,17 @@ protected:
   friend class EmbedLitePuppetWidget;
 
   virtual ~EmbedLiteCompositorBridgeParent();
-  virtual PLayerTransactionParent*
-  AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                               const LayersId& aId) override;
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) override;
-  virtual void CompositeToDefaultTarget(VsyncId aId) override;
 
 private:
+  void EnsureSurfaceSizeFromWindow();
   void PrepareOffscreen();
+  void ScheduleForcedRender(wr::RenderReasons aReasons);
 
   uint32_t mWindowId;
+  RefPtr<mozilla::gl::GLContext> mGLContext;
+  std::shared_ptr<mozilla::gl::SharedSurface> mFrontBuffer;
   RefPtr<CancelableRunnable> mCurrentCompositeTask;
   ScreenIntPoint mSurfaceOrigin;
-  bool mUseExternalGLContext;
   Mutex mRenderMutex;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorBridgeParent);

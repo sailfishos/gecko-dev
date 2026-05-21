@@ -238,7 +238,9 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   }
   // Example from SaveProfileTask.cpp#74
   JS::RootedValue value(cx, JS::ObjectValue(*obj));
-  NS_ENSURE_TRUE(nsContentUtils::StringifyJSON(cx, &value, outJson), NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(nsContentUtils::StringifyJSON(
+      cx, value, outJson, mozilla::dom::UndefinedIsNullStringLiteral),
+      NS_ERROR_FAILURE);
   NS_ENSURE_TRUE(!outJson.IsEmpty(), NS_ERROR_FAILURE);
   return NS_OK;
 }

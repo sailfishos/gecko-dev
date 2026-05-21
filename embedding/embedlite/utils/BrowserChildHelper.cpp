@@ -693,7 +693,8 @@ NS_IMETHODIMP
 BrowserChildHelper::GetMessageManager(dom::ContentFrameMessageManager** aResult)
 {
   if (mBrowserChildMessageManager) {
-    NS_ADDREF(*aResult = mBrowserChildMessageManager);
+    *aResult = mBrowserChildMessageManager;
+    NS_ADDREF(*aResult);
     return NS_OK;
   }
   *aResult = nullptr;
@@ -707,16 +708,16 @@ BrowserChildHelper::SendRequestFocus(bool aCanFocus, CallerType aCallerType)
 }
 
 NS_IMETHODIMP
-BrowserChildHelper::RemoteSizeShellTo(int32_t aWidth, int32_t aHeight,
-                                      int32_t aShellItemWidth, int32_t aShellItemHeight)
+BrowserChildHelper::RemoteDropLinks(
+    const nsTArray<RefPtr<nsIDroppedLinkItem>>& aLinks)
 {
   LOGNI();
   return NS_OK;
 }
 
 NS_IMETHODIMP
-BrowserChildHelper::RemoteDropLinks(
-    const nsTArray<RefPtr<nsIDroppedLinkItem>>& aLinks)
+BrowserChildHelper::ContentTransformsReceived(JSContext* aCx,
+                                              dom::Promise** aPromise)
 {
   LOGNI();
   return NS_OK;
@@ -742,16 +743,6 @@ BrowserChildHelper::GetChromeOuterWindowID(uint64_t* aId) {
 
 NS_IMETHODIMP BrowserChildHelper::NotifyNavigationFinished() {
   LOGT("NOT YET IMPLEMENTED");
-  return NS_OK;
-}
-
-nsresult BrowserChildHelper::GetHasSiblings(bool* aHasSiblings) {
-  *aHasSiblings = mHasSiblings;
-  return NS_OK;
-}
-
-nsresult BrowserChildHelper::SetHasSiblings(bool aHasSiblings) {
-  mHasSiblings = aHasSiblings;
   return NS_OK;
 }
 
@@ -781,7 +772,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChildHelperMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIMessageSender)
-  NS_INTERFACE_MAP_ENTRY(dom::ContentFrameMessageManager)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(ContentFrameMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 

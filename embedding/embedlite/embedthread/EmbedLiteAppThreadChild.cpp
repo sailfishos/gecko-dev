@@ -68,14 +68,14 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteWindowChild(const uint16_t &width, const
   window->AddRef();
   return window;
 }
-
+/*
 mozilla::layers::PCompositorBridgeChild*
 EmbedLiteAppThreadChild::AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess)
 {
   LOGNI();
   return 0;
 }
-
+*/
 } // namespace embedlite
 } // namespace mozilla
 

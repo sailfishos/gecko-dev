@@ -12,14 +12,6 @@
 
 namespace mozilla {
 
-namespace layers {
-class LayerManager;
-}
-
-namespace gl {
-class GLContext;
-}
-
 namespace embedlite {
 
 class EmbedLitePuppetWidgetObserver
@@ -45,7 +37,7 @@ public:
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
                                        nsNativeWidget    aNativeParent,
                                        const LayoutDeviceIntRect& aRect,
-                                       nsWidgetInitData* aInitData = nullptr) override;
+                                       widget::InitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
 
@@ -53,9 +45,7 @@ public:
 
   virtual bool IsVisible() const override;
 
-  virtual void ConstrainPosition(bool     /*ignored aAllowSlop*/,
-                                 int32_t* aX,
-                                 int32_t* aY) override;
+  virtual void ConstrainPosition(DesktopIntPoint& aPoint) override;
 
   virtual void Move(double aX, double aY) override;
 
@@ -66,10 +56,12 @@ public:
   virtual void Enable(bool aState) override;
   virtual bool IsEnabled() const override;
 
+  virtual nsSizeMode SizeMode() override { return mSizeMode; }
+  virtual void SetSizeMode(nsSizeMode aMode) override { mSizeMode = aMode; }
+
   virtual void SetFocus(Raise, mozilla::dom::CallerType aCallerType) override;
   virtual nsresult SetTitle(const nsAString& aTitle) override;
 
-  virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations) override;
   virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset() override;
 
   virtual void Invalidate(const LayoutDeviceIntRect& aRect) override;
@@ -77,20 +69,19 @@ public:
   virtual void SetParent(nsIWidget* aNewParent) override;
   virtual nsIWidget* GetParent(void) override;
 
-  virtual void CaptureRollupEvents(nsIRollupListener* aListener,
-                                   bool aDoCapture) override;
+  virtual void CaptureRollupEvents(bool aDoCapture) override;
 
   virtual void ReparentNativeWidget(nsIWidget* aNewParent) override;
 
   void SetRotation(mozilla::ScreenRotation);
   void SetMargins(const LayoutDeviceIntMargin& margins);
   void UpdateBounds(bool aRepaint);
+  virtual mozilla::ScreenIntMargin GetSafeAreaInsets() const override;
+  void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aSafeAreaInsets);
   void SetSize(double aWidth, double aHeight);
   void SetActive(bool active);
 
-  virtual mozilla::layers::LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                                         LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-                                                         LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
+  virtual WindowRenderer* GetWindowRenderer() override;
 
   static void DumpWidgetTree();
   static void DumpWidgetTree(const nsTArray<PuppetWidgetBase *> &widgets, int indent = 0);
@@ -117,9 +108,11 @@ protected:
   mozilla::ScreenRotation mRotation;
   LayoutDeviceIntRect mNaturalBounds;
   LayoutDeviceIntMargin mMargins;
+  mozilla::ScreenIntMargin mSafeAreaInsets;
 
 private:
   bool IsTopLevel();
+  nsSizeMode mSizeMode;
 };
 
 }  // namespace embedlite

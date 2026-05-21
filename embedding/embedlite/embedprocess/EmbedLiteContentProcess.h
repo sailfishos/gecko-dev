@@ -7,7 +7,7 @@
 #define mozilla_embedlite_EmbedLiteContentProcess_h 1
 
 #include "mozilla/ipc/ProcessChild.h"
-#include "mozilla/ipc/ScopedXREEmbed.h"
+#include "nsString.h"
 //#include "EmbedLiteAppProcessChild.h"
 
 #undef _MOZ_LOG
@@ -25,7 +25,8 @@ class EmbedLiteAppProcessChild;
 class EmbedLiteContentProcess : public mozilla::ipc::ProcessChild
 {
 public:
-    EmbedLiteContentProcess(ProcessId aParentHandle);
+    EmbedLiteContentProcess(ProcessId aParentHandle,
+                            const nsID& aMessageChannelId);
     ~EmbedLiteContentProcess();
 
     virtual bool Init(int aArgc, char* aArgv[]) override;
@@ -35,7 +36,7 @@ public:
 
 private:
     EmbedLiteAppProcessChild* mContent;
-    mozilla::ipc::ScopedXREEmbed mXREEmbed;
+    nsCString mAppDir;
 
     DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteContentProcess);
 };

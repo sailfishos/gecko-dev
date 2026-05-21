@@ -12,6 +12,7 @@
 #include "nsIWebBrowser.h"
 #include "nsIWidget.h"
 #include "nsIWebNavigation.h"
+#include "nsIWeakReferenceUtils.h"
 #include "WebBrowserChrome.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIUserIdleServiceInternal.h"
@@ -156,6 +157,7 @@ protected:
   virtual mozilla::ipc::IPCResult RecvSetThrottlePainting(const bool &);
   virtual mozilla::ipc::IPCResult RecvSetDynamicToolbarHeight(const int&);
   virtual mozilla::ipc::IPCResult RecvSetMargins(const int&, const int&, const int&, const int&);
+  virtual mozilla::ipc::IPCResult RecvSetSafeAreaInsets(const int&, const int&, const int&, const int&);
   virtual mozilla::ipc::IPCResult RecvScheduleUpdate();
   virtual mozilla::ipc::IPCResult RecvSetHttpUserAgent(const nsString& aHhttpUserAgent);
 
@@ -173,7 +175,12 @@ protected:
   virtual mozilla::ipc::IPCResult RecvHandleSingleTap(const LayoutDevicePoint &, const Modifiers &aModifiers,
                                                       const ScrollableLayerGuid &aGuid,
                                                       const uint64_t &aInputBlockId);
+  virtual mozilla::ipc::IPCResult RecvHandleSecondTap(const LayoutDevicePoint &,
+                                                      const Modifiers &aModifiers,
+                                                      const ScrollableLayerGuid &aGuid,
+                                                      const uint64_t &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvHandleLongTap(const LayoutDevicePoint &aPoint,
+                                                    const Modifiers &aModifiers,
                                                     const mozilla::layers::ScrollableLayerGuid &aGuid,
                                                     const uint64_t &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvMouseEvent(const nsString& aType,
@@ -204,7 +211,8 @@ protected:
 
   virtual mozilla::ipc::IPCResult RecvNotifyAPZStateChange(const ViewID &aViewId,
                                                            const APZStateChange &aChange,
-                                                           const int &aArg);
+                                                           const int &aArg,
+                                                           const Maybe<uint64_t> &aInputBlockId);
   virtual mozilla::ipc::IPCResult RecvNotifyFlushComplete();
   virtual mozilla::ipc::IPCResult RecvAddMessageListener(const nsCString &);
   virtual mozilla::ipc::IPCResult RecvRemoveMessageListener(const nsCString &);
@@ -238,6 +246,12 @@ private:
                        const bool isDesktopMode,
                        const bool isHidden);
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
+  void UpdateAPZEventStateWidget(nsIWidget* aWidget);
+  mozilla::ipc::IPCResult ProcessSingleTap(const LayoutDevicePoint &aPoint,
+                                           const Modifiers &aModifiers,
+                                           const ScrollableLayerGuid &aGuid,
+                                           const uint64_t &aInputBlockId,
+                                           int32_t aClickCount);
   nsresult DispatchKeyPressEvent(nsIWidget *widget, const EventMessage &message, const int &domKeyCode, const int &gmodifiers, const int &charCode);
   void SetDesktopMode(const bool aDesktopMode);
   bool SetDesktopModeInternal(const bool aDesktopMode);
@@ -254,6 +268,7 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
+  ScreenIntMargin mSafeAreaInsets;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;
@@ -262,7 +277,7 @@ private:
   nsTHashMap<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
 
   RefPtr<APZEventState> mAPZEventState;
-  mozilla::layers::SetAllowedTouchBehaviorCallback mSetAllowedTouchBehaviorCallback;
+  nsWeakPtr mAPZEventStateWidget;
 
   bool mInitialized;
   bool mDestroyAfterInit;

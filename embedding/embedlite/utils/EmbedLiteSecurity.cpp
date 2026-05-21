@@ -4,12 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsServiceManagerUtils.h"
-#include "nsISerializationHelper.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIX509Cert.h"
 #include "nsString.h"
 #include "nsCOMPtr.h"
+#include "mozilla/psm/TransportSecurityInfo.h"
 #include "EmbedLog.h"
 
 #include "EmbedLiteSecurity.h"
@@ -71,29 +70,33 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
 {
     bool booleanResult;
     nsresult rv = NS_ERROR_NOT_INITIALIZED;
-    nsCOMPtr<nsISupports> infoObj;
+    nsCOMPtr<nsITransportSecurityInfo> securityInfo;
 
     d_ptr->mPopulated = false;
     d_ptr->mState = aState;
 
     // If the status is empty, leave it as it was
     if (aStatus && *aStatus) {
-        nsCOMPtr<nsISerializationHelper> serialHelper = do_GetService("@mozilla.org/network/serialization-helper;1");
-
         nsCString serSSLStatus(aStatus);
-        rv = serialHelper->DeserializeObject(serSSLStatus, getter_AddRefs(infoObj));
+        rv = mozilla::psm::TransportSecurityInfo::Read(serSSLStatus, getter_AddRefs(securityInfo));
 
         if (!NS_SUCCEEDED(rv)) {
             LOGW("Security state change: deserialisation failed");
         }
     }
 
-    if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsITransportSecurityInfo> securityInfo = do_QueryInterface(infoObj);
-
-        rv = securityInfo->GetIsDomainMismatch(&booleanResult);
-        if (NS_SUCCEEDED(rv))
-            d_ptr->mDomainMismatch = booleanResult;
+    if (NS_SUCCEEDED(rv) && securityInfo) {
+        nsITransportSecurityInfo::OverridableErrorCategory errorCategory =
+            nsITransportSecurityInfo::OverridableErrorCategory::ERROR_UNSET;
+        rv = securityInfo->GetOverridableErrorCategory(&errorCategory);
+        if (NS_SUCCEEDED(rv)) {
+            d_ptr->mDomainMismatch =
+                errorCategory == nsITransportSecurityInfo::OverridableErrorCategory::ERROR_DOMAIN;
+            d_ptr->mNotValidAtThisTime =
+                errorCategory == nsITransportSecurityInfo::OverridableErrorCategory::ERROR_TIME;
+            d_ptr->mUntrusted =
+                errorCategory == nsITransportSecurityInfo::OverridableErrorCategory::ERROR_TRUST;
+        }
 
         nsCString resultCString;
         rv = securityInfo->GetCipherName(resultCString);
@@ -102,20 +105,12 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
             d_ptr->mCipherName = cipherName;
         }
 
-        rv = securityInfo->GetIsNotValidAtThisTime(&booleanResult);
-        if (NS_SUCCEEDED(rv))
-            d_ptr->mNotValidAtThisTime = booleanResult;
-
-        rv = securityInfo->GetIsUntrusted(&booleanResult);
-        if (NS_SUCCEEDED(rv))
-            d_ptr->mUntrusted = booleanResult;
-
         rv = securityInfo->GetIsExtendedValidation(&booleanResult);
         if (NS_SUCCEEDED(rv))
             d_ptr->mExtendedValidation = booleanResult;
 
-        nsIX509Cert * aServerCert;
-        securityInfo->GetServerCert(&aServerCert);
+        nsCOMPtr<nsIX509Cert> serverCert;
+        rv = securityInfo->GetServerCert(getter_AddRefs(serverCert));
 
         unsigned short protocolVersion;
         rv = securityInfo->GetProtocolVersion(&protocolVersion);
@@ -123,18 +118,22 @@ void EmbedLiteSecurity::importState(const char *aStatus, unsigned int aState)
             d_ptr->mProtocolVersion = static_cast<TLS_VERSION>(protocolVersion);
 
         nsTArray<uint8_t> certArray;
-        rv = aServerCert->GetRawDER(certArray);
-        unsigned int length = certArray.Length();
-        void *data = certArray.Elements();
+        if (serverCert) {
+            rv = serverCert->GetRawDER(certArray);
+            unsigned int length = certArray.Length();
+            void *data = certArray.Elements();
 
-        if (NS_SUCCEEDED(rv)) {
-            if (data) {
-                d_ptr->mRawDER.assign((char*)data, length);
+            if (NS_SUCCEEDED(rv)) {
+                if (data) {
+                    d_ptr->mRawDER.assign((char*)data, length);
+                } else {
+                    d_ptr->mRawDER.clear();
+                }
             } else {
-                d_ptr->mRawDER.clear();
+                LOGW("Certificate: deserialisation failed");
             }
-        } else {
-            LOGW("Certificate: deserialisation failed");
+        } else if (NS_SUCCEEDED(rv)) {
+            d_ptr->mRawDER.clear();
         }
     }
 

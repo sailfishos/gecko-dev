@@ -16,10 +16,8 @@
 #include "nsIDOMWindowUtils.h"
 #include "nsIWebNavigation.h"
 #include "nsISecureBrowserUI.h"
-#include "nsISerializationHelper.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsIFocusManager.h"
-#include "nsISerializable.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 #include "nsIMultiPartChannel.h"
@@ -91,7 +89,6 @@ NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIWebBrowserChrome,
                   nsIWebBrowserChromeFocus,
                   nsIInterfaceRequestor,
-                  nsIEmbeddingSiteWindow,
                   nsIWebProgressListener,
                   nsISupportsWeakReference)
 
@@ -368,16 +365,16 @@ WebBrowserChrome::OnSecurityChange(nsIWebProgress* aWebProgress,
 
   nsCOMPtr<nsITransportSecurityInfo> securityInfo;
   if (channel) {
-    nsCOMPtr<nsISupports> securityInfoSupports;
-    channel->GetSecurityInfo(getter_AddRefs(securityInfoSupports));
-    securityInfo = do_QueryInterface(securityInfoSupports);
+    channel->GetSecurityInfo(getter_AddRefs(securityInfo));
   }
 
   nsCString serSSLStatus;
   if (securityInfo) {
-    nsCOMPtr<nsISerializationHelper> serialHelper = do_GetService("@mozilla.org/network/serialization-helper;1");
-    nsCOMPtr<nsISerializable> serializableStatus = do_QueryInterface(securityInfo);
-    serialHelper->SerializeToString(serializableStatus, serSSLStatus);
+    nsresult rv = securityInfo->ToString(serSSLStatus);
+    if (NS_FAILED(rv)) {
+      LOGW("Security state serialisation failed");
+      serSSLStatus.Truncate();
+    }
   }
   mListener->OnSecurityChanged(serSSLStatus.get(), state);
 
@@ -462,9 +459,10 @@ WebBrowserChrome::GetScrollOffset(mozIDOMWindowProxy* aWindow)
 {
   AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = nsGlobalWindowOuter::Cast(aWindow)->WindowUtils();
-  nsIntPoint scrollOffset;
-  utils->GetScrollXY(PR_FALSE, &scrollOffset.x, &scrollOffset.y);
-  return scrollOffset;
+  int32_t scrollX = 0;
+  int32_t scrollY = 0;
+  utils->GetScrollXY(PR_FALSE, &scrollX, &scrollY);
+  return nsIntPoint(scrollX, scrollY);
 }
 
 nsresult WebBrowserChrome::GetDocShellPtr(nsIDocShell **aDocShell)
@@ -525,35 +523,26 @@ WebBrowserChrome::SendScroll()
 }
 
 
-// ----- Embedding Site Window
-NS_IMETHODIMP WebBrowserChrome::SetDimensions(uint32_t aFlags,
-                                              int32_t aX, int32_t aY,
-                                              int32_t aCx, int32_t aCy)
+// ----- WebBrowser Chrome window hooks
+NS_IMETHODIMP WebBrowserChrome::SetDimensions(mozilla::DimensionRequest&& aRequest)
 {
   // TODO: currently only does size
-  LOGNI("flags:%u, pt[%i,%i] sz[%i,%i]\n", aFlags, aX, aY, aCx, aCy);
+  LOGNI();
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::GetDimensions(uint32_t aFlags,
+NS_IMETHODIMP WebBrowserChrome::GetDimensions(mozilla::DimensionKind aDimensionKind,
                                               int32_t* aX, int32_t* aY,
                                               int32_t* aCx, int32_t* aCy)
 {
   LOGNI("GetView dimensitions");
   /*
       QMozEmbedQGVWidget* view = pMozView->View();
-      if (aFlags & nsIEmbeddingSiteWindow::DIM_FLAGS_POSITION) {
-          QPoint pt(view->GetScreenPos());
-          *aX = pt.x();
-          *aY = pt.y();
-      }
-      if (aFlags & nsIEmbeddingSiteWindow::DIM_FLAGS_SIZE_INNER) {
-          *aCx = view->geometry().width();
-          *aCy = view->geometry().height();
-      } else if (aFlags & nsIEmbeddingSiteWindow::DIM_FLAGS_SIZE_OUTER) {
-          *aCx = view->geometry().width();
-          *aCy = view->geometry().height();
-      }
+      QPoint pt(view->GetScreenPos());
+      *aX = pt.x();
+      *aY = pt.y();
+      *aCx = view->geometry().width();
+      *aCy = view->geometry().height();
   */
 
   return NS_OK;

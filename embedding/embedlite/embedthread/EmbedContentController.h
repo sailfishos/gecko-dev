@@ -48,7 +48,8 @@ public:
 
   virtual void NotifyAPZStateChange(const ScrollableLayerGuid& aGuid,
                                     APZStateChange aChange,
-                                    int aArg = 0) override;
+                                    int aArg = 0,
+                                    Maybe<uint64_t> aInputBlockId = Nothing()) override;
   virtual void NotifyFlushComplete() override;
 
   virtual void NotifyPinchGesture(PinchGestureInput::PinchGestureType aType,
@@ -56,6 +57,9 @@ public:
                                   const LayoutDevicePoint& aFocusPoint,
                                   LayoutDeviceCoord aSpanChange,
                                   Modifiers aModifiers) override;
+
+  virtual void NotifyScaleGestureComplete(const ScrollableLayerGuid& aGuid,
+                                          float aScale) override;
 
   virtual bool IsRepaintThread() override;
 
@@ -71,6 +75,7 @@ private:
 
   void HandleDoubleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+  void HandleSecondTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
 
   void DoRequestContentRepaint(const layers::RepaintRequest aRequest);

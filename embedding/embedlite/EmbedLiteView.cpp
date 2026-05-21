@@ -8,9 +8,12 @@
 #include "EmbedLiteView.h"
 #include "EmbedInputData.h"
 #include "EmbedLiteApp.h"
+#include "EmbedLiteAppChild.h"
+#include "EmbedLiteViewChildIface.h"
 
 #include "mozilla/Unused.h"
 #include "nsServiceManagerUtils.h"
+#include "nsThreadUtils.h"
 
 #include "EmbedLiteViewThreadParent.h"
 
@@ -28,6 +31,42 @@ namespace embedlite {
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
+static bool
+IsPromptResponse(const nsAString& aMessage)
+{
+  return aMessage.EqualsLiteral("alertresponse") ||
+         aMessage.EqualsLiteral("confirmresponse") ||
+         aMessage.EqualsLiteral("authresponse") ||
+         aMessage.EqualsLiteral("promptresponse");
+}
+
+static nsresult
+DispatchPromptResponseToMainThread(uint32_t aViewId,
+                                   const nsAString& aMessage,
+                                   const nsAString& aData)
+{
+  nsString message(aMessage);
+  nsString data(aData);
+
+  nsCOMPtr<nsIRunnable> event = NS_NewRunnableFunction(
+      "mozilla::embedlite::DispatchPromptResponseToMainThread",
+      [aViewId, message, data]() {
+        EmbedLiteAppChild* app = EmbedLiteAppChild::GetInstance();
+        if (!app) {
+          return;
+        }
+
+        EmbedLiteViewChildIface* view = app->GetViewByID(aViewId);
+        if (!view) {
+          return;
+        }
+
+        Unused << view->RecvAsyncMessage(message, data);
+      });
+
+  return NS_DispatchToMainThread(event.forget());
+}
+
 EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmbedLiteViewParent* aViewImpl, uint32_t aViewId)
   : mApp(aApp)
   , mWindow(aWindow)
@@ -39,6 +78,7 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteWindow* aWindow,  PEmb
   , mDynamicToolbarHeightChanging(false)
   , mMargins(0, 0, 0, 0)
   , mDynamicToolbarHeight(0)
+  , mSafeAreaInsets(0, 0, 0, 0)
 {
   LOGT();
   dynamic_cast<EmbedLiteViewIface*>(aViewImpl)->SetEmbedAPIView(this);
@@ -253,6 +293,12 @@ EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aM
 
   const nsDependentString msgname(aMessageName);
   const nsDependentString msg(aMessage);
+  if (IsPromptResponse(msgname) &&
+      EmbedLiteAppChild::GetInstance() &&
+      NS_SUCCEEDED(DispatchPromptResponseToMainThread(mUniqueID, msgname, msg))) {
+    return;
+  }
+
   Unused << mViewParent->SendAsyncMessage(msgname, msg);
 }
 
@@ -303,6 +349,13 @@ void EmbedLiteView::MarginsChanged(int top, int right, int bottom, int left)
     } else {
         mMarginsChanging = false;
     }
+}
+
+void EmbedLiteView::SetSafeAreaInsets(int top, int right, int bottom, int left)
+{
+    mSafeAreaInsets.SizeTo(top, right, bottom, left);
+    NS_ENSURE_TRUE(mViewParent, );
+    Unused << mViewParent->SendSetSafeAreaInsets(top, right, bottom, left);
 }
 
 void

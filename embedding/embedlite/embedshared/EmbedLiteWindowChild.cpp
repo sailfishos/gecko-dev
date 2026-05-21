@@ -8,23 +8,63 @@
 #include <math.h>
 
 #include "nsWindow.h"
+#include "EmbedLiteAppChild.h"
 #include "EmbedLiteWindowChild.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
 #include "gfxPlatform.h"
 #include "mozilla/widget/ScreenManager.h"
+#include "nsString.h"
 
 using namespace mozilla::dom;
 
 namespace mozilla {
 
-namespace layers {
-void ShutdownTileCache();
-}
 namespace embedlite {
 
 namespace {
 static std::map<uint32_t, EmbedLiteWindowChild*> sWindowChildMap;
+
+const char*
+ScreenOrientationName(hal::ScreenOrientation aOrientation)
+{
+  switch (aOrientation) {
+    case hal::ScreenOrientation::PortraitPrimary:
+      return "portrait-primary";
+    case hal::ScreenOrientation::LandscapePrimary:
+      return "landscape-primary";
+    case hal::ScreenOrientation::PortraitSecondary:
+      return "portrait-secondary";
+    case hal::ScreenOrientation::LandscapeSecondary:
+      return "landscape-secondary";
+    default:
+      return nullptr;
+  }
+}
+
+void
+SendContentOrientationChanged(uint32_t aWindowID, hal::ScreenOrientation aOrientation)
+{
+  const char* orientationName = ScreenOrientationName(aOrientation);
+  if (!orientationName) {
+    return;
+  }
+
+  EmbedLiteAppChild* app = EmbedLiteAppChild::GetInstance();
+  if (!app) {
+    return;
+  }
+
+  nsAutoCString json;
+  json.AssignLiteral("{\"orientation\":\"");
+  json.Append(orientationName);
+  json.AppendLiteral("\"}");
+  const NS_ConvertUTF8toUTF16 message(json);
+
+  app->SendAsyncMessageToViewsForWindowID(aWindowID,
+                                          u"embed:contentOrientationChanged",
+                                          message.get());
+}
 } // namespace
 
 EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &aId, EmbedLiteWindowListener *aListener)
@@ -36,7 +76,7 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t
   , mInitialized(false)
   , mDestroyAfterInit(false)
   , mDepth(32)
-  , mDensity(250)
+  , mDensity(1.0)
   , mDpi(96)
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
@@ -73,10 +113,6 @@ EmbedLiteWindowChild::~EmbedLiteWindowChild()
   if (mCreateWidgetTask) {
     mCreateWidgetTask->Cancel();
     mCreateWidgetTask = nullptr;
-  }
-
-  if (sWindowChildMap.empty()) {
-    mozilla::layers::ShutdownTileCache();
   }
 }
 
@@ -130,40 +166,40 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
   }
 
   int32_t colorDepth, pixelDepth;
-  nsCOMPtr<nsIScreen> screen;
 
-  ScreenManager::GetSingleton().GetPrimaryScreen(getter_AddRefs(screen));
+  RefPtr<widget::Screen> screen =
+      widget::ScreenManager::GetSingleton().GetPrimaryScreen();
+
   screen->GetColorDepth(&colorDepth);
   screen->GetPixelDepth(&pixelDepth);
 
-  hal::ScreenOrientation orientation = hal::eScreenOrientation_Default;
+  hal::ScreenOrientation orientation = hal::ScreenOrientation::Default;
   uint16_t angle = 0;
   switch (mRotation) {
     case ROTATION_0:
       angle = 0;
-      orientation = hal::eScreenOrientation_PortraitPrimary;
+      orientation = hal::ScreenOrientation::PortraitPrimary;
       break;
     case ROTATION_90:
       angle = 90;
-      orientation = hal::eScreenOrientation_LandscapePrimary;
+      orientation = hal::ScreenOrientation::LandscapePrimary;
       break;
     case ROTATION_180:
       angle = 180;
-      orientation = hal::eScreenOrientation_PortraitSecondary;
+      orientation = hal::ScreenOrientation::PortraitSecondary;
       break;
     case ROTATION_270:
       angle = 270;
-      orientation = hal::eScreenOrientation_LandscapeSecondary;
+      orientation = hal::ScreenOrientation::LandscapeSecondary;
       break;
     default:
       break;
   }
 
   nsIntRect rect(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height());
-  hal::NotifyScreenConfigurationChange(hal::ScreenConfiguration(
-      rect, orientation, angle, colorDepth, pixelDepth));
 
   RefreshScreen();
+  SendContentOrientationChanged(mId, orientation);
 
   return IPC_OK();
 }
@@ -184,9 +220,9 @@ void EmbedLiteWindowChild::CreateWidget()
   mWidget = new nsWindow(this);
   GetWidget()->SetRotation(mRotation);
 
-  nsWidgetInitData  widgetInit;
-  widgetInit.clipChildren = true;
-  widgetInit.mWindowType = eWindowType_toplevel;
+  widget::InitData widgetInit;
+  widgetInit.mClipChildren = true;
+  widgetInit.mWindowType = widget::WindowType::TopLevel;
 
   // nsWindow::CreateCompositor() reads back Size
   // when it creates the compositor.
@@ -212,23 +248,28 @@ void EmbedLiteWindowChild::RefreshScreen()
   else
     rect = LayoutDeviceIntRect(0, 0, mBounds.Height(), mBounds.Width());
 
-  AutoTArray<RefPtr<Screen>, 1> screenList;
-  RefPtr<Screen> screen = new Screen(rect, rect, mDepth, mDepth, DesktopToLayoutDeviceScale(mDensity), CSSToLayoutDeviceScale(1.0f), mDpi);
+  const float density = GetDensity();
+  AutoTArray<RefPtr<widget::Screen>, 1> screenList;
+  auto screen = MakeRefPtr<widget::Screen>(
+      rect, rect, mDepth, mDepth, 0, DesktopToLayoutDeviceScale(density),
+      CSSToLayoutDeviceScale(density), mDpi,
+      widget::Screen::IsPseudoDisplay::No);
   screenList.AppendElement(screen.forget());
-  ScreenManager::GetSingleton().Refresh(std::move(screenList));
+  widget::ScreenManager::Refresh(std::move(screenList));
 }
 
 void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &density, const float &dpi)
 {
   bool refresh = false;
+  float normalizedDensity = density > 0.0f ? density : 1.0f;
 
   if (depth != mDepth) {
     mDepth = depth;
     refresh = true;
   }
 
-  if (density != mDensity) {
-    mDensity = density;
+  if (normalizedDensity != mDensity) {
+    mDensity = normalizedDensity;
     refresh = true;
   }
 
@@ -237,8 +278,12 @@ void EmbedLiteWindowChild::SetScreenProperties(const int &depth, const float &de
     refresh = true;
   }
 
-  if (refresh)
+  if (refresh) {
     RefreshScreen();
+    if (mWidget) {
+      GetWidget()->BackingScaleFactorChanged();
+    }
+  }
 }
 
 } // namespace embedlite

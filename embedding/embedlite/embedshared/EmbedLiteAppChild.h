@@ -28,10 +28,13 @@ public:
   NS_DECL_NSIOBSERVER
 
   EmbedLiteAppChild(MessageLoop* aParentLoop);
-  void Init(MessageChannel* aParentChannel);
+  void Init(IToplevelProtocol* aTarget);
   EmbedLiteViewChildIface* GetViewByID(uint32_t aId) const override;
   EmbedLiteViewChildIface* GetViewByChromeParent(nsIWebBrowserChrome* aParent) const override;
   EmbedLiteWindowChild* GetWindowByID(uint32_t aWindowID);
+  void SendAsyncMessageToViewsForWindowID(uint32_t aWindowID,
+                                          const char16_t* aMessageName,
+                                          const char16_t* aMessage) const;
   bool CreateWindow(const uint32_t &parentId,
                     const uintptr_t &parentBrowsingContext,
                     const uint32_t &chromeFlags,
