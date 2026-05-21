@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 19 Aug 2020 09:36:29 +0300
+Subject: [PATCH 18/67] Fix embedlite building. JB#50505
+
+Use MOZ_EMBEDLITE for embedlite integration
+
+All random integration points should be part of this patch.
+
+[sailfishos][embedlite] Bring back tookit/xre changes
+
+Sha1:  367d2afdda4426652aa403d256fd4c17273dffe0
+Subject: Implemented XPCOM initialization in Process backend
+---
+ dom/gamepad/moz.build            |  1 +
+ netwerk/protocol/gio/moz.build   |  7 +++++
+ toolkit/xre/moz.build            |  2 ++
+ toolkit/xre/nsEmbedFunctions.cpp | 44 ++++++++++++++++++++++++++++++--
+ 4 files changed, 52 insertions(+), 2 deletions(-)
+
+diff --git a/dom/gamepad/moz.build b/dom/gamepad/moz.build
+index 5f55d5a95e96..6028eae2736b 100644
+--- a/dom/gamepad/moz.build
++++ b/dom/gamepad/moz.build
+@@ -79,3 +79,4 @@ CFLAGS += CONFIG["GLIB_CFLAGS"]
+ CFLAGS += CONFIG["MOZ_DBUS_GLIB_CFLAGS"]
+ CXXFLAGS += CONFIG["GLIB_CFLAGS"]
+ CXXFLAGS += CONFIG["MOZ_DBUS_GLIB_CFLAGS"]
++OS_LIBS += CONFIG['GLIB_LIBS']
+diff --git a/netwerk/protocol/gio/moz.build b/netwerk/protocol/gio/moz.build
+index 4078e5605c81..3b3481754eb3 100644
+--- a/netwerk/protocol/gio/moz.build
++++ b/netwerk/protocol/gio/moz.build
+@@ -38,5 +38,12 @@ FINAL_LIBRARY = "xul"
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
+ 
++CFLAGS += CONFIG['GLIB_CFLAGS']
++CXXFLAGS += CONFIG['GLIB_CFLAGS']
++OS_LIBS += CONFIG['GLIB_LIBS']
++OS_LIBS += [
++    '-lgio-2.0',
++]
++
+ with Files("**"):
+     BUG_COMPONENT = ("Core", "Widget: Gtk")
+diff --git a/toolkit/xre/moz.build b/toolkit/xre/moz.build
+index f2147eb07173..56d7e222c2c7 100644
+--- a/toolkit/xre/moz.build
++++ b/toolkit/xre/moz.build
+@@ -102,6 +102,7 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
+         'nsNativeAppSupportQt.cpp',
+         'nsQAppInstance.cpp',
+     ]
++    CXXFLAGS += CONFIG['MOZ_QT_CFLAGS']
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     UNIFIED_SOURCES += [
+         "nsNativeAppSupportUnix.cpp",
+@@ -247,6 +248,7 @@ LOCAL_INCLUDES += [
+     "/dom/commandhandler",
+     "/dom/ipc",
+     "/dom/webbrowserpersist",
++    '/mobile/sailfishos/embedprocess',
+     "/testing/gtest/mozilla",
+     "/toolkit/crashreporter",
+     "/xpcom/build",
+diff --git a/toolkit/xre/nsEmbedFunctions.cpp b/toolkit/xre/nsEmbedFunctions.cpp
+index b272b4508713..4bb1f3d05a48 100644
+--- a/toolkit/xre/nsEmbedFunctions.cpp
++++ b/toolkit/xre/nsEmbedFunctions.cpp
+@@ -78,6 +78,7 @@
+ 
+ #include "mozilla/dom/ContentProcess.h"
+ #include "mozilla/dom/ContentParent.h"
++#include "EmbedLiteContentProcess.h"
+ 
+ #include "mozilla/ipc/TestShellParent.h"
+ #if defined(XP_WIN)
+@@ -185,6 +186,11 @@ const char* XRE_ChildProcessTypeToAnnotation(GeckoProcessType aProcessType) {
+   }
+ }
+ 
++namespace mozilla::startup {
++GeckoProcessType sChildProcessType = GeckoProcessType_Default;
++bool sIsEmbedlite = false;
++}  // namespace mozilla::startup
++
+ #if defined(MOZ_WIDGET_ANDROID)
+ void XRE_SetAndroidChildFds(JNIEnv* env, const XRE_AndroidChildFds& fds) {
+   mozilla::jni::SetGeckoThreadEnv(env);
+@@ -565,10 +571,44 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
+           MOZ_CRASH("This makes no sense");
+           break;
+ 
+-        case GeckoProcessType_Content:
++        case GeckoProcessType_Content: {
+           ioInterposerGuard.emplace();
+-          process = MakeUnique<ContentProcess>(parentPID, messageChannelId);
++          // If passed in grab the application path for xpcom init
++          bool foundAppdir = false;
++          nsCString appDir;
++
++          for (int idx = 0; idx < aArgc; idx++) {
++            if (aArgv[idx] && !strcmp(aArgv[idx], "-embedlite")) {
++              startup::sIsEmbedlite = true;
++              continue;
++            }
++
++            if (aArgv[idx] && !strcmp(aArgv[idx], "-appdir") &&
++                idx + 1 < aArgc) {
++              MOZ_ASSERT(!foundAppdir);
++              if (foundAppdir) {
++                continue;
++              }
++              appDir.Assign(nsDependentCString(aArgv[idx + 1]));
++              foundAppdir = true;
++            }
++          }
++
++          if (startup::sIsEmbedlite) {
++            // EmbedLite does not share the normal Gecko content parent, so this
++            // child behaves as the default process for component registration.
++            startup::sChildProcessType = GeckoProcessType_Default;
++            process =
++                MakeUnique<mozilla::embedlite::EmbedLiteContentProcess>(
++                    parentPID, messageChannelId);
++            static_cast<mozilla::embedlite::EmbedLiteContentProcess*>(
++                process.get())
++                ->SetAppDir(appDir);
++          } else {
++            process = MakeUnique<ContentProcess>(parentPID, messageChannelId);
++          }
+           break;
++        }
+ 
+         case GeckoProcessType_IPDLUnitTest:
+           MOZ_RELEASE_ASSERT(mozilla::_ipdltest::gMakeIPDLUnitTestProcessChild,
+-- 
+2.51.0
+

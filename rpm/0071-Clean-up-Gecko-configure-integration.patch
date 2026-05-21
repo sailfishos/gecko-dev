@@ -1,0 +1,498 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 30 Apr 2026 22:26:56 +0200
+Subject: [PATCH 66/67] Clean up Gecko configure integration
+
+---
+ aclocal.m4                        |   1 +
+ build/autoconf/altoptions.m4      |   2 +
+ build/autoconf/pkg.m4             |  39 +++++
+ build/moz.configure/old.configure |   3 -
+ build/moz.configure/pkg.configure |   8 +
+ old-configure.in                  | 268 ++----------------------------
+ toolkit/moz.configure             |   7 +-
+ 7 files changed, 72 insertions(+), 256 deletions(-)
+ create mode 100644 build/autoconf/pkg.m4
+
+diff --git a/aclocal.m4 b/aclocal.m4
+index 00e3e55e8ba7..2305e17e4185 100644
+--- a/aclocal.m4
++++ b/aclocal.m4
+@@ -17,6 +17,7 @@ builtin(include, build/autoconf/android.m4)dnl
+ builtin(include, build/autoconf/clang-plugin.m4)dnl
+ builtin(include, build/autoconf/alloc.m4)dnl
+ builtin(include, build/autoconf/sanitize.m4)dnl
++builtin(include, build/autoconf/pkg.m4)dnl
+ 
+ MOZ_PROG_CHECKMSYS()
+ 
+diff --git a/build/autoconf/altoptions.m4 b/build/autoconf/altoptions.m4
+index 3105de006591..a8ef34acf1ee 100644
+--- a/build/autoconf/altoptions.m4
++++ b/build/autoconf/altoptions.m4
+@@ -19,6 +19,8 @@ dnl MOZ_READ_MYCONFIG() - Read in 'myconfig.sh' file
+ 
+ define([MOZ_DIVERSION_ARGS], 12)
+ 
++AC_DEFUN([MOZ_ARG_HEADER],[])
++
+ AC_DEFUN([MOZ_ARG],[dnl
+ AC_DIVERT_PUSH(MOZ_DIVERSION_ARGS)dnl
+     '$1',
+diff --git a/build/autoconf/pkg.m4 b/build/autoconf/pkg.m4
+new file mode 100644
+index 000000000000..8c190a631b84
+--- /dev/null
++++ b/build/autoconf/pkg.m4
+@@ -0,0 +1,39 @@
++dnl Minimal pkg-config macros for old-configure.in.
++dnl
++dnl ESR115 has moved most pkg-config checks to moz.configure, but the
++dnl Sailfish Qt, dconf, content-action and geckocamera restoration still uses
++dnl old-configure.in.  The usual pkg.m4 from pkg-config is for newer autoconf
++dnl and expands macros that autoconf 2.13 does not provide, so keep this small.
++
++AC_DEFUN([PKG_PROG_PKG_CONFIG],
++[AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
++if test "$PKG_CONFIG" = no; then
++    PKG_CONFIG=
++fi
++])
++
++dnl PKG_CHECK_MODULES(VARIABLE-PREFIX, MODULES,
++dnl                   [ACTION-IF-FOUND], [ACTION-IF-NOT-FOUND])
++AC_DEFUN([PKG_CHECK_MODULES],
++[AC_REQUIRE([PKG_PROG_PKG_CONFIG])dnl
++pkg_failed=no
++AC_MSG_CHECKING([for $2])
++if test -n "$PKG_CONFIG" && $PKG_CONFIG --exists "$2"; then
++    $1[]_CFLAGS=`$PKG_CONFIG --cflags "$2"`
++    $1[]_LIBS="`$PKG_CONFIG --libs "$2" | sed s/-Wl,--export-dynamic//g`"
++    AC_MSG_RESULT([yes])
++    ifelse([$3], , :, [$3])
++else
++    $1[]_CFLAGS=
++    $1[]_LIBS=
++    if test -n "$PKG_CONFIG"; then
++        $1[]_PKG_ERRORS=`$PKG_CONFIG --errors-to-stdout --print-errors "$2"`
++    else
++        $1[]_PKG_ERRORS="pkg-config not found"
++    fi
++    AC_MSG_RESULT([no])
++    ifelse([$4], ,
++        [AC_MSG_ERROR([Library requirements ($2) not met; consider adjusting PKG_CONFIG_PATH])],
++        [$4])
++fi
++])
+diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
+index b6392e7d3846..c777c45c8b82 100644
+--- a/build/moz.configure/old.configure
++++ b/build/moz.configure/old.configure
+@@ -100,9 +100,6 @@ def old_configure_options(*options):
+     "--with-distribution-id",
+     "--with-macbundlename-prefix",
+     "--with-qtdir",
+-    "--with-system-libevent",
+-    "--with-system-png",
+-    "--with-user-appdir",
+     "--x-includes",
+     "--x-libraries",
+ )
+diff --git a/build/moz.configure/pkg.configure b/build/moz.configure/pkg.configure
+index 6b460ae174ee..58772b07dd71 100644
+--- a/build/moz.configure/pkg.configure
++++ b/build/moz.configure/pkg.configure
+@@ -19,6 +19,8 @@ pkg_config = check_prog(
+     & depends(target.os)(lambda os: os not in ("WINNT", "OSX", "Android")),
+ )
+ 
++add_old_configure_assignment("PKG_CONFIG", pkg_config)
++
+ 
+ @depends_if(pkg_config)
+ @checking("for pkg-config version")
+@@ -86,6 +88,12 @@ set_config("PKG_CONFIG_PATH", pkg_config_vars.PKG_CONFIG_PATH)
+ set_config("PKG_CONFIG_SYSROOT_DIR", pkg_config_vars.PKG_CONFIG_SYSROOT_DIR)
+ set_config("PKG_CONFIG_LIBDIR", pkg_config_vars.PKG_CONFIG_LIBDIR)
+ 
++add_old_configure_assignment("PKG_CONFIG_PATH", pkg_config_vars.PKG_CONFIG_PATH)
++add_old_configure_assignment(
++    "PKG_CONFIG_SYSROOT_DIR", pkg_config_vars.PKG_CONFIG_SYSROOT_DIR
++)
++add_old_configure_assignment("PKG_CONFIG_LIBDIR", pkg_config_vars.PKG_CONFIG_LIBDIR)
++
+ 
+ # Locates the given module using pkg-config.
+ # - `var` determines the name of variables to set when the package is found.
+diff --git a/old-configure.in b/old-configure.in
+index 83b5def2c0a5..0c5434bd92a0 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1290,49 +1290,6 @@ fi
+ 
+ AC_SUBST(MOZ_DISTRIBUTION_ID)
+ 
+-dnl ========================================================
+-dnl = libproxy support
+-dnl ========================================================
+-
+-if test "$MOZ_ENABLE_GTK" -o "$MOZ_ENABLE_QT"
+-then
+-    MOZ_ENABLE_LIBPROXY=
+-
+-    MOZ_ARG_ENABLE_BOOL(libproxy,
+-    [  --enable-libproxy         Enable libproxy support ],
+-    MOZ_ENABLE_LIBPROXY=1,
+-    MOZ_ENABLE_LIBPROXY=)
+-
+-    if test "$MOZ_ENABLE_LIBPROXY"
+-    then
+-        PKG_CHECK_MODULES(MOZ_LIBPROXY, libproxy-1.0)
+-        AC_DEFINE(MOZ_ENABLE_LIBPROXY)
+-    fi
+-fi
+-AC_SUBST(MOZ_ENABLE_LIBPROXY)
+-
+-dnl ========================================================
+-dnl = dbus support
+-dnl ========================================================
+-
+-if test "$MOZ_ENABLE_GTK" -o "$MOZ_ENABLE_QT"
+-then
+-    MOZ_ENABLE_DBUS=1
+-
+-    MOZ_ARG_DISABLE_BOOL(dbus,
+-    [  --disable-dbus          Disable dbus support ],
+-        MOZ_ENABLE_DBUS=,
+-        MOZ_ENABLE_DBUS=1)
+-
+-    if test "$MOZ_ENABLE_DBUS"
+-    then
+-        PKG_CHECK_MODULES(MOZ_DBUS, dbus-1 >= $DBUS_VERSION)
+-        PKG_CHECK_MODULES(MOZ_DBUS_GLIB, dbus-glib-1 >= $DBUS_VERSION)
+-        AC_DEFINE(MOZ_ENABLE_DBUS)
+-    fi
+-fi
+-AC_SUBST(MOZ_ENABLE_DBUS)
+-
+ dnl ========================================================
+ dnl dconf support
+ dnl ========================================================
+@@ -1353,6 +1310,8 @@ then
+   fi
+ fi
+ AC_SUBST(MOZ_ENABLE_DCONF)
++AC_SUBST_LIST(MOZ_DCONF_CFLAGS)
++AC_SUBST_LIST(MOZ_DCONF_LIBS)
+ 
+ AC_TRY_COMPILE([#include <linux/ethtool.h>],
+                [ struct ethtool_cmd cmd; cmd.speed_hi = 0; ],
+@@ -1360,22 +1319,24 @@ AC_TRY_COMPILE([#include <linux/ethtool.h>],
+ 
+ AC_SUBST(MOZ_WEBRTC_HAVE_ETHTOOL_SPEED_HI)
+ 
+-if test -n "$MOZ_WEBRTC"; then
+-    if test -n "$MOZ_X11"; then
+-      MOZ_WEBRTC_X11_LIBS="-lXext -lXdamage -lXfixes -lXcomposite"
+-    fi
++if test -n "$MOZ_WEBRTC" -a -n "$MOZ_X11"; then
++    MOZ_WEBRTC_X11_LIBS="-lXext -lXdamage -lXfixes -lXcomposite"
++fi
+ 
++if test -n "$MOZ_ENABLE_QT"; then
+     MOZ_ENABLE_WEBRTC_GECKOCAMERA=
+     PKG_CHECK_MODULES(LIBGECKOCAMERA, geckocamera,
+-                     MOZ_ENABLE_WEBRTC_GECKOCAMERA=1,
++                      MOZ_ENABLE_WEBRTC_GECKOCAMERA=1,
+                       MOZ_ENABLE_WEBRTC_GECKOCAMERA=)
+     if test "$MOZ_ENABLE_WEBRTC_GECKOCAMERA"; then
+-       MOZ_ENABLE_WEBRTC_GECKOCAMERA=1
+-       AC_DEFINE(MOZ_ENABLE_WEBRTC_GECKOCAMERA)
+-       AC_SUBST(MOZ_ENABLE_WEBRTC_GECKOCAMERA)
++        MOZ_ENABLE_WEBRTC_GECKOCAMERA=1
++        AC_DEFINE(MOZ_ENABLE_WEBRTC_GECKOCAMERA)
+     fi
+ fi
+ 
++AC_SUBST(MOZ_ENABLE_WEBRTC_GECKOCAMERA)
++AC_SUBST_LIST(LIBGECKOCAMERA_CFLAGS)
++AC_SUBST_LIST(LIBGECKOCAMERA_LIBS)
+ AC_SUBST_LIST(MOZ_WEBRTC_X11_LIBS)
+ 
+ dnl ========================================================
+@@ -1400,41 +1361,6 @@ MOZ_WEBM_ENCODER=1
+ AC_DEFINE(MOZ_WEBM_ENCODER)
+ AC_SUBST(MOZ_WEBM_ENCODER)
+ 
+-dnl ========================================================
+-dnl NegotiateAuth
+-dnl ========================================================
+-
+-MOZ_ARG_DISABLE_BOOL(negotiateauth,
+-[  --disable-negotiateauth Disable GSS-API negotiation ],
+-    MOZ_AUTH_EXTENSION=,
+-    MOZ_AUTH_EXTENSION=1 )
+-
+-dnl ========================================================
+-dnl Searching of system directories for extensions.
+-dnl Note: this switch is meant to be used for test builds
+-dnl whose behavior should not depend on what happens to be
+-dnl installed on the local machine.
+-dnl ========================================================
+-MOZ_ARG_DISABLE_BOOL(system-extension-dirs,
+-[  --disable-system-extension-dirs
+-                          Disable searching system- and account-global
+-                          directories for extensions of any kind; use
+-                          only profile-specific extension directories],
+-  ENABLE_SYSTEM_EXTENSION_DIRS=,
+-  ENABLE_SYSTEM_EXTENSION_DIRS=1 )
+-if test "$ENABLE_SYSTEM_EXTENSION_DIRS"; then
+-  AC_DEFINE(ENABLE_SYSTEM_EXTENSION_DIRS)
+-fi
+-
+-dnl ========================================================
+-dnl = Universalchardet
+-dnl ========================================================
+-MOZ_ARG_DISABLE_BOOL(universalchardet,
+-[  --disable-universalchardet
+-                          Disable universal encoding detection],
+-  MOZ_UNIVERSALCHARDET=,
+-  MOZ_UNIVERSALCHARDET=1 )
+-
+ dnl ========================================================
+ dnl Gamepad support
+ dnl ========================================================
+@@ -1452,91 +1378,6 @@ fi
+ fi # COMPILE_ENVIRONMENT
+ 
+ 
+-dnl ========================================================
+-dnl = Breakpad crash reporting (on by default on supported platforms)
+-dnl ========================================================
+-
+-case $target in
+-i?86-*-mingw*|x86_64-*-mingw*|aarch64-*-mingw*)
+-  MOZ_CRASHREPORTER=1
+-  ;;
+-i?86-apple-darwin*|x86_64-apple-darwin*|aarch64-apple-darwin*)
+-  MOZ_CRASHREPORTER=1
+-  ;;
+-*-android*|*-linuxandroid*)
+-  dnl Android/arm is arm-unknown-linux-androideabi, so android condition should
+-  dnl be before Linux condition
+-  dnl The crash reporter prevents crash stacktraces to be logged in the
+-  dnl logs so we leave it out by default in developer builds.
+-  if test -z "$DEVELOPER_OPTIONS"; then
+-    MOZ_CRASHREPORTER=1
+-  fi
+-  ;;
+-i?86-*-linux*|x86_64-*-linux*|arm-*-linux*)
+-  if test "$MOZ_ENABLE_GTK"; then
+-    MOZ_CRASHREPORTER=1
+-  fi
+-  ;;
+-esac
+-
+-MOZ_ARG_DISABLE_BOOL(crashreporter,
+-[  --disable-crashreporter Disable breakpad crash reporting],
+-    [MOZ_CRASHREPORTER=],
+-    [MOZ_CRASHREPORTER=F # Force enable breakpad])
+-
+-if test "$OS_ARCH" != "$HOST_OS_ARCH" -a "$OS_ARCH" != "WINNT" -a "$OS_ARCH" != "Darwin" -a "$MOZ_WIDGET_TOOLKIT" != "android"; then
+-  if test "$MOZ_CRASHREPORTER" = F; then
+-    AC_MSG_ERROR([Cannot --enable-crashreporter, as breakpad tools do not support compiling on $HOST_OS_ARCH while targeting $OS_ARCH.])
+-  fi
+-  MOZ_CRASHREPORTER=
+-fi
+-
+-if test -n "$MOZ_CRASHREPORTER"; then
+-   AC_DEFINE(MOZ_CRASHREPORTER)
+-
+-  if test "$OS_TARGET" = "Linux" && \
+-    test -z "$SKIP_LIBRARY_CHECKS"; then
+-    PKG_CHECK_MODULES(MOZ_GTHREAD, gthread-2.0)
+-  fi
+-
+-  if test "$OS_ARCH" = "WINNT"; then
+-    if test -z "$HAVE_64BIT_BUILD" -a -n "$COMPILE_ENVIRONMENT"; then
+-      MOZ_CRASHREPORTER_INJECTOR=1
+-      AC_DEFINE(MOZ_CRASHREPORTER_INJECTOR)
+-    fi
+-  fi
+-fi
+-
+-dnl ========================================================
+-dnl = Enable compilation of specific extension modules
+-dnl ========================================================
+-
+-MOZ_ARG_ENABLE_STRING(extensions,
+-[  --enable-extensions     Enable extensions],
+-[ for option in `echo $enableval | sed 's/,/ /g'`; do
+-    if test "$option" = "yes" -o "$option" = "all"; then
+-        AC_MSG_ERROR([--enable-extensions=$option is no longer supported.])
+-    elif test "$option" = "no" -o "$option" = "none"; then
+-        MOZ_EXTENSIONS=""
+-    elif test "$option" = "default"; then
+-        MOZ_EXTENSIONS="$MOZ_EXTENSIONS $MOZ_EXTENSIONS_DEFAULT"
+-    elif test `echo "$option" | grep -c \^-` != 0; then
+-        option=`echo $option | sed 's/^-//'`
+-        MOZ_EXTENSIONS=`echo "$MOZ_EXTENSIONS" | sed "s/ ${option}//"`
+-    else
+-        MOZ_EXTENSIONS="$MOZ_EXTENSIONS $option"
+-    fi
+-done],
+-    MOZ_EXTENSIONS="$MOZ_EXTENSIONS_DEFAULT")
+-
+-dnl Ensure every extension exists, to avoid mostly-inscrutable error messages
+-dnl when trying to build a nonexistent extension.
+-for extension in $MOZ_EXTENSIONS; do
+-    if test ! -d "${srcdir}/extensions/${extension}"; then
+-        AC_MSG_ERROR([Unrecognized extension provided to --enable-extensions: ${extension}.])
+-    fi
+-done
+-
+ # Avoid defining MOZ_ENABLE_CAIRO_FT on Windows platforms because
+ # "cairo-ft-font.c" includes <dlfcn.h>, which only exists on posix platforms
+ if test -n "$MOZ_TREE_FREETYPE" -a "$OS_TARGET" != WINNT; then
+@@ -1546,33 +1387,6 @@ if test -n "$MOZ_TREE_FREETYPE" -a "$OS_TARGET" != WINNT; then
+    AC_SUBST_LIST(CAIRO_FT_CFLAGS)
+ fi
+ 
+-dnl ========================================================
+-dnl Updater
+-dnl ========================================================
+-
+-MOZ_ARG_DISABLE_BOOL(updater,
+-[  --disable-updater       Disable building of updater],
+-    MOZ_UPDATER=,
+-    MOZ_UPDATER=1 )
+-
+-if test -n "$MOZ_UPDATER"; then
+-    AC_DEFINE(MOZ_UPDATER)
+-fi
+-
+-dnl ========================================================
+-dnl parental controls (for Windows Vista)
+-dnl ========================================================
+-MOZ_ARG_DISABLE_BOOL(parental-controls,
+-[  --disable-parental-controls
+-                          Do not build parental controls],
+-   MOZ_DISABLE_PARENTAL_CONTROLS=1,
+-   MOZ_DISABLE_PARENTAL_CONTROLS=)
+-if test -n "$MOZ_DISABLE_PARENTAL_CONTROLS"; then
+-    AC_DEFINE(MOZ_DISABLE_PARENTAL_CONTROLS)
+-fi
+-
+-AC_SUBST(MOZ_DISABLE_PARENTAL_CONTROLS)
+-
+ dnl ========================================================
+ dnl = Disable smartcard support
+ dnl ========================================================
+@@ -1581,50 +1395,6 @@ if test -n "$MOZ_NO_SMART_CARDS"; then
+ fi
+ AC_SUBST(MOZ_NO_SMART_CARDS)
+ 
+-dnl ========================================================
+-dnl = Sandboxing support
+-dnl ========================================================
+-if test -n "$MOZ_TSAN" -o -n "$MOZ_ASAN"; then
+-    # Bug 1182565: TSan conflicts with sandboxing on Linux.
+-    # Bug 1287971: LSan also conflicts with sandboxing on Linux.
+-    case $OS_TARGET in
+-    Linux|Android)
+-        MOZ_SANDBOX=
+-        ;;
+-    esac
+-fi
+-
+-MOZ_ARG_DISABLE_BOOL(sandbox,
+-[  --disable-sandbox        Disable sandboxing support],
+-    MOZ_SANDBOX=,
+-    MOZ_SANDBOX=1)
+-
+-case "$OS_TARGET" in
+-WINNT|Darwin|OpenBSD)
+-;;
+-Linux)
+-    case $CPU_ARCH in
+-        x86_64|x86|arm|aarch64)
+-        ;;
+-        # Linux sandbox is only available on x86{,_64} and arm{,64}.
+-        *)
+-            MOZ_SANDBOX=
+-        ;;
+-    esac
+-    ;;
+-*)
+-    # Only enable the sandbox by default on Linux, OpenBSD, macOS, and Windows
+-    MOZ_SANDBOX=
+-;;
+-esac
+-
+-if test -n "$MOZ_SANDBOX"; then
+-    AC_DEFINE(MOZ_SANDBOX)
+-fi
+-
+-AC_SUBST(MOZ_SANDBOX)
+-
+-
+ dnl ========================================================
+ dnl =
+ dnl = Module specific options
+@@ -1638,15 +1408,6 @@ dnl ==============================
+ dnl Check to see if fdatasync is available and make use of it
+ AC_CHECK_FUNC(fdatasync)
+ 
+-dnl ========================================================
+-dnl = Disable zipwriter
+-dnl ========================================================
+-MOZ_ARG_DISABLE_BOOL(zipwriter,
+-[  --disable-zipwriter     Disable zipwriter component],
+-    MOZ_ZIPWRITER=,
+-    MOZ_ZIPWRITER=1 )
+-AC_SUBST(MOZ_ZIPWRITER)
+-
+ dnl ========================================================
+ dnl =
+ dnl = Feature options that require extra sources to be pulled
+@@ -1801,9 +1562,12 @@ if test -z "${GLIB_CFLAGS}" -o -z "${GLIB_LIBS}" ; then
+ fi
+ fi
+ 
++AC_SUBST_LIST(GLIB_CFLAGS)
++AC_SUBST_LIST(GLIB_LIBS)
++
+ if test -z "${GLIB_GMODULE_LIBS}" \
+    -a -n "${GLIB_CONFIG}"\
+-    -a "${GLIB_CONFIG}" != no\
++   -a "${GLIB_CONFIG}" != no\
+ ; then
+     GLIB_GMODULE_LIBS=`$GLIB_CONFIG gmodule --libs`
+ fi
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index e8438f80ff0d..55325a088642 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -485,6 +485,11 @@ def toolkit_gtk(toolkit):
+     return toolkit == "gtk"
+ 
+ 
++@depends(toolkit)
++def toolkit_qt(toolkit):
++    return toolkit == "qt"
++
++
+ # Wayland support
+ # ==============================================================
+ wayland_headers = pkg_check_modules(
+@@ -3036,7 +3041,7 @@ set_define("MOZ_LAYERS_HAVE_LOG", True, when="--enable-dump-painting")
+ 
+ # libproxy support
+ # ==============================================================
+-with only_when(toolkit_gtk):
++with only_when(toolkit_gtk | toolkit_qt):
+     system_lib_option("--enable-libproxy", help="Enable libproxy support")
+ 
+     with only_when("--enable-libproxy"):
+-- 
+2.51.0

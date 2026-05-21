@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Wed, 9 Aug 2023 23:30:20 +0100
+Subject: [PATCH 03/67] Fix embedlite building. JB#50505
+
+Updates the build configuration for embedlite.
+
+Adds the --with-embedlite flag so that we can use the flag in
+embedding/embedlite/config/mozconfig.merqtxulrunner.
+
+Adds the --enable-dconf flag back to allow the build to continue.
+
+Co-authored-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ build/moz.configure/old.configure | 1 +
+ toolkit/moz.configure             | 8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
+index bd777622750d..b6392e7d3846 100644
+--- a/build/moz.configure/old.configure
++++ b/build/moz.configure/old.configure
+@@ -91,6 +91,7 @@ def old_configure_options(*options):
+ @old_configure_options(
+     "--cache-file",
+     "--datadir",
++    "--enable-dconf",
+     "--enable-official-branding",
+     "--includedir",
+     "--libdir",
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 7ce37a18b915..e8438f80ff0d 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -2840,6 +2840,14 @@ set_config("MOZ_OXIDIZED_BREAKPAD", True, when=oxidized_breakpad)
+ set_define("MOZ_OXIDIZED_BREAKPAD", True, when=oxidized_breakpad)
+ 
+ 
++# Embedlite
++# ==============================================================
++option("--with-embedlite", help="Build with embedlite")
++
++set_config("MOZ_EMBEDLITE", True, when="--with-embedlite")
++set_define("MOZ_EMBEDLITE", True, when="--with-embedlite")
++
++
+ # Wine
+ # ==============================================================
+ @depends(target, host)
+-- 
+2.51.0
+

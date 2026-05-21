@@ -1,4 +1,4 @@
-%define greversion    91.13.1
+%define greversion    115.35.2
 %define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner
@@ -6,17 +6,13 @@
 %define compile_environment 1
 %define system_nspr         1
 %define system_nss          1
-%define system_sqlite       1
 %define system_ffi          1
-%define system_hunspell     1
 %define system_jpeg         1
 %define system_png          1
 %define system_icu          1
 %define system_zlib         1
-%define system_bz2          1
 %define system_pixman       1
-# TODO: Adapt vp9 codec to the new libvpx API. For now, use the internal libvpx (v1.6.1).
-%define system_libvpx       0
+%define system_libvpx       1
 %define system_libwebp      1
 
 
@@ -54,122 +50,102 @@ Release:    1
 License:    MPLv2.0
 URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
-Patch1:     0001-sailfishos-gecko-Add-symlink-to-embedlite.-JB-52893.patch
-Patch2:     0002-sailfishos-qt-Bring-back-Qt-layer.-JB-50505.patch
-Patch3:     0003-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
-Patch4:     0004-sailfishos-gecko-Revert-Bug-1611386-Drop-support-for.patch
-Patch5:     0005-sailfishos-gecko-Fix-build-version-requirements.patch
-Patch6:     0006-sailfishos-gecko-Read-rustc-host-from-environment.-J.patch
-Patch7:     0007-sailfishos-qt-Provide-checkbox-radio-renderer-for-Sa.patch
-Patch8:     0008-sailfishos-compositor-Fix-GLContextProvider-defines.patch
-Patch9:     0009-sailfishos-ipc-Whitelist-sync-messages-of-EmbedLite..patch
-Patch10:    0010-sailfishos-components-Cleanup-static-components-defi.patch
-Patch11:    0011-sailfishos-gecko-Reduce-Rust-build-requirements.patch
-Patch12:    0012-sailfishos-gecko-Patch-glslopt-to-build-on-arm.patch
-Patch13:    0013-sailfishos-gecko-Disable-MOC-code-generation-for-mes.patch
-Patch14:    0014-sailfishos-gecko-Backport-Embed-MessageLoop-contruct.patch
-Patch15:    0015-sailfishos-gecko-Work-around-upstream-membarrier-cha.patch
-Patch16:    0016-sailfishos-gecko-Allow-compositor-specializations-to.patch
-Patch17:    0017-sailfishos-gecko-Revert-Bug-1676576-Remove-unused-fu.patch
-Patch18:    0018-sailfishos-gecko-Restore-GLScreenBuffer-and-TextureI.patch
-Patch19:    0019-sailfishos-gecko-Hackish-fix-for-preferences-usage-i.patch
-Patch20:    0020-sailfishos-gecko-Revert-Bug-1706051-Remove-some-IPC-.patch
-Patch21:    0021-sailfishos-gecko-Remove-NS_LITERAL_CSTRING-usage.patch
-Patch22:    0022-sailfishos-gecko-Revert-Bug-1494175-Remove-unimpleme.patch
-Patch23:    0023-sailfishos-gecko-Fix-embedlite-building.-JB-50505.patch
-Patch24:    0024-sailfishos-gecko-Update-ProcInfo.patch
-Patch25:    0025-sailfishos-gecko-Revert-Bug-1567888-remove-unneeded-.patch
-Patch26:    0026-sailfishos-gecko-Restore-nsAppShell.h.patch
-Patch27:    0027-sailfishos-gecko-Add-support-for-aarch64-to-elfhack..patch
-Patch28:    0028-sailfishos-gecko-Allow-gen_last_modified.py-to-compl.patch
-Patch29:    0029-sailfishos-gecko-Force-to-build-mozglue-and-xpcomglu.patch
-Patch30:    0030-sailfishos-gecko-Revert-Bug-445128-Stop-putting-the-.patch
-Patch31:    0031-sailfishos-gecko-Revert-Bug-1427455-Remove-unused-va.patch
-Patch32:    0032-sailfishos-gecko-Revert-Bug-1333826-Remove-SDK_FILES.patch
-Patch33:    0033-sailfishos-gecko-Revert-Bug-1333826-Remove-the-make-.patch
-Patch34:    0034-sailfishos-gecko-Revert-Bug-1333826-Remove-a-few-ref.patch
-Patch35:    0035-sailfishos-gecko-Introduce-EmbedInitGlue-to-the-mozg.patch
-Patch36:    0036-sailfishos-gecko-Split-namespace-into-two-blocks.patch
-Patch37:    0037-sailfishos-gecko-Create-EmbedLiteCompositorBridgePar.patch
-Patch38:    0038-sailfishos-egl-Do-not-create-CreateFallbackSurface.-.patch
-Patch39:    0039-sailfishos-gecko-Make-PresShell-SetIsActive-public.patch
-Patch40:    0040-sailfishos-egl-Drop-swap_buffers_with_damage-extensi.patch
-Patch41:    0041-sailfishos-gecko-Add-patch-to-fix-32-bit-builds.patch
-Patch42:    0042-sailfishos-gecko-Fix-gfxPlatform-AsyncPanZoomEnabled.patch
-Patch43:    0043-sailfishos-gecko-Supress-URLQueryStrippingListServic.patch
-Patch44:    0044-sailfishos-gecko-Allow-file-scheme-when-loading-Open.patch
-Patch45:    0045-sailfishos-gecko-Add-and-adjust-embedlite-static-pre.patch
-Patch46:    0046-sailfishos-gecko-Disable-SessionStore-functionality.patch
-Patch47:    0047-sailfishos-gecko-Enable-dconf.patch
-Patch48:    0048-sailfishos-gecko-Prevent-errors-from-DownloadPrompte.patch
-Patch49:    0049-sailfishos-gecko-Restore-NotifyDidPaint-event-and-ti.patch
-Patch50:    0050-sailfishos-gecko-Adapt-build-configuration-for-Sailf.patch
-Patch51:    0051-sailfishos-webrtc-Update-GN-build-files-for-WebRTC.-.patch
-Patch52:    0052-sailfishos-gecko-Disable-desktop-sharing-feature-on-.patch
-Patch53:    0053-sailfishos-gecko-Enable-GMP-for-encoding-decoding.-J.patch
-Patch54:    0054-sailfishos-webrtc-Implement-video-capture-module.-JB.patch
-Patch55:    0055-sailfishos-webrtc-Regenerate-moz.build-files.-JB-537.patch
-Patch56:    0056-sailfishos-gecko-Drop-AudioPlayback-messages-if-no-e.patch
-Patch57:    0057-sailfishos-gecko-Get-ContentFrameMessageManager-via-.patch
-Patch58:    0058-sailfishos-gecko-Convert-panic-into-early-return-in-.patch
-Patch59:    0059-sailfishos-gecko-Allow-LoginManagerPrompter-to-find-.patch
-Patch60:    0060-sailfishos-gecko-Add-support-for-prefers-color-schem.patch
-Patch61:    0061-sailfishos-gecko-Update-hash-for-mapped_hyph.patch
-Patch62:    0062-sailfishos-gecko-Fix-content-action-integration-to-w.patch
-Patch63:    0063-sailfishos-gecko-Make-fullscreen-enabling-work-as-us.patch
-Patch64:    0064-sailfishos-gecko-Prioritize-GMP-plugins-over-all-oth.patch
-Patch65:    0065-sailfishos-gecko-Force-recycling-of-gmp-droid-instan.patch
-Patch66:    0066-sailfishos-gecko-Force-use-of-mobile-video-controls..patch
-Patch67:    0067-sailfishos-gecko-Fix-video-hardware-accelaration-not.patch
-Patch68:    0068-sailfishos-gecko-Add-a-video-decoder-based-on-gecko-.patch
-Patch69:    0069-sailfishos-gecko-Fix-audio-underruns-for-fullduplex-.patch
-Patch70:    0070-sailfishos-gecko-Bug-1750760-Create-ffmpeg59-module-.patch
-Patch71:    0071-sailfishos-gecko-Bug-1750760-Open-libavcodec.so.59-l.patch
-Patch72:    0072-sailfishos-gecko-Bug-1750760-Update-audio-and-video-.patch
-Patch73:    0073-sailfishos-gecko-Bug-1761471-FFmpeg-5.0-Get-frame-co.patch
-Patch74:    0074-sailfishos-gecko-Bug-1758948-FFmpeg-Use-AVFrame-pts-.patch
-Patch75:    0075-sailfishos-gecko-Ensure-audio-continues-when-screen-.patch
-Patch76:    0076-sailfishos-gecko-Fix-build-failure-due-to-rust-lang-.patch
-Patch77:    0077-sailfishos-gecko-Fix-unstable-name-collisions-warnin.patch
-Patch78:    0078-sailfishos-embedlite-egl-Fix-mesa-egl-display-and-bu.patch
-Patch79:    0079-sailfishos-gecko-Delete-startupCache-if-it-s-stale.patch
-Patch80:    0080-sailfishos-gecko-Hardcode-loopback-address-for-profi.patch
-Patch81:    0081-sailfishos-gecko-Start-using-user-agent-builder.-JB-.patch
-Patch82:    0082-sailfishos-gecko-Disallow-page-zooming-if-the-meta-v.patch
-Patch83:    0083-sailfishos-gecko-Add-preference-to-bypass-CORS-on-ns.patch
-Patch84:    0084-sailfishos-gecko-Get-12-24h-timeformat-setting-from-.patch
-Patch85:    0085-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
-Patch86:    0086-Bug-1782988-Fix-use-of-arc4random_buf-use-in-ping.cp.patch
-Patch87:    0087-Bug-1777674-Add-missing-cstdint-include-to-support-G.patch
-Patch88:    0088-Bug-1811714-Add-a-few-missing-cstdint-includes-r-gfx.patch
-Patch89:    0089-sailfishos-gecko-Update-content-signature-root-hash..patch
-Patch90:    0090-Bug-1766848-Update-libevent-to-version-2.1.12.-r-jld.patch
-Patch91:    0091-Bug-1782988-Avoid-build-bustage-when-building-agains.patch
-Patch92:    0092-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
-Patch93:    0093-Bug-1769631-Remove-U-from-mode-parameters-for-variou.patch
-Patch94:    0094-Bug-1799982-Remove-uses-of-inline-flags-from-XPIDL-r.patch
-Patch95:    0095-Bug-1880013-Update-glslopt-to-0.1.10-for-C-20-fix.-r.patch
-Patch96:    0096-Bug-1913645-Update-glslopt-to-0.1.11-to-fix-aarch64-.patch
-Patch97:    0097-Bug-1998927-Update-glslopt-to-explicitly-define-MOZI.patch
-Patch98:    0098-Bug-1999625-Update-glslopt-to-0.1.13.-r-gfx-reviewer.patch
-Patch99:    0099-Bug-2017954-Update-glslopt-to-0.1.14-r-jnicol-gfx-re.patch
+Patch1:     0001-Add-symlink-to-embedlite.-JB-52893.patch
+Patch2:     0002-Bring-back-Qt-layer.-JB-50505.patch
+Patch3:     0003-Fix-embedlite-building.-JB-50505.patch
+Patch4:     0004-Read-rustc-host-from-environment.-JB-53019-OMP-JOLLA.patch
+Patch5:     0005-Provide-checkbox-radio-renderer-for-Sailfish-OS.-Con.patch
+Patch6:     0006-Fix-GLContextProvider-defines.patch
+Patch7:     0007-Whitelist-sync-messages-of-EmbedLite.-JB-50505.patch
+Patch8:     0008-Cleanup-static-components-definitions.-JB-55835-OMP-.patch
+Patch9:     0009-Reduce-Rust-build-requirements.patch
+Patch10:     0010-Patch-glslopt-to-build-on-arm.patch
+Patch11:     0011-Disable-MOC-code-generation-for-message_pump_qt.patch
+Patch12:     0012-Backport-Embed-MessageLoop-contructor-back-sha1-eb2d.patch
+Patch13:     0013-Allow-compositor-specializations-to-override-the-com.patch
+Patch14:     0014-Revert-Bug-1676576-Remove-unused-functions-of-Compos.patch
+Patch15:     0015-Hackish-fix-for-preferences-usage-in-Parent-process-.patch
+Patch16:     0016-Revert-Bug-1706051-Remove-some-IPC-messages-that-are.patch
+Patch17:     0017-Revert-Bug-1494175-Remove-unimplemented-nsIWebBrowse.patch
+Patch18:     0018-Fix-embedlite-building.-JB-50505.patch
+Patch19:     0019-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
+Patch20:     0020-Allow-gen_last_modified.py-to-complete.patch
+Patch21:     0021-Force-to-build-mozglue-and-xpcomglue-static-librarie.patch
+Patch22:     0022-Revert-Bug-445128-Stop-putting-the-version-number-in.patch
+Patch23:     0023-Revert-Bug-1427455-Remove-unused-variables-from-base.patch
+Patch24:     0024-Revert-Bug-1333826-Remove-SDK_FILES-SDK_LIBRARY-and-.patch
+Patch25:     0025-Revert-Bug-1333826-Remove-the-make-sdk-build-target-.patch
+Patch26:     0026-Revert-Bug-1333826-Remove-a-few-references-from-.mk-.patch
+Patch27:     0027-Introduce-EmbedInitGlue-to-the-mozglue.-JB-50788.patch
+Patch28:     0028-Split-namespace-into-two-blocks.patch
+Patch29:     0029-Do-not-create-CreateFallbackSurface.-JB-55226-OMP-JO.patch
+Patch30:     0030-Make-PresShell-SetIsActive-public.patch
+Patch31:     0031-Drop-swap_buffers_with_damage-extension-support.-Fix.patch
+Patch32:     0032-Add-patch-to-fix-32-bit-builds.patch
+Patch33:     0033-Fix-gfxPlatform-AsyncPanZoomEnabled-for-embedlite.-J.patch
+Patch34:     0034-Supress-URLQueryStrippingListService.jsm-error.patch
+Patch35:     0035-Allow-file-scheme-when-loading-OpenSearch-providers.patch
+Patch36:     0036-Add-and-adjust-embedlite-static-prefs.patch
+Patch37:     0037-Disable-SessionStore-functionality.patch
+Patch38:     0038-Prevent-errors-from-DownloadPrompter.patch
+Patch39:     0039-Restore-NotifyDidPaint-event-and-timers.patch
+Patch40:     0040-Adapt-build-configuration-for-SailfishOS.-JB-53756.patch
+Patch41:     0041-Update-GN-build-files-for-WebRTC.-JB-53756.patch
+Patch42:     0042-Disable-desktop-sharing-feature-on-SFOS.-JB-53756.patch
+Patch43:     0043-Implement-video-capture-module.-JB-53982.patch
+Patch44:     0044-Regenerate-moz.build-files.-JB-53756.patch
+Patch45:     0045-Drop-AudioPlayback-messages-if-no-embedder-element-i.patch
+Patch46:     0046-Get-ContentFrameMessageManager-via-nsIDocShellTreeOw.patch
+Patch47:     0047-Convert-panic-into-early-return-in-Hyphenator.patch
+Patch48:     0048-Allow-LoginManagerPrompter-to-find-its-window.-JB-55.patch
+Patch49:     0049-Add-support-for-prefers-color-scheme-JB-58394.patch
+Patch50:     0050-Update-hash-for-mapped_hyph.patch
+Patch51:     0051-Fix-content-action-integration-to-work.-Fixes-JB-512.patch
+Patch52:     0052-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
+Patch53:     0053-Force-use-of-mobile-video-controls.-JB-55484-OMP-JOL.patch
+Patch54:     0054-Add-a-video-decoder-based-on-gecko-camera.-JB-56755.patch
+Patch55:     0055-Fix-audio-underruns-for-fullduplex-mode.-JB-55461.patch
+Patch56:     0056-Ensure-audio-continues-when-screen-is-locked.-Contri.patch
+Patch57:     0057-Delete-startupCache-if-it-s-stale.patch
+Patch58:     0058-Hardcode-loopback-address-for-profile-lock-filename..patch
+Patch59:     0059-Start-using-user-agent-builder.-JB-52068.patch
+Patch60:     0060-Disallow-page-zooming-if-the-meta-viewport-scale-is-.patch
+Patch61:     0061-Add-preference-to-bypass-CORS-on-nsContentSecurityMa.patch
+Patch62:     0062-Get-12-24h-timeformat-setting-from-dconf.-Fixes-JB-5.patch
+Patch63:     0063-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
+Patch64:     0064-Update-content-signature-root-hash.-JB-63099.patch
+Patch65:     0065-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
+Patch66:     0066-Bug-1880013-Update-glslopt-to-0.1.10-for-C-20-fix.-r.patch
+Patch67:     0067-Bug-1913645-Update-glslopt-to-0.1.11-to-fix-aarch64-.patch
+Patch68:     0068-Bug-1998927-Update-glslopt-to-explicitly-define-MOZI.patch
+Patch69:     0069-Bug-1999625-Update-glslopt-to-0.1.13.-r-gfx-reviewer.patch
+Patch70:     0070-Bug-2017954-Update-glslopt-to-0.1.14-r-jnicol-gfx-re.patch
+Patch71:     0071-Clean-up-Gecko-configure-integration.patch
+Patch72:     0072-Adapt-EmbedLite-WebRender-offscreen-compositing.patch
+Patch73:     0073-Restore-EmbedLite-native-prompt-dialogs.patch
+Patch74:     0074-Guard-media-sink-suspend-before-initialization.patch
+Patch75:     0075-Set-gecko-camera-chroma-subsampling.patch
+Patch76:     0076-Allow-disabling-default-protocol-handler-injection.patch
+Patch77:     0077-Fix-EmbedLite-toolkit-error-pages.patch
+Patch78:     0078-Wait-for-gecko-camera-decoder-EOS-when-draining.patch
+Patch79:     0079-Use-EmbedLite-helper-app-dialog-static-registration.patch
+Patch80:     0080-Load-EmbedLite-search-engines-from-settings.patch
 
-BuildRequires:  rust
+BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
-BuildRequires:  cargo
+BuildRequires:  cargo >= 1.66.0
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Widgets)
 BuildRequires:  pkgconfig(pango)
+BuildRequires:  pkgconfig(glib-2.0)
+BuildRequires:  pkgconfig(gobject-2.0)
 BuildRequires:  pkgconfig(alsa)
 %if %{system_nspr}
 BuildRequires:  pkgconfig(nspr) >= 4.32.0
 %endif
 %if %{system_nss}
-BuildRequires:  pkgconfig(nss) >= 3.53.1
-%endif
-%if %{system_sqlite}
-BuildRequires:  pkgconfig(sqlite3) >= 3.8.9
+BuildRequires:  pkgconfig(nss) >= 3.90
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
@@ -188,26 +164,23 @@ BuildRequires:  qt5-default
 BuildRequires:  autoconf213
 BuildRequires:  automake
 BuildRequires:  python3-base
+BuildRequires:  python3-curses
 BuildRequires:  python3-sqlite
 BuildRequires:  python3-devel
 BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
-BuildRequires:  cbindgen >= 0.19.0
+BuildRequires:  cbindgen >= 0.24.3
 BuildRequires:  llvm
 BuildRequires:  clang-devel
 BuildRequires:  libatomic
 
 %if %{system_icu}
-BuildRequires:  libicu >= 67.1
-BuildRequires:  libicu-devel >= 67.1
+BuildRequires:  libicu >= 73.1
+BuildRequires:  libicu-devel >= 73.1
 %endif
-%if %{system_hunspell}
-BuildRequires:  hunspell-devel
-%endif
-%if %{system_bz2}
+# Required by bundled freetype bzip2 support; ESR115 has no system-bz2 toggle.
 BuildRequires:  bzip2-devel
-%endif
 %if %{system_zlib}
 BuildRequires:  zlib
 %endif
@@ -247,7 +220,7 @@ Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
 # Auto dependency is not picking this up.
 %if %{system_nss}
-Requires: pkgconfig(nss) >= 3.53.1
+Requires: pkgconfig(nss) >= 3.90
 %endif
 
 %description devel
@@ -282,6 +255,25 @@ echo "Target is %SB2_TARGET"
 
 mkdir -p "%BUILD_DIR"
 cp -rf "%BASE_CONFIG" "%BUILD_DIR"/mozconfig
+
+# Keep system library toggles in the spec so OBS and local SDK builds use the
+# same switches, and avoid duplicate configure options from the base mozconfig.
+sed -i \
+    -e '/^ac_add_options --with-system-jpeg$/d' \
+    -e '/^ac_add_options --with-system-nspr$/d' \
+    -e '/^ac_add_options --with-system-nss$/d' \
+    "%BUILD_DIR"/mozconfig
+
+# ESR115 libxul debug sections are too large for the SailfishOS aarch64
+# debugedit/strip path. Build the packaged engine without C/C++ debug symbols;
+# Rust debug info is already disabled in the patch stack.
+sed -i \
+    -e '/^export MOZ_DEBUG_SYMBOLS=/d' \
+    -e '/^ac_add_options --enable-debug-symbols/d' \
+    "%BUILD_DIR"/mozconfig
+echo "ac_add_options --disable-debug-symbols" >> "%BUILD_DIR"/mozconfig
+
+: > "%BUILD_DIR"/rpm-shared.env
 echo "export MOZCONFIG=%BUILD_DIR/mozconfig" >> "%BUILD_DIR"/rpm-shared.env
 echo "export LIBDIR='%{_libdir}'" >> "%BUILD_DIR"/rpm-shared.env
 echo "export QT_QPA_PLATFORM=minimal" >> "%BUILD_DIR"/rpm-shared.env
@@ -317,12 +309,18 @@ echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CXX=g++" >> "%BUILD_DIR"/rpm-shared.env
 echo "export AR=\"gcc-ar\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
+echo "export READELF=readelf" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
 echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
-echo "export CARGO_BUILD_TARGET=armv7-unknown-linux-gnueabihf" >> "%BUILD_DIR"/rpm-shared.env
+echo "export CARGO_BUILD_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
+%ifarch %arm32
 echo "export CARGO_CFG_TARGET_ARCH=arm" >> "%BUILD_DIR"/rpm-shared.env
+%endif
+%ifarch %arm64
+echo "export CARGO_CFG_TARGET_ARCH=aarch64" >> "%BUILD_DIR"/rpm-shared.env
+%endif
 
 # Force MOZ_BUILD_DATE env var in order to have more reproducible builds
 # only when we're building from tarball (OBS)
@@ -357,7 +355,13 @@ if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/*/ "%BUILD_DIR"/i
 # Expose the elf32-i386 libclang.so.15 for use inside the arm target, JB#55042
 mkdir -p "%BUILD_DIR"/lib
 SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.15 "%BUILD_DIR"/lib/
-echo "ac_add_options --with-libclang-path='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
+echo "export MOZ_LIBCLANG_BINDGEN_PATH='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
+
+%ifarch %arm64
+echo "ac_add_options --with-libclang-path='/usr/lib64/'" >> "$MOZCONFIG"
+%else
+echo "ac_add_options --with-libclang-path='/usr/lib/'" >> "$MOZCONFIG"
+%endif
 
 # Do not build as thumb since it breaks video decoding.
 %ifarch %arm32
@@ -373,8 +377,14 @@ echo "mk_add_options MOZ_OBJDIR='%BUILD_DIR'" >> "$MOZCONFIG"
 # Silence repeating compiler warnings
 echo "export CFLAGS=\"\$CFLAGS -Wno-psabi -Wno-attributes \"" >> "$MOZCONFIG"
 echo "export CXXFLAGS=\"\$CXXFLAGS -Wno-psabi -Wno-attributes \"" >> "$MOZCONFIG"
+# llvm-readelf maps the whole libxul.so and can run out of memory under the
+# devel SDK/qemu when debug info is enabled. GNU readelf streams this check.
+echo "export READELF=readelf" >> "$MOZCONFIG"
 echo "ac_add_options --disable-strip" >> "$MOZCONFIG"
 echo "ac_add_options --disable-install-strip" >> "$MOZCONFIG"
+# The elfhack self-test executes target binaries through qemu during the
+# aarch64 devel SDK build and currently crashes after libxul links.
+echo "ac_add_options --disable-elf-hack" >> "$MOZCONFIG"
 
 # Reduce logging from release build
 # Doesn't work so disabled for now. Should be made logging-specific.
@@ -390,12 +400,12 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
   echo "ac_add_options --enable-compile-environment" >> "$MOZCONFIG"
 %endif
 
-%if %{system_nss}
-  echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
+%if %{system_nspr}
+  echo "ac_add_options --with-system-nspr" >> "$MOZCONFIG"
 %endif
 
-%if %{system_sqlite}
-  echo "ac_add_options --enable-system-sqlite" >> "$MOZCONFIG"
+%if %{system_nss}
+  echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
 %endif
 
 %if %{system_ffi}
@@ -461,7 +471,7 @@ echo 'mk_add_options LDFLAGS="$FIX_LDFLAGS"' >> "${MOZCONFIG}"
 
 RPM_BUILD_NCPUS=`nproc`
 
-export MACH_USE_SYSTEM_PYTHON=1
+export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=system
 
 ./mach build -j$RPM_BUILD_NCPUS
 # This might be unnecessary but previously some files

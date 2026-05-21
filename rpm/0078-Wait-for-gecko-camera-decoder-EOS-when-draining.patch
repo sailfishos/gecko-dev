@@ -1,0 +1,177 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 12 May 2026 15:30:00 +0200
+Subject: [PATCH 73/73] Wait for gecko-camera decoder EOS when draining
+
+The droidmedia-backed gecko-camera drain operation is asynchronous: calling
+drain() asks the codec loop to drain, but the decoder only reports completion
+later through onDecoderEOS().  Resolving Gecko's Drain() promise immediately can
+let MediaFormatReader advance to stream teardown or the next playback state
+while the droid codec is still finishing the previous stream.
+
+Keep a drain promise pending until onDecoderEOS() arrives, then resolve it with
+any frames left in the reorder queue.  Also reject pending decode/drain promises
+when flushing, shutting down, or receiving a decoder error, so callers are not
+left waiting for an EOS that will no longer be delivered.
+---
+ .../gecko-camera/GeckoCameraVideoDecoder.cpp  | 79 +++++++++++++++++--
+ .../gecko-camera/GeckoCameraVideoDecoder.h    |  2 +
+ 2 files changed, 74 insertions(+), 7 deletions(-)
+
+diff --git a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
+index 20f148b9ecf9..25afe8425c22 100644
+--- a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
++++ b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
+@@ -5,6 +5,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #include "mozilla/AbstractThread.h"
++#include "mozilla/Unused.h"
+ 
+ #include "GeckoCameraVideoDecoder.h"
+ #include "AnnexB.h"
+@@ -12,6 +13,7 @@
+ #include "MP4Decoder.h"
+ #include "VPXDecoder.h"
+ #include "VideoUtils.h"
++#include "nsThreadUtils.h"
+ 
+ #define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
+ #define LOGEX(_this, ...) \
+@@ -58,6 +60,8 @@ RefPtr<ShutdownPromise> GeckoCameraVideoDecoder::Shutdown() {
+       LOG("Shutdown");
+       mIsShutDown = true;
+       mDecodeTimer->Cancel();
++      mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
++      mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+ 
+       std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+       {
+@@ -117,16 +121,36 @@ RefPtr<MediaDataDecoder::DecodePromise> GeckoCameraVideoDecoder::Drain() {
+   RefPtr<GeckoCameraVideoDecoder> self = this;
+   return InvokeAsync(mTaskQueue, __func__, [self, this] {
+     LOG("Drain");
+-    if (mDecoder) {
+-      mDecoder->drain();
++    if (!mDrainPromise.IsEmpty()) {
++      RefPtr<DecodePromise> p = mDrainPromise.Ensure(__func__);
++      return p;
+     }
+ 
+-    MutexAutoLock lock(mMutex);
+-    DecodedData samples;
+-    while (!mReorderQueue.IsEmpty()) {
+-      samples.AppendElement(mReorderQueue.Pop().get());
++    RefPtr<DecodePromise> p = mDrainPromise.Ensure(__func__);
++
++    if (mIsShutDown) {
++      mDrainPromise.Reject(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
++      return p;
++    }
++
++    if (mError) {
++      mDrainPromise.Reject(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
++      return p;
++    }
++
++    std::shared_ptr<gecko::codec::VideoDecoder> decoder;
++    {
++      MutexAutoLock lock(mMutex);
++      decoder = mDecoder;
+     }
+-    return DecodePromise::CreateAndResolve(std::move(samples), __func__);
++
++    if (!decoder) {
++      DrainComplete();
++      return p;
++    }
++
++    decoder->drain();
++    return p;
+   });
+ }
+ 
+@@ -134,6 +158,7 @@ RefPtr<MediaDataDecoder::FlushPromise> GeckoCameraVideoDecoder::Flush() {
+   RefPtr<GeckoCameraVideoDecoder> self = this;
+   return InvokeAsync(mTaskQueue, __func__, [self, this] {
+     LOG("Flush");
++    mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
+     if (mDecoder) {
+       mDecoder->flush();
+     }
+@@ -242,10 +267,32 @@ void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(std::shared_ptr<gecko::came
+ void GeckoCameraVideoDecoder::onDecoderError(std::string errorDescription) {
+   LOG("Decoder error %s", errorDescription.c_str());
+   mError = true;
++
++  RefPtr<GeckoCameraVideoDecoder> self = this;
++  nsresult rv = mTaskQueue->Dispatch(NS_NewRunnableFunction(
++      "GeckoCameraVideoDecoder::onDecoderError", [self]() {
++        self->mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR,
++                                            __func__);
++        self->mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR,
++                                           __func__);
++      }));
++  if (NS_FAILED(rv)) {
++    LOG("Couldn't dispatch decoder error");
++  }
++  Unused << rv;
+ }
+ 
+ void GeckoCameraVideoDecoder::onDecoderEOS() {
+   LOG("Decoder EOS");
++
++  RefPtr<GeckoCameraVideoDecoder> self = this;
++  nsresult rv = mTaskQueue->Dispatch(NS_NewRunnableFunction(
++      "GeckoCameraVideoDecoder::onDecoderEOS",
++      [self]() { self->DrainComplete(); }));
++  if (NS_FAILED(rv)) {
++    LOG("Couldn't dispatch decoder EOS");
++  }
++  Unused << rv;
+ }
+ 
+ gecko::codec::CodecType GeckoCameraVideoDecoder::CodecTypeFromMime(
+@@ -340,4 +387,22 @@ void GeckoCameraVideoDecoder::ProcessDecode(
+   mDecodePromise.Resolve(std::move(results), __func__);
+ }
+ 
++void GeckoCameraVideoDecoder::DrainComplete() {
++  MOZ_ASSERT(mTaskQueue->IsCurrentThreadIn());
++
++  if (mDrainPromise.IsEmpty()) {
++    return;
++  }
++
++  DecodedData samples;
++  {
++    MutexAutoLock lock(mMutex);
++    mInputFrames.clear();
++    while (!mReorderQueue.IsEmpty()) {
++      samples.AppendElement(mReorderQueue.Pop());
++    }
++  }
++  mDrainPromise.Resolve(std::move(samples), __func__);
++}
++
+ }  // namespace mozilla
+diff --git a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h
+index 34b100234501..97c3af1f78bc 100644
+--- a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h
++++ b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.h
+@@ -72,6 +72,7 @@ class GeckoCameraVideoDecoder final
+ 
+   MediaResult CreateDecoder();
+   void ProcessDecode(MediaRawData* aSample);
++  void DrainComplete();
+   gecko::codec::CodecManager* mCodecManager;
+   const CreateDecoderParams mParams;
+   const VideoInfo mInfo;
+@@ -83,6 +84,7 @@ class GeckoCameraVideoDecoder final
+   const uint32_t mMaxRefFrames;
+   ReorderQueue mReorderQueue;
+   MozPromiseHolder<DecodePromise> mDecodePromise;
++  MozPromiseHolder<DecodePromise> mDrainPromise;
+   Atomic<bool, ReleaseAcquire> mIsShutDown;
+   Atomic<bool, ReleaseAcquire> mError;
+   const RefPtr<MediaTimer> mDecodeTimer;

@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 14 May 2026 15:10:00 +0200
+Subject: [PATCH 74/74] Use EmbedLite helper app dialog static registration
+
+ESR115 registers the helper app launcher dialog through components.conf, while
+the old EmbedLite manifest component/contract directives are ignored.
+Point the existing static contract at the EmbedLite JSM implementation so
+downloads keep using the Sailfish chrome prompt path without restoring
+legacy manifest registration.
+
+---
+ toolkit/mozapps/downloads/components.conf | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/toolkit/mozapps/downloads/components.conf b/toolkit/mozapps/downloads/components.conf
+index 8446fb215026..e75dd9697b0a 100644
+--- a/toolkit/mozapps/downloads/components.conf
++++ b/toolkit/mozapps/downloads/components.conf
+@@ -8,7 +8,7 @@ Classes = [
+     {
+         'cid': '{F68578EB-6EC2-4169-AE19-8C6243F0ABE1}',
+         'contract_ids': ['@mozilla.org/helperapplauncherdialog;1'],
+-        'esModule': 'resource://gre/modules/HelperAppDlg.sys.mjs',
+-        'constructor': 'nsUnknownContentTypeDialog',
++        'jsm': 'resource://embedlite-components/HelperAppDialog.js',
++        'constructor': 'HelperAppLauncherDialog',
+     },
+ ]
