@@ -1,0 +1,67 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#ifndef nsNativeThemeQt_h_
+#define nsNativeThemeQt_h_
+
+#include "nsITheme.h"
+#include "nsNativeTheme.h"
+
+class nsNativeThemeQt final : private nsNativeTheme, public nsITheme {
+ public:
+  NS_DECL_ISUPPORTS_INHERITED
+
+  // The nsITheme interface.
+  NS_IMETHOD DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
+                                  StyleAppearance aWidgetType,
+                                  const nsRect& aRect, const nsRect& aDirtyRect,
+                                  DrawOverflow = DrawOverflow::Yes) override;
+
+  ScrollbarSizes GetScrollbarSizes(nsPresContext*, StyleScrollbarWidth,
+                                   Overlay) override;
+
+  [[nodiscard]] LayoutDeviceIntMargin GetWidgetBorder(
+      nsDeviceContext* aContext, nsIFrame* aFrame,
+      StyleAppearance aWidgetType) override;
+
+  bool GetWidgetPadding(nsDeviceContext* aContext, nsIFrame* aFrame,
+                        StyleAppearance aWidgetType,
+                        LayoutDeviceIntMargin* aResult) override;
+
+  bool GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
+                         StyleAppearance aWidgetType,
+                         nsRect* aOverflowRect) override;
+
+  NS_IMETHOD GetMinimumWidgetSize(nsPresContext* aPresContext, nsIFrame* aFrame,
+                                  StyleAppearance aAppearance,
+                                  mozilla::LayoutDeviceIntSize* aResult,
+                                  bool* aIsOverridable) override;
+
+  NS_IMETHOD WidgetStateChanged(nsIFrame* aFrame, StyleAppearance aWidgetType,
+                                nsAtom* aAttribute, bool* aShouldRepaint,
+                                const nsAttrValue* aOldValue) override;
+
+  NS_IMETHOD ThemeChanged() override;
+
+  NS_IMETHOD_(bool)
+  ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* aFrame,
+                      StyleAppearance aWidgetType) override;
+
+  NS_IMETHOD_(bool) WidgetIsContainer(StyleAppearance aWidgetType) override;
+
+  NS_IMETHOD_(bool)
+  ThemeDrawsFocusForWidget(StyleAppearance aWidgetType) override;
+
+  bool ThemeNeedsComboboxDropmarker() override;
+
+  Transparency GetWidgetTransparency(nsIFrame* aFrame,
+                                     StyleAppearance aWidgetType) override;
+
+  nsNativeThemeQt() {}
+
+ protected:
+  virtual ~nsNativeThemeQt() {}
+};
+
+#endif  // nsNativeThemeQt_h_
