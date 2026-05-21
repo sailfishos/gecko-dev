@@ -130,6 +130,8 @@ Patch77:     0077-Fix-EmbedLite-toolkit-error-pages.patch
 Patch78:     0078-Wait-for-gecko-camera-decoder-EOS-when-draining.patch
 Patch79:     0079-Use-EmbedLite-helper-app-dialog-static-registration.patch
 Patch80:     0080-Load-EmbedLite-search-engines-from-settings.patch
+Patch81:     0081-Dispatch-MDSM-initialization-without-tail-dispatch.patch
+Patch82:     0082-Preload-autoplay-metadata-before-inaudible-check.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static

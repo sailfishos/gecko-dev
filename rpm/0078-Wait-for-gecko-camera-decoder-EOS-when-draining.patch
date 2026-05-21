@@ -13,10 +13,15 @@ Keep a drain promise pending until onDecoderEOS() arrives, then resolve it with
 any frames left in the reorder queue.  Also reject pending decode/drain promises
 when flushing, shutting down, or receiving a decoder error, so callers are not
 left waiting for an EOS that will no longer be delivered.
+
+MediaFormatReader can later ask for another confirmation drain after EOS.
+Remember when the current input stream has already reached decoder EOS so that
+follow-up Drain() calls complete immediately instead of waiting for a second
+droidmedia EOS notification that will not arrive.
 ---
- .../gecko-camera/GeckoCameraVideoDecoder.cpp  | 79 +++++++++++++++++--
- .../gecko-camera/GeckoCameraVideoDecoder.h    |  2 +
- 2 files changed, 74 insertions(+), 7 deletions(-)
+ .../gecko-camera/GeckoCameraVideoDecoder.cpp  | 97 ++++++++++++++++++-
+ .../gecko-camera/GeckoCameraVideoDecoder.h    |  3 +
+ 2 files changed, 92 insertions(+), 8 deletions(-)
 
 diff --git a/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp b/dom/media/platforms/gecko-camera/GeckoCameraVideoDecoder.cpp
 index 20f148b9ecf9..25afe8425c22 100644
@@ -38,16 +43,17 @@ index 20f148b9ecf9..25afe8425c22 100644
  
  #define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
  #define LOGEX(_this, ...) \
-@@ -58,6 +60,8 @@ RefPtr<ShutdownPromise> GeckoCameraVideoDecoder::Shutdown() {
+@@ -58,6 +60,9 @@ RefPtr<ShutdownPromise> GeckoCameraVideoDecoder::Shutdown() {
        LOG("Shutdown");
        mIsShutDown = true;
        mDecodeTimer->Cancel();
 +      mDecodePromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
 +      mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
++      mDecoderDrained = false;
  
        std::shared_ptr<gecko::codec::VideoDecoder> decoder;
        {
-@@ -117,16 +121,36 @@ RefPtr<MediaDataDecoder::DecodePromise> GeckoCameraVideoDecoder::Drain() {
+@@ -117,16 +122,42 @@ RefPtr<MediaDataDecoder::DecodePromise> GeckoCameraVideoDecoder::Drain() {
    RefPtr<GeckoCameraVideoDecoder> self = this;
    return InvokeAsync(mTaskQueue, __func__, [self, this] {
      LOG("Drain");
@@ -86,20 +92,27 @@ index 20f148b9ecf9..25afe8425c22 100644
 +      return p;
 +    }
 +
++    if (mDecoderDrained) {
++      LOG("Drain already complete");
++      DrainComplete();
++      return p;
++    }
++
 +    decoder->drain();
 +    return p;
    });
  }
  
-@@ -134,6 +158,7 @@ RefPtr<MediaDataDecoder::FlushPromise> GeckoCameraVideoDecoder::Flush() {
+@@ -134,6 +165,8 @@ RefPtr<MediaDataDecoder::FlushPromise> GeckoCameraVideoDecoder::Flush() {
    RefPtr<GeckoCameraVideoDecoder> self = this;
    return InvokeAsync(mTaskQueue, __func__, [self, this] {
      LOG("Flush");
++    mDecoderDrained = false;
 +    mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
      if (mDecoder) {
        mDecoder->flush();
      }
-@@ -242,10 +267,32 @@ void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(std::shared_ptr<gecko::came
+@@ -242,10 +275,37 @@ void GeckoCameraVideoDecoder::onDecodedGraphicBuffer(std::shared_ptr<gecko::came
  void GeckoCameraVideoDecoder::onDecoderError(std::string errorDescription) {
    LOG("Decoder error %s", errorDescription.c_str());
    mError = true;
@@ -124,7 +137,12 @@ index 20f148b9ecf9..25afe8425c22 100644
 +  RefPtr<GeckoCameraVideoDecoder> self = this;
 +  nsresult rv = mTaskQueue->Dispatch(NS_NewRunnableFunction(
 +      "GeckoCameraVideoDecoder::onDecoderEOS",
-+      [self]() { self->DrainComplete(); }));
++      [self]() {
++        if (!self->mDrainPromise.IsEmpty()) {
++          self->mDecoderDrained = true;
++          self->DrainComplete();
++        }
++      }));
 +  if (NS_FAILED(rv)) {
 +    LOG("Couldn't dispatch decoder EOS");
 +  }
@@ -132,6 +150,14 @@ index 20f148b9ecf9..25afe8425c22 100644
  }
  
  gecko::codec::CodecType GeckoCameraVideoDecoder::CodecTypeFromMime(
+@@ -316,6 +376,7 @@ void GeckoCameraVideoDecoder::ProcessDecode(
+     mInputFrames[aSample->mTime.ToMicroseconds()] = aSample;
+   }
+ 
++  mDecoderDrained = false;
+   // Will block here if decode queue is full.
+   bool ok = mDecoder->decode(const_cast<uint8_t*>(aSample->Data()),
+       aSample->Size(),
 @@ -340,4 +387,22 @@ void GeckoCameraVideoDecoder::ProcessDecode(
    mDecodePromise.Resolve(std::move(results), __func__);
  }
@@ -167,11 +193,12 @@ index 34b100234501..97c3af1f78bc 100644
    gecko::codec::CodecManager* mCodecManager;
    const CreateDecoderParams mParams;
    const VideoInfo mInfo;
-@@ -83,6 +84,7 @@ class GeckoCameraVideoDecoder final
+@@ -83,6 +84,8 @@ class GeckoCameraVideoDecoder final
    const uint32_t mMaxRefFrames;
    ReorderQueue mReorderQueue;
    MozPromiseHolder<DecodePromise> mDecodePromise;
 +  MozPromiseHolder<DecodePromise> mDrainPromise;
    Atomic<bool, ReleaseAcquire> mIsShutDown;
    Atomic<bool, ReleaseAcquire> mError;
++  bool mDecoderDrained = false;
    const RefPtr<MediaTimer> mDecodeTimer;
