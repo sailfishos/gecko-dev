@@ -132,6 +132,7 @@ Patch79:     0079-Use-EmbedLite-helper-app-dialog-static-registration.patch
 Patch80:     0080-Load-EmbedLite-search-engines-from-settings.patch
 Patch81:     0081-Dispatch-MDSM-initialization-without-tail-dispatch.patch
 Patch82:     0082-Preload-autoplay-metadata-before-inaudible-check.patch
+Patch83:     0083-Fix-Qt-form-control-theme-rendering.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
