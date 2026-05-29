@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Tue, 14 Jul 2020 17:53:04 +0300
+Subject: [PATCH 07/67] Whitelist sync messages of EmbedLite. JB#50505
+
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ ipc/ipdl/sync-messages.ini | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/ipc/ipdl/sync-messages.ini b/ipc/ipdl/sync-messages.ini
+index 075c0557b981..cfa185edb047 100644
+--- a/ipc/ipdl/sync-messages.ini
++++ b/ipc/ipdl/sync-messages.ini
+@@ -9,6 +9,16 @@
+ #                                                           #
+ #############################################################
+ 
++# EmbedLite
++[PEmbedLiteApp::CreateWindow]
++description = EmbedLite
++[PEmbedLiteView::GetDPI]
++description = EmbedLite
++[PEmbedLiteView::SyncMessage]
++description = EmbedLite
++[PEmbedLiteView::GetInputContext]
++description = EmbedLite
++
+ # gtests
+ [PQuotaTest::Try_Success_CustomErr_QmIpcFail]
+ description = Only used by gtests
+-- 
+2.51.0
+

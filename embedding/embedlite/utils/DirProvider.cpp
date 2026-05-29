@@ -106,6 +106,22 @@ DirProvider::GetFile(const char* aKey, bool* aPersist,
     return sProfileDir->Clone(aResult);
   }
 
+  if (sProfileDir && !strcmp(aKey, NS_APP_PREFS_50_DIR)) {
+    *aPersist = true;
+    return sProfileDir->Clone(aResult);
+  }
+
+  if (sProfileDir && !strcmp(aKey, NS_APP_PREFS_50_FILE)) {
+    *aPersist = true;
+    nsCOMPtr<nsIFile> file;
+    nsresult rv = sProfileDir->Clone(getter_AddRefs(file));
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = file->AppendNative("prefs.js"_ns);
+    NS_ENSURE_SUCCESS(rv, rv);
+    file.forget(aResult);
+    return NS_OK;
+  }
+
   if (sProfileDir && !strcmp(aKey, NS_APP_CACHE_PARENT_DIR)) {
     *aPersist = true;
     return sProfileDir->Clone(aResult);

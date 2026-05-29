@@ -80,6 +80,10 @@ void EmbedLiteWindow::GetPlatformImage(const std::function<void(void *image, int
     mWindowParent->GetPlatformImage(callback);
 }
 
+void EmbedLiteWindow::ClearPlatformImage()
+{
+  mWindowParent->ClearPlatformImage();
+}
+
 } // nemsapace embedlite
 } // namespace mozilla
-

@@ -23,6 +23,7 @@
 #include "gfxPlatform.h"
 
 #include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteWindowChild.h"
 #include "EmbedLiteWindowThreadChild.h"
 #include "mozilla/Unused.h"
 #include "mozilla/layers/ImageBridgeChild.h"
@@ -71,11 +72,11 @@ EmbedLiteAppChild::Observe(nsISupports* aSubject,
 }
 
 void
-EmbedLiteAppChild::Init(MessageChannel* aParentChannel)
+EmbedLiteAppChild::Init(IToplevelProtocol* aTarget)
 {
   LOGT();
   InitWindowWatcher();
-  Open(aParentChannel, mParentLoop->SerialEventTarget(), ipc::ChildSide);
+  Open(aTarget, mParentLoop->SerialEventTarget(), ipc::ChildSide);
   RecvSetBoolPref(nsDependentCString("layers.offmainthreadcomposition.enabled"), true);
 
   mozilla::DebugOnly<nsresult> rv = InitAppService();
@@ -214,6 +215,19 @@ EmbedLiteAppChild::GetViewByChromeParent(nsIWebBrowserChrome* aParent) const
     }
   }
   return nullptr;
+}
+
+void
+EmbedLiteAppChild::SendAsyncMessageToViewsForWindowID(uint32_t aWindowID,
+                                                      const char16_t* aMessageName,
+                                                      const char16_t* aMessage) const
+{
+  for (const auto& viewPair : mWeakViewMap) {
+    EmbedLiteViewChild* view = viewPair.second;
+    if (view->mWindow && view->mWindow->GetUniqueID() == aWindowID) {
+      view->DoSendAsyncMessage(aMessageName, aMessage);
+    }
+  }
 }
 
 EmbedLiteWindowChild*
@@ -375,4 +389,3 @@ mozilla::ipc::IPCResult EmbedLiteAppChild::RecvRemoveObservers(nsTArray<nsCStrin
 
 } // namespace embedlite
 } // namespace mozilla
-

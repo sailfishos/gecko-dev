@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: David Llewellyn-Jones <david@flypig.co.uk>
+Date: Fri, 1 Dec 2023 23:56:36 +0000
+Subject: [PATCH 35/67] Allow file scheme when loading OpenSearch providers
+
+When loading OpenSearch provider XML files the scheme was restricted to
+https. This prevented the OpenSearch XML provider files from being
+loaded from disk at initialisation or when installing a search provider.
+
+This change extends the support to include both https and file schemes
+so that the providers can be loaded correctly from disc.
+---
+ toolkit/components/search/OpenSearchEngine.sys.mjs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/toolkit/components/search/OpenSearchEngine.sys.mjs b/toolkit/components/search/OpenSearchEngine.sys.mjs
+index d3d6da576ae2..e401f1c94c8c 100644
+--- a/toolkit/components/search/OpenSearchEngine.sys.mjs
++++ b/toolkit/components/search/OpenSearchEngine.sys.mjs
+@@ -135,7 +135,7 @@ export class OpenSearchEngine extends SearchEngine {
+         Cr.NS_ERROR_UNEXPECTED
+       );
+     }
+-    if (!/^https?$/i.test(loadURI.scheme)) {
++    if (!/^(?:https?|file)$/i.test(loadURI.scheme)) {
+       throw Components.Exception(
+         "Invalid URI passed to SearchEngine constructor",
+         Cr.NS_ERROR_INVALID_ARG
+-- 
+2.51.0
+

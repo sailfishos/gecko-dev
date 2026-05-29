@@ -15,14 +15,9 @@
 
 namespace mozilla {
 
-namespace gl {
-class GLContext;
-}
-
 namespace embedlite {
 
 class EmbedLiteWindowChild;
-class EmbedLiteWindowListener;
 class EmbedContentController;
 
 class nsWindow : public PuppetWidgetBase
@@ -37,7 +32,7 @@ public:
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
                                         nsNativeWidget    aNativeParent,
                                         const LayoutDeviceIntRect& aRect,
-                                        nsWidgetInitData* aInitData = nullptr) override;
+                                        widget::InitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
   virtual void Show(bool aState) override;
@@ -53,33 +48,16 @@ public:
   virtual InputContext GetInputContext() override;
 
   virtual LayoutDeviceIntRect GetNaturalBounds() override;
+  virtual float GetDPI() override;
+  virtual double GetDefaultScaleInternal() override;
+  void BackingScaleFactorChanged();
 
   virtual void CreateCompositor() override;
   virtual void CreateCompositor(int aWidth, int aHeight) override;
 
   virtual void* GetNativeData(uint32_t aDataType) override;
 
-  virtual LayerManager *GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                        LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
-                                        LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT) override;
-
-#if 0
-  /**
-   * Called before the LayerManager draws the layer tree.
-   *
-   * Always called from the compositing thread. Puppet Widget passes the call
-   * forward to the EmbedLiteCompositorBridgeParent.
-   */
-  virtual void DrawWindowUnderlay(mozilla::widget::WidgetRenderingContext* aContext, LayoutDeviceIntRect aRect) override;
-
-  /**
-   * Called after the LayerManager draws the layer tree
-   *
-   * Always called from the compositing thread. Puppet Widget passes the call
-   * forward to the EmbedLiteCompositorBridgeParent.
-   */
-  virtual void DrawWindowOverlay(mozilla::widget::WidgetRenderingContext* aContext, LayoutDeviceIntRect aRect) override;
-#endif
+  virtual WindowRenderer* GetWindowRenderer() override;
 
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;
@@ -111,10 +89,7 @@ protected:
 
 private:
   nsWindow();
-  mozilla::gl::GLContext* GetGLContext() const;
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
-
-  static void CreateGLContextEarly(EmbedLiteWindowListener *aListener);
 
   bool mFirstViewCreated;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.

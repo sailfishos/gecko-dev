@@ -56,7 +56,6 @@ pref("font.size.inflation.disabledInMasterProcess", true);
 pref("layers.max-active", 20);
 // Avoid stalling the render thread if frames are missed
 pref("gfx.vsync.compositor.unobserve-count", 40);
-
 // APZC preferences.
 pref("apz.allow_zooming", true);
 pref("apz.fling_accel_base_mult", "1.125");
@@ -108,25 +107,16 @@ pref("media.gstreamer.enable-blacklist", false);
 // Disable X backend on GTK
 pref("gfx.xrender.enabled", false);
 
-// Make gecko compositor use GL context/surface provided by the application.
-pref("embedlite.compositor.external_gl_context", true);
-// Request the application to create GLContext for the compositor as
-// soon as the top level PuppetWidget is creted for the view. Setting
-// this pref only makes sense when using external compositor gl context.
-pref("embedlite.compositor.request_external_gl_context_early", true);
 pref("extensions.update.enabled", false);
 pref("extensions.systemAddon.update.enabled", false);
 
 pref("toolkit.storage.synchronous", 0);
+// EmbedLite does not yet provide the LSNG browser-process plumbing needed by
+// ESR115, so keep using the legacy localStorage backend.
+pref("dom.storage.enable_unsupported_legacy_implementation", true);
 /* new html5 forms */
-// Support for input type=color. By default, disabled.
-pref("dom.forms.color", false);
-// Support for input type=date and type=time. By default, disabled.
-pref("dom.forms.datetime", false);
-// Support for input type=month, type=week and type=datetime-local. By default,
-// disabled.
+// Support for input type=month and type=week. By default, disabled.
 pref("dom.forms.datetime.others", false);
-pref("dom.experimental_forms", false);
 pref("extensions.getAddons.cache.enabled", true);
 pref("toolkit.browser.contentViewExpire", 3000);
 
@@ -170,6 +160,11 @@ pref("network.protocol-handler.expose.mailto", false);
 pref("network.protocol-handler.expose.tel", false);
 pref("network.protocol-handler.expose.geo", false);
 
+// Embedlite delegates external protocols to the platform. Do not add Firefox
+// web-handler stubs such as Gmail for mailto:, since they bypass Sailfish
+// content-action handling.
+pref("gecko.handlerService.disableDefaultProtocolHandlers", true);
+
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);
 pref("network.protocol-handler.warn-external.sms", false);
@@ -198,6 +193,22 @@ pref("network.buffer.cache.size",  16384);
 pref("network.predictor.enabled", true);
 pref("network.predictor.max-db-size", 2097152); // bytes
 pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
+
+// EmbedLite restores browser tab history through legacySHistory; keep that API available.
+pref("fission.disableSessionHistoryInParent", true);
+
+// ESR115's COOP top-level isolation path assumes Firefox's remote <browser>
+// frontend can replace a BrowsingContext or change remoteness during
+// navigation. EmbedLite uses windowless nsWebBrowser views with detached
+// BrowsingContexts, so it cannot complete that frontend handoff yet. Leaving
+// the path enabled can make ordinary opener-policy transitions hit Gecko's
+// BrowsingContext OpenerPolicy invariant and crash. Disable COOP-driven
+// remoteness until EmbedLite has top-level remoteness support.
+pref("browser.tabs.remote.useCrossOriginOpenerPolicy", false);
+
+// EmbedLite provides its own frame-script/native UI bridge for the async
+// clipboard paste prompt, so expose readText() to web content.
+pref("dom.events.asyncClipboard.readText", true);
 
 /* session history */
 pref("browser.sessionhistory.max_total_viewers", 1);
@@ -365,8 +376,8 @@ pref("media.cache_readahead_limit", 30);
 // of at least 4.
 pref("media.video-queue.default-size", 3);
 
-// Enable GMP plugins for media decoding to use gmp-droid
-pref("media.gmp.decoder.enabled", true);
+// Use Gecko/FFmpeg/gecko-camera media paths; gmp-droid is no longer shipped.
+pref("media.gmp.decoder.enabled", false);
 pref("media.decoder.recycle.enabled", true);
 
 // SimplePush

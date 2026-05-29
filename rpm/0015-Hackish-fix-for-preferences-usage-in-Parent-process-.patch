@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Wed, 19 Aug 2020 09:17:05 +0300
+Subject: [PATCH 15/67] Hackish fix for preferences usage in Parent process
+ (part 1)
+
+Inspired by SHA1: 18b3279b0851758df8805b760e9026d45fcf142c Mon Sep 17 00:00:00 2001
+From: Tatiana Meshkova <tanya.meshkova@gmail.com>
+Date: Tue, 20 Jan 2015 23:49:38 -0800
+
+Hackish fix for preferences usage in Parent process. Added basic
+compositor initialization in Parent process
+
+This applies patch 0021 from ESR 78.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+---
+ dom/ipc/DOMTypes.ipdlh          | 5 +++--
+ gfx/thebes/gfxPlatform.cpp      | 2 +-
+ modules/libpref/Preferences.cpp | 7 +++++++
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/dom/ipc/DOMTypes.ipdlh b/dom/ipc/DOMTypes.ipdlh
+index 11c1816dc787..6aee175db1b6 100644
+--- a/dom/ipc/DOMTypes.ipdlh
++++ b/dom/ipc/DOMTypes.ipdlh
+@@ -27,9 +27,10 @@ using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
+ using struct mozilla::dom::LoadingSessionHistoryInfo
+   from "mozilla/dom/SessionHistoryEntry.h";
+ 
+-using mozilla::net::ClassOfService from "mozilla/net/ClassOfService.h";
+-
++using struct mozilla::null_t
++  from "ipc/IPCMessageUtils.h";
+ 
++using mozilla::net::ClassOfService from "mozilla/net/ClassOfService.h";
+ using mozilla::hal::ScreenOrientation from "mozilla/HalIPCUtils.h";
+ using mozilla::LayoutDeviceIntRect from "Units.h";
+ using mozilla::DesktopIntRect from "Units.h";
+diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
+index dd8ba9e3d45e..34e2d046545b 100644
+--- a/gfx/thebes/gfxPlatform.cpp
++++ b/gfx/thebes/gfxPlatform.cpp
+@@ -1023,7 +1023,7 @@ void gfxPlatform::Init() {
+   // Request the imgITools service, implicitly initializing ImageLib.
+   nsCOMPtr<imgITools> imgTools = do_GetService("@mozilla.org/image/tools;1");
+   if (!imgTools) {
+-    MOZ_CRASH("Could not initialize ImageLib");
++//    MOZ_CRASH("Could not initialize ImageLib");
+   }
+ 
+   RegisterStrongMemoryReporter(new GfxMemoryImageReporter());
+diff --git a/modules/libpref/Preferences.cpp b/modules/libpref/Preferences.cpp
+index c04744a8b936..cb6cd999f21b 100644
+--- a/modules/libpref/Preferences.cpp
++++ b/modules/libpref/Preferences.cpp
+@@ -96,6 +96,8 @@
+ #  include "mozilla/BackgroundTasks.h"
+ #endif
+ 
++#include "mozilla/embedlite/EmbedLiteAppProcessParent.h"
++
+ #ifdef DEBUG
+ #  include <map>
+ #endif
+@@ -3804,6 +3806,11 @@ Preferences::~Preferences() {
+   PrefNameArena().Clear();
+ }
+ 
++static mozilla::embedlite::EmbedLiteAppProcessParent* GetEmbedLiteParent()
++{
++  return mozilla::embedlite::EmbedLiteAppProcessParent::GetInstance();
++}
++
+ NS_IMPL_ISUPPORTS(Preferences, nsIPrefService, nsIObserver, nsIPrefBranch,
+                   nsISupportsWeakReference)
+ 
+-- 
+2.51.0
+

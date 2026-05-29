@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Denis Grigorev <d.grigorev@omprussia.ru>
+Date: Tue, 25 May 2021 19:48:19 +0300
+Subject: [PATCH 42/67] Disable desktop sharing feature on SFOS. JB#53756
+
+The feature isn't supported so we need to disable it.
+
+Signed-off-by: Denis Grigorev <d.grigorev@omprussia.ru>
+---
+ dom/media/systemservices/VideoEngine.cpp | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/dom/media/systemservices/VideoEngine.cpp b/dom/media/systemservices/VideoEngine.cpp
+index 1d4bde634465..61fc870202dc 100644
+--- a/dom/media/systemservices/VideoEngine.cpp
++++ b/dom/media/systemservices/VideoEngine.cpp
+@@ -69,13 +69,13 @@ int32_t VideoEngine::CreateVideoCapture(const char* aDeviceUniqueIdUTF8) {
+       entry.VideoCapture()->SetApplyRotation(true);
+     }
+   } else {
+-#ifndef WEBRTC_ANDROID
++#if !defined(WEBRTC_ANDROID) && !defined(MOZ_EMBEDLITE)
+     entry = CaptureEntry(
+         id, rtc::scoped_refptr<webrtc::VideoCaptureModule>(
+                 webrtc::DesktopCaptureImpl::Create(id, aDeviceUniqueIdUTF8,
+                                                    mCaptureDevInfo.type)));
+ #else
+-    MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL ON ANDROID" ==
++    MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL" ==
+                nullptr);
+ #endif
+   }
+@@ -169,13 +169,13 @@ VideoEngine::GetOrCreateVideoCaptureDeviceInfo() {
+     case CaptureDeviceType::Browser:
+     case CaptureDeviceType::Window:
+     case CaptureDeviceType::Screen: {
+-#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS)
++#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS) && !defined(MOZ_EMBEDLITE)
+       mDeviceInfo = webrtc::DesktopCaptureImpl::CreateDeviceInfo(
+           mId, mCaptureDevInfo.type);
+       LOG(("screen capture: Finished creating new device."));
+ #else
+       MOZ_ASSERT(
+-          "GetVideoCaptureDeviceInfo NO DESKTOP CAPTURE IMPL ON ANDROID" ==
++          "GetVideoCaptureDeviceInfo NO DESKTOP CAPTURE IMPL" ==
+           nullptr);
+       mDeviceInfo.reset();
+ #endif
+-- 
+2.51.0
+

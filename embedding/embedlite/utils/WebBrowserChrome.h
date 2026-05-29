@@ -7,11 +7,11 @@
 #define MOZEMBED_WEBBROWSERCHROME_H
 
 #include "nsCOMPtr.h"
+#include "nsIDocShell.h"
 #include "nsIWebBrowser.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsIWebBrowserChromeFocus.h"
 #include "nsIWebProgressListener.h"
-#include "nsIEmbeddingSiteWindow.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIDOMEventListener.h"
 #include "nsString.h"
@@ -32,7 +32,6 @@ class nsIEmbedBrowserChromeListener;
 class WebBrowserChrome : public nsIWebBrowserChrome,
                          public nsIWebProgressListener,
                          public nsIWebBrowserChromeFocus,
-                         public nsIEmbeddingSiteWindow,
                          public nsIInterfaceRequestor,
                          public nsIDOMEventListener,
                          public nsSupportsWeakReference
@@ -42,7 +41,6 @@ public:
   NS_DECL_NSIWEBBROWSERCHROME
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBBROWSERCHROMEFOCUS
-  NS_DECL_NSIEMBEDDINGSITEWINDOW
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIDOMEVENTLISTENER
 
@@ -55,6 +53,11 @@ public:
   void SetBrowserChildHelper(mozilla::embedlite::BrowserChildHelper* aHelper);
   NS_IMETHODIMP GetWebBrowser(nsIWebBrowser * *aWebBrowser);
   NS_IMETHODIMP SetWebBrowser(nsIWebBrowser* aWebBrowser);
+  NS_IMETHODIMP GetVisibility(bool* aVisibility);
+  NS_IMETHODIMP SetVisibility(bool aVisibility);
+  NS_IMETHODIMP GetTitle(nsAString &aTitle);
+  NS_IMETHODIMP SetTitle(const nsAString &aTitle);
+  NS_IMETHODIMP GetSiteWindow(void * *aSiteWindow);
 
 protected:
   virtual ~WebBrowserChrome();
@@ -84,4 +87,3 @@ private:
 };
 
 #endif /* Header guard */
-

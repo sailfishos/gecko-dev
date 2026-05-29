@@ -9,7 +9,7 @@
 
 #include "mozilla/Attributes.h"
 
-#include "mozilla/Module.h"
+#include "nsIFactory.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -24,7 +24,7 @@ class EmbedliteGenericFactory final : public nsIFactory
   ~EmbedliteGenericFactory() {}
 
 public:
-  typedef Module::ConstructorProcPtr ConstructorProcPtr;
+  typedef nsresult (*ConstructorProcPtr)(const nsIID& aIID, void** aResult);
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIFACTORY

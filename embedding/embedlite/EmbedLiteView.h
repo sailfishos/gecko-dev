@@ -115,6 +115,7 @@ public:
 
   virtual void SetDynamicToolbarHeight(int height);
   virtual void SetMargins(int top, int right, int bottom, int left);
+  virtual void SetSafeAreaInsets(int top, int right, int bottom, int left);
   virtual void ScheduleUpdate();
 
   // Set DPI for the view (views placed on different screens may get different DPI).
@@ -167,6 +168,7 @@ private:
   bool mDynamicToolbarHeightChanging;
   mozilla::gfx::IntMargin mMargins;
   int mDynamicToolbarHeight;
+  mozilla::gfx::IntMargin mSafeAreaInsets;
 };
 
 } // namespace embedlite

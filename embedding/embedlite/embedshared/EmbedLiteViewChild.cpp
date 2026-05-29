@@ -47,8 +47,8 @@
 #include "mozilla/StaticPrefs_embedlite.h"  // for StaticPrefs::embedlite_azpc_*_*()
 #include "mozilla/layers/DoubleTapToZoom.h" // for CalculateRectToZoomTo
 #include "mozilla/layers/InputAPZContext.h" // for InputAPZContext
+#include "mozilla/layers/TouchActionHelper.h"
 #include "nsIFrame.h"                       // for nsIFrame
-#include "FrameLayerBuilder.h"              // for FrameLayerbuilder
 #include "nsReadableUtils.h"
 
 #include <sys/syscall.h>
@@ -85,6 +85,7 @@ EmbedLiteViewChild::EmbedLiteViewChild(const uint32_t &aWindowId,
   , mWindowObserverRegistered(false)
   , mIsFocused(false)
   , mMargins(0, 0, 0, 0)
+  , mSafeAreaInsets(0, 0, 0, 0)
   , mIMEComposing(false)
   , mPendingTouchPreventedBlockId(0)
   , mInitialized(false)
@@ -192,10 +193,10 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   mWidget = new EmbedLitePuppetWidget(this);
   LOGT("puppet widget: %p", GetPuppetWidget());
-  nsWidgetInitData  widgetInit;
-  widgetInit.clipChildren = true;
-  widgetInit.clipSiblings = true;
-  widgetInit.mWindowType = eWindowType_child;
+  widget::InitData widgetInit;
+  widgetInit.mClipChildren = true;
+  widgetInit.mClipSiblings = true;
+  widgetInit.mWindowType = widget::WindowType::Child;
 
   LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
   nsresult rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
@@ -218,7 +219,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   // If this is created with window.open() or otherwise via WindowCreator
   // we'll receive parent BrowsingContext as an argument.
   // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content);
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content, false);
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
   browsingContext->InitSessionHistory();
@@ -264,7 +265,7 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
 
   mozilla::dom::AutoNoJSAPI nojsapi;
 
-  mWebNavigation = do_QueryInterface(mWebBrowser);
+  mWebNavigation = static_cast<nsIWebNavigation*>(mWebBrowser.get());
   if (!mWebNavigation) {
     NS_ERROR("Failed to get the web navigation interface.");
   }
@@ -299,29 +300,14 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
     widget->UpdateBounds(true);
   }
 
+  GetPuppetWidget()->SetSafeAreaInsets(mSafeAreaInsets);
+
   if (!mWindow->GetWidget()->IsFirstViewCreated()) {
     mWindow->GetWidget()->SetActive(true);
     mWindow->GetWidget()->SetFirstViewCreated();
   }
 
-  nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);  // for capture by the lambda
-  ContentReceivedInputBlockCallback callback(
-      [weakPtrThis](uint64_t aInputBlockId, bool aPreventDefault)
-      {
-        if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
-          EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
-          puppetWidget->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
-        }
-      });
-  mAPZEventState = new APZEventState(mWidget, std::move(callback));
-  mSetAllowedTouchBehaviorCallback = [weakPtrThis](uint64_t aInputBlockId,
-                                                   const nsTArray<mozilla::layers::TouchBehaviorFlags>& aFlags)
-  {
-    if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
-      EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
-      puppetWidget->DoSendSetAllowedTouchBehavior(aInputBlockId, aFlags);
-    }
-  };
+  UpdateAPZEventStateWidget(mWidget);
 
   SetDesktopMode(isDesktopMode);
 
@@ -498,7 +484,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvLoadURL(const nsString &url, con
   LoadURIOptions loadURIOptions;
   loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
   loadURIOptions.mLoadFlags = flags;
-  mWebNavigation->LoadURI(url, loadURIOptions);
+  mWebNavigation->FixupAndLoadURIString(url, loadURIOptions);
 
   return IPC_OK();
 }
@@ -695,22 +681,27 @@ void EmbedLiteViewChild::SetDesktopMode(const bool aDesktopMode)
 
   NS_ENSURE_TRUE(mWebNavigation, );
 
-  mWebNavigation->LoadURI(NS_ConvertUTF8toUTF16(url), loadURIOptions);
+  mWebNavigation->FixupAndLoadURIString(NS_ConvertUTF8toUTF16(url), loadURIOptions);
 }
 
 bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
   NS_ENSURE_TRUE(mDOMWindow, false);
 
-  if (mDOMWindow->IsDesktopModeViewport() == aDesktopMode) {
+  RefPtr<BrowsingContext> browsingContext = mDOMWindow->GetBrowsingContext();
+  NS_ENSURE_TRUE(browsingContext, false);
+
+  browsingContext = browsingContext->Top();
+  if (browsingContext->ForceDesktopViewport() == aDesktopMode) {
     return false;
   }
 
-  mDOMWindow->SetDesktopModeViewport(aDesktopMode);
+  nsresult rv = browsingContext->SetForceDesktopViewport(aDesktopMode);
+  NS_ENSURE_SUCCESS(rv, false);
 
   nsCOMPtr<nsIObserverService> observerService =
     do_GetService(NS_OBSERVERSERVICE_CONTRACTID);
   if (observerService) {
-    observerService->NotifyObservers(mDOMWindow, "embedliteviewdesktopmodechanged", mDOMWindow->IsDesktopModeViewport() ? u"true" :  u"false");
+    observerService->NotifyObservers(mDOMWindow, "embedliteviewdesktopmodechanged", aDesktopMode ? u"true" :  u"false");
     return true;
   }
   return false;
@@ -719,9 +710,6 @@ bool EmbedLiteViewChild::SetDesktopModeInternal(const bool aDesktopMode) {
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetThrottlePainting(const bool &aThrottle)
 {
   LOGT("aThrottle:%d", aThrottle);
-  nsPresContext* presContext = mHelper->GetPresContext();
-  NS_ENSURE_TRUE(presContext, IPC_OK());
-  presContext->RefreshDriver()->SetThrottled(aThrottle);
   return IPC_OK();
 }
 
@@ -768,15 +756,25 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetSafeAreaInsets(const int &aTop, const int &aRight,
+                                                                  const int &aBottom, const int &aLeft)
+{
+  mSafeAreaInsets = ScreenIntMargin(aTop, aRight, aBottom, aLeft);
+  if (mWidget) {
+    GetPuppetWidget()->SetSafeAreaInsets(mSafeAreaInsets);
+  }
+
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
 {
   // Same that there is in nsPresShell.cpp:10670
   RefPtr<PresShell> ps = mHelper->GetPresShell();
-  if (ps && mWidget->IsVisible()) {
-    if (nsIFrame* root = ps->GetRootFrame()) {
-      FrameLayerBuilder::InvalidateAllLayersForFrame(nsLayoutUtils::GetDisplayRootFrame(root));
-      root->SchedulePaint();
-    }
+  nsIFrame* root = ps ? ps->GetRootFrame() : nullptr;
+  if (ps && root) {
+    root->SchedulePaint();
+    ps->ScheduleViewManagerFlush();
   }
   return IPC_OK();
 }
@@ -881,29 +879,9 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvRemoveMessageListeners(nsTArray<
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const gfxRect &contentRect,
-                                                                  const gfxSize &scrollSize)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleScrollEvent(const gfxRect &,
+                                                                  const gfxSize &)
 {
-  mozilla::CSSRect rect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
-  mozilla::CSSSize size(scrollSize.width, scrollSize.height);
-
-  if (StaticPrefs::embedlite_azpc_json_scroll()) {
-    nsString data;
-    data.AppendPrintf("{ \"contentRect\" : { \"x\" : ");
-    data.AppendFloat(contentRect.x);
-    data.AppendPrintf(", \"y\" : ");
-    data.AppendFloat(contentRect.y);
-    data.AppendPrintf(", \"width\" : ");
-    data.AppendFloat(contentRect.width);
-    data.AppendPrintf(", \"height\" : ");
-    data.AppendFloat(contentRect.height);
-    data.AppendPrintf("}, \"scrollSize\" : { \"width\" : ");
-    data.AppendFloat(scrollSize.width);
-    data.AppendPrintf(", \"height\" : ");
-    data.AppendFloat(scrollSize.height);
-    data.AppendPrintf(" }}");
-    mHelper->DispatchMessageManagerMessage(u"AZPC:ScrollDOMEvent"_ns, data);
-  }
   return IPC_OK();
 }
 
@@ -923,14 +901,39 @@ void
 EmbedLiteViewChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 {
   if (aPoint) {
-    event.mRefPoint.x = aPoint->x;
-    event.mRefPoint.y = aPoint->y;
+    event.mRefPoint = LayoutDeviceIntPoint(aPoint->x, aPoint->y);
   } else {
-    event.mRefPoint.x = 0;
-    event.mRefPoint.y = 0;
+    event.mRefPoint = LayoutDeviceIntPoint(0, 0);
   }
 
-  event.mTime = PR_Now() / 1000;
+  event.mTimeStamp = TimeStamp::Now();
+}
+
+void
+EmbedLiteViewChild::UpdateAPZEventStateWidget(nsIWidget* aWidget)
+{
+  nsCOMPtr<nsIWidget> eventWidget = aWidget ? aWidget : mWidget.get();
+  if (!eventWidget) {
+    return;
+  }
+
+  nsCOMPtr<nsIWidget> currentWidget = do_QueryReferent(mAPZEventStateWidget);
+  if (mAPZEventState && currentWidget == eventWidget) {
+    return;
+  }
+
+  nsWeakPtr weakPtrThis = do_GetWeakReference(mWidget);
+  ContentReceivedInputBlockCallback callback(
+      [weakPtrThis](uint64_t aInputBlockId, bool aPreventDefault)
+      {
+        if (nsCOMPtr<nsIWidget> widget = do_QueryReferent(weakPtrThis)) {
+          EmbedLitePuppetWidget *puppetWidget = static_cast<EmbedLitePuppetWidget*>(widget.get());
+          puppetWidget->DoSendContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+        }
+      });
+
+  mAPZEventStateWidget = do_GetWeakReference(eventWidget);
+  mAPZEventState = new APZEventState(eventWidget, std::move(callback));
 }
 
 // Returns true if the element is interested in double click events
@@ -963,16 +966,18 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
                                                                 const ScrollableLayerGuid &aGuid,
                                                                 const uint64_t &aInputBlockId)
 {
-  bool ok = false;
-  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
-  NS_ENSURE_TRUE(ok, IPC_OK());
+  // IPDL doesn't hold a strong reference to protocols as they're not required
+  // to be refcounted. This function can run script, which may trigger a nested
+  // event loop, which may release this, so we hold a strong reference here.
+  RefPtr<EmbedLiteViewChild> kungFuDeathGrip(this);
 
-  nsIContent* content = nsLayoutUtils::FindContentFor(aGuid.mScrollId);
-  NS_ENSURE_TRUE(content, IPC_OK());
-
-  PresShell* presShell = APZCCallbackHelper::GetRootContentDocumentPresShellForContent(content);
-  NS_ENSURE_TRUE(presShell, IPC_OK());
-
+  RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
+  if (!presShell) {
+    return IPC_OK();
+  }
+  if (!presShell->GetPresContext()) {
+    return IPC_OK();
+  }
   RefPtr<Document> document = presShell->GetDocument();
   NS_ENSURE_TRUE(document && !document->Fullscreen(), IPC_OK());
 
@@ -981,7 +986,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
 
   // Check whether the element is interested in double clicks
   bool doubleclick = false;
-  if (StaticPrefs::embedlite_azpc_json_doubletap()) {
+  if (widget) {
     WidgetMouseEvent hittest(true, eMouseHitTest, widget, WidgetMouseEvent::eReal);
     hittest.mRefPoint = LayoutDeviceIntPoint::Truncate(aPoint);
     hittest.mIgnoreRootScrollFrame = false;
@@ -999,11 +1004,17 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
     }
   }
 
-  if (nsLayoutUtils::AllowZoomingForDocument(document) && !doubleclick) {
+  if (doubleclick) {
+    return ProcessSingleTap(aPoint, aModifiers, aGuid, aInputBlockId,
+                            2 /* Click count */);
+  }
+
+  if (nsLayoutUtils::AllowZoomingForDocument(document)) {
     // Zoom in to/out from the double tapped element
     CSSToLayoutDeviceScale scale(
         presShell->GetPresContext()->CSSToDevPixelScale());
     CSSPoint point = aPoint / scale;
+    InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
 
     ZoomTarget zoomTarget = CalculateRectToZoomTo(document, point);
     uint32_t presShellId;
@@ -1012,20 +1023,17 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
         document->GetDocumentElement(), &presShellId, &viewId)) {
       ZoomToRect(presShellId, viewId, zoomTarget);
     }
-  } else {
-    // Pass the double tap on to the element
-    nsString data;
-    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(u"Gesture:DoubleTap"_ns, data);
   }
 
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevicePoint &aPoint,
-                                                                const Modifiers &aModifiers,
-                                                                const ScrollableLayerGuid &aGuid,
-                                                                const uint64_t &aInputBlockId)
+mozilla::ipc::IPCResult EmbedLiteViewChild::ProcessSingleTap(
+    const LayoutDevicePoint &aPoint,
+    const Modifiers &aModifiers,
+    const ScrollableLayerGuid &aGuid,
+    const uint64_t &aInputBlockId,
+    int32_t aClickCount)
 {
   if (mIMEComposing) {
     // If we are in the middle of compositing we must finish it, before it is too late.
@@ -1037,10 +1045,6 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     APZCCallbackHelper::DispatchWidgetEvent(event);
     mIMEComposing = false;
   }
-
-  bool ok = false;
-  CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
-  NS_ENSURE_TRUE(ok, IPC_OK());
 
   // IPDL doesn't hold a strong reference to protocols as they're not required
   // to be refcounted. This function can run script, which may trigger a nested
@@ -1054,37 +1058,76 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevi
     return IPC_OK();
   }
 
-  CSSToLayoutDeviceScale scale = mWidget->GetDefaultScale();
-
-  if (StaticPrefs::embedlite_azpc_json_singletap()) {
-    nsString data;
-    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(u"Gesture:SingleTap"_ns, data);
-  }
+  CSSToLayoutDeviceScale scale =
+      presShell->GetPresContext()->CSSToDevPixelScale();
 
   if (StaticPrefs::embedlite_azpc_handle_singletap()) {
-    // ProcessSingleTap multiplies cssPoint by scale.
-    if (mHelper->mBrowserChildMessageManager) {
-      mAPZEventState->ProcessSingleTap(cssPoint, scale, aModifiers, 1);
+    CSSPoint point = aPoint / scale;
+    if (mHelper->mBrowserChildMessageManager && mAPZEventState) {
+      InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
+      mAPZEventState->ProcessSingleTap(point, scale, aModifiers, aClickCount,
+                                       aInputBlockId);
     }
   }
 
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSingleTap(const LayoutDevicePoint &aPoint,
+                                                                const Modifiers &aModifiers,
+                                                                const ScrollableLayerGuid &aGuid,
+                                                                const uint64_t &aInputBlockId)
+{
+  return ProcessSingleTap(aPoint, aModifiers, aGuid, aInputBlockId,
+                          1 /* Click count */);
+}
+
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleSecondTap(const LayoutDevicePoint &aPoint,
+                                                                const Modifiers &aModifiers,
+                                                                const ScrollableLayerGuid &aGuid,
+                                                                const uint64_t &aInputBlockId)
+{
+  return ProcessSingleTap(aPoint, aModifiers, aGuid, aInputBlockId,
+                          2 /* Click count */);
+}
+
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleLongTap(const LayoutDevicePoint &aPoint,
+                                                              const Modifiers &aModifiers,
                                                               const ScrollableLayerGuid &aGuid,
                                                               const uint64_t &aInputBlockId)
 {
+  // IPDL doesn't hold a strong reference to protocols as they're not required
+  // to be refcounted. This function can run script, which may trigger a nested
+  // event loop, which may release this, so we hold a strong reference here.
+  RefPtr<EmbedLiteViewChild> kungFuDeathGrip(this);
+
+  if (StaticPrefs::embedlite_azpc_handle_longtap() &&
+      mHelper->mBrowserChildMessageManager && mAPZEventState) {
+    RefPtr<PresShell> presShell = mHelper->GetTopLevelPresShell();
+    if (!presShell) {
+      return IPC_OK();
+    }
+    if (!presShell->GetPresContext()) {
+      return IPC_OK();
+    }
+
+    CSSToLayoutDeviceScale scale =
+        presShell->GetPresContext()->CSSToDevPixelScale();
+    CSSPoint point = aPoint / scale;
+
+    // Let APZEventState perform the same visual-to-layout conversion and
+    // contextmenu dispatch as BrowserChild, so DOM client coordinates stay
+    // relative to the pressed point rather than to the document origin.
+    InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
+    RefPtr<APZEventState> eventState(mAPZEventState);
+    eventState->ProcessLongTap(presShell, point, scale, aModifiers,
+                               aInputBlockId);
+    return IPC_OK();
+  }
+
   bool ok = false;
   CSSPoint cssPoint = mHelper->ApplyPointTransform(aPoint, aGuid, aInputBlockId, &ok);
   NS_ENSURE_TRUE(ok, IPC_OK());
-
-  if (StaticPrefs::embedlite_azpc_json_longtap()) {
-    nsString data;
-    data.AppendPrintf("{ \"x\" : %f, \"y\" : %f }", cssPoint.x, cssPoint.y);
-    mHelper->DispatchMessageManagerMessage(u"Gesture:LongTap"_ns, data);
-  }
 
   bool eventHandled = false;
   if (StaticPrefs::embedlite_azpc_handle_longtap()) {
@@ -1182,7 +1225,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleTextEvent(const nsString &
     nsIContent *mTarget = DOMFocusManager->GetFocusedElement();
 
     InternalEditorInputEvent inputEvent(true, eEditorInput, widget);
-    inputEvent.mTime = static_cast<uint64_t>(PR_Now() / 1000);
+    inputEvent.mTimeStamp = TimeStamp::Now();
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
     ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
@@ -1244,7 +1287,7 @@ nsresult EmbedLiteViewChild::DispatchKeyPressEvent(nsIWidget *widget, const Even
   event.mCharCode = charCode;
   event.mLocation = eKeyLocationStandard;
   event.mRefPoint = LayoutDeviceIntPoint(0, 0);
-  event.mTime = PR_IntervalNow();
+  event.mTimeStamp = TimeStamp::Now();
   event.mKeyNameIndex = getKeyNameIndexByDomKeyCode(domKeyCode);
   event.mKeyValue.Assign(charCode);
   event.mCodeNameIndex = getCodeNameIndexByCharCode(charCode);
@@ -1349,6 +1392,10 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
     return IPC_OK();
   }
 
+  if (localEvent.mMessage == eTouchStart) {
+    UpdateAPZEventStateWidget(localEvent.mWidget);
+  }
+
   UserActivity();
 
   // Stash the guid in InputAPZContext so that when the visual-to-layout
@@ -1360,13 +1407,11 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchEvent(const Scroll
   nsTArray<TouchBehaviorFlags> allowedTouchBehaviors;
   if (localEvent.mMessage == eTouchStart && mWidget->AsyncPanZoomEnabled()) {
     nsCOMPtr<Document> document = mHelper->GetTopLevelDocument();
-    if (StaticPrefs::layout_css_touch_action_enabled()) {
-      allowedTouchBehaviors =
-          APZCCallbackHelper::SendSetAllowedTouchBehaviorNotification(
-              mWidget, document, localEvent, aInputBlockId,
-              mSetAllowedTouchBehaviorCallback);
+    allowedTouchBehaviors = TouchActionHelper::GetAllowedTouchBehavior(
+        mWidget, document, localEvent);
+    if (!allowedTouchBehaviors.IsEmpty()) {
+      DoSendSetAllowedTouchBehavior(aInputBlockId, allowedTouchBehaviors);
     }
-
     APZCCallbackHelper::SendSetTargetAPZCNotification(mWidget, document,
         localEvent, aGuid.mLayersId, aInputBlockId);
   }
@@ -1395,10 +1440,13 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvInputDataTouchMoveEvent(const Sc
   return RecvInputDataTouchEvent(aGuid, aData, aInputBlockId, aApzResponse);
 }
 
-mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewID &aViewId, const APZStateChange &aChange, const int &aArg)
+mozilla::ipc::IPCResult EmbedLiteViewChild::RecvNotifyAPZStateChange(const ViewID &aViewId,
+                                                                     const APZStateChange &aChange,
+                                                                     const int &aArg,
+                                                                     const Maybe<uint64_t> &aInputBlockId)
 {
   LOGT("thread: %ld", syscall(SYS_gettid));
-  mAPZEventState->ProcessAPZStateChange(aViewId, aChange, aArg);
+  mAPZEventState->ProcessAPZStateChange(aViewId, aChange, aArg, aInputBlockId);
   if (aChange == APZStateChange::eTransformEnd) {
     // This is used by tests to determine when the APZ is done doing whatever
     // it's doing. XXX generify this as needed when writing additional tests.
@@ -1545,7 +1593,8 @@ EmbedLiteViewChild::WidgetBoundsChanged(const LayoutDeviceIntRect &aSize)
   LOGT("sz[%d,%d]", aSize.width, aSize.height);
   MOZ_ASSERT(mHelper && mWebBrowser);
 
-  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser);
+  nsCOMPtr<nsIBaseWindow> baseWindow =
+      static_cast<nsIBaseWindow*>(mWebBrowser.get());
   baseWindow->SetPositionAndSize(0, 0, aSize.width, aSize.height, true);
 
   mHelper->ReportSizeUpdate(aSize);
@@ -1572,4 +1621,3 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetScreenProperties(const int &a
 
 } // namespace embedlite
 } // namespace mozilla
-

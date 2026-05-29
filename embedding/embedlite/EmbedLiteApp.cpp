@@ -22,8 +22,11 @@
 #include "EmbedLiteSubThread.h"
 #include "GeckoLoader.h"
 
+#include "EmbedLiteAppParent.h"
 #include "EmbedLiteAppThreadParent.h"
 #include "EmbedLiteAppThreadChild.h"
+#include "EmbedLiteViewParent.h"
+#include "EmbedLiteWindowParent.h"
 #include "EmbedLiteView.h"
 #include "EmbedLiteWindow.h"
 #include "nsXULAppAPI.h"
@@ -287,10 +290,7 @@ EmbedLiteApp::StartChildThread()
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  MessageLoop::current()->PostTask(NewRunnableMethod<mozilla::ipc::MessageChannel*>("mozilla::embedlite::EmbedLiteAppThreadChild::Init",
-                                                                                    mAppChild.get(),
-                                                                                    &EmbedLiteAppThreadChild::Init,
-                                                                                    mAppParent->GetIPCChannel()));
+  mAppChild->Init(mAppParent);
 
   return true;
 }
@@ -307,12 +307,15 @@ EmbedLiteApp::StopChildThread()
     return false;
   }
 
-  mAppChild->Close();
-  delete mAppParent;
-  mAppParent = nullptr;
-  mAppChild = nullptr;
+  const bool hadEmbedThreadChild = mAppChild;
 
-  GeckoLoader::TermEmbedding();
+  if (mAppChild) {
+    mAppChild->Close();
+  }
+
+  if (hadEmbedThreadChild) {
+    GeckoLoader::TermEmbedding();
+  }
 
   return true;
 }
@@ -363,13 +366,21 @@ EmbedLiteApp::Shutdown()
 
   if (mIsAsyncLoop) {
     if (mEmbedType == EMBED_THREAD) {
+      RefPtr<EmbedLiteAppThreadParent> appParent =
+        static_cast<EmbedLiteAppThreadParent*>(mAppParent);
       if (mSubThread) {
         mSubThread->Stop();
         mSubThread = nullptr;
+        mAppChild = nullptr;
       } else if (mListener) {
         NS_ASSERTION(mListener->StopChildThread(),
             "StopChildThread must be implemented when ExecuteChildThread defined");
+        mAppChild = nullptr;
       }
+      if (appParent && appParent->CanSend()) {
+        appParent->Close();
+      }
+      mAppParent = nullptr;
     } else if (mEmbedType == EMBED_PROCESS) {
       delete mAppParent;
     }
@@ -475,10 +486,15 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
   static uint32_t sViewCreateID = 0;
   sViewCreateID++;
 
-  PEmbedLiteViewParent* viewParent = static_cast<PEmbedLiteViewParent*>(
-      mAppParent->SendPEmbedLiteViewConstructor(aWindow->GetUniqueID(), sViewCreateID,
-                                                aParent, aParentBrowsingContext, aIsPrivateWindow,
-                                                isDesktopMode, isHidden));
+  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
+  PEmbedLiteViewParent* viewParent =
+      appParent->AllocPEmbedLiteViewParent(aWindow->GetUniqueID(), sViewCreateID,
+                                           aParent, aParentBrowsingContext, aIsPrivateWindow,
+                                           isDesktopMode, isHidden);
+  viewParent = appParent->SendPEmbedLiteViewConstructor(viewParent,
+                                                        aWindow->GetUniqueID(), sViewCreateID,
+                                                        aParent, aParentBrowsingContext, aIsPrivateWindow,
+                                                        isDesktopMode, isHidden);
   EmbedLiteView* view = new EmbedLiteView(this, aWindow, viewParent, sViewCreateID);
   mViews[sViewCreateID] = view;
   return view;
@@ -496,8 +512,13 @@ EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aList
       aListener = &sFakeWindowListener;
   }
 
-  PEmbedLiteWindowParent* windowParent = static_cast<PEmbedLiteWindowParent*>(
-      mAppParent->SendPEmbedLiteWindowConstructor(width, height, sWindowCreateID, reinterpret_cast<uintptr_t>(aListener)));
+  EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
+  PEmbedLiteWindowParent* windowParent =
+      appParent->AllocPEmbedLiteWindowParent(width, height, sWindowCreateID,
+                                             reinterpret_cast<uintptr_t>(aListener));
+  windowParent = appParent->SendPEmbedLiteWindowConstructor(windowParent,
+                                                           width, height, sWindowCreateID,
+                                                           reinterpret_cast<uintptr_t>(aListener));
   EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
   mWindows[sWindowCreateID] = window;
   return window;

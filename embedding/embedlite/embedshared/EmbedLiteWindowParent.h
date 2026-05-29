@@ -43,6 +43,7 @@ public:
   void ResumeRendering();
   void* GetPlatformImage(int* width, int* height);
   void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  void ClearPlatformImage();
   EmbedLiteWindowListener *GetListener() const { return mListener; }
 
 protected:
@@ -78,4 +79,3 @@ private:
 } // namespace mozilla
 
 #endif // MOZ_WINDOW_EMBED_PARENT_H
-

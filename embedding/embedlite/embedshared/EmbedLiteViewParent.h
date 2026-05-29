@@ -18,6 +18,8 @@
 namespace mozilla {
 namespace embedlite {
 
+using ViewID = mozilla::layers::ScrollableLayerGuid::ViewID;
+
 class EmbedContentController;
 class EmbedLiteCompositorBridgeParent;
 class EmbedLiteView;

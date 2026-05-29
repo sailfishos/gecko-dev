@@ -14,6 +14,16 @@
 namespace mozilla {
 namespace embedlite {
 
+namespace {
+
+// EmbedLiteSubThread runs Gecko main-thread work for the in-process embedder.
+// The XPCOM default thread stack is only 256 KiB in optimized builds, which is
+// too small for layout on table-heavy email HTML. Match Gecko's worker stack
+// sizing while staying below the 2 MiB huge-page boundary used on Linux.
+constexpr size_t kEmbedLiteThreadStackSize = 2 * 1024 * 1024 - 2 * 4096;
+
+}  // namespace
+
 //
 // EmbedLiteSubThread
 //
@@ -33,7 +43,9 @@ EmbedLiteSubThread::~EmbedLiteSubThread()
 void EmbedLiteSubThread::Init()
 {
   LOGT();
-  mApp->StartChildThread();
+  if (!mApp->StartChildThread()) {
+    LOGE("failed to start EmbedLite child thread");
+  }
 }
 
 void EmbedLiteSubThread::CleanUp()
@@ -45,7 +57,19 @@ void EmbedLiteSubThread::CleanUp()
 bool EmbedLiteSubThread::StartEmbedThread()
 {
   LOGT();
-  return StartWithOptions(Thread::Options(MessageLoop::TYPE_MOZILLA_CHILD, 0));
+  // StartChildThread() initializes XPCOM before TYPE_MOZILLA_CHILD enters
+  // XRE_RunAppShell(), but it can block on the UI loop while wiring in-process
+  // IPDL. Let StartWithOptions() return once the message loop exists so the UI
+  // thread can keep pumping while Init() completes on this thread.
+  Thread::Options options(MessageLoop::TYPE_MOZILLA_CHILD,
+                          kEmbedLiteThreadStackSize);
+  options.wait_for_init = false;
+  if (!StartWithOptions(options)) {
+    LOGE("failed to start EmbedLite child thread");
+    return false;
+  }
+
+  return true;
 }
 
 } // namespace embedlite

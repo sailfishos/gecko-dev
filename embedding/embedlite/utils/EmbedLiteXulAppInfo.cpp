@@ -18,6 +18,7 @@
 #include "EmbedLiteAppThreadChild.h"
 
 #include "application.ini.h"
+#include "mozilla/LookAndFeel.h"
 #include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
@@ -32,6 +33,12 @@
 #endif
 
 using namespace mozilla::embedlite;
+using mozilla::ColorScheme;
+using mozilla::LookAndFeel;
+
+#ifndef MOZ_DISTRIBUTION_ID
+#define MOZ_DISTRIBUTION_ID ""
+#endif
 
 EmbedLiteXulAppInfo* EmbedLiteXulAppInfo::sXulAppInfo = nullptr;
 
@@ -141,14 +148,29 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
   return NS_OK;
 }
 
-/* readonly attribute boolean fissionAutostart; */
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kExperimentStatus(
+    ExperimentStatus* aResult)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  *aResult = nsIXULRuntime::eExperimentStatusUnenrolled;
+  return NS_OK;
 }
 
-/* readonly attribute nsIXULRuntime_ExperimentStatus fissionExperimentStatus; */
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionExperimentStatus(nsIXULRuntime::ExperimentStatus *aFissionExperimentStatus)
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kLiveStatusTestingOnly(
+    nsIXULRuntime::ContentWin32kLockdownState* aResult)
+{
+  *aResult = nsIXULRuntime::ContentWin32kLockdownState::OperatingSystemNotSupported;
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetWin32kSessionStatus(
+    nsIXULRuntime::ContentWin32kLockdownState* aResult)
+{
+  *aResult = nsIXULRuntime::ContentWin32kLockdownState::OperatingSystemNotSupported;
+  return NS_OK;
+}
+
+/* readonly attribute boolean fissionAutostart; */
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionAutostart(bool *aFissionAutostart)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -207,27 +229,6 @@ NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetWindowsDLLBlocklistStatus(bool* aResult)
 {
   *aResult = false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetIsReleaseOrBeta(bool* aResult)
-{
-#ifdef RELEASE_OR_BETA
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
-{
-#ifdef MOZ_OFFICIAL_BRANDING
-  *aResult = true;
-#else
-  *aResult = false;
-#endif
   return NS_OK;
 }
 
@@ -293,17 +294,6 @@ EmbedLiteXulAppInfo::GetAccessibilityEnabled(bool* aResult)
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetAccessibleHandlerUsed(bool* aResult) {
-#if defined(ACCESSIBILITY) && defined(XP_WIN)
-  *aResult = Preferences::GetBool("accessibility.handler.enabled", false) &&
-             a11y::IsHandlerRegistered();
-#else
-  *aResult = false;
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
 #if defined(ACCESSIBILITY) && defined(XP_WIN)
   if (!GetAccService()) {
@@ -349,6 +339,13 @@ EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
 }
 
 NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetIsTextRecognitionSupported(bool* aResult)
+{
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetSourceURL(nsACString &aResult)
 {
   return NS_OK;
@@ -368,8 +365,43 @@ EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
 }
 
 NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetChromeColorSchemeIsDark(bool* aResult)
+{
+  *aResult = LookAndFeel::ColorSchemeForChrome() == ColorScheme::Dark;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetContentThemeDerivedColorSchemeIsDark(bool* aResult)
+{
+  *aResult =
+      LookAndFeel::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetPrefersReducedMotion(bool* aResult)
+{
+  *aResult = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetDrawInTitlebar(bool* aResult)
+{
+  *aResult = LookAndFeel::DrawInTitlebar();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetLauncherProcessState(uint32_t *aResult) {
   return NS_ERROR_NOT_AVAILABLE;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetDesktopEnvironment(nsACString& aResult) {
+  aResult.Truncate();
+  return NS_OK;
 }
 
 NS_IMETHODIMP

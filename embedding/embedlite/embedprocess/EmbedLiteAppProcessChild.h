@@ -7,6 +7,7 @@
 #define MOZ_APP_EMBED_PROCESS_CHILD_H
 
 #include "mozilla/embedlite/EmbedLiteAppChild.h"
+#include "mozilla/ipc/Endpoint.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -20,7 +21,7 @@ public:
   static EmbedLiteAppProcessChild* GetSingleton();
 
   bool Init(base::ProcessId aParentPid,
-            mozilla::ipc::ScopedPort aPort);
+            mozilla::ipc::UntypedEndpoint&& aEndpoint);
   void InitXPCOM();
 
   struct AppInfo
@@ -49,7 +50,7 @@ protected:
   virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height,
                                                             const uint32_t &id, const uintptr_t &aListener) override;
 
-  virtual PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
+//  virtual PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
 
   // IPDL protocol impl
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;

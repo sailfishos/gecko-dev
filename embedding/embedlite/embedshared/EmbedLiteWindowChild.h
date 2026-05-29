@@ -31,6 +31,8 @@ public:
   LayoutDeviceIntRect GetSize() const { return mBounds; }
   EmbedLiteWindowListener* GetListener() const { return mListener; }
   void SetScreenProperties(const int &depth, const float &density, const float &dpi);
+  float GetDPI() const { return mDpi; }
+  float GetDensity() const { return mDensity > 0.0f ? mDensity : 1.0f; }
 
 protected:
   virtual ~EmbedLiteWindowChild() override;

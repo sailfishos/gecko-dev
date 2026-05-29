@@ -13,8 +13,6 @@
 
 #include "EmbedLitePuppetWidget.h"
 #include "nsIWidgetListener.h"
-#include "ClientLayerManager.h"
-#include "BasicLayers.h"
 
 #include "mozilla/Preferences.h"
 
@@ -24,7 +22,6 @@
 #endif
 
 #include "EmbedLiteApp.h"
-#include "LayerScope.h"
 #include "mozilla/Unused.h"
 #include "mozilla/BasicEvents.h"
 
@@ -39,9 +36,9 @@ NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, PuppetWidgetBase,
                             nsISupportsWeakReference)
 
 static bool
-IsPopup(const nsWidgetInitData* aInitData)
+IsPopup(const widget::InitData* aInitData)
 {
-  return aInitData && aInitData->mWindowType == eWindowType_popup;
+  return aInitData && aInitData->mWindowType == widget::WindowType::Popup;
 }
 
 EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* view)
@@ -67,7 +64,7 @@ const char *EmbedLitePuppetWidget::Type() const
 
 already_AddRefed<nsIWidget>
 EmbedLitePuppetWidget::CreateChild(const LayoutDeviceIntRect &aRect,
-                                   nsWidgetInitData* aInitData,
+                                   widget::InitData* aInitData,
                                    bool              aForceUseIWidgetParent)
 {
   if (Destroyed()) {
@@ -118,9 +115,8 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
       return (void*)nullptr;
     }
     case NS_NATIVE_OPENGL_CONTEXT:
+      return nullptr;
     case NS_NATIVE_WINDOW:
-    case NS_NATIVE_DISPLAY:
-    case NS_NATIVE_PLUGIN_PORT:
     case NS_NATIVE_GRAPHIC:
     case NS_NATIVE_SHELLWIDGET:
     case NS_NATIVE_WIDGET:
@@ -239,7 +235,7 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
       static_cast<int32_t>(aContext.mIMEState.mEnabled),
       static_cast<int32_t>(aContext.mIMEState.mOpen),
       aContext.mHTMLInputType,
-      aContext.mHTMLInputInputmode,
+      aContext.mHTMLInputMode,
       aContext.mActionHint,
       static_cast<int32_t>(aAction.mCause),
       static_cast<int32_t>(aAction.mFocusChange));
@@ -288,13 +284,13 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
   RefPtr<EmbedLitePuppetWidget> kungFuDeathGrip(this);
 
   WidgetCompositionEvent textEvent(true, eCompositionChange, this);
-  textEvent.mTime = PR_Now() / 1000;
+  textEvent.mTimeStamp = TimeStamp::Now();
   textEvent.mData = mIMEComposingText;
   nsEventStatus status;
   DispatchEvent(&textEvent, status);
 
   WidgetCompositionEvent event(true, eCompositionEnd, this);
-  event.mTime = PR_Now() / 1000;
+  event.mTimeStamp = TimeStamp::Now();
   DispatchEvent(&event, status);
 }
 
@@ -366,41 +362,30 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 
 }
 
-LayerManager *
-EmbedLitePuppetWidget::GetLayerManager(PLayerTransactionChild *aShadowManager, LayersBackend aBackendHint, LayerManagerPersistence aPersistence)
+WindowRenderer *
+EmbedLitePuppetWidget::GetWindowRenderer()
 {
-  if (!mLayerManager) {
+  if (!mWindowRenderer) {
     if (!mShutdownObserver || Destroyed()) {
-      // We are shutting down, do not try to re-create a LayerManager
+      // We are shutting down, do not try to re-create a WindowRenderer.
       return nullptr;
     }
   }
 
-  LayerManager *lm = PuppetWidgetBase::GetLayerManager(aShadowManager, aBackendHint, aPersistence);
-  if (lm) {
-    mLayerManager = lm;
-    return mLayerManager;
-  }
-
-  if (EmbedLiteApp::GetInstance()->GetType() == EmbedLiteApp::EMBED_INVALID) {
-    LOGT("Create Layer Manager for Process View");
-
-    mLayerManager = new ClientLayerManager(this);
-    ShadowLayerForwarder* lf = mLayerManager->AsShadowForwarder();
-    if (!lf->HasShadowManager() && aShadowManager) {
-      lf->SetShadowManager(aShadowManager);
-    }
-    return mLayerManager;
+  WindowRenderer* windowRenderer = PuppetWidgetBase::GetWindowRenderer();
+  if (windowRenderer) {
+    return windowRenderer;
   }
 
   nsIWidget* topWidget = GetTopLevelWidget();
   if (topWidget && topWidget != this) {
-      mLayerManager = topWidget->GetLayerManager(aShadowManager, aBackendHint, aPersistence);
-      return mLayerManager;
+      // Borrow the root renderer for painting, but do not cache it in this
+      // child widget. mWindowRenderer is owning, and child-widget teardown must
+      // not destroy the root WebRender layer manager.
+      return topWidget->GetWindowRenderer();
   }
-  else {
-      return nullptr;
-  }
+
+  return nullptr;
 }
 
 bool

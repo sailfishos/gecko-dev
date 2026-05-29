@@ -12,10 +12,13 @@
 #include <stdio.h>
 #include "EmbedLiteViewChildIface.h"
 #include "EmbedLiteAppChildIface.h"
+#include "base/message_loop.h"
+#include "mozilla/TimeStamp.h"
 #include "nsCOMPtr.h"
 #include "nsIOpenWindowInfo.h"
 #include "nsIThread.h"
 #include "nsThreadUtils.h"           // for NS_GetCurrentThread
+#include "prthread.h"
 #include <sys/syscall.h>
 
 using namespace mozilla::embedlite;
@@ -71,15 +74,30 @@ WindowCreator::CreateChromeWindow(nsIWebBrowserChrome *aParent,
   nsCOMPtr<nsIWebBrowserChrome> browser;
   nsCOMPtr<nsIThread> thread;
   NS_GetCurrentThread(getter_AddRefs(thread));
+  mozilla::TimeStamp start = mozilla::TimeStamp::Now();
   while (!browser && NS_SUCCEEDED(rv)) {
     bool processedEvent;
-    rv = thread->ProcessNextEvent(true, &processedEvent);
+    if (MessageLoop* loop = MessageLoop::current()) {
+      bool nestableTasksAllowed = loop->NestableTasksAllowed();
+      loop->SetNestableTasksAllowed(true);
+      RefPtr<nsIRunnable> quit = new MessageLoop::QuitTask();
+      loop->PostTask(quit.forget());
+      loop->Run();
+      loop->SetNestableTasksAllowed(nestableTasksAllowed);
+    }
+
+    rv = thread->ProcessNextEvent(false, &processedEvent);
     if (NS_SUCCEEDED(rv) && !processedEvent) {
-      rv = NS_ERROR_UNEXPECTED;
+      PR_Sleep(PR_MillisecondsToInterval(1));
     }
     EmbedLiteViewChildIface* view = mChild->GetViewByID(createdID);
     if (view) {
       view->GetBrowserChrome(getter_AddRefs(browser));
+    }
+    if ((mozilla::TimeStamp::Now() - start).ToMilliseconds() > 5000) {
+      LOGE("timed out waiting for chrome window, id: %u flags: %u", createdID, aChromeFlags);
+      *aCancel = true;
+      return NS_OK;
     }
   }
 

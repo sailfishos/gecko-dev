@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Pavel Tumakaev <p.tumakaev@omprussia.ru>
+Date: Tue, 11 May 2021 15:06:45 +0300
+Subject: [PATCH 05/67] Provide checkbox/radio renderer for Sailfish OS.
+ Contributes to JB#52183
+
+Adds a Sailfish OS specific renderer for checkboxes and radio buttons.
+The rendering is similar to the Android rendering, drawn directly using
+gecko's internal drawing methods.
+
+GetWidgetPadding now returns LayoutDeviceIntMargin.
+See upstream commit: 6e331b1d1daeada0cdc23a59ad5b3e055c85b38e
+
+GetWidgetBorder now returns LayoutDeviceIntMargin.
+See upstream commit: 8f2a5e19c96914f9ddc82d2409266eba0bb21270
+
+XPCOM component registration for the native theme renderer has been removed.
+See upstream commit: 8d7c2999dc0d0b481326a7f23aa6a3ee05d14011
+
+Now mozilla::StyleAppearance type is used for aWidgetType parameter.
+See upstream commits:
+    517256e3659ee98932a68ad97244793bc3ad67dc
+    587108c41f60a5c28be4794b5c6eacc9491e2265
+
+aWidgetType has been renamed to aAppearance.
+See upstream commit: b5bfd3a7eaed7c56977870387ba53635a79a1db5
+
+Added support for widget.disable-native-theme-for-content.
+See upstream commit: b66090cb02cd112d43e5ed1b052bbaa880abfb89
+
+gfx::Color has been splitted into sRGBColor and DeviceColor.
+See upstream commit: 91b071ed1489ff8f8eeb87224ca3ac4a207135a6
+
+do_GetNativeTheme renamed to do_GetNativeThemeDoNotUseDirectly.
+See upstream commit: 741c54ae79ad51e5f54436e4cfa7e2851cdc9e69
+
+MOZ_MUST_USE has been replaced with [[nodiscard]].
+See upstream commit: 162b8c84909ca0e17df98a6a18442da5ebaa55a2
+
+Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
+---
+ layout/style/res/forms.css | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/layout/style/res/forms.css b/layout/style/res/forms.css
+index cde72c0d216a..30bcca2d1e11 100644
+--- a/layout/style/res/forms.css
++++ b/layout/style/res/forms.css
+@@ -456,6 +456,8 @@ input[type=radio] {
+   -moz-default-appearance: radio;
+   margin-block: 3px 0;
+   margin-inline: 5px 3px;
++  width: 16px;
++  height: 16px;
+ }
+ 
+ /* check boxes */
+@@ -464,6 +466,8 @@ input[type=checkbox] {
+   -moz-default-appearance: checkbox;
+   margin-block: 3px;
+   margin-inline: 4px 3px;
++  width: 16px;
++  height: 16px;
+ }
+ 
+ /* Common features of radio buttons and check boxes */
+-- 
+2.51.0
+

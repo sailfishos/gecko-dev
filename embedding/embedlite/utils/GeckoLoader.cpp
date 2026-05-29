@@ -7,6 +7,8 @@
 
 #include "GeckoLoader.h"
 #include "DirProvider.h"
+#include "mozilla/Preferences.h"
+#include "mozilla/Services.h"
 #include "mozilla/Unused.h"
 
 #include <stdio.h>
@@ -18,7 +20,13 @@
 
 // XRE_ Functions
 #include "nsXULAppAPI.h"
-#include "nsXREDirProvider.h"
+#include "nsXPCOM.h"
+#include "nsCategoryManagerUtils.h"
+#include "nsAppRunner.h"
+#include "nsIFile.h"
+#include "nsIToolkitProfile.h"
+#include "nsISupports.h"
+#include "nsIObserverService.h"
 
 // String
 #include "nsString.h"
@@ -41,7 +49,7 @@
 #include "mozilla/ModuleUtils.h"
 #include "nsXPCOMCIDInternal.h"
 
-#include "GeckoProfiler.h"
+#include "ProfilerControl.h"
 #include "IOInterposer.h"
 
 #ifdef XP_MACOSX
@@ -178,7 +186,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
         return false;
       }
 
-      kDirectoryProvider.sProfileDir = do_QueryInterface(profFile);
+      kDirectoryProvider.sProfileDir = profFile;
       kDirectoryProvider.sProfileDir->AppendNative("mozembed"_ns);
     }
 
@@ -191,11 +199,17 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
     // Lock profile directory
     if (kDirectoryProvider.sProfileDir && !kDirectoryProvider.sProfileLock) {
-      rv = XRE_LockProfileDirectory(kDirectoryProvider.sProfileDir, &kDirectoryProvider.sProfileLock);
+      nsCOMPtr<nsIProfileLock> profileLock;
+      rv = NS_LockProfilePath(kDirectoryProvider.sProfileDir,
+                              kDirectoryProvider.sProfileDir,
+                              nullptr,
+                              getter_AddRefs(profileLock));
       if (NS_FAILED(rv)) {
         LOGE("Unable to lock profile directory.");
         return false;
       }
+      nsCOMPtr<nsISupports> profileLockSupports = do_QueryInterface(profileLock);
+      profileLockSupports.forget(&kDirectoryProvider.sProfileLock);
     }
   }
 
@@ -209,22 +223,34 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   // xul application info component defined in embedding/embedlite/components/components.conf
 
   // init embedding
-  rv = XRE_InitEmbedding2(xuldir, appdir,
-                          const_cast<DirProvider*>(&kDirectoryProvider));
+  rv = NS_InitXPCOM(nullptr, xuldir, const_cast<DirProvider*>(&kDirectoryProvider));
   if (NS_FAILED(rv)) {
-    LOGE("XRE_InitEmbedding2 failed.");
+    LOGE("NS_InitXPCOM failed.");
     return false;
   }
-  // XRE_InitEmbedding2 creates and sets global nsXREDirProvider
-  RefPtr<nsXREDirProvider> XREDirProvider(nsXREDirProvider::GetSingleton());
-  NS_WARN_IF(!XREDirProvider);
-  if (XREDirProvider) {
-    XREDirProvider->InitializeUserPrefs();
-  }
+  // EmbedLite initializes XPCOM directly, so initialize profile preferences
+  // explicitly before starting services that read user prefs.
+  mozilla::Preferences::InitializeUserPrefs();
+  mozilla::Preferences::FinishInitializingUserPrefs();
 
-  if (aProfilePath) {
-    // initialize profile:
-    XRE_NotifyProfile();
+  // EmbedLite initializes XPCOM directly, so start only its own services here.
+  // Gecko's app-startup category also contains toolkit services that expect
+  // the full XRE_main profile startup sequence. Existing EmbedLite services
+  // still expect the observer topic to be app-startup.
+  NS_CreateServicesFromCategory("embedlite-startup", nullptr,
+                                "app-startup", nullptr);
+
+  // XRE emits these after app-startup services are registered and profile prefs
+  // are ready. EmbedLite bypasses that startup path, but profile-aware services
+  // such as the ServiceWorker registrar, remote worker launcher, quota manager,
+  // and EmbedLite JS components still wait for the profile notifications before
+  // becoming usable.
+  nsCOMPtr<nsIObserverService> obsSvc = mozilla::services::GetObserverService();
+  if (obsSvc) {
+    static const char16_t kStartup[] = {'s', 't', 'a', 'r',
+                                        't', 'u', 'p', '\0'};
+    obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
+    obsSvc->NotifyObservers(nullptr, "profile-after-change", kStartup);
   }
 
   LOGF("InitEmbedding successfully");
@@ -245,7 +271,7 @@ GeckoLoader::TermEmbedding()
   kDirectoryProvider.sProfileDir = nullptr;
   kDirectoryProvider.sGREDir = nullptr;
 
-  XRE_TermEmbedding();
+  NS_ShutdownXPCOM(nullptr);
 
 #ifdef MOZ_GECKO_PROFILER
   // This must precede NS_LogTerm().

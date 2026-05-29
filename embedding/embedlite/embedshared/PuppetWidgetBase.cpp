@@ -10,8 +10,7 @@
 
 #include "mozilla/Unused.h"
 
-#include "Layers.h"                // for LayerManager
-#include "ClientLayerManager.h"    // for ClientLayerManager
+#include "WindowRenderer.h"
 
 using namespace mozilla::layers;
 
@@ -35,13 +34,15 @@ PuppetWidgetBase::PuppetWidgetBase()
   , mParent(nullptr)
   , mRotation(mozilla::ROTATION_0)
   , mMargins(0, 0, 0, 0)
+  , mSafeAreaInsets(0, 0, 0, 0)
+  , mSizeMode(nsSizeMode_Normal)
 
 {
 
 }
 
 nsresult
-PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, nsWidgetInitData *aInitData)
+PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, widget::InitData *aInitData)
 {
   LOGT("Puppet: %p, parent: %p", this, aParent);
 
@@ -59,6 +60,7 @@ PuppetWidgetBase::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const
   mBounds = mParent ? mParent->mBounds : aRect;
   mMargins = mParent ? mParent->mMargins : mMargins;
   mNaturalBounds = mParent ? mParent->mNaturalBounds : aRect;
+  mSafeAreaInsets = mParent ? mParent->mSafeAreaInsets : mSafeAreaInsets;
 
   BaseCreate(aParent, aInitData);
 
@@ -79,7 +81,6 @@ PuppetWidgetBase::Destroy()
   }
 
   mOnDestroyCalled = true;
-  mLayerManager = nullptr;
 
   Base::OnDestroy();
   Base::Destroy();
@@ -110,15 +111,10 @@ PuppetWidgetBase::Show(bool aState)
     return;
   }
 
-  LOGT("this:%p, state: %i, LM:%p", this, aState, mLayerManager.get());
+  LOGT("this:%p, state: %i", this, aState);
 
   bool wasVisible = mVisible;
   mVisible = aState;
-
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (!mVisible && mLayerManager && topWidget == this) {
-    mLayerManager->ClearCachedResources();
-  }
 
   if (Destroyed()) {
     return;
@@ -144,10 +140,10 @@ PuppetWidgetBase::IsVisible() const
 }
 
 void
-PuppetWidgetBase::ConstrainPosition(bool, int32_t *aX, int32_t *aY)
+PuppetWidgetBase::ConstrainPosition(DesktopIntPoint& aPoint)
 {
-  *aX = kMaxDimension;
-  *aY = kMaxDimension;
+  aPoint.x = kMaxDimension;
+  aPoint.y = kMaxDimension;
   LOGT();
 }
 
@@ -232,15 +228,6 @@ PuppetWidgetBase::SetTitle(const nsAString &aTitle)
   return NS_ERROR_UNEXPECTED;
 }
 
-// PuppetWidgets don't care about children.
-nsresult
-PuppetWidgetBase::ConfigureChildren(const nsTArray<Configuration> &aConfigurations)
-{
-  Unused << aConfigurations;
-  LOGNI();
-  return NS_OK;
-}
-
 // PuppetWidgets are always at <0, 0>.
 mozilla::LayoutDeviceIntPoint
 PuppetWidgetBase::WidgetToScreenOffset()
@@ -253,25 +240,17 @@ void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
   Unused << aRect;
-
   if (Destroyed()) {
     return;
   }
-
-  LayerManager* lm = nsIWidget::GetLayerManager();
-  if (!lm) {
+  WindowRenderer* rendered = GetWindowRenderer();
+  if (!rendered) {
     return;
   }
 
   nsIWidgetListener* listener = GetWidgetListener();
   if (listener) {
     listener->WillPaintWindow(this);
-  }
-
-  if (mozilla::layers::LayersBackend::LAYERS_CLIENT == lm->GetBackendType()) {
-    // No need to do anything, the compositor will handle drawing
-  } else {
-    MOZ_CRASH("Unexpected layer manager type");
   }
 
   listener = GetWidgetListener();
@@ -306,9 +285,8 @@ PuppetWidgetBase::GetParent(void)
 }
 
 void
-PuppetWidgetBase::CaptureRollupEvents(nsIRollupListener *aListener, bool aDoCapture)
+PuppetWidgetBase::CaptureRollupEvents(bool aDoCapture)
 {
-  (void)aListener;
   (void)aDoCapture;
   LOGNI();
 }
@@ -346,6 +324,32 @@ PuppetWidgetBase::SetMargins(const LayoutDeviceIntMargin &margins)
   mMargins = margins;
   for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
     mChildren[i]->SetMargins(margins);
+  }
+}
+
+ScreenIntMargin
+PuppetWidgetBase::GetSafeAreaInsets() const
+{
+  return mSafeAreaInsets;
+}
+
+void
+PuppetWidgetBase::SetSafeAreaInsets(const ScreenIntMargin &aSafeAreaInsets)
+{
+  if (mSafeAreaInsets == aSafeAreaInsets) {
+    return;
+  }
+
+  mSafeAreaInsets = aSafeAreaInsets;
+  for (ChildrenArray::size_type i = 0; i < mChildren.Length(); i++) {
+    mChildren[i]->SetSafeAreaInsets(aSafeAreaInsets);
+  }
+
+  if (mWidgetListener) {
+    mWidgetListener->SafeAreaInsetsChanged(aSafeAreaInsets);
+  }
+  if (mAttachedWidgetListener) {
+    mAttachedWidgetListener->SafeAreaInsetsChanged(aSafeAreaInsets);
   }
 }
 
@@ -412,29 +416,14 @@ PuppetWidgetBase::SetActive(bool active)
   mActive = active;
 }
 
-LayerManager *
-PuppetWidgetBase::GetLayerManager(PLayerTransactionChild *aShadowManager,
-                                                LayersBackend aBackendHint,
-                                                LayerManagerPersistence aPersistence)
+WindowRenderer *
+PuppetWidgetBase::GetWindowRenderer()
 {
   if (Destroyed()) {
     return nullptr;
   }
 
-  if (mLayerManager) {
-    // This layer manager might be used for painting outside of DoDraw(), so we need
-    // to set the correct rotation on it.
-    if (mLayerManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
-      ClientLayerManager* manager =
-          static_cast<ClientLayerManager*>(mLayerManager.get());
-      manager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE,
-                                             mRotation);
-    }
-    return mLayerManager;
-  }
-
-  // Layer manager can be null here. Sub-class shall handle this.
-  return mLayerManager;
+  return mWindowRenderer;
 }
 
 void PuppetWidgetBase::DumpWidgetTree()
@@ -485,9 +474,9 @@ PuppetWidgetBase::WillShow(bool aState)
 bool
 PuppetWidgetBase::IsTopLevel()
 {
-  return mWindowType == eWindowType_toplevel ||
-         mWindowType == eWindowType_dialog ||
-         mWindowType == eWindowType_invisible;
+  return mWindowType == widget::WindowType::TopLevel ||
+         mWindowType == widget::WindowType::Dialog ||
+         mWindowType == widget::WindowType::Invisible;
 }
 
 }  // namespace embedlite
