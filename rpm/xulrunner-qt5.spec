@@ -100,7 +100,7 @@ Patch47:     0047-Convert-panic-into-early-return-in-Hyphenator.patch
 Patch48:     0048-Allow-LoginManagerPrompter-to-find-its-window.-JB-55.patch
 Patch49:     0049-Add-support-for-prefers-color-scheme-JB-58394.patch
 Patch50:     0050-Update-hash-for-mapped_hyph.patch
-Patch51:     0051-Fix-content-action-integration-to-work.-Fixes-JB-512.patch
+Patch51:     0051-Use-fileservice-for-Sailfish-handler-checks.-Fixes-J.patch
 Patch52:     0052-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
 Patch53:     0053-Force-use-of-mobile-video-controls.-JB-55484-OMP-JOL.patch
 Patch54:     0054-Add-a-video-decoder-based-on-gecko-camera.-JB-56755.patch
@@ -159,7 +159,7 @@ BuildRequires:  pkgconfig(libavutil)
 BuildRequires:  pkgconfig(libswresample)
 BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(Qt5Positioning)
-BuildRequires:  pkgconfig(contentaction5)
+BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(dconf)
 BuildRequires:  pkgconfig(geckocamera)
 BuildRequires:  qt5-qttools

@@ -1,0 +1,693 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Raine Makelainen <raine.makelainen@jolla.com>
+Date: Fri, 31 Jan 2020 11:09:02 +0000
+Subject: Use fileservice for Sailfish handler checks. Fixes JB#51235
+
+[sailfishos][gecko] Use lipstick fileservice for custom scheme URI and MIME
+handler support checks. JB#47892
+
+This allows Gecko's handler availability checks to include AppSupport handlers
+reported by lipstick, while keeping actual launch handling on the existing Qt
+open URL path.
+
+Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
+---
+ docshell/base/moz.build                       |   1 +
+ docshell/base/nsDocShell.cpp                  |  21 ++
+ old-configure.in                              |  23 +-
+ .../handling/ContentDispatchChooser.sys.mjs   | 259 ++++++++++++++++++
+ uriloader/exthandler/SailfishFileService.cpp  |  57 ++++
+ uriloader/exthandler/SailfishFileService.h    |  19 ++
+ uriloader/exthandler/moz.build                |   5 +
+ uriloader/exthandler/nsContentHandlerApp.h    |  30 --
+ .../exthandler/nsExternalHelperAppService.cpp |  15 +
+ .../exthandler/nsExternalProtocolHandler.cpp  |  11 +
+ uriloader/exthandler/unix/nsMIMEInfoUnix.cpp  |  21 +-
+ .../exthandler/unix/nsOSHelperAppService.cpp  |   1 +
+ xpcom/io/moz.build                            |   2 +
+ 13 files changed, 412 insertions(+), 53 deletions(-)
+ create mode 100644 uriloader/exthandler/SailfishFileService.cpp
+ create mode 100644 uriloader/exthandler/SailfishFileService.h
+ delete mode 100644 uriloader/exthandler/nsContentHandlerApp.h
+
+diff --git a/docshell/base/moz.build b/docshell/base/moz.build
+index 049a78d440657..77394d855f07c 100644
+--- a/docshell/base/moz.build
++++ b/docshell/base/moz.build
+@@ -123,6 +123,7 @@ LOCAL_INCLUDES += [
+     "/toolkit/components/browser",
+     "/toolkit/components/find",
+     "/tools/profiler",
++    "/uriloader/exthandler",
+ ]
+ 
+ EXTRA_JS_MODULES += ["URIFixup.sys.mjs"]
+diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
+index 792a6c9dc2762..29627a003b0f3 100644
+--- a/docshell/base/nsDocShell.cpp
++++ b/docshell/base/nsDocShell.cpp
+@@ -187,6 +187,10 @@
+ #include "nsArray.h"
+ #include "nsArrayUtils.h"
+ #include "nsCExternalHandlerService.h"
++#include "nsIMIMEInfo.h"
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++#  include "SailfishFileService.h"
++#endif
+ #include "nsContentDLF.h"
+ #include "nsContentPolicyUtils.h"  // NS_CheckContentLoadPolicy(...)
+ #include "nsContentSecurityManager.h"
+@@ -13007,6 +13011,23 @@ nsresult nsDocShell::OnLinkClickSync(nsIContent* aContent,
+         // if the URL scheme does not correspond to an exposed protocol, then
+         // we need to hand this link click over to the external protocol
+         // handler.
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++        if (!scheme.EqualsLiteral("http") && !scheme.EqualsLiteral("https")) {
++          nsAutoCString url;
++          aLoadState->URI()->GetSpec(url);
++          if (SailfishFileService::CheckUrlSupported(url)) {
++            return extProtService->LoadURI(
++                aLoadState->URI(), triggeringPrincipal, nullptr,
++                mBrowsingContext,
++                /* aTriggeredExternally */
++                false,
++                /* aHasValidUserGestureActivation */
++                aContent->OwnerDoc()
++                    ->HasValidTransientUserGestureActivation());
++          }
++        }
++#endif
++
+         bool isExposed;
+         nsresult rv =
+             extProtService->IsExposedProtocol(scheme.get(), &isExposed);
+diff --git a/old-configure.in b/old-configure.in
+index 75750ded9d289..cbd10f60ae2cc 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -1211,19 +1211,16 @@ then
+        AC_SUBST(MOZ_ENABLE_QT5GEOPOSITION)
+     fi
+ 
+-    if test "$MOZ_ENABLE_CONTENTACTION"; then
+-      MOZ_ENABLE_CONTENTACTION=1
+-      AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
+-    fi
+-
+-    MOZ_ENABLE_CONTENTACTION=
+-    PKG_CHECK_MODULES(LIBCONTENTACTION, contentaction-0.1, _LIB_FOUND=1, _LIB_FOUND=)
+-    if test "$MOZ_ENABLE_CONTENTACTION"; then
+-       MOZ_ENABLE_CONTENTACTION=1
+-       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_CONTENTACTION_CFLAGS"
+-       MOZ_QT_LIBS="$MOZ_QT_LIBS $_CONTENTACTION_LIBS"
+-       AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
+-       AC_SUBST(MOZ_ENABLE_CONTENTACTION)
++    MOZ_ENABLE_SAILFISH_FILESERVICE=
++    PKG_CHECK_MODULES(_QT5DBUS, Qt5DBus,
++                      MOZ_ENABLE_SAILFISH_FILESERVICE=1,
++                      MOZ_ENABLE_SAILFISH_FILESERVICE=)
++    if test "$MOZ_ENABLE_SAILFISH_FILESERVICE"; then
++       MOZ_ENABLE_SAILFISH_FILESERVICE=1
++       MOZ_QT_CFLAGS="$MOZ_QT_CFLAGS $_QT5DBUS_CFLAGS"
++       MOZ_QT_LIBS="$MOZ_QT_LIBS $_QT5DBUS_LIBS"
++       AC_DEFINE(MOZ_ENABLE_SAILFISH_FILESERVICE)
++       AC_SUBST(MOZ_ENABLE_SAILFISH_FILESERVICE)
+     fi
+     TK_CFLAGS=$MOZ_QT_CFLAGS
+     TK_LIBS=$MOZ_QT_LIBS
+diff --git a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+index e980e0e2e6042..411f2c40e3b19 100644
+--- a/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
++++ b/toolkit/mozapps/handling/ContentDispatchChooser.sys.mjs
+@@ -7,6 +7,8 @@
+ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+ 
+ import { E10SUtils } from "resource://gre/modules/E10SUtils.sys.mjs";
++import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
++import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
+ 
+ const DIALOG_URL_APP_CHOOSER =
+   "chrome://mozapps/content/handling/appChooser.xhtml";
+@@ -23,6 +25,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
+ 
+ const PROTOCOL_HANDLER_OPEN_PERM_KEY = "open-protocol-handler";
+ const PERMISSION_KEY_DELIMITER = "^";
++const SAILFISH_EXTERNAL_APP_PROMPT_TOPIC = "embed:externalapppermission";
++const SAILFISH_EXTERNAL_APP_RESPONSE_TOPIC = "externalapppermissionresponse";
++const SAILFISH_EXTERNAL_APP_PROMPT_TIMEOUT_MS = 60000;
++
++let gSailfishExternalAppPromptId = 0;
+ 
+ export class nsContentDispatchChooser {
+   /**
+@@ -64,6 +71,20 @@ export class nsContentDispatchChooser {
+       aHandler.alwaysAskBeforeHandling = true;
+     }
+ 
++    if (this._shouldUseSailfishExternalAppPrompt(aHandler, aURI)) {
++      if (
++        await this._handleSailfishExternalApp(
++          aHandler,
++          aURI,
++          aPrincipal,
++          aBrowsingContext
++        )
++      ) {
++        return;
++      }
++      return;
++    }
++
+     // Skip the dialog if a preferred application is set and the caller has
+     // permission.
+     if (
+@@ -262,6 +283,244 @@ export class nsContentDispatchChooser {
+     return shouldOpenHandler;
+   }
+ 
++  _shouldUseSailfishExternalAppPrompt(aHandler, aURI) {
++    return (
++      AppConstants.MOZ_WIDGET_TOOLKIT == "qt" &&
++      !E10SUtils.STANDARD_SAFE_PROTOCOLS.includes(aURI.scheme) &&
++      !aHandler.alwaysAskBeforeHandling &&
++      aHandler.preferredAction == Ci.nsIHandlerInfo.useSystemDefault
++    );
++  }
++
++  async _handleSailfishExternalApp(
++    aHandler,
++    aURI,
++    aPrincipal,
++    aBrowsingContext
++  ) {
++    if (!this._hasSailfishExternalAppPermission(aURI.scheme, aPrincipal)) {
++      let result;
++      try {
++        result = await this._openSailfishExternalAppPermissionPrompt(
++          aPrincipal,
++          aBrowsingContext,
++          aURI
++        );
++      } catch (error) {
++        console.error(error.message);
++        return false;
++      }
++
++      if (!result?.accepted) {
++        return false;
++      }
++
++      if (result.remember && !aBrowsingContext?.usePrivateBrowsing) {
++        this._updateSailfishExternalAppPermission(
++          aPrincipal,
++          aURI.scheme,
++          true
++        );
++      }
++    }
++
++    try {
++      aHandler.launchWithURI(aURI, aBrowsingContext);
++      return true;
++    } catch (error) {
++      console.error(error.message);
++      return false;
++    }
++  }
++
++  _hasSailfishExternalAppPermission(aScheme, aPrincipal) {
++    if (!aPrincipal || aPrincipal.isSystemPrincipal) {
++      return true;
++    }
++
++    if (!this._isSupportedPrincipal(aPrincipal)) {
++      return false;
++    }
++
++    let key = this._getSkipProtoDialogPermissionKey(aScheme);
++    return (
++      Services.perms.testPermissionFromPrincipal(aPrincipal, key) ===
++      Services.perms.ALLOW_ACTION
++    );
++  }
++
++  _updateSailfishExternalAppPermission(aPrincipal, aScheme, aAllow) {
++    if (
++      !aPrincipal ||
++      aPrincipal.isSystemPrincipal ||
++      !this._isSupportedPrincipal(aPrincipal)
++    ) {
++      return;
++    }
++
++    let principal = aPrincipal;
++    let addonPolicy = aPrincipal.contentScriptAddonPolicy;
++    if (addonPolicy) {
++      principal = Services.scriptSecurityManager.principalWithOA(
++        addonPolicy.extension.principal,
++        principal.originAttributes
++      );
++    }
++
++    let permKey = this._getSkipProtoDialogPermissionKey(aScheme);
++    if (aAllow) {
++      Services.perms.addFromPrincipal(
++        principal,
++        permKey,
++        Services.perms.ALLOW_ACTION,
++        Services.perms.EXPIRE_NEVER
++      );
++    } else {
++      Services.perms.removeFromPrincipal(principal, permKey);
++    }
++  }
++
++  _displayPrePath(aPrincipal) {
++    if (!aPrincipal) {
++      return null;
++    }
++
++    try {
++      if (aPrincipal.isNullPrincipal) {
++        return aPrincipal.precursorPrincipal?.exposablePrePath ?? null;
++      }
++      return aPrincipal.exposablePrePath;
++    } catch (error) {
++      console.error(error.message);
++      return null;
++    }
++  }
++
++  async _openSailfishExternalAppPermissionPrompt(
++    aPrincipal,
++    aBrowsingContext,
++    aURI
++  ) {
++    let embedService;
++    try {
++      embedService = Cc["@mozilla.org/embedlite-app-service;1"].getService(
++        Ci.nsIEmbedAppService
++      );
++    } catch (error) {
++      throw new Error("EmbedLite app service is not available.");
++    }
++
++    let win;
++    try {
++      win = aBrowsingContext?.top?.window || aBrowsingContext?.window;
++    } catch (error) {
++      win = null;
++    }
++    if (!win) {
++      try {
++        win = embedService.getAnyEmbedWindow(true);
++      } catch (error) {
++        win = null;
++      }
++    }
++    if (!win) {
++      throw new Error("External app permission prompt has no window.");
++    }
++
++    let winId = embedService.getIDByWindow(win);
++    if (!winId) {
++      throw new Error("External app permission prompt has no window id.");
++    }
++
++    let id = ++gSailfishExternalAppPromptId;
++    let payload = {
++      winId,
++      id,
++      host: this._displayPrePath(aPrincipal),
++      scheme: aURI.scheme,
++      url: this._displayURI(aURI),
++      privateBrowsing: !!aBrowsingContext?.usePrivateBrowsing,
++    };
++
++    return new Promise(resolve => {
++      let finished = false;
++      let timer = null;
++      let listener = {
++        QueryInterface: ChromeUtils.generateQI(["nsIEmbedMessageListener"]),
++
++        onMessageReceived(messageName, message) {
++          let response;
++          try {
++            response = JSON.parse(message);
++          } catch (error) {
++            console.warn("External app permission response parsing failed.");
++            return;
++          }
++
++          if (response.winId != winId || response.id != id) {
++            return;
++          }
++
++          finish({
++            accepted: !!response.accepted,
++            remember: !!response.remember,
++          });
++        },
++      };
++
++      let finish = result => {
++        if (finished) {
++          return;
++        }
++        finished = true;
++        if (timer) {
++          clearTimeout(timer);
++        }
++        embedService.removeMessageListener(
++          SAILFISH_EXTERNAL_APP_RESPONSE_TOPIC,
++          listener
++        );
++        resolve(result);
++      };
++
++      embedService.addMessageListener(
++        SAILFISH_EXTERNAL_APP_RESPONSE_TOPIC,
++        listener
++      );
++      timer = setTimeout(
++        () => finish({ accepted: false, remember: false }),
++        SAILFISH_EXTERNAL_APP_PROMPT_TIMEOUT_MS
++      );
++
++      try {
++        embedService.sendAsyncMessage(
++          winId,
++          SAILFISH_EXTERNAL_APP_PROMPT_TOPIC,
++          JSON.stringify(payload)
++        );
++      } catch (error) {
++        finish({ accepted: false, remember: false });
++      }
++    });
++  }
++
++  _displayURI(aURI) {
++    if (!aURI) {
++      return null;
++    }
++
++    try {
++      return aURI.displaySpec;
++    } catch (error) {
++      try {
++        return aURI.spec;
++      } catch (fallbackError) {
++        console.error(fallbackError.message);
++        return null;
++      }
++    }
++  }
++
+   /**
+    * Test if a given principal has the open-protocol-handler permission for a
+    * specific protocol.
+diff --git a/uriloader/exthandler/SailfishFileService.cpp b/uriloader/exthandler/SailfishFileService.cpp
+new file mode 100644
+index 0000000000000..115874f68d70a
+--- /dev/null
++++ b/uriloader/exthandler/SailfishFileService.cpp
+@@ -0,0 +1,57 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ * vim:expandtab:shiftwidth=2:tabstop=2:cin:
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "SailfishFileService.h"
++
++#include <QtDBus/QDBusConnection>
++#include <QtDBus/QDBusMessage>
++#include <QtCore/QVariant>
++#include <QtCore/QString>
++
++namespace {
++
++const char FileServiceName[] = "org.sailfishos.fileservice";
++const char FileServicePath[] = "/";
++const char FileServiceInterface[] = "org.sailfishos.fileservice";
++const int FileServiceTimeout = 35000;
++
++bool callSupportCheck(const char* method, const nsACString& value)
++{
++  if (value.IsEmpty()) {
++    return false;
++  }
++
++  QDBusMessage message = QDBusMessage::createMethodCall(
++      QLatin1String(FileServiceName), QLatin1String(FileServicePath),
++      QLatin1String(FileServiceInterface), QLatin1String(method));
++  message << QString::fromUtf8(value.BeginReading(), value.Length());
++
++  QDBusMessage reply =
++      QDBusConnection::sessionBus().call(message, QDBus::Block,
++                                         FileServiceTimeout);
++  if (reply.type() != QDBusMessage::ReplyMessage ||
++      reply.arguments().isEmpty()) {
++    return false;
++  }
++
++  return reply.arguments().first().toBool();
++}
++
++}  // namespace
++
++namespace SailfishFileService {
++
++bool CheckMimeSupported(const nsACString& aMimeType)
++{
++  return callSupportCheck("checkMimeSupported", aMimeType);
++}
++
++bool CheckUrlSupported(const nsACString& aUrl)
++{
++  return callSupportCheck("checkUrlSupported", aUrl);
++}
++
++}  // namespace SailfishFileService
+diff --git a/uriloader/exthandler/SailfishFileService.h b/uriloader/exthandler/SailfishFileService.h
+new file mode 100644
+index 0000000000000..e8da6793bb0e5
+--- /dev/null
++++ b/uriloader/exthandler/SailfishFileService.h
+@@ -0,0 +1,19 @@
++/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
++ * vim:expandtab:shiftwidth=2:tabstop=2:cin:
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef SailfishFileService_h
++#define SailfishFileService_h
++
++#include "nsString.h"
++
++namespace SailfishFileService {
++
++bool CheckMimeSupported(const nsACString& aMimeType);
++bool CheckUrlSupported(const nsACString& aUrl);
++
++}  // namespace SailfishFileService
++
++#endif  // SailfishFileService_h
+diff --git a/uriloader/exthandler/moz.build b/uriloader/exthandler/moz.build
+index 7e6cf6f4cdac4..f966037c96efc 100644
+--- a/uriloader/exthandler/moz.build
++++ b/uriloader/exthandler/moz.build
+@@ -114,6 +114,11 @@ if CONFIG["MOZ_ENABLE_DBUS"]:
+         "DBusHelpers.h",
+     ]
+ 
++if CONFIG["MOZ_ENABLE_SAILFISH_FILESERVICE"]:
++    UNIFIED_SOURCES += [
++        "SailfishFileService.cpp",
++    ]
++
+ EXTRA_JS_MODULES += [
+     "ExtHandlerService.sys.mjs",
+     "WebHandlerApp.sys.mjs",
+diff --git a/uriloader/exthandler/nsContentHandlerApp.h b/uriloader/exthandler/nsContentHandlerApp.h
+deleted file mode 100644
+index f372d8735e0ab..0000000000000
+--- a/uriloader/exthandler/nsContentHandlerApp.h
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+- * vim:expandtab:shiftwidth=2:tabstop=2:cin:
+- * This Source Code Form is subject to the terms of the Mozilla Public
+- * License, v. 2.0. If a copy of the MPL was not distributed with this
+- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+-
+-#ifndef __nsContentHandlerAppImpl_h__
+-#define __nsContentHandlerAppImpl_h__
+-
+-#include <contentaction/contentaction.h>
+-#include "nsString.h"
+-#include "nsIMIMEInfo.h"
+-
+-class nsContentHandlerApp : public nsIHandlerApp {
+- public:
+-  NS_DECL_ISUPPORTS
+-  NS_DECL_NSIHANDLERAPP
+-
+-  nsContentHandlerApp(nsString aName, nsCString aType,
+-                      ContentAction::Action& aAction);
+-  virtual ~nsContentHandlerApp() {}
+-
+- protected:
+-  nsString mName;
+-  nsCString mType;
+-  nsString mDetailedDescription;
+-
+-  ContentAction::Action mAction;
+-};
+-#endif
+diff --git a/uriloader/exthandler/nsExternalHelperAppService.cpp b/uriloader/exthandler/nsExternalHelperAppService.cpp
+index 6b6b6a16ebd80..c7688f917e9a8 100644
+--- a/uriloader/exthandler/nsExternalHelperAppService.cpp
++++ b/uriloader/exthandler/nsExternalHelperAppService.cpp
+@@ -56,16 +56,22 @@
+ #include "nsUTF8Utils.h"
+ #include "nsUnicodeProperties.h"
+ 
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++#  include "SailfishFileService.h"
++#endif
++
+ // used to access our datastore of user-configured helper applications
+ #include "nsIHandlerService.h"
+ #include "nsIMIMEInfo.h"
+ #include "nsIHelperAppLauncherDialog.h"
+ #include "nsIContentDispatchChooser.h"
++#include "nsContentUtils.h"
+ #include "nsNetUtil.h"
+ #include "nsIPrivateBrowsingChannel.h"
+ #include "nsIIOService.h"
+ #include "nsNetCID.h"
+ 
++
+ #include "nsIApplicationReputation.h"
+ 
+ #include "nsDSURIContentListener.h"
+@@ -1110,6 +1116,15 @@ nsExternalHelperAppService::LoadURI(nsIURI* aURI,
+   rv = GetProtocolHandlerInfo(scheme, getter_AddRefs(handler));
+   NS_ENSURE_SUCCESS(rv, rv);
+ 
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++  nsAutoCString escapedSpec;
++  escapedURI->GetSpec(escapedSpec);
++  if (SailfishFileService::CheckUrlSupported(escapedSpec)) {
++    handler->SetPreferredAction(nsIHandlerInfo::useSystemDefault);
++    handler->SetAlwaysAskBeforeHandling(false);
++  }
++#endif
++
+   nsCOMPtr<nsIContentDispatchChooser> chooser =
+       do_CreateInstance("@mozilla.org/content-dispatch-chooser;1", &rv);
+   NS_ENSURE_SUCCESS(rv, rv);
+diff --git a/uriloader/exthandler/nsExternalProtocolHandler.cpp b/uriloader/exthandler/nsExternalProtocolHandler.cpp
+index f969cb2d66bfc..23366534fa322 100644
+--- a/uriloader/exthandler/nsExternalProtocolHandler.cpp
++++ b/uriloader/exthandler/nsExternalProtocolHandler.cpp
+@@ -22,6 +22,10 @@
+ #include "nsContentSecurityManager.h"
+ #include "nsExternalHelperAppService.h"
+ 
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++#  include "SailfishFileService.h"
++#endif
++
+ // used to dispatch urls to default protocol handlers
+ #include "nsCExternalHandlerService.h"
+ #include "nsIExternalProtocolService.h"
+@@ -160,6 +164,13 @@ nsresult nsExtProtocolChannel::OpenURL() {
+     bool haveHandler = false;
+     extProtService->ExternalProtocolHandlerExists(urlScheme.get(),
+                                                   &haveHandler);
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++    if (!haveHandler) {
++      nsAutoCString url;
++      mUrl->GetSpec(url);
++      haveHandler = SailfishFileService::CheckUrlSupported(url);
++    }
++#endif
+     if (!haveHandler) {
+       return NS_ERROR_UNKNOWN_PROTOCOL;
+     }
+diff --git a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+index dc9425a723c5c..6abd3a39ba29a 100644
+--- a/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
++++ b/uriloader/exthandler/unix/nsMIMEInfoUnix.cpp
+@@ -4,18 +4,14 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+-#ifdef MOZ_WIDGET_QT
+-#if (MOZ_ENABLE_CONTENTACTION)
+-#include <contentaction/contentaction.h>
+-#include "nsContentHandlerApp.h"
+-#endif
+-#endif
+-
+ #include "nsMIMEInfoUnix.h"
+ #include "nsGNOMERegistry.h"
+ #include "nsIGIOService.h"
+ #include "nsNetCID.h"
+ #include "nsIIOService.h"
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++#  include "SailfishFileService.h"
++#endif
+ #ifdef MOZ_ENABLE_DBUS
+ #  include "nsDBusHandlerApp.h"
+ #endif
+@@ -63,6 +59,14 @@ nsMIMEInfoUnix::GetHasDefaultHandler(bool* _retval) {
+ 
+   if (*_retval) return NS_OK;
+ 
++#if defined(MOZ_ENABLE_SAILFISH_FILESERVICE)
++  if (mClass != eProtocolInfo &&
++      SailfishFileService::CheckMimeSupported(mSchemeOrType)) {
++    *_retval = true;
++    return NS_OK;
++  }
++#endif
++
+   return NS_OK;
+ }
+ 
+@@ -74,9 +78,6 @@ nsresult nsMIMEInfoUnix::LaunchDefaultWithFile(nsIFile* aFile) {
+     return nsMIMEInfoImpl::LaunchDefaultWithFile(aFile);
+   }
+ 
+-  nsAutoCString nativePath;
+-  aFile->GetNativePath(nativePath);
+-
+   nsCOMPtr<nsIGIOService> giovfs = do_GetService(NS_GIOSERVICE_CONTRACTID);
+   if (!giovfs) {
+     return NS_ERROR_FAILURE;
+diff --git a/uriloader/exthandler/unix/nsOSHelperAppService.cpp b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+index 7f6eaa46f2ee0..bc893fdddf781 100644
+--- a/uriloader/exthandler/unix/nsOSHelperAppService.cpp
++++ b/uriloader/exthandler/unix/nsOSHelperAppService.cpp
+@@ -7,6 +7,7 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ 
++
+ #include "nsOSHelperAppService.h"
+ #include "nsMIMEInfoUnix.h"
+ #ifdef MOZ_WIDGET_GTK
+diff --git a/xpcom/io/moz.build b/xpcom/io/moz.build
+index 97fe1663ab52f..45a11db874fad 100644
+--- a/xpcom/io/moz.build
++++ b/xpcom/io/moz.build
+@@ -160,3 +160,5 @@ LOCAL_INCLUDES += [
+     "!..",
+     "../build",
+ ]
++
++CXXFLAGS += CONFIG['TK_CFLAGS']
