@@ -569,6 +569,11 @@ EmbedLiteViewParent::MouseRelease(int x, int y, int mstime, unsigned int buttons
   Unused << SendMouseEvent(u"mouseup"_ns,
                            x, y, buttons, 1, modifiers,
                            true);
+  if (buttons == 0) {
+    Unused << SendMouseEvent(u"click"_ns,
+                             x, y, buttons, 1, modifiers,
+                             true);
+  }
   return NS_OK;
 }
 

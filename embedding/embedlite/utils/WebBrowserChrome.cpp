@@ -37,6 +37,7 @@
 #define MOZ_scroll u"scroll"
 #define MOZ_pagehide u"pagehide"
 #define MOZ_MozScrolledAreaChanged u"MozScrolledAreaChanged"
+#define MOZ_DOMTitleChanged u"DOMTitleChanged"
 
 using namespace mozilla::dom;
 
@@ -256,6 +257,13 @@ WebBrowserChrome::OnStateChange(nsIWebProgress* progress, nsIRequest* request,
   }
   if (progressStateFlags & nsIWebProgressListener::STATE_STOP && progressStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT) {
     mListener->OnLoadFinished();
+    nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser);
+    if (ctDoc) {
+      nsAutoString title;
+      ctDoc->GetTitle(title);
+      SetTitle(title);
+    }
+
     nsAutoString httpUserAgent;
     nsresult rv = GetHttpUserAgent(request, httpUserAgent);
     if (NS_SUCCEEDED(rv) && !httpUserAgent.IsEmpty()) {
@@ -448,6 +456,17 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
       return NS_OK;
     }
     SendScroll();
+  } else if (type.EqualsLiteral(MOZ_DOMTitleChanged)) {
+    EventTarget *target = aEvent->GetTarget();
+    nsCOMPtr<Document> eventDoc = do_QueryInterface(target);
+    nsCOMPtr<Document> ctDoc = do_GetInterface(mWebBrowser);
+    if (!eventDoc || eventDoc != ctDoc) {
+      return NS_OK;
+    }
+
+    nsAutoString title;
+    eventDoc->GetTitle(title);
+    SetTitle(title);
   }
 
   return NS_OK;
@@ -636,6 +655,7 @@ void WebBrowserChrome::SetEventHandler()
   target->AddEventListener(nsLiteralString(MOZ_MozScrolledAreaChanged), this, PR_FALSE);
   target->AddEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
   target->AddEventListener(nsLiteralString(MOZ_pagehide), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_DOMTitleChanged), this, PR_FALSE);
 }
 
 void WebBrowserChrome::RemoveEventHandler()
@@ -655,6 +675,7 @@ void WebBrowserChrome::RemoveEventHandler()
   target->RemoveEventListener(nsLiteralString(MOZ_pagehide), this, PR_FALSE);
   target->RemoveEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
   target->RemoveEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_DOMTitleChanged), this, PR_FALSE);
 }
 
 void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)
