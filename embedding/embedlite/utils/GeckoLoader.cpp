@@ -7,6 +7,7 @@
 
 #include "GeckoLoader.h"
 #include "DirProvider.h"
+#include "mozilla/AppShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/Unused.h"
@@ -270,6 +271,20 @@ GeckoLoader::TermEmbedding()
   NS_IF_RELEASE(kDirectoryProvider.sProfileLock);
   kDirectoryProvider.sProfileDir = nullptr;
   kDirectoryProvider.sGREDir = nullptr;
+
+  mozilla::AppShutdown::OnShutdownConfirmed();
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdownConfirmed, u"shutdown");
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdownNetTeardown);
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdownTeardown);
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdown);
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdownQM);
+  mozilla::AppShutdown::AdvanceShutdownPhase(
+      mozilla::ShutdownPhase::AppShutdownTelemetry);
 
   NS_ShutdownXPCOM(nullptr);
 
