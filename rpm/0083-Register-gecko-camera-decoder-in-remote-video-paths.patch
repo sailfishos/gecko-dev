@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 17 Jun 2026 10:01:12 +0200
+Subject: Register gecko-camera decoder in remote video paths
+
+---
+ dom/media/platforms/PDMFactory.cpp | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
+index b1c2186e2ad9a..7fcf2f54bab49 100644
+--- a/dom/media/platforms/PDMFactory.cpp
++++ b/dom/media/platforms/PDMFactory.cpp
+@@ -560,6 +560,12 @@ void PDMFactory::CreateRddPDMs() {
+     CreateAndStartupPDM<AppleDecoderModule>();
+   }
+ #endif
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
++    StartupPDM(GeckoCameraDecoderModule::Create(),
++               StaticPrefs::media_gecko_camera_codec_preferred());
++  }
++#endif
+ #ifdef MOZ_FFVPX
+   if (StaticPrefs::media_ffvpx_enabled() &&
+       StaticPrefs::media_rdd_ffvpx_enabled()) {
+@@ -672,6 +678,13 @@ void PDMFactory::CreateContentPDMs() {
+ #ifdef MOZ_APPLEMEDIA
+   CreateAndStartupPDM<AppleDecoderModule>();
+ #endif
++#ifdef MOZ_ENABLE_WEBRTC_GECKOCAMERA
++  if (StaticPrefs::media_gecko_camera_codec_enabled()) {
++    // Keep remote decoders first, but prefer gecko-camera over local software
++    // decoder modules when content-process fallback is used.
++    StartupPDM(GeckoCameraDecoderModule::Create());
++  }
++#endif
+ #ifdef MOZ_OMX
+   if (StaticPrefs::media_omx_enabled()) {
+     CreateAndStartupPDM<OmxDecoderModule>();

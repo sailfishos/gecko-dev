@@ -124,16 +124,15 @@ Patch71:     0071-Clean-up-Gecko-configure-integration.patch
 Patch72:     0072-Adapt-EmbedLite-WebRender-offscreen-compositing.patch
 Patch73:     0073-Restore-EmbedLite-native-prompt-dialogs.patch
 Patch74:     0074-Guard-media-sink-suspend-before-initialization.patch
-Patch75:     0075-Set-gecko-camera-chroma-subsampling.patch
-Patch76:     0076-Allow-disabling-default-protocol-handler-injection.patch
-Patch77:     0077-Fix-EmbedLite-toolkit-error-pages.patch
-Patch78:     0078-Wait-for-gecko-camera-decoder-EOS-when-draining.patch
-Patch79:     0079-Use-EmbedLite-helper-app-dialog-static-registration.patch
-Patch80:     0080-Load-EmbedLite-search-engines-from-settings.patch
-Patch81:     0081-Dispatch-MDSM-initialization-without-tail-dispatch.patch
-Patch82:     0082-Preload-autoplay-metadata-before-inaudible-check.patch
-Patch83:     0083-Fix-Qt-form-control-theme-rendering.patch
-Patch84:     0084-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
+Patch75:     0075-Allow-disabling-default-protocol-handler-injection.patch
+Patch76:     0076-Fix-EmbedLite-toolkit-error-pages.patch
+Patch77:     0077-Use-EmbedLite-helper-app-dialog-static-registration.patch
+Patch78:     0078-Load-EmbedLite-search-engines-from-settings.patch
+Patch79:     0079-Dispatch-MDSM-initialization-without-tail-dispatch.patch
+Patch80:     0080-Preload-autoplay-metadata-before-inaudible-check.patch
+Patch81:     0081-Fix-Qt-form-control-theme-rendering.patch
+Patch82:     0082-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
+Patch83:     0083-Register-gecko-camera-decoder-in-remote-video-paths.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
