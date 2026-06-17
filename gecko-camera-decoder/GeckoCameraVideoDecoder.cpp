@@ -371,6 +371,29 @@ void GeckoCameraVideoDecoder::ProcessDecode(
     return;
   }
 
+  if (mDecoderDrained) {
+    LOG("Recreating decoder after drain");
+    std::shared_ptr<gecko::codec::VideoDecoder> decoder;
+    {
+      MutexAutoLock lock(mMutex);
+      decoder = mDecoder;
+      mDecoder.reset();
+      mInputFrames.clear();
+      mReorderQueue.Clear();
+    }
+
+    decoder->setListener(nullptr);
+    decoder->stop();
+    mDecoderDrained = false;
+
+    MediaResult rv = CreateDecoder();
+    if (NS_FAILED(rv)) {
+      mError = true;
+      mDecodePromise.Reject(rv, __func__);
+      return;
+    }
+  }
+
   {
     MutexAutoLock lock(mMutex);
     mInputFrames[aSample->mTime.ToMicroseconds()] = aSample;

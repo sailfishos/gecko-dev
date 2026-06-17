@@ -132,6 +132,7 @@ Patch79:     0079-Dispatch-MDSM-initialization-without-tail-dispatch.patch
 Patch80:     0080-Preload-autoplay-metadata-before-inaudible-check.patch
 Patch81:     0081-Fix-Qt-form-control-theme-rendering.patch
 Patch82:     0082-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
+Patch83:     0083-Register-gecko-camera-decoder-in-remote-video-paths.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static

@@ -54,7 +54,9 @@ class GeckoCameraVideoDecoder final
   nsCString GetCodecName() const override;
 
   bool SupportDecoderRecycling() const override {
-    return true;
+    // The droid MediaCodec backend does not reliably accept new input after
+    // EOS without rebuilding the codec.
+    return false;
   }
 
   // VideoDecoderListener
