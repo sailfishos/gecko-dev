@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Fri, 19 Jun 2026 10:55:00 +0200
+Subject: Load XPCOM-dependent libraries with RTLD_LOCAL
+
+Keep dependent library symbols out of the global namespace. In WebView
+applications that also use sqlite, Gecko's bundled mozsqlite symbols can
+otherwise be visible for unrelated library resolution.
+
+Fixes JB#64528
+---
+ xpcom/glue/standalone/nsXPCOMGlue.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/xpcom/glue/standalone/nsXPCOMGlue.cpp b/xpcom/glue/standalone/nsXPCOMGlue.cpp
+index 09edef10ee918..24456fff0c666 100644
+--- a/xpcom/glue/standalone/nsXPCOMGlue.cpp
++++ b/xpcom/glue/standalone/nsXPCOMGlue.cpp
+@@ -86,7 +86,7 @@ NS_HIDDEN __typeof(dlclose) __wrap_dlclose;
+ #  endif
+
+ static LibHandleResult GetLibHandle(pathstr_t aDependentLib) {
+-  LibHandleType libHandle = dlopen(aDependentLib, RTLD_GLOBAL | RTLD_LAZY
++  LibHandleType libHandle = dlopen(aDependentLib, RTLD_LOCAL | RTLD_LAZY
+ #  ifdef XP_MACOSX
+                                                       | RTLD_FIRST
+ #  endif
