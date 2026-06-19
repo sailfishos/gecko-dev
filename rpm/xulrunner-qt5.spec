@@ -6,6 +6,7 @@
 %define compile_environment 1
 %define system_nspr         1
 %define system_nss          1
+%define system_sqlite       1
 %define system_ffi          1
 %define system_jpeg         1
 %define system_png          1
@@ -22,7 +23,9 @@
 # Private/bundled libs the final package should not provide or depend on.
 %global privlibs             libfreebl3
 %global privlibs %{privlibs}|libmozalloc
+%if !%{system_sqlite}
 %global privlibs %{privlibs}|libmozsqlite3
+%endif
 %global privlibs %{privlibs}|libnspr4
 %global privlibs %{privlibs}|libplc4
 %global privlibs %{privlibs}|libplds4
@@ -133,6 +136,7 @@ Patch80:     0080-Preload-autoplay-metadata-before-inaudible-check.patch
 Patch81:     0081-Fix-Qt-form-control-theme-rendering.patch
 Patch82:     0082-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
 Patch83:     0083-Register-gecko-camera-decoder-in-remote-video-paths.patch
+Patch84:     0084-Use-system-sqlite.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
@@ -149,6 +153,9 @@ BuildRequires:  pkgconfig(nspr) >= 4.32.0
 %endif
 %if %{system_nss}
 BuildRequires:  pkgconfig(nss) >= 3.90
+%endif
+%if %{system_sqlite}
+BuildRequires:  pkgconfig(sqlite3) >= 3.41.2
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
@@ -409,6 +416,10 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 
 %if %{system_nss}
   echo "ac_add_options --with-system-nss" >> "$MOZCONFIG"
+%endif
+
+%if %{system_sqlite}
+  echo "ac_add_options --enable-system-sqlite" >> "$MOZCONFIG"
 %endif
 
 %if %{system_ffi}
