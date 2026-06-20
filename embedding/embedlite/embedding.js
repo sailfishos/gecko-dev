@@ -352,9 +352,6 @@ pref("plugins.click_to_play", true);
 // The default value for nsIPluginTag.enabledState (STATE_CLICKTOPLAY = 1)
 pref("plugin.default.state", 1);
 
-pref("notification.feature.enabled", true);
-pref("dom.webnotifications.enabled", true);
-
 // prevent tooltips from showing up
 pref("browser.chrome.toolbar_tips", false);
 pref("dom.indexedDB.warningQuota", 5);
@@ -445,9 +442,6 @@ pref("security.OCSP.enabled", 2);
 // The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
 pref("media.cubeb.backend", "pulse");
 
-// On ESR60 customelements is only enabled for nightly. Enable for us.
-pref("dom.webcomponents.customelements.enabled", true);
-
 // Enable serviceworkers
 pref("dom.serviceWorkers.enabled", true);
 
@@ -463,11 +457,11 @@ pref("media.webrtc.hw.h264.enabled", true);
 // until the bug is fixed.
 pref("media.peerconnection.video.vp9_enabled", false);
 
-// Enable the Visual Viewport API
-pref("dom.visualviewport.enabled", true);
-
 // Use the platform decoder for VPX-encoded video during a WebRTC call
 pref("media.navigator.mediadatadecoder_vpx_enabled", true);
 
-// Support for the dialog element.
-pref("dom.dialog_element.enabled", true);
+// Enable CSS nesting - comes standard in 117+
+pref("layout.css.nesting.enabled", true);
+
+// Enable CSS has() selectors - comes standard in 121+
+pref("layout.css.has-selector.enabled", true);
