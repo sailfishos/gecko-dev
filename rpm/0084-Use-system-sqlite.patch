@@ -1,0 +1,262 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Fri, 19 Jun 2026 12:29:16 +0200
+Subject: Use system sqlite
+
+Build Gecko against the platform sqlite library instead of building and
+packaging libmozsqlite3.so.
+
+Embedding Gecko into processes that already use sqlite can otherwise leave two
+sqlite implementations globally visible. Lazy bindings may then allocate
+with one sqlite library and free with the other.
+---
+ browser/installer/package-manifest.in |  2 ++
+ build/moz.configure/old.configure     |  1 +
+ config/external/sqlite/moz.build      | 22 +++++++++-------
+ old-configure.in                      | 37 +++++++++++++++++++++++----
+ storage/SQLiteMutex.h                 |  6 ++---
+ storage/moz.build                     |  7 +++++
+ storage/mozStorageConnection.cpp      |  4 +++
+ storage/mozStorageService.cpp         | 27 +++++++++++++++++++
+ toolkit/library/moz.build             |  3 +++
+ 9 files changed, 92 insertions(+), 17 deletions(-)
+
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 34b9bf7d65952..7f9e70b646985 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -148,9 +148,11 @@
+ @RESPATH@/update-settings.ini
+ #endif
+ @RESPATH@/platform.ini
++#ifndef MOZ_SYSTEM_SQLITE
+ #ifndef MOZ_FOLD_LIBS
+ @BINPATH@/@DLL_PREFIX@mozsqlite3@DLL_SUFFIX@
+ #endif
++#endif
+ @BINPATH@/@DLL_PREFIX@lgpllibs@DLL_SUFFIX@
+ #ifdef MOZ_FFVPX
+ @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
+diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
+index c777c45c8b825..e688364ee4cde 100644
+--- a/build/moz.configure/old.configure
++++ b/build/moz.configure/old.configure
+@@ -93,6 +93,7 @@ def old_configure_options(*options):
+     "--datadir",
+     "--enable-dconf",
+     "--enable-official-branding",
++    "--enable-system-sqlite",
+     "--includedir",
+     "--libdir",
+     "--prefix",
+diff --git a/config/external/sqlite/moz.build b/config/external/sqlite/moz.build
+index 6294924c564ae..b978fd9caba37 100644
+--- a/config/external/sqlite/moz.build
++++ b/config/external/sqlite/moz.build
+@@ -4,15 +4,19 @@
+ # License, v. 2.0. If a copy of the MPL was not distributed with this
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+-DIRS += ["../../../third_party/sqlite3/src"]
+-if CONFIG["MOZ_FOLD_LIBS"]:
++if CONFIG["MOZ_SYSTEM_SQLITE"]:
+     Library("sqlite")
+-    # When folding libraries, sqlite is actually in the nss library.
+-    USE_LIBS += [
+-        "nss",
+-    ]
++    OS_LIBS += CONFIG["SQLITE_LIBS"]
+ else:
+-    SharedLibrary("sqlite")
+-    SHARED_LIBRARY_NAME = "mozsqlite3"
++    DIRS += ["../../../third_party/sqlite3/src"]
++    if CONFIG["MOZ_FOLD_LIBS"]:
++        Library("sqlite")
++        # When folding libraries, sqlite is actually in the nss library.
++        USE_LIBS += [
++            "nss",
++        ]
++    else:
++        SharedLibrary("sqlite")
++        SHARED_LIBRARY_NAME = "mozsqlite3"
+ 
+-    SYMBOLS_FILE = "/third_party/sqlite3/src/sqlite.symbols"
++        SYMBOLS_FILE = "/third_party/sqlite3/src/sqlite.symbols"
+diff --git a/old-configure.in b/old-configure.in
+index f08214bce2a88..40f9f99dcf73e 100644
+--- a/old-configure.in
++++ b/old-configure.in
+@@ -29,6 +29,7 @@ HOST_LDFLAGS="${HOST_LDFLAGS=}"
+ dnl Set the minimum version of toolkit libs used by mozilla
+ dnl ========================================================
+ W32API_VERSION=3.14
++SQLITE_VERSION=3.41.2
+ 
+ dnl Set various checks
+ dnl ========================================================
+@@ -1397,11 +1398,37 @@ dnl =
+ dnl ========================================================
+ MOZ_ARG_HEADER(Individual module options)
+ 
+-dnl ==============================
+-dnl === SQLite fdatasync check ===
+-dnl ==============================
+-dnl Check to see if fdatasync is available and make use of it
+-AC_CHECK_FUNC(fdatasync)
++dnl ========================================================
++dnl Check for sqlite
++dnl ========================================================
++
++MOZ_SYSTEM_SQLITE=
++MOZ_ARG_ENABLE_BOOL(system-sqlite,
++[  --enable-system-sqlite  Use system sqlite (located with pkgconfig)],
++MOZ_SYSTEM_SQLITE=1,
++MOZ_SYSTEM_SQLITE= )
++
++if test -n "$MOZ_SYSTEM_SQLITE"
++then
++    dnl ============================
++    dnl === SQLite Version check ===
++    dnl ============================
++    dnl Check to see if the system SQLite package is new enough.
++    PKG_CHECK_MODULES(SQLITE, sqlite3 >= $SQLITE_VERSION)
++    AC_SUBST_LIST(SQLITE_CFLAGS)
++    AC_SUBST_LIST(SQLITE_LIBS)
++else
++    dnl ==============================
++    dnl === SQLite fdatasync check ===
++    dnl ==============================
++    dnl Check to see if fdatasync is available and make use of it
++    AC_CHECK_FUNC(fdatasync)
++fi
++
++if test -n "$MOZ_SYSTEM_SQLITE"; then
++    AC_DEFINE(MOZ_SYSTEM_SQLITE)
++fi
++AC_SUBST(MOZ_SYSTEM_SQLITE)
+ 
+ dnl ========================================================
+ dnl =
+diff --git a/storage/SQLiteMutex.h b/storage/SQLiteMutex.h
+index b7198b1912fdc..3ecc0bb997cf3 100644
+--- a/storage/SQLiteMutex.h
++++ b/storage/SQLiteMutex.h
+@@ -56,7 +56,7 @@ class SQLiteMutex : private BlockingResourceBase {
+    */
+   void lock() {
+     MOZ_ASSERT(mMutex, "No mutex associated with this wrapper!");
+-#if defined(DEBUG)
++#if defined(DEBUG) && !defined(MOZ_SYSTEM_SQLITE)
+     // While SQLite Mutexes may be recursive, in our own code we do not want to
+     // treat them as such.
+     CheckAcquire();
+@@ -64,7 +64,7 @@ class SQLiteMutex : private BlockingResourceBase {
+ 
+     ::sqlite3_mutex_enter(mMutex);
+ 
+-#if defined(DEBUG)
++#if defined(DEBUG) && !defined(MOZ_SYSTEM_SQLITE)
+     Acquire();  // Call is protected by us holding the mutex.
+ #endif
+   }
+@@ -74,7 +74,7 @@ class SQLiteMutex : private BlockingResourceBase {
+    */
+   void unlock() {
+     MOZ_ASSERT(mMutex, "No mutex associated with this wrapper!");
+-#if defined(DEBUG)
++#if defined(DEBUG) && !defined(MOZ_SYSTEM_SQLITE)
+     // While SQLite Mutexes may be recursive, in our own code we do not want to
+     // treat them as such.
+     Release();  // Call is protected by us holding the mutex.
+diff --git a/storage/moz.build b/storage/moz.build
+index 9cefe26ec0c83..e81ee14c83acb 100644
+--- a/storage/moz.build
++++ b/storage/moz.build
+@@ -101,6 +101,13 @@ if CONFIG["MOZ_THUNDERBIRD"] or CONFIG["MOZ_SUITE"]:
+ # will need to change it here as well.
+ DEFINES["SQLITE_MAX_LIKE_PATTERN_LENGTH"] = 50000
+ 
++# See sqlite's moz.build for reasoning about TEMP_STORE.  For system sqlite we
++# cannot use the compile-time option, so use a pragma.
++if CONFIG["MOZ_SYSTEM_SQLITE"] and (
++    CONFIG["OS_TARGET"] == "Android" or CONFIG["HAVE_64BIT_BUILD"]
++):
++    DEFINES["MOZ_MEMORY_TEMP_STORE_PRAGMA"] = True
++
+ LOCAL_INCLUDES += [
+     "/dom/base",
+     "/third_party/sqlite3/src",
+diff --git a/storage/mozStorageConnection.cpp b/storage/mozStorageConnection.cpp
+index 059b9a3f72fb9..c60e603c569ec 100644
+--- a/storage/mozStorageConnection.cpp
++++ b/storage/mozStorageConnection.cpp
+@@ -1031,6 +1031,10 @@ nsresult Connection::initializeInternal() {
+     return convertResultCode(srv);
+   }
+ 
++#if defined(MOZ_MEMORY_TEMP_STORE_PRAGMA)
++  (void)ExecuteSimpleSQL("PRAGMA temp_store = 2;"_ns);
++#endif
++
+   // Register our built-in SQL functions.
+   srv = registerFunctions(mDBConn);
+   if (srv != SQLITE_OK) {
+diff --git a/storage/mozStorageService.cpp b/storage/mozStorageService.cpp
+index d73a1680ac780..4ddded9cd88c3 100644
+--- a/storage/mozStorageService.cpp
++++ b/storage/mozStorageService.cpp
+@@ -13,6 +13,7 @@
+ #include "nsComponentManagerUtils.h"
+ #include "nsEmbedCID.h"
+ #include "nsExceptionHandler.h"
++#include "nsIPromptService.h"
+ #include "nsThreadUtils.h"
+ #include "mozStoragePrivateHelpers.h"
+ #include "nsIObserverService.h"
+@@ -167,6 +168,32 @@ already_AddRefed<Service> Service::getSingleton() {
+     return do_AddRef(gService);
+   }
+ 
++#ifdef MOZ_SYSTEM_SQLITE
++  // Ensure that we are using the same version of SQLite that we compiled with
++  // or newer.  The configure check ensures we use a new enough version at
++  // compile time.
++  if (SQLITE_VERSION_NUMBER > ::sqlite3_libversion_number() ||
++      !::sqlite3_compileoption_used("SQLITE_SECURE_DELETE") ||
++      !::sqlite3_compileoption_used("SQLITE_THREADSAFE=1") ||
++      !::sqlite3_compileoption_used("SQLITE_ENABLE_FTS3") ||
++      !::sqlite3_compileoption_used("SQLITE_ENABLE_UNLOCK_NOTIFY") ||
++      !::sqlite3_compileoption_used("SQLITE_ENABLE_DBSTAT_VTAB")) {
++    nsCOMPtr<nsIPromptService> ps(do_GetService(NS_PROMPTSERVICE_CONTRACTID));
++    if (ps) {
++      nsAutoString title, message;
++      title.AppendLiteral("SQLite Version Error");
++      message.AppendLiteral(
++          "The application has been updated, but the SQLite library was not "
++          "updated properly and the application cannot run. Please try to "
++          "launch the application again. If that still fails, please try "
++          "reinstalling it, or contact the support of where you got the "
++          "application from.");
++      (void)ps->Alert(nullptr, title.get(), message.get());
++    }
++    MOZ_CRASH("SQLite Version Error");
++  }
++#endif
++
+   // The first reference to the storage service must be obtained on the
+   // main thread.
+   NS_ENSURE_TRUE(NS_IsMainThread(), nullptr);
+diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
+index b3b709eb88b81..8fbad994922f6 100644
+--- a/toolkit/library/moz.build
++++ b/toolkit/library/moz.build
+@@ -168,6 +168,9 @@ USE_LIBS += [
+     "zlib",
+ ]
+ 
++if CONFIG["MOZ_SYSTEM_SQLITE"]:
++    OS_LIBS += CONFIG["SQLITE_LIBS"]
++
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     # The mozgtk library is a workaround that makes Gtk+ use libwayland-client
+     # instead of mozwayland. The reason it works is that by being a dependency
