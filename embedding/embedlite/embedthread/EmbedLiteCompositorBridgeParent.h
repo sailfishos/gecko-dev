@@ -34,6 +34,7 @@ class EmbedLiteCompositorBridgeParent : public mozilla::layers::CompositorBridge
 public:
   EmbedLiteCompositorBridgeParent(uint32_t windowId,
                                   mozilla::layers::CompositorManagerParent *aManager,
+                                  uint32_t aNamespace,
                                   CSSToLayoutDeviceScale aScale,
                                   const TimeDuration &aVsyncRate,
                                   const CompositorOptions &aOptions,

@@ -26,13 +26,16 @@ namespace embedlite {
 
 EmbedLiteCompositorBridgeParent::EmbedLiteCompositorBridgeParent(uint32_t windowId,
                                                                  CompositorManagerParent* aManager,
+                                                                 uint32_t aNamespace,
                                                                  CSSToLayoutDeviceScale aScale,
                                                                  const TimeDuration &aVsyncRate,
                                                                  const CompositorOptions &aOptions,
                                                                  bool aRenderToEGLSurface,
                                                                  const gfx::IntSize &aSurfaceSize,
                                                                  uint64_t aInnerWindowId)
-  : CompositorBridgeParent(aManager, aScale, aVsyncRate, aOptions, aRenderToEGLSurface, aSurfaceSize, aInnerWindowId)
+  : CompositorBridgeParent(aManager, aNamespace, aScale, aVsyncRate,
+                           aOptions, aRenderToEGLSurface, aSurfaceSize,
+                           aInnerWindowId)
   , mWindowId(windowId)
   , mCurrentCompositeTask(nullptr)
   , mSurfaceOrigin(0, 0)
