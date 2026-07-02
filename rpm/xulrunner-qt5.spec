@@ -1,4 +1,4 @@
-%define greversion    115.35.2
+%define greversion    115.37.0
 %define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner

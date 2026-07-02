@@ -59,7 +59,7 @@ into the cutout area.
  create mode 100644 widget/EmbedLiteCompositorWidget.h
 
 diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
-index 83123711a9d55..14a084322379d 100644
+index 8dce4539c40f..e5bea965c8ae 100644
 --- a/dom/base/Document.cpp
 +++ b/dom/base/Document.cpp
 @@ -155,6 +155,7 @@
@@ -70,7 +70,7 @@ index 83123711a9d55..14a084322379d 100644
  #include "mozilla/dom/DOMImplementation.h"
  #include "mozilla/dom/DOMIntersectionObserver.h"
  #include "mozilla/dom/DOMStringList.h"
-@@ -1460,6 +1461,7 @@ Document::Document(const char* aContentType)
+@@ -1462,6 +1463,7 @@ Document::Document(const char* aContentType)
        mHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_UNINITIALIZED),
        mViewportType(Unknown),
        mViewportFit(ViewportFitType::Auto),
@@ -78,7 +78,7 @@ index 83123711a9d55..14a084322379d 100644
        mSubDocuments(nullptr),
        mHeaderData(nullptr),
        mServoRestyleRootDirtyBits(0),
-@@ -10736,6 +10738,42 @@ ViewportMetaData Document::GetViewportMetaData() const {
+@@ -10741,6 +10743,42 @@ ViewportMetaData Document::GetViewportMetaData() const {
                                         : ViewportMetaData();
  }
  
@@ -122,7 +122,7 @@ index 83123711a9d55..14a084322379d 100644
    mLastModifiedViewportMetaData = std::move(aData);
    // Trigger recomputation of the nsViewportInfo the next time it's queried.
 diff --git a/dom/base/Document.h b/dom/base/Document.h
-index bbc5b22260a0c..25ffc2cdffeb3 100644
+index bbc5b22260a0..25ffc2cdffeb 100644
 --- a/dom/base/Document.h
 +++ b/dom/base/Document.h
 @@ -1336,6 +1336,9 @@ class Document : public nsINode,
@@ -147,7 +147,7 @@ index bbc5b22260a0c..25ffc2cdffeb3 100644
  
    class HeaderData;
 diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
-index c8993801509ff..62f2ded944a91 100644
+index c8993801509f..62f2ded944a9 100644
 --- a/dom/base/nsDOMWindowUtils.cpp
 +++ b/dom/base/nsDOMWindowUtils.cpp
 @@ -463,6 +463,15 @@ nsDOMWindowUtils::GetViewportFitInfo(nsAString& aViewportFit) {
@@ -167,7 +167,7 @@ index c8993801509ff..62f2ded944a91 100644
  nsDOMWindowUtils::SetMousewheelAutodir(Element* aElement, bool aEnabled,
                                         bool aHonourRoot) {
 diff --git a/dom/base/test/meta_viewport/mochitest.ini b/dom/base/test/meta_viewport/mochitest.ini
-index cfe63cc9999e6..e41630956d643 100644
+index cfe63cc9999e..e41630956d64 100644
 --- a/dom/base/test/meta_viewport/mochitest.ini
 +++ b/dom/base/test/meta_viewport/mochitest.ini
 @@ -28,6 +28,7 @@ support-files =
@@ -180,7 +180,7 @@ index cfe63cc9999e6..e41630956d643 100644
  [test_meta_viewport_initial_scale_2.html]
 diff --git a/dom/base/test/meta_viewport/test_safe_area_inset_usage.html b/dom/base/test/meta_viewport/test_safe_area_inset_usage.html
 new file mode 100644
-index 0000000000000..b51d178c9ec45
+index 000000000000..b51d178c9ec4
 --- /dev/null
 +++ b/dom/base/test/meta_viewport/test_safe_area_inset_usage.html
 @@ -0,0 +1,71 @@
@@ -256,7 +256,7 @@ index 0000000000000..b51d178c9ec45
 +</body>
 +</html>
 diff --git a/dom/interfaces/base/nsIDOMWindowUtils.idl b/dom/interfaces/base/nsIDOMWindowUtils.idl
-index 79e4e8534eb96..cfdbb57208368 100644
+index 79e4e8534eb9..cfdbb5720836 100644
 --- a/dom/interfaces/base/nsIDOMWindowUtils.idl
 +++ b/dom/interfaces/base/nsIDOMWindowUtils.idl
 @@ -52,7 +52,7 @@ webidl Node;
@@ -282,7 +282,7 @@ index 79e4e8534eb96..cfdbb57208368 100644
     * Information about the window size in device pixels.
     */
 diff --git a/gfx/gl/GLConsts.h b/gfx/gl/GLConsts.h
-index 97744d4215412..dd631d6d12b65 100644
+index 97744d421541..dd631d6d12b6 100644
 --- a/gfx/gl/GLConsts.h
 +++ b/gfx/gl/GLConsts.h
 @@ -7,6 +7,8 @@
@@ -295,7 +295,7 @@ index 97744d4215412..dd631d6d12b65 100644
   * GENERATED FILE, DO NOT MODIFY DIRECTLY.
   * This is a file generated directly from the official OpenGL registry
 diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
-index d11c131c4513a..3ff7ee593c5cf 100644
+index d11c131c4513..3ff7ee593c5c 100644
 --- a/gfx/gl/GLContext.cpp
 +++ b/gfx/gl/GLContext.cpp
 @@ -2644,10 +2644,19 @@ void GLContext::OnImplicitMakeCurrentFailure(const char* const funcName) {
@@ -319,7 +319,7 @@ index d11c131c4513a..3ff7ee593c5cf 100644
  // free it when unloaded; this causes Leak Sanitizer to detect leaks and
  // fail to unwind the stack, so suppressions don't work.  This
 diff --git a/gfx/gl/GLContext.h b/gfx/gl/GLContext.h
-index 41dbe92bee954..4b7c0c113fe22 100644
+index 41dbe92bee95..4b7c0c113fe2 100644
 --- a/gfx/gl/GLContext.h
 +++ b/gfx/gl/GLContext.h
 @@ -33,6 +33,7 @@
@@ -406,7 +406,7 @@ index 41dbe92bee954..4b7c0c113fe22 100644
      }
    }
 diff --git a/gfx/gl/GLContextEAGL.h b/gfx/gl/GLContextEAGL.h
-index 851a9170f7cb7..67c2a0a716b1f 100644
+index 851a9170f7cb..67c2a0a716b1 100644
 --- a/gfx/gl/GLContextEAGL.h
 +++ b/gfx/gl/GLContextEAGL.h
 @@ -52,7 +52,7 @@ class GLContextEAGL : public GLContext {
@@ -419,7 +419,7 @@ index 851a9170f7cb7..67c2a0a716b1f 100644
    virtual bool RenewSurface(nsIWidget* aWidget) override {
      // FIXME: should use the passed widget instead of the existing one.
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index 097543c37e8ba..24926227c3ce8 100644
+index 097543c37e8b..24926227c3ce 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
 @@ -900,6 +900,23 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
@@ -447,7 +447,7 @@ index 097543c37e8ba..24926227c3ce8 100644
      const bool forceAccel, nsACString* const out_failureId,
      const StaticMutexAutoLock& aProofOfLock) {
 diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
-index 0a853e67c938f..5cf95aae9406a 100644
+index 0a853e67c938..5cf95aae9406 100644
 --- a/gfx/gl/GLLibraryEGL.h
 +++ b/gfx/gl/GLLibraryEGL.h
 @@ -159,6 +159,8 @@ class GLLibraryEGL final {
@@ -460,7 +460,7 @@ index 0a853e67c938f..5cf95aae9406a 100644
    std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
  
 diff --git a/gfx/gl/GLScreenBuffer.cpp b/gfx/gl/GLScreenBuffer.cpp
-index dca3fd7b4294e..197c96242fe28 100644
+index dca3fd7b4294..197c96242fe2 100644
 --- a/gfx/gl/GLScreenBuffer.cpp
 +++ b/gfx/gl/GLScreenBuffer.cpp
 @@ -10,6 +10,7 @@
@@ -536,7 +536,7 @@ index dca3fd7b4294e..197c96242fe28 100644
 +
  }  // namespace mozilla::gl
 diff --git a/gfx/gl/GLScreenBuffer.h b/gfx/gl/GLScreenBuffer.h
-index 1b05a9c4b5d07..b3465c9857955 100644
+index 1b05a9c4b5d0..b3465c985795 100644
 --- a/gfx/gl/GLScreenBuffer.h
 +++ b/gfx/gl/GLScreenBuffer.h
 @@ -28,6 +28,8 @@ namespace gl {
@@ -575,7 +575,7 @@ index 1b05a9c4b5d07..b3465c9857955 100644
  }  // namespace mozilla
  
 diff --git a/gfx/gl/GLTypes.h b/gfx/gl/GLTypes.h
-index f5b317b4b758d..b58d740c8c79c 100644
+index f5b317b4b758..b58d740c8c79 100644
 --- a/gfx/gl/GLTypes.h
 +++ b/gfx/gl/GLTypes.h
 @@ -85,9 +85,24 @@ typedef void* EGLSurface;
@@ -604,7 +604,7 @@ index f5b317b4b758d..b58d740c8c79c 100644
  #define EGL_NO_CONTEXT ((EGLContext)0)
  #define EGL_NO_DISPLAY ((EGLDisplay)0)
 diff --git a/gfx/ipc/InProcessCompositorSession.cpp b/gfx/ipc/InProcessCompositorSession.cpp
-index 9efb83b57aaa5..4b0af2634a88e 100644
+index 9efb83b57aaa..4b0af2634a88 100644
 --- a/gfx/ipc/InProcessCompositorSession.cpp
 +++ b/gfx/ipc/InProcessCompositorSession.cpp
 @@ -40,7 +40,8 @@ RefPtr<InProcessCompositorSession> InProcessCompositorSession::Create(
@@ -618,10 +618,10 @@ index 9efb83b57aaa5..4b0af2634a88e 100644
        CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
            aScale, aOptions, aUseExternalSurfaceSize, aSurfaceSize,
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 94b135595d918..24f43b827c0f4 100644
+index 1842fcf5b7f9..15e24ef8ce3b 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
-@@ -1243,6 +1243,13 @@ bool CompositorBridgeParent::DeallocPWebRenderBridgeParent(
+@@ -1248,6 +1248,13 @@ bool CompositorBridgeParent::DeallocPWebRenderBridgeParent(
    return true;
  }
  
@@ -636,7 +636,7 @@ index 94b135595d918..24f43b827c0f4 100644
    if (mWrBridge) {
      RefPtr<wr::WebRenderAPI> api = mWrBridge->GetWebRenderAPI();
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
-index d85ee0abb5b12..3c76887ca053c 100644
+index fdf4bddc2aab..4955ea3f300e 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.h
 +++ b/gfx/layers/ipc/CompositorBridgeParent.h
 @@ -27,6 +27,10 @@
@@ -650,7 +650,7 @@ index d85ee0abb5b12..3c76887ca053c 100644
  namespace gfx {
  class GPUProcessManager;
  class GPUParent;
-@@ -228,8 +232,8 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
+@@ -245,8 +249,8 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
  MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(
      CompositorBridgeParentBase::TransformsToSkip)
  
@@ -661,7 +661,7 @@ index d85ee0abb5b12..3c76887ca053c 100644
    friend class CompositorThreadHolder;
    friend class InProcessCompositorSession;
    friend class gfx::GPUProcessManager;
-@@ -497,6 +501,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
+@@ -515,6 +519,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
        const WindowKind& aWindowKind) override;
    bool DeallocPWebRenderBridgeParent(PWebRenderBridgeParent* aActor) override;
    RefPtr<WebRenderBridgeParent> GetWebRenderBridgeParent() const;
@@ -673,7 +673,7 @@ index d85ee0abb5b12..3c76887ca053c 100644
  
    static CompositorBridgeParent* GetCompositorBridgeParentFromLayersId(
 diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
-index d0d7bb862bdf6..bb3fb1a5b4208 100644
+index dede7ce6ed23..318a6778cea3 100644
 --- a/gfx/layers/ipc/CompositorManagerParent.cpp
 +++ b/gfx/layers/ipc/CompositorManagerParent.cpp
 @@ -18,6 +18,10 @@
@@ -692,26 +692,26 @@ index d0d7bb862bdf6..bb3fb1a5b4208 100644
        gfxPlatform::GetPlatform()->GetGlobalVsyncDispatcher()->GetVsyncRate();
  
 -  RefPtr<CompositorBridgeParent> bridge = new CompositorBridgeParent(
--      sInstance, aScale, vsyncRate, aOptions, aUseExternalSurfaceSize,
--      aSurfaceSize, aInnerWindowId);
+-      sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
+-      aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
 +  RefPtr<CompositorBridgeParent> bridge =
 +#if defined(MOZ_EMBEDLITE)
 +      new mozilla::embedlite::EmbedLiteCompositorBridgeParent(
-+          0, sInstance, aScale, vsyncRate, aOptions, aUseExternalSurfaceSize,
-+          aSurfaceSize, aInnerWindowId);
++          0, sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
++          aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
 +#else
-+      new CompositorBridgeParent(sInstance, aScale, vsyncRate, aOptions,
-+                                 aUseExternalSurfaceSize, aSurfaceSize,
-+                                 aInnerWindowId);
++      new CompositorBridgeParent(sInstance, /* aNamespace */ 0, aScale,
++                                 vsyncRate, aOptions, aUseExternalSurfaceSize,
++                                 aSurfaceSize, aInnerWindowId);
 +#endif
  
    sInstance->mPendingCompositorBridges.AppendElement(bridge);
    return bridge.forget();
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 70834b964fe9e..1101b9d1a1837 100644
+index 2c4f7a061353..5ce1d0e0456c 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
-@@ -2925,6 +2925,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
+@@ -2935,6 +2935,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
  
  void WebRenderBridgeParent::CompositeToDefaultTarget(
      VsyncId aId, wr::RenderReasons aReasons) {
@@ -725,7 +725,7 @@ index 70834b964fe9e..1101b9d1a1837 100644
  }
  
 diff --git a/gfx/webrender_bindings/RenderCompositor.cpp b/gfx/webrender_bindings/RenderCompositor.cpp
-index f4211328f9059..0d358f5369709 100644
+index f4211328f905..0d358f536970 100644
 --- a/gfx/webrender_bindings/RenderCompositor.cpp
 +++ b/gfx/webrender_bindings/RenderCompositor.cpp
 @@ -23,7 +23,8 @@
@@ -765,7 +765,7 @@ index f4211328f9059..0d358f5369709 100644
        RenderCompositorEGL::Create(aWidget, aError);
    if (eglCompositor) {
 diff --git a/gfx/webrender_bindings/RenderCompositorEGL.cpp b/gfx/webrender_bindings/RenderCompositorEGL.cpp
-index 21c2de1634bfe..b2e5408fe25ed 100644
+index 21c2de1634bf..b2e5408fe25e 100644
 --- a/gfx/webrender_bindings/RenderCompositorEGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorEGL.cpp
 @@ -16,6 +16,10 @@
@@ -997,7 +997,7 @@ index 21c2de1634bfe..b2e5408fe25ed 100644
    const auto& egl = gle->mEgl;
    if (gle->HasKhrPartialUpdate() &&
 diff --git a/gfx/webrender_bindings/RenderCompositorEGL.h b/gfx/webrender_bindings/RenderCompositorEGL.h
-index 8e851b2fc0dfa..2d220e9f76451 100644
+index 8e851b2fc0df..2d220e9f7645 100644
 --- a/gfx/webrender_bindings/RenderCompositorEGL.h
 +++ b/gfx/webrender_bindings/RenderCompositorEGL.h
 @@ -20,7 +20,8 @@ class RenderCompositorEGL : public RenderCompositor {
@@ -1026,7 +1026,7 @@ index 8e851b2fc0dfa..2d220e9f76451 100644
    // Whether we are in the process of handling a NEW_SURFACE error. On Android
    // this is used to allow the widget an opportunity to recover from the first
 diff --git a/gfx/webrender_bindings/RenderCompositorOGL.cpp b/gfx/webrender_bindings/RenderCompositorOGL.cpp
-index 9653e06d43e1c..e98c9117d7bc2 100644
+index 9653e06d43e1..e98c9117d7bc 100644
 --- a/gfx/webrender_bindings/RenderCompositorOGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorOGL.cpp
 @@ -13,6 +13,10 @@
@@ -1149,7 +1149,7 @@ index 9653e06d43e1c..e98c9117d7bc2 100644
            gfx_webrender_allow_partial_present_buffer_age_AtStartup()) {
      return 0;
 diff --git a/gfx/webrender_bindings/RendererOGL.cpp b/gfx/webrender_bindings/RendererOGL.cpp
-index 3c4d13e376cb0..3eac1b7da8f51 100644
+index 3c4d13e376cb..3eac1b7da8f5 100644
 --- a/gfx/webrender_bindings/RendererOGL.cpp
 +++ b/gfx/webrender_bindings/RendererOGL.cpp
 @@ -110,6 +110,7 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
@@ -1161,7 +1161,7 @@ index 3c4d13e376cb0..3eac1b7da8f51 100644
  }
  
 diff --git a/ipc/chromium/src/base/thread.cc b/ipc/chromium/src/base/thread.cc
-index 3fc258af2ddac..e4e989267a349 100644
+index 3fc258af2dda..e4e989267a34 100644
 --- a/ipc/chromium/src/base/thread.cc
 +++ b/ipc/chromium/src/base/thread.cc
 @@ -148,6 +148,7 @@ void Thread::StopSoon() {
@@ -1192,7 +1192,7 @@ index 3fc258af2ddac..e4e989267a349 100644
    // unlocked.
  
 diff --git a/ipc/chromium/src/base/thread.h b/ipc/chromium/src/base/thread.h
-index 7b9a5975d39af..1f8f026d74633 100644
+index 7b9a5975d39a..1f8f026d7463 100644
 --- a/ipc/chromium/src/base/thread.h
 +++ b/ipc/chromium/src/base/thread.h
 @@ -36,16 +36,23 @@ class Thread : PlatformThread::Delegate {
@@ -1222,7 +1222,7 @@ index 7b9a5975d39af..1f8f026d74633 100644
  
    // Constructor.
 diff --git a/layout/style/ServoBindings.h b/layout/style/ServoBindings.h
-index e2fd709f6bf68..6cedcf18dfa64 100644
+index e2fd709f6bf6..6cedcf18dfa6 100644
 --- a/layout/style/ServoBindings.h
 +++ b/layout/style/ServoBindings.h
 @@ -123,6 +123,9 @@ bool Servo_CounterStyleRule_SetDescriptor(
@@ -1236,7 +1236,7 @@ index e2fd709f6bf68..6cedcf18dfa64 100644
  
  #pragma GCC diagnostic pop
 diff --git a/layout/style/ServoStyleSet.cpp b/layout/style/ServoStyleSet.cpp
-index 8f3d9fd746f13..74f1516169675 100644
+index 8f3d9fd746f1..74f151616967 100644
 --- a/layout/style/ServoStyleSet.cpp
 +++ b/layout/style/ServoStyleSet.cpp
 @@ -92,6 +92,7 @@ class MOZ_RAII AutoSetInServoTraversal {
@@ -1262,7 +1262,7 @@ index 8f3d9fd746f13..74f1516169675 100644
    if (!mStyleRuleMap) {
      mStyleRuleMap = MakeUnique<ServoStyleRuleMap>();
 diff --git a/layout/style/ServoStyleSet.h b/layout/style/ServoStyleSet.h
-index 46de5e96410fb..2d2669c098410 100644
+index 46de5e96410f..2d2669c09841 100644
 --- a/layout/style/ServoStyleSet.h
 +++ b/layout/style/ServoStyleSet.h
 @@ -604,6 +604,7 @@ class ServoStyleSet {
@@ -1274,7 +1274,7 @@ index 46de5e96410fb..2d2669c098410 100644
    void PrependSheetOfType(Origin, StyleSheet*);
    void AppendSheetOfType(Origin, StyleSheet*);
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index c900d851198ac..0a9435d4cb50c 100644
+index c900d851198a..0a9435d4cb50 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -11915,7 +11915,7 @@
@@ -1287,7 +1287,7 @@ index c900d851198ac..0a9435d4cb50c 100644
  #else
    value: true
 diff --git a/servo/components/style/custom_properties.rs b/servo/components/style/custom_properties.rs
-index 5e37963186aa9..982ab18465d17 100644
+index 5e37963186aa..982ab18465d1 100644
 --- a/servo/components/style/custom_properties.rs
 +++ b/servo/components/style/custom_properties.rs
 @@ -25,6 +25,11 @@ use std::fmt::{self, Write};
@@ -1429,7 +1429,7 @@ index 5e37963186aa9..982ab18465d17 100644
 +    Ok((substituted.css, substituted.safe_area_inset_usage))
  }
 diff --git a/servo/components/style/gecko/media_queries.rs b/servo/components/style/gecko/media_queries.rs
-index f27d78fd93780..0f31997539ed2 100644
+index f27d78fd9378..0f31997539ed 100644
 --- a/servo/components/style/gecko/media_queries.rs
 +++ b/servo/components/style/gecko/media_queries.rs
 @@ -24,7 +24,7 @@ use app_units::{Au, AU_PER_PX};
@@ -1487,7 +1487,7 @@ index f27d78fd93780..0f31997539ed2 100644
      pub fn used_font_metrics(&self) -> bool {
          self.used_font_metrics.load(Ordering::Relaxed)
 diff --git a/servo/components/style/properties/properties.mako.rs b/servo/components/style/properties/properties.mako.rs
-index 63b3f971f9a6b..29c2797a91af9 100644
+index 63b3f971f9a6..29c2797a91af 100644
 --- a/servo/components/style/properties/properties.mako.rs
 +++ b/servo/components/style/properties/properties.mako.rs
 @@ -1728,13 +1728,13 @@ impl UnparsedValue {
@@ -1544,7 +1544,7 @@ index 63b3f971f9a6b..29c2797a91af9 100644
                  // FIXME: We should always have the key here but it seems
                  // sometimes we don't, see bug 1696409.
 diff --git a/servo/components/style/servo/media_queries.rs b/servo/components/style/servo/media_queries.rs
-index 286660b16208e..1018558ea1ebd 100644
+index 286660b16208..1018558ea1eb 100644
 --- a/servo/components/style/servo/media_queries.rs
 +++ b/servo/components/style/servo/media_queries.rs
 @@ -150,6 +150,9 @@ impl Device {
@@ -1558,7 +1558,7 @@ index 286660b16208e..1018558ea1ebd 100644
      pub fn device_pixel_ratio(&self) -> Scale<f32, CSSPixel, DevicePixel> {
          self.device_pixel_ratio
 diff --git a/servo/ports/geckolib/glue.rs b/servo/ports/geckolib/glue.rs
-index 713a2e67b751f..ec9db61cd6646 100644
+index 713a2e67b751..ec9db61cd664 100644
 --- a/servo/ports/geckolib/glue.rs
 +++ b/servo/ports/geckolib/glue.rs
 @@ -1912,6 +1912,14 @@ pub extern "C" fn Servo_StyleSet_UsesFontMetrics(raw_data: &PerDocumentStyleData
@@ -1577,7 +1577,7 @@ index 713a2e67b751f..ec9db61cd6646 100644
  pub extern "C" fn Servo_StyleSheet_HasRules(raw_contents: &StylesheetContents) -> bool {
      let global_style_data = &*GLOBAL_STYLE_DATA;
 diff --git a/widget/CompositorWidget.h b/widget/CompositorWidget.h
-index d5e2fb664b617..a59305f52868d 100644
+index d5e2fb664b61..a59305f52868 100644
 --- a/widget/CompositorWidget.h
 +++ b/widget/CompositorWidget.h
 @@ -38,6 +38,7 @@ namespace widget {
@@ -1611,7 +1611,7 @@ index d5e2fb664b617..a59305f52868d 100644
     * Return the platform-specific delegate for the widget, if any.
 diff --git a/widget/EmbedLiteCompositorWidget.cpp b/widget/EmbedLiteCompositorWidget.cpp
 new file mode 100644
-index 0000000000000..7c4841a45af33
+index 000000000000..7c4841a45af3
 --- /dev/null
 +++ b/widget/EmbedLiteCompositorWidget.cpp
 @@ -0,0 +1,15 @@
@@ -1632,7 +1632,7 @@ index 0000000000000..7c4841a45af33
 +}  // namespace mozilla::widget
 diff --git a/widget/EmbedLiteCompositorWidget.h b/widget/EmbedLiteCompositorWidget.h
 new file mode 100644
-index 0000000000000..4ddbc4c90b507
+index 000000000000..4ddbc4c90b50
 --- /dev/null
 +++ b/widget/EmbedLiteCompositorWidget.h
 @@ -0,0 +1,25 @@
@@ -1662,7 +1662,7 @@ index 0000000000000..4ddbc4c90b507
 +
 +#endif  // mozilla_widget_EmbedLiteCompositorWidget_h__
 diff --git a/widget/InProcessCompositorWidget.cpp b/widget/InProcessCompositorWidget.cpp
-index 1c25e9d9a1012..0bff9218f1b8f 100644
+index 1c25e9d9a101..0bff9218f1b8 100644
 --- a/widget/InProcessCompositorWidget.cpp
 +++ b/widget/InProcessCompositorWidget.cpp
 @@ -4,6 +4,9 @@
@@ -1698,7 +1698,7 @@ index 1c25e9d9a1012..0bff9218f1b8f 100644
  }
  #endif
 diff --git a/widget/android/InProcessAndroidCompositorWidget.cpp b/widget/android/InProcessAndroidCompositorWidget.cpp
-index 1ae221acb983e..9acfb0352dbd2 100644
+index 1ae221acb983..9acfb0352dbd 100644
 --- a/widget/android/InProcessAndroidCompositorWidget.cpp
 +++ b/widget/android/InProcessAndroidCompositorWidget.cpp
 @@ -16,7 +16,9 @@ namespace widget {
@@ -1713,7 +1713,7 @@ index 1ae221acb983e..9acfb0352dbd2 100644
        CompositorWidgetInitData::THeadlessCompositorWidgetInitData) {
      return new HeadlessCompositorWidget(
 diff --git a/widget/gtk/InProcessGtkCompositorWidget.cpp b/widget/gtk/InProcessGtkCompositorWidget.cpp
-index bffd6f5a7fcb8..a38f676f23e9f 100644
+index bffd6f5a7fcb..a38f676f23e9 100644
 --- a/widget/gtk/InProcessGtkCompositorWidget.cpp
 +++ b/widget/gtk/InProcessGtkCompositorWidget.cpp
 @@ -16,7 +16,9 @@ namespace mozilla::widget {
@@ -1728,7 +1728,7 @@ index bffd6f5a7fcb8..a38f676f23e9f 100644
        CompositorWidgetInitData::THeadlessCompositorWidgetInitData) {
      return new HeadlessCompositorWidget(
 diff --git a/widget/moz.build b/widget/moz.build
-index 979eb606c9f32..19a0e74a35c65 100644
+index 979eb606c9f3..19a0e74a35c6 100644
 --- a/widget/moz.build
 +++ b/widget/moz.build
 @@ -270,6 +270,14 @@ UNIFIED_SOURCES += [
@@ -1747,7 +1747,7 @@ index 979eb606c9f32..19a0e74a35c65 100644
      EXPORTS.mozilla.widget += ["LSBUtils.h"]
      SOURCES += ["LSBUtils.cpp"]
 diff --git a/widget/nsBaseAppShell.cpp b/widget/nsBaseAppShell.cpp
-index 632f38478c90d..c01bda431fa56 100644
+index 632f38478c90..c01bda431fa5 100644
 --- a/widget/nsBaseAppShell.cpp
 +++ b/widget/nsBaseAppShell.cpp
 @@ -37,10 +37,10 @@ nsBaseAppShell::nsBaseAppShell()
@@ -1764,7 +1764,7 @@ index 632f38478c90d..c01bda431fa56 100644
          do_QueryInterface(NS_GetCurrentThread());
      NS_ENSURE_STATE(threadInt);
 diff --git a/widget/nsBaseAppShell.h b/widget/nsBaseAppShell.h
-index fabc0e188afe4..768c09e0236d1 100644
+index fabc0e188afe..768c09e0236d 100644
 --- a/widget/nsBaseAppShell.h
 +++ b/widget/nsBaseAppShell.h
 @@ -44,7 +44,7 @@ class nsBaseAppShell : public nsIAppShell,
@@ -1777,7 +1777,7 @@ index fabc0e188afe4..768c09e0236d1 100644
    /**
     * Called by subclasses from a native event. See ScheduleNativeEventCallback.
 diff --git a/widget/windows/InProcessWinCompositorWidget.cpp b/widget/windows/InProcessWinCompositorWidget.cpp
-index 89729f7f0a59d..caa9c46db9077 100644
+index 89729f7f0a59..caa9c46db907 100644
 --- a/widget/windows/InProcessWinCompositorWidget.cpp
 +++ b/widget/windows/InProcessWinCompositorWidget.cpp
 @@ -31,7 +31,9 @@ using namespace mozilla;
