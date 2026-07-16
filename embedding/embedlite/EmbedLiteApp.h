@@ -196,6 +196,7 @@ private:
   void ViewDestroyed(uint32_t id);
   void WindowDestroyed(uint32_t id);
   void ChildReadyToDestroy();
+  void MaybePreDestroy();
   uint32_t CreateWindowRequested(const uint32_t &chromeFlags,
                                  const bool &hidden,
                                  const uint32_t &parentId,
@@ -219,6 +220,7 @@ private:
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;
+  bool mPreDestroySent;
 };
 
 } // namespace embedlite

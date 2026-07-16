@@ -77,6 +77,7 @@ EmbedLiteApp::EmbedLiteApp()
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
   , mIsAsyncLoop(false)
+  , mPreDestroySent(false)
 {
   LOGT();
   sSingleton = this;
@@ -213,6 +214,7 @@ EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aE
   mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
+  mPreDestroySent = false;
   SetState(STARTING);
   mEmbedType = aEmbedType;
   mUILoop = aEventLoop->GetMessageLoop();
@@ -230,6 +232,7 @@ EmbedLiteApp::Start(EmbedType aEmbedType)
   mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
+  mPreDestroySent = false;
   SetState(STARTING);
   mEmbedType = aEmbedType;
   base::AtExitManager exitManager;
@@ -336,6 +339,19 @@ EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
 }
 
 void
+EmbedLiteApp::MaybePreDestroy()
+{
+  if (mState != DESTROYING || mPreDestroySent || !mViews.empty() ||
+      !mWindows.empty()) {
+    return;
+  }
+
+  mPreDestroySent = true;
+  mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
+                                        &EmbedLiteApp::PreDestroy, this));
+}
+
+void
 EmbedLiteApp::Stop()
 {
   LOGT();
@@ -343,6 +359,7 @@ EmbedLiteApp::Stop()
 
   if (mState == INITIALIZED) {
     if (mViews.empty() && mWindows.empty()) {
+      mPreDestroySent = true;
       mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
                                             &EmbedLiteApp::PreDestroy, this));
     } else {
@@ -579,10 +596,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
     if (mListener) {
       mListener->LastViewDestroyed();
     }
-    if (mState == DESTROYING) {
-      mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
-                                            &EmbedLiteApp::PreDestroy, this));
-    }
+    MaybePreDestroy();
   }
 }
 
@@ -600,6 +614,7 @@ EmbedLiteApp::WindowDestroyed(uint32_t id)
     if (mListener) {
       mListener->LastWindowDestroyed();
     }
+    MaybePreDestroy();
   }
 }
 
@@ -667,8 +682,7 @@ EmbedLiteApp::Initialized()
   NS_ASSERTION(mState == STARTING || mState == DESTROYING, "Wrong timing");
 
   if (mState == DESTROYING) {
-    mUILoop->PostTask(NewRunnableFunction("mozilla::embedlite::EmbedLiteApp::PreDestroy",
-                                          &EmbedLiteApp::PreDestroy, this));
+    MaybePreDestroy();
     return;
   }
 
