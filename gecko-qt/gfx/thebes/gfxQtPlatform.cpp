@@ -7,7 +7,10 @@
 #include <QWindow>
 
 #include <QGuiApplication>
+#include <QObject>
 #include <QScreen>
+
+#include <cmath>
 
 #include "gfxQtPlatform.h"
 
@@ -30,7 +33,9 @@
 
 #include "qcms.h"
 
+#include "mozilla/Atomics.h"
 #include "mozilla/Preferences.h"
+#include "SoftwareVsyncSource.h"
 
 using namespace mozilla;
 using namespace mozilla::unicode;
@@ -41,6 +46,92 @@ static FT_Library gPlatformFTLibrary = nullptr;
 
 #define GFX_PREF_MAX_GENERIC_SUBSTITUTIONS \
   "gfx.font_rendering.fontconfig.max_generic_substitutions"
+
+static bool IsValidRefreshRate(qreal aRefreshRate)
+{
+    if (aRefreshRate <= 0.0 || !std::isfinite(aRefreshRate)) {
+        return false;
+    }
+
+    const qreal interval = 1000.0 / aRefreshRate;
+    return interval > 0.0 && std::isfinite(interval);
+}
+
+static TimeDuration VsyncRateForRefreshRate(qreal aRefreshRate)
+{
+    if (!IsValidRefreshRate(aRefreshRate)) {
+        aRefreshRate = gfxPlatform::GetDefaultFrameRate();
+    }
+
+    return TimeDuration::FromMilliseconds(1000.0 / aRefreshRate);
+}
+
+static void SetScreenVsyncRate(SoftwareVsyncSource* aVsyncSource,
+                               qreal aRefreshRate)
+{
+    aVsyncSource->SetVsyncRate(VsyncRateForRefreshRate(aRefreshRate));
+}
+
+class QtSoftwareVsyncSource final : public SoftwareVsyncSource
+{
+public:
+    explicit QtSoftwareVsyncSource(const TimeDuration& aInitialVsyncRate)
+        : SoftwareVsyncSource(aInitialVsyncRate)
+        , mShutdown(false)
+    {
+    }
+
+    void ObserveApplication(QGuiApplication* aApplication)
+    {
+        RefPtr<QtSoftwareVsyncSource> self = this;
+        mPrimaryScreenConnection = QObject::connect(
+            aApplication, &QGuiApplication::primaryScreenChanged, aApplication,
+            [self](QScreen* screen) {
+                self->ObserveScreen(screen);
+            });
+
+        ObserveScreen(aApplication->primaryScreen());
+    }
+
+    void ObserveScreen(QScreen* aScreen)
+    {
+        if (mShutdown) {
+            return;
+        }
+
+        QObject::disconnect(mRefreshRateConnection);
+        mRefreshRateConnection = QMetaObject::Connection();
+        SetScreenVsyncRate(this, aScreen ? aScreen->refreshRate() : 0.0);
+
+        if (!aScreen) {
+            return;
+        }
+
+        RefPtr<QtSoftwareVsyncSource> self = this;
+        mRefreshRateConnection =
+            QObject::connect(aScreen, &QScreen::refreshRateChanged, qApp,
+                             [self](qreal refreshRate) {
+                if (!self->mShutdown) {
+                    SetScreenVsyncRate(self, refreshRate);
+                }
+            });
+    }
+
+    void Shutdown() override
+    {
+        mShutdown = true;
+        QObject::disconnect(mRefreshRateConnection);
+        mRefreshRateConnection = QMetaObject::Connection();
+        QObject::disconnect(mPrimaryScreenConnection);
+        mPrimaryScreenConnection = QMetaObject::Connection();
+        SoftwareVsyncSource::Shutdown();
+    }
+
+private:
+    Atomic<bool, Relaxed> mShutdown;
+    QMetaObject::Connection mPrimaryScreenConnection;
+    QMetaObject::Connection mRefreshRateConnection;
+};
 
 gfxQtPlatform::gfxQtPlatform()
 {
@@ -149,5 +240,13 @@ uint32_t gfxQtPlatform::MaxGenericSubstitions()
 already_AddRefed<gfx::VsyncSource>
 gfxQtPlatform::CreateGlobalHardwareVsyncSource()
 {
-    return GetSoftwareVsyncSource();
+    RefPtr<QtSoftwareVsyncSource> softwareVsyncSource =
+        new QtSoftwareVsyncSource(VsyncRateForRefreshRate(0.0));
+
+    if (qApp) {
+        softwareVsyncSource->ObserveApplication(qApp);
+    }
+
+    RefPtr<VsyncSource> vsyncSource = softwareVsyncSource;
+    return vsyncSource.forget();
 }
