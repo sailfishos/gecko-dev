@@ -365,9 +365,9 @@ ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 # Make stdc++ headers available on a fresh path to work around include_next bug JB#55058
 if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/*/ "%BUILD_DIR"/include; fi
 
-# Expose the elf32-i386 libclang.so.15 for use inside the arm target, JB#55042
+# Expose the elf32-i386 libclang.so.17 for use inside the arm target, JB#55042
 mkdir -p "%BUILD_DIR"/lib
-SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.15 "%BUILD_DIR"/lib/
+SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.17 "%BUILD_DIR"/lib/
 echo "export MOZ_LIBCLANG_BINDGEN_PATH='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 
 %ifarch %arm64
