@@ -374,6 +374,8 @@ pref("media.cache_readahead_limit", 30);
 pref("media.video-queue.default-size", 3);
 
 // Use Gecko/FFmpeg/gecko-camera media paths; gmp-droid is no longer shipped.
+// EmbedLite has no remote RDD decoder path; decode supported formats locally.
+pref("media.rdd-process.enabled", false);
 pref("media.gmp.decoder.enabled", false);
 pref("media.decoder.recycle.enabled", true);
 
