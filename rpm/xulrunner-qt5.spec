@@ -137,6 +137,9 @@ Patch81:     0081-Fix-Qt-form-control-theme-rendering.patch
 Patch82:     0082-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
 Patch83:     0083-Register-gecko-camera-decoder-in-remote-video-paths.patch
 Patch84:     0084-Use-system-sqlite.patch
+Patch85:     0085-Support-Qt-EGL-display-on-Mesa.patch
+Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch
+Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
