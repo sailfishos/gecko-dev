@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 3 Aug 2026 20:25:57 +0200
+Subject: [sailfishos][neterror] Keep certificate controls above toolbar
+
+The toolkit page positions advanced panels absolutely. Because that
+position is excluded from the centered content height, Sailfish Browser's
+dynamic bottom toolbar can cover the certificate action row.
+
+Keep advanced panels in document flow while retaining their full viewport
+width. This leaves compact pages centered and reserves room for expanded
+certificate controls.
+---
+ toolkit/themes/shared/aboutNetError.css | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/toolkit/themes/shared/aboutNetError.css b/toolkit/themes/shared/aboutNetError.css
+index c84a72fce4a92..20656544f241c 100644
+--- a/toolkit/themes/shared/aboutNetError.css
++++ b/toolkit/themes/shared/aboutNetError.css
+@@ -100,10 +100,12 @@ button:disabled {
+   margin-top: 1.2em;
+ }
+ 
++/* EmbedLite's dynamic toolbar overlaps absolutely positioned content. Keep the
++ * advanced panels in the document flow so their controls remain visible. */
+ .advanced-panel-container {
+-  width: 100%;
+-  position: absolute;
+-  left: 0;
++  position: static;
++  width: 100vw;
++  margin-inline-start: calc((100% - 100vw) / 2);
+ }
+ 
+ .trr-message-container {

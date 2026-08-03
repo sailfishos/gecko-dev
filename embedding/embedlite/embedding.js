@@ -261,6 +261,9 @@ pref("dom.disable_window_find", true);
 // SSL error page behaviour
 pref("browser.ssl_override_behavior", 2);
 pref("browser.xul.error_pages.expert_bad_cert", false);
+pref("security.certerrors.mitm.priming.enabled", true);
+pref("security.certerrors.mitm.priming.endpoint", "https://mitmdetection.services.mozilla.com/");
+pref("security.certerrors.permanentOverride", true);
 
 // disable logging for the search service by default
 pref("browser.search.log", false);
