@@ -140,6 +140,7 @@ Patch84:     0084-Use-system-sqlite.patch
 Patch85:     0085-Support-Qt-EGL-display-on-Mesa.patch
 Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch
 Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
+Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
 
 BuildRequires:  rust >= 1.66.0
 BuildRequires:  rust-std-static
