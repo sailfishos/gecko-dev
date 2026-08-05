@@ -1,26 +1,19 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Thu, 21 May 2026 16:55:00 +0200
-Subject: [PATCH] Preload autoplay metadata before inaudible check
+Date: Wed, 5 Aug 2026 17:53:32 +0200
+Subject: Preload autoplay metadata before inaudible check
 
-Blocked autoplay should still load enough metadata to determine whether the
-media is audible.  On cellular, Sailfish uses a default preload action of
-none, so an unmuted autoplay-only video can suspend before metadata is read.
-If the file has no audio track, Gecko never learns that playback is actually
-allowed and the element remains stuck on the poster/initial frame.
-
-Use metadata preload for autoplay elements that are not yet allowed to play.
-When metadata arrives, recompute the preload action so inaudible autoplay can
-advance to normal playback.
+Load metadata for blocked autoplay elements so Gecko can discover that a
+video has no audio track, then recompute preload once metadata is known.
 ---
  dom/html/HTMLMediaElement.cpp | 5 +++++
  1 file changed, 5 insertions(+)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index f4ecc8e6bec6e..0cba55e9a8536 100644
+index 2b4a0e3dbf740..6b24f9488ebb3 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
-@@ -2947,6 +2947,8 @@ void HTMLMediaElement::UpdatePreloadAction() {
+@@ -3169,6 +3169,8 @@ void HTMLMediaElement::UpdatePreloadAction() {
    // as we'll need it to play.
    if ((AllowedToPlay() && HasAttr(nsGkAtoms::autoplay)) || !mPaused) {
      nextAction = HTMLMediaElement::PRELOAD_ENOUGH;
@@ -29,7 +22,7 @@ index f4ecc8e6bec6e..0cba55e9a8536 100644
    } else {
      // Find the appropriate preload action by looking at the attribute.
      const nsAttrValue* val =
-@@ -5399,6 +5401,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
+@@ -5653,6 +5655,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
    mTags = std::move(aTags);
    mLoadedDataFired = false;
    ChangeReadyState(HAVE_METADATA);

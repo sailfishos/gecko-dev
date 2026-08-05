@@ -1,20 +1,16 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Fri, 22 May 2026 14:55:00 +0200
-Subject: [PATCH] Fix Qt checkbox and radio rendering
+Date: Wed, 5 Aug 2026 17:54:01 +0200
+Subject: Fix Qt checkbox and radio rendering
 
-Web content uses the non-native Theme path when
-widget.non-native-theme.enabled is true. On Qt, the generic checkbox/radio
-colors and WebRender rounded-border path can produce solid black controls.
-
-Draw Qt checkbox and radio controls with explicit light control colors and
-simple primitives that work in the WebRender path used by Sailfish Browser.
+Draw Qt form controls with simple primitives and explicit light colors that
+work with Sailfish Browser's WebRender path.
 ---
  widget/Theme.cpp | 143 +++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 143 insertions(+)
 
 diff --git a/widget/Theme.cpp b/widget/Theme.cpp
-index 0c89dfc0ea211..9154f53b4f58a 100644
+index 8e67c5b4a5ead..473146b5d4668 100644
 --- a/widget/Theme.cpp
 +++ b/widget/Theme.cpp
 @@ -4,6 +4,7 @@
@@ -25,7 +21,7 @@ index 0c89dfc0ea211..9154f53b4f58a 100644
  #include <utility>
  #include "ThemeCocoa.h"
  
-@@ -253,6 +254,139 @@ std::tuple<sRGBColor, sRGBColor, sRGBColor> Theme::ComputeCheckboxColors(
+@@ -258,6 +259,139 @@ std::tuple<sRGBColor, sRGBColor, sRGBColor> Theme::ComputeCheckboxColors(
    return std::make_tuple(bg, border, sTransparent);
  }
  
@@ -165,7 +161,7 @@ index 0c89dfc0ea211..9154f53b4f58a 100644
  sRGBColor Theme::ComputeBorderColor(const ElementState& aState,
                                      const Colors& aColors,
                                      OutlineCoversBorder aOutlineCoversBorder) {
-@@ -1163,10 +1297,19 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
+@@ -1147,10 +1281,19 @@ bool Theme::DoDrawWidgetBackground(PaintBackendData& aPaintData,
    switch (aAppearance) {
      case StyleAppearance::Radio: {
        auto rect = CheckBoxRadioRect(devPxRect);

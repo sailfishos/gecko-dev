@@ -1,34 +1,23 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Thu, 21 May 2026 15:40:00 +0200
-Subject: [PATCH] Dispatch MDSM initialization without tail dispatch
+Date: Wed, 5 Aug 2026 17:53:10 +0200
+Subject: Dispatch MDSM initialization without tail dispatch
 
-MediaDecoderStateMachineBase::Init() schedules its initialization task through
-DispatchStateChange() so normal Gecko event-loop callers keep the expected
-tail-dispatch ordering.  EmbedLite can call into media setup on the main
-thread while nsThread event-loop recursion is not active, so the XPCOM main
-thread wrapper has no available tail dispatcher.  DispatchStateChange() then
-drops the initialization task as a shutdown-style state update, leaving direct
-HTML5 video stuck below HAVE_METADATA with a 0:00 duration.
-
-Keep the existing state-change dispatch when a tail dispatcher is available.
-When it is not, dispatch this one startup task normally to the state-machine
-task queue.  This leaves the core state-watching shutdown behaviour untouched
-and only affects MDSM initialization.
+Use normal task-queue dispatch when EmbedLite initializes media outside an
+active XPCOM event-loop recursion, where no tail dispatcher is available.
 ---
- dom/media/MediaDecoderStateMachineBase.cpp | 10 ++++++++--
- 1 file changed, 8 insertions(+), 2 deletions(-)
+ dom/media/MediaDecoderStateMachineBase.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
 
 diff --git a/dom/media/MediaDecoderStateMachineBase.cpp b/dom/media/MediaDecoderStateMachineBase.cpp
-index d421d0b3bc29..4214f2a7a5df 100644
+index 9ca7949c7c8cc..4a4578d05fded 100644
 --- a/dom/media/MediaDecoderStateMachineBase.cpp
 +++ b/dom/media/MediaDecoderStateMachineBase.cpp
-@@ -95,8 +95,14 @@ nsresult MediaDecoderStateMachineBase::Init(MediaDecoder* aDecoder) {
+@@ -96,7 +96,13 @@ nsresult MediaDecoderStateMachineBase::Init(MediaDecoder* aDecoder) {
    nsCOMPtr<nsIRunnable> r = NewRunnableMethod<RefPtr<MediaDecoder>>(
        "MediaDecoderStateMachineBase::InitializationTask", this,
        &MediaDecoderStateMachineBase::InitializationTask, aDecoder);
 -  mTaskQueue->DispatchStateChange(r.forget());
--  ;
 +  AbstractThread* currentThread = AbstractThread::GetCurrent();
 +  if (currentThread && currentThread->IsTailDispatcherAvailable()) {
 +    mTaskQueue->DispatchStateChange(r.forget());
@@ -36,7 +25,6 @@ index d421d0b3bc29..4214f2a7a5df 100644
 +    nsresult rv = mTaskQueue->Dispatch(r.forget());
 +    NS_ENSURE_SUCCESS(rv, rv);
 +  }
-+
-   nsresult rv = mReader->Init();
-   NS_ENSURE_SUCCESS(rv, rv);
  
+   // Connect mirrors.
+   aDecoder->CanonicalPlayState().ConnectMirror(&mPlayState);

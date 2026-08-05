@@ -1,25 +1,20 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Fri, 29 May 2026 11:15:47 +0200
+Date: Wed, 5 Aug 2026 17:54:51 +0200
 Subject: Keep about:support snapshot resilient in EmbedLite
 
-EmbedLite's app-info implementation does not provide every nsIXULRuntime
-property used by Firefox's troubleshooting page, and AddonManager may not be
-initialized in this embedding. Those rejected async providers prevented the
-snapshot promise from resolving, leaving about:support mostly blank.
-
-Catch async provider failures, treat missing embedded-only application and
-process fields as optional, and show empty addon/feature tables when
-AddonManager is unavailable.
+Catch rejected asynchronous providers and tolerate unavailable app-info and
+AddonManager fields so one embedding-specific failure cannot blank the whole
+troubleshooting page.
 ---
- toolkit/modules/Troubleshoot.sys.mjs | 82 +++++++++++++++++++++-------
- 1 file changed, 63 insertions(+), 19 deletions(-)
+ toolkit/modules/Troubleshoot.sys.mjs | 71 +++++++++++++++++++++-------
+ 1 file changed, 53 insertions(+), 18 deletions(-)
 
 diff --git a/toolkit/modules/Troubleshoot.sys.mjs b/toolkit/modules/Troubleshoot.sys.mjs
-index 8a6c386e9fc04..b65359b756290 100644
+index 87ab415094f20..5f1f8af65d0ad 100644
 --- a/toolkit/modules/Troubleshoot.sys.mjs
 +++ b/toolkit/modules/Troubleshoot.sys.mjs
-@@ -174,20 +174,31 @@ export var Troubleshoot = {
+@@ -179,20 +179,31 @@ export var Troubleshoot = {
      return new Promise(resolve => {
        let snapshot = {};
        let numPending = Object.keys(dataProviders).length;
@@ -55,7 +50,7 @@ index 8a6c386e9fc04..b65359b756290 100644
          }
        }
      });
-@@ -272,10 +283,23 @@ var dataProviders = {
+@@ -298,10 +309,23 @@ var dataProviders = {
        data.launcherProcessState = Services.appinfo.launcherProcessState;
      } catch (e) {}
  
@@ -82,7 +77,7 @@ index 8a6c386e9fc04..b65359b756290 100644
  
      if (Services.policies) {
        data.policiesStatus = Services.policies.status;
-@@ -305,12 +329,21 @@ var dataProviders = {
+@@ -331,13 +355,22 @@ var dataProviders = {
    },
  
    addons: async function addons(done) {
@@ -91,6 +86,7 @@ index 8a6c386e9fc04..b65359b756290 100644
 -      "locale",
 -      "dictionary",
 -      "sitepermission",
+-      "theme",
 -    ]);
 +    let addons;
 +    try {
@@ -99,6 +95,7 @@ index 8a6c386e9fc04..b65359b756290 100644
 +        "locale",
 +        "dictionary",
 +        "sitepermission",
++        "theme",
 +      ]);
 +    } catch (e) {
 +      if (e.result != Cr.NS_ERROR_NOT_INITIALIZED) {
@@ -107,28 +104,10 @@ index 8a6c386e9fc04..b65359b756290 100644
 +      done([]);
 +      return;
 +    }
-     addons = addons.filter(e => !e.isSystem);
      addons.sort(function (a, b) {
        if (a.isActive != b.isActive) {
-@@ -365,7 +398,16 @@ var dataProviders = {
-   },
- 
-   features: async function features(done) {
--    let features = await AddonManager.getAddonsByTypes(["extension"]);
-+    let features;
-+    try {
-+      features = await AddonManager.getAddonsByTypes(["extension"]);
-+    } catch (e) {
-+      if (e.result != Cr.NS_ERROR_NOT_INITIALIZED) {
-+        throw e;
-+      }
-+      done([]);
-+      return;
-+    }
-     features = features.filter(f => f.isSystem);
-     features.sort(function (a, b) {
-       // In some unfortunate cases addon names can be null.
-@@ -427,10 +469,12 @@ var dataProviders = {
+         return b.isActive ? 1 : -1;
+@@ -445,10 +478,12 @@ var dataProviders = {
        remoteTypes.socket = 1;
      }
  
@@ -145,12 +124,3 @@ index 8a6c386e9fc04..b65359b756290 100644
  
      done(data);
    },
-@@ -446,7 +490,7 @@ var dataProviders = {
-         return [
-           gate.title,
-           gate.preference,
--          Services.prefs.getBoolPref(gate.preference),
-+          Services.prefs.getBoolPref(gate.preference, false),
-         ];
-       })
-     );
