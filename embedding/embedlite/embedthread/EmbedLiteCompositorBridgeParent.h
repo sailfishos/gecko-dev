@@ -66,7 +66,6 @@ protected:
 
 private:
   void EnsureSurfaceSizeFromWindow();
-  void PrepareOffscreen();
   void ScheduleForcedRender(wr::RenderReasons aReasons);
 
   uint32_t mWindowId;

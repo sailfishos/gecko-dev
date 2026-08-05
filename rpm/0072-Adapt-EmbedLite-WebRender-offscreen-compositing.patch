@@ -4,18 +4,21 @@ Date: Tue, 28 Apr 2026 14:12:25 +0200
 Subject: Adapt EmbedLite WebRender offscreen compositing
 
 Track safe-area-inset environment variable usage while resolving style and
-notify chrome so EmbedLite callers can distinguish pages that intentionally draw
-into the cutout area.
+notify chrome so EmbedLite callers can distinguish pages that intentionally
+draw into the cutout area.
+
+Restore a dedicated EGLImage-backed offscreen target for EmbedLite while
+leaving ordinary offscreen contexts on the standard framebuffer path.
 ---
  dom/base/Document.cpp                         |  38 +++++
  dom/base/Document.h                           |   7 +
  dom/base/nsDOMWindowUtils.cpp                 |   9 ++
- dom/base/test/meta_viewport/mochitest.ini     |   1 +
- .../test_safe_area_inset_usage.html           |  71 ++++++++++
+ dom/base/test/meta_viewport/mochitest.toml    |   2 +
+ .../test_safe_area_inset_usage.html           |  71 +++++++++
  dom/interfaces/base/nsIDOMWindowUtils.idl     |   8 +-
  gfx/gl/GLConsts.h                             |   2 +
  gfx/gl/GLContext.cpp                          |   9 ++
- gfx/gl/GLContext.h                            |  28 ++--
+ gfx/gl/GLContext.h                            |  29 ++--
  gfx/gl/GLContextEAGL.h                        |   2 +-
  gfx/gl/GLLibraryEGL.cpp                       |  17 +++
  gfx/gl/GLLibraryEGL.h                         |   2 +
@@ -28,9 +31,9 @@ into the cutout area.
  gfx/layers/ipc/CompositorManagerParent.cpp    |  17 ++-
  gfx/layers/wr/WebRenderBridgeParent.cpp       |   6 +
  gfx/webrender_bindings/RenderCompositor.cpp   |  10 +-
- .../RenderCompositorEGL.cpp                   | 132 ++++++++++++++++--
+ .../RenderCompositorEGL.cpp                   | 135 ++++++++++++++++--
  gfx/webrender_bindings/RenderCompositorEGL.h  |   8 +-
- .../RenderCompositorOGL.cpp                   |  77 +++++++++-
+ .../RenderCompositorOGL.cpp                   |  66 ++++++++-
  gfx/webrender_bindings/RendererOGL.cpp        |   1 +
  ipc/chromium/src/base/thread.cc               |  10 +-
  ipc/chromium/src/base/thread.h                |  11 +-
@@ -38,9 +41,9 @@ into the cutout area.
  layout/style/ServoStyleSet.cpp                |   8 ++
  layout/style/ServoStyleSet.h                  |   1 +
  modules/libpref/init/StaticPrefList.yaml      |   2 +-
- servo/components/style/custom_properties.rs   |  56 ++++++--
+ servo/components/style/custom_properties.rs   |  58 +++++++-
  servo/components/style/gecko/media_queries.rs |  19 ++-
- .../style/properties/properties.mako.rs       |  21 ++-
+ servo/components/style/properties/mod.rs      |  27 +++-
  servo/components/style/servo/media_queries.rs |   3 +
  servo/ports/geckolib/glue.rs                  |   8 ++
  widget/CompositorWidget.h                     |   8 +-
@@ -53,37 +56,37 @@ into the cutout area.
  widget/nsBaseAppShell.cpp                     |   4 +-
  widget/nsBaseAppShell.h                       |   2 +-
  .../windows/InProcessWinCompositorWidget.cpp  |   4 +-
- 46 files changed, 732 insertions(+), 59 deletions(-)
+ 46 files changed, 735 insertions(+), 58 deletions(-)
  create mode 100644 dom/base/test/meta_viewport/test_safe_area_inset_usage.html
  create mode 100644 widget/EmbedLiteCompositorWidget.cpp
  create mode 100644 widget/EmbedLiteCompositorWidget.h
 
 diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
-index 8dce4539c40f..e5bea965c8ae 100644
+index 33d6cb5567e82..6a9473eeb7a69 100644
 --- a/dom/base/Document.cpp
 +++ b/dom/base/Document.cpp
-@@ -155,6 +155,7 @@
- #include "mozilla/dom/ClientState.h"
- #include "mozilla/dom/Comment.h"
+@@ -161,6 +161,7 @@
  #include "mozilla/dom/ContentChild.h"
+ #include "mozilla/dom/CSSBinding.h"
+ #include "mozilla/dom/CSSCustomPropertyRegisteredEvent.h"
 +#include "mozilla/dom/CustomEvent.h"
  #include "mozilla/dom/DOMImplementation.h"
  #include "mozilla/dom/DOMIntersectionObserver.h"
  #include "mozilla/dom/DOMStringList.h"
-@@ -1462,6 +1463,7 @@ Document::Document(const char* aContentType)
-       mHttpsOnlyStatus(nsILoadInfo::HTTPS_ONLY_UNINITIALIZED),
-       mViewportType(Unknown),
+@@ -1504,6 +1505,7 @@ Document::Document(const char* aContentType)
        mViewportFit(ViewportFitType::Auto),
+       mInteractiveWidgetMode(
+           InteractiveWidgetUtils::DefaultInteractiveWidgetMode()),
 +      mSafeAreaInsetUsage(0),
-       mSubDocuments(nullptr),
        mHeaderData(nullptr),
+       mLanguageFromCharset(nullptr),
        mServoRestyleRootDirtyBits(0),
-@@ -10741,6 +10743,42 @@ ViewportMetaData Document::GetViewportMetaData() const {
+@@ -11321,6 +11323,42 @@ ViewportMetaData Document::GetViewportMetaData() const {
                                         : ViewportMetaData();
  }
  
 +void Document::NoteSafeAreaInsetUsage(uint8_t aUsage) {
-+  uint8_t newUsage = mSafeAreaInsetUsage | aUsage;
++  const uint8_t newUsage = mSafeAreaInsetUsage | aUsage;
 +  if (newUsage == mSafeAreaInsetUsage) {
 +    return;
 +  }
@@ -118,14 +121,14 @@ index 8dce4539c40f..e5bea965c8ae 100644
 +      *this, *domEvent, ChromeOnlyDispatch::eYes);
 +}
 +
- void Document::SetMetaViewportData(UniquePtr<ViewportMetaData> aData) {
-   mLastModifiedViewportMetaData = std::move(aData);
-   // Trigger recomputation of the nsViewportInfo the next time it's queried.
+ static InteractiveWidget ParseInteractiveWidget(
+     const ViewportMetaData& aViewportMetaData) {
+   if (aViewportMetaData.mInteractiveWidgetMode.IsEmpty()) {
 diff --git a/dom/base/Document.h b/dom/base/Document.h
-index bbc5b22260a0..25ffc2cdffeb 100644
+index d4efb82cc7ece..03c2251c49a73 100644
 --- a/dom/base/Document.h
 +++ b/dom/base/Document.h
-@@ -1336,6 +1336,9 @@ class Document : public nsINode,
+@@ -1283,6 +1283,9 @@ class Document : public nsINode,
    // Returns a ViewportMetaData for this document.
    ViewportMetaData GetViewportMetaData() const;
  
@@ -135,22 +138,22 @@ index bbc5b22260a0..25ffc2cdffeb 100644
    /**
     * True iff this doc will ignore manual character encoding overrides.
     */
-@@ -5210,6 +5213,10 @@ class Document : public nsINode,
-   // https://drafts.csswg.org/css-round-display/#viewport-fit-descriptor
-   ViewportFitType mViewportFit;
+@@ -5344,6 +5347,10 @@ class Document : public nsINode,
+   // https://drafts.csswg.org/css-viewport/#interactive-widget-section
+   dom::InteractiveWidget mInteractiveWidgetMode;
  
 +  // Bitmask of safe-area-inset-* environment variables consumed while
 +  // resolving computed style in this document.
 +  uint8_t mSafeAreaInsetUsage;
 +
-   PLDHashTable* mSubDocuments;
- 
-   class HeaderData;
+   // XXXdholbert This should really be modernized to a nsTHashMap or similar,
+   // though note that the modernization will need to take care to also convert
+   // the special hash_table_ops logic (e.g. how SubDocClearEntry clears the
 diff --git a/dom/base/nsDOMWindowUtils.cpp b/dom/base/nsDOMWindowUtils.cpp
-index c8993801509f..62f2ded944a9 100644
+index 3709f4c426f3e..4afaef4ca1c19 100644
 --- a/dom/base/nsDOMWindowUtils.cpp
 +++ b/dom/base/nsDOMWindowUtils.cpp
-@@ -463,6 +463,15 @@ nsDOMWindowUtils::GetViewportFitInfo(nsAString& aViewportFit) {
+@@ -487,6 +487,15 @@ nsDOMWindowUtils::GetViewportFitInfo(nsAString& aViewportFit) {
    return NS_OK;
  }
  
@@ -166,21 +169,22 @@ index c8993801509f..62f2ded944a9 100644
  NS_IMETHODIMP
  nsDOMWindowUtils::SetMousewheelAutodir(Element* aElement, bool aEnabled,
                                         bool aHonourRoot) {
-diff --git a/dom/base/test/meta_viewport/mochitest.ini b/dom/base/test/meta_viewport/mochitest.ini
-index cfe63cc9999e..e41630956d64 100644
---- a/dom/base/test/meta_viewport/mochitest.ini
-+++ b/dom/base/test/meta_viewport/mochitest.ini
-@@ -28,6 +28,7 @@ support-files =
- [test_meta_viewport_device_width_with_initial_scale_2.html]
- [test_meta_viewport_fit.html]
- [test_meta_viewport_fit_multiple.html]
-+[test_safe_area_inset_usage.html]
- [test_meta_viewport_fixed_width_and_zero_display_width.html]
- [test_meta_viewport_initial_scale_0_5.html]
- [test_meta_viewport_initial_scale_2.html]
+diff --git a/dom/base/test/meta_viewport/mochitest.toml b/dom/base/test/meta_viewport/mochitest.toml
+index 8d7c1a8d3823f..93e4eec07bef4 100644
+--- a/dom/base/test/meta_viewport/mochitest.toml
++++ b/dom/base/test/meta_viewport/mochitest.toml
+@@ -55,6 +55,8 @@ support-files = ["viewport_helpers.js"]
+ 
+ ["test_meta_viewport_fit_multiple.html"]
+ 
++["test_safe_area_inset_usage.html"]
++
+ ["test_meta_viewport_fixed_width_and_zero_display_width.html"]
+ 
+ ["test_meta_viewport_initial_scale_0_5.html"]
 diff --git a/dom/base/test/meta_viewport/test_safe_area_inset_usage.html b/dom/base/test/meta_viewport/test_safe_area_inset_usage.html
 new file mode 100644
-index 000000000000..b51d178c9ec4
+index 0000000000000..b51d178c9ec45
 --- /dev/null
 +++ b/dom/base/test/meta_viewport/test_safe_area_inset_usage.html
 @@ -0,0 +1,71 @@
@@ -256,10 +260,10 @@ index 000000000000..b51d178c9ec4
 +</body>
 +</html>
 diff --git a/dom/interfaces/base/nsIDOMWindowUtils.idl b/dom/interfaces/base/nsIDOMWindowUtils.idl
-index 79e4e8534eb9..cfdbb5720836 100644
+index c5e70fb5f7084..3cfd1a946e5bc 100644
 --- a/dom/interfaces/base/nsIDOMWindowUtils.idl
 +++ b/dom/interfaces/base/nsIDOMWindowUtils.idl
-@@ -52,7 +52,7 @@ webidl Node;
+@@ -53,7 +53,7 @@ webidl Node;
  webidl NodeList;
  webidl Storage;
  
@@ -268,7 +272,7 @@ index 79e4e8534eb9..cfdbb5720836 100644
  interface nsIDOMWindowUtils : nsISupports {
  
    /**
-@@ -129,6 +129,12 @@ interface nsIDOMWindowUtils : nsISupports {
+@@ -130,6 +130,12 @@ interface nsIDOMWindowUtils : nsISupports {
     */
    AString getViewportFitInfo();
  
@@ -282,7 +286,7 @@ index 79e4e8534eb9..cfdbb5720836 100644
     * Information about the window size in device pixels.
     */
 diff --git a/gfx/gl/GLConsts.h b/gfx/gl/GLConsts.h
-index 97744d421541..dd631d6d12b6 100644
+index 69b1fcae1ee30..ec873078dcfc5 100644
 --- a/gfx/gl/GLConsts.h
 +++ b/gfx/gl/GLConsts.h
 @@ -7,6 +7,8 @@
@@ -295,22 +299,18 @@ index 97744d421541..dd631d6d12b6 100644
   * GENERATED FILE, DO NOT MODIFY DIRECTLY.
   * This is a file generated directly from the official OpenGL registry
 diff --git a/gfx/gl/GLContext.cpp b/gfx/gl/GLContext.cpp
-index d11c131c4513..3ff7ee593c5c 100644
+index 5f75c86163419..34efffff626a7 100644
 --- a/gfx/gl/GLContext.cpp
 +++ b/gfx/gl/GLContext.cpp
-@@ -2644,10 +2644,19 @@ void GLContext::OnImplicitMakeCurrentFailure(const char* const funcName) {
- }
- 
- bool GLContext::CreateOffscreenDefaultFb(const gfx::IntSize& size) {
-+#ifdef MOZ_EMBEDLITE
-+  mScreen = GLScreenBuffer::Create(this, size);
-+  return bool(mScreen);
-+#endif
-+
-   mOffscreenDefaultFb = MozFramebuffer::Create(this, size, 0, true);
+@@ -2698,6 +2698,15 @@ bool GLContext::CreateOffscreenDefaultFb(const gfx::IntSize& size) {
    return bool(mOffscreenDefaultFb);
  }
  
++bool GLContext::CreateOffscreenScreenBuffer(const gfx::IntSize& size) {
++  mScreen = GLScreenBuffer::Create(this, size);
++  return bool(mScreen);
++}
++
 +bool GLContext::ResizeScreenBuffer(const gfx::IntSize& size) {
 +  return mScreen && mScreen->Resize(size);
 +}
@@ -319,7 +319,7 @@ index d11c131c4513..3ff7ee593c5c 100644
  // free it when unloaded; this causes Leak Sanitizer to detect leaks and
  // fail to unwind the stack, so suppressions don't work.  This
 diff --git a/gfx/gl/GLContext.h b/gfx/gl/GLContext.h
-index 41dbe92bee95..4b7c0c113fe2 100644
+index 45c75e8b6ecf9..ef537251d0726 100644
 --- a/gfx/gl/GLContext.h
 +++ b/gfx/gl/GLContext.h
 @@ -33,6 +33,7 @@
@@ -330,7 +330,7 @@ index 41dbe92bee95..4b7c0c113fe2 100644
  #include "nsTArray.h"
  #include "GLConsts.h"
  #include "GLDefs.h"
-@@ -55,6 +56,7 @@ namespace mozilla {
+@@ -60,6 +61,7 @@ namespace mozilla {
  namespace gl {
  class GLBlitHelper;
  class GLLibraryEGL;
@@ -338,13 +338,14 @@ index 41dbe92bee95..4b7c0c113fe2 100644
  class GLReadTexImageHelper;
  class SharedSurface;
  class SymbolLoader;
-@@ -307,10 +309,16 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+@@ -319,10 +321,17 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     * Get the default framebuffer for this context.
     */
    UniquePtr<MozFramebuffer> mOffscreenDefaultFb;
 +  UniquePtr<GLScreenBuffer> mScreen;
  
    bool CreateOffscreenDefaultFb(const gfx::IntSize& size);
++  bool CreateOffscreenScreenBuffer(const gfx::IntSize& size);
 +  bool ResizeScreenBuffer(const gfx::IntSize& size);
 +  GLScreenBuffer* Screen() const { return mScreen.get(); }
  
@@ -356,16 +357,16 @@ index 41dbe92bee95..4b7c0c113fe2 100644
      if (mOffscreenDefaultFb) {
        return mOffscreenDefaultFb->mFB;
      }
-@@ -2024,6 +2032,8 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
-   bool mElideDuplicateBindFramebuffers = false;
- 
-   void fBindFramebuffer(const GLenum target, const GLuint fb) const {
-+    const GLuint realFb = fb ? fb : GetDefaultFramebuffer();
+@@ -2061,6 +2070,8 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+     if (!IsSupported(gl::GLFeature::framebuffer_blit)) {
+       target = LOCAL_GL_FRAMEBUFFER;
+     }
 +
++    const GLuint realFb = (!fb && mScreen) ? mScreen->Fb() : fb;
      if (mElideDuplicateBindFramebuffers) {
        MOZ_ASSERT(mCachedDrawFb ==
                   GetIntAs<GLuint>(LOCAL_GL_DRAW_FRAMEBUFFER_BINDING));
-@@ -2032,31 +2042,31 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
+@@ -2069,31 +2080,31 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
  
        switch (target) {
          case LOCAL_GL_FRAMEBUFFER:
@@ -406,24 +407,24 @@ index 41dbe92bee95..4b7c0c113fe2 100644
      }
    }
 diff --git a/gfx/gl/GLContextEAGL.h b/gfx/gl/GLContextEAGL.h
-index 851a9170f7cb..67c2a0a716b1 100644
+index 2b062d1a0f660..66563898f8def 100644
 --- a/gfx/gl/GLContextEAGL.h
 +++ b/gfx/gl/GLContextEAGL.h
-@@ -52,7 +52,7 @@ class GLContextEAGL : public GLContext {
+@@ -54,7 +54,7 @@ class GLContextEAGL : public GLContext {
  
    virtual void GetWSIInfo(nsCString* const out) const override;
  
 -  virtual GLuint GetDefaultFramebuffer() override { return mBackbufferFB; }
 +  virtual GLuint GetDefaultFramebuffer() const override { return mBackbufferFB; }
  
-   virtual bool RenewSurface(nsIWidget* aWidget) override {
-     // FIXME: should use the passed widget instead of the existing one.
+  private:
+   GLuint mBackbufferRB = 0;
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index 097543c37e8b..24926227c3ce 100644
+index e092917e0319e..0e05541e59c94 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
-@@ -900,6 +900,23 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
-   return CreateDisplayLocked(forceAccel, out_failureId, lock);
+@@ -893,6 +893,23 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
+   return CreateDisplayLocked(forceAccel, forceSoftware, out_failureId, lock);
  }
  
 +std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplay(
@@ -444,15 +445,15 @@ index 097543c37e8b..24926227c3ce 100644
 +}
 +
  std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
-     const bool forceAccel, nsACString* const out_failureId,
-     const StaticMutexAutoLock& aProofOfLock) {
+     const bool forceAccel, const bool forceSoftware,
+     nsACString* const out_failureId, const StaticMutexAutoLock& aProofOfLock) {
 diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
-index 0a853e67c938..5cf95aae9406 100644
+index 53ee8264279ba..fb4f7b66344f2 100644
 --- a/gfx/gl/GLLibraryEGL.h
 +++ b/gfx/gl/GLLibraryEGL.h
-@@ -159,6 +159,8 @@ class GLLibraryEGL final {
+@@ -160,6 +160,8 @@ class GLLibraryEGL final {
  
-   std::shared_ptr<EglDisplay> CreateDisplay(bool forceAccel,
+   std::shared_ptr<EglDisplay> CreateDisplay(bool forceAccel, bool forceSoftware,
                                              nsACString* const out_failureId);
 +  std::shared_ptr<EglDisplay> CreateDisplay(EGLDisplay display,
 +                                            nsACString* const out_failureId);
@@ -460,7 +461,7 @@ index 0a853e67c938..5cf95aae9406 100644
    std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
  
 diff --git a/gfx/gl/GLScreenBuffer.cpp b/gfx/gl/GLScreenBuffer.cpp
-index dca3fd7b4294..197c96242fe2 100644
+index 6550698eb516c..e02c6e660cc23 100644
 --- a/gfx/gl/GLScreenBuffer.cpp
 +++ b/gfx/gl/GLScreenBuffer.cpp
 @@ -10,6 +10,7 @@
@@ -468,10 +469,10 @@ index dca3fd7b4294..197c96242fe2 100644
  #include "MozFramebuffer.h"
  #include "SharedSurface.h"
 +#include "SharedSurfaceGL.h"
+ #include "mozilla/gfx/BuildConstants.h"
  
  namespace mozilla::gl {
- 
-@@ -137,4 +138,63 @@ SwapChain::~SwapChain() {
+@@ -142,4 +143,63 @@ SwapChain::~SwapChain() {
    }
  }
  
@@ -536,7 +537,7 @@ index dca3fd7b4294..197c96242fe2 100644
 +
  }  // namespace mozilla::gl
 diff --git a/gfx/gl/GLScreenBuffer.h b/gfx/gl/GLScreenBuffer.h
-index 1b05a9c4b5d0..b3465c985795 100644
+index ace3145f7ac35..a321272df62c2 100644
 --- a/gfx/gl/GLScreenBuffer.h
 +++ b/gfx/gl/GLScreenBuffer.h
 @@ -28,6 +28,8 @@ namespace gl {
@@ -548,7 +549,7 @@ index 1b05a9c4b5d0..b3465c985795 100644
  class SwapChain;
  
  class SwapChainPresenter final {
-@@ -81,6 +83,25 @@ class SwapChain final {
+@@ -90,6 +92,25 @@ class SwapChain final {
    }
  };
  
@@ -575,10 +576,10 @@ index 1b05a9c4b5d0..b3465c985795 100644
  }  // namespace mozilla
  
 diff --git a/gfx/gl/GLTypes.h b/gfx/gl/GLTypes.h
-index f5b317b4b758..b58d740c8c79 100644
+index 6caa1cc62395d..f1341e458965b 100644
 --- a/gfx/gl/GLTypes.h
 +++ b/gfx/gl/GLTypes.h
-@@ -85,9 +85,24 @@ typedef void* EGLSurface;
+@@ -92,9 +92,24 @@ typedef void* EGLSurface;
  typedef void* EGLClientBuffer;
  typedef void* EGLCastToRelevantPtr;
  typedef void* EGLImage;
@@ -604,7 +605,7 @@ index f5b317b4b758..b58d740c8c79 100644
  #define EGL_NO_CONTEXT ((EGLContext)0)
  #define EGL_NO_DISPLAY ((EGLDisplay)0)
 diff --git a/gfx/ipc/InProcessCompositorSession.cpp b/gfx/ipc/InProcessCompositorSession.cpp
-index 9efb83b57aaa..4b0af2634a88 100644
+index 9efb83b57aaa5..4b0af2634a88e 100644
 --- a/gfx/ipc/InProcessCompositorSession.cpp
 +++ b/gfx/ipc/InProcessCompositorSession.cpp
 @@ -40,7 +40,8 @@ RefPtr<InProcessCompositorSession> InProcessCompositorSession::Create(
@@ -618,10 +619,10 @@ index 9efb83b57aaa..4b0af2634a88 100644
        CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
            aScale, aOptions, aUseExternalSurfaceSize, aSurfaceSize,
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 1842fcf5b7f9..15e24ef8ce3b 100644
+index e03525d0b3117..9aeec279b67ed 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
-@@ -1248,6 +1248,13 @@ bool CompositorBridgeParent::DeallocPWebRenderBridgeParent(
+@@ -1147,6 +1147,13 @@ bool CompositorBridgeParent::DeallocPWebRenderBridgeParent(
    return true;
  }
  
@@ -636,10 +637,10 @@ index 1842fcf5b7f9..15e24ef8ce3b 100644
    if (mWrBridge) {
      RefPtr<wr::WebRenderAPI> api = mWrBridge->GetWebRenderAPI();
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
-index fdf4bddc2aab..4955ea3f300e 100644
+index 52bfebe808190..cfd734b37727c 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.h
 +++ b/gfx/layers/ipc/CompositorBridgeParent.h
-@@ -27,6 +27,10 @@
+@@ -28,6 +28,10 @@
  
  namespace mozilla {
  
@@ -650,7 +651,7 @@ index fdf4bddc2aab..4955ea3f300e 100644
  namespace gfx {
  class GPUProcessManager;
  class GPUParent;
-@@ -245,8 +249,8 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
+@@ -231,8 +235,8 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
  MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(
      CompositorBridgeParentBase::TransformsToSkip)
  
@@ -661,7 +662,7 @@ index fdf4bddc2aab..4955ea3f300e 100644
    friend class CompositorThreadHolder;
    friend class InProcessCompositorSession;
    friend class gfx::GPUProcessManager;
-@@ -515,6 +519,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
+@@ -509,6 +513,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
        const WindowKind& aWindowKind) override;
    bool DeallocPWebRenderBridgeParent(PWebRenderBridgeParent* aActor) override;
    RefPtr<WebRenderBridgeParent> GetWebRenderBridgeParent() const;
@@ -673,10 +674,10 @@ index fdf4bddc2aab..4955ea3f300e 100644
  
    static CompositorBridgeParent* GetCompositorBridgeParentFromLayersId(
 diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
-index dede7ce6ed23..318a6778cea3 100644
+index 36df83e4afefe..163a046eb5dfe 100644
 --- a/gfx/layers/ipc/CompositorManagerParent.cpp
 +++ b/gfx/layers/ipc/CompositorManagerParent.cpp
-@@ -18,6 +18,10 @@
+@@ -19,6 +19,10 @@
  #include "gfxPlatform.h"
  #include "VsyncSource.h"
  
@@ -687,7 +688,7 @@ index dede7ce6ed23..318a6778cea3 100644
  namespace mozilla {
  namespace layers {
  
-@@ -110,9 +114,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
+@@ -108,9 +112,16 @@ CompositorManagerParent::CreateSameProcessWidgetCompositorBridge(
    TimeDuration vsyncRate =
        gfxPlatform::GetPlatform()->GetGlobalVsyncDispatcher()->GetVsyncRate();
  
@@ -700,18 +701,18 @@ index dede7ce6ed23..318a6778cea3 100644
 +          0, sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
 +          aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
 +#else
-+      new CompositorBridgeParent(sInstance, /* aNamespace */ 0, aScale,
-+                                 vsyncRate, aOptions, aUseExternalSurfaceSize,
-+                                 aSurfaceSize, aInnerWindowId);
++      new CompositorBridgeParent(
++          sInstance, /* aNamespace */ 0, aScale, vsyncRate, aOptions,
++          aUseExternalSurfaceSize, aSurfaceSize, aInnerWindowId);
 +#endif
  
    sInstance->mPendingCompositorBridges.AppendElement(bridge);
    return bridge.forget();
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 2c4f7a061353..5ce1d0e0456c 100644
+index b0f80c5525e59..e60f5b604fd57 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
-@@ -2935,6 +2935,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
+@@ -3012,6 +3012,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
  
  void WebRenderBridgeParent::CompositeToDefaultTarget(
      VsyncId aId, wr::RenderReasons aReasons) {
@@ -725,47 +726,48 @@ index 2c4f7a061353..5ce1d0e0456c 100644
  }
  
 diff --git a/gfx/webrender_bindings/RenderCompositor.cpp b/gfx/webrender_bindings/RenderCompositor.cpp
-index f4211328f905..0d358f536970 100644
+index 62e408ede0849..438a28ccc3035 100644
 --- a/gfx/webrender_bindings/RenderCompositor.cpp
 +++ b/gfx/webrender_bindings/RenderCompositor.cpp
 @@ -23,7 +23,8 @@
  #  include "mozilla/widget/WinCompositorWidget.h"
  #endif
  
--#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11)
-+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11) || \
+-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || \
 +    defined(MOZ_EMBEDLITE)
  #  include "mozilla/webrender/RenderCompositorEGL.h"
  #endif
  
-@@ -173,7 +174,7 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
+@@ -207,7 +208,7 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
      if (!gfxPlatform::IsHeadless()) {
        return RenderCompositorNativeSWGL::Create(aWidget, aError);
      }
 -#elif defined(MOZ_WAYLAND)
 +#elif defined(MOZ_WAYLAND) && !defined(MOZ_EMBEDLITE)
-     if (gfx::gfxVars::UseWebRenderCompositor()) {
-       return RenderCompositorNativeSWGL::Create(aWidget, aError);
-     }
-@@ -199,13 +200,14 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
+     // Some widgets on Wayland (D&D popups for instance) can't use native
+     // compositor due to system limitations.
+     if (gfx::gfxVars::UseWebRenderCompositor() &&
+@@ -236,14 +237,15 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
    }
  #endif
  
 -#if defined(MOZ_WAYLAND)
 +#if defined(MOZ_WAYLAND) && !defined(MOZ_EMBEDLITE)
-   if (gfx::gfxVars::UseWebRenderCompositor()) {
+   if (gfx::gfxVars::UseWebRenderCompositor() &&
+       aWidget->GetCompositorOptions().AllowNativeCompositor()) {
      return RenderCompositorNativeOGL::Create(aWidget, aError);
    }
  #endif
  
--#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11)
-+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11) || \
+-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || \
 +    defined(MOZ_EMBEDLITE)
    UniquePtr<RenderCompositor> eglCompositor =
        RenderCompositorEGL::Create(aWidget, aError);
    if (eglCompositor) {
 diff --git a/gfx/webrender_bindings/RenderCompositorEGL.cpp b/gfx/webrender_bindings/RenderCompositorEGL.cpp
-index 21c2de1634bf..b2e5408fe25e 100644
+index 0ac85a1a58c4b..999c81f98129e 100644
 --- a/gfx/webrender_bindings/RenderCompositorEGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorEGL.cpp
 @@ -16,6 +16,10 @@
@@ -777,10 +779,10 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +#  include "SharedSurfaceEGL.h"
 +#endif
  
- #ifdef MOZ_WAYLAND
+ #ifdef MOZ_WIDGET_GTK
  #  include "mozilla/WidgetUtilsGtk.h"
-@@ -41,7 +45,22 @@ UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
-   if ((kIsWayland || kIsX11) && !gfx::gfxVars::UseEGL()) {
+@@ -41,7 +45,28 @@ UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
+   if (kIsLinux && !gfx::gfxVars::UseEGL()) {
      return nullptr;
    }
 -  RefPtr<gl::GLContext> gl = RenderThread::Get()->SingletonGL(aError);
@@ -795,6 +797,12 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +    if (!gl && aError.IsEmpty()) {
 +      aError.Assign(failureId);
 +    }
++    if (!gl) {
++      if (aError.IsEmpty()) {
++        aError.Assign("RcEGL(no EmbedLite headless GL)"_ns);
++      }
++      return nullptr;
++    }
 +  }
 +#endif
 +  if (!gl) {
@@ -803,7 +811,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    if (!gl) {
      if (aError.IsEmpty()) {
        aError.Assign("RcANGLE(no shared GL)"_ns);
-@@ -50,7 +69,9 @@ UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
+@@ -50,7 +75,9 @@ UniquePtr<RenderCompositor> RenderCompositorEGL::Create(
      }
      return nullptr;
    }
@@ -814,7 +822,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
  }
  
  EGLSurface RenderCompositorEGL::CreateEGLSurface() {
-@@ -68,8 +89,11 @@ EGLSurface RenderCompositorEGL::CreateEGLSurface() {
+@@ -68,8 +95,11 @@ EGLSurface RenderCompositorEGL::CreateEGLSurface() {
  
  RenderCompositorEGL::RenderCompositorEGL(
      const RefPtr<widget::CompositorWidget>& aWidget,
@@ -828,7 +836,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    MOZ_ASSERT(mGL);
    LOG("RenderCompositorEGL::RenderCompositorEGL()");
  }
-@@ -82,12 +106,54 @@ RenderCompositorEGL::~RenderCompositorEGL() {
+@@ -82,12 +112,54 @@ RenderCompositorEGL::~RenderCompositorEGL() {
    DestroyEGLSurface();
  }
  
@@ -848,7 +856,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +    }
 +    return gl()->ResizeScreenBuffer(size);
 +  }
-+  if (!gl()->CreateOffscreenDefaultFb(size)) {
++  if (!gl()->CreateOffscreenScreenBuffer(size)) {
 +    return false;
 +  }
 +  if (gl()->GetContextType() == gl::GLContextType::EGL) {
@@ -864,7 +872,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +#endif
 +
  bool RenderCompositorEGL::BeginFrame() {
--  if ((kIsWayland || kIsX11) && mEGLSurface == EGL_NO_SURFACE) {
+-  if (kIsLinux && mEGLSurface == EGL_NO_SURFACE) {
 -    gfxCriticalNote
 -        << "We don't have EGLSurface to draw into. Called too early?";
 +#ifdef MOZ_EMBEDLITE
@@ -876,7 +884,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +#else
 +  const bool hasOffscreenTarget = false;
 +#endif
-+  if ((kIsWayland || kIsX11) && mEGLSurface == EGL_NO_SURFACE) {
++  if (kIsLinux && mEGLSurface == EGL_NO_SURFACE) {
 +    if (!hasOffscreenTarget) {
 +      gfxCriticalNote
 +          << "We don't have EGLSurface to draw into. Called too early?";
@@ -885,8 +893,8 @@ index 21c2de1634bf..b2e5408fe25e 100644
 +  }
  #ifdef MOZ_WAYLAND
    if (mWidget->AsGTK()) {
-     mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize());
-@@ -98,6 +164,12 @@ bool RenderCompositorEGL::BeginFrame() {
+     if (!mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize())) {
+@@ -102,6 +174,12 @@ bool RenderCompositorEGL::BeginFrame() {
      return false;
    }
  
@@ -899,7 +907,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
  #ifdef MOZ_WIDGET_ANDROID
    java::GeckoSurfaceTexture::DestroyUnused((int64_t)gl());
    gl()->MakeCurrent();  // DestroyUnused can change the current context!
-@@ -131,6 +203,11 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
+@@ -135,6 +213,11 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
    if (mWidget->IsHidden()) {
      return frameId;
    }
@@ -911,17 +919,15 @@ index 21c2de1634bf..b2e5408fe25e 100644
  #endif
    if (mEGLSurface != EGL_NO_SURFACE && aDirtyRects.Length() > 0) {
      gfx::IntRegion bufferInvalid;
-@@ -150,13 +227,21 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
+@@ -154,7 +237,6 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
      }
      gl()->SetDamage(bufferInvalid);
    }
--  gl()->SwapBuffers();
-+  if (mEGLSurface != EGL_NO_SURFACE) {
-+    gl()->SwapBuffers();
-+  }
-   return frameId;
- }
- 
+-
+ #ifdef MOZ_WIDGET_GTK
+   // Rendering on Wayland has to be atomic (buffer attach + commit) and
+   // wayland surface is also used by main thread so lock it before
+@@ -171,6 +253,12 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
  void RenderCompositorEGL::Pause() { DestroyEGLSurface(); }
  
  bool RenderCompositorEGL::Resume() {
@@ -934,7 +940,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    if (kIsAndroid) {
      // Destroy EGLSurface if it exists.
      DestroyEGLSurface();
-@@ -216,11 +301,23 @@ bool RenderCompositorEGL::Resume() {
+@@ -230,11 +318,23 @@ bool RenderCompositorEGL::Resume() {
    return true;
  }
  
@@ -960,7 +966,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    gle->SetEGLSurfaceOverride(mEGLSurface);
    bool ok = gl()->MakeCurrent();
    if (!gl()->IsGLES() && ok && mEGLSurface != EGL_NO_SURFACE) {
-@@ -267,6 +364,11 @@ LayoutDeviceIntSize RenderCompositorEGL::GetBufferSize() {
+@@ -273,6 +373,11 @@ LayoutDeviceIntSize RenderCompositorEGL::GetBufferSize() {
  }
  
  bool RenderCompositorEGL::UsePartialPresent() {
@@ -972,7 +978,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    return gfx::gfxVars::WebRenderMaxPartialPresentRects() > 0;
  }
  
-@@ -281,6 +383,11 @@ bool RenderCompositorEGL::ShouldDrawPreviousPartialPresentRegions() {
+@@ -287,6 +392,11 @@ bool RenderCompositorEGL::ShouldDrawPreviousPartialPresentRegions() {
  }
  
  size_t RenderCompositorEGL::GetBufferAge() const {
@@ -984,7 +990,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    if (!StaticPrefs::
            gfx_webrender_allow_partial_present_buffer_age_AtStartup()) {
      return 0;
-@@ -290,6 +397,11 @@ size_t RenderCompositorEGL::GetBufferAge() const {
+@@ -296,6 +406,11 @@ size_t RenderCompositorEGL::GetBufferAge() const {
  
  void RenderCompositorEGL::SetBufferDamageRegion(const wr::DeviceIntRect* aRects,
                                                  size_t aNumRects) {
@@ -997,7 +1003,7 @@ index 21c2de1634bf..b2e5408fe25e 100644
    const auto& egl = gle->mEgl;
    if (gle->HasKhrPartialUpdate() &&
 diff --git a/gfx/webrender_bindings/RenderCompositorEGL.h b/gfx/webrender_bindings/RenderCompositorEGL.h
-index 8e851b2fc0df..2d220e9f7645 100644
+index 675817c176b61..79eeca0610255 100644
 --- a/gfx/webrender_bindings/RenderCompositorEGL.h
 +++ b/gfx/webrender_bindings/RenderCompositorEGL.h
 @@ -20,7 +20,8 @@ class RenderCompositorEGL : public RenderCompositor {
@@ -1026,7 +1032,7 @@ index 8e851b2fc0df..2d220e9f7645 100644
    // Whether we are in the process of handling a NEW_SURFACE error. On Android
    // this is used to allow the widget an opportunity to recover from the first
 diff --git a/gfx/webrender_bindings/RenderCompositorOGL.cpp b/gfx/webrender_bindings/RenderCompositorOGL.cpp
-index 9653e06d43e1..e98c9117d7bc 100644
+index 911de24b1d304..c0e36ccb04c90 100644
 --- a/gfx/webrender_bindings/RenderCompositorOGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorOGL.cpp
 @@ -13,6 +13,10 @@
@@ -1040,36 +1046,25 @@ index 9653e06d43e1..e98c9117d7bc 100644
  
  namespace mozilla::wr {
  
-@@ -22,7 +26,38 @@ extern LazyLogModule gRenderThreadLog;
+@@ -22,7 +26,27 @@ extern LazyLogModule gRenderThreadLog;
  /* static */
  UniquePtr<RenderCompositor> RenderCompositorOGL::Create(
      const RefPtr<widget::CompositorWidget>& aWidget, nsACString& aError) {
 -  RefPtr<gl::GLContext> gl = RenderThread::Get()->SingletonGL();
 +  RefPtr<gl::GLContext> gl;
 +#ifdef MOZ_EMBEDLITE
-+  if (aWidget && aWidget->IsEmbedLiteOffscreen()) {
++  const bool useEmbedLiteOffscreen =
++      aWidget && aWidget->IsEmbedLiteOffscreen();
++  if (useEmbedLiteOffscreen) {
 +    nsCString failureId;
 +    gl = gl::GLContextProvider::CreateHeadless(
 +        {gl::CreateContextFlags::PREFER_ES3}, &failureId);
-+    if (gl && gl->MakeCurrent()) {
-+      const auto size = aWidget->GetClientSize().ToUnknownSize();
-+      if (!gl->CreateOffscreenDefaultFb(size)) {
-+        gl = nullptr;
-+      } else if (gl->GetContextType() == gl::GLContextType::EGL) {
-+        if (UniquePtr<gl::SurfaceFactory> factory =
-+                gl::SurfaceFactory_EGLImage::Create(*gl)) {
-+          gl->Screen()->Morph(std::move(factory));
-+        } else {
-+          gl = nullptr;
-+        }
-+      } else {
-+        gl = nullptr;
-+      }
-+    } else {
-+      gl = nullptr;
++    if (!gl) {
++      aError.Assign(failureId);
++      return nullptr;
 +    }
 +  }
-+  if (!gl) {
++  if (!useEmbedLiteOffscreen) {
 +    gl = RenderThread::Get()->SingletonGL();
 +  }
 +#else
@@ -1080,7 +1075,7 @@ index 9653e06d43e1..e98c9117d7bc 100644
    if (!gl) {
      gl = gl::GLContextProvider::CreateForCompositorWidget(
          aWidget, /* aHardwareWebRender */ true, /* aForceAccelerated */ true);
-@@ -63,6 +98,31 @@ bool RenderCompositorOGL::BeginFrame() {
+@@ -63,6 +87,31 @@ bool RenderCompositorOGL::BeginFrame() {
      return false;
    }
  
@@ -1094,7 +1089,7 @@ index 9653e06d43e1..e98c9117d7bc 100644
 +      if (mGL->Screen()->Size() != size && !mGL->ResizeScreenBuffer(size)) {
 +        return false;
 +      }
-+    } else if (!mGL->CreateOffscreenDefaultFb(size)) {
++    } else if (!mGL->CreateOffscreenScreenBuffer(size)) {
 +      return false;
 +    } else if (mGL->GetContextType() == gl::GLContextType::EGL) {
 +      if (UniquePtr<gl::SurfaceFactory> factory =
@@ -1112,7 +1107,7 @@ index 9653e06d43e1..e98c9117d7bc 100644
    mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, mGL->GetDefaultFramebuffer());
  
    return true;
-@@ -89,6 +149,11 @@ RenderedFrameId RenderCompositorOGL::EndFrame(
+@@ -89,6 +138,11 @@ RenderedFrameId RenderCompositorOGL::EndFrame(
      }
      gl()->SetDamage(bufferInvalid);
    }
@@ -1124,7 +1119,7 @@ index 9653e06d43e1..e98c9117d7bc 100644
    mGL->SwapBuffers();
    return frameId;
  }
-@@ -108,6 +173,11 @@ uint32_t RenderCompositorOGL::GetMaxPartialPresentRects() {
+@@ -108,6 +162,11 @@ uint32_t RenderCompositorOGL::GetMaxPartialPresentRects() {
  bool RenderCompositorOGL::RequestFullRender() { return false; }
  
  bool RenderCompositorOGL::UsePartialPresent() {
@@ -1136,7 +1131,7 @@ index 9653e06d43e1..e98c9117d7bc 100644
    return gfx::gfxVars::WebRenderMaxPartialPresentRects() > 0;
  }
  
-@@ -116,6 +186,11 @@ bool RenderCompositorOGL::ShouldDrawPreviousPartialPresentRegions() {
+@@ -116,6 +175,11 @@ bool RenderCompositorOGL::ShouldDrawPreviousPartialPresentRegions() {
  }
  
  size_t RenderCompositorOGL::GetBufferAge() const {
@@ -1149,10 +1144,10 @@ index 9653e06d43e1..e98c9117d7bc 100644
            gfx_webrender_allow_partial_present_buffer_age_AtStartup()) {
      return 0;
 diff --git a/gfx/webrender_bindings/RendererOGL.cpp b/gfx/webrender_bindings/RendererOGL.cpp
-index 3c4d13e376cb..3eac1b7da8f5 100644
+index 59c47ad314e74..9a25b268f1161 100644
 --- a/gfx/webrender_bindings/RendererOGL.cpp
 +++ b/gfx/webrender_bindings/RendererOGL.cpp
-@@ -110,6 +110,7 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
+@@ -121,6 +121,7 @@ RendererOGL::RendererOGL(RefPtr<RenderThread>&& aThread,
    MOZ_ASSERT(mCompositor);
    MOZ_ASSERT(mRenderer);
    MOZ_ASSERT(mBridge);
@@ -1161,7 +1156,7 @@ index 3c4d13e376cb..3eac1b7da8f5 100644
  }
  
 diff --git a/ipc/chromium/src/base/thread.cc b/ipc/chromium/src/base/thread.cc
-index 3fc258af2dda..e4e989267a34 100644
+index c856272162166..e228d556bd5c7 100644
 --- a/ipc/chromium/src/base/thread.cc
 +++ b/ipc/chromium/src/base/thread.cc
 @@ -148,6 +148,7 @@ void Thread::StopSoon() {
@@ -1172,7 +1167,7 @@ index 3fc258af2dda..e4e989267a34 100644
    if (loopType == MessageLoop::TYPE_MOZILLA_NONMAINTHREAD ||
        loopType == MessageLoop::TYPE_MOZILLA_NONMAINUITHREAD) {
      auto queue = mozilla::MakeRefPtr<mozilla::ThreadEventQueue>(
-@@ -176,11 +177,16 @@ void Thread::ThreadMain() {
+@@ -175,11 +176,16 @@ void Thread::ThreadMain() {
                                   startup_data_->options.permanent_hang_timeout);
    message_loop_ = &message_loop;
  
@@ -1192,7 +1187,7 @@ index 3fc258af2dda..e4e989267a34 100644
    // unlocked.
  
 diff --git a/ipc/chromium/src/base/thread.h b/ipc/chromium/src/base/thread.h
-index 7b9a5975d39a..1f8f026d7463 100644
+index 7b9a5975d39af..1f8f026d74633 100644
 --- a/ipc/chromium/src/base/thread.h
 +++ b/ipc/chromium/src/base/thread.h
 @@ -36,16 +36,23 @@ class Thread : PlatformThread::Delegate {
@@ -1222,10 +1217,10 @@ index 7b9a5975d39a..1f8f026d7463 100644
  
    // Constructor.
 diff --git a/layout/style/ServoBindings.h b/layout/style/ServoBindings.h
-index e2fd709f6bf6..6cedcf18dfa6 100644
+index f1b0a47c29c4a..ef682855663ed 100644
 --- a/layout/style/ServoBindings.h
 +++ b/layout/style/ServoBindings.h
-@@ -123,6 +123,9 @@ bool Servo_CounterStyleRule_SetDescriptor(
+@@ -111,6 +111,9 @@ bool Servo_CounterStyleRule_SetDescriptor(
      const StyleLockedCounterStyleRule* rule, nsCSSCounterDesc desc,
      const nsACString* value);
  
@@ -1236,10 +1231,10 @@ index e2fd709f6bf6..6cedcf18dfa6 100644
  
  #pragma GCC diagnostic pop
 diff --git a/layout/style/ServoStyleSet.cpp b/layout/style/ServoStyleSet.cpp
-index 8f3d9fd746f1..74f151616967 100644
+index 51a23c949237f..0179ec0223c00 100644
 --- a/layout/style/ServoStyleSet.cpp
 +++ b/layout/style/ServoStyleSet.cpp
-@@ -92,6 +92,7 @@ class MOZ_RAII AutoSetInServoTraversal {
+@@ -99,6 +99,7 @@ class MOZ_RAII AutoSetInServoTraversal {
    ~AutoSetInServoTraversal() {
      MOZ_ASSERT(sInServoTraversal);
      sInServoTraversal = nullptr;
@@ -1247,7 +1242,7 @@ index 8f3d9fd746f1..74f151616967 100644
      mSet->RunPostTraversalTasks();
    }
  
-@@ -1383,6 +1384,13 @@ void ServoStyleSet::RunPostTraversalTasks() {
+@@ -1386,6 +1387,13 @@ void ServoStyleSet::RunPostTraversalTasks() {
    }
  }
  
@@ -1262,10 +1257,10 @@ index 8f3d9fd746f1..74f151616967 100644
    if (!mStyleRuleMap) {
      mStyleRuleMap = MakeUnique<ServoStyleRuleMap>();
 diff --git a/layout/style/ServoStyleSet.h b/layout/style/ServoStyleSet.h
-index 46de5e96410f..2d2669c09841 100644
+index 633c16535aadf..0c9d3df4ffd19 100644
 --- a/layout/style/ServoStyleSet.h
 +++ b/layout/style/ServoStyleSet.h
-@@ -604,6 +604,7 @@ class ServoStyleSet {
+@@ -671,6 +671,7 @@ class ServoStyleSet {
    void UpdateStylist();
  
    void RunPostTraversalTasks();
@@ -1274,24 +1269,24 @@ index 46de5e96410f..2d2669c09841 100644
    void PrependSheetOfType(Origin, StyleSheet*);
    void AppendSheetOfType(Origin, StyleSheet*);
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index c900d851198a..0a9435d4cb50 100644
+index 0cdf8927ce153..4c4460ca043f3 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
-@@ -11915,7 +11915,7 @@
+@@ -14024,7 +14024,7 @@
  - name: network.process.enabled
    type: RelaxedAtomicBool
    mirror: always
--#if defined(ANDROID) || defined(MOZ_THUNDERBIRD)
-+#if defined(ANDROID) || defined(MOZ_THUNDERBIRD) || defined(MOZ_EMBEDLITE)
+-#if defined(ANDROID) || defined(MOZ_THUNDERBIRD) || defined(XP_IOS)
++#if defined(ANDROID) || defined(MOZ_THUNDERBIRD) || defined(XP_IOS) || defined(MOZ_EMBEDLITE)
    value: false # see bug 1641427
  #else
    value: true
 diff --git a/servo/components/style/custom_properties.rs b/servo/components/style/custom_properties.rs
-index 5e37963186aa..982ab18465d1 100644
+index 2d04211ad6134..3e8ea6a6d6617 100644
 --- a/servo/components/style/custom_properties.rs
 +++ b/servo/components/style/custom_properties.rs
-@@ -25,6 +25,11 @@ use std::fmt::{self, Write};
- use std::hash::BuildHasherDefault;
+@@ -40,6 +40,11 @@ use std::ops::{Index, IndexMut};
+ use std::{cmp, num};
  use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
  
 +const SAFE_AREA_INSET_TOP: u8 = 1;
@@ -1302,7 +1297,7 @@ index 5e37963186aa..982ab18465d1 100644
  /// The environment from which to get `env` function values.
  ///
  /// TODO(emilio): If this becomes a bit more complex we should probably move it
-@@ -37,6 +42,7 @@ type EnvironmentEvaluator = fn(device: &Device) -> VariableValue;
+@@ -52,6 +57,7 @@ type EnvironmentEvaluator = fn(device: &Device, url_data: &UrlExtraData) -> Vari
  struct EnvironmentVariable {
      name: Atom,
      evaluator: EnvironmentEvaluator,
@@ -1310,7 +1305,7 @@ index 5e37963186aa..982ab18465d1 100644
  }
  
  macro_rules! make_variable {
-@@ -44,6 +50,14 @@ macro_rules! make_variable {
+@@ -59,6 +65,14 @@ macro_rules! make_variable {
          EnvironmentVariable {
              name: $name,
              evaluator: $evaluator,
@@ -1325,7 +1320,7 @@ index 5e37963186aa..982ab18465d1 100644
          }
      }};
  }
-@@ -83,10 +97,26 @@ fn get_scrollbar_inline_size(device: &Device) -> VariableValue {
+@@ -108,10 +122,26 @@ fn get_scrollbar_inline_size(device: &Device, url_data: &UrlExtraData) -> Variab
  }
  
  static ENVIRONMENT_VARIABLES: [EnvironmentVariable; 4] = [
@@ -1355,93 +1350,130 @@ index 5e37963186aa..982ab18465d1 100644
 +    ),
  ];
  
- macro_rules! lnf_int {
-@@ -140,7 +170,9 @@ impl CssEnvironment {
+ #[cfg(feature = "gecko")]
+@@ -200,7 +230,9 @@ impl CssEnvironment {
      #[inline]
-     fn get(&self, name: &Atom, device: &Device) -> Option<VariableValue> {
+     fn get(&self, name: &Atom, device: &Device, url_data: &UrlExtraData) -> Option<VariableValue> {
          if let Some(var) = ENVIRONMENT_VARIABLES.iter().find(|var| var.name == *name) {
--            return Some((var.evaluator)(device));
-+            let mut value = (var.evaluator)(device);
+-            return Some((var.evaluator)(device, url_data));
++            let mut value = (var.evaluator)(device, url_data);
 +            value.safe_area_inset_usage = var.safe_area_inset_usage;
 +            return Some(value);
          }
-         if !device.chrome_rules_enabled_for_document() {
+         if !url_data.chrome_rules_enabled() {
              return None;
-@@ -187,6 +219,9 @@ pub struct VariableValue {
+@@ -245,6 +277,9 @@ pub struct VariableValue {
  
-     /// Custom property names in var() functions.
-     references: Box<[Name]>,
+     /// var(), env(), or non-custom property (e.g. through `em`) references.
+     references: References,
 +
 +    /// Safe-area inset variables consumed while resolving this value.
 +    safe_area_inset_usage: u8,
  }
  
- impl ToCss for SpecifiedValue {
-@@ -234,6 +269,7 @@ impl VariableValue {
-             first_token_type: TokenSerializationType::nothing(),
+ trivial_to_computed_value!(VariableValue);
+@@ -518,6 +553,7 @@ impl VariableValue {
+             first_token_type: Default::default(),
+             url_data: url_data.clone(),
              references: Default::default(),
-             references_environment: false,
 +            safe_area_inset_usage: 0,
          }
      }
  
-@@ -304,7 +340,9 @@ impl VariableValue {
-             &variable.css,
-             variable.first_token_type,
-             variable.last_token_type,
--        )
-+        )?;
-+        self.safe_area_inset_usage |= variable.safe_area_inset_usage;
-+        Ok(())
-     }
- 
-     /// Parse a custom property value.
-@@ -329,6 +367,7 @@ impl VariableValue {
+@@ -535,6 +571,7 @@ impl VariableValue {
+             first_token_type,
              last_token_type,
-             references: custom_property_references,
-             references_environment: references.references_environment,
+             references: Default::default(),
 +            safe_area_inset_usage: 0,
-         }))
+         }
      }
  
-@@ -380,6 +419,7 @@ impl VariableValue {
+@@ -615,6 +652,7 @@ impl VariableValue {
+             first_token_type,
+             last_token_type,
+             references,
++            safe_area_inset_usage: 0,
+         })
+     }
+ 
+@@ -688,6 +726,7 @@ impl VariableValue {
+             first_token_type: token_type,
              last_token_type: token_type,
              references: Default::default(),
-             references_environment: false,
++            safe_area_inset_usage: 0,
+         }
+     }
+ 
+@@ -1918,6 +1957,7 @@ struct Substitution<'a> {
+     css: Cow<'a, str>,
+     first_token_type: TokenSerializationType,
+     last_token_type: TokenSerializationType,
++    safe_area_inset_usage: u8,
+ }
+ 
+ impl<'a> Substitution<'a> {
+@@ -1926,6 +1966,7 @@ impl<'a> Substitution<'a> {
+             css: v.css.into(),
+             first_token_type: v.first_token_type,
+             last_token_type: v.last_token_type,
++            safe_area_inset_usage: v.safe_area_inset_usage,
+         }
+     }
+ 
+@@ -1942,6 +1983,7 @@ impl<'a> Substitution<'a> {
+                 last_token_type: self.last_token_type,
+                 url_data: url_data.clone(),
+                 references: Default::default(),
++                safe_area_inset_usage: self.safe_area_inset_usage,
+             })))
+         }
+         compute_value(&self.css, url_data, registration, computed_context)
+@@ -1956,6 +1998,7 @@ impl<'a> Substitution<'a> {
+             css: Cow::Borrowed(css),
+             first_token_type,
+             last_token_type,
 +            safe_area_inset_usage: 0,
          }
      }
  }
-@@ -1163,7 +1203,7 @@ pub fn substitute<'i>(
-     first_token_type: TokenSerializationType,
-     computed_values_map: Option<&Arc<CustomPropertiesMap>>,
-     device: &Device,
--) -> Result<String, ParseError<'i>> {
-+) -> Result<(String, u8), ParseError<'i>> {
-     let mut substituted = ComputedValue::empty();
-     let mut input = ParserInput::new(input);
-     let mut input = Parser::new(&mut input);
-@@ -1181,5 +1221,5 @@ pub fn substitute<'i>(
-         device,
+@@ -2050,6 +2093,7 @@ fn do_substitute_chunk<'a>(
+             substitution.first_token_type,
+             substitution.last_token_type,
+         )?;
++        substituted.safe_area_inset_usage |= substitution.safe_area_inset_usage;
+         next_token_type = reference.next_token_type;
+         cur_pos = reference.end;
+     }
+@@ -2136,7 +2180,7 @@ pub fn substitute<'a>(
+     custom_properties: &'a ComputedCustomProperties,
+     stylist: &Stylist,
+     computed_context: &computed::Context,
+-) -> Result<Cow<'a, str>, ()> {
++) -> Result<(Cow<'a, str>, u8), ()> {
+     debug_assert!(variable_value.has_references());
+     let v = substitute_internal(
+         variable_value,
+@@ -2144,5 +2188,5 @@ pub fn substitute<'a>(
+         stylist,
+         computed_context,
      )?;
-     substituted.push_from(&input, position, last_token_type)?;
--    Ok(substituted.css)
-+    Ok((substituted.css, substituted.safe_area_inset_usage))
+-    Ok(v.css)
++    Ok((v.css, v.safe_area_inset_usage))
  }
 diff --git a/servo/components/style/gecko/media_queries.rs b/servo/components/style/gecko/media_queries.rs
-index f27d78fd9378..0f31997539ed 100644
+index d233ab5313875..00ced29a2f53f 100644
 --- a/servo/components/style/gecko/media_queries.rs
 +++ b/servo/components/style/gecko/media_queries.rs
-@@ -24,7 +24,7 @@ use app_units::{Au, AU_PER_PX};
+@@ -27,7 +27,7 @@ use app_units::{Au, AU_PER_PX};
  use euclid::default::Size2D;
  use euclid::{Scale, SideOffsets2D};
  use servo_arc::Arc;
 -use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 +use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
  use std::{cmp, fmt};
- use style_traits::viewport::ViewportConstraints;
  use style_traits::{CSSPixel, DevicePixel};
-@@ -62,6 +62,9 @@ pub struct Device {
+ 
+@@ -69,6 +69,9 @@ pub struct Device {
      /// Whether any styles computed in the document relied on the viewport size
      /// by using dvw/dvh/dvmin/dvmax units.
      used_dynamic_viewport_size: AtomicBool,
@@ -1451,7 +1483,7 @@ index f27d78fd9378..0f31997539ed 100644
      /// The CssEnvironment object responsible of getting CSS environment
      /// variables.
      environment: CssEnvironment,
-@@ -102,6 +105,7 @@ impl Device {
+@@ -111,6 +114,7 @@ impl Device {
              used_font_metrics: AtomicBool::new(false),
              used_viewport_size: AtomicBool::new(false),
              used_dynamic_viewport_size: AtomicBool::new(false),
@@ -1459,15 +1491,15 @@ index f27d78fd9378..0f31997539ed 100644
              environment: CssEnvironment,
          }
      }
-@@ -306,6 +310,7 @@ impl Device {
+@@ -320,6 +324,7 @@ impl Device {
          self.used_viewport_size.store(false, Ordering::Relaxed);
          self.used_dynamic_viewport_size
              .store(false, Ordering::Relaxed);
 +        self.safe_area_inset_usage.store(0, Ordering::Relaxed);
      }
  
-     /// Returns whether we ever looked up the root font size of the Device.
-@@ -441,6 +446,18 @@ impl Device {
+     /// Returns whether we ever looked up the root font size of the device.
+@@ -460,6 +465,18 @@ impl Device {
          self.used_dynamic_viewport_size.load(Ordering::Relaxed)
      }
  
@@ -1486,82 +1518,89 @@ index f27d78fd9378..0f31997539ed 100644
      /// Returns whether font metrics have been queried.
      pub fn used_font_metrics(&self) -> bool {
          self.used_font_metrics.load(Ordering::Relaxed)
-diff --git a/servo/components/style/properties/properties.mako.rs b/servo/components/style/properties/properties.mako.rs
-index 63b3f971f9a6..29c2797a91af 100644
---- a/servo/components/style/properties/properties.mako.rs
-+++ b/servo/components/style/properties/properties.mako.rs
-@@ -1728,13 +1728,13 @@ impl UnparsedValue {
+diff --git a/servo/components/style/properties/mod.rs b/servo/components/style/properties/mod.rs
+index 2cc7f89ba74e9..649f8224fe7a6 100644
+--- a/servo/components/style/properties/mod.rs
++++ b/servo/components/style/properties/mod.rs
+@@ -1418,13 +1418,13 @@ impl UnparsedValue {
              }
          }
  
--        let css = match crate::custom_properties::substitute(
-+        let (css, safe_area_inset_usage) = match crate::custom_properties::substitute(
-             &self.css,
-             self.first_token_type,
+-        let css = match custom_properties::substitute(
++        let (css, safe_area_inset_usage) = match custom_properties::substitute(
+             &self.variable_value,
              custom_properties,
-             device,
+             stylist,
+             computed_context,
          ) {
 -            Ok(css) => css,
 +            Ok(result) => result,
              Err(..) => return invalid_at_computed_value_time(),
          };
  
-@@ -1764,13 +1764,21 @@ impl UnparsedValue {
+@@ -1454,6 +1454,11 @@ impl UnparsedValue {
          input.skip_whitespace();
  
          if let Ok(keyword) = input.try_parse(CSSWideKeyword::parse) {
 +            if safe_area_inset_usage != 0 {
-+                device.note_safe_area_inset_usage(safe_area_inset_usage);
++                stylist
++                    .device()
++                    .note_safe_area_inset_usage(safe_area_inset_usage);
 +            }
              return Cow::Owned(PropertyDeclaration::css_wide_keyword(longhand_id, keyword));
          }
  
-         let shorthand = match self.from_shorthand {
+@@ -1461,7 +1466,14 @@ impl UnparsedValue {
              None => {
-                 return match input.parse_entirely(|input| longhand_id.parse_value(&context, input)) {
+                 return match input.parse_entirely(|input| longhand_id.parse_value(&context, input))
+                 {
 -                    Ok(decl) => Cow::Owned(decl),
 +                    Ok(decl) => {
 +                        if safe_area_inset_usage != 0 {
-+                            device.note_safe_area_inset_usage(safe_area_inset_usage);
++                            stylist
++                                .device()
++                                .note_safe_area_inset_usage(safe_area_inset_usage);
 +                        }
 +                        Cow::Owned(decl)
 +                    },
                      Err(..) => invalid_at_computed_value_time(),
                  }
              },
-@@ -1793,7 +1801,12 @@ impl UnparsedValue {
+@@ -1491,7 +1503,14 @@ impl UnparsedValue {
  
          let key = (shorthand, longhand_id);
          match shorthand_cache.get(&key) {
 -            Some(decl) => Cow::Borrowed(decl),
 +            Some(decl) => {
 +                if safe_area_inset_usage != 0 {
-+                    device.note_safe_area_inset_usage(safe_area_inset_usage);
++                    stylist
++                        .device()
++                        .note_safe_area_inset_usage(safe_area_inset_usage);
 +                }
 +                Cow::Borrowed(decl)
 +            },
-             None => {
-                 // FIXME: We should always have the key here but it seems
-                 // sometimes we don't, see bug 1696409.
+             // NOTE: Under normal circumstances we should always have a value, but when prefs
+             // change we might hit this case. Consider something like `animation-timeline`, which
+             // is a conditionally-enabled longhand of `animation`:
 diff --git a/servo/components/style/servo/media_queries.rs b/servo/components/style/servo/media_queries.rs
-index 286660b16208..1018558ea1eb 100644
+index 5707f6b1ba3ab..cc640ca54d1ff 100644
 --- a/servo/components/style/servo/media_queries.rs
 +++ b/servo/components/style/servo/media_queries.rs
-@@ -150,6 +150,9 @@ impl Device {
+@@ -247,6 +247,9 @@ impl Device {
          self.used_viewport_units.load(Ordering::Relaxed)
      }
  
 +    /// Servo does not expose safe-area usage to an embedding document.
 +    pub fn note_safe_area_inset_usage(&self, _: u8) {}
 +
-     /// Returns the device pixel ratio.
-     pub fn device_pixel_ratio(&self) -> Scale<f32, CSSPixel, DevicePixel> {
-         self.device_pixel_ratio
+     /// Returns the number of app units per device pixel we're using currently.
+     pub fn app_units_per_device_pixel(&self) -> i32 {
+         (AU_PER_PX as f32 / self.device_pixel_ratio.0) as i32
 diff --git a/servo/ports/geckolib/glue.rs b/servo/ports/geckolib/glue.rs
-index 713a2e67b751..ec9db61cd664 100644
+index ffae3fe15d1e0..01441099da48e 100644
 --- a/servo/ports/geckolib/glue.rs
 +++ b/servo/ports/geckolib/glue.rs
-@@ -1912,6 +1912,14 @@ pub extern "C" fn Servo_StyleSet_UsesFontMetrics(raw_data: &PerDocumentStyleData
+@@ -2030,6 +2030,14 @@ pub extern "C" fn Servo_StyleSet_UsesFontMetrics(raw_data: &PerDocumentStyleData
      doc_data.borrow().stylist.device().used_font_metrics()
  }
  
@@ -1577,7 +1616,7 @@ index 713a2e67b751..ec9db61cd664 100644
  pub extern "C" fn Servo_StyleSheet_HasRules(raw_contents: &StylesheetContents) -> bool {
      let global_style_data = &*GLOBAL_STYLE_DATA;
 diff --git a/widget/CompositorWidget.h b/widget/CompositorWidget.h
-index d5e2fb664b61..a59305f52868 100644
+index d25da93640d3b..4861ff25b524c 100644
 --- a/widget/CompositorWidget.h
 +++ b/widget/CompositorWidget.h
 @@ -38,6 +38,7 @@ namespace widget {
@@ -1598,7 +1637,7 @@ index d5e2fb664b61..a59305f52868 100644
  
    /**
     * Called before rendering using OMTC. Returns false when the widget is
-@@ -276,6 +278,10 @@ class CompositorWidget {
+@@ -267,6 +269,10 @@ class CompositorWidget {
    virtual WinCompositorWidget* AsWindows() { return nullptr; }
    virtual GtkCompositorWidget* AsGTK() { return nullptr; }
    virtual AndroidCompositorWidget* AsAndroid() { return nullptr; }
@@ -1611,7 +1650,7 @@ index d5e2fb664b61..a59305f52868 100644
     * Return the platform-specific delegate for the widget, if any.
 diff --git a/widget/EmbedLiteCompositorWidget.cpp b/widget/EmbedLiteCompositorWidget.cpp
 new file mode 100644
-index 000000000000..7c4841a45af3
+index 0000000000000..7c4841a45af33
 --- /dev/null
 +++ b/widget/EmbedLiteCompositorWidget.cpp
 @@ -0,0 +1,15 @@
@@ -1632,7 +1671,7 @@ index 000000000000..7c4841a45af3
 +}  // namespace mozilla::widget
 diff --git a/widget/EmbedLiteCompositorWidget.h b/widget/EmbedLiteCompositorWidget.h
 new file mode 100644
-index 000000000000..4ddbc4c90b50
+index 0000000000000..4ddbc4c90b507
 --- /dev/null
 +++ b/widget/EmbedLiteCompositorWidget.h
 @@ -0,0 +1,25 @@
@@ -1662,7 +1701,7 @@ index 000000000000..4ddbc4c90b50
 +
 +#endif  // mozilla_widget_EmbedLiteCompositorWidget_h__
 diff --git a/widget/InProcessCompositorWidget.cpp b/widget/InProcessCompositorWidget.cpp
-index 1c25e9d9a101..0bff9218f1b8 100644
+index 7098db301770e..1f5f935287987 100644
 --- a/widget/InProcessCompositorWidget.cpp
 +++ b/widget/InProcessCompositorWidget.cpp
 @@ -4,6 +4,9 @@
@@ -1698,7 +1737,7 @@ index 1c25e9d9a101..0bff9218f1b8 100644
  }
  #endif
 diff --git a/widget/android/InProcessAndroidCompositorWidget.cpp b/widget/android/InProcessAndroidCompositorWidget.cpp
-index 1ae221acb983..9acfb0352dbd 100644
+index 1ae221acb983e..9acfb0352dbd2 100644
 --- a/widget/android/InProcessAndroidCompositorWidget.cpp
 +++ b/widget/android/InProcessAndroidCompositorWidget.cpp
 @@ -16,7 +16,9 @@ namespace widget {
@@ -1713,7 +1752,7 @@ index 1ae221acb983..9acfb0352dbd 100644
        CompositorWidgetInitData::THeadlessCompositorWidgetInitData) {
      return new HeadlessCompositorWidget(
 diff --git a/widget/gtk/InProcessGtkCompositorWidget.cpp b/widget/gtk/InProcessGtkCompositorWidget.cpp
-index bffd6f5a7fcb..a38f676f23e9 100644
+index bffd6f5a7fcb8..a38f676f23e9f 100644
 --- a/widget/gtk/InProcessGtkCompositorWidget.cpp
 +++ b/widget/gtk/InProcessGtkCompositorWidget.cpp
 @@ -16,7 +16,9 @@ namespace mozilla::widget {
@@ -1728,10 +1767,10 @@ index bffd6f5a7fcb..a38f676f23e9 100644
        CompositorWidgetInitData::THeadlessCompositorWidgetInitData) {
      return new HeadlessCompositorWidget(
 diff --git a/widget/moz.build b/widget/moz.build
-index 979eb606c9f3..19a0e74a35c6 100644
+index 2089d052c4b22..50dd3cb6b2256 100644
 --- a/widget/moz.build
 +++ b/widget/moz.build
-@@ -270,6 +270,14 @@ UNIFIED_SOURCES += [
+@@ -288,6 +288,14 @@ UNIFIED_SOURCES += [
      "WidgetUtils.cpp",
  ]
  
@@ -1747,7 +1786,7 @@ index 979eb606c9f3..19a0e74a35c6 100644
      EXPORTS.mozilla.widget += ["LSBUtils.h"]
      SOURCES += ["LSBUtils.cpp"]
 diff --git a/widget/nsBaseAppShell.cpp b/widget/nsBaseAppShell.cpp
-index 632f38478c90..c01bda431fa5 100644
+index 632f38478c90d..c01bda431fa56 100644
 --- a/widget/nsBaseAppShell.cpp
 +++ b/widget/nsBaseAppShell.cpp
 @@ -37,10 +37,10 @@ nsBaseAppShell::nsBaseAppShell()
@@ -1764,7 +1803,7 @@ index 632f38478c90..c01bda431fa5 100644
          do_QueryInterface(NS_GetCurrentThread());
      NS_ENSURE_STATE(threadInt);
 diff --git a/widget/nsBaseAppShell.h b/widget/nsBaseAppShell.h
-index fabc0e188afe..768c09e0236d 100644
+index fabc0e188afe4..768c09e0236d1 100644
 --- a/widget/nsBaseAppShell.h
 +++ b/widget/nsBaseAppShell.h
 @@ -44,7 +44,7 @@ class nsBaseAppShell : public nsIAppShell,
@@ -1777,10 +1816,10 @@ index fabc0e188afe..768c09e0236d 100644
    /**
     * Called by subclasses from a native event. See ScheduleNativeEventCallback.
 diff --git a/widget/windows/InProcessWinCompositorWidget.cpp b/widget/windows/InProcessWinCompositorWidget.cpp
-index 89729f7f0a59..caa9c46db907 100644
+index 6fd9568253bbf..cd9ab9b3f7605 100644
 --- a/widget/windows/InProcessWinCompositorWidget.cpp
 +++ b/widget/windows/InProcessWinCompositorWidget.cpp
-@@ -31,7 +31,9 @@ using namespace mozilla;
+@@ -27,7 +27,9 @@ using namespace mozilla;
  /* static */
  RefPtr<CompositorWidget> CompositorWidget::CreateLocal(
      const CompositorWidgetInitData& aInitData,

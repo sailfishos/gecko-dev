@@ -12,6 +12,7 @@
 #include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/SyncRunnable.h"
+#include "mozilla/webrender/RenderThread.h"
 
 #include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
@@ -66,20 +67,14 @@ void
 EmbedLiteCompositorBridgeParent::SetWebRenderGLContext(GLContext* aGL)
 {
   LOGT("gl:%p", aGL);
-  EnsureSurfaceSizeFromWindow();
+  MOZ_ASSERT(wr::RenderThread::IsInRenderThread());
+  MutexAutoLock lock(mRenderMutex);
   mGLContext = aGL;
-  if (mGLContext && !mGLContext->Screen()) {
-    PrepareOffscreen();
-  }
 }
 
 void
 EmbedLiteCompositorBridgeParent::EnsureSurfaceSizeFromWindow()
 {
-  if (!mEGLSurfaceSize.IsEmpty()) {
-    return;
-  }
-
   EmbedLiteWindowParent* parentWindow = EmbedLiteWindowParent::From(mWindowId);
   if (!parentWindow) {
     return;
@@ -91,6 +86,10 @@ EmbedLiteCompositorBridgeParent::EnsureSurfaceSizeFromWindow()
     return;
   }
 
+  MutexAutoLock lock(mRenderMutex);
+  if (!mEGLSurfaceSize.IsEmpty()) {
+    return;
+  }
   mSurfaceOrigin.MoveTo(0, 0);
   SetEGLSurfaceRect(0, 0, width, height);
 }
@@ -104,52 +103,22 @@ EmbedLiteCompositorBridgeParent::CompositeToDefaultTarget(WebRenderBridgeParent*
   return true;
 }
 
-void
-EmbedLiteCompositorBridgeParent::PrepareOffscreen()
-{
-  LOGT("EmbedLiteCompositorBridgeParent::PrepareOffscreen");
-
-  GLContext* context = mGLContext;
-  NS_ENSURE_TRUE(context, );
-  NS_ENSURE_TRUE(!mEGLSurfaceSize.IsEmpty(), );
-
-  if (!context->IsCurrent()) {
-    context->MakeCurrent(true);
-  }
-  NS_ENSURE_TRUE(context->IsCurrent(), );
-
-  MutexAutoLock lock(mRenderMutex);
-  if (!context->Screen()) {
-    NS_ENSURE_TRUE(context->CreateOffscreenDefaultFb(mEGLSurfaceSize), );
-  } else if (context->Screen()->Size() != mEGLSurfaceSize) {
-    NS_ENSURE_TRUE(context->ResizeScreenBuffer(mEGLSurfaceSize), );
-  }
-
-  if (context->GetContextType() == GLContextType::EGL) {
-    if (UniquePtr<SurfaceFactory> factory = SurfaceFactory_EGLImage::Create(*context)) {
-      context->Screen()->Morph(std::move(factory));
-    }
-  } else {
-    NS_ERROR("Only EGL context type is supported for offscreen rendering");
-  }
-}
-
 bool
 EmbedLiteCompositorBridgeParent::PresentOffscreenSurface()
 {
   LOGT("EmbedLiteCompositorBridgeParent::PresentOffscreenSurface");
+  MOZ_ASSERT(wr::RenderThread::IsInRenderThread());
+  MutexAutoLock lock(mRenderMutex);
   GLContext* context = mGLContext;
   if (!context || !context->Screen()) {
     mFrontBuffer.reset();
     return false;
   }
 
-  // RenderGL is called always from Gecko compositor thread.
+  // RenderGL is always called from the WebRender render thread.
   // GLScreenBuffer::PublishFrame does swap buffers and that
   // cannot happen while reading previous frame on EmbedLiteCompositorBridgeParent::GetPlatformImage
   // (potentially from another thread).
-  MutexAutoLock lock(mRenderMutex);
-
   GLScreenBuffer* screen = context->Screen();
   MOZ_ASSERT(screen);
 
@@ -183,19 +152,13 @@ bool EmbedLiteCompositorBridgeParent::GetScrollableRect(CSSRect&)
 void EmbedLiteCompositorBridgeParent::SetSurfaceRect(int x, int y, int width, int height)
 {
   LOGT("EmbedLiteCompositorBridgeParent::SetSurfaceRect");
-  bool changed = false;
+  MutexAutoLock lock(mRenderMutex);
   if (width > 0 && height > 0 && (mEGLSurfaceSize.width != width ||
                                   mEGLSurfaceSize.height != height ||
                                   mSurfaceOrigin.x != x ||
                                   mSurfaceOrigin.y != y)) {
-    MutexAutoLock lock(mRenderMutex);
     mSurfaceOrigin.MoveTo(x, y);
     SetEGLSurfaceRect(x, y, width, height);
-    changed = true;
-  }
-
-  if (changed && mGLContext) {
-    PrepareOffscreen();
   }
 }
 
@@ -204,11 +167,6 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(const std::function<void(void 
 {
   LOGT("EmbedLiteCompositorBridgeParent::GetPlatformImage cb");
   MutexAutoLock lock(mRenderMutex);
-  GLContext* context = mGLContext;
-  if (!context || !context->Screen()) {
-    return;
-  }
-
   std::shared_ptr<SharedSurface> frontBuffer = mFrontBuffer;
   if (!frontBuffer) {
     return;
@@ -240,10 +198,6 @@ EmbedLiteCompositorBridgeParent::GetPlatformImage(int* width, int* height)
 {
   LOGT("EmbedLiteCompositorBridgeParent::GetPlatformImage w h");
   MutexAutoLock lock(mRenderMutex);
-  GLContext* context = mGLContext;
-  NS_ENSURE_TRUE(context, nullptr);
-  NS_ENSURE_TRUE(context->Screen(), nullptr);
-
   std::shared_ptr<SharedSurface> frontBuffer = mFrontBuffer;
   NS_ENSURE_TRUE(frontBuffer, nullptr);
   SharedSurface* sharedSurf = frontBuffer.get();
@@ -280,18 +234,28 @@ EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
   LOGT("EmbedLiteCompositorBridgeParent::ResumeRendering");
   EnsureSurfaceSizeFromWindow();
-  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0 &&
-      CompositorThread()) {
+  int x;
+  int y;
+  int width;
+  int height;
+  {
+    MutexAutoLock lock(mRenderMutex);
+    x = mSurfaceOrigin.x;
+    y = mSurfaceOrigin.y;
+    width = mEGLSurfaceSize.width;
+    height = mEGLSurfaceSize.height;
+  }
+  if (width > 0 && height > 0 && CompositorThread()) {
     MOZ_ALWAYS_SUCCEEDS(SyncRunnable::DispatchToThread(
       CompositorThread(),
       NewRunnableMethod<int, int, int, int>(
         "EmbedLiteCompositorBridgeParent::ResumeCompositionAndResize",
         this,
         &EmbedLiteCompositorBridgeParent::ResumeCompositionAndResize,
-        mSurfaceOrigin.x,
-        mSurfaceOrigin.y,
-        mEGLSurfaceSize.width,
-        mEGLSurfaceSize.height)));
+        x,
+        y,
+        width,
+        height)));
     CompositorBridgeParent::ScheduleRenderOnCompositorThread(wr::RenderReasons::NONE);
   }
   ScheduleForcedRenderOnCompositorThread(wr::RenderReasons::WIDGET);
@@ -320,9 +284,6 @@ EmbedLiteCompositorBridgeParent::ScheduleForcedRender(wr::RenderReasons aReasons
 {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   EnsureSurfaceSizeFromWindow();
-  if (mGLContext && !mGLContext->Screen()) {
-    PrepareOffscreen();
-  }
   if (WebRenderBridgeParent* wrBridge = GetWrBridge()) {
     wrBridge->ScheduleForcedGenerateFrame(aReasons);
     wrBridge->CompositeToTarget(VsyncId(), aReasons, nullptr, nullptr);
