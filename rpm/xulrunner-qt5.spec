@@ -102,12 +102,9 @@ Patch60:     0060-Disallow-page-zooming-if-the-meta-viewport-scale-is-.patch
 Patch61:     0061-Add-preference-to-bypass-CORS-on-nsContentSecurityMa.patch
 Patch62:     0062-Get-12-24h-timeformat-setting-from-dconf.-Fixes-JB-5.patch
 Patch65:     0065-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
-Patch66:     0066-Bug-1880013-Update-glslopt-to-0.1.10-for-C-20-fix.-r.patch
-Patch67:     0067-Bug-1913645-Update-glslopt-to-0.1.11-to-fix-aarch64-.patch
 Patch68:     0068-Bug-1998927-Update-glslopt-to-explicitly-define-MOZI.patch
 Patch69:     0069-Bug-1999625-Update-glslopt-to-0.1.13.-r-gfx-reviewer.patch
 Patch70:     0070-Bug-2017954-Update-glslopt-to-0.1.14-r-jnicol-gfx-re.patch
-Patch71:     0071-Clean-up-Gecko-configure-integration.patch
 Patch72:     0072-Adapt-EmbedLite-WebRender-offscreen-compositing.patch
 Patch73:     0073-Restore-EmbedLite-native-prompt-dialogs.patch
 Patch74:     0074-Guard-media-sink-suspend-before-initialization.patch
