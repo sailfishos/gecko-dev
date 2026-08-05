@@ -1,29 +1,31 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Thu, 23 Jul 2026 12:23:49 +0200
+Date: Wed, 5 Aug 2026 18:33:38 +0200
 Subject: [sailfishos][webrender] Support software rendering on EmbedLite
 
 Use the Qt EGL display to detect mainline drivers without a GLES 3
-configuration and select software WebRender before hardware context
-creation is attempted.
+configuration and select software WebRender before hardware context creation
+is attempted.
 
-Let EmbedLite use the shared OGL compositor context for software
-WebRender presentation while retaining the widget-derived surface size.
-This keeps GLES 2 presentation accelerated without requiring hardware
-WebRender support.
+Let EmbedLite use the shared OGL compositor context for software WebRender
+presentation while retaining the widget-derived surface size. This keeps GLES
+2 presentation accelerated without requiring hardware WebRender support.
+
+Wire ESR140's initial and runtime fallback paths so an OGL presentation
+failure can retry with pure software rendering.
 ---
  gfx/gl/GLContextProvider.h                    |  4 +++
  gfx/gl/GLContextProviderEGL.cpp               | 33 +++++++++++++++++++
- gfx/thebes/gfxPlatform.cpp                    | 10 ++++++
+ gfx/thebes/gfxPlatform.cpp                    | 18 ++++++++--
  .../RenderCompositorOGLSWGL.cpp               | 10 +++++-
  .../RenderCompositorOGLSWGL.h                 |  1 +
  gfx/webrender_bindings/RenderThread.cpp       |  5 +--
  gfx/webrender_bindings/RendererOGL.cpp        |  4 ++-
  widget/nsBaseWidget.cpp                       |  2 ++
- 8 files changed, 65 insertions(+), 4 deletions(-)
+ 8 files changed, 70 insertions(+), 7 deletions(-)
 
 diff --git a/gfx/gl/GLContextProvider.h b/gfx/gl/GLContextProvider.h
-index 67da1bc67ca03..d604da23fd4d9 100644
+index 277b76efa856e..0cf95ae494e10 100644
 --- a/gfx/gl/GLContextProvider.h
 +++ b/gfx/gl/GLContextProvider.h
 @@ -22,6 +22,10 @@ class CompositorWidget;
@@ -38,10 +40,10 @@ index 67da1bc67ca03..d604da23fd4d9 100644
  
  // Null is always there
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 04a06293b4d00..5e1ba387226b8 100644
+index 25b6a79f2e89b..aff0870af6c9d 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
-@@ -1025,6 +1025,39 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
+@@ -996,6 +996,39 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
    return false;
  }
  
@@ -82,10 +84,10 @@ index 04a06293b4d00..5e1ba387226b8 100644
  // through aConfig.  Return false otherwise.
  //
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index a7a63d728aced..de99e9016c768 100644
+index 578a0445d7970..e692b36414062 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -2648,6 +2648,16 @@ void gfxPlatform::InitWebRenderConfig() {
+@@ -2674,6 +2674,16 @@ void gfxPlatform::InitWebRenderConfig() {
    manager.Init();
    manager.ConfigureWebRender();
  
@@ -99,14 +101,43 @@ index a7a63d728aced..de99e9016c768 100644
 +  }
 +#endif
 +
-   bool hasHardware = gfxConfig::IsEnabled(Feature::WEBRENDER);
+   if (gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+     gfxVars::SetGPUProcessEnabled(true);
+   }
+@@ -2744,7 +2754,8 @@ void gfxPlatform::InitWebRenderConfig() {
  
- #ifdef MOZ_WIDGET_GTK
+   UpdateForceSubpixelAAWherePossible();
+ 
+-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || \
++    defined(MOZ_EMBEDLITE)
+   if (StaticPrefs::gfx_webrender_software_opengl_AtStartup()) {
+     gfxVars::SetAllowSoftwareWebRenderOGL(true);
+   }
+@@ -3937,7 +3948,8 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
+   }
+ #endif
+ 
+-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || \
++    defined(MOZ_EMBEDLITE)
+   // Before we disable OpenGL and HW_COMPOSITING, we should check if we can
+   // fallback from WebRender to Software WebRender + OpenGL compositing.
+   if (swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderOGL() &&
+@@ -3950,7 +3962,7 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
+   }
+ #endif
+   // Android does not want to fallback to SW-WR.
+-#ifdef MOZ_WIDGET_GTK
++#if defined(MOZ_WIDGET_GTK) || defined(MOZ_EMBEDLITE)
+   if (swglFallbackAllowed && gfxVars::AllowSoftwareWebRenderOGL() &&
+       gfxVars::UseSoftwareWebRender()) {
+     // Fallback from Software WebRender + OpenGL to Software WebRender.
 diff --git a/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp b/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
-index fac9722bbea4a..00ae03ff8e7a7 100644
+index da2d235937c55..de7af0830dad0 100644
 --- a/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
-@@ -48,7 +48,7 @@ UniquePtr<RenderCompositor> RenderCompositorOGLSWGL::Create(
+@@ -50,7 +50,7 @@ UniquePtr<RenderCompositor> RenderCompositorOGLSWGL::Create(
    }
  
    RefPtr<Compositor> compositor;
@@ -115,7 +146,7 @@ index fac9722bbea4a..00ae03ff8e7a7 100644
    RefPtr<gl::GLContext> context =
        RenderThread::Get()->SingletonGLForCompositorOGL();
    if (!context) {
-@@ -63,9 +63,13 @@ UniquePtr<RenderCompositor> RenderCompositorOGLSWGL::Create(
+@@ -65,9 +65,13 @@ UniquePtr<RenderCompositor> RenderCompositorOGLSWGL::Create(
  
    nsCString log;
    RefPtr<CompositorOGL> compositorOGL;
@@ -129,7 +160,7 @@ index fac9722bbea4a..00ae03ff8e7a7 100644
    if (!compositorOGL->Initialize(context, programs, &log)) {
      gfxCriticalNote << "Failed to initialize CompositorOGL for SWGL: "
                      << log.get();
-@@ -116,6 +120,10 @@ gl::GLContext* RenderCompositorOGLSWGL::GetGLContext() {
+@@ -118,6 +122,10 @@ gl::GLContext* RenderCompositorOGLSWGL::GetGLContext() {
    return mCompositor->AsCompositorOGL()->gl();
  }
  
@@ -153,33 +184,33 @@ index 7752574311bf0..4bfa25a45a58c 100644
    bool MakeCurrent() override;
  
 diff --git a/gfx/webrender_bindings/RenderThread.cpp b/gfx/webrender_bindings/RenderThread.cpp
-index a8b68aef94870..ed4c5e2ff236f 100644
+index d47a3c31ad10d..356d1d2774eb9 100644
 --- a/gfx/webrender_bindings/RenderThread.cpp
 +++ b/gfx/webrender_bindings/RenderThread.cpp
-@@ -1535,7 +1535,8 @@ static already_AddRefed<gl::GLContext> CreateGLContextANGLE(
+@@ -1680,7 +1680,8 @@ static already_AddRefed<gl::GLContext> CreateGLContextANGLE(
  }
  #endif
  
--#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || defined(MOZ_X11)
-+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WAYLAND) || \
-+    defined(MOZ_X11) || defined(MOZ_EMBEDLITE)
+-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || \
++    defined(MOZ_EMBEDLITE)
  static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
    // Create GLContext with dummy EGLSurface.
    bool forHardwareWebRender = true;
-@@ -1572,7 +1573,7 @@ static already_AddRefed<gl::GLContext> CreateGLContext(nsACString& aError) {
+@@ -1717,7 +1718,7 @@ static already_AddRefed<gl::GLContext> CreateGLContext(nsACString& aError) {
    if (gfx::gfxVars::UseWebRenderANGLE()) {
      gl = CreateGLContextANGLE(aError);
    }
 -#elif defined(MOZ_WIDGET_ANDROID)
 +#elif defined(MOZ_WIDGET_ANDROID) || defined(MOZ_EMBEDLITE)
    gl = CreateGLContextEGL();
- #elif defined(MOZ_WAYLAND) || defined(MOZ_X11)
+ #elif defined(MOZ_WIDGET_GTK)
    if (gfx::gfxVars::UseEGL()) {
 diff --git a/gfx/webrender_bindings/RendererOGL.cpp b/gfx/webrender_bindings/RendererOGL.cpp
-index 3eac1b7da8f51..81277eab5722d 100644
+index 9a25b268f1161..7bd0e25028c85 100644
 --- a/gfx/webrender_bindings/RendererOGL.cpp
 +++ b/gfx/webrender_bindings/RendererOGL.cpp
-@@ -300,7 +300,9 @@ layers::SyncObjectHost* RendererOGL::GetSyncObject() const {
+@@ -354,7 +354,9 @@ layers::SyncObjectHost* RendererOGL::GetSyncObject() const {
    return mCompositor->GetSyncObject();
  }
  
@@ -191,13 +222,13 @@ index 3eac1b7da8f51..81277eab5722d 100644
  void* RendererOGL::swgl() const { return mCompositor->swgl(); }
  
 diff --git a/widget/nsBaseWidget.cpp b/widget/nsBaseWidget.cpp
-index ef102467f68da..70729e163ba6a 100644
+index 21c7de010083b..d4aa1d66fce9c 100644
 --- a/widget/nsBaseWidget.cpp
 +++ b/widget/nsBaseWidget.cpp
-@@ -1392,6 +1392,8 @@ already_AddRefed<WebRenderLayerManager> nsBaseWidget::CreateCompositorSession(
+@@ -1465,6 +1465,8 @@ already_AddRefed<WebRenderLayerManager> nsBaseWidget::CreateCompositorSession(
      MOZ_ASSERT(supportsAcceleration);
      options.SetAllowSoftwareWebRenderOGL(
-         StaticPrefs::gfx_webrender_software_opengl_AtStartup());
+         gfx::gfxVars::AllowSoftwareWebRenderOGL());
 +#elif defined(MOZ_EMBEDLITE)
 +    options.SetAllowSoftwareWebRenderOGL(supportsAcceleration);
  #elif defined(MOZ_WIDGET_GTK)
