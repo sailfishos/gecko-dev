@@ -83,8 +83,6 @@ Patch36:     0036-Add-and-adjust-embedlite-static-prefs.patch
 Patch37:     0037-Disable-SessionStore-functionality.patch
 Patch38:     0038-Prevent-errors-from-DownloadPrompter.patch
 Patch39:     0039-Restore-NotifyDidPaint-event-and-timers.patch
-Patch40:     0040-Adapt-build-configuration-for-SailfishOS.-JB-53756.patch
-Patch41:     0041-Update-GN-build-files-for-WebRTC.-JB-53756.patch
 Patch42:     0042-Disable-desktop-sharing-feature-on-SFOS.-JB-53756.patch
 Patch43:     0043-Implement-video-capture-module.-JB-53982.patch
 Patch44:     0044-Regenerate-moz.build-files.-JB-53756.patch

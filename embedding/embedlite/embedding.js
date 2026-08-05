@@ -453,6 +453,11 @@ pref("security.OCSP.enabled", 2);
 // The audio backend, see cubeb_init && CubebUtils.cpp (sCubebBackendName)
 pref("media.cubeb.backend", "pulse");
 
+// Desktop capture is not supported by EmbedLite.
+pref("media.getdisplaymedia.enabled", false);
+pref("media.getusermedia.browser.enabled", false);
+pref("media.getusermedia.screensharing.enabled", false);
+
 // Enable serviceworkers
 pref("dom.serviceWorkers.enabled", true);
 

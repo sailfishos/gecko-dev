@@ -1,51 +1,120 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Denis Grigorev <d.grigorev@omprussia.ru>
-Date: Tue, 25 May 2021 19:48:19 +0300
-Subject: [PATCH 42/67] Disable desktop sharing feature on SFOS. JB#53756
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 5 Aug 2026 12:55:15 +0200
+Subject: [PATCH 42/67] Disable desktop sharing for EmbedLite
 
-The feature isn't supported so we need to disable it.
-
-Signed-off-by: Denis Grigorev <d.grigorev@omprussia.ru>
+Reject unsupported desktop-capture engines without assertions and omit
+their implementation from EmbedLite builds.
 ---
- dom/media/systemservices/VideoEngine.cpp | 8 ++++----
- 1 file changed, 4 insertions(+), 4 deletions(-)
+ dom/media/systemservices/CamerasParent.cpp         |  8 +++++++-
+ dom/media/systemservices/VideoEngine.cpp           |  8 ++++++--
+ dom/media/systemservices/moz.build                 |  2 +-
+ .../video_engine/video_capture_factory.cc          | 14 +++++++-------
+ 4 files changed, 21 insertions(+), 11 deletions(-)
 
+diff --git a/dom/media/systemservices/CamerasParent.cpp b/dom/media/systemservices/CamerasParent.cpp
+index 27409721907e6..b6646dc0c61ea 100644
+--- a/dom/media/systemservices/CamerasParent.cpp
++++ b/dom/media/systemservices/CamerasParent.cpp
+@@ -33,7 +33,6 @@
+ #include "nsIThread.h"
+ #include "nsThreadUtils.h"
+ #include "nsNetUtil.h"
+-#include "video_engine/desktop_capture_impl.h"
+ #include "video_engine/video_capture_factory.h"
+ 
+ #include "api/video/video_frame_buffer.h"
+@@ -429,6 +428,13 @@ VideoEngine* CamerasParent::EnsureInitialized(int aEngine) {
+   LOG_VERBOSE("CamerasParent(%p)::%s", this, __func__);
+   CaptureEngine capEngine = static_cast<CaptureEngine>(aEngine);
+ 
++#ifdef MOZ_EMBEDLITE
++  if (capEngine != CameraEngine) {
++    LOG("Capture engine %d is not supported by EmbedLite", aEngine);
++    return nullptr;
++  }
++#endif
++
+   if (VideoEngine* engine = mEngines->ElementAt(capEngine); engine) {
+     return engine;
+   }
 diff --git a/dom/media/systemservices/VideoEngine.cpp b/dom/media/systemservices/VideoEngine.cpp
-index 1d4bde634465..61fc870202dc 100644
+index 825530e124c0b..13c3967c942c0 100644
 --- a/dom/media/systemservices/VideoEngine.cpp
 +++ b/dom/media/systemservices/VideoEngine.cpp
-@@ -69,13 +69,13 @@ int32_t VideoEngine::CreateVideoCapture(const char* aDeviceUniqueIdUTF8) {
-       entry.VideoCapture()->SetApplyRotation(true);
-     }
-   } else {
--#ifndef WEBRTC_ANDROID
-+#if !defined(WEBRTC_ANDROID) && !defined(MOZ_EMBEDLITE)
-     entry = CaptureEntry(
-         id, rtc::scoped_refptr<webrtc::VideoCaptureModule>(
-                 webrtc::DesktopCaptureImpl::Create(id, aDeviceUniqueIdUTF8,
-                                                    mCaptureDevInfo.type)));
- #else
--    MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL ON ANDROID" ==
-+    MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL" ==
-                nullptr);
- #endif
+@@ -8,7 +8,10 @@
+ 
+ #include "libwebrtcglue/SystemTime.h"
+ #include "system_wrappers/include/clock.h"
+-#include "video_engine/desktop_capture_impl.h"
++
++#ifndef MOZ_EMBEDLITE
++#  include "video_engine/desktop_capture_impl.h"
++#endif
+ 
+ #ifdef MOZ_WIDGET_ANDROID
+ #  include "mozilla/jni/Utils.h"
+@@ -195,7 +198,8 @@ VideoEngine::CaptureEntry::CaptureEndedEvent() {
+   if (!mDesktopImpl) {
+     return nullptr;
    }
-@@ -169,13 +169,13 @@ VideoEngine::GetOrCreateVideoCaptureDeviceInfo() {
-     case CaptureDeviceType::Browser:
-     case CaptureDeviceType::Window:
-     case CaptureDeviceType::Screen: {
 -#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS)
-+#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS) && !defined(MOZ_EMBEDLITE)
-       mDeviceInfo = webrtc::DesktopCaptureImpl::CreateDeviceInfo(
-           mId, mCaptureDevInfo.type);
-       LOG(("screen capture: Finished creating new device."));
++#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS) && \
++    !defined(MOZ_EMBEDLITE)
+   return mDesktopImpl->CaptureEndedEvent();
  #else
-       MOZ_ASSERT(
--          "GetVideoCaptureDeviceInfo NO DESKTOP CAPTURE IMPL ON ANDROID" ==
-+          "GetVideoCaptureDeviceInfo NO DESKTOP CAPTURE IMPL" ==
-           nullptr);
-       mDeviceInfo.reset();
+   return nullptr;
+diff --git a/dom/media/systemservices/moz.build b/dom/media/systemservices/moz.build
+index c4542f728b8eb..b3b03419e4f7f 100644
+--- a/dom/media/systemservices/moz.build
++++ b/dom/media/systemservices/moz.build
+@@ -49,7 +49,7 @@ if CONFIG["MOZ_WEBRTC"]:
+             "-fobjc-arc",
+         ]
+ 
+-    if CONFIG["OS_TARGET"] != "Android":
++    if CONFIG["OS_TARGET"] != "Android" and not CONFIG["MOZ_EMBEDLITE"]:
+         SOURCES += [
+             "video_engine/desktop_capture_impl.cc",
+             "video_engine/tab_capturer.cc",
+diff --git a/dom/media/systemservices/video_engine/video_capture_factory.cc b/dom/media/systemservices/video_engine/video_capture_factory.cc
+index f06d52fb3b632..374320dc3ebbe 100644
+--- a/dom/media/systemservices/video_engine/video_capture_factory.cc
++++ b/dom/media/systemservices/video_engine/video_capture_factory.cc
+@@ -7,9 +7,12 @@
+ #include "video_capture_factory.h"
+ 
+ #include "mozilla/StaticPrefs_media.h"
+-#include "desktop_capture_impl.h"
+ #include "VideoEngine.h"
+ 
++#ifndef MOZ_EMBEDLITE
++#  include "desktop_capture_impl.h"
++#endif
++
+ #if defined(WEBRTC_USE_PIPEWIRE)
+ #  include "video_engine/placeholder_device_info.h"
  #endif
--- 
-2.51.0
-
+@@ -68,8 +71,7 @@ VideoCaptureFactory::CreateDeviceInfo(
+     return deviceInfo;
+   }
+ 
+-#if defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS)
+-  MOZ_ASSERT("CreateDeviceInfo NO DESKTOP CAPTURE IMPL ON ANDROID" == nullptr);
++#if defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS) || defined(MOZ_EMBEDLITE)
+   return nullptr;
+ #else
+   return webrtc::DesktopCaptureImpl::CreateDeviceInfo(aId, aType);
+@@ -91,10 +93,8 @@ VideoCaptureFactory::CreateVideoCapture(
+     return result;
+   }
+ 
+-#if defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS)
+-  MOZ_ASSERT("CreateVideoCapture NO DESKTOP CAPTURE IMPL ON ANDROID" ==
+-             nullptr);
+-#else
++#if !defined(WEBRTC_ANDROID) && !defined(WEBRTC_IOS) && \
++    !defined(MOZ_EMBEDLITE)
+   result.mDesktopImpl =
+       webrtc::DesktopCaptureImpl::Create(aModuleId, aUniqueId, aType);
+   result.mCapturer =
