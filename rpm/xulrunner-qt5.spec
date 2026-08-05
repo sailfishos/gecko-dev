@@ -411,7 +411,7 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 %endif
 
 %if %{system_sqlite}
-  echo "ac_add_options --enable-system-sqlite" >> "$MOZCONFIG"
+  echo "ac_add_options --with-system-sqlite" >> "$MOZCONFIG"
 %endif
 
 %if %{system_ffi}
