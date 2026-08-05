@@ -1,30 +1,26 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david.llewellyn-jones@jolla.com>
 Date: Thu, 21 Oct 2021 12:35:53 +0000
-Subject: [PATCH 48/67] Allow LoginManagerPrompter to find its window.
- JB#55760, OMP#JOLLA-418
+Subject: [PATCH 48/67] Route EmbedLite login prompts to their window. JB#55760
 
-This patch blocks loading of gecko's LoginManagerAuthPrompter.jsm so
-that the embedlite-components version can be used instead.
+Use the top browsing-context window when EmbedLite has no browser embedder
+element. Keep the downstream window-typed prompt interface used by
+embedlite-components. Contributes to OMP#JOLLA-418.
 
-It also patches the nsILoginManagerPrompter interface to allow a
-reference to the window to be passed through, to allow the embedlite
-component to understand its context.
-
-Finally it patches ParentChannelListener to pass the correct window
-object through to the nsILoginManagerAuthPrompter component.
+Register Gecko's built-in login prompters for non-Sailfish applications
+only, leaving their contracts to the EmbedLite component on Sailfish.
 ---
- .../protocol/http/ParentChannelListener.cpp    |  2 +-
- .../passwordmgr/LoginManagerParent.sys.mjs     |  4 ++--
- toolkit/components/passwordmgr/components.conf | 18 ------------------
- .../passwordmgr/nsILoginManagerPrompter.idl    |  6 +++---
- 4 files changed, 6 insertions(+), 24 deletions(-)
+ .../protocol/http/ParentChannelListener.cpp   |  2 +-
+ .../passwordmgr/LoginManagerParent.sys.mjs    |  4 +-
+ .../components/passwordmgr/components.conf    | 39 ++++++++++++-------
+ .../passwordmgr/nsILoginManagerPrompter.idl   |  6 +--
+ 4 files changed, 31 insertions(+), 20 deletions(-)
 
 diff --git a/netwerk/protocol/http/ParentChannelListener.cpp b/netwerk/protocol/http/ParentChannelListener.cpp
-index b80200e11c6b..99c37224cfcc 100644
+index 887380a532b0c..00baa1fad50da 100644
 --- a/netwerk/protocol/http/ParentChannelListener.cpp
 +++ b/netwerk/protocol/http/ParentChannelListener.cpp
-@@ -239,7 +239,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
+@@ -257,7 +257,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
  
    nsCOMPtr<nsPIDOMWindowOuter> window;
    RefPtr<dom::Element> frame = mBrowsingContext->Top()->GetEmbedderElement();
@@ -34,10 +30,10 @@ index b80200e11c6b..99c37224cfcc 100644
    // Get an auth prompter for our window so that the parenting
    // of the dialogs works as it should when using tabs.
 diff --git a/toolkit/components/passwordmgr/LoginManagerParent.sys.mjs b/toolkit/components/passwordmgr/LoginManagerParent.sys.mjs
-index dcf770b9d136..0bc128004163 100644
+index c9034ac6cc7bf..0509f61855151 100644
 --- a/toolkit/components/passwordmgr/LoginManagerParent.sys.mjs
 +++ b/toolkit/components/passwordmgr/LoginManagerParent.sys.mjs
-@@ -1084,7 +1084,7 @@ export class LoginManagerParent extends JSWindowActorParent {
+@@ -1080,7 +1080,7 @@ export class LoginManagerParent extends JSWindowActorParent {
        existingLogin = this.#findSameLogin(logins, formLogin);
      }
  
@@ -46,7 +42,7 @@ index dcf770b9d136..0bc128004163 100644
      const prompter = this._getPrompter(browser);
  
      if (!canMatchExistingLogin) {
-@@ -1420,7 +1420,7 @@ export class LoginManagerParent extends JSWindowActorParent {
+@@ -1408,7 +1408,7 @@ export class LoginManagerParent extends JSWindowActorParent {
      }
  
      const prompter = this._getPrompter(browser);
@@ -56,7 +52,7 @@ index dcf770b9d136..0bc128004163 100644
      if (existingLogin) {
        // Show a change doorhanger to allow modifying an already-saved login
 diff --git a/toolkit/components/passwordmgr/components.conf b/toolkit/components/passwordmgr/components.conf
-index 9be23b98f558..00d5dd83b3b4 100644
+index d0037445578cb..1c2dd15306ef9 100644
 --- a/toolkit/components/passwordmgr/components.conf
 +++ b/toolkit/components/passwordmgr/components.conf
 @@ -13,24 +13,12 @@ Classes = [
@@ -84,21 +80,48 @@ index 9be23b98f558..00d5dd83b3b4 100644
      {
          'cid': '{0f2f347c-1e4f-40cc-8efd-792dea70a85e}',
          'contract_ids': ['@mozilla.org/login-manager/loginInfo;1'],
-@@ -68,12 +56,6 @@ else:
-             'esModule': 'resource://gre/modules/storage-json.sys.mjs',
-             'constructor': 'LoginManagerStorage_json',
+@@ -45,14 +33,37 @@ Classes = [
+     },
+ ]
+ 
+-if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit'):
+-     Classes += [
++if buildconfig.substs['MOZ_BUILD_APP'] != 'mobile/sailfishos':
++    Classes += [
++        {
++            'cid': '{749e62f4-60ae-4569-a8a2-de78b649660e}',
++            'contract_ids': ['@mozilla.org/passwordmanager/authpromptfactory;1'],
++            'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
++            'constructor': 'LoginManagerAuthPromptFactory',
++        },
++        {
++            'cid': '{8aa66d77-1bbb-45a6-991e-b8f47751c291}',
++            'contract_ids': ['@mozilla.org/login-manager/authprompter;1'],
++            'esModule': 'resource://gre/modules/LoginManagerAuthPrompter.sys.mjs',
++            'constructor': 'LoginManagerAuthPrompter',
++        },
++    ]
++
++if (
++    buildconfig.substs['MOZ_BUILD_APP'] != 'mobile/sailfishos'
++    and buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit')
++):
++    Classes += [
+         {
+             'cid': '{c47ff942-9678-44a5-bc9b-05e0d676c79c}',
+             'contract_ids': ['@mozilla.org/login-manager/prompter;1'],
+             'esModule': 'resource://gre/modules/LoginManagerPrompter.sys.mjs',
+             'constructor': 'LoginManagerPrompter',
          },
--        {
--            'cid': '{c47ff942-9678-44a5-bc9b-05e0d676c79c}',
--            'contract_ids': ['@mozilla.org/login-manager/prompter;1'],
--            'esModule': 'resource://gre/modules/LoginManagerPrompter.sys.mjs',
--            'constructor': 'LoginManagerPrompter',
--        },
++    ]
++
++if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] not in ('android', 'uikit'):
++    Classes += [
          {
              'cid': '{dc185a77-ba88-4caa-8f16-465253f7599a}',
              'contract_ids': [
 diff --git a/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl b/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
-index 4f244258c0f5..8b162b92b29c 100644
+index 9ebdd05e91f8b..f0ce4fe1b2b58 100644
 --- a/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
 +++ b/toolkit/components/passwordmgr/nsILoginManagerPrompter.idl
 @@ -34,7 +34,7 @@ interface nsILoginManagerPrompter : nsISupports {
@@ -128,6 +151,3 @@ index 4f244258c0f5..8b162b92b29c 100644
            in Array<nsILoginInfo> logins,
            in nsILoginInfo aNewLogin);
  };
--- 
-2.51.0
-

@@ -88,10 +88,8 @@ Patch43:     0043-Implement-video-capture-module.-JB-53982.patch
 Patch44:     0044-Regenerate-moz.build-files.-JB-53756.patch
 Patch45:     0045-Drop-AudioPlayback-messages-if-no-embedder-element-i.patch
 Patch46:     0046-Get-ContentFrameMessageManager-via-nsIDocShellTreeOw.patch
-Patch47:     0047-Convert-panic-into-early-return-in-Hyphenator.patch
 Patch48:     0048-Allow-LoginManagerPrompter-to-find-its-window.-JB-55.patch
 Patch49:     0049-Add-support-for-prefers-color-scheme-JB-58394.patch
-Patch50:     0050-Update-hash-for-mapped_hyph.patch
 Patch51:     0051-Fix-content-action-integration-to-work.-Fixes-JB-512.patch
 Patch52:     0052-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
 Patch53:     0053-Force-use-of-mobile-video-controls.-JB-55484-OMP-JOL.patch

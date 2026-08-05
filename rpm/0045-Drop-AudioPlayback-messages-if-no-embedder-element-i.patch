@@ -18,7 +18,7 @@ On Sailfish OS the embedder element is always null, so there's no need
  1 file changed, 3 insertions(+)
 
 diff --git a/toolkit/actors/AudioPlaybackParent.sys.mjs b/toolkit/actors/AudioPlaybackParent.sys.mjs
-index db682fd90b2b..e5b1b0245e4e 100644
+index db682fd90b2bb..e5b1b0245e4e2 100644
 --- a/toolkit/actors/AudioPlaybackParent.sys.mjs
 +++ b/toolkit/actors/AudioPlaybackParent.sys.mjs
 @@ -11,6 +11,9 @@ export class AudioPlaybackParent extends JSWindowActorParent {
@@ -31,6 +31,3 @@ index db682fd90b2b..e5b1b0245e4e 100644
      switch (aMessage.name) {
        case "AudioPlayback:Start":
          this._hasAudioPlayback = true;
--- 
-2.51.0
-
