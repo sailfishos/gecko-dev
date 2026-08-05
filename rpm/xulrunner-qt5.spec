@@ -94,7 +94,6 @@ Patch51:     0051-Fix-content-action-integration-to-work.-Fixes-JB-512.patch
 Patch52:     0052-Make-fullscreen-enabling-work-as-used-to-with-pref-f.patch
 Patch53:     0053-Force-use-of-mobile-video-controls.-JB-55484-OMP-JOL.patch
 Patch54:     0054-Add-a-video-decoder-based-on-gecko-camera.-JB-56755.patch
-Patch55:     0055-Fix-audio-underruns-for-fullduplex-mode.-JB-55461.patch
 Patch56:     0056-Ensure-audio-continues-when-screen-is-locked.-Contri.patch
 Patch57:     0057-Delete-startupCache-if-it-s-stale.patch
 Patch58:     0058-Hardcode-loopback-address-for-profile-lock-filename..patch
@@ -122,7 +121,6 @@ Patch79:     0079-Dispatch-MDSM-initialization-without-tail-dispatch.patch
 Patch80:     0080-Preload-autoplay-metadata-before-inaudible-check.patch
 Patch81:     0081-Fix-Qt-form-control-theme-rendering.patch
 Patch82:     0082-Keep-about-support-snapshot-resilient-in-EmbedLite.patch
-Patch83:     0083-Register-gecko-camera-decoder-in-remote-video-paths.patch
 Patch84:     0084-Use-system-sqlite.patch
 Patch85:     0085-Support-Qt-EGL-display-on-Mesa.patch
 Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch

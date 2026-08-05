@@ -7,15 +7,16 @@
 #if !defined(GeckoCameraVideoDecoder_h_)
 #define GeckoCameraVideoDecoder_h_
 
-#include <map>
 #include <geckocamera-codec.h>
 
+#include <map>
+#include <memory>
+
 #include "MediaInfo.h"
-#include "mozilla/Atomics.h"
-#include "mozilla/UniquePtr.h"
+#include "MediaTimer.h"
 #include "PlatformDecoderModule.h"
 #include "ReorderQueue.h"
-#include "MediaTimer.h"
+#include "mozilla/Atomics.h"
 
 namespace mozilla {
 
@@ -29,7 +30,7 @@ class GeckoCameraVideoDecoder final
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(GeckoCameraVideoDecoder, final);
 
   GeckoCameraVideoDecoder(gecko::codec::CodecManager* manager,
-      const CreateDecoderParams& aParams);
+                          const CreateDecoderParams& aParams);
 
   RefPtr<InitPromise> Init() override;
 
@@ -60,27 +61,38 @@ class GeckoCameraVideoDecoder final
   }
 
   // VideoDecoderListener
-  virtual void onDecodedYCbCrFrame(const gecko::camera::YCbCrFrame *frame) override;
-  virtual void onDecodedGraphicBuffer(std::shared_ptr<gecko::camera::GraphicBuffer> buffer) override;
+  virtual void onDecodedYCbCrFrame(
+      const gecko::camera::YCbCrFrame* frame) override;
+  virtual void onDecodedGraphicBuffer(
+      std::shared_ptr<gecko::camera::GraphicBuffer> buffer) override;
   virtual void onDecoderError(std::string errorDescription) override;
   virtual void onDecoderEOS() override;
 
   static gecko::codec::CodecType CodecTypeFromMime(const nsACString& aMimeType);
 
  private:
-  ~GeckoCameraVideoDecoder() {
-    MOZ_COUNT_DTOR(GeckoCameraVideoDecoder);
-  }
+  ~GeckoCameraVideoDecoder() { MOZ_COUNT_DTOR(GeckoCameraVideoDecoder); }
 
   MediaResult CreateDecoder();
-  void ProcessDecode(MediaRawData* aSample);
+
+  enum class DecodeState : uint32_t { Idle, Active, TimedOut };
+  using DecodeStateAtomic = Atomic<DecodeState, ReleaseAcquire>;
+
+  void ProcessDecode(MediaRawData* aSample,
+                     const std::shared_ptr<DecodeStateAtomic>& aDecodeState);
+  void ProcessDecodedYCbCrFrame(const gecko::camera::YCbCrFrame* aFrame,
+                                uint64_t aDecoderGeneration);
+  void ReportError(std::string aErrorDescription,
+                   uint64_t aDecoderGeneration);
+  static void ReleaseInput(void* aData);
   void DrainComplete();
   gecko::codec::CodecManager* mCodecManager;
-  const CreateDecoderParams mParams;
   const VideoInfo mInfo;
   const RefPtr<layers::ImageContainer> mImageContainer;
   RefPtr<layers::KnowsCompositor> mImageAllocator;
   Mutex mMutex;
+  Mutex mCodecControlMutex;
+  uint64_t mDecoderGeneration = 0;
   const RefPtr<TaskQueue> mTaskQueue;
   bool mIsH264;
   const uint32_t mMaxRefFrames;
@@ -89,12 +101,12 @@ class GeckoCameraVideoDecoder final
   MozPromiseHolder<DecodePromise> mDrainPromise;
   Atomic<bool, ReleaseAcquire> mIsShutDown;
   Atomic<bool, ReleaseAcquire> mError;
+  Atomic<bool, ReleaseAcquire> mIgnoreCallbacks;
   bool mDecoderDrained = false;
-  const RefPtr<MediaTimer> mDecodeTimer;
+  const RefPtr<MediaTimer<TimeStamp>> mDecodeTimer;
   const RefPtr<TaskQueue> mCommandTaskQueue;
-  std::string mErrorDescription;
   std::shared_ptr<gecko::codec::VideoDecoder> mDecoder;
-  std::map<uint64_t,RefPtr<MediaRawData>> mInputFrames;
+  std::multimap<uint64_t, RefPtr<MediaRawData>> mInputFrames;
 };
 
 }  // namespace mozilla
