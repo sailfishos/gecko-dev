@@ -1,31 +1,25 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
-Date: Fri, 1 Dec 2023 23:56:36 +0000
+Date: Wed, 5 Aug 2026 11:24:54 +0200
 Subject: [PATCH 35/67] Allow file scheme when loading OpenSearch providers
 
-When loading OpenSearch provider XML files the scheme was restricted to
-https. This prevented the OpenSearch XML provider files from being
-loaded from disk at initialisation or when installing a search provider.
+Allow packaged Sailfish OpenSearch XML providers to load from disk.
 
-This change extends the support to include both https and file schemes
-so that the providers can be loaded correctly from disc.
+The scheme validation moved to OpenSearchLoader in ESR140.
 ---
- toolkit/components/search/OpenSearchEngine.sys.mjs | 2 +-
+ toolkit/components/search/OpenSearchLoader.sys.mjs | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/toolkit/components/search/OpenSearchEngine.sys.mjs b/toolkit/components/search/OpenSearchEngine.sys.mjs
-index d3d6da576ae2..e401f1c94c8c 100644
---- a/toolkit/components/search/OpenSearchEngine.sys.mjs
-+++ b/toolkit/components/search/OpenSearchEngine.sys.mjs
-@@ -135,7 +135,7 @@ export class OpenSearchEngine extends SearchEngine {
-         Cr.NS_ERROR_UNEXPECTED
-       );
-     }
--    if (!/^https?$/i.test(loadURI.scheme)) {
-+    if (!/^(?:https?|file)$/i.test(loadURI.scheme)) {
-       throw Components.Exception(
-         "Invalid URI passed to SearchEngine constructor",
-         Cr.NS_ERROR_INVALID_ARG
--- 
-2.51.0
-
+diff --git a/toolkit/components/search/OpenSearchLoader.sys.mjs b/toolkit/components/search/OpenSearchLoader.sys.mjs
+index 4e892f443433e..342c6fa3cc745 100644
+--- a/toolkit/components/search/OpenSearchLoader.sys.mjs
++++ b/toolkit/components/search/OpenSearchLoader.sys.mjs
+@@ -107,7 +107,7 @@ export async function loadAndParseOpenSearchEngine(sourceURI, lastModified) {
+       Cr.NS_ERROR_UNEXPECTED
+     );
+   }
+-  if (!/^https?$/i.test(sourceURI.scheme)) {
++  if (!/^(?:https?|file)$/i.test(sourceURI.scheme)) {
+     throw Components.Exception(
+       "Invalid URI passed to SearchEngine constructor",
+       Cr.NS_ERROR_INVALID_ARG

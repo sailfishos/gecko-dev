@@ -1,26 +1,30 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
-Date: Wed, 22 May 2024 08:43:39 +0100
+Date: Wed, 5 Aug 2026 11:27:23 +0200
 Subject: [PATCH 38/67] Prevent errors from DownloadPrompter
 
-Removes an error in the log output from the DownloadPrompter.
+Let embedders disable toolkit download prompts while keeping the secure default.
+
+Sailfish supplies download lifecycle UI outside Gecko browser chrome.
 ---
- toolkit/components/downloads/DownloadUIHelper.sys.mjs | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ toolkit/components/downloads/DownloadUIHelper.sys.mjs | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
 
 diff --git a/toolkit/components/downloads/DownloadUIHelper.sys.mjs b/toolkit/components/downloads/DownloadUIHelper.sys.mjs
-index 9a964fad65ac..6cc79848ec3a 100644
+index d4b903d38394e..446c85ea3bc23 100644
 --- a/toolkit/components/downloads/DownloadUIHelper.sys.mjs
 +++ b/toolkit/components/downloads/DownloadUIHelper.sys.mjs
-@@ -127,7 +127,7 @@ export var DownloadUIHelper = {
+@@ -123,7 +123,12 @@ export var DownloadUIHelper = {
   *        attach prompts to the most recently active window.
   */
  var DownloadPrompter = function (aParent) {
 -  this._prompter = Services.ww.getNewPrompter(aParent);
-+  this._prompter = null;
++  this._prompter = Services.prefs.getBoolPref(
++    "browser.download.useToolkitPrompter",
++    true
++  )
++    ? Services.ww.getNewPrompter(aParent)
++    : null;
  };
  
  DownloadPrompter.prototype = {
--- 
-2.51.0
-

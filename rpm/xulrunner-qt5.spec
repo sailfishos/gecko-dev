@@ -78,7 +78,6 @@ Patch30:     0030-Make-PresShell-SetIsActive-public.patch
 Patch31:     0031-Drop-swap_buffers_with_damage-extension-support.-Fix.patch
 Patch32:     0032-Add-patch-to-fix-32-bit-builds.patch
 Patch33:     0033-Fix-gfxPlatform-AsyncPanZoomEnabled-for-embedlite.-J.patch
-Patch34:     0034-Supress-URLQueryStrippingListService.jsm-error.patch
 Patch35:     0035-Allow-file-scheme-when-loading-OpenSearch-providers.patch
 Patch36:     0036-Add-and-adjust-embedlite-static-prefs.patch
 Patch37:     0037-Disable-SessionStore-functionality.patch

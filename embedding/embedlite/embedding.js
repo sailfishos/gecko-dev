@@ -134,6 +134,9 @@ pref("browser.cache.disk.smart_size.first_run", true);
 pref("browser.cache.memory.capacity", 1024); // kilobytes
 pref("browser.cache.memory_limit", 5120); // 5 MB
 
+// Sailfish handles download confirmation and lifecycle UI outside Gecko.
+pref("browser.download.useToolkitPrompter", false);
+
 /* image cache prefs */
 pref("image.cache.size", 1048576); // bytes
 
@@ -164,6 +167,9 @@ pref("network.protocol-handler.expose.geo", false);
 // web-handler stubs such as Gmail for mailto:, since they bypass Sailfish
 // content-action handling.
 pref("gecko.handlerService.disableDefaultProtocolHandlers", true);
+// Sailfish provides the external-protocol confirmation through its platform
+// content-action UI rather than Gecko's browser-chrome permission dialog.
+pref("security.external_protocol_requires_permission", false);
 
 /* disable some protocol warnings */
 pref("network.protocol-handler.warn-external.tel", false);

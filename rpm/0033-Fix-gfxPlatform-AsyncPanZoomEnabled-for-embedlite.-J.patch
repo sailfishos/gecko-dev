@@ -13,10 +13,10 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 34e2d046545b..a7a63d728ace 100644
+index 0c1b8c592fb3a..578a0445d7970 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -3622,7 +3622,7 @@ bool gfxPlatform::UseDesktopZoomingScrollbars() {
+@@ -3820,7 +3820,7 @@ bool gfxPlatform::UseDesktopZoomingScrollbars() {
  
  /*static*/
  bool gfxPlatform::AsyncPanZoomEnabled() {
@@ -25,6 +25,3 @@ index 34e2d046545b..a7a63d728ace 100644
    // For XUL applications (everything but Firefox on Android)
    // we only want to use APZ when E10S is enabled. If
    // we ever get input events off the main thread we can consider relaxing
--- 
-2.51.0
-

@@ -1,30 +1,72 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: David Llewellyn-Jones <david@flypig.co.uk>
-Date: Wed, 24 Jan 2024 00:07:23 +0000
+Date: Wed, 5 Aug 2026 11:26:40 +0200
 Subject: [PATCH 37/67] Disable SessionStore functionality
 
-Sailfish Browser performs the functionality in other ways.
----
- .../SessionStoreFunctions.sys.mjs             | 31 ++-----------------
- 1 file changed, 2 insertions(+), 29 deletions(-)
+Sailfish Browser performs session persistence outside Firefox SessionStore.
 
-diff --git a/toolkit/components/sessionstore/SessionStoreFunctions.sys.mjs b/toolkit/components/sessionstore/SessionStoreFunctions.sys.mjs
-index f42c37126467..1858c239b663 100644
---- a/toolkit/components/sessionstore/SessionStoreFunctions.sys.mjs
-+++ b/toolkit/components/sessionstore/SessionStoreFunctions.sys.mjs
-@@ -2,8 +2,6 @@
+Keep the ESR140 XPCOM adapter contract but make both update methods no-ops.
+---
+ .../SessionStoreFunctions.sys.mjs             | 84 +------------------
+ 1 file changed, 2 insertions(+), 82 deletions(-)
+
+diff --git a/browser/components/sessionstore/SessionStoreFunctions.sys.mjs b/browser/components/sessionstore/SessionStoreFunctions.sys.mjs
+index 978c1a79cd0fe..245612767e1b7 100644
+--- a/browser/components/sessionstore/SessionStoreFunctions.sys.mjs
++++ b/browser/components/sessionstore/SessionStoreFunctions.sys.mjs
+@@ -2,92 +2,12 @@
   * This Source Code Form is subject to the terms of the Mozilla Public
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 -import { SessionStore } from "resource:///modules/sessionstore/SessionStore.sys.mjs";
+ 
+ export class SessionStoreFunctions {
+-  UpdateSessionStore(
+-    aBrowser,
+-    aBrowsingContext,
+-    aPermanentKey,
+-    aEpoch,
+-    aCollectSHistory,
+-    aData
+-  ) {
+-    return SessionStoreFuncInternal.updateSessionStore(
+-      aBrowser,
+-      aBrowsingContext,
+-      aPermanentKey,
+-      aEpoch,
+-      aCollectSHistory,
+-      aData
+-    );
+-  }
 -
- export function UpdateSessionStore(
-   aBrowser,
-   aBrowsingContext,
-@@ -47,26 +45,7 @@ var SessionStoreFuncInternal = {
-     aCollectSHistory,
-     aData
-   ) {
+-  UpdateSessionStoreForStorage(
+-    aBrowser,
+-    aBrowsingContext,
+-    aPermanentKey,
+-    aEpoch,
+-    aData
+-  ) {
+-    return SessionStoreFuncInternal.updateSessionStoreForStorage(
+-      aBrowser,
+-      aBrowsingContext,
+-      aPermanentKey,
+-      aEpoch,
+-      aData
+-    );
+-  }
++  UpdateSessionStore() {}
++  UpdateSessionStoreForStorage() {}
+ }
+ 
+-var SessionStoreFuncInternal = {
+-  updateSessionStore: function SSF_updateSessionStore(
+-    aBrowser,
+-    aBrowsingContext,
+-    aPermanentKey,
+-    aEpoch,
+-    aCollectSHistory,
+-    aData
+-  ) {
 -    let { formdata, scroll } = aData;
 -
 -    if (formdata) {
@@ -45,14 +87,15 @@ index f42c37126467..1858c239b663 100644
 -        sHistoryNeeded: aCollectSHistory,
 -      }
 -    );
-+    // Not implemented
-   },
- 
-   updateSessionStoreForStorage: function SSF_updateSessionStoreForStorage(
-@@ -76,12 +55,6 @@ var SessionStoreFuncInternal = {
-     aEpoch,
-     aData
-   ) {
+-  },
+-
+-  updateSessionStoreForStorage: function SSF_updateSessionStoreForStorage(
+-    aBrowser,
+-    aBrowsingContext,
+-    aPermanentKey,
+-    aEpoch,
+-    aData
+-  ) {
 -    SessionStore.updateSessionStoreFromTablistener(
 -      aBrowser,
 -      aBrowsingContext,
@@ -60,9 +103,9 @@ index f42c37126467..1858c239b663 100644
 -      { data: { storage: aData }, epoch: aEpoch },
 -      true
 -    );
-+    // Not implemented
-   },
- };
--- 
-2.51.0
-
+-  },
+-};
+-
+ SessionStoreFunctions.prototype.QueryInterface = ChromeUtils.generateQI([
+   "nsISessionStoreFunctions",
+ ]);
