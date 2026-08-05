@@ -1,44 +1,38 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Sat, 16 May 2026 10:20:00 +0200
-Subject: [PATCH 75/75] Load EmbedLite search engines from settings
+Date: Wed, 5 Aug 2026 17:49:59 +0200
+Subject: Load EmbedLite search engines from settings
 
-EmbedLite ships search engine definitions as normal profile search settings,
-without Firefox's WebExtension based search engine packages.  The ESR115
-SearchService waits for AddonManager startup before loading engines from the
-selector, which leaves EmbedLite address-bar searches without engines.
-
-For the EmbedLite application ID, load engines directly from the persisted
-settings data and tolerate the lack of a WebExtension default engine entry.
-
+Skip Firefox's selector configuration for EmbedLite and restore persisted
+profile engines directly. Tolerate a missing application default while the
+EmbedLite search component populates a fresh profile.
 ---
- toolkit/components/search/SearchService.sys.mjs | 23 +++++++++++++++----
+ .../components/search/SearchService.sys.mjs   | 23 +++++++++++++++----
  1 file changed, 18 insertions(+), 5 deletions(-)
 
 diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
-index afd0fff703f8..2a9ed9a8f1ca 100644
+index aca95f0acb025..101ec8551c90f 100644
 --- a/toolkit/components/search/SearchService.sys.mjs
 +++ b/toolkit/components/search/SearchService.sys.mjs
-@@ -1507,11 +1507,13 @@ export class SearchService {
-    *   The engine that is default.
-    */
-   #appDefaultEngine(privateMode = false) {
--    let defaultEngine = this.#getEngineByWebExtensionDetails(
-+    let defaultDetails =
-       privateMode && this.#searchPrivateDefault
-         ? this.#searchPrivateDefault
--        : this._searchDefault
--    );
-+        : this._searchDefault;
-+    let defaultEngine = defaultDetails
-+      ? this.#getEngineByWebExtensionDetails(defaultDetails)
-+      : null;
+@@ -1456,9 +1456,12 @@ export class SearchService {
+       this.#maybeThrowErrorInTest("LoadSettingsAddonManager");
+       const settings = await this._settings.get();
  
-     if (Services.policies?.status == Ci.nsIEnterprisePolicies.ACTIVE) {
-       let activePolicies = Services.policies.getActivePolicies();
-@@ -1519,7 +1521,10 @@ export class SearchService {
-         if (activePolicies.SearchEngines.Default) {
-           return this.#getEngineByName(activePolicies.SearchEngines.Default);
+-      initSection = "FetchEngines";
+-      this.#maybeThrowErrorInTest(initSection);
+-      const refinedConfig = await this._fetchEngineSelectorEngines();
++      let refinedConfig;
++      if (Services.appinfo.ID != "embedliteBrowser@embed.mozilla.org") {
++        initSection = "FetchEngines";
++        this.#maybeThrowErrorInTest(initSection);
++        refinedConfig = await this._fetchEngineSelectorEngines();
++      }
+ 
+       initSection = "LoadEngines";
+       this.#maybeThrowErrorInTest(initSection);
+@@ -1704,7 +1707,10 @@ export class SearchService {
+             return policyEngine;
+           }
          }
 -        if (activePolicies.SearchEngines.Remove?.includes(defaultEngine.name)) {
 +        if (
@@ -48,15 +42,14 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
            defaultEngine = null;
          }
        }
-@@ -1551,12 +1556,20 @@ export class SearchService {
-    *   An object representing the search engine settings.
+@@ -1738,13 +1744,20 @@ export class SearchService {
+    *   The refined search configuration for this user.
     */
-   async #loadEngines(settings) {
+   async #loadEngines(settings, refinedConfig) {
 +    lazy.logConsole.debug("#loadEngines: start");
-+    if (Services.appinfo.ID === "embedliteBrowser@embed.mozilla.org") {
-+      this.#loadEnginesFromSettings(settings?.engines);
-+      this._settings.migrateEngineIds(settings || {});
-+      this.#loadEnginesMetadataFromSettings(settings?.engines);
++    if (Services.appinfo.ID == "embedliteBrowser@embed.mozilla.org") {
++      await this.#loadEnginesFromSettings(settings);
++      this._settings.migrateEngineIds(settings);
 +      lazy.logConsole.debug("#loadEngines: done");
 +      return;
 +    }
@@ -68,5 +61,6 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
      let prevAppDefaultEngineId = prevMetaData?.appDefaultEngineId;
  
 -    lazy.logConsole.debug("#loadEngines: start");
-     let { engines, privateDefault } = await this._fetchEngineSelectorEngines();
-     this.#setDefaultAndOrdersFromSelector(engines, privateDefault);
+     this.#setDefaultFromSelector(refinedConfig);
+ 
+     this.#loadEnginesFromConfig(refinedConfig.engines, settings);
