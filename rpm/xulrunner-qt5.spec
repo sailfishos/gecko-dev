@@ -101,8 +101,6 @@ Patch59:     0059-Start-using-user-agent-builder.-JB-52068.patch
 Patch60:     0060-Disallow-page-zooming-if-the-meta-viewport-scale-is-.patch
 Patch61:     0061-Add-preference-to-bypass-CORS-on-nsContentSecurityMa.patch
 Patch62:     0062-Get-12-24h-timeformat-setting-from-dconf.-Fixes-JB-5.patch
-Patch63:     0063-Bug-1710603-Allow-stat-on-from-socket-process-for-gl.patch
-Patch64:     0064-Update-content-signature-root-hash.-JB-63099.patch
 Patch65:     0065-Bug-1773259-Work-around-build-failure-with-newer-cbi.patch
 Patch66:     0066-Bug-1880013-Update-glslopt-to-0.1.10-for-C-20-fix.-r.patch
 Patch67:     0067-Bug-1913645-Update-glslopt-to-0.1.11-to-fix-aarch64-.patch
