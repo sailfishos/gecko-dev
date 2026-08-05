@@ -38,6 +38,7 @@
 #define MOZ_pagehide u"pagehide"
 #define MOZ_MozScrolledAreaChanged u"MozScrolledAreaChanged"
 #define MOZ_DOMTitleChanged u"DOMTitleChanged"
+#define MOZ_DOMWindowClose u"DOMWindowClose"
 
 using namespace mozilla::dom;
 
@@ -168,13 +169,6 @@ NS_IMETHODIMP WebBrowserChrome::GetChromeFlags(uint32_t* aChromeFlags)
 NS_IMETHODIMP WebBrowserChrome::SetChromeFlags(uint32_t aChromeFlags)
 {
   mChromeFlags = aChromeFlags;
-  return NS_OK;
-}
-
-NS_IMETHODIMP WebBrowserChrome::DestroyBrowserWindow()
-{
-  LOGT();
-  mListener->OnWindowCloseRequested();
   return NS_OK;
 }
 
@@ -404,6 +398,12 @@ WebBrowserChrome::HandleEvent(Event *aEvent)
   }
 
   LOGT("Event:'%s'", NS_ConvertUTF16toUTF8(type).get());
+
+  if (type.EqualsLiteral("DOMWindowClose")) {
+    mListener->OnWindowCloseRequested();
+    aEvent->PreventDefault();
+    return NS_OK;
+  }
 
   nsCOMPtr<mozIDOMWindowProxy> docWin = do_GetInterface(mWebBrowser);
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(mWebBrowser);
@@ -656,6 +656,7 @@ void WebBrowserChrome::SetEventHandler()
   target->AddEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
   target->AddEventListener(nsLiteralString(MOZ_pagehide), this, PR_FALSE);
   target->AddEventListener(nsLiteralString(MOZ_DOMTitleChanged), this, PR_FALSE);
+  target->AddEventListener(nsLiteralString(MOZ_DOMWindowClose), this, PR_FALSE);
 }
 
 void WebBrowserChrome::RemoveEventHandler()
@@ -676,6 +677,7 @@ void WebBrowserChrome::RemoveEventHandler()
   target->RemoveEventListener(nsLiteralString(MOZ_scroll), this, PR_FALSE);
   target->RemoveEventListener(nsLiteralString(MOZ_MozAfterPaint), this, PR_FALSE);
   target->RemoveEventListener(nsLiteralString(MOZ_DOMTitleChanged), this, PR_FALSE);
+  target->RemoveEventListener(nsLiteralString(MOZ_DOMWindowClose), this, PR_FALSE);
 }
 
 void WebBrowserChrome::SetBrowserChildHelper(BrowserChildHelper* aHelper)

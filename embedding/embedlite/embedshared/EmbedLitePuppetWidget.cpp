@@ -110,10 +110,6 @@ EmbedLitePuppetWidget::GetNativeData(uint32_t aDataType)
 
   LOGT("t: %p, DataType: %i", this, aDataType);
   switch (aDataType) {
-    case NS_NATIVE_SHAREABLE_WINDOW: {
-      LOGW("aDataType: %i\n", aDataType);
-      return (void*)nullptr;
-    }
     case NS_NATIVE_OPENGL_CONTEXT:
       return nullptr;
     case NS_NATIVE_WINDOW:

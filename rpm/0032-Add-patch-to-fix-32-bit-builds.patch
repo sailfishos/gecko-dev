@@ -9,7 +9,7 @@ Patch taken from comment of Mozilla bug 1729459.
  1 file changed, 4 insertions(+)
 
 diff --git a/modules/fdlibm/src/math_private.h b/modules/fdlibm/src/math_private.h
-index f4373f27834a..52281240448d 100644
+index 45f7401dd6475..8ba44cb29ba2e 100644
 --- a/modules/fdlibm/src/math_private.h
 +++ b/modules/fdlibm/src/math_private.h
 @@ -30,7 +30,11 @@
@@ -24,6 +24,3 @@ index f4373f27834a..52281240448d 100644
  typedef __double_t  double_t;
  typedef float       __float_t;
  
--- 
-2.51.0
-

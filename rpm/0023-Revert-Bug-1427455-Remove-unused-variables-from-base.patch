@@ -12,7 +12,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  1 file changed, 3 insertions(+)
 
 diff --git a/config/baseconfig.mk b/config/baseconfig.mk
-index 48e0ce6663c2..ef4eaa82dd75 100644
+index 3b6221926d15f..04a394076e02b 100644
 --- a/config/baseconfig.mk
 +++ b/config/baseconfig.mk
 @@ -2,7 +2,10 @@
@@ -26,6 +26,3 @@ index 48e0ce6663c2..ef4eaa82dd75 100644
  ifeq (.,$(DEPTH))
  DIST = dist
  else
--- 
-2.51.0
-

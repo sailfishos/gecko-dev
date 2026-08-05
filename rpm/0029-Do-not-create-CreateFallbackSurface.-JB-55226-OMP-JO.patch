@@ -9,14 +9,46 @@ sha1 369ac65ffe5ef (https://bugzilla.mozilla.org/show_bug.cgi?id=1453501)
 
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 ---
- gfx/gl/GLContextProviderEGL.cpp | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ gfx/gl/GLContextProviderEGL.cpp | 27 +--------------------------
+ 1 file changed, 1 insertion(+), 26 deletions(-)
 
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index a685d94eea06..252e027b63f8 100644
+index c2de8d42e4529..7eebc249ecfcd 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
-@@ -376,7 +376,7 @@ GLContextEGL::GLContextEGL(const std::shared_ptr<EglDisplay> egl,
+@@ -151,31 +151,6 @@ static bool is_power_of_two(int v) {
+   return (v & (v - 1)) == 0;
+ }
+ 
+-static EGLSurface CreateFallbackSurface(EglDisplay& egl,
+-                                        const EGLConfig& config) {
+-  if (egl.IsExtensionSupported(EGLExtension::KHR_surfaceless_context)) {
+-    // We don't need a PBuffer surface in this case
+-    return EGL_NO_SURFACE;
+-  }
+-
+-  std::vector<EGLint> pbattrs;
+-  pbattrs.push_back(LOCAL_EGL_WIDTH);
+-  pbattrs.push_back(1);
+-  pbattrs.push_back(LOCAL_EGL_HEIGHT);
+-  pbattrs.push_back(1);
+-
+-  for (const auto& cur : kTerminationAttribs) {
+-    pbattrs.push_back(cur);
+-  }
+-
+-  EGLSurface surface = egl.fCreatePbufferSurface(config, pbattrs.data());
+-  if (!surface) {
+-    MOZ_CRASH("Failed to create fallback EGLSurface");
+-  }
+-
+-  return surface;
+-}
+-
+ static EGLSurface CreateSurfaceFromNativeWindow(
+     EglDisplay& egl, const EGLNativeWindowType window, const EGLConfig config) {
+   MOZ_ASSERT(window);
+@@ -373,7 +348,7 @@ GLContextEGL::GLContextEGL(const std::shared_ptr<EglDisplay> egl,
        mSurfaceConfig(surfaceConfig),
        mContext(context),
        mSurface(surface),
@@ -25,6 +57,3 @@ index a685d94eea06..252e027b63f8 100644
  #ifdef DEBUG
    printf_stderr("Initializing context %p surface %p on display %p\n", mContext,
                  mSurface, mEgl->mDisplay);
--- 
-2.51.0
-

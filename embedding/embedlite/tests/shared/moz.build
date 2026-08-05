@@ -10,6 +10,13 @@ EXPORTS += [
     'qmessagepump.h',
 ]
 
+GeneratedFile(
+    'moc_qmessagepump.cpp',
+    script='/build/qt/moc.py',
+    inputs=['qmessagepump.h'],
+    flags=[CONFIG['MOC']] + CONFIG['MOZ_QT_CFLAGS'],
+)
+
 SOURCES += [
     '!moc_qmessagepump.cpp',
     'qmessagepump.cpp',

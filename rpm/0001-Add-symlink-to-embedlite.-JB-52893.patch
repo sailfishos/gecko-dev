@@ -10,12 +10,9 @@ Subject: [PATCH 01/67] Add symlink to embedlite. JB#52893
 
 diff --git a/mobile/sailfishos b/mobile/sailfishos
 new file mode 120000
-index 000000000000..e5c6b32842fd
+index 0000000000000..e5c6b32842fd5
 --- /dev/null
 +++ b/mobile/sailfishos
 @@ -0,0 +1 @@
 +../../embedding/embedlite
 \ No newline at end of file
--- 
-2.51.0
-

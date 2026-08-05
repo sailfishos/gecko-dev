@@ -12,10 +12,10 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  1 file changed, 3 insertions(+)
 
 diff --git a/config/config.mk b/config/config.mk
-index 1cbdf01042d8..a72e7263f299 100644
+index b270dd9849a12..10dd9fb669a15 100644
 --- a/config/config.mk
 +++ b/config/config.mk
-@@ -245,6 +245,9 @@ endif
+@@ -247,6 +247,9 @@ endif
  #
  # Override defaults
  
@@ -25,6 +25,3 @@ index 1cbdf01042d8..a72e7263f299 100644
  DEPENDENCIES	= .md
  
  # Export to propagate to cl and submake for third-party code.
--- 
-2.51.0
-

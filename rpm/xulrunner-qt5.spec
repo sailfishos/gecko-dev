@@ -1,4 +1,4 @@
-%define greversion    115.37.0
+%define greversion    140.12.0
 %define milestone     %{greversion}
 
 %define embedlite_config merqtxulrunner
@@ -10,7 +10,7 @@
 %define system_ffi          1
 %define system_jpeg         1
 %define system_png          1
-%define system_icu          1
+%define system_icu          0
 %define system_zlib         1
 %define system_pixman       1
 %define system_libvpx       1
@@ -58,20 +58,12 @@ Patch2:     0002-Bring-back-Qt-layer.-JB-50505.patch
 Patch3:     0003-Fix-embedlite-building.-JB-50505.patch
 Patch4:     0004-Read-rustc-host-from-environment.-JB-53019-OMP-JOLLA.patch
 Patch5:     0005-Provide-checkbox-radio-renderer-for-Sailfish-OS.-Con.patch
-Patch6:     0006-Fix-GLContextProvider-defines.patch
 Patch7:     0007-Whitelist-sync-messages-of-EmbedLite.-JB-50505.patch
 Patch8:     0008-Cleanup-static-components-definitions.-JB-55835-OMP-.patch
 Patch9:     0009-Reduce-Rust-build-requirements.patch
-Patch10:     0010-Patch-glslopt-to-build-on-arm.patch
-Patch11:     0011-Disable-MOC-code-generation-for-message_pump_qt.patch
 Patch12:     0012-Backport-Embed-MessageLoop-contructor-back-sha1-eb2d.patch
 Patch13:     0013-Allow-compositor-specializations-to-override-the-com.patch
-Patch14:     0014-Revert-Bug-1676576-Remove-unused-functions-of-Compos.patch
-Patch15:     0015-Hackish-fix-for-preferences-usage-in-Parent-process-.patch
-Patch16:     0016-Revert-Bug-1706051-Remove-some-IPC-messages-that-are.patch
-Patch17:     0017-Revert-Bug-1494175-Remove-unimplemented-nsIWebBrowse.patch
 Patch18:     0018-Fix-embedlite-building.-JB-50505.patch
-Patch19:     0019-Revert-Bug-1567888-remove-unneeded-QT-related-rules-.patch
 Patch20:     0020-Allow-gen_last_modified.py-to-complete.patch
 Patch21:     0021-Force-to-build-mozglue-and-xpcomglue-static-librarie.patch
 Patch22:     0022-Revert-Bug-445128-Stop-putting-the-version-number-in.patch
@@ -142,9 +134,9 @@ Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch
 Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
 Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
 
-BuildRequires:  rust >= 1.66.0
-BuildRequires:  rust-std-static
-BuildRequires:  cargo >= 1.66.0
+BuildRequires:  rust >= 1.82.0
+BuildRequires:  rust-std-static >= 1.82.0
+BuildRequires:  cargo >= 1.82.0
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Widgets)
@@ -156,10 +148,10 @@ BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(nspr) >= 4.32.0
 %endif
 %if %{system_nss}
-BuildRequires:  pkgconfig(nss) >= 3.90
+BuildRequires:  pkgconfig(nss) >= 3.112
 %endif
 %if %{system_sqlite}
-BuildRequires:  pkgconfig(sqlite3) >= 3.41.2
+BuildRequires:  pkgconfig(sqlite3) >= 3.49.2
 %endif
 BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(libproxy-1.0)
@@ -177,52 +169,57 @@ BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
 BuildRequires:  automake
-BuildRequires:  python3-base
+BuildRequires:  python3-base >= 3.8
 BuildRequires:  python3-curses
 BuildRequires:  python3-sqlite
 BuildRequires:  python3-devel
 BuildRequires:  zip
 BuildRequires:  unzip
 BuildRequires:  qt5-plugin-platform-minimal
-BuildRequires:  cbindgen >= 0.24.3
+BuildRequires:  cbindgen >= 0.27.0
 BuildRequires:  llvm
 BuildRequires:  clang-devel
 BuildRequires:  libatomic
 
 %if %{system_icu}
-BuildRequires:  libicu >= 73.1
-BuildRequires:  libicu-devel >= 73.1
+BuildRequires:  libicu >= 76.1
+BuildRequires:  libicu-devel >= 76.1
 %endif
-# Required by bundled freetype bzip2 support; ESR115 has no system-bz2 toggle.
+# Required by bundled freetype bzip2 support; Gecko has no system-bz2 toggle.
 BuildRequires:  bzip2-devel
 %if %{system_zlib}
-BuildRequires:  zlib
+BuildRequires:  pkgconfig(zlib) >= 1.2.3
 %endif
 %if %{system_png}
-BuildRequires:  libpng >= 1.6.35
+BuildRequires:  libpng >= 1.6.45
 %endif
 %if %{system_jpeg}
 BuildRequires:  libjpeg-turbo-devel
 %endif
 %ifarch i586 i486 i386 x86_64
-BuildRequires:  yasm
 BuildRequires:  nasm >= 2.14
 %endif
 BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
+%if %{system_nss}
+Requires: nss >= 3.112
+%endif
+%if %{system_sqlite}
+Requires: sqlite-libs >= 3.49.2
+%endif
 %if %{system_ffi}
-BuildRequires:  libffi-devel
+BuildRequires:  libffi-devel > 3.0.9
 %endif
 %if %{system_pixman}
-BuildRequires:  pkgconfig(pixman-1)
+BuildRequires:  pkgconfig(pixman-1) >= 0.40.0
 %endif
 %if %{system_libvpx}
-BuildRequires:  pkgconfig(vpx)
+BuildRequires:  pkgconfig(vpx) >= 1.10.0
 %endif
 %if %{system_libwebp}
-BuildRequires:  pkgconfig(libwebp)
-BuildRequires:  pkgconfig(libwebpdemux)
+BuildRequires:  pkgconfig(libwebp) >= 1.0.2
+BuildRequires:  pkgconfig(libwebpdemux) >= 1.0.2
 %endif
 
 %description
@@ -234,7 +231,7 @@ Conflicts: xulrunner-devel
 Summary: Headers for xulrunner
 # Auto dependency is not picking this up.
 %if %{system_nss}
-Requires: pkgconfig(nss) >= 3.90
+Requires: pkgconfig(nss) >= 3.112
 %endif
 
 %description devel
@@ -278,7 +275,7 @@ sed -i \
     -e '/^ac_add_options --with-system-nss$/d' \
     "%BUILD_DIR"/mozconfig
 
-# ESR115 libxul debug sections are too large for the SailfishOS aarch64
+# Gecko libxul debug sections are too large for the SailfishOS aarch64
 # debugedit/strip path. Build the packaged engine without C/C++ debug symbols;
 # Rust debug info is already disabled in the patch stack.
 sed -i \
@@ -366,9 +363,12 @@ ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status
 # Make stdc++ headers available on a fresh path to work around include_next bug JB#55058
 if [ ! -L "%BUILD_DIR"/include ] ; then ln -s /usr/include/c++/*/ "%BUILD_DIR"/include; fi
 
-# Expose the elf32-i386 libclang.so.15 for use inside the arm target, JB#55042
+# Expose the outer SDK's elf32-i386 libclang for use inside the arm target,
+# JB#55042. Do not tie the lookup to a particular LLVM SONAME.
 mkdir -p "%BUILD_DIR"/lib
-SBOX_DISABLE_MAPPING=1 cp /usr/lib/libclang.so.15 "%BUILD_DIR"/lib/
+LIBCLANG_SO="$(SBOX_DISABLE_MAPPING=1 sh -c 'ls -1 /usr/lib/libclang.so.*' | sort -V | tail -n1)"
+test -n "$LIBCLANG_SO"
+SBOX_DISABLE_MAPPING=1 cp "$LIBCLANG_SO" "%BUILD_DIR"/lib/
 echo "export MOZ_LIBCLANG_BINDGEN_PATH='"%BUILD_DIR"/lib/'" >> "$MOZCONFIG"
 
 %ifarch %arm64
@@ -447,7 +447,7 @@ echo "%{milestone}" > "$PWD/config/milestone.txt"
 %endif
 
 %if %{system_pixman}
-  echo "ac_add_options --enable-system-pixman" >> "${MOZCONFIG}"
+  echo "ac_add_options --with-system-pixman" >> "${MOZCONFIG}"
 %endif
 
 %if %{system_libvpx}

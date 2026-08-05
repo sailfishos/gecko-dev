@@ -21,7 +21,7 @@ needs to be parsed by the moc tool during the QtMozEmbed build.
  1 file changed, 4 insertions(+), 2 deletions(-)
 
 diff --git a/mfbt/MaybeStorageBase.h b/mfbt/MaybeStorageBase.h
-index 2732d78d0539..6a091a972724 100644
+index 9469d427eb330..ed9e174a85fe0 100644
 --- a/mfbt/MaybeStorageBase.h
 +++ b/mfbt/MaybeStorageBase.h
 @@ -13,7 +13,8 @@
@@ -43,6 +43,3 @@ index 2732d78d0539..6a091a972724 100644
 +}  // namespace mozilla
  
  #endif
--- 
-2.51.0
-

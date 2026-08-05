@@ -10,7 +10,7 @@ Subject: [PATCH 08/67] Cleanup static components definitions. JB#55835
  1 file changed, 14 deletions(-)
 
 diff --git a/toolkit/xre/components.conf b/toolkit/xre/components.conf
-index b59964e79445..634743e436ee 100644
+index 41fbdb00b9934..9858888f43c5a 100644
 --- a/toolkit/xre/components.conf
 +++ b/toolkit/xre/components.conf
 @@ -10,20 +10,6 @@ else:
@@ -34,6 +34,3 @@ index b59964e79445..634743e436ee 100644
      {
          'cid': '{471f4944-1dd2-11b2-87ac-90be0a51d609}',
          'contract_ids': ['@mozilla.org/embedcomp/rangefind;1'],
--- 
-2.51.0
-

@@ -21,7 +21,8 @@ public:
   static EmbedLiteAppProcessChild* GetSingleton();
 
   bool Init(base::ProcessId aParentPid,
-            mozilla::ipc::UntypedEndpoint&& aEndpoint);
+            mozilla::ipc::UntypedEndpoint&& aEndpoint,
+            const char* aParentBuildID);
   void InitXPCOM();
 
   struct AppInfo

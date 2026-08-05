@@ -8,6 +8,7 @@
 
 #include "mozilla/ipc/ProcessChild.h"
 #include "nsString.h"
+#include "nsXREDirProvider.h"
 //#include "EmbedLiteAppProcessChild.h"
 
 #undef _MOZ_LOG
@@ -25,18 +26,17 @@ class EmbedLiteAppProcessChild;
 class EmbedLiteContentProcess : public mozilla::ipc::ProcessChild
 {
 public:
-    EmbedLiteContentProcess(ProcessId aParentHandle,
+    EmbedLiteContentProcess(IPC::Channel::ChannelHandle aClientChannel,
+                            ProcessId aParentHandle,
                             const nsID& aMessageChannelId);
     ~EmbedLiteContentProcess();
 
     virtual bool Init(int aArgc, char* aArgv[]) override;
     virtual void CleanUp() override;
 
-    void SetAppDir(const nsACString& aPath);
-
 private:
     EmbedLiteAppProcessChild* mContent;
-    nsCString mAppDir;
+    nsXREDirProvider mDirProvider;
 
     DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteContentProcess);
 };

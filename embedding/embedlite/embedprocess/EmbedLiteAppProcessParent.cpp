@@ -21,6 +21,9 @@
 #include "nsXPCOMPrivate.h"
 #include "GeckoLoader.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
+#include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/ipc/ProcessUtils.h"
+#include "mozilla/dom/RemoteType.h"
 #include "EmbedLiteApp.h"
 #include "GeckoProfiler.h"
 #include "EmbedLiteAppProcessParent.h"
@@ -120,16 +123,26 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   NS_ASSERTION(false, "Fix IToplevelProtocol::SetTransport(mSubprocess->GetChannel())");
   //IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
 
-  // set gGREBinPath
-  gGREBinPath = ToNewUnicode(nsDependentCString(getenv("GRE_HOME")));
+  // NS_InitXPCOM sets this to the current GRE directory. The child launcher
+  // uses it to locate plugin-container.
+  MOZ_RELEASE_ASSERT(gGREBinPath);
 
   if (!CommandLine::IsInitialized()) {
     CommandLine::Init(0, nullptr);
   }
 
-  std::vector<std::string> extraArgs;
-  extraArgs.push_back("-embedlite");
-  mSubprocess->LaunchAndWaitForProcessHandle(extraArgs);
+  geckoargs::ChildProcessArgs extraArgs;
+  geckoargs::sEmbedLite.Put(true, extraArgs);
+
+  SharedPreferenceSerializer prefSerializer;
+  MOZ_RELEASE_ASSERT(prefSerializer.SerializeToSharedMemory(
+      GeckoProcessType_Content, DEFAULT_REMOTE_TYPE));
+  prefSerializer.AddSharedPrefCmdLineArgs(*mSubprocess, extraArgs);
+  ExportSharedJSInit(*mSubprocess, extraArgs);
+  ProcessChild::AddPlatformBuildID(extraArgs);
+
+  MOZ_RELEASE_ASSERT(
+      mSubprocess->LaunchAndWaitForProcessHandle(std::move(extraArgs)));
   bool opened = mSubprocess->TakeInitialEndpoint().Bind(this);
   MOZ_RELEASE_ASSERT(opened);
 }

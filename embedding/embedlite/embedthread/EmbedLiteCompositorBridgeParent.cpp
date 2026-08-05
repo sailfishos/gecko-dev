@@ -11,6 +11,7 @@
 #include "EmbedLiteWindowParent.h"
 #include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
+#include "mozilla/SyncRunnable.h"
 
 #include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
@@ -265,7 +266,13 @@ void
 EmbedLiteCompositorBridgeParent::SuspendRendering()
 {
   LOGT("EmbedLiteCompositorBridgeParent::SuspendRendering");
-  CompositorBridgeParent::SchedulePauseOnCompositorThread();
+  if (nsIThread* thread = CompositorThread()) {
+    MOZ_ALWAYS_SUCCEEDS(SyncRunnable::DispatchToThread(
+      thread,
+      NewRunnableMethod("EmbedLiteCompositorBridgeParent::PauseComposition",
+                        this,
+                        &EmbedLiteCompositorBridgeParent::PauseComposition)));
+  }
 }
 
 void
@@ -273,11 +280,18 @@ EmbedLiteCompositorBridgeParent::ResumeRendering()
 {
   LOGT("EmbedLiteCompositorBridgeParent::ResumeRendering");
   EnsureSurfaceSizeFromWindow();
-  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0) {
-    CompositorBridgeParent::ScheduleResumeOnCompositorThread(mSurfaceOrigin.x,
-                                                             mSurfaceOrigin.y,
-                                                             mEGLSurfaceSize.width,
-                                                             mEGLSurfaceSize.height);
+  if (mEGLSurfaceSize.width > 0 && mEGLSurfaceSize.height > 0 &&
+      CompositorThread()) {
+    MOZ_ALWAYS_SUCCEEDS(SyncRunnable::DispatchToThread(
+      CompositorThread(),
+      NewRunnableMethod<int, int, int, int>(
+        "EmbedLiteCompositorBridgeParent::ResumeCompositionAndResize",
+        this,
+        &EmbedLiteCompositorBridgeParent::ResumeCompositionAndResize,
+        mSurfaceOrigin.x,
+        mSurfaceOrigin.y,
+        mEGLSurfaceSize.width,
+        mEGLSurfaceSize.height)));
     CompositorBridgeParent::ScheduleRenderOnCompositorThread(wr::RenderReasons::NONE);
   }
   ScheduleForcedRenderOnCompositorThread(wr::RenderReasons::WIDGET);

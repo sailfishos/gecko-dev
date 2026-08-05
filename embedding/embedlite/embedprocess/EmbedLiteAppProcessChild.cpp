@@ -64,7 +64,8 @@ EmbedLiteAppProcessChild::~EmbedLiteAppProcessChild()
 
 bool
 EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
-                               mozilla::ipc::UntypedEndpoint&& aEndpoint)
+                               mozilla::ipc::UntypedEndpoint&& aEndpoint,
+                               const char* aParentBuildID)
 {
   (void)aParentPid;
 
@@ -111,6 +112,12 @@ EmbedLiteAppProcessChild::Init(base::ProcessId aParentPid,
 
   if (!aEndpoint.Bind(this)) {
     return false;
+  }
+
+  GetIPCChannel()->SetAbortOnError(true);
+  MessageChannel* channel = GetIPCChannel();
+  if (channel && !channel->SendBuildIDsMatchMessage(aParentBuildID)) {
+    ProcessChild::QuickExit();
   }
 
   return true;
