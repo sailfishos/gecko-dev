@@ -9,7 +9,7 @@ Subject: [PATCH 53/67] Force use of mobile video controls. JB#55484
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/toolkit/content/widgets/videocontrols.js b/toolkit/content/widgets/videocontrols.js
-index 46c73d52b851..7129eb6c86b7 100644
+index 570d5d4eba0fc..5b4e5df61fd03 100644
 --- a/toolkit/content/widgets/videocontrols.js
 +++ b/toolkit/content/widgets/videocontrols.js
 @@ -19,7 +19,7 @@ this.VideoControlsWidget = class {
@@ -21,7 +21,7 @@ index 46c73d52b851..7129eb6c86b7 100644
    }
  
    /*
-@@ -2583,7 +2583,7 @@ this.VideoControlsImplWidget = class {
+@@ -2531,7 +2531,7 @@ this.VideoControlsImplWidget = class {
            "pictureInPictureToggle"
          );
  
@@ -30,7 +30,7 @@ index 46c73d52b851..7129eb6c86b7 100644
          if (isMobile) {
            this.controlsContainer.classList.add("mobile");
          }
-@@ -3089,7 +3089,7 @@ this.NoControlsMobileImplWidget = class {
+@@ -3032,7 +3032,7 @@ this.NoControlsMobileImplWidget = class {
          this.noControlsOverlay =
            this.shadowRoot.getElementById("controlsContainer");
  
@@ -39,6 +39,3 @@ index 46c73d52b851..7129eb6c86b7 100644
          if (isMobile) {
            this.controlsContainer.classList.add("mobile");
          }
--- 
-2.51.0
-
