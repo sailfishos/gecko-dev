@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 16:28:40 +0200
+Subject: [sailfishos][build] Avoid QEMU Python fork pools
+
+ARM cross-builds run the target Python interpreter through QEMU. Its
+fork-based GYP and backend pools can leave dead workers and wait forever,
+so provide an opt-in threaded and serial fallback for config.status.
+---
+ python/mozbuild/mozbuild/config_status.py   |  6 ++++-
+ python/mozbuild/mozbuild/frontend/reader.py | 26 ++++++++++++---------
+ 2 files changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/python/mozbuild/mozbuild/config_status.py b/python/mozbuild/mozbuild/config_status.py
+index 07bc0f8d4941c..c9721f05457aa 100644
+--- a/python/mozbuild/mozbuild/config_status.py
++++ b/python/mozbuild/mozbuild/config_status.py
+@@ -193,7 +193,11 @@ def config_status(
+     # `definitions` objects are unfortunately not picklable, which is a
+     # requirement for "spawn" method. It's fine under "fork" method. This
+     # basically excludes Windows from our optimization, we can live with it.
+-    if len(selected_backends) > 1 and get_start_method() == "fork":
++    if (
++        len(selected_backends) > 1
++        and get_start_method() == "fork"
++        and not os.environ.get("MOZBUILD_NO_FORK")
++    ):
+         # See https://github.com/python/cpython/commit/39889864c09741909da4ec489459d0197ea8f1fc
+         # For why we cap the process count. There's also an overhead to setup
+         # new processes, and not that many backends anyway.
+diff --git a/python/mozbuild/mozbuild/frontend/reader.py b/python/mozbuild/mozbuild/frontend/reader.py
+index 9f6292cb909de..5ba70d25d54d6 100644
+--- a/python/mozbuild/mozbuild/frontend/reader.py
++++ b/python/mozbuild/mozbuild/frontend/reader.py
+@@ -27,6 +27,7 @@ import time
+ import traceback
+ import types
+ from collections import OrderedDict, defaultdict
++from concurrent.futures import ThreadPoolExecutor
+ from concurrent.futures.process import ProcessPoolExecutor
+ from io import StringIO
+ from itertools import chain
+@@ -860,17 +861,20 @@ class BuildReader:
+             self.config.topsrcdir, ignore=ignores
+         )
+ 
+-        max_workers = cpu_count()
+-        if sys.platform.startswith("win"):
+-            # In python 3, on Windows, ProcessPoolExecutor uses
+-            # _winapi.WaitForMultipleObjects, which doesn't work on large
+-            # number of objects. It also has some automatic capping to avoid
+-            # _winapi.WaitForMultipleObjects being unhappy as a consequence,
+-            # but that capping is actually insufficient in python 3.7 and 3.8
+-            # (as well as inexistent in older versions). So we cap ourselves
+-            # to 60, see https://bugs.python.org/issue26903#msg365886.
+-            max_workers = min(max_workers, 60)
+-        self._gyp_worker_pool = ProcessPoolExecutor(max_workers=max_workers)
++        if os.environ.get("MOZBUILD_NO_FORK"):
++            self._gyp_worker_pool = ThreadPoolExecutor(max_workers=1)
++        else:
++            max_workers = cpu_count()
++            if sys.platform.startswith("win"):
++                # In python 3, on Windows, ProcessPoolExecutor uses
++                # _winapi.WaitForMultipleObjects, which doesn't work on large
++                # number of objects. It also has some automatic capping to avoid
++                # _winapi.WaitForMultipleObjects being unhappy as a consequence,
++                # but that capping is actually insufficient in python 3.7 and 3.8
++                # (as well as inexistent in older versions). So we cap ourselves
++                # to 60, see https://bugs.python.org/issue26903#msg365886.
++                max_workers = min(max_workers, 60)
++            self._gyp_worker_pool = ProcessPoolExecutor(max_workers=max_workers)
+         self._gyp_processors = []
+         self._execution_time = 0.0
+         self._file_count = 0
