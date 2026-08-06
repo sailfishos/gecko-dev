@@ -58,6 +58,7 @@ Patch2:     0002-Bring-back-Qt-layer.-JB-50505.patch
 Patch3:     0003-Fix-embedlite-building.-JB-50505.patch
 Patch4:     0004-Read-rustc-host-from-environment.-JB-53019-OMP-JOLLA.patch
 Patch5:     0005-Provide-checkbox-radio-renderer-for-Sailfish-OS.-Con.patch
+Patch6:     0006-Fix-GLContextProvider-defines.patch
 Patch7:     0007-Whitelist-sync-messages-of-EmbedLite.-JB-50505.patch
 Patch8:     0008-Cleanup-static-components-definitions.-JB-55835-OMP-.patch
 Patch9:     0009-Reduce-Rust-build-requirements.patch
@@ -121,6 +122,7 @@ Patch85:     0085-Support-Qt-EGL-display-on-Mesa.patch
 Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch
 Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
 Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
+Patch89:     0089-Correct-glslopt-vendor-checksum.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0
@@ -128,6 +130,7 @@ BuildRequires:  cargo >= 1.82.0
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Widgets)
+BuildRequires:  pkgconfig(Qt5PrintSupport)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(gobject-2.0)
