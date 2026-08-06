@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 12:52:11 +0200
+Subject: [sailfishos][build] Fix Qt and bindgen compilation
+
+Configure GLib for Qt builds so Linux gamepad sources receive the
+required include paths. Keep GTK D-Bus location providers out of Qt
+geolocation builds.
+
+Explicitly parse Gecko headers as GNU C++17 when bindgen does not use
+clang-cl. This keeps older libclang compatible with ESR140 headers.
+---
+ build/moz.configure/bindgen.configure | 2 ++
+ dom/geolocation/Geolocation.cpp       | 2 +-
+ toolkit/moz.configure                 | 6 ++++--
+ 3 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
+index d4808d070a5a2..822b6691c2350 100644
+--- a/build/moz.configure/bindgen.configure
++++ b/build/moz.configure/bindgen.configure
+@@ -369,6 +369,8 @@ def basic_bindgen_cflags(
+             # to exclude hidden symbols from the generated file.
+             "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
+         ]
++    else:
++        args.append("-std=gnu++17")
+ 
+     return args + (clang_flags or []) + (all_arm_flags or [])
+ 
+diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
+index 2c71936c99333..eeabfaa165391 100644
+--- a/dom/geolocation/Geolocation.cpp
++++ b/dom/geolocation/Geolocation.cpp
+@@ -49,7 +49,7 @@ class nsIPrincipal;
+ #  include "AndroidLocationProvider.h"
+ #endif
+ 
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_WIDGET_GTK) && defined(MOZ_ENABLE_DBUS)
+ #  include "mozilla/WidgetUtilsGtk.h"
+ #  include "GeoclueLocationProvider.h"
+ #  include "PortalLocationProvider.h"
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index 720b1357d99d3..ac0420103cb11 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -3624,13 +3624,15 @@ with only_when(toolkit_gtk):
+     set_define("GDK_VERSION_MIN_REQUIRED", "GDK_VERSION_3_14")
+     set_define("GDK_VERSION_MAX_ALLOWED", "GDK_VERSION_3_14")
+ 
++    set_define("MOZ_ACCESSIBILITY_ATK", True, when=accessibility)
++
++
++with only_when(toolkit_gtk | toolkit_qt):
+     pkg_check_modules("GLIB", "glib-2.0 >= 2.42 gobject-2.0")
+ 
+     set_define("GLIB_VERSION_MIN_REQUIRED", "GLIB_VERSION_2_42")
+     set_define("GLIB_VERSION_MAX_ALLOWED", "GLIB_VERSION_2_42")
+ 
+-    set_define("MOZ_ACCESSIBILITY_ATK", True, when=accessibility)
+-
+ # DBus
+ # ==============================================================
+ with only_when(toolkit_gtk | toolkit_qt):

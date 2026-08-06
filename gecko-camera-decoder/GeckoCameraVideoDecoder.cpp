@@ -15,6 +15,8 @@
 #include "VideoUtils.h"
 #include "nsThreadUtils.h"
 
+#undef LOG
+#undef LOGEX
 #define LOG(...) DDMOZ_LOG(sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
 #define LOGEX(_this, ...) \
   DDMOZ_LOGEX(_this, sPDMLog, mozilla::LogLevel::Debug, __VA_ARGS__)
@@ -524,7 +526,7 @@ void GeckoCameraVideoDecoder::ProcessDecode(
                                               DecodeState::TimedOut)) {
               return;
             }
-            LOG("Decode is blocked for too long");
+            LOGEX(self, "Decode is blocked for too long");
             self->mError = true;
             std::shared_ptr<gecko::codec::VideoDecoder> decoder;
             {
@@ -619,3 +621,6 @@ void GeckoCameraVideoDecoder::DrainComplete() {
 }
 
 }  // namespace mozilla
+
+#undef LOG
+#undef LOGEX
