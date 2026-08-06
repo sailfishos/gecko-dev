@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 17:30:12 +0200
+Subject: [sailfishos][hal] Keep UPower GTK-only
+
+UPowerClient depends on GTK-specific GObject and AsyncDBus helpers. Keep
+other DBus-enabled widget backends on the fallback battery implementation.
+---
+ hal/moz.build | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hal/moz.build b/hal/moz.build
+index b9514c5c6383d..9b83030f62110 100644
+--- a/hal/moz.build
++++ b/hal/moz.build
+@@ -55,7 +55,7 @@ elif CONFIG["OS_TARGET"] == "Linux":
+         "fallback/FallbackVibration.cpp",
+         "linux/LinuxProcessPriority.cpp",
+     ]
+-    if CONFIG["MOZ_ENABLE_DBUS"]:
++    if CONFIG["MOZ_ENABLE_DBUS"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         UNIFIED_SOURCES += [
+             "linux/UPowerClient.cpp",
+         ]
+@@ -91,7 +91,7 @@ elif CONFIG["OS_TARGET"] in ("OpenBSD", "NetBSD", "FreeBSD", "DragonFly"):
+         "fallback/FallbackSensor.cpp",
+         "fallback/FallbackVibration.cpp",
+     ]
+-    if CONFIG["MOZ_ENABLE_DBUS"]:
++    if CONFIG["MOZ_ENABLE_DBUS"] and CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+         UNIFIED_SOURCES += [
+             "linux/UPowerClient.cpp",
+         ]

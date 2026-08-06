@@ -8,7 +8,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "mozilla/EndianUtils.h"
+#include "mozilla/CheckedInt.h"
+#include "mozilla/gfx/Types.h"
 
 #include "nsMimeTypes.h"
 #include "nsIMIMEService.h"
@@ -17,7 +18,6 @@
 #include "nsIStringBundle.h"
 
 #include "nsNetUtil.h"
-#include "mozilla/NullPrincipal.h"
 #include "nsIURL.h"
 
 #include "nsIconChannel.h"
@@ -29,8 +29,11 @@ NS_IMPL_ISUPPORTS(nsIconChannel,
                   nsIRequest,
                   nsIChannel)
 
+using mozilla::CheckedInt32;
+using mozilla::CheckedUint32;
+
 static nsresult
-moz_qicon_to_channel(QImage* image, nsIURI* aURI,
+moz_qicon_to_channel(QImage* image, nsIURI* aURI, nsILoadInfo* aLoadInfo,
                      nsIChannel** aChannel)
 {
   NS_ENSURE_ARG_POINTER(image);
@@ -42,13 +45,17 @@ moz_qicon_to_channel(QImage* image, nsIURI* aURI,
                  NS_ERROR_UNEXPECTED);
 
   const int n_channels = 4;
-  long int buf_size = 2 + n_channels * height * width;
-  uint8_t* const buf = (uint8_t*)moz_xmalloc(buf_size);
+  CheckedInt32 buf_size =
+      4 + n_channels * CheckedInt32(height) * CheckedInt32(width);
+  NS_ENSURE_TRUE(buf_size.isValid(), NS_ERROR_OUT_OF_MEMORY);
+  uint8_t* const buf = (uint8_t*)moz_xmalloc(buf_size.value());
   NS_ENSURE_TRUE(buf, NS_ERROR_OUT_OF_MEMORY);
   uint8_t* out = buf;
 
   *(out++) = width;
   *(out++) = height;
+  *(out++) = uint8_t(mozilla::gfx::SurfaceFormat::R8G8B8A8);
+  *(out++) = 0;
 
   const uchar* const pixels = image->bits();
   int rowextra = image->bytesPerLine() - width * n_channels;
@@ -62,47 +69,31 @@ moz_qicon_to_channel(QImage* image, nsIURI* aURI,
       uint8_t b = *(in++);
       uint8_t a = *(in++);
 #define DO_PREMULTIPLY(c_) uint8_t(uint16_t(c_) * uint16_t(a) / uint16_t(255))
-#if MOZ_LITTLE_ENDIAN
-      *(out++) = DO_PREMULTIPLY(b);
-      *(out++) = DO_PREMULTIPLY(g);
-      *(out++) = DO_PREMULTIPLY(r);
-      *(out++) = a;
-#else
-      *(out++) = a;
       *(out++) = DO_PREMULTIPLY(r);
       *(out++) = DO_PREMULTIPLY(g);
       *(out++) = DO_PREMULTIPLY(b);
-#endif
+      *(out++) = a;
 #undef DO_PREMULTIPLY
     }
   }
 
-  NS_ASSERTION(out == buf + buf_size, "size miscalculation");
+  NS_ASSERTION(out == buf + buf_size.value(), "size miscalculation");
 
   nsresult rv;
   nsCOMPtr<nsIStringInputStream> stream =
     do_CreateInstance("@mozilla.org/io/string-input-stream;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = stream->AdoptData((char*)buf, buf_size);
+  rv = stream->AdoptData((char*)buf, buf_size.value());
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // nsIconProtocolHandler::NewChannel2 will provide the correct loadInfo for
-  // this iconChannel. Use the most restrictive security settings for the
-  // temporary loadInfo to make sure the channel can not be openend.
-  nsCOMPtr<nsIPrincipal> nullPrincipal =
-      mozilla::NullPrincipal::CreateWithoutOriginAttributes();
-  return NS_NewInputStreamChannel(aChannel,
-                                  aURI,
-                                  stream.forget(),
-                                  nullPrincipal,
-                                  nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
-                                  nsIContentPolicy::TYPE_INTERNAL_IMAGE,
-                                  nsLiteralCString(IMAGE_ICON_MS));
+  return NS_NewInputStreamChannelInternal(
+      aChannel, aURI, stream.forget(), nsLiteralCString(IMAGE_ICON_MS),
+      EmptyCString(), aLoadInfo);
 }
 
 nsresult
-nsIconChannel::Init(nsIURI* aURI)
+nsIconChannel::Init(nsIURI* aURI, nsILoadInfo* aLoadInfo)
 {
 
   nsCOMPtr<nsIMozIconURI> iconURI = do_QueryInterface(aURI);
@@ -111,15 +102,13 @@ nsIconChannel::Init(nsIURI* aURI)
   nsAutoCString stockIcon;
   iconURI->GetStockIcon(stockIcon);
 
-  nsAutoCString iconSizeString;
-  iconURI->GetIconSize(iconSizeString);
-
-  uint32_t desiredImageSize;
-  iconURI->GetImageSize(&desiredImageSize);
-
-  nsAutoCString iconStateString;
-  iconURI->GetIconState(iconStateString);
-  bool disabled = iconStateString.EqualsLiteral("disabled");
+  CheckedUint32 desiredImageSize =
+      CheckedUint32(iconURI->GetImageSize()) * iconURI->GetImageScale();
+  NS_ENSURE_TRUE(desiredImageSize.isValid() &&
+                     desiredImageSize.value() > 0 &&
+                     desiredImageSize.value() < 256,
+                 NS_ERROR_UNEXPECTED);
+  const int iconSize = static_cast<int>(desiredImageSize.value());
 
   // This is a workaround for
   // https://bugzilla.mozilla.org/show_bug.cgi?id=662299
@@ -127,11 +116,11 @@ nsIconChannel::Init(nsIURI* aURI)
   // if failed.
   QIcon icon = QIcon::fromTheme(QString(stockIcon.get()).replace("gtk-",
                                                                  "edit-"));
-  QPixmap pixmap = icon.pixmap(desiredImageSize, desiredImageSize,
-                               disabled ? QIcon::Disabled : QIcon::Normal);
+  QPixmap pixmap = icon.pixmap(iconSize, iconSize, QIcon::Normal);
 
-  QImage image = pixmap.toImage();
+  QImage image =
+      pixmap.toImage().convertToFormat(QImage::Format_RGBA8888);
 
-  return moz_qicon_to_channel(&image, iconURI,
+  return moz_qicon_to_channel(&image, aURI, aLoadInfo,
                               getter_AddRefs(mRealChannel));
 }

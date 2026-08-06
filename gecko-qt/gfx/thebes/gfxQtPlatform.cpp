@@ -137,10 +137,6 @@ gfxQtPlatform::gfxQtPlatform()
 {
     mMaxGenericSubstitutions = UNINITIALIZED_VALUE;
 
-    int32_t depth = GetScreenDepth();
-    if (depth == 16) {
-        sOffscreenFormat = SurfaceFormat::R5G6B5_UINT16;
-    }
     InitBackendPrefs(GetBackendPrefs());
 
     gPlatformFTLibrary = Factory::NewFTLibrary();

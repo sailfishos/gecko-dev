@@ -28,7 +28,7 @@ class nsIconChannel final : public nsIChannel {
     /// Called by nsIconProtocolHandler after it creates this channel.
     /// Must be called before calling any other function on this object.
     /// If this method fails, no other function must be called on this object.
-    nsresult Init(nsIURI* aURI);
+    nsresult Init(nsIURI* aURI, nsILoadInfo* aLoadInfo);
   private:
     ~nsIconChannel() { };
 

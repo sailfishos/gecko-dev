@@ -55,9 +55,6 @@ public:
 
 protected:
     int8_t mMaxGenericSubstitutions;
-
-private:
-    int mScreenDepth;
 };
 
 #endif /* GFX_PLATFORM_QT_H */
