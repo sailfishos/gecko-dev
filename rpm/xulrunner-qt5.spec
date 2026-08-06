@@ -131,6 +131,7 @@ Patch94:     0094-sailfishos-build-Allow-disabling-release-Rust-LTO.patch
 Patch95:     0095-sailfishos-build-Avoid-QEMU-Python-fork-pools.patch
 Patch96:     0096-sailfishos-hal-Keep-UPower-GTK-only.patch
 Patch97:     0097-sailfishos-ipc-Include-the-Qt-message-pump-declarati.patch
+Patch98:     0098-sailfishos-layout-Use-Linux-RFP-system-font-on-Qt.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

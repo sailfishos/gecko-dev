@@ -287,7 +287,7 @@ EmbedLiteCompositorBridgeParent::ScheduleForcedRender(wr::RenderReasons aReasons
   if (WebRenderBridgeParent* wrBridge = GetWrBridge()) {
     wrBridge->ScheduleForcedGenerateFrame(aReasons);
     wrBridge->CompositeToTarget(VsyncId(), aReasons, nullptr, nullptr);
-    wrBridge->FlushRendering(aReasons);
+    wrBridge->FlushRendering(aReasons, /* aBlocking */ true);
     return;
   }
 
