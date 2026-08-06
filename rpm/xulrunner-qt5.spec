@@ -126,6 +126,8 @@ Patch89:     0089-Correct-glslopt-vendor-checksum.patch
 Patch90:     0090-sailfishos-build-Fix-Qt-and-bindgen-compilation.patch
 Patch91:     0091-sailfishos-media-Keep-AsyncDBus-GTK-only.patch
 Patch92:     0092-sailfishos-media-Keep-PipeWire-preferences-GTK-only.patch
+Patch93:     0093-sailfishos-webgpu-Keep-DMA-BUF-textures-GTK-only.patch
+Patch94:     0094-sailfishos-build-Allow-disabling-release-Rust-LTO.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0
@@ -357,6 +359,8 @@ export CC_i686_unknown_linux_gnu=host-cc
 export CXX_i686_unknown_linux_gnu=host-c++
 export CFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'
 export CXXFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'
+# The SB2 Rust compiler is 32-bit; full gkrust LTO exceeds its address space.
+export MOZ_RUST_LTO_OFF=1
 %endif
 
 # hack for when not using virtualenv
