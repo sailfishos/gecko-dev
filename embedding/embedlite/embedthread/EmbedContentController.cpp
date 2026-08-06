@@ -53,7 +53,9 @@ void EmbedContentController::NotifyAsyncScrollbarDragInitiated(uint64_t aDragBlo
 }
 
 void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &aPoint,
-                                       Modifiers aModifiers, const ScrollableLayerGuid &aGuid, uint64_t aInputBlockId)
+                                       Modifiers aModifiers, const ScrollableLayerGuid &aGuid,
+                                       uint64_t aInputBlockId,
+                                       const Maybe<DoubleTapToZoomMetrics> &aDoubleTapToZoomMetrics)
 {
   switch (aType) {
     case GeckoContentController::TapType::eSingleTap:
@@ -63,7 +65,9 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
       HandleSecondTap(aPoint, aModifiers, aGuid, aInputBlockId);
       break;
     case GeckoContentController::TapType::eDoubleTap:
-      HandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
+      MOZ_ASSERT(aDoubleTapToZoomMetrics);
+      HandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId,
+                      *aDoubleTapToZoomMetrics);
       break;
     case GeckoContentController::TapType::eLongTap:
       HandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
@@ -76,7 +80,8 @@ void EmbedContentController::HandleTap(TapType aType, const LayoutDevicePoint &a
 void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
                                              Modifiers aModifiers,
                                              const ScrollableLayerGuid aGuid,
-                                             uint64_t aInputBlockId)
+                                             uint64_t aInputBlockId,
+                                             const DoubleTapToZoomMetrics aDoubleTapToZoomMetrics)
 {
   if (MessageLoop::current() != mUILoop) {
     // We have to send this message from the "UI thread" (main
@@ -84,18 +89,21 @@ void EmbedContentController::HandleDoubleTap(const LayoutDevicePoint aPoint,
     mUILoop->PostTask(NewRunnableMethod<const LayoutDevicePoint,
                                           Modifiers,
                                           const ScrollableLayerGuid,
-                                          uint64_t>("mozilla::embedlite::EmbedContentController::HandleDoubleTap",
+                                          uint64_t,
+                                          const DoubleTapToZoomMetrics>("mozilla::embedlite::EmbedContentController::HandleDoubleTap",
                                                     this,
                                                     &EmbedContentController::HandleDoubleTap,
                                                     aPoint,
                                                     aModifiers,
                                                     aGuid,
-                                                    aInputBlockId));
+                                                    aInputBlockId,
+                                                    aDoubleTapToZoomMetrics));
     return;
   }
 
   if (mRenderFrame && !GetListener()->HandleDoubleTap(convertIntPoint(aPoint))) {
-    Unused << mRenderFrame->SendHandleDoubleTap(aPoint, aModifiers, aGuid, aInputBlockId);
+    Unused << mRenderFrame->SendHandleDoubleTap(
+        aPoint, aModifiers, aGuid, aInputBlockId, aDoubleTapToZoomMetrics);
   }
 }
 

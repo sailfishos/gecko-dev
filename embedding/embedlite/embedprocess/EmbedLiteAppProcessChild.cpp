@@ -36,8 +36,8 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/PContent.h"
+#include "mozilla/ipc/ProcessChild.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -155,17 +155,10 @@ EmbedLiteAppProcessChild::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("shutting down early because of crash!");
-    QuickExit();
+    ProcessChild::QuickExit();
   }
 
   XRE_ShutdownChildProcess();
-}
-
-void
-EmbedLiteAppProcessChild::QuickExit()
-{
-    NS_WARNING("content process _exit()ing");
-    _exit(0);
 }
 
 PEmbedLiteViewChild*

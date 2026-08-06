@@ -8,6 +8,7 @@
 
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/layers/GeckoContentController.h"
+#include "mozilla/layers/DoubleTapToZoom.h"
 #include "mozilla/layers/RepaintRequest.h" // for RepaintRequest
 #include "mozilla/layers/ScrollableLayerGuid.h" // for ScrollableLayerGuid, etc
 
@@ -40,7 +41,9 @@ public:
                          const LayoutDevicePoint& aPoint,
                          Modifiers aModifiers,
                          const ScrollableLayerGuid& aGuid,
-                         uint64_t aInputBlockId) override;
+                         uint64_t aInputBlockId,
+                         const Maybe<layers::DoubleTapToZoomMetrics>&
+                           aDoubleTapToZoomMetrics) override;
 
   void ClearRenderFrame();
   virtual void PostDelayedTask(already_AddRefed<Runnable> aTask, int aDelayMs) override;
@@ -73,7 +76,10 @@ public:
 private:
   EmbedLiteViewListener *GetListener() const;
 
-  void HandleDoubleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+  void HandleDoubleTap(
+      const LayoutDevicePoint aPoint, Modifiers aModifiers,
+      const ScrollableLayerGuid aGuid, uint64_t aInputBlockId,
+      const layers::DoubleTapToZoomMetrics aDoubleTapToZoomMetrics);
   void HandleSingleTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleSecondTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
   void HandleLongTap(const LayoutDevicePoint aPoint, Modifiers aModifiers, const ScrollableLayerGuid aGuid, uint64_t aInputBlockId);

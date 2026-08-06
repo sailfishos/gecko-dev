@@ -13,7 +13,6 @@
 
 #include "mozilla/Unused.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -36,4 +35,3 @@ EmbedLiteAppParent::~EmbedLiteAppParent()
 
 } // namespace embedlite
 } // namespace mozilla
-

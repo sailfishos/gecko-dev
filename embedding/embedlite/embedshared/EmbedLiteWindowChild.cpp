@@ -227,7 +227,7 @@ void EmbedLiteWindowChild::CreateWidget()
   // nsWindow::CreateCompositor() reads back Size
   // when it creates the compositor.
   Unused << mWidget->Create(
-              nullptr, 0,              // no parents
+              nullptr,                 // no parent
               mBounds,
               &widgetInit              // HandleWidgetEvent
               );
@@ -253,7 +253,7 @@ void EmbedLiteWindowChild::RefreshScreen()
   auto screen = MakeRefPtr<widget::Screen>(
       rect, rect, mDepth, mDepth, 0, DesktopToLayoutDeviceScale(density),
       CSSToLayoutDeviceScale(density), mDpi,
-      widget::Screen::IsPseudoDisplay::No);
+      widget::Screen::IsPseudoDisplay::No, widget::Screen::IsHDR::No);
   screenList.AppendElement(screen.forget());
   widget::ScreenManager::Refresh(std::move(screenList));
 }

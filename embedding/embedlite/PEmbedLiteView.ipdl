@@ -12,10 +12,12 @@ include "ipc/nsGUIEventIPC.h";
 include "mozilla/dom/TabMessageUtils.h";
 
 include "mozilla/GfxMessageUtils.h";
+include "mozilla/layers/LayersMessageUtils.h";
 using gfxSize from "gfxPoint.h";
 using gfxRect from "mozilla/GfxMessageUtils.h";
 using mozilla::CSSSize from "Units.h";
 using struct mozilla::layers::ZoomTarget from "mozilla/layers/DoubleTapToZoom.h";
+using struct mozilla::layers::DoubleTapToZoomMetrics from "mozilla/layers/DoubleTapToZoom.h";
 using struct mozilla::layers::ScrollableLayerGuid from "mozilla/layers/ScrollableLayerGuid.h";
 using mozilla::layers::ScrollableLayerGuid::ViewID from "mozilla/layers/ScrollableLayerGuid.h";
 using nscolor from "nsColor.h";
@@ -61,7 +63,7 @@ child:
 
 	[Compress]
     async UpdateFrame(RepaintRequest request);
-    async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
+    async HandleDoubleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId, DoubleTapToZoomMetrics aMetrics);
     async HandleSingleTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleSecondTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);
     async HandleLongTap(LayoutDevicePoint aPoint, Modifiers aModifiers, ScrollableLayerGuid aGuid, uint64_t aInputBlockId);

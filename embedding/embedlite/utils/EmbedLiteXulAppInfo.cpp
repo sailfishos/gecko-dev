@@ -19,6 +19,7 @@
 
 #include "application.ini.h"
 #include "mozilla/LookAndFeel.h"
+#include "mozilla/PreferenceSheet.h"
 #include "mozilla/Unused.h"
 
 #if defined(ACCESSIBILITY)
@@ -35,6 +36,7 @@
 using namespace mozilla::embedlite;
 using mozilla::ColorScheme;
 using mozilla::LookAndFeel;
+using mozilla::PreferenceSheet;
 
 #ifndef MOZ_DISTRIBUTION_ID
 #define MOZ_DISTRIBUTION_ID ""
@@ -215,11 +217,6 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::InvalidateCachesOnRestart()
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP EmbedLiteXulAppInfo::EnsureContentProcess()
-{
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetReplacedLockTime(PRTime* aReplacedLockTime)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -319,15 +316,6 @@ EmbedLiteXulAppInfo::GetAccessibilityInstantiator(nsAString& aInstantiator) {
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetShouldBlockIncompatJaws(bool* aResult) {
-  *aResult = false;
-#if defined(ACCESSIBILITY) && defined(XP_WIN)
-  *aResult = mozilla::a11y::Compatibility::IsOldJAWS();
-#endif
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetIs64Bit(bool* aResult)
 {
 #ifdef HAVE_64BIT_BUILD
@@ -367,7 +355,7 @@ EmbedLiteXulAppInfo::GetRestartedByOS(bool *aResult)
 NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetChromeColorSchemeIsDark(bool* aResult)
 {
-  *aResult = LookAndFeel::ColorSchemeForChrome() == ColorScheme::Dark;
+  *aResult = PreferenceSheet::ColorSchemeForChrome() == ColorScheme::Dark;
   return NS_OK;
 }
 
@@ -375,7 +363,7 @@ NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetContentThemeDerivedColorSchemeIsDark(bool* aResult)
 {
   *aResult =
-      LookAndFeel::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
+      PreferenceSheet::ThemeDerivedColorSchemeForContent() == ColorScheme::Dark;
   return NS_OK;
 }
 

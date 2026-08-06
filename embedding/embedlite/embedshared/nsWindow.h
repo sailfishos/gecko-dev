@@ -30,7 +30,6 @@ public:
 
   using PuppetWidgetBase::Create; // for Create signature not overridden here
   [[nodiscard]] virtual nsresult Create(nsIWidget*        aParent,
-                                        nsNativeWidget    aNativeParent,
                                         const LayoutDeviceIntRect& aRect,
                                         widget::InitData* aInitData = nullptr) override;
 

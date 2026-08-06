@@ -10,7 +10,6 @@
 #include "nsIDocShell.h"
 #include "nsIWebBrowser.h"
 #include "nsIWebBrowserChrome.h"
-#include "nsIWebBrowserChromeFocus.h"
 #include "nsIWebProgressListener.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIDOMEventListener.h"
@@ -19,8 +18,6 @@
 #include "nsWeakReference.h"
 
 #include "nsPoint.h"
-
-#define kNotFound -1
 
 namespace mozilla {
 namespace embedlite {
@@ -31,7 +28,6 @@ namespace embedlite {
 class nsIEmbedBrowserChromeListener;
 class WebBrowserChrome : public nsIWebBrowserChrome,
                          public nsIWebProgressListener,
-                         public nsIWebBrowserChromeFocus,
                          public nsIInterfaceRequestor,
                          public nsIDOMEventListener,
                          public nsSupportsWeakReference
@@ -40,7 +36,6 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIWEBBROWSERCHROME
   NS_DECL_NSIWEBPROGRESSLISTENER
-  NS_DECL_NSIWEBBROWSERCHROMEFOCUS
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIDOMEVENTLISTENER
 

@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Thu, 6 Aug 2026 21:23:41 +0200
+Subject: [sailfishos][widget] Allow custom puppet child allocation
+
+EmbedLite uses its own PuppetWidget implementation for both popup and
+ordinary child views. Preserve that backend while keeping the ESR140 final
+CreateChild implementation by adding a virtual allocation hook.
+---
+ widget/nsBaseWidget.cpp | 8 ++------
+ widget/nsBaseWidget.h   | 7 +++++++
+ 2 files changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/widget/nsBaseWidget.cpp b/widget/nsBaseWidget.cpp
+index d4aa1d66fce9c..28a01073423cd 100644
+--- a/widget/nsBaseWidget.cpp
++++ b/widget/nsBaseWidget.cpp
+@@ -490,13 +490,9 @@ already_AddRefed<nsIWidget> nsBaseWidget::CreateChild(
+     case WidgetType::Headless:
+       widget = nsIWidget::CreateHeadlessWidget();
+       break;
+-    case WidgetType::Puppet: {
+-      // This really only should happen in crashtests that have menupopups.
+-      MOZ_ASSERT(aInitData.mWindowType == WindowType::Popup,
+-                 "Creating non-popup puppet widget?");
+-      widget = nsIWidget::CreatePuppetWidget(nullptr);
++    case WidgetType::Puppet:
++      widget = AllocateChildPuppetWidget(aInitData);
+       break;
+-    }
+   }
+ 
+   if (!widget) {
+diff --git a/widget/nsBaseWidget.h b/widget/nsBaseWidget.h
+index d10aa44db6419..f1d2d40dd5242 100644
+--- a/widget/nsBaseWidget.h
++++ b/widget/nsBaseWidget.h
+@@ -559,6 +559,13 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
+     return nsIWidget::CreateChildWindow();
+   }
+ 
++  virtual already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
++      InitData& aInitData) {
++    MOZ_ASSERT(aInitData.mWindowType == WindowType::Popup,
++               "Creating non-popup puppet widget?");
++    return nsIWidget::CreatePuppetWidget(nullptr);
++  }
++
+   WindowRenderer* CreateFallbackRenderer();
+ 
+   PopupType GetPopupType() const { return mPopupType; }

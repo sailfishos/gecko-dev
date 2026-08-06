@@ -57,8 +57,6 @@ protected:
   virtual void ActorDestroy(ActorDestroyReason aWhy) override;
 
 private:
-  void QuickExit();
-
   AppInfo mAppInfo;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteAppProcessChild);

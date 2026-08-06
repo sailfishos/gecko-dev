@@ -27,7 +27,6 @@
 #include "EmbedLiteApp.h"
 #include "GeckoProfiler.h"
 #include "EmbedLiteAppProcessParent.h"
-#include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "nsThreadManager.h"
 #include "nsThreadUtils.h" // for mozilla::Runnable
 #include "base/command_line.h"
@@ -40,11 +39,7 @@
 
 #include "EmbedLiteViewProcessParent.h"
 
-static BrowserProcessSubThread* sIOThread;
-
 using namespace mozilla::dom;
-using namespace base;
-using base::KillProcess;
 using namespace mozilla::dom::indexedDB;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -106,19 +101,6 @@ EmbedLiteAppProcessParent::EmbedLiteAppProcessParent()
   mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content);
 
   PR_SetEnv("NECKO_SEPARATE_STACKS=1");
-  if (!BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
-      UniquePtr<BrowserProcessSubThread> ioThread(new BrowserProcessSubThread(BrowserProcessSubThread::IO));
-    if (!ioThread.get()) {
-      return;
-    }
-
-    base::Thread::Options options;
-    options.message_loop_type = MessageLoop::TYPE_IO;
-    if (!ioThread->StartWithOptions(options)) {
-      return;
-    }
-    sIOThread = ioThread.release();
-  }
 
   NS_ASSERTION(false, "Fix IToplevelProtocol::SetTransport(mSubprocess->GetChannel())");
   //IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
@@ -294,7 +276,7 @@ EmbedLiteAppProcessParent::ShutDownProcess(bool aCloseWithError)
   if (aCloseWithError) {
     MessageChannel* channel = GetIPCChannel();
     if (channel) {
-      channel->CloseWithError();
+      channel->InduceConnectionError();
     }
   }
 }

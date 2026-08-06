@@ -89,7 +89,6 @@ WebBrowserChrome::~WebBrowserChrome()
 
 NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIWebBrowserChrome,
-                  nsIWebBrowserChromeFocus,
                   nsIInterfaceRequestor,
                   nsIWebProgressListener,
                   nsISupportsWeakReference)
@@ -297,7 +296,7 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
   }
   nsCString slocation(spec);
   int32_t i = slocation.RFind("#");
-  if (i != kNotFound) {
+  if (i >= 0) {
     slocation.SetLength(i);
   }
 
@@ -609,20 +608,6 @@ NS_IMETHODIMP WebBrowserChrome::Blur()
 {
   LOGNI();
   return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-// ----- WebBrowser Chrome Focus
-
-NS_IMETHODIMP WebBrowserChrome::FocusNextElement(bool aForDocumentNavigation)
-{
-  LOGNI();
-  return NS_OK;
-}
-
-NS_IMETHODIMP WebBrowserChrome::FocusPrevElement(bool aForDocumentNavigation)
-{
-  LOGNI();
-  return NS_OK;
 }
 
 void WebBrowserChrome::SetEventHandler()

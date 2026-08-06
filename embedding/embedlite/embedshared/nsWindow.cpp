@@ -51,10 +51,11 @@ nsWindow::nsWindow(EmbedLiteWindowChild *window)
 }
 
 nsresult
-nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent, const LayoutDeviceIntRect &aRect, widget::InitData *aInitData)
+nsWindow::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
+                 widget::InitData *aInitData)
 {
   LOGT();
-  Unused << PuppetWidgetBase::Create(aParent, aNativeParent, aRect, aInitData);
+  Unused << PuppetWidgetBase::Create(aParent, aRect, aInitData);
   gfxPlatform::GetPlatform();
 
 #if DEBUG

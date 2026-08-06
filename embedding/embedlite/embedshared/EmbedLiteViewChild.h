@@ -171,7 +171,8 @@ protected:
   virtual mozilla::ipc::IPCResult RecvHandleDoubleTap(const LayoutDevicePoint &,
                                                       const Modifiers &aModifiers,
                                                       const ScrollableLayerGuid &aGuid,
-                                                      const uint64_t &aInputBlockId);
+                                                      const uint64_t &aInputBlockId,
+                                                      const mozilla::layers::DoubleTapToZoomMetrics &aMetrics);
   virtual mozilla::ipc::IPCResult RecvHandleSingleTap(const LayoutDevicePoint &, const Modifiers &aModifiers,
                                                       const ScrollableLayerGuid &aGuid,
                                                       const uint64_t &aInputBlockId);
@@ -268,7 +269,7 @@ private:
   bool mWindowObserverRegistered;
   bool mIsFocused;
   LayoutDeviceIntMargin mMargins;
-  ScreenIntMargin mSafeAreaInsets;
+  LayoutDeviceIntMargin mSafeAreaInsets;
 
   RefPtr<BrowserChildHelper> mHelper;
   bool mIMEComposing;

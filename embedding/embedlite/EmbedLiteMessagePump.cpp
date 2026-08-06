@@ -15,7 +15,9 @@
 #include "base/time.h"
 #include "EmbedLiteUILoop.h"
 
-using namespace base;
+using base::MessagePump;
+using base::TimeDelta;
+using base::TimeTicks;
 
 namespace mozilla {
 namespace embedlite {

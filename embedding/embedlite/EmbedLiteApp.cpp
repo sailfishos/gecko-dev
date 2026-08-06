@@ -279,8 +279,7 @@ EmbedLiteApp::StartChildThread()
 
   for (unsigned int i = 0; i < sComponentDirs.Length(); i++) {
     nsCOMPtr<nsIFile> f;
-    NS_NewNativeLocalFile(sComponentDirs[i], true,
-                          getter_AddRefs(f));
+    NS_NewNativeLocalFile(sComponentDirs[i], getter_AddRefs(f));
     if (f) {
       LOGT("Loading manifest: %s", sComponentDirs[i].get());
       XRE_AddManifestLocation(NS_APP_LOCATION, f);

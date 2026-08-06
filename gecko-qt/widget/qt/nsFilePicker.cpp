@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "mozilla/dom/BrowsingContext.h"
 #include "nsArrayEnumerator.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIEmbedLiteJSON.h"
@@ -50,30 +51,32 @@ nsFilePicker::~nsFilePicker() {
 }
 
 NS_IMETHODIMP
-nsFilePicker::Init(mozIDOMWindowProxy* aParent, const nsAString& aTitle,
-                   nsIFilePicker::Mode aMode) {
-  NS_ENSURE_TRUE(aParent, NS_ERROR_FAILURE);
+nsFilePicker::Init(mozilla::dom::BrowsingContext* aBrowsingContext,
+                   const nsAString& aTitle, nsIFilePicker::Mode aMode) {
+  nsresult rv = nsBaseFilePicker::Init(aBrowsingContext, aTitle, aMode);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  mParent = nsPIDOMWindowOuter::From(aParent);
-  mMode = aMode;
   mTitle = aTitle;
 
   mEmbedAppService = do_GetService("@mozilla.org/embedlite-app-service;1");
   NS_ENSURE_TRUE(mEmbedAppService, NS_ERROR_FAILURE);
 
-  return EnsureWindowId(aParent);
+  return EnsureWindowId(aBrowsingContext->GetDOMWindow());
 }
 
 void nsFilePicker::InitNative(nsIWidget* aParent, const nsAString& aTitle) {}
 
 nsresult nsFilePicker::EnsureWindowId(mozIDOMWindowProxy* aWindow) {
-  nsresult rv = mEmbedAppService->GetIDByWindow(aWindow, &mWinId);
-  if (NS_SUCCEEDED(rv) && mWinId) {
-    return NS_OK;
+  if (aWindow) {
+    nsresult rv = mEmbedAppService->GetIDByWindow(aWindow, &mWinId);
+    if (NS_SUCCEEDED(rv) && mWinId) {
+      return NS_OK;
+    }
   }
 
   nsCOMPtr<mozIDOMWindowProxy> activeWindow;
-  rv = mEmbedAppService->GetAnyEmbedWindow(true, getter_AddRefs(activeWindow));
+  nsresult rv =
+      mEmbedAppService->GetAnyEmbedWindow(true, getter_AddRefs(activeWindow));
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ENSURE_TRUE(activeWindow, NS_ERROR_FAILURE);
 
@@ -159,16 +162,16 @@ nsFilePicker::GetFiles(nsISimpleEnumerator** aFiles) {
   return NS_NewArrayEnumerator(aFiles, mFiles, NS_GET_IID(nsIFile));
 }
 
-nsresult nsFilePicker::Show(nsIFilePicker::ResultCode* aReturn) {
-  NS_ENSURE_ARG_POINTER(aReturn);
-  *aReturn = nsIFilePicker::returnCancel;
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
 NS_IMETHODIMP
 nsFilePicker::Open(nsIFilePickerShownCallback* aCallback) {
+  NS_ENSURE_ARG_POINTER(aCallback);
+
   if (mCallback) {
     return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  if (MaybeBlockFilePicker(aCallback)) {
+    return NS_OK;
   }
 
   mFiles.Clear();
@@ -301,7 +304,7 @@ void nsFilePicker::AddSelectedFile(const nsAString& aPath) {
   }
 
   nsCOMPtr<nsIFile> file;
-  nsresult rv = NS_NewLocalFile(aPath, false, getter_AddRefs(file));
+  nsresult rv = NS_NewLocalFile(aPath, getter_AddRefs(file));
   if (NS_SUCCEEDED(rv)) {
     mFiles.AppendObject(file);
   }

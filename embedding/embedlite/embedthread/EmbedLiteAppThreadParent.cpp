@@ -13,7 +13,6 @@
 
 #include "mozilla/Unused.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
 
@@ -140,4 +139,3 @@ mozilla::ipc::IPCResult EmbedLiteAppThreadParent::RecvPrefsArrayInitialized(
 
 } // namespace embedlite
 } // namespace mozilla
-

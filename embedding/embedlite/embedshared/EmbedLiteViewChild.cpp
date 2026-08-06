@@ -16,7 +16,8 @@
 #include "nsEmbedCID.h"
 #include "nsIBaseWindow.h"
 #include "EmbedLitePuppetWidget.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDOMWindow.h"
 #include "nsNetUtil.h"
@@ -196,10 +197,11 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   widget::InitData widgetInit;
   widgetInit.mClipChildren = true;
   widgetInit.mClipSiblings = true;
-  widgetInit.mWindowType = widget::WindowType::Child;
+  widgetInit.mWindowType = widget::WindowType::TopLevel;
 
   LayoutDeviceIntRect naturalBounds = mWindow->GetWidget()->GetNaturalBounds();
-  nsresult rv = mWidget->Create(mWindow->GetWidget(), 0, naturalBounds, &widgetInit);
+  nsresult rv =
+    mWidget->Create(mWindow->GetWidget(), naturalBounds, &widgetInit);
 
   if (NS_FAILED(rv)) {
     NS_ERROR("Failed to create widget for EmbedLiteView");
@@ -219,7 +221,9 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   // If this is created with window.open() or otherwise via WindowCreator
   // we'll receive parent BrowsingContext as an argument.
   // Create a BrowsingContext for our windowless browser.
-  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(nullptr, parentBrowsingContext, nullptr, EmptyString(), BrowsingContext::Type::Content, false);
+  RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(
+      nullptr, parentBrowsingContext, nullptr, EmptyString(),
+      BrowsingContext::Type::Content, BrowsingContext::CreateDetachedOptions{});
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
   browsingContext->InitSessionHistory();
@@ -744,7 +748,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
             selectionController->ScrollSelectionIntoView(
                   nsISelectionController::SELECTION_NORMAL,
                   nsISelectionController::SELECTION_WHOLE_SELECTION,
-                  nsISelectionController::SCROLL_CENTER_VERTICALLY
+                  nsISelectionController::SCROLL_VERTICAL_CENTER
                   );
           }
         }
@@ -759,7 +763,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetMargins(const int &aTop, cons
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetSafeAreaInsets(const int &aTop, const int &aRight,
                                                                   const int &aBottom, const int &aLeft)
 {
-  mSafeAreaInsets = ScreenIntMargin(aTop, aRight, aBottom, aLeft);
+  mSafeAreaInsets = LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft);
   if (mWidget) {
     GetPuppetWidget()->SetSafeAreaInsets(mSafeAreaInsets);
   }
@@ -774,7 +778,6 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvScheduleUpdate()
   nsIFrame* root = ps ? ps->GetRootFrame() : nullptr;
   if (ps && root) {
     root->SchedulePaint();
-    ps->ScheduleViewManagerFlush();
   }
   return IPC_OK();
 }
@@ -964,7 +967,8 @@ static bool ElementSupportsDoubleClick(Element *element)
 mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevicePoint &aPoint,
                                                                 const Modifiers &aModifiers,
                                                                 const ScrollableLayerGuid &aGuid,
-                                                                const uint64_t &aInputBlockId)
+                                                                const uint64_t &aInputBlockId,
+                                                                const DoubleTapToZoomMetrics &aMetrics)
 {
   // IPDL doesn't hold a strong reference to protocols as they're not required
   // to be refcounted. This function can run script, which may trigger a nested
@@ -1016,7 +1020,7 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvHandleDoubleTap(const LayoutDevi
     CSSPoint point = aPoint / scale;
     InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
 
-    ZoomTarget zoomTarget = CalculateRectToZoomTo(document, point);
+    ZoomTarget zoomTarget = CalculateRectToZoomTo(document, point, aMetrics);
     uint32_t presShellId;
     ViewID viewId;
     if (APZCCallbackHelper::GetOrCreateScrollIdentifiers(

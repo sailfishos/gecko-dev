@@ -12,6 +12,7 @@
 #include "EmbedLiteJSON.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
 #include "mozilla/EventListenerManager.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 #include "mozilla/layers/InputAPZContext.h"
 
@@ -27,7 +28,6 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/ViewportUtils.h"
-#include "nsGlobalWindow.h"
 #include "nsIDocShell.h"
 #include "nsViewportInfo.h"
 #include "nsPIWindowRoot.h"
@@ -635,12 +635,17 @@ BrowserChildHelper::ReportSizeUpdate(const LayoutDeviceIntRect &aRect)
   }
 
   LayoutDeviceIntSize size = aRect.Size();
-  mInnerSize = ViewAs<ScreenPixel>(size, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
+  mInnerSize = ViewAs<ScreenPixel>(
+      size, PixelCastJustification::LayoutDeviceIsScreenForBounds);
 }
 
 CSSPoint BrowserChildHelper::GetVisualToLayoutTransformedPoint(
     const CSSPoint &aInput, const mozilla::layers::ScrollableLayerGuid::ViewID &aScrollId) {
-  return mozilla::ViewportUtils::GetVisualToLayoutTransform(aScrollId).TransformPoint(aInput);
+  nsIContent* content =
+    aScrollId == ScrollableLayerGuid::NULL_SCROLL_ID
+      ? nullptr : nsLayoutUtils::FindContentFor(aScrollId);
+  return mozilla::ViewportUtils::GetVisualToLayoutTransform(content)
+    .TransformPoint(aInput);
 }
 
 mozilla::CSSPoint
@@ -673,14 +678,12 @@ BrowserChildHelper::ApplyPointTransform(const LayoutDevicePoint& aPoint,
 
   CSSPoint point = aPoint / scale;
 
-  point = GetVisualToLayoutTransformedPoint(point, aGuid.mScrollId);
-
   // Stash the guid in InputAPZContext so that when the visual-to-layout
   // transform is applied to the event's coordinates, we use the right transform
   // based on the scroll frame being targeted.
   // The other values don't really matter.
   InputAPZContext context(aGuid, aInputBlockId, nsEventStatus_eSentinel);
-  return point;
+  return GetVisualToLayoutTransformedPoint(point, aGuid.mScrollId);
 }
 
 void BrowserChildHelper::SetWebNavigation(nsIWebNavigation *aWebNavigation) {
@@ -817,21 +820,10 @@ already_AddRefed<nsIDocShell> BrowserChildHelperMessageManager::GetDocShell(
 
 already_AddRefed<nsIEventTarget>
 BrowserChildHelperMessageManager::GetTabEventTarget() {
-  nsCOMPtr<nsIEventTarget> target = EventTargetFor(TaskCategory::Other);
-  return target.forget();
+  return do_AddRef(GetMainThreadSerialEventTarget());
 }
 
 nsresult BrowserChildHelperMessageManager::Dispatch(
-    TaskCategory aCategory, already_AddRefed<nsIRunnable>&& aRunnable) {
-  return dom::DispatcherTrait::Dispatch(aCategory, std::move(aRunnable));
-}
-
-nsISerialEventTarget* BrowserChildHelperMessageManager::EventTargetFor(
-    TaskCategory aCategory) const {
-  return dom::DispatcherTrait::EventTargetFor(aCategory);
-}
-
-AbstractThread* BrowserChildHelperMessageManager::AbstractMainThreadFor(
-    TaskCategory aCategory) {
-  return dom::DispatcherTrait::AbstractMainThreadFor(aCategory);
+    already_AddRefed<nsIRunnable>&& aRunnable) const {
+  return SchedulerGroup::Dispatch(std::move(aRunnable));
 }

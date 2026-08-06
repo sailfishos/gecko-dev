@@ -35,18 +35,13 @@ namespace embedlite {
 NS_IMPL_ISUPPORTS_INHERITED(EmbedLitePuppetWidget, PuppetWidgetBase,
                             nsISupportsWeakReference)
 
-static bool
-IsPopup(const widget::InitData* aInitData)
-{
-  return aInitData && aInitData->mWindowType == widget::WindowType::Popup;
-}
-
 EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewChildIface* view)
   : PuppetWidgetBase()
   , mView(view)
   , mIMEComposing(false)
   , mDPI(-1.0)
 {
+  mWidgetType = WidgetType::Puppet;
   MOZ_COUNT_CTOR(EmbedLitePuppetWidget);
   LOGT("Puppet: %p, view: %p", this, mView);
 }
@@ -62,20 +57,25 @@ const char *EmbedLitePuppetWidget::Type() const
   return "EmbedLitePuppetWidget";
 }
 
+nsresult
+EmbedLitePuppetWidget::Create(nsIWidget* aParent,
+                              const LayoutDeviceIntRect& aRect,
+                              widget::InitData* aInitData)
+{
+  if (aInitData && aInitData->mWindowType == widget::WindowType::Popup) {
+    aParent = nullptr;
+  }
+  return PuppetWidgetBase::Create(aParent, aRect, aInitData);
+}
+
 already_AddRefed<nsIWidget>
-EmbedLitePuppetWidget::CreateChild(const LayoutDeviceIntRect &aRect,
-                                   widget::InitData* aInitData,
-                                   bool              aForceUseIWidgetParent)
+EmbedLitePuppetWidget::AllocateChildPuppetWidget(widget::InitData&)
 {
   if (Destroyed()) {
     return nullptr;
   }
-
-  LOGT();
-  bool isPopup = IsPopup(aInitData);
   nsCOMPtr<nsIWidget> widget = new EmbedLitePuppetWidget(nullptr);
-  nsresult rv = widget->Create(isPopup ? nullptr : this, nullptr, aRect, aInitData);
-  return NS_FAILED(rv) ? nullptr : widget.forget();
+  return widget.forget();
 }
 
 void EmbedLitePuppetWidget::Destroy()
@@ -293,7 +293,7 @@ EmbedLitePuppetWidget::RemoveIMEComposition()
 EmbedLitePuppetWidget *
 EmbedLitePuppetWidget::GetParentPuppetWidget() const
 {
-  return dynamic_cast<EmbedLitePuppetWidget *>(mParent);
+  return dynamic_cast<EmbedLitePuppetWidget *>(GetParent());
 }
 
 bool
@@ -373,12 +373,11 @@ EmbedLitePuppetWidget::GetWindowRenderer()
     return windowRenderer;
   }
 
-  nsIWidget* topWidget = GetTopLevelWidget();
-  if (topWidget && topWidget != this) {
-      // Borrow the root renderer for painting, but do not cache it in this
-      // child widget. mWindowRenderer is owning, and child-widget teardown must
-      // not destroy the root WebRender layer manager.
-      return topWidget->GetWindowRenderer();
+  if (nsIWidget* parent = GetParent()) {
+    // Borrow the parent renderer for painting, but do not cache it in this
+    // child widget. mWindowRenderer is owning, and child-widget teardown must
+    // not destroy the root WebRender layer manager.
+    return parent->GetWindowRenderer();
   }
 
   return nullptr;

@@ -37,10 +37,10 @@ public:
 
   NS_DECL_ISUPPORTS_INHERITED
 
-  virtual already_AddRefed<nsIWidget>
-  CreateChild(const LayoutDeviceIntRect&  aRect,
-              widget::InitData* aInitData = nullptr,
-              bool              aForceUseIWidgetParent = false) override;
+  using PuppetWidgetBase::Create;
+  [[nodiscard]] nsresult Create(nsIWidget* aParent,
+                                const LayoutDeviceIntRect& aRect,
+                                widget::InitData* aInitData = nullptr) override;
 
   virtual void Destroy() override;
 
@@ -83,6 +83,8 @@ public:
 
 protected:
   virtual ~EmbedLitePuppetWidget() override;
+  already_AddRefed<nsIWidget> AllocateChildPuppetWidget(
+      widget::InitData& aInitData) override;
   EmbedLiteViewChildIface* GetEmbedLiteChildView() const;
 
   virtual void ConfigureAPZCTreeManager();
