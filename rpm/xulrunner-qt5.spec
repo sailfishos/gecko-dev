@@ -125,6 +125,7 @@ Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
 Patch89:     0089-Correct-glslopt-vendor-checksum.patch
 Patch90:     0090-sailfishos-build-Fix-Qt-and-bindgen-compilation.patch
 Patch91:     0091-sailfishos-media-Keep-AsyncDBus-GTK-only.patch
+Patch92:     0092-sailfishos-media-Keep-PipeWire-preferences-GTK-only.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0
@@ -316,15 +317,6 @@ echo "export NM=\"gcc-nm\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export READELF=readelf" >> "%BUILD_DIR"/rpm-shared.env
 echo "export RANLIB=\"gcc-ranlib\"" >> "%BUILD_DIR"/rpm-shared.env
 
-%ifarch %arm32 %arm64
-# Rust build scripts run as i686 even when SB2 presents a native arm target.
-# Keep their C/C++ dependencies on the tooling host compiler and host flags.
-echo "export CC_i686_unknown_linux_gnu=host-cc" >> "%BUILD_DIR"/rpm-shared.env
-echo "export CXX_i686_unknown_linux_gnu=host-c++" >> "%BUILD_DIR"/rpm-shared.env
-echo "export CFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'" >> "%BUILD_DIR"/rpm-shared.env
-echo "export CXXFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'" >> "%BUILD_DIR"/rpm-shared.env
-%endif
-
 echo "export CARGOFLAGS=\" --offline\"" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_NET_OFFLINE=1" >> "%BUILD_DIR"/rpm-shared.env
 echo "export CARGO_BUILD_TARGET=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
@@ -357,6 +349,15 @@ done
 %endif
 
 source "%BUILD_DIR"/rpm-shared.env
+
+%ifarch %arm32 %arm64
+# Rust build scripts run as i686 even when SB2 presents a native arm target.
+# Keep their C/C++ dependencies on the tooling host compiler and host flags.
+export CC_i686_unknown_linux_gnu=host-cc
+export CXX_i686_unknown_linux_gnu=host-c++
+export CFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'
+export CXXFLAGS_i686_unknown_linux_gnu='-m32 -march=i686'
+%endif
 
 # hack for when not using virtualenv
 ln -sf "%BUILD_DIR"/config.status $PWD/build/config.status

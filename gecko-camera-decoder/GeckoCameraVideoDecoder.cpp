@@ -526,7 +526,7 @@ void GeckoCameraVideoDecoder::ProcessDecode(
                                               DecodeState::TimedOut)) {
               return;
             }
-            LOGEX(self, "Decode is blocked for too long");
+            LOGEX(self.get(), "Decode is blocked for too long");
             self->mError = true;
             std::shared_ptr<gecko::codec::VideoDecoder> decoder;
             {
