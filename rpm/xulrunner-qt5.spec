@@ -310,9 +310,9 @@ echo "export CROSS_COMPILE=%SB2_TARGET" >> "%BUILD_DIR"/rpm-shared.env
 # This avoids a malloc hang in sb2 gated calls to execvp/dup2/chdir
 # during fork/exec. It has no effect outside sb2 so doesn't hurt
 # native builds.
-export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
-export SB2_RUST_USE_REAL_EXECVP=Yes
-export SB2_RUST_USE_REAL_FN=Yes
+echo 'export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"' >> "%BUILD_DIR"/rpm-shared.env
+echo 'export SB2_RUST_USE_REAL_EXECVP=Yes' >> "%BUILD_DIR"/rpm-shared.env
+echo 'export SB2_RUST_USE_REAL_FN=Yes' >> "%BUILD_DIR"/rpm-shared.env
 %endif
 
 echo "export CC=gcc" >> "%BUILD_DIR"/rpm-shared.env
@@ -522,17 +522,11 @@ export MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=system
 
 %install
 source "%BUILD_DIR"/rpm-shared.env
-# See above for explanation of SB2_ variables (needed in both build/install phases)
 %ifarch %arm32
 export SB2_RUST_TARGET_TRIPLE=armv7-unknown-linux-gnueabihf
 %endif
 %ifarch %arm64
 export SB2_RUST_TARGET_TRIPLE=aarch64-unknown-linux-gnu
-%endif
-%ifarch %arm32 %arm64
-export SB2_RUST_EXECVP_SHIM="/usr/bin/env LD_PRELOAD=/usr/lib/libsb2/libsb2.so.1 /usr/bin/env"
-export SB2_RUST_USE_REAL_EXECVP=Yes
-export SB2_RUST_USE_REAL_FN=Yes
 %endif
 
 %{__make} -C %BUILD_DIR/mobile/sailfishos/installer install DESTDIR=%{buildroot}
