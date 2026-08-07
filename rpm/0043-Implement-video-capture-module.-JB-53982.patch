@@ -5,6 +5,9 @@ Subject: [PATCH 43/67] Implement video capture module. JB#53982
 
 Port the Sailfish geckocamera backend to current libwebrtc interfaces.
 Retain mapped frame ownership and rotate camera frames during IPC copying.
+
+Allow WebRTC's reference-counting wrapper to subclass the Sailfish
+capture implementation, matching the other platform modules.
 ---
  dom/media/systemservices/VideoFrameUtils.cpp  | 123 +++++++++-
  .../video_capture/sfos/device_info_sfos.cc    | 188 +++++++++++++++
@@ -682,7 +685,7 @@ index 0000000000000..5afea9b5962a4
 +}  // namespace webrtc
 diff --git a/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h
 new file mode 100644
-index 0000000000000..c9286b378dc63
+index 0000000000000..3f43f9ff45b53
 --- /dev/null
 +++ b/third_party/libwebrtc/modules/video_capture/sfos/video_capture_sfos.h
 @@ -0,0 +1,44 @@
@@ -703,8 +706,8 @@ index 0000000000000..c9286b378dc63
 +namespace webrtc {
 +namespace videocapturemodule {
 +
-+class VideoCaptureModuleSFOS final : public VideoCaptureImpl,
-+                                     public gecko::camera::CameraListener {
++class VideoCaptureModuleSFOS : public VideoCaptureImpl,
++                               public gecko::camera::CameraListener {
 + public:
 +  VideoCaptureModuleSFOS() = default;
 +  ~VideoCaptureModuleSFOS() override;

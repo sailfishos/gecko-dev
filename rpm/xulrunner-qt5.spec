@@ -122,22 +122,15 @@ Patch85:     0085-Support-Qt-EGL-display-on-Mesa.patch
 Patch86:     0086-Support-software-WebRender-on-EmbedLite.patch
 Patch87:     0087-Add-safe-Qt-display-fallback-for-hybris.patch
 Patch88:     0088-Keep-certificate-error-controls-above-toolbar.patch
-Patch89:     0089-Correct-glslopt-vendor-checksum.patch
-Patch90:     0090-sailfishos-build-Fix-Qt-and-bindgen-compilation.patch
-Patch91:     0091-sailfishos-media-Keep-AsyncDBus-GTK-only.patch
-Patch92:     0092-sailfishos-media-Keep-PipeWire-preferences-GTK-only.patch
+Patch90:     0090-sailfishos-build-Fix-Qt-compilation.patch
+Patch91:     0091-sailfishos-media-Keep-PipeWire-integration-GTK-only.patch
 Patch93:     0093-sailfishos-webgpu-Keep-DMA-BUF-textures-GTK-only.patch
 Patch94:     0094-sailfishos-build-Allow-disabling-release-Rust-LTO.patch
 Patch95:     0095-sailfishos-build-Avoid-QEMU-Python-fork-pools.patch
 Patch96:     0096-sailfishos-hal-Keep-UPower-GTK-only.patch
-Patch97:     0097-sailfishos-ipc-Include-the-Qt-message-pump-declarati.patch
 Patch98:     0098-sailfishos-layout-Use-Linux-RFP-system-font-on-Qt.patch
-Patch99:     0099-sailfishos-build-Ignore-compiler-only-moc-options.patch
 Patch100:    0100-sailfishos-widget-Allow-custom-puppet-child-allocati.patch
-Patch101:    0101-sailfishos-webrtc-Add-NSPR-flags-to-camera-target.patch
 Patch102:    0102-sailfishos-build-Keep-DBusService-GTK-only-on-Qt.patch
-Patch103:    0103-sailfishos-sqlite-Export-system-SQLite-boolean-substitution.patch
-Patch104:    0104-sailfishos-sqlite-Generate-AppConstant-from-define.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

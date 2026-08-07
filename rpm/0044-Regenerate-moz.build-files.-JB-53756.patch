@@ -5,17 +5,20 @@ Subject: [PATCH 44/67] Integrate geckocamera with WebRTC builds. JB#53756
 
 Require geckocamera for WebRTC EmbedLite builds, select the Sailfish
 capture sources, and omit desktop and PipeWire capture targets.
+
+The generated capture target clears the normal OS include flags, so
+retain the configured NSPR include path for geckocamera builds.
 ---
- .../video_capture_internal_impl_gn/moz.build  | 63 ++++++++++++++-----
+ .../video_capture_internal_impl_gn/moz.build  | 64 ++++++++++++++-----
  third_party/libwebrtc/moz.build               | 11 ++++
  toolkit/moz.configure                         | 13 +++-
- 3 files changed, 70 insertions(+), 17 deletions(-)
+ 3 files changed, 71 insertions(+), 17 deletions(-)
 
 diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build b/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
-index 0bbab186040bc..305e2f109e472 100644
+index 0bbab186040bc..9d2aa65020649 100644
 --- a/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
 +++ b/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
-@@ -7,9 +7,14 @@
+@@ -7,9 +7,15 @@
    ### DO NOT edit it by hand.                                       ###
  if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
      CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
@@ -24,6 +27,7 @@ index 0bbab186040bc..305e2f109e472 100644
 -    LOCAL_INCLUDES += [ "/third_party/pipewire/" ]
 +if CONFIG["MOZ_ENABLE_WEBRTC_GECKOCAMERA"]:
 +    CXXFLAGS += CONFIG["LIBGECKOCAMERA_CFLAGS"]
++    CXXFLAGS += CONFIG["NSPR_CFLAGS"]
 +    LOCAL_INCLUDES += [ "/media/libyuv/libyuv/include/" ]
 +    OS_LIBS += CONFIG["LIBGECKOCAMERA_LIBS"]
 +else:
@@ -33,7 +37,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
  COMPILE_FLAGS["OS_INCLUDES"] = []
  AllowCompilerWarnings()
-@@ -95,12 +100,18 @@ if CONFIG["OS_TARGET"] == "Linux":
+@@ -95,12 +101,18 @@ if CONFIG["OS_TARGET"] == "Linux":
          "rt"
      ]
  
@@ -58,7 +62,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
  if CONFIG["OS_TARGET"] == "OpenBSD":
  
-@@ -190,7 +201,10 @@ if CONFIG["TARGET_CPU"] == "loongarch64":
+@@ -190,7 +202,10 @@ if CONFIG["TARGET_CPU"] == "loongarch64":
  
      DEFINES["_GNU_SOURCE"] = True
  
@@ -70,7 +74,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
      DEFINES["MIPS32_LE"] = True
      DEFINES["MIPS_FPU_LE"] = True
-@@ -209,7 +223,10 @@ if CONFIG["TARGET_CPU"] == "mips32":
+@@ -209,7 +224,10 @@ if CONFIG["TARGET_CPU"] == "mips32":
          "/third_party/libwebrtc/modules/video_capture/linux/video_capture_pipewire.cc"
      ]
  
@@ -82,7 +86,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
      DEFINES["WEBRTC_USE_PIPEWIRE"] = True
      DEFINES["_GNU_SOURCE"] = True
-@@ -270,7 +287,11 @@ if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "x86":
+@@ -270,7 +288,11 @@ if CONFIG["OS_TARGET"] == "Android" and CONFIG["TARGET_CPU"] == "x86":
          "-msse2"
      ]
  
@@ -95,7 +99,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
      DEFINES["WEBRTC_USE_PIPEWIRE"] = True
      DEFINES["_GNU_SOURCE"] = True
-@@ -287,7 +308,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
+@@ -287,7 +309,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
          "/third_party/libwebrtc/modules/video_capture/linux/video_capture_pipewire.cc"
      ]
  
@@ -108,7 +112,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
      DEFINES["WEBRTC_USE_PIPEWIRE"] = True
      DEFINES["_GNU_SOURCE"] = True
-@@ -304,7 +329,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "arm":
+@@ -304,7 +330,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "arm":
          "/third_party/libwebrtc/modules/video_capture/linux/video_capture_pipewire.cc"
      ]
  
@@ -121,7 +125,7 @@ index 0bbab186040bc..305e2f109e472 100644
  
      CXXFLAGS += [
          "-msse2"
-@@ -325,7 +354,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
+@@ -325,7 +355,11 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
          "/third_party/libwebrtc/modules/video_capture/linux/video_capture_pipewire.cc"
      ]
  

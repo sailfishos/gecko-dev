@@ -13,6 +13,9 @@ shutting down process-global SQLite state that Qt may already own.
 
 Require ESR140's minimum SQLite version and the platform features Gecko relies
 on. Treat core FTS5 as already loaded and omit libmozsqlite3 from packaging.
+
+Generate the JavaScript system-SQLite AppConstant directly from the
+configure define.
 ---
  .../urlbar/private/SuggestBackendRust.sys.mjs |  6 ++-
  browser/installer/package-manifest.in         |  2 +
@@ -26,12 +29,12 @@ on. Treat core FTS5 as already loaded and omit libmozsqlite3 from packaging.
  third_party/sqlite3/ext/moz.build             | 20 ++++++---
  third_party/sqlite3/ext/sqlite3_static_ext.h  |  2 +
  toolkit/library/moz.build                     |  3 ++
- toolkit/modules/AppConstants.sys.mjs          |  6 ++-
+ toolkit/modules/AppConstants.sys.mjs          | 11 ++++-
  toolkit/moz.configure                         |  4 ++
  toolkit/xre/AutoSQLiteLifetime.cpp            | 24 ++++++++---
  toolkit/xre/moz.build                         |  2 +
  tools/@types/subs/AppConstants.sys.d.mts      |  2 +
- 17 files changed, 182 insertions(+), 52 deletions(-)
+ 17 files changed, 187 insertions(+), 52 deletions(-)
  create mode 100644 build/moz.configure/sqlite.configure
 
 diff --git a/browser/components/urlbar/private/SuggestBackendRust.sys.mjs b/browser/components/urlbar/private/SuggestBackendRust.sys.mjs
@@ -467,19 +470,24 @@ index 1f30392fe4182..5322df21bce03 100644
      USE_LIBS += [
          "zlib",
 diff --git a/toolkit/modules/AppConstants.sys.mjs b/toolkit/modules/AppConstants.sys.mjs
-index 1d86a7af4fdef..0be5a2f602e47 100644
+index 1d86a7af4fdef..6af2a3cf64ca1 100644
 --- a/toolkit/modules/AppConstants.sys.mjs
 +++ b/toolkit/modules/AppConstants.sys.mjs
-@@ -138,6 +138,8 @@ export var AppConstants = Object.freeze({
+@@ -138,6 +138,13 @@ export var AppConstants = Object.freeze({
  
    MOZ_SYSTEM_NSS: @MOZ_SYSTEM_NSS_BOOL@,
  
-+  MOZ_SYSTEM_SQLITE: @MOZ_SYSTEM_SQLITE_BOOL@,
++  MOZ_SYSTEM_SQLITE:
++#ifdef MOZ_SYSTEM_SQLITE
++    true,
++#else
++    false,
++#endif
 +
    MOZ_PLACES: @MOZ_PLACES_BOOL@,
  
    MOZ_REQUIRE_SIGNING: @MOZ_REQUIRE_SIGNING_BOOL@,
-@@ -256,7 +258,9 @@ export var AppConstants = Object.freeze({
+@@ -256,7 +263,9 @@ export var AppConstants = Object.freeze({
    MOZ_SELECTABLE_PROFILES: @MOZ_SELECTABLE_PROFILES_BOOL@,
  
    SQLITE_LIBRARY_FILENAME:

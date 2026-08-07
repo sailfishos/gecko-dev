@@ -25,7 +25,7 @@ failure can retry with pure software rendering.
  8 files changed, 70 insertions(+), 7 deletions(-)
 
 diff --git a/gfx/gl/GLContextProvider.h b/gfx/gl/GLContextProvider.h
-index 277b76efa856e..0cf95ae494e10 100644
+index 38cd5e2135a53..4a8a83415397f 100644
 --- a/gfx/gl/GLContextProvider.h
 +++ b/gfx/gl/GLContextProvider.h
 @@ -22,6 +22,10 @@ class CompositorWidget;

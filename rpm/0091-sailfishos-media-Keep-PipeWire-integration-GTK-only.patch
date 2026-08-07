@@ -1,21 +1,32 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
-Date: Thu, 6 Aug 2026 14:35:04 +0200
-Subject: [sailfishos][media] Keep PipeWire preferences GTK-only
+Date: Thu, 6 Aug 2026 13:49:35 +0200
+Subject: [sailfishos][media] Keep PipeWire integration GTK-only
 
-The PipeWire preferences are generated only for GTK. Qt still receives
-WEBRTC_USE_PIPEWIRE from the Linux WebRTC build, so keep both camera and
-desktop-capture preference reads under the GTK widget guard.
+Qt builds can enable PipeWire and D-Bus, but the camera portal,
+AsyncDBus helper and PipeWire preferences are provided only by the GTK
+widget backend. Keep those paths GTK-only so Qt uses the existing V4L2
+fallback.
 ---
- .../systemservices/video_engine/video_capture_factory.cc      | 2 +-
- dom/media/webrtc/MediaEngineWebRTC.cpp                        | 4 ++--
- 2 files changed, 3 insertions(+), 3 deletions(-)
+ .../systemservices/video_engine/video_capture_factory.cc  | 8 +++++---
+ dom/media/webrtc/MediaEngineWebRTC.cpp                    | 4 ++--
+ 2 files changed, 7 insertions(+), 5 deletions(-)
 
 diff --git a/dom/media/systemservices/video_engine/video_capture_factory.cc b/dom/media/systemservices/video_engine/video_capture_factory.cc
-index e6bd8864021bd..947ddcc01a6b2 100644
+index 374320dc3ebbe..947ddcc01a6b2 100644
 --- a/dom/media/systemservices/video_engine/video_capture_factory.cc
 +++ b/dom/media/systemservices/video_engine/video_capture_factory.cc
-@@ -33,7 +33,7 @@ VideoCaptureFactory::VideoCaptureFactory() {
+@@ -17,7 +17,8 @@
+ #  include "video_engine/placeholder_device_info.h"
+ #endif
+ 
+-#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS) && \
++    defined(MOZ_WIDGET_GTK)
+ #  include "mozilla/widget/AsyncDBus.h"
+ #endif
+ 
+@@ -32,7 +33,7 @@ VideoCaptureFactory::VideoCaptureFactory() {
    // enabled.
    mVideoCaptureOptions->set_allow_v4l2(true);
    bool allowPipeWire = false;
@@ -24,6 +35,16 @@ index e6bd8864021bd..947ddcc01a6b2 100644
    allowPipeWire =
        mozilla::StaticPrefs::media_webrtc_camera_allow_pipewire_AtStartup();
    mVideoCaptureOptions->set_allow_pipewire(allowPipeWire);
+@@ -147,7 +148,8 @@ auto VideoCaptureFactory::InitCameraBackend()
+ 
+ auto VideoCaptureFactory::HasCameraDevice()
+     -> RefPtr<VideoCaptureFactory::HasCameraDevicePromise> {
+-#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS)
++#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_ENABLE_DBUS) && \
++    defined(MOZ_WIDGET_GTK)
+   if (mVideoCaptureOptions && mVideoCaptureOptions->allow_pipewire()) {
+     return widget::CreateDBusProxyForBus(
+                G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE,
 diff --git a/dom/media/webrtc/MediaEngineWebRTC.cpp b/dom/media/webrtc/MediaEngineWebRTC.cpp
 index e49f7f021964f..6def07a6fc234 100644
 --- a/dom/media/webrtc/MediaEngineWebRTC.cpp

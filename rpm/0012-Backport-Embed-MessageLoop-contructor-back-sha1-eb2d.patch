@@ -12,10 +12,10 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/ipc/chromium/src/base/message_loop.cc b/ipc/chromium/src/base/message_loop.cc
-index 5e7a6536c4ee5..82d340c55ae36 100644
+index 43488d2c358e2..a5d6247e76264 100644
 --- a/ipc/chromium/src/base/message_loop.cc
 +++ b/ipc/chromium/src/base/message_loop.cc
-@@ -211,6 +211,30 @@ void MessageLoop::set_current(MessageLoop* loop) { get_tls_ptr().Set(loop); }
+@@ -213,6 +213,30 @@ void MessageLoop::set_current(MessageLoop* loop) { get_tls_ptr().Set(loop); }
  
  static mozilla::Atomic<int32_t> message_loop_id_seq(0);
  

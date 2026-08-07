@@ -9,13 +9,17 @@ Retain a separate environment override for the latter.
 
 ESR140 requires cbindgen 0.27 or newer, so the old cbindgen 0.24 compatibility
 definition and duplicate WebRender constant are no longer needed.
+
+Parse Gecko headers as GNU C++17 when bindgen does not use clang-cl.
+ESR140 headers use C++17 library features, so bindgen must pass an explicit
+C++17 language mode to libclang.
 ---
- build/moz.configure/bindgen.configure | 15 +++++++++++++++
+ build/moz.configure/bindgen.configure | 17 +++++++++++++++++
  config/makefiles/rust.mk              |  4 ++++
- 2 files changed, 19 insertions(+)
+ 2 files changed, 21 insertions(+)
 
 diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
-index af5a0cd7573d5..d4808d070a5a2 100644
+index af5a0cd7573d5..822b6691c2350 100644
 --- a/build/moz.configure/bindgen.configure
 +++ b/build/moz.configure/bindgen.configure
 @@ -95,6 +95,11 @@ option(
@@ -47,6 +51,15 @@ index af5a0cd7573d5..d4808d070a5a2 100644
  @depends(
      target,
      cxx_compiler,
+@@ -354,6 +369,8 @@ def basic_bindgen_cflags(
+             # to exclude hidden symbols from the generated file.
+             "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
+         ]
++    else:
++        args.append("-std=gnu++17")
+ 
+     return args + (clang_flags or []) + (all_arm_flags or [])
+ 
 diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
 index ba024e8763d9f..9ea8c9b8b82b5 100644
 --- a/config/makefiles/rust.mk

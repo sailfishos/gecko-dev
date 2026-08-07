@@ -323,6 +323,9 @@ This reflects similar changes applied upstream for other toolkits (e.g.
 Gtk, Android).
 
 Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
+
+Include the Qt message-pump declaration where the Linux UI pump is
+selected, and make Qt 5.6 moc ignore compiler-only option clashes.
 ---
  browser/base/content/browser-menubar.inc     |   2 +-
  browser/themes/moz.build                     |   2 +-
@@ -358,6 +361,7 @@ Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
  image/decoders/moz.build                     |   2 +
  intl/locale/moz.build                        |   2 +
  ipc/chromium/moz.build                       |   6 +
+ ipc/chromium/src/base/message_loop.cc        |   2 +
  ipc/chromium/src/base/message_pump_qt.cc     | 178 +---------------
  ipc/chromium/src/base/message_pump_qt.h      |  85 +-------
  ipc/glue/GeckoChildProcessHost.cpp           |   6 +-
@@ -387,7 +391,7 @@ Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
  widget/headless/HeadlessWidget.h             |   7 +
  widget/moz.build                             |   8 +-
  widget/qt                                    |   1 +
- 63 files changed, 654 insertions(+), 321 deletions(-)
+ 64 files changed, 656 insertions(+), 321 deletions(-)
  create mode 100644 build/qt/moc.py
  create mode 120000 dom/system/qt
  create mode 120000 gfx/thebes/gfxQtPlatform.cpp
@@ -431,7 +435,7 @@ index 8c87481ff0900..cde86bf9d583b 100644
      DIRS += ["windows"]
 diff --git a/build/qt/moc.py b/build/qt/moc.py
 new file mode 100644
-index 0000000000000..5bc10bebf83c5
+index 0000000000000..954990ba63844
 --- /dev/null
 +++ b/build/qt/moc.py
 @@ -0,0 +1,15 @@
@@ -444,7 +448,7 @@ index 0000000000000..5bc10bebf83c5
 +
 +def main(output, header, moc, *flags):
 +    result = subprocess.run(
-+        [moc, *flags, header],
++        [moc, "--ignore-option-clashes", *flags, header],
 +        check=True,
 +        stdout=subprocess.PIPE,
 +        text=True,
@@ -1144,6 +1148,19 @@ index 0e8504f432bf9..e20d9ed2cc66b 100644
  if CONFIG["TARGET_KERNEL"] == "SunOS":
      SOURCES += [
          "src/base/process_util_linux.cc",
+diff --git a/ipc/chromium/src/base/message_loop.cc b/ipc/chromium/src/base/message_loop.cc
+index 5e7a6536c4ee5..43488d2c358e2 100644
+--- a/ipc/chromium/src/base/message_loop.cc
++++ b/ipc/chromium/src/base/message_loop.cc
+@@ -29,6 +29,8 @@
+     defined(XP_NETBSD) || defined(XP_OPENBSD)
+ #  if defined(MOZ_WIDGET_GTK)
+ #    include "base/message_pump_glib.h"
++#  elif defined(MOZ_WIDGET_QT)
++#    include "base/message_pump_qt.h"
+ #  endif
+ #endif
+ #ifdef ANDROID
 diff --git a/ipc/chromium/src/base/message_pump_qt.cc b/ipc/chromium/src/base/message_pump_qt.cc
 deleted file mode 100644
 index d96e2c5e62177..0000000000000

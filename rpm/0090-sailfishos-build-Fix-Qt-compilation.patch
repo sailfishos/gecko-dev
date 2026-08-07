@@ -1,33 +1,16 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Andrew Branson <andrew.branson@jolla.com>
 Date: Thu, 6 Aug 2026 12:52:11 +0200
-Subject: [sailfishos][build] Fix Qt and bindgen compilation
+Subject: [sailfishos][build] Fix Qt compilation
 
 Configure GLib for Qt builds so Linux gamepad sources receive the
 required include paths. Keep GTK D-Bus location providers out of Qt
 geolocation builds.
-
-Explicitly parse Gecko headers as GNU C++17 when bindgen does not use
-clang-cl. This keeps older libclang compatible with ESR140 headers.
 ---
- build/moz.configure/bindgen.configure | 2 ++
- dom/geolocation/Geolocation.cpp       | 2 +-
- toolkit/moz.configure                 | 6 ++++--
- 3 files changed, 7 insertions(+), 3 deletions(-)
+ dom/geolocation/Geolocation.cpp | 2 +-
+ toolkit/moz.configure           | 6 ++++--
+ 2 files changed, 5 insertions(+), 3 deletions(-)
 
-diff --git a/build/moz.configure/bindgen.configure b/build/moz.configure/bindgen.configure
-index d4808d070a5a2..822b6691c2350 100644
---- a/build/moz.configure/bindgen.configure
-+++ b/build/moz.configure/bindgen.configure
-@@ -369,6 +369,8 @@ def basic_bindgen_cflags(
-             # to exclude hidden symbols from the generated file.
-             "-DHAVE_VISIBILITY_HIDDEN_ATTRIBUTE=1",
-         ]
-+    else:
-+        args.append("-std=gnu++17")
- 
-     return args + (clang_flags or []) + (all_arm_flags or [])
- 
 diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
 index 2c71936c99333..eeabfaa165391 100644
 --- a/dom/geolocation/Geolocation.cpp
