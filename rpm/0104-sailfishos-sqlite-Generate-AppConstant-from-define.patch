@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Fri, 7 Aug 2026 11:42:06 +0200
+Subject: [sailfishos][sqlite] Generate AppConstant from define
+
+---
+ toolkit/modules/AppConstants.sys.mjs | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/toolkit/modules/AppConstants.sys.mjs b/toolkit/modules/AppConstants.sys.mjs
+index 0be5a2f602e47..6af2a3cf64ca1 100644
+--- a/toolkit/modules/AppConstants.sys.mjs
++++ b/toolkit/modules/AppConstants.sys.mjs
+@@ -138,7 +138,12 @@ export var AppConstants = Object.freeze({
+ 
+   MOZ_SYSTEM_NSS: @MOZ_SYSTEM_NSS_BOOL@,
+ 
+-  MOZ_SYSTEM_SQLITE: @MOZ_SYSTEM_SQLITE_BOOL@,
++  MOZ_SYSTEM_SQLITE:
++#ifdef MOZ_SYSTEM_SQLITE
++    true,
++#else
++    false,
++#endif
+ 
+   MOZ_PLACES: @MOZ_PLACES_BOOL@,
+ 
