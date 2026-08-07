@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Fri, 7 Aug 2026 10:35:03 +0200
+Subject: [sailfishos][build] Keep DBusService GTK-only on Qt
+
+ESR140's DBusService implementation includes GTK-only headers, while the
+Sailfish Qt build still enables general DBus support. Restrict its launcher
+path to GTK so nsAppRunner does not include a header unavailable to Qt.
+---
+ toolkit/xre/nsAppRunner.cpp | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+index 4446ef5244ec5..04ba3a5dfe8a3 100644
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -273,7 +273,7 @@
+ #ifdef MOZ_WIDGET_GTK
+ #  include "nsAppShell.h"
+ #endif
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+ #  include "DBusService.h"
+ #endif
+ 
+@@ -2213,7 +2213,7 @@ static void DumpHelp() {
+   printf("  --headless         Run without a GUI.\n");
+ #endif
+ 
+-#if defined(MOZ_ENABLE_DBUS)
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+   printf(
+       "  --dbus-service <launcher>  Run as DBus service for "
+       "org.freedesktop.Application and\n"
+@@ -4504,7 +4504,7 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
+     return 0;
+   }
+ 
+-#ifdef MOZ_ENABLE_DBUS
++#if defined(MOZ_ENABLE_DBUS) && defined(MOZ_WIDGET_GTK)
+   const char* dbusServiceLauncher = nullptr;
+   ar = CheckArg("dbus-service", &dbusServiceLauncher, CheckArgFlag::None);
+   if (ar == ARG_BAD) {
