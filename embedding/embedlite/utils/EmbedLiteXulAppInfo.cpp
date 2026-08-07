@@ -141,6 +141,18 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetWidgetToolkit(nsACString& aWidgetToolkit)
   return NS_OK;
 }
 
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetNativeMenubar(bool* aResult)
+{
+  *aResult = !!LookAndFeel::GetInt(LookAndFeel::IntID::NativeMenubar);
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsWayland(bool* aResult)
+{
+  *aResult = false;
+  return NS_OK;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
 {
   static const char* embedSafeModeEnv = PR_GetEnv("EMBED_SAFEMODE");
