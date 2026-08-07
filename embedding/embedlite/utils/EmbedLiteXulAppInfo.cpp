@@ -153,6 +153,25 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsWayland(bool* aResult)
   return NS_OK;
 }
 
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionStorePlatformCollection(
+    bool* aResult)
+{
+  *aResult = mozilla::SessionStorePlatformCollection();
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetCaretBlinkCount(int32_t* aResult)
+{
+  *aResult = LookAndFeel::CaretBlinkCount();
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetCaretBlinkTime(int32_t* aResult)
+{
+  *aResult = LookAndFeel::CaretBlinkTime();
+  return NS_OK;
+}
+
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetInSafeMode(bool* aInSafeMode)
 {
   static const char* embedSafeModeEnv = PR_GetEnv("EMBED_SAFEMODE");
