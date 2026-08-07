@@ -355,6 +355,12 @@ done
 
 source "%BUILD_DIR"/rpm-shared.env
 
+%ifarch %ix86
+# Clang cannot infer Sailfish's GCC installation from Gecko's generic i686
+# host triple, so bindgen otherwise misses the libstdc++ headers.
+export BINDGEN_CFLAGS="--target=$(gcc -dumpmachine)"
+%endif
+
 %ifarch %arm32 %arm64
 # Rust build scripts run as i686 even when SB2 presents a native arm target.
 # Keep their C/C++ dependencies on the tooling host compiler and host flags.
