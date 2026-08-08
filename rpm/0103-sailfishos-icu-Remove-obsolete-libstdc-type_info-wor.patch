@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Sat, 8 Aug 2026 09:27:08 +0200
+Subject: [sailfishos][icu] Remove obsolete libstdc++ type_info workaround
+
+ICU forward-declares std::type_info to work around a libstdc++ issue fixed
+before libstdc++ 4.6. In Gecko hidden visibility makes that declaration hide
+the real libstdc++ symbol, and GCC 12 or newer emits undefined std::type_info
+comparison references on 32-bit ARM.
+
+Remove the three stale declarations as proposed for Mozilla bug 1786621.
+Modern Sailfish libstdc++ no longer needs the original workaround.
+---
+ intl/icu/source/common/unicode/std_string.h | 5 -----
+ intl/icu/source/common/utypeinfo.h          | 3 ---
+ intl/icu/source/io/unicode/ustream.h        | 4 ----
+ 3 files changed, 12 deletions(-)
+
+diff --git a/intl/icu/source/common/unicode/std_string.h b/intl/icu/source/common/unicode/std_string.h
+index bf87230167ecf..c8388ef9fdf4b 100644
+--- a/intl/icu/source/common/unicode/std_string.h
++++ b/intl/icu/source/common/unicode/std_string.h
+@@ -29,11 +29,6 @@
+ 
+ #if U_SHOW_CPLUSPLUS_API
+ 
+-// Workaround for a libstdc++ bug before libstdc++4.6 (2011).
+-// https://bugs.llvm.org/show_bug.cgi?id=13364
+-#if defined(__GLIBCXX__)
+-namespace std { class type_info; }
+-#endif
+ #include <string>
+ 
+ #endif /* U_SHOW_CPLUSPLUS_API */
+diff --git a/intl/icu/source/common/utypeinfo.h b/intl/icu/source/common/utypeinfo.h
+index c6663734fc3dc..5d9724059b95d 100644
+--- a/intl/icu/source/common/utypeinfo.h
++++ b/intl/icu/source/common/utypeinfo.h
+@@ -24,9 +24,6 @@
+ #include <exception>
+ using std::exception;
+ #endif
+-#if defined(__GLIBCXX__)
+-namespace std { class type_info; } // WORKAROUND: http://llvm.org/bugs/show_bug.cgi?id=13364
+-#endif
+ #include <typeinfo>  // for 'typeid' to work
+ 
+ #endif
+diff --git a/intl/icu/source/io/unicode/ustream.h b/intl/icu/source/io/unicode/ustream.h
+index 927342cb0313a..93ef51c3ec9ea 100644
+--- a/intl/icu/source/io/unicode/ustream.h
++++ b/intl/icu/source/io/unicode/ustream.h
+@@ -34,10 +34,6 @@
+  * C++ I/O stream API.
+  */
+ 
+-#if defined(__GLIBCXX__)
+-namespace std { class type_info; } // WORKAROUND: http://llvm.org/bugs/show_bug.cgi?id=13364
+-#endif
+-
+ #include <iostream>
+ 
+ U_NAMESPACE_BEGIN
