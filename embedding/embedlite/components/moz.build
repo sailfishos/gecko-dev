@@ -33,4 +33,8 @@ XPCOM_MANIFESTS += [
     'components.conf',
 ]
 
+EXTRA_JS_MODULES += [
+    'EmbedLitePromptCollection.sys.mjs',
+]
+
 FINAL_LIBRARY = 'xul'
