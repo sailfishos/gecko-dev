@@ -132,6 +132,7 @@ Patch98:     0098-sailfishos-layout-Use-Linux-RFP-system-font-on-Qt.patch
 Patch100:    0100-sailfishos-widget-Allow-custom-puppet-child-allocati.patch
 Patch102:    0102-sailfishos-build-Keep-DBusService-GTK-only-on-Qt.patch
 Patch103:    0103-sailfishos-icu-Remove-obsolete-libstdc-type_info-wor.patch
+Patch104:    0104-sailfishos-egl-Define-platform-image-import-targets.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

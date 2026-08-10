@@ -7,6 +7,7 @@
 #define mozilla_layers_EmbedLiteCompositorBridgeParent_h
 
 #include "base/task.h" // for CancelableRunnable
+#include "mozilla/Atomics.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/WidgetUtils.h"
 #include "mozilla/layers/CompositorOptions.h"
@@ -14,6 +15,7 @@
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorManagerParent.h"
 #include "Units.h"
+#include "EmbedLiteWindow.h"
 
 #include <functional>
 #include <memory>
@@ -47,8 +49,7 @@ public:
                                 VsyncId aId,
                                 wr::RenderReasons aReasons) override;
   void SetSurfaceRect(int x, int y, int width, int height);
-  void* GetPlatformImage(int* width, int* height);
-  void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  bool WithPlatformImage(const PlatformImageCallback& callback);
   void ClearPlatformImage();
   void SuspendRendering();
   void ResumeRendering();
@@ -66,6 +67,7 @@ protected:
 
 private:
   void EnsureSurfaceSizeFromWindow();
+  void SchedulePlatformImageRetry();
   void ScheduleForcedRender(wr::RenderReasons aReasons);
 
   uint32_t mWindowId;
@@ -74,6 +76,10 @@ private:
   RefPtr<CancelableRunnable> mCurrentCompositeTask;
   ScreenIntPoint mSurfaceOrigin;
   Mutex mRenderMutex;
+  // Acquire this before mRenderMutex when both are needed.
+  Mutex mPlatformImageMutex;
+  uint64_t mPlatformImageGeneration;
+  Atomic<bool> mPlatformImageRetryPending;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorBridgeParent);
 };

@@ -28,6 +28,26 @@ class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
 
+enum class PlatformImageHandleType : uint8_t {
+  EGLImage
+};
+
+enum class PlatformImageTextureTarget : uint8_t {
+  Texture2D,
+  ExternalOES
+};
+
+struct PlatformImageDescriptor final {
+  PlatformImageHandleType handleType;
+  void* handle;
+  PlatformImageTextureTarget textureTarget;
+  int32_t width;
+  int32_t height;
+};
+
+using PlatformImageCallback =
+  std::function<void(const PlatformImageDescriptor&)>;
+
 class EmbedLiteWindowListener
 {
 public:
@@ -66,8 +86,9 @@ public:
   virtual void ScheduleUpdate();
   virtual void SuspendRendering();
   virtual void ResumeRendering();
-  virtual void* GetPlatformImage(int* width, int* height);
-  virtual void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  // The descriptor and its handle are borrowed for the duration of the
+  // synchronous callback. Consumers must import the handle before returning.
+  virtual bool WithPlatformImage(const PlatformImageCallback& callback);
   virtual void ClearPlatformImage();
 
 protected:

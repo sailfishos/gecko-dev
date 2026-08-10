@@ -17,6 +17,7 @@
 #include "mozilla/layers/CompositorThread.h"  // for CompositorThreadHolder
 #include "mozilla/dom/MessageChannel.h"       // for MessageChannel
 #include "mozilla/Hal.h"
+#include "GLContextProvider.h"
 
 #include "EmbedLiteUILoop.h"
 #include "EmbedLiteSubThread.h"
@@ -672,6 +673,21 @@ EmbedLiteApp::SetIsAccelerated(bool aIsAccelerated)
   {
     mRenderType = RENDER_SW;
   }
+}
+
+void
+EmbedLiteApp::SetEGLDisplay(void* aDisplay)
+{
+  NS_ASSERTION(mState == STOPPED,
+               "SetEGLDisplay must be called before starting Gecko");
+  if (mState != STOPPED) {
+    return;
+  }
+#ifdef MOZ_WIDGET_QT
+  gl::SetQtEGLDisplay(aDisplay);
+#else
+  MOZ_ASSERT(!aDisplay);
+#endif
 }
 
 void

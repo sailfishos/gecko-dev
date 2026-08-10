@@ -22,7 +22,6 @@ template<class T> class nsTArray;
 [ref] native nsIntPoint(nsIntPoint);
 [ref] native nsIntRect(nsIntRect);
 [ref] native InputData(mozilla::InputData);
-[ptr] native PlatformImage(void);
 [ptr] native buffer(unsigned char);
 [ptr] native EmbedLiteView(mozilla::embedlite::EmbedLiteView);
 

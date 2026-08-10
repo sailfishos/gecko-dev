@@ -91,6 +91,9 @@ public:
 
   // Setup profile path for embedding, or null if embedding supposed to be profile-less
   virtual void SetProfilePath(const char* aPath);
+  // Supply the EGLDisplay owned by the native toolkit before starting Gecko.
+  // Gecko borrows this handle and never initializes or terminates it.
+  virtual void SetEGLDisplay(void* aDisplay);
   // Start UI embedding loop merged with Gecko GFX, blocking call until Stop() called
   virtual bool Start(EmbedType aEmbedType);
   // Exit from UI embedding loop started with Start()

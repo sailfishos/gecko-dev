@@ -70,14 +70,9 @@ void EmbedLiteWindow::ResumeRendering()
   mWindowParent->ResumeRendering();
 }
 
-void* EmbedLiteWindow::GetPlatformImage(int* width, int* height)
+bool EmbedLiteWindow::WithPlatformImage(const PlatformImageCallback& callback)
 {
-  return mWindowParent->GetPlatformImage(width, height);
-}
-
-void EmbedLiteWindow::GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback)
-{
-    mWindowParent->GetPlatformImage(callback);
+  return mWindowParent->WithPlatformImage(callback);
 }
 
 void EmbedLiteWindow::ClearPlatformImage()

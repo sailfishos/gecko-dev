@@ -1,0 +1,241 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 10 Aug 2026 11:52:36 +0200
+Subject: [sailfishos][egl] Define platform image import targets
+
+Move Qt's native EGLDisplay lookup to the embedding layer and cache the
+borrowed display before Gecko starts.
+
+Classify each EGLImage surface at creation so EmbedLite consumers import
+Mesa images as 2D textures and Hybris images as external textures. Expose
+nonblocking producer-fence status for UI presentation.
+---
+ gfx/gl/GLContextProvider.h      |  1 +
+ gfx/gl/GLContextProviderEGL.cpp | 20 +++++++-------------
+ gfx/gl/GLLibraryEGL.cpp         |  2 ++
+ gfx/gl/GLLibraryEGL.h           |  7 +++++++
+ gfx/gl/SharedSurfaceEGL.cpp     | 27 +++++++++++++++++++++++++--
+ gfx/gl/SharedSurfaceEGL.h       |  8 +++++++-
+ gfx/gl/moz.build                |  1 -
+ toolkit/moz.configure           | 13 -------------
+ 8 files changed, 49 insertions(+), 30 deletions(-)
+
+diff --git a/gfx/gl/GLContextProvider.h b/gfx/gl/GLContextProvider.h
+index 4a8a83415397f..e7d3d25810844 100644
+--- a/gfx/gl/GLContextProvider.h
++++ b/gfx/gl/GLContextProvider.h
+@@ -23,6 +23,7 @@ class CompositorWidget;
+ namespace gl {
+ 
+ #ifdef MOZ_WIDGET_QT
++void SetQtEGLDisplay(void* aDisplay);
+ bool QtEGLDisplayRequiresSoftwareWebRender();
+ #endif
+ 
+diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
+index cbcabb29cd428..436631cd44fad 100644
+--- a/gfx/gl/GLContextProviderEGL.cpp
++++ b/gfx/gl/GLContextProviderEGL.cpp
+@@ -75,11 +75,6 @@
+ #include "nsThreadUtils.h"
+ #include "ScopedGLHelpers.h"
+ 
+-#ifdef MOZ_WIDGET_QT
+-#  include <QGuiApplication>
+-#  include <qpa/qplatformnativeinterface.h>
+-#endif
+-
+ #if defined(MOZ_WIDGET_GTK)
+ #  include "mozilla/widget/GtkCompositorWidget.h"
+ #  if defined(MOZ_WAYLAND)
+@@ -100,15 +95,14 @@ namespace gl {
+ using namespace mozilla::widget;
+ 
+ #ifdef MOZ_WIDGET_QT
+-// Use Qt's EGLDisplay so that Gecko and the Qt platform plugin share the same
+-// Wayland connection.
++static EGLDisplay sQtEGLDisplay = EGL_NO_DISPLAY;
++
++void SetQtEGLDisplay(void* aDisplay) {
++  sQtEGLDisplay = static_cast<EGLDisplay>(aDisplay);
++}
++
+ static EGLDisplay GetAppDisplay() {
+-  auto* const interface = QGuiApplication::platformNativeInterface();
+-  if (!interface) {
+-    return EGL_NO_DISPLAY;
+-  }
+-  return static_cast<EGLDisplay>(interface->nativeResourceForIntegration(
+-      QByteArrayLiteral("egldisplay")));
++  return sQtEGLDisplay;
+ }
+ 
+ static bool IsHybrisDisplay(GLLibraryEGL& lib, const EGLDisplay display) {
+diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
+index 10d77eac52ba3..fcf9d8164a178 100644
+--- a/gfx/gl/GLLibraryEGL.cpp
++++ b/gfx/gl/GLLibraryEGL.cpp
+@@ -95,6 +95,8 @@ static const char* sEGLExtensionNames[] = {
+     "EGL_EXT_image_dma_buf_import_modifiers",
+     "EGL_MESA_image_dma_buf_export",
+     "EGL_KHR_no_config_context",
++    "EGL_HYBRIS_native_buffer",
++    "EGL_HYBRIS_native_buffer2",
+ };
+ 
+ PRLibrary* LoadApitraceLibrary() {
+diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
+index 679a59b7bc04f..8468b631608f2 100644
+--- a/gfx/gl/GLLibraryEGL.h
++++ b/gfx/gl/GLLibraryEGL.h
+@@ -119,6 +119,8 @@ enum class EGLExtension {
+   EXT_image_dma_buf_import_modifiers,
+   MESA_image_dma_buf_export,
+   KHR_no_config_context,
++  HYBRIS_native_buffer,
++  HYBRIS_native_buffer2,
+   Max
+ };
+ 
+@@ -730,6 +732,11 @@ class EglDisplay final {
+     return mAvailableExtensions[UnderlyingValue(aKnownExtension)];
+   }
+ 
++  bool IsHybris() const {
++    return IsExtensionSupported(EGLExtension::HYBRIS_native_buffer) ||
++           IsExtensionSupported(EGLExtension::HYBRIS_native_buffer2);
++  }
++
+   void MarkExtensionUnsupported(EGLExtension aKnownExtension) {
+     mAvailableExtensions[UnderlyingValue(aKnownExtension)] = false;
+   }
+diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
+index 330f7f60f343f..148b022208ee4 100644
+--- a/gfx/gl/SharedSurfaceEGL.cpp
++++ b/gfx/gl/SharedSurfaceEGL.cpp
+@@ -68,15 +68,24 @@ UniquePtr<SharedSurface_EGLImage> SharedSurface_EGLImage::Create(
+       egl.fCreateImage(context, LOCAL_EGL_GL_TEXTURE_2D, buffer, nullptr);
+   if (!image) return nullptr;
+ 
+-  return AsUnique(new SharedSurface_EGLImage(desc, std::move(fb), image));
++  GLenum embedderTextureTarget = gle->GetPreferredEGLImageTextureTarget();
++#ifdef MOZ_WIDGET_QT
++  embedderTextureTarget = egl.IsHybris() ? LOCAL_GL_TEXTURE_EXTERNAL
++                                         : LOCAL_GL_TEXTURE_2D;
++#endif
++
++  return AsUnique(new SharedSurface_EGLImage(
++      desc, std::move(fb), image, embedderTextureTarget));
+ }
+ 
+ SharedSurface_EGLImage::SharedSurface_EGLImage(const SharedSurfaceDesc& desc,
+                                                UniquePtr<MozFramebuffer>&& fb,
+-                                               const EGLImage image)
++                                               const EGLImage image,
++                                               const GLenum embedderTextureTarget)
+     : SharedSurface(desc, std::move(fb)),
+       mMutex("SharedSurface_EGLImage mutex"),
+       mEglDisplay(GLContextEGL::Cast(desc.gl)->mEgl),
++      mEmbedderTextureTarget(embedderTextureTarget),
+       mImage(image) {}
+ 
+ SharedSurface_EGLImage::~SharedSurface_EGLImage() {
+@@ -118,6 +127,7 @@ void SharedSurface_EGLImage::ProducerReleaseImpl() {
+ }
+ 
+ void SharedSurface_EGLImage::ProducerReadAcquireImpl() {
++  const MutexAutoLock lock(mMutex);
+   const auto& gle = GLContextEGL::Cast(mDesc.gl);
+   const auto& egl = gle->mEgl;
+   // Wait on the fence, because presumably we're going to want to read this
+@@ -127,6 +137,19 @@ void SharedSurface_EGLImage::ProducerReadAcquireImpl() {
+   }
+ }
+ 
++bool SharedSurface_EGLImage::IsBufferAvailable() const {
++  const MutexAutoLock lock(mMutex);
++  if (!mSync) {
++    return true;
++  }
++
++  const auto& gle = GLContextEGL::Cast(mDesc.gl);
++  const auto& egl = gle->mEgl;
++  EGLint status = LOCAL_EGL_UNSIGNALED;
++  return egl->fGetSyncAttrib(mSync, LOCAL_EGL_SYNC_STATUS, &status) &&
++         status == LOCAL_EGL_SIGNALED;
++}
++
+ Maybe<layers::SurfaceDescriptor> SharedSurface_EGLImage::ToSurfaceDescriptor() {
+   return Some(layers::EGLImageDescriptor((uintptr_t)mImage, (uintptr_t)mSync,
+                                          mDesc.size, true));
+diff --git a/gfx/gl/SharedSurfaceEGL.h b/gfx/gl/SharedSurfaceEGL.h
+index 99e8db9a551fa..4fa1dc0c1b0ab 100644
+--- a/gfx/gl/SharedSurfaceEGL.h
++++ b/gfx/gl/SharedSurfaceEGL.h
+@@ -29,15 +29,19 @@ class SharedSurface_EGLImage final : public SharedSurface {
+   mutable Mutex mMutex MOZ_UNANNOTATED;
+   EGLSync mSync = 0;
+   const std::weak_ptr<EglDisplay> mEglDisplay;
++  const GLenum mEmbedderTextureTarget;
+ 
+  public:
+   const EGLImage mImage;
+ 
++  GLenum EmbedderTextureTarget() const { return mEmbedderTextureTarget; }
++
+   static UniquePtr<SharedSurface_EGLImage> Create(const SharedSurfaceDesc&);
+ 
+  protected:
+   SharedSurface_EGLImage(const SharedSurfaceDesc&,
+-                         UniquePtr<MozFramebuffer>&& fb, EGLImage);
++                         UniquePtr<MozFramebuffer>&& fb, EGLImage,
++                         GLenum embedderTextureTarget);
+ 
+   void UpdateProdTexture(const MutexAutoLock& curAutoLock);
+ 
+@@ -53,6 +57,8 @@ class SharedSurface_EGLImage final : public SharedSurface {
+   virtual void ProducerReadAcquireImpl() override;
+   virtual void ProducerReadReleaseImpl() override {};
+ 
++  virtual bool IsBufferAvailable() const override;
++
+   Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() override;
+ };
+ 
+diff --git a/gfx/gl/moz.build b/gfx/gl/moz.build
+index ce0f35d5af7cf..fe1b66cc98615 100644
+--- a/gfx/gl/moz.build
++++ b/gfx/gl/moz.build
+@@ -156,7 +156,6 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+ 
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "qt":
+     CXXFLAGS += CONFIG["MOZ_QT_CFLAGS"]
+-    CXXFLAGS += CONFIG["MOZ_QT_GUI_PRIVATE_CFLAGS"]
+ 
+ CXXFLAGS += ["-Werror=switch"]
+ 
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index ac0420103cb11..0ee9cec1f0097 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -663,20 +663,7 @@ with only_when(toolkit_qt):
+                 libs.extend(package.libs)
+         return namespace(cflags=cflags, libs=libs)
+ 
+-    @depends(qt_base, pkg_config, pkg_config_env)
+-    @checking("for QtGui private header flags", callback=lambda flags: " ".join(flags))
+-    def qt_gui_private_cflags(qt_base, pkg_config, env):
+-        version = check_cmd_output(
+-            pkg_config, "--modversion", "Qt5Gui", env=env
+-        ).strip()
+-        for flag in qt_base.cflags:
+-            if flag.startswith("-I") and flag.rstrip("/").endswith("/QtGui"):
+-                include_dir = flag[2:].rstrip("/")
+-                return ("-I{}/{}/QtGui".format(include_dir, version),)
+-        die("Could not determine the QtGui private header path")
+-
+     set_config("MOZ_QT_CFLAGS", qt_build_flags.cflags)
+-    set_config("MOZ_QT_GUI_PRIVATE_CFLAGS", qt_gui_private_cflags)
+     set_config("MOZ_QT_LIBS", qt_build_flags.libs)
+     set_config("MOZ_ENABLE_QMSYSTEM2", True, when=qmsystem2)
+     set_define("MOZ_ENABLE_QMSYSTEM2", True, when=qmsystem2)

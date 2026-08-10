@@ -8,6 +8,7 @@
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/WidgetUtils.h"
+#include "EmbedLiteWindow.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -41,8 +42,7 @@ public:
   bool ScheduleUpdate();
   void SuspendRendering();
   void ResumeRendering();
-  void* GetPlatformImage(int* width, int* height);
-  void GetPlatformImage(const std::function<void(void *image, int width, int height)> &callback);
+  bool WithPlatformImage(const PlatformImageCallback& callback);
   void ClearPlatformImage();
   EmbedLiteWindowListener *GetListener() const { return mListener; }
 
