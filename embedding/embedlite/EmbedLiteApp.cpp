@@ -38,10 +38,6 @@
 #include "EmbedLiteAppProcessParent.h"
 
 namespace mozilla {
-namespace startup {
-extern bool sIsEmbedlite;
-extern GeckoProcessType sChildProcessType;
-}
 namespace embedlite {
 
 namespace {
@@ -212,7 +208,6 @@ bool
 EmbedLiteApp::StartWithCustomPump(EmbedType aEmbedType, EmbedLiteMessagePump* aEventLoop)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   mPreDestroySent = false;
@@ -230,7 +225,6 @@ bool
 EmbedLiteApp::Start(EmbedType aEmbedType)
 {
   LOGT("Type: %s", aEmbedType == EMBED_THREAD ? "Thread" : "Process");
-  mozilla::startup::sIsEmbedlite = aEmbedType == EMBED_PROCESS;
   NS_ASSERTION(mState == STOPPED, "App can be started only when it stays still");
   NS_ASSERTION(!mUILoop, "Start called twice");
   mPreDestroySent = false;
