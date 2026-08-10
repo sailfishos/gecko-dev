@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 10 Aug 2026 18:30:56 +0200
+Subject: [sailfishos][embedlite] Export embedding entry point
+
+ESR140 restricts libxul exports with an explicit symbol list.
+Export the EmbedLite accessor so external embedding clients can link.
+---
+ toolkit/library/libxul.symbols | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/toolkit/library/libxul.symbols b/toolkit/library/libxul.symbols
+index e63e3e74426b2..167ddb9cf349e 100644
+--- a/toolkit/library/libxul.symbols
++++ b/toolkit/library/libxul.symbols
+@@ -1,4 +1,5 @@
+ XRE_GetBootstrap
++XRE_GetEmbedLite
+ uprofiler_get
+ #ifdef XP_IOS
+ MainProcessInit
