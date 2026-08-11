@@ -136,6 +136,7 @@ Patch104:    0104-sailfishos-egl-Define-platform-image-import-targets.patch
 Patch105:    0105-sailfishos-build-Avoid-WebIDL-fork-pools-under-QEMU.patch
 Patch106:    0106-sailfishos-embedlite-Export-embedding-entry-point.patch
 Patch107:    0107-sailfishos-embedlite-Present-offscreen-WebRender-frames.patch
+Patch108:    0108-sailfishos-webrender-Flush-invalidated-frames-atomic.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

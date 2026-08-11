@@ -360,9 +360,7 @@ EmbedLiteCompositorBridgeParent::ScheduleForcedRender(wr::RenderReasons aReasons
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   EnsureSurfaceSizeFromWindow();
   if (WebRenderBridgeParent* wrBridge = GetWrBridge()) {
-    wrBridge->ScheduleForcedGenerateFrame(aReasons);
-    wrBridge->CompositeToTarget(VsyncId(), aReasons, nullptr, nullptr);
-    wrBridge->FlushRendering(aReasons, /* aBlocking */ true);
+    wrBridge->FlushRenderingWithInvalidation(aReasons);
     return;
   }
 

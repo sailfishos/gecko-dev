@@ -1,0 +1,150 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 11 Aug 2026 20:52:55 +0200
+Subject: [sailfishos][webrender] Flush invalidated frames atomically
+
+---
+ gfx/layers/wr/WebRenderBridgeParent.cpp | 38 +++++++++++++++++++------
+ gfx/layers/wr/WebRenderBridgeParent.h   | 12 ++++++--
+ 2 files changed, 40 insertions(+), 10 deletions(-)
+
+diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
+index e60f5b604fd57..8f70215a2286d 100644
+--- a/gfx/layers/wr/WebRenderBridgeParent.cpp
++++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
+@@ -1656,19 +1656,21 @@ void WebRenderBridgeParent::FlushSceneBuilds() {
+   ScheduleGenerateFrame(wr::RenderReasons::FLUSH);
+ }
+ 
+-void WebRenderBridgeParent::FlushFrameGeneration(wr::RenderReasons aReasons) {
++void WebRenderBridgeParent::FlushFrameGeneration(
++    wr::RenderReasons aReasons, bool aInvalidateRenderedFrame) {
+   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+   MOZ_ASSERT(IsRootWebRenderBridgeParent());  // This function is only useful on
+                                               // the root WRBP
+ 
+   // This forces a new GenerateFrame transaction to be sent to the render
+   // backend thread, if one is pending. This doesn't block on any other threads.
+-  if (mCompositorScheduler->NeedsComposite()) {
++  if (mCompositorScheduler->NeedsComposite() || aInvalidateRenderedFrame) {
+     mCompositorScheduler->CancelCurrentCompositeTask();
+     // Update timestamp of scheduler for APZ and animation.
+     mCompositorScheduler->UpdateLastComposeTime();
+     MaybeGenerateFrame(VsyncId(), /* aForceGenerateFrame */ true,
+-                       aReasons | wr::RenderReasons::FLUSH);
++                       aReasons | wr::RenderReasons::FLUSH,
++                       aInvalidateRenderedFrame);
+   }
+ }
+ 
+@@ -1881,7 +1883,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvGetSnapshot(
+   }
+ 
+   FlushSceneBuilds();
+-  FlushFrameGeneration(wr::RenderReasons::SNAPSHOT);
++  FlushFrameGeneration(wr::RenderReasons::SNAPSHOT,
++                       /* aInvalidateRenderedFrame */ false);
+   mApi->Readback(start, size, bufferTexture->GetFormat(),
+                  Range<uint8_t>(buffer, buffer_size.value()),
+                  aNeedsYFlip);
+@@ -2188,7 +2191,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSyncWithCompositor() {
+ 
+   FlushSceneBuilds();
+   if (RefPtr<WebRenderBridgeParent> root = GetRootWebRenderBridgeParent()) {
+-    root->FlushFrameGeneration(wr::RenderReasons::CONTENT_SYNC);
++    root->FlushFrameGeneration(wr::RenderReasons::CONTENT_SYNC,
++                               /* aInvalidateRenderedFrame */ false);
+   }
+   FlushFramePresentation();
+   // Finally, we force the AsyncImagePipelineManager to handle all the
+@@ -2416,7 +2420,8 @@ void WebRenderBridgeParent::CompositeToTarget(VsyncId aId,
+   }
+ 
+   mCompositionOpportunityId = mCompositionOpportunityId.Next();
+-  MaybeGenerateFrame(aId, /* aForceGenerateFrame */ false, aReasons);
++  MaybeGenerateFrame(aId, /* aForceGenerateFrame */ false, aReasons,
++                     /* aInvalidateRenderedFrame */ false);
+ }
+ 
+ TimeDuration WebRenderBridgeParent::GetVsyncInterval() const {
+@@ -2430,7 +2435,8 @@ TimeDuration WebRenderBridgeParent::GetVsyncInterval() const {
+ 
+ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
+                                                bool aForceGenerateFrame,
+-                                               wr::RenderReasons aReasons) {
++                                               wr::RenderReasons aReasons,
++                                               bool aInvalidateRenderedFrame) {
+   // This function should only get called in the root WRBP
+   MOZ_ASSERT(IsRootWebRenderBridgeParent());
+   LOG("WebRenderBridgeParent::MaybeGenerateFrame() PipelineId %" PRIx64
+@@ -2459,6 +2465,9 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
+   // than going through the scene builder thread. That way we continue
+   // generating frames with the old scene even during slow scene builds.
+   wr::TransactionBuilder fastTxn(mApi, false /* useSceneBuilderThread */);
++  if (aInvalidateRenderedFrame) {
++    fastTxn.InvalidateRenderedFrame(aReasons);
++  }
+   // Handle transaction that is related to DisplayList.
+   wr::TransactionBuilder sceneBuilderTxn(mApi);
+   wr::AutoTransactionSender sender(mApi, &sceneBuilderTxn);
+@@ -2749,13 +2758,26 @@ void WebRenderBridgeParent::FlushRendering(wr::RenderReasons aReasons,
+ 
+   if (aBlocking) {
+     FlushSceneBuilds();
+-    FlushFrameGeneration(aReasons);
++    FlushFrameGeneration(aReasons, /* aInvalidateRenderedFrame */ false);
+     FlushFramePresentation();
+   } else {
+     ScheduleGenerateFrame(aReasons);
+   }
+ }
+ 
++void WebRenderBridgeParent::FlushRenderingWithInvalidation(
++    wr::RenderReasons aReasons) {
++  if (mDestroyed) {
++    return;
++  }
++
++  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
++  MOZ_ASSERT(IsRootWebRenderBridgeParent());
++  FlushSceneBuilds();
++  FlushFrameGeneration(aReasons, /* aInvalidateRenderedFrame */ true);
++  FlushFramePresentation();
++}
++
+ ipc::IPCResult WebRenderBridgeParent::RecvSetDefaultClearColor(
+     const uint32_t& aColor) {
+   SetClearColor(gfx::DeviceColor::FromABGR(aColor));
+diff --git a/gfx/layers/wr/WebRenderBridgeParent.h b/gfx/layers/wr/WebRenderBridgeParent.h
+index 515861bb7a3db..9003bd7e0ff16 100644
+--- a/gfx/layers/wr/WebRenderBridgeParent.h
++++ b/gfx/layers/wr/WebRenderBridgeParent.h
+@@ -257,6 +257,12 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
+ 
+   void FlushRendering(wr::RenderReasons aReasons, bool aBlocking);
+ 
++  /**
++   * Invalidate and generate a frame in the same transaction, then wait for
++   * presentation.
++   */
++  void FlushRenderingWithInvalidation(wr::RenderReasons aReasons);
++
+   /**
+    * Schedule generating WebRender frame definitely at next composite timing.
+    *
+@@ -414,11 +420,13 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
+   void RollbackWrEpoch();
+ 
+   void FlushSceneBuilds();
+-  void FlushFrameGeneration(wr::RenderReasons aReasons);
++  void FlushFrameGeneration(wr::RenderReasons aReasons,
++                            bool aInvalidateRenderedFrame);
+   void FlushFramePresentation();
+ 
+   void MaybeGenerateFrame(VsyncId aId, bool aForceGenerateFrame,
+-                          wr::RenderReasons aReasons);
++                          wr::RenderReasons aReasons,
++                          bool aInvalidateRenderedFrame);
+ 
+   VsyncId GetVsyncIdForEpoch(const wr::Epoch& aEpoch) {
+     for (auto& id : mPendingTransactionIds) {
