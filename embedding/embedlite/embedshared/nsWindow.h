@@ -57,6 +57,7 @@ public:
   virtual void* GetNativeData(uint32_t aDataType) override;
 
   virtual WindowRenderer* GetWindowRenderer() override;
+  void ScheduleWebRenderComposite();
 
   virtual bool PreRender(mozilla::widget::WidgetRenderingContext* aContext) override;
   virtual void PostRender(mozilla::widget::WidgetRenderingContext* aContext) override;

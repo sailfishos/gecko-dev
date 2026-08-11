@@ -20,6 +20,7 @@
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorSession.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/ipc/MessageChannel.h"
 #include "mozilla/PresShell.h"
 
@@ -211,6 +212,17 @@ nsWindow::GetWindowRenderer()
     }
   }
   return mWindowRenderer;
+}
+
+void
+nsWindow::ScheduleWebRenderComposite()
+{
+  WindowRenderer *renderer = GetWindowRenderer();
+  WebRenderLayerManager *wrRenderer =
+    renderer ? renderer->AsWebRender() : nullptr;
+  if (wrRenderer && !wrRenderer->IsDestroyed() && wrRenderer->WrBridge()) {
+    wrRenderer->ScheduleComposite(wr::RenderReasons::WIDGET);
+  }
 }
 
 bool

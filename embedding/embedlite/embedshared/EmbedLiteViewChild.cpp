@@ -592,6 +592,12 @@ mozilla::ipc::IPCResult EmbedLiteViewChild::RecvSetIsActive(const bool &aIsActiv
 
   if (aIsActive) {
     RecvScheduleUpdate();
+    // The initial WebRender frame can precede view activation and be rejected.
+    // Invalidate it so the active view gets a presentable frame.
+    nsWindow *window = mWindow ? mWindow->GetWidget() : nullptr;
+    if (window) {
+      window->ScheduleWebRenderComposite();
+    }
   }
   return IPC_OK();
 }
