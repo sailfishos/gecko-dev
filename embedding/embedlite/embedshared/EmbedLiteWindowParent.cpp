@@ -29,6 +29,7 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(const uint16_t &width, const uint16
   : mId(id)
   , mListener(aListener)
   , mWindow(nullptr)
+  , mPlatformFrameListener(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
   , mRotation(mozilla::ROTATION_0)
@@ -117,6 +118,35 @@ void EmbedLiteWindowParent::ClearPlatformImage()
   }
 }
 
+bool EmbedLiteWindowParent::AcquirePlatformFrame(
+    const PlatformFrameToken& token,
+    const PlatformFrameCallback& callback)
+{
+  return mCompositor && mCompositor->AcquirePlatformFrame(token, callback);
+}
+
+bool EmbedLiteWindowParent::ReleasePlatformFrame(
+    const PlatformFrameRelease& release)
+{
+  return mCompositor && mCompositor->ReleasePlatformFrame(release);
+}
+
+bool EmbedLiteWindowParent::SetPlatformFrameDeliveryEnabled(bool enabled)
+{
+  return mCompositor &&
+    mCompositor->SetPlatformFrameDeliveryEnabled(enabled);
+}
+
+bool EmbedLiteWindowParent::SetPlatformFrameListener(
+    EmbedLitePlatformFrameListener* listener)
+{
+  if (mCompositor && !mCompositor->SetPlatformFrameListener(listener)) {
+    return false;
+  }
+  mPlatformFrameListener = listener;
+  return true;
+}
+
 void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 {
   mWindow = window;
@@ -147,6 +177,11 @@ void EmbedLiteWindowParent::SetCompositor(EmbedLiteCompositorBridgeParent* aComp
   MOZ_ASSERT(!mCompositor);
 
   mCompositor = aCompositor;
+
+  if (mPlatformFrameListener) {
+    MOZ_ALWAYS_TRUE(
+      mCompositor->SetPlatformFrameListener(mPlatformFrameListener));
+  }
 
   for (ObserverArray::size_type i = 0; i < mObservers.Length(); ++i) {
     mObservers[i]->CompositorCreated();

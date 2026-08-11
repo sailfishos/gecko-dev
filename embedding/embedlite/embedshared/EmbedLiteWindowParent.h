@@ -44,6 +44,11 @@ public:
   void ResumeRendering();
   bool WithPlatformImage(const PlatformImageCallback& callback);
   void ClearPlatformImage();
+  bool AcquirePlatformFrame(const PlatformFrameToken& token,
+                            const PlatformFrameCallback& callback);
+  bool ReleasePlatformFrame(const PlatformFrameRelease& release);
+  bool SetPlatformFrameDeliveryEnabled(bool enabled);
+  bool SetPlatformFrameListener(EmbedLitePlatformFrameListener* listener);
   EmbedLiteWindowListener *GetListener() const { return mListener; }
 
 protected:
@@ -66,6 +71,7 @@ private:
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
   EmbedLiteWindow* mWindow;
+  EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
 

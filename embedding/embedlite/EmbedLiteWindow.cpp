@@ -80,5 +80,29 @@ void EmbedLiteWindow::ClearPlatformImage()
   mWindowParent->ClearPlatformImage();
 }
 
+bool EmbedLiteWindow::AcquirePlatformFrame(
+    const PlatformFrameToken& token,
+    const PlatformFrameCallback& callback)
+{
+  return mWindowParent->AcquirePlatformFrame(token, callback);
+}
+
+bool EmbedLiteWindow::ReleasePlatformFrame(
+    const PlatformFrameRelease& release)
+{
+  return mWindowParent->ReleasePlatformFrame(release);
+}
+
+bool EmbedLiteWindow::SetPlatformFrameDeliveryEnabled(bool enabled)
+{
+  return mWindowParent->SetPlatformFrameDeliveryEnabled(enabled);
+}
+
+bool EmbedLiteWindow::SetPlatformFrameListener(
+    EmbedLitePlatformFrameListener* listener)
+{
+  return mWindowParent->SetPlatformFrameListener(listener);
+}
+
 } // nemsapace embedlite
 } // namespace mozilla

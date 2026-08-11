@@ -48,6 +48,52 @@ struct PlatformImageDescriptor final {
 using PlatformImageCallback =
   std::function<void(const PlatformImageDescriptor&)>;
 
+struct PlatformFrameToken final {
+  uint64_t epoch;
+  uint64_t sequence;
+
+  bool IsValid() const { return epoch != 0 && sequence != 0; }
+  bool operator==(const PlatformFrameToken& other) const {
+    return epoch == other.epoch && sequence == other.sequence;
+  }
+};
+
+enum class PlatformFrameFenceHandleType : uint8_t {
+  NoHandle,
+  EGLSync
+};
+
+struct PlatformFrameDescriptor final {
+  PlatformFrameToken token;
+  PlatformImageDescriptor image;
+  PlatformFrameFenceHandleType releaseFenceHandleType;
+};
+
+struct PlatformFrameRelease final {
+  PlatformFrameToken token;
+  PlatformFrameFenceHandleType fenceHandleType;
+  void* fenceHandle;
+};
+
+using PlatformFrameCallback =
+  std::function<bool(const PlatformFrameDescriptor&)>;
+
+class EmbedLitePlatformFrameListener
+{
+public:
+  // A new tokenized platform frame is available. This is called directly
+  // from Gecko's render thread. Consumers must schedule acquisition on their
+  // own render thread rather than acquiring from this callback.
+  virtual void PlatformFrameReady(const PlatformFrameToken&) = 0;
+
+  // All tokenized frames have been retired after delivery was disabled.
+  // This is called directly from Gecko's render thread.
+  virtual void PlatformFrameDeliveryStopped() = 0;
+
+protected:
+  virtual ~EmbedLitePlatformFrameListener() = default;
+};
+
 class EmbedLiteWindowListener
 {
 public:
@@ -90,6 +136,28 @@ public:
   // synchronous callback. Consumers must import the handle before returning.
   virtual bool WithPlatformImage(const PlatformImageCallback& callback);
   virtual void ClearPlatformImage();
+
+  // Acquiring a frame pins its exact image until ReleasePlatformFrame. The
+  // consumer must release every accepted frame before destroying the window.
+  bool AcquirePlatformFrame(const PlatformFrameToken& token,
+                            const PlatformFrameCallback& callback);
+  // Release is valid only after AcquirePlatformFrame returns true. Fence
+  // ownership transfers to Gecko only when this returns true. NoHandle
+  // requires a null handle and means that no GPU reads remain outstanding.
+  // An EGLSync must be created on the compatible EGLDisplay after the last
+  // sampling draw, and the consumer must flush its GL context before release.
+  bool ReleasePlatformFrame(const PlatformFrameRelease& release);
+  // Token notifications are disabled by default so legacy consumers retain
+  // their existing frame and teardown behavior. After disabling an enabled
+  // stream, release every acquired token and wait for
+  // PlatformFrameDeliveryStopped before destroying the window or listener.
+  // Disable while the compositor and WebRender bridge are still alive. If
+  // rendering infrastructure is already shutting down, do not time out or
+  // destroy the window, listener, or consumer resources; keep them alive
+  // until PlatformFrameDeliveryStopped arrives.
+  bool SetPlatformFrameDeliveryEnabled(bool enabled);
+  // The listener is not owned and must remain alive until delivery stops.
+  bool SetPlatformFrameListener(EmbedLitePlatformFrameListener* listener);
 
 protected:
   friend class EmbedLiteApp;

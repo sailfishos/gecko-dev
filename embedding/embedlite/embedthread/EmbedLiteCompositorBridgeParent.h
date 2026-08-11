@@ -18,6 +18,7 @@
 #include "EmbedLiteWindow.h"
 
 #include <functional>
+#include <list>
 #include <memory>
 
 namespace mozilla {
@@ -30,6 +31,8 @@ class SharedSurface;
 namespace embedlite {
 
 class EmbedLiteWindowListener;
+class PlatformFrameReadyEvent;
+class PlatformFrameRetirementEvent;
 
 class EmbedLiteCompositorBridgeParent : public mozilla::layers::CompositorBridgeParent
 {
@@ -51,11 +54,16 @@ public:
   void SetSurfaceRect(int x, int y, int width, int height);
   bool WithPlatformImage(const PlatformImageCallback& callback);
   void ClearPlatformImage();
+  bool AcquirePlatformFrame(const PlatformFrameToken& token,
+                            const PlatformFrameCallback& callback);
+  bool ReleasePlatformFrame(const PlatformFrameRelease& release);
+  bool SetPlatformFrameDeliveryEnabled(bool enabled);
+  bool SetPlatformFrameListener(EmbedLitePlatformFrameListener* listener);
   void SuspendRendering();
   void ResumeRendering();
   void ScheduleForcedRenderOnCompositorThread(wr::RenderReasons aReasons);
 
-  bool PresentOffscreenSurface();
+  bool PresentOffscreenSurface(PlatformFrameToken* aToken = nullptr);
   void WebRenderComposited();
 
   bool GetScrollableRect(CSSRect &scrollableRect);
@@ -66,8 +74,35 @@ protected:
   virtual ~EmbedLiteCompositorBridgeParent();
 
 private:
+  friend class PlatformFrameReadyEvent;
+  friend class PlatformFrameRetirementEvent;
+
+  enum class PlatformFrameState : uint8_t {
+    Ready,
+    Acquiring,
+    Acquired,
+    Released
+  };
+
+  struct PlatformFrameRecord {
+    PlatformFrameToken token;
+    RefPtr<mozilla::gl::GLContext> context;
+    std::shared_ptr<mozilla::gl::SharedSurface> surface;
+    PlatformImageDescriptor image;
+    PlatformFrameFenceHandleType releaseFenceHandleType;
+    void* consumerFence;
+    PlatformFrameState state;
+  };
+
   void EnsureSurfaceSizeFromWindow();
   void SchedulePlatformImageRetry();
+  void MarkReadyPlatformFramesReleased();
+  void PostLatestPlatformFrameReadyEvent();
+  void NotifyLatestPlatformFrameReady();
+  bool SchedulePlatformFrameRetirement();
+  void PostPlatformFrameRetirementEvent();
+  bool SchedulePlatformFrameRetirementRetry(uint32_t aDelayMs);
+  void RetireReleasedPlatformFrames();
   void ScheduleForcedRender(wr::RenderReasons aReasons);
 
   uint32_t mWindowId;
@@ -76,10 +111,19 @@ private:
   RefPtr<CancelableRunnable> mCurrentCompositeTask;
   ScreenIntPoint mSurfaceOrigin;
   Mutex mRenderMutex;
+  // Serialize borrowed-image callbacks without blocking frame release.
+  Mutex mPlatformImageCallbackMutex;
   // Acquire this before mRenderMutex when both are needed.
   Mutex mPlatformImageMutex;
   uint64_t mPlatformImageGeneration;
+  uint64_t mNextPlatformFrameSequence;
+  PlatformFrameToken mLatestPlatformFrameToken;
+  std::list<PlatformFrameRecord> mPlatformFrames;
+  EmbedLitePlatformFrameListener* mPlatformFrameListener;
+  Atomic<bool> mPlatformFrameDeliveryEnabled;
+  bool mPlatformFrameDeliveryStopPending;
   Atomic<bool> mPlatformImageRetryPending;
+  Atomic<bool> mPlatformFrameRetirementPending;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteCompositorBridgeParent);
 };
