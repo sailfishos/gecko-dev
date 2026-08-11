@@ -223,7 +223,8 @@ EmbedLiteViewChild::InitGeckoWindow(const uint32_t parentId,
   // Create a BrowsingContext for our windowless browser.
   RefPtr<BrowsingContext> browsingContext = BrowsingContext::CreateDetached(
       nullptr, parentBrowsingContext, nullptr, EmptyString(),
-      BrowsingContext::Type::Content, BrowsingContext::CreateDetachedOptions{});
+      BrowsingContext::Type::Content,
+      BrowsingContext::CreateDetachedOptions{.windowless = true});
   browsingContext->SetUsePrivateBrowsing(isPrivateWindow); // Needs to be called before attaching
   browsingContext->EnsureAttached();
   browsingContext->InitSessionHistory();
