@@ -5,6 +5,8 @@
 
 CONFIGURE_SUBST_FILES += ['installer/Makefile']
 
+JAR_MANIFESTS += ['jar.mn']
+
 DIRS += ['components', 'tests']
 
 JS_PREFERENCE_FILES += [

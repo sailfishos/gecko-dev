@@ -65,7 +65,7 @@ private:
   friend class PEmbedLiteWindowParent;
   typedef nsTArray<EmbedLiteWindowParentObserver*> ObserverArray;
 
-  mozilla::ipc::IPCResult RecvInitialized();
+  mozilla::ipc::IPCResult RecvInitialized(const bool &success);
   mozilla::ipc::IPCResult RecvDestroyed();
 
   uint32_t mId;

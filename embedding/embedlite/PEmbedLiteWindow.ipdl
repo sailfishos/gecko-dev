@@ -20,7 +20,7 @@ child:
   async Destroy();
 
 parent:
-  async Initialized();
+  async Initialized(bool success);
   async Destroyed();
   async __delete__();
 };

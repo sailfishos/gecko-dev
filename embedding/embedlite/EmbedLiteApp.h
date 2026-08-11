@@ -123,6 +123,12 @@ public:
                                     bool isDesktopMode = false,
                                     bool isHidden = false);
   virtual EmbedLiteWindow* CreateWindow(int width, int height, EmbedLiteWindowListener *aListener = nullptr);
+  // Create an opt-in window backed by Gecko's normal chrome AppWindow and a
+  // remote XUL browser. This is intentionally non-virtual so the legacy
+  // EmbedLiteApp vtable remains unchanged.
+  EmbedLiteWindow* CreateChromeWindow(int width, int height,
+                                      const char* initialContentURI,
+                                      EmbedLiteWindowListener* aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
@@ -184,6 +190,10 @@ private:
   };
 
   void SetState(State aState);
+  EmbedLiteWindow* CreateWindowInternal(int width, int height,
+                                        const char* initialContentURI,
+                                        bool chromeHosted,
+                                        EmbedLiteWindowListener* aListener);
 
   static void StartChild(EmbedLiteApp* aApp);
   void Initialized();

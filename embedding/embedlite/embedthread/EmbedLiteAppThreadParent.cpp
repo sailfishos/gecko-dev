@@ -105,8 +105,13 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteViewParent(PEmbedLiteViewParent* acto
 }
 
 PEmbedLiteWindowParent*
-EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
+  Unused << chromeHosted;
+  Unused << initialContentURI;
   LOGT("id:%u", id);
   EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener));
   p->AddRef();

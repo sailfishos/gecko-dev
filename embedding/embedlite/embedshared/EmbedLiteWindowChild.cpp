@@ -10,10 +10,19 @@
 #include "nsWindow.h"
 #include "EmbedLiteAppChild.h"
 #include "EmbedLiteWindowChild.h"
+#include "mozilla/Base64.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
 #include "gfxPlatform.h"
 #include "mozilla/widget/ScreenManager.h"
+#include "nsAppShellCID.h"
+#include "nsIAppShellService.h"
+#include "nsIAppWindow.h"
+#include "nsIBaseWindow.h"
+#include "nsIURI.h"
+#include "nsIWebBrowserChrome.h"
+#include "nsNetUtil.h"
+#include "nsServiceManagerUtils.h"
 #include "nsString.h"
 
 using namespace mozilla::dom;
@@ -67,20 +76,27 @@ SendContentOrientationChanged(uint32_t aWindowID, hal::ScreenOrientation aOrient
 }
 } // namespace
 
-EmbedLiteWindowChild::EmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &aId, EmbedLiteWindowListener *aListener)
+EmbedLiteWindowChild::EmbedLiteWindowChild(
+    const uint16_t &width, const uint16_t &height, const uint32_t &aId,
+    EmbedLiteWindowListener *aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
   : mId(aId)
   , mListener(aListener)
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
   , mRotation(ROTATION_0)
+  , mInitialContentURI(initialContentURI)
+  , mChromeHosted(chromeHosted)
   , mInitialized(false)
   , mDestroyAfterInit(false)
+  , mDestroying(false)
   , mDepth(32)
   , mDensity(1.0)
   , mDpi(96)
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
   MOZ_ASSERT(mListener);
+  MOZ_ASSERT(mChromeHosted == !mInitialContentURI.IsEmpty());
   sWindowChildMap[aId] = this;
 
   MOZ_COUNT_CTOR(EmbedLiteWindowChild);
@@ -105,6 +121,8 @@ EmbedLiteWindowChild *EmbedLiteWindowChild::From(const uint32_t id)
 
 EmbedLiteWindowChild::~EmbedLiteWindowChild()
 {
+  DestroyChromeAppWindow();
+
   MOZ_ASSERT(sWindowChildMap.find(mId) != sWindowChildMap.end());
   sWindowChildMap.erase(sWindowChildMap.find(mId));
 
@@ -133,7 +151,13 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
     return IPC_OK();
   }
 
+  if (mDestroying) {
+    return IPC_OK();
+  }
+  mDestroying = true;
+
   LOGT("destroy");
+  DestroyChromeAppWindow();
   if (mWidget) {
     mWidget->Destroy();
     mWidget = nullptr;
@@ -213,6 +237,7 @@ void EmbedLiteWindowChild::CreateWidget()
   }
 
   if (mDestroyAfterInit) {
+    mInitialized = true;
     RecvDestroy();
     return;
   }
@@ -226,18 +251,99 @@ void EmbedLiteWindowChild::CreateWidget()
 
   // nsWindow::CreateCompositor() reads back Size
   // when it creates the compositor.
-  Unused << mWidget->Create(
-              nullptr,                 // no parent
-              mBounds,
-              &widgetInit              // HandleWidgetEvent
-              );
+  const nsresult createResult =
+    mWidget->Create(nullptr, mBounds, &widgetInit);
+  if (NS_FAILED(createResult)) {
+    mInitialized = true;
+    Unused << SendInitialized(false);
+    RecvDestroy();
+    return;
+  }
+  if (mChromeHosted) {
+    GetWidget()->SetActive(true);
+  }
   GetWidget()->UpdateBounds(true);
 
   // Initialize ScreenManager
   RefreshScreen();
 
   mInitialized = true;
-  Unused << SendInitialized();
+  const bool initialized = !mChromeHosted || CreateChromeAppWindow();
+  Unused << SendInitialized(initialized);
+  if (!initialized) {
+    RecvDestroy();
+  }
+}
+
+bool EmbedLiteWindowChild::CreateChromeAppWindow()
+{
+  MOZ_ASSERT(mChromeHosted);
+  MOZ_ASSERT(mWidget);
+  MOZ_ASSERT(!mChromeWindow);
+
+  nsAutoCString encodedURI;
+  nsresult rv = Base64URLEncode(
+    mInitialContentURI.Length(),
+    reinterpret_cast<const uint8_t*>(mInitialContentURI.BeginReading()),
+    Base64URLEncodePaddingPolicy::Omit, encodedURI);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  nsAutoCString chromeSpec(
+    "chrome://embedlite/content/browser.xhtml?uri=");
+  chromeSpec.Append(encodedURI);
+
+  nsCOMPtr<nsIURI> chromeURI;
+  rv = NS_NewURI(getter_AddRefs(chromeURI), chromeSpec);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  nsCOMPtr<nsIAppShellService> appShell =
+    do_GetService(NS_APPSHELLSERVICE_CONTRACTID, &rv);
+  if (NS_FAILED(rv) || !appShell) {
+    return false;
+  }
+
+  AutoEmbedLiteChromeWindowHost hostReservation(GetWidget());
+  if (!hostReservation.IsValid()) {
+    return false;
+  }
+
+  const uint32_t chromeFlags =
+    nsIWebBrowserChrome::CHROME_OPENAS_CHROME |
+    nsIWebBrowserChrome::CHROME_WINDOW_RESIZE |
+    nsIWebBrowserChrome::CHROME_REMOTE_WINDOW;
+  rv = appShell->CreateTopLevelWindow(
+    nullptr, chromeURI, chromeFlags, mBounds.Width(), mBounds.Height(),
+    getter_AddRefs(mChromeWindow));
+  if (NS_FAILED(rv) || !mChromeWindow || !hostReservation.WasConsumed()) {
+    DestroyChromeAppWindow();
+    return false;
+  }
+
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mChromeWindow, &rv);
+  if (NS_FAILED(rv) || !baseWindow ||
+      NS_FAILED(baseWindow->SetVisibility(true))) {
+    DestroyChromeAppWindow();
+    return false;
+  }
+
+  return true;
+}
+
+void EmbedLiteWindowChild::DestroyChromeAppWindow()
+{
+  if (!mChromeWindow) {
+    return;
+  }
+
+  nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mChromeWindow);
+  if (baseWindow) {
+    Unused << baseWindow->Destroy();
+  }
+  mChromeWindow = nullptr;
 }
 
 void EmbedLiteWindowChild::RefreshScreen()

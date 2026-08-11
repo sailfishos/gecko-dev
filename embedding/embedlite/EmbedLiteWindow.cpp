@@ -9,20 +9,40 @@
 #include "EmbedLiteWindowParent.h"
 #include "mozilla/Unused.h"
 
+#include <set>
+
 namespace mozilla {
 namespace embedlite {
 
+namespace {
+
+std::set<const EmbedLiteWindow*> sChromeHostedWindows;
+
+} // namespace
+
 EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent* parent, uint32_t id)
+  : EmbedLiteWindow(app, parent, id, false)
+{
+}
+
+EmbedLiteWindow::EmbedLiteWindow(EmbedLiteApp* app,
+                                 PEmbedLiteWindowParent* parent,
+                                 uint32_t id,
+                                 bool chromeHosted)
   : mApp(app)
   , mWindowParent(static_cast<EmbedLiteWindowParent*>(parent))
   , mUniqueID(id)
 {
   MOZ_COUNT_CTOR(EmbedLiteWindow);
+  if (chromeHosted) {
+    sChromeHostedWindows.insert(this);
+  }
   mWindowParent->SetEmbedAPIWindow(this);
 }
 
 EmbedLiteWindow::~EmbedLiteWindow()
 {
+  sChromeHostedWindows.erase(this);
   MOZ_COUNT_DTOR(EmbedLiteWindow);
   mWindowParent->SetEmbedAPIWindow(nullptr);
 }
@@ -48,6 +68,11 @@ void EmbedLiteWindow::SetSize(int width, int height)
 uint32_t EmbedLiteWindow::GetUniqueID() const
 {
   return mUniqueID;
+}
+
+bool EmbedLiteWindow::IsChromeHosted() const
+{
+  return sChromeHostedWindows.find(this) != sChromeHostedWindows.end();
 }
 
 void EmbedLiteWindow::SetContentOrientation(mozilla::embedlite::ScreenRotation rotation)

@@ -14,7 +14,11 @@ namespace embedlite {
 class EmbedLiteWindowThreadChild : public EmbedLiteWindowChild
 {
 public:
-  EmbedLiteWindowThreadChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
+  EmbedLiteWindowThreadChild(const uint16_t &width, const uint16_t &height,
+                             const uint32_t &id,
+                             EmbedLiteWindowListener *aListener,
+                             const bool &chromeHosted,
+                             const nsCString &initialContentURI);
 
 protected:
   virtual ~EmbedLiteWindowThreadChild();
@@ -26,4 +30,3 @@ protected:
 } // namespace mozilla
 
 #endif // MOZ_WINDOW_EMBED_THREAD_CHILD_H
-

@@ -119,14 +119,28 @@ public:
   virtual bool PreRender() { return true; }
 };
 
+class EmbedLiteChromeWindowListener
+{
+public:
+  // Called when the opt-in Gecko chrome AppWindow could not be created. The
+  // regular WindowDestroyed callback follows after asynchronous teardown.
+  virtual void ChromeWindowInitializationFailed() = 0;
+
+protected:
+  virtual ~EmbedLiteChromeWindowListener() = default;
+};
+
 class EmbedLiteWindow {
 public:
   EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id);
+  EmbedLiteWindow(EmbedLiteApp* app, PEmbedLiteWindowParent*, uint32_t id,
+                  bool chromeHosted);
 
   // PEmbedLiteWindow:
   virtual void SetSize(int width, int height);
 
   virtual uint32_t GetUniqueID() const;
+  bool IsChromeHosted() const;
 
   virtual void SetContentOrientation(mozilla::embedlite::ScreenRotation);
   virtual void ScheduleUpdate();

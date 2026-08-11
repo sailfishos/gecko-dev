@@ -192,8 +192,17 @@ EmbedLiteAppProcessChild::AllocPEmbedLiteViewChild(const uint32_t &windowId,
 }
 
 PEmbedLiteWindowChild*
-EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, const uintptr_t &aListener)
+EmbedLiteAppProcessChild::AllocPEmbedLiteWindowChild(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    const uintptr_t &aListener, const bool &chromeHosted,
+    const nsCString &initialContentURI)
 {
+  Unused << width;
+  Unused << height;
+  Unused << id;
+  Unused << aListener;
+  Unused << chromeHosted;
+  Unused << initialContentURI;
   LOGNI();
   return nullptr;
 }

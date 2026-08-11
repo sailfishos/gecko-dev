@@ -9,7 +9,10 @@
 #include "mozilla/embedlite/PEmbedLiteWindowChild.h"
 #include "mozilla/WidgetUtils.h"
 #include "nsIWidget.h"
+#include "nsString.h"
 #include "base/task.h" // for CancelableRunnable
+
+class nsIAppWindow;
 
 namespace mozilla {
 namespace embedlite {
@@ -22,7 +25,11 @@ class EmbedLiteWindowChild : public PEmbedLiteWindowChild
   NS_INLINE_DECL_REFCOUNTING(EmbedLiteWindowChild)
 
 public:
-  EmbedLiteWindowChild(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
+  EmbedLiteWindowChild(const uint16_t &width, const uint16_t &height,
+                       const uint32_t &id,
+                       EmbedLiteWindowListener *aListener,
+                       const bool &chromeHosted,
+                       const nsCString &initialContentURI);
 
   static EmbedLiteWindowChild *From(const uint32_t id);
 
@@ -41,6 +48,8 @@ protected:
 private:
   friend class PEmbedLiteWindowChild;
   void CreateWidget();
+  bool CreateChromeAppWindow();
+  void DestroyChromeAppWindow();
 
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size);
@@ -50,12 +59,16 @@ private:
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
   nsCOMPtr<nsIWidget> mWidget;
+  nsCOMPtr<nsIAppWindow> mChromeWindow;
   LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;
+  const nsCString mInitialContentURI;
 
+  const bool mChromeHosted;
   bool mInitialized;
   bool mDestroyAfterInit;
+  bool mDestroying;
 
   int mDepth;
   float mDensity;

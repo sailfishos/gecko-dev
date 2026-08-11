@@ -157,10 +157,16 @@ void EmbedLiteWindowParent::ActorDestroy(ActorDestroyReason aWhy)
   LOGT("reason:%i", aWhy);
 }
 
-mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvInitialized()
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvInitialized(const bool &success)
 {
   MOZ_ASSERT(mWindow);
-  mListener->WindowInitialized();
+  if (success) {
+    mListener->WindowInitialized();
+  } else if (EmbedLiteChromeWindowListener* chromeListener =
+               dynamic_cast<EmbedLiteChromeWindowListener*>(mListener)) {
+    chromeListener->ChromeWindowInitializationFailed();
+  }
   return IPC_OK();
 }
 

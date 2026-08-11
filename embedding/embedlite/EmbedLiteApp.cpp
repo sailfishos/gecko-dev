@@ -494,6 +494,11 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
 {
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
+  if (!aWindow || aWindow->IsChromeHosted()) {
+    NS_WARNING(
+      "Legacy EmbedLite views cannot be added to a chrome-hosted window");
+    return nullptr;
+  }
   static uint32_t sViewCreateID = 0;
   sViewCreateID++;
 
@@ -514,6 +519,30 @@ EmbedLiteApp::CreateView(EmbedLiteWindow* aWindow, uint32_t aParent, uintptr_t a
 EmbedLiteWindow*
 EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aListener)
 {
+  return CreateWindowInternal(width, height, nullptr, false, aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateChromeWindow(int width, int height,
+                                 const char* initialContentURI,
+                                 EmbedLiteWindowListener* aListener)
+{
+  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
+      width > UINT16_MAX || height > UINT16_MAX) {
+    NS_WARNING(
+      "Chrome-hosted windows require thread embedding and valid dimensions");
+    return nullptr;
+  }
+  return CreateWindowInternal(width, height, initialContentURI, true,
+                              aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateWindowInternal(int width, int height,
+                                   const char* initialContentURI,
+                                   bool chromeHosted,
+                                   EmbedLiteWindowListener* aListener)
+{
   LOGT();
   NS_ASSERTION(mState == INITIALIZED, "The app must be up and runnning by now");
   static uint32_t sWindowCreateID = 0;
@@ -523,14 +552,31 @@ EmbedLiteApp::CreateWindow(int width, int height, EmbedLiteWindowListener *aList
       aListener = &sFakeWindowListener;
   }
 
+  nsAutoCString chromeInitialURI;
+  if (chromeHosted) {
+    chromeInitialURI.Assign(
+      initialContentURI && *initialContentURI ? initialContentURI
+                                              : "about:blank");
+  }
+
   EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);
   PEmbedLiteWindowParent* windowParent =
-      appParent->AllocPEmbedLiteWindowParent(width, height, sWindowCreateID,
-                                             reinterpret_cast<uintptr_t>(aListener));
-  windowParent = appParent->SendPEmbedLiteWindowConstructor(windowParent,
-                                                           width, height, sWindowCreateID,
-                                                           reinterpret_cast<uintptr_t>(aListener));
-  EmbedLiteWindow* window = new EmbedLiteWindow(this, windowParent, sWindowCreateID);
+    appParent->AllocPEmbedLiteWindowParent(
+      width, height, sWindowCreateID,
+      reinterpret_cast<uintptr_t>(aListener), chromeHosted,
+      chromeInitialURI);
+  if (!windowParent) {
+    return nullptr;
+  }
+  windowParent = appParent->SendPEmbedLiteWindowConstructor(
+    windowParent, width, height, sWindowCreateID,
+    reinterpret_cast<uintptr_t>(aListener), chromeHosted,
+    chromeInitialURI);
+  if (!windowParent) {
+    return nullptr;
+  }
+  EmbedLiteWindow* window =
+    new EmbedLiteWindow(this, windowParent, sWindowCreateID, chromeHosted);
   mWindows[sWindowCreateID] = window;
   return window;
 }

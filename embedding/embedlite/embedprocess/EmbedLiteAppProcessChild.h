@@ -48,8 +48,10 @@ protected:
                                                         const bool &isDesktopMode,
                                                         const bool &isHidden) override;
 
-  virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(const uint16_t &width, const uint16_t &height,
-                                                            const uint32_t &id, const uintptr_t &aListener) override;
+  virtual PEmbedLiteWindowChild* AllocPEmbedLiteWindowChild(
+      const uint16_t &width, const uint16_t &height, const uint32_t &id,
+      const uintptr_t &aListener, const bool &chromeHosted,
+      const nsCString &initialContentURI) override;
 
 //  virtual PCompositorBridgeChild* AllocPCompositorBridgeChild(Transport* aTransport, ProcessId aOtherProcess);
 
