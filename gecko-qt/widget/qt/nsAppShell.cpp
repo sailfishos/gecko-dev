@@ -55,7 +55,7 @@ nsAppShell::Init()
         ScreenManager::GetSingleton().SetHelper(MakeUnique<ScreenHelperQt>());
     }
 
-    return nsBaseAppShell::Init();
+    return nsBaseAppShell::Init(mHasNativeEventDispatcher);
 }
 
 void
