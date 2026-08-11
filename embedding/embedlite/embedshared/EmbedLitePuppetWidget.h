@@ -22,6 +22,7 @@
 #include "mozilla/WidgetUtils.h"
 #include "PuppetWidgetBase.h"
 #include "nsCOMArray.h"
+#include "nsCOMPtr.h"
 #include "nsRect.h"
 
 namespace mozilla {
@@ -34,6 +35,8 @@ class EmbedLitePuppetWidget : public PuppetWidgetBase
 {
 public:
   EmbedLitePuppetWidget(EmbedLiteViewChildIface* view);
+
+  static already_AddRefed<nsIWidget> CreateForChromeHost(nsIWidget* aHost);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -99,6 +102,7 @@ private:
   EmbedLitePuppetWidget *GetParentPuppetWidget() const;
 
   EmbedLiteViewChildIface* mView; // Not owned, can be null.
+  nsCOMPtr<nsIWidget> mPendingChromeHost;
 
   InputContext mInputContext;
   NativeIMEContext mNativeIMEContext;

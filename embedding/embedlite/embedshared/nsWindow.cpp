@@ -9,6 +9,7 @@
 
 #include "nsWindow.h"
 #include "EmbedLiteWindowChild.h"
+#include "EmbedLitePuppetWidget.h"
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedLiteApp.h"
 
@@ -42,6 +43,68 @@ namespace embedlite {
 
 NS_IMPL_ISUPPORTS_INHERITED(nsWindow, PuppetWidgetBase,
                             nsISupportsWeakReference)
+
+AutoEmbedLiteChromeWindowHost*
+AutoEmbedLiteChromeWindowHost::sPendingHost = nullptr;
+
+AutoEmbedLiteChromeWindowHost::AutoEmbedLiteChromeWindowHost(nsWindow* aHost)
+  : mConsumed(false)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (aHost && !sPendingHost) {
+    mHost = aHost;
+    sPendingHost = this;
+  }
+}
+
+AutoEmbedLiteChromeWindowHost::~AutoEmbedLiteChromeWindowHost()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (sPendingHost == this) {
+    sPendingHost = nullptr;
+  }
+}
+
+bool
+AutoEmbedLiteChromeWindowHost::IsValid() const
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  return mHost && !mHost->Destroyed() && sPendingHost == this;
+}
+
+already_AddRefed<nsIWidget>
+AutoEmbedLiteChromeWindowHost::ConsumePending()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!sPendingHost) {
+    return nullptr;
+  }
+  return sPendingHost->Consume();
+}
+
+already_AddRefed<nsIWidget>
+AutoEmbedLiteChromeWindowHost::Consume()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!IsValid()) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIWidget> widget =
+    EmbedLitePuppetWidget::CreateForChromeHost(mHost);
+  if (!widget) {
+    return nullptr;
+  }
+
+  mConsumed = true;
+  mHost = nullptr;
+  sPendingHost = nullptr;
+  return widget.forget();
+}
 
 nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
@@ -389,8 +452,8 @@ nsWindow::GetCompositorBridgeParent() const
 
 // Private
 nsWindow::nsWindow()
+  : nsWindow(nullptr)
 {
-
 }
 
 nsEventStatus
@@ -410,7 +473,13 @@ nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 already_AddRefed<nsIWidget>
 nsIWidget::CreateTopLevelWindow()
 {
-  nsCOMPtr<nsIWidget> window = new mozilla::embedlite::nsWindow();
+  nsCOMPtr<nsIWidget> window =
+    mozilla::embedlite::AutoEmbedLiteChromeWindowHost::ConsumePending();
+  if (window) {
+    return window.forget();
+  }
+
+  window = new mozilla::embedlite::nsWindow();
   return window.forget();
 }
 

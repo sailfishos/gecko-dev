@@ -57,12 +57,38 @@ const char *EmbedLitePuppetWidget::Type() const
   return "EmbedLitePuppetWidget";
 }
 
+already_AddRefed<nsIWidget>
+EmbedLitePuppetWidget::CreateForChromeHost(nsIWidget* aHost)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aHost);
+
+  RefPtr<EmbedLitePuppetWidget> widget =
+    new EmbedLitePuppetWidget(nullptr);
+  widget->mPendingChromeHost = aHost;
+  nsCOMPtr<nsIWidget> result = widget;
+  return result.forget();
+}
+
 nsresult
 EmbedLitePuppetWidget::Create(nsIWidget* aParent,
                               const LayoutDeviceIntRect& aRect,
                               widget::InitData* aInitData)
 {
-  if (aInitData && aInitData->mWindowType == widget::WindowType::Popup) {
+  nsCOMPtr<nsIWidget> chromeHost = mPendingChromeHost;
+  mPendingChromeHost = nullptr;
+
+  if (chromeHost) {
+    if (aParent ||
+        (aInitData &&
+         aInitData->mWindowType == widget::WindowType::Popup)) {
+      MOZ_ASSERT_UNREACHABLE(
+        "A hosted chrome window must be a parentless top-level widget");
+      return NS_ERROR_INVALID_ARG;
+    }
+    aParent = chromeHost;
+  } else if (aInitData &&
+             aInitData->mWindowType == widget::WindowType::Popup) {
     aParent = nullptr;
   }
   return PuppetWidgetBase::Create(aParent, aRect, aInitData);

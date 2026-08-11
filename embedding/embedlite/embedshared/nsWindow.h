@@ -10,6 +10,8 @@
 
 #include "PuppetWidgetBase.h"
 
+#include "mozilla/Attributes.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"           // for InputContext
 #include <list>
 
@@ -19,6 +21,28 @@ namespace embedlite {
 
 class EmbedLiteWindowChild;
 class EmbedContentController;
+class nsWindow;
+
+class MOZ_RAII AutoEmbedLiteChromeWindowHost final
+{
+public:
+  explicit AutoEmbedLiteChromeWindowHost(nsWindow* aHost);
+  ~AutoEmbedLiteChromeWindowHost();
+
+  bool IsValid() const;
+  bool WasConsumed() const { return mConsumed; }
+
+private:
+  static already_AddRefed<nsIWidget> ConsumePending();
+  already_AddRefed<nsIWidget> Consume();
+
+  static AutoEmbedLiteChromeWindowHost* sPendingHost;
+
+  RefPtr<nsWindow> mHost;
+  bool mConsumed;
+
+  friend already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow();
+};
 
 class nsWindow : public PuppetWidgetBase
 {
