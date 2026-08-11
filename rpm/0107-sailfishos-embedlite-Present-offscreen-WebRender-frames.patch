@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Tue, 11 Aug 2026 16:39:53 +0200
+Subject: [sailfishos][embedlite] Present offscreen WebRender frames
+
+ESR140 distinguishes rendering from presenting and skips compositor widget
+hooks for render-only frames. EmbedLite publishes its offscreen image from
+PostRender, so treating those frames as render-only leaves no front buffer.
+Run the presentation path for the EmbedLite offscreen compositor.
+---
+ gfx/webrender_bindings/RendererOGL.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/gfx/webrender_bindings/RendererOGL.cpp b/gfx/webrender_bindings/RendererOGL.cpp
+index 7bd0e25028c85..be9fa71a1fcb2 100644
+--- a/gfx/webrender_bindings/RendererOGL.cpp
++++ b/gfx/webrender_bindings/RendererOGL.cpp
+@@ -174,6 +174,13 @@ RenderedFrameId RendererOGL::UpdateAndRender(
+   // but we don't want to touch the window, so we avoid most interactions
+   // with mCompositor.
+   bool present = aFrameParams.present;
++#ifdef MOZ_EMBEDLITE
++  // EmbedLite publishes its offscreen target from the widget's PostRender
++  // hook, so every completed render must also run the presentation path.
++  if (mCompositor->GetWidget()->IsEmbedLiteOffscreen()) {
++    present = true;
++  }
++#endif
+ 
+   LayoutDeviceIntSize size(0, 0);
+   auto bufferAge = 0;

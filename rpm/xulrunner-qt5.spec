@@ -135,6 +135,7 @@ Patch103:    0103-sailfishos-icu-Remove-obsolete-libstdc-type_info-wor.patch
 Patch104:    0104-sailfishos-egl-Define-platform-image-import-targets.patch
 Patch105:    0105-sailfishos-build-Avoid-WebIDL-fork-pools-under-QEMU.patch
 Patch106:    0106-sailfishos-embedlite-Export-embedding-entry-point.patch
+Patch107:    0107-sailfishos-embedlite-Present-offscreen-WebRender-frames.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0
