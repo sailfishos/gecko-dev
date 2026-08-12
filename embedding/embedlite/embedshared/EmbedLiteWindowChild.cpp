@@ -9,8 +9,8 @@
 
 #include "nsWindow.h"
 #include "EmbedLiteAppChild.h"
+#include "EmbedLiteChromeSessionChild.h"
 #include "EmbedLiteWindowChild.h"
-#include "mozilla/Base64.h"
 #include "mozilla/Unused.h"
 #include "Hal.h"
 #include "gfxPlatform.h"
@@ -147,8 +147,13 @@ void EmbedLiteWindowChild::ActorDestroy(ActorDestroyReason aWhy)
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
 {
   if (!mInitialized) {
-    mDestroyAfterInit = true;
-    return IPC_OK();
+    if (!mWidget) {
+      mDestroyAfterInit = true;
+      return IPC_OK();
+    }
+    // Chrome AppWindow initialization is asynchronous. Once the root widget
+    // exists it is safe to cancel that initialization and tear it down.
+    mInitialized = true;
   }
 
   if (mDestroying) {
@@ -164,6 +169,73 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
   }
   Unused << SendDestroyed();
   PEmbedLiteWindowChild::Send__delete__(this);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvLoadURL(const nsCString& aURL,
+                                  const bool& aFromExternal)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->LoadURL(aURL, aFromExternal);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvGoBack(const bool& aRequireUserInteraction,
+                                 const bool& aUserActivation)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->GoBack(aRequireUserInteraction,
+                                     aUserActivation);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvGoForward(const bool& aRequireUserInteraction,
+                                    const bool& aUserActivation)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->GoForward(aRequireUserInteraction,
+                                        aUserActivation);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvStopLoad()
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->StopLoad();
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvReload(const bool& aHardReload)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->Reload(aHardReload);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvSetActive(const bool& aActive)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SetActive(aActive);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvSetFocused(const bool& aFocused)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SetFocused(aFocused);
+  }
   return IPC_OK();
 }
 
@@ -236,7 +308,7 @@ void EmbedLiteWindowChild::CreateWidget()
     mCreateWidgetTask = nullptr;
   }
 
-  if (mDestroyAfterInit) {
+  if (mDestroyAfterInit && !mWidget) {
     mInitialized = true;
     RecvDestroy();
     return;
@@ -267,10 +339,28 @@ void EmbedLiteWindowChild::CreateWidget()
   // Initialize ScreenManager
   RefreshScreen();
 
+  if (!mChromeHosted) {
+    ChromeSessionInitializationFinished(true);
+  } else if (!CreateChromeAppWindow()) {
+    ChromeSessionInitializationFinished(false);
+  }
+}
+
+void
+EmbedLiteWindowChild::ChromeSessionInitializationFinished(bool aSuccess)
+{
+  if (mInitialized || mDestroying) {
+    return;
+  }
+
   mInitialized = true;
-  const bool initialized = !mChromeHosted || CreateChromeAppWindow();
-  Unused << SendInitialized(initialized);
-  if (!initialized) {
+  if (mDestroyAfterInit) {
+    RecvDestroy();
+    return;
+  }
+
+  Unused << SendInitialized(aSuccess);
+  if (!aSuccess) {
     RecvDestroy();
   }
 }
@@ -281,21 +371,10 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
   MOZ_ASSERT(mWidget);
   MOZ_ASSERT(!mChromeWindow);
 
-  nsAutoCString encodedURI;
-  nsresult rv = Base64URLEncode(
-    mInitialContentURI.Length(),
-    reinterpret_cast<const uint8_t*>(mInitialContentURI.BeginReading()),
-    Base64URLEncodePaddingPolicy::Omit, encodedURI);
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  nsAutoCString chromeSpec(
-    "chrome://embedlite/content/browser.xhtml?uri=");
-  chromeSpec.Append(encodedURI);
-
   nsCOMPtr<nsIURI> chromeURI;
-  rv = NS_NewURI(getter_AddRefs(chromeURI), chromeSpec);
+  nsresult rv = NS_NewURI(
+    getter_AddRefs(chromeURI),
+    "chrome://embedlite/content/browser.xhtml");
   if (NS_FAILED(rv)) {
     return false;
   }
@@ -323,6 +402,13 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
     return false;
   }
 
+  mChromeSession = new EmbedLiteChromeSessionChild(this);
+  rv = mChromeSession->Start(mChromeWindow, mInitialContentURI);
+  if (NS_FAILED(rv)) {
+    DestroyChromeAppWindow();
+    return false;
+  }
+
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mChromeWindow, &rv);
   if (NS_FAILED(rv) || !baseWindow ||
       NS_FAILED(baseWindow->SetVisibility(true))) {
@@ -335,6 +421,11 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
 
 void EmbedLiteWindowChild::DestroyChromeAppWindow()
 {
+  if (mChromeSession) {
+    mChromeSession->Shutdown();
+    mChromeSession = nullptr;
+  }
+
   if (!mChromeWindow) {
     return;
   }

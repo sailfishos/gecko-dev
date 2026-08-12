@@ -308,6 +308,7 @@ EmbedLiteWindowParent::RecvOnLoadStarted(const nsCString& aLocation)
 
   mHasLoadStarted = true;
   mLoadStartedLocation = aLocation;
+  mHasLoadProgress = false;
   if (mChromeSessionListener) {
     mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
   }

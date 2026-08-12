@@ -18,6 +18,7 @@ namespace mozilla {
 namespace embedlite {
 
 class nsWindow;
+class EmbedLiteChromeSessionChild;
 class EmbedLiteWindowListener;
 
 class EmbedLiteWindowChild : public PEmbedLiteWindowChild
@@ -47,19 +48,32 @@ protected:
 
 private:
   friend class PEmbedLiteWindowChild;
+  friend class EmbedLiteChromeSessionChild;
   void CreateWidget();
   bool CreateChromeAppWindow();
   void DestroyChromeAppWindow();
+  void ChromeSessionInitializationFinished(bool aSuccess);
 
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size);
   mozilla::ipc::IPCResult RecvSetContentOrientation(const uint32_t &);
+  mozilla::ipc::IPCResult RecvLoadURL(const nsCString& aURL,
+                                     const bool& aFromExternal);
+  mozilla::ipc::IPCResult RecvGoBack(const bool& aRequireUserInteraction,
+                                    const bool& aUserActivation);
+  mozilla::ipc::IPCResult RecvGoForward(const bool& aRequireUserInteraction,
+                                       const bool& aUserActivation);
+  mozilla::ipc::IPCResult RecvStopLoad();
+  mozilla::ipc::IPCResult RecvReload(const bool& aHardReload);
+  mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
+  mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
   void RefreshScreen();
 
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIAppWindow> mChromeWindow;
+  RefPtr<EmbedLiteChromeSessionChild> mChromeSession;
   LayoutDeviceIntRect mBounds;
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;

@@ -5,4 +5,3 @@
 embedlite.jar:
 % content embedlite %content/
   content/browser.xhtml (content/browser.xhtml)
-  content/browser.mjs   (content/browser.mjs)
