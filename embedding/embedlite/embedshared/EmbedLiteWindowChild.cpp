@@ -374,7 +374,7 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
   nsCOMPtr<nsIURI> chromeURI;
   nsresult rv = NS_NewURI(
     getter_AddRefs(chromeURI),
-    "chrome://embedlite/content/browser.xhtml");
+    "chrome://embedlitechrome/content/browser.xhtml");
   if (NS_FAILED(rv)) {
     return false;
   }

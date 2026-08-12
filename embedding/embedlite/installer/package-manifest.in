@@ -91,6 +91,8 @@
 @BINPATH@/actors/*
 
 ; [Browser Chrome Files]
+@BINPATH@/chrome/embedlitechrome@JAREXT@
+@BINPATH@/chrome/embedlitechrome.manifest
 @BINPATH@/chrome/toolkit@JAREXT@
 @BINPATH@/chrome/toolkit.manifest
 
@@ -163,4 +165,3 @@
 #ifdef PKG_LOCALE_MANIFEST
 #include @PKG_LOCALE_MANIFEST@
 #endif
-
