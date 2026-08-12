@@ -84,7 +84,7 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(
   , mListener(aListener)
   , mWidget(nullptr)
   , mBounds(0, 0, width, height)
-  , mRotation(ROTATION_0)
+  , mRotation(mozilla::ROTATION_0)
   , mInitialContentURI(initialContentURI)
   , mChromeHosted(chromeHosted)
   , mInitialized(false)
@@ -272,19 +272,19 @@ mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetContentOrientation(const ui
   hal::ScreenOrientation orientation = hal::ScreenOrientation::Default;
   uint16_t angle = 0;
   switch (mRotation) {
-    case ROTATION_0:
+    case mozilla::ROTATION_0:
       angle = 0;
       orientation = hal::ScreenOrientation::PortraitPrimary;
       break;
-    case ROTATION_90:
+    case mozilla::ROTATION_90:
       angle = 90;
       orientation = hal::ScreenOrientation::LandscapePrimary;
       break;
-    case ROTATION_180:
+    case mozilla::ROTATION_180:
       angle = 180;
       orientation = hal::ScreenOrientation::PortraitSecondary;
       break;
-    case ROTATION_270:
+    case mozilla::ROTATION_270:
       angle = 270;
       orientation = hal::ScreenOrientation::LandscapeSecondary;
       break;
@@ -440,7 +440,8 @@ void EmbedLiteWindowChild::DestroyChromeAppWindow()
 void EmbedLiteWindowChild::RefreshScreen()
 {
   LayoutDeviceIntRect rect;
-  if (mRotation == ROTATION_0 || mRotation == ROTATION_180)
+  if (mRotation == mozilla::ROTATION_0 ||
+      mRotation == mozilla::ROTATION_180)
     rect = mBounds;
   else
     rect = LayoutDeviceIntRect(0, 0, mBounds.Height(), mBounds.Width());
