@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 12 Aug 2026 17:42:50 +0200
+Subject: [sailfishos][qt] Use minimal QPA for headless children
+
+Gecko marks sandboxed content processes headless when display-server access
+is blocked. Honor that contract when creating the Qt application so children
+retain QGuiApplication services without trying to connect to Wayland.
+---
+ toolkit/xre/nsQAppInstance.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
+index d6035bc..9e7acb5 100644
+--- a/toolkit/xre/nsQAppInstance.cpp
++++ b/toolkit/xre/nsQAppInstance.cpp
+@@ -6,0 +7 @@
++#include <QByteArray>
+@@ -7,0 +9 @@
++
+@@ -9,0 +12 @@
++#include "prenv.h"
+@@ -17,0 +21,3 @@ void nsQAppInstance::AddRef(int& aArgc, char** aArgv) {
++    if (PR_GetEnv("MOZ_HEADLESS")) {
++      qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
++    }

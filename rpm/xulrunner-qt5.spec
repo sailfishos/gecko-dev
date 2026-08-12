@@ -142,6 +142,7 @@ Patch110:    0110-sailfishos-embedlite-Export-platform-frame-methods.patch
 Patch111:    0111-sailfishos-embedlite-Export-chrome-window-entry-point.patch
 Patch112:    0112-sailfishos-embedlite-Export-chrome-session-getter.patch
 Patch113:    0113-sailfishos-build-Expand-mozglue-into-programs.patch
+Patch114:    0114-sailfishos-qt-Use-minimal-QPA-for-headless-children.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0
@@ -212,6 +213,7 @@ BuildRequires:  nasm >= 2.14
 BuildRequires:  fdupes
 # See below on why the system version of this library is used
 Requires: nss-ckbi >= 3.16.6
+Requires: qt5-plugin-platform-minimal
 %if %{system_nss}
 Requires: nss >= 3.112
 %endif
