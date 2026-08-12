@@ -245,12 +245,15 @@ PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
     return;
   }
 
-  nsIWidgetListener* listener = GetWidgetListener();
+  nsIWidgetListener* listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
     listener->WillPaintWindow(this);
   }
 
-  listener = GetWidgetListener();
+  // WillPaintWindow may run script and change the attached listener.
+  listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
     listener->DidPaintWindow();
   }

@@ -10,13 +10,43 @@
 #include "mozilla/RefPtr.h"
 #include "nsCOMPtr.h"
 #include "nsIWidget.h"
+#include "nsIWidgetListener.h"
+#include "WindowRenderer.h"
 
 using mozilla::embedlite::AutoEmbedLiteChromeWindowHost;
 using mozilla::embedlite::EmbedLitePuppetWidget;
 using mozilla::embedlite::nsWindow;
+using mozilla::FallbackRenderer;
 using mozilla::LayoutDeviceIntRect;
 using mozilla::widget::InitData;
 using mozilla::widget::WindowType;
+
+namespace {
+
+class TestEmbedLitePuppetWidget final : public EmbedLitePuppetWidget
+{
+public:
+  TestEmbedLitePuppetWidget()
+    : EmbedLitePuppetWidget(nullptr)
+  {
+    mWindowRenderer = new FallbackRenderer;
+  }
+
+private:
+  ~TestEmbedLitePuppetWidget() override = default;
+};
+
+class CountingWidgetListener final : public nsIWidgetListener
+{
+public:
+  void WillPaintWindow(nsIWidget*) override { ++mWillPaintCount; }
+  void DidPaintWindow() override { ++mDidPaintCount; }
+
+  int mWillPaintCount = 0;
+  int mDidPaintCount = 0;
+};
+
+} // namespace
 
 TEST(EmbedLiteChromeWindowHostTest, ReservationIsOneShot)
 {
@@ -72,4 +102,25 @@ TEST(EmbedLiteChromeWindowHostTest, HostedWidgetStartsHidden)
 
   hosted->Destroy();
   host->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)
+{
+  RefPtr<TestEmbedLitePuppetWidget> widget =
+    new TestEmbedLitePuppetWidget;
+  CountingWidgetListener primaryListener;
+  CountingWidgetListener attachedListener;
+
+  widget->SetWidgetListener(&primaryListener);
+  widget->SetAttachedWidgetListener(&attachedListener);
+  widget->Invalidate(LayoutDeviceIntRect(0, 0, 100, 100));
+
+  EXPECT_EQ(primaryListener.mWillPaintCount, 0);
+  EXPECT_EQ(primaryListener.mDidPaintCount, 0);
+  EXPECT_EQ(attachedListener.mWillPaintCount, 1);
+  EXPECT_EQ(attachedListener.mDidPaintCount, 1);
+
+  widget->SetAttachedWidgetListener(nullptr);
+  widget->SetWidgetListener(nullptr);
+  widget->Destroy();
 }
