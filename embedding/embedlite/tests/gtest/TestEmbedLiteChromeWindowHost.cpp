@@ -8,6 +8,7 @@
 #include "embedshared/EmbedLitePuppetWidget.h"
 #include "embedshared/nsWindow.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/SpinEventLoopUntil.h"
 #include "nsCOMPtr.h"
 #include "nsIWidget.h"
 #include "nsIWidgetListener.h"
@@ -114,6 +115,15 @@ TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)
   widget->SetWidgetListener(&primaryListener);
   widget->SetAttachedWidgetListener(&attachedListener);
   widget->Invalidate(LayoutDeviceIntRect(0, 0, 100, 100));
+
+  EXPECT_EQ(primaryListener.mWillPaintCount, 0);
+  EXPECT_EQ(primaryListener.mDidPaintCount, 0);
+  EXPECT_EQ(attachedListener.mWillPaintCount, 0);
+  EXPECT_EQ(attachedListener.mDidPaintCount, 0);
+
+  ASSERT_TRUE(mozilla::SpinEventLoopUntil(
+    "EmbedLiteChromeWindowHostTest::InvalidateUsesAttachedListener"_ns,
+    [&]() { return attachedListener.mDidPaintCount == 1; }));
 
   EXPECT_EQ(primaryListener.mWillPaintCount, 0);
   EXPECT_EQ(primaryListener.mDidPaintCount, 0);

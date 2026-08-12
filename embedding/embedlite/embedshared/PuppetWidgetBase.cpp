@@ -8,6 +8,7 @@
 #include "EmbedLog.h"
 #include "PuppetWidgetBase.h"
 
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/Unused.h"
 
 #include "WindowRenderer.h"
@@ -78,6 +79,7 @@ PuppetWidgetBase::Destroy()
     return;
   }
 
+  mWidgetPaintTask.Revoke();
   mOnDestroyCalled = true;
 
   PuppetWidgetBase* parent =
@@ -236,19 +238,46 @@ PuppetWidgetBase::WidgetToScreenOffset()
 void
 PuppetWidgetBase::Invalidate(const LayoutDeviceIntRect &aRect)
 {
-  Unused << aRect;
-  if (Destroyed()) {
+  if (Destroyed() || aRect.IsEmpty() || !GetWindowRenderer() ||
+      mWidgetPaintTask.IsPending()) {
     return;
   }
-  WindowRenderer* rendered = GetWindowRenderer();
-  if (!rendered) {
+
+  mWidgetPaintTask = new WidgetPaintTask(this);
+  nsCOMPtr<nsIRunnable> event(mWidgetPaintTask.get());
+  if (NS_FAILED(SchedulerGroup::Dispatch(event.forget()))) {
+    mWidgetPaintTask.Revoke();
+  }
+}
+
+NS_IMETHODIMP
+PuppetWidgetBase::WidgetPaintTask::Run()
+{
+  if (mWidget) {
+    mWidget->Paint();
+  }
+  return NS_OK;
+}
+
+void
+PuppetWidgetBase::Paint()
+{
+  mWidgetPaintTask.Revoke();
+
+  if (Destroyed() || !GetWindowRenderer()) {
     return;
   }
+
+  RefPtr<PuppetWidgetBase> strongThis(this);
 
   nsIWidgetListener* listener =
     mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
   if (listener) {
     listener->WillPaintWindow(this);
+  }
+
+  if (Destroyed()) {
+    return;
   }
 
   // WillPaintWindow may run script and change the attached listener.

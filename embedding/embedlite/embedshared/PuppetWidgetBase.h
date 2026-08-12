@@ -9,6 +9,7 @@
 #define mozilla_embedlite_PuppetWidgetBase_h__
 
 #include "nsBaseWidget.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 
@@ -107,7 +108,26 @@ protected:
   mozilla::LayoutDeviceIntMargin mSafeAreaInsets;
 
 private:
+  class WidgetPaintTask final : public Runnable
+  {
+  public:
+    NS_DECL_NSIRUNNABLE
+
+    explicit WidgetPaintTask(PuppetWidgetBase* aWidget)
+      : Runnable("PuppetWidgetBase::WidgetPaintTask")
+      , mWidget(aWidget)
+    {
+    }
+
+    void Revoke() { mWidget = nullptr; }
+
+  private:
+    PuppetWidgetBase* mWidget;
+  };
+
+  void Paint();
   bool IsTopLevel();
+  nsRevocableEventPtr<WidgetPaintTask> mWidgetPaintTask;
   nsSizeMode mSizeMode;
 };
 
