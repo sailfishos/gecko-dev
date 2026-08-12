@@ -25,10 +25,25 @@ static uint32_t sCurrentWindowId;
 
 } // namespace
 
-EmbedLiteWindowParent::EmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener)
+EmbedLiteWindowParent::EmbedLiteWindowParent(
+    const uint16_t &width, const uint16_t &height, const uint32_t &id,
+    EmbedLiteWindowListener *aListener, bool aChromeHosted)
   : mId(id)
   , mListener(aListener)
   , mWindow(nullptr)
+  , mChromeSessionListener(nullptr)
+  , mChromeHosted(aChromeHosted)
+  , mInitialized(false)
+  , mDestroying(false)
+  , mHasLocation(false)
+  , mHasLoadStarted(false)
+  , mHasLoadProgress(false)
+  , mHasTitle(false)
+  , mCanGoBack(false)
+  , mCanGoForward(false)
+  , mLoadProgress(0)
+  , mLoadCurrent(0)
+  , mLoadTotal(0)
   , mPlatformFrameListener(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
@@ -147,6 +162,80 @@ bool EmbedLiteWindowParent::SetPlatformFrameListener(
   return true;
 }
 
+bool EmbedLiteWindowParent::CanSendChromeSessionCommand() const
+{
+  return mChromeHosted && mInitialized && !mDestroying;
+}
+
+void EmbedLiteWindowParent::SetListener(
+    EmbedLiteChromeSessionListener* aListener)
+{
+  mChromeSessionListener = aListener;
+  if (mChromeSessionListener && CanSendChromeSessionCommand()) {
+    ReplayChromeSessionState();
+  }
+}
+
+bool EmbedLiteWindowParent::LoadURL(const char* aURL, bool aFromExternal)
+{
+  return aURL && CanSendChromeSessionCommand() &&
+    SendLoadURL(nsDependentCString(aURL), aFromExternal);
+}
+
+bool EmbedLiteWindowParent::GoBack(bool aRequireUserInteraction,
+                                   bool aUserActivation)
+{
+  return CanSendChromeSessionCommand() &&
+    SendGoBack(aRequireUserInteraction, aUserActivation);
+}
+
+bool EmbedLiteWindowParent::GoForward(bool aRequireUserInteraction,
+                                      bool aUserActivation)
+{
+  return CanSendChromeSessionCommand() &&
+    SendGoForward(aRequireUserInteraction, aUserActivation);
+}
+
+bool EmbedLiteWindowParent::StopLoad()
+{
+  return CanSendChromeSessionCommand() && SendStopLoad();
+}
+
+bool EmbedLiteWindowParent::Reload(bool aHardReload)
+{
+  return CanSendChromeSessionCommand() && SendReload(aHardReload);
+}
+
+bool EmbedLiteWindowParent::SetActive(bool aActive)
+{
+  return CanSendChromeSessionCommand() && SendSetActive(aActive);
+}
+
+bool EmbedLiteWindowParent::SetFocused(bool aFocused)
+{
+  return CanSendChromeSessionCommand() && SendSetFocused(aFocused);
+}
+
+void EmbedLiteWindowParent::ReplayChromeSessionState()
+{
+  MOZ_ASSERT(mChromeSessionListener);
+
+  if (mHasLocation) {
+    mChromeSessionListener->OnLocationChanged(
+      mLocation.get(), mCanGoBack, mCanGoForward);
+  }
+  if (mHasLoadStarted) {
+    mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
+  }
+  if (mHasLoadProgress) {
+    mChromeSessionListener->OnLoadProgress(mLoadProgress, mLoadCurrent,
+                                           mLoadTotal);
+  }
+  if (mHasTitle) {
+    mChromeSessionListener->OnTitleChanged(mTitle.get());
+  }
+}
+
 void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 {
   mWindow = window;
@@ -162,6 +251,7 @@ EmbedLiteWindowParent::RecvInitialized(const bool &success)
 {
   MOZ_ASSERT(mWindow);
   if (success) {
+    mInitialized = true;
     mListener->WindowInitialized();
   } else if (EmbedLiteChromeWindowListener* chromeListener =
                dynamic_cast<EmbedLiteChromeWindowListener*>(mListener)) {
@@ -173,7 +263,104 @@ EmbedLiteWindowParent::RecvInitialized(const bool &success)
 mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
 {
   MOZ_ASSERT(mWindow);
+  if (mDestroying) {
+    return IPC_OK();
+  }
+
+  mDestroying = true;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->ChromeSessionDestroyed();
+    mChromeSessionListener = nullptr;
+  }
   mWindow->Destroyed();
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnLocationChanged(const nsCString& aLocation,
+                                             const bool& aCanGoBack,
+                                             const bool& aCanGoForward)
+{
+  if (!CanSendChromeSessionCommand() ||
+      (mHasLocation && mLocation == aLocation &&
+       mCanGoBack == aCanGoBack && mCanGoForward == aCanGoForward)) {
+    return IPC_OK();
+  }
+
+  mHasLocation = true;
+  mLocation = aLocation;
+  mCanGoBack = aCanGoBack;
+  mCanGoForward = aCanGoForward;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->OnLocationChanged(
+      mLocation.get(), mCanGoBack, mCanGoForward);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnLoadStarted(const nsCString& aLocation)
+{
+  if (!CanSendChromeSessionCommand() ||
+      (mHasLoadStarted && mLoadStartedLocation == aLocation)) {
+    return IPC_OK();
+  }
+
+  mHasLoadStarted = true;
+  mLoadStartedLocation = aLocation;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvOnLoadFinished()
+{
+  if (!CanSendChromeSessionCommand() || !mHasLoadStarted) {
+    return IPC_OK();
+  }
+
+  mHasLoadStarted = false;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->OnLoadFinished();
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnLoadProgress(const int32_t& aProgress,
+                                          const int64_t& aCurrent,
+                                          const int64_t& aTotal)
+{
+  if (!CanSendChromeSessionCommand() ||
+      (mHasLoadProgress && mLoadProgress == aProgress &&
+       mLoadCurrent == aCurrent && mLoadTotal == aTotal)) {
+    return IPC_OK();
+  }
+
+  mHasLoadProgress = true;
+  mLoadProgress = aProgress;
+  mLoadCurrent = aCurrent;
+  mLoadTotal = aTotal;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->OnLoadProgress(mLoadProgress, mLoadCurrent,
+                                           mLoadTotal);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnTitleChanged(const nsString& aTitle)
+{
+  if (!CanSendChromeSessionCommand() || (mHasTitle && mTitle == aTitle)) {
+    return IPC_OK();
+  }
+
+  mHasTitle = true;
+  mTitle = aTitle;
+  if (mChromeSessionListener) {
+    mChromeSessionListener->OnTitleChanged(mTitle.get());
+  }
   return IPC_OK();
 }
 

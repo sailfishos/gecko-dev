@@ -17,10 +17,23 @@ namespace embedlite {
 child:
   async SetSize(gfxSize aSize);
   async SetContentOrientation(uint32_t aRotation);
+  async LoadURL(nsCString aURL, bool aFromExternal);
+  async GoBack(bool aRequireUserInteraction, bool aUserActivation);
+  async GoForward(bool aRequireUserInteraction, bool aUserActivation);
+  async StopLoad();
+  async Reload(bool aHardReload);
+  async SetActive(bool aActive);
+  async SetFocused(bool aFocused);
   async Destroy();
 
 parent:
   async Initialized(bool success);
+  async OnLocationChanged(nsCString aLocation, bool aCanGoBack,
+                          bool aCanGoForward);
+  async OnLoadStarted(nsCString aLocation);
+  async OnLoadFinished();
+  async OnLoadProgress(int32_t aProgress, int64_t aCurrent, int64_t aTotal);
+  async OnTitleChanged(nsString aTitle);
   async Destroyed();
   async __delete__();
 };

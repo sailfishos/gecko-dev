@@ -28,6 +28,7 @@ enum ScreenRotation {
 class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
+class EmbedLiteChromeSession;
 
 enum class PlatformImageHandleType : uint8_t {
   EGLImage
@@ -142,6 +143,11 @@ public:
 
   virtual uint32_t GetUniqueID() const;
   bool IsChromeHosted() const;
+
+  // Returns a borrowed session only for windows created with
+  // CreateChromeWindow(). The pointer becomes invalid when the window is
+  // destroyed and does not change EmbedLiteWindow's legacy ABI.
+  MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();
 
   virtual void SetContentOrientation(mozilla::embedlite::ScreenRotation);
   virtual void ScheduleUpdate();

@@ -8,6 +8,7 @@
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/WidgetUtils.h"
+#include "EmbedLiteChromeSession.h"
 #include "EmbedLiteWindow.h"
 
 namespace mozilla {
@@ -23,11 +24,14 @@ public:
   virtual void CompositorCreated() = 0;
 };
 
-class EmbedLiteWindowParent : public PEmbedLiteWindowParent
+class EmbedLiteWindowParent : public PEmbedLiteWindowParent,
+                              public EmbedLiteChromeSession
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
 public:
-  EmbedLiteWindowParent(const uint16_t &width, const uint16_t &height, const uint32_t &id, EmbedLiteWindowListener *aListener);
+  EmbedLiteWindowParent(const uint16_t &width, const uint16_t &height,
+                        const uint32_t &id, EmbedLiteWindowListener *aListener,
+                        bool aChromeHosted);
 
   static EmbedLiteWindowParent* From(const uint32_t id);
   static uint32_t Current();
@@ -51,6 +55,16 @@ public:
   bool SetPlatformFrameListener(EmbedLitePlatformFrameListener* listener);
   EmbedLiteWindowListener *GetListener() const { return mListener; }
 
+  // EmbedLiteChromeSession:
+  void SetListener(EmbedLiteChromeSessionListener* aListener) override;
+  bool LoadURL(const char* aURL, bool aFromExternal) override;
+  bool GoBack(bool aRequireUserInteraction, bool aUserActivation) override;
+  bool GoForward(bool aRequireUserInteraction, bool aUserActivation) override;
+  bool StopLoad() override;
+  bool Reload(bool aHardReload) override;
+  bool SetActive(bool aActive) override;
+  bool SetFocused(bool aFocused) override;
+
 protected:
   friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLiteWindow;
@@ -67,10 +81,38 @@ private:
 
   mozilla::ipc::IPCResult RecvInitialized(const bool &success);
   mozilla::ipc::IPCResult RecvDestroyed();
+  mozilla::ipc::IPCResult RecvOnLocationChanged(
+    const nsCString& aLocation, const bool& aCanGoBack,
+    const bool& aCanGoForward);
+  mozilla::ipc::IPCResult RecvOnLoadStarted(const nsCString& aLocation);
+  mozilla::ipc::IPCResult RecvOnLoadFinished();
+  mozilla::ipc::IPCResult RecvOnLoadProgress(const int32_t& aProgress,
+                                             const int64_t& aCurrent,
+                                             const int64_t& aTotal);
+  mozilla::ipc::IPCResult RecvOnTitleChanged(const nsString& aTitle);
+
+  bool CanSendChromeSessionCommand() const;
+  void ReplayChromeSessionState();
 
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
   EmbedLiteWindow* mWindow;
+  EmbedLiteChromeSessionListener* mChromeSessionListener;
+  const bool mChromeHosted;
+  bool mInitialized;
+  bool mDestroying;
+  bool mHasLocation;
+  bool mHasLoadStarted;
+  bool mHasLoadProgress;
+  bool mHasTitle;
+  nsCString mLocation;
+  bool mCanGoBack;
+  bool mCanGoForward;
+  nsCString mLoadStartedLocation;
+  int32_t mLoadProgress;
+  int64_t mLoadCurrent;
+  int64_t mLoadTotal;
+  nsString mTitle;
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;

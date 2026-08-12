@@ -110,10 +110,11 @@ EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(
     const uintptr_t &aListener, const bool &chromeHosted,
     const nsCString &initialContentURI)
 {
-  Unused << chromeHosted;
   Unused << initialContentURI;
   LOGT("id:%u", id);
-  EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener));
+  EmbedLiteWindowThreadParent *p = new EmbedLiteWindowThreadParent(
+    width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener),
+    chromeHosted);
   p->AddRef();
   return p;
 }

@@ -5,6 +5,7 @@
 
 #include "EmbedLiteWindow.h"
 
+#include "EmbedLiteChromeSession.h"
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "EmbedLiteWindowParent.h"
 #include "mozilla/Unused.h"
@@ -73,6 +74,11 @@ uint32_t EmbedLiteWindow::GetUniqueID() const
 bool EmbedLiteWindow::IsChromeHosted() const
 {
   return sChromeHostedWindows.find(this) != sChromeHostedWindows.end();
+}
+
+EmbedLiteChromeSession* EmbedLiteWindow::GetChromeSession()
+{
+  return IsChromeHosted() ? mWindowParent : nullptr;
 }
 
 void EmbedLiteWindow::SetContentOrientation(mozilla::embedlite::ScreenRotation rotation)
