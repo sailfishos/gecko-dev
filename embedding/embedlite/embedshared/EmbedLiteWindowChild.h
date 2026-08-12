@@ -15,6 +15,10 @@
 class nsIAppWindow;
 
 namespace mozilla {
+class MultiTouchInput;
+}
+
+namespace mozilla {
 namespace embedlite {
 
 class nsWindow;
@@ -67,6 +71,8 @@ private:
   mozilla::ipc::IPCResult RecvReload(const bool& aHardReload);
   mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
   mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
+  mozilla::ipc::IPCResult RecvReceiveInputEvent(
+    const MultiTouchInput& aEvent);
   void RefreshScreen();
 
   uint32_t mId;

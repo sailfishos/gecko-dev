@@ -10,6 +10,7 @@
 #include "EmbedLiteWindowChild.h"
 #include "nsWindow.h"
 
+#include "InputData.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/Preferences.h"
@@ -236,6 +237,9 @@ EmbedLiteChromeSessionChild::BrowserBecameVisible()
 
   mBrowser = document->GetElementById(u"content"_ns);
   NS_ENSURE_TRUE(mBrowser, NS_ERROR_UNEXPECTED);
+  nsWindow* rootWidget = mWindow->GetWidget();
+  NS_ENSURE_TRUE(rootWidget, NS_ERROR_UNEXPECTED);
+  rootWidget->InitializeChromeInput();
 
   nsresult rv = mBrowser->AddSystemEventListener(
     u"DOMTitleChanged"_ns, this, false);
@@ -533,6 +537,18 @@ EmbedLiteChromeSessionChild::SetFocused(bool aFocused)
   mFocused = aFocused;
   ApplyFocusState();
   return true;
+}
+
+bool
+EmbedLiteChromeSessionChild::ReceiveInputEvent(const MultiTouchInput& aEvent)
+{
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  if (!mReady || !window) {
+    return false;
+  }
+
+  WidgetTouchEvent event = aEvent.ToWidgetEvent(window);
+  return window->DispatchChromeInputEvent(&event);
 }
 
 void

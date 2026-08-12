@@ -11,6 +11,8 @@
 namespace mozilla {
 namespace embedlite {
 
+class EmbedTouchInput;
+
 class EmbedLiteChromeSessionListener
 {
 public:
@@ -50,6 +52,7 @@ public:
   virtual bool Reload(bool aHardReload) = 0;
   virtual bool SetActive(bool aActive) = 0;
   virtual bool SetFocused(bool aFocused) = 0;
+  virtual bool ReceiveInputEvent(const EmbedTouchInput& aEvent) = 0;
 
 protected:
   virtual ~EmbedLiteChromeSession() = default;

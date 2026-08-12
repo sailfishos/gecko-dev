@@ -12,6 +12,7 @@
 #include "gfxPlatform.h"
 
 #include "EmbedLitePuppetWidget.h"
+#include "nsWindow.h"
 #include "nsIWidgetListener.h"
 
 #include "mozilla/Preferences.h"
@@ -97,6 +98,7 @@ EmbedLitePuppetWidget::Create(nsIWidget* aParent,
     // The host is already visible, but AppWindow still needs its normal
     // hidden-to-visible transition to invalidate and paint the chrome.
     mVisible = false;
+    static_cast<nsWindow*>(chromeHost.get())->AttachChromeHostedWidget(this);
   }
   return rv;
 }
@@ -113,6 +115,9 @@ EmbedLitePuppetWidget::AllocateChildPuppetWidget(widget::InitData&)
 
 void EmbedLitePuppetWidget::Destroy()
 {
+  if (nsWindow* chromeHost = dynamic_cast<nsWindow*>(GetParent())) {
+    chromeHost->DetachChromeHostedWidget(this);
+  }
   PuppetWidgetBase::Destroy();
   mView = nullptr;
 }

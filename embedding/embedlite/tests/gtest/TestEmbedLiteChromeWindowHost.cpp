@@ -9,6 +9,7 @@
 #include "embedshared/nsWindow.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SpinEventLoopUntil.h"
+#include "mozilla/TouchEvents.h"
 #include "nsCOMPtr.h"
 #include "nsIWidget.h"
 #include "nsIWidgetListener.h"
@@ -42,9 +43,15 @@ class CountingWidgetListener final : public nsIWidgetListener
 public:
   void WillPaintWindow(nsIWidget*) override { ++mWillPaintCount; }
   void DidPaintWindow() override { ++mDidPaintCount; }
+  nsEventStatus HandleEvent(mozilla::WidgetGUIEvent*, bool) override
+  {
+    ++mEventCount;
+    return nsEventStatus_eConsumeDoDefault;
+  }
 
   int mWillPaintCount = 0;
   int mDidPaintCount = 0;
+  int mEventCount = 0;
 };
 
 } // namespace
@@ -133,4 +140,33 @@ TEST(EmbedLiteChromeWindowHostTest, InvalidateUsesAttachedListener)
   widget->SetAttachedWidgetListener(nullptr);
   widget->SetWidgetListener(nullptr);
   widget->Destroy();
+}
+
+TEST(EmbedLiteChromeWindowHostTest, InputUsesHostedAttachedListener)
+{
+  const LayoutDeviceIntRect bounds(0, 0, 100, 100);
+  InitData init;
+  init.mWindowType = WindowType::TopLevel;
+
+  RefPtr<nsWindow> host = new nsWindow(nullptr);
+  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+
+  AutoEmbedLiteChromeWindowHost reservation(host);
+  nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
+  ASSERT_NE(hosted, nullptr);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  host->InitializeChromeInput();
+
+  CountingWidgetListener hostedListener;
+  hosted->SetAttachedWidgetListener(&hostedListener);
+  mozilla::WidgetTouchEvent event(true, mozilla::eTouchStart, host);
+  nsEventStatus status = nsEventStatus_eIgnore;
+  ASSERT_EQ(host->DispatchEvent(&event, status), NS_OK);
+  EXPECT_EQ(status, nsEventStatus_eConsumeDoDefault);
+  EXPECT_EQ(hostedListener.mEventCount, 1);
+  EXPECT_EQ(event.mWidget.get(), hosted.get());
+
+  hosted->SetAttachedWidgetListener(nullptr);
+  hosted->Destroy();
+  host->Destroy();
 }

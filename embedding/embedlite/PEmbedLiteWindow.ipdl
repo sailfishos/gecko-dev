@@ -4,9 +4,11 @@
 
 include protocol PEmbedLiteApp;
 
+include "ipc/nsGUIEventIPC.h";
 include "mozilla/GfxMessageUtils.h";
 
 using gfxSize from "gfxPoint.h";
+using class mozilla::MultiTouchInput from "InputData.h";
 
 namespace mozilla {
 namespace embedlite {
@@ -24,6 +26,7 @@ child:
   async Reload(bool aHardReload);
   async SetActive(bool aActive);
   async SetFocused(bool aFocused);
+  async ReceiveInputEvent(MultiTouchInput aEvent);
   async Destroy();
 
 parent:

@@ -64,6 +64,7 @@ public:
   bool Reload(bool aHardReload) override;
   bool SetActive(bool aActive) override;
   bool SetFocused(bool aFocused) override;
+  bool ReceiveInputEvent(const EmbedTouchInput& aEvent) override;
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;

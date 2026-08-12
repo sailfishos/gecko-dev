@@ -239,6 +239,15 @@ EmbedLiteWindowChild::RecvSetFocused(const bool& aFocused)
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvReceiveInputEvent(const MultiTouchInput& aEvent)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->ReceiveInputEvent(aEvent);
+  }
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)
 {
   mBounds = LayoutDeviceIntRect(0, 0, (int)nearbyint(aSize.width), (int)nearbyint(aSize.height));

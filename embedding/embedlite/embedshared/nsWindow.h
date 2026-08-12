@@ -21,6 +21,7 @@ namespace embedlite {
 
 class EmbedLiteWindowChild;
 class EmbedContentController;
+class EmbedLitePuppetWidget;
 class nsWindow;
 
 class MOZ_RAII AutoEmbedLiteChromeWindowHost final
@@ -95,6 +96,10 @@ public:
   void Activate(EmbedContentController* aController);
   void Deactivate(EmbedContentController* aController);
   RefPtr<mozilla::layers::IAPZCTreeManager> GetAPZCTreeManager();
+  void AttachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
+  void DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
+  void InitializeChromeInput();
+  bool DispatchChromeInputEvent(WidgetInputEvent* aEvent);
   void SetFirstViewCreated() { mFirstViewCreated = true; }
   bool IsFirstViewCreated() const { return mFirstViewCreated; }
 
@@ -113,10 +118,13 @@ protected:
 
 private:
   nsWindow();
+  void ConfigureChromeAPZ();
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
 
   bool mFirstViewCreated;
+  bool mChromeInputReady;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
+  EmbedLitePuppetWidget* mChromeHostedWidget; // Not owned.
   InputContext mInputContext;
 
   typedef std::list<EmbedContentController *> ControllerList;

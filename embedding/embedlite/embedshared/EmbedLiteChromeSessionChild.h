@@ -18,6 +18,7 @@ class nsIURI;
 class nsIWebProgress;
 
 namespace mozilla {
+class MultiTouchInput;
 namespace dom {
 class CanonicalBrowsingContext;
 class Element;
@@ -51,6 +52,7 @@ public:
   bool Reload(bool aHardReload);
   bool SetActive(bool aActive);
   bool SetFocused(bool aFocused);
+  bool ReceiveInputEvent(const MultiTouchInput& aEvent);
 
 private:
   ~EmbedLiteChromeSessionChild();

@@ -5,13 +5,19 @@
 
 #include "EmbedLiteWindowParent.h"
 
+#include <math.h>
+
 #include "EmbedLiteCompositorBridgeParent.h"
+#include "EmbedInputData.h"
 #include "EmbedLiteWindow.h"
 #include "EmbedLog.h"
 
+#include "InputData.h"
 #include "gfxContext.h"
 #include "gfxImageSurface.h"
 #include "gfxPoint.h"
+#include "mozilla/layers/APZThreadUtils.h"
+#include "nsThreadUtils.h"
 
 using namespace mozilla::gfx;
 
@@ -53,6 +59,13 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   MOZ_ASSERT(mListener);
   sWindowMap[id] = this;
   sCurrentWindowId = id;
+
+  if (mChromeHosted) {
+    // Keep APZ input handling on the embedder thread, matching the legacy
+    // EmbedLiteView path. The Gecko main thread receives the transformed
+    // event after APZ has selected its target.
+    layers::APZThreadUtils::SetControllerThread(NS_GetCurrentThread());
+  }
 
   MOZ_COUNT_CTOR(EmbedLiteWindowParent);
 }
@@ -214,6 +227,28 @@ bool EmbedLiteWindowParent::SetActive(bool aActive)
 bool EmbedLiteWindowParent::SetFocused(bool aFocused)
 {
   return CanSendChromeSessionCommand() && SendSetFocused(aFocused);
+}
+
+bool EmbedLiteWindowParent::ReceiveInputEvent(const EmbedTouchInput& aEvent)
+{
+  if (!CanSendChromeSessionCommand() ||
+      aEvent.type < EmbedTouchInput::MULTITOUCH_START ||
+      aEvent.type >= EmbedTouchInput::MULTITOUCH_SENTINEL) {
+    return false;
+  }
+
+  MultiTouchInput input(
+    static_cast<MultiTouchInput::MultiTouchType>(aEvent.type),
+    aEvent.timeStamp, TimeStamp::Now(), 0);
+  for (const TouchData& touchData : aEvent.touches) {
+    nsIntPoint point(int32_t(floorf(touchData.touchPoint.x)),
+                     int32_t(floorf(touchData.touchPoint.y)));
+    input.mTouches.AppendElement(SingleTouchData(
+      touchData.identifier, ScreenIntPoint::FromUnknownPoint(point),
+      ScreenSize(1, 1), 180.0f, touchData.pressure));
+  }
+
+  return SendReceiveInputEvent(input);
 }
 
 void EmbedLiteWindowParent::ReplayChromeSessionState()

@@ -18,8 +18,14 @@
 #include "base/basictypes.h"
 
 #include "mozilla/Hal.h"
+#include "mozilla/GlobalKeyListener.h"
+#include "mozilla/StaticPrefs_apz.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
+#include "mozilla/layers/APZEventState.h"
+#include "mozilla/layers/ChromeProcessController.h"
 #include "mozilla/layers/ImageBridgeChild.h"
+#include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/CompositorSession.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/ipc/MessageChannel.h"
@@ -109,7 +115,9 @@ AutoEmbedLiteChromeWindowHost::Consume()
 nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
   , mFirstViewCreated(false)
+  , mChromeInputReady(false)
   , mWindow(window)
+  , mChromeHostedWidget(nullptr)
 {
   LOGT("nsWindow: %p window: %p", this, mWindow);
 }
@@ -132,6 +140,8 @@ nsWindow::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
 void
 nsWindow::Destroy()
 {
+  mChromeHostedWidget = nullptr;
+  mChromeInputReady = false;
   mWindow = nullptr;
 
   PuppetWidgetBase::Destroy();
@@ -410,6 +420,57 @@ RefPtr<mozilla::layers::IAPZCTreeManager> nsWindow::GetAPZCTreeManager()
   return nullptr;
 }
 
+void
+nsWindow::AttachChromeHostedWidget(EmbedLitePuppetWidget* aWidget)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aWidget);
+  MOZ_ASSERT(!mChromeHostedWidget || mChromeHostedWidget == aWidget);
+
+  mChromeHostedWidget = aWidget;
+}
+
+void
+nsWindow::DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (mChromeHostedWidget != aWidget) {
+    return;
+  }
+
+  mChromeInputReady = false;
+  mChromeHostedWidget = nullptr;
+  ReleaseContentController();
+}
+
+void
+nsWindow::InitializeChromeInput()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!mChromeHostedWidget) {
+    return;
+  }
+
+  mChromeInputReady = true;
+  if (mAPZC && mCompositorSession) {
+    ConfigureChromeAPZ();
+  }
+}
+
+bool
+nsWindow::DispatchChromeInputEvent(WidgetInputEvent* aEvent)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (Destroyed() || !mChromeInputReady || !mChromeHostedWidget ||
+      !mAPZC || !mAPZEventState || !aEvent) {
+    return false;
+  }
+
+  aEvent->mWidget = this;
+  Unused << nsBaseWidget::DispatchInputEvent(aEvent);
+  return true;
+}
+
 nsWindow::~nsWindow()
 {
   LOGT("this: %p", this);
@@ -418,6 +479,10 @@ nsWindow::~nsWindow()
 void
 nsWindow::ConfigureAPZCTreeManager()
 {
+  if (mChromeInputReady && mChromeHostedWidget) {
+    ConfigureChromeAPZ();
+    return;
+  }
   LOGT("Do nothing - APZEventState configured in EmbedLiteViewChild");
 }
 
@@ -431,6 +496,43 @@ already_AddRefed<GeckoContentController>
 nsWindow::CreateRootContentController()
 {
   return nullptr;
+}
+
+void
+nsWindow::ConfigureChromeAPZ()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mAPZC);
+  MOZ_ASSERT(mCompositorSession);
+  MOZ_ASSERT(mChromeHostedWidget);
+  if (mRootContentController) {
+    return;
+  }
+
+  mAPZC->SetDPI(GetDPI());
+  if (StaticPrefs::apz_keyboard_enabled_AtStartup()) {
+    KeyboardMap map =
+      RootWindowGlobalKeyListener::CollectKeyboardShortcuts();
+    mAPZC->SetKeyboardMap(map);
+  }
+
+  ContentReceivedInputBlockCallback callback(
+    [treeManager = RefPtr{mAPZC.get()}](uint64_t aInputBlockId,
+                                        bool aPreventDefault) {
+      MOZ_ASSERT(NS_IsMainThread());
+      treeManager->ContentReceivedInputBlock(aInputBlockId, aPreventDefault);
+    });
+
+  ReleaseContentController();
+  mAPZEventState =
+    new APZEventState(mChromeHostedWidget, std::move(callback));
+  mRootContentController = new ChromeProcessController(
+    mChromeHostedWidget, mAPZEventState, mAPZC);
+  mCompositorSession->SetContentController(mRootContentController);
+
+  if (StaticPrefs::dom_w3c_touch_events_enabled()) {
+    RegisterTouchWindow();
+  }
 }
 
 bool nsWindow::UseExternalCompositingSurface() const
@@ -459,6 +561,20 @@ nsWindow::nsWindow()
 nsEventStatus
 nsWindow::DispatchEvent(mozilla::WidgetGUIEvent *aEvent)
 {
+  if (aEvent && aEvent->AsInputEvent()) {
+    if (mChromeInputReady && mChromeHostedWidget) {
+      aEvent->mWidget = mChromeHostedWidget;
+      nsEventStatus status = nsEventStatus_eIgnore;
+      Unused << mChromeHostedWidget->DispatchEvent(aEvent, status);
+      return status;
+    }
+
+    if (!mChromeHostedWidget && mAPZEventState &&
+        InputAPZContext::GetInputBlockId()) {
+      InputAPZContext::SetDropped();
+      return nsEventStatus_eIgnore;
+    }
+  }
   if (mAttachedWidgetListener) {
       return mAttachedWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
   } else if (mWidgetListener) {
