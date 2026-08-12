@@ -7,6 +7,7 @@
 #define EMBED_LITE_APP_H
 
 #include "mozilla/RefPtr.h"
+#include "mozilla/Types.h"
 #include <string>
 #include <vector>
 #include <stdint.h>
@@ -126,9 +127,9 @@ public:
   // Create an opt-in window backed by Gecko's normal chrome AppWindow and a
   // remote XUL browser. This is intentionally non-virtual so the legacy
   // EmbedLiteApp vtable remains unchanged.
-  EmbedLiteWindow* CreateChromeWindow(int width, int height,
-                                      const char* initialContentURI,
-                                      EmbedLiteWindowListener* aListener = nullptr);
+  MOZ_EXPORT EmbedLiteWindow* CreateChromeWindow(
+    int width, int height, const char* initialContentURI,
+    EmbedLiteWindowListener* aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);
