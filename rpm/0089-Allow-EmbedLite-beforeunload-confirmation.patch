@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 10 Aug 2026 09:24:57 +0200
+Subject: [sailfishos][prompt] Allow EmbedLite confirmEx dialogs
+
+ESR115 uses nsIPromptCollection and asyncConfirmEx for beforeunload
+confirmation. Route confirmEx through the existing EmbedLite confirm bridge
+so the native UI can return a navigation decision.
+
+Resolve the owning EmbedLite view from the BrowsingContext because the async
+parent-process check has no content DOM window. Match responses to that view
+and preserve the explicit permit-unload marker while dispatching the modal
+dialog event.
+
+Expose that marker in the native UI payload so the dialog bridge can defer its
+reply until the PageStack has finished dismissing the beforeunload dialog.
+---
+ .../components/prompts/src/Prompter.sys.mjs   | 20 ++++++-------------
+ 1 file changed, 6 insertions(+), 14 deletions(-)
+
+diff --git a/toolkit/components/prompts/src/Prompter.sys.mjs b/toolkit/components/prompts/src/Prompter.sys.mjs
+index b054a849e3c66..23e18060df638 100644
+--- a/toolkit/components/prompts/src/Prompter.sys.mjs
++++ b/toolkit/components/prompts/src/Prompter.sys.mjs
+@@ -1089,6 +1089,7 @@ class ModalPrompter {
+         break;
+       case "confirm":
+       case "confirmCheck":
++      case "confirmEx":
+         topic = "embed:confirm";
+         responseTopic = "confirmresponse";
+         break;
+@@ -1114,20 +1115,9 @@ class ModalPrompter {
+       return false;
+     }
+ 
+-    let win;
+-    try {
+-      win = this.browsingContext.top?.window || this.browsingContext.window;
+-    } catch (e) {
+-      return false;
+-    }
+-
+-    if (!win) {
+-      return false;
+-    }
+-
+     let winId;
+     try {
+-      winId = embedService.getIDByWindow(win);
++      winId = embedService.getIDByBrowsingContext(this.browsingContext);
+     } catch (e) {
+       return false;
+     }
+@@ -1140,6 +1130,7 @@ class ModalPrompter {
+       winId,
+       title: args.title,
+       text: args.text,
++      inPermitUnload: !!args.inPermitUnload,
+       inputs: [],
+     };
+ 
+@@ -1191,7 +1182,7 @@ class ModalPrompter {
+ 
+     let closed = false;
+     let handleResponse = response => {
+-      if (closed) {
++      if (closed || response.winId !== winId) {
+         return;
+       }
+ 
+@@ -1240,7 +1231,8 @@ class ModalPrompter {
+     if (promptWindow) {
+       try {
+         let docShell = this.browsingContext.docShell;
+-        let inPermitUnload = docShell?.contentViewer?.inPermitUnload;
++        let inPermitUnload =
++          args.inPermitUnload || docShell?.contentViewer?.inPermitUnload;
+         args.inPermitUnload = inPermitUnload;
+         PromptUtils.fireDialogEvent(
+           promptWindow,

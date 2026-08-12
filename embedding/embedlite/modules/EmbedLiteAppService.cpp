@@ -32,6 +32,7 @@
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/EventTarget.h"
 
 using namespace mozilla;
@@ -105,6 +106,15 @@ void EmbedLiteAppService::RegisterView(uint32_t aId)
   EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, );
   mIDMap[view->GetOuterID()] = aId;
+
+  nsCOMPtr<nsIWebBrowser> browser;
+  nsresult rv = view->GetBrowser(getter_AddRefs(browser));
+  NS_ENSURE_SUCCESS(rv, );
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(browser);
+  NS_ENSURE_TRUE(docShell, );
+  RefPtr<dom::BrowsingContext> browsingContext = docShell->GetBrowsingContext();
+  NS_ENSURE_TRUE(browsingContext, );
+  mBrowserIDMap[browsingContext->Top()->BrowserId()] = aId;
 }
 
 void EmbedLiteAppService::UnregisterView(uint32_t aId)
@@ -113,6 +123,13 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
   for (it = mIDMap.begin(); it != mIDMap.end(); ++it) {
     if (aId == it->second) {
       mIDMap.erase(it);
+      break;
+    }
+  }
+
+  for (it = mBrowserIDMap.begin(); it != mBrowserIDMap.end(); ++it) {
+    if (aId == it->second) {
+      mBrowserIDMap.erase(it);
       break;
     }
   }
@@ -137,6 +154,22 @@ EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
   uint64_t OuterWindowID = 0;
   docShell->GetOuterWindowID(&OuterWindowID);
   *aId = mIDMap[OuterWindowID];
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteAppService::GetIDByBrowsingContext(dom::BrowsingContext* aBrowsingContext,
+                                             uint32_t* aId)
+{
+  NS_ENSURE_ARG_POINTER(aBrowsingContext);
+  NS_ENSURE_ARG_POINTER(aId);
+
+  auto it = mBrowserIDMap.find(aBrowsingContext->Top()->BrowserId());
+  if (it == mBrowserIDMap.end()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aId = it->second;
   return NS_OK;
 }
 
