@@ -140,6 +140,7 @@ Patch108:    0108-sailfishos-webrender-Flush-invalidated-frames-atomic.patch
 Patch109:    0109-sailfishos-egl-Manage-platform-frame-consumer-fences.patch
 Patch110:    0110-sailfishos-embedlite-Export-platform-frame-methods.patch
 Patch111:    0111-sailfishos-embedlite-Export-chrome-window-entry-point.patch
+Patch112:    0112-sailfishos-embedlite-Export-chrome-session-getter.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

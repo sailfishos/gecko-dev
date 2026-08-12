@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 12 Aug 2026 03:20:48 +0200
+Subject: [sailfishos][embedlite] Export chrome session getter
+
+---
+ toolkit/library/libxul.symbols | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/toolkit/library/libxul.symbols b/toolkit/library/libxul.symbols
+index e9552267c301e..ab8995332ebd2 100644
+--- a/toolkit/library/libxul.symbols
++++ b/toolkit/library/libxul.symbols
+@@ -2,6 +2,7 @@ XRE_GetBootstrap
+ XRE_GetEmbedLite
+ #if defined(MOZ_EMBEDLITE) && defined(XP_LINUX) && !defined(ANDROID)
+ _ZN7mozilla9embedlite12EmbedLiteApp18CreateChromeWindow*
++_ZN7mozilla9embedlite15EmbedLiteWindow16GetChromeSessionE*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20AcquirePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20ReleasePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow24SetPlatformFrameListener*
