@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "mozilla/Types.h"
 #include "nsRect.h"
 #include <functional>
 
@@ -153,14 +154,16 @@ public:
 
   // Acquiring a frame pins its exact image until ReleasePlatformFrame. The
   // consumer must release every accepted frame before destroying the window.
-  bool AcquirePlatformFrame(const PlatformFrameToken& token,
-                            const PlatformFrameCallback& callback);
+  MOZ_EXPORT bool AcquirePlatformFrame(
+    const PlatformFrameToken& token,
+    const PlatformFrameCallback& callback);
   // Release is valid only after AcquirePlatformFrame returns true. Fence
   // ownership transfers to Gecko only when this returns true. NoHandle
   // requires a null handle and means that no GPU reads remain outstanding.
   // An EGLSync must be created on the compatible EGLDisplay after the last
   // sampling draw, and the consumer must flush its GL context before release.
-  bool ReleasePlatformFrame(const PlatformFrameRelease& release);
+  MOZ_EXPORT bool ReleasePlatformFrame(
+    const PlatformFrameRelease& release);
   // Token notifications are disabled by default so legacy consumers retain
   // their existing frame and teardown behavior. After disabling an enabled
   // stream, release every acquired token and wait for
@@ -169,9 +172,10 @@ public:
   // rendering infrastructure is already shutting down, do not time out or
   // destroy the window, listener, or consumer resources; keep them alive
   // until PlatformFrameDeliveryStopped arrives.
-  bool SetPlatformFrameDeliveryEnabled(bool enabled);
+  MOZ_EXPORT bool SetPlatformFrameDeliveryEnabled(bool enabled);
   // The listener is not owned and must remain alive until delivery stops.
-  bool SetPlatformFrameListener(EmbedLitePlatformFrameListener* listener);
+  MOZ_EXPORT bool SetPlatformFrameListener(
+    EmbedLitePlatformFrameListener* listener);
 
 protected:
   friend class EmbedLiteApp;
