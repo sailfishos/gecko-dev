@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Wed, 12 Aug 2026 02:42:52 +0200
+Subject: [sailfishos][embedlite] Export chrome window entry point
+
+---
+ toolkit/library/libxul.symbols | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/toolkit/library/libxul.symbols b/toolkit/library/libxul.symbols
+index 2aba290e6544f..e9552267c301e 100644
+--- a/toolkit/library/libxul.symbols
++++ b/toolkit/library/libxul.symbols
+@@ -1,6 +1,7 @@
+ XRE_GetBootstrap
+ XRE_GetEmbedLite
+ #if defined(MOZ_EMBEDLITE) && defined(XP_LINUX) && !defined(ANDROID)
++_ZN7mozilla9embedlite12EmbedLiteApp18CreateChromeWindow*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20AcquirePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20ReleasePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow24SetPlatformFrameListener*
