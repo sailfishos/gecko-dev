@@ -66,7 +66,7 @@ EmbedLitePuppetWidget::CreateForChromeHost(nsIWidget* aHost)
   RefPtr<EmbedLitePuppetWidget> widget =
     new EmbedLitePuppetWidget(nullptr);
   widget->mPendingChromeHost = aHost;
-  nsCOMPtr<nsIWidget> result = widget;
+  nsCOMPtr<nsIWidget> result = widget.forget();
   return result.forget();
 }
 
