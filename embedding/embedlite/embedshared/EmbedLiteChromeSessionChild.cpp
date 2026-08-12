@@ -11,6 +11,7 @@
 #include "nsWindow.h"
 
 #include "mozilla/ErrorResult.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_browser.h"
@@ -27,6 +28,7 @@
 #include "nsContentUtils.h"
 #include "nsIAppWindow.h"
 #include "nsIBaseWindow.h"
+#include "nsIFrame.h"
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
 #include "nsIInterfaceRequestorUtils.h"
@@ -353,7 +355,7 @@ EmbedLiteChromeSessionChild::RebindProgressListener()
   mWebProgress = webProgress;
 
   const uint32_t notifyMask =
-    nsIWebProgress::NOTIFY_STATE_DOCUMENT |
+    nsIWebProgress::NOTIFY_STATE_NETWORK |
     nsIWebProgress::NOTIFY_LOCATION |
     nsIWebProgress::NOTIFY_PROGRESS;
   nsresult rv = mWebProgress->AddProgressListener(this, notifyMask);
@@ -464,6 +466,26 @@ EmbedLiteChromeSessionChild::ApplyActiveState()
   }
   if (mWindow && mWindow->GetWidget()) {
     mWindow->GetWidget()->SetActive(mActive);
+  }
+  if (mActive) {
+    ScheduleUpdate();
+  }
+}
+
+void
+EmbedLiteChromeSessionChild::ScheduleUpdate()
+{
+  if (!mBrowser || !mWindow) {
+    return;
+  }
+
+  PresShell* presShell = mBrowser->OwnerDoc()->GetPresShell();
+  nsIFrame* rootFrame = presShell ? presShell->GetRootFrame() : nullptr;
+  if (rootFrame) {
+    rootFrame->SchedulePaint();
+  }
+  if (nsWindow* window = mWindow->GetWidget()) {
+    window->ScheduleWebRenderComposite();
   }
 }
 
@@ -604,7 +626,7 @@ EmbedLiteChromeSessionChild::OnStateChange(
   Unused << aRequest;
   Unused << aStatus;
   if (!IsCurrentWebProgress(aWebProgress) ||
-      !(aStateFlags & nsIWebProgressListener::STATE_IS_DOCUMENT)) {
+      !(aStateFlags & nsIWebProgressListener::STATE_IS_NETWORK)) {
     return NS_OK;
   }
 

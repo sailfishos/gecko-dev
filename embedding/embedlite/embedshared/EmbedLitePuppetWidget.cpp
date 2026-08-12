@@ -77,6 +77,7 @@ EmbedLitePuppetWidget::Create(nsIWidget* aParent,
 {
   nsCOMPtr<nsIWidget> chromeHost = mPendingChromeHost;
   mPendingChromeHost = nullptr;
+  const bool chromeHosted = !!chromeHost;
 
   if (chromeHost) {
     if (aParent ||
@@ -91,7 +92,13 @@ EmbedLitePuppetWidget::Create(nsIWidget* aParent,
              aInitData->mWindowType == widget::WindowType::Popup) {
     aParent = nullptr;
   }
-  return PuppetWidgetBase::Create(aParent, aRect, aInitData);
+  nsresult rv = PuppetWidgetBase::Create(aParent, aRect, aInitData);
+  if (NS_SUCCEEDED(rv) && chromeHosted) {
+    // The host is already visible, but AppWindow still needs its normal
+    // hidden-to-visible transition to invalidate and paint the chrome.
+    mVisible = false;
+  }
+  return rv;
 }
 
 already_AddRefed<nsIWidget>

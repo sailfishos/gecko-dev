@@ -66,6 +66,7 @@ private:
                             bool aAllowNull = false) const;
   void ApplyActiveState();
   void ApplyFocusState();
+  void ScheduleUpdate();
   void NotifyLocation(nsIURI* aLocation = nullptr);
   void NotifyTitle();
   void RemoveObserver();

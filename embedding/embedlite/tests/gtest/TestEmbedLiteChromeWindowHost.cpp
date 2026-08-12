@@ -14,6 +14,9 @@
 using mozilla::embedlite::AutoEmbedLiteChromeWindowHost;
 using mozilla::embedlite::EmbedLitePuppetWidget;
 using mozilla::embedlite::nsWindow;
+using mozilla::LayoutDeviceIntRect;
+using mozilla::widget::InitData;
+using mozilla::widget::WindowType;
 
 TEST(EmbedLiteChromeWindowHostTest, ReservationIsOneShot)
 {
@@ -41,4 +44,32 @@ TEST(EmbedLiteChromeWindowHostTest, UnusedReservationIsCleared)
 
   nsCOMPtr<nsIWidget> unhosted = nsIWidget::CreateTopLevelWindow();
   EXPECT_NE(dynamic_cast<nsWindow*>(unhosted.get()), nullptr);
+}
+
+TEST(EmbedLiteChromeWindowHostTest, HostedWidgetStartsHidden)
+{
+  const LayoutDeviceIntRect bounds(0, 0, 100, 100);
+  InitData hostInit;
+  hostInit.mWindowType = WindowType::TopLevel;
+
+  RefPtr<nsWindow> host = new nsWindow(nullptr);
+  ASSERT_EQ(host->Create(nullptr, bounds, &hostInit), NS_OK);
+  ASSERT_TRUE(host->IsVisible());
+
+  AutoEmbedLiteChromeWindowHost reservation(host);
+  ASSERT_TRUE(reservation.IsValid());
+
+  nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
+  ASSERT_NE(hosted, nullptr);
+
+  InitData hostedInit;
+  hostedInit.mWindowType = WindowType::TopLevel;
+  ASSERT_EQ(hosted->Create(nullptr, bounds, &hostedInit), NS_OK);
+  EXPECT_FALSE(hosted->IsVisible());
+
+  hosted->Show(true);
+  EXPECT_TRUE(hosted->IsVisible());
+
+  hosted->Destroy();
+  host->Destroy();
 }
