@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "EmbedLog.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/Logging.h"
 
 #include "EmbedLiteApp.h"
@@ -181,6 +182,7 @@ EmbedLiteApp::StartChild(EmbedLiteApp* aApp)
       aApp->mSubThread = new EmbedLiteSubThread(aApp);
       if (!aApp->mSubThread->StartEmbedThread()) {
         LOGE("Failed to start child thread");
+        MOZ_CRASH("Failed to initialize the EmbedLite child thread");
       }
     }
   } else if (aApp->mEmbedType == EMBED_PROCESS) {
@@ -265,7 +267,7 @@ EmbedLiteApp::AddManifestLocation(const char* manifest)
 }
 
 bool
-EmbedLiteApp::StartChildThread()
+EmbedLiteApp::InitializeChildThread()
 {
   NS_ENSURE_TRUE(mEmbedType == EMBED_THREAD, false);
   LOGT("mUILoop:%p, current:%p", mUILoop, MessageLoop::current());
@@ -283,12 +285,25 @@ EmbedLiteApp::StartChildThread()
     }
   }
 
-  GeckoLoader::InitEmbedding(mProfilePath);
+  return GeckoLoader::InitEmbedding(mProfilePath);
+}
 
+void
+EmbedLiteApp::ConnectChildThread()
+{
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
   mAppChild->Init(mAppParent);
+}
 
+bool
+EmbedLiteApp::StartChildThread()
+{
+  if (!InitializeChildThread()) {
+    return false;
+  }
+
+  ConnectChildThread();
   return true;
 }
 

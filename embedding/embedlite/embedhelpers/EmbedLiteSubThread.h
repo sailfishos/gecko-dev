@@ -9,6 +9,7 @@
 #define mozilla_ipc_EmbedLiteSubThread_h
 
 #include "base/thread.h"
+#include "base/waitable_event.h"
 #include "nsISupportsImpl.h"
 
 namespace mozilla {
@@ -32,6 +33,8 @@ class EmbedLiteSubThread : public base::Thread
     virtual ~EmbedLiteSubThread();
 
     EmbedLiteApp* mApp;
+    base::WaitableEvent mEmbeddingInitialized;
+    bool mEmbeddingInitializationSucceeded;
 };
 
 } // namespace embedlite

@@ -168,6 +168,9 @@ public:
 private:
   EmbedLiteApp();
 
+  bool InitializeChildThread();
+  void ConnectChildThread();
+
   /*
    * States of EmbedLiteApp's lifecycle
    */
@@ -201,6 +204,7 @@ private:
 
   friend class EmbedLiteAppProcessParent;
   friend class EmbedLiteAppThreadParent;
+  friend class EmbedLiteSubThread;
   friend class EmbedLiteCompositorBridgeParent;
   friend class EmbedLitePuppetWidget;
   friend class nsWindow;
