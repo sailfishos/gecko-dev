@@ -718,6 +718,14 @@ diff --git a/gfx/cairo/cairo/src/cairo-qt-surface.cpp b/gfx/cairo/cairo/src/cair
 index d276f059e1fd..e35c4bb311c2 100644
 --- a/gfx/cairo/cairo/src/cairo-qt-surface.cpp
 +++ b/gfx/cairo/cairo/src/cairo-qt-surface.cpp
+@@ -56,6 +56,7 @@
+ #include <memory>
+ 
+ #include <QtGui/QPainter>
++#include <QtGui/QPainterPath>
+ #include <QtGui/QPaintEngine>
+ #include <QtGui/QPaintDevice>
+ #include <QtGui/QImage>
 @@ -62,7 +62,7 @@
  #include <QtGui/QPixmap>
  #include <QtGui/QBrush>
