@@ -4,13 +4,13 @@ Date: Wed, 12 Aug 2026 17:40:00 +0200
 Subject: [sailfishos][build] Expand mozglue into programs
 
 Linux libxul deliberately imports MFBT and mozglue symbols weakly because
-Gecko programs provide their implementations.  Keeping mozglue as an
+Gecko programs provide their implementations. Keeping mozglue as an
 unexpanded static archive prevents weak references from extracting its
 members, leaving plugin-container with null function addresses during libxul
 static initialization.
 
 Let the Gecko build backend expand mozglue objects into its program consumers
-as designed.  FORCE_STATIC_LIB and SDK_LIBRARY still build and install the
+as designed. FORCE_STATIC_LIB and SDK_LIBRARY still build and install the
 standalone SDK archive.
 ---
  mozglue/build/moz.build | 2 --
@@ -20,6 +20,12 @@ diff --git a/mozglue/build/moz.build b/mozglue/build/moz.build
 index 7088936292c97..6ef3e2ca3609d 100644
 --- a/mozglue/build/moz.build
 +++ b/mozglue/build/moz.build
-@@ -98,2 +97,0 @@ if CONFIG["MOZ_LINKER"] and CONFIG["TARGET_CPU"] == "arm":
+@@ -95,8 +95,6 @@ LIBRARY_DEFINES["MOZ_HAS_MOZGLUE"] = True
+ if CONFIG["MOZ_LINKER"] and CONFIG["TARGET_CPU"] == "arm":
+     LDFLAGS += ["-Wl,-version-script,%s/arm-eabi-filter" % SRCDIR]
+ 
 -NO_EXPAND_LIBS = True
 -
+ DIST_INSTALL = True
+ 
+ include("replace_malloc.mozbuild")

@@ -11,16 +11,29 @@ retain QGuiApplication services without trying to connect to Wayland.
  1 file changed, 6 insertions(+)
 
 diff --git a/toolkit/xre/nsQAppInstance.cpp b/toolkit/xre/nsQAppInstance.cpp
-index d6035bc..9e7acb5 100644
+index d6035bc347990..9e7acb5955aaf 100644
 --- a/toolkit/xre/nsQAppInstance.cpp
 +++ b/toolkit/xre/nsQAppInstance.cpp
-@@ -6,0 +7 @@
+@@ -4,9 +4,12 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
 +#include <QByteArray>
-@@ -7,0 +9 @@
+ #include <QGuiApplication>
 +
-@@ -9,0 +12 @@
+ #include "nsQAppInstance.h"
+ #include "nsXPCOMPrivate.h"
 +#include "prenv.h"
-@@ -17,0 +21,3 @@ void nsQAppInstance::AddRef(int& aArgc, char** aArgv) {
+ 
+ QGuiApplication *nsQAppInstance::sQAppInstance = nullptr;
+ int nsQAppInstance::sQAppRefCount = 0;
+@@ -15,6 +18,9 @@ void nsQAppInstance::AddRef(int& aArgc, char** aArgv) {
+   if (qApp)
+     return;
+   if (!sQAppInstance) {
 +    if (PR_GetEnv("MOZ_HEADLESS")) {
 +      qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("minimal"));
 +    }
+     mozilla::SetICUMemoryFunctions();
+     sQAppInstance = new QGuiApplication(aArgc, aArgv);
+   }

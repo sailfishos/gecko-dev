@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 17 Aug 2026 17:30:00 +0200
+Subject: [sailfishos][embedlite] Export tab session entry points
+
+---
+ toolkit/library/libxul.symbols | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/toolkit/library/libxul.symbols b/toolkit/library/libxul.symbols
+index ab8995332ebd2..7da4ae1bdd0a4 100644
+--- a/toolkit/library/libxul.symbols
++++ b/toolkit/library/libxul.symbols
+@@ -2,7 +2,9 @@ XRE_GetBootstrap
+ XRE_GetEmbedLite
+ #if defined(MOZ_EMBEDLITE) && defined(XP_LINUX) && !defined(ANDROID)
+ _ZN7mozilla9embedlite12EmbedLiteApp18CreateChromeWindow*
++_ZN7mozilla9embedlite12EmbedLiteApp21CreateChromeTabWindow*
+ _ZN7mozilla9embedlite15EmbedLiteWindow16GetChromeSessionE*
++_ZN7mozilla9embedlite15EmbedLiteWindow19GetChromeTabSessionE*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20AcquirePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow20ReleasePlatformFrame*
+ _ZN7mozilla9embedlite15EmbedLiteWindow24SetPlatformFrameListener*
