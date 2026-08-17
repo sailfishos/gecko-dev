@@ -122,6 +122,8 @@ private:
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   Atomic<bool> mPlatformFrameDeliveryEnabled;
   bool mPlatformFrameDeliveryStopPending;
+  // Protected by mPlatformImageMutex.
+  bool mPlatformFrameRefreshPending;
   Atomic<bool> mPlatformImageRetryPending;
   Atomic<bool> mPlatformFrameRetirementPending;
 

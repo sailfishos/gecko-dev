@@ -140,7 +140,7 @@ private:
   uint32_t mId;
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
-  EmbedLiteWindowParent& mWindow;
+  RefPtr<EmbedLiteWindowParent> mWindow;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;
   bool mIsHidden;
 

@@ -6,18 +6,21 @@
 #include "EmbedLiteWindowParent.h"
 
 #include <math.h>
+#include <map>
+#include <utility>
 
 #include "EmbedLiteCompositorBridgeParent.h"
 #include "EmbedInputData.h"
 #include "EmbedLiteWindow.h"
 #include "EmbedLog.h"
+#include "base/message_loop.h"
 
 #include "InputData.h"
 #include "gfxContext.h"
 #include "gfxImageSurface.h"
 #include "gfxPoint.h"
+#include "mozilla/DataMutex.h"
 #include "mozilla/layers/APZThreadUtils.h"
-#include "nsThreadUtils.h"
 
 using namespace mozilla::gfx;
 
@@ -26,8 +29,14 @@ namespace embedlite {
 
 namespace {
 
-static std::map<uint32_t, EmbedLiteWindowParent*> sWindowMap;
-static uint32_t sCurrentWindowId;
+struct WindowRegistry
+{
+  std::map<uint32_t, RefPtr<EmbedLiteWindowParent>> windows;
+  uint32_t currentWindowId = 0;
+};
+
+MOZ_RUNINIT static StaticDataMutex<WindowRegistry> sWindowRegistry(
+  "EmbedLiteWindowParent::sWindowRegistry");
 
 } // namespace
 
@@ -55,16 +64,14 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mSize(width, height)
   , mRotation(mozilla::ROTATION_0)
 {
-  MOZ_ASSERT(sWindowMap.find(id) == sWindowMap.end());
   MOZ_ASSERT(mListener);
-  sWindowMap[id] = this;
-  sCurrentWindowId = id;
 
   if (mChromeHosted) {
     // Keep APZ input handling on the embedder thread, matching the legacy
     // EmbedLiteView path. The Gecko main thread receives the transformed
     // event after APZ has selected its target.
-    layers::APZThreadUtils::SetControllerThread(NS_GetCurrentThread());
+    layers::APZThreadUtils::SetControllerThread(
+      MessageLoop::current()->SerialEventTarget());
   }
 
   MOZ_COUNT_CTOR(EmbedLiteWindowParent);
@@ -72,29 +79,63 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
 
 EmbedLiteWindowParent::~EmbedLiteWindowParent()
 {
-  MOZ_ASSERT(sWindowMap.find(mId) != sWindowMap.end());
-  sWindowMap.erase(sWindowMap.find(mId));
-  if (mId == sCurrentWindowId) {
-    sCurrentWindowId = 0;
-  }
-
   MOZ_ASSERT(mObservers.IsEmpty());
 
   MOZ_COUNT_DTOR(EmbedLiteWindowParent);
 }
 
-EmbedLiteWindowParent* EmbedLiteWindowParent::From(const uint32_t id)
+void EmbedLiteWindowParent::Register(EmbedLiteWindowParent* aParent)
 {
-  std::map<uint32_t, EmbedLiteWindowParent*>::const_iterator it = sWindowMap.find(id);
-  if (it != sWindowMap.end()) {
+  MOZ_RELEASE_ASSERT(aParent);
+  RefPtr<EmbedLiteWindowParent> registered = aParent;
+  {
+    auto registry = sWindowRegistry.Lock();
+    const auto result = registry->windows.emplace(
+      aParent->mId, std::move(registered));
+    MOZ_RELEASE_ASSERT(result.second);
+    registry->currentWindowId = aParent->mId;
+  }
+}
+
+void EmbedLiteWindowParent::Unregister(EmbedLiteWindowParent* aParent)
+{
+  MOZ_RELEASE_ASSERT(aParent);
+  RefPtr<EmbedLiteWindowParent> registered;
+  {
+    auto registry = sWindowRegistry.Lock();
+    const auto it = registry->windows.find(aParent->mId);
+    MOZ_RELEASE_ASSERT(it != registry->windows.end());
+    MOZ_RELEASE_ASSERT(it->second == aParent);
+    registered = std::move(it->second);
+    registry->windows.erase(it);
+    if (registry->currentWindowId == aParent->mId) {
+      registry->currentWindowId = 0;
+    }
+  }
+  MOZ_RELEASE_ASSERT(registered == aParent);
+}
+
+RefPtr<EmbedLiteWindowParent> EmbedLiteWindowParent::From(const uint32_t id)
+{
+  RefPtr<EmbedLiteWindowParent> parent;
+  {
+    auto registry = sWindowRegistry.Lock();
+    const auto it = registry->windows.find(id);
+    if (it != registry->windows.end()) {
+      parent = it->second;
+    }
+  }
+  return parent;
+}
+
+RefPtr<EmbedLiteWindowParent> EmbedLiteWindowParent::Current()
+{
+  auto registry = sWindowRegistry.Lock();
+  const auto it = registry->windows.find(registry->currentWindowId);
+  if (it != registry->windows.end()) {
     return it->second;
   }
   return nullptr;
-}
-
-uint32_t EmbedLiteWindowParent::Current()
-{
-  return sCurrentWindowId;
 }
 
 void EmbedLiteWindowParent::AddObserver(EmbedLiteWindowParentObserver* obs)

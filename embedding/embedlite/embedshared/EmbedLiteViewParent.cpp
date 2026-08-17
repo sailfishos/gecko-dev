@@ -12,6 +12,7 @@
 #include "nsWindow.h"
 
 #include "EmbedLiteCompositorBridgeParent.h"
+#include "base/message_loop.h"
 #include "mozilla/Unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZThreadUtils.h"
@@ -35,26 +36,27 @@ EmbedLiteViewParent::EmbedLiteViewParent(const uint32_t &windowId,
   , mId(id)
   , mView(nullptr)
   , mViewAPIDestroyed(false)
-  , mWindow(*EmbedLiteWindowParent::From(windowId))
+  , mWindow(EmbedLiteWindowParent::From(windowId))
   , mCompositor(nullptr)
   , mIsHidden(isHidden)
   , mDPI(-1.0)
-  , mThread(NS_GetCurrentThread())
+  , mThread(MessageLoop::current()->SerialEventTarget())
   , mLastIMEState(0)
   , mUploadTexture(0)
   , mApzcTreeManager(nullptr)
   , mContentController(new EmbedContentController(this, mThread))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewParent);
+  MOZ_RELEASE_ASSERT(mWindow);
 
   APZThreadUtils::SetControllerThread(mThread);
 
   /// XXX: Fix this
-  if (mWindow.GetCompositor()) {
-    SetCompositor(mWindow.GetCompositor());
+  if (mWindow->GetCompositor()) {
+    SetCompositor(mWindow->GetCompositor());
   }
 
-  mWindow.AddObserver(this);
+  mWindow->AddObserver(this);
 
   // This could be turned into MaybeDiscardedBrowsingContext
   Unused << parentBrowsingContext;
@@ -75,7 +77,7 @@ EmbedLiteViewParent::~EmbedLiteViewParent()
     window->Deactivate(mContentController);
   }
   mContentController = nullptr;
-  mWindow.RemoveObserver(this);
+  mWindow->RemoveObserver(this);
 }
 
 void
@@ -445,7 +447,7 @@ void
 EmbedLiteViewParent::CompositorCreated()
 {
   // XXX: Move compositor handling entirely to EmbedLiteWindowParent
-  SetCompositor(mWindow.GetCompositor());
+  SetCompositor(mWindow->GetCompositor());
 }
 
 NS_IMETHODIMP

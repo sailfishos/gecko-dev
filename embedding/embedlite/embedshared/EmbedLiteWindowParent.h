@@ -7,6 +7,7 @@
 #define MOZ_WINDOW_EMBED_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteChromeSession.h"
 #include "EmbedLiteWindow.h"
@@ -17,6 +18,7 @@ namespace embedlite {
 class EmbedLiteWindow;
 class EmbedLiteWindowListener;
 class EmbedLiteCompositorBridgeParent;
+class EmbedLiteAppThreadParent;
 
 class EmbedLiteWindowParentObserver
 {
@@ -33,8 +35,8 @@ public:
                         const uint32_t &id, EmbedLiteWindowListener *aListener,
                         bool aChromeHosted);
 
-  static EmbedLiteWindowParent* From(const uint32_t id);
-  static uint32_t Current();
+  static RefPtr<EmbedLiteWindowParent> From(const uint32_t id);
+  static RefPtr<EmbedLiteWindowParent> Current();
 
   void AddObserver(EmbedLiteWindowParentObserver*);
   void RemoveObserver(EmbedLiteWindowParentObserver*);
@@ -77,8 +79,12 @@ protected:
   void SetCompositor(EmbedLiteCompositorBridgeParent* aCompositor);
 
 private:
+  friend class EmbedLiteAppThreadParent;
   friend class PEmbedLiteWindowParent;
   typedef nsTArray<EmbedLiteWindowParentObserver*> ObserverArray;
+
+  static void Register(EmbedLiteWindowParent* aParent);
+  static void Unregister(EmbedLiteWindowParent* aParent);
 
   mozilla::ipc::IPCResult RecvInitialized(const bool &success);
   mozilla::ipc::IPCResult RecvDestroyed();

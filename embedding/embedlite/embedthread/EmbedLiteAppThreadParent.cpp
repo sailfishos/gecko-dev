@@ -116,6 +116,7 @@ EmbedLiteAppThreadParent::AllocPEmbedLiteWindowParent(
     width, height, id, reinterpret_cast<EmbedLiteWindowListener*>(aListener),
     chromeHosted);
   p->AddRef();
+  EmbedLiteWindowParent::Register(p);
   return p;
 }
 
@@ -124,6 +125,7 @@ EmbedLiteAppThreadParent::DeallocPEmbedLiteWindowParent(PEmbedLiteWindowParent* 
 {
   LOGT();
   EmbedLiteWindowThreadParent* p = static_cast<EmbedLiteWindowThreadParent *>(aActor);
+  EmbedLiteWindowParent::Unregister(p);
   p->Release();
   return true;
 }

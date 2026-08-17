@@ -321,7 +321,8 @@ nsWindow::PostRender(mozilla::widget::WidgetRenderingContext *aContext)
   Unused << aContext;
 
   if (GetCompositorBridgeParent()) {
-    static_cast<EmbedLiteCompositorBridgeParent*>(GetCompositorBridgeParent())->WebRenderComposited();
+    static_cast<EmbedLiteCompositorBridgeParent*>(
+      GetCompositorBridgeParent())->WebRenderComposited();
   } else if (mWindow) {
     mWindow->GetListener()->CompositingFinished();
   }
