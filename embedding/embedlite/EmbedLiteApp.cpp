@@ -548,8 +548,23 @@ EmbedLiteApp::CreateChromeWindow(int width, int height,
       "Chrome-hosted windows require thread embedding and valid dimensions");
     return nullptr;
   }
-  return CreateWindowInternal(width, height, initialContentURI, true,
-                              aListener);
+  const char* contentURI = initialContentURI && *initialContentURI
+                             ? initialContentURI
+                             : "about:blank";
+  return CreateWindowInternal(width, height, contentURI, true, aListener);
+}
+
+EmbedLiteWindow*
+EmbedLiteApp::CreateChromeTabWindow(int width, int height,
+                                    EmbedLiteWindowListener* aListener)
+{
+  if (mEmbedType != EMBED_THREAD || width <= 0 || height <= 0 ||
+      width > UINT16_MAX || height > UINT16_MAX) {
+    NS_WARNING(
+      "Chrome-hosted windows require thread embedding and valid dimensions");
+    return nullptr;
+  }
+  return CreateWindowInternal(width, height, "", true, aListener);
 }
 
 EmbedLiteWindow*
@@ -568,10 +583,8 @@ EmbedLiteApp::CreateWindowInternal(int width, int height,
   }
 
   nsAutoCString chromeInitialURI;
-  if (chromeHosted) {
-    chromeInitialURI.Assign(
-      initialContentURI && *initialContentURI ? initialContentURI
-                                              : "about:blank");
+  if (chromeHosted && initialContentURI) {
+    chromeInitialURI.Assign(initialContentURI);
   }
 
   EmbedLiteAppParent* appParent = static_cast<EmbedLiteAppParent*>(mAppParent);

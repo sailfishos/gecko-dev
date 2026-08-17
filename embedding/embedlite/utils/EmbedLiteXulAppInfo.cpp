@@ -223,7 +223,8 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetFissionDecisionStatusString(nsACString& aF
 /* readonly attribute boolean sessionHistoryInParent; */
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetSessionHistoryInParent(bool *aSessionHistoryInParent)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  *aSessionHistoryInParent = mozilla::SessionHistoryInParent();
+  return NS_OK;
 }
 
 /* readonly attribute AString processStartupShortcut; */

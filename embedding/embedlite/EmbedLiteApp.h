@@ -130,6 +130,10 @@ public:
   MOZ_EXPORT EmbedLiteWindow* CreateChromeWindow(
     int width, int height, const char* initialContentURI,
     EmbedLiteWindowListener* aListener = nullptr);
+  // Create a chrome-hosted tab-session window without an initial browser.
+  // This is also non-virtual to preserve the legacy EmbedLiteApp vtable.
+  MOZ_EXPORT EmbedLiteWindow* CreateChromeTabWindow(
+    int width, int height, EmbedLiteWindowListener* aListener = nullptr);
   virtual EmbedLiteSecurity* CreateSecurity(const char *aStatus, unsigned int aState) const;
   virtual void DestroyView(EmbedLiteView* aView);
   virtual void DestroyWindow(EmbedLiteWindow* aWindow);

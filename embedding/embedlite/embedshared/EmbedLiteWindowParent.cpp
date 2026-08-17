@@ -47,6 +47,7 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mListener(aListener)
   , mWindow(nullptr)
   , mChromeSessionListener(nullptr)
+  , mChromeTabSessionListener(nullptr)
   , mChromeHosted(aChromeHosted)
   , mInitialized(false)
   , mDestroying(false)
@@ -54,6 +55,9 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mHasLoadStarted(false)
   , mHasLoadProgress(false)
   , mHasTitle(false)
+  , mHasTabSnapshot(false)
+  , mRestoreTabsSent(false)
+  , mProjectedTabId(0)
   , mCanGoBack(false)
   , mCanGoForward(false)
   , mLoadProgress(0)
@@ -230,6 +234,15 @@ void EmbedLiteWindowParent::SetListener(
   }
 }
 
+void EmbedLiteWindowParent::SetTabListener(
+    EmbedLiteChromeTabSessionListener* aListener)
+{
+  mChromeTabSessionListener = aListener;
+  if (mChromeTabSessionListener && CanSendChromeSessionCommand()) {
+    ReplayTabSnapshot();
+  }
+}
+
 bool EmbedLiteWindowParent::LoadURL(const char* aURL, bool aFromExternal)
 {
   return aURL && CanSendChromeSessionCommand() &&
@@ -292,6 +305,91 @@ bool EmbedLiteWindowParent::ReceiveInputEvent(const EmbedTouchInput& aEvent)
   return SendReceiveInputEvent(input);
 }
 
+bool EmbedLiteWindowParent::RestoreTabs(
+    const EmbedLiteChromeRestoredTab* aTabs, uint32_t aTabCount,
+    int32_t aSelectedTabIndex)
+{
+  if (!mChromeHosted || mDestroying || mRestoreTabsSent ||
+      (!aTabCount && aSelectedTabIndex != -1) ||
+      (aTabCount &&
+       (!aTabs || aSelectedTabIndex < 0 ||
+        static_cast<uint32_t>(aSelectedTabIndex) >= aTabCount))) {
+    return false;
+  }
+
+  AutoTArray<EmbedLiteChromeTabRestoreData, 8> tabs;
+  tabs.SetCapacity(aTabCount);
+  for (uint32_t index = 0; index < aTabCount; ++index) {
+    const EmbedLiteChromeRestoredTab& tab = aTabs[index];
+    if (!tab.persistentId || !tab.history || !tab.historyCount ||
+        tab.selectedHistoryIndex < 0 ||
+        static_cast<uint32_t>(tab.selectedHistoryIndex) >=
+          tab.historyCount) {
+      return false;
+    }
+    for (uint32_t other = 0; other < index; ++other) {
+      if (aTabs[other].persistentId == tab.persistentId) {
+        return false;
+      }
+    }
+
+    EmbedLiteChromeTabRestoreData data;
+    data.persistentId() = tab.persistentId;
+    data.selectedHistoryIndex() = tab.selectedHistoryIndex;
+    data.history().SetCapacity(tab.historyCount);
+    for (uint32_t historyIndex = 0; historyIndex < tab.historyCount;
+         ++historyIndex) {
+      const EmbedLiteChromeHistoryEntry& history =
+        tab.history[historyIndex];
+      if (!history.location || !history.location[0]) {
+        return false;
+      }
+
+      EmbedLiteChromeHistoryData historyData;
+      historyData.location().Assign(history.location);
+      if (history.title) {
+        historyData.title().Assign(history.title);
+      }
+      data.history().AppendElement(std::move(historyData));
+    }
+    tabs.AppendElement(std::move(data));
+  }
+
+  if (!SendRestoreTabs(tabs, aSelectedTabIndex)) {
+    return false;
+  }
+  mRestoreTabsSent = true;
+  return true;
+}
+
+bool EmbedLiteWindowParent::NewTab(const char* aURL,
+                                   uint64_t aPersistentId,
+                                   bool aFromExternal,
+                                   bool aInBackground)
+{
+  return aURL && aURL[0] && aPersistentId &&
+    CanSendChromeSessionCommand() &&
+    SendNewTab(nsDependentCString(aURL), aPersistentId, aFromExternal,
+               aInBackground);
+}
+
+bool EmbedLiteWindowParent::AssociateTab(uint64_t aTabId,
+                                         uint64_t aPersistentId)
+{
+  return aTabId && aPersistentId && CanSendChromeSessionCommand() &&
+    SendAssociateTab(aTabId, aPersistentId);
+}
+
+bool EmbedLiteWindowParent::SelectTab(uint64_t aTabId)
+{
+  return aTabId && CanSendChromeSessionCommand() && SendSelectTab(aTabId);
+}
+
+bool EmbedLiteWindowParent::CloseTab(uint64_t aTabId)
+{
+  return aTabId && CanSendChromeSessionCommand() && SendCloseTab(aTabId);
+}
+
 void EmbedLiteWindowParent::ReplayChromeSessionState()
 {
   MOZ_ASSERT(mChromeSessionListener);
@@ -308,6 +406,108 @@ void EmbedLiteWindowParent::ReplayChromeSessionState()
                                            mLoadTotal);
   }
   if (mHasTitle) {
+    mChromeSessionListener->OnTitleChanged(mTitle.get());
+  }
+}
+
+void EmbedLiteWindowParent::ReplayTabSnapshot()
+{
+  if (!mChromeTabSessionListener || !mHasTabSnapshot) {
+    return;
+  }
+
+  AutoTArray<EmbedLiteChromeTabSnapshot, 8> tabs;
+  tabs.SetCapacity(mTabSnapshot.tabs().Length());
+  for (const EmbedLiteChromeTabData& tab : mTabSnapshot.tabs()) {
+    tabs.AppendElement(EmbedLiteChromeTabSnapshot{
+      tab.id(), tab.persistentId(), tab.locationRevision(),
+      tab.location().get(), tab.title().get(), tab.loading(), tab.closing(),
+      tab.discarded(), tab.canGoBack(), tab.canGoForward(), tab.progress(),
+      tab.current(), tab.total()});
+  }
+  mChromeTabSessionListener->OnTabsChanged(
+    mTabSnapshot.revision(), mTabSnapshot.selectedTabId(), tabs.Elements(),
+    static_cast<uint32_t>(tabs.Length()));
+}
+
+void EmbedLiteWindowParent::UpdateSelectedChromeSessionState()
+{
+  const EmbedLiteChromeTabData* selected = nullptr;
+  for (const EmbedLiteChromeTabData& tab : mTabSnapshot.tabs()) {
+    if (tab.id() == mTabSnapshot.selectedTabId()) {
+      selected = &tab;
+      break;
+    }
+  }
+
+  if (!selected) {
+    if (mHasLoadStarted && mChromeSessionListener) {
+      mChromeSessionListener->OnLoadFinished();
+    }
+    mHasLocation = false;
+    mHasLoadStarted = false;
+    mHasLoadProgress = false;
+    mHasTitle = false;
+    mProjectedTabId = 0;
+    return;
+  }
+
+  if (mProjectedTabId != selected->id()) {
+    if (mHasLoadStarted && mChromeSessionListener) {
+      mChromeSessionListener->OnLoadFinished();
+    }
+    mProjectedTabId = selected->id();
+    mHasLocation = false;
+    mHasLoadStarted = false;
+    mHasLoadProgress = false;
+    mHasTitle = false;
+  }
+
+  const bool locationChanged =
+    !mHasLocation || mLocation != selected->location() ||
+    mCanGoBack != selected->canGoBack() ||
+    mCanGoForward != selected->canGoForward();
+  mHasLocation = true;
+  mLocation = selected->location();
+  mCanGoBack = selected->canGoBack();
+  mCanGoForward = selected->canGoForward();
+  if (locationChanged && mChromeSessionListener) {
+    mChromeSessionListener->OnLocationChanged(
+      mLocation.get(), mCanGoBack, mCanGoForward);
+  }
+
+  if (selected->loading()) {
+    const bool loadStarted =
+      !mHasLoadStarted || mLoadStartedLocation != selected->location();
+    mHasLoadStarted = true;
+    mLoadStartedLocation = selected->location();
+    if (loadStarted && mChromeSessionListener) {
+      mChromeSessionListener->OnLoadStarted(mLoadStartedLocation.get());
+    }
+
+    const bool progressChanged =
+      !mHasLoadProgress || mLoadProgress != selected->progress() ||
+      mLoadCurrent != selected->current() || mLoadTotal != selected->total();
+    mHasLoadProgress = true;
+    mLoadProgress = selected->progress();
+    mLoadCurrent = selected->current();
+    mLoadTotal = selected->total();
+    if (progressChanged && mChromeSessionListener) {
+      mChromeSessionListener->OnLoadProgress(
+        mLoadProgress, mLoadCurrent, mLoadTotal);
+    }
+  } else {
+    if (mHasLoadStarted && mChromeSessionListener) {
+      mChromeSessionListener->OnLoadFinished();
+    }
+    mHasLoadStarted = false;
+    mHasLoadProgress = false;
+  }
+
+  const bool titleChanged = !mHasTitle || mTitle != selected->title();
+  mHasTitle = true;
+  mTitle = selected->title();
+  if (titleChanged && mChromeSessionListener) {
     mChromeSessionListener->OnTitleChanged(mTitle.get());
   }
 }
@@ -347,6 +547,10 @@ mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
   if (mChromeSessionListener) {
     mChromeSessionListener->ChromeSessionDestroyed();
     mChromeSessionListener = nullptr;
+  }
+  if (mChromeTabSessionListener) {
+    mChromeTabSessionListener->ChromeTabSessionDestroyed();
+    mChromeTabSessionListener = nullptr;
   }
   mWindow->Destroyed();
   return IPC_OK();
@@ -438,6 +642,55 @@ EmbedLiteWindowParent::RecvOnTitleChanged(const nsString& aTitle)
   if (mChromeSessionListener) {
     mChromeSessionListener->OnTitleChanged(mTitle.get());
   }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnTabSnapshot(
+    const EmbedLiteChromeSessionData& aSnapshot)
+{
+  if (!CanSendChromeSessionCommand()) {
+    return IPC_OK();
+  }
+  if (!aSnapshot.revision()) {
+    return IPC_FAIL(this, "Invalid chrome tab snapshot revision");
+  }
+  if (mHasTabSnapshot &&
+      aSnapshot.revision() <= mTabSnapshot.revision()) {
+    return IPC_OK();
+  }
+
+  bool selectedFound = false;
+  for (uint32_t index = 0; index < aSnapshot.tabs().Length(); ++index) {
+    const EmbedLiteChromeTabData& tab = aSnapshot.tabs()[index];
+    if (!tab.id()) {
+      return IPC_FAIL(this, "Invalid zero chrome tab id");
+    }
+    if (tab.discarded() && tab.loading()) {
+      return IPC_FAIL(this, "Discarded chrome tab cannot be loading");
+    }
+    if (tab.id() == aSnapshot.selectedTabId()) {
+      selectedFound = true;
+    }
+    for (uint32_t other = 0; other < index; ++other) {
+      if (aSnapshot.tabs()[other].id() == tab.id()) {
+        return IPC_FAIL(this, "Duplicate chrome tab id");
+      }
+      if (tab.persistentId() &&
+          aSnapshot.tabs()[other].persistentId() == tab.persistentId()) {
+        return IPC_FAIL(this, "Duplicate persistent chrome tab id");
+      }
+    }
+  }
+  if ((aSnapshot.tabs().IsEmpty() && aSnapshot.selectedTabId()) ||
+      (!aSnapshot.tabs().IsEmpty() && !selectedFound)) {
+    return IPC_FAIL(this, "Invalid selected chrome tab id");
+  }
+
+  mHasTabSnapshot = true;
+  mTabSnapshot = aSnapshot;
+  ReplayTabSnapshot();
+  UpdateSelectedChromeSessionState();
   return IPC_OK();
 }
 

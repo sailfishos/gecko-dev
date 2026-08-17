@@ -10,6 +10,7 @@
 #include "mozilla/WidgetUtils.h"
 #include "nsIWidget.h"
 #include "nsString.h"
+#include "nsTArray.h"
 #include "base/task.h" // for CancelableRunnable
 
 class nsIAppWindow;
@@ -69,6 +70,17 @@ private:
                                        const bool& aUserActivation);
   mozilla::ipc::IPCResult RecvStopLoad();
   mozilla::ipc::IPCResult RecvReload(const bool& aHardReload);
+  mozilla::ipc::IPCResult RecvRestoreTabs(
+    const nsTArray<EmbedLiteChromeTabRestoreData>& aTabs,
+    const int32_t& aSelectedTabIndex);
+  mozilla::ipc::IPCResult RecvNewTab(const nsCString& aURL,
+                                    const uint64_t& aPersistentId,
+                                    const bool& aFromExternal,
+                                    const bool& aInBackground);
+  mozilla::ipc::IPCResult RecvAssociateTab(
+    const uint64_t& aTabId, const uint64_t& aPersistentId);
+  mozilla::ipc::IPCResult RecvSelectTab(const uint64_t& aTabId);
+  mozilla::ipc::IPCResult RecvCloseTab(const uint64_t& aTabId);
   mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
   mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
   mozilla::ipc::IPCResult RecvReceiveInputEvent(
@@ -84,8 +96,11 @@ private:
   mozilla::ScreenRotation mRotation;
   RefPtr<CancelableRunnable> mCreateWidgetTask;
   const nsCString mInitialContentURI;
+  nsTArray<EmbedLiteChromeTabRestoreData> mPendingRestoreTabs;
+  int32_t mPendingSelectedTabIndex;
 
   const bool mChromeHosted;
+  bool mRestoreTabsReceived;
   bool mInitialized;
   bool mDestroyAfterInit;
   bool mDestroying;

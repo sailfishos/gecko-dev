@@ -6,6 +6,7 @@
 #include "EmbedLog.h"
 
 #include <math.h>
+#include <utility>
 
 #include "nsWindow.h"
 #include "EmbedLiteAppChild.h"
@@ -86,7 +87,9 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(
   , mBounds(0, 0, width, height)
   , mRotation(mozilla::ROTATION_0)
   , mInitialContentURI(initialContentURI)
+  , mPendingSelectedTabIndex(-1)
   , mChromeHosted(chromeHosted)
+  , mRestoreTabsReceived(false)
   , mInitialized(false)
   , mDestroyAfterInit(false)
   , mDestroying(false)
@@ -96,7 +99,7 @@ EmbedLiteWindowChild::EmbedLiteWindowChild(
 {
   MOZ_ASSERT(sWindowChildMap.find(aId) == sWindowChildMap.end());
   MOZ_ASSERT(mListener);
-  MOZ_ASSERT(mChromeHosted == !mInitialContentURI.IsEmpty());
+  MOZ_ASSERT(mChromeHosted || mInitialContentURI.IsEmpty());
   sWindowChildMap[aId] = this;
 
   MOZ_COUNT_CTOR(EmbedLiteWindowChild);
@@ -217,6 +220,85 @@ EmbedLiteWindowChild::RecvReload(const bool& aHardReload)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
     Unused << mChromeSession->Reload(aHardReload);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvRestoreTabs(
+    const nsTArray<EmbedLiteChromeTabRestoreData>& aTabs,
+    const int32_t& aSelectedTabIndex)
+{
+  if (mDestroying) {
+    return IPC_OK();
+  }
+  if (mRestoreTabsReceived) {
+    return IPC_FAIL(this, "Duplicate chrome tab restore batch");
+  }
+
+  mRestoreTabsReceived = true;
+  if (mChromeSession) {
+    if (!mChromeSession->RestoreTabs(aTabs, aSelectedTabIndex)) {
+      return IPC_FAIL(this, "Invalid chrome tab restore batch");
+    }
+  } else {
+    mPendingRestoreTabs.SetCapacity(aTabs.Length());
+    for (const EmbedLiteChromeTabRestoreData& source : aTabs) {
+      EmbedLiteChromeTabRestoreData tab;
+      tab.persistentId() = source.persistentId();
+      tab.selectedHistoryIndex() = source.selectedHistoryIndex();
+      tab.history().SetCapacity(source.history().Length());
+      for (const EmbedLiteChromeHistoryData& sourceEntry :
+           source.history()) {
+        EmbedLiteChromeHistoryData entry;
+        entry.location() = sourceEntry.location();
+        entry.title() = sourceEntry.title();
+        tab.history().AppendElement(std::move(entry));
+      }
+      mPendingRestoreTabs.AppendElement(std::move(tab));
+    }
+    mPendingSelectedTabIndex = aSelectedTabIndex;
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvNewTab(const nsCString& aURL,
+                                 const uint64_t& aPersistentId,
+                                 const bool& aFromExternal,
+                                 const bool& aInBackground)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->NewTab(
+      aURL, aPersistentId, aFromExternal, aInBackground);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvAssociateTab(const uint64_t& aTabId,
+                                       const uint64_t& aPersistentId)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->AssociateTab(aTabId, aPersistentId);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvSelectTab(const uint64_t& aTabId)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SelectTab(aTabId);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvCloseTab(const uint64_t& aTabId)
+{
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->CloseTab(aTabId);
   }
   return IPC_OK();
 }
@@ -402,6 +484,7 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
   const uint32_t chromeFlags =
     nsIWebBrowserChrome::CHROME_OPENAS_CHROME |
     nsIWebBrowserChrome::CHROME_WINDOW_RESIZE |
+    nsIWebBrowserChrome::CHROME_SCROLLBARS |
     nsIWebBrowserChrome::CHROME_REMOTE_WINDOW;
   rv = appShell->CreateTopLevelWindow(
     nullptr, chromeURI, chromeFlags, mBounds.Width(), mBounds.Height(),
@@ -417,6 +500,14 @@ bool EmbedLiteWindowChild::CreateChromeAppWindow()
     DestroyChromeAppWindow();
     return false;
   }
+  if (mRestoreTabsReceived &&
+      !mChromeSession->RestoreTabs(mPendingRestoreTabs,
+                                   mPendingSelectedTabIndex)) {
+    DestroyChromeAppWindow();
+    return false;
+  }
+  mPendingRestoreTabs.Clear();
+  mPendingSelectedTabIndex = -1;
 
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mChromeWindow, &rv);
   if (NS_FAILED(rv) || !baseWindow ||

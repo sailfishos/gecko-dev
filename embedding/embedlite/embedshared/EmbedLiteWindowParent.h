@@ -10,6 +10,7 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteChromeSession.h"
+#include "EmbedLiteChromeTabSession.h"
 #include "EmbedLiteWindow.h"
 
 namespace mozilla {
@@ -27,7 +28,8 @@ public:
 };
 
 class EmbedLiteWindowParent : public PEmbedLiteWindowParent,
-                              public EmbedLiteChromeSession
+                              public EmbedLiteChromeSession,
+                              public EmbedLiteChromeTabSession
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
 public:
@@ -67,6 +69,17 @@ public:
   bool SetActive(bool aActive) override;
   bool SetFocused(bool aFocused) override;
   bool ReceiveInputEvent(const EmbedTouchInput& aEvent) override;
+  void SetTabListener(
+    EmbedLiteChromeTabSessionListener* aListener) override;
+  bool RestoreTabs(const EmbedLiteChromeRestoredTab* aTabs,
+                   uint32_t aTabCount,
+                   int32_t aSelectedTabIndex) override;
+  bool NewTab(const char* aURL, uint64_t aPersistentId,
+              bool aFromExternal, bool aInBackground) override;
+  bool AssociateTab(uint64_t aTabId,
+                    uint64_t aPersistentId) override;
+  bool SelectTab(uint64_t aTabId) override;
+  bool CloseTab(uint64_t aTabId) override;
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;
@@ -97,14 +110,19 @@ private:
                                              const int64_t& aCurrent,
                                              const int64_t& aTotal);
   mozilla::ipc::IPCResult RecvOnTitleChanged(const nsString& aTitle);
+  mozilla::ipc::IPCResult RecvOnTabSnapshot(
+    const EmbedLiteChromeSessionData& aSnapshot);
 
   bool CanSendChromeSessionCommand() const;
   void ReplayChromeSessionState();
+  void ReplayTabSnapshot();
+  void UpdateSelectedChromeSessionState();
 
   uint32_t mId;
   EmbedLiteWindowListener *const mListener;
   EmbedLiteWindow* mWindow;
   EmbedLiteChromeSessionListener* mChromeSessionListener;
+  EmbedLiteChromeTabSessionListener* mChromeTabSessionListener;
   const bool mChromeHosted;
   bool mInitialized;
   bool mDestroying;
@@ -112,6 +130,9 @@ private:
   bool mHasLoadStarted;
   bool mHasLoadProgress;
   bool mHasTitle;
+  bool mHasTabSnapshot;
+  bool mRestoreTabsSent;
+  uint64_t mProjectedTabId;
   nsCString mLocation;
   bool mCanGoBack;
   bool mCanGoForward;
@@ -120,6 +141,7 @@ private:
   int64_t mLoadCurrent;
   int64_t mLoadTotal;
   nsString mTitle;
+  EmbedLiteChromeSessionData mTabSnapshot;
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;

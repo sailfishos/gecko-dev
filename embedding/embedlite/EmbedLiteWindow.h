@@ -29,6 +29,7 @@ class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
 class EmbedLiteChromeSession;
+class EmbedLiteChromeTabSession;
 
 enum class PlatformImageHandleType : uint8_t {
   EGLImage
@@ -148,6 +149,7 @@ public:
   // CreateChromeWindow(). The pointer becomes invalid when the window is
   // destroyed and does not change EmbedLiteWindow's legacy ABI.
   MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();
+  MOZ_EXPORT EmbedLiteChromeTabSession* GetChromeTabSession();
 
   virtual void SetContentOrientation(mozilla::embedlite::ScreenRotation);
   virtual void ScheduleUpdate();

@@ -200,8 +200,12 @@ pref("network.predictor.enabled", true);
 pref("network.predictor.max-db-size", 2097152); // bytes
 pref("network.predictor.preserve", 50); // percentage of predictor data to keep when cleaning up
 
-// EmbedLite restores browser tab history through legacySHistory; keep that API available.
-pref("fission.disableSessionHistoryInParent", true);
+// Hosted tab sessions populate parent-owned history when a restored tab is
+// materialized. Sailfish persists the lightweight session data itself, so keep
+// parent BFCache and Firefox's platform SessionStore collection disabled.
+pref("fission.disableSessionHistoryInParent", false);
+pref("fission.bfcacheInParent", false);
+pref("browser.sessionstore.disable_platform_collection", true);
 
 // ESR115's COOP top-level isolation path assumes Firefox's remote <browser>
 // frontend can replace a BrowsingContext or change remoteness during

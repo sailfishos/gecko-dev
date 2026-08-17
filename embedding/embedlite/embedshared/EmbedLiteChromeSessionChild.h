@@ -11,15 +11,24 @@
 #include "nsIObserver.h"
 #include "nsIWebProgressListener.h"
 #include "nsString.h"
+#include "nsTArray.h"
 #include "nsWeakReference.h"
+#include "mozilla/UniquePtr.h"
 
 class nsIAppWindow;
+class nsIBrowserDOMWindow;
+class nsIContentSecurityPolicy;
+class nsIOpenURIInFrameParams;
+class nsIOpenWindowInfo;
+class nsIPrincipal;
+class nsIReferrerInfo;
 class nsIURI;
 class nsIWebProgress;
 
 namespace mozilla {
 class MultiTouchInput;
 namespace dom {
+class BrowsingContext;
 class CanonicalBrowsingContext;
 class Element;
 } // namespace dom
@@ -27,6 +36,9 @@ class Element;
 namespace embedlite {
 
 class EmbedLiteWindowChild;
+class EmbedLiteBrowserDOMWindow;
+class EmbedLiteChromeTabProgressListener;
+class EmbedLiteChromeTabRestoreData;
 
 class EmbedLiteChromeSessionChild final : public nsIObserver,
                                           public nsIDOMEventListener,
@@ -53,36 +65,126 @@ public:
   bool SetActive(bool aActive);
   bool SetFocused(bool aFocused);
   bool ReceiveInputEvent(const MultiTouchInput& aEvent);
+  bool RestoreTabs(const nsTArray<EmbedLiteChromeTabRestoreData>& aTabs,
+                   int32_t aSelectedTabIndex);
+  bool NewTab(const nsACString& aURL, uint64_t aPersistentId,
+              bool aFromExternal, bool aInBackground);
+  bool AssociateTab(uint64_t aTabId, uint64_t aPersistentId);
+  bool SelectTab(uint64_t aTabId);
+  bool CloseTab(uint64_t aTabId);
 
 private:
+  friend class EmbedLiteBrowserDOMWindow;
+
+  struct TabHistoryEntry
+  {
+    nsCString location;
+    nsString title;
+  };
+
+  struct TabRecord
+  {
+    TabRecord(uint64_t aId, uint64_t aPersistentId);
+
+    uint64_t id;
+    uint64_t persistentId;
+    uint64_t locationRevision;
+    RefPtr<dom::Element> browser;
+    nsCOMPtr<nsIWebProgress> webProgress;
+    RefPtr<EmbedLiteChromeTabProgressListener> progressListener;
+    nsCString location;
+    nsString title;
+    nsTArray<TabHistoryEntry> history;
+    uint32_t selectedHistoryIndex;
+    bool progressListenerRegistered;
+    bool progressRetryPending;
+    uint8_t progressRetryAttempts;
+    bool loading;
+    bool closing;
+    bool discarded;
+    bool restoring;
+    bool canGoBack;
+    bool canGoForward;
+    int32_t progress;
+    int64_t current;
+    int64_t total;
+  };
+
   ~EmbedLiteChromeSessionChild();
 
   nsresult BrowserBecameVisible();
+  nsresult InstallBrowserDOMWindow();
   nsresult TryCompleteInitialization();
   void ScheduleInitializationRetry();
   void ScheduleInitializationCompletion(bool aSuccess);
   void CompleteInitialization(bool aSuccess);
-  nsresult RebindProgressListener();
+  nsresult CreateTab(nsIOpenWindowInfo* aOpenWindowInfo,
+                     const nsAString& aName, bool aInBackground,
+                     bool aSkipLoad, uint64_t aPersistentId,
+                     TabRecord** aTab,
+                     dom::Element** aBrowser = nullptr,
+                     dom::BrowsingContext** aBrowsingContext = nullptr);
+  nsresult CreateBrowserForTab(
+    TabRecord& aTab, nsIOpenWindowInfo* aOpenWindowInfo,
+    const nsAString& aName, bool aInBackground,
+    dom::Element** aBrowser = nullptr,
+    dom::BrowsingContext** aBrowsingContext = nullptr);
+  nsresult MaterializeTab(TabRecord& aTab);
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult RestoreTabHistory(TabRecord& aTab);
+  nsresult OpenTabFromBrowserDOMWindow(
+    nsIURI* aURI, nsIOpenWindowInfo* aOpenWindowInfo,
+    nsIReferrerInfo* aReferrerInfo, nsIPrincipal* aTriggeringPrincipal,
+    nsIContentSecurityPolicy* aCsp, const nsAString& aName,
+    int16_t aWhere, int32_t aFlags, bool aSkipLoad,
+    dom::Element** aBrowser, dom::BrowsingContext** aBrowsingContext);
+  bool LoadTab(TabRecord& aTab, const nsACString& aURL,
+               bool aFromExternal, nsIReferrerInfo* aReferrerInfo = nullptr,
+               nsIPrincipal* aTriggeringPrincipal = nullptr,
+               nsIContentSecurityPolicy* aCsp = nullptr);
+  nsresult RebindProgressListener(TabRecord& aTab);
+  void ScheduleProgressListenerRetry(uint64_t aTabId);
+  void FinishProgressListenerRebind(TabRecord& aTab);
+  void RemoveProgressListener(TabRecord& aTab);
+  void AddBrowserEventListeners(TabRecord& aTab);
+  void RemoveBrowserEventListeners(TabRecord& aTab);
+  TabRecord* FindTab(uint64_t aTabId) const;
+  TabRecord* FindTab(dom::Element* aBrowser) const;
+  TabRecord* FindTab(nsIWebProgress* aWebProgress) const;
+  TabRecord* SelectedTab() const;
+  dom::BrowsingContext* BrowsingContextFor(const TabRecord& aTab) const;
   dom::CanonicalBrowsingContext* CurrentBrowsingContext() const;
-  bool IsCurrentWebProgress(nsIWebProgress* aWebProgress,
-                            bool aAllowNull = false) const;
+  bool SelectTab(TabRecord& aTab);
+  void ApplyTabActiveState(TabRecord& aTab, bool aSelected);
+  void UpdateSiblingState();
+  void RemoveTab(uint64_t aTabId);
+  bool CanCloseTabs();
   void ApplyActiveState();
   void ApplyFocusState();
   void ScheduleUpdate();
-  void NotifyLocation(nsIURI* aLocation = nullptr);
-  void NotifyTitle();
+  void UpdateLocation(TabRecord& aTab, nsIURI* aLocation = nullptr);
+  void UpdateTitle(TabRecord& aTab);
+  void ScheduleTabSnapshot();
+  void SendTabSnapshot();
   void RemoveObserver();
-  void RemoveBrowserEventListeners();
 
   EmbedLiteWindowChild* mWindow; // Not owned.
   nsIAppWindow* mAppWindow; // Not owned; mWindow owns it.
-  RefPtr<dom::Element> mBrowser;
-  nsCOMPtr<nsIWebProgress> mWebProgress;
+  nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow;
+  RefPtr<dom::Element> mTabContainer;
+  nsTArray<mozilla::UniquePtr<TabRecord>> mTabs;
   nsCString mInitialContentURI;
+  uint64_t mNextTabId;
+  uint64_t mSelectedTabId;
+  uint64_t mPendingSelectedTabId;
+  uint64_t mTabRevision;
   bool mObservingWindowVisible;
-  bool mProgressListenerRegistered;
   bool mInitializationRetryPending;
+  uint8_t mInitializationRetryAttempts;
   bool mInitializationCompletionPending;
+  bool mInitializationCompletionSuccess;
+  bool mTabSnapshotPending;
+  bool mCheckingCanClose;
+  bool mRestoreTabsReceived;
   bool mInitializationFinished;
   bool mReady;
   bool mActive;
