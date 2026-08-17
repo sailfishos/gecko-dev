@@ -45,6 +45,19 @@ struct EmbedLiteChromeTabSnapshot
   int64_t total;
 };
 
+struct EmbedLiteChromeBeforeUnloadPrompt
+{
+  // These strings are borrowed for the duration of
+  // OnBeforeUnloadPrompt().
+  uint64_t requestId;
+  uint64_t tabId;
+  uint64_t persistentId;
+  const char16_t* title;
+  const char16_t* text;
+  const char16_t* leaveLabel;
+  const char16_t* stayLabel;
+};
+
 class EmbedLiteChromeTabSessionListener
 {
 public:
@@ -53,6 +66,9 @@ public:
   virtual void OnTabsChanged(uint64_t aRevision, uint64_t aSelectedTabId,
                              const EmbedLiteChromeTabSnapshot* aTabs,
                              uint32_t aTabCount) = 0;
+
+  virtual void OnBeforeUnloadPrompt(
+    const EmbedLiteChromeBeforeUnloadPrompt& aPrompt) = 0;
 
   // The session is no longer usable after this callback returns.
   virtual void ChromeTabSessionDestroyed() = 0;
@@ -82,6 +98,9 @@ public:
                             uint64_t aPersistentId) = 0;
   virtual bool SelectTab(uint64_t aTabId) = 0;
   virtual bool CloseTab(uint64_t aTabId) = 0;
+  virtual bool ResolveBeforeUnloadPrompt(uint64_t aRequestId,
+                                         uint64_t aTabId,
+                                         bool aPermit) = 0;
 
 protected:
   virtual ~EmbedLiteChromeTabSession() = default;

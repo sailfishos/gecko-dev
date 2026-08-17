@@ -37,6 +37,7 @@ protected:
 private:
   friend class EmbedLiteJSON;
   std::map<uint64_t, uint32_t> mIDMap;
+  std::map<uint64_t, uint32_t> mBrowserIDMap;
   typedef nsClassHashtable<nsCStringHashKey, nsTArray<nsCOMPtr<nsIEmbedMessageListener> > > MsgListenersArray;
   MsgListenersArray mMessageListeners;
   bool mHandlingMessages;
@@ -53,4 +54,3 @@ private:
 
 
 #endif /* EmbedLiteAppService_H_ */
-

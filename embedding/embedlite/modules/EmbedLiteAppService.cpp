@@ -22,8 +22,10 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsThreadUtils.h" // for mozilla::Runnable
+#include "mozilla/ErrorResult.h"
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
+#include "EmbedLiteWindowChild.h"
 #include "nsIBaseWindow.h"
 #include "nsIWebBrowser.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
@@ -32,7 +34,10 @@
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/Promise.h"
+#include "xpcpublic.h"
 
 using namespace mozilla;
 using namespace mozilla::embedlite;
@@ -105,6 +110,16 @@ void EmbedLiteAppService::RegisterView(uint32_t aId)
   EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, );
   mIDMap[view->GetOuterID()] = aId;
+
+  nsCOMPtr<nsIWebBrowser> browser;
+  nsresult rv = view->GetBrowser(getter_AddRefs(browser));
+  NS_ENSURE_SUCCESS(rv, );
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(browser);
+  NS_ENSURE_TRUE(docShell, );
+  RefPtr<dom::BrowsingContext> browsingContext =
+    docShell->GetBrowsingContext();
+  NS_ENSURE_TRUE(browsingContext, );
+  mBrowserIDMap[browsingContext->Top()->BrowserId()] = aId;
 }
 
 void EmbedLiteAppService::UnregisterView(uint32_t aId)
@@ -113,6 +128,13 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
   for (it = mIDMap.begin(); it != mIDMap.end(); ++it) {
     if (aId == it->second) {
       mIDMap.erase(it);
+      break;
+    }
+  }
+
+  for (it = mBrowserIDMap.begin(); it != mBrowserIDMap.end(); ++it) {
+    if (aId == it->second) {
+      mBrowserIDMap.erase(it);
       break;
     }
   }
@@ -137,6 +159,53 @@ EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
   uint64_t OuterWindowID = 0;
   docShell->GetOuterWindowID(&OuterWindowID);
   *aId = mIDMap[OuterWindowID];
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteAppService::GetIDByBrowsingContext(
+    dom::BrowsingContext* aBrowsingContext, uint32_t* aId)
+{
+  NS_ENSURE_ARG_POINTER(aBrowsingContext);
+  NS_ENSURE_ARG_POINTER(aId);
+
+  const auto view =
+    mBrowserIDMap.find(aBrowsingContext->Top()->BrowserId());
+  if (view == mBrowserIDMap.end()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aId = view->second;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteAppService::AsyncChromeTabBeforeUnloadCheck(
+    dom::BrowsingContext* aBrowsingContext,
+    const nsAString& aTitle, const nsAString& aText,
+    const nsAString& aLeaveLabel, const nsAString& aStayLabel,
+    JSContext* aCx, dom::Promise** aResult)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_ARG_POINTER(aBrowsingContext);
+  NS_ENSURE_ARG_POINTER(aResult);
+
+  nsIGlobalObject* global = xpc::CurrentNativeGlobal(aCx);
+  NS_ENSURE_TRUE(global, NS_ERROR_UNEXPECTED);
+
+  ErrorResult error;
+  RefPtr<dom::Promise> promise = dom::Promise::Create(global, error);
+  if (error.Failed()) {
+    return error.StealNSResult();
+  }
+
+  if (!EmbedLiteWindowChild::RequestChromeTabBeforeUnloadPrompt(
+        aBrowsingContext, aTitle, aText, aLeaveLabel, aStayLabel,
+        promise)) {
+    promise->MaybeReject(NS_ERROR_NOT_AVAILABLE);
+  }
+
+  promise.forget(aResult);
   return NS_OK;
 }
 

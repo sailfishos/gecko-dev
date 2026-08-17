@@ -424,6 +424,7 @@ EmbedLiteChromeSessionChild::EmbedLiteChromeSessionChild(
   , mSelectedTabId(0)
   , mPendingSelectedTabId(0)
   , mTabRevision(0)
+  , mNextBeforeUnloadPromptId(1)
   , mObservingWindowVisible(false)
   , mInitializationRetryPending(false)
   , mInitializationRetryAttempts(0)
@@ -539,6 +540,7 @@ EmbedLiteChromeSessionChild::Shutdown()
 {
   MOZ_ASSERT(NS_IsMainThread());
   RemoveObserver();
+  CancelBeforeUnloadPrompts();
 
   nsCOMPtr<mozIDOMWindowProxy> chromeDOMWindow;
   if (mAppWindow) {
@@ -831,6 +833,22 @@ EmbedLiteChromeSessionChild::FindTab(nsIWebProgress* aWebProgress) const
     BrowsingContext* context = BrowsingContextFor(*tab);
     if (context &&
         context->Canonical() == progressContext->Canonical()) {
+      return tab.get();
+    }
+  }
+  return nullptr;
+}
+
+EmbedLiteChromeSessionChild::TabRecord*
+EmbedLiteChromeSessionChild::FindTab(BrowsingContext* aBrowsingContext) const
+{
+  if (!aBrowsingContext) {
+    return nullptr;
+  }
+  const uint64_t browserId = aBrowsingContext->Top()->BrowserId();
+  for (const UniquePtr<TabRecord>& tab : mTabs) {
+    BrowsingContext* context = BrowsingContextFor(*tab);
+    if (context && context->Top()->BrowserId() == browserId) {
       return tab.get();
     }
   }
@@ -1933,6 +1951,8 @@ void EmbedLiteChromeSessionChild::RemoveTab(uint64_t aTabId)
     return;
   }
 
+  CancelBeforeUnloadPrompts(aTabId);
+
   if (mTabs.Length() == 1) {
     MOZ_RELEASE_ASSERT(tab->id == mSelectedTabId);
     mSelectedTabId = 0;
@@ -2190,6 +2210,73 @@ void EmbedLiteChromeSessionChild::SendTabSnapshot()
     snapshot.tabs().AppendElement(std::move(data));
   }
   Unused << mWindow->SendOnTabSnapshot(snapshot);
+}
+
+bool EmbedLiteChromeSessionChild::RequestBeforeUnloadPrompt(
+    BrowsingContext* aBrowsingContext,
+    const nsAString& aTitle, const nsAString& aText,
+    const nsAString& aLeaveLabel, const nsAString& aStayLabel,
+    Promise* aPromise)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  TabRecord* tab = FindTab(aBrowsingContext);
+  if (!mWindow || !mReady || !tab || !aPromise) {
+    return false;
+  }
+
+  uint64_t requestId;
+  do {
+    requestId = mNextBeforeUnloadPromptId++;
+  } while (!requestId || mBeforeUnloadPrompts.count(requestId));
+
+  EmbedLiteChromeBeforeUnloadData prompt;
+  prompt.requestId() = requestId;
+  prompt.tabId() = tab->id;
+  prompt.persistentId() = tab->persistentId;
+  prompt.title() = aTitle;
+  prompt.text() = aText;
+  prompt.leaveLabel() = aLeaveLabel;
+  prompt.stayLabel() = aStayLabel;
+
+  mBeforeUnloadPrompts.emplace(
+    requestId, PendingBeforeUnloadPrompt{tab->id, aPromise});
+  if (!mWindow->SendOnBeforeUnloadPrompt(prompt)) {
+    auto pending = mBeforeUnloadPrompts.find(requestId);
+    if (pending != mBeforeUnloadPrompts.end()) {
+      pending->second.promise->MaybeResolve(false);
+      mBeforeUnloadPrompts.erase(pending);
+    }
+  }
+  return true;
+}
+
+void EmbedLiteChromeSessionChild::ResolveBeforeUnloadPrompt(
+    uint64_t aRequestId, uint64_t aTabId, bool aPermit)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  const auto pending = mBeforeUnloadPrompts.find(aRequestId);
+  if (pending == mBeforeUnloadPrompts.end()) {
+    return;
+  }
+
+  const bool valid = pending->second.tabId == aTabId && FindTab(aTabId);
+  RefPtr<Promise> promise = pending->second.promise;
+  mBeforeUnloadPrompts.erase(pending);
+  promise->MaybeResolve(valid && aPermit);
+}
+
+void EmbedLiteChromeSessionChild::CancelBeforeUnloadPrompts(uint64_t aTabId)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  for (auto prompt = mBeforeUnloadPrompts.begin();
+       prompt != mBeforeUnloadPrompts.end();) {
+    if (!aTabId || prompt->second.tabId == aTabId) {
+      prompt->second.promise->MaybeResolve(false);
+      prompt = mBeforeUnloadPrompts.erase(prompt);
+    } else {
+      ++prompt;
+    }
+  }
 }
 
 NS_IMETHODIMP

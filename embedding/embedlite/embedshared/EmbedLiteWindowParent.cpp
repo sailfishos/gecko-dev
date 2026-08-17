@@ -20,6 +20,7 @@
 #include "gfxImageSurface.h"
 #include "gfxPoint.h"
 #include "mozilla/DataMutex.h"
+#include "mozilla/Unused.h"
 #include "mozilla/layers/APZThreadUtils.h"
 
 using namespace mozilla::gfx;
@@ -237,6 +238,16 @@ void EmbedLiteWindowParent::SetListener(
 void EmbedLiteWindowParent::SetTabListener(
     EmbedLiteChromeTabSessionListener* aListener)
 {
+  if (mChromeTabSessionListener != aListener &&
+      !mPendingBeforeUnloadPrompts.empty()) {
+    if (CanSendChromeSessionCommand()) {
+      for (const auto& prompt : mPendingBeforeUnloadPrompts) {
+        Unused << SendResolveBeforeUnloadPrompt(
+          prompt.first, prompt.second, false);
+      }
+    }
+    mPendingBeforeUnloadPrompts.clear();
+  }
   mChromeTabSessionListener = aListener;
   if (mChromeTabSessionListener && CanSendChromeSessionCommand()) {
     ReplayTabSnapshot();
@@ -390,6 +401,23 @@ bool EmbedLiteWindowParent::CloseTab(uint64_t aTabId)
   return aTabId && CanSendChromeSessionCommand() && SendCloseTab(aTabId);
 }
 
+bool EmbedLiteWindowParent::ResolveBeforeUnloadPrompt(
+    uint64_t aRequestId, uint64_t aTabId, bool aPermit)
+{
+  const auto prompt = mPendingBeforeUnloadPrompts.find(aRequestId);
+  if (!aRequestId || !aTabId ||
+      prompt == mPendingBeforeUnloadPrompts.end() ||
+      prompt->second != aTabId || !CanSendChromeSessionCommand()) {
+    return false;
+  }
+
+  if (!SendResolveBeforeUnloadPrompt(aRequestId, aTabId, aPermit)) {
+    return false;
+  }
+  mPendingBeforeUnloadPrompts.erase(prompt);
+  return true;
+}
+
 void EmbedLiteWindowParent::ReplayChromeSessionState()
 {
   MOZ_ASSERT(mChromeSessionListener);
@@ -520,6 +548,23 @@ void EmbedLiteWindowParent::SetEmbedAPIWindow(EmbedLiteWindow* window)
 void EmbedLiteWindowParent::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
+  if (mDestroying) {
+    return;
+  }
+
+  mDestroying = true;
+  mPendingBeforeUnloadPrompts.clear();
+  if (mChromeSessionListener) {
+    mChromeSessionListener->ChromeSessionDestroyed();
+    mChromeSessionListener = nullptr;
+  }
+  if (mChromeTabSessionListener) {
+    mChromeTabSessionListener->ChromeTabSessionDestroyed();
+    mChromeTabSessionListener = nullptr;
+  }
+  if (mWindow) {
+    mWindow->Destroyed();
+  }
 }
 
 mozilla::ipc::IPCResult
@@ -544,6 +589,7 @@ mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
   }
 
   mDestroying = true;
+  mPendingBeforeUnloadPrompts.clear();
   if (mChromeSessionListener) {
     mChromeSessionListener->ChromeSessionDestroyed();
     mChromeSessionListener = nullptr;
@@ -691,6 +737,35 @@ EmbedLiteWindowParent::RecvOnTabSnapshot(
   mTabSnapshot = aSnapshot;
   ReplayTabSnapshot();
   UpdateSelectedChromeSessionState();
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnBeforeUnloadPrompt(
+    const EmbedLiteChromeBeforeUnloadData& aPrompt)
+{
+  if (!CanSendChromeSessionCommand()) {
+    return IPC_OK();
+  }
+  if (!aPrompt.requestId() || !aPrompt.tabId() ||
+      mPendingBeforeUnloadPrompts.count(aPrompt.requestId())) {
+    return IPC_FAIL(this, "Invalid chrome beforeunload prompt");
+  }
+
+  if (!mChromeTabSessionListener) {
+    Unused << SendResolveBeforeUnloadPrompt(
+      aPrompt.requestId(), aPrompt.tabId(), false);
+    return IPC_OK();
+  }
+
+  mPendingBeforeUnloadPrompts.emplace(
+    aPrompt.requestId(), aPrompt.tabId());
+  const EmbedLiteChromeBeforeUnloadPrompt prompt = {
+    aPrompt.requestId(), aPrompt.tabId(), aPrompt.persistentId(),
+    aPrompt.title().get(), aPrompt.text().get(),
+    aPrompt.leaveLabel().get(), aPrompt.stayLabel().get()
+  };
+  mChromeTabSessionListener->OnBeforeUnloadPrompt(prompt);
   return IPC_OK();
 }
 

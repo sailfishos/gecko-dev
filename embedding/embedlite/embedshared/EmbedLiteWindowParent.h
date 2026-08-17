@@ -6,6 +6,8 @@
 #ifndef MOZ_WINDOW_EMBED_PARENT_H
 #define MOZ_WINDOW_EMBED_PARENT_H
 
+#include <map>
+
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
@@ -80,6 +82,9 @@ public:
                     uint64_t aPersistentId) override;
   bool SelectTab(uint64_t aTabId) override;
   bool CloseTab(uint64_t aTabId) override;
+  bool ResolveBeforeUnloadPrompt(uint64_t aRequestId,
+                                 uint64_t aTabId,
+                                 bool aPermit) override;
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;
@@ -112,6 +117,8 @@ private:
   mozilla::ipc::IPCResult RecvOnTitleChanged(const nsString& aTitle);
   mozilla::ipc::IPCResult RecvOnTabSnapshot(
     const EmbedLiteChromeSessionData& aSnapshot);
+  mozilla::ipc::IPCResult RecvOnBeforeUnloadPrompt(
+    const EmbedLiteChromeBeforeUnloadData& aPrompt);
 
   bool CanSendChromeSessionCommand() const;
   void ReplayChromeSessionState();
@@ -142,6 +149,7 @@ private:
   int64_t mLoadTotal;
   nsString mTitle;
   EmbedLiteChromeSessionData mTabSnapshot;
+  std::map<uint64_t, uint64_t> mPendingBeforeUnloadPrompts;
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;

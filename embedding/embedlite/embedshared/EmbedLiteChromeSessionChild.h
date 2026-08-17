@@ -6,6 +6,8 @@
 #ifndef MOZ_EMBEDLITE_CHROME_SESSION_CHILD_H
 #define MOZ_EMBEDLITE_CHROME_SESSION_CHILD_H
 
+#include <map>
+
 #include "nsCOMPtr.h"
 #include "nsIDOMEventListener.h"
 #include "nsIObserver.h"
@@ -31,6 +33,7 @@ namespace dom {
 class BrowsingContext;
 class CanonicalBrowsingContext;
 class Element;
+class Promise;
 } // namespace dom
 
 namespace embedlite {
@@ -75,6 +78,7 @@ public:
 
 private:
   friend class EmbedLiteBrowserDOMWindow;
+  friend class EmbedLiteWindowChild;
 
   struct TabHistoryEntry
   {
@@ -108,6 +112,12 @@ private:
     int32_t progress;
     int64_t current;
     int64_t total;
+  };
+
+  struct PendingBeforeUnloadPrompt
+  {
+    uint64_t tabId;
+    RefPtr<dom::Promise> promise;
   };
 
   ~EmbedLiteChromeSessionChild();
@@ -150,6 +160,7 @@ private:
   TabRecord* FindTab(uint64_t aTabId) const;
   TabRecord* FindTab(dom::Element* aBrowser) const;
   TabRecord* FindTab(nsIWebProgress* aWebProgress) const;
+  TabRecord* FindTab(dom::BrowsingContext* aBrowsingContext) const;
   TabRecord* SelectedTab() const;
   dom::BrowsingContext* BrowsingContextFor(const TabRecord& aTab) const;
   dom::CanonicalBrowsingContext* CurrentBrowsingContext() const;
@@ -165,6 +176,15 @@ private:
   void UpdateTitle(TabRecord& aTab);
   void ScheduleTabSnapshot();
   void SendTabSnapshot();
+  bool RequestBeforeUnloadPrompt(
+    dom::BrowsingContext* aBrowsingContext,
+    const nsAString& aTitle, const nsAString& aText,
+    const nsAString& aLeaveLabel, const nsAString& aStayLabel,
+    dom::Promise* aPromise);
+  void ResolveBeforeUnloadPrompt(uint64_t aRequestId,
+                                 uint64_t aTabId,
+                                 bool aPermit);
+  void CancelBeforeUnloadPrompts(uint64_t aTabId = 0);
   void RemoveObserver();
 
   EmbedLiteWindowChild* mWindow; // Not owned.
@@ -177,6 +197,8 @@ private:
   uint64_t mSelectedTabId;
   uint64_t mPendingSelectedTabId;
   uint64_t mTabRevision;
+  uint64_t mNextBeforeUnloadPromptId;
+  std::map<uint64_t, PendingBeforeUnloadPrompt> mBeforeUnloadPrompts;
   bool mObservingWindowVisible;
   bool mInitializationRetryPending;
   uint8_t mInitializationRetryAttempts;

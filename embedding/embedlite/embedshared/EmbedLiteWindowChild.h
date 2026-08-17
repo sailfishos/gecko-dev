@@ -17,6 +17,10 @@ class nsIAppWindow;
 
 namespace mozilla {
 class MultiTouchInput;
+namespace dom {
+class BrowsingContext;
+class Promise;
+}
 }
 
 namespace mozilla {
@@ -38,6 +42,11 @@ public:
                        const nsCString &initialContentURI);
 
   static EmbedLiteWindowChild *From(const uint32_t id);
+  static bool RequestChromeTabBeforeUnloadPrompt(
+    dom::BrowsingContext* aBrowsingContext,
+    const nsAString& aTitle, const nsAString& aText,
+    const nsAString& aLeaveLabel, const nsAString& aStayLabel,
+    dom::Promise* aPromise);
 
   uint32_t GetUniqueID() const { return mId; }
   nsWindow *GetWidget() const;
@@ -81,6 +90,9 @@ private:
     const uint64_t& aTabId, const uint64_t& aPersistentId);
   mozilla::ipc::IPCResult RecvSelectTab(const uint64_t& aTabId);
   mozilla::ipc::IPCResult RecvCloseTab(const uint64_t& aTabId);
+  mozilla::ipc::IPCResult RecvResolveBeforeUnloadPrompt(
+    const uint64_t& aRequestId, const uint64_t& aTabId,
+    const bool& aPermit);
   mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
   mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
   mozilla::ipc::IPCResult RecvReceiveInputEvent(

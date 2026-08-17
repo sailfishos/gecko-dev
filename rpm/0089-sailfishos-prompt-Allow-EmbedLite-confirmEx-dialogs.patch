@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andrew Branson <andrew.branson@jolla.com>
+Date: Mon, 17 Aug 2026 23:26:48 +0200
+Subject: [sailfishos][prompt] Allow EmbedLite confirmEx dialogs
+
+Route parent-process beforeunload confirmations through native prompts.
+
+Preserve the permit-unload marker for the native UI.
+---
+ .../components/prompts/src/Prompter.sys.mjs    | 18 +++++-------------
+ 1 file changed, 5 insertions(+), 13 deletions(-)
+
+diff --git a/toolkit/components/prompts/src/Prompter.sys.mjs b/toolkit/components/prompts/src/Prompter.sys.mjs
+index 19e87d2804951..da3beae897d38 100644
+--- a/toolkit/components/prompts/src/Prompter.sys.mjs
++++ b/toolkit/components/prompts/src/Prompter.sys.mjs
+@@ -1077,6 +1077,7 @@ class ModalPrompter {
+         break;
+       case "confirm":
+       case "confirmCheck":
++      case "confirmEx":
+         topic = "embed:confirm";
+         responseTopic = "confirmresponse";
+         break;
+@@ -1097,20 +1098,9 @@ class ModalPrompter {
+       return null;
+     }
+ 
+-    let embedWindow;
+-    try {
+-      embedWindow =
+-        this.browsingContext.top?.window || this.browsingContext.window;
+-    } catch (_) {
+-      return null;
+-    }
+-    if (!embedWindow) {
+-      return null;
+-    }
+-
+     let winId;
+     try {
+-      winId = embedService.getIDByWindow(embedWindow);
++      winId = embedService.getIDByBrowsingContext(this.browsingContext);
+     } catch (_) {
+       return null;
+     }
+@@ -1122,6 +1112,7 @@ class ModalPrompter {
+       winId,
+       title: args.title,
+       text: args.text,
++      inPermitUnload: !!args.inPermitUnload,
+       inputs: [],
+     };
+     let buttons = [
+@@ -1229,7 +1220,8 @@ class ModalPrompter {
+       try {
+         promptWindow = this.browsingContext.window;
+         let docShell = this.browsingContext.docShell;
+-        let inPermitUnload = docShell?.docViewer?.inPermitUnload;
++        let inPermitUnload =
++          args.inPermitUnload || docShell?.docViewer?.inPermitUnload;
+         args.inPermitUnload = inPermitUnload;
+         PromptUtils.fireDialogEvent(
+           promptWindow,

@@ -122,6 +122,29 @@ EmbedLiteWindowChild *EmbedLiteWindowChild::From(const uint32_t id)
   return nullptr;
 }
 
+bool EmbedLiteWindowChild::RequestChromeTabBeforeUnloadPrompt(
+    BrowsingContext* aBrowsingContext,
+    const nsAString& aTitle, const nsAString& aText,
+    const nsAString& aLeaveLabel, const nsAString& aStayLabel,
+    Promise* aPromise)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!aBrowsingContext || !aPromise) {
+    return false;
+  }
+
+  for (const auto& window : sWindowChildMap) {
+    EmbedLiteWindowChild* child = window.second;
+    if (child->mChromeSession &&
+        child->mChromeSession->RequestBeforeUnloadPrompt(
+          aBrowsingContext, aTitle, aText, aLeaveLabel, aStayLabel,
+          aPromise)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 EmbedLiteWindowChild::~EmbedLiteWindowChild()
 {
   DestroyChromeAppWindow();
@@ -299,6 +322,18 @@ EmbedLiteWindowChild::RecvCloseTab(const uint64_t& aTabId)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
     Unused << mChromeSession->CloseTab(aTabId);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvResolveBeforeUnloadPrompt(
+    const uint64_t& aRequestId, const uint64_t& aTabId,
+    const bool& aPermit)
+{
+  if (mChromeSession && !mDestroying) {
+    mChromeSession->ResolveBeforeUnloadPrompt(
+      aRequestId, aTabId, aPermit);
   }
   return IPC_OK();
 }

@@ -46,6 +46,16 @@ struct EmbedLiteChromeSessionData {
   EmbedLiteChromeTabData[] tabs;
 };
 
+struct EmbedLiteChromeBeforeUnloadData {
+  uint64_t requestId;
+  uint64_t tabId;
+  uint64_t persistentId;
+  nsString title;
+  nsString text;
+  nsString leaveLabel;
+  nsString stayLabel;
+};
+
 [NestedUpTo=inside_cpow] sync protocol PEmbedLiteWindow {
   manager PEmbedLiteApp;
 
@@ -64,6 +74,8 @@ child:
   async AssociateTab(uint64_t aTabId, uint64_t aPersistentId);
   async SelectTab(uint64_t aTabId);
   async CloseTab(uint64_t aTabId);
+  async ResolveBeforeUnloadPrompt(uint64_t aRequestId, uint64_t aTabId,
+                                  bool aPermit);
   async SetActive(bool aActive);
   async SetFocused(bool aFocused);
   async ReceiveInputEvent(MultiTouchInput aEvent);
@@ -78,6 +90,7 @@ parent:
   async OnLoadProgress(int32_t aProgress, int64_t aCurrent, int64_t aTotal);
   async OnTitleChanged(nsString aTitle);
   async OnTabSnapshot(EmbedLiteChromeSessionData aSnapshot);
+  async OnBeforeUnloadPrompt(EmbedLiteChromeBeforeUnloadData aPrompt);
   async Destroyed();
   async __delete__();
 };
