@@ -149,6 +149,3 @@ index 5c6e97b326bd..05bc0e69eec8 100644
    // This allows to override the startup cache filename
    // which is useful from xpcshell, when there is no ProfLDS directory to keep
    // cache in.
--- 
-2.51.0
-

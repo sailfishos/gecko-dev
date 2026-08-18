@@ -49,10 +49,10 @@ index 329c03cfef05..75750ded9d28 100644
  
  AC_SUBST_LIST(MOZ_WEBRTC_X11_LIBS)
 diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build b/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
-index cd5557b826da..c4c9e52f290f 100644
+index 244965389722..357e8a54403d 100644
 --- a/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
 +++ b/third_party/libwebrtc/modules/video_capture/video_capture_internal_impl_gn/moz.build
-@@ -86,12 +86,25 @@ if CONFIG["OS_TARGET"] == "Linux":
+@@ -92,12 +92,25 @@ if CONFIG["OS_TARGET"] == "Linux":
          "rt"
      ]
  
@@ -85,7 +85,7 @@ index cd5557b826da..c4c9e52f290f 100644
  if CONFIG["OS_TARGET"] == "OpenBSD":
  
 diff --git a/third_party/libwebrtc/moz.build b/third_party/libwebrtc/moz.build
-index 0920c2883cec..4ea76ff67e78 100644
+index dbb14f5be116..5a7e0abe855b 100644
 --- a/third_party/libwebrtc/moz.build
 +++ b/third_party/libwebrtc/moz.build
 @@ -632,6 +632,20 @@ if CONFIG["CPU_ARCH"] == "x86_64" and CONFIG["OS_TARGET"] == "Linux":
@@ -109,6 +109,3 @@ index 0920c2883cec..4ea76ff67e78 100644
  if CONFIG["CPU_ARCH"] == "aarch64" and CONFIG["OS_TARGET"] == "OpenBSD":
  
      DIRS += [
--- 
-2.51.0
-

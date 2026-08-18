@@ -8,7 +8,7 @@ Subject: Register gecko-camera decoder in remote video paths
  1 file changed, 13 insertions(+)
 
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
-index b1c2186e2ad9a..7fcf2f54bab49 100644
+index b1c2186e2ad9..7fcf2f54bab4 100644
 --- a/dom/media/platforms/PDMFactory.cpp
 +++ b/dom/media/platforms/PDMFactory.cpp
 @@ -560,6 +560,12 @@ void PDMFactory::CreateRddPDMs() {

@@ -494,5 +494,3 @@ index e8438f80ff0d..55325a088642 100644
      system_lib_option("--enable-libproxy", help="Enable libproxy support")
  
      with only_when("--enable-libproxy"):
--- 
-2.51.0

@@ -13,7 +13,7 @@ Adds the Gecko integration for a video decoder plugin that makes use of gecko-ca
  create mode 120000 dom/media/platforms/gecko-camera
 
 diff --git a/dom/media/platforms/PDMFactory.cpp b/dom/media/platforms/PDMFactory.cpp
-index 49d9e835f74aa..b1c2186e2ad9a 100644
+index 49d9e835f74a..b1c2186e2ad9 100644
 --- a/dom/media/platforms/PDMFactory.cpp
 +++ b/dom/media/platforms/PDMFactory.cpp
 @@ -64,6 +64,10 @@
@@ -52,14 +52,14 @@ index 49d9e835f74aa..b1c2186e2ad9a 100644
  
 diff --git a/dom/media/platforms/gecko-camera b/dom/media/platforms/gecko-camera
 new file mode 120000
-index 0000000000000..215967f59e8cb
+index 000000000000..215967f59e8c
 --- /dev/null
 +++ b/dom/media/platforms/gecko-camera
 @@ -0,0 +1 @@
 +../../../../gecko-camera-decoder
 \ No newline at end of file
 diff --git a/dom/media/platforms/moz.build b/dom/media/platforms/moz.build
-index c71f22a22eeea..776b836482874 100644
+index c71f22a22eee..776b83648287 100644
 --- a/dom/media/platforms/moz.build
 +++ b/dom/media/platforms/moz.build
 @@ -135,6 +135,17 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
@@ -81,7 +81,7 @@ index c71f22a22eeea..776b836482874 100644
  
  # Add libFuzzer configuration directives
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 13e75da963acc..c900d851198ac 100644
+index 13e75da963ac..c900d851198a 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -10206,6 +10206,19 @@

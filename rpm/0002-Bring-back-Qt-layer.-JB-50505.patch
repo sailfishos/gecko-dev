@@ -324,85 +324,85 @@ Gtk, Android).
 
 Co-authored-by: David Llewellyn-Jones <david@flypig.co.uk>
 ---
- browser/base/content/browser-menubar.inc      |   2 +-
- browser/themes/moz.build                      |   2 +-
- build/moz.configure/old.configure             |   4 +
- dom/geolocation/Geolocation.cpp               |   8 +
- dom/geolocation/moz.build                     |   6 +
- dom/ipc/ContentChild.cpp                      |   9 +
- dom/ipc/moz.build                             |   2 +-
- dom/system/moz.build                          |   4 +-
- dom/system/qt                                 |   1 +
- gfx/2d/2D.h                                   |   4 +-
- gfx/2d/Factory.cpp                            |   8 +-
- gfx/2d/NativeFontResourceFreeType.cpp         |   2 +-
- gfx/2d/NativeFontResourceFreeType.h           |   2 +-
- gfx/2d/UnscaledFontFreeType.h                 |   2 +-
- gfx/2d/moz.build                              |   8 +-
- gfx/cairo/cairo/src/cairo-features.h          |   4 +
- gfx/cairo/cairo/src/cairo-qt-surface.cpp      |   4 +-
- gfx/cairo/cairo/src/cairo-rename.h            |   6 +
- gfx/cairo/cairo/src/moz.build                 |  19 +
- gfx/gl/moz.build                              |   2 +
- gfx/skia/generate_mozbuild.py                 |   9 +-
- gfx/skia/moz.build                            |   9 +-
- gfx/src/moz.build                             |   3 +
- gfx/thebes/SharedFontList.cpp                 |  14 +-
- gfx/thebes/SharedFontList.h                   |   6 +-
- gfx/thebes/gfxASurface.cpp                    |   2 +
- gfx/thebes/gfxFT2Fonts.cpp                    |   4 +
- gfx/thebes/gfxFcPlatformFontList.cpp          |   6 +
- gfx/thebes/gfxFont.h                          |   2 +-
- gfx/thebes/gfxPlatform.cpp                    |  10 +-
- gfx/thebes/gfxQtNativeRenderer.cpp            |  48 ++
- gfx/thebes/gfxQtNativeRenderer.h              |  68 ++
- gfx/thebes/gfxQtPlatform.cpp                  |   1 +
- gfx/thebes/gfxQtPlatform.h                    |   1 +
- gfx/thebes/moz.build                          |  34 +-
- gfx/webrender_bindings/moz.build              |   4 +-
- image/decoders/icon/moz.build                 |   3 +
- image/decoders/icon/qt                        |   1 +
- image/decoders/moz.build                      |   2 +
- intl/locale/moz.build                         |   5 +
- ipc/chromium/moz.build                        |   5 +
- ipc/chromium/src/base/message_pump_qt.cc      | 178 +----
- ipc/chromium/src/base/message_pump_qt.h       |  85 +-
- ipc/glue/GeckoChildProcessHost.cpp            |   6 +-
- layout/base/nsPresContext.cpp                 |   7 +-
- layout/generic/moz.build                      |   6 +
- layout/style/nsMediaFeatures.cpp              |   2 +-
- modules/libpref/init/StaticPrefList.yaml      |   2 +-
- netwerk/base/moz.build                        |  11 +
- netwerk/ipc/NeckoChild.cpp                    |   4 +-
- netwerk/ipc/NeckoChild.h                      |   2 +-
- netwerk/ipc/NeckoParent.cpp                   |   4 +-
- netwerk/ipc/NeckoParent.h                     |   2 +-
- netwerk/ipc/PNecko.ipdl                       |   6 +-
- netwerk/protocol/moz.build                    |   2 +-
- old-configure.in                              | 741 ++++++++++++++++++
- toolkit/components/processtools/moz.build     |   2 +-
- toolkit/library/moz.build                     |  14 +-
- toolkit/modules/AppConstants.sys.mjs          |   2 +
- toolkit/moz.build                             |   2 +-
- toolkit/moz.configure                         |   7 +-
- toolkit/themes/moz.build                      |   2 +-
- toolkit/xre/moz.build                         |   7 +
- toolkit/xre/nsAppRunner.cpp                   |  40 +
- toolkit/xre/nsEmbedFunctions.cpp              |   8 +
- toolkit/xre/nsNativeAppSupportQt.cpp          |   1 +
- toolkit/xre/nsNativeAppSupportQt.h            |   1 +
- toolkit/xre/nsQAppInstance.cpp                |  31 +
- toolkit/xre/nsQAppInstance.h                  |  28 +
- uriloader/exthandler/moz.build                |  13 +
- uriloader/exthandler/unix/nsMIMEInfoQt.cpp    |  30 +
- uriloader/exthandler/unix/nsMIMEInfoQt.h      |  20 +
- uriloader/exthandler/unix/nsMIMEInfoUnix.cpp  |  20 +-
- widget/NativeKeyToDOMCodeName.h               |   2 +-
- widget/NativeKeyToDOMKeyName.h                | 205 +++++
- widget/Theme.cpp                              |   2 +-
- widget/headless/HeadlessWidget.h              |   7 +
- widget/moz.build                              |   6 +-
- widget/qt                                     |   1 +
+ browser/base/content/browser-menubar.inc     |   2 +-
+ browser/themes/moz.build                     |   2 +-
+ build/moz.configure/old.configure            |   4 +
+ dom/geolocation/Geolocation.cpp              |   8 +
+ dom/geolocation/moz.build                    |   6 +
+ dom/ipc/ContentChild.cpp                     |   9 +
+ dom/ipc/moz.build                            |   2 +-
+ dom/system/moz.build                         |   4 +-
+ dom/system/qt                                |   1 +
+ gfx/2d/2D.h                                  |   4 +-
+ gfx/2d/Factory.cpp                           |   8 +-
+ gfx/2d/NativeFontResourceFreeType.cpp        |   2 +-
+ gfx/2d/NativeFontResourceFreeType.h          |   2 +-
+ gfx/2d/UnscaledFontFreeType.h                |   2 +-
+ gfx/2d/moz.build                             |   8 +-
+ gfx/cairo/cairo/src/cairo-features.h         |   4 +
+ gfx/cairo/cairo/src/cairo-qt-surface.cpp     |   4 +-
+ gfx/cairo/cairo/src/cairo-rename.h           |   6 +
+ gfx/cairo/cairo/src/moz.build                |  19 +
+ gfx/gl/moz.build                             |   2 +
+ gfx/skia/generate_mozbuild.py                |   9 +-
+ gfx/skia/moz.build                           |   9 +-
+ gfx/src/moz.build                            |   3 +
+ gfx/thebes/SharedFontList.cpp                |  14 +-
+ gfx/thebes/SharedFontList.h                  |   6 +-
+ gfx/thebes/gfxASurface.cpp                   |   2 +
+ gfx/thebes/gfxFT2Fonts.cpp                   |   4 +
+ gfx/thebes/gfxFcPlatformFontList.cpp         |   6 +
+ gfx/thebes/gfxFont.h                         |   2 +-
+ gfx/thebes/gfxPlatform.cpp                   |  10 +-
+ gfx/thebes/gfxQtNativeRenderer.cpp           |  48 ++
+ gfx/thebes/gfxQtNativeRenderer.h             |  68 ++
+ gfx/thebes/gfxQtPlatform.cpp                 |   1 +
+ gfx/thebes/gfxQtPlatform.h                   |   1 +
+ gfx/thebes/moz.build                         |  34 +-
+ gfx/webrender_bindings/moz.build             |   4 +-
+ image/decoders/icon/moz.build                |   3 +
+ image/decoders/icon/qt                       |   1 +
+ image/decoders/moz.build                     |   2 +
+ intl/locale/moz.build                        |   5 +
+ ipc/chromium/moz.build                       |   5 +
+ ipc/chromium/src/base/message_pump_qt.cc     | 178 +----
+ ipc/chromium/src/base/message_pump_qt.h      |  85 +--
+ ipc/glue/GeckoChildProcessHost.cpp           |   6 +-
+ layout/base/nsPresContext.cpp                |   7 +-
+ layout/generic/moz.build                     |   6 +
+ layout/style/nsMediaFeatures.cpp             |   2 +-
+ modules/libpref/init/StaticPrefList.yaml     |   2 +-
+ netwerk/base/moz.build                       |  11 +
+ netwerk/ipc/NeckoChild.cpp                   |   4 +-
+ netwerk/ipc/NeckoChild.h                     |   2 +-
+ netwerk/ipc/NeckoParent.cpp                  |   4 +-
+ netwerk/ipc/NeckoParent.h                    |   2 +-
+ netwerk/ipc/PNecko.ipdl                      |   6 +-
+ netwerk/protocol/moz.build                   |   2 +-
+ old-configure.in                             | 741 +++++++++++++++++++
+ toolkit/components/processtools/moz.build    |   2 +-
+ toolkit/library/moz.build                    |  14 +-
+ toolkit/modules/AppConstants.sys.mjs         |   2 +
+ toolkit/moz.build                            |   2 +-
+ toolkit/moz.configure                        |   7 +-
+ toolkit/themes/moz.build                     |   2 +-
+ toolkit/xre/moz.build                        |   7 +
+ toolkit/xre/nsAppRunner.cpp                  |  40 +
+ toolkit/xre/nsEmbedFunctions.cpp             |   8 +
+ toolkit/xre/nsNativeAppSupportQt.cpp         |   1 +
+ toolkit/xre/nsNativeAppSupportQt.h           |   1 +
+ toolkit/xre/nsQAppInstance.cpp               |  31 +
+ toolkit/xre/nsQAppInstance.h                 |  28 +
+ uriloader/exthandler/moz.build               |  13 +
+ uriloader/exthandler/unix/nsMIMEInfoQt.cpp   |  30 +
+ uriloader/exthandler/unix/nsMIMEInfoQt.h     |  20 +
+ uriloader/exthandler/unix/nsMIMEInfoUnix.cpp |  20 +-
+ widget/NativeKeyToDOMCodeName.h              |   2 +-
+ widget/NativeKeyToDOMKeyName.h               | 205 +++++
+ widget/Theme.cpp                             |   2 +-
+ widget/headless/HeadlessWidget.h             |   7 +
+ widget/moz.build                             |   6 +-
+ widget/qt                                    |   1 +
  79 files changed, 1515 insertions(+), 330 deletions(-)
  create mode 120000 dom/system/qt
  create mode 100644 gfx/thebes/gfxQtNativeRenderer.cpp
@@ -505,7 +505,7 @@ index 53034db9c519..f076529ba88d 100644
      LOCAL_INCLUDES += [
          "/dom/system/android",
 diff --git a/dom/ipc/ContentChild.cpp b/dom/ipc/ContentChild.cpp
-index 5254f5f1ea44..632840626d88 100644
+index 5096ef9575d6..4d4dd2de6ecc 100644
 --- a/dom/ipc/ContentChild.cpp
 +++ b/dom/ipc/ContentChild.cpp
 @@ -8,6 +8,10 @@
@@ -633,7 +633,10 @@ diff --git a/gfx/2d/NativeFontResourceFreeType.cpp b/gfx/2d/NativeFontResourceFr
 index e00dfafe2156..1b0452e46061 100644
 --- a/gfx/2d/NativeFontResourceFreeType.cpp
 +++ b/gfx/2d/NativeFontResourceFreeType.cpp
-@@ -68,4 +68,4 @@ already_AddRefed<SharedFTFace> NativeFontResourceFreeType::CloneFace(
+@@ -65,7 +65,7 @@ already_AddRefed<SharedFTFace> NativeFontResourceFreeType::CloneFace(
+   return face.forget();
+ }
+ 
 -#ifdef MOZ_WIDGET_GTK
 +#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
  NativeFontResourceFontconfig::NativeFontResourceFontconfig(
@@ -643,7 +646,10 @@ diff --git a/gfx/2d/NativeFontResourceFreeType.h b/gfx/2d/NativeFontResourceFree
 index 381dfe0c0b3a..4c8d36876859 100644
 --- a/gfx/2d/NativeFontResourceFreeType.h
 +++ b/gfx/2d/NativeFontResourceFreeType.h
-@@ -53,4 +53,4 @@ class NativeFontResourceFreeType
+@@ -50,7 +50,7 @@ class NativeFontResourceFreeType
+   FT_Library mFTLibrary;
+ };
+ 
 -#ifdef MOZ_WIDGET_GTK
 +#if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
  class NativeFontResourceFontconfig final : public NativeFontResourceFreeType {
@@ -1004,7 +1010,7 @@ index 9cc3a4bfd5f1..233eeb817aba 100644
  #  include "gfxWindowsPlatform.h"
  #  define gfxToolkitPlatform gfxWindowsPlatform
 diff --git a/gfx/thebes/gfxFcPlatformFontList.cpp b/gfx/thebes/gfxFcPlatformFontList.cpp
-index fb4a6e551668..2bd43dd53472 100644
+index 193ef01ee1cf..4b04447a90be 100644
 --- a/gfx/thebes/gfxFcPlatformFontList.cpp
 +++ b/gfx/thebes/gfxFcPlatformFontList.cpp
 @@ -40,6 +40,8 @@
@@ -1016,7 +1022,7 @@ index fb4a6e551668..2bd43dd53472 100644
  #endif
  
  #ifdef MOZ_X11
-@@ -1598,7 +1600,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
+@@ -1604,7 +1606,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
    mLocalNames.Clear();
    mFcSubstituteCache.Clear();
  
@@ -1026,7 +1032,7 @@ index fb4a6e551668..2bd43dd53472 100644
  
    mAlwaysUseFontconfigGenerics = PrefFontListsUseOnlyGenerics();
    mOtherFamilyNamesInitialized = true;
-@@ -1667,7 +1671,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
+@@ -1673,7 +1677,9 @@ nsresult gfxFcPlatformFontList::InitFontListForPlatform() {
      return NS_OK;
    }
  
@@ -1037,7 +1043,7 @@ index fb4a6e551668..2bd43dd53472 100644
    UniquePtr<SandboxPolicy> policy;
  
 diff --git a/gfx/thebes/gfxFont.h b/gfx/thebes/gfxFont.h
-index 3a3d13c81097..f7742dd7c4eb 100644
+index 9565fdf0a8f4..9e2f098eb430 100644
 --- a/gfx/thebes/gfxFont.h
 +++ b/gfx/thebes/gfxFont.h
 @@ -81,7 +81,7 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;
@@ -4306,5 +4312,3 @@ index 000000000000..70bd9ea910ea
 @@ -0,0 +1 @@
 +../../gecko-qt/widget/qt
 \ No newline at end of file
--- 
-2.51.0

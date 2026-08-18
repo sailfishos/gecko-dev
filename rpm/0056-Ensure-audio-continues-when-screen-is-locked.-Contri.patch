@@ -40,10 +40,10 @@ state changes for any reason. Fixes JB#42900
  2 files changed, 29 insertions(+), 2 deletions(-)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index f4ecc8e6bec6..696d06169523 100644
+index 85cd4a497fdf..399214d4c4f5 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
-@@ -6469,7 +6469,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
+@@ -6471,7 +6471,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
    // been set to hidden and explicitly wants to suspend media. In those cases,
    // the media would be not visible and we don't want them to continue playing.
    bool shouldSuspend =
@@ -52,7 +52,7 @@ index f4ecc8e6bec6..696d06169523 100644
    SuspendOrResumeElement(shouldSuspend);
  
    // If the owning document has become inactive we should shutdown the CDM.
-@@ -6512,7 +6512,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
+@@ -6514,7 +6514,7 @@ void HTMLMediaElement::AddRemoveSelfReference() {
    // See the comment at the top of this file for the explanation of this
    // boolean expression.
    bool needSelfReference =
@@ -130,6 +130,3 @@ index f7a8d4e644a3..05d5333d5b30 100644
    if (mNextState == aState) {
      mNextState = PLAY_STATE_PAUSED;
    }
--- 
-2.51.0
-

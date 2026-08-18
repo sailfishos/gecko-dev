@@ -27,7 +27,7 @@ navigation or certificate override controls.
  create mode 100644 toolkit/locales/en-US/chrome/branding/brand.ftl
 
 diff --git a/toolkit/actors/NetErrorChild.sys.mjs b/toolkit/actors/NetErrorChild.sys.mjs
-index 671eb22baa567..30a3181b5490b 100644
+index 671eb22baa56..30a3181b5490 100644
 --- a/toolkit/actors/NetErrorChild.sys.mjs
 +++ b/toolkit/actors/NetErrorChild.sys.mjs
 @@ -3,11 +3,7 @@
@@ -53,7 +53,7 @@ index 671eb22baa567..30a3181b5490b 100644
  
    _getTRRSkipReason() {
 diff --git a/toolkit/actors/NetErrorParent.sys.mjs b/toolkit/actors/NetErrorParent.sys.mjs
-index 7d1f0f3f0faed..f29fc8d68296b 100644
+index 7d1f0f3f0fae..f29fc8d68296 100644
 --- a/toolkit/actors/NetErrorParent.sys.mjs
 +++ b/toolkit/actors/NetErrorParent.sys.mjs
 @@ -66,6 +66,16 @@ export class NetErrorParent extends JSWindowActorParent {
@@ -143,7 +143,7 @@ index 7d1f0f3f0faed..f29fc8d68296b 100644
                window.switchToTabHavingURI(url, true, {});
              } else {
 diff --git a/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs b/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
-index a10493f79b6bb..738c68fcd275f 100644
+index a10493f79b6b..738c68fcd275 100644
 --- a/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
 +++ b/toolkit/components/processsingleton/MainProcessSingleton.sys.mjs
 @@ -13,6 +13,11 @@ MainProcessSingleton.prototype = {
@@ -159,7 +159,7 @@ index a10493f79b6bb..738c68fcd275f 100644
          ChromeUtils.importESModule(
            "resource://gre/modules/CustomElementsListener.sys.mjs"
 diff --git a/toolkit/content/aboutNetError.mjs b/toolkit/content/aboutNetError.mjs
-index 943cf62244a3b..4b1dbcbcb2906 100644
+index 943cf62244a3..4b1dbcbcb290 100644
 --- a/toolkit/content/aboutNetError.mjs
 +++ b/toolkit/content/aboutNetError.mjs
 @@ -325,6 +325,10 @@ function initPage() {
@@ -182,7 +182,7 @@ index 943cf62244a3b..4b1dbcbcb2906 100644
      return;
    }
 diff --git a/toolkit/content/aboutNetError.xhtml b/toolkit/content/aboutNetError.xhtml
-index 44bc72cecfbfd..d0bc96f4d0743 100644
+index 44bc72cecfbf..d0bc96f4d074 100644
 --- a/toolkit/content/aboutNetError.xhtml
 +++ b/toolkit/content/aboutNetError.xhtml
 @@ -9,6 +9,7 @@
@@ -195,7 +195,7 @@ index 44bc72cecfbfd..d0bc96f4d0743 100644
      <link rel="stylesheet" href="chrome://global/skin/aboutNetError.css" type="text/css" media="all" />
 diff --git a/toolkit/locales/en-US/chrome/branding/brand.ftl b/toolkit/locales/en-US/chrome/branding/brand.ftl
 new file mode 100644
-index 0000000000000..083dda8cf853e
+index 000000000000..083dda8cf853
 --- /dev/null
 +++ b/toolkit/locales/en-US/chrome/branding/brand.ftl
 @@ -0,0 +1,9 @@
@@ -209,7 +209,7 @@ index 0000000000000..083dda8cf853e
 +-brand-product-name = Sailfish Browser
 +-vendor-short-name = Jolla
 diff --git a/toolkit/locales/jar.mn b/toolkit/locales/jar.mn
-index 1f2189fd35f88..37ab0698ad626 100644
+index 1f2189fd35f8..37ab0698ad62 100644
 --- a/toolkit/locales/jar.mn
 +++ b/toolkit/locales/jar.mn
 @@ -4,6 +4,7 @@

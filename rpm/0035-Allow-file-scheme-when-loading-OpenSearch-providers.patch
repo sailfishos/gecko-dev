@@ -26,6 +26,3 @@ index d3d6da576ae2..e401f1c94c8c 100644
        throw Components.Exception(
          "Invalid URI passed to SearchEngine constructor",
          Cr.NS_ERROR_INVALID_ARG
--- 
-2.51.0
-

@@ -36,6 +36,3 @@ index fae1444161b4..15132d713030 100644
    }
  
    if (NS_FAILED(NativeGetInt(aID, aResult))) {
--- 
-2.51.0
-

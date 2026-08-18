@@ -34,6 +34,3 @@ index b59964e79445..634743e436ee 100644
      {
          'cid': '{471f4944-1dd2-11b2-87ac-90be0a51d609}',
          'contract_ids': ['@mozilla.org/embedcomp/rangefind;1'],
--- 
-2.51.0
-

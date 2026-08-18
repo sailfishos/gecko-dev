@@ -46,6 +46,3 @@ index 3fc3b7fa1b98..d239f501dbd2 100644
  
    // Gather OS/CPU.
  #if defined(XP_WIN)
--- 
-2.51.0
-

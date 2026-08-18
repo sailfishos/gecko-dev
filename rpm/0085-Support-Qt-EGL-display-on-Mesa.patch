@@ -33,7 +33,7 @@ Co-authored-by: Matti Lehtimäki <matti.lehtimaki@jolla.com>
  7 files changed, 126 insertions(+), 38 deletions(-)
 
 diff --git a/gfx/gl/AndroidSurfaceTexture.cpp b/gfx/gl/AndroidSurfaceTexture.cpp
-index 30260efe32adf..d313b0527c85d 100644
+index 30260efe32ad..d313b0527c85 100644
 --- a/gfx/gl/AndroidSurfaceTexture.cpp
 +++ b/gfx/gl/AndroidSurfaceTexture.cpp
 @@ -82,7 +82,7 @@ class AndroidSharedBlitGL final {
@@ -46,7 +46,7 @@ index 30260efe32adf..d313b0527c85d 100644
                                              true, eglConfig, &ignored);
      if (!gl) {
 diff --git a/gfx/gl/GLContextEGL.h b/gfx/gl/GLContextEGL.h
-index fcf3782f24727..fd869d3125c57 100644
+index fcf3782f2472..fd869d3125c5 100644
 --- a/gfx/gl/GLContextEGL.h
 +++ b/gfx/gl/GLContextEGL.h
 @@ -156,6 +156,7 @@ class GLContextEGL final : public GLContext {
@@ -58,7 +58,7 @@ index fcf3782f24727..fd869d3125c57 100644
  
  }  // namespace gl
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 252e027b63f86..04a06293b4d00 100644
+index 252e027b63f8..04a06293b4d0 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -74,6 +74,11 @@
@@ -258,7 +258,7 @@ index 252e027b63f86..04a06293b4d00 100644
      return nullptr;
    }
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index 24926227c3ce8..158b13a017001 100644
+index 24926227c3ce..158b13a01700 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
 @@ -166,7 +166,8 @@ static std::shared_ptr<EglDisplay> GetAndInitDisplay(
@@ -407,7 +407,7 @@ index 24926227c3ce8..158b13a017001 100644
      *out_failureId = "FEATURE_FAILURE_EGL_DISPLAY"_ns;
    }
 diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
-index 5cf95aae9406a..79273ea57f77c 100644
+index 5cf95aae9406..79273ea57f77 100644
 --- a/gfx/gl/GLLibraryEGL.h
 +++ b/gfx/gl/GLLibraryEGL.h
 @@ -159,8 +159,8 @@ class GLLibraryEGL final {
@@ -450,7 +450,7 @@ index 5cf95aae9406a..79273ea57f77c 100644
   public:
    ~EglDisplay();
 diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
-index 09659ba519c12..85a45869b8dbf 100644
+index 09659ba519c1..85a45869b8db 100644
 --- a/gfx/gl/SharedSurfaceEGL.cpp
 +++ b/gfx/gl/SharedSurfaceEGL.cpp
 @@ -27,7 +27,8 @@ static bool HasEglImageExtensions(const GLContextEGL& gl) {
@@ -464,7 +464,7 @@ index 09659ba519c12..85a45869b8dbf 100644
  }
  
 diff --git a/gfx/gl/moz.build b/gfx/gl/moz.build
-index bf5b0d5fdd969..81af6ee302929 100644
+index bf5b0d5fdd96..81af6ee30292 100644
 --- a/gfx/gl/moz.build
 +++ b/gfx/gl/moz.build
 @@ -159,6 +159,9 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":

@@ -27,6 +27,3 @@ index c1b408822384..097543c37e8b 100644
    // -
  
    if (!HasKHRImageBase()) {
--- 
-2.51.0
-

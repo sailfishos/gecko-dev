@@ -7,12 +7,12 @@ Subject: [PATCH 12/67] Backport Embed MessageLoop contructor back (sha1
 Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
 Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
 ---
- ipc/chromium/src/base/message_loop.cc | 33 ++++++++++++++++++++++++++-
- ipc/chromium/src/base/message_loop.h  |  7 ++++++-
+ ipc/chromium/src/base/message_loop.cc | 34 ++++++++++++++++++++++++++-
+ ipc/chromium/src/base/message_loop.h  |  7 +++++-
  2 files changed, 39 insertions(+), 2 deletions(-)
 
 diff --git a/ipc/chromium/src/base/message_loop.cc b/ipc/chromium/src/base/message_loop.cc
-index e7178a6792a7..860b4e8b3100 100644
+index e7178a6792a7..e79523cbdfeb 100644
 --- a/ipc/chromium/src/base/message_loop.cc
 +++ b/ipc/chromium/src/base/message_loop.cc
 @@ -30,6 +30,9 @@
@@ -110,5 +110,3 @@ index b6e4938ee01f..ecddbf27c081 100644
             type == MessageLoop::TYPE_MOZILLA_PARENT ||
             type == MessageLoop::TYPE_MOZILLA_CHILD);
      return static_cast<MessageLoopForUI*>(loop);
--- 
-2.51.0

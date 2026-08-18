@@ -64,10 +64,10 @@ index ac147fd24159..413c81e10217 100644
  
  }  // namespace layers
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 3548116af06b..70834b964fe9 100644
+index c979616dcaf0..458cf27c333d 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
-@@ -2923,5 +2923,10 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
+@@ -2939,5 +2939,10 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
    MOZ_ASSERT(!mWebRenderBridge);
  }
  
@@ -79,7 +79,7 @@ index 3548116af06b..70834b964fe9 100644
  }  // namespace layers
  }  // namespace mozilla
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.h b/gfx/layers/wr/WebRenderBridgeParent.h
-index 308a829e84e2..69706f42fdf1 100644
+index 5c2ecd330bd8..206e1ea5c138 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.h
 +++ b/gfx/layers/wr/WebRenderBridgeParent.h
 @@ -189,6 +189,8 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
@@ -91,6 +91,3 @@ index 308a829e84e2..69706f42fdf1 100644
    TimeDuration GetVsyncInterval() const override;
  
    // CompositableParentManager
--- 
-2.51.0
-

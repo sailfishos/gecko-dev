@@ -42,6 +42,3 @@ index e9be0a3ac405..4a2f6447a342 100644
        default:
          console.error(`Unexpected event ${topic}`);
      }
--- 
-2.51.0
-

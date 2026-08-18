@@ -513,6 +513,3 @@ index 686640525045..9d5b3257a4e9 100644
    stream_cork(stm, UNCORK | NOTIFY);
  
    if (stm->output_stream && !stm->input_stream) {
--- 
-2.51.0
-

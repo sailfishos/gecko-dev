@@ -10,7 +10,7 @@ Signed-off-by: Raine Makelainen <raine.makelainen@jolla.com>
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/dom/security/nsContentSecurityManager.cpp b/dom/security/nsContentSecurityManager.cpp
-index 457f069d26fb..6172eacc9266 100644
+index 0fedb447a171..f08b6b582242 100644
 --- a/dom/security/nsContentSecurityManager.cpp
 +++ b/dom/security/nsContentSecurityManager.cpp
 @@ -359,8 +359,10 @@ static nsresult DoCORSChecks(nsIChannel* aChannel, nsILoadInfo* aLoadInfo,
@@ -25,6 +25,3 @@ index 457f069d26fb..6172eacc9266 100644
      return NS_OK;
    }
  
--- 
-2.51.0
-

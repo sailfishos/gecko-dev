@@ -35,6 +35,3 @@ index ba31dffd9c55..2beca20440e9 100644
  
    // FullscreenReason::ForForceExitFullscreen can only be used with exiting
    // fullscreen
--- 
-2.51.0
-

@@ -23,7 +23,7 @@ ShutdownState directly; the normal state path assumes mStateObj exists.
  1 file changed, 35 insertions(+), 6 deletions(-)
 
 diff --git a/dom/media/MediaDecoderStateMachine.cpp b/dom/media/MediaDecoderStateMachine.cpp
-index de7fb2c..ac70a57 100644
+index de7fb2c18d1e..ac70a57d9b7b 100644
 --- a/dom/media/MediaDecoderStateMachine.cpp
 +++ b/dom/media/MediaDecoderStateMachine.cpp
 @@ -3341,7 +3341,9 @@ RefPtr<ShutdownPromise> MediaDecoderStateMachine::ShutdownState::Enter() {
@@ -146,5 +146,3 @@ index de7fb2c..ac70a57 100644
    mStateObj->HandleVideoSuspendTimeout();
  }
  
--- 
-2.51.0

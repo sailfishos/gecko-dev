@@ -24,6 +24,3 @@ index f4373f27834a..52281240448d 100644
  typedef __double_t  double_t;
  typedef float       __float_t;
  
--- 
-2.51.0
-

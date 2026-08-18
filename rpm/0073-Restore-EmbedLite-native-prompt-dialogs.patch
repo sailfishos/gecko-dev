@@ -19,7 +19,7 @@ entry point for HTTP auth, so route async promptUserAndPass and
 promptPassword requests through EmbedLite too, preserving the remember-login
 checkbox state for the password manager.
 ---
- toolkit/components/prompts/src/Prompter.sys.mjs | 342 +++++++++++++++++++++++-
+ .../components/prompts/src/Prompter.sys.mjs   | 342 +++++++++++++++++-
  1 file changed, 328 insertions(+), 14 deletions(-)
 
 diff --git a/toolkit/components/prompts/src/Prompter.sys.mjs b/toolkit/components/prompts/src/Prompter.sys.mjs
@@ -491,5 +491,3 @@ index fe4499237824..b054a849e3c6 100644
 +    );
    },
  };
--- 
-2.51.0

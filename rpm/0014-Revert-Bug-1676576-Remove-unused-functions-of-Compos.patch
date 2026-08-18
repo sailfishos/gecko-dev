@@ -11,10 +11,10 @@ This reverts commit 7120835c49546a56f2781378d6a5e497cb860953.
  2 files changed, 63 insertions(+)
 
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 0e9cf4fd211c..94b135595d91 100644
+index 1c9af21c2aa2..1842fcf5b7f9 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
-@@ -244,6 +244,8 @@ CompositorBridgeParent::CompositorBridgeParent(
+@@ -249,6 +249,8 @@ CompositorBridgeParent::CompositorBridgeParent(
        mWidget(nullptr),
        mScale(aScale),
        mVsyncRate(aVsyncRate),
@@ -23,7 +23,7 @@ index 0e9cf4fd211c..94b135595d91 100644
        mPaused(false),
        mHaveCompositionRecorder(false),
        mIsForcedFirstPaint(false),
-@@ -548,6 +550,7 @@ void CompositorBridgeParent::ScheduleRenderOnCompositorThread(
+@@ -553,6 +555,7 @@ void CompositorBridgeParent::ScheduleRenderOnCompositorThread(
  }
  
  void CompositorBridgeParent::PauseComposition() {
@@ -31,7 +31,7 @@ index 0e9cf4fd211c..94b135595d91 100644
    MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread(),
               "PauseComposition() can only be called on the compositor thread");
  
-@@ -562,9 +565,11 @@ void CompositorBridgeParent::PauseComposition() {
+@@ -567,9 +570,11 @@ void CompositorBridgeParent::PauseComposition() {
                               now);
      }
    }
@@ -43,7 +43,7 @@ index 0e9cf4fd211c..94b135595d91 100644
    MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread(),
               "ResumeComposition() can only be called on the compositor thread");
  
-@@ -579,6 +584,7 @@ bool CompositorBridgeParent::ResumeComposition() {
+@@ -584,6 +589,7 @@ bool CompositorBridgeParent::ResumeComposition() {
          ANDROID_LOG_INFO, "CompositorBridgeParent",
          "Unable to renew compositor surface; remaining in paused state");
  #endif
@@ -51,7 +51,7 @@ index 0e9cf4fd211c..94b135595d91 100644
      return false;
    }
  
-@@ -586,6 +592,7 @@ bool CompositorBridgeParent::ResumeComposition() {
+@@ -591,6 +597,7 @@ bool CompositorBridgeParent::ResumeComposition() {
  
    mCompositorScheduler->ForceComposeToTarget(wr::RenderReasons::WIDGET, nullptr,
                                               nullptr);
@@ -59,7 +59,7 @@ index 0e9cf4fd211c..94b135595d91 100644
    return true;
  }
  
-@@ -602,6 +609,53 @@ bool CompositorBridgeParent::ResumeCompositionAndResize(int x, int y, int width,
+@@ -607,6 +614,53 @@ bool CompositorBridgeParent::ResumeCompositionAndResize(int x, int y, int width,
    return ResumeComposition();
  }
  
@@ -114,10 +114,10 @@ index 0e9cf4fd211c..94b135595d91 100644
    MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
    if (mPaused) {
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
-index 6b15b535f167..d85ee0abb5b1 100644
+index 2205b959ff75..fdf4bddc2aab 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.h
 +++ b/gfx/layers/ipc/CompositorBridgeParent.h
-@@ -373,6 +373,13 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
+@@ -391,6 +391,13 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
  
    // Can be called from any thread
    void ScheduleRenderOnCompositorThread(wr::RenderReasons aReasons) override;
@@ -131,7 +131,7 @@ index 6b15b535f167..d85ee0abb5b1 100644
  
    void ScheduleComposition(wr::RenderReasons aReasons);
  
-@@ -608,6 +615,8 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
+@@ -626,6 +633,8 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
    CSSToLayoutDeviceScale mScale;
    TimeDuration mVsyncRate;
  
@@ -140,6 +140,3 @@ index 6b15b535f167..d85ee0abb5b1 100644
    bool mPaused;
    bool mHaveCompositionRecorder;
    bool mIsForcedFirstPaint;
--- 
-2.51.0
-
