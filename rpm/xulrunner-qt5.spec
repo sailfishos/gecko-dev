@@ -45,11 +45,16 @@
 # the .git directory already.
 %bcond_with git_workaround
 
+# Gecko is intentionally built without DWARF.  Avoid running debugedit over
+# its exceptionally large runtime ELFs in OBS, where it exceeds the worker's
+# inactivity timeout without producing useful debuginfo packages.
+%undefine _enable_debug_packages
+
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
 Version:    %{greversion}
-Release:    6
+Release:    7
 License:    MPLv2.0
 URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
