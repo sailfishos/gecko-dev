@@ -49,7 +49,7 @@
 Name:       xulrunner-qt5
 Summary:    XUL runner
 Version:    %{greversion}
-Release:    5
+Release:    6
 License:    MPLv2.0
 URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
