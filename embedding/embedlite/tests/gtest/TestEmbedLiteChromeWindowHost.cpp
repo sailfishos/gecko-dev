@@ -182,6 +182,33 @@ TEST(EmbedLiteChromeWindowHostTest, InputUsesHostedAttachedListener)
   host->Destroy();
 }
 
+TEST(EmbedLiteChromeWindowHostTest, PageInsetsUseHostedRootWidget)
+{
+  const LayoutDeviceIntRect bounds(0, 0, 100, 100);
+  InitData init;
+  init.mWindowType = WindowType::TopLevel;
+
+  RefPtr<nsWindow> host = new nsWindow(nullptr);
+  ASSERT_EQ(host->Create(nullptr, bounds, &init), NS_OK);
+
+  AutoEmbedLiteChromeWindowHost reservation(host);
+  nsCOMPtr<nsIWidget> hosted = nsIWidget::CreateTopLevelWindow();
+  ASSERT_NE(hosted, nullptr);
+  ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
+  host->InitializeChromeInput();
+
+  EXPECT_TRUE(host->SetChromeMargins(
+    mozilla::LayoutDeviceIntMargin(1, 2, 3, 4)));
+  const mozilla::LayoutDeviceIntMargin insets(5, 6, 7, 8);
+  EXPECT_TRUE(host->SetChromeSafeAreaInsets(insets));
+  EXPECT_EQ(hosted->GetSafeAreaInsets(), insets);
+
+  hosted->Destroy();
+  EXPECT_FALSE(host->SetChromeMargins(
+    mozilla::LayoutDeviceIntMargin(1, 2, 3, 4)));
+  host->Destroy();
+}
+
 TEST(EmbedLiteChromeWindowHostTest, FocusCallbacksAreDeduplicated)
 {
   const LayoutDeviceIntRect bounds(0, 0, 100, 100);

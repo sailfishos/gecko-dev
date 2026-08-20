@@ -6,11 +6,14 @@
 #include "EmbedLiteChromeSessionChild.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <utility>
 
+#include "EmbedLiteChromeContentEventOrder.h"
 #include "EmbedLiteWindowChild.h"
+#include "EmbedLiteAppService.h"
 #include "nsWindow.h"
 
 #include "InputData.h"
@@ -24,6 +27,7 @@
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/Unused.h"
+#include "mozilla/MouseEvents.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
@@ -41,8 +45,10 @@
 #include "nsContentUtils.h"
 #include "nsIAppWindow.h"
 #include "nsIBaseWindow.h"
+#include "nsIChannel.h"
 #include "nsIBrowserDOMWindow.h"
 #include "nsIContentSecurityPolicy.h"
+#include "nsIDocShell.h"
 #include "nsIFrame.h"
 #include "nsIFocusManager.h"
 #include "nsFocusManager.h"
@@ -56,6 +62,7 @@
 #include "nsIURI.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebProgress.h"
+#include "nsITransportSecurityInfo.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsGkAtoms.h"
 #include "nsGlobalWindowOuter.h"
@@ -78,6 +85,27 @@ constexpr uint8_t kMaxProgressRetryAttempts = 60;
 constexpr uint32_t kMaxRestoredTabs = 256;
 constexpr uint32_t kMaxRestoredLocationLength = 1024 * 1024;
 constexpr uint32_t kMaxRestoredTitleLength = 16 * 1024;
+
+bool ParseUint64String(const nsAString& aText, uint64_t* aResult)
+{
+  MOZ_ASSERT(aResult);
+  if (aText.IsEmpty() || aText[0] == '0') {
+    return false;
+  }
+  uint64_t value = 0;
+  for (char16_t character : aText) {
+    if (character < '0' || character > '9') {
+      return false;
+    }
+    const uint64_t digit = character - '0';
+    if (value > (UINT64_MAX - digit) / 10) {
+      return false;
+    }
+    value = value * 10 + digit;
+  }
+  *aResult = value;
+  return true;
+}
 
 class PermitUnloadResult final
 {
@@ -399,6 +427,7 @@ EmbedLiteChromeSessionChild::TabRecord::TabRecord(
   : id(aId)
   , persistentId(aPersistentId)
   , locationRevision(0)
+  , endpointId(0)
   , selectedHistoryIndex(0)
   , progressListenerRegistered(false)
   , progressRetryPending(false)
@@ -407,11 +436,30 @@ EmbedLiteChromeSessionChild::TabRecord::TabRecord(
   , closing(false)
   , discarded(false)
   , restoring(false)
+  , awaitingDocumentLocation(false)
   , canGoBack(false)
   , canGoForward(false)
   , progress(0)
   , current(0)
   , total(0)
+  , securityState(0)
+  , dynamicToolbarHeight(0)
+  , hasHttpUserAgent(false)
+  , hasDynamicToolbarHeight(false)
+  , timeoutsSuspended(false)
+  , throttlePainting(false)
+  , fullscreen(false)
+  , firstPaint(false)
+  , firstPaintX(0)
+  , firstPaintY(0)
+  , scrollWidth(0)
+  , scrollHeight(0)
+  , scrollX(0)
+  , scrollY(0)
+  , viewportX(0)
+  , viewportY(0)
+  , viewportWidth(0)
+  , viewportHeight(0)
 {
   MOZ_RELEASE_ASSERT(id);
 }
@@ -424,6 +472,7 @@ EmbedLiteChromeSessionChild::EmbedLiteChromeSessionChild(
   , mSelectedTabId(0)
   , mPendingSelectedTabId(0)
   , mTabRevision(0)
+  , mContentRevision(0)
   , mNextBeforeUnloadPromptId(1)
   , mObservingWindowVisible(false)
   , mInitializationRetryPending(false)
@@ -441,6 +490,12 @@ EmbedLiteChromeSessionChild::EmbedLiteChromeSessionChild(
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mWindow);
+  // Hosted tabs do not emit the legacy embedliteviewcreated notification,
+  // so install the compatibility frame script explicitly on every current
+  // and later materialized browser. A matching public registration remains
+  // idempotent in LoadFrameScript().
+  MOZ_ALWAYS_TRUE(mContentRegistrations.AddFrameScript(
+    "chrome://embedlite/content/embedhelper.js"_ns));
 }
 
 EmbedLiteChromeSessionChild::~EmbedLiteChromeSessionChild()
@@ -471,6 +526,11 @@ EmbedLiteChromeSessionChild::Start(
   mAppWindow = aAppWindow;
   mInitialContentURI = aInitialContentURI;
   mObservingWindowVisible = true;
+  nsCOMPtr<mozIDOMWindowProxy> chromeDOMWindow = do_GetInterface(mAppWindow);
+  if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+    service->RegisterChromeWindow(
+      mWindow->GetUniqueID(), chromeDOMWindow, this);
+  }
   return NS_OK;
 }
 
@@ -502,6 +562,10 @@ void EmbedLiteChromeSessionChild::AddBrowserEventListeners(TabRecord& aTab)
     u"XULFrameLoaderCreated"_ns, this, false);
   Unused << aTab.browser->AddSystemEventListener(
     u"DOMWindowClose"_ns, this, false);
+  Unused << aTab.browser->AddSystemEventListener(
+    u"EmbedLiteChromeContentState"_ns, this, false);
+  Unused << aTab.browser->AddSystemEventListener(
+    u"EmbedLiteChromeContentMessage"_ns, this, false);
 }
 
 void EmbedLiteChromeSessionChild::RemoveBrowserEventListeners(TabRecord& aTab)
@@ -520,6 +584,149 @@ void EmbedLiteChromeSessionChild::RemoveBrowserEventListeners(TabRecord& aTab)
     u"XULFrameLoaderCreated"_ns, this, false);
   aTab.browser->RemoveSystemEventListener(
     u"DOMWindowClose"_ns, this, false);
+  aTab.browser->RemoveSystemEventListener(
+    u"EmbedLiteChromeContentState"_ns, this, false);
+  aTab.browser->RemoveSystemEventListener(
+    u"EmbedLiteChromeContentMessage"_ns, this, false);
+}
+
+bool EmbedLiteChromeSessionChild::DispatchContentCommand(
+    TabRecord& aTab, const nsAString& aCommand, const nsAString& aData)
+{
+  if (!aTab.browser || aTab.discarded || aTab.restoring || mShuttingDown) {
+    return false;
+  }
+  ErrorResult error;
+  aTab.browser->SetAttribute(
+    u"data-embedlite-command"_ns, aCommand, error);
+  if (error.Failed()) {
+    error.SuppressException();
+    return false;
+  }
+  aTab.browser->SetAttribute(
+    u"data-embedlite-command-data"_ns, aData, error);
+  if (error.Failed()) {
+    error.SuppressException();
+    return false;
+  }
+  RefPtr<Event> event = NS_NewDOMEvent(aTab.browser, nullptr, nullptr);
+  if (!event) {
+    return false;
+  }
+  event->InitEvent(u"EmbedLiteChromeContentCommand"_ns, true, false);
+  const bool dispatched = aTab.browser->DispatchEvent(*event);
+  aTab.browser->RemoveAttribute(u"data-embedlite-command"_ns, error);
+  error.SuppressException();
+  aTab.browser->RemoveAttribute(u"data-embedlite-command-data"_ns, error);
+  error.SuppressException();
+  aTab.browser->RemoveAttribute(u"data-embedlite-command-name"_ns, error);
+  error.SuppressException();
+  return dispatched;
+}
+
+void EmbedLiteChromeSessionChild::ReplayContentRegistrations(TabRecord& aTab)
+{
+  if (aTab.endpointId) {
+    nsAutoString endpointData;
+    endpointData.AppendLiteral(u"{\"endpointId\":");
+    endpointData.AppendInt(aTab.endpointId);
+    endpointData.Append('}');
+    DispatchContentCommand(aTab, u"set-endpoint"_ns, endpointData);
+  }
+  for (const nsCString& script : mContentRegistrations.FrameScripts()) {
+    DispatchContentCommand(aTab, u"load-script"_ns,
+                           NS_ConvertUTF8toUTF16(script));
+  }
+  for (const nsCString& name : mContentRegistrations.MessageListeners()) {
+    ErrorResult error;
+    aTab.browser->SetAttribute(u"data-embedlite-command-name"_ns,
+                               NS_ConvertUTF8toUTF16(name), error);
+    if (!error.Failed()) {
+      DispatchContentCommand(aTab, u"add-listener"_ns);
+    } else {
+      error.SuppressException();
+    }
+  }
+  if (aTab.hasHttpUserAgent) {
+    ErrorResult error;
+    aTab.browser->SetAttribute(u"data-embedlite-command-name"_ns,
+                               aTab.httpUserAgent, error);
+    if (!error.Failed()) {
+      DispatchContentCommand(aTab, u"set-user-agent"_ns, u"{}"_ns);
+    } else {
+      error.SuppressException();
+    }
+  }
+  if (aTab.hasDynamicToolbarHeight) {
+    nsAutoCString json;
+    json.AppendPrintf("{\"height\":%d}", aTab.dynamicToolbarHeight);
+    DispatchContentCommand(aTab, u"set-toolbar-height"_ns,
+                           NS_ConvertUTF8toUTF16(json));
+  }
+  if (aTab.timeoutsSuspended) {
+    DispatchContentCommand(aTab, u"suspend-timeouts"_ns, u"{}"_ns);
+  }
+}
+
+void EmbedLiteChromeSessionChild::BeginDocumentNavigation(TabRecord& aTab)
+{
+  if (!++aTab.locationRevision) {
+    ++aTab.locationRevision;
+  }
+  aTab.securityStatus.Truncate();
+  aTab.securityState = 0;
+  aTab.fullscreen = false;
+  aTab.firstPaint = false;
+  aTab.firstPaintX = 0;
+  aTab.firstPaintY = 0;
+  aTab.scrollWidth = 0;
+  aTab.scrollHeight = 0;
+  aTab.scrollX = 0;
+  aTab.scrollY = 0;
+  aTab.viewportX = 0;
+  aTab.viewportY = 0;
+  aTab.viewportWidth = 0;
+  aTab.viewportHeight = 0;
+  ScheduleTabSnapshot();
+  SendContentState(aTab);
+}
+
+void EmbedLiteChromeSessionChild::SendContentState(TabRecord& aTab)
+{
+  if (!mWindow || !mReady || aTab.id != mSelectedTabId ||
+      aTab.discarded || aTab.restoring ||
+      aTab.securityStatus.Length() > kMaxContentDataLength) {
+    return;
+  }
+  // Navigation and selection updates must reach the embedder before content
+  // state carrying their locationRevision. The already-posted snapshot task
+  // may send a harmless later duplicate revision.
+  if (mTabSnapshotPending) {
+    SendTabSnapshot();
+  }
+  if (!++mContentRevision) {
+    ++mContentRevision;
+  }
+  EmbedLiteChromeContentStateData state;
+  state.tabId() = aTab.id;
+  state.persistentId() = aTab.persistentId;
+  state.revision() = mContentRevision;
+  state.locationRevision() = aTab.locationRevision;
+  state.securityStatus() = aTab.securityStatus;
+  state.securityState() = aTab.securityState;
+  state.fullscreen() = aTab.fullscreen;
+  state.firstPaint() = aTab.firstPaint;
+  state.firstPaintX() = aTab.firstPaintX;
+  state.firstPaintY() = aTab.firstPaintY;
+  state.scrollWidth() = aTab.scrollWidth;
+  state.scrollHeight() = aTab.scrollHeight;
+  state.scrollX() = aTab.scrollX;
+  state.scrollY() = aTab.scrollY;
+  state.viewportX() = aTab.viewportX;
+  state.viewportY() = aTab.viewportY;
+  state.viewportWidth() = aTab.viewportWidth;
+  state.viewportHeight() = aTab.viewportHeight;
+  Unused << mWindow->SendOnContentStateChanged(state);
 }
 
 void EmbedLiteChromeSessionChild::RemoveProgressListener(TabRecord& aTab)
@@ -555,6 +762,10 @@ EmbedLiteChromeSessionChild::Shutdown()
   if (mAppWindow) {
     chromeDOMWindow = do_GetInterface(mAppWindow);
   }
+  if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+    service->UnregisterChromeWindow(
+      mWindow->GetUniqueID(), chromeDOMWindow, this);
+  }
   nsPIDOMWindowOuter* outer = nsPIDOMWindowOuter::From(chromeDOMWindow);
   if (outer && mBrowserDOMWindow &&
       nsGlobalWindowOuter::Cast(outer)->GetBrowserDOMWindow() ==
@@ -568,6 +779,12 @@ EmbedLiteChromeSessionChild::Shutdown()
   }
 
   for (const UniquePtr<TabRecord>& tab : mTabs) {
+    if (tab->endpointId) {
+      if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+        service->UnregisterChromeTab(tab->endpointId);
+      }
+      tab->endpointId = 0;
+    }
     RemoveProgressListener(*tab);
     RemoveBrowserEventListeners(*tab);
     if (tab->browser) {
@@ -892,6 +1109,20 @@ EmbedLiteChromeSessionChild::CurrentBrowsingContext() const
   return nullptr;
 }
 
+BrowsingContext* EmbedLiteChromeSessionChild::BrowsingContextForTab(
+    uint64_t aTabId) const
+{
+  TabRecord* tab = FindTab(aTabId);
+  return tab && !tab->discarded && !tab->restoring && !tab->closing
+    ? BrowsingContextFor(*tab) : nullptr;
+}
+
+Element* EmbedLiteChromeSessionChild::BrowserForTab(uint64_t aTabId) const
+{
+  TabRecord* tab = FindTab(aTabId);
+  return tab ? tab->browser.get() : nullptr;
+}
+
 nsresult EmbedLiteChromeSessionChild::RebindProgressListener(TabRecord& aTab)
 {
   BrowsingContext* context = BrowsingContextFor(aTab);
@@ -912,7 +1143,8 @@ nsresult EmbedLiteChromeSessionChild::RebindProgressListener(TabRecord& aTab)
   const uint32_t notifyMask =
     nsIWebProgress::NOTIFY_STATE_NETWORK |
     nsIWebProgress::NOTIFY_LOCATION |
-    nsIWebProgress::NOTIFY_PROGRESS;
+    nsIWebProgress::NOTIFY_PROGRESS |
+    nsIWebProgress::NOTIFY_SECURITY;
   RefPtr<EmbedLiteChromeTabProgressListener> listener =
     new EmbedLiteChromeTabProgressListener(this, aTab.webProgress);
   nsresult rv = aTab.webProgress->AddProgressListener(listener, notifyMask);
@@ -1090,12 +1322,23 @@ nsresult EmbedLiteChromeSessionChild::CreateBrowserForTab(
     aTab.browser = nullptr;
     return NS_ERROR_NOT_AVAILABLE;
   }
+  if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+    aTab.endpointId = service->RegisterChromeTab(
+      browsingContext, this, aTab.id);
+  }
+  if (!aTab.endpointId) {
+    RemoveBrowserEventListeners(aTab);
+    browser->Remove();
+    aTab.browser = nullptr;
+    return NS_ERROR_NOT_AVAILABLE;
+  }
   cancelOpenWindowInfo.release();
 
   rv = RebindProgressListener(aTab);
   if (rv == NS_ERROR_NOT_AVAILABLE && mReady) {
     ScheduleProgressListenerRetry(aTab.id);
   }
+  ReplayContentRegistrations(aTab);
 
   if (aBrowser) {
     browser.forget(aBrowser);
@@ -1220,6 +1463,7 @@ EmbedLiteChromeSessionChild::RestoreTabHistory(TabRecord& aTab)
   if (NS_FAILED(rv)) {
     current->discarded = true;
     current->restoring = false;
+    current->awaitingDocumentLocation = false;
   }
   return rv;
 }
@@ -1240,6 +1484,7 @@ nsresult EmbedLiteChromeSessionChild::MaterializeTab(TabRecord& aTab)
     if (NS_FAILED(rv)) {
       if (current) {
         current->restoring = false;
+        current->awaitingDocumentLocation = false;
       }
       return rv;
     }
@@ -1259,12 +1504,19 @@ nsresult EmbedLiteChromeSessionChild::MaterializeTab(TabRecord& aTab)
   }
   if (NS_FAILED(rv)) {
     ApplyTabActiveState(*current, false);
+    if (current->endpointId) {
+      if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+        service->UnregisterChromeTab(current->endpointId);
+      }
+      current->endpointId = 0;
+    }
     RemoveProgressListener(*current);
     RemoveBrowserEventListeners(*current);
     RefPtr<Element> failedBrowser = current->browser;
     current->browser = nullptr;
     current->discarded = true;
     current->restoring = false;
+    current->awaitingDocumentLocation = false;
     current->loading = false;
     current->progress = 0;
     current->current = 0;
@@ -1575,7 +1827,7 @@ void EmbedLiteChromeSessionChild::ApplyTabActiveState(
     return;
   }
   if (BrowserParent* browserParent = browsingContext->GetBrowserParent()) {
-    browserParent->SetRenderLayers(active);
+    browserParent->SetRenderLayers(active && !aTab.throttlePainting);
   }
 }
 
@@ -1830,6 +2082,7 @@ bool EmbedLiteChromeSessionChild::AssociateTab(
   }
   tab->persistentId = aPersistentId;
   ScheduleTabSnapshot();
+  SendContentState(*tab);
   return true;
 }
 
@@ -1896,6 +2149,7 @@ bool EmbedLiteChromeSessionChild::SelectTab(TabRecord& aTab)
     ApplyTabActiveState(*target, true);
     ApplyFocusState();
     ScheduleTabSnapshot();
+    SendContentState(*target);
     return true;
   }
 
@@ -1930,6 +2184,340 @@ bool EmbedLiteChromeSessionChild::SelectTab(TabRecord& aTab)
     ScheduleUpdate();
   }
   ScheduleTabSnapshot();
+  SendContentState(*target);
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::LoadFrameScript(const nsACString& aURI)
+{
+  if (aURI.IsEmpty() || mShuttingDown) {
+    return false;
+  }
+  if (mContentRegistrations.AddFrameScript(aURI)) {
+    for (const UniquePtr<TabRecord>& tab : mTabs) {
+      if (tab->browser && !tab->discarded) {
+        DispatchContentCommand(*tab, u"load-script"_ns,
+                               NS_ConvertUTF8toUTF16(aURI));
+      }
+    }
+  }
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::AddMessageListener(const nsACString& aName)
+{
+  if (aName.IsEmpty() || mShuttingDown) {
+    return false;
+  }
+  if (mContentRegistrations.AddMessageListener(aName)) {
+    for (const UniquePtr<TabRecord>& tab : mTabs) {
+      if (!tab->browser || tab->discarded) {
+        continue;
+      }
+      ErrorResult error;
+      tab->browser->SetAttribute(u"data-embedlite-command-name"_ns,
+                                 NS_ConvertUTF8toUTF16(aName), error);
+      if (!error.Failed()) {
+        DispatchContentCommand(*tab, u"add-listener"_ns);
+      } else {
+        error.SuppressException();
+      }
+    }
+  }
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::RemoveMessageListener(
+    const nsACString& aName)
+{
+  if (!mContentRegistrations.RemoveMessageListener(aName)) {
+    return true;
+  }
+  for (const UniquePtr<TabRecord>& tab : mTabs) {
+    if (!tab->browser || tab->discarded) {
+      continue;
+    }
+    ErrorResult error;
+    tab->browser->SetAttribute(u"data-embedlite-command-name"_ns,
+                               NS_ConvertUTF8toUTF16(aName), error);
+    if (!error.Failed()) {
+      DispatchContentCommand(*tab, u"remove-listener"_ns);
+    } else {
+      error.SuppressException();
+    }
+  }
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SendAsyncMessage(
+    uint64_t aTabId, const nsAString& aName, const nsAString& aJSON)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || !tab->browser || tab->discarded || tab->restoring) {
+    return false;
+  }
+  ErrorResult error;
+  tab->browser->SetAttribute(
+    u"data-embedlite-command-name"_ns, aName, error);
+  if (error.Failed() ||
+      !DispatchContentCommand(*tab, u"send-message"_ns, aJSON)) {
+    error.SuppressException();
+    return false;
+  }
+  if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+    service->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aName).get(), aJSON);
+  }
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SendContentMessageFromAppService(
+    uint64_t aTabId, const nsAString& aName, const nsAString& aJSON)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || !tab->browser || tab->discarded || tab->restoring) {
+    return false;
+  }
+  ErrorResult error;
+  tab->browser->SetAttribute(
+    u"data-embedlite-command-name"_ns, aName, error);
+  if (error.Failed()) {
+    error.SuppressException();
+    return false;
+  }
+  return DispatchContentCommand(*tab, u"send-message"_ns, aJSON);
+}
+
+uint32_t EmbedLiteChromeSessionChild::SelectedEndpointId() const
+{
+  TabRecord* tab = SelectedTab();
+  return tab && tab->browser && !tab->discarded && !tab->restoring
+    ? tab->endpointId : 0;
+}
+
+bool EmbedLiteChromeSessionChild::SendContentMessageToEmbedder(
+    uint64_t aTabId, const nsAString& aName, const nsAString& aJSON)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!mWindow || !tab ||
+      !IsChromeContentNotificationBounded(
+        aName.Length(), aJSON.Length())) {
+    return false;
+  }
+  return SendAfterPendingChromeTabSnapshot(
+    mTabSnapshotPending,
+    [this]() { SendTabSnapshot(); },
+    [this, tab, &aName, &aJSON]() {
+      return mWindow->SendOnContentAsyncMessage(
+        tab->id, tab->persistentId, tab->locationRevision,
+        nsString(aName), nsString(aJSON));
+    });
+}
+
+bool EmbedLiteChromeSessionChild::ScrollTo(
+    uint64_t aTabId, int32_t aX, int32_t aY)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsAutoCString json;
+  json.AppendPrintf("{\"x\":%d,\"y\":%d}", aX, aY);
+  return tab && DispatchContentCommand(
+    *tab, u"scroll-to"_ns, NS_ConvertUTF8toUTF16(json));
+}
+
+bool EmbedLiteChromeSessionChild::ScrollBy(
+    uint64_t aTabId, int32_t aX, int32_t aY)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsAutoCString json;
+  json.AppendPrintf("{\"x\":%d,\"y\":%d}", aX, aY);
+  return tab && DispatchContentCommand(
+    *tab, u"scroll-by"_ns, NS_ConvertUTF8toUTF16(json));
+}
+
+bool EmbedLiteChromeSessionChild::SetHttpUserAgent(
+    uint64_t aTabId, const nsAString& aUserAgent)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab) {
+    return false;
+  }
+  ErrorResult error;
+  tab->browser->SetAttribute(u"data-embedlite-command-name"_ns,
+                             aUserAgent, error);
+  if (error.Failed() || !DispatchContentCommand(
+        *tab, u"set-user-agent"_ns, u"{}"_ns)) {
+    error.SuppressException();
+    return false;
+  }
+  tab->httpUserAgent = aUserAgent;
+  tab->hasHttpUserAgent = true;
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SetThrottlePainting(
+    uint64_t aTabId, bool aThrottle)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || !tab->browser || tab->discarded || tab->restoring) {
+    return false;
+  }
+  if (tab->throttlePainting == aThrottle) {
+    return true;
+  }
+  tab->throttlePainting = aThrottle;
+  ApplyTabActiveState(*tab, tab->id == mSelectedTabId);
+  if (!aThrottle && tab->id == mSelectedTabId && mActive) {
+    ScheduleUpdate();
+  }
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SuspendTimeouts(uint64_t aTabId)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || !DispatchContentCommand(
+        *tab, u"suspend-timeouts"_ns, u"{}"_ns)) {
+    return false;
+  }
+  tab->timeoutsSuspended = true;
+  return true;
+}
+bool EmbedLiteChromeSessionChild::ResumeTimeouts(uint64_t aTabId)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || !DispatchContentCommand(
+        *tab, u"resume-timeouts"_ns, u"{}"_ns)) {
+    return false;
+  }
+  tab->timeoutsSuspended = false;
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SetDesktopMode(uint64_t aTabId, bool aValue)
+{
+  TabRecord* tab = FindTab(aTabId);
+  BrowsingContext* context = tab ? BrowsingContextFor(*tab) : nullptr;
+  if (!context || tab->id != mSelectedTabId || tab->discarded ||
+      tab->restoring) {
+    return false;
+  }
+  context = context->Top();
+  if (context->ForceDesktopViewport() == aValue) {
+    return true;
+  }
+  return NS_SUCCEEDED(context->SetForceDesktopViewport(aValue));
+}
+
+bool EmbedLiteChromeSessionChild::SetMargins(uint64_t aTabId, int32_t aTop,
+    int32_t aRight, int32_t aBottom, int32_t aLeft)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  return tab && tab->id == mSelectedTabId && !tab->discarded &&
+    !tab->restoring && window && window->SetChromeMargins(
+      LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft));
+}
+bool EmbedLiteChromeSessionChild::SetSafeAreaInsets(uint64_t aTabId,
+    int32_t aTop, int32_t aRight, int32_t aBottom, int32_t aLeft)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  return tab && tab->id == mSelectedTabId && !tab->discarded &&
+    !tab->restoring && window && window->SetChromeSafeAreaInsets(
+      LayoutDeviceIntMargin(aTop, aRight, aBottom, aLeft));
+}
+bool EmbedLiteChromeSessionChild::SetDynamicToolbarHeight(
+    uint64_t aTabId, int32_t aHeight)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || tab->id != mSelectedTabId || !tab->browser ||
+      tab->discarded || tab->restoring || aHeight < 0) {
+    return false;
+  }
+  nsAutoCString json;
+  json.AppendPrintf("{\"height\":%d}", aHeight);
+  if (!DispatchContentCommand(*tab, u"set-toolbar-height"_ns,
+                              NS_ConvertUTF8toUTF16(json))) {
+    return false;
+  }
+  tab->dynamicToolbarHeight = aHeight;
+  tab->hasDynamicToolbarHeight = true;
+  return true;
+}
+
+bool EmbedLiteChromeSessionChild::SendMouseEvent(
+    uint64_t aTabId, uint8_t aType, int32_t aX, int32_t aY, uint64_t aTime,
+    uint32_t aButton, uint32_t aButtons, uint32_t aModifiers,
+    uint32_t aClickCount)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  if (!tab || tab->id != mSelectedTabId || tab->discarded ||
+      tab->restoring || !window || aType > 2) {
+    return false;
+  }
+  EventMessage message = aType == 0 ? eMouseMove
+    : (aType == 1 ? eMouseDown : eMouseUp);
+  WidgetMouseEvent event(true, message, window,
+                         WidgetMouseEvent::eReal);
+  event.mRefPoint = LayoutDeviceIntPoint(aX, aY);
+  Unused << aTime;
+  event.mButton = static_cast<int16_t>(aButton);
+  event.mButtons = static_cast<int16_t>(aButtons);
+  event.mModifiers = static_cast<Modifiers>(aModifiers);
+  event.mClickCount = aClickCount;
+  return window->DispatchChromeInputEvent(&event);
+}
+
+bool EmbedLiteChromeSessionChild::SendWheelEvent(
+    uint64_t aTabId, int32_t aX, int32_t aY, uint64_t aTime,
+    double aDeltaX, double aDeltaY, uint32_t aDeltaMode, uint32_t aModifiers)
+{
+  TabRecord* tab = FindTab(aTabId);
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  if (!tab || tab->id != mSelectedTabId || tab->discarded ||
+      tab->restoring || !window || aDeltaMode > 2) {
+    return false;
+  }
+  WidgetWheelEvent event(true, eWheel, window);
+  event.mRefPoint = LayoutDeviceIntPoint(aX, aY);
+  Unused << aTime;
+  event.mDeltaX = aDeltaX;
+  event.mDeltaY = aDeltaY;
+  event.mDeltaMode = aDeltaMode;
+  event.mModifiers = static_cast<Modifiers>(aModifiers);
+  return window->DispatchChromeInputEvent(&event);
+}
+
+bool EmbedLiteChromeSessionChild::ZoomToRect(
+    uint64_t aTabId, float aX, float aY, float aWidth, float aHeight)
+{
+  TabRecord* tab = FindTab(aTabId);
+  if (!tab || tab->id != mSelectedTabId || !tab->browser ||
+      tab->discarded || tab->restoring || !mWindow ||
+      !mWindow->GetWidget() || !std::isfinite(aX) ||
+      !std::isfinite(aY) || !std::isfinite(aWidth) || aWidth < 0 ||
+      !std::isfinite(aHeight) || aHeight < 0) {
+    return false;
+  }
+  // The selected browser's root identifiers are supplied by the frame script
+  // in the content-state event, so this remains correct across Fission and
+  // remoteness changes.
+  nsAutoString presShellValue;
+  nsAutoString viewValue;
+  tab->browser->GetAttribute(u"data-embedlite-pres-shell-id"_ns,
+                             presShellValue);
+  tab->browser->GetAttribute(u"data-embedlite-view-id"_ns, viewValue);
+  nsresult rv = NS_OK;
+  uint32_t presShellId = presShellValue.ToInteger(&rv);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+  uint64_t viewId = 0;
+  if (!ParseUint64String(viewValue, &viewId)) {
+    return false;
+  }
+  mWindow->GetWidget()->ZoomToRect(presShellId, viewId,
+    CSSRect(aX, aY, aWidth, aHeight), 0);
   return true;
 }
 
@@ -1937,11 +2525,13 @@ bool EmbedLiteChromeSessionChild::CloseTab(uint64_t aTabId)
 {
   TabRecord* tab = FindTab(aTabId);
   if (!mReady || mCheckingCanClose || !tab || tab->closing) {
+    SendTabCloseResult(aTabId, false);
     return false;
   }
 
   for (const UniquePtr<TabRecord>& other : mTabs) {
     if (other->closing) {
+      SendTabCloseResult(aTabId, false);
       return false;
     }
   }
@@ -1949,14 +2539,16 @@ bool EmbedLiteChromeSessionChild::CloseTab(uint64_t aTabId)
   tab->closing = true;
   ScheduleTabSnapshot();
   if (tab->discarded || tab->restoring) {
-    RemoveTab(aTabId);
+    const bool removed = RemoveTab(aTabId);
+    SendTabCloseResult(aTabId, removed);
     return true;
   }
   BrowsingContext* context = BrowsingContextFor(*tab);
   WindowGlobalParent* windowGlobal = context
     ? context->Canonical()->GetCurrentWindowGlobal() : nullptr;
   if (!windowGlobal) {
-    RemoveTab(aTabId);
+    const bool removed = RemoveTab(aTabId);
+    SendTabCloseResult(aTabId, removed);
     return true;
   }
 
@@ -1968,11 +2560,13 @@ bool EmbedLiteChromeSessionChild::CloseTab(uint64_t aTabId)
     error.SuppressException();
     tab->closing = false;
     ScheduleTabSnapshot();
+    SendTabCloseResult(aTabId, false);
     return false;
   }
   if (!promise) {
     tab->closing = false;
     ScheduleTabSnapshot();
+    SendTabCloseResult(aTabId, false);
     return false;
   }
 
@@ -1981,25 +2575,42 @@ bool EmbedLiteChromeSessionChild::CloseTab(uint64_t aTabId)
     [self = RefPtr<EmbedLiteChromeSessionChild>(this), aTabId](bool aPermit) {
       TabRecord* pending = self->FindTab(aTabId);
       if (!pending || !pending->closing) {
+        self->SendTabCloseResult(aTabId, false);
         return;
       }
       if (!aPermit) {
         pending->closing = false;
         self->ScheduleTabSnapshot();
+        self->SendTabCloseResult(aTabId, false);
         return;
       }
-      self->RemoveTab(aTabId);
+      const bool removed = self->RemoveTab(aTabId);
+      self->SendTabCloseResult(aTabId, removed);
     });
   promise->AppendNativeHandler(handler);
   return true;
 }
 
-void EmbedLiteChromeSessionChild::RemoveTab(uint64_t aTabId)
+void EmbedLiteChromeSessionChild::SendTabCloseResult(
+    uint64_t aTabId, bool aClosed)
+{
+  if (!mWindow || !aTabId) {
+    return;
+  }
+  SendAfterPendingChromeTabSnapshot(
+    mTabSnapshotPending,
+    [this]() { SendTabSnapshot(); },
+    [this, aTabId, aClosed]() {
+      Unused << mWindow->SendOnTabCloseResult(aTabId, aClosed);
+    });
+}
+
+bool EmbedLiteChromeSessionChild::RemoveTab(uint64_t aTabId)
 {
   RefPtr<EmbedLiteChromeSessionChild> self(this);
   TabRecord* tab = FindTab(aTabId);
   if (!tab) {
-    return;
+    return false;
   }
 
   CancelBeforeUnloadPrompts(aTabId);
@@ -2035,22 +2646,28 @@ void EmbedLiteChromeSessionChild::RemoveTab(uint64_t aTabId)
           !replacement) {
         tab->closing = false;
         ScheduleTabSnapshot();
-        return;
+        return false;
       }
       Unused << LoadTab(*replacement, "about:blank"_ns, false);
     }
     if (!SelectTab(*replacement)) {
       tab->closing = false;
       ScheduleTabSnapshot();
-      return;
+      return false;
     }
   }
 
   tab = FindTab(aTabId);
   if (!tab) {
-    return;
+    return false;
   }
   ApplyTabActiveState(*tab, false);
+  if (tab->endpointId) {
+    if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
+      service->UnregisterChromeTab(tab->endpointId);
+    }
+    tab->endpointId = 0;
+  }
   RemoveProgressListener(*tab);
   RemoveBrowserEventListeners(*tab);
   RefPtr<Element> browser = tab->browser;
@@ -2072,6 +2689,7 @@ void EmbedLiteChromeSessionChild::RemoveTab(uint64_t aTabId)
 
   UpdateSiblingState();
   ScheduleTabSnapshot();
+  return true;
 }
 
 bool EmbedLiteChromeSessionChild::CanCloseTabs()
@@ -2171,12 +2789,14 @@ void EmbedLiteChromeSessionChild::UpdateLocation(
   }
 
   bool changed = false;
+  bool locationChanged = false;
   if (aTab.location != spec) {
     aTab.location = spec;
     if (!++aTab.locationRevision) {
       ++aTab.locationRevision;
     }
     changed = true;
+    locationChanged = true;
   }
   if (aTab.canGoBack != canGoBack ||
       aTab.canGoForward != canGoForward) {
@@ -2186,6 +2806,9 @@ void EmbedLiteChromeSessionChild::UpdateLocation(
   }
   if (changed) {
     ScheduleTabSnapshot();
+  }
+  if (locationChanged) {
+    SendContentState(aTab);
   }
 }
 
@@ -2291,7 +2914,13 @@ bool EmbedLiteChromeSessionChild::RequestBeforeUnloadPrompt(
 
   mBeforeUnloadPrompts.emplace(
     requestId, PendingBeforeUnloadPrompt{tab->id, aPromise});
-  if (!mWindow->SendOnBeforeUnloadPrompt(prompt)) {
+  const bool sent = SendAfterPendingChromeTabSnapshot(
+    mTabSnapshotPending,
+    [this]() { SendTabSnapshot(); },
+    [this, &prompt]() {
+      return mWindow->SendOnBeforeUnloadPrompt(prompt);
+    });
+  if (!sent) {
     auto pending = mBeforeUnloadPrompts.find(requestId);
     if (pending != mBeforeUnloadPrompts.end()) {
       pending->second.promise->MaybeResolve(false);
@@ -2344,6 +2973,14 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
 
   if (type.EqualsLiteral("DidChangeBrowserRemoteness") ||
       type.EqualsLiteral("XULFrameLoaderCreated")) {
+    BrowsingContext* browsingContext = BrowsingContextFor(*tab);
+    if (tab->endpointId && browsingContext) {
+      EmbedLiteAppService* service = EmbedLiteAppService::AppService();
+      if (!service || !service->UpdateChromeTabBrowsingContext(
+                        tab->endpointId, browsingContext)) {
+        return NS_ERROR_FAILURE;
+      }
+    }
     if (!mReady) {
       nsresult rv = TryCompleteInitialization();
       if (NS_SUCCEEDED(rv)) {
@@ -2355,6 +2992,7 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
       }
       return NS_OK;
     }
+    ReplayContentRegistrations(*tab);
     nsresult rv = RebindProgressListener(*tab);
     if (NS_SUCCEEDED(rv)) {
       FinishProgressListenerRebind(*tab);
@@ -2367,7 +3005,100 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
   } else if (type.EqualsLiteral("DOMWindowClose")) {
     aEvent->PreventDefault();
     if (!tab->restoring) {
+      SendAfterPendingChromeTabSnapshot(
+        mTabSnapshotPending,
+        [this]() { SendTabSnapshot(); },
+        [this, tab]() {
+          Unused << mWindow->SendOnContentWindowCloseRequested(
+            tab->id, tab->persistentId);
+        });
       RemoveTab(tab->id);
+    }
+  } else if (type.EqualsLiteral("EmbedLiteChromeContentState")) {
+    if (tab->awaitingDocumentLocation) {
+      return NS_OK;
+    }
+    auto getAttribute = [browser](const char16_t* aName) {
+      nsAutoString value;
+      browser->GetAttribute(nsDependentString(aName), value);
+      return value;
+    };
+    uint64_t innerWindowId = 0;
+    BrowsingContext* context = BrowsingContextFor(*tab);
+    WindowGlobalParent* windowGlobal = context
+      ? context->Top()->Canonical()->GetCurrentWindowGlobal() : nullptr;
+    if (!ParseUint64String(
+          getAttribute(u"data-embedlite-event-innerWindowId"),
+          &innerWindowId) || !windowGlobal ||
+        windowGlobal->InnerWindowId() != innerWindowId) {
+      return NS_OK;
+    }
+    nsresult rv = NS_OK;
+    tab->fullscreen = getAttribute(
+      u"data-embedlite-event-fullscreen").EqualsLiteral("true");
+    tab->firstPaint = getAttribute(
+      u"data-embedlite-event-firstPaint").EqualsLiteral("true");
+    tab->firstPaintX = getAttribute(
+      u"data-embedlite-event-firstPaintX").ToInteger(&rv);
+    rv = NS_OK;
+    tab->firstPaintY = getAttribute(
+      u"data-embedlite-event-firstPaintY").ToInteger(&rv);
+    rv = NS_OK;
+    tab->scrollWidth = std::max(0, getAttribute(
+      u"data-embedlite-event-scrollWidth").ToInteger(&rv));
+    rv = NS_OK;
+    tab->scrollHeight = std::max(0, getAttribute(
+      u"data-embedlite-event-scrollHeight").ToInteger(&rv));
+    rv = NS_OK;
+    tab->scrollX = getAttribute(
+      u"data-embedlite-event-scrollX").ToInteger(&rv);
+    rv = NS_OK;
+    tab->scrollY = getAttribute(
+      u"data-embedlite-event-scrollY").ToInteger(&rv);
+    rv = NS_OK;
+    tab->viewportX = getAttribute(
+      u"data-embedlite-event-viewportX").ToDouble(&rv);
+    if (NS_FAILED(rv) || !std::isfinite(tab->viewportX)) {
+      tab->viewportX = 0;
+    }
+    rv = NS_OK;
+    tab->viewportY = getAttribute(
+      u"data-embedlite-event-viewportY").ToDouble(&rv);
+    if (NS_FAILED(rv) || !std::isfinite(tab->viewportY)) {
+      tab->viewportY = 0;
+    }
+    rv = NS_OK;
+    tab->viewportWidth = getAttribute(
+      u"data-embedlite-event-viewportWidth").ToDouble(&rv);
+    if (NS_FAILED(rv) || !std::isfinite(tab->viewportWidth) ||
+        tab->viewportWidth < 0) {
+      tab->viewportWidth = 0;
+    }
+    rv = NS_OK;
+    tab->viewportHeight = getAttribute(
+      u"data-embedlite-event-viewportHeight").ToDouble(&rv);
+    if (NS_FAILED(rv) || !std::isfinite(tab->viewportHeight) ||
+        tab->viewportHeight < 0) {
+      tab->viewportHeight = 0;
+    }
+    const nsAutoString presShellId = getAttribute(
+      u"data-embedlite-event-presShellId");
+    const nsAutoString viewId = getAttribute(
+      u"data-embedlite-event-viewId");
+    ErrorResult error;
+    browser->SetAttribute(u"data-embedlite-pres-shell-id"_ns,
+                          presShellId, error);
+    error.SuppressException();
+    browser->SetAttribute(u"data-embedlite-view-id"_ns, viewId, error);
+    error.SuppressException();
+    SendContentState(*tab);
+  } else if (type.EqualsLiteral("EmbedLiteChromeContentMessage")) {
+    nsAutoString name;
+    nsAutoString data;
+    browser->GetAttribute(u"data-embedlite-event-name"_ns, name);
+    browser->GetAttribute(u"data-embedlite-event-data"_ns, data);
+    if (!name.IsEmpty()) {
+      Unused << SendContentMessageToEmbedder(tab->id, name, data);
     }
   }
   return NS_OK;
@@ -2382,11 +3113,14 @@ EmbedLiteChromeSessionChild::OnStateChange(
   Unused << aStatus;
   TabRecord* tab = FindTab(aWebProgress);
   if (!tab || tab->discarded ||
-      !(aStateFlags & nsIWebProgressListener::STATE_IS_NETWORK)) {
+      !(aStateFlags & nsIWebProgressListener::STATE_IS_NETWORK) ||
+      !(aStateFlags & nsIWebProgressListener::STATE_IS_WINDOW)) {
     return NS_OK;
   }
 
   if (aStateFlags & nsIWebProgressListener::STATE_START) {
+    BeginDocumentNavigation(*tab);
+    tab->awaitingDocumentLocation = true;
     tab->loading = true;
     tab->progress = 0;
     tab->current = 0;
@@ -2397,6 +3131,8 @@ EmbedLiteChromeSessionChild::OnStateChange(
     }
     ScheduleTabSnapshot();
   } else if (aStateFlags & nsIWebProgressListener::STATE_STOP) {
+    tab->awaitingDocumentLocation = false;
+    DispatchContentCommand(*tab, u"request-state"_ns, u"{}"_ns);
     tab->loading = false;
     tab->progress = 100;
     if (tab->restoring) {
@@ -2478,7 +3214,17 @@ EmbedLiteChromeSessionChild::OnLocationChange(
       }
       UpdateLocation(*tab, aLocation);
       ScheduleTabSnapshot();
+      DispatchContentCommand(*tab, u"request-state"_ns, u"{}"_ns);
+      SendContentState(*tab);
       return NS_OK;
+    }
+    if (!(aFlags &
+          nsIWebProgressListener::LOCATION_CHANGE_SAME_DOCUMENT)) {
+      if (!tab->awaitingDocumentLocation) {
+        BeginDocumentNavigation(*tab);
+      }
+      tab->awaitingDocumentLocation = false;
+      DispatchContentCommand(*tab, u"request-state"_ns, u"{}"_ns);
     }
     if (!(aFlags & nsIWebProgressListener::LOCATION_CHANGE_SAME_DOCUMENT)) {
       const bool hadTitle = !tab->title.IsEmpty();
@@ -2508,9 +3254,49 @@ NS_IMETHODIMP
 EmbedLiteChromeSessionChild::OnSecurityChange(
     nsIWebProgress* aWebProgress, nsIRequest* aRequest, uint32_t aState)
 {
-  Unused << aWebProgress;
   Unused << aRequest;
-  Unused << aState;
+  TabRecord* tab = FindTab(aWebProgress);
+  if (!tab || tab->discarded || tab->awaitingDocumentLocation) {
+    return NS_OK;
+  }
+
+  RefPtr<BrowsingContext> progressContext;
+  if (NS_FAILED(aWebProgress->GetBrowsingContextXPCOM(
+        getter_AddRefs(progressContext))) || !progressContext) {
+    return NS_OK;
+  }
+  BrowsingContext* tabContext = BrowsingContextFor(*tab);
+  if (!tabContext || progressContext->Canonical() !=
+                       tabContext->Top()->Canonical()) {
+    return NS_OK;
+  }
+
+  nsCString serialized;
+  nsCOMPtr<mozIDOMWindowProxy> progressWindow;
+  Unused << aWebProgress->GetDOMWindow(getter_AddRefs(progressWindow));
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(progressWindow);
+  nsCOMPtr<nsIChannel> channel;
+  if (docShell) {
+    Unused << docShell->GetCurrentDocumentChannel(
+      getter_AddRefs(channel));
+  }
+  nsCOMPtr<nsITransportSecurityInfo> securityInfo;
+  if (channel) {
+    Unused << channel->GetSecurityInfo(getter_AddRefs(securityInfo));
+  }
+  if (!securityInfo) {
+    WindowGlobalParent* global =
+      tabContext->Top()->Canonical()->GetCurrentWindowGlobal();
+    securityInfo = global ? global->GetSecurityInfo() : nullptr;
+  }
+  if (securityInfo) {
+    Unused << securityInfo->ToString(serialized);
+  }
+  if (tab->securityState != aState || tab->securityStatus != serialized) {
+    tab->securityState = aState;
+    tab->securityStatus = serialized;
+    SendContentState(*tab);
+  }
   return NS_OK;
 }
 

@@ -106,6 +106,8 @@ public:
   void DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
   void InitializeChromeInput();
   bool DispatchChromeInputEvent(WidgetInputEvent* aEvent);
+  bool SetChromeMargins(const LayoutDeviceIntMargin& aMargins);
+  bool SetChromeSafeAreaInsets(const LayoutDeviceIntMargin& aInsets);
   bool DispatchChromeTextEvent(const nsAString& aCommit,
                                const nsAString& aPreEdit,
                                int32_t aReplacementStart,

@@ -16,6 +16,7 @@
 #include "nsTArray.h"
 #include "nsWeakReference.h"
 #include "mozilla/UniquePtr.h"
+#include "EmbedLiteChromeContentRegistrations.h"
 
 class nsIAppWindow;
 class nsIBrowserDOMWindow;
@@ -82,6 +83,32 @@ public:
   bool AssociateTab(uint64_t aTabId, uint64_t aPersistentId);
   bool SelectTab(uint64_t aTabId);
   bool CloseTab(uint64_t aTabId);
+  bool LoadFrameScript(const nsACString&);
+  bool AddMessageListener(const nsACString&);
+  bool RemoveMessageListener(const nsACString&);
+  bool SendAsyncMessage(uint64_t, const nsAString&, const nsAString&);
+  bool SendMouseEvent(uint64_t, uint8_t, int32_t, int32_t, uint64_t,
+                      uint32_t, uint32_t, uint32_t, uint32_t);
+  bool SendWheelEvent(uint64_t, int32_t, int32_t, uint64_t, double, double,
+                      uint32_t, uint32_t);
+  bool ScrollTo(uint64_t, int32_t, int32_t);
+  bool ScrollBy(uint64_t, int32_t, int32_t);
+  bool ZoomToRect(uint64_t, float, float, float, float);
+  bool SetDesktopMode(uint64_t, bool);
+  bool SetThrottlePainting(uint64_t, bool);
+  bool SuspendTimeouts(uint64_t);
+  bool ResumeTimeouts(uint64_t);
+  bool SetHttpUserAgent(uint64_t, const nsAString&);
+  bool SetMargins(uint64_t, int32_t, int32_t, int32_t, int32_t);
+  bool SetSafeAreaInsets(uint64_t, int32_t, int32_t, int32_t, int32_t);
+  bool SetDynamicToolbarHeight(uint64_t, int32_t);
+  bool SendContentMessageFromAppService(uint64_t, const nsAString&,
+                                        const nsAString&);
+  bool SendContentMessageToEmbedder(uint64_t, const nsAString&,
+                                    const nsAString&);
+  dom::BrowsingContext* BrowsingContextForTab(uint64_t) const;
+  dom::Element* BrowserForTab(uint64_t) const;
+  uint32_t SelectedEndpointId() const;
 
 private:
   friend class EmbedLiteBrowserDOMWindow;
@@ -100,6 +127,7 @@ private:
     uint64_t id;
     uint64_t persistentId;
     uint64_t locationRevision;
+    uint32_t endpointId;
     RefPtr<dom::Element> browser;
     nsCOMPtr<nsIWebProgress> webProgress;
     RefPtr<EmbedLiteChromeTabProgressListener> progressListener;
@@ -114,11 +142,32 @@ private:
     bool closing;
     bool discarded;
     bool restoring;
+    bool awaitingDocumentLocation;
     bool canGoBack;
     bool canGoForward;
     int32_t progress;
     int64_t current;
     int64_t total;
+    nsCString securityStatus;
+    uint32_t securityState;
+    nsString httpUserAgent;
+    int32_t dynamicToolbarHeight;
+    bool hasHttpUserAgent;
+    bool hasDynamicToolbarHeight;
+    bool timeoutsSuspended;
+    bool throttlePainting;
+    bool fullscreen;
+    bool firstPaint;
+    int32_t firstPaintX;
+    int32_t firstPaintY;
+    uint32_t scrollWidth;
+    uint32_t scrollHeight;
+    int32_t scrollX;
+    int32_t scrollY;
+    double viewportX;
+    double viewportY;
+    double viewportWidth;
+    double viewportHeight;
   };
 
   struct PendingBeforeUnloadPrompt
@@ -164,6 +213,11 @@ private:
   void RemoveProgressListener(TabRecord& aTab);
   void AddBrowserEventListeners(TabRecord& aTab);
   void RemoveBrowserEventListeners(TabRecord& aTab);
+  bool DispatchContentCommand(TabRecord&, const nsAString&,
+                              const nsAString& = EmptyString());
+  void ReplayContentRegistrations(TabRecord&);
+  void BeginDocumentNavigation(TabRecord&);
+  void SendContentState(TabRecord&);
   TabRecord* FindTab(uint64_t aTabId) const;
   TabRecord* FindTab(dom::Element* aBrowser) const;
   TabRecord* FindTab(nsIWebProgress* aWebProgress) const;
@@ -174,7 +228,8 @@ private:
   bool SelectTab(TabRecord& aTab);
   void ApplyTabActiveState(TabRecord& aTab, bool aSelected);
   void UpdateSiblingState();
-  void RemoveTab(uint64_t aTabId);
+  void SendTabCloseResult(uint64_t aTabId, bool aClosed);
+  bool RemoveTab(uint64_t aTabId);
   bool CanCloseTabs();
   void ApplyActiveState();
   void ApplyFocusState();
@@ -199,11 +254,13 @@ private:
   nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow;
   RefPtr<dom::Element> mTabContainer;
   nsTArray<mozilla::UniquePtr<TabRecord>> mTabs;
+  EmbedLiteChromeContentRegistrations mContentRegistrations;
   nsCString mInitialContentURI;
   uint64_t mNextTabId;
   uint64_t mSelectedTabId;
   uint64_t mPendingSelectedTabId;
   uint64_t mTabRevision;
+  uint64_t mContentRevision;
   uint64_t mNextBeforeUnloadPromptId;
   std::map<uint64_t, PendingBeforeUnloadPrompt> mBeforeUnloadPrompts;
   bool mObservingWindowVisible;

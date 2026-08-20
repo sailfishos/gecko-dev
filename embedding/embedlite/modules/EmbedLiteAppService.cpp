@@ -6,6 +6,9 @@
 
 #include "EmbedLiteAppService.h"
 
+#include <cmath>
+#include <cstring>
+
 #include "nsNetCID.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIObserverService.h"
@@ -26,6 +29,7 @@
 #include "EmbedLiteAppThreadChild.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "EmbedLiteWindowChild.h"
+#include "EmbedLiteChromeSessionChild.h"
 #include "nsIBaseWindow.h"
 #include "nsIWebBrowser.h"
 #include "apz/src/AsyncPanZoomController.h" // for AsyncPanZoomController
@@ -48,6 +52,27 @@ using namespace mozilla::widget;
 
 namespace
 {
+  bool ParseCanonicalTabId(const nsAString& aText, uint64_t* aResult)
+  {
+    MOZ_ASSERT(aResult);
+    if (aText.IsEmpty() || aText[0] == '0') {
+      return false;
+    }
+    uint64_t value = 0;
+    for (char16_t character : aText) {
+      if (character < '0' || character > '9') {
+        return false;
+      }
+      const uint64_t digit = character - '0';
+      if (value > (UINT64_MAX - digit) / 10) {
+        return false;
+      }
+      value = value * 10 + digit;
+    }
+    *aResult = value;
+    return true;
+  }
+
   class AsyncArrayRemove : public mozilla::Runnable
   {
   protected:
@@ -70,9 +95,113 @@ namespace
   };
 }
 
+static EmbedLiteViewChildIface* sGetViewById(uint32_t aId);
+
 EmbedLiteAppService::EmbedLiteAppService()
   : mHandlingMessages(false)
 {
+}
+
+uint32_t EmbedLiteAppService::RegisterChromeTab(
+    dom::BrowsingContext* aBrowsingContext,
+    EmbedLiteChromeSessionChild* aSession, uint64_t aTabId)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!aBrowsingContext || !aSession || !aTabId) {
+    return 0;
+  }
+  const uint64_t browserId = aBrowsingContext->Top()->BrowserId();
+  if (!browserId || mBrowserIDMap.count(browserId)) {
+    return 0;
+  }
+  const uint32_t endpoint = mChromeEndpointIds.Allocate(
+    browserId, [this](uint32_t aCandidate) {
+      bool mappedLegacyId = false;
+      for (const auto& entry : mIDMap) {
+        if (entry.second == aCandidate) {
+          mappedLegacyId = true;
+          break;
+        }
+      }
+      if (!mappedLegacyId) {
+        for (const auto& entry : mBrowserIDMap) {
+          if (entry.second == aCandidate) {
+            mappedLegacyId = true;
+            break;
+          }
+        }
+      }
+      return mappedLegacyId || sGetViewById(aCandidate);
+    });
+  if (!endpoint) {
+    return 0;
+  }
+  const auto inserted = mChromeEndpoints.emplace(
+    endpoint, ChromeEndpoint{aSession, aTabId});
+  if (!inserted.second) {
+    MOZ_ALWAYS_TRUE(mChromeEndpointIds.Remove(endpoint));
+    return 0;
+  }
+  return endpoint;
+}
+
+bool EmbedLiteAppService::UpdateChromeTabBrowsingContext(
+    uint32_t aEndpointId, dom::BrowsingContext* aBrowsingContext)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  const auto endpoint = mChromeEndpoints.find(aEndpointId);
+  if (endpoint == mChromeEndpoints.end() || !aBrowsingContext) {
+    return false;
+  }
+  const uint64_t browserId = aBrowsingContext->Top()->BrowserId();
+  return !mBrowserIDMap.count(browserId) &&
+    mChromeEndpointIds.Rebind(aEndpointId, browserId);
+}
+
+void EmbedLiteAppService::UnregisterChromeTab(uint32_t aEndpointId)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  const auto endpoint = mChromeEndpoints.find(aEndpointId);
+  if (endpoint == mChromeEndpoints.end()) {
+    return;
+  }
+  MOZ_ALWAYS_TRUE(mChromeEndpointIds.Remove(aEndpointId));
+  mChromeEndpoints.erase(endpoint);
+}
+
+void EmbedLiteAppService::RegisterChromeWindow(
+    uint32_t aWindowId, mozIDOMWindowProxy* aWindow,
+    EmbedLiteChromeSessionChild* aSession)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  nsPIDOMWindowOuter* window = nsPIDOMWindowOuter::From(aWindow);
+  if (!aWindowId || !aSession) {
+    return;
+  }
+  if (window) {
+    const auto chrome = mChromeWindows.emplace(window->WindowID(), aSession);
+    MOZ_RELEASE_ASSERT(chrome.second || chrome.first->second == aSession);
+  }
+  const auto hosted = mChromeHostedWindows.emplace(aWindowId, aSession);
+  MOZ_RELEASE_ASSERT(hosted.second || hosted.first->second == aSession);
+}
+
+void EmbedLiteAppService::UnregisterChromeWindow(
+    uint32_t aWindowId, mozIDOMWindowProxy* aWindow,
+    EmbedLiteChromeSessionChild* aSession)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  nsPIDOMWindowOuter* window = nsPIDOMWindowOuter::From(aWindow);
+  if (window) {
+    const auto chrome = mChromeWindows.find(window->WindowID());
+    if (chrome != mChromeWindows.end() && chrome->second == aSession) {
+      mChromeWindows.erase(chrome);
+    }
+  }
+  const auto hosted = mChromeHostedWindows.find(aWindowId);
+  if (hosted != mChromeHostedWindows.end() && hosted->second == aSession) {
+    mChromeHostedWindows.erase(hosted);
+  }
 }
 
 EmbedLiteAppService::~EmbedLiteAppService()
@@ -87,7 +216,8 @@ EmbedLiteAppService::AppService()
   return static_cast<EmbedLiteAppService*>(service.get());
 }
 
-NS_IMPL_ISUPPORTS(EmbedLiteAppService, nsIObserver, nsIEmbedAppService)
+NS_IMPL_ISUPPORTS(EmbedLiteAppService, nsIObserver, nsIEmbedAppService,
+                  nsIEmbedChromeAppService)
 
 NS_IMETHODIMP
 EmbedLiteAppService::Observe(nsISupports* aSubject,
@@ -107,6 +237,7 @@ static EmbedLiteViewChildIface* sGetViewById(uint32_t aId)
 
 void EmbedLiteAppService::RegisterView(uint32_t aId)
 {
+  MOZ_RELEASE_ASSERT(!mChromeEndpointIds.ContainsEndpoint(aId));
   EmbedLiteViewChildIface* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, );
   mIDMap[view->GetOuterID()] = aId;
@@ -143,23 +274,69 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
 NS_IMETHODIMP
 EmbedLiteAppService::GetIDByWindow(mozIDOMWindowProxy* aWindow, uint32_t* aId)
 {
-  dom::AutoJSAPI jsapiChromeGuard;
+  NS_ENSURE_ARG_POINTER(aWindow);
+  NS_ENSURE_ARG_POINTER(aId);
+  *aId = 0;
+
+  nsPIDOMWindowOuter* outer = nsPIDOMWindowOuter::From(aWindow);
+  if (outer) {
+    if (dom::BrowsingContext* browsingContext = outer->GetBrowsingContext()) {
+      const auto endpoint =
+        mBrowserIDMap.find(browsingContext->Top()->BrowserId());
+      if (endpoint != mBrowserIDMap.end()) {
+        *aId = endpoint->second;
+        return NS_OK;
+      }
+      const uint32_t hostedEndpoint =
+        mChromeEndpointIds.FindByBrowserId(
+          browsingContext->Top()->BrowserId());
+      if (hostedEndpoint) {
+        *aId = hostedEndpoint;
+        return NS_OK;
+      }
+    }
+    const auto chromeWindow = mChromeWindows.find(outer->WindowID());
+    if (chromeWindow != mChromeWindows.end()) {
+      const uint32_t endpoint = chromeWindow->second->SelectedEndpointId();
+      if (endpoint) {
+        *aId = endpoint;
+        return NS_OK;
+      }
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+  }
+
   nsCOMPtr<nsIWebNavigation> navNav(do_GetInterface(aWindow));
   nsCOMPtr<nsIDocShellTreeItem> navItem(do_QueryInterface(navNav));
   NS_ENSURE_TRUE(navItem, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDocShellTreeItem> rootItem;
   navItem->GetInProcessRootTreeItem(getter_AddRefs(rootItem));
-  nsCOMPtr<mozIDOMWindowProxy> rootWin(do_GetInterface(rootItem));
-  NS_ENSURE_TRUE(rootWin, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsPIDOMWindowOuter> pwindow(do_QueryInterface(rootWin));
-  nsCOMPtr<nsPIDOMWindowOuter> outerWindow = pwindow->GetInProcessTop();
   mozilla::dom::AutoNoJSAPI nojsapi;
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(navNav);
+  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(rootItem);
+  NS_ENSURE_TRUE(docShell, NS_ERROR_FAILURE);
   uint64_t OuterWindowID = 0;
   docShell->GetOuterWindowID(&OuterWindowID);
-  *aId = mIDMap[OuterWindowID];
-  return NS_OK;
+  const auto view = mIDMap.find(OuterWindowID);
+  if (view != mIDMap.end()) {
+    *aId = view->second;
+    return NS_OK;
+  }
+  if (dom::BrowsingContext* browsingContext = docShell->GetBrowsingContext()) {
+    const auto endpoint =
+      mBrowserIDMap.find(browsingContext->Top()->BrowserId());
+    if (endpoint != mBrowserIDMap.end()) {
+      *aId = endpoint->second;
+      return NS_OK;
+    }
+    const uint32_t hostedEndpoint =
+      mChromeEndpointIds.FindByBrowserId(
+        browsingContext->Top()->BrowserId());
+    if (hostedEndpoint) {
+      *aId = hostedEndpoint;
+      return NS_OK;
+    }
+  }
+  return NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
@@ -168,14 +345,42 @@ EmbedLiteAppService::GetIDByBrowsingContext(
 {
   NS_ENSURE_ARG_POINTER(aBrowsingContext);
   NS_ENSURE_ARG_POINTER(aId);
+  *aId = 0;
 
   const auto view =
     mBrowserIDMap.find(aBrowsingContext->Top()->BrowserId());
-  if (view == mBrowserIDMap.end()) {
+  if (view != mBrowserIDMap.end()) {
+    *aId = view->second;
+    return NS_OK;
+  }
+  const uint32_t endpoint = mChromeEndpointIds.FindByBrowserId(
+    aBrowsingContext->Top()->BrowserId());
+  if (!endpoint) {
     return NS_ERROR_NOT_AVAILABLE;
   }
+  *aId = endpoint;
+  return NS_OK;
+}
 
-  *aId = view->second;
+NS_IMETHODIMP
+EmbedLiteAppService::GetChromeTabBrowsingContext(
+    uint32_t aWindowId, const nsAString& aTabId,
+    dom::BrowsingContext** aBrowsingContext)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_ARG_POINTER(aBrowsingContext);
+  *aBrowsingContext = nullptr;
+  uint64_t parsedTabId = 0;
+  if (!aWindowId || !ParseCanonicalTabId(aTabId, &parsedTabId)) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  const auto hosted = mChromeHostedWindows.find(aWindowId);
+  NS_ENSURE_TRUE(hosted != mChromeHostedWindows.end(),
+                 NS_ERROR_NOT_AVAILABLE);
+  RefPtr<dom::BrowsingContext> browsingContext =
+    hosted->second->BrowsingContextForTab(parsedTabId);
+  NS_ENSURE_TRUE(browsingContext, NS_ERROR_NOT_AVAILABLE);
+  browsingContext.forget(aBrowsingContext);
   return NS_OK;
 }
 
@@ -212,17 +417,36 @@ EmbedLiteAppService::AsyncChromeTabBeforeUnloadCheck(
 NS_IMETHODIMP
 EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
+  NS_ENSURE_ARG_POINTER(messageName);
+  NS_ENSURE_ARG_POINTER(message);
+  NS_ENSURE_TRUE(*messageName && NS_strlen(messageName) <= 1024 &&
+                 NS_strlen(message) <= 1024 * 1024,
+                 NS_ERROR_INVALID_ARG);
   EmbedLiteViewChildIface* view = sGetViewById(aId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->DoSendAsyncMessage(messageName, message);
-  return NS_OK;
+  if (view) {
+    view->DoSendAsyncMessage(messageName, message);
+    return NS_OK;
+  }
+  const auto endpoint = mChromeEndpoints.find(aId);
+  NS_ENSURE_TRUE(endpoint != mChromeEndpoints.end(), NS_ERROR_NOT_AVAILABLE);
+  return endpoint->second.session->SendContentMessageToEmbedder(
+    endpoint->second.tabId, nsDependentString(messageName),
+    nsDependentString(message)) ? NS_OK : NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP
 EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message, nsAString& retval)
 {
+  NS_ENSURE_ARG_POINTER(messageName);
+  NS_ENSURE_ARG_POINTER(message);
+  retval.Truncate();
   EmbedLiteViewChildIface* view = sGetViewById(aId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
+  if (!view && mChromeEndpoints.count(aId)) {
+    // Hosted logical tabs never nest a synchronous call into Qt. Legacy
+    // selection sync messages are converted by browser.js to async delivery.
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  NS_ENSURE_TRUE(view, NS_ERROR_NOT_AVAILABLE);
   nsTArray<nsString> retvalArray;
   view->DoSendSyncMessage(messageName, message, &retvalArray);
   if (!retvalArray.IsEmpty()) {
@@ -234,6 +458,10 @@ EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, 
 NS_IMETHODIMP
 EmbedLiteAppService::AddMessageListener(const char* name, nsIEmbedMessageListener* listener)
 {
+  NS_ENSURE_ARG_POINTER(name);
+  NS_ENSURE_ARG_POINTER(listener);
+  NS_ENSURE_TRUE(*name && std::strlen(name) <= 1024,
+                 NS_ERROR_INVALID_ARG);
   nsDependentCString cstrname(name);
   mMessageListeners.GetOrInsertNew(cstrname)->AppendElement(listener);
 
@@ -243,6 +471,10 @@ EmbedLiteAppService::AddMessageListener(const char* name, nsIEmbedMessageListene
 NS_IMETHODIMP
 EmbedLiteAppService::RemoveMessageListener(const char* name, nsIEmbedMessageListener* aListener)
 {
+  NS_ENSURE_ARG_POINTER(name);
+  NS_ENSURE_ARG_POINTER(aListener);
+  NS_ENSURE_TRUE(*name && std::strlen(name) <= 1024,
+                 NS_ERROR_INVALID_ARG);
   if (mHandlingMessages) {
     nsCOMPtr<nsIRunnable> event =
       new AsyncArrayRemove(this, name, aListener);
@@ -291,7 +523,17 @@ NS_IMETHODIMP
 EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidth, float aHeight)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aWinId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
+  if (!view) {
+    const auto endpoint = mChromeEndpoints.find(aWinId);
+    NS_ENSURE_TRUE(endpoint != mChromeEndpoints.end(), NS_ERROR_NOT_AVAILABLE);
+    NS_ENSURE_TRUE(std::isfinite(aX) && std::isfinite(aY) &&
+                   std::isfinite(aWidth) && aWidth >= 0 &&
+                   std::isfinite(aHeight) && aHeight >= 0,
+                   NS_ERROR_INVALID_ARG);
+    return endpoint->second.session->ZoomToRect(
+      endpoint->second.tabId, aX, aY, aWidth, aHeight)
+      ? NS_OK : NS_ERROR_NOT_AVAILABLE;
+  }
 
   uint32_t presShellId;
   mozilla::layers::ScrollableLayerGuid::ViewID viewId;
@@ -306,6 +548,11 @@ NS_IMETHODIMP
 EmbedLiteAppService::ContentReceivedInputBlock(uint32_t aWinId, bool aPreventDefault)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aWinId);
+  if (!view && mChromeEndpoints.count(aWinId)) {
+    // ChromeProcessController/APZEventState owns this acknowledgement for
+    // hosted content. A second acknowledgement would corrupt APZ ordering.
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   view->ContentReceivedInputBlock(aPreventDefault, 0);
   return NS_OK;
@@ -315,6 +562,10 @@ NS_IMETHODIMP
 EmbedLiteAppService::GetBrowserByID(uint32_t aId, nsIWebBrowser * *outWindow)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aId);
+  if (!view && mChromeEndpoints.count(aId)) {
+    // A remote XUL browser is an Element/BrowserParent, not nsIWebBrowser.
+    return NS_ERROR_NOT_AVAILABLE;
+  }
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   nsresult rv;
   nsCOMPtr<nsIWebBrowser> br;
@@ -329,6 +580,10 @@ NS_IMETHODIMP
 EmbedLiteAppService::GetContentWindowByID(uint32_t aId, mozIDOMWindowProxy * *contentWindow)
 {
   EmbedLiteViewChildIface* view = sGetViewById(aId);
+  if (!view && mChromeEndpoints.count(aId)) {
+    // There is no parent-process DOMWindowProxy for remote/Fission content.
+    return NS_ERROR_NOT_AVAILABLE;
+  }
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
   nsresult rv;
   nsCOMPtr<nsIWebBrowser> br;
@@ -347,10 +602,22 @@ EmbedLiteAppService::GetContentWindowByID(uint32_t aId, mozIDOMWindowProxy * *co
 NS_IMETHODIMP
 EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
+  NS_ENSURE_ARG_POINTER(messageName);
+  NS_ENSURE_ARG_POINTER(message);
+  NS_ENSURE_TRUE(*messageName && NS_strlen(messageName) <= 1024 &&
+                 NS_strlen(message) <= 1024 * 1024,
+                 NS_ERROR_INVALID_ARG);
   EmbedLiteViewChildIface* view = sGetViewById(aId);
-  NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->RecvAsyncMessage(nsDependentString(messageName), nsDependentString(message));
-  return NS_OK;
+  if (view) {
+    view->RecvAsyncMessage(nsDependentString(messageName),
+                           nsDependentString(message));
+    return NS_OK;
+  }
+  const auto endpoint = mChromeEndpoints.find(aId);
+  NS_ENSURE_TRUE(endpoint != mChromeEndpoints.end(), NS_ERROR_NOT_AVAILABLE);
+  return endpoint->second.session->SendContentMessageFromAppService(
+    endpoint->second.tabId, nsDependentString(messageName),
+    nsDependentString(message)) ? NS_OK : NS_ERROR_NOT_AVAILABLE;
 }
 
 NS_IMETHODIMP

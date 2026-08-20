@@ -613,6 +613,31 @@ nsWindow::DispatchChromeInputEvent(WidgetInputEvent* aEvent)
 }
 
 bool
+nsWindow::SetChromeMargins(const LayoutDeviceIntMargin& aMargins)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed()) {
+    return false;
+  }
+  widget->SetMargins(aMargins);
+  widget->UpdateBounds(true);
+  return true;
+}
+
+bool
+nsWindow::SetChromeSafeAreaInsets(const LayoutDeviceIntMargin& aInsets)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed()) {
+    return false;
+  }
+  widget->SetSafeAreaInsets(aInsets);
+  return true;
+}
+
+bool
 nsWindow::DispatchChromeTextEvent(
     const nsAString& aCommit, const nsAString& aPreEdit,
     int32_t aReplacementStart, int32_t aReplacementLength)

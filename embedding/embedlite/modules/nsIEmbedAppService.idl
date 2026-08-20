@@ -63,3 +63,14 @@ interface nsIEmbedAppService : nsISupports
     void chromeEventHandler(in mozIDOMWindowProxy aWindow, [retval] out EventTarget eventHandler);
     void getAnyEmbedWindow([optional] in boolean aActive, [retval] out mozIDOMWindowProxy embedWindow);
 };
+
+/**
+ * Chrome-hosted extensions kept separate from nsIEmbedAppService so that
+ * adding logical-tab support does not change its shipped vtable.
+ */
+[scriptable, uuid(23686c7c-9a12-43db-9731-b298717b5a0f)]
+interface nsIEmbedChromeAppService : nsISupports
+{
+    BrowsingContext getChromeTabBrowsingContext(in uint32_t aWindowId,
+                                                 in AString aTabId);
+};

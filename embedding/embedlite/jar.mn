@@ -5,3 +5,5 @@
 embedlitechrome.jar:
 % content embedlitechrome %content/
   content/browser.xhtml (content/browser.xhtml)
+  content/browser.js (content/browser.js)
+  content/contentbridge-child.js (content/contentbridge-child.js)

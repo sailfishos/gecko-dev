@@ -7,13 +7,16 @@
 #define MOZ_WINDOW_EMBED_PARENT_H
 
 #include <map>
+#include <set>
 
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
 #include "EmbedLiteChromeInputSession.h"
+#include "EmbedLiteChromeContentSession.h"
 #include "EmbedLiteChromeSession.h"
 #include "EmbedLiteChromeTabSession.h"
+#include "EmbedLiteChromeContentRegistrations.h"
 #include "EmbedLiteWindow.h"
 
 namespace mozilla {
@@ -33,6 +36,7 @@ public:
 class EmbedLiteWindowParent : public PEmbedLiteWindowParent,
                               public EmbedLiteChromeSession,
                               public EmbedLiteChromeTabSession,
+                              public EmbedLiteChromeContentSession,
                               public EmbedLiteChromeInputSession
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
@@ -98,6 +102,32 @@ public:
   bool ResolveBeforeUnloadPrompt(uint64_t aRequestId,
                                  uint64_t aTabId,
                                  bool aPermit) override;
+  // EmbedLiteChromeContentSession:
+  void SetContentListener(
+    EmbedLiteChromeContentSessionListener* aListener) override;
+  bool LoadFrameScript(const char*) override;
+  bool AddMessageListener(const char*) override;
+  bool RemoveMessageListener(const char*) override;
+  bool SendAsyncMessage(uint64_t, const char16_t*,
+                        const char16_t*) override;
+  bool SendMouseEvent(uint64_t, EmbedLiteChromeMouseType, int32_t, int32_t,
+                      uint64_t, uint32_t, uint32_t, uint32_t,
+                      uint32_t) override;
+  bool SendWheelEvent(uint64_t, int32_t, int32_t, uint64_t, double, double,
+                      uint32_t, uint32_t) override;
+  bool ScrollTo(uint64_t, int32_t, int32_t) override;
+  bool ScrollBy(uint64_t, int32_t, int32_t) override;
+  bool ZoomToRect(uint64_t, float, float, float, float) override;
+  bool SetDesktopMode(uint64_t, bool) override;
+  bool SetThrottlePainting(uint64_t, bool) override;
+  bool SuspendTimeouts(uint64_t) override;
+  bool ResumeTimeouts(uint64_t) override;
+  bool SetHttpUserAgent(uint64_t, const char16_t*) override;
+  bool SetMargins(uint64_t, int32_t, int32_t, int32_t, int32_t) override;
+  bool SetSafeAreaInsets(uint64_t, int32_t, int32_t, int32_t,
+                         int32_t) override;
+  bool SetDynamicToolbarHeight(uint64_t, int32_t) override;
+  bool SetScreenProperties(int32_t, float, float) override;
 
 protected:
   friend class EmbedLiteCompositorBridgeParent;
@@ -132,6 +162,16 @@ private:
     const EmbedLiteChromeSessionData& aSnapshot);
   mozilla::ipc::IPCResult RecvOnBeforeUnloadPrompt(
     const EmbedLiteChromeBeforeUnloadData& aPrompt);
+  mozilla::ipc::IPCResult RecvOnTabCloseResult(
+    const uint64_t& aTabId, const bool& aClosed);
+  mozilla::ipc::IPCResult RecvOnContentStateChanged(
+    const EmbedLiteChromeContentStateData& aState);
+  mozilla::ipc::IPCResult RecvOnContentAsyncMessage(
+    const uint64_t& aTabId, const uint64_t& aPersistentId,
+    const uint64_t& aLocationRevision,
+    const nsString& aName, const nsString& aJSON);
+  mozilla::ipc::IPCResult RecvOnContentWindowCloseRequested(
+    const uint64_t& aTabId, const uint64_t& aPersistentId);
   mozilla::ipc::IPCResult RecvOnInputContextChanged(
     const int32_t& aEnabled, const int32_t& aOpen,
     const nsString& aInputType, const nsString& aInputMode,
@@ -139,6 +179,7 @@ private:
     const int32_t& aFocusChange);
 
   bool CanSendChromeSessionCommand() const;
+  bool CanTargetContentTab(uint64_t aTabId) const;
   void ReplayChromeSessionState();
   void ReplayChromeInputContext();
   void ReplayTabSnapshot();
@@ -149,6 +190,7 @@ private:
   EmbedLiteWindow* mWindow;
   EmbedLiteChromeSessionListener* mChromeSessionListener;
   EmbedLiteChromeTabSessionListener* mChromeTabSessionListener;
+  EmbedLiteChromeContentSessionListener* mChromeContentSessionListener;
   EmbedLiteChromeInputSessionListener* mChromeInputSessionListener;
   const bool mChromeHosted;
   bool mInitialized;
@@ -177,7 +219,11 @@ private:
   int32_t mInputCause;
   int32_t mInputFocusChange;
   EmbedLiteChromeSessionData mTabSnapshot;
+  EmbedLiteChromeContentStateData mContentState;
+  bool mHasContentState;
+  EmbedLiteChromeContentRegistrations mContentRegistrations;
   std::map<uint64_t, uint64_t> mPendingBeforeUnloadPrompts;
+  std::set<uint64_t> mPendingTabCloses;
   EmbedLitePlatformFrameListener* mPlatformFrameListener;
   ObserverArray mObservers;
   RefPtr<EmbedLiteCompositorBridgeParent> mCompositor;

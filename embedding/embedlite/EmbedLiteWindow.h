@@ -29,6 +29,7 @@ class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
 class EmbedLiteChromeInputSession;
+class EmbedLiteChromeContentSession;
 class EmbedLiteChromeSession;
 class EmbedLiteChromeTabSession;
 
@@ -150,6 +151,7 @@ public:
   // CreateChromeWindow(). The pointer becomes invalid when the window is
   // destroyed and does not change EmbedLiteWindow's legacy ABI.
   MOZ_EXPORT EmbedLiteChromeInputSession* GetChromeInputSession();
+  MOZ_EXPORT EmbedLiteChromeContentSession* GetChromeContentSession();
   MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();
   MOZ_EXPORT EmbedLiteChromeTabSession* GetChromeTabSession();
 

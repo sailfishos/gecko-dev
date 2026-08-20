@@ -96,6 +96,42 @@ private:
   mozilla::ipc::IPCResult RecvResolveBeforeUnloadPrompt(
     const uint64_t& aRequestId, const uint64_t& aTabId,
     const bool& aPermit);
+  mozilla::ipc::IPCResult RecvLoadContentFrameScript(const nsCString&);
+  mozilla::ipc::IPCResult RecvAddContentMessageListener(const nsCString&);
+  mozilla::ipc::IPCResult RecvRemoveContentMessageListener(const nsCString&);
+  mozilla::ipc::IPCResult RecvSendContentAsyncMessage(
+    const uint64_t&, const nsString&, const nsString&);
+  mozilla::ipc::IPCResult RecvSendContentMouseEvent(
+    const uint64_t&, const uint8_t&, const int32_t&, const int32_t&,
+    const uint64_t&, const uint32_t&, const uint32_t&, const uint32_t&,
+    const uint32_t&);
+  mozilla::ipc::IPCResult RecvSendContentWheelEvent(
+    const uint64_t&, const int32_t&, const int32_t&, const uint64_t&,
+    const double&, const double&, const uint32_t&, const uint32_t&);
+  mozilla::ipc::IPCResult RecvContentScrollTo(
+    const uint64_t&, const int32_t&, const int32_t&);
+  mozilla::ipc::IPCResult RecvContentScrollBy(
+    const uint64_t&, const int32_t&, const int32_t&);
+  mozilla::ipc::IPCResult RecvContentZoomToRect(
+    const uint64_t&, const float&, const float&, const float&, const float&);
+  mozilla::ipc::IPCResult RecvSetContentDesktopMode(
+    const uint64_t&, const bool&);
+  mozilla::ipc::IPCResult RecvSetContentThrottlePainting(
+    const uint64_t&, const bool&);
+  mozilla::ipc::IPCResult RecvSuspendContentTimeouts(const uint64_t&);
+  mozilla::ipc::IPCResult RecvResumeContentTimeouts(const uint64_t&);
+  mozilla::ipc::IPCResult RecvSetContentHttpUserAgent(
+    const uint64_t&, const nsString&);
+  mozilla::ipc::IPCResult RecvSetContentMargins(
+    const uint64_t&, const int32_t&, const int32_t&, const int32_t&,
+    const int32_t&);
+  mozilla::ipc::IPCResult RecvSetContentSafeAreaInsets(
+    const uint64_t&, const int32_t&, const int32_t&, const int32_t&,
+    const int32_t&);
+  mozilla::ipc::IPCResult RecvSetContentDynamicToolbarHeight(
+    const uint64_t&, const int32_t&);
+  mozilla::ipc::IPCResult RecvSetContentScreenProperties(
+    const int32_t&, const float&, const float&);
   mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
   mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
   mozilla::ipc::IPCResult RecvHandleTextEvent(
