@@ -13,15 +13,21 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"           // for InputContext
+#include "nsStringFwd.h"
 #include <list>
 
 namespace mozilla {
+
+namespace widget {
+class TextEventDispatcher;
+}
 
 namespace embedlite {
 
 class EmbedLiteWindowChild;
 class EmbedContentController;
 class EmbedLitePuppetWidget;
+class EmbedLiteChromeInputTransactionListener;
 class nsWindow;
 
 class MOZ_RAII AutoEmbedLiteChromeWindowHost final
@@ -100,6 +106,17 @@ public:
   void DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget);
   void InitializeChromeInput();
   bool DispatchChromeInputEvent(WidgetInputEvent* aEvent);
+  bool DispatchChromeTextEvent(const nsAString& aCommit,
+                               const nsAString& aPreEdit,
+                               int32_t aReplacementStart,
+                               int32_t aReplacementLength);
+  bool DispatchChromeKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
+                              int32_t aCharCode);
+  bool DispatchChromeKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
+                                int32_t aCharCode);
+  bool SetChromeFocused(bool aFocused);
+  void SetChromeInputContext(const InputContext& aContext,
+                             const InputContextAction& aAction);
   void SetFirstViewCreated() { mFirstViewCreated = true; }
   bool IsFirstViewCreated() const { return mFirstViewCreated; }
 
@@ -119,12 +136,16 @@ protected:
 private:
   nsWindow();
   void ConfigureChromeAPZ();
+  void EndChromeInputTransaction();
   nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
 
   bool mFirstViewCreated;
   bool mChromeInputReady;
+  bool mChromeWindowFocused;
   EmbedLiteWindowChild* mWindow; // Not owned, can be null.
   EmbedLitePuppetWidget* mChromeHostedWidget; // Not owned.
+  RefPtr<EmbedLiteChromeInputTransactionListener>
+    mChromeInputTransactionListener;
   InputContext mInputContext;
 
   typedef std::list<EmbedContentController *> ControllerList;

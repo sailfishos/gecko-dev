@@ -168,6 +168,7 @@ nsWindow *EmbedLiteWindowChild::GetWidget() const
 void EmbedLiteWindowChild::ActorDestroy(ActorDestroyReason aWhy)
 {
   LOGT("reason:%i", aWhy);
+  mDestroying = true;
 }
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvDestroy()
@@ -357,12 +358,75 @@ EmbedLiteWindowChild::RecvSetFocused(const bool& aFocused)
 }
 
 mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvHandleTextEvent(
+    const nsCString& aCommit, const nsCString& aPreEdit,
+    const int32_t& aReplacementStart,
+    const int32_t& aReplacementLength)
+{
+  if (aReplacementLength < 0) {
+    return IPC_FAIL(this, "Invalid chrome text replacement length");
+  }
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SendTextEvent(
+      NS_ConvertUTF8toUTF16(aCommit), NS_ConvertUTF8toUTF16(aPreEdit),
+      aReplacementStart, aReplacementLength);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvHandleKeyPressEvent(
+    const int32_t& aDomKeyCode, const int32_t& aModifiers,
+    const int32_t& aCharCode)
+{
+  if (aDomKeyCode < 0 || aCharCode < 0 || aCharCode > UINT16_MAX) {
+    return IPC_FAIL(this, "Invalid chrome key press");
+  }
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SendKeyPress(
+      aDomKeyCode, aModifiers, aCharCode);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowChild::RecvHandleKeyReleaseEvent(
+    const int32_t& aDomKeyCode, const int32_t& aModifiers,
+    const int32_t& aCharCode)
+{
+  if (aDomKeyCode < 0 || aCharCode < 0 || aCharCode > UINT16_MAX) {
+    return IPC_FAIL(this, "Invalid chrome key release");
+  }
+  if (mChromeSession && mInitialized && !mDestroying) {
+    Unused << mChromeSession->SendKeyRelease(
+      aDomKeyCode, aModifiers, aCharCode);
+  }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
 EmbedLiteWindowChild::RecvReceiveInputEvent(const MultiTouchInput& aEvent)
 {
   if (mChromeSession && mInitialized && !mDestroying) {
     Unused << mChromeSession->ReceiveInputEvent(aEvent);
   }
   return IPC_OK();
+}
+
+void EmbedLiteWindowChild::ChromeInputContextChanged(
+    const widget::InputContext& aContext,
+    const widget::InputContextAction& aAction)
+{
+  if (!mChromeHosted || mDestroying || !CanSend()) {
+    return;
+  }
+
+  Unused << SendOnInputContextChanged(
+    static_cast<int32_t>(aContext.mIMEState.mEnabled),
+    static_cast<int32_t>(aContext.mIMEState.mOpen),
+    aContext.mHTMLInputType, aContext.mHTMLInputMode, aContext.mActionHint,
+    static_cast<int32_t>(aAction.mCause),
+    static_cast<int32_t>(aAction.mFocusChange));
 }
 
 mozilla::ipc::IPCResult EmbedLiteWindowChild::RecvSetSize(const gfxSize &aSize)

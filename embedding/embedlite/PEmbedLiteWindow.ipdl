@@ -78,6 +78,13 @@ child:
                                   bool aPermit);
   async SetActive(bool aActive);
   async SetFocused(bool aFocused);
+  async HandleTextEvent(nsCString aCommit, nsCString aPreEdit,
+                        int32_t aReplacementStart,
+                        int32_t aReplacementLength);
+  async HandleKeyPressEvent(int32_t aDomKeyCode, int32_t aModifiers,
+                            int32_t aCharCode);
+  async HandleKeyReleaseEvent(int32_t aDomKeyCode, int32_t aModifiers,
+                              int32_t aCharCode);
   async ReceiveInputEvent(MultiTouchInput aEvent);
   async Destroy();
 
@@ -91,6 +98,10 @@ parent:
   async OnTitleChanged(nsString aTitle);
   async OnTabSnapshot(EmbedLiteChromeSessionData aSnapshot);
   async OnBeforeUnloadPrompt(EmbedLiteChromeBeforeUnloadData aPrompt);
+  async OnInputContextChanged(int32_t aEnabled, int32_t aOpen,
+                              nsString aInputType, nsString aInputMode,
+                              nsString aActionHint, int32_t aCause,
+                              int32_t aFocusChange);
   async Destroyed();
   async __delete__();
 };

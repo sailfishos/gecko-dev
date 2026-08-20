@@ -67,6 +67,13 @@ public:
   bool Reload(bool aHardReload);
   bool SetActive(bool aActive);
   bool SetFocused(bool aFocused);
+  bool SendTextEvent(const nsAString& aCommit, const nsAString& aPreEdit,
+                     int32_t aReplacementStart,
+                     int32_t aReplacementLength);
+  bool SendKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
+                    int32_t aCharCode);
+  bool SendKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
+                      int32_t aCharCode);
   bool ReceiveInputEvent(const MultiTouchInput& aEvent);
   bool RestoreTabs(const nsTArray<EmbedLiteChromeTabRestoreData>& aTabs,
                    int32_t aSelectedTabIndex);
@@ -208,6 +215,7 @@ private:
   bool mCheckingCanClose;
   bool mRestoreTabsReceived;
   bool mInitializationFinished;
+  bool mShuttingDown;
   bool mReady;
   bool mActive;
   bool mFocused;

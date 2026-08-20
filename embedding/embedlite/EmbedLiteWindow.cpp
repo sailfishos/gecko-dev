@@ -5,6 +5,7 @@
 
 #include "EmbedLiteWindow.h"
 
+#include "EmbedLiteChromeInputSession.h"
 #include "EmbedLiteChromeSession.h"
 #include "EmbedLiteChromeTabSession.h"
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
@@ -78,6 +79,11 @@ bool EmbedLiteWindow::IsChromeHosted() const
 }
 
 EmbedLiteChromeSession* EmbedLiteWindow::GetChromeSession()
+{
+  return IsChromeHosted() ? mWindowParent : nullptr;
+}
+
+EmbedLiteChromeInputSession* EmbedLiteWindow::GetChromeInputSession()
 {
   return IsChromeHosted() ? mWindowParent : nullptr;
 }

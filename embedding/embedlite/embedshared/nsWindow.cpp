@@ -7,6 +7,8 @@
 
 #include "EmbedLog.h"
 
+#include <stdint.h>
+
 #include "nsWindow.h"
 #include "EmbedLiteWindowChild.h"
 #include "EmbedLitePuppetWidget.h"
@@ -19,8 +21,13 @@
 
 #include "mozilla/Hal.h"
 #include "mozilla/GlobalKeyListener.h"
+#include "mozilla/MiscEvents.h"
 #include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/TextEventDispatcher.h"
+#include "mozilla/TextEventDispatcherListener.h"
+#include "mozilla/TextEvents.h"
+#include "mozilla/dom/KeyboardEventBinding.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/APZEventState.h"
 #include "mozilla/layers/ChromeProcessController.h"
@@ -46,6 +53,131 @@ using namespace mozilla::widget;
 
 namespace mozilla {
 namespace embedlite {
+
+class EmbedLiteChromeInputTransactionListener final
+  : public TextEventDispatcherListener
+{
+public:
+  NS_DECL_ISUPPORTS
+
+  EmbedLiteChromeInputTransactionListener() = default;
+
+  NS_IMETHOD NotifyIME(TextEventDispatcher* aDispatcher,
+                       const IMENotification& aNotification) override
+  {
+    if (!aDispatcher) {
+      return NS_ERROR_INVALID_ARG;
+    }
+
+    switch (aNotification.mMessage) {
+      case REQUEST_TO_COMMIT_COMPOSITION:
+      case REQUEST_TO_CANCEL_COMPOSITION: {
+        RefPtr<TextEventDispatcher> dispatcher = aDispatcher;
+        if (!dispatcher->IsComposing()) {
+          return NS_OK;
+        }
+        nsEventStatus status = nsEventStatus_eIgnore;
+        if (aNotification.mMessage == REQUEST_TO_COMMIT_COMPOSITION) {
+          return dispatcher->CommitComposition(status, nullptr);
+        }
+        const nsString empty;
+        return dispatcher->CommitComposition(status, &empty);
+      }
+      default:
+        return NS_OK;
+    }
+  }
+
+  NS_IMETHOD_(IMENotificationRequests)
+  GetIMENotificationRequests() override
+  {
+    return IMENotificationRequests{};
+  }
+
+  NS_IMETHOD_(void)
+  OnRemovedFrom(TextEventDispatcher*) override
+  {
+  }
+
+  NS_IMETHOD_(void)
+  WillDispatchKeyboardEvent(TextEventDispatcher*, WidgetKeyboardEvent&,
+                            uint32_t, void*) override
+  {
+  }
+
+private:
+  ~EmbedLiteChromeInputTransactionListener() = default;
+};
+
+NS_IMPL_ISUPPORTS(EmbedLiteChromeInputTransactionListener,
+                  TextEventDispatcherListener,
+                  nsISupportsWeakReference)
+
+namespace {
+
+KeyNameIndex ChromeKeyNameIndex(int32_t aDomKeyCode)
+{
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier)
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode) \
+  if (aDomKeyCode == _keyCode) {                         \
+    return KEY_NAME_INDEX_##keyNameIdx_;                 \
+  }
+#include "KeyCodeConsensus_En_US.h"
+  return KEY_NAME_INDEX_USE_STRING;
+#undef CONTROL
+#undef KEY
+}
+
+CodeNameIndex ChromeCodeNameIndex(int32_t aCharCode)
+{
+  switch (aCharCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+    case key_[0]:                                      \
+      return CODE_NAME_INDEX_##_codeNameIdx;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default:
+      return CODE_NAME_INDEX_UNKNOWN;
+#undef CONTROL
+#undef KEY
+  }
+}
+
+Modifiers ChromeKeyModifiers(int32_t aCharCode)
+{
+  switch (aCharCode) {
+#define KEY(key_, _codeNameIdx, _keyCode, _modifier) \
+    case key_[0]:                                      \
+      return _modifier;
+#define CONTROL(keyNameIdx_, _codeNameIdx, _keyCode)
+#include "KeyCodeConsensus_En_US.h"
+    default:
+      return 0;
+#undef CONTROL
+#undef KEY
+  }
+}
+
+void InitializeChromeKeyEvent(WidgetKeyboardEvent& aEvent,
+                              int32_t aDomKeyCode, int32_t aModifiers,
+                              int32_t aCharCode)
+{
+  aEvent.mModifiers =
+    Modifiers(aModifiers) | ChromeKeyModifiers(aCharCode);
+  aEvent.mKeyCode = aCharCode ? 0 : aDomKeyCode;
+  aEvent.mCharCode = aCharCode;
+  aEvent.mLocation = eKeyLocationStandard;
+  aEvent.mRefPoint = LayoutDeviceIntPoint(0, 0);
+  aEvent.mTimeStamp = TimeStamp::Now();
+  aEvent.mKeyNameIndex = ChromeKeyNameIndex(aDomKeyCode);
+  aEvent.mKeyValue.Assign(static_cast<char16_t>(aCharCode));
+  aEvent.mCodeNameIndex = ChromeCodeNameIndex(aCharCode);
+  if (aDomKeyCode == dom::KeyboardEvent_Binding::DOM_VK_RETURN) {
+    aEvent.mKeyNameIndex = KEY_NAME_INDEX_Enter;
+  }
+}
+
+} // namespace
 
 NS_IMPL_ISUPPORTS_INHERITED(nsWindow, PuppetWidgetBase,
                             nsISupportsWeakReference)
@@ -116,6 +248,7 @@ nsWindow::nsWindow(EmbedLiteWindowChild *window)
   : PuppetWidgetBase()
   , mFirstViewCreated(false)
   , mChromeInputReady(false)
+  , mChromeWindowFocused(false)
   , mWindow(window)
   , mChromeHostedWidget(nullptr)
 {
@@ -140,8 +273,11 @@ nsWindow::Create(nsIWidget *aParent, const LayoutDeviceIntRect &aRect,
 void
 nsWindow::Destroy()
 {
+  RefPtr<nsWindow> self(this);
+  EndChromeInputTransaction();
   mChromeHostedWidget = nullptr;
   mChromeInputReady = false;
+  mChromeWindowFocused = false;
   mWindow = nullptr;
 
   PuppetWidgetBase::Destroy();
@@ -429,6 +565,7 @@ nsWindow::AttachChromeHostedWidget(EmbedLitePuppetWidget* aWidget)
   MOZ_ASSERT(!mChromeHostedWidget || mChromeHostedWidget == aWidget);
 
   mChromeHostedWidget = aWidget;
+  mChromeWindowFocused = false;
 }
 
 void
@@ -439,7 +576,10 @@ nsWindow::DetachChromeHostedWidget(EmbedLitePuppetWidget* aWidget)
     return;
   }
 
+  RefPtr<nsWindow> self(this);
+  EndChromeInputTransaction();
   mChromeInputReady = false;
+  mChromeWindowFocused = false;
   mChromeHostedWidget = nullptr;
   ReleaseContentController();
 }
@@ -470,6 +610,229 @@ nsWindow::DispatchChromeInputEvent(WidgetInputEvent* aEvent)
   aEvent->mWidget = this;
   Unused << nsBaseWidget::DispatchInputEvent(aEvent);
   return true;
+}
+
+bool
+nsWindow::DispatchChromeTextEvent(
+    const nsAString& aCommit, const nsAString& aPreEdit,
+    int32_t aReplacementStart, int32_t aReplacementLength)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<nsWindow> self(this);
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed() ||
+      aReplacementLength < 0 ||
+      widget->GetInputContext().mIMEState.mEnabled == IMEEnabled::Disabled) {
+    return false;
+  }
+
+  if (!mChromeInputTransactionListener) {
+    mChromeInputTransactionListener =
+      new EmbedLiteChromeInputTransactionListener;
+  }
+  RefPtr<TextEventDispatcher> dispatcher = widget->GetTextEventDispatcher();
+  if (!dispatcher || NS_FAILED(dispatcher->BeginInputTransaction(
+                       mChromeInputTransactionListener))) {
+    return false;
+  }
+
+  auto stillAttached = [&]() {
+    return !Destroyed() && mChromeInputReady &&
+      mChromeHostedWidget == widget && !widget->Destroyed();
+  };
+
+  if (aReplacementLength > 0) {
+    nsEventStatus status = nsEventStatus_eIgnore;
+    WidgetQueryContentEvent querySelection(
+      true, eQuerySelectedText, widget);
+    if (NS_FAILED(widget->DispatchEvent(&querySelection, status)) ||
+        !querySelection.FoundSelection() || !stillAttached()) {
+      return false;
+    }
+
+    const int64_t replacementOffset =
+      static_cast<int64_t>(querySelection.mReply->StartOffset()) +
+      aReplacementStart;
+    if (replacementOffset < 0 || replacementOffset > UINT32_MAX ||
+        static_cast<uint64_t>(aReplacementLength) >
+          UINT32_MAX - static_cast<uint64_t>(replacementOffset)) {
+      return false;
+    }
+
+    WidgetSelectionEvent selection(true, eSetSelection, widget);
+    selection.mOffset = static_cast<uint32_t>(replacementOffset);
+    selection.mLength = static_cast<uint32_t>(aReplacementLength);
+    selection.mReversed = false;
+    selection.mExpandToClusterBoundary = false;
+    status = nsEventStatus_eIgnore;
+    if (NS_FAILED(widget->DispatchEvent(&selection, status)) ||
+        !selection.mSucceeded || !stillAttached()) {
+      return false;
+    }
+
+    WidgetContentCommandEvent deleteSelection(
+      true, eContentCommandDelete, widget);
+    status = nsEventStatus_eIgnore;
+    if (NS_FAILED(widget->DispatchEvent(&deleteSelection, status)) ||
+        !deleteSelection.mSucceeded || !stillAttached()) {
+      return false;
+    }
+  }
+
+  nsEventStatus status = nsEventStatus_eIgnore;
+  if (!aCommit.IsEmpty()) {
+    if (NS_FAILED(dispatcher->CommitComposition(status, &aCommit)) ||
+        !stillAttached()) {
+      return false;
+    }
+  }
+
+  if (!aPreEdit.IsEmpty()) {
+    if (!dispatcher->IsComposing()) {
+      status = nsEventStatus_eIgnore;
+      if (NS_FAILED(dispatcher->StartComposition(status)) ||
+          !dispatcher->IsComposing() || !stillAttached()) {
+        return false;
+      }
+    }
+    if (NS_FAILED(dispatcher->SetPendingCompositionString(aPreEdit)) ||
+        NS_FAILED(dispatcher->AppendClauseToPendingComposition(
+          aPreEdit.Length(), TextRangeType::eRawClause)) ||
+        NS_FAILED(dispatcher->SetCaretInPendingComposition(
+          aPreEdit.Length(), 0))) {
+      dispatcher->ClearPendingComposition();
+      return false;
+    }
+    status = nsEventStatus_eIgnore;
+    return NS_SUCCEEDED(dispatcher->FlushPendingComposition(status)) &&
+      stillAttached();
+  }
+
+  if (aCommit.IsEmpty() && dispatcher->IsComposing()) {
+    const nsString empty;
+    status = nsEventStatus_eIgnore;
+    return NS_SUCCEEDED(dispatcher->CommitComposition(status, &empty)) &&
+      stillAttached();
+  }
+
+  return true;
+}
+
+bool
+nsWindow::DispatchChromeKeyPress(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<nsWindow> self(this);
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed() ||
+      aDomKeyCode < 0 || aCharCode < 0 || aCharCode > UINT16_MAX) {
+    return false;
+  }
+
+  if (!mChromeInputTransactionListener) {
+    mChromeInputTransactionListener =
+      new EmbedLiteChromeInputTransactionListener;
+  }
+  RefPtr<TextEventDispatcher> dispatcher = widget->GetTextEventDispatcher();
+  if (!dispatcher || NS_FAILED(dispatcher->BeginInputTransaction(
+                       mChromeInputTransactionListener))) {
+    return false;
+  }
+
+  WidgetKeyboardEvent event(true, eKeyDown, widget);
+  InitializeChromeKeyEvent(event, aDomKeyCode, aModifiers, aCharCode);
+  nsEventStatus status = nsEventStatus_eIgnore;
+  if (!dispatcher->DispatchKeyboardEvent(eKeyDown, event, status)) {
+    return false;
+  }
+  if (Destroyed() || !mChromeInputReady || mChromeHostedWidget != widget ||
+      widget->Destroyed() || status == nsEventStatus_eConsumeNoDefault) {
+    return true;
+  }
+
+  Unused << dispatcher->MaybeDispatchKeypressEvents(event, status);
+  return true;
+}
+
+bool
+nsWindow::DispatchChromeKeyRelease(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<nsWindow> self(this);
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed() ||
+      aDomKeyCode < 0 || aCharCode < 0 || aCharCode > UINT16_MAX) {
+    return false;
+  }
+
+  if (!mChromeInputTransactionListener) {
+    mChromeInputTransactionListener =
+      new EmbedLiteChromeInputTransactionListener;
+  }
+  RefPtr<TextEventDispatcher> dispatcher = widget->GetTextEventDispatcher();
+  if (!dispatcher || NS_FAILED(dispatcher->BeginInputTransaction(
+                       mChromeInputTransactionListener))) {
+    return false;
+  }
+
+  WidgetKeyboardEvent event(true, eKeyUp, widget);
+  InitializeChromeKeyEvent(event, aDomKeyCode, aModifiers, aCharCode);
+  nsEventStatus status = nsEventStatus_eIgnore;
+  return dispatcher->DispatchKeyboardEvent(eKeyUp, event, status);
+}
+
+bool nsWindow::SetChromeFocused(bool aFocused)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<nsWindow> self(this);
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  if (Destroyed() || !mChromeInputReady || !widget || widget->Destroyed()) {
+    return false;
+  }
+  if (mChromeWindowFocused == aFocused) {
+    return true;
+  }
+
+  mChromeWindowFocused = aFocused;
+  widget->NotifyChromeWindowFocusChanged(aFocused);
+  return true;
+}
+
+void nsWindow::SetChromeInputContext(
+    const InputContext& aContext, const InputContextAction& aAction)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (Destroyed() || !mChromeHostedWidget || !mWindow) {
+    return;
+  }
+  mWindow->ChromeInputContextChanged(aContext, aAction);
+}
+
+void nsWindow::EndChromeInputTransaction()
+{
+  RefPtr<EmbedLitePuppetWidget> widget = mChromeHostedWidget;
+  RefPtr<EmbedLiteChromeInputTransactionListener> listener =
+    mChromeInputTransactionListener;
+  mChromeInputTransactionListener = nullptr;
+  if (!widget || !listener || widget->Destroyed()) {
+    return;
+  }
+
+  RefPtr<TextEventDispatcher> dispatcher = widget->GetTextEventDispatcher();
+  if (!dispatcher || dispatcher->IsDispatchingEvent()) {
+    return;
+  }
+  if (dispatcher->IsComposing()) {
+    const nsString empty;
+    nsEventStatus status = nsEventStatus_eIgnore;
+    Unused << dispatcher->CommitComposition(status, &empty);
+  }
+  if (!widget->Destroyed() && !dispatcher->IsComposing() &&
+      !dispatcher->IsDispatchingEvent()) {
+    dispatcher->EndInputTransaction(listener);
+  }
 }
 
 nsWindow::~nsWindow()

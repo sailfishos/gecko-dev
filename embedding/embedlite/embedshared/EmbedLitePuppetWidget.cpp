@@ -115,7 +115,9 @@ EmbedLitePuppetWidget::AllocateChildPuppetWidget(widget::InitData&)
 
 void EmbedLitePuppetWidget::Destroy()
 {
-  if (nsWindow* chromeHost = dynamic_cast<nsWindow*>(GetParent())) {
+  RefPtr<EmbedLitePuppetWidget> self(this);
+  RefPtr<nsWindow> chromeHost = dynamic_cast<nsWindow*>(GetParent());
+  if (chromeHost) {
     chromeHost->DetachChromeHostedWidget(this);
   }
   PuppetWidgetBase::Destroy();
@@ -182,7 +184,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
 
   NS_ASSERTION(listener, "No listener!");
 
-  if (event->mClass == eKeyboardEventClass) {
+  if (event->mClass == eKeyboardEventClass && mView) {
     RemoveIMEComposition();
   } else if (event->mClass == eCompositionEventClass) {
     // Store the latest native IME context of parent process's widget or
@@ -214,6 +216,8 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
       mIMEComposing = true;
       break;
     case eCompositionEnd:
+    case eCompositionCommit:
+    case eCompositionCommitAsIs:
       MOZ_ASSERT(mIMEComposing);
       mIMEComposing = false;
       mIMEComposingText.Truncate();
@@ -273,6 +277,8 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
       aContext.mActionHint,
       static_cast<int32_t>(aAction.mCause),
       static_cast<int32_t>(aAction.mFocusChange));
+  } else if (nsWindow* chromeHost = dynamic_cast<nsWindow*>(GetParent())) {
+    chromeHost->SetChromeInputContext(aContext, aAction);
   }
 }
 
@@ -461,6 +467,21 @@ void EmbedLitePuppetWidget::AddObserver(EmbedLitePuppetWidgetObserver *aObserver
 void EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver)
 {
   mObservers.RemoveElement(aObserver);
+}
+
+void EmbedLitePuppetWidget::NotifyChromeWindowFocusChanged(bool aFocused)
+{
+  nsIWidgetListener* listener =
+    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
+  if (!listener) {
+    return;
+  }
+
+  if (aFocused) {
+    listener->WindowActivated();
+  } else {
+    listener->WindowDeactivated();
+  }
 }
 
 EmbedLitePuppetWidget::EmbedLitePuppetWidget()

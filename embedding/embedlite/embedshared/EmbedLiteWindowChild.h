@@ -63,10 +63,13 @@ protected:
 private:
   friend class PEmbedLiteWindowChild;
   friend class EmbedLiteChromeSessionChild;
+  friend class nsWindow;
   void CreateWidget();
   bool CreateChromeAppWindow();
   void DestroyChromeAppWindow();
   void ChromeSessionInitializationFinished(bool aSuccess);
+  void ChromeInputContextChanged(const widget::InputContext& aContext,
+                                 const widget::InputContextAction& aAction);
 
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvSetSize(const gfxSize &size);
@@ -95,6 +98,16 @@ private:
     const bool& aPermit);
   mozilla::ipc::IPCResult RecvSetActive(const bool& aActive);
   mozilla::ipc::IPCResult RecvSetFocused(const bool& aFocused);
+  mozilla::ipc::IPCResult RecvHandleTextEvent(
+    const nsCString& aCommit, const nsCString& aPreEdit,
+    const int32_t& aReplacementStart,
+    const int32_t& aReplacementLength);
+  mozilla::ipc::IPCResult RecvHandleKeyPressEvent(
+    const int32_t& aDomKeyCode, const int32_t& aModifiers,
+    const int32_t& aCharCode);
+  mozilla::ipc::IPCResult RecvHandleKeyReleaseEvent(
+    const int32_t& aDomKeyCode, const int32_t& aModifiers,
+    const int32_t& aCharCode);
   mozilla::ipc::IPCResult RecvReceiveInputEvent(
     const MultiTouchInput& aEvent);
   void RefreshScreen();

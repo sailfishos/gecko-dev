@@ -11,6 +11,7 @@
 #include "mozilla/embedlite/PEmbedLiteWindowParent.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WidgetUtils.h"
+#include "EmbedLiteChromeInputSession.h"
 #include "EmbedLiteChromeSession.h"
 #include "EmbedLiteChromeTabSession.h"
 #include "EmbedLiteWindow.h"
@@ -31,7 +32,8 @@ public:
 
 class EmbedLiteWindowParent : public PEmbedLiteWindowParent,
                               public EmbedLiteChromeSession,
-                              public EmbedLiteChromeTabSession
+                              public EmbedLiteChromeTabSession,
+                              public EmbedLiteChromeInputSession
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteWindowParent)
 public:
@@ -71,6 +73,17 @@ public:
   bool SetActive(bool aActive) override;
   bool SetFocused(bool aFocused) override;
   bool ReceiveInputEvent(const EmbedTouchInput& aEvent) override;
+  // EmbedLiteChromeInputSession:
+  void SetInputListener(
+    EmbedLiteChromeInputSessionListener* aListener) override;
+  bool SendTextEvent(const char* aCommit, const char* aPreEdit,
+                     int32_t aReplacementStart,
+                     int32_t aReplacementLength) override;
+  bool SendKeyPress(int32_t aDomKeyCode, int32_t aModifiers,
+                    int32_t aCharCode) override;
+  bool SendKeyRelease(int32_t aDomKeyCode, int32_t aModifiers,
+                      int32_t aCharCode) override;
+  // EmbedLiteChromeTabSession:
   void SetTabListener(
     EmbedLiteChromeTabSessionListener* aListener) override;
   bool RestoreTabs(const EmbedLiteChromeRestoredTab* aTabs,
@@ -119,9 +132,15 @@ private:
     const EmbedLiteChromeSessionData& aSnapshot);
   mozilla::ipc::IPCResult RecvOnBeforeUnloadPrompt(
     const EmbedLiteChromeBeforeUnloadData& aPrompt);
+  mozilla::ipc::IPCResult RecvOnInputContextChanged(
+    const int32_t& aEnabled, const int32_t& aOpen,
+    const nsString& aInputType, const nsString& aInputMode,
+    const nsString& aActionHint, const int32_t& aCause,
+    const int32_t& aFocusChange);
 
   bool CanSendChromeSessionCommand() const;
   void ReplayChromeSessionState();
+  void ReplayChromeInputContext();
   void ReplayTabSnapshot();
   void UpdateSelectedChromeSessionState();
 
@@ -130,6 +149,7 @@ private:
   EmbedLiteWindow* mWindow;
   EmbedLiteChromeSessionListener* mChromeSessionListener;
   EmbedLiteChromeTabSessionListener* mChromeTabSessionListener;
+  EmbedLiteChromeInputSessionListener* mChromeInputSessionListener;
   const bool mChromeHosted;
   bool mInitialized;
   bool mDestroying;
@@ -138,6 +158,7 @@ private:
   bool mHasLoadProgress;
   bool mHasTitle;
   bool mHasTabSnapshot;
+  bool mHasInputContext;
   bool mRestoreTabsSent;
   uint64_t mProjectedTabId;
   nsCString mLocation;
@@ -148,6 +169,13 @@ private:
   int64_t mLoadCurrent;
   int64_t mLoadTotal;
   nsString mTitle;
+  int32_t mInputEnabled;
+  int32_t mInputOpen;
+  nsString mInputType;
+  nsString mInputMode;
+  nsString mActionHint;
+  int32_t mInputCause;
+  int32_t mInputFocusChange;
   EmbedLiteChromeSessionData mTabSnapshot;
   std::map<uint64_t, uint64_t> mPendingBeforeUnloadPrompts;
   EmbedLitePlatformFrameListener* mPlatformFrameListener;

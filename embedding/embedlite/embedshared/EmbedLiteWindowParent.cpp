@@ -49,6 +49,7 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mWindow(nullptr)
   , mChromeSessionListener(nullptr)
   , mChromeTabSessionListener(nullptr)
+  , mChromeInputSessionListener(nullptr)
   , mChromeHosted(aChromeHosted)
   , mInitialized(false)
   , mDestroying(false)
@@ -57,6 +58,7 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mHasLoadProgress(false)
   , mHasTitle(false)
   , mHasTabSnapshot(false)
+  , mHasInputContext(false)
   , mRestoreTabsSent(false)
   , mProjectedTabId(0)
   , mCanGoBack(false)
@@ -64,6 +66,10 @@ EmbedLiteWindowParent::EmbedLiteWindowParent(
   , mLoadProgress(0)
   , mLoadCurrent(0)
   , mLoadTotal(0)
+  , mInputEnabled(0)
+  , mInputOpen(0)
+  , mInputCause(0)
+  , mInputFocusChange(0)
   , mPlatformFrameListener(nullptr)
   , mCompositor(nullptr)
   , mSize(width, height)
@@ -254,6 +260,15 @@ void EmbedLiteWindowParent::SetTabListener(
   }
 }
 
+void EmbedLiteWindowParent::SetInputListener(
+    EmbedLiteChromeInputSessionListener* aListener)
+{
+  mChromeInputSessionListener = aListener;
+  if (mChromeInputSessionListener && CanSendChromeSessionCommand()) {
+    ReplayChromeInputContext();
+  }
+}
+
 bool EmbedLiteWindowParent::LoadURL(const char* aURL, bool aFromExternal)
 {
   return aURL && CanSendChromeSessionCommand() &&
@@ -314,6 +329,33 @@ bool EmbedLiteWindowParent::ReceiveInputEvent(const EmbedTouchInput& aEvent)
   }
 
   return SendReceiveInputEvent(input);
+}
+
+bool EmbedLiteWindowParent::SendTextEvent(
+    const char* aCommit, const char* aPreEdit,
+    int32_t aReplacementStart, int32_t aReplacementLength)
+{
+  return aCommit && aPreEdit && aReplacementLength >= 0 &&
+    CanSendChromeSessionCommand() &&
+    SendHandleTextEvent(nsDependentCString(aCommit),
+                        nsDependentCString(aPreEdit),
+                        aReplacementStart, aReplacementLength);
+}
+
+bool EmbedLiteWindowParent::SendKeyPress(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  return aDomKeyCode >= 0 && aCharCode >= 0 && aCharCode <= UINT16_MAX &&
+    CanSendChromeSessionCommand() &&
+    SendHandleKeyPressEvent(aDomKeyCode, aModifiers, aCharCode);
+}
+
+bool EmbedLiteWindowParent::SendKeyRelease(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  return aDomKeyCode >= 0 && aCharCode >= 0 && aCharCode <= UINT16_MAX &&
+    CanSendChromeSessionCommand() &&
+    SendHandleKeyReleaseEvent(aDomKeyCode, aModifiers, aCharCode);
 }
 
 bool EmbedLiteWindowParent::RestoreTabs(
@@ -436,6 +478,17 @@ void EmbedLiteWindowParent::ReplayChromeSessionState()
   if (mHasTitle) {
     mChromeSessionListener->OnTitleChanged(mTitle.get());
   }
+}
+
+void EmbedLiteWindowParent::ReplayChromeInputContext()
+{
+  if (!mChromeInputSessionListener || !mHasInputContext) {
+    return;
+  }
+
+  mChromeInputSessionListener->OnInputContextChanged(
+    mInputEnabled, mInputOpen, mInputType.get(), mInputMode.get(),
+    mActionHint.get(), mInputCause, mInputFocusChange);
 }
 
 void EmbedLiteWindowParent::ReplayTabSnapshot()
@@ -562,6 +615,14 @@ void EmbedLiteWindowParent::ActorDestroy(ActorDestroyReason aWhy)
     mChromeTabSessionListener->ChromeTabSessionDestroyed();
     mChromeTabSessionListener = nullptr;
   }
+  if (mChromeInputSessionListener) {
+    mChromeInputSessionListener->ChromeInputSessionDestroyed();
+    mChromeInputSessionListener = nullptr;
+  }
+  mHasInputContext = false;
+  mInputType.Truncate();
+  mInputMode.Truncate();
+  mActionHint.Truncate();
   if (mWindow) {
     mWindow->Destroyed();
   }
@@ -573,6 +634,7 @@ EmbedLiteWindowParent::RecvInitialized(const bool &success)
   MOZ_ASSERT(mWindow);
   if (success) {
     mInitialized = true;
+    ReplayChromeInputContext();
     mListener->WindowInitialized();
   } else if (EmbedLiteChromeWindowListener* chromeListener =
                dynamic_cast<EmbedLiteChromeWindowListener*>(mListener)) {
@@ -598,6 +660,14 @@ mozilla::ipc::IPCResult EmbedLiteWindowParent::RecvDestroyed()
     mChromeTabSessionListener->ChromeTabSessionDestroyed();
     mChromeTabSessionListener = nullptr;
   }
+  if (mChromeInputSessionListener) {
+    mChromeInputSessionListener->ChromeInputSessionDestroyed();
+    mChromeInputSessionListener = nullptr;
+  }
+  mHasInputContext = false;
+  mInputType.Truncate();
+  mInputMode.Truncate();
+  mActionHint.Truncate();
   mWindow->Destroyed();
   return IPC_OK();
 }
@@ -766,6 +836,31 @@ EmbedLiteWindowParent::RecvOnBeforeUnloadPrompt(
     aPrompt.leaveLabel().get(), aPrompt.stayLabel().get()
   };
   mChromeTabSessionListener->OnBeforeUnloadPrompt(prompt);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+EmbedLiteWindowParent::RecvOnInputContextChanged(
+    const int32_t& aEnabled, const int32_t& aOpen,
+    const nsString& aInputType, const nsString& aInputMode,
+    const nsString& aActionHint, const int32_t& aCause,
+    const int32_t& aFocusChange)
+{
+  if (!mChromeHosted || mDestroying) {
+    return IPC_OK();
+  }
+
+  mHasInputContext = true;
+  mInputEnabled = aEnabled;
+  mInputOpen = aOpen;
+  mInputType = aInputType;
+  mInputMode = aInputMode;
+  mActionHint = aActionHint;
+  mInputCause = aCause;
+  mInputFocusChange = aFocusChange;
+  if (CanSendChromeSessionCommand()) {
+    ReplayChromeInputContext();
+  }
   return IPC_OK();
 }
 

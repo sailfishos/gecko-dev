@@ -83,6 +83,7 @@ public:
 
   void AddObserver(EmbedLitePuppetWidgetObserver *aObserver);
   void RemoveObserver(EmbedLitePuppetWidgetObserver *aObserver);
+  void NotifyChromeWindowFocusChanged(bool aFocused);
 
 protected:
   virtual ~EmbedLitePuppetWidget() override;

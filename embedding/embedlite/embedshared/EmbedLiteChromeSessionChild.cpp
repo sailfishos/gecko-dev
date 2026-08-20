@@ -434,6 +434,7 @@ EmbedLiteChromeSessionChild::EmbedLiteChromeSessionChild(
   , mCheckingCanClose(false)
   , mRestoreTabsReceived(false)
   , mInitializationFinished(false)
+  , mShuttingDown(false)
   , mReady(false)
   , mActive(true)
   , mFocused(false)
@@ -539,8 +540,16 @@ void
 EmbedLiteChromeSessionChild::Shutdown()
 {
   MOZ_ASSERT(NS_IsMainThread());
+  RefPtr<EmbedLiteChromeSessionChild> self(this);
+  if (mShuttingDown) {
+    return;
+  }
+  mShuttingDown = true;
   RemoveObserver();
   CancelBeforeUnloadPrompts();
+
+  mFocused = false;
+  ApplyFocusState();
 
   nsCOMPtr<mozIDOMWindowProxy> chromeDOMWindow;
   if (mAppWindow) {
@@ -1602,24 +1611,38 @@ EmbedLiteChromeSessionChild::SetActive(bool aActive)
 void
 EmbedLiteChromeSessionChild::ApplyFocusState()
 {
-  TabRecord* selected = SelectedTab();
-  if (!mReady || !selected || !selected->browser) {
+  RefPtr<EmbedLiteChromeSessionChild> self(this);
+  nsWindow* rootWidget = mWindow ? mWindow->GetWidget() : nullptr;
+  if (!mReady || !rootWidget) {
     return;
   }
 
   nsCOMPtr<nsIFocusManager> focusManager =
     do_GetService(FOCUSMANAGER_CONTRACTID);
-  if (!focusManager) {
-    return;
-  }
-
   if (mFocused) {
-    Unused << focusManager->SetFocus(
-      selected->browser, nsIFocusManager::FLAG_NOSCROLL);
+    // AppWindow activation must precede SetFocus. nsFocusManager otherwise
+    // rejects focus in the remote browser because its root is not active.
+    if (!rootWidget->SetChromeFocused(true)) {
+      return;
+    }
+    if (!mReady || !mWindow || !mFocused) {
+      return;
+    }
+    TabRecord* selected = SelectedTab();
+    if (focusManager && selected && selected->browser) {
+      Unused << focusManager->SetFocus(
+        selected->browser, nsIFocusManager::FLAG_NOSCROLL);
+    }
   } else {
-    nsPIDOMWindowOuter* window = selected->browser->OwnerDoc()->GetWindow();
-    if (window) {
+    nsPIDOMWindowOuter* window =
+      mTabContainer ? mTabContainer->OwnerDoc()->GetWindow() : nullptr;
+    if (focusManager && window) {
       Unused << focusManager->ClearFocus(window);
+    }
+    // ClearFocus may run script and tear down the hosted window.
+    rootWidget = mWindow ? mWindow->GetWidget() : nullptr;
+    if (mReady && rootWidget) {
+      Unused << rootWidget->SetChromeFocused(false);
     }
   }
 }
@@ -1630,9 +1653,37 @@ EmbedLiteChromeSessionChild::SetFocused(bool aFocused)
   if (!mReady) {
     return false;
   }
+  if (mFocused == aFocused) {
+    return true;
+  }
   mFocused = aFocused;
   ApplyFocusState();
   return true;
+}
+
+bool EmbedLiteChromeSessionChild::SendTextEvent(
+    const nsAString& aCommit, const nsAString& aPreEdit,
+    int32_t aReplacementStart, int32_t aReplacementLength)
+{
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  return mReady && window && window->DispatchChromeTextEvent(
+    aCommit, aPreEdit, aReplacementStart, aReplacementLength);
+}
+
+bool EmbedLiteChromeSessionChild::SendKeyPress(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  return mReady && window && window->DispatchChromeKeyPress(
+    aDomKeyCode, aModifiers, aCharCode);
+}
+
+bool EmbedLiteChromeSessionChild::SendKeyRelease(
+    int32_t aDomKeyCode, int32_t aModifiers, int32_t aCharCode)
+{
+  nsWindow* window = mWindow ? mWindow->GetWidget() : nullptr;
+  return mReady && window && window->DispatchChromeKeyRelease(
+    aDomKeyCode, aModifiers, aCharCode);
 }
 
 bool

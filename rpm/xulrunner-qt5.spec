@@ -54,7 +54,7 @@
 Name:       xulrunner-qt5
 Summary:    XUL runner
 Version:    %{greversion}
-Release:    8
+Release:    9
 License:    MPLv2.0
 URL:        https://github.com/sailfishos/gecko-dev
 Source0:    %{name}-%{version}.tar.bz2
@@ -152,6 +152,7 @@ Patch114:    0114-sailfishos-qt-Use-minimal-QPA-for-headless-children.patch
 Patch115:    0115-sailfishos-apz-Dispatch-remote-taps-to-Gecko-main.patch
 Patch116:    0116-sailfishos-embedlite-Bind-compositors-to-their-windows.patch
 Patch117:    0117-sailfishos-embedlite-Export-tab-session-entry-points.patch
+Patch118:    0118-sailfishos-embedlite-Export-chrome-input-session-getter.patch
 
 BuildRequires:  rust >= 1.82.0
 BuildRequires:  rust-std-static >= 1.82.0

@@ -28,6 +28,7 @@ enum ScreenRotation {
 class EmbedLiteApp;
 class PEmbedLiteWindowParent;
 class EmbedLiteWindowParent;
+class EmbedLiteChromeInputSession;
 class EmbedLiteChromeSession;
 class EmbedLiteChromeTabSession;
 
@@ -148,6 +149,7 @@ public:
   // Returns a borrowed session only for windows created with
   // CreateChromeWindow(). The pointer becomes invalid when the window is
   // destroyed and does not change EmbedLiteWindow's legacy ABI.
+  MOZ_EXPORT EmbedLiteChromeInputSession* GetChromeInputSession();
   MOZ_EXPORT EmbedLiteChromeSession* GetChromeSession();
   MOZ_EXPORT EmbedLiteChromeTabSession* GetChromeTabSession();
 
