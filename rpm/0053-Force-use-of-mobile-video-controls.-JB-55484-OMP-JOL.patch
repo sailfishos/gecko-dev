@@ -39,6 +39,3 @@ index 46c73d52b851..7129eb6c86b7 100644
          if (isMobile) {
            this.controlsContainer.classList.add("mobile");
          }
--- 
-2.51.0
-

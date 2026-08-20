@@ -21,10 +21,10 @@ object through to the nsILoginManagerAuthPrompter component.
  4 files changed, 6 insertions(+), 24 deletions(-)
 
 diff --git a/netwerk/protocol/http/ParentChannelListener.cpp b/netwerk/protocol/http/ParentChannelListener.cpp
-index b80200e11c6b..99c37224cfcc 100644
+index 34262f6d9792..d71386b58b50 100644
 --- a/netwerk/protocol/http/ParentChannelListener.cpp
 +++ b/netwerk/protocol/http/ParentChannelListener.cpp
-@@ -239,7 +239,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
+@@ -241,7 +241,7 @@ ParentChannelListener::GetAuthPrompt(uint32_t aPromptReason, const nsIID& iid,
  
    nsCOMPtr<nsPIDOMWindowOuter> window;
    RefPtr<dom::Element> frame = mBrowsingContext->Top()->GetEmbedderElement();
@@ -128,6 +128,3 @@ index 4f244258c0f5..8b162b92b29c 100644
            in Array<nsILoginInfo> logins,
            in nsILoginInfo aNewLogin);
  };
--- 
-2.51.0
-

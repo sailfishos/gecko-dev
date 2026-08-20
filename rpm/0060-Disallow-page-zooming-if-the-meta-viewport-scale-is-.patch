@@ -61,6 +61,3 @@ index 5963a74ab2c3..6f34f50de087 100644
  }
  
  static bool HasVisibleAnonymousContents(Document* aDoc) {
--- 
-2.51.0
-

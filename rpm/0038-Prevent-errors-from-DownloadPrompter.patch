@@ -21,6 +21,3 @@ index 9a964fad65ac..6cc79848ec3a 100644
  };
  
  DownloadPrompter.prototype = {
--- 
-2.51.0
-

@@ -31,6 +31,3 @@ index db682fd90b2b..e5b1b0245e4e 100644
      switch (aMessage.name) {
        case "AudioPlayback:Start":
          this._hasAudioPlayback = true;
--- 
-2.51.0
-

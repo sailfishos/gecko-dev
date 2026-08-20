@@ -117,6 +117,3 @@ index 805d081b21e4..81fa6c5b981c 100644
    NS_IMETHOD ShowAsModal() override;
    NS_IMETHOD IsWindowModal(bool* _retval) override;
    NS_IMETHOD Blur() override;
--- 
-2.51.0
-

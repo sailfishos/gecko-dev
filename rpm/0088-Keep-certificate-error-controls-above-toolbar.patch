@@ -15,7 +15,7 @@ certificate controls.
  1 file changed, 5 insertions(+), 3 deletions(-)
 
 diff --git a/toolkit/themes/shared/aboutNetError.css b/toolkit/themes/shared/aboutNetError.css
-index c84a72fce4a92..20656544f241c 100644
+index c84a72fce4a9..20656544f241 100644
 --- a/toolkit/themes/shared/aboutNetError.css
 +++ b/toolkit/themes/shared/aboutNetError.css
 @@ -100,10 +100,12 @@ button:disabled {

@@ -25,6 +25,3 @@ index a685d94eea06..252e027b63f8 100644
  #ifdef DEBUG
    printf_stderr("Initializing context %p surface %p on display %p\n", mContext,
                  mSurface, mEgl->mDisplay);
--- 
-2.51.0
-

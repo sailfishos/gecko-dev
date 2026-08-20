@@ -30,7 +30,7 @@ creation failures.
  5 files changed, 379 insertions(+), 114 deletions(-)
 
 diff --git a/gfx/gl/GLContextEGL.h b/gfx/gl/GLContextEGL.h
-index fd869d3125c57..45a2b829f15cf 100644
+index fd869d3125c5..45a2b829f15c 100644
 --- a/gfx/gl/GLContextEGL.h
 +++ b/gfx/gl/GLContextEGL.h
 @@ -103,7 +103,7 @@ class GLContextEGL final : public GLContext {
@@ -63,7 +63,7 @@ index fd869d3125c57..45a2b829f15cf 100644
  
  }  // namespace gl
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 5e1ba387226b8..6038c439bb25c 100644
+index 5e1ba387226b..6038c439bb25 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -109,6 +109,15 @@ static EGLDisplay GetAppDisplay() {
@@ -682,7 +682,7 @@ index 5e1ba387226b8..6038c439bb25c 100644
    if (!display) {
      return nullptr;
 diff --git a/gfx/gl/GLLibraryEGL.cpp b/gfx/gl/GLLibraryEGL.cpp
-index 158b13a017001..a9f0dd0e6255a 100644
+index 158b13a01700..a9f0dd0e6255 100644
 --- a/gfx/gl/GLLibraryEGL.cpp
 +++ b/gfx/gl/GLLibraryEGL.cpp
 @@ -939,6 +939,16 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateBorrowedDisplay(
@@ -703,7 +703,7 @@ index 158b13a017001..a9f0dd0e6255a 100644
      const bool forceAccel, nsACString* const out_failureId,
      const StaticMutexAutoLock& aProofOfLock) {
 diff --git a/gfx/gl/GLLibraryEGL.h b/gfx/gl/GLLibraryEGL.h
-index 79273ea57f77c..4347a05746d0c 100644
+index 79273ea57f77..4347a05746d0 100644
 --- a/gfx/gl/GLLibraryEGL.h
 +++ b/gfx/gl/GLLibraryEGL.h
 @@ -161,6 +161,7 @@ class GLLibraryEGL final {
@@ -715,7 +715,7 @@ index 79273ea57f77c..4347a05746d0c 100644
    std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
  
 diff --git a/gfx/gl/SharedSurfaceEGL.cpp b/gfx/gl/SharedSurfaceEGL.cpp
-index 85a45869b8dbf..cf57dc7bf7c55 100644
+index 85a45869b8db..cf57dc7bf7c5 100644
 --- a/gfx/gl/SharedSurfaceEGL.cpp
 +++ b/gfx/gl/SharedSurfaceEGL.cpp
 @@ -25,9 +25,15 @@ namespace gl {

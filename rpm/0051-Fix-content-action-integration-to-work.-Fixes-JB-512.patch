@@ -334,6 +334,3 @@ index f841a78da5c9..e87cce17da1d 100644
  #elif defined(MOZ_WIDGET_ANDROID)
    // Not supported on GeckoView
    return NS_ERROR_NOT_IMPLEMENTED;
--- 
-2.51.0
-

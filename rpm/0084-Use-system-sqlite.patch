@@ -22,7 +22,7 @@ with one sqlite library and free with the other.
  9 files changed, 92 insertions(+), 17 deletions(-)
 
 diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
-index 34b9bf7d65952..7f9e70b646985 100644
+index 34b9bf7d6595..7f9e70b64698 100644
 --- a/browser/installer/package-manifest.in
 +++ b/browser/installer/package-manifest.in
 @@ -148,9 +148,11 @@
@@ -38,7 +38,7 @@ index 34b9bf7d65952..7f9e70b646985 100644
  #ifdef MOZ_FFVPX
  @BINPATH@/@DLL_PREFIX@mozavutil@DLL_SUFFIX@
 diff --git a/build/moz.configure/old.configure b/build/moz.configure/old.configure
-index c777c45c8b825..e688364ee4cde 100644
+index c777c45c8b82..e688364ee4cd 100644
 --- a/build/moz.configure/old.configure
 +++ b/build/moz.configure/old.configure
 @@ -93,6 +93,7 @@ def old_configure_options(*options):
@@ -50,7 +50,7 @@ index c777c45c8b825..e688364ee4cde 100644
      "--libdir",
      "--prefix",
 diff --git a/config/external/sqlite/moz.build b/config/external/sqlite/moz.build
-index 6294924c564ae..b978fd9caba37 100644
+index 6294924c564a..b978fd9caba3 100644
 --- a/config/external/sqlite/moz.build
 +++ b/config/external/sqlite/moz.build
 @@ -4,15 +4,19 @@
@@ -83,7 +83,7 @@ index 6294924c564ae..b978fd9caba37 100644
 -    SYMBOLS_FILE = "/third_party/sqlite3/src/sqlite.symbols"
 +        SYMBOLS_FILE = "/third_party/sqlite3/src/sqlite.symbols"
 diff --git a/old-configure.in b/old-configure.in
-index f08214bce2a88..40f9f99dcf73e 100644
+index 0c5434bd92a0..77817e7862e7 100644
 --- a/old-configure.in
 +++ b/old-configure.in
 @@ -29,6 +29,7 @@ HOST_LDFLAGS="${HOST_LDFLAGS=}"
@@ -94,7 +94,7 @@ index f08214bce2a88..40f9f99dcf73e 100644
  
  dnl Set various checks
  dnl ========================================================
-@@ -1397,11 +1398,37 @@ dnl =
+@@ -1402,11 +1403,37 @@ dnl =
  dnl ========================================================
  MOZ_ARG_HEADER(Individual module options)
  
@@ -138,7 +138,7 @@ index f08214bce2a88..40f9f99dcf73e 100644
  dnl ========================================================
  dnl =
 diff --git a/storage/SQLiteMutex.h b/storage/SQLiteMutex.h
-index b7198b1912fdc..3ecc0bb997cf3 100644
+index b7198b1912fd..3ecc0bb997cf 100644
 --- a/storage/SQLiteMutex.h
 +++ b/storage/SQLiteMutex.h
 @@ -56,7 +56,7 @@ class SQLiteMutex : private BlockingResourceBase {
@@ -169,7 +169,7 @@ index b7198b1912fdc..3ecc0bb997cf3 100644
      // treat them as such.
      Release();  // Call is protected by us holding the mutex.
 diff --git a/storage/moz.build b/storage/moz.build
-index 9cefe26ec0c83..e81ee14c83acb 100644
+index 9cefe26ec0c8..e81ee14c83ac 100644
 --- a/storage/moz.build
 +++ b/storage/moz.build
 @@ -101,6 +101,13 @@ if CONFIG["MOZ_THUNDERBIRD"] or CONFIG["MOZ_SUITE"]:
@@ -187,7 +187,7 @@ index 9cefe26ec0c83..e81ee14c83acb 100644
      "/dom/base",
      "/third_party/sqlite3/src",
 diff --git a/storage/mozStorageConnection.cpp b/storage/mozStorageConnection.cpp
-index 059b9a3f72fb9..c60e603c569ec 100644
+index 059b9a3f72fb..c60e603c569e 100644
 --- a/storage/mozStorageConnection.cpp
 +++ b/storage/mozStorageConnection.cpp
 @@ -1031,6 +1031,10 @@ nsresult Connection::initializeInternal() {
@@ -202,7 +202,7 @@ index 059b9a3f72fb9..c60e603c569ec 100644
    srv = registerFunctions(mDBConn);
    if (srv != SQLITE_OK) {
 diff --git a/storage/mozStorageService.cpp b/storage/mozStorageService.cpp
-index d73a1680ac780..4ddded9cd88c3 100644
+index d73a1680ac78..4ddded9cd88c 100644
 --- a/storage/mozStorageService.cpp
 +++ b/storage/mozStorageService.cpp
 @@ -13,6 +13,7 @@
@@ -247,7 +247,7 @@ index d73a1680ac780..4ddded9cd88c3 100644
    // main thread.
    NS_ENSURE_TRUE(NS_IsMainThread(), nullptr);
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index b3b709eb88b81..8fbad994922f6 100644
+index b3b709eb88b8..8fbad994922f 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
 @@ -168,6 +168,9 @@ USE_LIBS += [

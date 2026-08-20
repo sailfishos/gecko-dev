@@ -20,7 +20,7 @@ and only affects MDSM initialization.
  1 file changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/dom/media/MediaDecoderStateMachineBase.cpp b/dom/media/MediaDecoderStateMachineBase.cpp
-index d421d0b3bc29..4214f2a7a5df 100644
+index 081ed09e6b6d..8d0eb46a9e53 100644
 --- a/dom/media/MediaDecoderStateMachineBase.cpp
 +++ b/dom/media/MediaDecoderStateMachineBase.cpp
 @@ -95,8 +95,14 @@ nsresult MediaDecoderStateMachineBase::Init(MediaDecoder* aDecoder) {

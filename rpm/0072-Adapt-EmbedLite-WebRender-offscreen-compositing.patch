@@ -708,10 +708,10 @@ index dede7ce6ed23..318a6778cea3 100644
    sInstance->mPendingCompositorBridges.AppendElement(bridge);
    return bridge.forget();
 diff --git a/gfx/layers/wr/WebRenderBridgeParent.cpp b/gfx/layers/wr/WebRenderBridgeParent.cpp
-index 2c4f7a061353..5ce1d0e0456c 100644
+index 458cf27c333d..ea1f3cf4230c 100644
 --- a/gfx/layers/wr/WebRenderBridgeParent.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeParent.cpp
-@@ -2935,6 +2935,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
+@@ -2941,6 +2941,12 @@ WebRenderBridgeParentRef::~WebRenderBridgeParentRef() {
  
  void WebRenderBridgeParent::CompositeToDefaultTarget(
      VsyncId aId, wr::RenderReasons aReasons) {

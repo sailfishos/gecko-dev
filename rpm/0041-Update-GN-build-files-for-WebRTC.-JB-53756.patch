@@ -31,6 +31,3 @@ index 92beecc5e4e7..434857178140 100644
  
    # Set this to link PipeWire and required libraries directly instead of using the dlopen.
    rtc_link_pipewire = false
--- 
-2.51.0
-

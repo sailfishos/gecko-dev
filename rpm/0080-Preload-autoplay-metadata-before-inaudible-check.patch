@@ -17,10 +17,10 @@ advance to normal playback.
  1 file changed, 5 insertions(+)
 
 diff --git a/dom/html/HTMLMediaElement.cpp b/dom/html/HTMLMediaElement.cpp
-index f4ecc8e6bec6e..0cba55e9a8536 100644
+index 399214d4c4f5..9830e61f676d 100644
 --- a/dom/html/HTMLMediaElement.cpp
 +++ b/dom/html/HTMLMediaElement.cpp
-@@ -2947,6 +2947,8 @@ void HTMLMediaElement::UpdatePreloadAction() {
+@@ -2949,6 +2949,8 @@ void HTMLMediaElement::UpdatePreloadAction() {
    // as we'll need it to play.
    if ((AllowedToPlay() && HasAttr(nsGkAtoms::autoplay)) || !mPaused) {
      nextAction = HTMLMediaElement::PRELOAD_ENOUGH;
@@ -29,7 +29,7 @@ index f4ecc8e6bec6e..0cba55e9a8536 100644
    } else {
      // Find the appropriate preload action by looking at the attribute.
      const nsAttrValue* val =
-@@ -5399,6 +5401,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
+@@ -5401,6 +5403,9 @@ void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
    mTags = std::move(aTags);
    mLoadedDataFired = false;
    ChangeReadyState(HAVE_METADATA);

@@ -24,6 +24,3 @@ index 8f3e920516c7..48e0ce6663c2 100644
  ifeq (.,$(DEPTH))
  DIST = dist
  else
--- 
-2.51.0
-

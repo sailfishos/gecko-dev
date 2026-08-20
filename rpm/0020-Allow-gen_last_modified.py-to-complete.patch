@@ -35,6 +35,3 @@ index d03f8fc096fe..984aab6e8a0d 100644
          dumps_locations += ["services/settings/dumps/"]
      elif buildconfig.substs["MOZ_BUILD_APP"] == "comm/mail":
          dumps_locations += ["services/settings/dumps/"]
--- 
-2.51.0
-

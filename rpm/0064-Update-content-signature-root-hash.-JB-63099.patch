@@ -22,6 +22,3 @@ index ae7ddd934dc7..f042099f2e2a 100644
  pref("security.default_personal_cert",   "Ask Every Time");
  pref("security.remember_cert_checkbox_default_setting", true);
  
--- 
-2.51.0
-

@@ -19,7 +19,7 @@ reply until the PageStack has finished dismissing the beforeunload dialog.
  1 file changed, 6 insertions(+), 14 deletions(-)
 
 diff --git a/toolkit/components/prompts/src/Prompter.sys.mjs b/toolkit/components/prompts/src/Prompter.sys.mjs
-index b054a849e3c66..23e18060df638 100644
+index b054a849e3c6..23e18060df63 100644
 --- a/toolkit/components/prompts/src/Prompter.sys.mjs
 +++ b/toolkit/components/prompts/src/Prompter.sys.mjs
 @@ -1089,6 +1089,7 @@ class ModalPrompter {

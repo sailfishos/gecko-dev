@@ -23,7 +23,7 @@ WebRender support.
  8 files changed, 65 insertions(+), 4 deletions(-)
 
 diff --git a/gfx/gl/GLContextProvider.h b/gfx/gl/GLContextProvider.h
-index 67da1bc67ca03..d604da23fd4d9 100644
+index 67da1bc67ca0..d604da23fd4d 100644
 --- a/gfx/gl/GLContextProvider.h
 +++ b/gfx/gl/GLContextProvider.h
 @@ -22,6 +22,10 @@ class CompositorWidget;
@@ -38,7 +38,7 @@ index 67da1bc67ca03..d604da23fd4d9 100644
  
  // Null is always there
 diff --git a/gfx/gl/GLContextProviderEGL.cpp b/gfx/gl/GLContextProviderEGL.cpp
-index 04a06293b4d00..5e1ba387226b8 100644
+index 04a06293b4d0..5e1ba387226b 100644
 --- a/gfx/gl/GLContextProviderEGL.cpp
 +++ b/gfx/gl/GLContextProviderEGL.cpp
 @@ -1025,6 +1025,39 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
@@ -82,7 +82,7 @@ index 04a06293b4d00..5e1ba387226b8 100644
  // through aConfig.  Return false otherwise.
  //
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index a7a63d728aced..de99e9016c768 100644
+index a7a63d728ace..de99e9016c76 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -2648,6 +2648,16 @@ void gfxPlatform::InitWebRenderConfig() {
@@ -103,7 +103,7 @@ index a7a63d728aced..de99e9016c768 100644
  
  #ifdef MOZ_WIDGET_GTK
 diff --git a/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp b/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
-index fac9722bbea4a..00ae03ff8e7a7 100644
+index fac9722bbea4..00ae03ff8e7a 100644
 --- a/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorOGLSWGL.cpp
 @@ -48,7 +48,7 @@ UniquePtr<RenderCompositor> RenderCompositorOGLSWGL::Create(
@@ -141,7 +141,7 @@ index fac9722bbea4a..00ae03ff8e7a7 100644
    GetGLContext()->MakeCurrent();
  #ifdef MOZ_WIDGET_ANDROID
 diff --git a/gfx/webrender_bindings/RenderCompositorOGLSWGL.h b/gfx/webrender_bindings/RenderCompositorOGLSWGL.h
-index 7752574311bf0..4bfa25a45a58c 100644
+index 7752574311bf..4bfa25a45a58 100644
 --- a/gfx/webrender_bindings/RenderCompositorOGLSWGL.h
 +++ b/gfx/webrender_bindings/RenderCompositorOGLSWGL.h
 @@ -29,6 +29,7 @@ class RenderCompositorOGLSWGL : public RenderCompositorLayersSWGL {
@@ -153,7 +153,7 @@ index 7752574311bf0..4bfa25a45a58c 100644
    bool MakeCurrent() override;
  
 diff --git a/gfx/webrender_bindings/RenderThread.cpp b/gfx/webrender_bindings/RenderThread.cpp
-index a8b68aef94870..ed4c5e2ff236f 100644
+index a8b68aef9487..ed4c5e2ff236 100644
 --- a/gfx/webrender_bindings/RenderThread.cpp
 +++ b/gfx/webrender_bindings/RenderThread.cpp
 @@ -1535,7 +1535,8 @@ static already_AddRefed<gl::GLContext> CreateGLContextANGLE(
@@ -176,7 +176,7 @@ index a8b68aef94870..ed4c5e2ff236f 100644
  #elif defined(MOZ_WAYLAND) || defined(MOZ_X11)
    if (gfx::gfxVars::UseEGL()) {
 diff --git a/gfx/webrender_bindings/RendererOGL.cpp b/gfx/webrender_bindings/RendererOGL.cpp
-index 3eac1b7da8f51..81277eab5722d 100644
+index 3eac1b7da8f5..81277eab5722 100644
 --- a/gfx/webrender_bindings/RendererOGL.cpp
 +++ b/gfx/webrender_bindings/RendererOGL.cpp
 @@ -300,7 +300,9 @@ layers::SyncObjectHost* RendererOGL::GetSyncObject() const {
@@ -191,7 +191,7 @@ index 3eac1b7da8f51..81277eab5722d 100644
  void* RendererOGL::swgl() const { return mCompositor->swgl(); }
  
 diff --git a/widget/nsBaseWidget.cpp b/widget/nsBaseWidget.cpp
-index ef102467f68da..70729e163ba6a 100644
+index ef102467f68d..70729e163ba6 100644
 --- a/widget/nsBaseWidget.cpp
 +++ b/widget/nsBaseWidget.cpp
 @@ -1392,6 +1392,8 @@ already_AddRefed<WebRenderLayerManager> nsBaseWidget::CreateCompositorSession(

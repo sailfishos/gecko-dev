@@ -345,6 +345,3 @@ index e4b733486ba7..8601b71be6fc 100644
  // Free some native data according to aDataType
  void nsWindow::FreeNativeData(void* data, uint32_t aDataType) {
    switch (aDataType) {
--- 
-2.51.0
-

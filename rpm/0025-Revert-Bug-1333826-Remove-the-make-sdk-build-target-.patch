@@ -246,6 +246,3 @@ index 31ed6376e04e..e247f9d266fd 100644
  ifeq (Darwin, $(OS_ARCH))
    UPLOAD_FILES += $(call QUOTED_WILDCARD,$(DIST)/$(PKG_PATH)$(MACOS_CODESIGN_ARCHIVE_BASENAME).zip)
  endif
--- 
-2.51.0
-

@@ -19,6 +19,3 @@ index 6223c638e306..6f6590a9ae4d 100644
    void ActivenessMaybeChanged();
    // See ComputeActiveness() for details of these two booleans.
    bool IsActive() const { return mIsActive; }
--- 
-2.51.0
-

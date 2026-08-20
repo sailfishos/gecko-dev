@@ -10,9 +10,8 @@ selector, which leaves EmbedLite address-bar searches without engines.
 
 For the EmbedLite application ID, load engines directly from the persisted
 settings data and tolerate the lack of a WebExtension default engine entry.
-
 ---
- toolkit/components/search/SearchService.sys.mjs | 23 +++++++++++++++----
+ .../components/search/SearchService.sys.mjs   | 23 +++++++++++++++----
  1 file changed, 18 insertions(+), 5 deletions(-)
 
 diff --git a/toolkit/components/search/SearchService.sys.mjs b/toolkit/components/search/SearchService.sys.mjs
@@ -48,7 +47,7 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
            defaultEngine = null;
          }
        }
-@@ -1551,12 +1556,20 @@ export class SearchService {
+@@ -1551,13 +1556,21 @@ export class SearchService {
     *   An object representing the search engine settings.
     */
    async #loadEngines(settings) {
@@ -70,3 +69,4 @@ index afd0fff703f8..2a9ed9a8f1ca 100644
 -    lazy.logConsole.debug("#loadEngines: start");
      let { engines, privateDefault } = await this._fetchEngineSelectorEngines();
      this.#setDefaultAndOrdersFromSelector(engines, privateDefault);
+ 

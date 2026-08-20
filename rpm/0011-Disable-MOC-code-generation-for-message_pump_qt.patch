@@ -26,6 +26,3 @@ index b808b21296a5..6bd3b11d2351 100644
  
  if os_solaris:
      SOURCES += [
--- 
-2.51.0
-

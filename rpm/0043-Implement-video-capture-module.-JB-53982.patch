@@ -166,16 +166,16 @@ index aaf786699f1c..6ab74367144b 100644
  
   protected:
 diff --git a/third_party/libwebrtc/modules/video_capture/BUILD.gn b/third_party/libwebrtc/modules/video_capture/BUILD.gn
-index 4a5bf624333c..2ea3e4e711bc 100644
+index 65468cecd7ed..659f08f25f91 100644
 --- a/third_party/libwebrtc/modules/video_capture/BUILD.gn
 +++ b/third_party/libwebrtc/modules/video_capture/BUILD.gn
-@@ -63,7 +63,15 @@ if (!build_with_chromium) {
-       "../../system_wrappers",
+@@ -69,7 +69,15 @@ if (!build_with_chromium || is_linux || is_chromeos) {
+       "video_capture_options.h",
      ]
  
 -    if (is_linux || is_bsd || is_chromeos) {
 +    if (is_sfos) {
-+      sources = [
++      sources += [
 +        "sfos/device_info_sfos.cc",
 +        "sfos/device_info_sfos.h",
 +        "sfos/video_capture_sfos.cc",
@@ -183,7 +183,7 @@ index 4a5bf624333c..2ea3e4e711bc 100644
 +      ]
 +      deps += [ "../../media:rtc_media_base" ]
 +    } else if (is_linux || is_bsd || is_chromeos) {
-       sources = [
+       sources += [
          "linux/device_info_linux.cc",
          "linux/device_info_v4l2.cc",
 diff --git a/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc b/third_party/libwebrtc/modules/video_capture/sfos/device_info_sfos.cc
@@ -719,10 +719,10 @@ index 9d9a1471e8d0..dc3a9e154d9a 100644
  }  // namespace videocapturemodule
  }  // namespace webrtc
 diff --git a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
-index b9af5f2441e3..a2cec81457d0 100644
+index 005c5c1fde39..1dd66b8c7f0d 100644
 --- a/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
 +++ b/third_party/libwebrtc/modules/video_capture/video_capture_impl.h
-@@ -70,6 +70,9 @@ class VideoCaptureImpl : public VideoCaptureModule {
+@@ -77,6 +77,9 @@ class RTC_EXPORT VideoCaptureImpl : public VideoCaptureModule {
                          size_t videoFrameLength,
                          const VideoCaptureCapability& frameInfo,
                          int64_t captureTime = 0);
@@ -732,6 +732,3 @@ index b9af5f2441e3..a2cec81457d0 100644
  
    // Platform dependent
    int32_t StartCapture(const VideoCaptureCapability& capability) override;
--- 
-2.51.0
-

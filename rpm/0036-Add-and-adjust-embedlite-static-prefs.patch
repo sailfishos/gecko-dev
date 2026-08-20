@@ -16,16 +16,15 @@ security.external_protocol_requires_permission
 This defaults to true, but we need it to default to false so that
 external URL actions continue to work as intended. Here we change the
 default value of the preference from true to false so as to allow this.
-
 ---
- modules/libpref/init/StaticPrefList.yaml      | 23 ++++++++
+ modules/libpref/init/StaticPrefList.yaml      | 23 +++++++++++++++++++
  modules/libpref/init/all.js                   |  2 +-
  modules/libpref/moz.build                     |  1 +
  .../handling/ContentDispatchChooser.sys.mjs   |  2 +-
  4 files changed, 26 insertions(+), 2 deletions(-)
 
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index eeda4cc25412..be2cbb18025f 100644
+index eeda4cc25412..13e75da963ac 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -5075,6 +5075,29 @@
@@ -94,5 +93,3 @@ index cf9a2444a3ab..e980e0e2e604 100644
 -  true
 +  false
  );
--- 
-2.51.0

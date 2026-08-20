@@ -6,15 +6,16 @@ Subject: [PATCH] Bug 1998927 - Update glslopt to explicitly define
 
 Differential Revision: https://phabricator.services.mozilla.com/D271746
 ---
- Cargo.lock                                    |  4 ++--
+ Cargo.lock                                    |  4 +--
  third_party/rust/glslopt/.cargo-checksum.json |  2 +-
- third_party/rust/glslopt/Cargo.lock           | 25 +++++++++++++++++++++++++
- third_party/rust/glslopt/Cargo.toml           | 12 +++++++++++-
+ third_party/rust/glslopt/Cargo.lock           | 25 +++++++++++++++++++
+ third_party/rust/glslopt/Cargo.toml           | 12 ++++++++-
  third_party/rust/glslopt/build.rs             |  2 ++
  5 files changed, 41 insertions(+), 4 deletions(-)
+ create mode 100644 third_party/rust/glslopt/Cargo.lock
 
 diff --git a/Cargo.lock b/Cargo.lock
-index 0cdd39e..112fa8a 100644
+index 9a1cc8359fe7..173e305211f9 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -2269,9 +2269,9 @@ dependencies = [
@@ -30,7 +31,7 @@ index 0cdd39e..112fa8a 100644
   "cc",
  ]
 diff --git a/third_party/rust/glslopt/.cargo-checksum.json b/third_party/rust/glslopt/.cargo-checksum.json
-index 1eda447..e1af650 100644
+index 1eda447b7d6e..e1af650c0fea 100644
 --- a/third_party/rust/glslopt/.cargo-checksum.json
 +++ b/third_party/rust/glslopt/.cargo-checksum.json
 @@ -1 +1 @@
@@ -40,7 +41,7 @@ index 1eda447..e1af650 100644
 \ No newline at end of file
 diff --git a/third_party/rust/glslopt/Cargo.lock b/third_party/rust/glslopt/Cargo.lock
 new file mode 100644
-index 0000000..2034b56
+index 000000000000..2034b562ee8d
 --- /dev/null
 +++ b/third_party/rust/glslopt/Cargo.lock
 @@ -0,0 +1,25 @@
@@ -70,7 +71,7 @@ index 0000000..2034b56
 +source = "registry+https://github.com/rust-lang/crates.io-index"
 +checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 diff --git a/third_party/rust/glslopt/Cargo.toml b/third_party/rust/glslopt/Cargo.toml
-index b391d8c..a5a4b99 100644
+index b391d8c7a9f1..a5a4b997ac1e 100644
 --- a/third_party/rust/glslopt/Cargo.toml
 +++ b/third_party/rust/glslopt/Cargo.toml
 @@ -12,8 +12,14 @@
@@ -100,7 +101,7 @@ index b391d8c..a5a4b99 100644
  [build-dependencies.cc]
  version = "1.0"
 diff --git a/third_party/rust/glslopt/build.rs b/third_party/rust/glslopt/build.rs
-index 7c3ef1a..a560557 100644
+index 7c3ef1a16c96..a56055767bca 100644
 --- a/third_party/rust/glslopt/build.rs
 +++ b/third_party/rust/glslopt/build.rs
 @@ -24,6 +24,8 @@ fn configure(build: &mut cc::Build) -> &mut cc::Build {

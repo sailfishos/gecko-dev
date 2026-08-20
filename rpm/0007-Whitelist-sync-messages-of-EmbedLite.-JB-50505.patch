@@ -30,6 +30,3 @@ index 075c0557b981..cfa185edb047 100644
  # gtests
  [PQuotaTest::Try_Success_CustomErr_QmIpcFail]
  description = Only used by gtests
--- 
-2.51.0
-

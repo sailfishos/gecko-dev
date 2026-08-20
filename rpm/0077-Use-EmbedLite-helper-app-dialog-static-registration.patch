@@ -8,7 +8,6 @@ the old EmbedLite manifest component/contract directives are ignored.
 Point the existing static contract at the EmbedLite JSM implementation so
 downloads keep using the Sailfish chrome prompt path without restoring
 legacy manifest registration.
-
 ---
  toolkit/mozapps/downloads/components.conf | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)

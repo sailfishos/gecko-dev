@@ -22,7 +22,7 @@ Signed-off-by: Pavel Tumakaev <p.tumakaev@omprussia.ru>
  3 files changed, 11 insertions(+), 3 deletions(-)
 
 diff --git a/dom/ipc/DOMTypes.ipdlh b/dom/ipc/DOMTypes.ipdlh
-index 11c1816dc787..6aee175db1b6 100644
+index e3a75ad83099..c417d445c45b 100644
 --- a/dom/ipc/DOMTypes.ipdlh
 +++ b/dom/ipc/DOMTypes.ipdlh
 @@ -27,9 +27,10 @@ using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
@@ -76,6 +76,3 @@ index c04744a8b936..cb6cd999f21b 100644
  NS_IMPL_ISUPPORTS(Preferences, nsIPrefService, nsIObserver, nsIPrefBranch,
                    nsISupportsWeakReference)
  
--- 
-2.51.0
-
