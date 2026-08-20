@@ -197,19 +197,26 @@ TEST(EmbedLiteChromeWindowHostTest, FocusCallbacksAreDeduplicated)
   ASSERT_EQ(hosted->Create(nullptr, bounds, &init), NS_OK);
   host->InitializeChromeInput();
 
-  CountingWidgetListener hostedListener;
-  hosted->SetAttachedWidgetListener(&hostedListener);
+  CountingWidgetListener primaryListener;
+  CountingWidgetListener attachedListener;
+  hosted->SetWidgetListener(&primaryListener);
+  hosted->SetAttachedWidgetListener(&attachedListener);
   EXPECT_TRUE(host->SetChromeFocused(true));
   EXPECT_TRUE(host->SetChromeFocused(true));
-  EXPECT_EQ(hostedListener.mActivatedCount, 1);
-  EXPECT_EQ(hostedListener.mDeactivatedCount, 0);
+  EXPECT_EQ(primaryListener.mActivatedCount, 1);
+  EXPECT_EQ(primaryListener.mDeactivatedCount, 0);
+  EXPECT_EQ(attachedListener.mActivatedCount, 0);
+  EXPECT_EQ(attachedListener.mDeactivatedCount, 0);
 
   EXPECT_TRUE(host->SetChromeFocused(false));
   EXPECT_TRUE(host->SetChromeFocused(false));
-  EXPECT_EQ(hostedListener.mActivatedCount, 1);
-  EXPECT_EQ(hostedListener.mDeactivatedCount, 1);
+  EXPECT_EQ(primaryListener.mActivatedCount, 1);
+  EXPECT_EQ(primaryListener.mDeactivatedCount, 1);
+  EXPECT_EQ(attachedListener.mActivatedCount, 0);
+  EXPECT_EQ(attachedListener.mDeactivatedCount, 0);
 
   hosted->SetAttachedWidgetListener(nullptr);
+  hosted->SetWidgetListener(nullptr);
   hosted->Destroy();
   host->Destroy();
 }
@@ -265,11 +272,12 @@ TEST(EmbedLiteChromeWindowHostTest, PreeditAndCommitUseCompositionEvents)
   hosted->SetAttachedWidgetListener(&hostedListener);
   mozilla::widget::InputContext inputContext;
   inputContext.mIMEState.mEnabled = mozilla::widget::IMEEnabled::Enabled;
-  inputContext.mIMEState.mOpen = mozilla::widget::IMEState::OPEN;
   mozilla::widget::InputContextAction action;
   action.mCause = mozilla::widget::InputContextAction::CAUSE_TOUCH;
   action.mFocusChange = mozilla::widget::InputContextAction::GOT_FOCUS;
   hosted->SetInputContext(inputContext, action);
+  EXPECT_EQ(hosted->GetInputContext().mIMEState.mEnabled,
+            mozilla::widget::IMEEnabled::Enabled);
 
   EXPECT_TRUE(host->DispatchChromeTextEvent(
     mozilla::EmptyString(), u"text"_ns, 0, 0));
@@ -305,7 +313,6 @@ TEST(EmbedLiteChromeWindowHostTest, IMERequestsEndComposition)
   hosted->SetAttachedWidgetListener(&hostedListener);
   mozilla::widget::InputContext inputContext;
   inputContext.mIMEState.mEnabled = mozilla::widget::IMEEnabled::Enabled;
-  inputContext.mIMEState.mOpen = mozilla::widget::IMEState::OPEN;
   mozilla::widget::InputContextAction action;
   action.mCause = mozilla::widget::InputContextAction::CAUSE_TOUCH;
   action.mFocusChange = mozilla::widget::InputContextAction::GOT_FOCUS;

@@ -278,6 +278,10 @@ EmbedLitePuppetWidget::SetInputContext(const InputContext& aContext,
       static_cast<int32_t>(aAction.mCause),
       static_cast<int32_t>(aAction.mFocusChange));
   } else if (nsWindow* chromeHost = dynamic_cast<nsWindow*>(GetParent())) {
+    // Legacy views refresh this cache through GetInputContext().  A hosted
+    // chrome widget has no view, so retain the content process's actual
+    // enabled state rather than the plugin-only open-state normalization.
+    mInputContext = aContext;
     chromeHost->SetChromeInputContext(aContext, aAction);
   }
 }
@@ -471,8 +475,10 @@ void EmbedLitePuppetWidget::RemoveObserver(EmbedLitePuppetWidgetObserver *aObser
 
 void EmbedLitePuppetWidget::NotifyChromeWindowFocusChanged(bool aFocused)
 {
-  nsIWidgetListener* listener =
-    mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
+  // Top-level activation belongs to the primary listener.  The attached
+  // listener handles painting and input events for the hosted view, but does
+  // not update the AppWindow's focus-manager state.
+  nsIWidgetListener* listener = GetWidgetListener();
   if (!listener) {
     return;
   }
