@@ -59,7 +59,8 @@ namespace
       return false;
     }
     uint64_t value = 0;
-    for (char16_t character : aText) {
+    for (uint32_t index = 0; index < aText.Length(); ++index) {
+      const char16_t character = aText[index];
       if (character < '0' || character > '9') {
         return false;
       }

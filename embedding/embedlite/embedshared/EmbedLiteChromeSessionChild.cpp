@@ -93,7 +93,8 @@ bool ParseUint64String(const nsAString& aText, uint64_t* aResult)
     return false;
   }
   uint64_t value = 0;
-  for (char16_t character : aText) {
+  for (uint32_t index = 0; index < aText.Length(); ++index) {
+    const char16_t character = aText[index];
     if (character < '0' || character > '9') {
       return false;
     }
@@ -614,14 +615,17 @@ bool EmbedLiteChromeSessionChild::DispatchContentCommand(
     return false;
   }
   event->InitEvent(u"EmbedLiteChromeContentCommand"_ns, true, false);
-  const bool dispatched = aTab.browser->DispatchEvent(*event);
+  const bool dispatched = aTab.browser->DispatchEvent(
+    *event, CallerType::NonSystem, error);
+  const bool dispatchFailed = error.Failed();
+  error.SuppressException();
   aTab.browser->RemoveAttribute(u"data-embedlite-command"_ns, error);
   error.SuppressException();
   aTab.browser->RemoveAttribute(u"data-embedlite-command-data"_ns, error);
   error.SuppressException();
   aTab.browser->RemoveAttribute(u"data-embedlite-command-name"_ns, error);
   error.SuppressException();
-  return dispatched;
+  return !dispatchFailed && dispatched;
 }
 
 void EmbedLiteChromeSessionChild::ReplayContentRegistrations(TabRecord& aTab)
@@ -2265,7 +2269,8 @@ bool EmbedLiteChromeSessionChild::SendAsyncMessage(
     return false;
   }
   if (EmbedLiteAppService* service = EmbedLiteAppService::AppService()) {
-    service->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aName).get(), aJSON);
+    nsString json(aJSON);
+    service->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aName).get(), json);
   }
   return true;
 }
