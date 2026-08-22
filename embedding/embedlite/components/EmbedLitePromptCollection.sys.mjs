@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 export class EmbedLitePromptCollection {
   confirmRepost(browsingContext) {
     let brandName;
@@ -175,7 +173,7 @@ const BUNDLES = {
 
 EmbedLitePromptCollection.prototype.stringBundles = {};
 for (const [bundleName, bundleUrl] of Object.entries(BUNDLES)) {
-  XPCOMUtils.defineLazyGetter(
+  ChromeUtils.defineLazyGetter(
     EmbedLitePromptCollection.prototype.stringBundles,
     bundleName,
     function () {
