@@ -433,6 +433,7 @@ EmbedLiteChromeSessionChild::TabRecord::TabRecord(
   , progressListenerRegistered(false)
   , progressRetryPending(false)
   , progressRetryAttempts(0)
+  , contentBridgeReady(false)
   , loading(false)
   , closing(false)
   , discarded(false)
@@ -2978,6 +2979,7 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
 
   if (type.EqualsLiteral("DidChangeBrowserRemoteness") ||
       type.EqualsLiteral("XULFrameLoaderCreated")) {
+    tab->contentBridgeReady = false;
     BrowsingContext* browsingContext = BrowsingContextFor(*tab);
     if (tab->endpointId && browsingContext) {
       EmbedLiteAppService* service = EmbedLiteAppService::AppService();
@@ -3020,9 +3022,6 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
       RemoveTab(tab->id);
     }
   } else if (type.EqualsLiteral("EmbedLiteChromeContentState")) {
-    if (tab->awaitingDocumentLocation) {
-      return NS_OK;
-    }
     auto getAttribute = [browser](const char16_t* aName) {
       nsAutoString value;
       browser->GetAttribute(nsDependentString(aName), value);
@@ -3036,6 +3035,17 @@ EmbedLiteChromeSessionChild::HandleEvent(Event* aEvent)
           getAttribute(u"data-embedlite-event-innerWindowId"),
           &innerWindowId) || !windowGlobal ||
         windowGlobal->InnerWindowId() != innerWindowId) {
+      return NS_OK;
+    }
+    if (!tab->contentBridgeReady) {
+      // browser.js has received a message from its internal frame script for
+      // the current window, so both its command listener and this browser's
+      // message manager are ready. Replay registrations that may have raced
+      // bridge attachment.
+      tab->contentBridgeReady = true;
+      ReplayContentRegistrations(*tab);
+    }
+    if (tab->awaitingDocumentLocation) {
       return NS_OK;
     }
     nsresult rv = NS_OK;
@@ -3137,7 +3147,6 @@ EmbedLiteChromeSessionChild::OnStateChange(
     ScheduleTabSnapshot();
   } else if (aStateFlags & nsIWebProgressListener::STATE_STOP) {
     tab->awaitingDocumentLocation = false;
-    DispatchContentCommand(*tab, u"request-state"_ns, u"{}"_ns);
     tab->loading = false;
     tab->progress = 100;
     if (tab->restoring) {
@@ -3152,11 +3161,13 @@ EmbedLiteChromeSessionChild::OnStateChange(
           (!currentLocation.EqualsLiteral("about:blank") ||
            tab->location.Equals(currentLocation))) {
         tab->restoring = false;
+        ReplayContentRegistrations(*tab);
         if (tab->location != currentLocation) {
           tab->title.Truncate();
         }
       }
     }
+    DispatchContentCommand(*tab, u"request-state"_ns, u"{}"_ns);
     UpdateLocation(*tab);
     UpdateTitle(*tab);
     ScheduleTabSnapshot();
@@ -3212,6 +3223,7 @@ EmbedLiteChromeSessionChild::OnLocationChange(
         return NS_OK;
       }
       tab->restoring = false;
+      ReplayContentRegistrations(*tab);
       if (tab->location != restoredLocation &&
           !(aFlags &
             nsIWebProgressListener::LOCATION_CHANGE_SAME_DOCUMENT)) {

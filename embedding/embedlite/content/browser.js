@@ -11,6 +11,9 @@
   const MAX_CONTENT_NAME_LENGTH = 1024;
   const MAX_CONTENT_DATA_LENGTH = 1024 * 1024;
   const listeners = new WeakMap();
+  const loadedFrameScripts = new WeakMap();
+  const frameScripts = new Set();
+  const messageNames = new Set();
 
   function emit(browser, type, name, data) {
     const normalized = data === undefined ? {} : data;
@@ -53,6 +56,9 @@
   }
 
   function messageListener(browser, name) {
+    if (!browser.messageManager) {
+      return;
+    }
     let byName = listeners.get(browser);
     if (!byName) {
       byName = new Map();
@@ -78,22 +84,52 @@
   function removeMessageListener(browser, name) {
     const byName = listeners.get(browser);
     const listener = byName?.get(name);
-    if (listener) {
-      browser.messageManager.removeMessageListener(name, listener);
-      byName.delete(name);
+    if (!listener) {
+      return;
     }
+    if (browser.messageManager) {
+      browser.messageManager.removeMessageListener(name, listener);
+    }
+    byName.delete(name);
+  }
+
+  function loadFrameScript(browser, uri) {
+    if (!browser.messageManager) {
+      return;
+    }
+    let loaded = loadedFrameScripts.get(browser);
+    if (!loaded) {
+      loaded = new Set();
+      loadedFrameScripts.set(browser, loaded);
+    }
+    if (loaded.has(uri)) {
+      return;
+    }
+    browser.messageManager.loadFrameScript(uri, true, true);
+    loaded.add(uri);
   }
 
   function attach(browser) {
     if (!browser.messageManager) {
       return;
     }
-    browser.messageManager.loadFrameScript(INTERNAL_SCRIPT, true, true);
     messageListener(browser, INTERNAL_STATE);
+    loadFrameScript(browser, INTERNAL_SCRIPT);
+    for (const script of frameScripts) {
+      loadFrameScript(browser, script);
+    }
+    for (const name of messageNames) {
+      messageListener(browser, name);
+    }
   }
+
+  document.addEventListener("EmbedLiteChromeContentCommand",
+                            handleContentCommand, true);
 
   document.addEventListener("XULFrameLoaderCreated", event => {
     if (event.target.localName === "browser") {
+      listeners.delete(event.target);
+      loadedFrameScripts.delete(event.target);
       attach(event.target);
     }
   }, true);
@@ -101,33 +137,70 @@
   document.addEventListener("DidChangeBrowserRemoteness", event => {
     if (event.target.localName === "browser") {
       listeners.delete(event.target);
+      loadedFrameScripts.delete(event.target);
       attach(event.target);
     }
   }, true);
 
-  document.addEventListener("EmbedLiteChromeContentCommand", event => {
+  function attachExistingBrowsers() {
+    for (const browser of document.querySelectorAll("browser")) {
+      attach(browser);
+    }
+  }
+
+  // A frame loader can be created while its browser is still detached, so a
+  // document-level XULFrameLoaderCreated listener cannot cover every tab.
+  const browserObserver = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          continue;
+        }
+        if (node.localName === "browser") {
+          attach(node);
+        }
+        for (const browser of node.querySelectorAll("browser")) {
+          attach(browser);
+        }
+      }
+    }
+  });
+  browserObserver.observe(document.documentElement,
+                          { childList: true, subtree: true });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", attachExistingBrowsers,
+                              { once: true });
+  } else {
+    attachExistingBrowsers();
+  }
+
+  function handleContentCommand(event) {
     const browser = event.target;
     const command = browser.getAttribute("data-embedlite-command");
     const name = browser.getAttribute("data-embedlite-command-name");
     const data = browser.getAttribute("data-embedlite-command-data");
-    if (!browser.messageManager) {
-      return;
-    }
     try {
       switch (command) {
         case "load-script":
-          browser.messageManager.loadFrameScript(data, true, true);
+          frameScripts.add(data);
+          loadFrameScript(browser, data);
           break;
         case "add-listener":
+          messageNames.add(name);
           messageListener(browser, name);
           break;
         case "remove-listener":
+          messageNames.delete(name);
           removeMessageListener(browser, name);
           break;
         case "send-message":
-          browser.messageManager.sendAsyncMessage(name, JSON.parse(data));
+          browser.messageManager?.sendAsyncMessage(name, JSON.parse(data));
           break;
         default: {
+          if (!browser.messageManager) {
+            return;
+          }
           const parsed = JSON.parse(data);
           if (name) {
             parsed.text = name;
@@ -141,5 +214,5 @@
     } catch (error) {
       console.error("EmbedLite content bridge command failed", command, error);
     }
-  }, true);
+  }
 })();

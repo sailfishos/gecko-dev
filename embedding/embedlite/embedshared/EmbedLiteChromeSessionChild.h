@@ -138,6 +138,7 @@ private:
     bool progressListenerRegistered;
     bool progressRetryPending;
     uint8_t progressRetryAttempts;
+    bool contentBridgeReady;
     bool loading;
     bool closing;
     bool discarded;
